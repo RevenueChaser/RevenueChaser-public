@@ -37,7 +37,8 @@ def layer(monkeypatch, http_mock):  # noqa: F811
                      {"msft-10k.htm": ten_k, "msft-def14a.htm": fx.proxy()})
     fx.run(companyfacts.NAME, mode="backfill", to="2026-10-26")
     fx.run(filings.NAME, mode="backfill", to="2026-10-28")
-    fx.run(forms.NAME, "2026-10-28")               # #858: the document readers serve the one cutter's table
+    fx.run(forms.NAME, "2026-10-28")               # #858, #841: the business text is the form reader's
+    monkeypatch.setattr(engine.config, "FORMS_RULES_VERSION", forms.SECTIONS_VERSION)
     assert fundamentals_layer.reads_layer()
     return http_mock
 
@@ -88,12 +89,7 @@ def test_the_input_hash_reads_the_layers_text(layer):
 
 
 def test_the_fallback_links_read_the_layer(layer):
-    """#400: the previous year's business section and the whole document come from the form reader's table
-    (``filing_section`` since #858), under the same reader names."""
-    from RevenueChaser.rcdata import read
-    docs = read.filing_documents("789019", "business")
-    assert [d["accession"] for d in docs] == [fx.K25]
-    assert engine._previous_filing("MSFT") is None              # one annual report served: no earlier one
+    """#400, #841: the whole document comes from the form reader's table (``filing_section``)."""
     whole = engine._whole_document("MSFT")
     assert "cloud software and developer tools" in whole["text"] and len(whole["text"]) > len(BUSINESS)
     assert whole["source"]["accession"] == fx.K25
@@ -101,7 +97,7 @@ def test_the_fallback_links_read_the_layer(layer):
 
 
 def test_off_the_layer_there_is_no_fallback_link(monkeypatch):
-    assert engine._previous_filing("AAA") is None and engine._whole_document("AAA") is None
+    assert engine._whole_document("AAA") is None
 
 
 def test_on_the_layer_a_profile_is_not_redone_on_the_next_run(layer, monkeypatch):
