@@ -16,7 +16,7 @@ filing; or SEC stopped answering and the sync left tickers pending.
 from __future__ import annotations
 
 from RevenueChaser.core import history, ledger
-from RevenueChaser.module_value_chain import config, precision
+from RevenueChaser.module_value_chain import config, precision, splitter
 
 BOARD, TABLE = "module_value_chain", "value_chain_edges_history"
 # Bump when the extraction changes in a way the config hash does not see (``mentions``' relation patterns,
@@ -28,8 +28,15 @@ SELECTION_VERSION = "4"
 
 
 def effective_config() -> dict:
-    """The settings the filings are sliced and the edges extracted and gated with."""
+    """The settings the filings are sliced and the edges extracted and gated with.
+
+    ``SECTIONS_VERSION`` is the cut itself (``splitter.VERSION``, #847): moving it changes the text every edge
+    is read out of, which no other key here sees -- ``MAX_ITEM_CHARS`` does not, because a version that caps
+    nowhere ignores it. So a run before the pin moved and a run after it are told apart by the stored
+    ``model_version`` rather than looking identical.
+    """
     return {
+        "SECTIONS_VERSION": splitter.VERSION,
         "MIN_ITEM_CHARS": config.MIN_ITEM_CHARS, "MAX_ITEM_CHARS": config.MAX_ITEM_CHARS,
         "MENTION_WINDOW": config.MENTION_WINDOW, "MISS_RETRY_DAYS": config.MISS_RETRY_DAYS,
         "USE_SHARED_UNIVERSE": config.USE_SHARED_UNIVERSE, "MIN_PRECISION": precision.MIN_PRECISION,
@@ -55,7 +62,7 @@ def _problems(edges: list[dict], kept: bool, filings: int | None, counts: dict) 
 
 
 def record(edges: list[dict], *, run_id: str, run_at: float, kept: bool = False, counts: dict | None = None,
-           filings: int | None = None, payload: dict | None = None):
+           filings: int | None = None, payload: dict | None = None, provider_health: dict | None = None):
     """Record a ``chain_mentions`` write: a header for every run, with the edges the table holds after it; a degraded
     run is partial. ``counts`` is the Fetch's ``fetch_corpus`` result or the sync's counts. Returns rows written."""
     counts = dict(counts or {})
@@ -64,7 +71,8 @@ def record(edges: list[dict], *, run_id: str, run_at: float, kept: bool = False,
         params=effective_config(),
         context={"trigger": "fetch" if payload is not None else "sync", "filings": filings, "edges": len(edges),
                  "kept": kept, "counts": counts},
-        payload=_without_catalog(payload), partial="; ".join(_problems(edges, kept, filings, counts)) or None)
+        payload=_without_catalog(payload), partial="; ".join(_problems(edges, kept, filings, counts)) or None,
+        provider_health=provider_health)
 
 
 def _without_catalog(payload: dict | None) -> dict | None:

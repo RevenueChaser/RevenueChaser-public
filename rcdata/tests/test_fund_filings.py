@@ -1,15 +1,20 @@
-"""``sec/filings`` (build plan PR 12): the filing list and its 8-K items, the newest annual report and proxy texts with
-the splitter's quality flag (never ``ok`` at the 200,000-character cap), and the list's read date (F2)."""
+"""``sec/filings`` (build plan PR 12): the filing list and its 8-K items, the documents it stores for the one
+cutter to cut, and the list's read date (F2).
+
+**It cuts nothing since #858.** The cap, the ``capped`` label, ``document_sections`` and the ``kind = 'document'``
+rows were this layer's second cut of the documents ``sec/forms`` cuts; the cut's own tests are
+``test_sec_forms_serving.py`` and ``test_sec_sections*.py``. What is asked here is the fetch side that stayed: the
+filing list, the 8-K items, which documents and exhibits are stored, and the misses.
+"""
 from __future__ import annotations
 
 from datetime import date
 
-import duckdb
 import pytest
 
 from RevenueChaser.core.providers import sec_edgar
 from RevenueChaser.rcdata import ops
-from RevenueChaser.rcdata.build.fundamentals import filings, tables
+from RevenueChaser.rcdata.build.fundamentals import filings
 
 from . import fund_fixture as fx
 from .sec_answers import MISSING_HEADERS, MISSING_OBJECT
@@ -30,46 +35,7 @@ def _msft(sec, ten_k=None, rows=None):
                      {"msft-10k.htm": ten_k or fx.ten_k(), "msft-def14a.htm": fx.proxy()})
 
 
-def test_the_cap_is_the_splitters():
-    assert filings.max_text_chars() == CAP
-
-
-@pytest.mark.parametrize("form", ["10-K", "20-F", "DEF 14A"])
-def test_quality_is_never_ok_at_the_cap(form):
-    """The cap belongs to a slice, which runs away when its stop header is missed -- not to a whole document,
-    whose length is the filer's (avo, 5 Nov 2026: the document is kept uncut)."""
-    html = fx.proxy(CAP + 50_000) if form == "DEF 14A" else fx.ten_k(CAP + 50_000)
-    if form == "20-F":
-        html = html.replace("Item 1. Business", "Item 4. Information on the Company").replace(
-            "Item 1A. Risk Factors", "Item 4A. Unresolved Staff Comments")
-    by_item = {item: (text, quality) for item, text, quality in filings.document_sections(html, form)}
-    if form == "DEF 14A":
-        text, quality = by_item["proxy"]
-        assert len(text) > CAP and quality == "ok", "a proxy is kept whole"
-        return
-    whole, whole_quality = by_item["whole"]
-    assert len(whole) > CAP and whole_quality == "ok", "the document is kept whole"
-    text, quality = by_item["business"]
-    assert len(text) == CAP and quality == "capped", "a slice still stops at the cap"
-    small = {i: (x, q) for i, x, q in filings.document_sections(
-        fx.ten_k(5_000), "10-K" if form == "20-F" else form)}
-    assert small["business"][1] == "ok" and len(small["business"][0]) < CAP
-
-
-def test_the_served_table_refuses_ok_at_the_cap():
-    con = duckdb.connect()
-    tables.create(con, "filing_item")
-
-    def insert(quality, chars):
-        con.execute("INSERT INTO filing_item VALUES ('1', 'a', '10-K', NULL, NULL, NULL, 'document', 'business', "
-                    f"'x', {chars}, '{quality}', 'sec/filings', NULL, NULL, NULL)")
-    with pytest.raises(duckdb.ConstraintException):
-        insert("ok", CAP)
-    insert("capped", CAP)
-    insert("ok", CAP - 1)
-
-
-def test_the_backfill_serves_the_filing_list_its_8k_items_and_the_two_documents(sec):
+def test_the_backfill_serves_the_filing_list_its_8k_items_and_stores_the_two_documents(sec):
     _msft(sec, ten_k=fx.ten_k(CAP + 10_000))
     check = fx.run(filings.NAME, mode="backfill", to="2026-10-28")
     assert check["result"] == "changed", check["note"]
@@ -78,17 +44,27 @@ def test_the_backfill_serves_the_filing_list_its_8k_items_and_the_two_documents(
     assert fx.q("SELECT items, form, filing_date FROM sec_submissions WHERE accession = ?", fx.EIGHT_K) == [
         ("2.02,9.01", "8-K", date(2025, 10, 29))]
     assert fx.q("SELECT items FROM sec_submissions WHERE accession = ?", fx.Q26) == [(None,)]
-    docs = fx.q("SELECT item, form, accession, chars, quality FROM filing_item WHERE kind = 'document' ORDER BY item")
-    # ``whole`` is the document uncut (avo, 5 Nov 2026).
-    assert docs == [("business", "10-K", fx.K25, CAP, "capped"),
-                    ("proxy", "DEF 14A", fx.PROXY, 5_000, "ok"),
-                    ("whole", "10-K", fx.K25, 210_098, "ok")]
+    # #858: no document row at all, and no text column filled. The documents are on disk, which is what
+    # ``sec/forms`` cuts, and the cut is served as ``filing_section``.
+    assert fx.q("SELECT count(*) FROM filing_item WHERE kind <> 'item'") == [(0,)]
+    assert fx.q("SELECT count(*) FROM filing_item WHERE text IS NOT NULL OR chars IS NOT NULL "
+                "OR quality IS NOT NULL") == [(0,)]
+    assert filings._doc_path("789019", fx.K25).exists() and filings._doc_path("789019", fx.PROXY).exists()
     assert fx.q("SELECT submissions_as_of FROM fundamental_company WHERE ticker = 'MSFT'") == [(date(2026, 10, 28),)]
     assert fx.q("SELECT submissions_as_of FROM fundamental_company WHERE ticker = 'HEI'") == [(None,)]  # never read
     calls = len(sec.requests)
     fx.run(filings.NAME, mode="backfill", to="2026-10-29")
     assert len(sec.calls("submissions/CIK0000789019")) == 1 and len(sec.calls("msft-10k.htm")) == 1   # resumable
     assert len(sec.requests) > calls                                     # the companies that answered 404 again
+
+
+def _exhibit(cik, accession, name) -> dict | None:
+    """The stored exhibit's ``.meta.json``, or None when the file is not there. #858: whether an exhibit was
+    picked by its name or by its number alone is on the stored file now, not on a ``filing_item`` row."""
+    from RevenueChaser.rcdata.build import base
+    from RevenueChaser.rcdata.build.fundamentals import common
+    path = filings._exhibit_path(cik, accession, name)
+    return base.read_raw_json(common.meta_path(path)) if path.exists() else None
 
 
 def test_a_company_that_filed_has_its_list_read_again_and_its_new_report_fetched(sec):
@@ -101,8 +77,8 @@ def test_a_company_that_filed_has_its_list_read_again_and_its_new_report_fetched
     fx.sec_routes(sec, {}, {"20261027": fx.daily_index([("789019", "MICROSOFT CORP", "10-K", "20261027", new_k[0])])})
     check = fx.run(filings.NAME, "2026-10-28")
     assert check["result"] == "changed", check["note"]
-    assert fx.q("SELECT accession, chars, quality FROM filing_item WHERE kind = 'document' AND item = 'business'") == [
-        (new_k[0], 7_000, "ok")]
+    assert filings._doc_path("789019", new_k[0]).exists(), "the new report is stored for sec/forms to cut"
+    assert fx.q("SELECT count(*) FROM filing_item WHERE kind <> 'item'") == [(0,)]
     assert fx.q("SELECT submissions_as_of FROM fundamental_company WHERE ticker = 'MSFT'") == [(date(2026, 10, 28),)]
 
 
@@ -134,17 +110,10 @@ def test_an_aif_exhibit_with_no_aif_in_its_name_is_still_typed(sec):
     ]}})
     sec.add("ex99-1.htm", fx.ten_k(9_000))
     fx.run(filings.NAME, mode="backfill", to="2026-10-28")
-    rows = fx.q("SELECT item, quality FROM filing_item WHERE kind = 'document' AND cik = '1094517' ORDER BY item")
-    assert ("aif", "by_number") in rows, rows      # ex99-1.htm: its number chose it, not its name
-    assert ("whole", "ok") in rows
+    meta = _exhibit("1094517", "0001193125-25-150000", "ex99-1.htm")
+    assert meta and meta["by_name"] is False, meta   # ex99-1.htm: its number chose it, not its name
+    assert filings._doc_path("1094517", "0001193125-25-150000").exists()
     assert not sec.calls("ex99-2.htm"), "the statements exhibit is not the business description"
-
-
-def test_a_40f_gets_no_business_row(sec):
-    """Value Chain's splitter knows a 10-K's Item 1 and a 20-F's Item 4, not a Canadian 40-F, so a slice of one
-    would be an arbitrary cut labelled by rules that do not apply."""
-    items = {i for i, _, _ in filings.document_sections(fx.ten_k(5_000), "40-F")}
-    assert items == {"whole"}
 
 
 def test_the_primary_document_is_never_fetched_twice_as_its_own_exhibit():
@@ -184,8 +153,7 @@ def test_a_40f_filers_primary_document_is_read_like_any_other(sec):
     sec.add("tm-40f.htm", fx.ten_k(20_000))
     sec.add("index.json", {"directory": {"item": []}})
     fx.run(filings.NAME, mode="backfill", to="2026-10-28")
-    rows = fx.q("SELECT item, quality FROM filing_item WHERE kind = 'document' AND cik = '1094517' ORDER BY item")
-    assert ("whole", "ok") in rows and sec.calls("tm-40f.htm")
+    assert filings._doc_path("1094517", "0001193125-25-150000").exists() and sec.calls("tm-40f.htm")
 
 
 def test_a_document_the_archive_does_not_hold_is_a_named_miss_not_a_failed_run(sec):
@@ -225,8 +193,8 @@ def test_an_exhibit_chosen_by_its_number_alone_says_so_on_the_row(sec):
     sec.add("index.json", {"directory": {"item": [{"name": "ex99-1.htm", "size": "500000"}]}})
     sec.add("ex99-1.htm", fx.ten_k(9_000))
     fx.run(filings.NAME, mode="backfill", to="2026-10-28")
-    assert ("aif", "by_number") in fx.q(
-        "SELECT item, quality FROM filing_item WHERE kind = 'document' AND cik = '1094517'")
+    meta = _exhibit("1094517", "0001193125-25-150000", "ex99-1.htm")
+    assert meta and meta["by_name"] is False, meta
     assert filings.picked_by_name({}, "ex99-1aif.htm") is True
     assert filings.picked_by_name({}, "ex99-1.htm") is False
 

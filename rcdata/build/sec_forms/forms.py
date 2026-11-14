@@ -19,10 +19,15 @@ XBRL: 0.6% of the stored annual reports) does not read as stale on every run, wh
 against stored rows would have done.
 
 **Which cutter version.** :data:`SECTIONS_VERSION` is what this layer stores with today, and every row carries the
-version that wrote it (``rules_version``). ``ours-2`` (#755, #756) lifts the 200,000-character cap and fixes the
-five item defects; when it lands, :data:`SECTIONS_VERSION` moves to it and the rule above re-cuts every company,
-one build, no re-fetch. Until then the sections are what ``ours-1`` gives, cap included -- said plainly here
-because the plan's §3 describes the uncut text ``ours-2`` will store.
+version that wrote it (``rules_version``). It is ``ours-2`` (#755, #756, #845): the 200,000-character cap is gone,
+so a long section is stored whole and no row is ever labelled ``capped``, the five item defects are fixed, and a
+40-F's business section is cut by ``ours-2``'s own rule. The suspect signals ride along, because
+:func:`sec_sections.cut_flag` picks the set by version (S8, the length against the cap, is not in ``ours-2``'s).
+Moving the pin again re-cuts every company in one build, with no re-fetch -- which is why it moved **before** the
+first full cut rather than after it, so that pass is paid once (#845).
+
+``module_value_chain/splitter.VERSION`` and ``filing_item`` stay on ``ours-1``: those tables carry no version
+column, so each board moves on its own change, with the owner's before/after look.
 
 **Which cutter.** :func:`sections_of` is the one seam, and in this change it calls ``rcdata/sec_sections.py``
 only. ``cutter.py`` beside this module (#754) is the edgartools item cutter in its own venv, the owner's decision
@@ -63,7 +68,7 @@ UNCUT, HEADER, AIF = "uncut", "header", "aif"
 SECTIONS = (WHOLE, PROXY, BUSINESS)
 
 #: The cutter version this layer stores sections with, and the note reader's own version. Both ride on every row.
-SECTIONS_VERSION = sec_sections.OURS_1
+SECTIONS_VERSION = sec_sections.OURS_2
 NOTES_VERSION = sec_notes.NOTES_VERSION
 
 _STAMPS = [("source_as_of", "DATE"), ("fetched_at", "DOUBLE"), ("run_id", "TEXT")]
@@ -122,19 +127,27 @@ def _span(whole: str, part: str) -> tuple[int | None, int | None]:
     shortcut: found by searching for the cut text, so a cut the rule altered -- a capped one -- has no span;
     upgrade when ``ours-2`` returns the offsets of its own cut.
     """
+    # An empty cut sits nowhere, and ``find("")`` answers 0: without this the row of a cut that found no section
+    # (#843) would claim the document's first character.
+    if not part:
+        return (None, None)
     i = whole.find(part)
     return (i, i + len(part)) if i >= 0 else (None, None)
 
 
-def _flag(quality: str, text: str, item: str | None, form: str) -> str:
+def _flag(quality: str, text: str, item: str | None, form: str, *, aif: bool = False) -> str:
     """``quality`` with :data:`SECTIONS_VERSION`'s own ``;suspect`` flags (#835).
 
     Every business row carries them, not the 40-F's alone: ``module_relatedness.locator.asks`` and Value Chain
     read this column, and a 10-K whose cut is wrong but labelled ``ok`` is the case the flags exist for -- 24 of
     the 29 wrong cuts of the 10-K reading report were labelled ``ok``. Which signals a version defines is
-    :attr:`sec_sections.Rule.signals`, so the row's ``rules_version`` says what was computed.
+    :attr:`sec_sections.Rule.item_signals` and :attr:`sec_sections.Rule.aif_signals`, so the row's
+    ``rules_version`` says what was computed -- for a row written after #838, which is what split the two.
+
+    ``aif`` is True for the one row this layer cuts with :func:`sec_sections.cut_aif_business`, because which
+    cutter made the text is what picks the set and the form string does not say it (#838).
     """
-    return sec_sections.cut_flag(quality, text, item, form, version=SECTIONS_VERSION)
+    return sec_sections.cut_flag(quality, text, item, form, version=SECTIONS_VERSION, aif=aif)
 
 
 def sections_of(html: str, form: str, *, exhibit: bool = False, by_name: object = None) -> list[tuple]:
@@ -142,7 +155,8 @@ def sections_of(html: str, form: str, *, exhibit: bool = False, by_name: object 
 
     An exhibit is the business description on its own, so its whole text is the section and the 10-K item cuts do
     not apply to it (as ``sec/filings`` reads it today). A proxy is one uncut ``proxy`` row; every other form gives
-    the uncut ``whole`` row plus the business section its own rule finds.
+    the uncut ``whole`` row plus the business row its own rule cuts -- empty text and the cutter's label when the
+    rule found no section (#843), so ``method`` names the cutter that ran and not a cut that was made.
     """
     text = sec_sections.strip_html(html)
     if exhibit:
@@ -158,11 +172,17 @@ def sections_of(html: str, form: str, *, exhibit: bool = False, by_name: object 
         # section is the Annual Information Form block when the primary document keeps one.
         aif = sec_sections.cut_aif_business(text, version=SECTIONS_VERSION)
         if aif:
-            out.append((BUSINESS, aif, _flag("ok", text, aif, form), AIF, *_span(text, aif)))
+            out.append((BUSINESS, aif, _flag("ok", text, aif, form, aif=True), AIF, *_span(text, aif)))
         return out
     item, quality = sec_sections.cut_item(text, form, version=SECTIONS_VERSION)
-    if item:
-        out.append((BUSINESS, item, _flag(quality, text, item, form), HEADER, *_span(text, item)))
+    # An empty cut is a row too, with the cutter's own label -- as ``filing_item`` writes it (#843). ``crossref``
+    # says "the section is in another document, do not look" and ``missing`` "nothing was found here"; with no row
+    # at all a reader cannot tell either from "not cut yet", and ``module_relatedness.locator.asks`` takes the
+    # ``missing`` path and pays for a locator call that cannot find anything (#841). 22 of the 42 ``crossref``
+    # cuts of the 5,131 stored annual reports have an empty body (13 Nov 2026), so they are all of them that
+    # reach a reader. The text is "" and not NULL, because ``chars`` is its length and the readers concatenate.
+    item = item or ""
+    out.append((BUSINESS, item, _flag(quality, text, item, form), HEADER, *_span(text, item)))
     return out
 
 

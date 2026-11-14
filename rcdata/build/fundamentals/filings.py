@@ -1,4 +1,4 @@
-"""``sec/filings``: each Tier A company's filing list (8-K items) and its newest annual report and proxy text.
+"""``sec/filings``: each Tier A company's filing list (8-K items) and the documents the SEC form reader cuts.
 
 **The filing list.** ``GET <RC_SEC_DATA_BASE>/submissions/CIK<10 digits>.json`` (``filings.recent``: accession, form,
 filing and report dates, primary document, 8-K items), re-read when the SEC daily index (``sec_index.py``) shows the
@@ -7,26 +7,31 @@ that is longer ago than a week, ``sec_index.lookback``), and for a Tier A compan
 run. The day each list was read is served (``fundamental_company.submissions_as_of``), so "no 8-K event" can be told
 from "not read lately" (the Fundamentals review's F2).
 
-**The documents.** The primary document of the newest annual report (10-K, else 20-F; a 40-F is recorded as
-``form_40f``: its business text is in an exhibit this layer does not read) and of the newest proxy (DEF 14A),
-fetched once each (the raw file is the resume marker). The annual report's business section is sliced by Value
-Chain's splitter (``module_value_chain/splitter.py``: Item 1 of a 10-K, Item 4 of a 20-F); the proxy is kept whole.
-Both are capped at ``MAX_TEXT_CHARS`` (the splitter's 200,000). **Quality is never ``ok`` at the cap:** a text that
-reaches it is ``capped`` (the splitter itself labels a stopped slice it cut at the cap ``ok``; that is its own
-board's concern and not changed here), so a reader knows the text is not whole. Otherwise the splitter's ``ok`` /
-``short`` / ``overrun`` / ``missing``, and for a proxy ``ok`` or ``short`` (under the splitter's 2,000 characters).
+**The documents.** The primary document of the newest annual report (10-K, else 20-F, else 40-F) and of the newest
+proxy (DEF 14A), plus a 40-F's Annual Information Form exhibits, fetched once each (the raw file is the resume
+marker) and stored on disk.
+
+**This layer no longer cuts them (#858).** It did: ``document_sections`` sliced the business section with the Value
+Chain board's splitter and stored ``whole``, ``proxy``, ``business`` and ``aif`` as ``filing_item``'s
+``kind = 'document'`` rows - a second cut of the very documents ``sec/forms`` cuts, by the same rule, in a second
+table, with the cap and the ``capped`` label of whichever version that board pinned. One cutter now: ``sec/forms``
+reads these stored documents and serves ``filing_section`` with ``rules_version`` on every row, and
+``rcdata.read.filing_text`` / ``filing_documents`` / ``filing_texts`` read that table. What stays here is the
+filing list, the 8-K items, and the annual report's inline XBRL (``ixbrl.py``), which is read from the primary
+document and is not a cut.
 
 Requests go through the shared SEC bucket and are counted under ``sec``. Backfill: every Tier A company with no
 filing list yet, and its two documents, resumable.
 
 Raw: ``raw/sec/filings/submissions/<cik>/<as-of>.json.gz`` (with a ``.meta.json``: the accessions it holds) and
 ``raw/sec/filings/documents/<cik>/<accession>.html.gz``. Parquet: ``parquet/sec/filings/cik=<cik>/filings.parquet``
-(one row per filing and 8-K item), ``.../documents.parquet`` (the texts), and ``.../segments.parquet`` /
-``.../customers.parquet`` (the annual report's inline XBRL, ``ixbrl.py``: revenue by segment, product and country,
-and major customers' shares), each replaced whole from the newest list, and ``.../header.parquet`` (the list's company
-header: SEC SIC, state of incorporation, the business address's state and country; #645 G2, the fundamentals freeze).
+(one row per filing and 8-K item), ``.../segments.parquet`` / ``.../customers.parquet`` (the annual report's inline
+XBRL, ``ixbrl.py``: revenue by segment, product and country, and major customers' shares), each replaced whole from
+the newest list, and ``.../header.parquet`` (the list's company header: SEC SIC, state of incorporation, the
+business address's state and country; #645 G2, the fundamentals freeze). ``documents.parquet`` is no longer
+written; the files an earlier build left behind are read by nothing and are removed on the owner's word.
 
-Staging: ``stg_sec_filings``, ``stg_sec_documents``, ``stg_sec_segments``, ``stg_sec_customers``, ``stg_sec_header``.
+Staging: ``stg_sec_filings``, ``stg_sec_segments``, ``stg_sec_customers``, ``stg_sec_header``.
 """
 from __future__ import annotations
 
@@ -46,25 +51,22 @@ NAME = "sec/filings"
 NEW_PER_RUN = 9000
 ANNUAL_FORMS = ("10-K", "10-KT", "20-F", "40-F")             # newest by filing date; a 10-K first on one day
 PROXY_FORMS = ("DEF 14A",)
-CAPPED = "capped"
 #: How many AIF exhibits of one 40-F are kept. shortcut: one filing has never been seen with more than one, so the
 #: largest is taken; upgrade the number if a filer splits its Annual Information Form across exhibits.
 _AIF_PER_FILING = 1
-#: The one sliced item: ``business`` is Value Chain's own field and its slicer caps it
-#: (``module_value_chain/splitter.py``), which is that board's rule and not changed here. Everything else this
-#: layer stores is kept entire (avo, 5 Nov 2026: "belgeyi hic kesmeyelim, hepsi kalsin"): ``whole``, ``proxy``
-#: and an ``aif`` exhibit carry the filer's own length.
-SLICED_ITEMS = ("business",)
-STAGING = {"filings": "stg_sec_filings", "documents": "stg_sec_documents", "segments": "stg_sec_segments",
+#: This dataset cuts nothing since #858: the one cutter is ``sec/forms``, which reads the very documents fetched
+#: here and serves ``filing_section``. What went with it: ``document_sections`` (``whole``, ``proxy``,
+#: ``business``, ``aif``), the ``kind = 'document'`` rows of ``filing_item``, the ``capped`` label, and the cap
+#: constants this layer borrowed from the Value Chain board (``caps_text``, ``max_text_chars``), so
+#: ``module_value_chain/splitter.py``'s pin no longer reaches the fundamentals build at all. The documents
+#: themselves are still fetched and stored on disk, by :meth:`Filings.fetch` and :func:`read_exhibits` - that is
+#: what ``sec/forms`` cuts.
+STAGING = {"filings": "stg_sec_filings", "segments": "stg_sec_segments",
            "customers": "stg_sec_customers", "header": "stg_sec_header"}
 
 FILING = [("cik", "TEXT"), ("accession", "TEXT"), ("form", "TEXT"), ("filing_date", "DATE"), ("report_date", "DATE"),
           ("primary_document", "TEXT"), ("item", "TEXT"), ("source_as_of", "DATE"), ("fetched_at", "DOUBLE"),
           ("run_id", "TEXT")]
-DOCUMENT = [("cik", "TEXT"), ("accession", "TEXT"), ("form", "TEXT"), ("filing_date", "DATE"),
-            ("report_date", "DATE"), ("primary_document", "TEXT"), ("item", "TEXT"), ("text", "TEXT"),
-            ("chars", "INTEGER"), ("quality", "TEXT"), ("source_as_of", "DATE"), ("fetched_at", "DOUBLE"),
-            ("run_id", "TEXT")]
 # The annual report's inline XBRL (``ixbrl.py``): revenue by segment, product and country, and major customers.
 _FILED = [("cik", "TEXT"), ("accession", "TEXT"), ("form", "TEXT"), ("filing_date", "DATE")]
 _STAMPS = [("source_as_of", "DATE"), ("fetched_at", "DOUBLE"), ("run_id", "TEXT")]
@@ -77,11 +79,6 @@ HEADER = [("cik", "TEXT"), ("sic", "TEXT"), ("sic_description", "TEXT"), ("state
           ("business_country", "TEXT")] + _STAMPS
 CUSTOMER = _FILED + [("customer", "TEXT"), ("member", "TEXT"), ("benchmark", "TEXT"), ("share", "DOUBLE"),
                      ("period_start", "DATE"), ("period_end", "DATE")] + _STAMPS
-
-
-def max_text_chars() -> int:
-    from ....module_value_chain import config
-    return int(config.MAX_ITEM_CHARS)
 
 
 def min_text_chars() -> int:
@@ -238,45 +235,6 @@ def pick(rows: list[dict], forms: tuple[str, ...]) -> dict | None:
     return best
 
 
-def document_sections(html: str, form: str) -> list[tuple[str, str, str]]:
-    """``(item, text, quality)`` per section this layer serves from one document.
-
-    Nothing here is cut. ``whole`` is the document's text **uncut** (avo, 5 Nov 2026: "belgeyi hic kesmeyelim, hepsi kalsin"): a 10-K
-    runs from 220,000 to 1.4 million characters and the business section is a tenth of it, so everything a later
-    reader might want -- the risk factors, the legal proceedings, the notes -- was being thrown away at the one
-    place it could be kept for free. Its quality is the length's only; the cap belongs to a slice, which can run
-    away when a stop header is missed, and not to a whole document, whose length is the filer's.
-
-    Then ``business`` as before (``splitter``, Value Chain's own rule). A proxy is one ``proxy`` row, whole.
-
-    Item 5 and Item 8, which avo also asked for, are not here: a review of the first attempt found that the
-    longest-match rule picks a **cross-reference** in the item before ("included in Item 8 -- Financial
-    Statements") over the real header, because both resolve to the same stop, and that a 10-K often writes one
-    sentence under Item 8 and puts the statements after Item 15. Both need the 8,891 documents on disk measured
-    before a rule is chosen, so they come in their own change.
-    """
-    from ....module_value_chain import splitter
-    cap = max_text_chars()
-    text = splitter.strip_html(html)
-    if form in PROXY_FORMS:
-        return [("proxy", text, "ok" if len(text) >= min_text_chars() else ("short" if text else "missing"))]
-    out = [("whole", text, "ok" if len(text) >= min_text_chars() else ("short" if text else "missing"))]
-    if str(form).upper() == "40-F":
-        # Value Chain's splitter knows a 10-K's Item 1 and a 20-F's Item 4; a Canadian 40-F has neither, so a
-        # slice of it would be an arbitrary cut labelled by rules that do not apply. The whole text is the row,
-        # plus the business section of an Annual Information Form kept in the primary document (CNQ, #400 WP3).
-        aif = splitter.aif_business(text)
-        if aif:
-            out.append(("business", aif, CAPPED if len(aif) >= cap
-                        else splitter.cut_flag("ok", text, aif, form, version=splitter.VERSION)))
-        return out
-    item, quality = splitter.slice_item(text, form)
-    item = item or ""
-    out.append(("business", item, CAPPED if len(item) >= cap
-                else splitter.cut_flag(quality, text, item, form, version=splitter.VERSION)))
-    return out
-
-
 def read_list(ctx: base.RunContext, cik: str, as_of: date) -> Path | None:
     raw = _subs_dir(cik) / f"{as_of.isoformat()}.json.gz"
     if raw.exists():
@@ -430,16 +388,13 @@ class Filings:
             for r in rows:
                 items = [i.strip() for i in str(r.get("items") or "").split(",") if i.strip()] or [None]
                 filing_rows += [{**r, "item": i, **stamps} for i in items]
-            doc_rows, segment_rows, customer_rows = self._documents(cik, rows)
+            segment_rows, customer_rows = self._documents(cik, rows)
             folder = common.parquet_dir(NAME) / f"cik={cik}"
             con = duckdb.connect()
             try:
                 base.rows_table(con, "filings", FILING, filing_rows)
                 out.append(base.write_parquet(con, "SELECT * FROM filings ORDER BY filing_date, accession, item",
                                               folder / "filings.parquet"))
-                base.rows_table(con, "documents", DOCUMENT, doc_rows)
-                out.append(base.write_parquet(con, "SELECT * FROM documents ORDER BY accession",
-                                              folder / "documents.parquet"))
                 base.rows_table(con, "segments", SEGMENT, segment_rows)
                 out.append(base.write_parquet(con, "SELECT * FROM segments ORDER BY axis, member",
                                               folder / "segments.parquet"))
@@ -453,50 +408,33 @@ class Filings:
         return out
 
     @staticmethod
-    def _documents(cik: str, rows: list[dict]) -> tuple[list[dict], list[dict], list[dict]]:
-        """The document rows, and the annual report's segment and customer rows (its inline XBRL)."""
-        out, segments, customers = [], [], []
-        for forms in (ANNUAL_FORMS, PROXY_FORMS):
-            f = pick(rows, forms)
-            if f is None:
-                continue
-            annual = forms is ANNUAL_FORMS
-            base_row = {k: f.get(k) for k in ("cik", "accession", "form", "filing_date", "report_date",
-                                               "primary_document")}
-            paths = [_doc_path(cik, f["accession"])]
-            if annual and f["form"] == "40-F":
-                paths += stored_exhibits(cik, f["accession"], f.get("primary_document"))
-            for path in paths:
-                if not path.exists():
-                    continue
-                meta = base.read_raw_json(common.meta_path(path))
-                html = base.read_raw(path).decode("utf-8", "replace")
-                stamps = {"source_as_of": date.fromisoformat(meta["as_of"]),
-                          "fetched_at": float(meta["fetched_at"]), "run_id": meta["run_id"]}
-                exhibit = meta.get("exhibit")
-                for item, text, quality in document_sections(html, f["form"]):
-                    if exhibit and meta.get("by_name") is False:
-                        # Chosen by its number alone, which is one filer's layout: say so on the row rather than
-                        # letting a guess read like Brookfield's real Annual Information Form.
-                        quality = "by_number"
-                    # An exhibit is the business description on its own: its whole text is the section, and the
-                    # 10-K item slices do not apply to a Canadian Annual Information Form.
-                    if exhibit and item != "whole":
-                        continue
-                    out.append({**base_row, "item": "aif" if exhibit else item, "text": text,
-                                "chars": len(text), "quality": quality, **stamps})
-                if annual and not exhibit:
-                    filed = {k: base_row[k] for k in ("cik", "accession", "form", "filing_date")}
-                    found_segments, found_customers = ixbrl.parse(html)
-                    segments += [{**filed, **r, "segment": r["label"], **stamps} for r in found_segments]
-                    customers += [{**filed, **r, **stamps} for r in found_customers]
-        return out, segments, customers
+    def _documents(cik: str, rows: list[dict]) -> tuple[list[dict], list[dict]]:
+        """The annual report's segment and customer rows (its inline XBRL).
+
+        No text row any more (#858): the documents are on disk for ``sec/forms`` to cut, and this layer reads them
+        for their inline XBRL only. An exhibit carries none, so only the primary document is parsed.
+        """
+        segments, customers = [], []
+        f = pick(rows, ANNUAL_FORMS)
+        if f is None:
+            return segments, customers
+        path = _doc_path(cik, f["accession"])
+        if not path.exists():
+            return segments, customers
+        meta = base.read_raw_json(common.meta_path(path))
+        html = base.read_raw(path).decode("utf-8", "replace")
+        stamps = {"source_as_of": date.fromisoformat(meta["as_of"]),
+                  "fetched_at": float(meta["fetched_at"]), "run_id": meta["run_id"]}
+        filed = {k: f.get(k) for k in ("cik", "accession", "form", "filing_date")}
+        found_segments, found_customers = ixbrl.parse(html)
+        segments += [{**filed, **r, "segment": r["label"], **stamps} for r in found_segments]
+        customers += [{**filed, **r, **stamps} for r in found_customers]
+        return segments, customers
 
     def build(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> dict[str, int]:
         folder = common.parquet_dir(NAME)
         ciks = common.dirty_ciks(ctx, con)
         common.stage_glob(con, STAGING["filings"], FILING, folder, "cik=*/filings.parquet", ciks=ciks)
-        common.stage_glob(con, STAGING["documents"], DOCUMENT, folder, "cik=*/documents.parquet", ciks=ciks)
         common.stage_glob(con, STAGING["segments"], SEGMENT, folder, "cik=*/segments.parquet", ciks=ciks)
         common.stage_glob(con, STAGING["customers"], CUSTOMER, folder, "cik=*/customers.parquet", ciks=ciks)
         common.stage_glob(con, STAGING["header"], HEADER, folder, "cik=*/header.parquet", ciks=ciks)

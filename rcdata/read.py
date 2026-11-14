@@ -1039,19 +1039,44 @@ def filing_items(ciks: Iterable, form: str, since=None) -> list[dict]:
     return _rows("filing_item", sql + " ORDER BY cik, filing_date, accession, item", params)
 
 
+# ── The three document readers, since the one-cutter change (#858) over ``filing_section`` ─────────────────────
+#
+# ``sec/filings`` cut the same documents a second time and stored the result as ``filing_item``'s
+# ``kind = 'document'`` rows. Since #858 it cuts nothing: the one cutter is ``sec/forms``, and these three keep
+# their names and their row shape so the boards that call them read the single cut without changing. ``item`` is
+# the section (``business``, ``whole``, ``proxy``), and ``document`` is served as ``primary_document`` and
+# ``section`` as ``item``, which is what a caller of the ``filing_item`` days reads. One value differs:
+# ``primary_document`` is the **stored file** the section was cut out of (``<accession>.html.gz``, or an
+# exhibit's own name), not the SEC's primary-document name that ``filing_item``'s ``kind = 'item'`` rows carry.
+# A caller that builds an EDGAR link reads the filing list for the name; Value Chain is the only one, and #856
+# is where it does. Each is a step on the way
+# out: Value Chain (#856) and Relatedness (#841) move to ``form_business`` / ``form_whole``, and then these go.
+#
+# The two shapes differ in two places, and a caller that cares reads ``form_sections`` instead:
+#   * a 40-F's AIF exhibit is a ``business`` row here (``filing_item`` called it ``aif``), so for such a filing
+#     the exhibit can be the newest document and win;
+#   * no row is ever ``capped``: ``ours-2`` stores a section whole (#847).
+_DOC_COLUMNS = ("cik, accession, form, filing_date, report_date, document AS primary_document, "
+                "section AS item, text, chars, quality, method, rules_version, "
+                "source_as_of, fetched_at, run_id")
+_DOC_COLUMNS_NO_TEXT = _DOC_COLUMNS.replace("section AS item, text, chars", "section AS item, chars")
+
+
 def filing_text(cik, item: str = "business") -> dict | None:
-    """The served text of company ``cik``'s newest annual report (``item`` ``business``) or proxy (``proxy``), with
-    its ``quality`` (never ``ok`` at the cap); None when there is none."""
-    rows = _rows("filing_item", "SELECT * FROM filing_item WHERE cik = ? AND kind = 'document' AND item = ? "
-                                "ORDER BY filing_date DESC LIMIT 1", [_cik(cik), str(item)])
+    """The served text of company ``cik``'s newest annual report (``item`` ``business`` or ``whole``) or proxy
+    (``proxy``), with its ``quality``; None when there is none."""
+    rows = _rows("filing_section", f"SELECT {_DOC_COLUMNS} FROM filing_section WHERE cik = ? AND section = ? "
+                                   "ORDER BY filing_date DESC, accession DESC, document DESC LIMIT 1",
+                 [_cik(cik), str(item)])
     return rows[0] if rows else None
 
 
 def filing_documents(cik, item: str = "business") -> list[dict]:
-    """Every served document of ``item`` of company ``cik``, newest filing first (Relatedness's fallback to the
-    previous year's filing, #400)."""
-    return _rows("filing_item", "SELECT * FROM filing_item WHERE cik = ? AND kind = 'document' AND item = ? "
-                                "ORDER BY filing_date DESC, accession DESC", [_cik(cik), str(item)])
+    """Every served document of ``item`` of company ``cik``, newest filing first. The form reader serves the
+    newest filing only, so this is one row per document of it (#841 removed Relatedness's previous-year link)."""
+    return _rows("filing_section", f"SELECT {_DOC_COLUMNS} FROM filing_section WHERE cik = ? AND section = ? "
+                                   "ORDER BY filing_date DESC, accession DESC, document DESC",
+                 [_cik(cik), str(item)])
 
 
 def filing_texts(ciks: Iterable, item: str = "business", text: bool = True) -> list[dict]:
@@ -1060,11 +1085,11 @@ def filing_texts(ciks: Iterable, item: str = "business", text: bool = True) -> l
     wanted = sorted({_cik(c) for c in ciks if str(c or "").strip()})
     if not wanted:
         return []
-    cols = "*" if text else "* EXCLUDE (text)"
-    return _rows("filing_item", f"SELECT {cols} FROM filing_item WHERE kind = 'document' AND item = ? "
-                                f"AND cik IN ({', '.join('?' * len(wanted))}) "
-                                "QUALIFY row_number() OVER (PARTITION BY cik ORDER BY filing_date DESC, accession DESC) = 1 "
-                                "ORDER BY cik", [str(item), *wanted])
+    cols = _DOC_COLUMNS if text else _DOC_COLUMNS_NO_TEXT
+    return _rows("filing_section", f"SELECT {cols} FROM filing_section WHERE section = ? "
+                                   f"AND cik IN ({', '.join('?' * len(wanted))}) "
+                                   "QUALIFY row_number() OVER (PARTITION BY cik ORDER BY filing_date DESC, "
+                                   "accession DESC, document DESC) = 1 ORDER BY cik", [str(item), *wanted])
 
 
 def segments(cik, axis: str | None = None, source: str | None = None) -> list[dict]:

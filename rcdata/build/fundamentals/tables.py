@@ -111,11 +111,10 @@ TABLE_CHECKS: dict[str, list[str]] = {
     # Every row is annual or quarterly, and a non-preliminary row carries its accession and filed date.
     "fundamental_fact": ["CHECK (period_type IN ('annual', 'quarterly'))",
                          "CHECK (preliminary OR (accn IS NOT NULL AND filed IS NOT NULL))"],
-    # A document's text is never labelled ok at the cap (filings.CAPPED).
-    "filing_item": ["CHECK (kind IN ('item', 'document'))",
-                    "CHECK (quality IS NULL OR quality <> 'ok' OR item NOT IN ("
-                    + ", ".join(f"'{i}'" for i in filings.SLICED_ITEMS)
-                    + f") OR chars < {filings.max_text_chars()})"],
+    # Only ``item`` rows since #858: this layer cuts no document any more, so the ``document`` rows and the CHECK
+    # that refused ``ok`` at the Value Chain board's cap went with the cut. The ``kind`` column stays, because the
+    # readers filter on it and a served table keeps its shape. The text is ``filing_section`` (``sec/forms``).
+    "filing_item": ["CHECK (kind = 'item')"],
     "segment_revenue": ["CHECK (axis IN ('business', 'product', 'geographic'))"],
     "customer_share": ["CHECK (share IS NULL OR (share >= 0 AND share <= 1))"],
 }
@@ -127,7 +126,6 @@ STAGED: dict[str, list[tuple[str, str]]] = {
     companyfacts.STAGING["facts"]: facts.FACT,
     companyfacts.STAGING["company"]: facts.COMPANY,
     filings.STAGING["filings"]: filings.FILING,
-    filings.STAGING["documents"]: filings.DOCUMENT,
     earnings.STAGING: earnings.SCHEMA,
     **{d.revision_staging: wrds_fund.REVISION for d in wrds_fund.DATASETS if d.revisions},
     estimates.STAGING: estimates.schema(),
@@ -258,15 +256,13 @@ def _predecessor_facts(con: duckdb.DuckDBPyConnection, ciks=None) -> int:
 
 
 def _filing_items(con: duckdb.DuckDBPyConnection, ciks=None) -> int:
-    """``filing_item``: every listed filing and 8-K item, and the document texts."""
+    """``filing_item``: every listed filing and 8-K item. The document texts went with the cut (#858): they are
+    ``filing_section`` of ``sec/forms``, the one cutter."""
     _clear(con, "filing_item", ciks, "dirty")
     con.execute(f"""
         INSERT INTO filing_item
         SELECT cik, accession, form, filing_date, report_date, primary_document, 'item', item, NULL, NULL, NULL,
-               '{filings.NAME}', source_as_of, fetched_at, run_id FROM {filings.STAGING['filings']}
-        UNION ALL
-        SELECT cik, accession, form, filing_date, report_date, primary_document, 'document', item, text, chars,
-               quality, '{filings.NAME}', source_as_of, fetched_at, run_id FROM {filings.STAGING['documents']}""")
+               '{filings.NAME}', source_as_of, fetched_at, run_id FROM {filings.STAGING['filings']}""")
     return common.count(con, "filing_item")
 
 
@@ -583,10 +579,11 @@ class FundamentalsTables:
     def to_parquet_all(self, ctx, raws) -> list:
         return []
 
-    def rules_state(self) -> str:
-        """The document cap the ``filing_item`` CHECK embeds (``filings.max_text_chars``) lives outside this package;
-        a live copy keeps the table and its old CHECK, so a change of the cap builds whole (#446)."""
-        return f"max_text_chars={filings.max_text_chars()}"
+    # ``rules_state`` went with the cut (#858). It named the document cap and whether the pinned cut capped at all,
+    # because both came from outside this package (``module_value_chain/splitter.py``) and a live copy keeps its
+    # old CHECK unless something restates it. No CHECK of this package embeds a value from outside it any more,
+    # and this package's own files are hashed by ``dirty.rules_fingerprint``, so this change builds whole by
+    # itself - which is what drops the ``document`` rows from a live ``filing_item``.
 
     def dirty(self, ctx: base.RunContext):
         """No Parquet of its own: what it serves is made from the sources' staging (#446)."""

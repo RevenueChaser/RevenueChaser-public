@@ -16,7 +16,7 @@ import duckdb
 import pytest
 
 from RevenueChaser.core.providers import sec_edgar
-from RevenueChaser.rcdata import serving
+from RevenueChaser.rcdata import ops, serving
 from RevenueChaser.rcdata.build import base
 from RevenueChaser.rcdata.build.fundamentals import common, filings
 from RevenueChaser.rcdata.build.sec_forms import forms
@@ -106,6 +106,29 @@ def test_the_business_row_is_the_item_and_its_span_in_the_whole_document(sec):
                                 "WHERE cik = ? AND section = 'business'", MSFT)[0]
     assert "We develop software and cloud services." in item and chars == len(item)
     assert whole[0][start:end] == item, "the span points at the section inside the whole document"
+
+
+def test_an_empty_cut_is_still_a_business_row_carrying_the_cutters_label(sec):
+    """#843: a filing the item rule cannot cut gets the row anyway, with empty text and ``crossref``.
+
+    HSBC, Barclays, America Movil and Vodafone file the annual report itself and map the form's items to it in a
+    table, so there is no span to cut: 22 of the 5,131 stored annual reports (13 Nov 2026). Appending the row only
+    ``if item`` dropped the label with the text, and a reader cannot tell "the section is in another document, do
+    not look" from "no row" -- not cut yet, or a cut that failed. ``module_relatedness.locator.asks`` (#841) reads
+    this label and pays for a locator call on the ``missing`` path that no row can answer.
+    """
+    # The index maps each item to a page and carries no item caption the start patterns could read as a heading,
+    # which is why this filing's cut is empty and not a few characters of the table (McDonald's own index does
+    # give a caption: ``test_sec_sections_ours_2`` holds that case).
+    index = "Form 10-K Cross-Reference Index\nPage reference\nPart I\n1 Business 3\n1A Risk Factors 27\n"
+    report = "<html><body>About the group.\n" + "This annual report describes the group. " * 200 + "\n" + index
+    _stored(sec, documents={"msft-10k.htm": report + "</body></html>"})
+    assert _cut()["result"] != "failed"
+    rows = q("SELECT text, chars, quality, method, start_char, end_char FROM filing_section "
+             "WHERE cik = ? AND section = 'business'", MSFT)
+    assert rows == [("", 0, "crossref", forms.HEADER, None, None)], rows
+    # And the other rows of the same filing are untouched: the whole document is still served whole.
+    assert q("SELECT chars > 0 FROM filing_section WHERE cik = ? AND section = 'whole'", MSFT) == [(True,)]
 
 
 def test_the_note_blocks_of_the_annual_report_are_served_with_their_chain_joined(sec):
@@ -272,3 +295,87 @@ def test_the_business_row_carries_the_suspect_flag_when_the_cut_ends_in_a_refere
     # it (as PR 827 found). A short, well-formed 10-K has no signal to raise (S2 needs a huge filing).
     clean = [r for r in forms.sections_of(fx.ten_k(), "10-K") if r[0] == forms.BUSINESS][0]
     assert clean[2] == "ok", clean[2]
+
+
+# ── the AIF business row carries the AIF cutter's flags, not the item cutter's (#838) ───────────────────────────
+
+def test_the_aif_business_row_of_a_long_40_f_is_not_flagged_suspect():
+    """The layer cuts a 40-F's business row with :func:`sec_sections.cut_aif_business` and flagged it from the
+    ITEM signal set, so S3 -- does the slice carry a 10-K's own section headings -- was asked of a Canadian
+    Annual Information Form, which NI 51-102 never asks for one. Together with S2 (an AIF is a small share of a
+    long 40-F) that tripped the flag, and ``module_relatedness.locator.asks`` fires on any ``;suspect``, so a
+    correct business row went to the writer model: a paid call per 40-F where the board runs a paid provider.
+
+    The call site is what says which cutter made the text (``_flag(..., aif=True)``), so this reads the layer
+    rather than :func:`sec_sections.cut_flag`, whose own cases are in ``test_sec_sections_ours_2``.
+    """
+    from .test_sec_sections_ours_2 import _LONG_40F
+
+    rows = {r[0]: r for r in forms.sections_of(_LONG_40F, "40-F")}
+    business = rows[forms.BUSINESS]
+    assert business[3] == forms.AIF, business[3]
+    assert business[2] == "ok", business[2]
+
+
+# ── the cutter version this layer stores with (#845) ─────────────────────────────────────────────────────────────
+
+def test_the_layer_stores_its_sections_at_ours_2(sec):
+    """#845: the pin moved before the first full cut, not after it.
+
+    ``forms._stale`` makes a company stale when its rows hold another ``rules_version``, so a full pass cut at
+    ``ours-1`` would be re-cut whole the moment the pin moved -- 5,131 annual reports, paid twice. The behaviour
+    that proves the version rather than reading the constant back is the cap: ``ours-1`` stops the business
+    section at :data:`sec_sections.MAX_ITEM_CHARS` and labels it ``capped``, ``ours-2`` stores it whole.
+    """
+    assert forms.SECTIONS_VERSION == forms.sec_sections.OURS_2
+    cap = forms.sec_sections.MAX_ITEM_CHARS
+    _stored(sec, documents={"msft-10k.htm": annual(cap + 40_000)})
+    check = _cut()
+    assert check["result"] != "failed", check.get("note")
+    chars, quality = q("SELECT chars, quality FROM filing_section WHERE cik = ? AND section = 'business'", MSFT)[0]
+    assert chars > cap, f"the section is stored whole, not cut at the cap: {chars}"
+    assert forms.sec_sections.base(quality) == "ok" and "capped" not in quality, quality
+    assert q("SELECT DISTINCT rules_version FROM filing_section") == [("ours-2",)]
+
+
+# ── #858: the one cutter, read through the three readers that used to serve ``filing_item`` ──────────────────────
+
+def test_the_document_readers_serve_the_one_cutters_rows_under_their_old_names(sec):
+    """``sec/filings`` cut the same documents a second time and stored them as ``filing_item``'s
+    ``kind = 'document'`` rows. Since #858 it cuts nothing, and ``read.filing_text`` / ``filing_documents`` /
+    ``filing_texts`` read ``filing_section`` instead, keeping the names and the row shape their callers read, so
+    the boards move to ``form_business`` in their own changes (#856, #841) rather than in this one."""
+    from RevenueChaser.rcdata import read
+
+    _stored(sec)
+    fx.run(forms.NAME, AS_OF)
+
+    row = read.filing_text(MSFT)
+    assert row is not None
+    # The row shape of the ``filing_item`` days: ``item`` for the section and ``primary_document`` for the file.
+    # The value is **the stored file**, not the SEC's primary-document name the filing list carries: the form
+    # reader keeps the document it cut, and a caller that needs the name for an EDGAR link reads the filing list
+    # (``filing_item``, ``kind = 'item'``). Value Chain is the only such caller and moves in #856.
+    assert row["item"] == "business" and row["primary_document"] == f"{fx.K25}.html.gz"
+    assert row["accession"] == fx.K25 and row["form"] == "10-K"
+    assert row["rules_version"] == forms.SECTIONS_VERSION, "the version is on the row now"
+    assert row["status"] == ops.latest_check(forms.NAME)["result"]
+
+    assert read.filing_text(MSFT, "proxy")["form"] == "DEF 14A"
+    whole = read.filing_text(MSFT, "whole")
+    assert len(whole["text"]) > len(row["text"]), "the whole document is longer than its business section"
+
+    (doc,) = read.filing_documents(MSFT, "business")
+    assert doc["accession"] == fx.K25
+    (one,) = read.filing_texts([MSFT], "business")
+    assert one["text"] == row["text"]
+    (light,) = read.filing_texts([MSFT], "business", text=False)
+    assert "text" not in light and light["chars"] == row["chars"]
+
+
+def test_the_filing_list_stays_sec_filings_and_carries_no_text(sec):
+    """What this layer keeps: the list and the 8-K items. ``filing_item`` has only ``kind = 'item'`` rows, and a
+    build that wrote a document row would now be refused by the table's CHECK (#858)."""
+    _stored(sec)
+    assert fx.q("SELECT DISTINCT kind FROM filing_item") == [("item",)]
+    assert fx.q("SELECT count(*) FROM filing_item WHERE text IS NOT NULL OR quality IS NOT NULL") == [(0,)]

@@ -1059,7 +1059,10 @@ none may empty or lose more than 1% of its rows unless the request says `"allow_
 (a dataset with no provider, such as `ownership/serve`), never another source dataset's table (`base.shrink_scope`).
 A table that serves only its newest sessions (`option_eod`) names its first kept session in the
 build file's `serving_window` table, and is compared on the rows inside that window: a session leaving it is not a
-loss, a session inside it that lost rows is. A build also refuses
+loss, a session inside it that lost rows is. A table whose row count the source or avo chooses rather than
+accumulates is named in `serving.SHRINKS_BY_CHOICE` (`my_universe`; `economic_event` since 14 Nov 2026, because UW's
+calendar is a forward window and a snapshot day's partition is replaced whole by that day's newest fetch): it may
+shrink by any amount and still may not empty. A build also refuses
 a missing Parquet root (the raw disk not mounted). Then the live file is hard-linked to `<kind>.prev.duckdb` and
 `os.replace` moves the new file over the live name, so the live name is never missing. Any failure deletes the new
 file and leaves the live file byte-identical (test T3, `rcdata/tests/test_serving.py`). The dashboard opens a serving
@@ -1785,8 +1788,19 @@ uses (`LongTermDebtNoncurrent`, `LongTermDebtAndCapitalLeaseObligations` or `Lon
 else the current portion plus `ShortTermBorrowings` or `CommercialPaper`; a long-term line that includes its current
 portion plus the short-term line; no total without a long-term line; #239, measured on the real-data check of
 2026-10-28 in PR 249; convertible notes due within the year are the current line when no other current line is
-tagged, and are added beside a whole long-term line only when that line is below them, #264), and EPS
-(basic and diluted) is read too. An accession the SEC's XBRL API does not hold yet after the re-read is asked again
+tagged, and are added beside a whole long-term line only when that line is below them, #264). When the filer
+tags none of those lines at all, a second pass reads the balances it may tag instead (`SeniorNotes`,
+`ConvertibleDebt`, `SecuredDebt`, `NotesPayable`, `LongTermLoansPayable`, `LinesOfCreditCurrent` and their
+neighbours, `rcdata/build/fundamentals/facts.py` `FALLBACK_*`), in the same three slots. One line of each ladder
+is taken, the largest positive one and never a sum (which of these tags overlap is not readable from the facts); a
+zero line is passed over for a positive one of the same ladder, because a `total_debt` of 0 reads as debt-free
+while a NULL does not, but it keeps its slot when a positive current line stands beside it, which is the filer
+saying nothing is due beyond the year (OKTA's `ConvertibleDebtNoncurrent` 0 next to 350 m of convertible notes);
+a second-pass total of 0 is never served; a current line alone is still not the whole; and the pass runs only where the first one gives nothing, so no total that exists
+today moves. Measured over the board's 2,131 anchor years on 13 Nov 2026: 157 years gain a total, 0 change value
+and 0 are lost (#737). A tag that is a schedule or a contra item
+(`FinanceLeaseLiabilityUndiscountedExcessAmount`, `DebtInstrumentCarryingAmount`, `LongTermDebtMaturities...`) is
+not read, although edgartools' mapping files it under its debt lines. EPS (basic and diluted) is read too. An accession the SEC's XBRL API does not hold yet after the re-read is asked again
 by the next day's run (the run's note says `pending`), so a statement reaches the served table on its filing day or
 the day after, never months late (the Fundamentals review's F3).
 
@@ -1830,7 +1844,7 @@ hourly pass after a deploy calls no source before the attended backfill.
 |---|---|
 | `fundamental_company` | one per Tier A ticker: the spine's identity and GICS codes, the SEC filer's name and kind (`is_us`, `us_gaap`, non-USD units), the newest facts read and statement filed, and `submissions_as_of`, the day its filing list was last read ("no 8-K event" means something only after it, the Fundamentals review's F2); from that list's header (#645, version 3) `sic`, `sic_description`, `state_of_incorporation` (EDGAR's code) and its description, `business_state` (a US state or Canadian province) and `business_country` (ISO 3166-1 alpha-2 from EDGAR's state-or-country code, `rcdata/build/fundamentals/edgar_codes.py`) |
 | `fundamental_fact` | one per company, field, period type and period end: value, unit, accession, filed, form, `derived`, `preliminary`, source; and the first-reported value of the same tag and span with its accession and filed date (`first_value`, `first_accn`, `first_filed`; #277 A2, version 3; NULL on a derived row). The fields include `income_tax_expense`, `pretax_income` and `interest_expense` (#645 G1) |
-| `filing_item` | one per filing and 8-K item (`kind` `item`), and one per document text (`kind` `document`: `business` or `proxy`, with `quality`; a text that reaches the 200,000-character cap is `capped`, never `ok`) |
+| `filing_item` | one per filing and 8-K item (`kind` `item`). The document texts went with the cut (#858): this layer cuts nothing, `sec/forms` is the one cutter and serves them as `filing_section`. The `kind` column stays, with `item` its only value |
 | `earnings_event` | one per report: a coming one from the calendar (`confirmed` false) or one that happened (an 8-K with item 2.02, `confirmed` true, its accession kept) |
 | `earnings_reported` | one per company and reported quarter: the EPS the company itself reported as UW serves it, with UW's consensus and surprise. **Not** a `fundamental_fact` row -- it has no filing behind it, and its basis is usually the company's adjusted (non-GAAP) figure, so `source` is on every row (avo, 5 Nov 2026) |
 | `fundamental_revision` | one per Compustat value that changed between two monthly snapshots |
@@ -1854,7 +1868,9 @@ own row-level problems (`missing_key`, `fetch_failed`) under its name.
 `rcdata.read.estimates(tickers)`, `rcdata.read.filing_text(cik, item)`, `rcdata.read.segments(cik, axis, source)`,
 `rcdata.read.customers(cik)`, `rcdata.read.peers(cik)` and `rcdata.read.revisions(cik, since)`; for many companies
 at once `rcdata.read.statements_many(ciks, annual_years, quarters)`, `rcdata.read.fundamental_companies(tickers)`,
-`rcdata.read.filing_items(ciks, form, since)`, `rcdata.read.filing_texts(ciks, item)` and
+`rcdata.read.filing_items(ciks, form, since)`, `rcdata.read.filing_texts(ciks, item)` (which since #858 reads
+`filing_section`, the one cutter's table, under its old name and row shape; `filing_text` and `filing_documents`
+likewise) and
 `rcdata.read.customer_shares(ciks, benchmark)`. Every row carries its provenance and `status`, the newest check of
 the dataset its own row came from (a segment row from Compustat reads `wrds/segments`' check, one from the annual
 report `sec/filings`'), or `never_checked`, or `status_unknown` when `ops.sqlite` cannot be read (#228).
@@ -1864,7 +1880,8 @@ report `sec/filings`'), or `never_checked`, or `status_unknown` when `ops.sqlite
 no switch since #642 PR 6: the boards read the layer only (a failed newer check keeps the last good build), and
 without `fundamentals.duckdb` or a first `sec/companyfacts` build they read no rows and `fundamentals_layer.source_state()`
 says why. Relatedness and Value Chain alone still read Value Chain's `chain_filings` corpus while the layer is not
-served (`fundamentals_layer.reads_layer`). What each board reads there:
+served (`fundamentals_layer.reads_layer`). Their filing text on the layer is the SEC form reader's since #858: one
+cut, in `filing_section`. What each board reads there:
 
 | Board | Reads on the layer |
 |---|---|
@@ -1872,7 +1889,7 @@ served (`fundamentals_layer.reads_layer`). What each board reads there:
 | Asymmetric Growth | Growth, acceleration, margins, free cash flow, runway and dilution on three trailing years a year apart when the 10-Qs give them, else the fiscal years, one basis per card (`period_ends.basis`; review SF-4) |
 | Financials | The SEC's annual statements, the newest five (a line the SEC facts do not carry stays empty, so the engines' labelled default shows; EBITDA is operating income plus depreciation), unless Yahoo's newest year with revenue is newer, or is the same year and gives an input the SEC's lacks (depreciation, capex, working capital), when Yahoo's statements are modelled; the source line names what the SEC's statements lack either way (with the SEC's, the tax rate and interest expense, which the facts never carry, except for a bank, whose P/E model reads neither), and they end on the newest year with revenue; the price, market cap, shares and beta from the prices store (`module_financials/market_inputs.py`: the newest close, at most 14 days before today like the rate, its session named on the card and in the source line; the issuer's market cap, a fund's or a trust's its own; the cap over the price as the class-equivalent shares, only when both are of one session; and a 5-year monthly beta of split-adjusted price returns on `index:SPX`, at least 36 months), each Yahoo's where the store has none, and the source line names which side each came from (the comps' basis line names the shares' side; the EV stays Yahoo's and the card says so); the risk-free rate from `market_series` DGS10, at most 14 days old |
 | Relatedness | The newest annual report text `sec/filings` serves (Value Chain's splitter and cap, so the same filing gives the same input hash) and the layer's CIK; a profile's cache key and the payload carry the filing it was read from (CIK, accession, form, filed) |
-| Value Chain | The annual report's XBRL major customers (`customer_share`, share of revenue): a customer the alias list names is a `customer` edge with its share; a sentence that states the same customer keeps its text and gains the share; an anonymised customer is no edge |
+| Value Chain | The newest annual report's business section the SEC form reader serves (`sec/forms`, `filing_section`; `read.form_business`, #841), which is both the corpus its edges are read out of and the filing list the board shows - on the layer the board cuts nothing of its own and no longer reads `sec/filings`' `filing_item`. Plus the annual report's XBRL major customers (`customer_share`, share of revenue): a customer the alias list names is a `customer` edge with its share; a sentence that states the same customer keeps its text and gains the share; an anonymised customer is no edge |
 
 The trailing year (`core/trailing_year.py`) is the fiscal year plus the newest year to date minus the same months a
 year earlier, each flow all or nothing, the balance sheet the quarter's.
@@ -1988,10 +2005,13 @@ one folder, two Parquet files (`sections.parquet`, `notes.parquet`) per `cik=<ci
   `rules_version`, and the provenance `source_as_of`, `fetched_at`, `run_id`.
   A `business` row's `quality` may carry suspect flags after the label — `ok;suspect:S2,S4` — so **read it
   through `sec_sections.base()`, never by comparing the whole string** (#835). The flags are the ones the row's
-  `rules_version` defines (`sec_sections.Rule.signals`). One caveat: the flags were added to this table while
-  `ours-1` kept its name, and the layer re-cuts a company only when its documents change or the version string
-  moves, so `ours-1` rows written before that change carry no flags and are indistinguishable from unflagged
-  ones. The population becomes uniform when `SECTIONS_VERSION` next moves and re-cuts everything. `document` is in the key because one
+  `rules_version` defines for the cutter that made the row: `sec_sections.Rule.item_signals` for a `header`
+  row, `Rule.aif_signals` for an `aif` one. The two are not the same list — S3 and S6 ask a 10-K item question
+  that an Annual Information Form has no answer to, so a correctly cut AIF read `ok;suspect:S2,S3` until #838
+  split them. Two caveats, both of the same shape: the flags were added to this table while `ours-1` kept its
+  name, and #838 changed `ours-1`'s AIF set under the same name, and the layer re-cuts a company only when its
+  documents change or the version string moves — so `ours-1` rows written before those changes carry no flags,
+  or the item set's answer for an AIF, and are indistinguishable from rows written after. The population becomes uniform when `SECTIONS_VERSION` next moves and re-cuts everything. `document` is in the key because one
   accession can hold more than one document this cuts: a 40-F's AIF exhibit is a second one.
 - `filing_note` — one row per (filing, document, text block), from the filer's own inline-XBRL text blocks
   (`rcdata/sec_notes.py`): `concept` as filed, `taxonomy`, `local_name`, `kind` (`disclosure`, `table`, `policy`),
@@ -2007,12 +2027,21 @@ accession. A filing that legitimately yields **no** note rows (no inline XBRL: 0
 does not read as stale on every run, which comparing expected rows against stored rows would have done. The
 dataset's check reports rows per `rules_version`, so a half-migrated table is visible rather than inferred.
 
-**Which cutter version.** Sections are cut by `rcdata/sec_sections.py` at `ours-1` and notes read at `notes-1`,
-and every row carries the version that wrote it. `ours-2` (#755, #756) lifts the 200,000-character cap on the
-business section, fixes the five item defects, and carries its own 40-F rule: six start titles and ten stop
-titles instead of one each, a contents test and a body minimum in place of the cap, and a label (ok / overrun / missing) read
-through `cut_aif_business_q`. When it lands, the version constant moves to it and the rule above re-cuts
-every company in one build, with no re-fetch.
+**Which cutter version.** Sections are cut by `rcdata/sec_sections.py` at `ours-2` and notes read at `notes-1`,
+and every row carries the version that wrote it. `ours-2` (#755, #756, pinned here by #845) lifts the
+200,000-character cap on the business section — so no row is labelled `capped` — fixes the five item defects, and
+carries its own 40-F rule: six start titles and ten stop titles instead of one each, a contents test and a body
+minimum in place of the cap, and a label (ok / overrun / missing) read through `cut_aif_business_q`. It was pinned
+before the first full cut, because moving the version re-cuts every company in one build and that pass is paid
+once. The Value Chain board (`module_value_chain/splitter.py`) pins the version `chain_filings` and `filing_item`
+are cut at; neither table carries a version column, so that pin moves on its own change, with its own re-slice.
+#847 moved it to `ours-2` as well, which is why the `capped` label and the `filing_item` CHECK that refuses `ok`
+at the cap now follow `filings.caps_text()` rather than being written in: `ours-2` caps nowhere, so a long and
+correct section is stored whole and `ok`. The stored rows were cut by `ours-1` until `reslice.apply` rewrites
+them, which rides the first full SEC cut as one run; `filing_item` is re-cut by the fundamentals build. Since #841
+the pin is no longer what the Value Chain board reads its text through: its corpus is `filing_section`, which
+carries `rules_version` on every row, so the pin is what a row is compared against, and a row cut with another
+version is read and logged rather than dropped.
 
 **Needs.** `sec.whole`, `sec.business`, `sec.proxy` and `sec.note`, each with its own reader and `ask_required`
 (the text is gigabytes: nothing is answered unless a company is named). The three section needs share one table
