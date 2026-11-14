@@ -66,7 +66,7 @@ def old_store(isolate_rawstore):
         vc_history.record([_edge()], run_id="old", run_at=1.0, counts={})
     finally:
         mp.undo()
-    for table, db in zip(_TABLES, ("edgar", "history")):
+    for table, db in zip(_TABLES, ("value_chain", "history")):
         assert "share_pct" not in _columns(db, table)
     _forget_reconciliation()
     ledger.take_notes()
@@ -75,7 +75,7 @@ def old_store(isolate_rawstore):
 
 def test_the_first_store_call_adds_the_column_to_both_tables_and_old_rows_read_null(old_store):
     rawstore.ensure_all_tables()                       # what the dashboard's first store call does
-    assert _columns("edgar", "chain_mentions")["share_pct"] == "DOUBLE"
+    assert _columns("value_chain", "chain_mentions")["share_pct"] == "DOUBLE"
     assert _columns("history", "value_chain_edges_history")["share_pct"] == "DOUBLE"
     assert rawstore.get_all("chain_mentions") == [{**_edge(), "share_pct": None, "source": None}]
     (old,) = rawstore.query("SELECT * FROM value_chain_edges_history WHERE run_id = 'old'", db="history")

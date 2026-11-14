@@ -78,7 +78,8 @@ def prices_db_path() -> Path:
 
 
 # Table -> database file. Default is "raw"; EDGAR-content tables declare
-# ``"db": "edgar"``, (from #278) result history ``"db": "history"`` and
+# ``"db": "edgar"`` (going away, #860: nothing new may be added to it),
+# (from #278) result history ``"db": "history"`` and
 # (#156) the daily prices ``"db": "prices"`` in their MANIFEST entry. One writer per file, same
 # configuration, is fine (DuckDB allows concurrent connections in one process);
 # the split is by write pattern (hot structured vs write-once EDGAR), not per
@@ -91,12 +92,17 @@ def _db_of(name: str) -> str:
 #: Board result files (DECISIONS S9, S16): ``<store>/boards/<board>.duckdb``, one writer per board package, written
 #: incrementally. The first, narrow step of the board-file plan (2026-11-08): only boards born with their own file are
 #: listed here (News, Welcome); the move of the older boards' tables (plan PR 0 and on) extends this tuple.
+#: ``value_chain`` is the first entry moved OUT of ``edgar.duckdb`` rather than out of ``raw.duckdb`` (#860, stage 1
+#: of letting that file go): ``chain_filings`` / ``chain_mentions`` / ``chain_meta`` are the Value Chain package's
+#: own rows and nothing else reads them as EDGAR content. The rows are carried across by
+#: ``scripts/migrate_board_store.py value_chain --from edgar``.
 #: ``watchlists`` is the one entry here that is not a board result: it is avo's own lists, typed by hand and not
 #: regenerable from any source (#786). It sits here because it wants exactly what a board file gets — one writer,
 #: the peer lock, the schema stamp and the ``boards`` backup step — and for nothing else. It is never rebuilt and
 #: never written whole.
 BOARD_DBS = ("news", "welcome", "relatedness", "comovement", "asymmetric_growth", "swing_potential",
-             "fundamentals", "sector_rotation", "leaps", "oipd", "forecast", "spx_gamma", "sec_13f", "watchlists")
+             "fundamentals", "sector_rotation", "leaps", "oipd", "forecast", "spx_gamma", "sec_13f", "watchlists",
+             "value_chain")
 #: The folder of the board files, beside the raw store; ``rcdata/backup.py`` copies ``boards/*.duckdb``.
 BOARDS_DIRNAME = "boards"
 
@@ -954,7 +960,7 @@ MANIFEST: dict[str, dict] = {
         "compress": {"item_text": "text"},
         "kind": "tabular",
         "write": "upsert",
-        "db": "edgar",
+        "db": "value_chain",
         "sources": [],
     },
     "chain_mentions": {
@@ -978,7 +984,7 @@ MANIFEST: dict[str, dict] = {
         ],
         "kind": "tabular",
         "write": "replace",
-        "db": "edgar",
+        "db": "value_chain",
         "sources": [],
     },
     "chain_meta": {
@@ -989,7 +995,7 @@ MANIFEST: dict[str, dict] = {
                     "fetched_at DOUBLE"],
         "kind": "tabular",
         "write": "replace",
-        "db": "edgar",
+        "db": "value_chain",
         "sources": [],
     },
     "watchlist": {

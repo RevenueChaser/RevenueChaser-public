@@ -97,7 +97,7 @@ def test_an_overrun_item_is_cut_where_the_writer_says(rawstore_tmp_db, world):
 
 
 def test_an_ok_item_never_asks_the_locator(rawstore_tmp_db, world):
-    rawstore.execute("UPDATE chain_filings SET quality = 'ok' WHERE ticker = 'NVDA'", db="edgar")
+    rawstore.execute("UPDATE chain_filings SET quality = 'ok' WHERE ticker = 'NVDA'", db="value_chain")
     engine.build_profiles(["NVDA"], usd_cap=1.0)
     assert all(c["system"] != locator.system_prompt() for c in world)
     assert rawstore.get("relatedness_profiles", "NVDA")["label_source"]["input"] == "item"

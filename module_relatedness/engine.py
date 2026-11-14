@@ -339,7 +339,7 @@ def _context(ticker: str, cik: str | None, source: dict | None = None) -> dict:
         pass
     try:
         rows = rawstore.query("SELECT DISTINCT dst_name FROM chain_mentions WHERE src = ? ORDER BY dst_name LIMIT ?",
-                              [ticker, MAX_CANDIDATES], db="edgar")
+                              [ticker, MAX_CANDIDATES], db="value_chain")   # #860 stage 1
         names = [r["dst_name"] for r in rows if r.get("dst_name")]
         if names:
             out["candidates"] = names

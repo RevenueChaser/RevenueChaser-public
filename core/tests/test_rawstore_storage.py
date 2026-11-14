@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import pathlib
 import subprocess
 import sys
 import time
@@ -24,6 +25,13 @@ def _stored_watchlist() -> set[str]:
 
 
 def _raw_conn(path):
+    """A raw handle on a store file, made if it is not there yet.
+
+    A board file sits in ``<store>/boards/``, which only ``rawstore`` creates; these tests plant a legacy file
+    before the first ``rawstore`` call, so the folder has to be made here.
+    """
+    path = pathlib.Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
     return duckdb.connect(str(path))
 
 
@@ -82,7 +90,7 @@ class TestCompressedColumns:
         text = "The Company designs semiconductors. " * 2000
         rawstore.write_rows("chain_filings", [{"ticker": "NVDA", "item_text": text}])
         raw = rawstore.query("SELECT item_text, typeof(item_text) AS t FROM chain_filings",
-                             db="edgar")[0]
+                             db="value_chain")[0]
         assert raw["t"] == "BLOB"
         assert len(raw["item_text"]) < len(text) / 10
         assert rawstore.get("chain_filings", "NVDA")["item_text"] == text
@@ -103,7 +111,7 @@ class TestCompressedColumns:
         assert rawstore.get("edgar_financials", "A")["annual"] == self.ANNUAL
 
     def test_a_write_rebuilds_a_legacy_table_first(self, isolate_rawstore):
-        with _raw_conn(rawstore.edgar_db_path()) as c:
+        with _raw_conn(rawstore.board_db_path("value_chain")) as c:
             c.execute("CREATE TABLE chain_filings (ticker TEXT PRIMARY KEY, cik TEXT, form TEXT, "
                       "filed TEXT, accession TEXT, primary_doc TEXT, item_text TEXT, "
                       "quality TEXT, fetched_at DOUBLE)")

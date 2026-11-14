@@ -23,6 +23,21 @@ _TEXT = (
 )
 
 
+def _store_file(store_dir, table: str):
+    """The store file ``table`` lives in, read from the MANIFEST.
+
+    These tests open the file directly to check what the dashboard process wrote, so they cannot go through
+    ``rawstore``'s own routing. Reading the file name off the MANIFEST means a table moving between files
+    (#860 stage 1 put the ``chain_*`` tables in ``boards/value_chain.duckdb``) edits this helper, not six paths.
+    """
+    from RevenueChaser.core import rawstore
+
+    db = rawstore.MANIFEST[table].get("db") or "raw"
+    if db in rawstore.BOARD_DBS:
+        return store_dir / rawstore.BOARDS_DIRNAME / f"{db}.duckdb"
+    return store_dir / f"{db}.duckdb"
+
+
 @pytest.fixture
 def seeded_chain(dashboard, monkeypatch):
     import RevenueChaser.core.rawstore as rawstore
@@ -61,7 +76,6 @@ class TestPrecisionCoverage:
         """"labels cover N of M links": M from the store, N from the committed fixture (#61)."""
         import duckdb
 
-        from RevenueChaser.core import rawstore
         from RevenueChaser.module_value_chain import precision
 
         result = dashboard.run_job("/run/module_value_chain")
@@ -71,8 +85,7 @@ class TestPrecisionCoverage:
         assert m, "precision tile has no label-coverage text"
         covered, links = int(m.group(1)), int(m.group(2))
 
-        db = "edgar.duckdb" if rawstore.MANIFEST["chain_mentions"].get("db") == "edgar" else "raw.duckdb"
-        conn = duckdb.connect(str(dashboard.store_dir / db), read_only=True)
+        conn = duckdb.connect(str(_store_file(dashboard.store_dir, "chain_mentions")), read_only=True)
         try:
             served = {tuple(r) for r in conn.execute(
                 "SELECT DISTINCT src, dst_ticker, relation FROM chain_mentions "
@@ -110,7 +123,7 @@ class TestGraph:
         assert m, "no GRAPHS payload on the page"
         graphs = json.loads(m.group(1).replace("<\\/", "</"))
 
-        conn = duckdb.connect(str(dashboard.store_dir / "edgar.duckdb"), read_only=True)
+        conn = duckdb.connect(str(_store_file(dashboard.store_dir, "chain_mentions")), read_only=True)
         try:
             cur = conn.execute("SELECT * FROM chain_mentions")
             cols = [d[0] for d in cur.description]
@@ -152,7 +165,7 @@ class TestRefreshIsOfflineAndFaithful:
         import duckdb
 
         def last_sync():
-            con = duckdb.connect(str(dashboard.store_dir / "edgar.duckdb"), read_only=True)
+            con = duckdb.connect(str(_store_file(dashboard.store_dir, "chain_meta")), read_only=True)
             try:
                 return con.execute(
                     "SELECT value FROM chain_meta WHERE key = 'last_sync'").fetchone()
@@ -199,7 +212,7 @@ class TestRecordedMisses:
         rawstore.ensure_table("chain_mentions")
 
         def chain_state():
-            con = duckdb.connect(str(dashboard.store_dir / "edgar.duckdb"), read_only=True)
+            con = duckdb.connect(str(_store_file(dashboard.store_dir, "chain_meta")), read_only=True)
             try:
                 return (con.execute("SELECT key, value FROM chain_meta ORDER BY key").fetchall(),
                         con.execute("SELECT count(*) FROM chain_filings").fetchone(),

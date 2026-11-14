@@ -5,7 +5,8 @@
   without an error.
 - ``reset_db`` takes the board files with the other store files.
 - A board table is never rewritten whole (§10 rule 3): no ``replace_all`` on it in the code, and no handle onto a
-  board file except ``rawstore.connect`` (§9, R4).
+  board file except ``rawstore.connect`` (§9, R4). ``_WHOLE_REWRITE_EXCEPTIONS`` holds the tables whose conversion
+  has not landed yet, each with its issue, and a second test fails as soon as an entry stops being true.
 """
 from __future__ import annotations
 
@@ -94,11 +95,28 @@ def _code_files():
         yield rel, p.read_text(encoding="utf-8", errors="replace")
 
 
+#: The one board table still written whole, with the issue that converts it: ``module_value_chain``'s sync
+#: recomputes the complete edge set and ends in ``replace_all`` (plan §10 names this call site as its own PR).
+#: #860 stage 1 made it a board table without touching its writer, so the rule reaches it before the conversion
+#: does. ``replace_all`` is atomic and refuses an empty write (#284), so what the exception carries is the
+#: "no routine from-scratch rebuild" principle, not a half-written table. Remove the line with #863.
+_WHOLE_REWRITE_EXCEPTIONS = {"chain_mentions": 863}
+
+
 def test_no_board_table_is_rewritten_whole():
-    names = _board_tables()
+    names = _board_tables() - set(_WHOLE_REWRITE_EXCEPTIONS)
     hits = [f"{rel}: replace_all({m.group(1)})" for rel, text in _code_files()
             for m in re.finditer(r"replace_all\(\s*[\"'](\w+)[\"']", text) if m.group(1) in names]
     assert hits == [], "board tables are written incrementally (plan §10): " + "; ".join(hits)
+
+
+def test_every_whole_rewrite_exception_is_still_a_board_table_that_is_still_rewritten():
+    """An exception that stopped being true is removed, so the list cannot outlive its conversion."""
+    code = list(_code_files())
+    for table, issue in _WHOLE_REWRITE_EXCEPTIONS.items():
+        assert table in _board_tables(), f"{table} is no longer a board table: drop it from the list (#{issue})"
+        assert any(re.search(rf"replace_all\(\s*[\"']{table}[\"']", text) for _rel, text in code), (
+            f"{table} is no longer rewritten whole: drop it from the list and close #{issue}")
 
 
 _BOARD_OPENERS = {"core/rawstore.py", "rcdata/backup.py"}   # the store itself, and the weekly backup's copy

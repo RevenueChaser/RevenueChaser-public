@@ -68,7 +68,10 @@ def main(argv: list[str] | None = None) -> int:
     reslice_pick.add_argument("--reslice-apply", action="store_true",
                               help="re-slice stored filings from their stored documents and write them through "
                                    "the slice guard, then rebuild edges (no network; holds the edgar_sync lock)")
-    p.add_argument("--edgar", default=None, help="path to edgar.duckdb (--reslice-dry-run)")
+    # The chain tables moved to ``boards/value_chain.duckdb`` (#860 stage 1). ``--edgar`` stays as the old
+    # spelling of the same argument, so a command line written before the move still runs.
+    p.add_argument("--chain-db", "--edgar", dest="chain_db", default=None,
+                   help="path to boards/value_chain.duckdb (--reslice-dry-run)")
     p.add_argument("--docs", default=None, help="path to the edgar_docs/ tree (--reslice-dry-run)")
     p.add_argument("--out", default=str(config.OUTPUT_DIR / "research" / "185"),
                    help="report directory (--reslice-dry-run / --reslice-apply)")
@@ -98,9 +101,9 @@ def main(argv: list[str] | None = None) -> int:
         return 1 if result.get("locked") else 0
     # The dry run reads the store copy it is given and nothing else.
     if args.reslice_dry_run:
-        if not (args.edgar and args.docs):
-            p.error("--reslice-dry-run needs --edgar and --docs")
-        report = reslice.dry_run(Path(args.edgar), Path(args.docs), Path(args.out))
+        if not (args.chain_db and args.docs):
+            p.error("--reslice-dry-run needs --chain-db and --docs")
+        report = reslice.dry_run(Path(args.chain_db), Path(args.docs), Path(args.out))
         _print_summary(report)
         return 0
     chosen = _selection(args)
