@@ -1,8 +1,8 @@
 """Relatedness on the fundamentals layer (G6, build plan PR 20): the filing text the plan serves, and the filing a
 profile was read from.
 
-On the layer a profile's text is the newest annual report ``sec/filings`` serves (``filing_item``, Value Chain's
-splitter and cap, so the same filing gives the same text and the same input hash), the company is the layer's
+On the layer a profile's text is the newest annual report the one cutter serves (``filing_section`` of
+``sec/forms`` since #858, read through the same ``read.filing_text`` names), the company is the layer's
 (``fundamental_company``), and the profile carries the CIK, accession, form and filing day it was read from (its
 cache key's ``source``; the payload's ``source``). Off the layer it reads ``chain_filings`` as before, and a profile
 made from a ``chain_filings`` row carries that row's filing too.
@@ -37,7 +37,7 @@ def layer(monkeypatch, http_mock):  # noqa: F811
                      {"msft-10k.htm": ten_k, "msft-def14a.htm": fx.proxy()})
     fx.run(companyfacts.NAME, mode="backfill", to="2026-10-26")
     fx.run(filings.NAME, mode="backfill", to="2026-10-28")
-    fx.run(forms.NAME, "2026-10-28")               # #841: the business text is the form reader's (``sec/forms``)
+    fx.run(forms.NAME, "2026-10-28")               # #858, #841: the business text is the form reader's
     monkeypatch.setattr(engine.config, "FORMS_RULES_VERSION", forms.SECTIONS_VERSION)
     assert fundamentals_layer.reads_layer()
     return http_mock
@@ -89,7 +89,7 @@ def test_the_input_hash_reads_the_layers_text(layer):
 
 
 def test_the_fallback_links_read_the_layer(layer):
-    """#400, #841: the whole document comes from ``filing_section``."""
+    """#400, #841: the whole document comes from the form reader's table (``filing_section``)."""
     whole = engine._whole_document("MSFT")
     assert "cloud software and developer tools" in whole["text"] and len(whole["text"]) > len(BUSINESS)
     assert whole["source"]["accession"] == fx.K25
