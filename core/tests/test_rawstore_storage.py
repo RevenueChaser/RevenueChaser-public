@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import pathlib
 import subprocess
 import sys
 import time
@@ -24,6 +25,13 @@ def _stored_watchlist() -> set[str]:
 
 
 def _raw_conn(path):
+    """A raw handle on a store file, made if it is not there yet.
+
+    A board file sits in ``<store>/boards/``, which only ``rawstore`` creates; these tests plant a legacy file
+    before the first ``rawstore`` call, so the folder has to be made here.
+    """
+    path = pathlib.Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
     return duckdb.connect(str(path))
 
 
