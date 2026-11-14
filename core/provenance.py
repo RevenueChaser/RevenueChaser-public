@@ -156,7 +156,7 @@ def _spx_gamma_day() -> str | None:
 
 def _chain_day() -> str | None:
     """Newest filing date in the Value Chain corpus."""
-    return _max("SELECT max(filed) AS v FROM chain_filings", db="edgar")
+    return _max("SELECT max(filed) AS v FROM chain_filings", db="value_chain")   # #860 stage 1
 
 
 def _oipd_day() -> str | None:

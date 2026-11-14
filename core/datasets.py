@@ -36,7 +36,7 @@ from RevenueChaser.core.datahealth import Health
 
 DBS = ("raw", "edgar", "prices", "history", "news", "welcome", "relatedness", "comovement", "asymmetric_growth",
        "swing_potential", "fundamentals", "sector_rotation", "leaps", "oipd", "forecast", "spx_gamma", "sec_13f",
-       "watchlists")  # all but the first four: board files (S9, S16)
+       "watchlists", "value_chain")  # all but the first four: board files (S9, S16)
 
 FROM_RUN_LOG = "from_run_log"
 NO_CLAIM = "no_claim"
@@ -275,12 +275,21 @@ REGISTRY: tuple[DatasetSpec, ...] = (
         writer_note="dashboard job POST /run/identity (app/dashboard.py); not an automations.REGISTRY entry",
         freshness=("identity_runs", "finished_at"),
     ),
+    # #860 stage 1: the corpus slice and the stored-document metadata no longer share a file, so they are two
+    # rows. A spec's ``db`` is one file and every table it owns has to live there (test_datasets).
     DatasetSpec(
         key="corpus", label="10-K / 20-F corpus",
-        tables=("chain_filings", "edgar_documents"),
+        tables=("chain_filings",),
+        db="value_chain", source=Source.sec, writer="RC-ValueChain-Sync",
+        freshness=("chain_filings", "filed"),
+        writer_note="RC-Relatedness-OffPeak also writes chain_filings",
+    ),
+    DatasetSpec(
+        key="filing_documents", label="Stored filing documents",
+        tables=("edgar_documents",),
         db="edgar", source=Source.sec, writer="RC-ValueChain-Sync",
-        freshness=(("chain_filings", "filed"), ("edgar_documents", "filed")),
-        writer_note="RC-Relatedness-OffPeak also writes chain_filings and edgar_documents",
+        freshness=("edgar_documents", "filed"),
+        writer_note="RC-Relatedness-OffPeak also writes edgar_documents; the HTML itself is edgar_docs/",
     ),
     DatasetSpec(
         key="sec_submissions", label="SEC submissions",
@@ -444,7 +453,7 @@ REGISTRY: tuple[DatasetSpec, ...] = (
     DatasetSpec(
         key="value_chain", label="Value Chain edges",
         tables=("chain_mentions", "chain_meta"),
-        db="edgar", source=Source.sec, writer="RC-ValueChain-Sync",
+        db="value_chain", source=Source.sec, writer="RC-ValueChain-Sync",
         freshness=("chain_mentions", "filed"),
     ),
     DatasetSpec(
