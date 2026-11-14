@@ -99,7 +99,7 @@ def test_attach_registry_carries_the_writer_note_a_spec_without_a_writer_has(mon
 
 def test_attach_registry_carries_the_store_file_the_spec_names(monkeypatch):
     """G2 (#124): ``DatasetSpec.db`` is the store file, so the table can pill every dataset."""
-    for key, db in (("universe", "raw"), ("corpus", "edgar"), ("price_bars", "prices"),
+    for key, db in (("universe", "raw"), ("corpus", "value_chain"), ("price_bars", "prices"),
                     ("result_history", "history")):
         monkeypatch.setitem(datasets._BY_KEY, key, _spec(key, coverage=None))
         out, _errors = _attach([_row(key)])
@@ -115,14 +115,21 @@ def _epoch(text: str) -> float:
 
 
 def test_fresh_is_the_max_date_of_the_specs_freshness_pair(rawstore_tmp_db):
+    """Each spec ages on its own tables, and ``_max_date`` reads across store files.
+
+    ``corpus`` and ``filing_documents`` were one spec until #860 stage 1 put ``chain_filings`` in
+    ``boards/value_chain.duckdb`` and left ``edgar_documents`` behind: two specs, two files, one date each.
+    The newest-of-several behaviour is asserted directly, because no value-chain spec spans two tables now.
+    """
     rawstore.write_rows("chain_filings", [{"ticker": "AAPL", "cik": "1", "form": "10-K",
                                            "filed": "2026-01-15"}])
     rawstore.write_rows("edgar_documents", [{"accession": "a", "form": "10-K",
                                              "filed": "2026-03-01"}])
-    out, _errors = _attach([_row("corpus")])
-    expected = inventory._max_date(("chain_filings", "filed"), ("edgar_documents", "filed"))
-    assert expected == "2026-03-01"
-    assert out[0]["fresh"] == {"state": "date", "date": expected, "text": expected}
+    assert inventory._max_date(("chain_filings", "filed"), ("edgar_documents", "filed")) == "2026-03-01"
+    for key, expected in (("corpus", "2026-01-15"), ("filing_documents", "2026-03-01")):
+        out, _errors = _attach([_row(key)])
+        assert inventory._max_date(*datasets._BY_KEY[key].freshness_pairs()) == expected, key
+        assert out[0]["fresh"] == {"state": "date", "date": expected, "text": expected}, key
 
 
 def test_a_spec_with_no_freshness_pair_says_no_time_column_in_plain_words(rawstore_tmp_db):
@@ -413,7 +420,7 @@ def test_an_unclaimed_table_is_reported_with_its_store_file_rows_and_newest_date
     ])
     _leave_unclaimed(monkeypatch, "chain_filings")
     assert inventory.unclaimed_tables() == [
-        {"table": "chain_filings", "db": "edgar", "rows": 2, "newest": "2026-03-01"}]
+        {"table": "chain_filings", "db": "value_chain", "rows": 2, "newest": "2026-03-01"}]
 
 
 def test_a_table_with_no_time_column_reports_no_newest_date(rawstore_tmp_db, monkeypatch):

@@ -45,7 +45,7 @@ OLD_TABLES = {
     "module_earnings_radar": {"earnings_calendar", "earnings_history", "watchlist"},
     "module_financials": {"macro_series", "result_runs", "ticker_payload_cache"},
     "module_leaps": {"leaps_footprint_history"},
-    "module_relatedness": {"chain_filings", "chain_mentions", "run_registry"},
+    "module_relatedness": {"run_registry"},   # chain_filings / chain_mentions left with #860 stage 1
     "module_sec_13f": {"price_actions", "price_bars_daily", "sec13f_enrichment", "sec13f_security_meta"},
     # #715 took the per-ticker drill out of ``inventory.py``: with it went ``chain_filings``,
     # ``edgar_financials``, ``price_bars_daily``, ``sec_company_sic`` and ``swing_ohlc``.
@@ -56,8 +56,9 @@ OLD_TABLES = {
     # A declared board is not a cut-loose board: SPX Gamma reads the old economic calendar through a helper.
     "module_spx_gamma": {"economic_calendar"},
     "module_swing_potential": {"swing_ohlc"},
-    "module_value_chain": {"chain_filings", "chain_mentions", "chain_meta", "edgar_documents", "equity_universe",
-                           "sec_company_tickers"},
+    # #860 stage 1 moved its own three tables into ``boards/value_chain.duckdb``; what is left here is what
+    # the board still reads from somebody else's file.
+    "module_value_chain": {"edgar_documents", "equity_universe", "sec_company_tickers"},
     # #643 PR 5 took the four market tiles off ``index_levels_daily``, ``vol_index_daily`` and ``macro_series``;
     # the earnings card (``earnings_calendar``) and the freshness card (``job_runs``) are its PR 5b and PR 6.
     "module_welcome": {"earnings_calendar", "job_runs"},
@@ -86,7 +87,7 @@ SHARED_TABLES = {
     "core/ledger.py": {"swing_ohlc"},
     "core/outcomes.py": {"price_bars_daily"},
     "core/prices.py": {"price_actions", "price_bars_daily", "price_checks"},
-    "core/provenance.py": {"chain_filings", "sec13f_totals", "ticker_payload_cache"},
+    "core/provenance.py": {"sec13f_totals", "ticker_payload_cache"},   # chain_filings left with #860 stage 1
     "core/providers/cache.py": {"ticker_payload_cache"},
     "core/providers/sec_edgar.py": {"sec_company_tickers"},
     "core/quotes.py": {"equity_universe", "source_checks"},

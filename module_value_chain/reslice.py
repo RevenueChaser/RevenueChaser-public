@@ -8,9 +8,11 @@ tree. ``apply`` is the real re-slice: the same per-row logic, the rows written
 through ``engine.store_slices`` (its keep guard), then the edges rebuilt and the
 run recorded as a sync does. It holds the ``edgar_sync`` lock and never fetches.
 
-``chain_filings`` and ``chain_mentions`` both live in ``edgar.duckdb``, so the
-dry run reads only that store, with ``duckdb.connect(..., read_only=True)``
-directly, never through ``core.rawstore``, whose handles are always read-write.
+``chain_filings`` and ``chain_mentions`` both live in ``boards/value_chain.duckdb``
+since #860 stage 1, so the dry run reads only that one file, with
+``duckdb.connect(..., read_only=True)`` directly, never through ``core.rawstore``,
+whose handles are always read-write. Its path is the caller's argument, so a
+dry run can also be pointed at a copy.
 ``apply`` must write, so it goes through ``core.rawstore`` like every other
 writer, under the lock a sync takes.
 """
@@ -132,9 +134,10 @@ def _has_table(conn, name: str) -> bool:
 
 
 def _table_rows(conn, name: str, order_by: str | None = None) -> list[dict]:
-    """Rows of ``name``; a clear error when the edgar store does not hold it."""
+    """Rows of ``name``; a clear error when the opened file does not hold it."""
     if not _has_table(conn, name):
-        raise RuntimeError(f"table {name} not found in the edgar store (chain_* live in edgar.duckdb)")
+        raise RuntimeError(f"table {name} not found in the opened store file "
+                           f"(chain_* live in boards/value_chain.duckdb since #860 stage 1)")
     sql = f"SELECT * FROM {name}"
     if order_by:
         sql += f" ORDER BY {order_by}"
@@ -183,16 +186,16 @@ def _edge_diff(stored: dict, new: dict, baseline: dict, sample: int) -> dict:
     }
 
 
-def dry_run(edgar_db, docs_dir, out_dir, sample: int = 20) -> dict:
+def dry_run(chain_db, docs_dir, out_dir, sample: int = 20) -> dict:
     """Re-slice the stored corpus offline and write ``reslice_dry_run.{json,md}``.
 
     Classifies each ``chain_filings`` row into a group by comparing its stored slice
     with a fresh slice of its stored document, and diffs the ``chain_mentions`` edges
-    against the edges the re-sliced corpus gives. Reads ``edgar.duckdb`` read-only and
-    writes nothing back.
+    against the edges the re-sliced corpus gives. Reads ``chain_db``
+    (``boards/value_chain.duckdb``) read-only and writes nothing back.
     """
     out_dir = Path(out_dir)
-    conn = duckdb.connect(str(edgar_db), read_only=True)
+    conn = duckdb.connect(str(chain_db), read_only=True)
     try:
         rows = _table_rows(conn, "chain_filings", order_by="ticker")
         mention_rows = _table_rows(conn, "chain_mentions")
