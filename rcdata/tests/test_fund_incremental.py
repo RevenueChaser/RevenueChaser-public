@@ -211,12 +211,20 @@ def test_a_whole_reloaded_source_is_reloaded_on_the_live_copy(monkeypatch):
 
 # ── when the build is still whole ─────────────────────────────────────────────────────────────────────────────
 
-def test_a_dataset_whose_rules_state_changes_restates_the_fingerprint():
+def test_no_fundamentals_dataset_names_a_rule_from_outside_its_package():
     """#858 took the fundamentals kind's only ``rules_state`` with the cut: it named the document cap and whether
-    the pinned cut capped, both of which came from ``module_value_chain`` and are gone from this build. The hook
-    itself still has to work, because the next dataset that reads a switch from outside its package depends on
-    it, so it is asked of a stand-in rather than left untested."""
+    the pinned cut capped, both of which came from ``module_value_chain`` and are gone from this build. So no
+    dataset of this kind needs the hook any anymore, and a dataset that grows one again has to say so here, which
+    is where the reason for it is written down.
+
+    The hook itself still has to work, because the next dataset that reads a switch from outside its package
+    depends on it, so it is asked of a stand-in in the same test rather than of a dataset that no longer has one.
+    """
     from RevenueChaser.rcdata.build import dirty
+    from RevenueChaser.rcdata.build.fundamentals import tables
+
+    assert getattr(tables.FundamentalsTables(), "rules_state", None) is None
+    assert not hasattr(filings.DATASET, "rules_state")
 
     class Fake:
         name = "fake/dataset"
@@ -230,16 +238,6 @@ def test_a_dataset_whose_rules_state_changes_restates_the_fingerprint():
     first = dirty.rules_fingerprint([Fake("caps=False")])
     assert first == dirty.rules_fingerprint([Fake("caps=False")])
     assert first != dirty.rules_fingerprint([Fake("caps=True")])
-
-
-def test_no_fundamentals_dataset_names_a_rule_from_outside_its_package(monkeypatch):
-    """The companion of the test above: the fundamentals build reads no value from another package into a CHECK
-    any more (#858), so none of its datasets needs ``rules_state``. A dataset that grows one again has to say so
-    here, which is where the reason for the hook is written down."""
-    from RevenueChaser.rcdata.build.fundamentals import tables
-
-    assert getattr(tables.FundamentalsTables(), "rules_state", None) is None
-    assert not hasattr(filings.DATASET, "rules_state")
 
 
 def test_more_than_half_the_files_changed_builds_whole():
