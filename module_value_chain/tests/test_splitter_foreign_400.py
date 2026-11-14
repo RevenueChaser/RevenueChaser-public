@@ -11,6 +11,7 @@ from __future__ import annotations
 from RevenueChaser.module_value_chain import splitter
 from RevenueChaser.rcdata import sec_sections
 from RevenueChaser.rcdata.build.fundamentals import filings
+from RevenueChaser.rcdata.build.sec_forms import forms
 
 PROSE = "We make widgets for customers across many markets and we sell them through distributors worldwide.\n" * 60
 REG = "The PRC government regulates the internet sector through licences and approvals.\n" * 300
@@ -47,7 +48,8 @@ def test_an_aif_in_the_40f_primary_document_gives_a_business_row():
     document that carries an AIF gets a ``business`` row, and the risk chapter is not in it.
     """
     html = "<html><body>" + "".join(f"<p>{line}</p>" for line in AIF.split("\n")) + "</body></html>"
-    rows = {item: (text, quality) for item, text, quality in filings.document_sections(html, "40-F")}
+    # #858: the one cutter is ``sec/forms``; ``filings.document_sections`` was this layer's second cut and is gone.
+    rows = {row[0]: (row[1], row[2]) for row in forms.sections_of(html, "40-F")}
     text, quality = rows["business"]
     assert quality.startswith("ok") and "risk text" not in text
     chapters = 120 if splitter.VERSION == sec_sections.OURS_1 else 60   # ours-1 takes both, ours-2 the second
@@ -55,7 +57,7 @@ def test_an_aif_in_the_40f_primary_document_gives_a_business_row():
     assert sec_sections.cut_aif_business(
         splitter.strip_html(html), version=sec_sections.OURS_1).count("We make widgets") == 120
     html = "<html><body><p>" + PROSE + "</p></body></html>"          # no AIF: the whole row only
-    assert {item for item, _, _ in filings.document_sections(html, "40-F")} == {"whole"}
+    assert {row[0] for row in forms.sections_of(html, "40-F")} == {"whole"}
 
 
 def test_an_aif_filed_as_exhibit_1_is_found():

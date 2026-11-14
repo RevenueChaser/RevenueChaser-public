@@ -71,8 +71,13 @@ PLANNED_READS: dict[str, tuple[str, ...]] = {
     # #490: ``engine.py`` reads the company records and the served filing texts.
     # #400 WP6: the B input adds the filing's XBRL major customers (``fundamentals.customers``).
     # ``identity.etf_holdings`` (#642 PR 2b): the theme-to-ETF ranks read the spine's holdings (D4, 9 Nov 2026).
+    # #858: ``read.filing_texts`` / ``filing_text`` / ``filing_documents`` read ``filing_section`` now, the one
+    # cutter's table, so the board's filing text is ``sec.business`` / ``sec.whole``. ``fundamentals.filings``
+    # stays until #841 moves the call sites, because the plan is read by hand and a name planned but not read is
+    # a warning, not a failure.
     "module_relatedness": ("identity.universe", "identity.security", "identity.etf_holdings", "fundamentals.companies",
-                           "fundamentals.filings", "fundamentals.segments", "fundamentals.customers"),
+                           "fundamentals.filings", "fundamentals.segments", "fundamentals.customers",
+                           "sec.business", "sec.whole"),
 }
 
 

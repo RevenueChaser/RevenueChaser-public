@@ -1844,7 +1844,7 @@ hourly pass after a deploy calls no source before the attended backfill.
 |---|---|
 | `fundamental_company` | one per Tier A ticker: the spine's identity and GICS codes, the SEC filer's name and kind (`is_us`, `us_gaap`, non-USD units), the newest facts read and statement filed, and `submissions_as_of`, the day its filing list was last read ("no 8-K event" means something only after it, the Fundamentals review's F2); from that list's header (#645, version 3) `sic`, `sic_description`, `state_of_incorporation` (EDGAR's code) and its description, `business_state` (a US state or Canadian province) and `business_country` (ISO 3166-1 alpha-2 from EDGAR's state-or-country code, `rcdata/build/fundamentals/edgar_codes.py`) |
 | `fundamental_fact` | one per company, field, period type and period end: value, unit, accession, filed, form, `derived`, `preliminary`, source; and the first-reported value of the same tag and span with its accession and filed date (`first_value`, `first_accn`, `first_filed`; #277 A2, version 3; NULL on a derived row). The fields include `income_tax_expense`, `pretax_income` and `interest_expense` (#645 G1) |
-| `filing_item` | one per filing and 8-K item (`kind` `item`), and one per document text (`kind` `document`: `business` or `proxy`, with `quality`; a text that reaches the 200,000-character cap is `capped`, never `ok`) |
+| `filing_item` | one per filing and 8-K item (`kind` `item`). The document texts went with the cut (#858): this layer cuts nothing, `sec/forms` is the one cutter and serves them as `filing_section`. The `kind` column stays, with `item` its only value |
 | `earnings_event` | one per report: a coming one from the calendar (`confirmed` false) or one that happened (an 8-K with item 2.02, `confirmed` true, its accession kept) |
 | `earnings_reported` | one per company and reported quarter: the EPS the company itself reported as UW serves it, with UW's consensus and surprise. **Not** a `fundamental_fact` row -- it has no filing behind it, and its basis is usually the company's adjusted (non-GAAP) figure, so `source` is on every row (avo, 5 Nov 2026) |
 | `fundamental_revision` | one per Compustat value that changed between two monthly snapshots |
@@ -1868,7 +1868,9 @@ own row-level problems (`missing_key`, `fetch_failed`) under its name.
 `rcdata.read.estimates(tickers)`, `rcdata.read.filing_text(cik, item)`, `rcdata.read.segments(cik, axis, source)`,
 `rcdata.read.customers(cik)`, `rcdata.read.peers(cik)` and `rcdata.read.revisions(cik, since)`; for many companies
 at once `rcdata.read.statements_many(ciks, annual_years, quarters)`, `rcdata.read.fundamental_companies(tickers)`,
-`rcdata.read.filing_items(ciks, form, since)`, `rcdata.read.filing_texts(ciks, item)` and
+`rcdata.read.filing_items(ciks, form, since)`, `rcdata.read.filing_texts(ciks, item)` (which since #858 reads
+`filing_section`, the one cutter's table, under its old name and row shape; `filing_text` and `filing_documents`
+likewise) and
 `rcdata.read.customer_shares(ciks, benchmark)`. Every row carries its provenance and `status`, the newest check of
 the dataset its own row came from (a segment row from Compustat reads `wrds/segments`' check, one from the annual
 report `sec/filings`'), or `never_checked`, or `status_unknown` when `ops.sqlite` cannot be read (#228).
@@ -1878,7 +1880,8 @@ report `sec/filings`'), or `never_checked`, or `status_unknown` when `ops.sqlite
 no switch since #642 PR 6: the boards read the layer only (a failed newer check keeps the last good build), and
 without `fundamentals.duckdb` or a first `sec/companyfacts` build they read no rows and `fundamentals_layer.source_state()`
 says why. Relatedness and Value Chain alone still read Value Chain's `chain_filings` corpus while the layer is not
-served (`fundamentals_layer.reads_layer`). What each board reads there:
+served (`fundamentals_layer.reads_layer`). Their filing text on the layer is the SEC form reader's since #858: one
+cut, in `filing_section`. What each board reads there:
 
 | Board | Reads on the layer |
 |---|---|

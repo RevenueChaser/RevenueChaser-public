@@ -16,7 +16,7 @@ import duckdb
 import pytest
 
 from RevenueChaser.core.providers import sec_edgar
-from RevenueChaser.rcdata import serving
+from RevenueChaser.rcdata import ops, serving
 from RevenueChaser.rcdata.build import base
 from RevenueChaser.rcdata.build.fundamentals import common, filings
 from RevenueChaser.rcdata.build.sec_forms import forms
@@ -336,3 +336,46 @@ def test_the_layer_stores_its_sections_at_ours_2(sec):
     assert chars > cap, f"the section is stored whole, not cut at the cap: {chars}"
     assert forms.sec_sections.base(quality) == "ok" and "capped" not in quality, quality
     assert q("SELECT DISTINCT rules_version FROM filing_section") == [("ours-2",)]
+
+
+# ── #858: the one cutter, read through the three readers that used to serve ``filing_item`` ──────────────────────
+
+def test_the_document_readers_serve_the_one_cutters_rows_under_their_old_names(sec):
+    """``sec/filings`` cut the same documents a second time and stored them as ``filing_item``'s
+    ``kind = 'document'`` rows. Since #858 it cuts nothing, and ``read.filing_text`` / ``filing_documents`` /
+    ``filing_texts`` read ``filing_section`` instead, keeping the names and the row shape their callers read, so
+    the boards move to ``form_business`` in their own changes (#856, #841) rather than in this one."""
+    from RevenueChaser.rcdata import read
+
+    _stored(sec)
+    fx.run(forms.NAME, AS_OF)
+
+    row = read.filing_text(MSFT)
+    assert row is not None
+    # The row shape of the ``filing_item`` days: ``item`` for the section and ``primary_document`` for the file.
+    # The value is **the stored file**, not the SEC's primary-document name the filing list carries: the form
+    # reader keeps the document it cut, and a caller that needs the name for an EDGAR link reads the filing list
+    # (``filing_item``, ``kind = 'item'``). Value Chain is the only such caller and moves in #856.
+    assert row["item"] == "business" and row["primary_document"] == f"{fx.K25}.html.gz"
+    assert row["accession"] == fx.K25 and row["form"] == "10-K"
+    assert row["rules_version"] == forms.SECTIONS_VERSION, "the version is on the row now"
+    assert row["status"] == ops.latest_check(forms.NAME)["result"]
+
+    assert read.filing_text(MSFT, "proxy")["form"] == "DEF 14A"
+    whole = read.filing_text(MSFT, "whole")
+    assert len(whole["text"]) > len(row["text"]), "the whole document is longer than its business section"
+
+    (doc,) = read.filing_documents(MSFT, "business")
+    assert doc["accession"] == fx.K25
+    (one,) = read.filing_texts([MSFT], "business")
+    assert one["text"] == row["text"]
+    (light,) = read.filing_texts([MSFT], "business", text=False)
+    assert "text" not in light and light["chars"] == row["chars"]
+
+
+def test_the_filing_list_stays_sec_filings_and_carries_no_text(sec):
+    """What this layer keeps: the list and the 8-K items. ``filing_item`` has only ``kind = 'item'`` rows, and a
+    build that wrote a document row would now be refused by the table's CHECK (#858)."""
+    _stored(sec)
+    assert fx.q("SELECT DISTINCT kind FROM filing_item") == [("item",)]
+    assert fx.q("SELECT count(*) FROM filing_item WHERE text IS NOT NULL OR quality IS NOT NULL") == [(0,)]

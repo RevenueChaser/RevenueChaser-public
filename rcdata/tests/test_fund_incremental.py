@@ -14,7 +14,6 @@ from datetime import date
 import duckdb
 import pytest
 
-from RevenueChaser.module_value_chain import config as vc_config
 from RevenueChaser.rcdata import serving
 from RevenueChaser.rcdata.build import base, dirty
 from RevenueChaser.rcdata.build.fundamentals import common, companyfacts, earnings, facts, filings, tables, wrds_fund
@@ -43,16 +42,14 @@ def _write_filings(cik: str, accessions: list[tuple[str, str, str | None]]) -> N
     stamp = {"source_as_of": AS_OF, "fetched_at": 2.0, "run_id": f"f-{cik}"}
     rows = [{"cik": cik, "accession": a, "form": form, "filing_date": date(2026, 10, 1), "report_date": None,
              "primary_document": f"{a}.htm", "item": item, **stamp} for a, form, item in accessions]
-    docs = [{"cik": cik, "accession": a, "form": form, "filing_date": date(2026, 10, 1), "report_date": None,
-             "primary_document": f"{a}.htm", "item": "business", "text": "text " * 20, "chars": 100,
-             "quality": "ok", **stamp} for a, form, _ in accessions if form == "10-K"]
     segs = [{"cik": cik, "accession": a, "form": form, "filing_date": date(2026, 10, 1), "axis": "business",
              "member": "CloudMember", "segment": "Cloud", "concept": "Revenues", "value": 10.0, "unit": "USD",
              "period_start": date(2025, 1, 1), "period_end": date(2025, 12, 31), **stamp}
             for a, form, _ in accessions if form == "10-K"]
     con = duckdb.connect()
     try:
-        for name, schema, data in (("filings", filings.FILING, rows), ("documents", filings.DOCUMENT, docs),
+        # #858: no ``documents.parquet`` any more -- this layer cuts nothing and stores no text.
+        for name, schema, data in (("filings", filings.FILING, rows),
                                    ("segments", filings.SEGMENT, segs), ("customers", filings.CUSTOMER, [])):
             base.rows_table(con, name, schema, data)
             base.write_parquet(con, f"SELECT * FROM {name}", folder / f"{name}.parquet")
@@ -214,13 +211,35 @@ def test_a_whole_reloaded_source_is_reloaded_on_the_live_copy(monkeypatch):
 
 # ── when the build is still whole ─────────────────────────────────────────────────────────────────────────────
 
-def test_a_change_of_the_build_rules_builds_whole(monkeypatch):
-    _seed()
-    _build()
-    # ``fundamentals/tables``' own rules_state(): the document cap the filing_item CHECK embeds.
-    monkeypatch.setattr(vc_config, "MAX_ITEM_CHARS", vc_config.MAX_ITEM_CHARS + 1)
-    check = _build()
-    assert "built whole: the build code of fundamentals changed" in _note(check), _note(check)
+def test_a_dataset_whose_rules_state_changes_restates_the_fingerprint():
+    """#858 took the fundamentals kind's only ``rules_state`` with the cut: it named the document cap and whether
+    the pinned cut capped, both of which came from ``module_value_chain`` and are gone from this build. The hook
+    itself still has to work, because the next dataset that reads a switch from outside its package depends on
+    it, so it is asked of a stand-in rather than left untested."""
+    from RevenueChaser.rcdata.build import dirty
+
+    class Fake:
+        name = "fake/dataset"
+
+        def __init__(self, state):
+            self._state = state
+
+        def rules_state(self):
+            return self._state
+
+    first = dirty.rules_fingerprint([Fake("caps=False")])
+    assert first == dirty.rules_fingerprint([Fake("caps=False")])
+    assert first != dirty.rules_fingerprint([Fake("caps=True")])
+
+
+def test_no_fundamentals_dataset_names_a_rule_from_outside_its_package(monkeypatch):
+    """The companion of the test above: the fundamentals build reads no value from another package into a CHECK
+    any more (#858), so none of its datasets needs ``rules_state``. A dataset that grows one again has to say so
+    here, which is where the reason for the hook is written down."""
+    from RevenueChaser.rcdata.build.fundamentals import tables
+
+    assert getattr(tables.FundamentalsTables(), "rules_state", None) is None
+    assert not hasattr(filings.DATASET, "rules_state")
 
 
 def test_more_than_half_the_files_changed_builds_whole():
