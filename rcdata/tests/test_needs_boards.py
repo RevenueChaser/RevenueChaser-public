@@ -171,8 +171,10 @@ def test_relatedness_plans_the_universe_and_the_fundamentals_needs_it_reads():
     entry now instead of none, and the control board draws its lines. #400: the v3 profile's segment note reads
     ``read.segments`` too, the B input (WP6) ``read.customers``, and the prompt's name, sector and industry
     ``read.identity`` (10 Nov 2026). #642: its run's ETF scan calls ``read.etf_holding_tickers``."""
-    want = ("identity.universe", "identity.security", "identity.etf_holdings", "fundamentals.companies", "fundamentals.filings",
-            "fundamentals.segments", "fundamentals.customers")
+    # #858: its filing text comes from the one cutter's table (``filing_section``), so ``sec.business`` /
+    # ``sec.whole`` are planned beside the fundamentals needs.
+    want = ("identity.universe", "identity.security", "identity.etf_holdings", "fundamentals.companies",
+            "fundamentals.filings", "fundamentals.segments", "fundamentals.customers", "sec.business", "sec.whole")
     assert boards.PLANNED_READS["module_relatedness"] == want
     assert boards.reads_of("module_relatedness") == {"declared": False, "needs": want}
 
@@ -183,7 +185,9 @@ def test_the_reader_map_names_the_catalog_tables_each_read_function_queries():
     tables = boards.reader_tables()
     assert tables["changed_at"] == {"price_bar_daily", "corporate_action"}, "the SQL text counts, not only _rows' table"
     assert tables["bar_facts"] == {"price_bar_daily", "corporate_action"}
-    assert tables["filing_texts"] == {"filing_item"}
+    # #858: the three document readers query ``filing_section``, the one cutter's table, not ``filing_item``.
+    assert tables["filing_texts"] == {"filing_section"}
+    assert tables["filing_items"] == {"filing_item"}, "the filing list itself is still sec/filings'"
     assert tables["fundamental_companies"] == {"fundamental_company"}
     assert tables["market_series"] == {"market_series"}
     assert tables["watched"] == set(), "a watch list lives in ops.sqlite, which no need covers"

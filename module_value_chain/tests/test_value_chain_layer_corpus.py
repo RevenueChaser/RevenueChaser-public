@@ -13,6 +13,7 @@ from RevenueChaser.core import fundamentals_layer, rawstore
 from RevenueChaser.core.providers import sec_edgar
 from RevenueChaser.module_value_chain import aliases, engine
 from RevenueChaser.rcdata.build.fundamentals import companyfacts, filings
+from RevenueChaser.rcdata.build.sec_forms import forms
 from RevenueChaser.rcdata.tests import fund_fixture as fx
 from RevenueChaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401  (fixtures)
 
@@ -30,6 +31,7 @@ def layer(monkeypatch, http_mock):  # noqa: F811
                      {"msft-10k.htm": ten_k, "msft-def14a.htm": fx.proxy()})
     fx.run(companyfacts.NAME, mode="backfill", to="2026-10-26")
     fx.run(filings.NAME, mode="backfill", to="2026-10-28")
+    fx.run(forms.NAME, "2026-10-28")               # #858: the board's text comes from the one cutter's table
     assert fundamentals_layer.reads_layer()
     monkeypatch.setattr(engine, "_default_tickers", lambda: ["MSFT", "ORCL"])
     return http_mock

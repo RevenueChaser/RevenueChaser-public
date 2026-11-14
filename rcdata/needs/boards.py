@@ -50,8 +50,11 @@ PLANNED_READS: dict[str, tuple[str, ...]] = {
                           "macro.dgs10", "fundamentals.statements", "fundamentals.segments", "fundamentals.peers"),
     "module_uw_interaction": ("options.prints",),
     # #400 WP5: the XBRL customers are named by the spine's ``security`` names (``identity.security``).
+    # #858: its corpus reads ``read.filing_texts``, which serves the one cutter's table now, so the filing text
+    # is ``sec.business``. ``fundamentals.filings`` stays until #856 moves the call site to ``form_business``.
     "module_value_chain": ("identity.universe", "identity.security", "fundamentals.companies",
-                           "fundamentals.filings", "fundamentals.segments", "fundamentals.customers"),
+                           "fundamentals.filings", "fundamentals.segments", "fundamentals.customers",
+                           "sec.business"),
     # #642 PR 4: the industry tree reads the shared universe (spine names/sectors, prices-store caps) and the theme
     # rows the spine's whole ETF holdings.
     "module_sector_rotation": ("identity.membership", "identity.universe", "identity.etf_holdings", "prices.bars",
@@ -71,8 +74,13 @@ PLANNED_READS: dict[str, tuple[str, ...]] = {
     # #490: ``engine.py`` reads the company records and the served filing texts.
     # #400 WP6: the B input adds the filing's XBRL major customers (``fundamentals.customers``).
     # ``identity.etf_holdings`` (#642 PR 2b): the theme-to-ETF ranks read the spine's holdings (D4, 9 Nov 2026).
+    # #858: ``read.filing_texts`` / ``filing_text`` / ``filing_documents`` read ``filing_section`` now, the one
+    # cutter's table, so the board's filing text is ``sec.business`` / ``sec.whole``. ``fundamentals.filings``
+    # stays until #841 moves the call sites, because the plan is read by hand and a name planned but not read is
+    # a warning, not a failure.
     "module_relatedness": ("identity.universe", "identity.security", "identity.etf_holdings", "fundamentals.companies",
-                           "fundamentals.filings", "fundamentals.segments", "fundamentals.customers"),
+                           "fundamentals.filings", "fundamentals.segments", "fundamentals.customers",
+                           "sec.business", "sec.whole"),
 }
 
 
