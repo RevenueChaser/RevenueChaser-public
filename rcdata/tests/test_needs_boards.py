@@ -179,6 +179,18 @@ def test_relatedness_plans_the_universe_and_the_fundamentals_needs_it_reads():
     assert boards.reads_of("module_relatedness") == {"declared": False, "needs": want}
 
 
+def test_value_chain_plans_the_form_readers_business_section():
+    """#841: the board's corpus is ``read.form_business`` (``sec.business``), not ``read.filing_texts``
+    (``fundamentals.filings``) - one independent SEC cut, read by the boards, instead of a second cut per board.
+    ``fundamentals.companies`` stays: the ticker -> CIK map is the fundamentals layer's."""
+    want = ("identity.universe", "identity.security", "fundamentals.companies",
+            "sec.business", "fundamentals.segments", "fundamentals.customers")
+    assert boards.PLANNED_READS["module_value_chain"] == want
+    assert boards.reads_of("module_value_chain") == {"declared": False, "needs": want}
+    calls = set(boards.read_calls("module_value_chain"))
+    assert "form_business" in calls and "filing_texts" not in calls
+
+
 # ── #491: a board's planned reads are compared with the rcdata.read calls of its own code ─────────────────────────
 
 def test_the_reader_map_names_the_catalog_tables_each_read_function_queries():

@@ -1,8 +1,10 @@
 """Value Chain engine — corpus -> mentions -> edges, plus 2-hop.
 
-Fetch pulls the latest 10-K/20-F per issuer and slices Item 1/4; the model-only
-(``no_fetch``) path reads the cached corpus and never touches the network. Edges
-are persisted so a Refresh re-renders with zero network.
+On the layer the corpus is the SEC form reader's (#841): ``sec/forms`` cuts every stored annual report once and
+this board reads ``filing_section``'s business row, so a Fetch downloads and slices nothing. Off the layer the
+old path stands: Fetch pulls the latest 10-K/20-F per issuer and slices Item 1/4 into ``chain_filings``. The
+model-only (``no_fetch``) path reads the cached corpus and never touches the network either way. Edges are
+persisted so a Refresh re-renders with zero network.
 """
 from __future__ import annotations
 
@@ -44,13 +46,19 @@ def _cached_filings() -> dict[str, dict]:
 
 # ── the corpus: the shared SEC layer, or chain_filings off it (plan 2026-11-11 F2) ──
 def _reads_layer() -> bool:
-    """The layer is the corpus once ``sec/filings`` has built too: ``reads_layer`` only asks for companyfacts, and an
-    unbuilt ``filing_item`` would let a Fetch replace every stored edge with none of the layer's."""
+    """The layer is the corpus once the SEC form reader has built too (#841): the board cuts no section of its own
+    any more, it reads the one independent cut ``sec/forms`` serves.
+
+    Two datasets have to be there, not one. ``reads_layer`` only asks for companyfacts, and the ticker -> CIK map
+    (``read.fundamental_companies``) is the fundamentals layer's; the text is ``sec/forms``'. An unbuilt
+    ``filing_section`` would let a Fetch replace every stored edge with none of the layer's, which is why this is
+    a gate and not a preference.
+    """
     from RevenueChaser.core import fundamentals_layer
     from RevenueChaser.rcdata import ops
-    from RevenueChaser.rcdata.build.fundamentals import filings
-    # shortcut: a partly built sec/filings still counts; add a coverage floor if a partial first build ever happens.
-    return fundamentals_layer.reads_layer() and ops.ever_built(filings.NAME)
+    from RevenueChaser.rcdata.build.sec_forms import forms
+    # shortcut: a partly built sec/forms still counts; add a coverage floor if a partial first build ever happens.
+    return fundamentals_layer.reads_layer() and ops.ever_built(forms.NAME)
 
 
 def _default_tickers() -> list[str]:
@@ -60,14 +68,25 @@ def _default_tickers() -> list[str]:
     return list(config.SEED)
 
 
-# Companies one layer read holds at once: a business section is up to ~120 KB of text (memory guard).
-_LAYER_BATCH = 200
+# Companies one layer read holds at once (memory guard). 50, not the 200 of the ``filing_item`` days: ``ours-2``
+# stores a business section whole, so one is p50 55 KB and up to 489 KB (#841's measurement), where the capped cut
+# was at most 200 KB.
+_LAYER_BATCH = 50
 
 
 def _layer_filings(tickers: list[str] | None = None, text: bool = False):
-    """Batches of ``chain_filings``-shaped rows from the fundamentals layer: per ticker the newest annual report's
-    business section ``sec/filings`` serves (``filing_item``; the same splitter and cap as ``chain_filings``, and
-    the copy Relatedness reads). A ticker without a document is absent. ``text`` adds ``item_text``."""
+    """Batches of ``chain_filings``-shaped rows from the SEC form reader: per ticker the newest annual report's
+    business section ``sec/forms`` serves (``read.form_business``, ``filing_section``). A ticker without a document
+    is absent. ``text`` adds ``item_text``.
+
+    Since #841 this is the one cut the board reads, and it is nobody's copy: the board asked ``sec/filings`` for
+    ``filing_item`` until now, which is a second cut of the same documents by the same rule. ``primary_doc`` is the
+    row's ``document``, which for a 40-F can be the AIF exhibit rather than the primary document - the exhibit is
+    where that form's business section is, and the newest document of the newest filing is what the reader serves.
+    A row cut with another ``rules_version`` than :data:`splitter.VERSION` is read and logged, not dropped: the
+    board has lived with a version pin ahead of its stored text before (``splitter``'s docstring), and dropping
+    rows would empty the corpus instead of showing it.
+    """
     from RevenueChaser.rcdata import read
     tickers = _default_tickers() if tickers is None else tickers
     by_cik: dict[str, list[str]] = {}
@@ -75,20 +94,30 @@ def _layer_filings(tickers: list[str] | None = None, text: bool = False):
         if c.get("cik"):
             by_cik.setdefault(read._cik(c["cik"]), []).append(str(c["ticker"]).upper())
     ciks = sorted(by_cik)
+    off_version: dict[str, int] = {}
     for i in range(0, len(ciks), _LAYER_BATCH):
         batch = []
-        for d in read.filing_texts(ciks[i:i + _LAYER_BATCH], text=text):
+        for d in read.form_business(ciks[i:i + _LAYER_BATCH], text=text):
+            version = str(d.get("rules_version") or "")
+            if version != splitter.VERSION:
+                off_version[version] = off_version.get(version, 0) + 1
             row = {"cik": read._cik(d["cik"]), "form": d.get("form"), "filed": str(d.get("filing_date") or ""),
-                   "accession": d.get("accession"), "primary_doc": d.get("primary_document"),
+                   "accession": d.get("accession"), "primary_doc": d.get("document"),
                    "quality": d.get("quality")}
             if text:
                 row["item_text"] = d.get("text") or ""
             batch.extend({"ticker": t, **row} for t in by_cik.get(row["cik"], []))
         yield batch
+    if off_version:
+        logger.warning("value_chain: %s business sections are cut with %s, not %s; the board reads them as they are",
+                       sum(off_version.values()),
+                       ", ".join(f"{v or 'no version'} ({n})" for v, n in sorted(off_version.items())),
+                       splitter.VERSION)
 
 
 def _corpus_batches():
-    """The filings ``build_edges`` reads, in batches: the layer's when the board reads it, else ``chain_filings``."""
+    """The filings ``build_edges`` reads, in batches: the form reader's when the board reads the layer (#841), else
+    ``chain_filings``."""
     if _reads_layer():
         yield from _layer_filings(text=True)
     else:
@@ -511,7 +540,9 @@ def build_edges(info: dict | None = None) -> list[dict]:
             names = _spine_names()
         for f in rows:
             t, filed = f["ticker"], f.get("filed") or ""
-            text = "" if f.get("quality") == "missing" else (f.get("item_text") or "")
+            # ``splitter.base``: a label can carry suspect flags (``missing;suspect:S1``), and a bare ``==`` would
+            # read such a row as having text.
+            text = "" if splitter.base(f.get("quality")) == "missing" else (f.get("item_text") or "")
             if not text and t not in customers and t not in profiles:
                 continue
             found = filing_edges(t, text, filed, customers.get(t), names)

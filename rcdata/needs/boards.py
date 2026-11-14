@@ -50,11 +50,10 @@ PLANNED_READS: dict[str, tuple[str, ...]] = {
                           "macro.dgs10", "fundamentals.statements", "fundamentals.segments", "fundamentals.peers"),
     "module_uw_interaction": ("options.prints",),
     # #400 WP5: the XBRL customers are named by the spine's ``security`` names (``identity.security``).
-    # #858: its corpus reads ``read.filing_texts``, which serves the one cutter's table now, so the filing text
-    # is ``sec.business``. ``fundamentals.filings`` stays until #856 moves the call site to ``form_business``.
+    # #841: the corpus is the SEC form reader's business section (``sec.business``), no longer ``filing_item``
+    # (``fundamentals.filings``); the ticker -> CIK map is still the fundamentals layer's.
     "module_value_chain": ("identity.universe", "identity.security", "fundamentals.companies",
-                           "fundamentals.filings", "fundamentals.segments", "fundamentals.customers",
-                           "sec.business"),
+                           "sec.business", "fundamentals.segments", "fundamentals.customers"),
     # #642 PR 4: the industry tree reads the shared universe (spine names/sectors, prices-store caps) and the theme
     # rows the spine's whole ETF holdings.
     "module_sector_rotation": ("identity.membership", "identity.universe", "identity.etf_holdings", "prices.bars",

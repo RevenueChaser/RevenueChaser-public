@@ -1889,7 +1889,7 @@ cut, in `filing_section`. What each board reads there:
 | Asymmetric Growth | Growth, acceleration, margins, free cash flow, runway and dilution on three trailing years a year apart when the 10-Qs give them, else the fiscal years, one basis per card (`period_ends.basis`; review SF-4) |
 | Financials | The SEC's annual statements, the newest five (a line the SEC facts do not carry stays empty, so the engines' labelled default shows; EBITDA is operating income plus depreciation), unless Yahoo's newest year with revenue is newer, or is the same year and gives an input the SEC's lacks (depreciation, capex, working capital), when Yahoo's statements are modelled; the source line names what the SEC's statements lack either way (with the SEC's, the tax rate and interest expense, which the facts never carry, except for a bank, whose P/E model reads neither), and they end on the newest year with revenue; the price, market cap, shares and beta from the prices store (`module_financials/market_inputs.py`: the newest close, at most 14 days before today like the rate, its session named on the card and in the source line; the issuer's market cap, a fund's or a trust's its own; the cap over the price as the class-equivalent shares, only when both are of one session; and a 5-year monthly beta of split-adjusted price returns on `index:SPX`, at least 36 months), each Yahoo's where the store has none, and the source line names which side each came from (the comps' basis line names the shares' side; the EV stays Yahoo's and the card says so); the risk-free rate from `market_series` DGS10, at most 14 days old |
 | Relatedness | The newest annual report text `sec/filings` serves (Value Chain's splitter and cap, so the same filing gives the same input hash) and the layer's CIK; a profile's cache key and the payload carry the filing it was read from (CIK, accession, form, filed) |
-| Value Chain | The annual report's XBRL major customers (`customer_share`, share of revenue): a customer the alias list names is a `customer` edge with its share; a sentence that states the same customer keeps its text and gains the share; an anonymised customer is no edge |
+| Value Chain | The newest annual report's business section the SEC form reader serves (`sec/forms`, `filing_section`; `read.form_business`, #841), which is both the corpus its edges are read out of and the filing list the board shows - on the layer the board cuts nothing of its own and no longer reads `sec/filings`' `filing_item`. Plus the annual report's XBRL major customers (`customer_share`, share of revenue): a customer the alias list names is a `customer` edge with its share; a sentence that states the same customer keeps its text and gains the share; an anonymised customer is no edge |
 
 The trailing year (`core/trailing_year.py`) is the fiscal year plus the newest year to date minus the same months a
 year earlier, each flow all or nothing, the balance sheet the quarter's.
@@ -2038,7 +2038,10 @@ are cut at; neither table carries a version column, so that pin moves on its own
 #847 moved it to `ours-2` as well, which is why the `capped` label and the `filing_item` CHECK that refuses `ok`
 at the cap now follow `filings.caps_text()` rather than being written in: `ours-2` caps nowhere, so a long and
 correct section is stored whole and `ok`. The stored rows were cut by `ours-1` until `reslice.apply` rewrites
-them, which rides the first full SEC cut as one run; `filing_item` is re-cut by the fundamentals build.
+them, which rides the first full SEC cut as one run; `filing_item` is re-cut by the fundamentals build. Since #841
+the pin is no longer what the Value Chain board reads its text through: its corpus is `filing_section`, which
+carries `rules_version` on every row, so the pin is what a row is compared against, and a row cut with another
+version is read and logged rather than dropped.
 
 **Needs.** `sec.whole`, `sec.business`, `sec.proxy` and `sec.note`, each with its own reader and `ask_required`
 (the text is gigabytes: nothing is answered unless a company is named). The three section needs share one table
