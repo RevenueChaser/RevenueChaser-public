@@ -51,8 +51,10 @@ def test_the_board_lists_the_layers_filings_without_text(layer):
     (row,) = engine._board_filings_rows()
     assert (row["ticker"], row["form"], row["filed"], row["accession"]) == ("MSFT", "10-K", "2025-07-30", fx.K25)
     assert "item_text" not in row and "text" not in row
-    # #841: ``primary_doc`` is the form row's ``document``, the file the section was cut out of.
-    assert row["primary_doc"] == "msft-10k.htm"
+    # #841: ``primary_doc`` is the form row's ``document``, the stored file the section was cut out of, and no
+    # longer the SEC's primary-document name. The layer path never carried a URL either (``chain_filings`` stores
+    # the full URL, the layer stored the bare name), so this is the same field with the form reader's value in it.
+    assert row["primary_doc"] == f"{fx.K25}.html.gz"
 
 
 def test_the_corpus_is_the_form_reader_and_not_filing_item(layer, monkeypatch):
