@@ -1,13 +1,7 @@
-"""Change history captured by the store (schema 11, history redesign C).
-
-A live table that declares ``rawstore.CHANGES`` keeps its key, its writers and its readers; the store appends a rule-A
-row to ``<table>_changes`` in the SAME transaction as every write to it, and the first store call of a process seeds and
-syncs. The invariant every test below leans on: after any write, the keys whose latest change row is 'present' are
-exactly the keys of the live table. Temp stores only.
-"""
+"""The transaction handle: one file per transaction (F6). The change capture this file once tested went with
+raw.duckdb (#860)."""
 from __future__ import annotations
 
-import random
 
 import pytest
 

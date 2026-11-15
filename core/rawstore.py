@@ -1439,28 +1439,6 @@ MANIFEST: dict[str, dict] = {
 }
 
 
-# ── Schema 11: one history model (history redesign C, 2026-10-07) ────────────────────────────────────────────────
-# Change history (raw.duckdb). A live table that declares ``CHANGES`` keeps its key, its writers and its readers.
-CHANGES: dict[str, dict] = {}   # the change tables lived in raw.duckdb and went with it (#860)
-def _spec_base_type(spec: dict, col: str) -> str:
-    """The declared type of ``col`` without constraints (``"TEXT PRIMARY KEY"`` -> ``"TEXT"``)."""
-    for c in spec["columns"]:
-        head, _, rest = c.strip().partition(" ")
-        if head.strip('"') == col:
-            t = (rest.strip() or "TEXT").upper()
-            for stop in (" PRIMARY", " NOT ", " DEFAULT", " UNIQUE", " CHECK", " REFERENCES"):
-                i = t.find(stop)
-                if i >= 0:
-                    t = t[:i]
-            return t.strip() or "TEXT"
-    raise KeyError(f"{col} is not a column of this entry")
-
-
-def _has_primary_key(spec: dict) -> bool:
-    """Whether a MANIFEST entry declares a PRIMARY KEY (on a column or as a table constraint)."""
-    return any("PRIMARY KEY" in c.upper() for c in spec["columns"])
-
-
 def table_names() -> list[str]:
     return sorted(MANIFEST)
 
@@ -2208,13 +2186,11 @@ def _col_sql(cols: list[str]) -> str:
     return ", ".join(f'"{c}"' for c in cols)
 
 
-# ── change capture (schema 11, history redesign C) ──────────────────────────────────────────────────────────────
-# Who wrote a change: ``(run_id, source)`` of the running dashboard job when the app registered a provider
-# (app/jobs: the job id and its module), else the scheduled task's run (``task_run``: its ``job_runs`` id and
-# registry name), else a fresh id like ``ledger.new_run_id`` and no source. A forced label wins (the first-call sync).
+# ── who wrote a row ─────────────────────────────────────────────────────────────────────────────────────────────
+# ``(run_id, source)`` of the running dashboard job when the app registered a provider (app/jobs: the job id and its
+# module), else the scheduled task's run (``task_run``: its ``job_runs`` id and registry name), else a fresh id like
+# ``ledger.new_run_id`` and no source. The change capture that also read it went with raw.duckdb (#860).
 _CHANGE_WRITER = None
-_CHANGE_CLOCK_LOCK = threading.Lock()
-_LAST_CHANGE_AT = [0.0]
 
 
 # A scheduled task's run (#129 A1): ``core/automations.run_task`` records the run's ``job_runs`` row and hands its id
@@ -2235,9 +2211,6 @@ def set_change_writer(fn) -> None:
 
 
 def _change_writer() -> tuple[str, str | None]:
-    forced = getattr(_LOCAL, "change_writer", None)
-    if forced:
-        return forced
     got = _CHANGE_WRITER() if _CHANGE_WRITER else None
     if got and got[0]:
         return got[0], got[1]
@@ -2252,148 +2225,14 @@ def writer_run_id() -> str:
     """The ``run_id`` a core writer stamps on its rows: the running dashboard job's id, else the scheduled task's,
     else a fresh one.
 
-    The same id the change capture records, so a row joins to its ``job_runs`` row. For core code that cannot import
+    So a row joins to its ``job_runs`` row. For core code that cannot import
     ``app.jobs.run_id`` (``core/quotes.py``, called from inside the universe pull).
     """
     return _change_writer()[0]
 
 
-def _change_clock() -> float:
-    """Epoch seconds, strictly increasing within the process, so (key, run_at) never collides."""
-    with _CHANGE_CLOCK_LOCK:
-        now = max(time.time(), _LAST_CHANGE_AT[0] + 1e-6)
-        _LAST_CHANGE_AT[0] = now
-        return now
-
-
-def _session_of(run_at: float):
-    from RevenueChaser.core import calendar
-    try:
-        return calendar.session_for(run_at).session_date
-    except ValueError:      # outside the holiday table (1993-2028): the row keeps run_at, valid_from is unknown
-        return None
-
-
-@contextmanager
-def change_label(label: str, run_id: str | None = None):
-    """Stamp every change captured in the block with ``label`` as its source and ``run_id`` (default: ``label``)."""
-    prev = getattr(_LOCAL, "change_writer", None)
-    _LOCAL.change_writer = (run_id or label, label)
-    try:
-        yield
-    finally:
-        _LOCAL.change_writer = prev
-
-
 def _q(c: str) -> str:
     return f'"{c}"'
-
-
-def _live_columns(conn, catalog: str, name: str) -> set[str]:
-    return {r[0] for r in conn.execute(
-        "SELECT column_name FROM information_schema.columns WHERE table_catalog = ? AND table_schema = 'main' "
-        "AND table_name = ?", [catalog, name]).fetchall()}
-
-
-def _capture_changes(conn, name: str, touched: list[str] | None = None) -> int:
-    """Append the rule-A rows that make ``<name>_changes`` agree with the live table ``name``; returns the count.
-
-    Runs on the caller's connection, inside its transaction, right after the write. It compares the whole live
-    table with the latest change row of each key, so it does not depend on which write ran: a key that is new, back
-    after 'absent', or has a tracked value that differs gets a 'present' row; a key whose latest row is 'present'
-    and that is no longer in the live table gets an 'absent' row. A second call with nothing changed appends 0.
-    ``touched``: the columns an ``update_columns`` set; none tracked means nothing can have moved.
-    """
-    cfg = CHANGES.get(name)
-    if cfg is None or name not in MANIFEST or f"{name}_changes" not in MANIFEST:
-        return 0
-    spec = MANIFEST[name]
-    key, track, carry = spec["key"], cfg["track"], cfg.get("carry", [])
-    if touched is not None and not set(touched) & set(key + track):
-        return 0        # an update of untracked columns only (the cap backfill): no key and no tracked value moved
-    ch, ren = f"{name}_changes", cfg.get("rename", {})
-    live = key + track + carry
-    catalog = conn.execute("SELECT current_database()").fetchone()[0]
-    if not set(live) <= _live_columns(conn, catalog, name):
-        # No live table, or one that predates a MANIFEST column (a legacy store before its first reconcile): nothing
-        # to compare yet. The first-call sync runs after the MANIFEST is applied and records it.
-        return 0
-    _ensure_table(conn, ch)
-    own = lambda t: f"{_q(catalog)}.main.{_q(t)}"   # this file's own table: a TEMP table of the name never stands in
-    src_live = own(name)
-    if not _has_primary_key(spec):
-        # A key-less live table (index_constituents) may hold a repeated key or a NULL key part, which the change
-        # table's key cannot: one row per key, NULL keys left out. Today's writes stay accepted.
-        order = f" ORDER BY {', '.join(_q(c) for c in track)}" if track else ""
-        src_live = (f"(SELECT * FROM {own(name)} WHERE {' AND '.join(f'{_q(c)} IS NOT NULL' for c in key)} "
-                    f"QUALIFY row_number() OVER (PARTITION BY {', '.join(_q(c) for c in key)}{order}) = 1)")
-    run_at = _change_clock()
-    run_id, writer = _change_writer()
-    own_source = "source" not in key            # a table keyed on its provider has no second source column
-    fcol = cfg.get("fetched_at")
-    fetched = ("NULL" if not fcol else f"l.{_q(fcol)}" if _spec_base_type(spec, fcol) == "DOUBLE"
-               else f"epoch(TRY_CAST(l.{_q(fcol)} AS TIMESTAMPTZ))")
-    into = (f"INSERT INTO {own(ch)} ({', '.join(_q(ren.get(c, c)) for c in live)}, valid_from, status, "
-            f"{'source, ' if own_source else ''}fetched_at, run_id, run_at) ")
-    params = [_session_of(run_at), *([cfg.get("source", writer)] if own_source else []), run_id, run_at]
-    src = "?, " if own_source else ""
-    cur = (f"SELECT * FROM {own(ch)} QUALIFY row_number() OVER "
-           f"(PARTITION BY {', '.join(_q(ren.get(c, c)) for c in key)} ORDER BY run_at DESC) = 1")
-    on = " AND ".join(f"l.{_q(c)} = cur.{_q(ren.get(c, c))}" for c in key)
-    differs = " OR ".join(f"l.{_q(c)} IS DISTINCT FROM cur.{_q(ren.get(c, c))}" for c in track) or "FALSE"
-    present = conn.execute(
-        into + f"SELECT {', '.join('l.' + _q(c) for c in live)}, ?, 'present', {src}{fetched}, ?, ? FROM {src_live} l "
-        f"LEFT JOIN ({cur}) cur ON {on} WHERE cur.run_at IS NULL OR cur.status = 'absent' OR ({differs})",
-        params).fetchone()[0]
-    absent = conn.execute(
-        into + f"SELECT {', '.join('cur.' + _q(ren.get(c, c)) for c in live)}, ?, 'absent', {src}NULL, ?, ? "
-        f"FROM ({cur}) cur WHERE cur.status = 'present' AND NOT EXISTS (SELECT 1 FROM {src_live} l WHERE {on})",
-        params).fetchone()[0]
-    return int(present) + int(absent)
-
-
-def changes_as_of(name: str, at: float) -> list[dict]:
-    """The rows ``name`` held at epoch ``at``, from its change table: each key's latest change at or before ``at``,
-    when that change is 'present'. Key, tracked and carried columns only (live names)."""
-    cfg = CHANGES[name]
-    key, ren = MANIFEST[name]["key"], cfg.get("rename", {})
-    cols = key + cfg["track"] + cfg.get("carry", [])
-    sel = ", ".join(f"{_q(ren.get(c, c))} AS {_q(c)}" for c in cols)
-    part = ", ".join(_q(ren.get(c, c)) for c in key)
-    return query(f"SELECT {sel} FROM {name}_changes WHERE run_at <= ? QUALIFY row_number() OVER "
-                 f"(PARTITION BY {part} ORDER BY run_at DESC) = 1 AND status = 'present' ORDER BY ALL", [at])
-
-
-def _tracked_in(sql: str) -> list[str]:
-    """Tracked live tables a raw SQL text names (a cheap over-approximation: a capture with no change appends 0)."""
-    low = sql.casefold()
-    return [n for n in CHANGES if n.casefold() in low]
-
-
-# Statement kinds refused in raw SQL that names a tracked table: a COMMIT inside the text ends the capture's transaction
-# before the capture runs, a PREPARE'd write runs later as an EXECUTE that names no table, and ATTACH reaches the raw
-# file from another handle (the refutation pass, report §5.1).
-_CAPTURE_REFUSED = {"TRANSACTION", "PREPARE", "EXECUTE", "ATTACH", "DETACH"}
-
-
-def _tracked_writes(conn, sql: str, db: str) -> list[str]:
-    """Tracked live tables a raw SQL text may change; each is captured after it runs, in its transaction.
-
-    [] when the text names none or only reads. Raises for text naming one that the capture could not follow: one of
-    ``_CAPTURE_REFUSED``, or a write sent to another file (an ATTACH there reaches raw.duckdb)."""
-    named = _tracked_in(sql)
-    if not named:
-        return []
-    kinds = {s.type.name for s in conn.extract_statements(sql)}
-    if kinds <= {"SELECT"}:
-        return []
-    bad = sorted(kinds & _CAPTURE_REFUSED) or ([] if db == "raw" else [f"a write sent to the {db} file"])
-    if bad:
-        raise RawStoreError(
-            f"raw SQL names {named}, whose every change the store records in the write's own transaction, with "
-            f"{', '.join(bad)}, which that record cannot follow. Use the write API, or send each statement as its "
-            f"own call on the raw file.")
-    return named
 
 
 def _refuse_wrong_file(sql: str, db: str) -> None:
@@ -2417,21 +2256,6 @@ def _refuse_wrong_file(sql: str, db: str) -> None:
     if wrong:
         raise RawStoreError(f"raw SQL sent to the {db} file names tables that live in another file: "
                             f"{', '.join(wrong)}. Pass db=<that file>, one query per file (S9: no ATTACH).")
-
-
-class _Fetched:
-    """A statement's result, read before the change capture reused its connection (``_Tx.execute``)."""
-
-    def __init__(self, cur):
-        self.description = cur.description
-        self._rows = list(cur.fetchall()) if cur.description else []
-
-    def fetchall(self) -> list:
-        rows, self._rows = self._rows, []
-        return rows
-
-    def fetchone(self):
-        return self._rows.pop(0) if self._rows else None
 
 
 def _apply_write(conn, name: str, spec: dict, rows: list[dict]) -> None:
@@ -2584,7 +2408,6 @@ def write_rows(name: str, rows: list[dict]) -> int:
             _ensure_table(conn, name)  # self-healing: create the table if the DB predates it
             with _tx(conn):
                 _apply_write(conn, name, spec, rows)
-                _capture_changes(conn, name)
 
     _retry_write(_op)
     return len(rows)
@@ -2625,7 +2448,6 @@ def update_columns(name: str, key_col: str, rows: list[dict],
                 else:
                     conn.executemany(
                         sql, [[r.get(c) for c in columns] + [r.get(key_col)] for r in rows])
-                _capture_changes(conn, name, touched=columns)
 
     _retry_write(_op)
     return len(rows)
@@ -2688,7 +2510,6 @@ def replace_all(name: str, rows: list[dict], *, allow_empty: bool = False) -> in
                         f"INSERT INTO {name} ({_col_sql(cols)}) "
                         f"VALUES ({', '.join(['?'] * len(cols))})",
                         [[r.get(c) for c in cols] for r in rows])
-                _capture_changes(conn, name)
 
     _retry_write(_op)
     return len(rows)
@@ -2742,14 +2563,7 @@ class _Tx:
     def execute(self, sql: str, params: list | None = None):
         _refuse_wrong_file(sql, self._db)
         _refuse_history_sql(self._conn, sql)
-        tracked = _tracked_writes(self._conn, sql, self._db)
-        res = self._conn.execute(sql, params or [])
-        if not tracked:
-            return res
-        res = _Fetched(res)            # read before the capture reuses the connection
-        for t in tracked:
-            _capture_changes(self._conn, t)
-        return res
+        return self._conn.execute(sql, params or [])
 
     def ensure_table(self, name: str) -> None:
         """Create ``name`` if missing, inside this transaction (before ``execute``)."""
@@ -2762,7 +2576,6 @@ class _Tx:
             return 0
         _ensure_table(self._conn, name)
         _apply_write(self._conn, name, spec, _json_rows(name, rows))
-        _capture_changes(self._conn, name)
         return len(rows)
 
 
@@ -2811,14 +2624,7 @@ def execute(sql: str, params: list | None = None, db: str | None = None) -> None
     _guard_schema_write(db)
     with connect(db=db) as conn:
         _refuse_history_sql(conn, sql)
-        tracked = _tracked_writes(conn, sql, db)
-        if not tracked:
-            conn.execute(sql, params or [])
-            return
-        with _tx(conn):
-            conn.execute(sql, params or [])
-            for t in tracked:
-                _capture_changes(conn, t)
+        conn.execute(sql, params or [])
 
 
 def query(sql: str, params: list | None = None, read_only: bool = True,
@@ -2835,18 +2641,9 @@ def query(sql: str, params: list | None = None, read_only: bool = True,
             if read_only:
                 _warn_schema_stamp(conn, db)   # PL7-a: a mismatch warns; it does not refuse the read
             _refuse_history_sql(conn, sql)
-            tracked = _tracked_writes(conn, sql, db)
-            if not tracked:
-                cur = conn.execute(sql, params or [])
-                cols = [d[0] for d in cur.description] if cur.description else []
-                return [dict(zip(cols, row)) for row in cur.fetchall()]
-            with _tx(conn):                  # a write sent through query(): captured like execute()
-                cur = conn.execute(sql, params or [])
-                cols = [d[0] for d in cur.description] if cur.description else []
-                rows = [dict(zip(cols, row)) for row in cur.fetchall()]
-                for t in tracked:
-                    _capture_changes(conn, t)
-            return rows
+            cur = conn.execute(sql, params or [])
+            cols = [d[0] for d in cur.description] if cur.description else []
+            return [dict(zip(cols, row)) for row in cur.fetchall()]
     except duckdb.CatalogException:
         # Missing table == no data (reads stay lenient; a pre-migration DB may
         # not have every table yet).
@@ -2977,7 +2774,6 @@ def delete(name: str, key) -> None:
     with connect(db=_db_of(name)) as conn:
         with _tx(conn):
             conn.execute(f"DELETE FROM {name} WHERE {where}", list(key))
-            _capture_changes(conn, name)
 
 
 def clear(name: str) -> None:
@@ -2994,7 +2790,6 @@ def clear(name: str) -> None:
         _ensure_table(conn, name)
         with _tx(conn):
             conn.execute(f"DELETE FROM {name}")
-            _capture_changes(conn, name)
 
 
 # ── watchlist: the stock watch list in ops.sqlite (PR 4) ─────────────────────
