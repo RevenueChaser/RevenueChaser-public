@@ -3,7 +3,7 @@
 Each shape is taken from a filing of the #400 input checks (rounds 2-3, 9 Nov 2026), where ``slice_item`` was wrong
 while labelling the slice ``ok`` (ITUB, IH, ALKS, F, MREO, NBP), ``overrun`` (MXC, ONEG), ``short`` (REFR, HYFT) or
 ``missing`` (PHM, SAP). The filings themselves stay out of the repository; the pilot's 32-filing check is in
-alsanvolkan/claude-coordinator pilots/400-relatedness-evren (fixtures-r3).
+alsanvolkan/claude-coordinator archive/pilots/400-relatedness-evren (fixtures-r3).
 """
 from __future__ import annotations
 

@@ -1,6 +1,6 @@
 """#400 10-K package WP6: the profile's input is the pilot's B input (avo's decision C, 8 Nov 2026).
 
-The pilot (claude-coordinator pilots/400-relatedness-evren, rounds 1-3) gave the writer Item 1 without the
+The pilot (claude-coordinator archive/pilots/400-relatedness-evren, rounds 1-3) gave the writer Item 1 without the
 sections that say nothing about the business (Available Information, Executive Officers, Human Capital), without
 a tail of XBRL tags or number tables (ONEG, RCON), and beside it the filing's other customer / supplier /
 concentration sentences (at most 40) and its XBRL major customers.
