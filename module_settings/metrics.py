@@ -252,14 +252,13 @@ def collect(now: datetime | None = None, *, datasets: dict | None = None, timer:
             out["rc_builder_timer_on"].append(({}, 1 if state == "on" else 0))
 
     def backups() -> None:
+        from RevenueChaser.core import rawstore
         from RevenueChaser.rcdata import backup
         # a name that two steps share (fundamentals: a builder DuckDB file and a board file) is told apart by its
         # step, a label of its own, so the board can list the served files and the board files apart and in order.
-        # The old store's files (raw, edgar, history, prices) are left out: nothing reads them any more (avo,
-        # 12 Nov 2026: "iliskisi kesilen eski database'ler. Bunlarin burada olmamasi lazim"); the weekly job still
-        # copies them while they exist.
+        # Copies of the old store files (#860) still in the backup folder are not shown (avo, 12 Nov 2026).
         for k in newdata._backups(now)["kinds"]:
-            if k["step"] == backup.STEP_BOARDS and k["kind"] in backup.LEGACY_BOARD_FILES:
+            if k["step"] == backup.STEP_BOARDS and k["kind"] not in rawstore.BOARD_DBS:
                 continue
             when = _iso_epoch(k.get("newest"))
             if when is not None:

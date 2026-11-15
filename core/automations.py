@@ -178,7 +178,7 @@ REGISTRY: tuple[AutomationEntry, ...] = (
                     "refresh (AG with the universe pull, then Swing, then Fundamentals) and the forecast freeze "
                     "(#128, which writes nothing inside the US session). A busy universe lock exits 3.",
         tables_written=("equity_universe", "equity_universe_provenance", "quote_snapshot", "source_checks",
-                        "ticker_payload_cache", "edgar_financials", "swing_ohlc", "swing_info", "ticker_scores",
+                        "ticker_payload_cache", "swing_ohlc", "swing_info", "ticker_scores",
                         "swing_scores", "swing_gates", "fundamentals_scores", "fundamentals_gates",
                         "vendor_financials", "vendor_valuation", "ownership_snapshot", "forecast_ledger",
                         "result_runs", "ag_scores_history", "swing_scores_history", "swing_gates_history",

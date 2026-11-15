@@ -91,7 +91,6 @@ def discover_sources(rd: Path) -> dict[str, list[Path]]:
             out.setdefault(ds, []).extend(files)
 
     add_dir("ticker_payload_cache", rd / "tickers")
-    add_dir("edgar_financials", rd / "edgar_financials")
     add_dir("swing_info", rd / "swing_potential" / "info")
     add_dir("swing_ohlc", rd / "swing_potential" / "ohlc", pattern="*.csv")
     add_dir("leaps_cache", rd / "leaps" / "cache")
@@ -181,13 +180,6 @@ def _rows_for(ds: str, paths: list[Path]) -> list[dict]:
             out.append({"ticker": p.stem.replace("_raw", "").upper(), "payload": d,
                         "fetched_at": _f(d.get("_fetched_at")),
                         "fetched_at_iso": d.get("_fetched_at_iso", "")})
-        return out
-    if ds == "edgar_financials":
-        out = []
-        for p in paths:
-            d = _json_file(p) or {}
-            out.append({"ticker": p.stem.upper(), "annual": d.get("annual", []),
-                        "quarterly": d.get("quarterly", []), "meta": d.get("meta", {})})
         return out
     if ds == "swing_info":
         return [{"ticker": p.stem.upper(), "payload": _json_file(p), "cached_at": p.stat().st_mtime} for p in paths]

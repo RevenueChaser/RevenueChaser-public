@@ -101,8 +101,8 @@ def _our_start() -> str:
 
 
 def _lock_path(name: str) -> Path:
-    # Beside the raw DB, so it follows RC_STORE_DIR / the test isolation fixture.
-    return Path(rawstore.DB_PATH).parent / f"{name}.lock"
+    # In the store folder, so it follows RC_STORE_DIR / the test isolation fixture.
+    return Path(rawstore.STORE_DIR) / f"{name}.lock"
 
 
 def _read_owner(path: Path) -> tuple[int | None, str, str]:
@@ -300,7 +300,7 @@ def holders(directory: Path | None = None) -> list[tuple[str, int]]:
     On the OS-lock path, a lock the kernel really holds whose owner text cannot be read is a holder too, with pid
     ``0``: the PID is what is unknown, not the holder (#365).
     """
-    d = Path(directory or Path(rawstore.DB_PATH).parent)
+    d = Path(directory or Path(rawstore.STORE_DIR))
     out = []
     for p in d.glob("*.lock"):
         pid = _live_pid(p)
@@ -315,7 +315,7 @@ def holders(directory: Path | None = None) -> list[tuple[str, int]]:
 # map can only ever refuse too much. The two stores never overlap: the builder writes nothing in the old store but
 # its own lock file, and no other family writes a serving file (``rcdata/build`` is the only caller of
 # ``serving.build``).
-#: The old store's DuckDB files under ``RC_STORE_DIR``: ``raw``, ``edgar``, ``history`` and the legacy ``prices``.
+#: The board files under ``RC_STORE_DIR/boards`` (the old store files went with #860).
 STORE = "store"
 #: The serving files and ``ops.sqlite`` under ``RC_MARKET_DIR``, written by the one builder (D1).
 MARKET = "market"

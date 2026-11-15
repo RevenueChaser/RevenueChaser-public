@@ -136,7 +136,6 @@ QUERIED_COLUMNS: list[tuple[str, str]] = [
     # SEC submissions (#299, D15)
     ("sec_submissions", "cik"), ("sec_submissions", "filing_date"), ("sec_submissions", "fetched_at"),
     ("source_checks", "key"), ("source_checks", "run_id"),
-    ("edgar_financials", "ticker"),
     ("swing_ohlc", "ticker"), ("swing_ohlc", "ts"),
     ("price_bars_daily", "ticker"), ("price_bars_daily", "session_date"), ("price_bars_daily", "source"),
     ("price_actions", "ex_date"),
@@ -1823,7 +1822,6 @@ def identity_coverage(tickers: list[str], now: datetime | None = None,
                                     expected=n_kept))
 
     for key, label, table, names, denom in (
-            ("facts", "EDGAR company facts", "edgar_financials", kept_operating, operating_denominator),
             ("annual", "Annual report (10-K or 20-F)", "chain_filings", kept_operating, operating_denominator),
             # Ownership is held in funds as in companies (13F holds ETFs), so it counts every kept name.
             ("ownership", "Ownership", "ownership_snapshot", kept, denominator)):
@@ -1973,17 +1971,6 @@ def _collect(now: datetime) -> dict:
         },
         _sec_submissions_row(),
         _sec_files_row(),
-        {
-            "key": "companyfacts",
-            "label": "Companyfacts",
-            "tables": ["edgar_financials"],
-            "rows": _count("edgar_financials"),
-            "last_date": DASH,
-            "holes": _missing(operating, "edgar_financials"),
-            "hole_label": "no facts",
-            "fetch": None,
-            "note": "",
-        },
         {
             "key": "ohlc",
             "label": "Legacy daily open/high/low/close cache (SPY fallback)",

@@ -158,7 +158,7 @@ def test_a_first_download_that_fails_leaves_nothing_behind(tmp_path, no_throttle
 
 # --- ingest_dir: a zip is deleted only after its ingest ran to the end ---------------
 
-def test_ingest_dir_with_a_limit_keeps_the_zip(rawstore_tmp_db, tmp_path, monkeypatch):
+def test_ingest_dir_with_a_limit_keeps_the_zips(rawstore_tmp_db, tmp_path, monkeypatch):
     """``limit`` stops the ingest early, so the rest of the archive would be lost with the zip."""
     monkeypatch.setattr(eb, "OUTPUT_DIR", tmp_path)
     d = eb.bulk_dir()
@@ -184,7 +184,7 @@ def test_ingest_dir_with_delete_false_never_deletes(rawstore_tmp_db, tmp_path, m
     assert (d / "submissions.zip").is_file()
 
 
-def test_the_cli_keeps_the_zip_when_asked_to_stop_early(rawstore_tmp_db, tmp_path, monkeypatch, capsys):
+def test_the_cli_keeps_the_zips_when_asked_to_stop_early(rawstore_tmp_db, tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(eb, "OUTPUT_DIR", tmp_path)
     d = eb.bulk_dir()
     _zip(d, "submissions.zip", _submissions())

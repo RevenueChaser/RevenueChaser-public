@@ -316,12 +316,6 @@ REGISTRY: tuple[DatasetSpec, ...] = (
                    "one is written."),
     ),
     DatasetSpec(
-        key="companyfacts", label="Companyfacts",
-        tables=("edgar_financials",),
-        db="edgar", source=Source.sec, writer="RC-Screeners-Daily",
-        freshness=("edgar_financials", "fetched_at"),
-    ),
-    DatasetSpec(
         key="ohlc", label="Legacy daily open/high/low/close cache (SPY fallback)",
         tables=("swing_ohlc",),
         db="raw", source=Source.yfinance, writer="RC-Screeners-Daily",

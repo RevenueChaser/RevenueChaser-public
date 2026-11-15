@@ -145,8 +145,8 @@ def _owner(path: Path) -> str:
 
 
 def bucket_path(name: str = _NAME) -> Path:
-    """The bucket file: beside ``raw.duckdb``, so ``RC_STORE_DIR`` and the test isolation follow."""
-    return Path(rawstore.DB_PATH).parent / name
+    """The bucket file: in the store folder, so ``RC_STORE_DIR`` and the test isolation follow."""
+    return Path(rawstore.STORE_DIR) / name
 
 
 def _take(state: dict, now: float, rate: float, burst: float | None = None) -> tuple[float, dict]:

@@ -137,9 +137,9 @@ def live_target(step: str, src: Path) -> Path:
         return serving.live_path(stem)
     if step == backup.STEP_BOARDS:
         from ..core import rawstore
-        legacy = {"raw": Path(rawstore.DB_PATH), "edgar": rawstore.edgar_db_path(),
-                  "history": rawstore.history_db_path(), "prices": rawstore.prices_db_path()}
-        return legacy.get(stem) or Path(rawstore.DB_PATH).parent / backup.BOARDS_DIRNAME / f"{stem}.duckdb"
+        if stem not in rawstore.BOARD_DBS:   # an old store file (raw, edgar, history, prices) has no live place (#860)
+            raise RestoreRefused(f"{src.name}: not a copy of a board file ({', '.join(rawstore.BOARD_DBS)})")
+        return rawstore.board_db_path(stem)
     if step == backup.STEP_OPS:
         raise RestoreRefused("ops --live is a step by hand: on Redis `python -m RevenueChaser.rcdata.ops_copy "
                              "--sqlite <copy>` into an EMPTY namespace (emptying one is a delete: avo's word first); "

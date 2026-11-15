@@ -79,8 +79,6 @@ STEP_UW_RAW = "uw-raw"
 STEP_EDGAR_DOCS = "edgar-docs"
 STEPS = (STEP_DUCKDB, STEP_BOARDS, STEP_OPS, STEP_UW_RAW, STEP_EDGAR_DOCS)
 
-#: The old store's files the ``boards`` step copies while they exist (board results live there until S6 moves them).
-LEGACY_BOARD_FILES = ("raw", "edgar", "history", "prices")
 BOARDS_DIRNAME = "boards"
 #: The ops tables a backup keeps. The queue (``build_requests``), the read log, the call counters, the UW header
 #: samples and the check/issue rows are left empty in the copy (avo, 8 Nov 2026: "gerek olmayanlari tutma").
@@ -278,15 +276,10 @@ def _checkpoint(path: Path) -> None:
 
 
 def board_files() -> list[Path]:
-    """The board-result DuckDBs that exist: the old store's files, then ``<RC_STORE_DIR>/boards/*.duckdb``."""
+    """The board-result DuckDBs that exist: ``<RC_STORE_DIR>/boards/*.duckdb`` (the old store files are gone, #860)."""
     from ..core import rawstore
-    legacy = {"raw": Path(rawstore.DB_PATH), "edgar": rawstore.edgar_db_path(),
-              "history": rawstore.history_db_path(), "prices": rawstore.prices_db_path()}
-    found = [legacy[k] for k in LEGACY_BOARD_FILES if legacy[k].is_file()]
-    boards = Path(rawstore.DB_PATH).parent / BOARDS_DIRNAME
-    if boards.is_dir():
-        found += sorted(p for p in boards.glob("*.duckdb") if p.is_file())
-    return found
+    boards = Path(rawstore.STORE_DIR) / BOARDS_DIRNAME
+    return sorted(p for p in boards.glob("*.duckdb") if p.is_file()) if boards.is_dir() else []
 
 
 def _backup_board(path: Path, out: Path, manifest: _Manifest) -> Path:
@@ -675,7 +668,7 @@ def _open_step(step: str) -> tuple[Path, _Manifest]:
     _sweep_tmp(out)
     foreign = [p.name for p in out.iterdir()
                if p.is_file() and not p.name.startswith(".") and not p.name.startswith(tuple(
-                   (*serving.KINDS, *LEGACY_BOARD_FILES, "ops", "edgar_docs")))
+                   (*serving.KINDS, "ops", "edgar_docs")))
                and step != STEP_BOARDS]
     if foreign:                                         # logged, never a refusal and never a delete
         logger.warning("%s: %d file(s) this job did not write, left alone: %s", step, len(foreign), foreign[:5])
