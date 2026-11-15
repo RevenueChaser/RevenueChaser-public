@@ -2088,7 +2088,11 @@ question, the company, the chunk, and `ok`, `unusable reply` or the error with i
 whoever started the run (the lock `sec_reads_ask`); a question is finished and in Parquet before the next one is
 planned, so registration order is run order. A run whose first five replies are all unusable stops as failed and
 stores none of them; a key at three attempts is tried once more after 30 days; and nothing is asked while the
-live table holds more `ok` answers than the Parquet tree (a lost tree must not start a full re-read). An unusable reply is counted on its key; after three the company waits for a new
+live table holds more `ok` answers than the Parquet tree (a lost tree must not start a full re-read). A question's
+input may carry its own ready user messages (`Input.messages`) when a plain 60,000-character slice is not what
+its prompt sends. A transient error (a timeout, a 5xx) gives up on that company only, with no attempt counted,
+and stops the run at the fifth such company. A question may name `max_calls`, the most calls one run sends for it
+(a DeepSeek question must); the companies past it wait for the next run. An unusable reply is counted on its key; after three the company waits for a new
 filing or prompt, and a `partial` answer is never replaced by an `empty` one. Parquet: one partition per question,
 `parquet/sec/reads/question=<id>/answers.parquet`, plus one raw file per run under `raw/sec/reads/`; the Parquet
 tree is the durable copy of the answers.

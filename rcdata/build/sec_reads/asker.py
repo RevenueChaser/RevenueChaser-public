@@ -38,6 +38,10 @@ SLICE_S = 15 * 60.0
 #: Companies whose reply was unusable, with no usable one yet in the run, before the run is called the endpoint's
 #: fault and stopped with none of them stored (the Relatedness rule, ``module_relatedness.config.UNUSABLE_STOP``).
 UNUSABLE_STOP = 5
+#: Companies a run gives up on for a transient error (a timeout, a 5xx, a 429 after its retries) before the run
+#: itself stops: one slow company must not end every hourly run at the same place (the board's own five,
+#: ``module_relatedness.engine``). A company given up on is no attempt and is asked again by the next run.
+TRANSIENT_STOP = 5
 #: The one lock every asking run holds, whoever started it (the builder's pass, the service's own unit, a Fetch
 #: press, a command by hand): two askers would break EVREN's one request and rewrite one Parquet partition.
 ASK_LOCK = "sec_reads_ask"
@@ -71,6 +75,8 @@ class Reply:
     tokens_out: int = 0
     #: Why the last unusable chunk was unusable (the error's name and words, or ``unusable reply``); "" when none.
     error: str = ""
+    #: ``stop`` was a transient error the run tolerates: the company was cut short, the run goes on.
+    go_on: bool = False
 
 
 def busy_problem() -> str | None:
@@ -103,12 +109,39 @@ def _ask_one(ctx: base.RunContext, job: Job, started: float, lock: threading.Loc
     The pause and the day cap are read before every call, as ``base.Paused`` promises. A stop after some chunks
     were answered returns them with the stop (``Reply.stop``), so what was paid for is stored. The slice is read
     per company only: a company that started finishes its chunks.
+
+    A transient error gives up on this company only (what it answered so far is kept, no attempt is counted) until
+    :data:`TRANSIENT_STOP` companies of the run have had one; then the error stops the run as before. A question's
+    ``max_calls`` is read here too: a company whose messages would pass it is left for the next run.
     """
+    q = job.question
+    n = len(q.messages(job.input))
     with lock:
         if run["halt"] or ctx.clock() - started > SLICE_S:
             return None
-    reply = _ask_chunks(ctx, job, lock)
+        # Reserved before sending, so eight workers together never pass the cap.
+        # shortcut: a company with more messages than max_calls is never asked, raise the cap when the note names it
+        if q.max_calls is not None and run["calls"].get(q.id, 0) + n > q.max_calls:
+            if q.id not in run["capped"]:
+                run["capped"].add(q.id)
+                ctx.notes.append(f"{q.id}: this run's cap of {q.max_calls} calls is reached "
+                                 f"(cik {job.cik} needs {n}); the rest waits for the next run")
+            return None
+        run["calls"][q.id] = run["calls"].get(q.id, 0) + n
+    try:
+        reply = _ask_chunks(ctx, job, lock)
+    except deepseek.DeepSeekTransientError:
+        with lock:
+            run["transient"] += 1
+            if run["transient"] >= TRANSIENT_STOP:
+                run["halt"] = True      # no further company is sent while the caller reads this stop
+                raise
+        return None
     with lock:
+        if isinstance(reply.stop, deepseek.DeepSeekTransientError):
+            run["transient"] += 1
+            reply.go_on = run["transient"] < TRANSIENT_STOP
+            run["halt"] = run["halt"] or not reply.go_on
         run["usable" if reply.status != EMPTY else "unusable"] += 1
         run["halt"] = run["halt"] or (not run["usable"] and run["unusable"] >= UNUSABLE_STOP)
     return reply
@@ -120,7 +153,7 @@ def _ask_chunks(ctx: base.RunContext, job: Job, lock: threading.Lock) -> Reply:
     parts: list[dict] = []
     raws: list[str] = []
     missing: list[int] = []
-    chunks = q.chunks(job.input.text)
+    chunks = q.messages(job.input)
     sent = {"calls": 0, "tokens_in": 0, "tokens_out": 0, "error": ""}
 
     def log(i: int, result: str, t0: float) -> None:
@@ -203,7 +236,7 @@ def ask(ctx: base.RunContext, jobs: list[Job],
         by_provider.setdefault(j.question.provider, []).append(j)
     pools = {p: ThreadPoolExecutor(max_workers=POOLS[p]) for p in by_provider}
     try:
-        run = {"usable": 0, "unusable": 0, "halt": False}
+        run = {"usable": 0, "unusable": 0, "halt": False, "transient": 0, "calls": {}, "capped": set()}
         futs = [pools[p].submit(_ask_one, ctx, j, started, lock, run)
                 for p, js in by_provider.items() for j in js]
         for f in as_completed(futs):
@@ -222,7 +255,7 @@ def ask(ctx: base.RunContext, jobs: list[Job],
                 r.stop = base.SourceError(
                     f"the first {UNUSABLE_STOP} replies of this run were all unusable (last: {r.error or '?'}); "
                     f"check the endpoint and the model ({r.job.question.writer_model}). None was stored")
-            if r.stop is not None:
+            if r.stop is not None and not r.go_on:
                 stop = stop or r.stop
                 for g in futs:
                     g.cancel()

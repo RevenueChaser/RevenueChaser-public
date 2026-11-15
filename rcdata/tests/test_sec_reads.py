@@ -48,6 +48,8 @@ def parse(reply: str) -> dict | None:
 
 def question(ciks=("789019", "320193", "999"), text=None, **kw) -> questions.Question:
     text = TEXT if text is None else text
+    if kw.get("provider") == "deepseek":
+        kw.setdefault("max_calls", 100)                     # a DeepSeek question must name its cap
     q = questions.Question(
         id=kw.pop("id", "test.products"), owner="test", system="List the products as JSON.",
         prompt_version=kw.pop("prompt_version", "t1"), scope=lambda: list(ciks),
@@ -198,6 +200,8 @@ def test_the_registry_refuses_a_pro_model_an_unknown_provider_and_a_second_owner
         question(provider="deepseek", model="deepseek-pro")
     with pytest.raises(ValueError, match="no pool"):
         question(provider="grok")
+    with pytest.raises(ValueError, match="needs max_calls"):
+        question(provider="deepseek", max_calls=None)
     question()
     with pytest.raises(ValueError, match="already registered"):
         question()
@@ -369,3 +373,57 @@ def test_nothing_is_asked_when_the_parquet_tree_is_behind_the_live_table(http_mo
     check = run()
     assert check["result"] == "failed" and "the tree is behind" in check["note"]
     assert len(http_mock.requests) == 1
+
+
+# ── The same review, F6, F8 and F9 ──────────────────────────────────────────────────────────────────────────────
+def test_a_question_sends_its_inputs_ready_messages_and_keeps_the_staleness_text(http_mock):
+    http_mock.add("/chat/completions", chat('{"products": ["x"]}'))
+    body = "Microsoft makes software. It sells cloud."
+
+    def ask_with(context: str):
+        questions.QUESTIONS.clear()
+        questions.register(questions.Question(
+            id="test.products", owner="test", system="s", prompt_version="t1", scope=lambda: ["789019"],
+            inputs=lambda wanted: {"789019": questions.Input(
+                "acc", "d.htm", date(2026, 2, 1), body, hash_text=body,
+                messages=(f"{context} (part 1 of 2)\nMicrosoft makes software.",
+                          f"{context} (part 2 of 2)\nIt sells cloud."))},
+            parse=parse))
+        run()
+
+    ask_with("Sector: Technology")
+    assert [json.loads(r.content)["messages"][-1]["content"] for r in http_mock.requests] == [
+        "Sector: Technology (part 1 of 2)\nMicrosoft makes software.",
+        "Sector: Technology (part 2 of 2)\nIt sells cloud."]       # the input's own bytes, not a slice of its text
+    ask_with("Sector: Communication Services")
+    assert len(http_mock.requests) == 2                             # the same staleness text: nothing asked again
+    assert rows("SELECT status, calls FROM read_answer") == [("ok", 2)]
+
+
+def test_a_transient_error_gives_up_on_one_company_and_the_run_goes_on(http_mock):
+    calls = iter([(500, "busy", {}), (200, json.dumps(chat('{"products": ["x"]}')), {})])
+    http_mock.add("/chat/completions", lambda req: next(calls))
+    question()                                                      # 320193 is asked first and times out
+    check = run()
+    assert check["result"] != "failed" and "1 left for the next run" in check["note"]
+    assert rows("SELECT cik, status, attempts FROM read_answer WHERE status <> 'no_text'") == [("789019", "ok", 1)]
+
+
+def test_the_fifth_company_with_a_transient_error_stops_the_run(http_mock):
+    many = {str(1000 + i): f"company {i}" for i in range(8)}
+    http_mock.add("/chat/completions", lambda req: (500, "busy", {}))
+    question(ciks=tuple(many), text=many)
+    check = run()
+    assert check["result"] == "failed"
+    assert len(http_mock.requests) == asker.TRANSIENT_STOP and reads.held("test.products") == {}
+
+
+def test_a_run_sends_at_most_the_questions_max_calls(http_mock):
+    many = {str(1000 + i): f"company {i}" for i in range(6)}
+    http_mock.add("/chat/completions", chat('{"products": ["x"]}'))
+    question(ciks=tuple(many), text=many, max_calls=4)
+    check = run()
+    assert len(http_mock.requests) == 4
+    assert "cap of 4 calls" in check["note"] and "2 left for the next run" in check["note"]
+    run()
+    assert len(http_mock.requests) == 6                             # the next run asks the rest

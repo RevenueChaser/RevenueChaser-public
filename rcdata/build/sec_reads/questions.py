@@ -39,6 +39,10 @@ class Input:
     #: so a fallback is visible on the answer.
     kind: str = ""
     form: str = ""
+    #: The user messages, ready to send, when the question's own cut of ``text`` is not what goes out: a prompt
+    #: whose every part carries the company, its context and a part label, split on headings (the Relatedness
+    #: profile). Empty: ``text`` is sent in ``Question.chunk_chars`` slices.
+    messages: tuple[str, ...] = ()
 
 
 def _one(parts: list[dict]) -> dict:
@@ -51,6 +55,9 @@ class Question:
 
     ``parse`` returns None for an unusable reply (counted as an attempt, never stored over a good answer). A text
     longer than ``chunk_chars`` is asked in chunks; ``merge`` joins the chunks' answers.
+
+    ``max_calls`` is the most calls one run sends for this question; the companies past it wait for the next run.
+    A DeepSeek question must name one: a paid call is capped in its own code (``CLAUDE.md``, Keys).
     """
 
     id: str
@@ -66,6 +73,7 @@ class Question:
     merge: Callable[[list[dict]], dict] = field(default=_one)
     chunk_chars: int = CHUNK_CHARS
     max_tokens: int = MAX_TOKENS
+    max_calls: int | None = None
 
     @property
     def writer_model(self) -> str:
@@ -76,11 +84,15 @@ class Question:
         n = max(1, self.chunk_chars)
         return [self.user(text[i:i + n]) for i in range(0, len(text), n)] or [self.user("")]
 
+    def messages(self, inp: Input) -> list[str]:
+        """The user messages sent for ``inp``: its own ready ones, else the chunks of its text."""
+        return list(inp.messages) or self.chunks(inp.text)
+
     def input_hash(self, inp: Input) -> str:
-        """The staleness hash: the system prompt and every chunk of ``inp.hash_text`` (of ``inp.text``, what is
-        sent, when it names none). The same hash, no new call."""
+        """The staleness hash: the system prompt and every chunk of ``inp.hash_text`` (of what is sent, when it
+        names none). The same hash, no new call."""
         h = hashlib.sha256(self.system.encode("utf-8"))
-        for chunk in self.chunks(inp.text if inp.hash_text is None else inp.hash_text):
+        for chunk in self.messages(inp) if inp.hash_text is None else self.chunks(inp.hash_text):
             h.update(b"\x00" + chunk.encode("utf-8"))
         return h.hexdigest()[:32]
 
@@ -94,6 +106,8 @@ def register(q: Question) -> Question:
         raise ValueError(f"{q.id}: provider {q.provider!r} has no pool; one of {', '.join(PROVIDERS)}")
     if q.provider == "deepseek" and "pro" in q.writer_model.lower():
         raise ValueError(f"{q.id}: DeepSeek is always Flash, never Pro (avo, 15 Nov 2026)")
+    if q.provider == "deepseek" and not q.max_calls:
+        raise ValueError(f"{q.id}: a DeepSeek question needs max_calls, the most calls one run may send")
     if q.id in QUESTIONS and QUESTIONS[q.id] is not q:
         raise ValueError(f"question {q.id!r} is already registered by {QUESTIONS[q.id].owner}")
     QUESTIONS[q.id] = q
