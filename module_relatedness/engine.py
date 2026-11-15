@@ -1167,15 +1167,16 @@ def _run(no_fetch: bool, tickers: list[str] | None, limit: int | None,
 
 
 def _reusable_payload(provider: str, model: str | None) -> dict | None:
-    """The saved payload (``RELATEDNESS_JSON``) when a Refresh of the whole board can render it as it is: the same
-    writer wrote it and no stored profile is newer than its ``as_of``. Rescoring every pair of 5,096 profiles took the
+    """The saved payload (``RELATEDNESS_JSON``) when a Refresh of the whole board can render it as it is: no stored
+    profile is newer than its ``as_of``, whichever writer wrote it. Rescoring every pair of 5,096 profiles took the
     dashboard about two hours single-threaded on 15 Nov 2026 (#884 A) for the scores the run had just written."""
     payload = load_payload()
-    as_of, writer = payload.get("as_of"), payload.get("writer") or {}
+    as_of = payload.get("as_of")
     if not as_of or not payload.get("companies"):
         return None
-    if (writer.get("provider"), writer.get("model")) != (provider, model or _writer(provider)[0]):
-        return None
+    # The writer is not compared: another writer's profiles stay current and in the matrix (avo, 11 Nov 2026), so
+    # a payload the DeepSeek batch wrote serves a board whose writer is EVREN (measured 15 Nov 2026 19:27: the
+    # writer check sent the Refresh back into the two-hour rescoring).
     try:
         cutoff = datetime.fromisoformat(str(as_of)).timestamp()
     except ValueError:
