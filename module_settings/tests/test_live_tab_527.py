@@ -56,22 +56,3 @@ def test_the_grafana_address():
 
 
 
-def test_the_health_tab_no_longer_draws_the_live_parts():
-    """#527 B4, decision D4 = B (avo, 8 Nov 2026 02:39): the queue, the running jobs and the "right now" strip leave
-    the Health tab once Grafana shows them; the Grafana frame now heads the same tab, so no link is needed.
-
-    #715 step 2 (avo, 11 Nov 2026) puts the queue back, but as part of the Fetch board under its file groups,
-    not as the Health tab's own card."""
-    from RevenueChaser.module_settings.tests.test_control_view import control_nd
-    from RevenueChaser.module_settings.tests.test_report import _panel, _payload
-    html = report.render_settings_dashboard(dict(_payload(), newdata=control_nd(),
-                                                 ibkr_login_url="https://gateway.example/"))
-    health = _panel(html, "panel-health")
-    # #715 (avo, 12 Nov 2026, "Karşılığı olanı şimdi kaldır"): the queue, the switches and the reference parts are
-    # the framed board's; under the frame stay the gateway's login link, the universe and the fills.
-    for gone in ('id="health-queue"', 'id="sec-queue"', 'id="needs"', 'id="sw-msg"', 'id="health-live-link"'):
-        assert gone not in health, gone
-    assert health.index('id="live-frame"') < health.index('id="sec-universe"') < health.index('class="fgrps"')
-    assert health.count('class="topbar"') == 1 and "sw-msg-h" not in health
-    data = _panel(html, "panel-data")
-    assert 'class="topbar"' not in data and 'href="https://gateway.example/"' in health

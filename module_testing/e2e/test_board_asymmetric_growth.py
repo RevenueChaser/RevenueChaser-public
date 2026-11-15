@@ -25,49 +25,10 @@ _QUOTE = {"regularMarketPrice": 100.0, "fiftyTwoWeekHigh": 105.0, "fiftyDayAvera
           "averageDailyVolume10Day": 160.0, "averageDailyVolume3Month": 100.0}
 
 
-@pytest.fixture
-def seeded_edgar_ticker(dashboard, monkeypatch):
-    import RevenueChaser.core.rawstore as rawstore
-
-    monkeypatch.setattr(rawstore, "DB_PATH", dashboard.store_dir / "raw.duckdb")
-    universe_store.put([{
-        "ticker": "EDGR", "market_cap": 5e9, "sector": "Technology", "price": 100.0,
-        "name": "Edgar Co", "quote": _QUOTE}])
-    # yfinance payload carries only info: the annual set comes from EDGAR
-    rawstore.write_rows("ticker_payload_cache", [{
-        "ticker": "EDGR", "fetched_at": time.time(), "fetched_at_iso": "2026-10-02T00:00:00+00:00",
-        "payload": {"ticker": "EDGR", "sector": "Technology", "market_cap": 5e9, "source": "test",
-                    "info": {"longName": "Edgar Co", "country": "United States", "exchange": "NMS",
-                             "industry": "Software"}, "annual": []}}])
-    from RevenueChaser.rcdata.tests import fund_store
-    monkeypatch.setattr("RevenueChaser.core.config.MARKET_DIR", dashboard.env["RC_MARKET_DIR"])  # served files
-    fund_store.put_edgar([{"ticker": "EDGR", "annual": _ANNUAL, "quarterly": [],
-                           "meta": {"source": "sec_edgar", "entity_name": "Edgar Co", "is_us": True}}])
-    return dashboard
 
 
-def test_refresh_keeps_a_ticker_with_edgar_annual_data(seeded_edgar_ticker, provider_routes):
-    """The Fetch scores the EDGAR-backed ticker; the Refresh shows it from the stored rows (K4, #383 R1)."""
-    job = seeded_edgar_ticker.run_job("/run/module_asymmetric_growth")
-    seeded_edgar_ticker.wait_until_idle()
-    assert job.ok, job
-    before, yf_before = provider_routes.request_count, seeded_edgar_ticker.yf_calls()
-    r = seeded_edgar_ticker.view("module_asymmetric_growth", refresh=True)
-    assert r.status_code == 200
-    assert "could not be scored" not in r.text
-    # The cards come from the payload route (#380 S7, K10), not the page.
-    data = seeded_edgar_ticker.get("/view/module_asymmetric_growth/payload.json")
-    assert data.status_code == 200
-    assert "EDGR" in [c["ticker"] for c in data.json()["cards"]], "EDGAR-backed ticker was dropped from the board"
-    assert provider_routes.request_count == before, "refresh reached the network"
-    assert seeded_edgar_ticker.yf_calls() == yf_before, "refresh reached yfinance"
 
 
-def test_refresh_leaves_ticker_scores_alone(seeded_edgar_ticker):
-    import RevenueChaser.core.rawstore as rawstore
-    rawstore.replace_all("ticker_scores", [{"ticker": "OLD1"}, {"ticker": "OLD2"}])
-    assert seeded_edgar_ticker.view("module_asymmetric_growth", refresh=True).status_code == 200
-    assert seeded_edgar_ticker.table_count("ticker_scores") == 2
 
 
 def test_refresh_with_no_stored_universe_says_so_and_calls_nothing(dashboard, provider_routes):

@@ -9,7 +9,6 @@ from datetime import date, datetime, timezone
 from RevenueChaser.core import rawstore
 from RevenueChaser.core.providers.result import ProviderResult
 from RevenueChaser.module_leaps import engine
-from RevenueChaser.module_leaps import history as leaps_history
 from RevenueChaser.module_leaps.scan import scan_leaps, scan_leaps_cached
 
 TODAY = date(2026, 10, 6)
@@ -72,31 +71,10 @@ def _cache(ticker):
 
 # ── the Refresh reads history ──
 
-def test_refresh_reads_names_from_the_recorded_history(rawstore_tmp_db):
-    rawstore.save_watchlist({"ZZZZ"})
-    _cache("ZZZZ")
-    leaps_history.record([_footprint("ZZZZ", "Zed Corp")], run_id="r1", run_at=COMPLETE)
-    watched, _ = scan_leaps_cached(today=TODAY)
-    assert watched[0]["name"] == "Zed Corp"           # a ticker the 13F meta does not carry
 
 
-def test_a_history_name_wins_over_the_13f_meta(rawstore_tmp_db):
-    from RevenueChaser.module_sec_13f import engine as sf
-    rawstore.save_watchlist({"ZZZZ"})
-    sf.save_sec13f_meta({"ZZZZ": {"name": "Zed 13F", "sector": "Energy", "type": "Stock"}})
-    _cache("ZZZZ")
-    leaps_history.record([_footprint("ZZZZ", "Zed Fetch")], run_id="r1", run_at=COMPLETE)
-    watched, _ = scan_leaps_cached(today=TODAY)
-    assert watched[0]["name"] == "Zed Fetch"
 
 
-def test_refresh_falls_back_to_the_13f_meta_without_history(rawstore_tmp_db):
-    from RevenueChaser.module_sec_13f import engine as sf
-    rawstore.save_watchlist({"ZZZZ"})
-    sf.save_sec13f_meta({"ZZZZ": {"name": "Zed 13F", "sector": "Energy", "type": "Stock"}})
-    _cache("ZZZZ")
-    watched, _ = scan_leaps_cached(today=TODAY)
-    assert watched[0]["name"] == "Zed 13F"
 
 
 # ── the Fetch resolves names through the screener result read ──
@@ -108,11 +86,3 @@ def test_the_fetch_prefers_the_screener_result_read(rawstore_tmp_db):
     assert footprints[0]["name"] == "AAA NEW"
 
 
-def test_a_blank_history_name_keeps_the_13f_name(rawstore_tmp_db):
-    from RevenueChaser.module_sec_13f import engine as sf
-    rawstore.save_watchlist({"ZZZZ"})
-    sf.save_sec13f_meta({"ZZZZ": {"name": "Zed 13F", "sector": "Energy", "type": "Stock"}})
-    _cache("ZZZZ")
-    leaps_history.record([_footprint("ZZZZ", "")], run_id="r1", run_at=COMPLETE)
-    watched, _ = scan_leaps_cached(today=TODAY)
-    assert watched[0]["name"] == "Zed 13F"

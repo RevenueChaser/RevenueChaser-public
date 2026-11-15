@@ -13,7 +13,6 @@ import re
 import pytest
 
 from RevenueChaser.core import index_registry as ir
-from RevenueChaser.core import index_lists as il
 from RevenueChaser.core import rawstore
 from RevenueChaser.core import reporting_common as rc
 
@@ -22,63 +21,19 @@ def _members(prefix: str, n: int) -> set[str]:
     return {f"{prefix}{i:04d}" for i in range(n)}
 
 
-@pytest.fixture
-def fetchers(rawstore_tmp_db, monkeypatch):
-    """Fake fetchers that would return full lists (sp600: 601 names); ``calls`` records each fetch."""
-    state = {"sp500": _members("S", 450), "dow": _members("D", 30), "nasdaq": _members("N", 1100),
-             "sp600": _members("M", 601)}
-    calls: list[str] = []
-
-    def fetcher(slug):
-        def f():
-            calls.append(slug)
-            return set(state[slug])
-        return f
-
-    monkeypatch.setattr(il, "_FETCHERS", {s: fetcher(s) for s in state})
-    return state, calls
 
 
-def _stored(slug: str) -> int:
-    return int(rawstore.query("SELECT count(*) AS n FROM index_constituents WHERE slug = ?", [slug])[0]["n"])
 
 
 # ── the first-fill gate lives in fetch_index ──────────────────────────────────────────────────────────────────────
-def test_fetch_index_refuses_a_gated_first_fill(fetchers):
-    _, calls = fetchers
-    assert il.fetch_index("sp600") == set()
-    assert il.fetch_index("sp600", refresh=True) == set()
-    assert _stored("sp600") == 0
-    assert "sp600" not in calls                       # not even read
 
 
-def test_fetch_all_indexes_on_an_empty_sp600_writes_nothing(fetchers):
-    _, calls = fetchers
-    il.fetch_all_indexes()
-    il.fetch_all_indexes(refresh=True)
-    assert _stored("sp600") == 0 and "sp600" not in calls
-    assert _stored("sp500") == 450                    # the ungated lists still fill
 
 
-def test_the_weekly_step_still_writes_the_named_first_fill(fetchers):
-    res = il.refresh_lists(run_id="r1", first_fill=["sp600"])
-    assert res["slugs"]["sp600"]["status"] == "written"
-    assert _stored("sp600") == 601
 
 
-def test_once_sp600_has_rows_fetch_index_may_refresh_it(fetchers):
-    state, _ = fetchers
-    il.refresh_lists(run_id="r1", first_fill=["sp600"])
-    state["sp600"] = _members("M", 590)
-    assert len(il.fetch_index("sp600", refresh=True)) == 590
 
 
-def test_sp600_never_joins_the_fetched_indexes():
-    assert "sp600" not in dict(il.INDEXES)
-    # every stored slug has a label. This pins the spine's badge set to the OLD store's slug list (Opus review N3,
-    # PR 6): it goes with index_lists in PR 21, when the spine's own slugs (sp400 has no label yet) decide.
-    assert set(ir.LABELS) == set(il.STORED)
-    assert ir.LABELS["sp600"] == "S&P SmallCap 600"
 
 
 # ── labels and meta ───────────────────────────────────────────────────────────────────────────────────────────────

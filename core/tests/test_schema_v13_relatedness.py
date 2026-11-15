@@ -70,16 +70,6 @@ def test_the_label_is_13():
     assert rawstore.schema_version() == "13"
 
 
-def test_a_v12_store_gains_the_columns_and_the_table_and_keeps_its_row(v12_store):
-    _migrate()
-    assert {"profile_json", "label_source"} <= _columns(rawstore.board_db_path("relatedness"), "relatedness_profiles")
-    assert {"ticker", "model", "dim", "vector"} <= _columns(rawstore.board_db_path("relatedness"), V13_TABLE)
-    assert V13_TABLE not in _snapshot(rawstore.edgar_db_path())
-    row = rawstore.get("relatedness_profiles", "AAPL")
-    assert row["profile_json"] is None and row["label_source"] is None
-    for name, was in v12_store.items():
-        assert row[name] == was
-    assert rawstore.count("relatedness_profiles") == 1
 
 
 def test_the_new_columns_hold_json_and_the_vector_holds_bytes(rawstore_tmp_db):

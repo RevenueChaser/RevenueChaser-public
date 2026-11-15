@@ -20,10 +20,8 @@ import pytest
 from RevenueChaser.core import ledger, rawstore
 from RevenueChaser.core.providers.result import ProviderResult
 from RevenueChaser.module_leaps import engine
-from RevenueChaser.module_leaps import history as leaps_history
 from RevenueChaser.module_leaps.scan import scan_leaps, scan_leaps_cached
 
-BOARD, TABLE = "module_leaps", "leaps_footprint_history"
 TODAY = date(2026, 10, 5)                       # a Monday session
 FAR = "2027-12-17"                              # > 270 days after TODAY
 # The nine keys Earnings reads off ``leaps_cache.latest`` (pipeline._score, C26).
@@ -42,27 +40,6 @@ def _per(value, ticker):
     return value.get(ticker) if isinstance(value, dict) else value
 
 
-def seed_session(as_of: date, oi_by_ticker: dict, *, label="Quiet", ask_share=None, run_at=None):
-    """Record one complete LEAPS session (a real ``leaps_footprint_history`` run) for every ticker.
-
-    ``oi_by_ticker`` maps ticker -> the OI-per-expiry rows the footprint was built from. The row carries them in
-    ``inputs``, which is where the classifier reads its baselines from (O9).
-    """
-    rows = []
-    for ticker, oi in oi_by_ticker.items():
-        totals = engine.far_oi_totals(oi, as_of)
-        calls, puts = totals["far_call_oi"], totals["far_put_oi"]
-        snap = {
-            "ticker": ticker, "name": f"{ticker} Inc", "as_of": as_of.isoformat(),
-            "label": _per(label, ticker), "score": 10,
-            "far_call_oi": calls, "far_put_oi": puts,
-            "far_call_share": round(calls / (calls + puts), 4) if calls + puts else None,
-            "near_term_event": False, "ask_share": _per(ask_share, ticker),
-        }
-        rows.append({"ticker": ticker, "name": snap["name"], "snapshot": snap,
-                     "inputs": {"oi_per_expiry": oi, "flow_per_expiry": [], "iv_rank": []},
-                     "fetch_status": "ok"})
-    return leaps_history.record(rows, run_id=f"s{as_of.isoformat()}", run_at=run_at or run_at_of(as_of))
 
 
 class _UW:
@@ -183,52 +160,14 @@ def test_an_empty_history_gives_none_never_zero():
     assert engine.matched_far_growth(_oi(900), _oi(0), "2026-06-30") is None      # a 0 baseline is no growth
 
 
-def test_the_fetch_reads_history_not_the_frozen_cache_list(store):
-    # A frozen cache list holding a far-call OI of 400 (the old baseline source) is not read: no recorded
-    # session, no baseline.
-    rawstore.save_watchlist({"AAA"})
-    frozen = [{"ticker": "AAA", "far_call_oi": 400, "as_of": "2026-10-02"}]
-    rawstore.write_rows("leaps_cache", [{"ticker": "AAA", "payload": {
-        "latest": {"ticker": "AAA", "far_call_oi": 400, "as_of": "2026-10-02"}, "history": frozen}}])
-    watched, _ = scan_leaps(_UW({"AAA": (1000, 200)}), today=TODAY)
-    (aaa,) = watched
-    assert aaa["far_oi_growth_1d_pct"] is None and aaa["label"] == "Quiet"
-    # With a recorded session the same Fetch grows from it, not from the cache list.
-    seed_session(date(2026, 10, 2), {"AAA": _oi(400)})
-    footprints: list = []
-    watched, _ = scan_leaps(_UW({"AAA": (1000, 200)}), today=TODAY, footprints=footprints)
-    assert footprints[0]["inputs"]["baseline_1d"]["as_of"] == "2026-10-02"
-    assert watched[0]["far_oi_growth_1d_pct"] == 150.0
 
 
 # ── 3. the quarter baseline ──────────────────────────────────────────────────────────────────────────────────────
 
-def test_quarter_baseline_is_the_latest_row_at_or_before_quarter_end(store):
-    seed_session(date(2026, 6, 29), {"AAA": _oi(400)})
-    seed_session(date(2026, 7, 2), {"AAA": _oi(900)})
-    base = leaps_history.baselines(["AAA"], date(2026, 8, 10))["AAA"]
-    assert base["q"]["as_of"] == "2026-06-29"          # 07-02 is after the 06-30 quarter end
-    assert base["1d"]["as_of"] == "2026-07-02"
 
 
-def test_a_same_session_row_is_not_its_own_baseline(store):
-    seed_session(date(2026, 10, 2), {"AAA": _oi(400)})
-    seed_session(TODAY, {"AAA": _oi(1000)})
-    base = leaps_history.baselines(["AAA"], TODAY)["AAA"]
-    assert base["newest"]["as_of"] == "2026-10-05"
-    assert base["1d"]["as_of"] == "2026-10-02"
-    # Today's row is the only one recorded: there is no baseline yet, not itself.
-    assert leaps_history.baselines(["AAA"], date(2026, 10, 2))["AAA"]["1d"] is None
 
 
-def test_history_dates_compare_as_iso_strings(store):
-    # ``as_of`` is a DATE column: DuckDB hands back a ``date``, and the quarter end is an ISO string.
-    seed_session(date(2026, 6, 29), {"AAA": _oi(300)})
-    seed_session(date(2026, 6, 30), {"AAA": _oi(400)})
-    base = leaps_history.baselines(["AAA"], date(2026, 8, 10))["AAA"]
-    assert base["q"]["as_of"] == "2026-06-30"          # the quarter-end row itself counts
-    assert base["1d"]["as_of"] == "2026-06-30"
-    assert all(isinstance(r["as_of"], str) for r in base["rows"])
 
 
 # ── 4. the ask-share gate ────────────────────────────────────────────────────────────────────────────────────────
@@ -260,71 +199,16 @@ def test_high_ask_share_stays_accumulating():
     assert engine.radar_snapshot(_cand(ask_share=0.8))["label"] == "Accumulating"
 
 
-def test_the_scan_passes_the_flows_ask_share_to_the_classifier(store):
-    # A seeded baseline says the footprint grew; the scan's only print is all bid, so it is not Accumulating.
-    rawstore.save_watchlist({"AAA"})
-    seed_session(date(2026, 10, 2), {"AAA": _oi(400)})
-    tape = [{"id": "b1", "underlying_symbol": "AAA", "strike": "200", "expiry": "2027-06-18", "premium": "200000",
-             "size": 10, "option_type": "call", "delta": "0.8", "next_earnings_date": None,
-             "executed_at": "2026-10-05T14:00:00Z", "ask_vol": 0, "bid_vol": 10, "tags": []}]
-
-    class _Tape(_UW):
-        def option_trades(self, **kw):
-            return tape
-
-    watched, _ = scan_leaps(_Tape({"AAA": (1000, 100)}), today=TODAY)
-    (aaa,) = watched
-    assert aaa["far_oi_growth_1d_pct"] == 150.0        # the footprint grew from the recorded session
-    assert aaa["ask_share"] == 0.0 and aaa["label"] == "Quiet"
 
 
 # ── 5. a failed read leaves the recorded baseline alone ──────────────────────────────────────────────────────────
 
-def test_a_failed_read_leaves_the_baseline_alone(store):
-    rawstore.save_watchlist({"AAA"})
-    seed_session(date(2026, 10, 2), {"AAA": _oi(400)})
-    failed = engine.fetch_and_classify("AAA", _uw_404("AAA"), today=TODAY, inputs={})
-    assert failed["label"] == "N/A"
-    inputs: dict = {}
-    snap = engine.fetch_and_classify("AAA", _UW({"AAA": (1000, 100)}), today=TODAY, inputs=inputs)
-    assert inputs["baseline_1d"]["as_of"] == "2026-10-02"
-    assert inputs["baseline_1d"]["far_call_oi"] == 400
-    assert snap["far_oi_growth_1d_pct"] == 150.0 and snap["label"] == "Accumulating"
 
 
 # ── 6. an unreadable history is a warning, never a failed Fetch ──────────────────────────────────────────────────
 
-def test_unreadable_history_gives_growth_none_and_a_warning(store, monkeypatch):
-    def boom(*a, **k):
-        raise rawstore.StoreLockedError("history.duckdb", 4242, "duckdb.exe", "C:/duckdb.exe", "held")
-
-    monkeypatch.setattr(leaps_history, "baselines", boom)
-    rawstore.save_watchlist({"AAA"})
-    notes: list = []
-    footprints: list = []
-    watched, _ = scan_leaps(_UW({"AAA": (1000, 200)}), today=TODAY, warnings=notes, footprints=footprints)
-    # One warning for the baseline read, never one per ticker (the scan's calendar warning may sit beside it, DF94).
-    assert sum("baseline" in n.lower() for n in notes) == 1
-    (aaa,) = watched
-    (fp,) = footprints
-    assert aaa["far_oi_growth_1d_pct"] is None and aaa["far_oi_growth_q_pct"] is None
-    assert aaa["label"] == "Quiet"                    # not a footprint: no baseline, not growth
-    assert fp["fetch_status"] == "ok"
 
 
-def test_baseline_read_is_batched(store, monkeypatch):
-    tickers = [f"T{i:03d}" for i in range(100)]
-    calls = []
-    real = rawstore.query
-
-    def counted(sql, params=None, **kw):
-        if kw.get("db") == "history":
-            calls.append(sql)
-        return real(sql, params, **kw)
-
-    monkeypatch.setattr(rawstore, "query", counted)
-    leaps_history.baselines(tickers, TODAY)
-    assert len(calls) <= 3                            # the sessions, their run count and one rows read
 
 
 # ── 7. the cache payload: latest kept, history frozen ────────────────────────────────────────────────────────────
@@ -355,33 +239,8 @@ def _cached_0915(expiry, label="Quiet"):
             "iv_rank": 55.0, "iv_rank_slope": None, "near_term_event": False}
 
 
-def test_refresh_rederives_with_the_rows_own_date(store):
-    # The recorded sessions end on 2026-09-15; at that date 2027-06-18 is 276 DTE (far), at the 2026-11-20
-    # Refresh date it is 210 (near). Re-deriving with the row's own as_of finds the growth; any other date does not.
-    expiry = "2027-06-18"
-    seed_session(date(2026, 6, 30), {"AAA": _oi(500, expiry=expiry)})
-    seed_session(date(2026, 9, 15), {"AAA": _oi(1000, expiry=expiry)})
-    rawstore.save_watchlist({"AAA"})
-    engine.save_cache("AAA", _cached_0915(expiry))
-    watched, _ = scan_leaps_cached(today=date(2026, 11, 20))
-    (aaa,) = watched
-    assert aaa["far_oi_growth_1d_pct"] == 100.0 and aaa["label"] == "Accumulating"
 
 
-def test_refresh_shows_the_cache_latest_when_a_newer_fetch_is_not_recorded(store):
-    # The cache holds an intraday Fetch of 2026-10-07; the newest recorded session is 2026-09-15: it is not
-    # re-derived from the older row (D4), so its own label stands.
-    expiry = "2027-06-18"
-    seed_session(date(2026, 6, 30), {"AAA": _oi(500, expiry=expiry)})
-    seed_session(date(2026, 9, 15), {"AAA": _oi(1000, expiry=expiry)})
-    rawstore.save_watchlist({"AAA"})
-    snap = _cached_0915(expiry, label="Distributing")
-    snap["as_of"] = "2026-10-07"
-    engine.save_cache("AAA", snap)
-    watched, _ = scan_leaps_cached(today=date(2026, 11, 20))
-    (aaa,) = watched
-    assert aaa["as_of"] == "2026-10-07" and aaa["label"] == "Distributing"
-    assert aaa["far_oi_growth_1d_pct"] is None
 
 
 # ── 9. the board says the signal is exploratory (Q5) ─────────────────────────────────────────────────────────────

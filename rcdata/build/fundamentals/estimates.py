@@ -3,9 +3,8 @@
 One request per company (``core/providers/yfinance.get_earnings_trend``: Yahoo's ``earningsTrend``, the four blocks
 ``earnings_estimate``, ``revenue_estimate``, ``eps_trend``, ``eps_revisions`` for the periods ``0q``, ``+1q``,
 ``0y``, ``+1y``), for its shortest ticker (HEI, not HEI-A), when its newest answer is ``WEEK_DAYS`` old or there is
-none; the companies longest without an answer first. Mapped to columns by Earnings Radar's own D14 mapping
-(``module_earnings_radar/inputs/estimates.py``: ``trend_rows``, read, not changed), so a value is the value the board
-reads today; a field Yahoo does not give, or gives as NaN, stays NULL. Counted under ``yfinance`` and paced at its
+none; the companies longest without an answer first. Mapped to columns by ``trend_rows`` (the D14 mapping, moved
+here from Earnings Radar's old sweep when the old store went, #860); a field Yahoo does not give, or gives as NaN, stays NULL. Counted under ``yfinance`` and paced at its
 window, 2,000 an hour (``caps.WINDOWS``, shared with the run's other Yahoo readers);
 ``FAIL_STREAK`` failures in a row stop the run (Yahoo throttling or down), and a run where every request failed is a
 failed run. A company that failed is asked again by the next run.
@@ -19,8 +18,9 @@ gives it the old ``raw.duckdb`` shape (``session_date`` the day it was asked).
 """
 from __future__ import annotations
 
+import math
 import time
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 import duckdb
@@ -37,14 +37,71 @@ FAIL_STREAK = 5
 STAGING = "stg_yf_estimates"
 
 
-def _d14():
-    # Earnings Radar's one mapping of the four blocks to the ``estimate_snapshots`` columns.
-    from ....module_earnings_radar.inputs import estimates as d14
-    return d14
+PERIODS = ("0q", "+1q", "0y", "+1y")
+# block -> (column prefix, {lower-case yfinance field: column suffix}); the mapping Earnings Radar's D14 sweep used.
+MAP = {
+    "earnings_estimate": ("eps_est", {"numberofanalysts": "analysts", "avg": "avg", "low": "low", "high": "high",
+                                      "yearagoeps": "year_ago", "growth": "growth"}),
+    "revenue_estimate": ("rev_est", {"numberofanalysts": "analysts", "avg": "avg", "low": "low", "high": "high",
+                                     "yearagorevenue": "year_ago", "growth": "growth"}),
+    "eps_trend": ("eps_trend", {"current": "current", "7daysago": "7d", "30daysago": "30d", "60daysago": "60d",
+                                "90daysago": "90d"}),
+    "eps_revisions": ("eps_rev", {"uplast7days": "up_7d", "uplast30days": "up_30d", "downlast7days": "down_7d",
+                                  "downlast30days": "down_30d"}),
+}
+VALUE_COLUMNS = tuple(f"{prefix}_{suffix}" for prefix, fields in MAP.values() for suffix in fields.values())
+
+
+def _num(value) -> float | None:
+    """A finite float, or None (a Yahoo ``{"raw": x}`` cell is read as ``x``); never 0 for a missing value."""
+    if isinstance(value, dict):
+        value = value.get("raw")
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return None
+    return f if math.isfinite(f) else None
+
+
+def json_safe(value):
+    """``value`` with every non-finite float as None and dates as ISO text, so a JSON column accepts it."""
+    if isinstance(value, dict):
+        return {str(k): json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [json_safe(v) for v in value]
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+    return value
+
+
+def trend_rows(ticker: str, blocks: dict, session_date: date, stamps: dict) -> list[dict]:
+    """The rows of one answer: one per period that has at least one value. Field names are matched without case
+    (Yahoo has served ``downLast7Days`` as well as ``downLast7days``)."""
+    rows = []
+    for period in PERIODS:
+        values = dict.fromkeys(VALUE_COLUMNS)
+        payload: dict = {}
+        for block, (prefix, fields) in MAP.items():
+            for field, by_period in ((blocks or {}).get(block) or {}).items():
+                if not isinstance(by_period, dict) or period not in by_period:
+                    continue
+                payload.setdefault(block, {})[str(field)] = json_safe(by_period[period])
+                suffix = fields.get(str(field).lower())
+                if suffix:
+                    values[f"{prefix}_{suffix}"] = _num(by_period[period])
+        if all(v is None for v in values.values()):
+            continue
+        rows.append({"ticker": ticker, "session_date": session_date, "period": period, **values,
+                     "payload": payload, "source": "yfinance", **stamps})
+    return rows
 
 
 def value_columns() -> tuple[str, ...]:
-    return tuple(_d14().VALUE_COLUMNS)
+    return VALUE_COLUMNS
 
 
 def schema() -> list[tuple[str, str]]:
@@ -82,7 +139,6 @@ class Estimates:
 
     def fetch(self, ctx: base.RunContext, as_of: date) -> list[Path]:
         from ....core.providers import yfinance as yf_provider
-        from ....module_earnings_radar.inputs._common import json_safe
         due = []
         for cik, ticker in companies():
             newest = _newest(ticker)
@@ -129,7 +185,6 @@ class Estimates:
 
     def to_parquet_all(self, ctx: base.RunContext, raws: list[Path]) -> list[Path]:
         import json
-        d14 = _d14()
         out = []
         for day in sorted({raw.parent.name for raw in raws}):
             rows = []
@@ -137,7 +192,7 @@ class Estimates:
                 doc = base.read_raw_json(raw)
                 stamps = {"source_as_of": date.fromisoformat(doc["as_of"]), "fetched_at": float(doc["fetched_at"]),
                           "run_id": doc["run_id"]}
-                for r in d14.trend_rows(doc["ticker"], doc.get("blocks") or {}, stamps["source_as_of"], {}):
+                for r in trend_rows(doc["ticker"], doc.get("blocks") or {}, stamps["source_as_of"], {}):
                     rows.append({**r, "cik": common.norm_cik(doc["cik"]), "payload": json.dumps(r["payload"]),
                                  **stamps})
             con = duckdb.connect()

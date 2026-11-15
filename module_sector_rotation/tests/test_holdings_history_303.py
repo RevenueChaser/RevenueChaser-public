@@ -67,11 +67,6 @@ def test_a_rotation_fetch_makes_no_holdings_call(rawstore_tmp_db, monkeypatch):
     assert uw.ohlc_calls == []                                          # no UW candle either (M-ROT-3)
 
 
-def test_a_rotation_fetch_writes_no_raw_holdings(rawstore_tmp_db):
-    """The old ``raw.etf_holdings`` stays unwritten: nothing writes it since #642 PR 5."""
-    spine_fixture.write_etf_holdings({"AIQ": HOLD})
-    engine.fetch_all_holdings(_OhlcUW(), [_snap("AIQ")])
-    assert rawstore.query("SELECT count(*) AS n FROM etf_holdings")[0]["n"] == 0
 
 
 # ── Data Health summary ────────────────────────────────────────────────────────────────────────────────────────────

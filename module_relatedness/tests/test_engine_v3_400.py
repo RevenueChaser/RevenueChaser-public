@@ -133,15 +133,6 @@ def test_a_shell_stage_reply_stores_no_profile_and_is_not_asked_again(rawstore_t
     assert len(calls) == 1                         # done: the same input is not sent again
 
 
-def test_a_shell_is_neither_a_peer_nor_pending(rawstore_tmp_db, monkeypatch, calls):
-    monkeypatch.setattr(engine.vc_engine, "fetch_corpus", lambda *a, **k: None)
-    monkeypatch.setattr(engine, "_payload", lambda profiles, thinking=None, stale=None, model=None, write=False:
-                        {"as_of": "x", "companies": [{"ticker": t} for t in profiles], "peers": {}, "n": len(profiles)})
-    monkeypatch.setattr(engine, "_record_history", lambda *a, **k: None)
-    _text(monkeypatch, long_body("blank check"))
-    monkeypatch.setattr(engine, "_context", lambda t, cik, source=None: {"sic": "6770"})
-    payload = engine.run(tickers=["SPAC"], usd_cap=1.0)
-    assert payload["n"] == 0 and payload["shell"] == 1 and payload["pending"] == 0
 
 
 def test_the_prompt_carries_the_context(rawstore_tmp_db, monkeypatch, calls):

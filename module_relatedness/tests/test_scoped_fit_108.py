@@ -16,7 +16,7 @@ import json
 import pytest
 
 from RevenueChaser.core import rawstore
-from RevenueChaser.rcdata.tests import spine_fixture
+from RevenueChaser.rcdata.tests import universe_store
 from RevenueChaser.module_relatedness import __main__ as cli
 from RevenueChaser.module_relatedness import config, engine, store, themes
 from RevenueChaser.module_relatedness.tests.test_themes import _profiles4 as _profiles
@@ -33,9 +33,8 @@ SMALL, STRAY = "SMALL", "STRAY"
 
 
 def _seed(caps: dict[str, float]) -> None:
-    rawstore.write_rows("equity_universe", [
-        {"ticker": t, "name": t + " Inc", "market_cap": cap, "sector": "Technology"} for t, cap in caps.items()])
-    spine_fixture.write_security([{"ticker": t, "name": t + " Inc", "sector": "Technology"} for t in caps])
+    universe_store.replace([{"ticker": t, "name": t + " Inc", "market_cap": cap, "sector": "Technology"}
+                            for t, cap in caps.items()])
 
 
 @pytest.fixture

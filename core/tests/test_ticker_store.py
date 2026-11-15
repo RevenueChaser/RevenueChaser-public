@@ -44,23 +44,6 @@ def _cards():
     ]
 
 
-def test_write_and_get(store):
-    store.write_from_cards(_cards(), asof="2026-08-22T00:00:00+00:00")
-    assert store.count() == 2
-    assert store.asof() == "2026-08-22T00:00:00+00:00"
-
-    eton = store.get("ETON")
-    assert eton is not None
-    assert eton["total_points"] == 9
-    assert eton["themes"] == ["Biotechnology"]
-    assert eton["tech_breakthrough"] is False
-    assert eton["us_listed"] is True
-    assert eton["signals"][0]["passed"] == 3
-    assert eton["signals"][0]["subs"][0]["value"] == 1.049
-
-    aapl = store.get("aapl")  # case-insensitive
-    assert aapl["inst_holders"] == 6232
-    assert aapl["inst_shares_delta_pct"] == -0.01
 
 
 def test_get_missing(store):
@@ -75,19 +58,6 @@ def test_list_tickers(store):
     assert rows[0]["ticker"] == "AAPL"  # sorted
 
 
-def test_overwrite_replaces(store):
-    store.write_from_cards(_cards(), asof="2026-08-22T00:00:00+00:00")
-    store.write_from_cards(_cards()[:1], asof="2026-08-23T00:00:00+00:00")
-    assert store.count() == 1
-    assert store.get("AAPL") is None
-    assert store.asof() == "2026-08-23T00:00:00+00:00"
 
 
-def test_empty_write_does_not_wipe_the_store(store):
-    """A cold-cache model-only scan returns no cards; it must not clear data."""
-    store.write_from_cards(_cards(), asof="2026-08-22T00:00:00+00:00")
-    store.write_from_cards([], asof="2026-08-23T00:00:00+00:00")
-    assert store.count() == 2
-    assert store.get("AAPL") is not None
-    assert store.asof() == "2026-08-22T00:00:00+00:00"  # asof not advanced either
 

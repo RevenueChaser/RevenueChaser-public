@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 import time
 
-from RevenueChaser.core import edgar_docs, edgar_store, rawstore
+from RevenueChaser.core import edgar_docs
 from RevenueChaser.core.providers import sec_edgar
 
 from . import health, splitter
@@ -95,29 +95,19 @@ def document_slice(ticker: str, cik, filing: dict, client=None, run_at: float | 
     """The ``chain_filings`` row of one chosen filing, through the one document path (#299, D16).
 
     A filing whose raw doc is already stored is re-sliced from it: no download, no second write. Otherwise the doc
-    is downloaded and stored, the HTML as an ``edgar_docs`` file and its metadata as an ``edgar_documents`` row
-    (append: the first write of an accession wins). Both the daily sync and the Value Chain Fetch take this path.
-
-    The row's ``fetched_at`` (K6, #383 R1) is the document's download: a re-slice carries the stored document's
-    ``edgar_documents.fetched_at``, or the time of the slice when the file has no metadata row; a download carries
-    the stamp its ``edgar_documents`` row gets.
+    is downloaded and stored as an ``edgar_docs`` file. Its metadata row (``edgar_documents`` in the old
+    ``edgar.duckdb``) went with the old store (#860), so a re-slice is stamped with the time of the slice.
     """
     acc = filing["accession"]
     if edgar_docs.exists(cik, acc):
-        doc = rawstore.get("edgar_documents", acc) or {}
-        return slice_document(ticker, cik, filing, edgar_docs.read_html(cik, acc) or "",
-                              fetched_at=doc.get("fetched_at"))
+        return slice_document(ticker, cik, filing, edgar_docs.read_html(cik, acc) or "")
     try:
         html, row = fetch_document(ticker, cik, filing, client)
     except Exception as exc:          # noqa: BLE001 - counted, then raised on to fetch_filing (#299)
         health.EDGAR.call(error=str(exc) or type(exc).__name__, endpoint=f"{ticker}.{acc}")
         raise
     health.EDGAR.call(endpoint=f"{ticker}.{acc}")       # a download that worked is a call too
-    doc = edgar_store.document_row(
-        acc, cik, ticker, filing["form"], filing["filed"], html, doc_url=row["primary_doc"], run_at=run_at)
-    edgar_store.save_document(doc)
-    if doc.get("fetched_at") is not None:
-        row["fetched_at"] = doc["fetched_at"]
+    edgar_docs.write_html(cik, acc, html)
     return row
 
 

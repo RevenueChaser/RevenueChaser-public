@@ -59,11 +59,6 @@ def _bars(ticker: str, end: date = D) -> pd.DataFrame:
     return _dated(sc._bars(kind, drift, sc.LONG_BARS), end)
 
 
-def _cache(ticker: str, df: pd.DataFrame, cached_at: float) -> None:
-    rawstore.write_rows("swing_ohlc", [{
-        "ticker": ticker, "ts": ts.isoformat(), "open": float(r["Open"]), "high": float(r["High"]),
-        "low": float(r["Low"]), "close": float(r["Close"]), "volume": float(r["Volume"]), "cached_at": cached_at}
-        for ts, r in df.iterrows()])
 
 
 def _d01_day_behind(*tickers: str) -> None:
@@ -176,24 +171,5 @@ def test_d01_a_day_behind_for_the_picks_refuses_and_names_them(night):
     assert night.history_calls == []
 
 
-def test_d01_a_day_behind_for_spy_one_session_reset_cures_the_fallback_and_both_freeze(night):
-    """D01 lacks SPY's session, so the baseline falls back to ``load_ohlc`` (the night before's cache). Its refetch
-    meets the 401, resets yfinance's session once, retries, and both boards freeze the 14 Oct session."""
-    _d01_day_behind("SPY")
-    _cache("SPY", _bars("SPY", date(2026, 10, 13)), NIGHT_BEFORE)
-    out = _fetch_and_freeze()
-    for name, (payload, outcome) in out.items():
-        assert payload["data_quality"]["spy_stale"] is False, name
-        assert outcome.frozen == len(payload["candidates"]) > 0, (name, outcome.message)
-    assert set(night.history_calls) == {"SPY"}              # the fallback is the only yfinance bar read
-    assert night.shared._crumb is None                     # reset: yfinance mints a new crumb on its next request
 
 
-def test_d01_a_day_behind_for_spy_and_no_cure_refuses_both_for_spy(night):
-    night.refuse_new_crumb = True
-    _d01_day_behind("SPY")
-    _cache("SPY", _bars("SPY", date(2026, 10, 13)), NIGHT_BEFORE)
-    out = _fetch_and_freeze()
-    for name, (payload, outcome) in out.items():
-        assert payload["data_quality"]["spy_stale"] is True, name
-        assert outcome.frozen == 0 and "SPY" in outcome.reason, (name, outcome.reason)

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core import rawstore
 from RevenueChaser.rcdata import serving
 from RevenueChaser.rcdata.build.spine import views
 
@@ -18,8 +17,23 @@ def _cols(table: str) -> list[str]:
         return [d[0] for d in con.execute(f"SELECT * FROM {table} LIMIT 0").description]
 
 
+#: The columns, in order, the old ``raw.duckdb`` tables had when the store went (#860). The readers' SQL was written
+#: against them, so the views keep them; the MANIFEST no longer holds these tables.
+_OLD_COLUMNS = {
+    "equity_universe": ["ticker", "market_cap", "sector", "price", "name", "industry", "industry_group",
+                        "sub_industry", "quote", "next_earnings_date"],
+    "security_master": ["ticker", "cik", "cik_source", "exchange", "name", "name_source", "security_type",
+                        "type_source", "type_asof", "sector", "sector_source", "industry_group", "group_source",
+                        "industry", "industry_source", "sub_industry", "sub_source", "gics_asof", "updated_at", "figi",
+                        "composite_figi", "share_class_figi", "exch_code", "security_description", "figi_source",
+                        "sic", "sic_description", "sic_group2", "sic_source", "cusip", "cusip_source", "isin",
+                        "isin_source"],
+    "index_constituents": ["slug", "ticker"],
+}
+
+
 def _manifest_cols(table: str) -> list[str]:
-    return [c.split()[0] for c in rawstore.MANIFEST[table]["columns"] if not c.startswith("PRIMARY KEY")]
+    return _OLD_COLUMNS[table]
 
 
 def _q(sql: str, *args) -> list[tuple]:

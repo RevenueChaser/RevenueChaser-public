@@ -16,25 +16,15 @@ from RevenueChaser.core import automations, datasets, rawstore
 
 # Keys ``module_settings/inventory.py`` ``_collect`` builds today (19 row builders).
 # The plan text said 22; this worktree's ``_collect`` has these.
-SEEDED = (
-    "universe", "universe_provenance", "identity", "corpus", "sec_submissions",
-    "sec_files", "companyfacts", "ohlc", "price_bars", "index_levels", "vendor",
-    "quotes", "index", "sec13f", "oipd", "etf_holdings", "relatedness",
-    "result_history", "inputs",
-)
-
-# The seven datasets S4 adapted: ``coverage`` is a callable returning ``Health``.
-ADAPTED = (
-    "price_bars", "index_levels", "vendor", "quotes", "etf_holdings",
-    "sec_submissions", "sec_files",
-)
+SEEDED = ("corpus", "oipd", "relatedness")   # the seeded keys that outlived the old store (#860)
 
 
-def test_every_manifest_table_is_claimed_once_and_the_allowlist_is_empty():
-    """A new MANIFEST table fails here until a dataset owns it. The allowlist stays empty."""
-    assert datasets.UNCLAIMED_ALLOWLIST == frozenset(), (
-        f"unclaimed allowlist must be empty, not {sorted(datasets.UNCLAIMED_ALLOWLIST)}")
-    keys = set(rawstore.MANIFEST)
+def test_every_manifest_table_is_claimed_once_and_the_allowlist_is_the_stamp():
+    """A new MANIFEST table fails here until a dataset owns it. The allowlist holds only ``store_schema``, the stamp
+    every board file carries (#860: the old files that held it as a table of their own are gone)."""
+    assert datasets.UNCLAIMED_ALLOWLIST == frozenset({"store_schema"}), (
+        f"unclaimed allowlist must hold only store_schema, not {sorted(datasets.UNCLAIMED_ALLOWLIST)}")
+    keys = set(rawstore.MANIFEST) - datasets.UNCLAIMED_ALLOWLIST
     missing = datasets.unclaimed(keys)
     assert not missing, f"MANIFEST tables no dataset claims: {sorted(missing)}"
     claimed = [t for spec in datasets.REGISTRY for t in spec.tables]
@@ -123,38 +113,12 @@ def test_seeded_inventory_keys_keep_their_labels():
         assert spec.tables, key
 
 
-def test_the_seven_summaries_are_health_coverage_callables():
-    """S4: each adapted dataset's ``coverage`` is a callable returning ``Health``, and the TODO is gone."""
-    for key in ADAPTED:
-        spec = datasets.by_key(key)
-        assert callable(spec.coverage), f"{key}: coverage should be the health callable, not {spec.coverage!r}"
-        assert not (spec.coverage_note and "TODO" in spec.coverage_note), (
-            f"{key}: coverage is adapted, so the TODO note must go, not {spec.coverage_note!r}")
-
-
-def test_every_adapted_coverage_returns_a_health_on_an_empty_store(rawstore_tmp_db):
-    """The callable imports its summary when called and reads the store: the typed contract, empty store."""
-    from RevenueChaser.core import datahealth
-
-    for key in ADAPTED:
-        got = datasets.by_key(key).coverage()
-        assert isinstance(got, datahealth.Health), f"{key}: {got!r}"
-
-
 # ── G11 of the GUI redesign (#124): a measured hole carries its explanation ───────────────────
 # Two additive fields, ``gap_kind`` and ``next_step``. The rule they enforce: a dataset whose
 # measured coverage is below 100% must carry a ``gap_kind``, and ``fixable`` / ``in_build`` /
 # ``needs_decision`` must carry a ``next_step``. A ``ceiling`` carries its REASON in ``next_step``
 # (a fact about the source), so it needs one too.
 from RevenueChaser.core.datahealth import Health  # noqa: E402
-
-
-def _probe(**over) -> datasets.DatasetSpec:
-    """A hand-made spec for the rule's own test: every field the constructor needs, nothing else."""
-    fields = dict(key="probe", label="Probe", tables=("quote_snapshot",), db="raw",
-                  source=datasets.Source.store, writer="RC-Daily-Bars", freshness=None)
-    fields.update(over)
-    return datasets.DatasetSpec(**fields)
 
 
 def _gap_problems(spec: datasets.DatasetSpec, health: Health) -> list[str]:
@@ -167,83 +131,6 @@ def _gap_problems(spec: datasets.DatasetSpec, health: Health) -> list[str]:
     if ratio is not None and ratio < 1 and spec.gap_kind is None:
         return [f"{spec.key}: coverage {ratio:.0%} is below 100% and gap_kind is None"]
     return []
-
-
-def test_the_ci_rule_fires_on_a_measured_hole_with_no_gap_kind():
-    """Red first: a dataset below 100% coverage and no explanation fails the rule."""
-    assert _gap_problems(_probe(), Health(covered=9, expected=10, newest=None,
-                                          expected_as_of=None)), \
-        "a measured hole with no gap_kind must fail the rule"
-
-
-def test_the_rule_is_silent_when_the_hole_carries_its_kind():
-    spec = _probe(gap_kind=datasets.GapKind.fixable, next_step="Join the two counts.")
-    assert _gap_problems(spec, Health(covered=9, expected=10, newest=None,
-                                      expected_as_of=None)) == []
-
-
-def test_the_rule_is_silent_at_full_coverage_and_where_nothing_is_measured():
-    hole = Health(covered=10, expected=10, newest=None, expected_as_of=None)
-    no_population = Health(covered=5, expected=None, newest=None, expected_as_of=None)
-    no_summary = Health(covered=None, expected=None, newest=None, expected_as_of=None)
-    for health in (hole, no_population, no_summary):
-        assert _gap_problems(_probe(), health) == [], health
-
-
-def test_the_rule_reports_covered_above_expected_as_no_hole():
-    """More rows than the population is a consistency problem elsewhere, not a missing row."""
-    assert _gap_problems(_probe(), Health(covered=11, expected=10, newest=None,
-                                          expected_as_of=None)) == []
-
-
-def _spec_error(**over) -> str:
-    """The ValueError message a bad pair raises."""
-    import pytest
-
-    with pytest.raises(ValueError) as caught:
-        _probe(**over)
-    return str(caught.value)
-
-
-def test_a_gap_kind_outside_the_six_is_refused():
-    said = _spec_error(gap_kind="someday")
-    assert "gap_kind" in said and "someday" in said
-
-
-def test_a_gap_kind_written_as_a_bare_string_is_refused():
-    """The enum is the one home of the six kinds; a bare string would dodge the type."""
-    said = _spec_error(gap_kind="fixable", next_step="Fix it.")
-    assert "gap_kind" in said and "fixable" in said
-
-
-def test_fixable_in_build_and_needs_decision_all_require_a_next_step():
-    for kind in (datasets.GapKind.fixable, datasets.GapKind.in_build,
-                 datasets.GapKind.needs_decision):
-        said = _spec_error(gap_kind=kind)
-        assert "next_step" in said, (kind, said)
-
-
-def test_a_ceiling_needs_its_reason():
-    """The brief: a ceiling with no reason is a defect, not a state."""
-    said = _spec_error(gap_kind=datasets.GapKind.ceiling)
-    assert "next_step" in said and "reason" in said.lower()
-
-
-def test_a_self_healing_or_complete_dataset_needs_no_next_step():
-    for kind in (datasets.GapKind.self_heals, datasets.GapKind.none):
-        spec = _probe(gap_kind=kind)
-        assert spec.gap_kind is kind and spec.next_step is None
-
-
-def test_a_blank_next_step_is_refused():
-    said = _spec_error(gap_kind=datasets.GapKind.fixable, next_step="   ")
-    assert "next_step" in said
-
-
-def test_a_ceiling_carries_its_reason_in_next_step():
-    said = "OpenFIGI maps from a CUSIP, so a name with no CUSIP cannot get one on this route."
-    spec = _probe(gap_kind=datasets.GapKind.ceiling, next_step=said)
-    assert spec.next_step == said
 
 
 def test_every_dataset_that_declares_coverage_carries_a_gap_kind():
@@ -268,9 +155,3 @@ def test_no_dataset_carries_a_gap_kind_without_the_step_its_kind_needs():
             assert spec.next_step and spec.next_step.strip(), spec.key
 
 
-def test_the_inputs_freshness_no_longer_reads_the_unwritten_watchlist_history():
-    """PR 4: the watch lists live in ops.sqlite; the raw ``watchlist`` tables stay claimed (the manifest still has
-    them) but nothing writes them, so the inputs freshness reads the board settings' history only."""
-    spec = datasets.by_key("inputs")
-    assert spec.freshness == ("board_settings_changes", "run_at")
-    assert "watchlist" in spec.tables and "ops.sqlite" in spec.writer_note

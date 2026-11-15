@@ -111,19 +111,6 @@ def test_a_run_stops_when_the_sections_are_cut_with_another_rule_version(layer, 
     assert len(writer) == 1 and rawstore.get("relatedness_profiles", "MSFT")["status"] == "ok"
 
 
-def test_a_stopped_run_leaves_the_mode_stamp_alone_and_names_the_rows(layer, writer, monkeypatch):
-    """The guard runs before ``store.set_mode``: a halted run writes nothing, and its reason counts the rows."""
-    from RevenueChaser.module_relatedness import store
-    before = store.get_mode()
-    monkeypatch.setattr(config, "FORMS_RULES_VERSION", "next-rules")
-    asked = []
-    real = read.form_business
-    monkeypatch.setattr(read, "form_business", lambda ciks=(), text=True: asked.append(text) or real(ciks, text=text))
-    with pytest.raises(engine.RunStopped) as stopped:
-        engine.build_profiles(["MSFT"], usd_cap=1.0)
-    assert store.get_mode() == before
-    assert "1 of 1" in str(stopped.value) and "789019" in str(stopped.value)
-    assert asked == [False]                                    # the lengths and labels only, never every text
 
 
 def test_the_comparison_job_stops_at_the_same_guard(filings_only, writer):

@@ -26,19 +26,8 @@ def client(rawstore_tmp_db, monkeypatch):
     return c
 
 
-def test_apply_stores_the_universe_and_re_renders_the_settings_card_store_only(client):
-    r = client.post("/api/settings/board/module_settings", json={"changes": {"UNIVERSE_SETS": 3,
-                                                                             "UNIVERSE_INCLUDE": 5}})
-    assert r.status_code == 202, r.get_json()
-    assert r.get_json()["values"]["values"] == {"UNIVERSE_SETS": 3, "UNIVERSE_INCLUDE": 5}
-    assert client.submitted == [("settings_refresh", {})]
-    assert bs.get("module_settings", "UNIVERSE_SETS") == 3
 
 
-def test_an_empty_universe_is_refused_and_nothing_is_written(client):
-    r = client.post("/api/settings/board/module_settings", json={"changes": {"UNIVERSE_SETS": 0}})
-    assert r.status_code == 400
-    assert rawstore.count("board_settings") == 0 and client.submitted == []
 
 
 # --- Refresh the example rows: one read-only SELECT of a serving table, no cache, no provider ------------------------
@@ -114,11 +103,6 @@ def test_refresh_reads_again_rather_than_answering_from_the_hourly_cache(client,
         "and the next render shows what the press read"
 
 
-def test_an_unknown_table_is_404_and_opens_nothing(client, market_roots, reads):
-    for name in ("no_such_table", "price_bar_daily; DROP TABLE x", "board_settings"):
-        r = _get(client, name)
-        assert r.status_code == 404 and r.get_json()["ok"] is False, name
-    assert reads == []
 
 
 def test_a_file_never_built_is_409_and_says_so(client, market_roots, reads):

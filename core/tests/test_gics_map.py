@@ -93,13 +93,7 @@ class TestUnclassifiedLabel:
         """An empty value is "no value", not "unknown": ``""`` is NOT unclassified."""
         assert is_unclassified(label) is False
 
-    def test_the_identity_master_uses_the_same_label(self):
-        from RevenueChaser.core.identity import gics as identity_gics
-        assert identity_gics.UNCLASSIFIED == UNCLASSIFIED
 
-    def test_the_identity_master_uses_the_same_sector_names(self):
-        from RevenueChaser.core.identity import gics as identity_gics
-        assert tuple(identity_gics.MORNINGSTAR_SECTORS) == tuple(_g.MORNINGSTAR_SECTORS)
 
     def test_sector_or_unclassified_reads_blank_other_and_the_label_as_unclassified(self):
         for raw in ("", None, "Other", "Unclassified", "   "):

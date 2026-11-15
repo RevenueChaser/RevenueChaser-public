@@ -1,93 +1,25 @@
-"""Read the inputs the Earnings inputs sweeps stored (E5, #372; one registry entry per schedule since #620).
+"""The Earnings board's stored reads that are not in ``store_reads``: the rate events and the reaction bars.
 
-The Earnings Fetch used to ask UW (and FRED) for everything it needed, every run. Since E0 the nightly job stores
-the same answers in ``raw.duckdb``: the earnings calendar (D26), short interest (D10) and the reaction window's daily
-bars. The economic calendar (D37) left raw in Nov 2026: R6 reads ``market.economic_event`` (``rate_events``).
+``rate_events`` reads ``market.economic_event`` (R6) and ``ohlc_bars`` the prices store's daily bars. The stored
+earnings calendar (D26) this module also read lived in the old raw.duckdb and went with it (#860): the Fetch asks
+UW for every calendar day now.
 
-What left this module for the new stores: the 10-year yield and the analyst estimates, now read through
-``store_reads`` (``macro.dgs10``, ``fundamentals.estimates``), the short interest, now FINRA's settlement series from
-the ownership store (``store_reads.short_interest``, ``ownership.short_interest``, #287), and the two market series SPX Gamma reads from the
-market store itself (the volatility indices and the CFTC report, ``module_spx_gamma/store_reads.py``).
-
-This module is the ONE reader of those tables — it reads only, over ``rawstore.query(..., read_only=True)``,
-and never writes, migrates or alters anything.
-
-Two rules hold for every reader here:
-
-- **A missing table or a store error is "nothing stored"** — the caller falls back to the live provider, exactly as
-  it did before this module existed. A broken store must never fail a Fetch, so the error is logged once per table
-  and swallowed.
-- **A stored session is only used while it is fresh.** The newest stored ``session_date`` at or before
-  ``calendar.latest_complete_session()`` is taken only when it is at most ``MAX_LAG[table]`` trading sessions older.
-  A stale calendar is worse than a live read: it would silently drop the names UW has added since.
-
-Each reader returns the data and a coverage note the pipeline records in the run's result history
-(``input_sources``), so a run says which parts it read from the store and which it asked the provider for.
+A missing file or a read error is "nothing stored": the caller falls back to the live provider, and the error is
+logged once per table. Read only.
 """
 from __future__ import annotations
 
-import json
 import logging
-from collections.abc import Mapping
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from RevenueChaser.core import calendar, rawstore
+from RevenueChaser.core import calendar
 from RevenueChaser.rcdata import read as market_read
 
 logger = logging.getLogger(__name__)
 
 NY = ZoneInfo("America/New_York")
 
-# Trading sessions a stored session may lag the latest complete one by, before the reader goes live instead.
-# The catalog is the single owner of every one of these numbers (avo, 29 Oct 2026): a copy here would let the two
-# drift while ``model_version``, which hashes this map, claims nothing changed. PR 285 moved the yield, the estimates
-# and the volatility tables to the new store, and #287 the short interest (``store_reads.short_interest``), so what
-# is left here is the old store's calendar.
-NEED_OF_TABLE = {"earnings_calendar": "earnings.next"}
-
-
-def max_lag_map() -> dict[str, int]:
-    """``{table: how many sessions old a stored input may be}``, read from the catalog on every call."""
-    from RevenueChaser.rcdata import needs
-    return {table: needs.catalog.NEEDS[need].max_lag for table, need in NEED_OF_TABLE.items()}
-
-
-class _MaxLag(Mapping):
-    """``MAX_LAG`` as the board has always used it, answered from the catalog on every read.
-
-    A ``Mapping`` and not a ``dict`` subclass, for the reason in ``store_reads._FromCatalog`` (the review's m3):
-    a dict subclass answers ``.copy()`` and ``json.dumps`` from its own storage, which here would be a snapshot.
-    """
-
-    def __getitem__(self, table):
-        return max_lag_map()[table]
-
-    def get(self, table, default=None):
-        return max_lag_map().get(table, default)
-
-    def __iter__(self):
-        return iter(max_lag_map())
-
-    def __len__(self):
-        return len(max_lag_map())
-
-    def copy(self) -> dict:
-        return dict(max_lag_map())
-
-    def __repr__(self):
-        return repr(max_lag_map())
-
-    def __eq__(self, other):
-        return max_lag_map() == other
-
-    __hash__ = None
-
-    def __setitem__(self, table, value):
-        raise TypeError(f"{table!r} belongs to the need catalog (avo, 29 Oct 2026): set it there, not here")
-
-
-MAX_LAG = _MaxLag()
 
 _OHLC_MAX_BARS = 270              # ``pipeline.REACTION_OHLC_SESSIONS``
 _OHLC_LOOKBACK_DAYS = 400         # calendar days back from the latest complete session
@@ -101,15 +33,6 @@ def _note_once(table: str, exc: BaseException | None = None) -> None:
     _LOGGED.add(table)
     logger.info("stored inputs: %s is not read (%s); the run asks the provider",
                 table, f"{type(exc).__name__}: {exc}" if exc is not None else "no table")
-
-
-def _query(sql: str, params: list | None = None, *, table: str, db: str = "raw") -> list[dict]:
-    """``rawstore.query`` in read-only mode; a missing table or a store error is an empty result (logged once)."""
-    try:
-        return rawstore.query(sql, params or [], read_only=True, db=db) or []
-    except Exception as exc:  # noqa: BLE001 - a Fetch must never fail on the store
-        _note_once(table, exc)
-        return []
 
 
 def _as_date(value) -> date | None:
@@ -126,16 +49,6 @@ def _as_date(value) -> date | None:
     return None
 
 
-def _as_json(value):
-    """A stored ``JSON`` cell as a Python object (the text form when the driver hands back a string)."""
-    if isinstance(value, str):
-        try:
-            return json.loads(value)
-        except ValueError:
-            return None
-    return value
-
-
 def _num(value) -> float | None:
     """A stored ``DOUBLE`` cell as a float (None for a NULL or an unreadable cell)."""
     try:
@@ -144,89 +57,7 @@ def _num(value) -> float | None:
         return None
 
 
-def _max_session(table: str, latest: date, *, db: str = "raw") -> date | None:
-    """The newest stored ``session_date`` of ``table`` at or before ``latest``, or None."""
-    rows = _query(f"SELECT max(session_date) AS s FROM {table} WHERE session_date <= ?", [latest],
-                  table=table, db=db)
-    return _as_date(rows[0].get("s")) if rows else None
-
-
-def _lag_sessions(session: date | None, latest: date) -> int | None:
-    """Trading sessions between ``session`` and ``latest`` (0 when the same), or None when it is not a session.
-
-    Counted with ``calendar.previous_trading_day``, one step per session, so a weekend or a holiday costs nothing.
-    """
-    if session is None or session > latest:
-        return None
-    n, d = 0, latest
-    while d > session and n <= 30:
-        try:
-            d = calendar.previous_trading_day(d - timedelta(days=1))
-        except ValueError:
-            return None
-        n += 1
-    return n if d == session else None
-
-
-def _sessions_after(day: date, latest: date) -> int | None:
-    """Trading sessions after ``day`` up to and including ``latest`` (0 when ``day >= latest``).
-
-    Unlike :func:`_lag_sessions`, ``day`` need not be a session itself: a FRED observation can fall on a day the
-    stock market is closed (Good Friday). None past the end of the holiday table, or beyond 30 sessions.
-    """
-    n, d = 0, day
-    while n <= 30:
-        try:
-            d = calendar.next_trading_day(d)
-        except ValueError:
-            return None
-        if d > latest:
-            return n
-        n += 1
-    return None
-
-
-def _fresh_session(table: str, latest: date | None = None, *, db: str = "raw") -> tuple[date | None, bool]:
-    """``(session, usable)``: the newest stored session of ``table`` and whether it is inside ``MAX_LAG``."""
-    latest = calendar.latest_complete_session() if latest is None else latest
-    session = _max_session(table, latest, db=db)
-    lag = _lag_sessions(session, latest)
-    if lag is None or lag > MAX_LAG.get(table, 0):
-        return session, False
-    return session, True
-
-
 # ── D26: the earnings calendar ───────────────────────────────────────────────────────────────────────────────────
-
-def calendar_items(days) -> tuple[dict, date | None]:
-    """The stored calendar rows for ``days``: ``({(earnings_date, report_session): [UW item, ...]}, session|None)``.
-
-    ``item`` is the UW row as served, so the caller rebuilds the event from it rather than from the typed columns
-    (``marketcap`` is a DOUBLE column, the live row carries text). A ``(day, session)`` pair is *covered* only when
-    it has at least one row: a pair the sweep did not reach must still be asked for live.
-    """
-    wanted = {_as_date(d) for d in (days or [])}
-    wanted.discard(None)
-    if not wanted:
-        return {}, None
-    session, usable = _fresh_session("earnings_calendar")
-    if not usable:
-        return {}, None
-    rows = _query("SELECT earnings_date, report_session, item FROM earnings_calendar WHERE session_date = ?",
-                  [session], table="earnings_calendar")
-    out: dict[tuple[date, str], list[dict]] = {}
-    for r in rows:
-        d = _as_date(r.get("earnings_date"))
-        report_session = str(r.get("report_session") or "")
-        if d is None or d not in wanted or not report_session:
-            continue
-        item = _as_json(r.get("item"))
-        if not isinstance(item, dict):
-            continue
-        if not (item.get("symbol") or item.get("ticker")):
-            continue
-        out.setdefault((d, report_session), []).append(item)
-    return out, session
 
 
 # ── D37: the economic calendar (rate events) ─────────────────────────────────────────────────────────────────────

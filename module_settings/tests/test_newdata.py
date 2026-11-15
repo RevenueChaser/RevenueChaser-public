@@ -285,18 +285,6 @@ def test_a_zero_retention_is_no_retention(monkeypatch):
     assert newdata.collect(NOW)["retention"]["warn"] is True
 
 
-def test_retirement_counts_reads_of_the_old_tables_in_the_last_14_days():
-    ops.put_rows("read_log", [dict(zip(("day", "process", "table_name", "reads"), r)) for r in [
-        ("2026-10-27", "dashboard", "macro_series", 5), ("2026-10-20", "cli", "macro_series", 2),
-        ("2026-10-01", "dashboard", "macro_series", 50), ("2026-10-27", "dashboard", "market_series", 9)]])
-    rows = {r["table"]: r for r in newdata.collect(NOW)["retirement"]}
-    assert rows["macro_series"]["reads_14d"] == 7
-    assert rows["vol_index_daily"]["reads_14d"] == 0
-    assert "market_series" not in rows                                  # a new table is not being retired
-    assert "RC-Macro-Weekly" in rows["macro_series"]["writers"]
-    # The analyst estimates joined the list when the board stopped reading the old table (the fundamentals store
-    # serves them as ``estimate_latest``), so the card counts its reads down to zero too.
-    assert rows["estimate_snapshots"]["replaced_by"] == "estimate_latest"
 
 
 def test_watch_list_counts_schedule_state_and_the_queue():

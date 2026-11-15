@@ -126,12 +126,6 @@ def test_a_failed_locate_keeps_the_rule_cut(rawstore_tmp_db, world, monkeypatch)
     assert "Risks are many" in call["user"]                 # the overrun text, as before
 
 
-def test_the_run_names_the_located_companies(rawstore_tmp_db, world, monkeypatch):
-    monkeypatch.setattr(engine.vc_engine, "fetch_corpus", lambda *a, **k: None)
-    monkeypatch.setattr(engine, "_record_history", lambda *a, **k: None)
-    payload = engine.run(tickers=["NVDA"], usd_cap=1.0)
-    assert payload["llm_located"] == ["NVDA"]
-    assert store.load_profiles(["NVDA"])["NVDA"]["products"] == ["gpu"]
 
 
 def test_a_suspect_ok_cut_asks_the_locator_too():

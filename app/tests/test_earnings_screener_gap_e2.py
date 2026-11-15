@@ -12,7 +12,6 @@ import pytest
 
 from RevenueChaser.app import runners
 from RevenueChaser.core import ledger, rawstore
-from RevenueChaser.module_earnings_radar import history as er_history
 
 BOARD = "module_earnings_radar"
 
@@ -79,9 +78,3 @@ def run(monkeypatch, rawstore_tmp_db):
     return seen
 
 
-def test_the_runner_shows_the_notice_and_records_the_screener_reason(run):
-    runners.run_earnings_range(_UW(), date(2026, 10, 8), date(2026, 10, 8))
-    expected = er_history.screener_problem({"status": "partial", "error": {"failed_chunks": 1, "chunks": 2}})
-    assert run["notice"] == expected and "chunks failed" in run["notice"]
-    (head,) = rawstore.query("SELECT * FROM result_runs WHERE board = ?", [BOARD], db="history")
-    assert head["quality"] == "partial" and "screener" in head["quality_note"]

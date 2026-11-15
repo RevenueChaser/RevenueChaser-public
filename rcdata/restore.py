@@ -1,7 +1,7 @@
 """``python -m RevenueChaser.rcdata restore`` and ``restore-check``: a weekly backup copy back into use.
 
     rcdata restore --step duckdb --latest market --into /tmp/rc-restore     # verify and copy into a folder
-    rcdata restore --step boards --file raw_20261108_023000_000000.duckdb --live
+    rcdata restore --step boards --file leaps_20261108_023000_000000.duckdb --live
     rcdata restore --step ops --latest --into /tmp/rc-restore
     rcdata restore --step uw-raw --latest --into /mnt/data/scratch          # the whole week folder
     rcdata restore --step edgar-docs --latest --into /tmp/rc-restore        # the zip; unzip it by hand
@@ -137,9 +137,9 @@ def live_target(step: str, src: Path) -> Path:
         return serving.live_path(stem)
     if step == backup.STEP_BOARDS:
         from ..core import rawstore
-        legacy = {"raw": Path(rawstore.DB_PATH), "edgar": rawstore.edgar_db_path(),
-                  "history": rawstore.history_db_path(), "prices": rawstore.prices_db_path()}
-        return legacy.get(stem) or Path(rawstore.DB_PATH).parent / backup.BOARDS_DIRNAME / f"{stem}.duckdb"
+        if stem not in rawstore.BOARD_DBS:   # an old store file (raw, edgar, history, prices) has no live place (#860)
+            raise RestoreRefused(f"{src.name}: not a copy of a board file ({', '.join(rawstore.BOARD_DBS)})")
+        return rawstore.board_db_path(stem)
     if step == backup.STEP_OPS:
         raise RestoreRefused("ops --live is a step by hand: on Redis `python -m RevenueChaser.rcdata.ops_copy "
                              "--sqlite <copy>` into an EMPTY namespace (emptying one is a delete: avo's word first); "
@@ -216,12 +216,12 @@ def restore_check(scratch: Path | None = None) -> dict:
 
 
 def _first_board() -> str | None:
-    """The board copy the drill restores: ``raw`` while the old store exists, else the first board by name."""
+    """The board copy the drill restores: the first board by name."""
     _, data = _step_dir(backup.STEP_BOARDS)
     stems = sorted({n.rsplit("_", 3)[0] for n in data["files"] if n.endswith(".duckdb")})
     if not stems:
         return None
-    return "raw" if "raw" in stems else stems[0]
+    return stems[0]
 
 
 # ── the commands ────────────────────────────────────────────────────────────────────────────────────────────────
@@ -232,7 +232,7 @@ def add_parsers(sub) -> None:
     pick = r.add_mutually_exclusive_group(required=True)
     pick.add_argument("--file", help="the copy's name as the backup folder lists it (a week folder for uw-raw)")
     pick.add_argument("--latest", nargs="?", const="", metavar="KIND",
-                      help="the newest copy; for duckdb and boards name the kind or board file (e.g. market, raw)")
+                      help="the newest copy; for duckdb and boards name the kind or board file (e.g. market, leaps)")
     where = r.add_mutually_exclusive_group(required=True)
     where.add_argument("--into", type=Path, help="write the verified copy into this folder (nothing live is touched)")
     where.add_argument("--live", action="store_true",

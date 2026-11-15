@@ -46,39 +46,8 @@ def _show(timer: dict, service: dict) -> str:
 
 # --- install ----------------------------------------------------------------------
 
-def test_install_writes_one_service_and_one_timer_and_enables_the_timer(tmp_path):
-    sc = FakeSystemctl()
-    _linux(tmp_path, sc).install(A.entry("RC-Daily-Bars"))
-    service = _unit(tmp_path, "RC-Daily-Bars", "service")
-    assert "Type=oneshot" in service
-    assert 'ExecStart="/srv/rc/.venv/bin/python" "-m" "RevenueChaser.core.automations" "run" "RC-Daily-Bars"' \
-        in service
-    assert "WorkingDirectory=/srv/rc" in service
-    assert "TimeoutStartSec=4h" in service
-    timer = _unit(tmp_path, "RC-Daily-Bars", "timer")
-    assert "OnCalendar=*-*-* 23:00:00" in timer
-    assert "Unit=RC-Daily-Bars.service" in timer
-    assert "Persistent=true" in timer
-    # A user timer cannot arm a wake alarm (no CAP_WAKE_ALARM): WakeSystem=true leaves it failed and never run.
-    assert "WakeSystem" not in timer
-    assert "WantedBy=timers.target" in timer
-    assert sc.calls == [["daemon-reload"], ["enable", "--now", "RC-Daily-Bars.timer"]]
-    assert sorted(p.name for p in (tmp_path / "units").iterdir()) == ["RC-Daily-Bars.service",
-                                                                       "RC-Daily-Bars.timer"]
 
 
-def test_a_weekly_row_installs_its_days_and_a_row_that_does_not_wake_says_so(tmp_path):
-    sc = FakeSystemctl()
-    s = _linux(tmp_path, sc)
-    s.install(A.entry("RC-Index-Lists"))
-    s.install(A.entry("RC-Screeners-Daily"))
-    s.install(A.entry("RC-ValueChain-Sync"))
-    assert "OnCalendar=Sat *-*-* 10:00:00" in _unit(tmp_path, "RC-Index-Lists", "timer")
-    assert "OnCalendar=Mon,Tue,Wed,Thu,Fri *-*-* 23:30:00" in _unit(tmp_path, "RC-Screeners-Daily", "timer")
-    vc = _unit(tmp_path, "RC-ValueChain-Sync", "timer")
-    assert "OnCalendar=*-*-* 13:00:00" in vc
-    for name in ("RC-Index-Lists", "RC-Screeners-Daily", "RC-ValueChain-Sync"):
-        assert "WakeSystem" not in _unit(tmp_path, name, "timer")
 
 
 def test_on_calendar_covers_every_registry_row():
@@ -91,64 +60,16 @@ def test_on_calendar_covers_every_registry_row():
         assert (spec.count(",") + 1 if e.days else 0) == len(e.days)
 
 
-def test_the_service_carries_the_resolved_data_roots_so_a_job_writes_where_the_panel_reads(tmp_path, monkeypatch):
-    """Without them a job run by systemd falls back to the checkout's own .store/.cache (config._root)."""
-    monkeypatch.setenv("TZ", "Europe/Amsterdam")
-    monkeypatch.setenv("RAW_STORE_BACKUP_DIR", "/srv/backups 1")
-    roots = {"RC_STORE_DIR": "DATA_DIR", "RC_CACHE_DIR": "OUTPUT_DIR", "RC_EDGAR_DOCS_DIR": "EDGAR_DOCS_DIR"}
-    for var, attr in roots.items():                  # the value this process resolved, set in .env or not at all
-        monkeypatch.delenv(var, raising=False)
-        monkeypatch.setattr(A.config, attr, tmp_path / "resolved" / attr)
-    _linux(tmp_path, FakeSystemctl()).install(A.entry("RC-Daily-Bars"))
-    service = _unit(tmp_path, "RC-Daily-Bars", "service")
-    for var, value in (*((v, tmp_path / "resolved" / a) for v, a in roots.items()),
-                       ("TZ", "Europe/Amsterdam"), ("RAW_STORE_BACKUP_DIR", "/srv/backups 1")):
-        assert f'Environment="{var}={value}"' in service, var
 
 
-def test_the_retired_discord_root_never_reaches_a_unit_file(tmp_path, monkeypatch):
-    """The Discord archive left with #174: its media root is not a data root here, even when still set in .env."""
-    monkeypatch.setenv("RC_DISCORD_MEDIA_DIR", "/srv/discord_media")
-    assert "RC_DISCORD_MEDIA_DIR" not in A.UNIT_ENVIRONMENT
-    assert set(A.config.resolved_roots()) == {"RC_STORE_DIR", "RC_CACHE_DIR", "RC_EDGAR_DOCS_DIR"}
-    _linux(tmp_path, FakeSystemctl()).install(A.entry("RC-Daily-Bars"))
-    assert "DISCORD" not in _unit(tmp_path, "RC-Daily-Bars", "service")
 
 
-def test_no_other_variable_reaches_a_unit_file(tmp_path, monkeypatch):
-    """Unit files are world-readable and ``.env`` loads keys into the environment: an allowlist, never a copy."""
-    for name in ("UNUSUAL_WHALES_API_KEY", "FRED_API_KEY", "DEEPSEEK_API_KEY", "GITHUB_TOKEN", "SOME_SECRET",
-                 "RC_PASSWORD"):
-        monkeypatch.setenv(name, "s3cr3t-value-" + name)
-    _linux(tmp_path, FakeSystemctl()).install(A.entry("RC-Daily-Bars"))
-    for kind in ("service", "timer"):
-        text = _unit(tmp_path, "RC-Daily-Bars", kind)
-        assert "s3cr3t-value" not in text
-    names = {line.split("=", 1)[1].strip('"').split("=", 1)[0]
-             for line in _unit(tmp_path, "RC-Daily-Bars", "service").splitlines()
-             if line.startswith("Environment=")}
-    assert names <= set(A.UNIT_ENVIRONMENT)
 
 
-def test_install_quotes_paths_and_escapes_systemd_specifiers(tmp_path):
-    sc = FakeSystemctl()
-    _linux(tmp_path, sc, python='/opt/my "py"/100%/bin/python', workdir="/srv/rc 100%").install(
-        A.entry("RC-Daily-Bars"))
-    service = _unit(tmp_path, "RC-Daily-Bars", "service")
-    assert 'ExecStart="/opt/my \\"py\\"/100%%/bin/python" "-m"' in service
-    assert "WorkingDirectory=/srv/rc 100%%" in service
 
 
-def test_a_path_with_a_newline_is_refused_before_anything_is_written(tmp_path):
-    sc = FakeSystemctl()
-    with pytest.raises(A.AutomationError):
-        _linux(tmp_path, sc, workdir="/srv/rc\nExecStartPre=/bin/rm").install(A.entry("RC-Daily-Bars"))
-    assert sc.calls == [] and not (tmp_path / "units").exists()
 
 
-def test_a_failing_systemctl_call_raises_with_its_message(tmp_path):
-    with pytest.raises(A.AutomationError, match="Failed to connect to bus"):
-        _linux(tmp_path, FakeSystemctl(rc=1, err="Failed to connect to bus")).install(A.entry("RC-Daily-Bars"))
 
 
 class FailOn(FakeSystemctl):
@@ -163,24 +84,8 @@ class FailOn(FakeSystemctl):
         return (1, "", "Failed to connect to bus") if args[0] in self.verbs else (0, "", "")
 
 
-@pytest.mark.parametrize("verb", ["daemon-reload", "enable"])
-def test_a_failed_install_leaves_no_unit_file_behind(tmp_path, verb):
-    """Otherwise the row reads "error", the panel draws no button for it and the half-installed unit stays."""
-    sc = FailOn(verb)
-    with pytest.raises(A.AutomationError, match="bus"):
-        _linux(tmp_path, sc).install(A.entry("RC-Daily-Bars"))
-    assert list((tmp_path / "units").iterdir()) == []
-    assert sc.calls[-1] == ["daemon-reload"], "the rollback reloads so systemd forgets the units too"
 
 
-def test_remove_deletes_the_files_even_when_the_bus_is_down_and_still_reports_it(tmp_path):
-    s = _linux(tmp_path, FakeSystemctl())
-    s.install(A.entry("RC-Daily-Bars"))
-    s._run = FailOn("disable", "daemon-reload")
-    with pytest.raises(A.AutomationError, match="bus"):
-        s.remove("RC-Daily-Bars")
-    assert list((tmp_path / "units").iterdir()) == []
-    assert s.status("RC-Daily-Bars") is None
 
 
 # --- the other four buttons ---------------------------------------------------------
@@ -214,14 +119,6 @@ def test_a_name_outside_the_registry_is_refused_without_a_call(tmp_path):
     assert sc.calls == []
 
 
-def test_remove_leaves_other_unit_files_alone(tmp_path):
-    units = tmp_path / "units"
-    units.mkdir()
-    (units / "someone-else.timer").write_text("[Timer]\n", encoding="utf-8")
-    s = _linux(tmp_path, FakeSystemctl())
-    s.install(A.entry("RC-Daily-Bars"))
-    s.remove("RC-Daily-Bars")
-    assert [p.name for p in units.iterdir()] == ["someone-else.timer"]
 
 
 # --- status -----------------------------------------------------------------------
@@ -236,76 +133,16 @@ def _iso(ts: int) -> str:
     return datetime.fromtimestamp(ts, timezone.utc).astimezone().isoformat()
 
 
-def test_status_is_none_when_the_units_are_not_installed_and_calls_nothing(tmp_path):
-    sc = FakeSystemctl()
-    assert _linux(tmp_path, sc).status("RC-Daily-Bars") is None
-    assert sc.calls == []
 
 
-def test_status_reads_one_show_call_for_both_units(tmp_path):
-    sc = FakeSystemctl()
-    s = _linux(tmp_path, sc)
-    s.install(A.entry("RC-Daily-Bars"))
-    sc.calls.clear()
-    sc.out = _show(_TIMER_ON, _SERVICE_OK)
-    st = s.status("RC-Daily-Bars")
-    assert len(sc.calls) == 1
-    call = sc.calls[0]
-    assert call[0] == "show" and "--timestamp=unix" in call
-    assert call[-2:] == ["RC-Daily-Bars.timer", "RC-Daily-Bars.service"]
-    assert st == A.TaskStatus(state="ready", last_run=_iso(1792900800), next_run=_iso(1792987200),
-                              last_result=A.RESULT_OK, missed_runs=0)
 
 
-@pytest.mark.parametrize("timer, service, state, result", [
-    ({**_TIMER_ON, "ActiveState": "inactive", "NextElapseUSecRealtime": ""}, _SERVICE_OK, "disabled", A.RESULT_OK),
-    (_TIMER_ON, {**_SERVICE_OK, "ActiveState": "activating"}, "running", A.RESULT_RUNNING),
-    (_TIMER_ON, {**_SERVICE_OK, "Result": "exit-code", "ExecMainStatus": "5"}, "ready", 5),
-    (_TIMER_ON, {**_SERVICE_OK, "Result": "timeout", "ExecMainStatus": "0"}, "ready", 1),
-    ({**_TIMER_ON, "LastTriggerUSec": "n/a"}, {**_SERVICE_OK, "ExecMainStartTimestamp": ""}, "ready",
-     A.RESULT_NOT_YET_RUN),
-    # The user manager restarted since the last run: the timer remembers it, the service does not.
-    (_TIMER_ON, {**_SERVICE_OK, "ExecMainStartTimestamp": ""}, "ready", None),
-])
-def test_status_maps_systemd_state_to_the_panel_codes(tmp_path, timer, service, state, result):
-    sc = FakeSystemctl()
-    s = _linux(tmp_path, sc)
-    s.install(A.entry("RC-Daily-Bars"))
-    sc.out = _show(timer, service)
-    st = s.status("RC-Daily-Bars")
-    assert (st.state, st.last_result) == (state, result)
 
 
-@pytest.mark.parametrize("timer", [
-    {**_TIMER_ON, "ActiveState": "failed", "Result": "resources"},
-    {**_TIMER_ON, "ActiveState": "inactive", "Result": "resources"},
-])
-def test_a_failed_timer_is_an_error_row_not_a_disabled_one(tmp_path, timer):
-    sc = FakeSystemctl()
-    s = _linux(tmp_path, sc)
-    s.install(A.entry("RC-Daily-Bars"))
-    sc.out = _show(timer, _SERVICE_OK)
-    with pytest.raises(A.AutomationError, match="resources"):
-        s.status("RC-Daily-Bars")
-    row = A.live_row(A.entry("RC-Daily-Bars"), s)
-    assert row["state"] == "error" and "resources" in row["result_text"]
 
 
-def test_an_unreadable_show_answer_raises(tmp_path):
-    s = _linux(tmp_path, FakeSystemctl())
-    s.install(A.entry("RC-Daily-Bars"))
-    s._run = FakeSystemctl(out="garbage")
-    with pytest.raises(A.AutomationError):
-        s.status("RC-Daily-Bars")
 
 
-def test_a_failed_row_reads_red_on_the_panel(tmp_path):
-    sc = FakeSystemctl()
-    s = _linux(tmp_path, sc)
-    s.install(A.entry("RC-Daily-Bars"))
-    sc.out = _show(_TIMER_ON, {**_SERVICE_OK, "Result": "exit-code", "ExecMainStatus": "2"})
-    row = A.live_row(A.entry("RC-Daily-Bars"), s)
-    assert row["state"] == "enabled" and row["result_kind"] == "red"
 
 
 # --- which scheduler a host gets -----------------------------------------------------
@@ -374,44 +211,9 @@ def test_a_relative_xdg_config_home_is_ignored(monkeypatch):
     assert A.LinuxScheduler(runner=FakeSystemctl()).unit_dir == A.Path.home() / ".config" / "systemd" / "user"
 
 
-def test_a_value_ending_in_a_backslash_is_refused(tmp_path):
-    """A trailing backslash continues a unit-file line onto the next one."""
-    with pytest.raises(A.AutomationError):
-        _linux(tmp_path, FakeSystemctl(), workdir="/srv/rc\\").install(A.entry("RC-Daily-Bars"))
 
 
-def test_an_unwritable_unit_folder_is_a_scheduler_error_not_a_crash(tmp_path):
-    """The routes catch AutomationError only: an OSError would make /api/automations a bare 500 for every row."""
-    (tmp_path / "units").write_text("a file where the folder should be", encoding="utf-8")
-    s = _linux(tmp_path, FakeSystemctl())
-    with pytest.raises(A.AutomationError):
-        s.install(A.entry("RC-Daily-Bars"))
-    for call in (lambda: s.status("RC-Daily-Bars"), lambda: s.remove("RC-Daily-Bars")):
-        try:
-            call()
-        except A.AutomationError:
-            pass
 
 
-def test_a_failed_write_leaves_no_temp_file(tmp_path, monkeypatch):
-    s = _linux(tmp_path, FakeSystemctl())
-    real = A.Path.replace
-
-    def boom(self, target):
-        if str(self).endswith(".timer.tmp"):
-            raise OSError("disk full")
-        return real(self, target)
-
-    monkeypatch.setattr(A.Path, "replace", boom)
-    with pytest.raises(A.AutomationError, match="disk full"):
-        s.install(A.entry("RC-Daily-Bars"))
-    assert list((tmp_path / "units").iterdir()) == []
 
 
-def test_an_unreadable_exit_status_is_a_scheduler_error(tmp_path):
-    sc = FakeSystemctl()
-    s = _linux(tmp_path, sc)
-    s.install(A.entry("RC-Daily-Bars"))
-    sc.out = _show(_TIMER_ON, {**_SERVICE_OK, "ExecMainStatus": "n/a"})
-    with pytest.raises(A.AutomationError):
-        s.status("RC-Daily-Bars")

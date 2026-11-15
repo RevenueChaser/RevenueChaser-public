@@ -19,7 +19,6 @@ import pytest
 import RevenueChaser.module_financials.run as fm
 from RevenueChaser.rcdata.tests import universe_store
 from RevenueChaser.core import universe as spine
-from RevenueChaser.core.providers import cache as cache_manager
 from RevenueChaser.module_financials import peers as peer_ladder
 from RevenueChaser.module_financials.engines.comps_engine import NM, run_comps
 from RevenueChaser.module_financials.engines.dcf_engine import run_dcf
@@ -40,55 +39,13 @@ def _ladder(ticker="TEST"):
     return peer_ladder.select_peers(ticker, spine.classification_universe_rows())
 
 
-def _run_peers(monkeypatch, tmp_path, financials, ticker="TEST"):
-    """What run() hands the comps engine as peers (the engine itself is stubbed), and the run's warnings."""
-    monkeypatch.setattr(fm, "OUTPUT_DIR", tmp_path)
-    monkeypatch.setattr(cache_manager, "get_or_fetch", lambda t, fn, use_cache=True: dict(financials))
-    qr = fm.quick_remarks_engine
-    monkeypatch.setattr(qr, "run_quick_remarks", lambda t, no_fetch=False, financials=None: qr._from_card(t, {}, "yfinance"))
-    seen = {}
-    monkeypatch.setattr(fm.comps_engine, "run_comps",
-                        lambda fin, peers, **kw: seen.update(peers=list(peers)) or {})
-    res = fm.run(ticker, modules=["comps"], output="none")["results"]
-    return seen["peers"], res["warnings"]
 
 
 # ── the peers are the universe's, and there are 8 of them ──────────────────────────────────────────────
-def test_peers_come_from_the_universe_rows_not_a_static_list(rawstore_tmp_db, tmp_path, monkeypatch, financials):
-    _seed([{"ticker": "TEST", "market_cap": 1.0e9}] +
-          [{"ticker": f"P{i}", "market_cap": cap} for i, cap in
-           enumerate([1.1e9, 0.9e9, 1.2e9, 0.8e9, 1.3e9, 0.7e9, 1.4e9, 0.6e9], start=1)])
-    got, warnings = _run_peers(monkeypatch, tmp_path, financials)
-    assert sorted(got) == [f"P{i}" for i in range(1, 9)]
-    assert "MSFT" not in got                      # the old static sector list is not a fallback
-    assert not any(w.startswith("comps: ") and "peers" in w for w in warnings)
 
 
-def test_a_short_ladder_is_reported_not_padded(rawstore_tmp_db, tmp_path, monkeypatch, financials):
-    _seed([{"ticker": "TEST", "market_cap": 1.0e9}, {"ticker": "OIL1", "market_cap": 1.1e9}])
-    got, warnings = _run_peers(monkeypatch, tmp_path, financials)
-    assert got == ["OIL1"]
-    assert "comps: 1 of 8 peers — the spine industry and sector have no more names" in warnings
 
 
-@pytest.mark.parametrize("rows, case", [
-    ([{"ticker": "OIL1", "market_cap": 1.1e9}], "the spine does not carry the target at all"),
-    ([{"ticker": "TEST", "market_cap": None}, {"ticker": "OIL1", "market_cap": 1.1e9}],
-     "the spine carries it with no market cap"),
-])
-def test_a_target_the_spine_cannot_place_says_why_no_peer_was_picked(rawstore_tmp_db, tmp_path, monkeypatch,
-                                                                    financials, rows, case):
-    """Review S-3: "0 of 8 peers — the industry and sector have no more names" is the wrong story here.
-
-    A target the classification universe leaves out (below the $300M floor, or an excluded security type) has
-    no "nearest market cap" to rank from, so the reader is told that, not that its industry ran dry.
-    """
-    _seed(rows)
-    got, warnings = _run_peers(monkeypatch, tmp_path, financials)
-    assert got == [], case
-    assert ("comps: TEST is not in the spine universe (below the market-cap floor, or an excluded security "
-            "type), so no peers were picked") in warnings, case
-    assert not any("no more names" in w for w in warnings), case
 
 
 def test_exactly_eight_peers_when_the_industry_has_enough(rawstore_tmp_db):

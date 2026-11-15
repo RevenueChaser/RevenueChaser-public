@@ -84,22 +84,6 @@ def _api_moneyflow(dashboard) -> dict:
     return dashboard.get("/api/moneyflow").json()
 
 
-def _seed_bars(dashboard, monkeypatch, skip=(), only=None) -> None:
-    """Bars in the dashboard's prices store (``price_bar_daily``) for SPY and every rotation ETF but ``skip``, from
-    ``bars_seed.FIRST`` to the latest complete session: what the prices build leaves (M-ROT-2, #374; PR 9)."""
-    import RevenueChaser.core.rawstore as rawstore
-    from RevenueChaser.core import calendar
-    from RevenueChaser.module_sector_rotation import engine
-    from RevenueChaser.module_sector_rotation.tests.bars_seed import seed
-
-    monkeypatch.setattr(rawstore, "DB_PATH", dashboard.store_dir / "raw.duckdb")
-
-    monkeypatch.setattr("RevenueChaser.core.config.MARKET_DIR", dashboard.env["RC_MARKET_DIR"])  # the prices store (G3)
-    rawstore.ensure_all_tables()
-    session = calendar.latest_complete_session()
-    for t in ["SPY", *engine.rrg_tickers()]:
-        if t not in skip and (only is None or t in only):
-            seed(t, session)
 
 
 def _drop_bars(ticker: str) -> None:
@@ -108,17 +92,6 @@ def _drop_bars(ticker: str) -> None:
     prices_store.delete_bars(ticker)
 
 
-def _record_complete_leaderboard(board: dict) -> None:
-    """Record ``board`` in result history as a complete run after the latest session's close, whatever the real
-    clock says: the guard's newest complete session (ROT-9). A Fetch the dashboard ran after a close records one
-    itself; one it ran mid-session records its header only."""
-    from datetime import datetime, time, timezone
-    from RevenueChaser.core import calendar
-    from RevenueChaser.module_sector_rotation import history as rot_history
-
-    session = calendar.latest_complete_session()
-    run_at = datetime.combine(session, time(23, 0), tzinfo=timezone.utc).timestamp()      # 19:00/18:00 ET
-    rot_history.record_money_flow(board, run_id="e2e-complete", run_at=run_at, days=30, window=21, top_n=10)
 
 
 def _candle_calls(routes) -> list[str]:
@@ -127,66 +100,10 @@ def _candle_calls(routes) -> list[str]:
 
 # ── SPY candles down ─────────────────────────────────────────────────────────────────────
 
-class TestSpyCandlesDown:
-    def test_a_range_backfill_without_spy_in_the_prices_store_writes_no_day_and_says_so(
-            self, dashboard, routes, monkeypatch):
-        _seed_bars(dashboard, monkeypatch, skip={"SPY"})
-        _break(routes, "SPY")
-        res = dashboard.run_job("/run/rotation", start="2026-06-01", end="2026-08-30")
-        dashboard.wait_until_idle()
-        assert res.ok, res
-        assert "days not written: the prices store holds no SPY bar" in res.message, res
-        assert dashboard.table_count("rotation_snapshots") == 0
-
-    def test_the_same_range_with_spy_in_the_prices_store_writes_the_days(self, dashboard, routes, monkeypatch):
-        _seed_bars(dashboard, monkeypatch)
-        res = dashboard.run_job("/run/rotation", start="2026-06-01", end="2026-08-30")
-        dashboard.wait_until_idle()
-        assert res.ok and "not written" not in (res.message or ""), res
-        assert dashboard.table_count("rotation_snapshots") > 0
-        zero = _query(dashboard, "SELECT count(*) FROM rotation_snapshots WHERE rs_1m = 0 AND rs_3m = 0")[0][0]
-        assert zero == 0
 
 
 # ── one ETF down ─────────────────────────────────────────────────────────────────────────
 
-class TestOneEtfDown:
-    def test_a_range_backfill_asks_no_candle_and_leaves_out_an_etf_the_store_lacks(
-            self, dashboard, routes, monkeypatch):
-        _seed_bars(dashboard, monkeypatch, skip={"XLK"})
-        _break(routes, "XLK")
-        res = dashboard.run_job("/run/rotation", start="2026-06-01", end="2026-08-30")
-        dashboard.wait_until_idle()
-        assert res.ok and "not written" not in (res.message or ""), res
-        assert dashboard.table_count("rotation_snapshots") > 0
-        assert _query(dashboard, "SELECT count(*) FROM rotation_snapshots WHERE ticker = 'XLK'")[0][0] == 0
-        assert _candle_calls(routes) == []                       # nor does the queued Money Flow (M-ROT-3)
-
-    def test_a_partial_leaderboard_never_replaces_a_whole_one(self, dashboard, routes, monkeypatch):
-        _seed_bars(dashboard, monkeypatch)
-        assert dashboard.run_job("/run/moneyflow").ok
-        whole = _api_moneyflow(dashboard)
-        assert whole["inflows"] and "partial" not in whole and "missing" not in whole
-        assert set(whole) == {"inflows", "outflows", "generated_at", "as_of"}
-        _record_complete_leaderboard(whole)
-
-        _drop_bars("SMH")
-        _break(routes, "SMH")
-        held = dashboard.run_job("/run/moneyflow")
-        assert held.ok and "kept the stored leaderboard" in held.message and "SMH" in held.message, held
-        assert _api_moneyflow(dashboard) == whole
-
-        _seed_bars(dashboard, monkeypatch, only={"SMH"})
-        assert dashboard.run_job("/run/moneyflow").ok
-        assert "partial" not in _api_moneyflow(dashboard)
-        assert _candle_calls(routes) == []                       # stored bars only: no candle for any ETF (M-ROT-3)
-
-    def test_with_nothing_stored_the_partial_leaderboard_is_saved_flagged(self, dashboard, routes, monkeypatch):
-        _seed_bars(dashboard, monkeypatch, skip={"SMH"})
-        res = dashboard.run_job("/run/moneyflow")
-        assert res.ok and "saved flagged" in res.message and "SMH" in res.message, res
-        flagged = _api_moneyflow(dashboard)
-        assert flagged["partial"] is True and flagged["missing"] == ["SMH"] and flagged["inflows"]
 
 
 # ── the board note (headless Chrome) ─────────────────────────────────────────────────────
@@ -229,22 +146,6 @@ def _note(dom: str) -> str | None:
     return m.group(1) if m else None
 
 
-class TestMoneyFlowNoteOnTheBoard:
-    def test_the_board_shows_an_amber_note_naming_the_missing_etf(self, dashboard, routes, chrome, tmp_path,
-                                                                   monkeypatch):
-        _seed_bars(dashboard, monkeypatch, skip={"SMH"})
-        _break(routes, "SMH")
-        assert dashboard.run_job("/run/rotation").ok
-        dashboard.wait_until_idle()
-        note = _note(_dump_dom(chrome, f"{dashboard.url}/view/module_sector_rotation", tmp_path / "p1"))
-        assert note is not None and "SMH" in note and "Partial leaderboard" in note
-
-    def test_a_whole_leaderboard_shows_no_note(self, dashboard, routes, chrome, tmp_path, monkeypatch):
-        _seed_bars(dashboard, monkeypatch)
-        assert dashboard.run_job("/run/rotation").ok
-        dashboard.wait_until_idle()
-        dom = _dump_dom(chrome, f"{dashboard.url}/view/module_sector_rotation", tmp_path / "p2")
-        assert 'id="mf-inflows"' in dom and _note(dom) is None
 
 
 # ── OIPD: the second page of an expiry fails ─────────────────────────────────────────────

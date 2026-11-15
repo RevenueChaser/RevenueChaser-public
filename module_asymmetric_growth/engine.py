@@ -24,31 +24,14 @@ from datetime import date, datetime, timedelta, timezone
 from RevenueChaser.core import earnings_dates, fiscal_year, trailing_year
 from RevenueChaser.core import funnel as funnel_mod
 from RevenueChaser.core import job_control
-from RevenueChaser.core import ledger, ownership, rawstore
+from RevenueChaser.core import ownership
 from RevenueChaser.core import tristate as tri
-from RevenueChaser.core import vendor_data
 from RevenueChaser.core.config import to_float
 from RevenueChaser.core.info_fallback import has_fields, refetch_or_keep
 from RevenueChaser.core.liquidity import liquid_assets
-from RevenueChaser.core.providers import cache as cache_manager
 from RevenueChaser.core.providers import sec_edgar
 from RevenueChaser.core.providers import yfinance as yfinance_client
 from RevenueChaser.core import universe as _spine
-from RevenueChaser.core.universe import (  # noqa: F401
-    load_cached_universe as _load_cached_universe,
-    load_universe_meta as _load_universe_meta,
-)
-# The universe writer moved to core/universe_fetch.py (#146, from #217). These names stay importable from here.
-from RevenueChaser.core.universe_fetch import (  # noqa: F401
-    US_EXCHANGES,
-    _UNIVERSE_META_KEY,
-    _load_stats_meta,
-    _save_universe,
-    _save_universe_meta,
-    backfill_universe_caps,
-    fetch_universe,
-    fetch_universe_stats,
-)
 from RevenueChaser.core.taxonomy import themes_for_many
 from RevenueChaser.module_asymmetric_growth import sector_rules          # #18: AG's own rule, beside it now
 from RevenueChaser.rcdata import opens  # #566: pooled reads count for this run
@@ -495,24 +478,16 @@ def _cached_financials(ticker: str, no_fetch: bool = False, preload: dict | None
     else:
         edgar_annual, edgar_quarterly, edgar_meta = sec_edgar.get_fundamentals(ticker, no_fetch=no_fetch)
 
-    if preload is not None:
-        financials = preload["payload"].get(ticker)
-    else:
-        financials = cache_manager.load(ticker, ignore_ttl=no_fetch, allow_info_only=True)
-    if financials is not None and financials.get("info_only") and not edgar_annual:
-        financials = None  # an info-only row cannot serve a name that has no EDGAR years
+    # The yfinance payload cache lived in the old store (``ticker_payload_cache``, #860): a Fetch asks Yahoo
+    # afresh, a store-only run scores from EDGAR alone.
+    financials = None
     if financials is None:
         if no_fetch:
             if not edgar_annual:
                 return None
             financials = {"info": {}}  # EDGAR alone is enough to score a store-only run (#150 U7)
         else:
-            # #260 (C15): a refetch that answers nothing must not lose the expired row. Only a fresh answer is
-            # saved (and handed to the run's vendor capture); a stale one serves the scorer marked ``_stale``;
-            # nothing stored keeps today's scoring path and is never saved as a skeleton.
-            stored = cache_manager.load(ticker, ignore_ttl=True, allow_info_only=True)
-            if stored is not None and stored.get("info_only") and not edgar_annual:
-                stored = None   # an info-only row cannot serve a name with no EDGAR years (as above)
+            stored = None
             replies: list[dict] = []
 
             def fetch():
@@ -524,20 +499,9 @@ def _cached_financials(ticker: str, no_fetch: bool = False, preload: dict | None
             is_answer = _has_answer if edgar_annual else (lambda fin: bool(fin) and bool(fin.get("annual")))
             financials, status = refetch_or_keep(stored, fetch, is_answer, catch=(OSError, ValueError, KeyError),
                                                  label=ticker, log_level=logging.WARNING)
-            if status == "fresh":
-                cache_manager.save(ticker, financials)  # info her zaman cache'lenir (yeniden taramalar hızlı)
-                if preload is not None and preload.get("vendor") is not None:
-                    preload["vendor"].add_yfinance(ticker, financials)   # D12 (#297): stored by the run, per batch
-            elif status == "stale":
-                _note_info_refetch(preload, status)     # the expired row serves the scorer, marked ``_stale``
-            else:
+            if status != "fresh":
                 _note_info_refetch(preload, status)
                 financials = {"info": {}} if edgar_annual else None
-            if (status != "fresh" and not edgar_annual and replies and _has_answer(replies[0])
-                    and preload is not None and preload.get("vendor") is not None):
-                # A no-EDGAR name's reply with info but no statements is not saved over the stored row, but its
-                # valuation and ownership rows still reach the run's vendor capture (R2B-4, R4 delta review).
-                preload["vendor"].add_yfinance(ticker, replies[0])
 
     if edgar_annual:
         financials["annual"] = edgar_annual
@@ -612,7 +576,6 @@ def _preload(tickers: list[str], no_fetch: bool, session: date | None = None) ->
     return {
         "edgar": {t: (annual, meta) for t, (annual, _q, meta) in stored.items()},
         "quarterly": {t: quarterly for t, (_a, quarterly, _m) in stored.items()},     # review SF-4 (G6)
-        "payload": cache_manager.load_many(tickers, ignore_ttl=no_fetch, allow_info_only=True),
         "themes": themes_for_many(tickers),
         "bars": _bars_by_ticker(tickers, session),
         "session": session,
@@ -970,15 +933,12 @@ def stored_result() -> dict:
     """What a Refresh shows (S5, Common K4 #383 R1): the last Fetch, read back, never re-scored.
 
     The cards are the ``ticker_scores`` rows (``ticker_store``), sorted as a Fetch sorts them, with their index
-    labels. Universe, summary and funnel come from the last Fetch's history header (``core/history.last_run``) when
-    it is this scan's (its ``asof`` is the table's); otherwise the summary is counted from the cards and there is no
-    funnel. ``data_as_of`` (the prices-store session the Fetch's prices came from, #380 S4) is restored from that header too.
+    labels; the summary is counted from the cards and there is no funnel (the history header went, #860).
     No stored card: the no-data message (no stored universe, or no stored scan). No scorer, no network, no write.
     """
-    from RevenueChaser.core import history, ticker_store
+    from RevenueChaser.core import ticker_store
     from RevenueChaser.core.index_registry import annotate_cards
     from RevenueChaser.core.scan_quality import no_data_message
-    from RevenueChaser.module_asymmetric_growth import history as ag_history
 
     cards = ticker_store.all_cards()
     asof = ticker_store.asof()
@@ -992,23 +952,8 @@ def stored_result() -> dict:
         return result
     _sort_cards(cards)
     annotate_cards(cards)
-    try:
-        head = history.last_run(ag_history.BOARD)
-    except Exception as exc:  # noqa: BLE001 - a locked history file: the cards still show
-        logger.warning("AG Refresh: the last Fetch's header could not be read: %s", exc)
-        head = None
-    # The last Fetch's provider health (#80). The column is the history; this Refresh does not re-read Yahoo.
-    if head:
-        result["provider_health"] = head.get("provider_health")
-    ctx = (head or {}).get("context") or {}
-    if asof and ctx.get("asof") == asof:
-        result.update(universe_total=ctx.get("universe_total"), universe_generated_at=ctx.get("universe_generated_at"),
-                      universe_refreshed_by=ctx.get("universe_refreshed_by"),
-                      universe_partial=bool(ctx.get("universe_partial")), funnel_steps=head.get("funnel"),
-                      data_as_of=ctx.get("data_as_of"),
-                      summary=ctx.get("summary") or _summary(cards, None, {}))
-    else:
-        result["summary"] = _summary(cards, None, {})
+    # The last Fetch's header (universe, funnel, provider health) lived in the old history file (#860).
+    result["summary"] = _summary(cards, None, {})
     return result
 
 
@@ -1029,8 +974,7 @@ def run_asymmetric_growth_hunter(uw=None, max_workers: int = 10,
     # This Fetch's Yahoo reads only (Common K3). A Refresh never calls Yahoo, so it does not reset the counter.
     if not no_fetch:
         yfinance_client.reset_health()
-    universe, u_stats = fetch_universe_stats(uw, refreshed_by="Asymmetric Growth",
-                                             refresh=refresh_universe, no_fetch=no_fetch)
+    universe, u_stats = _spine.universe_with_stats()
     # R5 D-2 (#88): the board's type filter (PR 2, ``BOARD_OPERATING_ONLY``): growth signals need company data,
     # so by default the identity master's excluded types (CEF, ETF/ETP, SPAC, preferred, unit, warrant) do not screen.
     excluded = (_spine.excluded_tickers() if _spine.BOARD_OPERATING_ONLY["module_asymmetric_growth"] else set())
@@ -1041,9 +985,6 @@ def run_asymmetric_growth_hunter(uw=None, max_workers: int = 10,
     score_errors: dict[str, int] = {}  # exception type -> tickers dropped by it (#202)
     error_tickers: dict[str, list[str]] = {}  # the same, by name (the funnel lists them)
     drops = _Drops()
-    # A Refresh fetches nothing, so stores nothing (#313). The universe job is D20's yfinance writer (#300).
-    vendor = None if no_fetch else vendor_data.Capture(ownership=True)
-    vendor_run = run_id or ledger.new_run_id()
     run_day = _run_day()                    # anchor age is judged against the day the scan runs (card O-2)
     scan_session = _price_session()         # one price cutoff for the whole Fetch, so no batch reads a newer SPY bar
     stored_earnings = earnings_dates.stored_next_dates()      # #304: one read per run, not per batch
@@ -1051,14 +992,11 @@ def run_asymmetric_growth_hunter(uw=None, max_workers: int = 10,
         # The store is read in bulk per batch (a fixed number of queries each), not once per ticker (#150 U13);
         # a batch bounds how many EDGAR and payload rows are in memory at once.
         for start in range(0, len(to_score), PRELOAD_BATCH):
-            if vendor is not None:
-                vendor.flush(run_id=vendor_run, label="Asymmetric Growth")   # the batch before this one
             job_control.checkpoint()            # a cancel or a passed deadline (#243) loads no further batch
             batch = to_score[start:start + PRELOAD_BATCH]
             preload = _preload([r["ticker"] for r in batch], no_fetch, scan_session)
             preload["earnings"] = stored_earnings   # #304: read once per run, not per batch
             preload["drops"] = drops
-            preload["vendor"] = vendor
             preload["as_of"] = run_day
             bar_sessions = _newest_bar_sessions(preload.get("bars") or {})   # where each card's price date comes from
             futs = {ex.submit(enrich_and_score, r["ticker"], r, no_fetch, spine, preload): r["ticker"]
@@ -1078,11 +1016,8 @@ def run_asymmetric_growth_hunter(uw=None, max_workers: int = 10,
                     day = bar_sessions.get(card["ticker"])
                     if day is not None and (data_as_of is None or day > data_as_of):
                         data_as_of = day
-    if vendor is not None:
-        vendor.flush(run_id=vendor_run, label="Asymmetric Growth")
-
     totals = ownership.sec13f_totals()      # #16: the stored rows, not the 13F board's engine
-    shares_out = ownership.load_ownership([c["ticker"] for c in cards])   # #481: the 13F board's % Out denominator
+    shares_out: dict = {}       # the stored shares outstanding (``ownership_snapshot``) went with the old store (#860)
     latest_13f = {}
     for c in cards:
         try:

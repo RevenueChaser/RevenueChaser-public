@@ -17,7 +17,6 @@ import pytest
 
 import RevenueChaser.core.ticker_store as ts
 from RevenueChaser.module_asymmetric_growth import engine as agh
-from RevenueChaser.module_financials import history as fin_history
 from RevenueChaser.module_financials.engines import quick_remarks_engine as qr
 from RevenueChaser.module_financials.engines.dcf_engine import run_dcf
 from RevenueChaser.module_financials.engines.three_statement_engine import run_three_statement
@@ -151,17 +150,6 @@ def test_a_measured_base_year_and_mix_say_default_nowhere(financials):
 
 
 # ── S4: one New York day in the header and in the comps' "as of" ───────────────
-@pytest.mark.parametrize("stamp, header", [
-    ("2026-10-06T20:45:00+00:00", "Tuesday, October 06, 2026 EOD"),        # 16:45 ET, the session is complete
-    ("2026-10-07T02:00:00+00:00", "Tuesday, October 06, 2026 EOD"),        # 22:00 ET: UTC already says Wednesday
-    ("2026-10-07T12:00:00+00:00", "Tuesday, October 06, 2026 EOD"),        # 08:00 ET Wednesday, before the open
-    ("2026-10-10T15:00:00+00:00", "Friday, October 09, 2026 EOD"),         # a Saturday: Friday's close
-    ("2026-10-06T15:00:00+00:00", "Tuesday, October 06, 2026 intraday"),   # 11:00 ET, inside the session
-])
-def test_the_header_and_the_comps_name_the_same_new_york_session(financials, stamp, header):
-    financials["_fetched_at_iso"] = stamp
-    assert f"Last sync: {header}<" in _html(financials, {})
-    assert header.startswith(f"{date.fromisoformat(fin_history._as_of(stamp, None)):%A, %B %d, %Y} ")
 
 
 def test_an_intraday_fetch_is_not_called_end_of_day(financials):
@@ -174,10 +162,6 @@ SCAN_ASOF = "2026-10-06T21:00:00+00:00"                                    # 17:
 TUESDAY_LATE = datetime(2026, 10, 7, 2, 0, tzinfo=timezone.utc).timestamp()   # 22:00 ET Tuesday
 
 
-def _record_remarks(remarks, *, run_id, run_at=TUESDAY_LATE, fetched="2026-10-06T21:30:00+00:00"):
-    fin_history.record({"financials": {"ticker": "TEST", "fetched_at_iso": fetched}, "modules": {},
-                        "quick_remarks": remarks, "warnings": []}, ticker="TEST", run_id=run_id, run_at=run_at,
-                       modules=[])
 
 
 def test_a_scan_card_carries_the_scans_session(monkeypatch):
@@ -195,20 +179,8 @@ def test_a_score_this_fetch_built_carries_the_payloads_session(monkeypatch):
     assert (res["score"], res["as_of"], res["as_of_note"]) == (5, "2026-10-06", "this Fetch")
 
 
-def test_a_refresh_shows_the_remarks_the_last_fetch_scored(rawstore_tmp_db, monkeypatch):
-    monkeypatch.setattr(ts, "get", lambda t: None)
-    _record_remarks({"ticker": "TEST", "source": "yfinance", "score": 5, "max": 9, "signals": []}, run_id="r1")
-    res = qr.run_quick_remarks("TEST", no_fetch=True)
-    assert (res["score"], res["as_of"], res["as_of_note"]) == (5, "2026-10-06", "the last stored Fetch")
 
 
-def test_a_refresh_skips_a_newer_fetch_that_scored_nothing(rawstore_tmp_db, monkeypatch):
-    monkeypatch.setattr(ts, "get", lambda t: None)
-    _record_remarks({"ticker": "TEST", "source": "yfinance", "score": 4, "max": 9, "signals": [],
-                     "as_of": "2026-10-05", "as_of_note": "this Fetch"}, run_id="old", run_at=TUESDAY_LATE - 86400)
-    _record_remarks({"ticker": "TEST", "source": "yfinance", "score": None}, run_id="new")
-    res = qr.run_quick_remarks("TEST", no_fetch=True)
-    assert (res["score"], res["as_of"], res["as_of_note"]) == (4, "2026-10-05", "the last stored Fetch")
 
 
 def test_a_refresh_with_nothing_stored_is_an_undated_empty_card(rawstore_tmp_db, monkeypatch):
@@ -262,28 +234,9 @@ def test_the_help_box_does_not_claim_sec_edgar(financials):
 
 
 # ── N6: the stored comps are dated by the run that fetched the peers ────────────
-def test_the_stored_comps_are_dated_by_their_run_not_the_cached_target_payload(rawstore_tmp_db):
-    """A Fetch reads the target's payload through the cache (it can be a day old) but fetches every peer's .info
-    live: the multiples are the run's, so the Refresh's "as of" is the run's session."""
-    comps = _comps((3, 3, 3))
-    fin_history.record({"financials": {"ticker": "TEST", "fetched_at_iso": "2026-10-05T21:30:00+00:00"},
-                        "modules": {"comps": comps}, "quick_remarks": None, "warnings": []},
-                       ticker="TEST", run_id="r1", run_at=TUESDAY_LATE, modules=["comps"])
-    assert fin_history.last_report("TEST")["as_of"] == "2026-10-06"
 
 
 # ── N7: the model version hashes only the part of the sector bands a model reads ──
-def test_a_sector_band_no_model_reads_does_not_move_the_model_version(monkeypatch):
-    """No engine reads wacc_range / growth_range / ebitda_margin_range / exit_multiple_range (#49); the one key a
-    model can read is a band's tax_rate (_inputs.default_tax_rate). Only that is hashed."""
-    from RevenueChaser.module_financials import config
-    bands = copy.deepcopy(config.load_sector_defaults())
-    before = fin_history.model_version()
-    bands["Technology"]["wacc_range"] = [0.01, 0.02]
-    monkeypatch.setattr(config, "load_sector_defaults", lambda: bands)
-    assert fin_history.model_version() == before
-    bands["Technology"]["tax_rate"] = 0.15
-    assert fin_history.model_version() != before
 
 
 # ── N2: how much of the value is the terminal value, and what each method implies of the other ─
@@ -364,40 +317,12 @@ def test_the_three_statement_interest_rate_is_a_labelled_default(financials):
     assert "Interest rate: 6.0%" in _html(financials, {"three_statement": typed})
 
 
-def _store_yield(points):
-    from RevenueChaser.core import rawstore
-    rawstore.write_rows("macro_series", [{"series_id": "DGS10", "obs_date": date.fromisoformat(d), "source": "fred",
-                                          "value": v} for d, v in points])
 
 
-def test_the_run_reads_the_newest_fresh_stored_yield(rawstore_tmp_db, monkeypatch):
-    import RevenueChaser.module_financials.run as fm
-    from RevenueChaser.core import calendar
-    monkeypatch.setattr(calendar, "_now", lambda: datetime(2026, 10, 28, 15, 0, tzinfo=timezone.utc))
-    assert fm._stored_risk_free() is None                                     # nothing stored: the default
-    _store_yield([("2026-10-26", 4.31), ("2026-10-27", 4.25)])
-    assert fm._stored_risk_free() == {"value": pytest.approx(0.0425), "as_of": "2026-10-27"}
 
 
-def test_a_stale_stored_yield_is_not_used(rawstore_tmp_db, monkeypatch):
-    import RevenueChaser.module_financials.run as fm
-    from RevenueChaser.core import calendar
-    monkeypatch.setattr(calendar, "_now", lambda: datetime(2026, 10, 28, 15, 0, tzinfo=timezone.utc))
-    _store_yield([("2026-10-13", 4.10)])                                       # fifteen days old
-    assert fm._stored_risk_free() is None
 
 
-def test_a_run_hands_the_stored_yield_to_the_dcf(rawstore_tmp_db, monkeypatch, financials, tmp_path):
-    """The wiring: a store-only Refresh reads the yield and the DCF uses it (zero network either way)."""
-    import RevenueChaser.module_financials.run as fm
-    from RevenueChaser.core import calendar
-    from RevenueChaser.core.providers import cache as cache_manager
-    monkeypatch.setattr(calendar, "_now", lambda: datetime(2026, 10, 28, 15, 0, tzinfo=timezone.utc))
-    monkeypatch.setattr(fm, "OUTPUT_DIR", tmp_path)
-    _store_yield([("2026-10-27", 4.25)])
-    cache_manager.save("TEST", dict(copy.deepcopy(financials), info={"longName": "Test Corp."}))
-    dcf = fm.run("TEST", modules=["dcf"], output="none", no_fetch=True)["results"]["modules"]["dcf"]
-    assert (dcf["wacc"]["risk_free"], dcf["wacc"]["risk_free_source"]) == (pytest.approx(0.0425), "stored")
 
 
 # ── S3: a bank or an insurer gets no FCFF DCF, no EBITDA credit grade and no WACC grid ──

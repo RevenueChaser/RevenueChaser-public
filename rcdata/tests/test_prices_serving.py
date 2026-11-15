@@ -393,4 +393,3 @@ def test_the_boards_read_the_bridge_views_through_the_read_api(built, monkeypatc
     assert prices.daily_bars(["FLG"])["close"].tolist() == pytest.approx(served)
     assert prices.daily_bars(["FLG"], basis="adjusted")["close"].tolist() == pytest.approx(served)
     assert ledger.d01_last_bars(["FLG"])["FLG"][0] == max(DAYS).isoformat()
-    assert prices._read("SELECT ticker FROM price_bars_daily") == []       # the writers read the store, empty here

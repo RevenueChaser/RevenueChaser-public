@@ -12,7 +12,6 @@ from RevenueChaser.core import rawstore
 from RevenueChaser.core.providers.result import ProviderResult
 from RevenueChaser.module_leaps import engine
 from RevenueChaser.module_leaps.scan import scan_leaps, scan_leaps_cached
-from RevenueChaser.module_leaps.tests.test_leaps_l3 import seed_session
 
 TODAY = date(2026, 10, 6)
 FAR = "2027-12-17"                       # > 270 days after TODAY
@@ -78,14 +77,6 @@ def _watchlist_block(html: str) -> str:
 
 # ── 1. every pinned name is shown ──
 
-def test_a_quiet_pinned_name_is_shown_on_the_refresh_path(rawstore_tmp_db, tmp_path, monkeypatch):
-    rawstore.save_watchlist({"MSFT"})
-    seed_session(date(2026, 10, 5), {"MSFT": [{"expiry": FAR, "call_oi": 300, "put_oi": 300}]})
-    engine.save_cache("MSFT", {"ticker": "MSFT", "label": "Quiet", "score": 5, "as_of": "2026-10-05"})
-    watched, unwatched = scan_leaps_cached(today=TODAY)
-    assert "MSFT" in [w["ticker"] for w in watched]
-    html = _render(tmp_path, monkeypatch, watched, unwatched, {"MSFT"})
-    assert '<div class="tkr">MSFT</div>' in _watchlist_block(html)
 
 
 def test_a_quiet_pinned_name_is_shown_on_the_fetch_path(rawstore_tmp_db, tmp_path, monkeypatch):
@@ -109,22 +100,8 @@ def test_the_board_carries_a_label_filter_chip_per_label_default_on(tmp_path, mo
 
 # ── 2. the event guard ──
 
-def test_a_print_with_earnings_within_seven_days_is_quiet_and_tagged(rawstore_tmp_db):
-    rawstore.save_watchlist({"AAA"})
-    seed_session(date(2026, 10, 5), {"AAA": [{"expiry": FAR, "call_oi": 500, "put_oi": 0}]})
-    ned = (TODAY + timedelta(days=3)).isoformat()
-    watched, _ = scan_leaps(_UW({"AAA": (1000, 200)}, tape=[_print("q1", "AAA", ned)]), today=TODAY)
-    (aaa,) = watched
-    assert aaa["near_term_event"] is True and aaa["label"] == "Quiet"
 
 
-def test_a_print_with_earnings_beyond_seven_days_stays_accumulating(rawstore_tmp_db):
-    rawstore.save_watchlist({"AAA"})
-    seed_session(date(2026, 10, 5), {"AAA": [{"expiry": FAR, "call_oi": 500, "put_oi": 0}]})
-    ned = (TODAY + timedelta(days=30)).isoformat()
-    watched, _ = scan_leaps(_UW({"AAA": (1000, 200)}, tape=[_print("q1", "AAA", ned)]), today=TODAY)
-    (aaa,) = watched
-    assert aaa["near_term_event"] is False and aaa["label"] == "Accumulating"
 
 
 # ── 3. the cap sentence ──

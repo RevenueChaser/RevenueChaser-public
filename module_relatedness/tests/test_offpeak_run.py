@@ -46,21 +46,6 @@ def test_usd_cap_limits_calls(rawstore_tmp_db, monkeypatch):
     assert calls["n"] == 3
 
 
-def test_peak_boundary_returns_pending(rawstore_tmp_db, monkeypatch, tmp_path):
-    _no_cik(monkeypatch)
-    monkeypatch.setattr(engine.config, "RELATEDNESS_JSON", tmp_path / "r.json")
-    _seed_filings(2)
-    monkeypatch.setattr(engine.vc_engine, "fetch_corpus", lambda *a, **k: {"no_fetch": True})
-
-    def boom(*a, **k):
-        raise deepseek.PeakHoursError(datetime(2026, 9, 21, 1, 0, tzinfo=timezone.utc))
-
-    monkeypatch.setattr(engine.profiles_mod, "profile_for", boom)
-    payload = engine.run(no_fetch=False, tickers=["T0", "T1"])
-    assert payload["pending"] == 2
-    assert payload["next_off_peak"] == "2026-09-21 01:00"
-    # the run marker is recorded
-    assert rawstore.get("run_registry", "relatedness_run")["value"]["pending"] == 2
 
 
 def test_cli_status(rawstore_tmp_db, capsys, monkeypatch):

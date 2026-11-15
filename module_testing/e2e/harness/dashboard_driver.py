@@ -217,16 +217,11 @@ class Dashboard:
         return self.cache_dir / relative
 
     def db_file(self, table: str) -> Path:
-        """The store file MANIFEST places ``table`` in: ``<store>/<db>.duckdb``, or ``<store>/boards/<board>.duckdb``
-        for a board's own file (S9)."""
-        try:
-            from RevenueChaser.core import rawstore
-            name = rawstore.MANIFEST.get(table, {}).get("db", "raw")    # edgar, history, prices (#156), boards
-            if name in rawstore.BOARD_DBS:
-                return self.store_dir / rawstore.BOARDS_DIRNAME / f"{name}.duckdb"
-        except Exception:  # noqa: BLE001
-            name = "raw"
-        return self.store_dir / f"{name}.duckdb"
+        """The board file MANIFEST places ``table`` in, ``<store>/boards/<board>.duckdb`` (S9); the old store files
+        are gone (#860), so a table with no board answers a path that does not exist and counts 0."""
+        from RevenueChaser.core import rawstore
+        name = rawstore.MANIFEST.get(table, {}).get("db") or "none"
+        return self.store_dir / rawstore.BOARDS_DIRNAME / f"{name}.duckdb"
 
     def table_count(self, table: str) -> int:
         """Row count straight from the temp DuckDB store.

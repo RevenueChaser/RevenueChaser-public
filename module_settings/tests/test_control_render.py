@@ -124,15 +124,6 @@ def test_the_universe_bar_offers_a_and_b_and_shows_c_and_d_greyed():
     assert uni.count('<span class="uoffl">not offered</span>') == 2
 
 
-def test_the_script_uses_only_the_routes_the_page_names():
-    js = control_render.CTL_JS
-    assert "'/api/" not in js and '"/api/' not in js, "routes come from CTL.routes"
-    assert set(control_render.ROUTES.values()) == {
-        "/api/build/request/", "/api/build/schedule/", "/api/build/automation-ds/",
-        "/api/build/switch/", "/api/build/timer", "/api/build/queue",
-        "/api/settings/board/module_settings",
-        "/api/settings/sample/", "/api/job/", "/run/storage-picture"}
-    assert "X-RC-Panel" in js
 
 
 def test_the_disk_picture_press_follows_the_job_and_tells_the_shell():

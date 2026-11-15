@@ -11,10 +11,6 @@ import pytest
 
 from RevenueChaser.core import rawstore
 
-TABLES = (
-    "chain_meta", "leaps_cache", "rotation_holdings",
-    "sec13f_security_meta", "swing_info", "ticker_themes",
-)
 
 
 def _forget():
@@ -34,41 +30,8 @@ def _columns(table: str) -> dict[str, str]:
         con.close()
 
 
-def test_the_six_tables_declare_fetched_at_as_double_without_a_bump():
-    for name in TABLES:
-        decl = {d.split()[0]: d for d in rawstore.MANIFEST[name]["columns"]}
-        assert decl.get("fetched_at") == "fetched_at DOUBLE", name
-    assert rawstore.schema_version() == "13"
 
 
-@pytest.mark.parametrize("name,row", [
-    ("chain_meta", {"key": "last_sync", "value": "2026-01-01"}),
-    ("leaps_cache", {"ticker": "AAA", "payload": {"latest": {"label": "Quiet"}}}),
-    ("rotation_holdings", {"ticker": "XLK", "date": "2026-01-01", "rows": []}),
-    ("sec13f_security_meta", {"ticker": "AAA", "entry": {"name": "Aaa"}}),
-    ("swing_info", {"ticker": "AAA", "payload": {"sector": "Tech"}, "cached_at": 1.0}),
-    ("ticker_themes", {"ticker": "AAA", "theme_id": "t", "theme": "T", "level": "fine",
-                        "theme_run_id": "r1"}),
-])
-def test_an_old_row_keeps_a_null_fetched_at(isolate_rawstore, name, row):
-    spec = rawstore.MANIFEST[name]
-    mp = pytest.MonkeyPatch()
-    try:
-        mp.setitem(rawstore.MANIFEST, name, {
-            **spec, "columns": [c for c in spec["columns"] if not c.startswith("fetched_at")]})
-        _forget()
-        rawstore.ensure_table(name)
-        rawstore.write_rows(name, [row])
-    finally:
-        mp.undo()
-    assert "fetched_at" not in _columns(name)
-    _forget()
-    rawstore.ensure_table(name)
-    assert _columns(name)["fetched_at"] == "DOUBLE"
-    got = rawstore.get_all(name)
-    assert len(got) == 1
-    assert got[0]["fetched_at"] is None
-    assert rawstore.schema_version() == "13"
 
 
 def _recent(stamp, before: float) -> None:
@@ -101,13 +64,6 @@ def test_rotation_holdings_writer_stamps_fetched_at(rawstore_tmp_db):
     _recent(row["fetched_at"], before)
 
 
-def test_sec13f_security_meta_writer_stamps_fetched_at(rawstore_tmp_db):
-    from RevenueChaser.module_sec_13f.engine import save_sec13f_meta
-    before = time.time()
-    save_sec13f_meta({"AAA": {"name": "Aaa", "sector": "Tech"}})
-    row = rawstore.get("sec13f_security_meta", "AAA")
-    _recent(row["fetched_at"], before)
-    assert row["entry"]["name"] == "Aaa"
 
 
 def test_swing_info_writer_stamps_fetched_at(rawstore_tmp_db, monkeypatch):

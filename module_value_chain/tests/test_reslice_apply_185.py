@@ -12,7 +12,7 @@ import time
 
 import pytest
 
-from RevenueChaser.core import edgar_docs, job_lock, rawstore, sec_submissions
+from RevenueChaser.core import edgar_docs, job_lock, rawstore
 from RevenueChaser.core.providers import sec_edgar
 from RevenueChaser.module_value_chain import __main__ as cli
 from RevenueChaser.module_value_chain import edgar_text, reslice
@@ -111,23 +111,6 @@ def test_a_row_whose_slice_raises_is_left_untouched(rawstore_tmp_db, tmp_path, m
 
 
 # ── no network ──────────────────────────────────────────────────────────────
-def test_apply_makes_no_network_call(rawstore_tmp_db, tmp_path, monkeypatch):
-    docs_dir = _docs(tmp_path, monkeypatch)
-    rawstore.write_rows("chain_filings", [_frow("AAA", "10", "acc-a", "short", "tiny old")])
-    edgar_docs.write_html("10", "acc-a", _doc((_WAFER * 40).strip()))
-
-    def boom(*a, **k):
-        raise AssertionError("network call")
-
-    monkeypatch.setattr(edgar_text, "fetch_filing", boom)
-    monkeypatch.setattr(sec_edgar, "get_json", boom)
-    monkeypatch.setattr(sec_submissions, "record", boom)
-    monkeypatch.setattr(socket.socket, "connect", boom)
-
-    res = reslice.apply(docs_dir=docs_dir)
-
-    assert res["written"] == 1 and not res.get("locked")
-    assert rawstore.get("chain_filings", "AAA")["quality"] == "ok"
 
 
 # ── the edgar_sync lock ─────────────────────────────────────────────────────
@@ -147,18 +130,6 @@ def test_apply_is_locked_out_and_writes_nothing(rawstore_tmp_db, tmp_path, monke
 
 
 # ── the result history run ──────────────────────────────────────────────────
-def test_apply_records_a_result_history_run(rawstore_tmp_db, tmp_path, monkeypatch):
-    docs_dir = _docs(tmp_path, monkeypatch)
-    rawstore.write_rows("chain_filings", [_frow("AAA", "10", "acc-a", "short", "tiny old")])
-    edgar_docs.write_html("10", "acc-a", _doc((_WAFER * 40).strip()))
-
-    res = reslice.apply(docs_dir=docs_dir, run_id="rid-185")
-
-    assert res["run_id"] == "rid-185"
-    heads = rawstore.query("SELECT * FROM result_runs WHERE board = ?", ["module_value_chain"], db="history")
-    assert len(heads) == 1 and heads[0]["run_id"] == "rid-185"
-    rows = rawstore.query("SELECT * FROM value_chain_edges_history WHERE run_id = ?", ["rid-185"], db="history")
-    assert rows and all(r["run_id"] == "rid-185" for r in rows)
 
 
 # ── CLI ─────────────────────────────────────────────────────────────────────
@@ -214,21 +185,6 @@ def test_apply_keeps_the_document_url_flat(rawstore_tmp_db, tmp_path, monkeypatc
     assert url.count("https://") == 1
 
 
-def test_apply_keeps_the_document_download_time(rawstore_tmp_db, tmp_path, monkeypatch):
-    """MUST 2 (K6): a re-slice carries the stored document's edgar_documents.fetched_at, not the time of the apply."""
-    docs_dir = _docs(tmp_path, monkeypatch)
-    rawstore.write_rows("chain_filings", [_frow("AAA", "10", "acc-a", "short", "tiny old"),
-                                          _frow("CCC", "12", "acc-c", "short", "tiny old")])
-    edgar_docs.write_html("10", "acc-a", _doc((_WAFER * 40).strip()))
-    edgar_docs.write_html("12", "acc-c", _doc((_WAFER * 40).strip()))
-    rawstore.write_rows("edgar_documents", [{"accession": "acc-a", "cik": "10", "form": "10-K",
-                                             "filed": "2025-01-01", "fetched_at": 1_700_000_000.0}])
-
-    before = time.time()
-    reslice.apply(docs_dir=docs_dir)
-
-    assert rawstore.get("chain_filings", "AAA")["fetched_at"] == 1_700_000_000.0
-    assert rawstore.get("chain_filings", "CCC")["fetched_at"] >= before      # no metadata row: the slice time
 
 
 def test_apply_is_locked_out_while_relatedness_runs(rawstore_tmp_db, tmp_path, monkeypatch):
@@ -257,11 +213,3 @@ def test_apply_reports_transitions_and_kept_edges(rawstore_tmp_db, tmp_path, mon
     assert "edges_kept" in res
 
 
-def test_apply_refuses_when_no_row_has_a_document(rawstore_tmp_db, tmp_path, monkeypatch):
-    """SHOULD (b): a wrong docs folder (every row no_doc) is an error, never a silent no-op run."""
-    docs_dir = _docs(tmp_path, monkeypatch)
-    rawstore.write_rows("chain_filings", [_frow("NOD", "6", "acc-nod", "ok", "no document stored")])
-
-    with pytest.raises(RuntimeError):
-        reslice.apply(docs_dir=docs_dir)
-    assert rawstore.query("SELECT * FROM result_runs", db="history") == []

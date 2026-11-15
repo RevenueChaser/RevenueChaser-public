@@ -80,10 +80,3 @@ def test_the_read_stops_at_the_page_cap():
     assert len(res.data) == LIMIT * uwmod.CALENDAR_MAX_PAGES
 
 
-def test_the_run_note_flags_a_session_only_when_the_page_cap_was_hit():
-    from RevenueChaser.module_earnings_radar import history
-    def events(n):
-        return [{"source": "UW", "earnings_date": D, "earnings_time": "BMO"}] * n
-    assert history._input_problems({}, False, events(LIMIT + 1)) == []       # paged past one page: whole
-    cap = LIMIT * uwmod.CALENDAR_MAX_PAGES
-    assert any("may be missing" in p for p in history._input_problems({}, False, events(cap)))

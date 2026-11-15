@@ -74,36 +74,12 @@ def test_default_effective_equals_todays_constants(rawstore_tmp_db):
     assert e.custom is False and e.overridden == ()
 
 
-def test_oos_min_obs_is_derived_from_the_holdout(rawstore_tmp_db):
-    assert cs.oos_min_obs_for(63) == 40 and cs.oos_min_obs_for(42) == 26
-    bs.save(B, {"OOS_HOLDOUT": 100})
-    e = cs.effective()
-    assert e.oos_holdout == 100 and e.oos_min_obs == 63
-    assert rawstore.count("board_settings") == 1         # derived, never stored
 
 
-def test_effective_reads_the_store_and_the_window_argument(rawstore_tmp_db):
-    bs.save(B, {"WINDOW": 189, "MIN_OBS": 100, "WINSOR_K": 6.0, "MIN_PERIODS": 30,
-                "BENCH_STALE_SESSIONS": 4})
-    e = cs.effective()
-    assert (e.window, e.default_window, e.min_obs, e.min_periods) == (189, 189, 100, 30)
-    assert (e.winsor_k, e.bench_stale_sessions, e.custom) == (6.0, 4, True)
-    e2 = cs.effective(252)                                # a run argument wins
-    assert e2.window == 252 and e2.default_window == 189 and e2.min_obs == 100
 
 
-def test_min_obs_never_exceeds_the_run_window(rawstore_tmp_db):
-    bs.save(B, {"WINDOW": 378, "MIN_OBS": 300})
-    e = cs.effective(126)
-    assert e.min_obs == 119 and e.min_periods <= e.min_obs       # 95 % of 126 (Co-movement review S2)
 
 
-@pytest.mark.parametrize("window,expect", [(21, 15), (42, 21), (63, 31), (125, 62)])
-def test_short_windows_scale_min_obs_and_min_periods(rawstore_tmp_db, window, expect):
-    bs.save(B, {"MIN_OBS": 200, "MIN_PERIODS": 100})     # stored values are overridden
-    e = cs.effective(window)
-    assert e.min_obs == e.min_periods == expect
-    assert e.short_window and e.horizon_locked and not e.oos_enabled
 
 
 def test_window_126_is_not_short(rawstore_tmp_db):
@@ -160,14 +136,6 @@ def test_config_hash_covers_every_input(rawstore_tmp_db, name, value):
     assert _hash(**{name: value}) != _hash()
 
 
-def test_config_hash_separates_the_type_filter(rawstore_tmp_db):
-    """PR 2 review M1: the type filter changes the universe exactly as the floor does (7,670 names vs 5,655), so a
-    null or lagged test stored under one setting is never reused under the other."""
-    assert _hash(operating_only=False) != _hash(operating_only=True)
-    from RevenueChaser.core import board_settings
-    off = engine.config_hash(252, "ward", (20, 80, 250))                # resolved from the setting
-    board_settings.save("module_comovement", {"OPERATING_ONLY": 1})
-    assert engine.config_hash(252, "ward", (20, 80, 250)) != off
 
 
 def test_config_hash_is_stable_for_equal_inputs(rawstore_tmp_db):
@@ -183,28 +151,8 @@ def _market_run(**kw):
     return tickers, dict(no_fetch=True, tickers=tickers, cuts=(2,), **kw)
 
 
-def test_a_saved_setting_changes_the_run_hash(rawstore_tmp_db):
-    _t, kw = _market_run(persist=False)
-    base = engine.run(**kw)["config_hash"]
-    bs.save(B, {"WINSOR_K": 6.0})
-    assert engine.run(**kw)["config_hash"] != base
 
 
-def test_refresh_after_a_settings_change_does_not_reuse_the_old_null(rawstore_tmp_db):
-    """Runs persisted under other settings no longer match: significance and
-    persistence read 'not evaluated' (None) until the next Fetch."""
-    _t, kw = _market_run(persist=True)
-    fetched = engine.run(**kw)
-    assert any(c["significant"] is not None for v in fetched["clusters"].values() for c in v)
-    bs.save(B, {"MIN_OBS": 100})
-    kw["persist"] = False
-    after = engine.run(**kw)
-    cards = [c for v in after["clusters"].values() for c in v]
-    assert cards and all(c["significant"] is None and c["persist"] is None for c in cards)
-    assert after["oos"] == {}
-    bs.reset(B)
-    back = engine.run(**kw)
-    assert any(c["significant"] is not None for v in back["clusters"].values() for c in v)
 
 
 # ── the window is a run argument; short windows ────────────────────────────
@@ -425,19 +373,6 @@ def test_the_recompute_job_is_registered_short_lane_no_uw():
     assert "requires_uw=False" in call and "lane=" not in call      # short lane (default)
 
 
-def test_recompute_runner_rerenders_both_boards_and_reports(rawstore_tmp_db):
-    from RevenueChaser.app import runners
-    from RevenueChaser.app.jobs import JobMessage
-
-    _market_run(persist=True)
-    bs.save(B, {"WINSOR_K": 6.0})
-    with pytest.raises(JobMessage) as exc:
-        runners.run_comovement_recompute(None)
-    msg = exc.value.message
-    assert "6 clustered" in msg and "252-session" in msg and "custom settings" in msg
-    assert runners.COMOVEMENT_LATEST.exists() and runners.SETTINGS_LATEST.exists()
-    payload = json.loads(runners.COMOVEMENT_JSON.read_text(encoding="utf-8"))
-    assert payload["settings"]["winsor_k"] == 6.0 and payload["settings"]["custom"] is True
 
 
 @pytest.fixture
@@ -452,54 +387,16 @@ def client(rawstore_tmp_db, monkeypatch):
     return c
 
 
-def test_route_unknown_board_is_404(client):
-    r = client.post("/api/settings/board/module_nope", json={"changes": {"X": 1}})
-    assert r.status_code == 404 and r.get_json()["ok"] is False
-    assert client.submitted == []
 
 
-def test_route_invalid_change_is_400_with_messages_and_no_job(client):
-    r = client.post("/api/settings/board/module_comovement",
-                    json={"changes": {"WINSOR_K": 9, "MIN_OBS": 10}})
-    assert r.status_code == 400
-    body = r.get_json()
-    assert body["ok"] is False
-    assert any("WINSOR_K must be between 4 and 8" in m for m in body["messages"])
-    assert any("MIN_OBS" in m for m in body["messages"])
-    assert client.submitted == [] and rawstore.count("board_settings") == 0
 
 
-@pytest.mark.parametrize("body", [None, {}, {"changes": "x"}, {"changes": {}},
-                                  {"reset": []}, {"reset": ["NOPE"]}, {"reset": "all"}])
-def test_route_malformed_bodies_are_400(client, body):
-    r = client.post("/api/settings/board/module_comovement", json=body)
-    assert r.status_code == 400 and client.submitted == []
 
 
-def test_route_save_stores_and_queues_the_recompute(client):
-    r = client.post("/api/settings/board/module_comovement",
-                    json={"changes": {"WINSOR_K": 6.5, "MIN_OBS": 100}})
-    assert r.status_code == 202
-    body = r.get_json()
-    assert body["ok"] is True and body["job_id"] == "job123"
-    assert body["values"]["values"]["WINSOR_K"] == 6.5
-    assert body["values"]["overridden"] == ["MIN_OBS", "WINSOR_K"]
-    assert client.submitted == [("comovement_recompute", {})]
-    assert bs.get(B, "MIN_OBS") == 100
 
 
-def test_route_reset_deletes_rows_and_queues_the_recompute(client):
-    bs.save(B, {"WINSOR_K": 6.5, "MIN_OBS": 100})
-    r = client.post("/api/settings/board/module_comovement", json={"reset": True})
-    assert r.status_code == 202 and r.get_json()["values"]["overridden"] == []
-    assert rawstore.count("board_settings") == 0
-    assert client.submitted == [("comovement_recompute", {})]
 
 
-def test_route_reset_some_keys(client):
-    bs.save(B, {"WINSOR_K": 6.5, "MIN_OBS": 100})
-    r = client.post("/api/settings/board/module_comovement", json={"reset": ["WINSOR_K"]})
-    assert r.status_code == 202 and r.get_json()["values"]["overridden"] == ["MIN_OBS"]
 
 
 def test_config_hash_carries_the_engine_method(rawstore_tmp_db, monkeypatch):

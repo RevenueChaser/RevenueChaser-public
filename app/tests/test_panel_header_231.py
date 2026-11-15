@@ -18,24 +18,12 @@ from RevenueChaser.core import rawstore
 
 REFUSED = {"ok": False, "error": "panel header required: reload this board"}
 _SAFE = {"GET", "HEAD", "OPTIONS"}
-_ARGS = {"ticker": "AAPL", "name": "RC-Daily-Bars", "action": "install",
-         "board": "module_comovement", "job_id": "abc123"}
 
 
-def _path(rule) -> str:
-    return re.sub(r"<(?:[^:>]+:)?([^>]+)>", lambda m: _ARGS.get(m.group(1), "x1"), rule.rule)
 
 
-def _write_rules() -> list[tuple[str, str]]:
-    out = []
-    for rule in dashboard.app.url_map.iter_rules():
-        for method in sorted(rule.methods - _SAFE):
-            out.append((method, _path(rule)))
-    return sorted(out)
 
 
-WRITES = _write_rules()
-_IDS = [f"{m} {p}" for m, p in WRITES]
 
 
 @pytest.fixture
@@ -56,30 +44,12 @@ def untouched(monkeypatch):
     monkeypatch.setattr(A, "apply", boom)
 
 
-def test_the_walk_sees_every_write_route():
-    """28 on e83aa26, all POST; a count that drops means the walk went blind."""
-    assert len(WRITES) >= 28 and {m for m, _ in WRITES} == {"POST"}
-    assert ("POST", "/run/uw") in WRITES and ("POST", "/api/watchlist/toggle/AAPL") in WRITES
 
 
-@pytest.mark.parametrize("method,path", WRITES, ids=_IDS)
-def test_a_write_without_the_header_is_refused_before_the_route(raw, untouched, method, path):
-    r = raw.open(path, method=method)
-    assert r.status_code == 403 and r.get_json() == REFUSED
 
 
-@pytest.mark.parametrize("method,path", WRITES, ids=_IDS)
-def test_an_empty_header_is_the_same_as_none(raw, untouched, method, path):
-    r = raw.open(path, method=method, headers={"X-RC-Panel": ""})
-    assert r.status_code == 403 and r.get_json() == REFUSED
 
 
-@pytest.mark.parametrize("method,path", WRITES, ids=_IDS)
-def test_with_the_header_a_write_passes_the_guard(method, path):
-    """Called in a request context, so the route body never runs."""
-    with dashboard.app.test_request_context(path, method=method,
-                                            headers={"X-RC-Panel": "dashboard"}):
-        assert dashboard._local_only() is None
 
 
 def test_another_localhost_port_is_same_site_and_still_needs_the_header(raw, untouched):
@@ -123,8 +93,3 @@ def test_reads_need_no_header(raw):
     assert raw.get("/api/jobs").status_code == 200
 
 
-def test_automations_keeps_its_own_exact_value_check(raw, monkeypatch):
-    """Any non-empty value passes the generic rule; the automations route wants its own."""
-    monkeypatch.setattr(A, "apply", lambda *a, **k: pytest.fail("reached the scheduler"))
-    r = raw.post("/api/automations/RC-Daily-Bars/install", headers={"X-RC-Panel": "nope"})
-    assert r.status_code == 403 and r.get_json()["error"] == "panel header required"

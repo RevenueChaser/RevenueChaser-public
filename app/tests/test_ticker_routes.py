@@ -146,18 +146,6 @@ class TestFlaskJ2Templates:
     """F7 trap 2: Flask autoescapes only .html/.htm/.xml/.xhtml/.svg, so the
     ``.html.j2`` pages rendered raw through ``render_template``."""
 
-    def test_store_locked_page_escapes_its_fields(self, client, monkeypatch):
-        from RevenueChaser.core.rawstore import StoreLockedError
-
-        def _locked():
-            raise StoreLockedError("/x/<i>raw.duckdb", 4242, "<b>duckdb</b>", "/bin/<u>x",
-                                   "<b>detail</b>")
-        monkeypatch.setattr(dashboard, "_view_uw_interaction", _locked)
-        r = client.get("/view/module_uw_interaction")
-        assert r.status_code == 503
-        body = r.get_data(as_text=True)
-        assert "&lt;b&gt;detail&lt;/b&gt;" in body
-        assert "<b>" not in body and "<i>" not in body and "<u>" not in body
 
     def test_empty_view_escapes_the_label(self):
         with dashboard.app.test_request_context("/"):

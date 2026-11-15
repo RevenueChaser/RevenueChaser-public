@@ -27,119 +27,11 @@ def _hole(n: int) -> str:
     return f'warnv">{n}</span><span class="hlabel">null market cap'
 
 
-@pytest.fixture
-def seeded_settings(dashboard, monkeypatch):
-    """Seed the dashboard's temp store with the universe + spine + one filing."""
-    import RevenueChaser.core.rawstore as rawstore
-
-    monkeypatch.setattr(rawstore, "DB_PATH", dashboard.store_dir / "raw.duckdb")
-
-    monkeypatch.setattr("RevenueChaser.core.config.MARKET_DIR", dashboard.env["RC_MARKET_DIR"])  # the prices store (G3)
-    universe_store.put([
-        {"ticker": "AAPL", "market_cap": 3.0e12, "name": "Apple Inc."},
-        {"ticker": "MU", "market_cap": None, "name": "Micron Technology"},
-        {"ticker": "NOCAP", "market_cap": None, "name": "No Cap Co"},
-    ])
-    # #115: the stored exchange file is the CIK map production reads (#301 D21); sec_company_tickers is the fallback.
-    rawstore.write_rows("sec_exchange_file", [
-        {"ticker": "AAPL", "cik": "0000320193", "name": "Apple Inc.", "exchange": "Nasdaq", "valid_from": None,
-         "status": "present", "source": "sec_exchange", "fetched_at": 1.0, "run_id": "seed", "run_at": 1.0},
-    ])
-    # The only universe name at/above the cap floor; the key feeds the corpus note.
-    rawstore.write_rows("chain_meta", [{"key": "miss:AAPL", "value": json.dumps({
-        "reason": "no_filing", "cik": "0000320193",
-        "checked": datetime.now(timezone.utc).isoformat()})}])
-    rawstore.write_rows("chain_filings", [
-        {"ticker": "AAPL", "cik": "0000320193", "form": "10-K",
-         "filed": "2026-02-01", "accession": "acc-aapl",
-         "primary_doc": "http://x", "item_text": "Item 1. Business",
-         "quality": "ok", "fetched_at": time.time()},
-    ])
-    return dashboard
-
-
-def _caps() -> dict[str, float | None]:
-    """Read stored caps from the temp store (DB_PATH is patched by the seed)."""
-    import RevenueChaser.core.rawstore as rawstore
-
-    return {r["ticker"]: r["market_cap"] for r in rawstore.query(
-        "SELECT ticker, market_cap FROM equity_universe")}
-
-
 class TestView:
     def test_the_tab_is_in_the_shell(self, dashboard):
         r = dashboard.get("/")
         assert r.status_code == 200
         assert "Settings" in r.text
-
-
-class TestRefreshIsOfflineAndFaithful:
-    @pytest.fixture
-    def rendered(self, dashboard, seeded_settings):
-        """A job-written artifact on disk (leaps pattern).
-
-        Creating it via the job rather than a first-load ``/view`` matters on
-        Windows: a view serves the file straight from disk and the server holds
-        it open a beat, so the immediate ``clear_cache`` in a refresh test would
-        lose a race. A job writes and closes it with no response handle involved.
-        """
-        result = dashboard.run_job("/run/universe-stats")
-        assert result.ok, f"universe-stats failed: {result}\n{dashboard.logs()}"
-        assert dashboard.artifact(_ARTIFACT).exists()
-        return result
-
-    def test_refresh_rebuilds_a_deleted_artifact(self, dashboard, rendered, clear_cache):
-        clear_cache()
-        assert not dashboard.artifact(_ARTIFACT).exists()
-        r = dashboard.view(_APP, refresh=True)
-        assert r.status_code == 200
-        assert "Settings" in r.text
-        # Serving 200 is not enough: Refresh must re-derive and re-write the
-        # artifact. Without this, a refresh that answered from memory (or from a
-        # stale handle) would still look green while leaving no file on disk.
-        assert dashboard.artifact(_ARTIFACT).exists()
-
-    def test_refresh_makes_no_network_calls(self, dashboard, rendered, provider_routes,
-                                            clear_cache):
-        clear_cache()
-        before_provider = provider_routes.request_count
-        before_yf = dashboard.yf_calls()
-        r = dashboard.view(_APP, refresh=True)
-        assert r.status_code == 200
-        assert provider_routes.request_count == before_provider, (
-            "refresh reached the network: "
-            f"{[q.path for q in provider_routes.requests()[before_provider:]]}")
-        assert dashboard.yf_calls() == before_yf, (
-            "refresh reached yfinance: "
-            f"{dashboard.yf_calls()[len(before_yf):]}")
-
-    def test_refresh_survives_a_restart(self, dashboard, rendered, clear_cache):
-        clear_cache()
-        dashboard.restart()
-        r = dashboard.view(_APP, refresh=True)
-        assert r.status_code == 200
-        assert "Settings" in r.text
-
-
-class TestStatsFetch:
-    def test_fetch_caps_fills_the_null_and_reports_it(self, dashboard, seeded_settings):
-        before_rows = dashboard.table_count("equity_universe")
-        result = dashboard.run_job("/run/universe-stats")
-        assert result.ok, f"universe-stats failed: {result}\n{dashboard.logs()}"
-        assert "1 caps filled" in (result.message or ""), result.message
-        caps = _caps()
-        assert caps["MU"] == pytest.approx(1.232e11, rel=1e-9)
-        assert caps["NOCAP"] is None, "never invent a cap"
-        assert dashboard.table_count("equity_universe") == before_rows, (
-            "the stats fetch must not add or remove membership rows")
-
-    def test_the_fetch_never_calls_the_screener(self, dashboard, seeded_settings):
-        result = dashboard.run_job("/run/universe-stats")
-        assert result.ok, f"universe-stats failed: {result}\n{dashboard.logs()}"
-        calls = dashboard.yf_calls()
-        assert "fast_info:MU" in calls, calls
-        assert not any(c.startswith("screen") for c in calls), (
-            f"the standalone stats job must not call the screener: {calls}")
 
 
 @pytest.fixture
@@ -166,34 +58,6 @@ def served_spine(dashboard):
     return path
 
 
-class TestLookupApi:
-    def test_lookup_api_is_offline(self, dashboard, seeded_settings, served_spine, provider_routes):
-        before_provider = provider_routes.request_count
-        before_yf = dashboard.yf_calls()
-        r = dashboard.get("/api/settings/lookup/AAPL")
-        assert r.status_code == 200
-        body = r.json()
-        assert body["ok"] is True
-        assert body["ticker"] == "AAPL"
-        assert [f["kind"] for f in body["files"]], "one group a served file"
-        assert provider_routes.request_count == before_provider, (
-            "the lookup reached the network: "
-            f"{[q.path for q in provider_routes.requests()[before_provider:]]}")
-        assert dashboard.yf_calls() == before_yf, (
-            "the lookup reached yfinance: "
-            f"{dashboard.yf_calls()[len(before_yf):]}")
-
-    def test_lookup_api_unknown_is_404(self, dashboard, seeded_settings, served_spine):
-        r = dashboard.get("/api/settings/lookup/ZZZZ")
-        assert r.status_code == 404
-        assert r.json() == {"ok": False}
-
-    def test_the_old_store_drill_route_is_gone(self, dashboard, seeded_settings, served_spine):
-        """The served spine holds AAPL, so a 404 here is the route being gone, not an empty store."""
-        assert dashboard.get("/api/settings/ticker/AAPL").status_code == 404
-        assert dashboard.get("/api/settings/lookup/AAPL").status_code == 200
-
-
 class TestEmptyStore:
     def test_a_board_with_no_data_renders_an_empty_state(self, dashboard):
         r = dashboard.view(_APP)
@@ -217,47 +81,6 @@ def _verdicts(html: str, bodies: list) -> list:
     out = subprocess.run(["node", "-e", script], capture_output=True, text=True,
                          encoding="utf-8", check=True)
     return json.loads(out.stdout.strip().splitlines()[-1])
-
-
-class TestFetchButtonPoller:
-    """The Fetch button must never say "done" for a job that has not run."""
-
-    def test_verdict_on_real_job_bodies(self, dashboard, seeded_settings):
-        html = dashboard.view(_APP).text
-
-        # (a) an unknown job id: the server answers 404 {"ok": false}.
-        unknown = dashboard.get("/api/job/no-such-job")
-        assert unknown.status_code == 404
-        unknown_body = unknown.json()
-
-        # (b) one real job, caught while it is still live. Submitting the same writer again used to queue a
-        # second run; since #26 PL6-a it is refused 409 and the body carries the id of the run already going,
-        # which is a stronger way to catch a live job: the refusal itself proves the first has not finished.
-        first = dashboard.post_fetch("/run/universe-stats")
-        assert first.status_code == 202, first.text
-        job_id = first.json()["job_id"]
-
-        again = dashboard.post_fetch("/run/universe-stats")
-        assert again.status_code == 409, again.text
-        assert again.json()["job_id"] == job_id, again.text
-
-        live = dashboard.get(f"/api/job/{job_id}").json()
-        live_status = live["job"]["status"]
-
-        # (c) the same job once finished.
-        dashboard.wait_for_job(job_id)
-        finished = dashboard.get(f"/api/job/{job_id}").json()
-        assert finished["job"]["status"] == "done", finished
-
-        got = _verdicts(html, [unknown_body, live, finished])
-        assert got[0]["state"] == "error", (
-            f"an unknown job must not read as done: {got[0]}")
-        assert got[2]["state"] == "done", got[2]
-        assert live_status in ("queued", "running"), (
-            f"could not catch an unfinished job (status {live_status!r}); "
-            "the poll case is untested")
-        assert got[1]["state"] == "poll", (
-            f"an unfinished job ({live_status}) must keep polling, not finish: {got[1]}")
 
 
 # ── Board inputs: the Settings card must tell the same story as the board ────
@@ -321,9 +144,6 @@ class TestBoardInputs:
         } for t in tickers + [_FUND]])
         # Identity R4 (#87): a closed-end fund at the floor (the type step is non-zero)
         # and one operating name with no master row (the unknown-type note is non-zero).
-        rawstore.write_rows("security_master", [
-            {"ticker": _FUND, "security_type": "cef"}] + [
-            {"ticker": t, "security_type": "common"} for t in tickers[1:]])
         now = time.time()
         rows = []
         for frame in (ret, cm._benchmarks(ret.index)):
@@ -338,134 +158,7 @@ class TestBoardInputs:
         result = dashboard.run_job("/run/module_comovement")
         assert result.ok, f"comovement fetch failed: {result}\n{dashboard.logs()}"
 
-    def test_the_card_matches_the_comovement_payload(self, dashboard, seeded_settings):
-        import json
-
-        self._seed_and_fetch(dashboard)
-        payload = json.loads(dashboard.artifact(
-            "comovement/comovement_latest.json").read_text(encoding="utf-8"))
-        html = dashboard.view(_APP, refresh=True).text
-        assert "Board inputs" in html
-        assert 'id="board-module_comovement"' in html
-        assert "Co-movement has not been rendered yet" not in html
-        assert "Rendered before funnel reporting" not in html
-
-        shown, notes = _card_steps(html), _card_notes(html)
-        f = payload["funnel"]
-        steps = payload["funnel_steps"]
-        counted = [s for s in steps if s["kind"] != "note"]
-        noted = [s for s in steps if s["kind"] == "note"]
-        assert [s["key"] for s in steps] == list(_STEP_LEGACY), (
-            f"funnel_steps keys drifted: {[s['key'] for s in steps]}")
-        # the seed makes the type step and the note non-zero, so they are really compared
-        assert f["funds_etfs"] == 1 and f["unknown_type"] == 1, f
-        # PR 2: Co-movement keeps every type by default, so the type groups are notes (the kept names' mix)
-        assert [s["key"] for s in noted] == ["funds_etfs", "spacs", "other_securities", "unknown_type"]
-        assert len(shown) == len(counted), (
-            f"card shows {len(shown)} funnel rows, payload has {len(counted)}: {shown}")
-        assert len(notes) == len(noted), f"card notes {notes}, payload notes {noted}"
-        for s in counted:
-            assert s["count"] == f[_STEP_LEGACY[s["key"]]], (
-                f"step {s['key']} = {s['count']} but the board's own funnel says "
-                f"{f[_STEP_LEGACY[s['key']]]}")
-            assert shown.get(s["label"]) == s["count"], (
-                f"card row {s['label']!r} shows {shown.get(s['label'])}, "
-                f"payload step says {s['count']}")
-        for s in noted:
-            assert s["count"] == f[_STEP_LEGACY[s["key"]]]
-            assert notes.get(s["label"]) == s["count"], (
-                f"card note {s['label']!r} shows {notes.get(s['label'])}, "
-                f"payload note says {s['count']}")
-            assert s["label"] not in shown, "a note must not be shown as a counted row"
-        # the headline: the card's clustered count is the board's clustered count
-        assert shown["Clustered"] == payload["eligible"] == f["clustered"]
-        board = dashboard.view("module_comovement").text
-        assert f"clustered <b class=\"num\">{payload['eligible']}</b>" in board
-        # the board says the same: the type row, the note, and no store-writing button
-        assert "Funds / ETFs" in board and "Unknown security type — kept" in board
-        assert "every security type" in board
-        assert "/run/identity" not in board
-
-    def test_a_settings_refresh_stays_offline_with_the_card(
-            self, dashboard, seeded_settings, provider_routes):
-        self._seed_and_fetch(dashboard)
-        before_provider = provider_routes.request_count
-        before_yf = dashboard.yf_calls()
-        r = dashboard.view(_APP, refresh=True)
-        assert r.status_code == 200 and "Board inputs" in r.text
-        assert provider_routes.request_count == before_provider, (
-            "settings refresh reached the network: "
-            f"{[q.path for q in provider_routes.requests()[before_provider:]]}")
-        assert dashboard.yf_calls() == before_yf
-
-    def test_before_the_board_is_rendered_the_card_says_so(self, dashboard, seeded_settings):
-        html = dashboard.view(_APP, refresh=True).text
-        assert "Co-movement has not been rendered yet. Open or Refresh that tab first." in html
-
 
 _PANEL = {"X-RC-Panel": "automations"}
 
 
-class TestAutomationsPanel:
-    """#130: the Automations panel, against the fake scheduler the harness installs.
-
-    What these tests own is that the panel and its route reflect **the registry**: every row rendered,
-    every row reported, and installing one row touching only that one. They therefore read the registry
-    rather than repeating it. The literal list of names lives in exactly one place, the unit test
-    ``core/tests/test_automations.py::test_registry_names_are_stable_and_prefixed``, so a new task is
-    reviewed once there instead of breaking a second copy here (#162 added the eleventh row and broke
-    two copies that counted ten).
-    """
-
-    def test_rows_render_on_the_board(self, dashboard, seeded_settings):
-        from RevenueChaser.core import automations
-
-        html = dashboard.view(_APP).text
-        assert 'id="auto-body"' in html
-        for entry in automations.REGISTRY:
-            assert entry.name in html, f"{entry.name} is in the registry but not on the board"
-
-    def test_the_route_reports_every_row_not_installed(self, dashboard, seeded_settings):
-        from RevenueChaser.core import automations
-
-        d = dashboard.get("/api/automations").json()
-        assert d["ok"] and d["available"]
-        assert [r["name"] for r in d["rows"]] == [e.name for e in automations.REGISTRY]
-        assert [r["state"] for r in d["rows"]] == ["not_installed"] * len(automations.REGISTRY)
-
-    def test_install_goes_to_the_fake_scheduler_not_the_real_one(self, dashboard, seeded_settings):
-        from RevenueChaser.core import automations
-
-        r = dashboard.client.post("/api/automations/RC-Daily-Bars/install", headers=_PANEL)
-        assert r.status_code == 200, r.text
-        assert r.json()["row"]["state"] == "enabled"
-        rows = {x["name"]: x["state"] for x in dashboard.get("/api/automations").json()["rows"]}
-        # Installing one row flips that row and no other: the point of the test, and what a hard-coded
-        # dict said only incidentally.
-        assert rows == {e.name: ("enabled" if e.name == "RC-Daily-Bars" else "not_installed")
-                        for e in automations.REGISTRY}
-        r = dashboard.client.post("/api/automations/RC-Daily-Bars/remove", headers=_PANEL)
-        assert r.json()["row"]["state"] == "not_installed"
-
-    def test_an_unknown_task_is_refused(self, dashboard, seeded_settings):
-        r = dashboard.client.post("/api/automations/Windows%20Defrag/remove", headers=_PANEL)
-        assert r.status_code == 404
-
-    def test_a_post_without_the_panel_header_is_refused(self, dashboard, seeded_settings):
-        # A bare client: dashboard.client sends X-RC-Panel by default (#231), which would
-        # make this a different test (the automations route wants its own value).
-        r = httpx.post(dashboard.url + "/api/automations/RC-Daily-Bars/install")
-        assert r.status_code == 403
-        states = [x["state"] for x in dashboard.get("/api/automations").json()["rows"]]
-        assert "enabled" not in states
-
-    def test_board_and_route_make_no_network_calls(self, dashboard, seeded_settings,
-                                                   provider_routes, clear_cache):
-        dashboard.run_job("/run/universe-stats")
-        clear_cache()
-        before_provider = provider_routes.request_count
-        before_yf = dashboard.yf_calls()
-        assert dashboard.view(_APP, refresh=True).status_code == 200
-        assert dashboard.get("/api/automations").status_code == 200
-        assert provider_routes.request_count == before_provider
-        assert dashboard.yf_calls() == before_yf

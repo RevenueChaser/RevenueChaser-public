@@ -28,12 +28,6 @@ def test_the_tables_live_in_their_own_board_file_and_not_in_raw(a_list):
         rawstore.query(f"SELECT 1 FROM {store.LISTS}")
 
 
-def test_a_read_before_anything_is_written_is_empty_and_makes_no_file(monkeypatch, tmp_path):
-    monkeypatch.setattr(rawstore, "DB_PATH", str(tmp_path / "raw.duckdb"))
-    assert store.lists() == []
-    assert store.read_list("nope") is None
-    assert store.coverage_counts() == {}
-    assert not rawstore.board_db_path("watchlists").exists()
 
 
 # ── lists ────────────────────────────────────────────────────────────────────

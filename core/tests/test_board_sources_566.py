@@ -19,7 +19,7 @@ from datetime import date, datetime, timezone
 import duckdb
 import pytest
 
-from RevenueChaser.core import board_sources, history, prices
+from RevenueChaser.core import prices
 from RevenueChaser.module_settings import freshness_tab
 from RevenueChaser.rcdata import opens, serving
 from RevenueChaser.rcdata.tests.conftest import market_roots  # noqa: F401  (fixture)
@@ -50,138 +50,38 @@ def _read_prices():
         con.execute("SELECT count(*) FROM price_bar_daily").fetchone()
 
 
-@pytest.fixture
-def roots(monkeypatch, market_roots, rawstore_tmp_db):  # noqa: F811
-    opens.clear()
-    monkeypatch.setattr(board_sources, "board_needs", lambda board: ("prices.bars",))
-    monkeypatch.setattr(prices, "source_state", lambda: {"effective": prices.LAYER, "reason": None,
-                                                          "variable": None})
-    yield market_roots
-    opens.clear()
 
 
-def test_live_stamp_reads_the_files_own_build_and_is_not_a_read(roots):
-    assert serving.live_stamp("prices") is None
-    _prices_file()
-    stamp = serving.live_stamp("prices")
-    assert stamp == {"kind": "prices", "file": "prices.duckdb", "build_id": "b1", "built_at": BUILT}
-    assert opens.reads() == {}
 
 
-def test_only_an_opened_file_is_recorded_as_read(roots):
-    _prices_file()
-    [entry] = board_sources.snapshot(BOARD, RUN)
-    assert entry == {"kind": "prices", "file": "prices.duckdb", "reads": "not_opened"}
-    _read_prices()
-    [entry] = board_sources.snapshot(BOARD, RUN)
-    assert entry == {"kind": "prices", "file": "prices.duckdb", "reads": "file", "build_id": "b1", "built_at": BUILT}
 
 
-def test_an_undeclared_file_the_run_opened_is_recorded_too(roots, monkeypatch):
-    monkeypatch.setattr(board_sources, "board_needs", lambda board: ())
-    _prices_file()
-    _read_prices()
-    assert [e["kind"] for e in board_sources.snapshot(BOARD, RUN)] == ["prices"]
 
 
-def test_a_thread_starts_empty_after_its_run_is_recorded(roots):
-    _prices_file()
-    _read_prices()
-    board_sources.snapshot(BOARD, RUN)
-    assert board_sources.snapshot(BOARD, RUN)[0]["reads"] == "not_opened"
 
 
-def test_another_threads_reads_are_not_this_runs(roots):
-    _prices_file()
-    t = threading.Thread(target=_read_prices, name="Thread-render")       # a page render during the run
-    t.start()
-    t.join()
-    assert board_sources.snapshot(BOARD, RUN)[0]["reads"] == "not_opened"
 
 
-def test_a_pool_made_with_pool_kwargs_reads_for_this_run(roots):
-    _prices_file()
-    with ThreadPoolExecutor(2, **opens.pool_kwargs()) as pool:
-        list(pool.map(lambda _: _read_prices(), range(2)))
-    assert board_sources.snapshot(BOARD, RUN)[0]["build_id"] == "b1"
 
 
-def test_another_jobs_pool_is_not_this_runs(roots):
-    _prices_file()
-    other = threading.Thread(target=lambda: [f.result() for f in [ThreadPoolExecutor(
-        1, **opens.pool_kwargs()).submit(_read_prices)]])                   # another job's board, at the same time
-    other.start()
-    other.join()
-    assert board_sources.snapshot(BOARD, RUN)[0]["reads"] == "not_opened"
 
 
-def test_the_build_is_the_one_the_connection_reads(roots, monkeypatch):
-    _prices_file()
-    with serving.open_read("prices") as held:                             # an older handle keeps b1 alive
-        _prices_file(build_id="b2", built_at=LATER)
-        with serving.open_read("prices") as con:
-            seen = con.execute(f"SELECT build_id FROM {serving.VERSION_TABLE}").fetchone()[0]
-        held.execute("SELECT 1").fetchone()
-    [entry] = board_sources.snapshot(BOARD, RUN)
-    assert entry["build_id"] == seen
 
 
-def test_two_builds_in_one_run_are_flagged(roots):
-    _prices_file()
-    _read_prices()
-    _prices_file(build_id="b2", built_at=LATER)
-    _read_prices()
-    [entry] = board_sources.snapshot(BOARD, RUN)
-    assert entry["rebuilt_during_run"] is True and entry["build_ids"] == ["b1", "b2"] and entry["build_id"] == "b2"
 
 
-def test_the_old_store_fallback_is_said(roots, monkeypatch):
-    monkeypatch.setattr(prices, "source_state", lambda: {"effective": "store", "reason": None,
-                                                          "variable": "store"})
-    [entry] = board_sources.snapshot(BOARD, RUN)
-    assert entry == {"kind": "prices", "file": "prices.duckdb", "reads": "not_opened", "old_store": "set to store"}
 
 
-def test_one_files_error_stays_in_its_own_entry(roots, monkeypatch):
-    def boom():
-        raise RuntimeError("ops locked")
-    monkeypatch.setattr(prices, "source_state", boom)
-    [entry] = board_sources.snapshot(BOARD, RUN)
-    assert entry["error"] == "RuntimeError: ops locked" and entry["kind"] == "prices"
 
 
-def test_the_real_declarations_map_to_builder_files():
-    assert board_sources.board_kinds("module_sec_13f") == ["ownership", "prices"]
-    assert board_sources.board_kinds("module_money_flow") == board_sources.board_kinds("module_sector_rotation")
 
 
-def test_record_run_keeps_what_the_run_opened(roots):
-    _prices_file()
-    _read_prices()
-    history.record_run(BOARD, run_id="r1", run_at=RUN, model_version="m", context={"n": 1})
-    ctx = history.last_run(BOARD)["context"]
-    assert ctx["n"] == 1 and ctx["source_builds"][0]["build_id"] == "b1"
 
 
-def test_a_failing_record_never_fails_the_run(roots, monkeypatch):
-    def boom(board, run_at=None):
-        raise RuntimeError("unreadable")
-    monkeypatch.setattr(board_sources, "snapshot", boom)
-    history.record_run(BOARD, run_id="r1", run_at=RUN, model_version="m")
-    assert history.last_run(BOARD)["context"]["source_builds"] == [{"error": "RuntimeError: unreadable"}]
 
 
-def test_last_runs_is_the_newest_run_of_every_board(roots):
-    history.record_run(BOARD, run_id="old", run_at=RUN, model_version="m")
-    history.record_run(BOARD, run_id="new", run_at=LATER, model_version="m")
-    history.record_run("module_comovement", run_id="c", run_at=RUN, model_version="m")
-    assert [(r["board"], r["run_id"]) for r in history.last_runs()] == [("module_comovement", "c"), (BOARD, "new")]
 
 
-def test_the_newest_day_is_the_live_files(roots):
-    _prices_file()
-    assert board_sources.newest_day("prices", "b1") == "2026-11-06"
-    assert opens.reads() == {}
 
 
 def _run(sources):
@@ -192,24 +92,8 @@ def _run(sources):
 REC = {"kind": "prices", "file": "prices.duckdb", "reads": "file", "build_id": "b1", "built_at": BUILT}
 
 
-def _state(sources, build_id="b1", built_at=BUILT, live=True):
-    stamp = (lambda kind: {"build_id": build_id, "built_at": built_at}) if live else (lambda kind: None)
-    return board_sources.freshness([_run(sources)], stamp, lambda kind, b: "2026-11-06")[0]
 
 
-def test_freshness_states():
-    assert _state([REC])["state"] == "current"
-    behind = _state([REC], "b2", LATER)
-    assert behind["state"] == "behind" and behind["sources"][0]["live_built_at"] == LATER
-    assert behind["sources"][0]["newest_day"] == "2026-11-06"
-    assert _state([REC], "b0", BUILT - 60)["state"] == "rolled_back"
-    assert _state([{**REC, "rebuilt_during_run": True}])["state"] == "behind"
-    assert _state([REC], live=False)["state"] == "missing"
-    assert _state([{"kind": "prices", "reads": "not_opened", "old_store": "x"}])["state"] == "old_store"
-    assert _state([{"kind": "prices", "reads": "not_opened"}])["state"] == "not_opened"
-    assert _state([{"kind": "options", "reads": "not_opened"}, REC])["state"] == "current"
-    assert _state([{"kind": "prices", "error": "E"}])["state"] == "error"
-    assert _state(None)["state"] == "not_recorded"
 
 
 def test_the_part_lists_the_boards_to_look_at_first():

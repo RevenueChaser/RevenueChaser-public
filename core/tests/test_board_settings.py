@@ -17,45 +17,14 @@ def test_default_comes_from_config_at_call_time(rawstore_tmp_db, monkeypatch):
     assert bs.values(B)["overridden"] == []
 
 
-def test_save_then_get_and_values(rawstore_tmp_db):
-    out = bs.save(B, {"WINSOR_K": 6.5, "MIN_OBS": 100})
-    assert bs.get(B, "WINSOR_K") == 6.5
-    assert bs.get(B, "MIN_OBS") == 100 and isinstance(bs.get(B, "MIN_OBS"), int)
-    assert out["overridden"] == ["MIN_OBS", "WINSOR_K"]
-    v = bs.values(B)
-    assert v["values"]["WINSOR_K"] == 6.5
-    assert v["values"]["WINDOW"] == config.WINDOW            # untouched key = default
-    assert v["defaults"]["WINSOR_K"] == config.WINSOR_K
-    assert rawstore.count("board_settings") == 2
 
 
-def test_saving_the_default_value_drops_the_override(rawstore_tmp_db):
-    bs.save(B, {"WINSOR_K": 6.5})
-    bs.save(B, {"WINSOR_K": config.WINSOR_K})
-    assert rawstore.count("board_settings") == 0
-    assert not bs.is_custom(B)
 
 
-def test_is_custom(rawstore_tmp_db):
-    assert bs.is_custom(B) is False
-    bs.save(B, {"BENCH_STALE_SESSIONS": 4})
-    assert bs.is_custom(B) is True
 
 
-def test_reset_deletes_rows_so_defaults_follow_config(rawstore_tmp_db, monkeypatch):
-    bs.save(B, {"WINSOR_K": 6.5, "MIN_OBS": 100})
-    assert rawstore.count("board_settings") == 2
-    bs.reset(B)
-    assert rawstore.count("board_settings") == 0     # deleted, not rewritten as defaults
-    assert not bs.is_custom(B)
-    monkeypatch.setattr(config, "WINSOR_K", 7.0)
-    assert bs.get(B, "WINSOR_K") == 7.0
 
 
-def test_reset_some_keys_only(rawstore_tmp_db):
-    bs.save(B, {"WINSOR_K": 6.5, "MIN_OBS": 100})
-    bs.reset(B, ["WINSOR_K"])
-    assert bs.values(B)["overridden"] == ["MIN_OBS"]
 
 
 @pytest.mark.parametrize("change,needle", [
@@ -85,11 +54,6 @@ def test_cross_rule_min_periods_not_above_min_obs(rawstore_tmp_db):
     assert bs.validate(B, {"MIN_OBS": 80, "MIN_PERIODS": 80}) == []
 
 
-def test_cross_rule_min_obs_is_checked_against_the_merged_window(rawstore_tmp_db):
-    bs.save(B, {"WINDOW": 189})
-    msgs = bs.validate(B, {"MIN_OBS": 200})
-    assert any("MIN_OBS must be between 60 and WINDOW (189)" in m for m in msgs), msgs
-    assert bs.validate(B, {"WINDOW": 378, "MIN_OBS": 200}) == []
 
 
 def test_cross_rule_window_plus_holdout_fits_stored_sessions(rawstore_tmp_db):
@@ -98,31 +62,10 @@ def test_cross_rule_window_plus_holdout_fits_stored_sessions(rawstore_tmp_db):
     assert bs.validate(B, {"WINDOW": 378, "OOS_HOLDOUT": 126}) == []
 
 
-def test_stored_sessions_reads_spy_from_the_prices_store(rawstore_tmp_db):
-    """Co-movement reads the prices store since PR 8 (D01 since #379 before), so the rule counts SPY's sessions
-    there, not swing_ohlc's (D01 reads the same served file since #642 PR 6)."""
-    from RevenueChaser.rcdata.tests import prices_store
-    prices_store.put_bars([{"ticker": "SPY", "session_date": f"2025-01-{d:02d}", "close": 1.0} for d in range(1, 11)])
-    rawstore.write_rows("swing_ohlc", [{"ticker": "SPY", "ts": f"2024-02-{d:02d}T00:00:00", "open": 1.0,
-                                        "high": 1.0, "low": 1.0, "close": 1.0, "volume": 1.0, "cached_at": 1.0}
-                                       for d in range(1, 21)])
-    assert bs.stored_sessions() == 10
-    msgs = bs.validate(B, {"OOS_HOLDOUT": 63})
-    assert any("WINDOW + OOS_HOLDOUT must not exceed the 10 stored sessions" in m
-               for m in msgs), msgs
 
 
-def test_short_default_window_skips_the_long_window_rules(rawstore_tmp_db):
-    assert bs.validate(B, {"WINDOW": 21}) == []
-    bs.save(B, {"WINDOW": 21})
-    assert bs.get(B, "WINDOW") == 21
 
 
-def test_save_rejects_and_writes_nothing(rawstore_tmp_db):
-    with pytest.raises(bs.SettingsError) as exc:
-        bs.save(B, {"WINSOR_K": 6.0, "MIN_OBS": 1})
-    assert any("MIN_OBS" in m for m in exc.value.messages)
-    assert rawstore.count("board_settings") == 0     # all-or-nothing
 
 
 def test_empty_change_set_is_invalid(rawstore_tmp_db):
@@ -136,43 +79,11 @@ def test_unknown_board_raises(rawstore_tmp_db):
                           "module_swing_potential"]
 
 
-def test_describe_lists_every_field_with_value_default_and_override_flag(rawstore_tmp_db):
-    bs.save(B, {"MIN_OBS": 100})
-    rows = {r["key"]: r for r in bs.describe(B)}
-    assert set(rows) == {"WINDOW", "MIN_OBS", "OOS_HOLDOUT", "WINSOR_K",
-                         "MIN_PERIODS", "BENCH_STALE_SESSIONS", "OPERATING_ONLY"}
-    m = rows["MIN_OBS"]
-    assert m["value"] == 100 and m["default"] == config.MIN_OBS
-    assert m["overridden"] is True and rows["WINSOR_K"]["overridden"] is False
-    assert m["kind"] == "int" and m["lo"] == config.MIN_OBS_LO and m["hi"] is None
-    assert rows["WINDOW"]["choices"] == list(config.WINDOW_OPTIONS)
-    assert rows["WINSOR_K"]["kind"] == "float"
-    assert rows["OOS_HOLDOUT"]["lo"] == config.OOS_HOLDOUT_LO
-    assert rows["OOS_HOLDOUT"]["hi"] == config.OOS_HOLDOUT_HI
 
 
 # ── PR 2: the type filter and Fundamentals' thresholds are settings ──────────────────────────────
-@pytest.mark.parametrize("board,default", [("module_comovement", 0), ("module_swing_potential", 1),
-                                           ("module_fundamentals", 1)])
-def test_every_screening_board_has_a_type_filter_setting_whose_default_keeps_its_old_set(
-        rawstore_tmp_db, board, default):
-    from RevenueChaser.core.universe import BOARD_OPERATING_ONLY
-    assert bs.get(board, "OPERATING_ONLY") == default == int(BOARD_OPERATING_ONLY[board])
-    row = next(r for r in bs.describe(board) if r["key"] == "OPERATING_ONLY")
-    assert row["kind"] == "int" and row["choices"] == [0, 1]
-    assert bs.validate(board, {"OPERATING_ONLY": 2}) == ["OPERATING_ONLY must be one of 0, 1; got 2"]
-    bs.save(board, {"OPERATING_ONLY": 1 - default})
-    assert bs.get(board, "OPERATING_ONLY") == 1 - default
 
 
-def test_fundamentals_price_and_volume_floors_are_settings_with_todays_defaults(rawstore_tmp_db):
-    from RevenueChaser.module_fundamentals import config as fcfg
-    f = "module_fundamentals"
-    assert bs.get(f, "MIN_PRICE") == fcfg.MIN_PRICE == 5.0
-    assert bs.get(f, "MIN_DOLLAR_VOLUME") == fcfg.MIN_DOLLAR_VOLUME == 250_000
-    bs.save(f, {"MIN_PRICE": 0.5, "MIN_DOLLAR_VOLUME": 0})        # a user may switch the floor off
-    assert bs.get(f, "MIN_PRICE") == 0.5 and bs.get(f, "MIN_DOLLAR_VOLUME") == 0
-    assert bs.validate(f, {"MIN_PRICE": -1})
 
 
 # ── The control board's universe (design v28, Karar 86 A: a press drafts, Apply commits) ─────────────────────────
@@ -182,12 +93,6 @@ def test_the_universe_defaults_to_every_offered_set_and_every_named_group(rawsto
     assert v["values"] == {"UNIVERSE_SETS": 7, "UNIVERSE_INCLUDE": 7} and v["overridden"] == []
 
 
-def test_the_universe_is_saved_as_its_bit_mask_and_an_empty_one_is_refused(rawstore_tmp_db):
-    assert bs.save("module_settings", {"UNIVERSE_SETS": 1})["values"]["UNIVERSE_SETS"] == 1     # A only
-    with pytest.raises(bs.SettingsError) as exc:
-        bs.save("module_settings", {"UNIVERSE_SETS": 0})
-    assert any("UNIVERSE_SETS" in m for m in exc.value.messages)
-    assert bs.save("module_settings", {"UNIVERSE_INCLUDE": 0})["values"]["UNIVERSE_INCLUDE"] == 0  # none is allowed
 
 
 def test_the_universe_masks_are_named_by_the_screens_own_lists():

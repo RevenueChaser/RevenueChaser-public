@@ -243,9 +243,10 @@ def _board(key: str, label: str, tables: list[str], payload_path, *,
 BOARD_INPUTS: list[dict] = [
     # Welcome (decision A) and News (S9, S16) write their own board files; these are the stored tables they read.
     # #643 PR 5: the four market tiles read market.duckdb's ``market_series`` through their needs, so the three
-    # old series tables are gone from this record; the earnings card and the freshness card still read theirs.
+    # old series tables are gone from this record; the earnings and freshness cards read the old files and went
+    # with them (#860).
     _board("module_welcome", "Welcome",
-           ["earnings_calendar", "job_runs", "news_events", "news_highlight"],
+           ["news_events", "news_highlight"],
            lambda: _html("welcome"), price_basis="last stored closes, not live quotes",
            ops_tables=["watchlist_stock"]),
     # Watch lists (#786) is avo's own typed data, not a board result: nothing recomputes it, there is no artifact
@@ -257,17 +258,17 @@ BOARD_INPUTS: list[dict] = [
     _board("module_news", "News", [], lambda: _html("news")),      # reads market.economic_event
     _board("module_earnings_radar", "Earnings Radar",
            ["earnings_calendar", "estimate_snapshots", "short_interest",
-            "macro_series", "vol_index_daily", "cftc_cot", "price_bars_daily"],
+            "price_bars_daily"],
            lambda: _html("earnings_radar"),
            price_basis="daily price bars, nominal closes for reactions", ops_tables=["watchlist_stock"]),
     _board("module_spx_gamma", "SPX Gamma",
-           ["index_levels_daily", "vol_index_daily", "cftc_cot"], _spx_latest,
+           ["index_levels_daily"], _spx_latest,
            price_basis="index_levels_daily closes"),
     _board("module_oipd", "Implied Probability",
            ["oipd_chain", "oipd_meta"], lambda: _json("oipd", "oipd_latest.json"),
            price_basis="option chain marks, not equity closes"),
     _board("module_financials", "Financials",
-           ["ticker_payload_cache", "vendor_financials", "vendor_valuation", "equity_universe"],
+           ["equity_universe"],
            lambda: _json("financials", "financials_latest.json")),
     _board("module_uw_interaction", "Unusual Whales Interaction (lab)", [],
            lambda: _json("uw_interaction", "uw_interaction_latest.json")),
@@ -279,8 +280,7 @@ BOARD_INPUTS: list[dict] = [
            price_basis="daily price bars, split- and dividend-adjusted closes; correct for returns",
            params=_comovement_params, settings=_comovement_settings),
     _board("module_value_chain", "Value Chain",
-           ["chain_filings", "chain_mentions", "chain_meta", "sec_company_tickers",
-            "equity_universe"],
+           ["chain_filings", "chain_mentions", "chain_meta", "equity_universe"],
            lambda: _json("value_chain", "value_chain_latest.json")),
     _board("module_relatedness", "Relatedness",
            ["relatedness_profiles", "relatedness_scores", "chain_filings",
@@ -291,7 +291,7 @@ BOARD_INPUTS: list[dict] = [
            lambda: _html("sector_rotation"),
            price_basis="ETF levels stored in rotation snapshots"),
     _board("module_asymmetric_growth", "Asymmetric Growth",
-           ["equity_universe", "edgar_financials", "price_bars_daily", "ownership_snapshot"],
+           ["equity_universe", "price_bars_daily"],
            lambda: _json("asymmetric_growth", "asymmetric_growth_latest.json"),
            funnel="funnel_steps",
            price_basis="daily price bars, nominal closes for momentum"),
@@ -302,13 +302,13 @@ BOARD_INPUTS: list[dict] = [
            price_basis="daily price bars: levels nominal, returns adjusted",
            params=_swing_params, settings=_swing_settings),
     _board("module_fundamentals", "Fundamentals",
-           ["equity_universe", "quote_snapshot", "price_bars_daily", "edgar_financials"],
+           ["equity_universe", "price_bars_daily"],
            lambda: _json("fundamentals", "fundamentals_latest.json"),
            funnel="funnel_steps",
            price_basis="daily price bars: levels nominal, returns adjusted",
            params=_fundamentals_params, settings=_fundamentals_settings),
     _board("module_sec_13f", "SEC 13F",
-           ["sec13f_holdings", "sec13f_submissions", "sec13f_totals", "equity_universe"],
+           ["sec13f_totals", "equity_universe"],
            lambda: _html("sec_13f")),
     # The scan is switched off (issue 730), so no job writes these two tables any more; the card stays so
     # the page still accounts for them instead of leaving them unclaimed.

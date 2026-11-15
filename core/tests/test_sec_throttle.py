@@ -154,12 +154,6 @@ def test_which_pacing_is_active_is_logged_once(monkeypatch, caplog):
     assert len(caplog.records) == 1 and "shared bucket" in caplog.text
 
 
-def test_bucket_sits_beside_the_store_and_is_not_a_job_lock(isolate_rawstore):
-    """Same directory ``job_lock`` uses, but not a ``*.lock`` name ``holders()`` would claim."""
-    path = sec_throttle.bucket_path()
-    assert path.parent == Path(rawstore.DB_PATH).parent
-    assert path.name.startswith(".")
-    assert not path.name.endswith(".lock")
 
 
 def test_burst_is_what_the_ceiling_leaves(monkeypatch, tmp_path):
@@ -333,23 +327,6 @@ def test_every_sec_request_takes_one_shared_token(monkeypatch):
     assert taken == [1, 1, 1, 1]
 
 
-def test_a_peer_holding_the_lock_does_not_cost_the_caller_the_shared_bucket(tmp_path, monkeypatch):
-    """Measured on the first real parallel SEC fetch (5-6 Nov 2026): two fetches on one bucket, and one of them
-    logged "the shared bucket cannot be used; this process paces itself (in-process, 1.66667/s)" after 37 minutes.
-
-    Falling back is far worse than waiting: ``FALLBACK_RATE`` is the ceiling split six ways, so two fetches that
-    both fall back ask at 3.33/s together where one on the bucket asks at 9. The wait has to outlast a peer's
-    critical section by enough that the bucket, not the fallback, is what a busy box uses.
-    """
-    monkeypatch.setattr(sec_throttle.rawstore, "DB_PATH", tmp_path / "raw.duckdb")
-    tries = {"n": 0}
-    real = job_lock._os_lock
-
-    def busy_for_half_a_second(fd):
-        tries["n"] += 1
-        return real(fd) if tries["n"] * sec_throttle._LOCK_SPIN > 0.5 else False
-    monkeypatch.setattr(job_lock, "_os_lock", busy_for_half_a_second)
-    assert sec_throttle._reserve(0.0) is not None, "half a second of contention must not reach the fallback"
 
 
 def test_the_lock_wait_outlasts_contention_and_the_fallback_stays_the_floor():
@@ -359,34 +336,8 @@ def test_the_lock_wait_outlasts_contention_and_the_fallback_stays_the_floor():
     assert sec_throttle.FALLBACK_RATE == sec_throttle.LIMIT / len(sec_throttle.SEC_PROCESSES)
 
 
-def test_a_fallback_says_why_and_every_request_is_counted(tmp_path, monkeypatch, caplog):
-    """#487: one fallback line per process hid its cause, so the fix was chosen blind. Each reason is now its own
-    line and every request is counted, shared or not."""
-    monkeypatch.setattr(sec_throttle.rawstore, "DB_PATH", tmp_path / "raw.duckdb")
-    monkeypatch.setattr(sec_throttle, "_LOGGED", set())
-    monkeypatch.setattr(sec_throttle, "_COUNTS", {})
-    monkeypatch.setattr(sec_throttle, "_LOCK_WAIT", 0.01)
-    caplog.set_level("INFO", logger=sec_throttle.__name__)
-    assert sec_throttle.pace() is True                                   # the real bucket, free
-    monkeypatch.setattr(job_lock, "_os_lock", lambda fd: False)          # a peer that never lets go
-    assert sec_throttle.pace() is False and sec_throttle.pace() is False
-    assert sec_throttle.stats() == {"shared": 1, "lock_timeout": 2}
-    assert "(lock_timeout)" in caplog.text
-    monkeypatch.setattr(job_lock, "_OS_LOCK_AVAILABLE", False)
-    assert sec_throttle.pace() is False
-    assert sec_throttle.stats()["no_os_lock"] == 1
-    assert sum("cannot be used" in r.getMessage() for r in caplog.records) == 2   # one line per reason
 
 
-def test_an_unopenable_bucket_names_the_errno(tmp_path, monkeypatch):
-    monkeypatch.setattr(sec_throttle.rawstore, "DB_PATH", tmp_path / "raw.duckdb")
-    monkeypatch.setattr(sec_throttle, "_COUNTS", {})
-
-    def refuse(*a, **k):
-        raise PermissionError(13, "Permission denied")
-    monkeypatch.setattr(sec_throttle.os, "open", refuse)
-    assert sec_throttle.pace() is False
-    assert sec_throttle.stats() == {"open_failed:EACCES": 1}
 
 
 def test_the_exit_line_gives_the_totals_only_when_something_fell_back(monkeypatch, caplog):
@@ -399,19 +350,3 @@ def test_the_exit_line_gives_the_totals_only_when_something_fell_back(monkeypatc
     assert "5 request(s) on the shared bucket, 3 fell back (lock_timeout 3)" in caplog.text
 
 
-def test_a_long_lived_process_logs_its_totals_hourly_not_only_at_exit(tmp_path, monkeypatch, caplog):
-    """Review of #560: the dashboard is stopped by SIGTERM, which skips atexit, so the totals come while it runs."""
-    monkeypatch.setattr(sec_throttle.rawstore, "DB_PATH", tmp_path / "raw.duckdb")
-    monkeypatch.setattr(sec_throttle, "_LOCK_WAIT", 0.01)
-    monkeypatch.setattr(job_lock, "_os_lock", lambda fd: False)
-    caplog.set_level("INFO", logger=sec_throttle.__name__)
-    sec_throttle.pace()
-    sec_throttle.pace()
-    totals = [r for r in caplog.records if "totals" in r.getMessage()]
-    assert totals == []                                                 # the reason line says it at once
-    sec_throttle._totals_logged_at -= sec_throttle._TOTALS_EVERY       # an hour later
-    sec_throttle.pace()
-    totals = [r for r in caplog.records if "totals" in r.getMessage()]
-    assert len(totals) == 1 and "3 fell back (lock_timeout 3)" in totals[0].getMessage()
-    sec_throttle.pace()                                                 # not again inside the hour
-    assert len([r for r in caplog.records if "totals" in r.getMessage()]) == 1

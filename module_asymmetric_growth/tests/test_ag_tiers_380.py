@@ -113,23 +113,8 @@ def test_ticker_scores_keeps_tier_flags_and_model_version(rawstore_tmp_db):
     assert (view["tier"], view["flags"], view["model_version"]) == (3, ["suspicious_growth"], mv)
 
 
-def test_the_history_mirror_has_the_new_columns():
-    cols = {c.split()[0] for c in rawstore.MANIFEST["ag_scores_history"]["columns"]}
-    assert {"tier", "flags", "model_version"} <= cols
 
 
-def test_the_hunter_stamps_the_model_version(rawstore_tmp_db, monkeypatch):
-    from RevenueChaser.module_asymmetric_growth.tests.test_ag_info_only_150 import _QUOTE, _edgar
-    from RevenueChaser.module_asymmetric_growth.tests.test_ag_dated_momentum_380 import seed_momentum
-    fund_store.put_edgar([_edgar("AAA")])
-    seed_momentum(["AAA"])                                    # the momentum signal comes from D01 (#380 S4)
-    monkeypatch.setattr(engine, "fetch_universe_stats",
-                        lambda *a, **k: ([{"ticker": "AAA", "quote": dict(_QUOTE), "market_cap": 5e9}], {}))
-    monkeypatch.setattr(engine._spine, "spine_gics", lambda *a, **k: {})
-    monkeypatch.setattr(engine._spine, "excluded_tickers", lambda: set())
-    res = engine.run_asymmetric_growth_hunter(None, max_workers=1, no_fetch=True)
-    assert [(c["tier"], c["model_version"]) for c in res["cards"]] == [(3, freeze.model_version())]  # 3 strong signals
-    assert engine.scored_before(res["cards"]) is False
 
 
 def test_scored_before_reads_the_rows_version():
@@ -202,19 +187,6 @@ def _stored_payload():
     return json.loads(gzip.decompress(rc.payload_path(runners.ASYMMETRIC_GROWTH_LATEST).read_bytes()))
 
 
-def test_the_refresh_payload_is_the_fetch_payload_with_tiers_and_flags(out, monkeypatch):
-    cards = _fresh(("BAL", 9, 3), ("STR", 7, 2), ("NON", 8, None))
-    cards[1]["flags"] = ["mixed_share_basis"]
-    for c in cards:
-        c["index"] = []                       # the labels come from the index registry on both paths (empty here)
-    monkeypatch.setattr(engine, "run_asymmetric_growth_hunter", lambda uw, **k: _result(cards))
-    runners.run_asymmetric_growth(None)
-    fetched_html, fetched = runners.ASYMMETRIC_GROWTH_LATEST.read_text(encoding="utf-8"), _stored_payload()
-    runners.run_asymmetric_growth(None, no_fetch=True)
-    assert _stored_payload() == fetched
-    assert [(c["ticker"], c["tier"], c["flags"]) for c in fetched["cards"]] == [
-        ("BAL", 3, []), ("STR", 2, ["mixed_share_basis"]), ("NON", None, [])]
-    assert "scored before" not in fetched_html
 
 
 def test_the_model_version_is_the_ledgers():

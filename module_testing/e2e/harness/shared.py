@@ -98,11 +98,11 @@ def shared_dashboard(tmp_path_factory, mock_provider, name: str) -> Iterator[Das
 
 @contextmanager
 def store_of(dashboard: Dashboard) -> Iterator[None]:
-    """``rawstore.DB_PATH`` at ``dashboard``'s store and ``config.MARKET_DIR`` at its market root (the prices store's
-    folder, G3) for the block: the test process reads and seeds through them."""
+    """``rawstore.STORE_DIR`` at ``dashboard``'s store and ``config.MARKET_DIR`` at its market root (the prices
+    store's folder, G3) for the block: the test process reads and seeds through them."""
     from RevenueChaser.core import config, rawstore
     mp = pytest.MonkeyPatch()
-    mp.setattr(rawstore, "DB_PATH", dashboard.store_dir / "raw.duckdb")
+    mp.setattr(rawstore, "STORE_DIR", dashboard.store_dir)
     mp.setattr(config, "MARKET_DIR", dashboard.env["RC_MARKET_DIR"])
     try:
         yield

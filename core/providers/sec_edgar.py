@@ -18,7 +18,7 @@ from pathlib import Path
 
 import httpx
 
-from .. import rawstore, sec_throttle
+from .. import sec_throttle
 from ..config import to_float
 
 logger = logging.getLogger(__name__)
@@ -464,33 +464,17 @@ _CIK_MAP_LOCK = threading.Lock()
 
 
 def _cik_map() -> dict:
-    """ticker -> ``{cik, name}``, from the first source that answers (#301 D21).
+    """ticker -> ``{cik, name}`` from the SEC's ``company_tickers.json``, once per process (see ``reset_cik_map``).
 
-    1. ``sec_exchange_file`` — the rows RC-Daily-Bars stores once a weekday night. The normal path.
-    2. ``sec_company_tickers`` — **retired**: nothing writes it any more, but it still holds every ticker the
-       old writer ever saw, so a store without the new file keeps resolving CIKs without a download.
-    3. ``company_tickers.json`` — one read-only SEC request, for a store that has neither.
-
-    The retired table is never written again. The map is built once per process (see ``reset_cik_map``).
+    The two stored sources it read first (``sec_exchange_file``, ``sec_company_tickers``) lived in the old
+    ``raw.duckdb`` and went with it (#860).
     """
-    from .. import sec_files
-
     with _CIK_MAP_LOCK:
         if _CIK_MAP_CACHE:
             return _CIK_MAP_CACHE[0]
-        rows = sec_files.latest("exchange")
-        if not rows:
-            # The retired table is the second source, not a dead end: it still holds every ticker the old
-            # writer ever saw, so a store without the new file keeps resolving CIKs without a download (#301).
-            rows = rawstore.query("SELECT ticker, cik, name FROM sec_company_tickers")
-        if rows:
-            out = {r["ticker"]: {"cik": _as_cik(r["cik"]), "name": r["name"]} for r in rows}
-            out = {t: v for t, v in out.items() if v["cik"] is not None}
-        else:
-            payload = get_json(f"{SEC_WWW_BASE}/files/company_tickers.json")
-            out = {row["ticker"]: {"cik": _as_cik(row["cik_str"]), "name": row["title"]}
-                   for row in payload.values()}
-            out = {t: v for t, v in out.items() if v["cik"] is not None}
+        payload = get_json(f"{SEC_WWW_BASE}/files/company_tickers.json")
+        out = {row["ticker"]: {"cik": _as_cik(row["cik_str"]), "name": row["title"]} for row in payload.values()}
+        out = {t: v for t, v in out.items() if v["cik"] is not None}
         _CIK_MAP_CACHE.append(out)
         return out
 

@@ -162,12 +162,8 @@ AREAS = [
      "edgar", "edgar_financials", ":604", "ticker", "upsert",
      "All fiscal years. Fetched once per ticker and never refetched; since Common K6 (#383 R1) a fetched row carries fetched_at (the facts download), rows written before stay without it. Since #158 (branch area/providers/158-edgar-quarters) the quarterly list holds discrete quarters, Q2-Q4 derived from YTD facts for additive USD flows (a record names them in `derived`, keeps the cumulative fact in `ytd`; a negative derived value of a non-negative field is dropped and flagged `<field>_suspect`), every record carries per-field `filed` and `accn`, `meta.extract_version` is 2, and buyback and SBC are stored; a row written before that stays as it is until the gated re-extraction.",
      "O2:170, O2:173"),
-    ("SEC bulk companyfacts.zip", "core/edgar_bulk.py:142",
-     "ingest_companyfacts (CLI only)", "core/edgar_bulk.py:158",
-     "edgar", "edgar_facts", ":635", "cik + concept + period + form", "upsert",
-     "Everything ingested stays.", "O2:174"),
    ],
-   planned="edgar_companyfacts. File decided in 2.6."),
+   planned="Nothing: edgar_facts and edgar_companyfacts left the MANIFEST with #860 stage 2."),
   dict(id="D12", name="Vendor statements and valuation", readers="Financials, Earnings, AG",
    flows=[
     ("yfinance statements + .info (get_financials; get_info for AG names with EDGAR years)", "core/providers/yfinance.py:113, :244; module_financials/run.py:59; module_asymmetric_growth/engine.py:306, :308",
@@ -543,9 +539,8 @@ STORES = [
      "rotation_snapshots_history"]),
  ]),
  ("edgar", "edgar.duckdb", ".store/edgar.duckdb (core/rawstore.py:55-57); going away (#860)", [
-   ("From SEC (raw)", ["edgar_financials", "edgar_documents", "edgar_facts", "sec_submissions",
+   ("From SEC (raw)", ["edgar_financials", "edgar_documents", "sec_submissions",
      "sec_submissions_cik"]),
-   ("Declared in the G1 bump (#292, schema 10), no writer yet", ["edgar_companyfacts"]),
  ]),
  ("value_chain", "boards/value_chain.duckdb", ".store/boards/value_chain.duckdb (rawstore.board_db_path; the "
   "Value Chain package's own three tables, moved out of edgar.duckdb by #860 stage 1)", [
@@ -589,7 +584,7 @@ CHART_STORES = {
             "leaps_cache · leaps_flow_prints", "oipd_chain · rotation_snapshots", "etf_holdings · index_constituents",
             "sec13f_holdings and 6 more 13F", "llm_cache · relatedness_*", "watchlist · board_settings",
             "9 declared, empty (4 G1 …)"]),
-    "edgar": (455, 100, "edgar.duckdb", ["6 tables (1 G1, empty); going away (#860)", "edgar_financials · edgar_facts",
+    "edgar": (455, 100, "edgar.duckdb", ["4 tables; going away (#860)", "edgar_financials",
                                         "edgar_documents · sec_*"]),
     "value_chain": (455, 60, "boards/value_chain.duckdb", ["chain_filings · chain_mentions", "chain_meta"]),
     "files": (565, 40, "Files on disk", ["SPX day folders · edgar_docs HTML"]),

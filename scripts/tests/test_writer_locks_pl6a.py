@@ -19,9 +19,9 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from RevenueChaser.core import job_lock, nightly_inputs as N, outcomes
+from RevenueChaser.core import job_lock, outcomes
 from RevenueChaser.core.tests.lock_holders import lock_held
-from RevenueChaser.scripts import forecast_outcomes, nightly_inputs as inputs_cli
+from RevenueChaser.scripts import forecast_outcomes
 
 NIGHT = datetime(2026, 10, 13, 19, 30, tzinfo=ZoneInfo("America/New_York")).timestamp()
 
@@ -84,50 +84,13 @@ def test_a_dry_run_takes_no_lock_and_still_answers(outcomes_run):
 RAN: list[str] = []
 
 
-def _step_sweeps():
-    def ok(ctx):
-        RAN.append("ran")
-        return {"status": "ok"}
-
-    return (N.Sweep("A", ("short_interest",), ok),)
 
 
-@pytest.fixture(autouse=True)
-def steps(monkeypatch, tmp_path):
-    RAN.clear()
-    monkeypatch.setattr(N, "STEPS", {"alpha": f"{__name__}:_step_sweeps"})
-    monkeypatch.setattr(N.config, "OUTPUT_DIR", tmp_path)
-    # After the US close (2026-10-13 19:30 New York), as the nightly task runs: inside the session a step skips
-    # itself and no sweep runs, so the lock tests would pass for the wrong reason.
-    monkeypatch.setattr(N.time, "time", lambda: NIGHT)
 
 
-def test_a_held_step_lock_exits_3_and_runs_nothing(capsys):
-    with lock_held("nightly_inputs_alpha"):
-        assert inputs_cli.main(["alpha"]) == inputs_cli.BUSY_EXIT == 3
-    err = capsys.readouterr().err
-    assert "nightly_inputs_alpha" in err and "nothing was written" in err
-    assert RAN == [], "a busy step ran its sweeps anyway"
 
 
-def test_a_busy_step_writes_its_busy_report_over_yesterdays_night(tmp_path):
-    """S-3: the step's own report file gets the busy record, so last night's success does not read as tonight's."""
-    report = tmp_path / "alpha.json"
-    report.write_text('{"step": "alpha", "status": "ok"}', encoding="utf-8")
-    with lock_held("nightly_inputs_alpha"):
-        assert inputs_cli.main(["alpha", "--report", str(report)]) == inputs_cli.BUSY_EXIT
-    assert json.loads(report.read_text(encoding="utf-8")) == {"status": "busy", "holder_pid": os.getpid()}
-    assert RAN == [], "a busy step ran its sweeps anyway"
 
 
-def test_a_free_step_runs_and_releases():
-    assert inputs_cli.main(["alpha"]) == 0
-    assert RAN == ["ran"]
-    assert "nightly_inputs_alpha" not in dict(job_lock.holders()), "the lock outlived the run"
 
 
-def test_another_steps_lock_does_not_hold_this_step():
-    """The steps write different tables: ``nightly_inputs_<other>`` never blocks this one."""
-    with lock_held("nightly_inputs_beta"):
-        assert inputs_cli.main(["alpha"]) == 0
-    assert RAN == ["ran"]

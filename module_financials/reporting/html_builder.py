@@ -9,8 +9,7 @@ from markupsafe import Markup
 
 from RevenueChaser.core import calendar as market_calendar
 from RevenueChaser.module_financials.config import RISK_FREE_MAX_AGE_DAYS
-from RevenueChaser.core.reporting_common import (help_html, provider_health_html, recorded_sessions_html,
-                                                 watch_buttons_html, watchlist_html)
+from RevenueChaser.core.reporting_common import (help_html, provider_health_html, watch_buttons_html, watchlist_html)
 
 _TEMPLATES = Path(__file__).resolve().parent / "templates"
 # Autoescape on: ticker, company, sector, source and warnings come from the
@@ -164,7 +163,7 @@ def build_report_html(results: dict) -> str:
         # Escapes every provider string itself (Common K3); empty for a clean run.
         "provider_banner": Markup(provider_health_html(results.get("provider_health"))),
         # Every Fetch of any ticker, newest first (#383 C7); escapes its own strings.
-        "history_block": Markup(recorded_sessions_html("module_financials")),
+        "history_block": Markup(""),
         "watch_mount": Markup(watchlist_html("financials")),
         "dcf": modules.get("dcf"),
         "three_statement": modules.get("3stmt") or modules.get("three_statement"),

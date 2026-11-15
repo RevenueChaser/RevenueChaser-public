@@ -201,14 +201,32 @@ def _held(cik: str) -> set[str]:
 def parse(cik: str, body: dict) -> list[dict]:
     """The filings of one submissions answer (``filings.recent``): ``{cik, accession, form, filing_date,
     report_date, primary_document, items}``; ``SourceError`` for a body that is not the documented shape."""
-    from ....core.sec_submissions import rows_from_payload
     if not isinstance(body, dict) or not isinstance((body.get("filings") or {}).get("recent"), dict):
         raise base.SourceError(f"sec submissions {cik}: not the documented shape")
-    _, rows = rows_from_payload(cik, body)
     recent = body["filings"]["recent"]
-    reports = dict(zip(recent.get("accessionNumber") or [], recent.get("reportDate") or []))
-    for r in rows:
-        r["report_date"] = reports.get(r["accession"]) or None
+    c = str(int(str(cik).strip()))
+
+    def col(name: str, i: int):
+        vals = recent.get(name) or []
+        return vals[i] if i < len(vals) else None
+
+    def text(v) -> str | None:
+        v = None if v is None else str(v).strip()
+        return v or None
+
+    def day(v) -> date | None:
+        try:
+            return date.fromisoformat(str(v)[:10])
+        except (TypeError, ValueError):
+            return None
+
+    rows = []
+    for i, acc in enumerate(recent.get("accessionNumber") or []):
+        acc = text(acc)
+        if acc:   # a row without an accession is dropped
+            rows.append({"cik": c, "accession": acc, "form": text(col("form", i)),
+                         "filing_date": day(col("filingDate", i)), "report_date": text(col("reportDate", i)),
+                         "primary_document": text(col("primaryDocument", i)), "items": text(col("items", i))})
     return rows
 
 

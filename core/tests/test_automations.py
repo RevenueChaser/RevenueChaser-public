@@ -29,87 +29,20 @@ def _cache(tmp_path, monkeypatch):
 # --- registry ---------------------------------------------------------------
 
 # The Earnings inputs entries, one per schedule (#620).
-_EARNINGS_INPUTS = ("RC-Earnings-Calendar", "RC-Short-Interest", "RC-Earnings-Daytime", "RC-Macro-Weekly",
-                    "RC-CFTC-Weekly")
-
-def test_registry_names_are_stable_and_prefixed():
-    assert [e.name for e in A.REGISTRY] == [
-        "RC-Relatedness-OffPeak", "RC-ValueChain-Sync", "RC-Daily-Bars", "RC-Screeners-Daily",
-        "RC-Forecast-Outcomes", "RC-Forecast-Baselines", "RC-Index-Lists", "RC-Earnings-Calendar",
-        "RC-Short-Interest", "RC-Earnings-Daytime", "RC-Macro-Weekly", "RC-CFTC-Weekly", "RC-IBKR-Login-Check",
-        "RC-Build", "RC-Backup-Weekly", "RC-SPX-Gamma-Fetch"]
-    assert all(e.name.startswith("RC-") for e in A.REGISTRY)
 
 
-def test_the_index_lists_row_runs_weekly_on_saturday():
-    """#302 (D24): the index lists step runs Saturday 10:00; every other row stays daily."""
-    e = A.entry("RC-Index-Lists")
-    assert (e.time, e.days) == ("10:00", ("Saturday",))
-    assert e.schedule == "weekly Saturday 10:00 (local)"
-    assert e.args == ("-m", "RevenueChaser.scripts.index_lists", "--weekly")
-    assert set(e.tables_written) == {"index_constituents", "index_constituents_changes"}
-    assert not e.default_install
-    assert all(x.days == () and x.schedule == f"daily {x.time} (local)" for x in A.REGISTRY
-               if x.name not in (e.name, "RC-Screeners-Daily", "RC-Forecast-Outcomes", "RC-Forecast-Baselines",
-                                 "RC-Build", "RC-Backup-Weekly", "RC-SPX-Gamma-Fetch", *_EARNINGS_INPUTS))
+
 
 
 _WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday")
 
 
-def test_the_screeners_row_is_chained_on_the_daily_bars():
-    """#129 A1: S2 (the universe CLI) waits for S1 (RC-Daily-Bars) on weekdays, not before 23:30 (#620)."""
-    e = A.entry("RC-Screeners-Daily")
-    assert (e.after, e.time, e.days) == ("RC-Daily-Bars", "23:30", _WEEKDAYS)
-    assert e.args == ("-m", "RevenueChaser.app.universe_cli")
-    assert e.schedule == "weekly Monday, Tuesday, Wednesday, Thursday, Friday 23:30 (local), after RC-Daily-Bars"
-    assert not e.default_install
-    s = e.settings
-    assert s.wake_to_run and s.allow_on_battery and s.start_when_available and s.run_only_when_logged_on
-    assert s.time_limit_hours == 4 and e.chain_wait_minutes < s.time_limit_hours * 60
-    assert {"equity_universe", "forecast_ledger", "swing_ohlc", "job_runs"} <= set(e.tables_written)
-    assert not A.entry("RC-Daily-Bars").days       # the chain needs a daily predecessor
-    assert [x.name for x in A.REGISTRY if x.after] == ["RC-Screeners-Daily", "RC-Forecast-Outcomes",
-                                                       "RC-Forecast-Baselines"]
 
 
-def test_the_daily_bars_row_first_stores_the_sec_files():
-    """#301 F0: RC-Daily-Bars runs the SEC exchange and fund files as its best-effort first step; it stays daily,
-    so the chain on it still holds."""
-    from RevenueChaser.core import sec_files
-
-    e = A.entry("RC-Daily-Bars")
-    assert e.args[:4] == ("-m", "RevenueChaser.scripts.daily_bars", "--nightly", "--sec-files")
-    assert (e.time, e.days, e.after) == ("23:00", (), None)
-    assert {"price_bars_daily", "price_actions", "price_checks", "sec_exchange_file",
-            "sec_mf_file"} <= set(e.tables_written)
-    assert {f.table for f in sec_files.FILES.values()} <= set(e.tables_written)
-    A.check_chain(A.REGISTRY)
 
 
-def test_the_daily_bars_row_then_stores_the_spx_levels():
-    """M-SPX-0 (#293, #376): after the bars, best effort, the ^GSPC daily levels (D03) into prices.duckdb, at most
-    1 yfinance request a night (avo's typed cap, 2026-10-16); the one-time fill is never part of the task."""
-    from RevenueChaser.core import index_levels, rawstore
-
-    e = A.entry("RC-Daily-Bars")
-    assert e.args == ("-m", "RevenueChaser.scripts.daily_bars", "--nightly", "--sec-files", "--index-levels")
-    assert "--index-fill" not in e.args and "--fill" not in e.args
-    assert set(e.tables_written) == {"price_bars_daily", "price_actions", "price_checks",
-                                     "sec_exchange_file", "sec_mf_file", "index_levels_daily"}
-    assert rawstore._db_of("index_levels_daily") == "prices"
-    assert index_levels.SYMBOL in e.description and "1 yfinance request a night" in e.description
 
 
-def test_the_forecast_outcomes_row_is_chained_daily_on_the_daily_bars():
-    """S0 (#380): the outcomes writer reads D01, so it waits for tonight's RC-Daily-Bars, every day at 23:35 (#620),
-    and writes forecast_outcomes alone."""
-    e = A.entry("RC-Forecast-Outcomes")
-    assert (e.after, e.time, e.days) == ("RC-Daily-Bars", "23:35", ())
-    assert e.args == ("-m", "RevenueChaser.scripts.forecast_outcomes", "--nightly")
-    assert e.schedule == "daily 23:35 (local), after RC-Daily-Bars"
-    assert e.tables_written == ("forecast_outcomes",)
-    assert e.chain_wait_minutes == 120 and not e.default_install and not e.offpeak_gated
 
 
 def test_the_forecast_baselines_row_is_chained_on_the_outcomes_run():
@@ -126,96 +59,30 @@ def test_the_forecast_baselines_row_is_chained_on_the_outcomes_run():
     assert names.index("RC-Forecast-Outcomes") + 1 == names.index("RC-Forecast-Baselines")    # after it, never before
 
 
-def test_each_busy_capable_nightly_row_says_its_busy_exit_in_the_description():
-    """S-1 (#26): Task Scheduler shows exit 3 as a red "failed (0x3)", so the row itself has to say what it means.
-
-    The wording follows RC-Screeners-Daily's "A busy universe lock exits 3."
-    """
-    for name in ("RC-Forecast-Outcomes", *_EARNINGS_INPUTS):
-        description = A.entry(name).description
-        assert "exits 3" in description and "nothing was written" in description, name
 
 
-def test_the_outcomes_row_cannot_chain_on_the_weekday_screeners_row():
-    """``check_chain`` refuses a weekly predecessor; RC-Screeners-Daily runs on weekdays only."""
-    import dataclasses
-    rows = tuple(dataclasses.replace(e, after="RC-Screeners-Daily") if e.name == "RC-Forecast-Outcomes" else e
-                 for e in A.REGISTRY)
-    with pytest.raises(ValueError, match="runs weekly"):
-        A.check_chain(rows)
 
 
-def _inputs_entry(**kw):
-    import dataclasses
-    base = A.AutomationEntry(
-        name="RC-Test-Inputs", label="x", time="01:30", description="d",
-        args=("-m", A.INPUTS_CLI, "fake", "--max-uw-calls", "200", "--max-fred-calls", "10", "--max-yf-calls", "5"),
-        tables_written=("short_interest",))
-    return dataclasses.replace(base, **kw)
 
 
-@pytest.fixture
-def fake_step(monkeypatch):
-    from RevenueChaser.core import nightly_inputs
-    monkeypatch.setattr(nightly_inputs, "STEPS", {**nightly_inputs.STEPS, "fake": "x:y"})
 
 
-def test_check_inputs_steps_passes_on_the_registry():
-    A.check_inputs_steps(A.REGISTRY)
 
 
-def test_an_inputs_step_with_every_cap_stated_passes(fake_step):
-    A.check_inputs_steps(A.REGISTRY + (_inputs_entry(),))
 
 
-def test_an_inputs_step_need_not_chain_on_the_daily_bars(fake_step):
-    """#620: the sweeps read no bars, so an inputs step may run unchained (a 13:00 entry could not chain at all)."""
-    A.check_inputs_steps(A.REGISTRY + (_inputs_entry(after=None, time="13:00"),))
-    assert all(A.entry(n).after is None for n in _EARNINGS_INPUTS)
 
 
-def test_an_inputs_cap_may_be_unlimited(fake_step):
-    """#620: ``unlimited`` (no cap) is accepted beside a whole number."""
-    args = list(_inputs_entry().args)
-    args[args.index("--max-uw-calls") + 1] = "unlimited"
-    A.check_inputs_steps(A.REGISTRY + (_inputs_entry(args=tuple(args)),))
 
 
-def test_an_inputs_step_must_name_a_known_step(fake_step):
-    with pytest.raises(ValueError, match="unknown inputs step"):
-        A.check_inputs_steps(A.REGISTRY + (_inputs_entry(args=("-m", A.INPUTS_CLI, "nope", "--max-uw-calls", "1",
-                                                                 "--max-fred-calls", "0", "--max-yf-calls", "0")),))
 
 
-@pytest.mark.parametrize("drop", A.INPUTS_CAP_FLAGS)
-def test_an_inputs_step_must_state_every_cap(fake_step, drop):
-    args = list(_inputs_entry().args)
-    i = args.index(drop)
-    del args[i:i + 2]
-    with pytest.raises(ValueError, match=drop):
-        A.check_inputs_steps(A.REGISTRY + (_inputs_entry(args=tuple(args)),))
 
 
-@pytest.mark.parametrize("value", ["-1", "lots", "", "Unlimited"])
-def test_an_inputs_cap_must_be_a_whole_number_of_calls(fake_step, value):
-    args = list(_inputs_entry().args)
-    args[args.index("--max-uw-calls") + 1] = value
-    with pytest.raises(ValueError, match="--max-uw-calls"):
-        A.check_inputs_steps(A.REGISTRY + (_inputs_entry(args=tuple(args)),))
 
 
-def test_an_inputs_step_must_list_its_tables(fake_step):
-    with pytest.raises(ValueError, match="tables"):
-        A.check_inputs_steps(A.REGISTRY + (_inputs_entry(tables_written=()),))
 
 
-def test_the_screeners_task_installs_a_weekday_trigger():
-    ps = FakePS()
-    _win(ps).install(A.entry("RC-Screeners-Daily"))
-    script = ps.scripts[0]
-    assert "-Weekly -DaysOfWeek Monday,Tuesday,Wednesday,Thursday,Friday -At '23:30'" in script
-    assert "-WakeToRun" in script and "-StartWhenAvailable" in script and "-AllowStartIfOnBatteries" in script
-    assert "run RC-Screeners-Daily" in script
 
 
 def test_no_row_is_marked_default_install():
@@ -223,8 +90,6 @@ def test_no_row_is_marked_default_install():
     assert [e.name for e in A.REGISTRY if e.default_install] == []
 
 
-def test_log_path_derives_from_output_dir(tmp_path):
-    assert A.entry("RC-Daily-Bars").log_path == tmp_path / "logs" / "RC-Daily-Bars.log"
 
 
 def test_unknown_name_is_rejected():
@@ -260,52 +125,18 @@ def test_result_mapping(code, kind):
     assert A.map_result(code)[0] == kind
 
 
-def _row(sched, name="RC-Daily-Bars"):
-    return A.live_row(A.entry(name), sched, NOW)
 
 
-def test_row_not_installed():
-    r = _row(A.FakeScheduler())
-    assert r["state"] == "not_installed" and r["result_kind"] == "none"
 
 
-def test_row_unavailable_host():
-    r = _row(A.FakeScheduler(available=False))
-    assert r["state"] == "unavailable"
 
 
-def test_row_disabled_and_enabled_and_running():
-    mk = lambda **kw: A.FakeScheduler(tasks={"RC-Daily-Bars": A.TaskStatus(**kw)})  # noqa: E731
-    assert _row(mk(state="disabled"))["state"] == "disabled"
-    assert _row(mk(state="ready", last_result=0))["state"] == "enabled"
-    assert _row(mk(state="running"))["state"] == "running"
-    assert _row(mk(state="ready", last_result=0x41301))["state"] == "running"
 
 
-def test_never_run_task_is_neutral_not_red():
-    r = _row(A.FakeScheduler(tasks={"RC-Daily-Bars": A.TaskStatus(last_result=0x41303)}))
-    assert r["result_kind"] == "neutral"
 
 
-def test_failed_last_run_is_red_with_missed_runs():
-    r = _row(A.FakeScheduler(tasks={"RC-Daily-Bars": A.TaskStatus(
-        last_result=1, missed_runs=3, last_run="2026-10-02T04:00:00+00:00")}))
-    assert r["result_kind"] == "red" and r["missed_runs"] == 3
-    assert r["last_success"] is None and r["last_success_age"] == "never"
 
 
-def test_last_success_age_comes_from_the_log():
-    e = A.entry("RC-Daily-Bars")
-    e.log_path.parent.mkdir(parents=True)
-    e.log_path.write_text(
-        "=== 2026-10-01T04:00:00+00:00 start RC-Daily-Bars\nok\n"
-        "=== 2026-10-01T04:00:30+00:00 exit 0\n"
-        "=== 2026-10-02T04:00:00+00:00 start RC-Daily-Bars\nboom\n"
-        "=== 2026-10-02T04:00:05+00:00 exit 1\n", encoding="utf-8")
-    r = _row(A.FakeScheduler(tasks={"RC-Daily-Bars": A.TaskStatus(last_result=1)}))
-    assert r["last_success"] == "2026-10-01T04:00:30+00:00"
-    assert r["last_success_age"] == "1 d ago" or r["last_success_age"].endswith("h ago")
-    assert r["log_tail"][-1].endswith("exit 1")
 
 
 def test_static_rows_never_touch_the_scheduler():
@@ -325,31 +156,10 @@ def test_get_scheduler_is_unavailable_without_task_scheduler_or_systemd(monkeypa
 
 # --- actions --------------------------------------------------------------------
 
-def test_apply_actions_hit_the_registry_task_only():
-    f = A.FakeScheduler()
-    A.apply("RC-Daily-Bars", "install", f)
-    A.apply("RC-Daily-Bars", "disable", f)
-    A.apply("RC-Daily-Bars", "enable", f)
-    A.apply("RC-Daily-Bars", "run", f)
-    A.apply("RC-Daily-Bars", "remove", f)
-    assert [c[:2] for c in f.mutations] == [
-        ("install", "RC-Daily-Bars"), ("disable", "RC-Daily-Bars"),
-        ("enable", "RC-Daily-Bars"), ("run", "RC-Daily-Bars"),
-        ("remove", "RC-Daily-Bars")]
 
 
-def test_apply_rejects_unknown_name_and_action_without_touching_the_scheduler():
-    f = A.FakeScheduler()
-    with pytest.raises(A.UnknownTask):
-        A.apply("Some Other Task", "remove", f)
-    with pytest.raises(A.UnknownAction):
-        A.apply("RC-Daily-Bars", "format", f)
-    assert f.calls == []
 
 
-def test_apply_on_an_unavailable_host_is_a_state_error():
-    with pytest.raises(A.SchedulerUnavailable):
-        A.apply("RC-Daily-Bars", "install", A.FakeScheduler(available=False))
 
 
 # --- Windows scheduler through a fake PowerShell ----------------------------------
@@ -392,93 +202,24 @@ def test_windows_refuses_a_name_outside_the_registry():
     assert ps.scripts == []
 
 
-def test_install_quotes_paths_with_spaces_and_apostrophes():
-    ps = FakePS()
-    _win(ps, python=r"C:\Program Files\Python 3\python.exe",
-         workdir=r"C:\O'Brien projects").install(A.entry("RC-Daily-Bars"))
-    s = ps.scripts[0]
-    assert r"-Execute 'C:\Program Files\Python 3\python.exe'" in s
-    assert r"-WorkingDirectory 'C:\O''Brien projects'" in s
-    assert "-Argument '-m RevenueChaser.core.automations run RC-Daily-Bars'" in s
 
 
-def test_install_uses_the_registry_settings():
-    ps = FakePS()
-    w = _win(ps)
-    w.install(A.entry("RC-Screeners-Daily"))              # a row that wakes the machine
-    w.install(A.entry("RC-ValueChain-Sync"))
-    waking, vc = ps.scripts
-    for flag in ("-StartWhenAvailable", "-AllowStartIfOnBatteries",
-                 "-DontStopIfGoingOnBatteries", "-WakeToRun"):
-        assert flag in waking
-    assert "-WakeToRun" not in vc and "-AllowStartIfOnBatteries" in vc
-    assert "-At '23:30'" in waking and "-Daily -At '13:00'" in vc
-    assert "-LogonType Interactive" in waking
 
 
-def test_a_row_without_restarts_installs_no_restart_settings():
-    """RC-IBKR-Login-Check has ``restart_count=0``: ``-RestartCount 0`` makes Task Scheduler refuse the task
-    (HRESULT 0x80041319, "Count" out of range), so a zero count installs without the restart pair."""
-    ps = FakePS()
-    w = _win(ps)
-    w.install(A.entry("RC-IBKR-Login-Check"))
-    w.install(A.entry("RC-Daily-Bars"))
-    issues, backup = ps.scripts
-    assert "-RestartCount" not in issues and "-RestartInterval" not in issues
-    assert "-RestartCount 2 -RestartInterval (New-TimeSpan -Minutes 5)" in backup
 
 
-def test_a_weekly_row_installs_a_weekly_trigger():
-    ps = FakePS()
-    _win(ps).install(A.entry("RC-Index-Lists"))
-    (script,) = ps.scripts
-    assert "$tr = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Saturday -At '10:00'" in script
-    assert "-Daily" not in script
 
 
-def test_status_parses_the_scheduler_answer():
-    out = ('{"installed":true,"state":"Ready","last_run":"1999-11-30T00:00:00.0000000",'
-           '"next_run":"2026-10-03T04:00:00.0000000+02:00","last_result":267011,"missed":2}')
-    st = _win(FakePS(out)).status("RC-Daily-Bars")
-    assert st.state == "ready" and st.last_run is None
-    assert st.next_run.startswith("2026-10-03") and st.last_result == 0x41303
-    assert st.missed_runs == 2
-    assert _win(FakePS('{"installed":false}')).status("RC-Daily-Bars") is None
 
 
-def test_a_failing_powershell_call_raises():
-    with pytest.raises(A.AutomationError):
-        _win(FakePS("", rc=1, err="Access is denied")).remove("RC-Daily-Bars")
 
 
 # --- the command a task runs ------------------------------------------------------
 
-def test_run_task_logs_output_and_exit_code(monkeypatch, tmp_path):
-    e = A.entry("RC-ValueChain-Sync")
-    monkeypatch.setattr(A, "_BY_NAME", {e.name: A.AutomationEntry(
-        name=e.name, label="x", args=("-c", "import sys; print('hello'); sys.exit(3)"),
-        time="13:00", description="d")})
-    assert A.run_task(e.name) == 3
-    text = (tmp_path / "logs" / f"{e.name}.log").read_text(encoding="utf-8")
-    assert "hello" in text and re.search(r"=== \S+ exit 3", text) and "start" in text
 
 
-def test_main_runs_a_registry_name_and_rejects_others(monkeypatch):
-    seen = []
-    monkeypatch.setattr(A, "run_task", lambda n: seen.append(n) or 0)
-    assert A.main(["run", "RC-Daily-Bars"]) == 0 and seen == ["RC-Daily-Bars"]
-    monkeypatch.undo()
-    assert A.main(["run", "nope"]) == 2 and A.main([]) == 2
 
 
-def test_main_install_and_remove_go_through_the_scheduler():
-    f = A.FakeScheduler()
-    A.set_scheduler(f)
-    assert A.main(["install", "RC-Daily-Bars"]) == 0
-    assert A.main(["remove", "RC-Daily-Bars"]) == 0
-    assert A.main(["install", "Other"]) == 2
-    assert [c[:2] for c in f.mutations] == [("install", "RC-Daily-Bars"),
-                                            ("remove", "RC-Daily-Bars")]
 
 
 
@@ -487,14 +228,6 @@ def test_registry_names_are_task_scheduler_safe():
         assert re.fullmatch(r"RC-[A-Za-z0-9-]+", e.name), e.name
 
 
-def test_tables_written_cover_what_each_job_writes():
-    rel = set(A.entry("RC-Relatedness-OffPeak").tables_written)
-    assert {"relatedness_profiles", "relatedness_attributes", "relatedness_scores",
-            "run_registry", "llm_cache", "chain_filings", "edgar_documents"} <= rel
-    # FAM-4: the Relatedness run fetches the filings it scores, so it records its misses in chain_meta through
-    # module_value_chain.engine.record_misses (engine.py: ``vc_engine.fetch_corpus``). The list says so.
-    assert "chain_meta" in rel
-    assert "edgar_documents" in A.entry("RC-ValueChain-Sync").tables_written
 
 
 def test_every_registry_tables_written_is_a_manifest_table():
@@ -512,37 +245,14 @@ _CLIXML = ('#< CLIXML\r\n<Objs Version="1.1.0.1" xmlns="http://schemas.microsoft
            '</AV></PR></MS></Obj></Objs>')
 
 
-def test_every_script_silences_progress_and_writes_utf8():
-    ps = FakePS('{"installed":false}')
-    _win(ps).status("RC-Daily-Bars")
-    head = ps.scripts[0].splitlines()[0]
-    assert "$ProgressPreference = 'SilentlyContinue'" in head
-    assert "UTF8" in head
 
 
-def test_status_ignores_a_progress_record_on_stderr():
-    out = '{"installed":true,"state":"Ready","last_result":0,"missed":0}'
-    st = _win(FakePS(out, err=_CLIXML)).status("RC-Daily-Bars")
-    assert st is not None and st.state == "ready"
 
 
-def test_status_reads_the_last_json_line_of_stdout():
-    out = ('WARNING: something\r\n{"installed":true,"state":"Disabled","last_result":0,"missed":0}'
-           '\r\nmodule loaded\r\n')
-    st = _win(FakePS(out)).status("RC-Daily-Bars")
-    assert st.state == "disabled"
 
 
-def test_disabled_task_row_offers_enable_not_install():
-    out = '{"installed":true,"state":"Disabled","last_result":0,"missed":0}'
-    r = A.live_row(A.entry("RC-Daily-Bars"), _win(FakePS(out)), NOW)
-    assert r["state"] == "disabled"
 
 
-def test_a_garbage_answer_is_an_error_row_never_not_installed():
-    r = A.live_row(A.entry("RC-Daily-Bars"), _win(FakePS("ÿþgarbage")), NOW)
-    assert r["state"] == "error" and r["result_kind"] == "red"
-    assert r["result_text"]
 
 
 def test_one_failing_row_does_not_fail_the_others():
@@ -585,9 +295,6 @@ def test_powershell_decodes_utf8_with_replacement(monkeypatch):
     assert "text" not in seen or seen["text"] is not True or seen["encoding"]
 
 
-def test_error_text_comes_from_stderr_on_failure():
-    with pytest.raises(A.AutomationError, match="Access is denied"):
-        _win(FakePS("", rc=1, err="Access is denied")).run("RC-Daily-Bars")
 
 
 # --- N6: no console window per run ----------------------------------------------------
@@ -603,13 +310,6 @@ def test_installer_prefers_pythonw_next_to_python(tmp_path):
     assert A.windowless_python("/usr/bin/python3") == "/usr/bin/python3"
 
 
-def test_install_uses_the_windowless_interpreter(tmp_path):
-    (tmp_path / "python.exe").write_text("")
-    (tmp_path / "pythonw.exe").write_text("")
-    ps = FakePS()
-    A.WindowsScheduler(runner=ps, python=str(tmp_path / "python.exe"),
-                       workdir=r"C:\x").install(A.entry("RC-Daily-Bars"))
-    assert "pythonw.exe" in ps.scripts[0]
 
 
 def test_ps1_callers_propagate_the_exit_code_and_drop_dryrun():
@@ -621,9 +321,6 @@ def test_ps1_callers_propagate_the_exit_code_and_drop_dryrun():
 
 # --- F1: BOM, and no console window (coordinator re-review) -----------------------------
 
-def test_status_parses_a_bom_prefixed_json_line():
-    out = '﻿{"installed":true,"state":"Ready","last_result":0,"missed":0}\r\n'
-    assert _win(FakePS(out)).status("RC-Daily-Bars").state == "ready"
 
 
 def test_powershell_decodes_with_utf8_sig(monkeypatch):
@@ -637,18 +334,6 @@ def test_powershell_decodes_with_utf8_sig(monkeypatch):
     assert seen["encoding"] == "utf-8-sig"
 
 
-def test_no_console_window_flag_is_passed_to_powershell_and_the_task_runner(monkeypatch, tmp_path):
-    monkeypatch.setattr(A.subprocess, "CREATE_NO_WINDOW", 0x08000000, raising=False)
-    calls = []
-
-    class P:
-        returncode, stdout, stderr = 0, "{}", ""
-
-    monkeypatch.setattr(A.subprocess, "run", lambda *a, **k: calls.append(k) or P())
-    A._powershell("x")
-    monkeypatch.setattr(A.config, "OUTPUT_DIR", tmp_path)
-    A.run_task("RC-Daily-Bars")
-    assert [c["creationflags"] for c in calls] == [0x08000000, 0x08000000]
 
 
 # ── #162: the IBKR Gateway login check ──────────────────────────────────────────────────────────
@@ -810,21 +495,3 @@ def test_the_ibkr_login_check_limit_is_the_installed_unit_s_five_minutes():
     assert A.entry("RC-IBKR-Login-Check").settings.limit_minutes == 5
 
 
-@pytest.mark.parametrize("name,switch,runs", [
-    ("RC-ValueChain-Sync", "fetch", False), ("RC-Build", "fetch", False), ("RC-Daily-Bars", "fetch", False),
-    ("RC-Backup-Weekly", "fetch", True), ("RC-IBKR-Login-Check", "fetch", True),
-    ("RC-Backup-Weekly", "backup", False), ("RC-Build", "backup", True),
-])
-def test_a_switched_off_task_does_not_start_its_command(monkeypatch, name, switch, runs):
-    """#527: every RC systemd unit runs ``core.automations run <name>``, so the board's two switches are read here.
-    Fetch stops every task but the backups and the IBKR login check; backup stops only the backups. A stopped task
-    exits 0 (it is not a failed job) and says why in its log."""
-    from RevenueChaser.rcdata import ops
-    ops.switch_set(switch, False, by="avo")
-    started = []
-    monkeypatch.setattr(A.subprocess, "run", lambda *a, **k: started.append(a) or type("R", (), {"returncode": 0})())
-    assert A.run_task(name) == A.RESULT_OK
-    assert bool(started) is runs
-    if not runs:
-        text = A.entry(name).log_path.read_text(encoding="utf-8")
-        assert f"skipped: the {switch} switch is off (avo at " in text

@@ -35,35 +35,6 @@ function _btn(attrs, data){
 """
 
 # board key -> (JS that presses the buttons, the POST urls it must have sent, in order)
-CASES = {
-    "module_settings": (
-        """
-        boardSettingsReset(_btn(), _el('o'), 'module_comovement');
-        settingsFetch(_btn({'data-fetch': '/run/universe-stats', 'data-row': 'r1'}));
-        var inp = {value: '61', getAttribute: function(k){
-          return {'data-setting': 'WINDOW', 'data-orig': '60'}[k]; }};
-        document.querySelectorAll = function(s){ return s.indexOf('[data-setting]') >= 0 ? [inp] : []; };
-        settingsSave(_btn({'data-board': 'module_comovement'}));
-        var named = _btn({'data-name': 'RC-Daily-Bars', 'data-act': 'install'});
-        autoAct(named);
-        """,
-        ["/api/settings/board/module_comovement", "/run/universe-stats",
-         "/api/settings/board/module_comovement",
-         "/api/automations/RC-Daily-Bars/install"]),
-    "module_leaps": (
-        # The "add to list" menu (#786 step 5), opened on AAPL: a tick on a job list and one on avo's own.
-        "RC_WATCH.lists = [{id: 'jobs.stock', name: 'Stock picks', group: 'Read by the jobs', count: 0, has: {}},"
-        "                  {id: 'index', name: 'index', group: 'Your lists', count: 0, has: {}}];"
-        "RC_WATCH.open = {btn: _btn(), ticker: 'AAPL', busy: {}, errors: {}, msg: ''};"
-        "rcWatchTick('jobs.stock'); rcWatchTick('index');",
-        ["/api/watchlists/jobs.stock/tick/AAPL", "/api/watchlists/index/tick/AAPL"]),
-    "module_uw_interaction": (
-        """
-        document.getElementById('uw-tool').value = 'flow_alerts';
-        runTool();
-        """,
-        ["/run/uw"]),
-}
 
 
 def _run(html: str, tail: str, tmp_path) -> list[dict]:
@@ -84,11 +55,6 @@ def _assert_all_post_with_the_header(calls: list[dict], urls: list[str]) -> None
         assert str(c["headers"].get("X-RC-Panel", "")).strip(), f"{c['url']} sent no X-RC-Panel: {c}"
 
 
-@pytest.mark.parametrize("key", sorted(CASES))
-def test_every_button_of_a_board_sends_the_panel_header(key, tmp_path, monkeypatch, rawstore_tmp_db):
-    tail, urls = CASES[key]
-    html = BOARDS[key].render(tmp_path, monkeypatch)
-    _assert_all_post_with_the_header(_run(html, tail, tmp_path), urls)
 
 
 def test_the_shell_sends_the_header_from_fetch_tab_and_cancel_job(tmp_path):

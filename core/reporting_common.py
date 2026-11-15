@@ -12,7 +12,7 @@ import json
 import os
 import re
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 from RevenueChaser.core.html_safe import ESC_JS
@@ -578,7 +578,6 @@ __all__ = [
     "provider_health_html",
     "notice_html",
     "write_artifact", "write_board", "payload_path", "PAYLOAD_JS",
-    "recorded_sessions_html",
 ]
 
 
@@ -587,103 +586,6 @@ def help_html(body: str) -> str:
     return (HELP_CSS
             + '\n<details class="help"><summary>What am I looking at?</summary>'
             + f'\n<div class="body">{body}</div></details>')
-
-
-# ── "Recorded sessions": what the result history holds for a board (#383 C7, K2) ──
-HISTORY_CSS = """<style>
-.rc-history{background:var(--card,#12161e);border:1px solid var(--border,#232a38);border-radius:10px;margin:14px 0;color:var(--muted,#8a93a6);font-size:12.5px}
-.rc-history summary{cursor:pointer;padding:9px 14px;font-weight:600;color:var(--sky,#0EA5E9)}
-.rc-history .body{padding:0 14px 12px;line-height:1.6;overflow-x:auto}
-.rc-history table{border-collapse:collapse;width:100%;font-size:12px}
-.rc-history th,.rc-history td{text-align:left;padding:4px 8px;border-top:1px solid var(--border,#232a38);vertical-align:top}
-.rc-history th{color:var(--fg,#d7dce5);font-weight:600}
-""" + _SUMMARY_TOUCH % ".rc-history" + """
-</style>"""
-_HISTORY_NOTES = 2          # recorded warnings shown per row; the rest are counted
-
-
-def _utc(ts) -> str:
-    try:
-        return datetime.fromtimestamp(float(ts), timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    except (TypeError, ValueError, OverflowError, OSError):
-        return ""
-
-
-def _history_notes(h: dict) -> str:
-    notes = [str(n) for n in (h.get("quality_note"), h.get("error")) if n]
-    warnings = [str(w) for w in (h.get("warnings") or []) if w]
-    notes += warnings[:_HISTORY_NOTES]
-    if len(warnings) > _HISTORY_NOTES:
-        notes.append(f"and {len(warnings) - _HISTORY_NOTES} more")
-    return "; ".join(notes)
-
-
-def _history_params(h: dict) -> str:
-    p = h.get("params")
-    text = ", ".join(f"{k}={v}" for k, v in p.items()) if isinstance(p, dict) else str(p or "")
-    return text if len(text) <= 80 else text[:79] + "…"
-
-
-def _history_rows(h: dict) -> int:
-    counts = h.get("row_counts")
-    return sum(int(v or 0) for v in counts.values()) if isinstance(counts, dict) else 0
-
-
-_HISTORY_READ_NOTE = "Read when this page was rendered, so a Fetch shows itself from the next Refresh."
-
-
-def recorded_sessions_html(board: str, limit: int = 10, *, panel_id: str = "history-panel",
-                           read_note: str | None = None) -> str:
-    """The shared "Recorded sessions" block: the board's result history, newest first (K2 readers).
-
-    A session board lists its session snapshots (every Fetch of the session counted, the snapshot's rows kept); a run
-    board lists its runs. Read when the page renders, so a Fetch shows itself from the next render. A read never
-    creates the history file, waits only briefly for another RevenueChaser process that holds it, and a failed read is
-    shown here, never a failed render. Every string is escaped.
-
-    ``panel_id`` is the block's element id (a second block on one page needs its own). ``read_note`` replaces the
-    sentence on when the block is read, for a board whose page is not re-rendered after its Fetch is recorded
-    (Earnings) or that lives on another board's page (Money Flow); it is also added to the "nothing recorded" line.
-    """
-    from RevenueChaser.core import history, rawstore
-
-    session = history.is_session_board(board)
-    title = "Recorded sessions (result history)" if session else "Recorded runs (result history)"
-    head = (HISTORY_CSS + f'<details class="rc-history" id="{html.escape(panel_id)}"><summary>{title}</summary>'
-            '<div class="body">')
-    try:
-        with rawstore.brief_wait():
-            found = history.sessions(board, limit) if session else history.runs(board, limit)
-    except Exception as exc:  # noqa: BLE001 - the board renders without its history rows
-        first = str(exc).splitlines()[0] if str(exc) else ""
-        return head + f"<p>History could not be read: {html.escape(f'{type(exc).__name__}: {first}')}</p></div></details>"
-    if not found:
-        empty = ("No session recorded yet: the first complete Fetch after a session close records one." if session
-                 else "No run recorded yet: the next Fetch records one.")
-        if read_note:
-            empty += " " + read_note
-        return head + f"<p>{html.escape(empty)}</p></div></details>"
-    e = html.escape
-    if session:
-        intro = ("One snapshot per session: the first complete Fetch after the close (later Fetches of the session "
-                 "are counted, their rows are not kept).")
-        cols = "<tr><th>Session</th><th>Fetches</th><th>Recorded</th><th>Rows kept</th><th>Notes</th></tr>"
-        rows = "".join(
-            f"<tr><td>{e(str(h.get('session_date') or ''))}</td><td>{e(str(h.get('runs', 0)))}</td>"
-            f"<td>{e(_utc(h.get('run_at')))}</td><td>{_history_rows(h)}</td><td>{e(_history_notes(h))}</td></tr>"
-            for h in found)
-    else:
-        intro = "Every Fetch is recorded with its rows."
-        cols = ("<tr><th>Recorded</th><th>Session</th><th>Quality</th><th>Rows</th><th>Params</th>"
-                "<th>Notes</th></tr>")
-        rows = "".join(
-            f"<tr><td>{e(_utc(h.get('run_at')))}</td><td>{e(str(h.get('session_date') or ''))}</td>"
-            f"<td>{e(str(h.get('quality') or ''))}</td><td>{_history_rows(h)}</td>"
-            f"<td>{e(_history_params(h))}</td>"
-            f"<td>{e(_history_notes(h))}</td></tr>"
-            for h in found)
-    return (head + f"<p>{intro} {html.escape(read_note or _HISTORY_READ_NOTE)}</p>"
-            f"<table>{cols}{rows}</table></div></details>")
 
 
 def universe_provenance_html(generated_at, refreshed_by, partial: bool = False) -> str:

@@ -24,7 +24,7 @@ def _spec(**over):
     return {
         "key": ["session", "ticker"],
         "columns": ["session TEXT", "ticker TEXT", "score DOUBLE", "PRIMARY KEY (session, ticker)"],
-        "kind": "tabular", "write": "upsert", "history": True, "sources": [], **over,
+        "kind": "tabular", "write": "upsert", "history": True, "db": "news", "sources": [], **over,
     }
 
 
@@ -45,7 +45,7 @@ def _fresh_planner_cache(monkeypatch):
 
 def _scores():
     return {(r["session"], r["ticker"]): r["score"]
-            for r in rawstore.query(f"SELECT session, ticker, score FROM {HIST}")}
+            for r in rawstore.query(f"SELECT session, ticker, score FROM {HIST}", db="news")}
 
 
 _BEFORE = {("2026-10-01", "AAPL"): 1.0, ("2026-10-01", "MSFT"): 2.0}
@@ -130,14 +130,14 @@ class TestFirstWriteWins:
         assert len(got) == 102
 
     def test_the_transaction_handle_follows_the_same_rule(self, hist):
-        with rawstore.transaction() as tx:
+        with rawstore.transaction(db="news") as tx:
             tx.write_rows(HIST, [{"session": "2026-10-01", "ticker": "AAPL", "score": 99.0},
                                  {"session": "2026-10-05", "ticker": "AAPL", "score": 4.0}])
         assert _scores() == {**_BEFORE, ("2026-10-05", "AAPL"): 4.0}
 
     def test_atomic_follows_the_same_rule(self, hist):
         rawstore.atomic(lambda tx: tx.write_rows(
-            HIST, [{"session": "2026-10-01", "ticker": "MSFT", "score": 99.0}]))
+            HIST, [{"session": "2026-10-01", "ticker": "MSFT", "score": 99.0}]), db="news")
         assert _scores() == _BEFORE
 
     def test_a_history_table_without_a_key_cannot_be_written(self, rawstore_tmp_db, monkeypatch):
@@ -166,20 +166,20 @@ _RAW_REWRITES = [
     "SELECT 1; DELETE FROM t_history_demo",
     "/* tidy up */ DELETE FROM t_history_demo -- all of it",
     # names that still name the table (review of 2026-10-04, finding 1)
-    "DELETE FROM raw.main.t_history_demo",
-    "DELETE FROM raw.t_history_demo",
+    "DELETE FROM news.main.t_history_demo",
+    "DELETE FROM news.t_history_demo",
     "DELETE FROM main . t_history_demo",
-    'DELETE FROM "raw"."main"."t_history_demo"',
+    'DELETE FROM "news"."main"."t_history_demo"',
     'DELETE\nFROM\n"main"."t_history_demo"',
-    "UPDATE raw.t_history_demo SET score = 0",
-    "DROP TABLE IF EXISTS raw.main.t_history_demo",
-    "TRUNCATE raw.t_history_demo",
+    "UPDATE news.t_history_demo SET score = 0",
+    "DROP TABLE IF EXISTS news.main.t_history_demo",
+    "TRUNCATE news.t_history_demo",
     # any case (finding 3): the error must be a RawStoreError, not a KeyError
     "DELETE FROM T_HISTORY_DEMO",
     'UPDATE "T_History_Demo" SET score = 0',
     # a list of tables, the history table not first (DuckDB 1.5.6 itself refuses a drop list; the guard
     # does not depend on that)
-    "DROP TABLE watchlist, t_history_demo",
+    "DROP TABLE news_headlines, t_history_demo",
     # other statements that delete, update or recreate rows (finding 2)
     "MERGE INTO t_history_demo USING (SELECT '2026-10-01' AS session, 'AAPL' AS ticker) s "
     "ON (t_history_demo.session = s.session AND t_history_demo.ticker = s.ticker) WHEN MATCHED THEN DELETE",
@@ -187,7 +187,7 @@ _RAW_REWRITES = [
     "CREATE OR REPLACE TEMP TABLE t_history_demo AS SELECT 1 AS x",
     "INSERT INTO t_history_demo VALUES ('2026-10-01', 'AAPL', 42.0) "
     "ON CONFLICT (session, ticker) DO UPDATE SET score = excluded.score",
-    "insert into raw.main.t_history_demo select * from t_history_demo "
+    "insert into news.main.t_history_demo select * from t_history_demo "
     "on conflict (session, ticker) do update set score = 0",
     "MERGE INTO t_history_demo USING (SELECT '2026-10-01' AS session, 'AAPL' AS ticker, 9.0 AS score) s "
     "ON (t_history_demo.session = s.session AND t_history_demo.ticker = s.ticker) "
@@ -209,7 +209,7 @@ _RAW_REWRITES = [
     "DELETE FROM only main.t_history_demo",
     "TRUNCATE ONLY t_history_demo",
     "TRUNCATE ONLY (t_history_demo)",
-    "TRUNCATE TABLE ONLY raw.main.t_history_demo",
+    "TRUNCATE TABLE ONLY news.main.t_history_demo",
     "TRUNCATE TABLE ONLY (t_history_demo)",
     "MERGE INTO ONLY t_history_demo USING (SELECT 1 AS x) s ON false WHEN NOT MATCHED BY SOURCE THEN DELETE",
     "MERGE INTO ONLY (t_history_demo) USING (SELECT 1 AS x) s ON false WHEN NOT MATCHED BY SOURCE THEN DELETE",
@@ -256,67 +256,50 @@ class TestRawSql:
     @pytest.mark.parametrize("sql", _RAW_REWRITES)
     def test_rawstore_execute_refuses_it(self, hist, sql):
         with pytest.raises(rawstore.RawStoreError, match="history"):
-            rawstore.execute(sql)
+            rawstore.execute(sql, db="news")
         assert _scores() == _BEFORE
 
     @pytest.mark.parametrize("sql", _RAW_REWRITES)
     def test_the_transaction_handle_refuses_it(self, hist, sql):
         with pytest.raises(rawstore.RawStoreError, match="history"):
-            with rawstore.transaction() as tx:
+            with rawstore.transaction(db="news") as tx:
                 tx.execute(sql)
         assert _scores() == _BEFORE
 
     def test_atomic_refuses_it(self, hist):
         with pytest.raises(rawstore.RawStoreError, match="history"):
-            rawstore.atomic(lambda tx: tx.execute("DELETE FROM t_history_demo"))
+            rawstore.atomic(lambda tx: tx.execute("DELETE FROM t_history_demo"), db="news")
         assert _scores() == _BEFORE
 
     @pytest.mark.parametrize("read_only", [True, False])
     def test_query_refuses_it_whatever_read_only_says(self, hist, read_only):
         # every handle is opened read-write (docs/data_architecture.md), so read_only=True is no shield
         with pytest.raises(rawstore.RawStoreError, match="history"):
-            rawstore.query("DELETE FROM t_history_demo", read_only=read_only)
+            rawstore.query("DELETE FROM t_history_demo", read_only=read_only, db="news")
         assert _scores() == _BEFORE
 
     def test_the_message_names_the_table_and_the_statement(self, hist):
         with pytest.raises(rawstore.RawStoreError) as err:
-            rawstore.execute("truncate table t_history_demo")
+            rawstore.execute("truncate table t_history_demo", db="news")
         assert HIST in str(err.value) and "TRUNCATE" in str(err.value)
 
     def test_reads_of_a_history_table_are_untouched(self, hist):
         assert _scores() == _BEFORE
-        assert rawstore.query("SELECT count(*) AS n FROM t_history_demo")[0]["n"] == 2
-        with rawstore.transaction() as tx:
+        assert rawstore.query("SELECT count(*) AS n FROM t_history_demo", db="news")[0]["n"] == 2
+        with rawstore.transaction(db="news") as tx:
             assert tx.execute("SELECT count(*) FROM t_history_demo").fetchone()[0] == 2
 
-    def test_other_tables_and_look_alikes_are_untouched(self, hist, monkeypatch):
-        monkeypatch.setitem(rawstore.MANIFEST, HIST + "_archive", _spec(history=False))
-        rawstore.write_rows(HIST + "_archive", [{"session": "s", "ticker": "AAPL", "score": 1.0}])
-        rawstore.write_rows("watchlist", [{"ticker": "AAPL"}])
-        rawstore.execute("DELETE FROM t_history_demo_archive")        # same prefix, not flagged
-        rawstore.execute("DELETE FROM watchlist WHERE ticker = 'AAPL'")
-        assert rawstore.count("watchlist") == 0 and rawstore.count(HIST + "_archive") == 0
-        assert _scores() == _BEFORE
 
-    def test_the_table_name_inside_a_literal_or_comment_is_not_a_statement(self, hist):
-        rawstore.write_rows("watchlist", [{"ticker": "X"}])
-        rawstore.execute("DELETE FROM watchlist WHERE ticker = 'DELETE FROM t_history_demo' "
-                         "OR ticker = 'X' -- UPDATE t_history_demo SET score = 0")
-        assert rawstore.count("watchlist") == 0
-        assert _scores() == _BEFORE
 
-    def test_an_upsert_clause_on_another_table_is_not_an_update_of_the_history_table(self, hist):
-        rawstore.execute("INSERT INTO watchlist VALUES ('AAPL') ON CONFLICT (ticker) DO UPDATE SET ticker = 'AAPL'")
-        assert rawstore.count("watchlist") == 1
 
     def test_the_error_names_the_table_as_the_manifest_spells_it(self, hist):
         with pytest.raises(rawstore.RawStoreError) as err:
-            rawstore.execute("DELETE FROM T_HISTORY_DEMO")
+            rawstore.execute("DELETE FROM T_HISTORY_DEMO", db="news")
         assert HIST in str(err.value)
 
     def test_a_mixed_case_manifest_name_is_matched_in_any_case(self, hist, monkeypatch):
         monkeypatch.setitem(rawstore.MANIFEST, "T_Mixed", {"history": True})
-        with rawstore.connect() as conn:
+        with rawstore.connect(db="news") as conn:
             conn.execute('CREATE TABLE "T_Mixed" (x INT)')
             with pytest.raises(rawstore.RawStoreError) as err:
                 rawstore._refuse_history_sql(conn, "delete from t_mixed")
@@ -334,13 +317,10 @@ class TestRawSql:
         """Fail closed (#308): text that spells a history table's name and that DuckDB cannot parse or plan
         could do anything, so the guard refuses it rather than let DuckDB run the part it can."""
         with pytest.raises(rawstore.RawStoreError, match="history") as err:
-            rawstore.execute(sql)
+            rawstore.execute(sql, db="news")
         assert HIST in str(err.value) and "could not be checked" in str(err.value)
         assert _scores() == _BEFORE
 
-    def test_the_same_unreadable_text_without_a_history_name_is_left_to_duckdb(self, hist):
-        with pytest.raises(duckdb.CatalogException):
-            rawstore.execute('DELETE FROM "watchlist""x"')
 
     @pytest.mark.parametrize("node, refused", [
         ({"type": "LOGICAL_DELETE", "table_info": {}}, True),                          # no target name
@@ -364,9 +344,9 @@ class TestRawSql:
         sql = "INSERT INTO t_history_demo VALUES ('2026-10-09', 'X', 1.0)"
         if refused:
             with pytest.raises(rawstore.RawStoreError, match="history"):
-                rawstore.execute(sql)
+                rawstore.execute(sql, db="news")
         else:
-            rawstore.execute(sql)
+            rawstore.execute(sql, db="news")
         assert _scores()[("2026-10-01", "AAPL")] == 1.0
 
     def test_the_guard_fails_closed_when_duckdb_cannot_plan_at_all(self, hist, monkeypatch):
@@ -374,7 +354,7 @@ class TestRawSql:
         monkeypatch.setattr(rawstore, "_PLAN_SQL", "SELECT no_such_planner(?)")
         for sql in ("DELETE FROM t_history_demo", "INSERT INTO t_history_demo VALUES ('2026-10-09', 'X', 1.0)"):
             with pytest.raises(rawstore.RawStoreError, match="could not be checked"):
-                rawstore.execute(sql)
+                rawstore.execute(sql, db="news")
         assert _scores() == _BEFORE
 
     @pytest.mark.parametrize("sql", [
@@ -396,20 +376,20 @@ class TestRawSql:
         "CREATE TABLE copy_of_history AS SELECT * FROM t_history_demo",
         "CREATE TABLE IF NOT EXISTS t_history_demo (session TEXT, ticker TEXT, score DOUBLE)",
         "INSERT INTO t_history_demo SELECT '2026-10-09', ticker, score FROM t_history_demo",
-        "UPDATE watchlist SET ticker = 'X' WHERE ticker IN (SELECT ticker FROM t_history_demo)",
+        "UPDATE news_headlines SET tickers = 'X' WHERE tickers IN (SELECT ticker FROM t_history_demo)",
         "BEGIN; SELECT count(*) FROM t_history_demo; COMMIT",
     ])
     def test_adding_to_and_reading_a_history_table_still_works(self, hist, sql):
-        rawstore.execute(sql)
+        rawstore.execute(sql, db="news")
         assert _scores()[("2026-10-01", "AAPL")] == 1.0 and _scores()[("2026-10-01", "MSFT")] == 2.0
 
     def test_a_parameterised_append_still_works(self, hist):
-        rawstore.execute("INSERT INTO t_history_demo VALUES (?, ?, ?)", ["2026-10-09", "AAPL", 5.0])
+        rawstore.execute("INSERT INTO t_history_demo VALUES (?, ?, ?)", ["2026-10-09", "AAPL", 5.0], db="news")
         assert _scores()[("2026-10-09", "AAPL")] == 5.0 and _scores()[("2026-10-01", "AAPL")] == 1.0
 
     def test_alter_is_the_documented_exception(self, hist):
         """Named in the docs as outside the guard. If it is ever blocked, move this case to the refusals."""
-        rawstore.execute("ALTER TABLE t_history_demo ALTER score SET DATA TYPE DOUBLE USING 0")
+        rawstore.execute("ALTER TABLE t_history_demo ALTER score SET DATA TYPE DOUBLE USING 0", db="news")
         assert _scores()[("2026-10-01", "AAPL")] == 0.0
 
     def test_an_empty_update_columns_still_raises_on_a_history_table(self, hist):
@@ -445,7 +425,7 @@ def test_no_character_lets_a_rewrite_through(hist, cp):
                 f"SELECT $a{c}$$ x $a{c}$; DELETE FROM t_history_demo; --$$",
                 f"SELECT 1 -- x{c}; UPDATE t_history_demo SET score = 0"):
         with contextlib.suppress(rawstore.RawStoreError, duckdb.Error):
-            rawstore.execute(sql)
+            rawstore.execute(sql, db="news")
         assert _kept(), repr(sql)
 
 
@@ -485,7 +465,7 @@ def test_no_generated_statement_rewrites_history(hist):
     """Guard then DuckDB on one handle, as ``transaction().execute`` runs them."""
     rng = random.Random(308)
     outcomes = {"refused": 0, "ran": 0, "duckdb error": 0}
-    with rawstore.connect() as conn:
+    with rawstore.connect(db="news") as conn:
         for _ in range(400):
             sql = _fuzz_case(rng)
             try:
@@ -534,7 +514,7 @@ class TestTypedPlanParameter:
         assert "?::VARCHAR" in rawstore._PLAN_SQL
 
     def test_a_parameterised_append_to_a_flagged_table_still_runs(self, hist):
-        rawstore.execute("INSERT INTO t_history_demo VALUES (?, ?, ?)", ["2026-10-09", "AAPL", 5.0])
+        rawstore.execute("INSERT INTO t_history_demo VALUES (?, ?, ?)", ["2026-10-09", "AAPL", 5.0], db="news")
         assert _scores()[("2026-10-09", "AAPL")] == 5.0 and _scores()[("2026-10-01", "AAPL")] == 1.0
 
 
@@ -543,14 +523,14 @@ class TestFailClosedPlanShape:
         """A1: a node whose ``type`` the walker does not know is refused, not silently allowed."""
         _swap_plan(monkeypatch, {"error": False, "plans": [{"type": "LOGICAL_DELETE_V2", "table_info": {"table": HIST}}]})
         with pytest.raises(rawstore.RawStoreError, match="history"):
-            rawstore.execute("DELETE FROM t_history_demo")
+            rawstore.execute("DELETE FROM t_history_demo", db="news")
         assert _scores() == _BEFORE
 
     def test_a_plan_with_no_statement_list_is_refused(self, hist, monkeypatch):
         """A1(a): ``"plans": []`` (or no list) is refused rather than read as nothing to do."""
         _swap_plan(monkeypatch, {"error": False, "plans": []})
         with pytest.raises(rawstore.RawStoreError, match="history"):
-            rawstore.execute("DELETE FROM t_history_demo")
+            rawstore.execute("DELETE FROM t_history_demo", db="news")
         assert _scores() == _BEFORE
 
     def test_an_empty_statement_list_is_refused_even_when_the_canary_passed(self, hist, monkeypatch):
@@ -558,7 +538,7 @@ class TestFailClosedPlanShape:
         monkeypatch.setattr(rawstore, "_PLANNER_OK", True)
         _swap_plan(monkeypatch, {"error": False, "plans": []})
         with pytest.raises(rawstore.RawStoreError, match="history"):
-            rawstore.execute("DELETE FROM t_history_demo")
+            rawstore.execute("DELETE FROM t_history_demo", db="news")
         assert _scores() == _BEFORE
 
     def test_the_canary_reads_this_duckdbs_plans(self, monkeypatch):
@@ -572,12 +552,12 @@ class TestSelectListParameter:
     """A3: an untyped ``?`` in an ``INSERT ... SELECT`` select list makes ``json_serialize_plan`` fail."""
 
     def _source(self):
-        rawstore.execute("CREATE TABLE t_history_src (ticker TEXT, score DOUBLE)")
-        rawstore.execute("INSERT INTO t_history_src VALUES ('NVDA', 5.0)")
+        rawstore.execute("CREATE TABLE t_history_src (ticker TEXT, score DOUBLE)", db="news")
+        rawstore.execute("INSERT INTO t_history_src VALUES ('NVDA', 5.0)", db="news")
 
     def test_a_cast_parameter_in_the_select_list_plans(self, hist):
         self._source()
-        with rawstore.transaction() as tx:
+        with rawstore.transaction(db="news") as tx:
             tx.execute("INSERT INTO t_history_demo (session, ticker, score) "
                        "SELECT ?::VARCHAR, ticker, score FROM t_history_src", ["2026-10-09"])
         assert _scores()[("2026-10-09", "NVDA")] == 5.0
@@ -585,7 +565,7 @@ class TestSelectListParameter:
     def test_an_uncast_parameter_in_the_select_list_is_refused_with_a_hint(self, hist):
         self._source()
         with pytest.raises(rawstore.RawStoreError, match=r"\?::VARCHAR"):
-            with rawstore.transaction() as tx:
+            with rawstore.transaction(db="news") as tx:
                 tx.execute("INSERT INTO t_history_demo (session, ticker, score) "
                            "SELECT ?, ticker, score FROM t_history_src", ["2026-10-09"])
         assert _scores() == _BEFORE

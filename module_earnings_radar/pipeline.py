@@ -10,8 +10,8 @@ from RevenueChaser.module_earnings_radar.rules import (
     rule5_positioning, rule6_macro, rule7_accounting, rule8_sentiment,
 )
 from RevenueChaser.module_earnings_radar.composite import compute_composite_scores, select_action, classify_bias, classify_conviction, recommend_options_structure
-from RevenueChaser.module_earnings_radar import earnings_store, store_reads, stored_inputs
-from RevenueChaser.core import calendar, rawstore, vendor_data
+from RevenueChaser.module_earnings_radar import store_reads, stored_inputs
+from RevenueChaser.core import calendar, rawstore
 from RevenueChaser.core import universe as _spine
 from RevenueChaser.core.gics_map import is_unclassified
 from RevenueChaser.core.config import (
@@ -200,10 +200,6 @@ class EarningsPipeline:
         self._filter_outcome = {}
         self._filter_stats = {"total": 0, "passed": 0, "bypassed": 0, "filtered": 0,
                                "by_reason": {}, "excluded": []}
-        # The UW statements the scoring workers read; the runner stores them with the job's id (#297).
-        self.vendor = vendor_data.Capture()
-        # The UW earnings rows the scoring workers read; the runner stores the changed prints (#298, D13).
-        self.earnings_capture = earnings_store.Capture()
         # What this run read from the store and what it asked the provider for (E5, #372): the runner fills
         # "calendar" from the calendar read, each warm step fills its own slot, and the run's history records it.
         self.input_sources = {
@@ -610,11 +606,6 @@ class EarningsPipeline:
             except Exception as e:  # noqa: BLE001 — never kill a score on R2 fetch
                 logger.debug("R2 stock_earnings %s unavailable: %s", ticker, e)
                 r2_hist = []
-        try:                                    # the store side never changes a score
-            self.earnings_capture.add(ticker, earnings_store.EARNINGS, hist)
-            self.earnings_capture.add(ticker, earnings_store.STOCK_EARNINGS, r2_hist)
-        except Exception:
-            logger.warning("Earnings prints capture failed for %s", ticker, exc_info=True)
         # E4 (#372 ER-5): only the endpoint's own rows are stored; the fallback copy is not.
         r2_own = bool(r2_hist)
         if not r2_hist:
@@ -673,13 +664,9 @@ class EarningsPipeline:
             try:
                 fin_fn = getattr(self.uw, "financials", None)
                 if fin_fn is not None:
-                    # One /financials request: R3/R7 map the body, the run stores it (D12, #297).
+                    # One /financials request: R3/R7 map the body.
                     fin_raw = fin_fn(ticker) or {}
                     fin_records = self.uw._map_financials(ticker, fin=fin_raw) or []
-                    try:                        # the store side never changes R3/R7
-                        self.vendor.add_uw(ticker, fin_raw)
-                    except Exception:
-                        logger.warning("Earnings vendor capture failed for %s", ticker, exc_info=True)
                 else:                           # fakes that only offer the mapped records
                     fin_records = self.uw._map_financials(ticker) or []
             except Exception:

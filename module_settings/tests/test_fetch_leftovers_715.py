@@ -10,7 +10,6 @@ from RevenueChaser.core.tests.board_fixtures import H
 from RevenueChaser.core.tests.test_board_html_guard import assert_inert
 from RevenueChaser.module_settings import control, control_render, report
 from RevenueChaser.module_settings.tests.test_control_view import NOW, control_nd
-from RevenueChaser.module_settings.tests.test_report import _payload
 
 #: The presses the Grafana board carries (home-server ``homeops/act.py``): none of them is drawn in HTML any more.
 MOVED = ("switch", "timer", "one", "fmenu", "stage", "pause", "stop", "cadence", "automation")
@@ -108,10 +107,6 @@ def test_the_stale_strip_under_the_frame_is_shown_by_the_same_clock():
     assert "getElementById('ctl-stale')" not in control_render.CTL_JS
 
 
-def test_the_old_needs_address_opens_database_where_the_catalog_is():
-    assert report.SETTINGS_TABS["aliases"]["needs"] == "data"
-    page = report.render_settings_dashboard(dict(_payload(), newdata=control_nd()))
-    assert 'id="needs"' in _panel(page, "data")
 
 
 def test_a_board_settings_field_is_two_columns_on_a_phone():
@@ -126,20 +121,8 @@ def test_a_view_that_could_not_be_built_is_one_line():
     assert "Settings · Universe and fills" in html, "the line names the part that is left, not the old tab"
 
 
-def test_the_reference_parts_and_the_forms_sit_folded_under_database():
-    page = report.render_settings_dashboard(dict(_payload(), newdata=control_nd()))
-    data, health = _panel(page, "data"), _panel(page, "health")
-    assert 'id="database-more"' in data
-    for part in ('id="needs-catalog"', 'id="needs-routes"'):
-        assert part in data and part not in health, part
-        at = data.index(part)
-        assert data.rfind('<details class="hfold">', 0, at) > data.rfind("</details>", 0, at), f"{part} is not folded"
 
 
-def test_what_the_grafana_boards_show_is_not_drawn_twice():
-    page = report.render_settings_dashboard(dict(_payload(), newdata=control_nd()))
-    for gone in ('id="needs-log"', 'id="health-more"', 'id="needs-wial"', "Needs, boards and automations"):
-        assert gone not in page, gone
 
 
 def test_the_need_catalog_and_the_routes_come_apart():

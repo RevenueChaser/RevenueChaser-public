@@ -13,7 +13,6 @@ import duckdb
 
 from RevenueChaser.core import calendar
 from RevenueChaser.module_sec_13f import engine as sec_13f
-from RevenueChaser.module_sec_13f import history as sec13f_history
 from RevenueChaser.module_sec_13f import report
 from RevenueChaser.rcdata import read as rcread
 from RevenueChaser.rcdata import serving
@@ -194,17 +193,6 @@ def test_a_ticker_only_in_the_quarter_still_arriving_has_no_settled_snapshot():
     assert [e["ticker"] for e in entries] == ["OLD", "NEW"]
 
 
-def test_the_history_records_the_quarter_its_metrics_are_from():
-    """#514 moved the snapshot to the last settled quarter; labelling it with the arriving one would record one
-    period's numbers under another's name."""
-    _four_quarters()
-    totals = sec_13f.load_totals()
-
-    quarter, rows = sec13f_history.metric_rows(totals, {}, None)
-
-    assert quarter == Q[-2].isoformat(), "the recorded quarter is the settled one the metrics come from"
-    assert rows[0]["shares"] == 120.0                       # the settled quarter's, not the partial 10.0
-    assert rows[0]["shares_by_quarter"][Q[-1].isoformat()] == 10.0      # every quarter still carries its own
 
 
 def test_tickers_13f_is_the_newest_settled_period_and_ignores_the_old_table():

@@ -1,31 +1,15 @@
-"""Per-board editable settings (issue #40) — one registry, one store table.
+"""Per-board settings (issue #40): one registry of every board knob, its kind, its config default and its bounds.
 
-``board_settings(board, key, value, updated_at)`` in ``raw.duckdb`` holds only the
-values a user **overrode**. A default is never copied into the table: it is read
-from the board's config module at call time, so changing a default in config (or
-pressing *Reset*, which deletes the rows) is always enough to move a board back.
-
-``SPEC`` names every editable key of a board with its kind, its config default
-and its bounds. Cross-rules (``MIN_PERIODS <= MIN_OBS``, window + holdout fits the
-stored history, ...) are a callable per board so they see the values as they
-would be *after* a save. ``validate`` returns one message per broken rule, each
-naming that rule; nothing is written until the whole change set is valid.
+A value is read from the board's config module at call time. The user overrides that lived in the old store's
+``board_settings`` table (``raw.duckdb``), and the Save and Reset that wrote them, went with the old store (#860):
+every board now runs on its config defaults, and ``values`` reports none overridden. ``validate`` still checks a
+change set against the bounds and the cross-rules, so a later store for overrides has its rules ready.
 """
 from __future__ import annotations
 
-import threading
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from typing import Callable
 
-from . import rawstore
-
-TABLE = "board_settings"
-# DuckDB commits a DELETE and an upsert of the same row side by side (no conflict is raised), and each write's
-# change capture reads its own snapshot, so a Save and a Reset that overlap would leave board_settings_changes
-# out of step with the table (#306 review S1). save() and reset() are the only writers and the dashboard the only
-# process that writes the store, so an in-process lock serializes them.
-_WRITE_LOCK = threading.Lock()
 
 
 class SettingsError(ValueError):
@@ -287,19 +271,6 @@ def _coerce(spec: Setting, raw):
     return f
 
 
-def _stored(board: str) -> dict[str, float | str]:
-    try:
-        rows = rawstore.query(f"SELECT key, value, value_text FROM {TABLE} WHERE board = ?", [board])
-    except Exception:  # noqa: BLE001 - table absent on a fresh / pre-#40 store
-        return {}
-    out = {}
-    for r in rows:
-        v = r.get("value_text") if r.get("value_text") is not None else r.get("value")
-        if v is not None:
-            out[r["key"]] = v
-    return out
-
-
 def _typed(spec: Setting, value):
     v = _coerce(spec, value)
     return spec.default() if v is None else v
@@ -311,16 +282,8 @@ def defaults(board: str) -> dict:
 
 def values(board: str) -> dict:
     """``{"values": effective, "defaults": config defaults, "overridden": [keys]}``."""
-    specs = _specs(board)
-    stored = _stored(board)
-    eff, over = {}, []
-    for key, spec in specs.items():
-        if key in stored:
-            eff[key] = _typed(spec, stored[key])
-            over.append(key)
-        else:
-            eff[key] = spec.default()
-    return {"values": eff, "defaults": defaults(board), "overridden": sorted(over)}
+    eff = defaults(board)
+    return {"values": eff, "defaults": dict(eff), "overridden": []}
 
 
 def describe(board: str) -> list[dict]:
@@ -341,13 +304,10 @@ def describe(board: str) -> list[dict]:
 
 
 def get(board: str, key: str):
-    """The override for ``key`` when one is stored, else the config default."""
+    """The config default for ``key``."""
     specs = _specs(board)
     if key not in specs:
         raise KeyError(f"unknown setting {key!r} for board {board!r}")
-    stored = _stored(board)
-    if key in stored:
-        return _typed(specs[key], stored[key])
     return specs[key].default()
 
 
@@ -407,48 +367,3 @@ def validate(board: str, changes: dict) -> list[str]:
     return SPEC[board][1](merged)
 
 
-def save(board: str, changes: dict) -> dict:
-    """Validate then store ``changes`` (a value equal to its default drops the
-    override instead). Raises ``SettingsError``; returns ``values(board)``.
-    One transaction (#306): the overrides and the drops land together or not at all."""
-    msgs = validate(board, changes)
-    if msgs:
-        raise SettingsError(msgs)
-    specs = _specs(board)
-    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    rows, drop = [], []
-    for key, raw in changes.items():
-        v = _coerce(specs[key], raw)
-        if v == specs[key].default():
-            drop.append(key)
-        else:
-            text = specs[key].kind == "text"
-            rows.append({"board": board, "key": key, "value": None if text else float(v),
-                         "value_text": v if text else None, "updated_at": now})
-
-    def _write(tx):
-        if rows:
-            tx.write_rows(TABLE, rows)
-        if drop:
-            marks = ", ".join("?" * len(drop))
-            tx.execute(f"DELETE FROM {TABLE} WHERE board = ? AND key IN ({marks})", [board, *drop])
-
-    if rows or drop:
-        with _WRITE_LOCK:
-            rawstore.atomic(_write)
-    return values(board)
-
-
-def reset(board: str, keys: list[str] | None = None) -> dict:
-    """Delete the override rows (all of the board's, or just ``keys``), so every
-    default is read from config again. Returns ``values(board)``.
-
-    One statement, so the Reset is all-or-nothing and the store records it as one
-    change: an 'absent' row per removed key in ``board_settings_changes`` (#306)."""
-    specs = _specs(board)
-    targets = list(specs) if keys is None else [k for k in keys if k in specs]
-    if targets:
-        marks = ", ".join("?" * len(targets))
-        with _WRITE_LOCK:
-            rawstore.execute(f"DELETE FROM {TABLE} WHERE board = ? AND key IN ({marks})", [board, *targets])
-    return values(board)

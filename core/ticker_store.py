@@ -1,6 +1,6 @@
 """Shared per-ticker store — Asymmetric Growth Hunter verisini diğer board'lara açar.
 
-DuckDB-backed (``.store/raw.duckdb`` → ``ticker_scores``). Tek yazıcı = market-cap
+DuckDB-backed (``.store/boards/asymmetric_growth.duckdb`` → ``ticker_scores``). Tek yazıcı = market-cap
 taraması (``runners.run_asymmetric_growth``); diğer board'lar salt-okur
 (``get`` / ``list_tickers``).
 """
@@ -37,15 +37,6 @@ _BOOL_COLS = ("tech_breakthrough", "dilution_warning", "us_listed")
 
 def _empty(col: str):
     return {} if col in _JSON_DICT_COLS else []
-
-
-def _meta(key: str) -> Optional[str]:
-    row = rawstore.get("store_meta", key)
-    return row.get("value") if row else None
-
-
-def _set_meta(key: str, value: str) -> None:
-    rawstore.write_rows("store_meta", [{"key": key, "value": value}])
 
 
 def rows_from_cards(cards: list[dict]) -> list[dict]:
@@ -119,9 +110,6 @@ def write_from_cards(cards: list[dict], asof: str | None = None):
         logger.warning("ticker_store.write_from_cards: empty card list — store left unchanged")
         return
     rawstore.sync_rows("ticker_scores", rows)
-    if asof:
-        _set_meta("asof", asof)
-    _set_meta("schema_version", SCHEMA_VERSION)
 
 
 def _row_to_card(row: dict) -> dict:
@@ -156,4 +144,5 @@ def count() -> int:
 
 
 def asof() -> Optional[str]:
-    return _meta("asof")
+    """None: the scan date lived in the old ``store_meta`` table (``raw.duckdb``), gone with it (#860)."""
+    return None

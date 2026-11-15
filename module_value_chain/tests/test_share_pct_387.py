@@ -15,18 +15,12 @@ import pytest
 
 from RevenueChaser.core import ledger, rawstore
 from RevenueChaser.core.tests.board_js import run_board_js
-from RevenueChaser.module_value_chain import engine, history as vc_history, report
+from RevenueChaser.module_value_chain import engine, report
 
-_TABLES = ("chain_mentions", "value_chain_edges_history")
 _SHARE_TEXT = ("We compete with suppliers such as Apple in some markets. Direct sales to Apple "
                "accounted for 29.8% of our net sales.")
 
 
-def _forget_reconciliation():
-    # A second ensure in the same process is a no-op unless the memos are reset.
-    rawstore._TABLE_READY.clear()
-    rawstore._ENSURED.clear()
-    rawstore._HISTORY_READY.clear()
 
 
 def _columns(db: str, table: str) -> dict[str, str]:
@@ -45,65 +39,16 @@ def _edge(**kw):
 
 # ── the MANIFEST and the store ──
 
-def test_chain_mentions_and_its_mirror_declare_the_share_as_a_double():
-    for table in _TABLES:
-        decl = {c.split()[0]: c for c in rawstore.MANIFEST[table]["columns"]}
-        assert decl.get("share_pct") == "share_pct DOUBLE", table
 
 
-@pytest.fixture
-def old_store(isolate_rawstore):
-    """The store as it is before D7: both tables built without ``share_pct`` and holding a row each."""
-    mp = pytest.MonkeyPatch()
-    try:
-        for table in _TABLES:
-            spec = rawstore.MANIFEST[table]
-            mp.setitem(rawstore.MANIFEST, table, {
-                **spec, "columns": [c for c in spec["columns"] if c.split()[0] != "share_pct"]})
-        _forget_reconciliation()
-        rawstore.ensure_all_tables()
-        rawstore.replace_all("chain_mentions", [_edge()])
-        vc_history.record([_edge()], run_id="old", run_at=1.0, counts={})
-    finally:
-        mp.undo()
-    for table, db in zip(_TABLES, ("value_chain", "history")):
-        assert "share_pct" not in _columns(db, table)
-    _forget_reconciliation()
-    ledger.take_notes()
-    return isolate_rawstore
 
 
-def test_the_first_store_call_adds_the_column_to_both_tables_and_old_rows_read_null(old_store):
-    rawstore.ensure_all_tables()                       # what the dashboard's first store call does
-    assert _columns("value_chain", "chain_mentions")["share_pct"] == "DOUBLE"
-    assert _columns("history", "value_chain_edges_history")["share_pct"] == "DOUBLE"
-    assert rawstore.get_all("chain_mentions") == [{**_edge(), "share_pct": None, "source": None}]
-    (old,) = rawstore.query("SELECT * FROM value_chain_edges_history WHERE run_id = 'old'", db="history")
-    assert old["share_pct"] is None and old["src"] == "AMKR"
-    assert rawstore.schema_version() == "13", "the column came without a bump (13 is relatedness, #401)"
 
 
-def test_the_first_fetch_on_an_old_store_writes_the_share_on_both_tables(old_store):
-    rawstore.write_rows("chain_filings", [{
-        "ticker": "AMKR", "cik": "1", "form": "10-K", "filed": "2026-02-01", "accession": "a",
-        "primary_doc": "http://x", "quality": "ok", "item_text": _SHARE_TEXT}])
-    engine.run(no_fetch=False, tickers=["AMKR"], run_id="new")
-    stored = {(r["dst_ticker"], r["relation"]): r["share_pct"] for r in rawstore.get_all("chain_mentions")}
-    # No (AAPL, "other") row: since #729 a display-only mention is dropped once the filing states a relation
-    # for that company, so the share-bearing customer edge and the competitor edge are the whole story.
-    assert stored == {("AAPL", "customer"): 29.8, ("AAPL", "competitor"): None}
-    rows = rawstore.query("SELECT dst_ticker, relation, share_pct FROM value_chain_edges_history "
-                          "WHERE run_id = 'new' ORDER BY row_no", db="history")
-    assert [(r["dst_ticker"], r["relation"], r["share_pct"]) for r in rows] == [
-        ("AAPL", "customer", 29.8), ("AAPL", "competitor", None)]
-    assert ledger.take_notes() == [], "the history write failed"
 
 
 # ── the selection version ──
 
-def test_the_selection_version_is_2_so_the_model_version_changes():
-    assert vc_history.SELECTION_VERSION == "4"      # 2 for #387 D7, 3 since G6 (XBRL customers), 4 #410
-    assert vc_history.model_version() != ledger.model_version("1", vc_history.effective_config())
 
 
 # ── the focal graph ──

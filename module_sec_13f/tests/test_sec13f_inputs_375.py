@@ -62,45 +62,14 @@ def _cells(payload, ticker):
 
 # ── the ownership reader ────────────────────────────────────────────────────
 
-def test_pct_out_comes_from_a_uw_info_row(rawstore_tmp_db):
-    rawstore.write_rows("ownership_snapshot", [_own("AAA", "uw_info", "2026-10-08", shares=1000.0)])
-    inputs = enrich.load_inputs(TOTALS)
-    assert inputs["AAA"]["shares_outstanding"] == 1000.0
-    cells = _cells(report.board_payload(TOTALS, META, inputs), "AAA")
-    assert cells["pct_out"] == ["20.0%", pytest.approx(20.0), "zero", "as of 2025 Q2"]      # 200 of 1,000 shares
 
 
-def test_uw_wins_over_yfinance_and_yfinance_fills_a_name_uw_lacks(rawstore_tmp_db):
-    rawstore.write_rows("ownership_snapshot", [
-        _own("AAA", "yfinance", "2026-10-09", shares=4000.0, insider=0.014),
-        _own("AAA", "uw_info", "2026-10-08", shares=1000.0),
-        _own("BBB", "yfinance", "2026-10-09", shares=600.0, insider=0.5)])
-    inputs = enrich.load_inputs(TOTALS)
-    assert inputs["AAA"]["shares_outstanding"] == 1000.0           # UW first, even with a newer yfinance row
-    assert inputs["BBB"]["shares_outstanding"] == 600.0            # no UW row: yfinance
-    assert enrich.SHARES_ORDER == ("uw_info", enrich.SEC_DEI, "yfinance")
 
 
-def test_the_newest_session_of_a_source_wins(rawstore_tmp_db):
-    rawstore.write_rows("ownership_snapshot", [
-        _own("AAA", "uw_info", "2026-10-07", shares=900.0),
-        _own("AAA", "uw_info", "2026-10-08", shares=1000.0),
-        _own("AAA", "uw_info", "2026-10-09")])                     # no shares that session: not a value
-    assert enrich.load_inputs(TOTALS)["AAA"]["shares_outstanding"] == 1000.0
 
 
-def test_insider_pct_is_the_stored_fraction_in_percent(rawstore_tmp_db):
-    rawstore.write_rows("ownership_snapshot", [
-        _own("AAA", "uw_info", "2026-10-08", shares=1000.0),
-        _own("AAA", "yfinance", "2026-10-09", shares=4000.0, insider=0.014)])
-    inputs = enrich.load_inputs(TOTALS)
-    assert inputs["AAA"]["insider_pct"] == pytest.approx(1.4)
-    assert "insider" not in _cells(report.board_payload(TOTALS, META, inputs), "AAA")     # not shown (#732)
 
 
-def test_a_ticker_outside_the_totals_is_not_read_into_the_inputs(rawstore_tmp_db):
-    rawstore.write_rows("ownership_snapshot", [_own("ZZZ", "uw_info", "2026-10-08", shares=5.0)])
-    assert "ZZZ" not in enrich.load_inputs(TOTALS)
 
 
 # ── the D01 price reader ────────────────────────────────────────────────────
@@ -161,19 +130,6 @@ def test_a_name_with_no_row_shows_a_dash_never_zero(rawstore_tmp_db):
 
 # ── Short % and Insider % are off the board (#732, owner 12 Nov 2026: both read old tables) ──────────────────
 
-def test_the_board_reads_no_short_interest_and_shows_neither_column(rawstore_tmp_db, monkeypatch):
-    rawstore.write_rows("short_interest", [_short("AAA", "2026-10-15", 0.052)])
-
-    def refuse(tickers):
-        raise AssertionError("the 13F board read short_interest")
-
-    monkeypatch.setattr(enrich, "load_short_interest", refuse)
-    inputs = enrich.load_inputs(TOTALS)
-    assert "short_pct" not in inputs.get("AAA", {})
-    payload = report.board_payload(TOTALS, META, inputs)
-    assert "short" not in payload["cols"] and "insider" not in payload["cols"]
-    html = report.render_sec13f_dashboard(TOTALS, META, inputs)
-    assert ">Short%<" not in html and ">Insider%<" not in html and "short interest as % of float" not in html
 
 
 def test_the_board_quarters_start_at_the_engines_start_quarter(monkeypatch):

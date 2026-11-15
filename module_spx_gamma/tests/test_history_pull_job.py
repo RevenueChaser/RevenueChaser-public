@@ -124,19 +124,6 @@ def sync_jobs(monkeypatch):
     jobs._LONG_QUEUE.queue.clear()
 
 
-def test_the_runs_row_records_the_counts(sync_jobs, monkeypatch):
-    seen = {}
-
-    def fake_pull(uw, start, end, **kw):
-        seen.update(uw=uw, start=start, end=end, **kw)
-        return {"counts": {"calls": 27, "status": {"200": 25, "429": 1, "422": 1}, "written": 2}}
-    monkeypatch.setattr(hp, "pull_history", fake_pull)
-    jid = jobs.submit("spxgamma_history", {"start": "2025-03-10", "end": "2025-03-12", "max_calls": 40})
-    jobs.execute(jid)
-    row = rawstore.get("job_runs", jid)
-    assert row["status"] == "done" and row["module"] == "spxgamma_history" and row["lane"] == "long"
-    assert row["counts"] == {"calls": 27, "status": {"200": 25, "429": 1, "422": 1}, "written": 2}
-    assert isinstance(seen["uw"], _FakeUW) and seen["max_calls"] == 40 and "sleep_s" not in seen
 
 
 def test_each_run_leaves_its_counts_on_disk(tmp_path, monkeypatch):
@@ -249,19 +236,6 @@ def test_the_route_queues_iso_dates(client):
     assert client.submitted == [("spxgamma_history", {"start": "2025-03-10", "end": "2025-03-12"})]
 
 
-def test_the_runs_row_gets_compact_counts(sync_jobs, monkeypatch):
-    """The answer shapes and the failure list stay in the run file; the store row stays small (#194 nit)."""
-    big = {"calls": 400, "status": {"200": 400}, "failed": 30, "report_file": "history_pull/run_x.json",
-           "failures": [{"day": f"2025-01-{d:02d}", "statuses": [422], "error": "x" * 200} for d in range(1, 21)],
-           "shapes": {"sessions": {f"2025-02-{d:02d}": {"interpolated_iv": {"keys": ["k"] * 20}}
-                                   for d in range(1, 21)}, "iv_rank": {"rows": 500}}}
-    monkeypatch.setattr(hp, "pull_history", lambda uw, start, end, **kw: {"counts": big})
-    jid = jobs.submit("spxgamma_history", {"start": "2025-03-10", "end": "2025-03-12"})
-    jobs.execute(jid)
-    counts = rawstore.get("job_runs", jid)["counts"]
-    assert "shapes" not in counts and len(counts["failures"]) == hp.ROW_FAILURES == 3
-    assert counts["calls"] == 400 and counts["failed"] == 30 and counts["report_file"] == "history_pull/run_x.json"
-    assert len(json.dumps(counts)) < 2000
 
 
 def test_the_route_refuses_when_the_session_clock_cannot_tell(client, monkeypatch):

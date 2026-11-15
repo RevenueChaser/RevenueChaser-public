@@ -29,7 +29,7 @@ CTL_JS = (_STATIC / "control.js").read_text(encoding="utf-8")
 ROUTES = {"request": "/api/build/request/", "schedule": "/api/build/schedule/", "queue": "/api/build/queue",
           "automation_ds": "/api/build/automation-ds/",
           "switch": "/api/build/switch/", "timer": "/api/build/timer",
-          "settings": "/api/settings/board/module_settings", "sample": "/api/settings/sample/",
+          "sample": "/api/settings/sample/",
           "job": "/api/job/", "picture": "/run/storage-picture"}
 #: After this long the page says it is stale and offers a refresh (the design: "refreshes after 60 minutes").
 STALE_MINUTES = 60

@@ -16,11 +16,9 @@ import pytest
 from RevenueChaser.core import ledger, rawstore
 from RevenueChaser.core.providers.result import ProviderResult
 from RevenueChaser.core.providers.unusual_whales import UWClient
-from RevenueChaser.module_leaps import engine, history as leaps_history
+from RevenueChaser.module_leaps import engine
 from RevenueChaser.module_leaps.scan import scan_leaps
-from RevenueChaser.module_leaps.tests.test_leaps_l3 import seed_session
 
-BOARD, TABLE = "module_leaps", "leaps_footprint_history"
 TODAY = date(2026, 10, 6)
 # 2026-10-06 is a Tuesday: 22:00 UTC = 18:00 ET (session complete); 14:00 UTC = 10:00 ET (intraday).
 COMPLETE = datetime(2026, 10, 6, 22, 0, tzinfo=timezone.utc).timestamp()
@@ -111,16 +109,10 @@ def _scan(uw, **kw):
     return footprints, watched, unwatched
 
 
-def _record(footprints, run_id="r1", run_at=COMPLETE, **kw):
-    return leaps_history.record(footprints, run_id=run_id, run_at=run_at, **kw)
 
 
-def _headers():
-    return rawstore.query("SELECT * FROM result_runs WHERE board = ? ORDER BY run_at, run_id", [BOARD], db="history")
 
 
-def _rows(run_id):
-    return rawstore.query(f"SELECT * FROM {TABLE} WHERE run_id = ? ORDER BY ticker", [run_id], db="history")
 
 
 def _unpack(cell):
@@ -131,23 +123,8 @@ def _unpack(cell):
 
 # ── the scan's footprint sink ──
 
-def test_the_scan_hands_back_every_watchlist_footprint_whatever_its_label(store):
-    # Seed yesterday's snapshot for AAA so its OI grew: Accumulating. BBB has no baseline: Quiet.
-    seed_session(date(2026, 10, 5), {"AAA": [{"expiry": FAR, "call_oi": 500, "put_oi": 0}]})
-    footprints, watched, _ = _scan(_UW({"AAA": (1000, 200), "BBB": (300, 300)}))
-    assert [w["ticker"] for w in watched] == ["AAA", "BBB"]         # every pinned name, whatever its label (#377 L2)
-    assert [f["ticker"] for f in footprints] == ["AAA", "BBB"]        # the history gets both
-    assert {f["snapshot"]["label"] for f in footprints} == {"Accumulating", "Quiet"}
-    assert all(f["fetch_status"] == "ok" for f in footprints)
 
 
-def test_the_scan_names_the_inputs_a_footprint_was_classified_from(store):
-    seed_session(date(2026, 10, 5), {"AAA": [{"expiry": FAR, "call_oi": 500, "put_oi": 0}]})
-    footprints, _, _ = _scan(_UW({"AAA": (1000, 200), "BBB": (300, 300)}))
-    inputs = footprints[0]["inputs"]
-    assert inputs["oi_per_expiry"] == [{"expiry": FAR, "call_oi": 1000, "put_oi": 200}]
-    assert inputs["iv_rank"] == [{"iv_rank_1y": "55.0"}] and inputs["flow_per_expiry"] == []
-    assert inputs["baseline_1d"]["far_call_oi"] == 500 and inputs["flow_candidate"] is None
 
 
 def test_a_ticker_whose_uw_call_failed_is_provider_failed(store):
@@ -156,28 +133,8 @@ def test_a_ticker_whose_uw_call_failed_is_provider_failed(store):
     assert status == {"AAA": "ok", "BBB": "provider_failed"}
 
 
-@pytest.mark.parametrize("status", [400, 404, 422])
-def test_a_ticker_whose_uw_read_failed_uncounted_is_provider_failed_and_keeps_no_session_rows(store, status):
-    # A 4xx other than 401/403/429 is a failed result that health() does not count: the read status must say so,
-    # or the empty answer becomes a Quiet footprint in the session snapshot (#403 review R1).
-    uw = _real_uw(status)
-    footprints, _, _ = _scan(uw)
-    assert uw.health()["failed"] == 0
-    status_of = {f["ticker"]: f["fetch_status"] for f in footprints}
-    assert status_of == {"AAA": "ok", "BBB": "provider_failed"}
-    assert footprints[1]["inputs"]["read_status"]["oi_per_expiry"] == "failed"
-    _record(footprints, uw_health=uw.health())
-    (head,) = _headers()
-    assert head["quality"] == "partial" and head["session_snapshot"] is False and _rows("r1") == []
 
 
-def test_a_ticker_whose_uw_read_raised_is_provider_failed_with_its_error(store):
-    footprints, _, _ = _scan(_UW({"AAA": (1000, 200)}, raise_for={"BBB"}))
-    (bbb,) = [f for f in footprints if f["ticker"] == "BBB"]
-    assert bbb["fetch_status"] == "provider_failed" and bbb["inputs"]["error"] == "RuntimeError"
-    _record(footprints)
-    (head,) = _headers()
-    assert head["quality"] == "partial" and _rows("r1") == []
 
 
 def test_an_ok_read_with_empty_data_stays_ok(store):
@@ -206,108 +163,25 @@ def test_a_scan_without_the_sink_is_unchanged(store):
 
 # ── the record ──
 
-def test_a_run_records_a_header_and_one_row_per_watchlist_ticker(store):
-    seed_session(date(2026, 10, 5), {"AAA": [{"expiry": FAR, "call_oi": 500, "put_oi": 0}]})
-    footprints, _, _ = _scan(_UW({"AAA": (1000, 200), "BBB": (300, 300)}))
-    assert _record(footprints) == {TABLE: 2}
-    (head,) = [h for h in _headers() if h["run_id"] == "r1"]      # the seeded session has its own header
-    assert head["quality"] == "complete" and head["session_snapshot"] is True and head["quality_note"] is None
-    a, b = _rows("r1")
-    assert (a["ticker"], a["name"], a["label"], a["fetch_status"]) == ("AAA", "AAA Inc", "Accumulating", "ok")
-    assert a["far_call_oi"] == 1000 and a["far_put_oi"] == 200 and a["far_oi_growth_1d_pct"] == 100.0
-    assert a["as_of"] == TODAY and a["iv_rank"] == 55.0 and a["score"] == engine._score(footprints[0]["snapshot"])
-    assert a["frequency"] == 0 and a["concentration_mult"] == 1.0 and a["flow_score"] is None
-    assert b["label"] == "Quiet"
-    assert _unpack(a["inputs"])["baseline_1d"]["far_call_oi"] == 500
 
 
-def test_the_header_carries_model_version_params_and_context(store):
-    footprints, _, _ = _scan(_UW({"AAA": (1000, 200), "BBB": (300, 300)}))
-    _record(footprints, shown={"watched": 0, "unwatched": 0}, warnings=["The print scan hit its cap"])
-    (head,) = _headers()
-    assert head["model_version"] == leaps_history.model_version() and head["model_version"].startswith("2+")
-    assert json.loads(head["params"])["CALL_SHARE_MIN"] == engine.CALL_SHARE_MIN
-    assert json.loads(head["params"])["ASK_SHARE_MIN"] == engine.ASK_SHARE_MIN
-    ctx = json.loads(head["context"])
-    assert isinstance(ctx.pop("source_builds"), list)          # #566: the builds the run read
-    assert ctx == {"watchlist": 2, "shown": {"watched": 0, "unwatched": 0}}
-    assert json.loads(head["warnings"]) == ["The print scan hit its cap"]
-    assert head["quality"] == "complete"                    # a capped print scan is a warning, not a reason
 
 
-@pytest.mark.parametrize("name, value", [("FAR_DTE", 365), ("CALL_SHARE_MIN", 0.7), ("MIN_PREMIUM", 100_000),
-                                         ("ITM_DELTA", (0.5, 0.9)), ("NEAR_EVENT_DAYS", 3), ("ASK_SHARE_MIN", 0.8)])
-def test_model_version_changes_with_a_threshold(monkeypatch, name, value):
-    before = leaps_history.model_version()
-    monkeypatch.setattr(engine, name, value)
-    assert leaps_history.model_version() != before
 
 
-def test_a_second_complete_run_of_the_session_keeps_its_header_only(store):
-    footprints, _, _ = _scan(_UW({"AAA": (1000, 200), "BBB": (300, 300)}))
-    _record(footprints, run_id="r1")
-    assert _record(footprints, run_id="r2", run_at=COMPLETE + 3600) == {TABLE: 0}
-    first, second = _headers()
-    assert first["session_snapshot"] is True and second["session_snapshot"] is False
-    assert "already recorded by run r1" in second["quality_note"]
-    assert len(_rows("r1")) == 2 and _rows("r2") == []
 
 
-def test_an_intraday_run_keeps_its_header_only(store):
-    footprints, _, _ = _scan(_UW({"AAA": (1000, 200), "BBB": (300, 300)}))
-    _record(footprints, run_id="early", run_at=INTRADAY)
-    (head,) = _headers()
-    assert head["quality"] == "intraday" and _rows("early") == []
 
 
-def test_a_failed_footprint_makes_the_run_partial_and_keeps_no_rows(store):
-    footprints, _, _ = _scan(_UW({"AAA": (1000, 200)}, fail={"BBB"}))
-    _record(footprints, uw_health={"calls": 6, "failed": 1})
-    (head,) = _headers()
-    assert head["quality"] == "partial" and head["session_snapshot"] is False and _rows("r1") == []
-    assert "1 of 2 footprints were not fetched whole: BBB" in head["quality_note"]
-    assert "1 of 6 Unusual Whales calls failed" in head["quality_note"]
 
 
-def test_a_rejected_key_makes_the_run_partial(store):
-    footprints, _, _ = _scan(_UW({"AAA": (1000, 200), "BBB": (300, 300)}))
-    _record(footprints, uw_health={"calls": 1, "failed": 1, "auth_error": {"status": 401}})
-    (head,) = _headers()
-    assert head["quality"] == "partial" and "rejected the API key (HTTP 401)" in head["quality_note"]
 
 
-def test_an_empty_watchlist_records_a_partial_header(store):
-    rawstore.save_watchlist(set())
-    footprints, _, _ = _scan(_UW({}))
-    assert _record(footprints) == {TABLE: 0}
-    (head,) = _headers()
-    assert head["quality"] == "partial" and "watchlist is empty" in head["quality_note"]
 
 
-def test_a_partial_run_does_not_shut_out_a_later_whole_run(store):
-    bad, _, _ = _scan(_UW({"AAA": (1000, 200)}, fail={"BBB"}))
-    _record(bad, run_id="r1")
-    good, _, _ = _scan(_UW({"AAA": (1000, 200), "BBB": (300, 300)}))
-    assert _record(good, run_id="r2", run_at=COMPLETE + 600) == {TABLE: 2}
 
 
-def test_recording_the_same_run_id_twice_writes_nothing_more(store):
-    footprints, _, _ = _scan(_UW({"AAA": (1000, 200), "BBB": (300, 300)}))
-    _record(footprints)
-    _record(footprints)
-    assert len(_headers()) == 1 and len(_rows("r1")) == 2
 
 
-def test_the_session_view_reads_the_snapshot_back(store):
-    footprints, _, _ = _scan(_UW({"AAA": (1000, 200), "BBB": (300, 300)}))
-    _record(footprints)
-    got = rawstore.query("SELECT session_date, ticker FROM leaps_footprint_by_session ORDER BY ticker", db="history")
-    assert [(r["session_date"], r["ticker"]) for r in got] == [(TODAY, "AAA"), (TODAY, "BBB")]
 
 
-def test_the_rolling_cache_the_classifier_reads_is_unchanged(store):
-    footprints, _, _ = _scan(_UW({"AAA": (1000, 200), "BBB": (300, 300)}))
-    _record(footprints)
-    cached = engine.load_cache("AAA")
-    assert set(cached) == {"latest", "history"} and cached["latest"]["far_call_oi"] == 1000
-    assert "fetch_status" not in cached["latest"] and "inputs" not in cached["latest"]

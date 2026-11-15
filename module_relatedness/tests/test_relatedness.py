@@ -62,11 +62,6 @@ def test_percentile_bounds():
 def _seed_universe(tickers):
     """The old universe (cap, price: the board's filters until #642 PR 6) and the spine's ``security`` rows (name,
     sector, industry: the profile run's only source since #642 PR 3)."""
-    rawstore.replace_all("equity_universe", [{
-        "ticker": t, "cik": "", "name": t + " Inc", "market_cap": 1.0e10,
-        "price": 10.0, "sector": "Technology", "industry": "Semiconductors",
-        "quote": {"symbol": t},
-    } for t in tickers])
     spine_fixture.write_security([{"ticker": t, "name": t + " Inc", "sector": "Technology",
                                    "industry": "Semiconductors"} for t in tickers], replace=True)
 
@@ -423,35 +418,6 @@ def test_the_payload_reads_the_universe_once_for_the_company_fields(rawstore_tmp
         "CCC": ("CCC", "Utilities", None)}
 
 
-def test_a_stored_profile_of_an_excluded_type_leaves_companies_and_peer_lists(
-        rawstore_tmp_db, monkeypatch, tmp_path):
-    """#87: ``run`` loads profiles for the typed universe only, so a fund's stored
-    profile (identical to NVDA's, hence its best peer) is never read."""
-    from RevenueChaser.module_relatedness import store
-    tickers = ["NVDA", "AMD", "TSM", "FUND"]
-    _seed_universe(tickers)
-    _seed_filings(tickers)
-    rawstore.ensure_table("security_master")
-    rawstore.write_rows("security_master", [
-        {"ticker": "NVDA", "security_type": "common"},
-        {"ticker": "FUND", "security_type": "cef"}])
-    monkeypatch.setattr(engine.config, "RELATEDNESS_JSON", tmp_path / "r.json")
-    monkeypatch.setattr(engine.vc_engine, "fetch_corpus",
-                        lambda *a, **k: {"no_fetch": True})
-    gpu = dict(products=["gpu"], end_markets=["data center"])
-    for t, prof in {"NVDA": _prof(**gpu), "FUND": _prof(**gpu),
-                    "AMD": _prof(**gpu),
-                    "TSM": _prof(products=["foundry"], end_markets=["semiconductors"])}.items():
-        store.save_profile(t, "cik-" + t, prof, "k", "m")
-
-    payload = engine.run(no_fetch=True)               # tickers come from the universe
-    assert "FUND" not in {c["ticker"] for c in payload["companies"]}
-    assert payload["n"] == 3 and payload["universe_total"] == 3
-    assert "FUND" not in payload["peers"]
-    assert all(p["peer"] != "FUND" for peers in payload["peers"].values() for p in peers)
-    assert {p["peer"] for p in payload["peers"]["NVDA"]} == {"AMD"}   # peers still computed
-    # the stored profile is still there: nothing was deleted
-    assert "FUND" in store.load_profiles(["FUND"])
 
 
 def test_the_universe_tile_says_operating_companies():

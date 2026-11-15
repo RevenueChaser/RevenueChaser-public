@@ -219,22 +219,16 @@ jobs.register("spxgamma_stored", runners.run_spxgamma_stored, ["module_spx_gamma
 # no deadline: fewer than 5 recorded runs (25 Oct); set from job_runs when measured
 jobs.register("spxgamma_history", runners.run_spxgamma_history, [], lane="long", cancellable=True)
 jobs.register("quick", runners.run_quick, ["module_financials"], requires_uw=False)
-# The single-board Fetches are refused while a universe run holds the universe lock (#244), and a universe run is
-# refused while one of them runs (#356).
 # These reach job_control checkpoints, so a running one can be cancelled (#243, #26 PL4). Swing and Fundamentals score
 # the whole screenable universe since #383 R3 C12 (card C: ~3,520 names), so they run on the long lane.
-jobs.register("module_asymmetric_growth", runners.refused_during_universe(runners.run_asymmetric_growth),
+jobs.register("module_asymmetric_growth", runners.run_asymmetric_growth,
               ["module_asymmetric_growth"], requires_uw=False, cancellable=True)
-jobs.register("swing", runners.refused_during_universe(runners.run_swing), ["module_swing_potential"],
+jobs.register("swing", runners.run_swing, ["module_swing_potential"],
               requires_uw=False, lane="long", cancellable=True)
-jobs.register("module_fundamentals", runners.refused_during_universe(runners.run_fundamentals),
+jobs.register("module_fundamentals", runners.run_fundamentals,
               ["module_fundamentals"], requires_uw=False, lane="long", cancellable=True)
-jobs.register("universe", runners.run_universe_job,   # + UW quote rows when a key verifies (#294)
-              ["module_asymmetric_growth", "module_swing_potential", "module_fundamentals"], requires_uw=False,
-              lane="long", cancellable=True)
 jobs.register("uw", runners.run_uw_interaction, ["module_uw_interaction"])
 jobs.register("module_comovement", runners.run_comovement, ["module_comovement"], requires_uw=False)
-# Settings save / reset (#40): store-only recompute of the board, then the Settings card.
 jobs.register("comovement_recompute", runners.run_comovement_recompute,
               ["module_comovement", "module_settings"], requires_uw=False)
 # The Swing board scores only on a Fetch (a Refresh serves the stored payload, K4), so a saved threshold
@@ -248,18 +242,6 @@ jobs.register("storage_picture", runners.run_storage_picture, ["module_settings"
 jobs.register("module_value_chain", runners.run_value_chain, ["module_value_chain"], requires_uw=False)
 # The Relatedness writer comparison (#370): one provider + model on at most 100 names, no board table written.
 jobs.register("relatedness_compare", runners.run_relatedness_compare, [], requires_uw=False, lane="long")
-jobs.register("edgar_sync", runners.run_edgar_sync, ["module_value_chain"], requires_uw=False, lane="long",
-              cancellable=True)
-# no deadline: fewer than 5 recorded runs (23 Oct); set from job_runs when measured
-jobs.register("universe_stats", runners.run_universe_stats, ["module_settings"], requires_uw=False, lane="long")
-jobs.register("identity", runners.run_identity, ["module_settings"], requires_uw=False, lane="long",
-              cancellable=True)
-# no deadline: fewer than 5 recorded runs (23 Oct); set from job_runs when measured
-# 160 min = 3 x p95 of RC-Daily-Bars (52.1 min, 12 runs, 23 Oct), rounded up. The 30 min floor does not bind.
-jobs.register("daily_bars", runners.run_daily_bars, ["module_settings"], lane="long",
-              cancellable=True, deadline_s=9600)
-# Index lists (#302): three UW requests plus the SmallCap 600 list from the identity cache.
-jobs.register("index_lists", runners.run_index_lists, ["module_settings"], lane="long")
 jobs.register("module_oipd", runners.run_oipd, ["module_oipd"], requires_uw=True)
 # News (S9, S16): store-only; builds boards/news.duckdb from market.economic_event, then renders.
 jobs.register("module_news", runners.run_news, ["module_news"], requires_uw=False)
@@ -268,14 +250,6 @@ jobs.register("module_news", runners.run_news, ["module_news"], requires_uw=Fals
 jobs.register("news_headlines", runners.run_news_headlines, [], requires_uw=False)
 # Welcome (decision A): store-only; builds boards/welcome.duckdb from stored inputs, then renders.
 jobs.register("module_welcome", runners.run_welcome, ["module_welcome"], requires_uw=False)
-
-# Which store-only job a board's Save / Reset queues (``api_settings_board``, #40 / #384 SW-S4).
-SETTINGS_JOBS = {"module_comovement": "comovement_recompute", "module_swing_potential": "settings_refresh",
-                 "module_fundamentals": "settings_refresh",
-                 # The control board's universe (Apply, design v28): a saved choice, re-rendered store-only.
-                 "module_settings": "settings_refresh",
-                 # The Relatedness writer (#360): a saved choice shows on the Settings card; the next run uses it.
-                 "module_relatedness": "settings_refresh"}
 
 TABS = [
     # The opening screen (decision A, avo 9 Nov 2026 17:26: "welcome gelsin").
@@ -497,10 +471,8 @@ def view(mod: str):
         if mod == "module_sec_13f":
             # Write the re-rendered board back to its artifact (it used to be
             # returned as a string only, so every later load recomputed it).
-            # The last Fetch's notes (names not refreshed, CUSIPs left out) come back from its history (C24, #383).
             try:
-                path = runners.run_sec_13f_latest(
-                    None, notice=runners.last_fetch_notice("module_sec_13f", partial=True))
+                path = runners.run_sec_13f_latest(None)
             except jobs.JobMessage:
                 path = runners.SEC_13F_LATEST  # the empty board was written
             return send_from_directory(path.parent, path.name)
@@ -571,7 +543,7 @@ def _import_runners():
 
 # The boards that read the shared universe, and the jobs that load it when the store has none (#145 D1).
 _UNIVERSE_BOARDS = ("module_asymmetric_growth", "module_swing_potential", "module_fundamentals")
-_UNIVERSE_JOBS = ("universe", "module_asymmetric_growth", "swing", "module_fundamentals")
+_UNIVERSE_JOBS = ("module_asymmetric_growth", "swing", "module_fundamentals")
 
 
 def _universe_loading(mod: str) -> bool:
@@ -1074,171 +1046,9 @@ def run_module_value_chain():
     return _submit("module_value_chain", {})
 
 
-@app.route("/run/edgar-sync", methods=["POST"])
-def run_edgar_sync():
-    """Sync the 10-K/20-F corpus against SEC `submissions.recent` (new-filing check).
-
-    No ``force`` field (#185): a sync never re-slices an already-stored filing; a
-    forced re-slice of the stored corpus is a separate read-only dry run
-    (``module_value_chain --reslice-dry-run``).
-    """
-    params: dict = {}
-    limit_raw = (request.form.get("limit") or "").strip()
-    if limit_raw:
-        try:
-            limit = int(limit_raw)
-        except ValueError:
-            return jsonify({"ok": False, "error": "bad limit"}), 400
-        if limit <= 0:
-            return jsonify({"ok": False, "error": "bad limit"}), 400
-        params["limit"] = limit
-    refused = _busy(("edgar_sync",), "An EDGAR sync is already queued or running.")
-    if refused:
-        return refused
-    return _submit("edgar_sync", params)
-
-
-@app.route("/run/daily-bars", methods=["POST"])
-def run_daily_bars():
-    """Daily price bars (#156): the latest complete session per scope ticker. Optional form field
-    ``tickers`` (comma list, at most 200) for a partial run."""
-    params: dict = {}
-    raw = (request.form.get("tickers") or "").strip()
-    if raw:
-        items = [p.strip().upper() for p in raw.split(",") if p.strip()]
-        if len(items) > 200:
-            return jsonify({"ok": False, "error": "at most 200 tickers"}), 400
-        for t in items:
-            if not re.fullmatch(r"[A-Z0-9.\-]{1,12}", t):     # no ^: index levels are not bars
-                return jsonify({"ok": False, "error": "bad ticker"}), 400
-        params["tickers"] = list(dict.fromkeys(items))
-    refused = _busy(("daily_bars",), "A daily-bars run is already queued or running.")
-    if refused:
-        return refused
-    return _submit("daily_bars", params)
-
-
-@app.route("/run/index-lists", methods=["POST"])
-def run_index_lists():
-    """Index lists (#302): every stored slug once. Optional form field ``first_fill=sp600``, the attended first
-    SmallCap 600 fill (it needs the user's OK for that run)."""
-    params: dict = {}
-    raw = (request.form.get("first_fill") or "").strip()
-    if raw:
-        if raw != "sp600":
-            return jsonify({"ok": False, "error": "first_fill takes sp600 only"}), 400
-        params["first_fill"] = [raw]
-    refused = _busy(("index_lists",), "An index-list run is already queued or running.")
-    if refused:
-        return refused
-    return _submit("index_lists", params)
-
-
-@app.route("/run/universe", methods=["POST"])
-def run_universe():
-    """One-stop refresh: fetch the shared universe + all per-ticker data the three
-    scanners need, then run all three boards.
-
-    A universe job already queued or running is not queued again (#244): 409 with that job's id.
-    """
-    refused = _busy(("universe",), "A universe run is already queued or running.")
-    if refused:
-        return refused
-    return _submit("universe", {})
-
-
-@app.route("/run/universe-stats", methods=["POST"])
-def run_universe_stats():
-    """Fill only the NULL ``equity_universe`` market caps from Yahoo.
-
-    Standalone Phase B: no screener, no scanners. Optional positive ``limit``
-    caps how many null rows are checked in one run (same validation as
-    ``/run/edgar-sync``).
-    """
-    params: dict = {}
-    limit_raw = (request.form.get("limit") or "").strip()
-    if limit_raw:
-        try:
-            limit = int(limit_raw)
-        except ValueError:
-            return jsonify({"ok": False, "error": "bad limit"}), 400
-        if limit <= 0:
-            return jsonify({"ok": False, "error": "bad limit"}), 400
-        params["limit"] = limit
-    refused = _busy(("universe_stats",), "A universe-stats run is already queued or running.")
-    if refused:
-        return refused
-    return _submit("universe_stats", params)
-
-
-@app.route("/run/identity", methods=["POST"])
-def run_identity():
-    """Refresh ``security_master`` (issue #85): fetch the identity deltas, apply the type/GICS rules, then
-    apply the master's GICS to ``equity_universe`` (issue #86).
-
-    Optional positive ``limit`` caps how many universe tickers are built (same validation as
-    ``/run/universe-stats``). Long lane; manual for now (the Settings button is R6).
-    """
-    params: dict = {}
-    limit_raw = (request.form.get("limit") or "").strip()
-    if limit_raw:
-        try:
-            limit = int(limit_raw)
-        except ValueError:
-            return jsonify({"ok": False, "error": "bad limit"}), 400
-        if limit <= 0:
-            return jsonify({"ok": False, "error": "bad limit"}), 400
-        params["limit"] = limit
-    refused = _busy(("identity",), "An identity refresh is already queued or running.")
-    if refused:
-        return refused
-    return _submit("identity", params)
-
-
 def _comovement_windows() -> tuple[int, ...]:
     from RevenueChaser.module_comovement import config as comov_config
     return tuple(comov_config.WINDOW_OPTIONS)
-
-
-@app.route("/api/settings/board/<board>", methods=["POST"])
-def api_settings_board(board: str):
-    """Save or reset a board's editable settings, then re-derive the board store-only (#40).
-
-    Body: ``{"changes": {KEY: value, ...}}`` or ``{"reset": true | [KEY, ...]}``.
-    Invalid -> 400 with one message per broken rule and nothing written; valid
-    -> the change is stored (reset deletes the rows), the board's store-only
-    job is queued, and the route answers 202 with the job id and the effective
-    values. Boards with settings: ``module_comovement`` and
-    ``module_swing_potential`` (#384 SW-S4).
-    """
-    from RevenueChaser.core import board_settings
-
-    if board not in board_settings.boards():
-        return jsonify({"ok": False, "error": "unknown board"}), 404
-    body = request.get_json(silent=True)
-    if not isinstance(body, dict):
-        return jsonify({"ok": False, "error": "JSON body required",
-                        "messages": ["JSON body required"]}), 400
-    try:
-        if "reset" in body:
-            reset = body["reset"]
-            keys = None if reset is True else reset
-            if not (reset is True or (isinstance(reset, list) and reset
-                                      and all(isinstance(k, str) for k in reset))):
-                msg = "reset must be true or a non-empty list of setting keys"
-                return jsonify({"ok": False, "error": msg, "messages": [msg]}), 400
-            unknown = [k for k in (keys or []) if k not in board_settings.defaults(board)]
-            if unknown:
-                msg = f"unknown setting {unknown[0]!r}"
-                return jsonify({"ok": False, "error": msg, "messages": [msg]}), 400
-            values = board_settings.reset(board, keys)
-        else:
-            values = board_settings.save(board, body.get("changes"))
-    except board_settings.SettingsError as exc:
-        return jsonify({"ok": False, "error": "; ".join(exc.messages),
-                        "messages": exc.messages}), 400
-    job_id = jobs.submit(SETTINGS_JOBS[board], {})
-    return jsonify({"ok": True, "job_id": job_id, "values": values}), 202
 
 
 @app.route("/api/automations")
@@ -1487,18 +1297,9 @@ def needs_ask(need: str):
 
 @app.route("/api/universe")
 def api_universe():
-    """Shared-universe provenance: which board last refreshed it + when + count."""
-    from RevenueChaser.core.universe import (
-        load_cached_universe,
-        load_universe_meta,
-    )
-    rows = load_cached_universe()
-    meta = load_universe_meta()
-    return jsonify({
-        "count": len(rows),
-        "generated_at": meta.get("generated_at"),
-        "refreshed_by": meta.get("refreshed_by"),
-    })
+    """How many names the shared universe (the spine) holds."""
+    from RevenueChaser.core.universe import load_cached_universe
+    return jsonify({"count": len(load_cached_universe())})
 
 
 @app.route("/api/module_asymmetric_growth/latest")
@@ -2566,11 +2367,6 @@ def main(port: int = 8000, open_browser: bool = True):
         logger.error("%s", exc)
         print(f"\n  {exc}\n", file=sys.stderr)
         raise SystemExit(2) from exc
-    # After the stale server is gone, so a row it left ``running`` can be closed (#82).
-    try:
-        jobs.reconcile_lost_runs()
-    except Exception:  # noqa: BLE001 - the run log must not stop the dashboard from starting
-        logger.warning("job_runs: could not reconcile stuck runs", exc_info=True)
     if open_browser:
         chrome = _find_chrome()
         if chrome:

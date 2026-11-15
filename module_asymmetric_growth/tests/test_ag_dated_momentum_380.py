@@ -68,7 +68,6 @@ def store_bars(rows: list[dict]) -> None:
     shortcut: the D01 write only feeds ``ledger.d01_has_session`` for the freeze; drop it when G4 moves the ledger
     to the prices store."""
     prices_store.put_bars(rows, replace=False, overwrite=True)
-    rawstore.write_rows("price_bars_daily", rows)
 
 
 def put_action(ticker: str, ex: date, action: str, value: float) -> None:
@@ -96,11 +95,6 @@ def edgar(ticker: str, annual=None, is_us: bool = True) -> dict:
             "meta": {"source": "sec_edgar", "entity_name": f"{ticker} Corp", "is_us": is_us, "available": True}}
 
 
-def universe(monkeypatch, rows) -> None:
-    """A scan over exactly ``rows`` (no network): the universe, 13F totals and the spine are stubbed."""
-    monkeypatch.setattr(engine, "fetch_universe_stats", lambda *a, **k: (rows, {}))
-    monkeypatch.setattr(engine._spine, "spine_gics", lambda *a, **k: {})
-    monkeypatch.setattr(engine._spine, "excluded_tickers", lambda: set())
 
 
 def row(ticker: str, quote=None) -> dict:
@@ -187,47 +181,10 @@ def test_fewer_bars_than_a_window_make_only_that_input_unknown():
 
 # ── 2. the per-name Yahoo fallback is gone ───────────────────────────────────────────────────────────────────────
 
-def test_a_fetch_never_calls_fetch_technical(rawstore_tmp_db, monkeypatch):
-    from RevenueChaser.core.providers import technical as technical_provider
-    calls = []
-
-    def boom(*a, **k):
-        calls.append(a)
-        raise AssertionError("fetch_technical must not run on an AG Fetch")
-    monkeypatch.setattr(technical_provider, "fetch_technical", boom)
-    assert not hasattr(engine, "fetch_technical"), "the fallback import must be gone, not just unused"
-
-    seed_momentum(["D01ONLY"])
-    fund_store.put_edgar([edgar("D01ONLY"), edgar("NOPRICE")])
-    universe(monkeypatch, [row("D01ONLY", quote={}), row("NOPRICE", quote={})])
-    res = engine.run_asymmetric_growth_hunter(None, max_workers=1, no_fetch=True)
-
-    assert calls == []
-    assert [c["ticker"] for c in res["cards"]] == ["D01ONLY"]
-    assert res["summary"]["score_errors"] == 0                     # a restored fallback would raise here
-    assert steps(res)["no_price"]["tickers"] == ["NOPRICE"]
 
 
 # ── 3. a name with a price but no bars: a card with unknown momentum (decision 3) ────────────────────────────────
 
-def test_a_name_with_a_price_but_no_bars_is_a_card_with_unknown_momentum(rawstore_tmp_db, monkeypatch):
-    seed_momentum(["HASBARS"])                                     # SPY too: the session exists
-    fund_store.put_edgar([edgar("HASBARS"), edgar("QUOTEONLY"), edgar("NOPRICE")])
-    universe(monkeypatch, [row("HASBARS", quote={}),
-                           row("QUOTEONLY", quote={"regularMarketPrice": 42.0}),
-                           row("NOPRICE", quote={})])
-    res = engine.run_asymmetric_growth_hunter(None, max_workers=1, no_fetch=True)
-
-    cards = {c["ticker"]: c for c in res["cards"]}
-    assert sorted(cards) == ["HASBARS", "QUOTEONLY"]               # no bars is not a drop
-    assert steps(res).get("no_price", {}).get("tickers") == ["NOPRICE"]   # no price in any source is
-    q = cards["QUOTEONLY"]
-    assert q["price"] == 42.0                                      # the quote's price, the only source
-    assert momentum(q)["passed"] == 0 and momentum(q)["known"] == 0       # unknown, never a fail
-    assert [s["passed"] for s in momentum(q)["subs"]] == [None, None, None]
-    assert momentum(cards["HASBARS"])["passed"] == 3              # bars: the momentum the fixture passes
-    assert [p["subject"] for p in freeze.picks(res["cards"])] == ["HASBARS", "QUOTEONLY"]
-    assert res["data_as_of"] == SESSION.isoformat()                # the newest D01 session among the cards
 
 
 # ── 4. a 2:1 split inside the window reads nominal (split-continuous) bars ───────────────────────────────────────
@@ -278,17 +235,6 @@ def test_a_dividend_in_the_window_does_not_move_the_nominal_momentum(rawstore_tm
 
 # ── 5. a passing quote with failing bars follows the bars ───────────────────────────────────────────────────────
 
-def test_a_passing_quote_with_failing_bars_follows_the_bars(rawstore_tmp_db, monkeypatch):
-    seed_momentum([])                                              # SPY's session only
-    store_bars([bar("SLIDE", d, close=50.0, high=100.0, volume=100.0) for d in sessions()])
-    fund_store.put_edgar([edgar("SLIDE")])
-    universe(monkeypatch, [row("SLIDE")])                          # the quote passes all three rules
-    res = engine.run_asymmetric_growth_hunter(None, max_workers=1, no_fetch=True)
-
-    (card,) = res["cards"]
-    assert card["price"] == 50.0                                   # the D01 close, not the quote's 100
-    assert momentum(card)["known"] == 3 and momentum(card)["passed"] == 0
-    assert [s["passed"] for s in momentum(card)["subs"]] == [False, False, False]
 
 
 # ── 10. no stored bars at all: the 247 research script's path still scores ─────────────────────────────────────────

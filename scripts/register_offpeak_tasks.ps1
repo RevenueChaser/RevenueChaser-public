@@ -1,4 +1,5 @@
-# Install the off-peak jobs (RC-Relatedness-OffPeak, RC-ValueChain-Sync) in Windows Task Scheduler.
+# Install the off-peak job (RC-Relatedness-OffPeak) in Windows Task Scheduler. The Value Chain sync went with the old
+# store (#860).
 #
 # Thin caller: the registry, the schedule and the installer live in core/automations.py (the
 # Settings board's Automations panel installs the same rows). The CLIs are themselves
@@ -24,7 +25,7 @@ $action = if ($Remove) { "remove" } else { "install" }
 $rc = 0
 Push-Location $workDir
 try {
-    foreach ($name in "RC-Relatedness-OffPeak", "RC-ValueChain-Sync") {
+    foreach ($name in "RC-Relatedness-OffPeak") {
         & $py -m RevenueChaser.core.automations $action $name
         if ($LASTEXITCODE -ne 0) { $rc = $LASTEXITCODE }
     }

@@ -12,7 +12,7 @@ from __future__ import annotations
 import pytest
 
 from RevenueChaser.core.providers import sec_edgar
-from RevenueChaser.module_value_chain import edgar_text, health, history, report
+from RevenueChaser.module_value_chain import edgar_text, health, report
 
 _CIK = "0000320193"
 
@@ -62,11 +62,3 @@ def test_a_clean_run_shows_no_banner():
     assert "SEC EDGAR" not in html
 
 
-def test_the_run_records_the_health(monkeypatch):
-    seen = {}
-    from RevenueChaser.core import history as core_history
-    monkeypatch.setattr(core_history, "record_run", lambda *a, **kw: seen.update(kw) or {})
-
-    health.EDGAR.call(error="503", endpoint="AAPL.submissions")
-    history.record([], run_id="r1", run_at=0.0, counts={}, provider_health=health.EDGAR.health())
-    assert seen["provider_health"]["failed"] == 1

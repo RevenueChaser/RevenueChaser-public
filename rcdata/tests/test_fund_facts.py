@@ -8,7 +8,6 @@ from types import SimpleNamespace
 import duckdb
 import pytest
 
-from RevenueChaser.core import edgar_bulk
 from RevenueChaser.core.providers import sec_edgar
 from RevenueChaser.rcdata import ops
 from RevenueChaser.rcdata.build import base
@@ -220,7 +219,6 @@ def test_the_fallback_tags_are_balances_and_never_a_schedule_or_a_contra_item():
     # ``lt_debt_and_lease_noncurrent`` already is in the first pass (#239).
     assert not [t for t in tags if t.startswith(("FinanceLeaseLiability", "OperatingLeaseLiability",
                                                  "CapitalLeaseObligations"))]
-    assert tags <= set(edgar_bulk.USED_CONCEPTS)            # the bulk reader keeps every tag we read
 
 
 def test_commercial_paper_filed_later_still_gives_a_whole_annual_row():

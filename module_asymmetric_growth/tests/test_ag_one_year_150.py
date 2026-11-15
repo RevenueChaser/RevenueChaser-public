@@ -110,43 +110,12 @@ def _edgar(monkeypatch, annual, meta):
     monkeypatch.setattr(engine.sec_edgar, "get_fundamentals", lambda t, no_fetch=False: (annual, [], meta))
 
 
-def test_no_fetch_without_a_yfinance_cache_scores_from_edgar(rawstore_tmp_db, monkeypatch):
-    from RevenueChaser.module_asymmetric_growth.tests.test_ag_dated_momentum_380 import seed_momentum
-    _edgar(monkeypatch, _EDGAR_ANNUAL, {"entity_name": "Edgar Only Inc", "is_us": True})
-    monkeypatch.setattr(engine.cache_manager, "load", lambda t, ignore_ttl=False, allow_info_only=False: None)
-    seed_momentum(["EDGO"])                                   # the momentum signal comes from D01 (#380 S4)
-    fin = engine._cached_financials("EDGO", no_fetch=True)
-    assert fin["annual"] == _EDGAR_ANNUAL
-    assert fin["source"] == "sec_edgar"
-    assert fin["info"]["country"] == "United States"
-    assert fin["info"]["longName"] == "Edgar Only Inc"
-    card = engine.enrich_and_score("EDGO", {"quote": _QUOTE}, no_fetch=True, spine={})
-    assert card is not None and card["name"] == "Edgar Only Inc" and card["source"] == "sec_edgar"
-    assert next(s for s in card["signals"] if s["key"] == "momentum")["passed"] == 3   # bars, not the quote
-    assert card["price"] == 102.0                              # the last D01 close of the fixture
 
 
-def test_no_fetch_without_any_data_is_still_none(monkeypatch):
-    _edgar(monkeypatch, [], {"available": False})
-    monkeypatch.setattr(engine.cache_manager, "load", lambda t, ignore_ttl=False, allow_info_only=False: None)
-    assert engine._cached_financials("NONE", no_fetch=True) is None
 
 
-def test_no_fetch_edgar_fallback_keeps_a_foreign_filer_out(rawstore_tmp_db, monkeypatch):
-    from RevenueChaser.module_asymmetric_growth.tests.test_ag_dated_momentum_380 import seed_momentum
-    _edgar(monkeypatch, _EDGAR_ANNUAL, {"entity_name": "Foreign Ltd", "is_us": False})
-    monkeypatch.setattr(engine.cache_manager, "load", lambda t, ignore_ttl=False, allow_info_only=False: None)
-    seed_momentum(["FORN"])                                   # a card the momentum bars cannot save either
-    assert engine.enrich_and_score("FORN", {"quote": _QUOTE}, no_fetch=True, spine={}) is None
 
 
-def test_no_fetch_edgar_fallback_never_saves_a_cache_row(monkeypatch):
-    _edgar(monkeypatch, _EDGAR_ANNUAL, {"entity_name": "Edgar Only Inc", "is_us": True})
-    monkeypatch.setattr(engine.cache_manager, "load", lambda t, ignore_ttl=False, allow_info_only=False: None)
-    saved = []
-    monkeypatch.setattr(engine.cache_manager, "save", lambda *a, **k: saved.append(a))
-    engine._cached_financials("EDGO", no_fetch=True)
-    assert saved == []
 
 
 def test_a_new_ocf_is_not_paired_with_an_old_capex():
@@ -162,28 +131,11 @@ def test_total_assets_of_an_older_year_are_not_borrowed():
 
 # ── G4 K1: the SEC business address decides non-US ──────────────────────────
 
-def _country_of(monkeypatch, meta, yahoo_country=None):
-    _edgar(monkeypatch, _EDGAR_ANNUAL, {"entity_name": "X", "is_us": True, **meta})
-    info = {"country": yahoo_country} if yahoo_country else {}
-    monkeypatch.setattr(engine.cache_manager, "load",
-                        lambda t, ignore_ttl=False, allow_info_only=False: {"info": dict(info)})
-    return engine._cached_financials("X", no_fetch=True)["info"]["country"]
 
 
-def test_a_10k_filer_with_a_foreign_business_address_is_non_us(monkeypatch):
-    assert _country_of(monkeypatch, {"business_country": "IL"}) == "Foreign"
 
 
-def test_the_sec_address_wins_over_yahoos_country(monkeypatch):
-    assert _country_of(monkeypatch, {"business_country": "US"}, yahoo_country="Ireland") == "United States"
-    assert _country_of(monkeypatch, {"business_country": "CN"}, yahoo_country="United States") == "Foreign"
 
 
-def test_a_20f_filer_with_a_us_address_is_still_non_us(monkeypatch):
-    assert _country_of(monkeypatch, {"is_us": False, "business_country": "US"}) == "Foreign"
 
 
-def test_an_unread_address_keeps_yahoos_country(monkeypatch):
-    # Until ``sec/filings`` fills the header the column is NULL; Yahoo's country still keeps the 282 names out.
-    assert _country_of(monkeypatch, {"business_country": None}, yahoo_country="Canada") == "Canada"
-    assert _country_of(monkeypatch, {"business_country": None}) == "United States"

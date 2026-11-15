@@ -28,8 +28,8 @@ def scenario(rawstore_tmp_db, monkeypatch):
 def test_a_refused_spy_frame_is_what_the_count_says(scenario, monkeypatch, mod, refused):
     real = sc.load_spy
 
-    def spy(fallback, now=None):
-        frame = real(fallback, now)
+    def spy(now=None):
+        frame = real(now)
         frame.attrs["short_refetch_refused"] = refused
         return frame
     monkeypatch.setattr(sc, "load_spy", spy)

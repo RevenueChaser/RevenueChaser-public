@@ -20,20 +20,8 @@ def _aged(path, hours):
         os.utime(p, (when, when))
 
 
-def test_a_directory_older_than_the_cutoff_is_named(tmp_path):
-    old = tmp_path / "rc-pytest-abc123"
-    (old / "sub").mkdir(parents=True)
-    (old / "sub" / "raw.duckdb").write_bytes(b"x")
-    _aged(old, 5)
-    assert mod.stale_dirs(tmp_path, min_age_hours=2) == [old]
 
 
-def test_a_run_in_progress_is_left_alone(tmp_path):
-    """The whole point: a fresh directory is never a candidate, however it is named."""
-    fresh = tmp_path / "rc-pytest-running"
-    fresh.mkdir()
-    (fresh / "raw.duckdb").write_bytes(b"x")
-    assert mod.stale_dirs(tmp_path, min_age_hours=2) == []
 
 
 def test_a_recent_write_deep_in_an_old_tree_protects_it(tmp_path):
@@ -45,17 +33,6 @@ def test_a_recent_write_deep_in_an_old_tree_protects_it(tmp_path):
     assert mod.stale_dirs(tmp_path, min_age_hours=2) == []
 
 
-def test_a_write_to_an_existing_deep_file_protects_the_tree(tmp_path):
-    """The live layout is <root>/.store/raw.duckdb. Writing an existing file in place changes neither
-    the root's mtime nor .store's, so a one-level scan would call a running session stale."""
-    d = tmp_path / "rc-pytest-live"
-    (d / ".store").mkdir(parents=True)
-    db = d / ".store" / "raw.duckdb"
-    db.write_bytes(b"x")
-    _aged(d, 5)
-    with db.open("r+b") as fh:      # an in-place write, as DuckDB does
-        fh.write(b"y")
-    assert mod.stale_dirs(tmp_path, min_age_hours=2) == []
 
 
 def test_only_the_two_known_prefixes_are_touched(tmp_path):

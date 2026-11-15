@@ -67,13 +67,13 @@ def test_upsert_partition_merges_by_key_and_the_newest_fetch_wins(tmp_path):
     assert not list(tmp_path.rglob("*.tmp"))
 
 
-def test_an_old_store_job_no_longer_holds_the_builder_off():
-    """The behaviour change of #309's follow-up: ``daily_bars`` writes the old store, the builder the market one.
+def test_a_board_store_job_does_not_hold_the_builder_off():
+    """The behaviour change of #309's follow-up: ``relatedness`` writes the board files, the builder the market one.
 
     This is the refusal that stopped the WRDS price backfill while the Relatedness pilot ran (30 Oct 2026).
     """
     assert base.idle_problem() is None
-    with job_lock.acquire("daily_bars", wait=0) as got:
+    with job_lock.acquire("relatedness", wait=0) as got:
         assert got
         assert base.idle_problem() is None
     assert base.idle_problem() is None

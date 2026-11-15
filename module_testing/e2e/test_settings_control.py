@@ -102,30 +102,8 @@ def test_the_board_follows_the_shells_theme_both_ways(dashboard, browser):
     assert light[0] != dark[0] and light[1] != dark[1], f"the board does not change with the theme: {light} {dark}"
 
 
-def _saved_on(dashboard, tier: str) -> str:
-    """The tier's ``data-on`` on a freshly rendered page: what the store holds, not what the browser drafted."""
-    html = dashboard.view(_APP, refresh=True).text
-    tag = re.search(r'<button type="button" class="useg" data-tier="' + tier + r'"[^>]*>', html)
-    assert tag, f"no {tier} segment on the board"
-    return re.search(r'data-on="(\d)"', tag.group(0)).group(1)
 
 
-def test_a_tier_press_only_drafts_and_apply_saves_the_universe(dashboard, browser, market, provider_routes):
-    before = len(provider_routes.requests())
-    _open(browser, dashboard)
-    # This store has no spine, so every set counts 0 names and a draft of them is empty (Apply stays off): give the
-    # sets sizes, as a built spine would.
-    browser.eval("document.querySelectorAll('#universe .useg').forEach(function(b){ b.setAttribute('data-n', '100'); })")
-    browser.eval("document.querySelector('#universe .useg[data-tier=\"R\"]').click()")
-    assert browser.eval("document.getElementById('uni-draft').hidden") is False
-    assert _saved_on(dashboard, "R") == "1", "a press drafts: nothing is saved before Apply"
-    browser.eval("document.getElementById('uni-apply').click()")
-    browser.wait_for("!!document.getElementById('toast')")
-    said = browser.eval("document.getElementById('toast').textContent")
-    assert said.startswith("Applied"), said
-    assert _saved_on(dashboard, "R") == "0"
-    assert _requests(market) == [], "Apply saves a choice and queues no fetch"
-    assert len(provider_routes.requests()) == before
 
 
 def test_the_page_offers_no_one_off_fetch_and_no_switch(dashboard, browser, market, provider_routes):

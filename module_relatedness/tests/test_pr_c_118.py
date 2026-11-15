@@ -28,48 +28,11 @@ def _prof(**kw):
     return out
 
 
-from RevenueChaser.module_relatedness.tests.test_relatedness import _seed_universe  # noqa: E402 - one seed
 
 
 # ── C12: similarity percentile ───────────────────────────────────────────────
-def test_percentile_matches_the_bruteforce_oracle(rawstore_tmp_db):
-    """The payload percentile uses the upper triangle, the non-zero pairs only (#395) and the unrounded
-    score — so it equals ``all_scores`` + ``percentile`` over the non-zero scores."""
-    profs = {
-        "AAA": _prof(products=["alpha", "beta", "gamma"]),
-        "BBB": _prof(products=["alpha", "beta"]),
-        "CCC": _prof(products=["alpha"]),
-        "DDD": _prof(products=["delta"]),
-    }
-    _seed_universe(list(profs))
-    for t, p in profs.items():
-        store.save_profile(t, "cik-" + t, p, "k", "m")
-
-    payload = engine._payload(profs, {})
-    n = len(profs)
-    assert payload["n_pairs"] == n * (n - 1) // 2
-
-    oracle = similarity.all_scores(profs)
-    assert len(oracle) == n * (n - 1) // 2
-    dist = [s for s in oracle.values() if s > 0]
-
-    for focal, entries in payload["peers"].items():
-        for p in entries:
-            pair = (focal, p["peer"]) if (focal, p["peer"]) in oracle else (p["peer"], focal)
-            want = similarity.percentile(oracle[pair], dist)
-            assert p["percentile"] == pytest.approx(want, abs=0.1), (focal, p)
 
 
-def test_peer_scores_never_ship_a_raw_column(rawstore_tmp_db):
-    profs = {"AAA": _prof(products=["alpha", "beta"]),
-             "BBB": _prof(products=["alpha"])}
-    _seed_universe(list(profs))
-    for t, p in profs.items():
-        store.save_profile(t, "cik-" + t, p, "k", "m")
-    payload = engine._payload(profs, {})
-    for entries in payload["peers"].values():
-        for p in entries:
-            assert "score_raw" not in p
 
 
 # ── C14 + N4: cost cap ───────────────────────────────────────────────────────

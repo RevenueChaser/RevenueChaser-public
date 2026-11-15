@@ -34,7 +34,7 @@ def _tables(path):
 
 
 def test_board_path_is_under_boards(isolate_rawstore):
-    assert rawstore.board_db_path("news") == isolate_rawstore.parent / "boards" / "news.duckdb"
+    assert rawstore.board_db_path("news") == isolate_rawstore / "boards" / "news.duckdb"
     assert rawstore._db_path("news") == rawstore.board_db_path("news")
 
 
@@ -45,17 +45,17 @@ def test_news_and_welcome_are_board_files():
 @pytest.mark.rawstore_schema_from_scratch
 def test_a_board_table_is_written_to_its_own_file_only(isolate_rawstore, probe_table):
     rawstore.write_rows(probe_table, [{"k": "a", "v": "1"}])
-    board = isolate_rawstore.parent / "boards" / "news.duckdb"
+    board = isolate_rawstore / "boards" / "news.duckdb"
     assert board.exists()
     assert probe_table in _tables(board)
-    assert not isolate_rawstore.exists() or probe_table not in _tables(isolate_rawstore)
+    assert list(isolate_rawstore.glob("*.duckdb")) == []           # no store file outside boards/ (#860)
     assert rawstore.query(f"SELECT v FROM {probe_table}", db="news") == [{"v": "1"}]
 
 
 @pytest.mark.rawstore_schema_from_scratch
 def test_the_apply_makes_the_board_file_with_its_stamp(isolate_rawstore, probe_table):
     rawstore.ensure_all_tables()
-    board = isolate_rawstore.parent / "boards" / "news.duckdb"
+    board = isolate_rawstore / "boards" / "news.duckdb"
     assert probe_table in _tables(board)
     assert rawstore.schema_stamp("news") == rawstore._SCHEMA_VERSION
 
@@ -63,5 +63,5 @@ def test_the_apply_makes_the_board_file_with_its_stamp(isolate_rawstore, probe_t
 @pytest.mark.rawstore_schema_from_scratch
 def test_the_writer_leaves_its_presence_marker_beside_the_board_file(isolate_rawstore, probe_table):
     rawstore.write_rows(probe_table, [{"k": "a", "v": "1"}])
-    boards = isolate_rawstore.parent / "boards"
+    boards = isolate_rawstore / "boards"
     assert any(p.name.startswith(rawstore._PRESENCE_PREFIX) for p in boards.iterdir())

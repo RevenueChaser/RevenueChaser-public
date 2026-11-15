@@ -48,7 +48,7 @@ def session_of(value) -> str | None:
     return d.isoformat() if d else None
 
 
-def _max(sql: str, db: str = "raw") -> str | None:
+def _max(sql: str, db: str) -> str | None:
     rows = rawstore.query(sql, db=db)
     return _day(rows[0]["v"]) if rows else None
 
@@ -97,35 +97,16 @@ def _scored_prices_day(scores: str):
     return resolve
 
 
-def _earnings_day() -> str | None:
-    """The calendar session the last Earnings Fetch read, from that run's record (#205 review, option A).
-
-    The board shows the last Fetch's cards, so a newer ``earnings_calendar`` session that a later nightly sweep
-    stored says nothing about them. The record's ``context.inputs.calendar.session`` is the stored session the
-    Fetch used (E5a, #372); a Fetch that asked UW for every pair read none, and is dated by its own run. No
-    recorded Fetch: no date (a stored calendar alone is not on the board, nor is ``ticker_payload_cache``, DF13).
-    """
-    from RevenueChaser.core import history
-    run = history.last_run("module_earnings_radar")
-    if not run:
-        return None
-    calendar_read = ((run.get("context") or {}).get("inputs") or {}).get("calendar") or {}
-    return _day(calendar_read.get("session")) or _day(run.get("session_date")) or session_of(run.get("run_at"))
-
-
 def _rotation_day() -> str | None:
     return _max("SELECT max(as_of_date) AS v FROM rotation_snapshots", db="sector_rotation")
 
 
 def _sec13f_day() -> str | None:
-    """Newest 13F reporting period in ``sec13f_totals`` — what the board renders.
-
-    Quarterly, so months behind by design. It reads the totals (``{period: metrics}``
-    per ticker), not the submissions: a period that was ingested but not derived yet
-    is not on the board.
-    """
-    return _max("SELECT max(k) AS v FROM "
-                "(SELECT unnest(json_keys(entry)) AS k FROM sec13f_totals)")
+    """Newest 13F reporting period the builder serves (``ownership.sec13f_totals``) — what the board renders.
+    Quarterly, so months behind by design."""
+    from RevenueChaser.core import ownership
+    periods = {p for per in ownership.sec13f_totals().values() for p in per}
+    return max(periods) if periods else None
 
 
 # Newest print times read for the LEAPS chip: text order is near the time order (offsets can move a value a few
@@ -178,29 +159,6 @@ def _oipd_day() -> str | None:
     return _day(rows[0].get("as_of")) or _day(rows[0].get("fetched_at"))
 
 
-def _quick_financials_day() -> str | None:
-    """Date the raw payload behind the current Financials report was fetched.
-
-    Reads the per-module state file (``.cache/financials/financials_latest.json``)
-    for the last-rendered ticker, then that ticker's ``ticker_payload_cache`` fetch time.
-    """
-    try:
-        from RevenueChaser.core.config import OUTPUT_DIR as CACHE_ROOT
-        p = CACHE_ROOT / "financials" / "financials_latest.json"
-        if not p.exists():
-            return None
-        state = json.loads(p.read_text(encoding="utf-8"))
-        ticker = (state.get("ticker") or "").strip().upper()
-        if not ticker:
-            return None
-        row = rawstore.get("ticker_payload_cache", ticker)
-        if not row:
-            return None
-        return _day(row.get("fetched_at"))
-    except Exception:  # pragma: no cover - a label is never worth an error
-        return None
-
-
 def _news_day() -> str | None:
     """NY day of the newest economic-calendar fetch in ``boards/news.duckdb`` (the headlines carry their own times)."""
     rows = rawstore.query("SELECT max(fetched_at) AS v FROM news_calendar", db="news")
@@ -218,8 +176,8 @@ RESOLVERS = {
     "module_asymmetric_growth": _scored_prices_day("ticker_scores"),
     # Co-movement clusters its names' prices-store closes (PR 8).
     "module_comovement": _comovement_day,
-    # Earnings Radar: the calendar session its last Fetch read (that run's record), not the newest stored one.
-    "module_earnings_radar": _earnings_day,
+    # Earnings Radar: its run record lived in the old history file (#860), so it has no date stamp.
+    "module_earnings_radar": None,
     "module_sector_rotation": _rotation_day,
     "module_sec_13f": _sec13f_day,
     "module_leaps": _leaps_day,
@@ -227,7 +185,8 @@ RESOLVERS = {
     # them carry — the prices store's newest close, the session the board's own header names.
     "module_watchlists": _comovement_day,
     "module_spx_gamma": _spx_gamma_day,
-    "module_financials": _quick_financials_day,
+    # Financials: its payload cache lived in the old raw.duckdb (#860), so it has no date stamp.
+    "module_financials": None,
     "module_value_chain": _chain_day,
     # Relatedness profiles are derived from the same 10-K/20-F corpus.
     "module_relatedness": _chain_day,

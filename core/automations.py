@@ -33,7 +33,7 @@ from datetime import datetime, time as dtime, timedelta, timezone, tzinfo
 from pathlib import Path
 from typing import Callable
 
-from RevenueChaser.core import config, run_counts
+from RevenueChaser.core import config
 
 ACTIONS = ("install", "enable", "disable", "remove", "run")
 
@@ -123,18 +123,6 @@ class AutomationEntry:
 
 
 _WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday")
-# A nightly inputs step (C25a/K11, #383): see ``check_inputs_steps`` below.
-INPUTS_CLI = "RevenueChaser.scripts.nightly_inputs"
-INPUTS_CAP_FLAGS = ("--max-uw-calls", "--max-fred-calls", "--max-yf-calls")
-# The caps every Earnings inputs entry states (avo, 10 Nov 2026, #620): no UW cap (UW's own 100,000 a day still
-# applies), the others the 10 Nov measurement + 50%.
-_EARNINGS_CAPS = ("--max-uw-calls", "unlimited", "--max-fred-calls", "12", "--max-yf-calls", "1000",
-                  "--max-cboe-calls", "20", "--max-cftc-calls", "5")
-_EARNINGS_CAPS_TEXT = ("No Unusual Whales cap (its own 100,000 a day applies); at most 12 FRED, 1000 yfinance, "
-                       "20 Cboe and 5 CFTC read calls a run, no SEC call")
-_EARNINGS_TAIL = ("A run inside the US session writes nothing; a busy step lock exits 3, and nothing was written. "
-                  "Not chained on RC-Daily-Bars: these sweeps read no bars (#620).")
-
 # The market-store builder (#206, PR 2): one pass over the request queue every hour; the builder decides per dataset
 # from ``ops.dataset_schedule`` whether anything is due (avo's rule: scheduled jobs run hourly). It writes only the
 # market store and records its own ``ops.job_runs2`` rows, so ``tables_written`` is empty: no old ``job_runs`` row.
@@ -150,47 +138,15 @@ REGISTRY: tuple[AutomationEntry, ...] = (
         description=("Relatedness profiling with the board's writer (Settings, #360: EVREN by default, no call cap); "
                      "with DeepSeek it is capped at 10 USD (avo, 2 Nov 2026) and defers itself outside off-peak hours."),
         tables_written=("relatedness_profiles", "relatedness_attributes", "relatedness_scores",
-                        "run_registry", "llm_cache", "chain_filings", "chain_meta", "edgar_documents",
-                        "result_runs", "relatedness_scores_history"),
+                        "llm_cache", "chain_filings", "chain_meta"),
         offpeak_gated=True),
     AutomationEntry(
-        name="RC-ValueChain-Sync", label="Value Chain filing sync",
-        args=("-m", "RevenueChaser.module_value_chain", "--sync-filings"), time="13:00",
-        description="Detects newer 10-K/20-F filings and refreshes the raw doc and corpus; stores the SEC "
-                    "submissions of every universe CIK (#299).",
-        tables_written=("chain_filings", "chain_mentions", "chain_meta", "edgar_documents", "sec_submissions",
-                        "sec_submissions_cik", "source_checks", "result_runs", "value_chain_edges_history")),
-    AutomationEntry(
-        name="RC-Daily-Bars", label="Daily price bars",
-        args=("-m", "RevenueChaser.scripts.daily_bars", "--nightly", "--sec-files", "--index-levels"), time="23:00",
-        description="Writes each scope ticker's bars up to the latest complete New York session (Unusual Whales "
-                    "daily bars, yfinance fallback), yfinance adj_close, dividends and splits; no calls when current. First, "
-                    "best effort, on weekdays: the SEC exchange and fund files (#301, at most 2 SEC requests a "
-                    "night). Last, best effort: the ^GSPC daily levels (D03, #293; at most 1 yfinance request a "
-                    "night, none when current or before the attended one-time fill). Neither step's failure "
-                    "changes the exit code.",
-        tables_written=("price_bars_daily", "price_actions", "price_checks", "sec_exchange_file", "sec_mf_file",
-                        "index_levels_daily")),
-    AutomationEntry(
-        name="RC-Screeners-Daily", label="Daily screeners Fetch",
-        args=("-m", "RevenueChaser.app.universe_cli"), time="23:30", days=_WEEKDAYS, after="RC-Daily-Bars",
-        description="Step S2 of the nightly chain (#129): once tonight's daily bars run exited 0, the universe "
-                    "refresh (AG with the universe pull, then Swing, then Fundamentals) and the forecast freeze "
-                    "(#128, which writes nothing inside the US session). A busy universe lock exits 3.",
-        tables_written=("equity_universe", "equity_universe_provenance", "quote_snapshot", "source_checks",
-                        "ticker_payload_cache", "edgar_financials", "swing_ohlc", "swing_info", "ticker_scores",
-                        "swing_scores", "swing_gates", "fundamentals_scores", "fundamentals_gates",
-                        "vendor_financials", "vendor_valuation", "ownership_snapshot", "forecast_ledger",
-                        "result_runs", "ag_scores_history", "swing_scores_history", "swing_gates_history",
-                        "fundamentals_scores_history", "fundamentals_gates_history", "job_runs"),
-        settings=TaskSettings(wake_to_run=True)),
-    AutomationEntry(
         name="RC-Forecast-Outcomes", label="Forecast outcomes",
-        args=("-m", "RevenueChaser.scripts.forecast_outcomes", "--nightly"), time="23:35", after="RC-Daily-Bars",
-        description="Once tonight's daily bars run exited 0, recomputes the 30- and 90-day outcome (reference open, "
+        args=("-m", "RevenueChaser.scripts.forecast_outcomes", "--nightly"), time="23:35",
+        description="Recomputes the 30- and 90-day outcome (reference open, "
                     "MFE, MAE, open/closed) of every frozen pick not closed yet, from the stored bars; no calls "
-                    "(#380 S0). 23:35 is its own trigger (avo, #620), 5 minutes after RC-Screeners-Daily (23:30), the "
-                    "other raw.duckdb writer. A busy forecast-outcomes lock exits 3, and nothing was written.",
+                    "(#380 S0). 23:35 is its own trigger (avo, #620). A busy forecast-outcomes lock exits 3, and nothing was "
+                    "written.",
         tables_written=("forecast_outcomes",)),
     AutomationEntry(
         name="RC-Forecast-Baselines", label="Forecast baselines",
@@ -199,60 +155,9 @@ REGISTRY: tuple[AutomationEntry, ...] = (
         description="Once tonight's outcomes run exited 0, recomputes the baselines still open: what each freeze "
                     "date's own universe did over the same 30- and 90-day windows, and the same names split into ten "
                     "trailing-volatility deciles, from the stored bars and the universe change history; no calls "
-                    "(#25 HR-1). Chained on RC-Forecast-Outcomes, the other raw.duckdb writer of the 23:35 slot, so "
+                    "(#25 HR-1). Chained on RC-Forecast-Outcomes, the other writer of the 23:35 slot, so "
                     "the two never run together; 23:50 is its own trigger.",
         tables_written=("forecast_baselines",)),
-    AutomationEntry(
-        name="RC-Index-Lists", label="Index lists (weekly)",
-        args=("-m", "RevenueChaser.scripts.index_lists", "--weekly"), time="10:00", days=("Saturday",),
-        description="Writes the S&P 500, Dow and Nasdaq member lists (3 Unusual Whales requests) and the SmallCap 600 list "
-                    "from the last accepted S&P 1500 snapshot; a list under its floor is kept as it was, and the "
-                    "change history records each join and leave.",
-        tables_written=("index_constituents", "index_constituents_changes")),
-    AutomationEntry(
-        name="RC-Earnings-Calendar", label="Earnings calendar (twice a week)",
-        args=("-m", INPUTS_CLI, "earnings-calendar", *_EARNINGS_CAPS),
-        time="23:40", days=("Monday", "Thursday"),
-        description="The Earnings board's calendar input (D26, #620): the Unusual Whales earnings calendar of the next "
-                    "four weeks, premarket and afterhours. Monday and Thursday 23:40, 10 minutes after "
-                    "RC-Screeners-Daily, the other raw.duckdb writer. " + _EARNINGS_CAPS_TEXT + ". " + _EARNINGS_TAIL,
-        tables_written=("earnings_calendar",),
-        settings=TaskSettings(wake_to_run=True)),
-    AutomationEntry(
-        name="RC-Short-Interest", label="Short interest (weeknights)",
-        args=("-m", INPUTS_CLI, "short-interest", *_EARNINGS_CAPS),
-        time="23:40", days=_WEEKDAYS,
-        description="Short interest of the stored calendar tickers and the 13F tickers (D10, #296; Unusual Whales, "
-                    "then yfinance), Monday to Friday 23:40. Nightly, because Unusual Whales has no past-date short "
-                    "interest: a night not stored is lost. " + _EARNINGS_CAPS_TEXT + ". " + _EARNINGS_TAIL,
-        tables_written=("short_interest",),
-        settings=TaskSettings(wake_to_run=True)),
-    AutomationEntry(
-        name="RC-Earnings-Daytime", label="Analyst estimates (twice a week)",
-        args=("-m", INPUTS_CLI, "earnings-daytime", *_EARNINGS_CAPS),
-        time="13:00", days=("Tuesday", "Thursday"),
-        description="The yfinance analyst estimates of the calendar tickers (D14), Tuesday and Thursday 13:00, "
-                    "keyed to the last complete US session. The economic calendar is the builder's hourly "
-                    "uw/economic_calendar. " + _EARNINGS_CAPS_TEXT + ". " + _EARNINGS_TAIL,
-        tables_written=("estimate_snapshots",),
-        settings=TaskSettings(wake_to_run=True)),
-    AutomationEntry(
-        name="RC-Macro-Weekly", label="FRED and vol indices (weekly)",
-        args=("-m", INPUTS_CLI, "macro-weekly", *_EARNINGS_CAPS),
-        time="23:40", days=("Thursday",),
-        description="The 8 FRED series (D27) and the Cboe vol indices (VIX family, VVIX, OVX) with MOVE from "
-                    "yfinance (D28), Thursday 23:40. The Cboe files stay here until the board reads market_series. "
-                    + _EARNINGS_CAPS_TEXT + "; one sweep failing leaves the other. " + _EARNINGS_TAIL,
-        tables_written=("macro_series", "vol_index_daily"),
-        settings=TaskSettings(wake_to_run=True)),
-    AutomationEntry(
-        name="RC-CFTC-Weekly", label="CFTC TFF (weekly)",
-        args=("-m", INPUTS_CLI, "cftc", *_EARNINGS_CAPS),
-        time="23:40", days=("Friday",),
-        description="The weekly CFTC E-mini S&P 500 TFF row (D29), Friday 23:40, after CFTC's Friday release. "
-                    + _EARNINGS_CAPS_TEXT + ". " + _EARNINGS_TAIL,
-        tables_written=("cftc_cot",),
-        settings=TaskSettings(wake_to_run=True)),
     AutomationEntry(
         name="RC-IBKR-Login-Check", label="IBKR Gateway login check",
         args=("-m", "RevenueChaser.scripts.ibkr_login_check"), time="09:15",
@@ -283,8 +188,8 @@ REGISTRY: tuple[AutomationEntry, ...] = (
         description="The one backup job (avo, 8 Nov 2026): every Sunday 03:30 it copies, verifies and keeps the "
                     "newest 4 of every file under RAW_STORE_BACKUP_DIR/weekly-v2/<step>/ on the HDD. The steps: "
                     "the DuckDB files the builder writes from Parquet (market, spine, ownership, prices, "
-                    "fundamentals, options), the board-result DuckDBs (raw, edgar, history, prices and every "
-                    "boards/<board>.duckdb, each CHECKPOINTed first), the needed ops tables (watch lists, "
+                    "fundamentals, options), the board-result DuckDBs (every boards/<board>.duckdb, each "
+                    "CHECKPOINTed first), the needed ops tables (watch lists, "
                     "schedule, switches, automation rows, run records), the Unusual Whales raw files and the SPX "
                     "Gamma tree (one folder per week, unchanged files hard-linked), and edgar_docs as one verified "
                     "zip. Raw downloads and Parquet are not copied: they are fetched again. Nothing leaves the "
@@ -348,36 +253,6 @@ def check_chain(entries: tuple[AutomationEntry, ...]) -> None:
 
 
 check_chain(REGISTRY)
-
-
-# --- nightly inputs steps (C25a/K11, #383) ------------------------------------------------------------------------
-#
-# An inputs step runs ``python -m INPUTS_CLI <step> <cap flags>`` (``core/nightly_inputs.py``): independent sweeps
-# under one session and one per-night call budget per provider. Its entry names a step ``nightly_inputs.STEPS``
-# knows, lists the tables it writes, and states every cap in its command (a whole number or ``unlimited``), so the
-# Settings row shows the run's call limits. It need not chain on RC-Daily-Bars (#620): the sweeps read no bars, and
-# the session comes from the clock (a run inside the US session writes nothing).
-
-def check_inputs_steps(entries: tuple[AutomationEntry, ...]) -> None:
-    from RevenueChaser.core import nightly_inputs
-
-    for e in entries:
-        args = list(e.args)
-        if args[:2] != ["-m", INPUTS_CLI]:
-            continue
-        step = args[2] if len(args) > 2 else None
-        if step not in nightly_inputs.STEPS:
-            raise ValueError(f"{e.name} names unknown inputs step {step!r}")
-        if not e.tables_written:
-            raise ValueError(f"{e.name} is an inputs step; it must list the tables it writes")
-        for flag in INPUTS_CAP_FLAGS:
-            value = args[args.index(flag) + 1] if flag in args[:-1] else None
-            if value is None or not (value.isdigit() or value == "unlimited"):
-                raise ValueError(f"{e.name} must state {flag} as a whole number of calls or unlimited "
-                                 f"(got {value!r})")
-
-
-check_inputs_steps(REGISTRY)
 
 
 class AutomationError(Exception):
@@ -1144,18 +1019,9 @@ def wait_for_chain(e: AutomationEntry, *, clock: Callable[[], datetime] | None =
 
 # --- the command a task runs ----------------------------------------------------
 #
-# A task's command runs as a subprocess, so the dashboard's job registry (app/jobs.py) never sees it. A task that
-# writes tables (``tables_written``) records its own ``job_runs`` row (#129 A1): ``trigger`` "scheduled",
-# ``registry_name``, upserted when the command starts and when it ends ("done" on exit 0, else "error" with the exit
-# code or the chain's reason). The command gets the row's id in ``RC_RUN_ID`` and the registry name in
-# ``RC_RUN_SOURCE`` (``rawstore.task_run``), so the run ids and change rows it writes join that row. A task that
-# writes no table (the backup) records nothing: it must leave the store exactly as it copied it. A row that cannot
-# be written is a ``job_runs: not recorded`` line in the task's log, never a different exit code.
-
-def _record_run(row: dict) -> None:
-    from RevenueChaser.core import rawstore
-    rawstore.write_rows("job_runs", [row])
-
+# A task's command runs as a subprocess, so the dashboard's job registry (app/jobs.py) never sees it. Its record is
+# its log. The ``job_runs`` row it also wrote lived in the old raw.duckdb and went with it (#860). A table writer
+# still gets ``RC_RUN_ID`` and ``RC_RUN_SOURCE`` (``rawstore.task_run``), so the run ids it writes carry the task.
 
 #: The registry rows the board's backup switch stops (#527); the fetch switch stops every other row but these and
 #: ``SWITCH_EXEMPT``.
@@ -1191,8 +1057,7 @@ def run_task(name: str, python: str | None = None, cwd: Path | str | None = None
     """Run a registry entry's command, appending its output and exit code to its log.
 
     A chained entry first waits for its predecessor (``wait_for_chain``); blocked, it exits
-    ``CHAIN_BLOCKED`` without running its command. A task that writes tables records its ``job_runs`` row
-    (see the block comment above).
+    ``CHAIN_BLOCKED`` without running its command.
     """
     import os
     import uuid
@@ -1206,39 +1071,14 @@ def run_task(name: str, python: str | None = None, cwd: Path | str | None = None
     except OSError:
         pass
     stamp = lambda: datetime.now(timezone.utc).isoformat(timespec="seconds")  # noqa: E731
-    epoch = lambda: datetime.now(timezone.utc).timestamp()  # noqa: E731
     run_id = uuid.uuid4().hex[:12]
-    row = {"run_id": run_id, "job_id": run_id, "module": e.name, "lane": None, "trigger": "scheduled",
-           "source": e.name, "pid": os.getpid(), "registry_name": e.name, "params": {"args": list(e.args)},
-           "queued_at": epoch(), "started_at": None, "finished_at": None, "status": "queued",
-           "error": None, "message": None, "counts": None}
 
     with open(log, "a", encoding="utf-8") as fh:
-        # A previous run whose end write was skipped is still ``running`` until something starts (#82).
-        try:
-            if e.tables_written:
-                from RevenueChaser.app import jobs
-                jobs.reconcile_lost_runs()
-        except Exception as exc:  # noqa: BLE001 - bookkeeping, never a different exit code
-            fh.write(f"job_runs: could not reconcile ({str(exc)[:200]})\n")
-            fh.flush()
-
-        def record(**fields) -> None:
-            if not e.tables_written:
-                return
-            row.update(fields)
-            try:
-                _record_run(dict(row))
-            except Exception as exc:  # noqa: BLE001 - the run log is bookkeeping, never a reason to fail a task
-                fh.write(f"job_runs: not recorded ({str(exc)[:200]})\n")
-                fh.flush()
-
         fh.write(f"=== {stamp()} start {e.name}\n")
         fh.flush()
         off = _switched_off(e.name)
         if off is not None:
             fh.write(off + "\n")
-            record(status="done", started_at=epoch(), finished_at=epoch(), message=off)
             fh.write(f"=== {stamp()} exit {RESULT_OK}\n")
             return RESULT_OK
         if e.after:
@@ -1247,14 +1087,10 @@ def run_task(name: str, python: str | None = None, cwd: Path | str | None = None
             released, line = wait_for_chain(e, clock=clock, sleep=sleep, tz=tz)
             if not released:
                 fh.write(f"chain: blocked: {line}\n")
-                record(status="error", finished_at=epoch(), error=f"chain blocked: {line}",
-                       message=f"exit {CHAIN_BLOCKED}")
                 fh.write(f"=== {stamp()} exit {CHAIN_BLOCKED}\n")
                 return CHAIN_BLOCKED
             fh.write(f"chain: {line}\n")
             fh.flush()
-        record(status="running", started_at=epoch())
-        out_start = os.fstat(fh.fileno()).st_size      # #136: only this run's output is read for counts
         env = None
         if e.tables_written:
             from RevenueChaser.core import rawstore
@@ -1269,10 +1105,6 @@ def run_task(name: str, python: str | None = None, cwd: Path | str | None = None
             fh.write(f"could not start: {exc}\n")
             rc = 1
         fh.flush()
-        # #136: only a table writer records a row at all, so only it pays for the log read.
-        counts = run_counts.from_log(log, out_start) if e.tables_written else None
-        record(status="done" if rc == RESULT_OK else "error", finished_at=epoch(),
-               error=None if rc == RESULT_OK else f"exit {rc}", message=f"exit {rc}", counts=counts)
         fh.write(f"=== {stamp()} exit {rc}\n")
     return rc
 

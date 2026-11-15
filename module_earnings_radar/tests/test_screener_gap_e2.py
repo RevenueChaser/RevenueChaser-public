@@ -91,33 +91,8 @@ def test_a_watchlist_name_with_no_screener_row_is_still_bypassed():
     assert p._filter_outcome["T00"][0] == "bypassed"
 
 
-def test_a_partial_screener_answer_marks_the_recorded_run_partial(rawstore_tmp_db):
-    from RevenueChaser.core import rawstore
-    from RevenueChaser.module_earnings_radar import history as er_history
-    from RevenueChaser.module_earnings_radar.pipeline import nrc_from_card
-    from RevenueChaser.module_earnings_radar.models import TradeCard
-    card = TradeCard(ticker="AAA", earnings_date=date(2026, 10, 8), earnings_time="AMC")
-    nrc = {"AAA": nrc_from_card(card, set())}
-    er_history.record([card], nrc, run_id="r1", run_at=COMPLETE, uw_health=HEALTHY,
-                      screener={"status": "partial", "error": {"failed_chunks": 1, "chunks": 2}})
-    (head,) = rawstore.query("SELECT * FROM result_runs WHERE board = ?", ["module_earnings_radar"],
-                             db="history")
-    assert head["quality"] == "partial" and "screener" in head["quality_note"]
-    assert "1 of 2 chunks failed" in head["quality_note"]
 
 
-def test_an_ok_screener_leaves_the_run_note_alone(rawstore_tmp_db):
-    from RevenueChaser.core import rawstore
-    from RevenueChaser.module_earnings_radar import history as er_history
-    from RevenueChaser.module_earnings_radar.pipeline import nrc_from_card
-    from RevenueChaser.module_earnings_radar.models import TradeCard
-    card = TradeCard(ticker="AAA", earnings_date=date(2026, 10, 8), earnings_time="AMC")
-    nrc = {"AAA": nrc_from_card(card, set())}
-    er_history.record([card], nrc, run_id="r1", run_at=COMPLETE, uw_health=HEALTHY,
-                      screener={"status": "ok", "error": None})
-    (head,) = rawstore.query("SELECT * FROM result_runs WHERE board = ?", ["module_earnings_radar"],
-                             db="history")
-    assert head["quality_note"] is None
 
 
 def test_the_board_marks_n_a_liquidity_zero_and_carries_the_new_drawer_fields():

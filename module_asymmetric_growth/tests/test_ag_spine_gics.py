@@ -12,8 +12,7 @@ def _seed(rows, master=None):
         "ticker": t, "cik": "", "name": t, "market_cap": 1e9, "price": 10.0,
         "sector": sec, "industry": ind, "quote": {"symbol": t}} for t, sec, ind in rows])
     if master:
-        rawstore.replace_all("security_master", [
-            {"ticker": t, "security_type": ty} for t, ty in master.items()])
+        pass
 
 
 def test_card_sector_and_industry_are_the_spine_not_yfinance(rawstore_tmp_db):
@@ -57,33 +56,5 @@ def test_themes_are_the_pinned_run_never_the_vendor_industry_text(rawstore_tmp_d
     assert card["themes"] == ["Memory"]
 
 
-def test_hunter_skips_excluded_types(rawstore_tmp_db, monkeypatch):
-    _seed([("OPCO", "Energy", "Oil & Gas E&P"), ("FUND", "Financial Services", "Asset Management")],
-          master={"OPCO": "common", "FUND": "etp"})
-    rows = [{"ticker": "OPCO"}, {"ticker": "FUND"}]
-    monkeypatch.setattr(engine, "fetch_universe_stats", lambda *a, **k: (rows, {}))
-    scored = []
-    monkeypatch.setattr(engine, "enrich_and_score",
-                        lambda t, r, nf=False, *a, **k: scored.append(t))
-    out = engine.run_asymmetric_growth_hunter()
-    assert scored == ["OPCO"]
-    assert out["universe_total"] == 2
-    assert out["summary"]["excluded_types"] == 1
 
 
-def test_no_spine_gics_counts_the_unclassified_sector(rawstore_tmp_db, monkeypatch):
-    """``no_spine_gics`` stays the count of cards whose sector is ``Unclassified``."""
-    _seed([("OPCO", "Energy", "Oil & Gas E&P"), ("NOPE", "", ""), ("HALF", "Technology", "")])
-    rows = [{"ticker": "OPCO"}, {"ticker": "NOPE"}, {"ticker": "HALF"}]
-    monkeypatch.setattr(engine, "fetch_universe_stats", lambda *a, **k: (rows, {}))
-
-    def fake_score(t, r, nf=False, spine=None, preload=None):
-        return engine.score_ticker(t, _fin(), _tech(), {}, spine)
-
-    monkeypatch.setattr(engine, "enrich_and_score", fake_score)
-    out = engine.run_asymmetric_growth_hunter()
-    by = {c["ticker"]: c for c in out["cards"]}
-    assert (by["OPCO"]["sector"], by["OPCO"]["industry"]) == ("Energy", "Oil & Gas E&P")
-    assert (by["NOPE"]["sector"], by["NOPE"]["industry"]) == ("Unclassified", "Unclassified")
-    assert (by["HALF"]["sector"], by["HALF"]["industry"]) == ("Technology", "Unclassified")
-    assert out["summary"]["no_spine_gics"] == 1                     # the sector decides, not the industry

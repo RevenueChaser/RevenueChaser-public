@@ -290,21 +290,9 @@
     return list.filter(pressed).reduce(function (n, b) { return n + (map[b.getAttribute(key)] || 0); }, 0);
   }
   function apply(btn) {
+    // The universe setting was a board setting, stored in raw.duckdb's board_settings; it went with that file (#860).
     btn.disabled = true;
-    var changes = { UNIVERSE_SETS: bits(segs, C.universe.bits, 'data-tier'),
-                    UNIVERSE_INCLUDE: bits(incs, C.universe.inc_bits, 'data-inc') };
-    X.send('POST', C.routes.settings, { changes: changes }).then(function (r) {
-      if (r.status !== 202 && r.status !== 200) {
-        btn.disabled = false;
-        X.say('Not applied: ' + ((r.body.messages || [r.body.error || ('HTTP ' + r.status)]).join('; ')));
-        return;
-      }
-      segs.concat(incs).forEach(function (b) { b.setAttribute('data-on', pressed(b) ? '1' : '0'); });
-      hand = dhand.slice();
-      try { localStorage.setItem(KEY, JSON.stringify(hand)); } catch (e) { /* a private window: kept for this page */ }
-      paintApplied(); paintDraft();
-      X.say('Applied: the next presses run on ' + document.getElementById('uni-sum').textContent);
-    }, function () { btn.disabled = false; X.say('Not applied: could not reach the dashboard'); });
+    X.say('Not applied: the universe setting went with the old store (#860)');
   }
   document.getElementById('universe').addEventListener('click', function (e) {
     var t = e.target.closest('button'); if (!t) return;

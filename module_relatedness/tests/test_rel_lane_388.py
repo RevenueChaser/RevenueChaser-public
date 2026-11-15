@@ -17,87 +17,29 @@ from RevenueChaser.core import rawstore
 from RevenueChaser.module_comovement.tests import prices_bars
 from RevenueChaser.module_relatedness import engine, report, store
 from RevenueChaser.module_relatedness.tests.test_pure_refresh import _market_peers, _market_prices
-from RevenueChaser.module_relatedness.tests.test_relatedness import _prof, _seed_filings, _seed_universe
+from RevenueChaser.module_relatedness.tests.test_relatedness import _prof, _seed_filings
 
 TICKERS = [f"T{i:02d}" for i in range(8)]
 
 
-@pytest.fixture
-def seeded(rawstore_tmp_db, monkeypatch, tmp_path):
-    """Five usable profiles, two names with no filing text, one never profiled."""
-    _seed_universe(TICKERS)
-    _seed_filings(TICKERS)
-    monkeypatch.setattr(engine.config, "RELATEDNESS_JSON", tmp_path / "r.json")
-    for t in TICKERS[:5]:
-        store.save_profile(t, "cik-" + t, _prof(products=["gpu"], end_markets=["dc"]), "k", "m")
-    for t in TICKERS[5:7]:
-        store.save_profile(t, "cik-" + t, _prof(), "", "m", status="no_text")
-    monkeypatch.setattr(engine.vc_engine, "fetch_corpus", lambda *a, **k: {"no_fetch": True})
-    return TICKERS
 
 
 # ── D4: Pending = tickers - usable - no_text ────────────────────────────────
-def test_a_name_without_filing_text_is_not_pending(seeded):
-    payload = engine.run(no_fetch=True, tickers=seeded)
-    assert payload["n"] == 5
-    assert payload["no_text"] == 2
-    assert payload["pending"] == 1                                    # T07: no profile row yet
 
 
-def test_a_no_text_name_with_a_usable_profile_counts_once(seeded):
-    """A kept (stale) profile is usable: it is profiled, neither pending nor without text."""
-    store.save_profile("T07", "cik-T07", _prof(products=["cpu"]), "k", "m", status="no_text")
-    payload = engine.run(no_fetch=True, tickers=seeded)
-    assert (payload["n"], payload["no_text"], payload["pending"]) == (6, 2, 0)
 
 
-def test_the_fetch_records_the_split(seeded, monkeypatch):
-    monkeypatch.setattr(engine, "build_profiles", lambda tickers, **k: store.load_profiles(tickers))
-    engine.run(no_fetch=False, tickers=seeded)
-    reg = rawstore.get("run_registry", "relatedness_run")["value"]
-    reg = reg if isinstance(reg, dict) else json.loads(reg)
-    assert (reg["pending"], reg["no_text"]) == (1, 2)
 
 
-def test_the_pending_tile_says_how_many_have_no_filing_text(seeded):
-    html = report.render_relatedness_dashboard(engine.run(no_fetch=True, tickers=seeded))
-    assert '<div class="v">1</div><div class="l">Pending</div>' in html
-    assert "2 without filing text" in html
-    none = report.render_relatedness_dashboard({"pending": 3, "no_text": 0})
-    assert "without filing text" not in none
 
 
-def test_the_history_header_keeps_the_split(seeded, monkeypatch):
-    """requested = profiled + pending + no_text in the run's result-history context."""
-    monkeypatch.setattr(engine, "build_profiles", lambda tickers, **k: store.load_profiles(tickers))
-    engine.run(no_fetch=False, tickers=seeded, run_id="r1")
-    (head,) = rawstore.query("SELECT context FROM result_runs WHERE board = 'module_relatedness'", db="history")
-    ctx = head["context"] if isinstance(head["context"], dict) else json.loads(head["context"])
-    assert (ctx["requested"], ctx["profiled"], ctx["pending"], ctx["no_text"]) == (8, 5, 1, 2)
 
 
 # ── REL-10: a Refresh keeps the last run's as_of ────────────────────────────
-def test_a_refresh_keeps_the_last_runs_as_of(seeded):
-    rawstore.write_rows("run_registry", [{"key": "relatedness_run", "value": json.dumps(
-        {"as_of": "2026-10-01T10:30:00+00:00", "n": 5, "pending": 1, "next_off_peak": None})}])
-    payload = engine.run(no_fetch=True, tickers=seeded)
-    assert payload["as_of"] == "2026-10-01T10:30:00+00:00"
-    assert "Thursday, October 01, 2026" in report.render_relatedness_dashboard(payload)
 
 
-def test_a_fetch_stamps_its_own_as_of(seeded, monkeypatch):
-    rawstore.write_rows("run_registry", [{"key": "relatedness_run", "value": json.dumps(
-        {"as_of": "2026-10-01T10:30:00+00:00", "n": 5, "pending": 1, "next_off_peak": None})}])
-    monkeypatch.setattr(engine, "build_profiles", lambda tickers, **k: store.load_profiles(tickers))
-    payload = engine.run(no_fetch=False, tickers=seeded)
-    assert payload["as_of"] > "2026-10-02"
-    reg = rawstore.get("run_registry", "relatedness_run")["value"]
-    assert (reg if isinstance(reg, dict) else json.loads(reg))["as_of"] == payload["as_of"]
 
 
-def test_a_refresh_before_any_fetch_has_no_run_to_show(seeded):
-    payload = engine.run(no_fetch=True, tickers=seeded)
-    assert payload["as_of"]                                           # the render time, as before
 
 
 # ── the peer market reads its window only ───────────────────────────────────

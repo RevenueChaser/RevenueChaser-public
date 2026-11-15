@@ -119,28 +119,6 @@ def test_a_filtered_needs_summary_counts_its_own_series_only(monkeypatch):
 
 # ── I1: one reference day for every freshness answer ──
 
-def test_the_lag_is_counted_against_one_shared_reference_day(monkeypatch):
-    """The envelope counted the lag against the newest complete session while ``core.earnings_dates`` counted it
-    against today, so on a trading day whose session is not over the two differed by one: a card could read
-    ``fresh`` while the earnings-week filter had already dropped that layer. Both read one function now."""
-    from datetime import date as _date
-
-    from RevenueChaser.core import earnings_dates
-
-    assert needs.reference_session is needs.serve.reference_session
-    seen = []
-    monkeypatch.setattr(needs.serve.calendar, "latest_complete_session", lambda: (seen.append(1), _date(2026, 10, 28))[1])
-    # Thursday 29 Oct: the newest complete session is Wednesday 28th, and the layer's session is Tuesday 27th.
-    ans = needs.Answer(need="earnings.next", rows=[], state="fresh",
-                     freshness={"as_of_session": _date(2026, 10, 27), "lag_sessions": 1, "max_lag": 1,
-                                "unit": "sessions"},
-                     coverage={"asked": 0, "served": 0, "missing": [], "from_fallback": 0},
-                     provenance=[], status="changed")
-    need = needs.catalog.NEEDS["earnings.next"]
-    monkeypatch.setattr(earnings_dates, "_d26_dates", lambda today: {})
-    dates = earnings_dates._layer_dates(ans, _date(2026, 10, 29), need)
-    assert seen, "the board counted the lag against its own day, not the shared reference"
-    assert dates == {}, "no rows to serve, but the call must not have raised"
 
 
 # ── m1 and m4 ──

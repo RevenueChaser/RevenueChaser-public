@@ -7,15 +7,12 @@ the per-ticker metrics into ``ownership.duckdb``. ``load_totals`` reads them.
 This module used to do all of that itself, into ``raw.duckdb``: download the data-set zips, ingest them, ask
 OpenFIGI for a CUSIP map and derive ``sec13f_totals``. Two writers of the same numbers meant the board showed
 whichever had run last, and on a machine where only the builder ever ran it showed nothing at all. The old path is
-gone (G9); what stays here is the board's own material: the quarter calendar, the UW name/sector meta the
-dashboard keeps, and the totals read.
+gone (G9); what stays here is the board's own material: the quarter calendar, the names and sectors (from
+the spine), and the totals read.
 """
 import logging
-import time
 from datetime import date, datetime, timedelta
 from typing import Optional
-
-from RevenueChaser.core import ownership, rawstore
 
 logger = logging.getLogger(__name__)
 
@@ -86,16 +83,19 @@ def release_schedule(n: int = 8, today: date = None) -> list:
 
 
 def load_sec13f_meta() -> dict:
-    """Cached ``{ticker: {"name": str, "sector": str, "type": str}}`` for the full 13F universe."""
-    rows = rawstore.get_all("sec13f_security_meta")
-    return {r["ticker"]: (r.get("entry") or {}) for r in rows}
+    """``{ticker: {"name", "sector", "type"}}`` of the 13F tickers, from the spine's ``security`` rows.
 
-
-def save_sec13f_meta(meta: dict):
-    fetched_at = time.time()
-    rawstore.write_rows("sec13f_security_meta", [
-        {"ticker": t, "entry": v, "fetched_at": fetched_at} for t, v in meta.items()
-    ])
+    The cached ``sec13f_security_meta`` (a UW screener pass) went with raw.duckdb (#860); a ticker the spine does not
+    hold has no entry, so the board shows it unnamed and Unclassified."""
+    from RevenueChaser.core.gics_map import sector_or_unclassified
+    from RevenueChaser.rcdata import read
+    tickers = [t for t in load_totals() if t]
+    out = {}
+    for r in read.identity(tickers):
+        kind = str(r.get("security_type") or "").upper()
+        out[r["ticker"]] = {"name": r.get("name") or "", "sector": sector_or_unclassified(r.get("sector")),
+                            "type": "ETF" if "ETF" in kind else ("Stock" if kind else "Other")}
+    return out
 
 
 def normalize_period(raw: str) -> Optional[str]:

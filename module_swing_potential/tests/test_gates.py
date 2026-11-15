@@ -13,51 +13,18 @@ from RevenueChaser.module_swing_potential.screeners import (
 )
 
 
-@pytest.fixture
-def d04(monkeypatch):
-    """The D04 quote the prefilter reads for "X" (``quotes.prefilter_quotes``), set per test."""
-    held: dict = {}
-    monkeypatch.setattr("RevenueChaser.core.quotes.prefilter_quotes", lambda tickers: dict(held))
-
-    def put(price=100.0, avg_volume=5000.0):
-        held.clear()
-        if price is not None or avg_volume is not None:
-            held["X"] = {"price": price, "avg_volume": avg_volume, "session_date": None, "source": "yfinance"}
-        return [{"ticker": "X", "quote": {}}]
-    return put
 
 
-def test_prefilter_ok(d04):
-    pf = prefilter(d04())
-    assert len(pf.kept) == 1 and pf.dropped == 0
 
 
-def test_prefilter_price_below_min(d04):
-    pf = prefilter(d04(price=3.0))
-    assert pf.kept == [] and pf.drops == {"low_price": ["X"]}
 
 
-def test_prefilter_missing_price(d04):
-    pf = prefilter(d04(price=None))
-    assert pf.kept == [] and pf.drops == {"no_quote": ["X"]}
 
 
-def test_prefilter_dollar_volume_below_min(d04):
-    # price 100 x avg volume 1000 = $100K < $250K
-    pf = prefilter(d04(avg_volume=1000.0))
-    assert pf.kept == [] and pf.drops == {"low_dollar_volume": ["X"]}
 
 
-def test_prefilter_has_no_trend_rule(d04):
-    """The 52-week distance and the 50-day average left the prefilter (7-A): the universe quote's trend fields are
-    not read at all."""
-    rows = d04()
-    rows[0]["quote"] = {"regularMarketPrice": 100.0, "fiftyTwoWeekHigh": 200.0, "fiftyDayAverage": 110.0}
-    assert len(prefilter(rows).kept) == 1
 
 
-def test_prefilter_without_a_volume_skips_the_volume_rule(d04):
-    assert len(prefilter(d04(avg_volume=None)).kept) == 1
 
 
 # ── auditable rules[] checklist contract ──

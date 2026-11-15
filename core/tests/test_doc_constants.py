@@ -85,14 +85,6 @@ def test_every_manifest_table_has_a_row_in_the_per_table_column_table():
     assert not missing, f"tables without a row in the per-table column table: {missing}"
 
 
-def test_the_result_runs_row_names_every_json_column():
-    """A header JSON column added to the MANIFEST must be named in the ``result_runs`` row (PH-1, #23)."""
-    text = (_REPO / "docs" / "data_architecture.md").read_text(encoding="utf-8")
-    row = next(line for line in text.splitlines() if line.startswith("| `result_runs` |"))
-    json_columns = [c for c in rawstore._columns_of(rawstore.MANIFEST["result_runs"])
-                    if rawstore._col_type("result_runs", c).split("(", 1)[0].rstrip("[]") == "JSON"]
-    missing = [c for c in json_columns if f"`{c}`" not in row]
-    assert not missing, f"result_runs JSON columns not named in docs/data_architecture.md: {missing}"
 
 
 def test_the_stage_2_table_names_the_file_each_table_lives_in():
@@ -132,27 +124,6 @@ def test_the_spx_tree_row_no_longer_calls_it_external():
     assert "module_spx_gamma/data" in row and "outside the repo" not in row and "external" not in row
 
 
-def test_data_architecture_names_no_scheduled_job_or_history_the_code_does_not_have():
-    """#288 (review B14): three sentences described a forward-test collector, two 22:30 tasks and calibration history
-    that no code installs or keeps. ``register_tasks.ps1`` installs only the backup; the registry has five tasks."""
-    from RevenueChaser.core import automations
-    text = (_REPO / "docs" / "data_architecture.md").read_text(encoding="utf-8")
-    for phrase in ("forward-test collector", "forward-test history", "calibration stats", "22:30", "Outcomes + Rotation"):
-        assert phrase not in text, f"docs/data_architecture.md still says {phrase!r}"
-    # An hourly row (RC-Build, PR 2) is stated by its minute: "hourly at :05".
-    times = {e.name: f"hourly at :{e.time[-2:]}" if e.hourly else e.time for e in automations.REGISTRY}
-    assert times == {"RC-Relatedness-OffPeak": "12:30",
-                     "RC-ValueChain-Sync": "13:00", "RC-Daily-Bars": "23:00",
-                     "RC-Screeners-Daily": "23:30", "RC-Forecast-Outcomes": "23:35",
-                     "RC-Forecast-Baselines": "23:50",
-                     "RC-Index-Lists": "10:00", "RC-Earnings-Calendar": "23:40", "RC-Short-Interest": "23:40",
-                     "RC-Earnings-Daytime": "13:00", "RC-Macro-Weekly": "23:40", "RC-CFTC-Weekly": "23:40",
-                     "RC-IBKR-Login-Check": "09:15",
-                     "RC-Build": "hourly at :05", "RC-Backup-Weekly": "03:30", "RC-SPX-Gamma-Fetch": "06:30"}
-    for stamp in times.values():
-        assert stamp in text, f"the registered time {stamp} is not in docs/data_architecture.md"
-    ps1 = (_REPO / "register_tasks.ps1").read_text(encoding="utf-8")
-    assert "RC-Backup-Weekly" in ps1 and "RC-Store-Backup" not in ps1 and "RC-ValueChain-Sync" not in ps1
 
 
 def test_data_health_lookup_line_names_the_500_case_and_the_served_files():

@@ -13,7 +13,6 @@ from RevenueChaser.core.reporting_common import (
     help_html, notice_html, provider_health_html, universe_provenance_html, watchlist_html,
 )
 from RevenueChaser.module_asymmetric_growth import engine
-from RevenueChaser.module_asymmetric_growth import history as ag_history
 
 
 def _card_rows(cards: list[dict]) -> list[dict]:
@@ -85,37 +84,6 @@ def _universe_tile_and_funnel(result: dict, summary: dict) -> tuple[str, str]:
     return tile, funnel_mod.funnel_panel_html(steps)
 
 
-def _history_panel(sessions: list[dict], error: str | None = None) -> str:
-    """The recorded-sessions panel (#380, slice A2): what the result history holds for this board, newest first."""
-    head = ('<details class="rules" id="history-panel"><summary>Recorded sessions (result history)</summary>'
-            '<div class="rules-body">')
-    if error:
-        return head + f'<p>History could not be read: {esc(error)}</p></div></details>'
-    if not sessions:
-        return head + ('<p>No session recorded yet: the first complete Fetch after a session close records one.</p>'
-                       '</div></details>')
-    rows = []
-    for s in sessions:
-        avg = "" if s["avg_points"] is None else f'{s["avg_points"]:.1f}'
-        rows.append(f'<tr><td>{esc(s["session_date"])}</td><td>{esc(s["runs"])}</td><td>{esc(s["names"])}</td>'
-                    f'<td>{esc(avg)}</td><td>{esc(", ".join(s["top"] or []))}</td></tr>')
-    body = "".join(rows)
-    return (head + '<p>One snapshot per session: the first complete Fetch after the close (later Fetches of the '
-            'session are counted, their rows are not kept). Read when this page was rendered, so a Fetch shows its '
-            'own session from the next Refresh.</p>'
-            f'<table><tr><th>Session</th><th>Fetches</th><th>Names</th><th>Avg pts</th>'
-            f'<th>Top {ag_history.TOP_N} by points</th></tr>{body}</table></div></details>')
-
-
-def _history_html() -> str:
-    """Read the history for the panel; a failed read is shown on the board, never a failed render."""
-    try:
-        return _history_panel(ag_history.recorded_sessions())
-    except Exception as exc:  # noqa: BLE001 - the board renders without its history panel's rows
-        first = str(exc).splitlines()[0] if str(exc) else ""
-        return _history_panel([], f"{type(exc).__name__}: {first}")
-
-
 def render_asymmetric_growth_hunter_html(result: dict) -> str:
     summary = result.get("summary", {})
     asof = result.get("asof", "")
@@ -153,7 +121,7 @@ def render_asymmetric_growth_hunter_html(result: dict) -> str:
                     f'QA: {score_errors} ticker(s) could not be scored ({kinds}); see the log.</div>')
 
     universe_tile, funnel_html = _universe_tile_and_funnel(result, summary)
-    history_html = _history_html()
+    history_html = ""   # the recorded-sessions panel read the old history file (#860)
     # The prices-store session the momentum came from (#380 S4, PR 11): the Fetch dates it, a Refresh restores it from the header.
     prices_date = result.get("data_as_of")
     prices_chip = (f'<span id="prices-date">Prices: session {esc(prices_date)}</span>'

@@ -34,10 +34,6 @@ def world(monkeypatch):
 
 def test_the_rrg_reads_the_prices_store_not_d01(world):
     world.setattr(engine, "MACRO_SERIES", {})
-    rawstore.write_rows("price_bars_daily", [{
-        "ticker": "SPY", "session_date": d, "open": 1.0, "high": 1.0, "low": 1.0, "close": 1.0, "adj_close": None,
-        "volume": 1.0, "split_ratio": None, "adj_source": None, "source": "uw", "fetched_at": 0.0, "run_id": "old",
-        "run_at": 0.0} for d in DAYS])
     eng = engine.RotationEngine()
     assert eng.process_all() == []                                      # SPY only in the old D01: no map
     prices_store.put_bars(_bars("SPY") + _bars("XLK", 0.002) + _bars("XLE", -0.001), replace=False)

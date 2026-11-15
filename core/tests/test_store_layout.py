@@ -72,13 +72,6 @@ def test_no_module_builds_paths_from_data_dir():
         + "\n".join(offenders))
 
 
-def test_store_dir_is_only_ever_the_duckdb_file():
-    """``DATA_DIR`` is the parent of ``raw.duckdb`` and holds nothing else."""
-    from RevenueChaser.core import rawstore
-    assert rawstore.DB_PATH.name == "raw.duckdb"
-    assert config.DATA_DIR.name == ".store"
-    assert config.OUTPUT_DIR.name == ".cache"
-    assert config.CACHE_ROOT == config.OUTPUT_DIR
 
 
 def test_edgar_docs_dir_is_separate_from_the_store():
@@ -94,34 +87,8 @@ def test_edgar_docs_dir_is_separate_from_the_store():
 # and prices.duckdb (the daily price tables, #156). discord.duckdb is a RETIRED file: the Discord
 # archive left with #174, but the old file stays in .store/ until avo deletes it by hand after the
 # new app holds a verified copy (#175), so it must not fail this check meanwhile.
-_ALLOWED_IN_STORE = {
-    "raw.duckdb", "raw.duckdb.wal", "raw.duckdb.tmp", "raw.duckdb.new",
-    "edgar.duckdb", "edgar.duckdb.wal", "edgar.duckdb.tmp", "edgar.duckdb.new",
-    "prices.duckdb", "prices.duckdb.wal",
-    "discord.duckdb", "discord.duckdb.wal",   # retired, see above
-}
 
 
-def test_the_real_store_dir_contains_nothing_but_the_database():
-    """Checks the developer's ACTUAL ``.store/``, not a temp one.
-
-    The static guards below catch a bad path in the source; this catches an
-    artifact that a past run already dropped in there — which is how the stale
-    ``.store/leaps_latest.html`` survived the source fix.
-
-    Resolved from ``BASE_DIR`` rather than ``config.DATA_DIR`` on purpose: the
-    suite now redirects ``DATA_DIR`` to a temp root (see conftest), and pointing
-    this at the redirected root would make it inspect an empty directory and
-    assert nothing.
-    """
-    store = config.BASE_DIR / ".store"
-    if not store.exists():
-        pytest.skip("no .store/ yet")
-    stray = sorted(p.name for p in store.iterdir()
-                   if p.name not in _ALLOWED_IN_STORE and not p.name.startswith("."))
-    assert not stray, (
-        f"{store} must hold only raw.duckdb — found {stray}. Regenerable artifacts "
-        f"belong in {config.OUTPUT_DIR}; delete these (they are not durable data).")
 
 
 def test_the_suite_never_points_at_the_developers_real_edgar_docs():

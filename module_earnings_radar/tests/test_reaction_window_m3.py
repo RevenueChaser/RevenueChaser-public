@@ -70,12 +70,6 @@ def test_still_one_ohlc_request_and_it_asks_for_the_long_window(monkeypatch):
     assert max(uw.requests) == pl.REACTION_OHLC_SESSIONS
 
 
-def test_other_readers_keep_the_last_sixty_bars(monkeypatch):
-    from RevenueChaser.module_earnings_radar.history import packet_ohlc
-    card, _ = _card(monkeypatch)
-    packet = json.loads(card.raw_packet_json)
-    assert "ohlc" not in packet           # E4: rebuilt from the year, not stored twice
-    assert len(packet_ohlc(packet)) == pl.READER_OHLC_SESSIONS == 60
 
 
 def test_the_stored_d01_series_serves_the_reaction_window(monkeypatch):

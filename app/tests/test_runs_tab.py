@@ -34,128 +34,36 @@ def _row(run_id, **over):
     return row
 
 
-def _write(*rows):
-    rawstore.write_rows("job_runs", list(rows))
 
 
 # ── the reader ────────────────────────────────────────────────────────────────
 
-def test_the_newest_run_comes_first():
-    _write(_row("old", started_at=1_792_000_000.0), _row("new", started_at=1_792_900_000.0))
-    got = runview.read()
-    assert [r["run_id"] for r in got["rows"]] == ["new", "old"]
-    assert got["total"] == 2 and got["shown"] == 2
 
 
-def test_the_limit_caps_the_rows_and_total_still_counts_them_all():
-    _write(*[_row(f"r{i}", started_at=1_792_000_000.0 + i) for i in range(5)])
-    got = runview.read(limit=2)
-    assert [r["run_id"] for r in got["rows"]] == ["r4", "r3"]
-    assert got["total"] == 5 and got["shown"] == 2 and got["limit"] == 2
 
 
-def test_a_queued_run_that_never_started_is_still_listed():
-    """Ordered on started_at alone, a row with no start would sort last and look ancient."""
-    _write(_row("started", started_at=1_792_000_000.0),
-           _row("queued", queued_at=1_792_900_000.0, started_at=None, finished_at=None, status="queued"))
-    assert [r["run_id"] for r in runview.read()["rows"]] == ["queued", "started"]
 
 
-def test_a_finished_run_carries_its_duration_and_a_running_one_does_not():
-    _write(_row("done", started_at=1_000.0, finished_at=1_091.5),
-           _row("going", started_at=2_000.0, finished_at=None, status="running"))
-    by_id = {r["run_id"]: r for r in runview.read()["rows"]}
-    assert by_id["done"]["duration_s"] == pytest.approx(91.5)
-    assert by_id["going"]["duration_s"] is None and by_id["going"]["status"] == "running"
 
 
-def test_a_negative_span_is_no_duration_at_all():
-    """The two stamps are written in different calls; a clock step between them is not a run that took
-    minus four seconds."""
-    _write(_row("backwards", started_at=2_000.0, finished_at=1_996.0))
-    assert runview.read()["rows"][0]["duration_s"] is None
 
 
-def test_a_run_that_recorded_no_trigger_stays_unrecorded():
-    """The dashboard writer leaves trigger/source NULL (#83). The reader must not infer one from the lane."""
-    _write(_row("dash", lane="short", trigger=None, source=None),
-           _row("task", lane=None, trigger="scheduled", source="RC-Daily-Bars",
-                registry_name="RC-Daily-Bars", module="RC-Daily-Bars"))
-    by_id = {r["run_id"]: r for r in runview.read()["rows"]}
-    assert by_id["dash"]["trigger"] is None and by_id["dash"]["source"] is None
-    assert by_id["task"]["trigger"] == "scheduled" and by_id["task"]["source"] == "RC-Daily-Bars"
 
 
-def test_the_params_come_back_as_an_object():
-    _write(_row("j", params={"ticker": "RTX"}))
-    assert runview.read()["rows"][0]["params"] == {"ticker": "RTX"}
 
 
-def test_only_the_columns_the_page_shows_are_read():
-    """The payload travels on every poll, and a column with no reader is weight. ``counts`` has readers and
-    writers since #136 (both writers fill it, and the page has a cell), so it is selected; ``pid``, ``lane``
-    and ``registry_name`` still have none."""
-    _write(_row("k", counts={"rows": 12}))
-    row = runview.read()["rows"][0]
-    assert set(row) == {"run_id", "module", "source", "trigger", "params", "counts", "queued_at",
-                        "started_at", "finished_at", "status", "error", "message", "duration_s"}
-    for dead in ("pid", "lane", "registry_name"):
-        assert dead not in runview.COLUMNS, f"{dead} is selected but nothing shows it"
 
 
-def test_the_counts_a_run_recorded_come_back_as_an_object_and_a_run_with_none_as_nothing():
-    """#136: the column the Runs tab shows. A run that reported no number keeps it NULL — the page renders
-    a dash — rather than being shown a zero it never measured."""
-    _write(_row("counted", counts={"rows_inserted": 93714, "scope": 7}))
-    _write(_row("silent"))
-
-    by_id = {r["run_id"]: r for r in runview.read()["rows"]}
-    assert by_id["counted"]["counts"] == {"rows_inserted": 93714, "scope": 7}
-    assert by_id["silent"]["counts"] is None
 
 
-def test_the_message_of_a_done_run_and_the_error_of_a_failed_one_both_show():
-    _write(_row("said", status="done", message="nothing to do"),
-           _row("broke", status="error", error="kaput"))
-    by_id = {r["run_id"]: r for r in runview.read()["rows"]}
-    assert by_id["said"]["message"] == "nothing to do" and by_id["said"]["error"] is None
-    assert by_id["broke"]["error"] == "kaput"
 
 
-def test_the_problems_filter_asks_the_table_not_the_page_of_rows():
-    """The failure that matters is the one off the end of the page. 200 clean runs after it must not make
-    the run log answer "no problems": the filter and the count both run in SQL."""
-    _write(*[_row(f"ok{i}", status="done", started_at=2_000.0 + i) for i in range(5)],
-           _row("bad", status="error", error="kaput", started_at=1_000.0),
-           _row("stopped", status="cancelled", started_at=1_001.0))
-    plain = runview.read(limit=3)
-    assert plain["total"] == 7 and [r["run_id"] for r in plain["rows"]] == ["ok4", "ok3", "ok2"]
-    bad = runview.read(limit=3, problems=True)
-    assert bad["total"] == 2, "the count is of the matching runs in the table"
-    assert {r["run_id"] for r in bad["rows"]} == {"bad", "stopped"}
-    assert bad["problems"] is True
 
 
-def test_a_running_row_is_not_a_problem():
-    """Whether an old `running` row is stale is #82's judgement, not this reader's."""
-    _write(_row("going", status="running", finished_at=None))
-    assert runview.read(problems=True)["total"] == 0
 
 
-def test_the_name_filter_matches_the_job_and_the_task_name():
-    _write(_row("a", module="RC-Daily-Bars", source="RC-Daily-Bars", trigger="scheduled"),
-           _row("b", module="daily_bars"), _row("c", module="rotation"))
-    assert {r["run_id"] for r in runview.read(query="daily")["rows"]} == {"a", "b"}
-    assert runview.read(query="DAILY")["total"] == 2, "the match is case-insensitive"
-    assert runview.read(query="rot")["total"] == 1
-    assert runview.read(query="  ")["total"] == 3, "a blank filter is no filter"
 
 
-def test_a_filter_cannot_reach_the_sql_text():
-    _write(_row("a", module="rotation"))
-    got = runview.read(query="'; DROP TABLE job_runs; --")
-    assert got["total"] == 0 and got["rows"] == []
-    assert runview.read()["total"] == 1, "the table is still there"
 
 
 def test_a_long_filter_is_bounded():
@@ -177,11 +85,6 @@ def test_an_empty_table_is_an_empty_page_not_an_error():
 
 # ── the route ─────────────────────────────────────────────────────────────────
 
-def test_the_api_serves_the_rows(client):
-    _write(_row("one", module="spxgamma"))
-    data = client.get("/api/runs").get_json()
-    assert data["total"] == 1
-    assert data["rows"][0]["run_id"] == "one" and data["rows"][0]["module"] == "spxgamma"
 
 
 def test_the_api_clamps_the_limit(client):
@@ -189,29 +92,8 @@ def test_the_api_clamps_the_limit(client):
     assert data["limit"] == runview.MAX_LIMIT
 
 
-def test_the_api_passes_the_filters_through(client):
-    _write(_row("ok", status="done", module="rotation"),
-           _row("bad", status="error", module="RC-Daily-Bars", source="RC-Daily-Bars"))
-    assert client.get("/api/runs").get_json()["total"] == 2
-    problems = client.get("/api/runs?problems=1").get_json()
-    assert problems["total"] == 1 and problems["rows"][0]["run_id"] == "bad"
-    named = client.get("/api/runs?q=daily").get_json()
-    assert named["total"] == 1 and named["query"] == "daily"
-    both = client.get("/api/runs?problems=1&q=rotation").get_json()
-    assert both["total"] == 0, "the two filters are ANDed"
 
 
-@pytest.mark.parametrize("query, on", [
-    ("", False), ("?problems=1", True), ("?problems", True), ("?problems=", True), ("?problems=yes", True),
-    ("?problems=0", False), ("?problems=false", False), ("?problems=FALSE", False), ("?problems=no", False),
-    ("?problems=off", False), ("?problems=%200%20", False),
-])
-def test_the_problems_flag_reads_an_off_value_as_off(client, query, on):
-    """#131 item 5: ``is not None`` made ``?problems=0`` a filter that was on."""
-    _write(_row("ok", status="done"), _row("bad", status="error"))
-    data = client.get("/api/runs" + query).get_json()
-    assert data["problems"] is on
-    assert data["total"] == (1 if on else 2)
 
 
 def test_the_api_takes_no_write(client):
@@ -258,10 +140,6 @@ def test_the_page_renders_its_controls(client):
         assert f">{word}" not in low, f"no {word} button: the tab is read-only"
 
 
-def test_the_page_carries_the_first_rows_with_it(client):
-    _write(_row("seeded", module="module_leaps", status="error", error="kaput"))
-    html = client.get("/view/runs").get_data(as_text=True)
-    assert "seeded" in html and "module_leaps" in html
 
 
 def test_the_page_puts_every_stored_value_in_as_text(client):

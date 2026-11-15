@@ -30,26 +30,6 @@ def _news():
         "run_id": "t", "run_at": NOW}])
 
 
-def _welcome():
-    rawstore.write_rows("welcome_snapshot", [
-        {"series": "SPX", "session_date": date(2026, 11, 9), "close": 6012.5, "prev_close": 6000.0, "change": 12.5,
-         "change_pct": 12.5 / 6000, "spark": json.dumps([5990.0, 6000.0, 6012.5]), "run_id": "t", "run_at": NOW},
-        {"series": "VIX", "session_date": date(2026, 11, 9), "close": 17.2, "prev_close": 16.0, "change": 1.2,
-         "change_pct": 0.075, "spark": json.dumps([16.0, 17.2]), "run_id": "t", "run_at": NOW}])
-    rawstore.write_rows("welcome_earnings", [
-        {"earnings_date": date(2026, 11, 10), "ticker": t, "report_session": rs, "full_name": f"{t} Inc",
-         "expected_move_perc": em, "report_time": None, "source_session": date(2026, 11, 9), "first_seen": 1.0,
-         "last_seen": 1.0, "retired_at": ret, "run_id": "t", "run_at": NOW}
-        for t, rs, em, ret in (("CRWV", "afterhours", 0.121, None), ("AAA", "premarket", 0.05, None),
-                               ("GONE", "premarket", 0.05, NOW))])
-    rawstore.write_rows("welcome_freshness", [
-        {"job": "spxgamma", "last_status": "error", "last_finished_at": NOW - HOUR, "last_ok_at": NOW - 30 * HOUR,
-         "last_failed_at": NOW - HOUR, "last_error": "UW <503>", "run_id": "t", "run_at": NOW},
-        {"job": "RC-Earnings-Calendar", "last_status": "done", "last_finished_at": NOW - 8 * HOUR,
-         "last_ok_at": NOW - 8 * HOUR, "last_failed_at": None, "last_error": None, "run_id": "t", "run_at": NOW},
-        {"job": "old_job", "last_status": "done", "last_finished_at": NOW - 30 * 24 * HOUR,
-         "last_ok_at": NOW - 30 * 24 * HOUR, "last_failed_at": None, "last_error": None, "run_id": "t",
-         "run_at": NOW}])
 
 
 def test_the_calendar_card_reads_the_news_board_file():
@@ -66,28 +46,10 @@ def test_without_the_news_board_file_the_card_says_so():
     assert "News board henüz kurulmadı" in page
 
 
-def test_earnings_list_watched_names_first_and_hide_retired():
-    _welcome()
-    page = report.render_html(now=NOW, watchlist={"CRWV"}, labels={})
-    assert page.index("CRWV") < page.index("AAA") and "GONE" not in page
-    assert "±%12,1" in page and "listemde" in page and "Kapanış sonrası" in page and "Açılış öncesi" in page
 
 
-def test_the_snapshot_tiles_show_close_change_date_and_a_line():
-    _welcome()
-    page = report.render_html(now=NOW, watchlist=set(), labels={})
-    assert "6.012,5" in page and "+12,5" in page and "9 Kas kapanışı" in page
-    assert page.count("<svg") >= 2 and "VIX" in page
-    assert 'data-dir="bad"' in page                         # VIX up reads as bad, SPX up as good
-    assert 'data-dir="good"' in page
 
 
-def test_freshness_flags_a_failed_job_and_drops_old_ones():
-    _welcome()
-    page = report.render_html(now=NOW, watchlist=set(), labels={"spxgamma": "SPX Gamma"})
-    assert "SPX Gamma" in page and "UW &lt;503&gt;" in page and "RC-Earnings-Calendar" in page
-    assert "old_job" not in page
-    assert page.index("SPX Gamma") < page.index("RC-Earnings-Calendar")          # failures first
 
 
 def test_a_run_with_failed_provider_calls_is_flagged_not_ticked():
