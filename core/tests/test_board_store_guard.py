@@ -82,12 +82,9 @@ def _code_files():
         yield rel, p.read_text(encoding="utf-8", errors="replace")
 
 
-#: The one board table still written whole, with the issue that converts it: ``module_value_chain``'s sync
-#: recomputes the complete edge set and ends in ``replace_all`` (plan §10 names this call site as its own PR).
-#: #860 stage 1 made it a board table without touching its writer, so the rule reaches it before the conversion
-#: does. ``replace_all`` is atomic and refuses an empty write (#284), so what the exception carries is the
-#: "no routine from-scratch rebuild" principle, not a half-written table. Remove the line with #863.
-_WHOLE_REWRITE_EXCEPTIONS = {"chain_mentions": 863}
+#: Board tables still written whole, each with the issue that converts it. Empty since #863 converted
+#: ``chain_mentions``; a new entry needs its own issue.
+_WHOLE_REWRITE_EXCEPTIONS: dict[str, int] = {}
 
 
 def test_no_board_table_is_rewritten_whole():
