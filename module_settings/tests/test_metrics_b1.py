@@ -75,10 +75,23 @@ def test_a_dataset_reports_its_state_from_its_newest_check():
     assert 'rc_dataset_last_check_result{dataset="market_series",kind="market"} 0' in fam["rc_dataset_last_check_result"]
 
 
-def test_a_dataset_never_checked_reads_never_and_has_no_result():
+def test_a_dataset_never_checked_reads_never_and_its_result_says_never_ran():
+    """avo, 15 Nov 2026: every dataset shows in Grafana, one that never ran too (-1, not left out)."""
     fam = _families(metrics.render(_collect()))
     assert 'rc_dataset_state{dataset="market_series",kind="market",state="never"} 1' in fam["rc_dataset_state"]
-    assert fam["rc_dataset_last_check_result"] == []
+    assert sorted(fam["rc_dataset_last_check_result"]) == [
+        'rc_dataset_last_check_result{dataset="market_series",kind="market"} -1',
+        'rc_dataset_last_check_result{dataset="wrds/prices",kind="prices"} -1']
+
+
+def test_every_dataset_reports_its_mode_off_included():
+    """avo, 15 Nov 2026: a dataset whose own mode is off still shows in Grafana, with "off"."""
+    ops.dataset_mode_set("wrds/prices", "parquet", by="test")
+    fam = _families(metrics.render(_collect()))
+    on = {l for l in fam["rc_dataset_mode"] if l.endswith(" 1")}
+    assert on == {'rc_dataset_mode{dataset="market_series",kind="market",mode="off"} 1',
+                  'rc_dataset_mode{dataset="wrds/prices",kind="prices",mode="parquet"} 1'}
+    assert len(fam["rc_dataset_mode"]) == 2 * len(ops.KIND_MODES), "every mode present, 0 or 1"
 
 
 def test_provider_calls_and_the_day_cap():

@@ -58,11 +58,12 @@ HELP = {
     "rc_need_reads_today": ("gauge", "Requests answered for a need on the current New York day, every process "
                                      "together."),
     "rc_dataset_state": ("gauge", "1 for the dataset's current state (fresh, unchanged, late, stale, never)."),
-    "rc_dataset_last_check_result": ("gauge", "The newest check's result: 0 changed or unchanged, 1 skipped, "
-                                     "2 failed (higher is worse)."),
+    "rc_dataset_last_check_result": ("gauge", "The newest check's result: -1 never ran, 0 changed or unchanged, "
+                                     "1 skipped, 2 failed (higher is worse)."),
     "rc_dataset_checked_timestamp_seconds": ("gauge", "When the dataset's newest check ran (its New York day, "
                                              "00:00 UTC), epoch seconds."),
     "rc_dataset_paused": ("gauge", "1 when the dataset's schedule is paused."),
+    "rc_dataset_mode": ("gauge", "1 for the mode the hourly pass runs the dataset in (off, raw, parquet, full)."),
     "rc_dataset_open_issues": ("gauge", "Open build issues of the dataset."),
     "rc_builder_last_run_timestamp_seconds": ("gauge", "When the builder last started a run, epoch seconds."),
     "rc_builder_timer_on": ("gauge", "1 when the hourly builder timer is on, 0 when off (absent: not known)."),
@@ -222,7 +223,7 @@ def collect(now: datetime | None = None, *, datasets: dict | None = None, timer:
     def one_dataset(name, ds, out) -> None:
         """One dataset's rows into ``out`` (its own dict, merged only when the whole dataset read)."""
         for family in ("rc_dataset_state", "rc_dataset_last_check_result", "rc_dataset_checked_timestamp_seconds",
-                       "rc_dataset_paused", "rc_dataset_open_issues"):
+                       "rc_dataset_paused", "rc_dataset_mode", "rc_dataset_open_issues"):
             out[family] = []
         label = {"dataset": name, "kind": str(getattr(ds, "kind", "") or "")}
         recent = ops.recent_checks(name, limit=1)
@@ -237,8 +238,13 @@ def collect(now: datetime | None = None, *, datasets: dict | None = None, timer:
             when = _day_epoch(last.get("checked_on"))
             if when is not None:
                 out["rc_dataset_checked_timestamp_seconds"].append((label, when))
+        else:   # avo, 15 Nov 2026: every dataset shows in Grafana, one that never ran too
+            out["rc_dataset_last_check_result"].append((label, -1))
         paused = bool(schedule and schedule.get("paused_at") is not None)
         out["rc_dataset_paused"].append((label, 1 if paused else 0))
+        mode = ops.dataset_mode(name, label["kind"])
+        for m in ops.KIND_MODES:
+            out["rc_dataset_mode"].append(({**label, "mode": m}, 1 if m == mode else 0))
         out["rc_dataset_open_issues"].append((label, ops.open_issues(name, limit=0)[0]))
 
     def builder() -> None:

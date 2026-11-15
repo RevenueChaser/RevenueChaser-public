@@ -998,9 +998,10 @@ code:
 | `rc_provider_rate_limited_today` | `provider` | HTTP 429 answers on the New York day |
 | `rc_need_reads_today` | `need` | requests answered for a need on the New York day, every process together |
 | `rc_dataset_state` | `dataset`, `kind`, `state` | 1 for its state: fresh, unchanged, late, stale, never |
-| `rc_dataset_last_check_result` | `dataset`, `kind` | 0 changed or unchanged, 1 skipped, 2 failed |
+| `rc_dataset_last_check_result` | `dataset`, `kind` | -1 never ran, 0 changed or unchanged, 1 skipped, 2 failed |
 | `rc_dataset_checked_timestamp_seconds` | `dataset`, `kind` | the newest check's day |
 | `rc_dataset_paused` | `dataset`, `kind` | 1 when its schedule is paused |
+| `rc_dataset_mode` | `dataset`, `kind`, `mode` | 1 for the mode the hourly pass runs it in: off, raw, parquet, full |
 | `rc_dataset_open_issues` | `dataset`, `kind` | open build issues |
 | `rc_builder_last_run_timestamp_seconds` | | when the builder last started a run |
 | `rc_builder_timer_on` | | 1 on, 0 off, absent when not known |
