@@ -9,11 +9,15 @@ model). A company is asked when the key of its current text has no ``ok`` row an
 attempts: a new filing, a new text (its hash) or a new prompt version is a new key; the same key is not asked
 again. Two writers of one question (a comparison) are two keys.
 
-**The attempts rule** (moved unchanged from ``module_relatedness.engine``): an unusable reply is counted on its key,
-three of them and the company waits for a new filing or prompt, and a ``partial`` answer is never replaced by an
-``empty`` one.
+**The attempts rule** (from ``module_relatedness.engine``): an unusable reply is counted on its key, three of them
+and the company waits for a new filing, a new prompt or :data:`RETRY_AFTER_S`, and a ``partial`` answer is never
+replaced by an ``empty`` one. A run whose first replies are all unusable stops and stores none
+(``asker.UNUSABLE_STOP``).
 
-**The raw replies** are kept with the answer (``raw``) and in one raw file per run, which is written before the run
+**Nothing is asked when the Parquet tree is behind the live table** (:func:`tree_behind`): a lost partition must
+not read as "nothing answered".
+
+**The raw replies** are kept with the answer (``raw``) and in one raw file per run and question, written before the run
 can stop, so an answer that was paid for is stored even when the run ends on a pause or a provider error. The
 Parquet tree is the durable copy of the answers (plan risk R4: it must be in the backup set before the first real
 run).
@@ -29,6 +33,8 @@ from pathlib import Path
 
 import duckdb
 
+from ... import serving
+from ....core import job_lock
 from .. import base
 from ..fundamentals import common
 from . import KIND, asker
@@ -39,6 +45,9 @@ TABLE = "read_answer"
 PARTITION = "answers.parquet"
 #: Unusable replies on one key before the company waits for a new filing or prompt (the Relatedness rule).
 MAX_ATTEMPTS = 3
+#: ...or this long: a key at its attempts is tried once more after it, so nothing a passing fault caused (a gate
+#: down for three runs) is parked until next year's filing. A filing that can never be read costs one call a month.
+RETRY_AFTER_S = 30 * 86400.0
 
 KEY = ["question", "prompt_version", "cik", "accession", "document", "input_hash", "provider", "model"]
 #: ``fetched_at`` is when the answer was asked; ``answer`` is the parsed JSON, ``raw`` the replies (JSON list, one
@@ -98,8 +107,11 @@ def _plan(q: Question, ctx: base.RunContext) -> tuple[list[asker.Job], dict[tupl
     ciks = sorted({common.norm_cik(c) for c in q.scope()} - {None, ""}, key=int)
     if not ciks:
         return [], {}, []
-    inputs = q.inputs(ciks)
     have = held(q.id)
+    behind = tree_behind(q, have)
+    if behind:
+        raise base.SourceError(behind)
+    inputs = q.inputs(ciks)
     answered = {_text_key(k) for k, r in have.items() if r["status"] == asker.OK}
     jobs, prior, no_text = [], {}, []
     for cik in ciks:
@@ -113,11 +125,37 @@ def _plan(q: Question, ctx: base.RunContext) -> tuple[list[asker.Job], dict[tupl
             continue
         job = asker.Job(q, cik, inp, q.input_hash(inp))
         old = have.get(_job_key(job))
-        if _text_key(_job_key(job)) in answered or (old is not None and old["attempts"] >= MAX_ATTEMPTS):
+        if _text_key(_job_key(job)) in answered or (
+                old is not None and old["attempts"] >= MAX_ATTEMPTS
+                and time.time() - (old["fetched_at"] or 0) < RETRY_AFTER_S):
             continue
         jobs.append(job)
         prior[_job_key(job)] = old
     return jobs, prior, no_text
+
+
+def tree_behind(q: Question, have: dict[tuple, dict]) -> str | None:
+    """Why ``q`` must not be asked: the live table holds more ``ok`` answers than the Parquet tree, or None.
+
+    What is answered is read from Parquet, which has no backup; a lost or older partition would read as "nothing
+    answered" and the run would re-read every company by itself. The live file is the witness that it is the tree
+    that is behind, so the run stops and asks nothing."""
+    try:
+        con = serving.open_read(KIND)
+    except serving.ServingFileMissing:
+        return None
+    try:
+        n = con.execute(f"SELECT count(*) FROM {TABLE} WHERE question = ? AND status = ?",
+                        [q.id, asker.OK]).fetchone()[0]
+    except duckdb.Error:                # a live file from before the table existed holds no answers
+        return None
+    finally:
+        con.close()
+    held_ok = sum(1 for r in have.values() if r["status"] == asker.OK)
+    if n > held_ok:
+        return (f"{q.id}: the live table holds {n} ok answers and the Parquet tree {held_ok}; the tree is behind "
+                f"(lost or restored older), so nothing is asked until it is rebuilt from {KIND}.duckdb")
+    return None
 
 
 def _count(missing_chunks: str | None) -> int:
@@ -158,34 +196,52 @@ class Reads:
         return calendar.today_ny()
 
     def fetch(self, ctx: base.RunContext, as_of: date) -> list[Path]:
-        """Ask every registered question what is stale; one raw file of this run's rows."""
+        """Ask every registered question what is stale, one question after the other; one raw file per question.
+
+        **One asker at a time** (:data:`asker.ASK_LOCK`), whoever started the run: a run that does not get the lock
+        asks nothing and stages nothing, and its build still loads what the other run has written.
+
+        **A question is finished before the next is planned**: its answers are in Parquet when the next question
+        builds its inputs, so a question that reads another's answer (the business section the locator found,
+        for the profile) never runs on the text it would have had without it. Registration order is run order.
+        """
         if not QUESTIONS:
             ctx.notes.append("no question registered")
             return []
-        jobs, prior, rows = [], {}, []
+        with job_lock.acquire(asker.ASK_LOCK) as got:
+            if not got:
+                ctx.notes.append("another SEC read is asking: nothing asked by this run")
+                return []
+            return self._ask_all(ctx)
+
+    def _ask_all(self, ctx: base.RunContext) -> list[Path]:
+        started = ctx.clock()
+        raws: list[Path] = []
+        asked = left_all = 0
+        by_status: dict[str, int] = {}
+        stop: BaseException | None = None
         for q in QUESTIONS.values():
             ctx.check_pause()
-            j, p, n = _plan(q, ctx)
-            jobs += j
-            prior.update(p)
-            rows += n
-        replies, stop, left = asker.ask(ctx, jobs)
-        rows += [row_of(ctx, r, prior[_job_key(r.job)]) for r in replies]
-        by_status: dict[str, int] = {}
-        for r in rows:
-            by_status[r["status"]] = by_status.get(r["status"], 0) + 1
-        ctx.notes.append(f"{len(jobs)} to ask over {len(QUESTIONS)} question(s); "
-                         + (", ".join(f"{s} {n}" for s, n in sorted(by_status.items())) or "nothing new")
-                         + (f"; {left} left for the next run" if left else ""))
-        if not rows:
+            jobs, prior, rows = _plan(q, ctx)
+            replies, stop, left = asker.ask(ctx, jobs, started)
+            rows += [row_of(ctx, r, prior[_job_key(r.job)]) for r in replies]
+            asked += len(jobs)
+            left_all += left
+            for r in rows:
+                by_status[r["status"]] = by_status.get(r["status"], 0) + 1
+            if rows:
+                # Written and converted before the next question (and before a stop), so nothing paid for is lost.
+                raw = base.write_raw_json(raw_path(f"{ctx.run_id}.{q.id}"), {"run_id": ctx.run_id, "rows": rows})
+                self.to_parquet_all(ctx, [raw])
+                raws.append(raw)
             if stop is not None:
-                raise stop
-            return []
-        raw = base.write_raw_json(raw_path(ctx.run_id), {"run_id": ctx.run_id, "rows": rows})
+                break
+        ctx.notes.append(f"{asked} to ask over {len(QUESTIONS)} question(s); "
+                         + (", ".join(f"{s} {n}" for s, n in sorted(by_status.items())) or "nothing new")
+                         + (f"; {left_all} left for the next run" if left_all else ""))
         if stop is not None:
-            self.to_parquet_all(ctx, [raw])     # stored before the stop, so nothing paid for is lost
             raise stop
-        return [raw]
+        return raws
 
     def backfill(self, ctx: base.RunContext, start: date | None, end: date) -> None:
         raise base.SourceError(f"{NAME} has no backfill: a run asks what is stale")

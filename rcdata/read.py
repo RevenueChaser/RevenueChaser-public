@@ -1780,9 +1780,9 @@ def sec_reads(ciks: Iterable = (), question: str | None = None, *, provider: str
               model: str | None = None, raw: bool = False) -> list[dict]:
     """Per company the newest answer to ``question`` (``sec.read``), one each; a company with none is absent.
 
-    An answer is current whoever wrote it, so every writer's rows are read; where two writers answered the same
-    filing (a comparison) the question's configured one (``build/sec_reads/questions.py``) wins. ``provider`` /
-    ``model`` narrow the read to one writer. ``answer`` is the parsed JSON; only ``ok`` and ``partial`` rows are
+    An answer is current whoever wrote it, so every writer's rows are read: of one filing's answers the one under
+    the question's current prompt version wins, then the newest asked. ``provider`` / ``model`` narrow the read to
+    one writer (a comparison). ``answer`` is the parsed JSON; only ``ok`` and ``partial`` rows are
     answers. ``raw=False`` leaves the replies out.
     """
     wanted = sorted({_cik(c) for c in ciks if str(c or "").strip()})
@@ -1797,10 +1797,10 @@ def sec_reads(ciks: Iterable = (), question: str | None = None, *, provider: str
         if value:
             sql += f" AND {col} = ?"
             params.append(str(value))
-    # The configured writer's row first among one filing's answers; bound last, as the QUALIFY is last in the SQL.
+    # The current prompt's row first among one filing's answers; bound last, as the QUALIFY is last in the SQL.
     sql += (" QUALIFY row_number() OVER (PARTITION BY cik ORDER BY filing_date DESC NULLS LAST, "
-            "(provider = ? AND model = ?) DESC, fetched_at DESC) = 1 ORDER BY cik")
-    params += [q.provider if q else "", q.writer_model if q else ""]
+            "(prompt_version = ?) DESC, fetched_at DESC) = 1 ORDER BY cik")
+    params.append(q.prompt_version if q else "")
     rows = _rows("read_answer", sql, params)
     for r in rows:
         r["answer"] = json.loads(r["answer"]) if r.get("answer") else None

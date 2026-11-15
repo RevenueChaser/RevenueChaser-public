@@ -2084,7 +2084,11 @@ the text sent, or `Input.hash_text` when a question leaves its context lines out
 not pay for the answer again. An `ok` answer on (question, prompt version, company, input hash) is current
 **whoever wrote it**: changing a question's writer asks nothing again, and the reader serves every writer's rows,
 the configured writer's first where two answered one filing. Every call writes one row to the request log (the
-question, the company, the chunk, and `ok`, `unusable reply` or the error with its words). An unusable reply is counted on its key; after three the company waits for a new
+question, the company, the chunk, and `ok`, `unusable reply` or the error with its words). One asker at a time,
+whoever started the run (the lock `sec_reads_ask`); a question is finished and in Parquet before the next one is
+planned, so registration order is run order. A run whose first five replies are all unusable stops as failed and
+stores none of them; a key at three attempts is tried once more after 30 days; and nothing is asked while the
+live table holds more `ok` answers than the Parquet tree (a lost tree must not start a full re-read). An unusable reply is counted on its key; after three the company waits for a new
 filing or prompt, and a `partial` answer is never replaced by an `empty` one. Parquet: one partition per question,
 `parquet/sec/reads/question=<id>/answers.parquet`, plus one raw file per run under `raw/sec/reads/`; the Parquet
 tree is the durable copy of the answers.

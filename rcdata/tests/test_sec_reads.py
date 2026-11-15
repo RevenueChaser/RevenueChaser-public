@@ -50,7 +50,7 @@ def question(ciks=("789019", "320193", "999"), text=None, **kw) -> questions.Que
     text = TEXT if text is None else text
     q = questions.Question(
         id=kw.pop("id", "test.products"), owner="test", system="List the products as JSON.",
-        prompt_version="t1", scope=lambda: list(ciks),
+        prompt_version=kw.pop("prompt_version", "t1"), scope=lambda: list(ciks),
         inputs=lambda wanted: {c: questions.Input(f"acc-{c}", f"{c}.htm", date(2026, 2, 1), text[c], "ours-2")
                                for c in wanted if c in text},
         parse=parse, **kw)
@@ -295,3 +295,77 @@ def test_every_call_is_logged_with_how_it_failed(http_mock, monkeypatch):
     assert [w for w, _ in logged] == [f"test.products cik 789019 chunk {i}/3" for i in (1, 2, 3)]
     assert "EvrenError: EVREN HTTP 400: context too long" in logged[0][1] and [r for _, r in logged[1:]] == ["unusable reply", "ok"]
     assert rows("SELECT status, missing_chunks, error FROM read_answer") == [("partial", "0,1", "unusable reply")]
+
+
+# ── The Fable review of 15 Nov 2026 (claude-coordinator reviews/2026-11-15_1905): F1 to F5 ─────────────────────
+
+def test_a_second_asker_asks_nothing_while_one_holds_the_ask_lock(http_mock):
+    http_mock.add("/chat/completions", chat('{"products": ["x"]}'))
+    question(ciks=("789019",))
+    with job_lock.acquire(asker.ASK_LOCK) as got:
+        assert got
+        check = run()
+    assert http_mock.requests == [] and "another SEC read is asking" in check["note"]
+    run()
+    assert len(http_mock.requests) == 1
+
+
+def test_a_question_is_answered_before_the_next_one_builds_its_inputs(http_mock):
+    http_mock.add("/chat/completions", chat('{"products": ["x"]}'))
+    seen = []
+    question(id="test.first", ciks=("789019",))
+
+    def inputs(wanted):
+        seen.append([r["status"] for r in reads.held("test.first").values()])
+        return {"789019": questions.Input("acc", "d.htm", date(2026, 2, 1), "second text")}
+
+    questions.register(questions.Question(id="test.second", owner="test", system="s", prompt_version="t1",
+                                          scope=lambda: ["789019"], inputs=inputs, parse=parse))
+    run()
+    assert seen == [["ok"]] and len(http_mock.requests) == 2
+
+
+def test_a_board_reads_the_current_prompt_version_whoever_wrote_it(http_mock):
+    replies = iter([chat('{"products": ["old"]}'), chat('{"products": ["new"]}')])
+    http_mock.add("/chat/completions", lambda req: (200, json.dumps(next(replies)), {}))
+    question(ciks=("789019",))                             # EVREN, the configured writer, prompt t1
+    run()
+    questions.QUESTIONS.clear()
+    question(ciks=("789019",), provider="deepseek", prompt_version="t2")   # a bulk pass by the other writer
+    run()
+    questions.QUESTIONS.clear()
+    question(ciks=("789019",), prompt_version="t2")        # the writer goes back to EVREN
+    run()
+    assert len(http_mock.requests) == 2                    # t2 is answered: nothing asked again
+    assert [(r["prompt_version"], r["answer"]) for r in read.sec_reads(["789019"], "test.products")] == [
+        ("t2", {"products": ["new"]})]
+
+
+def test_a_run_whose_first_replies_are_all_unusable_stops_and_stores_none(http_mock):
+    many = {str(1000 + i): f"company {i}" for i in range(8)}
+    http_mock.add("/chat/completions", chat('{"products": []}'))
+    question(ciks=tuple(many), text=many)
+    check = run()
+    assert check["result"] == "failed" and "all unusable" in check["note"]
+    assert len(http_mock.requests) == asker.UNUSABLE_STOP and reads.held("test.products") == {}
+
+
+def test_a_key_at_its_attempts_is_tried_again_after_the_retry_time(http_mock, monkeypatch):
+    http_mock.add("/chat/completions", chat('{"products": []}'))
+    question(ciks=("789019",))
+    for _ in range(4):
+        run()
+    assert len(http_mock.requests) == reads.MAX_ATTEMPTS
+    monkeypatch.setattr(reads, "RETRY_AFTER_S", 0.0)
+    run()
+    assert len(http_mock.requests) == reads.MAX_ATTEMPTS + 1
+
+
+def test_nothing_is_asked_when_the_parquet_tree_is_behind_the_live_table(http_mock):
+    http_mock.add("/chat/completions", chat('{"products": ["x"]}'))
+    question(ciks=("789019",))
+    run()
+    reads.partition_path("test.products").unlink()         # the tree is lost; the live table still has the answer
+    check = run()
+    assert check["result"] == "failed" and "the tree is behind" in check["note"]
+    assert len(http_mock.requests) == 1

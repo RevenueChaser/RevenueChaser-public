@@ -35,6 +35,12 @@ POOLS = {"evren": evren.MAX_WORKERS, "deepseek": 8}
 CLIENTS = {"evren": evren, "deepseek": deepseek}
 #: The longest a run asks before it stops and leaves the rest for the next run (R1).
 SLICE_S = 15 * 60.0
+#: Companies whose reply was unusable, with no usable one yet in the run, before the run is called the endpoint's
+#: fault and stopped with none of them stored (the Relatedness rule, ``module_relatedness.config.UNUSABLE_STOP``).
+UNUSABLE_STOP = 5
+#: The one lock every asking run holds, whoever started it (the builder's pass, the service's own unit, a Fetch
+#: press, a command by hand): two askers would break EVREN's one request and rewrite one Parquet partition.
+ASK_LOCK = "sec_reads_ask"
 #: The Relatedness board's own model job (``module_relatedness.engine``); one model job at a time until it moves here.
 RELATEDNESS_LOCK = "relatedness"
 OK, PARTIAL, EMPTY, NO_TEXT = "ok", "partial", "empty", "no_text"
@@ -87,15 +93,28 @@ def _parse(q: Question, reply: str) -> dict | None:
         return None
 
 
-def _ask_one(ctx: base.RunContext, job: Job, started: float, lock: threading.Lock) -> Reply | None:
-    """One company's chunks, in order; None when the run's slice ran out before it started.
+def _ask_one(ctx: base.RunContext, job: Job, started: float, lock: threading.Lock, run: dict) -> Reply | None:
+    """One company's chunks, in order; None when the run's slice ran out, or the run was halted, before it started.
+
+    ``run`` is the run's shared count of companies with and without a usable reply (read and written under
+    ``lock``): the worker itself halts the run at :data:`UNUSABLE_STOP`, so no further company is sent while the
+    caller is still reading the last reply.
 
     The pause and the day cap are read before every call, as ``base.Paused`` promises. A stop after some chunks
     were answered returns them with the stop (``Reply.stop``), so what was paid for is stored. The slice is read
     per company only: a company that started finishes its chunks.
     """
-    if ctx.clock() - started > SLICE_S:
-        return None
+    with lock:
+        if run["halt"] or ctx.clock() - started > SLICE_S:
+            return None
+    reply = _ask_chunks(ctx, job, lock)
+    with lock:
+        run["usable" if reply.status != EMPTY else "unusable"] += 1
+        run["halt"] = run["halt"] or (not run["usable"] and run["unusable"] >= UNUSABLE_STOP)
+    return reply
+
+
+def _ask_chunks(ctx: base.RunContext, job: Job, lock: threading.Lock) -> Reply:
     q = job.question
     client = CLIENTS[q.provider]
     parts: list[dict] = []
@@ -149,11 +168,18 @@ def _ask_one(ctx: base.RunContext, job: Job, started: float, lock: threading.Loc
     return Reply(job, PARTIAL if missing else OK, q.merge(parts), raws, missing, **sent)
 
 
-def ask(ctx: base.RunContext, jobs: list[Job]) -> tuple[list[Reply], BaseException | None, int]:
+def ask(ctx: base.RunContext, jobs: list[Job],
+        started: float | None = None) -> tuple[list[Reply], BaseException | None, int]:
     """Ask every job: ``(replies, the error that stopped the run or None, jobs left unasked)``.
 
     The replies that came back before a stop are returned with it, so the caller stores them before it raises: a
-    paid answer is never thrown away.
+    paid answer is never thrown away. ``started`` is the run's clock when one run asks several questions, so the
+    slice is the run's and not each question's.
+
+    **A wrong endpoint costs five calls and no attempt.** While no company has had a usable reply, the unusable
+    ones are held back; :data:`UNUSABLE_STOP` of them stop the run as failed and none is stored, so a renamed
+    model or a changed reply shape cannot count an attempt on every waiting company. A usable reply, or the end of
+    a shorter run, stores them as the attempts they are.
     """
     if not jobs:
         return [], None, 0
@@ -166,16 +192,20 @@ def ask(ctx: base.RunContext, jobs: list[Job]) -> tuple[list[Reply], BaseExcepti
         ctx.notes.append(f"DeepSeek is off-peak only: its questions wait for "
                          f"{offpeak.next_off_peak():%Y-%m-%d %H:%M} UTC")
         jobs = [j for j in jobs if j.question.provider != "deepseek"]
-    started = ctx.clock()
+    started = ctx.clock() if started is None else started
     lock = threading.Lock()
     replies: list[Reply] = []
+    held_back: list[Reply] = []         # unusable, and no usable reply yet in this run
+    usable = False
     stop: BaseException | None = None
     by_provider: dict[str, list[Job]] = {}
     for j in jobs:
         by_provider.setdefault(j.question.provider, []).append(j)
     pools = {p: ThreadPoolExecutor(max_workers=POOLS[p]) for p in by_provider}
     try:
-        futs = [pools[p].submit(_ask_one, ctx, j, started, lock) for p, js in by_provider.items() for j in js]
+        run = {"usable": 0, "unusable": 0, "halt": False}
+        futs = [pools[p].submit(_ask_one, ctx, j, started, lock, run)
+                for p, js in by_provider.items() for j in js]
         for f in as_completed(futs):
             try:
                 r = f.result()
@@ -184,13 +214,21 @@ def ask(ctx: base.RunContext, jobs: list[Job]) -> tuple[list[Reply], BaseExcepti
                 for g in futs:
                     g.cancel()
                 continue
-            if r is not None:
-                replies.append(r)
-                if r.stop is not None:
-                    stop = stop or r.stop
-                    for g in futs:
-                        g.cancel()
+            if r is None:
+                continue
+            usable = usable or r.status != EMPTY
+            (replies if usable else held_back).append(r)
+            if r.stop is None and len(held_back) >= UNUSABLE_STOP and not usable and stop is None:
+                r.stop = base.SourceError(
+                    f"the first {UNUSABLE_STOP} replies of this run were all unusable (last: {r.error or '?'}); "
+                    f"check the endpoint and the model ({r.job.question.writer_model}). None was stored")
+            if r.stop is not None:
+                stop = stop or r.stop
+                for g in futs:
+                    g.cancel()
     finally:
         for pool in pools.values():
             pool.shutdown(wait=True, cancel_futures=True)
+    if usable or len(held_back) < UNUSABLE_STOP:
+        replies += held_back
     return replies, stop, total - len(replies)
