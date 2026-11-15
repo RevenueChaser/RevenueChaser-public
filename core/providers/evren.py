@@ -32,6 +32,9 @@ DEFAULT_BASE = "https://evren-llmapi.ssyz.org.tr/v1"
 MODEL = os.getenv("RC_EVREN_MODEL") or "deepseek-v4.1-flash"
 COST_USD_PER_CALL = 0.0
 MAX_ATTEMPTS = 2
+# The account may hold at most 4 requests open on a model (HTTP 429 on 15 Nov 2026, measured on the relatedness
+# run: 8 workers, half the calls refused, run stopped as transient); a pool that sends to EVREN stays at this.
+MAX_WORKERS = 4
 _PRE_SEND_ERRORS = (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout)
 _calls = 0
 _calls_lock = threading.Lock()
