@@ -1025,15 +1025,18 @@ def _fill_gross_profit(rec: dict, revenue_end: str | None, cost_end: str | None)
     rec["gross_profit_derived"] = True
 
 
-def _is_us_filer(facts: dict) -> bool:
-    """Yıllık gelir form tipine göre: 10-K => ABD, 20-F/40-F => yabancı (ADR)."""
-    units = _gaap(facts).get("Revenues", {}).get("units", {}).get("USD", [])
-    forms = {f.get("form") for f in units if f.get("fp") == "FY"}
-    if "10-K" in forms or "10-K/A" in forms:
+def _is_us_filer(facts: dict) -> bool | None:
+    """From the forms of the annual (FY) facts in any taxonomy: a 10-K => US, only 20-F/40-F => foreign (#878).
+
+    None when no annual fact names a form: unknown, never a guessed True (every IFRS filer used to land there).
+    """
+    forms = {f.get("form") for concepts in (facts.get("facts") or {}).values() for body in concepts.values()
+             for items in (body.get("units") or {}).values() for f in items if f.get("fp") == "FY"}
+    if forms & {"10-K", "10-K/A", "10-KT"}:
         return True
-    if forms and forms <= {"20-F", "20-F/A", "40-F", "40-F/A"}:
+    if forms & {"20-F", "20-F/A", "40-F", "40-F/A"}:
         return False
-    return True  # bilinmiyorsa US varsay (evren zaten US borsalarından)
+    return None
 
 
 def extract_annual(facts: dict, non_usd: set[str] | None = None) -> list[dict]:
