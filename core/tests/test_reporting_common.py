@@ -28,5 +28,5 @@ def test_help_helpers_are_exported():
 def test_job_js_is_the_one_shared_poller():
     rc = reporting_common
     assert "JOB_JS" in rc.__all__
-    for fn in ("settingsJobVerdict", "settingsPoll", "boardSettingsReset"):
+    for fn in ("settingsJobVerdict", "settingsPoll"):
         assert f"function {fn}(" in rc.JOB_JS, fn

@@ -198,9 +198,6 @@ details.members summary{cursor:pointer;color:var(--accent);font-size:12px}
 .rcf-boardrow .rcf-seg [role=radio] .hint{font-weight:500;font-size:11px;color:var(--muted);margin-left:3px}
 .rcf-boardrow .rcf-seg [aria-checked=true] .hint{color:var(--neon)}
 .lockmsg{margin-top:4px;font-size:11.5px;color:var(--amber);max-width:260px;line-height:1.35}
-.custombox{display:flex;align-items:center;gap:8px;flex-wrap:wrap;align-self:center}
-.custombox .badge.custom{color:var(--amber);border-color:rgba(241,196,15,.4)}
-.custombox .resetmsg{color:var(--muted);font-size:12px}
 """
 
 _CUT_WORDS = ("Coarse", "Medium", "Fine")
@@ -224,7 +221,6 @@ def _eff(payload: dict) -> dict:
                        or config.MIN_OBS),
         "oos_holdout": int(s.get("oos_holdout") or config.OOS_HOLDOUT),
         "locked": bool(payload.get("horizon_locked", s.get("horizon_locked", False))),
-        "custom": bool(s.get("custom")),
     }
 
 
@@ -513,19 +509,6 @@ def _about(payload: dict, horizon: int, benchmark: str, applied: bool,
     return funnel_line, about
 
 
-def _custom_html(eff: dict) -> str:
-    """"Custom settings" badge + Reset: in the board settings row (AGENTS.md section 6
-    keeps the top bar to title, subtitle and Last sync). Only when something is
-    overridden in Settings."""
-    if not eff["custom"]:
-        return ""
-    return ('<span class="custombox"><span class="badge custom" id="custom-badge" '
-            'title="Some inputs differ from the defaults (Settings → Board inputs)">'
-            'Custom settings</span>'
-            '<button class="linkbtn" type="button" id="reset-settings">Reset to defaults</button>'
-            '<span class="resetmsg" id="reset-msg" aria-live="polite"></span></span>')
-
-
 def render_comovement_dashboard(payload: dict) -> str:
     payload = payload or {}
     cuts = [str(c) for c in (payload.get("cuts") or [])]
@@ -674,7 +657,6 @@ def render_comovement_dashboard(payload: dict) -> str:
             "Lists every clustered name that passes the filters below. Type to narrow — "
             "ticker matches rank above name matches. <b>↑ ↓</b> move, <b>Enter</b> jumps to "
             "that name's group, <b>Esc</b> closes.")
-        + _custom_html(eff)
         + '<label class="onlym"><input type="checkbox" id="only-m"> Only matching names</label>'
         + '<span class="count" id="count" aria-live="polite"></span>'
         '</div></section>')
@@ -760,9 +742,6 @@ function setWindow(n){
   document.body.classList.add("loading");
   announce("Recomputing clusters over " + n + " sessions…");
   location.search = boardQuery({window: Number(n)});
-}
-function resetSettings(btn){
-  boardSettingsReset(btn, document.getElementById("reset-msg"), "module_comovement");
 }
 function setCut(k){ BOARD.cut = String(k); saveBoard(); render(); }
 function buildCutSeg(){
@@ -964,11 +943,10 @@ function init(){
   RCF = RCFilters.mount({root: "#rc-filters", rows: DATA, meta: META, onChange: function(){ render(); }});
   RCInfo.wire();
   var mk = document.querySelector('[data-group="market"]'), hz = document.querySelector('[data-group="horizon"]'), cs = document.getElementById("cut-seg");
-  var wn = document.querySelector('[data-group="window"]'), rs = document.getElementById("reset-settings");
+  var wn = document.querySelector('[data-group="window"]');
   if(mk) RCRadios.wire(mk, setMarket);
   if(hz) RCRadios.wire(hz, function(v){ setHorizon(Number(v)); });
   if(wn) RCRadios.wire(wn, function(v){ setWindow(Number(v)); });
-  if(rs) rs.addEventListener("click", function(){ resetSettings(rs); });
   if(cs) RCRadios.wire(cs, setCut);
   var om = document.getElementById("only-m");
   if(om){ om.checked = BOARD.only; om.onchange = function(){ BOARD.only = om.checked; saveBoard(); render(); }; }
