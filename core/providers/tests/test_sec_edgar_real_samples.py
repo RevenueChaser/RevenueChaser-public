@@ -61,7 +61,8 @@ def test_the_annual_records_carry_the_numbers_the_10k_prints(name):
         rec = _year_ending(annual, end)
         for field, want in fields.items():
             assert rec.get(field) == pytest.approx(want), (name, end, field)
-            assert rec["period_ends"].get(field) == end, (name, end, field)
+            if field not in se._OMIT_WHEN_ABSENT:  # the bank top line is kept out of period_ends on purpose
+                assert rec["period_ends"].get(field) == end, (name, end, field)
 
 
 @pytest.mark.parametrize("name", sorted(_FROM_THE_10K))
