@@ -254,6 +254,40 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
 
+  profile-heavy:
+    # TEMPORARY (#896 step 7): where the six heaviest unit files spend their time. Removed before merge.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      redis:
+        image: redis:7.2.6-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      RC_REDIS_URL: redis://127.0.0.1:6379/0
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          path: RevenueChaser
+      - uses: ./RevenueChaser/.github/actions/python-deps
+      - name: profile
+        working-directory: RevenueChaser
+        run: |
+          python -m cProfile -o "$RUNNER_TEMP/prof.out" -m pytest -q -p no:cacheprovider -p no:xdist --durations=15 \
+            rcdata/tests/test_spine_security.py rcdata/tests/test_prices_incremental.py rcdata/tests/test_ownership_serve.py \
+            module_comovement/tests/test_refresh_window_379.py rcdata/tests/test_spine_etf_holdings_sweep.py \
+            rcdata/tests/test_prices_compustat_primary.py || true
+          python - "$RUNNER_TEMP/prof.out" <<'PY'
+          import pstats, sys
+          s = pstats.Stats(sys.argv[1])
+          s.sort_stats("tottime").print_stats(45)
+          s.sort_stats("cumulative").print_stats(90)
+          s.print_callers("sleep")
+          PY
+
   red-on-base:
     # A test the PR adds that already passes on the merge-base proves nothing about the change
     # (scripts/red_on_base.py; plan home-server/2026-11-08_review-llm-coder-llm-plan.md step 3). It reports, it does
