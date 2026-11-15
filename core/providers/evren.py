@@ -33,9 +33,10 @@ DEFAULT_BASE = "https://evren-llmapi.ssyz.org.tr/v1"
 MODEL = os.getenv("RC_EVREN_MODEL") or "deepseek-v4.1-flash"
 COST_USD_PER_CALL = 0.0
 MAX_ATTEMPTS = 2
-# The account may hold at most 4 requests open on a model (HTTP 429 on 15 Nov 2026, measured on the relatedness
-# run: 8 workers, half the calls refused, run stopped as transient); a pool that sends to EVREN stays at this.
-MAX_WORKERS = 4
+# One request at a time (avo 15 Nov 2026 11:22 "4 yerine 1 istek gonder madem yogun"): the account may hold at most 4
+# open on a model, and the fair-share 429 came even at 4 workers while the model was busy (measured 15 Nov 10:35 with 8,
+# 11:15 with 4). A pool that sends to EVREN stays at this.
+MAX_WORKERS = 1
 # EVREN answers HTTP 503 ``model_capacity_exhausted`` with ``error.evren.resets_at`` when the shared model is full
 # (measured 15 Nov 2026 10:54-10:58: 12 calls, every one refused, the run stopped as transient). Such a reply is
 # waited out until ``resets_at`` (bounded) and retried up to CAPACITY_ATTEMPTS times; any other 5xx stays final. A 429
