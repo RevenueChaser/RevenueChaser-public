@@ -49,8 +49,10 @@ def test_is_us_filer():
     assert se._is_us_filer(_facts()) is True
     # yabancı filer: 20-F formu
     foreign = _facts()
-    for f in foreign["facts"]["us-gaap"]["Revenues"]["units"]["USD"]:
-        f["form"] = "20-F"
+    for body in foreign["facts"]["us-gaap"].values():   # a 20-F filer files no 10-K at all (#878)
+        for items in body["units"].values():
+            for f in items:
+                f["form"] = "20-F"
     assert se._is_us_filer(foreign) is False
 
 
