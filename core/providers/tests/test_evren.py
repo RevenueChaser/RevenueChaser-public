@@ -95,6 +95,31 @@ def test_a_429_is_retried_once():
     assert len(c.posts) == 2
 
 
+def _capacity(resets_at="2020-01-01T00:00:00Z"):
+    return _Resp(503, {"error": {"message": "Model şu anda dolu", "type": "api_error", "code": "model_capacity_exhausted",
+                                 "evren": {"resets_at": resets_at}}})
+
+
+def test_a_capacity_503_is_waited_out_and_retried(monkeypatch):
+    waits = []
+    monkeypatch.setattr(evren, "_sleep", waits.append)
+    c = _Client(_capacity(), _ok())
+    assert evren.complete("s", "u", client=c, use_cache=False)
+    assert len(c.posts) == 2 and waits == [evren.CAPACITY_WAIT_MIN_S]      # a past resets_at waits the floor
+
+
+def test_a_capacity_503_that_never_clears_is_transient_after_its_own_budget():
+    c = _Client(_capacity())
+    with pytest.raises(evren.EvrenTransientError):
+        evren.complete("s", "u", client=c, use_cache=False)
+    assert len(c.posts) == 1 + evren.CAPACITY_ATTEMPTS
+
+
+def test_the_capacity_wait_is_bounded():
+    assert evren._capacity_wait(_capacity("2099-01-01T00:00:00Z")) == evren.CAPACITY_WAIT_MAX_S
+    assert evren._capacity_wait(_Resp(503, text="down")) == evren.CAPACITY_WAIT_MIN_S
+
+
 def test_a_5xx_is_final():
     c = _Client(_Resp(503, text="down"), _ok())
     with pytest.raises(evren.EvrenTransientError):
