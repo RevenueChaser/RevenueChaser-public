@@ -123,7 +123,7 @@ module_testing/e2e/
 │   └── provider_fixtures/          # hand-written JSON, one file per endpoint
 ├── test_board_<name>.py            # one per board
 ├── test_board_html_browser.py      # hostile fixtures in headless Chrome (ADR-X1)
-├── test_phone_shell.py             # the shell at 390 px and 1280 px, light and dark (#184)
+├── test_phone_shell.py             # the shell on avo's phone (basics only, 15 Nov 2026) and on desktops (#184)
 ├── test_cdp_browser.py             # the DevTools harness stays off the network; a device emulates as itself
 ├── test_screenshots.py             # PNGs of Data/Health and Runs for a reviewer (only with RC_SHOTS_DIR)
 └── test_live_provider_fetch.py     # the --live tier
