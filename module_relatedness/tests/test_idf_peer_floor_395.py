@@ -9,7 +9,7 @@ from __future__ import annotations
 import pytest
 
 from RevenueChaser.module_relatedness import config, engine, report, similarity, store
-from RevenueChaser.module_relatedness.tests.test_pr_c_118 import _prof, _seed_universe
+from RevenueChaser.module_relatedness.tests.test_pr_c_118 import _prof
 
 
 def _corpus() -> dict[str, dict]:
@@ -79,20 +79,6 @@ def test_a_low_scoring_peer_with_two_shared_tags_stays():
     assert config.PEER_MIN_SCORE == 0.0
 
 
-def test_percentile_is_over_the_nonzero_pairs(rawstore_tmp_db):
-    profs = {"AAA": _prof(products=["alpha", "beta"]), "BBB": _prof(products=["alpha", "beta"]),
-             "CCC": _prof(products=["alpha", "beta", "gamma"]),
-             "DDD": _prof(products=["delta"]), "EEE": _prof(products=["eps"])}
-    _seed_universe(list(profs))
-    for t, p in profs.items():
-        store.save_profile(t, "cik-" + t, p, "k", "m")
-    payload = engine._payload(profs, {})
-    aaa = {p["peer"]: p for p in payload["peers"]["AAA"]}
-    # Three non-zero pairs of ten: AAA-BBB (1.0) above the two equal AAA-CCC / BBB-CCC scores.
-    assert aaa["BBB"]["percentile"] == pytest.approx(66.7, abs=0.1)
-    assert aaa["CCC"]["percentile"] == 0.0
-    assert payload["n_pairs"] == 10
-    assert payload["n_scored"] == 3
 
 
 def test_the_peer_row_prints_the_shared_tag_count():

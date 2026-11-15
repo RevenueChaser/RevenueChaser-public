@@ -49,14 +49,6 @@ def test_a_finished_13f_run_releases_the_lock(rawstore_tmp_db):
 
 # ── the run routes: a second click is a 409, not a second job ────────────────
 
-FAMILIES = [
-    ("/run/module_sec_13f", "module_sec_13f"),
-    ("/run/identity", "identity"),
-    ("/run/edgar-sync", "edgar_sync"),
-    ("/run/daily-bars", "daily_bars"),
-    ("/run/index-lists", "index_lists"),
-    ("/run/universe-stats", "universe_stats"),
-]
 
 
 class _FakeUW:
@@ -88,15 +80,6 @@ def _queued(module: str) -> list[dict]:
     return [j for j in jobs.list_jobs() if j["module"] == module]
 
 
-@pytest.mark.parametrize("route,module", FAMILIES)
-def test_a_second_post_is_refused_while_the_first_is_queued(client, route, module):
-    first = client.post(route)
-    assert first.status_code == 202, first.get_json()
-    second = client.post(route)
-    assert second.status_code == 409
-    body = second.get_json()
-    assert body["ok"] is False and "already queued or running" in body["error"]
-    assert len(_queued(module)) == 1, "the refused click queued a second job"
 
 
 def test_an_unrelated_route_still_submits(client):

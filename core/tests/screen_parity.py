@@ -108,23 +108,13 @@ class _OfflineTicker:
 
 
 def seed_d01(ticker: str, df: pd.DataFrame, fetched_at: float = D01_WRITTEN) -> None:
-    """``df``'s bars as D01 rows, written by RC-Daily-Bars after the last session's close + 30 min."""
+    """``df``'s bars as D01 rows, served after the last session's close + 30 min."""
     rows = [{
         "ticker": ticker, "session_date": ts.date(), "open": float(r["Open"]), "high": float(r["High"]),
         "low": float(r["Low"]), "close": float(r["Close"]), "adj_close": None, "volume": float(r["Volume"]),
         "split_ratio": None, "adj_source": None, "source": "uw", "fetched_at": fetched_at, "run_id": "bars",
         "run_at": fetched_at} for ts, r in df.iterrows()]
-    rawstore.write_rows("price_bars_daily", rows)
     prices_store.put_store_rows(rows, built_at=fetched_at)   # the served file the readers read (#642 PR 6)
-
-
-def seed_quotes(session: date = SESSION) -> None:
-    """One D04 Yahoo row per universe name: the scenario's screener quote, as the universe pull records it."""
-    rawstore.write_rows("quote_snapshot", [{
-        "ticker": t, "session_date": session, "source": "yfinance", "market_cap": cap,
-        "price": q["regularMarketPrice"], "shares_outstanding": None, "week_52_high": q.get("fiftyTwoWeekHigh"),
-        "week_52_low": None, "payload": q, "fetched_at": D01_WRITTEN, "run_id": "universe",
-        "run_at": D01_WRITTEN} for t, (cap, q) in UNIVERSE.items()])
 
 
 def seed() -> None:
@@ -134,16 +124,11 @@ def seed() -> None:
          "sector": SPINE.get(t, ("Utilities",))[0],
          "industry_group": SPINE.get(t, (None, None, None))[1] if t in SPINE else None,
          "sub_industry": SPINE.get(t, (None, None, None))[2] if t in SPINE else None,
-         "quote": q}
+         "quote": q, "security_type": EXCLUDED.get(t)}
         for t, (cap, q) in UNIVERSE.items()])
-    rawstore.replace_all("equity_universe_provenance", [
-        {"key": "__meta__", "generated_at": GENERATED_AT, "refreshed_by": "Swing Potential"}])
-    rawstore.ensure_table("security_master")
-    rawstore.write_rows("security_master", [{"ticker": t, "security_type": ty} for t, ty in EXCLUDED.items()])
     for t, (kind, drift) in BARS.items():
         seed_d01(t, _bars(kind, drift, LONG_BARS))
     seed_d01("SHORT1", _bars("up", 0.004, SHORT_BARS))
-    seed_quotes()
     rawstore.write_rows("swing_info", [
         {"ticker": t, "payload": {"longName": f"{t} Holdings", "industry": "Software - Infrastructure",
                                   "longBusinessSummary": "Cloud software and data platform.",

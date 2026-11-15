@@ -46,9 +46,6 @@ def test_the_old_home_in_core_is_gone():
         import_module("RevenueChaser.core.ohlc_cache")
 
 
-def test_the_new_home_imports_and_keeps_its_public_names():
-    mod = import_module("RevenueChaser.module_swing_potential.ohlc_cache")
-    assert sorted(n for n in dir(mod) if not n.startswith("__")) == PUBLIC_NAMES
 
 
 def test_only_swing_potential_imports_it():

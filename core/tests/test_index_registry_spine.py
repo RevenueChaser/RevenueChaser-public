@@ -8,7 +8,6 @@ from pathlib import Path
 
 import pytest
 
-from RevenueChaser.core import index_lists as il
 from RevenueChaser.core import index_registry as ir
 from RevenueChaser.core import universe
 from RevenueChaser.rcdata import read
@@ -16,17 +15,8 @@ from RevenueChaser.rcdata.tests.conftest import http_mock, market_roots  # noqa:
 from RevenueChaser.rcdata.tests.test_spine_security import built, run_all  # noqa: F401 - the 10 names
 
 
-@pytest.fixture
-def old_lists(rawstore_tmp_db):
-    """The old store's lists, deliberately unlike the spine's."""
-    il.save_index("sp500", {"OLDCO", "MSFT"})
-    il.save_index("dow", {"OLDCO"})
-    il.save_index("nasdaq", {"OLDCO"})
 
 
-@pytest.fixture
-def spine(built, old_lists):
-    assert universe.universe_source() == "spine"
 
 
 @pytest.mark.usefixtures("spine")
@@ -61,11 +51,6 @@ def test_the_filter_offers_only_the_indexes_the_spine_carries():
     assert ir.filter_labels() == ["S&P 500", "Nasdaq Composite"]       # no Dow Jones, no SmallCap 600 members
 
 
-@pytest.mark.usefixtures("spine")
-def test_the_weekly_step_still_reads_its_own_store():
-    """The old lists keep their own reader: the first-fill gate and the cache check must not see the spine."""
-    assert il.stored_index("sp500") == {"OLDCO", "MSFT"}
-    assert il.stored_slugs() == {"sp500", "dow", "nasdaq"}
 
 
 def test_the_registry_does_not_import_the_old_store():

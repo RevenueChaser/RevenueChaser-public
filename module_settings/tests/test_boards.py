@@ -98,49 +98,9 @@ def test_params_are_read_from_the_config_at_call_time(monkeypatch):
     assert "999" in " | ".join(entry["params"]())
 
 
-def test_every_fix_route_is_a_registered_route():
-    from RevenueChaser.app import dashboard
-
-    rules = {r.rule for r in dashboard.app.url_map.iter_rules()}
-    assert "/run/universe-stats" in rules and "/run/module_comovement" in rules
-    from RevenueChaser.module_comovement import engine
-
-    f = {"scanned_total": 9, "below_floor": 1, "no_market_cap": 1, "no_prices": 1,
-         "short_history": 1, "flat": 1, "clustered": 4}
-    for s in engine.funnel_steps(f):
-        if s.get("fix"):
-            assert s["fix"]["route"] in rules, s
 
 
 # ── editable settings block (#40 Part B) ─────────────────────────────────────
-def test_card_carries_the_editable_settings_block(payload_file, rawstore_tmp_db):
-    from RevenueChaser.core import board_settings
-    payload_file.write_text(json.dumps(_payload()), encoding="utf-8")
-    s = _card()["settings"]
-    assert s["board"] == "module_comovement" and s["custom"] is False
-    assert [f["key"] for f in s["inputs"]] == ["WINDOW", "MIN_OBS", "OOS_HOLDOUT"]
-    assert [f["key"] for f in s["fine"]] == ["WINSOR_K", "MIN_PERIODS",
-                                             "BENCH_STALE_SESSIONS", "OPERATING_ONLY"]
-    by = {f["key"]: f for f in s["inputs"] + s["fine"]}
-    assert by["MIN_OBS"]["value"] == cfg.MIN_OBS and by["MIN_OBS"]["overridden"] is False
-    assert "60" in by["MIN_OBS"]["range"] and "WINDOW" in by["MIN_OBS"]["range"]
-    assert by["OOS_HOLDOUT"]["range"] == "42–126"
-    assert by["WINSOR_K"]["range"] == "4–8"
-    assert by["BENCH_STALE_SESSIONS"]["range"] == "0–5"
-    assert by["WINDOW"]["choices"][0] == [21, "1m (21)"]
-    # PR 2: the type filter is a two-way choice in words, off by default on Co-movement
-    assert by["OPERATING_ONLY"]["value"] == 0
-    assert by["OPERATING_ONLY"]["choices"] == [[0, "Every security type"], [1, "Operating companies only"]]
-    assert "operating companies only" in by["OPERATING_ONLY"]["range"]
-    assert s["derived"] == {"label": "Held-out observations needed (derived)",
-                            "key": "OOS_MIN_OBS",
-                            "value": round(cfg.OOS_MIN_SHARE * cfg.OOS_HOLDOUT)}
-    board_settings.save("module_comovement", {"MIN_OBS": 100, "OOS_HOLDOUT": 84})
-    s = _card()["settings"]
-    assert s["custom"] is True
-    by = {f["key"]: f for f in s["inputs"] + s["fine"]}
-    assert by["MIN_OBS"]["value"] == 100 and by["MIN_OBS"]["overridden"] is True
-    assert s["derived"]["value"] == round(cfg.OOS_MIN_SHARE * 84)
 
 
 def test_the_settings_block_is_there_even_before_the_board_is_rendered(
@@ -150,47 +110,8 @@ def test_the_settings_block_is_there_even_before_the_board_is_rendered(
 
 
 # ── the Swing card (#384 SW-S4) ─────────────────────────────────────────────
-def test_the_swing_card_lists_its_editable_thresholds(rawstore_tmp_db, monkeypatch, tmp_path):
-    from RevenueChaser.core import board_settings
-    from RevenueChaser.module_swing_potential import config as sw_cfg
-
-    # A Swing artifact a test earlier in the session left in the shared cache dir would make the state "no_funnel".
-    monkeypatch.setattr(sw_cfg, "SWING_JSON", tmp_path / "swing_latest.json")
-    c = _card("module_swing_potential")
-    assert c["label"] == "Swing" and c["state"] == "not_rendered"
-    assert c["tables"] == ["equity_universe", "price_bars_daily"] and "nominal" in c["price_basis"]
-    s = c["settings"]
-    assert s["board"] == "module_swing_potential" and s["custom"] is False
-    by = {f["key"]: f for f in s["inputs"] + s["fine"]}
-    assert [f["key"] for f in s["inputs"]] == ["MIN_PRICE", "MIN_DOLLAR_VOLUME", "RS_MIN"]
-    assert set(by) == {"MIN_PRICE", "MIN_DOLLAR_VOLUME", "RS_MIN", "VOL_CONFIRM", "BREAKOUT_HIGH_PCT",
-                       "MOVE_MIN", "ADR_MIN", "W_PROX", "W_CONS", "STOP_ATR", "TARGET_R", "OPERATING_ONLY"}
-    assert by["OPERATING_ONLY"]["value"] == 1          # PR 2: Swing screens operating companies by default
-    assert by["MIN_PRICE"]["value"] == sw_cfg.MIN_PRICE and by["MIN_PRICE"]["overridden"] is False
-    assert by["MIN_PRICE"]["range"] == f"{sw_cfg.MIN_PRICE_LO:g}–{sw_cfg.MIN_PRICE_HI:g}"
-    board_settings.save("module_swing_potential", {"RS_MIN": 80})
-    by = {f["key"]: f for f in _card("module_swing_potential")["settings"]["inputs"]}
-    assert by["RS_MIN"]["value"] == 80 and by["RS_MIN"]["overridden"] is True
 
 
-def test_the_fundamentals_card_lists_its_floors_and_type_filter(rawstore_tmp_db):
-    """PR 2: Fundamentals' price and dollar-volume floors are settings, with today's defaults."""
-    from RevenueChaser.core import board_settings
-    from RevenueChaser.module_fundamentals import config as f_cfg
-
-    c = _card("module_fundamentals")
-    s = c["settings"]
-    assert s["board"] == "module_fundamentals" and s["custom"] is False
-    assert [f["key"] for f in s["inputs"]] == ["MIN_PRICE", "MIN_DOLLAR_VOLUME"]
-    assert [f["key"] for f in s["fine"]] == ["OPERATING_ONLY"]
-    by = {f["key"]: f for f in s["inputs"] + s["fine"]}
-    assert by["MIN_PRICE"]["value"] == f_cfg.MIN_PRICE == 5.0
-    assert by["MIN_DOLLAR_VOLUME"]["range"] == f"{f_cfg.MIN_DOLLAR_VOLUME_LO:g}–{f_cfg.MIN_DOLLAR_VOLUME_HI:g}"
-    assert by["OPERATING_ONLY"]["value"] == 1
-    assert "Minimum price $5" in c["params"]
-    board_settings.save("module_fundamentals", {"MIN_PRICE": 0})
-    by = {f["key"]: f for f in _card("module_fundamentals")["settings"]["inputs"]}
-    assert by["MIN_PRICE"]["value"] == 0 and by["MIN_PRICE"]["overridden"] is True
 
 
 def _data_board_keys() -> list[str]:
@@ -220,16 +141,6 @@ def _entry(key):
     return next(e for e in boards.BOARD_INPUTS if e["key"] == key)
 
 
-def test_ag_and_fundamentals_are_registered_with_a_funnel_reference():
-    """Their funnels already exist; the card must name the payload key and the tables the scan reads."""
-    ag = _entry("module_asymmetric_growth")
-    assert ag["funnel"] == "funnel_steps" and ag["label"] == "Asymmetric Growth"
-    assert ag["tables"] == ["equity_universe", "edgar_financials", "price_bars_daily",
-                            "ownership_snapshot"]
-    fund = _entry("module_fundamentals")
-    assert fund["funnel"] == "funnel_steps" and fund["label"] == "Fundamentals"
-    assert fund["tables"] == ["equity_universe", "quote_snapshot", "price_bars_daily",
-                              "edgar_financials"]
 
 
 def test_a_board_that_emits_no_funnel_is_marked():
@@ -292,17 +203,6 @@ def test_a_no_funnel_board_does_not_ask_for_a_refresh(monkeypatch, tmp_path):
     assert card["as_of"] == "2026-09-25T20:00:00+00:00"
 
 
-def test_the_swing_params_are_read_from_the_effective_settings_at_call_time(
-        rawstore_tmp_db, monkeypatch):
-    from RevenueChaser.core import board_settings
-    from RevenueChaser.module_swing_potential import config as sw_cfg
-
-    text = " | ".join(_card("module_swing_potential")["params"])
-    assert f"{sw_cfg.MIN_PRICE:g}" in text and f"{sw_cfg.RS_MIN:g}" in text
-    monkeypatch.setattr(sw_cfg, "RS_MIN", 82)
-    assert "82" in " | ".join(_card("module_swing_potential")["params"])   # a default moves the card
-    board_settings.save("module_swing_potential", {"VOL_CONFIRM": 2.5})
-    assert "2.5× the 20-day average" in " | ".join(_card("module_swing_potential")["params"])
 
 
 

@@ -33,8 +33,6 @@ SMALL, STRAY = "SMALL", "STRAY"
 
 
 def _seed(caps: dict[str, float]) -> None:
-    rawstore.write_rows("equity_universe", [
-        {"ticker": t, "name": t + " Inc", "market_cap": cap, "sector": "Technology"} for t, cap in caps.items()])
     spine_fixture.write_security([{"ticker": t, "name": t + " Inc", "sector": "Technology"} for t in caps])
 
 

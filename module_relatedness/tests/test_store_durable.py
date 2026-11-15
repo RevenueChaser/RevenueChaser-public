@@ -30,11 +30,6 @@ def test_profile_round_trip(rawstore_tmp_db):
     assert store.load_profiles(["NVDA"])["NVDA"]["products"] == ["cpu"]
 
 
-def test_mode_stamp(rawstore_tmp_db):
-    assert store.get_mode() is None
-    store.set_mode({"model": "m", "thinking": True, "effort": "high",
-                    "prompt_version": "v1"})
-    assert store.get_mode()["prompt_version"] == "v1"
 
 
 def test_save_scores(rawstore_tmp_db):

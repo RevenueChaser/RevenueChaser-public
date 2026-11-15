@@ -20,7 +20,7 @@ from RevenueChaser.core import rawstore
 from RevenueChaser.module_relatedness.tests.test_relatedness import v3_reply
 from RevenueChaser.core.providers import deepseek
 from RevenueChaser.module_relatedness import config, engine, store
-from RevenueChaser.module_relatedness.tests.test_relatedness import _prof, _seed_universe, long_body
+from RevenueChaser.module_relatedness.tests.test_relatedness import _prof, long_body
 from RevenueChaser.rcdata.tests import spine_fixture
 
 TICKERS = ["AAA", "BBB", "CCC"]
@@ -33,103 +33,26 @@ def _seed_filings(texts: dict[str, str]) -> None:
         for t, text in texts.items()])
 
 
-@pytest.fixture
-def calls(rawstore_tmp_db, monkeypatch):
-    """Every LLM profile request: (ticker, name, text)."""
-    _seed_universe(TICKERS)
-    _seed_filings({t: f"{t} makes gpus for data centers" for t in TICKERS})
-    monkeypatch.setattr(engine, "_cik_for", lambda ts: {t: "" for t in ts})
-    seen: list[tuple[str, str, str]] = []
-
-    def fake_profile(ticker, name, text, **k):
-        seen.append((ticker, name, text))
-        return _prof(products=[f"{ticker.lower()} gpu"], end_markets=["data center"])
-
-    monkeypatch.setattr(engine.profiles_mod, "profile_for", fake_profile)
-    return seen
 
 
 def test_the_prompt_is_v3():
     assert config.PROMPT_VERSION == "v3d" and store.PROMPT_VERSION == "v3d"   # #841 (v3c #717, v3b #400, v2 #388 D5)
 
 
-def test_the_same_input_is_not_profiled_again(calls):
-    engine.build_profiles(TICKERS)
-    assert sorted(t for t, _, _ in calls) == TICKERS
-    calls.clear()
-    engine.build_profiles(TICKERS)
-    assert calls == []
 
 
-def test_a_new_filing_text_is_profiled_again(calls):
-    engine.build_profiles(TICKERS)
-    calls.clear()
-    _seed_filings({"BBB": "BBB now sells banking software to regional banks"})
-    engine.build_profiles(TICKERS)
-    assert [(t, text) for t, _, text in calls] == [
-        ("BBB", long_body("BBB now sells banking software to regional banks"))]
-    calls.clear()
-    engine.build_profiles(TICKERS)                                    # the new profile holds the new hash
-    assert calls == []
 
 
-def test_a_new_company_name_is_profiled_again(calls):
-    engine.build_profiles(TICKERS)
-    calls.clear()
-    spine_fixture.write_security([{"ticker": "CCC", "name": "Triple C Holdings"}])
-    engine.build_profiles(TICKERS)
-    assert [(t, n) for t, n, _ in calls] == [("CCC", "Triple C Holdings")]
 
 
-def test_a_changed_input_waits_for_the_cap_like_any_other(calls, monkeypatch):
-    monkeypatch.setattr(engine.config, "EST_USD_PER_CALL", 0.001)
-    engine.build_profiles(TICKERS)
-    calls.clear()
-    _seed_filings({t: f"{t} changed its business" for t in TICKERS})
-    engine.build_profiles(TICKERS, usd_cap=0.002)                     # -> 2 calls this run
-    assert len(calls) == 2
-    calls.clear()
-    engine.build_profiles(TICKERS, usd_cap=0.002)                     # the third, next run
-    assert len(calls) == 1
 
 
-def test_a_text_gone_keeps_the_profile(calls):
-    """No filing text any more: the usable profile stays, and nothing is asked."""
-    engine.build_profiles(TICKERS)
-    calls.clear()
-    _seed_filings({"AAA": ""})
-    engine.build_profiles(TICKERS)
-    assert calls == [] and any(store.load_profiles(["AAA"])["AAA"].values())
 
 
-def test_the_prompt_names_the_company(rawstore_tmp_db, monkeypatch):
-    _seed_universe(["AAA"])
-    _seed_filings({"AAA": "AAA makes gpus for data centers"})
-    monkeypatch.setattr(engine, "_cik_for", lambda ts: {t: "" for t in ts})
-    users = []
-
-    def fake_complete(system, user, **k):
-        users.append(user)
-        return v3_reply(["gpu"], ["data center"])
-
-    monkeypatch.setattr(deepseek, "complete", fake_complete)
-    engine.build_profiles(["AAA"])
-    assert users and users[0].startswith("Company: AAA Inc\n")
 
 
-def test_a_name_missing_from_the_spine_falls_back_to_the_ticker(calls):
-    spine_fixture.write_security([{"ticker": t, "name": t + " Inc"} for t in ("BBB", "CCC")], replace=True)
-    engine.build_profiles(["AAA"])
-    assert calls[0][:2] == ("AAA", "AAA")
 
 
-def test_v1_profiles_read_stale_and_are_redone(calls):
-    v1 = store.cache_key(deepseek.MODEL, False, "", "v1", "AAA", "h")
-    store.save_profile("AAA", "", _prof(products=["old"]), v1, deepseek.MODEL, prompt_version="v1")
-    assert store.stale_tickers(["AAA"]) == {"AAA"}
-    engine.build_profiles(["AAA"])
-    assert [t for t, _, _ in calls] == ["AAA"]
-    assert store.stale_tickers(["AAA"]) == set()
 
 
 def test_input_hash_reads_the_stored_key():

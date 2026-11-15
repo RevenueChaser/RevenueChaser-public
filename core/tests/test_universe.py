@@ -255,11 +255,6 @@ def test_a_coarse_theme_named_like_the_unknown_bucket_is_replaced_by_its_child(r
 
 
 # ── security-type filter (#87, Identity R4) ─────────────────────────────────
-def _seed_master(types: dict):
-    """``ticker -> security_type`` rows in ``security_master`` (None = NULL type)."""
-    rawstore.ensure_table("security_master")
-    rawstore.write_rows("security_master", [
-        {"ticker": t, "security_type": ty} for t, ty in types.items()])
 
 
 def test_type_groups_are_disjoint_and_cover_exactly_the_excluded_types():
@@ -272,32 +267,8 @@ def test_type_groups_are_disjoint_and_cover_exactly_the_excluded_types():
     assert union == id_types.EXCLUDED_TYPES      # a new excluded type needs a funnel row
 
 
-def test_classification_universe_is_the_whole_a_plus_b_set_at_any_type(rawstore_tmp_db):
-    """avo, 30 Oct 2026 (PR 2): the universe is Tiers A and B whole; a type no longer leaves it."""
-    _seed_universe([
-        {"ticker": "CEFBIG", "market_cap": 9e9}, {"ticker": "ETFX", "market_cap": 8e9},
-        {"ticker": "SPACX", "market_cap": 7e9}, {"ticker": "PREF", "market_cap": 6e9},
-        {"ticker": "WARR", "market_cap": 5e9}, {"ticker": "UNIT", "market_cap": 4.5e9},
-        {"ticker": "AAA", "market_cap": 4e9}, {"ticker": "BBB", "market_cap": 3e9},
-        {"ticker": "CEFLOW", "market_cap": 1e6}])
-    _seed_master({"CEFBIG": "cef", "ETFX": "etp", "SPACX": "spac", "PREF": "preferred",
-                  "WARR": "warrant", "UNIT": "unit", "AAA": "common", "BBB": "adr",
-                  "CEFLOW": "cef"})
-    assert universe.classification_universe() == [
-        "CEFBIG", "ETFX", "SPACX", "PREF", "WARR", "UNIT", "AAA", "BBB", "CEFLOW"]
-    assert universe.excluded_tickers() == {
-        "CEFBIG", "ETFX", "SPACX", "PREF", "WARR", "UNIT", "CEFLOW"}
 
 
-def test_a_board_that_screens_operating_companies_asks_for_them(rawstore_tmp_db):
-    """The type is data a board filters on (PR 2): ``operating_only`` drops the excluded types at any cap."""
-    _seed_universe([
-        {"ticker": "CEFBIG", "market_cap": 9e9}, {"ticker": "ETFX", "market_cap": 8e9},
-        {"ticker": "AAA", "market_cap": 4e9}, {"ticker": "BBB", "market_cap": 3e9},
-        {"ticker": "CEFLOW", "market_cap": 1e6}])
-    _seed_master({"CEFBIG": "cef", "ETFX": "etp", "AAA": "common", "BBB": "adr", "CEFLOW": "cef"})
-    assert universe.classification_universe(operating_only=True) == ["AAA", "BBB"]
-    assert universe.classification_universe(mc_min=0, operating_only=True) == ["AAA", "BBB"]
 
 
 def test_each_board_has_a_type_filter_default_that_keeps_its_old_set():
@@ -319,57 +290,15 @@ def test_every_board_that_reads_the_universe_has_a_decided_type_filter_default()
     assert universe.BOARD_OPERATING_ONLY["module_sector_rotation"] is False
 
 
-def test_classification_universe_rows_carries_the_columns_the_peer_ladder_needs(rawstore_tmp_db):
-    """FIN-3: comps peers are picked inside the spine, so the reader that feeds them carries sector and industry,
-    and (PR 2) the security type, so a board can filter on it.
-
-    The rows are the same slice as the ticker list (same floor if one is asked for, same type filter, same
-    cap-descending order); ``sub_industry`` is not read — the identity master writes it NULL.
-    """
-    _seed_universe([
-        {"ticker": "BIG", "market_cap": 4e9, "sector": "Energy", "industry": "Oil & Gas E&P"},
-        {"ticker": "ETFX", "market_cap": 3e9, "sector": "Energy", "industry": "Oil & Gas E&P"},
-        {"ticker": "TINY", "market_cap": 50e6, "sector": "Energy", "industry": "Oil & Gas E&P"}])
-    _seed_master({"BIG": "common", "ETFX": "etp"})
-    assert universe.classification_universe_rows(operating_only=True) == [
-        {"ticker": "BIG", "market_cap": 4e9, "sector": "Energy", "industry": "Oil & Gas E&P",
-         "security_type": "common"},
-        {"ticker": "TINY", "market_cap": 50e6, "sector": "Energy", "industry": "Oil & Gas E&P",
-         "security_type": None}]
-    assert [r["ticker"] for r in universe.classification_universe_rows()] == ["BIG", "ETFX", "TINY"]
-    assert universe.classification_universe_rows()[1]["security_type"] == "etp"
-    for mc_min in (universe.DEFAULT_MC_MIN, 0, 300_000_000):
-        for only in (False, True):
-            assert ([r["ticker"] for r in universe.classification_universe_rows(mc_min, operating_only=only)]
-                    == universe.classification_universe(mc_min, operating_only=only))
 
 
-def test_every_operating_type_stays(rawstore_tmp_db):
-    ops = sorted(id_types.OPERATING_TYPES)
-    _seed_universe([{"ticker": f"T{i}", "market_cap": 1e9 - i} for i in range(len(ops))])
-    _seed_master({f"T{i}": ty for i, ty in enumerate(ops)})
-    assert universe.classification_universe() == [f"T{i}" for i in range(len(ops))]
 
 
-def test_an_unknown_missing_or_null_type_stays_and_order_is_cap_descending(rawstore_tmp_db):
-    _seed_universe([
-        {"ticker": "NOROW", "market_cap": 5e9},     # no security_master row
-        {"ticker": "NULLT", "market_cap": 4e9},     # NULL type
-        {"ticker": "UNK", "market_cap": 3e9},       # 'unknown'
-        {"ticker": "OTH", "market_cap": 2e9},       # 'other'
-        {"ticker": "ODD", "market_cap": 1e9},       # a type this code does not know
-        {"ticker": "FUND", "market_cap": 6e9}])
-    _seed_master({"NULLT": None, "UNK": "unknown", "OTH": "other", "ODD": "martian",
-                  "FUND": "cef"})
-    assert universe.classification_universe(operating_only=True) == ["NOROW", "NULLT", "UNK", "OTH", "ODD"]
-    assert universe.classification_universe() == ["FUND", "NOROW", "NULLT", "UNK", "OTH", "ODD"]
 
 
 def test_a_missing_security_master_table_leaves_the_universe_unfiltered(tmp_path):
     """``rawstore.query`` answers [] for a missing table: a JOIN would empty the universe."""
     _seed_universe([{"ticker": "AAA", "market_cap": 2e9}, {"ticker": "BBB", "market_cap": 1e9}])
-    assert rawstore.query("SELECT count(*) n FROM information_schema.tables "
-                          "WHERE table_name = 'security_master'")[0]["n"] == 0
     assert not any(universe._security_types().values())     # every name untyped, none typed by the master
     assert universe.classification_universe() == ["AAA", "BBB"]
     assert universe.excluded_tickers() == set()
@@ -384,58 +313,12 @@ def test_an_empty_security_master_table_leaves_the_universe_unfiltered(rawstore_
     assert universe.classification_universe() == ["AAA"]
 
 
-def _mixed_universe():
-    _seed_universe([
-        {"ticker": "OPS1", "market_cap": 9e9}, {"ticker": "OPS2", "market_cap": 8e9},
-        {"ticker": "FUND1", "market_cap": 7e9}, {"ticker": "FUND2", "market_cap": 6e9},
-        {"ticker": "SPAC1", "market_cap": 5e9},
-        {"ticker": "PREF1", "market_cap": 4e9}, {"ticker": "WARR1", "market_cap": 3.5e9},
-        {"ticker": "UNIT1", "market_cap": 3.2e9},
-        {"ticker": "NOROW", "market_cap": 3.1e9}, {"ticker": "UNK1", "market_cap": 3.0e9},
-        # below the floor: every type group here must NOT be counted
-        {"ticker": "TINYFUND", "market_cap": 1e6}, {"ticker": "TINYSPAC", "market_cap": 2e6},
-        {"ticker": "TINYOPS", "market_cap": 3e6},
-        {"ticker": "NOCAPFUND", "market_cap": None}])
-    _seed_master({"OPS1": "common", "OPS2": "adr", "FUND1": "cef", "FUND2": "etp",
-                  "SPAC1": "spac", "PREF1": "preferred", "WARR1": "warrant",
-                  "UNIT1": "unit", "UNK1": "unknown",
-                  "TINYFUND": "cef", "TINYSPAC": "spac", "TINYOPS": "common",
-                  "NOCAPFUND": "cef"})
 
 
-def test_universe_counts_split_the_floor_slice_by_type_group(rawstore_tmp_db):
-    """Asked with an explicit floor: the three tiny names and the NULL cap stay out of the slice."""
-    _mixed_universe()
-    c = universe.universe_counts(mc_min=300_000_000)
-    assert c["scanned_total"] == 14
-    assert c["below_floor"] == 3 and c["no_market_cap"] == 1
-    assert c["floor_total"] == 10
-    assert (c["funds_etfs"], c["spacs"], c["other_securities"]) == (2, 1, 3)
-    assert c["classification_total"] == 10      # the whole slice: the groups are its type mix, not drops (PR 2)
-    assert c["operating_total"] == 4
-    assert c["unknown_type"] == 2               # NOROW + UNK1 (kept, not an operating type)
-    assert c["floor"] == 300_000_000
 
 
-def test_universe_counts_invariants_and_agreement_with_the_universe(rawstore_tmp_db):
-    """The funnel must add up, and its last line is exactly the universe boards read (PR 2: the whole slice;
-    the type groups split it, and ``operating_total`` is what an operating-only board reads)."""
-    _mixed_universe()
-    c = universe.universe_counts()
-    assert c["scanned_total"] == c["below_floor"] + c["no_market_cap"] + c["floor_total"]
-    assert c["floor_total"] == (c["funds_etfs"] + c["spacs"] + c["other_securities"]
-                                + c["operating_total"])
-    assert c["classification_total"] == c["floor_total"] == len(universe.classification_universe())
-    assert c["operating_total"] == len(universe.classification_universe(operating_only=True))
 
 
-def test_universe_counts_follow_a_custom_floor(rawstore_tmp_db):
-    _mixed_universe()
-    c = universe.universe_counts(mc_min=1e6)
-    assert c["floor_total"] == 13                # every capped name
-    assert (c["funds_etfs"], c["spacs"]) == (3, 2)
-    assert c["classification_total"] == len(universe.classification_universe(1e6))
-    assert c["operating_total"] == len(universe.classification_universe(1e6, operating_only=True))
 
 
 # ── R5 (#88): screeners read the spine GICS ─────────────────────────────────
@@ -510,35 +393,9 @@ def test_load_cached_universe_is_empty_without_rows(rawstore_tmp_db):
     assert universe.load_cached_universe() == []
 
 
-def test_load_universe_meta_reads_the_meta_row_and_defaults_empty(rawstore_tmp_db):
-    assert universe.load_universe_meta() == {}
-    rawstore.replace_all("equity_universe_provenance", [{
-        "key": "__meta__", "generated_at": "2026-10-02T10:00:00+00:00",
-        "refreshed_by": "Swing Potential"}])
-    assert universe.load_universe_meta() == {
-        "generated_at": "2026-10-02T10:00:00+00:00", "refreshed_by": "Swing Potential"}
 
 
-def test_asymmetric_growth_keeps_its_old_reader_names():
-    from RevenueChaser.module_asymmetric_growth import engine
-    assert engine._load_cached_universe is universe.load_cached_universe
-    assert engine._load_universe_meta is universe.load_universe_meta
 
 
-def test_the_meta_key_has_one_definition():
-    import ast
-    import inspect
-
-    from RevenueChaser.module_asymmetric_growth import engine
-    assert universe.UNIVERSE_META_KEY == "__meta__"
-    assert engine._UNIVERSE_META_KEY == universe.UNIVERSE_META_KEY
-    tree = ast.parse(inspect.getsource(engine))
-    literals = [n.value for n in ast.walk(tree)
-                if isinstance(n, ast.Constant) and n.value == "__meta__"]
-    assert literals == []
 
 
-def test_load_universe_meta_defaults_null_fields_to_empty_strings(rawstore_tmp_db):
-    rawstore.replace_all("equity_universe_provenance", [{
-        "key": "__meta__", "generated_at": None, "refreshed_by": None}])
-    assert universe.load_universe_meta() == {"generated_at": "", "refreshed_by": ""}

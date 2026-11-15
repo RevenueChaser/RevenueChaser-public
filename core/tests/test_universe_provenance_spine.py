@@ -21,10 +21,6 @@ def spine(built):
     assert universe.universe_source() == "spine"
 
 
-@pytest.fixture
-def caps(spine):
-    """A stored market cap: the old cache still feeds the caps, so "refreshed by" is about them."""
-    rawstore.write_rows("equity_universe", [{"ticker": "MSFT", "market_cap": 3e12, "price": 400.0, "name": "MSFT"}])
 
 
 def _built_at() -> str:
@@ -72,12 +68,3 @@ def test_the_board_name_is_escaped():
     assert "<img" not in universe_provenance_html(WHEN, "<img src=x>")
 
 
-@pytest.mark.usefixtures("spine")
-def test_no_market_cap_loaded_says_so_in_the_header():
-    """Opus review N5: on the spine with no market cap stored (the host after the 27 Oct purge, until G2), the header
-    says so, so an empty screened board explains itself without opening the funnel."""
-    line = universe_provenance_html(WHEN, "Swing Potential")
-    assert "market caps: none loaded yet" in line and "refreshed by" not in line
-    rawstore.write_rows("equity_universe", [{"ticker": "MSFT", "market_cap": 3e12, "price": 400.0, "name": "MSFT"}])
-    line = universe_provenance_html(WHEN, "Swing Potential")
-    assert "none loaded" not in line and "market caps refreshed by <b" in line

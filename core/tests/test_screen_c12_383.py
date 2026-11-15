@@ -72,61 +72,18 @@ def _row(ticker, **quote):
 
 # ── the 7-A prefilter on D04 ──────────────────────────────────────────────────
 
-def test_the_trend_rules_are_gone(rawstore_tmp_db):
-    rawstore.write_rows("quote_snapshot", [_q("FAR", D, 20.0, v10=1e6)])
-    row = _row("FAR", regularMarketPrice=20.0, fiftyTwoWeekHigh=40.0, fiftyDayAverage=25.0,
-               averageDailyVolume10Day=1e6)
-    pf = screen_common.prefilter([row], CFG)
-    assert pf.kept == [row] and pf.drops == {}
 
 
-def test_the_prefilter_reads_d04_not_the_universe_quote(rawstore_tmp_db):
-    rawstore.write_rows("quote_snapshot", [_q("UP", D, 50.0, v10=1e6), _q("DOWN", D, 3.0, v10=1e6)])
-    up = _row("UP", regularMarketPrice=3.0, averageDailyVolume10Day=1e6)        # the stale universe quote
-    down = _row("DOWN", regularMarketPrice=50.0, averageDailyVolume10Day=1e6)
-    pf = screen_common.prefilter([up, down], CFG)
-    assert pf.kept == [up]
-    assert pf.drops == {"low_price": ["DOWN"]}
 
 
-def test_the_newest_session_wins_and_yahoo_comes_first(rawstore_tmp_db):
-    old = date(2026, 10, 13)
-    rawstore.write_rows("quote_snapshot", [
-        _q("AAA", old, 60.0, v10=1e6), _q("AAA", D, 3.0, v10=1e6),                     # newest says 3
-        _q("BBB", D, 3.0, source="uw", payload={"close": "3"}), _q("BBB", D, 60.0, v10=1e6),   # Yahoo first
-        _q("CCC", D, 60.0, source="uw", payload={"close": "60"})])                    # UW where Yahoo has none
-    pf = screen_common.prefilter([_row("AAA"), _row("BBB"), _row("CCC")], CFG)
-    assert [r["ticker"] for r in pf.kept] == ["BBB", "CCC"]
-    assert pf.drops == {"low_price": ["AAA"]}
 
 
-def test_dollar_volume_reads_the_yahoo_quote_and_a_row_without_volume_skips_the_rule(rawstore_tmp_db):
-    rawstore.write_rows("quote_snapshot", [
-        _q("THIN", D, 10.0, v3m=24_999.0),                    # no 10-day: the 3-month average stands in
-        _q("EDGE", D, 10.0, v10=25_000.0),                    # exactly at the floor
-        _q("UWONLY", D, 10.0, source="uw", payload={"close": "10"})])
-    pf = screen_common.prefilter([_row("THIN"), _row("EDGE"), _row("UWONLY")], CFG)
-    assert [r["ticker"] for r in pf.kept] == ["EDGE", "UWONLY"]
-    assert pf.drops == {"low_dollar_volume": ["THIN"]}
 
 
-def test_the_10_day_volume_comes_before_the_3_month_one(rawstore_tmp_db):
-    rawstore.write_rows("quote_snapshot", [_q("TEN", D, 10.0, v10=1_000.0, v3m=1.0e6)])
-    pf = screen_common.prefilter([_row("TEN")], CFG)
-    assert pf.drops == {"low_dollar_volume": ["TEN"]}         # 10 x 1,000 is under the floor; the 3-month is not read
 
 
-def test_a_name_with_no_d04_price_drops_as_no_quote(rawstore_tmp_db):
-    rawstore.write_rows("quote_snapshot", [_q("NOPX", D, None, payload={"marketCap": 1e9})])
-    pf = screen_common.prefilter([_row("NONE", regularMarketPrice=50.0), _row("NOPX")], CFG)
-    assert pf.kept == [] and pf.drops == {"no_quote": ["NONE", "NOPX"]}
 
 
-def test_the_quotes_session_is_reported(rawstore_tmp_db):
-    old = date(2026, 10, 13)
-    rawstore.write_rows("quote_snapshot", [_q("AAA", D, 50.0), _q("BBB", D, 50.0), _q("CCC", old, 50.0)])
-    pf = screen_common.prefilter([_row("AAA"), _row("BBB"), _row("CCC")], CFG)
-    assert pf.quote_session == D and pf.older_quotes == 1
 
 
 def test_the_prefilter_reads_only_its_two_thresholds():
@@ -220,28 +177,8 @@ def test_levels_read_the_nominal_bars_and_returns_the_adjusted_ones():
 
 # ── the rows read D01 ─────────────────────────────────────────────────────────
 
-def _no_old_read(monkeypatch):
-    def boom(*a, **k):
-        raise AssertionError("a scored name read swing_ohlc / yfinance")
-    monkeypatch.setattr(sp, "load_ohlc", boom, raising=False)
-    monkeypatch.setattr(fp, "load_ohlc", boom, raising=False)
-    monkeypatch.setattr(indicators, "load_ohlc", boom)
-    monkeypatch.setattr(sp, "load_ticker_info", lambda t, no_fetch=False: {})
-    monkeypatch.setattr(fp, "load_ticker_info", lambda t, no_fetch=False: {})
 
 
-def test_a_swing_row_reads_d01_nominal_levels_and_adjusted_returns(rawstore_tmp_db, clock, monkeypatch):
-    _no_old_read(monkeypatch)
-    days = _sessions(D, 300)
-    _seed_d01("AAA", days, close=lambda i: 100.0 if i < 150 else 50.0, actions=[(days[150], "split", 2.0),
-                                                                                (days[280], "dividend", 1.0)])
-    row = sp._compute_row({"ticker": "AAA", "name": "A", "market_cap": 1e9, "quote": {}}, None, spine={})
-    ind = row["ind"]
-    assert ind["price"] == 50.0                                # the last nominal close
-    assert ind["high_52w"] == pytest.approx(50.5)              # split-adjusted, not 101: levels are nominal
-    assert ind["change_1m"] == pytest.approx(50.0 / (50.0 * (1 - 1.0 / 50.0)) - 1)   # the dividend is a return
-    assert row["ohlc_stale"] is False
-    assert rawstore.count("swing_ohlc") == 0
 
 
 def test_a_scored_name_reads_only_the_window_of_d01(rawstore_tmp_db, clock, monkeypatch):
@@ -253,51 +190,14 @@ def test_a_scored_name_reads_only_the_window_of_d01(rawstore_tmp_db, clock, monk
     assert nominal.index[-1].date() == D and len(nominal) < 900
 
 
-def test_a_name_whose_d01_bars_stop_before_the_session_is_marked_stale(rawstore_tmp_db, clock, monkeypatch):
-    _no_old_read(monkeypatch)
-    _seed_d01("OLD", _sessions(date(2026, 10, 9), 300))
-    row = sp._compute_row({"ticker": "OLD", "name": "O", "market_cap": 1e9, "quote": {}}, None, spine={})
-    assert row["ohlc_stale"] is True
 
 
-def test_a_name_with_no_d01_bars_drops_with_its_reason(rawstore_tmp_db, clock, monkeypatch):
-    _no_old_read(monkeypatch)
-    _seed_d01("SHORT", _sessions(D, 100))
-    drops: list[str] = []
-    assert sp._compute_row({"ticker": "NONE", "quote": {}}, None, spine={}, drops=drops) is None
-    assert sp._compute_row({"ticker": "SHORT", "quote": {}}, None, spine={}, drops=drops) is None
-    assert drops == ["no_bars", "short_bars"]
 
 
-def test_a_fundamentals_row_reads_d01(rawstore_tmp_db, clock, monkeypatch):
-    _no_old_read(monkeypatch)
-    days = _sessions(D, 300)
-    _seed_d01("AAA", days, close=lambda i: 100.0 if i < 150 else 50.0, actions=[(days[150], "split", 2.0),
-                                                                                (days[280], "dividend", 1.0)])
-    _seed_d01("SPY", days, close=lambda i: 400.0)
-    spy = screen_common._ohlcv(__import__("RevenueChaser.core.prices", fromlist=["x"]).daily_bars(
-        ["SPY"], basis="adjusted"))
-    monkeypatch.setattr(fp.sec_edgar, "get_fundamentals",
-                        lambda t, no_fetch=False: ([{"fy": 2025, "revenue": 1e9}], [], {}))
-    row = fp._compute_row({"ticker": "AAA", "name": "A", "market_cap": 1e9, "quote": {}}, spy, spine={})
-    assert row["price"] == 50.0
-    assert row["metrics"]["dist_52w_pct"] == pytest.approx(50.0 / 50.5)
-    # flat after the split, flat SPY: only the dividend moves the adjusted closes, and rs_6m is a return (D3)
-    assert row["metrics"]["rs_6m"] == pytest.approx(50.0 / (50.0 * (1 - 1.0 / 50.0)) - 1)
-    assert rawstore.count("swing_ohlc") == 0
 
 
 # ── U9: the board says which session its prefilter read ──────────────────────
 
-@pytest.mark.parametrize("mod", [sp, fp], ids=["swing", "fundamentals"])
-def test_the_payload_names_the_quotes_session_and_counts_older_quotes(rawstore_tmp_db, monkeypatch, mod):
-    from RevenueChaser.core.tests import screen_parity as scn
-    scn.seed()
-    scn.patch(monkeypatch)
-    with rawstore.connect(db=rawstore.MANIFEST["quote_snapshot"].get("db", "raw")) as conn:
-        conn.execute("UPDATE quote_snapshot SET session_date = DATE '2026-10-13' WHERE ticker = 'UP2'")
-    dq = mod.run_scan()["data_quality"]
-    assert dq["quote_session"] == "2026-10-14" and dq["older_quotes"] == 1
 
 
 # ── the jobs ──────────────────────────────────────────────────────────────────

@@ -32,39 +32,9 @@ class TestResolvers:
     # An Earnings Fetch run Thursday 27 Aug 2026 after the close (18:00 New York).
     EARNINGS_RUN_AT = 1787868000.0
 
-    @staticmethod
-    def _record_earnings_fetch(run_at: float, calendar_session: str | None) -> None:
-        """A finished Earnings Fetch, through the writer the runner calls (``input_sources`` as the runner fills it)."""
-        from RevenueChaser.module_earnings_radar import history as er_history
-        er_history.record([], {}, run_id=f"er-{run_at}", run_at=run_at, reason="no cards",
-                          input_sources={"calendar": {"stored": 4 if calendar_session else 0,
-                                                      "live": 0 if calendar_session else 4,
-                                                      "session": calendar_session}})
 
-    def test_earnings_reports_the_calendar_session_its_last_fetch_used(self, rawstore_tmp_db):
-        """#205 review, option A: the cards on the board are the last Fetch's, so their date is the calendar session
-        that Fetch read, not the newest ``earnings_calendar`` session a later nightly sweep stored."""
-        rawstore.write_rows("earnings_calendar", [
-            {"session_date": "2026-08-26", "earnings_date": "2026-09-03", "ticker": "AAPL", "report_session": "AMC"},
-            {"session_date": "2026-08-28", "earnings_date": "2026-09-03", "ticker": "AAPL", "report_session": "AMC"},
-        ])
-        self._record_earnings_fetch(self.EARNINGS_RUN_AT, "2026-08-26")
-        assert provenance.data_as_of("module_earnings_radar") == "2026-08-26"
 
-    def test_earnings_has_no_date_before_a_fetch(self, rawstore_tmp_db):
-        """A stored calendar with no Fetch is not on the board; neither is a per-ticker payload cache (DF13)."""
-        rawstore.write_rows("ticker_payload_cache", [{
-            "ticker": "AAPL", "payload": {}, "fetched_at": 1788223354.41, "fetched_at_iso": ""}])   # 2026-09-01
-        rawstore.write_rows("earnings_calendar", [
-            {"session_date": "2026-08-28", "earnings_date": "2026-09-03", "ticker": "AAPL", "report_session": "AMC"}])
-        assert provenance.data_as_of("module_earnings_radar") is None
 
-    def test_earnings_read_live_is_dated_by_its_run(self, rawstore_tmp_db):
-        """A Fetch that asked UW for every calendar pair read no stored session: its record dates it by its run."""
-        rawstore.write_rows("earnings_calendar", [
-            {"session_date": "2026-08-28", "earnings_date": "2026-09-03", "ticker": "AAPL", "report_session": "AMC"}])
-        self._record_earnings_fetch(self.EARNINGS_RUN_AT, None)
-        assert provenance.data_as_of("module_earnings_radar") == "2026-08-27"
 
     def test_rotation_uses_the_newest_snapshot_date(self, rawstore_tmp_db):
         rawstore.write_rows("rotation_snapshots", [
@@ -73,23 +43,7 @@ class TestResolvers:
         ])
         assert provenance.data_as_of("module_sector_rotation") == "2026-09-01"
 
-    def test_sec13f_reports_the_newest_period_in_the_totals(self, rawstore_tmp_db):
-        """The board renders ``sec13f_totals``, so that is the date it is "as of" — not a newer
-        period that was ingested but not derived yet (#206)."""
-        rawstore.write_rows("sec13f_totals", [
-            {"ticker": "AAPL", "entry": {"2025-12-31": {"shares": 1.0}, "2026-03-31": {"shares": 2.0}}},
-            {"ticker": "MSFT", "entry": {"2025-12-31": {"shares": 1.0}}},
-        ])
-        rawstore.write_rows("sec13f_submissions", [
-            {"accession": "a1", "cik": "1", "period": "2026-06-30",
-             "filing_date": "01-AUG-2026", "type": "13F-HR"}])
-        assert provenance.data_as_of("module_sec_13f") == "2026-03-31"
 
-    def test_sec13f_with_no_totals_has_no_data_date(self, rawstore_tmp_db):
-        rawstore.write_rows("sec13f_submissions", [
-            {"accession": "a1", "cik": "1", "period": "2026-06-30",
-             "filing_date": "01-AUG-2026", "type": "13F-HR"}])
-        assert provenance.data_as_of("module_sec_13f") is None
 
     def test_leaps_prefers_prints_and_falls_back_to_the_cache(self, rawstore_tmp_db):
         rawstore.write_rows("leaps_cache", [
@@ -99,21 +53,6 @@ class TestResolvers:
             {"id": "p1", "ticker": "AAPL", "discovered_at": "2026-09-02"}])
         assert provenance.data_as_of("module_leaps") == "2026-09-02"
 
-    def test_financials_reports_the_last_tickers_fetch_day(self, rawstore_tmp_db, tmp_path,
-                                                           monkeypatch):
-        """Financials now recomputes from .store, so its data date = when the raw
-        yfinance payload behind the rendered ticker was fetched."""
-        from RevenueChaser.core import config
-        monkeypatch.setattr(config, "OUTPUT_DIR", tmp_path)
-        rawstore.write_rows("ticker_payload_cache", [{
-            "ticker": "AAPL", "payload": {}, "fetched_at": 1788223354.41,
-            "fetched_at_iso": "2026-09-01T00:00:00+00:00"}])
-        # no state file yet -> nothing rendered -> no data date
-        assert provenance.data_as_of("module_financials") is None
-        state = tmp_path / "financials" / "financials_latest.json"
-        state.parent.mkdir(parents=True, exist_ok=True)
-        state.write_text(json.dumps({"ticker": "AAPL"}), encoding="utf-8")
-        assert provenance.data_as_of("module_financials") == "2026-09-01"
 
     def test_an_unknown_module_reports_nothing(self, rawstore_tmp_db):
         assert provenance.data_as_of("module_does_not_exist") is None

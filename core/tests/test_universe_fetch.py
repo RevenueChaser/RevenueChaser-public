@@ -4,7 +4,6 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from RevenueChaser.core import universe_fetch as uf
 
 # Names the Asymmetric Growth engine still exposes (callers and tests import them from there).
 MOVED = ("fetch_universe_stats", "fetch_universe", "backfill_universe_caps", "_save_universe",
@@ -17,35 +16,12 @@ MOVED_ONLY = ("_apply_identity_master", "_save_stats_meta", "_sec_member_list", 
               "_RATE_LIMIT_STREAK_STOP", "_UNIVERSE_STATS_KEY")
 
 
-def test_the_engine_re_exports_the_moved_names_unchanged():
-    from RevenueChaser.module_asymmetric_growth import engine
-    for name in MOVED:
-        assert getattr(engine, name) is getattr(uf, name), name
 
 
-def test_the_moved_only_names_exist_in_core_and_not_in_the_engine():
-    from RevenueChaser.module_asymmetric_growth import engine
-    for name in MOVED_ONLY:
-        assert hasattr(uf, name), f"core.universe_fetch lacks {name}"
-        assert not hasattr(engine, name), f"the engine still carries {name}"
 
 
-def test_the_swing_and_fundamentals_wrappers_call_the_core_writer(monkeypatch):
-    from RevenueChaser.module_fundamentals import pipeline as fp
-    from RevenueChaser.module_swing_potential import pipeline as sp
-    calls = []
-    monkeypatch.setattr(uf, "fetch_universe_stats", lambda **kw: calls.append(kw) or ([], {}))
-    for mod in (fp, sp):
-        mod.fetch_universe_stats(refreshed_by="X", refresh=True, no_fetch=False)
-    assert [c["refreshed_by"] for c in calls] == ["X", "X"]
 
 
-def test_the_core_writer_imports_no_board_module():
-    """Core never depends on a ``module_*`` package (core -> app -> module_* is the one direction)."""
-    tree = ast.parse(Path(uf.__file__).read_text(encoding="utf-8"))
-    imported = {n.module for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.module}
-    imported |= {a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}
-    assert not [m for m in imported if ".module_" in m or m.startswith("module_") or ".app" in m], imported
 
 
 def test_the_engine_no_longer_defines_the_writer():

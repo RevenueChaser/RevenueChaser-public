@@ -14,7 +14,6 @@ from RevenueChaser.app import runners
 from RevenueChaser.app.jobs import JobMessage
 from RevenueChaser.core import ledger, rawstore
 from RevenueChaser.module_earnings_radar.models import TradeCard
-from RevenueChaser.module_earnings_radar import history as er_history
 
 BOARD = "module_earnings_radar"
 
@@ -71,100 +70,30 @@ def _card(t="AAA"):
                      raw_packet_json="{}")
 
 
-def _headers():
-    return rawstore.query("SELECT * FROM result_runs WHERE board = ?", [BOARD], db="history")
 
 
 def _fetch(uw=None):
     return runners.run_earnings_range(uw or _UW(), date(2026, 10, 8), date(2026, 10, 8))
 
 
-def test_a_fetch_records_history_with_the_job_run_id_after_the_board_is_written(run, monkeypatch):
-    run["cards"] = [_card("AAA"), _card("BBB")]
-    seen = []
-    real = er_history.record
-    monkeypatch.setattr(er_history, "record", lambda *a, **k: (seen.append(list(run["order"])), real(*a, **k))[1])
-    assert _fetch() == runners.EARNINGS_LATEST
-    (head,) = _headers()
-    assert head["run_id"] == "job42" and json.loads(head["row_counts"]) == {"earnings_cards_history": 2}
-    assert seen == [["board"]]                                   # the board file existed before the history call
-    assert json.loads(head["context"])["events"] == 1
 
 
-def test_a_history_failure_is_a_job_note_and_the_fetch_still_returns(run, monkeypatch):
-    run["cards"] = [_card()]
-    monkeypatch.setattr(er_history, "record", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("disk full")))
-    assert _fetch() == runners.EARNINGS_LATEST
-    assert any("disk full" in n and "history" in n for n in ledger.take_notes())
-    assert runners.EARNINGS_LATEST.exists()
 
 
-def test_a_zero_card_fetch_records_a_header_and_still_raises_its_message(run):
-    run["cards"] = []
-    run["stats"] = {"total": 1, "passed": 0, "bypassed": 0, "filtered": 1, "by_reason": {"OI": 1}, "excluded": []}
-    with pytest.raises(JobMessage):
-        _fetch()
-    (head,) = _headers()
-    assert head["quality"] == "partial" and "filter" in head["quality_note"].lower()
-    assert json.loads(head["funnel"])["by_reason"] == {"OI": 1}
 
 
-def test_a_history_failure_does_not_replace_the_zero_card_message(run, monkeypatch):
-    run["cards"] = []
-    monkeypatch.setattr(er_history, "record", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("disk full")))
-    with pytest.raises(JobMessage) as exc:
-        _fetch()
-    assert "disk full" not in exc.value.message and any("disk full" in n for n in ledger.take_notes())
 
 
-def test_an_empty_calendar_records_a_header_and_still_raises(run):
-    run["events"] = []
-    with pytest.raises(JobMessage) as exc:
-        _fetch()
-    assert "No earnings events" in exc.value.message
-    (head,) = _headers()
-    assert head["quality"] == "partial" and "No earnings events" in head["quality_note"]
 
 
-def test_an_empty_calendar_after_a_rejected_key_says_so_in_the_header(run):
-    run["events"] = []
-    with pytest.raises(JobMessage):
-        _fetch(_UW(auth_error={"status": 401}))
-    (head,) = _headers()
-    assert "rejected the API key" in head["quality_note"]
 
 
-def test_a_failed_rotation_map_is_recorded_partial_with_rows_kept(run, monkeypatch):
-    run["cards"] = [_card()]
-    monkeypatch.setattr("RevenueChaser.module_sector_rotation.engine.rotation_quadrant_map",
-                        lambda uw: (_ for _ in ()).throw(RuntimeError("no rotation")))
-    _fetch()
-    (head,) = _headers()
-    assert head["quality"] == "partial" and "rotation" in head["quality_note"]
-    assert json.loads(head["row_counts"]) == {"earnings_cards_history": 1}
 
 
-def test_an_empty_rotation_map_is_recorded_partial_with_rows_kept(run, monkeypatch):
-    run["cards"] = [_card()]
-    monkeypatch.setattr("RevenueChaser.module_sector_rotation.engine.rotation_quadrant_map", lambda uw: {})
-    _fetch()
-    (head,) = _headers()
-    assert head["quality"] == "partial" and "rotation" in head["quality_note"]
 
 
-def test_a_healthy_fetch_is_recorded_with_a_session_and_no_note(run):
-    run["cards"] = [_card()]
-    _fetch()
-    (head,) = _headers()
-    assert head["quality"] in ("complete", "intraday") and head["session_date"] is not None
-    assert head["quality_note"] is None
 
 
-def test_uw_failures_make_the_run_partial_and_keep_the_rows(run):
-    run["cards"] = [_card()]
-    _fetch(_UW(failed=50))
-    (head,) = _headers()
-    assert json.loads(head["row_counts"]) == {"earnings_cards_history": 1} and "50 of 100" in head["quality_note"]
 
 
 def test_nothing_but_the_fetch_runner_calls_the_writer():

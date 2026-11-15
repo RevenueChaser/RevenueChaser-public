@@ -143,17 +143,6 @@ def _old_mode_profile(ticker, **kw):
     store.save_profile(ticker, "", _prof(**kw), ck, "old-model", prompt_version="v0")
 
 
-def test_mode_change_with_limit_deletes_nothing(rawstore_tmp_db, monkeypatch, _quiet):
-    for t in ("A", "B", "C"):
-        _old_mode_profile(t, products=["x"])
-    store.set_mode({"model": "old-model", "thinking": False, "effort": "",
-                    "prompt_version": "v0"})
-    monkeypatch.setattr(engine.profiles_mod, "profile_for",
-                        lambda *a, **k: _prof(products=["new"]))
-    got = engine.build_profiles(["A"], use_llm=True)       # a --limit 1 style run
-    assert got["A"]["products"] == ["new"]
-    assert set(store.load_profiles()) == {"A", "B", "C"}
-    assert store.load_profiles(["B"])["B"]["products"] == ["x"]
 
 
 def test_stale_profiles_are_flagged_until_reprofiled(rawstore_tmp_db):

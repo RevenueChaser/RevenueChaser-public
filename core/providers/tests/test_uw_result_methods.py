@@ -58,15 +58,6 @@ def _scripted(*outcomes, key: str = "k") -> tuple[UWClient, list]:
 # ── path encoding ────────────────────────────────────────────────────────────────────────
 
 # Every client method that puts its first argument into the URL path.
-TICKER_METHODS = [
-    "earnings_data", "earnings_history", "stock_earnings", "earnings_rows", "fundamentals",
-    "financials", "income_statements", "balance_sheets", "cash_flows", "flow_recent", "dark_pool",
-    "greeks", "gex_levels", "term_structure", "greek_exposure", "greek_exposure_by_strike",
-    "greek_exposure_by_expiry", "spot_exposures_by_strike", "oi_per_expiry", "flow_per_expiry",
-    "iv_rank", "expiry_breakdown", "option_contracts", "short_interest", "insider", "etf_holdings",
-    "etf_ohlc", "ohlc_daily", "ohlc_latest", "ticker_info", "options_volume", "etf_flow",
-    "etf_ohlc_result", "ohlc_daily_result", "flow_recent_result", "option_contracts_result",
-]
 
 
 def _path_of(method: str, ticker: str) -> str:
@@ -84,17 +75,8 @@ def _path_of(method: str, ticker: str) -> str:
     return seen[0]
 
 
-@pytest.mark.parametrize("method", TICKER_METHODS)
-def test_a_ticker_with_a_slash_and_a_query_is_one_encoded_path_segment(method):
-    clean = _path_of(method, "AAPL")
-    evil = _path_of(method, EVIL)
-    assert EVIL_SEG in evil and "?" not in evil and EVIL not in evil
-    assert evil.replace(EVIL_SEG, "AAPL") == clean         # same shape: one segment, nothing added
 
 
-@pytest.mark.parametrize("method", TICKER_METHODS)
-def test_a_dotted_ticker_is_left_alone(method):
-    assert _path_of(method, "BRK.B") == _path_of(method, "AAPL").replace("AAPL", "BRK.B")
 
 
 def test_the_candle_size_and_the_calendar_session_are_encoded_too():

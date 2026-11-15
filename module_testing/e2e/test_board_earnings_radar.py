@@ -42,25 +42,10 @@ def fetched(dashboard, calendar):
     return result
 
 
-def _history(dashboard, sql):
-    conn = duckdb.connect(str(dashboard.store_dir / "history.duckdb"), read_only=True)
-    try:
-        return conn.execute(sql).fetchall()
-    finally:
-        conn.close()
 
 
 class TestFetch:
-    def test_fetch_records_one_run_header_with_a_named_cause(self, dashboard, fetched):
-        rows = _history(dashboard, "SELECT board, quality, quality_note FROM result_runs")
-        assert len(rows) == 1
-        board, quality, note = rows[0]
-        assert board == "module_earnings_radar"
-        assert quality == "partial", f"mock tape has no Rotation map; expected a partial run, got {quality}: {note}"
-        assert ROTATION_CAUSE in note
 
-    def test_fetch_stores_the_scored_cards(self, dashboard, fetched):
-        assert _history(dashboard, "SELECT ticker FROM earnings_cards_history") == [("NVDA",)]
 
     def test_fetch_writes_the_board_artifact(self, dashboard, fetched):
         assert dashboard.artifact("earnings_radar_latest.html").exists()
@@ -73,13 +58,6 @@ class TestFetch:
         assert provider_routes.requests("/api/earnings/premarket"), "fetch must read the calendar"
         assert provider_routes.requests("/api/stock/NVDA/"), "fetch must read the per-ticker UW data"
 
-    def test_a_day_with_no_events_still_gets_a_header(self, dashboard, provider_routes):
-        """README: every Fetch gets a header, also one with no events."""
-        provider_routes.route("/api/earnings/", payload={"data": []})
-        result = dashboard.run_job("/run/earnings", start=DAY, end=DAY)
-        assert result.status == "done" and "No earnings events" in (result.message or "")
-        dashboard.wait_until_idle()
-        assert len(_history(dashboard, "SELECT 1 FROM result_runs")) == 1
 
 
 class TestRefreshIsOffline:
@@ -177,28 +155,3 @@ def _event(symbol, name):
             "expected_move_perc": "0.06", "street_mean_est": "1.2", "report_time": "premarket"}
 
 
-class TestFilterKit:
-    """KE (#372): Index S&P 500 hides non-members; the board's chips still AND with the kit."""
-
-    def test_picking_sp500_hides_non_members_and_the_watchlist_chip_still_ands(
-            self, dashboard, provider_routes, tmp_path, monkeypatch):
-        import RevenueChaser.core.rawstore as rawstore
-        monkeypatch.setattr(rawstore, "DB_PATH", dashboard.store_dir / "raw.duckdb")
-        # Since #642 PR 6 the index filter reads the spine's membership, not the old cached lists.
-        from RevenueChaser.rcdata.tests import universe_store
-        universe_store.membership("sp500", {"NVDA"})
-        provider_routes.route("/api/earnings/premarket", payload={"data": [
-            _event("NVDA", "NVIDIA Corp"), _event("AMD", "Advanced Micro Devices")]})
-        result = dashboard.run_job("/run/earnings", start=DAY, end=DAY)
-        assert result.ok, f"Earnings fetch failed: {result}\n{dashboard.logs()}"
-        dashboard.wait_until_idle()
-        html = dashboard.view("module_earnings_radar").text
-        assert 'id="rc-filters"' in html and "RCFilters.mount(" in html
-        for f in ("score6", "accel", "bull", "liq", "wl"):
-            assert f'data-f="{f}"' in html
-        assert 'data-ticker="NVDA"' in html and 'data-ticker="AMD"' in html
-        dom = _drive_filters(html, tmp_path)
-        after_index = dom.split("data-after-index", 1)[-1].split(">", 1)[0]
-        assert "NVDA=shown" in after_index and "AMD=none" in after_index   # the S&P 500 member stays
-        assert "NVDA=none" in dom.split("data-after-chip", 1)[-1].split(">", 1)[0]
-        assert "active=true" in dom

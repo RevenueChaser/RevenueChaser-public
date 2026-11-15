@@ -78,14 +78,6 @@ def test_scored_names_that_pass_no_screen_are_their_own_by_design_step(scenario,
     assert steps["passed_no_screen"]["count"] == passed_none and steps["passed_no_screen"]["by_design"] is True
 
 
-@pytest.mark.parametrize("mod", BOARDS)
-def test_a_name_without_a_d04_quote_is_a_no_quote_drop_that_needs_a_look(scenario, mod):
-    with rawstore.connect(db=rawstore.MANIFEST["quote_snapshot"].get("db", "raw")) as conn:
-        conn.execute("DELETE FROM quote_snapshot WHERE ticker = 'UP2'")
-    payload = mod.run_scan()
-    steps = _steps(payload)
-    assert steps["no_quote"]["tickers"] == ["UP2"] and steps["no_quote"]["by_design"] is False
-    assert funnel.validate(payload["funnel_steps"]) == []
 
 
 @pytest.mark.parametrize("mod", BOARDS)

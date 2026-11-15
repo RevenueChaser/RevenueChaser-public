@@ -108,25 +108,10 @@ def _universe_job(monkeypatch, swing, fundamentals):
     return ran
 
 
-def test_universe_job_runs_fundamentals_when_swing_scores_nothing(monkeypatch):
-    ran = _universe_job(monkeypatch, "No data: swing empty", None)
-    with pytest.raises(JobMessage) as exc:
-        runners.run_universe_refresh(None)
-    assert ran == ["ag", "swing", "fundamentals"]
-    assert exc.value.message == "Swing: No data: swing empty"
 
 
-def test_universe_job_reports_every_empty_board(monkeypatch):
-    ran = _universe_job(monkeypatch, "No data: a", "No data: b")
-    with pytest.raises(JobMessage) as exc:
-        runners.run_universe_refresh(None)
-    assert ran == ["ag", "swing", "fundamentals"]
-    assert exc.value.message == "Swing: No data: a Fundamentals: No data: b"
 
 
-def test_universe_job_ends_normally_when_both_boards_scored(monkeypatch):
-    _universe_job(monkeypatch, None, None)
-    assert runners.run_universe_refresh(None) == runners.FUNDAMENTALS_LATEST
 
 
 # ── Asymmetric Growth: only a Fetch writes ticker_scores ──────────────────────

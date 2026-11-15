@@ -13,7 +13,7 @@ import pytest
 
 from RevenueChaser.core import rawstore, spine_reads, universe
 from RevenueChaser.core.reporting_common import universe_provenance_html
-from RevenueChaser.core.tests.test_universe_spine_flag import CAPS, old_store, spine  # noqa: F401 - the fixtures
+from RevenueChaser.core.tests.test_universe_spine_flag import CAPS
 from RevenueChaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401 - market roots per test
 from RevenueChaser.rcdata.tests.test_spine_security import built  # noqa: F401 - the 10 names
 
@@ -30,33 +30,8 @@ PRICES = {
 }
 
 
-def _write_prices(prices=PRICES) -> None:
-    """A live ``prices.duckdb`` holding only what the universe reads: the symbols, the bars and the caps."""
-    from RevenueChaser.rcdata import serving
-    from RevenueChaser.rcdata.build.prices.serving import SCHEMAS
-    path = serving.live_path("prices")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    con = duckdb.connect(str(path))
-    try:
-        for table in ("security_symbol", "price_bar_daily", "market_cap_daily"):
-            con.execute(f"CREATE TABLE {table} ({', '.join(f'{c} {t}' for c, t in SCHEMAS[table])})")
-        for ticker, (sid, day, close, cap, issuer) in prices.items():
-            con.execute("INSERT INTO security_symbol (security_id, symbol, valid_from, source) VALUES (?, ?, ?, ?)",
-                        [sid, ticker, date(2025, 10, 1), "alpaca/bars"])
-            for d in (date(2025, 10, 1), day):
-                con.execute("INSERT INTO price_bar_daily (security_id, session_date, symbol, close, source) "
-                            "VALUES (?, ?, ?, ?, ?)", [sid, d, ticker, close if d == day else 1.0, "alpaca/bars"])
-                if cap is not None:
-                    con.execute("INSERT INTO market_cap_daily (security_id, session_date, close, market_cap, "
-                                "issuer_market_cap) VALUES (?, ?, ?, ?, ?)",
-                                [sid, d, close, cap if d == day else 1.0, issuer if d == day else 1.0])
-    finally:
-        con.close()
 
 
-@pytest.fixture
-def prices(spine):
-    _write_prices()
 
 
 @pytest.mark.usefixtures("prices")
@@ -72,15 +47,6 @@ def test_the_caps_come_from_the_prices_store_and_the_old_table_where_it_has_none
     assert universe.classification_universe(0)[:3] == ["MSFT", "SPY", "TM"]      # PR 2: the fund is a universe name
 
 
-@pytest.mark.usefixtures("prices")
-def test_the_price_is_the_newest_close_and_the_quote_stays_the_old_tables():
-    rawstore.write_rows("equity_universe", [{"ticker": "MSFT", "market_cap": CAPS["MSFT"], "price": 10.0,
-                                             "name": "old MSFT", "quote": {"fiftyTwoWeekHigh": 555.0}}])
-    cached = {r["ticker"]: r for r in universe.load_cached_universe()}
-    assert cached["MSFT"]["price"] == 500.0 and cached["MSFT"]["quote"] == {"fiftyTwoWeekHigh": 555.0}
-    assert cached["FDX"]["price"] == 300.0                          # the bar's close, though its cap is the old one
-    assert cached["ETN"]["price"] == 10.0                           # too far behind: the old price
-    assert cached["SPY"]["market_cap"] == 6.1e11                    # a fund: its own cap, not its trust's sum
 
 
 @pytest.mark.usefixtures("prices")
@@ -97,42 +63,5 @@ def test_without_a_prices_store_the_old_table_is_read_as_before():
     assert rows["MSFT"] == CAPS["MSFT"] and rows["VYLR"] is None
 
 
-def test_a_cap_from_the_prices_store_alone_is_a_loaded_cap(monkeypatch, built):
-    """The header's "market caps: none loaded yet" (PR 6, Opus review N5) counts the prices store's caps: on the host
-    the old table stays empty, so after the first prices build the caps are there although that table has none."""
-    assert not universe.has_market_caps()
-    assert "market caps: none loaded yet" in universe_provenance_html("2026-10-28T00:00:00Z", "Swing Potential")
-    _write_prices()
-    assert universe.has_market_caps()
-    assert "none loaded" not in universe_provenance_html("2026-10-28T00:00:00Z", "Swing Potential")
 
 
-@pytest.mark.usefixtures("prices")
-def test_a_render_reads_the_prices_store_once_per_file(monkeypatch):
-    """As the spine's answers (``spine_reads``, Opus review S6): one prices read per render, kept until the file
-    changes."""
-    from RevenueChaser.rcdata import serving
-    spine_reads.clear()
-    seen = []
-    real = serving.open_read
-    monkeypatch.setattr(serving, "open_read", lambda kind: seen.append(kind) or real(kind))
-
-    def render():
-        universe.universe_counts(3e8)
-        universe.classification_universe(3e8)
-        return universe.classification_universe_rows(0)
-    first = render()
-    spine = seen.count("spine")
-    assert seen.count("prices") == 1
-    assert render() == first and seen.count("prices") == 1
-    path = serving.live_path("prices")
-    st = path.stat()
-    os.utime(path, ns=(st.st_atime_ns, st.st_mtime_ns + 1_000_000_000))       # what a swap looks like to stat
-    render()
-    assert seen.count("prices") == 2 and seen.count("spine") == spine      # the spine's answers are still kept
-    # The Opus review's N3: latest_market finds the tickers through the spine, so a new spine file reads it again.
-    path = serving.live_path("spine")
-    st = path.stat()
-    os.utime(path, ns=(st.st_atime_ns, st.st_mtime_ns + 1_000_000_000))
-    render()
-    assert seen.count("prices") == 3

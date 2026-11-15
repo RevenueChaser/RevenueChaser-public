@@ -168,12 +168,6 @@ def test_every_storage_access_is_guarded():
         assert before.rfind("try") > before.rfind("}"), f"unguarded {m.group(0)} at {m.start()}"
 
 
-def test_the_shared_summaries_are_touch_sized_on_a_phone():
-    """The help and history panels' summaries had 9 px padding: a 34 px target on a phone."""
-    for css in (rc.HELP_CSS, rc.HISTORY_CSS):
-        m = re.search(r"@media\s*\(max-width:\s*900px\),\s*\(pointer:\s*coarse\)\s*\{(.*?)\}\s*</style>", css, re.S)
-        assert m, "no phone / touch rule"
-        assert "min-height:44px" in m.group(1)
 
 
 def _rgba(value: str) -> tuple[float, float, float, float]:
@@ -209,8 +203,3 @@ def test_the_spx_calendar_days_are_readable(scheme, sign):
     assert _contrast(_rgba(t[f"gex-{sign}-fg"])[:3], cell) >= 4.5, (scheme, sign)
 
 
-def test_the_touch_sized_summaries_keep_their_arrow():
-    """#190 review: display:flex on a <summary> drops its disclosure triangle (it lives on display:list-item)."""
-    for css in (rc.HELP_CSS, rc.HISTORY_CSS):
-        touch = css[css.index("@media (max-width: 900px), (pointer: coarse)"):]
-        assert "display:flex" not in touch

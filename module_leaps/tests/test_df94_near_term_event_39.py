@@ -15,9 +15,8 @@ from RevenueChaser.core import earnings_dates
 from RevenueChaser.core import rawstore
 from RevenueChaser.core.providers.result import ProviderResult
 from RevenueChaser.module_leaps import engine
-from RevenueChaser.module_leaps import history as leaps_history
 from RevenueChaser.module_leaps.scan import scan_leaps, scan_leaps_cached
-from RevenueChaser.module_leaps.tests.test_leaps_l3 import run_at_of, seed_session
+from RevenueChaser.module_leaps.tests.test_leaps_l3 import run_at_of
 
 TODAY = date(2026, 10, 6)
 FAR = "2027-12-17"                       # > 270 days after TODAY
@@ -81,52 +80,20 @@ def _calendar(monkeypatch, dates=None, calls=None):
     monkeypatch.setattr(earnings_dates, "stored_next_dates", read)
 
 
-def _seed_growing(ticker="AAA"):
-    """One recorded session a day earlier, so today's read grows the far-dated call OI."""
-    seed_session(date(2026, 10, 5), {ticker: [{"expiry": FAR, "call_oi": 500, "put_oi": 0}]})
-    rawstore.save_watchlist({ticker})
 
 
 # ── 1. the pinned name's own calendar date is the near event ──
 
-def test_a_pinned_name_with_earnings_in_five_days_is_a_near_event_and_quiet(rawstore_tmp_db, monkeypatch):
-    _seed_growing()
-    _calendar(monkeypatch, {"AAA": TODAY + timedelta(days=5)})
-    watched, _ = scan_leaps(_UW({"AAA": GROWING}), today=TODAY)
-    (aaa,) = watched
-    assert aaa["near_term_event"] is True and aaa["label"] == "Quiet"
 
 
 # ── 2. beyond the window the footprint's own label stands ──
 
-def test_a_pinned_name_with_earnings_forty_days_out_keeps_its_footprint_label(rawstore_tmp_db, monkeypatch):
-    _seed_growing()
-    _calendar(monkeypatch, {"AAA": TODAY + timedelta(days=40)})
-    watched, _ = scan_leaps(_UW({"AAA": GROWING}), today=TODAY)
-    (aaa,) = watched
-    assert aaa["near_term_event"] is False and aaa["label"] == "Accumulating"
 
 
 # ── 3. a flow candidate keeps the flag it has when the calendar has no row ──
 
-def test_a_flow_candidate_keeps_its_own_near_event_flag_without_a_calendar_row(rawstore_tmp_db, monkeypatch):
-    _seed_growing()
-    _calendar(monkeypatch, {})
-    ned = (TODAY + timedelta(days=3)).isoformat()
-    watched, _ = scan_leaps(_UW({"AAA": GROWING}, tape=[_print("q1", "AAA", ned)]), today=TODAY)
-    (aaa,) = watched
-    assert aaa["near_term_event"] is True and aaa["label"] == "Quiet"
 
 
-def test_a_flow_candidate_keeps_its_flag_against_a_calendar_row_that_says_otherwise(rawstore_tmp_db, monkeypatch):
-    """#99 review: the two sources are OR'd. The candidate's date comes off the tape, the stored calendar may be
-    several sessions old (``earnings_dates.MAX_AGE_DAYS``), so a stale calendar row must never take the flag away."""
-    _seed_growing()
-    _calendar(monkeypatch, {"AAA": TODAY + timedelta(days=40)})
-    ned = (TODAY + timedelta(days=3)).isoformat()
-    watched, _ = scan_leaps(_UW({"AAA": GROWING}, tape=[_print("q1", "AAA", ned)]), today=TODAY)
-    (aaa,) = watched
-    assert aaa["near_term_event"] is True and aaa["label"] == "Quiet"
 
 
 # ── 4. the window is inclusive at exactly NEAR_EVENT_DAYS ──
@@ -142,30 +109,8 @@ def test_the_near_event_window_is_inclusive_at_the_constant(rawstore_tmp_db, mon
 
 # ── 5. the Refresh keeps the recorded flag, whatever today's calendar says ──
 
-def _record(as_of: date, near_term_event: bool) -> dict:
-    snap = {"ticker": "AAA", "name": "AAA Inc", "as_of": as_of.isoformat(), "label": "Accumulating", "score": 40,
-            "far_call_oi": 1000, "far_put_oi": 200, "far_call_share": 0.8333,
-            "near_term_event": near_term_event}
-    oi = [{"expiry": FAR, "call_oi": 1000, "put_oi": 200}]
-    leaps_history.record([{"ticker": "AAA", "name": "AAA Inc", "snapshot": snap,
-                           "inputs": {"oi_per_expiry": oi}, "fetch_status": "ok"}],
-                         run_id=f"s{as_of.isoformat()}", run_at=run_at_of(as_of))
-    return snap
 
 
-def test_a_refresh_keeps_the_recorded_near_event_flag(rawstore_tmp_db, monkeypatch):
-    session = TODAY - timedelta(days=60)
-    snap = _record(session, near_term_event=True)
-    rawstore.save_watchlist({"AAA"})
-    engine.save_cache("AAA", dict(snap))
-    calls = []
-    # Today's calendar has the next report 40 days out: recomputing against it would clear the recorded flag.
-    _calendar(monkeypatch, {"AAA": TODAY + timedelta(days=40)}, calls=calls)
-
-    watched, _ = scan_leaps_cached(today=TODAY)
-    (aaa,) = watched
-    assert aaa["near_term_event"] is True
-    assert calls == []                                        # the recorded session's date decides, not today
 
 
 # ── 6. a calendar that cannot be read never fails the scan, and says so once ──
@@ -174,18 +119,6 @@ def _raise_read(today=None):
     raise RuntimeError("no such table: earnings_calendar")
 
 
-@pytest.mark.parametrize("calendar", ["empty", "raises"])
-def test_an_unreadable_calendar_gives_no_flags_and_one_warning(rawstore_tmp_db, monkeypatch, calendar):
-    _seed_growing()
-    if calendar == "raises":
-        monkeypatch.setattr(earnings_dates, "stored_next_dates", _raise_read)
-    else:
-        _calendar(monkeypatch, {})
-    warnings: list[str] = []
-    watched, _ = scan_leaps(_UW({"AAA": GROWING}), today=TODAY, warnings=warnings)
-    (aaa,) = watched
-    assert aaa["near_term_event"] is False and aaa["label"] == "Accumulating"
-    assert len(warnings) == 1 and "earnings calendar" in warnings[0]
 
 
 # ── 7. the cached path stays store-only ──

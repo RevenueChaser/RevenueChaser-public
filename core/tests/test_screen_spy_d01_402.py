@@ -135,37 +135,3 @@ def test_the_baseline_and_the_freeze_anchor_agree(rawstore_tmp_db, clock):
 
 # ── the two boards are wired to it ──────────────────────────────────────────
 
-@pytest.mark.parametrize("board", ["swing", "fundamentals"])
-def test_each_board_takes_its_spy_baseline_from_d01(rawstore_tmp_db, clock, monkeypatch, board):
-    """The board's ``load_spy`` hook goes through ``screen_common.load_spy``: with yfinance failing and SPY's cache
-    a day old, the baseline is D01's, not stale."""
-    import time
-
-    from RevenueChaser.module_fundamentals import pipeline as fp
-    from RevenueChaser.module_swing_potential import pipeline as sp
-    mod = {"swing": sp, "fundamentals": fp}[board]
-
-    class _Failing:
-        def __init__(self, t):
-            pass
-
-        def history(self, *a, **k):
-            raise RuntimeError("HTTP Error 401: Invalid Crumb")
-
-    monkeypatch.setattr("yfinance.Ticker", _Failing)
-    monkeypatch.setattr(time, "sleep", lambda s: None)
-    rawstore.write_rows("swing_ohlc", [{
-        "ticker": "SPY", "ts": f"{d.isoformat()}T00:00:00", "open": 1.0, "high": 1.0, "low": 1.0, "close": 1.0,
-        "volume": 1.0, "cached_at": datetime(2026, 10, 13, 21, 0, tzinfo=timezone.utc).timestamp()}
-        for d in _sessions(D - timedelta(days=1), 300)])
-    _seed_d01("SPY", _sessions(D, 300))
-    seen = {}
-
-    def run_screen(**kw):
-        seen["spy"] = kw["load_spy"]()
-        return {}
-
-    monkeypatch.setattr(mod.screen_common, "run_screen", run_screen)
-    mod.run_scan()
-    assert not seen["spy"].attrs.get("stale")
-    assert seen["spy"].index[-1] == pd.Timestamp(D)

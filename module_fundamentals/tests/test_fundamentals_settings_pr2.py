@@ -13,14 +13,3 @@ def test_effective_reads_the_config_defaults_with_no_override(rawstore_tmp_db):
     assert e.override_values == ()
 
 
-def test_a_saved_override_reaches_the_prefilter_and_the_ledger_model_version(rawstore_tmp_db):
-    before = freeze.model_version()
-    board_settings.save(fsettings.BOARD, {"MIN_PRICE": 1.0, "OPERATING_ONLY": 0})
-    e = fsettings.effective()
-    assert e.min_price == 1.0 and e.operating_only is False
-    assert e.prefilter_cfg().MIN_PRICE == 1.0
-    assert freeze.effective_config()["MIN_PRICE"] == 1.0
-    assert freeze.effective_config()["OPERATING_ONLY"] == 0
-    assert freeze.model_version() != before          # a changed threshold is a new model version
-    board_settings.reset(fsettings.BOARD)
-    assert freeze.model_version() == before

@@ -130,18 +130,3 @@ def test_credit_n_m_uses_the_approved_wording(financials):
     assert "n/m (EBITDA" not in html
 
 
-def test_warning_shows_once_when_both_engines_raise_it(financials, tmp_path, monkeypatch, rawstore_tmp_db):
-    """run.py deduplicates engine warnings: the DCF and the 3-statement model give the same D&A line."""
-    import RevenueChaser.module_financials.run as fm
-    from RevenueChaser.core.providers import cache as cache_manager
-
-    f = _without_dna(financials)
-    for rec in f["annual"]:
-        rec["period_end"] = f"{rec['fiscal_year']}-12-31"
-    f["info"] = {"longName": "Test Co."}
-    cache_manager.save("TEST", f)
-    monkeypatch.setattr(fm, "OUTPUT_DIR", tmp_path)
-    qr = fm.quick_remarks_engine
-    monkeypatch.setattr(qr, "run_quick_remarks", lambda ticker, no_fetch=False, financials=None: qr._from_card(ticker, {}, "yfinance"))
-    out = fm.run("TEST", modules=["dcf", "3stmt"], output="html", no_fetch=True)
-    assert out["results"]["warnings"].count(DNA_WARNING) == 1

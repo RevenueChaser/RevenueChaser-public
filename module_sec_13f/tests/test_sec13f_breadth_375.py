@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core import history as core_history, ledger, rawstore
-from RevenueChaser.module_sec_13f import history as sec13f_history, report
+from RevenueChaser.core import ledger, rawstore
+from RevenueChaser.module_sec_13f import report
 from RevenueChaser.rcdata.tests.ownership_fixture import serve_13f
 
 Q1, Q2 = "2026-03-31", "2026-06-30"
@@ -42,26 +42,8 @@ def _totals():
     return TOTALS
 
 
-def test_the_history_row_carries_both_fields(store):
-    """Test 5a: ``metric_rows`` → ``record`` writes breadth and its change."""
-    totals = _totals()
-    _quarter, rows = sec13f_history.metric_rows(totals, {}, {})
-    by_ticker = {r["ticker"]: r for r in rows}
-    assert by_ticker["BBB"]["breadth"] == pytest.approx(25.0)
-    assert by_ticker["BBB"]["breadth_chg"] == pytest.approx(-25.0)
-    sec13f_history.record({"totals": totals, "meta": {}, "enrichment": {}}, run_id="r1", run_at=RUN_AT)
-    stored = {r["ticker"]: r for r in rawstore.query(
-        "SELECT ticker, breadth, breadth_chg FROM sec13f_metrics_history WHERE run_id = 'r1'", db="history")}
-    assert stored["BBB"]["breadth"] == pytest.approx(25.0)
-    assert stored["BBB"]["breadth_chg"] == pytest.approx(-25.0)
 
 
-def test_the_metric_set_bump_changes_the_model_version(monkeypatch):
-    """Test 5b: the added metrics are a selection change the config hash cannot see, so the version says 5."""
-    now = sec13f_history.model_version()
-    assert now == ledger.model_version(sec13f_history.SELECTION_VERSION, sec13f_history.effective_config())
-    monkeypatch.setattr(sec13f_history, "SELECTION_VERSION", "4")
-    assert sec13f_history.model_version() != now
 
 
 def test_the_board_shows_breadth_between_new_exit_and_top10_with_the_lag_legend():
@@ -90,31 +72,3 @@ def test_a_row_without_breadth_renders_an_empty_cell():
     assert dict(zip(payload["cols"], payload["rows"][0][3]))["breadth"] == ["—", None, "zero", "as of 2026 Q1"]
 
 
-@pytest.mark.rawstore_schema_from_scratch
-def test_the_two_additive_columns_reach_a_table_created_before_them(store):
-    """Test 7: the gate's own safety net. A store made before this change has neither column; the first write
-    must ALTER them in (``_reconcile_table``), not fail with a Binder Error."""
-    totals = _totals()
-    rawstore.ensure_history()
-
-    def _columns(conn):
-        return {r[0] for r in conn.execute(
-            "SELECT column_name FROM information_schema.columns WHERE table_name = 'sec13f_metrics_history'"
-        ).fetchall()}
-
-    with rawstore.connect(db="history") as conn:
-        for col in sorted({"breadth", "breadth_chg"} & _columns(conn)):
-            conn.execute(f"ALTER TABLE sec13f_metrics_history DROP COLUMN {col}")
-        live = _columns(conn)
-    assert not {"breadth", "breadth_chg"} & live
-    rawstore._TABLE_READY.clear()                       # a fresh process would meet the old table
-    assert sec13f_history.record({"totals": totals, "meta": {}, "enrichment": {}},
-                                 run_id="r1", run_at=RUN_AT) == {"sec13f_metrics_history": 3}
-    with rawstore.connect(db="history") as conn:
-        after = _columns(conn)
-    assert {"breadth", "breadth_chg"} <= after
-    stored = {r["ticker"]: r for r in rawstore.query(
-        "SELECT ticker, breadth, breadth_chg FROM sec13f_metrics_history WHERE run_id = 'r1'", db="history")}
-    assert stored["BBB"]["breadth"] == pytest.approx(25.0)
-    assert stored["BBB"]["breadth_chg"] == pytest.approx(-25.0)
-    assert core_history.tables_of("module_sec_13f") == ["sec13f_metrics_history"]

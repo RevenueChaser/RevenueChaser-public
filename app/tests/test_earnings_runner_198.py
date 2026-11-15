@@ -150,65 +150,6 @@ class _CountingUW(_UW):
         return list(self.calendar_rows.get((d, session), []))
 
 
-@pytest.fixture
-def recorded(monkeypatch):
-    """Capture what ``history.record`` was handed, without touching the history file."""
-    from RevenueChaser.module_earnings_radar import history as er_history
-    calls = []
-    monkeypatch.setattr(er_history, "record", lambda *a, **k: calls.append((a, k)))
-    return calls
 
 
-class TestInputSources:
-    """E5a (#372): the run says what it read from the store and what it asked UW for."""
-
-    def _seed_calendar(self, day, swept=None):
-        from RevenueChaser.core import rawstore
-        rawstore.ensure_all_tables()
-        for session in ("premarket", "afterhours"):
-            rawstore.write_rows("earnings_calendar", [{
-                "session_date": swept or day, "earnings_date": day, "ticker": "AAA", "report_session": session,
-                "item": {"symbol": "AAA", "sector": "Technology", "full_name": "AAA Inc"}, "source": "uw"}])
-
-    def test_the_calendar_slot_names_the_stored_session_and_zero_live_pairs(self, latest, monkeypatch, recorded):
-        from datetime import datetime, timezone
-        from RevenueChaser.core import calendar
-        day = date(2026, 9, 11)       # Friday: past today and the next trading day, which always read live (S4)
-        monkeypatch.setattr(calendar, "_now", lambda: datetime(2026, 9, 8, 21, 0, tzinfo=timezone.utc))
-        self._seed_calendar(day, swept=date(2026, 9, 8))
-        monkeypatch.setattr(runners, "_load_watchlist", lambda: set())
-        monkeypatch.setattr(runners, "EarningsPipeline", _StubPipeline)
-        monkeypatch.setattr("RevenueChaser.module_sector_rotation.engine.rotation_quadrant_map", lambda uw: {})
-        _stub_export(monkeypatch)
-        uw = _CountingUW({})
-        with pytest.raises(JobMessage):
-            runners.run_earnings_range(uw, day, day)
-        assert uw.calendar_calls == []                       # the store covered both sessions
-        assert recorded[-1][1]["input_sources"]["calendar"] == {
-            "stored": 2, "live": 0, "session": "2026-09-08"}
-
-    def test_an_uncovered_pair_is_reported_live(self, latest, monkeypatch, recorded):
-        from datetime import datetime, timezone
-        from RevenueChaser.core import calendar
-        day = date(2026, 9, 8)
-        monkeypatch.setattr(calendar, "_now", lambda: datetime(2026, 9, 8, 21, 0, tzinfo=timezone.utc))
-        monkeypatch.setattr(runners, "_load_watchlist", lambda: set())
-        monkeypatch.setattr(runners, "EarningsPipeline", _StubPipeline)
-        monkeypatch.setattr("RevenueChaser.module_sector_rotation.engine.rotation_quadrant_map", lambda uw: {})
-        _stub_export(monkeypatch)
-        uw = _CountingUW({}, {(day, "premarket"): [{"symbol": "AAA"}]})
-
-        with pytest.raises(JobMessage):
-            runners.run_earnings_range(uw, day, day)
-
-        assert uw.calendar_calls == [(day, "premarket"), (day, "afterhours")]
-        assert recorded[-1][1]["input_sources"]["calendar"] == {
-            "stored": 0, "live": 2, "session": None}
-
-    def test_an_empty_calendar_run_still_records_its_sources(self, latest, monkeypatch, recorded):
-        _patch_calendar(monkeypatch, [], {})
-        monkeypatch.setattr(runners, "_load_watchlist", lambda: set())
-        with pytest.raises(JobMessage):
-            runners.run_earnings_range(_UW({}), date(2026, 9, 8), date(2026, 9, 8))
-        assert recorded[-1][1]["input_sources"] == {"calendar": {"stored": 0, "live": 0, "session": None}}
 

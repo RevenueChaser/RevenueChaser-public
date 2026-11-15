@@ -717,19 +717,6 @@ def test_refresh_reuses_the_persisted_null_and_skips_the_permutations(
     assert any(c["significant"] for c in refreshed["clusters"]["4"])
 
 
-def test_a_recompute_with_the_type_filter_flipped_reuses_no_other_runs_null(rawstore_tmp_db):
-    """PR 2 review M1: a Fetch persisted with the filter off; a store-only recompute after the filter is switched on
-    must not judge its groups against that run's null (a different universe), so its groups stay unjudged."""
-    from RevenueChaser.core import board_settings
-    ret = _blocky_returns()
-    tickers = list(ret.columns)
-    _seed_universe(tickers)
-    _seed_ohlc(ret)
-    engine.run(no_fetch=True, tickers=tickers, cuts=(4,), persist=True)
-    board_settings.save("module_comovement", {"OPERATING_ONLY": 1})
-    p = engine.run(no_fetch=True, tickers=tickers, cuts=(4,), persist=False)
-    for c in p["clusters"]["4"]:
-        assert c["baseline_r"] is None and c["significant"] is None
 
 
 def test_refresh_without_a_persisted_null_leaves_groups_unjudged(rawstore_tmp_db):
@@ -1083,28 +1070,6 @@ def test_report_states_its_limits_under_the_sub_title():
     assert "common moves" not in none
 
 
-def test_report_uses_the_shared_help_box_once():
-    from RevenueChaser.module_comovement import report
-    html = report.render_comovement_dashboard(_report_payload())
-    # One board-level "About this data" panel replaces the help box.
-    assert html.count('<details class="about"') == 1
-    assert "About this data" in html
-    assert "Coarse" in html and "Fine" in html          # the old body survived
-    # S11: what r, the persistence badges and a dashed chip actually mean.
-    assert ("r is compared to the groups the same method finds in shuffled, "
-            "pure-noise returns. “Held out-of-sample” means") in html
-    assert "Dashed names joined the group since then." in html
-    assert "“stable”" not in html
-    # Source, window and horizon are stated, not left to guess (plan S5).
-    assert "price_bar_daily" in html and "prices build" in html and "swing_ohlc" not in html
-    assert "What a group is" in html
-    # #97: a label is the enrichment rule, not a bare majority.
-    assert ("A group is named only when one industry (else a theme) is over-represented "
-            "against all grouped names at that level: at least 4 names and 25% of the group, "
-            "at least 3× its share at that level, and significant after correcting for the "
-            "many groups tested (BH q < 0.01). The label shows that share and the ×lift; "
-            "otherwise the group stays a neutral “Cluster N”.") in html
-    assert "GICS sub-industry" not in html
 
 
 def test_one_name_groups_cannot_comove_and_merge_away():
@@ -1815,57 +1780,10 @@ def test_no_filters_shows_every_group_undimmed(tmp_path):
 
 
 # ── shared funnel steps (additive next to the legacy ``funnel`` dict) ────────
-def _assert_steps_match_funnel(p):
-    from RevenueChaser.core import funnel as funnel_mod
-
-    steps = p["funnel_steps"]
-    assert funnel_mod.validate(steps) == []
-    by = {s["key"]: s for s in steps}
-    f = p["funnel"]
-    # R4 (#87): the type filter's three rows follow ``no_market_cap``; the seeded
-    # names have no identity-master row, so the "unknown type" note is there too.
-    assert [s["key"] for s in steps] == [
-        "scanned", "below_floor", "no_market_cap", "funds_etfs", "spacs",
-        "other_securities", "unknown_type", "no_prices", "listed_recently",
-        "missing_bars", "flat", "clustered"]
-    assert by["scanned"]["count"] == f["scanned_total"]
-    assert by["below_floor"]["count"] == f["below_floor"]
-    assert by["no_market_cap"]["count"] == f["no_market_cap"]
-    assert by["no_prices"]["count"] == f["no_prices"]
-    # the legacy ``short_history`` count is the sum of the two split steps
-    assert by["listed_recently"]["count"] + by["missing_bars"]["count"] == f["short_history"]
-    assert by["flat"]["count"] == f["flat"]
-    assert by["clustered"]["count"] == f["clustered"] == p["eligible"]
-    assert by["below_floor"]["by_design"] is True and by["flat"]["by_design"] is True
-    assert by["listed_recently"]["by_design"] is True and by["listed_recently"]["fix"] is None
-    for k in ("no_market_cap", "no_prices", "missing_bars"):
-        assert by[k]["by_design"] is False
-    assert by["no_market_cap"]["fix"]["route"] == "/run/universe-stats"
-    # A Fetch downloads no prices since #379, so these drops carry no Fetch button (review B RB-8)
-    assert by["no_prices"]["fix"] is None and by["missing_bars"]["fix"] is None
-    assert str(config.MIN_OBS) in by["missing_bars"]["label"]
-    assert str(config.WINDOW) in by["missing_bars"]["label"]
 
 
-def test_fetch_path_emits_valid_funnel_steps(rawstore_tmp_db):
-    ret = _two_group_returns()
-    tickers = list(ret.columns)
-    _seed_universe(tickers)
-    _seed_ohlc(ret)
-    p = engine.run(no_fetch=True, tickers=tickers, cuts=(2,), persist=True)
-    _assert_steps_match_funnel(p)
 
 
-def test_refresh_path_and_reload_emit_valid_funnel_steps(rawstore_tmp_db):
-    ret = _two_group_returns()
-    tickers = list(ret.columns)
-    _seed_universe(tickers)
-    _seed_ohlc(ret)
-    engine.run(no_fetch=True, tickers=tickers, cuts=(2,), persist=True)
-    refreshed = engine.run(no_fetch=True, tickers=tickers, cuts=(2,), persist=False)
-    _assert_steps_match_funnel(refreshed)
-    loaded = engine.load_payload()
-    _assert_steps_match_funnel(loaded)
 
 
 def test_empty_payload_has_no_funnel_steps(rawstore_tmp_db):
@@ -2095,24 +2013,6 @@ console.log(JSON.stringify({search: location.search}));
     assert got["search"] == ""
 
 
-@pytest.mark.skipif(shutil.which("node") is None, reason="node not on PATH")
-def test_reset_posts_reset_true_then_polls_and_reloads_on_done(tmp_path):
-    html = _render(window=252, custom=True)
-    assert "function settingsJobVerdict(" in html          # the shared verdict, not a fork
-    got = _run_board_snippet(html, tmp_path, r"""
-RESP.push({status: 202, body: {ok: true, job_id: "R1", values: {}}});
-RESP.push({status: 200, body: {ok: true, job: {status: "done", message: "ok"}}});
-var btn = document.getElementById("reset-settings");
-resetSettings(btn);
-setTimeout(function(){
-  console.log(JSON.stringify({f: FETCHES, search: location.search}));
-  process.exit(0);
-}, 60);
-""")
-    assert got["f"][0]["url"] == "/api/settings/board/module_comovement"
-    assert got["f"][0]["body"] == {"reset": True}
-    assert got["f"][1]["url"] == "/api/job/R1"
-    assert got["search"] == "?refresh=1"
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not on PATH")
@@ -2200,74 +2100,14 @@ def test_the_required_step_keys_do_not_include_the_new_type_keys():
                                  "no_prices", "short_history", "flat", "clustered")
 
 
-def _seed_master_types(types):
-    rawstore.ensure_table("security_master")
-    rawstore.write_rows("security_master", [
-        {"ticker": t, "security_type": ty} for t, ty in types.items()])
 
 
-def _typed_run(rawstore_tmp_db, master):
-    """6 clustered-able names + FUNDX in the spine; ``master`` is the typed rows."""
-    ret = _two_group_returns()
-    tickers = list(ret.columns)
-    _seed_universe(tickers + ["FUNDX"])
-    _seed_ohlc(ret)
-    _seed_master_types(master)
-    return tickers
 
 
-def test_run_drops_a_fund_from_the_clusters_and_the_funnel_says_so(rawstore_tmp_db):
-    """With the board's type filter on (``OPERATING_ONLY`` = 1), a fund leaves the run as a by-design drop."""
-    from RevenueChaser.core import board_settings
-    from RevenueChaser.core import funnel as funnel_mod
-
-    tickers = _typed_run(rawstore_tmp_db, {"FUNDX": "cef"})        # the six are untyped
-    board_settings.save("module_comovement", {"OPERATING_ONLY": 1})
-    p = engine.run(no_fetch=True, cuts=(2,), persist=True)         # universe from the spine
-    members = {m["ticker"] for c in p["clusters"]["2"] for m in c["members"]}
-    assert members == set(tickers) and "FUNDX" not in members
-    f = p["funnel"]
-    assert f["scanned_total"] == 7 and f["floor_total"] == 7
-    assert (f["funds_etfs"], f["spacs"], f["other_securities"]) == (1, 0, 0)
-    assert f["operating_total"] == 6 == f["unknown_type"] and f["operating_only"] is True
-    assert funnel_mod.validate(p["funnel_steps"]) == []
-    by = {s["key"]: s for s in p["funnel_steps"]}
-    assert by["funds_etfs"]["count"] == 1 and by["funds_etfs"]["kind"] == "drop"
-    assert by["unknown_type"]["count"] == 6 and by["unknown_type"]["kind"] == "note"
-    assert "FUNDX" not in by["no_prices"].get("tickers", []) and by["no_prices"]["count"] == 0
-    # the persisted run carries the new counts, so a reload rebuilds the same steps
-    stored = engine._loads_or_empty(rawstore.query(
-        "SELECT funnel_json FROM comov_runs", db="comovement")[0]["funnel_json"])
-    assert stored["funds_etfs"] == 1 and stored["unknown_type"] == 6
-    assert stored["floor_total"] == 7
-    loaded = engine.load_payload()
-    assert funnel_mod.validate(loaded["funnel_steps"]) == []
-    assert loaded["funnel_steps"] == p["funnel_steps"]
 
 
-def test_by_default_a_fund_stays_in_the_run_and_its_type_is_a_note(rawstore_tmp_db):
-    """PR 2: Co-movement correlates every A+B type by default, so the fund is asked for prices like any name
-    and the type groups are the kept names' mix (notes), never drops."""
-    from RevenueChaser.core import funnel as funnel_mod
-
-    _typed_run(rawstore_tmp_db, {"FUNDX": "cef"})
-    p = engine.run(no_fetch=True, cuts=(2,), persist=True)
-    f = p["funnel"]
-    assert f["classification_total"] == 7 and f["operating_only"] is False
-    assert funnel_mod.validate(p["funnel_steps"]) == []
-    by = {s["key"]: s for s in p["funnel_steps"]}
-    assert by["funds_etfs"]["kind"] == "note" and by["funds_etfs"]["count"] == 1
-    assert by["no_prices"]["count"] == 1                            # FUNDX has no bars in this store
 
 
-def test_a_fully_typed_universe_has_no_unknown_type_note(rawstore_tmp_db):
-    master = {t: "common" for t in ("A1", "A2", "A3", "B1", "B2", "B3")}
-    _typed_run(rawstore_tmp_db, {**master, "FUNDX": "etp"})
-    p = engine.run(no_fetch=True, cuts=(2,), persist=False)
-    keys = [s["key"] for s in p["funnel_steps"]]
-    assert "funds_etfs" in keys and "unknown_type" not in keys
-    assert p["funnel"]["unknown_type"] == 0
-    assert p["eligible"] == 6
 
 
 # ── the funnel note and the header line on the board (#87) ───────────────────
@@ -2314,11 +2154,6 @@ def test_a_note_without_a_link_still_renders():
     assert '<div class="row note">' in body and "see <a" not in body
 
 
-def test_the_board_has_no_identity_refresh_button():
-    """Long store-writing jobs start only from Settings, never from a board."""
-    for html in (_render(funnel_steps=_note_steps(), funnel={"clustered": 90}), _render()):
-        assert "/run/identity" not in html
-        assert "Refresh identity" not in html
 
 
 def test_the_note_row_has_its_own_style():

@@ -1,13 +1,13 @@
-"""A served ``spine.duckdb`` written straight from the old ``equity_universe`` rows, for the board tests (#642 PR 6).
+"""A served ``spine.duckdb`` written straight from ``equity_universe``-shaped rows, for the board tests (#642 PR 6).
 
 Since #642 PR 6 the boards' universe is the spine's (``core/universe.py``): its listed names (Tier A and B, no
 ``my_universe`` list here) with the spine's name, sector, industry and security type. The board tests were written
 against ``equity_universe`` rows (``ticker``, ``name``, ``sector``, ``industry``, ``market_cap``, ``price``,
-``quote``, ...); ``put`` and ``replace`` write those rows as spine ``security`` rows **and** into the old table,
-whose ``quote`` (and, where the prices store has none, cap and price) the spine universe still reads.
+``quote``, ...); ``put`` and ``replace`` write those rows as spine ``security`` rows. The old table they also
+went into left with raw.duckdb (#860), and with it the ``quote`` the spine universe read from it.
 
 A row's ``tier`` defaults to ``A``; ``security_type`` stays NULL unless the row gives one, so a test's
-``security_master`` row still types the name (``universe._security_types``). It also books a good
+row's ``security_type`` types the name. It also books a good
 ``spine/security`` check, so ``universe.source_state`` gives no reason.
 """
 from __future__ import annotations
@@ -69,16 +69,12 @@ def _write(rows: list[dict], *, replace: bool) -> None:
 
 
 def put(rows: list[dict]) -> None:
-    """``equity_universe`` rows added (a ticker already there is replaced), in the spine and the old table."""
-    from RevenueChaser.core import rawstore
-    rawstore.write_rows("equity_universe", list(rows))
+    """``equity_universe``-shaped rows added to the spine (a ticker already there is replaced)."""
     _write(list(rows), replace=False)
 
 
 def replace(rows: list[dict]) -> None:
-    """``equity_universe`` rows as the whole universe, in the spine and the old table."""
-    from RevenueChaser.core import rawstore
-    rawstore.replace_all("equity_universe", list(rows))
+    """``equity_universe``-shaped rows as the whole spine universe."""
     _write(list(rows), replace=True)
 
 

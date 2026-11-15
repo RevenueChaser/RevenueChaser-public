@@ -243,13 +243,10 @@ def _settings(tmp_path, monkeypatch):
     from RevenueChaser.module_settings import report
     p = {"generated_at": "2026-09-25T20:00:00+00:00",
          "tickers": [{"ticker": "AAPL", "name": "Apple Inc."}],
-         "rows": [{"key": "universe", "label": "Equity universe", "tables": ["equity_universe"],
-                   "rows": 7403, "last_date": "—", "holes": 1710, "hole_label": "null market cap",
-                   "fetch": {"route": "/run/universe-stats", "label": "Fetch caps"},
-                   "note": "provenance"}],
+         "rows": [],
          # An embedded row (not a poll): the browser guard stubs fetch, so only these
          # reach the panel's renderer. Every text field, the log tail included, is hostile.
-         "automations": [{"name": "RC-Daily-Bars", "label": "L", "schedule": "s",
+         "automations": [{"name": "RC-Build", "label": "L", "schedule": "s",
                           "command": "c", "settings": "t", "log_path": "p",
                           "description": "d", "tables_written": ["t1"], "state": "enabled",
                           "result_kind": "red", "result_text": "r", "last_run": "x",
@@ -322,8 +319,8 @@ def newdata_fixture() -> dict:
                     "raw_copy": {"text": "not set", "warn": True, "age_days": None},
                     "portable": {"text": "not recorded", "warn": True, "age_days": None}},
         "retention": {"warn": True, "text": "kept without a limit", "source": "src"},
-        "retirement": [{"table": "macro_series", "replaced_by": "market_series", "reads_14d": 2,
-                        "writers": ["RC-Macro-Weekly"]}],
+        "retirement": [{"table": "old_series", "replaced_by": "market_series", "reads_14d": 2,
+                        "writers": ["RC-Build"]}],
         "watchlists": {"option": {"count": 1, "rows": [{"ticker": "NVDA", "added_on": "2026-10-28T10:00:00+00:00",
                                                         "added_by": "leaps", "note": "note"}]},
                        "stock": {"count": 1, "rows": [{"ticker": "MSFT", "added_on": "2026-10-28T10:00:00+00:00",
@@ -527,17 +524,8 @@ def _logs(tmp_path, monkeypatch):
 
 def _runs(tmp_path, monkeypatch):
     from RevenueChaser.app import runview
-    from RevenueChaser.core import rawstore
-    # A module name is code-chosen, but a run's message, error and params are not: a ticker comes from the
-    # box, an error text from a provider or a traceback. All of them are shown by the run log.
-    rawstore.write_rows("job_runs", [{
-        "run_id": "r1", "job_id": "r1", "module": H("module"), "lane": "short", "trigger": H("trigger"),
-        "source": H("source"), "pid": 7, "registry_name": H("registry_name"),
-        "params": {"ticker": H("ticker")}, "queued_at": 1.0, "started_at": 2.0, "finished_at": 63.0,
-        "status": "error", "error": H("error"), "message": H("message"), "counts": {"rows": 1},
-    }])
+    # The run log it showed (job_runs) went with raw.duckdb (#860): the page renders with no rows.
     return runview.render_page(runview.page_payload())
-
 
 
 def _news_rows(now: float) -> None:
@@ -613,6 +601,6 @@ BOARDS: dict[str, Board] = {
     "module_settings": Board(_settings),
     # Not a data board: the dashboard's own log files, whose request lines carry attacker-chosen paths.
     "logs": Board(_logs),
-    # Not a data board: the run log over job_runs, whose messages and params are stored text (#26 PL5-b).
+    # Not a data board: the run log page (no rows since #860).
     "runs": Board(_runs),
 }

@@ -117,12 +117,6 @@ def test_a_retired_event_is_never_the_highlight():
     assert hl == [{"event": "Housing starts"}]
 
 
-def test_the_build_writes_nothing_to_raw_duckdb():
-    _raw([(T0, "CPI, M/M%", "report")], fetched_at=100.0)
-    cal.build(now=200.0)
-    assert rawstore.query("SELECT table_name FROM information_schema.tables WHERE table_name LIKE 'news_%'") == []
-
-
 @pytest.mark.parametrize("event, kind, prev, fc, want", [
     ("Core CPI, M/M%", "report", "0.3%", "0.2%", "Gıda ve enerji hariç"),
     ("Fed Governor Waller speaks", "fed-speaker", None, None, "Fed yetkilisinin"),

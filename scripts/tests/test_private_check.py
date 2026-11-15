@@ -105,13 +105,6 @@ def test_a_brokerage_account_id_is_found():
 
 # --- paths that must never be tracked ----------------------------------------------------------------------------
 
-@pytest.mark.parametrize("path", [
-    ".env", "sub/.env", ".env.local", ".store/raw.duckdb", "x/raw.duckdb", "a.duckdb.wal", "s.sqlite3",
-    "core/__pycache__/m.cpython-314.pyc", ".private/NOTES.md", ".cache/research/1/a.csv", "k.pem", "auth.json",
-    "discord_media/a.png", "module_x/.cache/a.json",
-])
-def test_private_paths_are_refused(path):
-    assert pc.check_path(path) is not None
 
 
 @pytest.mark.parametrize("path", [

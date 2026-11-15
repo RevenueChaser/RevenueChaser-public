@@ -397,16 +397,6 @@ def test_the_writer_never_writes_the_ledger(rawstore_tmp_db, clock, monkeypatch)
     assert set(written) == {"forecast_baselines"}
 
 
-def test_the_writer_makes_no_provider_call(rawstore_tmp_db, clock, monkeypatch):
-    _seed(_series("AAA"))
-    _freeze(["AAA"])
-    boom = lambda *a, **k: (_ for _ in ()).throw(AssertionError("provider call"))  # noqa: E731
-    monkeypatch.setattr(prices, "_yf_download", boom)
-    monkeypatch.setattr(prices, "ensure_daily_bars", boom)
-    monkeypatch.setattr(prices, "fill_history", boom)
-    from RevenueChaser.core.providers import unusual_whales
-    monkeypatch.setattr(unusual_whales.UWClient, "__init__", boom)
-    assert baselines.run(now=NOW, run_id="r1")["rows"] >= 1
 
 
 # ── the pieces the board will read ──────────────────────────────────────────

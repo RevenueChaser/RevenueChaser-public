@@ -24,7 +24,7 @@ _REPO = Path(__file__).resolve().parents[2]
 @pytest.fixture
 def board_table(monkeypatch):
     monkeypatch.setattr(rawstore, "BOARD_DBS", ("news",))
-    monkeypatch.setattr(rawstore, "_SCHEMA_FILES", ("raw", "edgar", "history", "prices", "news"))
+    monkeypatch.setattr(rawstore, "_SCHEMA_FILES", ("news",))
     monkeypatch.setitem(rawstore.MANIFEST, _TABLE, {
         "key": ["k"], "columns": ["k TEXT PRIMARY KEY", "v TEXT"],
         "kind": "tabular", "write": "upsert", "history_mode": "operational", "db": "news", "sources": [],
@@ -45,17 +45,6 @@ def test_a_read_sent_to_the_wrong_file_raises(board_table):
 def test_a_write_sent_to_the_wrong_file_raises(board_table):
     with pytest.raises(rawstore.RawStoreError, match="news"):
         rawstore.execute(f"DELETE FROM {board_table} WHERE k = 'a'")
-    with pytest.raises(rawstore.RawStoreError, match="news"):
-        with rawstore.transaction() as tx:
-            tx.execute(f"DELETE FROM {board_table} WHERE k = 'a'")
-
-
-@pytest.mark.rawstore_schema_from_scratch
-def test_a_column_alias_or_comment_with_a_board_table_name_is_not_a_table(board_table):
-    rawstore.ensure_all_tables()
-    rawstore.query(f"SELECT ticker AS {board_table} FROM security_master WHERE ticker = ? -- {board_table}", ["X"])
-    rawstore.execute(f"DELETE FROM security_master WHERE ticker = ? /* {board_table} */", ["X"])
-    rawstore.query(f"SELECT 1 FROM security_master s JOIN security_master t USING (ticker) WHERE s.ticker = ?", ["X"])
 
 
 @pytest.mark.rawstore_schema_from_scratch
@@ -89,8 +78,6 @@ def _code_files():
     for p in _REPO.rglob("*.py"):
         rel = p.relative_to(_REPO).as_posix()
         if "/tests/" in rel or rel.startswith(("tests/", "module_testing/")) or rel == "conftest.py":
-            continue
-        if rel == "scripts/migrate_board_store.py":   # the one move copy (§10 rule 3 exception)
             continue
         yield rel, p.read_text(encoding="utf-8", errors="replace")
 

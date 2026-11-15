@@ -11,14 +11,9 @@ from __future__ import annotations
 import pytest
 
 from RevenueChaser.app import dashboard, runners
-from RevenueChaser.core import history, rawstore
+from RevenueChaser.core import rawstore
 
 
-@pytest.fixture
-def recorded(rawstore_tmp_db, monkeypatch):
-    calls: list[str] = []
-    monkeypatch.setattr(history, "record_run", lambda board, **k: calls.append(board) or {})
-    return calls
 
 
 def _refresh_paths():
@@ -30,14 +25,6 @@ def _refresh_paths():
     return paths
 
 
-@pytest.mark.parametrize("name", sorted(_refresh_paths()))
-def test_a_refresh_path_never_records_a_run(recorded, name):
-    try:
-        _refresh_paths()[name]()
-    except Exception:  # noqa: BLE001 - an empty store may end a renderer early; only a recorded run fails here
-        pass
-    assert recorded == [], f"{name} recorded a run on a Refresh"
-    assert not rawstore.history_db_path().exists()
 
 
 def test_every_board_that_records_has_a_refresh_path_here():

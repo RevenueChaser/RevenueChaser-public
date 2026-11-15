@@ -10,7 +10,7 @@ import logging
 
 from RevenueChaser.rcdata.tests import universe_store
 from RevenueChaser.core import edgar_docs, rawstore
-from RevenueChaser.module_value_chain import engine, sync
+from RevenueChaser.module_value_chain import engine
 
 _ITEM = ("We purchase wafers from Taiwan Semiconductor Manufacturing Company Limited. "
          + "We sell products worldwide through distributors. " * 60)
@@ -30,20 +30,6 @@ def _subs(accession, form="10-K", filed="2026-02-01"):
         "accessionNumber": [accession], "primaryDocument": ["doc.htm"]}}}
 
 
-def _seed_sync(monkeypatch, subs, html, tickers=(("NVDA", "1045810"),)):
-    universe_store.replace([{"ticker": t, "market_cap": 1e9, "name": t}
-                                             for t, _ in tickers])
-    rawstore.write_rows("sec_exchange_file", [{"ticker": t, "cik": c, "name": t, "status": "present", "run_at": 1.0}
-                                                for t, c in tickers])
-    monkeypatch.setattr(sync.sec_edgar, "get_json", lambda url, client=None: subs)
-    calls = {"n": 0}
-
-    def _fake_get_text(url, client=None):
-        calls["n"] += 1
-        return html
-
-    monkeypatch.setattr(sync.edgar_text.sec_edgar, "get_text", _fake_get_text)
-    return calls
 
 
 # ── the shared write helper ────────────────────────────────────────────────
@@ -76,59 +62,16 @@ def test_store_slices_replaces_a_non_ok_row(rawstore_tmp_db):
 
 
 # ── sync path ──────────────────────────────────────────────────────────────
-def test_sync_keeps_ok_row_when_new_filing_slices_worse(rawstore_tmp_db, monkeypatch):
-    calls = _seed_sync(monkeypatch, _subs("acc-2"), BAD_HTML)
-    rawstore.write_rows("chain_filings", [_row()])
-    res = sync.sync_one("NVDA", "1045810")
-    assert res["status"] == "kept" and calls["n"] == 1
-    row = rawstore.get("chain_filings", "NVDA")
-    assert (row["accession"], row["quality"]) == ("acc-1", "ok")
-    # the rejected filing's raw doc is kept: it is the record that it was seen
-    assert edgar_docs.exists("1045810", "acc-2")
 
 
-def test_second_sync_reslices_locally_without_download(rawstore_tmp_db, monkeypatch):
-    calls = _seed_sync(monkeypatch, _subs("acc-2"), BAD_HTML)
-    rawstore.write_rows("chain_filings", [_row()])
-    sync.sync_filings()
-    out = sync.sync_filings()
-    assert calls["n"] == 1, "the rejected filing was downloaded again"
-    assert out.get("kept") == 1
-    assert rawstore.get("chain_filings", "NVDA")["accession"] == "acc-1"
 
 
-def test_local_reslice_picks_up_a_better_slice(rawstore_tmp_db, monkeypatch):
-    """A stored doc that now slices ``ok`` (e.g. after a pattern fix) is written."""
-    calls = _seed_sync(monkeypatch, _subs("acc-2"), GOOD_HTML)
-    edgar_docs.write_html("1045810", "acc-2", GOOD_HTML)
-    rawstore.write_rows("chain_filings", [_row()])
-    res = sync.sync_one("NVDA", "1045810")
-    assert res["status"] == "updated" and calls["n"] == 0
-    row = rawstore.get("chain_filings", "NVDA")
-    assert row["accession"] == "acc-2" and row["quality"] == "ok"
 
 
-def test_dual_class_pair_sharing_an_accession_both_update(rawstore_tmp_db, monkeypatch):
-    calls = _seed_sync(monkeypatch, _subs("acc-g"), GOOD_HTML,
-                       tickers=(("GOOGL", "1652044"), ("GOOG", "1652044")))
-    assert sync.sync_one("GOOGL", "1652044")["status"] == "updated"
-    assert sync.sync_one("GOOG", "1652044")["status"] == "updated"
-    assert calls["n"] == 1  # one download, the second share class re-slices locally
-    assert {rawstore.get("chain_filings", t)["accession"] for t in ("GOOGL", "GOOG")} == {"acc-g"}
 
 
-def test_sync_force_keeps_ok(rawstore_tmp_db, monkeypatch):
-    calls = _seed_sync(monkeypatch, _subs("acc-1"), BAD_HTML)
-    rawstore.write_rows("chain_filings", [_row()])
-    assert sync.sync_one("NVDA", "1045810", force=True)["status"] == "kept" and calls["n"] == 1
-    assert rawstore.get("chain_filings", "NVDA")["quality"] == "ok"
 
 
-def test_sync_ok_replaces_with_newer_ok(rawstore_tmp_db, monkeypatch):
-    calls = _seed_sync(monkeypatch, _subs("acc-2"), GOOD_HTML)
-    rawstore.write_rows("chain_filings", [_row()])
-    assert sync.sync_one("NVDA", "1045810")["status"] == "updated" and calls["n"] == 1
-    assert rawstore.get("chain_filings", "NVDA")["accession"] == "acc-2"
 
 
 # ── Fetch path ─────────────────────────────────────────────────────────────

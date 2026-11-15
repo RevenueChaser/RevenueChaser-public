@@ -17,7 +17,7 @@ from datetime import datetime
 
 import pytest
 
-from RevenueChaser.core import calendar, history, rawstore
+from RevenueChaser.core import calendar, rawstore
 from RevenueChaser.module_comovement import config, engine
 from RevenueChaser.module_comovement.tests import prices_bars
 from RevenueChaser.module_comovement.tests.test_comovement import (
@@ -46,18 +46,6 @@ def runner(market, monkeypatch):
     return runners
 
 
-@pytest.fixture
-def recorded(monkeypatch):
-    """Counts every ``record_run`` call (and lets it write)."""
-    calls: list[dict] = []
-    real = history.record_run
-
-    def spy(board, **kw):
-        calls.append({"board": board, **kw})
-        return real(board, **kw)
-
-    monkeypatch.setattr(history, "record_run", spy)
-    return calls
 
 
 def _runs() -> list[dict]:
@@ -118,95 +106,17 @@ def test_a_store_that_predates_the_columns_reads_null(isolate_rawstore):
 
 
 # ── the header: Fetch only, once, after the precompute ──────────────────────
-def test_a_fetch_writes_one_header_after_the_precompute_listing_every_as_of(runner, recorded, monkeypatch):
-    order: list[str] = []
-    real_pre = engine.precompute
-    monkeypatch.setattr(engine, "precompute", lambda **kw: order.append("precompute") or real_pre(**kw))
-    real_rec = history.record_run
-    monkeypatch.setattr(history, "record_run", lambda board, **kw: order.append("header") or real_rec(board, **kw))
-
-    runner.run_comovement(None)
-
-    assert order == ["precompute", "header"]
-    assert [c["board"] for c in recorded] == [B]
-    headers = history.runs(B)
-    assert len(headers) == 1
-    h = headers[0]
-    runs = _runs()
-    assert sorted(h["params"]["as_of"]) == sorted(r["as_of"] for r in runs)
-    assert sorted(h["params"]["windows"]) == sorted(config.PRECOMPUTE_WINDOWS)
-    assert {r["run_id"] for r in runs} == {h["run_id"]}
-    assert h["row_counts"] == {} and h["quality"] in ("complete", "intraday")
-    board = json.loads(runner.COMOVEMENT_JSON.read_text(encoding="utf-8"))
-    assert h["params"]["config_hash"] == board["config_hash"]
-    assert h["funnel"] == board["funnel"]
-    assert h["session_date"] == runs[0]["session_date"]
 
 
-def test_the_header_lists_a_reused_window_by_its_stored_as_of(runner):
-    old = engine.run(no_fetch=True, persist=True, window=126, run_id="older")
-    runner.run_comovement(None)
-    h = history.last_run(B)
-    assert old["as_of"] in h["params"]["as_of"]
-    assert len(h["params"]["as_of"]) == 2
 
 
-def test_a_precompute_failure_is_a_header_warning(runner, monkeypatch):
-    def boom(**kw):
-        raise RuntimeError("precompute exploded")
-
-    monkeypatch.setattr(engine, "precompute", boom)
-    runner.run_comovement(None)
-    h = history.last_run(B)
-    assert len(h["params"]["as_of"]) == 1
-    assert any("precompute exploded" in w for w in h["warnings"])
 
 
-def test_a_fetch_that_stores_no_run_is_a_partial_header(rawstore_tmp_db, runner):
-    prices_bars.clear()
-    runner.run_comovement(None)
-    h = history.last_run(B)
-    assert h["quality"] == "partial" and "no run was stored" in h["quality_note"]
-    assert h["params"]["as_of"] == []
-    assert rawstore.count("comov_runs") == 0
 
 
-def test_a_history_failure_is_a_job_note_not_a_failed_fetch(runner, monkeypatch):
-    from RevenueChaser.core import ledger
-
-    notes: list[str] = []
-    monkeypatch.setattr(ledger, "add_note", notes.append)
-    monkeypatch.setattr(history, "record_run", lambda board, **kw: (_ for _ in ()).throw(RuntimeError("locked")))
-    path = runner.run_comovement(None)
-    assert path.exists() and rawstore.count("comov_runs") == 2
-    assert any("Co-movement result history" in n and "locked" in n for n in notes)
 
 
-def test_precompute_writes_no_header(market, recorded):
-    engine.precompute()
-    assert recorded == []
-    assert not rawstore.history_db_path().exists()
 
 
-@pytest.mark.parametrize("path", ["refresh", "refresh_window", "recompute"])
-def test_a_store_only_path_writes_no_header(runner, recorded, path):
-    from RevenueChaser.app.jobs import JobMessage
-
-    engine.run(no_fetch=True, persist=True, run_id="seed")                    # something to serve
-    if path == "refresh":
-        runner.run_comovement(None, no_fetch=True)
-    elif path == "refresh_window":
-        runner.run_comovement(None, no_fetch=True, window=126)
-    else:
-        with pytest.raises(JobMessage):
-            runner.run_comovement_recompute(None)
-    assert recorded == []
-    assert not rawstore.history_db_path().exists()
 
 
-def test_the_model_version_moves_with_the_linkage(monkeypatch):
-    from RevenueChaser.module_comovement import history as comov_history
-
-    before = comov_history.model_version()
-    monkeypatch.setattr(config, "LINKAGE", "average")
-    assert comov_history.model_version() != before

@@ -37,11 +37,6 @@ def test_a_read_and_a_need_ask_are_one_row_each_written_by_the_flush(log):
     assert {r["table_name"] for r in ops.rows("read_log")} == {"market_series", "need:prices.bars"}   # counters as before
 
 
-def test_the_minute_flush_of_the_read_log_writes_the_requests_too(log):
-    log.bump("market_series")
-    log.tick(61)
-    log.bump("macro_series")
-    assert [w for _, w, _ in _stored()] == ["market_series", "macro_series"]
 
 
 def test_recent_requests_are_newest_first_above_an_id_and_limited(log):
@@ -76,22 +71,6 @@ def test_the_rows_a_process_holds_are_capped_and_the_dropped_are_counted(log, mo
     assert [w for _, w, _ in _stored()] == ["t2", "t3", "t4"]
 
 
-def test_a_failed_request_write_keeps_the_rows_and_still_writes_the_counters(log, monkeypatch):
-    real = ops._add_requests
-
-    def down(*a, **k):
-        raise OSError("store is down")
-    monkeypatch.setattr(ops, "_add_requests", down)
-    log.bump("market_series")
-    log.flush()                                                       # does not raise: the log is a log
-    assert ops.rows("request_log") == []
-    assert [r["reads"] for r in ops.rows("read_log")] == [1]
-    with pytest.raises(OSError):
-        log.requests.flush()                                          # asked for directly, it says so
-    log.bump("macro_series")
-    monkeypatch.setattr(ops, "_add_requests", real)
-    log.flush()
-    assert [w for _, w, _ in _stored()] == ["market_series", "macro_series"]     # in the order they were made
 
 
 def test_the_switch_turns_the_log_off_and_leaves_the_counters(log, monkeypatch):

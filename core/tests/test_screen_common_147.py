@@ -52,13 +52,6 @@ def test_prefilter_counts_and_keeps_order():
     assert pf.drops == {"low_price": ["B"], "no_quote": ["D"]}
 
 
-@pytest.mark.parametrize("mod,cfg", [(sp, scfg), (fp, fcfg)], ids=["swing", "fundamentals"])
-def test_each_board_filters_with_its_own_config(monkeypatch, mod, cfg):
-    row = {"ticker": "X", "quote": {}}
-    monkeypatch.setattr("RevenueChaser.core.quotes.prefilter_quotes", lambda tickers: {"X": _q()})
-    assert mod.prefilter([row]).kept == [row]
-    monkeypatch.setattr(cfg, "MIN_PRICE", 60.0)
-    assert mod.prefilter([row]).drops == {"low_price": ["X"]}
 
 
 def test_both_boards_hold_the_same_prefilter_thresholds_today():

@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 import pandas as pd
 import pytest
 
-from RevenueChaser.core import history, rawstore, screen_common
+from RevenueChaser.core import rawstore, screen_common
 from RevenueChaser.core.providers import yfinance as yfp
 
 COMPLETE = datetime(2026, 10, 6, 22, 0, tzinfo=timezone.utc).timestamp()
@@ -55,26 +55,6 @@ def test_swing_rendered_from_a_failed_yahoo_run_shows_the_banner(rawstore_tmp_db
     assert "429" in html
 
 
-def test_a_failed_swing_ohlc_read_is_counted_for_the_banner(rawstore_tmp_db, monkeypatch):
-    """The board's own Yahoo read, not a stand-in: a raised history() is a failed call."""
-    import time
-
-    from RevenueChaser.module_swing_potential import indicators
-
-    yfp.reset_health()
-    monkeypatch.setattr(time, "sleep", lambda _s: None)
-    monkeypatch.setattr(indicators.yf_session, "recover", lambda *_a, **_k: False)
-
-    class _Boom:
-        def history(self, **_k):
-            raise RuntimeError("HTTP 429")
-
-    monkeypatch.setattr("yfinance.Ticker", lambda _t: _Boom())
-    indicators.load_ohlc("AAA", retries=1)
-    health = yfp.health()
-    assert health["failed"] >= 1
-    assert health["failures"][0]["endpoint"].startswith("AAA")
-    assert "429" in health["failures"][0]["error"]
 
 
 # ── Fundamentals: an EDGAR fetch that raised ─────────────────────────────────────────────────────
@@ -139,15 +119,3 @@ def test_relatedness_rendered_from_an_auth_stop_shows_the_banner(rawstore_tmp_db
 
 
 # ── Settings: the stored column, not a live client ──────────────────────────────────────────────
-def test_settings_banner_comes_from_a_seeded_result_run(rawstore_tmp_db):
-    from RevenueChaser.module_settings import inventory, report
-
-    bad = {"provider": "yfinance", "calls": 4, "failed": 2, "auth_error": None,
-           "failures": [{"endpoint": "AAA.info", "error": "HTTP 429"}],
-           "breaker_open": False, "skipped_calls": 0}
-    history.record_run("module_settings", run_id="s1", run_at=COMPLETE, model_version="v",
-                       provider_health=bad)
-    html = report.render_settings_dashboard(inventory.collect(now=datetime(2026, 10, 6, 22, tzinfo=timezone.utc)))
-    assert _BANNER in html
-    assert "429" in html
-    assert rawstore.query("SELECT 1 FROM result_runs WHERE board = ?", ["module_settings"], db="history")

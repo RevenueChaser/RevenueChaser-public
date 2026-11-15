@@ -1,10 +1,8 @@
 """Seeds for the Swing and Fundamentals Fetch in the e2e tier (#383 R3 C12).
 
-Since C12 the two boards prefilter on D04 (``quote_snapshot``) and score from D01 (``price_bars_daily``), so a test
-that runs their Fetch writes those two tables, the way the universe pull and RC-Daily-Bars leave them. The test
-process writes the dashboard's store directly (``rawstore.DB_PATH`` patched to the dashboard's store folder; D01 lives
-beside it in ``prices.duckdb``). Since #642 PR 6 the boards read only the builder's served ``prices.duckdb``, so a
-seed writes the bars there too (``config.MARKET_DIR`` patched to the dashboard's market root).
+The two boards score from D01, which they read from the builder's served prices file, so a test that runs their
+Fetch writes the bars there (``config.MARKET_DIR`` patched to the dashboard's market root). The D04 quotes they
+prefiltered on lived in the old raw.duckdb and went with it (#860).
 """
 from __future__ import annotations
 
@@ -16,7 +14,6 @@ import pandas as pd
 
 def seed_d01(ticker: str, df: pd.DataFrame, fetched_at: float | None = None) -> None:
     """``df``'s Open/High/Low/Close/Volume bars as D01 rows; ``fetched_at`` defaults to now (after any past close)."""
-    import RevenueChaser.core.rawstore as rawstore
     at = time.time() if fetched_at is None else fetched_at
     from RevenueChaser.rcdata.tests import prices_store
     rows = [{
@@ -24,19 +21,7 @@ def seed_d01(ticker: str, df: pd.DataFrame, fetched_at: float | None = None) -> 
         "high": float(r["High"]), "low": float(r["Low"]), "close": float(r["Close"]), "adj_close": None,
         "volume": float(r["Volume"]), "split_ratio": None, "adj_source": None, "source": "uw", "fetched_at": at,
         "run_id": "e2e", "run_at": at} for ts, r in df.iterrows()]
-    rawstore.write_rows("price_bars_daily", rows)
     prices_store.put_store_rows(rows, built_at=at)
-
-
-def seed_quote(ticker: str, session: date, quote: dict, market_cap: float) -> None:
-    """One D04 Yahoo row: the screener quote ``quote`` the universe pull recorded for ``session``."""
-    import RevenueChaser.core.rawstore as rawstore
-    at = time.time()
-    rawstore.write_rows("quote_snapshot", [{
-        "ticker": ticker, "session_date": session, "source": "yfinance", "market_cap": market_cap,
-        "price": quote.get("regularMarketPrice"), "shares_outstanding": None,
-        "week_52_high": quote.get("fiftyTwoWeekHigh"), "week_52_low": None, "payload": quote, "fetched_at": at,
-        "run_id": "e2e", "run_at": at}])
 
 
 def bars_to(end: date, periods: int = 300) -> pd.DataFrame:

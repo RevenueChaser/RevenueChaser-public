@@ -117,15 +117,6 @@ def test_without_an_issuer_sum_the_class_cap_counts(market_roots):  # noqa: F811
     assert mi.from_store(TICKER)["market_cap"] == 5500.0
 
 
-def test_a_funds_cap_is_its_own_not_its_trusts_sum(market_roots):  # noqa: F811
-    from RevenueChaser.core import rawstore
-    rawstore.ensure_table("security_master")
-    rawstore.write_rows("security_master", [{"ticker": TICKER, "security_type": "etp"}])
-    from RevenueChaser.rcdata.tests import spine_fixture     # the type is the spine name's, the master's if untyped
-    spine_fixture.write_security([{"ticker": TICKER, "tier": "A"}])
-    _store()                                                 # own 5500, issuer 6000: the trust's CIK files many funds
-    got = mi.from_store(TICKER)
-    assert got["market_cap"] == 5500.0 and got["shares_outstanding"] == pytest.approx(5500.0 / 120.0)
 
 
 def test_a_bar_without_a_cap_gives_the_price_alone(market_roots):  # noqa: F811
@@ -177,43 +168,12 @@ def test_the_overlay_with_nothing_in_the_store_names_yahoo(market_roots):  # noq
     assert {k: out[k] for k in YAHOO} == YAHOO and part == "Yahoo (price, market cap, shares, beta)"
 
 
-def _run(monkeypatch, tmp_path):
-    import RevenueChaser.module_financials.run as fm
-    from RevenueChaser.core.providers import cache as cache_manager
-    monkeypatch.setattr(fm, "OUTPUT_DIR", tmp_path)
-    cache_manager.save(TICKER, {"ticker": TICKER, "info": {"longName": "Growth Co."}, **YAHOO, "currency": "USD",
-                                "source": "yfinance",
-                                "annual": [{"fiscal_year": "2024", "revenue": 1.0, "ebitda": 0.5, "ebit": 0.4,
-                                            "depreciation": 0.1, "capital_expenditure": 0.1, "total_debt": 1.0,
-                                            "cash": 1.0}]})
-    return fm.run(TICKER, modules=["dcf"], output="none", no_fetch=True)["results"]
 
 
-def test_a_run_models_the_stores_market_inputs_and_says_so(built, monkeypatch, tmp_path):  # noqa: F811
-    _store()
-    out = _run(monkeypatch, tmp_path)
-    fin, dcf = out["financials"], out["modules"]["dcf"]
-    assert fin["current_price"] == 120.0 and fin["market_cap"] == 6000.0
-    assert fin["source"].endswith(" · prices store, 2026-10-27 close (price, market cap, shares, beta)")
-    assert "Yahoo (price" not in fin["source"]
-    assert dcf["wacc"]["beta"] == pytest.approx(1.5)
-    assert dcf["wacc"]["beta_source"] == "prices store (5y monthly split-adjusted price returns vs S&P 500)"
 
 
-def test_a_run_without_the_prices_store_keeps_yahoos_and_says_so(built, monkeypatch, tmp_path):  # noqa: F811
-    out = _run(monkeypatch, tmp_path)
-    fin, dcf = out["financials"], out["modules"]["dcf"]
-    assert fin["current_price"] == 100.0 and fin["market_cap"] == 5000.0
-    assert fin["source"].endswith(" · Yahoo (price, market cap, shares, beta)")
-    assert dcf["wacc"]["beta"] == 1.1 and dcf["wacc"]["beta_source"] == "Yahoo"
 
 
-def test_off_the_fundamentals_layer_the_source_line_still_names_the_market_inputs(market_roots, monkeypatch,
-                                                                                   tmp_path):  # noqa: F811
-    _store()
-    out = _run(monkeypatch, tmp_path)
-    assert out["financials"]["source"] == ("Yahoo (statements) · prices store, 2026-10-27 close "
-                                           "(price, market cap, shares, beta)")
 
 
 def test_the_card_names_the_session_of_the_stores_price():

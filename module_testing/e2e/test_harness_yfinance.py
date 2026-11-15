@@ -36,24 +36,3 @@ class TestFastInfoContract:
         assert fi.last_price is None
 
 
-class TestCallsCrossTheProcessBoundary:
-    def test_yf_calls_are_visible_across_the_process_boundary(self, dashboard, monkeypatch):
-        import RevenueChaser.core.rawstore as rawstore
-
-        monkeypatch.setattr(rawstore, "DB_PATH", dashboard.store_dir / "raw.duckdb")
-        universe_store.replace([
-            {"ticker": "AAPL", "market_cap": 3.0e12},
-            {"ticker": "MU", "market_cap": None},
-        ])
-
-        # A plain, store-only /view must not reach yfinance ...
-        assert dashboard.view("module_settings").status_code == 200
-        assert dashboard.yf_calls() == [], (
-            f"a store-only view recorded yfinance calls: {dashboard.yf_calls()}")
-
-        # ... while a Fetch that resolves the NULL cap must leave a line behind.
-        result = dashboard.run_job("/run/universe-stats")
-        assert result.ok, f"universe-stats failed: {result}\n{dashboard.logs()}"
-        calls = dashboard.yf_calls()
-        assert calls, "0 yfinance calls recorded across the process boundary"
-        assert "fast_info:MU" in calls

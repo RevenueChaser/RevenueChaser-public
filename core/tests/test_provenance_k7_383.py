@@ -65,13 +65,6 @@ def test_the_chip_is_the_newest_d01_bar_of_the_names_the_board_last_scored(rawst
     assert provenance.data_as_of(module) == "2026-10-14"
 
 
-@pytest.mark.parametrize("module,table", BOARDS)
-def test_a_newer_bar_in_the_old_cache_is_not_the_chip(rawstore_tmp_db, module, table):
-    _bars(module, "AAA", _days(date(2026, 10, 13)), EVENING)
-    _scored(table, "AAA")
-    rawstore.write_rows("swing_ohlc", [{"ticker": "AAA", "ts": "2026-10-15T00:00:00", "open": 1.0, "high": 1.0,
-                                        "low": 1.0, "close": 1.0, "volume": 1.0, "cached_at": EVENING}])
-    assert provenance.data_as_of(module) == "2026-10-13"
 
 
 @pytest.mark.parametrize("module,table", BOARDS)
@@ -80,17 +73,6 @@ def test_no_scored_name_is_no_date(rawstore_tmp_db, module, table):
     assert provenance.data_as_of(module) is None
 
 
-def test_co_movement_reads_the_prices_store_date_of_its_names(rawstore_tmp_db):
-    """Co-movement clusters the prices store's closes (PR 8; D01 since #379 before), so its date is its names' newest
-    session there, not swing_ohlc's nor D01's."""
-    _bars("module_comovement", "AAA", _days(date(2026, 10, 9)), EVENING)
-    _bars("module_comovement", "OUT", _days(D), EVENING)    # not in the universe: not this board's
-    rawstore.write_rows("swing_ohlc", [{"ticker": "AAA", "ts": "2026-10-14T00:00:00", "open": 1.0, "high": 1.0,
-                                        "low": 1.0, "close": 1.0, "volume": 1.0, "cached_at": EVENING}])
-    universe_store.replace([{"ticker": "AAA", "market_cap": 1.0e10, "sector": "Technology",
-                                              "price": 10.0, "name": "AAA", "industry": "Software",
-                                              "quote": {"symbol": "AAA"}}])
-    assert provenance.data_as_of("module_comovement") == "2026-10-09"
 
 
 def test_d01_day_is_the_newest_session_over_the_given_names(rawstore_tmp_db):

@@ -141,26 +141,6 @@ def test_the_run_id_is_the_running_jobs_id(order, freezers, monkeypatch):
     assert freezers["swing"]["run_id"] == jid
 
 
-def test_a_universe_job_runs_all_three_families_and_its_notes_name_each(order, monkeypatch):
-    """Intraday clock: every freeze is refused. A refusal must not stop the next family, so all
-    three boards still run, and the job's notes carry one sentence per family."""
-    monkeypatch.setattr(cal, "_now", lambda: INTRADAY)
-    monkeypatch.setattr(jobs, "_ensure_worker", lambda: None)
-    monkeypatch.setattr(jobs, "_ensure_long_worker", lambda: None)
-    writes = []
-    monkeypatch.setattr(rawstore, "write_rows", lambda name, rows: writes.append(name) or 0)
-    jobs.register("t_universe_128", runners.run_universe_refresh, [], requires_uw=False, lane="long")
-    jid = jobs.submit("t_universe_128")
-    jobs.execute(jid)
-    job = jobs.get(jid)
-    assert job["status"] == "done", job
-    assert {"ag.scan", "swing.scan", "fund.scan"} <= set(order)
-    assert job["message"] is None
-    notes = job["notes"]
-    for label in ("AG not frozen", "Swing not frozen", "Fundamentals not frozen"):
-        assert sum(label in n for n in notes) == 1
-    assert sum("session window" in n for n in notes) == 3
-    assert "forecast_ledger" not in writes
 
 
 # ── a Fetch opens no popup: the freeze outcome is in ``notes``, never in ``message`` ─────────────────────
@@ -168,33 +148,6 @@ def test_a_universe_job_runs_all_three_families_and_its_notes_name_each(order, m
 # (``templates/dashboard.html``, ``poll``). On main these four jobs never have one: they are registered with
 # ``requires_uw=False`` (``app/dashboard.py``), so there is no provider-gap message either.
 
-_FETCH_JOBS = {          # job key -> (runner, lane), as ``app/dashboard.py`` registers them
-    "swing": (runners.run_swing, "short"),
-    "module_fundamentals": (runners.run_fundamentals, "short"),
-    "module_asymmetric_growth": (runners.run_asymmetric_growth, "short"),
-    "universe": (runners.run_universe_refresh, "long"),
-}
 _AFTER_CLOSE = datetime(2026, 10, 2, 21, 0, tzinfo=timezone.utc)      # 17:00 ET on a trading day
 
 
-@pytest.mark.parametrize("clock", [INTRADAY, _AFTER_CLOSE], ids=["refused", "frozen"])
-@pytest.mark.parametrize("key", sorted(_FETCH_JOBS))
-def test_a_fetch_job_leaves_its_message_empty_so_the_dashboard_opens_no_alert(order, monkeypatch, key, clock):
-    runner, lane = _FETCH_JOBS[key]
-    monkeypatch.setattr(cal, "_now", lambda: clock)
-    monkeypatch.setattr(jobs, "_ensure_worker", lambda: None)
-    monkeypatch.setattr(jobs, "_ensure_long_worker", lambda: None)
-    monkeypatch.setattr(rawstore, "write_rows", lambda name, rows: 0)
-    monkeypatch.setattr(ledger, "_day_frozen", lambda *a, **k: False)
-    monkeypatch.setattr(ledger, "payload_problem", lambda *a, **k: None)
-    monkeypatch.setattr(ledger, "spy_anchor_problem", lambda session: None)
-    monkeypatch.setattr(ledger, "ohlc_gaps", lambda session, tickers: {})
-    jobs.register(f"t_{key}_popup", runner, [], requires_uw=False, lane=lane)
-    jid = jobs.submit(f"t_{key}_popup")
-    jobs.execute(jid)
-    job = jobs.get(jid)
-    assert job["status"] == "done", job
-    assert job["message"] is None, "a message is what the dashboard shows with alert()"
-    assert job["error"] is None
-    assert job["notes"], "the freeze outcome is still recorded, in its own field"
-    assert all(("Froze" in n or "not frozen" in n) for n in job["notes"])

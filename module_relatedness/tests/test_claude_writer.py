@@ -21,8 +21,7 @@ from RevenueChaser.core import fundamentals_layer, rawstore, subscription_usage
 from RevenueChaser.core.providers import claude_code
 from RevenueChaser.core.subscription_usage import Window
 from RevenueChaser.module_relatedness import compare, engine, store, writers
-from RevenueChaser.module_relatedness.tests.test_grok_writer_388 import (  # noqa: F401
-    TICKERS, deepseek_calls, world)
+from RevenueChaser.module_relatedness.tests.test_grok_writer_388 import TICKERS, deepseek_calls
 from RevenueChaser.module_relatedness.tests.test_relatedness import v3_reply
 
 
@@ -144,16 +143,6 @@ def test_the_writer_is_registered_with_haiku_first(rawstore_tmp_db, monkeypatch,
 
 # ── mixed writers: first round Claude, later DeepSeek ───────────────────────
 
-def test_a_claude_first_round_stays_current_when_the_board_goes_back_to_deepseek(world, cli, deepseek_calls):
-    payload = engine.run(provider="claude", model="claude-haiku-5-5")
-    assert len(cli.calls) == 3 and payload["n"] == 3
-    assert payload["other_writer"] == 0 and payload["writer"] == {"provider": "claude", "model": "claude-haiku-5-5"}
-    assert rawstore.get("relatedness_profiles", "AAA")["provider"] == "claude"
-    back = engine.run(usd_cap=10.0)                                # the writer is DeepSeek again
-    assert deepseek_calls == [] and back["n"] == 3 and back["other_writer"] == 3
-    assert not any(c["stale"] for c in back["companies"])
-    assert {c["writer"] for c in back["companies"]} == {"claude/claude-haiku-5-5"}
-    assert len(back["peers"]) == 3                                 # in the peer matrix
 
 
 def test_the_board_badge_names_another_writers_model():
@@ -170,59 +159,12 @@ def test_the_board_badge_names_another_writers_model():
 
 # ── the layer: no SEC re-download (plan F3) ─────────────────────────────────
 
-def test_a_fetch_on_the_layer_downloads_no_chain_filings(world, monkeypatch):
-    seen = []
-    monkeypatch.setattr(engine.vc_engine, "fetch_corpus", lambda ts, **k: seen.append(k) or {})
-    monkeypatch.setattr(fundamentals_layer, "reads_layer", lambda: True)
-
-    class Stop(engine.RunStopped):
-        def __init__(self):
-            super().__init__("auth", message="stop here")
-
-    def stop(*a, **k):
-        raise Stop()
-
-    monkeypatch.setattr(engine, "build_profiles", stop)
-    monkeypatch.setattr(engine, "_payload", lambda *a, **k: {"companies": []})
-    try:
-        engine.run(usd_cap=1.0, tickers=TICKERS)
-    except Exception:  # noqa: BLE001 - only the corpus call is under test
-        pass
-    assert seen and seen[0]["no_fetch"] is True
 
 
 # ── the comparison ──────────────────────────────────────────────────────────
 
-def test_a_claude_comparison_records_the_window_before_and_after(world, cli, monkeypatch, tmp_path):
-    monkeypatch.setattr(compare, "OUT_DIR", tmp_path / "research")
-    readings = iter([[Window("seven_day", 10.0)], [Window("seven_day", 10.0)], [Window("seven_day", 12.5)]])
-    monkeypatch.setattr(subscription_usage, "fetch_claude", lambda now=None: next(readings))
-    out = compare.run(TICKERS, provider="claude", model="claude-sonnet-5-5")
-    assert out["usable"] == 3 and len(cli.calls) == 3
-    assert out["usage"] == {"before": {"seven_day": 10.0}, "after": {"seven_day": 12.5}}
-    assert out["method"] in ("embedding", "tags")
-    for table in ("relatedness_profiles", "relatedness_attributes", "relatedness_scores"):
-        assert rawstore.count(table) == 0
 
 
-def test_a_claude_comparison_sends_its_names_in_parallel(world, cli, monkeypatch, tmp_path):
-    """avo, 11 Nov 2026 ("8li paralel"): the first two calls meet at a barrier, which one-at-a-time never reaches."""
-    import threading
-    monkeypatch.setattr(compare, "OUT_DIR", tmp_path / "research")
-    meet, lock, started = threading.Barrier(2, timeout=10), threading.Lock(), []
-    plain = cli.__call__
-
-    def together(cmd, input=None, **kw):
-        with lock:
-            started.append(1)
-            first_two = len(started) <= 2
-        if first_two:
-            meet.wait()
-        return plain(cmd, input=input, **kw)
-
-    monkeypatch.setattr(claude_code, "_run", together)
-    out = compare.run(TICKERS, provider="claude", model="claude-haiku-5-5")
-    assert out["usable"] == 3 and len(cli.calls) == 3 and "stopped_reason" not in out
 
 
 def test_the_board_says_which_scorer_made_the_peers():

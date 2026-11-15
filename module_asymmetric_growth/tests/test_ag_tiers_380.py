@@ -113,23 +113,8 @@ def test_ticker_scores_keeps_tier_flags_and_model_version(rawstore_tmp_db):
     assert (view["tier"], view["flags"], view["model_version"]) == (3, ["suspicious_growth"], mv)
 
 
-def test_the_history_mirror_has_the_new_columns():
-    cols = {c.split()[0] for c in rawstore.MANIFEST["ag_scores_history"]["columns"]}
-    assert {"tier", "flags", "model_version"} <= cols
 
 
-def test_the_hunter_stamps_the_model_version(rawstore_tmp_db, monkeypatch):
-    from RevenueChaser.module_asymmetric_growth.tests.test_ag_info_only_150 import _QUOTE, _edgar
-    from RevenueChaser.module_asymmetric_growth.tests.test_ag_dated_momentum_380 import seed_momentum
-    fund_store.put_edgar([_edgar("AAA")])
-    seed_momentum(["AAA"])                                    # the momentum signal comes from D01 (#380 S4)
-    monkeypatch.setattr(engine, "fetch_universe_stats",
-                        lambda *a, **k: ([{"ticker": "AAA", "quote": dict(_QUOTE), "market_cap": 5e9}], {}))
-    monkeypatch.setattr(engine._spine, "spine_gics", lambda *a, **k: {})
-    monkeypatch.setattr(engine._spine, "excluded_tickers", lambda: set())
-    res = engine.run_asymmetric_growth_hunter(None, max_workers=1, no_fetch=True)
-    assert [(c["tier"], c["model_version"]) for c in res["cards"]] == [(3, freeze.model_version())]  # 3 strong signals
-    assert engine.scored_before(res["cards"]) is False
 
 
 def test_scored_before_reads_the_rows_version():

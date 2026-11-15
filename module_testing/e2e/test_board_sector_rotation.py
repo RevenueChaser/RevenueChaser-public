@@ -86,13 +86,6 @@ def _seed_bars():
     return session
 
 
-@pytest.fixture
-def stored_bars(dashboard, monkeypatch):
-    """The test's own dashboard, its store seeded by ``_seed_bars``; returns the session the bars end on."""
-    import RevenueChaser.core.rawstore as rawstore
-    monkeypatch.setattr(rawstore, "DB_PATH", dashboard.store_dir / "raw.duckdb")
-    monkeypatch.setattr("RevenueChaser.core.config.MARKET_DIR", dashboard.env["RC_MARKET_DIR"])  # the prices store (G3)
-    return _seed_bars()
 
 
 def _rotation_candle_calls(routes, since: int = 0) -> list[str]:
@@ -178,13 +171,6 @@ class TestRefreshIsOfflineAndFaithful:
             "refresh reached the network: "
             f"{[q.path for q in ohlc_routes.requests()[before:]]}")
 
-    def test_refresh_survives_a_restart(self, dashboard, stored_bars, ohlc_routes, clear_cache):
-        result = dashboard.run_job("/run/rotation")
-        assert result.ok, f"rotation fetch failed: {result}\n{dashboard.logs()}"
-        dashboard.wait_until_idle()
-        clear_cache()
-        dashboard.restart()
-        assert "XLK" in dashboard.view("module_sector_rotation", refresh=True).text
 
 
 class TestWeekPicker:

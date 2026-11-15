@@ -43,36 +43,6 @@ def seeded_totals(serve_13f_totals):
     return serve_13f_totals(TOTALS)
 
 
-@pytest.fixture
-def seeded_inputs(dashboard, seeded_totals, monkeypatch):
-    """The snapshot inputs the board reads since #375 F2: NVDA's shares outstanding (UW) and insider % (yfinance) in
-    ``ownership_snapshot``, its quarter-end closes in D01 and its Short% in D10. AMD has none of them."""
-    from datetime import date
-
-    import RevenueChaser.core.rawstore as rawstore
-    monkeypatch.setattr(rawstore, "DB_PATH", dashboard.store_dir / "raw.duckdb")
-    monkeypatch.setattr("RevenueChaser.core.config.MARKET_DIR", dashboard.env["RC_MARKET_DIR"])  # served prices.duckdb
-    rawstore.ensure_all_tables()
-
-    def own(source, shares, insider):
-        return {"ticker": "NVDA", "session_date": date(2026, 10, 8), "source": source,
-                "shares_outstanding": shares, "insider_pct": insider, "institutional_pct": None,
-                "fetched_at": 0.0, "run_id": "e2e", "run_at": 0.0}
-
-    rawstore.write_rows("ownership_snapshot", [own("uw_info", 24_000_000.0, None),
-                                               own("yfinance", 30_000_000.0, 0.035)])
-    from RevenueChaser.core.tests.d01_seed import write_d01
-    write_d01([
-        {"ticker": "NVDA", "session_date": date.fromisoformat(d), "open": c, "high": c, "low": c, "close": c,
-         "adj_close": None, "volume": 1.0, "split_ratio": None, "adj_source": None, "source": "uw",
-         "fetched_at": 0.0, "run_id": "e2e", "run_at": 0.0}
-        for d, c in (("2026-03-31", 100.0), ("2026-06-30", 150.0))])
-    rawstore.write_rows("short_interest", [
-        {"ticker": "NVDA", "session_date": date(2026, 10, 15), "market_date": None,
-         "short_interest": None, "si_float": 0.048, "total_float": None, "days_to_cover": None,
-         "fee_rate": None, "rebate_rate": None, "short_shares_available": None, "payload": {},
-         "source": "uw_short_screener", "fetched_at": 0.0, "run_id": "e2e", "run_at": 0.0}])
-    return dashboard
 
 
 def _payload(dashboard) -> dict:
@@ -140,36 +110,6 @@ class TestEmptyStore:
         assert r.status_code == 200
 
 
-@pytest.fixture
-def seeded_inputs(dashboard, seeded_totals, monkeypatch):
-    """The snapshot inputs the board reads since #375 F2: NVDA's shares outstanding (UW) and insider % (yfinance) in
-    ``ownership_snapshot``, its quarter-end closes in D01 and its Short% in D10. AMD has none of them."""
-    from datetime import date
-
-    import RevenueChaser.core.rawstore as rawstore
-    monkeypatch.setattr(rawstore, "DB_PATH", dashboard.store_dir / "raw.duckdb")
-    monkeypatch.setattr("RevenueChaser.core.config.MARKET_DIR", dashboard.env["RC_MARKET_DIR"])  # served prices.duckdb
-    rawstore.ensure_all_tables()
-
-    def own(source, shares, insider):
-        return {"ticker": "NVDA", "session_date": date(2026, 10, 8), "source": source,
-                "shares_outstanding": shares, "insider_pct": insider, "institutional_pct": None,
-                "fetched_at": 0.0, "run_id": "e2e", "run_at": 0.0}
-
-    rawstore.write_rows("ownership_snapshot", [own("uw_info", 24_000_000.0, None),
-                                               own("yfinance", 30_000_000.0, 0.035)])
-    from RevenueChaser.core.tests.d01_seed import write_d01
-    write_d01([
-        {"ticker": "NVDA", "session_date": date.fromisoformat(d), "open": c, "high": c, "low": c, "close": c,
-         "adj_close": None, "volume": 1.0, "split_ratio": None, "adj_source": None, "source": "uw",
-         "fetched_at": 0.0, "run_id": "e2e", "run_at": 0.0}
-        for d, c in (("2026-03-31", 100.0), ("2026-06-30", 150.0))])
-    rawstore.write_rows("short_interest", [
-        {"ticker": "NVDA", "session_date": date(2026, 10, 15), "market_date": None,
-         "short_interest": None, "si_float": 0.048, "total_float": None, "days_to_cover": None,
-         "fee_rate": None, "rebate_rate": None, "short_shares_available": None, "payload": {},
-         "source": "uw_short_screener", "fetched_at": 0.0, "run_id": "e2e", "run_at": 0.0}])
-    return dashboard
 
 
 def _payload(dashboard) -> dict:
@@ -208,31 +148,6 @@ class TestFilterKit:
         assert payload["fields"]["FAKE999"]["market_cap"] is None
 
 
-class TestSnapshotInputs:
-    """#375 F2: % Out and Price Δ come from ``ownership_snapshot`` and D01, through one path for Refresh and Fetch; a
-    Refresh makes no network call. Insider% and Short% are off the board since #732 (owner, 12 Nov 2026)."""
-
-    def test_refresh_reads_the_stored_inputs_with_no_network(self, seeded_inputs, provider_routes, clear_cache):
-        clear_cache()
-        before = provider_routes.request_count
-        assert seeded_inputs.view("module_sec_13f", refresh=True).status_code == 200
-        assert provider_routes.request_count == before, (
-            f"refresh reached the network: {[q.path for q in provider_routes.requests()[before:]]}")
-        nvda = _cells(seeded_inputs, "NVDA")
-        assert nvda["pct_out"][:2] == ["22.5%", 22.5]           # 5.4M 13F shares of UW's 24M outstanding
-        assert nvda["price_delta"][:2] == ["+50.0%", 50.0]
-        cols = _payload(seeded_inputs)["cols"]
-        assert "short" not in cols and "insider" not in cols
-        amd = _cells(seeded_inputs, "AMD")
-        assert [amd[c][0] for c in ("pct_out", "price_delta")] == ["—", "—"]
-
-    def test_a_refresh_shows_the_numbers_the_fetch_showed(self, seeded_inputs, clear_cache):
-        assert seeded_inputs.run_job("/run/module_sec_13f").ok
-        fetched = _payload(seeded_inputs)
-        assert _cells(seeded_inputs, "NVDA")["price_delta"][1] == 50.0
-        clear_cache()
-        assert seeded_inputs.view("module_sec_13f", refresh=True).status_code == 200
-        assert _payload(seeded_inputs) == fetched
 
 
 # ── R7 review: the rows load in a real browser ───────────────────────────────────────────────────────────────────

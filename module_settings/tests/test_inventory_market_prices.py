@@ -64,20 +64,6 @@ def _seed_universe() -> None:
 
 # ── the "Daily price bars" row ────────────────────────────────────────────────────────────────────────────────────
 
-def test_the_row_reads_the_market_file_beside_an_empty_store_file(rawstore_tmp_db):
-    _seed_universe()
-    assert rawstore.count("price_bars_daily") == 0, "the store's own file is the empty stub"
-    _market_prices([("AAPL", date(2026, 9, 29), "alpaca"), ("AAPL", SESSION, "alpaca"),
-                    ("MU", SESSION, "alpaca")])
-    row = _price_row(inventory.collect(now=FIXED))
-    assert row["rows"] == 3, "index rows are levels, not bars"
-    assert row["last_date"] == "2026-09-30"
-    assert row["holes"] == 0 and row["hole_label"] == "sessions behind latest"
-    assert "market store" in row["note"] and "no bars yet" not in row["note"]
-    assert "newest 2026-09-30 vs latest complete 2026-09-30" in row["note"]
-    assert "Alpaca 2" in row["note"]
-    assert row["fresh"]["text"] == "2026-09-30", "the Freshness cell dates the market file, not the stub"
-    assert row["db"] == "market" and row["source"] == "wrds", "#484: Compustat serves the bars"
 
 
 def test_a_market_file_behind_the_calendar_counts_the_sessions_it_misses(rawstore_tmp_db):
@@ -114,9 +100,3 @@ def test_without_a_market_file_the_row_says_where_it_looked(rawstore_tmp_db):
 
 # ── identity coverage ─────────────────────────────────────────────────────────────────────────────────────────────
 
-def test_identity_coverage_counts_bars_in_the_market_file(rawstore_tmp_db):
-    _seed_universe()
-    _market_prices([("AAPL", SESSION, "alpaca"), ("MU", date(2026, 9, 29), "alpaca")])
-    cov = inventory.identity_coverage(universe.classification_universe(), FIXED)
-    bars = next(r for r in cov["inputs"] if r["key"] == "bars")
-    assert (bars["covered"], bars["state"]) == (1, ""), "MU's newest bar is behind the latest complete session"

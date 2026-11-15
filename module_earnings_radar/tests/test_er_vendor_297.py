@@ -6,8 +6,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from RevenueChaser.core import rawstore, vendor_data
-from RevenueChaser.core.tests.test_vendor_data import _uw_fin
+from RevenueChaser.core import rawstore
 from RevenueChaser.module_earnings_radar.pipeline import EarningsPipeline
 from RevenueChaser.module_earnings_radar.tests.test_pipeline_score import _FakeUW
 
@@ -17,20 +16,11 @@ _CAL = {"AAPL": {"earnings_date": "2026-08-14", "full_name": "Aple", "sector": "
                  "expected_move_perc": 0.05}}
 
 
-@pytest.fixture(autouse=True)
-def _isolate(rawstore_tmp_db, monkeypatch):
-    monkeypatch.setattr(vendor_data, "_clock", lambda: COMPLETE)
-    return rawstore_tmp_db
 
 
 class _FinUW(_FakeUW):
     """A fake that serves ``financials`` like UWClient and maps it with the real ``_map_financials``."""
 
-    def __init__(self, fin=None, **ov):
-        super().__init__(**ov)
-        self.fin = fin if fin is not None else _uw_fin()
-        self.fin_calls = []
-        self.mapped = []
 
     def financials(self, ticker):
         self.fin_calls.append(ticker)
@@ -54,32 +44,10 @@ def _pipeline(uw):
     return p
 
 
-def test_a_scored_ticker_stores_its_uw_statements_with_one_request():
-    uw = _FinUW()
-    p = _pipeline(uw)
-    card = p._score("AAPL")
-    assert card is not None
-    assert uw.fin_calls == ["AAPL"] and uw.mapped == [uw.fin]     # the map reused the body, no second request
-    assert p.uw._map_financials("AAPL", fin=uw.fin)                # and the real map reads it (R3/R7)
-    res = p.vendor.flush(run_id="job-er")
-    assert res["statements_appended"] == 3
-    rows = rawstore.query("SELECT * FROM vendor_financials ORDER BY statement")
-    assert {(r["ticker"], r["source"], r["report_type"], r["run_id"]) for r in rows} == \
-        {("AAPL", "uw", "quarterly", "job-er")}
-    assert rawstore.query("SELECT * FROM vendor_valuation") == []   # UW has no valuation (profile 403, G2-08)
 
 
-def test_an_empty_uw_body_stores_nothing():
-    uw = _FinUW(fin={})
-    p = _pipeline(uw)
-    p._score("AAPL")
-    assert p.vendor.flush(run_id="job-er") == vendor_data.EMPTY_RESULT
 
 
-def test_a_fake_without_financials_still_scores():
-    p = _pipeline(_FakeUW())
-    assert p._score("AAPL") is not None
-    assert p.vendor.flush(run_id="job-er") == vendor_data.EMPTY_RESULT
 
 
 def test_a_capture_failure_leaves_r3_r7_as_they_were(monkeypatch):

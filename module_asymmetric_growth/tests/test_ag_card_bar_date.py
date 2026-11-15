@@ -10,31 +10,9 @@ from __future__ import annotations
 from RevenueChaser.rcdata.tests import fund_store
 from RevenueChaser.core import ticker_store
 from RevenueChaser.module_asymmetric_growth import engine, report
-from RevenueChaser.module_asymmetric_growth.tests.test_ag_dated_momentum_380 import (
-    SESSION, edgar, row, seed_momentum, sessions, universe)
+from RevenueChaser.module_asymmetric_growth.tests.test_ag_dated_momentum_380 import SESSION, edgar, row, sessions
 
 
-def test_a_card_whose_bars_stop_early_says_so(rawstore_tmp_db, monkeypatch):
-    seed_momentum(["FRESH"])
-    early = sessions(SESSION, 262)[-3]                              # two sessions before the scan's
-    seed_momentum(["HALTED"], session=early)
-    fund_store.put_edgar([edgar("FRESH"), edgar("HALTED"), edgar("QUOTEONLY")])
-    universe(monkeypatch, [row("FRESH", quote={}), row("HALTED", quote={}),
-                           row("QUOTEONLY", quote={"regularMarketPrice": 42.0})])
-    res = engine.run_asymmetric_growth_hunter(None, max_workers=1, no_fetch=True)
-    cards = {c["ticker"]: c for c in res["cards"]}
-
-    assert cards["FRESH"]["period_ends"]["price_bar"] == SESSION.isoformat()
-    assert "price_bar_older" not in cards["FRESH"]["flags"]
-    assert cards["HALTED"]["period_ends"]["price_bar"] == early.isoformat()
-    assert "price_bar_older" in cards["HALTED"]["flags"]
-    assert cards["QUOTEONLY"]["period_ends"]["price_bar"] is None
-    assert "price_bar_older" not in cards["QUOTEONLY"]["flags"]
-
-    ticker_store.write_from_cards(res["cards"], asof=SESSION.isoformat())
-    stored = {c["ticker"]: c for c in ticker_store.all_cards()}     # a Refresh shows the same
-    assert stored["HALTED"]["period_ends"]["price_bar"] == early.isoformat()
-    assert "price_bar_older" in stored["HALTED"]["flags"]
 
 
 def test_the_card_explains_the_check():

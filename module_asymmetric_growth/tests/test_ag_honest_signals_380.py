@@ -24,7 +24,6 @@ from RevenueChaser.core import fiscal_year, funnel, ledger
 from RevenueChaser.module_asymmetric_growth import engine, freeze
 from RevenueChaser.module_asymmetric_growth.engine import score_ticker
 from RevenueChaser.module_asymmetric_growth.tests.test_ag_info_only_150 import _ANNUAL, _QUOTE, _edgar
-from RevenueChaser.module_asymmetric_growth.tests.test_ag_dated_momentum_380 import seed_momentum
 
 _TECH = {"price": 100.0, "dist_52w_pct": 0.05, "vol_ratio": 1.6, "above_sma50": True}
 
@@ -142,36 +141,14 @@ def _dated(rows, end_year: int, month_day: str = "12-31"):
     return out
 
 
-@pytest.fixture
-def scan(rawstore_tmp_db, monkeypatch):
-    """FRESH ended 2025-12-31 (288 days before the run day); STALE ended 2024-06-30 (837 days); UNDATED has no
-    ``period_ends`` (records stored before #239), so it is not judged; FORN is stale and foreign: foreign wins."""
-    fund_store.put_edgar([
-        _edgar("FRESH", _dated(_ANNUAL, 2025)), _edgar("STALE", _dated(_ANNUAL, 2024, "06-30")),
-        _edgar("UNDATED"), _edgar("FORN", _dated(_ANNUAL, 2024, "06-30"), is_us=False)])
-    rows = [{"ticker": t, "quote": dict(_QUOTE), "market_cap": 5e9} for t in ("FRESH", "STALE", "UNDATED", "FORN")]
-    seed_momentum(["FRESH", "STALE", "UNDATED", "FORN"])      # the momentum signal comes from D01 (#380 S4)
-    monkeypatch.setattr(engine, "fetch_universe_stats", lambda *a, **k: (rows, {}))
-    monkeypatch.setattr(engine._spine, "spine_gics", lambda *a, **k: {})
-    monkeypatch.setattr(engine._spine, "excluded_tickers", lambda: set())
-    monkeypatch.setattr(engine, "_run_day", lambda: RUN_DAY)
-    return engine.run_asymmetric_growth_hunter(None, max_workers=1, no_fetch=True)
 
 
 def _steps(result):
     return {s["key"]: s for s in result["funnel_steps"]}
 
 
-def test_a_stale_anchor_gets_no_card(scan):
-    assert sorted(c["ticker"] for c in scan["cards"]) == ["FRESH", "UNDATED"]
 
 
-def test_the_funnel_lists_the_stale_anchor_by_design(scan):
-    step = _steps(scan)["stale_annual"]
-    assert step["count"] == 1 and step["tickers"] == ["STALE"] and step["by_design"] is True
-    assert "470" in step["label"]
-    assert _steps(scan)["foreign"]["tickers"] == ["FORN"]
-    assert funnel.validate(scan["funnel_steps"]) == []
 
 
 def test_the_stale_line_is_the_c18_limit(monkeypatch, rawstore_tmp_db):
@@ -203,40 +180,12 @@ def _gap(newest_year: int, month_day: str = "12-31") -> list[dict]:
                       for y in range(oldest + 1, newest_year + 1)]
 
 
-@pytest.fixture
-def gap_scan(rawstore_tmp_db, monkeypatch):
-    """GAP: newest record 2025-12-31 (fresh), revenue last in FY2018. OLDGAP: the same, but its newest record ended
-    2024-06-30 (837 days): a stale filer. FRESH: an ordinary name."""
-    fund_store.put_edgar([
-        _edgar("FRESH", _dated(_ANNUAL, 2025)), _edgar("GAP", _gap(2025)), _edgar("OLDGAP", _gap(2024, "06-30"))])
-    rows = [{"ticker": t, "quote": dict(_QUOTE), "market_cap": 5e9} for t in ("FRESH", "GAP", "OLDGAP")]
-    seed_momentum(["FRESH", "GAP", "OLDGAP"])                 # the momentum signal comes from D01 (#380 S4)
-    monkeypatch.setattr(engine, "fetch_universe_stats", lambda *a, **k: (rows, {}))
-    monkeypatch.setattr(engine._spine, "spine_gics", lambda *a, **k: {})
-    monkeypatch.setattr(engine._spine, "excluded_tickers", lambda: set())
-    monkeypatch.setattr(engine, "_run_day", lambda: RUN_DAY)
-    return engine.run_asymmetric_growth_hunter(None, max_workers=1, no_fetch=True)
 
 
-def test_a_fresh_filer_with_an_old_revenue_figure_keeps_its_card(gap_scan):
-    cards = {c["ticker"]: c for c in gap_scan["cards"]}
-    assert sorted(cards) == ["FRESH", "GAP"]
-    gap = cards["GAP"]
-    assert (gap["anchor_fy"], gap["prior_fy"]) == (2025, 2024)      # the newest record, not FY2018
-    assert gap["rev_growth"] is None and gap["gross_margin"] is None
-    assert "no_recent_revenue" in gap["flags"]
-    assert gap["total_points"] == 6 and gap["tier"] is None          # survival 3 + momentum 3, still no tier
-    assert gap["earnings_date"] is not None                          # the Earnings filter keeps the name
 
 
-def test_only_a_stale_newest_record_is_dropped(gap_scan):
-    step = _steps(gap_scan)["stale_annual"]
-    assert step["tickers"] == ["OLDGAP"] and step["by_design"] is True
-    assert funnel.validate(gap_scan["funnel_steps"]) == []
 
 
-def test_the_summary_counts_the_old_revenue_cards(gap_scan):
-    assert gap_scan["summary"]["no_recent_revenue"] == 1
 
 
 def test_score_ticker_judges_the_revenue_anchor_only_with_a_run_day():

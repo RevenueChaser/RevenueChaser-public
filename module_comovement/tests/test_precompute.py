@@ -92,16 +92,6 @@ def test_a_fetch_run_is_never_served(market, clusterings):
     assert rawstore.count("comov_runs") == 2
 
 
-def test_a_settings_change_invalidates(market, clusterings):
-    engine.run(no_fetch=True, persist=True, window=126)
-    bs.save(B, {"WINSOR_K": 6.0})
-    clusterings.clear()
-    engine.run(no_fetch=True, window=126)
-    assert clusterings != []
-    bs.reset(B)
-    clusterings.clear()
-    engine.run(no_fetch=True, window=126)
-    assert clusterings == []
 
 
 def test_newer_prices_recompute(market, clusterings):

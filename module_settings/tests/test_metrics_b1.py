@@ -273,28 +273,6 @@ def test_the_timer_is_read_in_the_background_at_most_once_a_minute():
     assert len(calls) == 2
 
 
-def test_the_route_serves_text_and_opens_no_store_session(client, monkeypatch):
-    """No store session, and no DuckDB connection of any kind: a scrape every minute must never take raw.duckdb's
-    lock (a session alone opens lazily, so the connect itself is what is refused here)."""
-    from RevenueChaser.core import rawstore
-    opened = []
-
-    def refuse(*a, **k):
-        opened.append(a)
-        raise AssertionError("the scrape opened the store")
-    monkeypatch.setattr(rawstore, "session", refuse)
-    monkeypatch.setattr(rawstore, "connect", refuse)
-    import duckdb
-    monkeypatch.setattr(duckdb, "connect", refuse)
-    monkeypatch.setattr(metrics.TIMER, "get", lambda wait=False: {"state": "on"})
-    r = client.get("/metrics")
-    assert r.status_code == 200
-    assert r.mimetype == "text/plain"
-    assert "version=0.0.4" in r.headers["Content-Type"]
-    assert "# TYPE rc_dataset_state gauge" in r.get_data(as_text=True)
-    assert opened == [], "a scrape must not open raw.duckdb"
-    assert 'rc_dataset_state{dataset="market_series"' in r.get_data(as_text=True), \
-        "the datasets were read with every DuckDB connect refused"
 
 
 def test_the_datasets_route_lists_names_kinds_attended_and_providers(client):

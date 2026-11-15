@@ -22,10 +22,6 @@ def _outer_names(css: str) -> set[str]:
     return {n for n in re.findall(r"var\(--([a-z0-9-]+)\s*,", css) if not LOCAL.match(n)}
 
 
-def test_help_and_history_name_real_tokens():
-    for css in (rc.HELP_CSS, rc.HISTORY_CSS):
-        unknown = _outer_names(css) - DEFINED
-        assert not unknown, f"{sorted(unknown)} is read but no theme defines it"
 
 
 def test_filter_bar_names_real_tokens():

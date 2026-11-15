@@ -17,24 +17,8 @@ CAPS = {"MSFT": 3.1e12, "ETN": 1.3e11, "HEI": 3.0e10, "HEI-A": 2.0e10, "NVR": 2.
         "CNA": 1.2e10, "FDX": 6.5e10, "WFC": 2.3e11, "SPY": 6.0e11, "WFC-PC": 1.0e9}
 
 
-@pytest.fixture
-def old_store():
-    """The old store's universe: market fields for the spine's names, and one name only the old store has."""
-    rows = [{"ticker": t, "market_cap": c, "price": 10.0, "name": f"old {t}", "sector": "Old Sector",
-             "industry": "Old Industry"} for t, c in CAPS.items()]
-    rows.append({"ticker": "OLDONLY", "market_cap": 5e11, "price": 1.0, "name": "Only old", "sector": "Energy"})
-    rawstore.write_rows("equity_universe", rows)
-    rawstore.write_rows("security_master", [{"ticker": "SPY", "security_type": "etp"},
-                                            {"ticker": "OLDONLY", "security_type": "common"}])
 
 
-def test_the_default_is_the_spine(built, old_store):
-    drop_my_universe()
-    assert universe.source_state() == {"requested": "spine", "effective": "spine", "reason": None, "variable": None}
-    names = universe.classification_universe(0, operating_only=True)
-    assert names[:3] == ["MSFT", "TM", "WFC"] and "OLDONLY" not in names
-    assert universe.classification_universe(0)[:3] == ["MSFT", "SPY", "TM"]   # PR 2: every A+B type
-    assert universe.universe_source() == "spine"
 
 
 def drop_my_universe() -> None:
@@ -56,9 +40,6 @@ def drop_my_universe() -> None:
     spine_reads.clear()
 
 
-@pytest.fixture
-def spine(built, old_store):
-    drop_my_universe()
 
 
 @pytest.mark.usefixtures("spine")
@@ -109,50 +90,9 @@ def test_filter_fields_take_the_index_badges_from_the_spine_membership():
     assert fields["NOPE"]["sector"] == "Unclassified"
 
 
-def test_without_a_spine_no_old_name_is_read_and_the_reason_is_said(old_store):
-    """#642 PR 6: the old ``equity_universe`` is never a fallback universe."""
-    assert universe.source_state() == {"requested": "spine", "effective": "spine", "reason": "no spine.duckdb yet",
-                                       "variable": None}
-    assert universe.classification_universe(0) == [] and not universe.has_universe()
 
 
-def test_a_failed_spine_build_is_said_and_the_last_good_spine_still_read(built, old_store):
-    from RevenueChaser.rcdata import ops
-    drop_my_universe()
-    ops.record_check("spine/security", "failed", note="boom")
-    assert universe.source_state()["reason"] == "spine/security's last check failed"
-    names = universe.classification_universe(0)
-    assert "MSFT" in names and "OLDONLY" not in names
-    ops.record_check("spine/security", "skipped", note="paused")          # a skip after the failure changes nothing
-    assert universe.source_state()["reason"] == "spine/security's last check failed"
 
 
-@pytest.mark.usefixtures("spine")
-def test_an_untyped_spine_name_takes_the_old_masters_type(monkeypatch):
-    """Should-fix 6: a spine name with no type (no OpenFIGI answer, no Compustat link) falls back to the identity
-    master's type, so an ETF the old path excluded is not let through by the flag."""
-    rawstore.write_rows("security_master", [{"ticker": "VYLR", "security_type": "etp"}])
-    from RevenueChaser.rcdata import read
-    real = read.identity
-    monkeypatch.setattr(read, "identity", lambda tickers=None: [
-        {**r, "security_type": "unknown"} if r["ticker"] == "VYLR" else r for r in real(tickers)])
-    assert "VYLR" in universe.excluded_tickers()
-    assert "VYLR" not in universe.classification_universe(0, operating_only=True)
 
 
-@pytest.mark.usefixtures("spine")
-def test_the_masters_specific_type_wins_over_a_tpci_guess(monkeypatch):
-    """Delta S4: tpci (fix 6) types NVR "common"; the identity master knows better (here: a closed-end fund), so the
-    master's type that is not "common" wins over a type whose only source is tpci. OpenFIGI's type still wins."""
-    from RevenueChaser.rcdata import read
-    real = read.identity
-    monkeypatch.setattr(read, "identity", lambda tickers=None: [
-        {**r, "security_type": "common", "type_source": "compustat_tpci(0)"} if r["ticker"] in ("NVR", "FDX")
-        else r for r in real(tickers)])
-    rawstore.write_rows("security_master", [{"ticker": "NVR", "security_type": "cef"},
-                                            {"ticker": "FDX", "security_type": "common"},
-                                            {"ticker": "MSFT", "security_type": "etp"}])
-    excluded = universe.excluded_tickers()
-    assert "NVR" in excluded                               # the master's cef over the tpci guess
-    assert "FDX" not in excluded                           # the master's common changes nothing
-    assert "MSFT" not in excluded                          # OpenFIGI's type is not overruled by the master

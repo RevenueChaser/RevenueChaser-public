@@ -16,16 +16,6 @@ from RevenueChaser.rcdata.tests.conftest import http_mock, market_roots  # noqa:
 from RevenueChaser.rcdata.tests.test_spine_security import built  # noqa: F401 - the built spine
 
 
-@pytest.mark.usefixtures("market_roots", "built")
-def test_the_spine_alone_names_the_company_and_gives_sector_and_industry():
-    spine = read.identity(["MSFT"])[0]
-    rawstore.replace_all("equity_universe", [
-        {"ticker": "MSFT", "name": "MICROSOFT CORPORATION OF REDMON", "sector": "Old", "industry": "Old"},
-        {"ticker": "ZZZQ", "name": "Only In The Old Table", "sector": "Energy", "industry": "Oil"}])
-    assert engine._company_names(["MSFT", "ZZZQ"]) == {"MSFT": spine["name"]}
-    ctx = engine._context("MSFT", None)
-    assert (ctx.get("sector"), ctx.get("industry")) == (spine["sector"], spine["industry"]) and spine["sector"]
-    assert "sector" not in engine._context("ZZZQ", None)
 
 
 def test_a_profile_run_with_no_spine_file_stops_before_any_call(monkeypatch):

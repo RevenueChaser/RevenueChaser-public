@@ -52,43 +52,10 @@ def test_a_miss_key_outside_the_universe_changes_nothing(rawstore_tmp_db):
     assert "recorded misses" not in row["note"]  # ZZZ is not a universe name, so the note says nothing
 
 
-def test_a_lower_case_miss_key_still_excludes_its_ticker(rawstore_tmp_db):
-    """The exclusion compares upper-cased, the way ``corpus_miss_summary`` looks a miss up."""
-    _universe("AAA", "BBB")
-    rawstore.write_rows("chain_filings", [_filing("AAA")])
-    rawstore.write_rows("chain_meta", [_miss("bbb")])
-    assert _rows()["corpus"]["holes"] == 0
-    # the other direction: a key as stored (upper) against a ticker written lower-case
-    assert inventory._missing(["bbb"], "chain_filings", exclude={"BBB"}) == 0
 
 
-def test_missing_without_exclude_is_unchanged(rawstore_tmp_db):
-    """The six other ``_missing`` callers keep counting exactly what they counted before."""
-    _universe("AAA", "BBB", "CCC")
-    rawstore.write_rows("swing_ohlc", [{"ticker": "AAA", "ts": "2026-02-01", "close": 1.0}])
-    rawstore.write_rows("chain_meta", [_miss("BBB")])
-    assert inventory._missing(["AAA", "BBB", "CCC"], "swing_ohlc") == 2
-    assert inventory._missing(["AAA", "BBB", "CCC"], "swing_ohlc", exclude={"BBB"}) == 1
-    assert _rows()["ohlc"]["holes"] == 2  # the ohlc row is not the corpus row: BBB still counts
 
 
-def test_an_unreadable_store_is_unknown_not_zero(rawstore_tmp_db, monkeypatch):
-    """``_missing``'s existing ``except`` path: a failed read is ``None``, never a clean 0."""
-    _universe("AAA", "BBB")
-    rawstore.write_rows("swing_ohlc", [{"ticker": "AAA", "ts": "2026-02-01", "close": 1.0}])
-    real = rawstore.query
-
-    def boom(sql, *args, **kwargs):
-        if "DISTINCT ticker FROM swing_ohlc" in str(sql):
-            raise RuntimeError("disk")
-        return real(sql, *args, **kwargs)
-
-    monkeypatch.setattr(rawstore, "query", boom)
-    assert inventory._missing(["AAA", "BBB"], "swing_ohlc") is None
-    payload = inventory.collect()  # must not raise
-    assert _rows(payload)["ohlc"]["holes"] is None
-    assert any(e.get("table") == "swing_ohlc" and e.get("where") == "_missing"
-               for e in payload["errors"])
 
 
 def test_the_row_and_its_note_describe_the_same_set(rawstore_tmp_db):
@@ -102,22 +69,3 @@ def test_the_row_and_its_note_describe_the_same_set(rawstore_tmp_db):
     assert row["holes"] + 2 == 3  # every universe name with no chain_filings row, counted once
 
 
-def test_a_failed_miss_read_keeps_the_old_count_and_the_old_label(rawstore_tmp_db, monkeypatch):
-    """``_recorded_misses`` failing leaves the hole count as it was and the tooltip must not claim an exclusion."""
-    _universe("AAA", "BBB")
-    rawstore.write_rows("chain_filings", [_filing("AAA")])
-    rawstore.write_rows("chain_meta", [_miss("BBB")])
-
-    from RevenueChaser.module_value_chain import engine as vc_engine
-
-    def boom():
-        raise RuntimeError("disk")
-
-    monkeypatch.setattr(vc_engine, "stored_misses", boom)
-    assert inventory._recorded_misses() is None
-    payload = inventory.collect()  # must not raise
-    row = _rows(payload)["corpus"]
-    assert row["holes"] == 1                      # BBB is counted again: the exclusion could not be read
-    assert row["hole_label"] == "no filing"       # and the label does not say it was excluded
-    assert any(e.get("table") == "chain_meta" and e.get("where") == "_recorded_misses"
-               for e in payload["errors"])

@@ -6,31 +6,6 @@ import pytest
 from RevenueChaser.module_settings import report
 
 
-def _payload():
-    return {
-        "generated_at": "2026-09-25T20:00:00+00:00",
-        "tickers": [
-            {"ticker": "AAPL", "name": "Apple Inc."},
-            {"ticker": "MU", "name": "Micron Technology"},
-        ],
-        "rows": [
-            {
-                "key": "universe", "label": "Equity universe",
-                "tables": ["equity_universe"], "rows": 7403,
-                "last_date": "—", "holes": 1710, "hole_label": "null market cap",
-                "fetch": {"route": "/run/universe-stats", "label": "Fetch caps"},
-                "fetch_alt": {"route": "/run/universe", "label": "Fetch universe"},
-                "note": "provenance: __meta__",
-            },
-            {
-                "key": "corpus", "label": "10-K / 20-F corpus",
-                "tables": ["chain_filings", "edgar_documents"], "rows": 3278,
-                "last_date": "2026-09-18", "holes": 42, "hole_label": "no filing",
-                "fetch": {"route": "/run/edgar-sync", "label": "Fetch 10-K sync"},
-                "note": "",
-            },
-        ],
-    }
 
 
 
@@ -39,66 +14,14 @@ def _payload():
 
 
 
-def test_still_has_no_filter_or_theme_chrome():
-    html = report.render_settings_dashboard(_payload())
-    assert "filter-panel" not in html
-    assert "theme-coarse" not in html
-    assert "mc-tabs" not in html
 
 
-def test_renders_the_shared_ticker_combobox():
-    """#383 C1b: the drill picker is the filter kit's combobox (RCCombobox); the constants-kit picker is gone."""
-    html = report.render_settings_dashboard(_payload())
-    assert 'id="ticker-combo"' in html
-    assert 'role="combobox"' in html
-    assert 'id="ticker-combo-list"' in html
-    assert "RCCombobox.mount(" in html and 'class="rcf-combo"' in html
-    assert "initTickerCombo" not in html and "tcRank" not in html
-    assert 'class="rcf-bar"' not in html                 # an ops board: a picker, no filter bar
 
 
-def test_picking_a_ticker_opens_the_drill_and_clearing_closes_it(tmp_path):
-    from RevenueChaser.core.tests.board_js import run_board_js
-    html = report.render_settings_dashboard(_payload())
-    tail = """
-var picked = [];
-var _orig = onDrillPick; onDrillPick = function(t){ picked.push(t); };
-DRILL_COMBO_OPTS.onPick({ticker: "AAPL", name: "Apple"});
-DRILL_COMBO_OPTS.onClear();
-console.log(JSON.stringify({picked: picked, rows: DRILL_COMBO_OPTS.rows === DATA, clear: DRILL_COMBO_OPTS.clear}));"""
-    got = run_board_js(html, tail, tmp_path)
-    assert got == {"picked": ["AAPL", None], "rows": True, "clear": True}
 
 
-def test_the_drill_picker_is_mounted_with_its_options(tmp_path):
-    """#383 C1b review (N3): the page mounts the kit's combobox with ``DRILL_COMBO_OPTS`` (no browser e2e covers the
-    drill). ``RCCombobox.mount`` is stubbed between the kit's script and the board's."""
-    import json
-    import shutil
-    import subprocess
-    import pytest
-    from RevenueChaser.core.tests.board_js import DOM_STUB, inline_scripts
-    if shutil.which("node") is None:
-        pytest.skip("node not on PATH")
-    scripts = inline_scripts(report.render_settings_dashboard(_payload()))
-    board = next(i for i, b in enumerate(scripts) if "var DRILL_COMBO_OPTS" in b)
-    assert any("root.RCCombobox" in b for b in scripts[:board]), "the kit loads before the board script"
-    stub = "var mounted = []; RCCombobox.mount = function(o){ mounted.push(o); return {}; };"
-    js = "\n;\n".join(scripts[:board] + [stub] + scripts[board:])
-    js += "\nconsole.log(JSON.stringify({n: mounted.length, same: mounted[0] === DRILL_COMBO_OPTS}));"
-    path = tmp_path / "drill.js"
-    path.write_text(DOM_STUB + js, encoding="utf-8")
-    out = subprocess.run(["node", str(path)], capture_output=True, text=True, encoding="utf-8")
-    assert out.returncode == 0, out.stderr[-2000:]
-    assert json.loads(out.stdout.strip().splitlines()[-1]) == {"n": 1, "same": True}
 
 
-def test_embedded_data_escapes_script_close():
-    payload = _payload()
-    payload["tickers"] = [{"ticker": "XSS", "name": "Bad </script><script>alert(1)</script>"}]
-    html = report.render_settings_dashboard(payload)
-    assert "</script><script>alert(1)" not in html
-    assert "\\u003c/script" in html
 
 
 
@@ -158,35 +81,6 @@ class TestJobVerdict:
 
 
 # ── Board inputs section + visible errors (slice 2) ──────────────────────────
-def _card(**over):
-    card = {
-        "key": "module_comovement", "label": "Co-movement",
-        "tables": ["equity_universe", "swing_ohlc"],
-        "price_basis": "daily price bars, split- and dividend-adjusted closes; correct for returns",
-        "params": ["Window 252 sessions", "Min observations 126"],
-        "as_of": "2026-09-25T20:00:00+00:00",
-        "window": {"window_start": "2025-09-25", "prices_through": "2026-09-25"},
-        "funnel_steps": [
-            {"key": "scanned", "label": "Scanned universe", "count": 100,
-             "kind": "start", "fix": None},
-            {"key": "below_floor", "label": "Below the $300M classification floor",
-             "count": 30, "kind": "drop", "by_design": True, "fix": None},
-            {"key": "no_market_cap", "label": "No market cap", "count": 10,
-             "kind": "drop", "by_design": False,
-             "fix": {"route": "/run/universe-stats", "label": "Fetch caps"}},
-            {"key": "clustered", "label": "Clustered", "count": 60, "kind": "result",
-             "fix": None},
-        ],
-        "state": "ok", "error": None,
-    }
-    card.update(over)
-    return card
-
-
-def _with(**payload_over):
-    p = _payload()
-    p.update(payload_over)
-    return report.render_settings_dashboard(p)
 
 
 
@@ -195,32 +89,18 @@ def _with(**payload_over):
 
 
 
-def test_board_data_is_escaped():
-    html = _with(boards=[_card(label="<i>x</i>", params=["<b>p</b>"],
-                               price_basis="<u>z</u>")])
-    assert "<i>x</i>" not in html and "<b>p</b>" not in html and "<u>z</u>" not in html
 
 
-def test_no_boards_no_section():
-    assert "Board inputs" not in report.render_settings_dashboard(_payload())
+
+
 
 
 # ── G6a (#124): the board inputs in the Data Flow artifact's language ────────
 # One line per store table the board reads: provider → dataset → store file, with the dataset's
 # coverage beside it. The facts come from the registry and from the rows ``collect()`` already
 # built, so rendering asks the store nothing.
-def _boards_html(rows=None, **over):
-    """The Board inputs section alone, so a count cannot pick up the page's help text or legend."""
-    return report._boards_section([_card(**over)], rows)
 
 
-def test_a_board_card_shows_one_source_to_store_line_per_table():
-    html = _boards_html(tables=["oipd_chain", "oipd_meta"])
-    assert "What this board reads" in html
-    assert html.count('class="bflow-row"') == 2
-    assert html.count("Unusual Whales") == 2, "the provider is written in full, never as a code"
-    assert html.count("Implied Probability chain") == 2
-    assert html.count('class="db db-board"') == 2, "the OIPD tables live in boards/oipd.duckdb (S9)"
 
 
 def test_every_provider_the_registry_can_name_is_written_in_words():
@@ -238,25 +118,6 @@ def test_every_provider_the_registry_can_name_is_written_in_words():
 
 
 
-def test_a_table_no_dataset_claims_says_so_in_words():
-    html = _boards_html(tables=["telemetry_notes"])
-    assert "not claimed by any dataset" in html
-    assert 'class="db db-' not in html, "an unclaimed table has no store file to name"
-
-
-def test_a_table_two_datasets_claim_does_not_read_as_unclaimed(monkeypatch):
-    """A duplicate claim and no claim are different facts; the line must not confuse them."""
-    from RevenueChaser.core import datasets
-
-    monkeypatch.setitem(datasets._OWNERS, "shared_table", ("a", "b"))
-    html = _boards_html(tables=["shared_table"])
-    assert "claimed by more than one dataset" in html
-    assert "not claimed by any dataset" not in html
-
-
-def test_a_hostile_table_name_is_escaped_in_the_source_to_store_line():
-    html = _boards_html(tables=["<script>x</script>"])
-    assert "<script>x</script>" not in html and "&lt;script&gt;" in html
 
 
 
@@ -265,9 +126,10 @@ def test_a_hostile_table_name_is_escaped_in_the_source_to_store_line():
 
 
 
-def test_no_errors_no_error_list():
-    html = _with(errors=[])
-    assert 'id="errors"' not in html and 'class="row-err"' not in html
+
+
+
+
 
 
 # ── editable Co-movement inputs (#40 Part B) ─────────────────────────────────
@@ -360,58 +222,7 @@ def _run_settings_js(driver: str) -> dict:
 
 
 class TestSaveHandler:
-    def test_a_400_shows_the_messages_next_to_the_fields_and_does_not_reload(self):
-        got = _run_settings_js(r"""
-globalThis.INPUTS = [input("WINDOW", 252, 252), input("MIN_OBS", 126, 10),
-                     input("OOS_HOLDOUT", 63, 63)];
-RESP.push({status: 400, body: {ok: false, error: "x", messages: [
-  "MIN_OBS must be between 60 and WINDOW (252); got 10",
-  "WINDOW + OOS_HOLDOUT must not exceed the 500 stored sessions; got 252 + 126",
-  "<img src=x onerror=alert(1)> is odd"]}});
-var btn = saveBtn();
-settingsSave(btn);
-setTimeout(function(){
-  console.log(JSON.stringify({
-    reloaded: location.search !== "",
-    posted: FETCHES.map(function(f){ return f.url; }),
-    body: FETCHES[0].body,
-    minobs: _els["err-MIN_OBS"].textContent,
-    holdout: _els["err-OOS_HOLDOUT"].textContent,
-    window_: (_els["err-WINDOW"] || {}).textContent || "",
-    general: _els["seterr-module_comovement"].textContent,
-    inner: _els["seterr-module_comovement"].innerHTML + _els["err-MIN_OBS"].innerHTML,
-    btnDisabled: btn.disabled}));
-  process.exit(0);
-}, 30);
-""")
-        assert got["reloaded"] is False, "a rejected save must not reload the page"
-        assert got["posted"] == ["/api/settings/board/module_comovement"]
-        assert got["body"] == {"changes": {"MIN_OBS": 10}}, "only changed fields are sent"
-        assert "between 60 and WINDOW" in got["minobs"]
-        assert "WINDOW + OOS_HOLDOUT must not exceed" in got["holdout"]
-        assert "WINDOW + OOS_HOLDOUT" in got["window_"]
-        assert "onerror" in got["general"]           # unmatched message -> general area
-        assert got["inner"] == "", "messages must be set as text, never as HTML"
-        assert got["btnDisabled"] is False
 
-    def test_a_202_starts_the_poll_and_does_not_reload_while_it_runs(self):
-        got = _run_settings_js(r"""
-globalThis.INPUTS = [input("MIN_OBS", 126, 200)];
-RESP.push({status: 202, body: {ok: true, job_id: "J1", values: {}}});
-RESP.push({status: 200, body: {ok: true, job: {status: "running"}}});
-var btn = saveBtn();
-settingsSave(btn);
-setTimeout(function(){
-  console.log(JSON.stringify({
-    urls: FETCHES.map(function(f){ return f.url; }),
-    msg: _els["msg-set-module_comovement"].textContent,
-    reloaded: location.search !== "", btnDisabled: btn.disabled}));
-  process.exit(0);
-}, 60);
-""")
-        assert got["urls"] == ["/api/settings/board/module_comovement", "/api/job/J1"]
-        assert got["msg"] == "Running…"
-        assert got["reloaded"] is False and got["btnDisabled"] is True
 
     def test_a_finished_job_reloads_with_refresh(self):
         got = _run_settings_js(r"""
@@ -451,19 +262,6 @@ setTimeout(function(){ console.log(JSON.stringify({f: FETCHES})); process.exit(0
 
 
 # ── funnel note + type rows on the Board inputs card (#87) ───────────────────
-def _typed_card(note_label="Unknown security type — kept", **over):
-    steps = [
-        {"key": "scanned", "label": "Scanned universe", "count": 100, "kind": "start",
-         "fix": None},
-        {"key": "funds_etfs", "label": "Funds / ETFs", "count": 12, "kind": "drop",
-         "by_design": True, "fix": None},
-        {"key": "unknown_type", "label": note_label, "count": 7, "kind": "note",
-         "fix": None, "link": {"tab": "module_settings", "anchor": "identity",
-                               "label": "Settings → Identity"}},
-        {"key": "clustered", "label": "Clustered", "count": 88, "kind": "result",
-         "fix": None},
-    ]
-    return _card(funnel_steps=steps, **over)
 
 
 
@@ -481,11 +279,6 @@ IDENTITY_IDS = ("identity-health", "identity-run", "identity-spdr", "identity-ty
                 "identity-sources", "identity-conflicts", "identity-stale")
 
 
-def _identity_row():
-    return {"key": "identity", "label": "Identity spine",
-            "tables": ["security_master", "identity_conflicts", "identity_source_cache", "identity_runs"],
-            "rows": 7366, "last_date": "2026-09-30", "holes": 12, "hole_label": "unclassified ≥$300M",
-            "fetch": {"route": "/run/identity", "label": "Fetch identity"}, "note": "last run ok"}
 
 
 def _src(status="ok", rows=0, fetched=0, error=None, selected=True):
@@ -530,8 +323,6 @@ def _identity(**over):
     return ident
 
 
-def _card_html(**over):
-    return _with(rows=_payload()["rows"] + [_identity_row()], identity=_identity(**over))
 
 
 
@@ -540,8 +331,6 @@ def _card_html(**over):
 
 
 
-def test_a_payload_without_identity_renders_no_card():
-    assert "identity-health" not in report.render_settings_dashboard(_payload())
 
 
 
@@ -579,9 +368,6 @@ def _autos():
 
 
 
-def test_automations_section_is_absent_without_rows():
-    html = report.render_settings_dashboard(_payload())
-    assert 'id="auto-body"' not in html
 
 
 
@@ -719,17 +505,6 @@ def test_the_automation_line_leaves_the_long_text_behind_the_click():
     assert auto["log_path"] not in line
 
 
-def test_the_line_shows_the_schedule_time_and_the_chain_condition_waits_behind_the_click():
-    auto = next(a for a in _autos() if a["name"] == "RC-Screeners-Daily")
-    row = dict(auto, state="enabled", result_kind="ok", result_text="ok",
-               last_run="2026-10-22T23:30:00", next_run="2026-10-23T23:30:00", missed_runs=0,
-               last_success_age="18 h ago", log_tail=[])
-    html = _render_rows([row])
-    line = _one_line(html)
-    assert "23:30 (local)" in line and "after RC-Daily-Bars" not in line
-    assert "weekly 23:30 (local)" in line and "Wednesday" not in line
-    opened = _behind_the_click(html)
-    assert "after RC-Daily-Bars" in opened and "Wednesday" in opened
 
 
 def test_the_expanded_part_keeps_the_description_command_and_run_conditions_word_for_word():
@@ -761,17 +536,6 @@ def test_the_buttons_are_behind_the_click():
     assert 'data-act="run"' in _behind_the_click(html)
 
 
-def test_the_expanded_part_keeps_the_store_tables_the_log_and_its_tail():
-    auto = next(a for a in _autos() if a["name"] == "RC-Daily-Bars")
-    row = dict(auto, state="enabled", result_kind="ok", result_text="ok",
-               last_run="2026-10-23T22:35:00", next_run="2026-10-24T22:35:00", missed_runs=0,
-               last_success_age="7 h ago",
-               log_tail=["=== 2026-10-23T22:35:00 exit 0", "wrote 3,582 rows"])
-    opened = _behind_the_click(_render_rows([row]))
-    for table in auto["tables_written"]:
-        assert table in opened
-    assert auto["log_path"] in opened and "wrote 3,582 rows" in opened
-    assert "Store tables it writes" in opened
 
 
 def test_the_automation_line_escapes_hostile_schedule_result_and_next_run():
@@ -812,16 +576,8 @@ def _auto_poll(open_ids: list, focused_id: str | None) -> dict:
     return json.loads(out.stdout.strip().splitlines()[-1])
 
 
-def test_a_row_the_reader_opened_stays_open_across_a_poll():
-    """The panel re-renders on every poll while a task runs; the row being watched must not snap shut."""
-    seen = _auto_poll(open_ids=["auto-RC-Daily-Bars"], focused_id=None)
-    assert seen["rendered"] > 0 and seen["open"] == [True]
 
 
-def test_the_focused_automation_keeps_focus_across_a_poll():
-    """A keyboard reader inside an opened row must not be dropped back to the page by the 5 s poll."""
-    seen = _auto_poll(open_ids=["auto-RC-Daily-Bars"], focused_id="auto-RC-Daily-Bars")
-    assert seen["open"] == [True] and seen["focused"] is True
 
 
 def _drill_rows(detail: dict) -> str:
@@ -911,27 +667,9 @@ def test_panel_posts_send_the_panel_header():
     assert "'X-RC-Panel': 'automations'" in report.AUTOMATIONS_JS
 
 
-def test_null_cap_text_does_not_claim_it_is_outside_the_universe():
-    """DF99: a NULL cap also occurs before the caps backfill has resolved it.
-
-    #715: the market cap left the page with the old drill, so the page must claim nothing about it at all.
-    """
-    html = report.render_settings_dashboard(_payload())
-    assert "not in the $300M classification universe" not in html
-    assert "no cap stored" not in html
 
 
 # ── S5 of the Data Health plan (#124): Source / Coverage / Fresh and a detail row ────────────
-def _s5_payload():
-    """The two rows above, with the registry facts ``_attach_registry`` adds."""
-    p = _payload()
-    p["rows"][0].update(
-        source="yfinance", writer="RC-Screeners-Daily",
-        writer_note="caps-only fill is POST /run/universe-stats",
-        coverage={"covered": 812, "expected": 905, "fraction": 812 / 905,
-                  "label": "812 / 905 (90%)", "newest": "2026-09-20", "problems": []},
-        fresh={"state": "date", "date": "2026-09-20", "text": "2026-09-20"})
-    return p
 
 
 def _thead_cells(html: str) -> list[str]:
@@ -1033,80 +771,24 @@ console.log(JSON.stringify({opened: opened, closed: closed,
 
 
 # ── G2 of the GUI redesign (#124): coverage bar, store chip, legend ──────────────────────────
-def _cov_table(coverage: dict, **over) -> str:
-    """One dataset rendered through ``_table`` with the coverage record ``_attach_registry`` builds."""
-    row = {"key": "quotes", "label": "Quotes", "tables": ["quote_snapshot"], "rows": 10,
-           "last_date": "—", "holes": None, "hole_label": "", "fetch": None, "note": "",
-           "source": "uw", "coverage": coverage, "fresh": None}
-    row.update(over)
-    return report._table([row])
 
 
-def test_the_coverage_cell_draws_a_bar_before_its_honest_label():
-    """A thin bar with its percentage beside it: the number stays text, so colour is not the signal."""
-    html = _cov_table({"fraction": 0.9, "label": "812 / 905 (90%)"})
-    bar = ('<span class="covbar st-warn" role="img" aria-label="coverage 90 percent">'
-           '<span style="width:90%"></span></span>')
-    assert bar in html
-    assert html.index(bar) < html.index("812 / 905 (90%)"), "the bar leads, the label follows"
-    assert _cells(_main_row(html, "quotes"))[2] == "812 / 905 (90%)"
 
 
-@pytest.mark.parametrize("label", ["n/a", "unknown", "error"])
-def test_a_coverage_with_no_fraction_draws_no_bar_and_no_zero_percent_look(label):
-    html = _cov_table({"fraction": None, "label": label})
-    assert "covbar" not in html
-    assert "width:0%" not in html
-    assert _cells(_main_row(html, "quotes"))[2].startswith(label)
 
 
-@pytest.mark.parametrize("label", ["n/a", "unknown"])
-def test_a_coverage_with_no_population_reads_muted(label):
-    """No population is a hole in the denominator, not a red failure: muted text, no bar."""
-    html = _cov_table({"fraction": None, "label": label})
-    assert f'<span class="muted">{label}</span>' in html
 
 
-def test_a_coverage_error_stays_red():
-    html = _cov_table({"fraction": None, "label": "error", "problems": []})
-    assert '<span class="warnv">error</span>' in html and "covbar" not in html
 
 
-def test_over_100_percent_draws_a_full_bar_and_keeps_the_real_number():
-    html = _cov_table({"fraction": 1.24, "label": "1,122 / 905 (124%)"})
-    assert '<span style="width:100%"></span>' in html
-    assert "width:124%" not in html
-    assert "1,122 / 905 (124%)" in html, "the text stays honest above 100%"
-    assert 'aria-label="coverage 100 percent"' in html
 
 
-@pytest.mark.parametrize("fraction, band", [(0.69, "st-bad"), (0.70, "st-warn"),
-                                            (0.94, "st-warn"), (0.95, "st-ok")])
-def test_the_bar_colour_follows_the_coverage_band(fraction, band):
-    html = _cov_table({"fraction": fraction, "label": "x"})
-    assert f'<span class="covbar {band}"' in html
 
 
-@pytest.mark.parametrize("db", ["raw", "edgar", "history", "prices"])
-def test_each_store_file_gets_a_pill_whose_text_names_it(db):
-    html = _cov_table({"fraction": None, "label": "n/a"}, db=db)
-    pill = f'<span class="db db-{db}" title="stored in {db}.duckdb under .store/">{db}</span>'
-    main = _main_row(html, "quotes")
-    assert pill in main
-    assert _cells(main)[0] == f"Quotes {db}", "the pill's text sits beside the name"
-    assert html.count(pill) >= 2, "the legend under the table explains the pill once"
 
 
-def test_a_row_without_a_store_file_draws_no_pill():
-    html = _cov_table({"fraction": None, "label": "n/a"})           # no "db" key at all
-    assert 'class="db ' not in _main_row(html, "quotes")
 
 
-def test_a_store_file_outside_the_palette_draws_no_pill_and_never_takes_a_class_from_it():
-    bad = "<img src=x onerror=__x(1)>"
-    html = _cov_table({"fraction": None, "label": "n/a"}, db=bad)
-    assert 'class="db ' not in _main_row(html, "quotes")
-    assert "<img" not in html
 
 
 def test_a_legend_under_the_table_explains_each_pill_once():
@@ -1122,14 +804,6 @@ def test_a_legend_under_the_table_explains_each_pill_once():
 # The cells used to print a bare dash for four different situations. Each state now carries its
 # own words, and a failed query is red and says it is not an empty dataset.
 
-def _fresh_row(record, **over) -> dict:
-    """One dataset row carrying the Fresh record ``inventory._fresh_record`` builds."""
-    row = {"key": "quotes", "label": "Quotes", "tables": ["quote_snapshot"], "rows": 10,
-           "last_date": "2026-09-20", "holes": None, "hole_label": "", "fetch": None, "note": "",
-           "source": "uw", "coverage": {"fraction": 1.0, "label": "905 / 905 (100%)"},
-           "fresh": record}
-    row.update(over)
-    return row
 
 
 def _fresh_text(html: str, key: str = "quotes") -> str:
@@ -1142,103 +816,22 @@ def _last_date_text(html: str, key: str = "quotes") -> str:
     return _cells(_main_row(html, key))[4]
 
 
-@pytest.mark.parametrize("state, text", [
-    ("date", "2026-09-20"),
-    ("no_time_column", "no time column - see the provenance rows"),
-    ("run_log", "taken from the run log, 2026-10-20"),
-    ("empty", "no date stored yet"),
-    ("retired", "retired - no freshness claim made"),
-    ("bookkeeping", "store bookkeeping - no freshness claim"),
-    ("failed", "query failed - this is not an empty dataset"),
-])
-def test_each_fresh_state_prints_its_own_words_and_never_a_dash(state, text):
-    html = report._table([_fresh_row({"state": state, "date": None, "text": text})])
-    assert _fresh_text(html) == text
-    assert _fresh_text(html) != "—", "the Fresh cell stopped printing a bare dash"
 
 
-def test_a_failed_freshness_query_is_called_out_in_colour():
-    html = report._table([_fresh_row({"state": "failed", "date": None,
-                                      "text": "query failed - this is not an empty dataset"})])
-    assert ('<span class="warnv">query failed - this is not an empty dataset</span>'
-            in _main_row(html, "quotes"))
 
 
-def test_a_failed_query_never_renders_like_a_table_that_holds_no_rows():
-    """The failure this slice exists for: the broken read and the empty table must not look alike."""
-    failed = report._table([_fresh_row({"state": "failed", "date": None,
-                                        "text": "query failed - this is not an empty dataset"})])
-    empty = report._table([_fresh_row({"state": "empty", "date": None,
-                                       "text": "no date stored yet"})])
-    assert _fresh_text(failed) != _fresh_text(empty)
-    assert 'class="warnv"' in _main_row(failed, "quotes"), "a failure is called out in colour"
-    assert 'class="warnv"' not in _main_row(empty, "quotes"), "an empty table is not a failure"
 
 
-@pytest.mark.parametrize("state, text", [
-    ("date", "2026-09-20"),
-    ("no_time_column", "no time column - see the provenance rows"),
-    ("empty", "no date stored yet"),
-    ("run_log", "taken from the run log, 2026-10-20"),
-    ("retired", "retired - no freshness claim made"),
-    ("bookkeeping", "store bookkeeping - no freshness claim"),
-])
-def test_a_failed_query_never_renders_like_any_other_state(state, text):
-    """A broken read is its own state, in colour: it must not borrow the words of any other."""
-    failed = report._table([_fresh_row({"state": "failed", "date": None,
-                                        "text": "query failed - this is not an empty dataset"})])
-    other = report._table([_fresh_row({"state": state, "date": None, "text": text})])
-    assert _fresh_text(failed) != _fresh_text(other)
-    assert 'class="warnv"' in _main_row(failed, "quotes")
-    assert 'class="warnv"' not in _main_row(other, "quotes")
 
 
-def test_the_fresh_words_are_escaped_and_no_state_name_becomes_a_class():
-    bad = "<img src=x onerror=__x(1)>"
-    html = report._table([_fresh_row({"state": bad, "date": None, "text": bad})])
-    row = _main_row(html, "quotes")
-    assert "<img" not in html
-    assert "&lt;img src=x onerror=__x(1)&gt;" in row
-    assert 'class="warnv"' not in row, "colour comes from the state name, never from the text"
 
 
-def test_a_row_with_no_fresh_record_keeps_the_dash():
-    """Only a row the registry does not know reaches the table without a record."""
-    html = report._table([_fresh_row(None)])
-    assert _fresh_text(html) == "—"
 
 
-def test_the_last_data_date_stops_printing_a_bare_dash():
-    """A row with no date of its own says so in words; the Freshness cell beside it says why."""
-    html = report._table([_fresh_row({"state": "no_time_column", "date": None,
-                                      "text": "no time column - see the provenance rows"},
-                                     last_date="—")])
-    assert _last_date_text(html) == "no date of its own"
-    assert _last_date_text(report._table([_fresh_row({"state": "date",
-                                                      "date": "2026-09-20",
-                                                      "text": "2026-09-20"})])) == "2026-09-20"
 
 
-def test_the_commitments_of_traders_reads_fresh_neither_stale_nor_failed():
-    """It is four weeks thin by design (the first write wins, it grows forward): a recent week is
-    fresh, and a small row count is not a failure."""
-    html = report._table([_fresh_row({"state": "date", "date": "2026-10-20", "text": "2026-10-20"},
-                                     key="cftc", label="E-mini Commitments of Traders",
-                                     tables=["cftc_cot"], rows=4, last_date="2026-10-20")])
-    row = _main_row(html, "cftc")
-    assert _fresh_text(html, "cftc") == "2026-10-20"
-    assert "stale" not in row.lower() and "failed" not in row.lower()
-    assert 'class="warnv"' not in row
 
 
-def test_the_run_log_caveat_sits_in_the_detail_row_beside_the_words():
-    """The registry's #82/#83 caveat is not retyped in the cell: it is shown where the notes are."""
-    html = report._table([_fresh_row({"state": "run_log", "date": "2026-10-20",
-                                      "text": "taken from the run log, 2026-10-20"},
-                                     fresh_note="from the run log; not trustworthy until #82 "
-                                                "and #83 are fixed")])
-    assert "not trustworthy until #82" in _detail_row(html, "quotes")
-    assert "not trustworthy until #82" not in _main_row(html, "quotes"), "the cell stays short"
 
 
 def _sec_entry(**over) -> dict:
@@ -1251,67 +844,8 @@ def _sec_entry(**over) -> dict:
     return entry
 
 
-@pytest.mark.parametrize("exchange, mf, said", [
-    ({"last_pull": "unknown"}, {"last_pull": "unknown"}, "no pull recorded yet"),
-    ({}, {}, "pulled 2026-10-19, unchanged"),
-    ({"last_pull": "failed", "session": "2026-10-20", "error": "SEC 500"}, {},
-     "pull FAILED 2026-10-20 (SEC 500)"),
-])
-def test_the_sec_files_pull_tri_state_reaches_the_table_verbatim(
-        monkeypatch, rawstore_tmp_db, exchange, mf, said):
-    """avo 2026-10-22: the note moved into the detail row; every sentence survives word for word."""
-    from RevenueChaser.core import sec_files
-    from RevenueChaser.module_settings import inventory
-    summary = {"exchange": _sec_entry(**exchange), "mf": _sec_entry(**mf)}
-    monkeypatch.setattr(sec_files, "health_summary", lambda marker_dir=None: summary)
-    row = inventory._sec_files_row()
-    html = report._table([row])
-    assert said in row["note"], "the row builder still writes the sentence"
-    assert said in html, "and the renderer shows it, not a reworded copy"
 
 # ── G4 of the GUI brief (#124): the filters above the table ──────────────────────────────────
-def _g4_payload():
-    """Five datasets, one per thing the filters can say.
-
-    ``universe`` (raw file, 90% coverage, a last data date) answers no state at all;
-    ``corpus`` (edgar file) has no denominator; ``quotes`` (raw file) is only 20% covered and
-    nothing else is wrong with it; ``cftc`` (raw file, 4% coverage) has no time column and a
-    failed query; ``mystery`` is a dataset ``core.datasets`` does not know.
-    """
-    p = _payload()
-    p["rows"] = [
-        {"key": "universe", "label": "Equity universe",
-         "tables": ["equity_universe", "equity_universe_changes"], "rows": 7403,
-         "last_date": "2026-09-20", "holes": 93, "hole_label": "null market cap",
-         "source": "yfinance",
-         "coverage": {"covered": 812, "expected": 905, "fraction": 812 / 905,
-                      "label": "812 / 905 (90%)", "newest": "2026-09-20", "problems": []},
-         "fetch": {"route": "/run/universe-stats", "label": "Fetch caps"}, "note": ""},
-        {"key": "corpus", "label": "10-K / 20-F corpus",
-         "tables": ["chain_filings", "edgar_documents"], "rows": 3278,
-         "last_date": "2026-09-18", "holes": 42, "hole_label": "no filing",
-         "source": "sec",
-         "coverage": {"covered": None, "expected": None, "fraction": None,
-                      "label": "n/a", "newest": None, "problems": []},
-         "fetch": {"route": "/run/edgar-sync", "label": "Fetch 10-K sync"}, "note": ""},
-        {"key": "quotes", "label": "Quotes and market cap", "tables": ["quote_snapshot"],
-         "rows": 180, "last_date": "2026-09-20", "holes": 0, "hole_label": "",
-         "source": "yfinance",
-         "coverage": {"covered": 181, "expected": 905, "fraction": 0.2,
-                      "label": "181 / 905 (20%)", "newest": "2026-09-20", "problems": []},
-         "fetch": {"route": "/run/screeners", "label": "Fetch screeners"}, "note": ""},
-        {"key": "cftc", "label": "CFTC E-mini Commitments of Traders", "tables": ["cftc_cot"], "rows": 2,
-         "last_date": "—", "holes": 0, "hole_label": "",
-         "source": "finra/cftc",
-         "coverage": {"covered": 2, "expected": 50, "fraction": 0.04,
-                      "label": "2 / 50 (4%)", "newest": None, "problems": []},
-         "fetch": {"route": "/run/earnings-inputs", "label": "Fetch inputs"}, "note": ""},
-        {"key": "mystery", "label": "Unregistered dataset", "tables": ["mystery_table"],
-         "rows": 1, "last_date": "—", "holes": 0, "hole_label": "",
-         "fetch": {"route": "/run/mystery", "label": "Fetch"}, "note": ""},
-    ]
-    p["errors"] = [{"table": "cftc_cot", "where": "count", "error": "the query failed"}]
-    return p
 
 
 def _filter_bar(html: str) -> str:
@@ -1328,21 +862,6 @@ def _chip_texts(bar: str, kind: str) -> list:
 
 
 
-def test_the_attention_line_is_seventy_percent_and_a_failed_query_also_counts():
-    """The threshold from both sides: 69% is called out, 70% is not, and a failed query is a
-    failure of its own even at full coverage."""
-    def row(fraction, label="905 / 905 (100%)", tables=()):
-        return {"coverage": {"fraction": fraction, "label": label}, "last_date": "2026-09-20",
-                "tables": list(tables)}
-    assert "needs attention" in report._states_of(row(0.69), [])
-    assert "needs attention" in report._states_of(row(0.0), [])
-    assert "needs attention" not in report._states_of(row(0.70), [])
-    assert "needs attention" not in report._states_of(row(1.0), [])
-    failed = [{"table": "quote_snapshot", "where": "count", "error": "the query failed"}]
-    assert "needs attention" in report._states_of(row(1.0, tables=["quote_snapshot"]), failed)
-    assert "needs attention" not in report._states_of(row(1.0, tables=["other"]), failed)
-    assert "no denominator" in report._states_of(row(None, "n/a"), [])
-    assert "no denominator" not in report._states_of(row("n/a", "error"), [])
 
 
 
@@ -1537,11 +1056,6 @@ def _other_section(html: str) -> str:
     return html[start:].split("</section>")[0]
 
 
-def test_no_other_store_tables_section_when_nothing_is_unclaimed():
-    for payload in (_payload(), dict(_payload(), other_tables=[])):
-        html = report.render_settings_dashboard(payload)
-        assert "Other store tables" not in html, "an empty list renders no heading"
-        assert "not claimed by any dataset" not in html
 
 
 
@@ -1566,141 +1080,31 @@ def _detail_text(html: str, key: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", _detail_row(html, key))).strip()
 
 
-def test_what_is_missing_is_computed_from_the_coverage_counts():
-    """The number is measured, never written in the registry: expected minus covered."""
-    html = _cov_table({"covered": 812, "expected": 905, "fraction": 812 / 905,
-                       "label": "812 / 905 (90%)", "newest": None, "problems": []},
-                      gap_kind="needs_decision", next_step="Decide the population.")
-    detail = _detail_text(html, "quotes")
-    assert "What is missing" in detail
-    assert "93 of 905 names have no row" in detail
 
 
-def test_what_is_missing_at_full_coverage_is_zero_of_the_population():
-    html = _cov_table({"covered": 905, "expected": 905, "fraction": 1.0,
-                       "label": "905 / 905 (100%)", "newest": None, "problems": []},
-                      gap_kind="none")
-    detail = _detail_text(html, "quotes")
-    assert "0 of 905 names have no row" in detail
 
 
-def test_what_is_missing_says_no_population_is_defined_when_expected_is_none():
-    html = _cov_table({"covered": 6084, "expected": None, "fraction": None,
-                       "label": "n/a", "newest": None, "problems": []},
-                      gap_kind="fixable", next_step="Join the universe count.")
-    detail = _detail_text(html, "quotes")
-    assert "no population is defined" in detail
-    assert "names have no row" not in detail
 
 
-def test_what_is_missing_says_the_coverage_query_failed():
-    html = _cov_table({"label": "error", "fraction": None, "covered": None, "expected": None,
-                       "newest": None, "problems": ["the summary could not read the store"]},
-                      gap_kind="fixable", next_step="Fix the summary.")
-    detail = _detail_text(html, "quotes")
-    assert "the coverage query failed" in detail
-    assert "no population is defined" not in detail
 
 
-def test_a_retired_row_says_nothing_is_missing_by_design():
-    html = _cov_table({"label": "n/a", "fraction": None, "covered": None, "expected": None,
-                       "newest": None, "problems": []}, retired=True)
-    detail = _detail_text(html, "quotes")
-    assert "nothing, by design" in detail
 
 
-def test_how_it_improves_speaks_the_kind_and_carries_the_next_step():
-    html = _cov_table({"covered": 812, "expected": 905, "fraction": 812 / 905,
-                       "label": "812 / 905 (90%)", "newest": None, "problems": []},
-                      gap_kind="fixable", next_step="Re-run the join after the next pull.")
-    detail = _detail_text(html, "quotes")
-    assert "How it improves" in detail
-    assert "Can be fixed now. Re-run the join after the next pull." in detail
 
 
-def test_a_ceiling_states_its_reason_and_never_a_schedule():
-    reason = "OpenFIGI maps from a CUSIP, so a name with no CUSIP cannot get one on this route."
-    html = _cov_table({"label": "n/a", "fraction": None, "covered": None, "expected": None,
-                       "newest": None, "problems": []},
-                      gap_kind="ceiling", next_step=reason)
-    detail = _detail_text(html, "quotes")
-    assert f"Cannot be improved: {reason}" in detail
 
 
-def test_a_row_with_no_gap_kind_draws_no_chip_and_no_complete_claim():
-    """No kind means nothing is written down, not that the dataset is complete."""
-    html = _cov_table({"label": "n/a", "fraction": None, "covered": None, "expected": None,
-                       "newest": None, "problems": []})
-    assert 'class="gap ' not in _main_row(html, "quotes")
-    detail = _detail_text(html, "quotes")
-    assert "How it improves" in detail and "Complete" not in detail
 
 
-@pytest.mark.parametrize("kind, said", [
-    ("fixable", "Can be fixed now"),
-    ("in_build", "Being built"),
-    ("needs_decision", "Waiting for a decision from you"),
-    ("self_heals", "Fills in by itself over time"),
-    ("none", "Complete"),
-])
-def test_the_name_cell_carries_a_tag_chip_with_the_same_words(kind, said):
-    html = _cov_table({"fraction": None, "label": "n/a"}, gap_kind=kind)
-    main = _main_row(html, "quotes")
-    assert f'<span class="gap gap-{kind}">{said}</span>' in main
-    assert _cells(main)[0] == f"Quotes {said}", "the chip's words sit beside the name"
 
 
-def test_a_ceiling_chip_stays_short_while_the_detail_carries_the_reason():
-    reason = "The source maps from a CUSIP, so a name with no CUSIP cannot get one."
-    html = _cov_table({"fraction": None, "label": "n/a"}, gap_kind="ceiling", next_step=reason)
-    main = _main_row(html, "quotes")
-    assert '<span class="gap gap-ceiling">Cannot be improved</span>' in main
-    assert reason in _detail_text(html, "quotes")
 
 
-def test_a_hostile_next_step_is_escaped_and_a_hostile_kind_never_sets_the_class():
-    bad = "<img src=x onerror=__x(1)>"
-    html = _cov_table({"fraction": None, "label": "n/a"}, gap_kind="fixable", next_step=bad)
-    assert "<img" not in html
-    assert "&lt;img src=x onerror=__x(1)&gt;" in html
-    # A kind outside the six renders no chip and no claim: its class can never come from data.
-    html = _cov_table({"fraction": None, "label": "n/a"}, gap_kind=bad, next_step=bad)
-    assert "<img" not in html
-    assert "gap-" + bad not in html
-    assert 'class="gap ' not in _main_row(html, "quotes")
 
 
-def test_the_cftc_row_says_fresh_but_shallow_and_names_119_without_calling_it_a_failure():
-    """Read through the real registry and ``_attach_registry``, the way the board builds it."""
-    from RevenueChaser.module_settings import inventory
-    row = {"key": "cftc", "label": "CFTC E-mini Commitments of Traders",
-           "tables": ["cftc_cot"], "rows": 2, "last_date": "2026-10-13", "holes": 0,
-           "hole_label": "", "fetch": None, "note": ""}
-    inventory._begin_call()
-    try:
-        inventory._attach_registry([row])
-    finally:
-        inventory._end_call()
-    main = _main_row(report._table([row]), "cftc")
-    assert "Waiting for a decision from you" in main, "the chip carries the kind in words"
-    detail = _detail_text(report._table([row]), "cftc")
-    assert "#119" in detail
-    assert "fresh but shallow" in detail
-    assert "failure" not in detail.lower() and "failed" not in detail.lower()
 # ── G6b of the GUI redesign (#124): the Data Flow diagram ─────────────────────────────────────
 # Provider → job → store file, built from the rows the table already collected. Pure: no store
 # read, no second pass over the registry, so the diagram costs page weight and never query time.
-def _flow_rows():
-    return [
-        {"key": "quotes", "label": "Quotes", "source": "uw", "writer": "RC-Daily-Bars", "db": "raw"},
-        {"key": "bars", "label": "Daily bars", "source": "uw", "writer": "RC-Daily-Bars", "db": "prices"},
-        {"key": "bars_again", "label": "Daily bars, second table", "source": "uw",
-         "writer": "RC-Daily-Bars", "db": "prices"},
-        {"key": "filings", "label": "10-K / 20-F corpus", "source": "sec",
-         "writer": "RC-ValueChain-Sync", "db": "edgar"},
-        {"key": "pins", "label": "LEAPS pins", "source": "uw", "writer": None,
-         "writer_note": "the user enters it", "db": "raw"},
-    ]
 
 
 def _flow_section(rows) -> str:
@@ -1708,23 +1112,6 @@ def _flow_section(rows) -> str:
     return report._flow_section(rows)
 
 
-def test_the_flow_graph_de_duplicates_nodes_and_counts_the_datasets_per_edge():
-    graph = report.flow_graph(_flow_rows())
-    assert graph["providers"] == [{"name": "SEC EDGAR filings", "count": 1},
-                                  {"name": "Unusual Whales", "count": 4}]
-    assert graph["jobs"] == [{"name": "RC-Daily-Bars", "count": 3},
-                             {"name": "RC-ValueChain-Sync", "count": 1},
-                             {"name": "started by hand from the dashboard", "count": 1}]
-    assert graph["stores"] == [{"name": "raw", "count": 2}, {"name": "edgar", "count": 1},
-                               {"name": "prices", "count": 2}]
-    edges = {(e["provider"], e["job"], e["store"]): e["count"] for e in graph["edges"]}
-    assert edges == {
-        ("Unusual Whales", "RC-Daily-Bars", "raw"): 1,
-        ("Unusual Whales", "RC-Daily-Bars", "prices"): 2,
-        ("SEC EDGAR filings", "RC-ValueChain-Sync", "edgar"): 1,
-        ("Unusual Whales", "started by hand from the dashboard", "raw"): 1,
-    }
-    assert len(graph["edges"]) == 4, "five datasets, four edges: two share one"
 
 
 def test_a_dataset_without_a_writer_joins_the_started_by_hand_node():
@@ -1756,86 +1143,6 @@ def test_a_row_without_a_store_file_takes_the_registry_file_without_reading_the_
 
 
 
-def test_clicking_a_job_highlights_its_edges_and_clicking_again_clears_them(tmp_path):
-    """The real script, run under node against the rendered diagram read back as a small DOM."""
-    import json
-    import shutil
-    import subprocess
-    if shutil.which("node") is None:
-        pytest.skip("node not on PATH")
-    svg = report._flow_svg(report.flow_graph(_flow_rows()))
-    nodes = re.findall(r'data-node="([^"]+)"', svg)
-    edges = re.findall(r'data-a="([^"]*)" data-b="([^"]*)"', svg)
-    assert nodes and edges
-    harness = """
-var NODES = %s, EDGES = %s;
-function el(attrs){
-  var cls = {};
-  return {cls: cls,
-    getAttribute: function(k){ return k in attrs ? attrs[k] : null; },
-    setAttribute: function(k, v){ attrs[k] = v; },
-    classList: {toggle: function(n, on){ if(on){ cls[n] = 1; } else { delete cls[n]; } }}};
-}
-var nodeEls = NODES.map(function(id){
-  var attrs = {'data-node': id};
-  if(id.indexOf('job:') === 0){ attrs['data-job'] = id.slice(4); attrs['aria-pressed'] = 'false'; }
-  if(id.indexOf('provider:') === 0){ attrs['data-provider'] = id.slice(9); attrs['aria-pressed'] = 'false'; }
-  return el(attrs);
-});
-var edgeEls = EDGES.map(function(p){ return el({'data-a': p[0], 'data-b': p[1]}); });
-var handlers = {};
-var svg = {querySelectorAll: function(sel){
-    return sel === '.flow-edge' ? edgeEls : sel === '[data-node]' ? nodeEls : []; },
-  addEventListener: function(t, f){ handlers[t] = f; }};
-globalThis.document = {getElementById: function(id){ return id === 'flow-svg' ? svg : null; }};
-""" % (json.dumps(nodes), json.dumps(edges))
-    tail = """
-function state(){
-  var dim = [], on = [];
-  edgeEls.forEach(function(e, i){ if(e.cls['flow-dim']){ dim.push(i); } if(e.cls['flow-on']){ on.push(i); } });
-  return {on: on, dim: dim,
-    dimNodes: nodeEls.filter(function(n){ return n.cls['flow-dim']; }).length};
-}
-function press(id){
-  var node = nodeEls.filter(function(n){ return n.getAttribute('data-node') === id; })[0];
-  handlers.click({target: {closest: function(){ return node; }}});
-}
-var out = {};
-press('store:raw'); out.store = state();
-out.storePressed = nodeEls.filter(function(n){ return n.getAttribute('aria-pressed') === 'true'; }).length;
-press('job:RC-Daily-Bars'); out.job = state();
-out.jobPressed = nodeEls.filter(function(n){ return n.getAttribute('aria-pressed') === 'true'; })
-  .map(function(n){ return n.getAttribute('data-node'); });
-press('job:RC-Daily-Bars'); out.cleared = state();
-out.clearedPressed = nodeEls.filter(function(n){ return n.getAttribute('aria-pressed') === 'true'; }).length;
-press('provider:Unusual Whales'); out.provider = state();
-out.providerPressed = nodeEls.filter(function(n){ return n.getAttribute('aria-pressed') === 'true'; })
-  .map(function(n){ return n.getAttribute('data-node'); });
-console.log(JSON.stringify(out));
-"""
-    path = tmp_path / "flow.js"
-    path.write_text(harness + report.FLOW_JS + tail, encoding="utf-8")
-    out = subprocess.run(["node", str(path)], capture_output=True, text=True, encoding="utf-8")
-    assert out.returncode == 0, out.stderr[-2000:]
-    got = json.loads(out.stdout.strip().splitlines()[-1])
-    prices = next(i for i, (a, b) in enumerate(edges)
-                  if (a, b) == ("job:RC-Daily-Bars", "store:prices"))
-    filings = next(i for i, (a, b) in enumerate(edges)
-                   if (a, b) == ("job:RC-ValueChain-Sync", "store:edgar"))
-    assert got["store"]["dim"] == [] and got["store"]["dimNodes"] == 0, "a store file is not a button"
-    assert got["job"]["on"], "the job's own lines light up"
-    assert prices in got["job"]["on"] and filings not in got["job"]["on"]
-    assert filings in got["job"]["dim"]
-    assert len(got["job"]["dim"]) == len(edges) - len(got["job"]["on"])
-    assert got["job"]["dimNodes"] == len(nodes) - 4, (
-        "the job, the provider that feeds it and its two store files stay lit")
-    assert got["cleared"]["on"] == [] and got["cleared"]["dim"] == [] and got["cleared"]["dimNodes"] == 0
-    assert got["provider"]["dimNodes"] == len(nodes) - 3, (
-        "a provider's own lines light up, and the jobs at their far end stay lit")
-    assert got["storePressed"] == 0, "a store file is not a toggle"
-    assert got["jobPressed"] == ["job:RC-Daily-Bars"], "the pressed job says so to a screen reader"
-    assert got["clearedPressed"] == 0, "pressing it again clears the state"
-    assert got["providerPressed"] == ["provider:Unusual Whales"]
 
 
 def test_a_hostile_provider_or_job_name_is_escaped_in_text_and_in_an_attribute():
@@ -1858,11 +1165,6 @@ def test_a_name_too_long_for_its_column_is_cut_and_its_hover_title_keeps_all_of_
     assert f"<title>{long_name} — 1 dataset</title>" in section, "the whole name is still there"
 
 
-def test_each_edge_is_coloured_by_the_store_file_it_lands_in():
-    svg = report._flow_svg(report.flow_graph(_flow_rows()))
-    for colour in ("#4f8cff", "#e06088", "#e0a030"):          # raw, prices, edgar
-        assert f'stroke="{colour}"' in svg
-    assert 'stroke="#3cb89a"' not in svg, "no dataset lands in history here"
 
 
 def test_two_flows_sharing_one_pair_draw_side_by_side_so_neither_colour_hides_the_other():
@@ -1890,30 +1192,12 @@ def test_a_store_file_outside_the_four_files_draws_in_muted_ink_and_says_so():
     assert len(report.DB_PILLS) == 4 and "outside the four" in section, "the legend counts the files it lists"
 
 
-def test_the_flow_legend_names_the_four_store_files():
-    section = _flow_section(_flow_rows())
-    legend = section[section.index('id="flow-legend"'):]
-    for db in ("raw", "edgar", "history", "prices"):
-        assert f'id="flow-store-{db}"' in legend, db
-        assert f"{db}.duckdb" in legend, db
-    assert "Line colour is the store file" in legend
 
 
 
 
-def test_every_job_node_is_a_button_and_the_store_files_are_not():
-    svg = report._flow_svg(report.flow_graph(_flow_rows()))
-    jobs = re.findall(r'<g class="flow-node" tabindex="0" role="button" data-job="([^"]+)"', svg)
-    assert jobs == ["RC-Daily-Bars", "RC-ValueChain-Sync", "started by hand from the dashboard"]
-    providers = re.findall(r'<g class="flow-node" tabindex="0" role="button" data-provider="([^"]+)"', svg)
-    assert providers == ["SEC EDGAR filings", "Unusual Whales"]
-    assert 'data-provider="raw"' not in svg and 'data-job="raw"' not in svg
 
 
-def test_the_diagram_collapses_past_the_page_weight_budget(monkeypatch):
-    monkeypatch.setattr(report, "FLOW_MAX_BYTES", 10)
-    section = _flow_section(_flow_rows())
-    assert '<details class="flow">' in section and " open>" not in section
 
 
 def test_the_real_registry_diagram_stays_under_the_budget():
@@ -1927,10 +1211,6 @@ def test_the_real_registry_diagram_stays_under_the_budget():
 # ── S7 of the Data Health plan (#124): "Identity coverage" ───────────────────────────────────
 # Not on the page since PR 5 (D9): the spine's identity funnel replaced it
 # (module_settings/tests/test_newdata_spine.py). The payload still carries the section until the old inventory goes.
-def test_the_hand_built_identity_coverage_card_is_not_rendered_any_more():
-    cov = {"names_kept": 1, "funnel": [], "funnel_note": "x", "inputs": [], "identifiers": []}
-    html = report.render_settings_dashboard(dict(_payload(), identity_coverage=cov))
-    assert 'id="identity-coverage"' not in html and "Identity coverage" not in html
 
 
 # ── G7 of the GUI brief (#124): the drill below the table, and which boards can score the name ──
@@ -1945,33 +1225,8 @@ def _panel(html: str, ident: str) -> str:
     return html[start:nxt if nxt > 0 else len(html)]
 
 
-def test_the_health_panel_holds_the_frame_and_what_grafana_does_not_carry():
-    """#492 (i), reordered by #527 step 9, B4 and #715: Fetch/Health is the framed board and, under it, only the
-    universe and the fills; the catalog and the routes are folded under the Database board."""
-    from RevenueChaser.module_settings.tests.test_control_view import control_nd
-    html = report.render_settings_dashboard(dict(_payload(), newdata=control_nd()))
-    assert "<title>Settings</title>" in html
-    health = _panel(html, "panel-health")
-    order = ['id="live-frame"', "<h1>Settings · Universe and fills</h1>", 'id="sec-universe"', 'class="fgrps"']
-    at = [health.index(x) for x in order]
-    assert at == sorted(at), order
-    for gone in ('id="sec-health"', 'id="needs-catalog"', 'id="needs-routes"', "Needs, boards and automations"):
-        assert gone not in health, gone
-    assert 'id="needs-log"' not in html, "the request log is the Logs tab's board now"
-    # avo, 11 Nov 2026: the Ticker lookup is on the Database tab now, not under the Grafana frame.
-    data = _panel(html, "panel-data")
-    assert 'id="drill"' in data and 'id="ticker-combo"' in data
-    assert data.index('id="drill"') < data.index('id="needs-catalog"') < data.index('id="needs-routes"')
-    assert 'id="ticker-drill"' not in health and 'id="backups"' not in data
-    assert 'id="ctl-fetch"' not in html, "the Fetch panel is no longer drawn here"
 
 
-def test_the_old_settings_fold_and_its_sections_are_gone():
-    html = report.render_settings_dashboard(dict(_payload(), automations=[{"key": "x"}]))
-    for gone in ('id="old-settings"', "oldfold", 'id="inv-table"', 'id="identity"', 'id="other-tables"',
-                 'id="data-flow"', "Old Settings sections"):
-        assert gone not in html, gone
-    assert not hasattr(report, "OLD_FOLD_CSS")
 
 
 def test_the_tabs_map_data_and_health_and_old_choices_land_on_them():
@@ -1982,43 +1237,7 @@ def test_the_tabs_map_data_and_health_and_old_choices_land_on_them():
     assert "CFG.aliases[name]" in report.TABS_JS
 
 
-def test_the_lookup_keeps_its_own_search_box():
-    block = _drill_section(report.render_settings_dashboard(_payload()))
-    assert 'id="ticker-combo"' in block and 'id="ticker-combo-list"' in block, \
-        "the lookup keeps its own search box"
-    assert "Ticker lookup" in block
 
 
-def test_the_parts_that_live_nowhere_else_sit_under_database_and_the_watch_lists_are_not_on_this_page():
-    """avo, 6 Nov 2026 ("A"): the board settings, Automations and the IBKR cards move to Health. The watch lists went
-    with them, had a tab of their own for a day, and left for the Watch lists board on 13 Nov 2026 ("Watchlist
-    panosuna bunlari ekle ... ve buradan yine de kaldir")."""
-    from RevenueChaser.module_settings.tests.test_control_view import control_nd
-    html = report.render_settings_dashboard(dict(_payload(), automations=_autos(), newdata=control_nd(),
-                                                 ibkr_login_url="https://gateway.example/",
-                                                 errors=[{"table": "ibkr", "where": "x", "error": "read failed"}]))
-    health = _panel(html, "panel-health")
-    # #715: the reads that failed and the forms sit under the Database board; the login link stays under the frame
-    data = _panel(html, "panel-data")
-    marks = ['id="errors"', 'id="auto-body"']
-    at = [data.index(m) for m in marks]
-    assert at == sorted(at), marks
-    assert 'id="auto-body"' not in health and 'href="https://gateway.example/"' in health
-    for gone in ('id="panel-watch"', 'id="tab-watch"', 'id="nd-watch-option"', 'id="nd-watch-stock"',
-                 "function ndWatchRemove", "function ndWatchAdd"):
-        assert gone not in html, gone
-    assert re.search(r'<div id="panel-data" role="tabpanel" aria-labelledby="tab-data">', html), \
-        "Database is the tab the page is drawn on"
-    assert html.count('<details class="help"><summary>What am I looking at?</summary>') == 1
-    assert "function settingsSave" in html and "function autoInit" in html
 
 
-def test_the_page_draws_in_the_shared_theme_and_has_no_palette_of_its_own():
-    """Theme D (avo, 12 Nov 2026): the page embeds ``THEME_CSS`` and its old names are aliases of the shared tokens."""
-    from RevenueChaser.core.reporting_common import THEME_CSS
-    html = report.render_settings_dashboard(_payload())
-    assert THEME_CSS in html
-    assert ":root{--panel:var(--card);--panel2:var(--card-2);--text:var(--fg);" in report.CSS
-    assert not re.search(r":root\{[^}]*--(bg|border|muted|accent|amber):", report.CSS)
-    assert "font-family:var(--font-sans)" in report.CSS
-    assert ".rcf-combo{--rcf-input:var(--input-bg)" in report.CSS

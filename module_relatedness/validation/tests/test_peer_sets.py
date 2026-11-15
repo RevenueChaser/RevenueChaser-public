@@ -109,7 +109,6 @@ def test_etf_holdings_from_store_reads_the_spines_whole_lists(rawstore_tmp_db):
     day; ``raw.duckdb.etf_holdings`` (a top 10, empty on homesrv) is not read."""
     spine_fixture.write_etf_holdings({"SMH": ["NVDA", "INTC"], "XLK": ["AAPL"]}, as_of="2026-11-05")
     spine_fixture.write_etf_holdings({"SMH": ["NVDA", "TSM"]}, as_of="2026-11-07")
-    rawstore.write_rows("etf_holdings", [{"ticker": "KRE", "entry": [{"ticker": "USB", "weight": 0.2}]}])
     out = peer_sets.etf_holdings_from_store()
     assert out["SMH"] == {"NVDA", "TSM"}
     assert "XLK" not in out          # not one of the 29

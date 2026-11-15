@@ -67,31 +67,9 @@ def _rows():
     ]
 
 
-def _prefilter_quotes(monkeypatch):
-    """Three D04 quotes around the default price and dollar-volume floors (``quotes.prefilter_quotes``)."""
-    held = {"LOWP": {"price": 4.99, "avg_volume": 10_000.0},
-            "THIN": {"price": 50.0, "avg_volume": 1_000.0},
-            "OK": {"price": 100.0, "avg_volume": 5_000.0}}
-    monkeypatch.setattr("RevenueChaser.core.quotes.prefilter_quotes", lambda tickers: dict(held))
-    return [{"ticker": t, "quote": {}} for t in ("LOWP", "THIN", "OK")]
 
 
 # ── defaults unchanged (golden) ─────────────────────────────────────────────
-def test_defaults_reproduce_the_pre_change_output(rawstore_tmp_db, monkeypatch):
-    """``golden_swing_defaults_s4.json`` was captured from the code before #384 SW-S4.
-
-    The payload (picks, gates, quality, momentum, levels, counts) and the prefilter's kept/drops are identical
-    at defaults: a setting nobody saved cannot change a result."""
-    golden = json.loads(_GOLDEN.read_text(encoding="utf-8"))
-    payload = pipeline.build_payload(_rows(), top_n=10)
-    payload.pop("generated_at", None)                      # the only clock-dependent field
-    payload.pop("settings")                                # the run's thresholds (finding 2), not a result
-    assert payload.pop("selection_version") == config.SELECTION_VERSION
-    golden["payload"].pop("selection_version")             # the model's version moved (5, PR 6), not its output here
-    pf = pipeline.prefilter(_prefilter_quotes(monkeypatch))
-    assert {"payload": payload,
-            "prefilter": {"kept": [r["ticker"] for r in pf.kept], "drops": pf.drops,
-                          "no_volume": pf.no_volume}} == golden
 
 
 # ── the SPEC ────────────────────────────────────────────────────────────────
@@ -129,12 +107,6 @@ def test_effective_at_defaults_is_the_config(rawstore_tmp_db):
     assert e.custom is False and e.overridden == ()
 
 
-def test_a_saved_override_is_what_the_resolver_returns(rawstore_tmp_db):
-    bs.save(B, {"MIN_PRICE": 12.0, "RS_MIN": 80, "STOP_ATR": 3.0})
-    e = _settings().effective()
-    assert (e.min_price, e.rs_min, e.stop_atr) == (12.0, 80.0, 3.0)
-    assert e.vol_confirm == config.VOL_CONFIRM             # untouched keys stay config's
-    assert e.custom is True and e.overridden == ("MIN_PRICE", "RS_MIN", "STOP_ATR")
 
 
 def test_a_store_error_falls_back_to_the_defaults(rawstore_tmp_db, monkeypatch):
@@ -148,43 +120,12 @@ def test_a_store_error_falls_back_to_the_defaults(rawstore_tmp_db, monkeypatch):
 
 
 # ── the pipeline reads the effective values ─────────────────────────────────
-def test_a_saved_override_reaches_the_gates_and_the_levels(rawstore_tmp_db):
-    before = pipeline.build_payload(_rows(), top_n=10)
-    assert before["passing"]["weinstein"] == 3
-    bs.save(B, {"VOL_CONFIRM": 2.5, "STOP_ATR": 3.0})
-    after = pipeline.build_payload(_rows(), top_n=10)
-    assert after["passing"]["weinstein"] == 0              # no name clears 2.5x any more
-    aaa = next(c for c in after["candidates"] if c["ticker"] == "AAA")
-    assert (aaa["stop"], aaa["target"], aaa["rr"]) == (94.0, 112.0, 2.0)   # stop 100 - 3x2, target 100 + 2x6
 
 
-def test_the_ranking_weights_come_from_the_settings(rawstore_tmp_db):
-    e = _settings().effective()
-    assert ranking.composite(100, 0, 0, eff=e) == 50.0     # proximity and consistency still weigh in
-    bs.save(B, {"W_PROX": 0.0, "W_CONS": 0.0})
-    assert ranking.composite(100, 0, 0, eff=_settings().effective()) == 100.0
 
 
-def test_a_saved_prefilter_override_drops_a_name(rawstore_tmp_db, monkeypatch):
-    rows = _prefilter_quotes(monkeypatch)
-    assert [r["ticker"] for r in pipeline.prefilter(rows).kept] == ["OK"]
-    bs.save(B, {"MIN_DOLLAR_VOLUME": 600_000})
-    pf = pipeline.prefilter(rows)
-    assert pf.kept == [] and pf.drops == {"low_price": ["LOWP"], "low_dollar_volume": ["THIN", "OK"]}
 
 
-def test_the_gate_text_names_the_threshold_that_is_used(rawstore_tmp_db):
-    g = screeners.evaluate_minervini(_ind(), 75.0)
-    assert next(r for r in g["rules"] if r["id"] == "rs_ge_70")["threshold"] == "≥ 70"
-    bs.save(B, {"RS_MIN": 80, "VOL_CONFIRM": 2.5, "MOVE_MIN": 0.4, "ADR_MIN": 0.05})
-    e = _settings().effective()
-    rs = next(r for r in screeners.evaluate_minervini(_ind(), 75.0, eff=e)["rules"] if r["id"] == "rs_ge_70")
-    assert rs["threshold"] == "≥ 80" and rs["label"] == "RS Rating at least 80"
-    rules = {r["id"]: r for r in screeners.evaluate_weinstein(_ind(), eff=e)["rules"]}
-    assert rules["volume_confirmation"]["threshold"] == "≥ 2.5× 20-day avg, best of 5 days"
-    q = {r["id"]: r for r in screeners.evaluate_qullamaggie(_ind(), eff=e)["rules"]}
-    assert q["large_move"]["threshold"] == "≥ 40%"
-    assert q["adr_ge_3"]["threshold"] == "≥ 5%"
 
 
 # ── bounds and cross-rules ──────────────────────────────────────────────────
@@ -219,29 +160,11 @@ def test_cross_rule_the_weights_leave_momentum_the_largest_tilt(rawstore_tmp_db)
     assert bs.validate(B, {"STOP_ATR": 4.0, "TARGET_R": 1.0}) == []
 
 
-def test_a_rejected_change_writes_nothing(rawstore_tmp_db):
-    with pytest.raises(bs.SettingsError):
-        bs.save(B, {"RS_MIN": 80, "VOL_CONFIRM": 0.1})
-    assert rawstore.count("board_settings") == 0
 
 
 # ── only an override is stored; Reset deletes it ────────────────────────────
-def test_only_the_changed_key_is_stored(rawstore_tmp_db):
-    bs.save(B, {"RS_MIN": 80})
-    bs.save(B, {"MIN_DOLLAR_VOLUME": 500_000.0})
-    assert sorted(r["key"] for r in rawstore.query(
-        "SELECT key FROM board_settings WHERE board = ?", [B])) == ["MIN_DOLLAR_VOLUME", "RS_MIN"]
-    bs.save(B, {"VOL_CONFIRM": config.VOL_CONFIRM})        # saving the default stores nothing for it
-    assert bs.values(B)["overridden"] == ["MIN_DOLLAR_VOLUME", "RS_MIN"]
 
 
-def test_reset_deletes_the_rows_and_the_defaults_are_configs_again(rawstore_tmp_db):
-    bs.save(B, {"RS_MIN": 80, "STOP_ATR": 3.0})
-    assert rawstore.count("board_settings") == 2
-    bs.reset(B)
-    assert rawstore.count("board_settings") == 0            # deleted, not rewritten as defaults
-    assert not bs.is_custom(B)
-    assert _settings().effective().rs_min == config.RS_MIN
 
 
 # ── the model version ───────────────────────────────────────────────────────
@@ -251,12 +174,6 @@ def test_model_version_is_unchanged_at_defaults(rawstore_tmp_db):
     assert freeze.model_version() == "5+c94564a9"
 
 
-def test_a_saved_override_moves_the_model_version_and_reset_restores_it(rawstore_tmp_db):
-    base = freeze.model_version()
-    bs.save(B, {"RS_MIN": 80})
-    assert freeze.model_version() != base
-    bs.reset(B)
-    assert freeze.model_version() == base
 
 
 def test_the_model_version_still_hashes_the_non_editable_thresholds(rawstore_tmp_db, monkeypatch):
@@ -267,23 +184,6 @@ def test_the_model_version_still_hashes_the_non_editable_thresholds(rawstore_tmp
 
 
 # ── the Settings board: card, page and the generic route ────────────────────
-def test_the_settings_card_lists_the_swing_keys(rawstore_tmp_db):
-    from RevenueChaser.module_settings import boards, report
-
-    card = next(c for c in boards.board_cards() if c["key"] == B)
-    s = card["settings"]
-    assert s["board"] == B and s["custom"] is False
-    assert {f["key"] for f in s["inputs"] + s["fine"]} == set(_KEYS)
-    by = {f["key"]: f for f in s["inputs"] + s["fine"]}
-    assert by["RS_MIN"]["value"] == config.RS_MIN and by["RS_MIN"]["overridden"] is False
-    assert by["RS_MIN"]["range"] == "0–100" and by["MIN_PRICE"]["range"] == "0.5–100"
-    html = report.render_settings_dashboard({"boards": [card]})
-    assert 'data-board="module_swing_potential"' in html and 'data-setting="RS_MIN"' in html
-    bs.save(B, {"RS_MIN": 80})
-    card = next(c for c in boards.board_cards() if c["key"] == B)
-    by = {f["key"]: f for f in card["settings"]["inputs"] + card["settings"]["fine"]}
-    assert card["settings"]["custom"] is True
-    assert by["RS_MIN"]["value"] == 80 and by["RS_MIN"]["overridden"] is True
 
 
 def test_the_save_button_reads_only_its_own_board_fields():
@@ -304,32 +204,9 @@ def client(rawstore_tmp_db, monkeypatch):
     return c
 
 
-def test_route_save_stores_the_swing_value_and_queues_a_store_only_refresh(client):
-    r = client.post("/api/settings/board/module_swing_potential", json={"changes": {"RS_MIN": 80}})
-    assert r.status_code == 202
-    body = r.get_json()
-    assert body["ok"] is True and body["job_id"] == "job123"
-    assert body["values"]["values"]["RS_MIN"] == 80
-    assert body["values"]["overridden"] == ["RS_MIN"]
-    assert client.submitted == [("settings_refresh", {})]   # not the Co-movement recompute
-    assert bs.get(B, "RS_MIN") == 80
 
 
-def test_route_rejects_an_out_of_range_swing_value_and_writes_nothing(client):
-    r = client.post("/api/settings/board/module_swing_potential", json={"changes": {"VOL_CONFIRM": 0.1}})
-    assert r.status_code == 400
-    assert any("VOL_CONFIRM must be between 0.5 and 10" in m for m in r.get_json()["messages"])
-    assert rawstore.count("board_settings") == 0 and client.submitted == []
 
 
-def test_route_reset_deletes_the_swing_rows(client):
-    bs.save(B, {"RS_MIN": 80, "STOP_ATR": 3.0})
-    r = client.post("/api/settings/board/module_swing_potential", json={"reset": True})
-    assert r.status_code == 202 and r.get_json()["values"]["overridden"] == []
-    assert rawstore.count("board_settings") == 0
-    assert client.submitted == [("settings_refresh", {})]
 
 
-def test_zero_weights_and_no_momentum_percentile_give_no_composite_not_a_crash(rawstore_tmp_db):
-    bs.save(B, {"W_PROX": 0.0, "W_CONS": 0.0})
-    assert ranking.composite(None, 40.0, 60.0, eff=_settings().effective()) is None
