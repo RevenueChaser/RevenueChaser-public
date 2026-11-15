@@ -399,3 +399,28 @@ def test_a_copy_that_breaks_leaves_no_partial_build_file(monkeypatch):
             pass
     assert _leftovers() == [], "the partial copy must go with the failure"
     assert _sha(serving.live_path("market")) == before
+
+
+def test_the_rollback_copy_lives_under_prev_dir_not_beside_the_live_file():
+    _build(3)
+    first = _sha(serving.live_path("market"))
+    _build(4)
+    assert serving.prev_path("market").parent == Path(config.MARKET_RAW_DIR) / "serving_prev"
+    assert _sha(serving.prev_path("market")) == first
+    assert not (Path(config.MARKET_DIR) / "market.prev.duckdb").exists()
+
+
+def test_a_build_does_not_start_without_room_for_twice_the_live_file(monkeypatch):
+    _build(3)
+    live = serving.live_path("market")
+    before = _sha(live)
+    size = live.stat().st_size
+    monkeypatch.setattr(serving.shutil, "disk_usage", lambda p: SimpleNamespace(total=0, used=0, free=2 * size - 1))
+    with pytest.raises(serving.DiskTooFull, match="twice the live file"):
+        _build(4)
+    assert _sha(live) == before
+    assert _leftovers() == []
+    monkeypatch.setenv("RC_BUILD_MIN_FREE", "1TB")
+    monkeypatch.setattr(serving.shutil, "disk_usage", lambda p: SimpleNamespace(total=0, used=0, free=10**11))
+    with pytest.raises(serving.DiskTooFull):
+        _build(4)

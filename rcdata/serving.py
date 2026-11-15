@@ -7,8 +7,8 @@ beside the live ``<kind>.duckdb`` under ``config.MARKET_DIR``; ``BuildFile.swap`
 the row count of every expected table, and only then moves it into place. On any failure — a check, or an exception inside the
 ``build()`` block — the new file is deleted and the live file is not touched (test T3).
 
-The swap never leaves the live name missing: the previous file is first hard-linked to ``<kind>.prev.duckdb``
-(copied where the file system has no hard links), then ``os.replace`` moves the new file over the live name in one
+The swap never leaves the live name missing: the previous file is first copied to ``<kind>.prev.duckdb`` under
+``prev_dir()`` (hard-linked where that is the live files' own disk), then ``os.replace`` moves the new file over the live name in one
 step. A reader that opened the old file keeps reading it; the next ``open_read`` gets the new one.
 
 A build either starts empty (``build(kind)``, every table made from Parquet) or as a copy of the live file
@@ -86,6 +86,10 @@ THREADS_DEFAULT = 3
 # The most a build may spill (``RC_DUCKDB_MAX_TEMP``, a DuckDB size): past it the build fails, it does not fill the disk.
 # DuckDB's own default is 90 % of the free space. 2010-2025 of history spilled 9.5 GB at its largest statement (#372).
 MAX_TEMP_DEFAULT = "200GB"
+# A build needs room for its copy of the live file on the live files' disk: it does not start with less free space
+# than ``RC_BUILD_MIN_FREE`` (a DuckDB size) or twice the live file, whichever is larger. 15 Nov 2026 the root SSD
+# filled to 100 % and froze homesrv for 40 minutes; ext4's 5 % root reserve does not cover the builder (user life).
+MIN_FREE_DEFAULT = "10GiB"
 _SIZE_BYTES = {"KIB": 2**10, "MIB": 2**20, "GIB": 2**30, "TIB": 2**40,
                "KB": 10**3, "MB": 10**6, "GB": 10**9, "TB": 10**12}
 _SIZE_UNITS = tuple(_SIZE_BYTES)
@@ -132,6 +136,26 @@ def spill_dir(path: Path) -> Path:
     return (Path(root) if root else Path(config.MARKET_RAW_DIR) / "build_tmp") / f"{path.name}.tmp"
 
 
+class DiskTooFull(RuntimeError):
+    """Too little free space on the live files' disk to start a build; nothing was written."""
+
+
+def _bytes(size: str) -> int:
+    s = size.strip().upper().replace(" ", "")
+    unit = next((u for u in sorted(_SIZE_BYTES, key=len, reverse=True) if s.endswith(u)), None)
+    return int(float(s[:-len(unit)]) * _SIZE_BYTES[unit]) if unit else int(s)
+
+
+def check_room(kind: str, folder: Path) -> None:
+    """Refuse a build of ``kind`` when ``folder``'s disk has less free space than ``MIN_FREE`` or twice the live file."""
+    live = live_path(kind)
+    need = max(_bytes(_size("RC_BUILD_MIN_FREE", MIN_FREE_DEFAULT)), 2 * live.stat().st_size if live.exists() else 0)
+    free = shutil.disk_usage(folder).free
+    if free < need:
+        raise DiskTooFull(f"{kind} build not started: {free / 2**30:.1f} GiB free on {folder}, "
+                          f"needs {need / 2**30:.1f} GiB (RC_BUILD_MIN_FREE or twice the live file)")
+
+
 class SwapRefused(RuntimeError):
     """The new build failed its checks; it was deleted and the live file left as it was."""
 
@@ -150,8 +174,15 @@ def live_path(kind: str) -> Path:
     return Path(config.MARKET_DIR) / f"{_kind(kind)}.duckdb"
 
 
+def prev_dir() -> Path:
+    """Where the rollback copies live: ``RC_SERVING_PREV_DIR``, else ``serving_prev`` under the raw root (the server's
+    HDD). Not beside the live files: six ``.prev`` files held 8.6 GB of the SSD the live files share (15 Nov 2026)."""
+    root = os.getenv("RC_SERVING_PREV_DIR", "").strip()
+    return Path(root) if root else Path(config.MARKET_RAW_DIR) / "serving_prev"
+
+
 def prev_path(kind: str) -> Path:
-    return Path(config.MARKET_DIR) / f"{_kind(kind)}.prev.duckdb"
+    return prev_dir() / f"{_kind(kind)}.prev.duckdb"
 
 
 def build_path(kind: str, build_id: str) -> Path:
@@ -230,6 +261,7 @@ class BuildFile:
             raise SwapRefused(f"{self.kind} build {self.build_id} refused: {e}") from e
         live, prev = live_path(self.kind), prev_path(self.kind)
         if live.exists():
+            prev.parent.mkdir(parents=True, exist_ok=True)
             _remove(prev)
             try:
                 os.link(live, prev)
@@ -423,6 +455,7 @@ def build(kind: str, base: str = "fresh") -> Iterator[BuildFile]:
     build_id = new_build_id()
     path = build_path(kind, build_id)
     path.parent.mkdir(parents=True, exist_ok=True)
+    check_room(kind, path.parent)
     spill = spill_dir(path)
     spill.parent.mkdir(parents=True, exist_ok=True)               # DuckDB makes only the last level
     try:
