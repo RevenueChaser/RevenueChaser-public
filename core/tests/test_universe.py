@@ -373,7 +373,7 @@ def test_load_cached_universe_returns_normalised_rows(rawstore_tmp_db):
     assert [r["ticker"] for r in rows] == ["AAA"]
     assert rows[0]["market_cap"] == 2e9
     assert rows[0]["sector"] == "Energy"
-    assert rows[0]["quote"] == {"symbol": "AAA"}
+    assert rows[0]["quote"] is None                       # the stored quote went with raw.duckdb (#860)
     assert set(rows[0]) == {"ticker", "market_cap", "sector", "price", "name", "industry",
                             "industry_group", "sub_industry", "quote"}
 

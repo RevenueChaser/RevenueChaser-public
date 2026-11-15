@@ -7,8 +7,8 @@ against ``equity_universe`` rows (``ticker``, ``name``, ``sector``, ``industry``
 went into left with raw.duckdb (#860), and with it the ``quote`` the spine universe read from it.
 
 A row's ``market_cap`` and ``price`` are kept in ``MARKET``: the root ``conftest.py`` answers them from
-``spine_reads.latest_market`` for a seeded ticker the served prices file has no bar for, so a test of a board's cap
-filter needs no bars (and a test of the bars' own checks keeps the bars it seeded). The old table played that part.
+``spine_reads.latest_market`` where the served prices file has none for a seeded ticker, so a test of a board's cap
+filter needs no ``market_cap_daily`` rows (and a test of the bars' own checks keeps the bars it seeded). The old table played that part.
 
 A row's ``tier`` defaults to ``A``; ``security_type`` stays NULL unless the row gives one, so a test's
 row's ``security_type`` types the name. It also books a good

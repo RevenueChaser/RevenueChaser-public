@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 
 from RevenueChaser.rcdata.tests import universe_store
-from RevenueChaser.core import rawstore, screen_common
+from RevenueChaser.core import screen_common
 from RevenueChaser.module_fundamentals import pipeline as fp
 from RevenueChaser.module_swing_potential import pipeline as sp
 
@@ -21,9 +21,8 @@ def _ohlcv(periods=300) -> pd.DataFrame:
 def _seed(rows, master=None):
     universe_store.replace([{
         "ticker": t, "cik": "", "name": t, "market_cap": 1e9, "price": 10.0,
-        "sector": sec, "industry": ind, "quote": {"symbol": t}} for t, sec, ind in rows])
-    if master:
-        pass
+        "sector": sec, "industry": ind, "quote": {"symbol": t},
+        "security_type": (master or {}).get(t)} for t, sec, ind in rows])
 
 
 @pytest.fixture

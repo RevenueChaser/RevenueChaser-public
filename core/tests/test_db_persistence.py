@@ -27,6 +27,16 @@ from RevenueChaser.core import rawstore
 
 
 
+def test_ticker_store_populated(rawstore_tmp_db):
+    from RevenueChaser.core import ticker_store
+    ticker_store.write_from_cards([{
+        "ticker": "ETON", "name": "Eton", "sector": "Health Care", "market_cap": 1.8e9,
+        "total_points": 9, "themes": ["Biotech"], "signals": [],
+    }], asof="2026-08-22")
+    assert ticker_store.count() == 1
+    assert ticker_store.get("ETON")["themes"] == ["Biotech"]        # its as-of lived in raw.duckdb (#860)
+
+
 def test_rotation_snapshot_populated(rawstore_tmp_db):
     from datetime import date
     from RevenueChaser.module_sector_rotation.models import ETFRotationSnapshot

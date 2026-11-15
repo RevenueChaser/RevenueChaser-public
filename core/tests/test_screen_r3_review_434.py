@@ -22,7 +22,7 @@ import pandas as pd
 import pytest
 
 from RevenueChaser.core import calendar as cal
-from RevenueChaser.core import ledger, prices, rawstore, screen_common
+from RevenueChaser.core import ledger, prices, screen_common
 from RevenueChaser.core.tests import screen_parity as scn
 from RevenueChaser.module_fundamentals import freeze as fund_freeze
 from RevenueChaser.module_fundamentals import pipeline as fp
@@ -85,7 +85,7 @@ def test_a_name_without_spys_session_bar_drops_as_stale_bars_and_the_day_freezes
     assert step["count"] == 1 and step["tickers"] == ["UP1"] and step["by_design"] is False
     assert step["label"] == "No D01 bar of the latest stored session (a halt or a Daily Bars gap)"
     keys = [s["key"] for s in payload["funnel_steps"]]
-    assert keys.index("stale_bars") == keys.index("no_bars") + 1        # a data gap next to its sibling
+    assert keys.index("stale_bars") == keys.index("low_dollar_volume") + 1   # no_bars has no name here since #860
     assert payload["data_quality"]["dropped"]["stale_bars"] == 1
     out = frz.freeze_payload(payload, run_id="s1", now=scn.NOW)
     assert out.frozen == len(payload["candidates"]) > 0, out.message

@@ -299,7 +299,7 @@ def _drop_steps(cfg: Any, floors: Any = None) -> tuple[tuple[str, str, bool], ..
     sectors = ", ".join(getattr(cfg, "EXCLUDED_SECTORS", None) or ())
     barrier = getattr(cfg, "RO40_BARRIER", None)
     return (
-        ("no_quote", "No stored quote (D04) to prefilter on", False),
+        ("no_quote", "No stored daily price (D01) to prefilter on", False),
         ("low_price", f"Price under ${floors.MIN_PRICE:,.2f}", True),
         ("low_dollar_volume", f"Average daily dollar volume under ${floors.MIN_DOLLAR_VOLUME:,.0f}", True),
         ("no_bars", "No stored daily price bars (D01)", False),

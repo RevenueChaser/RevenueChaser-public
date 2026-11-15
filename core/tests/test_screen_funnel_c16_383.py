@@ -52,13 +52,13 @@ def test_the_excluded_types_and_the_prefilter_reasons_are_typed_steps(scenario, 
     assert steps["low_price"]["label"] == "Price under $5.00"
     assert steps["low_dollar_volume"]["tickers"] == ["LOWVOL"] and steps["low_dollar_volume"]["by_design"] is True
     assert steps["low_dollar_volume"]["label"] == "Average daily dollar volume under $250,000"
-    assert "no_quote" not in steps
+    assert steps["no_quote"]["tickers"] == ["NOBARS1"]   # no D01 rows, so no price to prefilter on (#860)
 
 
 @pytest.mark.parametrize("mod", BOARDS)
 def test_the_scorer_reasons_name_their_tickers(scenario, mod):
     steps = _steps(mod.run_scan())
-    assert steps["no_bars"]["tickers"] == ["NOBARS1"] and steps["no_bars"]["by_design"] is False
+    assert "no_bars" not in steps                          # NOBARS1 already left at the prefilter (no_quote)
     assert steps["short_bars"]["tickers"] == ["SHORT1"] and steps["short_bars"]["by_design"] is True
 
 
