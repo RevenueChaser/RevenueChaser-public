@@ -126,7 +126,7 @@ def test_the_quality_window_names_the_quality_basis(tmp_path):
 
 
 def test_the_selection_version_moves_with_the_basis():
-    assert config.SELECTION_VERSION == "8"
+    assert int(config.SELECTION_VERSION) >= 8      # 8 moved with the basis; later versions keep it (9: #831)
 
 
 def test_the_row_carries_the_quality_basis(monkeypatch):

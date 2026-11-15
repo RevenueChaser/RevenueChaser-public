@@ -30,6 +30,7 @@ RO40_MIN = 40.0
 # ── Quality (x/3) ──
 GROWTH_MIN = 0.20                    # TTM YoY revenue growth
 ROIC_MIN = 0.15
+ROIC_IC_MIN_SHARE = 0.05            # #831: ROIC unknown when invested capital < 5% of total assets
 GM_MIN = 0.30                        # gross margin
 ND_EBITDA_MAX = 3.0                  # net debt / EBITDA
 
@@ -78,7 +79,8 @@ TAX_RATE = 0.21
 #    name (review N2, default chosen)
 # 8: Quality (ROIC, gross margin, net debt / EBITDA) reads the trailing year from the quarters when a 10-Q follows
 #    the anchor year, else the year (G6, build plan PR 13); the statements come from the fundamentals layer
-SELECTION_VERSION = "8"
+# 9: ROIC is unknown when invested capital is under ROIC_IC_MIN_SHARE of total assets (#831)
+SELECTION_VERSION = "9"
 
 # ── Options flow (constitutional bypass) ──
 MANUAL_FLOW_ONLY = True

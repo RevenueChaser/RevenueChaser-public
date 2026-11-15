@@ -17,7 +17,7 @@ LABEL = "Fundamentals"
 # type filter, joins the hash only when overridden, so the default leaves today's model version as it was.
 _HASHED = (
     "MIN_PRICE", "MIN_DOLLAR_VOLUME",
-    "RO40_MIN", "GROWTH_MIN", "ROIC_MIN", "GM_MIN", "ND_EBITDA_MAX",
+    "RO40_MIN", "GROWTH_MIN", "ROIC_MIN", "ROIC_IC_MIN_SHARE", "GM_MIN", "ND_EBITDA_MAX",
     "DIST_52W_MAX", "RS_6M_MIN", "ABOVE_200D", "DISTORTED_GROWTH", "DISTORTED_REV_MIN", "TAX_RATE",
     "EXCLUDED_SECTORS", "RO40_BARRIER",     # #386 F1 data-health gates
 )
