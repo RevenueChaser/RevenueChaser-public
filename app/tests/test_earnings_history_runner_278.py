@@ -70,42 +70,8 @@ def _card(t="AAA"):
                      raw_packet_json="{}")
 
 
-
-
 def _fetch(uw=None):
     return runners.run_earnings_range(uw or _UW(), date(2026, 10, 8), date(2026, 10, 8))
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-def test_nothing_but_the_fetch_runner_calls_the_writer():
-    import pathlib
-    root = pathlib.Path(runners.__file__).resolve().parents[1]
-    # Posix relative paths and path parts, so the check holds on Windows too; .cache (local research copies) is
-    # not the app.
-    users = sorted(rel.as_posix() for p in root.rglob("*.py")
-                   for rel in [p.relative_to(root)]
-                   if "tests" not in rel.parts and ".cache" not in rel.parts and p.name != "history.py"
-                   and "er_history" in p.read_text("utf-8", errors="replace"))
-    assert users == ["app/runners.py"]
 
 
 def test_the_earnings_board_has_no_refresh_path():

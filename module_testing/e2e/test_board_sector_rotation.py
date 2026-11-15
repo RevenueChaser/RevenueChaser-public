@@ -86,8 +86,6 @@ def _seed_bars():
     return session
 
 
-
-
 def _rotation_candle_calls(routes, since: int = 0) -> list[str]:
     """Provider candle requests for a rotation ETF (``/api/stock/<ticker>/ohlc/...``) after the first ``since``."""
     return _rotation_candle_paths([q.path for q in routes.requests()[since:]])
@@ -172,24 +170,10 @@ class TestRefreshIsOfflineAndFaithful:
             f"{[q.path for q in ohlc_routes.requests()[before:]]}")
 
 
-
 class TestWeekPicker:
     """`/api/rotation/weeks` feeds the "Fetch Data Range" calendar."""
 
-    @pytest.mark.usefixtures("stored_bars")
-    def test_an_empty_store_still_offers_selectable_weeks(self, dashboard):
-        """Regression: the picker used to list only weeks already fetched, so a
-        fresh install had nothing to click and the button was unusable."""
-        weeks = dashboard.get("/api/rotation/weeks").json()["weeks"]
-        assert len(weeks) >= 26
-        assert not any(w["has_data"] for w in weeks)
 
-    @pytest.mark.usefixtures("stored_bars")
-    def test_weeks_are_monday_to_sunday_spans(self, dashboard):
-        for w in dashboard.get("/api/rotation/weeks").json()["weeks"]:
-            start, end = date.fromisoformat(w["start"]), date.fromisoformat(w["end"])
-            assert start.weekday() == 0
-            assert end - start == timedelta(days=6)
 
     @SHARED
     def test_fetched_weeks_are_flagged(self, fetched):

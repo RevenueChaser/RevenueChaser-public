@@ -2060,8 +2060,8 @@ def _ensure_db_tables(conn, db: str) -> None:
         existing.setdefault(t, {})[c] = typ
     path = str(_db_path(db))
     live_pks = _live_primary_keys(conn)
-    for name in MANIFEST:
-        if _db_of(name) != db:
+    for name, spec in MANIFEST.items():
+        if spec.get("db") != db:      # store_schema has no file of its own: the stamp below writes it in each
             continue
         _reconcile_table(conn, name, existing.get(name, {}), live_pks)
         _TABLE_READY.add((path, name))

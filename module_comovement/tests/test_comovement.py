@@ -2275,3 +2275,27 @@ def test_last_move_h1_unchanged_and_ignores_older_rows():
 def test_last_move_skips_members_without_a_latest_value():
     ret = pd.DataFrame({"X": [0.1, 0.02], "Y": [0.1, np.nan]})
     assert engine._last_move_pct(ret, ["X", "Y"], 3) == pytest.approx(2.0)
+
+
+def test_report_uses_the_shared_help_box_once():
+    from RevenueChaser.module_comovement import report
+    html = report.render_comovement_dashboard(_report_payload())
+    # One board-level "About this data" panel replaces the help box.
+    assert html.count('<details class="about"') == 1
+    assert "About this data" in html
+    assert "Coarse" in html and "Fine" in html          # the old body survived
+    # S11: what r, the persistence badges and a dashed chip actually mean.
+    assert ("r is compared to the groups the same method finds in shuffled, "
+            "pure-noise returns. “Held out-of-sample” means") in html
+    assert "Dashed names joined the group since then." in html
+    assert "“stable”" not in html
+    # Source, window and horizon are stated, not left to guess (plan S5).
+    assert "price_bar_daily" in html and "prices build" in html and "swing_ohlc" not in html
+    assert "What a group is" in html
+    # #97: a label is the enrichment rule, not a bare majority.
+    assert ("A group is named only when one industry (else a theme) is over-represented "
+            "against all grouped names at that level: at least 4 names and 25% of the group, "
+            "at least 3× its share at that level, and significant after correcting for the "
+            "many groups tested (BH q < 0.01). The label shows that share and the ×lift; "
+            "otherwise the group stays a neutral “Cluster N”.") in html
+    assert "GICS sub-industry" not in html

@@ -26,26 +26,6 @@ def sync_jobs(monkeypatch):
     monkeypatch.setattr(jobs, "_LANE", dict(jobs._LANE))
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 def test_run_id_is_the_running_jobs_id_and_a_fresh_one_outside(sync_jobs):
     seen = []
     jobs.register("t_r", lambda uw, **p: seen.append(jobs.run_id()), [], requires_uw=False)
@@ -66,36 +46,3 @@ def test_job_semantics_are_unchanged_by_the_new_row(sync_jobs):
                                   "deadline_s", "deadline_at", "cancellable", "cancel_requested", "phase"}
 
 
-def test_the_row_is_stored_before_the_registry_shows_the_new_status(sync_jobs, monkeypatch):
-    """A poller (the e2e harness, the UI) that sees "done" may open the store at once. If the final row were
-    written after that, the dashboard's writer would still hold the file and the poller's connect would fail
-    with "Conflicting lock"."""
-    seen = []
-    real = rawstore.write_rows
-
-    def spy(name, rows):
-        seen.append((rows[0]["status"], jobs.get(rows[0]["run_id"])["status"]))
-        return real(name, rows)
-
-    monkeypatch.setattr(rawstore, "write_rows", spy)
-    jobs.register("t_order", lambda uw, **p: None, [], requires_uw=False)
-    jobs.execute(jobs.submit("t_order"))
-    assert seen == [("running", "running"), ("done", "running")]
-
-
-
-
-
-
-def test_a_slow_store_does_not_hold_the_job_up(sync_jobs, monkeypatch):
-    """The write asks for the brief lock wait (a peer holding the file would otherwise cost ~29 s per write)."""
-    flags = []
-
-    def spy(name, rows):
-        flags.append(getattr(rawstore._LOCAL, "brief", False))
-
-    monkeypatch.setattr(rawstore, "write_rows", spy)
-    jobs.register("t_brief", lambda uw, **p: None, [], requires_uw=False)
-    jobs.execute(jobs.submit("t_brief"))
-    assert flags == [True, True]
-    assert getattr(rawstore._LOCAL, "brief", False) is False

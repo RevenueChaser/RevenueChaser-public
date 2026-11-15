@@ -33,6 +33,8 @@ class _FakeUW:
     def earnings_data(self, ticker):
         return self._ov("earnings_data", {})
 
+    def earnings_history(self, ticker):
+        return self._ov("earnings_history", [])
 
     def flow_recent(self, ticker):
         return self._ov("flow_recent", [])

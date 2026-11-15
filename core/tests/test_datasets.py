@@ -16,25 +16,15 @@ from RevenueChaser.core import automations, datasets, rawstore
 
 # Keys ``module_settings/inventory.py`` ``_collect`` builds today (19 row builders).
 # The plan text said 22; this worktree's ``_collect`` has these.
-SEEDED = (
-    "universe", "universe_provenance", "identity", "corpus", "sec_submissions",
-    "sec_files", "companyfacts", "ohlc", "price_bars", "index_levels", "vendor",
-    "quotes", "index", "sec13f", "oipd", "etf_holdings", "relatedness",
-    "result_history", "inputs",
-)
-
-# The seven datasets S4 adapted: ``coverage`` is a callable returning ``Health``.
-ADAPTED = (
-    "price_bars", "index_levels", "vendor", "quotes", "etf_holdings",
-    "sec_submissions", "sec_files",
-)
+SEEDED = ("corpus", "oipd", "relatedness")   # the seeded keys that outlived the old store (#860)
 
 
-def test_every_manifest_table_is_claimed_once_and_the_allowlist_is_empty():
-    """A new MANIFEST table fails here until a dataset owns it. The allowlist stays empty."""
-    assert datasets.UNCLAIMED_ALLOWLIST == frozenset(), (
-        f"unclaimed allowlist must be empty, not {sorted(datasets.UNCLAIMED_ALLOWLIST)}")
-    keys = set(rawstore.MANIFEST)
+def test_every_manifest_table_is_claimed_once_and_the_allowlist_is_the_stamp():
+    """A new MANIFEST table fails here until a dataset owns it. The allowlist holds only ``store_schema``, the stamp
+    every board file carries (#860: the old files that held it as a table of their own are gone)."""
+    assert datasets.UNCLAIMED_ALLOWLIST == frozenset({"store_schema"}), (
+        f"unclaimed allowlist must hold only store_schema, not {sorted(datasets.UNCLAIMED_ALLOWLIST)}")
+    keys = set(rawstore.MANIFEST) - datasets.UNCLAIMED_ALLOWLIST
     missing = datasets.unclaimed(keys)
     assert not missing, f"MANIFEST tables no dataset claims: {sorted(missing)}"
     claimed = [t for spec in datasets.REGISTRY for t in spec.tables]
@@ -123,32 +113,12 @@ def test_seeded_inventory_keys_keep_their_labels():
         assert spec.tables, key
 
 
-def test_the_seven_summaries_are_health_coverage_callables():
-    """S4: each adapted dataset's ``coverage`` is a callable returning ``Health``, and the TODO is gone."""
-    for key in ADAPTED:
-        spec = datasets.by_key(key)
-        assert callable(spec.coverage), f"{key}: coverage should be the health callable, not {spec.coverage!r}"
-        assert not (spec.coverage_note and "TODO" in spec.coverage_note), (
-            f"{key}: coverage is adapted, so the TODO note must go, not {spec.coverage_note!r}")
-
-
-def test_every_adapted_coverage_returns_a_health_on_an_empty_store(rawstore_tmp_db):
-    """The callable imports its summary when called and reads the store: the typed contract, empty store."""
-    from RevenueChaser.core import datahealth
-
-    for key in ADAPTED:
-        got = datasets.by_key(key).coverage()
-        assert isinstance(got, datahealth.Health), f"{key}: {got!r}"
-
-
 # ── G11 of the GUI redesign (#124): a measured hole carries its explanation ───────────────────
 # Two additive fields, ``gap_kind`` and ``next_step``. The rule they enforce: a dataset whose
 # measured coverage is below 100% must carry a ``gap_kind``, and ``fixable`` / ``in_build`` /
 # ``needs_decision`` must carry a ``next_step``. A ``ceiling`` carries its REASON in ``next_step``
 # (a fact about the source), so it needs one too.
 from RevenueChaser.core.datahealth import Health  # noqa: E402
-
-
 
 
 def _gap_problems(spec: datasets.DatasetSpec, health: Health) -> list[str]:
@@ -161,30 +131,6 @@ def _gap_problems(spec: datasets.DatasetSpec, health: Health) -> list[str]:
     if ratio is not None and ratio < 1 and spec.gap_kind is None:
         return [f"{spec.key}: coverage {ratio:.0%} is below 100% and gap_kind is None"]
     return []
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 def test_every_dataset_that_declares_coverage_carries_a_gap_kind():

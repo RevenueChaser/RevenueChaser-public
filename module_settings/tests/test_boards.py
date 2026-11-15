@@ -236,3 +236,13 @@ def test_the_board_card_says_it_reads_the_stock_watch_list_from_ops_sqlite():
     assert ('<span class="ds">Stock watch list</span><span class="tbl">(watchlist_stock)</span>' in html
             and "ops.sqlite" in html)
     assert "not claimed by any dataset" not in html
+
+
+def test_ag_and_fundamentals_are_registered_with_a_funnel_reference():
+    """Their funnels already exist; the card must name the payload key and the tables the scan reads."""
+    ag = _entry("module_asymmetric_growth")
+    assert ag["funnel"] == "funnel_steps" and ag["label"] == "Asymmetric Growth"
+    assert ag["tables"] == ["equity_universe", "price_bars_daily"]
+    fund = _entry("module_fundamentals")
+    assert fund["funnel"] == "funnel_steps" and fund["label"] == "Fundamentals"
+    assert fund["tables"] == ["equity_universe", "price_bars_daily"]          # the old-store tables went (#860)

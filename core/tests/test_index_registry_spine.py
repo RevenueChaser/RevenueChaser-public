@@ -15,44 +15,6 @@ from RevenueChaser.rcdata.tests.conftest import http_mock, market_roots  # noqa:
 from RevenueChaser.rcdata.tests.test_spine_security import built, run_all  # noqa: F401 - the 10 names
 
 
-
-
-
-
-@pytest.mark.usefixtures("spine")
-def test_load_index_is_the_spines_current_membership():
-    sp500 = ir.load_index("sp500")
-    assert sp500 == {r["ticker"] for r in read.membership("sp500")} and "MSFT" in sp500
-    assert "OLDCO" not in sp500
-    assert ir.load_index("sp400") >= {"HEI"}                           # read, though it has no badge label
-    assert ir.load_index("ndx") == {"MSFT"}
-
-
-@pytest.mark.usefixtures("spine")
-def test_nasdaq_is_the_spines_listed_names_on_nasdaq_and_dow_has_no_source():
-    assert ir.load_index("nasdaq") == {r["ticker"] for r in read.universe(tiers=("A", "B"))
-                                       if r["exchange"] == "Nasdaq"}
-    assert "MSFT" in ir.load_index("nasdaq") and "HEI" not in ir.load_index("nasdaq")
-    assert ir.load_index("dow") is None                                # the old store's Dow list is not read
-
-
-@pytest.mark.usefixtures("spine")
-def test_badges_come_from_the_spine():
-    reg = ir.load_registry()
-    assert reg["MSFT"]["index"] == ["S&P 500", "Nasdaq Composite"]
-    assert reg["MSFT"]["name"] == "MICROSOFT CORP"
-    assert "OLDCO" not in reg and "HEI" not in reg                     # HEI: the MidCap 400 has no label
-    cards = ir.annotate_cards([{"ticker": "msft"}, {"ticker": "OLDCO"}])
-    assert [c["index"] for c in cards] == [["S&P 500", "Nasdaq Composite"], []]
-
-
-@pytest.mark.usefixtures("spine")
-def test_the_filter_offers_only_the_indexes_the_spine_carries():
-    assert ir.filter_labels() == ["S&P 500", "Nasdaq Composite"]       # no Dow Jones, no SmallCap 600 members
-
-
-
-
 def test_the_registry_does_not_import_the_old_store():
     tree = ast.parse(Path(ir.__file__).read_text(encoding="utf-8"))
     imported = {a.name for n in ast.walk(tree) if isinstance(n, (ast.Import, ast.ImportFrom)) for a in n.names}

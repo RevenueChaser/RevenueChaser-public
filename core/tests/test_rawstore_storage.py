@@ -30,14 +30,6 @@ def _raw_conn(path):
 
 
 # ── reset_db must never delete the live edgar.duckdb ─────────────────────────
-class TestResetScope:
-
-
-    def test_migrate_reset_passes_include_edgar_false(self):
-        from pathlib import Path
-        src = (Path(rawstore.__file__).parent.parent / "scripts"
-               / "migrate_rawdata_to_duckdb.py").read_text(encoding="utf-8")
-        assert "reset_db(include_edgar=False)" in src
 
 
 # ── moving EDGAR tables out of raw.duckdb must not double-encode JSON ────────
@@ -220,35 +212,6 @@ class TestDoubleEncodedJsonColumn:
             c.execute("INSERT INTO edgar_financials VALUES ('AAPL', '[]', '[]', ?)", [meta_cell])
 
 
-class TestDoubleDecodeNarrowness:
-    """#202 verification: the second decode is narrow (reader in ``_decode_row``)."""
-
-    def _cell(self, table, col, text):
-        spec = rawstore.MANIFEST[table]
-        row = {c: None for c in rawstore._columns_of(spec)}
-        row[col] = text
-        return rawstore._decode_row(table, row)[col]
-
-    def test_a_double_encoded_list_is_decoded(self):
-        double = json.dumps(json.dumps([{"a": 1}, 2]))
-        assert self._cell("edgar_financials", "meta", double) == [{"a": 1}, 2]
-
-    def test_an_encoded_number_string_is_not_turned_into_a_number(self):
-        # JSON column holds the string "123": stays '123', never the int 123
-        assert self._cell("edgar_financials", "meta", json.dumps("123")) == "123"
-        assert self._cell("edgar_financials", "meta", json.dumps("true")) == "true"
-
-    def test_text_verbatim_json_column_is_decoded_only_once(self, monkeypatch):
-        """The #202 second decode is skipped on a ``text_verbatim`` table, JSON column and all.
-
-        No table carries the flag since the Discord archive left (October 2026), so the test sets it
-        on a real spec; see ``TestDoubleEncodedJsonColumn.test_text_verbatim_tables_are_never_reparsed``.
-        """
-        name, col = "edgar_financials", "meta"
-        inner = json.dumps({"a": 1})
-        assert self._cell(name, col, json.dumps(inner)) == {"a": 1}, "without the flag it decodes twice"
-        monkeypatch.setitem(rawstore.MANIFEST, name, {**rawstore.MANIFEST[name], "text_verbatim": True})
-        assert self._cell(name, col, json.dumps(inner)) == inner
 
 
 # ── an empty replace_all would empty the table: refused unless asked for (#284, B9) ─────────

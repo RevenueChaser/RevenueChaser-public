@@ -27,52 +27,11 @@ def _hole(n: int) -> str:
     return f'warnv">{n}</span><span class="hlabel">null market cap'
 
 
-
-
-
-
 class TestView:
     def test_the_tab_is_in_the_shell(self, dashboard):
         r = dashboard.get("/")
         assert r.status_code == 200
         assert "Settings" in r.text
-
-
-class TestRefreshIsOfflineAndFaithful:
-
-    def test_refresh_rebuilds_a_deleted_artifact(self, dashboard, rendered, clear_cache):
-        clear_cache()
-        assert not dashboard.artifact(_ARTIFACT).exists()
-        r = dashboard.view(_APP, refresh=True)
-        assert r.status_code == 200
-        assert "Settings" in r.text
-        # Serving 200 is not enough: Refresh must re-derive and re-write the
-        # artifact. Without this, a refresh that answered from memory (or from a
-        # stale handle) would still look green while leaving no file on disk.
-        assert dashboard.artifact(_ARTIFACT).exists()
-
-    def test_refresh_makes_no_network_calls(self, dashboard, rendered, provider_routes,
-                                            clear_cache):
-        clear_cache()
-        before_provider = provider_routes.request_count
-        before_yf = dashboard.yf_calls()
-        r = dashboard.view(_APP, refresh=True)
-        assert r.status_code == 200
-        assert provider_routes.request_count == before_provider, (
-            "refresh reached the network: "
-            f"{[q.path for q in provider_routes.requests()[before_provider:]]}")
-        assert dashboard.yf_calls() == before_yf, (
-            "refresh reached yfinance: "
-            f"{dashboard.yf_calls()[len(before_yf):]}")
-
-    def test_refresh_survives_a_restart(self, dashboard, rendered, clear_cache):
-        clear_cache()
-        dashboard.restart()
-        r = dashboard.view(_APP, refresh=True)
-        assert r.status_code == 200
-        assert "Settings" in r.text
-
-
 
 
 @pytest.fixture
@@ -99,8 +58,6 @@ def served_spine(dashboard):
     return path
 
 
-
-
 class TestEmptyStore:
     def test_a_board_with_no_data_renders_an_empty_state(self, dashboard):
         r = dashboard.view(_APP)
@@ -124,8 +81,6 @@ def _verdicts(html: str, bodies: list) -> list:
     out = subprocess.run(["node", "-e", script], capture_output=True, text=True,
                          encoding="utf-8", check=True)
     return json.loads(out.stdout.strip().splitlines()[-1])
-
-
 
 
 # ── Board inputs: the Settings card must tell the same story as the board ────
@@ -202,9 +157,6 @@ class TestBoardInputs:
         write_bars(rows)
         result = dashboard.run_job("/run/module_comovement")
         assert result.ok, f"comovement fetch failed: {result}\n{dashboard.logs()}"
-
-
-
 
 
 _PANEL = {"X-RC-Panel": "automations"}

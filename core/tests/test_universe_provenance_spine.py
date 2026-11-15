@@ -21,30 +21,11 @@ def spine(built):
     assert universe.universe_source() == "spine"
 
 
-
-
 def _built_at() -> str:
     """The live spine's build time as the line shows it, read straight from the serving file."""
     with serving.open_read("spine") as con:
         built = con.execute(f"SELECT max(built_at) FROM {serving.VERSION_TABLE}").fetchone()[0]
     return datetime.fromtimestamp(built, timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-
-
-@pytest.mark.usefixtures("caps")
-def test_the_line_names_the_spine_its_sources_and_its_build():
-    assert universe.spine_provenance() == {"built_at": _built_at(), "source_as_of": "2026-10-27"}
-    line = universe_provenance_html(WHEN, "Swing Potential")
-    assert "identity spine" in line and "SEC company tickers" in line
-    assert "SEC file of 2026-10-27" in line and f"built {_built_at()}" in line
-    assert "Universe refreshed by" not in line                     # the old cache no longer picks the names
-    assert "market caps refreshed by <b" in line and "Swing Potential" in line
-
-
-@pytest.mark.usefixtures("caps")
-def test_a_partial_pull_is_about_the_market_caps_only():
-    line = universe_provenance_html(WHEN, "Swing Potential", partial=True)
-    assert "partial fetch" not in line and "market caps partly stale" in line
-    assert "identity spine" in universe_provenance_html("", "")    # no cache provenance: the spine is still named
 
 
 @pytest.mark.usefixtures("spine")

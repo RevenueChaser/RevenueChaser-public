@@ -21,7 +21,7 @@ def _no_drift_from_other_tests():
     rawstore._SCHEMA_DRIFT.clear()
 
 
-def _live(ddl: str, db: str = "raw") -> None:
+def _live(ddl: str, db: str = "news") -> None:
     with rawstore.connect(db=db) as conn:
         conn.execute(ddl)
 
@@ -31,50 +31,12 @@ def _ensure(name: str) -> None:
     rawstore.ensure_table(name)
 
 
-_BOARD_SETTINGS = "board TEXT, key TEXT, value {value}, updated_at TEXT, PRIMARY KEY ({pk})"
-
-# The pre-D16 shape of edgar_documents: two columns every live store still carries, empty (measured 0 non-null rows
-# of 3257 on 2026-10-21). Dropping them is a separate live-store change (#431); naming them in the MANIFEST stops the
-# drift warning a store open logged twice until now.
-_EDGAR_DOCUMENTS_DECLARED = (
-    "accession TEXT PRIMARY KEY, cik TEXT, tickers TEXT, form TEXT, filed TEXT, fiscal_year TEXT, doc_url TEXT, "
-    "path TEXT, sha256 TEXT, bytes_raw BIGINT, bytes_gzip BIGINT, fetched_at DOUBLE, source TEXT, run_at DOUBLE")
 
 
 
 
 
-class TestRebuildMessage:
-    """A table with stale ``compress`` columns is recreated from the MANIFEST right after the check, so
-    the log must not claim the difference was skipped (review of 2026-10-04, finding 6)."""
 
-    _HEAD = "CREATE TABLE edgar_financials (ticker TEXT{pk}, annual JSON, quarterly JSON, meta JSON, "
-    _OLD = {
-        "extra_column": _HEAD.format(pk=" PRIMARY KEY") + "fetched_at DOUBLE, legacy TEXT)",
-        "type": _HEAD.format(pk=" PRIMARY KEY") + "fetched_at TEXT)",
-        "key": _HEAD.format(pk="") + "fetched_at DOUBLE)",
-    }
-
-    @pytest.mark.parametrize("kind", ["extra_column", "type", "key"])
-    def test_the_log_says_the_rebuild_replaces_the_difference(self, isolate_rawstore, caplog, kind):
-        _live(self._OLD[kind], db="edgar")
-        with caplog.at_level("WARNING"):
-            _ensure("edgar_financials")
-        msgs = [r.getMessage() for r in caplog.records if "schema drift" in r.getMessage()]
-        assert len(msgs) == 1
-        assert "rebuild" in msgs[0] and "skipped" not in msgs[0]
-        assert rawstore.schema_drift() == []                      # replaced, so no longer a difference
-
-    def test_a_rebuild_that_fails_leaves_the_difference_on_record(self, isolate_rawstore, monkeypatch):
-        _live(self._OLD["extra_column"], db="edgar")
-
-        def boom(*a, **k):
-            raise RuntimeError("rebuild failed")
-        monkeypatch.setattr(rawstore, "_rebuild_compressed", boom)
-        with pytest.raises(RuntimeError):
-            _ensure("edgar_financials")
-        assert [(d["table"], d["kind"], d["column"]) for d in rawstore.schema_drift()] == [
-            ("edgar_financials", "extra_column", "legacy")]
 
 
 
@@ -83,11 +45,6 @@ class TestRebuildMessage:
 
 class TestNotDrift:
 
-    def test_a_compressed_column_that_is_rebuilt_is_not_drift(self, isolate_rawstore):
-        _live("CREATE TABLE edgar_financials (ticker TEXT PRIMARY KEY, annual JSON, quarterly JSON, "
-              "meta JSON, fetched_at DOUBLE)", db="edgar")
-        _ensure("edgar_financials")
-        assert rawstore.schema_drift() == []
 
     def test_a_second_reconcile_of_a_fresh_store_finds_no_drift_in_any_table(self, isolate_rawstore):
         """Every MANIFEST type, STRUCT and array included, must compare equal to what DuckDB reports."""

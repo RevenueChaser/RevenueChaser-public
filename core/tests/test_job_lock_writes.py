@@ -17,8 +17,7 @@ def test_the_two_stores_do_not_overlap():
 
 
 def test_a_tail_family_is_matched_by_its_prefix():
-    assert job_lock.writes_of("nightly_inputs_spx") == (job_lock.STORE,)
-    assert job_lock.writes_of("board_fetch_comovement") == (job_lock.STORE,)
+    assert job_lock.writes_of("rcdata_fetch_sec/companyfacts") == ()
 
 
 def test_an_undeclared_name_shares_every_store():
@@ -27,12 +26,11 @@ def test_an_undeclared_name_shares_every_store():
     assert job_lock.shares_files("a_new_writer", "relatedness")
 
 
-def test_the_builder_and_an_old_store_job_do_not_share_a_file():
+def test_the_builder_and_a_board_store_job_do_not_share_a_file():
     assert not job_lock.shares_files("rcdata_build", "relatedness")
-    assert not job_lock.shares_files("rcdata_build", "nightly_inputs_spx")
 
 
-def test_two_old_store_jobs_still_share_one():
+def test_two_board_store_jobs_still_share_one():
     assert job_lock.shares_files("relatedness", "edgar_sync")
 
 

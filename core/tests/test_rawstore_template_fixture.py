@@ -61,8 +61,7 @@ def _changed(value):
     return value + "-probe"
 
 
-@pytest.mark.parametrize("name", ["_SCHEMA_VERSION", "MANIFEST", "CHANGES", "_RENAMES", "_MERGES", "_VIEWS",
-                                  "_KEY_REBUILDS", "_PRICE_MOVES", "_EDGAR_TABLES"])
+@pytest.mark.parametrize("name", ["_SCHEMA_VERSION", "MANIFEST", "CHANGES"])
 def test_a_change_to_any_schema_input_moves_the_fingerprint(name, monkeypatch):
     """Each input the copy is checked against; a change to one sends the test to the apply (see the MANIFEST test)."""
     from RevenueChaser.conftest import _schema_fingerprint

@@ -390,6 +390,6 @@ def tables_claimed() -> frozenset[str]:
 def unclaimed(manifest_keys: Iterable[str]) -> frozenset[str]:
     """Keys in ``manifest_keys`` that no dataset claims, minus ``UNCLAIMED_ALLOWLIST``.
 
-    The allowlist is empty. A name here is a MANIFEST table the registry forgot.
+    The allowlist holds only ``store_schema``. Any other name here is a MANIFEST table the registry forgot.
     """
     return frozenset(manifest_keys) - tables_claimed() - UNCLAIMED_ALLOWLIST
