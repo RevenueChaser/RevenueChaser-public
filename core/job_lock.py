@@ -6,7 +6,8 @@ its times. The names in use: ``"edgar_sync"`` (``module_value_chain/reslice.py``
 (``module_relatedness/engine.py``), ``"sec_13f"`` (the 13F jobs, ``app/runners.py``), ``"forecast_outcomes"``
 (``scripts/forecast_outcomes.py``) and ``"forecast_baselines"`` (``scripts/forecast_baselines.py``, #25 HR-1);
 ``"rcdata_build"`` is the market-store builder (``python -m RevenueChaser.rcdata.build``,
-#206), held for its whole run so a second builder is refused. The old store's writers (daily bars, index lists,
+#206), held for its whole run so a second builder is refused; ``"sec_reads_ask"`` is the SEC reader tool's one asker
+(``rcdata/build/sec_reads/reads.py``), held while a run asks a model, whoever started the run. The old store's writers (daily bars, index lists,
 identity, the universe refresh, the single-board Fetch lock and the nightly inputs) went with #860.
 
 The lock is a file in the store dir, and **the kernel owns its liveness**: ``acquire()`` opens it and takes a
@@ -322,6 +323,9 @@ WRITES: dict[str, tuple[str, ...]] = {
     "forecast_outcomes": (STORE,),
     "forecast_baselines": (STORE,),
     "rcdata_build": (MARKET,),
+    # The SEC reader tool's asking: raw files and Parquet partitions only, like a fetch-only run, so it holds off
+    # nothing but a second asker (it is taken inside the builder's own run too, which holds ``rcdata_build``).
+    "sec_reads_ask": (),
 }
 #: The families whose name carries a tail — one per step, one per board. Matched by prefix.
 WRITES_PREFIX: tuple[tuple[str, tuple[str, ...]], ...] = (

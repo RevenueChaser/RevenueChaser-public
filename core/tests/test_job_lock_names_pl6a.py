@@ -19,6 +19,7 @@ NAMES = (
     "forecast_outcomes",       # scripts/forecast_outcomes.py (#26, PL6-a)
     "forecast_baselines",      # scripts/forecast_baselines.py (#25 HR-1)
     "rcdata_build",            # rcdata/build/__main__.py: the market-store builder (#206)
+    "sec_reads_ask",           # rcdata/build/sec_reads/reads.py: one asker at a time (#894)
 )
 
 
