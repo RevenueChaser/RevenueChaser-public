@@ -235,3 +235,63 @@ def test_a_reply_cut_short_counts_no_attempt_and_never_shrinks_a_partial(http_mo
     run()
     held = list(reads.held("test.products").values())
     assert [(r["status"], r["attempts"], r["missing_chunks"]) for r in held] == [("partial", 1, "2")]
+
+
+# ── Serving version 2 (plan 2026-11-15_1722, step 1): the four gaps and the failure log ─────────────────────────
+
+def test_a_changed_context_asks_nothing_again_when_the_staleness_text_is_the_same(http_mock):
+    http_mock.add("/chat/completions", chat('{"products": ["x"]}'))
+
+    def ask_with(context: str):
+        questions.QUESTIONS.clear()
+        questions.register(questions.Question(
+            id="test.products", owner="test", system="s", prompt_version="t1", scope=lambda: ["789019"],
+            inputs=lambda wanted: {"789019": questions.Input("acc", "d.htm", date(2026, 2, 1),
+                                                             f"Sector: {context}\n\nMicrosoft makes software.",
+                                                             hash_text="Microsoft makes software.")},
+            parse=parse))
+        run()
+
+    ask_with("Technology")
+    ask_with("Communication Services")                     # reclassified: other bytes sent, the same staleness text
+    assert len(http_mock.requests) == 1
+    assert rows("SELECT count(*) FROM read_answer") == [(1,)]
+
+
+def test_an_answer_by_another_writer_is_current_and_is_what_a_board_reads(http_mock):
+    http_mock.add("/chat/completions", chat('{"products": ["Azure"]}'))
+    question(ciks=("789019",), provider="deepseek")
+    run()
+    questions.QUESTIONS.clear()
+    question(ciks=("789019",))                             # the writer goes back to EVREN: nothing is asked again
+    run()
+    assert len(http_mock.requests) == 1
+    assert [(r["provider"], r["answer"]) for r in read.sec_reads(["789019"], "test.products")] == [
+        ("deepseek", {"products": ["Azure"]})]
+    assert read.sec_reads(["789019"], "test.products", provider="evren") == []
+
+
+def test_an_answer_carries_what_was_read_and_what_it_cost(http_mock):
+    reply = {**chat('{"products": ["a"]}'), "usage": {"prompt_tokens": 40, "completion_tokens": 7}}
+    http_mock.add("/chat/completions", reply)
+    questions.register(questions.Question(
+        id="test.products", owner="test", system="s", prompt_version="t1", scope=lambda: ["789019"],
+        inputs=lambda wanted: {"789019": questions.Input("acc", "d.htm", date(2026, 2, 1), TEXT["789019"],
+                                                         kind="section:business", form="10-K")},
+        parse=parse, chunk_chars=30))                      # the text is 44 characters: two calls
+    run()
+    assert rows("SELECT form, input_kind, calls, tokens_in, tokens_out, error FROM read_answer") == [
+        ("10-K", "section:business", 2, 80, 14, None)]
+
+
+def test_every_call_is_logged_with_how_it_failed(http_mock, monkeypatch):
+    logged = []
+    monkeypatch.setattr(asker.ops, "log_call", lambda provider, what=None, **kw: logged.append((what, kw["result"])))
+    calls = iter([(400, "context too long", {}), (200, json.dumps(chat('{"products": []}')), {}),
+                  (200, json.dumps(chat('{"products": ["a"]}')), {})])
+    http_mock.add("/chat/completions", lambda req: next(calls))
+    question(ciks=("789019",), chunk_chars=15)             # three chunks: an error, an unusable reply, an answer
+    run()
+    assert [w for w, _ in logged] == [f"test.products cik 789019 chunk {i}/3" for i in (1, 2, 3)]
+    assert "EvrenError: EVREN HTTP 400: context too long" in logged[0][1] and [r for _, r in logged[1:]] == ["unusable reply", "ok"]
+    assert rows("SELECT status, missing_chunks, error FROM read_answer") == [("partial", "0,1", "unusable reply")]

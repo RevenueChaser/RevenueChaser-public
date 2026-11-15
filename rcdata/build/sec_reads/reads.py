@@ -46,7 +46,10 @@ KEY = ["question", "prompt_version", "cik", "accession", "document", "input_hash
 SCHEMA = [("question", "TEXT"), ("prompt_version", "TEXT"), ("cik", "TEXT"), ("accession", "TEXT"),
           ("document", "TEXT"), ("filing_date", "DATE"), ("input_hash", "TEXT"), ("provider", "TEXT"),
           ("model", "TEXT"), ("status", "TEXT"), ("attempts", "INTEGER"), ("answer", "TEXT"), ("raw", "TEXT"),
-          ("missing_chunks", "TEXT"), ("rules_version", "TEXT"), ("fetched_at", "DOUBLE"), ("run_id", "TEXT")]
+          ("missing_chunks", "TEXT"), ("rules_version", "TEXT"), ("fetched_at", "DOUBLE"), ("run_id", "TEXT"),
+          # Serving version 2: what was read, what it cost, and how the last unusable call failed.
+          ("form", "TEXT"), ("input_kind", "TEXT"), ("calls", "INTEGER"), ("tokens_in", "INTEGER"),
+          ("tokens_out", "INTEGER"), ("error", "TEXT")]
 SCHEMAS = {TABLE: SCHEMA}
 STATUSES = (asker.OK, asker.PARTIAL, asker.EMPTY, asker.NO_TEXT)
 
@@ -61,6 +64,13 @@ def raw_path(run_id: str) -> Path:
 
 def _key(row: dict) -> tuple:
     return tuple(row[k] for k in KEY)
+
+
+def _text_key(key: tuple) -> tuple:
+    """``key`` without the filing and the writer: (question, prompt version, company, input hash). An ``ok`` answer
+    on it is current whoever wrote it and whichever accession carried the text (avo, 11 Nov 2026: a profile stays
+    current when the writer changes), so changing a question's writer asks nothing again."""
+    return key[0], key[1], key[2], key[5]
 
 
 def _job_key(j: asker.Job) -> tuple:
@@ -90,6 +100,7 @@ def _plan(q: Question, ctx: base.RunContext) -> tuple[list[asker.Job], dict[tupl
         return [], {}, []
     inputs = q.inputs(ciks)
     have = held(q.id)
+    answered = {_text_key(k) for k, r in have.items() if r["status"] == asker.OK}
     jobs, prior, no_text = [], {}, []
     for cik in ciks:
         inp = inputs.get(cik)
@@ -100,9 +111,9 @@ def _plan(q: Question, ctx: base.RunContext) -> tuple[list[asker.Job], dict[tupl
                 no_text.append({**row, "status": asker.NO_TEXT, "attempts": 0, "fetched_at": time.time(),
                                 "run_id": ctx.run_id})
             continue
-        job = asker.Job(q, cik, inp, q.input_hash(inp.text))
+        job = asker.Job(q, cik, inp, q.input_hash(inp))
         old = have.get(_job_key(job))
-        if old is not None and (old["status"] == asker.OK or old["attempts"] >= MAX_ATTEMPTS):
+        if _text_key(_job_key(job)) in answered or (old is not None and old["attempts"] >= MAX_ATTEMPTS):
             continue
         jobs.append(job)
         prior[_job_key(job)] = old
@@ -124,7 +135,10 @@ def row_of(ctx: base.RunContext, reply: asker.Reply, old: dict | None) -> dict:
            "status": reply.status, "attempts": (old["attempts"] if old else 0) + (0 if reply.stop else 1),
            "answer": None if reply.answer is None else json.dumps(reply.answer, sort_keys=True),
            "raw": json.dumps(reply.raws), "missing_chunks": ",".join(map(str, reply.missing)),
-           "rules_version": j.input.rules_version, "fetched_at": time.time(), "run_id": ctx.run_id}
+           "rules_version": j.input.rules_version, "fetched_at": time.time(), "run_id": ctx.run_id,
+           "form": j.input.form, "input_kind": j.input.kind, "error": reply.error or None,
+           # What the key has cost in all, over every attempt.
+           **{c: ((old or {}).get(c) or 0) + getattr(reply, c) for c in ("calls", "tokens_in", "tokens_out")}}
     if old is not None and old["status"] == asker.PARTIAL and len(reply.missing) >= _count(old["missing_chunks"]):
         row.update({c: old[c] for c in ("status", "answer", "raw", "missing_chunks")})
     return row

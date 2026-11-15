@@ -20,11 +20,13 @@ next run, so a queued pass never holds the builder lock for hours. A long read r
 from __future__ import annotations
 
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 
 from ....core import job_lock, offpeak
 from ....core.providers import deepseek, evren
+from ... import ops
 from .. import base
 from .questions import Input, Question
 
@@ -57,6 +59,12 @@ class Reply:
     missing: list[int] = field(default_factory=list)
     #: The error that stopped the run during this company's chunks: the chunks before it are still stored.
     stop: BaseException | None = None
+    #: Calls made and the provider's own token counts, summed over the chunks.
+    calls: int = 0
+    tokens_in: int = 0
+    tokens_out: int = 0
+    #: Why the last unusable chunk was unusable (the error's name and words, or ``unusable reply``); "" when none.
+    error: str = ""
 
 
 def busy_problem() -> str | None:
@@ -65,6 +73,11 @@ def busy_problem() -> str | None:
     if held:
         return f"a Relatedness model job runs (pid {held[0]}): one model job at a time"
     return None
+
+
+def _why(e: BaseException) -> str:
+    """An error as the request log keeps it: its class and its own words, cut short."""
+    return f"{type(e).__name__}: {e}"[:300]
 
 
 def _parse(q: Question, reply: str) -> dict | None:
@@ -89,33 +102,51 @@ def _ask_one(ctx: base.RunContext, job: Job, started: float, lock: threading.Loc
     raws: list[str] = []
     missing: list[int] = []
     chunks = q.chunks(job.input.text)
+    sent = {"calls": 0, "tokens_in": 0, "tokens_out": 0, "error": ""}
+
+    def log(i: int, result: str, t0: float) -> None:
+        """One request-log row per call (avo, 15 Nov 2026: every failure is kept with how it failed)."""
+        ops.log_call(q.provider, f"{q.id} cik {job.cik} chunk {i + 1}/{len(chunks)}", dataset=ctx.dataset,
+                     result=result, ms=(time.monotonic() - t0) * 1000)
+        if result != OK:
+            sent["error"] = result
+
     for i, chunk in enumerate(chunks):
-        failed = 0
+        failed, usage, t0 = 0, {}, time.monotonic()
         try:
             with lock:
                 ctx.check_cap(q.provider)
             reply = client.complete(q.system, chunk, model=q.writer_model, max_tokens=q.max_tokens,
-                                    use_cache=False, cik=job.cik, prompt_version=q.prompt_version)
+                                    use_cache=False, cik=job.cik, prompt_version=q.prompt_version, usage=usage)
         except (base.Paused, base.CapReached, *_STOP) as e:
             if not isinstance(e, (base.Paused, base.CapReached)):
                 with lock:
-                    ctx.count(q.provider, calls=1, failures=1)
+                    ctx.count(q.provider, calls=1, failures=1, logged=True)
+                    log(i, _why(e), t0)
+                sent["calls"] += 1
             if not parts:
                 raise
-            return Reply(job, PARTIAL, q.merge(parts), raws, missing + list(range(i, len(chunks))), stop=e)
-        except deepseek.DeepSeekError:          # EVREN's errors are its subclasses: no content, a bad status
+            return Reply(job, PARTIAL, q.merge(parts), raws, missing + list(range(i, len(chunks))), stop=e, **sent)
+        except deepseek.DeepSeekError as e:     # EVREN's errors are its subclasses: no content, a bad status
             reply, failed = "", 1
-        with lock:
-            ctx.count(q.provider, calls=1, failures=failed)
+            with lock:
+                log(i, _why(e), t0)
+        sent["calls"] += 1
+        sent["tokens_in"] += int(usage.get("prompt_tokens") or 0)
+        sent["tokens_out"] += int(usage.get("completion_tokens") or 0)
         raws.append(reply)
         parsed = _parse(q, reply) if reply else None
+        with lock:
+            ctx.count(q.provider, calls=1, failures=failed, logged=True)
+            if not failed:
+                log(i, OK if parsed is not None else "unusable reply", t0)
         if parsed is None:
             missing.append(i)
         else:
             parts.append(parsed)
     if not parts:
-        return Reply(job, EMPTY, None, raws, missing)
-    return Reply(job, PARTIAL if missing else OK, q.merge(parts), raws, missing)
+        return Reply(job, EMPTY, None, raws, missing, **sent)
+    return Reply(job, PARTIAL if missing else OK, q.merge(parts), raws, missing, **sent)
 
 
 def ask(ctx: base.RunContext, jobs: list[Job]) -> tuple[list[Reply], BaseException | None, int]:

@@ -208,7 +208,7 @@ def complete(system: str, user: str, *, thinking: bool = False,
              ticker: str | None = None, cik=None,
              prompt_version: str | None = None,
              validate: Callable[[str], bool] | None = None,
-             model: str | None = None) -> str:
+             model: str | None = None, usage: dict | None = None) -> str:
     """One chat completion. Cache first, then the off-peak gate, then HTTP.
 
     In thinking mode ``temperature`` is omitted (the API ignores it) and
@@ -281,7 +281,7 @@ def complete(system: str, user: str, *, thinking: bool = False,
             if r.status_code >= 400:
                 raise DeepSeekError(f"DeepSeek HTTP {r.status_code}: {r.text[:300]}")
             return _finish(r, key, use_cache, validate, effort, thinking, ticker, cik,
-                           prompt_version, model)
+                           prompt_version, model, usage)
         raise DeepSeekError("DeepSeek request failed")  # pragma: no cover - loop always returns or raises
     finally:
         if own:
@@ -289,7 +289,7 @@ def complete(system: str, user: str, *, thinking: bool = False,
 
 
 def _finish(r, key: str, use_cache: bool, validate, effort, thinking: bool, ticker, cik,
-            prompt_version, model: str | None = None) -> str:
+            prompt_version, model: str | None = None, usage: dict | None = None) -> str:
     """Turn a 2xx reply into the message content (and cache it when the caller accepts it)."""
     try:
         data = r.json()
@@ -303,6 +303,8 @@ def _finish(r, key: str, use_cache: bool, validate, effort, thinking: bool, tick
     content = message.get("content") if isinstance(message, dict) else None
     if not content:
         raise DeepSeekError(f"DeepSeek returned no content: {str(data)[:300]}")
+    if usage is not None and isinstance(data.get("usage"), dict):
+        usage.update(data["usage"])      # the caller's own count (the SEC reader tool stores tokens per answer)
     cacheable = use_cache
     if cacheable and validate is not None:
         try:

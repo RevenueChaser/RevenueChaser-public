@@ -1035,7 +1035,7 @@ file, `<MARKET_DIR>/<kind>.duckdb`. The identity spine, `spine` (serving schema 
 "The identity spine" below; the prices store, `prices` (serving schema version `1`), under "The prices store"
 below; the ownership store, `ownership` (serving schema version `4`), under "The ownership store" below; the
 fundamentals layer, `fundamentals` (serving schema version `3`), under "Fundamentals" after it; and the options
-data, `options` (serving schema version `3`), under "The options data" after it; and the SEC form reader, `sec_forms` (serving schema version `1`), under "The SEC form reader"; and the SEC reader tool, `sec_reads` (serving schema version `1`), under "The SEC reader tool" last. The eight numbers live in `rcdata/serving_versions.py`, outside the builder's rules fingerprint
+data, `options` (serving schema version `3`), under "The options data" after it; and the SEC form reader, `sec_forms` (serving schema version `1`), under "The SEC form reader"; and the SEC reader tool, `sec_reads` (serving schema version `2`), under "The SEC reader tool" last. The eight numbers live in `rcdata/serving_versions.py`, outside the builder's rules fingerprint
 (`rcdata/build/dirty.py`), so a bump makes only its own kind's next build whole (#649). The market data,
 `market` (serving schema version `4`): `serving_schema_version` (one row: kind, version, build time, build id, build mode),
 `spx_gamma_expiry_strike` (key session date, expiry, strike; every numeric field UW serves, typed DOUBLE; provenance
@@ -2056,8 +2056,9 @@ months old by design.
 
 ### The SEC reader tool (`sec_reads.duckdb`)
 
-One dataset, `sec/reads`, and one served table (`sec_reads` serving schema version `1`). Plan:
-claude-coordinator `plans/2026-11-15_1119_sec-reader-tool-plan.md`. `sec/forms` **cuts** a filing; this layer
+One dataset, `sec/reads`, and one served table (`sec_reads` serving schema version `2`). Plans:
+claude-coordinator `plans/2026-11-15_1119_sec-reader-tool-plan.md` and
+`plans/2026-11-15_1722_revenuechaser_sec-reading-service-board-needs-plan.md`. `sec/forms` **cuts** a filing; this layer
 **asks** a model about it, for every board, so no board keeps its own prompt pool, caps or answers table.
 
 **A question is declared once** (`rcdata/build/sec_reads/questions.py`, `register`): its id and owner, the
@@ -2076,8 +2077,14 @@ the builder lock for hours; a long read runs fetch-only (`--no-duckdb`) under it
 **Served table.** `read_answer` — one row per (question, prompt version, company, filing, document, input hash,
 provider, model): `filing_date`, `status` (`ok`, `partial`, `empty`, `no_text`), `attempts`, `answer` (the parsed
 JSON), `raw` (the replies, one per chunk), `missing_chunks`, `rules_version` (the cutter version of the text), and
-`fetched_at` (when it was asked) and `run_id`. The input hash is the hash of the exact bytes sent, so the same text
-and prompt are never asked twice. An unusable reply is counted on its key; after three the company waits for a new
+`fetched_at` (when it was asked) and `run_id`; since version 2 also `form` and `input_kind` (what was read, so a
+fallback shows), `calls`, `tokens_in` and `tokens_out` (what the key has cost over every attempt) and `error` (how
+the last unusable call failed). The input hash is the hash of the system prompt and the question's staleness text:
+the text sent, or `Input.hash_text` when a question leaves its context lines out of it, so a changed context does
+not pay for the answer again. An `ok` answer on (question, prompt version, company, input hash) is current
+**whoever wrote it**: changing a question's writer asks nothing again, and the reader serves every writer's rows,
+the configured writer's first where two answered one filing. Every call writes one row to the request log (the
+question, the company, the chunk, and `ok`, `unusable reply` or the error with its words). An unusable reply is counted on its key; after three the company waits for a new
 filing or prompt, and a `partial` answer is never replaced by an `empty` one. Parquet: one partition per question,
 `parquet/sec/reads/question=<id>/answers.parquet`, plus one raw file per run under `raw/sec/reads/`; the Parquet
 tree is the durable copy of the answers.

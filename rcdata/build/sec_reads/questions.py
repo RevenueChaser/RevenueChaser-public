@@ -31,6 +31,14 @@ class Input:
     text: str
     #: The cutter version of the text (``filing_section.rules_version``), so a re-cut shows on the answer.
     rules_version: str = ""
+    #: What decides staleness when it is not ``text`` itself: the text without its context lines, so a reclassified
+    #: sector or a re-extracted customer list does not pay for the answer again (the Relatedness rule,
+    #: ``module_relatedness.profiles.input_hash``).
+    hash_text: str | None = None
+    #: What was read (``section:business``, ``whole:120000``, ``note:DebtDisclosureTextBlock``) and the filing's form,
+    #: so a fallback is visible on the answer.
+    kind: str = ""
+    form: str = ""
 
 
 def _one(parts: list[dict]) -> dict:
@@ -68,10 +76,11 @@ class Question:
         n = max(1, self.chunk_chars)
         return [self.user(text[i:i + n]) for i in range(0, len(text), n)] or [self.user("")]
 
-    def input_hash(self, text: str) -> str:
-        """The hash of what is sent (system prompt and every chunk): the same bytes, the same hash, no new call."""
+    def input_hash(self, inp: Input) -> str:
+        """The staleness hash: the system prompt and every chunk of ``inp.hash_text`` (of ``inp.text``, what is
+        sent, when it names none). The same hash, no new call."""
         h = hashlib.sha256(self.system.encode("utf-8"))
-        for chunk in self.chunks(text):
+        for chunk in self.chunks(inp.text if inp.hash_text is None else inp.hash_text):
             h.update(b"\x00" + chunk.encode("utf-8"))
         return h.hexdigest()[:32]
 
