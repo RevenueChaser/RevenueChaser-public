@@ -305,3 +305,25 @@ def test_a_prompt_version_bump_misses_the_llm_cache(rawstore_tmp_db, monkeypatch
 
 
 
+
+
+def test_an_evren_pool_never_opens_more_than_the_account_allows(rawstore_tmp_db, monkeypatch):
+    """EVREN refuses a 5th concurrent request (HTTP 429, 15 Nov 2026): the pool is capped at evren.MAX_WORKERS."""
+    from RevenueChaser.core.providers import evren
+    _one_group_per_ticker(monkeypatch)
+    import concurrent.futures
+    seen = {}
+    real_pool = concurrent.futures.ThreadPoolExecutor
+
+    def pool(*a, **k):
+        seen["max_workers"] = k.get("max_workers")
+        return real_pool(*a, **k)
+
+    def auth(*a, **k):
+        raise deepseek.DeepSeekAuthError("EVREN rejected the API key (HTTP 401)")
+
+    monkeypatch.setattr(concurrent.futures, "ThreadPoolExecutor", pool)   # engine imports it at call time
+    monkeypatch.setattr(engine.profiles_mod, "profile_for", auth)
+    with pytest.raises(engine.RunStopped):
+        engine.build_profiles([f"T{i}" for i in range(8)], use_llm=True, workers=8, provider="evren")
+    assert seen["max_workers"] == evren.MAX_WORKERS == 4

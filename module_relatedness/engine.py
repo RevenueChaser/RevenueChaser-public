@@ -788,7 +788,10 @@ def build_profiles(tickers: list[str], use_llm: bool = True,
 
     if todo:
         # LLM workers are a separate pool from the SEC pool (sec_edgar._throttle).
-        with ThreadPoolExecutor(max_workers=workers or config.LLM_WORKERS, **opens.pool_kwargs()) as ex:
+        n_workers = workers or config.LLM_WORKERS
+        if provider == "evren":
+            n_workers = min(n_workers, evren.MAX_WORKERS)
+        with ThreadPoolExecutor(max_workers=n_workers, **opens.pool_kwargs()) as ex:
             futs = [ex.submit(_work, it) for it in todo.items()]
             for f in as_completed(futs):
                 try:
