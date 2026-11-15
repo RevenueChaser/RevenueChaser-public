@@ -159,7 +159,31 @@ class WrdsFund:
     def snapshot_file(self, as_of: str) -> Path:
         return common.parquet_dir(self.name) / f"snapshot={as_of}" / f"{self.table}.parquet"
 
+    def held(self, as_of: date) -> list[Path]:
+        """The raw files of the newest snapshot asked within ``SNAPSHOT_DAYS`` before ``as_of`` and not typed yet
+        (every part's, with its sidecar), or []: a held answer is typed again rather than asked again (#503)."""
+        root = common.raw_dir(self.name)
+        typed = set(self.snapshots())
+        for folder in sorted(root.iterdir() if root.is_dir() else [], reverse=True):
+            try:
+                day = date.fromisoformat(folder.name)
+            except ValueError:
+                continue
+            if not 0 <= (as_of - day).days < SNAPSHOT_DAYS or folder.name in typed:
+                continue
+            raws = [self.raw_path(day, *part) for part in self._parts()]
+            if all(r.exists() and common.meta_path(r).exists() for r in raws):
+                return raws
+        return []
+
+    def _parts(self) -> list[tuple]:
+        return [()]
+
     def fetch(self, ctx: base.RunContext, as_of: date) -> list[Path]:
+        held = self.held(as_of)
+        if held:
+            ctx.notes.append(f"raw snapshot of {held[0].parent.name} typed again, nothing asked (#503)")
+            return held
         snaps = self.snapshots()
         if snaps and (as_of - date.fromisoformat(snaps[-1])).days < SNAPSHOT_DAYS \
                 and not self.raw_path(as_of).exists():
@@ -282,7 +306,8 @@ class WrdsFund:
         for label, field, item, tolerance in (
                 ("revenue", "revenue", f"revt{sfx}", None), ("net income", "net_income", f"ni{sfx}", None),
                 ("diluted EPS", "eps_diluted", f"epsfx{sfx}", EPS_TOLERANCE)):
-            n, ok = agreement(con, self.staging, item, field, period_type, tolerance)
+            n, ok = agreement(con, self.staging, item, field, period_type, tolerance,
+                              first_reported=self.table == "funda")
             parts.append(f"{label} {ok} of {n}")
         note = f"WRDS {self.table} vs the SEC: {', '.join(parts)} agree"
         snaps = self.snapshots()
@@ -300,9 +325,12 @@ def _links() -> str:
 
 
 def agreement(con: duckdb.DuckDBPyConnection, staging: str, item: str, field: str, period_type: str,
-              eps_tolerance: float | None) -> tuple[int, int]:
+              eps_tolerance: float | None, first_reported: bool = False) -> tuple[int, int]:
     """``(compared, agreeing)``: the periods where Compustat's ``item`` and the SEC's ``field`` both have a value
-    (period ends within ``PERIOD_DAYS``). Money in millions at Compustat; EPS as is."""
+    (period ends within ``PERIOD_DAYS``). Money in millions at Compustat; EPS as is. ``first_reported``: compare the
+    value the year's own report first gave (``first_value``), which ``funda`` keeps where the SEC serves a later
+    restatement or split-adjusted figure (#277: 11 of 59 EPS years, 3 net income, 4 revenue on the 29 Oct sample)."""
+    value = "coalesce(first_value, value)" if first_reported else "value"
     if eps_tolerance is None:
         ok = (f"abs(f.value - w.v * {MILLION}) <= {MONEY_TOLERANCE} * "
               f"greatest(abs(f.value), abs(w.v * {MILLION}))")
@@ -311,7 +339,7 @@ def agreement(con: duckdb.DuckDBPyConnection, staging: str, item: str, field: st
     n, agree = con.execute(f"""
         WITH w AS (SELECT c.cik, s.datadate, s."{item}" AS v FROM {staging} s JOIN {_links()} c ON c.gvkey = s.gvkey
                    WHERE s."{item}" IS NOT NULL),
-             f AS (SELECT cik, period_end, value FROM fundamental_fact
+             f AS (SELECT cik, period_end, {value} AS value FROM fundamental_fact
                    WHERE field = '{field}' AND period_type = '{period_type}' AND NOT preliminary)
         SELECT count(*), count(*) FILTER (WHERE {ok})
         FROM w JOIN f ON f.cik = w.cik AND abs(date_diff('day', f.period_end, w.datadate)) <= {PERIOD_DAYS}
@@ -350,6 +378,9 @@ class WrdsSegments(WrdsFund):
 
     def snapshot_file(self, as_of: str, part: str = "wrds_segmerged") -> Path:
         return common.parquet_dir(self.name) / f"snapshot={as_of}" / f"{part}.parquet"
+
+    def _parts(self) -> list[tuple]:
+        return [(p,) for p in self.PARTS]
 
     def snapshots(self) -> list[str]:
         folder = common.parquet_dir(self.name)

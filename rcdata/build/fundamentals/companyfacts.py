@@ -34,7 +34,7 @@ import duckdb
 from ....core import calendar
 from .. import base, cik_history
 from .. import dirty as dirty_set
-from . import KIND, common, facts, sec_index
+from . import KIND, common, facts, fx_rates, sec_index
 
 NAME = "sec/companyfacts"
 NEW_PER_RUN = 9000
@@ -225,9 +225,10 @@ class CompanyFacts:
         out = []
         dropped = 0
         failed = []
+        fx = fx_rates.held_rates() if newest else {}
         for cik, raw in sorted(newest.items()):
             try:
-                dropped += self._type_company(cik, raw, out)
+                dropped += self._type_company(cik, raw, out, fx)
             except Exception as e:  # noqa: BLE001 - one company's unreadable raw must not stop the others
                 # A raw the typing cannot read (a truncated or half-written file, a shape the rules refuse) is
                 # returned by ``_untyped`` every run: without this guard that one company would stop every later
@@ -241,10 +242,10 @@ class CompanyFacts:
         return out
 
     @staticmethod
-    def _type_company(cik: str, raw: Path, out: list[Path]) -> int:
+    def _type_company(cik: str, raw: Path, out: list[Path], fx: dict | None = None) -> int:
         """Write one company's two Parquet files from ``raw``; the number of values without an accession."""
         meta = base.read_raw_json(common.meta_path(raw))
-        rows, company, counts = facts.fact_rows(base.read_raw_json(raw), cik)
+        rows, company, counts = facts.fact_rows(base.read_raw_json(raw), cik, fx)
         stamps = {"preliminary": False, "source": facts.SOURCE, "source_as_of": date.fromisoformat(meta["as_of"]),
                   "fetched_at": float(meta["fetched_at"]), "run_id": meta["run_id"]}
         folder = common.parquet_dir(NAME) / f"cik={cik}"

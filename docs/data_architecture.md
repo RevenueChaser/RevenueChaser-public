@@ -1820,7 +1820,8 @@ wrds/segments` in a foreground terminal on the server. Each monthly `fundq` / `f
 one before: every value that changed for a period both hold is a `fundamental_revision` row (a restatement, or a
 correction at Compustat; a new period is not one). The check notes count revenue, net income and diluted EPS that
 agree with the SEC's facts (Compustat's millions times a million, within 0.5%, EPS within a cent, period ends within
-7 days). The note of each
+7 days). `funda` is compared with the value the year's own report first gave (`first_value`), because Compustat
+keeps that one where the SEC serves a later restatement or split-adjusted figure (#277). The note of each
 WRDS dataset's newest run is its card's WRDS difference slot on Settings (`docs/data_health.md`). Compustat segments
 are served beside the annual report's inline XBRL ones, each row with its `source`; a Compustat customer's share is
 its sales over the SEC's annual revenue of that year, NULL when there is none or the ratio is above 1. The first

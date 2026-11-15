@@ -38,7 +38,7 @@ from typing import Any, Callable
 
 import pandas as pd
 
-from RevenueChaser.core import calendar, earnings_dates, fiscal_year, funnel, job_control, ledger
+from RevenueChaser.core import calendar, earnings_dates, fiscal_year, funnel, job_control, ledger, price_hygiene
 from RevenueChaser.core import universe as _universe
 from RevenueChaser.core.config import to_float
 from RevenueChaser.core.gics_map import UNCLASSIFIED
@@ -423,6 +423,7 @@ def run_screen(*, board: str, refreshed_by: str, cfg: Any,
     drops: list[str] = []
     dropped: dict[str, list[str]] = {}      # reason -> tickers, for the funnel (C16)
     stale = stale_names([r.get("ticker") for r in filtered], bars_reference_session())   # S1 (#434 review)
+    flagged: dict[str, str] = {}            # ticker -> price-hygiene reason (#116)
     with ThreadPoolExecutor(max_workers=WORKERS, **opens.pool_kwargs()) as ex:
         # S3 (#434 review): D01 is read once per chunk of names, both bases from that read, not per name.
         for i in range(0, len(filtered), BARS_CHUNK):
@@ -447,6 +448,9 @@ def run_screen(*, board: str, refreshed_by: str, cfg: Any,
                     data_short += 1
                     dropped.setdefault("stale_bars", []).append(r.get("ticker"))
                     continue
+                flag = price_hygiene.evaluate(*preloaded[t]) if t in preloaded else None
+                if flag:
+                    flagged[t] = flag       # #116, flag only: the name is still scored
                 fut = ex.submit(_score, compute_row, t, preloaded.get(t), earnings_dates.with_stored_date(r, stored_earnings),
                                 spy_df, no_fetch, spine, mine)
                 futs[fut] = (r, mine)
@@ -490,6 +494,8 @@ def run_screen(*, board: str, refreshed_by: str, cfg: Any,
         # Only the SPY fallback (``load_ohlc``) can refuse a short refetch now; D01 bars never do (Swing review 8).
         "spy_short_refetch_refused": bool(getattr(spy_df, "attrs", {}).get("short_refetch_refused")),
         "dropped": count_drops(drops),
+        # #116, flag only: reason -> the flagged names, scored or not (nothing is dropped for it yet).
+        "price_flags": {k: sorted(t for t, v in flagged.items() if v == k) for k in sorted(set(flagged.values()))},
         "universe_generated_at": u_stats.get("universe_generated_at"),
         "universe_refreshed_by": u_stats.get("universe_refreshed_by"),
         "universe_partial": bool(u_stats.get("partial")),

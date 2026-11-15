@@ -339,13 +339,12 @@ CONCEPTS = {
     "debt_combined_total": (["DebtLongtermAndShorttermCombinedAmount"], "USD"),
     "unsecured_debt": (["UnsecuredDebt"], "USD"),
     "debt_instrument_carrying_amount": (["DebtInstrumentCarryingAmount"], "USD"),
-    # Three current-debt spellings ``facts.FALLBACK_CURRENT_DEBT`` does not carry (it has ``line_of_credit_current``,
-    # ``loans_payable_current``, ``senior_notes_current`` and ``notes_payable_current``). Measured 13 Nov 2026
+    # Three current-debt spellings, in ``facts.FALLBACK_CURRENT_DEBT`` since #737 item 3. Measured 13 Nov 2026
     # (claude-coordinator notes/revenuechaser/notes/2026-11-13_1752_737-interest-floor-measurement.md): TR
     # (``LoansPayableToBankCurrent`` 1.0 m), CUE (``OtherLoansPayableCurrent`` 0.7 m) and DUOT
     # (``OtherNotesPayableCurrent``) tag a borrowing under these and nothing else, so the inference could not see
-    # them. Read here as presence signals only: like a current line anywhere else (#239) they say "this filer has
-    # debt, and its size is not readable", which takes the name out of the inference and leaves it unknown.
+    # them. Alone, like a current line anywhere else (#239), they say "this filer has debt, and its size is not
+    # readable", which takes the name out of the inference; beside a long-term line they are its current part.
     "loans_payable_to_bank_current": (["LoansPayableToBankCurrent"], "USD"),
     "other_loans_payable_current": (["OtherLoansPayableCurrent"], "USD"),
     "other_notes_payable_current": (["OtherNotesPayableCurrent"], "USD"),

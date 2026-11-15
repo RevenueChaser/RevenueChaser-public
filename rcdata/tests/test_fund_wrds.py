@@ -5,12 +5,13 @@ from __future__ import annotations
 
 from datetime import date
 
+import duckdb
 import pytest
 
 from RevenueChaser.core.providers import sec_edgar
 from RevenueChaser.rcdata import ops
 from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.fundamentals import companyfacts, wrds_fund
+from RevenueChaser.rcdata.build.fundamentals import common, companyfacts, tables, wrds_fund
 from RevenueChaser.rcdata.build.spine import wrds as spine_wrds
 
 from . import fund_fixture as fx
@@ -81,3 +82,37 @@ def test_funda_agrees_with_the_sec(fake):
     assert "revenue 1 of 1, net income 1 of 1, diluted EPS 1 of 1 agree" in check["note"]
 
 
+
+
+def test_funda_is_compared_with_the_value_the_year_first_reported_277():
+    # MSFT FY2017: 96,571 M served (the ASC 606 restatement in the FY2018 10-K), 89,950 M first reported, which is
+    # what Compustat's funda keeps. The annual check compares the first-reported value; a fact with none, its own.
+    con = duckdb.connect()
+    tables.create(con, "fundamental_fact")
+    con.execute("CREATE TABLE fundamental_company (cik TEXT, gvkey TEXT)")
+    con.execute("INSERT INTO fundamental_company VALUES ('1', 'g1'), ('2', 'g2')")
+    con.execute("CREATE TABLE stg (gvkey TEXT, datadate DATE, revt DOUBLE)")
+    con.execute("INSERT INTO stg VALUES ('g1', DATE '2017-06-30', 89950), ('g2', DATE '2017-06-30', 500)")
+    for cik, value, first in (("1", 96_571e6, 89_950e6), ("2", 500e6, None)):
+        con.execute("INSERT INTO fundamental_fact (cik, field, period_type, period_end, value, unit, accn, filed, "
+                    "derived, preliminary, source, first_value) VALUES (?, 'revenue', 'annual', DATE '2017-06-30', "
+                    "?, 'USD', 'a', DATE '2018-08-03', false, false, 'sec/companyfacts', ?)", [cik, value, first])
+    assert wrds_fund.agreement(con, "stg", "revt", "revenue", "annual", None, first_reported=True) == (2, 2)
+    assert wrds_fund.agreement(con, "stg", "revt", "revenue", "annual", None) == (2, 1)
+
+
+def test_a_held_raw_snapshot_is_typed_again_not_asked_again_503():
+    # A raw-only Monday run, then Tuesday: the answer Monday holds is Tuesday's, with no WRDS query.
+    monday, tuesday = date(2026, 11, 9), date(2026, 11, 10)
+    raw = wrds_fund.FUNDA.raw_path(monday)
+    assert wrds_fund.FUNDA.held(tuesday) == []
+    base.write_raw_json(common.meta_path(raw), {"as_of": monday.isoformat(), "rows": 1})
+    assert wrds_fund.FUNDA.held(tuesday) == []                              # a sidecar alone is no answer
+    raw.write_bytes(b"")
+    assert wrds_fund.FUNDA.held(tuesday) == [raw]
+    assert wrds_fund.FUNDA.held(date(2026, 12, 9)) == []                    # older than SNAPSHOT_DAYS: asked again
+    seg = wrds_fund.SEGMENTS
+    first = seg.raw_path(monday, "wrds_segmerged")
+    base.write_raw_json(common.meta_path(first), {"as_of": monday.isoformat()})
+    first.write_bytes(b"")
+    assert seg.held(tuesday) == []                                          # every part, or none

@@ -486,8 +486,9 @@ def prefilter(rows: list[dict], eff=None) -> screen_common.Prefiltered:
     return screen_common.prefilter(rows, e.prefilter_cfg())
 
 
-# #46, #64 checkbox 6: the names whose money facts are tagged in a currency other than USD. The extraction reads the
-# unit, never converts it, so such a filer yields no series and this board cannot score it. The line says what was
+# #46, #64 checkbox 6: the names whose money facts are tagged in a currency other than USD. The builder converts an
+# IFRS filer's values at the period's rates (#105); a value it holds no rate for yields no series, so this board cannot
+# score it. The line says what was
 # measured — the currency on the fact — and never "IFRS": a non-USD filer is usually an IFRS filer, but an IFRS filer
 # may still tag USD, so the standard is not what this counts. Display only: no score, bucket or selection reads it.
 NON_USD_DROP = "non_usd_currency"
