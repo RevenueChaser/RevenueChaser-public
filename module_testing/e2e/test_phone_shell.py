@@ -18,6 +18,11 @@ from RevenueChaser.core.reporting_common import THEME_STORAGE_KEY, THEME_TOKENS
 
 from .harness.cdp_browser import Page, find_chrome
 from .harness.devices import REALME_GT2_PRO, REALME_GT2_PRO_LANDSCAPE, Device
+from .harness.shared import shared_dashboard
+
+# The dashboard is shared by the file; the mock provider still gets its default routes back for every test, as
+# the function-scoped dashboard had them.
+pytestmark = pytest.mark.usefixtures("provider_routes")
 
 PHONE = (390, 844)
 DESKTOP = (1280, 800)
@@ -79,6 +84,15 @@ def chrome():
             pytest.fail(msg + " (a skip on CI would leave the check unenforced)")
         pytest.skip(msg)
     return path
+
+
+@pytest.fixture(scope="module")
+def dashboard(tmp_path_factory, mock_provider):
+    """One dashboard per xdist worker for this file, not one per test (#896: the file's 44 tests booted a dashboard
+    each, 216 s of the e2e tier on 15 Nov 2026). Nothing here writes to the server: a theme choice lives in the
+    browser's localStorage, and the browser stays fresh per test."""
+    with shared_dashboard(tmp_path_factory, mock_provider, "phone-shell") as dash:
+        yield dash
 
 
 @pytest.fixture

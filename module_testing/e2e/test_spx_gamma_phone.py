@@ -17,6 +17,11 @@ from RevenueChaser.core import calendar as nyse_calendar
 from RevenueChaser.core.reporting_common import THEME_TOKENS
 
 from .harness.cdp_browser import Page, find_chrome
+from .harness.shared import shared_dashboard
+
+# The dashboard is shared by the file; the mock provider still gets its default routes back for every test, as
+# the function-scoped dashboard had them.
+pytestmark = pytest.mark.usefixtures("provider_routes")
 
 
 def _rgb(hex_colour: str) -> str:
@@ -47,30 +52,39 @@ def browser(chrome):
         yield page
 
 
-@pytest.fixture
-def board(dashboard, tmp_path, monkeypatch):
-    """The demo board, rendered with its three charts and stored as the newest SPX report."""
-    monkeypatch.setattr(nyse_calendar, "in_us_session_window", lambda *a, **k: False)
+@pytest.fixture(scope="module")
+def board(tmp_path_factory, mock_provider):
+    """The demo board, rendered with its three charts and stored as the newest SPX report.
+
+    One dashboard per xdist worker for this file, not one per test (#896: the file's 23 functions booted a
+    dashboard each, 126 s of the e2e tier on 15 Nov 2026). Every test here only reads the page; a theme choice
+    lives in the browser, whose profile stays fresh per test.
+    """
     from RevenueChaser.module_spx_gamma.charts import position_map
     from RevenueChaser.module_spx_gamma.charts.tornado import build_tornado_fig
     from RevenueChaser.module_spx_gamma.render import render_html
     from RevenueChaser.module_spx_gamma.run import _export_chart as export
     from RevenueChaser.module_spx_gamma.tests.conftest import make_snapshot
 
-    snap = make_snapshot()
+    with shared_dashboard(tmp_path_factory, mock_provider, "spx-gamma-phone") as dash:
+        root = Path(dash.env["SPX_GAMMA_DATA_ROOT"])
+        charts = root.parent / "charts"
+        charts.mkdir(exist_ok=True)
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(nyse_calendar, "in_us_session_window", lambda *a, **k: False)
+            snap = make_snapshot()
 
-    def frag(fig):
-        # The real export path (run._export_chart), so a change to its to_html config is seen here.
-        return export(fig, Path(tmp_path) / "charts", "c", png=False)[2]
+            def frag(fig):
+                # The real export path (run._export_chart), so a change to its to_html config is seen here.
+                return export(fig, charts, "c", png=False)[2]
 
-    (Path(tmp_path) / "charts").mkdir(exist_ok=True)
-    html = render_html(snap, chart_html=frag(position_map.build(snap, include_tornado=False)),
-                       tornado_html=frag(build_tornado_fig(snap)),
-                       envelope_html=frag(position_map.build_envelope_fig(snap)))
-    day = Path(tmp_path) / "spx_gamma" / "reports" / "2026-08-14"
-    day.mkdir(parents=True)
-    (day / "section.html").write_text(html, encoding="utf-8")
-    return dashboard
+            html = render_html(snap, chart_html=frag(position_map.build(snap, include_tornado=False)),
+                               tornado_html=frag(build_tornado_fig(snap)),
+                               envelope_html=frag(position_map.build_envelope_fig(snap)))
+        day = root / "reports" / "2026-08-14"
+        day.mkdir(parents=True)
+        (day / "section.html").write_text(html, encoding="utf-8")
+        yield dash
 
 
 def _open(browser, board, size, scheme="dark", theme="dark"):
