@@ -109,18 +109,23 @@ def _plan(q: Question, ctx: base.RunContext) -> tuple[list[asker.Job], dict[tupl
     return jobs, prior, no_text
 
 
+def _count(missing_chunks: str | None) -> int:
+    return len([c for c in (missing_chunks or "").split(",") if c])
+
+
 def row_of(ctx: base.RunContext, reply: asker.Reply, old: dict | None) -> dict:
-    """The stored row for ``reply``; a ``partial`` answer stays when the new reply is ``empty``."""
+    """The stored row for ``reply``; a ``partial`` answer stays unless the new reply answered more chunks."""
     j, q = reply.job, reply.job.question
     row = {"question": q.id, "prompt_version": q.prompt_version, "cik": j.cik, "accession": j.input.accession,
            "document": j.input.document,
            "filing_date": j.input.filing_date.isoformat() if j.input.filing_date else None,
            "input_hash": j.input_hash, "provider": q.provider, "model": q.writer_model,
-           "status": reply.status, "attempts": (old["attempts"] if old else 0) + 1,
+           # A reply cut short by a pause, the day cap or a provider stop is not an attempt: nothing was unusable.
+           "status": reply.status, "attempts": (old["attempts"] if old else 0) + (0 if reply.stop else 1),
            "answer": None if reply.answer is None else json.dumps(reply.answer, sort_keys=True),
            "raw": json.dumps(reply.raws), "missing_chunks": ",".join(map(str, reply.missing)),
            "rules_version": j.input.rules_version, "fetched_at": time.time(), "run_id": ctx.run_id}
-    if old is not None and old["status"] == asker.PARTIAL and reply.status == asker.EMPTY:
+    if old is not None and old["status"] == asker.PARTIAL and len(reply.missing) >= _count(old["missing_chunks"]):
         row.update({c: old[c] for c in ("status", "answer", "raw", "missing_chunks")})
     return row
 

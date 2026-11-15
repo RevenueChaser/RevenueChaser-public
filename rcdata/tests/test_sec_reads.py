@@ -211,7 +211,7 @@ def test_a_stop_inside_a_filing_keeps_the_chunks_already_answered(http_mock):
     check = run()
     assert check["result"] == "failed"
     assert [(r["status"], r["attempts"], r["missing_chunks"], r["answer"]) for r in
-            reads.held("test.products").values()] == [("partial", 1, "1", '{"products": ["a"]}')]
+            reads.held("test.products").values()] == [("partial", 0, "1", '{"products": ["a"]}')]  # not an attempt
 
 
 def test_deepseek_off_peak_holds_back_only_its_own_questions(http_mock, monkeypatch):
@@ -222,3 +222,17 @@ def test_deepseek_off_peak_holds_back_only_its_own_questions(http_mock, monkeypa
     check = run()
     assert len(http_mock.requests) == 1 and EVREN in str(http_mock.requests[0].url)
     assert "DeepSeek is off-peak only" in check["note"] and "1 left for the next run" in check["note"]
+
+
+def test_a_reply_cut_short_counts_no_attempt_and_never_shrinks_a_partial(http_mock):
+    ok, bad, refused = (200, json.dumps(chat('{"products": ["a"]}')), {}), \
+        (200, json.dumps(chat('{"products": []}')), {}), (401, "{}", {})
+    calls = iter([ok, ok, bad,          # run 1: chunks 0 and 1 answered, chunk 2 unusable -> partial
+                  ok, refused])         # run 2: chunk 0 answered, then the provider stops
+    http_mock.add("/chat/completions", lambda req: next(calls))
+    question(ciks=("789019",), chunk_chars=15)              # the text is 44 characters: three chunks
+    run()
+    assert rows("SELECT status, attempts, missing_chunks FROM read_answer") == [("partial", 1, "2")]
+    run()
+    held = list(reads.held("test.products").values())
+    assert [(r["status"], r["attempts"], r["missing_chunks"]) for r in held] == [("partial", 1, "2")]
