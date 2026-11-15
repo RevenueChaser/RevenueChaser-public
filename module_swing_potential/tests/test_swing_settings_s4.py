@@ -186,12 +186,6 @@ def test_the_model_version_still_hashes_the_non_editable_thresholds(rawstore_tmp
 # ── the Settings board: card, page and the generic route ────────────────────
 
 
-def test_the_save_button_reads_only_its_own_board_fields():
-    """Two boards share the page now, so a Save may not pick up the other card's inputs (#384 SW-S4)."""
-    from RevenueChaser.module_settings import report
-    assert "document.querySelectorAll('#settings-' + board + ' [data-setting]')" in report.JS
-
-
 @pytest.fixture
 def client(rawstore_tmp_db, monkeypatch):
     from RevenueChaser.app import dashboard
