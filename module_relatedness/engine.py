@@ -249,18 +249,18 @@ def filing_sentences(whole: str, item: str) -> list[str]:
 # The note blocks of the same filing the prompt is given beside the text (#841): the segment note beside the
 # segment lines (the lines are tag names turned into words, the note is the filer's prose), and the concentration
 # note beside the customer sentences a word search found (measured 12 Nov 2026: 803 reports carry it, 70 name a
-# listed company). Each is cut to MAX_NOTE_CHARS: a note's tables can run to tens of thousands of characters.
+# listed company). Whole, never cut (avo 15 Nov 2026: EVREN is free, send all of it; measured the same day on 3,690
+# segment notes: p50 3,727, p90 9,800, max 64,294 characters, so a 6,000 cap landed inside one note in three).
 NOTE_BLOCKS = (("segment_block", "SegmentReportingDisclosureTextBlock"),
                ("concentration_block", "ConcentrationRiskDisclosureTextBlock"))
-MAX_NOTE_CHARS = 6_000
 
 
 def _note_block(cik: str, local_name: str) -> str:
     """The text of the newest annual report's ``local_name`` note (``read.form_notes``), its parts joined in
-    document order and cut to ``MAX_NOTE_CHARS``; empty when the filing has none."""
+    document order, whole; empty when the filing has none."""
     from RevenueChaser.rcdata import read
     parts = [str(r.get("text") or "").strip() for r in read.form_notes([cik], local_name=local_name)]
-    return "\n".join(p for p in parts if p)[:MAX_NOTE_CHARS].strip()
+    return "\n".join(p for p in parts if p).strip()
 
 
 def _filing_extras(cik: str | None, text: str) -> dict:
