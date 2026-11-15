@@ -202,3 +202,23 @@ def test_the_registry_refuses_a_pro_model_an_unknown_provider_and_a_second_owner
     question()
     with pytest.raises(ValueError, match="already registered"):
         question()
+
+
+def test_a_stop_inside_a_filing_keeps_the_chunks_already_answered(http_mock):
+    calls = iter([(200, json.dumps(chat('{"products": ["a"]}')), {}), (401, "{}", {})])
+    http_mock.add("/chat/completions", lambda req: next(calls))
+    question(ciks=("789019",), chunk_chars=30)              # two chunks; the second is refused
+    check = run()
+    assert check["result"] == "failed"
+    assert [(r["status"], r["attempts"], r["missing_chunks"], r["answer"]) for r in
+            reads.held("test.products").values()] == [("partial", 1, "1", '{"products": ["a"]}')]
+
+
+def test_deepseek_off_peak_holds_back_only_its_own_questions(http_mock, monkeypatch):
+    http_mock.add("/chat/completions", chat('{"products": ["x"]}'))
+    monkeypatch.setattr(deepseek, "peak_blocked", lambda now=None: True)
+    question(ciks=("789019",))
+    question(id="test.deepseek", ciks=("789019",), provider="deepseek")
+    check = run()
+    assert len(http_mock.requests) == 1 and EVREN in str(http_mock.requests[0].url)
+    assert "DeepSeek is off-peak only" in check["note"] and "1 left for the next run" in check["note"]

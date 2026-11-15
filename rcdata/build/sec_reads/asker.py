@@ -55,6 +55,8 @@ class Reply:
     answer: dict | None
     raws: list[str] = field(default_factory=list)
     missing: list[int] = field(default_factory=list)
+    #: The error that stopped the run during this company's chunks: the chunks before it are still stored.
+    stop: BaseException | None = None
 
 
 def busy_problem() -> str | None:
@@ -73,25 +75,34 @@ def _parse(q: Question, reply: str) -> dict | None:
 
 
 def _ask_one(ctx: base.RunContext, job: Job, started: float, lock: threading.Lock) -> Reply | None:
-    """One company's chunks, in order; None when the run's slice ran out before it started."""
+    """One company's chunks, in order; None when the run's slice ran out before it started.
+
+    The pause and the day cap are read before every call, as ``base.Paused`` promises. A stop after some chunks
+    were answered returns them with the stop (``Reply.stop``), so what was paid for is stored. The slice is read
+    per company only: a company that started finishes its chunks.
+    """
     if ctx.clock() - started > SLICE_S:
         return None
     q = job.question
-    with lock:
-        ctx.check_cap(q.provider)
     client = CLIENTS[q.provider]
     parts: list[dict] = []
     raws: list[str] = []
     missing: list[int] = []
-    for i, chunk in enumerate(q.chunks(job.input.text)):
+    chunks = q.chunks(job.input.text)
+    for i, chunk in enumerate(chunks):
         failed = 0
         try:
+            with lock:
+                ctx.check_cap(q.provider)
             reply = client.complete(q.system, chunk, model=q.writer_model, max_tokens=q.max_tokens,
                                     use_cache=False, cik=job.cik, prompt_version=q.prompt_version)
-        except _STOP:
-            with lock:
-                ctx.count(q.provider, calls=1, failures=1)
-            raise
+        except (base.Paused, base.CapReached, *_STOP) as e:
+            if not isinstance(e, (base.Paused, base.CapReached)):
+                with lock:
+                    ctx.count(q.provider, calls=1, failures=1)
+            if not parts:
+                raise
+            return Reply(job, PARTIAL, q.merge(parts), raws, missing + list(range(i, len(chunks))), stop=e)
         except deepseek.DeepSeekError:          # EVREN's errors are its subclasses: no content, a bad status
             reply, failed = "", 1
         with lock:
@@ -115,11 +126,15 @@ def ask(ctx: base.RunContext, jobs: list[Job]) -> tuple[list[Reply], BaseExcepti
     """
     if not jobs:
         return [], None, 0
+    total = len(jobs)
     busy = busy_problem()
     if busy:
         raise base.SourceError(busy)
     if any(j.question.provider == "deepseek" for j in jobs) and deepseek.peak_blocked():
-        raise base.SourceError(f"DeepSeek is off-peak only: next window {offpeak.next_off_peak():%Y-%m-%d %H:%M} UTC")
+        # Only DeepSeek's questions wait for its window; the EVREN ones are asked now.
+        ctx.notes.append(f"DeepSeek is off-peak only: its questions wait for "
+                         f"{offpeak.next_off_peak():%Y-%m-%d %H:%M} UTC")
+        jobs = [j for j in jobs if j.question.provider != "deepseek"]
     started = ctx.clock()
     lock = threading.Lock()
     replies: list[Reply] = []
@@ -140,7 +155,11 @@ def ask(ctx: base.RunContext, jobs: list[Job]) -> tuple[list[Reply], BaseExcepti
                 continue
             if r is not None:
                 replies.append(r)
+                if r.stop is not None:
+                    stop = stop or r.stop
+                    for g in futs:
+                        g.cancel()
     finally:
         for pool in pools.values():
             pool.shutdown(wait=True, cancel_futures=True)
-    return replies, stop, len(jobs) - len(replies)
+    return replies, stop, total - len(replies)
