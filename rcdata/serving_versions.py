@@ -52,3 +52,6 @@ SERVING_SCHEMA_VERSION["options"] = 3
 # PR (#757): ``sec_forms.duckdb``, the sections and note blocks of the stored filings (``build/sec_forms/``). Its
 # first number, not a bump: there is no live file to checkpoint.
 SERVING_SCHEMA_VERSION["sec_forms"] = 1
+# The SEC reader tool (plan 2026-11-15_1119, step 1): ``sec_reads.duckdb``, the answers ``build/sec_reads/`` stores.
+# Its first number, not a bump: there is no live file to checkpoint.
+SERVING_SCHEMA_VERSION["sec_reads"] = 1

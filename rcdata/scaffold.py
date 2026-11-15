@@ -53,6 +53,7 @@ def _schema_of_kind() -> dict[str, dict[str, list[tuple[str, str]]]]:
     from .build.uw_spot_expiry_strike import SCHEMA as SPX_SCHEMA, TABLE as SPX_TABLE
     from .build import uw_economic_calendar
     from .build.sec_forms import forms as sec_forms_forms
+    from .build.sec_reads import reads as sec_reads_reads
 
     return {
         "market": {MARKET_SERIES_TABLE: list(MARKET_SERIES_SCHEMA), SPX_TABLE: list(SPX_SCHEMA),
@@ -68,6 +69,7 @@ def _schema_of_kind() -> dict[str, dict[str, list[tuple[str, str]]]]:
         "ownership": _ownership_schemas(),
         "options": _options_schemas(),
         "sec_forms": {t: list(sc) for t, sc in sec_forms_forms.SCHEMAS.items()},
+        "sec_reads": {t: list(sc) for t, sc in sec_reads_reads.SCHEMAS.items()},
     }
 
 

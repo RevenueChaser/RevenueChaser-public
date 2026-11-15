@@ -218,6 +218,10 @@ _NEEDS = (
          ask_param="ciks", ask_required=True, where="section = 'proxy'", providers=("sec",)),
     Need("sec.note", "form_notes", "filing_note", "filing_date", "cik", 400, max_lag_unit=DAYS,
          ask_param="ciks", ask_required=True, providers=("sec",)),
+    # ── The SEC reader tool (serving kind ``sec_reads``): a model's answers, asked by question and company. The
+    # age is the filing's, as for the text the answer is about (above).
+    Need("sec.read", "sec_reads", "read_answer", "filing_date", "cik", 400, max_lag_unit=DAYS,
+         ask_param="ciks", ask_required=True, providers=("evren", "deepseek")),
     # ── Ownership ───────────────────────────────────────────────────────────────────────────────────────────────
     # The 13F period tables are quarterly by construction: a filing deadline 45 days after a quarter end means the
     # newest period is routinely a quarter old, which is the data, not staleness.
