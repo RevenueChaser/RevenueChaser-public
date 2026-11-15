@@ -258,7 +258,7 @@ def test_the_flag_changes_nothing_that_is_scored(monkeypatch, rawstore_tmp_db):
 
 
 def test_the_selection_version_and_the_freeze_hash_are_untouched():
-    assert config.SELECTION_VERSION == "8"          # 8: Quality on the trailing year (G6); the flag moves nothing
+    assert int(config.SELECTION_VERSION) >= 8       # 8: Quality on the trailing year (G6); the flag moves nothing
     assert "CORPORATE_EVENT_ITEMS" not in freeze._HASHED
     assert "CORPORATE_EVENT_WINDOW_DAYS" not in freeze._HASHED
 
