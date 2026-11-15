@@ -18,11 +18,11 @@ def _readable_set(n=30, dates=3, version="v1"):
 
 def test_a_repeat_within_90_days_counts_once_and_the_earliest_is_kept():
     rows = [_pick("AAA", date(2026, 3, 1), mfe=0.30), _pick("AAA", date(2026, 1, 1), mfe=0.01),
-            _pick("AAA", date(2026, 3, 31), mfe=0.5)]
+            _pick("AAA", date(2026, 3, 31), mfe=0.5), _pick("AAA", date(2026, 4, 1), mfe=0.5)]
     kept = hit_rate.dedupe(rows)
-    assert [r["forecast_date"] for r in kept] == [date(2026, 1, 1), date(2026, 3, 31)]   # 89 days: dropped; 89+1: kept
+    assert [r["forecast_date"] for r in kept] == [date(2026, 1, 1), date(2026, 4, 1)]    # 89 days: dropped; 90: kept
     # Another family, version or horizon is its own count.
-    assert len(hit_rate.dedupe(rows[:2] + [_pick("AAA", date(2026, 1, 2), source="fundamentals")])) == 2 + 1
+    assert len(hit_rate.dedupe(rows[:2] + [_pick("AAA", date(2026, 1, 2), source="fundamentals")])) == 2
 
 
 def test_the_gate_needs_30_records_over_3_freeze_dates():
