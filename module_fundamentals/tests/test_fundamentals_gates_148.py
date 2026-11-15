@@ -330,3 +330,11 @@ def test_a_quarter_with_no_or_unrelated_derived_marks_changes_nothing():
 def test_ro40_score_text_never_shows_the_line_for_a_failing_value(ro40, shown, passes):
     g = screeners.evaluate_rule_of_40(_m(**{**_RO40, "ro40": ro40}))
     assert g["score"] == shown and g["passed"] is passes
+
+
+def test_a_derived_q4_now_forms_the_ttm_revenue_832():
+    # #832 (avo 15 Nov 2026 "A"): Q4 = FY - 9M is the difference of two filed figures, so it joins the trailing sum
+    # instead of sending TTM revenue and P/E back to the fiscal year.
+    for derived in (["revenue"], ["2025-12-31"]):
+        q = _with_derived(_quarters([100, 100, 100, 100, 200, 200, 200, 200]), q7=derived)
+        assert _ttm_metrics(q, [])["ttm_revenue"] == pytest.approx(800.0)
