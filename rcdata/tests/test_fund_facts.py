@@ -268,7 +268,14 @@ def test_eps_is_read_per_period():
 
 def test_an_ifrs_filer_has_no_rows_and_says_so():
     rows, company, _ = facts.fact_rows(fx.tm_facts(), "1094517")
-    assert rows == [] and company["us_gaap"] is False and company["is_us"] is True
+    assert rows == [] and company["us_gaap"] is False and company["is_us"] is False
+
+
+def test_an_ifrs_20f_filer_is_not_stored_as_us_878():
+    _, company, _ = facts.fact_rows(fx.tm_facts(), "1094517")
+    assert company["is_us"] is False                      # read from its ifrs-full 20-F facts, not guessed
+    _, unknown, _ = facts.fact_rows({"cik": 1, "entityName": "X", "facts": {}}, "1")
+    assert unknown["is_us"] is None                       # nothing to read: unknown, not True
 
 
 def test_a_fallback_provenance_is_the_fact_of_the_same_span():
