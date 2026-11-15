@@ -330,6 +330,7 @@ def test_a_listed_class_the_spine_lacks_gets_bars_and_counts_in_the_issuer_cap(h
 def test_a_compustat_class_the_spine_holds_outside_the_universe_gets_no_bar_893():
     # A member's gvkey also carries its warrants and preferreds in comp.secd; the spine holds them as Tier B rows.
     # The class rule is for a class the spine lacks (BRK-A), not for those (762 such ids on 15 Nov 2026).
+    serving.live_path("spine").unlink()
     write_spine(WEEK_SPINE + [{"ticker": "BRK-PD", "cik": "1067983", "name": "BERKSHIRE HATHAWAY INC", "exchange": "NYSE",
                                "tier": "B", "security_type": "preferred", "gvkey": "072726", "iid": "05",
                                "composite_figi": None}])
