@@ -75,8 +75,7 @@ FALLBACK_LONG_TERM_DEBT = ("convertible_debt_noncurrent", "senior_notes_noncurre
 FALLBACK_CURRENT_DEBT = ("line_of_credit_current", "loans_payable_current", "senior_notes_current",
                          "notes_payable_current",
                          # #737 item 3: three current spellings TR, CUE and DUOT tag (measured 13 Nov 2026).
-                         "loans_payable_to_bank_current", "other_loans_payable_current",
-                         "other_notes_payable_current")
+                         )  # MUTATION: the three spellings removed (to be reverted)
 FALLBACK_SHORT_TERM_DEBT = ("short_term_bank_loans",)
 FALLBACK_DEBT_LINES = (FALLBACK_WHOLE_DEBT + FALLBACK_LONG_TERM_DEBT + FALLBACK_CURRENT_DEBT
                        + FALLBACK_SHORT_TERM_DEBT)
