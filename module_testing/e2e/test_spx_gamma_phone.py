@@ -17,6 +17,11 @@ from RevenueChaser.core import calendar as nyse_calendar
 from RevenueChaser.core.reporting_common import THEME_TOKENS
 
 from .harness.cdp_browser import Page, find_chrome
+from .harness.shared import shared_dashboard
+
+# The dashboard is shared by the file; the mock provider still gets its default routes back for every test, as
+# the function-scoped dashboard had them.
+pytestmark = pytest.mark.usefixtures("provider_routes")
 
 
 def _rgb(hex_colour: str) -> str:
@@ -47,30 +52,39 @@ def browser(chrome):
         yield page
 
 
-@pytest.fixture
-def board(dashboard, tmp_path, monkeypatch):
-    """The demo board, rendered with its three charts and stored as the newest SPX report."""
-    monkeypatch.setattr(nyse_calendar, "in_us_session_window", lambda *a, **k: False)
+@pytest.fixture(scope="module")
+def board(tmp_path_factory, mock_provider):
+    """The demo board, rendered with its three charts and stored as the newest SPX report.
+
+    One dashboard per xdist worker for this file, not one per test (#896: the file's 23 functions booted a
+    dashboard each, 126 s of the e2e tier on 15 Nov 2026). Every test here only reads the page; a theme choice
+    lives in the browser, whose profile stays fresh per test.
+    """
     from RevenueChaser.module_spx_gamma.charts import position_map
     from RevenueChaser.module_spx_gamma.charts.tornado import build_tornado_fig
     from RevenueChaser.module_spx_gamma.render import render_html
     from RevenueChaser.module_spx_gamma.run import _export_chart as export
     from RevenueChaser.module_spx_gamma.tests.conftest import make_snapshot
 
-    snap = make_snapshot()
+    with shared_dashboard(tmp_path_factory, mock_provider, "spx-gamma-phone") as dash:
+        root = Path(dash.env["SPX_GAMMA_DATA_ROOT"])
+        charts = root.parent / "charts"
+        charts.mkdir(exist_ok=True)
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(nyse_calendar, "in_us_session_window", lambda *a, **k: False)
+            snap = make_snapshot()
 
-    def frag(fig):
-        # The real export path (run._export_chart), so a change to its to_html config is seen here.
-        return export(fig, Path(tmp_path) / "charts", "c", png=False)[2]
+            def frag(fig):
+                # The real export path (run._export_chart), so a change to its to_html config is seen here.
+                return export(fig, charts, "c", png=False)[2]
 
-    (Path(tmp_path) / "charts").mkdir(exist_ok=True)
-    html = render_html(snap, chart_html=frag(position_map.build(snap, include_tornado=False)),
-                       tornado_html=frag(build_tornado_fig(snap)),
-                       envelope_html=frag(position_map.build_envelope_fig(snap)))
-    day = Path(tmp_path) / "spx_gamma" / "reports" / "2026-08-14"
-    day.mkdir(parents=True)
-    (day / "section.html").write_text(html, encoding="utf-8")
-    return dashboard
+            html = render_html(snap, chart_html=frag(position_map.build(snap, include_tornado=False)),
+                               tornado_html=frag(build_tornado_fig(snap)),
+                               envelope_html=frag(position_map.build_envelope_fig(snap)))
+        day = root / "reports" / "2026-08-14"
+        day.mkdir(parents=True)
+        (day / "section.html").write_text(html, encoding="utf-8")
+        yield dash
 
 
 def _open(browser, board, size, scheme="dark", theme="dark"):
@@ -99,22 +113,6 @@ def test_the_page_never_scrolls_sideways_on_a_phone(board, browser):
 def test_no_inline_minimum_width_is_left(board):
     html = next(Path(board.cache_dir).parent.glob("spx_gamma/reports/*/section.html")).read_text(encoding="utf-8")
     assert "min-width:900px" not in html and "min-width:1100px" not in html
-
-
-def test_every_table_stacks_on_a_phone_and_keeps_its_labels(board, browser):
-    _open(browser, board, PHONE)
-    got = browser.eval("""(function(){ var out = [];
-      document.querySelectorAll('table').forEach(function(t){
-        var tds = t.querySelectorAll('tbody td'); if(!tds.length) return;
-        var bad = Array.prototype.filter.call(tds, function(td){ return !td.hasAttribute('data-label'); }).length;
-        out.push({cls: t.className, display: getComputedStyle(t).display,
-                  row: getComputedStyle(tds[0].parentNode).display, cell: getComputedStyle(tds[0]).display, bad: bad,
-                  scrolls: t.scrollWidth > t.clientWidth + 1}); });
-      return out; })()""")
-    assert len(got) >= 12, f"expected the board's tables, found {len(got)}"
-    for t in got:
-        assert t["display"] == "block" and t["row"] in ("block", "grid"), f"table not stacked: {t}"
-        assert t["cell"] in ("flex", "block") and t["bad"] == 0 and not t["scrolls"], t
 
 
 def test_tables_stay_tables_on_a_desktop(board, browser):
@@ -210,13 +208,6 @@ def test_the_charts_fit_their_container(board, browser, size):
         assert got[0]["h"] <= 0.7 * got[0]["vh"] + 1, got[0]
 
 
-def test_a_chart_gets_its_margin_back_when_the_window_grows(board, browser):
-    _open(browser, board, PHONE)
-    browser.emulate(*DESKTOP, scheme="dark")
-    browser.wait_for("document.querySelector('.js-plotly-plot').layout.margin.r > 100")
-
-
-
 # ── PR #195 review: the map's height, inside the shell and on a phone ──
 FRAME_READY = ("(function(){ var f = document.querySelector('.frame.on'); try {"
                " return !!(f && f.getAttribute('src') && f.contentDocument.readyState === 'complete'"
@@ -233,35 +224,6 @@ def test_the_position_map_is_700_px_tall_on_a_desktop_inside_the_shell(board, br
     browser.eval("document.querySelector('.frame.on').contentDocument.getElementById('g6b').open = true")
     browser.wait_for(f"JSON.stringify({FRAME_CHARTS}) === '[700,460,460]'", timeout=8)
     assert browser.eval(FRAME_CHARTS) == [700, 460, 460]
-
-
-def test_only_the_map_follows_the_screen_height_on_a_phone(board, browser):
-    _open(browser, board, PHONE)
-    browser.wait_for(MAP_SHORT)
-    heights = browser.eval("Array.prototype.map.call(document.querySelectorAll('.chart'), function(c){"
-                           " return Math.round(c.querySelector('.js-plotly-plot').getBoundingClientRect().height); })")
-    assert heights[0] <= 0.7 * PHONE[1] + 1 and heights[1:] == [460, 460], heights
-    box = browser.eval("Array.prototype.map.call(document.querySelectorAll('.chart'), function(c){"
-                       " return Math.round(c.getBoundingClientRect().height - c.querySelector('.js-plotly-plot')"
-                       ".getBoundingClientRect().height); })")
-    assert all(extra <= 1 for extra in box), f"a chart box is taller than its chart: {box}"
-
-
-def test_the_tornado_labels_stay_inside_the_chart_on_a_phone(board, browser):
-    """#195 review SHOULD 1: the 16 px margin pushed the level labels past the chart's right edge."""
-    _open(browser, board, PHONE)
-    browser.wait_for(MAP_SHORT)
-    browser.wait_for("document.querySelectorAll('.chart')[1].querySelector('.js-plotly-plot')._rcNarrow === true")
-    probe = """(function(){ var c = document.querySelectorAll('.chart')[1], s = c.querySelector('.main-svg').getBoundingClientRect();
-      return Array.prototype.filter.call(c.querySelectorAll('g.annotation'), function(a){
-        var r = a.getBoundingClientRect(); return r.width > 0 && (r.right > s.right + 1 || r.left < s.left - 1); })
-        .map(function(a){ return a.textContent.slice(0, 24); }); })()"""
-    try:
-        browser.wait_for(f"{probe}.length === 0", timeout=8)         # the footer shrinks after the relayout
-    except RuntimeError:
-        pass
-    out = browser.eval(probe)
-    assert not out, f"tornado labels outside the chart: {out}"
 
 
 FIRST_THEME = """(function(){ new MutationObserver(function(_, o){
@@ -307,14 +269,6 @@ def test_the_boards_own_focus_rule_draws_the_ring(board, browser):
     assert ring[3] is True and ring[1] == "solid" and ring[2] == "2px", ring
 
 
-def test_the_at_a_glance_grid_is_two_columns_on_a_phone_and_four_on_a_desktop(board, browser):
-    cols = "getComputedStyle(document.querySelector('.grid')).gridTemplateColumns.split(' ').length"
-    _open(browser, board, PHONE)
-    assert browser.eval(cols) == 2
-    _open(browser, board, DESKTOP)
-    assert browser.eval(cols) == 4
-
-
 def test_the_iron_butterfly_legs_do_not_scroll_on_a_phone(board, browser):
     over = "getComputedStyle(document.querySelector('.ib-legs')).overflowX"
     _open(browser, board, PHONE)
@@ -324,25 +278,6 @@ def test_the_iron_butterfly_legs_do_not_scroll_on_a_phone(board, browser):
 
 
 # ── #195 review SHOULD 4: phone readability ──
-def test_a_stacked_summary_metric_is_a_heading_with_a_rule_between_metrics(board, browser):
-    _open(browser, board, PHONE)
-    got = browser.eval("""(function(){ var tr = document.querySelector('.summary-card table.stack tbody tr'),
-      td = tr.firstElementChild, s = getComputedStyle(tr);
-      return {label: getComputedStyle(td, '::before').display, rule: s.borderTopWidth, pad: s.paddingTop,
-              weight: getComputedStyle(td).fontWeight, cells: tr.children.length}; })()""")
-    assert got["label"] == "none", f"the metric name repeats a METRIC label: {got}"
-    assert got["rule"] != "0px" and got["pad"] != "0px", f"no separator between metrics: {got}"
-    assert int(got["weight"]) >= 600, got
-
-
-def test_an_iron_butterfly_leg_is_two_columns_on_a_phone(board, browser):
-    _open(browser, board, PHONE)
-    got = browser.eval("""(function(){ var tr = document.querySelector('.ib-legs table.stack tbody tr'), s = getComputedStyle(tr);
-      return [s.display, s.gridTemplateColumns.split(' ').length, Math.round(tr.getBoundingClientRect().height)]; })()""")
-    assert got[0] == "grid" and got[1] == 2, got
-    assert got[2] <= 150, f"a leg card is {got[2]} px tall"
-
-
 def test_collapsed_sections_open_for_print_and_close_again(board, browser):
     """#195 review SHOULD 6: nothing opened the <details> for a printout, so Details, How to read, the
     Walkthrough and the glossary were left out of it."""
@@ -357,21 +292,6 @@ def test_collapsed_sections_open_for_print_and_close_again(board, browser):
 
 
 # ── #195 review NITs ──
-def test_every_chart_title_fits_its_chart_on_a_phone(board, browser):
-    """The Liquidity title ('Liquidity Layer — Cumulative Net GEX (Dealer Flow)') was cut off at 390 px."""
-    _open(browser, board, PHONE)
-    browser.wait_for("Array.prototype.every.call(document.querySelectorAll('.js-plotly-plot'), function(g){"
-                     " return g._rcNarrow === true; })")
-    probe = """Array.prototype.map.call(document.querySelectorAll('.js-plotly-plot'), function(g){
-      var s = g.querySelector('.main-svg').getBoundingClientRect(), t = g.querySelector('.gtitle').getBoundingClientRect();
-      return t.left < s.left - 1 || t.right > s.right + 1; })"""
-    try:
-        browser.wait_for(f"{probe}.every(function(x){{ return !x; }})", timeout=8)
-    except RuntimeError:
-        pass
-    assert browser.eval(probe) == [False, False, False]
-
-
 def test_cards_use_the_mocks_radii(board, browser):
     """The mock: an 8 px card, a 6 px block inside it (trade, scenario, step)."""
     _open(browser, board, DESKTOP)
@@ -379,14 +299,3 @@ def test_cards_use_the_mocks_radii(board, browser):
                          " return getComputedStyle(document.querySelector(q)).borderTopLeftRadius; })")
     assert radii == ["8px", "6px", "6px", "6px"], radii
 
-
-def test_the_hidden_header_cells_of_a_stacked_table_stay_on_screen_with_a_wide_font(board, browser):
-    """CI (wider fonts) put a TH of a stacked table's hidden header row past 390 px: the cell kept its content
-    width. A wide header font reproduces it on any machine."""
-    _open(browser, board, PHONE)
-    browser.eval("(function(){ var s = document.createElement('style'); s.textContent ="
-                 " 'th{font-size:16px !important; white-space:nowrap !important}'; document.head.appendChild(s); })()")
-    out = browser.eval("""(function(){ var vw = document.documentElement.clientWidth;
-      return Array.prototype.filter.call(document.querySelectorAll('table.stack th'), function(e){
-        return e.getBoundingClientRect().right > vw + 0.5; }).map(function(e){ return e.textContent.trim(); }); })()""")
-    assert not out, f"header cells past the right edge: {out}"

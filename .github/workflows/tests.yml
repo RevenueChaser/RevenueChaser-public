@@ -135,7 +135,8 @@ jobs:
     runs-on: ubuntu-latest
     # The unit tier is ~11.3k tests. As one job under `-n auto` it took 24 min (run 42709712743) and was the whole
     # wait, so it runs as parallel jobs (4 until 15 Nov 2026, then 6: a shard was ~5 min of pytest): RC_SHARD makes the root conftest keep the files whose path hashes to this
-    # shard (scripts/select_tests.py in_shard). merge-gate reads the matrix as one result: any shard red is red.
+    # shard (scripts/select_tests.py in_shard; files with a measured time in scripts/test_durations.json are split by
+    # that time, refreshed by hand from a FULL run's junit-unit-* artifacts). merge-gate reads the matrix as one result: any shard red is red.
     # The limit stays generous so a slow runner fails on a real error, not on the clock.
     timeout-minutes: 120
     strategy:

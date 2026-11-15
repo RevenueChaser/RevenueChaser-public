@@ -70,7 +70,7 @@ Code, comments, commit messages, issues and docs are written in **English**.
   (`rawstore_template`, never opened by a test), not by running the ~1 s apply per test. A test of the schema apply
   or a migration itself is marked `@pytest.mark.rawstore_schema_from_scratch` and gets the apply on its own file.
 - CI (`.github/workflows/tests.yml`) runs both tiers on every pull request into `main` and on `main`. The unit tier
-  runs as 6 parallel jobs (`unit (FULL) 0/6` ... `5/6`; `RC_SHARD` splits by test file), each under
+  runs as 6 parallel jobs (`unit (FULL) 0/6` ... `5/6`; `RC_SHARD` splits by test file, the measured ones by time from `scripts/test_durations.json`), each under
   `pytest -n auto --dist loadfile`, because a single pytest process is single-core bound.
   A push to a PR runs only the test files that import a changed file (`scripts/select_tests.py`; check names
   `unit (SELECTIVE)` / `e2e (SELECTIVE)`), and falls back to FULL when that is not safe to say. A change that stays
