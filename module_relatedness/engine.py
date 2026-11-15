@@ -293,8 +293,7 @@ def _filing_extras(cik: str | None, text: str) -> dict:
     return out
 
 
-# How many ``chain_mentions`` names the prompt offers as candidates, and how many segment-note lines.
-MAX_CANDIDATES = 25
+# How many segment-note lines the prompt carries.
 MAX_SEGMENT_LINES = 15
 
 
@@ -323,8 +322,8 @@ def _segment_note(cik: str | None, accession: str | None) -> str:
 
 
 def _context(ticker: str, cik: str | None, source: dict | None = None) -> dict:
-    """What the v3 prompt is given beside the text (#400): SIC, sector, industry, the filing's segment note and the
-    company's ``chain_mentions`` names as candidates. SIC, sector and industry are the spine's only (#642 PR 3); each
+    """What the v3 prompt is given beside the text (#400): SIC, sector, industry and the filing's segment note. No
+    candidate names: they came from Value Chain's keyword scan, which #748 removes. SIC, sector and industry are the spine's only (#642 PR 3); each
     other part is optional, and a missing table gives none of it."""
     out: dict = {}
     spine = _spine_rows([ticker]).get(ticker.upper()) or {}
@@ -333,14 +332,6 @@ def _context(ticker: str, cik: str | None, source: dict | None = None) -> dict:
         note = _segment_note((source or {}).get("cik") or cik, (source or {}).get("accession"))
         if note:
             out["segment_note"] = note
-    except Exception:  # noqa: BLE001
-        pass
-    try:
-        rows = rawstore.query("SELECT DISTINCT dst_name FROM chain_mentions WHERE src = ? ORDER BY dst_name LIMIT ?",
-                              [ticker, MAX_CANDIDATES], db="value_chain")   # #860 stage 1
-        names = [r["dst_name"] for r in rows if r.get("dst_name")]
-        if names:
-            out["candidates"] = names
     except Exception:  # noqa: BLE001
         pass
     return out
