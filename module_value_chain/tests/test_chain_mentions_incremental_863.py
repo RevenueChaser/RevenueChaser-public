@@ -8,6 +8,7 @@ from __future__ import annotations
 from RevenueChaser.core import rawstore
 from RevenueChaser.module_value_chain import engine
 from RevenueChaser.module_value_chain.tests.test_value_chain import _TEN_K
+from RevenueChaser.module_value_chain.tests.test_value_chain_profile_edges_410 import _profile
 
 _NVDA_FILING = {"ticker": "NVDA", "cik": "1", "form": "10-K", "filed": "2026-02-01", "accession": "acc",
                 "primary_doc": "http://x", "item_text": _TEN_K, "quality": "ok"}
@@ -26,6 +27,7 @@ def test_a_scanned_ticker_retires_only_the_keys_it_no_longer_produces(rawstore_t
     rawstore.ensure_table("chain_mentions")
     rawstore.write_rows("chain_mentions", [_edge("NVDA", "GONE CORP")])
     rawstore.write_rows("chain_filings", [_NVDA_FILING])
+    _profile("NVDA")                       # the run's edges come from a profile since the text scans went (#748)
     info: dict = {}
     edges = engine.build_edges(info)
     assert ("NVDA", "GONE CORP", "supplier") not in _keys()

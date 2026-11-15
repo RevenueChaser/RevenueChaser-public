@@ -16,6 +16,7 @@ from RevenueChaser.core import edgar_docs, job_lock, rawstore
 from RevenueChaser.core.providers import sec_edgar
 from RevenueChaser.module_value_chain import __main__ as cli
 from RevenueChaser.module_value_chain import edgar_text, reslice
+from RevenueChaser.module_value_chain.tests.test_value_chain_profile_edges_410 import _profile
 
 _BODY = "We make widgets for many industries and sell them worldwide. " * 60
 _WAFER = "We purchase wafers from Taiwan Semiconductor Manufacturing Company Limited. "
@@ -48,6 +49,7 @@ def test_apply_reslices_a_short_row_and_keeps_a_worse_one(rawstore_tmp_db, tmp_p
     short = _frow("AAA", "10", "acc-a", "short", "tiny old")
     keep = _frow("BBB", "11", "acc-b", "ok", "a stored body " * 20)
     rawstore.write_rows("chain_filings", [short, keep])
+    _profile("AAA")                        # chain_mentions' edges come from a profile since #748
     edgar_docs.write_html("10", "acc-a", _doc(body))
     edgar_docs.write_html("11", "acc-b", _NO_DOC_HTML)
 

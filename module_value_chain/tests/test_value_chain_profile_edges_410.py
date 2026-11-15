@@ -39,22 +39,21 @@ def test_profile_edges_resolve_names_and_keep_unresolved_ones_as_text():
                    ("Taiwan Semiconductor", "TSM", "supplier", None), ("Intel", "INTC", "competitor", None)}
 
 
-def test_the_profile_wins_per_counterparty_and_takes_the_stated_share():
+def test_the_profile_wins_per_counterparty():
     _filing()
     _profile()
     edges = [e for e in engine.build_edges() if e["src"] == "AMKR"]
     apple = [e for e in edges if e["dst_ticker"] == "AAPL"]
     assert [(e["source"], e["relation"], e["share_pct"], e["snippet"]) for e in apple] == [
-        ("profile", "customer", 29.8, "Apple is our largest")]
+        ("profile", "customer", None, "Apple is our largest")]   # no sentence share since #748
     assert {e["source"] for e in edges} == {"profile"}          # Intel too: the profile names it
     assert all(e["source"] == "profile" for e in rawstore.get_all("chain_mentions") if e["src"] == "AMKR")
 
 
-def test_a_filer_without_a_profile_keeps_its_regex_edges():
+def test_a_filer_without_a_profile_gets_no_edge_from_its_text():
     _filing("NVTS")
     _profile()                                                    # AMKR's profile, not NVTS's
-    edges = engine.build_edges()
-    assert edges and {e["source"] for e in edges} == {"regex"}
+    assert engine.build_edges() == []                             # #748: the text scans are gone
 
 
 def test_the_board_names_the_source_of_a_link():

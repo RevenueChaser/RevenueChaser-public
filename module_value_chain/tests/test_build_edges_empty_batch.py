@@ -10,6 +10,7 @@ import pytest
 from RevenueChaser.core import rawstore
 from RevenueChaser.module_value_chain import engine
 from RevenueChaser.module_value_chain.tests.test_value_chain import _TEN_K
+from RevenueChaser.module_value_chain.tests.test_value_chain_profile_edges_410 import _profile
 
 _OLD_EDGE = {"src": "NVDA", "dst_name": "TSMC", "dst_ticker": "TSM",
              "relation": "supplier", "snippet": "s", "filed": "2026-02-01"}
@@ -53,6 +54,7 @@ def test_a_non_empty_batch_still_replaces_the_stored_edges(rawstore_tmp_db):
     rawstore.ensure_table("chain_mentions")
     rawstore.write_rows("chain_mentions", [{**_OLD_EDGE, "dst_name": "GONE CORP", "dst_ticker": ""}])
     rawstore.write_rows("chain_filings", [_filing(item_text=_TEN_K)])
+    _profile("NVDA")                       # a profile names TSMC: edges no longer come from the text (#748)
     edges = engine.build_edges()
     assert ("TSM", "supplier") in {(e["dst_ticker"], e["relation"]) for e in edges}
     assert "GONE CORP" not in {name for _, name, _ in _stored()}
