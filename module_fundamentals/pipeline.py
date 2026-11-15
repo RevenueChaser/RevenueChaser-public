@@ -90,7 +90,8 @@ def _quarter_run(quarterly: list[dict], field: str, n: int) -> tuple[list[float]
     missing quarter) is never summed as if it were a trailing year (#148 U3). A derived quarter (Q4 as the fiscal year
     minus the first three, marked in ``derived``) counts: it is the difference of two filed figures (#832, avo 15 Nov
     2026 "A"), so the trailing year is the last twelve months and not the fiscal year."""
-    have = [(q.get("period"), _to_float(q.get(field))) for q in quarterly
+    ordered = sorted(quarterly, key=lambda q: str(q.get("period")))   # a run is the newest n, whatever the list order
+    have = [(q.get("period"), _to_float(q.get(field))) for q in ordered
             if _to_float(q.get(field)) is not None and not _is_preliminary(q, field)]
     if len(have) < n:
         return None
