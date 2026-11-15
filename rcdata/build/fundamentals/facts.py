@@ -137,22 +137,23 @@ def _rate(fx: dict, cur: str, start: str | None, end: str) -> float | None:
 
 
 def _in_usd(body: dict, fx: dict) -> dict:
-    """``body`` with its first convertible currency's facts added under ``USD`` (#105). A concept tagged in USD
-    already, a per-share unit (an ADR holds an unknown number of ordinary shares) and a currency with no rates stay
-    as they are."""
+    """``body`` with its first convertible currency's facts converted and served under ``USD`` (#105). Per period
+    the reporting currency wins: a USD fact is kept only for a span no converted fact covers, because an IFRS filer's
+    USD figures are a single year (SAP 2017) or a convenience translation at the year-end rate (TSM). A per-share
+    unit (an ADR holds an unknown number of ordinary shares) and a currency with no rates stay as they are."""
     units = body.get("units") or {}
-    if "USD" in units:
-        return body
     for unit, items in units.items():
         if unit not in fx:
             continue
-        usd = []
+        conv = []
         for f in items or []:
             r = _rate(fx, unit, f.get("start"), str(f.get("end")))
             if r is not None and isinstance(f.get("val"), (int, float)):
-                usd.append({**f, "val": f["val"] * r})
-        if usd:
-            return {**body, "units": {**units, "USD": usd}}
+                conv.append({**f, "val": f["val"] * r})
+        if conv:
+            spans = {(f.get("start"), f.get("end")) for f in conv}
+            kept = [f for f in units.get("USD") or [] if (f.get("start"), f.get("end")) not in spans]
+            return {**body, "units": {**units, "USD": conv + kept}}
     return body
 
 

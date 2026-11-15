@@ -700,3 +700,22 @@ def test_a_non_usd_ifrs_filer_is_read_in_usd_at_the_period_rates_105():
     rows, company, _ = facts.fact_rows(_ifrs_filer("EUR"), "2", fx_rates.index_rates([("EUR", "2025-01-01", 1.0),
                                                                                        ("EUR", "2025-06-30", 1.1)]))
     assert not [r for r in rows if r["field"] == "revenue"] and company["non_usd_units"] == "EUR"
+
+
+def test_the_reporting_currency_wins_per_period_over_a_few_usd_facts_105():
+    # The real-data check of PR 877: SAP tagged USD for 2017 only, so a concept-wide "USD exists" rule served 2017
+    # and never read 2018-2025; TSM's USD is a convenience translation at the year-end rate. Per period, the
+    # converted local figure wins; a USD fact stays only for a span with no local fact.
+    def fact(val, year):
+        return fx._fact(val, f"{year}-12-31", f"a-{year}", f"{year + 1}-03-01", "20-F", "FY", year, f"{year}-01-01")
+    filer = _ifrs_filer("EUR")
+    filer["facts"]["ifrs-full"]["Revenue"] = {"units": {"USD": [fact(999, 2023), fact(1_234, 2024)],
+                                                        "EUR": [fact(1_000, 2024), fact(1_000, 2025)]}}
+    rates = fx_rates.index_rates([("EUR", d, r) for d, r in (("2023-01-02", 1.0), ("2024-01-01", 1.1),
+                                                             ("2024-12-31", 1.1), ("2025-01-01", 1.2),
+                                                             ("2025-12-31", 1.2))])
+    by = _by_key(facts.fact_rows(filer, "2", rates)[0])
+    rev = {y: by[("revenue", "annual", date(y, 12, 31))]["value"] for y in (2023, 2024, 2025)
+           if ("revenue", "annual", date(y, 12, 31)) in by}
+    assert rev[2024] == pytest.approx(1_100) and rev[2025] == pytest.approx(1_200)    # EUR at the year's mean rate
+    assert rev[2023] == 999                                                            # no EUR fact: the USD one
