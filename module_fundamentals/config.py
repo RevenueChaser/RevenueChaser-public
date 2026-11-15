@@ -80,7 +80,8 @@ TAX_RATE = 0.21
 # 8: Quality (ROIC, gross margin, net debt / EBITDA) reads the trailing year from the quarters when a 10-Q follows
 #    the anchor year, else the year (G6, build plan PR 13); the statements come from the fundamentals layer
 # 9: ROIC is unknown when invested capital is under ROIC_IC_MIN_SHARE of total assets (#831)
-SELECTION_VERSION = "9"
+# 10: TTM revenue and P/E count a derived Q4 (fiscal year minus three quarters), so they are the last twelve months (#832)
+SELECTION_VERSION = "10"
 
 # ── Options flow (constitutional bypass) ──
 MANUAL_FLOW_ONLY = True

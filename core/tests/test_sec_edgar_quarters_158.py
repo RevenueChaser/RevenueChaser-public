@@ -446,9 +446,10 @@ def test_a_10q_trailing_twelve_month_column_is_no_ytd_and_no_fiscal_year():
     assert recs["2023-12-31"]["operating_cash_flow"] == 180.0
 
 
-def test_the_fundamentals_ttm_run_skips_what_this_extractor_marks_as_derived():
-    """The #148 reader (module_fundamentals.pipeline._quarter_run) must read the `derived` list this module writes."""
+def test_the_fundamentals_ttm_run_counts_what_this_extractor_derives():
+    """#832 (avo 15 Nov 2026 "A"): the #148 reader (module_fundamentals.pipeline._quarter_run) sums the quarters this
+    module derives from the YTD figures, so a year of one 3M fact and three YTD facts is a four-quarter run."""
     from RevenueChaser.module_fundamentals import pipeline
     recs = se.extract_quarterly(_facts(**{REV: _ytd_2023()}))
-    assert pipeline._quarter_run(recs, "revenue", 4) is None  # Q2-Q4 are derived: no TTM run
-    assert pipeline._quarter_run(recs, "revenue", 1) == ([100.0], ["2023-03-31"])  # the reported Q1 still counts
+    assert pipeline._quarter_run(recs, "revenue", 4) == (
+        [100.0, 130.0, 150.0, 180.0], ["2023-03-31", "2023-06-30", "2023-09-30", "2023-12-31"])

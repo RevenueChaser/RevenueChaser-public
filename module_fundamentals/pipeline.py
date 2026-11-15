@@ -77,15 +77,6 @@ def _ret(close, n: int) -> float | None:
 _QUARTER_GAP_DAYS = (80, 102)
 
 
-def _is_derived(rec: dict, field: str) -> bool:
-    """A figure the extractor derived (a Q4 as FY minus the first three quarters, a cash flow from YTD) is marked in
-    the record's ``derived`` list by field or by period end. Derived quarters are not reported ones, so they never
-    form a TTM run: the Rule of 40 stays on the fiscal-year basis until the YTD consumer lands (#158). A record
-    without the list is unchanged."""
-    marks = rec.get("derived") or []
-    return field in marks or str(rec.get("period"))[:10] in marks
-
-
 def _is_preliminary(rec: dict, field: str) -> bool:
     """A figure the fundamentals layer filled from UW's press release ahead of the 10-Q (``preliminary``, G6) is not
     a reported quarter either, so it never forms a TTM run: the card names the SEC statements it scored (Opus review
@@ -96,9 +87,12 @@ def _is_preliminary(rec: dict, field: str) -> bool:
 def _quarter_run(quarterly: list[dict], field: str, n: int) -> tuple[list[float], list[str]] | None:
     """The newest ``n`` quarters that have a ``field`` figure, as ``(values, period ends)``, only when those
     quarters are consecutive (period ends ~91 days apart). ``None`` otherwise: a gap (no Q4 on a 10-Q only run, a
-    missing quarter) is never summed as if it were a trailing year (#148 U3)."""
-    have = [(q.get("period"), _to_float(q.get(field))) for q in quarterly
-            if _to_float(q.get(field)) is not None and not _is_derived(q, field) and not _is_preliminary(q, field)]
+    missing quarter) is never summed as if it were a trailing year (#148 U3). A derived quarter (Q4 as the fiscal year
+    minus the first three, marked in ``derived``) counts: it is the difference of two filed figures (#832, avo 15 Nov
+    2026 "A"), so the trailing year is the last twelve months and not the fiscal year."""
+    ordered = sorted(quarterly, key=lambda q: str(q.get("period")))   # a run is the newest n, whatever the list order
+    have = [(q.get("period"), _to_float(q.get(field))) for q in ordered
+            if _to_float(q.get(field)) is not None and not _is_preliminary(q, field)]
     if len(have) < n:
         return None
     tail = have[-n:]
@@ -277,8 +271,8 @@ def _ttm_metrics(quarterly: list[dict], annual: list[dict]) -> dict:
     out = {"ttm_revenue": None, "rev_growth_ttm": None, "fcf_margin": None,
            "ttm_net_income": None, "ro40": None, "ro40_basis": None}
 
-    # ttm_revenue (the DISTORTED base) and ttm_net_income (P/E) keep their own rule: four consecutive reported
-    # quarters, else the year (avo, D2 B 2026-10-08). Only the Rule of 40 and its growth move to the TTM point.
+    # ttm_revenue (the DISTORTED base) and ttm_net_income (P/E) keep their own rule: four consecutive quarters, a
+    # derived Q4 included (#832), else the year (avo, D2 B 2026-10-08). Only the Rule of 40 and its growth move to the TTM point.
     rev4 = _quarter_run(quarterly, "revenue", 4)
     ttm_rev = sum(rev4[0]) if rev4 else None
     if ttm_rev:
