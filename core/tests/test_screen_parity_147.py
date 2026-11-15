@@ -83,7 +83,7 @@ def test_the_scenario_exercises_every_branch_of_the_scan(scenario):
         assert p["candidates"], f"{name}: no candidate passed a gate"
         s = p["summary"]
         assert s["excluded_types"] == 1, "the ETP must be dropped by the identity exclusion (R5)"
-        assert s["hygiene"] == 2, "LOWPX and LOWVOL fail the 7-A prefilter; FAR and BELOW50 pass it (C12)"
+        assert s["hygiene"] == 3, "LOWPX, LOWVOL and NOBARS1 (no D01 price) fail the 7-A prefilter; FAR, BELOW50 pass"
         assert p["universe_total"] == len(scn.UNIVERSE)
         assert snap[name]["tables"][scn.TABLES[name][0]], f"{name}: a Fetch must persist its scores"
     # Swing scores NOEDGAR (it needs no filings); Fundamentals drops it and says why.
