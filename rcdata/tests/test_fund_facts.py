@@ -655,3 +655,34 @@ def test_the_views_keep_the_old_shapes(sec):
                 "AND period_end = DATE '2025-09-30'") == [(77_000.0, 41_900.0, date(2025, 10, 29))]
     assert fx.q("SELECT newest_filed, entity_name, us_gaap FROM fundamental_company WHERE ticker = 'MSFT'") == [
         (date(2025, 10, 29), "MICROSOFT CORPORATION", True)]
+
+
+# #105: an IFRS filer, read through the us-gaap extractor under the us-gaap names of its ifrs-full concepts.
+def _ifrs_filer(unit: str) -> dict:
+    accn, filed, end = "0000000002-26-000001", "2026-03-01", "2025-12-31"
+    def one(val, start="2025-01-01"):
+        return {"units": {unit: [fx._fact(val, end, accn, filed, "20-F", "FY", 2025, start)]}}
+    ifrs = {"Revenue": one(1_000), "ProfitLoss": one(80), "ProfitLossFromOperatingActivities": one(120),
+            "Assets": one(5_000, None), "Equity": one(2_000, None), "CashAndCashEquivalents": one(300, None),
+            "TaxEffectOfRevenuesExemptFromTaxation2011": one(9)}            # a look-alike that maps to nothing
+    return {"cik": 2, "entityName": "IFRS Co", "facts": {"ifrs-full": ifrs, "dei": {}}}
+
+
+def test_an_ifrs_filer_in_usd_gets_its_statement_and_a_non_usd_one_is_counted():
+    rows, company, _ = facts.fact_rows(_ifrs_filer("USD"), "2")
+    by = _by_key(rows)
+    y = date(2025, 12, 31)
+    assert (by[("revenue", "annual", y)]["value"], by[("net_income", "annual", y)]["value"],
+            by[("ebit", "annual", y)]["value"], by[("total_assets", "annual", y)]["value"],
+            by[("total_equity", "annual", y)]["value"], by[("cash", "annual", y)]["value"]) == (
+        1_000, 80, 120, 5_000, 2_000, 300)
+    assert company["us_gaap"] is False and company["is_us"] is False      # a 20-F filer, read from its revenue forms
+    rows, company, _ = facts.fact_rows(_ifrs_filer("EUR"), "2")
+    assert not [r for r in rows if r["field"] == "revenue"] and company["non_usd_units"] == "EUR"
+
+
+def test_a_us_gaap_filer_is_read_as_before_even_with_ifrs_facts_beside():
+    f = _balance_sheet(LongTermDebt=10)
+    f["facts"]["ifrs-full"] = {"Revenue": {"units": {"USD": [fx._fact(7, "2025-12-31", "x", "2026-02-01", "10-K", "FY",
+                                                                       2025, "2025-01-01")]}}}
+    assert facts.as_gaap(f) is f

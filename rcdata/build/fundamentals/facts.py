@@ -85,6 +85,43 @@ EPS_CONCEPTS = {
     "eps_diluted": (["EarningsPerShareDiluted", "EarningsPerShareBasicAndDiluted"], "USD/shares"),
 }
 # The forms whose facts are statements: a re-read of the company's facts is due when one of them is filed.
+# #105: an IFRS filer (no us-gaap facts) is read through the same extractor, its ifrs-full concepts renamed to the
+# us-gaap concept of the same meaning (plan: claude-coordinator notes/revenuechaser/plans/
+# 2026-11-15_1226_fundamentals-ifrs-reader-plan.md). Attributable-to-parent figures map to the parent concepts and
+# the whole-group ones to the group concepts, as ``CONCEPTS`` orders them. Debt is not mapped: its ladders were
+# measured on us-gaap filers only. A non-USD value stays non-USD here (``non_usd_units``); the FX step converts it.
+IFRS_AS_GAAP = {
+    "Revenue": "Revenues",
+    "RevenueFromContractsWithCustomers": "RevenueFromContractWithCustomerExcludingAssessedTax",
+    "CostOfSales": "CostOfRevenue",
+    "GrossProfit": "GrossProfit",
+    "ProfitLossFromOperatingActivities": "OperatingIncomeLoss",
+    "ProfitLossAttributableToOwnersOfParent": "NetIncomeLoss",
+    "ProfitLoss": "ProfitLoss",
+    "CashFlowsFromUsedInOperatingActivities": "NetCashProvidedByUsedInOperatingActivities",
+    "PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities": "PaymentsToAcquirePropertyPlantAndEquipment",
+    "DepreciationAndAmortisationExpense": "DepreciationDepletionAndAmortization",
+    "Assets": "Assets",
+    "EquityAttributableToOwnersOfParent": "StockholdersEquity",
+    "Equity": "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest",
+    "CashAndCashEquivalents": "CashAndCashEquivalentsAtCarryingValue",
+    "InterestExpense": "InterestExpense",
+    "BasicEarningsLossPerShare": "EarningsPerShareBasic",
+    "DilutedEarningsLossPerShare": "EarningsPerShareDiluted",
+}
+
+
+def as_gaap(facts: dict) -> dict:
+    """``facts`` itself when it holds us-gaap facts or no ifrs-full; else a copy whose us-gaap branch is the
+    ifrs-full concepts of ``IFRS_AS_GAAP`` under their us-gaap names (#105)."""
+    branches = facts.get("facts") or {}
+    ifrs = branches.get("ifrs-full") or {}
+    if branches.get("us-gaap") or not ifrs:
+        return facts
+    gaap = {IFRS_AS_GAAP[c]: body for c, body in ifrs.items() if c in IFRS_AS_GAAP}
+    return {**facts, "facts": {"us-gaap": gaap}}
+
+
 STATEMENT_FORMS = frozenset({"10-K", "10-K/A", "10-Q", "10-Q/A", "10-KT", "10-KT/A", "10-QT", "10-QT/A",
                              "20-F", "20-F/A", "40-F", "40-F/A"})
 # The served fields: the extraction's, total debt and EPS.
@@ -389,10 +426,12 @@ def fact_rows(facts: dict, cik: str) -> tuple[list[dict], dict, dict]:
     """``(rows, company, counts)`` of one company's ``companyfacts`` answer (no stamps: the caller adds them).
 
     ``company``: ``entity_name``, ``is_us``, ``non_usd_units`` (the currencies a money concept was tagged in instead
-    of USD, #46) and ``us_gaap`` (False: no us-gaap facts at all, an IFRS filer, whose statements this layer cannot
-    read yet). ``counts``: ``no_provenance``, values left out for want of an accession.
+    of USD, #46) and ``us_gaap`` (False: no us-gaap facts at all, an IFRS filer, whose ifrs-full statements are read
+    through ``as_gaap``, #105). ``counts``: ``no_provenance``, values left out for want of an accession.
     """
     counts: dict[str, int] = {}
+    us_gaap = bool(sec_edgar._gaap(facts))
+    facts = as_gaap(facts)
     index = _Index(facts)
     non_usd: set[str] = set()
     annual = sec_edgar.extract_annual(facts, non_usd)
@@ -406,5 +445,5 @@ def fact_rows(facts: dict, cik: str) -> tuple[list[dict], dict, dict]:
     for r in rows:
         r["cik"] = cik
     company = {"cik": cik, "entity_name": facts.get("entityName"), "is_us": sec_edgar._is_us_filer(facts),
-               "non_usd_units": ",".join(sorted(non_usd)) or None, "us_gaap": bool(sec_edgar._gaap(facts))}
+               "non_usd_units": ",".join(sorted(non_usd)) or None, "us_gaap": us_gaap}
     return rows, company, counts
