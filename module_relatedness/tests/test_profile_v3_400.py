@@ -80,7 +80,7 @@ def test_prompt_carries_version_context_and_part():
                                                  "segment_note": "Compute 78%", "candidates": ["Dell", "HP"]},   # #748: ignored
                          part=(1, 3))
     assert user.startswith("Company: NVIDIA Corp\nSIC: 3674\nSector: Technology\nIndustry: Semis\n")
-    assert "Segment note (same filing):\nCompute 78%" in user and "Dell; HP" in user
+    assert "Segment note (same filing):\nCompute 78%" in user and "Dell; HP" not in user   # #748: no candidates
     assert "part 2 of 3:\nTEXT" in user
     assert "part" not in v3.build_user("X", "T", None, part=(0, 1))
 
