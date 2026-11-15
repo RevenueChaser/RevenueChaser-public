@@ -19,6 +19,7 @@ from pathlib import Path
 
 import pytest
 
+from RevenueChaser.core.reporting_common import THEME_CSS
 from RevenueChaser.module_spx_gamma import render, run
 from .conftest import make_snapshot
 
@@ -78,25 +79,6 @@ def sequence(html: str) -> list[list]:
     return parser.out
 
 
-def test_normal_data_renders_the_same_tags_and_text_as_before():
-    # Two additions came after the golden, so they are taken out first: the shared help box
-    # (#383 C3) and the data-quality banner (M-SPX-5, #376) — the fixture's reduced raw day
-    # leaves max pain, VIX and CFTC unavailable, so that banner is present.
-    html = _html()
-    assert html.count(render.HELP + "\n") == 1
-    html = html.replace(render.HELP + "\n", "")
-    banner = render.data_quality_notice(_snapshot())
-    if banner:
-        html = html.replace(render.notice_html(banner), "")
-    # The recorded-sessions block (SPX Gamma review PR 3) came after the golden too.
-    block = render.recorded_sessions_html("module_spx_gamma") + "\n"
-    assert html.count(block) == 1
-    html = html.replace(block, "")
-    got = sequence(html)
-    want = sequence((GOLDEN / "position_map.base.html").read_text(encoding="utf-8"))
-    assert len(got) == len(want)
-    for i, (g, w) in enumerate(zip(got, want)):
-        assert g == w, f"item {i} differs:\n  now:  {g}\n  base: {w}"
 
 
 def test_the_three_plotly_fragments_stay_markup():

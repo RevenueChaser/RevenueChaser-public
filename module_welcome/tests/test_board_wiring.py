@@ -49,11 +49,10 @@ def test_job_labels_name_the_board_a_job_feeds():
     assert labels["module_news"] == "News"
 
 
-def test_two_jobs_feeding_one_board_get_two_labels():
-    # Joker-1's shot, 9 Nov: the freshness card listed "Asymmetric Growth" twice (AG's own Fetch and the universe run).
+def test_no_two_jobs_share_a_label():
+    # Joker-1's shot, 9 Nov: the freshness card listed "Asymmetric Growth" twice. The universe job went with #860.
     labels = runners.welcome_job_labels()
     assert labels["module_asymmetric_growth"] == "Asymmetric Growth"
-    assert labels["universe"] == "Asymmetric Growth · universe"
     assert len(set(labels.values())) == len(labels)
 
 

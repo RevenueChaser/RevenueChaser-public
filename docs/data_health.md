@@ -1,4 +1,4 @@
-# Data health — the store inventory and the Settings / Data health board
+# Data health — the store inventory and the Settings board
 
 This is the **built contract**, not a plan. It describes what the board does today, what each
 number on it means, and what it refuses to claim. Where the board shows words instead of a number,
@@ -109,9 +109,9 @@ The payload keys: `rows`, `tickers`, `boards`, `identity`, `automations`, `backu
 
 ---
 
-## 2. The Settings / Data health board
+## 2. The Settings board
 
-The tab is `/view/module_settings`, labelled **Settings / Data health**. Its Refresh job is
+The tab is `/view/module_settings`, labelled **Settings**. Its Refresh job is
 `settings_refresh` (`app/runners.py` `run_settings`). It is an ops inventory of the local `.store/`,
 not an equity board.
 
@@ -123,7 +123,7 @@ not an equity board.
 | Refresh | re-reads `.store/` with zero network: instant and always safe |
 | Fetch | per dataset, one existing asynchronous job; it hits a provider and can take minutes |
 
-Same tokens as the rest of the app (`--bg #05111F`, `--accent #0EA5E9`). There is deliberately no
+Same tokens as the rest of the app (`THEME_TOKENS` in `core/reporting_common.py`). There is deliberately no
 "fetch everything" button: the locks, the provider quotas and the hours make it a trap.
 
 ### 2.0a The control board (design v28, 30 Oct 2026)
@@ -156,10 +156,11 @@ closed fold under it (`details#old-settings`), unchanged.
   ceiling. The serving file's own size beside it **is** read live: that is four stats of the SSD. Until the job has
   run on a box the lines read "not walked yet", which is not the same as a dataset whose folder is missing
   ("no folder yet"), and past a day the line says how old the picture is.
-- **What can be pressed where.** Fetch, Pause, Fill and **Recount folders** are in the Fetch section only;
-  the Data cards show bars and
-  no button. A press on a tier set only drafts; **Apply** saves the universe as the Settings board's
-  `UNIVERSE_SETS` and `UNIVERSE_INCLUDE` (`POST /api/settings/board/module_settings`) and fetches nothing. C and D are
+- **What can be pressed where.** Fetch and Pause are pressed in the Grafana board framed on the Fetch/Health tab
+  (#715); the universe, Fill and **Recount folders** are under that frame; the Data cards show bars and
+  no button. A press on a tier set only drafts; **Apply** makes it the universe of the next presses, kept in this
+  browser (localStorage `rc-ctl-universe`, with the hand-typed names in `rc-ctl-hand`), and fetches nothing; the
+  server keeps no copy since the old store's `board_settings` went (#860). C and D are
   shown greyed and are never offered. The default universe (A and all of B) asks no scope: it is the daily run.
 - **Filled** is counted per tier set: the hourly read joins each session's bars to the spine's sets, and the
   universe tile and the Backfill calendar sum only the sets the universe holds, so a fund-only universe is not
@@ -184,7 +185,8 @@ was asked. Both board panels carry `class="ctl"`, which is what `static/control.
 as the one board it was.
 
 The strip is `role="tablist"`; the arrow keys move between the tabs, the choice is remembered per viewer
-(`localStorage`, key `rc.settings.tab`), and `#data`, `#fetch` or `#needs` in the URL opens that tab. With no
+(`localStorage`, key `rc.settings.tab`), and `#data` or `#health` in the URL opens that tab (the old `#fetch`
+and `#needs` open Database, `#live` Fetch/Health). With no
 script the Data tab shows. A tab that becomes visible sends a `resize`, because the flow diagram lays itself out
 from a width that is 0 while hidden. A press that points into the other panel (the Cross-check button, "Fetch the
 universe") opens that tab first, through `window.RC_SETTINGS_SHOW_PANEL`.
@@ -309,7 +311,11 @@ each old table the new data replaces, from `read_log` over 14 days, with the reg
 and the two watch-list cards (PR 4, below). A "verified running" line on top: the builder's last run
 (`job_runs2`), the last swap per kind and the `ops_schema` version; under it the watch-list counts.
 
-**The two watch-list cards (PR 4, D2).** The option list (what the options build covers besides SPX) and the stock
+**The two watch-list cards (PR 4, D2) left this page on 13 Nov 2026** (avo: "Watchlist panosuna bunlari ekle ...
+ve buradan yine de kaldir"). The two lists stand on the Watch lists board under "Read by the jobs", named by what
+they are fetched for (`module_watchlists/board.py` `JOB_LISTS`); the board reads and writes the same `ops.sqlite`
+rows, so the jobs read what the board shows. What follows describes the cards as they were, for the history.
+The option list (what the options build covers besides SPX) and the stock
 list (what LEAPS pins and scans and Earnings treats as watched), read through `rcdata.read.watchlists()`. Each name is
 a stacked row: ticker, added on (UTC), by (the board whose button added it), the note when one is set, and a
 **Remove** that posts `POST /api/watchlist/<list>/remove/<ticker>` (it never adds, so a stale page cannot put back a
@@ -990,6 +996,7 @@ code:
 | `rc_provider_day_cap` | `provider` | our day cap |
 | `rc_provider_failures_today` | `provider` | failed calls on the New York day |
 | `rc_provider_rate_limited_today` | `provider` | HTTP 429 answers on the New York day |
+| `rc_need_reads_today` | `need` | requests answered for a need on the New York day, every process together |
 | `rc_dataset_state` | `dataset`, `kind`, `state` | 1 for its state: fresh, unchanged, late, stale, never |
 | `rc_dataset_last_check_result` | `dataset`, `kind` | 0 changed or unchanged, 1 skipped, 2 failed |
 | `rc_dataset_checked_timestamp_seconds` | `dataset`, `kind` | the newest check's day |
@@ -997,7 +1004,7 @@ code:
 | `rc_dataset_open_issues` | `dataset`, `kind` | open build issues |
 | `rc_builder_last_run_timestamp_seconds` | | when the builder last started a run |
 | `rc_builder_timer_on` | | 1 on, 0 off, absent when not known |
-| `rc_backup_newest_timestamp_seconds` | `kind` | the newest backup of a kind |
+| `rc_backup_newest_timestamp_seconds` | `kind`, `step` | the newest backup of a kind, per backup step (`duckdb`, `boards`, `ops`, `uw-raw`, `edgar-docs`); the old store's files are not reported |
 | `rc_switch_on` | `name` | the fetch and backup switches |
 | `rc_ibkr_state` | `state` | 1 for the gateway's login state: up, silent (port open, API not answering), down, unknown, not_set; any other text reads unknown |
 | `rc_news_feed_state` | `feed`, `state` | 1 for an IBKR news feed's state from the listener's record: refused, live, subscribed, waiting, unknown; any other text reads unknown |
@@ -1012,6 +1019,11 @@ sample), `cross_check` (the stored second-source report per field) and `boards` 
 the files live now). A part that cannot be read is `{"error": ...}` and the others still answer. It opens served
 DuckDB files, which the scrape never does, so it is asked when the panel is looked at and is not part of
 `/metrics`.
+
+`GET /api/settings/requests?limit=<n>` (`metrics.request_rows`) is the per-request log, newest first by the time
+the request was made (at most 1,000 rows an answer): the table the Grafana Logs board flows. It writes the
+dashboard's own unwritten rows first, so the page's reads are there at once; the builder's rows arrive at most a
+minute after they were made. The daily counters beside it are unchanged.
 
 `GET /api/build/datasets` lists every dataset the builder knows (`name`, `kind`, `attended`, `providers`): the
 allow-list for the Grafana buttons.

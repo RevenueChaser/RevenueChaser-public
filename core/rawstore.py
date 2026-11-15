@@ -35,7 +35,6 @@ import logging
 import os
 import re
 import subprocess
-import tempfile
 import threading
 import time
 import zlib
@@ -50,68 +49,47 @@ from RevenueChaser.core.config import DATA_DIR
 
 logger = logging.getLogger(__name__)
 
-DB_PATH = DATA_DIR / "raw.duckdb"
+#: The store folder. Since #860 it holds only the board files (``boards/<board>.duckdb``): the old ``raw``,
+#: ``edgar``, ``history`` and ``prices`` files are gone with every path to them (avo, 15 Nov 2026 02:17
+#: "Eskiye ait herseyi sil"). A test redirects the store by monkeypatching ``STORE_DIR``.
+STORE_DIR = DATA_DIR
 
 
-def edgar_db_path() -> Path:
-    """The EDGAR store file, beside the raw store (follows ``DB_PATH`` redirects)."""
-    return Path(DB_PATH).parent / "edgar.duckdb"
-
-
-def history_db_path() -> Path:
-    """The result-history file (#287), beside the raw store (follows ``DB_PATH`` redirects).
-
-    The 17 result-history tables of schema 11 live there; the first ``core/history.record_run`` creates the file
-    (``ensure_history``), the first store call does not.
-    """
-    return Path(DB_PATH).parent / "history.duckdb"
-
-
-def prices_db_path() -> Path:
-    """The daily price file (#156, avo 2026-10-09), beside the raw store (follows ``DB_PATH`` redirects).
-
-    ``price_bars_daily``, ``price_actions`` and their watermarks ``price_checks`` live there, so the price history
-    (~2.4 GiB after the fill) stays out of ``raw.duckdb`` and its weekly backups; so do the SPX daily levels
-    ``index_levels_daily`` (D03, #293, avo 2026-10-10). The first store call creates it.
-    """
-    return Path(DB_PATH).parent / "prices.duckdb"
-
-
-# Table -> database file. Default is "raw"; EDGAR-content tables declare
-# ``"db": "edgar"``, (from #278) result history ``"db": "history"`` and
-# (#156) the daily prices ``"db": "prices"`` in their MANIFEST entry. One writer per file, same
-# configuration, is fine (DuckDB allows concurrent connections in one process);
-# the split is by write pattern (hot structured vs write-once EDGAR), not per
-# domain. See docs/data_architecture.md. Resolved dynamically so a test that
-# monkeypatches ``DB_PATH`` redirects both files.
 def _db_of(name: str) -> str:
-    return (MANIFEST.get(name) or {}).get("db", "raw")
+    """The board file a MANIFEST table lives in; a table without one has no file (#860)."""
+    db = (MANIFEST.get(name) or {}).get("db")
+    if db is None:
+        raise RawStoreError(f"{name} has no store file: the old stores are gone (#860)")
+    return db
 
 
 #: Board result files (DECISIONS S9, S16): ``<store>/boards/<board>.duckdb``, one writer per board package, written
 #: incrementally. The first, narrow step of the board-file plan (2026-11-08): only boards born with their own file are
 #: listed here (News, Welcome); the move of the older boards' tables (plan PR 0 and on) extends this tuple.
+#: ``value_chain`` is the first entry moved OUT of ``edgar.duckdb`` rather than out of ``raw.duckdb`` (#860, stage 1
+#: of letting that file go): ``chain_filings`` / ``chain_mentions`` / ``chain_meta`` are the Value Chain package's
+#: own rows and nothing else reads them as EDGAR content.
+#: ``watchlists`` is the one entry here that is not a board result: it is avo's own lists, typed by hand and not
+#: regenerable from any source (#786). It sits here because it wants exactly what a board file gets — one writer,
+#: the peer lock, the schema stamp and the ``boards`` backup step — and for nothing else. It is never rebuilt and
+#: never written whole.
 BOARD_DBS = ("news", "welcome", "relatedness", "comovement", "asymmetric_growth", "swing_potential",
-             "fundamentals", "sector_rotation", "leaps", "oipd", "forecast", "spx_gamma", "sec_13f")
+             "fundamentals", "sector_rotation", "leaps", "oipd", "forecast", "spx_gamma", "sec_13f", "watchlists",
+             "value_chain")
 #: The folder of the board files, beside the raw store; ``rcdata/backup.py`` copies ``boards/*.duckdb``.
 BOARDS_DIRNAME = "boards"
 
 
 def board_db_path(board: str) -> Path:
-    """A board's own result file, ``<store>/boards/<board>.duckdb`` (follows ``DB_PATH`` redirects)."""
-    return Path(DB_PATH).parent / BOARDS_DIRNAME / f"{board}.duckdb"
+    """A board's own result file, ``<store>/boards/<board>.duckdb`` (follows ``STORE_DIR`` redirects)."""
+    return Path(STORE_DIR) / BOARDS_DIRNAME / f"{board}.duckdb"
 
 
-def _db_path(db: str) -> Path:
+def _db_path(db: str | None) -> Path:
     if db in BOARD_DBS:
         return board_db_path(db)
-    if db == "edgar":
-        return edgar_db_path()
-    if db == "history":
-        return history_db_path()
-    if db == "prices":
-        return prices_db_path()
-    return Path(DB_PATH)
+    raise RawStoreError(f"no store file {db!r}: only the board files are left (#860)")
+
 
 # Write lock-wait budget ~6.9s — the first, tiny delays absorb the in-process
 # attach race; the tail absorbs another process holding the lock. Plenty for the
@@ -271,7 +249,7 @@ def _process_name(pid: int | None) -> str:
 
 def _lock_error(detail: str, path: Path | None = None) -> StoreLockedError:
     """Build a StoreLockedError from DuckDB's message, enriched via ``ps``."""
-    path = Path(path if path is not None else DB_PATH)
+    path = Path(path) if path is not None else Path(STORE_DIR)
     m = _LOCK_HOLDER_RE.search(detail)
     holder_path = m.group("path").strip() if m else ""
     pid = int(m.group("pid")) if m else None
@@ -429,7 +407,9 @@ def _connect_with_retry(delays: tuple[float, ...], path: Path | None = None) -> 
     a RevenueChaser peer keeps (at least) the full reader budget; any other
     foreign holder fails fast.
     """
-    path = Path(path if path is not None else DB_PATH)
+    if path is None:
+        raise RawStoreError("no store file named: only the board files are left (#860)")
+    path = Path(path)
     if path.parent.name == BOARDS_DIRNAME:
         path.parent.mkdir(parents=True, exist_ok=True)   # the first write of a board makes its folder
     last: Exception | None = None
@@ -463,11 +443,10 @@ def _connect_with_retry(delays: tuple[float, ...], path: Path | None = None) -> 
 
 
 @contextmanager
-def connect(read_only: bool = False, db: str = "raw"):
+def connect(read_only: bool = False, db: str | None = None):
     """Open a connection for one operation; always closes. Retries on lock.
 
-    ``db`` selects the store file (``"raw"``, ``"edgar"``, ``"history"``, ``"prices"`` or a board in
-    ``BOARD_DBS``). ``read_only`` is ADVISORY: it only selects the retry budget, and every handle is opened
+    ``db`` names the board file (one of ``BOARD_DBS``); the old files are gone (#860). ``read_only`` is ADVISORY: it only selects the retry budget, and every handle is opened
     read-write. DuckDB refuses a second connection to the same file with a
     *different* configuration in the same process::
 
@@ -683,72 +662,6 @@ _JSON_TYPES = {"JSON"}
 _STRUCT_TYPES = {"STRUCT", "UNION"}
 _NESTED_TYPES = _JSON_TYPES | _STRUCT_TYPES
 MANIFEST: dict[str, dict] = {
-    # ── raw caches (json_payload) ────────────────────────────────────────────
-    # JSON value columns are DuckDB's native ``JSON`` type (see
-    # docs/plan_store_schema_evolution.md): written once as JSON, read back as
-    # dicts/list/scalars by get()/get_all(), and reachable from SQL with path
-    # expressions (e.g. provenance.py's json_extract on leaps_cache). Key and
-    # timestamp columns stay scalar so filters run on real columns.
-    "ticker_payload_cache": {
-        "history_mode": "session_snapshot",
-        "key": ["ticker"],
-        "columns": ["ticker TEXT PRIMARY KEY", "payload JSON", "fetched_at DOUBLE", "fetched_at_iso TEXT"],
-        "kind": "json_payload",
-        "write": "upsert",
-        "sources": ["tickers/{TICKER}_raw.json"],
-    },
-    "edgar_financials": {
-        "history_mode": "event",
-        # ``annual``/``quarterly`` are ~20 KB JSON lists per ticker; DuckDB stores
-        # strings that size uncompressed, so they are zlib-compressed (8x) —
-        # transparent for get()/write_rows(). See "compress" below.
-        "key": ["ticker"],
-        "columns": ["ticker TEXT PRIMARY KEY", "annual BLOB", "quarterly BLOB", "meta JSON",
-                    "fetched_at DOUBLE"],
-        "compress": {"annual": "json", "quarterly": "json"},
-        "kind": "json_payload",
-        "write": "upsert",
-        "db": "edgar",
-        "sources": ["sec_facts/{TICKER}.json"],
-    },
-    "edgar_documents": {
-        "history_mode": "event",
-        # Metadata only — the raw HTML lives as files under edgar_docs/
-        # (core/edgar_docs.py). Keyed by accession; CIK + accession identify the
-        # file. See docs/data_architecture.md (EDGAR store). D16 (#299): append, the
-        # first write of an accession wins (a filed document does not change);
-        # ``source`` 'sec_archives' and ``run_at`` are added to an existing store by
-        # ``_ensure_table`` (ALTER TABLE ADD COLUMN), no schema bump.
-        "key": ["accession"],
-        "columns": [
-            "accession TEXT PRIMARY KEY", "cik TEXT", "tickers TEXT", "form TEXT",
-            "filed TEXT", "fiscal_year TEXT", "doc_url TEXT", "path TEXT",
-            "sha256 TEXT", "bytes_raw BIGINT", "bytes_gzip BIGINT",
-            "fetched_at DOUBLE", "source TEXT", "run_at DOUBLE",
-        ],
-        # Empty leftovers of the pre-D16 shape; dropping them is a separate live-store change (#431).
-        "legacy_columns": ["ticker", "content_gzip"],
-        "kind": "tabular",
-        "write": "append",
-        "db": "edgar",
-        "sources": [],
-    },
-    "edgar_facts": {
-        "history_mode": "event",
-        # XBRL fact spine from the bulk ``companyfacts.zip`` ingest (Phase 4,
-        # option A): typed grain ``(cik, concept, period, form)``. Separate from
-        # ``edgar_financials`` (per-ticker JSON the financials boards read).
-        "key": ["cik", "concept", "period", "form"],
-        "columns": [
-            "cik TEXT", "concept TEXT", "period TEXT", "form TEXT",
-            "value DOUBLE", "unit TEXT",
-            "PRIMARY KEY (cik, concept, period, form)",
-        ],
-        "kind": "tabular",
-        "write": "upsert",
-        "db": "edgar",
-        "sources": [],
-    },
     "swing_info": {
         "db": "swing_potential",
         "history_mode": "session_snapshot",
@@ -782,62 +695,6 @@ MANIFEST: dict[str, dict] = {
         "kind": "json_payload",
         "write": "upsert",
         "sources": ["sector_rotation/holdings/{TICKER}.json"],
-    },
-    "equity_universe": {
-        "history_mode": "change_history",
-        # Fully typed from read_json_auto inference of
-        # asymmetric_growth_universe.json (see docs/plan_store_schema_evolution.md).
-        # Selectable columns: ticker / market_cap / sector / price / name / quote
-        # (quote is the 69-field Yahoo screener struct as a JSON column — stored
-        # columnar, queryable with path expressions). The universe provenance
-        # (generated_at / refreshed_by) is NOT a universe row — it lives in
-        # ``equity_universe_provenance`` (one keyed row).
-        "key": ["ticker"],
-        "columns": [
-            "ticker TEXT PRIMARY KEY",
-            "market_cap DOUBLE", "sector TEXT", "price DOUBLE", "name TEXT",
-            "industry TEXT", "industry_group TEXT", "sub_industry TEXT",
-            "quote JSON",
-            # Phase 1 (#265): UW's next earnings date, copied by core/identity/apply.py. Added to an existing
-            # store by ``_reconcile_table`` (ALTER TABLE ADD COLUMN) on the first store call.
-            "next_earnings_date TEXT",
-        ],
-        "kind": "json_payload",
-        "write": "upsert",
-        "sources": ["asymmetric_growth_universe.json"],
-    },
-    "equity_universe_provenance": {
-        "history_mode": "latest_cache",
-        # Which board last refreshed the shared universe + when, and how the last pull ended. Keys: ``__meta__``
-        # (membership), ``__stats__`` (cap backfill), ``__fetch__`` (refreshed_by = full | partial); written by core.universe_fetch.
-        "key": ["key"],
-        "columns": ["key TEXT PRIMARY KEY", "generated_at TEXT", "refreshed_by TEXT"],
-        "kind": "tabular",
-        "write": "replace",
-        "sources": ["asymmetric_growth_universe_meta.json"],
-    },
-    "sec_company_tickers": {
-        "history_mode": "change_history",
-        "retired": True,          # #301 D21: `sec_exchange_file` replaced its writer; the rows stay, nothing writes it
-        "key": ["ticker"],
-        "columns": ["ticker TEXT PRIMARY KEY", "cik TEXT", "name TEXT"],
-        "kind": "json_payload",
-        "write": "upsert",
-        "sources": ["sec_company_tickers.json"],
-    },
-    "sec_company_sic": {
-        "history_mode": "change_history",
-        # SIC per CIK, from data.sec.gov/submissions/CIK{10}.json. The sector
-        # source for the shared universe (Yahoo's screener has no sector).
-        # See core/sic_registry.py + docs/data_architecture.md.
-        "key": ["ticker"],
-        "columns": [
-            "ticker TEXT PRIMARY KEY", "cik TEXT", "sic TEXT",
-            "sic_description TEXT", "fetched_at DOUBLE",
-        ],
-        "kind": "tabular",
-        "write": "upsert",
-        "sources": [],
     },
     # ── Co-movement board (module_comovement) ────────────────────────────────
     "comov_runs": {
@@ -950,7 +807,7 @@ MANIFEST: dict[str, dict] = {
         "compress": {"item_text": "text"},
         "kind": "tabular",
         "write": "upsert",
-        "db": "edgar",
+        "db": "value_chain",
         "sources": [],
     },
     "chain_mentions": {
@@ -974,7 +831,7 @@ MANIFEST: dict[str, dict] = {
         ],
         "kind": "tabular",
         "write": "replace",
-        "db": "edgar",
+        "db": "value_chain",
         "sources": [],
     },
     "chain_meta": {
@@ -985,85 +842,7 @@ MANIFEST: dict[str, dict] = {
                     "fetched_at DOUBLE"],
         "kind": "tabular",
         "write": "replace",
-        "db": "edgar",
-        "sources": [],
-    },
-    "watchlist": {
-        "history_mode": "change_history",
-        "key": ["ticker"],
-        "columns": ["ticker TEXT PRIMARY KEY"],
-        "kind": "json_payload",
-        "write": "upsert",
-        "sources": ["watchlist_tickers.json"],
-    },
-    "sec13f_security_meta": {
-        "history_mode": "change_history",
-        # One shared ``{ticker: {name, sector[, type]}}`` map, merged (union)
-        # from the legacy ``universe_meta`` + ``sec13f_universe_meta``.
-        "key": ["ticker"],
-        "columns": ["ticker TEXT PRIMARY KEY", "entry JSON",
-                    # #127: epoch seconds at fetch. NULL on older rows (unknown, never 0). ALTER, no bump.
-                    "fetched_at DOUBLE"],
-        "kind": "json_payload",
-        "write": "upsert",
-        "sources": ["universe_meta.json", "sec_13f/universe_meta.json"],
-    },
-    "sec13f_enrichment": {
-        "history_mode": "session_snapshot",
-        "key": ["ticker"],
-        "columns": ["ticker TEXT PRIMARY KEY", "entry JSON"],
-        "kind": "json_payload",
-        "write": "upsert",
-        "sources": ["sec_13f/enrichment.json"],
-    },
-    "etf_holdings": {
-        "history_mode": "change_history",       # #303: the latest top 10 per ETF; history in etf_holdings_changes
-        "key": ["ticker"],
-        "columns": ["ticker TEXT PRIMARY KEY", "entry JSON", "provider TEXT", "fetched_at DOUBLE"],
-        "kind": "json_payload",
-        "write": "upsert",
-        "sources": ["sector_rotation/etf_holdings_cache.json"],
-    },
-    # (tradewhisperer_price_snapshot / tradewhisperer_closes: the TradeWhisperer
-    # board was removed 2026-09-30. Their rows stay in raw.duckdb untouched by
-    # user decision — no code reads or writes them, rawstore never drops a table
-    # it does not manage, and backups still include them.)
-    "cusip_ticker": {
-        "history_mode": "change_history",
-        "key": ["cusip"],
-        "columns": ["cusip TEXT PRIMARY KEY", "entry JSON"],
-        "kind": "json_payload",
-        "write": "upsert",
-        "sources": ["sec_13f/cusip_ticker.json"],
-    },
-    "sec13f_ticker_names": {
-        "history_mode": "change_history",
-        "retired": True,          # no writer (#289): only the legacy import fills it
-        "key": ["ticker"],
-        "columns": ["ticker TEXT PRIMARY KEY", "entry JSON"],
-        "kind": "json_payload",
-        "write": "upsert",
-        # OpenFIGI-resolved {ticker: {name, figi}}. Read by run_sec13f to seed
-        # the CUSIP->ticker name match; nothing in the repo writes it, so it is
-        # durable input data, not a regenerable artifact.
-        "sources": ["sec_13f/ticker_name.json"],
-    },
-    "sec13f_totals": {
-        "history_mode": "latest_cache",
-        "key": ["ticker"],
-        "columns": ["ticker TEXT PRIMARY KEY", "entry JSON"],
-        "kind": "json_payload",
-        "write": "upsert",
-        "sources": ["sec_13f/totals.json"],
-    },
-    # NOTE: append-only calibration logs (decisions/outcomes/tuning) are
-    # deliberately NOT stored here — they stay as jsonl files, not DuckDB rows.
-    "store_meta": {
-        "history_mode": "latest_cache",
-        "key": ["key"],
-        "columns": ["key TEXT PRIMARY KEY", "value TEXT"],
-        "kind": "json_payload",
-        "write": "upsert",
+        "db": "value_chain",
         "sources": [],
     },
     # #26 PL7: this file's schema stamp (row key ``schema_version``). The same table is created in every
@@ -1073,28 +852,6 @@ MANIFEST: dict[str, dict] = {
         "history_mode": "latest_cache",
         "key": ["key"],
         "columns": ["key TEXT PRIMARY KEY", "value TEXT"],
-        "kind": "tabular",
-        "write": "upsert",
-        "sources": [],
-    },
-    "run_registry": {
-        "history_mode": "latest_cache",
-        # One place for the runtime pins the classification work needs: the
-        # profile mode, the current NMF theme run id, migration markers. It holds
-        # POINTERS only — `theme_runs` owns the theme catalog itself.
-        "key": ["key"],
-        "columns": ["key TEXT PRIMARY KEY", "value TEXT"],
-        "kind": "tabular",
-        "write": "upsert",
-        "sources": [],
-    },
-    "migration_manifest": {
-        "history_mode": "event",
-        "key": ["dataset"],
-        "columns": [
-            "dataset TEXT PRIMARY KEY", "migrated_at TEXT", "schema_version TEXT",
-            "source_count INTEGER", "source_bytes INTEGER", "source_hash TEXT", "verify TEXT",
-        ],
         "kind": "tabular",
         "write": "upsert",
         "sources": [],
@@ -1211,7 +968,7 @@ MANIFEST: dict[str, dict] = {
             "status TEXT",
             # LLM tries that ended in an empty profile (retried up to 3 runs).
             "attempts INTEGER",
-            # The writer's provider beside its model (#360: evren / deepseek / grok). Nullable, added by
+            # The writer's provider beside its model (#360: evren / deepseek). Nullable, added by
             # ``_reconcile_table`` (ALTER TABLE ADD COLUMN), no schema bump.
             "provider TEXT",
             # Relatedness v2 (#401, schema 13): the v3 structured profile (summary, segments, customers,
@@ -1335,18 +1092,6 @@ MANIFEST: dict[str, dict] = {
         "group_by": ["theme_id"],
         "sources": [],
     },
-    "swing_ohlc": {
-        "history_mode": "latest_cache",
-        "key": ["ticker", "ts"],
-        "group_by": ["ticker"],
-        "columns": [
-            "ticker TEXT", "ts TEXT", "open DOUBLE", "high DOUBLE", "low DOUBLE",
-            "close DOUBLE", "volume DOUBLE", "cached_at DOUBLE",
-        ],
-        "kind": "tabular",
-        "write": "replace",
-        "sources": ["swing_potential/ohlc/{TICKER}.csv"],
-    },
     "rotation_snapshots": {
         "db": "sector_rotation",
         "history_mode": "session_snapshot",
@@ -1363,15 +1108,6 @@ MANIFEST: dict[str, dict] = {
         "write": "replace",
         "sources": ["sector_rotation/snapshots/{ASOF}.json"],
     },
-    "index_constituents": {
-        "history_mode": "change_history",
-        "key": ["slug", "ticker"],
-        "group_by": ["slug"],
-        "columns": ["slug TEXT", "ticker TEXT"],
-        "kind": "tabular",
-        "write": "replace",
-        "sources": ["indexes/{slug}.json"],
-    },
     "leaps_flow_prints": {
         "db": "leaps",
         "history_mode": "event",
@@ -1382,19 +1118,6 @@ MANIFEST: dict[str, dict] = {
             "next_earnings_date TEXT", "executed_at TEXT", "discovered_at TEXT",
             "ask_vol DOUBLE", "bid_vol DOUBLE", "source TEXT", "fetched_at DOUBLE",
             "session_date DATE", "run_at DOUBLE",
-        ],
-        "kind": "tabular",
-        "write": "append",
-        "sources": ["leaps/radar.db"],
-    },
-    "leaps_daily_scores": {
-        "history_mode": "session_snapshot",
-        "retired": True,          # no writer (#289): only the legacy import fills it
-        "key": ["ticker", "date"],
-        "columns": [
-            "ticker TEXT", "date TEXT", "frequency TEXT", "notional DOUBLE",
-            "concentration DOUBLE", "concentration_mult DOUBLE", "final_score DOUBLE",
-            "PRIMARY KEY (ticker, date)",
         ],
         "kind": "tabular",
         "write": "append",
@@ -1424,60 +1147,6 @@ MANIFEST: dict[str, dict] = {
         "kind": "tabular",
         "write": "upsert",
         "sources": ["ticker_store/tickers.db"],
-    },
-    "sec13f_submissions": {
-        "history_mode": "event",
-        "key": ["accession"],
-        "columns": [
-            "accession TEXT PRIMARY KEY", "cik TEXT", "period TEXT",
-            "filing_date TEXT", "type TEXT",
-            "report_type TEXT", "is_amendment BOOLEAN", "amendment_type TEXT",
-            "amendment_no INTEGER", "other_managers_count INTEGER",
-        ],
-        "kind": "tabular",
-        "write": "upsert",
-        "sources": ["sec_13f/sec13f.db"],
-    },
-    "sec13f_holdings": {
-        "history_mode": "event",
-        "key": ["accession", "line_no"],
-        "columns": [
-            "accession TEXT", "line_no INTEGER", "cusip TEXT", "cik TEXT",
-            "shares DOUBLE", "value DOUBLE", "period TEXT", "putcall TEXT",
-            "sshprnamttype TEXT", "title_of_class TEXT", "investment_discretion TEXT",
-            "other_manager TEXT", "voting_sole DOUBLE", "voting_shared DOUBLE",
-            "voting_none DOUBLE",
-            "PRIMARY KEY (accession, line_no)",
-        ],
-        "kind": "tabular",
-        "write": "append",
-        "sources": ["sec_13f/sec13f.db"],
-    },
-    "sec13f_cusip_names": {
-        "history_mode": "latest_cache",
-        "key": ["cusip"],
-        "columns": ["cusip TEXT PRIMARY KEY", "name_norm TEXT", "name_raw TEXT", "count INTEGER"],
-        "kind": "tabular",
-        "write": "upsert",
-        "sources": ["sec_13f/sec13f.db"],
-    },
-    "sec13f_ingested_zips": {
-        "history_mode": "event",
-        "key": ["filename"],
-        "columns": ["filename TEXT PRIMARY KEY", "ingested_at TEXT"],
-        "kind": "tabular",
-        "write": "upsert",
-        "sources": ["sec_13f/sec13f.db"],
-    },
-    "sec13f_edgar_backfill": {
-        "history_mode": "event",
-        "retired": True,          # no writer (#289): retired; leaves the manifest at the next bump
-        "key": ["cik", "period"],
-        "columns": ["cik TEXT", "period TEXT", "accession TEXT", "fetched_at TEXT",
-                    "PRIMARY KEY (cik, period)"],
-        "kind": "tabular",
-        "write": "upsert",
-        "sources": ["sec_13f/sec13f.db"],
     },
     # Implied Probability (OIPD) board: the UW option chain for one ticker,
     # normalised so the risk-neutral surface can be re-fit on Refresh with zero
@@ -1510,176 +1179,6 @@ MANIFEST: dict[str, dict] = {
         ],
         "kind": "tabular",
         "write": "upsert",
-        "sources": [],
-    },
-    # ── Identity master (issue #85, schema v6) ─────────────────────────────
-    # One row per ticker: the single answer to "what is this security and what
-    # sector is it". Every field carries ``<field>_source`` so a wrong answer
-    # can be traced to the provider or rule that produced it. Part 1 only
-    # creates the table; the rules that fill it arrive in Part 2.
-    "security_master": {
-        "history_mode": "change_history",
-        "key": ["ticker"],
-        "columns": [
-            "ticker TEXT PRIMARY KEY", "cik TEXT", "cik_source TEXT",
-            "exchange TEXT", "name TEXT", "name_source TEXT",
-            "security_type TEXT", "type_source TEXT", "type_asof TEXT",
-            "sector TEXT", "sector_source TEXT",
-            "industry_group TEXT", "group_source TEXT",
-            "industry TEXT", "industry_source TEXT",
-            "sub_industry TEXT", "sub_source TEXT", "gics_asof TEXT",
-            "updated_at TEXT",
-            # Phase 1 (#267): OpenFIGI identifiers, copied from the last good ``openfigi`` row. Added to an existing
-            # store by ``_reconcile_table`` (ALTER TABLE ADD COLUMN) on the first store call.
-            "figi TEXT", "composite_figi TEXT", "share_class_figi TEXT", "exch_code TEXT",
-            "security_description TEXT", "figi_source TEXT",
-            # Schema v9 (#272): the raw SIC group, copied from the SEC submissions / ``sec_company_sic`` caches by the
-            # identity job: the 4-digit code, the SEC's text, the 2-digit major group, and the cache it came from.
-            "sic TEXT", "sic_description TEXT", "sic_group2 TEXT", "sic_source TEXT",
-            # #127: CUSIP from the stored OpenFIGI 13F map, ISIN derived (ISO 6166). Added by
-            # ``_reconcile_table`` (ALTER TABLE ADD COLUMN) on the first store call. No schema bump.
-            "cusip TEXT", "cusip_source TEXT", "isin TEXT", "isin_source TEXT",
-        ],
-        "kind": "tabular",
-        "write": "upsert",
-        "sources": [],
-    },
-    # Disagreements between two sources (or a source and a rule) on one field
-    # of one ticker. first_seen survives re-detection; last_seen moves.
-    "identity_conflicts": {
-        "history_mode": "change_history",
-        "key": ["ticker", "kind", "field"],
-        "columns": [
-            "ticker TEXT", "kind TEXT", "field TEXT", "side_a TEXT", "side_b TEXT",
-            "note TEXT", "first_seen TEXT", "last_seen TEXT",
-            "PRIMARY KEY (ticker, kind, field)",
-        ],
-        "kind": "tabular",
-        "write": "upsert",
-        "sources": [],
-    },
-    # Last GOOD answer per (source, ticker). An errored or skipped source never
-    # overwrites or deletes these rows (core/identity/cache.py), which is what
-    # keeps a field from going blank when a provider is down. Fields readers
-    # filter or join on are typed columns; the rest of the answer is ``payload``.
-    # ``ticker`` holds the CIK for the per-CIK ``sec_submissions`` source when
-    # no ticker is known.
-    "identity_source_cache": {
-        "history_mode": "change_history",
-        "key": ["source", "ticker"],
-        "columns": [
-            "source TEXT", "ticker TEXT", "fetched_at TEXT", "status TEXT",
-            "security_type TEXT", "security_type2 TEXT",
-            "sector TEXT", "industry TEXT", "sub_industry TEXT",
-            "cik TEXT", "sic TEXT", "is_etf BOOLEAN",
-            "forms TEXT", "shell_closed BOOLEAN", "payload JSON",
-            "PRIMARY KEY (source, ticker)",
-        ],
-        "kind": "tabular",
-        "write": "upsert",
-        "sources": [],
-    },
-    # One row per identity refresh: per-source status/counts/error.
-    "identity_runs": {
-        "history_mode": "event",
-        "key": ["run_id"],
-        "columns": [
-            "run_id TEXT PRIMARY KEY", "started_at TEXT", "finished_at TEXT",
-            "status TEXT", "sources JSON", "counts JSON",
-        ],
-        "kind": "tabular",
-        "write": "upsert",
-        "sources": [],
-    },
-    # One row per job run (#124 PL5, schema v8). Writers: ``app/jobs._record`` (dashboard, trigger
-    # ``manual``) and ``core/automations.run_task`` (scheduled); reader: the Runs tab (#130). A skipped end
-    # write is closed as ``lost`` by ``app.jobs.reconcile_lost_runs`` (#82). Times are epoch DOUBLEs.
-    "job_runs": {
-        "history_mode": "event",
-        "key": ["run_id"],
-        "columns": [
-            "run_id TEXT PRIMARY KEY", "job_id TEXT", "module TEXT", "lane TEXT",
-            "trigger TEXT", "source TEXT", "pid BIGINT", "registry_name TEXT",
-            "params JSON", "queued_at DOUBLE", "started_at DOUBLE", "finished_at DOUBLE",
-            "status TEXT", "error TEXT", "message TEXT", "counts JSON",
-        ],
-        "kind": "tabular",
-        "write": "upsert",
-        "sources": [],
-    },
-    # Daily bars, one row per (ticker, New York session date) (#156; key session_date since v11).
-    # Complete sessions only: the writer (core/prices.ensure_daily_bars) drops a session that is not
-    # complete at the run (core/calendar.latest_complete_session). OHLC are nominal as served at
-    # fetched_at (split-adjusted up to then); later splits and dividends are rows of price_actions,
-    # applied on read by core/prices.daily_bars. split_ratio stays NULL. append: the first write of
-    # a key wins and a bar is never rewritten (History C review S4). In prices.duckdb (#156, avo 2026-10-09),
-    # with price_actions and price_checks, so one chunk commits all three in one transaction (R5).
-    "price_bars_daily": {
-        "history_mode": "event",
-        "key": ["ticker", "session_date"],
-        "columns": [
-            "ticker TEXT", "session_date DATE", "open DOUBLE", "high DOUBLE", "low DOUBLE", "close DOUBLE",
-            "adj_close DOUBLE", "volume DOUBLE", "split_ratio DOUBLE", "adj_source TEXT", "source TEXT",
-            "fetched_at DOUBLE", "run_id TEXT", "run_at DOUBLE",
-            "PRIMARY KEY (ticker, session_date)",
-        ],
-        "kind": "tabular",
-        "write": "append",
-        "db": "prices",
-        "sources": [],
-    },
-    # Biotech catalysts (#3 B3, schema v8). Keyed on the source's own event id, so a
-    # slipped date updates the row instead of adding a second one. Manifest only:
-    # the ClinicalTrials.gov / FDA / 8-K fetchers (#186-#192) write it later.
-    "catalyst_events": {
-        "history_mode": "change_history",
-        "planned": True,          # no writer (#289): the fetchers of #186-#192 arrive later
-        "key": ["source", "source_event_id"],
-        "columns": [
-            "ticker TEXT", "event_date DATE", "date_precision TEXT", "kind TEXT",
-            "title TEXT", "source TEXT", "source_event_id TEXT", "source_url TEXT",
-            "confidence TEXT", "nct_id TEXT", "fetched_at DOUBLE",
-            "PRIMARY KEY (source, source_event_id)",
-        ],
-        "kind": "tabular",
-        "write": "upsert",
-        "sources": [],
-    },
-    # FDA orphan designations per ticker (#190, schema v8; source: the FDA Orphan Drug
-    # Products database, OOPD). OOPD lists one record per marketing approval:
-    # ``approvals`` holds every {marketing_approval_date, trade_name}, the typed
-    # columns the earliest one. A NULL ``date_designated`` aborts the batch, so the
-    # writer skips and reports such rows. Manifest only: the writer is #190's.
-    "orphan_designations": {
-        "history_mode": "change_history",
-        "planned": True,          # no writer (#289): #190's OOPD writer is not in the tree
-        "key": ["ticker", "generic_name", "designation", "date_designated"],
-        "columns": [
-            "ticker TEXT", "generic_name TEXT", "designation TEXT", "date_designated DATE",
-            "designation_status TEXT", "approval_status TEXT",
-            "marketing_approval_date DATE", "trade_name TEXT", "approvals JSON",
-            "sponsor TEXT", "fetched_at DOUBLE",
-            "PRIMARY KEY (ticker, generic_name, designation, date_designated)",
-        ],
-        "kind": "tabular",
-        "write": "upsert",
-        "sources": [],
-    },
-    # The outcome of each ticker's OOPD lookup (#190): matched | unmatched | no_hits |
-    # failed, so "nothing found" differs from "never searched". Readers of
-    # orphan_designations gate on ``match``.
-    "orphan_lookups": {
-        "history_mode": "event",
-        "planned": True,          # no writer (#289): the outcome table of #190's lookup
-        "key": ["ticker", "session_date"],
-        "columns": [
-            "ticker TEXT", "session_date DATE", "sec_name TEXT", "query TEXT", "match TEXT",
-            "provider_status TEXT", "n_rows INTEGER", "candidates JSON", "error TEXT", "source TEXT",
-            "fetched_at DOUBLE", "run_id TEXT", "run_at DOUBLE",
-            "PRIMARY KEY (ticker, session_date)",
-        ],
-        "kind": "tabular",
-        "write": "append",
         "sources": [],
     },
     # The shared forecast ledger (#128 / #62 D-3, schema v8): every board's frozen
@@ -1754,217 +1253,6 @@ MANIFEST: dict[str, dict] = {
         "kind": "tabular",
         "write": "upsert",
         "sources": [],
-    },
-    # Per-board editable settings (issue #40, schema v6). Only values a user
-    # OVERRODE are stored; a default is read from the board's config at call time
-    # and Reset deletes the rows (core/board_settings.py). ``value`` holds an int or a float setting and
-    # ``value_text`` a text one (Relatedness' profile writer, #360, avo 2 Nov 2026); a row fills exactly one of
-    # them. Nullable, added to an existing store by ``_reconcile_table`` (ALTER TABLE ADD COLUMN), no schema bump.
-    "board_settings": {
-        "history_mode": "change_history",
-        "key": ["board", "key"],
-        "columns": [
-            "board TEXT", "key TEXT", "value DOUBLE", "updated_at TEXT", "value_text TEXT",
-            "PRIMARY KEY (board, key)",
-        ],
-        "kind": "tabular",
-        "write": "upsert",
-        "sources": [],
-    },
-    # G1 bump (#292, schema v10): 22 raw/edgar tables, manifest only, no writers yet
-    "price_actions": {
-        "key": ["ticker", "ex_date", "action"],
-        "columns": [
-            "ticker TEXT", "ex_date DATE", "action TEXT", "value DOUBLE", "session_date DATE",
-            "source TEXT", "fetched_at DOUBLE", "run_id TEXT", "run_at DOUBLE",
-            "PRIMARY KEY (ticker, ex_date, action)",
-        ],
-        "kind": "tabular", "write": "append", "history_mode": "event", "db": "prices", "sources": [],
-    },
-    # The price watermarks (#156): per ticker, when the actions were last downloaded (price_actions, yfinance) and
-    # when the period="max" fill was tried (price_bars_daily, yfinance_max). The shape of source_checks, which stays
-    # in raw for the identity stamps (D22); this one sits in prices.duckdb beside the bars it describes.
-    "price_checks": {
-        "key": ["dataset", "source", "key"],
-        "columns": [
-            "dataset TEXT", "source TEXT", "key TEXT", "checked_at DOUBLE", "run_id TEXT",
-            "PRIMARY KEY (dataset, source, key)",
-        ],
-        "kind": "tabular", "write": "upsert", "history_mode": "operational", "db": "prices", "sources": [],
-    },
-    # D03 (#293, avo 2026-10-10): beside D01 in prices.duckdb, decided before its writer; a store from before has the
-    # empty G1 table moved over by _PRICE_MOVES. No _SCHEMA_VERSION bump.
-    "index_levels_daily": {
-        "key": ["symbol", "session_date"],
-        "columns": [
-            "symbol TEXT", "session_date DATE", "open DOUBLE", "high DOUBLE", "low DOUBLE",
-            "close DOUBLE", "volume DOUBLE", "source TEXT", "fetched_at DOUBLE", "run_id TEXT",
-            "run_at DOUBLE", "PRIMARY KEY (symbol, session_date)",
-        ],
-        "kind": "tabular", "write": "append", "history_mode": "event", "db": "prices", "sources": [],
-    },
-    "quote_snapshot": {
-        "key": ["ticker", "session_date", "source"],
-        "columns": [
-            "ticker TEXT", "session_date DATE", "source TEXT", "market_cap DOUBLE", "price DOUBLE",
-            "shares_outstanding DOUBLE", "week_52_high DOUBLE", "week_52_low DOUBLE", "payload BLOB",
-            "fetched_at DOUBLE", "run_id TEXT", "run_at DOUBLE",
-            "PRIMARY KEY (ticker, session_date, source)",
-        ],
-        "compress": {"payload": "json"},
-        "kind": "tabular", "write": "append", "history_mode": "session_snapshot", "sources": [],
-    },
-    "short_interest": {
-        "key": ["ticker", "session_date"],
-        "columns": [
-            "ticker TEXT", "session_date DATE", "market_date DATE", "short_interest DOUBLE",
-            "si_float DOUBLE", "total_float DOUBLE", "days_to_cover DOUBLE", "fee_rate DOUBLE",
-            "rebate_rate DOUBLE", "short_shares_available DOUBLE", "payload JSON",
-            "source TEXT", "fetched_at DOUBLE", "run_id TEXT", "run_at DOUBLE",
-            "PRIMARY KEY (ticker, session_date)",
-        ],
-        "kind": "tabular", "write": "append", "history_mode": "session_snapshot", "sources": [],
-    },
-    "vendor_financials": {
-        "key": ["ticker", "source", "statement", "report_type", "period_end", "run_at"],
-        "columns": [
-            "ticker TEXT", "source TEXT", "statement TEXT", "report_type TEXT", "period_end DATE",
-            "valid_from DATE", "status TEXT", "revenue DOUBLE", "gross_profit DOUBLE",
-            "operating_income DOUBLE", "ebitda DOUBLE", "net_income DOUBLE", "operating_cash_flow DOUBLE",
-            "total_assets DOUBLE", "inventory DOUBLE", "receivables DOUBLE", "deferred_revenue DOUBLE",
-            "rpo DOUBLE", "total_debt DOUBLE", "interest_expense DOUBLE", "payload JSON",
-            "fetched_at DOUBLE", "run_id TEXT", "run_at DOUBLE",
-            "PRIMARY KEY (ticker, source, statement, report_type, period_end, run_at)",
-        ],
-        "kind": "tabular", "write": "append", "history_mode": "change_history", "sources": [],
-    },
-    "vendor_valuation": {
-        "key": ["ticker", "source", "session_date"],
-        "columns": [
-            "ticker TEXT", "source TEXT", "session_date DATE", "enterprise_value DOUBLE",
-            "ebitda DOUBLE", "total_revenue DOUBLE", "net_income_to_common DOUBLE", "trailing_pe DOUBLE",
-            "beta DOUBLE", "currency TEXT", "long_business_summary TEXT", "payload BLOB",
-            "fetched_at DOUBLE", "run_id TEXT", "run_at DOUBLE",
-            "PRIMARY KEY (ticker, source, session_date)",
-        ],
-        "compress": {"payload": "json"},
-        "kind": "tabular", "write": "append", "history_mode": "session_snapshot", "sources": [],
-    },
-    "earnings_history": {
-        "key": ["ticker", "endpoint", "report_date", "run_at"],
-        "columns": [
-            "ticker TEXT", "endpoint TEXT", "report_date DATE", "valid_from DATE", "status TEXT",
-            "report_time TEXT", "actual_eps DOUBLE", "eps_estimate DOUBLE", "surprise_pct DOUBLE",
-            "expected_move_perc DOUBLE", "post_earnings_move_1d DOUBLE", "fiscal_period_end DATE",
-            "report_type TEXT", "payload JSON", "source TEXT", "fetched_at DOUBLE", "run_id TEXT",
-            "run_at DOUBLE", "PRIMARY KEY (ticker, endpoint, report_date, run_at)",
-        ],
-        "kind": "tabular", "write": "append", "history_mode": "change_history", "sources": [],
-    },
-    "estimate_snapshots": {
-        "key": ["ticker", "session_date", "period"],
-        "columns": [
-            "ticker TEXT", "session_date DATE", "period TEXT",
-            "eps_est_analysts DOUBLE", "eps_est_avg DOUBLE", "eps_est_low DOUBLE", "eps_est_high DOUBLE",
-            "eps_est_year_ago DOUBLE", "eps_est_growth DOUBLE",
-            "rev_est_analysts DOUBLE", "rev_est_avg DOUBLE", "rev_est_low DOUBLE", "rev_est_high DOUBLE",
-            "rev_est_year_ago DOUBLE", "rev_est_growth DOUBLE",
-            "eps_trend_current DOUBLE", "eps_trend_7d DOUBLE", "eps_trend_30d DOUBLE",
-            "eps_trend_60d DOUBLE", "eps_trend_90d DOUBLE",
-            "eps_rev_up_7d DOUBLE", "eps_rev_up_30d DOUBLE", "eps_rev_down_7d DOUBLE",
-            "eps_rev_down_30d DOUBLE", "payload JSON",
-            "source TEXT", "fetched_at DOUBLE", "run_id TEXT", "run_at DOUBLE",
-            "PRIMARY KEY (ticker, session_date, period)",
-        ],
-        "kind": "tabular", "write": "append", "history_mode": "session_snapshot", "sources": [],
-    },
-    "identity_cusip": {
-        "key": ["cusip", "run_at"],
-        "columns": [
-            "cusip TEXT", "valid_from DATE", "status TEXT", "ticker TEXT", "figi TEXT",
-            "share_class_figi TEXT", "share_class TEXT", "name TEXT", "exch_code TEXT",
-            "security_type TEXT", "source TEXT", "fetched_at DOUBLE", "run_id TEXT", "run_at DOUBLE",
-            "PRIMARY KEY (cusip, run_at)",
-        ],
-        "kind": "tabular", "write": "append", "history_mode": "change_history", "sources": [],
-    },
-    "ownership_snapshot": {
-        "key": ["ticker", "session_date", "source"],
-        "columns": [
-            "ticker TEXT", "session_date DATE", "source TEXT", "shares_outstanding DOUBLE",
-            "insider_pct DOUBLE", "institutional_pct DOUBLE", "fetched_at DOUBLE", "run_id TEXT",
-            "run_at DOUBLE", "PRIMARY KEY (ticker, session_date, source)",
-        ],
-        "kind": "tabular", "write": "append", "history_mode": "session_snapshot", "sources": [],
-    },
-    "sec_mf_file": {
-        "key": ["class_id", "run_at"],
-        "columns": [
-            "class_id TEXT", "valid_from DATE", "status TEXT", "cik TEXT", "series_id TEXT",
-            "symbol TEXT", "source TEXT", "fetched_at DOUBLE", "run_id TEXT", "run_at DOUBLE",
-            "PRIMARY KEY (class_id, run_at)",
-        ],
-        "kind": "tabular", "write": "append", "history_mode": "change_history", "sources": [],
-    },
-    "sec_exchange_file": {
-        "key": ["ticker", "run_at"],
-        "columns": [
-            "ticker TEXT", "valid_from DATE", "status TEXT", "cik TEXT", "name TEXT", "exchange TEXT",
-            "source TEXT", "fetched_at DOUBLE", "run_id TEXT", "run_at DOUBLE",
-            "PRIMARY KEY (ticker, run_at)",
-        ],
-        "kind": "tabular", "write": "append", "history_mode": "change_history", "sources": [],
-    },
-    "earnings_calendar": {
-        "key": ["session_date", "earnings_date", "ticker", "report_session"],
-        "columns": [
-            "session_date DATE", "earnings_date DATE", "ticker TEXT", "report_session TEXT",
-            "sector TEXT", "full_name TEXT", "marketcap DOUBLE", "expected_move_perc DOUBLE",
-            "street_mean_est DOUBLE", "pre_earnings_close DOUBLE", "post_earnings_close DOUBLE",
-            "report_time TEXT", "item JSON", "source TEXT", "fetched_at DOUBLE", "run_id TEXT",
-            "run_at DOUBLE", "PRIMARY KEY (session_date, earnings_date, ticker, report_session)",
-        ],
-        "kind": "tabular", "write": "append", "history_mode": "session_snapshot", "sources": [],
-    },
-    "macro_series": {
-        "key": ["series_id", "obs_date", "source"],
-        "columns": [
-            "series_id TEXT", "obs_date DATE", "source TEXT", "value DOUBLE", "frequency TEXT",
-            "proxy_for TEXT", "session_date DATE", "fetched_at DOUBLE", "run_id TEXT", "run_at DOUBLE",
-            "PRIMARY KEY (series_id, obs_date, source)",
-        ],
-        "kind": "tabular", "write": "append", "history_mode": "event", "sources": [],
-    },
-    "vol_index_daily": {
-        "key": ["symbol", "session_date", "source"],
-        "columns": [
-            "symbol TEXT", "session_date DATE", "source TEXT", "open DOUBLE", "high DOUBLE",
-            "low DOUBLE", "close DOUBLE", "operator TEXT", "fetched_at DOUBLE", "run_id TEXT",
-            "run_at DOUBLE", "PRIMARY KEY (symbol, session_date, source)",
-        ],
-        "kind": "tabular", "write": "append", "history_mode": "event", "sources": [],
-    },
-    "cftc_cot": {
-        "key": ["report_type", "market", "report_date"],
-        "columns": [
-            "report_type TEXT", "market TEXT", "report_date DATE", "release_date DATE",
-            "open_interest DOUBLE",
-            "asset_mgr_long DOUBLE", "asset_mgr_short DOUBLE", "asset_mgr_change_long DOUBLE",
-            "lev_money_long DOUBLE", "lev_money_short DOUBLE", "lev_money_change_long DOUBLE",
-            "dealer_long DOUBLE", "dealer_short DOUBLE", "dealer_change_long DOUBLE",
-            "raw_row JSON", "session_date DATE", "source TEXT", "fetched_at DOUBLE", "run_id TEXT",
-            "run_at DOUBLE", "PRIMARY KEY (report_type, market, report_date)",
-        ],
-        "kind": "tabular", "write": "append", "history_mode": "event", "sources": [],
-    },
-    "economic_calendar": {
-        "key": ["session_date", "event_ts", "event", "type"],
-        "columns": [
-            "session_date DATE", "event_ts DOUBLE", "event TEXT", "type TEXT", "forecast TEXT",
-            "prev TEXT", "reported_period TEXT", "raw_row JSON", "source TEXT", "fetched_at DOUBLE",
-            "run_id TEXT", "run_at DOUBLE", "PRIMARY KEY (session_date, event_ts, event, type)",
-        ],
-        "kind": "tabular", "write": "append", "history_mode": "session_snapshot", "sources": [],
     },
     # News board (plan 2026-11-09, DECISIONS S9/S16): its own boards/news.duckdb, one writer (module_news),
     # written incrementally: upserts by key, retired events marked, never a whole-table rewrite.
@@ -2102,280 +1390,53 @@ MANIFEST: dict[str, dict] = {
         "columns": ["key TEXT PRIMARY KEY", "value TEXT", "updated_at DOUBLE"],
         "kind": "tabular", "write": "upsert", "history_mode": "operational", "db": "sec_13f", "sources": [],
     },
-    "source_checks": {
-        "key": ["dataset", "source", "key"],
+    # Watch lists (#786, avo 12 Nov 2026): his own named lists, each with ordered sections and the symbols as he
+    # writes them. Written only by module_watchlists/store.py into boards/watchlists.duckdb. Not a board result:
+    # nothing recomputes these rows, so they are only added to, changed and removed one at a time, never replaced.
+    # The names are ``wl_*`` and not ``watchlist*`` because the old store already owns ``watchlist`` and
+    # ``watchlist_changes`` (the pre-PR-4 tables, kept unwritten until their retirement): a second entry under
+    # either name would silently replace it in this dict.
+    "wl_list": {
+        "key": ["list_id"],
         "columns": [
-            "dataset TEXT", "source TEXT", "key TEXT", "checked_at DOUBLE", "run_id TEXT",
-            "PRIMARY KEY (dataset, source, key)",
+            "list_id TEXT PRIMARY KEY", "name TEXT", "description TEXT", "position INTEGER",
+            # Which job group this list feeds, "" for none: the options build reads "option", LEAPS and Earnings
+            # read "stock" (several, comma separated). Empty until the bookmark menu lands; the jobs still read
+            # ops.sqlite's two lists today.
+            "feeds TEXT", "created_at DOUBLE", "created_by TEXT", "updated_at DOUBLE",
         ],
-        "kind": "tabular", "write": "upsert", "history_mode": "operational", "sources": [],
+        "kind": "tabular", "write": "upsert", "history_mode": "operational", "db": "watchlists", "sources": [],
     },
-    "sec13f_filers": {
-        "planned": True,          # no writer yet (#289): G1 #292, manifest only
-        "key": ["accession"],
+    "wl_section": {
+        "key": ["list_id", "section_id"],
         "columns": [
-            "accession TEXT PRIMARY KEY", "cik TEXT", "period TEXT", "name TEXT", "source TEXT",
-            "fetched_at DOUBLE", "run_id TEXT", "run_at DOUBLE",
+            "list_id TEXT", "section_id TEXT", "name TEXT", "position INTEGER", "created_at DOUBLE",
+            "PRIMARY KEY (list_id, section_id)",
         ],
-        "kind": "tabular", "write": "append", "history_mode": "event", "sources": [],
+        "kind": "tabular", "write": "upsert", "history_mode": "operational", "db": "watchlists", "sources": [],
     },
-    "edgar_companyfacts": {
-        "planned": True,          # no writer yet (#289): G1 #292, manifest only
-        "key": ["cik", "taxonomy", "concept", "unit", "period_start", "period_end", "accn"],
+    # ``symbol`` is avo's own spelling, kept exactly as he wrote it ("NASDAQ:NVDA", "TVC:US10Y-TVC:US02Y"), because
+    # it is what goes back out to TradingView. ``exchange`` and ``ticker`` are its two parts, and ``coverage`` says
+    # where its data comes from here: us_equity, etf, market_series, derived, or unsupported (#785).
+    "wl_item": {
+        "key": ["list_id", "symbol"],
         "columns": [
-            "cik TEXT", "taxonomy TEXT", "concept TEXT", "unit TEXT", "period_start TEXT",
-            "period_end DATE", "accn TEXT", "value DOUBLE", "form TEXT", "fy INTEGER", "fp TEXT",
-            "filed DATE", "source TEXT", "fetched_at DOUBLE", "run_id TEXT", "run_at DOUBLE",
-            "PRIMARY KEY (cik, taxonomy, concept, unit, period_start, period_end, accn)",
+            "list_id TEXT", "symbol TEXT", "section_id TEXT", "position INTEGER", "exchange TEXT", "ticker TEXT",
+            "coverage TEXT", "note TEXT", "added_at DOUBLE", "added_by TEXT",
+            "PRIMARY KEY (list_id, symbol)",
         ],
-        "kind": "tabular", "write": "append", "history_mode": "event", "db": "edgar", "sources": [],
+        "kind": "tabular", "write": "upsert", "history_mode": "operational", "db": "watchlists", "sources": [],
     },
-    "sec_submissions": {
-        "key": ["cik", "accession"],
+    "wl_change": {
+        "key": ["list_id", "symbol", "changed_at", "action"],
         "columns": [
-            "cik TEXT", "accession TEXT", "form TEXT", "filing_date DATE", "primary_document TEXT",
-            "items TEXT", "source TEXT", "fetched_at DOUBLE", "run_id TEXT", "run_at DOUBLE",
-            "PRIMARY KEY (cik, accession)",
+            "list_id TEXT", "symbol TEXT", "action TEXT", "changed_at DOUBLE", "changed_by TEXT", "note TEXT",
+            # ``at`` and ``by`` are DuckDB keywords: an unquoted ``at DOUBLE`` fails the whole manifest apply.
+            "PRIMARY KEY (list_id, symbol, changed_at, action)",
         ],
-        "kind": "tabular", "write": "append", "history_mode": "event", "db": "edgar", "sources": [],
-    },
-    "sec_submissions_cik": {
-        "key": ["cik", "run_at"],
-        "columns": [
-            "cik TEXT", "valid_from DATE", "status TEXT", "name TEXT", "sic TEXT", "sic_description TEXT",
-            "entity_type TEXT", "tickers JSON", "exchanges JSON", "source TEXT", "fetched_at DOUBLE",
-            "run_id TEXT", "run_at DOUBLE", "PRIMARY KEY (cik, run_at)",
-        ],
-        "kind": "tabular", "write": "append", "history_mode": "change_history", "db": "edgar",
-        "sources": [],
+        "kind": "tabular", "write": "upsert", "history_mode": "change_history", "db": "watchlists", "sources": [],
     },
 }
-
-
-# ── Schema 11: one history model (history redesign C, 2026-10-07) ────────────────────────────────────────────────
-# Change history (raw.duckdb). A live table that declares ``CHANGES`` keeps its key, its writers and its readers.
-# The store itself appends a rule-A row to ``<table>_changes`` when a tracked value of a key differs from that key's
-# latest change row, and an 'absent' row when a key leaves the table, in the SAME transaction as the write: both
-# tables live in raw.duckdb (``_capture_changes``). "Current" is the live table; "as of" reads the change table.
-#   track:      compared columns (a difference appends a row)
-#   carry:      copied into the row, never compared (a re-derivation stamp is not a change, rule A)
-#   fetched_at: the live column holding the fetch time, written as rule A's ``fetched_at`` (epoch); else NULL
-#   source:     rule A's ``source`` when the table says it: a constant ('manual'); without one it is the writer, the
-#               dashboard job that wrote (app/jobs registers it) or the label of a sync. A table keyed on its own
-#               ``source`` (the provider) has no second one.
-#   rename:     live -> change column, where the live name is a rule-A column (identity_source_cache.status)
-CHANGES: dict[str, dict] = {
-    # Membership (presence) and the slow reference columns. market_cap, price and quote change every pull: D04
-    # (quote_snapshot) keeps them per session.
-    "equity_universe": {"track": ["name", "sector", "industry", "industry_group", "sub_industry",
-                                  "next_earnings_date"]},
-    # Every decided value and its source. updated_at, type_asof and gics_asof move on a re-derivation without a
-    # change (core/identity/master.py:197-198), so the two as-of stamps are carried and updated_at is left out.
-    "security_master": {"track": ["cik", "cik_source", "exchange", "name", "name_source", "security_type",
-                                  "type_source", "sector", "sector_source", "industry_group", "group_source",
-                                  "industry", "industry_source", "sub_industry", "sub_source", "figi",
-                                  "composite_figi", "share_class_figi", "exch_code", "security_description",
-                                  "figi_source", "sic", "sic_description", "sic_group2", "sic_source",
-                                  "cusip", "cusip_source", "isin", "isin_source"],
-                        "carry": ["type_asof", "gics_asof"]},
-    # The source answers behind type, sector and CIK; none can be fetched again for a past date (06 §7, D22/D23).
-    # The payload is carried, not compared: it holds values that move every pull (uw_sector market_cap and
-    # next_earnings_date, core/identity/sources/uw_sector.py:79-81; SPDR weight, spdr.py:66-67; FDIC assets_k,
-    # fdic.py:67-69; everything not lifted lands there, core/identity/cache.py:46).
-    "identity_source_cache": {"track": ["status", "security_type", "security_type2", "sector", "industry",
-                                        "sub_industry", "cik", "sic", "is_etf", "forms", "shell_closed"],
-                              "carry": ["payload"], "fetched_at": "fetched_at", "rename": {"status": "row_status"}},
-    "index_constituents": {"track": []},                             # membership per slug
-    "watchlist": {"track": [], "source": "manual"},                  # membership (06 D36)
-    "board_settings": {"track": ["value", "value_text"], "source": "manual"},     # updated_at is a save stamp, not a change
-    # Provider entities that change in place (06 D32, D33). Their writers (#186-#192, #190) upsert the current row,
-    # as the v8 entries say; a slipped date or a new approval is recorded here, so neither table changes key.
-    "catalyst_events": {"track": ["ticker", "event_date", "date_precision", "kind", "title", "source_url",
-                                  "confidence", "nct_id"], "fetched_at": "fetched_at"},
-    "orphan_designations": {"track": ["designation_status", "approval_status", "marketing_approval_date",
-                                      "trade_name", "approvals", "sponsor"], "fetched_at": "fetched_at",
-                            "source": "fda_orphan"},
-    "etf_holdings": {"track": ["entry", "provider"], "fetched_at": "fetched_at"},  # D25 #303: no past list exists
-}
-
-
-def _spec_base_type(spec: dict, col: str) -> str:
-    """The declared type of ``col`` without constraints (``"TEXT PRIMARY KEY"`` -> ``"TEXT"``)."""
-    for c in spec["columns"]:
-        head, _, rest = c.strip().partition(" ")
-        if head.strip('"') == col:
-            t = (rest.strip() or "TEXT").upper()
-            for stop in (" PRIMARY", " NOT ", " DEFAULT", " UNIQUE", " CHECK", " REFERENCES"):
-                i = t.find(stop)
-                if i >= 0:
-                    t = t[:i]
-            return t.strip() or "TEXT"
-    raise KeyError(f"{col} is not a column of this entry")
-
-
-def _has_primary_key(spec: dict) -> bool:
-    """Whether a MANIFEST entry declares a PRIMARY KEY (on a column or as a table constraint)."""
-    return any("PRIMARY KEY" in c.upper() for c in spec["columns"])
-
-
-def _change_stamp(live: str) -> list[str]:
-    """Rule A columns of a change table (06 §2 A), in J6's order; no ``source`` when the live key has one."""
-    has_source = "source" in MANIFEST[live]["key"]
-    return ["valid_from DATE", "status TEXT", *([] if has_source else ["source TEXT"]), "fetched_at DOUBLE",
-            "run_id TEXT", "run_at DOUBLE"]
-
-
-def _changes_entry(live: str, cfg: dict) -> dict:
-    spec = MANIFEST[live]
-    key, ren = list(spec["key"]), cfg.get("rename", {})
-    cols = [f'{ren.get(c, c)} {_spec_base_type(spec, c)}'
-            for c in key + cfg["track"] + cfg.get("carry", [])]
-    pk = [ren.get(c, c) for c in key] + ["run_at"]
-    return {"key": pk, "columns": cols + _change_stamp(live) + [f"PRIMARY KEY ({', '.join(pk)})"],
-            "kind": "tabular", "write": "append", "history": True, "history_mode": "change_history",
-            "changes_of": live, "sources": []}
-
-
-for _live, _cfg in CHANGES.items():
-    MANIFEST[f"{_live}_changes"] = _changes_entry(_live, _cfg)
-
-
-# Result history (history.duckdb, #287). One shape for every board: a header row per board run in ``result_runs``
-# (board, run_id) carrying everything that is per run (session_date, run_at, quality, model_version, params, the
-# funnel, the board payload), and run-keyed row tables (run_id + the row's own key) carrying only row values. Every
-# Fetch run gets a header. A run board keeps every run's rows; a session board keeps one run per session, the first
-# complete one (rule B), and marks it ``session_snapshot`` (``core/history.record_run``, which writes the header and
-# its rows in ONE transaction on the history file).
-_RUN = {"kind": "tabular", "write": "append", "history": True, "history_mode": "event", "db": "history",
-        "sources": []}
-# ADR-1 mode of a row table: a session board's rows are one run per session; a run (or quarter) board's are events.
-_MODE = {"session": "session_snapshot", "run": "event", "quarter": "event"}
-
-
-def _mirror_entry(latest: str, board: str, snapshot: str) -> dict:
-    """History of a latest result table: its own columns and types, plus ``run_id`` first in the key.
-
-    The board passes the same rows it gave the latest table, so the two cannot drift column by column."""
-    spec = MANIFEST[latest]
-    body = [f"{c.strip().split()[0]} {_spec_base_type(spec, c.strip().split()[0].strip(chr(34)))}"
-            for c in spec["columns"] if c.strip().split()[0].upper() not in _CONSTRAINT_KEYWORDS]
-    key, extra = ["run_id", *spec["key"]], []
-    if not _has_primary_key(spec):
-        # A latest table with no PRIMARY KEY (replace mode: chain_mentions, oipd_chain) may hold its key twice, and a
-        # history write keeps the first row per key (#286). Its rows are keyed by their place in the run instead,
-        # ``row_no``, which record_run numbers, so the history holds every row the latest table holds.
-        key, extra = ["run_id", "row_no"], ["row_no INTEGER"]
-    entry = {"key": key, "columns": ["run_id TEXT", *extra, *body, f"PRIMARY KEY ({', '.join(key)})"], **_RUN,
-             "history_mode": _MODE[snapshot], "board": board, "snapshot": snapshot, "mirror_of": latest}
-    if spec.get("compress"):
-        entry["compress"] = dict(spec["compress"])
-    return entry
-
-
-def _run_entry(key: list[str], columns: list[str], board: str, snapshot: str, compress: dict | None = None) -> dict:
-    entry = {"key": key, "columns": [*columns, f"PRIMARY KEY ({', '.join(key)})"], **_RUN,
-             "history_mode": _MODE[snapshot], "board": board, "snapshot": snapshot}
-    if compress:
-        entry["compress"] = compress
-    return entry
-
-
-# ``board`` is the dashboard tab key of the board that writes the rows (app/dashboard.py TABS). Money Flow is a panel
-# of the Sector Rotation tab with its own Fetch job (``moneyflow``, app/dashboard.py:178), so its runs get their own
-# board id, module_money_flow, and never compete with Rotation runs for a session snapshot.
-HISTORY: dict[str, dict] = {
-    "result_runs": {
-        "key": ["board", "run_id"],
-        "columns": [
-            "board TEXT", "run_id TEXT", "session_date DATE", "run_at DOUBLE", "quality TEXT", "quality_note TEXT",
-            "session_snapshot BOOLEAN",
-            "model_version TEXT", "params JSON", "context JSON", "funnel JSON", "row_counts JSON", "warnings JSON",
-            "provider_health JSON", "error TEXT", "payload BLOB",
-            "PRIMARY KEY (board, run_id)",
-        ],
-        "compress": {"payload": "json"}, **_RUN,
-    },
-    # Card 4: every screener score and gate (mirrors of the latest tables).
-    "ag_scores_history": _mirror_entry("ticker_scores", "module_asymmetric_growth", "session"),
-    "swing_scores_history": _mirror_entry("swing_scores", "module_swing_potential", "session"),
-    "swing_gates_history": _mirror_entry("swing_gates", "module_swing_potential", "session"),
-    "fundamentals_scores_history": _mirror_entry("fundamentals_scores", "module_fundamentals", "session"),
-    "fundamentals_gates_history": _mirror_entry("fundamentals_gates", "module_fundamentals", "session"),
-    # Card 10: peer scores per run (mirror); the payload is result_runs.payload.
-    "relatedness_scores_history": _mirror_entry("relatedness_scores", "module_relatedness", "run"),
-    # Card 12: Value Chain edges per run (mirror of chain_mentions); the payload is result_runs.payload.
-    "value_chain_edges_history": _mirror_entry("chain_mentions", "module_value_chain", "run"),
-    # Card 6: the chain each OIPD fit used (mirror of oipd_chain; a partial chain is kept, its run says 'partial').
-    "oipd_chain_history": _mirror_entry("oipd_chain", "module_oipd", "run"),
-    # Card 5 + card 7: every Earnings card with the option inputs it was scored on.
-    "earnings_cards_history": _run_entry(["run_id", "ticker"], [
-        "run_id TEXT", "ticker TEXT", "earnings_date DATE", "earnings_time TEXT", "fiscal_quarter TEXT",
-        "final_action TEXT", "direction_score DOUBLE", "volatility_edge_score DOUBLE", "confidence_score DOUBLE",
-        "r2_score DOUBLE", "r3_score DOUBLE", "r4_score DOUBLE", "r5_score DOUBLE", "r7_score DOUBLE",
-        "r8_score DOUBLE", "bias_label TEXT", "conviction TEXT", "macro_veto BOOLEAN", "expected_move_pct DOUBLE",
-        "data_completeness DOUBLE", "pre_score DOUBLE", "filter_status TEXT", "filter_reasons TEXT",
-        "trade_read TEXT", "attention_score DOUBLE", "edge_ratio DOUBLE", "nrc DOUBLE", "nrc_tier TEXT",
-        "nrc_growth DOUBLE", "nrc_acceleration DOUBLE", "nrc_quality DOUBLE", "nrc_beat DOUBLE",
-        "watchlist BOOLEAN", "card BLOB", "slots JSON", "inputs BLOB",
-    ], "module_earnings_radar", "run", {"card": "json", "inputs": "json"}),
-    # Card 6: LEAPS footprints, one per watched ticker per run.
-    "leaps_footprint_history": _run_entry(["run_id", "ticker"], [
-        "run_id TEXT", "ticker TEXT", "name TEXT", "label TEXT", "score INTEGER", "flow_score INTEGER",
-        "far_call_oi DOUBLE", "far_put_oi DOUBLE", "far_call_share DOUBLE", "far_oi_growth_1d_pct DOUBLE",
-        "far_oi_growth_q_pct DOUBLE", "far_call_sweep_pct DOUBLE", "iv_rank DOUBLE", "iv_rank_slope DOUBLE",
-        "near_term_event BOOLEAN", "as_of DATE", "frequency INTEGER", "notional DOUBLE", "net_notional DOUBLE",
-        "concentration DOUBLE", "concentration_mult DOUBLE", "ask_share DOUBLE", "itm_conc DOUBLE",
-        "otm_conc DOUBLE", "fetch_status TEXT", "inputs BLOB",
-    ], "module_leaps", "session", {"inputs": "json"}),
-    # Card 6: every OIPD fitted distribution, one row per expiry.
-    "oipd_fit_history": _run_entry(["run_id", "ticker", "expiry"], [
-        "run_id TEXT", "ticker TEXT", "expiry DATE", "as_of TEXT", "spot DOUBLE", "risk_free DOUBLE",
-        "horizon_days INTEGER", "n_contracts INTEGER", "dte INTEGER", "t_years DOUBLE", "forward DOUBLE",
-        "n_strikes INTEGER", "atm_iv DOUBLE", "g_min DOUBLE", "g_min_window DOUBLE", "clipped_pct DOUBLE",
-        "min_var DOUBLE", "density_flag BOOLEAN", "density_note TEXT", "density_g_min_shown DOUBLE",
-        "rmse DOUBLE", "mean DOUBLE", "p05 DOUBLE",
-        "p10 DOUBLE", "p25 DOUBLE", "median DOUBLE", "p75 DOUBLE", "p90 DOUBLE", "p95 DOUBLE",
-        "prob_below_spot DOUBLE", "prob_above_spot DOUBLE", "p_up10 DOUBLE", "p_down10 DOUBLE", "greeks JSON",
-        "svi JSON", "curve BLOB", "smile BLOB",
-    ], "module_oipd", "run", {"curve": "json", "smile": "json"}),
-    # Card 9: the Rotation panels and the money-flow leaderboard per session.
-    "rotation_holdings_history": _run_entry(["run_id", "etf", "holding"], [
-        "run_id TEXT", "etf TEXT", "holding TEXT", "group_name TEXT", "position INTEGER", "name TEXT",
-        "weight DOUBLE", "close DOUBLE", "rs_1w DOUBLE", "rs_1m DOUBLE", "rs_3m DOUBLE",
-    ], "module_sector_rotation", "session"),
-    # The RRG points a live Rotation Fetch saved (avo's card, #374), keyed by row_no: rotation_snapshots has no PK.
-    "rotation_snapshots_history": _mirror_entry("rotation_snapshots", "module_sector_rotation", "session"),
-    # SPX Gamma review 9 Nov 2026, PR 3 (#427 item 4): the levels a Fetch showed, one row per run (row_no numbered by record_run); the header's
-    # payload is the whole snapshot. A session board: one run's row per session (added without a bump, as #374).
-    "spx_gamma_levels_history": _run_entry(["run_id", "row_no"], [
-        "run_id TEXT", "row_no INTEGER", "asof_date DATE", "spot DOUBLE", "regime TEXT", "net_gex DOUBLE", "gamma_flip DOUBLE",
-        "call_wall DOUBLE", "put_wall DOUBLE", "pin_magnet DOUBLE", "pin_flag TEXT", "charm_label TEXT",
-        "charm_strike DOUBLE", "expected_move DOUBLE", "s_dir DOUBLE", "bias TEXT", "p_consolidation DOUBLE",
-        "p_upside DOUBLE", "p_downside DOUBLE",
-    ], "module_spx_gamma", "session"),
-    "sector_tree_history": _run_entry(["run_id", "sector", "industry", "ticker"], [
-        "run_id TEXT", "sector TEXT", "industry TEXT", "ticker TEXT", "etf TEXT", "name TEXT", "market_cap DOUBLE",
-        "weight DOUBLE",
-    ], "module_sector_rotation", "session"),
-    "money_flow_history": _run_entry(["run_id", "side", "rank"], [
-        "run_id TEXT", "side TEXT", "rank INTEGER", "etf TEXT", "name TEXT", "flow_score DOUBLE", "as_of DATE",
-    ], "module_money_flow", "session"),
-    # Card 11: the 13F board metrics per run; a quarter's snapshot is its last run (view).
-    "sec13f_metrics_history": _run_entry(["run_id", "ticker"], [
-        "run_id TEXT", "ticker TEXT", "quarter DATE", "name TEXT", "sector TEXT", "shares DOUBLE", "value DOUBLE",
-        "holders INTEGER", "top10_pct DOUBLE", "hhi DOUBLE", "new_holders INTEGER", "exited_holders INTEGER",
-        "buy_flow DOUBLE", "sell_flow DOUBLE", "breadth DOUBLE", "breadth_chg DOUBLE",
-        "streak INTEGER", "accel DOUBLE", "pct_out DOUBLE", "price DOUBLE",
-        "price_delta DOUBLE", "shares_outstanding DOUBLE", "float_shares DOUBLE", "short_pct DOUBLE",
-        "insider_pct DOUBLE", "shares_by_quarter JSON", "chg_by_quarter JSON", "cusips JSON",
-    ], "module_sec_13f", "quarter"),
-    # Card 12: every Financials report.
-    "financials_report_history": _run_entry(["run_id", "ticker"], [
-        "run_id TEXT", "ticker TEXT", "sector TEXT", "modules_run JSON", "peers JSON", "assumptions JSON",
-        "data_fetched_at TEXT", "warnings JSON", "quick_remarks JSON", "modules BLOB",
-    ], "module_financials", "run", {"modules": "json"}),
-}
-MANIFEST.update(HISTORY)
 
 
 def table_names() -> list[str]:
@@ -2623,8 +1684,8 @@ def _reconcile_table(conn, name: str, existing: dict[str, str],
 # a changed key or constraint, and a live column the MANIFEST dropped it used to skip without a word
 # (and a ``compress`` rebuild then drops the extra column for good). They are recorded here and logged,
 # once per (file, table, kind, column) per process. ``schema_drift()`` is what Settings / Data Health will
-# list. Nothing migrates by itself. #312 item 1: ``ensure_all_tables`` also keeps what it saw in
-# ``store_meta`` (key ``schema_drift``, see ``_persist_drift``), so the record outlives the process.
+# list. Nothing migrates by itself. The ``store_meta`` record of it lived in
+# raw.duckdb and went with it (#860): the log keeps the history.
 _SCHEMA_DRIFT: dict[tuple, dict] = {}
 _DRIFT_LOCK = threading.Lock()
 _TYPE_CANON: dict[str, str] = {}
@@ -2646,9 +1707,6 @@ def _record_drift(name: str, kind: str, column: str | None, live, manifest, rebu
     which recreates it from the MANIFEST, so the difference is replaced, not skipped."""
     db = _db_of(name)
     k = (db, name, kind, column)
-    seen = getattr(_LOCAL, "drift_seen", None)
-    if seen is not None:                 # inside ensure_all_tables: what this store's apply saw (#312)
-        seen.add(k)
     with _DRIFT_LOCK:
         if k in _SCHEMA_DRIFT:
             return
@@ -2661,34 +1719,6 @@ def _record_drift(name: str, kind: str, column: str | None, live, manifest, rebu
                "so this difference is replaced (an extra column's data is dropped)" if rebuilt
                else "skipped, nothing migrates by itself")
     logger.warning("rawstore schema drift in %s.%s: %s; %s", db, name, what, outcome)
-
-
-DRIFT_META_KEY = "schema_drift"
-
-
-def _persist_drift(seen: set[tuple]) -> None:
-    """Keep the drift ``ensure_all_tables`` saw in ``store_meta`` (#312 item 1); best effort, never raises.
-
-    ``seen`` holds the keys recorded during this apply, so a difference another store file showed earlier in the
-    same process (``schema_drift()`` is per process) is not written into this one. The row is
-    ``{"recorded_at": <UTC, e.g. 2026-10-15T01:00:00Z>, "drift": [<schema_drift() dicts>]}`` and is written only when the list differs
-    from the stored one: a store with drift gets it, a store whose drift is gone gets an empty list (the record
-    clears), and a fresh store or an unchanged list writes nothing. ``store_meta`` is a latest table: the row says
-    what the last apply saw; the history stays in the log. Runs only inside ``ensure_all_tables``, which opens
-    every file read-write; with ``RC_STORE_AUTO_ENSURE=0`` (the read-only protocol) nothing calls it.
-    """
-    try:
-        with _DRIFT_LOCK:
-            drift = [dict(d) for k, d in sorted(_SCHEMA_DRIFT.items(), key=lambda kv: tuple(map(str, kv[0])))
-                     if k in seen]
-        row = get("store_meta", DRIFT_META_KEY)
-        stored = row["value"] if row else None
-        if (stored["drift"] if isinstance(stored, dict) else None) == drift or (stored is None and not drift):
-            return
-        write_rows("store_meta", [{"key": DRIFT_META_KEY, "value": {
-            "recorded_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "drift": drift}}])
-    except Exception:  # noqa: BLE001 - recording the drift must never fail the first store call
-        logger.warning("rawstore: could not record the schema drift in store_meta", exc_info=True)
 
 
 def _forget_drift(name: str) -> None:
@@ -2722,91 +1752,6 @@ def _live_primary_keys(conn, table: str | None = None) -> dict[str, list[str]]:
         sql += " AND table_name = ?"
         params = [table]
     return {t: list(cols) for t, cols in conn.execute(sql, params).fetchall()}
-
-
-# ── key rebuilds (schema 11) ─────────────────────────────────────────────────
-# Two manifest-only tables (no writer, no reader at v10) change PRIMARY KEY in the bump. DuckDB cannot ALTER a key, so
-# the first call rebuilds a table still at its old key: copy the rows through a transform, check the count, swap.
-# Idempotent: a table already at its MANIFEST key is skipped; a live key that is neither the old nor the new one
-# raises instead of guessing.
-_REBUILD_RUN_ID = "schema-11"
-
-
-def _migration_session(now: float):
-    from RevenueChaser.core import calendar
-    try:
-        return calendar.session_for(now).session_date
-    except ValueError:      # outside the holiday table: the rows keep run_at, the session stays unknown
-        return None
-
-
-def _rekey_price_bars(row: dict, now: float) -> dict:
-    return {**{k: v for k, v in row.items() if k != "date"}, "session_date": row.get("date"),
-            "run_id": _REBUILD_RUN_ID, "run_at": row.get("fetched_at") or now}
-
-
-def _rekey_lookup(row: dict, now: float) -> dict:
-    from RevenueChaser.core import calendar
-    fetched = row.get("fetched_at")
-    try:
-        session = calendar.to_session_date(fetched) if fetched else None
-    except ValueError:
-        session = None
-    return {**row, "session_date": session or _migration_session(now), "source": "fda_orphan",
-            "run_id": _REBUILD_RUN_ID, "run_at": fetched or now}
-
-
-# table -> (its v10 PRIMARY KEY, row transform to the v11 shape)
-_KEY_REBUILDS: dict[str, tuple[list[str], object]] = {
-    "price_bars_daily": (["ticker", "date"], _rekey_price_bars),
-    "orphan_lookups": (["ticker"], _rekey_lookup),
-}
-
-
-def _apply_key_rebuilds(conn) -> list[str]:
-    """Rebuild each table of ``_KEY_REBUILDS`` still at its old key; returns ``"<table> (<n> rows)"`` for each."""
-    done: list[str] = []
-    live = _live_primary_keys(conn)
-    present = {r[0] for r in conn.execute(
-        "SELECT table_name FROM information_schema.tables WHERE table_schema = 'main' "
-        "AND table_type = 'BASE TABLE'").fetchall()}
-    now = time.time()
-    for name, (old_key, transform) in _KEY_REBUILDS.items():
-        if name not in present:
-            continue                                    # CREATE IF NOT EXISTS makes it with the new key
-        want = _declared_pk(MANIFEST[name])
-        have = live.get(name, [])
-        if have == want:
-            continue                                    # rebuilt earlier: the second call is a no-op
-        if have != old_key:
-            raise RawStoreError(f"{name}: live key {have} is neither v10 {old_key} nor v11 {want}")
-        cur = conn.execute(f"SELECT * FROM {name}")
-        cols_in = [d[0] for d in cur.description]
-        rows = [transform(_decode_row(name, dict(zip(cols_in, r))), now) for r in cur.fetchall()]
-        cols = _columns_of(MANIFEST[name])
-        tmp = f"{name}__rekey"
-        conn.execute("BEGIN TRANSACTION")
-        try:
-            conn.execute(f"DROP TABLE IF EXISTS {tmp}")
-            conn.execute(_ddl(name).replace(f"EXISTS {name} (", f"EXISTS {tmp} (", 1))
-            prepared = _json_rows(name, rows)
-            if prepared:
-                conn.executemany(f"INSERT INTO {tmp} ({_col_sql(cols)}) VALUES ({', '.join('?' * len(cols))})",
-                                 [[r.get(c) for c in cols] for r in prepared])
-            n_old = conn.execute(f"SELECT count(*) FROM {name}").fetchone()[0]
-            n_new = conn.execute(f"SELECT count(*) FROM {tmp}").fetchone()[0]
-            if n_old != n_new:
-                raise RawStoreError(f"{name}: copied {n_new} of {n_old} rows")
-            conn.execute(f"DROP TABLE {name}")
-            conn.execute(f"ALTER TABLE {tmp} RENAME TO {name}")
-            conn.execute("COMMIT")
-        except BaseException:
-            conn.execute("ROLLBACK")
-            raise
-        _TABLE_READY.difference_update({k for k in _TABLE_READY if k[1] == name})
-        logger.info("rawstore: rekeyed %s %s -> %s (%d rows)", name, old_key, want, n_old)
-        done.append(f"{name} ({n_old} rows)")
-    return done
 
 
 def _canon_type(conn, declared: str) -> str:
@@ -2886,243 +1831,6 @@ def ensure_table(name: str) -> None:
         _ensure_table(conn, name)
 
 
-_EDGAR_TABLES = [n for n, s in MANIFEST.items() if s.get("db") == "edgar"]
-
-
-def _table_exists(db: str, name: str) -> bool:
-    if not _db_path(db).exists():
-        return False
-    try:
-        with connect(read_only=True, db=db) as conn:
-            row = conn.execute(
-                "SELECT 1 FROM information_schema.tables "
-                "WHERE table_schema='main' AND table_name = ?", [name]).fetchone()
-            return row is not None
-    except Exception:  # noqa: BLE001 - treat an unreadable DB as "no table"
-        return False
-
-
-def _migrate_edgar_tables() -> list[str]:
-    """One-time move of EDGAR tables still living in ``raw.duckdb``.
-
-    Idempotent: a table absent from raw is skipped, so the second run is a no-op.
-    """
-    moved = []
-    for t in _EDGAR_TABLES:
-        if not _table_exists("raw", t):
-            continue
-        # Decode first: query() returns JSON cells as JSON *text*, and handing
-        # that text to write_rows() would JSON-encode it a second time (that
-        # is how every edgar_financials row ended up a JSON string).
-        rows = [_decode_row(t, r) for r in query(f"SELECT * FROM {t}", db="raw")]
-        if rows:
-            write_rows(t, rows)  # routes to edgar.duckdb
-        with connect(db="raw") as conn:
-            conn.execute(f'DROP TABLE IF EXISTS "{t}"')
-        moved.append(t)
-    if moved:
-        try:
-            write_rows("migration_manifest", [{
-                "dataset": "edgar_tables_to_edgar_db",
-                "migrated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                "schema_version": _SCHEMA_VERSION, "source_count": len(moved),
-                "source_bytes": 0, "source_hash": ",".join(sorted(moved)),
-                "verify": "PASS",
-            }])
-        except Exception:  # noqa: BLE001 - the marker is best-effort
-            pass
-    return moved
-
-
-def _record_rekeys(done: list[str]) -> None:
-    """Best-effort marker per rebuilt table in ``migration_manifest`` (the first call has no store of its own yet)."""
-    for item in done:
-        name, _, rest = item.partition(" (")
-        try:
-            write_rows("migration_manifest", [{
-                "dataset": f"key_rebuild_v11:{name}", "migrated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                "schema_version": _SCHEMA_VERSION, "source_count": int(rest.split()[0]), "source_bytes": 0,
-                "source_hash": "", "verify": "PASS"}])
-        except Exception:  # noqa: BLE001 - the marker is best-effort
-            logger.debug("rawstore: key-rebuild marker for %s not written", name, exc_info=True)
-
-
-# #156 (avo, 2026-10-09): the daily price tables moved from raw.duckdb to prices.duckdb before their fill. A store
-# from before keeps them (and the price watermarks in source_checks) in raw until the first call moves them:
-# (raw table, the rows that move or None for all, prices table). The live store holds no price rows yet, so there
-# the move is two DROPs of empty tables. D03 (#293, avo 2026-10-10) follows the same way: ``index_levels_daily`` has no
-# writer, so on the live store its move is one more DROP of an empty table.
-_PRICE_MOVES: tuple[tuple[str, str | None, str], ...] = (
-    ("price_bars_daily", None, "price_bars_daily"),
-    ("price_actions", None, "price_actions"),
-    ("source_checks", "dataset IN ('price_bars_daily', 'price_actions')", "price_checks"),
-    ("index_levels_daily", None, "index_levels_daily"),
-)
-_PRICE_MOVE_MARKER = "price_tables_to_prices_db"
-
-
-def _fingerprint(conn, select: str) -> tuple[int, int]:
-    """``(row count, sum of row hashes)`` of ``select``: the check ``rcdata/backup`` uses for a copy."""
-    n, h = conn.execute(f"SELECT count(*), coalesce(sum(hash(s)::HUGEINT), 0) FROM ({select}) s").fetchone()
-    return int(n), int(h)
-
-
-def _sql_text(path: Path) -> str:
-    return path.as_posix().replace("'", "''")
-
-
-def _copy_into_prices(src: str, dst: str, cols: str, parquet: Path, expect: tuple[int, int]) -> int:
-    """Insert the parquet copy of ``src`` into ``dst`` of prices.duckdb, in ONE transaction that commits only when
-    the copy matches what raw held (``expect``) and every copied row is in ``dst`` with the same values.
-
-    Returns the rows copied, or -1 when ``dst`` already holds a different row for one of the keys (a first write
-    wins on both sides, so neither row may replace the other: that needs a human)."""
-    p = _sql_text(parquet)
-    with connect(db="prices") as conn:
-        conn.execute("BEGIN TRANSACTION")
-        try:
-            got = _fingerprint(conn, f"SELECT {cols} FROM read_parquet('{p}')")
-            if got != expect:
-                raise RawStoreError(f"{src}: the parquet copy does not match raw.duckdb ({got} != {expect})")
-            conn.execute(f"INSERT INTO {dst} ({cols}) SELECT {cols} FROM read_parquet('{p}') ON CONFLICT DO NOTHING")
-            missing = conn.execute(f"SELECT count(*) FROM (SELECT {cols} FROM read_parquet('{p}') "
-                                   f"EXCEPT SELECT {cols} FROM {dst})").fetchone()[0]
-            if missing:
-                conn.execute("ROLLBACK")
-                return -1
-            conn.execute("COMMIT")
-        except BaseException:
-            conn.execute("ROLLBACK")
-            raise
-    return expect[0]
-
-
-def _in_raw(conn, src: str) -> bool:
-    return conn.execute("SELECT 1 FROM information_schema.tables WHERE table_schema = 'main' AND table_name = ?",
-                        [src]).fetchone() is not None
-
-
-def _moved_elsewhere(src: str) -> None:
-    logger.info("rawstore: %s was already moved out of raw.duckdb (by another process); nothing left to move", src)
-    return None
-
-
-def _mark_price_move(conn, src: str, n: int) -> None:
-    """Add ``src:n`` to the ``migration_manifest`` marker, in the raw transaction that removes those rows, so the
-    marker commits with the removal or not at all and names every table moved, whichever call or process moved it."""
-    row = conn.execute("SELECT source_hash FROM migration_manifest WHERE dataset = ?", [_PRICE_MOVE_MARKER]).fetchone()
-    moved: dict[str, int] = {}
-    for part in (row[0] or "").split(",") if row else ():
-        table, _, rows = part.rpartition(":")
-        if table and rows.isdigit():
-            moved[table] = int(rows)
-    moved[src] = moved.get(src, 0) + n
-    order = [m[0] for m in _PRICE_MOVES]
-    tables = sorted(moved, key=lambda t: order.index(t) if t in order else len(order))
-    rows = [{"dataset": _PRICE_MOVE_MARKER, "migrated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-             "schema_version": _SCHEMA_VERSION, "source_count": sum(moved.values()), "source_bytes": 0,
-             "source_hash": ",".join(f"{t}:{moved[t]}" for t in tables), "verify": "PASS"}]
-    _apply_write(conn, "migration_manifest", MANIFEST["migration_manifest"], _json_rows("migration_manifest", rows))
-    _capture_changes(conn, "migration_manifest")
-
-
-def _move_to_prices(src: str, where: str | None, dst: str, have: list[str], cols: str,
-                    before: tuple[int, int]) -> int | None:
-    """Move ``src`` (all rows, or those ``where`` selects) from raw.duckdb into ``dst`` of prices.duckdb.
-
-    ``have`` are the raw table's columns, ``cols`` the SQL list of the ones ``dst`` declares, ``before`` the
-    fingerprint of the rows that move when the caller probed raw. Copy first (the copy and its fingerprint read one
-    snapshot of raw), verify, and only then DROP the raw table (or DELETE the moved rows) in a raw transaction that
-    re-checks the rows are the ones copied and adds them to the marker. A stop in between leaves the rows in both
-    files; the next call finds them identical in prices and finishes. Another process running the same move at the
-    same time (the dashboard and a job started together) is no alarm: a table or rows already gone from raw were
-    moved by it (logged at INFO). Returns the rows moved (0 for an empty table dropped), or None when there was
-    nothing to move or the move was refused (logged; the rows stay in raw).
-    """
-    select = f'SELECT {cols} FROM "{src}"' + (f" WHERE {where}" if where else "")
-    if before[0] == 0:
-        if where is not None:
-            return None
-        with connect(db="raw") as conn:
-            _ensure_table(conn, "migration_manifest")
-            with _tx(conn):
-                if not _in_raw(conn, src):
-                    return _moved_elsewhere(src)
-                if conn.execute(f'SELECT count(*) FROM "{src}"').fetchone()[0]:
-                    return None                       # a row landed meanwhile: the next call copies it
-                conn.execute(f'DROP TABLE "{src}"')
-                _mark_price_move(conn, src, 0)
-        logger.info("rawstore: dropped the empty %s from raw.duckdb (it lives in prices.duckdb)", src)
-        return 0
-    want = _columns_of(MANIFEST[dst])
-    extra = [c for c in have if c not in want]
-    if extra:
-        logger.warning("rawstore: %s in raw.duckdb has %d rows and column(s) %s that %s in prices.duckdb lacks; "
-                       "not moved (move it by hand)", src, before[0], extra, dst)
-        return None
-    # ignore_cleanup_errors: on Windows a parquet handle can outlive the connection a beat; a leftover temp file
-    # must not undo a verified copy (the drop below still needs to run).
-    with tempfile.TemporaryDirectory(prefix="rc-prices-move-", ignore_cleanup_errors=True) as tmp:
-        parquet = Path(tmp) / f"{src}.parquet"
-        with connect(db="raw") as conn:
-            with _tx(conn):
-                now = _fingerprint(conn, select) if _in_raw(conn, src) else (0, 0)
-                if now[0]:
-                    conn.execute(f"COPY ({select}) TO '{_sql_text(parquet)}' (FORMAT parquet)")
-        if not now[0]:
-            return _moved_elsewhere(src)
-        n = _copy_into_prices(src, dst, cols, parquet, now)
-    if n < 0:
-        logger.warning("rawstore: %s in prices.duckdb already holds a different row for a key of the %d rows of "
-                       "%s in raw.duckdb; not moved, nothing overwritten (compare and move them by hand)",
-                       dst, now[0], src)
-        return None
-    with connect(db="raw") as conn:
-        _ensure_table(conn, "migration_manifest")
-        with _tx(conn):
-            after = _fingerprint(conn, select) if _in_raw(conn, src) else (0, 0)
-            if after != now:
-                if not after[0]:
-                    return _moved_elsewhere(src)
-                logger.warning("rawstore: %s in raw.duckdb changed during the move to prices.duckdb; kept, the "
-                               "next call moves the rest", src)
-                return None
-            conn.execute(f'DROP TABLE "{src}"' if where is None else f'DELETE FROM "{src}" WHERE {where}')
-            _mark_price_move(conn, src, n)
-    logger.info("rawstore: moved %d rows of %s from raw.duckdb to %s in prices.duckdb", n, src, dst)
-    return n
-
-
-def _migrate_price_tables() -> list[str]:
-    """The one-time move of ``_PRICE_MOVES``; idempotent (a second call finds nothing in raw). Returns
-    ``"<raw table>:<rows>"`` per table this call moved; each move adds itself to the ``migration_manifest`` marker
-    ``price_tables_to_prices_db`` in its own raw transaction."""
-    moves = [m for m in _PRICE_MOVES if _db_of(m[2]) == "prices"]
-    if not moves:
-        return []
-    found = []                                        # one raw open per call once the move is done
-    with connect(db="raw") as conn:
-        cols_of: dict[str, list[str]] = {}
-        for t, c in conn.execute(
-                "SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'main' "
-                f"AND table_name IN ({', '.join('?' * len(moves))}) ORDER BY table_name, ordinal_position",
-                [m[0] for m in moves]).fetchall():
-            cols_of.setdefault(t, []).append(c)
-        for src, where, dst in moves:
-            have = cols_of.get(src)
-            if not have:
-                continue
-            cols = _col_sql([c for c in _columns_of(MANIFEST[dst]) if c in have])
-            select = f'SELECT {cols} FROM "{src}"' + (f" WHERE {where}" if where else "")
-            found.append((src, where, dst, have, cols, _fingerprint(conn, select)))
-    done = []
-    for src, where, dst, have, cols, before in found:
-        n = _move_to_prices(src, where, dst, have, cols, before)
-        if n is not None:
-            done.append(f"{src}:{n}")
-    return done
-
-
 # ── per-file schema stamp (#26 PL7-a) ────────────────────────────────────────────────────────
 # A stamp in raw that describes edgar.duckdb cannot see a restore of one old file. The row lives in
 # the file it describes: ``store_schema`` key ``schema_version``. Written on ensure when absent or
@@ -3134,7 +1842,7 @@ def _migrate_price_tables() -> list[str]:
 # ensure touches any file (``_refuse_ensure_if_ahead``), so an old checkout never reshapes a newer one.
 _SCHEMA_STAMP_TABLE = "store_schema"
 _SCHEMA_STAMP_KEY = "schema_version"
-_SCHEMA_FILES = ("raw", "edgar", "history", "prices") + BOARD_DBS
+_SCHEMA_FILES = BOARD_DBS
 _STAMP_WRITES: dict[str, int] = {}   # test hook: counts real stamp writes, not a metric
 _STAMP_WARNED: set[tuple] = set()
 _STAMP_SEEN: dict[str, tuple] = {}   # file path -> ((size, mtime_ns), stamp): a steady file costs one stat
@@ -3330,8 +2038,8 @@ def _ensure_db_tables(conn, db: str) -> None:
         existing.setdefault(t, {})[c] = typ
     path = str(_db_path(db))
     live_pks = _live_primary_keys(conn)
-    for name in MANIFEST:
-        if _db_of(name) != db:
+    for name, spec in MANIFEST.items():
+        if spec.get("db") != db:      # store_schema has no file of its own: the stamp below writes it in each
             continue
         _reconcile_table(conn, name, existing.get(name, {}), live_pks)
         _TABLE_READY.add((path, name))
@@ -3339,40 +2047,17 @@ def _ensure_db_tables(conn, db: str) -> None:
 
 
 def ensure_all_tables() -> None:
-    # Raw store: renames/merges/views are raw-table migrations, so they run only
-    # on the raw file. Each DB gets its own tables created.
+    """Reconcile every board file with the MANIFEST (each board's own file, made eagerly)."""
     prev = getattr(_LOCAL, "ensuring", False)
-    prev_seen = getattr(_LOCAL, "drift_seen", None)
     _LOCAL.ensuring = True  # the steps below call the public API themselves
-    _LOCAL.drift_seen = seen = set()   # the drift this apply sees, for _persist_drift (#312)
     try:
-        _refuse_ensure_if_ahead(_SCHEMA_FILES)   # before any rename, merge, ALTER or move (PL7-b)
-        with connect(db="raw") as conn:
-            _apply_renames(conn)
-            rekeyed = _apply_key_rebuilds(conn)
-            _ensure_db_tables(conn, "raw")
-            _apply_merges(conn)
-            _apply_views(conn)
-            _synced, sync_failed = _sync_tracked(conn, "store-sync")
-        with connect(db="edgar") as conn:
-            _ensure_db_tables(conn, "edgar")
-        _migrate_edgar_tables()
-        _record_rekeys(rekeyed)
-        with connect(db="prices") as conn:    # #156: made eagerly, so Data Health counts 0 rows, not "no table"
-            _ensure_db_tables(conn, "prices")
-        _migrate_price_tables()
-        for board in BOARD_DBS:              # S9: each board's own file, made eagerly like prices
+        _refuse_ensure_if_ahead(_SCHEMA_FILES)   # before any ALTER (PL7-b)
+        for board in BOARD_DBS:
             with connect(db=board) as conn:
                 _ensure_db_tables(conn, board)
-        if _db_path("history").exists():   # result history (#287); the first record_run makes the file
-            ensure_history()
-        _persist_drift(seen)                 # every file is reconciled now; never raises
-        if sync_failed:                      # after the other files, so one table never holds them back
-            raise RawStoreError(f"change capture could not sync {sync_failed}")
     finally:
         _LOCAL.ensuring = prev
-        _LOCAL.drift_seen = prev_seen
-    _ENSURED[str(Path(DB_PATH))] = 0.0
+    _ENSURED[str(Path(STORE_DIR))] = 0.0
 
 
 # ── apply the manifest once per process, on first use ───────────────────────
@@ -3384,7 +2069,7 @@ def ensure_all_tables() -> None:
 # every _ENSURE_RETRY_S seconds rather than on every call. The unit suite turns
 # it off (RC_STORE_AUTO_ENSURE=0 in conftest.py) because every test gets a fresh
 # DB and the full manifest costs ~1 s; tests that need it call it explicitly.
-_ENSURED: dict[str, float] = {}  # raw DB path -> 0.0 done | time of last failure
+_ENSURED: dict[str, float] = {}  # store folder -> 0.0 done | time of last failure
 _ENSURE_LOCK = threading.Lock()
 _ENSURE_RETRY_S = 30.0
 
@@ -3392,11 +2077,11 @@ _ENSURE_RETRY_S = 30.0
 def _auto_ensure(write: bool) -> None:
     if os.getenv("RC_STORE_AUTO_ENSURE", "1") == "0" or getattr(_LOCAL, "ensuring", False):
         return
-    key = str(Path(DB_PATH))
+    key = str(Path(STORE_DIR))
     state = _ENSURED.get(key)
     if state == 0.0 or (state and time.time() - state < _ENSURE_RETRY_S):
         return
-    if not write and not Path(DB_PATH).exists():
+    if not write and not (Path(STORE_DIR) / BOARDS_DIRNAME).exists():
         return  # a read of a store that does not exist yet must not create it
     with _ENSURE_LOCK:
         state = _ENSURED.get(key)
@@ -3410,105 +2095,9 @@ def _auto_ensure(write: bool) -> None:
             _ENSURED[key] = time.time()
 
 
-# Old table name -> new. Applied idempotently on `ensure_all_tables()`, BEFORE any
-# CREATE IF NOT EXISTS, so a rename is never shadowed by an empty new table.
-# See docs/glossary.md + docs/classification_design.md (Target data model).
-_RENAMES: dict[str, str] = {
-    "asymmetric_universe_meta": "equity_universe_provenance",
-    "asymmetric_universe": "equity_universe",
-    "ticker_store": "ticker_scores",
-    "ticker_cache": "ticker_payload_cache",
-    "sec_facts": "edgar_financials",
-    "index_members": "index_constituents",
-    "etf_holdings_cache": "etf_holdings",
-}
-
-
-def _apply_renames(conn) -> list[str]:
-    """Rename tables per ``_RENAMES`` when the old name exists.
-
-    Idempotent: a second run finds nothing to do. Returns what it renamed. If
-    the new name ALSO exists but is empty (a write self-healed it into
-    existence before the rename ran), the empty shell is dropped so the rename
-    still happens instead of orphaning the old data. If both hold rows the
-    rename is skipped and logged — that needs a human.
-    """
-    existing = {r[0] for r in conn.execute(
-        "SELECT table_name FROM information_schema.tables "
-        "WHERE table_schema = 'main'").fetchall()}
-    applied = []
-    for old, new in _RENAMES.items():
-        if old not in existing:
-            continue
-        if new in existing:
-            n = conn.execute(f'SELECT count(*) FROM "{new}"').fetchone()[0]
-            if n:
-                logger.warning("rawstore: both %s and %s hold rows; not renaming "
-                               "(merge %s by hand)", old, new, old)
-                continue
-            conn.execute(f'DROP TABLE "{new}"')
-            _TABLE_READY.discard((str(Path(DB_PATH)), new))
-        conn.execute(f'ALTER TABLE "{old}" RENAME TO "{new}"')
-        applied.append(f"{old}->{new}")
-    return applied
-
-
-# 2:1 table migrations that ``_RENAMES`` cannot express. Idempotent: a source
-# that no longer exists is skipped. Sources are listed richest-first and the
-# INSERT uses DO NOTHING, so the richer table wins an overlapping key.
-_MERGES: list[dict] = [
-    {
-        "new": "sec13f_security_meta",
-        "sources": ["sec13f_universe_meta", "universe_meta"],
-        "cols": ["ticker", "entry"],
-        "conflict": ["ticker"],
-    },
-]
-
-
-def _apply_merges(conn) -> list[str]:
-    """Fold legacy tables into their merged home, then drop the source."""
-    existing = {r[0] for r in conn.execute(
-        "SELECT table_name FROM information_schema.tables "
-        "WHERE table_schema = 'main'").fetchall()}
-    done = []
-    for m in _MERGES:
-        if m["new"] not in existing:
-            continue
-        cols = _col_sql(m["cols"])
-        conflict = _col_sql(m["conflict"])
-        for src in m["sources"]:
-            if src not in existing:
-                continue
-            conn.execute(
-                f'INSERT INTO "{m["new"]}" ({cols}) SELECT {cols} FROM "{src}" '
-                f'ON CONFLICT ({conflict}) DO NOTHING')
-            conn.execute(f'DROP TABLE "{src}"')
-            done.append(f"{src}->{m['new']}")
-    return done
-
-
-# Derived, read-only VIEWs (never materialised). ``index_tickers`` replaces the
-# old ``ticker_registry`` table: membership lives in ``index_constituents`` and
-# name/sector are joined from ``equity_universe``.
-_VIEWS: list[tuple[str, str]] = [
-    ("index_tickers",
-     "CREATE OR REPLACE VIEW index_tickers AS "
-     "SELECT c.slug, c.ticker, u.name, u.sector "
-     "FROM index_constituents c "
-     "LEFT JOIN equity_universe u ON u.ticker = c.ticker"),
-]
-
-
-def _apply_views(conn) -> list[str]:
-    # ``company_profile`` joined board tables that now live in their own files (S9); core/company_profile.py
-    # joins them in Python. The old derived view is dropped (a view holds no data).
-    conn.execute("DROP VIEW IF EXISTS company_profile")
-    made = []
-    for name, sql in _VIEWS:
-        conn.execute(sql)
-        made.append(name)
-    return made
+def _sql_text(path: Path) -> str:
+    """A path as a single-quoted SQL literal's body (rcdata/build/base.py uses it too)."""
+    return path.as_posix().replace("'", "''")
 
 
 def _col_type(name: str, col: str) -> str:
@@ -3597,15 +2186,11 @@ def _col_sql(cols: list[str]) -> str:
     return ", ".join(f'"{c}"' for c in cols)
 
 
-
-
-# ── change capture (schema 11, history redesign C) ──────────────────────────────────────────────────────────────
-# Who wrote a change: ``(run_id, source)`` of the running dashboard job when the app registered a provider
-# (app/jobs: the job id and its module), else the scheduled task's run (``task_run``: its ``job_runs`` id and
-# registry name), else a fresh id like ``ledger.new_run_id`` and no source. A forced label wins (the first-call sync).
+# ── who wrote a row ─────────────────────────────────────────────────────────────────────────────────────────────
+# ``(run_id, source)`` of the running dashboard job when the app registered a provider (app/jobs: the job id and its
+# module), else the scheduled task's run (``task_run``: its ``job_runs`` id and registry name), else a fresh id like
+# ``ledger.new_run_id`` and no source. The change capture that also read it went with raw.duckdb (#860).
 _CHANGE_WRITER = None
-_CHANGE_CLOCK_LOCK = threading.Lock()
-_LAST_CHANGE_AT = [0.0]
 
 
 # A scheduled task's run (#129 A1): ``core/automations.run_task`` records the run's ``job_runs`` row and hands its id
@@ -3626,9 +2211,6 @@ def set_change_writer(fn) -> None:
 
 
 def _change_writer() -> tuple[str, str | None]:
-    forced = getattr(_LOCAL, "change_writer", None)
-    if forced:
-        return forced
     got = _CHANGE_WRITER() if _CHANGE_WRITER else None
     if got and got[0]:
         return got[0], got[1]
@@ -3643,148 +2225,14 @@ def writer_run_id() -> str:
     """The ``run_id`` a core writer stamps on its rows: the running dashboard job's id, else the scheduled task's,
     else a fresh one.
 
-    The same id the change capture records, so a row joins to its ``job_runs`` row. For core code that cannot import
+    So a row joins to its ``job_runs`` row. For core code that cannot import
     ``app.jobs.run_id`` (``core/quotes.py``, called from inside the universe pull).
     """
     return _change_writer()[0]
 
 
-def _change_clock() -> float:
-    """Epoch seconds, strictly increasing within the process, so (key, run_at) never collides."""
-    with _CHANGE_CLOCK_LOCK:
-        now = max(time.time(), _LAST_CHANGE_AT[0] + 1e-6)
-        _LAST_CHANGE_AT[0] = now
-        return now
-
-
-def _session_of(run_at: float):
-    from RevenueChaser.core import calendar
-    try:
-        return calendar.session_for(run_at).session_date
-    except ValueError:      # outside the holiday table (1993-2028): the row keeps run_at, valid_from is unknown
-        return None
-
-
-@contextmanager
-def change_label(label: str, run_id: str | None = None):
-    """Stamp every change captured in the block with ``label`` as its source and ``run_id`` (default: ``label``)."""
-    prev = getattr(_LOCAL, "change_writer", None)
-    _LOCAL.change_writer = (run_id or label, label)
-    try:
-        yield
-    finally:
-        _LOCAL.change_writer = prev
-
-
 def _q(c: str) -> str:
     return f'"{c}"'
-
-
-def _live_columns(conn, catalog: str, name: str) -> set[str]:
-    return {r[0] for r in conn.execute(
-        "SELECT column_name FROM information_schema.columns WHERE table_catalog = ? AND table_schema = 'main' "
-        "AND table_name = ?", [catalog, name]).fetchall()}
-
-
-def _capture_changes(conn, name: str, touched: list[str] | None = None) -> int:
-    """Append the rule-A rows that make ``<name>_changes`` agree with the live table ``name``; returns the count.
-
-    Runs on the caller's connection, inside its transaction, right after the write. It compares the whole live
-    table with the latest change row of each key, so it does not depend on which write ran: a key that is new, back
-    after 'absent', or has a tracked value that differs gets a 'present' row; a key whose latest row is 'present'
-    and that is no longer in the live table gets an 'absent' row. A second call with nothing changed appends 0.
-    ``touched``: the columns an ``update_columns`` set; none tracked means nothing can have moved.
-    """
-    cfg = CHANGES.get(name)
-    if cfg is None or name not in MANIFEST or f"{name}_changes" not in MANIFEST:
-        return 0
-    spec = MANIFEST[name]
-    key, track, carry = spec["key"], cfg["track"], cfg.get("carry", [])
-    if touched is not None and not set(touched) & set(key + track):
-        return 0        # an update of untracked columns only (the cap backfill): no key and no tracked value moved
-    ch, ren = f"{name}_changes", cfg.get("rename", {})
-    live = key + track + carry
-    catalog = conn.execute("SELECT current_database()").fetchone()[0]
-    if not set(live) <= _live_columns(conn, catalog, name):
-        # No live table, or one that predates a MANIFEST column (a legacy store before its first reconcile): nothing
-        # to compare yet. The first-call sync runs after the MANIFEST is applied and records it.
-        return 0
-    _ensure_table(conn, ch)
-    own = lambda t: f"{_q(catalog)}.main.{_q(t)}"   # this file's own table: a TEMP table of the name never stands in
-    src_live = own(name)
-    if not _has_primary_key(spec):
-        # A key-less live table (index_constituents) may hold a repeated key or a NULL key part, which the change
-        # table's key cannot: one row per key, NULL keys left out. Today's writes stay accepted.
-        order = f" ORDER BY {', '.join(_q(c) for c in track)}" if track else ""
-        src_live = (f"(SELECT * FROM {own(name)} WHERE {' AND '.join(f'{_q(c)} IS NOT NULL' for c in key)} "
-                    f"QUALIFY row_number() OVER (PARTITION BY {', '.join(_q(c) for c in key)}{order}) = 1)")
-    run_at = _change_clock()
-    run_id, writer = _change_writer()
-    own_source = "source" not in key            # a table keyed on its provider has no second source column
-    fcol = cfg.get("fetched_at")
-    fetched = ("NULL" if not fcol else f"l.{_q(fcol)}" if _spec_base_type(spec, fcol) == "DOUBLE"
-               else f"epoch(TRY_CAST(l.{_q(fcol)} AS TIMESTAMPTZ))")
-    into = (f"INSERT INTO {own(ch)} ({', '.join(_q(ren.get(c, c)) for c in live)}, valid_from, status, "
-            f"{'source, ' if own_source else ''}fetched_at, run_id, run_at) ")
-    params = [_session_of(run_at), *([cfg.get("source", writer)] if own_source else []), run_id, run_at]
-    src = "?, " if own_source else ""
-    cur = (f"SELECT * FROM {own(ch)} QUALIFY row_number() OVER "
-           f"(PARTITION BY {', '.join(_q(ren.get(c, c)) for c in key)} ORDER BY run_at DESC) = 1")
-    on = " AND ".join(f"l.{_q(c)} = cur.{_q(ren.get(c, c))}" for c in key)
-    differs = " OR ".join(f"l.{_q(c)} IS DISTINCT FROM cur.{_q(ren.get(c, c))}" for c in track) or "FALSE"
-    present = conn.execute(
-        into + f"SELECT {', '.join('l.' + _q(c) for c in live)}, ?, 'present', {src}{fetched}, ?, ? FROM {src_live} l "
-        f"LEFT JOIN ({cur}) cur ON {on} WHERE cur.run_at IS NULL OR cur.status = 'absent' OR ({differs})",
-        params).fetchone()[0]
-    absent = conn.execute(
-        into + f"SELECT {', '.join('cur.' + _q(ren.get(c, c)) for c in live)}, ?, 'absent', {src}NULL, ?, ? "
-        f"FROM ({cur}) cur WHERE cur.status = 'present' AND NOT EXISTS (SELECT 1 FROM {src_live} l WHERE {on})",
-        params).fetchone()[0]
-    return int(present) + int(absent)
-
-
-def changes_as_of(name: str, at: float) -> list[dict]:
-    """The rows ``name`` held at epoch ``at``, from its change table: each key's latest change at or before ``at``,
-    when that change is 'present'. Key, tracked and carried columns only (live names)."""
-    cfg = CHANGES[name]
-    key, ren = MANIFEST[name]["key"], cfg.get("rename", {})
-    cols = key + cfg["track"] + cfg.get("carry", [])
-    sel = ", ".join(f"{_q(ren.get(c, c))} AS {_q(c)}" for c in cols)
-    part = ", ".join(_q(ren.get(c, c)) for c in key)
-    return query(f"SELECT {sel} FROM {name}_changes WHERE run_at <= ? QUALIFY row_number() OVER "
-                 f"(PARTITION BY {part} ORDER BY run_at DESC) = 1 AND status = 'present' ORDER BY ALL", [at])
-
-
-def _tracked_in(sql: str) -> list[str]:
-    """Tracked live tables a raw SQL text names (a cheap over-approximation: a capture with no change appends 0)."""
-    low = sql.casefold()
-    return [n for n in CHANGES if n.casefold() in low]
-
-
-# Statement kinds refused in raw SQL that names a tracked table: a COMMIT inside the text ends the capture's transaction
-# before the capture runs, a PREPARE'd write runs later as an EXECUTE that names no table, and ATTACH reaches the raw
-# file from another handle (the refutation pass, report §5.1).
-_CAPTURE_REFUSED = {"TRANSACTION", "PREPARE", "EXECUTE", "ATTACH", "DETACH"}
-
-
-def _tracked_writes(conn, sql: str, db: str) -> list[str]:
-    """Tracked live tables a raw SQL text may change; each is captured after it runs, in its transaction.
-
-    [] when the text names none or only reads. Raises for text naming one that the capture could not follow: one of
-    ``_CAPTURE_REFUSED``, or a write sent to another file (an ATTACH there reaches raw.duckdb)."""
-    named = _tracked_in(sql)
-    if not named:
-        return []
-    kinds = {s.type.name for s in conn.extract_statements(sql)}
-    if kinds <= {"SELECT"}:
-        return []
-    bad = sorted(kinds & _CAPTURE_REFUSED) or ([] if db == "raw" else [f"a write sent to the {db} file"])
-    if bad:
-        raise RawStoreError(
-            f"raw SQL names {named}, whose every change the store records in the write's own transaction, with "
-            f"{', '.join(bad)}, which that record cannot follow. Use the write API, or send each statement as its "
-            f"own call on the raw file.")
-    return named
 
 
 def _refuse_wrong_file(sql: str, db: str) -> None:
@@ -3808,100 +2256,6 @@ def _refuse_wrong_file(sql: str, db: str) -> None:
     if wrong:
         raise RawStoreError(f"raw SQL sent to the {db} file names tables that live in another file: "
                             f"{', '.join(wrong)}. Pass db=<that file>, one query per file (S9: no ATTACH).")
-
-
-class _Fetched:
-    """A statement's result, read before the change capture reused its connection (``_Tx.execute``)."""
-
-    def __init__(self, cur):
-        self.description = cur.description
-        self._rows = list(cur.fetchall()) if cur.description else []
-
-    def fetchall(self) -> list:
-        rows, self._rows = self._rows, []
-        return rows
-
-    def fetchone(self):
-        return self._rows.pop(0) if self._rows else None
-
-
-def _sync_tracked(conn, label: str) -> tuple[dict[str, int], dict[str, str]]:
-    """Capture every tracked table, one transaction each, so a table that cannot sync leaves the others synced."""
-    done, failed = {}, {}
-    with change_label(label):
-        for name in CHANGES:
-            if name not in MANIFEST:
-                continue
-            try:
-                with _tx(conn):
-                    done[name] = _capture_changes(conn, name)
-            except Exception as exc:  # noqa: BLE001 - the caller raises once the other tables and files are done
-                failed[name] = f"{type(exc).__name__}: {str(exc).splitlines()[0]}"
-                logger.warning("rawstore: change capture could not sync %s", name, exc_info=True)
-    return done, failed
-
-
-def sync_changes(label: str = "store-sync") -> dict[str, int]:
-    """Capture every tracked table once (the first call of each process, and on demand): any write that bypassed
-    the API (a caller's own ``connect()``, the legacy migration) is recorded here, stamped ``label``."""
-    with connect(db="raw") as conn:
-        for name in CHANGES:
-            if name in MANIFEST:
-                _ensure_table(conn, name)
-        done, failed = _sync_tracked(conn, label)
-    if failed:
-        raise RawStoreError(f"change capture could not sync {failed}")
-    return done
-
-
-# Result-history read views (history.duckdb). ``result_sessions``: per board and session, the one run whose rows are
-# the session snapshot (``session_snapshot``, set by ``core/history.record_run``: the first complete run recorded;
-# rule B). One ``<table>_by_session`` view per session board joins its rows to that run's session date;
-# ``sec13f_metrics_by_quarter`` takes each quarter's last error-free run.
-def _history_views() -> list[tuple[str, str]]:
-    views = [("result_sessions",
-              "CREATE OR REPLACE VIEW result_sessions AS "
-              "SELECT board, session_date, run_id, run_at FROM result_runs WHERE session_snapshot")]
-    for name, spec in MANIFEST.items():
-        if spec.get("db") != "history" or "board" not in spec:
-            continue
-        stem = name[:-len("_history")] if name.endswith("_history") else name
-        if spec["snapshot"] == "session":
-            views.append((f"{stem}_by_session",
-                          f"CREATE OR REPLACE VIEW {stem}_by_session AS SELECT s.session_date, h.* "
-                          f"FROM {name} h JOIN result_sessions s "
-                          f"ON s.board = '{spec['board']}' AND s.run_id = h.run_id"))
-        elif spec["snapshot"] == "quarter":
-            views.append((f"{stem}_by_quarter",
-                          f"CREATE OR REPLACE VIEW {stem}_by_quarter AS SELECT h.* FROM {name} h "
-                          f"JOIN result_runs r ON r.board = '{spec['board']}' AND r.run_id = h.run_id "
-                          f"WHERE r.error IS NULL QUALIFY r.run_at = max(r.run_at) OVER (PARTITION BY h.quarter)"))
-    return views
-
-
-def _apply_history_views(conn) -> list[str]:
-    made = []
-    for name, sql in _history_views():
-        conn.execute(sql)
-        made.append(name)
-    return made
-
-
-_HISTORY_READY: set[str] = set()
-
-
-def ensure_history() -> None:
-    """Create the history file's tables and read views, once per process and file. ``core/history.record_run`` calls
-    it before its first write; ``ensure_all_tables`` only when the file exists, so a store with no recorded run has
-    no history file (J3: backup and restore treat a missing file as "no history")."""
-    path = _db_path("history")
-    if str(path) in _HISTORY_READY and path.exists():
-        return
-    _refuse_ensure_if_ahead(("history",))
-    with connect(db="history") as conn:
-        _ensure_db_tables(conn, "history")
-        _apply_history_views(conn)
-    _HISTORY_READY.add(str(path))
 
 
 def _apply_write(conn, name: str, spec: dict, rows: list[dict]) -> None:
@@ -4054,7 +2408,6 @@ def write_rows(name: str, rows: list[dict]) -> int:
             _ensure_table(conn, name)  # self-healing: create the table if the DB predates it
             with _tx(conn):
                 _apply_write(conn, name, spec, rows)
-                _capture_changes(conn, name)
 
     _retry_write(_op)
     return len(rows)
@@ -4095,7 +2448,6 @@ def update_columns(name: str, key_col: str, rows: list[dict],
                 else:
                     conn.executemany(
                         sql, [[r.get(c) for c in columns] + [r.get(key_col)] for r in rows])
-                _capture_changes(conn, name, touched=columns)
 
     _retry_write(_op)
     return len(rows)
@@ -4158,7 +2510,6 @@ def replace_all(name: str, rows: list[dict], *, allow_empty: bool = False) -> in
                         f"INSERT INTO {name} ({_col_sql(cols)}) "
                         f"VALUES ({', '.join(['?'] * len(cols))})",
                         [[r.get(c) for c in cols] for r in rows])
-                _capture_changes(conn, name)
 
     _retry_write(_op)
     return len(rows)
@@ -4198,7 +2549,7 @@ def sync_rows(name: str, rows: list[dict], *, allow_empty: bool = False) -> int:
 class _Tx:
     """Handle passed to ``transaction()`` — the same write API, one transaction."""
 
-    def __init__(self, conn, db: str = "raw"):
+    def __init__(self, conn, db: str | None = None):
         self._conn = conn
         self._db = db
 
@@ -4212,14 +2563,7 @@ class _Tx:
     def execute(self, sql: str, params: list | None = None):
         _refuse_wrong_file(sql, self._db)
         _refuse_history_sql(self._conn, sql)
-        tracked = _tracked_writes(self._conn, sql, self._db)
-        res = self._conn.execute(sql, params or [])
-        if not tracked:
-            return res
-        res = _Fetched(res)            # read before the capture reuses the connection
-        for t in tracked:
-            _capture_changes(self._conn, t)
-        return res
+        return self._conn.execute(sql, params or [])
 
     def ensure_table(self, name: str) -> None:
         """Create ``name`` if missing, inside this transaction (before ``execute``)."""
@@ -4232,12 +2576,11 @@ class _Tx:
             return 0
         _ensure_table(self._conn, name)
         _apply_write(self._conn, name, spec, _json_rows(name, rows))
-        _capture_changes(self._conn, name)
         return len(rows)
 
 
 @contextmanager
-def transaction(db: str = "raw"):
+def transaction(db: str | None = None):
     """One connection + one transaction spanning SEVERAL tables.
 
     For writes that must land together or not at all — e.g. a 13F zip's
@@ -4256,7 +2599,7 @@ def transaction(db: str = "raw"):
             yield _Tx(conn, db)
 
 
-def atomic(fn, db: str = "raw"):
+def atomic(fn, db: str | None = None):
     """Run ``fn(tx)`` in ONE transaction, retrying a lost commit race.
 
     ``fn`` receives the ``transaction()`` handle (``tx.write_rows``,
@@ -4274,25 +2617,18 @@ def atomic(fn, db: str = "raw"):
     return _retry_write(_op)
 
 
-def execute(sql: str, params: list | None = None, db: str = "raw") -> None:
+def execute(sql: str, params: list | None = None, db: str | None = None) -> None:
     """Run a single write statement (DELETE/UPDATE) against a store file."""
     _refuse_wrong_file(sql, db)
     _auto_ensure(write=True)
     _guard_schema_write(db)
     with connect(db=db) as conn:
         _refuse_history_sql(conn, sql)
-        tracked = _tracked_writes(conn, sql, db)
-        if not tracked:
-            conn.execute(sql, params or [])
-            return
-        with _tx(conn):
-            conn.execute(sql, params or [])
-            for t in tracked:
-                _capture_changes(conn, t)
+        conn.execute(sql, params or [])
 
 
 def query(sql: str, params: list | None = None, read_only: bool = True,
-          db: str = "raw") -> list[dict]:
+          db: str | None = None) -> list[dict]:
     """Run a read query; returns rows as dicts. Safe for raw SQL from callers."""
     _refuse_wrong_file(sql, db)
     if read_only and not _db_path(db).exists():
@@ -4305,18 +2641,9 @@ def query(sql: str, params: list | None = None, read_only: bool = True,
             if read_only:
                 _warn_schema_stamp(conn, db)   # PL7-a: a mismatch warns; it does not refuse the read
             _refuse_history_sql(conn, sql)
-            tracked = _tracked_writes(conn, sql, db)
-            if not tracked:
-                cur = conn.execute(sql, params or [])
-                cols = [d[0] for d in cur.description] if cur.description else []
-                return [dict(zip(cols, row)) for row in cur.fetchall()]
-            with _tx(conn):                  # a write sent through query(): captured like execute()
-                cur = conn.execute(sql, params or [])
-                cols = [d[0] for d in cur.description] if cur.description else []
-                rows = [dict(zip(cols, row)) for row in cur.fetchall()]
-                for t in tracked:
-                    _capture_changes(conn, t)
-            return rows
+            cur = conn.execute(sql, params or [])
+            cols = [d[0] for d in cur.description] if cur.description else []
+            return [dict(zip(cols, row)) for row in cur.fetchall()]
     except duckdb.CatalogException:
         # Missing table == no data (reads stay lenient; a pre-migration DB may
         # not have every table yet).
@@ -4447,7 +2774,6 @@ def delete(name: str, key) -> None:
     with connect(db=_db_of(name)) as conn:
         with _tx(conn):
             conn.execute(f"DELETE FROM {name} WHERE {where}", list(key))
-            _capture_changes(conn, name)
 
 
 def clear(name: str) -> None:
@@ -4464,7 +2790,6 @@ def clear(name: str) -> None:
         _ensure_table(conn, name)
         with _tx(conn):
             conn.execute(f"DELETE FROM {name}")
-            _capture_changes(conn, name)
 
 
 # ── watchlist: the stock watch list in ops.sqlite (PR 4) ─────────────────────
@@ -4493,31 +2818,20 @@ def toggle_watchlist(ticker: str, *, by: str = "dashboard") -> bool:
     return ops.watch_toggle("stock", ticker, by=by)
 
 
-def reset_db(include_edgar: bool = True) -> None:
-    """Drop and recreate the database files (used by migration --reset / tests).
-
-    ``include_edgar=False`` recreates ONLY the raw file. The migration's
-    ``--reset`` must pass it: it points ``DB_PATH`` at ``raw.duckdb.new``, and
-    ``edgar_db_path()`` — a sibling of ``DB_PATH`` — is then still the LIVE
-    ``edgar.duckdb``, which this used to delete. The same flag guards the sibling
-    ``history.duckdb``, ``prices.duckdb`` and the board files.
-    """
-    boards = list(BOARD_DBS) if include_edgar else []
-    targets = [Path(DB_PATH)] + (
-        [edgar_db_path(), history_db_path(), prices_db_path()] + [board_db_path(b) for b in boards]
-        if include_edgar else [])
-    for db in (["raw"] + (["edgar", "history", "prices"] + boards if include_edgar else [])):
+def reset_db() -> None:
+    """Drop and recreate the board files (tests)."""
+    for db in BOARD_DBS:
         if _db_path(db).exists():
             _guard_schema_write(db)   # PL7-b: do not delete a newer file while refusal is on
-    for p in targets:
+    for p in (board_db_path(b) for b in BOARD_DBS):
         if p.exists():
             p.unlink()
         _TABLE_READY.difference_update({k for k in _TABLE_READY if k[0] == str(p)})
-    _ENSURED.pop(str(Path(DB_PATH)), None)
+    _ENSURED.pop(str(Path(STORE_DIR)), None)
     ensure_all_tables()
 
 
-def compact(db: str = "raw") -> dict:
+def compact(db: str | None = None) -> dict:
     """Rewrite a store file without its free blocks; swap it in; verify.
 
     DuckDB re-uses the blocks freed by DELETE/``replace_all`` but never gives

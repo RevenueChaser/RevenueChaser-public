@@ -90,29 +90,6 @@ PROVIDERS: dict[str, Provider] = {
         required_for=("the fundamentals layer's earnings calendar (optional; the SEC 8-K item 2.02 still dates reports) "
                       "and the spine's listing status, the ETF list (rcdata alphavantage/listing_status)"),
     ),
-    "claude_subscription": Provider(
-        slug="claude_subscription",
-        label="Claude subscription",
-        env_var="RC_CLAUDE_OAUTH_FILE",
-        signup_url="https://claude.ai/settings/usage",
-        required_for=(
-            "the optional Claude allowance gate (core/subscription_usage). The "
-            "token itself lives in the Claude Code login at ~/.claude/.credentials.json; "
-            "this variable only overrides that path"
-        ),
-    ),
-    "grok_subscription": Provider(
-        slug="grok_subscription",
-        label="SuperGrok subscription",
-        env_var="RC_XAI_AUTH_FILE",
-        signup_url="https://grok.com/?_s=usage",
-        required_for=(
-            "the optional Grok allowance gate (core/subscription_usage) and the optional "
-            "Grok writer of Relatedness profiles and theme names (core/providers/grok.py, "
-            "--provider grok). The token comes from Hermes's xAI OAuth login in auth.json; "
-            "this variable only overrides that path"
-        ),
-    ),
 }
 
 

@@ -3,21 +3,15 @@
 Claim rule, applied to ``rawstore.MANIFEST``:
 
 - A ``*_changes`` table (MANIFEST ``changes_of``) is listed on the dataset that owns its base table.
-- A history.duckdb table (``result_runs`` and every result-history ``*_history`` mirror) is listed on
-  ``result_history``. Those 19 tables take freshness ``from_run_log`` until #82 and #83 make the run
-  log trustworthy. ``earnings_history`` is not one of them: it is a raw change-history table.
 - Every other MANIFEST table is listed on exactly one dataset.
-- ``UNCLAIMED_ALLOWLIST`` is empty. A new MANIFEST table fails the claim test until a dataset owns it.
+- ``UNCLAIMED_ALLOWLIST`` holds only ``store_schema``, the version stamp every board file carries.
 
-``db`` is the store file ``module_settings/inventory.py`` ``_db_of`` would pick (MANIFEST ``db``,
-default ``raw``). ``writer`` is an ``automations.REGISTRY`` name, or None with ``writer_note``.
-A freshness pair is a ``(table, column)`` ``_max_date`` can read. ``source`` is a provider named in
+The MANIFEST holds only the board files' tables since #860 removed the old raw, edgar, prices and history files,
+so ``db`` is a board file (MANIFEST ``db``). ``writer`` is an ``automations.REGISTRY`` name, or None with
+``writer_note``. A freshness pair is a ``(table, column)`` the board file holds. ``source`` is a provider named in
 ``core/providers`` or ``docs/data_architecture.md``; ``unknown`` means a single enum value would be a guess.
 
-Does not read the store. Seven datasets have an existing summary: their ``coverage`` is a callable
-returning that module's ``Health``, imported and called when a reader asks for the row (S4). It takes an
-optional ``now``, passed on to a module whose ``health`` takes a clock (#150). S5 switches the inventory
-reader to it.
+Does not read the store.
 
 ``gap_kind`` and ``next_step`` (G11) are the written half of coverage: the measurement says how many
 names are missing, these two say what would close the hole. ``gap_kind`` is one of ``GapKind``'s six
@@ -26,16 +20,15 @@ through a fact about the source (``ceiling``, which carries its REASON) requires
 """
 from __future__ import annotations
 
-import inspect
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from enum import Enum
-from importlib import import_module
 
 from RevenueChaser.core.datahealth import Health
 
-DBS = ("raw", "edgar", "prices", "history", "news", "welcome", "relatedness", "comovement", "asymmetric_growth",
-       "swing_potential", "fundamentals", "sector_rotation", "leaps", "oipd", "forecast", "spx_gamma", "sec_13f")  # all but the first four: board files (S9, S16)
+DBS = ("news", "welcome", "relatedness", "comovement", "asymmetric_growth", "swing_potential", "fundamentals",
+       "sector_rotation", "leaps", "oipd", "forecast", "spx_gamma", "sec_13f", "watchlists", "value_chain")
+# the board files (S9, S16); the old raw, edgar, prices and history files are gone (#860)
 
 FROM_RUN_LOG = "from_run_log"
 NO_CLAIM = "no_claim"
@@ -43,47 +36,6 @@ NO_CLAIM = "no_claim"
 FROM_RUN_LOG_CAVEAT = (
     "from the run log; not trustworthy until alsanvolkan/RevenueChaser-public#82 and alsanvolkan/RevenueChaser-public#83 are fixed (run_registry / result_runs)"
 )
-
-# history.duckdb: the header plus every ``*_history`` mirror. 19 tables. S5b part 3.
-_HISTORY = (
-    "result_runs",
-    "ag_scores_history",
-    "swing_scores_history",
-    "swing_gates_history",
-    "fundamentals_scores_history",
-    "fundamentals_gates_history",
-    "relatedness_scores_history",
-    "value_chain_edges_history",
-    "oipd_chain_history",
-    "earnings_cards_history",
-    "leaps_footprint_history",
-    "oipd_fit_history",
-    "rotation_holdings_history",
-    "rotation_snapshots_history",
-    "spx_gamma_levels_history",
-    "sector_tree_history",
-    "money_flow_history",
-    "sec13f_metrics_history",
-    "financials_report_history",
-)
-
-# MANIFEST ``retired: True`` (test_manifest_planned_289.RETIRED). The plan text said 3; the flag is on 4.
-_RETIRED = (
-    "leaps_daily_scores",
-    "sec13f_edgar_backfill",
-    "sec13f_ticker_names",
-    "sec_company_tickers",
-)
-
-# Store bookkeeping, not a dataset a board ages. No freshness claim (S5b part 4).
-_BOOKKEEPING = (
-    "store_meta",
-    "migration_manifest",
-    "run_registry",
-    "job_runs",
-    "store_schema",
-)
-
 
 class Source(str, Enum):
     """Provider of a dataset's rows. ``unknown`` is a refusal to pick one value, not a provider."""
@@ -217,27 +169,6 @@ class DatasetSpec:
         )
 
 
-def _summary_health(dotted: str) -> Callable[[], Health]:
-    """The ``Health`` of the module that owns this dataset's summary, read when the row is read (S4).
-
-    A callable, not a call: the registry is imported by pages that never open this dataset, and these modules
-    read the store (and, for four of them, the calendar). One argument-free call per row is all a reader needs;
-    a reader with a clock passes ``now``, which reaches the module's ``health`` when that takes one, so the
-    coverage and the row's own summary are one question at one time (#150).
-    """
-
-    def coverage(now=None) -> Health:
-        module = import_module(f"RevenueChaser.{dotted}")
-        health = getattr(module, "health")
-        if "now" in inspect.signature(health).parameters:
-            return health(now=now)
-        return health()
-
-    coverage.__name__ = f"{dotted}.health"
-    coverage.__doc__ = f"The dataset's Health from ``{dotted}.health()``."
-    return coverage
-
-
 def _runlog(key: str, label: str, tables: tuple[str, ...], db: str, source: Source,
             writer: str | None, writer_note: str | None = None) -> DatasetSpec:
     """A derived dataset whose freshness is the producing run, not a row timestamp."""
@@ -251,136 +182,14 @@ def _runlog(key: str, label: str, tables: tuple[str, ...], db: str, source: Sour
 # Seeded from module_settings/inventory.py ``_collect`` (the 19 rows that builder returns), then
 # extended so every base MANIFEST table has one owner. ``*_changes`` companions are on the base's dataset.
 REGISTRY: tuple[DatasetSpec, ...] = (
-    # Live table has no fetch stamp (inventory last_date is a dash). The pull time is universe_provenance.
-    # source unknown: membership is the SEC exchange file, caps are yfinance. One value would drop one.
-    DatasetSpec(
-        key="universe", label="Equity universe",
-        tables=("equity_universe", "equity_universe_changes"),
-        db="raw", source=Source.unknown, writer="RC-Screeners-Daily", freshness=None,
-        writer_note="caps-only fill is the dashboard job POST /run/universe-stats, not this task",
-    ),
-    DatasetSpec(
-        key="universe_provenance", label="Universe provenance",
-        tables=("equity_universe_provenance",),
-        db="raw", source=Source.store, writer="RC-Screeners-Daily",
-        freshness=("equity_universe_provenance", "generated_at"),
-    ),
-    # source unknown: the spine merges sec, uw, openfigi, fdic and spdr answers (identity_source_cache).
-    DatasetSpec(
-        key="identity", label="Identity spine",
-        tables=("security_master", "identity_conflicts", "identity_source_cache", "identity_runs",
-                "security_master_changes", "identity_source_cache_changes"),
-        db="raw", source=Source.unknown, writer=None,
-        writer_note="dashboard job POST /run/identity (app/dashboard.py); not an automations.REGISTRY entry",
-        freshness=("identity_runs", "finished_at"),
-    ),
+    # #860 stage 1: the corpus slice and the stored-document metadata no longer share a file, so they are two
+    # rows. A spec's ``db`` is one file and every table it owns has to live there (test_datasets).
     DatasetSpec(
         key="corpus", label="10-K / 20-F corpus",
-        tables=("chain_filings", "edgar_documents"),
-        db="edgar", source=Source.sec, writer="RC-ValueChain-Sync",
-        freshness=(("chain_filings", "filed"), ("edgar_documents", "filed")),
-        writer_note="RC-Relatedness-OffPeak also writes chain_filings and edgar_documents",
-    ),
-    DatasetSpec(
-        key="sec_submissions", label="SEC submissions",
-        tables=("sec_submissions", "sec_submissions_cik"),
-        db="edgar", source=Source.sec, writer="RC-ValueChain-Sync",
-        freshness=("sec_submissions", "filing_date"),
-        coverage=_summary_health("core.sec_submissions"),
-        coverage_note="expected is None: the universe CIK count is the inventory's query, not the summary's",
-        gap_kind=GapKind.fixable,
-        next_step=("The summary counts the CIKs it has answered for but not the universe's CIKs, so "
-                   "there is no population. The inventory already counts the universe's CIKs; joining "
-                   "the two would give one."),
-    ),
-    DatasetSpec(
-        key="sec_files", label="SEC exchange & fund files",
-        tables=("sec_exchange_file", "sec_mf_file"),
-        db="raw", source=Source.sec, writer="RC-Daily-Bars",
-        freshness=(("sec_exchange_file", "run_at"), ("sec_mf_file", "run_at")),
-        coverage=_summary_health("core.sec_files"),
-        coverage_note="both files summed; expected is None until a good pull records file_rows",
-        gap_kind=GapKind.self_heals,
-        next_step=("The population comes from the last good pull's own row count, and each good pull "
-                   "tops the stored rows up to it; a store with no receipt yet shows no population until "
-                   "one is written."),
-    ),
-    DatasetSpec(
-        key="companyfacts", label="Companyfacts",
-        tables=("edgar_financials",),
-        db="edgar", source=Source.sec, writer="RC-Screeners-Daily",
-        freshness=("edgar_financials", "fetched_at"),
-    ),
-    DatasetSpec(
-        key="ohlc", label="Legacy daily open/high/low/close cache (SPY fallback)",
-        tables=("swing_ohlc",),
-        db="raw", source=Source.yfinance, writer="RC-Screeners-Daily",
-        freshness=("swing_ohlc", "ts"),
-    ),
-    # Lead source uw (RC-Daily-Bars: UW ohlc/1d, yfinance fallback). price_checks is the watermark, same file.
-    DatasetSpec(
-        key="price_bars", label="Daily price bars",
-        tables=("price_bars_daily", "price_actions", "price_checks"),
-        db="prices", source=Source.uw, writer="RC-Daily-Bars",
-        freshness=("price_bars_daily", "session_date"),
-        coverage=_summary_health("core.prices"),
-        gap_kind=GapKind.needs_decision,
-        next_step=("Most of the names with no bar are warrants, preferred shares and SPAC units, which "
-                   "the boards' universe drops by design (alsanvolkan/RevenueChaser#87), so this "
-                   "population counts names no board scores. Deciding whether coverage should be "
-                   "measured on the boards' universe would close it."),
-    ),
-    DatasetSpec(
-        key="index_levels", label="SPX daily levels",
-        tables=("index_levels_daily",),
-        db="prices", source=Source.yfinance, writer="RC-Daily-Bars",
-        freshness=("index_levels_daily", "session_date"),
-        coverage=_summary_health("core.index_levels"),
-        gap_kind=GapKind.none,
-    ),
-    # source unknown: yfinance via the screeners Fetch and uw via the Earnings Fetch are both writers.
-    DatasetSpec(
-        key="vendor", label="Vendor statements & valuation",
-        tables=("vendor_financials", "vendor_valuation"),
-        db="raw", source=Source.unknown, writer="RC-Screeners-Daily",
-        freshness=(("vendor_financials", "fetched_at"), ("vendor_valuation", "session_date")),
-        writer_note="Earnings Fetch also appends Unusual Whales statements (docs/data_architecture.md Stage 2)",
-        coverage=_summary_health("core.vendor_data"),
-        coverage_note="expected is None: the universe is not read by the summary",
-        gap_kind=GapKind.fixable,
-        next_step=("The summary counts the tickers with a valuation row but not the universe, so there is "
-                   "no population. Reading the universe count, as the quotes summary already does, would "
-                   "give one."),
-    ),
-    # Yahoo leads (inventory._quotes_row). UW rows are stored too.
-    DatasetSpec(
-        key="quotes", label="Quotes and market cap",
-        tables=("quote_snapshot",),
-        db="raw", source=Source.yfinance, writer="RC-Screeners-Daily",
-        freshness=("quote_snapshot", "session_date"),
-        coverage=_summary_health("core.quotes"),
-        gap_kind=GapKind.needs_decision,
-        next_step=("Most of the names with no quote are warrants, preferred shares and SPAC units, which "
-                   "the boards' universe drops by design (alsanvolkan/RevenueChaser#87), and a "
-                   "rate-limited night misses more (#100). Deciding whether coverage should be "
-                   "measured on the boards' universe would close most of it."),
-    ),
-    # Lead source uw. sp600 is copied from the last accepted identity snapshot, not a UW call.
-    DatasetSpec(
-        key="index", label="Index constituents",
-        tables=("index_constituents", "index_constituents_changes"),
-        db="raw", source=Source.uw, writer="RC-Index-Lists",
-        freshness=("index_constituents_changes", "run_at"),
-    ),
-    # Ingest family the architecture groups with the two tables the inventory row already lists.
-    # last_date already reads sec13f_submissions.period, so that table belongs here.
-    DatasetSpec(
-        key="sec13f", label="13F",
-        tables=("sec13f_totals", "sec13f_holdings", "sec13f_submissions",
-                "sec13f_cusip_names", "sec13f_ingested_zips"),
-        db="raw", source=Source.sec, writer=None,
-        writer_note="dashboard job POST /run/module_sec_13f; rebuild is sec13f_rebuild. Not a REGISTRY entry",
-        freshness=("sec13f_submissions", "period"),
+        tables=("chain_filings",),
+        db="value_chain", source=Source.sec, writer="RC-Relatedness-OffPeak",
+        freshness=("chain_filings", "filed"),
+        writer_note="the Value Chain board's Fetch (module_value_chain --fetch) writes it too",
     ),
     DatasetSpec(
         key="oipd", label="Implied Probability chain",
@@ -389,146 +198,59 @@ REGISTRY: tuple[DatasetSpec, ...] = (
         writer_note="dashboard job POST /run/module_oipd; not an automations.REGISTRY entry",
         freshness=("oipd_meta", "as_of"),
     ),
-    # No writer since #642 PR 5: the board reads the spine's funds/etf_holdings; these raw tables are kept, unwritten.
-    DatasetSpec(
-        key="etf_holdings", label="Rotation ETF holdings",
-        tables=("etf_holdings", "etf_holdings_changes"),
-        db="raw", source=Source.uw, writer=None,
-        writer_note=("none since alsanvolkan/RevenueChaser-public#642 PR 5 (the holdings job is gone); coverage reads "
-                     "the spine's funds/etf_holdings"),
-        freshness=("etf_holdings", "fetched_at"),
-        coverage=_summary_health("module_sector_rotation.etf_holdings"),
-        gap_kind=GapKind.ceiling,
-        next_step=("The gold, silver and oil funds GLD, SLV and USO hold metal or futures rather than "
-                   "company shares, so the holdings providers return no list for them."),
-    ),
     DatasetSpec(
         key="relatedness", label="Relatedness profiles",
         tables=("relatedness_profiles", "relatedness_scores", "relatedness_attributes", "relatedness_embeddings"),
         db="relatedness", source=Source.derived, writer="RC-Relatedness-OffPeak",
         freshness=("relatedness_profiles", "fetched_at"),
     ),
-    # The 19 history-file tables. session_date exists on result_runs; it is not the claim until #82/#83.
+
+    # Watch lists (#786, avo 12 Nov 2026): his own named lists in boards/watchlists.duckdb, typed by hand. Its own
+    # row and not part of "Your inputs" above, because those four tables are the retired raw ones.
     DatasetSpec(
-        key="result_history", label="Result history",
-        tables=_HISTORY,
-        db="history", source=Source.store, writer=None,
-        writer_note=("core.history.record_run, called from board Fetches; no single REGISTRY entry "
-                     "owns every history table"),
-        freshness=FROM_RUN_LOG, freshness_note=FROM_RUN_LOG_CAVEAT,
-    ),
-    # The two watch lists moved to ops.sqlite in PR 4 (rcdata.ops, not a store file here): the raw watchlist tables
-    # stay claimed while the manifest has them, unwritten, until their retirement (PR 21).
-    DatasetSpec(
-        key="inputs", label="Your inputs (watchlist, board settings)",
-        tables=("watchlist", "board_settings", "watchlist_changes", "board_settings_changes"),
-        db="raw", source=Source.manual, writer=None,
-        writer_note=("the user enters it (board settings save); nothing fetches it. The watch lists are in "
-                     "ops.sqlite since PR 4; watchlist and watchlist_changes here are unwritten"),
-        freshness=("board_settings_changes", "run_at"),
+        key="watchlists", label="Watch lists",
+        tables=("wl_list", "wl_section", "wl_item", "wl_change"),
+        db="watchlists", source=Source.manual, writer=None,
+        writer_note=("avo types them, through the board or the import command "
+                     "(module_watchlists/store.py is the one writer); nothing fetches them"),
+        freshness=("wl_change", "changed_at"),
     ),
 
     # --- extended: base tables the 19 rows do not own ---
     DatasetSpec(
         key="value_chain", label="Value Chain edges",
         tables=("chain_mentions", "chain_meta"),
-        db="edgar", source=Source.sec, writer="RC-ValueChain-Sync",
+        db="value_chain", source=Source.sec, writer=None,
+        writer_note="the Value Chain board's Fetch (module_value_chain --fetch); not an automations.REGISTRY entry",
         freshness=("chain_mentions", "filed"),
-    ),
-    DatasetSpec(
-        key="earnings_calendar", label="Earnings calendar",
-        tables=("earnings_calendar",),
-        db="raw", source=Source.uw, writer="RC-Earnings-Calendar",
-        freshness=("earnings_calendar", "session_date"),
-    ),
-    # UW, then yfinance (docs/data_architecture.md short_interest).
-    DatasetSpec(
-        key="short_interest", label="Short interest",
-        tables=("short_interest",),
-        db="raw", source=Source.uw, writer="RC-Short-Interest",
-        freshness=("short_interest", "session_date"),
-    ),
-    DatasetSpec(
-        key="economic_calendar", label="Economic calendar (retired)",
-        tables=("economic_calendar",),
-        db="raw", source=Source.uw, writer=None,
-        writer_note=("retired 11 Nov 2026: no writer, the builder's hourly uw/economic_calendar serves "
-                     "market.economic_event; kept until its 14 days without reads (rcdata/needs/screen.py RETIRING)"),
-        freshness=("economic_calendar", "session_date"),
-    ),
-    DatasetSpec(
-        key="macro_series", label="FRED macro series",
-        tables=("macro_series",),
-        db="raw", source=Source.fred, writer="RC-Macro-Weekly",
-        freshness=("macro_series", "obs_date"),
-    ),
-    DatasetSpec(
-        key="estimates", label="Analyst estimates",
-        tables=("estimate_snapshots",),
-        db="raw", source=Source.yfinance, writer="RC-Earnings-Daytime",
-        freshness=("estimate_snapshots", "session_date"),
-    ),
-    # Cboe for the VIX family; MOVE is yfinance (docs/data_architecture.md vol_index_daily).
-    DatasetSpec(
-        key="vol_index", label="Volatility indices",
-        tables=("vol_index_daily",),
-        db="raw", source=Source.cboe, writer="RC-Macro-Weekly",
-        freshness=("vol_index_daily", "session_date"),
-    ),
-    # Reader ages by session_date (stored_inputs.cot_row, MAX_LAG). report_date is the report's own date.
-    DatasetSpec(
-        key="cftc", label="CFTC E-mini Commitments of Traders",
-        tables=("cftc_cot",),
-        db="raw", source=Source.finra_cftc, writer="RC-CFTC-Weekly",
-        freshness=("cftc_cot", "session_date"),
-        gap_kind=GapKind.needs_decision,
-        next_step=("The Commitments of Traders table is fresh but shallow: the nightly writer asks for the "
-                   "newest few weeks and the first write per report wins, so it only grows forward. "
-                   "alsanvolkan/RevenueChaser-public#119 asks how deep to backfill."),
-    ),
-    DatasetSpec(
-        key="earnings_history", label="Earnings history",
-        tables=("earnings_history",),
-        db="raw", source=Source.uw, writer=None,
-        writer_note="Earnings Fetch (module_earnings_radar/earnings_store.record); not a REGISTRY entry",
-        freshness=("earnings_history", "valid_from"),
-    ),
-    # source unknown: yfinance on the screeners path and uw_info on the 13F Fetch are both writers.
-    DatasetSpec(
-        key="ownership", label="Ownership snapshot",
-        tables=("ownership_snapshot",),
-        db="raw", source=Source.unknown, writer="RC-Screeners-Daily",
-        writer_note="13F Fetch also appends source uw_info (docs/data_architecture.md Stage 2)",
-        freshness=("ownership_snapshot", "session_date"),
-    ),
-    DatasetSpec(
-        key="ticker_payload", label="yfinance payload cache",
-        tables=("ticker_payload_cache",),
-        db="raw", source=Source.yfinance, writer="RC-Screeners-Daily",
-        freshness=("ticker_payload_cache", "fetched_at"),
     ),
     DatasetSpec(
         key="swing_info", label="Swing info cache",
         tables=("swing_info",),
-        db="swing_potential", source=Source.yfinance, writer="RC-Screeners-Daily",
+        db="swing_potential", source=Source.yfinance, writer=None,
+        writer_note="the board's own Fetch on the dashboard; not an automations.REGISTRY entry",
         freshness=("swing_info", "cached_at"),
     ),
     _runlog(
         "ag_scores", "Asymmetric Growth scores", ("ticker_scores",),
-        "asymmetric_growth", Source.derived, "RC-Screeners-Daily",
+        "asymmetric_growth", Source.derived, None,
+        writer_note="the board's own Fetch on the dashboard; not an automations.REGISTRY entry",
     ),
     _runlog(
         "swing_scores", "Swing scores", ("swing_scores", "swing_gates"),
-        "swing_potential", Source.derived, "RC-Screeners-Daily",
+        "swing_potential", Source.derived, None,
+        writer_note="the board's own Fetch on the dashboard; not an automations.REGISTRY entry",
     ),
     _runlog(
         "fundamentals_scores", "Fundamentals scores", ("fundamentals_scores", "fundamentals_gates"),
-        "fundamentals", Source.derived, "RC-Screeners-Daily",
+        "fundamentals", Source.derived, None,
+        writer_note="the board's own Fetch on the dashboard; not an automations.REGISTRY entry",
     ),
     DatasetSpec(
         key="forecast_ledger", label="Forecast ledger",
         tables=("forecast_ledger",),
-        db="forecast", source=Source.derived, writer="RC-Screeners-Daily",
+        db="forecast", source=Source.derived, writer=None,
+        writer_note="the board's own Fetch on the dashboard; not an automations.REGISTRY entry",
         freshness=("forecast_ledger", "forecast_date"),
     ),
     _runlog(
@@ -567,83 +289,6 @@ REGISTRY: tuple[DatasetSpec, ...] = (
         db="leaps", source=Source.uw, writer=None,
         writer_note="no writer: the LEAPS scan is switched off, so nothing writes these tables",
         freshness=("leaps_flow_prints", "session_date"),
-    ),
-    DatasetSpec(
-        key="identity_cusip", label="OpenFIGI CUSIP map",
-        tables=("identity_cusip",),
-        db="raw", source=Source.openfigi, writer=None,
-        writer_note="13F map step core/identity_cusip.py, dashboard job sec13f_map; not a REGISTRY entry",
-        freshness=("identity_cusip", "valid_from"),
-        gap_kind=GapKind.ceiling,
-        next_step=("OpenFIGI maps a CUSIP to a name, so a name with no CUSIP cannot get one on this route; "
-                   "the spine's CUSIP column has the same ceiling."),
-    ),
-    _runlog(
-        "cusip_map", "CUSIP to ticker map", ("cusip_ticker",),
-        "raw", Source.derived, None,
-        "no writer since G9: the builder names a CUSIP per period in sec13f_cusip_map; not a REGISTRY entry",
-    ),
-    DatasetSpec(
-        key="sec_sic", label="SEC industry code cache",
-        tables=("sec_company_sic",),
-        db="raw", source=Source.sec, writer=None,
-        writer_note="CLI core.edgar_bulk and core/sic_registry.py; not an automations.REGISTRY entry",
-        freshness=("sec_company_sic", "fetched_at"),
-    ),
-    DatasetSpec(
-        key="edgar_facts", label="EDGAR fact spine",
-        tables=("edgar_facts",),
-        db="edgar", source=Source.sec, writer=None,
-        writer_note="CLI core.edgar_bulk companyfacts.zip ingest; not an automations.REGISTRY entry",
-        freshness=("edgar_facts", "period"),
-    ),
-    DatasetSpec(
-        key="edgar_companyfacts", label="EDGAR companyfacts (planned)",
-        tables=("edgar_companyfacts",),
-        db="edgar", source=Source.sec, writer=None,
-        writer_note="planned (alsanvolkan/RevenueChaser#289): MANIFEST only, no writer yet",
-        freshness=("edgar_companyfacts", "fetched_at"),
-    ),
-    # source unknown: biotech catalysts; the writer is not in the tree and no enum value names the provider.
-    DatasetSpec(
-        key="catalysts", label="Catalyst events (planned)",
-        tables=("catalyst_events", "catalyst_events_changes"),
-        db="raw", source=Source.unknown, writer=None,
-        writer_note=("planned (alsanvolkan/RevenueChaser#289, alsanvolkan/RevenueChaser#186 to "
-                     "alsanvolkan/RevenueChaser#192): writer not in the tree"),
-        freshness=("catalyst_events", "fetched_at"),
-    ),
-    # source unknown: FDA OOPD is not in the provider enum.
-    DatasetSpec(
-        key="orphan", label="FDA orphan designations (planned)",
-        tables=("orphan_designations", "orphan_lookups", "orphan_designations_changes"),
-        db="raw", source=Source.unknown, writer=None,
-        writer_note=("planned (alsanvolkan/RevenueChaser#289, alsanvolkan/RevenueChaser#190): OOPD writer not in "
-                     "the tree"),
-        freshness=(("orphan_designations", "fetched_at"), ("orphan_lookups", "session_date")),
-    ),
-    DatasetSpec(
-        key="sec13f_filers", label="13F filers (planned)",
-        tables=("sec13f_filers",),
-        db="raw", source=Source.sec, writer=None,
-        writer_note="planned (alsanvolkan/RevenueChaser#289): MANIFEST only, no writer yet",
-        freshness=("sec13f_filers", "fetched_at"),
-    ),
-    DatasetSpec(
-        key="sec13f_security_meta", label="13F security names",
-        tables=("sec13f_security_meta",),
-        db="raw", source=Source.manual, writer=None,
-        writer_note="manual shared ticker meta (docs/data_architecture.md Stage 2); no REGISTRY writer",
-        freshness=None,
-    ),
-    # Not MANIFEST retired. Writer is gone and the table has no date, so there is nothing to claim.
-    DatasetSpec(
-        key="sec13f_enrichment", label="13F enrichment (writer retired)",
-        tables=("sec13f_enrichment",),
-        db="raw", source=Source.unknown, writer=None,
-        writer_note=("writer retired (alsanvolkan/RevenueChaser#300); not flagged MANIFEST retired; no reader since "
-                     "alsanvolkan/RevenueChaser#375"),
-        freshness=None,
     ),
     # source unknown: DeepSeek and Grok are not in the provider enum.
     DatasetSpec(
@@ -700,32 +345,10 @@ REGISTRY: tuple[DatasetSpec, ...] = (
                      "once per build or New York day; a closed quarter is never rewritten"),
         freshness=("sec13f_board_cells", "period"),
     ),
-    DatasetSpec(
-        key="source_checks", label="Source check watermarks",
-        tables=("source_checks",),
-        db="raw", source=Source.store, writer=None,
-        writer_note=("stamped by the fetches that record a check (core/quotes.py, core/sec_submissions.py); "
-                     "not one REGISTRY entry"),
-        freshness=("source_checks", "checked_at"),
-    ),
-    DatasetSpec(
-        key="bookkeeping", label="Store bookkeeping",
-        tables=_BOOKKEEPING,
-        db="raw", source=Source.store, writer=None,
-        writer_note=("store_meta, migration_manifest, store_schema (one stamp per store file, alsanvolkan/RevenueChaser-public#26 PL7), "
-                     "run_registry and job_runs are the store's own pins and job log; no freshness claim"),
-        freshness=NO_CLAIM,
-    ),
-    DatasetSpec(
-        key="retired", label="Retired tables",
-        tables=_RETIRED,
-        db="raw", source=Source.unknown, writer=None,
-        writer_note="MANIFEST retired=True: only a past writer or the legacy import; no freshness claim",
-        freshness=NO_CLAIM,
-    ),
 )
 
-UNCLAIMED_ALLOWLIST: frozenset[str] = frozenset()
+# ``store_schema`` is in every board file (its version stamp), so no one dataset owns it.
+UNCLAIMED_ALLOWLIST: frozenset[str] = frozenset({"store_schema"})
 
 
 def _index() -> tuple[dict[str, DatasetSpec], dict[str, tuple[str, ...]]]:
@@ -767,6 +390,6 @@ def tables_claimed() -> frozenset[str]:
 def unclaimed(manifest_keys: Iterable[str]) -> frozenset[str]:
     """Keys in ``manifest_keys`` that no dataset claims, minus ``UNCLAIMED_ALLOWLIST``.
 
-    The allowlist is empty. A name here is a MANIFEST table the registry forgot.
+    The allowlist holds only ``store_schema``. Any other name here is a MANIFEST table the registry forgot.
     """
     return frozenset(manifest_keys) - tables_claimed() - UNCLAIMED_ALLOWLIST

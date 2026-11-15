@@ -10,8 +10,7 @@ the run's counts.
 Since 11 Nov 2026 (plan F4) it measures what the board does: each name gets the board's input (``engine._prepare``:
 the layer's business section, the v3b context, the fallback chain and the writer's locator call), and the matrix is
 similarity v2 (``similarity.blended_peer_lists`` on the local embeddings; ``method`` says ``embedding``, or ``tags``
-when no vector could be made). A Claude run also records the subscription windows before and after (``usage``), so
-the share of the weekly window the names used is read off the file. Then ``python -m RevenueChaser.module_relatedness.validation report --scores <file>`` scores it,
+when no vector could be made). Then ``python -m RevenueChaser.module_relatedness.validation report --scores <file>`` scores it,
 offline.
 """
 from __future__ import annotations
@@ -20,13 +19,11 @@ import json
 import re
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from RevenueChaser.core import rawstore
 from RevenueChaser.core.config import OUTPUT_DIR
-from RevenueChaser.core import fundamentals_layer, subscription_usage
-from RevenueChaser.core.providers import claude_code, deepseek, grok
-from RevenueChaser.rcdata import opens
+from RevenueChaser.core import fundamentals_layer
+from RevenueChaser.core.providers import deepseek
 
 from . import config, embeddings, engine, locator, profile_v3, profiles, similarity, writers
 
@@ -59,8 +56,8 @@ def _budget(provider: str) -> "profiles.CallBudget":
 def run(tickers: list[str], provider: str, model: str) -> dict:
     """Profile ``tickers`` with ``provider`` / ``model``, score every pair, write the scores file; returns the counts.
 
-    The engine's stop rules hold (PR 371 review S2): a peak, a cap, an auth or allowance failure, a request error
-    (every call would fail alike), ``engine.MAX_TRANSIENT_FAILURES`` transient failures, or ``config.GROK_UNUSABLE_STOP``
+    The engine's stop rules hold (PR 371 review S2): a peak, a cap, an auth failure (every call would fail alike),
+    ``engine.MAX_TRANSIENT_FAILURES`` transient failures, or ``config.UNUSABLE_STOP``
     unusable replies before the first usable one each end the run with what it has."""
     tickers = list(dict.fromkeys(t.strip().upper() for t in tickers if t and t.strip()))
     if not tickers or len(tickers) > MAX_NAMES:
@@ -68,11 +65,11 @@ def run(tickers: list[str], provider: str, model: str) -> dict:
     w = writers.get(provider)
     if model not in w.models:
         raise ValueError(f"model {model!r} is not one of {provider}'s: {', '.join(w.models)}")
-    if provider == "grok":
-        grok.reset_gate()                              # the first request reads the allowance
-    if provider == "claude":
-        claude_code.reset_gate()
-    usage_before = _usage(provider)
+    try:
+        engine._forms_ready(tickers)                   # the board's guard (#841): no call on a text it would refuse
+    except engine.RunStopped as exc:
+        return {"provider": provider, "model": model, "tickers": tickers, "usable": 0, "attempts": 0,
+                "stopped_reason": exc.reason, "error": str(exc)}
     started, cache_before = time.time(), _llm_rows(model)
     budget = _budget(provider)
     names = engine._company_names(tickers)
@@ -108,10 +105,9 @@ def run(tickers: list[str], provider: str, model: str) -> dict:
                 try:
                     located = locator.locate(t, inp["name"], (inp.get("source") or {}).get("form"),
                                              inp["locate"]["text"], budget=budget, provider=provider, model=model)
-                except (deepseek.PeakHoursError, deepseek.DeepSeekAuthError, deepseek.DeepSeekTransientError,
-                        grok.GrokAllowanceError, grok.GrokAuthError, grok.GrokRequestError, grok.GrokTransientError):
+                except (deepseek.PeakHoursError, deepseek.DeepSeekAuthError, deepseek.DeepSeekTransientError):
                     raise
-                except (deepseek.DeepSeekError, grok.GrokError):
+                except deepseek.DeepSeekError:
                     located = None
                 if located is not None:
                     text = located[:engine.MAX_FALLBACK_CHARS]
@@ -125,18 +121,14 @@ def run(tickers: list[str], provider: str, model: str) -> dict:
             return stop("cap")
         except deepseek.PeakHoursError:
             return stop("peak")
-        except grok.GrokAllowanceError:
-            return stop("allowance")
-        except (deepseek.DeepSeekAuthError, grok.GrokAuthError):
+        except deepseek.DeepSeekAuthError:
             return stop("auth")
-        except grok.GrokRequestError:
-            return stop("request")
-        except (deepseek.DeepSeekTransientError, grok.GrokTransientError):
+        except deepseek.DeepSeekTransientError:
             with lock:
                 state["transient"] += 1
                 many = state["transient"] >= engine.MAX_TRANSIENT_FAILURES
             return stop("transient") if many else None
-        except (deepseek.DeepSeekError, grok.GrokError):
+        except deepseek.DeepSeekError:
             prof = {f: [] for f in config.PROFILE_FIELDS}
         v3 = getattr(prof, "v3", None)
         unusable = False
@@ -149,22 +141,15 @@ def run(tickers: list[str], provider: str, model: str) -> dict:
                     pjs[t] = v3
             else:
                 empty.append(t)
-                unusable = not profs and len(empty) >= config.GROK_UNUSABLE_STOP
+                unusable = not profs and len(empty) >= config.UNUSABLE_STOP
         if unusable:
             stop("unusable")                           # a wrong endpoint shape: stop before paying for every name
 
-    # The Claude CLI is slow per call and its gate is shared, so its names go out ``COMPARE_WORKERS`` at a time
-    # (avo, 11 Nov 2026: "8li paralel"); the paid writers stay one at a time so a stop costs at most one call.
-    workers = config.COMPARE_WORKERS if provider == "claude" else 1
-    if workers > 1:
-        with ThreadPoolExecutor(max_workers=workers, **opens.pool_kwargs()) as ex:
-            for f in as_completed([ex.submit(one, t, inp) for t, inp in todo]):
-                f.result()
-    else:
-        for t, inp in todo:
-            one(t, inp)
-            if halt.is_set():
-                break
+    # One name at a time, so a stop costs at most one call.
+    for t, inp in todo:
+        one(t, inp)
+        if halt.is_set():
+            break
     stopped = state["stopped"]
     order = {t: i for i, t in enumerate(tickers)}       # threads finish in any order; the lists keep the input's
     for names_ in (no_text, empty, shell):
@@ -175,24 +160,12 @@ def run(tickers: list[str], provider: str, model: str) -> dict:
            "attempts": budget.calls,
            "new_replies": _llm_rows(model) - cache_before, "seconds": round(time.time() - started, 1),
            "as_of": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
-    if usage_before is not None:
-        out["usage"] = {"before": usage_before, "after": _usage(provider)}
     if stopped:
         out["stopped_reason"] = stopped
     path = out_path(provider, model, partial=bool(stopped))
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
     return {k: v for k, v in out.items() if k != "matrix"} | {"file": str(path)}
-
-
-def _usage(provider: str) -> dict | None:
-    """``{window: percent}`` of the Claude subscription now (``None`` for another writer or an unreadable login)."""
-    if provider != "claude":
-        return None
-    try:
-        return {w.key: w.percent for w in subscription_usage.fetch_claude()}
-    except Exception:  # noqa: BLE001 - a missing reading is reported as such, never fails the comparison
-        return {}
 
 
 def _matrix(tickers: list[str], profs: dict[str, dict], pjs: dict[str, dict]) -> tuple[list, str]:

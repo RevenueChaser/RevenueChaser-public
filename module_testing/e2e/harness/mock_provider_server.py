@@ -241,19 +241,6 @@ def spdr_xlsx(rows: list[tuple[str, str]], fund: str) -> bytes:
     return buf.getvalue()
 
 
-def route_spdr(server: MockProviderServer, holdings: dict[str, list[tuple[str, str]]],
-               prefix: str = "/spdr") -> None:
-    """Route all 11 ``holdings-daily-us-en-<fund>.xlsx`` files as raw xlsx bytes.
-
-    ``holdings`` maps a fund (``"xlk"``) to its ``(ticker, name)`` rows. Every fund gets at least one
-    row (a filler ticker no other source knows), because the SPDR source is all-or-nothing and a
-    fund with no holdings would fail the whole check.
-    """
-    from RevenueChaser.core.identity.sources.spdr import FUNDS
-    for fund in FUNDS:
-        rows = list(holdings.get(fund) or []) or [(f"F{fund.upper()}", f"Filler {fund.upper()}")]
-        server.route(f"{prefix}/holdings-daily-us-en-{fund}.xlsx", raw=spdr_xlsx(rows, fund),
-                     content_type=SPDR_XLSX_TYPE)
 
 
 _SAFE = re.compile(r"^[A-Za-z0-9_./-]+$")

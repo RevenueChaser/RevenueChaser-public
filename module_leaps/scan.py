@@ -3,7 +3,7 @@
 Relocated from the former ``module_testing.forwards_testing.forward_collector``
 when the forward-test subsystem was removed. The universe is the stock watch list;
 ``scan_leaps`` fetches from Unusual Whales, ``scan_leaps_cached`` reads only
-``.store/raw.duckdb`` (no network).
+``boards/leaps.duckdb`` (no network).
 """
 import json
 import logging
@@ -33,25 +33,9 @@ def _sec13f_names() -> dict:
 
 
 def _history_names() -> dict:
-    """Ticker -> name from the last recorded LEAPS session snapshot (K2 readers, ``core.history``, #377 L5).
-
-    The Fetch resolves names through the UW screener and records one ``leaps_footprint_history`` row per watchlist
-    ticker, so a ticker the 13F meta does not carry keeps its name on Refresh. Empty when nothing is recorded, so
-    the caller falls back to the 13F meta; a read never creates the history file.
-    """
-    from RevenueChaser.core import history, rawstore
-    from RevenueChaser.module_leaps import history as leaps_history
-    try:
-        with rawstore.brief_wait():
-            snaps = history.sessions(leaps_history.BOARD, 1)
-            if not snaps:
-                return {}
-            rows = rawstore.query("SELECT ticker, name FROM leaps_footprint_history WHERE run_id = ?",
-                                  [snaps[0]["run_id"]], db="history")
-        return {r["ticker"]: r["name"] for r in rows if r["name"]}   # a blank name never hides the 13F one
-    except Exception as e:  # pragma: no cover - defensive
-        logger.warning(f"cached history name lookup failed: {e}")
-        return {}
+    """Ticker -> name from the recorded LEAPS sessions: none since the result history (history.duckdb) went (#860),
+    so the 13F meta names every ticker."""
+    return {}
 
 
 def _screener_names(uw, tickers: list) -> dict:
@@ -65,21 +49,12 @@ def _screener_names(uw, tickers: list) -> dict:
 
 
 def _history_baselines(tickers, today: date, warnings: list | None = None) -> dict:
-    """The recorded baselines of the whole watchlist in one batched read (O8/O9, #377 L3).
-
-    A history read never fails a Fetch or a Refresh: a locked or unreadable file gives no baselines (growth None)
-    and one warning, so the board can say a Quiet label there is missing history rather than a flat footprint.
-    """
-    from RevenueChaser.module_leaps import history as leaps_history
-    try:
-        return leaps_history.baselines(tickers, today)
-    except Exception as e:  # noqa: BLE001 - a missing baseline, never a failed run
-        logger.warning(f"LEAPS recorded baselines not read: {e}")
-        if warnings is not None:
-            # The class only: a store error names the file it could not open, a host path (#107); the log has it all.
-            warnings.append(f"The recorded session baselines could not be read ({type(e).__name__}), so no "
-                            "growth is shown: a Quiet label here is missing history, not a flat footprint.")
-        return {}
+    """The recorded baselines of the watchlist (O8/O9, #377 L3): none since the result history (history.duckdb)
+    went (#860), so growth is None and the board says why."""
+    if warnings is not None:
+        warnings.append("No recorded session baselines (the result history was removed), so no growth is shown: a "
+                        "Quiet label here is missing history, not a flat footprint.")
+    return {}
 
 
 def _near_event_dates(today: date, warnings: list | None = None) -> dict:
@@ -130,26 +105,11 @@ def rederive(snap: dict, oi, base_1d: dict | None, base_q: dict | None, ask_shar
     return leaps.classify(dict(snap), base_1d, base_q, cur_oi=oi, ask_share=ask_share)
 
 
-def _rederive_from_history(snap: dict, base: dict) -> dict:
-    """Re-label a stored snapshot from its recorded session row (D4, #377 L3).
-
-    Only when the newest recorded session is the session the cache holds. A newer intraday Fetch lives only in
-    ``leaps_cache.latest`` and has no recorded row of its own, so its stored label stands.
-    """
-    from RevenueChaser.module_leaps import history as leaps_history
-    newest = (base or {}).get("newest")
-    if not newest or str(newest.get("as_of")) != str(snap.get("as_of")):
-        return snap
-    own = leaps_history.pick((base or {}).get("rows") or [], newest["as_of"])
-    return rederive(snap, newest.get("oi_per_expiry"), own.get("1d"), own.get("q"),
-                    ask_share=newest.get("ask_share"))
-
-
 def scan_leaps_cached(today: date | None = None,
                       warnings: list | None = None) -> tuple[list[dict], list[dict]]:
     """Store-only LEAPS render — no network.
 
-    Mirrors ``scan_leaps`` but reads every input from ``.store/raw.duckdb``
+    Mirrors ``scan_leaps`` but reads every input from ``boards/leaps.duckdb``
     instead of Unusual Whales:
       - watchlist footprints come from the latest cached snapshot per ticker
         (``leaps_cache``), re-labelled from the recorded sessions when the cache holds the session that was
@@ -161,7 +121,7 @@ def scan_leaps_cached(today: date | None = None,
     """
     d = today or date.today()
     watched_tickers = sorted(_leaps_tickers())
-    bases = _history_baselines(watched_tickers, d, warnings)
+    _history_baselines(watched_tickers, d, warnings)   # none since #860; it says so on the board
 
     try:
         rows = leaps.load_recent_prints(today=today)
@@ -184,7 +144,6 @@ def scan_leaps_cached(today: date | None = None,
         snap = (data or {}).get("latest") if isinstance(data, dict) else None
         if not snap:
             continue
-        snap = _rederive_from_history(snap, bases.get(t) or {})
         _merge_radar(snap, candidates.get(t))
         snap.setdefault("name", name_map.get(t, ""))
         watched.append(snap)                       # every pinned name, whatever its label (#377 L2)

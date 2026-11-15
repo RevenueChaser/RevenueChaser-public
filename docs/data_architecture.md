@@ -1,5 +1,13 @@
 # Data Architecture — RevenueChaser
 
+> **#860, 15 Nov 2026: the old store files are gone.** `.store/raw.duckdb`, `edgar.duckdb`, `history.duckdb` and
+> `.store/prices.duckdb` were removed with every code path to them, in one PR, and no data was moved across. The
+> store keeps only the board files, `.store/boards/<board>.duckdb`; the boards read market data from rcdata's
+> serving layer under `RC_MARKET_DIR` (its `prices.duckdb` there is a different, new file).
+> `core/tests/test_no_old_store.py` fails any code that names an old file, sends a store call to one, or imports a
+> module removed with them. Where the text below describes those four files, their tables or their writers, it is
+> history, not the current design.
+
 This document describes the data pipeline and where data lives at each stage.
 Companions: [`data_retrieval.md`](data_retrieval.md) for how data gets in and
 out (Fetch vs Refresh), [`e2e_testing.md`](e2e_testing.md) for how that is
@@ -56,7 +64,7 @@ cover them first:
 
 | Folder | Semantics | May you delete it? |
 |---|---|---|
-| **`.store/`** | **DURABLE.** Everything in `.store` is the source of truth. It holds exactly **three** DuckDB files today (a fourth, `history.duckdb`, appears with the first recorded board run, #278; see its row below) (plus tiny `.rc-proc-<pid>` presence markers and `*.lock` job locks, see Concurrency model): `.store/raw.duckdb` (structured raw + derived data, and the identity/GICS spine incl. `sec_company_*`), `.store/edgar.duckdb` (EDGAR **content**: `edgar_documents` metadata, `edgar_facts`, `edgar_financials`, `chain_*`) and `.store/prices.duckdb` (the daily price tables: `price_bars_daily`, `price_actions`, `price_checks`, and the SPX daily levels `index_levels_daily`). Raw 10-K/20-F HTML is the one file-based durable artifact, under `edgar_docs/{cik}/{accession}.html.gz`. They grow over time and CANNOT be regenerated from the app — losing them loses what only accumulates (the option-flow prints, one Rotation snapshot per date, one Co-movement run per as-of date), the ingested 13F data and the raw filings. | **NO.** Treat like database files. Back them up (`rcdata backup`, the weekly job: the DB files, the `edgar_docs/` tree as a zip, the UW raw files and the SPX Gamma tree); never `rm -rf`. |
+| **`.store/`** | **DURABLE.** Everything in `.store` is the source of truth. It holds exactly **three** DuckDB files today (a fourth, `history.duckdb`, appears with the first recorded board run, #278; see its row below) (plus tiny `.rc-proc-<pid>` presence markers and `*.lock` job locks, see Concurrency model): `.store/raw.duckdb` (structured raw + derived data, and the identity/GICS spine incl. `sec_company_*`), `.store/edgar.duckdb` (EDGAR **content**: `edgar_documents` metadata, `edgar_financials`, `sec_submissions*`; **going away, #860** — the `chain_*` tables left it for `boards/value_chain.duckdb`) and `.store/prices.duckdb` (the daily price tables: `price_bars_daily`, `price_actions`, `price_checks`, and the SPX daily levels `index_levels_daily`). Raw 10-K/20-F HTML is the one file-based durable artifact, under `edgar_docs/{cik}/{accession}.html.gz`. They grow over time and CANNOT be regenerated from the app — losing them loses what only accumulates (the option-flow prints, one Rotation snapshot per date, one Co-movement run per as-of date), the ingested 13F data and the raw filings. | **NO.** Treat like database files. Back them up (`rcdata backup`, the weekly job: the DB files, the `edgar_docs/` tree as a zip, the UW raw files and the SPX Gamma tree); never `rm -rf`. |
 | **`.cache/`** | **ARTIFACTS.** Fully regenerable outputs: `*_latest.html` dashboards, `*_latest.json` payloads, PNGs, timestamped archives, and downloaded SEC 13F source zips. | **YES.** Delete any time; re-running the relevant module regenerates everything. |
 
 Rule of thumb: if deleting it loses *history* or *ingested* data → it belongs in
@@ -181,9 +189,9 @@ Refusing writes on a mismatch is off (#26 PL7-b). `SCHEMA_REFUSE_WRITES` in `cor
 | Path | Contents | Clearable? |
 |---|---|---|
 | `.store/raw.duckdb` | Structured raw + derived data (tables below) + the identity/GICS spine (`sec_company_*`) | No — durable source of truth (see `.store` semantics above) |
-| `.store/edgar.duckdb` | EDGAR **content**: `edgar_documents` (metadata only), `edgar_facts`, `edgar_financials`, `chain_filings`/`chain_mentions`/`chain_meta` | No — durable |
+| `.store/edgar.duckdb` | EDGAR **content**: `edgar_documents` (metadata only), `edgar_financials`, `sec_submissions`, `sec_submissions_cik`. **Going away (#860):** `chain_filings`/`chain_mentions`/`chain_meta` moved to `boards/value_chain.duckdb` in stage 1, `edgar_facts` and `edgar_companyfacts` left the MANIFEST in stage 2, and nothing new may be added to this file | No — durable |
 | `.store/history.duckdb` | Result history (#287, 2.6-1; schema 11): `result_runs` (one header row per board run: session, run time, quality, model version, params, funnel, payload) and 16 run-keyed row tables (`ag_scores_history`, `earnings_cards_history`, …). Written only by `core/history.record_run`, in one transaction; a session board keeps one whole run per session (`session_snapshot`), a run board keeps every run. Read views `result_sessions` and `<table>_by_session`. Backed up like every board file by the weekly job (4 copies kept; grows ~6.55 GB/yr against raw's 603 MB). **The file does not exist until the first recorded run** (`rawstore.ensure_history()`); `rawstore.history_db_path()` and `_db_path("history")` resolve it, and the weekly backup skips it while it is missing. `forecast_ledger` stays in `raw.duckdb`. The 8 change tables live in `raw.duckdb` and ride its backups | No — durable |
-| `.store/boards/<board>.duckdb` | Board result files (DECISIONS S9, S16): a board's own tables, written only by that board, incrementally. For now `news` and `welcome` (`rawstore.BOARD_DBS`); a MANIFEST table with `"db": "<board>"` lives only there. Made by the schema apply with its own `store_schema` stamp; the writer's presence marker sits beside it | No — durable |
+| `.store/boards/<board>.duckdb` | Board result files (DECISIONS S9, S16): a board's own tables, written only by that board, incrementally. For now `news` and `welcome` (`rawstore.BOARD_DBS`); a MANIFEST table with `"db": "<board>"` lives only there. Made by the schema apply with its own `store_schema` stamp; the writer's presence marker sits beside it. One file here is not a board result: `boards/watchlists.duckdb` (#786) holds avo's own watch lists, typed by hand and not regenerable from any source. It sits here for the one writer, the peer lock, the schema stamp and the `boards` backup step, and for nothing else: it is never rebuilt and never written whole | No — durable, and the only board file that cannot be regenerated |
 | `.store/prices.duckdb` | Daily prices (#156, moved here before the fill, 2026-10-09): `price_bars_daily`, `price_actions` and their watermarks `price_checks` (the shape of `source_checks`, which stays in raw for the identity stamps), and the SPX daily levels `index_levels_daily` (D03, #293, moved here before its writer, 2026-10-10). One file, so a chunk's bars, actions and watermarks commit in one transaction (`rawstore.atomic(..., db="prices")`); about 2.4 GiB after the `period="max"` fill, kept out of raw's weekly copies. Made by the first store call; a store from before has the two tables (and the price rows of `source_checks`; from #293 also the empty `index_levels_daily`) moved over once by that call: copied, checked row by row (`EXCEPT`), then dropped from raw; each table is added to the `migration_manifest` row `price_tables_to_prices_db` in the transaction that removes it from raw. A conflicting row stops that table's move with a warning and overwrites nothing. Two processes starting together may both run the move: what the other one already moved is left alone and logged at INFO. No `_SCHEMA_VERSION` bump (the #72 precedent): an older checkout recreates the empty raw tables and ignores this file. Backup: 2 nightly snapshots, no weekly copy (append-only, so the newest holds every row); off this machine once a week, 1 copy | No — durable |
 | `edgar_docs/{cik}/{accession}.html.gz` | Raw 10-K/20-F HTML (the durable raw-document record; keyed by CIK + accession). Dir via `RC_EDGAR_DOCS_DIR` | No — durable; backed up as a tree |
 | `.cache/sec_13f/*_form13f.zip` | Downloaded SEC 13F source archives, left by the retired dashboard ingest (G9); the builder keeps its own under `raw/sec/13f_sets/` | Yes — nothing reads them |
@@ -209,7 +217,6 @@ network.
 | `ticker_payload_cache` | Per-ticker yfinance payload (financial statements) | raw | 1 day (`CACHE_TTL_DAYS`) |
 | `edgar_financials` | EDGAR companyfacts (annual/quarterly/meta) per ticker | edgar | none (immutable) |
 | `edgar_documents` | EDGAR filing metadata (accession, form, dates). Append: the first write of an accession wins, a later one is a no-op (#299, D16); the daily sync and the Value Chain Fetch store a downloaded 10-K/20-F through one path (`module_value_chain/edgar_text.document_slice`), a stored doc is re-sliced, never downloaded or written again. `source` 'sec_archives', `run_at` | edgar | none (immutable) |
-| `edgar_facts` | EDGAR fact spine `(cik, concept, period, form)` | edgar | none (immutable) |
 | `swing_ohlc` | 2y daily OHLCV per ticker (tabular columns); one writer `module_swing_potential/ohlc_cache.write` (C8), which only the Swing/Fundamentals SPY fallback still calls: Co-movement and the Relatedness peer market read D01 since #379 | raw | none today |
 | `catalyst_events` | Biotech catalysts (trial readouts, PDUFA, AdComs, …) keyed `(source, source_event_id)`: a slipped date updates the row, never adds one (the store records the change in `catalyst_events_changes`); `event_date` + `date_precision` (day/month/quarter/half); writers arrive with #186-#192 | raw | per fetch |
 | `orphan_designations` / `orphan_lookups` | FDA orphan designations per ticker (OOPD) / the outcome of each ticker's lookup. **Writer rules (#190):** skip and report rows whose `date_designated` is None (one NULL key aborts the whole batch); group OOPD's one-record-per-approval rows by key into `approvals`; store `error` as the provider's code; `query` is the query the lookup ended on: when OOPD caps a page (`error` `page_capped`) the provider retries once with a narrower query, so a ticker's stored `query` can differ between sessions only because of that day's cap, and the broad query first asked (`retry_from` in the provider result) is not persisted; readers gate on `orphan_lookups.match` and, since the key is `(ticker, session_date)` (schema 11), take each ticker's latest session (upsert keeps designations that vanish upstream) | raw | per fetch |
@@ -222,8 +229,8 @@ network.
 | `sec_company_tickers` | SEC CIK map (ticker → cik/name); **retired** (#301 D21): nothing writes it, and the readers use `sec_exchange_file` first — it stays as the CIK map's second source, ahead of a live `company_tickers.json` read | raw | frozen |
 | `sec_company_sic` | SIC per CIK — the fallback behind the SEC submissions code for the SIC sector step (#272) | raw | until refetched |
 | `comov_runs` / `comov_nodes` / `comov_members` / `comov_lag` | Co-movement board: dated return-cluster runs, clusters, members; groups formed a quarter earlier with their held-out-quarter test | comovement | per Fetch run (latest as_of wins) |
-| `chain_filings` / `chain_mentions` / `chain_meta` | Value Chain board: latest 10-K/20-F Item 1/4 text + supplier/customer edges. `chain_meta.fetched_at DOUBLE` (#127) is the fetch time; NULL on older rows is unknown, never 0 | edgar | per fetch (resumable by ticker) |
-| `llm_cache` | DeepSeek (and, for a `--provider grok` run, SuperGrok: #388) prompt/response cache (Relatedness + Value Chain) | relatedness | none (immutable) |
+| `chain_filings` / `chain_mentions` / `chain_meta` | Value Chain board: latest 10-K/20-F Item 1/4 text + supplier/customer edges. `chain_meta.fetched_at DOUBLE` (#127) is the fetch time; NULL on older rows is unknown, never 0 | value_chain | per fetch (resumable by ticker) |
+| `llm_cache` | DeepSeek and EVREN prompt/response cache (Relatedness + Value Chain) | relatedness | none (immutable) |
 | `ticker_themes` | Runtime theme SSoT `(ticker, theme_id, theme, level, theme_run_id)`. `fetched_at DOUBLE` (#127) is when the row was written; NULL on older rows is unknown, never 0 | relatedness | per theme run |
 | `sec13f_security_meta` | Shared ticker→{name,sector} across dashboards (merged from old `universe_meta` + `sec13f_universe_meta`). `fetched_at DOUBLE` (#127); NULL on older rows is unknown, never 0 | raw | manual |
 | `sec13f_enrichment` | 13F enrichment (price/short/insider); writer retired (#300), no reader since #375 F2 (the board reads `ownership_snapshot` and D01); the rows stay | raw | none |
@@ -263,10 +270,13 @@ network.
 | `sec13f_board_cells` | 13F board (#732): its own file `.store/boards/sec_13f.duckdb`, written only by `module_sec_13f/store.py`. Per ticker and report period the builder's metrics as filed, read by the board until the ownership build or the New York date changes; a period stored as `closed` is never rewritten. Key `(ticker, period)`. `ticker`, `period DATE`, `shares`, `value`, `holders INTEGER`, `top10_pct`, `hhi`, `new_holders INTEGER`, `exited_holders INTEGER`, `buy_flow`, `sell_flow`, `breadth`, `breadth_chg` (DOUBLE unless named), `complete BOOLEAN`, `closed BOOLEAN`, `stored_at DOUBLE` | sec_13f | none |
 | `sec13f_board_breaks` | 13F board: per ticker and settled period, each filer that started or stopped reporting it (from `sec13f_filer_breaks`), kept with its period's cells. Key `(ticker, period, kind, cik)`. `ticker`, `period DATE`, `kind`, `cik`, `filer_name`, `shares DOUBLE`, `stored_at DOUBLE` | sec_13f | none |
 | `sec13f_board_meta` | 13F board bookkeeping: `source`, the ownership build stamp and New York date the rows were taken from. Key `key`. `key`, `value`, `updated_at DOUBLE` | sec_13f | none |
+| `wl_list` | Watch lists (#786, avo 12 Nov 2026): their own file `.store/boards/watchlists.duckdb`, written only by `module_watchlists/store.py`. Not a board result — avo types these and nothing recomputes them, so the file is never rebuilt and never written whole; it rides the `boards` step of the weekly backup. One row per list: its name, avo's free-text description, where it sits among the lists, and `feeds`, the job group it serves (empty while the jobs still read `ops.sqlite`'s two lists). Lists come in and go out in TradingView's own one-line export format (`module_watchlists/tradingview.py`): items separated by commas, an item starting with `###` a section heading, everything else a symbol. `python -m RevenueChaser.module_watchlists import <file-or-folder>` reads them, a dry run by default that names every symbol with no source yet (#785); `--apply` writes and a re-run adds only what is missing. `export <list_id>` writes a list back out in the same format, order, headings and spelling kept. Key `list_id`. `list_id`, `name`, `description`, `position INTEGER`, `feeds`, `created_at DOUBLE`, `created_by`, `updated_at DOUBLE` | watchlists | none |
+| `wl_section` | The ordered headings inside a list (avo's own, e.g. "AI ÇIPLERI — GPU VE ACCELERATOR"); a list with no headings carries one section with an empty name, so a reader never special-cases "no sections". Order is data, not the alphabet. Key `(list_id, section_id)`. `list_id`, `section_id`, `name`, `position INTEGER`, `created_at DOUBLE` | watchlists | none |
+| `wl_item` | One symbol on one list. `symbol` is avo's own spelling kept exactly (`NASDAQ:NVDA`, `TVC:US10Y-TVC:US02Y`), because it is what an export writes back out; `exchange` and `ticker` are its parts and `coverage` says where its data comes from here — `us_equity`, `market_series`, `derived` or `unsupported` (#785), read from the spelling alone by `module_watchlists/symbols.py`. An unsupported symbol is kept and shows no data, so the list stays whole. Key `(list_id, symbol)`. `list_id`, `symbol`, `section_id`, `position INTEGER`, `exchange`, `ticker`, `coverage`, `note`, `added_at DOUBLE`, `added_by` | watchlists | none |
+| `wl_change` | One row per add or remove, kept when the list itself is deleted, so what a list held is still readable. Key `(list_id, symbol, changed_at, action)`. `list_id`, `symbol`, `action`, `changed_at DOUBLE`, `changed_by`, `note` | watchlists | none |
 | `source_checks` | Key `(dataset, source, key)`. `dataset`, `source`, `key`, `checked_at DOUBLE`, `run_id`; the generic per-key "last checked" stamp (rule A); `core/quotes.py` (#294): `quote_snapshot`/`yfinance`/`__rate_limited__` = Phase B's last stop on Yahoo's rate limit; the price watermarks moved to `price_checks` (#156) | raw | none |
 | `price_checks` | Key `(dataset, source, key)`, the shape of `source_checks`; writer `core/prices.py` (#156), in the chunk's transaction: `price_actions`/`yfinance` = per-ticker actions watermark; `price_bars_daily`/`yfinance_max` = fill marker | prices | none |
 | `sec13f_filers` | G1 (#292), manifest only, no writers yet. Key `(accession)`. `accession`, `cik`, `period`, `name`, `source`, `fetched_at DOUBLE`, `run_id`, `run_at DOUBLE` | raw | none |
-| `edgar_companyfacts` | G1 (#292), manifest only, no writers yet. Key `(cik, taxonomy, concept, unit, period_start, period_end, accn)`. `cik`, `taxonomy`, `concept`, `unit`, `period_start`, `period_end DATE`, `accn`, `value DOUBLE`, `form`, `fy INTEGER`, `fp`, `filed DATE`, `source`, `fetched_at DOUBLE`, `run_id`, `run_at DOUBLE` | edgar | none |
 | `sec_submissions` | G1 (#292). Writer `core/sec_submissions.record` (#299, D15): the daily EDGAR sync (`edgar_sync`, RC-ValueChain-Sync 13:00) asks `submissions/CIK*.json` once for every CIK of the whole `equity_universe` and stores each `filings.recent` row once per accession (append, first write wins); a failed CIK writes nothing. A Refresh writes nothing. `source` 'sec_submissions', `cik` without leading zeros. Read by the Fundamentals board since #386 F5 (`module_fundamentals/events.corporate_events`, windowed reads bounded to 2000 CIKs per statement and all of them inside one `rawstore.session()`, so one connect per store file per call): a card whose filer filed an 8-K carrying item 1.02, 2.01, 2.06, 3.01, 4.01, 4.02, 5.01 or 5.03 in the last 365 days shows those item codes — display only, never scored, ranked or frozen. Key `(cik, accession)`. `cik`, `accession`, `form`, `filing_date DATE`, `primary_document`, `items`, `source`, `fetched_at DOUBLE`, `run_id`, `run_at DOUBLE` | edgar | none |
 | `sec_submissions_cik` | G1 (#292). Writer `core/sec_submissions.record` (#299, D15), from the same answers: change history (rule A), a row only when name, SIC, SIC text, entity type, tickers or exchanges differ from the CIK's newest row; `valid_from` = the run's session, `status` 'present'; a CIK the SEC answers 404 gets one 'absent' row. Each answered CIK also gets a `source_checks` watermark (dataset 'sec_submissions', key = CIK) for Data Health. Key `(cik, run_at)`. `cik`, `valid_from DATE`, `status`, `name`, `sic`, `sic_description`, `entity_type`, `tickers JSON`, `exchanges JSON`, `source`, `fetched_at DOUBLE`, `run_id`, `run_at DOUBLE` | edgar | none |
 
@@ -622,8 +632,8 @@ worker thread writes while Flask request threads read. So:
   future listing prints. A label, as `history_mode` is: rawstore does not read
   either, so neither changes DDL or a write and neither needs a
   `_SCHEMA_VERSION` bump. Planned today: `catalyst_events` (the fetchers of
-  #186-#192), `orphan_designations` and `orphan_lookups` (#190), `sec13f_filers`
-  and `edgar_companyfacts` (G1 #292, manifest only). Retired today:
+  #186-#192), `orphan_designations` and `orphan_lookups` (#190) and `sec13f_filers`
+  (G1 #292, manifest only). Retired today:
   `leaps_daily_scores` and `sec13f_ticker_names`, which only the legacy import
   `scripts/migrate_rawdata_to_duckdb.py` fills, and `sec13f_edgar_backfill`,
   which that same import fills and which is scheduled to leave the manifest at
@@ -787,11 +797,10 @@ schema, reachable with path expressions like `payload.market_cap::DOUBLE`).
 | `ticker_payload_cache` | `ticker`, `fetched_at DOUBLE`, `fetched_at_iso` (hoisted out of the payload) | `payload` (rest of the yfinance dict) |
 | `edgar_financials` (edgar DB) | `ticker`, `fetched_at DOUBLE` | `meta`; `annual`, `quarterly` are **zlib-compressed JSON** (`BLOB`, see `compress`) |
 | `edgar_documents` (edgar DB) | `accession`, `cik`, `tickers`, `form`, `filed`, `fiscal_year`, `doc_url`, `path`, `sha256`, `bytes_raw`, `bytes_gzip`, `fetched_at`, `source`, `run_at` (#299; added to an existing store by `ALTER TABLE ADD COLUMN`, no bump) | — |
-| `chain_filings` (edgar DB) | `ticker`, `cik`, `form`, `filed`, `accession`, `primary_doc`, `quality`, `fetched_at` | `item_text` is **zlib-compressed text** (`BLOB`) |
-| `chain_mentions` / `chain_meta` (edgar DB) | `src`, `dst_name`, `dst_ticker`, `relation`, `snippet`, `filed`, `share_pct DOUBLE` (the share of the filer's sales or purchases a concentration sentence states; NULL on a keyword edge; #387 D7, added by ALTER at the first call), `source` (`profile` / `xbrl` / `regex`, #410; NULL on older rows; added by ALTER, no bump) / `key`, `value`, `fetched_at DOUBLE` (#127; NULL on older rows is unknown, never 0; added by ALTER, no bump) | — |
+| `chain_filings` (value_chain DB) | `ticker`, `cik`, `form`, `filed`, `accession`, `primary_doc`, `quality`, `fetched_at` | `item_text` is **zlib-compressed text** (`BLOB`) |
+| `chain_mentions` / `chain_meta` (value_chain DB) | `src`, `dst_name`, `dst_ticker`, `relation`, `snippet`, `filed`, `share_pct DOUBLE` (the share of the filer's sales or purchases a concentration sentence states; NULL on a keyword edge; #387 D7, added by ALTER at the first call), `source` (`profile` / `xbrl` / `regex`, #410; NULL on older rows; added by ALTER, no bump) / `key`, `value`, `fetched_at DOUBLE` (#127; NULL on older rows is unknown, never 0; added by ALTER, no bump) | — |
 | `comov_runs` / `comov_nodes` / `comov_members` / `comov_lag` | `as_of` + run config (`n_factors`, `null_json`, `oos_json`) + the Fetch's `run_id`, `session_date DATE` (rule B on `as_of`) and `dropped_json` (the run's drop lists; #379 D2, additive, older runs read NULL; each Fetch also writes one header-only `result_runs` row naming every run it stored or served) / `(as_of, cut, cluster_id)` metrics incl. `baseline_r`, `persist_*`, `oos_*` / `(as_of, cut, ticker)`, `core` (was in the matching group a quarter ago; `stability` legacy, no longer written) / `(as_of, cut, ticker)` lagged group + `oos_r`, `oos_base`, `held` | — |
 | `sec_company_sic` | `ticker`, `cik`, `sic`, `sic_description`, `fetched_at` | — |
-| `edgar_facts` (edgar DB) | `cik`, `concept`, `period`, `form`, `value`, `unit` | — |
 | `swing_info` | `ticker`, `cached_at DOUBLE` (hoisted out of the payload), `fetched_at DOUBLE` (#127; NULL on older rows is unknown, never 0) | `payload` (`.info` dict) |
 | `leaps_cache` | `ticker`, `fetched_at DOUBLE` (#127; NULL on older rows is unknown, never 0) | `payload` (`{latest, history[]}`; `history` is frozen since #377 L3: carried unchanged, never appended, and the classifier reads its baselines from `leaps_footprint_history`) |
 | `rotation_holdings` | `ticker`, `date` (hoisted out of the payload), `fetched_at DOUBLE` (#127; NULL on older rows is unknown, never 0) | `rows` (holdings + RS list) |
@@ -800,7 +809,7 @@ schema, reachable with path expressions like `payload.market_cap::DOUBLE`).
 | `ticker_themes` | `ticker`, `theme_id`, `theme`, `level`, `theme_run_id`, `fetched_at DOUBLE` (#127; NULL on older rows is unknown, never 0) | — |
 | `fundamentals_scores` / `swing_scores` | per-ticker metric columns (see MANIFEST) | — |
 | `fundamentals_gates` / `swing_gates` | `ticker`, `gate`, `rule_id`, `passed`, `actual`, `unit` | — |
-| `relatedness_profiles` | `ticker`, `cik`, `model`, `prompt_version`, `fetched_at`, `cache_key`, `status`, `attempts`, `provider` (the writer, #360: `evren` / `deepseek` / `grok`; nullable, added by `ALTER TABLE ADD COLUMN`, no schema bump) | `profile_json` (the v3 structured profile, #401, schema 13; NULL on a v2 row), `label_source` (which chunk or table each v3 field came from, #401) |
+| `relatedness_profiles` | `ticker`, `cik`, `model`, `prompt_version`, `fetched_at`, `cache_key`, `status`, `attempts`, `provider` (the writer, #360: `evren` / `deepseek`, older rows also `grok` / `claude`; nullable, added by `ALTER TABLE ADD COLUMN`, no schema bump) | `profile_json` (the v3 structured profile, #401, schema 13; NULL on a v2 row), `label_source` (which chunk or table each v3 field came from, #401) |
 | `relatedness_embeddings` | `ticker`, `model`, `dim INTEGER`, `vector BLOB` (a 16-byte hash of the embedded text, then the float32 bytes of `dim` values; raw, not zlib-compressed); `PRIMARY KEY (ticker, model)` (#401, schema 13; writer: `module_relatedness/embeddings.py`, #669) | — |
 | `relatedness_attributes` | `ticker`, `field`, `value` (TEXT holding a JSON list), `value_num` | — |
 | `relatedness_scores` | `ticker`, `peer`, `score` | — |
@@ -905,10 +914,13 @@ schema, reachable with path expressions like `payload.market_cap::DOUBLE`).
 | `sec13f_board_cells` | `ticker`, `period DATE`, `shares`, `value`, `holders INTEGER`, `top10_pct`, `hhi`, `new_holders INTEGER`, `exited_holders INTEGER`, `buy_flow`, `sell_flow`, `breadth`, `breadth_chg`, `complete BOOLEAN`, `closed BOOLEAN`, `stored_at DOUBLE`. Key `(ticker, period)` | — |
 | `sec13f_board_breaks` | `ticker`, `period DATE`, `kind`, `cik`, `filer_name`, `shares DOUBLE`, `stored_at DOUBLE`. Key `(ticker, period, kind, cik)` | — |
 | `sec13f_board_meta` | `key`, `value`, `updated_at DOUBLE`. Key `key` | — |
+| `wl_list` | `list_id`, `name`, `description`, `position INTEGER`, `feeds`, `created_at DOUBLE`, `created_by`, `updated_at DOUBLE`. Key `list_id`; boards/watchlists.duckdb (#786) | — |
+| `wl_section` | `list_id`, `section_id`, `name`, `position INTEGER`, `created_at DOUBLE`. Key `(list_id, section_id)` | — |
+| `wl_item` | `list_id`, `symbol`, `section_id`, `position INTEGER`, `exchange`, `ticker`, `coverage`, `note`, `added_at DOUBLE`, `added_by`. Key `(list_id, symbol)` | — |
+| `wl_change` | `list_id`, `symbol`, `action`, `changed_at DOUBLE`, `changed_by`, `note`. Key `(list_id, symbol, changed_at, action)` | — |
 | `source_checks` | `dataset`, `source`, `key`, `checked_at DOUBLE`, `run_id`. Key `(dataset, source, key)` | — |
 | `price_checks` | `dataset`, `source`, `key`, `checked_at DOUBLE`, `run_id`. Key `(dataset, source, key)`; prices.duckdb (#156) | — |
 | `sec13f_filers` | `accession`, `cik`, `period`, `name`, `source`, `fetched_at DOUBLE`, `run_id`, `run_at DOUBLE`. Key `(accession)` | — |
-| `edgar_companyfacts` (edgar DB) | `cik`, `taxonomy`, `concept`, `unit`, `period_start`, `period_end DATE`, `accn`, `value DOUBLE`, `form`, `fy INTEGER`, `fp`, `filed DATE`, `source`, `fetched_at DOUBLE`, `run_id`, `run_at DOUBLE`. Key `(cik, taxonomy, concept, unit, period_start, period_end, accn)` | — |
 | `sec_submissions` (edgar DB) | `cik`, `accession`, `form`, `filing_date DATE`, `primary_document`, `items`, `source`, `fetched_at DOUBLE`, `run_id`, `run_at DOUBLE`. Key `(cik, accession)` | — |
 | `sec_submissions_cik` (edgar DB) | `cik`, `valid_from DATE`, `status`, `name`, `sic`, `sic_description`, `entity_type`, `source`, `fetched_at DOUBLE`, `run_id`, `run_at DOUBLE`. Key `(cik, run_at)` | `tickers`, `exchanges` |
 
@@ -1018,12 +1030,12 @@ from `RC_DUCKDB_MAX_TEMP` (default `200GB`), held to 90 % of the spill disk's fr
 spill's parent folder (unset: `<MARKET_RAW_DIR>/build_tmp`). Each dataset's build logs one line with its seconds and
 its spill peak (`base.spill_peak`, sampled every 2 s), the measure for moving the spill to the SSD or chunking a kind.
 
-**Files.** Serving kinds: `market`, `spine`, `prices`, `ownership`, `fundamentals`, `options`. Each kind is one
+**Files.** Serving kinds: `market`, `spine`, `prices`, `ownership`, `fundamentals`, `options`, `sec_forms`, `sec_reads`. Each kind is one
 file, `<MARKET_DIR>/<kind>.duckdb`. The identity spine, `spine` (serving schema version `6`), is described under
 "The identity spine" below; the prices store, `prices` (serving schema version `1`), under "The prices store"
-below; the ownership store, `ownership` (serving schema version `2`), under "The ownership store" below; the
+below; the ownership store, `ownership` (serving schema version `4`), under "The ownership store" below; the
 fundamentals layer, `fundamentals` (serving schema version `3`), under "Fundamentals" after it; and the options
-data, `options` (serving schema version `2`), under "The options data" last. The six numbers live in `rcdata/serving_versions.py`, outside the builder's rules fingerprint
+data, `options` (serving schema version `3`), under "The options data" after it; and the SEC form reader, `sec_forms` (serving schema version `1`), under "The SEC form reader"; and the SEC reader tool, `sec_reads` (serving schema version `1`), under "The SEC reader tool" last. The eight numbers live in `rcdata/serving_versions.py`, outside the builder's rules fingerprint
 (`rcdata/build/dirty.py`), so a bump makes only its own kind's next build whole (#649). The market data,
 `market` (serving schema version `4`): `serving_schema_version` (one row: kind, version, build time, build id, build mode),
 `spx_gamma_expiry_strike` (key session date, expiry, strike; every numeric field UW serves, typed DOUBLE; provenance
@@ -1051,7 +1063,10 @@ none may empty or lose more than 1% of its rows unless the request says `"allow_
 (a dataset with no provider, such as `ownership/serve`), never another source dataset's table (`base.shrink_scope`).
 A table that serves only its newest sessions (`option_eod`) names its first kept session in the
 build file's `serving_window` table, and is compared on the rows inside that window: a session leaving it is not a
-loss, a session inside it that lost rows is. A build also refuses
+loss, a session inside it that lost rows is. A table whose row count the source or avo chooses rather than
+accumulates is named in `serving.SHRINKS_BY_CHOICE` (`my_universe`; `economic_event` since 14 Nov 2026, because UW's
+calendar is a forward window and a snapshot day's partition is replaced whole by that day's newest fetch): it may
+shrink by any amount and still may not empty. A build also refuses
 a missing Parquet root (the raw disk not mounted). Then the live file is hard-linked to `<kind>.prev.duckdb` and
 `os.replace` moves the new file over the live name, so the live name is never missing. Any failure deletes the new
 file and leaves the live file byte-identical (test T3, `rcdata/tests/test_serving.py`). The dashboard opens a serving
@@ -1174,6 +1189,7 @@ version 1 runs on the version 2 tables, and the next upgrade leaves a history ta
 | `kind_automation` | The old file-level mode (Settings, 6 Nov 2026): kept, no longer read; `ops.copy_kind_modes` moved it onto each dataset (10 Nov 2026) |
 | `switch` | The board's two switches (#527): `fetch` stops every fetch, build and RC timer task but the backups and the IBKR login check; `backup` stops the three backups. No row, or `off_at` NULL, is on |
 | `dataset_automation` | One source's own automation (#527): `off`, `raw`, `parquet` or `full`; no row is `off`. The only mode the hourly pass reads (avo, 10 Nov 2026) |
+| `request_log` | The per-request log (#715): one row a read (`kind` `read`), a need ask (`need`) and a provider call (`call`), with the time, the process, what was asked (a table, a need, or the provider and for an HTTP call the method and `host/path`, never the query, a header or a body), the dataset of a build, the answer (an HTTP status, an error's name, `sent`, `failed`) and the milliseconds of an HTTP call. Collected in memory and written with the read log's flush (once a minute and at exit); every write keeps only the newest 100,000 rows (`ops.REQUEST_LOG_KEEP`, about seven days). Not in any backup. `RC_REQUEST_LOG=0` turns it off. Read by `GET /api/settings/requests` |
 
 **Day caps** (`rcdata/caps.py`, master plan Order 5, rule 3: only the quotas a provider publishes per day, each with
 its source): alphavantage 25 (its free tier, shared by the earnings calendar and the spine's
@@ -1203,6 +1219,15 @@ on a file it writes, another builder) and the builder lock are one loop. `--wait
 commands (`backfill`, `attended`, and `run --dataset X`) wait 1800 s by default and the hourly pass (`run` with no
 dataset) waits none, because its timer brings the next pass anyway. It exits 3 only when the wait runs out, and
 names the holder it is waiting for, again whenever that changes.
+
+**One heavy dataset per pass (#812).** A dataset whose own run needs gigabytes of the machine's memory carries
+`heavy = True` (`rcdata/build/base.py`, `heavy()`): today `sec/companyfacts`, `fundamentals/tables` and
+`ownership/serve`. A batch claims at most one of them, and once a builder process has run one, every other heavy
+request stays queued for the next pass, which starts with that process's memory given back; the pass prints one
+line saying so. Measured on homesrv on 12 Nov 2026: a `sec/companyfacts` run reached 6.4-6.8 GB resident, and the
+kernel OOM-killed the builder twice while it ran beside `fundamentals/tables` of its own kind — both kills with
+`constraint=CONSTRAINT_NONE`, the whole machine, so the unit's `MemoryMax` was no protection. A dataset named on
+the command line (`run --dataset X`, `backfill`) is a person's own run and keeps its turn whatever its weight.
 
 `attended` refuses a runner with no terminal (`sys.stdin.isatty()`), because the WRDS login and the Duo push need a
 person, and it says so and exits 0 when no attended request is queued rather than waiting for a turn it has no use
@@ -1649,6 +1674,7 @@ never writes it. Nothing here writes `raw.duckdb`: the old 13F, short and inside
 | `sec/13f_sets_listed` | daily (asks only while a set is awaited) | The SEC's Form 13F data-set page: which sets are published, read once a day from the day after a filing deadline until a listed set covers it (#732); nothing is downloaded | `sec13f_data_sets` |
 | `sec/form4` | daily | The SEC's Insider Transactions data sets (the first fill), then Form 4 and 4/A through the EDGAR daily index | `insider_transactions` |
 | `sec/13dg` | daily | Schedules 13D and 13G, old (`SC 13G`) and new (`SCHEDULE 13G`, XML since 2024-12-18) names | `beneficial_ownership` |
+| `uw/institutions` | quarterly | Unusual Whales' `GET /institutions` without a name: every 13F institution by value, 500 to a page (18 pages, 8,875 CIKs on 12 Nov 2026), with its tags, `is_hedge_fund` and its succession | `uw_institution`, `uw_institution_succession` |
 | `ownership/serve` | daily | none: derives the 13F totals from the 13F tables and the spine | the four 13F tables below |
 
 **Starts by hand.** Every ownership dataset is not due until it has built once, so the first hourly pass after a
@@ -1676,7 +1702,19 @@ first 13F day is not served; `filing_deadline` (period end + 45 days, rolled pas
 Birthday) says when a quarter is complete; `exited_confidential` and `exited_no_filing` count the exits that may not
 be sales.
 
-**Served tables** (`ownership` serving schema version `2`; 2 since #732: the continuing-filer flows and `sec13f_filer_breaks`):
+**The institution map** (`uw/institutions`, #775; owner's decisions A and B of 12 Nov 2026: UW's tags may be stored,
+and the read is quarterly). The key is the CIK, which `sec13f_filer_period` already carries per quarter, so an
+investor-type slice of a 13F metric needs no per-ticker provider call. Each read is kept whole as its own snapshot
+(`snapshot_date`), so a slice can say which snapshot it rests on. Paging is by `limit=500` and `page=N` until a
+short or empty page; UW orders the list by value, so a CIK on two pages is kept once (its first row) and counted in
+a `moved` build issue, and over 1% of the rows repeating fails the run rather than keeping a moved list. Successions
+are read from **both** sides UW names — an institution's `succession.predecessors` and its own
+`succession.succeeded_by` — because they do not cover the same pairs: on 12 Nov 2026 only two rows of the whole list
+carried a `succeeded_by`, while HPS Investment Partners → BlackRock (effective 2025-09-30) was in BlackRock's
+`predecessors` alone.
+
+**Served tables** (`ownership` serving schema version `4`; 4 since #760: `sec13f_type_holdings`; 3 since #775:
+`uw_institution` and `uw_institution_succession`; 2 since #732: the continuing-filer flows and `sec13f_filer_breaks`):
 
 | Table | Rows |
 |---|---|
@@ -1691,7 +1729,10 @@ be sales.
 | `sec13f_filer_period` | one per filer and period: names, value, `median_ratio`, `value_factor`, `confidential_omitted` |
 | `sec13f_ticker_period` | one per ticker and period: shares, value, holders, top-10 %, HHI, new / exited holders, buy / sell flow, breadth and its change, `prev_period`, `filing_deadline`. The period is the calendar quarter end; a filing's period that is not one (09-29 for the September quarter) counts in its quarter, and `sec13f_filings` keeps it as written |
 | `sec13f_periods` | one per period: filers, value, value mapped, `coverage`, unmapped CUSIPs, refused value, rescaled filers |
-| `sec13f_filer_breaks` | one per ticker, settled period and filer that started (`started`: no report in the quarter before) or stopped (`stopped`: none in the quarter) reporting it, with its shares; the flows leave these filers out (#732) |
+| `sec13f_filer_breaks` | one per ticker, settled period and filer that started (`started`: no report in the quarter before) or stopped (`stopped`: none in the quarter) reporting it, with its shares; the flows leave these filers out (#732). A filer UW lists as succeeded in the quarter it stops (`uw_institution_succession`, newest snapshot), whose successor reports that quarter, is its successor in the quarter before: one filer across the hand-over, no stop and no start (#776) |
+| `sec13f_type_holdings` | one per investor type, period and rank: the type's 25 largest tickers (`TYPE_TOP`) by the value its filers hold, each with its `share` (%) of the type's mapped portfolio, and one row with `ticker` NULL for the rest, so a quarter's shares add up to 100; `type_value`, `type_filers` and the `uw_institution` `snapshot_date` its types come from. A type is a tag UW gives the filer's CIK in the newest snapshot (a filer can carry several), plus `all` for every filer (#760) |
+| `uw_institution` | one per snapshot day and CIK: `name`, `short_name`, `tags` (sorted), `is_hedge_fund`, the report and filing dates, total and share value, `succeeded_by_cik` with its `succeeded_by_report_date`, and `current_holder_cik` |
+| `uw_institution_succession` | one per snapshot day, predecessor CIK, successor CIK and `effective_report_date`, with both names and `origin` (`predecessors`, `succeeded_by` or `both`) |
 | `sec13f_data_sets` | one per 13F data set the SEC page ever listed: `name`, `first_day`, `last_day`, `url`, `first_seen`; a period is `closed` once a listed set's window holds its filing deadline (#732) |
 
 **The bridge (D4).** Views under the old `raw.duckdb` names: `sec13f_totals` (ticker, `entry` JSON keyed by period
@@ -1701,8 +1742,10 @@ on the seventh after the close (#252), and that session's IBKR fee, rebate and s
 NULL).
 
 **Build issues** (`ownership/serve`): `spine_missing`, `cusip_owner_differs`, `cusip_unmapped_large`,
-`filings_unparsed`, `value_rescaled` (the 50 filer-quarters whose VALUE rescale moved the most dollars, keyed
-`cik|period`, with the median ratio and the names it rests on).
+`filings_unparsed`, `value_rescaled` (the 50 filer-quarters whose VALUE rescale, by 1,000 or 1,000,000, moved the
+most dollars, keyed `cik|period`, with the median ratio and the names it rests on) and `value_row_replaced` (the 50
+holdings, keyed `cik|period|cusip`, whose value lay 300 times or more from the 13F's own price and was read at that
+price, #780).
 
 **Reading it.** `rcdata.read.holders_13f(tickers, periods)`, `periods_13f()` (both with `complete`),
 `finra_short_interest(tickers, start, end)`, `shortable(tickers, session)`, `threshold_list(on)`,
@@ -1728,7 +1771,6 @@ cache; since #642 PR 6 the boards never read that cache: no layer reads as no ro
 | `sec/filings` | daily | `data.sec.gov/submissions/CIK*.json` when the daily index shows a new filing; the primary document of the newest 10-K (else 20-F) and DEF 14A, fetched once each; the list's company header (SEC SIC, state of incorporation, business address) | `stg_sec_filings`, `stg_sec_documents`, `stg_sec_segments`, `stg_sec_customers`, `stg_sec_header` |
 | `alphavantage/earnings_calendar` | daily | Alpha Vantage `EARNINGS_CALENDAR`, three months ahead, one request a run (`ALPHAVANTAGE_API_KEY`) | `stg_av_calendar` |
 | `uw/earnings` | weekly | UW `/stock/<ticker>/earnings`, one request per company: the quarterly rows' reported EPS, UW's consensus of that quarter and its surprise, as UW serves them | `stg_uw_earnings` |
-| `uw/financials` | daily | UW `/stock/<ticker>/financials` for a company that reported in the last 14 days and has not filed; off unless `RC_UW_PRELIMINARY=1` | `stg_uw_financials` |
 | `yfinance/estimates` | weekly | Yahoo's `earningsTrend` per company, its shortest ticker, when its newest answer is 7 days old; 5 failures in a row stop the run | `stg_yf_estimates` |
 | `yfinance/fx` | daily | Yahoo's daily close of `<CUR>USD=X` per currency in `fx_rates.CURRENCIES` (USD per unit), the whole history the first time, then from 7 days before the newest stored day | `stg_yf_fx` |
 | `sec/fsds` | monthly | The SEC's quarterly Financial Statement Data Sets zip, the newest quarter published | `stg_sec_fsds` |
@@ -1750,15 +1792,27 @@ uses (`LongTermDebtNoncurrent`, `LongTermDebtAndCapitalLeaseObligations` or `Lon
 else the current portion plus `ShortTermBorrowings` or `CommercialPaper`; a long-term line that includes its current
 portion plus the short-term line; no total without a long-term line; #239, measured on the real-data check of
 2026-10-28 in PR 249; convertible notes due within the year are the current line when no other current line is
-tagged, and are added beside a whole long-term line only when that line is below them, #264), and EPS
-(basic and diluted) is read too. An accession the SEC's XBRL API does not hold yet after the re-read is asked again
+tagged, and are added beside a whole long-term line only when that line is below them, #264). When the filer
+tags none of those lines at all, a second pass reads the balances it may tag instead (`SeniorNotes`,
+`ConvertibleDebt`, `SecuredDebt`, `NotesPayable`, `LongTermLoansPayable`, `LinesOfCreditCurrent` and their
+neighbours, `rcdata/build/fundamentals/facts.py` `FALLBACK_*`), in the same three slots. One line of each ladder
+is taken, the largest positive one and never a sum (which of these tags overlap is not readable from the facts); a
+zero line is passed over for a positive one of the same ladder, because a `total_debt` of 0 reads as debt-free
+while a NULL does not, but it keeps its slot when a positive current line stands beside it, which is the filer
+saying nothing is due beyond the year (OKTA's `ConvertibleDebtNoncurrent` 0 next to 350 m of convertible notes);
+a second-pass total of 0 is never served; a current line alone is still not the whole; and the pass runs only where the first one gives nothing, so no total that exists
+today moves. Measured over the board's 2,131 anchor years on 13 Nov 2026: 157 years gain a total, 0 change value
+and 0 are lost (#737). A tag that is a schedule or a contra item
+(`FinanceLeaseLiabilityUndiscountedExcessAmount`, `DebtInstrumentCarryingAmount`, `LongTermDebtMaturities...`) is
+not read, although edgartools' mapping files it under its debt lines. EPS (basic and diluted) is read too. An accession the SEC's XBRL API does not hold yet after the re-read is asked again
 by the next day's run (the run's note says `pending`), so a statement reaches the served table on its filing day or
 the day after, never months late (the Fundamentals review's F3).
 
-**Preliminary quarters** (`uw/financials`). Off unless `RC_UW_PRELIMINARY=1`: a run asks nothing and the tables
-build serves none of the stored rows. On, a quarter UW has and the SEC does not is served with `preliminary` true and
-no accession, only for a period ending more than 30 days after the company's newest SEC quarter; the 10-Q replaces it
-in the next build. Quarterly rows only, USD only, no total debt and no EPS.
+**Preliminary quarters: none.** The Unusual Whales preliminary-quarters dataset, which served a quarter UW had
+and the SEC did not, was removed on 12 Nov 2026 (#659): the assumption it rested on did not hold, UW's fundamentals being Alpha
+Vantage's. `fundamental_fact` keeps its `preliminary` column and the CHECK that goes with it — they are the
+table's shape, and changing it would bump the serving version and rebuild every file — but nothing writes a
+preliminary row any more.
 
 **WRDS is a check, not a served value.** Attended and monthly on the spine's one WRDS worker (one login, at most one
 Duo push per builder process): `python -m RevenueChaser.rcdata.build backfill wrds/fundq wrds/funda
@@ -1794,7 +1848,7 @@ hourly pass after a deploy calls no source before the attended backfill.
 |---|---|
 | `fundamental_company` | one per Tier A ticker: the spine's identity and GICS codes, the SEC filer's name and kind (`is_us`, `us_gaap`, non-USD units), the newest facts read and statement filed, and `submissions_as_of`, the day its filing list was last read ("no 8-K event" means something only after it, the Fundamentals review's F2); from that list's header (#645, version 3) `sic`, `sic_description`, `state_of_incorporation` (EDGAR's code) and its description, `business_state` (a US state or Canadian province) and `business_country` (ISO 3166-1 alpha-2 from EDGAR's state-or-country code, `rcdata/build/fundamentals/edgar_codes.py`) |
 | `fundamental_fact` | one per company, field, period type and period end: value, unit, accession, filed, form, `derived`, `preliminary`, source; and the first-reported value of the same tag and span with its accession and filed date (`first_value`, `first_accn`, `first_filed`; #277 A2, version 3; NULL on a derived row). The fields include `income_tax_expense`, `pretax_income` and `interest_expense` (#645 G1) |
-| `filing_item` | one per filing and 8-K item (`kind` `item`), and one per document text (`kind` `document`: `business` or `proxy`, with `quality`; a text that reaches the 200,000-character cap is `capped`, never `ok`) |
+| `filing_item` | one per filing and 8-K item (`kind` `item`). The document texts went with the cut (#858): this layer cuts nothing, `sec/forms` is the one cutter and serves them as `filing_section`. The `kind` column stays, with `item` its only value |
 | `earnings_event` | one per report: a coming one from the calendar (`confirmed` false) or one that happened (an 8-K with item 2.02, `confirmed` true, its accession kept) |
 | `earnings_reported` | one per company and reported quarter: the EPS the company itself reported as UW serves it, with UW's consensus and surprise. **Not** a `fundamental_fact` row -- it has no filing behind it, and its basis is usually the company's adjusted (non-GAAP) figure, so `source` is on every row (avo, 5 Nov 2026) |
 | `fundamental_revision` | one per Compustat value that changed between two monthly snapshots |
@@ -1818,7 +1872,9 @@ own row-level problems (`missing_key`, `fetch_failed`) under its name.
 `rcdata.read.estimates(tickers)`, `rcdata.read.filing_text(cik, item)`, `rcdata.read.segments(cik, axis, source)`,
 `rcdata.read.customers(cik)`, `rcdata.read.peers(cik)` and `rcdata.read.revisions(cik, since)`; for many companies
 at once `rcdata.read.statements_many(ciks, annual_years, quarters)`, `rcdata.read.fundamental_companies(tickers)`,
-`rcdata.read.filing_items(ciks, form, since)`, `rcdata.read.filing_texts(ciks, item)` and
+`rcdata.read.filing_items(ciks, form, since)`, `rcdata.read.filing_texts(ciks, item)` (which since #858 reads
+`filing_section`, the one cutter's table, under its old name and row shape; `filing_text` and `filing_documents`
+likewise) and
 `rcdata.read.customer_shares(ciks, benchmark)`. Every row carries its provenance and `status`, the newest check of
 the dataset its own row came from (a segment row from Compustat reads `wrds/segments`' check, one from the annual
 report `sec/filings`'), or `never_checked`, or `status_unknown` when `ops.sqlite` cannot be read (#228).
@@ -1828,15 +1884,16 @@ report `sec/filings`'), or `never_checked`, or `status_unknown` when `ops.sqlite
 no switch since #642 PR 6: the boards read the layer only (a failed newer check keeps the last good build), and
 without `fundamentals.duckdb` or a first `sec/companyfacts` build they read no rows and `fundamentals_layer.source_state()`
 says why. Relatedness and Value Chain alone still read Value Chain's `chain_filings` corpus while the layer is not
-served (`fundamentals_layer.reads_layer`). What each board reads there:
+served (`fundamentals_layer.reads_layer`). Their filing text on the layer is the SEC form reader's since #858: one
+cut, in `filing_section`. What each board reads there:
 
 | Board | Reads on the layer |
 |---|---|
-| Fundamentals | The statements, and on each card the filing and read days (F3); the 8-K flag from `filing_item`, its checked day the newer of the filing list's read day and `sec/filings`' newest good check (F2); ROIC, gross margin and net debt on the trailing year when the quarters give one (TTM, else the fiscal year, the basis named on the card); a UW preliminary quarter never enters TTM revenue or the P/E's net income |
+| Fundamentals | The statements, and on each card the filing and read days (F3); the 8-K flag from `filing_item`, its checked day the newer of the filing list's read day and `sec/filings`' newest good check (F2); ROIC, gross margin and net debt on the trailing year when the quarters give one (TTM, else the fiscal year, the basis named on the card) |
 | Asymmetric Growth | Growth, acceleration, margins, free cash flow, runway and dilution on three trailing years a year apart when the 10-Qs give them, else the fiscal years, one basis per card (`period_ends.basis`; review SF-4) |
 | Financials | The SEC's annual statements, the newest five (a line the SEC facts do not carry stays empty, so the engines' labelled default shows; EBITDA is operating income plus depreciation), unless Yahoo's newest year with revenue is newer, or is the same year and gives an input the SEC's lacks (depreciation, capex, working capital), when Yahoo's statements are modelled; the source line names what the SEC's statements lack either way (with the SEC's, the tax rate and interest expense, which the facts never carry, except for a bank, whose P/E model reads neither), and they end on the newest year with revenue; the price, market cap, shares and beta from the prices store (`module_financials/market_inputs.py`: the newest close, at most 14 days before today like the rate, its session named on the card and in the source line; the issuer's market cap, a fund's or a trust's its own; the cap over the price as the class-equivalent shares, only when both are of one session; and a 5-year monthly beta of split-adjusted price returns on `index:SPX`, at least 36 months), each Yahoo's where the store has none, and the source line names which side each came from (the comps' basis line names the shares' side; the EV stays Yahoo's and the card says so); the risk-free rate from `market_series` DGS10, at most 14 days old |
 | Relatedness | The newest annual report text `sec/filings` serves (Value Chain's splitter and cap, so the same filing gives the same input hash) and the layer's CIK; a profile's cache key and the payload carry the filing it was read from (CIK, accession, form, filed) |
-| Value Chain | The annual report's XBRL major customers (`customer_share`, share of revenue): a customer the alias list names is a `customer` edge with its share; a sentence that states the same customer keeps its text and gains the share; an anonymised customer is no edge |
+| Value Chain | The newest annual report's business section the SEC form reader serves (`sec/forms`, `filing_section`; `read.form_business`, #841), which is both the corpus its edges are read out of and the filing list the board shows - on the layer the board cuts nothing of its own and no longer reads `sec/filings`' `filing_item`. Plus the annual report's XBRL major customers (`customer_share`, share of revenue): a customer the alias list names is a `customer` edge with its share; a sentence that states the same customer keeps its text and gains the share; an anonymised customer is no edge |
 
 The trailing year (`core/trailing_year.py`) is the fiscal year plus the newest year to date minus the same months a
 year earlier, each flow all or nothing, the balance sheet the quarter's.
@@ -1861,8 +1918,9 @@ name, and the earnings set of the evening. Built by the same builder, swapped th
 | `er_options` | session date, ticker | The earnings set: one row per name and evening (each of the two before its report), with the report date it was fetched for |
 | `option_far_print` | session date, print id | The market's far-dated prints (183 days or more, $50k premium or more, every underlying): the print fields of `option_print` plus `next_earnings_date`; the last 5 sessions (the Parquet keeps every one). **The end of the session, not all of it** — the feed is newest-first and a session's three pages hit the 3 x 500 ceiling (#730 item 4). It was the LEAPS scan's input; that scan is switched off (#730) |
 | `earnings_tape` | session date, ticker, report date | `/earnings/{ticker}` of an earnings-set name on its evening: one row per report UW lists (EPS and estimate, expected move, the pre- and post-earnings moves, the straddle returns); a name fetched again lists its reports again, so a reader takes the newest session's row |
+| `option_far_contract` | session date, option symbol | The market's far-dated contracts of a session (#746): every contract the contract screener returns at 183 days or more and $50k premium or more, every underlying, with its volume by side, multi-leg volume, premium and the open interest at the session's start; then, read from the name's chain the next morning, `oi_next` and `oi_change`, `opened_share` (`oi_change / volume`, raw, not clipped; `out_of_range` when the change is larger than the volume), `ask_share`, `multileg_share`, and the `roll` flag with its `roll_partner`. `oi_status` is `pending`, `matched`, `stale` or `missing`; only `matched` rows carry the open-interest numbers. Every session is served. No label, no score |
 
-**Datasets.** Three, all daily and all `starts_by_hand` (no automatic first run: the first one is started from the
+**Datasets.** Four, all daily and all `starts_by_hand` (no automatic first run: the first one is started from the
 CLI or Settings):
 
 - `uw/option_list`: SPX and the option watch list, read at each run through `rcdata.read.watched("option")`. Per
@@ -1880,6 +1938,17 @@ CLI or Settings):
   50 prints (not the chain) and its earnings tape (`/earnings/{ticker}`). Once a session it also asks
   `/option-trades` for the market's far prints (`min_dte` 183, `min_premium` 50,000, 500 a call), paged back with
   `older_than` (UW ignores `page`), at most 3 calls.
+- `uw/far_contracts` (#746, avo's universe "A: Tum piyasa" of 12 Nov 2026): in a session's observed window the
+  sweep, `/screener/option-contracts` with `min_dte` 183 and `min_premium` 50,000, `type` call then put, 250 a
+  page from page 0 until a short page, and never after 06:00 New York the next morning (UW's open-interest update
+  would already show in it); from 07:30 New York on the next trading day until 06:00 the trading day after (before
+  UW's next update), each swept ticker's chain, `/stock/{ticker}/option-contracts` with `min_dte` 175 (UW counts it from the day
+  of the read), 500 a page. Every returned row is checked against its filter, because UW drops a parameter it does
+  not honour without an error: a sweep row that breaks it fails the run, a chain row fails that name. A chain row counts only when its `prev_oi`
+  equals the sweep's `open_interest`; a name UW has not updated yet is asked again by the next run, and a chain that
+  breaks its filter or is refused fails that name only. About 420 to
+  435 UW calls a session (10 for the sweep, one or two a ticker). The rule is the module doc of
+  `rcdata/build/options/uw_far_contracts.py`.
 - `ibkr/iv_history`: one year of IBKR's daily 30-day option implied volatility per list name, once (a name added
   later gets its year on the next run). Through `core/providers/ibkr_tws.py`, a minimal TWS socket client that sends
   only the handshake, `startApi` and `reqHistoricalData`: market data only, never an account, a position or an
@@ -1888,7 +1957,7 @@ CLI or Settings):
 
 The first week's raw size per list name is in each `uw/option_list` check note ("raw N KB a name"), the plan's F5
 measure. Read through `rcdata.read`: `option_chain`, `option_strikes`, `option_expiries`, `option_daily`,
-`option_prints`, `iv_history`, `option_screener`, `earnings_options`; a row of the earnings set carries
+`option_prints`, `iv_history`, `option_screener`, `earnings_options`, `far_contracts`, `far_contract_sessions`; a row of the earnings set carries
 `uw/option_screener`'s status, an IBKR row of `iv_daily` `ibkr/iv_history`'s.
 
 **The cards' earnings date (G6).** The next earnings date on the Asymmetric Growth, Fundamentals and Swing cards,
@@ -1913,6 +1982,104 @@ per-session raw folders of `raw/uw/option_list/` and `raw/uw/er_options/` older 
 set: `RC_RAW_RETENTION_DAYS`, else the `dataset_schedule` row `retention_days` (`rcdata/retention.py`). It ships
 unset, so nothing is removed and the Settings card keeps its warning. The Parquet, the calendar, the screener
 answers and the IBKR raw files (the marker that a name has its year) are never removed.
+
+### The SEC form reader (`sec_forms.duckdb`, #757)
+
+One dataset, `sec/forms`, and two served tables (`sec_forms` serving schema version `1`). It **fetches nothing**:
+`sec/filings` has already stored every document it reads — the newest annual report of each company of the
+universe, its Annual Information Form exhibits, and the newest proxy — so this dataset's `fetch` is the cut itself,
+and what it returns is the stale companies' documents for `to_parquet_all` to cut. Nothing reads this file yet; the
+board cutovers are their own work.
+
+**Why a kind of its own.** A 10-K's text runs from 160,000 to 870,000 characters, so the stored annual reports are
+roughly 2.7 GB of text, and a schema bump rebuilds a kind whole (#649). Inside `fundamentals.duckdb` that text
+would be rebuilt every time the Fundamentals board's numbers changed.
+
+**Why one dataset and not two.** `dirty.dataset_dir` is `parquet/<source>/<name>` split on the first `/` only and
+the build manifest scans exactly those folders, so two datasets writing into one `parquet/sec/forms/` would leave
+both manifests empty and the served tables would freeze after the first build with every test green. One dataset,
+one folder, two Parquet files (`sections.parquet`, `notes.parquet`) per `cik=<cik>` partition.
+
+**Served tables.**
+
+- `filing_section` — one row per (filing, document, section): `cik`, `accession`, `document`, `form`,
+  `filing_date`, `report_date`, `section` (`whole`, `proxy`, `business`), `text`, `chars`, `quality`,
+  `start_char`, `end_char` (where the section sits in `whole`; NULL for an uncut row and for a cut the rule
+  altered), `method` (`uncut`, `header`, `aif` — how it was found, so a weak method can be withdrawn alone),
+  `rules_version`, and the provenance `source_as_of`, `fetched_at`, `run_id`.
+  A `business` row's `quality` may carry suspect flags after the label — `ok;suspect:S2,S4` — so **read it
+  through `sec_sections.base()`, never by comparing the whole string** (#835). The flags are the ones the row's
+  `rules_version` defines for the cutter that made the row: `sec_sections.Rule.item_signals` for a `header`
+  row, `Rule.aif_signals` for an `aif` one. The two are not the same list — S3 and S6 ask a 10-K item question
+  that an Annual Information Form has no answer to, so a correctly cut AIF read `ok;suspect:S2,S3` until #838
+  split them. Two caveats, both of the same shape: the flags were added to this table while `ours-1` kept its
+  name, and #838 changed `ours-1`'s AIF set under the same name, and the layer re-cuts a company only when its
+  documents change or the version string moves — so `ours-1` rows written before those changes carry no flags,
+  or the item set's answer for an AIF, and are indistinguishable from rows written after. The population becomes uniform when `SECTIONS_VERSION` next moves and re-cuts everything. `document` is in the key because one
+  accession can hold more than one document this cuts: a 40-F's AIF exhibit is a second one.
+- `filing_note` — one row per (filing, document, text block), from the filer's own inline-XBRL text blocks
+  (`rcdata/sec_notes.py`): `concept` as filed, `taxonomy`, `local_name`, `kind` (`disclosure`, `table`, `policy`),
+  `seq`, `top_level` and `parent_seq` (filers tag a note and then its subsections, so the same sentence belongs to
+  two or three blocks; a character count that is not to be tripled sums the top-level rows), `context_ref`,
+  `period_end`, `text`, `chars`, `rules_version`, and the same provenance.
+
+**The staleness rule.** `dirty.py` reloads Parquet into DuckDB; it does not cut. So the rule is `fetch`'s own: a
+company is stale when the `(accession, document)` pairs on disk differ from the ones its `sections.parquet` holds,
+or when any of its rows was written by another cutter version. That covers the three cases nothing else triggers —
+our own rule version changing, a new proxy or 40-F exhibit appearing, and a document re-fetched under a new
+accession. A filing that legitimately yields **no** note rows (no inline XBRL: 0.6 % of the stored annual reports)
+does not read as stale on every run, which comparing expected rows against stored rows would have done. The
+dataset's check reports rows per `rules_version`, so a half-migrated table is visible rather than inferred.
+
+**Which cutter version.** Sections are cut by `rcdata/sec_sections.py` at `ours-2` and notes read at `notes-1`,
+and every row carries the version that wrote it. `ours-2` (#755, #756, pinned here by #845) lifts the
+200,000-character cap on the business section — so no row is labelled `capped` — fixes the five item defects, and
+carries its own 40-F rule: six start titles and ten stop titles instead of one each, a contents test and a body
+minimum in place of the cap, and a label (ok / overrun / missing) read through `cut_aif_business_q`. It was pinned
+before the first full cut, because moving the version re-cuts every company in one build and that pass is paid
+once. The Value Chain board (`module_value_chain/splitter.py`) pins the version `chain_filings` and `filing_item`
+are cut at; neither table carries a version column, so that pin moves on its own change, with its own re-slice.
+#847 moved it to `ours-2` as well, which is why the `capped` label and the `filing_item` CHECK that refuses `ok`
+at the cap now follow `filings.caps_text()` rather than being written in: `ours-2` caps nowhere, so a long and
+correct section is stored whole and `ok`. The stored rows were cut by `ours-1` until `reslice.apply` rewrites
+them, which rides the first full SEC cut as one run; `filing_item` is re-cut by the fundamentals build. Since #841
+the pin is no longer what the Value Chain board reads its text through: its corpus is `filing_section`, which
+carries `rules_version` on every row, so the pin is what a row is compared against, and a row cut with another
+version is read and logged rather than dropped.
+
+**Needs.** `sec.whole`, `sec.business`, `sec.proxy` and `sec.note`, each with its own reader and `ask_required`
+(the text is gigabytes: nothing is answered unless a company is named). The three section needs share one table
+keyed by `cik`, so each carries a `where` on its own `section`; without it a summary would read its state off
+another section's rows. `max_lag` is 400 **days** for all four, not sessions: an annual report is up to fifteen
+months old by design.
+
+### The SEC reader tool (`sec_reads.duckdb`)
+
+One dataset, `sec/reads`, and one served table (`sec_reads` serving schema version `1`). Plan:
+claude-coordinator `plans/2026-11-15_1119_sec-reader-tool-plan.md`. `sec/forms` **cuts** a filing; this layer
+**asks** a model about it, for every board, so no board keeps its own prompt pool, caps or answers table.
+
+**A question is declared once** (`rcdata/build/sec_reads/questions.py`, `register`): its id and owner, the
+companies (`scope`), their text (`inputs`), the system prompt and its `prompt_version`, the parser, the chunk size
+(60,000 characters by default) and the writer (EVREN or the DeepSeek API; DeepSeek is always its Flash model). A
+board adds one entry and reads the answers through `rcdata.read.sec_reads(ciks, question)` or the need `sec.read`.
+No question is registered yet; each board's question is its own change.
+
+**One asker** (`asker.py`), one pool per provider: EVREN 1 request at a time, DeepSeek 8. The HTTP clients are
+`core/providers`' own, called with `use_cache=False`, so `llm_cache` gets nothing from the tool. On homesrv the
+calls go through LiteLLM by unit setting (the clients' base URL from the environment), not by code. The asker
+refuses to start while the Relatedness board's model job holds its `relatedness` lock (one model job at a time),
+and stops a run after 15 minutes of asking, leaving the rest stale for the next run, so a queued pass never holds
+the builder lock for hours; a long read runs fetch-only (`--no-duckdb`) under its own lock instead.
+
+**Served table.** `read_answer` — one row per (question, prompt version, company, filing, document, input hash,
+provider, model): `filing_date`, `status` (`ok`, `partial`, `empty`, `no_text`), `attempts`, `answer` (the parsed
+JSON), `raw` (the replies, one per chunk), `missing_chunks`, `rules_version` (the cutter version of the text), and
+`fetched_at` (when it was asked) and `run_id`. The input hash is the hash of the exact bytes sent, so the same text
+and prompt are never asked twice. An unusable reply is counted on its key; after three the company waits for a new
+filing or prompt, and a `partial` answer is never replaced by an `empty` one. Parquet: one partition per question,
+`parquet/sec/reads/question=<id>/answers.parquet`, plus one raw file per run under `raw/sec/reads/`; the Parquet
+tree is the durable copy of the answers.
 
 ## Migration
 Two separate things, deliberately not conflated:

@@ -13,8 +13,7 @@ from RevenueChaser.rcdata.tests import fund_store
 from RevenueChaser.core import provenance, rawstore
 from RevenueChaser.module_asymmetric_growth import engine
 from RevenueChaser.module_asymmetric_growth.report import render_asymmetric_growth_hunter_html
-from RevenueChaser.module_asymmetric_growth.tests.test_ag_dated_momentum_380 import (
-    SESSION, bar, edgar, momentum, row, sessions, universe)
+from RevenueChaser.module_asymmetric_growth.tests.test_ag_dated_momentum_380 import SESSION, bar, edgar, momentum, row, sessions
 from RevenueChaser.rcdata.tests import prices_store
 
 
@@ -26,8 +25,6 @@ def _momentum_rows(ticker: str, days) -> list[dict]:
 def test_the_momentum_comes_from_the_prices_store_not_d01(rawstore_tmp_db):
     days = sessions()
     prices_store.put_bars(_momentum_rows("NEW", days) + _momentum_rows("SPY", days))
-    rawstore.write_rows("price_bars_daily", [bar("OLD", d) for d in days] + [bar("SPY", d) for d in sessions(
-        date(2026, 10, 20), 5)])                                         # the old D01: a newer SPY bar, OLD's bars
     preload = engine._preload(["NEW", "OLD"], True)
     assert preload["session"] == SESSION                                # SPY's newest prices-store session
     assert set(preload["bars"]) == {"NEW"}
@@ -71,22 +68,10 @@ def test_a_halt_row_with_no_close_does_not_blank_the_momentum(rawstore_tmp_db):
     assert (t["price"], t["bar_date"], t["above_sma50"]) == (102.0, days[-2].isoformat(), True)
 
 
-def test_a_scan_dates_its_cards_from_the_prices_store(rawstore_tmp_db, monkeypatch):
-    days = sessions()
-    prices_store.put_bars(_momentum_rows("AAA", days) + _momentum_rows("SPY", days))
-    fund_store.put_edgar([edgar("AAA")])
-    universe(monkeypatch, [row("AAA")])
-    res = engine.run_asymmetric_growth_hunter(None, max_workers=1, no_fetch=True)
-    (card,) = res["cards"]
-    assert card["price"] == 102.0 and momentum(card)["known"] == 3
-    assert res["data_as_of"] == SESSION.isoformat()
-    html = render_asymmetric_growth_hunter_html(res)
-    assert f"Prices: session {SESSION.isoformat()}" in html and "D01" not in html
 
 
 def test_the_board_data_date_is_its_scored_names_prices_store_session(rawstore_tmp_db):
     prices_store.put_bars([bar("AAA", d) for d in sessions(n=5)] + [bar("ZZZ", d) for d in sessions(n=30)][:20])
-    rawstore.write_rows("price_bars_daily", [bar("AAA", d) for d in sessions(date(2026, 10, 20), 3)])
     rawstore.write_rows("ticker_scores", [{"ticker": "AAA", "total_points": 5}])
     assert provenance.RESOLVERS["module_asymmetric_growth"]() == SESSION.isoformat()
 

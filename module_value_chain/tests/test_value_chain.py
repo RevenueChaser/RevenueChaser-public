@@ -415,50 +415,10 @@ def test_board_rows_carry_the_filter_path_and_theme_ids(rawstore_tmp_db):
 
 
 # ── the security-type filter on the board (#87, Identity R4) ─────────────────
-def _seed_typed_chain():
-    universe_store.replace([
-        {"ticker": t, "market_cap": 1.0e9, "name": t, "sector": "Technology",
-         "industry": "Software - Application", "price": 10.0, "quote": {"symbol": t}}
-        for t in ("AAA", "BBB", "FUND", "NODST")])
-    rawstore.ensure_table("security_master")
-    rawstore.write_rows("security_master", [
-        {"ticker": "AAA", "security_type": "common"},
-        {"ticker": "FUND", "security_type": "cef"}])
-    rawstore.write_rows("chain_filings", [
-        {"ticker": t, "cik": "1", "form": "10-K", "filed": "2026-02-01",
-         "accession": "acc-" + t, "primary_doc": "http://x", "item_text": "x",
-         "quality": "ok", "fetched_at": 1.0} for t in ("AAA", "BBB", "FUND")])
-    edges = [
-        {"src": "AAA", "dst_name": "The Fund", "dst_ticker": "FUND", "relation": "customer",
-         "snippet": "we sell to The Fund", "filed": "2026-02-01"},
-        {"src": "FUND", "dst_name": "Alpha", "dst_ticker": "AAA", "relation": "supplier",
-         "snippet": "we buy from Alpha", "filed": "2026-02-01"},
-        {"src": "BBB", "dst_name": "Alpha", "dst_ticker": "AAA", "relation": "supplier",
-         "snippet": "we buy from Alpha", "filed": "2026-02-01"}]
-    rawstore.write_rows("chain_mentions", edges)
-    rawstore.write_rows("chain_meta", [{"key": "last_sync", "value": "2026-09-30"}])
-    return edges
 
 
-def test_board_payload_drops_filings_and_source_edges_of_excluded_types(rawstore_tmp_db):
-    edges = _seed_typed_chain()
-    payload = engine._board_payload(rawstore.get_all("chain_filings"), edges, "x", None)
-    assert [f["ticker"] for f in payload["filings"]] == ["AAA", "BBB"]
-    assert [(e["src"], e["dst_ticker"]) for e in payload["edges"]] == [
-        ("AAA", "FUND"), ("BBB", "AAA")]
-    # a counterparty field is data about the filing's text: left alone
-    assert payload["edges"][0]["dst_name"] == "The Fund"
-    # the denominator is the operating universe; pending counts only its filings
-    assert payload["universe_total"] == 3                      # AAA, BBB, NODST
-    assert payload["pending"] == 1                             # NODST has no filing yet
 
 
-def test_load_payload_filters_but_deletes_nothing(rawstore_tmp_db):
-    _seed_typed_chain()
-    payload = engine.load_payload()
-    assert {f["ticker"] for f in payload["filings"]} == {"AAA", "BBB"}
-    assert all(e["src"] != "FUND" for e in payload["edges"]) and len(payload["edges"]) == 2
-    assert rawstore.count("chain_filings") == 3 and rawstore.count("chain_mentions") == 3
 
 
 def test_board_payload_without_a_master_table_is_unchanged(tmp_path):

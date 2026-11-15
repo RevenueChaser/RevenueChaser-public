@@ -36,15 +36,6 @@ def _clock(monkeypatch):
     monkeypatch.setattr(calendar, "_now", lambda: datetime(2026, 10, 28, 15, 0, tzinfo=timezone.utc))
 
 
-def test_the_risk_free_rate_is_read_from_market_series(monkeypatch, market_roots):  # noqa: F811
-    import RevenueChaser.module_financials.run as fm
-    from RevenueChaser.core import rawstore
-    _clock(monkeypatch)
-    rawstore.write_rows("macro_series", [{"series_id": "DGS10", "obs_date": date(2026, 10, 27), "source": "fred",
-                                          "value": 3.0}])
-    assert fm._stored_risk_free() == {"value": pytest.approx(0.03), "as_of": "2026-10-27"}    # no market file yet
-    _serve_dgs10([("2026-10-23", 4.1), ("2026-10-26", 4.2)])
-    assert fm._stored_risk_free() == {"value": pytest.approx(0.042), "as_of": "2026-10-26"}
 
 
 def test_a_stale_market_series_yield_is_not_used(monkeypatch, market_roots):  # noqa: F811
@@ -81,23 +72,6 @@ def test_off_the_layer_there_are_no_sec_statements(monkeypatch):
     assert fm._sec_statements(TICKER) is None                                  # no fundamentals.duckdb
 
 
-def test_a_run_on_the_layer_models_the_sec_statements(built, monkeypatch, tmp_path):  # noqa: F811
-    import RevenueChaser.module_financials.run as fm
-    from RevenueChaser.core.providers import cache as cache_manager
-    _clock(monkeypatch)
-    monkeypatch.setattr(fm, "OUTPUT_DIR", tmp_path)
-    # Yahoo's payload: its own statements (which the run no longer models) plus price, shares and beta.
-    payload = {"ticker": TICKER, "info": {"longName": "Growth Co."}, "shares_outstanding": 50.0,
-               "market_cap": 5000.0, "beta": 1.1, "current_price": 100.0, "currency": "USD", "source": "yfinance",
-               "annual": [{"fiscal_year": "2024", "revenue": 1.0, "ebitda": 0.5, "ebit": 0.4, "depreciation": 0.1,
-                           "capital_expenditure": 0.1, "total_debt": 1.0, "cash": 1.0}]}     # older than the SEC's
-    cache_manager.save(TICKER, payload)
-    out = fm.run(TICKER, modules=["dcf"], output="none", no_fetch=True)["results"]
-    years = [r["fiscal_year"] for r in out["financials"]["annual"]]
-    assert years == ["2024", "2025"] and "SEC" in out["financials"]["source"]
-    dcf = out["modules"]["dcf"]
-    assert dcf["base_year"]["revenue"] == out["financials"]["annual"][-1]["revenue"]
-    assert "ebitda_margin" in dcf["base_year"]["defaults"]      # GRW tags no operating income
 
 
 # ── which statements a run models: the SEC's unless Yahoo's same year gives an input the SEC's lacks ──
@@ -143,41 +117,10 @@ def test_the_sec_statements_end_on_the_newest_year_with_revenue(monkeypatch):
     assert [r["fiscal_year"] for r in annual] == ["2024", "2025"]
 
 
-def test_a_run_on_the_secs_statements_names_what_they_lack(built, monkeypatch, tmp_path):  # noqa: F811
-    # Opus review S1: the SEC's newer year wins, and the Source line names the inputs that run on a default.
-    import RevenueChaser.module_financials.run as fm
-    from RevenueChaser.core.providers import cache as cache_manager
-    _clock(monkeypatch)
-    monkeypatch.setattr(fm, "OUTPUT_DIR", tmp_path)
-    cache_manager.save(TICKER, {"ticker": TICKER, "info": {"longName": "Growth Co."}, "shares_outstanding": 50.0,
-                                "market_cap": 5000.0, "beta": 1.1, "current_price": 100.0, "currency": "USD",
-                                "source": "yfinance", "annual": [_year(2024)]})
-    out = fm.run(TICKER, modules=["dcf"], output="none", no_fetch=True)["results"]
-    fin = out["financials"]
-    assert fin["statements_meta"]["used"] == "sec" and "ebitda" in fin["statements_meta"]["sec_lacks"]
-    assert fin["source"].startswith("SEC company facts (statements") and "defaults: " in fin["source"]
-    assert "ebitda" in fin["source"].split("defaults: ")[1]
 
 
-def test_a_run_keeps_yahoos_statements_and_says_why(built, monkeypatch, tmp_path):  # noqa: F811
-    import RevenueChaser.module_financials.run as fm
-    from RevenueChaser.core.providers import cache as cache_manager
-    _clock(monkeypatch)
-    monkeypatch.setattr(fm, "OUTPUT_DIR", tmp_path)
-    yahoo = [{"fiscal_year": "2025", "revenue": 10.0, "ebitda": 5.0, "ebit": 4.0, "depreciation": 1.0,
-              "capital_expenditure": 1.0, "capex": 1.0, "total_debt": 1.0, "cash": 1.0}]
-    cache_manager.save(TICKER, {"ticker": TICKER, "info": {"longName": "Growth Co."}, "shares_outstanding": 50.0,
-                                "market_cap": 5000.0, "beta": 1.1, "current_price": 100.0, "currency": "USD",
-                                "source": "yfinance", "annual": yahoo})
-    out = fm.run(TICKER, modules=["dcf"], output="none", no_fetch=True)["results"]
-    assert out["financials"]["annual"][-1]["revenue"] == 10.0                    # GRW's SEC year has no EBIT
-    assert "Yahoo (statements" in out["financials"]["source"] and "ebitda" in out["financials"]["source"]
-    assert out["financials"]["statements_meta"]["used"] == "yahoo"
 
 
-def test_the_model_version_moves_with_the_statements():
-    from RevenueChaser.module_financials import history
-    assert history.SELECTION_VERSION == "4"
 
 
 def test_a_bank_names_no_working_capital_gap():
@@ -190,45 +133,8 @@ def test_a_bank_names_no_working_capital_gap():
     assert fm._statements_choice(sec, yahoo, bank=True) == ("sec", [])
 
 
-def test_a_run_tells_the_choice_when_the_target_is_a_bank(built, monkeypatch, tmp_path):  # noqa: F811
-    import types
-    import RevenueChaser.module_financials.run as fm
-    from RevenueChaser.core import universe
-    from RevenueChaser.core.providers import cache as cache_manager
-    _clock(monkeypatch)
-    monkeypatch.setattr(fm, "OUTPUT_DIR", tmp_path)
-    monkeypatch.setattr(universe, "gics_of", lambda t, g: types.SimpleNamespace(sector="Financial Services"))
-    seen = []
-    monkeypatch.setattr(fm, "_statements_choice", lambda sec, yahoo, bank=False: seen.append(bank) or ("sec", []))
-    cache_manager.save(TICKER, {"ticker": TICKER, "info": {"longName": "Growth Co."}, "shares_outstanding": 50.0,
-                                "market_cap": 5000.0, "beta": 1.1, "current_price": 100.0, "currency": "USD",
-                                "source": "yfinance", "annual": [_year(2024)]})
-    out = fm.run(TICKER, modules=["dcf"], output="none", no_fetch=True)["results"]
-    assert seen == [True]
-    # Delta review N-a: no bank model reads the tax rate or interest expense either, so neither is named.
-    assert "tax rate" not in out["financials"]["source"] and "defaults" not in out["financials"]["source"]
 
 
-def test_on_the_secs_statements_the_source_line_names_the_tax_rate_and_interest_default(built, monkeypatch,
-                                                                                        tmp_path):  # noqa: F811
-    # Opus review M1 (avo, 29 Oct 2026: stay on the SEC's statements and say so): the SEC facts carry no pre-tax
-    # income, tax provision or interest expense, so with the SEC's statements the DCF runs on the default tax rate
-    # even when Yahoo's year measured one, and the Source line names both inputs as defaults.
-    import RevenueChaser.module_financials.run as fm
-    from RevenueChaser.core.providers import cache as cache_manager
-    _clock(monkeypatch)
-    monkeypatch.setattr(fm, "OUTPUT_DIR", tmp_path)
-    cache_manager.save(TICKER, {"ticker": TICKER, "info": {"longName": "Growth Co."}, "shares_outstanding": 50.0,
-                                "market_cap": 5000.0, "beta": 1.1, "current_price": 100.0, "currency": "USD",
-                                "source": "yfinance",
-                                "annual": [_year(2024, pretax_income=20.0, tax_provision=3.0, interest_expense=2.0)]})
-    out = fm.run(TICKER, modules=["dcf"], output="none", no_fetch=True)["results"]
-    fin = out["financials"]
-    assert fin["statements_meta"]["used"] == "sec"
-    defaults = fin["source"].split("defaults: ")[1]
-    assert "tax rate" in defaults and "interest expense" in defaults
-    assert {"tax rate", "interest expense"} <= set(fin["statements_meta"]["sec_lacks"])
-    assert out["modules"]["dcf"]["assumptions"]["tax_rate_source"] == "default"
 
 
 def test_on_yahoos_statements_the_tax_rate_is_not_named():

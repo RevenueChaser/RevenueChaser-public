@@ -1,7 +1,8 @@
 """Review N1 (28 Oct): a company with more cash than debt passes "Net Debt / EBITDA < 3×" even when its EBITDA is
 zero or negative. Before, the ratio was left unknown whenever EBITDA was not positive, so a net-cash firm with a
 loss year could never clear Quality 3/3; a firm that owes nothing net is not over-levered, whatever it earns.
-A firm with net debt and EBITDA ≤ 0 stays unknown: its leverage really cannot be measured by this ratio."""
+A firm with net debt and EBITDA ≤ 0 **fails** since #737 (avo, 14 Nov 2026, "A: Kaldı say"); that case is
+test_fundamentals_leverage_loss_737.py."""
 from __future__ import annotations
 
 from RevenueChaser.module_fundamentals.pipeline import _quality_metrics
@@ -14,7 +15,8 @@ def _year(ebit, debt, cash):
 
 
 def _rule(q: dict) -> dict:
-    gate = evaluate_quality({"net_debt_ebitda": q["net_debt_ebitda"], "net_cash": q.get("net_cash")})
+    gate = evaluate_quality({"net_debt_ebitda": q["net_debt_ebitda"], "net_cash": q.get("net_cash"),
+                             "debt_basis": q.get("debt_basis")})
     return next(r for r in gate["rules"] if r["id"] == "net_debt_ebitda")
 
 
@@ -25,9 +27,11 @@ def test_net_cash_with_a_loss_passes_the_leverage_rule():
     assert rule["passed"] is True and rule["actual"] == "Net cash" and rule["unit"] == "text"
 
 
-def test_net_debt_with_a_loss_stays_unknown():
+def test_net_debt_with_a_loss_fails():
+    """#737: it used to stay unknown. A company with no EBITDA to service its net debt is levered, and the
+    unknown only kept it out of the count."""
     q = _quality_metrics(_year(ebit=-80.0, debt=300.0, cash=100.0))
-    assert q["net_cash"] is False and _rule(q)["passed"] is None
+    assert q["net_cash"] is False and _rule(q)["passed"] is False
 
 
 def test_a_positive_ebitda_keeps_the_ratio():
@@ -38,7 +42,16 @@ def test_a_positive_ebitda_keeps_the_ratio():
 
 
 def test_missing_debt_or_cash_is_not_net_cash():
-    q = _quality_metrics(_year(ebit=-80.0, debt=None, cash=300.0))
+    """#737 narrowed what "missing debt" means here. A record that tags **no** debt line at all and reports no
+    interest is now counted debt-free, so the case this test was written for is one where the total is unknown
+    although the filer does tag debt: a current line alone, whose size #239 will not read as the whole. Missing
+    cash is unchanged -- there is nothing to compare the debt with."""
+    unknown_debt = _year(ebit=-80.0, debt=None, cash=300.0)
+    unknown_debt[0]["lt_debt_current"] = 40.0
+    q = _quality_metrics(unknown_debt)
+    assert q["net_cash"] is None and _rule(q)["passed"] is None
+
+    q = _quality_metrics(_year(ebit=-80.0, debt=100.0, cash=None))
     assert q["net_cash"] is None and _rule(q)["passed"] is None
 
 

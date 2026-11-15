@@ -14,27 +14,12 @@ from pathlib import Path
 from RevenueChaser.app import runners
 from RevenueChaser.module_swing_potential import report, screeners
 from RevenueChaser.module_swing_potential.tests.test_gates import _PASS
-from RevenueChaser.module_swing_potential.tests.test_swing_history_278 import _payload
 
 
-def _page() -> str:
-    return report.render_swing_board(_payload())[0]
 
 
-def test_the_rules_table_says_seven_price_rules_decide_minervini():
-    weak_rs = screeners.evaluate_minervini(_PASS, rs_rating=10.0)
-    assert weak_rs["passed"] and weak_rs["total"] == 8        # RS fails, the seven price rules still pass the gate
-    page = _page()
-    assert "8/8 required" not in page
-    assert f"{weak_rs['total'] - 1}/{weak_rs['total'] - 1} price rules required" in page
-    assert "RS rating ≥ 70 ranks, does not decide" in page
 
 
-def test_the_footer_names_where_the_names_and_the_bars_come_from():
-    page = _page()
-    assert "Yahoo Finance (universe + OHLCV)" not in page
-    assert "Sources: identity spine (names)" in page
-    assert "daily bars (Unusual Whales, yfinance fallback)" in page
 
 
 def test_the_swing_runner_does_not_claim_yfinance_only():

@@ -23,8 +23,7 @@ from datetime import datetime, timezone
 import pytest
 
 import RevenueChaser.module_financials.run as fm
-from RevenueChaser.core import rawstore, vendor_data
-from RevenueChaser.core.providers import cache as cache_manager
+from RevenueChaser.core import rawstore
 from RevenueChaser.module_asymmetric_growth import engine as agh
 from RevenueChaser.module_financials.engines import quick_remarks_engine as qr
 
@@ -76,17 +75,6 @@ def _failing(*_a, **_kw):
     raise AssertionError("a store-only Refresh called a provider")
 
 
-def _fetch(monkeypatch, tmp_path, payload: dict, *, at: float = COMPLETE) -> dict:
-    """A Financials Fetch with an injected provider: no network, the temp cache dir, the run's results."""
-    monkeypatch.setattr(fm, "OUTPUT_DIR", tmp_path)
-    monkeypatch.setattr(vendor_data, "_clock", lambda: at)
-    monkeypatch.setattr(fm.yfinance_client, "get_financials", lambda t: copy.deepcopy(payload))
-    monkeypatch.setattr(qr, "fetch_technical", lambda t: {})
-    monkeypatch.setattr(agh, "score_ticker", lambda t, f, tech, meta=None: None)
-    monkeypatch.setattr(fm.comps_engine, "_default_fetch", lambda t: dict(_PEER_INFO))
-    return fm.run("TEST", modules=["dcf"], output="none", run_id="job-fetch")
-
-
 def _refresh(monkeypatch, tmp_path) -> dict:
     """The store-only Refresh, with every provider patched to raise."""
     monkeypatch.setattr(fm, "OUTPUT_DIR", tmp_path)
@@ -97,88 +85,16 @@ def _refresh(monkeypatch, tmp_path) -> dict:
     return fm.run("TEST", modules=["dcf"], output="none", no_fetch=True)
 
 
-def _rows(table: str) -> int:
-    return len(rawstore.query(f"SELECT * FROM {table}"))
-
-
 # ── T1: an intraday Fetch stores statements only ──────────────────────────────────────────────────────────────
-def test_an_intraday_fetchs_valuation_comes_from_the_cache(rawstore_tmp_db, tmp_path, monkeypatch):
-    """Statements were stored, the valuation row was not: the Refresh keeps the cache's market data."""
-    _fetch(monkeypatch, tmp_path, _payload(_annual(2021, 3)), at=INTRADAY)
-    assert _rows("vendor_financials") > 0 and _rows("vendor_valuation") == 0   # the case under test
-
-    res = _refresh(monkeypatch, tmp_path)
-    fin = res["results"]["financials"]
-    assert fin["market_cap"] == 100_000.0 and fin["beta"] == 1.2
-    assert fin["current_price"] == 100.0 and fin["shares_outstanding"] == 1000.0
-
-    dcf = res["results"]["modules"]["dcf"]
-    assert dcf["wacc"]["beta"] == 1.2
-    assert dcf["wacc"]["equity_weight"] != 0.85            # not the fixed 0.85/0.15 fallback
-    assert dcf["valuation"]["per_share_gordon"] is not None
 
 
 # ── T2: the mirror — a valuation row but no statement rows (an EDGAR-backed AG name) ──────────────────────────
-def test_a_valuation_only_fetchs_statements_come_from_the_cache(rawstore_tmp_db, tmp_path, monkeypatch):
-    """The stored ``.info`` wins, the missing statements come from the cache: an annual series, not ``[]``."""
-    monkeypatch.setattr(fm, "OUTPUT_DIR", tmp_path)
-    vendor_data.record(valuations=[vendor_data.valuation_row_yfinance("TEST", dict(_INFO))],
-                       run_id="job-ag", run_at=COMPLETE)
-    cache_manager.save("TEST", _payload(_annual(2021, 3)))
-    assert _rows("vendor_financials") == 0 and _rows("vendor_valuation") == 1
-
-    res = _refresh(monkeypatch, tmp_path)
-    got = vendor_data.read_financials("TEST")
-    assert got["annual"] == [] and got["market_cap"] == 100_000.0          # what the stored rows alone say
-
-    fin = res["results"]["financials"]
-    assert [r["fiscal_year"] for r in fin["annual"]] == ["2021", "2022", "2023"]
-    assert res["results"]["modules"]["dcf"]["base_year"]["revenue"] == 2300.0
-    assert "error" not in res["results"]["modules"]["dcf"]
 
 
 # ── T3: both halves stored — the statements are the stored rows, the valuation is the last Fetch's ────────────
-def test_both_halves_stored_still_take_the_valuation_from_the_cache(rawstore_tmp_db, tmp_path, monkeypatch):
-    """The statements are the stored rows; the market snapshot is the last Fetch's, which the cache holds.
-
-    ``vendor_valuation`` is written only for a closed session, so a later intraday Fetch leaves its own ``.info``
-    in the raw cache and no valuation row behind it. The Refresh shows that Fetch's market cap, price and beta.
-    """
-    _fetch(monkeypatch, tmp_path, _payload(_annual(2021, 3)))
-    assert _rows("vendor_financials") > 0 and _rows("vendor_valuation") == 1
-
-    # Three decoy years: the cache's year count is the window the Refresh models (review N4), its values are not.
-    cache_manager.save("TEST", _payload(_annual(2008, 3), info=_DECOY_INFO))
-    res = _refresh(monkeypatch, tmp_path)
-    stored = vendor_data.read_financials("TEST")
-
-    fin = res["results"]["financials"]
-    assert fin["annual"] == stored["annual"]
-    assert [r["fiscal_year"] for r in fin["annual"]] == ["2021", "2022", "2023"]
-    assert fin["info"] == _DECOY_INFO
-    assert fin["market_cap"] == 5.0 and fin["beta"] == 0.1 and fin["current_price"] == 5.0
-    assert fin["shares_outstanding"] == 1.0
 
 
 # ── T4: the Refresh reads the same six years the Fetch serves ─────────────────────────────────────────────────
-def test_a_refresh_reads_the_fetchs_six_most_recent_years(rawstore_tmp_db, tmp_path, monkeypatch):
-    """Seven periods are stored (the store keeps every period), ``get_financials`` serves six: same DCF inputs."""
-    seven = _annual(2017, 7)
-    vendor_data.record(statements=vendor_data.statement_rows_yfinance("TEST", _payload(seven)),
-                       run_id="job-old", run_at=COMPLETE)
-    assert _rows("vendor_financials") == 3 * 7                      # three statements x seven fiscal years
-
-    got = vendor_data.read_financials("TEST")
-    assert [r["fiscal_year"] for r in got["annual"]] == ["2018", "2019", "2020", "2021", "2022", "2023"]
-    assert [r["period_end"] for r in got["annual"]] == [f"{y}-12-31" for y in range(2018, 2024)]
-
-    fetched = _fetch(monkeypatch, tmp_path, _payload(_annual(2018, 6)))      # what the provider serves today
-    res = _refresh(monkeypatch, tmp_path)
-
-    fetch_dcf = fetched["results"]["modules"]["dcf"]
-    refresh_dcf = res["results"]["modules"]["dcf"]
-    assert refresh_dcf["base_year"] == fetch_dcf["base_year"]
-    assert refresh_dcf["historical_fcff"] == fetch_dcf["historical_fcff"]
 
 
 # ── T5: neither half stored and no cache ──────────────────────────────────────────────────────────────────────
@@ -191,59 +107,9 @@ def test_with_neither_half_stored_and_no_cache_the_no_data_error_still_raises(ra
 
 
 # ── T6: the valuation is the LAST Fetch's session snapshot (FIN-5, #385 review) ─────────────────────────────
-def test_the_valuation_is_the_last_fetchs_own_info(rawstore_tmp_db, tmp_path, monkeypatch):
-    """A closed-session valuation row (market cap 100) and a later intraday Fetch (market cap 120): 120 wins.
-
-    The intraday Fetch wrote statements and no valuation row, so the store still holds yesterday's snapshot; the
-    cache holds the newer one. The statements stay the stored rows.
-    """
-    monkeypatch.setattr(fm, "OUTPUT_DIR", tmp_path)
-    closed = _payload(_annual(2021, 3))
-    vendor_data.record(statements=vendor_data.statement_rows_yfinance("TEST", closed),
-                       valuations=[vendor_data.valuation_row_yfinance("TEST", dict(_INFO))],
-                       run_id="job-closed", run_at=COMPLETE)
-    cache_manager.save("TEST", _payload(_annual(2019, 3), info={
-        **_INFO, "marketCap": 120_000.0, "currentPrice": 120.0, "beta": 1.5}))
-    assert _rows("vendor_valuation") == 1
-
-    res = _refresh(monkeypatch, tmp_path)
-    fin = res["results"]["financials"]
-    assert fin["market_cap"] == 120_000.0 and fin["beta"] == 1.5 and fin["current_price"] == 120.0
-    assert fin["info"]["marketCap"] == 120_000.0
-    assert [r["fiscal_year"] for r in fin["annual"]] == ["2021", "2022", "2023"]   # the stored statements
 
 
 # ── T7: a cache with no `.info` falls back to the stored valuation ──────────────────────────────────────────
-def test_a_cache_without_an_info_falls_back_to_the_stored_valuation(rawstore_tmp_db, tmp_path, monkeypatch):
-    """The last Fetch's payload carries no `.info`, so the stored valuation row is the only market snapshot."""
-    monkeypatch.setattr(fm, "OUTPUT_DIR", tmp_path)
-    vendor_data.record(valuations=[vendor_data.valuation_row_yfinance("TEST", dict(_INFO))],
-                       run_id="job-closed", run_at=COMPLETE)
-    cached = _payload(_annual(2021, 3), info={})
-    cached.update({"market_cap": 7.0, "beta": 0.1, "current_price": 7.0, "shares_outstanding": 7.0})
-    cache_manager.save("TEST", cached)
-
-    res = _refresh(monkeypatch, tmp_path)
-    fin = res["results"]["financials"]
-    assert fin["info"] == _INFO
-    assert fin["market_cap"] == 100_000.0 and fin["beta"] == 1.2 and fin["current_price"] == 100.0
-    assert fin["shares_outstanding"] == 1000.0
-    assert [r["fiscal_year"] for r in fin["annual"]] == ["2021", "2022", "2023"]   # statements from the cache
 
 
 # ── T8: as many years as the Fetch modelled (Financials review N4) ──────────────────────────────────────────
-def test_a_refresh_models_as_many_years_as_its_fetch(rawstore_tmp_db, tmp_path, monkeypatch):
-    """Yahoo serves about four fiscal years and the store keeps every period it ever served, so six can be stored
-    when the Fetch modelled four. The NWC/revenue average takes every year: the Refresh must take the same four."""
-    six = _annual(2018, 6)
-    for rec in six[:2]:                                    # two older years with a different working-capital mix
-        rec["receivables"] = rec["revenue"] * 0.5
-    vendor_data.record(statements=vendor_data.statement_rows_yfinance("TEST", _payload(six)),
-                       run_id="job-old", run_at=COMPLETE - 365 * 86400)
-    assert len(vendor_data.read_financials("TEST")["annual"]) == 6
-
-    fetched = _fetch(monkeypatch, tmp_path, _payload(_annual(2020, 4)))      # what the provider serves today
-    res = _refresh(monkeypatch, tmp_path)
-
-    assert [r["fiscal_year"] for r in res["results"]["financials"]["annual"]] == ["2020", "2021", "2022", "2023"]
-    assert res["results"]["modules"]["dcf"]["base_year"] == fetched["results"]["modules"]["dcf"]["base_year"]

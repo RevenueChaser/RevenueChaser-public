@@ -17,7 +17,7 @@ from RevenueChaser.module_fundamentals import pipeline as fp
 from RevenueChaser.module_fundamentals.report import render_fundamental_dashboard
 from RevenueChaser.module_swing_potential import pipeline as sp
 from RevenueChaser.module_swing_potential.report import render_swing_dashboard
-from RevenueChaser.module_swing_potential.tests.test_ohlc import _df, _seed_ohlc
+from RevenueChaser.module_swing_potential.tests.test_ohlc import _df
 
 NOW = datetime(2026, 10, 14, 21, 45, tzinfo=timezone.utc)      # the 14 Oct session is complete
 
@@ -59,26 +59,8 @@ def scan_env(rawstore_tmp_db, monkeypatch):
     return rows
 
 
-def _age_all():
-    with rawstore.connect() as conn:
-        conn.execute("UPDATE swing_ohlc SET cached_at = ?", [time.time() - 2 * 86400])
 
 
-@pytest.mark.parametrize("mod,render", MODS)
-def test_stale_cache_plus_failing_yfinance_still_scores_and_counts_stale(scan_env, mod, render):
-    """The picks' D01 bars stop on 9 Oct (scored, counted stale); SPY has no D01 session, so its fallback serves
-    the aged cache when yfinance fails (``spy_stale``)."""
-    from RevenueChaser.core.tests.screen_parity import _bars, seed_d01
-    for t in ("AAA", "BBB"):
-        seed_d01(t, _bars("up", 0.001, 300, end=date(2026, 10, 9)))
-    _seed_ohlc("SPY", _df(300))
-    _age_all()
-    payload = mod.run_scan()
-    assert not payload.get("is_fixture")             # #49 A2: Swing payloads no longer carry the key
-    assert not payload.get("no_data")
-    assert payload["data_quality"]["stale_ohlc"] == 2
-    assert payload["data_quality"]["spy_stale"] is True
-    assert "stale" in render(payload).lower()
 
 
 @pytest.mark.parametrize("mod,render", MODS)

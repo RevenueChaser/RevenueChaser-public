@@ -42,7 +42,7 @@ LOCAL = ZoneInfo("Europe/Amsterdam")
 #: ``app.dashboard.TABS`` in short; importing the dashboard from a render would pull in the whole app, so the copy is
 #: held equal to it by ``test_the_board_menu_is_the_dashboards``.
 BOARD_MENU: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
-    ("Home", (("module_welcome", "Welcome"),)),
+    ("Home", (("module_welcome", "Welcome"), ("module_watchlists", "Watch lists"))),
     ("Research", (("module_news", "News"), ("module_earnings_radar", "Earnings Radar"), ("module_spx_gamma", "SPX Gamma"),
                   ("module_oipd", "Implied Probability"), ("module_financials", "Financials"),
                   ("module_uw_interaction", "UW Interaction (lab)"))),
@@ -51,17 +51,18 @@ BOARD_MENU: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
     ("Screeners", (("module_sector_rotation", "Sector Rotation"), ("module_asymmetric_growth", "Asymmetric Growth"),
                    ("module_swing_potential", "Swing Potential"), ("module_fundamentals", "Fundamentals"))),
     ("Ownership", (("module_sec_13f", "SEC 13F"), ("module_leaps", "LEAPS"))),
-    ("Ops", (("module_settings", "Settings / Data health"),)),
+    ("Ops", (("module_settings", "Settings"),)),
 )
 
 #: One hue per serving file (the design's colour key); a file's tables are darker shades of it.
 FILE_COLORS = {"spine": "#26a34a", "prices": "#d07a09", "fundamentals": "#765ed4", "ownership": "#d65c8d",
-               "options": "#14a195", "market": "#2c94ea"}
+               "options": "#14a195", "market": "#2c94ea", "sec_forms": "#8a6d3b",
+               "sec_reads": "#a0522d"}
 SOURCE_COLORS = ("#6f7b32", "#646e2d", "#586228", "#4d5523", "#41481e")
 BOARD_COLOR = "#6d7585"
 #: The board files' hues (Data flow, journey), apart from the six SSD files' colours; one a file, in board order.
 BOARD_FILE_COLORS = ("#0e9f8e", "#c2410c", "#7c3aed", "#0369a1", "#be185d", "#4d7c0f", "#b45309", "#1d4ed8",
-                     "#a21caf", "#0f766e", "#9f1239", "#475569", "#a16207")
+                     "#a21caf", "#0f766e", "#9f1239", "#475569", "#a16207", "#15803d", "#7e22ce")
 #: The source boxes of the flow diagram, by step: where a provider's datasets sit in the plan.
 SOURCE_GROUPS = (("Identity", (1, 2, 3, 4, 5, 7)), ("Index & fund holdings", (6,)), ("Prices", (8,)),
                  ("Fundamentals & earnings", (9,)), ("Ownership & short side", (10,)),
@@ -88,6 +89,11 @@ ROLE_WORDS = {"first": "the first source: its value is served", "only source": "
 
 # Source icons: Tabler Icons (MIT licence, see THIRD-PARTY-NOTICES.md), the outline paths the design drew.
 ICONS: dict[str, str] = {
+    # The SEC reader tool's model providers share one icon (Tabler ``message-chatbot``).
+    "evren": "M4 21v-13a3 3 0 0 1 3 -3h10a3 3 0 0 1 3 3v6a3 3 0 0 1 -3 3h-9l-4 4 M9.5 9h.01 M14.5 9h.01 "
+             "M9.5 13a3.5 3.5 0 0 0 5 0",
+    "deepseek": "M4 21v-13a3 3 0 0 1 3 -3h10a3 3 0 0 1 3 3v6a3 3 0 0 1 -3 3h-9l-4 4 M9.5 9h.01 M14.5 9h.01 "
+                "M9.5 13a3.5 3.5 0 0 0 5 0",
     "sec": "M14 3v4a1 1 0 0 0 1 1h4 M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2z M9 9l1 0 "
            "M9 13l6 0 M9 17l6 0",
     "wrds": "M12 6m-8 0a8 3 0 1 0 16 0a8 3 0 1 0 -16 0 M4 6v6a8 3 0 0 0 16 0v-6 M4 12v6a8 3 0 0 0 16 0v-6",
@@ -934,6 +940,38 @@ def board_files() -> tuple[list[dict], list[list[str]], list[list[str]]]:
     return files, own, reads
 
 
+def board_file_cards() -> list[dict]:
+    """One card a board file for the Database tab's "Board files" block (avo, 13 Nov 2026: the boards' own DuckDB
+    files must be visible in the system, not only as a small box in the wide diagram).
+
+    ``board_files()`` plus what a section needs: each table's columns from the MANIFEST, the boards that read the
+    file besides its writer, and the file on the disk from one ``stat`` (size and when it was last written). The
+    file is never opened here: its board holds the writer, and a row count would need a connection."""
+    from RevenueChaser.core import rawstore
+    files, _own, reads = board_files()
+    also: dict[str, list[str]] = {}
+    for label, name in reads:
+        also.setdefault(name, []).append(label)
+    cards = []
+    for f in files:
+        db = f["name"].removesuffix(".duckdb")
+        tables = []
+        for t in f["tables"]:
+            cols = [c.split(None, 1) for c in rawstore.MANIFEST[t].get("columns", [])
+                    if not c.upper().startswith(("PRIMARY KEY", "UNIQUE", "FOREIGN KEY", "CHECK"))]
+            tables.append({"name": t, "columns": [(c[0], c[1] if len(c) > 1 else "") for c in cols]})
+        path = rawstore.board_db_path(db)
+        try:
+            st = path.stat()
+            size, written = st.st_size, st.st_mtime
+        except OSError:
+            size = written = None
+        cards.append({"name": f["name"], "owner": f["owner"], "color": f["color"], "tables": tables,
+                      "readers": sorted(also.get(f["name"], [])), "bytes": size, "written_at": written,
+                      "path": f"boards/{f['name']}"})
+    return cards
+
+
 def flow(file_views: list[dict], datasets: dict, reads: dict, universe_view: dict) -> dict:
     """``RC_FLOW``: source → serving file and its tables → board → the board's own file, every line from the code."""
     labels = _board_labels()
@@ -1150,6 +1188,7 @@ def build(nd: dict, *, applied: dict | None = None, ibkr: dict | None = None, no
         "switches": switches_view(switch_rows), "gateway": dict(zip(("cls", "n", "label"), _gateway(ibkr))),
         "universe": uni, "identity": nd.get("identity"), "my_universe": nd.get("my_universe"), "scope": scope(uni), "files": file_views, "providers": provider_rows,
         "flow": flow(file_views, datasets, reads, uni), "calendars": calendars(nd, uni, provider_rows),
+        "board_cards": board_file_cards(),
         "cross_check": (nd.get("cross_check") or {}).get("fields") or [],
         "queue": nd.get("queue") or {"active": [], "finished": []},
         # #715 step 2: the weekly backup is read here so the board can draw it natively

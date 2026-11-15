@@ -95,6 +95,20 @@ def test_open_read_refuses_to_write():
             con.execute("INSERT INTO t VALUES (9)")
 
 
+def test_open_read_caps_the_buffer_pool(monkeypatch):
+    """A reader's DuckDB instance holds what it read up to memory_limit; the default of 80 % of RAM OOM-killed the
+    relatedness run on 15 Nov 2026, so a read connection is capped (RC_DUCKDB_READ_MEMORY_LIMIT, else 1 GiB)."""
+    _build(2)
+    monkeypatch.delenv("RC_DUCKDB_READ_MEMORY_LIMIT", raising=False)
+    with serving.open_read("market") as con:
+        assert con.execute("SELECT current_setting('memory_limit')").fetchone()[0] == "1.0 GiB"
+    monkeypatch.setenv("RC_DUCKDB_READ_MEMORY_LIMIT", "512MiB")
+    with serving.open_read("market") as con:
+        assert con.execute("SELECT current_setting('memory_limit')").fetchone()[0] == "512.0 MiB"
+    monkeypatch.setenv("RC_DUCKDB_READ_MEMORY_LIMIT", "lots")          # not a size: the default holds
+    assert serving.read_memory_limit() == serving.READ_MEMORY_LIMIT_DEFAULT
+
+
 def test_open_read_resolves_the_path_on_every_call(tmp_path, monkeypatch):
     _build(2)
     with serving.open_read("market") as con:
@@ -230,6 +244,35 @@ def test_b2_a_shrink_is_allowed_only_when_asked_for():
     with serving.open_read("market") as con:
         assert con.execute("SELECT count(*) FROM t").fetchone()[0] == 0
     _build_t(11)                                   # growing is always fine
+
+
+def test_a_table_that_shrinks_by_choice_may_shrink_without_allow_shrink_but_may_not_empty():
+    """``SHRINKS_BY_CHOICE``: the source or avo chooses the row count, so a smaller one is not a partial build.
+    A request-wide ``allow_shrink`` is not needed for it (it would relax every other table of the kind with it),
+    and the "empties" guard still holds."""
+    for table in serving.SHRINKS_BY_CHOICE:
+        with serving.build("market") as b:
+            b.con.execute(f'CREATE TABLE "{table}" AS SELECT range AS i FROM range(100)')
+            b.swap({table: 100})
+        with serving.build("market") as b:                      # -90 %, far past MAX_SHRINK, no allow_shrink
+            b.con.execute(f'CREATE TABLE "{table}" AS SELECT range AS i FROM range(10)')
+            b.swap({table: 10})
+        with serving.open_read("market") as con:
+            assert con.execute(f'SELECT count(*) FROM "{table}"').fetchone()[0] == 10
+        with pytest.raises(serving.SwapRefused, match="empties"):
+            with serving.build("market") as b:
+                b.con.execute(f'CREATE TABLE "{table}" (i INTEGER)')
+                b.swap({table: 0})
+        serving.live_path("market").unlink()
+
+
+def test_the_economic_calendar_shrinks_by_choice_because_its_window_rolls():
+    """RC-Build on homesrv failed every hour from 00:05 UTC on 14 Nov 2026: ``uw/economic_calendar`` served 114 rows
+    against 126 live (-9.5 %), because a snapshot day's partition is replaced whole by that day's newest fetch and
+    events have rolled out of UW's "this week and next" window since. One refused swap fails the whole ``market``
+    kind (one file, one swap), so the guard cannot be left to a retry."""
+    from RevenueChaser.rcdata.build import uw_economic_calendar as econ
+    assert econ.TABLE in serving.SHRINKS_BY_CHOICE
 
 
 def test_a_retired_table_may_leave_the_build_and_any_other_still_may_not(monkeypatch):

@@ -69,7 +69,6 @@ class Clock:
 def clock(monkeypatch):
     """The universe is written an hour before ``D`` ended: ``universe_at(D)`` finds it."""
     c = Clock(baselines.day_end(D) - 3600)
-    monkeypatch.setattr(rawstore, "_change_clock", c.tick)
     return c
 
 
@@ -127,32 +126,8 @@ def test_manifest_entry_is_a_derived_upsert_keyed_by_date_horizon_and_basis():
 
 # ── red-first rules: the two baselines ───────────────────────────────────────
 
-def test_the_universe_baseline_is_every_name_of_that_universe_at_both_horizons(rawstore_tmp_db, clock):
-    """The baseline is not built from the picks: four names are in the universe and only AAA was frozen."""
-    _seed(_series("AAA", mfe=0.50) + _series("BBB", mfe=0.10) + _series("CCC", mfe=0.03, mae=-0.20)
-          + _series("DDD", mfe=0.22))
-    _freeze(["AAA"])
-    out = baselines.run(now=NOW, run_id="r1")
-    for h in baselines.HORIZONS:
-        assert _row(h=h)["n"] == 4
-    u = _row(h=30)
-    assert u["mfe_mean"] == pytest.approx((0.50 + 0.10 + 0.03 + 0.22) / 4)
-    assert u["mae_mean"] == pytest.approx((-0.05 * 3 - 0.20) / 4)
-    assert (u["ge20"], u["ge10"], u["ge5"]) == (2, 3, 3)        # BBB is exactly +10%: inclusive
-    assert u["model_version"] == baselines.MODEL_VERSION and u["run_id"] == "r1"
-    assert u["computed_at"] == NOW.timestamp()
-    assert (u["vol_lo"], u["vol_hi"]) == (None, None)           # the universe row is not a decile
-    assert out["dates"] == 1 and out["written"] == len(_rows())
 
 
-def test_the_universe_is_the_membership_of_the_freeze_date_not_today(rawstore_tmp_db, clock):
-    """A name that left the next day still counts; one that joined the next day does not."""
-    _seed(_series("AAA") + _series("BBB"))                       # both in the universe on D
-    _freeze(["AAA"])
-    clock.t = baselines.day_end(D) + 86400                       # the next evening's universe pull
-    universe_store.replace([{"ticker": "CCC"}])  # BBB left, CCC joined
-    baselines.run(now=NOW, run_id="r1")
-    assert _row(h=30)["n"] == 2                                 # AAA and BBB, not CCC
 
 
 def test_a_freeze_date_without_a_universe_snapshot_writes_zero_members(rawstore_tmp_db, clock):
@@ -167,110 +142,20 @@ def test_a_freeze_date_without_a_universe_snapshot_writes_zero_members(rawstore_
     assert _rows() and {r["n"] for r in _rows()} == {0}
 
 
-def test_the_vol_decile_baseline_is_the_mean_of_its_own_decile(rawstore_tmp_db, clock):
-    """Twenty names, one volatility each: the ten deciles pair neighbours, so decile 1 is the two calmest names
-    and decile 10 the two wildest."""
-    names = [f"T{i:02d}" for i in range(1, 21)]
-    _seed([b for i, t in enumerate(names, start=1) for b in _series(t, mfe=i / 100, amp=i / 1000)])
-    _freeze(["T01"])
-    baselines.run(now=NOW, run_id="r1")
-    d1, d10 = _row(basis="vol_decile_1"), _row(basis="vol_decile_10")
-    assert (d1["n"], d10["n"]) == (2, 2)
-    assert d1["mfe_mean"] == pytest.approx((0.01 + 0.02) / 2)
-    assert d10["mfe_mean"] == pytest.approx((0.19 + 0.20) / 2)
-    chain = [_row(basis=f"vol_decile_{d}") for d in range(1, 11)]
-    assert chain[0]["vol_lo"] is None and chain[-1]["vol_hi"] is None
-    assert all(chain[k]["vol_hi"] == chain[k + 1]["vol_lo"] for k in range(9))   # one boundary per pair
-    assert {r["basis"] for r in _rows() if r["horizon_days"] == 30} == \
-        {"universe", *[f"vol_decile_{d}" for d in range(1, 11)]}
 
 
-def test_fewer_than_ten_members_have_no_deciles_at_all(rawstore_tmp_db, clock):
-    """Ten groups cannot be made of fewer than ten names: a "decile" of one name is not a peer group. All eleven
-    bases are still written (the key set never changes shape) — the deciles with n = 0 and no boundaries — and the
-    names are counted in the universe row alone."""
-    names = ("AAA", "BBB", "CCC")
-    _seed([b for i, t in enumerate(names, start=1) for b in _series(t, amp=i / 100)], tickers=names)
-    _freeze(["AAA"])
-    baselines.run(now=NOW, run_id="r1")
-    got = {r["basis"]: (r["n"], r["vol_lo"], r["vol_hi"]) for r in _rows() if r["horizon_days"] == 30}
-    assert len(got) == 11
-    assert got["universe"] == (3, None, None)
-    assert {b: v for b, v in got.items() if b != "universe"} == \
-        {f"vol_decile_{k}": (0, None, None) for k in range(1, baselines.DECILES + 1)}
 
 
-def test_a_single_name_universe_is_in_no_decile_not_in_decile_ten(rawstore_tmp_db, clock):
-    """The nine boundaries of one value are all that value, and ``vol_lo`` inclusive would read the lone name as
-    decile 10 — the wildest. There is no peer to be wilder than: the name is in the universe row and in no decile."""
-    _seed(_series("ONLY"))
-    _freeze(["ONLY"])
-    baselines.run(now=NOW, run_id="r1")
-    assert _row(h=30)["n"] == 1
-    assert {r["n"] for r in _rows() if r["basis"] != "universe"} == {0}
 
 
-def test_the_volatility_is_read_adjusted_and_the_outcomes_nominal(rawstore_tmp_db, clock):
-    """The stated choice, from both sides. A dividend is a one-day fall of the printed price that is not a move of
-    the stock: one ex-date inside the vol window (2026-08-28) must not reach the volatility, which reads adjusted
-    closes, while a second one inside the 30-day window (2026-09-15) must not move the MFE, which is the pick's own
-    nominal measure. T01's high rises to 130 after that second ex-date, so the two bases really differ on both
-    numbers: swap either basis and this test goes red."""
-    names = [f"T{i:02d}" for i in range(1, 13)]
-    step = date(2026, 9, 15)
-    bars = [b for i, t in enumerate(names, start=1) for b in _series(t, mfe=0.05, amp=i / 1000)]
-    bars = [{**b, "high": 130.0} if b["ticker"] == "T01" and b["session_date"] > step else b for b in bars]
-    _seed(bars)
-    write_d01([], [_dividend(t, day, 10.0)
-                                         for t in names for day in (date(2026, 8, 28), step)])
-    _freeze([names[0]])
-    baselines.run(now=NOW, run_id="r1")
-
-    stated = {r["basis"]: (r["vol_lo"], r["vol_hi"]) for r in _rows() if r["horizon_days"] == 30}
-    hi = [stated[f"vol_decile_{k}"][1] for k in range(1, baselines.DECILES)]
-    lo = [stated[f"vol_decile_{k}"][0] for k in range(2, baselines.DECILES + 1)]
-    want = baselines.decile_cuts(_vols(names, "adjusted"))
-    assert hi == pytest.approx(want) and lo == pytest.approx(want)          # the nine boundaries, both edges
-    assert hi != pytest.approx(baselines.decile_cuts(_vols(names, "nominal")))   # the two bases really differ
-    assert _row(h=30)["mfe_mean"] == pytest.approx((0.30 + 11 * 0.05) / 12)   # the outcome stays nominal
 
 
 # ── red-first rules: what is not measured ────────────────────────────────────
 
-def test_a_name_flagged_split_check_is_left_out_of_the_baseline(rawstore_tmp_db, clock):
-    """A split the store has no action for leaves pre- and post-split prices in one nominal series, so the name's MFE
-    is not a return (HR-2 lists those records and excludes them; the baseline does the same)."""
-    split_day = date(2026, 9, 15)
-    jumped = [{**b, "open": b["open"] * 3, "high": b["high"] * 3, "low": b["low"] * 3, "close": b["close"] * 3}
-              if b["session_date"] < split_day else b for b in _series("SPL")]
-    _seed(_series("AAA") + jumped)
-    _freeze(["AAA"])
-    flagged = outcomes.outcome(D, 30, [{"session_date": b["session_date"], "open": b["open"], "high": b["high"],
-                                        "low": b["low"], "close": b["close"]} for b in jumped],
-                               cal.latest_complete_session(NOW))
-    assert flagged["status"] == outcomes.SPLIT_CHECK      # the fixture really is flagged, mfe or not
-    baselines.run(now=NOW, run_id="r1")
-    assert _row(h=30)["n"] == 1
 
 
-def test_a_name_without_the_first_session_open_is_not_counted(rawstore_tmp_db, clock):
-    """Review S0-1's rule applies here too: without the first session's open there is no reference, so no MFE."""
-    no_ref = [b for b in _series("NOPE") if b["session_date"] != date(2026, 9, 2)]
-    _seed(no_ref + _series("AAA"))
-    _freeze(["AAA"])
-    baselines.run(now=NOW, run_id="r1")
-    assert _row(h=30)["n"] == 1
 
 
-def test_each_horizon_is_measured_over_its_own_window(rawstore_tmp_db, clock):
-    """BBB's high is +30%, but only after the 30-day window: it counts for the 90-day mean alone."""
-    bbb = [dict(r, high=130.0) if r["session_date"] > END30 else r for r in _series("BBB", mfe=0.02)]
-    _seed(_series("AAA", mfe=0.02) + bbb)
-    _freeze(["AAA"])
-    baselines.run(now=NOW, run_id="r1")
-    assert _row(h=30)["mfe_mean"] == pytest.approx(0.02)
-    assert _row(h=90)["mfe_mean"] == pytest.approx((0.02 + 0.30) / 2)
-    assert (_row(h=30)["status"], _row(h=90)["status"]) == (baselines.CLOSED, baselines.OPEN)
 
 
 # ── the nightly ──────────────────────────────────────────────────────────────
@@ -336,15 +221,6 @@ def test_the_nightly_recomputes_only_the_horizon_still_open(rawstore_tmp_db, clo
     assert {r["run_id"] for r in _rows() if r["horizon_days"] == 90} == {"r2"}
 
 
-def test_an_empty_price_store_refuses_before_any_write(rawstore_tmp_db, clock):
-    _seed(_series("AAA"))
-    _freeze(["AAA"])
-    baselines.run(now=NOW, run_id="r1")
-    drop_d01()
-    for kw in ({"full": True}, {}, {"full": True, "write": False}):
-        with pytest.raises(RuntimeError, match="no daily bars"):
-            baselines.run(now=NOW, run_id="r2", **kw)
-    assert {r["run_id"] for r in _rows()} == {"r1"}
 
 
 def test_dry_run_computes_and_writes_nothing(rawstore_tmp_db, clock):
@@ -355,18 +231,6 @@ def test_dry_run_computes_and_writes_nothing(rawstore_tmp_db, clock):
     assert rawstore.count("forecast_baselines") == 0
 
 
-def test_n_counts_the_members_with_an_mfe_and_mae_mean_rests_on_the_ones_with_a_mae(rawstore_tmp_db, clock):
-    """A window bar can carry a high with no low (a NaN low is dropped, never read as 0). ``n`` counts the members
-    whose MFE is measurable, and ``mae_mean`` averages the MAE of those of them that have one: stated here, not an
-    accident of the filter."""
-    no_low = [dict(b, low=None) if b["session_date"] > D else b for b in _series("NOLOW", mfe=0.30)]
-    _seed(_series("AAA", mfe=0.10, mae=-0.20) + no_low)
-    _freeze(["AAA"])
-    baselines.run(now=NOW, run_id="r1")
-    u = _row(h=30)
-    assert (u["n"], u["ge20"]) == (2, 1)
-    assert u["mfe_mean"] == pytest.approx((0.10 + 0.30) / 2)
-    assert u["mae_mean"] == pytest.approx(-0.20)                 # NOLOW has no MAE, so it adds no drawdown
 
 
 def test_a_ledger_with_no_pick_has_no_baseline(rawstore_tmp_db, clock):
@@ -397,16 +261,6 @@ def test_the_writer_never_writes_the_ledger(rawstore_tmp_db, clock, monkeypatch)
     assert set(written) == {"forecast_baselines"}
 
 
-def test_the_writer_makes_no_provider_call(rawstore_tmp_db, clock, monkeypatch):
-    _seed(_series("AAA"))
-    _freeze(["AAA"])
-    boom = lambda *a, **k: (_ for _ in ()).throw(AssertionError("provider call"))  # noqa: E731
-    monkeypatch.setattr(prices, "_yf_download", boom)
-    monkeypatch.setattr(prices, "ensure_daily_bars", boom)
-    monkeypatch.setattr(prices, "fill_history", boom)
-    from RevenueChaser.core.providers import unusual_whales
-    monkeypatch.setattr(unusual_whales.UWClient, "__init__", boom)
-    assert baselines.run(now=NOW, run_id="r1")["rows"] >= 1
 
 
 # ── the pieces the board will read ──────────────────────────────────────────

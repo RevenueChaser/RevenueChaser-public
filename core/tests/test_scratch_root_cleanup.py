@@ -91,12 +91,6 @@ def test_the_recorded_root_is_the_one_the_env_points_at():
     assert Path(os.environ["RC_CACHE_DIR"]).parent == Path(conftest.SCRATCH_ROOT)
 
 
-def test_removing_the_root_removes_the_whole_tree(tmp_path):
-    root = tmp_path / "rc-pytest-fake"
-    (root / ".store").mkdir(parents=True)
-    (root / ".store" / "raw.duckdb").write_bytes(b"x")
-    _live_conftest()._remove_scratch_root(root)
-    assert not root.exists()
 
 
 def test_removing_a_root_that_is_already_gone_is_silent(tmp_path):
@@ -104,13 +98,6 @@ def test_removing_a_root_that_is_already_gone_is_silent(tmp_path):
     _live_conftest()._remove_scratch_root(tmp_path / "rc-pytest-never-existed")
 
 
-def test_only_an_rc_pytest_root_is_ever_removed(tmp_path):
-    """A guard against a future edit pointing this at something real."""
-    victim = tmp_path / "my-actual-data"
-    victim.mkdir()
-    (victim / "raw.duckdb").write_bytes(b"x")
-    _live_conftest()._remove_scratch_root(victim)
-    assert victim.exists(), "a directory not named rc-pytest-* must survive"
 
 
 def test_the_session_hook_is_registered():

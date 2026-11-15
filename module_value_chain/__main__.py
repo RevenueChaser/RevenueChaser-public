@@ -1,6 +1,5 @@
 """Value Chain CLI.
 
-    python -m RevenueChaser.module_value_chain --sync-filings [--limit N] [--force] [--floor M | --tickers A,B]
     python -m RevenueChaser.module_value_chain --fetch [--limit N] [--floor M | --tickers A,B]
     python -m RevenueChaser.module_value_chain --reslice-dry-run \\
         --edgar PATH --docs DIR [--out DIR]
@@ -10,9 +9,8 @@
 ``--resolve-rate`` reads the stored Relatedness profiles and the spine and prints how many named customers,
 suppliers and competitors resolve to a ticker (#410; read only, no network).
 
-``--floor`` (USD millions) and ``--tickers`` choose the names (#108 S0). Without either, both commands cover the
-whole classification universe as before, and the sync's submissions sweep covers every universe CIK (#299); with
-either, the sweep covers the chosen names' CIKs only. WARNING: either command with a selection makes SEC requests
+``--floor`` (USD millions) and ``--tickers`` choose the names (#108 S0). Without either, the Fetch covers the
+whole classification universe. WARNING: the command with a selection makes SEC requests
 for those names (``--floor 50`` adds about 900 filers) and rebuilds the Value Chain edges; run it only with the
 user's typed words, never under the standing permission.
 """
@@ -22,7 +20,7 @@ import argparse
 import json
 from pathlib import Path
 
-from . import aliases, config, engine, reslice, sync
+from . import aliases, config, engine, reslice
 
 
 def _print_summary(report: dict) -> None:
@@ -53,9 +51,7 @@ def _selection(args) -> list[str] | None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description="Value Chain corpus + new-filing sync")
-    p.add_argument("--sync-filings", action="store_true",
-                   help="detect newer 10-K/20-F and refresh the raw doc + corpus")
+    p = argparse.ArgumentParser(description="Value Chain corpus")
     p.add_argument("--fetch", action="store_true",
                    help="fetch the corpus for the (classification) universe")
     p.add_argument("--limit", type=int, default=None, help="cap tickers")
@@ -68,7 +64,10 @@ def main(argv: list[str] | None = None) -> int:
     reslice_pick.add_argument("--reslice-apply", action="store_true",
                               help="re-slice stored filings from their stored documents and write them through "
                                    "the slice guard, then rebuild edges (no network; holds the edgar_sync lock)")
-    p.add_argument("--edgar", default=None, help="path to edgar.duckdb (--reslice-dry-run)")
+    # The chain tables moved to ``boards/value_chain.duckdb`` (#860 stage 1). ``--edgar`` stays as the old
+    # spelling of the same argument, so a command line written before the move still runs.
+    p.add_argument("--chain-db", "--edgar", dest="chain_db", default=None,
+                   help="path to boards/value_chain.duckdb (--reslice-dry-run)")
     p.add_argument("--docs", default=None, help="path to the edgar_docs/ tree (--reslice-dry-run)")
     p.add_argument("--out", default=str(config.OUTPUT_DIR / "research" / "185"),
                    help="report directory (--reslice-dry-run / --reslice-apply)")
@@ -91,33 +90,26 @@ def main(argv: list[str] | None = None) -> int:
     # The re-slice commands run before the selection, which (with --floor) would read the live store
     # through rawstore; the apply also refuses the flags that drive a fetch or a selection.
     if args.reslice_apply:
-        if args.fetch or args.sync_filings or args.floor is not None or args.tickers:
-            p.error("--reslice-apply cannot be combined with --fetch, --sync-filings, --floor or --tickers")
+        if args.fetch or args.floor is not None or args.tickers:
+            p.error("--reslice-apply cannot be combined with --fetch, --floor or --tickers")
         result = reslice.apply(out_dir=Path(args.out))
         print(json.dumps(result, ensure_ascii=False))
         return 1 if result.get("locked") else 0
     # The dry run reads the store copy it is given and nothing else.
     if args.reslice_dry_run:
-        if not (args.edgar and args.docs):
-            p.error("--reslice-dry-run needs --edgar and --docs")
-        report = reslice.dry_run(Path(args.edgar), Path(args.docs), Path(args.out))
+        if not (args.chain_db and args.docs):
+            p.error("--reslice-dry-run needs --chain-db and --docs")
+        report = reslice.dry_run(Path(args.chain_db), Path(args.docs), Path(args.out))
         _print_summary(report)
         return 0
     chosen = _selection(args)
     if chosen == []:      # an empty list would read as "no selection" downstream: the whole universe
         p.error("--floor / --tickers selected no names")
 
-    if args.sync_filings:
-        result = sync.sync_filings(tickers=chosen, limit=args.limit, force=args.force)
-        print(json.dumps(result, ensure_ascii=False))
-        # A scheduled run that was locked out, lost tickers or lost submissions (#299) must not read as green.
-        subs = result.get("submissions") or {}
-        if result.get("locked") or result.get("failed") or subs.get("error") or subs.get("failed"):
-            return 1
-    elif args.fetch:
+    if args.fetch:
         print(json.dumps(engine.fetch_corpus(tickers=chosen, limit=args.limit), ensure_ascii=False))
     else:
-        print("use --sync-filings or --fetch")
+        print("use --fetch")
     return 0
 
 

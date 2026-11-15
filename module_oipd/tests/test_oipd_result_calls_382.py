@@ -17,7 +17,7 @@ import pytest
 from RevenueChaser.core import ledger, rawstore
 from RevenueChaser.core.providers.result import ProviderResult
 from RevenueChaser.core.providers.unusual_whales import UWClient
-from RevenueChaser.module_oipd import engine, history as oipd_history
+from RevenueChaser.module_oipd import engine
 from RevenueChaser.module_oipd.tests.test_engine import _SPOT, _FakeUW, fixed_today  # noqa: F401
 
 COMPLETE = datetime(2026, 10, 6, 22, 0, tzinfo=timezone.utc).timestamp()
@@ -74,10 +74,6 @@ def _fetch(uw):
     return engine.run(uw, "TST", capture=capture), capture
 
 
-def _head(payload, capture):
-    oipd_history.record(payload, capture, run_id="r1", run_at=COMPLETE)
-    (head,) = rawstore.query("SELECT * FROM result_runs WHERE board = 'module_oipd'", db="history")
-    return head
 
 
 # ── the breakdown ────────────────────────────────────────────────────────────────────────
@@ -105,9 +101,6 @@ def test_a_failed_breakdown_on_an_empty_store_saves_nothing(store):
     assert capture["status"] == "failed" and payload["error"]
 
 
-def test_a_failed_breakdown_run_is_partial_in_the_history(store):
-    head = _head(*_fetch(_ResultCallsUW(breakdown="failed")))
-    assert head["quality"] == "partial" and "Unusual Whales request failed" in head["quality_note"]
 
 
 def test_a_404_breakdown_is_a_missing_chain_not_an_outage_and_pulls_nothing(store):
@@ -163,32 +156,10 @@ def test_a_failed_candle_still_saves_the_whole_chain_with_a_warning(store):
     assert "spot price request failed" in text and "HTTP 503" in text
 
 
-def test_a_failed_candle_makes_the_history_run_partial(store):
-    head = _head(*_fetch(_ResultCallsUW(candle="failed")))
-    assert head["quality"] == "partial"
-    assert "spot price request failed" in head["quality_note"]
-    assert any("spot price request failed" in w for w in json.loads(head["warnings"]))
 
 
-def test_an_ok_candle_with_no_bar_is_a_warning_not_a_partial_run(store):
-    class _NoBar(_ResultCallsUW):
-        def ohlc_latest_result(self, ticker):
-            return ProviderResult("ok", {}, None, "")
-
-    payload, capture = _fetch(_NoBar())
-    assert any("No spot price" in w for w in payload["warnings"])
-    assert not any("request failed" in w for w in payload["warnings"])
-    assert _head(payload, capture)["quality"] == "complete"
 
 
-def test_a_healthy_run_is_unchanged(store):
-    plain_payload, _ = _fetch(_FakeUW())
-    uw = _ResultCallsUW()
-    payload, capture = _fetch(uw)
-    assert uw.calls["ohlc"] == 1 and payload["spot"] == _SPOT
-    assert payload["warnings"] == plain_payload["warnings"] == []
-    assert [e["quantiles"] for e in payload["expiries"]] == [e["quantiles"] for e in plain_payload["expiries"]]
-    assert _head(payload, capture)["quality"] == "complete"
 
 
 # ── the provider: ohlc_latest_result ─────────────────────────────────────────────────────

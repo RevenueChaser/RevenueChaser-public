@@ -15,6 +15,7 @@ in the read log. No serving file yet means no rows, not an error: the status say
 """
 from __future__ import annotations
 
+import json
 import logging
 import re
 from datetime import date, timedelta
@@ -42,14 +43,18 @@ KIND_OF_TABLE = {"market_series": "market", "spx_gamma_expiry_strike": "market",
 # The ownership store (PR 16).
 DATASET_OF_TABLE.update({"sec13f_ticker_period": "ownership/serve", "sec13f_periods": "ownership/serve",
                          "sec13f_cusip_map": "ownership/serve", "sec13f_filer_breaks": "ownership/serve",
+                         "sec13f_type_holdings": "ownership/serve",
                          "finra_short_interest": "finra/short_interest", "ibkr_shortable": "ibkr/shortable",
                          "regsho_threshold": "regsho/threshold", "sec_ftd": "sec/ftd",
-                         "insider_transactions": "sec/form4", "beneficial_ownership": "sec/13dg"})
+                         "insider_transactions": "sec/form4", "beneficial_ownership": "sec/13dg",
+                         "uw_institution": "uw/institutions",
+                         "uw_institution_succession": "uw/institutions"})
 KIND_OF_TABLE.update({t: "ownership" for t in ("sec13f_ticker_period", "sec13f_periods", "sec13f_cusip_map",
-                                               "sec13f_filer_breaks",
+                                               "sec13f_filer_breaks", "sec13f_type_holdings",
                                                "finra_short_interest",
                                                "ibkr_shortable", "regsho_threshold", "sec_ftd",
-                                               "insider_transactions", "beneficial_ownership")})
+                                               "insider_transactions", "beneficial_ownership",
+                                               "uw_institution", "uw_institution_succession")})
 
 
 def missing(kind: str, dataset: str | None = None) -> str | None:
@@ -790,6 +795,29 @@ def filer_breaks_13f(tickers: Iterable[str] | None = None, periods: Iterable | N
                  "ORDER BY ticker, period, kind, shares DESC, cik", params, missing_table_ok=True)
 
 
+def type_holdings_13f(tags: Iterable[str] | None = None, periods: Iterable | None = None) -> list[dict]:
+    """``sec13f_type_holdings`` rows of investor ``tags`` (every type when None; ``all`` is every filer) and
+    ``periods`` (every period when None): per type and quarter its largest tickers by value with their ``share`` (%)
+    of the type's portfolio, and the rest as one row whose ``ticker`` is None (#760). The types are Unusual Whales'
+    institution tags of the ``snapshot_date`` snapshot. By tag, period and rank, the rest last. A store built before
+    the table existed gives no rows."""
+    sql, params = " WHERE true", []
+    if tags is not None:
+        wanted = sorted({str(t).strip().lower() for t in tags if str(t).strip()})
+        if not wanted:
+            return []
+        sql += f" AND tag IN ({', '.join('?' * len(wanted))})"
+        params += wanted
+    if periods is not None:
+        days = sorted({_day(p) for p in periods})
+        if not days:
+            return []
+        sql += f" AND period IN ({', '.join('?' * len(days))})"
+        params += days
+    return _rows("sec13f_type_holdings", f"SELECT * FROM sec13f_type_holdings{sql} "
+                 "ORDER BY tag, period, rank NULLS LAST", params, missing_table_ok=True)
+
+
 def periods_13f() -> list[dict]:
     """``sec13f_periods``: per report period its filers, value, the share of value named a ticker (``coverage``) and
     ``complete``, by period."""
@@ -1012,19 +1040,44 @@ def filing_items(ciks: Iterable, form: str, since=None) -> list[dict]:
     return _rows("filing_item", sql + " ORDER BY cik, filing_date, accession, item", params)
 
 
+# ── The three document readers, since the one-cutter change (#858) over ``filing_section`` ─────────────────────
+#
+# ``sec/filings`` cut the same documents a second time and stored the result as ``filing_item``'s
+# ``kind = 'document'`` rows. Since #858 it cuts nothing: the one cutter is ``sec/forms``, and these three keep
+# their names and their row shape so the boards that call them read the single cut without changing. ``item`` is
+# the section (``business``, ``whole``, ``proxy``), and ``document`` is served as ``primary_document`` and
+# ``section`` as ``item``, which is what a caller of the ``filing_item`` days reads. One value differs:
+# ``primary_document`` is the **stored file** the section was cut out of (``<accession>.html.gz``, or an
+# exhibit's own name), not the SEC's primary-document name that ``filing_item``'s ``kind = 'item'`` rows carry.
+# A caller that builds an EDGAR link reads the filing list for the name; Value Chain is the only one, and #856
+# is where it does. Each is a step on the way
+# out: Value Chain (#856) and Relatedness (#841) move to ``form_business`` / ``form_whole``, and then these go.
+#
+# The two shapes differ in two places, and a caller that cares reads ``form_sections`` instead:
+#   * a 40-F's AIF exhibit is a ``business`` row here (``filing_item`` called it ``aif``), so for such a filing
+#     the exhibit can be the newest document and win;
+#   * no row is ever ``capped``: ``ours-2`` stores a section whole (#847).
+_DOC_COLUMNS = ("cik, accession, form, filing_date, report_date, document AS primary_document, "
+                "section AS item, text, chars, quality, method, rules_version, "
+                "source_as_of, fetched_at, run_id")
+_DOC_COLUMNS_NO_TEXT = _DOC_COLUMNS.replace("section AS item, text, chars", "section AS item, chars")
+
+
 def filing_text(cik, item: str = "business") -> dict | None:
-    """The served text of company ``cik``'s newest annual report (``item`` ``business``) or proxy (``proxy``), with
-    its ``quality`` (never ``ok`` at the cap); None when there is none."""
-    rows = _rows("filing_item", "SELECT * FROM filing_item WHERE cik = ? AND kind = 'document' AND item = ? "
-                                "ORDER BY filing_date DESC LIMIT 1", [_cik(cik), str(item)])
+    """The served text of company ``cik``'s newest annual report (``item`` ``business`` or ``whole``) or proxy
+    (``proxy``), with its ``quality``; None when there is none."""
+    rows = _rows("filing_section", f"SELECT {_DOC_COLUMNS} FROM filing_section WHERE cik = ? AND section = ? "
+                                   "ORDER BY filing_date DESC, accession DESC, document DESC LIMIT 1",
+                 [_cik(cik), str(item)])
     return rows[0] if rows else None
 
 
 def filing_documents(cik, item: str = "business") -> list[dict]:
-    """Every served document of ``item`` of company ``cik``, newest filing first (Relatedness's fallback to the
-    previous year's filing, #400)."""
-    return _rows("filing_item", "SELECT * FROM filing_item WHERE cik = ? AND kind = 'document' AND item = ? "
-                                "ORDER BY filing_date DESC, accession DESC", [_cik(cik), str(item)])
+    """Every served document of ``item`` of company ``cik``, newest filing first. The form reader serves the
+    newest filing only, so this is one row per document of it (#841 removed Relatedness's previous-year link)."""
+    return _rows("filing_section", f"SELECT {_DOC_COLUMNS} FROM filing_section WHERE cik = ? AND section = ? "
+                                   "ORDER BY filing_date DESC, accession DESC, document DESC",
+                 [_cik(cik), str(item)])
 
 
 def filing_texts(ciks: Iterable, item: str = "business", text: bool = True) -> list[dict]:
@@ -1033,11 +1086,11 @@ def filing_texts(ciks: Iterable, item: str = "business", text: bool = True) -> l
     wanted = sorted({_cik(c) for c in ciks if str(c or "").strip()})
     if not wanted:
         return []
-    cols = "*" if text else "* EXCLUDE (text)"
-    return _rows("filing_item", f"SELECT {cols} FROM filing_item WHERE kind = 'document' AND item = ? "
-                                f"AND cik IN ({', '.join('?' * len(wanted))}) "
-                                "QUALIFY row_number() OVER (PARTITION BY cik ORDER BY filing_date DESC, accession DESC) = 1 "
-                                "ORDER BY cik", [str(item), *wanted])
+    cols = _DOC_COLUMNS if text else _DOC_COLUMNS_NO_TEXT
+    return _rows("filing_section", f"SELECT {cols} FROM filing_section WHERE section = ? "
+                                   f"AND cik IN ({', '.join('?' * len(wanted))}) "
+                                   "QUALIFY row_number() OVER (PARTITION BY cik ORDER BY filing_date DESC, "
+                                   "accession DESC, document DESC) = 1 ORDER BY cik", [str(item), *wanted])
 
 
 def segments(cik, axis: str | None = None, source: str | None = None) -> list[dict]:
@@ -1128,7 +1181,8 @@ def _summary_filter(key_column: str | None, key_values, key_prefix) -> tuple[str
 
 
 def table_summary(table: str, day_column: str | None = None, key_column: str | None = None,
-                  sample: int = 0, key_values: Iterable[str] = (), key_prefix: str | None = None) -> dict:
+                  sample: int = 0, key_values: Iterable[str] = (), key_prefix: str | None = None,
+                  where: str | None = None) -> dict:
     """How much one serving table holds and how new it is: ``row_count``, ``key_count``, ``newest_day``, ``status``.
 
     ``sample`` asks for that many whole rows as well (``sample_rows``, newest first where the table has a day), so a
@@ -1153,7 +1207,12 @@ def table_summary(table: str, day_column: str | None = None, key_column: str | N
     parts.append(f"max({day_column}) AS newest_day" if day_column else "NULL AS newest_day")
     # The caller's own rows inside a table several of them share (``market_series``): counting the whole table
     # would let one caller's dead series read as fresh on another's current one.
-    where, where_params = _summary_filter(key_column, key_values, key_prefix)
+    clause, where_params = _summary_filter(key_column, key_values, key_prefix)
+    # A need whose rows are told apart by a column that is **not** the key column (``section`` of
+    # ``filing_section``): the catalog owns the text, which is why it is a SQL fragment and never a caller's input.
+    if where:
+        clause = f"{clause} AND ({where})" if clause else f" WHERE {where}"
+    where = clause
     rows: list[dict] = []
     try:
         try:
@@ -1189,10 +1248,11 @@ def as_frame(rows: list[dict]):
 DATASET_OF_TABLE.update({**{t: "uw/option_list" for t in ("option_eod", "option_strike", "option_expiry",
                                                           "option_daily", "option_print", "iv_daily")},
                          **{t: "uw/option_screener" for t in ("option_screener_daily", "er_options",
-                                                              "option_far_print", "earnings_tape")}})
+                                                              "option_far_print", "earnings_tape")},
+                         "option_far_contract": "uw/far_contracts"})
 KIND_OF_TABLE.update({t: "options" for t in ("option_eod", "option_strike", "option_expiry", "option_daily",
                                              "option_print", "iv_daily", "option_screener_daily", "er_options",
-                                             "option_far_print", "earnings_tape")})
+                                             "option_far_print", "earnings_tape", "option_far_contract")})
 # Rows a table shares between datasets: the earnings set (``set_name`` earnings) is uw/option_screener's, the IBKR
 # year of ``iv_daily`` (``source`` ibkr) is ibkr/iv_history's. Their ``status`` is that dataset's newest check.
 _SHARED_STATUS = (("set_name", "earnings", "uw/option_screener"), ("source", "ibkr", "ibkr/iv_history"))
@@ -1304,6 +1364,46 @@ def option_screener(session_date=None, passing_only: bool = False) -> list[dict]
         where += " AND passes_gates"
     return _option_rows("option_screener_daily",
                         f"SELECT * FROM option_screener_daily WHERE {where} ORDER BY ticker", params)
+
+
+def far_contracts(session_date=None, *, start=None, end=None, tickers: Iterable[str] | None = None) -> list[dict]:
+    """``option_far_contract`` (#746): the market's far-dated contracts (183 days or more, $50k premium or more), one
+    row per contract and session, with the next session's open interest and ``opened_share`` once ``oi_status`` is
+    ``matched``. One session (the newest when nothing is given), or ``start <= session_date <= end``; by session,
+    ticker and option symbol."""
+    sql, params = "SELECT * FROM option_far_contract WHERE true", []
+    if session_date is not None:
+        sql += " AND session_date = ?"
+        params.append(_day(session_date))
+    elif start is None and end is None:
+        sql += " AND session_date = (SELECT max(session_date) FROM option_far_contract)"
+    if start is not None:
+        sql += " AND session_date >= ?"
+        params.append(_day(start))
+    if end is not None:
+        sql += " AND session_date <= ?"
+        params.append(_day(end))
+    if tickers is not None:
+        names = _ticker_list(tickers)
+        if not names:
+            return []
+        sql += f" AND ticker IN ({', '.join('?' * len(names))})"
+        params += names
+    # A live file built before options 3 has no such table: "no rows yet", not a 500.
+    return _rows("option_far_contract", sql + " ORDER BY session_date, ticker, option_symbol", params,
+                 missing_table_ok=True)
+
+
+def far_contract_sessions() -> list[dict]:
+    """Per session of ``option_far_contract``: the contracts swept and how many have each ``oi_status``, newest
+    first; what a board says while it is collecting."""
+    return _rows("option_far_contract",
+                 "SELECT session_date, count(*) AS contracts, count(DISTINCT ticker) AS tickers, "
+                 "count(*) FILTER (WHERE oi_status = 'matched') AS matched, "
+                 "count(*) FILTER (WHERE oi_status = 'pending') AS pending, "
+                 "count(*) FILTER (WHERE oi_status = 'stale') AS stale, "
+                 "count(*) FILTER (WHERE oi_status = 'missing') AS missing "
+                 "FROM option_far_contract GROUP BY session_date ORDER BY session_date DESC", [], missing_table_ok=True)
 
 
 def earnings_options(start=None, end=None, tickers: Iterable[str] | None = None) -> list[dict]:
@@ -1600,3 +1700,107 @@ def _insider_cell(ticker: str, positions: list[dict], security_id: str | None,
     cell["state"] = ("inconsistent" if cell["pct"] > 100.0
                      else "partial" if cell["stale_share"] > 0.5 else "ok")
     return cell
+
+
+# ── The SEC form reader (#757): ``sec_forms.duckdb`` ──────────────────────────────────────────────────────────
+
+DATASET_OF_TABLE.update({"filing_section": "sec/forms", "filing_note": "sec/forms"})
+KIND_OF_TABLE.update({t: "sec_forms" for t in ("filing_section", "filing_note")})
+
+#: What ``filing_section.section`` can hold. ``risk_factors`` and ``mdna`` are in the plan's schema and have no
+#: rule yet, so no row carries them: a reader that asks for one gets no rows, not an error.
+FORM_SECTIONS = ("whole", "proxy", "business")
+
+
+def form_sections(ciks: Iterable = (), *, section: str, text: bool = True) -> list[dict]:
+    """Per company the newest ``section`` row of ``sec_forms``, one each (a company with none is absent).
+
+    ``text=False`` leaves the text out, for a list that only needs the lengths and the quality. A 40-F whose
+    business section is an exhibit has two documents under one accession, so the newest **document** of the newest
+    filing wins, as ``filing_texts`` picks the newest accession.
+    """
+    wanted = sorted({_cik(c) for c in ciks if str(c or "").strip()})
+    if not wanted:
+        return []
+    cols = "*" if text else "* EXCLUDE (text)"
+    return _rows("filing_section",
+                 f"SELECT {cols} FROM filing_section WHERE section = ? "
+                 f"AND cik IN ({', '.join('?' * len(wanted))}) "
+                 "QUALIFY row_number() OVER (PARTITION BY cik ORDER BY filing_date DESC, accession DESC, "
+                 "document DESC) = 1 ORDER BY cik", [str(section), *wanted])
+
+
+def form_whole(ciks: Iterable = (), text: bool = True) -> list[dict]:
+    """The whole text of each company's newest annual report (``sec.whole``)."""
+    return form_sections(ciks, section="whole", text=text)
+
+
+def form_business(ciks: Iterable = (), text: bool = True) -> list[dict]:
+    """The business section of each company's newest annual report (``sec.business``)."""
+    return form_sections(ciks, section="business", text=text)
+
+
+def form_proxy(ciks: Iterable = (), text: bool = True) -> list[dict]:
+    """The whole text of each company's newest proxy statement (``sec.proxy``)."""
+    return form_sections(ciks, section="proxy", text=text)
+
+
+def form_notes(ciks: Iterable = (), local_name: str | None = None, kind: str | None = None,
+               text: bool = True) -> list[dict]:
+    """The note blocks of each company's newest annual report (``sec.note``), by company and document order.
+
+    ``local_name`` is the tag without its prefix (``DebtDisclosureTextBlock``), so one ask reaches ``us-gaap``,
+    ``ifrs-full`` and a filer's own prefix alike; ``kind`` is ``disclosure``, ``table`` or ``policy``. Only the
+    newest filing's blocks: an older year's note is a row of its own and is asked for by accession.
+    """
+    wanted = sorted({_cik(c) for c in ciks if str(c or "").strip()})
+    if not wanted:
+        return []
+    cols = "*" if text else "* EXCLUDE (text)"
+    sql = (f"SELECT {cols} FROM filing_note WHERE cik IN ({', '.join('?' * len(wanted))})")
+    params: list = list(wanted)
+    if local_name is not None:
+        sql += " AND local_name = ?"
+        params.append(str(local_name))
+    if kind is not None:
+        sql += " AND kind = ?"
+        params.append(str(kind))
+    sql += (" QUALIFY dense_rank() OVER (PARTITION BY cik ORDER BY filing_date DESC, accession DESC) = 1 "
+            "ORDER BY cik, document, seq")
+    return _rows("filing_note", sql, params)
+
+
+# ── The SEC reader tool: ``sec_reads.duckdb`` ───────────────────────────────────────────────────────────────────
+
+DATASET_OF_TABLE.update({"read_answer": "sec/reads"})
+KIND_OF_TABLE.update({"read_answer": "sec_reads"})
+
+
+def sec_reads(ciks: Iterable = (), question: str | None = None, *, provider: str | None = None,
+              model: str | None = None, raw: bool = False) -> list[dict]:
+    """Per company the newest answer to ``question`` (``sec.read``), one each; a company with none is absent.
+
+    The writer is the question's configured one (``build/sec_reads/questions.py``) unless ``provider`` / ``model``
+    name another: a comparison stores two writers' answers and a board reads its own. ``answer`` is the parsed
+    JSON; only ``ok`` and ``partial`` rows are answers. ``raw=False`` leaves the replies out.
+    """
+    wanted = sorted({_cik(c) for c in ciks if str(c or "").strip()})
+    if not wanted or not question:
+        return []
+    from .build.sec_reads.questions import QUESTIONS
+    q = QUESTIONS.get(str(question))
+    provider = provider or (q.provider if q else None)
+    model = model or (q.writer_model if q else None)
+    sql = (f"SELECT {'*' if raw else '* EXCLUDE (raw)'} FROM read_answer WHERE question = ? "
+           f"AND status IN ('ok', 'partial') AND cik IN ({', '.join('?' * len(wanted))})")
+    params: list = [str(question), *wanted]
+    for col, value in (("provider", provider), ("model", model)):
+        if value:
+            sql += f" AND {col} = ?"
+            params.append(str(value))
+    sql += (" QUALIFY row_number() OVER (PARTITION BY cik ORDER BY filing_date DESC NULLS LAST, fetched_at DESC) = 1"
+            " ORDER BY cik")
+    rows = _rows("read_answer", sql, params)
+    for r in rows:
+        r["answer"] = json.loads(r["answer"]) if r.get("answer") else None
+    return rows

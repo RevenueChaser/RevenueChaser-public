@@ -60,9 +60,13 @@ SPINE = {"UP1": ("Information Technology", "Software & Services", "Systems Softw
          "DOWN1": ("Energy", "Energy", "Oil & Gas Exploration & Production")}
 EXCLUDED = {"ETF1": "etp", "UP2": "common"}      # a typed operating name stays in; an ETP never screens
 BARS = {"UP1": ("up", 0.0050), "UP2": ("up", 0.0030), "UP3": ("up", 0.0065), "FLAT1": ("flat", 0.0),
-        "DOWN1": ("down", -0.0040), "NOEDGAR": ("up", 0.0040), "LOWPX": ("up", 0.0010),
+        "DOWN1": ("down", -0.0020), "NOEDGAR": ("up", 0.0040), "LOWPX": ("up", 0.0010),
         "LOWVOL": ("up", 0.0010), "FAR": ("up", 0.0010), "BELOW50": ("up", 0.0010),
         "SPY": ("up", 0.0015)}
+#: Since #860 the prefilter reads the bars (``rcdata.read.latest_volume``), not the stored quote: LOWPX trades under
+#: $5 and LOWVOL thin in its bars, as their quotes said before.
+BAR_LEVEL = {"LOWPX": 3.0}
+BAR_VOLUME = {"LOWVOL": 1_000.0}
 LONG_BARS = 300
 SHORT_BARS = 100                                   # fewer than the 252 a score needs
 
@@ -81,16 +85,17 @@ EDGAR = {"UP1": _annual(0.45), "UP2": _annual(0.20, 0.8), "UP3": _annual(0.60, 1
          "FAR": _annual(0.3), "BELOW50": _annual(0.3)}
 
 
-def _bars(kind: str, drift: float, periods: int, end: date = SESSION) -> pd.DataFrame:
+def _bars(kind: str, drift: float, periods: int, end: date = SESSION, *, level: float = 40.0,
+          volume: float = 1_500_000.0) -> pd.DataFrame:
     idx = pd.bdate_range(end=end, periods=periods)
     close = []
     for i in range(periods):
         wave = 1.0 + 0.015 * math.sin(i / 6.0)
         trend = 1.0 + drift * i if kind != "flat" else 1.0
-        close.append(max(1.0, 40.0 * trend * wave))
+        close.append(max(1.0, level * trend * wave))
     close = pd.Series(close, index=idx)
     return pd.DataFrame({"Open": close.shift(1).fillna(close.iloc[0]), "High": close * 1.01,
-                         "Low": close * 0.99, "Close": close, "Volume": 1_500_000.0})
+                         "Low": close * 0.99, "Close": close, "Volume": volume})
 
 
 class _OfflineTicker:
@@ -108,23 +113,13 @@ class _OfflineTicker:
 
 
 def seed_d01(ticker: str, df: pd.DataFrame, fetched_at: float = D01_WRITTEN) -> None:
-    """``df``'s bars as D01 rows, written by RC-Daily-Bars after the last session's close + 30 min."""
+    """``df``'s bars as D01 rows, served after the last session's close + 30 min."""
     rows = [{
         "ticker": ticker, "session_date": ts.date(), "open": float(r["Open"]), "high": float(r["High"]),
         "low": float(r["Low"]), "close": float(r["Close"]), "adj_close": None, "volume": float(r["Volume"]),
         "split_ratio": None, "adj_source": None, "source": "uw", "fetched_at": fetched_at, "run_id": "bars",
         "run_at": fetched_at} for ts, r in df.iterrows()]
-    rawstore.write_rows("price_bars_daily", rows)
     prices_store.put_store_rows(rows, built_at=fetched_at)   # the served file the readers read (#642 PR 6)
-
-
-def seed_quotes(session: date = SESSION) -> None:
-    """One D04 Yahoo row per universe name: the scenario's screener quote, as the universe pull records it."""
-    rawstore.write_rows("quote_snapshot", [{
-        "ticker": t, "session_date": session, "source": "yfinance", "market_cap": cap,
-        "price": q["regularMarketPrice"], "shares_outstanding": None, "week_52_high": q.get("fiftyTwoWeekHigh"),
-        "week_52_low": None, "payload": q, "fetched_at": D01_WRITTEN, "run_id": "universe",
-        "run_at": D01_WRITTEN} for t, (cap, q) in UNIVERSE.items()])
 
 
 def seed() -> None:
@@ -134,16 +129,12 @@ def seed() -> None:
          "sector": SPINE.get(t, ("Utilities",))[0],
          "industry_group": SPINE.get(t, (None, None, None))[1] if t in SPINE else None,
          "sub_industry": SPINE.get(t, (None, None, None))[2] if t in SPINE else None,
-         "quote": q}
+         "quote": q, "security_type": EXCLUDED.get(t)}
         for t, (cap, q) in UNIVERSE.items()])
-    rawstore.replace_all("equity_universe_provenance", [
-        {"key": "__meta__", "generated_at": GENERATED_AT, "refreshed_by": "Swing Potential"}])
-    rawstore.ensure_table("security_master")
-    rawstore.write_rows("security_master", [{"ticker": t, "security_type": ty} for t, ty in EXCLUDED.items()])
     for t, (kind, drift) in BARS.items():
-        seed_d01(t, _bars(kind, drift, LONG_BARS))
+        seed_d01(t, _bars(kind, drift, LONG_BARS, level=BAR_LEVEL.get(t, 40.0),
+                          volume=BAR_VOLUME.get(t, 1_500_000.0)))
     seed_d01("SHORT1", _bars("up", 0.004, SHORT_BARS))
-    seed_quotes()
     rawstore.write_rows("swing_info", [
         {"ticker": t, "payload": {"longName": f"{t} Holdings", "industry": "Software - Infrastructure",
                                   "longBusinessSummary": "Cloud software and data platform.",

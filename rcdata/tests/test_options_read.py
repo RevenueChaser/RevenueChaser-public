@@ -10,7 +10,7 @@ from RevenueChaser.core import calendar
 from RevenueChaser.core.providers import ibkr_tws, unusual_whales
 from RevenueChaser.rcdata import ops, read
 from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.options import ibkr_iv, uw_list, uw_screener
+from RevenueChaser.rcdata.build.options import ibkr_iv, uw_far_contracts, uw_list, uw_screener
 
 from .ibkr_fixture import FakeGateway
 from .options_fixture import SESSION, UWOptions
@@ -47,7 +47,7 @@ def test_every_options_table_has_a_dataset_and_the_options_kind():
     from RevenueChaser.rcdata.build.options import tables
     for name in tables.TABLES:
         assert read.KIND_OF_TABLE[name] == "options"
-        assert read.DATASET_OF_TABLE[name] in (uw_list.NAME, uw_screener.NAME)
+        assert read.DATASET_OF_TABLE[name] in (uw_list.NAME, uw_screener.NAME, uw_far_contracts.NAME)
 
 
 def test_no_options_file_yet_reads_as_no_rows():
@@ -107,21 +107,8 @@ def test_each_read_is_counted_in_the_read_log(built):
     assert reads["option_eod"] == 1 and reads["iv_daily"] == 2
 
 
-def test_the_cards_earnings_dates_come_from_the_built_screener_calendar(built, monkeypatch):
-    """G6 earnings-week filter: ``core.earnings_dates`` reads this file's calendar, and since the internal data API
-    the stored D26 calendar is read **as well** and fills the names this file does not hold (step B). Here it holds
-    none, so the layer's date is the whole answer."""
-    from RevenueChaser.core import earnings_dates
-    monkeypatch.setattr(earnings_dates.rawstore, "query", lambda *a, **k: [])
-    assert earnings_dates.stored_next_dates(SESSION) == {"GOOD": NEXT}
 
 
-def test_a_name_only_the_stored_d26_calendar_holds_is_not_dropped(built, monkeypatch):
-    """The short-circuit step B closes: a fresh layer session used to replace the stored calendar outright."""
-    from RevenueChaser.core import earnings_dates
-    monkeypatch.setattr(earnings_dates.rawstore, "query",
-                        lambda *a, **k: [{"ticker": "OTHER", "d": NEXT}])
-    assert earnings_dates.stored_next_dates(SESSION) == {"GOOD": NEXT, "OTHER": NEXT}
 
 
 def test_the_earnings_board_reads_r4_s_inputs_from_the_evening_set(built):

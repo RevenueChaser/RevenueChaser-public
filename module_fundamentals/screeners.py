@@ -13,6 +13,7 @@ from __future__ import annotations
 from RevenueChaser.core import tristate as tri
 
 from . import config
+from . import debt
 
 
 def _rule(id: str, label: str, unit: str, passed: bool | None, actual, threshold: str) -> dict:
@@ -65,12 +66,45 @@ def evaluate_rule_of_40(m: dict) -> dict:
     }
 
 
-def _leverage_rule(nde, net_cash) -> dict:
-    """Net Debt / EBITDA < 3×. Review N1: a firm with more cash than debt passes even when EBITDA ≤ 0 leaves the
-    ratio undefined (shown as "Net cash"); net debt with EBITDA ≤ 0 stays unknown."""
+# #737 (avo, 13 Nov 2026): the note a rule carries when its figure rests on an inferred zero rather than on a debt
+# total the filer tagged. It is on the label, so it travels with the rule onto the Q modal, where the rules are
+# rendered, and it says why -- a filed zero carries no note at all. It does NOT reach ``fundamentals_gates``, whose
+# rows hold ``passed``, ``actual`` and ``unit`` only (``scores.gate_rows``); the payload carries ``debt_basis``
+# instead (Fable review F3, 13 Nov 2026).
+INFERRED_DEBT_NOTE = "debt not tagged, no interest: counted 0"
+
+
+# #737 (avo, 14 Nov 2026 11:06 Amsterdam, option "A: Kaldı say"): what the leverage rule says about a company
+# that earns nothing and still owes money. The reason rides on the label, next to the threshold, so the Q modal
+# shows why the rule failed with no figure beside it -- there is no ratio to show, which is the point.
+LOSS_WITH_NET_DEBT_NOTE = "no EBITDA to service net debt"
+
+
+def _leverage_rule(nde, net_cash, debt_basis=None) -> dict:
+    """Net Debt / EBITDA < 3×, as three cases once the ratio itself is undefined (EBITDA known and ≤ 0).
+
+    Review N1: more cash than debt **passes** even then (shown as "Net cash") -- a firm that owes nothing net is
+    not over-levered, whatever it earns. #737, avo's "A: Kaldı say" (14 Nov 2026): net debt in a loss year now
+    **fails**, where it used to stay unknown -- a company with no EBITDA to service its debt is levered, and
+    leaving it unknown only kept it out of the count. EBITDA that is not reported at all is still a missing
+    input and stays unknown.
+
+    The three cases are read off ``net_cash``, which ``pipeline._quality_of`` sets only when total debt, liquid
+    assets **and** EBITDA are all known: True = net cash, False = net debt, None = an input is missing. With the
+    ratio undefined (``nde is None``) that is exactly "EBITDA known and ≤ 0", which is what this rule needs.
+
+    ``debt_basis`` is #737's: ``inferred_none`` means the filer tagged no debt line and reported no interest, so
+    the board read its total debt as 0 (``module_fundamentals.debt``). The label then says so. A filed total,
+    zero included, is ``filed`` and reads exactly as it did before."""
+    label = "Net Debt / EBITDA < 3×"
+    if debt_basis == debt.INFERRED_NONE:
+        label += f" ({INFERRED_DEBT_NOTE})"
     if nde is None and net_cash is True:
-        return _rule("net_debt_ebitda", "Net Debt / EBITDA < 3×", "text", True, "Net cash", "< 3.0×")
-    return _rule("net_debt_ebitda", "Net Debt / EBITDA < 3×", "ratio",
+        return _rule("net_debt_ebitda", label, "text", True, "Net cash", "< 3.0×")
+    if nde is None and net_cash is False:
+        return _rule("net_debt_ebitda", f"{label} ({LOSS_WITH_NET_DEBT_NOTE})", "text", False, "Net debt",
+                     "< 3.0×")
+    return _rule("net_debt_ebitda", label, "ratio",
                  tri.rule((nde,), lambda n: n < config.ND_EBITDA_MAX), nde, "< 3.0×")
 
 
@@ -83,13 +117,18 @@ def evaluate_quality(m: dict) -> dict:
 
     growth_ok = tri.rule((growth,), lambda g: g >= config.GROWTH_MIN)
     roic_ok = tri.rule((roic,), lambda r: r >= config.ROIC_MIN)
+    # #737, Fable review F3: an inferred zero makes ROIC known as well as the leverage ratio, so when ROIC is in
+    # play this rule rests on the same inference and says so. Growth alone never does.
+    gor_label = "Growth ≥20% or ROIC ≥15%"
+    if roic is not None and m.get("debt_basis") == debt.INFERRED_NONE:
+        gor_label += f" ({INFERRED_DEBT_NOTE})"
     rules = [
         # One missing half cannot fail the rule, and cannot decide it unless the other half already passed.
-        _rule("growth_or_roic", "Growth ≥20% or ROIC ≥15%", "pct",
+        _rule("growth_or_roic", gor_label, "pct",
               tri.either(growth_ok, roic_ok), growth if growth_ok else roic, "≥20% / ≥15%"),
         _rule("gross_margin", "Gross margin ≥30%", "pct",
               tri.rule((gm,), lambda g: g >= config.GM_MIN), gm, "≥ 30%"),
-        _leverage_rule(nde, m.get("net_cash")),
+        _leverage_rule(nde, m.get("net_cash"), m.get("debt_basis")),
     ]
     return _counted("Quality", rules)
 

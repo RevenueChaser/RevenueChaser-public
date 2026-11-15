@@ -74,7 +74,6 @@ def world(monkeypatch):
     monkeypatch.setattr(profiles.deepseek, "complete", fake)
     monkeypatch.setattr(engine, "_cik_for", lambda ts: {t: t for t in ts})
     monkeypatch.setattr(engine, "_context", lambda t, cik, source=None: {})
-    monkeypatch.setattr(engine, "_previous_filing", lambda t: None)
     monkeypatch.setattr(engine, "_whole_document", lambda t: {"text": DOC, "source": {"accession": "acc"}})
     rawstore.write_rows("chain_filings", [{"ticker": "NVDA", "cik": "1", "form": "10-K", "filed": "2026-01-01",
                                            "accession": "acc", "primary_doc": "u",
@@ -98,7 +97,7 @@ def test_an_overrun_item_is_cut_where_the_writer_says(rawstore_tmp_db, world):
 
 
 def test_an_ok_item_never_asks_the_locator(rawstore_tmp_db, world):
-    rawstore.execute("UPDATE chain_filings SET quality = 'ok' WHERE ticker = 'NVDA'", db="edgar")
+    rawstore.execute("UPDATE chain_filings SET quality = 'ok' WHERE ticker = 'NVDA'", db="value_chain")
     engine.build_profiles(["NVDA"], usd_cap=1.0)
     assert all(c["system"] != locator.system_prompt() for c in world)
     assert rawstore.get("relatedness_profiles", "NVDA")["label_source"]["input"] == "item"
@@ -127,12 +126,6 @@ def test_a_failed_locate_keeps_the_rule_cut(rawstore_tmp_db, world, monkeypatch)
     assert "Risks are many" in call["user"]                 # the overrun text, as before
 
 
-def test_the_run_names_the_located_companies(rawstore_tmp_db, world, monkeypatch):
-    monkeypatch.setattr(engine.vc_engine, "fetch_corpus", lambda *a, **k: None)
-    monkeypatch.setattr(engine, "_record_history", lambda *a, **k: None)
-    payload = engine.run(tickers=["NVDA"], usd_cap=1.0)
-    assert payload["llm_located"] == ["NVDA"]
-    assert store.load_profiles(["NVDA"])["NVDA"]["products"] == ["gpu"]
 
 
 def test_a_suspect_ok_cut_asks_the_locator_too():

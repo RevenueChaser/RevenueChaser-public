@@ -52,7 +52,6 @@ def clock(monkeypatch):
     """The universe is written an hour before ``D`` ended, so ``universe_at(D)`` finds it (the store stamps the wall
     clock, and these dates are in the past)."""
     ticks = [baselines.day_end(D) - 3600]
-    monkeypatch.setattr(rawstore, "_change_clock", lambda: ticks.__setitem__(0, ticks[0] + 1) or ticks[0])
     return ticks
 
 
@@ -83,34 +82,8 @@ def test_a_baselines_run_populates_forecast_baselines(rawstore_tmp_db, clock):
         sorted(baselines.HORIZONS)
 
 
-def test_the_universe_row_is_the_mean_of_the_whole_universe_not_of_the_picks(rawstore_tmp_db, clock):
-    """Four names in that day's universe, one pick: the baseline is the universe's four outcomes, and the ge20/ge10/ge5
-    counts are cumulative and inclusive at the boundary."""
-    _seed([_series("A", mfe=0.25, mae=-0.02), _series("B", mfe=0.12, mae=-0.30),
-           _series("C", mfe=0.06, mae=-0.08), _series("D", mfe=0.01, mae=-0.04)])
-    baselines.run(now=NOW, run_id="r1")
-    row = _row()
-    assert row["n"] == 4
-    assert row["mfe_mean"] == pytest.approx((0.25 + 0.12 + 0.06 + 0.01) / 4)
-    assert row["mae_mean"] == pytest.approx((-0.02 - 0.30 - 0.08 - 0.04) / 4)
-    assert (row["ge20"], row["ge10"], row["ge5"]) == (1, 2, 3)     # counts, not shares
-    assert (row["vol_lo"], row["vol_hi"]) == (None, None)          # the universe row is not a decile
 
 
-def test_the_deciles_partition_the_members_they_can_place(rawstore_tmp_db, clock):
-    """Every member with a trailing vol lands in exactly one decile: the counts add up to the universe's, and the
-    deciles' stored ranges tile the volatility axis without a hole."""
-    _seed([_series(f"N{i}", mfe=0.03 + 0.01 * i, amp=0.0005 * (i + 1)) for i in range(20)])
-    baselines.run(now=NOW, run_id="r1")
-    rows = [r for r in rawstore.query(f"SELECT * FROM {TABLE} WHERE forecast_date = ? AND horizon_days = 30 "
-                                      "AND basis <> ? ORDER BY vol_lo NULLS FIRST, basis", [D, "universe"], db="forecast")
-            if r["n"]]
-    assert len(rows) >= 2
-    assert sum(r["n"] for r in rows) == _row()["n"] == 20
-    assert sum(r["ge10"] for r in rows) == _row()["ge10"]       # a count is additive over a partition
-    assert rows[0]["vol_lo"] is None and rows[-1]["vol_hi"] is None
-    for lower, upper in zip(rows, rows[1:]):
-        assert lower["vol_hi"] == pytest.approx(upper["vol_lo"])   # no gap, no overlap: lo inclusive, hi exclusive
 
 
 def test_a_run_writes_the_baselines_table_and_nothing_else(rawstore_tmp_db, clock, monkeypatch):

@@ -15,7 +15,7 @@ from ... import ops
 from .. import base
 from .. import dirty as dirty_set
 from . import (KIND, common, companyfacts, earnings, estimates, facts, filings, fsds, uw_earnings,
-               uw_financials, wrds_fund)
+               wrds_fund)
 
 NAME = "fundamentals/tables"
 
@@ -111,11 +111,10 @@ TABLE_CHECKS: dict[str, list[str]] = {
     # Every row is annual or quarterly, and a non-preliminary row carries its accession and filed date.
     "fundamental_fact": ["CHECK (period_type IN ('annual', 'quarterly'))",
                          "CHECK (preliminary OR (accn IS NOT NULL AND filed IS NOT NULL))"],
-    # A document's text is never labelled ok at the cap (filings.CAPPED).
-    "filing_item": ["CHECK (kind IN ('item', 'document'))",
-                    "CHECK (quality IS NULL OR quality <> 'ok' OR item NOT IN ("
-                    + ", ".join(f"'{i}'" for i in filings.SLICED_ITEMS)
-                    + f") OR chars < {filings.max_text_chars()})"],
+    # Only ``item`` rows since #858: this layer cuts no document any more, so the ``document`` rows and the CHECK
+    # that refused ``ok`` at the Value Chain board's cap went with the cut. The ``kind`` column stays, because the
+    # readers filter on it and a served table keeps its shape. The text is ``filing_section`` (``sec/forms``).
+    "filing_item": ["CHECK (kind = 'item')"],
     "segment_revenue": ["CHECK (axis IN ('business', 'product', 'geographic'))"],
     "customer_share": ["CHECK (share IS NULL OR (share >= 0 AND share <= 1))"],
 }
@@ -127,9 +126,7 @@ STAGED: dict[str, list[tuple[str, str]]] = {
     companyfacts.STAGING["facts"]: facts.FACT,
     companyfacts.STAGING["company"]: facts.COMPANY,
     filings.STAGING["filings"]: filings.FILING,
-    filings.STAGING["documents"]: filings.DOCUMENT,
     earnings.STAGING: earnings.SCHEMA,
-    uw_financials.STAGING: facts.FACT,
     **{d.revision_staging: wrds_fund.REVISION for d in wrds_fund.DATASETS if d.revisions},
     estimates.STAGING: estimates.schema(),
     fsds.STAGING: fsds.SCHEMA,
@@ -204,35 +201,68 @@ def _ensure_staging(con: duckdb.DuckDBPyConnection) -> None:
 # ── The served tables ─────────────────────────────────────────────────────────────────────────────────────────
 
 def _facts(con: duckdb.DuckDBPyConnection, ciks=None) -> int:
-    """``fundamental_fact``: the SEC facts, one row per (company, field, period type, period end), and UW's
-    preliminary quarters after the company's newest SEC quarter (``uw_financials``; only when that is on).
+    """``fundamental_fact``: the SEC facts, one row per (company, field, period type, period end), and the periods
+    a company's predecessor CIK filed (#749).
 
-    A company's UW rows depend only on its own SEC rows, so a dirty company reloads both, and no other company's."""
+    The ``preliminary`` column and its CHECK stay: they are the fact table's shape, and changing it would bump the
+    serving version and rebuild every file. Nothing writes a preliminary row since ``uw/financials`` went (#659)."""
     _clear(con, "fundamental_fact", ciks, "dirty")
     names = _names("fundamental_fact")
     con.execute(f"""INSERT INTO fundamental_fact SELECT {names} FROM {companyfacts.STAGING['facts']}
                     QUALIFY row_number() OVER (PARTITION BY cik, field, period_type, period_end
                                                ORDER BY filed DESC, accn DESC) = 1""")
-    if uw_financials.enabled():
-        con.execute(f"""
-            INSERT INTO fundamental_fact SELECT {", ".join(f"u.{c}" for c in names.split(", "))}
-            FROM {uw_financials.STAGING} u
-            JOIN (SELECT cik, max(period_end) AS sec_end FROM fundamental_fact
-                  WHERE NOT preliminary AND period_type = '{facts.QUARTERLY}' GROUP BY cik) s ON s.cik = u.cik
-            WHERE u.period_type = '{facts.QUARTERLY}' AND u.period_end > s.sec_end + {uw_financials.MARGIN_DAYS}""")
+    _predecessor_facts(con, ciks)
     return common.count(con, "fundamental_fact")
 
 
+def _predecessor_facts(con: duckdb.DuckDBPyConnection, ciks=None) -> int:
+    """The periods a company filed under an older CIK, served under the company's own CIK (#749); how many rows.
+
+    A reorganisation or a redomicile gives the new registrant a new CIK, and the SEC serves everything filed before
+    it only under the old one (Exxon Mobil: 20 annual years under CIK 34088, none under the successor). The
+    predecessor's file is fetched as a company of its own (``companyfacts._with_predecessors``) and its rows stay
+    under its own CIK as well; this adds a copy under the successor.
+
+    **The guard is per field and period type**: only a period that ends *before* the successor's earliest period of
+    that field and period type is taken, and every period of a field the successor never filed. So a restatement
+    never replaces what the company itself reported, and the two never give one period two rows. The copied row
+    keeps the predecessor's own ``accn``, ``form`` and ``filed``, which say which registrant filed it.
+
+    A dirty build reaches here only for a dirty successor, because a changed predecessor partition marks its
+    successor dirty (``common.dirty_ciks``), whose rows were just cleared and rebuilt above.
+    """
+    pairs = common.predecessor_ciks()
+    if ciks is not None:
+        pairs = {c: p for c, p in pairs.items() if c in ciks}
+    rows = [{"predecessor_cik": pre, "cik": cik} for cik, pres in pairs.items() for pre in pres]
+    if not rows:
+        return 0
+    base.rows_table(con, "_predecessor", [("predecessor_cik", "TEXT"), ("cik", "TEXT")], rows)
+    cols = ", ".join(f'f."{c}"' for c, _ in SCHEMAS["fundamental_fact"] if c != "cik")
+    before = common.count(con, "fundamental_fact")
+    con.execute(f"""
+        INSERT INTO fundamental_fact
+        SELECT m.cik, {cols}
+        FROM (SELECT * FROM {companyfacts.STAGING['facts']}
+              QUALIFY row_number() OVER (PARTITION BY cik, field, period_type, period_end
+                                         ORDER BY filed DESC, accn DESC) = 1) f
+        JOIN _predecessor m ON m.predecessor_cik = f.cik
+        LEFT JOIN (SELECT cik, field, period_type, min(period_end) AS earliest FROM fundamental_fact
+                   GROUP BY cik, field, period_type) s
+               ON s.cik = m.cik AND s.field = f.field AND s.period_type = f.period_type
+        WHERE s.earliest IS NULL OR f.period_end < s.earliest""")
+    con.execute("DROP TABLE _predecessor")
+    return common.count(con, "fundamental_fact") - before
+
+
 def _filing_items(con: duckdb.DuckDBPyConnection, ciks=None) -> int:
-    """``filing_item``: every listed filing and 8-K item, and the document texts."""
+    """``filing_item``: every listed filing and 8-K item. The document texts went with the cut (#858): they are
+    ``filing_section`` of ``sec/forms``, the one cutter."""
     _clear(con, "filing_item", ciks, "dirty")
     con.execute(f"""
         INSERT INTO filing_item
         SELECT cik, accession, form, filing_date, report_date, primary_document, 'item', item, NULL, NULL, NULL,
-               '{filings.NAME}', source_as_of, fetched_at, run_id FROM {filings.STAGING['filings']}
-        UNION ALL
-        SELECT cik, accession, form, filing_date, report_date, primary_document, 'document', item, text, chars,
-               quality, '{filings.NAME}', source_as_of, fetched_at, run_id FROM {filings.STAGING['documents']}""")
+               '{filings.NAME}', source_as_of, fetched_at, run_id FROM {filings.STAGING['filings']}""")
     return common.count(con, "filing_item")
 
 
@@ -523,6 +553,9 @@ def _issues(con: duckdb.DuckDBPyConnection, as_of: date) -> list[tuple[str, str,
 
 
 class FundamentalsTables:
+    #: #812: the whole-universe build (5,352 Tier A tickers, 5.9 M facts on 12 Nov 2026) is the other half of
+    #: the pass that was OOM-killed beside ``sec/companyfacts``.
+    heavy = True
     name = NAME
     kind = KIND
     providers: tuple[str, ...] = ()
@@ -546,10 +579,11 @@ class FundamentalsTables:
     def to_parquet_all(self, ctx, raws) -> list:
         return []
 
-    def rules_state(self) -> str:
-        """The document cap the ``filing_item`` CHECK embeds (``filings.max_text_chars``) lives outside this package;
-        a live copy keeps the table and its old CHECK, so a change of the cap builds whole (#446)."""
-        return f"max_text_chars={filings.max_text_chars()}"
+    # ``rules_state`` went with the cut (#858). It named the document cap and whether the pinned cut capped at all,
+    # because both came from outside this package (``module_value_chain/splitter.py``) and a live copy keeps its
+    # old CHECK unless something restates it. No CHECK of this package embeds a value from outside it any more,
+    # and this package's own files are hashed by ``dirty.rules_fingerprint``, so this change builds whole by
+    # itself - which is what drops the ``document`` rows from a live ``filing_item``.
 
     def dirty(self, ctx: base.RunContext):
         """No Parquet of its own: what it serves is made from the sources' staging (#446)."""

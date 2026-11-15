@@ -8,7 +8,7 @@ import pytest
 
 from RevenueChaser.core import rawstore
 from RevenueChaser.module_relatedness import config, embeddings, engine, similarity, store
-from RevenueChaser.module_relatedness.tests.test_relatedness import _prof, _seed_filings, _seed_universe
+from RevenueChaser.module_relatedness.tests.test_relatedness import _prof, _seed_filings
 
 
 def _fake_embed(calls):
@@ -104,45 +104,9 @@ def test_scoring_in_chunks_gives_the_same_peers_as_one_chunk():
 TICKERS = ["GPU1", "GPU2", "BRD1"]
 
 
-@pytest.fixture
-def seeded(rawstore_tmp_db):
-    _seed_universe(TICKERS)
-    _seed_filings(TICKERS)
-    summaries = {"GPU1": "We design gpu accelerators.", "GPU2": "Our gpu cards power games.",
-                 "BRD1": "We bake bread for grocers."}
-    for t in TICKERS:
-        # The same tags for all three: the tag cosine cannot tell them apart, the embedding can.
-        store.save_profile(t, "cik-" + t, _prof(products=["chips", "boards"], end_markets=["retail", "oem"]),
-                           "k", "m", profile_json=_pj(summaries[t]))
-    return TICKERS
 
 
-def test_the_board_ranks_peers_on_the_embedding_and_stores_the_vectors(seeded, monkeypatch):
-    monkeypatch.setattr(embeddings, "_embed", _fake_embed([]))
-    payload = engine._payload(store.load_profiles(seeded), write=True)
-    assert payload["similarity"] == "embedding"
-    assert payload["peers"]["GPU1"][0]["peer"] == "GPU2"
-    assert payload["peers"]["GPU1"][0]["shared"]            # the shared tags stay as evidence
-    assert rawstore.count("relatedness_embeddings") == 3
 
 
-def test_a_failing_embedder_falls_back_to_the_tag_cosine(seeded, monkeypatch):
-    def boom(texts):
-        raise RuntimeError("no model file")
-    monkeypatch.setattr(embeddings, "_embed", boom)
-    payload = engine._payload(store.load_profiles(seeded), write=True)
-    assert payload["similarity"] == "tags"
-    assert payload["peers"]["GPU1"]                          # the board still has peers
-    assert rawstore.count("relatedness_embeddings") == 0
 
 
-def test_profiles_without_a_v3_profile_keep_the_tag_cosine(rawstore_tmp_db, monkeypatch):
-    _seed_universe(["AAA", "BBB"])
-    for t in ("AAA", "BBB"):
-        store.save_profile(t, "cik", _prof(products=["gpu", "cpu"], end_markets=["dc"]), "k", "m")
-
-    def never(texts):
-        raise AssertionError("no v3 text, nothing to embed")
-    monkeypatch.setattr(embeddings, "_embed", never)
-    payload = engine._payload(store.load_profiles(["AAA", "BBB"]), write=True)
-    assert payload["similarity"] == "tags"

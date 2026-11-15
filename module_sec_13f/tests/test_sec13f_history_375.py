@@ -12,10 +12,9 @@ from datetime import datetime, timezone
 import pytest
 
 from RevenueChaser.core import rawstore
-from RevenueChaser.module_sec_13f import engine, history as sec13f_history, report
+from RevenueChaser.module_sec_13f import engine, report
 from RevenueChaser.rcdata.tests.ownership_fixture import serve_13f
 
-BOARD, TABLE = "module_sec_13f", "sec13f_metrics_history"
 Q1, Q2, Q3 = "2025-12-31", "2026-03-31", "2026-06-30"
 COMPLETE = datetime(2026, 10, 6, 22, 0, tzinfo=timezone.utc).timestamp()
 
@@ -45,108 +44,30 @@ def store(rawstore_tmp_db):
     return rawstore_tmp_db
 
 
-def _headers():
-    return rawstore.query("SELECT * FROM result_runs WHERE board = ? ORDER BY run_at, run_id", [BOARD], db="history")
 
 
-def _rows(run_id):
-    return rawstore.query(f"SELECT * FROM {TABLE} WHERE run_id = ? ORDER BY ticker", [run_id], db="history")
 
 
-def test_metric_rows_are_the_board_entries_in_board_order():
-    quarter, rows = sec13f_history.metric_rows(TOTALS, META, ENRICH)
-    assert quarter == Q3
-    _, entries = report.board_entries(TOTALS, META, ENRICH)
-    assert [r["ticker"] for r in rows] == [e["ticker"] for e in entries] == ["AAA", "BBB"]
-    aaa = rows[0]
-    assert aaa["quarter"] == Q3 and aaa["shares"] == 300.0 and aaa["holders"] == 9 and aaa["value"] == 3000.0
-    assert aaa["name"] == "Aaa Corp" and aaa["sector"] == "Technology"
-    assert aaa["streak"] == 2 and aaa["accel"] == pytest.approx(100.0 - 50.0)
-    assert aaa["pct_out"] == pytest.approx(30.0) and aaa["price"] == 15.0 and aaa["price_delta"] == pytest.approx(50.0)
-    assert (aaa["shares_outstanding"], aaa["float_shares"], aaa["short_pct"], aaa["insider_pct"]) == \
-        (1000.0, 900.0, 2.5, 1.5)
-    assert aaa["shares_by_quarter"] == {Q1: 100.0, Q2: 150.0, Q3: 300.0}
-    assert aaa["chg_by_quarter"] == {Q2: pytest.approx(50.0), Q3: pytest.approx(100.0)}
-    assert aaa["cusips"] == ["111111111", "222222222"]
 
 
-def test_a_ticker_missing_from_the_latest_quarter_keeps_its_last_snapshot_under_the_board_quarter():
-    _, rows = sec13f_history.metric_rows(TOTALS, META, ENRICH)
-    bbb = rows[1]
-    assert bbb["quarter"] == Q3 and bbb["shares"] == 400.0 and bbb["shares_by_quarter"][Q3] is None
-    assert bbb["price"] is None and bbb["pct_out"] is None and bbb["cusips"] == ["333333333"]
 
 
-def test_cusips_by_ticker_reads_the_builders_map_for_that_quarter():
-    assert sec13f_history.cusips_by_ticker(Q3) == {"AAA": ["111111111", "222222222"], "BBB": ["333333333"]}
-    assert sec13f_history.cusips_by_ticker(None) == {}
 
 
-def test_a_fetch_records_a_header_and_one_row_per_board_row(store):
-    assert sec13f_history.record(SHOWN, run_id="r1", run_at=COMPLETE) == {TABLE: 2}
-    (head,) = _headers()
-    assert head["error"] is None and head["quality_note"] is None and head["warnings"] is None
-    ctx = json.loads(head["context"])
-    assert isinstance(ctx.pop("source_builds"), list)          # #566: the builds the run read
-    assert ctx == {"quarter": Q3, "tickers": 2}
-    rows = _rows("r1")
-    assert [r["ticker"] for r in rows] == ["AAA", "BBB"] and str(rows[0]["quarter"]) == Q3
-    assert json.loads(rows[0]["cusips"]) == ["111111111", "222222222"]
-    assert json.loads(rows[0]["shares_by_quarter"])[Q3] == 300.0
 
 
-def test_the_header_carries_model_version_and_params(store):
-    sec13f_history.record(SHOWN, run_id="r1", run_at=COMPLETE)
-    (head,) = _headers()
-    # 8: counts on today's split basis and a window of the last 6 settled quarters (#732).
-    assert head["model_version"] == sec13f_history.model_version() and head["model_version"].startswith("8+")
-    assert json.loads(head["params"])["START_QUARTER"] == engine.START_QUARTER
 
 
-def test_model_version_changes_with_a_setting(monkeypatch):
-    before = sec13f_history.model_version()
-    monkeypatch.setattr(engine, "START_QUARTER", "2024-12-31")
-    assert sec13f_history.model_version() != before
 
 
-def test_model_version_changes_with_the_stores_serving_schema(monkeypatch):
-    """The totals' rules are the builder's now (G9), so its schema version is what the hash watches."""
-    from RevenueChaser.rcdata import serving
-    before = sec13f_history.model_version()
-    monkeypatch.setitem(serving.SERVING_SCHEMA_VERSION, "ownership", 99)
-    assert sec13f_history.model_version() != before
 
 
-def test_every_run_keeps_its_rows_and_the_quarter_view_takes_the_last_error_free_run(store):
-    sec13f_history.record(SHOWN, run_id="r1", run_at=COMPLETE)
-    sec13f_history.record(SHOWN, run_id="r2", run_at=COMPLETE + 60)
-    sec13f_history.record(SHOWN, run_id="r3", run_at=COMPLETE + 120, error="RuntimeError: SEC index down")
-    assert len(_rows("r1")) == len(_rows("r2")) == len(_rows("r3")) == 2
-    view = rawstore.query("SELECT DISTINCT run_id FROM sec13f_metrics_by_quarter", db="history")
-    assert view == [{"run_id": "r2"}]
-    assert [h["error"] for h in _headers()] == [None, None, "RuntimeError: SEC index down"]
 
 
-def test_names_not_refreshed_make_the_run_partial_and_unmatched_cusips_are_a_warning(store):
-    sec13f_history.record(SHOWN, run_id="r1", run_at=COMPLETE, names_note="Names and sectors were not refreshed: x",
-                          unmatched="3 CUSIPs with no ticker are left out of the totals")
-    (head,) = _headers()
-    assert head["quality"] == "partial" and head["quality_note"] == "Names and sectors were not refreshed: x"
-    assert json.loads(head["warnings"]) == ["3 CUSIPs with no ticker are left out of the totals"]
-    assert len(_rows("r1")) == 2
 
 
-def test_unmatched_cusips_alone_do_not_make_the_run_partial(store):
-    sec13f_history.record(SHOWN, run_id="r1", run_at=COMPLETE, unmatched="3 CUSIPs with no ticker")
-    (head,) = _headers()
-    assert head["quality"] != "partial"
 
 
-def test_no_stored_totals_record_a_partial_header_without_rows(store):
-    assert sec13f_history.record({"totals": {}}, run_id="r1", run_at=COMPLETE) == {TABLE: 0}
-    (head,) = _headers()
-    assert head["quality"] == "partial" and "no 13F ownership totals are stored" in head["quality_note"]
-    assert json.loads(head["context"])["quarter"] is None
 
 
 def test_the_board_renders_the_same_entries():

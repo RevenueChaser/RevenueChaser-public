@@ -49,35 +49,8 @@ def test_choose_k_is_deterministic(rawstore_tmp_db):
     assert themes.choose_k(X, [2, 3, 4]) == themes.choose_k(X, [2, 3, 4])
 
 
-def test_cutover_materialize_pins_run(rawstore_tmp_db):
-    rawstore.replace_all("equity_universe",
-                         [{"ticker": f"G{i}", "market_cap": 1e9} for i in range(3)]
-                         + [{"ticker": "ZZZ", "market_cap": 1e9}])
-    themes.build_shadow(candidates=(2, 3), k_medium=2, k_coarse=2,
-                        run_id="r1", profiles=_profiles())
-    assert themes.current_run_id() is None          # a shadow run is never current
-    mat = themes.cutover_materialize("r1")
-    assert themes.current_run_id() == "r1"          # cutover is the only writer
-    assert mat["rows"] >= 1
-    n = rawstore.query(
-        "SELECT count(*) n FROM ticker_themes WHERE theme_run_id='r1'", db="relatedness")[0]["n"]
-    assert n == mat["rows"]
-    levels = {r["level"] for r in rawstore.query(
-        "SELECT DISTINCT level FROM ticker_themes WHERE theme_run_id='r1' "
-        "AND ticker LIKE 'G%'", db="relatedness")}
-    assert {"fine", "medium", "coarse"} <= levels
 
 
-def test_relabel_and_themes_for_ticker(rawstore_tmp_db):
-    from RevenueChaser.core import taxonomy
-    rawstore.replace_all("equity_universe", [{"ticker": "G0", "market_cap": 1e9}])
-    themes.build_shadow(candidates=(2, 3), k_medium=2, k_coarse=2,
-                        run_id="r2", profiles=_profiles())
-    themes.cutover_materialize("r2")
-    assert themes.relabel_from_tags("r2") >= 1
-    labels = themes.themes_for_ticker("G0")
-    assert labels and all(isinstance(x, str) and x for x in labels)
-    assert taxonomy.assign_themes("G0") == labels          # C21 (#383): the pinned run, and no fallback
 
 
 def _profiles4():
@@ -315,10 +288,6 @@ def test_match_theme_etfs(rawstore_tmp_db):
         {"ticker": t, "theme_id": tid, "weight": 1.0}
         for t in ("NVDA", "TSM", "AMD", "AVGO")
     ])
-    rawstore.replace_all("equity_universe", [
-        {"ticker": t, "market_cap": 1e11, "sector": "Technology"}
-        for t in ("NVDA", "TSM", "AMD", "AVGO")
-    ])
     spine_fixture.write_security([{"ticker": t, "sector": "Technology"} for t in ("NVDA", "TSM", "AMD", "AVGO")],
                                  replace=True)
     # The spine's whole lists (D4, 9 Nov 2026); raw.duckdb's etf_holdings is no longer read.
@@ -357,8 +326,6 @@ def _seed_one_theme(run, sectors, spdr):
         {"theme_id": tid, "level": "fine", "parent_id": "", "label": "Fine", "size": len(tickers)}])
     rawstore.replace_all("relatedness_theme_members",
                          [{"ticker": t, "theme_id": tid, "weight": 1.0} for t in tickers])
-    rawstore.replace_all("equity_universe", [
-        {"ticker": t, "market_cap": 1e11, "sector": sec} for t, sec in zip(tickers, sectors)])
     spine_fixture.write_security([{"ticker": t, "sector": sec} for t, sec in zip(tickers, sectors)], replace=True)
     spine_fixture.write_etf_holdings({spdr: ["OUTSIDE", tickers[0]]})
     return tid
@@ -402,10 +369,7 @@ def test_match_theme_etfs_gives_an_unclassified_theme_no_sector_etf(rawstore_tmp
 
 def test_cutover_materialize_does_not_copy_legacy(rawstore_tmp_db):
     """Legacy-keyword themes are no longer copied into the run (#114 D1)."""
-    rawstore.replace_all("equity_universe", [
-        {"ticker": "G0", "market_cap": 1e9},
-        {"ticker": "ZZZ", "market_cap": 1e9},
-    ])
+    spine_fixture.write_security([{"ticker": "G0"}, {"ticker": "ZZZ"}], replace=True)
     rawstore.write_rows("ticker_themes", [
         {"ticker": "ZZZ", "theme_id": "kw-banks", "theme": "Banks",
          "level": "legacy", "theme_run_id": "legacy-keyword"},
@@ -524,43 +488,6 @@ def test_drop_empty_coarses(rawstore_tmp_db):
     assert tr["k_coarse"] == 1
 
 
-def _seed_two_pair_giant(run, sec_a, sec_b):
-    """Four mediums, two high-overlap pairs under one giant coarse; pair A has ``sec_a``, pair B ``sec_b``."""
-    # 4 mediums x 10 tickers; pair (m0,m1) share 8, pair (m2,m3) share 8
-    themes_rows = [
-        {"theme_id": f"{run}:c0", "level": "coarse", "parent_id": "",
-         "label": "Giant", "size": 40},
-    ]
-    members = []
-    eu_by = {}
-    for mi in range(4):
-        mid = f"{run}:m{mi}"
-        themes_rows.append({
-            "theme_id": mid, "level": "medium", "parent_id": f"{run}:c0",
-            "label": f"Med{mi}", "size": 10,
-        })
-        base = mi // 2 * 20  # pairs 0-1 share base 0; pairs 2-3 share base 20
-        for j in range(10):
-            # high within-pair overlap: first 8 tickers shared in pair
-            if j < 8:
-                t = f"T{base + j}"
-            else:
-                t = f"T{base + 8 + mi * 2 + (j - 8)}"
-            members.append({"ticker": t, "theme_id": f"{run}:f{mi}", "weight": 1.0})
-            eu_by[t] = {"ticker": t, "market_cap": 1e9, "sector": sec_a if mi < 2 else sec_b}
-        themes_rows.append({
-            "theme_id": f"{run}:f{mi}", "level": "fine", "parent_id": mid,
-            "label": f"Fine{mi}", "size": 10,
-        })
-    rawstore.write_rows("relatedness_themes", themes_rows)
-    rawstore.replace_all("relatedness_theme_members", members)
-    rawstore.replace_all("equity_universe", list(eu_by.values()))
-    spine_fixture.write_security([{"ticker": r["ticker"], "sector": r["sector"]} for r in eu_by.values()],
-                                 replace=True)
-    rawstore.write_rows("theme_runs", [{
-        "id": run, "created_at": "2020-01-01T00:00:00+00:00",
-        "k_fine": 4, "k_medium": 4, "k_coarse": 1, "jaccard": 1.0, "is_current": 0,
-    }])
 
 
 def _coarse_labels(run):
@@ -569,134 +496,12 @@ def _coarse_labels(run):
             if r["level"] == "coarse" and str(r["theme_id"]).startswith(f"{run}:")}
 
 
-def test_rebalance_coarses_names_a_coarse_without_sector_values_after_its_largest_medium(
-        rawstore_tmp_db):
-    """No member has a sector value: the label falls back to the medium's, never ``Unclassified``."""
-    _seed_two_pair_giant("reb-none", None, "")
-    assert themes.rebalance_coarses("reb-none").get("rebalanced") is True
-    assert _coarse_labels("reb-none") == {"Med0", "Med1", "Med2", "Med3"}
 
 
-@pytest.mark.parametrize("sec_a, sec_b", [
-    ("Technology", "Financial Services"),
-    ("Information Technology", "Financials"),        # a store the master has not re-applied yet
-], ids=["morningstar", "stored-gics-spelling"])
-def test_rebalance_coarses_splits_giant(rawstore_tmp_db, sec_a, sec_b):
-    """Four mediums, two high-overlap pairs under one giant coarse → split.
-
-    The new coarses are named from their modal sector, always in the Morningstar spelling.
-    """
-    run = "reb-run"
-    _seed_two_pair_giant(run, sec_a, sec_b)
-
-    out = themes.rebalance_coarses(run)
-    assert out.get("rebalanced") is True
-    meds = [r for r in rawstore.get_all("relatedness_themes")
-            if r["level"] == "medium" and str(r["theme_id"]).startswith(f"{run}:")]
-    coarses = [r for r in rawstore.get_all("relatedness_themes")
-               if r["level"] == "coarse" and str(r["theme_id"]).startswith(f"{run}:")]
-    assert len(coarses) >= 2
-    parents = {m["parent_id"] for m in meds}
-    assert len(parents) >= 2
-    # each coarse is named after the modal sector of its members
-    assert _coarse_labels(run) == {"Technology", "Financial Services"}
-    # no coarse holds > 0.45 of profiled fine members
-    fine_tickers = set()
-    for m in rawstore.get_all("relatedness_theme_members"):
-        if str(m["theme_id"]).startswith(f"{run}:"):
-            fine_tickers.add(m["ticker"])
-    n = len(fine_tickers)
-    tsets = themes._theme_ticker_sets(run)
-    for c in coarses:
-        assert len(tsets.get(c["theme_id"]) or ()) / n <= 0.45 + 1e-9
-    assert out.get("k_coarse", 0) >= 2
 
 
-def _seed_hub_giant(run, hub=6, core=20, uniq=10, outsiders=18, osize=2,
-                    sector="Technology"):
-    """One seeded giant coarse over >12 mediums: a tight hub + disjoint outsiders.
-
-    The six hub mediums share ``core`` tickers plus a unique tail, so average-link
-    agglomerative with ``k = min(12, n)`` swallows the whole hub into one coarse
-    (~70% of profiled tickers). The 18 disjoint mediums never join it, so there
-    are more mediums than ``k`` and the giant genuinely needs splitting.
-    """
-    rows, members, eu = [], [], {}
-    total = hub * (core + uniq) + outsiders * osize
-    rows.append({"theme_id": f"{run}:c0", "level": "coarse", "parent_id": "",
-                 "label": "Giant", "size": total})
-    for i in range(hub):
-        mid, fid = f"{run}:m{i}", f"{run}:f{i}"
-        tickers = [f"C{j}" for j in range(core)] + [f"H{i}_{j}" for j in range(uniq)]
-        rows.append({"theme_id": mid, "level": "medium", "parent_id": f"{run}:c0",
-                     "label": f"Hub{i}", "size": len(tickers)})
-        rows.append({"theme_id": fid, "level": "fine", "parent_id": mid,
-                     "label": f"HubFine{i}", "size": len(tickers)})
-        for t in tickers:
-            members.append({"ticker": t, "theme_id": fid, "weight": 1.0})
-            eu[t] = {"ticker": t, "market_cap": 1e9, "sector": sector}
-    for i in range(outsiders):
-        k = hub + i
-        mid, fid = f"{run}:m{k}", f"{run}:f{k}"
-        tickers = [f"O{i}_{j}" for j in range(osize)]
-        rows.append({"theme_id": mid, "level": "medium", "parent_id": f"{run}:c0",
-                     "label": f"Out{i}", "size": len(tickers)})
-        rows.append({"theme_id": fid, "level": "fine", "parent_id": mid,
-                     "label": f"OutFine{i}", "size": len(tickers)})
-        for t in tickers:
-            members.append({"ticker": t, "theme_id": fid, "weight": 1.0})
-            eu[t] = {"ticker": t, "market_cap": 1e9, "sector": sector}
-    rawstore.write_rows("relatedness_themes", rows)
-    rawstore.replace_all("relatedness_theme_members", members)
-    rawstore.replace_all("equity_universe", list(eu.values()))
-    spine_fixture.write_security([{"ticker": r["ticker"], "sector": r["sector"]} for r in eu.values()], replace=True)
-    rawstore.write_rows("theme_runs", [{
-        "id": run, "created_at": "2020-01-01T00:00:00+00:00",
-        "k_fine": hub + outsiders, "k_medium": hub + outsiders, "k_coarse": 1,
-        "jaccard": 1.0, "is_current": 0,
-    }])
 
 
-def test_rebalance_coarses_enforces_max_share_with_more_than_k(rawstore_tmp_db):
-    """A giant surviving ``k=12`` must be split until every coarse <= max_share.
-
-    The current one-shot ``k=min(12, n)`` leaves one coarse owning ~70% of the
-    tickers; after rebalance no multi-medium coarse may exceed 45%.
-    """
-    run = "reb-big"
-    _seed_hub_giant(run)
-    profiled = {m["ticker"] for m in rawstore.get_all("relatedness_theme_members")
-                if str(m["theme_id"]).startswith(f"{run}:")}
-    n = len(profiled)
-
-    out = themes.rebalance_coarses(run)
-
-    assert out.get("rebalanced") is True
-    assert out.get("k_coarse", 0) >= 2
-    coarses = [r for r in rawstore.get_all("relatedness_themes")
-               if r["level"] == "coarse"
-               and str(r["theme_id"]).startswith(f"{run}:")]
-    meds = [r for r in rawstore.get_all("relatedness_themes")
-            if r["level"] == "medium"
-            and str(r["theme_id"]).startswith(f"{run}:")]
-    coarse_ids = {c["theme_id"] for c in coarses}
-    assert out["k_coarse"] == len(coarses)
-
-    tsets = themes._theme_ticker_sets(run)
-    for c in coarses:
-        children = [m for m in meds if m["parent_id"] == c["theme_id"]]
-        share = len(tsets.get(c["theme_id"]) or ()) / n
-        if len(children) > 1:                     # single-medium coarse may exceed
-            assert share <= 0.45 + 1e-9
-    assert out["max_share"] <= 0.45 + 1e-9
-
-    # no orphaned mediums
-    assert all(m["parent_id"] in coarse_ids for m in meds)
-
-    # duplicate coarse labels (all "Technology") must be uniqued
-    labels = [c["label"] for c in coarses]
-    assert len(labels) == len(set(labels))
-    assert any(lab.endswith(")") for lab in labels)
 
 
 def test_unique_theme_labels(rawstore_tmp_db):

@@ -158,57 +158,10 @@ def _board(path: Path, rows: int, schema: int | None = None, keep_wal: bool = Fa
     con.close()
 
 
-def test_board_files_are_the_legacy_store_files_and_boards_dir(backup_dir):
-    raw = Path(rawstore.DB_PATH)
-    _board(raw, 2)
-    _board(rawstore.history_db_path(), 3)
-    _board(raw.parent / "boards" / "sec_13f.duckdb", 4)
-    _board(raw.parent / "boards" / "value_chain.duckdb", 5)
-    (raw.parent / "boards" / "notes.txt").write_text("x")
-    assert [p.name for p in backup.board_files()] == ["raw.duckdb", "history.duckdb", "sec_13f.duckdb",
-                                                       "value_chain.duckdb"]
 
 
-def test_the_boards_step_checkpoints_the_wal_then_copies_and_verifies(backup_dir):
-    raw = Path(rawstore.DB_PATH)
-    _board(raw, 6, schema=41, keep_wal=True)
-    _board(raw.parent / "boards" / "sec_13f.duckdb", 4)
-    assert raw.with_name("raw.duckdb.wal").exists()
-    summary = backup.run_backup(only="boards")["boards"]
-    assert set(summary) == {"raw", "sec_13f"}
-    assert not raw.with_name("raw.duckdb.wal").exists()                           # the CHECKPOINT flushed it
-    out = backup_dir / "boards"
-    copy = summary["raw"]
-    con = duckdb.connect(str(copy), read_only=True)
-    assert con.execute("SELECT count(*) FROM r").fetchone()[0] == 6
-    con.close()
-    entry = _manifest(out)["files"][copy.name]
-    assert entry["store_schema"] == 41 and entry["tables"]["r"][0] == 6 and entry["source"] == "weekly"
-    assert _manifest(out)["files"][summary["sec_13f"].name]["store_schema"] is None
 
 
-def test_a_board_held_by_a_peer_is_waited_out_and_the_other_boards_still_copied(backup_dir, monkeypatch):
-    raw = Path(rawstore.DB_PATH)
-    _board(raw, 1)
-    _board(raw.parent / "boards" / "a.duckdb", 2)
-    _board(raw.parent / "boards" / "b.duckdb", 3)
-    monkeypatch.setattr(backup, "ATTEMPTS", 2)
-    monkeypatch.setattr(backup.time, "sleep", lambda s: None)
-    calls: dict[str, int] = {}
-    real = backup._checkpoint
-
-    def flaky(path):
-        calls[path.name] = calls.get(path.name, 0) + 1
-        if path.name == "a.duckdb" and calls[path.name] == 1:
-            raise rawstore.StoreLockedError("held by the dashboard")
-        if path.name == "b.duckdb":
-            raise rawstore.StoreLockedError("held for good")
-        real(path)
-    monkeypatch.setattr(backup, "_checkpoint", flaky)
-    with pytest.raises(backup.BackupFailed, match="b.duckdb"):
-        backup.run_backup(only="boards")
-    names = sorted(p.name.split("_")[0] for p in (backup_dir / "boards").glob("*.duckdb"))
-    assert names == ["a", "raw"] and calls == {"raw.duckdb": 1, "a.duckdb": 2, "b.duckdb": 2}
 
 
 def test_the_boards_step_with_no_board_file_writes_nothing_but_the_folder(backup_dir):

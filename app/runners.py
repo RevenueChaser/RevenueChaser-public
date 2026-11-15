@@ -3,7 +3,6 @@
 These are the glue between the dashboard server and the existing engines/exporters.
 Each runner returns the Path to the generated file (or None if nothing was produced).
 """
-import functools
 import json
 import logging
 import time
@@ -13,9 +12,8 @@ from pathlib import Path
 
 from RevenueChaser.core.providers.unusual_whales import UWClient
 from RevenueChaser.core.config import OUTPUT_DIR
-from RevenueChaser.core.gics_map import UNCLASSIFIED, is_unclassified, sector_or_unclassified
 from RevenueChaser.module_earnings_radar.pipeline import EarningsPipeline
-from RevenueChaser.core import job_control, job_lock, ledger, run_counts
+from RevenueChaser.core import job_lock, ledger
 from .jobs import GAPS, JobMessage, run_id
 
 logger = logging.getLogger(__name__)
@@ -216,40 +214,17 @@ _CALENDAR_SOURCES: dict = {}
 
 
 def _fetch_calendar_days(uw: UWClient, days: list[date]) -> tuple[list, dict]:
-    """Fetch calendar events for the given days (weekends skipped), from the store when the nightly sweep covered
-    the (day, session) pair and from UW for the pairs it did not.
-
-    The pairs are walked in the same order as the live-only read, so ``raw_cal``'s "premarket wins" rule gives the
-    same answer either way.
-
-    Today's and the next trading day's pairs are always read live (0-4 calls: none when the Fetch's days miss them): the stored row is last night's, and
-    the EM gate, the daily cap, R4 and the card's estimate and report time read it, fields UW moves during the
-    day for the names about to report (review S4).
-    """
-    from RevenueChaser.core import calendar
-    from RevenueChaser.module_earnings_radar import stored_inputs
+    """Fetch calendar events for the given days (weekends skipped) from UW, premarket first so ``raw_cal``'s
+    "premarket wins" rule holds. The stored D26 calendar went with raw.duckdb (#860), so every pair is live."""
     events = []
     raw_cal = {}
-    covered, _session = stored_inputs.calendar_items(days)
-    today = calendar.today_ny()
-    try:
-        live_until = calendar.next_trading_day(today)
-    except ValueError:                  # past the holiday table (late 2028): no next trading day is known, so
-        # no pair is forced live and the store decides; the holiday table's yearly update removes this case
-        live_until = today - timedelta(days=1)
-    n_stored = n_live = 0
+    n_live = 0
     for d in days:
         if d.weekday() >= 5:
             continue
         for session in ("premarket", "afterhours"):
-            items = None if today <= d <= live_until else covered.get((d, session))
-            if items:
-                n_stored += 1
-                rows = sorted(items, key=lambda i: str(i.get("symbol") or i.get("ticker") or ""))
-            else:
-                n_live += 1
-                rows = uw.calendar_day_raw(d, session)
-            for item in rows:
+            n_live += 1
+            for item in uw.calendar_day_raw(d, session):
                 ev = _calendar_event(item, d, session)
                 if ev is None:
                     continue
@@ -258,8 +233,7 @@ def _fetch_calendar_days(uw: UWClient, days: list[date]) -> tuple[list, dict]:
                 if t not in raw_cal or session == "premarket":
                     raw_cal[t] = ev
     _CALENDAR_SOURCES.clear()
-    _CALENDAR_SOURCES.update({"stored": n_stored, "live": n_live,
-                              "session": _session.isoformat() if _session else None})
+    _CALENDAR_SOURCES.update({"stored": 0, "live": n_live, "session": None})
     return events, raw_cal
 
 
@@ -281,22 +255,6 @@ def _no_cards_text(n_tickers: int, stats: dict | None, gap: str | None) -> str:
                 + (f" {gap}" if gap else ""))
     return (f"{n_tickers} calendar tickers could not be scored; see the dashboard log."
             + (f" {gap}" if gap else ""))
-
-
-def _record_earnings_history(cards, nrc, *, uw, span, events, filter_stats=None, rotation_failed=False,
-                             reason=None, screener=None, run_at=None, input_sources=None) -> None:
-    """Result history of an Earnings Fetch (#278): after the board is written, before a JobMessage ends the job.
-
-    A failure is a job note, never a failed Fetch: the board file does not depend on it."""
-    from RevenueChaser.module_earnings_radar import history as er_history
-    try:
-        er_history.record(cards, nrc, run_id=_freeze_run_id(),
-                          run_at=run_at if run_at is not None else time.time(), uw_health=_uw_health(uw),
-                          filter_stats=filter_stats, span=span, events=events, rotation_failed=rotation_failed,
-                          reason=reason, screener=screener, input_sources=input_sources)
-    except Exception as exc:
-        logger.exception("Earnings result history failed")
-        ledger.add_note(f"Earnings result history was not recorded: {type(exc).__name__}: {exc}")
 
 
 def run_earnings_range(uw: UWClient, start: date | None = None, end: date | None = None,
@@ -328,13 +286,9 @@ def run_earnings_range(uw: UWClient, start: date | None = None, end: date | None
             message = f"Could not load the earnings calendar: {gap}"
             _write_empty_board(EARNINGS_LATEST, "Earnings Radar", message,
                                "Run Fetch again later; the previous calendar is not shown.")
-            _record_earnings_history([], {}, uw=uw, span=span, events=events, reason=message, run_at=run_at,
-                                     input_sources={"calendar": calendar_sources})
             raise JobMessage(message)
         message, hint = empty_msg
         _write_empty_board(EARNINGS_LATEST, "Earnings Radar", message, hint)
-        _record_earnings_history([], {}, uw=uw, span=span, events=events, reason=message, run_at=run_at,
-                                 input_sources={"calendar": calendar_sources})
         raise JobMessage(message)
 
     tickers = list(dict.fromkeys(e["ticker"] for e in events))
@@ -345,7 +299,6 @@ def run_earnings_range(uw: UWClient, start: date | None = None, end: date | None
     except Exception as e:
         logger.warning(f"Rotation engine failed: {e}")
         etf_quadrant_map = {}
-    rotation_failed = not etf_quadrant_map          # raised, or came back empty (SPY weekly bars short): no quadrants
 
     pipeline = EarningsPipeline(tickers, uw, raw_cal, etf_quadrant_map=etf_quadrant_map)
     # What the calendar read came from (E5a, #372): pairs covered by the store vs pairs asked of UW live.
@@ -353,55 +306,30 @@ def run_earnings_range(uw: UWClient, start: date | None = None, end: date | None
     if isinstance(sources, dict):
         sources["calendar"] = calendar_sources
     cards = pipeline.run(use_preselect=True)
-    job_id = _freeze_run_id()           # one id for the vendor rows and the prints (a second call could differ)
-    vendor = getattr(pipeline, "vendor", None)
-    if vendor is not None:              # the UW statements the run read, stored with the job's id (#297)
-        vendor.flush(run_id=job_id, label="Earnings")
-    prints = getattr(pipeline, "earnings_capture", None)
-    if prints is not None:              # the UW earnings rows the run read, appended on change (#298, D13)
-        prints.flush(run_id=job_id, label="Earnings")
 
-    from RevenueChaser.module_earnings_radar.report import export_html
-    from RevenueChaser.module_earnings_radar import history as er_history
+    from RevenueChaser.module_earnings_radar.report import export_html, screener_problem
 
     nrc = _compute_nrc_results(cards)
-    # A partial/failed screener answer is one story, told on the board and in the history note (E2, #372).
+    # A partial/failed screener answer is told on the board (E2, #372).
     screener = getattr(pipeline, "screener_result", None)
     export_html(cards, events, nrc, filename=str(EARNINGS_LATEST.relative_to(OUTPUT_DIR)),
                 filter_stats=pipeline._filter_stats, provider_health=_uw_health(uw),
-                notice=er_history.screener_problem(screener), run_at=run_at)
-    # Result history (#278): the board file is written, a JobMessage below still follows. A Refresh has no path here.
-    no_cards = (_no_cards_text(len(tickers), pipeline._filter_stats, _provider_gap_text(uw))
-                if not cards else None)
-    _record_earnings_history(cards, nrc, uw=uw, span=span, events=events, filter_stats=pipeline._filter_stats,
-                             rotation_failed=rotation_failed, reason=no_cards, screener=screener, run_at=run_at,
-                             input_sources=getattr(pipeline, "input_sources", None))
+                notice=screener_problem(screener), run_at=run_at)
     if not cards:
         # E23: an empty table with a "done" job reads as a broken Fetch. Say why.
-        raise JobMessage(no_cards)
+        raise JobMessage(_no_cards_text(len(tickers), pipeline._filter_stats, _provider_gap_text(uw)))
     return EARNINGS_LATEST
 
 
 def run_leaps_latest(uw: UWClient) -> Path:
     from RevenueChaser.module_leaps.scan import scan_leaps
     from RevenueChaser.module_leaps.report import render_leaps_dashboard
-    from RevenueChaser.module_leaps import history as leaps_history
     notes: list[str] = []
-    footprints: list[dict] = []                # every watchlist footprint, for the result history (#377)
-    run, run_at = _freeze_run_id(), time.time()
-    watched, unwatched = scan_leaps(uw, warnings=notes, footprints=footprints)
+    watched, unwatched = scan_leaps(uw, warnings=notes)
     health = _uw_health(uw)
     render_leaps_dashboard(watched, unwatched, watchlist=_load_watchlist(),
                            filename=str(LEAPS_LATEST.relative_to(OUTPUT_DIR)),
                            provider_health=health, notice=" ".join(notes) or None)
-    # Result history (#377): after the board file, so it holds what the board showed. A failure is a job note,
-    # never a failed Fetch: the board file does not depend on it.
-    try:
-        leaps_history.record(footprints, run_id=run, run_at=run_at, uw_health=health, warnings=notes,
-                             shown={"watched": len(watched), "unwatched": len(unwatched)})
-    except Exception as exc:
-        logger.exception("LEAPS result history failed")
-        ledger.add_note(f"LEAPS result history was not recorded: {type(exc).__name__}: {exc}")
     if not watched and not unwatched:
         # The empty board is written above; say why on the job too (O13).
         raise JobMessage(_provider_gap_text(uw)
@@ -410,49 +338,18 @@ def run_leaps_latest(uw: UWClient) -> Path:
     return LEAPS_LATEST
 
 
-def last_fetch_notice(board: str, *, partial: bool = False) -> str | None:
-    """C24 (#383): the last Fetch's notes for a Refresh, from its result-history header (K2, ``history.last_run``).
-
-    The header's ``warnings``, after its partial reason when ``partial`` (13F records "names not refreshed" there),
-    as one line marked with the time the Fetch ran. ``None`` when no run is recorded, it has no notes, or the history
-    cannot be read (a Refresh never fails on it). A read never creates the history file, and waits only briefly for
-    another RevenueChaser process that holds it.
-    """
-    from datetime import datetime, timezone
-    from RevenueChaser.core import history, rawstore
-    try:
-        with rawstore.brief_wait():
-            head = history.last_run(board)
-    except Exception as exc:  # noqa: BLE001 - a missing note line, never a failed Refresh
-        logger.warning("%s: last Fetch notes not read: %s", board, exc)
-        return None
-    if not head:
-        return None
-    notes = [head["quality_note"]] if partial and head.get("quality") == "partial" and head.get("quality_note") else []
-    notes += [str(w) for w in (head.get("warnings") or []) if w]
-    if not notes:
-        return None
-    try:
-        when = datetime.fromtimestamp(float(head["run_at"]), timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    except (KeyError, TypeError, ValueError, OverflowError, OSError):
-        when = "time unknown"
-    return f"Last Fetch ({when}): " + " ".join(notes)
-
-
 def run_leaps_cached(uw=None) -> Path:
     """Model-only LEAPS render from the store — no network.
 
     Reads the last cached footprint per watchlist ticker (``leaps_cache``) and
     the stored far-dated prints (``leaps_flow_prints``), then renders the board.
     The dashboard's Refresh uses this; the live UW re-scan is ``run_leaps_latest``.
-    The last Fetch's notes come back from its history header (C24, #383).
     """
     from RevenueChaser.module_leaps.scan import scan_leaps_cached
     from RevenueChaser.module_leaps.report import render_leaps_dashboard
     watched, unwatched = scan_leaps_cached()
     render_leaps_dashboard(watched, unwatched, watchlist=_load_watchlist(),
-                           filename=str(LEAPS_LATEST.relative_to(OUTPUT_DIR)),
-                           notice=last_fetch_notice("module_leaps"))
+                           filename=str(LEAPS_LATEST.relative_to(OUTPUT_DIR)))
     return LEAPS_LATEST
 
 
@@ -462,9 +359,9 @@ def run_rotation_latest(uw: UWClient, benchmark: str = "SPY", start: str = None,
         RotationEngine, fetch_all_holdings, sector_etf_trees,
     )
     from RevenueChaser.module_sector_rotation.report import export_rotation_dashboard
-    from RevenueChaser.module_sector_rotation import history as rotation_history, store as rotation_store
+    from RevenueChaser.module_sector_rotation import engine as rotation_engine, store as rotation_store
 
-    run, run_at, window, saved, kept, notes = _freeze_run_id(), time.time(), None, [], None, []
+    kept, notes = None, []
     short, stale, carried = [], None, []
     if start or end:
         # Range fetch: reconstruct snapshots for every week in [start, end].
@@ -481,7 +378,6 @@ def run_rotation_latest(uw: UWClient, benchmark: str = "SPY", start: str = None,
             dates = rotation_store.list_snapshot_dates()
             s = _date.fromisoformat(dates[0]) if dates else e
             s = min(s, e)
-        window = (s, e)
         backfill = rotation_store.backfill_weekly(uw, s, e)
         # Days the backfill refused to write (D01 short of SPY for them) go in the
         # job message, so a gap in the trail is explained instead of looking like a quiet week.
@@ -498,7 +394,7 @@ def run_rotation_latest(uw: UWClient, benchmark: str = "SPY", start: str = None,
         engine = RotationEngine(uw, benchmark=benchmark)
         snapshots = engine.process_all()
         if not snapshots:
-            return _rotation_empty_fetch(uw, run, run_at, benchmark)
+            return _rotation_empty_fetch(uw, benchmark)
         short = list(getattr(engine, "too_short", None) or [])
         carried = list(getattr(engine, "carried", None) or [])
         stale = getattr(engine, "stale", None)
@@ -520,17 +416,19 @@ def run_rotation_latest(uw: UWClient, benchmark: str = "SPY", start: str = None,
             snapshots, stale = stored, None
         else:
             day = getattr(snapshots[0], "as_of_date", None)
-            saved = rotation_store.save_snapshot(snapshots, as_of=day, benchmark=benchmark) or []
+            rotation_store.save_snapshot(snapshots, as_of=day, benchmark=benchmark)
             if missing:
                 notes.append(f"{len(missing)} of {len(missing) + len(snapshots)} rotation ETFs are missing from the "
                              f"live RRG pull (no stored series up to the session): {', '.join(missing)}. Saved without "
-                             "them; the run is recorded as partial.")
+                             "them.")
             if stale:
                 notes.append(f"{stale}.")
         if short:
-            notes.append(f"{rotation_history.short_warning(short)}.")
+            notes.append(f"{len(short)} rotation symbol(s) have under {rotation_engine.MIN_WEEKS} weeks of stored "
+                         f"daily bars and are left off the map until their history grows: {', '.join(short)}.")
         if carried and not kept:
-            notes.append(f"{rotation_history.carried_warning(carried)}.")
+            notes.append(f"{len(carried)} macro series have no value of the session's week in market_series yet "
+                         f"and are plotted with the week before's: {', '.join(carried)}.")
     # Embed holdings so the served map is self-contained (expandable rows work
     # even if the holdings route is unavailable / server is stale). Theme rows
     # only (ROT-4): sector rows expand to the sector -> industry tree
@@ -546,24 +444,9 @@ def run_rotation_latest(uw: UWClient, benchmark: str = "SPY", start: str = None,
                                           uw=uw, benchmark=benchmark, holdings=holdings,
                                           sector_holdings=sector_holdings,
                                           provider_health=health)
-    # Result history (#374): after the board file, so it holds what the board showed.
-    _record_rotation(rotation_history, snapshots, holdings, sector_holdings, run, run_at, health, benchmark,
-                     window=window, warnings=[backfill_note] if backfill_note else None, snapshot_rows=saved,
-                     kept=kept, too_short=short, stale=stale, carried=carried if not kept else None)
     if notes:
         raise JobMessage(" ".join(notes))
     return html_path
-
-
-def _record_rotation(rotation_history, snapshots, holdings, sector_holdings, run, run_at, health, benchmark,
-                     **kw) -> None:
-    """Result history (#374). A failure is a job note, never a failed Fetch: the board file does not depend on it."""
-    try:
-        rotation_history.record_rotation(snapshots, holdings, sector_holdings, run_id=run, run_at=run_at,
-                                         uw_health=health, benchmark=benchmark, **kw)
-    except Exception as exc:
-        logger.exception("Rotation result history failed")
-        ledger.add_note(f"Rotation result history was not recorded: {type(exc).__name__}: {exc}")
 
 
 def _rotation_missing(snapshots, short=()) -> list[str]:
@@ -589,13 +472,11 @@ def _stored_session_snapshot(snapshots, same_width: bool = False) -> list:
     return _rows_to_snapshots(rows) if rows and (stored > live or (same_width and stored >= live)) else []
 
 
-def _rotation_empty_fetch(uw, run, run_at, benchmark) -> Path:
+def _rotation_empty_fetch(uw, benchmark) -> Path:
     """A live Fetch whose RRG pull returned no ETF (ROT-5): the board is not blanked.
 
-    The board file stays as it is; only a first run, with no board yet, writes the empty map. Either way the
-    history header records the run as partial and the job says so."""
+    The board file stays as it is; only a first run, with no board yet, writes the empty map. The job says so."""
     from RevenueChaser.module_sector_rotation.report import export_rotation_dashboard
-    from RevenueChaser.module_sector_rotation import history as rotation_history
     health = _uw_health(uw)
     if ROTATION_LATEST.exists():
         what = "the board was not rewritten (it keeps its last render)"
@@ -603,7 +484,6 @@ def _rotation_empty_fetch(uw, run, run_at, benchmark) -> Path:
         export_rotation_dashboard([], filename=str(ROTATION_LATEST.relative_to(OUTPUT_DIR)), uw=uw,
                                   benchmark=benchmark, provider_health=health)
         what = "the board shows its empty state"
-    _record_rotation(rotation_history, [], {}, {}, run, run_at, health, benchmark)
     raise JobMessage(" ".join(filter(None, [
         _provider_gap_text(uw), f"The live RRG pull returned no ETF; {what}."])))
 
@@ -651,9 +531,7 @@ def run_money_flow_latest(uw: UWClient, days: int = 30) -> Path:
     from datetime import datetime
     from RevenueChaser.module_sector_rotation.money_flow import compute_money_flow
 
-    run, run_at = _freeze_run_id(), time.time()
     result = compute_money_flow(days=days, window=_MF_WINDOW, top_n=_MF_TOP_N)
-    record = functools.partial(_record_money_flow, result, run, run_at, uw, days)   # result history (#374)
     partial = bool(result.get("partial"))
     empty = not (result.get("inflows") or result.get("outflows"))
     try:
@@ -666,55 +544,14 @@ def run_money_flow_latest(uw: UWClient, days: int = 30) -> Path:
     why = ("Money flow came back empty (no stored daily bars to rank)" if empty else
            f"Money flow is partial ({len(missing)} ETF(s) with no stored daily bars up to the session: "
            f"{', '.join(missing)})")
-    if empty or partial:
-        # The guard is the newest complete session in result history (ROT-9, K2), not the regenerable .cache file:
-        # a thin pull never replaces it, and a deleted board file is rebuilt from it.
-        try:
-            stored, read = _money_flow_stored(), True
-        except Exception as exc:  # noqa: BLE001 - a history fault falls back to the board file, as before
-            logger.warning("Money Flow history read failed (%s: %s); the guard reads the board file",
-                           type(exc).__name__, exc)
-            stored, read = None, False
-        if stored:
-            # A missing, empty or partial board file is rebuilt from the complete session, so the board shows the
-            # leaderboard the message names (review 2026-10-16).
-            if not MONEY_FLOW_LATEST.exists() or not shown or prev.get("partial"):
-                board = {k: stored[k] for k in ("inflows", "outflows", "generated_at", "as_of")}
-                _write_output("sector_rotation", json.dumps(board, indent=2), "latest", ext="json")
-                kept = stored["as_of"] or "the last complete run"
-            else:
-                kept = prev_when
-            record(kept=kept)
-            raise JobMessage(f"{why}; kept the stored leaderboard from {kept}.")
-        # Nothing complete recorded: an empty pull still never replaces a board file with rows (PL2 / N1), and when
-        # history could not be read a partial one does not replace a whole board file (#166).
-        if shown and (empty or (not read and not prev.get("partial"))):
-            record(kept=prev_when)
-            raise JobMessage(f"{why}; kept the stored leaderboard from {prev_when}.")
+    # An empty pull never replaces a board file with rows, and a partial one never replaces a whole one (PL2, #166).
+    if (empty or partial) and shown and (empty or not prev.get("partial")):
+        raise JobMessage(f"{why}; kept the stored leaderboard from {prev_when}.")
     result["generated_at"] = datetime.now().isoformat()
     _write_output("sector_rotation", json.dumps(result, indent=2), "latest", ext="json")
-    record()
     if partial:
         raise JobMessage(f"{why}; saved flagged on the board.")
     return MONEY_FLOW_LATEST
-
-
-def _money_flow_stored() -> dict | None:
-    """The newest complete Money Flow leaderboard in result history (``history.stored_leaderboard``)."""
-    from RevenueChaser.module_sector_rotation import history as rotation_history
-    return rotation_history.stored_leaderboard()
-
-
-def _record_money_flow(result: dict, run: str, run_at: float, uw, days: int, kept: str | None = None) -> None:
-    """Result history (#374): after the leaderboard file, or where the stored one was kept. A failure is a job note,
-    never a failed Fetch: the board file does not depend on it."""
-    from RevenueChaser.module_sector_rotation import history as rotation_history
-    try:
-        rotation_history.record_money_flow(result, run_id=run, run_at=run_at, days=days, window=_MF_WINDOW,
-                                           top_n=_MF_TOP_N, uw_health=_uw_health(uw), kept=kept)
-    except Exception as exc:
-        logger.exception("Money Flow result history failed")
-        ledger.add_note(f"Money Flow result history was not recorded: {type(exc).__name__}: {exc}")
 
 
 def run_sec_13f_latest(uw: UWClient | None = None, notice: str | None = None,
@@ -762,86 +599,6 @@ def run_sec_13f_latest(uw: UWClient | None = None, notice: str | None = None,
     return SEC_13F_LATEST
 
 
-def build_sec13f_meta(uw: UWClient) -> dict:
-    """Enrich the full SEC 13F universe (totals keys) with name/sector/type.
-
-    Writes the dedicated 13F security meta so the 13F board covers every ticker
-    in the totals, not just a watchlist.
-    """
-    from RevenueChaser.module_sec_13f import engine as sec_13f
-    from RevenueChaser.module_sec_13f.universe_info import fetch_universe_info
-
-    totals = sec_13f.load_totals()
-    universe = sorted({t for t in totals if t})
-    info = fetch_universe_info(uw, universe)
-    # Start from the stored meta, not from blank: a failed or partial screener
-    # pass must not wipe names/sectors it did not return (PL2 / N1, O18).
-    stored = sec_13f.load_sec13f_meta()
-    meta = {t: stored.get(t) or {"name": "", "sector": UNCLASSIFIED, "type": "Other"}
-            for t in universe}
-    if not info and stored:
-        logger.warning("13F meta: screener returned nothing; kept %d stored rows",
-                       sum(1 for t in universe if t in stored))
-    _apply_universe_info(meta, info)
-    sec_13f.save_sec13f_meta(meta)
-    return meta
-
-
-def _apply_universe_info(meta: dict, info: dict) -> None:
-    """Merge screener info (name/sector/type) into the shared meta cache.
-
-    ``sector`` is a Morningstar sector name (UW's list; ``universe_info.resolve_sector`` maps the screener's
-    spelling through ``canonical_sector``), an asset class (crypto, indices) or unknown. The cache stores the
-    unknown bucket, ``Unclassified``, either way (a legacy ``Other`` reads as unknown too). ``type`` is the
-    security type (ETF / Stock / Other), not a sector value.
-    """
-    for t, i in info.items():
-        if i.get("name") or not is_unclassified(i.get("sector")):
-            meta[t] = {"name": i.get("name", ""), "sector": sector_or_unclassified(i.get("sector")),
-                       "type": i.get("type", "Other")}
-
-
-def _refresh_13f_meta(uw) -> tuple[dict | None, str | None, UWClient | None]:
-    """The UW name/sector step, best-effort: ``(provider_health, note, client)``.
-
-    The 13F job needs no UW key (the store's numbers are the board), so a missing key or an
-    outage only means the stored names and sectors stay as they were; ``note`` says
-    so for the board. Skipped entirely (F-1) when the stored meta already covers every ticker in the totals: with
-    the ingest gone, a new quarter shows up as a ticker the meta does not cover yet.
-    A client is opened here when the runner was not given one, and returned so the caller can close it.
-    """
-    from RevenueChaser.module_sec_13f import engine as sec_13f
-    universe = {t for t in sec_13f.load_totals() if t}
-    meta = sec_13f.load_sec13f_meta()
-    # Covered = a real name or sector. A failed UW pass leaves ''/Unclassified
-    # placeholders; counting those would skip the retry until a new zip lands (B2).
-    covered = {t for t, m in meta.items()
-               if (m or {}).get("name") or not is_unclassified((m or {}).get("sector"))}
-    if not universe or universe <= covered:
-        return None, None, None
-    own = None
-    if uw is None:
-        uw = own = UWClient()
-    try:
-        ok, message = uw.verify()
-        if not ok:
-            return None, f"Names and sectors were not refreshed: {message}", own
-        try:
-            build_sec13f_meta(uw)
-        except Exception as exc:  # noqa: BLE001 - best-effort: the SEC data stands without it
-            logger.warning("13F meta step failed: %s", exc)
-            return None, f"Names and sectors were not refreshed: {exc}", own
-        health = _uw_health(uw)
-        gaps = int((health or {}).get("failed") or 0)
-        note = ("Names and sectors may be incomplete: some Unusual Whales calls failed."
-                if gaps else None)
-        return health, note, own
-    except Exception:
-        if own is not None:
-            own.close()
-        raise
-
-
 def _sec13f_busy_message() -> str:
     """The message a refused 13F job ends with: another Fetch, rebuild or map holds the family's lock (#26)."""
     pid = dict(job_lock.holders()).get("sec_13f", 0)
@@ -850,13 +607,11 @@ def _sec13f_busy_message() -> str:
 
 
 def build_sec13f(uw: UWClient | None = None) -> Path:
-    """The 13F Fetch: names -> shares out -> render -> history.
+    """The 13F Fetch: render from the stores.
 
     The numbers themselves are the builder's since G9 (``rcdata/build/ownership``, read through
-    ``engine.load_totals``), so the Fetch asks the SEC for nothing: it refreshes what the dashboard owns. The UW
-    name/sector step is best-effort (``_refresh_13f_meta``), and so is the UW shares outstanding step
-    (``_store_13f_shares``, #300 D20). The shares step runs before the render (#375 F2): the board's % Out reads
-    the rows it stores.
+    ``engine.load_totals``), and the names and sectors the spine's (``engine.load_sec13f_meta``), so the Fetch asks
+    no provider for anything.
 
     One 13F job at a time (#26): a second one refuses with a ``JobMessage`` and writes nothing.
     """
@@ -868,62 +623,14 @@ def build_sec13f(uw: UWClient | None = None) -> Path:
 
 def _build_sec13f(uw: UWClient | None = None) -> Path:
     """The Fetch's work, once ``build_sec13f`` holds the ``"sec_13f"`` lock."""
-    run, run_at = run_id(), time.time()
     coverage = _13f_coverage_note()
 
-    health, note, own = None, None, None
-    shown: dict = {}                        # what the board was rendered from, for the result history (#375)
-    try:
-        health, names_note, own = _refresh_13f_meta(uw)
-        note = " ".join(n for n in (names_note, coverage) if n) or None
-        _store_13f_shares(uw or own)        # before the render: the board's % Out reads these rows (#375 F2)
-        path = _render_13f(health, note, shown)
-        _record_13f(shown, run, run_at, names_note, coverage)
-    finally:
-        if own is not None:
-            own.close()
+    note = coverage
+    path = _render_13f(None, note)
 
     if note:
         raise JobMessage(note)
     return path
-
-
-def _store_13f_shares(uw: UWClient | None) -> None:
-    """D20 (#300): UW ``info`` shares outstanding of every 13F ticker into ``ownership_snapshot``, best-effort.
-
-    One call per ticker, once per complete session, at most ``ownership.UW_MAX_CALLS_PER_FETCH`` per Fetch (the cap is
-    the bound; a capped run is one job note). The shares step already checkpoints between batches. An intraday run, or a session whose
-    tickers are all stored, asks nothing and opens no client (``ownership.pending_uw``). A client is opened here
-    only when the runner has none, and closed here. A key that fails ``verify`` (cached per client) asks nothing; it
-    and a store error are a job note, never a failed Fetch: the board then shows the shares stored before.
-    """
-    from RevenueChaser.core import ownership
-    from RevenueChaser.module_sec_13f import engine as sec_13f
-
-    run_at = ownership._clock()
-    _, todo = ownership.pending_uw(sec_13f.load_totals(), run_at)
-    if not todo:
-        return
-    own = None
-    try:
-        if uw is None:
-            uw = own = UWClient()
-        ok, message = uw.verify()          # cached per client: free when the meta step already asked
-        if not ok:
-            ledger.add_note(f"13F shares outstanding were not stored: {message}")
-            return
-        res = ownership.store_uw_shares(uw, todo, run_id=run_id(), run_at=run_at)
-        logger.info("13F shares outstanding: %d asked, %d stored, %d without a value, %d left (session %s)",
-                    res["asked"], res["written"], res["no_value"], res["left"], res["session"])
-        if res["left"]:
-            ledger.add_note(f"13F shares outstanding: the cap of {ownership.UW_MAX_CALLS_PER_FETCH:,} UW calls per "
-                            f"Fetch was reached; {res['left']:,} ticker(s) left for the next Fetch.")
-    except Exception as exc:  # noqa: BLE001 - best-effort, see docstring (a cancel is not an Exception)
-        logger.exception("13F shares outstanding were not stored")
-        ledger.add_note(f"13F shares outstanding were not stored: {type(exc).__name__}: {exc}")
-    finally:
-        if own is not None:
-            own.close()
 
 
 def _13f_coverage_note() -> str | None:
@@ -959,19 +666,6 @@ def _render_13f(health: dict | None, note: str | None, capture: dict | None = No
         return run_sec_13f_latest(None, notice=note, provider_health=health, capture=capture)
     except JobMessage:
         return SEC_13F_LATEST  # no totals at all: the empty board was written
-
-
-def _record_13f(shown: dict, run: str, run_at: float, names_note: str | None,
-                coverage: str | None) -> None:
-    """Result history (#375): after the board file, so it holds what the board showed. A failure is a job note,
-    never a failed Fetch: the board file does not depend on it."""
-    from RevenueChaser.module_sec_13f import history as sec13f_history
-    try:
-        sec13f_history.record(shown, run_id=run, run_at=run_at,
-                              names_note=names_note, unmatched=coverage)
-    except Exception as exc:
-        logger.exception("13F result history failed")
-        ledger.add_note(f"13F result history was not recorded: {type(exc).__name__}: {exc}")
 
 
 def spxgamma_latest() -> dict | None:
@@ -1023,20 +717,10 @@ def run_spxgamma(uw, asof_date: str, force: bool = False) -> Path | None:
     It first asks the builder for the board's two datasets (PR 3, :func:`spx_builder_request`); the board says so.
     """
     global _SPX_VIEW
-    from RevenueChaser.module_spx_gamma import history as spx_history
     from RevenueChaser.module_spx_gamma.run import run as spx_run
 
-    run, run_at = _freeze_run_id(), time.time()
     out = spx_run(asof_date, uw=uw, force=force, builder_request=spx_builder_request())
     _SPX_VIEW = (out or {}).get("paths", {}).get("report_html")
-    # Result history (SPX review PR 3): a Fetch that built a day, after the board file. A stored past day served
-    # from disk is no Fetch and records nothing. A failure is a job note, never a failed Fetch.
-    if out and out.get("fetched"):
-        try:
-            spx_history.record(out, run_id=run, run_at=run_at, uw_health=_uw_health(uw))
-        except Exception as exc:
-            logger.exception("SPX Gamma result history failed")
-            ledger.add_note(f"SPX Gamma result history was not recorded: {type(exc).__name__}: {exc}")
     return _SPX_VIEW
 
 
@@ -1136,98 +820,26 @@ def run_quick(uw, ticker: str) -> Path:
     Fetches fresh raw data into .store, then recomputes the report into .cache.
     """
     from RevenueChaser.module_financials.run import run as fm_run
-    from RevenueChaser.module_financials import history as fin_history
 
     # The dashboard keeps one report (financials_latest.html); per-ticker files are the CLI's (#173 D5).
     modules = ["dcf", "3stmt", "comps", "credit", "sensitivity"]
-    run = run_id()                            # one id: the vendor rows it stores (#297) and its history header
-    res = fm_run(ticker, modules=modules, output="html", report_path=QUICK_LATEST, run_id=run)
-    html = res["paths"].get("html")
-    written = _copy_quick_artifact(html or "")
-    if written:
+    res = fm_run(ticker, modules=modules, output="html", report_path=QUICK_LATEST)
+    if _copy_quick_artifact(res["paths"].get("html") or ""):
         _remember_quick_ticker(ticker)
-    # Result history (#385): after the board file, so it holds what the board showed. A failure is a job note,
-    # never a failed Fetch: the board file does not depend on it.
-    try:
-        fin_history.record(res.get("results") or {}, ticker=ticker.upper(), run_id=run, run_at=time.time(),
-                           modules=modules, report_written=written)
-    except Exception as exc:
-        logger.exception("Financials result history failed")
-        ledger.add_note(f"Financials result history was not recorded: {type(exc).__name__}: {exc}")
     return QUICK_LATEST
 
 
-def _write_quick_error(path: Path, ticker: str, exc: Exception) -> Path:
-    """Write an explicit error board over the Financials artifact.
+def run_quick_cached(uw=None, ticker: str | None = None) -> Path | None:
+    """Store-only Financials render: the last report file, never a re-derive and never the network.
 
-    A store-only re-render failure used to be swallowed: ``run_quick_cached``
-    caught every exception, logged a warning and returned a stale artifact or
-    None, so the tab silently emptied and the app fell back to a network Fetch.
-    The error board makes the failure visible in the tab itself.
+    The statements and the payload a re-derive read lived in the old store (``vendor_financials``,
+    ``ticker_payload_cache``) and went with it (#860), so a Refresh serves the report the last Fetch wrote, or None
+    (an empty state) when there is none or another ticker is asked for.
     """
-    from datetime import datetime, timezone
-    from RevenueChaser.core import templating
-    stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    from RevenueChaser.core.reporting_common import write_artifact
-    return write_artifact(path, templating.render(
-        "refresh_error.html.j2",
-        title=f"Financials refresh failed for {ticker}",
-        message=f"{type(exc).__name__}: {exc}",
-        detail=str(exc),
-        stamp=stamp,
-    ))
-def run_quick_cached(uw=None, ticker: str | None = None) -> Path:
-    """Store-only Financials render — no network.
-
-    Recomputed from ``.store/raw.duckdb`` (raw yfinance payload, TTL ignored),
-    so clicking Refresh always ignores any stale ``financials_latest.html`` and
-    re-derives the report. When nothing is stored for the requested ticker —
-    neither a raw payload nor the annual statements a Fetch stores in
-    ``vendor_financials`` (FIN-5); a ``vendor_valuation`` row alone does not
-    count — the stale artifact is dropped and None is
-    returned, so the view shows an empty state and a live Fetch is genuinely
-    required.
-
-    A failure is never silently swallowed: if the store-only render raises, an
-    explicit error board is written over ``financials_latest.html`` and returned,
-    so the tab says what broke instead of degrading into an empty state and a
-    network Fetch. (This used to hide errors like a cleared ``.cache`` behind a
-    bare warning + a FileNotFoundError.)
-
-    """
-    from RevenueChaser.core import vendor_data
-    from RevenueChaser.core.providers import cache as cache_manager
-    from RevenueChaser.module_financials.run import run as fm_run
-
-    explicit = ticker is not None
-    ticker = (ticker or _last_quick_ticker()).upper()
-    # The gate is "no statements stored anywhere", not "no ticker_payload_cache row": a Fetch also stores its
-    # statements in ``vendor_financials`` (FIN-5, #385), and ``fm_run(no_fetch=True)`` builds the model inputs from
-    # those rows. A ticker with only a ``vendor_valuation`` row (what a comps peer gets) has no annual statements,
-    # so it is "nothing stored", not a board of "insufficient financial data" errors.
-    if cache_manager.load(ticker, ignore_ttl=True) is None and not (
-            (vendor := vendor_data.read_financials(ticker)) and vendor.get("annual")):
-        if explicit:
-            QUICK_LATEST.unlink(missing_ok=True)  # no raw data -> drop stale artifact
-        if QUICK_LATEST.exists():
-            return QUICK_LATEST
+    if ticker is not None and ticker.upper() != _last_quick_ticker():
+        QUICK_LATEST.unlink(missing_ok=True)
         return None
-    try:
-        res = fm_run(ticker, modules=["dcf", "3stmt", "comps", "credit", "sensitivity"],
-                     output="html", no_fetch=True, report_path=QUICK_LATEST)
-    except Exception as exc:  # noqa: BLE001 - a render failure is a visible error
-        logger.error("run_quick_cached %s failed to re-render from the store: %s",
-                     ticker, exc, exc_info=True)
-        return _write_quick_error(QUICK_LATEST, ticker, exc)
-    html = res["paths"].get("html")
-    if _copy_quick_artifact(html or ""):
-        _remember_quick_ticker(ticker)
-        return QUICK_LATEST
-    # fm_run reported success but produced nothing to serve — also a hard
-    # failure, never something to paper over with a stale artifact or a None.
-    exc = RuntimeError(f"store-only render for {ticker} produced no report file")
-    logger.error("run_quick_cached %s: %s", ticker, exc)
-    return _write_quick_error(QUICK_LATEST, ticker, exc)
+    return QUICK_LATEST if QUICK_LATEST.exists() else None
 
 
 def run_asymmetric_growth(uw, refresh_universe: bool = False, no_fetch: bool = False) -> Path:
@@ -1238,14 +850,13 @@ def run_asymmetric_growth(uw, refresh_universe: bool = False, no_fetch: bool = F
     """
     import json
     from RevenueChaser.module_asymmetric_growth.engine import run_asymmetric_growth_hunter
-    from RevenueChaser.module_asymmetric_growth import history as ag_history
     from RevenueChaser.module_asymmetric_growth.report import board_payload, render_asymmetric_growth_hunter_html
     from RevenueChaser.core import ticker_store
     from RevenueChaser.core.reporting_common import write_board
 
     from RevenueChaser.module_asymmetric_growth.engine import stored_result
 
-    # One id per Fetch (jobs.py:97): the vendor rows it stores (#297), its history header and its freeze.
+    # One id per Fetch (jobs.py:97): its freeze.
     run = None if no_fetch else _freeze_run_id()
     # A Refresh shows the last Fetch read back from the store and never re-scores (S5, Common K4 #383 R1).
     result = (stored_result() if no_fetch else
@@ -1256,170 +867,12 @@ def run_asymmetric_growth(uw, refresh_universe: bool = False, no_fetch: bool = F
     if not no_fetch:
         # Only a Fetch rewrites the durable per-ticker table; a Refresh renders and leaves it alone (#145 D5).
         ticker_store.write_from_cards(result["cards"], result.get("asof"))
-        # Result history (#332): after the latest table, before the freeze. A failure is a job note, never a
-        # failed Fetch: the latest table and the freeze below do not depend on it.
-        try:
-            ag_history.record(result, run_id=run)
-        except Exception as exc:
-            logger.exception("AG result history failed")
-            ledger.add_note(f"AG result history was not recorded: {type(exc).__name__}: {exc}")
         # Last step of a Fetch, after the board files are written. A Refresh (no_fetch) never freezes.
         # The outcome is a job note (core.ledger), not a JobMessage: ``run_universe_refresh`` still has
         # two boards to run. A freeze *error* propagates, so the job shows it.
         from RevenueChaser.module_asymmetric_growth import freeze as ag_freeze
         ag_freeze.freeze_result(result, run_id=run)
     return ASYMMETRIC_GROWTH_LATEST
-
-
-class UniverseBusy(JobMessage):
-    """The universe lock is held elsewhere; this run made no network call and wrote nothing (#244).
-
-    ``run=True``: another universe run holds it. Otherwise another universe writer (Phase B, "Fetch caps") does.
-    ``board``: a single-board Fetch of that board is running (#356).
-    """
-
-    def __init__(self, pid: int | None, run: bool = True, board: str | None = None):
-        self.pid = pid
-        who = pid or "unknown"
-        if board:
-            msg = f"a {board} Fetch is in progress, pid {who}; this universe run did not start"
-        elif run:
-            msg = f"another universe run is in progress, pid {who}"
-        else:
-            msg = f"the universe data is being written by another job, pid {who}; this universe run did not start"
-        super().__init__(msg)
-
-
-# The single-board Fetches (``refused_during_universe``): the runner's name without ``run_``, and its label.
-_BOARD_LABELS = {"asymmetric_growth": "Asymmetric Growth", "swing": "Swing", "fundamentals": "Fundamentals"}
-
-
-def run_universe_refresh(uw=None, quotes_uw=None, *, uw_quotes: bool = False) -> Path:
-    """One-stop data refresh for the three ticker-level scanners.
-
-    Fetches the shared universe and every per-ticker input the three boards need
-    (SEC EDGAR facts, yfinance financials, 2y OHLC, ticker info), then runs all
-    three boards. After this, "Refresh Tab" on any of them is a pure offline
-    model run (no API calls) — everything is cached.
-
-    The pull writes Yahoo's rows of ``quote_snapshot`` itself (#294). With a UW client in ``quotes_uw``, or with
-    ``uw_quotes`` (the run builds its own client under the lock and closes it after the step), UW's rows follow right
-    after the pull (``quotes.ensure_quote_snapshot``, screener batches of 100), before Swing and Fundamentals; the
-    outcome, or a failure, is a job note and never stops the run.
-
-    One run at a time (#244): the whole run holds the ``universe`` lock (``universe_run_lock``), on the dashboard
-    job and on the CLI (``app/universe_cli.py``) alike, and a second run, or a run while Phase B writes, raises
-    ``UniverseBusy`` before any call or write. So does a run while a single-board Fetch runs (#356): the run takes
-    its locks first and then checks the boards' markers (``board_fetch_holders``). The lock is re-entrant per
-    thread, so the universe pull inside AG takes it again. A cancel or a passed deadline (#243)
-    stops the run at the next board boundary, so no later board runs or freezes.
-    """
-    from RevenueChaser.core.universe_fetch import board_fetch_holders, universe_run_holder, universe_run_lock
-
-    with universe_run_lock() as holder:
-        if holder is not None:
-            raise UniverseBusy(holder, run=universe_run_holder() is not None)
-        boards = board_fetch_holders()
-        if boards:
-            board, pid = boards[0]
-            raise UniverseBusy(pid, board=_BOARD_LABELS.get(board, board))
-        job_control.checkpoint("Asymmetric Growth")
-        run_asymmetric_growth(uw, refresh_universe=True)  # universe + hunter financials + EDGAR facts
-        if quotes_uw is not None or uw_quotes:
-            job_control.checkpoint("Quotes")
-            _record_uw_quotes(quotes_uw)
-        # Both boards run even when the first scores nothing; an empty board's reason ends the job (#145).
-        empty = []
-        for label, step in (("Swing", run_swing), ("Fundamentals", run_fundamentals)):
-            job_control.checkpoint(label)
-            try:
-                step(uw)                          # swing OHLC + info + model, then the fundamentals model
-            except JobMessage as exc:
-                empty.append(f"{label}: {exc.message}")
-    if empty:
-        raise JobMessage(" ".join(empty))
-    return FUNDAMENTALS_LATEST
-
-
-def _record_uw_quotes(uw=None) -> None:
-    """UW's ``quote_snapshot`` rows for the session (#294). The outcome is a job note; a failure never raises.
-
-    With no client given, it builds one (:func:`_quotes_uw_client`) and closes it after the step: the caller holds
-    the universe lock by then, so a run refused as busy never opens a UW connection pool.
-    """
-    from RevenueChaser.core import quotes
-    owned = uw is None
-    try:
-        if owned:
-            uw = _quotes_uw_client()
-            if uw is None:
-                return
-        res = quotes.ensure_quote_snapshot(uw=uw, run_id=run_id())
-    except Exception as exc:  # noqa: BLE001 - the boards after it must still run
-        logger.exception("UW quote snapshot failed")
-        ledger.add_note(f"Quote snapshot (UW) was not written: {type(exc).__name__}: {exc}")
-        return
-    finally:
-        if owned and uw is not None:
-            getattr(uw, "close", lambda: None)()
-    ledger.add_note(quotes.summary_line(res))
-
-
-def _quotes_uw_client():
-    """A UW client for the quote rows, or None (with a note) when there is no key or it does not verify.
-
-    The universe job stays ``requires_uw=False``: a missing or rejected UW key must never stop the Yahoo pull and
-    the three boards, so the key is checked here, for the quote rows only.
-    """
-    client = UWClient()
-    if not getattr(client, "key", None):
-        ledger.add_note("UW quote rows were not written: no UW key.")
-        getattr(client, "close", lambda: None)()
-        return None
-    ok, message = client.verify()
-    if not ok:
-        ledger.add_note(f"UW quote rows were not written: {message}")
-        getattr(client, "close", lambda: None)()
-        return None
-    return client
-
-
-def run_universe_job(uw=None) -> Path:
-    """The dashboard's ``universe`` job: :func:`run_universe_refresh` plus UW's quote rows when a UW key verifies.
-
-    The quote client is built inside the run, under the universe lock, and closed after the quote step; a client
-    handed in as ``uw`` is used as it is and left to its owner (the job queue closes the one it built)."""
-    return run_universe_refresh(uw, quotes_uw=uw, uw_quotes=True)
-
-
-def refused_during_universe(runner):
-    """A single-board Fetch job that is refused while a universe run is going (#244), and refuses one (#356).
-
-    The boards write the same caches and the same ``forecast_ledger`` rows as the universe run (#128). The Fetch
-    holds its board's marker (``board_fetch_lock``) while it runs, so a universe run that starts meanwhile is
-    refused; it reads the ``universe_run`` marker and takes no universe lock. Phase B, which holds only the writer
-    lock, does not refuse a board Fetch, as on main. A second Fetch of the same board is refused too. A Refresh
-    (``no_fetch``) takes no marker and is never refused. The dashboard registers the wrapped runner;
-    ``run_universe_refresh`` calls the plain one.
-    """
-    board = runner.__name__.removeprefix("run_")
-    label = _BOARD_LABELS.get(board, board)
-
-    @functools.wraps(runner)
-    def fetch(uw, *args, **params):
-        if params.get("no_fetch"):
-            return runner(uw, *args, **params)
-        from RevenueChaser.core.universe_fetch import board_fetch_lock
-        with board_fetch_lock(board) as busy:
-            if busy is not None:
-                kind, pid = busy
-                if kind == "universe":
-                    raise JobMessage(f"A universe run is in progress, pid {pid}. This Fetch did not start: "
-                                     "the universe run refreshes this board too.")
-                raise JobMessage(f"Another {label} Fetch is in progress, pid {pid or 'unknown'}. "
-                                 "This Fetch did not start.")
-            return runner(uw, *args, **params)
-    return fetch
 
 
 def _end_empty_fetch(payload: dict, no_fetch: bool) -> None:
@@ -1444,21 +897,12 @@ def run_swing(uw, refresh_universe: bool = False, no_fetch: bool = False) -> Pat
     from RevenueChaser.module_swing_potential.pipeline import run_scan, save_payload
     from RevenueChaser.module_swing_potential.report import render_swing_board
 
-    rows: dict = {}                       # the score and gate rows a Fetch persisted, for the result history
-    payload = run_scan(uw, refresh_universe=refresh_universe, no_fetch=no_fetch, rows_sink=rows)
+    payload = run_scan(uw, refresh_universe=refresh_universe, no_fetch=no_fetch)
     save_payload(payload)
     _write_board(SWING_LATEST, *render_swing_board(payload))
     if not no_fetch:                      # last step of a Fetch; a Refresh never freezes (see AG above)
-        from RevenueChaser.module_swing_potential import freeze as swing_freeze, history as swing_history
-        run = _freeze_run_id()            # one id for the history header and the freeze (jobs.py:97)
-        # Result history (#278): after the latest tables, before the freeze. A failure is a job note, never a
-        # failed Fetch: the latest tables and the freeze below do not depend on it.
-        try:
-            swing_history.record(payload, rows=rows, run_id=run)
-        except Exception as exc:
-            logger.exception("Swing result history failed")
-            ledger.add_note(f"Swing result history was not recorded: {type(exc).__name__}: {exc}")
-        swing_freeze.freeze_payload(payload, run_id=run)
+        from RevenueChaser.module_swing_potential import freeze as swing_freeze
+        swing_freeze.freeze_payload(payload, run_id=_freeze_run_id())
     _end_empty_fetch(payload, no_fetch)
     return SWING_LATEST
 
@@ -1474,21 +918,12 @@ def run_fundamentals(uw, refresh_universe: bool = False, no_fetch: bool = False)
     from RevenueChaser.module_fundamentals.pipeline import run_scan, save_payload
     from RevenueChaser.module_fundamentals.report import render_fundamental_board
 
-    rows: dict = {}                       # the score and gate rows a Fetch persisted, for the result history
-    payload = run_scan(uw, refresh_universe=refresh_universe, no_fetch=no_fetch, rows_sink=rows)
+    payload = run_scan(uw, refresh_universe=refresh_universe, no_fetch=no_fetch)
     save_payload(payload)
     _write_board(FUNDAMENTALS_LATEST, *render_fundamental_board(payload))
     if not no_fetch:                      # last step of a Fetch; a Refresh never freezes (see AG above)
-        from RevenueChaser.module_fundamentals import freeze as fundamentals_freeze, history as fundamentals_history
-        run = _freeze_run_id()            # one id for the history header and the freeze (jobs.py:97)
-        # Result history (#278): after the latest tables, before the freeze. A failure is a job note, never a
-        # failed Fetch: the latest tables and the freeze below do not depend on it.
-        try:
-            fundamentals_history.record(payload, rows=rows, run_id=run)
-        except Exception as exc:
-            logger.exception("Fundamentals result history failed")
-            ledger.add_note(f"Fundamentals result history was not recorded: {type(exc).__name__}: {exc}")
-        fundamentals_freeze.freeze_payload(payload, run_id=run)
+        from RevenueChaser.module_fundamentals import freeze as fundamentals_freeze
+        fundamentals_freeze.freeze_payload(payload, run_id=_freeze_run_id())
     _end_empty_fetch(payload, no_fetch)
     return FUNDAMENTALS_LATEST
 
@@ -1512,9 +947,7 @@ def run_comovement(uw=None, no_fetch: bool = False,
     serves a stored run (#95). A precompute failure is logged; it never fails
     the Fetch or touches the board just written.
 
-    A Fetch's runs share its ``run_id``, and its last step records ONE
-    header-only ``result_runs`` row listing every run it stored or served
-    (#379 D2). A store-only run records nothing.
+    A Fetch's runs share its ``run_id``.
     """
     from RevenueChaser.module_comovement import engine, report
 
@@ -1536,14 +969,8 @@ def run_comovement(uw=None, no_fetch: bool = False,
         except Exception as exc:  # noqa: BLE001 - optional speed-up, never fatal
             logger.warning("comovement precompute failed: %s", exc, exc_info=True)
             warnings.append(f"precompute failed: {type(exc).__name__}: {exc}")
-    # Result history (#379 D2): after the precompute, so the header names every window's run. A failure is a job
-    # note, never a failed Fetch: the runs and the board above do not depend on it.
-    try:
-        from RevenueChaser.module_comovement import history as comovement_history
-        comovement_history.record(payload, run_id=run, as_ofs=as_ofs, precompute=done, warnings=warnings)
-    except Exception as exc:
-        logger.exception("Co-movement result history failed")
-        ledger.add_note(f"Co-movement result history was not recorded: {type(exc).__name__}: {exc}")
+    if warnings:
+        ledger.add_note(" ".join(warnings))
     return COMOVEMENT_LATEST
 
 
@@ -1578,7 +1005,6 @@ def run_value_chain(uw=None, no_fetch: bool = False) -> Path:
     """
     from RevenueChaser.module_value_chain import engine, report
 
-    # One id per Fetch (jobs.py:97): its result history header (#387). A Refresh records nothing.
     payload = engine.run(no_fetch=no_fetch, run_id=None if no_fetch else _freeze_run_id())
     _write_to(VALUE_CHAIN_JSON, json.dumps(payload, ensure_ascii=False, default=str))
     _write_to(VALUE_CHAIN_LATEST, report.render_value_chain_dashboard(payload))
@@ -1593,112 +1019,6 @@ def run_value_chain(uw=None, no_fetch: bool = False) -> Path:
                 message += f", {fetch[key]} {label}"
         raise JobMessage(message + ")")
     return VALUE_CHAIN_LATEST
-
-
-def run_daily_bars(uw=None, tickers: list[str] | None = None) -> None:
-    """Write the latest complete session's daily bars (#156); RC-Daily-Bars runs the same function.
-
-    A cancel or a deadline stops between ticker chunks, before that chunk's atomic write (``prices.ensure_daily_bars``).
-    """
-    from RevenueChaser.core import prices
-
-    res = prices.ensure_daily_bars(tickers, uw=uw, run_id=run_id())
-    if res.get("locked"):
-        raise JobMessage("Daily bars are already running; nothing started.")
-    if not prices.run_ok(res):
-        raise RuntimeError(prices.summary_line(res))
-    # #136: the numbers the step already returned, for the run's ``counts`` (``core/run_counts.py``).
-    raise JobMessage(prices.summary_line(res), counts=run_counts.numeric(res))
-
-
-def run_index_lists(uw=None, first_fill: list[str] | None = None) -> None:
-    """Write the index lists (#302, D24); RC-Index-Lists runs the same step weekly. ``first_fill=["sp600"]`` is the
-    attended first SmallCap 600 fill, which needs the user's OK for that run."""
-    from RevenueChaser.core import index_lists
-
-    res = index_lists.refresh_lists(run_id=run_id(), first_fill=first_fill or ())
-    if res.get("locked"):
-        raise JobMessage("Index lists are already running; nothing started.")
-    if not index_lists.lists_ok(res):
-        raise RuntimeError(index_lists.summary_line(res))
-    raise JobMessage(index_lists.summary_line(res))
-
-
-def run_edgar_sync(uw=None, limit: int | None = None, force: bool = False) -> Path:
-    """Sync the stored 10-K/20-F corpus against SEC ``submissions.recent``.
-
-    SEC-only (``requires_uw=False``) and long-running: one throttled submissions
-    request per universe CIK (#299; up to ~7.7k tickers at 10 req/s), stored in
-    edgar.duckdb, with archive downloads for classification tickers only when the
-    stored accession differs. Then re-renders the Value
-    Chain board from the store with ``no_fetch=True`` — zero network — since the
-    sync may have just extended the corpus.
-
-    Value Chain / Relatedness *Fetch* stay cache-first (they only fill tickers
-    with no row); detecting a newer filing is this job's job. ``sync_filings``
-    already holds ``job_lock('edgar_sync')`` and the SEC throttle, so no second
-    lock is added here. A run that changed nothing still raises ``JobMessage``
-    with its counts, so the UI says so instead of looking like a silent no-op.
-
-    A cancel or a deadline stops between filers, before the next CIK is submitted (``sync.sync_filings``).
-
-    The same run is the daily SEC submissions sweep (#299, D15): one request per
-    CIK of the whole universe, each answer stored in ``sec_submissions`` /
-    ``sec_submissions_cik`` with this job's ``run_id``; the message ends with
-    that sweep's counts and names the CIKs that failed.
-    """
-    from RevenueChaser.module_value_chain import sync
-
-    res = sync.sync_filings(limit=limit, force=bool(force), run_id=run_id())
-    if res.get("locked"):
-        raise JobMessage("Another EDGAR crawl is already running — try again shortly.")
-
-    path = run_value_chain(uw, no_fetch=True)
-
-    updated = res.get("updated", 0)
-    current = res.get("current", 0)
-    no_filing = res.get("no_filing", 0)
-    failed = res.get("failed", 0)
-    kept = res.get("kept", 0)
-    form_40f = res.get("form_40f", 0)
-    known_miss = res.get("known_miss", 0)
-    no_cik = res.get("no_cik", 0)
-    requested = res.get("requested", updated + current + no_filing + failed)
-    # ``requested`` counts no-CIK tickers (no request made) and known misses (skipped).
-    checked = requested - no_cik - known_miss
-    message = (f"{updated} filing updated, {current} already current, "
-               f"{no_filing} with no 10-K/20-F ({checked} checked)")
-    if kept:
-        message += f"; {kept} kept (stored slice better than the newest filing)"
-    if form_40f:
-        message += f"; {form_40f} 40-F (not supported yet)"
-    if known_miss:
-        message += f"; {known_miss} recorded misses skipped"
-    if no_cik:
-        message += f"; {no_cik} with no CIK"
-    if failed:
-        message += f"; {failed} failed"
-    message += _submissions_message(res.get("submissions"))
-    raise JobMessage(message)
-
-
-def _submissions_message(subs: dict | None) -> str:
-    """The SEC submissions part of the edgar-sync message (#299); empty when the sync made no sweep."""
-    if not subs:
-        return ""
-    text = (f". SEC submissions: {subs.get('ciks', 0)} of {subs.get('requested', 0)} CIKs answered, "
-            f"{subs.get('filings_appended', 0)} new filings, {subs.get('headers_appended', 0)} header changes")
-    if subs.get("headers_absent"):
-        text += f", {subs['headers_absent']} no longer served"
-    if subs.get("failed"):
-        names = subs.get("failed_ciks") or []
-        shown = ", ".join(names[:10]) + (f" and {len(names) - 10} more" if len(names) > 10 else "")
-        text += f"; {subs['failed']} CIKs failed ({shown})"
-    if subs.get("pending"):
-        text += f"; {subs['pending']} CIKs pending (SEC unavailable)"
-    if subs.get("error"):
-        text += f"; not stored: {subs['error']}"
-    return text
 
 
 def run_relatedness_compare(uw=None, provider: str = "", model: str = "", tickers: list | None = None) -> None:
@@ -1744,6 +1064,8 @@ def run_relatedness(uw=None, no_fetch: bool = False) -> Path:
         parts = [f"{payload.get('n') or 0} profiled, {pending} pending"]
         if payload.get("stopped_reason"):
             parts.append(f"stopped: {payload['stopped_reason']}")
+        if payload.get("stopped_reason") in ("spine", "forms") and payload.get("error"):
+            parts.append(str(payload["error"]))        # a stop no later run fixes by itself: say why (#841)
         if payload.get("next_off_peak"):
             parts.append(f"next off-peak {payload['next_off_peak']} UTC")
         raise JobMessage("; ".join(parts))
@@ -1762,22 +1084,12 @@ def run_oipd(uw: UWClient, ticker: str | None = None, no_fetch: bool = False) ->
     state) and raises ``JobMessage`` so the UI explains itself rather than
     looking like a silent success.
     """
-    from RevenueChaser.module_oipd import engine, history as oipd_history
+    from RevenueChaser.module_oipd import engine
 
-    capture: dict | None = None if no_fetch else {}      # what the fit stood on, for the result history (#382)
-    run, run_at = (None, None) if no_fetch else (_freeze_run_id(), time.time())
-    payload = engine.run(uw=uw, ticker=ticker, no_fetch=no_fetch, capture=capture)
+    payload = engine.run(uw=uw, ticker=ticker, no_fetch=no_fetch)
     if not no_fetch:
         payload["provider_health"] = _uw_health(uw)
     path = _render_oipd(payload)
-    if not no_fetch:
-        # Result history (#382): after the board file, so it holds what the board showed. A failure is a job note,
-        # never a failed Fetch: the board file does not depend on it.
-        try:
-            oipd_history.record(payload, capture, run_id=run, run_at=run_at, uw_health=payload["provider_health"])
-        except Exception as exc:
-            logger.exception("OIPD result history failed")
-            ledger.add_note(f"OIPD result history was not recorded: {type(exc).__name__}: {exc}")
     if not payload.get("expiries"):
         msg = payload.get("error")
         if not msg:
@@ -1872,8 +1184,7 @@ def run_welcome(uw=None) -> Path:
     """The Welcome board's Fetch: the incremental build into ``boards/welcome.duckdb``, then the page. No network."""
     from RevenueChaser.module_welcome import build
     out = build.build(run_id=run_id())
-    ledger.add_note(f"Welcome: {out['snapshot']} closes, {out['earnings']} earnings rows "
-                    f"({out['retired']} retired), {out['freshness']} jobs updated")
+    ledger.add_note(f"Welcome: {out['snapshot']} closes")
     return run_welcome_cached()
 
 
@@ -1899,53 +1210,6 @@ def _render_oipd(payload: dict) -> Path:
     _write_to(OIPD_JSON, json.dumps(payload, ensure_ascii=False, default=str))
     _write_to(OIPD_LATEST, report.render_oipd_dashboard(payload))
     return OIPD_LATEST
-
-
-def run_universe_stats(uw=None, limit: int | None = None) -> Path:
-    """Fill only the NULL ``equity_universe.market_cap`` values from Yahoo.
-
-    A standalone Phase B (``requires_uw=False``): unlike ``/run/universe`` it
-    never calls ``yf.screen`` and never runs the three scanners — it resolves the
-    null-cap rows (optionally capped to the first ``limit``) and then re-renders
-    the Settings board from the store with ``run_settings`` (zero network).
-
-    Always raises ``JobMessage`` with the counts so the UI reports the run even
-    when it filled nothing; a rate-limited early stop is called out so a re-run
-    is the obvious next step.
-    """
-    from RevenueChaser.core import universe_fetch
-
-    res = universe_fetch.backfill_universe_caps(refreshed_by="Settings", limit=limit)
-    if res.get("locked") is not None:  # 0 = lock held, owner unknown
-        owner = f" (pid {res['locked']})" if res["locked"] else ""
-        raise JobMessage(f"Another run{owner} holds the universe lock; "
-                         "locked, nothing written. Try again shortly.")
-    run_settings(uw)
-
-    message = (f"{res.get('filled', 0)} caps filled, {res.get('skipped', 0)} skipped, "
-               f"{res.get('failed', 0)} failed, {res.get('deferred', 0)} still null "
-               f"({res.get('requested', 0)} checked)")
-    if res.get("rate_limited"):
-        message += " — Yahoo rate-limited, stopped early; run again to resume"
-    raise JobMessage(message)
-
-
-def run_identity(uw=None, limit: int | None = None) -> None:
-    """Refresh the identity master (``security_master``): the deltas from every source, then the rules.
-
-    Store-only for the boards (``requires_uw=False``): it fetches from the identity providers and writes
-    the identity tables (plus new SEC ticker-map rows). After a successful build it also applies the master's
-    sector and industry (and UW's next earnings date) to ``equity_universe`` (issues #86, #265): those columns
-    only, never another column, and never a ticker the master does not know.
-    ``refresh`` never raises an ``Exception``; this runner always ends with ``JobMessage`` so the UI shows what
-    happened. A cancel or a deadline stops between sources, before that source's cache write.
-    """
-    from RevenueChaser.core.identity import refresh as identity_refresh
-
-    record = identity_refresh.refresh(limit=limit)
-    # #136: the refresh record carries its own ``counts``, through the same rule as every other run's — it
-    # also holds nested breakdowns by type and by source, which are diagnostics, not amounts.
-    raise JobMessage(identity_refresh.summary(record), counts=run_counts.numeric(record.get("counts")))
 
 
 def run_settings(uw=None) -> Path:

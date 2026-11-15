@@ -12,7 +12,6 @@ import httpx
 import pytest
 
 from RevenueChaser.core import calendar as nyse_calendar
-from RevenueChaser.core import universe_fetch
 from RevenueChaser.core.providers import unusual_whales
 from RevenueChaser.module_spx_gamma import history_pull as hp
 from RevenueChaser.module_spx_gamma import snapshot as snap
@@ -130,8 +129,6 @@ def test_the_shape_of_the_dated_volatility_answers_is_reported(tmp_path):
     assert set(counts["shapes"]["sessions"][DAYS[0]]) == set(hp.SHAPE_ENDPOINTS)
 
 
-def test_the_streak_constant_mirrors_the_universe_fetch():
-    assert hp.RATE_LIMIT_STREAK_STOP == universe_fetch._RATE_LIMIT_STREAK_STOP == 5
 
 
 def test_stops_after_a_run_of_429s_and_keeps_no_partial_day(tmp_path):

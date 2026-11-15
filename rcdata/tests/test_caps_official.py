@@ -142,23 +142,6 @@ def test_the_yahoo_market_series_waits_for_the_yfinance_window(yf_waits, tmp_pat
 
 # ── Review of PR #380: the box as a whole stays inside each shared limit ─────────────────────────────────────────
 
-def test_every_sec_fallback_takes_its_share_so_every_sec_process_together_stays_under_it():
-    """Review rounds 1 to 3 of #380: the processes that can ask SEC at once are the dashboard and the automations
-    ``sec_throttle.SEC_PROCESSES`` names (RC-Build, RC-ValueChain-Sync, RC-Relatedness-OffPeak, RC-Screeners-Daily,
-    RC-Daily-Bars). When the shared bucket cannot be used each paces itself alone at its share of the SEC's 10."""
-    from RevenueChaser.core import automations, sec_throttle
-    from RevenueChaser.core.providers import sec_edgar
-    from RevenueChaser.rcdata.build.fundamentals import common
-    from RevenueChaser.rcdata.build.ownership import sec
-    from RevenueChaser.rcdata.build.prices import cover_shares
-    assert sec_throttle.LIMIT == caps.WINDOWS["sec"][0]
-    named = set(sec_throttle.SEC_PROCESSES) - {"the dashboard"}
-    assert named <= {e.name for e in automations.REGISTRY}, "a name that is not an automation"
-    assert "RC-Daily-Bars" in named                     # daily_bars --sec-files: the SEC exchange and fund files
-    assert len(sec_throttle.SEC_PROCESSES) * sec_throttle.FALLBACK_RATE <= sec_throttle.LIMIT
-    assert sec.PER_SECOND <= sec_throttle.FALLBACK_RATE
-    for interval in (sec_edgar._THROTTLE_INTERVAL, cover_shares.SEC_INTERVAL_S, common.SEC_INTERVAL_S):
-        assert 1 / interval <= sec_throttle.FALLBACK_RATE + 1e-9
 
 
 def test_openfigi_shares_one_bucket_per_key_inside_its_window():

@@ -317,7 +317,8 @@ def test_a_filers_value_off_by_1000_is_rescaled_once_its_prices_agree(monkeypatc
     row = _serve()
     assert _served("SELECT cik, names, value_factor FROM sec13f_filer_period WHERE value_factor <> 1 ORDER BY cik") == [
         ("2000005", 6, 1000.0), ("2000007", 6, 0.001)]
-    assert _served("SELECT value FROM sec13f_ticker_period WHERE ticker = 'MSFT'") == [(40_000.0 * 6 + 40.0,)]
+    # The filer with too few names for the median test has its lines read at the consensus price instead (#780).
+    assert _served("SELECT value FROM sec13f_ticker_period WHERE ticker = 'MSFT'") == [(40_000.0 * 7,)]
     assert "2 filer-quarters' VALUE off by a factor of 1,000 against the 13F's own prices: rescaled" in row["note"]
     # Review S2: the largest money change the store makes is on the issues board, one row per filer and quarter.
     issues = _issues()
@@ -328,6 +329,98 @@ def test_a_filers_value_off_by_1000_is_rescaled_once_its_prices_agree(monkeypatc
         "MANAGER 2000007, 2026-09-30: VALUE read as 1,000 times too high (median ratio 1000 to the 13F's own prices "
         "over 6 names): $122,300,000 read as $122,300")
     assert not any(k == "value_rescaled" and key.startswith("2000006") for k, key in issues)
+
+
+def test_a_filer_writing_dollars_before_the_rule_change_is_read_in_dollars(monkeypatch, http_mock):
+    """#780: before 2023-01-03 the rule said thousands (``value_scale`` 1,000), but some filers wrote dollars. The
+    1,000 test ran only on filings made after the change, so their value went in 1,000 times too high and the
+    pre-2023 quarters' totals with it (AAPL's implied price 6-41 times its close on the live store)."""
+    monkeypatch.setattr(sec, "_shared_pace", lambda: True)
+    monkeypatch.setenv("RC_HTTP_CONTACT", "ops@example.org")
+    ox.make_spine()
+    e = ox.Edgar()
+    filers = [_f(f"000200000{i}-22-00000{i}", 2000000 + i, "2022-08-10", _book(scale=0.001), period="06-30-2022")
+              for i in range(1, 5)]                                                            # thousands, as ruled
+    filers.append(_f("0002000005-22-000005", 2000005, "2022-08-10", _book(), period="06-30-2022"))   # dollars
+    e.add_day("2022-08-10", filers)
+    e.install(http_mock)
+    _thirteen_f(as_of="2022-08-11")
+    _serve()
+    assert _served("SELECT cik, period, value_factor FROM sec13f_filer_period WHERE value_factor <> 1") == [
+        ("2000005", date(2022, 6, 30), 0.001)]
+    assert _served("SELECT value FROM sec13f_ticker_period WHERE ticker = 'MSFT'") == [(40_000.0 * 5,)]
+
+
+def _book_day(http_mock, days: dict[str, list[tuple[float, str]]]) -> None:
+    """Each index day's filers, ``(scale, period)`` each, ingested one day at a time."""
+    ox.make_spine()
+    e = ox.Edgar()
+    n = 0
+    for day, books in days.items():
+        rows = []
+        for scale, period in books:
+            n += 1
+            rows.append(_f(f"0002{n:06d}-22-{n:06d}", 2000000 + n, day, _book(scale=scale), period=period))
+        e.add_day(day, rows)
+    e.install(http_mock)
+    for day in days:
+        _thirteen_f(mode="backfill", **{"from": day, "to": day})
+
+
+def test_a_filer_off_by_a_million_is_rescaled_too(monkeypatch, http_mock):
+    """#780, live 12 Nov 2026: Palisades (2014 Q2) and SPX Equities (2018 Q2) sat at a median ratio of 1,000,000,
+    outside the 1,000 band, and alone carried $56T and $147T."""
+    monkeypatch.setattr(sec, "_shared_pace", lambda: True)
+    monkeypatch.setenv("RC_HTTP_CONTACT", "ops@example.org")
+    _book_day(http_mock, {"2026-10-27": [(1.0, "09-30-2026")] * 4 + [(1_000_000.0, "09-30-2026")]})
+    row = _serve()
+    assert _served("SELECT cik, value_factor FROM sec13f_filer_period WHERE value_factor <> 1") == [
+        ("2000005", 0.000001)]
+    assert _served("SELECT value FROM sec13f_ticker_period WHERE ticker = 'MSFT'") == [(40_000.0 * 5,)]
+    assert _issues()[("value_rescaled", "2000005|2026-09-30")].startswith(
+        "MANAGER 2000005, 2026-09-30: VALUE read as 1,000,000 times too high")
+    assert "1 filer-quarters' VALUE off" in row["note"]
+
+
+def test_a_quarters_consensus_price_1000_times_off_both_neighbours_is_moved_back(monkeypatch, http_mock):
+    """#780, live 2022 Q3: most holders already wrote dollars while their filings were read in thousands, so the
+    median price was 1,000 times too high and a filer writing thousands as ruled (Sanders Capital, $36B) was rescaled
+    to $36T. The quarters beside it set the price right; then the dollar writers are the ones rescaled."""
+    monkeypatch.setattr(sec, "_shared_pace", lambda: True)
+    monkeypatch.setenv("RC_HTTP_CONTACT", "ops@example.org")
+    thousands, dollars = 0.001, 1.0
+    _book_day(http_mock, {
+        "2022-08-10": [(thousands, "06-30-2022")] * 5,
+        "2022-11-10": [(dollars, "09-30-2022")] * 3 + [(thousands, "09-30-2022")] * 2,
+        "2023-02-10": [(dollars, "12-31-2022")] * 5})
+    row = _serve()
+    q3 = date(2022, 9, 30)
+    assert _served("SELECT cik, value_factor FROM sec13f_filer_period WHERE period = ? ORDER BY cik", q3) == [
+        ("2000006", 0.001), ("2000007", 0.001), ("2000008", 0.001), ("2000009", 1.0), ("2000010", 1.0)]
+    assert _served("SELECT period, value FROM sec13f_ticker_period WHERE ticker = 'MSFT' ORDER BY period") == [
+        (date(2022, 6, 30), 200_000.0), (q3, 200_000.0), (date(2022, 12, 31), 200_000.0)]
+    assert "6 consensus prices 1,000 times off the quarters beside them: moved back" in row["note"]
+
+
+def test_one_holding_far_from_its_price_in_a_clean_filer_is_read_at_that_price(monkeypatch, http_mock):
+    """#780, live 2018 Q3: SPX Equities' median ratio was 1.02, but a few of its lines put $258T on the quarter."""
+    monkeypatch.setattr(sec, "_shared_pace", lambda: True)
+    monkeypatch.setenv("RC_HTTP_CONTACT", "ops@example.org")
+    ox.make_spine()
+    e = ox.Edgar()
+    filers = [_f(f"000200000{i}-26-00000{i}", 2000000 + i, "2026-10-27", _book()) for i in range(1, 5)]
+    odd = _book()
+    odd[0] = _h("ISSUER 594918104", "594918104", 40_000 * 10_000.0, 100)              # MSFT line x10,000
+    filers.append(_f("0002000005-26-000005", 2000005, "2026-10-27", odd))
+    e.add_day("2026-10-27", filers)
+    e.install(http_mock)
+    _thirteen_f(as_of="2026-10-28")
+    row = _serve()
+    assert _served("SELECT value_factor FROM sec13f_filer_period WHERE cik = '2000005'") == [(1.0,)]
+    assert _served("SELECT value FROM sec13f_ticker_period WHERE ticker = 'MSFT'") == [(40_000.0 * 5,)]
+    assert _issues()[("value_row_replaced", "2000005|2026-09-30|594918104")] == (
+        "MANAGER 2000005, 2026-09-30, 594918104: $400,000,000 read at the 13F's own price, $40,000")
+    assert "1 holdings 300 times or more from the 13F's own price: read at that price" in row["note"]
 
 
 PER_QUARTER = ("_px", "_ratio", "_held", "_cp", "_m_hist", "_m_cur", "sec13f_cusip_map", "_filers", "_pos", "_tot",
@@ -504,6 +597,116 @@ def test_a_filer_that_starts_or_stops_reporting_is_not_a_trade_and_is_listed(mon
     assert [(r["cik"], r["kind"]) for r in read.filer_breaks_13f(["msft"])] == [("4000003", "started"),
                                                                                ("4000002", "stopped")]
     assert read.filer_breaks_13f(["msft"], periods=[Q2]) == []      # the quarter before Q2 is not in the store
+
+
+def _uw_ready(monkeypatch) -> None:
+    from RevenueChaser.core.providers import unusual_whales
+    monkeypatch.setattr(sec, "_shared_pace", lambda: True)
+    monkeypatch.setenv("RC_HTTP_CONTACT", "ops@example.org")
+    monkeypatch.setenv("UNUSUAL_WHALES_API_KEY", "test-key")
+    monkeypatch.setattr(unusual_whales, "BASE", "https://uw.test/api")
+    monkeypatch.setattr(unusual_whales, "_sleep", lambda _s: None)
+
+
+def _uw_institutions(http_mock, rows: list[dict]) -> None:
+    """UW's ``/institutions`` answering ``rows`` on its first page, read once as of 12 Nov 2026."""
+    from RevenueChaser.rcdata.build.ownership import uw_institutions as uwi
+
+    def answer(request):
+        page = request.url.query.decode()
+        return 200, json.dumps({"data": rows if "page=" not in page or "page=0" in page else []}), \
+            {"content-type": "application/json"}
+    http_mock.add("/institutions", answer)
+    assert base.run_request({"dataset": uwi.NAME, "params": {"as_of": "2026-11-12"}},
+                            sleep=lambda s: None)["result"] == "changed"
+
+
+def _institution(cik: str, tags: list[str], predecessors: list[dict] = ()) -> dict:
+    return {"cik": cik, "name": f"MANAGER {cik}", "tags": tags, "is_hedge_fund": False, "date": "2026-09-30",
+            "filing_date": "2026-10-27", "total_value": "1", "share_value": "1",
+            "succession": {"predecessors": list(predecessors), "current_holder": None, "succeeded_by": None}}
+
+
+def _handover(monkeypatch, http_mock, effective: str, also: list[dict] = ()) -> dict:
+    """#776 (AON, 2025 Q3 on the live board): HPS (4000002) is succeeded by BlackRock (4000001), which UW lists only
+    in BlackRock's ``predecessors``. BlackRock's Q3 holds its own 100, HPS's 300 and 50 bought; 4000003 starts
+    reporting and 4000004 really stops."""
+    _uw_ready(monkeypatch)
+    ox.make_spine()
+    e = ox.Edgar()
+    e.add_day("2026-08-14", [
+        _f("0004000001-26-000001", 4000001, "2026-08-14", [_h("MICROSOFT CORP", "594918104", 40_000, 100)],
+           period="06-30-2026"),
+        _f("0004000002-26-000002", 4000002, "2026-08-14", [_h("MICROSOFT CORP", "594918104", 120_000, 300)],
+           period="06-30-2026"),
+        _f("0004000004-26-000004", 4000004, "2026-08-14", [_h("MICROSOFT CORP", "594918104", 80_000, 200)],
+           period="06-30-2026")])
+    e.add_day("2026-10-27", [
+        _f("0004000001-26-000011", 4000001, "2026-10-27", [_h("MICROSOFT CORP", "594918104", 180_000, 450)]),
+        _f("0004000003-26-000013", 4000003, "2026-10-27", [_h("MICROSOFT CORP", "594918104", 200_000, 500)])])
+    e.install(http_mock)
+    blackrock = _institution("0004000001", [], [{"cik": "0004000002", "name": "HPS INVESTMENT PARTNERS, LLC",
+                                                 "effective_report_date": effective}])
+    _uw_institutions(http_mock, [blackrock, *also])
+    _thirteen_f(as_of="2026-10-28")
+    _thirteen_f(mode="backfill", **{"from": "2026-08-14", "to": "2026-08-14"})
+    return _serve(day="2026-11-20")                              # after the 30 Sep deadline (16 Nov): settled
+
+
+def test_a_filer_succeeded_in_the_quarter_it_stops_is_its_successor_not_a_stop(monkeypatch, http_mock):
+    row = _handover(monkeypatch, http_mock, "2026-09-30")
+    # BlackRock 450 against its own 100 plus HPS's 300: 50 bought, not 350; only 4000004 stopped.
+    assert _served("SELECT holders, new_holders, exited_holders, buy_flow, sell_flow, started_filers, started_shares, "
+                   "exited_no_filing, stopped_shares FROM sec13f_ticker_period WHERE ticker = 'MSFT' AND period = ?",
+                   Q3) == [(2, 0, 0, 50.0, 0.0, 1, 500.0, 1, 200.0)]
+    assert _served("SELECT cik, kind, shares FROM sec13f_filer_breaks ORDER BY kind") == [
+        ("4000003", "started", 500.0), ("4000004", "stopped", 200.0)]
+    assert "1 filers succeeded by another" in row["note"]
+    # The quarter before keeps both filers as they reported.
+    assert _served("SELECT holders FROM sec13f_ticker_period WHERE ticker = 'MSFT' AND period = ?", Q2) == [(3,)]
+
+
+def test_a_succession_dated_another_quarter_leaves_the_stop_a_stop(monkeypatch, http_mock):
+    """A hand-over UW dates to a quarter the filings do not show is never merged silently (#776): HPS's is dated
+    Q2, when both filers still reported, so HPS stays a stop; 4000004's, dated Q3 to 4000003, is taken."""
+    other = _institution("0004000003", [], [{"cik": "0004000004", "name": "OLD ADVISERS LLC",
+                                             "effective_report_date": "2026-09-30"}])
+    row = _handover(monkeypatch, http_mock, "2026-06-30", also=[other])
+    assert _served("SELECT cik, kind FROM sec13f_filer_breaks ORDER BY kind, cik") == [("4000002", "stopped")]
+    assert "1 filers succeeded by another" in row["note"]
+
+
+def test_each_investor_type_lists_its_largest_names_and_the_rest_per_quarter(monkeypatch, http_mock):
+    """#760: a type is a tag UW gives the filer's CIK (padded to ten digits there, not in a 13F filing), plus ``all``.
+    4000001 is a value and an energy investor, 4000002 a value investor, 4000003 untagged. With the top cut to one
+    name, the rest is one row with no ticker and every type's quarter adds up to 100 %."""
+    _uw_ready(monkeypatch)
+    monkeypatch.setattr(serve, "TYPE_TOP", 1)
+    ox.make_spine()
+    e = ox.Edgar()
+    e.add_day("2026-10-27", [
+        _f("0004000001-26-000011", 4000001, "2026-10-27", [_h("MICROSOFT CORP", "594918104", 400_000, 1000),
+                                                         _h("APPLE INC", "037833100", 200_000, 1000)]),
+        _f("0004000002-26-000012", 4000002, "2026-10-27", [_h("APPLE INC", "037833100", 600_000, 3000)]),
+        _f("0004000003-26-000013", 4000003, "2026-10-27", [_h("MICROSOFT CORP", "594918104", 4_000_000, 10_000)])])
+    e.install(http_mock)
+    _uw_institutions(http_mock, [_institution("0004000001", ["energy", "value_investor"]),
+                                 _institution("0004000002", ["value_investor"]),
+                                 _institution("0004000003", ["all"]),                # not a second "all"
+                                 _institution("0004000009", ["activist"])])          # files no 13F here
+    _thirteen_f(as_of="2026-10-28")
+    _serve(day="2026-11-20")
+    assert _served("SELECT tag, ticker, rank, value, holders, share, type_value, type_filers, snapshot_date "
+                   "FROM sec13f_type_holdings WHERE period = ? ORDER BY tag, rank NULLS LAST", Q3) == [
+        ("all", "MSFT", 1, 4_400_000.0, 2, 84.6154, 5_200_000.0, 3, date(2026, 11, 12)),
+        ("all", None, None, 800_000.0, None, 15.3846, 5_200_000.0, 3, date(2026, 11, 12)),
+        ("energy", "MSFT", 1, 400_000.0, 1, 66.6667, 600_000.0, 1, date(2026, 11, 12)),
+        ("energy", None, None, 200_000.0, None, 33.3333, 600_000.0, 1, date(2026, 11, 12)),
+        ("value_investor", "AAPL", 1, 800_000.0, 2, 66.6667, 1_200_000.0, 2, date(2026, 11, 12)),
+        ("value_investor", None, None, 400_000.0, None, 33.3333, 1_200_000.0, 2, date(2026, 11, 12))]
+    assert [(r["ticker"], r["share"]) for r in read.type_holdings_13f(["Value_Investor"], periods=[Q3])] == [
+        ("AAPL", 66.6667), (None, 33.3333)]
+    assert read.type_holdings_13f(["activist"]) == []
 
 
 def test_a_quarter_still_arriving_lists_no_breaks(monkeypatch, http_mock):

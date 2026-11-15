@@ -108,25 +108,10 @@ def _universe_job(monkeypatch, swing, fundamentals):
     return ran
 
 
-def test_universe_job_runs_fundamentals_when_swing_scores_nothing(monkeypatch):
-    ran = _universe_job(monkeypatch, "No data: swing empty", None)
-    with pytest.raises(JobMessage) as exc:
-        runners.run_universe_refresh(None)
-    assert ran == ["ag", "swing", "fundamentals"]
-    assert exc.value.message == "Swing: No data: swing empty"
 
 
-def test_universe_job_reports_every_empty_board(monkeypatch):
-    ran = _universe_job(monkeypatch, "No data: a", "No data: b")
-    with pytest.raises(JobMessage) as exc:
-        runners.run_universe_refresh(None)
-    assert ran == ["ag", "swing", "fundamentals"]
-    assert exc.value.message == "Swing: No data: a Fundamentals: No data: b"
 
 
-def test_universe_job_ends_normally_when_both_boards_scored(monkeypatch):
-    _universe_job(monkeypatch, None, None)
-    assert runners.run_universe_refresh(None) == runners.FUNDAMENTALS_LATEST
 
 
 # ── Asymmetric Growth: only a Fetch writes ticker_scores ──────────────────────
@@ -199,12 +184,6 @@ def test_refresh_with_an_empty_store_points_at_fetch_universe(client, out, yf_ca
     assert yf_calls == [] and submitted == []
 
 
-@pytest.mark.parametrize("mod", ["module_swing_potential", "module_fundamentals", "module_asymmetric_growth"])
-def test_a_running_universe_job_shows_loading_and_caches_nothing(client, out, monkeypatch, mod):
-    monkeypatch.setattr(jobs, "has_active", lambda modules: "universe" in modules)
-    body = client.get(f"/view/{mod}?refresh=1").get_data(as_text=True)
-    assert "Loading universe…" in body
-    assert not out.exists() or list(out.iterdir()) == []
 
 
 def test_loading_is_not_shown_once_the_universe_is_stored(client, out, monkeypatch):

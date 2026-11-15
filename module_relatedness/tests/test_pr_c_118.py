@@ -28,48 +28,11 @@ def _prof(**kw):
     return out
 
 
-from RevenueChaser.module_relatedness.tests.test_relatedness import _seed_universe  # noqa: E402 - one seed
 
 
 # ── C12: similarity percentile ───────────────────────────────────────────────
-def test_percentile_matches_the_bruteforce_oracle(rawstore_tmp_db):
-    """The payload percentile uses the upper triangle, the non-zero pairs only (#395) and the unrounded
-    score — so it equals ``all_scores`` + ``percentile`` over the non-zero scores."""
-    profs = {
-        "AAA": _prof(products=["alpha", "beta", "gamma"]),
-        "BBB": _prof(products=["alpha", "beta"]),
-        "CCC": _prof(products=["alpha"]),
-        "DDD": _prof(products=["delta"]),
-    }
-    _seed_universe(list(profs))
-    for t, p in profs.items():
-        store.save_profile(t, "cik-" + t, p, "k", "m")
-
-    payload = engine._payload(profs, {})
-    n = len(profs)
-    assert payload["n_pairs"] == n * (n - 1) // 2
-
-    oracle = similarity.all_scores(profs)
-    assert len(oracle) == n * (n - 1) // 2
-    dist = [s for s in oracle.values() if s > 0]
-
-    for focal, entries in payload["peers"].items():
-        for p in entries:
-            pair = (focal, p["peer"]) if (focal, p["peer"]) in oracle else (p["peer"], focal)
-            want = similarity.percentile(oracle[pair], dist)
-            assert p["percentile"] == pytest.approx(want, abs=0.1), (focal, p)
 
 
-def test_peer_scores_never_ship_a_raw_column(rawstore_tmp_db):
-    profs = {"AAA": _prof(products=["alpha", "beta"]),
-             "BBB": _prof(products=["alpha"])}
-    _seed_universe(list(profs))
-    for t, p in profs.items():
-        store.save_profile(t, "cik-" + t, p, "k", "m")
-    payload = engine._payload(profs, {})
-    for entries in payload["peers"].values():
-        for p in entries:
-            assert "score_raw" not in p
 
 
 # ── C14 + N4: cost cap ───────────────────────────────────────────────────────
@@ -342,3 +305,25 @@ def test_a_prompt_version_bump_misses_the_llm_cache(rawstore_tmp_db, monkeypatch
 
 
 
+
+
+def test_an_evren_pool_never_opens_more_than_the_account_allows(rawstore_tmp_db, monkeypatch):
+    """EVREN refuses a 5th concurrent request (HTTP 429, 15 Nov 2026): the pool is capped at evren.MAX_WORKERS."""
+    from RevenueChaser.core.providers import evren
+    _one_group_per_ticker(monkeypatch)
+    import concurrent.futures
+    seen = {}
+    real_pool = concurrent.futures.ThreadPoolExecutor
+
+    def pool(*a, **k):
+        seen["max_workers"] = k.get("max_workers")
+        return real_pool(*a, **k)
+
+    def auth(*a, **k):
+        raise deepseek.DeepSeekAuthError("EVREN rejected the API key (HTTP 401)")
+
+    monkeypatch.setattr(concurrent.futures, "ThreadPoolExecutor", pool)   # engine imports it at call time
+    monkeypatch.setattr(engine.profiles_mod, "profile_for", auth)
+    with pytest.raises(engine.RunStopped):
+        engine.build_profiles([f"T{i}" for i in range(8)], use_llm=True, workers=8, provider="evren")
+    assert seen["max_workers"] == evren.MAX_WORKERS == 1

@@ -191,7 +191,7 @@ def test_relative_lazy_and_string_imports_are_edges(tmp_path):
 
 
 def test_every_dynamic_import_outside_tests_names_its_targets_as_string_literals():
-    """The string-literal edges cover these three registries; a new import_module site must be checked the same way."""
+    """The string-literal edges cover this registry; a new import_module site must be checked the same way."""
     sites = set()
     for p in _REPO.rglob("*.py"):
         rel = p.relative_to(_REPO).as_posix()
@@ -199,7 +199,7 @@ def test_every_dynamic_import_outside_tests_names_its_targets_as_string_literals
             continue
         if re.search(r"\bimport_module\(|__import__\(", p.read_text(encoding="utf-8")):
             sites.add(rel)
-    assert sites == {"core/datasets.py", "core/nightly_inputs.py", "module_relatedness/writers.py"}
+    assert sites == {"module_relatedness/writers.py"}
 
 
 def test_the_workflow_names_each_run_full_or_selective():

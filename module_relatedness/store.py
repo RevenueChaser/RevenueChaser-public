@@ -1,10 +1,10 @@
-"""Durable Relatedness store (raw.duckdb) — Phase 6.
+"""Durable Relatedness store (``boards/relatedness.duckdb``) — Phase 6.
 
 Replaces the ``.cache/*.json`` profile files. A profile is a fixed schema of
 string lists; it is stored one row per field in ``relatedness_attributes``
 (``value`` = JSON list) plus a metadata row in ``relatedness_profiles``. The raw
-LLM response is kept in ``llm_cache`` under a structured cache key, and the
-profile mode is stamped in ``run_registry``.
+LLM response is kept in ``llm_cache`` under a structured cache key, and each
+profile carries its mode stamp.
 """
 from __future__ import annotations
 
@@ -19,7 +19,6 @@ from . import config
 
 logger = logging.getLogger(__name__)
 
-MODE_KEY = "profiles_mode"
 PROMPT_VERSION = config.PROMPT_VERSION
 
 
@@ -35,8 +34,8 @@ SOURCE_KEYS = ("cik", "accession", "form", "filed")
 def cache_key(model, thinking, effort, prompt_version, ticker, input_hash, provider=None, source=None) -> str:
     """Structured (sorted-keys) cache key — stable across dict ordering.
 
-    ``provider`` names a writer other than DeepSeek (``"grok"``, #388); a DeepSeek key carries none, so its bytes
-    are what they were before Grok. ``source`` (G6) is the filing the prompt's text came from (``SOURCE_KEYS``);
+    ``provider`` names a writer other than DeepSeek (``"evren"``, #360); a DeepSeek key carries none, so its bytes
+    are what they were before other writers. ``source`` (G6) is the filing the prompt's text came from (``SOURCE_KEYS``);
     a key made without one carries none. Staleness never reads it (``is_stale``): the input hash already moves
     with the text.
     """
@@ -69,24 +68,6 @@ def mode_stamp(writer: tuple[str, str] | None = None) -> dict:
         # v3 (#400) sends no thinking: a DeepSeek stamp names neither knob, as every other writer's.
         return {"model": model, "thinking": False, "effort": "", "prompt_version": PROMPT_VERSION}
     return {"provider": provider, "model": model, "thinking": False, "effort": "", "prompt_version": PROMPT_VERSION}
-
-
-def get_mode() -> dict | None:
-    row = rawstore.get("run_registry", MODE_KEY)
-    if not row:
-        return None
-    v = row["value"]
-    if isinstance(v, dict):          # rawstore auto-decodes JSON strings on read
-        return v
-    try:
-        return json.loads(v)
-    except (json.JSONDecodeError, TypeError):
-        return None
-
-
-def set_mode(mode: dict) -> None:
-    rawstore.write_rows("run_registry",
-                        [{"key": MODE_KEY, "value": json.dumps(mode, sort_keys=True)}])
 
 
 # ``save_profile``'s default for ``profile_json`` / ``label_source``: carry the stored value (#400).

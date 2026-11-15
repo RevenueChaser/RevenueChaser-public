@@ -130,33 +130,7 @@ def board(rawstore_tmp_db, monkeypatch, tmp_path):
     return state
 
 
-def test_the_guard_keeps_the_history_leaderboard_when_the_cache_file_is_gone(board):
-    board.result = FLOW
-    runners.run_money_flow_latest(_NoUW())                    # Tuesday evening: a complete, recorded leaderboard
-    board.latest.unlink()                                     # the regenerable .cache file is gone
-    board.at = datetime(2026, 10, 7, 22, 0, tzinfo=timezone.utc)
-    board.result = {"inflows": [], "outflows": [], "generated_at": None, "as_of": None}
-    with pytest.raises(JobMessage, match="kept the stored leaderboard from 2026-10-06"):
-        runners.run_money_flow_latest(_NoUW())
-    shown = json.loads(board.latest.read_text(encoding="utf-8"))
-    assert [r["ticker"] for r in shown["inflows"]] == ["XLK"] and shown["outflows"][0]["flow_score"] == -8.0
 
 
-def test_a_partial_pull_does_not_replace_a_complete_history_leaderboard(board):
-    board.result = FLOW
-    runners.run_money_flow_latest(_NoUW())
-    board.latest.unlink()
-    board.at = datetime(2026, 10, 7, 22, 0, tzinfo=timezone.utc)
-    board.result = {**FLOW, "inflows": [{"ticker": "SMH", "name": "Semis", "flow_score": 3.0}], "partial": True,
-                    "missing": ["XLK"], "as_of": "2026-10-07"}
-    with pytest.raises(JobMessage, match="kept the stored leaderboard"):
-        runners.run_money_flow_latest(_NoUW())
-    assert json.loads(board.latest.read_text(encoding="utf-8"))["inflows"][0]["ticker"] == "XLK"
 
 
-def test_with_no_complete_run_in_history_a_partial_pull_is_saved_flagged(board):
-    board.result = {**FLOW, "partial": True, "missing": ["XLK"]}
-    board.latest.write_text(json.dumps(FLOW), encoding="utf-8")   # a JSON that history does not back
-    with pytest.raises(JobMessage, match="saved flagged"):
-        runners.run_money_flow_latest(_NoUW())
-    assert json.loads(board.latest.read_text(encoding="utf-8"))["partial"] is True

@@ -116,9 +116,6 @@ def _fragments(html: str) -> dict:
     return json.loads(re.search(r"var ROTATION_HOLDINGS = (.*?);  // ticker", html).group(1))
 
 
-def _header():
-    (head,) = rawstore.query("SELECT * FROM result_runs WHERE board = 'module_sector_rotation'", db="history")
-    return head
 
 
 # ── DF66 / ROT-1: a range Fetch renders the newest as_of per ticker ──────────────────────────────────────────────────
@@ -167,46 +164,10 @@ def test_a_sector_row_keeps_its_industry_tree_even_when_holdings_name_it(board):
     assert "Top holdings" in frags["AIQ"]
 
 
-def test_a_live_fetch_with_a_full_rrg_stays_complete_and_records_theme_holdings_only(board, monkeypatch):
-    _engine(monkeypatch, [_snap(t) for t in WANTED])
-    spine_fixture.write_etf_holdings({t: [{"ticker": f"H{t}", "name": t, "weight": 5.0}] for t in SECTORS + THEMES})
-    for t in ["SPY", *(f"H{t}" for t in SECTORS + THEMES)]:                 # the RS reads D01 (M-ROT-3, #374)
-        seed(t, DAY, start=DAY - timedelta(days=150))
-    tree = [{"industry": "Software", "holdings": [{"ticker": "MSFT", "name": "Microsoft", "market_cap": 3e12,
-                                                   "weight": 100.0}]}]
-    monkeypatch.setattr(rot_engine, "sector_etf_trees", lambda: {t: tree for t in SECTORS})
-    uw = _UW()
-    assert runners.run_rotation_latest(uw) == runners.ROTATION_LATEST          # no JobMessage: nothing went wrong
-    head = _header()
-    ctx = json.loads(head["context"])
-    assert head["quality"] == "complete" and not head["quality_note"]
-    assert ctx["without_holdings"] == SECTORS and ctx["expandable"] == len(THEMES) and ctx["missing"] == []
-    held = rawstore.query("SELECT DISTINCT group_name FROM rotation_holdings_history", db="history")
-    assert [r["group_name"] for r in held] == ["theme"]                         # the sector rows are gone
-    assert uw.calls == []                                                       # no UW candle for any holding
-    frags = _fragments(runners.ROTATION_LATEST.read_text(encoding="utf-8"))
-    assert all("Industry holdings" in frags[t] for t in SECTORS)
 
 
 # ── ROT-5: a degraded or empty live Fetch ────────────────────────────────────────────────────────────────────────────
 
-def test_a_live_fetch_missing_two_etfs_keeps_the_complete_stored_same_day_snapshot(board, monkeypatch):
-    rotation_store.save_snapshot([_snap(t, close=50.0) for t in WANTED], as_of=DAY)
-    before = rawstore.query("SELECT * FROM rotation_snapshots WHERE as_of_date = ? ORDER BY ticker",
-                            [DAY.isoformat()], db="sector_rotation")
-    _engine(monkeypatch, [_snap(t, close=99.0) for t in WANTED[2:]])
-    monkeypatch.setattr(rot_engine, "fetch_all_holdings", lambda uw, snaps: {})
-    monkeypatch.setattr(rot_engine, "sector_etf_trees", lambda: {})
-    with pytest.raises(JobMessage) as exc:
-        runners.run_rotation_latest(_UW())
-    msg = exc.value.message
-    assert WANTED[0] in msg and WANTED[1] in msg and "kept the stored" in msg
-    assert rawstore.query("SELECT * FROM rotation_snapshots WHERE as_of_date = ? ORDER BY ticker",
-                          [DAY.isoformat()], db="sector_rotation") == before                      # the day was not replaced
-    html = runners.ROTATION_LATEST.read_text(encoding="utf-8")
-    assert len(_table_rows(html)) == len(WANTED) and _cell(html, "XLK", "close") == "$50.00"   # the stored rows
-    head = _header()
-    assert head["quality"] == "partial" and "kept the stored" in head["quality_note"]
 
 
 def test_a_degraded_live_fetch_with_nothing_better_stored_is_saved_and_says_so(board, monkeypatch):
@@ -220,13 +181,6 @@ def test_a_degraded_live_fetch_with_nothing_better_stored_is_saved_and_says_so(b
     assert len(stored) == len(WANTED) - 2
 
 
-def test_an_empty_live_fetch_does_not_rewrite_the_board(board, monkeypatch):
-    runners.ROTATION_LATEST.write_text("<html>the last good board</html>", encoding="utf-8")
-    _engine(monkeypatch, [])
-    with pytest.raises(JobMessage, match="no ETF"):
-        runners.run_rotation_latest(_UW())
-    assert runners.ROTATION_LATEST.read_text(encoding="utf-8") == "<html>the last good board</html>"
-    assert _header()["quality"] == "partial"
 
 
 # ── z default, DF68 ──────────────────────────────────────────────────────────────────────────────────────────────────

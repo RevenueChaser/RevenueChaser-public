@@ -46,11 +46,18 @@ BUILD_MODES = ("fresh", "live")
 # A table may lose at most this share of its live rows in one build without an explicit allow_shrink. The datasets
 # only ever add or replace rows, so any real shrink is a build from a partial or missing Parquet tree.
 MAX_SHRINK = 0.01
-# A table whose row count is a **chosen** list and not an accumulation: ``my_universe`` is avo's rules plus his
-# manual removes, so a smaller list is the intended outcome of changing the choice, not a sign of a partial build,
-# and it must not need a request-wide ``allow_shrink`` (which would relax every other table of the kind with it).
-# The "empties" guard still applies: a universe of no names is a bug whoever edited what.
-SHRINKS_BY_CHOICE = ("my_universe",)
+# A table whose row count is a **chosen** list and not an accumulation, so a smaller count is the intended outcome
+# of the choice changing and not a sign of a partial build; it must not need a request-wide ``allow_shrink`` (which
+# would relax every other table of the kind with it). The "empties" guard still applies to all of them.
+#   ``my_universe``: avo's rules plus his manual removes, so a shorter list is what he asked for.
+#   ``economic_event``: UW's economic calendar is a forward-looking window ("this week and next"), fetched hourly,
+#     and a snapshot day's partition is replaced whole by that day's newest fetch
+#     (``build/uw_economic_calendar.py``). So an event that has rolled out of the window, or that UW dropped, is
+#     gone from the day it was fetched on: the newest fetch of a day holds fewer rows than the first one, by the
+#     source's choice, not ours. Read from ``RC-Build.log`` on homesrv, 14 Nov 2026: a build served 114 rows
+#     against 126 live (-9.5 %), and that one refused swap failed the whole ``market`` build every hour from
+#     00:05 UTC on (one serving file per kind, one swap: ``build/base.py`` ``build_kind_many``).
+SHRINKS_BY_CHOICE = ("my_universe", "economic_event")
 # The tables a kind's code no longer builds, by kind: the live file may still hold one, and the build may leave it
 # out (its swap removes it with the old file). Any other live table missing from a build is still refused, because
 # that is a build from a partial Parquet tree. ``allow_shrink`` cannot stand in for this: the "missing" check comes
@@ -70,6 +77,11 @@ WINDOW_TABLE = "serving_window"
 # at a 7.7 GB peak on the 15 GB server beside the dashboard. Under a limit DuckDB spills instead (``spill_dir``).
 # A DuckDB size string (``5GB``) and a positive whole number; empty or invalid keeps the default.
 MEMORY_LIMIT_DEFAULT = "5GB"
+# A read connection's buffer pool (``RC_DUCKDB_READ_MEMORY_LIMIT``). DuckDB's own default is 80 % of RAM (8 GiB on
+# homesrv), and the one database instance a process keeps per path holds what every open connection read: the
+# relatedness run, 8 workers reading business texts from sec_forms.duckdb, grew to 7.3 GB anon and was OOM-killed on
+# 15 Nov 2026 (measured: 400 business texts took one process from 49 MB to 2.6 GB). A reader needs no more than this.
+READ_MEMORY_LIMIT_DEFAULT = "1GiB"
 THREADS_DEFAULT = 3
 # The most a build may spill (``RC_DUCKDB_MAX_TEMP``, a DuckDB size): past it the build fails, it does not fill the disk.
 # DuckDB's own default is 90 % of the free space. 2010-2025 of history spilled 9.5 GB at its largest statement (#372).
@@ -160,9 +172,16 @@ def open_read(kind: str) -> duckdb.DuckDBPyConnection:
     if not path.exists():
         raise ServingFileMissing(f"no {kind} serving file at {path} yet")
     con = duckdb.connect(str(path), read_only=True)
+    con.execute(f"SET memory_limit = '{read_memory_limit()}'")
     from . import opens
     opens.note(kind, path, con, VERSION_TABLE)       # #566: which build this job read; never raises
     return con
+
+
+def read_memory_limit() -> str:
+    """The buffer-pool cap of a read connection: ``RC_DUCKDB_READ_MEMORY_LIMIT`` when it is a DuckDB size, else
+    ``READ_MEMORY_LIMIT_DEFAULT``."""
+    return _size("RC_DUCKDB_READ_MEMORY_LIMIT", READ_MEMORY_LIMIT_DEFAULT)
 
 
 def _remove(path: Path) -> None:

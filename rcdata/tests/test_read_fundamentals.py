@@ -9,6 +9,7 @@ import pytest
 from RevenueChaser.core.providers import sec_edgar
 from RevenueChaser.rcdata import ops, read
 from RevenueChaser.rcdata.build.fundamentals import companyfacts, filings
+from RevenueChaser.rcdata.build.sec_forms import forms
 
 from . import fund_fixture as fx
 
@@ -27,6 +28,8 @@ def built(monkeypatch, http_mock):
                      {"msft-10k.htm": fx.ixbrl_10k(), "msft-def14a.htm": fx.proxy()})
     fx.run(companyfacts.NAME, mode="backfill", to="2026-10-26")
     fx.run(filings.NAME, mode="backfill", to="2026-10-27")
+    # #858: the document readers serve the one cutter's table, so the cut has to have run.
+    fx.run(forms.NAME, "2026-10-27")
 
 
 @pytest.mark.usefixtures("built")
@@ -45,8 +48,12 @@ def test_the_filing_side():
     assert [(r["report_date"], r["confirmed"]) for r in read.earnings_events("789019")] == [
         (date(2025, 10, 29), True)]
     text = read.filing_text("789019")
+    # #858: the text is ``sec/forms``' cut, so the row's status is that dataset's check, and ``item`` and
+    # ``primary_document`` keep the names a caller of the ``filing_item`` days reads.
     assert text["accession"] == fx.K25 and text["quality"] == "ok" and text["status"] == \
-        ops.latest_check(filings.NAME)["result"]
+        ops.latest_check(forms.NAME)["result"]
+    # ``primary_document`` is the stored file the cut was made from, not the SEC's document name (see read.py).
+    assert text["item"] == "business" and text["primary_document"] == f"{fx.K25}.html.gz"
     assert read.filing_text("789019", "proxy")["form"] == "DEF 14A"
     assert [r["segment"] for r in read.segments("789019", axis="business")] == [
         "Intelligent Cloud", "More Personal Computing"]                   # the biggest first

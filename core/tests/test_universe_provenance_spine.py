@@ -21,34 +21,11 @@ def spine(built):
     assert universe.universe_source() == "spine"
 
 
-@pytest.fixture
-def caps(spine):
-    """A stored market cap: the old cache still feeds the caps, so "refreshed by" is about them."""
-    rawstore.write_rows("equity_universe", [{"ticker": "MSFT", "market_cap": 3e12, "price": 400.0, "name": "MSFT"}])
-
-
 def _built_at() -> str:
     """The live spine's build time as the line shows it, read straight from the serving file."""
     with serving.open_read("spine") as con:
         built = con.execute(f"SELECT max(built_at) FROM {serving.VERSION_TABLE}").fetchone()[0]
     return datetime.fromtimestamp(built, timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-
-
-@pytest.mark.usefixtures("caps")
-def test_the_line_names_the_spine_its_sources_and_its_build():
-    assert universe.spine_provenance() == {"built_at": _built_at(), "source_as_of": "2026-10-27"}
-    line = universe_provenance_html(WHEN, "Swing Potential")
-    assert "identity spine" in line and "SEC company tickers" in line
-    assert "SEC file of 2026-10-27" in line and f"built {_built_at()}" in line
-    assert "Universe refreshed by" not in line                     # the old cache no longer picks the names
-    assert "market caps refreshed by <b" in line and "Swing Potential" in line
-
-
-@pytest.mark.usefixtures("caps")
-def test_a_partial_pull_is_about_the_market_caps_only():
-    line = universe_provenance_html(WHEN, "Swing Potential", partial=True)
-    assert "partial fetch" not in line and "market caps partly stale" in line
-    assert "identity spine" in universe_provenance_html("", "")    # no cache provenance: the spine is still named
 
 
 @pytest.mark.usefixtures("spine")
@@ -72,12 +49,3 @@ def test_the_board_name_is_escaped():
     assert "<img" not in universe_provenance_html(WHEN, "<img src=x>")
 
 
-@pytest.mark.usefixtures("spine")
-def test_no_market_cap_loaded_says_so_in_the_header():
-    """Opus review N5: on the spine with no market cap stored (the host after the 27 Oct purge, until G2), the header
-    says so, so an empty screened board explains itself without opening the funnel."""
-    line = universe_provenance_html(WHEN, "Swing Potential")
-    assert "market caps: none loaded yet" in line and "refreshed by" not in line
-    rawstore.write_rows("equity_universe", [{"ticker": "MSFT", "market_cap": 3e12, "price": 400.0, "name": "MSFT"}])
-    line = universe_provenance_html(WHEN, "Swing Potential")
-    assert "none loaded" not in line and "market caps refreshed by <b" in line

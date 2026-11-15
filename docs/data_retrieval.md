@@ -80,7 +80,7 @@ no downloaded state worth re-deriving, so they keep a "click Fetch" empty state.
 | Financials | `/run/quick` | `ticker` (required) | per-ticker: `?refresh=1&ticker=X` |
 | UW Interaction (lab) | `/run/uw` | `tool` (required) + tool params | **live-only** — board renders from its stored `.cache/uw_interaction/` payload |
 | Co-movement | `/run/module_comovement` | `no_fetch` | model-only; writes .cache only (runs persist on Fetch) |
-| Value Chain | `/run/module_value_chain` | `no_fetch` | model-only (reads `edgar.duckdb`; on the fundamentals layer the 10-K business sections and the XBRL major customers in `fundamentals.duckdb` instead, and a Fetch downloads nothing) |
+| Value Chain | `/run/module_value_chain` | `no_fetch` | model-only (reads `boards/value_chain.duckdb`, #860 stage 1; on the fundamentals layer the 10-K business sections and the XBRL major customers in `fundamentals.duckdb` instead, and a Fetch downloads nothing) |
 | Relatedness | `/run/module_relatedness` | `no_fetch` | model-only (reads the filings in `edgar.duckdb`, or on the fundamentals layer the annual report text in `fundamentals.duckdb`, and the `relatedness_*` profiles in `raw.duckdb`). Fetch also downloads missing filings from SEC and calls DeepSeek off-peak for new profiles; only Fetch writes `relatedness_scores` and `run_registry` (`module_relatedness/engine.py:81-92`, `:449-466`) |
 | Sector Rotation | `/run/rotation` | `start`, `end` (optional) | store |
 | Asymmetric Growth | `/run/module_asymmetric_growth` | `refresh_universe`, `no_fetch` | model-only |
@@ -88,6 +88,7 @@ no downloaded state worth re-deriving, so they keep a "click Fetch" empty state.
 | Fundamentals | `/run/module_fundamentals` | `refresh_universe`, `no_fetch` | model-only |
 | SEC 13F | `/run/module_sec_13f` (Fetch: names/sectors → shares outstanding → render; no UW key needed, and no SEC call since G9 — the builder owns the numbers) | — | store |
 | LEAPS | *(the scan is switched off, #730: `/run/module_leaps` answers `409` and the job is not registered; the tab serves a "no data yet" page)* | — | model-only |
+| Watch lists | *(none, #786: a watch list is typed, not downloaded; the board has no Fetch and no job)* | — | store — avo's lists from `boards/watchlists.duckdb`, the numbers beside them from the rcdata layer (`prices.bars`, `prices.latest`, `identity.security`, `market.series`) |
 | Forwards Testing | *(none)* | — | always live from files |
 | **Universe** (header) | `/run/universe` | — | n/a — SEC member list + market data into `equity_universe`; not a tab |
 | **Universe caps** (Settings) | `/run/universe-stats` | — | store → `.cache/` — fills only the NULL `equity_universe.market_cap` rows (Phase B alone) |
@@ -272,10 +273,47 @@ with its history row. No provider call, no DuckDB file.
   removed}`. It never adds, so a Remove on a stale page cannot put back a name removed elsewhere.
 - **`POST /api/watchlist/toggle/<ticker>`**: the pre-PR 4 route, now the stock list; answers `{ok, ticker,
   in_watchlist}` as before. `rawstore.toggle_watchlist`, `load_watchlist` and `save_watchlist` are the stock list too.
-- **`GET /api/watchlists`**: `{ok, option: [tickers], stock: [tickers]}`, what the board buttons show as pressed.
+- **`GET /api/watchlists`**: `{ok, option: [tickers], stock: [tickers], lists: [...]}`. `lists` is what every
+  board's "add to list" menu offers (#786 step 5, `module_watchlists/menu.py`): avo's own lists first, then
+  `jobs.option` and `jobs.stock`, each `{id, name, group, job, count, tickers}`, where `tickers` are the US
+  listings on it (the ones a board's ticker can match) and `count` the list's whole size.
+- **`POST /api/watchlists/<list_id>/tick/<ticker>`** `{on: true|false}` -> `{ok, list_id, ticker, on}`: the menu's
+  write. On one of avo's lists a tick stores the spine's spelling (`NASDAQ:NVDA`) in the unnamed top section and an
+  untick removes every US listing of the ticker; on `jobs.option` / `jobs.stock` it is `ops.watch_add` /
+  `ops.watch_remove`. Both ways it writes nothing when there is nothing to change. 400 for a bad ticker, a missing
+  `on` or a ticker the spine cannot place on a US exchange; 404 for an unknown list; 403 without the panel header.
   The read itself never creates `ops.sqlite`; the read log it counts into is flushed to it once a minute, which
   may, as for every `rcdata.read` call. A flush that fails keeps its counts for the next one and never fails the
   read (#228).
+
+#### The Watch lists board's own routes (#786)
+
+These are avo's named lists (`boards/watchlists.duckdb`, `module_watchlists/store.py`). The two shared
+`option` / `stock` lists above are on the same board since 13 Nov 2026 as the list ids `jobs.option` and
+`jobs.stock`: of these routes only `symbol/add`, `symbol/remove` and `columns/<tab>` answer for them, and the two
+writes go to `ops.sqlite` (`ops.watch_add` / `ops.watch_remove`), not to the store. Every write is store-only — one list, one section or one symbol — and answers
+`{ok, payload}` with the list's whole payload again, so the page redraws from what was stored. Each needs
+`X-RC-Panel` like every non-GET.
+
+- **`GET /api/watchlists/search?q=`**: `{ok, q, rows}` — the add box's suggestions from the spine
+  (`identity.security`), a ticker that starts with the query first.
+- **`POST /api/watchlists/new`** `{name, description?}` -> `{ok, list_id}`; 400 for an empty or taken name.
+- **`POST /api/watchlists/<list_id>`** `{name?, description?}` — rename the list or re-word its description.
+- **`POST /api/watchlists/<list_id>/delete`** — the list, its sections and its symbols; the `wl_change` rows stay.
+- **`GET /api/watchlists/<list_id>/export.txt`** — the list in TradingView's one-line format, its own spelling.
+- **`GET /api/watchlists/<list_id>/columns/<tab>`** -> `{ok, tab, values}`, keyed by the symbol as avo wrote it:
+  one tab's numbers (`financials`, `performance`, `risk`, `technicals`). Not in the first payload, because
+  the last three read five years of bars and Financials reads the SEC statements, which a board opened on Price
+  would pay for without showing; the page asks the first time the tab is opened and keeps the answer. 404 for an
+  unknown list and for `price` (the first payload carries it). Only the US listings get a row. Financials
+  (`module_watchlists/financials.py`): revenue and EPS over the trailing twelve months where a 10-Q follows the
+  fiscal year, else the fiscal year (`fb` says which), P/E on the newest close (none for a loss), the year's cash
+  dividends per share without specials, split-adjusted, their yield, and the one-year beta against SPY.
+- **`POST /api/watchlists/<list_id>/symbol/add`** `{symbol, section_id?}`, **`/symbol/remove`** `{symbol}`,
+  **`/symbol/move`** `{symbol, section_id, order?}` (a dropped row: its section, then that section's new order).
+- **`POST /api/watchlists/<list_id>/section/add`** `{name}`, **`/section/rename`** `{section_id, name}`,
+  **`/section/delete`** `{section_id}` (its symbols move to the first remaining section; the last one cannot go),
+  **`/sections/order`** `{order}`.
 
 ### Known deviation (fixed 2026-09-30)
 
@@ -379,7 +417,7 @@ whole app at a local server:
 
 | Env var | Redirects |
 |---|---|
-| `RC_UW_BASE` | Unusual Whales (`core/providers/unusual_whales.py`, `core/index_lists.py`; also the fundamentals layer's `uw/financials`, off unless `RC_UW_PRELIMINARY=1`) |
+| `RC_UW_BASE` | Unusual Whales (`core/providers/unusual_whales.py`, `core/index_lists.py`) |
 | `RC_UW_BASE_ROOT` | Unusual Whales for `module_spx_gamma` (no `/api` suffix) |
 | `RC_SEC_WWW_BASE` / `RC_SEC_DATA_BASE` | SEC EDGAR + 13F archives; the spine's `sec/company_tickers_exchange`; the ownership store's EDGAR daily index, filings (`sec/13f`, `sec/form4`, `sec/13dg`) and fails-to-deliver files (`sec/ftd`); the fundamentals layer's SEC datasets (`rcdata/build/fundamentals/`) |
 | `RC_ALPHAVANTAGE_BASE` | Alpha Vantage, the fundamentals layer's `alphavantage/earnings_calendar` (`rcdata/build/fundamentals/earnings.py`; read at call time) |
@@ -397,8 +435,6 @@ whole app at a local server:
 | `RC_FDA_OOPD_BASE` | FDA Office of Orphan Products Development (OOPD) search |
 | `RC_DEEPSEEK_BASE` | DeepSeek chat API (`core/providers/deepseek.py`; read at call time) |
 | `RC_EVREN_BASE` | EVREN chat API, the default Relatedness writer (`core/providers/evren.py`, #360; read at call time). Default `https://evren-llmapi.ssyz.org.tr/v1`; the model is `RC_EVREN_MODEL` or the board's `WRITER_MODEL` |
-| `RC_GROK_BASE` | SuperGrok chat API, the Relatedness Grok writer (`core/providers/grok.py`, #388; read at call time). Default the Grok CLI chat proxy `https://cli-chat-proxy.grok.com/v1`. Only https on `grok.com` / `*.grok.com` or a loopback mock is accepted, so the subscription token never goes elsewhere (`api.x.ai`, the metered developer API, is refused); the model is `RC_GROK_MODEL` |
-| `RC_GROK_CLIENT_VERSION` | The `x-grok-client-version` header the Grok writer sends (`core/providers/grok.py`, #375). cli-chat-proxy answers HTTP 426 to a client below its minimum; the default `CLIENT_VERSION` is the Grok CLI release it was read from (xai-org/grok-build). Set it to the version a 426 names until the default is bumped |
 | `RC_OPENFIGI_BASE` | OpenFIGI mapping API (identity refresh; the 13F CUSIP map, `core/providers/openfigi.py`, read at call time; the spine's `openfigi/map`, both its `ID_CUSIP`/`ID_CINS` and its `TICKER` jobs) |
 | `RC_NASDAQTRADER_BASE` | Nasdaq Trader symbol directory (identity refresh) |
 | `RC_FDIC_BASE` | FDIC institution list (identity refresh) |

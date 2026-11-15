@@ -13,17 +13,13 @@ next ticker in a scan pool). A job may carry a deadline (``register(deadline_s=.
 none by default); past it, the next checkpoint ends the job ``error`` with a message naming the deadline and the
 phase. Nothing is interrupted mid-write, so the lane takes its next job once the runner has stopped.
 
-The in-memory registry is cleared on server restart. Each job also leaves one ``job_runs`` row in the
-store (#282, J4): written when the job starts running and again when it ends, keyed by the job id.
-A ``running`` row whose end write was skipped is closed as ``lost`` when the dashboard or a scheduled
-runner starts, if the row is past its bound and the process is gone (#82).
+The in-memory registry is cleared on server restart. The ``job_runs`` row each job left in the old raw.duckdb went
+with that file (#860).
 """
 import itertools
 import logging
-import os
 import queue
 import threading
-import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -125,7 +121,7 @@ def credential_problem(module: str) -> Optional[str]:
 def current_job_id() -> Optional[str]:
     """Id of the job running on this thread, ``None`` outside a job.
 
-    The forecast ledger stamps it as ``run_id``; the job's ``job_runs`` row carries the same id.
+    The forecast ledger stamps it as ``run_id``.
     """
     return getattr(_CURRENT, "job_id", None)
 
@@ -146,7 +142,7 @@ rawstore.set_change_writer(_change_writer)
 def run_id() -> str:
     """The ``run_id`` a writer stamps on its rows: the running job's id, else a fresh one.
 
-    Inside a job it equals ``job_runs.run_id``, so a history row joins to the job that wrote it.
+    Inside a job it equals the job's id.
     The id is per thread: call it once on the runner thread and pass it down. A pool thread started by a runner
     gets a fresh, unrelated id.
     """
@@ -244,8 +240,6 @@ def cancel(job_id: str) -> bool:
         if job["status"] != "queued":
             return False
         job.update(status="cancelled", finished_at=_utc_now())
-        snapshot = dict(job)
-    _record(snapshot)   # outside the lock: a store write can wait seconds
     return True
 
 
@@ -293,123 +287,8 @@ def _epoch(iso: Optional[str]) -> Optional[float]:
     return datetime.fromisoformat(iso).timestamp() if iso else None
 
 
-# A stuck ``running`` row is closed only once it is older than this and its process is gone (#82).
-# Longer than the 4 h Task Scheduler default, so a live long job is not closed on age alone.
-# A module with a registered deadline, or a scheduled task, uses that bound instead.
-GENEROUS_RUNNING_S = 6 * 3600
-LOST_STATUS = "lost"
-LOST_RUN_MESSAGE = (
-    "outcome unknown: the run was still marked running after its deadline and its process is gone; "
-    "the end was not recorded"
-)
-
-
-def reconcile_lost_runs(*, now: float | None = None) -> int:
-    """Close ``job_runs`` rows left ``running`` after a skipped end write (#82).
-
-    A row whose pid names no process is closed at once. Otherwise it is closed only when it is
-    older than its module's deadline (the registered ``deadline_s``, else the scheduled task's
-    time limit, else ``GENEROUS_RUNNING_S``) and its process is no longer that job. No pid: age alone. A pid that is alive is
-    left alone, unless a lock file naming it fails the start-time check
-    (``job_lock._holder_live``): Windows reuses PIDs, and the row does not store a
-    start mark of its own. A job running in this process is never touched. Status
-    becomes ``lost`` — not ``error``, which would claim the job failed. Idempotent.
-    Returns how many rows were closed.
-    """
-    return _reconcile_lost_runs(time.time() if now is None else now)
-
-
-def _reconcile_lost_runs(now: float) -> int:
-    with rawstore.brief_wait():     # harmless, but a read waits the full reader budget: if a peer holds the
-                                    # store, startup can wait ~29 s (open)
-        rows = rawstore.query(
-            "SELECT run_id, module, pid, started_at, queued_at FROM job_runs WHERE status = 'running'")
-    if not rows:
-        return 0
-    with _LOCK:
-        live = {jid for jid, job in _JOBS.items() if job.get("status") == "running"}
-    closing = []
-    for row in rows:
-        if row.get("run_id") in live:
-            continue
-        if not _pid_dead(row.get("pid")):
-            if not _past_bound(row, now) or not _process_gone(row.get("pid")):
-                continue
-        closing.append({
-            "run_id": row["run_id"],
-            "status": LOST_STATUS,
-            "message": LOST_RUN_MESSAGE,
-        })
-    if not closing:
-        return 0
-    with rawstore.brief_wait():
-        rawstore.update_columns("job_runs", "run_id", closing,
-                                ["status", "message"])
-    logger.info("job_runs: closed %s stuck running row(s) as lost", len(closing))
-    return len(closing)
-
-
-def _past_bound(row: dict, now: float) -> bool:
-    started = row.get("started_at")
-    if started is None:
-        started = row.get("queued_at")
-    if started is None:
-        return False
-    return (now - float(started)) > _run_bound_s(row.get("module"))
-
-
-def _run_bound_s(module: str | None) -> float:
-    if module:
-        deadline = _DEADLINE.get(module)
-        if deadline:
-            return float(deadline)
-        try:
-            from RevenueChaser.core import automations
-            entry = automations._BY_NAME.get(module)
-        except Exception:  # noqa: BLE001 - a missing registry must not stop the sweep
-            entry = None
-        if entry is not None and entry.settings.limit_minutes is not None:
-            return float(entry.settings.limit_minutes) * 60  # #527: a minutes limit counts, not only hours
-    return GENEROUS_RUNNING_S
-
-
-def _pid_dead(pid) -> bool:
-    """True only when the row names a pid and no process has it: nothing can still be that job, so age is moot.
-
-    An alive pid may be a reused one, and no pid proves nothing; both keep waiting for the age bound.
-    """
-    try:
-        pid = int(pid)
-    except (TypeError, ValueError):
-        return False
-    if pid <= 0:
-        return False
-    from RevenueChaser.core import procs
-    return not procs.pid_alive(pid)
-
-
-def _process_gone(pid) -> bool:
-    """True when this row's process is not still that job.
-
-    No pid (or a pid that cannot name a process): no evidence of a live holder, so
-    age already decided. An alive pid is the job, unless a lock file naming it fails
-    the start-time check — the PID was reused. A lock with no start mark cannot
-    prove reuse, so an alive pid is left alone.
-    """
-    try:
-        pid = int(pid)
-    except (TypeError, ValueError):
-        return True
-    if pid <= 0:
-        return True
-    from RevenueChaser.core import job_lock, procs
-    if not procs.pid_alive(pid):
-        return True
-    return _pid_reused(pid, job_lock)
-
-
 def _pid_reused(pid: int, job_lock) -> bool:
-    directory = Path(rawstore.DB_PATH).parent
+    directory = Path(rawstore.STORE_DIR)
     if not directory.is_dir():
         return False
     reused = False
@@ -437,61 +316,13 @@ def _counts_of(result) -> dict | None:
     return None
 
 
-def _record(job: dict) -> None:
-    """Upsert this job's ``job_runs`` row from a job dict (#282). Never raises: a failed write must not fail the job.
-
-    The registry keeps times as ISO strings (second resolution); the table stores epoch seconds. The write waits
-    only briefly for a store another process holds (``rawstore.brief_wait``); it is then skipped and logged, which
-    leaves the previous row (``running`` after a skipped end write) in place — ``reconcile_lost_runs`` closes
-    that row later (#82). ``params`` and ``counts`` go in as dicts: ``write_rows`` encodes JSON columns itself.
-
-    ``trigger`` is ``manual`` (a person started it; the scheduler writes ``scheduled``). ``source`` is
-    ``dashboard`` (the pid is its own column). ``registry_name`` stays NULL here: it names a Task Scheduler
-    entry, which a dashboard job has none of; only the scheduled rows carry it. ``counts`` is whatever the runner
-    returned, else NULL (#83).
-    """
-    try:
-        with rawstore.brief_wait():
-            rawstore.write_rows("job_runs", [{
-                "run_id": job["id"], "job_id": job["id"], "module": job["module"], "lane": job["lane"],
-                "trigger": "manual", "source": "dashboard", "registry_name": None,
-                "pid": os.getpid(), "params": job["params"],
-                "queued_at": _epoch(job["queued_at"]), "started_at": _epoch(job["started_at"]),
-                "finished_at": _epoch(job["finished_at"]), "status": job["status"],
-                "error": job["error"], "message": job["message"],
-                "counts": job.get("counts"),
-            }])
-    except Exception:  # noqa: BLE001 - the run log is bookkeeping, never a reason to fail a job
-        logger.warning("job_runs: could not record job %s", job.get("id"), exc_info=True)
-
-
-_NO_COUNTS = object()
-
-
 def _set(job_id: str, **fields) -> None:
-    """Update a job. ``running`` is published first (``execute`` claims a job with it); an end status is stored
-    in ``job_runs`` *before* the registry shows it: a poller that sees "done" may open the store at once, and the
-    dashboard's writer must have let go of it by then.
-
-    ``counts`` is recorded on the row only. It is not a job-JSON field: the dashboard poll reads that dict.
-    """
-    status = fields.get("status")
-    counts = fields.pop("counts", _NO_COUNTS)
-    if status in ("done", "error", "cancelled"):
-        job = get(job_id)
-        if job is not None:
-            recorded = {**job, **fields}
-            if counts is not _NO_COUNTS:
-                recorded["counts"] = counts
-            _record(recorded)
+    """Update a job. ``counts`` is not a job-JSON field (the dashboard poll reads that dict): it is dropped here,
+    since the ``job_runs`` row that kept it went with the old raw.duckdb (#860)."""
+    fields.pop("counts", None)
     with _LOCK:
         if job_id in _JOBS:
             _JOBS[job_id].update(fields)
-            snapshot = dict(_JOBS[job_id])
-        else:
-            snapshot = None
-    if status == "running" and snapshot is not None:
-        _record(snapshot)
 
 
 def _gap_fields(uw) -> dict:
@@ -661,14 +492,14 @@ def idle() -> tuple[bool, list[str]]:
 
     Three probes, all checks only: a dashboard job queued or running; every ``core/job_lock`` name held, by any
     process (``job_lock.holders()``, so a systemd writer the job list never sees counts); and a live
-    ``.rc-proc-<pid>`` marker of another process in either store dir, the old store beside ``raw.duckdb`` and the
-    market dir of ``rcdata``. A marker whose pid is gone (or reused) is a leftover and does not count.
+    ``.rc-proc-<pid>`` marker of another process in either store dir, the board files' and the market dir of
+    ``rcdata``. A marker whose pid is gone (or reused) is a leftover and does not count.
     """
     from RevenueChaser.core import config, job_lock
 
     reasons = [f"job {j.get('module')} {j.get('status')} ({j.get('id')})" for j in list_jobs()
                if j.get("status") in ("queued", "running")]
     reasons += [f"job lock {name} held by pid {pid}" for name, pid in sorted(job_lock.holders())]
-    for d in dict.fromkeys((Path(rawstore.DB_PATH).parent, Path(config.MARKET_DIR))):
-        reasons += [f"process pid {pid} uses {d}" for pid in rawstore._peer_pids(d / "raw.duckdb")]
+    for d in dict.fromkeys((Path(rawstore.STORE_DIR) / "boards", Path(config.MARKET_DIR))):
+        reasons += [f"process pid {pid} uses {d}" for pid in rawstore._peer_pids(d / "any.duckdb")]
     return not reasons, reasons

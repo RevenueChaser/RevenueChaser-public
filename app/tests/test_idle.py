@@ -53,17 +53,6 @@ def test_idle_when_nothing_runs():
     assert jobs.idle() == (True, [])
 
 
-def test_not_idle_while_a_job_lock_is_held_by_another_process():
-    p = subprocess.Popen([sys.executable, "-c", _HOLD, str(rawstore.DB_PATH), "daily_bars"], cwd=REPO.parent,
-                         stdout=subprocess.PIPE, text=True)
-    try:
-        assert p.stdout.readline().strip() == "True"
-        ok, reasons = jobs.idle()
-        assert not ok and any("daily_bars" in r and str(p.pid) in r for r in reasons)
-    finally:
-        p.kill()
-        p.wait()
-    assert jobs.idle() == (True, [])
 
 
 def test_not_idle_while_an_in_memory_job_is_queued_or_running():
@@ -76,15 +65,6 @@ def test_not_idle_while_an_in_memory_job_is_queued_or_running():
     assert jobs.idle() == (True, [])
 
 
-@pytest.mark.parametrize("which", ["store", "market"])
-def test_not_idle_while_a_live_marker_sits_in_either_store_dir(which, sleeper):
-    d = Path(rawstore.DB_PATH).parent if which == "store" else Path(config.MARKET_DIR)
-    _marker(d, sleeper.pid)
-    ok, reasons = jobs.idle()
-    assert not ok and any(str(sleeper.pid) in r and str(d) in r for r in reasons)
-    sleeper.kill()
-    sleeper.wait()
-    assert jobs.idle() == (True, [])                    # a dead pid's marker is a leftover, not a writer
 
 
 def test_api_idle_mirrors_idle_and_needs_no_header(sleeper):

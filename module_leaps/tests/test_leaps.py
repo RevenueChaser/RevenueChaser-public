@@ -327,9 +327,12 @@ class TestEscaping:
         html = ld.render_leaps_dashboard([snap], [dict(snap)]).read_text(encoding="utf-8")
         assert "<img" not in html
         # Only the page's own three script blocks survive (board script, filter-kit script (KL #377), the
-        # watch-list pair (PR 4)); the hostile ticker gets no button pair.
+        # watch-list menu (PR 4, #786 step 5)); the hostile ticker gets no button.
         assert html.count("<script") == 3 and html.count("</script>") == 3
-        assert not re.search(r"data-rc-watch=\"(option|stock)\"", html)
+        # The pair's stylesheet names those attributes in its selectors and its script carries the button
+        # template (#770), so the markup has to be read without the script and style blocks.
+        markup = re.sub(r"<(script|style)\b.*?</\1>", "", html, flags=re.S | re.I)
+        assert not re.search(r"<button[^>]*data-rc-watch", markup)
         assert 'data-ticker="&quot;&gt;&lt;img' in html
 
 
@@ -522,27 +525,5 @@ class TestLeapsRunners:
         assert runners.run_leaps_cached() == runners.LEAPS_LATEST
         assert "No LEAPS data yet" in runners.LEAPS_LATEST.read_text(encoding="utf-8")
 
-    def test_the_cached_board_shows_names_from_the_13f_meta(self, rawstore_tmp_db):
-        """The names come from ``sec13f_security_meta``; a missed repoint of the loader hides behind
-        a bare ``except`` and silently blanks them."""
-        from RevenueChaser.module_sec_13f import engine as sf
-        from RevenueChaser.module_leaps.scan import scan_leaps_cached
-        sf.save_sec13f_meta({"ZZZZ": {"name": "Zed Corp", "sector": "Energy", "type": "Stock"}})
-        store_prints([_print("z1", executed="2026-10-01T14:00:00Z")], today=date(2026, 10, 2))
-        _w, unwatched = scan_leaps_cached(today=date(2026, 10, 2))
-        assert unwatched[0]["name"] == "Zed Corp"
 
 
-def test_a_locked_store_is_not_swallowed_by_the_cached_scan(rawstore_tmp_db, monkeypatch):
-    """PR 4: the watch list moved to ops.sqlite, so the stored prints are the cached scan's first store read. A lock
-    there must reach the dashboard (503, "locked by another process"), not become an empty board."""
-    import pytest
-
-    from RevenueChaser.core import rawstore as rs
-    from RevenueChaser.module_leaps import engine, scan
-
-    def locked(**kw):
-        raise rs.StoreLockedError("raw.duckdb", 1, "duckdb", "/x", "Conflicting lock is held")
-    monkeypatch.setattr(engine, "load_recent_prints", locked)
-    with pytest.raises(rs.StoreLockedError):
-        scan.scan_leaps_cached()

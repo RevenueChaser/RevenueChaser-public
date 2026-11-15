@@ -1,5 +1,13 @@
 # System map — RevenueChaser
 
+> **#860, 15 Nov 2026: the old store files are gone.** `.store/raw.duckdb`, `edgar.duckdb`, `history.duckdb` and
+> `.store/prices.duckdb` were removed with every code path to them, in one PR, and no data was moved across. The
+> store keeps only the board files, `.store/boards/<board>.duckdb`; the boards read market data from rcdata's
+> serving layer under `RC_MARKET_DIR` (its `prices.duckdb` there is a different, new file).
+> `core/tests/test_no_old_store.py` fails any code that names an old file, sends a store call to one, or imports a
+> module removed with them. Where the text below describes those four files, their tables or their writers, it is
+> history, not the current design.
+
 Where each part of the app lives, and how data moves from a provider to a board.
 Companions: [`data_architecture.md`](data_architecture.md) for the storage rules
 (what is durable and what is regenerable), [`data_retrieval.md`](data_retrieval.md)
@@ -19,10 +27,10 @@ stored fact.
 
 | `area:*` key | What it holds | Directories and main modules | Epic |
 |---|---|---|---|
-| `platform-store` | The durable store, its writers, migrations and backups | `.store/` (four DuckDB files), `edgar_docs/`, `core/rawstore.py`, `core/config.py`, `core/prices.py`, `core/quotes.py`, `core/history.py`, `core/automations.py`, `rcdata/backup.py`, `rcdata/restore.py`, `scripts/compact_store.py`, `scripts/daily_bars.py`, `scripts/migrate_rawdata_to_duckdb.py` | #49 |
+| `platform-store` | The durable store, its writers, migrations and backups | `.store/boards/` (one DuckDB file per board; the old four files went with #860), `edgar_docs/`, `core/rawstore.py`, `core/config.py`, `core/prices.py`, `core/automations.py`, `rcdata/backup.py`, `rcdata/restore.py` | #49 |
 | `platform-app` | The dashboard process: tabs, routes, the job queue, Fetch vs Refresh, logs, the launcher | `app/` (`dashboard.py`, `jobs.py`, `runners.py`, `logview.py`, `launcher.py`), `templates/` (the shell, the logs page, and the empty / error / locked pages), `app/static/`, `core/job_control.py`, `core/job_lock.py`, `launch.pyw`, `run_dashboard.bat`, `start.ps1`, `stop.ps1`, `app.sh` | #50 |
-| `providers` | Network clients, and the credential and cost gates in front of them | `core/providers/`, `core/credentials.py`, `core/offpeak.py`, `core/subscription_usage.py`, `scripts/cloud_llm_call.py`, `.env.example`, `docs/openapi.yaml` (the UW endpoint contract) | #51 |
-| `classification` | Which sector, industry, theme and index a ticker carries, and the three boards built on that cut | `module_comovement/`, `module_relatedness/`, `module_value_chain/`, `core/universe.py`, `core/universe_fetch.py`, `core/gics_map.py`, `core/taxonomy.py`, `core/index_registry.py`, `core/index_lists.py` | #55 |
+| `providers` | Network clients, and the credential and cost gates in front of them | `core/providers/`, `core/credentials.py`, `core/offpeak.py`, `scripts/cloud_llm_call.py`, `.env.example`, `docs/openapi.yaml` (the UW endpoint contract) | #51 |
+| `classification` | Which sector, industry, theme and index a ticker carries, and the three boards built on that cut | `module_comovement/`, `module_relatedness/`, `module_value_chain/`, `core/universe.py`, `core/gics_map.py`, `core/taxonomy.py`, `core/index_registry.py` | #55 |
 | `market` | Index-greeks, options-probability, sector-rotation and UW-tool boards | `module_spx_gamma/`, `module_oipd/`, `module_sector_rotation/`, `module_uw_interaction/`, `module_financials/` *(unclear — see below)* | #57 |
 | `screeners` | Per-ticker scans over the universe | `module_asymmetric_growth/`, `module_swing_potential/`, `module_fundamentals/`, `core/screen_common.py`, `core/scan_quality.py`, `core/tristate.py`, `core/info_fallback.py`, `module_asymmetric_growth/sector_rules.py`, `module_swing_potential/ohlc_cache.py` | #56 |
 | `ownership` | 13F holders, and the LEAPS watchlist that reads their meta | `module_sec_13f/`, `module_leaps/`, `core/ownership.py` | #59 |
@@ -119,7 +127,7 @@ flowchart LR
         B_CLASS["Co-movement · Value Chain · Relatedness"]
         B_SCREEN["Sector Rotation · Asymmetric Growth · Swing Potential · Fundamentals"]
         B_OWN["SEC 13F · LEAPS"]
-        B_OPS["Settings / Data health · Logs"]
+        B_OPS["Settings · Logs"]
     end
 
     UW --> MKT & SCR & ERN & OWN & UNI

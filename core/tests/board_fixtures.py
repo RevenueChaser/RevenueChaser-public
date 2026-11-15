@@ -243,13 +243,10 @@ def _settings(tmp_path, monkeypatch):
     from RevenueChaser.module_settings import report
     p = {"generated_at": "2026-09-25T20:00:00+00:00",
          "tickers": [{"ticker": "AAPL", "name": "Apple Inc."}],
-         "rows": [{"key": "universe", "label": "Equity universe", "tables": ["equity_universe"],
-                   "rows": 7403, "last_date": "—", "holes": 1710, "hole_label": "null market cap",
-                   "fetch": {"route": "/run/universe-stats", "label": "Fetch caps"},
-                   "note": "provenance"}],
+         "rows": [],
          # An embedded row (not a poll): the browser guard stubs fetch, so only these
          # reach the panel's renderer. Every text field, the log tail included, is hostile.
-         "automations": [{"name": "RC-Daily-Bars", "label": "L", "schedule": "s",
+         "automations": [{"name": "RC-Build", "label": "L", "schedule": "s",
                           "command": "c", "settings": "t", "log_path": "p",
                           "description": "d", "tables_written": ["t1"], "state": "enabled",
                           "result_kind": "red", "result_text": "r", "last_run": "x",
@@ -322,8 +319,8 @@ def newdata_fixture() -> dict:
                     "raw_copy": {"text": "not set", "warn": True, "age_days": None},
                     "portable": {"text": "not recorded", "warn": True, "age_days": None}},
         "retention": {"warn": True, "text": "kept without a limit", "source": "src"},
-        "retirement": [{"table": "macro_series", "replaced_by": "market_series", "reads_14d": 2,
-                        "writers": ["RC-Macro-Weekly"]}],
+        "retirement": [{"table": "old_series", "replaced_by": "market_series", "reads_14d": 2,
+                        "writers": ["RC-Build"]}],
         "watchlists": {"option": {"count": 1, "rows": [{"ticker": "NVDA", "added_on": "2026-10-28T10:00:00+00:00",
                                                         "added_by": "leaps", "note": "note"}]},
                        "stock": {"count": 1, "rows": [{"ticker": "MSFT", "added_on": "2026-10-28T10:00:00+00:00",
@@ -363,15 +360,39 @@ def _sec_13f(tmp_path, monkeypatch):
 
 
 def _leaps(tmp_path, monkeypatch):
-    import RevenueChaser.module_leaps.report as ld
-    monkeypatch.setattr(ld, "OUTPUT_DIR", tmp_path)
-    snap = {"ticker": "ABC", "name": "Abc Corp", "label": "Accumulating", "score": 70,
-            "frequency": 4, "notional": 400000.0, "net_notional": 100000.0,
-            "ask_share": 0.7, "near_term_event": False}
-    hs = hostile(snap)
-    hs["label"] = H("label")
-    out = ld.render_leaps_dashboard([hs], [dict(hs)], provider_health=health("leaps"))
-    return out.read_text(encoding="utf-8") if hasattr(out, "read_text") else out
+    """The LEAPS board (#746): one session of far-dated contracts, the rows drawn by the browser from LP_DATA."""
+    from RevenueChaser.module_leaps import board
+    row = {"t": H("ticker"), "sym": H("sym"), "side": "C", "con": H("con"), "dte": 400, "prod": "stocks",
+           "prem": 75000.0, "vol": 1000, "oi": 100, "next": 700, "chg": 600, "st": "matched", "share": 0.6,
+           "ask": 0.5, "multi": 0.1, "out": False, "roll": H("roll")}
+    return board.render_html({"session": "2026-10-26", "stored": 1, "min_sessions": 20, "collecting": True,
+                              "sessions": [{"date": "2026-10-26", "contracts": 1}],
+                              "counts": {"contracts": 1, "names": 1, "matched": 1, "pending": 0, "stale": 0},
+                              "rows": [row]})
+
+
+def _watchlists(tmp_path, monkeypatch):
+    """The Watch lists board (#786): one list, one section, one row, drawn by the browser from WL_DATA.
+
+    The list's name, its description, a section's name and a symbol's own spelling are all avo's free text, so
+    every one of them carries a hostile value here.
+    """
+    from RevenueChaser.module_watchlists import board
+    row = {"sym": H("sym"), "t": H("ticker"), "ex": H("exchange"), "cov": "us_equity", "nm": H("name"),
+           "last": 173.73, "chg": 4.84, "chgp": 2.87, "vol": 339e6, "avol": 232e6, "cap": 4.19e12,
+           "unit": None, "note": H("note")}
+    none = {**row, "sym": H("un_sym"), "t": H("un_ticker"), "cov": "unsupported", "nm": None,
+            "last": None, "chg": None, "chgp": None, "vol": None, "avol": None, "cap": None}
+    return board.render_html({
+        "lists": [{"id": H("list_id"), "name": H("list_name"), "symbols": 2}],
+        "list": {"id": H("list_id"), "name": H("list_name"), "description": H("description")},
+        "sections": [{"id": H("section_id"), "name": H("section_name"), "rows": [row, none]}],
+        "counts": {"symbols": 2, "sections": 1, "unsupported": 1},
+        "session": "2026-11-11",
+        "tabs": [{"key": "price", "label": "Price"}],
+        "tab": "price",
+        "issue": H("issue"),
+    })
 
 
 def _financials(tmp_path, monkeypatch):
@@ -503,17 +524,8 @@ def _logs(tmp_path, monkeypatch):
 
 def _runs(tmp_path, monkeypatch):
     from RevenueChaser.app import runview
-    from RevenueChaser.core import rawstore
-    # A module name is code-chosen, but a run's message, error and params are not: a ticker comes from the
-    # box, an error text from a provider or a traceback. All of them are shown by the run log.
-    rawstore.write_rows("job_runs", [{
-        "run_id": "r1", "job_id": "r1", "module": H("module"), "lane": "short", "trigger": H("trigger"),
-        "source": H("source"), "pid": 7, "registry_name": H("registry_name"),
-        "params": {"ticker": H("ticker")}, "queued_at": 1.0, "started_at": 2.0, "finished_at": 63.0,
-        "status": "error", "error": H("error"), "message": H("message"), "counts": {"rows": 1},
-    }])
+    # The run log it showed (job_runs) went with raw.duckdb (#860): the page renders with no rows.
     return runview.render_page(runview.page_payload())
-
 
 
 def _news_rows(now: float) -> None:
@@ -584,10 +596,11 @@ BOARDS: dict[str, Board] = {
     "module_fundamentals": Board(_fundamentals),
     "module_sec_13f": Board(_sec_13f),
     "module_leaps": Board(_leaps),
+    "module_watchlists": Board(_watchlists),
     # Executes nothing, but "<!--<script>" in a name still breaks its script.
     "module_settings": Board(_settings),
     # Not a data board: the dashboard's own log files, whose request lines carry attacker-chosen paths.
     "logs": Board(_logs),
-    # Not a data board: the run log over job_runs, whose messages and params are stored text (#26 PL5-b).
-    "runs": Board(_runs),
+    # Not a data board: the run log page (no rows since #860).
+    "runs": Board(_runs, open_item="the run log has no stored rows since #860 (job_runs went with raw.duckdb)"),
 }

@@ -50,8 +50,10 @@ PLANNED_READS: dict[str, tuple[str, ...]] = {
                           "macro.dgs10", "fundamentals.statements", "fundamentals.segments", "fundamentals.peers"),
     "module_uw_interaction": ("options.prints",),
     # #400 WP5: the XBRL customers are named by the spine's ``security`` names (``identity.security``).
+    # #841: the corpus is the SEC form reader's business section (``sec.business``), no longer ``filing_item``
+    # (``fundamentals.filings``); the ticker -> CIK map is still the fundamentals layer's.
     "module_value_chain": ("identity.universe", "identity.security", "fundamentals.companies",
-                           "fundamentals.filings", "fundamentals.segments", "fundamentals.customers"),
+                           "sec.business", "fundamentals.segments", "fundamentals.customers"),
     # #642 PR 4: the industry tree reads the shared universe (spine names/sectors, prices-store caps) and the theme
     # rows the spine's whole ETF holdings.
     "module_sector_rotation": ("identity.membership", "identity.universe", "identity.etf_holdings", "prices.bars",
@@ -63,16 +65,19 @@ PLANNED_READS: dict[str, tuple[str, ...]] = {
     "module_swing_potential": ("identity.universe", "prices.bars", "earnings.next"),
     "module_fundamentals": ("identity.universe", "prices.bars", "fundamentals.statements", "fundamentals.companies",
                             "fundamentals.filings", "earnings.next"),
-    "module_sec_13f": ("ownership.holders_13f", "ownership.periods_13f", "ownership.filer_breaks_13f",
-                       "prices.actions"),
+    "module_sec_13f": ("ownership.filer_breaks_13f", "ownership.holders_13f", "ownership.periods_13f",
+                       "ownership.type_holdings_13f", "prices.actions", "identity.security"),
     "module_leaps": ("options.daily",),
     # 11 Nov 2026: the calendar build reads the builder's economic calendar, not raw.economic_calendar.
     "module_news": ("market.economic_calendar",),
     # #490: ``engine.py`` reads the company records and the served filing texts.
     # #400 WP6: the B input adds the filing's XBRL major customers (``fundamentals.customers``).
     # ``identity.etf_holdings`` (#642 PR 2b): the theme-to-ETF ranks read the spine's holdings (D4, 9 Nov 2026).
+    # #841: the business text, the whole document and the two note blocks are the SEC form reader's (``sec.*``,
+    # ``read.form_business`` / ``form_whole`` / ``form_notes``), no longer ``fundamentals.filings``.
     "module_relatedness": ("identity.universe", "identity.security", "identity.etf_holdings", "fundamentals.companies",
-                           "fundamentals.filings", "fundamentals.segments", "fundamentals.customers"),
+                           "fundamentals.segments", "fundamentals.customers", "sec.business", "sec.whole",
+                           "sec.note"),
 }
 
 

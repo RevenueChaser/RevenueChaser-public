@@ -21,7 +21,6 @@ change on both sides.
 from __future__ import annotations
 
 import re
-from collections import Counter
 
 import threading
 import time
@@ -41,8 +40,10 @@ IBKR_STATES = ("up", "silent", "down", "unknown", "not_set")
 NEWS_STATES = ("refused", "live", "subscribed", "waiting", "unknown")
 # a feed id is an env value: only a plain one becomes a label (IBKR's provider codes carry a hyphen or a dot: DJ-N)
 _FEED_NAME = re.compile(r"[A-Za-z0-9_.-]{1,16}")
+#: A need's name as a label value: the read log is a file, so other text is left out rather than exported.
+_NEED_NAME = re.compile(r"[A-Za-z0-9_.-]{1,64}")
 #: The parts ``collect`` reads one by one; each starts its error counter at 0 so a first failure is an increase.
-PARTS = ("queue", "providers", "datasets", "builder", "timer", "backups", "switches", "ibkr", "news")
+PARTS = ("queue", "providers", "needs", "datasets", "builder", "timer", "backups", "switches", "ibkr", "news")
 TIMER_EVERY_S = 60.0
 
 HELP = {
@@ -54,6 +55,8 @@ HELP = {
     "rc_provider_day_cap": ("gauge", "Our own day cap for a provider (absent: no cap)."),
     "rc_provider_failures_today": ("gauge", "Failed calls to a provider on the current New York day."),
     "rc_provider_rate_limited_today": ("gauge", "HTTP 429 answers from a provider on the current New York day."),
+    "rc_need_reads_today": ("gauge", "Requests answered for a need on the current New York day, every process "
+                                     "together."),
     "rc_dataset_state": ("gauge", "1 for the dataset's current state (fresh, unchanged, late, stale, never)."),
     "rc_dataset_last_check_result": ("gauge", "The newest check's result: 0 changed or unchanged, 1 skipped, "
                                      "2 failed (higher is worse)."),
@@ -195,6 +198,15 @@ def collect(now: datetime | None = None, *, datasets: dict | None = None, timer:
             if p.get("cap"):
                 out["rc_provider_day_cap"].append((name, p["cap"]))
 
+    def needs() -> None:
+        # #715: the Logs tab's daily counters. The read log holds a day, a process and a need; no single request.
+        day, total = ops._today(), {}
+        for r in ops.need_reads(day):
+            if r["day"] == day and _NEED_NAME.fullmatch(str(r["need"])):
+                total[r["need"]] = total.get(r["need"], 0) + r["reads"]
+        for need in sorted(total):
+            out["rc_need_reads_today"].append(({"need": need}, total[need]))
+
     def dataset_states() -> None:
         for name, ds in (datasets if datasets is not None else newdata._datasets()).items():
             # A dataset that cannot be read is counted and left out whole; the ones after it still report.
@@ -240,15 +252,17 @@ def collect(now: datetime | None = None, *, datasets: dict | None = None, timer:
             out["rc_builder_timer_on"].append(({}, 1 if state == "on" else 0))
 
     def backups() -> None:
-        kinds = newdata._backups(now)["kinds"]
-        # a name that two steps share (prices: a builder DuckDB file and a legacy board file) would be one label
-        # twice, and Prometheus keeps one of them at random; such a kind carries its step
-        counts = Counter(k["kind"] for k in kinds)
-        for k in kinds:
+        from RevenueChaser.core import rawstore
+        from RevenueChaser.rcdata import backup
+        # a name that two steps share (fundamentals: a builder DuckDB file and a board file) is told apart by its
+        # step, a label of its own, so the board can list the served files and the board files apart and in order.
+        # Copies of the old store files (#860) still in the backup folder are not shown (avo, 12 Nov 2026).
+        for k in newdata._backups(now)["kinds"]:
+            if k["step"] == backup.STEP_BOARDS and k["kind"] not in rawstore.BOARD_DBS:
+                continue
             when = _iso_epoch(k.get("newest"))
             if when is not None:
-                label = k["kind"] if counts[k["kind"]] == 1 else f"{k['kind']} ({k['step']})"
-                out["rc_backup_newest_timestamp_seconds"].append(({"kind": label}, when))
+                out["rc_backup_newest_timestamp_seconds"].append(({"kind": k["kind"], "step": k["step"]}, when))
 
     def switches() -> None:
         for name, view in control.switches_view(control._read_switches(), now).items():
@@ -285,7 +299,7 @@ def collect(now: datetime | None = None, *, datasets: dict | None = None, timer:
         if written is not None:
             out["rc_news_tape_written_timestamp_seconds"].append(({}, written))
 
-    parts = {"queue": queue, "providers": providers, "datasets": dataset_states, "builder": builder,
+    parts = {"queue": queue, "providers": providers, "needs": needs, "datasets": dataset_states, "builder": builder,
              "timer": timer_part, "backups": backups, "switches": switches, "ibkr": gateway, "news": news_feeds}
     for name in PARTS:
         part(name, parts[name])
@@ -436,8 +450,38 @@ def board_head(now: datetime | None = None, *, ibkr: Callable[[], dict] | None =
     except Exception:  # noqa: BLE001 - not known is drawn as not known
         feeds = None
     return {"switches": switches, "timer": timer.get("state"), "timer_fired": fired, "files": files, "news": feeds,
+            "last": _last_done(now),
             "gateway": {"cls": cls, "n": n, "label": label.replace("IBKR gateway · ", ""),
                         "login": report._ibkr_login_href(inventory._ibkr_login_url())}}
+
+
+def _last_done(now: datetime) -> dict:
+    """When the work behind the board's Fetch & Build and Backup switches was last done (avo, 12 Nov 2026: "onlarin
+    en son ne zaman oldugunu tam duzgun bir sekilde yaz"): the builder's newest run (its dataset and status) and the
+    newest good step of the weekly backup, each as ``12 Nov 23:46`` on the page's clock, or None when not known.
+    The ops store and the backup manifests only; no served DuckDB file is opened."""
+    def stamp(when: datetime) -> str:
+        when = control._local(when)
+        return f"{when.day} {when:%b %H:%M}"
+
+    out = {"fetch": None, "backup": None}
+    try:
+        from RevenueChaser.rcdata import ops
+        run = ops.last_builder_run()
+        at = (run or {}).get("finished_at") or (run or {}).get("started_at")
+        if at:
+            out["fetch"] = {"at": stamp(datetime.fromtimestamp(float(at), timezone.utc)),
+                            "dataset": run.get("dataset"), "status": run.get("status")}
+    except Exception:  # noqa: BLE001 - not known is drawn as not known
+        pass
+    try:
+        from RevenueChaser.module_settings import newdata
+        done = [datetime.fromisoformat(s["last_ok"]) for s in newdata._backups(now)["steps"] if s.get("last_ok")]
+        if done:
+            out["backup"] = {"at": stamp(max(done))}
+    except Exception:  # noqa: BLE001
+        pass
+    return out
 
 
 def board_status(now: datetime | None = None, *, spend: Callable[[], dict] | None = None,
@@ -463,6 +507,17 @@ def board_status(now: datetime | None = None, *, spend: Callable[[], dict] | Non
     providers = read(spend if spend is not None else lambda: newdata._spend(now))
     rows = providers.get("providers") if isinstance(providers, dict) else None
     used = {str(p["provider"]): int(p.get("today") or 0) for p in rows or []}
+    # avo, 12 Nov 2026: "Bunu DuckDB'lerin lojistik sirasina gore ayir": each provider names the served files its
+    # datasets build (from the registry, no store is read), so the board can list it under its file
+    try:
+        feeds: dict[str, set] = {}
+        for ds in newdata._datasets().values():
+            for name in getattr(ds, "providers", ()) or ():
+                feeds.setdefault(str(name), set()).add(str(getattr(ds, "kind", "") or ""))
+        for p in rows or []:
+            p["files"] = sorted(feeds.get(str(p["provider"]), set()) - {""})
+    except Exception:  # noqa: BLE001 - without it the board lists the providers ungrouped
+        pass
 
     def freshness() -> dict:
         from RevenueChaser.module_settings import freshness_tab
@@ -472,6 +527,34 @@ def board_status(now: datetime | None = None, *, spend: Callable[[], dict] | Non
             "cross_check": read((lambda: cross(used)) if cross is not None
                                 else lambda: newdata.cross_check(now, {}, used)),
             "boards": read(boards if boards is not None else freshness)}
+
+
+#: The most rows one ``/api/settings/requests`` answer carries.
+REQUESTS_MAX = 1000
+
+
+def request_rows(limit=200) -> dict:
+    """``GET /api/settings/requests``: the newest rows of the per-request log (#715), newest first by the time the
+    request was made, for the Grafana Logs board.
+
+    This process's own unwritten rows are written first (the one write this route makes), so the dashboard's reads
+    are there at once; another process (the builder) writes its rows at most a minute after it made them, which is
+    why the answer is sorted by time and takes no "after this id". Ops store only.
+    """
+    from RevenueChaser.rcdata import ops
+    try:
+        limit = min(REQUESTS_MAX, max(1, int(limit or 200)))
+    except (TypeError, ValueError):
+        raise ValueError("limit is a whole number") from None
+    try:
+        ops.read_log.requests.flush()
+    except Exception:  # noqa: BLE001 - the rows wait for the next flush; what is stored is still answered
+        pass
+    rows = sorted(ops.recent_requests(0, limit), key=lambda r: (r["at"], r["id"]), reverse=True)
+    for r in rows:
+        r["time"] = datetime.fromtimestamp(r["at"], timezone.utc).isoformat(timespec="milliseconds")
+    return {"rows": rows, "keep": ops.REQUEST_LOG_KEEP, "on": ops.request_log_on(),
+            "dropped": ops.read_log.requests.dropped}
 
 
 def datasets_list(datasets: dict | None = None) -> list[dict]:

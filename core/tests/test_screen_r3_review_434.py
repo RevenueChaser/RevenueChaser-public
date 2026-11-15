@@ -22,7 +22,7 @@ import pandas as pd
 import pytest
 
 from RevenueChaser.core import calendar as cal
-from RevenueChaser.core import ledger, prices, rawstore, screen_common
+from RevenueChaser.core import ledger, prices, screen_common
 from RevenueChaser.core.tests import screen_parity as scn
 from RevenueChaser.module_fundamentals import freeze as fund_freeze
 from RevenueChaser.module_fundamentals import pipeline as fp
@@ -85,7 +85,7 @@ def test_a_name_without_spys_session_bar_drops_as_stale_bars_and_the_day_freezes
     assert step["count"] == 1 and step["tickers"] == ["UP1"] and step["by_design"] is False
     assert step["label"] == "No D01 bar of the latest stored session (a halt or a Daily Bars gap)"
     keys = [s["key"] for s in payload["funnel_steps"]]
-    assert keys.index("stale_bars") == keys.index("no_bars") + 1        # a data gap next to its sibling
+    assert keys.index("stale_bars") == keys.index("low_dollar_volume") + 1   # no_bars has no name here since #860
     assert payload["data_quality"]["dropped"]["stale_bars"] == 1
     out = frz.freeze_payload(payload, run_id="s1", now=scn.NOW)
     assert out.frozen == len(payload["candidates"]) > 0, out.message
@@ -238,29 +238,5 @@ def _q(ticker, session, price, *, v10=None, source="yfinance", payload=None):
             "payload": p, "fetched_at": 0.0, "run_id": "r", "run_at": 0.0}
 
 
-def test_a_row_without_volume_falls_back_to_the_newest_yahoo_average(rawstore_tmp_db):
-    from RevenueChaser.core import quotes
-    rawstore.write_rows("quote_snapshot", [
-        _q("THIN", PREV, 10.0, v10=1_000.0), _q("THIN", D, 10.0, source="uw", payload={"close": "10"}),
-        _q("FAST", date(2026, 10, 12), 10.0, v10=90_000.0), _q("FAST", PREV, 10.0, v10=50_000.0),
-        _q("FAST", D, 10.0, payload={"via": "fast_info", "shares": 1.0, "last_price": 10.0}),
-        _q("UWONLY", D, 10.0, source="uw", payload={"close": "10"})])
-    got = quotes.prefilter_quotes(["THIN", "FAST", "UWONLY"])
-    assert got["THIN"]["avg_volume"] == 1_000.0 and got["THIN"]["session_date"] == D
-    assert got["FAST"]["avg_volume"] == 50_000.0                 # the newest Yahoo row that has one
-    assert got["UWONLY"]["avg_volume"] is None
-    pf = screen_common.prefilter([{"ticker": t} for t in ("THIN", "FAST", "UWONLY")], CFG)
-    assert pf.drops == {"low_dollar_volume": ["THIN"]}
-    assert [r["ticker"] for r in pf.kept] == ["FAST", "UWONLY"]
-    assert pf.no_volume == ["UWONLY"]
 
 
-@pytest.mark.parametrize("pipe", [sp, fp], ids=["swing", "fundamentals"])
-def test_the_payload_counts_names_kept_without_a_volume(rawstore_tmp_db, monkeypatch, pipe):
-    scn.seed()
-    scn.patch(monkeypatch)
-    with rawstore.connect(db=rawstore.MANIFEST["quote_snapshot"].get("db", "raw")) as conn:
-        conn.execute("DELETE FROM quote_snapshot WHERE ticker = 'UP2'")
-    rawstore.write_rows("quote_snapshot", [_q("UP2", scn.SESSION, 50.0, source="uw", payload={"close": "50"})])
-    dq = pipe.run_scan()["data_quality"]
-    assert dq["no_avg_volume"] == 1

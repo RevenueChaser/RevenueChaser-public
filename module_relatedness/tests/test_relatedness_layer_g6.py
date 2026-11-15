@@ -1,8 +1,8 @@
 """Relatedness on the fundamentals layer (G6, build plan PR 20): the filing text the plan serves, and the filing a
 profile was read from.
 
-On the layer a profile's text is the newest annual report ``sec/filings`` serves (``filing_item``, Value Chain's
-splitter and cap, so the same filing gives the same text and the same input hash), the company is the layer's
+On the layer a profile's text is the newest annual report the one cutter serves (``filing_section`` of
+``sec/forms`` since #858, read through the same ``read.filing_text`` names), the company is the layer's
 (``fundamental_company``), and the profile carries the CIK, accession, form and filing day it was read from (its
 cache key's ``source``; the payload's ``source``). Off the layer it reads ``chain_filings`` as before, and a profile
 made from a ``chain_filings`` row carries that row's filing too.
@@ -18,6 +18,7 @@ from RevenueChaser.core.providers import sec_edgar
 from RevenueChaser.module_relatedness import engine, store
 from RevenueChaser.module_relatedness.tests.test_relatedness import _prof
 from RevenueChaser.rcdata.build.fundamentals import companyfacts, filings
+from RevenueChaser.rcdata.build.sec_forms import forms
 from RevenueChaser.rcdata.tests import fund_fixture as fx
 from RevenueChaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401  (fixtures)
 
@@ -36,6 +37,8 @@ def layer(monkeypatch, http_mock):  # noqa: F811
                      {"msft-10k.htm": ten_k, "msft-def14a.htm": fx.proxy()})
     fx.run(companyfacts.NAME, mode="backfill", to="2026-10-26")
     fx.run(filings.NAME, mode="backfill", to="2026-10-28")
+    fx.run(forms.NAME, "2026-10-28")               # #858, #841: the business text is the form reader's
+    monkeypatch.setattr(engine.config, "FORMS_RULES_VERSION", forms.SECTIONS_VERSION)
     assert fundamentals_layer.reads_layer()
     return http_mock
 
@@ -86,11 +89,7 @@ def test_the_input_hash_reads_the_layers_text(layer):
 
 
 def test_the_fallback_links_read_the_layer(layer):
-    """#400: the previous year's business section and the whole document come from ``filing_item``."""
-    from RevenueChaser.rcdata import read
-    docs = read.filing_documents("789019", "business")
-    assert [d["accession"] for d in docs] == [fx.K25]
-    assert engine._previous_filing("MSFT") is None              # one annual report served: no earlier one
+    """#400, #841: the whole document comes from the form reader's table (``filing_section``)."""
     whole = engine._whole_document("MSFT")
     assert "cloud software and developer tools" in whole["text"] and len(whole["text"]) > len(BUSINESS)
     assert whole["source"]["accession"] == fx.K25
@@ -98,7 +97,7 @@ def test_the_fallback_links_read_the_layer(layer):
 
 
 def test_off_the_layer_there_is_no_fallback_link(monkeypatch):
-    assert engine._previous_filing("AAA") is None and engine._whole_document("AAA") is None
+    assert engine._whole_document("AAA") is None
 
 
 def test_on_the_layer_a_profile_is_not_redone_on_the_next_run(layer, monkeypatch):

@@ -50,11 +50,11 @@ def _writers():
     return writers
 
 
-PROVIDERS = ("evren", "deepseek", "grok", "claude")      # module_relatedness.writers.WRITERS (#360)
+PROVIDERS = ("evren", "deepseek")      # module_relatedness.writers.WRITERS (#360)
 
 
 def llm(provider: str = "deepseek"):
-    """The chat client module of a profile writer (``writers.WRITERS``: evren, deepseek, grok). Each exposes
+    """The chat client module of a profile writer (``writers.WRITERS``: evren, deepseek). Each exposes
     ``complete`` (same signature) and ``MODEL``; ``complete`` is looked up at call time, so a test that patches
     ``deepseek.complete`` still reaches the profile path."""
     if provider == "deepseek":

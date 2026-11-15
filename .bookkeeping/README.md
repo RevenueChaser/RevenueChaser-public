@@ -1,5 +1,10 @@
 # .bookkeeping: the data-system record
 
+> **Historical since 15 Nov 2026.** `data_flow.md`, `data_flow.svg` and `tools/flow_data.py` describe the old store
+> (`raw.duckdb`, `edgar.duckdb`, `history.duckdb`, `.store/prices.duckdb`), which #860 removed. They are not kept
+> current; the layout today is [docs/data_architecture.md](../docs/data_architecture.md). The "Keeping it current" rules
+> below applied to that store.
+
 This folder is the plain record of how RevenueChaser's data works: where each dataset comes from, which code
 writes it, where it is stored, how it is stored and how long it stays. It also tracks the data study (phases 1-4)
 as its decisions land. The code is the source of truth; every value here cites a `path:line` at the commit named

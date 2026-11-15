@@ -37,19 +37,6 @@ def _walk(idx, seed: int) -> pd.Series:
 
 
 # ── the reader ──────────────────────────────────────────────────────────────
-def test_price_frame_is_the_stores_adjusted_close(rawstore_tmp_db):
-    """The store's total-return closes, not the traded ones, and never a ``swing_ohlc`` row."""
-    idx = pd.bdate_range("2025-06-02", periods=30)
-    s = _walk(idx, 1)
-    prices_bars.write_bars(_swing_rows("AAA", s) + _swing_rows("SPY", _walk(idx, 2)))
-    prices_bars.write_action("AAA", idx[20].date(), "dividend", 2.0)
-    rawstore.write_rows("swing_ohlc", _swing_rows("AAA", s * 3) + _swing_rows("ZZZ", s))
-    frame = ohlc.price_frame(["AAA", "SPY", "ZZZ"])
-    adj = read.ticker_bars(["AAA"], basis="total_return")
-    assert list(frame.columns) == ["AAA", "SPY"]                          # ZZZ is only in swing_ohlc
-    assert np.allclose(frame["AAA"].to_numpy(), adj["close"].to_numpy())
-    assert frame["AAA"].iloc[0] < s.iloc[0]                               # the dividend adjusts the older closes
-    assert frame["AAA"].iloc[-1] == pytest.approx(s.iloc[-1])
 
 
 def test_price_frame_reads_the_last_two_years_of_the_store(rawstore_tmp_db):
@@ -120,15 +107,6 @@ def no_provider(monkeypatch):
     return calls
 
 
-def test_a_fetch_downloads_nothing_and_clusters_the_store(rawstore_tmp_db, no_provider):
-    tickers = parity._seed(parity._market())
-    p = engine.run(no_fetch=False, tickers=tickers, window=252)
-    assert no_provider == []
-    assert rawstore.count("swing_ohlc") == 0                               # no swing_ohlc write either
-    assert p["config_hash"] and p["eligible"] > 100
-    f = p["fetch"]
-    assert (f["fetched"], f["failed"]) == (0, 0)
-    assert (f["requested"], f["pending"]) == (len(tickers) + 3, 2)          # + SPY, DIA, QQQ; the store lacks DIA, QQQ
 
 
 def test_fetch_bulk_reports_what_the_store_lacks(rawstore_tmp_db, no_provider):
@@ -153,11 +131,6 @@ def test_a_new_dividend_retires_the_stored_run(rawstore_tmp_db):
     assert again["as_of"] != stored["as_of"]
 
 
-def test_the_about_box_names_the_prices_store(rawstore_tmp_db):
-    tickers = parity._seed(parity._market())
-    p = engine.run(no_fetch=True, tickers=tickers, window=252)
-    assert "price_bar_daily" in p["source"]["table"]
-    assert "swing_ohlc" not in json.dumps(p["source"])
 
 
 # ── the Relatedness peer market ─────────────────────────────────────────────
@@ -174,27 +147,9 @@ def test_the_peer_market_reads_the_store(rawstore_tmp_db):
 
 
 # ── the Settings window rule counts what Co-movement reads ──────────────────
-def test_stored_sessions_counts_spy_in_the_store(rawstore_tmp_db):
-    from RevenueChaser.core import board_settings as bs
-
-    idx = pd.bdate_range("2025-01-02", periods=12)
-    prices_bars.write_bars(_swing_rows("SPY", _walk(idx, 11)))
-    rawstore.write_rows("swing_ohlc", _swing_rows("SPY", _walk(pd.bdate_range("2024-01-02", periods=30), 12)))
-    assert bs.stored_sessions() == 12
-    assert ohlc.sessions_held("SPY") == 12
 
 
 # ── the data-as-of chip dates the names Co-movement clusters ────────────────
-def test_the_data_date_is_the_stores_date_of_its_names(rawstore_tmp_db):
-    from RevenueChaser.core import provenance
-
-    prices_bars.write_bars(_swing_rows("AAA", _walk(pd.bdate_range(end="2026-10-13", periods=5), 13))
-                        + _swing_rows("OTHER", _walk(pd.bdate_range(end="2026-10-14", periods=5), 14)))
-    rawstore.write_rows("swing_ohlc", _swing_rows("AAA", _walk(pd.bdate_range(end="2026-10-15", periods=5), 15)))
-    universe_store.replace([{"ticker": "AAA", "market_cap": 1.0e10, "sector": "Technology",
-                                              "price": 10.0, "name": "AAA", "industry": "Software",
-                                              "quote": {"symbol": "AAA"}}])
-    assert provenance.data_as_of("module_comovement") == "2026-10-13"
 
 
 def test_the_board_never_says_a_fetch_downloads_prices():

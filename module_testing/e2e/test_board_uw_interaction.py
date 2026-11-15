@@ -29,9 +29,6 @@ class TestRun:
         p = _payload(dashboard)
         assert p["tool_key"] == "option_trades" and p["row_count"] > 0 and not p["error"]
 
-    def test_the_run_writes_no_store_table(self, dashboard, ran):
-        """The lab is cache-only: no board header lands in history.duckdb."""
-        assert dashboard.table_count("result_runs") == 0
 
     def test_the_board_shows_the_rows(self, dashboard, ran):
         r = dashboard.view("module_uw_interaction")

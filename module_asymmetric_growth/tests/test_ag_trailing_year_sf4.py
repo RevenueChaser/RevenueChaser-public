@@ -106,15 +106,6 @@ def test_the_provenance_line_names_the_trailing_years(tmp_path, rawstore_tmp_db)
     assert "TTM to 2026-06-30 vs TTM to 2025-06-30" in grid and "FY2025 vs" not in grid
 
 
-def test_the_batch_read_carries_the_quarters(monkeypatch):
-    monkeypatch.setattr(engine.sec_edgar, "stored_fundamentals_many",
-                        lambda tickers: {"TEST": (ANNUAL, QUARTERLY, {"is_us": True})})
-    monkeypatch.setattr(engine.cache_manager, "load_many", lambda *a, **k: {})
-    monkeypatch.setattr(engine, "themes_for_many", lambda tickers: {})
-    monkeypatch.setattr(engine, "_bars_by_ticker", lambda tickers, session: {})
-    preload = engine._preload(["TEST"], no_fetch=True, session=None)
-    fin = engine._cached_financials("TEST", no_fetch=True, preload=preload)
-    assert fin["quarterly"] == QUARTERLY and fin["annual"] == ANNUAL
 
 
 def test_the_selection_version_moves_with_the_basis():

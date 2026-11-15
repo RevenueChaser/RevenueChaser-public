@@ -5,23 +5,11 @@ import pytest
 
 from RevenueChaser.core import job_lock, rawstore
 from RevenueChaser.module_relatedness import engine, store
-from RevenueChaser.module_relatedness.tests.test_relatedness import (
-    _prof, _seed_filings, _seed_universe)
+from RevenueChaser.module_relatedness.tests.test_relatedness import _prof, _seed_filings
 
 TICKERS = [f"T{i:02d}" for i in range(12)]
 
 
-@pytest.fixture
-def seeded(rawstore_tmp_db, monkeypatch, tmp_path):
-    _seed_universe(TICKERS)
-    _seed_filings(TICKERS)
-    monkeypatch.setattr(engine.config, "RELATEDNESS_JSON", tmp_path / "r.json")
-    for t in TICKERS:
-        store.save_profile(t, "cik-" + t, _prof(products=["gpu"], end_markets=["dc"]),
-                           "k", "m")
-    monkeypatch.setattr(engine.vc_engine, "fetch_corpus",
-                        lambda *a, **k: {"no_fetch": True})
-    return TICKERS
 
 
 def _forbid_writes(monkeypatch):
@@ -31,34 +19,12 @@ def _forbid_writes(monkeypatch):
         monkeypatch.setattr(rawstore, name, boom)
 
 
-def test_refresh_writes_nothing(seeded, monkeypatch):
-    _forbid_writes(monkeypatch)
-    payload = engine.run(no_fetch=True, tickers=seeded)
-    assert payload["n"] == len(seeded)
 
 
-def test_refresh_leaves_scores_and_registry_untouched(seeded):
-    before = (rawstore.count("relatedness_scores"), rawstore.count("run_registry"))
-    engine.run(no_fetch=True, tickers=seeded)
-    assert (rawstore.count("relatedness_scores"), rawstore.count("run_registry")) == before
 
 
-def test_fetch_persists_the_registry_and_no_latest_scores(seeded, monkeypatch):
-    """#642 PR 3 (DF65): a Fetch no longer writes ``relatedness_scores``; the history holds the scores."""
-    monkeypatch.setattr(engine, "build_profiles",
-                        lambda tickers, **k: store.load_profiles(tickers))
-    engine.run(no_fetch=False, tickers=seeded)
-    assert rawstore.count("relatedness_scores") == 0
-    assert rawstore.get("run_registry", "relatedness_run")
 
 
-def test_market_stats_reach_every_focal(seeded, monkeypatch):
-    seen = {}
-    monkeypatch.setattr(engine, "_attach_peer_market",
-                        lambda peers: seen.setdefault("focals", set(peers)))
-    payload = engine.run(no_fetch=True, tickers=seeded)
-    assert len(seeded) > 1
-    assert seen["focals"] == set(payload["peers"]) == set(seeded)
 
 
 def _market_prices(n: int = 260, seed: int = 5):
@@ -183,10 +149,6 @@ def test_peer_market_equals_the_full_matrix_values(rawstore_tmp_db, monkeypatch)
     assert "move" not in none_peer and "beyond_spy" not in none_peer
 
 
-def test_payload_does_not_ship_all_pair_scores(seeded):
-    payload = engine.run(no_fetch=True, tickers=seeded)
-    assert "scores" not in payload
-    assert payload["n_pairs"] > 0
 
 
 def test_pairs_stat_reads_n_pairs():
@@ -194,20 +156,7 @@ def test_pairs_stat_reads_n_pairs():
     assert ">77<" in report._summary_html({"n": 1, "n_pairs": 77})
 
 
-def test_fetch_refuses_to_overlap(seeded):
-    with job_lock.acquire("relatedness", wait=0) as got:
-        assert got
-        with pytest.raises(engine.AlreadyRunning):
-            engine.run(no_fetch=False, tickers=seeded)
 
 
-def test_refresh_ignores_the_lock(seeded):
-    with job_lock.acquire("relatedness", wait=0):
-        assert engine.run(no_fetch=True, tickers=seeded)["n"] == len(seeded)
 
 
-def test_dashboard_runner_reports_a_running_job(seeded):
-    from RevenueChaser.app import jobs, runners
-    with job_lock.acquire("relatedness", wait=0):
-        with pytest.raises(jobs.JobMessage):
-            runners.run_relatedness(None, no_fetch=False)

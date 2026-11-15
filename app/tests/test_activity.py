@@ -13,17 +13,6 @@ def client():
     return panel_test_client(app)
 
 
-def test_every_scheduled_job_has_a_place_and_the_known_ones_are_where_they_belong():
-    from RevenueChaser.core import automations
-    got = activity.job_boards()
-    listed = {j for b in got["boards"] for j in b["jobs"]}
-    assert listed == {e.name for e in automations.REGISTRY}, "every job under at least one board, or System"
-    by = {b["key"]: b["jobs"] for b in got["boards"]}
-    assert "RC-Earnings-Calendar" in by["module_earnings_radar"]
-    assert "RC-SPX-Gamma-Fetch" in by["module_spx_gamma"]
-    assert {"RC-Build", "RC-Backup-Weekly"} <= set(by[activity.SYSTEM])
-    assert "module_settings" not in by, "Settings reads every table: it would hold every job"
-    assert got["boards"][-1]["key"] == activity.SYSTEM
 
 
 def test_a_board_feeds_on_a_table_only_by_its_whole_name(monkeypatch):

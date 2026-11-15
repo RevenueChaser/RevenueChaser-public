@@ -13,6 +13,9 @@ Every value carries its source:
 # Prose, and no trailing full stop: render_flow.py puts its own punctuation after this, both in
 # the markdown line and in the HTML page's subtitle.
 AS_OF = (
+    "HISTORICAL RECORD, NOT KEPT CURRENT: it describes the old store (raw.duckdb, edgar.duckdb, history.duckdb "
+    "and .store/prices.duckdb), which #860 removed with every code path to it on 2026-11-15; the current layout is "
+    "docs/data_architecture.md (rcdata's serving files and the board files under .store/boards/). "
     "Carried over from the private repo alsanvolkan/RevenueChaser at main f2d74a1c (2026-10-21), "
     "whose history this repo does not share: the 2026-10-22 migration re-rooted the public repo. "
     "The dataset rows, writers, sources, keys, write rules and retention below are the private "
@@ -162,12 +165,8 @@ AREAS = [
      "edgar", "edgar_financials", ":604", "ticker", "upsert",
      "All fiscal years. Fetched once per ticker and never refetched; since Common K6 (#383 R1) a fetched row carries fetched_at (the facts download), rows written before stay without it. Since #158 (branch area/providers/158-edgar-quarters) the quarterly list holds discrete quarters, Q2-Q4 derived from YTD facts for additive USD flows (a record names them in `derived`, keeps the cumulative fact in `ytd`; a negative derived value of a non-negative field is dropped and flagged `<field>_suspect`), every record carries per-field `filed` and `accn`, `meta.extract_version` is 2, and buyback and SBC are stored; a row written before that stays as it is until the gated re-extraction.",
      "O2:170, O2:173"),
-    ("SEC bulk companyfacts.zip", "core/edgar_bulk.py:142",
-     "ingest_companyfacts (CLI only)", "core/edgar_bulk.py:158",
-     "edgar", "edgar_facts", ":635", "cik + concept + period + form", "upsert",
-     "Everything ingested stays.", "O2:174"),
    ],
-   planned="edgar_companyfacts. File decided in 2.6."),
+   planned="Nothing: edgar_facts and edgar_companyfacts left the MANIFEST with #860 stage 2."),
   dict(id="D12", name="Vendor statements and valuation", readers="Financials, Earnings, AG",
    flows=[
     ("yfinance statements + .info (get_financials; get_info for AG names with EDGAR years)", "core/providers/yfinance.py:113, :244; module_financials/run.py:59; module_asymmetric_growth/engine.py:306, :308",
@@ -218,7 +217,7 @@ AREAS = [
      "raw", "sec_company_sic", ":716", "ticker", "upsert", "Latest per ticker.", ":716"),
     ("Value Chain misses", "module_value_chain/engine.py:108",
      "Value Chain · record_misses", "module_value_chain/engine.py:111",
-     "edgar", "chain_meta", ":847", "key", "replace per key",
+     "value_chain", "chain_meta", ":847", "key", "replace per key",
      "A miss is retried after 7 days.", "module_value_chain/config.py:53"),
     ("SEC submissions per CIK, every equity_universe CIK once per run (edgar_sync, RC-ValueChain-Sync 13:00)", "module_value_chain/sync.py:52, :109",
      "sec_submissions · record (filings.recent; flushed per 250 CIKs on the sync's thread)", "core/sec_submissions.py:133; module_value_chain/sync.py:114, :216-217",
@@ -239,7 +238,7 @@ AREAS = [
      "Every document stays; the first write of an accession wins and a stored doc is never downloaded again (#299 D16). The HTML tree is zipped by the daily backup.", "scripts/backup_store.py:419"),
     ("the latest filing per ticker", "module_value_chain/engine.py:61",
      "Value Chain · _write", "module_value_chain/engine.py:75",
-     "edgar", "chain_filings", ":812", "ticker", "upsert",
+     "value_chain", "chain_filings", ":812", "ticker", "upsert",
      "Latest slice per ticker only. Since Common K6 (#383 R1) a written row carries fetched_at: the document's download (its edgar_documents.fetched_at); a re-slice of a stored file with no metadata row, the write time (module_value_chain/edgar_text.py document_slice). Rows written before, and a kept slice, stay as they are. The #185 re-slice apply (`--reslice-apply`, module_value_chain/reslice.py apply) rewrites every row from its stored document through the same keep guard, with no download, carrying the document's edgar_documents.fetched_at.", "O2:165, O2:167"),
    ],
    planned="Built (#299 D16): edgar_documents is append with source and run_at; the name stays."),
@@ -542,12 +541,15 @@ STORES = [
      "sector_tree_history", "money_flow_history", "sec13f_metrics_history", "financials_report_history",
      "rotation_snapshots_history"]),
  ]),
- ("edgar", "edgar.duckdb", ".store/edgar.duckdb (core/rawstore.py:55-57)", [
-   ("From SEC (raw)", ["edgar_financials", "edgar_documents", "edgar_facts", "chain_filings", "sec_submissions",
+ ("edgar", "edgar.duckdb", ".store/edgar.duckdb (core/rawstore.py:55-57); going away (#860)", [
+   ("From SEC (raw)", ["edgar_financials", "edgar_documents", "sec_submissions",
      "sec_submissions_cik"]),
+ ]),
+ ("value_chain", "boards/value_chain.duckdb", ".store/boards/value_chain.duckdb (rawstore.board_db_path; the "
+  "Value Chain package's own three tables, moved out of edgar.duckdb by #860 stage 1)", [
+   ("From SEC (raw): the latest 10-K / 20-F slice per ticker", ["chain_filings"]),
    ("Computed results (Value Chain edges; a concentration edge keeps the share its sentence states in share_pct, #387 D7)", ["chain_mentions"]),
    ("Run log", ["chain_meta"]),
-   ("Declared in the G1 bump (#292, schema 10), no writer yet", ["edgar_companyfacts"]),
  ]),
  ("prices", "prices.duckdb", ".store/prices.duckdb (rawstore.prices_db_path; #156, made by the first store call)", [
    ("From providers (raw): UW ohlc/1d, yfinance (core/prices.py)", ["price_bars_daily", "price_actions"]),
@@ -585,7 +587,9 @@ CHART_STORES = {
             "leaps_cache · leaps_flow_prints", "oipd_chain · rotation_snapshots", "etf_holdings · index_constituents",
             "sec13f_holdings and 6 more 13F", "llm_cache · relatedness_*", "watchlist · board_settings",
             "9 declared, empty (4 G1 …)"]),
-    "edgar": (455, 100, "edgar.duckdb", ["9 tables (1 G1, empty)", "edgar_financials · edgar_facts", "edgar_documents · chain_* · sec_*"]),
+    "edgar": (455, 100, "edgar.duckdb", ["4 tables; going away (#860)", "edgar_financials",
+                                        "edgar_documents · sec_*"]),
+    "value_chain": (455, 60, "boards/value_chain.duckdb", ["chain_filings · chain_mentions", "chain_meta"]),
     "files": (565, 40, "Files on disk", ["SPX day folders · edgar_docs HTML"]),
     "none": (615, 30, "Not stored (HTML report only)", []),
 }
@@ -593,6 +597,6 @@ CHART_S2J = {"YF": ["UNI", "BARS", "PC", "IDJ", "ROT", "SPX", "F13", "EI"], "SEC
              "UW": ["LEAPS", "OIPD", "ROT", "IDX", "SPX", "IDJ", "ER", "EI"], "ID": ["IDJ"], "CF": ["SPX"], "DS": ["REL"],
              "FR": ["EI"], "YOU": ["SET"]}
 CHART_J2S = {"UNI": ["raw"], "IDJ": ["raw"], "PC": ["raw"], "BARS": ["raw"], "ROT": ["raw"], "IDX": ["raw"],
-             "LEAPS": ["raw"], "OIPD": ["raw"], "F13": ["raw"], "SET": ["raw"], "REL": ["raw", "edgar"],
-             "FIN": ["edgar"], "VC": ["edgar", "files"], "SPX": ["files"], "ER": ["raw", "none"],
+             "LEAPS": ["raw"], "OIPD": ["raw"], "F13": ["raw"], "SET": ["raw"], "REL": ["raw", "value_chain"],
+             "FIN": ["edgar"], "VC": ["value_chain", "edgar", "files"], "SPX": ["files"], "ER": ["raw", "none"],
              "EI": ["raw"], "SF": ["raw"]}

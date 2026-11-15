@@ -1,8 +1,7 @@
 """Unified HTML — grouped columns with RGBA background tones per group. Single page, all tickers."""
 from RevenueChaser.core import universe
 from RevenueChaser.core.reporting_common import (FILTERS_CSS, FILTERS_JS, filters_bar_html, filters_meta, help_html,
-                                                 notice_html, provider_health_html, recorded_sessions_html,
-                                                 watchlist_html, write_artifact)
+                                                 notice_html, provider_health_html, watchlist_html, write_artifact)
 from datetime import date, datetime, timezone
 from pathlib import Path
 import json
@@ -19,9 +18,6 @@ from RevenueChaser.core.calendar import NY
 # composite.py (the sum of the direction weights R2/R3/R7/R8 carry).
 _DIRECTION_WEIGHT_SUM = sum(w for w in RULE_WEIGHTS.values() if w > 0)
 
-# #383 C7: this page is written by its Fetch just before that Fetch is recorded, and a Refresh serves the same file.
-_HISTORY_NOTE = ("This page is written by its Fetch just before that Fetch is recorded, and a Refresh shows the same "
-                 "page, so the newest Fetch shows up here from the next Fetch.")
 
 CSS = """<style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -1702,6 +1698,15 @@ def _kit_themes() -> dict:
         return {}
 
 
+def screener_problem(screener) -> str | None:
+    """The board notice when the UW screener answered partial/failed, else None (E2, #372)."""
+    if not screener or screener.get("status") not in ("partial", "failed"):
+        return None
+    err = screener.get("error") or {}
+    return (f"the UW screener answered {screener['status']} ({err.get('failed_chunks', '?')} of "
+            f"{err.get('chunks', '?')} chunks failed): cards without a screener row read liquidity N/A")
+
+
 def export_html(cards: list, calendar_events: list[dict] = None, nrc_results: dict = None, filename: str = None, filter_stats: dict = None,
                 provider_health: dict | None = None, notice: str | None = None, run_at: float | None = None) -> Path:
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -2007,7 +2012,7 @@ def export_html(cards: list, calendar_events: list[dict] = None, nrc_results: di
     {notice_html(notice)}
     {notice_html(kit_notice)}
     {help_block}
-    {recorded_sessions_html("module_earnings_radar", read_note=_HISTORY_NOTE)}
+    
     <div class="toolbar">
       <div class="seg" id="views">{view_btns}</div>
       <div class="seg" id="density"><button data-d="compact" class="on" onclick="setDensity('compact')">Compact</button><button data-d="comfort" onclick="setDensity('comfort')">Comfort</button></div>

@@ -174,21 +174,51 @@ def golden_dir(fixtures_dir: Path) -> Path:
 
 @pytest.fixture(autouse=True)
 def isolate_rawstore(tmp_path):
-    """Point the rawstore DB at a per-test temp file — for EVERY test.
+    """Point the store directory (the board files, ``boards/<board>.duckdb``) at a per-test temp dir — for EVERY test.
 
-    Autouse on purpose: now that the JSON/CSV/SQLite stores all live in one
-    ``.store/raw.duckdb``, a test that forgets to ask for isolation reads (and
-    can write) the developer's real 500 MB store. Kept **per-test** (never
-    per-session): a shared DuckDB file across parallel workers would hit the
-    single-writer lock.
+    Autouse on purpose: a test that forgets to ask for isolation would read (and could write) the developer's real
+    board files. Kept **per-test** (never per-session): a shared DuckDB file across parallel workers would hit the
+    single-writer lock. Yields the store directory.
     """
     from RevenueChaser.core import rawstore
     mp = pytest.MonkeyPatch()  # its own instance: a test's monkeypatch.undo()
-    mp.setattr(rawstore, "DB_PATH", tmp_path / "raw.duckdb")  # must not un-isolate
+    mp.setattr(rawstore, "STORE_DIR", tmp_path)  # must not un-isolate
     try:
-        yield rawstore.DB_PATH
+        yield Path(tmp_path)
     finally:
         mp.undo()
+
+
+@pytest.fixture(autouse=True)
+def _seeded_universe_market():
+    """The caps and prices a test seeded with ``rcdata/tests/universe_store`` rows, where the served prices file has
+    none for the ticker (the part the old ``equity_universe`` table played before #860). Cleared per test."""
+    from RevenueChaser.core import spine_reads
+    from RevenueChaser.rcdata.tests import universe_store
+    universe_store.MARKET.clear()
+    real = spine_reads.latest_market
+
+    def latest_market(tickers):
+        wanted = [str(t).strip().upper() for t in tickers if str(t or "").strip()]
+        got = real(wanted)
+        for t in wanted:
+            m = universe_store.MARKET.get(t)
+            if not m:
+                continue
+            row = got.setdefault(t, {"ticker": t, "price": None, "market_cap": None, "issuer_market_cap": None})
+            for key, seeded in (("price", m["price"]), ("market_cap", m["market_cap"]),
+                                ("issuer_market_cap", m["market_cap"])):
+                if row.get(key) is None:           # a served value wins; the seeded one fills only a gap
+                    row[key] = seeded
+        return got
+
+    mp = pytest.MonkeyPatch()
+    mp.setattr(spine_reads, "latest_market", latest_market)
+    try:
+        yield
+    finally:
+        mp.undo()
+        universe_store.MARKET.clear()
 
 
 @pytest.fixture
@@ -331,11 +361,10 @@ def _reset_cik_map():
 # The module-level inputs ``ensure_all_tables`` builds a store from. A test that changes one of them before its store
 # is made gets the apply run on its own file, never a template built from the unchanged ones.
 # NOT covered: the apply's code (``_ddl``, ``_reconcile_table``, ``_apply_views``, ``_sync_tracked`` and the other
-# helpers), the stamp constants (``_SCHEMA_FILES``, ``_SCHEMA_STAMP_TABLE``, ``_SCHEMA_STAMP_KEY``,
-# ``_REBUILD_RUN_ID``) and the environment (``RC_STORE_SCHEMA_OK``, ``RC_STORE_SCHEMA_REFUSE``). A test that patches
+# helpers), the stamp constants (``_SCHEMA_FILES``, ``_SCHEMA_STAMP_TABLE``, ``_SCHEMA_STAMP_KEY``) and the
+# environment (``RC_STORE_SCHEMA_OK``, ``RC_STORE_SCHEMA_REFUSE``). A test that patches
 # one of those before its store exists must carry ``@pytest.mark.rawstore_schema_from_scratch``.
-_SCHEMA_INPUTS = ("_SCHEMA_VERSION", "MANIFEST", "CHANGES", "_RENAMES", "_MERGES", "_VIEWS", "_KEY_REBUILDS",
-                  "_PRICE_MOVES", "_EDGAR_TABLES")
+_SCHEMA_INPUTS = ("_SCHEMA_VERSION", "MANIFEST")
 SCHEMA_FROM_SCRATCH = "rawstore_schema_from_scratch"
 
 
@@ -374,7 +403,7 @@ class RawstoreTemplate:
         self.dir.mkdir(parents=True)
         self.fingerprint = _schema_fingerprint()
         mp = pytest.MonkeyPatch()
-        mp.setattr(rawstore, "DB_PATH", self.dir / "raw.duckdb")
+        mp.setattr(rawstore, "STORE_DIR", self.dir)
         try:
             rawstore.ensure_all_tables()
         finally:
@@ -390,18 +419,16 @@ class RawstoreTemplate:
         self.files = {p.relative_to(self.dir).as_posix(): (p.stat().st_size, p.stat().st_mtime_ns) for p in files
                       if not p.name.startswith(rawstore._PRESENCE_PREFIX)}
 
-    def copy_to(self, raw_path: Path) -> bool:
-        """Give ``raw_path``'s directory its own copy of the template; False when it has to be built from scratch."""
+    def copy_to(self, dest: Path) -> bool:
+        """Give the store directory ``dest`` its own copy of the template; False when it has to be built from scratch."""
         from RevenueChaser.core import rawstore
-        dest = raw_path.parent
-        if (raw_path.name != "raw.duckdb" or _schema_fingerprint() != self.fingerprint
-                or any((dest / name).exists() for name in self.files)):
+        if _schema_fingerprint() != self.fingerprint or any((dest / name).exists() for name in self.files):
             return False
         for name in self.files:
             (dest / name).parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(self.dir / name, dest / name)
         rawstore._TABLE_READY.update((str(dest / name), table) for name, table in self.ready)
-        rawstore._ENSURED[str(raw_path)] = 0.0
+        rawstore._ENSURED[str(dest)] = 0.0
         return True
 
     def unchanged(self) -> bool:
@@ -418,7 +445,7 @@ def rawstore_template(tmp_path_factory):
 
 @pytest.fixture
 def rawstore_tmp_db(isolate_rawstore, rawstore_template, request):
-    """The isolated DB path, with every manifest table created.
+    """The isolated store directory, with every manifest table created in the board files.
 
     The files are a copy of ``rawstore_template`` (~2 ms instead of ~1 s for the apply), made in this test's own
     ``tmp_path``: only the template is shared, and no test opens it, so every test still gets a fresh store. The apply
@@ -426,17 +453,9 @@ def rawstore_tmp_db(isolate_rawstore, rawstore_template, request):
     a migration itself), when a schema input differs from the template's, or when a store file is already there.
     """
     from RevenueChaser.core import rawstore
-    if request.node.get_closest_marker(SCHEMA_FROM_SCRATCH) or not rawstore_template.copy_to(Path(rawstore.DB_PATH)):
+    if request.node.get_closest_marker(SCHEMA_FROM_SCRATCH) or not rawstore_template.copy_to(Path(rawstore.STORE_DIR)):
         rawstore.ensure_all_tables()
     return isolate_rawstore
-
-
-@pytest.fixture
-def db_conn(rawstore_tmp_db):
-    """Fresh connection to the rawstore tmp DB."""
-    from RevenueChaser.core import rawstore
-    with rawstore.connect() as conn:
-        yield conn
 
 
 class _MockResponse:

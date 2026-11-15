@@ -9,6 +9,7 @@ Two separate defects lived here:
 from __future__ import annotations
 
 import os
+from pathlib import Path
 import time
 
 import pytest
@@ -16,15 +17,18 @@ import pytest
 from RevenueChaser.core import rawstore
 from RevenueChaser.core.rawstore import StoreLockedError
 
+#: A board file that is never opened: ``duckdb.connect`` is replaced in every test that names it.
+_FILE = Path("/x/.store/news.duckdb")
+
 VSCODE = (
-    'IO Error: Could not set lock on file "/x/.store/raw.duckdb": Conflicting '
+    'IO Error: Could not set lock on file "/x/.store/boards/news.duckdb": Conflicting '
     'lock is held in /Applications/Visual Studio Code.app/Contents/Frameworks/'
     'Code Helper (Plugin).app/Contents/MacOS/Code Helper (Plugin) (PID 2832) '
     'by user someone. However, you would be able to open this database in '
     'read-only mode.'
 )
 GENERIC = (
-    'IO Error: Could not set lock on file "/x/.store/raw.duckdb": Conflicting '
+    'IO Error: Could not set lock on file "/x/.store/boards/news.duckdb": Conflicting '
     'lock is held in /usr/local/bin/duckdb (PID 4242) by user someone.'
 )
 
@@ -123,7 +127,7 @@ class TestFailFast:
         monkeypatch.setattr(time, "sleep", slept.append)
 
         with pytest.raises(StoreLockedError):
-            rawstore._connect_with_retry(rawstore._READ_DELAYS)
+            rawstore._connect_with_retry(rawstore._READ_DELAYS, _FILE)
 
         assert sum(slept) < 1.0, (
             f"waited {sum(slept):.2f}s on a lock that will not clear; the read "
@@ -141,7 +145,7 @@ class TestFailFast:
         monkeypatch.setattr(time, "sleep", slept.append)
 
         with pytest.raises(rawstore.RawStoreError):
-            rawstore._connect_with_retry(rawstore._READ_DELAYS)
+            rawstore._connect_with_retry(rawstore._READ_DELAYS, _FILE)
 
         assert sum(slept) > 20.0, "transient contention lost its retry budget"
 
@@ -156,7 +160,7 @@ class TestFailFast:
         monkeypatch.setattr(time, "sleep", slept.append)
 
         with pytest.raises(rawstore.RawStoreError) as exc:
-            rawstore._connect_with_retry(rawstore._READ_DELAYS)
+            rawstore._connect_with_retry(rawstore._READ_DELAYS, _FILE)
 
         assert slept == []
         assert not isinstance(exc.value, StoreLockedError)
@@ -183,13 +187,13 @@ class TestBriefWait:
     def test_a_peer_lock_costs_the_full_budget_by_default(self, monkeypatch):
         slept = self._peer_lock(monkeypatch)
         with pytest.raises(StoreLockedError):
-            rawstore._connect_with_retry(rawstore._WRITE_DELAYS)
+            rawstore._connect_with_retry(rawstore._WRITE_DELAYS, _FILE)
         assert sum(slept) > 20.0
 
     def test_inside_brief_wait_a_peer_lock_costs_the_foreign_budget(self, monkeypatch):
         slept = self._peer_lock(monkeypatch)
         with rawstore.brief_wait(), pytest.raises(StoreLockedError):
-            rawstore._connect_with_retry(rawstore._WRITE_DELAYS)
+            rawstore._connect_with_retry(rawstore._WRITE_DELAYS, _FILE)
         assert sum(slept) < 1.0
 
     def test_the_flag_is_restored_on_exit(self):

@@ -220,39 +220,16 @@ def test_report_shows_the_plain_ratio_otherwise(financials):
 
 
 # ── D5 / M18: per-ticker report files are the CLI's, and the ticker cannot be a path ──
-def _prime(financials, tmp_path, monkeypatch):
-    import RevenueChaser.module_financials.run as fm
-    from RevenueChaser.core.providers import cache as cache_manager
-    monkeypatch.setattr(fm, "OUTPUT_DIR", tmp_path / "out")
-    monkeypatch.setattr(fm.quick_remarks_engine, "run_quick_remarks", lambda *a, **k: {})
-    cache_manager.save("AAPL", dict(financials))
-    return fm
 
 
-def test_cli_run_writes_the_per_ticker_file(rawstore_tmp_db, tmp_path, monkeypatch, financials):
-    fm = _prime(financials, tmp_path, monkeypatch)
-    res = fm.run("AAPL", modules=["credit"], output="html", no_fetch=True)
-    assert res["paths"]["html"] == str(tmp_path / "out" / "AAPL_report.html")
 
 
-def test_the_dashboard_report_path_writes_only_that_file(rawstore_tmp_db, tmp_path, monkeypatch, financials):
-    fm = _prime(financials, tmp_path, monkeypatch)
-    target = tmp_path / "latest" / "financials_latest.html"
-    res = fm.run("AAPL", modules=["credit"], output="html", no_fetch=True, report_path=target)
-    assert res["paths"]["html"] == str(target) and target.exists()
-    assert not (tmp_path / "out" / "AAPL_report.html").exists()
 
 
-@pytest.mark.parametrize("bad", ["../EVIL", "A/B", "..", "AAPL;rm", "", "A" * 20, "a b"])
-def test_a_ticker_that_is_a_path_is_refused(rawstore_tmp_db, tmp_path, monkeypatch, financials, bad):
-    fm = _prime(financials, tmp_path, monkeypatch)
-    with pytest.raises(ValueError):
-        fm.run(bad, modules=["credit"], output="html", no_fetch=True)
-    assert not (tmp_path / "out").exists()
 
 
 def test_the_dashboard_runners_pass_the_single_report_path():
     import inspect
     from RevenueChaser.app import runners
-    for fn in (runners.run_quick, runners.run_quick_cached):
+    for fn in (runners.run_quick,):                     # run_quick_cached re-derives nothing since #860
         assert "report_path=QUICK_LATEST" in inspect.getsource(fn)

@@ -13,19 +13,11 @@ from pathlib import Path
 from RevenueChaser.core import job_lock
 
 NAMES = (
-    "edgar_sync",              # module_value_chain/sync.py (+ reslice)
+    "edgar_sync",              # module_value_chain/reslice.py
     "relatedness",             # module_relatedness/engine.py (+ reslice)
-    "universe",                # core/universe_fetch.py: the universe writer lock
-    "universe_run",            # core/universe_fetch.py: the refresh-run marker beside it
-    "board_fetch_<board>",     # core/universe_fetch.py: one single-board Fetch
-    "daily_bars",              # core/prices.py
-    "index_lists",             # core/index_lists.py
-    "index_levels",            # core/index_levels.py
-    "identity",                # core/identity/refresh.py: the dashboard job and its CLI (#26, PL6-a)
     "sec_13f",                 # app/runners.py: the three 13F jobs (#26, PL6-a)
     "forecast_outcomes",       # scripts/forecast_outcomes.py (#26, PL6-a)
     "forecast_baselines",      # scripts/forecast_baselines.py (#25 HR-1)
-    "nightly_inputs_<step>",   # scripts/nightly_inputs.py, one per step (#26, PL6-a)
     "rcdata_build",            # rcdata/build/__main__.py: the market-store builder (#206)
 )
 
@@ -44,13 +36,13 @@ def _sources() -> list[Path]:
 
 
 def _literal_names() -> set[str]:
-    """The names handed to ``acquire()`` as a literal, e.g. ``acquire("daily_bars", wait=0)``."""
+    """The names handed to ``acquire()`` as a literal, e.g. ``acquire("sec_13f", wait=0)``."""
     return {name for path in _sources()
             for name in re.findall(r'acquire\(\s*"([a-z0-9_]+)"', path.read_text(encoding="utf-8"))}
 
 
 def _constant_names() -> set[str]:
-    """The names held in a module-level lock constant, e.g. ``_LOCK = "identity"`` or ``_RUN_LOCK_NAME = "x"``.
+    """The names held in a module-level lock constant, e.g. ``_LOCK = "rcdata_build"`` or ``_RUN_LOCK_NAME = "x"``.
 
     ``acquire(_LOCK)`` passes a name the literal scan cannot see, so every constant of that shape is collected too.
     """
@@ -76,7 +68,7 @@ def _scanned_names() -> set[str]:
 
     The guard's own assertion is a subset test, so dropping one half of this union only shrinks the set and
     still passes. Both halves therefore live here, and the constant test below pins that this function really
-    carries them — otherwise "simplifying" the guard back to literals would silently stop guarding five names.
+    carries them — otherwise "simplifying" the guard back to literals would silently stop guarding three names.
     """
     return _literal_names() | _constant_names() | _keyword_names()
 
@@ -91,8 +83,8 @@ def test_every_lock_name_in_the_sources_is_documented():
 def test_a_lock_name_passed_as_a_constant_is_found():
     """A name only a constant carries — no literal anywhere — still has to reach the scan, or the guard misses it."""
     literals, constants = _literal_names(), _constant_names()
-    assert {"identity", "universe", "universe_run", "index_levels"} <= constants
-    assert "universe_run" not in literals, "core/universe_fetch._RUN_LOCK_NAME is the only source of this name"
+    assert {"forecast_outcomes", "forecast_baselines", "rcdata_build"} <= constants
+    assert "rcdata_build" not in literals, "a module-level lock constant is the only source of this name"
     assert constants <= set(NAMES)
     # What the guard actually judges has to contain them: this is the assertion that keeps the union in place.
     assert constants <= _scanned_names(), "the guard stopped scanning constant lock names"

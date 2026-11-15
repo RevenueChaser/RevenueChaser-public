@@ -1,6 +1,6 @@
 """Rotation Map Dashboard — RRG-style quadrant HTML with ETF data table."""
-from RevenueChaser.core.reporting_common import (help_html, provider_health_html, recorded_sessions_html,
-                                                 watch_buttons_html, watchlist_html, write_artifact)
+from RevenueChaser.core.reporting_common import (help_html, provider_health_html, watch_buttons_html, watchlist_html,
+                                                 write_artifact)
 from RevenueChaser.core.html_safe import ESC_JS, esc, fill, script_json
 import html as _html
 from datetime import datetime, date
@@ -12,9 +12,6 @@ from RevenueChaser.module_sector_rotation.models import ETFRotationSnapshot
 from .universe import MACRO_SERIES, ROTATION_ETFS, GROUP_COLORS, QUADRANT_COLORS
 from .theme_focus import coarse_theme_catalog
 
-# #383 C7: Money Flow has no page of its own; its block is read when the Rotation page renders.
-_MF_HISTORY_NOTE = ("Read when the Rotation page was rendered, so a Money Flow Fetch shows itself from the next "
-                    "Rotation Refresh.")
 
 CSS = """<style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -1021,7 +1018,7 @@ def export_rotation_dashboard(snapshots: list[ETFRotationSnapshot], filename: st
 <div class="header"><h1>ROTATION MAP — Sector &amp; Theme</h1><div class="meta">{as_of.isoformat()}{fetched_html} | {len(snapshots)} ETFs | {benchmark}-Relative RS</div></div>
 {provider_health_html(provider_health)}
 {help_block}
-{recorded_sessions_html("module_sector_rotation")}
+
 {summary_cards}
 
 <div class="topbar"><span class="filters">{filters}</span>{theme_html}</div>
@@ -1083,7 +1080,7 @@ On each day: <b>up-day</b> dollar volume (Close × Volume) counts positive, <b>d
 <b>+52.6</b> ≈ 76.3% of traded dollars were up-day flow (net of down-day selling) over the last 21 trading days; <b>−52.6</b> would mean the opposite.<br>
 A high positive score = persistent net buying pressure relative to the fund's own turnover (not an absolute dollar amount).
 </div>
-{recorded_sessions_html("module_money_flow", panel_id="mf-history-panel", read_note=_MF_HISTORY_NOTE)}
+
 </div>
 </div>
 

@@ -119,9 +119,6 @@ def test_the_need_counts_calendar_days_of_the_settlement_date():
     assert store_reads.MAX_AGE_DAYS["short_interest"] == 35
 
 
-def test_the_old_nightly_table_has_no_reader_on_this_board():
-    assert not hasattr(stored_inputs, "short_rows")
-    assert "short_interest" not in stored_inputs.MAX_LAG
 
 
 # ── the board's warm step ──

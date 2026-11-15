@@ -38,10 +38,11 @@ def test_c1_a_december_filer_after_its_q2_10q_is_on_ttm():
     assert label == "Q2/2026 vs Q2/2025"
 
 
-def test_c1_ttm_revenue_and_net_income_stay_on_todays_rule():
-    # D2 B: the derived quarters of this extractor never form a 4-quarter run, so both are the fiscal year's.
+def test_c1_ttm_revenue_and_net_income_are_the_last_four_quarters():
+    # #832 (avo 15 Nov 2026 "A"): the derived Q4/2025 joins the run, so both are Q3/2025 to Q2/2026, not FY2025:
+    # revenue 121 + 121 + 133.1 + 133.1, net income a tenth of it.
     t, *_ = _run(_case("C1"))
-    assert t["ttm_revenue"] == pytest.approx(484.0) and t["ttm_net_income"] == pytest.approx(48.4)
+    assert t["ttm_revenue"] == pytest.approx(508.2) and t["ttm_net_income"] == pytest.approx(50.82)
 
 
 def test_c2_the_latest_filing_being_the_10k_is_fy():

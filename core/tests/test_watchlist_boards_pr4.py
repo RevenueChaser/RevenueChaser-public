@@ -1,4 +1,5 @@
-"""Every board that renders tickers mounts the shared watch-list pair (PR 4, D2); the others say why not.
+"""Every board that renders tickers mounts the shared watch-list button (PR 4, D2; one "add to list" menu since #786
+step 5); the others say why not.
 
 Three checks per board, on the hostile fixtures of ``board_fixtures`` (every ticker there is ``H(...)``):
 
@@ -45,9 +46,15 @@ WITHOUT_PAIR = {
     "module_uw_interaction": "a lab: raw columns of whatever UW tool was run, not a board of names",
     "module_news": "a calendar and headlines; the tickers on a headline are a tag, not a row of names (follow-up)",
     "module_welcome": "a summary page; its earnings card links to Earnings Radar, whose rows carry the pair",
+    # avo, 12 Nov 2026: "bu liste icin bookmark simgesine gerek yok" — a row of a named list is already on a list,
+    # so a button that puts it on the shared stock or option list says nothing. #786 step 5 adds the other
+    # direction instead: a menu on the OTHER boards that puts a ticker on one of these lists.
+    "module_watchlists": "the board is avo's own named lists; a row here is already on a list",
 }
 
-_SERVER_BUTTON = re.compile(r'data-rc-watch="(?:option|stock)" data-ticker="([^"]*)"')
+# ``[^"']``: the client template in the mounted script spells the same attributes around ``' + rcEsc(t) + '``; a
+# rendered button's ticker never holds a bare quote (the escaper turns one into ``&#39;``).
+_SERVER_BUTTON = re.compile(r'data-rc-watch-menu="" data-ticker="([^"\']*)"')
 
 
 def test_every_board_is_classified():
@@ -60,7 +67,7 @@ def test_the_board_mounts_the_pair_once_with_its_own_key(key, tmp_path, monkeypa
     page = BOARDS[key].render(tmp_path, monkeypatch)
     assert page.count("rcWatchInit(") == 2, "the definition and exactly one mount"
     assert f'rcWatchInit("{WITH_PAIR[key]}");' in page
-    assert ".rc-watch button{min-width:44px;min-height:44px" in page
+    assert "min-width:44px;min-height:44px" in page
     check_page(page)
 
 
@@ -83,9 +90,10 @@ SERVER_GOOD = {"module_sector_rotation": "XLK"}
 # A board whose rows the browser builds: the call where the ticker is rendered (its own tests run it where they can).
 CLIENT_CALL = {
     "module_sec_13f": "rcWatchButtons(r[0])",
+    "module_leaps": "rcWatchButtons(r.t)",
     "module_asymmetric_growth": "rcWatchRow(c.ticker)",
     "module_swing_potential": "rcWatchRow(c.ticker)",
-    "module_fundamentals": "rcWatchRow(c.ticker)",
+    "module_fundamentals": "rcWatchButtons(c.ticker)",   # a corner slot on the card, not a row (#840)
     "module_earnings_radar": "rcWatchButtons(ticker)",          # in the drawer header, not the table
     "module_comovement": "rcWatchRow(r.ticker)",                # the found name's line, not each chip
     "module_value_chain": "rcWatchRow(FOCAL)",                  # the focal company
@@ -110,7 +118,7 @@ def test_implied_probability_shows_the_pair_for_its_focal_ticker():
     page = render_oipd_dashboard({"ticker": "AAPL", "asof": "2026-09-01", "spot": 100.0, "n_contracts": 10,
                                   "horizon_days": 30, "risk_free": 0.04, "error": None, "warnings": [],
                                   "expiries": []})
-    assert _SERVER_BUTTON.findall(page) == ["AAPL", "AAPL"]
+    assert _SERVER_BUTTON.findall(page) == ["AAPL"]
     assert 'rcWatchInit("oipd");' in page
 
 
@@ -122,5 +130,5 @@ def test_financials_shows_the_pair_for_the_company_and_each_peer():
              "implied": {"equity_pe": 1.0e9, "per_share_pe": 50.0}}
     page = build_report_html({"ticker": "TEST", "financials": fin, "modules": {"comps": comps}, "warnings": []})
     tickers = _SERVER_BUTTON.findall(page)
-    assert "TEST" in tickers and "PEER" in tickers and len(tickers) == 4    # the hostile peer gets none
+    assert "TEST" in tickers and "PEER" in tickers and len(tickers) == 2    # the hostile peer gets none
     assert "&lt;b&gt;x&lt;/b&gt;" in page and 'rcWatchInit("financials");' in page

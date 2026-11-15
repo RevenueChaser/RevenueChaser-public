@@ -98,25 +98,6 @@ def test_restore_live_replaces_the_duckdb_kind_and_keeps_the_previous_file(backu
     assert _rows(live.with_name(live.name + restore.PRE_RESTORE), "t") == 9
 
 
-def test_restore_live_of_a_board_file_refuses_a_peer_and_a_wal(backup_dir, monkeypatch):
-    raw = Path(rawstore.DB_PATH)
-    _board(raw, 3)
-    _board(raw.parent / "boards" / "sec_13f.duckdb", 2)
-    backup.run_backup(only="boards")
-    src = restore.latest("boards", "sec_13f")
-    assert restore.live_target("boards", src) == raw.parent / "boards" / "sec_13f.duckdb"
-    assert restore.live_target("boards", restore.latest("boards", "raw")) == raw
-    monkeypatch.setattr(rawstore, "_peer_pids", lambda path: [4242])
-    with pytest.raises(restore.RestoreRefused, match="4242"):
-        restore.restore_live("boards", src)
-    monkeypatch.setattr(rawstore, "_peer_pids", lambda path: [])
-    wal = raw.parent / "boards" / "sec_13f.duckdb.wal"
-    wal.write_bytes(b"x")
-    with pytest.raises(restore.RestoreRefused, match="write-ahead log"):
-        restore.restore_live("boards", src)
-    wal.unlink()
-    _board(raw.parent / "boards" / "sec_13f.duckdb", 7)
-    assert _rows(restore.restore_live("boards", src), "r") == 2
 
 
 def test_ops_uw_raw_and_edgar_docs_live_are_refused_with_the_steps_by_hand(backup_dir, sqlite_ops, capsys):
@@ -145,29 +126,5 @@ def test_a_week_folder_is_restored_whole_and_verified(backup_dir, tmp_path, monk
         restore.verify("uw-raw", week)
 
 
-def test_restore_check_restores_ops_and_a_board_into_scratch_and_cleans_up(backup_dir, sqlite_ops, tmp_path):
-    raw = Path(rawstore.DB_PATH)
-    _board(raw, 3)
-    _board(raw.parent / "boards" / "a_board.duckdb", 2)
-    ops.watch_add("stock", "AAPL", by="test")
-    backup.run_backup(only=["boards", "ops"])
-    scratch = tmp_path / "scratch"
-    result = restore.restore_check(scratch)
-    assert set(result) == {"ops", "boards"} and result["boards"]["file"].startswith("raw_")
-    assert result["ops"]["tables"] >= 2
-    assert scratch.is_dir() and not list(scratch.iterdir())                      # its own files removed
-    assert restore.restore_check() == result                                     # a temp folder of its own
 
 
-def test_restore_check_fails_on_a_copy_that_does_not_match(backup_dir, sqlite_ops, monkeypatch, capsys):
-    raw = Path(rawstore.DB_PATH)
-    _board(raw, 3)
-    ops.ensure()
-    backup.run_backup(only=["boards", "ops"])
-    m = backup_dir / "boards" / backup.MANIFEST_NAME
-    data = json.loads(m.read_text())
-    name = next(iter(data["files"]))
-    data["files"][name]["tables"]["r"][0] = 99
-    m.write_text(json.dumps(data))
-    assert backup.main(["restore-check"]) == 2
-    assert "fingerprints differ" in capsys.readouterr().out

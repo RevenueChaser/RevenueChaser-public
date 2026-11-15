@@ -141,14 +141,6 @@ def test_a_board_on_the_layer_never_downloads_facts(built):
     assert set(many) == {TICKER} and many[TICKER][0] == annual
 
 
-def test_without_a_layer_no_rows_are_read_and_the_reason_is_said():
-    # #642 PR 6: the old edgar_financials rows are never a fallback.
-    rawstore.write_rows("edgar_financials", [{"ticker": TICKER, "annual": [{"fiscal_year": 2020, "revenue": 1.0}],
-                                              "quarterly": [], "meta": {"source": "sec_edgar"}, "fetched_at": 1.0}])
-    state = layer.source_state()
-    assert state["effective"] == layer.LAYER and state["reason"] == "no fundamentals.duckdb yet"
-    assert not layer.reads_layer()
-    assert sec_edgar.get_annual(TICKER, no_fetch=True)[0] == []
 
 
 def test_a_failed_facts_check_keeps_the_last_good_build(built):

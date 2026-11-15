@@ -251,7 +251,7 @@ class TestSmallRoutes:
 # ── S8: B8 — two lanes and cancel ───────────────────────────────────────────
 class TestLanesAndCancel:
     def test_long_jobs_use_the_long_lane(self):
-        for m in ("module_sec_13f", "universe", "edgar_sync"):
+        for m in ("module_sec_13f", "swing"):              # universe and edgar_sync went with #860
             assert jobs._LANE.get(m) == "long", m
         assert jobs._LANE.get("module_oipd") == "short"
 

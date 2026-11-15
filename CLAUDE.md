@@ -65,7 +65,7 @@ Code, comments, commit messages, issues and docs are written in **English**.
   rule-math level.
 - `conftest.py` also redirects **both data roots** (`RC_STORE_DIR`, `RC_CACHE_DIR` and the other artifact roots) to a
   per-process temp directory, and the autouse `isolate_rawstore` fixture gives **every** test its own
-  `raw.duckdb`. Never make that fixture session-scoped: a shared DuckDB file would serialise on the single-writer
+  store directory. Never make that fixture session-scoped: a shared DuckDB file would serialise on the single-writer
   lock. `rawstore_tmp_db` fills that file by **copying** a per-process template that `ensure_all_tables` built once
   (`rawstore_template`, never opened by a test), not by running the ~1 s apply per test. A test of the schema apply
   or a migration itself is marked `@pytest.mark.rawstore_schema_from_scratch` and gets the apply on its own file.
@@ -95,13 +95,16 @@ Code, comments, commit messages, issues and docs are written in **English**.
   xdist worker inherits the controller's root and the first to finish would otherwise delete it for the rest.
   A killed run still leaves scratch behind: `./app.sh clean-scratch` reports it and `--apply` removes it,
   leaving alone anything written to in the last two hours **in its top two levels** — deep enough for
-  `<root>/.store/raw.duckdb`, which is why the age is hours and not minutes. Measured 2026-10-23 before
+  `<root>/.store/boards/<board>.duckdb`, which is why the age is hours and not minutes. Measured 2026-10-23 before
   this landed: 917 leaked `rc-pytest-*` directories and 2.1 GB under pytest's own basetemp.
 
 ## Data safety
 
-- **The durable store is `.store/`** (`raw.duckdb`, `edgar.duckdb`, `history.duckdb`, `prices.duckdb`); the
-  regenerable caches are `.cache/`. Both are gitignored — this repository is **code only**, and no market data ships
+- **The durable store is `.store/boards/<board>.duckdb`**, one file per board (and `watchlists.duckdb`, avo's own
+  lists); the market data the boards read is rcdata's serving layer under `RC_MARKET_DIR`. The old `raw.duckdb`,
+  `edgar.duckdb`, `history.duckdb` and `.store/prices.duckdb` were removed with every code path to them (#860,
+  15 Nov 2026), and `core/tests/test_no_old_store.py` fails any code that names one again. The regenerable caches
+  are `.cache/`. Both are gitignored — this repository is **code only**, and no market data ships
   with it. `docs/data_architecture.md` is the contract.
 - **Read-only inspection of a real store** needs `duckdb.connect(..., read_only=True)` **and** the environment
   variable `RC_STORE_AUTO_ENSURE=0`. Without the second one, application code applies the schema manifest on its

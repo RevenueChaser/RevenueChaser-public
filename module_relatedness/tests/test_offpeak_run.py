@@ -46,47 +46,17 @@ def test_usd_cap_limits_calls(rawstore_tmp_db, monkeypatch):
     assert calls["n"] == 3
 
 
-def test_peak_boundary_returns_pending(rawstore_tmp_db, monkeypatch, tmp_path):
-    _no_cik(monkeypatch)
-    monkeypatch.setattr(engine.config, "RELATEDNESS_JSON", tmp_path / "r.json")
-    _seed_filings(2)
-    monkeypatch.setattr(engine.vc_engine, "fetch_corpus", lambda *a, **k: {"no_fetch": True})
-
-    def boom(*a, **k):
-        raise deepseek.PeakHoursError(datetime(2026, 9, 21, 1, 0, tzinfo=timezone.utc))
-
-    monkeypatch.setattr(engine.profiles_mod, "profile_for", boom)
-    payload = engine.run(no_fetch=False, tickers=["T0", "T1"])
-    assert payload["pending"] == 2
-    assert payload["next_off_peak"] == "2026-09-21 01:00"
-    # the run marker is recorded
-    assert rawstore.get("run_registry", "relatedness_run")["value"]["pending"] == 2
 
 
-def test_cli_status(rawstore_tmp_db, capsys, monkeypatch):
-    from RevenueChaser.core import subscription_usage
+def test_cli_status(rawstore_tmp_db, capsys):
     from RevenueChaser.module_relatedness import __main__ as cli
-    monkeypatch.setattr(subscription_usage, "check", lambda: [])
     assert cli.main(["--status"]) == 0
     assert "DeepSeek" in capsys.readouterr().out
 
 
-def test_cli_status_prints_subscription_lines(rawstore_tmp_db, capsys, monkeypatch):
-    from RevenueChaser.core import subscription_usage
-    from RevenueChaser.module_relatedness import __main__ as cli
-    monkeypatch.setattr(
-        subscription_usage, "check", lambda: [("Grok", "Grok subscription: weekly 100% used (cap 90%) — paused.")]
-    )
-    assert cli.main(["--status"]) == 0
-    out = capsys.readouterr().out
-    assert "Grok subscription: weekly 100% used" in out
-    assert "paused" in out
-
-
 def test_cli_status_announces_peak_override(rawstore_tmp_db, capsys, monkeypatch):
-    from RevenueChaser.core import offpeak, subscription_usage
+    from RevenueChaser.core import offpeak
     from RevenueChaser.module_relatedness import __main__ as cli
-    monkeypatch.setattr(subscription_usage, "check", lambda: [])
     monkeypatch.setattr(offpeak, "is_off_peak", lambda now=None: False)
     monkeypatch.setattr(deepseek, "peak_override_active", lambda now=None: True)
     cli.main(["--status"])
@@ -94,9 +64,8 @@ def test_cli_status_announces_peak_override(rawstore_tmp_db, capsys, monkeypatch
 
 
 def test_cli_status_is_quiet_without_override(rawstore_tmp_db, capsys, monkeypatch):
-    from RevenueChaser.core import offpeak, subscription_usage
+    from RevenueChaser.core import offpeak
     from RevenueChaser.module_relatedness import __main__ as cli
-    monkeypatch.setattr(subscription_usage, "check", lambda: [])
     monkeypatch.setattr(offpeak, "is_off_peak", lambda now=None: False)
     cli.main(["--status"])  # the autouse fixture points the gate at an empty temp file
     assert "Peak override" not in capsys.readouterr().out

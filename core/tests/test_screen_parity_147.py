@@ -32,6 +32,17 @@ golden never covers the fundamentals layer or the trailing-year Quality path: th
 files; Opus review N2).
 PR 2 (the universe is Tiers A and B whole) added Swing's type filter to its ``settings`` block
 (``operating_only: true``, the default); the re-capture differed by that key only.
+#737 (debt-free inference) added the additive per-candidate ``debt_basis`` key; the five Fundamentals candidates
+all read ``filed`` here (the scenario's filers tag a total), nothing else in the snapshot moved, and the key was
+edited into the golden by hand the same way as the ones above.
+#860 (the old store's removal) re-captured it in CI (avo's rule: no local test run), from a temporary commit that
+printed the snapshot: the prefilter reads the D01 bars instead of the stored quote, so NOBARS1 drops as
+``no_quote`` first (and ``no_bars`` leaves ``data_quality``), DOWN1 is priced from its bars (15.98, not the stored
+quote's 1.00) and its gate values and the sort order of the gate rows move with it; ``earnings_date``,
+``universe_generated_at`` and ``universe_refreshed_by`` read None because their old-store sources went.
+#831 (ROIC unknown below 5% invested capital) moved Fundamentals' ``selection_version`` to 9; CI showed it as the
+only difference (the scenario's ROICs sit well above the floor), edited by hand. #832 (a derived Q4 counts in TTM
+revenue and P/E) moved it to 10 the same way.
 To re-capture on another commit, run this file with ``RC_PARITY_CAPTURE=<path>`` (it writes the snapshot there
 instead of comparing).
 """
@@ -77,7 +88,7 @@ def test_the_scenario_exercises_every_branch_of_the_scan(scenario):
         assert p["candidates"], f"{name}: no candidate passed a gate"
         s = p["summary"]
         assert s["excluded_types"] == 1, "the ETP must be dropped by the identity exclusion (R5)"
-        assert s["hygiene"] == 2, "LOWPX and LOWVOL fail the 7-A prefilter; FAR and BELOW50 pass it (C12)"
+        assert s["hygiene"] == 3, "LOWPX, LOWVOL and NOBARS1 (no D01 price) fail the 7-A prefilter; FAR, BELOW50 pass"
         assert p["universe_total"] == len(scn.UNIVERSE)
         assert snap[name]["tables"][scn.TABLES[name][0]], f"{name}: a Fetch must persist its scores"
     # Swing scores NOEDGAR (it needs no filings); Fundamentals drops it and says why.
@@ -86,7 +97,9 @@ def test_the_scenario_exercises_every_branch_of_the_scan(scenario):
     assert "NOEDGAR" in swing_tickers and "NOEDGAR" not in fund_tickers
     assert snap["fundamentals"]["fetch"]["data_quality"]["dropped"]["no_edgar_annual"] == 1
     assert snap["swing"]["fetch"]["data_quality"]["dropped"]["short_bars"] == 1
-    assert snap["swing"]["fetch"]["data_quality"]["dropped"]["no_bars"] == 1      # NOBARS1: no D01 rows
+    # NOBARS1 has no D01 rows, so no price: since #860 (no stored quote) the prefilter drops it as no_quote first.
+    swing_steps = {s["key"]: s for s in snap["swing"]["fetch"]["funnel_steps"]}
+    assert swing_steps["no_quote"]["tickers"] == ["NOBARS1"]
 
 
 def test_a_refresh_leaves_the_persisted_scores_alone(scenario):

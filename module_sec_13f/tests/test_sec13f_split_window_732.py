@@ -14,7 +14,7 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.module_sec_13f import history, report
+from RevenueChaser.module_sec_13f import report
 
 Q1, Q2 = "2025-03-31", "2025-06-30"
 META = {"AAA": {"name": "Alpha", "sector": "Technology"}}
@@ -67,14 +67,6 @@ def test_the_flows_of_the_snapshot_are_on_todays_basis():
     assert cells[f"ch_{Q2}"][1] == pytest.approx(50.0)              # the same factor on both sides: unchanged
 
 
-def test_the_result_history_records_the_board_numbers(monkeypatch):
-    monkeypatch.setattr(history, "cusips_by_ticker", lambda quarter: {})       # the CUSIP map is not this test's
-    _q, rows = history.metric_rows(SPLIT_TOTALS, META, SPLIT_INPUTS)
-    (row,) = rows
-    assert row["shares_by_quarter"] == {Q1: pytest.approx(1000.0), Q2: pytest.approx(1000.0)}
-    assert row["chg_by_quarter"] == {Q2: pytest.approx(0.0)}
-    assert history.SELECTION_VERSION == "8"
-    assert history.effective_config()["WINDOW_QUARTERS"] == report.WINDOW_QUARTERS == 6
 
 
 def test_the_chart_is_on_the_same_basis():

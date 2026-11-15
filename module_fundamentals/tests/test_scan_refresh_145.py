@@ -85,23 +85,6 @@ def test_refresh_with_no_stored_universe_makes_no_screener_call(rawstore_tmp_db,
     assert "No stored universe yet" in render(payload)
 
 
-@pytest.mark.parametrize("mod,render,scores,cfg", MODS)
-def test_fetch_with_no_stored_universe_still_loads_it(rawstore_tmp_db, monkeypatch, mod, render, scores, cfg):
-    """The first load is the documented network exception (D1), and only a Fetch makes it. This is the old store's
-    path (no spine file here): on the spine an empty ``equity_universe`` is no reason to pull, which
-    ``app/tests/test_universe_loading_spine.py`` pins (Opus review M1, PR 6)."""
-    import yfinance
-    from RevenueChaser.core import universe_fetch
-    screened: list[int] = []
-    monkeypatch.setattr(yfinance, "screen", lambda *a, **k: screened.append(1) or {"quotes": [], "total": 0})
-    monkeypatch.setattr("time.sleep", lambda s: None)
-    # Membership comes from the SEC list first (#264): a healthy list of one name, the screener then empty.
-    monkeypatch.setattr(universe_fetch, "_sec_member_list", lambda: ([{"ticker": "AAA", "name": "AAA Inc"}], None))
-    monkeypatch.setattr(universe_fetch, "MIN_FULL_UNIVERSE", 1)
-    monkeypatch.setattr(universe_fetch, "backfill_universe_caps", lambda **kw: {})
-    payload = mod.run_scan()
-    assert screened, "a Fetch with no stored universe must try the screener"
-    assert payload["no_data"] is True and payload.get("no_data_reason") != "no_universe_stored"
 
 
 @pytest.mark.parametrize("mod,render,scores,cfg", MODS)

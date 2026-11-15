@@ -21,34 +21,20 @@ from RevenueChaser.core import rawstore
 
 # ── Group A: DB filled after a function runs ─────────────────────────────────
 
-def test_cache_get_or_fetch_populates_ticker_cache(rawstore_tmp_db):
-    from RevenueChaser.core.providers import cache
-    cache.save("AAPL", {"revenue": 100, "annual": [{"fiscal_year": "2025"}]})
-    row = rawstore.get("ticker_payload_cache", "AAPL")
-    assert row is not None
-    assert row["payload"]["revenue"] == 100
-    assert row["fetched_at"] and row["fetched_at_iso"]
 
 
-def test_sec_edgar_populates_sec_facts(rawstore_tmp_db):
-    from RevenueChaser.core.providers import sec_edgar
-    annual, quarterly, meta = sec_edgar.extract_annual({"facts": {"us-gaap": {}}}), [], {"available": True}
-    rawstore.write_rows("edgar_financials", [{"ticker": "ZZZZ", "annual": annual, "quarterly": quarterly, "meta": meta}])
-    got = rawstore.get("edgar_financials", "ZZZZ")
-    assert got["ticker"] == "ZZZZ"
-    assert got["meta"]["available"] is True
 
 
-def test_swing_ohlc_populated(rawstore_tmp_db):
-    from RevenueChaser.module_swing_potential import indicators
-    import pandas as pd
-    df = pd.DataFrame({"Open": [1.0], "High": [2.0], "Low": [0.5], "Close": [1.5], "Volume": [1000]},
-                      index=pd.to_datetime(["2026-01-01"]))
-    indicators._write_ohlc("MSFT", df)
-    assert rawstore.count("swing_ohlc") == 1
-    row = rawstore.query("SELECT * FROM swing_ohlc WHERE ticker='MSFT'")[0]
-    assert row["close"] == 1.5
-    assert row["cached_at"] > 0
+
+
+def test_ticker_store_populated(rawstore_tmp_db):
+    from RevenueChaser.core import ticker_store
+    ticker_store.write_from_cards([{
+        "ticker": "ETON", "name": "Eton", "sector": "Health Care", "market_cap": 1.8e9,
+        "total_points": 9, "themes": ["Biotech"], "signals": [],
+    }], asof="2026-08-22")
+    assert ticker_store.count() == 1
+    assert ticker_store.get("ETON")["themes"] == ["Biotech"]        # its as-of lived in raw.duckdb (#860)
 
 
 def test_rotation_snapshot_populated(rawstore_tmp_db):
@@ -68,15 +54,6 @@ def test_rotation_snapshot_populated(rawstore_tmp_db):
     assert data["etfs"][0]["group"] == "sector"
 
 
-def test_ticker_store_populated(rawstore_tmp_db):
-    from RevenueChaser.core import ticker_store
-    ticker_store.write_from_cards([{
-        "ticker": "ETON", "name": "Eton", "sector": "Health Care", "market_cap": 1.8e9,
-        "total_points": 9, "themes": ["Biotech"], "signals": [],
-    }], asof="2026-08-22")
-    assert ticker_store.count() == 1
-    assert ticker_store.get("ETON")["themes"] == ["Biotech"]
-    assert ticker_store.asof() == "2026-08-22"
 
 
 def test_leaps_store_populated(rawstore_tmp_db):
@@ -91,21 +68,6 @@ def test_leaps_store_populated(rawstore_tmp_db):
     assert rawstore.count("leaps_flow_prints") == 1
 
 
-def test_sec13f_ingest_populated(rawstore_tmp_db):
-    """The 13F ingest tables have no writer since G9 (the builder keeps the filings and holdings in Parquet, and
-    ``ownership.duckdb`` serves them). They stay until G10 retires them, so what is tested is that the rows a
-    store already holds are still writable and readable — not that anything fills them."""
-    rawstore.write_rows("sec13f_submissions", [{"accession": "acc1", "cik": "1000", "period": "2026-03-31",
-                                                "filing_date": "2026-05-01", "type": "13F-HR"}])
-    rawstore.write_rows("sec13f_holdings", [{"accession": "acc1", "line_no": 1, "cusip": "111111111",
-                                             "cik": "1000", "shares": 100.0, "value": 1000.0,
-                                             "period": "2026-03-31", "sshprnamttype": "SH", "putcall": ""}])
-    rawstore.write_rows("sec13f_cusip_names", [{"cusip": "111111111", "name": "APPLE INC"}])
-    rawstore.write_rows("sec13f_ingested_zips", [{"filename": "q1_form13f.zip"}])
-    assert rawstore.count("sec13f_submissions") == 1
-    assert rawstore.count("sec13f_holdings") == 1
-    assert rawstore.count("sec13f_cusip_names") == 1
-    assert rawstore.count("sec13f_ingested_zips") == 1
 
 
 def test_watchlist_populated(rawstore_tmp_db):
@@ -137,212 +99,46 @@ def test_rotation_holdings_populated(rawstore_tmp_db):
     assert rs.load_holdings_cache("XLK") == [{"ticker": "AAPL", "weight": 0.2}]
 
 
-def test_sec_company_tickers_populated(rawstore_tmp_db):
-    # #301 D21: the table is retired (no writer, no reader); the legacy rows stay readable until a cleanup
-    # issue drops it, as for sec13f_ticker_names.
-    rawstore.write_rows("sec_company_tickers", [{"ticker": "AAPL", "cik": "320193", "name": "Apple Inc."}])
-    assert rawstore.get("sec_company_tickers", "AAPL")["name"] == "Apple Inc."
 
 
-def test_sec_cik_map_reads_the_stored_exchange_file(rawstore_tmp_db, mock_httpx):
-    from RevenueChaser.core.providers import sec_edgar
-    rawstore.write_rows("sec_exchange_file", [
-        {"ticker": "AAPL", "cik": "320193", "name": "Apple Inc.", "exchange": "Nasdaq", "valid_from": None,
-         "status": "present", "source": "sec_exchange", "fetched_at": 1.0, "run_id": "seed", "run_at": 1.0}])
-    # any SEC request would fail the test: the store answers, so the retired table is not touched
-    assert sec_edgar._cik_map() == {"AAPL": {"cik": 320193, "name": "Apple Inc."}}
-    assert rawstore.count("sec_company_tickers") == 0
 
 
-def test_the_cik_map_is_built_once_per_process(rawstore_tmp_db, mock_httpx):
-    """#301 review SHOULD-a: get_fundamentals asks per ticker on a thread pool, so an uncached map meant one
-    multi-megabyte company_tickers.json GET per ticker. A second call must read neither store nor network."""
-    from RevenueChaser.core import sec_files
-    from RevenueChaser.core.providers import sec_edgar
-    rawstore.write_rows("sec_exchange_file", [
-        {"ticker": "AAPL", "cik": "320193", "name": "Apple Inc.", "exchange": "Nasdaq", "valid_from": None,
-         "status": "present", "source": "sec_exchange", "fetched_at": 1.0, "run_id": "seed", "run_at": 1.0}])
-    first = sec_edgar._cik_map()
-    calls = {"n": 0}
-    real_latest = sec_files.latest
-
-    def counted(*a, **kw):
-        calls["n"] += 1
-        return real_latest(*a, **kw)
-
-    sec_files.latest = counted
-    try:
-        second = sec_edgar._cik_map()
-    finally:
-        sec_files.latest = real_latest
-    assert second == first == {"AAPL": {"cik": 320193, "name": "Apple Inc."}}
-    assert calls["n"] == 0, "the second call re-read the store: the map is not cached"
 
 
-def test_sec_cik_map_falls_back_to_the_file_read_only(rawstore_tmp_db, mock_httpx):
-    """An empty store is not "no company has a CIK": the CIK map may read the file, never write the retired table."""
-    from RevenueChaser.core.providers import sec_edgar
-    mock_httpx("company_tickers.json", {"0": {"ticker": "AAPL", "cik_str": 320193, "title": "Apple Inc."}})
-    assert sec_edgar._cik_map()["AAPL"]["cik"] == 320193
-    assert rawstore.count("sec_company_tickers") == 0
 
 
-def test_run_registry_populated(rawstore_tmp_db):
-    rawstore.write_rows("run_registry", [{"key": "profiles_mode", "value": "thinking-high"}])
-    assert rawstore.get("run_registry", "profiles_mode")["value"] == "thinking-high"
 
 
-def test_sec_company_sic_populated(rawstore_tmp_db):
-    rawstore.write_rows("sec_company_sic", [
-        {"ticker": "AAPL", "cik": "320193", "sic": "3571",
-         "sic_description": "Electronic Computers", "fetched_at": 1.0},
-    ])
-    row = rawstore.get("sec_company_sic", "AAPL")
-    assert row["sic"] == "3571"
-    assert row["sic_description"] == "Electronic Computers"
 
 
-def test_sec13f_security_meta_populated(rawstore_tmp_db):
-    from RevenueChaser.module_sec_13f import engine as sf
-    sf.save_sec13f_meta({"AAPL": {"name": "Apple", "sector": "Tech", "type": "stock"}})
-    assert sf.load_sec13f_meta()["AAPL"]["type"] == "stock"
-    # the one meta table (the two legacy maps were merged into it)
-    assert sf.load_sec13f_meta()["AAPL"]["name"] == "Apple"
-    assert rawstore.get("sec13f_security_meta", "AAPL")["entry"]["name"] == "Apple"
 
 
-def test_sec13f_enrichment_populated(rawstore_tmp_db):
-    from RevenueChaser.module_sec_13f import enrich
-    rawstore.write_rows("sec13f_enrichment", [{"ticker": "AAPL", "entry": {"close": 190.0}}])   # writer retired (#300)
-    assert enrich.load_enrichment()["AAPL"]["close"] == 190.0
 
 
-def test_sec13f_edgar_backfill_populated(rawstore_tmp_db):
-    from RevenueChaser.core import rawstore
-    rawstore.write_rows("sec13f_edgar_backfill", [
-        {"cik": "0000320193", "period": "2026-06-30", "accession": "0000320193-26-000001",
-         "fetched_at": "2026-08-01T00:00:00Z"},
-        {"cik": "0000320193", "period": "2026-03-31", "accession": "0000320193-26-000000",
-         "fetched_at": "2026-05-01T00:00:00Z"},
-    ])
-    # composite-PK upsert: re-writing the same (cik, period) replaces, not dupes
-    rawstore.write_rows("sec13f_edgar_backfill", [
-        {"cik": "0000320193", "period": "2026-06-30", "accession": "0000320193-26-000002",
-         "fetched_at": "2026-08-02T00:00:00Z"},
-    ])
-    rows = rawstore.query(
-        "SELECT cik, accession FROM sec13f_edgar_backfill "
-        "WHERE period='2026-06-30'")
-    assert len(rows) == 1
-    assert rows[0]["accession"] == "0000320193-26-000002"
 
 
-def test_sec13f_ticker_names_populated(rawstore_tmp_db):
-    # #207: the name match is retired, so the table has no writer or reader in the app; the legacy rows stay
-    # readable until a cleanup issue drops the table.
-    rawstore.write_rows("sec13f_ticker_names",
-                        [{"ticker": "AAPL", "entry": {"name": "APPLE INC", "ticker": "AAPL", "figi": "BBG000B9XRY4"}}])
-    rows = rawstore.query("SELECT ticker, entry FROM sec13f_ticker_names")
-    assert [r["ticker"] for r in rows] == ["AAPL"]
 
 
-def test_cusip_ticker_populated(rawstore_tmp_db):
-    """No writer since G9: the builder's ``sec13f_cusip_map`` names a CUSIP per period. The table stays until
-    G10, so the round trip is the test."""
-    rawstore.write_rows("cusip_ticker", [{"cusip": "037833100",
-                                          "entry": {"ticker": "AAPL", "source": "openfigi"}}])
-    (row,) = rawstore.get_all("cusip_ticker")
-    assert row["entry"]["ticker"] == "AAPL"
 
 
-def test_sec13f_totals_populated(rawstore_tmp_db):
-    """No writer since G9: the board reads ``sec13f_ticker_period`` from the ownership store. The table stays
-    until G10, so the round trip is the test."""
-    rawstore.write_rows("sec13f_totals", [{"ticker": "AAPL",
-                                           "entry": {"2026-03-31": {"shares": 1.0, "holders": 2}}}])
-    (row,) = rawstore.get_all("sec13f_totals")
-    assert row["entry"]["2026-03-31"]["holders"] == 2
 
 
-def test_etf_holdings_round_trip_records_its_change(rawstore_tmp_db):
-    """No writer since #642 PR 5 (the board reads the spine's lists). The tables stay, so the round trip is the
-    test: a write still appends its rule-A change row."""
-    rawstore.write_rows("etf_holdings", [{"ticker": "XLK", "entry": [{"ticker": "AAPL", "weight": 0.2}],
-                                          "provider": "uw"}])
-    assert rawstore.get("etf_holdings", "XLK")["entry"] == [{"ticker": "AAPL", "weight": 0.2}]
-    assert rawstore.query("SELECT count(*) AS n FROM etf_holdings_changes WHERE ticker = 'XLK'")[0]["n"] == 1
 
 
-def test_store_meta_populated(rawstore_tmp_db):
-    from RevenueChaser.core import ticker_store
-    ticker_store.write_from_cards([{"ticker": "AAPL", "name": "Apple"}], asof="2026-08-22")
-    assert ticker_store.asof() == "2026-08-22"
-    assert rawstore.get("store_meta", "schema_version")["value"] == ticker_store.SCHEMA_VERSION
 
 
-def test_leaps_daily_scores_populated(rawstore_tmp_db):
-    """Migrated from radar.db but not written by the app today — the schema
-    still has to accept and return a row."""
-    rawstore.write_rows("leaps_daily_scores", [{
-        "ticker": "AAPL", "date": "2026-08-17", "frequency": "4", "notional": 4e5,
-        "concentration": 0.5, "concentration_mult": 1.2, "final_score": 70.0}])
-    row = rawstore.query("SELECT * FROM leaps_daily_scores")[0]
-    assert row["final_score"] == 70.0
-    # PK (ticker, date) dedups a re-run
-    rawstore.write_rows("leaps_daily_scores", [{
-        "ticker": "AAPL", "date": "2026-08-17", "frequency": "9", "notional": 1.0,
-        "concentration": 0.1, "concentration_mult": 1.0, "final_score": 1.0}])
-    assert rawstore.count("leaps_daily_scores") == 1
 
 
-def test_migration_manifest_populated(rawstore_tmp_db):
-    from RevenueChaser.scripts import migrate_rawdata_to_duckdb as mig
-    rawstore.write_rows("migration_manifest", [{
-        "dataset": "ticker_payload_cache", "migrated_at": "2026-09-02T00:00:00+00:00",
-        "schema_version": rawstore.schema_version(), "source_count": 1,
-        "source_bytes": 10, "source_hash": "", "verify": "PASS"}])
-    assert mig._already_verified("ticker_payload_cache")
-    assert not mig._already_verified("edgar_financials")
 
 
 # ── Group B: data is never unwired ───────────────────────────────────────────
 
-def test_durability_across_connections(rawstore_tmp_db):
-    rawstore.write_rows("ticker_payload_cache", [{"ticker": "AAPL", "payload": {"x": 1},
-                                          "fetched_at": 1.0, "fetched_at_iso": ""}])
-    # reopen a fresh connection to the same file
-    row = rawstore.get("ticker_payload_cache", "AAPL")
-    assert row["payload"] == {"x": 1}
 
 
-def test_roundtrip_integrity_json_payload(rawstore_tmp_db):
-    # nested dicts survive a JSON-typed value column byte-for-byte
-    payload = {"nested": {"list": [1, 2, 3]}, "tickers": ["A", "B"]}
-    rawstore.write_rows("ticker_payload_cache", [{"ticker": "AAA", "payload": payload,
-                                          "fetched_at": 1.0, "fetched_at_iso": ""}])
-    assert rawstore.get("ticker_payload_cache", "AAA")["payload"] == payload
-    # typed equity_universe columns round-trip too
-    universe_store.put([{"ticker": "ETON", "market_cap": 1.8e9,
-                                                 "sector": "Health Care", "price": 20.0,
-                                                 "name": "Eton", "quote": {"x": 1}}])
-    assert rawstore.get("equity_universe", "ETON")["market_cap"] == 1.8e9
-    assert rawstore.get("equity_universe", "ETON")["quote"] == {"x": 1}
 
 
-def test_write_failures_propagate(rawstore_tmp_db, monkeypatch):
-    def boom(*a, **k):
-        raise rawstore.RawStoreError("cannot write")
-
-    monkeypatch.setattr(rawstore, "connect", boom)
-    with pytest.raises(rawstore.RawStoreError):
-        rawstore.write_rows("ticker_payload_cache", [{"ticker": "X", "payload": {}}])
 
 
-def test_idempotent_index_members_replace(rawstore_tmp_db):
-    # append-only PK dedup still holds for keyed stores
-    rawstore.write_rows("index_constituents", [{"slug": "sp500", "ticker": "AAPL"}])
-    rawstore.write_rows("index_constituents", [{"slug": "sp500", "ticker": "MSFT"}])
-    assert rawstore.count("index_constituents") == 1  # same slug group replaced
 
 
 def test_same_day_snapshot_overwrites(rawstore_tmp_db):
@@ -366,51 +162,30 @@ def test_same_day_snapshot_overwrites(rawstore_tmp_db):
 # table -> the pytest nodeid (file::function) that FILLS it. These are checked
 # to resolve, so a prose placeholder can no longer pass the gate.
 _HERE = "core/tests/test_db_persistence.py"
+
+_ROOT = Path(__file__).resolve().parent.parent.parent
+
 POPULATION: dict[str, str] = {
-    "ticker_payload_cache": f"{_HERE}::test_cache_get_or_fetch_populates_ticker_cache",
-    "edgar_financials": f"{_HERE}::test_sec_edgar_populates_sec_facts",
-    "edgar_documents": "core/tests/test_edgar_store.py::test_round_trip",
-    "edgar_facts": "core/tests/test_edgar_bulk.py::test_ingest_companyfacts",
     "swing_info": f"{_HERE}::test_swing_info_populated",
     "leaps_cache": f"{_HERE}::test_leaps_store_populated",
     "rotation_holdings": f"{_HERE}::test_rotation_holdings_populated",
-    "equity_universe": ("module_asymmetric_growth/tests/test_asymmetric_growth_hunter.py"
-                            "::test_fetch_universe_records_provenance"),
-    "equity_universe_provenance": ("module_asymmetric_growth/tests/test_asymmetric_growth_hunter.py"
-                                 "::test_fetch_universe_records_provenance"),
-    "sec_company_tickers": f"{_HERE}::test_sec_company_tickers_populated",
-    "sec_company_sic": f"{_HERE}::test_sec_company_sic_populated",
-    "comov_runs": ("module_comovement/tests/test_comovement.py"
-                   "::test_engine_run_persists_and_clusters"),
-    "comov_nodes": ("module_comovement/tests/test_comovement.py"
-                    "::test_engine_run_persists_and_clusters"),
-    "comov_members": ("module_comovement/tests/test_comovement.py"
-                      "::test_engine_run_persists_and_clusters"),
-    "comov_lag": ("module_comovement/tests/test_comovement.py"
-                  "::test_fetch_persists_the_lagged_test_and_load_payload_returns_it"),
-    "chain_filings": ("module_value_chain/tests/test_value_chain.py"
-                      "::test_run_persists_corpus_and_edges"),
-    "chain_mentions": ("module_value_chain/tests/test_value_chain.py"
-                       "::test_run_persists_corpus_and_edges"),
-    "chain_meta": ("module_value_chain/tests/test_value_chain.py"
-                   "::test_run_persists_corpus_and_edges"),
-    "watchlist": f"{_HERE}::test_watchlist_populated",
-    "sec13f_security_meta": f"{_HERE}::test_sec13f_security_meta_populated",
-    "sec13f_enrichment": f"{_HERE}::test_sec13f_enrichment_populated",
-    "sec13f_edgar_backfill": f"{_HERE}::test_sec13f_edgar_backfill_populated",
-    "etf_holdings": f"{_HERE}::test_etf_holdings_round_trip_records_its_change",
-    "cusip_ticker": f"{_HERE}::test_cusip_ticker_populated",
-    "sec13f_totals": f"{_HERE}::test_sec13f_totals_populated",
-    "sec13f_ticker_names": f"{_HERE}::test_sec13f_ticker_names_populated",
-    "store_meta": f"{_HERE}::test_store_meta_populated",
-    "store_schema": "core/tests/test_store_schema_stamp.py::test_ensure_stamps_each_file_that_ensure_opens_and_does_not_create_history",
-    "run_registry": f"{_HERE}::test_run_registry_populated",
-    "migration_manifest": f"{_HERE}::test_migration_manifest_populated",
-    "swing_ohlc": f"{_HERE}::test_swing_ohlc_populated",
+    "comov_runs": "module_comovement/tests/test_comovement.py"
+                   "::test_engine_run_persists_and_clusters",
+    "comov_nodes": "module_comovement/tests/test_comovement.py"
+                    "::test_engine_run_persists_and_clusters",
+    "comov_members": "module_comovement/tests/test_comovement.py"
+                      "::test_engine_run_persists_and_clusters",
+    "comov_lag": "module_comovement/tests/test_comovement.py"
+                  "::test_fetch_persists_the_lagged_test_and_load_payload_returns_it",
+    "chain_filings": "module_value_chain/tests/test_value_chain.py"
+                      "::test_run_persists_corpus_and_edges",
+    "chain_mentions": "module_value_chain/tests/test_value_chain.py"
+                       "::test_run_persists_corpus_and_edges",
+    "chain_meta": "module_value_chain/tests/test_value_chain.py"
+                   "::test_run_persists_corpus_and_edges",
+    "store_schema": "core/tests/test_store_schema_stamp.py::test_an_existing_unstamped_file_is_stamped_with_the_current_version",
     "rotation_snapshots": f"{_HERE}::test_rotation_snapshot_populated",
-    "index_constituents": "core/tests/test_index_registry.py::test_save_and_load_index",
     "leaps_flow_prints": f"{_HERE}::test_leaps_store_populated",
-    "leaps_daily_scores": f"{_HERE}::test_leaps_daily_scores_populated",
     "ticker_scores": f"{_HERE}::test_ticker_store_populated",
     "ticker_themes": "core/tests/test_ticker_themes.py::test_backfill_writes_legacy_rows",
     "fundamentals_scores": "module_fundamentals/tests/test_fundamental_scores.py::test_persist_writes_both",
@@ -429,104 +204,37 @@ POPULATION: dict[str, str] = {
     "relatedness_theme_etfs": "module_relatedness/tests/test_themes.py::test_match_theme_etfs",
     "oipd_chain": "module_oipd/tests/test_engine.py::test_oipd_store_populated",
     "oipd_meta": "module_oipd/tests/test_engine.py::test_oipd_store_populated",
-    "sec13f_submissions": f"{_HERE}::test_sec13f_ingest_populated",
-    "sec13f_holdings": f"{_HERE}::test_sec13f_ingest_populated",
-    "sec13f_cusip_names": f"{_HERE}::test_sec13f_ingest_populated",
-    "sec13f_ingested_zips": f"{_HERE}::test_sec13f_ingest_populated",
-    "security_master": "core/identity/tests/test_identity_manifest.py::test_every_identity_table_takes_a_row_and_reads_it_back",
-    "identity_conflicts": "core/identity/tests/test_identity_manifest.py::test_every_identity_table_takes_a_row_and_reads_it_back",
-    "identity_runs": "core/identity/tests/test_identity_manifest.py::test_every_identity_table_takes_a_row_and_reads_it_back",
-    "identity_source_cache": "core/identity/tests/test_identity_cache.py::test_ok_rows_are_saved_with_typed_columns_and_payload",
-    "board_settings": "core/tests/test_board_settings.py::test_save_then_get_and_values",
-    "job_runs": "core/tests/test_schema_v8_migration.py::test_job_runs_upsert_replaces_the_row_for_a_run_id",
-    "price_bars_daily": "core/tests/test_schema_v8_migration.py::test_price_bars_append_keeps_the_rest_of_a_tickers_history",
-    "catalyst_events": "core/tests/test_schema_v8_migration.py::test_catalyst_event_date_slip_leaves_one_row_with_the_new_date",
-    "orphan_designations": "core/tests/test_schema_v8_migration.py::test_orphan_designation_with_approvals_round_trips",
-    "orphan_lookups": "core/tests/test_schema_v8_migration.py::test_orphan_lookups_keeps_one_row_per_ticker_and_session_and_a_later_lookup_adds_one",
     "forecast_ledger": "core/tests/test_schema_v8_migration.py::test_forecast_ledger_first_write_wins_within_one_bulk_batch",
     "forecast_outcomes": "core/tests/test_outcomes.py::test_mfe_and_mae_are_high_and_low_over_exactly_the_window_from_the_next_open",
     "forecast_baselines": "core/tests/test_baselines_numbers_25.py::test_a_baselines_run_populates_forecast_baselines",
-    "price_actions": "core/tests/test_schema_v10_tables.py::test_a_written_row_reads_back",
-    "index_levels_daily": "core/tests/test_schema_v10_tables.py::test_a_written_row_reads_back",
-    "quote_snapshot": "core/tests/test_schema_v10_tables.py::test_a_written_row_reads_back",
-    "short_interest": "core/tests/test_schema_v10_tables.py::test_a_written_row_reads_back",
-    "vendor_financials": "core/tests/test_schema_v10_tables.py::test_a_written_row_reads_back",
-    "vendor_valuation": "core/tests/test_schema_v10_tables.py::test_a_written_row_reads_back",
-    "earnings_history": "core/tests/test_schema_v10_tables.py::test_a_written_row_reads_back",
-    "estimate_snapshots": "core/tests/test_schema_v10_tables.py::test_a_written_row_reads_back",
-    "identity_cusip": ("core/tests/test_identity_cusip_207.py"
-                       "::test_a_first_answer_appends_present_and_absent_rows_with_the_run_stamps"),
-    "ownership_snapshot": "core/tests/test_schema_v10_tables.py::test_a_written_row_reads_back",
-    "sec_mf_file": "core/tests/test_schema_v10_tables.py::test_a_written_row_reads_back",
-    "sec_exchange_file": "core/tests/test_schema_v10_tables.py::test_a_written_row_reads_back",
-    "earnings_calendar": "core/tests/test_schema_v10_tables.py::test_a_written_row_reads_back",
-    "macro_series": "core/tests/test_schema_v10_tables.py::test_a_written_row_reads_back",
-    "vol_index_daily": "core/tests/test_schema_v10_tables.py::test_a_written_row_reads_back",
-    "cftc_cot": "core/tests/test_schema_v10_tables.py::test_a_written_row_reads_back",
-    "economic_calendar": "core/tests/test_schema_v10_tables.py::test_a_written_row_reads_back",
-    "source_checks": "core/tests/test_schema_v10_tables.py::test_a_written_row_reads_back",
-    "price_checks": "core/tests/test_prices_db.py::test_price_writes_land_in_prices_duckdb_and_one_transaction_stays_in_one_file",
-    "sec13f_filers": "core/tests/test_schema_v10_tables.py::test_a_written_row_reads_back",
-    "edgar_companyfacts": "core/tests/test_schema_v10_tables.py::test_a_written_row_reads_back",
-    "sec_submissions": "core/tests/test_schema_v10_tables.py::test_a_written_row_reads_back",
-    "sec_submissions_cik": "core/tests/test_schema_v10_tables.py::test_a_written_row_reads_back",
-    # the 25 schema-11 tables (history redesign C): change tables are filled by the store, result tables by record_run
-    "equity_universe_changes": "core/tests/test_change_capture.py::test_write_rows_replace_and_delete_are_recorded",
-    "security_master_changes": "core/tests/test_change_capture.py::test_write_rows_replace_and_delete_are_recorded",
-    "identity_source_cache_changes": "core/tests/test_change_capture.py::test_write_rows_replace_and_delete_are_recorded",
-    "index_constituents_changes": "core/tests/test_change_capture.py::test_write_rows_replace_and_delete_are_recorded",
-    "watchlist_changes": "core/tests/test_change_capture.py::test_write_rows_replace_and_delete_are_recorded",
-    "board_settings_changes": "core/tests/test_change_capture.py::test_write_rows_replace_and_delete_are_recorded",
-    "catalyst_events_changes": "core/tests/test_change_capture.py::test_write_rows_replace_and_delete_are_recorded",
-    "orphan_designations_changes": "core/tests/test_change_capture.py::test_write_rows_replace_and_delete_are_recorded",
-    "etf_holdings_changes": f"{_HERE}::test_etf_holdings_round_trip_records_its_change",
-    "result_runs": "core/tests/test_history_store.py::test_recording_the_same_run_twice_writes_nothing_the_second_time",
-    "ag_scores_history": "core/tests/test_history_store.py::test_every_history_table_takes_a_full_row_through_record_run",
-    "swing_scores_history": "core/tests/test_history_store.py::test_every_history_table_takes_a_full_row_through_record_run",
-    "swing_gates_history": "core/tests/test_history_store.py::test_every_history_table_takes_a_full_row_through_record_run",
-    "fundamentals_scores_history": "core/tests/test_history_store.py::test_every_history_table_takes_a_full_row_through_record_run",
-    "fundamentals_gates_history": "core/tests/test_history_store.py::test_every_history_table_takes_a_full_row_through_record_run",
-    "relatedness_scores_history": "core/tests/test_history_store.py::test_every_history_table_takes_a_full_row_through_record_run",
-    "value_chain_edges_history": "core/tests/test_history_store.py::test_every_history_table_takes_a_full_row_through_record_run",
-    "oipd_chain_history": "core/tests/test_history_store.py::test_every_history_table_takes_a_full_row_through_record_run",
-    "earnings_cards_history": "core/tests/test_history_store.py::test_every_history_table_takes_a_full_row_through_record_run",
-    "leaps_footprint_history": "core/tests/test_history_store.py::test_every_history_table_takes_a_full_row_through_record_run",
-    "spx_gamma_levels_history": "module_spx_gamma/tests/test_result_history.py::test_a_fetch_records_its_header_and_levels_row",
-    "oipd_fit_history": "core/tests/test_history_store.py::test_every_history_table_takes_a_full_row_through_record_run",
-    "rotation_holdings_history": "core/tests/test_history_store.py::test_every_history_table_takes_a_full_row_through_record_run",
-    "sector_tree_history": "core/tests/test_history_store.py::test_every_history_table_takes_a_full_row_through_record_run",
-    "money_flow_history": "core/tests/test_history_store.py::test_every_history_table_takes_a_full_row_through_record_run",
-    "rotation_snapshots_history":
-        "core/tests/test_history_store.py::test_every_history_table_takes_a_full_row_through_record_run",
-    "sec13f_metrics_history": "core/tests/test_history_store.py::test_every_history_table_takes_a_full_row_through_record_run",
-    "financials_report_history": "core/tests/test_history_store.py::test_every_history_table_takes_a_full_row_through_record_run",
-    # Board files (S9, S16): each table is filled by its board's incremental build.
     "news_events": "module_news/tests/test_calendar.py::test_first_build_upserts_every_event_into_the_board_file",
     "news_highlight": "module_news/tests/test_calendar.py::test_the_highlight_is_the_most_important_live_event_earliest_on_a_tie",
     "news_meta": "module_news/tests/test_calendar.py::test_a_second_build_reads_only_new_rows_and_keeps_first_seen",
     "news_headlines": "module_news/tests/test_headlines.py::test_fetch_stores_clean_headlines_with_their_tickers_once",
     "welcome_snapshot": "module_welcome/tests/test_build.py::test_the_snapshot_keeps_the_last_close_its_change_and_a_20_day_line",
-    "welcome_earnings": "module_welcome/tests/test_build.py::test_earnings_of_today_and_the_next_trading_day_only",
-    "welcome_freshness": "module_welcome/tests/test_build.py::test_freshness_keeps_each_jobs_last_run_last_success_and_last_failure",
-    "welcome_meta": "module_welcome/tests/test_build.py::test_freshness_reads_only_runs_finished_after_its_mark",
+    "welcome_meta": "module_welcome/tests/test_build.py::test_the_snapshot_keeps_the_last_close_its_change_and_a_20_day_line",
     "spx_raw_days": "module_spx_gamma/tests/test_store.py::test_a_raw_day_round_trips_byte_exact",
     "spx_raw_files": "module_spx_gamma/tests/test_store.py::test_a_replaced_day_keeps_no_old_file",
     "spx_brier": "module_spx_gamma/tests/test_store.py::test_a_scored_brier_record_is_never_changed",
     "spx_gex_daily": "module_spx_gamma/tests/test_store.py::test_every_gex_day_is_kept",
     "spx_meta": "module_spx_gamma/tests/test_store.py::test_meta_round_trips",
-    "sec13f_board_cells":
-        "module_sec_13f/tests/test_sec13f_board_file_732.py::test_a_sync_writes_the_builders_rows_and_the_board_then_reads_the_file",
-    "sec13f_board_breaks":
-        "module_sec_13f/tests/test_sec13f_board_file_732.py::test_a_sync_writes_the_builders_rows_and_the_board_then_reads_the_file",
-    "sec13f_board_meta":
-        "module_sec_13f/tests/test_sec13f_board_file_732.py::test_a_sync_writes_the_builders_rows_and_the_board_then_reads_the_file",
+    "sec13f_board_cells": "module_sec_13f/tests/test_sec13f_board_file_732.py::test_a_sync_writes_the_builders_rows_and_the_board_then_reads_the_file",
+    "sec13f_board_breaks": "module_sec_13f/tests/test_sec13f_board_file_732.py::test_a_sync_writes_the_builders_rows_and_the_board_then_reads_the_file",
+    "sec13f_board_meta": "module_sec_13f/tests/test_sec13f_board_file_732.py::test_a_sync_writes_the_builders_rows_and_the_board_then_reads_the_file",
+    "wl_list": "module_watchlists/tests/test_watchlist_store_786.py::test_a_new_list_gets_a_slug_id_a_description_and_a_default_section",
+    "wl_section": "module_watchlists/tests/test_watchlist_store_786.py::test_sections_keep_avos_order_not_the_alphabet",
+    "wl_item": "module_watchlists/tests/test_watchlist_store_786.py::test_a_symbol_is_stored_as_avo_wrote_it_split_into_its_parts",
+    "wl_change": "module_watchlists/tests/test_watchlist_store_786.py::test_every_add_and_remove_leaves_a_change_row",
 }
 
-_ROOT = Path(__file__).resolve().parent.parent.parent
+
+#: Board tables nothing writes any more: Welcome's earnings and freshness cards read the old files (#860). The rows
+#: they last had stay in ``boards/welcome.duckdb``; a new writer takes its table out of this set.
+UNWRITTEN = frozenset({"welcome_earnings", "welcome_freshness"})
 
 
 def test_every_manifest_table_has_a_population_test():
-    missing = [t for t in rawstore.MANIFEST if t not in POPULATION]
+    missing = [t for t in rawstore.MANIFEST if t not in POPULATION and t not in UNWRITTEN]
     assert not missing, f"tables without a population test: {sorted(missing)}"
 
 
@@ -546,31 +254,18 @@ def test_population_entries_point_at_tests_that_exist():
 
 def test_manifest_tables_start_empty_in_an_isolated_db(rawstore_tmp_db):
     """Sanity for the autouse isolation fixture: no test may see another's rows,
-    and none may see the developer's real .store/raw.duckdb."""
+    and none may see the developer's real store."""
     for table in rawstore.MANIFEST:
-        if table == "store_schema":     # #26 PL7: every ensure stamps the file's own schema version
-            assert rawstore.count(table) == 1
-            assert rawstore.get(table, "schema_version")["value"] == rawstore.schema_version()
+        if table == "store_schema":     # #26 PL7: every ensure stamps each board file's own schema version
+            for db in rawstore.BOARD_DBS:
+                (row,) = rawstore.query("SELECT value FROM store_schema WHERE key = 'schema_version'", db=db)
+                assert row["value"] == rawstore.schema_version()
             continue
         assert rawstore.count(table) == 0, f"{table} leaked state across tests"
 
 
 # ── Group D: TTL / no_fetch behaviour ────────────────────────────────────────
 
-def test_ticker_cache_ttl_expiry(rawstore_tmp_db):
-    from RevenueChaser.core.providers import cache
-    stale = 1_000_000.0
-    rawstore.write_rows("ticker_payload_cache", [{
-        "ticker": "ZZZZ", "payload": {"revenue": 1, "_fetched_at": stale},
-        "fetched_at": stale, "fetched_at_iso": "",
-    }])
-    orig = cache._now_ts
-    cache._now_ts = lambda: stale + cache._TTL_SECONDS + 10
-    try:
-        assert cache.load("ZZZZ") is None
-        assert cache.load("ZZZZ", ignore_ttl=True)["revenue"] == 1
-    finally:
-        cache._now_ts = orig
 
 
 def test_swing_info_ttl_from_cached_at(rawstore_tmp_db):

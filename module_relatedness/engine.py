@@ -12,12 +12,11 @@ import logging
 import math
 import re
 import threading
-import time
 from datetime import datetime, timezone
 
-from RevenueChaser.core import job_lock, ledger, rawstore
+from RevenueChaser.core import job_lock, rawstore
 from RevenueChaser.core.reporting_common import write_artifact
-from RevenueChaser.core.providers import claude_code, deepseek, evren, grok
+from RevenueChaser.core.providers import deepseek, evren
 from RevenueChaser.module_value_chain import engine as vc_engine
 from RevenueChaser.rcdata import opens  # #566: pooled reads count for this run
 
@@ -32,9 +31,9 @@ MAX_ATTEMPTS = 3        # an empty LLM answer is retried in at most 3 runs
 MAX_TRANSIENT_FAILURES = 5   # stop a run after this many non-auth LLM failures
 
 class RunStopped(RuntimeError):
-    """The profile run stopped early: ``peak`` (DeepSeek), ``allowance`` (SuperGrok, #388), ``auth``, ``transient``
-    (repeated), ``request`` (Grok answered a 4xx: endpoint, model or parameter wrong), ``unusable`` (Grok's first
-    replies of a run were all unusable) or ``spine`` (no spine to name the companies from, #642 D3).
+    """The profile run stopped early: ``peak`` (DeepSeek), ``auth``, ``transient`` (repeated), ``unusable`` (a free
+    writer's first replies of a run were all unusable), ``spine`` (no spine to name the companies from, #642 D3) or ``forms`` (the
+    SEC form reader cannot serve the business text, #841).
 
     Written profiles stay durable; the caller reloads them from the store.
     """
@@ -68,15 +67,16 @@ def _save(path, data: dict) -> None:
 
 
 def _layer_documents(tickers: list[str]) -> dict[str, dict] | None:
-    """``{ticker: filing_item document row}``: the newest annual report text the fundamentals layer serves per
-    ticker (``sec/filings``, the same splitter and cap as Value Chain's corpus, so the same filing gives the same
-    text), or None off the layer (build plan PR 20, G6)."""
+    """``{ticker: filing_section business row}``: the business section of the newest annual report the SEC form
+    reader serves per ticker (``sec/forms``, ``read.form_business``; #841), or None off the layer (build plan PR 20,
+    G6). The row carries the cutter's label with its ``;suspect`` flags (#835) and the ``rules_version`` that cut
+    it; ``_forms_ready`` stops a run whose rows are not of ``config.FORMS_RULES_VERSION``."""
     from RevenueChaser.core import fundamentals_layer
     if not fundamentals_layer.reads_layer():
         return None
     from RevenueChaser.rcdata import read
     cik_of = {str(c["ticker"]).upper(): str(c["cik"]) for c in read.fundamental_companies(tickers) if c.get("cik")}
-    docs = {str(d["cik"]): d for d in read.filing_texts(set(cik_of.values()))}
+    docs = {str(d["cik"]): d for d in read.form_business(set(cik_of.values()))}
     return {t: docs[c] for t, c in cik_of.items() if c in docs}
 
 
@@ -123,71 +123,79 @@ def _doc_source(d: dict) -> dict:
             "filed": d.get("filing_date")}
 
 
-def _previous_filing(ticker: str) -> dict | None:
-    """``{text, source}`` of the business section of the annual report before the newest one, or None (#400 fallback).
-
-    Only the fundamentals layer can serve one (``filing_item`` keeps a document per served filing); ``chain_filings``
-    holds the newest filing only."""
-    from RevenueChaser.core import fundamentals_layer
-    if not fundamentals_layer.reads_layer():
-        return None
-    from RevenueChaser.rcdata import read
-    cik = _layer_cik(ticker)
-    docs = read.filing_documents(cik, "business") if cik else []
-    return {"text": docs[1].get("text") or "", "source": _doc_source(docs[1])} if len(docs) > 1 else None
-
-
 def _whole_document(ticker: str) -> dict | None:
-    """``{text, source}`` of the newest annual report's whole text (``filing_item`` item ``whole``), or None: the
-    last fallback (#400) when no business section is long enough. Layer only, as ``_previous_filing``."""
+    """``{text, source}`` of the newest annual report's whole text (``filing_section`` section ``whole``), or None:
+    the fallback (#400) when the business section cannot be profiled from. Layer only: ``chain_filings`` holds no
+    whole document."""
     from RevenueChaser.core import fundamentals_layer
     if not fundamentals_layer.reads_layer():
         return None
     from RevenueChaser.rcdata import read
     cik = _layer_cik(ticker)
-    d = read.filing_text(cik, "whole") if cik else None
+    d = next(iter(read.form_whole([cik])), None) if cik else None
     return {"text": d.get("text") or "", "source": _doc_source(d)} if d else None
 
 
 # The most of a fallback text a profile reads (review of PR #557): three chunks at most.
 MAX_FALLBACK_CHARS = 120_000
+# The cutter's labels that say the business section is in another document (``sec_sections`` ``ours-2``).
+NOT_IN_DOCUMENT = ("crossref",)
+
+
+def _unprofilable(quality) -> bool:
+    """True when the cutter says the business section is not in this document (``crossref``: the filing sends the
+    reader to another document by page reference, #841). Measured on the 5,131 stored annual reports, 13 Nov 2026:
+    42 such rows, their bodies empty or a page index (MCD, HSBC, VOD), so neither the text nor a locator call over
+    this document's headings can give the section."""
+    return str(quality or "").split(";", 1)[0] in NOT_IN_DOCUMENT
+
+
+def _capped(text: str) -> str:
+    """The business text a profile reads: its first ``config.MAX_BUSINESS_CHARS``, or all of it when that is None
+    (the owner's choice, 13 Nov 2026). ``ours-2`` stores the section uncut, so a cap is the reader's (#841);
+    applied before ``clean_input``, the order the fallback branch uses."""
+    cap = config.MAX_BUSINESS_CHARS
+    return (text or "") if cap is None else (text or "")[:cap]
 
 
 def _filing_input(ticker: str) -> dict:
-    """The text a profile is made from, with the fallback chain of #400: the newest filing's Item 1 / Item 4, else the
-    previous year's filing's, else the newest filing's whole document.
+    """The text a profile is made from, with the fallback chain of #400: the newest filing's Item 1 / Item 4, else
+    the newest filing's whole document.
 
-    ``{name, text, fallback, source, locate, hash_text}``; ``fallback`` is ``item``, ``previous_filing`` or
-    ``whole_document``, and when no link is long enough it is ``profiles.text_status`` of the newest Item
-    (``no_text`` / ``short_text``) with that text, so nothing is sent.
+    ``{name, text, fallback, source, locate, hash_text}``; ``fallback`` is ``item`` or ``whole_document``, and when
+    neither is long enough it is ``profiles.text_status`` of the newest Item (``no_text`` / ``short_text``) with
+    that text, so nothing is sent. The link to the previous year's filing is gone (#841): the form reader serves
+    the newest filing only, and ``filing_item`` never held a second business document either (4,993 rows over 4,993
+    companies, 13 Nov 2026), so the link was unreachable.
 
     ``locate`` (avo, 8 Nov 2026) is the whole document when the rule cut of the Item is ``overrun``, ``missing``,
     ``short`` or a suspect ``ok`` (``locator.asks``, #400 WP7) and the layer serves the document: ``_work`` then asks the writer where the section is, from its
     headings (``locator``), and keeps this text when it cannot say. Such a filing's ``hash_text`` is the whole
-    document, so the staleness hash does not depend on the locator's answer. No call is made here."""
+    document, so the staleness hash does not depend on the locator's answer. A ``crossref`` cut (``_unprofilable``)
+    is never profiled from its own text and never asks the locator: it reads the capped whole document. No call is
+    made here."""
     name, text = _filing_text(ticker)
+    quality = _filing_quality(ticker)
+    elsewhere = _unprofilable(quality)
     status = profiles_mod.text_status(text)
     whole = None
-    if status is not None or locator.asks(_filing_quality(ticker)):
+    if status is not None or elsewhere or locator.asks(quality):
         whole = _whole_document(ticker)
         if whole and profiles_mod.text_status(whole.get("text")) is not None:
             whole = None
     out = None
-    if status is None:
-        out = {"name": name, "text": clean_input(text), "fallback": "item", "source": _filing_source(ticker)}
-    else:
-        for label, link in (("previous_filing", _previous_filing), ("whole_document", lambda t: whole)):
-            got = link(ticker)
-            if got and profiles_mod.text_status(got.get("text")) is None:
-                # A whole 10-K runs to 1.4M characters (``filing_item`` item ``whole`` is uncut): the fallback reads
-                # its first MAX_FALLBACK_CHARS, which hold the business description, in a bounded number of calls.
-                out = {"name": name, "text": clean_input(got["text"][:MAX_FALLBACK_CHARS]), "fallback": label,
-                       "source": got.get("source")}
-                break
+    if status is None and not elsewhere:
+        out = {"name": name, "text": clean_input(_capped(text)), "fallback": "item",
+               "source": _filing_source(ticker)}
+    elif whole:
+        # A whole 10-K runs to 1.4M characters (``filing_section`` section ``whole`` is uncut): the fallback reads
+        # its first MAX_FALLBACK_CHARS, which hold the business description, in a bounded number of calls.
+        out = {"name": name, "text": clean_input(whole["text"][:MAX_FALLBACK_CHARS]), "fallback": "whole_document",
+               "source": whole.get("source")}
     if out is None:
-        out = {"name": name, "text": text, "fallback": status, "source": _filing_source(ticker)}
-    out["locate"] = whole
-    out["hash_text"] = "locator\n" + whole["text"] if whole else out["text"]
+        out = {"name": name, "text": text, "fallback": status or "short_text", "source": _filing_source(ticker)}
+    out["locate"] = None if elsewhere else whole
+    out["hash_text"] = "locator\n" + whole["text"] if out["locate"] else out["text"]
     return out
 
 
@@ -237,6 +245,23 @@ def filing_sentences(whole: str, item: str) -> list[str]:
     return out
 
 
+# The note blocks of the same filing the prompt is given beside the text (#841): the segment note beside the
+# segment lines (the lines are tag names turned into words, the note is the filer's prose), and the concentration
+# note beside the customer sentences a word search found (measured 12 Nov 2026: 803 reports carry it, 70 name a
+# listed company). Whole, never cut (avo 15 Nov 2026: EVREN is free, send all of it; measured the same day on 3,690
+# segment notes: p50 3,727, p90 9,800, max 64,294 characters, so a 6,000 cap landed inside one note in three).
+NOTE_BLOCKS = (("segment_block", "SegmentReportingDisclosureTextBlock"),
+               ("concentration_block", "ConcentrationRiskDisclosureTextBlock"))
+
+
+def _note_block(cik: str, local_name: str) -> str:
+    """The text of the newest annual report's ``local_name`` note (``read.form_notes``), its parts joined in
+    document order, whole; empty when the filing has none."""
+    from RevenueChaser.rcdata import read
+    parts = [str(r.get("text") or "").strip() for r in read.form_notes([cik], local_name=local_name)]
+    return "\n".join(p for p in parts if p).strip()
+
+
 def _filing_extras(cik: str | None, text: str) -> dict:
     """``filing_sentences`` and ``xbrl_customers`` of the company's newest annual report, for the prompt."""
     from RevenueChaser.core import fundamentals_layer
@@ -244,9 +269,20 @@ def _filing_extras(cik: str | None, text: str) -> dict:
         return {}
     from RevenueChaser.rcdata import read
     out: dict = {}
-    sents = filing_sentences((read.filing_text(cik, "whole") or {}).get("text") or "", text)
+    whole = next(iter(read.form_whole([cik])), None) or {}
+    sents = filing_sentences(whole.get("text") or "", text)
     if sents:
         out["filing_sentences"] = sents
+    for key, local_name in NOTE_BLOCKS:
+        # Each block on its own: a notes read that fails must not take the customer lines below with it, and
+        # ``_prepare`` drops the whole of this function's answer on an exception (review of PR #842, finding 7).
+        try:
+            block = _note_block(cik, local_name)
+        except Exception as exc:  # noqa: BLE001 - optional context, said aloud
+            logger.warning("relatedness: no %s for cik %s: %s", key, cik, exc)
+            continue
+        if block:
+            out[key] = block
     rows = read.customers(cik)
     newest = rows[0].get("period_end") if rows else None
     lines = [f"{r.get('customer')}: {r['share']:.1%} of {r.get('benchmark') or 'revenue'}"
@@ -301,7 +337,7 @@ def _context(ticker: str, cik: str | None, source: dict | None = None) -> dict:
         pass
     try:
         rows = rawstore.query("SELECT DISTINCT dst_name FROM chain_mentions WHERE src = ? ORDER BY dst_name LIMIT ?",
-                              [ticker, MAX_CANDIDATES], db="edgar")
+                              [ticker, MAX_CANDIDATES], db="value_chain")   # #860 stage 1
         names = [r["dst_name"] for r in rows if r.get("dst_name")]
         if names:
             out["candidates"] = names
@@ -324,7 +360,7 @@ def _prepare(rep: str, name: str | None, cik: str | None) -> dict:
     return inp
 
 
-FALLBACKS = ("item", "previous_filing", "whole_document")
+FALLBACKS = ("item", "whole_document")
 
 
 def _company_names(tickers: list[str]) -> dict[str, str]:
@@ -359,6 +395,33 @@ def _spine_ready() -> None:
         raise RunStopped("spine", None, why)
 
 
+def _forms_ready(tickers: list[str]) -> None:
+    """Stop a profile run (``RunStopped("forms")``) when the SEC form reader cannot serve its business text (#841):
+    no ``sec_forms.duckdb``, ``sec/forms`` never built, or business rows cut with another rule version than
+    ``config.FORMS_RULES_VERSION``.
+
+    Without the first two every company would read ``no_text``. Without the third the run would profile, and pay
+    for, a text the next build of ``sec/forms`` replaces: the input hash moves with the text, so that is a second
+    rewrite of the same companies. Off the layer (``chain_filings``) there is nothing to check."""
+    from RevenueChaser.core import fundamentals_layer
+    if not fundamentals_layer.reads_layer():
+        return
+    from RevenueChaser.rcdata import read
+    why = read.missing("sec_forms", "sec/forms")
+    if why is None and config.FORMS_RULES_VERSION:
+        ciks = {c for c in _cik_for(tickers).values() if c}
+        rows = read.form_business(ciks, text=False)
+        off = [r for r in rows if str(r.get("rules_version")) != config.FORMS_RULES_VERSION]
+        if off:
+            other = ", ".join(sorted({str(r.get("rules_version")) for r in off}))
+            first = ", ".join(sorted(str(r.get("cik")) for r in off)[:5])
+            why = (f"{len(off)} of {len(rows)} sec/forms business sections are cut with {other}, not "
+                   f"{config.FORMS_RULES_VERSION} (first CIKs: {first})")
+    if why is not None:
+        logger.warning("relatedness profile run stopped: %s", why)
+        raise RunStopped("forms", None, why)
+
+
 # How many tickers' filing texts ``_input_hashes`` holds at once (each is up to ~50 KB of prose).
 _HASH_CHUNK = 200
 # A stored partial profile's input hash carries this suffix, so the next run redoes it (within MAX_ATTEMPTS).
@@ -387,13 +450,14 @@ def _input_hashes(groups: dict[str, list[str]], names: dict[str, str]) -> dict[s
             rep = next((t for t in ts if (rows.get(t) or {}).get("item_text")), ts[0])
             text = (rows.get(rep) or {}).get("item_text") or ""
             name = names.get(rep) or rep
-            if profiles_mod.text_status(text) is not None or locator.asks((rows.get(rep) or {}).get("quality")):
+            quality = (rows.get(rep) or {}).get("quality")
+            if profiles_mod.text_status(text) is not None or _unprofilable(quality) or locator.asks(quality):
                 inp = _filing_input(rep)
                 if inp["fallback"] not in FALLBACKS and not inp.get("locate"):
                     continue
                 text = inp["hash_text"]
             else:
-                text = clean_input(text)          # what _filing_input sends
+                text = clean_input(_capped(text))          # what _filing_input sends
             out[key] = profiles_mod.input_hash(name, text)
     return out
 
@@ -414,14 +478,10 @@ def _cik_for(tickers: list[str]) -> dict[str, str]:
 def _writer(provider: str) -> tuple[str, bool, str]:
     """``(model, thinking, effort)`` a profile written by ``provider`` records in its cache key.
 
-    DeepSeek's are the profile mode's, as before. Grok is sent neither DeepSeek knob (``core/providers/grok.py``), so
-    its key says so; so is EVREN (#360). Staleness compares the writer's provider and model (``store.is_stale``)."""
-    if provider == "grok":
-        return grok.MODEL, False, ""
+    DeepSeek's are the profile mode's, as before; EVREN is sent no DeepSeek knob (#360). Staleness compares the
+    writer's provider and model (``store.is_stale``)."""
     if provider == "evren":
         return evren.MODEL, False, ""
-    if provider == "claude":
-        return claude_code.MODEL, False, ""
     return deepseek.MODEL, False, ""         # v3 sends no thinking (#400)
 
 
@@ -434,17 +494,17 @@ def build_profiles(tickers: list[str], use_llm: bool = True,
     """Ensure a durable profile per ticker (cache-first, CIK-grained).
 
     Profiles live in ``relatedness_profiles`` / ``relatedness_attributes`` (not
-    ``.cache``). The mode stamp (model/thinking/effort/prompt_version) in
-    ``run_registry`` records the current mode; profiles made under another mode stay
+    ``.cache``). Each profile carries its mode stamp
+    (model/thinking/effort/prompt_version); profiles made under another mode stay
     visible (stale) until re-profiled. Dual-class
     shares (same CIK) are profiled once and copied to every ticker. ``use_llm=False``
     never calls the LLM. ``usd_cap`` caps the number of LLM calls this run (the rest
     stay pending for the next run).
 
-    ``provider`` is the writer (#388): ``deepseek`` (default; off-peak gated, ``usd_cap``) or ``grok`` (SuperGrok;
-    allowance gated, no off-peak gate; ``max_calls`` caps its calls, ``usd_cap`` is not read, ``None`` is no cap).
+    ``provider`` is the writer (#360): ``deepseek`` (default; off-peak gated, ``usd_cap``) or ``evren`` (no fee, no
+    off-peak gate; ``max_calls`` caps its calls, ``usd_cap`` is not read, ``None`` is no cap).
     Which profiles need the LLM is the same for both: a current-prompt profile of either writer is current
-    (``store.is_stale``). A Grok run stops (``unusable``) when its first ``config.GROK_UNUSABLE_STOP`` replies are all
+    (``store.is_stale``). An EVREN run stops (``unusable``) when its first ``config.UNUSABLE_STOP`` replies are all
     unusable, and saves none of the unusable replies it got before its first usable one, so a wrong endpoint shape
     cannot count an attempt on every group.
     """
@@ -455,15 +515,11 @@ def build_profiles(tickers: list[str], use_llm: bool = True,
     profiles_mod.llm(provider)                 # an unknown writer fails here, before anything is written
     if use_llm:
         _spine_ready()                         # no spine, no names: stop before anything is written (#642 D3)
-    grok_run = provider == "grok"
-    free_run = provider != "deepseek"          # EVREN and Grok (#360): no fee, a call count is the only cap
+        _forms_ready(tickers)                  # no business text of the right cut: stop as well (#841)
+    free_run = provider != "deepseek"          # EVREN (#360): no fee, a call count is the only cap
     w_model, w_thinking, w_effort = _writer(provider)
     w_model = model or w_model                 # the board's model (#360): sent and stamped, never swapped in a module
     mode = store.mode_stamp((provider, w_model))
-    if use_llm and store.get_mode() != mode:
-        # Never delete on a mode change (#114 C2): profiles made under the old
-        # mode stay visible, flagged stale, until each is re-profiled below.
-        store.set_mode(mode)
 
     if not use_llm:
         return store.load_profiles(tickers)
@@ -511,8 +567,7 @@ def build_profiles(tickers: list[str], use_llm: bool = True,
     # (every chunk and retry included), so the call budget is threaded into
     # ``profile_for`` and the group slice below only bounds how many groups start.
     if free_run:
-        # EVREN and SuperGrok cost 0 USD a call: the cap is a call count (``--limit N``; none by default, avo 2 Nov
-        # 2026), Grok's allowance gate its ceiling.
+        # EVREN costs 0 USD a call: the cap is a call count (``--limit N``; none by default, avo 2 Nov 2026).
         max_calls = None if max_calls is None else max(0, int(max_calls))
         if max_calls == 0:
             todo = {}
@@ -520,10 +575,6 @@ def build_profiles(tickers: list[str], use_llm: bool = True,
             logger.warning("relatedness: %s call cap %d -> %d/%d groups this run", provider, max_calls, max_calls,
                            len(todo))
             todo = dict(list(todo.items())[:max_calls])
-        if grok_run:
-            grok.reset_gate()                  # the first request of the run reads the allowance
-        if provider == "claude":
-            claude_code.reset_gate()
     else:
         cap = usd_cap if usd_cap is not None else config.USD_CAP
         max_calls = None
@@ -541,7 +592,7 @@ def build_profiles(tickers: list[str], use_llm: bool = True,
     state_lock = threading.Lock()
     reason = {"why": None, "next": None, "message": None}
     transient = {"n": 0}
-    replies = {"usable": 0, "unusable": 0}     # a Grok run's replies so far (the ``unusable`` stop)
+    replies = {"usable": 0, "unusable": 0}     # a free run's replies so far (the ``unusable`` stop)
 
     def _fail(kind: str, exc) -> None:
         """Record the first run-stopping failure and set the stop event."""
@@ -556,28 +607,25 @@ def build_profiles(tickers: list[str], use_llm: bool = True,
             elif kind == "peak":
                 reason["why"] = "peak"
                 reason["next"] = getattr(exc, "next_off_peak", None)
-            elif kind == "allowance":
-                reason["why"], reason["message"] = "allowance", str(exc)
-                reason["next"] = getattr(exc, "next_reset", None)
-            elif kind in ("request", "unusable"):
+            elif kind == "unusable":
                 reason["why"], reason["message"] = kind, str(exc)
             else:
                 reason["why"], reason["message"] = "auth", str(exc)
             stop.set()
 
     def _unusable_before_any_usable(usable: bool) -> bool:
-        """A free writer's run (EVREN, Grok): count the reply; True when it is unusable and no usable reply came yet
-        in this run (it is then not saved), and stop the run once ``GROK_UNUSABLE_STOP`` such replies came. DeepSeek:
+        """A free writer's run (EVREN): count the reply; True when it is unusable and no usable reply came yet
+        in this run (it is then not saved), and stop the run once ``UNUSABLE_STOP`` such replies came. DeepSeek:
         always False."""
         if not free_run:
             return False
         with state_lock:
             replies["usable" if usable else "unusable"] += 1
             first = not usable and not replies["usable"]
-            hit = first and replies["unusable"] >= config.GROK_UNUSABLE_STOP
+            hit = first and replies["unusable"] >= config.UNUSABLE_STOP
         if hit:
             _fail("unusable", RuntimeError(
-                f"the first {config.GROK_UNUSABLE_STOP} {provider} replies of this run held no usable profile; check "
+                f"the first {config.UNUSABLE_STOP} {provider} replies of this run held no usable profile; check "
                 f"the endpoint and model (model {w_model})"))
         return first
 
@@ -593,10 +641,9 @@ def build_profiles(tickers: list[str], use_llm: bool = True,
         try:
             got = locator.locate(rep, name, (inp.get("source") or {}).get("form"), inp["locate"]["text"],
                                  budget=budget, provider=provider, model=model)
-        except (deepseek.PeakHoursError, deepseek.DeepSeekAuthError, deepseek.DeepSeekTransientError,
-                grok.GrokAllowanceError, grok.GrokAuthError, grok.GrokRequestError, grok.GrokTransientError):
+        except (deepseek.PeakHoursError, deepseek.DeepSeekAuthError, deepseek.DeepSeekTransientError):
             raise
-        except (deepseek.DeepSeekError, grok.GrokError) as exc:
+        except deepseek.DeepSeekError as exc:
             logger.warning("relatedness locator %s unusable: %s", rep, exc)
             return None
         if got is not None:
@@ -659,19 +706,13 @@ def build_profiles(tickers: list[str], use_llm: bool = True,
         except deepseek.PeakHoursError as exc:
             _fail("peak", exc)
             raise
-        except grok.GrokAllowanceError as exc:
-            _fail("allowance", exc)
-            raise
-        except (deepseek.DeepSeekAuthError, grok.GrokAuthError) as exc:
+        except deepseek.DeepSeekAuthError as exc:
             _fail("auth", exc)
             raise
-        except grok.GrokRequestError as exc:
-            _fail("request", exc)
-            raise
-        except (deepseek.DeepSeekTransientError, grok.GrokTransientError) as exc:
+        except deepseek.DeepSeekTransientError as exc:
             _fail("transient", exc)
             raise
-        except (deepseek.DeepSeekError, grok.GrokError) as exc:
+        except deepseek.DeepSeekError as exc:
             # Empty content / unusable reply: count the attempt (D2 stops after 3
             # runs) instead of re-billing it on every run.
             logger.warning("relatedness profile %s unusable: %s", rep, exc)
@@ -684,7 +725,7 @@ def build_profiles(tickers: list[str], use_llm: bool = True,
             return
         usable = any(prof.values())
         if _unusable_before_any_usable(usable):
-            return                     # Grok: nothing usable yet this run, so this reply counts no attempt
+            return                     # a free run: nothing usable yet, so this reply counts no attempt
         partial = bool(labels.get("missing_chunks"))
         for t in ts:
             m = meta.get(t)
@@ -726,14 +767,15 @@ def build_profiles(tickers: list[str], use_llm: bool = True,
 
     if todo:
         # LLM workers are a separate pool from the SEC pool (sec_edgar._throttle).
-        with ThreadPoolExecutor(max_workers=workers or config.LLM_WORKERS, **opens.pool_kwargs()) as ex:
+        n_workers = workers or config.LLM_WORKERS
+        if provider == "evren":
+            n_workers = min(n_workers, evren.MAX_WORKERS)
+        with ThreadPoolExecutor(max_workers=n_workers, **opens.pool_kwargs()) as ex:
             futs = [ex.submit(_work, it) for it in todo.items()]
             for f in as_completed(futs):
                 try:
                     f.result()
-                except (deepseek.PeakHoursError, deepseek.DeepSeekAuthError,
-                        deepseek.DeepSeekTransientError, grok.GrokAllowanceError, grok.GrokAuthError,
-                        grok.GrokRequestError, grok.GrokTransientError):
+                except (deepseek.PeakHoursError, deepseek.DeepSeekAuthError, deepseek.DeepSeekTransientError):
                     pass               # the worker recorded why; stop below
                 except Exception as exc:  # noqa: BLE001 - per-group LLM failure
                     logger.warning("profile group failed: %s", exc)
@@ -1011,25 +1053,12 @@ def _payload(profiles: dict[str, dict], stale: set[str] | None = None, model: st
     }
 
 
-def _stored_provider_health() -> dict | None:
-    """The last Fetch's stored health, for a Refresh (no live provider call). None when nothing is recorded."""
-    from RevenueChaser.core import history
-
-    from . import history as rel_history
-
-    try:
-        row = history.last_run(rel_history.BOARD)
-    except Exception:  # noqa: BLE001 - a locked history file never fails the render
-        return None
-    return (row or {}).get("provider_health")
-
-
 def _stop_health(provider: str, reason: str | None, message: str | None) -> dict | None:
     """The banner's health when this run stopped on a provider failure (#80).
 
-    A peak or allowance stop is a schedule, not a failed call, so it leaves the banner empty. ``auth`` carries
+    A peak stop is a schedule, not a failed call, so it leaves the banner empty. ``auth`` carries
     HTTP 401 so the banner names a rejected key."""
-    if reason not in ("auth", "transient", "request", "unusable"):
+    if reason not in ("auth", "transient", "unusable"):
         return None
     name = provider or "deepseek"
     return {"provider": name, "calls": 1, "failed": 1,
@@ -1045,12 +1074,12 @@ class AlreadyRunning(RuntimeError):
 def run(no_fetch: bool = False, tickers: list[str] | None = None,
         limit: int | None = None, usd_cap: float | None = None, run_id: str | None = None,
         provider: str = "deepseek", max_calls: int | None = None, model: str | None = None) -> dict:
-    """A Fetch records its scores and payload in result history (#388) under ``run_id`` (the dashboard job's id; the
-    CLI gets ``ledger.new_run_id()``, a scheduled task's ``job_runs`` id).
+    """A Fetch of the profiles and scores. ``run_id`` is kept for the callers; the result history it keyed went with
+    history.duckdb (#860).
 
     ``provider`` is the profile writer (``writers.WRITERS``, #360): the CLI and the dashboard pass the board's
     (``settings.writer``); ``deepseek`` stays this function's default for its callers and tests. A free writer
-    (``evren``, ``grok``, ``claude``) writes the missing and stale profiles with no call cap unless ``max_calls`` is given (``limit``
+    (``evren``) writes the missing and stale profiles with no call cap unless ``max_calls`` is given (``limit``
     slices the names). ``model`` is the board's model (``None``: the chat module's ``MODEL``). Mixed writers (avo,
     11 Nov 2026): every writer's current profile is shown and scored; each company names its writer."""
     if no_fetch:
@@ -1065,46 +1094,18 @@ def run(no_fetch: bool = False, tickers: list[str] | None = None,
         return _run(False, tickers, limit, usd_cap, run_id, provider=provider, max_calls=max_calls, model=model)
 
 
-def _record_history(payload: dict, requested: int, run_id: str | None, run_at: float) -> None:
-    """Result history of a Fetch (#388): after the latest table. A failure is a job note, never a failed run: the
-    latest table and the board do not depend on it."""
-    from . import history
-    try:
-        history.record(payload, requested=requested, run_id=run_id or ledger.new_run_id(), run_at=run_at)
-    except Exception as exc:
-        logger.exception("Relatedness result history failed")
-        ledger.add_note(f"Relatedness result history was not recorded: {type(exc).__name__}: {exc}")
-
-
-def _last_run_as_of() -> str | None:
-    """The ``as_of`` of the last Fetch (``run_registry`` ``relatedness_run``), or None before the first one."""
-    try:
-        row = rawstore.get("run_registry", "relatedness_run")
-    except Exception:  # noqa: BLE001 - the table may not exist yet
-        return None
-    value = (row or {}).get("value")
-    if isinstance(value, str):
-        try:
-            value = json.loads(value)
-        except ValueError:
-            return None
-    return value.get("as_of") if isinstance(value, dict) else None
-
-
 def _run(no_fetch: bool, tickers: list[str] | None, limit: int | None,
          usd_cap: float | None, run_id: str | None = None, provider: str = "deepseek",
          max_calls: int | None = None, model: str | None = None) -> dict:
     from . import store
-    run_at = time.time()
     tickers = select_pilot() if tickers is None else list(tickers)
     if limit:
         tickers = tickers[:limit]
-    # A Grok run asks SEC nothing (review B M1): it profiles the filings already stored. The nightly writer (EVREN by
-    # default, #360, or DeepSeek) and the Value Chain sync fetch the rest. On the layer Relatedness reads its texts
+    # On the layer Relatedness reads its texts
     # from the layer (``_layer_documents``), so downloading ``chain_filings`` again is wasted (plan 11 Nov 2026, F3:
     # about 4,970 SEC files for a full Fetch).
     from RevenueChaser.core import fundamentals_layer
-    vc_engine.fetch_corpus(tickers, no_fetch=no_fetch or provider == "grok" or fundamentals_layer.reads_layer())
+    vc_engine.fetch_corpus(tickers, no_fetch=no_fetch or fundamentals_layer.reads_layer())
 
     next_off_peak = None
     stopped_reason = None
@@ -1127,10 +1128,6 @@ def _run(no_fetch: bool, tickers: list[str] | None, limit: int | None,
         stopped_reason = "peak"
         next_off_peak = getattr(exc, "next_off_peak", None)
         profiles = store.load_profiles(tickers)
-    # A SuperGrok allowance stop names when the allowance resets, not an off-peak time (#388).
-    next_reset = next_off_peak if stopped_reason == "allowance" else None
-    if next_reset is not None:
-        next_off_peak = None
 
     # "Profiled" counts usable profiles only: empty / no_text / short_text rows are not done. Mixed writers (avo,
     # 11 Nov 2026): another writer's profiles stay current and in the matrix; the board names each one's writer.
@@ -1160,13 +1157,8 @@ def _run(no_fetch: bool, tickers: list[str] | None, limit: int | None,
         if r["ticker"] in set(tickers) and isinstance(r.get("label_source"), dict)
         and r["label_source"].get("input") == "llm_locator")
     payload["pending"] = max(0, len(tickers) - len(profiles) - len(no_text) - len(short_text) - len(shell))
-    if no_fetch:
-        # A Refresh changes no profile or score, so it shows when the last Fetch ran (#388 REL-10).
-        payload["as_of"] = _last_run_as_of() or payload["as_of"]
     if next_off_peak is not None:
         payload["next_off_peak"] = next_off_peak.strftime("%Y-%m-%d %H:%M")
-    if next_reset is not None:
-        payload["next_reset"] = next_reset.strftime("%Y-%m-%d %H:%M")
     if stopped_reason:
         payload["stopped_reason"] = stopped_reason
     if stopped_message:
@@ -1175,18 +1167,6 @@ def _run(no_fetch: bool, tickers: list[str] | None, limit: int | None,
     health = _stop_health(provider, stopped_reason, stopped_message)
     if health:
         payload["provider_health"] = health
-    elif no_fetch:
-        payload["provider_health"] = _stored_provider_health()
-    if not no_fetch:
-        # Refresh is pure: run_registry changes only on Fetch. ``relatedness_scores`` is no longer written: no board
-        # reads it (#594 DF65); the result history keeps each run's scores (the table stays until avo's "sil").
-        rawstore.write_rows("run_registry", [{
-            "key": "relatedness_run",
-            "value": json.dumps({"as_of": payload["as_of"], "n": payload["n"],
-                                 "pending": payload["pending"], "no_text": payload["no_text"],
-                                 "short_text": payload["short_text"], "shell": payload["shell"],
-                                 "next_off_peak": payload.get("next_off_peak")})}])
-        _record_history(payload, len(tickers), run_id, run_at)
     _save(config.RELATEDNESS_JSON, payload)
     return payload
 

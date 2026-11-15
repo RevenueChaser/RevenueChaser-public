@@ -84,7 +84,9 @@ def test_the_source_search_sees_a_need_named_in_the_board_and_not_one_named_in_i
 
 def test_which_boards_read_a_need_is_answered_from_the_same_record():
     assert "module_earnings_radar" in boards.readers_of("earnings.next")
-    assert boards.readers_of("prices.bars") == ("module_comovement",)
+    # The Watch lists board joined this need in #786: its Performance, Risk and Technicals columns are derived
+    # from the same daily bars, and the record is the one place that says so.
+    assert boards.readers_of("prices.bars") == ("module_comovement", "module_watchlists")
     with pytest.raises(needs.UnknownNeed):
         boards.readers_of("no.such.need")
 
@@ -169,10 +171,23 @@ def test_relatedness_plans_the_universe_and_the_fundamentals_needs_it_reads():
     entry now instead of none, and the control board draws its lines. #400: the v3 profile's segment note reads
     ``read.segments`` too, the B input (WP6) ``read.customers``, and the prompt's name, sector and industry
     ``read.identity`` (10 Nov 2026). #642: its run's ETF scan calls ``read.etf_holding_tickers``."""
-    want = ("identity.universe", "identity.security", "identity.etf_holdings", "fundamentals.companies", "fundamentals.filings",
-            "fundamentals.segments", "fundamentals.customers")
+    # #841: the filing texts come from the SEC form reader (``read.form_business`` / ``form_whole`` / ``form_notes``).
+    want = ("identity.universe", "identity.security", "identity.etf_holdings", "fundamentals.companies",
+            "fundamentals.segments", "fundamentals.customers", "sec.business", "sec.whole", "sec.note")
     assert boards.PLANNED_READS["module_relatedness"] == want
     assert boards.reads_of("module_relatedness") == {"declared": False, "needs": want}
+
+
+def test_value_chain_plans_the_form_readers_business_section():
+    """#841: the board's corpus is ``read.form_business`` (``sec.business``), not ``read.filing_texts``
+    (``fundamentals.filings``) - one independent SEC cut, read by the boards, instead of a second cut per board.
+    ``fundamentals.companies`` stays: the ticker -> CIK map is the fundamentals layer's."""
+    want = ("identity.universe", "identity.security", "fundamentals.companies",
+            "sec.business", "fundamentals.segments", "fundamentals.customers")
+    assert boards.PLANNED_READS["module_value_chain"] == want
+    assert boards.reads_of("module_value_chain") == {"declared": False, "needs": want}
+    calls = set(boards.read_calls("module_value_chain"))
+    assert "form_business" in calls and "filing_texts" not in calls
 
 
 # ── #491: a board's planned reads are compared with the rcdata.read calls of its own code ─────────────────────────
@@ -181,7 +196,9 @@ def test_the_reader_map_names_the_catalog_tables_each_read_function_queries():
     tables = boards.reader_tables()
     assert tables["changed_at"] == {"price_bar_daily", "corporate_action"}, "the SQL text counts, not only _rows' table"
     assert tables["bar_facts"] == {"price_bar_daily", "corporate_action"}
-    assert tables["filing_texts"] == {"filing_item"}
+    # #858: the three document readers query ``filing_section``, the one cutter's table, not ``filing_item``.
+    assert tables["filing_texts"] == {"filing_section"}
+    assert tables["filing_items"] == {"filing_item"}, "the filing list itself is still sec/filings'"
     assert tables["fundamental_companies"] == {"fundamental_company"}
     assert tables["market_series"] == {"market_series"}
     assert tables["watched"] == set(), "a watch list lives in ops.sqlite, which no need covers"
@@ -233,7 +250,8 @@ def test_a_needs_own_reader_is_covered_only_by_that_need_not_by_a_sibling_over_i
 def test_the_call_scan_sees_the_real_boards_reads_so_an_empty_scan_cannot_pass():
     """The review's 2: a scan that found nothing would make the board-wide test pass on every board."""
     assert {"changed_at", "bar_facts", "ticker_bars"} <= set(boards.read_calls("module_comovement"))
-    assert {"fundamental_companies", "filing_texts"} <= set(boards.read_calls("module_relatedness"))
+    assert {"fundamental_companies", "form_business", "form_whole", "form_notes"} <= set(
+        boards.read_calls("module_relatedness"))
 
 
 def test_every_board_not_migrated_yet_plans_every_need_its_code_reads():

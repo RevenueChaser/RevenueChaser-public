@@ -29,25 +29,8 @@ def test_a_provider_error_still_just_skips_the_ticker(monkeypatch):
     assert engine.enrich_and_score("TEST", {"quote": _quote()}, no_fetch=True, spine={}) is None
 
 
-def _run(monkeypatch, rows, fake):
-    monkeypatch.setattr(engine, "fetch_universe_stats", lambda *a, **k: (rows, {}))
-    monkeypatch.setattr(engine, "enrich_and_score", fake)
-    monkeypatch.setattr(engine._spine, "excluded_tickers", lambda: set())
-    monkeypatch.setattr(engine._spine, "spine_gics", lambda *a, **k: {})
-    return engine.run_asymmetric_growth_hunter()
 
 
-def test_runner_counts_and_logs_dropped_tickers(monkeypatch, caplog):
-    def fake(t, r, nf=False, spine=None, preload=None):
-        if t == "BAD":
-            raise AttributeError("boom")
-        return engine.score_ticker(t, _fin(), _tech(), {}, spine or {})
-    with caplog.at_level(logging.WARNING):
-        out = _run(monkeypatch, [{"ticker": "OK"}, {"ticker": "BAD"}], fake)
-    assert out["summary"]["scanned"] == 1
-    assert out["summary"]["score_errors"] == 1
-    assert out["summary"]["score_error_types"] == {"AttributeError": 1}
-    assert any("BAD" in m and "AttributeError" in m for m in caplog.messages)
 
 
 def test_board_shows_the_dropped_count_escaped():

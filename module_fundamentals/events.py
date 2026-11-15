@@ -28,8 +28,6 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from RevenueChaser.core import sec_submissions
-
 from . import config
 
 # Keys per store read (#386 F5 review): one constant for all three reads, so the number of candidates a Fetch or a
@@ -45,10 +43,10 @@ def _today():
 
 
 def _norm_cik(v) -> str | None:
-    """``core.sec_submissions.norm_cik``, or None for a value that is not a CIK. ``'0001234'`` and ``'1234'`` both
+    """The CIK as digits without leading zeros, or None for a value that is not a CIK. ``'0001234'`` and ``'1234'`` both
     become ``'1234'``; a non-numeric or zero value is no CIK, so the ticker stays unknown rather than clean."""
     try:
-        cik = sec_submissions.norm_cik(v)
+        cik = str(int(str(v).strip()))
     except (TypeError, ValueError):
         return None
     return cik if cik != "0" else None

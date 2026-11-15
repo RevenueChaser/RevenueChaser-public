@@ -25,8 +25,7 @@ from RevenueChaser.core.providers import sec_edgar
 from RevenueChaser.core.providers.result import ProviderHealth
 from RevenueChaser.core.reporting_common import write_artifact
 from RevenueChaser.core import funnel
-# load_ohlc: the SPY fallback only (U1); a scored name reads D01 (``screen_common.load_bars``).
-from RevenueChaser.module_swing_potential.indicators import compute_indicators, load_ohlc, load_ticker_info
+from RevenueChaser.module_swing_potential.indicators import compute_indicators, load_ticker_info
 from RevenueChaser.core import fiscal_year, trailing_year
 from RevenueChaser.core import screen_common
 from RevenueChaser.core import universe as _universe
@@ -35,6 +34,7 @@ from RevenueChaser.core.taxonomy import assign_themes
 from RevenueChaser.core.scan_quality import ohlc_drop_reason
 
 from . import config
+from . import debt as _debt
 from . import events
 from .screeners import evaluate_momentum, evaluate_quality, evaluate_rule_of_40, is_distorted
 
@@ -77,15 +77,6 @@ def _ret(close, n: int) -> float | None:
 _QUARTER_GAP_DAYS = (80, 102)
 
 
-def _is_derived(rec: dict, field: str) -> bool:
-    """A figure the extractor derived (a Q4 as FY minus the first three quarters, a cash flow from YTD) is marked in
-    the record's ``derived`` list by field or by period end. Derived quarters are not reported ones, so they never
-    form a TTM run: the Rule of 40 stays on the fiscal-year basis until the YTD consumer lands (#158). A record
-    without the list is unchanged."""
-    marks = rec.get("derived") or []
-    return field in marks or str(rec.get("period"))[:10] in marks
-
-
 def _is_preliminary(rec: dict, field: str) -> bool:
     """A figure the fundamentals layer filled from UW's press release ahead of the 10-Q (``preliminary``, G6) is not
     a reported quarter either, so it never forms a TTM run: the card names the SEC statements it scored (Opus review
@@ -96,9 +87,12 @@ def _is_preliminary(rec: dict, field: str) -> bool:
 def _quarter_run(quarterly: list[dict], field: str, n: int) -> tuple[list[float], list[str]] | None:
     """The newest ``n`` quarters that have a ``field`` figure, as ``(values, period ends)``, only when those
     quarters are consecutive (period ends ~91 days apart). ``None`` otherwise: a gap (no Q4 on a 10-Q only run, a
-    missing quarter) is never summed as if it were a trailing year (#148 U3)."""
-    have = [(q.get("period"), _to_float(q.get(field))) for q in quarterly
-            if _to_float(q.get(field)) is not None and not _is_derived(q, field) and not _is_preliminary(q, field)]
+    missing quarter) is never summed as if it were a trailing year (#148 U3). A derived quarter (Q4 as the fiscal year
+    minus the first three, marked in ``derived``) counts: it is the difference of two filed figures (#832, avo 15 Nov
+    2026 "A"), so the trailing year is the last twelve months and not the fiscal year."""
+    ordered = sorted(quarterly, key=lambda q: str(q.get("period")))   # a run is the newest n, whatever the list order
+    have = [(q.get("period"), _to_float(q.get(field))) for q in ordered
+            if _to_float(q.get(field)) is not None and not _is_preliminary(q, field)]
     if len(have) < n:
         return None
     tail = have[-n:]
@@ -277,8 +271,8 @@ def _ttm_metrics(quarterly: list[dict], annual: list[dict]) -> dict:
     out = {"ttm_revenue": None, "rev_growth_ttm": None, "fcf_margin": None,
            "ttm_net_income": None, "ro40": None, "ro40_basis": None}
 
-    # ttm_revenue (the DISTORTED base) and ttm_net_income (P/E) keep their own rule: four consecutive reported
-    # quarters, else the year (avo, D2 B 2026-10-08). Only the Rule of 40 and its growth move to the TTM point.
+    # ttm_revenue (the DISTORTED base) and ttm_net_income (P/E) keep their own rule: four consecutive quarters, a
+    # derived Q4 included (#832), else the year (avo, D2 B 2026-10-08). Only the Rule of 40 and its growth move to the TTM point.
     rev4 = _quarter_run(quarterly, "revenue", 4)
     ttm_rev = sum(rev4[0]) if rev4 else None
     if ttm_rev:
@@ -331,13 +325,24 @@ _QUALITY_FLOWS = ("revenue", "gross_profit", "cost_of_revenue", "ebit", "depreci
 _QUALITY_BALANCE = ("total_debt", "cash", "short_term_investments", "total_equity")
 
 
-def _quality_of(a: dict) -> dict:
-    """ROIC, gross margin and net debt / EBITDA of one record (a fiscal year, or a trailing year)."""
+def _quality_of(a: dict, debt_free: bool = False) -> dict:
+    """ROIC, gross margin and net debt / EBITDA of one record (a fiscal year, or a trailing year).
+
+    ``debt_free`` is the caller's answer to #737 (``module_fundamentals.debt``): this record tags no debt line at
+    all and reports no positive interest expense, so the total debt the facts leave NULL is read as 0 here. The
+    reading is kept apart from a filed figure in ``debt_basis`` (``filed`` / ``inferred_none`` / None). The rules
+    that rest on it carry a note on their label, which the Q modal shows, and the basis itself rides in the board
+    payload, so an inferred zero is never presented as the filer's own.
+    """
     out = {"gross_margin": None, "roic": None, "net_debt_ebitda": None, "net_cash": None,
-           "net_income": None, "total_equity": None}
+           "net_income": None, "total_equity": None, "debt_basis": None}
     ebit = _to_float(a.get("ebit"))
     dep = _to_float(a.get("depreciation"))
     debt = _to_float(a.get("total_debt"))
+    if debt is not None:
+        out["debt_basis"] = _debt.FILED
+    elif debt_free:
+        debt, out["debt_basis"] = 0.0, _debt.INFERRED_NONE
     cash = _to_float(a.get("cash"))
     eq = _to_float(a.get("total_equity"))
 
@@ -359,7 +364,10 @@ def _quality_of(a: dict) -> dict:
     if ebit is not None and debt is not None and eq is not None and cash is not None:
         nopat = ebit * (1 - config.TAX_RATE)
         ic = debt + eq - cash
-        out["roic"] = nopat / ic if ic > 0 else None
+        # #831: a sliver of invested capital makes the ratio meaningless (MANH 17,044%), so it is unknown.
+        assets = _to_float(a.get("total_assets"))
+        floor = config.ROIC_IC_MIN_SHARE * assets if assets is not None and assets > 0 else 0.0
+        out["roic"] = nopat / ic if ic > 0 and ic >= floor else None
     return out
 
 
@@ -369,7 +377,33 @@ def _quality_ttm(annual: list[dict], quarterly: list[dict], i: int) -> dict | No
     rec = trailing_year.trailing_year(annual, quarterly, i, _QUALITY_FLOWS, _QUALITY_BALANCE)
     if rec is not None:
         rec["net_income"] = _to_float(annual[i].get("net_income"))
+        # #831: total assets of the quarter the record ends on, for the ROIC floor; not required, so no TTM is lost.
+        q = next((q for q in quarterly or [] if str(q.get("period"))[:10] == rec["period"]), None)
+        rec["total_assets"] = _to_float(q.get("total_assets")) if q else None
     return rec
+
+
+def _quarter_at(quarterly: list[dict], end: str | None) -> dict | None:
+    """The quarterly record whose period ends on ``end`` (the trailing year's balance-sheet quarter), or None."""
+    if not end:
+        return None
+    return next((q for q in quarterly if str(q.get("period"))[:10] == str(end)[:10]), None)
+
+
+def _quarters_after(quarterly: list[dict], year_end, upto=None) -> list[dict]:
+    """Every quarterly record ending after the anchor year end, up to and including ``upto`` (#737's guard).
+
+    **Every** one, not the newest: a filer that tagged a borrowing in Q1 and did not repeat it in Q2 has not said
+    it repaid, and after a press release the newest record is the preliminary one UW filled, which tags nothing at
+    all and would otherwise hide the 10-Q behind it (Fable review F2, 13 Nov 2026).
+    """
+    if not year_end:
+        return []
+    e0 = year_end.isoformat() if hasattr(year_end, "isoformat") else str(year_end)[:10]
+    out = [q for q in quarterly if str(q.get("period"))[:10] > e0]
+    if upto:
+        out = [q for q in out if str(q.get("period"))[:10] <= str(upto)[:10]]
+    return out
 
 
 def _quality_metrics(annual: list[dict], quarterly: list[dict] | None = None) -> dict:
@@ -383,12 +417,27 @@ def _quality_metrics(annual: list[dict], quarterly: list[dict] | None = None) ->
     if i is None:
         return {**_quality_of({}), "quality_basis": None, "quality_period_end": None}
     a = annual[i]
-    fy = _quality_of(a)
     end = fiscal_year.period_end(a)
+    # #737. The year is counted debt-free only when its own balance sheet tags nothing and it paid no interest AND
+    # no quarter after it does either: the board shows one leverage figure per name, and a name whose later balance
+    # sheets carry notes is not debt-free on them, whatever the older year end said.
+    fy = _quality_of(a, debt_free=_debt.debt_free(a)
+                     and all(_debt.debt_free(q, quarterly=True)
+                             for q in _quarters_after(quarterly or [], end)))
     out = {**fy, "quality_basis": "FY", "quality_period_end": end.isoformat() if end else None}
     ttm_rec = _quality_ttm(annual, quarterly or [], i)
     if ttm_rec is not None:
-        ttm = _quality_of(ttm_rec)
+        # The same rule on the trailing year, read on the quarter its balance sheet comes from: the debt tags are a
+        # balance sheet's, so they are that quarter's and never the year's. The anchor year has to clear the rule
+        # too, and so does every quarter between the two. Measured 13 Nov 2026 on the real store: 7 of the 300
+        # inferred names tag debt on the annual record and nothing on the later quarter, EXPD
+        # (``ShortTermBankLoansAndNotesPayable`` 30.3 m) and IOVA (``NotesPayableCurrent`` 1.0 m) with a real
+        # borrowing. A filer that tagged debt at its year end is not a filer that tagged nothing, and a quarter
+        # that simply did not repeat the tag does not say it repaid.
+        q = _quarter_at(quarterly or [], ttm_rec["period"])
+        ttm = _quality_of(ttm_rec, debt_free=_debt.debt_free(q, quarterly=True) and _debt.debt_free(a)
+                          and all(_debt.debt_free(x, quarterly=True)
+                                  for x in _quarters_after(quarterly or [], end, ttm_rec["period"])))
         # The year's net income stays (P/E reads its own TTM, ``_ttm_metrics``); P/B reads the newest equity.
         if all(ttm[k] is not None or fy[k] is None for k in ("gross_margin", "roic", "net_debt_ebitda", "net_cash")):
             out = {**ttm, "net_income": fy["net_income"], "quality_basis": "TTM",
@@ -426,8 +475,7 @@ def data_as_of() -> str | None:
 def fetch_universe_stats(refreshed_by: str | None = None,
                          refresh: bool = False,
                          no_fetch: bool = False):
-    from RevenueChaser.core.universe_fetch import fetch_universe_stats as _fus
-    return _fus(refreshed_by=refreshed_by, refresh=refresh, no_fetch=no_fetch)
+    return _universe.universe_with_stats()
 
 
 def prefilter(rows: list[dict], eff=None) -> screen_common.Prefiltered:
@@ -591,6 +639,8 @@ def _compute_row(row: dict, spy_df, no_fetch: bool = False, spine: dict | None =
         "roic": qual["roic"],
         "net_debt_ebitda": qual["net_debt_ebitda"],
         "net_cash": qual.get("net_cash"),
+        # #737: "filed" (the facts gave a total), "inferred_none" (no debt tag and no interest: read as 0) or None.
+        "debt_basis": qual.get("debt_basis"),
         "pe": pe,
         "pb": pb,
         "dist_52w_pct": ind.get("within_52w_high_pct"),
@@ -696,6 +746,9 @@ def build_payload(results: list[dict], top_n: int | None = None, run_stats: dict
             "quality_basis": r.get("quality_basis"), "quality_period_end": r.get("quality_period_end"),
             "statements": r.get("statements"),
             "pe": m.get("pe"), "pb": m.get("pb"), "roic": m.get("roic"),
+            # #737 (Fable review F3): the payload carries ``roic``, which an inferred zero can make known, so it
+            # carries the basis of that zero beside it.
+            "debt_basis": m.get("debt_basis"),
             "distorted": distorted,
             "info_stale": bool(r.get("info_stale")),
             "gates": gates,
@@ -826,7 +879,7 @@ def run_scan(uw=None, top_n: int = None, refresh_universe: bool = False,
     payload = screen_common.run_screen(
         board="fundamental", refreshed_by="Fundamentals", cfg=config,
         load_universe=fetch_universe_stats, prefilter=prefilter_and_chunk,
-        load_spy=lambda: screen_common.load_spy(lambda: load_ohlc("SPY", ttl_days=0.5, no_fetch=no_fetch)),
+        load_spy=screen_common.load_spy,
         compute_row=compute_row, build_payload=build_payload, persist=scores.persist if rows_sink is None else (lambda results: scores.persist(results, sink=rows_sink)),
         top_n=top_n, refresh_universe=refresh_universe, no_fetch=no_fetch,
         history_board="module_fundamentals", saved=config.FUNDAMENTALS_JSON,

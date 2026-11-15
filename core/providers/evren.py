@@ -17,6 +17,7 @@ import logging
 import os
 import threading
 import time
+from datetime import datetime, timezone
 from typing import Callable
 
 import httpx
@@ -32,6 +33,18 @@ DEFAULT_BASE = "https://evren-llmapi.ssyz.org.tr/v1"
 MODEL = os.getenv("RC_EVREN_MODEL") or "deepseek-v4.1-flash"
 COST_USD_PER_CALL = 0.0
 MAX_ATTEMPTS = 2
+# One request at a time (avo 15 Nov 2026 11:22 "4 yerine 1 istek gonder madem yogun"): the account may hold at most 4
+# open on a model, and the fair-share 429 came even at 4 workers while the model was busy (measured 15 Nov 10:35 with 8,
+# 11:15 with 4). A pool that sends to EVREN stays at this.
+MAX_WORKERS = 1
+# EVREN answers HTTP 503 ``model_capacity_exhausted`` with ``error.evren.resets_at`` when the shared model is full
+# (measured 15 Nov 2026 10:54-10:58: 12 calls, every one refused, the run stopped as transient). Such a reply is
+# waited out until ``resets_at`` (bounded) and retried up to CAPACITY_ATTEMPTS times; any other 5xx stays final. A 429
+# that carries ``resets_at`` (``fair_share_limit_exceeded``) is waited out the same way.
+CAPACITY_ATTEMPTS = 6
+CAPACITY_WAIT_MIN_S = 5.0
+CAPACITY_WAIT_MAX_S = 120.0
+_CAPACITY_CODE = "model_capacity_exhausted"
 _PRE_SEND_ERRORS = (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout)
 _calls = 0
 _calls_lock = threading.Lock()
@@ -132,23 +145,34 @@ def complete(system: str, user: str, *, thinking: bool = False,
     url = f"{base_url()}/chat/completions"
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     try:
-        for attempt in range(1, MAX_ATTEMPTS + 1):
+        capacity = 0                       # 503 capacity waits, counted apart from MAX_ATTEMPTS
+        for attempt in range(1, MAX_ATTEMPTS + CAPACITY_ATTEMPTS + 1):
             _count()
             try:
                 r = client.post(url, json=body, headers=headers)
             except _PRE_SEND_ERRORS as exc:
-                if attempt < MAX_ATTEMPTS:
+                if attempt - capacity < MAX_ATTEMPTS:
                     _sleep(deepseek._retry_delay(None, attempt))
                     continue
                 raise EvrenTransientError(f"EVREN request failed: {_scrub(str(exc), api_key)}") from exc
             except httpx.HTTPError as exc:      # the request may have run: never replayed
                 raise EvrenTransientError(f"EVREN request failed: {_scrub(str(exc), api_key)}") from exc
             text = _scrub((r.text or "")[:300], api_key)
+            if r.status_code == 429 and "resets_at" in (r.text or "") and capacity < CAPACITY_ATTEMPTS:
+                # The account's fair share is full (``fair_share_limit_exceeded``, measured 15 Nov 2026 11:15 with 4
+                # workers): wait for its reset like a capacity 503, not the two-second 429 retry.
+                capacity += 1
+                _sleep(_capacity_wait(r))
+                continue
             if r.status_code == 429:
-                if attempt < MAX_ATTEMPTS:
+                if attempt - capacity < MAX_ATTEMPTS:
                     _sleep(deepseek._retry_delay(r, attempt))
                     continue
                 raise EvrenTransientError(f"EVREN HTTP 429: {text}")
+            if r.status_code == 503 and _CAPACITY_CODE in (r.text or "") and capacity < CAPACITY_ATTEMPTS:
+                capacity += 1
+                _sleep(_capacity_wait(r))
+                continue
             if 500 <= r.status_code < 600:
                 raise EvrenTransientError(f"EVREN HTTP {r.status_code}: {text}")
             if r.status_code in (401, 403):
@@ -161,6 +185,18 @@ def complete(system: str, user: str, *, thinking: bool = False,
     finally:
         if own:
             client.close()
+
+
+def _capacity_wait(r) -> float:
+    """Seconds until the reply's ``error.evren.resets_at`` (plus one), within the capacity bounds; the lower bound
+    when the body has no usable time."""
+    try:
+        raw = r.json()["error"]["evren"]["resets_at"]
+        until = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        wait = (until - datetime.now(timezone.utc)).total_seconds() + 1.0
+    except (ValueError, KeyError, TypeError, AttributeError):
+        wait = CAPACITY_WAIT_MIN_S
+    return min(CAPACITY_WAIT_MAX_S, max(CAPACITY_WAIT_MIN_S, wait))
 
 
 def _finish(r, key: str, use_cache: bool, validate, ticker, cik, prompt_version, model: str, api_key: str) -> str:

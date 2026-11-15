@@ -93,8 +93,8 @@ class TestEarlyTurn:
     def test_early_turn_two_consecutive(self, rawstore_tmp_db, monkeypatch):
         from RevenueChaser.module_sector_rotation.report import _early_turn_tickers, _rows_to_snapshots
         import RevenueChaser.module_sector_rotation.report as rd
-        monkeypatch.setattr(rd, "OUTPUT_DIR", rawstore_tmp_db.parent)
-        monkeypatch.setattr(rd, "OUTPUT_DIR", rawstore_tmp_db.parent)
+        monkeypatch.setattr(rd, "OUTPUT_DIR", rawstore_tmp_db)
+        monkeypatch.setattr(rd, "OUTPUT_DIR", rawstore_tmp_db)
         for d in ["2026-08-12", "2026-08-13"]:
             _seed_snapshot(d, [_row(d, ticker="ITA", rz=-0.5, mz=0.4)])
         snaps = _rows_to_snapshots([_row("2026-08-14", ticker="ITA", rz=-0.3, mz=0.5)])
@@ -148,8 +148,8 @@ class TestTrail:
     def test_trail_shows_all_etfs_with_decay(self, rawstore_tmp_db, monkeypatch):
         from RevenueChaser.module_sector_rotation.report import export_rotation_trail
         import RevenueChaser.module_sector_rotation.report as rd
-        monkeypatch.setattr(rd, "OUTPUT_DIR", rawstore_tmp_db.parent)
-        monkeypatch.setattr(rd, "OUTPUT_DIR", rawstore_tmp_db.parent)
+        monkeypatch.setattr(rd, "OUTPUT_DIR", rawstore_tmp_db)
+        monkeypatch.setattr(rd, "OUTPUT_DIR", rawstore_tmp_db)
         self._seed_two_weeks()
         p = export_rotation_trail(date(2026, 8, 12), date(2026, 8, 19))
         content = p.read_text(encoding="utf-8")
@@ -161,8 +161,8 @@ class TestTrail:
     def test_trail_weekly_samples_last_of_week(self, rawstore_tmp_db, monkeypatch):
         from RevenueChaser.module_sector_rotation.report import export_rotation_trail, _weekly_sample
         import RevenueChaser.module_sector_rotation.report as rd
-        monkeypatch.setattr(rd, "OUTPUT_DIR", rawstore_tmp_db.parent)
-        monkeypatch.setattr(rd, "OUTPUT_DIR", rawstore_tmp_db.parent)
+        monkeypatch.setattr(rd, "OUTPUT_DIR", rawstore_tmp_db)
+        monkeypatch.setattr(rd, "OUTPUT_DIR", rawstore_tmp_db)
         for d in ["2026-08-10", "2026-08-12", "2026-08-14", "2026-08-17", "2026-08-19", "2026-08-21"]:
             _seed_snapshot(d, [_row(d, ticker="ITA", rz=0.1, mz=0.1, quadrant="LEADING")])
         sampled = _weekly_sample(["2026-08-10", "2026-08-12", "2026-08-14",
@@ -175,8 +175,8 @@ class TestTrail:
     def test_trail_empty_range(self, rawstore_tmp_db, monkeypatch):
         from RevenueChaser.module_sector_rotation.report import export_rotation_trail
         import RevenueChaser.module_sector_rotation.report as rd
-        monkeypatch.setattr(rd, "OUTPUT_DIR", rawstore_tmp_db.parent)
-        monkeypatch.setattr(rd, "OUTPUT_DIR", rawstore_tmp_db.parent)
+        monkeypatch.setattr(rd, "OUTPUT_DIR", rawstore_tmp_db)
+        monkeypatch.setattr(rd, "OUTPUT_DIR", rawstore_tmp_db)
         p = export_rotation_trail(date(2026, 8, 12), date(2026, 8, 13))
         content = p.read_text(encoding="utf-8")
         assert "No stored snapshots" in content
@@ -501,8 +501,8 @@ class TestUiContract:
 
     def test_breakdown_badge_rendered(self, rawstore_tmp_db, monkeypatch):
         import RevenueChaser.module_sector_rotation.report as rd
-        monkeypatch.setattr(rd, "OUTPUT_DIR", rawstore_tmp_db.parent)
-        monkeypatch.setattr(rd, "OUTPUT_DIR", rawstore_tmp_db.parent)
+        monkeypatch.setattr(rd, "OUTPUT_DIR", rawstore_tmp_db)
+        monkeypatch.setattr(rd, "OUTPUT_DIR", rawstore_tmp_db)
         # prior snapshot: XLK LEADING; current: XLK LAGGING (breakdown)
         _seed_snapshot("2026-08-13", [_row("2026-08-13", ticker="XLK", rz=1.0, mz=0.5,
                                            quadrant="LEADING", group="sector")])
@@ -534,8 +534,8 @@ class TestUiContract:
 class TestTrailUiContract:
     def _trail(self, rawstore_tmp_db, monkeypatch):
         import RevenueChaser.module_sector_rotation.report as rd
-        monkeypatch.setattr(rd, "OUTPUT_DIR", rawstore_tmp_db.parent)
-        monkeypatch.setattr(rd, "OUTPUT_DIR", rawstore_tmp_db.parent)
+        monkeypatch.setattr(rd, "OUTPUT_DIR", rawstore_tmp_db)
+        monkeypatch.setattr(rd, "OUTPUT_DIR", rawstore_tmp_db)
         for d in ["2026-08-12", "2026-08-19"]:
             _seed_snapshot(d, [_row(d, ticker="XLK", rz=0.5, mz=0.4, quadrant="LEADING",
                                     name="Technology", group="sector")])
@@ -575,8 +575,8 @@ class TestTrailUiContract:
 
     def test_trail_velocity_vector(self, rawstore_tmp_db, monkeypatch):
         import RevenueChaser.module_sector_rotation.report as rd
-        monkeypatch.setattr(rd, "OUTPUT_DIR", rawstore_tmp_db.parent)
-        monkeypatch.setattr(rd, "OUTPUT_DIR", rawstore_tmp_db.parent)
+        monkeypatch.setattr(rd, "OUTPUT_DIR", rawstore_tmp_db)
+        monkeypatch.setattr(rd, "OUTPUT_DIR", rawstore_tmp_db)
         # two weeks with distinct z-scores -> non-zero velocity at head node
         for d, rz, mz in [("2026-08-12", 0.1, 0.1), ("2026-08-19", 0.9, 0.8)]:
             _seed_snapshot(d, [_row(d, ticker="XLK", rz=rz, mz=mz, quadrant="LEADING",

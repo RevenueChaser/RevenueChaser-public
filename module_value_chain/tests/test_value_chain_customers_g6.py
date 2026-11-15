@@ -12,7 +12,7 @@ import pytest
 
 from RevenueChaser.core import fundamentals_layer, rawstore
 from RevenueChaser.core.providers import sec_edgar
-from RevenueChaser.module_value_chain import engine, history as vc_history
+from RevenueChaser.module_value_chain import engine
 from RevenueChaser.rcdata.build.fundamentals import companyfacts, filings
 from RevenueChaser.rcdata.tests import fund_fixture as fx
 from RevenueChaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401  (fixtures)
@@ -85,8 +85,6 @@ def test_off_the_layer_nothing_changes():
     assert _customers(engine.build_edges(), relations=("customer", "supplier", "other")) == []
 
 
-def test_the_selection_version_moves_with_the_edges():
-    assert vc_history.SELECTION_VERSION == "5"
 
 
 def test_a_filing_without_text_still_gives_its_xbrl_customers(layer):

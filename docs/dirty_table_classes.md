@@ -44,6 +44,7 @@ Both are why `dirty.full_rebuild_reason` exists and why a dataset may declare on
 | `market_series` | cumulative + restated | `obs_date` range; key `(series_id, source)` | `market_series.py`: Parquet is merged by `(series_id, obs_date, source)`, "the newest fetch winning a key" — a provider that revises a past observation rewrites that row |
 | `spx_gamma_expiry_strike` | cumulative | `session_date` range | `uw_spot_expiry_strike.py`: one raw file per session, the file is the resume marker, a stored session is never re-asked |
 | `spx_greek_expiry_strike` | cumulative | `session_date` range | `uw_greek_expiry_strike.py`, same shape |
+| `economic_event` | snapshot per day, **chosen list** | `snapshot_date` | `uw_economic_calendar.py`: one partition per snapshot day, replaced whole by that day's newest fetch. UW serves a forward window ("this week and next"), so a day's newest fetch holds fewer events than its first one once some have rolled out: the count is the source's choice, and the table is in `serving.SHRINKS_BY_CHOICE` (14 Nov 2026) |
 
 ## spine
 
@@ -85,7 +86,7 @@ The four source tables are rebuilt from all their `date=` partitions on every bu
 | `insider_transactions` | cumulative + restated (spine-restated) | `filed` range; key `ticker` (spine-derived, see dependency 1) | `ownership/form4.py`: a Form 4/A amends a filed transaction |
 | `beneficial_ownership` | cumulative + restated (spine-restated) | `filed` range; key `ticker` (spine-derived, see dependency 1) | `ownership/sched13dg.py`: 13D/G amendments |
 | `sec13f_filings` | cumulative | `index_day` / `filed` range | `ownership/sec13f.py`: one row per accession, with `is_amendment`, `amendment_type` and `filed`; an amendment adds a row and rewrites none. Which filing is active for a period (the amendment walk) is decided where the period tables are built, not here |
-| `sec13f_filer_period`, `sec13f_ticker_period`, `sec13f_periods`, `sec13f_cusip_map`, `sec13f_filer_breaks` | derivation per period (spine-restated) | key `period` | `ownership/serve.py`: the amendment rule — a `NEW HOLDINGS` amendment adds to a period's set, any other amendment **replaces** it, and an amendment belongs to the period it reports on, not the quarter it was filed in. Per period it computes the filer's `value_factor` from a consensus price per CUSIP across filers, resolves CUSIP → ticker from the spine's dated identity history, then aggregates. One filer's new filing changes that period's consensus, so **the period is the unit** |
+| `sec13f_filer_period`, `sec13f_ticker_period`, `sec13f_periods`, `sec13f_cusip_map`, `sec13f_filer_breaks`, `sec13f_type_holdings` | derivation per period (spine-restated) | key `period` | `ownership/serve.py`: the amendment rule — a `NEW HOLDINGS` amendment adds to a period's set, any other amendment **replaces** it, and an amendment belongs to the period it reports on, not the quarter it was filed in. Per period it computes the filer's `value_factor` from a consensus price per CUSIP across filers, resolves CUSIP → ticker from the spine's dated identity history, then aggregates. One filer's new filing changes that period's consensus, so **the period is the unit** |
 
 ## fundamentals
 

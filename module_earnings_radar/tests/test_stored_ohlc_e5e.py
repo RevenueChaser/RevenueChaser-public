@@ -203,6 +203,8 @@ def _reporting_pipeline(fake, report_date, report_time="premarket"):
     return p
 
 
+
+
 class _ReportingUW(_OhlcUW):
     """The UW answer during the session: the year of bars ends with today's (still forming) bar."""
 
@@ -211,6 +213,7 @@ class _ReportingUW(_OhlcUW):
         self._overrides["earnings_history"] = [
             {"report_date": report_date.isoformat(), "actual_eps": None, "street_mean_est": 1.0,
              "report_time": report_time}, *_prints()]
+
 
 
 def test_a_name_reporting_today_reads_live_bars_in_session(monkeypatch):

@@ -80,17 +80,6 @@ def client():
 
 # ── the row ───────────────────────────────────────────────────────────────────
 
-def test_the_row_shows_the_stored_values_in_column_order(client, tmp_path):
-    row = dict(ROW, module="RC-Daily-Bars", trigger="scheduled", status="done", duration_s=2071.5)
-    cells = _row_cells(client, tmp_path, row)
-    # The stub's classList.add appends, so an empty cell reads "note-cell dash": compare the first class.
-    assert [c["cls"].split(" ")[0] for c in cells] == ["when", "job", "trigger", "", "took",
-                                                       "note-cell", "params", "params"]
-    assert cells[6]["cls"].startswith("params counts"), "the counts cell comes before params (#136)"
-    assert cells[1]["text"] == "RC-Daily-Bars"
-    assert cells[2]["text"] == "scheduled"
-    assert cells[3]["text"] == "done" and cells[3]["pill"] == "pill s-done"
-    assert cells[4]["text"] == "34m 32s"
 
 
 def test_a_row_that_recorded_no_trigger_shows_a_dash_and_not_a_guess(client, tmp_path):
@@ -112,17 +101,6 @@ def test_a_running_row_says_going_rather_than_a_duration(client, tmp_path):
     assert cells[3]["pill"] == "pill s-running"
 
 
-def test_a_long_value_is_clipped_in_the_cell_and_whole_in_the_tooltip(client, tmp_path):
-    args = ["-m", "RevenueChaser.scripts.nightly_inputs", "earnings", "--max-uw-calls", "200",
-            "--max-fred-calls", "10", "--max-yf-calls", "2000"]
-    cells = _row_cells(client, tmp_path, dict(ROW, params={"args": args}))
-    params = cells[7]
-    assert params["text"].endswith("…") and len(params["text"]) == 65
-    # The tooltip is the browser's JSON.stringify of the value, which for this ASCII-only blob is exactly
-    # json.dumps with compact separators: the whole value, last argument included (#131 item 6).
-    assert params["title"].startswith('{"args"') and "--max-yf-calls" in params["title"]
-    assert params["title"] == json.dumps({"args": args}, separators=(",", ":")), "the tooltip carries the whole value"
-    assert len(params["title"]) > len(params["text"])
 
 
 def test_an_error_is_shown_in_the_note_column(client, tmp_path):

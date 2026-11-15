@@ -35,20 +35,8 @@ realised fine count, which is the live default and what #57 asks to compare. The
 realised ``k_fine`` and ``k_medium``. A sweep is therefore three ``--rebuild-themes --build-only --k-medium N``
 runs, which make no provider call and no cutover.
 
-Grok writer (#388, avo 2026-10-16 "grok kullan direk"; manual, never scheduled):
-
-    python -m RevenueChaser.module_relatedness --grok-ping
-    python -m RevenueChaser.module_relatedness --run --provider grok --limit N [--floor M | --tickers A,B]
-    python -m RevenueChaser.module_relatedness --name-themes --provider grok [--run-id ID]
-    python -m RevenueChaser.module_relatedness --rebuild-themes --name --provider grok [--run-id ID] ...
-
-``--provider grok`` writes through the SuperGrok subscription (``core/providers/grok.py``): no off-peak gate, the
-allowance is read before each batch of calls and a spent allowance stops the run cleanly (exit 0, pending reported).
-``--limit N`` caps the **calls** (it never shortens the universe the board covers); without it a free writer has no
-call cap (avo, 2 Nov 2026). ``--cap`` is USD and DeepSeek's only. The summary names the provider, the model, the calls
-(0 USD each), done, pending and stale.
-``--grok-ping`` makes exactly one live call with the profile prompt and a run's parameters, writes nothing, and says
-whether the endpoint and model answer a usable profile.
+``--provider evren`` (no fee) has no off-peak gate; ``--limit N`` caps its **calls** (it never shortens the universe
+the board covers); without it there is no call cap (avo, 2 Nov 2026). ``--cap`` is USD and DeepSeek's only.
 
 Without ``--provider``, ``--run`` writes with the board's writer (#360, ``module_relatedness/settings.py``: EVREN by
 default, the ``--provider evren`` path; a missing ``EVREN_API_KEY`` stops before any request). RC-Relatedness-OffPeak
@@ -59,67 +47,33 @@ from __future__ import annotations
 import argparse
 import json
 
-from RevenueChaser.core import offpeak, rawstore, subscription_usage
-from RevenueChaser.core.providers import claude_code, deepseek, evren, grok
+from RevenueChaser.core import offpeak
+from RevenueChaser.core.providers import deepseek, evren
 
 from . import engine, writers
 from . import settings as rel_settings
 
 
 # Why a run stopped that the next (off-peak) run cannot fix on its own, so the task exits 1: a rejected
-# credential and repeated transient failures; with Grok also a rejected request (endpoint, model) and a run whose
-# first replies were all unusable. Peak, the SuperGrok allowance, the cost cap and names still pending (no filing text
-# yet) are the normal night-to-night state, so they exit 0 and the scheduled task stays green (C-F1).
-_FAILED_STOP_REASONS = frozenset({"auth", "transient", "request", "unusable"})
-_GROK_FAILURES = (deepseek.DeepSeekAuthError, grok.GrokAuthError, grok.GrokRequestError)
-# The ping's company: a made-up, public-domain-style description (no real issuer, no store read).
-_PING_TEXT = ("Example Semiconductor Corp designs graphics processors and networking chips sold to cloud data "
-              "center operators and PC makers; manufacturing is outsourced to foundries.")
-
-
-def _last_run() -> dict:
-    try:
-        row = rawstore.get("run_registry", "relatedness_run")
-    except Exception:  # noqa: BLE001 - table may not exist yet
-        return {}
-    return row.get("value") if row else {}
+# credential, repeated transient failures and a free run whose first replies were all unusable. Peak, the cost cap
+# and names still pending (no filing text yet) are the normal night-to-night state, so they exit 0 and the
+# scheduled task stays green (C-F1).
+# ``forms`` (#841): the SEC form reader cannot serve the business text; every run stops until ``sec/forms`` builds
+# with the awaited rule version, so a green task would hide a board that no longer refreshes.
+_FAILED_STOP_REASONS = frozenset({"auth", "transient", "unusable", "forms"})
 
 
 def _summary(**kwargs) -> str:
     fields = ("provider", "run_id", "named", "copied", "pending", "next_off_peak", "stopped_reason",
-              "next_reset", "themes", "rows", "adopted", "fines_reparented", "dropped_mediums", "profiled",
+              "themes", "rows", "adopted", "fines_reparented", "dropped_mediums", "profiled",
               "unthemed", "out_of_universe", "fit", "k_fine", "k_medium", "k_medium_requested", "coarse",
               "k_coarse", "error")
     return json.dumps({k: kwargs.get(k) for k in fields
                        if k in kwargs}, ensure_ascii=False)
 
 
-def _grok_ping() -> int:
-    """One live SuperGrok call with the profile prompt and a run's parameters; writes nothing (no cache, no store).
-
-    Prints ``{provider, model, endpoint, ok, fields, calls[, error]}``; exit 0 when the reply parses into a profile.
-    """
-    from . import profiles
-    grok.reset_gate()
-    before = grok.calls()
-    out: dict = {"provider": "grok", "model": grok.MODEL, "endpoint": grok.endpoint()}
-    try:
-        raw = grok.complete(profiles.system_prompt(), profiles.build_user("Example Semiconductor Corp", _PING_TEXT),
-                            thinking=False, reasoning_effort=None,
-                            max_tokens=profiles.token_budget(), json_mode=True, use_cache=False)
-        fields = [f for f, v in profiles.parse_profile(raw).items() if v]
-        out.update(ok=bool(fields), fields=fields)
-        if not fields:
-            out["error"] = f"the reply held no usable profile: {raw[:200]}"
-    except grok.GrokError as exc:
-        out.update(ok=False, error=f"{type(exc).__name__}: {exc}")
-    out["calls"] = grok.calls() - before
-    print(json.dumps(out, ensure_ascii=False))
-    return 0 if out["ok"] else 1
-
-
 def _free_run(provider: str, chosen, limit: int | None, model: str | None = None) -> int:
-    """``--run`` with EVREN or Grok (#360, #388): the summary names the provider, the model and the calls (0 USD
+    """``--run`` with EVREN (#360): the summary names the provider, the model and the calls (0 USD
     each). ``limit`` caps the calls; none by default (avo, 2 Nov 2026)."""
     mod = engine.profiles_mod.llm(provider)
     before = mod.calls()
@@ -135,8 +89,6 @@ def _free_run(provider: str, chosen, limit: int | None, model: str | None = None
            "stale": sum(1 for c in payload.get("companies") or [] if c.get("stale"))}
     if reason:
         out["stopped_reason"] = reason
-    if payload.get("next_reset"):
-        out["next_reset"] = payload["next_reset"]
     if payload.get("error"):
         out["error"] = payload["error"]
     print(json.dumps(out, ensure_ascii=False))
@@ -221,12 +173,7 @@ def main(argv: list[str] | None = None) -> int:
                    help="the LLM that writes profiles (--run) or theme names (--name-themes, --rebuild-themes "
                         "--name). Without it --run uses the board's writer (Settings, #360; EVREN by default) and "
                         "theme naming uses deepseek. deepseek is off-peak gated and capped by --cap USD; evren (no "
-                        "fee) and grok (SuperGrok subscription, #388) have no off-peak gate and no call cap unless "
-                        "--limit N (avo, 2 Nov 2026); grok also stops at the allowance; claude (subscription via headless Claude Code, no API key) stops at "
-                        "RC_CLAUDE_CAP percent of the weekly window, 80 by default")
-    p.add_argument("--grok-ping", action="store_true",
-                   help="one live SuperGrok call with the profile prompt; writes nothing; exit 0 when it answers a "
-                        "usable profile")
+                        "fee) has no off-peak gate and no call cap unless --limit N (avo, 2 Nov 2026)")
     args = p.parse_args(argv)
     explicit = args.provider
     # --run writes with the board's writer unless --provider names one (#360); theme naming keeps DeepSeek's default.
@@ -234,22 +181,13 @@ def main(argv: list[str] | None = None) -> int:
         run_writer, run_model = rel_settings.writer()[0], rel_settings.chosen_model()
     else:
         run_writer, run_model = explicit or "deepseek", None
-    grok_on = run_writer == "grok"
-    if explicit in ("evren", "claude") and not args.run:
+    if explicit == "evren" and not args.run:
         p.error(f"--provider {explicit} goes with --run only")
     if args.run and run_writer != "deepseek":
         if explicit and args.cap is not None:
             p.error(f"--cap is USD and DeepSeek's only; with --provider {explicit}, --limit N caps the calls")
         if args.limit is not None and args.limit < 1:
             p.error("--limit N needs N >= 1: the most calls this run makes")
-    if grok_on:
-        if args.status or args.cutover or not (args.run or args.name_themes or args.rebuild_themes
-                                               or args.grok_ping):
-            p.error("--provider grok goes with --run, --name-themes or --rebuild-themes --name")
-        if args.rebuild_themes and not args.name:
-            p.error("--provider grok names themes: add --name to --rebuild-themes")
-        if args.limit is not None and not args.run:
-            p.error("--limit caps the SuperGrok calls of --run only; theme naming has no call cap")
     chosen = _selection(args)
     if chosen == []:      # an empty list must never fall back to a default selection downstream
         p.error("--floor / --tickers selected no names")
@@ -269,14 +207,7 @@ def main(argv: list[str] | None = None) -> int:
         p.error("--build-only writes the shadow run only: --name and --adopt-medium-from belong to "
                 "--name-themes / --cutover")
 
-    if grok_on or args.grok_ping:
-        print(f"Grok (SuperGrok subscription, model {run_model or grok.MODEL}): no off-peak gate; the allowance is "
-              f"read before each batch of {grok.GATE_EVERY} calls.")
-    elif run_writer == "claude":
-        print(f"Claude (subscription via headless Claude Code, model {run_model or claude_code.MODEL}): no API key; "
-              f"stops at {subscription_usage.claude_weekly_cap():.0f}% of the weekly window, read every "
-              f"{claude_code.GATE_EVERY} calls.")
-    elif run_writer == "evren":
+    if run_writer == "evren":
         print(f"EVREN (model {run_model or evren.MODEL}): no fee, no off-peak gate, no call cap"
               + (f" beyond --limit {args.limit}." if args.limit else "."))
     else:
@@ -284,42 +215,17 @@ def main(argv: list[str] | None = None) -> int:
         if not offpeak.is_off_peak() and deepseek.peak_override_active():
             print("Peak override ON (set from the Hermes usage card) — DeepSeek calls "
                   "will run at the 2x peak rate until this window ends.")
-    if args.grok_ping:
-        return _grok_ping()
     if args.status:
-        print("last run:", json.dumps(_last_run(), ensure_ascii=False))
-        # Claude / Grok bill by allowance, not by time of day: one line each when
-        # a login is present. Read failures are swallowed inside check().
-        for _provider, line in subscription_usage.check():
-            print(line)
         return 0
-
-    # Theme naming through Grok (#108 S1 with #388): the same naming, SuperGrok's client.
-    name_kw = {"complete": grok.complete} if grok_on else {}
-    if grok_on:
-        # The login and the allowance before any write, SEC request or theme rebuild (review B M1).
-        try:
-            grok.preflight()
-        except grok.GrokAuthError as exc:
-            print(json.dumps({"provider": "grok", "model": grok.MODEL, "calls": 0, "cost_usd": 0.0,
-                              "stopped_reason": "auth", "error": str(exc)}, ensure_ascii=False))
-            return 1
-        except grok.GrokAllowanceError as exc:
-            out = {"provider": "grok", "model": grok.MODEL, "calls": 0, "cost_usd": 0.0,
-                   "stopped_reason": "allowance", "error": str(exc)}
-            if exc.next_reset is not None:
-                out["next_reset"] = exc.next_reset.strftime("%Y-%m-%d %H:%M")
-            print(json.dumps(out, ensure_ascii=False))
-            return 0
 
     if args.name_themes:
         from . import naming
         try:
-            named = naming.name_themes(args.run_id, **name_kw)
-        except _GROK_FAILURES as exc:
+            named = naming.name_themes(args.run_id)
+        except deepseek.DeepSeekAuthError as exc:
             print(json.dumps({"error": str(exc)}, ensure_ascii=False))
             return 1
-        print(_summary(**({"provider": "grok", **named} if grok_on else named)))
+        print(_summary(**named))
         return 0
 
     if args.cutover:
@@ -376,11 +282,9 @@ def main(argv: list[str] | None = None) -> int:
                        fines_reparented=cut.get("fines_reparented"),
                        dropped_mediums=cut.get("dropped_mediums"))
         if args.name:
-            if grok_on:
-                out["provider"] = "grok"
             try:
-                out.update(naming.name_themes(run_id, **name_kw))
-            except _GROK_FAILURES as exc:
+                out.update(naming.name_themes(run_id))
+            except deepseek.DeepSeekAuthError as exc:
                 out["error"] = str(exc)
                 print(_summary(**out))
                 return 1
@@ -389,7 +293,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if not args.run:
         print("use --run [--limit N] [--cap USD], --status, --name-themes, "
-              "--rebuild-themes, --cutover, or --grok-ping / --provider grok")
+              "--rebuild-themes or --cutover")
         return 0
 
     absent = writers.missing_text(run_writer) if run_writer == "evren" else None

@@ -101,30 +101,10 @@ def test_a_deadline_needs_a_runner_that_can_stop_early(sync_jobs):
         jobs.submit("t_dead_fixed2", deadline_s=60)
 
 
-def test_the_deadline_is_stored_in_job_runs(sync_jobs):
-    jobs.register("t_dead_row", _stuck(), [], requires_uw=False, deadline_s=0.05, cancellable=True)
-    jid = jobs.submit("t_dead_row")
-    jobs.execute(jid)
-    row = rawstore.query("SELECT status, error FROM job_runs WHERE run_id = ?", [jid])[0]
-    assert row["status"] == "error" and "deadline" in row["error"]
 
 
 # ── cancel of a running job ───────────────────────────────────────────────────
 
-def test_cancel_of_a_running_job_stops_it_at_the_next_boundary(long_lane):
-    started, after = threading.Event(), []
-    jobs.register("t_cancel_run", _stuck(started, after), [], requires_uw=False, lane="long", cancellable=True)
-    jid = jobs.submit("t_cancel_run")
-    assert started.wait(5)
-    assert jobs.get(jid)["status"] == "running"
-    assert jobs.cancel(jid) is True
-    assert jobs.get(jid)["cancel_requested"] is True
-    job = _wait(jid, ("done", "error", "cancelled"))
-    assert job["status"] == "cancelled", job
-    assert "Stuck phase" in (job["message"] or "")
-    assert after == []
-    row = rawstore.query("SELECT status FROM job_runs WHERE run_id = ?", [jid])[0]
-    assert row["status"] == "cancelled"
 
 
 def test_the_next_queued_long_job_starts_after_a_cancel(long_lane):
@@ -178,11 +158,10 @@ _DASHBOARD_JOBS = set(jobs._RUNNERS)
 
 
 def test_dashboard_marks_the_checkpointed_jobs_cancellable():
-    assert _DASHBOARD_CANCELLABLE == {
-        "universe", "module_asymmetric_growth", "swing", "module_fundamentals",
-        "module_sec_13f", "edgar_sync", "identity", "daily_bars", "spxgamma_history",
+    assert _DASHBOARD_CANCELLABLE == {          # universe, edgar_sync, identity and daily_bars went with #860
+        "module_asymmetric_growth", "swing", "module_fundamentals", "module_sec_13f", "spxgamma_history",
     }
-    assert {"module_sec_13f", "edgar_sync", "identity", "daily_bars"} <= _DASHBOARD_JOBS
+    assert {"module_sec_13f"} <= _DASHBOARD_JOBS
     assert "holdings" not in _DASHBOARD_JOBS                     # the holdings job is gone (#642 PR 5)
 
 
@@ -218,43 +197,9 @@ def test_a_queued_job_that_cannot_stop_early_can_still_be_cancelled(sync_jobs):
 
 # ── the universe job: phase boundaries and the freeze ─────────────────────────
 
-def _universe_job(monkeypatch, ag_freeze_hook):
-    from RevenueChaser.module_asymmetric_growth import freeze as ag_freeze
-    real = ag_freeze.freeze_result
-
-    def freeze_then(result, **kw):
-        real(result, **kw)
-        ag_freeze_hook()
-    monkeypatch.setattr(ag_freeze, "freeze_result", freeze_then)
-    jobs.register("t_universe_243", runners.run_universe_refresh, [], requires_uw=False, lane="long",
-                  cancellable=True)
-    return jobs.submit("t_universe_243")
 
 
-def test_a_cancel_between_ag_and_swing_stops_before_swing_and_any_later_freeze(sync_jobs, order, freezers,
-                                                                               monkeypatch):
-    jid = _universe_job(monkeypatch, lambda: job_control.current().cancel())
-    jobs.execute(jid)
-    job = jobs.get(jid)
-    assert job["status"] == "cancelled", job
-    assert "ag.freeze" in order
-    assert not [c for c in order if c.startswith(("swing.", "fund."))], order
-    assert set(freezers) == {"ag"}
-    assert "Swing" in job["message"]
 
 
-def test_a_deadline_between_ag_and_swing_stops_before_swing(sync_jobs, order, freezers, monkeypatch):
-    # The deadline passes at the end of AG, whatever the machine's speed (a fixed 0.05 s raced a loaded runner).
-    jid = _universe_job(monkeypatch, lambda: setattr(job_control.current(), "deadline_s", 0.0))
-    jobs.execute(jid)
-    job = jobs.get(jid)
-    assert job["status"] == "error", job
-    assert "deadline" in job["error"] and "Swing" in job["error"]
-    assert not [c for c in order if c.startswith(("swing.", "fund."))], order
 
 
-def test_a_universe_job_without_a_stop_still_runs_all_three(sync_jobs, order, freezers, monkeypatch):
-    jid = _universe_job(monkeypatch, lambda: None)
-    jobs.execute(jid)
-    assert jobs.get(jid)["status"] == "done"
-    assert set(freezers) == {"ag", "swing", "fund"}

@@ -17,7 +17,7 @@ import re
 from collections import Counter
 
 from RevenueChaser.core import rawstore
-from RevenueChaser.core.providers import deepseek, grok
+from RevenueChaser.core.providers import deepseek
 
 from . import themes as themes_mod
 
@@ -173,12 +173,9 @@ def name_themes(run_id: str | None = None, *, complete=None,
                 max_tokens: int = MAX_TOKENS, force: bool = False) -> dict:
     """Name every still-unlabeled theme in a run, bottom-up (fine->medium->coarse).
 
-    ``complete`` is injectable (defaults to ``deepseek.complete``; the CLI's
-    ``--provider grok`` passes ``grok.complete``, #388). At peak the
+    ``complete`` is injectable (defaults to ``deepseek.complete``). At peak the
     first call raises ``PeakHoursError``; already-written names are kept and the
-    result reports the pending count and the next off-peak time. A spent SuperGrok
-    allowance stops the same way and reports ``stopped_reason`` ``allowance`` and
-    ``next_reset``. Idempotent:
+    result reports the pending count and the next off-peak time. Idempotent:
     themes whose label already looks human (no comma) are skipped unless
     ``force``. Labels of every level are copied onto ``ticker_themes.theme``.
     ``named`` counts every name this run wrote; ``copied`` is the part of it that
@@ -188,8 +185,6 @@ def name_themes(run_id: str | None = None, *, complete=None,
     if not run_id:
         return {"run_id": None, "named": 0, "copied": 0, "pending": 0, "next_off_peak": None}
     caller = complete or deepseek.complete
-    # A Grok reply that names nothing is not cached, so the next run asks again (review B S3); DeepSeek's stays as is.
-    vkw = {"validate": lambda c: bool(_parse_name(c))} if caller is grok.complete else {}
 
     rows = _run_themes(run_id)
     if not rows:
@@ -213,7 +208,6 @@ def name_themes(run_id: str | None = None, *, complete=None,
                              str(r.get("theme_id"))))
 
     named, copied, next_off_peak, error = 0, 0, None, None
-    allowance = None                      # a SuperGrok allowance stop (#388): the reset time, or "" when unknown
     for row in todo:
         tid, level = row["theme_id"], row.get("level") or "fine"
         fines = _descendant_fines(tid, level, parent, fine_ids)
@@ -237,36 +231,30 @@ def name_themes(run_id: str | None = None, *, complete=None,
                            _child_labels(tid, rows))
         try:
             raw = caller(SYSTEM, user, thinking=True, reasoning_effort="low",
-                         json_mode=True, max_tokens=max_tokens, **vkw)
+                         json_mode=True, max_tokens=max_tokens)
         except deepseek.PeakHoursError as exc:
             next_off_peak = exc.next_off_peak.strftime("%Y-%m-%d %H:%M")
             break
-        except grok.GrokAllowanceError as exc:
-            allowance = exc.next_reset.strftime("%Y-%m-%d %H:%M") if exc.next_reset else ""
-            break
-        except (deepseek.DeepSeekTransientError, grok.GrokTransientError) as exc:
+        except deepseek.DeepSeekTransientError as exc:
             error = str(exc)              # the service is down: stop, keep what we have
             break
-        except (deepseek.DeepSeekAuthError, grok.GrokAuthError, grok.GrokRequestError):
-            raise                         # a bad key (or a wrong Grok endpoint/model) fails every call: write nothing
-        except (deepseek.DeepSeekError, grok.GrokError):
+        except deepseek.DeepSeekAuthError:
+            raise                         # a bad key fails every call: write nothing
+        except deepseek.DeepSeekError:
             # thinking-low sometimes spends the whole budget on reasoning and
             # returns empty content. Retry once without thinking.
             try:
                 raw = caller(SYSTEM, user, thinking=False, json_mode=True,
-                             max_tokens=min(1500, max_tokens), **vkw)
+                             max_tokens=min(1500, max_tokens))
             except deepseek.PeakHoursError as exc:
                 next_off_peak = exc.next_off_peak.strftime("%Y-%m-%d %H:%M")
                 break
-            except grok.GrokAllowanceError as exc:
-                allowance = exc.next_reset.strftime("%Y-%m-%d %H:%M") if exc.next_reset else ""
-                break
-            except (deepseek.DeepSeekTransientError, grok.GrokTransientError) as exc:
+            except deepseek.DeepSeekTransientError as exc:
                 error = str(exc)
                 break
-            except (deepseek.DeepSeekAuthError, grok.GrokAuthError, grok.GrokRequestError):
+            except deepseek.DeepSeekAuthError:
                 raise
-            except (deepseek.DeepSeekError, grok.GrokError):
+            except deepseek.DeepSeekError:
                 raw = ""
         base = _parse_name(raw)
         if not base:
@@ -283,9 +271,6 @@ def name_themes(run_id: str | None = None, *, complete=None,
     _sync_ticker_themes(run_id, rows)
     out = {"run_id": run_id, "named": named, "copied": copied, "pending": len(todo) - named,
            "next_off_peak": next_off_peak}
-    if allowance is not None:
-        out["stopped_reason"] = "allowance"
-        out["next_reset"] = allowance or None
     if error:
         out["error"] = error
     return out

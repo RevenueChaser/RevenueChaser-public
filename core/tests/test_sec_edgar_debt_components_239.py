@@ -11,7 +11,6 @@ import json
 
 import pytest
 
-from RevenueChaser.core import edgar_bulk
 from RevenueChaser.core.providers import sec_edgar as se
 
 _ENDS = {"annual": ("2022-12-31", "2023-12-31"), "quarterly": ("2023-03-31", "2023-06-30")}
@@ -35,6 +34,23 @@ FIELD_TAGS = [
     ("finance_lease_current", "FinanceLeaseLiabilityCurrent"),
     ("operating_lease_noncurrent", "OperatingLeaseLiabilityNoncurrent"),
     ("operating_lease_current", "OperatingLeaseLiabilityCurrent"),
+    # #737: the fallback balances. Collected the same way, and ``total_debt`` here (the old extraction's
+    # ``lt_debt + lt_debt_current``) still does not read them, so the tests below cover them unchanged.
+    ("convertible_debt", "ConvertibleDebt"),
+    ("convertible_notes_payable", "ConvertibleNotesPayable"),
+    ("senior_notes", "SeniorNotes"),
+    ("secured_debt", "SecuredDebt"),
+    ("notes_payable", "NotesPayable"),
+    ("other_lt_debt", "OtherLongTermDebt"),
+    ("senior_notes_noncurrent", "SeniorLongTermNotes"),
+    ("loans_payable_noncurrent", "LongTermLoansPayable"),
+    ("secured_debt_noncurrent", "SecuredLongTermDebt"),
+    ("bank_loans_noncurrent", "LongTermLoansFromBank"),
+    ("other_lt_debt_noncurrent", "OtherLongTermDebtNoncurrent"),
+    ("line_of_credit_current", "LinesOfCreditCurrent"),
+    ("loans_payable_current", "LoansPayableCurrent"),
+    ("senior_notes_current", "SeniorNotesCurrent"),
+    ("short_term_bank_loans", "ShortTermBankLoansAndNotesPayable"),
 ]
 DEBT_FIELDS = sorted({field for field, _ in FIELD_TAGS})
 NEW_TAGS = [tag for _, tag in FIELD_TAGS]
@@ -171,10 +187,6 @@ def test_a_period_with_only_debt_component_facts_adds_no_record(kind, ends, tag)
     old, new = ends
     facts = _facts(kind, Assets={old: 1000.0}, **{tag: {new: 7.0}})
     assert set(_recs(kind, facts)) == {_key(kind, old)}
-
-
-def test_every_new_tag_is_in_the_bulk_concepts():
-    assert [t for t in NEW_TAGS if t not in edgar_bulk.USED_CONCEPTS] == []
 
 
 # ── annual period_ends ──────────────────────────────────────────────────────

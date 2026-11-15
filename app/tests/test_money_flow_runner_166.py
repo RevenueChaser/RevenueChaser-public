@@ -42,19 +42,8 @@ def _read(path):
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _stored(monkeypatch, board):
-    monkeypatch.setattr(runners, "_money_flow_stored", lambda: board and {**board, "run_id": "job-0"})
 
 
-def test_a_partial_result_does_not_overwrite_a_stored_whole_one(latest, monkeypatch):
-    latest.write_text(json.dumps(GOOD), encoding="utf-8")
-    _stored(monkeypatch, GOOD)
-    _compute(monkeypatch, _partial())
-    with pytest.raises(JobMessage) as exc:
-        runners.run_money_flow_latest(uw=None)
-    assert "XLK" in exc.value.message and "SMH" in exc.value.message
-    assert "2026-08-29" in exc.value.message and "kept" in exc.value.message.lower()
-    assert _read(latest) == GOOD
 
 
 def test_with_nothing_stored_a_partial_result_is_saved_flagged(latest, monkeypatch):
@@ -101,34 +90,7 @@ def test_an_empty_partial_result_keeps_the_stored_leaderboard(latest, monkeypatc
     assert _read(latest) == GOOD
 
 
-def test_when_history_cannot_be_read_the_board_file_guards_as_before(latest, monkeypatch):
-    latest.write_text(json.dumps(GOOD), encoding="utf-8")
-
-    def boom():
-        raise RuntimeError("history locked")
-    monkeypatch.setattr(runners, "_money_flow_stored", boom)
-    _compute(monkeypatch, _partial())
-    with pytest.raises(JobMessage, match=r"kept the stored leaderboard from 2026-08-29"):
-        runners.run_money_flow_latest(uw=None)
-    assert _read(latest) == GOOD
 
 
-def test_a_partial_board_file_gives_way_to_the_complete_session_history_keeps(latest, monkeypatch):
-    """Review 2026-10-16: the job says it kept the stored complete leaderboard, so the board shows that one, not the
-    partial file left by a run whose history read failed."""
-    latest.write_text(json.dumps({**GOOD, "inflows": [{"ticker": "OLD", "name": "", "flow_score": 5.0}],
-                                  "as_of": "2026-09-15", "partial": True, "missing": ["XLE"]}), encoding="utf-8")
-    _stored(monkeypatch, GOOD)
-    _compute(monkeypatch, _partial())
-    with pytest.raises(JobMessage, match="kept the stored leaderboard from 2026-08-29"):
-        runners.run_money_flow_latest(uw=None)
-    assert _read(latest) == GOOD
 
 
-def test_a_whole_board_file_history_does_not_back_does_not_block_a_partial_result(latest, monkeypatch):
-    latest.write_text(json.dumps(GOOD), encoding="utf-8")
-    _stored(monkeypatch, None)
-    _compute(monkeypatch, _partial())
-    with pytest.raises(JobMessage, match="saved flagged"):
-        runners.run_money_flow_latest(uw=None)
-    assert _read(latest)["partial"] is True

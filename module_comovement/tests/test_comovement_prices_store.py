@@ -28,26 +28,8 @@ def _walk(idx, seed: int) -> pd.Series:
     return pd.Series(100 * np.exp(np.cumsum(rng.normal(0, 0.01, len(idx)))), index=idx)
 
 
-def _old_d01(ticker: str, idx) -> None:
-    """Bars in the OLD store's ``price_bars_daily`` (D01), which the board must no longer read."""
-    rawstore.write_rows("price_bars_daily", [{
-        "ticker": ticker, "session_date": d.date(), "open": 1.0, "high": 1.0, "low": 1.0, "close": 1.0,
-        "adj_close": None, "volume": 1.0, "split_ratio": None, "adj_source": None, "source": "uw", "fetched_at": 1.0,
-        "run_id": "old", "run_at": 1.0} for d in idx])
 
 
-def test_price_frame_is_the_prices_store_total_return_close(rawstore_tmp_db):
-    idx = pd.bdate_range("2026-06-01", periods=30)
-    s = _walk(idx, 1)
-    prices_store.put_bars(_rows("AAA", s) + _rows("SPY", _walk(idx, 2)))
-    prices_store.put_action("AAA", idx[20].date(), "dividend", 2.0)
-    _old_d01("ZZZ", idx)
-    frame = ohlc.price_frame(["AAA", "SPY", "ZZZ"])
-    assert list(frame.columns) == ["AAA", "SPY"]                          # ZZZ is only in the old D01
-    factor = 1 - 2.0 / s.iloc[19]
-    assert frame["AAA"].iloc[0] == pytest.approx(s.iloc[0] * factor)      # the dividend adjusts the older closes
-    assert frame["AAA"].iloc[-1] == pytest.approx(s.iloc[-1])
-    assert frame.index.name == "ts" and isinstance(frame.index, pd.DatetimeIndex)
 
 
 def test_a_renamed_name_keeps_its_bars_from_before_the_rename(rawstore_tmp_db):
@@ -60,23 +42,8 @@ def test_a_renamed_name_keeps_its_bars_from_before_the_rename(rawstore_tmp_db):
     assert ohlc.history_facts(["NEWN"])["first"] == {"NEWN": idx[0].strftime("%Y-%m-%d")}
 
 
-def test_the_span_is_two_years_back_from_the_stores_newest_session(rawstore_tmp_db):
-    idx = pd.bdate_range("2023-01-03", "2026-06-30")
-    prices_store.put_bars(_rows("AAA", _walk(idx, 4)))
-    _old_d01("AAA", pd.bdate_range("2026-07-01", periods=5))              # a newer old-store bar moves nothing
-    assert ohlc.history_start() == date(2024, 6, 30)
-    frame = ohlc.price_frame(["AAA"])
-    assert frame.index[-1] == pd.Timestamp("2026-06-30") and frame.index[0] >= pd.Timestamp("2024-06-30")
-    assert ohlc.window_start(["AAA"], 5) == idx[-5].strftime("%Y-%m-%d")
-    assert ohlc.sessions_held("AAA") == len(frame)
 
 
-def test_fetch_bulk_counts_the_prices_store(rawstore_tmp_db):
-    idx = pd.bdate_range("2026-06-01", periods=10)
-    prices_store.put_bars(_rows("AAA", _walk(idx, 5)) + _rows("SPY", _walk(idx, 6)))
-    _old_d01("BBB", idx)
-    assert ohlc.fetch_bulk(["AAA", "BBB"]) == {"requested": 5, "cached": 2, "pending": 3, "fetched": 0,
-                                               "failed": 0, "no_fetch": False}
 
 
 def test_a_split_name_is_no_flat_candidate_when_its_closes_move(rawstore_tmp_db):

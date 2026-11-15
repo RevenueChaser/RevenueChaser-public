@@ -32,7 +32,7 @@ from pathlib import Path
 import duckdb
 
 from ....core import calendar
-from .. import base
+from .. import base, cik_history
 from .. import dirty as dirty_set
 from . import KIND, common, facts, sec_index
 
@@ -59,6 +59,16 @@ def _raws(cik: str) -> list[Path]:
 def _newest_read(cik: str) -> date | None:
     raws = _raws(cik)
     return date.fromisoformat(raws[-1].name.split(".", 1)[0]) if raws else None
+
+
+def _untyped(cik: str) -> Path | None:
+    """The newest raw of ``cik`` when its Parquet was not typed from it: missing, or written before the raw."""
+    raws = _raws(cik)
+    if not raws:
+        return None
+    part = common.parquet_dir(NAME) / f"cik={cik}" / "company.parquet"
+    # shortcut: mtime order, not the as-of in company.parquet; a restore that bumps mtimes only retypes (no request).
+    return raws[-1] if not part.exists() or part.stat().st_mtime < raws[-1].stat().st_mtime else None
 
 
 def _absent_since(cik: str) -> date | None:
@@ -107,7 +117,26 @@ def read_company(ctx: base.RunContext, cik: str, as_of: date, wanted: set[str] =
     return base.write_raw_json(raw, body)
 
 
+def _with_predecessors(ctx: base.RunContext, rows: list[dict], companies: list[str]) -> list[str]:
+    """``companies`` and the CIKs they used to file under (#749), in number order.
+
+    A company that reorganised or redomiciled keeps its older statements under the predecessor's CIK, and the SEC
+    serves them only there: asked for as a company of its own, the file is read once like any new company's, and
+    ``tables._facts`` serves its older periods under the successor. The pairs and their source:
+    ``build/cik_history.py``.
+    """
+    pairs = common.predecessor_ciks(rows)
+    extra = sorted({c for pres in pairs.values() for c in pres} - set(companies), key=int)
+    if extra:
+        ctx.notes.append(f"{len(extra)} predecessor CIK(s) of {len(pairs)} company(ies) read as well "
+                         f"({cik_history.SEED_SOURCE})")
+    return sorted(set(companies) | set(extra), key=int)
+
+
 class CompanyFacts:
+    #: #812: a run reached 6.4-6.8 GB resident on homesrv (12 Nov 2026) and two global OOM kills hit the pass
+    #: that ran it beside another heavy dataset. One heavy dataset per batch and per builder process.
+    heavy = True
     name = NAME
     kind = KIND
     providers = (common.SEC,)
@@ -120,10 +149,12 @@ class CompanyFacts:
         return calendar.today_ny()
 
     def fetch(self, ctx: base.RunContext, as_of: date) -> list[Path]:
-        companies = common.ciks(common.universe())
+        rows = common.universe()
+        companies = common.ciks(rows)
         if not companies:
             ctx.notes.append("no Tier A companies yet (no spine file)")
             return []
+        companies = _with_predecessors(ctx, rows, companies)
         tier_a = set(companies)
         wanted: dict[str, set[str]] = {}
         days = sec_index.lookback(ctx, NAME, as_of, lambda: min(filter(None, map(_newest_read, companies)),
@@ -144,8 +175,13 @@ class CompanyFacts:
             raw = read_company(ctx, cik, as_of)
             if raw is not None:
                 out.append(raw)
+        # A raw file is the resume marker, so a re-read a stopped or raw-only run left untyped is neither due nor
+        # new again: type it here, with no request (#659).
+        untyped = [r for c in companies if c not in due and (r := _untyped(c)) and r not in out]
+        out += untyped
         ctx.notes.append(f"{len(due)} companies filed a statement, {min(len(new), NEW_PER_RUN)} new companies read"
-                         + (f", {len(new) - NEW_PER_RUN} new left for the next run" if len(new) > NEW_PER_RUN else ""))
+                         + (f", {len(new) - NEW_PER_RUN} new left for the next run" if len(new) > NEW_PER_RUN else "")
+                         + (f", {len(untyped)} read earlier typed now" if untyped else ""))
         if pending:
             ctx.notes.append(f"{len(pending)} accession(s) not in the XBRL API yet, asked again next run: "
                              + ", ".join(pending[:5]))
@@ -159,8 +195,9 @@ class CompanyFacts:
 
     def backfill(self, ctx: base.RunContext, start: date | None, end: date) -> None:
         # The facts answer holds a company's whole history: a backfill reads every company not read yet.
+        rows = common.universe()
         out, read = [], 0
-        for cik in common.ciks(common.universe()):
+        for cik in _with_predecessors(ctx, rows, common.ciks(rows)):
             held = _raws(cik)
             if held:
                 # Typed again from raw, with no request: a change of the extraction rules (#271) reaches a company
@@ -187,27 +224,43 @@ class CompanyFacts:
                 newest[cik] = raw
         out = []
         dropped = 0
+        failed = []
         for cik, raw in sorted(newest.items()):
-            meta = base.read_raw_json(common.meta_path(raw))
-            rows, company, counts = facts.fact_rows(base.read_raw_json(raw), cik)
-            dropped += counts.get("no_provenance", 0)
-            stamps = {"preliminary": False, "source": facts.SOURCE, "source_as_of": date.fromisoformat(meta["as_of"]),
-                      "fetched_at": float(meta["fetched_at"]), "run_id": meta["run_id"]}
-            folder = common.parquet_dir(NAME) / f"cik={cik}"
-            con = duckdb.connect()
             try:
-                base.rows_table(con, "rows", facts.FACT, [{**r, **stamps} for r in rows])
-                out.append(base.write_parquet(con, "SELECT * FROM rows ORDER BY field, period_type, period_end",
-                                              folder / "part-0.parquet"))
-                base.rows_table(con, "company", facts.COMPANY, [{
-                    **company, "facts_as_of": stamps["source_as_of"], "fetched_at": stamps["fetched_at"],
-                    "run_id": stamps["run_id"]}])
-                out.append(base.write_parquet(con, "SELECT * FROM company", folder / "company.parquet"))
-            finally:
-                con.close()
+                dropped += self._type_company(cik, raw, out)
+            except Exception as e:  # noqa: BLE001 - one company's unreadable raw must not stop the others
+                # A raw the typing cannot read (a truncated or half-written file, a shape the rules refuse) is
+                # returned by ``_untyped`` every run: without this guard that one company would stop every later
+                # cik of every run. It is counted, recorded and the run goes on.
+                failed.append(cik)
+                ctx.issue("type_failed", cik, f"{raw.name}: {type(e).__name__}: {e}"[:400])
         if dropped:
             ctx.notes.append(f"{dropped} value(s) without an accession left out")
+        if failed:
+            ctx.notes.append(f"{len(failed)} company(ies) not typed from their raw: " + ", ".join(failed[:5]))
         return out
+
+    @staticmethod
+    def _type_company(cik: str, raw: Path, out: list[Path]) -> int:
+        """Write one company's two Parquet files from ``raw``; the number of values without an accession."""
+        meta = base.read_raw_json(common.meta_path(raw))
+        rows, company, counts = facts.fact_rows(base.read_raw_json(raw), cik)
+        stamps = {"preliminary": False, "source": facts.SOURCE, "source_as_of": date.fromisoformat(meta["as_of"]),
+                  "fetched_at": float(meta["fetched_at"]), "run_id": meta["run_id"]}
+        folder = common.parquet_dir(NAME) / f"cik={cik}"
+        con = duckdb.connect()
+        try:
+            base.rows_table(con, "rows", facts.FACT, [{**r, **stamps} for r in rows])
+            written = [base.write_parquet(con, "SELECT * FROM rows ORDER BY field, period_type, period_end",
+                                          folder / "part-0.parquet")]
+            base.rows_table(con, "company", facts.COMPANY, [{
+                **company, "facts_as_of": stamps["source_as_of"], "fetched_at": stamps["fetched_at"],
+                "run_id": stamps["run_id"]}])
+            written.append(base.write_parquet(con, "SELECT * FROM company", folder / "company.parquet"))
+        finally:
+            con.close()
+        out.extend(written)
+        return counts.get("no_provenance", 0)
 
     def build(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> dict[str, int]:
         folder = common.parquet_dir(NAME)

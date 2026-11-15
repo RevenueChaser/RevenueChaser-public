@@ -159,7 +159,7 @@ hash. The pure logic is `RCFilters.core`, unit-tested under node (`core/tests/te
 | Financials | yes | Filters only pick the name, they do not slice statements. |
 | Sector Rotation | **no** stock bar | ETF RRG. Reuse the Theme widgets only to focus mapped ETF dots (`relatedness_theme_etfs` at the selected level). |
 | SPX Gamma, UW Interaction | **no** | Date-only / non-equity. |
-| Settings / Data health | **no** | Ops inventory, not an equity board; its Ticker lookup uses the kit's combobox (C1b). Plan: [`data_health.md`](data_health.md). |
+| Settings | **no** | Ops inventory, not an equity board; its Ticker lookup uses the kit's combobox (C1b). Plan: [`data_health.md`](data_health.md). |
 | Logs | **no** | The dashboard's own log files (`app/logview.py`), read-only: no Fetch, no Refresh, no data date. |
 | Runs | **no** | The run log over `job_runs` (`app/runview.py`), read-only: no Fetch, no Refresh, no data date. One row per job and per scheduled task, newest first, with the trigger as stored (a dash only on rows from before #83; a `running` row the server lost is closed as `lost`, #82). **Problems only** and the name box filter in SQL, not in the page, so the count beneath the table is of the matching runs in the table and not of the page that was read; the line says so when a read hits its limit. **Show** picks the newest 200 or the newest 1000 (`runview.DEFAULT_LIMIT` / `MAX_LIMIT`). On a phone (under 640 px) each run is a card, one cell per line, and the controls are 44 px; it is dark unless the shell's Theme choice is Light, or Auto on a light device. |
 
@@ -182,6 +182,17 @@ choice never flashes dark. The shell copies the choice onto
 each board iframe as `data-theme` on its `<html>`; a board follows it once it uses the shared tokens (one PR
 per board); the Runs tab does with the #131 pull request.
 
+Colour is only half of it. `THEME_SCALE` holds what does not change with the scheme. Theme D (#761, avo 12 Nov
+2026) names it `--fs-*` (11 / 12.5 / 14 / 16 / 20 / 26 px, Inter), `--sp-1`..`--sp-7`, `--r-sm` / `--r-md` / `--r-lg`
+and `--elev-1` / `--elev-2`; use those. The #764 names below stay as aliases of them. #764's set is written into
+the base `:root`: the space ladder `--s1`..`--s8` (4 → 64 px), `--r-sm` / `--r-md` / `--r-pill`, the type steps
+`--f-xs`..`--f-xl` with `--w-reg` / `--w-bold`, `--e-flat` and `--e-float` for elevation, `--focus`, `--motion`
+(0 ms under `prefers-reduced-motion`) and `--tap` (44 px). It also holds `--c1`..`--c6`, the categorical chart
+ramp: a **fixed order, never cycled** — a seventh series is "other". The ramp was validated against both board
+surfaces for lightness, chroma, adjacent-pair colour-vision separation and contrast, and reordering it fails
+that check, so the order is a contract. A board takes these names instead of its own pixel values in the same
+PR where it takes the palette.
+
 ### What am I looking at? — every dashboard
 
 Shared `help_html(body)` under the title, closed by default, same `.help`
@@ -201,23 +212,27 @@ one-screen intro.
 - Treating Theme as a third sector select, or falling back to a hard-coded theme list.
 - A literal index list in a board or in the component: the registry owns it (`filters_meta`).
 - A Linear/Vercel visual clone — keep RevenueChaser tokens
-  (`--bg #05111F`, `--accent #0EA5E9`, `--neon`).
+  (`THEME_TOKENS` in `core/reporting_common.py`: warm neutrals, clay `--accent`).
 
 ---
 
-## 2c. The watch-list pair (PR 4)
+## 2c. The "add to list" button (PR 4; one menu since #786 step 5)
 
-Two 44 px toggles, **Opt** and **Stk**, next to a ticker: they put the name on the option watch list (what the
-options build covers besides SPX, D2) or the stock watch list (LEAPS, Earnings), or take it off. One shared snippet,
-`core/reporting_common.py`: `watch_buttons_html(ticker)` renders the pair on the server, `rcWatchButtons(ticker)` /
-`rcWatchRow(ticker)` (the pair on its own line, for a card) in a board's JS, and `watchlist_html(board)` mounts the
-CSS, the script and `rcWatchInit(board)` once per page. Which names are on the lists is read live
-(`GET /api/watchlists`) when the page loads, so a board rendered yesterday still shows today's lists. One
-capture-phase click handler reads `data-rc-watch` and `data-ticker` (never an interpolated value, ADR-X1), posts
-`/api/watchlist/<list>/toggle/<ticker>` with the board as `X-RC-Panel` (the row's `added_by`), and re-marks every
-pair of that ticker; a row or card that opens on click does not open when its pair is pressed. A ticker the
-dashboard's `_TICKER_RE` refuses gets no pair. Pressed is `aria-pressed="true"` in the sky token; a refused toggle
-leaves the state and says why in the button's title.
+One 44 px bookmark next to a ticker. Pressing it opens a menu of every watch list: avo's own named lists under
+**Your lists**, then the two the jobs read under **Read by the jobs** (*Stock picks*, which prices, LEAPS and
+Earnings take, and *Option chains*, which the options build takes). Each row is a checkbox with the list's size;
+a tick puts the ticker on that list and an untick takes it off (`POST /api/watchlists/<id>/tick/<ticker>`,
+`module_watchlists/menu.py`). The button shows how many lists hold the ticker and is tinted in the sky token when
+that is one or more. One shared snippet, `core/reporting_common.py`: `watch_buttons_html(ticker)` renders the
+button on the server, `rcWatchButtons(ticker)` / `rcWatchRow(ticker)` (the button on its own line, for a card) in a
+board's JS, and `watchlist_html(board)` mounts the CSS, the script and `rcWatchInit(board)` once per page. Which
+lists hold which names is read live (`GET /api/watchlists`) when the page loads. One capture-phase click handler
+reads `data-ticker` (never an interpolated value, ADR-X1) and posts with the board as `X-RC-Panel` (the row's
+`added_by`); a row or card that opens on click does not open when its button is pressed. A ticker the dashboard's
+`_TICKER_RE` refuses gets no button. The button is `aria-haspopup="menu"`, the rows are `menuitemcheckbox`, arrows
+move between them, Escape closes and returns focus to the button. With a mouse the menu drops under the button; on
+a phone (600 px and narrower) it is a bottom sheet with 44 px rows. A refused tick leaves the box as it was and says
+why under the list.
 
 Where each board puts it (`core/tests/test_watchlist_boards_pr4.py` classifies every board):
 
@@ -233,6 +248,7 @@ Where each board puts it (`core/tests/test_watchlist_boards_pr4.py` classifies e
 | Co-movement | The found name's line after a Find (each name is itself a chip button) |
 | Value Chain | The focal company's filing line |
 | Relatedness | The focal company in the panel title, and each peer row |
+| Watch lists | None (avo, 12 Nov 2026: "bu liste icin bookmark simgesine gerek yok"): a row of a named list is already on a list. #786 step 5 goes the other way — a menu on the other boards that puts a ticker on one of these lists |
 | SPX Gamma, UW Interaction, the Rotation trail, Settings, Logs, Runs | None: SPX is always built; a lab of raw columns; a chart of the funds the table already carries; the cards themselves; not data boards |
 
 ## 3. Theme cascade (coarse → medium → fine)
@@ -357,7 +373,7 @@ nested grouping). Count is `{n} names`.
 - [ ] Implied Probability uses in-board filters + combobox; no `#oipd-ticker` header box
 - [ ] Universal filters use the shared filter kit (`rc_filters`, `filters_bar_html` + `filters_meta`, `docs/dashboard_ui.md` §2b); no literal index list
 - [ ] Count string matches the grouping
-- [ ] Every ticker the board renders carries the watch-list pair (§2c), or the board is listed with a reason in
+- [ ] Every ticker the board renders carries the "add to list" button (§2c), or the board is listed with a reason in
   `core/tests/test_watchlist_boards_pr4.py`
 - [ ] Unit tests assert chrome; e2e if fetch/refresh/routes change
 - [x] Earnings Radar v2 and ER v2 Calibration are gone (no tab, route, job, package)
@@ -486,15 +502,9 @@ cluster  ● Coarse  ● Medium  ● Fine               at (n, benchmark)
   persistence line is replaced by `payload.oos_note`.
 - **Every number the board prints** (window, MIN_OBS, holdout) comes from
   `payload.settings`, never from `config`.
-- **"Custom settings" badge + Reset to defaults** appear in the board settings row (not
-  the top bar, section 6) only when a Settings override exists. Reset POSTs
-  `{reset: true}` (header `X-RC-Panel: board-settings`) to `/api/settings/board/module_comovement` and polls the job with the
-  shared `settingsJobVerdict` (`reporting_common.JOB_JS`).
-- **Settings → Board inputs → Co-movement** edits the default window, `MIN_OBS` and the
-  OOS holdout, with `WINSOR_K`, `MIN_PERIODS` and benchmark lag under a collapsed
-  "Fine tuning". Each field shows its allowed range; the server's 400 messages appear
-  next to the fields without a reload; a 202 shows Queued / Running and reloads when the
-  job is done.
+- **Settings → Board inputs → Co-movement** shows the default window, `MIN_OBS` and the OOS holdout, with
+  `WINSOR_K`, `MIN_PERIODS` and benchmark lag under a collapsed "Fine tuning", read-only at their config
+  defaults: the saved overrides, Save and Reset went with the old store (#860).
 
 ### Not this design
 

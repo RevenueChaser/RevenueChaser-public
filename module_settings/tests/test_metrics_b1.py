@@ -100,6 +100,20 @@ def test_a_provider_s_429_answers_today_are_exported():
     assert any(l.startswith('rc_provider_day_cap{provider="alphavantage"} ') for l in fam["rc_provider_day_cap"])
 
 
+def test_the_requests_answered_per_need_today_are_exported():
+    """#715 (avo, 12 Nov 2026): the Logs tab starts with daily counters. The read log keeps a day, a process and a
+    need, so the count is per need and day, every process together; a name that is not a need's is left out."""
+    for need, n in (("prices.daily", 3), ("fundamentals.income", 1), ('bad"name', 2)):
+        for _ in range(n):
+            ops.read_log.bump(f"need:{need}")
+    ops.read_log.bump("some_table")
+    ops.read_log.flush()
+    fam = _families(metrics.render(metrics.collect(datetime.now(timezone.utc), datasets=DS, timer={"state": "on"},
+                                                   ibkr=lambda: None)))
+    assert fam["rc_need_reads_today"] == ['rc_need_reads_today{need="fundamentals.income"} 1',
+                                          'rc_need_reads_today{need="prices.daily"} 3']
+
+
 def test_the_timer_unknown_leaves_its_family_empty_not_zero():
     assert _families(metrics.render(_collect(timer={"state": None})))["rc_builder_timer_on"] == []
     assert _families(metrics.render(_collect(timer={"state": "off"})))["rc_builder_timer_on"] == ["rc_builder_timer_on 0"]
@@ -259,28 +273,6 @@ def test_the_timer_is_read_in_the_background_at_most_once_a_minute():
     assert len(calls) == 2
 
 
-def test_the_route_serves_text_and_opens_no_store_session(client, monkeypatch):
-    """No store session, and no DuckDB connection of any kind: a scrape every minute must never take raw.duckdb's
-    lock (a session alone opens lazily, so the connect itself is what is refused here)."""
-    from RevenueChaser.core import rawstore
-    opened = []
-
-    def refuse(*a, **k):
-        opened.append(a)
-        raise AssertionError("the scrape opened the store")
-    monkeypatch.setattr(rawstore, "session", refuse)
-    monkeypatch.setattr(rawstore, "connect", refuse)
-    import duckdb
-    monkeypatch.setattr(duckdb, "connect", refuse)
-    monkeypatch.setattr(metrics.TIMER, "get", lambda wait=False: {"state": "on"})
-    r = client.get("/metrics")
-    assert r.status_code == 200
-    assert r.mimetype == "text/plain"
-    assert "version=0.0.4" in r.headers["Content-Type"]
-    assert "# TYPE rc_dataset_state gauge" in r.get_data(as_text=True)
-    assert opened == [], "a scrape must not open raw.duckdb"
-    assert 'rc_dataset_state{dataset="market_series"' in r.get_data(as_text=True), \
-        "the datasets were read with every DuckDB connect refused"
 
 
 def test_the_datasets_route_lists_names_kinds_attended_and_providers(client):
@@ -331,7 +323,7 @@ def test_the_detail_carries_badges_and_the_runs_in_the_pickers_range():
     assert rows["market_series"]["badges"] == [{"id": "fred", "name": "FRED", "icon": metrics.control.ICONS.get("fred", ""),
                                                 "color": metrics.control.SOURCE_COLORS[0], "paid": False}]
     from RevenueChaser.rcdata.needs import screen
-    assert {p for p, w in screen.PROVIDERS.items() if w.paid} == {"uw"}, "avo, 10 Nov 2026: the paid ones ringed red"
+    assert {p for p, w in screen.PROVIDERS.items() if w.paid} == {"uw", "deepseek"}, "avo, 10 Nov 2026: the paid ones ringed red"
     assert sorted(s for _, s in rows["market_series"]["history"]) == ["failed", "running"]
     before = {r["name"]: r for r in metrics.datasets_detail(NOW, datasets=DS, timer={}, span=(0, first),
                                                             providers=provs)}
@@ -354,6 +346,49 @@ def test_the_board_head_says_the_switches_the_timer_and_the_gateway(monkeypatch)
     assert head["gateway"] == {"cls": "ok", "n": "open", "label": "logged in", "login": None}
     monkeypatch.setenv("RC_IBKR_LOGIN_URL", "https://gateway.example/")
     assert metrics.board_head(NOW, ibkr=lambda: None)["gateway"]["login"] == "https://gateway.example/"
+
+
+def test_the_board_head_says_when_fetch_and_backup_were_last_done(monkeypatch):
+    """avo, 12 Nov 2026: "onlarin en son ne zaman oldugunu tam duzgun bir sekilde yaz" (the Grafana board's
+    Fetch & Build and Backup switches): the builder's newest run and the newest good backup step, on the page's
+    clock; not known is None, never a guess, and a read that raises does not take the head down."""
+    from RevenueChaser.module_settings import newdata
+    from RevenueChaser.rcdata import ops
+    assert metrics.board_head(NOW, ibkr=lambda: None)["last"] == {"fetch": None, "backup": None}
+    ran = datetime(2026, 11, 12, 22, 46, tzinfo=timezone.utc)
+    monkeypatch.setattr(ops, "last_builder_run", lambda: {"dataset": "prices/daily", "status": "ok",
+                                                          "started_at": ran.timestamp() - 60,
+                                                          "finished_at": ran.timestamp()})
+    monkeypatch.setattr(newdata, "_backups", lambda now: {"steps": [
+        {"step": "duckdb", "last_ok": "2026-11-08T02:10:00+00:00"}, {"step": "ops", "last_ok": None},
+        {"step": "boards", "last_ok": "2026-11-01T02:10:00+00:00"}]})
+    local = metrics.control._local
+    last = metrics.board_head(NOW, ibkr=lambda: None)["last"]
+    assert last["fetch"] == {"at": f"12 Nov {local(ran):%H:%M}", "dataset": "prices/daily", "status": "ok"}
+    assert last["backup"] == {"at": f"8 Nov {local(datetime(2026, 11, 8, 2, 10, tzinfo=timezone.utc)):%H:%M}"}
+    monkeypatch.setattr(ops, "last_builder_run", lambda: {"dataset": "a", "status": "running",
+                                                          "started_at": ran.timestamp(), "finished_at": None})
+    assert metrics.board_head(NOW, ibkr=lambda: None)["last"]["fetch"]["status"] == "running"
+
+    def boom(*a):
+        raise RuntimeError("store busy")
+    monkeypatch.setattr(ops, "last_builder_run", boom)
+    monkeypatch.setattr(newdata, "_backups", boom)
+    assert metrics.board_head(NOW, ibkr=lambda: None)["last"] == {"fetch": None, "backup": None}
+
+
+def test_the_page_keeps_no_row_for_the_grafana_link():
+    """avo, 12-13 Nov 2026: "Open in Grafana ... cok yer kapliyor ... window seçen, refresh rate'i seçen kısmın
+    yanına koyabilirsin". The link had a row above the frame, then one under it; it now rides inside the board as a
+    Grafana dashboard link, drawn in Grafana's own controls row beside the time picker (home-server #316). So the
+    page draws the frame and nothing else, and nothing is laid over a frame that scrolls inside itself."""
+    from RevenueChaser.module_settings import report
+    board = report._live_board("panel-health")
+    assert "livebar" not in board and "live-open" not in board
+    assert board.count("<iframe") == 1
+    for gone in ("livebar", "live-open", "position:absolute"):
+        assert gone not in report.LIVE_CSS
+    assert "live-open" not in report.LIVE_JS, "nothing left to give an address to"
 
 
 def test_the_board_head_carries_the_news_feeds_in_the_listener_s_words():
@@ -389,18 +424,26 @@ def test_datasets_list_marks_attended():
 
 
 def test_a_backup_kind_that_exists_in_two_steps_gets_two_distinct_series(monkeypatch):
-    """homesrv, 9 Nov 2026: ``prices`` is both a builder DuckDB kind (step duckdb) and a legacy board file (step
-    boards), so rc_backup_newest_timestamp_seconds{kind="prices"} was written twice and Prometheus kept one at
-    random. A repeated kind now carries its step in the label; a unique kind keeps its plain name."""
+    """homesrv, 9 Nov 2026: a name that is both a builder DuckDB kind (step duckdb) and a board file (step boards)
+    was written twice under one label and Prometheus kept one at random. Each series now carries its step as a
+    label of its own. avo, 12 Nov 2026: the old store's files (raw, edgar, history, prices in the boards step) are
+    not reported at all: "iliskisi kesilen eski database'ler"."""
     from RevenueChaser.module_settings import newdata
     rows = [{"kind": "prices", "step": "duckdb", "newest": "2026-11-08T03:30:00+00:00"},
             {"kind": "prices", "step": "boards", "newest": "2026-11-01T03:30:00+00:00"},
+            {"kind": "raw", "step": "boards", "newest": "2026-11-01T03:30:00+00:00"},
+            {"kind": "edgar", "step": "boards", "newest": "2026-11-01T03:30:00+00:00"},
+            {"kind": "history", "step": "boards", "newest": "2026-11-01T03:30:00+00:00"},
+            {"kind": "fundamentals", "step": "duckdb", "newest": "2026-11-08T03:30:00+00:00"},
+            {"kind": "fundamentals", "step": "boards", "newest": "2026-11-08T03:30:00+00:00"},
             {"kind": "market", "step": "duckdb", "newest": "2026-11-08T03:30:00+00:00"},
             {"kind": "ops", "step": "ops", "newest": None}]
     monkeypatch.setattr(newdata, "_backups", lambda now: {"kinds": rows})
     fam = _families(metrics.render(_collect()))["rc_backup_newest_timestamp_seconds"]
-    labels = sorted(re.search(r'\{kind="([^"]+)"\}', line).group(1) for line in fam)
-    assert labels == ["market", "prices (boards)", "prices (duckdb)"]
+    labels = sorted((re.search(r'kind="([^"]+)"', line).group(1), re.search(r'step="([^"]+)"', line).group(1))
+                    for line in fam)
+    assert labels == [("fundamentals", "boards"), ("fundamentals", "duckdb"), ("market", "duckdb"),
+                      ("prices", "duckdb")]
 
 
 def test_the_status_the_page_drew_as_cards_is_served_as_three_parts():
@@ -418,6 +461,27 @@ def test_the_status_the_page_drew_as_cards_is_served_as_three_parts():
     assert got["cross_check"]["fields"][0]["field"] == "prices"
     assert seen["used"] == {"uw": 7}, "the cross-check is told what each provider has used today"
     assert got["read_at"].startswith("2026-")
+
+
+def test_each_provider_of_the_status_names_the_served_files_it_feeds(monkeypatch):
+    """avo, 12 Nov 2026: "Bunu DuckDB'lerin lojistik sirasina gore ayir" (provider limits on the Grafana board):
+    from the dataset registry, no store read; a provider no dataset names feeds none."""
+    from RevenueChaser.module_settings import newdata
+    reg = {"a": SimpleNamespace(kind="spine", providers=("uw", "sec")),
+           "b": SimpleNamespace(kind="prices", providers=("uw",)), "c": SimpleNamespace(kind="market", providers=())}
+    monkeypatch.setattr(newdata, "_datasets", lambda: reg)
+    spend = {"providers": [{"provider": "uw", "today": 1}, {"provider": "sec", "today": 0},
+                           {"provider": "deepseek", "today": 2}]}
+    got = metrics.board_status(NOW, spend=lambda: spend, cross=lambda used: {}, boards=lambda: {})
+    assert [(p["provider"], p["files"]) for p in got["providers"]["providers"]] == [
+        ("uw", ["prices", "spine"]), ("sec", ["spine"]), ("deepseek", [])]
+
+    def boom():
+        raise RuntimeError("registry import failed")
+    monkeypatch.setattr(newdata, "_datasets", boom)
+    spend = {"providers": [{"provider": "uw", "today": 1}]}
+    got = metrics.board_status(NOW, spend=lambda: spend, cross=lambda used: {}, boards=lambda: {})
+    assert got["providers"]["providers"] == [{"provider": "uw", "today": 1}]
 
 
 def test_a_status_part_that_cannot_be_read_says_so_and_the_others_still_answer():
@@ -441,3 +505,23 @@ def test_the_status_route_answers_with_the_three_parts(client):
     assert body["ok"] is True and {"providers", "cross_check", "boards", "read_at"} <= set(body)
     uw = [p for p in body["providers"]["providers"] if p["provider"] == "uw"][0]
     assert uw["today"] == 4 and uw["http_429_today"] == 1
+
+
+def test_the_requests_route_answers_the_newest_rows_with_this_process_own_first(client):
+    """#715: the per-request log for the Grafana Logs board; a read made just now is there without waiting a minute."""
+    ops.read_log.bump("market_series")
+    ops.log_call("uw", "GET api.test/x", dataset="options/uw", result="HTTP 200", ms=12.4)
+    body = client.get("/api/settings/requests?limit=5").get_json()
+    assert body["ok"] is True and body["keep"] == ops.REQUEST_LOG_KEEP and body["on"] is True and body["dropped"] == 0
+    mine = [(r["kind"], r["what"], r["result"], r["ms"]) for r in body["rows"]
+            if r["what"] in ("uw GET api.test/x", "market_series")]
+    assert mine == [("call", "uw GET api.test/x", "HTTP 200", 12), ("read", "market_series", None, None)]
+    assert all(r["time"].endswith("+00:00") for r in body["rows"])
+    times = [r["at"] for r in body["rows"]]
+    assert times == sorted(times, reverse=True)
+    assert len(client.get("/api/settings/requests?limit=1").get_json()["rows"]) == 1
+
+
+def test_the_requests_route_refuses_words_for_numbers(client):
+    got = client.get("/api/settings/requests?limit=abc")
+    assert got.status_code == 400 and got.get_json()["ok"] is False

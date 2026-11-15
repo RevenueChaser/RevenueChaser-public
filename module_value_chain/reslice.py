@@ -8,9 +8,11 @@ tree. ``apply`` is the real re-slice: the same per-row logic, the rows written
 through ``engine.store_slices`` (its keep guard), then the edges rebuilt and the
 run recorded as a sync does. It holds the ``edgar_sync`` lock and never fetches.
 
-``chain_filings`` and ``chain_mentions`` both live in ``edgar.duckdb``, so the
-dry run reads only that store, with ``duckdb.connect(..., read_only=True)``
-directly, never through ``core.rawstore``, whose handles are always read-write.
+``chain_filings`` and ``chain_mentions`` both live in ``boards/value_chain.duckdb``
+since #860 stage 1, so the dry run reads only that one file, with
+``duckdb.connect(..., read_only=True)`` directly, never through ``core.rawstore``,
+whose handles are always read-write. Its path is the caller's argument, so a
+dry run can also be pointed at a copy.
 ``apply`` must write, so it goes through ``core.rawstore`` like every other
 writer, under the lock a sync takes.
 """
@@ -19,7 +21,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import time
 import zlib
 from pathlib import Path
 
@@ -106,8 +107,8 @@ def _slice_stored(row: dict, docs_dir, fetched_at: float | None = None) -> dict 
 
     The stored ``primary_doc`` is already the full document URL (``slice_document``
     builds it from the file name), so only its last segment is passed back in.
-    ``fetched_at`` is the stored document's download time (``edgar_documents``, K6);
-    without one the slice time is used, as ``edgar_text.document_slice`` does.
+    ``fetched_at`` is the stored document's download time; without one (the ``edgar_documents`` rows that held it
+    went with edgar.duckdb, #860) the slice time is used, as ``edgar_text.document_slice`` does.
     """
     accession = row.get("accession")
     if not accession:
@@ -119,22 +120,16 @@ def _slice_stored(row: dict, docs_dir, fetched_at: float | None = None) -> dict 
     return edgar_text.slice_document(row.get("ticker"), row.get("cik"), filing, html, fetched_at=fetched_at)
 
 
-def _doc_stamps() -> dict[str, float]:
-    """``accession -> fetched_at`` of the stored documents (``edgar_documents``), read once."""
-    rows = rawstore.query("SELECT accession, fetched_at FROM edgar_documents WHERE fetched_at IS NOT NULL",
-                          db="edgar")
-    return {r["accession"]: r["fetched_at"] for r in rows}
-
-
 def _has_table(conn, name: str) -> bool:
     return conn.execute(
         "SELECT 1 FROM information_schema.tables WHERE table_name = ?", [name]).fetchone() is not None
 
 
 def _table_rows(conn, name: str, order_by: str | None = None) -> list[dict]:
-    """Rows of ``name``; a clear error when the edgar store does not hold it."""
+    """Rows of ``name``; a clear error when the opened file does not hold it."""
     if not _has_table(conn, name):
-        raise RuntimeError(f"table {name} not found in the edgar store (chain_* live in edgar.duckdb)")
+        raise RuntimeError(f"table {name} not found in the opened store file "
+                           f"(chain_* live in boards/value_chain.duckdb since #860 stage 1)")
     sql = f"SELECT * FROM {name}"
     if order_by:
         sql += f" ORDER BY {order_by}"
@@ -183,16 +178,16 @@ def _edge_diff(stored: dict, new: dict, baseline: dict, sample: int) -> dict:
     }
 
 
-def dry_run(edgar_db, docs_dir, out_dir, sample: int = 20) -> dict:
+def dry_run(chain_db, docs_dir, out_dir, sample: int = 20) -> dict:
     """Re-slice the stored corpus offline and write ``reslice_dry_run.{json,md}``.
 
     Classifies each ``chain_filings`` row into a group by comparing its stored slice
     with a fresh slice of its stored document, and diffs the ``chain_mentions`` edges
-    against the edges the re-sliced corpus gives. Reads ``edgar.duckdb`` read-only and
-    writes nothing back.
+    against the edges the re-sliced corpus gives. Reads ``chain_db``
+    (``boards/value_chain.duckdb``) read-only and writes nothing back.
     """
     out_dir = Path(out_dir)
-    conn = duckdb.connect(str(edgar_db), read_only=True)
+    conn = duckdb.connect(str(chain_db), read_only=True)
     try:
         rows = _table_rows(conn, "chain_filings", order_by="ticker")
         mention_rows = _table_rows(conn, "chain_mentions")
@@ -294,19 +289,17 @@ def apply(docs_dir=None, out_dir=None, run_id: str | None = None) -> dict:
             return {"locked": True, "lock": "edgar_sync"}
         if not got_rel:
             return {"locked": True, "lock": "relatedness"}
-        run_at = time.time()
         rid = run_id or ledger.new_run_id()
         rows = rawstore.get_all("chain_filings")
         counts = {g: 0 for g in _GROUPS}
         counts.update({k: 0 for k in _EXTRA})
         transitions: dict[str, int] = {}
-        stamps = _doc_stamps()
         to_write: list[dict] = []
         for row in rows:
             old_quality = row.get("quality")
             stored_text = _as_text(row.get("item_text"))
             try:
-                new = _slice_stored(row, docs_dir, stamps.get(row.get("accession")))
+                new = _slice_stored(row, docs_dir, None)
                 if new is None:
                     counts["no_doc"] += 1
                     continue
@@ -326,7 +319,6 @@ def apply(docs_dir=None, out_dir=None, run_id: str | None = None) -> dict:
         written, kept = engine.store_slices(to_write)
         info: dict = {}
         edges = engine.build_edges(info)
-        engine.record_history(edges, info, run_id=rid, run_at=run_at, counts=counts)
 
         result = {**counts, "rows": len(rows), "written": written, "kept": kept, "transitions": transitions,
                   "edges_before": len(edges_before), "edges_after": len(edges),

@@ -146,16 +146,6 @@ def payload_problem(payload: dict, rows_key: str, *, check_spy: bool = True) -> 
 
 # ── is the daily-bar cache complete for session D? ───────────────────────────
 
-def last_bars(tickers) -> dict[str, tuple[str, float | None]]:
-    """``{ticker: (last bar day 'YYYY-MM-DD', cached_at of that bar)}`` from the shared OHLC cache."""
-    tickers = sorted({str(t).strip().upper() for t in tickers if t})
-    if not tickers:
-        return {}
-    rows = rawstore.query(
-        "SELECT ticker, max(substr(ts, 1, 10)) AS last_day, arg_max(cached_at, ts) AS cached_at "
-        "FROM swing_ohlc WHERE ticker IN (SELECT unnest(?)) GROUP BY ticker", [tickers])
-    return {r["ticker"]: (r["last_day"], r["cached_at"]) for r in rows}
-
 
 # Why a shown pick has no complete D bar (the values of ``ohlc_gaps``). Only the first can be fixed by
 # running a Fetch again (after Daily Bars, for D01), and the note says so for that cause only.
@@ -244,10 +234,10 @@ _D01 = "price_bars_daily"
 
 
 def d01_last_bars(tickers) -> dict[str, tuple[str, float | None]]:
-    """``{ticker: (last session 'YYYY-MM-DD', fetched_at of that bar)}`` from D01: the shape of ``last_bars``.
+    """``{ticker: (last session 'YYYY-MM-DD', fetched_at of that bar)}`` from D01.
 
     A store without the price file or the table reads as no bars, and so does a failed read (logged): ``ohlc_gaps``
-    then refuses every pick, and ``spy_anchor_problem`` decides SPY on ``swing_ohlc`` (the board's SPY fallback).
+    then refuses every pick, and ``spy_anchor_problem`` refuses the board.
     """
     tickers = sorted({_norm(t) for t in tickers if _norm(t)})
     if not tickers:
@@ -271,24 +261,12 @@ def d01_has_session(session: date, ticker: str) -> bool:
 def spy_anchor_problem(session: date) -> str | None:
     """Why SPY's bars are not one complete ``session``, or ``None``. SPY is the board anchor.
 
-    D01 first (U1, #402; K8b's SPY part): a complete ``session`` SPY bar in D01 anchors the board. That is the test the
-    Swing and Fundamentals baseline uses (``screen_common.load_spy``), so a board whose SPY came from D01 is never
-    refused for SPY's cache. Only when D01 lacks that bar does the ``swing_ohlc`` check below decide, with its old
-    reasons (the board's SPY fallback, ``load_ohlc``, reads that cache). The shown picks' own bars are D01's
-    (``ohlc_gaps``): the board scores them from D01 since C12.
+    A complete ``session`` SPY bar in D01 anchors the board (U1, #402): the test the Swing and Fundamentals baseline
+    uses (``screen_common.load_spy``). The ``swing_ohlc`` fallback went with raw.duckdb (#860).
     """
     if d01_has_session(session, "SPY"):
         return None
-    bar = last_bars(["SPY"]).get("SPY")
-    if bar is None:
-        return "no SPY bars in the store"
-    last_day, cached_at = bar
-    if last_day != session.isoformat():
-        return f"SPY's last bar is {last_day}, not the {session} session"
-    if cached_at is None or not calendar.bars_complete(session, cached_at):
-        return (f"the {session} bars were cached before the close + 30 min "
-                "(an intraday Fetch; the next Fetch refetches them)")
-    return None
+    return f"SPY has no complete {session} bar in the prices store"
 
 
 # ── model version ────────────────────────────────────────────────────────────

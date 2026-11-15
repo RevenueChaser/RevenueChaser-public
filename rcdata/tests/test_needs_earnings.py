@@ -34,12 +34,6 @@ def layer(monkeypatch):
     return set_rows
 
 
-@pytest.fixture
-def d26(monkeypatch):
-    """The stored D26 calendar, as ``rawstore.query`` returns it."""
-    def set_rows(rows):
-        monkeypatch.setattr(earnings_dates.rawstore, "query", lambda *a, **k: list(rows))
-    return set_rows
 
 
 def _screener(ticker, report_date, session=TODAY):
@@ -53,64 +47,19 @@ def test_the_catalog_holds_the_need():
     assert need.fallbacks == ("d26_calendar",) and need.key_column == "ticker"
 
 
-def test_the_layers_names_come_from_the_layer(layer, d26):
-    layer([_screener("AAA", SOON)])
-    d26([{"ticker": "AAA", "d": LATER}])
-    assert earnings_dates.stored_next_dates(TODAY)["AAA"] == SOON
 
 
-def test_a_name_the_layer_does_not_cover_keeps_its_stored_date(layer, d26):
-    """The bug this step closes: BBB used to be dropped because AAA was in the layer."""
-    layer([_screener("AAA", SOON)])
-    d26([{"ticker": "BBB", "d": LATER}])
-    assert earnings_dates.stored_next_dates(TODAY) == {"AAA": SOON, "BBB": LATER}
 
 
-def test_the_union_is_reported_as_coverage(layer, d26):
-    layer([_screener("AAA", SOON)])
-    d26([{"ticker": "BBB", "d": LATER}])
-    ans = earnings_dates.next_dates_answer(TODAY)
-    assert ans.state in ("fresh", "stale") and ans.coverage["served"] == 1
-    assert ans.coverage["from_fallback"] == 1
 
 
-def test_a_stale_layer_session_falls_back_to_the_stored_calendar_alone(layer, d26):
-    old = TODAY - timedelta(days=earnings_dates.MAX_AGE_DAYS + 10)
-    layer([_screener("AAA", SOON, session=old)])
-    d26([{"ticker": "BBB", "d": LATER}])
-    assert earnings_dates.stored_next_dates(TODAY) == {"BBB": LATER}
 
 
-def test_a_layer_session_after_today_is_not_read(layer, d26):
-    layer([_screener("AAA", SOON, session=TODAY + timedelta(days=1))])
-    d26([{"ticker": "BBB", "d": LATER}])
-    assert earnings_dates.stored_next_dates(TODAY) == {"BBB": LATER}
 
 
-def test_a_report_date_before_today_is_not_a_next_date(layer, d26):
-    layer([_screener("AAA", TODAY - timedelta(days=1)), _screener("CCC", SOON)])
-    d26([])
-    assert earnings_dates.stored_next_dates(TODAY) == {"CCC": SOON}
 
 
-def test_an_unreadable_stored_calendar_still_leaves_the_layers_dates(layer, monkeypatch):
-    layer([_screener("AAA", SOON)])
-
-    def boom(*a, **k):
-        raise RuntimeError("no raw store")
-    monkeypatch.setattr(earnings_dates.rawstore, "query", boom)
-    assert earnings_dates.stored_next_dates(TODAY) == {"AAA": SOON}
 
 
-def test_an_unreadable_layer_still_leaves_the_stored_dates(monkeypatch, d26):
-    def boom(**kw):
-        raise RuntimeError("no options file")
-    monkeypatch.setattr(needs.catalog.read, "option_screener", boom)
-    d26([{"ticker": "BBB", "d": LATER}])
-    assert earnings_dates.stored_next_dates(TODAY) == {"BBB": LATER}
 
 
-def test_neither_source_is_an_empty_map_never_an_error(layer, d26):
-    layer([])
-    d26([])
-    assert earnings_dates.stored_next_dates(TODAY) == {}
