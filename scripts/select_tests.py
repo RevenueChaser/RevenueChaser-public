@@ -21,7 +21,8 @@ FULL (the whole unit and e2e suite) when:
   - a changed non-Markdown file reaches no test (checked per file, so a tested file beside it cannot hide it).
 
 A change that reaches any other conftest selects every test below that conftest's folder: its fixtures run there
-whatever the test imports. The e2e conftest starts the dashboard, so most changes select every e2e test.
+whatever the test imports. The e2e conftest starts the dashboard, so most changes reach every e2e test; a change that
+stays inside board folders is narrowed to those boards' e2e files by ``E2E_BY_BOARD``.
 
 Usage: ``python scripts/select_tests.py BASE_REF [--full REASON]`` diffs against the merge-base with BASE_REF
 and prints the selection as JSON; under GitHub Actions it also writes the job outputs and the step summary.
@@ -48,6 +49,45 @@ _FULL_NAMES = {"conftest.py", "pytest.ini", "setup.py", "setup.cfg", "pyproject.
 _FULL_PREFIXES = (".github/", "scripts/select_tests.py")
 _FIXTURE_DIRS = {"tests", "fixtures", "e2e"}
 _IGNORED_PREFIXES = (".hermes/", ".claude/")
+
+# The root conftest's autouse ``isolate_board_artifacts`` imports ``app.runners`` only to repoint path attributes on it
+# and on these boards' config modules (``conftest.BOARD_ARTIFACT_PAIRS``, named there by f-string, so the graph cannot
+# see them). ``app.runners`` imports every board, so that one edge made every board change reach the root conftest and
+# run FULL. The edge now stops at ``app/runners.py`` itself (a change to it is FULL) and at these config modules.
+_ROOT_CONFTEST_RUNNERS = "app/runners.py"  # a path, not a dotted name: a dotted string is an import edge here
+_ROOT_CONFTEST_READS = tuple(f"{m}.config" for m in (
+    "module_fundamentals", "module_swing_potential", "module_comovement", "module_value_chain",
+    "module_relatedness", "module_oipd"))
+
+# Which e2e files drive which board. A change inside ``module_<board>/`` alone runs that board's files, the files of
+# the boards that import it (followed through ``module_*`` code only), and E2E_ALWAYS, instead of every e2e test
+# the dashboard fixture reaches. Any changed file outside these folders, or in a board with no row, runs every e2e
+# test as before. scripts/tests/test_select_tests.py fails when a board folder or an e2e file is missing here.
+E2E_BY_BOARD: dict[str, tuple[str, ...]] = {
+    "module_asymmetric_growth": ("test_board_asymmetric_growth.py",),
+    "module_comovement": ("test_board_comovement.py",),
+    "module_earnings_radar": ("test_board_earnings_radar.py",),
+    "module_financials": ("test_board_financials.py",),
+    "module_fundamentals": ("test_board_fundamentals.py",),
+    "module_leaps": ("test_board_leaps.py",),
+    "module_news": (),
+    "module_oipd": ("test_board_oipd.py",),
+    "module_relatedness": (),
+    "module_sec_13f": ("test_board_sec_13f.py", "test_watchlist_pair.py"),
+    "module_sector_rotation": ("test_board_sector_rotation.py",),
+    "module_spx_gamma": ("test_spx_gamma_phone.py", "test_spx_gamma_rcdata.py"),
+    "module_swing_potential": ("test_board_swing.py",),
+    "module_uw_interaction": ("test_board_uw_interaction.py",),
+    "module_value_chain": ("test_board_value_chain.py",),
+    "module_watchlists": ("test_watchlist_pair.py",),
+    "module_welcome": (),
+}
+# The shell every board sits in (phone layout, panel header, failure surfacing, Settings' row per board, screenshots).
+E2E_ALWAYS = ("test_phone_shell.py", "test_panel_header_231.py", "test_failures_visible_166.py",
+              "test_board_settings.py", "test_screenshots.py")
+# The harness's own tests: a harness change is under module_testing/, which runs every e2e test anyway.
+E2E_HARNESS = ("test_cdp_browser.py", "test_chrome_timeout.py", "test_harness_env.py", "test_harness_parallel.py",
+               "test_harness_yfinance.py", "test_settings_control.py", "test_settings_newdata.py")
 
 
 @dataclass
@@ -124,6 +164,12 @@ def _graph(root: Path) -> dict[str, set[str]]:
         tree = ast.parse((root / rel).read_text(encoding="utf-8"), filename=rel)
         for m in _imports(rel, tree, modules):
             importers.setdefault(m, set()).add(rel)
+    runners = _module(_ROOT_CONFTEST_RUNNERS)
+    if "conftest.py" in importers.get(runners, ()):
+        importers[runners].discard("conftest.py")
+        for m in _ROOT_CONFTEST_READS:
+            if m in modules:
+                importers.setdefault(m, set()).add("conftest.py")
     return importers
 
 
@@ -167,6 +213,8 @@ def select(changed: list[str], root: Path = REPO) -> Selection:
         name = rel.rsplit("/", 1)[-1]
         if name in _FULL_NAMES or name.startswith("requirements") or rel.startswith(_FULL_PREFIXES):
             return Selection("FULL", f"{rel} is shared test config")
+        if rel == _ROOT_CONFTEST_RUNNERS:
+            return Selection("FULL", f"{rel} is read by the root conftest's autouse fixture")
         if not (root / rel).is_file() and not rel.endswith(".md"):
             return Selection("FULL", f"{rel} is gone (deleted or renamed)")
         if not rel.endswith(".py") and _FIXTURE_DIRS & set(rel.split("/")[:-1]):
@@ -190,8 +238,38 @@ def select(changed: list[str], root: Path = REPO) -> Selection:
     under = tuple(c.removesuffix("conftest.py") for c in reached if c.endswith("/conftest.py"))
     tests = sorted({r for r in reached if _is_test(r)} | {t for t in all_tests(root) if t.startswith(under)} if under
                    else {r for r in reached if _is_test(r)})
+    e2e = [t for t in tests if t.startswith(E2E_DIR)]
+    if (boards := _board_e2e(changed, root)) is not None:
+        e2e = boards
     return Selection("SELECTIVE", f"{len(tests)} test files reach {len(changed)} changed files",
-                     tests, [t for t in tests if t.startswith(E2E_DIR)])
+                     tests, e2e)
+
+
+def _board_of(rel: str) -> str | None:
+    top = rel.split("/", 1)[0]
+    return top if top in E2E_BY_BOARD else None
+
+
+def _board_e2e(changed: list[str], root: Path) -> list[str] | None:
+    """The e2e files for a change that stays inside board folders, or None when every reached e2e file must run.
+
+    The boards that import a changed board count too, followed through ``module_*`` code only: through ``app/`` or
+    ``core/`` every board reaches every other (``app.runners`` imports them all).
+    """
+    code = [c for c in changed if not c.endswith(".md")]
+    if not code or any(_board_of(c) is None for c in code):
+        return None
+    importers = _graph(root)
+    boards, todo, seen = set(), [c for c in code if c.endswith(".py")], set()
+    boards.update(_board_of(c) for c in code)
+    while todo:
+        for nxt in importers.get(_module(todo.pop()), ()):
+            if nxt not in seen and _board_of(nxt) and not _is_test(nxt):
+                seen.add(nxt)
+                boards.add(_board_of(nxt))
+                todo.append(nxt)
+    names = set(E2E_ALWAYS).union(*(E2E_BY_BOARD[b] for b in boards))
+    return sorted(E2E_DIR + n for n in names)
 
 
 def _reach(seeds: set[str], root: Path) -> set[str]:
