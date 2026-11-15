@@ -62,9 +62,6 @@ def _dump(snap: dict) -> str:
     return json.dumps(snap, sort_keys=True, indent=1, ensure_ascii=False)
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "#860 took the stored quote (the prefilter's input) and the old caps: the scan moved on purpose and the golden "
-    "needs a re-capture (RC_PARITY_CAPTURE), which is a local run of this file"))
 def test_the_scan_output_matches_the_golden_from_main(scenario):
     snap = scn.snapshot()
     capture = os.environ.get("RC_PARITY_CAPTURE")
