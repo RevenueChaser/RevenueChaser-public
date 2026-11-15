@@ -65,9 +65,7 @@ TICKER_SQL = f"""
 # ``_universe``: the security ids the served tables keep. The ids of the spine's own rows, and three kinds no spine
 # ``security`` row carries:
 #   - every Compustat class of a member's ``gvkey`` (Berkshire's A shares under ``072726:01``), so the issuer market
-#     cap still counts each listed class (``serving.MARKET_CAP_SQL``'s ``sec``, the class the spine lacks). A class
-#     whose newest ``tic`` the spine **does** hold outside the universe stays out, as for Alpaca's below: the issuer's
-#     warrants, preferreds and units (762 of them on 15 Nov 2026, #893);
+#     cap still counts each listed class (``serving.MARKET_CAP_SQL``'s ``sec``, the class the spine lacks);
 #   - the id an Alpaca bar of a member ticker arrived under, for an ETF the ``security`` table does not hold
 #     (``sym:<ticker>``);
 #   - a class the SEC covers name under a member's CIK that the spine itself does not hold
@@ -82,10 +80,8 @@ UNIVERSE_SQL = """
                WHERE ticker IN (SELECT ticker FROM _universe_ticker))
     SELECT security_id FROM m WHERE security_id IS NOT NULL
     UNION
-    SELECT sid FROM (SELECT d.gvkey || ':' || d.iid AS sid, arg_max(d.tic, d.datadate) AS tic FROM stg_wrds_secd d
-                     WHERE d.gvkey IN (SELECT gvkey FROM m WHERE gvkey IS NOT NULL) GROUP BY ALL) c
-    WHERE NOT EXISTS (SELECT 1 FROM stg_spine s WHERE s.ticker = replace(upper(c.tic), '.', '-')
-                      AND s.ticker NOT IN (SELECT ticker FROM _universe_ticker))
+    SELECT DISTINCT d.gvkey || ':' || d.iid FROM stg_wrds_secd d
+    WHERE d.gvkey IN (SELECT gvkey FROM m WHERE gvkey IS NOT NULL)
     UNION
     SELECT DISTINCT b.security_id FROM stg_alpaca_bars b
     WHERE b.ticker IN (SELECT ticker FROM _universe_ticker)
