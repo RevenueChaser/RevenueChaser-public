@@ -282,7 +282,8 @@ class WrdsFund:
         for label, field, item, tolerance in (
                 ("revenue", "revenue", f"revt{sfx}", None), ("net income", "net_income", f"ni{sfx}", None),
                 ("diluted EPS", "eps_diluted", f"epsfx{sfx}", EPS_TOLERANCE)):
-            n, ok = agreement(con, self.staging, item, field, period_type, tolerance)
+            n, ok = agreement(con, self.staging, item, field, period_type, tolerance,
+                              first_reported=self.table == "funda")
             parts.append(f"{label} {ok} of {n}")
         note = f"WRDS {self.table} vs the SEC: {', '.join(parts)} agree"
         snaps = self.snapshots()
@@ -300,9 +301,12 @@ def _links() -> str:
 
 
 def agreement(con: duckdb.DuckDBPyConnection, staging: str, item: str, field: str, period_type: str,
-              eps_tolerance: float | None) -> tuple[int, int]:
+              eps_tolerance: float | None, first_reported: bool = False) -> tuple[int, int]:
     """``(compared, agreeing)``: the periods where Compustat's ``item`` and the SEC's ``field`` both have a value
-    (period ends within ``PERIOD_DAYS``). Money in millions at Compustat; EPS as is."""
+    (period ends within ``PERIOD_DAYS``). Money in millions at Compustat; EPS as is. ``first_reported``: compare the
+    value the year's own report first gave (``first_value``), which ``funda`` keeps where the SEC serves a later
+    restatement or split-adjusted figure (#277: 11 of 59 EPS years, 3 net income, 4 revenue on the 29 Oct sample)."""
+    value = "coalesce(first_value, value)" if first_reported else "value"
     if eps_tolerance is None:
         ok = (f"abs(f.value - w.v * {MILLION}) <= {MONEY_TOLERANCE} * "
               f"greatest(abs(f.value), abs(w.v * {MILLION}))")
@@ -311,7 +315,7 @@ def agreement(con: duckdb.DuckDBPyConnection, staging: str, item: str, field: st
     n, agree = con.execute(f"""
         WITH w AS (SELECT c.cik, s.datadate, s."{item}" AS v FROM {staging} s JOIN {_links()} c ON c.gvkey = s.gvkey
                    WHERE s."{item}" IS NOT NULL),
-             f AS (SELECT cik, period_end, value FROM fundamental_fact
+             f AS (SELECT cik, period_end, {value} AS value FROM fundamental_fact
                    WHERE field = '{field}' AND period_type = '{period_type}' AND NOT preliminary)
         SELECT count(*), count(*) FILTER (WHERE {ok})
         FROM w JOIN f ON f.cik = w.cik AND abs(date_diff('day', f.period_end, w.datadate)) <= {PERIOD_DAYS}

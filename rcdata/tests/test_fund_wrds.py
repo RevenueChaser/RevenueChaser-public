@@ -5,12 +5,13 @@ from __future__ import annotations
 
 from datetime import date
 
+import duckdb
 import pytest
 
 from RevenueChaser.core.providers import sec_edgar
 from RevenueChaser.rcdata import ops
 from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.fundamentals import companyfacts, wrds_fund
+from RevenueChaser.rcdata.build.fundamentals import companyfacts, tables, wrds_fund
 from RevenueChaser.rcdata.build.spine import wrds as spine_wrds
 
 from . import fund_fixture as fx
@@ -81,3 +82,20 @@ def test_funda_agrees_with_the_sec(fake):
     assert "revenue 1 of 1, net income 1 of 1, diluted EPS 1 of 1 agree" in check["note"]
 
 
+
+
+def test_funda_is_compared_with_the_value_the_year_first_reported_277():
+    # MSFT FY2017: 96,571 M served (the ASC 606 restatement in the FY2018 10-K), 89,950 M first reported, which is
+    # what Compustat's funda keeps. The annual check compares the first-reported value; a fact with none, its own.
+    con = duckdb.connect()
+    tables.create(con, "fundamental_fact")
+    con.execute("CREATE TABLE fundamental_company (cik TEXT, gvkey TEXT)")
+    con.execute("INSERT INTO fundamental_company VALUES ('1', 'g1'), ('2', 'g2')")
+    con.execute("CREATE TABLE stg (gvkey TEXT, datadate DATE, revt DOUBLE)")
+    con.execute("INSERT INTO stg VALUES ('g1', DATE '2017-06-30', 89950), ('g2', DATE '2017-06-30', 500)")
+    for cik, value, first in (("1", 96_571e6, 89_950e6), ("2", 500e6, None)):
+        con.execute("INSERT INTO fundamental_fact (cik, field, period_type, period_end, value, unit, accn, filed, "
+                    "derived, preliminary, first_value) VALUES (?, 'revenue', 'annual', DATE '2017-06-30', ?, 'USD', "
+                    "'a', DATE '2018-08-03', false, false, ?)", [cik, value, first])
+    assert wrds_fund.agreement(con, "stg", "revt", "revenue", "annual", None, first_reported=True) == (2, 2)
+    assert wrds_fund.agreement(con, "stg", "revt", "revenue", "annual", None) == (2, 1)
