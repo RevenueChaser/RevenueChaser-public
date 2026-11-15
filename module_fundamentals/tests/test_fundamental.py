@@ -153,3 +153,11 @@ def test_render_dashboard_universe_provenance():
     assert "Universe refreshed by" in html
     assert "Fundamentals" in html
     assert "Flow not scanned" in html
+
+
+def test_help_states_the_note_length_rule_867():
+    # #867: the rules part names both note tags and says they go whole, with no character cap.
+    html = render_fundamental_dashboard(build_payload([], run_stats={}))
+    for text in ("SegmentReportingDisclosureTextBlock", "ConcentrationRiskDisclosureTextBlock",
+                 "whole, no cap", "64,294"):
+        assert text in html

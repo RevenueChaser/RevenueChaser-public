@@ -503,7 +503,13 @@ function start(){
         "<b>DISTORTED</b> rows have figures that need a manual look. "
         f"Statements come from {statements_from}, prices from <b>Yahoo</b>. <b>Fetch</b> runs the scan "
         "and stores the scores. <b>Refresh</b> shows the last Fetch's stored result with no network "
-        "call and no re-scoring.")
+        "call and no re-scoring. "
+        # #867 (avo 15 Nov 2026): the note-length rule, formerly MAX_NOTE_CHARS = 6_000 (removed by #866).
+        "<b>Filing notes sent to the LLM</b> (Relatedness profiles): the segment note "
+        "(<code>SegmentReportingDisclosureTextBlock</code>) and the concentration note "
+        "(<code>ConcentrationRiskDisclosureTextBlock</code>) of the newest annual report, read from "
+        "<code>filing_note</code>, parts joined in document order, go <b>whole, no cap</b>; the largest "
+        "measured segment note is 64,294 characters (15 Nov 2026).")
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
