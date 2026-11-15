@@ -13,6 +13,9 @@ Every value carries its source:
 # Prose, and no trailing full stop: render_flow.py puts its own punctuation after this, both in
 # the markdown line and in the HTML page's subtitle.
 AS_OF = (
+    "HISTORICAL RECORD, NOT KEPT CURRENT: it describes the old store (raw.duckdb, edgar.duckdb, history.duckdb "
+    "and .store/prices.duckdb), which #860 removed with every code path to it on 2026-11-15; the current layout is "
+    "docs/data_architecture.md (rcdata's serving files and the board files under .store/boards/). "
     "Carried over from the private repo alsanvolkan/RevenueChaser at main f2d74a1c (2026-10-21), "
     "whose history this repo does not share: the 2026-10-22 migration re-rooted the public repo. "
     "The dataset rows, writers, sources, keys, write rules and retention below are the private "
