@@ -28,9 +28,9 @@ class Writer:
 WRITERS: dict[str, Writer] = {
     # The EVREN list is coder-LLM's (/usr/local/sbin/oc-run MODELS on homesrv, 1 Nov 2026).
     "evren": Writer("evren", "EVREN (no fee)", "RevenueChaser.core.providers.evren",
-                    ("deepseek-v4.1-flash", "glm-5.3", "qwen3.8-flash-next"), "EVREN_API_KEY"),
+                    ("deepseek-v4.1-flash", "glm-5.3", "qwen3.8-flash-next"), "LITELLM_RC_KEY"),
     "deepseek": Writer("deepseek", "DeepSeek API (paid, off-peak)", "RevenueChaser.core.providers.deepseek",
-                       ("deepseek-flash",), "DEEPSEEK_API_KEY", paid=True),
+                       ("deepseek-flash",), "LITELLM_RC_KEY", paid=True),
     "grok": Writer("grok", "Grok (SuperGrok allowance)", "RevenueChaser.core.providers.grok",
                    ("grok-4.6",), "RC_XAI_AUTH_FILE"),
     # Headless Claude Code on the subscription login, never an API key (avo, 11 Nov 2026: the first round).

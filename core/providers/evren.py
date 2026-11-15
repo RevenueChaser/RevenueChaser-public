@@ -1,7 +1,7 @@
 """EVREN chat client (#360): an OpenAI-compatible endpoint with no fee, the default Relatedness profile writer.
 
 Access order: **cache -> key -> HTTP**. There is no off-peak gate (EVREN does not bill by time of day) and no
-thinking knob. The key is ``EVREN_API_KEY`` (``core.credentials``), read from the environment at call time; the
+thinking knob. The key is ``LITELLM_RC_KEY``, the LiteLLM gate key (``core.credentials``), read from the environment at call time; the
 dashboard and the relatedness unit get it from ``/etc/life/secrets.env``. Base URL (``RC_EVREN_BASE``) and model
 (``RC_EVREN_MODEL``, or the board's ``WRITER_MODEL``, ``module_relatedness.writers``) are overridable so the
 end-to-end harness can point them at a mock.
@@ -29,7 +29,7 @@ from . import deepseek
 logger = logging.getLogger(__name__)
 
 PROVIDER = "evren"
-DEFAULT_BASE = "https://evren-llmapi.ssyz.org.tr/v1"
+DEFAULT_BASE = "http://127.0.0.1:9720/v1"  # the LiteLLM gate on homesrv (one model gate, avo 15 Nov 2026)
 MODEL = os.getenv("RC_EVREN_MODEL") or "deepseek-v4.1-flash"
 COST_USD_PER_CALL = 0.0
 MAX_ATTEMPTS = 2
@@ -132,10 +132,12 @@ def complete(system: str, user: str, *, thinking: bool = False,
 
     api_key = key_for("evren")
     if not api_key:
-        raise EvrenAuthError("EVREN API key is missing. Set EVREN_API_KEY in /etc/life/secrets.env "
+        raise EvrenAuthError("The LiteLLM gate key is missing. Set LITELLM_RC_KEY in /etc/life/secrets.env "
                              "(see core/credentials.py).")
 
-    body = {"model": model, "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+    # The gate names EVREN's models evren-<model> (home-server etc/litellm/config.yaml); the board's name stays the
+    # cache key.
+    body = {"model": model if model.startswith("evren-") else f"evren-{model}", "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
             "max_tokens": max_tokens, "temperature": temperature, "stream": False}
     if json_mode:
         body["response_format"] = {"type": "json_object"}
@@ -177,7 +179,7 @@ def complete(system: str, user: str, *, thinking: bool = False,
                 raise EvrenTransientError(f"EVREN HTTP {r.status_code}: {text}")
             if r.status_code in (401, 403):
                 raise EvrenAuthError(f"EVREN rejected the API key (HTTP {r.status_code}). "
-                                     f"Renew EVREN_API_KEY in /etc/life/secrets.env and re-run.")
+                                     f"Check LITELLM_RC_KEY (the gate key) in /etc/life/secrets.env and re-run.")
             if r.status_code >= 400:
                 raise EvrenError(f"EVREN HTTP {r.status_code}: {text}")
             return _finish(r, key, use_cache, validate, ticker, cik, prompt_version, model, api_key)

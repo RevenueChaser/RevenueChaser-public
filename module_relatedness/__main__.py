@@ -51,7 +51,7 @@ call cap (avo, 2 Nov 2026). ``--cap`` is USD and DeepSeek's only. The summary na
 whether the endpoint and model answer a usable profile.
 
 Without ``--provider``, ``--run`` writes with the board's writer (#360, ``module_relatedness/settings.py``: EVREN by
-default, the ``--provider evren`` path; a missing ``EVREN_API_KEY`` stops before any request). RC-Relatedness-OffPeak
+default, the ``--provider evren`` path; a missing ``LITELLM_RC_KEY`` stops before any request). RC-Relatedness-OffPeak
 runs ``--run --cap 10``: the cap counts only when the board's writer is DeepSeek.
 """
 from __future__ import annotations

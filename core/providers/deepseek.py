@@ -6,7 +6,7 @@ is served even at peak (it costs nothing); a cache miss at peak raises
 the next off-peak run instead of paying the peak rate.
 
 The gate is ``core.offpeak``; it never sleeps. The Hermes usage card can lift
-it for the current peak window only (``peak_override_active``). The key is ``DEEPSEEK_API_KEY``
+it for the current peak window only (``peak_override_active``). The key is ``LITELLM_RC_KEY`` (the LiteLLM gate)
 (see ``core.credentials``); base URL and model are env-overridable so the
 end-to-end harness can point them at a mock. The base URL is read when a call
 is made (``base_url()``), so a test or a restarted job sees a changed value.
@@ -37,7 +37,7 @@ from ..credentials import key_for
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_BASE = "https://api.deepseek.com"
+DEFAULT_BASE = "http://127.0.0.1:9720/v1"  # the LiteLLM gate on homesrv (one model gate, avo 15 Nov 2026)
 MODEL = os.getenv("RC_DEEPSEEK_MODEL") or "deepseek-flash"
 MAX_ATTEMPTS = 2        # one call and at most one retry (a retried 429 is not billed)
 _RETRY_BASE = 2.0       # seconds; the first retry waits uniform(0, _RETRY_BASE)
@@ -77,6 +77,15 @@ class PeakHoursError(RuntimeError):
 def base_url() -> str:
     """The API base URL, read from ``RC_DEEPSEEK_BASE`` at call time (no trailing slash)."""
     return (os.getenv("RC_DEEPSEEK_BASE") or "").strip().rstrip("/") or DEFAULT_BASE
+
+
+def wire_model(model: str, thinking: bool) -> str:
+    """The gate's name for the board's ``model`` (home-server etc/litellm/config.yaml): DeepSeek's thinking is one switch
+    there, ``-think`` / ``-nothink``. The board's own name stays the cache key, so the move re-asks nothing."""
+    base = {"deepseek-flash": "deepseek-v4-flash"}.get(model, model)
+    if base.endswith(("-think", "-nothink")):
+        return base
+    return f"{base}-{'think' if thinking else 'nothink'}"
 
 
 def off_peak_only() -> bool:
@@ -226,15 +235,14 @@ def complete(system: str, user: str, *, thinking: bool = False,
     api_key = key_for("deepseek")
     if not api_key:
         raise DeepSeekAuthError(
-            "DeepSeek API key is missing. Set DEEPSEEK_API_KEY (see core/credentials.py).")
+            "The LiteLLM gate key is missing. Set LITELLM_RC_KEY (see core/credentials.py).")
 
     body = {
-        "model": model,
+        "model": wire_model(model, thinking),
         "messages": [{"role": "system", "content": system},
                      {"role": "user", "content": user}],
         "max_tokens": max_tokens,
         "stream": False,
-        "thinking": {"type": "enabled" if thinking else "disabled"},
     }
     if thinking:
         if effort:
@@ -270,7 +278,7 @@ def complete(system: str, user: str, *, thinking: bool = False,
             if r.status_code in (401, 403):
                 raise DeepSeekAuthError(
                     f"DeepSeek rejected the API key (HTTP {r.status_code}). "
-                    f"Renew DEEPSEEK_API_KEY and re-run.")
+                    f"Check LITELLM_RC_KEY (the gate key) and re-run.")
             if r.status_code >= 400:
                 raise DeepSeekError(f"DeepSeek HTTP {r.status_code}: {r.text[:300]}")
             return _finish(r, key, use_cache, validate, effort, thinking, ticker, cik,
