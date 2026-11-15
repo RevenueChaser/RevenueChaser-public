@@ -1074,6 +1074,10 @@ def run(no_fetch: bool = False, tickers: list[str] | None = None,
     slices the names). ``model`` is the board's model (``None``: the chat module's ``MODEL``). Mixed writers (avo,
     11 Nov 2026): every writer's current profile is shown and scored; each company names its writer."""
     if no_fetch:
+        if tickers is None and limit is None:
+            cached = _reusable_payload(provider, model)
+            if cached is not None:
+                return cached
         return _run(True, tickers, limit, usd_cap, provider=provider, model=model)
     # Scheduled (CLI) and dashboard Fetch runs must not overlap. Refresh writes
     # nothing, so it never needs the lock.
@@ -1159,6 +1163,26 @@ def _run(no_fetch: bool, tickers: list[str] | None, limit: int | None,
     if health:
         payload["provider_health"] = health
     _save(config.RELATEDNESS_JSON, payload)
+    return payload
+
+
+def _reusable_payload(provider: str, model: str | None) -> dict | None:
+    """The saved payload (``RELATEDNESS_JSON``) when a Refresh of the whole board can render it as it is: the same
+    writer wrote it and no stored profile is newer than its ``as_of``. Rescoring every pair of 5,096 profiles took the
+    dashboard about two hours single-threaded on 15 Nov 2026 (#884 A) for the scores the run had just written."""
+    payload = load_payload()
+    as_of, writer = payload.get("as_of"), payload.get("writer") or {}
+    if not as_of or not payload.get("companies"):
+        return None
+    if (writer.get("provider"), writer.get("model")) != (provider, model or _writer(provider)[0]):
+        return None
+    try:
+        cutoff = datetime.fromisoformat(str(as_of)).timestamp()
+    except ValueError:
+        return None
+    newest = max((float(r.get("fetched_at") or 0) for r in rawstore.get_all("relatedness_profiles")), default=None)
+    if newest is None or newest > cutoff:
+        return None
     return payload
 
 
