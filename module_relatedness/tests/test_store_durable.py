@@ -19,7 +19,7 @@ def test_profile_round_trip(rawstore_tmp_db):
     prof = {"products": ["gpu"], "end_markets": ["data center"],
             "business_model": [], "customer_types": [], "value_chain_role": [],
             "keywords": ["ai"]}
-    store.save_profile("NVDA", "1045810", prof, "ck", "deepseek-flash")
+    store.save_profile("NVDA", "1045810", prof, "ck", "deepseek-v4-flash")
     got = store.load_profiles(["NVDA"])
     assert got["NVDA"]["products"] == ["gpu"]
     assert got["NVDA"]["keywords"] == ["ai"]

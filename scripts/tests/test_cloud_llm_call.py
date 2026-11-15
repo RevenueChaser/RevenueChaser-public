@@ -35,9 +35,9 @@ def _opener(payload=None, seen=None):
 
 
 def test_deepseek_request_shape():
-    url, headers, body = c.build_request("deepseek", "deepseek-flash", "p", 64)
+    url, headers, body = c.build_request("deepseek", "deepseek-v4-flash", "p", 64)
     assert url == "https://api.deepseek.com/chat/completions"
-    assert json.loads(body) == {"model": "deepseek-flash", "max_tokens": 64,
+    assert json.loads(body) == {"model": "deepseek-v4-flash", "max_tokens": 64,
                                 "messages": [{"role": "user", "content": "p"}]}
     assert "x-opencode-session" not in {k.lower() for k in headers}
 
@@ -63,7 +63,7 @@ def test_main_writes_out_and_reports_usage(tmp_path, capsys):
     pf, out = tmp_path / "p.txt", tmp_path / "o.txt"
     pf.write_text("question", encoding="utf-8")
     seen: list = []
-    rc = c.main(["--provider", "deepseek", "--model", "deepseek-flash", "--prompt-file", str(pf),
+    rc = c.main(["--provider", "deepseek", "--model", "deepseek-v4-flash", "--prompt-file", str(pf),
                  "--out", str(out), "--max-tokens", "50"], opener=_opener(seen=seen))
     assert rc == 0 and out.read_text(encoding="utf-8") == "hi"
     assert len(seen) == 1 and "authorization" not in {k.lower() for k in seen[0].headers}

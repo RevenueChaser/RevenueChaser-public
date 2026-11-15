@@ -17,7 +17,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Never taken from .env (#360, framework D5, avo 1 Nov 2026): a writer key reaches the process only through its
 # environment (on homesrv the unit's EnvironmentFile, /etc/life/secrets.env). .env keeps paths and settings.
-ENV_ONLY_KEYS = frozenset({"EVREN_API_KEY", "DEEPSEEK_API_KEY"})
+ENV_ONLY_KEYS = frozenset({"LITELLM_RC_KEY", "EVREN_API_KEY", "DEEPSEEK_API_KEY"})
 
 
 def load_env_file(path: Path) -> None:

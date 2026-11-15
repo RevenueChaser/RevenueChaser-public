@@ -108,7 +108,7 @@ def _relatedness(tmp_path, monkeypatch):
                           "profile": {"business_summary": "s", "products": ["p"]},
                           "theme_coarse": "Semiconductors", "theme_medium": "Chips",
                           "theme_fine": fine}
-    p = {"as_of": "2026-09-19T00:00:00+00:00", "model": "deepseek-flash", "n": 2,
+    p = {"as_of": "2026-09-19T00:00:00+00:00", "model": "deepseek-v4-flash", "n": 2,
          "companies": [co("NVDA", "AI Accelerators"), co("AMD", "CPUs")],
          "peers": {"NVDA": [{"peer": "AMD", "name": "AMD Inc", "score": 1.0, "shared": ["gpu"],
                              "percentile": 100, "move": {1: 0.67, 5: 0.76}, "beyond_spy": 0.72,

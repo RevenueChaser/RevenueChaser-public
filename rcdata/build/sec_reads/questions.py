@@ -16,7 +16,7 @@ from typing import Callable, Iterable
 PROVIDERS = ("evren", "deepseek")
 #: Each provider's model when a question names none. DeepSeek is always its Flash model, never Pro (avo, 15 Nov
 #: 2026 12:01).
-DEFAULT_MODEL = {"evren": "deepseek-v4.1-flash", "deepseek": "deepseek-flash"}
+DEFAULT_MODEL = {"evren": "evren-deepseek-v4.1-flash", "deepseek": "deepseek-v4-flash"}  # config.yaml names
 CHUNK_CHARS = 60_000
 MAX_TOKENS = 8_000
 

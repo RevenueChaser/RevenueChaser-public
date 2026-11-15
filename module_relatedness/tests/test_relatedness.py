@@ -214,7 +214,7 @@ def test_companies_carry_theme_levels(rawstore_tmp_db):
 def test_report_renders(rawstore_tmp_db, tmp_path, monkeypatch):
     from RevenueChaser.module_relatedness import report
     payload = {
-        "as_of": "2026-09-19T00:00:00+00:00", "model": "deepseek-flash", "n": 2,
+        "as_of": "2026-09-19T00:00:00+00:00", "model": "deepseek-v4-flash", "n": 2,
         "companies": [
             {"ticker": "NVDA", "name": "NVIDIA", "sector": "Technology",
              "industry": "Semiconductors", "market_cap": 1e12, "weights": {"gpu": 1.0}, "profile": {},

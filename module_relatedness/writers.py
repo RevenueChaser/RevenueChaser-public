@@ -26,11 +26,11 @@ class Writer:
 
 
 WRITERS: dict[str, Writer] = {
-    # The EVREN list is coder-LLM's (/usr/local/sbin/oc-run MODELS on homesrv, 1 Nov 2026).
+    # One default each, a name of home-server etc/litellm/config.yaml, the one model list (avo 15 Nov 2026); Flash only.
     "evren": Writer("evren", "EVREN (no fee)", "RevenueChaser.core.providers.evren",
-                    ("deepseek-v4.1-flash", "glm-5.3", "qwen3.8-flash-next"), "EVREN_API_KEY"),
+                    ("evren-deepseek-v4.1-flash",), "LITELLM_RC_KEY"),
     "deepseek": Writer("deepseek", "DeepSeek API (paid, off-peak)", "RevenueChaser.core.providers.deepseek",
-                       ("deepseek-flash",), "DEEPSEEK_API_KEY", paid=True),
+                       ("deepseek-v4-flash",), "LITELLM_RC_KEY", paid=True),
 }
 DEFAULT = "evren"
 

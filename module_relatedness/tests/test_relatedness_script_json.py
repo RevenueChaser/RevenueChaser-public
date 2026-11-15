@@ -14,7 +14,7 @@ def test_a_comment_opener_or_placeholder_in_a_name_keeps_the_script_intact(tmp_p
                           "market_cap": 1e12, "weights": {"gpu": 1.0},
                           "profile": {"business_summary": PROBE, "products": [PROBE]},
                           "theme_coarse": PROBE, "theme_medium": "Chips", "theme_fine": fine}
-    p = {"as_of": "2026-09-19T00:00:00+00:00", "model": "deepseek-flash", "n": 2,
+    p = {"as_of": "2026-09-19T00:00:00+00:00", "model": "deepseek-v4-flash", "n": 2,
          "companies": [co("NVDA", PROBE), co("AMD", "CPUs")],
          "peers": {"NVDA": [{"peer": "AMD", "name": PROBE, "score": 1.0, "shared": [PROBE],
                              "percentile": 100}],

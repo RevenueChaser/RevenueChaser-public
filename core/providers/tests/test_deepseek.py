@@ -188,7 +188,7 @@ def test_thinking_body_has_effort_and_no_temperature(rawstore_tmp_db, monkeypatc
     monkeypatch.setattr(ds, "key_for", lambda slug: "k")
     c = _Client(_ok('{"a": 1}'))
     ds.complete("s", "u", thinking=True, reasoning_effort="low", max_tokens=8000, client=c)
-    assert c.last_body["thinking"] == {"type": "enabled"}
+    assert c.last_body["model"] == "deepseek-v4-flash-think" and "thinking" not in c.last_body  # the gate's name
     assert c.last_body["reasoning_effort"] == "low"
     assert "temperature" not in c.last_body
 
@@ -198,7 +198,7 @@ def test_non_thinking_body_has_temperature(rawstore_tmp_db, monkeypatch):
     monkeypatch.setattr(ds, "key_for", lambda slug: "k")
     c = _Client(_ok('{"a": 1}'))
     ds.complete("s", "u", thinking=False, client=c)
-    assert c.last_body["thinking"] == {"type": "disabled"}
+    assert c.last_body["model"] == "deepseek-v4-flash-nothink" and "thinking" not in c.last_body
     assert "temperature" in c.last_body and "reasoning_effort" not in c.last_body
 
 
@@ -471,7 +471,7 @@ def test_base_url_follows_the_environment_at_call_time(rawstore_tmp_db, live, mo
     ds.complete("s", "u", client=_Url(_ok('{"a": 1}')))
     assert seen == ["http://127.0.0.1:9/chat/completions"]
     monkeypatch.delenv("RC_DEEPSEEK_BASE")
-    assert ds.base_url() == "https://api.deepseek.com"
+    assert ds.base_url() == "http://127.0.0.1:9720/v1"           # the LiteLLM gate (one model gate, 15 Nov 2026)
 
 
 def test_the_misnamed_sec_base_is_gone():

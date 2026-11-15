@@ -28,8 +28,7 @@ TEXT = {"789019": "Microsoft makes software and cloud services.", "320193": "App
 
 @pytest.fixture(autouse=True)
 def env(monkeypatch):
-    monkeypatch.setenv("EVREN_API_KEY", "sentinel-evren")
-    monkeypatch.setenv("DEEPSEEK_API_KEY", "sentinel-deepseek")
+    monkeypatch.setenv("LITELLM_RC_KEY", "sentinel-gate")
     monkeypatch.setenv("RC_EVREN_BASE", EVREN)
     monkeypatch.setenv("RC_DEEPSEEK_BASE", DEEPSEEK)
     monkeypatch.setattr(evren, "_sleep", lambda s: None)
@@ -84,7 +83,7 @@ def test_a_question_is_asked_once_stored_served_and_never_asked_again(http_mock)
     assert len(http_mock.requests) == 2                    # two companies with text; the third has none
     assert rows() == [("320193", "ok", 1), ("789019", "ok", 1), ("999", "no_text", 0)]
     body = json.loads(http_mock.requests[0].content)
-    assert body["model"] == "deepseek-v4.1-flash"
+    assert body["model"] == "evren-deepseek-v4.1-flash"         # the gate's EVREN name
     assert body["messages"][0]["content"] == "List the products as JSON."
 
     got = read.sec_reads(["0000789019", "999"], "test.products")
@@ -170,7 +169,7 @@ def test_the_pools_hold_their_caps_on_the_wire(http_mock):
     question(id="test.deepseek", ciks=tuple(many), text=many, provider="deepseek")
     run()
     assert len(seen) == 12 and 1 < max(seen) <= 8
-    assert {json.loads(r.content)["model"] for r in http_mock.requests[12:]} == {"deepseek-flash"}
+    assert {json.loads(r.content)["model"] for r in http_mock.requests[12:]} == {"deepseek-v4-flash-nothink"}  # the gate's Flash name
 
 
 def test_a_run_stops_at_its_slice_and_the_next_run_asks_the_rest(http_mock, monkeypatch):

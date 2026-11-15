@@ -90,7 +90,7 @@ Reference (informational; DST shifts these):
   `PEAK_WINDOWS_UTC = ((1, 4), (6, 10))`, `is_off_peak`, `next_off_peak`,
   `local_peak_windows`, `describe`. Tests in `core/tests/test_offpeak.py`.
 - **`core/providers/deepseek.py`** — key via `core/credentials.py`
-  (`DEEPSEEK_API_KEY`). Order: **cache → gate → HTTP**. A cache miss at peak raises
+  (`LITELLM_RC_KEY`, through the LiteLLM gate on 127.0.0.1:9720 since 15 Nov 2026). Order: **cache → gate → HTTP**. A cache miss at peak raises
   `PeakHoursError` (no HTTP). The base URL is `RC_DEEPSEEK_BASE`, read at call time.
   A reply that is not JSON raises `DeepSeekError` and is not cached; the caller's
   `validate=` hook can also keep an answer out of the cache. The key is read from

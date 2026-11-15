@@ -71,14 +71,14 @@ PROVIDERS: dict[str, Provider] = {
     "evren": Provider(
         slug="evren",
         label="EVREN",
-        env_var="EVREN_API_KEY",
+        env_var="LITELLM_RC_KEY",       # through the LiteLLM gate (one model gate, avo 15 Nov 2026)
         signup_url="https://evren-llmapi.ssyz.org.tr",
         required_for="the default Relatedness profile writer (core/providers/evren.py, #360; no fee)",
     ),
     "deepseek": Provider(
         slug="deepseek",
         label="DeepSeek",
-        env_var="DEEPSEEK_API_KEY",
+        env_var="LITELLM_RC_KEY",
         signup_url="https://platform.deepseek.com/api_keys",
         required_for="Relatedness profile extraction and theme naming (optional; off-peak UTC only — see core/offpeak.py)",
     ),

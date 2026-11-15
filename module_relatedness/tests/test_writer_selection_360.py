@@ -78,7 +78,7 @@ def deepseek_calls(monkeypatch):
 # ── the setting ─────────────────────────────────────────────────────────────
 
 def test_the_default_writer_is_evren(rawstore_tmp_db):
-    assert settings.writer() == ("evren", "deepseek-v4.1-flash")
+    assert settings.writer() == ("evren", "evren-deepseek-v4.1-flash")
     assert writers.DEFAULT == "evren" and set(writers.WRITERS) == {"evren", "deepseek"}
 
 
@@ -89,18 +89,21 @@ def test_the_default_writer_is_evren(rawstore_tmp_db):
 
 
 def test_options_grey_a_missing_key_by_name_and_never_show_a_value(rawstore_tmp_db, monkeypatch):
-    monkeypatch.delenv("EVREN_API_KEY", raising=False)
-    monkeypatch.setenv("DEEPSEEK_API_KEY", DS_KEY)
+    # EVREN and DeepSeek both go through the LiteLLM gate with RevenueChaser's one key (one model gate, 15 Nov 2026).
+    monkeypatch.delenv("LITELLM_RC_KEY", raising=False)
     opts = {o["provider"]: o for o in writers.options()}
-    assert opts["evren"]["available"] is False and opts["evren"]["missing"] == "EVREN_API_KEY"
-    assert opts["deepseek"]["available"] is True and opts["deepseek"]["missing"] is None
+    assert opts["evren"]["available"] is False and opts["evren"]["missing"] == "LITELLM_RC_KEY"
+    assert opts["deepseek"]["available"] is False and opts["deepseek"]["missing"] == "LITELLM_RC_KEY"
+    monkeypatch.setenv("LITELLM_RC_KEY", DS_KEY)
+    opts = {o["provider"]: o for o in writers.options()}
+    assert opts["evren"]["available"] is True and opts["deepseek"]["available"] is True
     assert DS_KEY not in json.dumps(opts)
 
 
 # ── the run ─────────────────────────────────────────────────────────────────
 
 def test_the_cli_runs_the_boards_writer_without_a_call_cap(rawstore_tmp_db, monkeypatch, capsys):
-    monkeypatch.setenv("EVREN_API_KEY", EVREN_KEY)
+    monkeypatch.setenv("LITELLM_RC_KEY", EVREN_KEY)
     got = {}
     monkeypatch.setattr(cli.engine, "run", lambda **k: got.update(k) or {"n": 1, "pending": 0, "companies": []})
     assert cli.main(["--run", "--cap", "10"]) == 0          # what RC-Relatedness-OffPeak runs
@@ -110,12 +113,12 @@ def test_the_cli_runs_the_boards_writer_without_a_call_cap(rawstore_tmp_db, monk
 
 
 def test_a_writer_without_its_key_stops_before_any_call(rawstore_tmp_db, monkeypatch, capsys):
-    monkeypatch.delenv("EVREN_API_KEY", raising=False)
+    monkeypatch.delenv("LITELLM_RC_KEY", raising=False)
     monkeypatch.setattr(cli.engine, "run", lambda **k: pytest.fail("must not run"))
     assert cli.main(["--run", "--cap", "10"]) == 1
     out = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
     assert out["provider"] == "evren" and out["calls"] == 0 and out["stopped_reason"] == "missing"
-    assert "EVREN_API_KEY" in out["error"]
+    assert "LITELLM_RC_KEY" in out["error"]
 
 
 
@@ -159,9 +162,9 @@ def test_the_writer_modules_take_the_model_per_call(rawstore_tmp_db, monkeypatch
         def close(self):
             pass
 
-    monkeypatch.setenv("EVREN_API_KEY", EVREN_KEY)
-    ev.complete("s", "u", client=_C(), use_cache=False, model="glm-5.3")
-    assert posts == ["glm-5.3"] and ev.MODEL != "glm-5.3"
+    monkeypatch.setenv("LITELLM_RC_KEY", EVREN_KEY)
+    ev.complete("s", "u", client=_C(), use_cache=False, model="evren-glm-5.3")
+    assert posts == ["evren-glm-5.3"] and ev.MODEL != "evren-glm-5.3"
     assert not hasattr(writers, "use")                      # no module-level swap left
 
 
