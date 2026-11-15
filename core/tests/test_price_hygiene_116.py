@@ -28,7 +28,7 @@ def test_locked_needs_five_identical_closes():
 
 
 def test_a_jump_the_adjusted_series_repeats_is_unexplained_and_a_split_is_not():
-    jump = _walk(20) + [200] * 3 + _walk(5)
+    jump = _walk(20) + [200] + _walk(5)                  # a one-day spike that comes straight back
     assert ph.unexplained_jump(_frame(jump), _frame(jump)) == "unexplained_jump"
     split = _frame(_walk(20) + [50.5, 51, 50])           # nominal halves; adjusted is smooth
     assert ph.unexplained_jump(split, _frame(_walk(23))) is None
@@ -61,3 +61,20 @@ def test_the_first_reason_in_order_wins():
     highs[2] = closes[2] * 2
     assert ph.evaluate(_frame(closes, highs=highs)) == "locked"            # before unexplained_jump and bad_wick
     assert ph.evaluate(pd.DataFrame()) is None
+
+
+def test_a_jump_that_holds_is_a_real_move_and_only_a_spike_that_reverses_is_flagged_891():
+    held = _walk(20) + [150, 151, 150, 152, 151]         # +50 % and it stays: news, not a bad print
+    assert ph.unexplained_jump(_frame(held), _frame(held)) is None
+    late = _walk(20) + [150, 151, 150] + _walk(3)        # back only on the third session: still a move
+    assert ph.unexplained_jump(_frame(late), _frame(late)) is None
+    back = _walk(20) + [150, 145, 102] + _walk(3)        # back within two sessions: a bad print
+    assert ph.unexplained_jump(_frame(back), _frame(back)) == "unexplained_jump"
+
+
+def test_locked_and_repeat_jump_read_only_the_last_60_sessions_891():
+    old_lock = _walk(5) + [50] * 6 + [50 + (i % 3) for i in range(ph.RECENT)]
+    assert ph.locked(_frame(old_lock)) is None
+    assert ph.locked(_frame(_walk(80) + [50] * 5)) == "locked"
+    old_jumps = _walk(20) + [130, 131, 130] + [170, 171, 170] + [170 + (i % 3) for i in range(ph.RECENT)]
+    assert ph.repeat_jump(_frame(old_jumps)) is None
