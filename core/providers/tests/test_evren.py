@@ -43,7 +43,7 @@ def _ok(content='{"products": ["x"]}'):
 
 @pytest.fixture(autouse=True)
 def _env(monkeypatch, rawstore_tmp_db):
-    monkeypatch.setenv("EVREN_API_KEY", KEY)
+    monkeypatch.setenv("LITELLM_RC_KEY", KEY)
     monkeypatch.delenv("RC_EVREN_BASE", raising=False)
     monkeypatch.setattr(evren, "_sleep", lambda s: None)
 
@@ -52,9 +52,9 @@ def test_the_request_is_an_openai_style_json_completion():
     c = _Client(_ok())
     assert evren.complete("sys", "user", client=c, use_cache=False) == '{"products": ["x"]}'
     post = c.posts[0]
-    assert post["url"] == "https://evren-llmapi.ssyz.org.tr/v1/chat/completions"
+    assert post["url"] == "http://127.0.0.1:9720/v1/chat/completions"  # the LiteLLM gate
     body = post["json"]
-    assert body["model"] == evren.MODEL and body["response_format"] == {"type": "json_object"}
+    assert body["model"] == "evren-" + evren.MODEL and body["response_format"] == {"type": "json_object"}
     assert body["messages"] == [{"role": "system", "content": "sys"}, {"role": "user", "content": "user"}]
     assert "thinking" not in body                       # a DeepSeek-only knob
     assert post["headers"]["Authorization"] == f"Bearer {KEY}"
@@ -68,9 +68,9 @@ def test_the_base_url_is_read_at_call_time(monkeypatch):
 
 
 def test_a_missing_key_makes_no_request_and_names_the_variable(monkeypatch):
-    monkeypatch.delenv("EVREN_API_KEY")
+    monkeypatch.delenv("LITELLM_RC_KEY")
     c = _Client(_ok())
-    with pytest.raises(evren.EvrenAuthError, match="EVREN_API_KEY"):
+    with pytest.raises(evren.EvrenAuthError, match="LITELLM_RC_KEY"):
         evren.complete("s", "u", client=c, use_cache=False)
     assert c.posts == []
 
@@ -79,7 +79,7 @@ def test_a_rejected_key_names_the_variable_never_the_value():
     c = _Client(_Resp(401, text=f"bad key {KEY}"))
     with pytest.raises(evren.EvrenAuthError) as exc:
         evren.complete("s", "u", client=c, use_cache=False)
-    assert "EVREN_API_KEY" in str(exc.value) and KEY not in str(exc.value)
+    assert "LITELLM_RC_KEY" in str(exc.value) and KEY not in str(exc.value)
 
 
 def test_the_engine_catches_evren_failures_as_the_writer_failures():

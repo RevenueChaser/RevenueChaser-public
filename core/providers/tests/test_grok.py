@@ -419,7 +419,7 @@ def test_a_grok_reply_never_replays_as_deepseek_or_back(rawstore_tmp_db, monkeyp
     assert "from grok" in _call(c, thinking=False)                      # Grok's own reply (the knobs are not sent)
     assert c.posts == []
     # and DeepSeek does not replay the Grok reply: its cache key is its own
-    monkeypatch.setenv("DEEPSEEK_API_KEY", "k")
+    monkeypatch.setenv("LITELLM_RC_KEY", "k")
     monkeypatch.setenv("RC_DEEPSEEK_OFF_PEAK_ONLY", "0")
     rawstore.execute("DELETE FROM llm_cache WHERE CAST(response AS VARCHAR) LIKE '%from deepseek%'", db="relatedness")
     ds_client = _Client(_ok("{\"products\": [\"fresh deepseek\"]}"))

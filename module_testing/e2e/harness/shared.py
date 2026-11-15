@@ -42,10 +42,10 @@ def provider_env(base: str) -> dict[str, str]:
         "RC_FRED_BASE": f"{base}/fred/series/observations",
         "RC_CFTC_BASE": f"{base}/resource/udgc-27he.json",
         "UNUSUAL_WHALES_API_KEY": "e2e-test-token",
-        # DeepSeek: the mock host, a dummy key (so .env's real key is never read) and the
+        # DeepSeek: the mock host, a dummy gate key (so the box's real one is never read) and the
         # off-peak gate open (so no test depends on the clock).
         "RC_DEEPSEEK_BASE": base,
-        "DEEPSEEK_API_KEY": "e2e-test-token",
+        "LITELLM_RC_KEY": "e2e-test-token",
         "RC_DEEPSEEK_OFF_PEAK_ONLY": "0",
         # FRED short-circuits when its key is absent; keep it absent so a missing
         # fixture cannot silently reach the real internet.

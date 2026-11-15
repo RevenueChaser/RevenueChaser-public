@@ -15,7 +15,7 @@ def test_e2e_env_points_deepseek_at_the_mock(e2e_env, provider_routes):
 
 
 def test_e2e_env_gives_deepseek_a_dummy_key_and_opens_the_off_peak_gate(e2e_env):
-    key = e2e_env["DEEPSEEK_API_KEY"]
+    key = e2e_env["LITELLM_RC_KEY"]
     assert key and key == "e2e-test-token"
     # The gate would otherwise skip the call at peak hours and the test would depend on the clock.
     assert e2e_env["RC_DEEPSEEK_OFF_PEAK_ONLY"] == "0"
