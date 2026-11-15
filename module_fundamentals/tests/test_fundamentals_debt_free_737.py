@@ -220,8 +220,8 @@ def test_the_floor_does_not_reach_a_debt_tag():
 ])
 def test_a_current_debt_spelling_the_facts_layer_misses_still_takes_the_filer_out(field, ticker, owed):
     """Measured 13 Nov 2026: these three names tag a current borrowing under a spelling
-    ``facts.FALLBACK_CURRENT_DEBT`` does not carry, so they were the only names a 1 m floor let through. Read as
-    presence signals they are out under rule 1, where no floor reaches them."""
+    ``facts.FALLBACK_CURRENT_DEBT`` did not carry, so they were the only names a 1 m floor let through. As fallback
+    lines (#737 item 3) they still take the name out under rule 1, where no floor reaches them."""
     q = pipeline._quality_metrics(_year(**{field: owed}))
     assert q["debt_basis"] is None and q["net_debt_ebitda"] is None
 

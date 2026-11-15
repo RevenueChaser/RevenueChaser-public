@@ -71,12 +71,7 @@ def tag_fields() -> tuple[str, ...]:
 #: ``facts._debt_lines``, not in ``sec_edgar.extract_annual`` -- and exist so ``tags_no_debt`` can tell a filer
 #: that tagged nothing from one that tagged debt this project does not add up (the module docstring).
 PRESENCE_ONLY_FIELDS = ("notes_and_loans_payable", "debt_combined_total", "unsecured_debt",
-                        "debt_instrument_carrying_amount",
-                        # Three current-debt spellings ``facts.FALLBACK_CURRENT_DEBT`` does not carry. A current
-                        # line alone is unreadable as a size (#239), so these take a name out of the inference the
-                        # same way, where no floor can reach it: TR, CUE and DUOT leaked through this hole.
-                        "loans_payable_to_bank_current", "other_loans_payable_current",
-                        "other_notes_payable_current")
+                        "debt_instrument_carrying_amount")
 
 #: Interest labels the ``interest_expense`` ladder does not carry, read for the same reason and in the same way.
 #: They are not added to ``interest_expense`` itself: that field feeds the interest-cover and tax-rate engines

@@ -180,6 +180,10 @@ def test_the_fallback_ladder_takes_the_largest_positive_line(tags, total, why):
     ({"ConvertibleDebtNoncurrent": 0, "LinesOfCreditCurrent": 0}, None, "two zeros are still no reading"),
     # No long-term or whole line at all, not even a zero one: a current line alone is still not the whole.
     ({"LinesOfCreditCurrent": 25}, None, "the rule of #239 is unchanged"),
+    # #737 item 3: the three spellings TR, CUE and DUOT tag are current lines of the fallback now.
+    ({"SecuredLongTermDebt": 0, "LoansPayableToBankCurrent": 1_000}, 1_000, "LoansPayableToBankCurrent"),
+    ({"SecuredLongTermDebt": 0, "OtherLoansPayableCurrent": 700}, 700, "OtherLoansPayableCurrent"),
+    ({"SecuredLongTermDebt": 0, "OtherNotesPayableCurrent": 5}, 5, "OtherNotesPayableCurrent"),
 ])
 def test_a_zero_fallback_line_counts_only_beside_a_positive_current_line(tags, total, why):
     rows = _by_key(facts.fact_rows(_balance_sheet(**tags), "1")[0])
