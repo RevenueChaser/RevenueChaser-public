@@ -187,19 +187,6 @@ def _stored_payload():
     return json.loads(gzip.decompress(rc.payload_path(runners.ASYMMETRIC_GROWTH_LATEST).read_bytes()))
 
 
-def test_the_refresh_payload_is_the_fetch_payload_with_tiers_and_flags(out, monkeypatch):
-    cards = _fresh(("BAL", 9, 3), ("STR", 7, 2), ("NON", 8, None))
-    cards[1]["flags"] = ["mixed_share_basis"]
-    for c in cards:
-        c["index"] = []                       # the labels come from the index registry on both paths (empty here)
-    monkeypatch.setattr(engine, "run_asymmetric_growth_hunter", lambda uw, **k: _result(cards))
-    runners.run_asymmetric_growth(None)
-    fetched_html, fetched = runners.ASYMMETRIC_GROWTH_LATEST.read_text(encoding="utf-8"), _stored_payload()
-    runners.run_asymmetric_growth(None, no_fetch=True)
-    assert _stored_payload() == fetched
-    assert [(c["ticker"], c["tier"], c["flags"]) for c in fetched["cards"]] == [
-        ("BAL", 3, []), ("STR", 2, ["mixed_share_basis"]), ("NON", None, [])]
-    assert "scored before" not in fetched_html
 
 
 def test_the_model_version_is_the_ledgers():

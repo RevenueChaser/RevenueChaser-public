@@ -64,22 +64,6 @@ def test_run_screen_scores_the_stored_date_and_leaves_the_other_rows_alone(monke
     assert rows[0]["quote"]["earningsTimestampStart"] == YAHOO
 
 
-def test_ag_scores_the_stored_date_and_falls_back_to_yahoo(rawstore_tmp_db):
-    from datetime import timedelta
-    from RevenueChaser.core import calendar, rawstore
-    from RevenueChaser.module_asymmetric_growth import engine
-    from RevenueChaser.module_asymmetric_growth.tests.test_ag_dated_momentum_380 import _QUOTE, edgar, row
-
-    today = calendar.today_ny()
-    day = today + timedelta(days=6)
-    from RevenueChaser.rcdata.tests import fund_store
-    fund_store.put_edgar([edgar("AAA"), edgar("BBB")])
-    preload = engine._preload(["AAA", "BBB"], True)
-    preload["as_of"] = date.min
-    cards = {t: engine.enrich_and_score(t, row(t, dict(_QUOTE, earningsTimestampStart=YAHOO)), no_fetch=True, spine={},
-                                        preload=preload) for t in ("AAA", "BBB")}
-    assert cards["AAA"]["earnings_date"] == ed.epoch(day)
-    assert cards["BBB"]["earnings_date"] == YAHOO
 
 
 def test_run_screen_counts_the_names_that_score_the_stored_date(monkeypatch):

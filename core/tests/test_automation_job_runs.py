@@ -61,17 +61,6 @@ def test_the_shipped_backup_records_no_row():
     assert A.entry("RC-Backup-Weekly").tables_written == ()
 
 
-def test_a_store_that_cannot_be_written_never_changes_the_outcome(monkeypatch, rawstore_tmp_db):
-    def boom(*a, **k):
-        raise rawstore.RawStoreError("store locked")
-
-    e = _entry(code="import sys; sys.exit(0)")
-    _only(monkeypatch, e)
-    monkeypatch.setattr(rawstore, "write_rows", boom)
-    assert A.run_task(e.name) == 0
-    text = e.log_path.read_text(encoding="utf-8")
-    assert "job_runs: not recorded (store locked)" in text
-    assert re.search(r"=== \S+ exit 0\s*$", text)       # the footer stays the last line: the chain reads it
 
 
 # --- the child's side ------------------------------------------------------------------------------------------

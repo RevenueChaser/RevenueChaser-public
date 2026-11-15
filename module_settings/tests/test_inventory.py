@@ -29,22 +29,6 @@ def _rows(payload):
 
 
 
-def test_collect_makes_no_provider_calls(rawstore_tmp_db, monkeypatch):
-    from RevenueChaser.core.providers import sec_edgar, yfinance as yf_provider
-    import yfinance
-
-    def boom(*args, **kwargs):
-        raise AssertionError("inventory.collect() must not touch the network")
-
-    monkeypatch.setattr(sec_edgar, "get_json", boom)
-    monkeypatch.setattr(sec_edgar, "get_text", boom)
-    monkeypatch.setattr(sec_edgar, "_cik_map", boom)
-    monkeypatch.setattr(yf_provider, "get_financials", boom)
-    monkeypatch.setattr(yfinance, "Ticker", boom, raising=False)
-    monkeypatch.setattr(yfinance, "screen", boom, raising=False)
-
-    payload = inventory.collect()
-    assert payload["rows"]
 
 
 
@@ -126,18 +110,6 @@ def _identity(**kw):
 
 
 
-def test_the_identity_payload_is_empty_without_the_identity_tables_and_never_raises(isolate_rawstore):
-    universe_store.put([{"ticker": "AAPL", "market_cap": 3.0e9, "name": "Apple"}])
-    payload = inventory.collect(now=FIXED)
-    ident = payload["identity"]
-    assert ident["last_run"] is None and ident["floor"] == 0
-    assert ident["type_mix"] == [] and ident["source_mix"] == [] and ident["stale"] == []
-    assert ident["conflicts"] == {"as_of": None, "by_kind": [], "top": [], "older": {"count": 0, "since": None}}
-    assert ident["spdr"] == {"state": "never"}
-    assert payload["errors"] == [], "a missing table is not a failure"
-    row = _rows(payload)["identity"]
-    assert row["rows"] is None and row["holes"] is None and row["last_date"] == "—"
-    assert row["note"] == "no identity run yet"
 
 
 

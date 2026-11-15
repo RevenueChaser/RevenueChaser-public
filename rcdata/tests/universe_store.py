@@ -6,6 +6,10 @@ against ``equity_universe`` rows (``ticker``, ``name``, ``sector``, ``industry``
 ``quote``, ...); ``put`` and ``replace`` write those rows as spine ``security`` rows. The old table they also
 went into left with raw.duckdb (#860), and with it the ``quote`` the spine universe read from it.
 
+A row's ``market_cap`` and ``price`` are kept in ``MARKET``: the root ``conftest.py`` answers them from
+``spine_reads.latest_market`` for a seeded ticker the served prices file has no bar for, so a test of a board's cap
+filter needs no bars (and a test of the bars' own checks keeps the bars it seeded). The old table played that part.
+
 A row's ``tier`` defaults to ``A``; ``security_type`` stays NULL unless the row gives one, so a test's
 row's ``security_type`` types the name. It also books a good
 ``spine/security`` check, so ``universe.source_state`` gives no reason.
@@ -48,8 +52,19 @@ def _security_row(r: dict) -> dict:
             "sector": r.get("sector"), "industry": r.get("industry"), "source": "sec/company_tickers_exchange"}
 
 
+#: ``{ticker: {"market_cap", "price"}}`` of the rows ``put``/``replace`` wrote in this test (cleared per test).
+MARKET: dict[str, dict] = {}
+
+
 def _write(rows: list[dict], *, replace: bool) -> None:
     from RevenueChaser.core import spine_reads
+    if replace:
+        MARKET.clear()
+    for r in rows:
+        ticker = str(r["ticker"]).strip().upper()
+        MARKET.pop(ticker, None)
+        if r.get("market_cap") is not None or r.get("price") is not None:
+            MARKET[ticker] = {"market_cap": r.get("market_cap"), "price": r.get("price")}
     con = _connect()
     try:
         if replace:

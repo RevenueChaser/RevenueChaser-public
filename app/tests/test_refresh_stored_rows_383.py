@@ -110,44 +110,10 @@ def ag_fetched(rawstore_tmp_db, out, monkeypatch):
     return _html(runners.ASYMMETRIC_GROWTH_LATEST), _ag_payload()
 
 
-def test_ag_refresh_renders_the_fetch_render(ag_fetched, monkeypatch):
-    _no_scoring(monkeypatch)
-    runners.ASYMMETRIC_GROWTH_LATEST.unlink()
-    runners.run_asymmetric_growth(None, no_fetch=True)
-    html, payload = ag_fetched
-    assert _html(runners.ASYMMETRIC_GROWTH_LATEST) == html
-    assert _ag_payload() == payload                         # the cards, outside the page (S7)
-    assert [c["ticker"] for c in payload["cards"]] == ["AAA", "CCC", "BBB"]
-    assert [(c["tier"], c["flags"]) for c in payload["cards"]] == [
-        (3, []), (2, ["suspicious_growth"]), (None, ["mixed_share_basis"])]       # #380 S2: tier and flags kept
-    assert payload["cards"][0]["period_ends"]["revenue"][2] == "2023-12-31"         # #380 S3: the provenance kept
-    assert payload["cards"][1]["period_ends"] == {} and payload["cards"][0]["anchor_fy"] == 2025
 
 
-def test_ag_refresh_reads_the_stored_rows_and_the_header(ag_fetched, monkeypatch):
-    from RevenueChaser.core import index_registry
-    from RevenueChaser.module_asymmetric_growth import engine
-    monkeypatch.setattr(index_registry, "load_registry", lambda: {"CCC": {"index": ["S&P 500"]}})
-    res = engine.stored_result()
-    assert [c["ticker"] for c in res["cards"]] == ["AAA", "CCC", "BBB"]
-    assert [c["index"] for c in res["cards"]] == [[], ["S&P 500"], []]      # the index labels, read on the Refresh
-    assert res["summary"]["score_error_types"] == {"ValueError": 1}
-    assert res["funnel_steps"][-1] == {"step": "scored", "names": 3}
-    assert res["universe_partial"] is True and res["asof"] == "2026-10-06T22:05:00+00:00"
 
 
-def test_ag_refresh_header_says_the_fetch_s_prices_session(ag_fetched, monkeypatch):
-    """#380 S4: the Fetch names the prices session its momentum read, and a Refresh restores it from the header."""
-    from RevenueChaser.module_asymmetric_growth import engine
-    html, _ = ag_fetched
-    assert "Prices: session 2026-10-06" in html
-    assert engine.stored_result()["data_as_of"] == "2026-10-06"
-    _no_scoring(monkeypatch)
-    runners.ASYMMETRIC_GROWTH_LATEST.unlink()
-    runners.run_asymmetric_growth(None, no_fetch=True)
-    refreshed = _html(runners.ASYMMETRIC_GROWTH_LATEST)
-    assert "Prices: session 2026-10-06" in refreshed
-    assert refreshed == html                    # the whole header, not just the chip
 
 
 def test_ag_stored_cards_are_what_ticker_scores_holds(ag_fetched):

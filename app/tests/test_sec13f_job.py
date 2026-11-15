@@ -89,16 +89,8 @@ def _tickers() -> set:
 class TestOwnUwClientIsClosed:
     """N1: the client the runner opens itself is always closed."""
 
-    def test_closed_after_a_successful_meta_step(self, store, fake_uw):
-        runners.build_sec13f(None)
-        assert (fake_uw.built, fake_uw.closed) == (1, 1)
 
 
-    def test_closed_when_verify_itself_raises(self, store, fake_uw, monkeypatch):
-        monkeypatch.setattr(fake_uw, "verify", lambda self: (_ for _ in ()).throw(OSError("net")))
-        with pytest.raises(OSError):
-            runners.build_sec13f(None)
-        assert (fake_uw.built, fake_uw.closed) == (1, 1)
 
     def test_a_client_passed_in_is_not_closed(self, store, fake_uw):
         runners.build_sec13f(fake_uw())

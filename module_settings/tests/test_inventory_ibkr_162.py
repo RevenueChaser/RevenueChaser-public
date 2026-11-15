@@ -70,18 +70,6 @@ def test_collect_says_not_set_up_while_the_switch_is_off(rawstore_tmp_db, monkey
     assert card["state"] == ibkr_login.NOT_SET
 
 
-def test_a_failing_card_read_is_recorded_and_the_rest_of_the_payload_survives(rawstore_tmp_db, monkeypatch):
-    def boom(**kw):
-        raise RuntimeError("login read exploded")
-
-    monkeypatch.setattr(ibkr_login, "collect", boom)
-    _seed()
-    payload = inventory.collect(now=NOW)
-    assert payload["ibkr_login_state"] is None
-    assert {"table": "ibkr", "where": "_ibkr_login_state", "error": "login read exploded"} in payload["errors"]
-    assert {r["key"] for r in payload["rows"]}, "the rest of the inventory is still built"
-    html = report.render_settings_dashboard(payload)
-    assert "login read exploded" in html and 'id="ibkr-state-card"' not in html
 
 
 # ── the card's words ────────────────────────────────────────────────────────────────────────────

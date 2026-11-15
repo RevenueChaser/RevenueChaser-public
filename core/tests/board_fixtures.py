@@ -602,5 +602,5 @@ BOARDS: dict[str, Board] = {
     # Not a data board: the dashboard's own log files, whose request lines carry attacker-chosen paths.
     "logs": Board(_logs),
     # Not a data board: the run log page (no rows since #860).
-    "runs": Board(_runs),
+    "runs": Board(_runs, open_item="the run log has no stored rows since #860 (job_runs went with raw.duckdb)"),
 }

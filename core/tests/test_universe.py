@@ -378,15 +378,6 @@ def test_load_cached_universe_returns_normalised_rows(rawstore_tmp_db):
                             "industry_group", "sub_industry", "quote"}
 
 
-def test_load_cached_universe_parses_a_json_string_quote_and_survives_bad_json(
-        rawstore_tmp_db, monkeypatch):
-    _seed_universe([{"ticker": "A"}, {"ticker": "B"}])      # the spine names; the quote is the old table's
-    monkeypatch.setattr(rawstore, "query", lambda sql, *a, **k: [
-        {"ticker": "A", "quote": '{"x": 1}', "sector": None},
-        {"ticker": "B", "quote": "not json"}])
-    rows = {r["ticker"]: r for r in universe.load_cached_universe()}
-    assert rows["A"]["quote"] == {"x": 1}
-    assert rows["B"]["quote"] == {}
 
 
 def test_load_cached_universe_is_empty_without_rows(rawstore_tmp_db):

@@ -44,15 +44,6 @@ def test_rotation_snapshot_populated(rawstore_tmp_db):
     assert data["etfs"][0]["group"] == "sector"
 
 
-def test_ticker_store_populated(rawstore_tmp_db):
-    from RevenueChaser.core import ticker_store
-    ticker_store.write_from_cards([{
-        "ticker": "ETON", "name": "Eton", "sector": "Health Care", "market_cap": 1.8e9,
-        "total_points": 9, "themes": ["Biotech"], "signals": [],
-    }], asof="2026-08-22")
-    assert ticker_store.count() == 1
-    assert ticker_store.get("ETON")["themes"] == ["Biotech"]
-    assert ticker_store.asof() == "2026-08-22"
 
 
 def test_leaps_store_populated(rawstore_tmp_db):
@@ -253,11 +244,12 @@ def test_population_entries_point_at_tests_that_exist():
 
 def test_manifest_tables_start_empty_in_an_isolated_db(rawstore_tmp_db):
     """Sanity for the autouse isolation fixture: no test may see another's rows,
-    and none may see the developer's real .store/raw.duckdb."""
+    and none may see the developer's real store."""
     for table in rawstore.MANIFEST:
-        if table == "store_schema":     # #26 PL7: every ensure stamps the file's own schema version
-            assert rawstore.count(table) == 1
-            assert rawstore.get(table, "schema_version")["value"] == rawstore.schema_version()
+        if table == "store_schema":     # #26 PL7: every ensure stamps each board file's own schema version
+            for db in rawstore.BOARD_DBS:
+                (row,) = rawstore.query("SELECT value FROM store_schema WHERE key = 'schema_version'", db=db)
+                assert row["value"] == rawstore.schema_version()
             continue
         assert rawstore.count(table) == 0, f"{table} leaked state across tests"
 

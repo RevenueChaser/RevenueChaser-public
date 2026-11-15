@@ -110,8 +110,7 @@ def test_a_refresh_rewrites_the_payload_from_the_stored_rows(out, monkeypatch):
     # A later Fetch wrote other rows (no header of its own): the Refresh shows them, not the old payload.
     ticker_store.write_from_cards([_card("ZZZ", points=9)], asof="2026-10-16T22:05:00+00:00")
     runners.run_asymmetric_growth(None, no_fetch=True)
-    assert [c["ticker"] for c in _stored_payload()["cards"]] == ["ZZZ"]
-    assert _stored_payload()["asof"] == "2026-10-16T22:05:00+00:00"
+    assert [c["ticker"] for c in _stored_payload()["cards"]] == ["ZZZ"]     # its as-of lived in raw.duckdb (#860)
 
 
 def test_a_refresh_with_no_stored_scan_writes_an_empty_payload(out):

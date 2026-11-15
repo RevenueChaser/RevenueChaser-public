@@ -179,7 +179,7 @@ _RAW_REWRITES = [
     'UPDATE "T_History_Demo" SET score = 0',
     # a list of tables, the history table not first (DuckDB 1.5.6 itself refuses a drop list; the guard
     # does not depend on that)
-    "DROP TABLE watchlist, t_history_demo",
+    "DROP TABLE news_headlines, t_history_demo",
     # other statements that delete, update or recreate rows (finding 2)
     "MERGE INTO t_history_demo USING (SELECT '2026-10-01' AS session, 'AAPL' AS ticker) s "
     "ON (t_history_demo.session = s.session AND t_history_demo.ticker = s.ticker) WHEN MATCHED THEN DELETE",
@@ -376,7 +376,7 @@ class TestRawSql:
         "CREATE TABLE copy_of_history AS SELECT * FROM t_history_demo",
         "CREATE TABLE IF NOT EXISTS t_history_demo (session TEXT, ticker TEXT, score DOUBLE)",
         "INSERT INTO t_history_demo SELECT '2026-10-09', ticker, score FROM t_history_demo",
-        "UPDATE watchlist SET ticker = 'X' WHERE ticker IN (SELECT ticker FROM t_history_demo)",
+        "UPDATE news_headlines SET tickers = 'X' WHERE tickers IN (SELECT ticker FROM t_history_demo)",
         "BEGIN; SELECT count(*) FROM t_history_demo; COMMIT",
     ])
     def test_adding_to_and_reading_a_history_table_still_works(self, hist, sql):

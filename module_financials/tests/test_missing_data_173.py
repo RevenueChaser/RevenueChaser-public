@@ -231,5 +231,5 @@ def test_report_shows_the_plain_ratio_otherwise(financials):
 def test_the_dashboard_runners_pass_the_single_report_path():
     import inspect
     from RevenueChaser.app import runners
-    for fn in (runners.run_quick, runners.run_quick_cached):
+    for fn in (runners.run_quick,):                     # run_quick_cached re-derives nothing since #860
         assert "report_path=QUICK_LATEST" in inspect.getsource(fn)

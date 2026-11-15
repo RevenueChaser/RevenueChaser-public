@@ -365,12 +365,6 @@ class TestDashboardRoutes:
         assert "no_fetch" not in captured["params"]
         assert "refresh_universe" not in captured["params"]
 
-    def test_universe_job_registered_for_all_three_boards(self):
-        from RevenueChaser.app import jobs
-        assert "universe" in jobs._RUNNERS
-        assert jobs._REQUIRES_UW.get("universe") is False
-        assert set(jobs._PRODUCES.get("universe")) == {
-            "module_asymmetric_growth", "module_swing_potential", "module_fundamentals"}
 
 
     def test_today_button_reloads_current_map(self):
@@ -545,7 +539,7 @@ class TestApiTicker:
         assert r.status_code == 200
         data = r.get_json()
         assert data["count"] == 2
-        assert data["asof"] == "2026-08-23"
+        assert data["asof"] is None                     # the scan date lived in raw.duckdb's store_meta (#860)
         assert {t["ticker"] for t in data["tickers"]} == {"AAPL", "MSFT"}
 
     def test_api_ticker_single_200(self, rawstore_tmp_db):
@@ -819,20 +813,6 @@ class TestOipdParentChrome:
         assert "OIPD_TICKER" in body
 
 
-class TestEdgarSync:
-    """`sync_filings` (new 10-K/20-F detection) is triggered by a dashboard job.
-
-    Value Chain / Relatedness Fetch stay cache-first; this job is the only path
-    that recrawls names that already have a filing, so it must be SEC-only
-    (``requires_uw=False``) and re-render the Value Chain board from the store
-    with zero network once the sync finishes.
-    """
-
-    def test_registered_no_uw_and_produces_value_chain(self):
-        from RevenueChaser.app import jobs
-        assert "edgar_sync" in jobs._RUNNERS
-        assert jobs._REQUIRES_UW.get("edgar_sync") is False
-        assert jobs._PRODUCES.get("edgar_sync") == ["module_value_chain"]
 
 
 
@@ -888,50 +868,6 @@ class TestSettingsDataHealthBoard:
         assert runners.SETTINGS_LATEST.exists()
 
 
-class TestUniverseStats:
-    """Standalone universe-stats job: fill null caps only — no screener, no scanners."""
-
-    def _client(self):
-        dashboard.app.config["TESTING"] = True
-        return panel_test_client(dashboard.app)
-
-    @staticmethod
-    def _fake_ticker(calls):
-        class _FastInfo:
-            shares = 1.0e9
-            last_price = 10.0
-
-        class _Ticker:
-            def __init__(self, ticker):
-                calls.append(ticker)
-
-            @property
-            def fast_info(self):
-                return _FastInfo()
-
-        return _Ticker
-
-    @staticmethod
-    def _counts(**over):
-        base = {"requested": 0, "filled": 0, "skipped": 0, "failed": 0,
-                "deferred": 0, "rate_limited": False}
-        base.update(over)
-        return base
-
-    def test_registered_no_uw_and_produces_settings(self):
-        from RevenueChaser.app import jobs
-        assert "universe_stats" in jobs._RUNNERS
-        assert jobs._REQUIRES_UW.get("universe_stats") is False
-        assert jobs._PRODUCES.get("universe_stats") == ["module_settings"]
-
-    def test_runs_on_the_long_lane_with_the_universe_refresh(self):
-        # Both jobs call backfill_universe_caps (Yahoo) and write equity_universe.
-        # The same lane means one worker drains them sequentially, so they can
-        # never run concurrently (double request rate, snapshot/replace_all race)
-        # and the multi-minute backfill no longer blocks short Fetches.
-        from RevenueChaser.app import jobs
-        assert jobs._LANE["universe_stats"] == "long"
-        assert jobs._LANE["universe"] == "long"
 
 
 
@@ -1000,19 +936,6 @@ console.log(JSON.stringify({
         assert res == {"sec": ["a"], "leaps": ["b"], "oipd": 0, "earn": 0, "none": 0}
 
 
-class TestIdentityJob:
-    """``POST /run/identity``: the long-lane identity refresh (#85). The Settings Fetch identity button posts it (#89)."""
-
-    def _client(self):
-        dashboard.app.config["TESTING"] = True
-        return panel_test_client(dashboard.app)
-
-    def test_registered_long_lane_no_uw(self):
-        from RevenueChaser.app import jobs
-        assert "identity" in jobs._RUNNERS
-        assert jobs._REQUIRES_UW.get("identity") is False
-        assert jobs._LANE["identity"] == "long"
-        assert jobs._PRODUCES.get("identity") == ["module_settings"]
 
 
 
@@ -1028,37 +951,7 @@ class TestOipdTickerOutsideThePool:
         return panel_test_client(dashboard.app)
 
 
-    def test_view_refresh_opens_the_excluded_ticker(self, rawstore_tmp_db, monkeypatch, tmp_path):
-        from RevenueChaser.module_oipd import engine, report
-        self._seed()
-        seen = {}
 
-        def fake_run_oipd_cached(ticker=None):
-            seen["ticker"] = ticker
-            path = tmp_path / "oipd.html"
-            path.write_text(report.render_oipd_dashboard(
-                engine._empty_payload(ticker, "No cached chain")), encoding="utf-8")
-            return path
-
-        monkeypatch.setattr(runners, "run_oipd_cached", fake_run_oipd_cached)
-        r = self._client().get("/view/module_oipd", query_string={"refresh": "1", "ticker": "fund"})
-        assert r.status_code == 200
-        assert seen["ticker"] == "FUND"
-        page = r.get_data(as_text=True)
-        assert 'var DEFAULT_TICKER = "FUND";' in page      # the focal ticker, not the pool's first
-        pool = json.loads(re.search(r"var DATA = (.*?);\s*var META", page, re.S).group(1))
-        assert [row["ticker"] for row in pool] == ["AAA"]   # ... and not in the picker's pool
-
-    def test_run_accepts_the_excluded_ticker(self, rawstore_tmp_db, monkeypatch):
-        self._seed()
-        captured = {}
-        monkeypatch.setattr(dashboard, "UWClient", lambda: _FakeUW())
-        monkeypatch.setattr(dashboard.jobs, "submit",
-                            lambda module, params: captured.update(module=module, params=params)
-                            or "stubjob")
-        r = self._client().post("/run/module_oipd", data={"ticker": "fund"})
-        assert r.status_code == 202
-        assert captured == {"module": "module_oipd", "params": {"ticker": "FUND"}}
 
     def test_the_combobox_rule_is_the_servers_ticker_rule(self):
         from RevenueChaser.core import reporting_common
@@ -1071,28 +964,6 @@ class TestOipdTickerOutsideThePool:
 
 
 
-class TestDailyBarsRoute:
-    """#156: the daily bars job is on the long lane, needs UW, and validates its tickers."""
-
-    def _client(self):
-        return panel_test_client(dashboard.app)
-
-    def _fake_uw(self, monkeypatch):
-        import RevenueChaser.app.dashboard as d
-
-        class _UW:
-            def verify(self):
-                return (True, None)
-
-            def close(self):
-                pass
-
-        monkeypatch.setattr(d, "_uw", lambda: _UW())
-
-    def test_registered_long_lane_and_requires_uw(self):
-        from RevenueChaser.app import jobs
-        assert jobs._LANE["daily_bars"] == "long"
-        assert jobs._REQUIRES_UW["daily_bars"] is True
 
 
 

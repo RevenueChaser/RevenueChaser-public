@@ -58,7 +58,7 @@ class TestRefuseWrites:
     def test_the_other_files_are_checked_too_and_an_unreadable_stamp_is_named(self, isolate_rawstore, monkeypatch):
         monkeypatch.setenv("RC_STORE_SCHEMA_REFUSE", "1")
         rawstore.ensure_all_tables()
-        _set_stamp("edgar", "12-dev")
+        _set_stamp("news", "12-dev")
         with pytest.raises(rawstore.StoreSchemaMismatch, match="not a version number"):
             rawstore.ensure_all_tables()
         assert rawstore.store_schema_mismatch()[0]["kind"] == "unreadable"

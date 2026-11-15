@@ -149,35 +149,54 @@ class TestBulkParity:
 # ── another RevenueChaser process holding the lock is waited out ─────────────
 
 
+WINDOWS_LOCK = ("IO Error: Cannot open file \"news.duckdb\": The process cannot access "
+                "the file because it is being used by another process.")
+
+
 class TestPeerLockBudget:
+    """The presence files sit beside the board files; a board file stands for the store here."""
+
     @pytest.fixture
-    def peer(self, rawstore_tmp_db):
+    def board(self, rawstore_tmp_db):
+        path = rawstore.board_db_path("news")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return path
+
+    @pytest.fixture
+    def peer(self, board):
         proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
-        f = rawstore._presence_file(rawstore_tmp_db, proc.pid)
+        f = rawstore._presence_file(board.parent, proc.pid)
         f.write_text(str(proc.pid))
         yield proc
         proc.kill()
         proc.wait()
 
+    def _locked(self, monkeypatch):
+        def _raise(*a, **k):
+            raise duckdb.IOException(WINDOWS_LOCK)
+        monkeypatch.setattr(duckdb, "connect", _raise)
+        slept: list[float] = []
+        monkeypatch.setattr(time, "sleep", slept.append)
+        return slept
 
-    def test_a_peer_gets_the_full_budget_even_for_a_write(self, rawstore_tmp_db, peer, monkeypatch):
+    def test_a_peer_gets_the_full_budget_even_for_a_write(self, board, peer, monkeypatch):
         slept = self._locked(monkeypatch)
         with pytest.raises(rawstore.StoreLockedError):
-            rawstore._connect_with_retry(rawstore._WRITE_DELAYS)
+            rawstore._connect_with_retry(rawstore._WRITE_DELAYS, board)
         assert sum(slept) > 20.0
 
-    def test_an_unknown_holder_still_fails_fast(self, rawstore_tmp_db, monkeypatch):
+    def test_an_unknown_holder_still_fails_fast(self, board, monkeypatch):
         slept = self._locked(monkeypatch)
         with pytest.raises(rawstore.StoreLockedError):
-            rawstore._connect_with_retry(rawstore._READ_DELAYS)
+            rawstore._connect_with_retry(rawstore._READ_DELAYS, board)
         assert sum(slept) < 1.0
 
-    def test_a_dead_peers_presence_file_is_ignored_and_removed(self, rawstore_tmp_db, monkeypatch):
+    def test_a_dead_peers_presence_file_is_ignored_and_removed(self, board, monkeypatch):
         proc = subprocess.Popen([sys.executable, "-c", "pass"])
         proc.wait()
-        f = rawstore._presence_file(rawstore_tmp_db, proc.pid)
+        f = rawstore._presence_file(board.parent, proc.pid)
         f.write_text(str(proc.pid))
-        assert rawstore._peer_pids(rawstore_tmp_db) == []
+        assert rawstore._peer_pids(board) == []
         assert not f.exists()
 
 

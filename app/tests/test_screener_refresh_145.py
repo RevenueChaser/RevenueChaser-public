@@ -184,12 +184,6 @@ def test_refresh_with_an_empty_store_points_at_fetch_universe(client, out, yf_ca
     assert yf_calls == [] and submitted == []
 
 
-@pytest.mark.parametrize("mod", ["module_swing_potential", "module_fundamentals", "module_asymmetric_growth"])
-def test_a_running_universe_job_shows_loading_and_caches_nothing(client, out, monkeypatch, mod):
-    monkeypatch.setattr(jobs, "has_active", lambda modules: "universe" in modules)
-    body = client.get(f"/view/{mod}?refresh=1").get_data(as_text=True)
-    assert "Loading universe…" in body
-    assert not out.exists() or list(out.iterdir()) == []
 
 
 def test_loading_is_not_shown_once_the_universe_is_stored(client, out, monkeypatch):

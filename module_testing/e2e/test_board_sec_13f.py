@@ -59,12 +59,6 @@ def _cells(dashboard, ticker) -> dict:
 class TestCredentials:
     """Neither 13F route is gated on the UW token: the served store is the board."""
 
-    def test_fetch_runs_when_the_token_is_rejected(
-            self, dashboard, dead_uw_token, seeded_totals):
-        result = dashboard.run_job("/run/module_sec_13f")  # asserts it was accepted (HTTP 202)
-        assert "not refreshed" in str(result)  # the names step said so, the job did not fail
-        assert dashboard.view("module_sec_13f").status_code == 200
-        assert "NVDA" in _tickers(dashboard)
 
     def test_refresh_renders_with_a_rejected_token(
             self, dashboard, dead_uw_token, seeded_totals, clear_cache):

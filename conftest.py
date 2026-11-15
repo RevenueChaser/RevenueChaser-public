@@ -189,6 +189,34 @@ def isolate_rawstore(tmp_path):
         mp.undo()
 
 
+@pytest.fixture(autouse=True)
+def _seeded_universe_market():
+    """The caps and prices a test seeded with ``rcdata/tests/universe_store`` rows, where the served prices file has
+    no bar for the ticker (the part the old ``equity_universe`` table played before #860). Cleared per test."""
+    from RevenueChaser.core import spine_reads
+    from RevenueChaser.rcdata.tests import universe_store
+    universe_store.MARKET.clear()
+    real = spine_reads.latest_market
+
+    def latest_market(tickers):
+        wanted = [str(t).strip().upper() for t in tickers if str(t or "").strip()]
+        got = real(wanted)
+        for t in wanted:
+            m = universe_store.MARKET.get(t)
+            if m and t not in got:
+                got[t] = {"ticker": t, "price": m["price"], "market_cap": m["market_cap"],
+                          "issuer_market_cap": m["market_cap"]}
+        return got
+
+    mp = pytest.MonkeyPatch()
+    mp.setattr(spine_reads, "latest_market", latest_market)
+    try:
+        yield
+    finally:
+        mp.undo()
+        universe_store.MARKET.clear()
+
+
 @pytest.fixture
 def sqlite_ops(monkeypatch):
     """The ops store on ``ops.sqlite`` whatever ``RC_REDIS_URL`` says: for a test about the file itself (WAL, locks,

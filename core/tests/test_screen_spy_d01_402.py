@@ -1,7 +1,7 @@
 """U1 (#402, K8b's SPY part): the Swing and Fundamentals SPY baseline reads D01 first.
 
 ``core.screen_common.load_spy`` takes SPY from ``price_bars_daily`` when D01 holds the latest complete session, and
-falls back to the old read (``swing_ohlc`` through yfinance) only when it does not. Offline; the store is a temp
+returns an empty frame marked ``fetch_failed`` when it does not (the old ``swing_ohlc`` read went with #860). Offline; the store is a temp
 DuckDB, the clock is the calendar seam.
 """
 from __future__ import annotations
@@ -32,18 +32,9 @@ def _seed_d01(ticker: str, days: list[date], *, fetched_at: float = FETCHED, clo
         for i, d in enumerate(days) for c in [close(i) if close else 400.0 + i]])
 
 
-class _Fallback:
-    """The old read: counts its calls and returns a frame marked stale, like a failed refetch."""
-
-    def __init__(self):
-        self.calls = 0
-        self.frame = pd.DataFrame({"Open": [1.0], "High": [1.0], "Low": [1.0], "Close": [1.0], "Volume": [1.0]},
-                                  index=pd.DatetimeIndex([pd.Timestamp("2026-10-13")]))
-        self.frame.attrs["stale"] = True
-
-    def __call__(self):
-        self.calls += 1
-        return self.frame
+def _failed(frame) -> bool:
+    """No D01 baseline: an empty frame marked ``fetch_failed`` (the old ``swing_ohlc`` read went with #860)."""
+    return frame.empty and frame.attrs.get("fetch_failed") is True
 
 
 @pytest.fixture
@@ -53,9 +44,7 @@ def clock(monkeypatch):
 
 def test_the_baseline_reads_d01_when_it_holds_the_latest_complete_session(rawstore_tmp_db, clock):
     _seed_d01("SPY", _sessions(D, 300))
-    old = _Fallback()
-    spy = screen_common.load_spy(old)
-    assert old.calls == 0
+    spy = screen_common.load_spy()
     assert spy.index[-1] == pd.Timestamp(D)
     assert list(spy.columns) == ["Open", "High", "Low", "Close", "Volume"]
     assert spy["Close"].iloc[-1] == 400.0 + 299
@@ -63,28 +52,24 @@ def test_the_baseline_reads_d01_when_it_holds_the_latest_complete_session(rawsto
     assert spy.attrs.get("source") == "d01"
 
 
-def test_the_baseline_falls_back_when_d01_lacks_the_session(rawstore_tmp_db, clock):
+def test_the_baseline_is_empty_when_d01_lacks_the_session(rawstore_tmp_db, clock):
     _seed_d01("SPY", _sessions(D - timedelta(days=1), 300))
-    old = _Fallback()
-    spy = screen_common.load_spy(old)
-    assert old.calls == 1
-    assert spy is old.frame and spy.attrs["stale"] is True       # the old read, stale flag and all
+    spy = screen_common.load_spy()
+    assert _failed(spy)
 
 
-def test_the_baseline_falls_back_with_no_spy_in_d01(rawstore_tmp_db, clock):
+def test_the_baseline_is_empty_with_no_spy_in_d01(rawstore_tmp_db, clock):
     _seed_d01("QQQ", _sessions(D, 10))
-    old = _Fallback()
-    assert screen_common.load_spy(old) is old.frame
+    assert _failed(screen_common.load_spy())
 
 
-def test_the_baseline_falls_back_when_the_d01_bar_was_written_before_the_close_plus_30(rawstore_tmp_db, clock):
+def test_the_baseline_is_empty_when_the_d01_bar_was_written_before_the_close_plus_30(rawstore_tmp_db, clock):
     early = datetime(2026, 10, 14, 20, 29, tzinfo=timezone.utc).timestamp()
     _seed_d01("SPY", _sessions(D, 300), fetched_at=early)
-    old = _Fallback()
-    assert screen_common.load_spy(old) is old.frame
+    assert _failed(screen_common.load_spy())
 
 
-def test_a_failed_d01_read_falls_back(rawstore_tmp_db, clock, monkeypatch):
+def test_a_failed_d01_read_is_an_empty_baseline(rawstore_tmp_db, clock, monkeypatch):
     from RevenueChaser.core import prices
     _seed_d01("SPY", _sessions(D, 300))
 
@@ -92,14 +77,12 @@ def test_a_failed_d01_read_falls_back(rawstore_tmp_db, clock, monkeypatch):
         raise RuntimeError("IO Error: Could not set lock on file prices.duckdb")
 
     monkeypatch.setattr(prices, "daily_bars", boom)
-    old = _Fallback()
-    assert screen_common.load_spy(old) is old.frame
+    assert _failed(screen_common.load_spy())
 
 
-def test_a_run_the_calendar_cannot_place_falls_back(rawstore_tmp_db, monkeypatch):
+def test_a_run_the_calendar_cannot_place_is_an_empty_baseline(rawstore_tmp_db, monkeypatch):
     monkeypatch.setattr(cal, "_now", lambda: datetime(2099, 1, 5, 23, 0, tzinfo=timezone.utc))
-    old = _Fallback()
-    assert screen_common.load_spy(old) is old.frame
+    assert _failed(screen_common.load_spy())
 
 
 def test_the_baseline_is_dividend_adjusted_like_yfinance_auto_adjust(rawstore_tmp_db, clock):
@@ -110,7 +93,7 @@ def test_the_baseline_is_dividend_adjusted_like_yfinance_auto_adjust(rawstore_tm
     write_d01([], [{
         "ticker": "SPY", "ex_date": ex, "action": "dividend", "value": 4.0, "session_date": ex,
         "source": "yfinance", "fetched_at": FETCHED, "run_id": "seed", "run_at": FETCHED}])
-    spy = screen_common.load_spy(_Fallback())
+    spy = screen_common.load_spy()
     assert spy.loc[pd.Timestamp(days[-11]), "Close"] == pytest.approx(400.0 * (1 - 4.0 / 400.0))
     assert spy.loc[pd.Timestamp(ex), "Close"] == pytest.approx(400.0)
 
@@ -118,18 +101,17 @@ def test_the_baseline_is_dividend_adjusted_like_yfinance_auto_adjust(rawstore_tm
 def test_the_baseline_window_is_the_old_two_years(rawstore_tmp_db, clock):
     days = _sessions(D, 700)
     _seed_d01("SPY", days)
-    spy = screen_common.load_spy(_Fallback())
+    spy = screen_common.load_spy()
     assert spy.index[0] >= pd.Timestamp(D - timedelta(days=screen_common.SPY_BASELINE_DAYS))
     assert len(spy) >= 252 + 1                                  # enough for the 12-month RS and the 200-day mean
 
 
 def test_the_baseline_and_the_freeze_anchor_agree(rawstore_tmp_db, clock):
     """Both use ``ledger.d01_has_session``: a baseline from D01 is never refused by the anchor, and back."""
-    old = _Fallback()
     _seed_d01("SPY", _sessions(D - timedelta(days=1), 5))
-    assert screen_common.load_spy(old) is old.frame and ledger.d01_has_session(D, "SPY") is False
+    assert _failed(screen_common.load_spy()) and ledger.d01_has_session(D, "SPY") is False
     _seed_d01("SPY", [D])
-    assert screen_common.load_spy(old) is not old.frame
+    assert not _failed(screen_common.load_spy())
     assert ledger.spy_anchor_problem(D) is None
 
 

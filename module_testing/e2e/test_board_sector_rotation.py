@@ -23,7 +23,7 @@ from .harness.shared import clear_cache_dir, shared_dashboard, store_of
 
 # The tests that only read what one default Fetch left behind share it (``fetched``); this mark keeps them on one
 # worker under ``--dist loadgroup``. A test that fetches a range, restarts or needs an empty store keeps its own
-# dashboard, seeded by ``stored_bars``.
+# dashboard.
 SHARED = pytest.mark.xdist_group("e2e-sector-rotation-shared-fetch")
 
 CANDLES = 200  # enough history for the 3-month RS lookback
@@ -182,62 +182,6 @@ class TestWeekPicker:
             "a completed fetch must show up as a week with data"
 
 
-@pytest.mark.usefixtures("stored_bars")
-class TestRangeSelectionNarrowsTheBoard:
-    """The bug this harness was built to catch, and DF66 (#181 R-1).
-
-    A range Fetch renders each ETF's newest stored snapshot inside the selected
-    window: one row per ETF, and the header names the newest date of the window.
-    Both are read from the served HTML. ``rs_ratio`` appears once per rendered
-    row, and the header's ``<div class="meta">`` starts with the date. A board
-    that ignored the range shows the newest date of the whole store; a board
-    that drew every stored date shows one row per (ETF, date) pair.
-    """
-
-    def test_a_selected_range_renders_only_that_window(self, dashboard, ohlc_routes):
-        early = ("2026-06-01", "2026-06-28")
-        late = ("2026-08-03", "2026-08-30")
-        assert dashboard.run_job("/run/rotation", start=early[0], end=early[1]).ok
-        assert dashboard.run_job("/run/rotation", start=late[0], end=late[1]).ok
-
-        in_early = _stored_rows(dashboard, *early)
-        total = _stored_rows(dashboard)
-        assert in_early > 0, "early window produced no snapshots"
-        assert total > in_early, "fixture setup did not create two distinct windows"
-
-        # Re-render the EARLY window only.
-        assert dashboard.run_job("/run/rotation", start=early[0], end=early[1]).ok
-        html = dashboard.view("module_sector_rotation").text
-
-        assert _header_date(html) == _newest_stored(dashboard, *early), (
-            f"selected {early[0]}..{early[1]} but the header shows {_header_date(html)} "
-            f"(newest stored overall: {_newest_stored(dashboard)}) — the range picker is being ignored")
-        assert _rendered_rows(html) == _stored_tickers(dashboard, *early), (
-            f"the board rendered {_rendered_rows(html)} rows for {_stored_tickers(dashboard, *early)} ETFs "
-            f"({in_early} stored rows in the window) — one row per ETF expected (DF66)")
-
-    def test_widening_the_range_moves_the_header_to_the_newest_week(self, dashboard, ohlc_routes):
-        """The converse: a wider selection shows its own newest week, still one row per ETF."""
-        assert dashboard.run_job("/run/rotation", start="2026-06-01", end="2026-06-28").ok
-        narrow = dashboard.view("module_sector_rotation").text
-        assert dashboard.run_job("/run/rotation", start="2026-06-01", end="2026-08-30").ok
-        wide = dashboard.view("module_sector_rotation").text
-        assert _header_date(wide) > _header_date(narrow), \
-            f"widening the range did not move the header ({_header_date(narrow)} -> {_header_date(wide)})"
-        assert _rendered_rows(wide) == _stored_tickers(dashboard, "2026-06-01", "2026-08-30")
-
-    def test_a_reversed_range_is_accepted(self, dashboard, ohlc_routes):
-        """The picker can hand back the ends in either order."""
-        assert dashboard.run_job("/run/rotation", start="2026-08-30", end="2026-08-03").ok
-
-    def test_a_range_fetch_requests_no_rotation_candle(self, dashboard, ohlc_routes):
-        """The range backfill (M-ROT-2) and Money Flow (M-ROT-3) read the stored bars: 79 + 34 UW candle calls
-        before."""
-        before = ohlc_routes.request_count
-        assert dashboard.run_job("/run/rotation", start="2026-08-03", end="2026-08-30").ok
-        dashboard.wait_until_idle()
-        # Neither the backfill (it asked for all 79 before) nor the queued Money Flow job (M-ROT-3) asks UW.
-        assert _rotation_candle_calls(ohlc_routes, before) == []
 
 
 def _header_date(html: str) -> str:

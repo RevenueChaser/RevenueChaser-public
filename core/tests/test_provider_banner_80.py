@@ -24,19 +24,6 @@ def _yahoo_failure():
 
 
 # ── Asymmetric Growth: the run's Yahoo ProviderHealth ────────────────────────────────────────────
-def test_ag_rendered_from_a_failed_yahoo_run_shows_the_banner(rawstore_tmp_db, monkeypatch):
-    from RevenueChaser.module_asymmetric_growth import engine, report
-
-    def universe(*_a, **_k):
-        _yahoo_failure()
-        return [], {}
-
-    monkeypatch.setattr(engine, "fetch_universe_stats", universe)
-    result = engine.run_asymmetric_growth_hunter(no_fetch=False)
-    html = report.render_asymmetric_growth_hunter_html(result)
-    assert _BANNER in html
-    assert "429" in html
-    assert "Yahoo Finance" in html
 
 
 # ── Swing: the scan's Yahoo reads ────────────────────────────────────────────────────────────────

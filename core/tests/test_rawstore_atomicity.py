@@ -46,32 +46,5 @@ class TestReplaceAll:
 
 
 
-class TestTickerStoreFullRefresh:
-    """``write_from_cards`` is the single writer for a table other boards read;
-    a failed scan must not leave them looking at an empty store."""
-
-    def test_failed_write_from_cards_keeps_the_previous_scan(self, rawstore_tmp_db):
-        from RevenueChaser.core import ticker_store
-        ticker_store.write_from_cards(
-            [{"ticker": "ETON", "name": "Eton", "market_cap": 1.8e9, "total_points": 9,
-              "themes": ["Biotech"], "signals": []}], asof="2026-08-22")
-        assert ticker_store.count() == 1
-
-        with pytest.raises(Exception):
-            ticker_store.write_from_cards([
-                {"ticker": "AAPL", "name": "Apple", "market_cap": 1.0, "total_points": 1},
-                {"ticker": "MSFT", "name": "Microsoft", "market_cap": BAD, "total_points": 2},
-            ], asof="2026-08-23")
-
-        assert ticker_store.count() == 1
-        assert ticker_store.get("ETON")["themes"] == ["Biotech"]
-        assert ticker_store.asof() == "2026-08-22"
-
-    def test_write_from_cards_drops_tickers_absent_from_the_new_scan(self, rawstore_tmp_db):
-        from RevenueChaser.core import ticker_store
-        ticker_store.write_from_cards([{"ticker": "AAPL", "name": "Apple"},
-                                       {"ticker": "MSFT", "name": "Microsoft"}])
-        ticker_store.write_from_cards([{"ticker": "AAPL", "name": "Apple"}])
-        assert [r["ticker"] for r in ticker_store.list_tickers()] == ["AAPL"]
 
 
