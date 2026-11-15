@@ -39,7 +39,6 @@ from RevenueChaser.rcdata.sec_sections import (  # noqa: F401  (re-exported for 
 _DASH = DASH
 _spaced = spaced
 
-MENTION_WINDOW = 120          # chars around a name scanned for a relation verb
 MAX_HOP2 = 40                 # cap edges followed on the second hop
 
 # A ticker whose CIK has no usable annual filing (none, or a 40-F) is recorded as

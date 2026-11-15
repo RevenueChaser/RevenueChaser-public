@@ -138,11 +138,21 @@ def test_a_shell_stage_reply_stores_no_profile_and_is_not_asked_again(rawstore_t
 def test_the_prompt_carries_the_context(rawstore_tmp_db, monkeypatch, calls):
     _text(monkeypatch, long_body("we make gpus"))
     monkeypatch.setattr(engine, "_context", lambda t, cik, source=None: {"sic": "3674", "sector": "Technology",
-                                                            "segment_note": "Compute: 47,000",
-                                                            "candidates": ["Dell", "HP"]})
+                                                            "segment_note": "Compute: 47,000"})
     engine.build_profiles(["NVDA"], usd_cap=1.0)
     user = calls[0]["user"]
-    assert "SIC: 3674" in user and "Sector: Technology" in user and "Compute: 47,000" in user and "Dell; HP" in user
+    assert "SIC: 3674" in user and "Sector: Technology" in user and "Compute: 47,000" in user
+
+
+def test_the_prompt_offers_no_keyword_scan_candidates(rawstore_tmp_db, monkeypatch):
+    """#748: a stored ``chain_mentions`` row is not handed to the writer as a candidate, and the system prompt
+    no longer describes candidates."""
+    rawstore.write_rows("chain_mentions", [{"src": "NVDA", "dst_name": "Dell", "dst_ticker": "DELL",
+                                            "relation": "customer", "snippet": "s", "filed": "2026-02-01"}])
+    assert rawstore.get_all("chain_mentions")             # the input really holds a name to offer
+    monkeypatch.setattr(engine, "_spine_rows", lambda tickers: {})
+    assert "candidates" not in engine._context("NVDA", None)
+    assert "andidate" not in profile_v3.SYSTEM
 
 
 def test_an_unparseable_reply_is_retried_once_uncached(rawstore_tmp_db, monkeypatch, calls):
@@ -177,12 +187,12 @@ def test_the_whole_document_fallback_is_capped(rawstore_tmp_db, monkeypatch, cal
 
 
 def test_a_context_change_alone_does_not_redo_a_profile(rawstore_tmp_db, monkeypatch, calls):
-    """The staleness hash is the company and its text: a new candidate list (a Value Chain re-extract), a sector
+    """The staleness hash is the company and its text: a sector
     change or a failed context read does not pay for the profile again."""
     _text(monkeypatch, long_body("we make gpus"))
-    monkeypatch.setattr(engine, "_context", lambda t, cik, source=None: {"candidates": ["Dell"]})
+    monkeypatch.setattr(engine, "_context", lambda t, cik, source=None: {"sector": "a"})
     engine.build_profiles(["NVDA"], usd_cap=1.0)
-    monkeypatch.setattr(engine, "_context", lambda t, cik, source=None: {"candidates": ["HP"], "sector": "x"})
+    monkeypatch.setattr(engine, "_context", lambda t, cik, source=None: {"sector": "x"})
     engine.build_profiles(["NVDA"], usd_cap=1.0)
     assert len(calls) == 1
     _text(monkeypatch, long_body("we make cpus now"))

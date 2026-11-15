@@ -14,6 +14,7 @@ import pytest
 from RevenueChaser.core import fundamentals_layer, rawstore
 from RevenueChaser.core.providers import sec_edgar
 from RevenueChaser.module_value_chain import aliases, engine
+from RevenueChaser.module_value_chain.tests.test_value_chain_profile_edges_410 import _profile
 from RevenueChaser.rcdata.build.fundamentals import companyfacts, filings
 from RevenueChaser.rcdata.build.sec_forms import forms
 from RevenueChaser.rcdata.tests import fund_fixture as fx
@@ -39,11 +40,12 @@ def layer(monkeypatch, http_mock):  # noqa: F811
     return http_mock
 
 
-def test_the_edges_come_from_the_layers_text(layer):
-    # A keyword ``other`` stays beside a stated edge (test_value_chain_customers_g6); the stated one is the point.
-    edges = [e for e in engine.build_edges() if e["src"] == "MSFT" and e["dst_ticker"] == "AAPL"
-             and e["relation"] in ("customer", "supplier")]
-    assert [(e["relation"], e["share_pct"]) for e in edges] == [("customer", pytest.approx(29.8))]
+def test_a_layer_filer_gets_its_edges_from_its_profile_not_its_text(layer):
+    # #748: the share sentence in the layer's text is no longer scanned; without a profile it gives no edge.
+    assert not [e for e in engine.build_edges() if e["src"] == "MSFT" and e["dst_ticker"] == "AAPL"]
+    _profile("MSFT")
+    edges = [e for e in engine.build_edges() if e["src"] == "MSFT" and e["dst_ticker"] == "AAPL"]
+    assert [(e["relation"], e["source"]) for e in edges] == [("customer", "profile")]
     assert rawstore.get_all("chain_filings") == []
 
 
@@ -67,6 +69,7 @@ def test_the_corpus_is_the_form_reader_and_not_filing_item(layer, monkeypatch):
 
     monkeypatch.setattr(read, "filing_texts", refuse)
     monkeypatch.setattr(read, "filing_text", refuse)
+    _profile("MSFT")
     assert [r["ticker"] for r in engine._board_filings_rows()] == ["MSFT"]
     assert any(e["dst_ticker"] == "AAPL" for e in engine.build_edges())
 
@@ -108,6 +111,7 @@ def test_off_the_layer_the_corpus_is_chain_filings():
     rawstore.write_rows("chain_filings", [{"ticker": "MSFT", "cik": "789019", "form": "10-K", "filed": "2025-07-30",
                                            "accession": "a", "primary_doc": "u", "item_text": STATED,
                                            "quality": "ok", "fetched_at": 1.0}])
+    _profile("MSFT")
     assert [r["ticker"] for r in engine._board_filings_rows()] == ["MSFT"]
     assert any(e["dst_ticker"] == "AAPL" for e in engine.build_edges())
 

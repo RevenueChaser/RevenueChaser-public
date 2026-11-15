@@ -1,8 +1,8 @@
 """Relatedness profile v3 (#400, Relatedness v2 plan Step 1): one structured JSON per company.
 
 The writer reads the whole Item 1 (10-K) / Item 4 (20-F), with no ``MAX_BUSINESS_CHARS``, plus the filing's segment note,
-the SIC, sector and industry, and the company's ``chain_mentions`` names (Value Chain's keyword scan of the same
-filing) as candidates, and returns one JSON object:
+the SIC, sector and industry, and returns one JSON object. It is given no candidate names: the keyword scan that
+supplied them scored 31 of 80 on its own labelled fixture and is gone (#748).
 
 ``summary`` (one or two sentences), ``segments`` (``name``, ``share``, ``source``, ``products``, ``end_markets``),
 ``customers`` (``name``, ``type``, ``share``, ``quote``, ``parent``, ``public``), ``suppliers`` (the same without
@@ -66,8 +66,8 @@ SYSTEM = (
     "belongs to (\"Amazon Web Services, a subsidiary of Amazon.com\" -> \"Amazon.com\"), null when the text says "
     "nothing; public is true only when the text presents the party as a publicly traded company, false when it "
     "calls it private, and null when the text does not say. Never guess parent or public from what you know of the "
-    f"company: null is the right answer when this filing is silent. Candidates, when given, are company names a keyword scan "
-    "of this filing found: list one only when the text names it as a customer, supplier or competitor. A blank-check company or one with no operations has stage \"shell\"."
+    "company: null is the right answer when this filing is silent. A blank-check company or one with no operations has "
+    "stage \"shell\"."
 )
 
 
@@ -86,8 +86,6 @@ def _context_lines(context: dict | None) -> list[str]:
         out.append(f"Segment note (same filing):\n{c['segment_note']}")
     if c.get("segment_block"):
         out.append(f"Segment note as the filing writes it (same filing):\n{c['segment_block']}")
-    if c.get("candidates"):
-        out.append("Candidates (names a keyword scan of this filing found): " + "; ".join(c["candidates"]))
     if c.get("filing_sentences"):
         out.append("Other sentences of the same filing that name customers, suppliers or concentration:\n"
                    + "\n".join(f"- {x}" for x in c["filing_sentences"]))
