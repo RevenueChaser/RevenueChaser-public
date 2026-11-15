@@ -95,6 +95,20 @@ def test_open_read_refuses_to_write():
             con.execute("INSERT INTO t VALUES (9)")
 
 
+def test_open_read_caps_the_buffer_pool(monkeypatch):
+    """A reader's DuckDB instance holds what it read up to memory_limit; the default of 80 % of RAM OOM-killed the
+    relatedness run on 15 Nov 2026, so a read connection is capped (RC_DUCKDB_READ_MEMORY_LIMIT, else 1 GiB)."""
+    _build(2)
+    monkeypatch.delenv("RC_DUCKDB_READ_MEMORY_LIMIT", raising=False)
+    with serving.open_read("market") as con:
+        assert con.execute("SELECT current_setting('memory_limit')").fetchone()[0] == "1.0 GiB"
+    monkeypatch.setenv("RC_DUCKDB_READ_MEMORY_LIMIT", "512MiB")
+    with serving.open_read("market") as con:
+        assert con.execute("SELECT current_setting('memory_limit')").fetchone()[0] == "512.0 MiB"
+    monkeypatch.setenv("RC_DUCKDB_READ_MEMORY_LIMIT", "lots")          # not a size: the default holds
+    assert serving.read_memory_limit() == serving.READ_MEMORY_LIMIT_DEFAULT
+
+
 def test_open_read_resolves_the_path_on_every_call(tmp_path, monkeypatch):
     _build(2)
     with serving.open_read("market") as con:

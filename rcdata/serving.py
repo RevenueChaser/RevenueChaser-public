@@ -77,6 +77,11 @@ WINDOW_TABLE = "serving_window"
 # at a 7.7 GB peak on the 15 GB server beside the dashboard. Under a limit DuckDB spills instead (``spill_dir``).
 # A DuckDB size string (``5GB``) and a positive whole number; empty or invalid keeps the default.
 MEMORY_LIMIT_DEFAULT = "5GB"
+# A read connection's buffer pool (``RC_DUCKDB_READ_MEMORY_LIMIT``). DuckDB's own default is 80 % of RAM (8 GiB on
+# homesrv), and the one database instance a process keeps per path holds what every open connection read: the
+# relatedness run, 8 workers reading business texts from sec_forms.duckdb, grew to 7.3 GB anon and was OOM-killed on
+# 15 Nov 2026 (measured: 400 business texts took one process from 49 MB to 2.6 GB). A reader needs no more than this.
+READ_MEMORY_LIMIT_DEFAULT = "1GiB"
 THREADS_DEFAULT = 3
 # The most a build may spill (``RC_DUCKDB_MAX_TEMP``, a DuckDB size): past it the build fails, it does not fill the disk.
 # DuckDB's own default is 90 % of the free space. 2010-2025 of history spilled 9.5 GB at its largest statement (#372).
@@ -167,9 +172,16 @@ def open_read(kind: str) -> duckdb.DuckDBPyConnection:
     if not path.exists():
         raise ServingFileMissing(f"no {kind} serving file at {path} yet")
     con = duckdb.connect(str(path), read_only=True)
+    con.execute(f"SET memory_limit = '{read_memory_limit()}'")
     from . import opens
     opens.note(kind, path, con, VERSION_TABLE)       # #566: which build this job read; never raises
     return con
+
+
+def read_memory_limit() -> str:
+    """The buffer-pool cap of a read connection: ``RC_DUCKDB_READ_MEMORY_LIMIT`` when it is a DuckDB size, else
+    ``READ_MEMORY_LIMIT_DEFAULT``."""
+    return _size("RC_DUCKDB_READ_MEMORY_LIMIT", READ_MEMORY_LIMIT_DEFAULT)
 
 
 def _remove(path: Path) -> None:
