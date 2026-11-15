@@ -40,6 +40,8 @@ printed the snapshot: the prefilter reads the D01 bars instead of the stored quo
 ``no_quote`` first (and ``no_bars`` leaves ``data_quality``), DOWN1 is priced from its bars (15.98, not the stored
 quote's 1.00) and its gate values and the sort order of the gate rows move with it; ``earnings_date``,
 ``universe_generated_at`` and ``universe_refreshed_by`` read None because their old-store sources went.
+#831 (ROIC unknown below 5% invested capital) moved Fundamentals' ``selection_version`` to 9; CI showed it as the
+only difference (the scenario's ROICs sit well above the floor), edited by hand.
 To re-capture on another commit, run this file with ``RC_PARITY_CAPTURE=<path>`` (it writes the snapshot there
 instead of comparing).
 """
