@@ -34,8 +34,8 @@ SOURCE_KEYS = ("cik", "accession", "form", "filed")
 def cache_key(model, thinking, effort, prompt_version, ticker, input_hash, provider=None, source=None) -> str:
     """Structured (sorted-keys) cache key — stable across dict ordering.
 
-    ``provider`` names a writer other than DeepSeek (``"grok"``, #388); a DeepSeek key carries none, so its bytes
-    are what they were before Grok. ``source`` (G6) is the filing the prompt's text came from (``SOURCE_KEYS``);
+    ``provider`` names a writer other than DeepSeek (``"evren"``, #360); a DeepSeek key carries none, so its bytes
+    are what they were before other writers. ``source`` (G6) is the filing the prompt's text came from (``SOURCE_KEYS``);
     a key made without one carries none. Staleness never reads it (``is_stale``): the input hash already moves
     with the text.
     """

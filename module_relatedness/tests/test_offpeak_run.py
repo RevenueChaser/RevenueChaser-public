@@ -48,30 +48,15 @@ def test_usd_cap_limits_calls(rawstore_tmp_db, monkeypatch):
 
 
 
-def test_cli_status(rawstore_tmp_db, capsys, monkeypatch):
-    from RevenueChaser.core import subscription_usage
+def test_cli_status(rawstore_tmp_db, capsys):
     from RevenueChaser.module_relatedness import __main__ as cli
-    monkeypatch.setattr(subscription_usage, "check", lambda: [])
     assert cli.main(["--status"]) == 0
     assert "DeepSeek" in capsys.readouterr().out
 
 
-def test_cli_status_prints_subscription_lines(rawstore_tmp_db, capsys, monkeypatch):
-    from RevenueChaser.core import subscription_usage
-    from RevenueChaser.module_relatedness import __main__ as cli
-    monkeypatch.setattr(
-        subscription_usage, "check", lambda: [("Grok", "Grok subscription: weekly 100% used (cap 90%) — paused.")]
-    )
-    assert cli.main(["--status"]) == 0
-    out = capsys.readouterr().out
-    assert "Grok subscription: weekly 100% used" in out
-    assert "paused" in out
-
-
 def test_cli_status_announces_peak_override(rawstore_tmp_db, capsys, monkeypatch):
-    from RevenueChaser.core import offpeak, subscription_usage
+    from RevenueChaser.core import offpeak
     from RevenueChaser.module_relatedness import __main__ as cli
-    monkeypatch.setattr(subscription_usage, "check", lambda: [])
     monkeypatch.setattr(offpeak, "is_off_peak", lambda now=None: False)
     monkeypatch.setattr(deepseek, "peak_override_active", lambda now=None: True)
     cli.main(["--status"])
@@ -79,9 +64,8 @@ def test_cli_status_announces_peak_override(rawstore_tmp_db, capsys, monkeypatch
 
 
 def test_cli_status_is_quiet_without_override(rawstore_tmp_db, capsys, monkeypatch):
-    from RevenueChaser.core import offpeak, subscription_usage
+    from RevenueChaser.core import offpeak
     from RevenueChaser.module_relatedness import __main__ as cli
-    monkeypatch.setattr(subscription_usage, "check", lambda: [])
     monkeypatch.setattr(offpeak, "is_off_peak", lambda now=None: False)
     cli.main(["--status"])  # the autouse fixture points the gate at an empty temp file
     assert "Peak override" not in capsys.readouterr().out

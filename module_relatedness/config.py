@@ -56,11 +56,9 @@ EST_USD_PER_CALL = 0.0018
 # (#712). The cap sits above that so one run covers the round instead of stopping six times and looking finished.
 USD_CAP = float(os.getenv("RC_RELATEDNESS_USD_CAP", "25.0"))
 LLM_WORKERS = 8
-# The writer comparison's Claude calls at a time (avo, 11 Nov 2026: "8li paralel"); the other writers go one by one.
-COMPARE_WORKERS = LLM_WORKERS
-# Grok writer (#388): a run whose first N replies hold no usable profile stops (``unusable``) before it counts an
+# A free writer's run (EVREN) whose first N replies hold no usable profile stops (``unusable``) before it counts an
 # attempt on any group; the endpoint or the model is then wrong, not the companies.
-GROK_UNUSABLE_STOP = 5
+UNUSABLE_STOP = 5
 
 # Fixed profile schema. Similarity is defined on these fields only.
 PROFILE_FIELDS = (

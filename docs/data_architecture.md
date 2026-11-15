@@ -230,7 +230,7 @@ network.
 | `sec_company_sic` | SIC per CIK — the fallback behind the SEC submissions code for the SIC sector step (#272) | raw | until refetched |
 | `comov_runs` / `comov_nodes` / `comov_members` / `comov_lag` | Co-movement board: dated return-cluster runs, clusters, members; groups formed a quarter earlier with their held-out-quarter test | comovement | per Fetch run (latest as_of wins) |
 | `chain_filings` / `chain_mentions` / `chain_meta` | Value Chain board: latest 10-K/20-F Item 1/4 text + supplier/customer edges. `chain_meta.fetched_at DOUBLE` (#127) is the fetch time; NULL on older rows is unknown, never 0 | value_chain | per fetch (resumable by ticker) |
-| `llm_cache` | DeepSeek (and, for a `--provider grok` run, SuperGrok: #388) prompt/response cache (Relatedness + Value Chain) | relatedness | none (immutable) |
+| `llm_cache` | DeepSeek and EVREN prompt/response cache (Relatedness + Value Chain) | relatedness | none (immutable) |
 | `ticker_themes` | Runtime theme SSoT `(ticker, theme_id, theme, level, theme_run_id)`. `fetched_at DOUBLE` (#127) is when the row was written; NULL on older rows is unknown, never 0 | relatedness | per theme run |
 | `sec13f_security_meta` | Shared ticker→{name,sector} across dashboards (merged from old `universe_meta` + `sec13f_universe_meta`). `fetched_at DOUBLE` (#127); NULL on older rows is unknown, never 0 | raw | manual |
 | `sec13f_enrichment` | 13F enrichment (price/short/insider); writer retired (#300), no reader since #375 F2 (the board reads `ownership_snapshot` and D01); the rows stay | raw | none |
@@ -809,7 +809,7 @@ schema, reachable with path expressions like `payload.market_cap::DOUBLE`).
 | `ticker_themes` | `ticker`, `theme_id`, `theme`, `level`, `theme_run_id`, `fetched_at DOUBLE` (#127; NULL on older rows is unknown, never 0) | — |
 | `fundamentals_scores` / `swing_scores` | per-ticker metric columns (see MANIFEST) | — |
 | `fundamentals_gates` / `swing_gates` | `ticker`, `gate`, `rule_id`, `passed`, `actual`, `unit` | — |
-| `relatedness_profiles` | `ticker`, `cik`, `model`, `prompt_version`, `fetched_at`, `cache_key`, `status`, `attempts`, `provider` (the writer, #360: `evren` / `deepseek` / `grok`; nullable, added by `ALTER TABLE ADD COLUMN`, no schema bump) | `profile_json` (the v3 structured profile, #401, schema 13; NULL on a v2 row), `label_source` (which chunk or table each v3 field came from, #401) |
+| `relatedness_profiles` | `ticker`, `cik`, `model`, `prompt_version`, `fetched_at`, `cache_key`, `status`, `attempts`, `provider` (the writer, #360: `evren` / `deepseek`, older rows also `grok` / `claude`; nullable, added by `ALTER TABLE ADD COLUMN`, no schema bump) | `profile_json` (the v3 structured profile, #401, schema 13; NULL on a v2 row), `label_source` (which chunk or table each v3 field came from, #401) |
 | `relatedness_embeddings` | `ticker`, `model`, `dim INTEGER`, `vector BLOB` (a 16-byte hash of the embedded text, then the float32 bytes of `dim` values; raw, not zlib-compressed); `PRIMARY KEY (ticker, model)` (#401, schema 13; writer: `module_relatedness/embeddings.py`, #669) | — |
 | `relatedness_attributes` | `ticker`, `field`, `value` (TEXT holding a JSON list), `value_num` | — |
 | `relatedness_scores` | `ticker`, `peer`, `score` | — |

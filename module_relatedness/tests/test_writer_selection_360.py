@@ -79,7 +79,7 @@ def deepseek_calls(monkeypatch):
 
 def test_the_default_writer_is_evren(rawstore_tmp_db):
     assert settings.writer() == ("evren", "deepseek-v4.1-flash")
-    assert writers.DEFAULT == "evren" and set(writers.WRITERS) == {"evren", "deepseek", "grok", "claude"}
+    assert writers.DEFAULT == "evren" and set(writers.WRITERS) == {"evren", "deepseek"}
 
 
 
@@ -88,15 +88,12 @@ def test_the_default_writer_is_evren(rawstore_tmp_db):
 
 
 
-def test_options_grey_a_missing_key_by_name_and_never_show_a_value(rawstore_tmp_db, monkeypatch, tmp_path):
+def test_options_grey_a_missing_key_by_name_and_never_show_a_value(rawstore_tmp_db, monkeypatch):
     monkeypatch.delenv("EVREN_API_KEY", raising=False)
     monkeypatch.setenv("DEEPSEEK_API_KEY", DS_KEY)
-    monkeypatch.setenv("RC_XAI_AUTH_FILE", str(tmp_path / "no-such-auth.json"))
-    monkeypatch.delenv("XAI_OAUTH_TOKEN", raising=False)
     opts = {o["provider"]: o for o in writers.options()}
     assert opts["evren"]["available"] is False and opts["evren"]["missing"] == "EVREN_API_KEY"
     assert opts["deepseek"]["available"] is True and opts["deepseek"]["missing"] is None
-    assert opts["grok"]["available"] is False and opts["grok"]["missing"] == "RC_XAI_AUTH_FILE"
     assert DS_KEY not in json.dumps(opts)
 
 
