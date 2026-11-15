@@ -133,10 +133,13 @@ BACKUP_WEEKLY_UNIT = "life-rc-backup-weekly"
 
 REGISTRY: tuple[AutomationEntry, ...] = (
     AutomationEntry(
-        name="RC-Relatedness-OffPeak", label="Relatedness (off-peak)",
-        args=("-m", "RevenueChaser.module_relatedness", "--run", "--cap", "10"), time="12:30",
-        description=("Relatedness profiling with the board's writer (Settings, #360: EVREN by default, no call cap); "
-                     "with DeepSeek it is capped at 10 USD (avo, 2 Nov 2026) and defers itself outside off-peak hours."),
+        name="RC-Relatedness-OffPeak", label="Relatedness (every other Sunday)",
+        args=("-m", "RevenueChaser.module_relatedness", "--run", "--cap", "10"), time="07:30", days=("Sunday",),
+        description=("Relatedness profiling with the board's writer (Settings, #360: EVREN by default, no call cap), "
+                     "incremental (only changed filings), then every pair scored (~1 h 45 min CPU, 15 Nov 2026) and the "
+                     "board rendered. Every other Sunday 07:30 (avo 15 Nov 2026; the homesrv timer carries the fortnight, "
+                     "1st and 3rd Sunday). With DeepSeek it is capped at 10 USD (avo, 2 Nov 2026) and defers itself "
+                     "outside off-peak hours."),
         tables_written=("relatedness_profiles", "relatedness_attributes", "relatedness_scores",
                         "llm_cache", "chain_filings", "chain_meta"),
         offpeak_gated=True),
