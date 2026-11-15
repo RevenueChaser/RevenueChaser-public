@@ -1,6 +1,6 @@
 """One model gate (avo, 15 Nov 2026): the Relatedness writers DeepSeek and EVREN call the LiteLLM gate on homesrv
-with RevenueChaser's own virtual key, by the gate's Flash names. The board keeps its own model names, so a stored
-setting and the llm_cache keys made before the gate stay valid (no profile is asked again because of the move)."""
+with RevenueChaser's own virtual key, by names of home-server etc/litellm/config.yaml, the one model list (Flash
+only). A profile is stale by its prompt version, not its model (store.is_stale), so the new names re-ask nothing."""
 from __future__ import annotations
 
 import json
@@ -48,20 +48,20 @@ def test_deepseek_goes_to_the_gate_by_its_flash_name_and_caches_by_the_board_s_n
     looked = []
     monkeypatch.setattr(deepseek, "_cache_get", lambda key: looked.append(key))   # a miss
     c = _Client()
-    deepseek.complete("s", "u", thinking=thinking, client=c, model="deepseek-flash")
+    deepseek.complete("s", "u", thinking=thinking, client=c, model="deepseek-v4-flash")
     (post,) = c.posts
     assert post["url"] == GATE and post["headers"]["Authorization"] == f"Bearer {KEY}"
     assert post["json"]["model"] == wire and "pro" not in wire
-    # The board's name stays the cache key, so the answers stored before the gate are still found.
-    assert looked == [deepseek._cache_key("s", "u", thinking, "deepseek-flash", None)]
+    # The cache key is the model asked for, not the thinking switch's name.
+    assert looked == [deepseek._cache_key("s", "u", thinking, "deepseek-v4-flash", None)]
 
 
-@pytest.mark.parametrize("model", ["deepseek-v4.1-flash", "glm-5.3", "qwen3.8-flash-next"])
-def test_evren_goes_to_the_gate_by_its_evren_name(model):
+@pytest.mark.parametrize("model", [None, "evren-glm-5.3"])
+def test_evren_goes_to_the_gate_by_its_config_name(model):
     c = _Client()
     evren.complete("s", "u", client=c, use_cache=False, model=model)
     (post,) = c.posts
     assert post["url"] == GATE and post["headers"] == {"Authorization": f"Bearer {KEY}",
                                                         "Content-Type": "application/json"}
-    assert post["json"]["model"] == f"evren-{model}"
+    assert post["json"]["model"] == (model or "evren-deepseek-v4.1-flash")
 

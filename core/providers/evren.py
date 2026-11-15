@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 PROVIDER = "evren"
 DEFAULT_BASE = "http://127.0.0.1:9720/v1"  # the LiteLLM gate on homesrv (one model gate, avo 15 Nov 2026)
-MODEL = os.getenv("RC_EVREN_MODEL") or "deepseek-v4.1-flash"
+MODEL = os.getenv("RC_EVREN_MODEL") or "evren-deepseek-v4.1-flash"  # a name of home-server etc/litellm/config.yaml
 COST_USD_PER_CALL = 0.0
 MAX_ATTEMPTS = 2
 # One request at a time (avo 15 Nov 2026 11:22 "4 yerine 1 istek gonder madem yogun"): the account may hold at most 4
@@ -135,9 +135,7 @@ def complete(system: str, user: str, *, thinking: bool = False,
         raise EvrenAuthError("The LiteLLM gate key is missing. Set LITELLM_RC_KEY in /etc/life/secrets.env "
                              "(see core/credentials.py).")
 
-    # The gate names EVREN's models evren-<model> (home-server etc/litellm/config.yaml); the board's name stays the
-    # cache key.
-    body = {"model": model if model.startswith("evren-") else f"evren-{model}", "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+    body = {"model": model, "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
             "max_tokens": max_tokens, "temperature": temperature, "stream": False}
     if json_mode:
         body["response_format"] = {"type": "json_object"}

@@ -78,7 +78,7 @@ def deepseek_calls(monkeypatch):
 # ── the setting ─────────────────────────────────────────────────────────────
 
 def test_the_default_writer_is_evren(rawstore_tmp_db):
-    assert settings.writer() == ("evren", "deepseek-v4.1-flash")
+    assert settings.writer() == ("evren", "evren-deepseek-v4.1-flash")
     assert writers.DEFAULT == "evren" and set(writers.WRITERS) == {"evren", "deepseek"}
 
 
@@ -162,8 +162,8 @@ def test_the_writer_modules_take_the_model_per_call(rawstore_tmp_db, monkeypatch
             pass
 
     monkeypatch.setenv("LITELLM_RC_KEY", EVREN_KEY)
-    ev.complete("s", "u", client=_C(), use_cache=False, model="glm-5.3")
-    assert posts == ["evren-glm-5.3"] and ev.MODEL != "glm-5.3"  # the gate's name for the board's model
+    ev.complete("s", "u", client=_C(), use_cache=False, model="evren-glm-5.3")
+    assert posts == ["evren-glm-5.3"] and ev.MODEL != "evren-glm-5.3"
     assert not hasattr(writers, "use")                      # no module-level swap left
 
 

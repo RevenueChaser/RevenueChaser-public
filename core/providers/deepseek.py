@@ -38,7 +38,7 @@ from ..credentials import key_for
 logger = logging.getLogger(__name__)
 
 DEFAULT_BASE = "http://127.0.0.1:9720/v1"  # the LiteLLM gate on homesrv (one model gate, avo 15 Nov 2026)
-MODEL = os.getenv("RC_DEEPSEEK_MODEL") or "deepseek-flash"
+MODEL = os.getenv("RC_DEEPSEEK_MODEL") or "deepseek-v4-flash"  # a name of home-server etc/litellm/config.yaml
 MAX_ATTEMPTS = 2        # one call and at most one retry (a retried 429 is not billed)
 _RETRY_BASE = 2.0       # seconds; the first retry waits uniform(0, _RETRY_BASE)
 _MAX_DELAY = 30.0       # no wait is ever longer than this, whatever the server asks
@@ -80,12 +80,11 @@ def base_url() -> str:
 
 
 def wire_model(model: str, thinking: bool) -> str:
-    """The gate's name for the board's ``model`` (home-server etc/litellm/config.yaml): DeepSeek's thinking is one switch
-    there, ``-think`` / ``-nothink``. The board's own name stays the cache key, so the move re-asks nothing."""
-    base = {"deepseek-flash": "deepseek-v4-flash"}.get(model, model)
-    if base.endswith(("-think", "-nothink")):
-        return base
-    return f"{base}-{'think' if thinking else 'nothink'}"
+    """DeepSeek's thinking is one switch on the gate (home-server etc/litellm/config.yaml): the ``-think`` / ``-nothink``
+    name of ``model``. A name that already says it is sent as it is."""
+    if model.endswith(("-think", "-nothink")):
+        return model
+    return f"{model}-{'think' if thinking else 'nothink'}"
 
 
 def off_peak_only() -> bool:

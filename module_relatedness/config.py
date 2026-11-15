@@ -48,7 +48,7 @@ MAX_BUSINESS_CHARS: int | None = None
 FORMS_RULES_VERSION = "ours-2"
 
 # $ hard-stop: cap the number of LLM calls per run (~1.5x the expected spend).
-# The cap's cost per call, measured on deepseek-flash: the 10 Nov 2026 pilot wrote 400 names in 668 calls for about
+# The cap's cost per call, measured on DeepSeek Flash: the 10 Nov 2026 pilot wrote 400 names in 668 calls for about
 # 1 USD. It replaces the 0.006 the cap carried before, which was "about 4x" of the v2 figure, guessed until the pilot
 # could measure it (review of PR #557). A chunked filing is several calls, each counted.
 EST_USD_PER_CALL = 0.0018

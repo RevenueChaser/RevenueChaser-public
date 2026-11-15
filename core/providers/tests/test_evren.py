@@ -54,7 +54,7 @@ def test_the_request_is_an_openai_style_json_completion():
     post = c.posts[0]
     assert post["url"] == "http://127.0.0.1:9720/v1/chat/completions"  # the LiteLLM gate
     body = post["json"]
-    assert body["model"] == "evren-" + evren.MODEL and body["response_format"] == {"type": "json_object"}
+    assert body["model"] == evren.MODEL == "evren-deepseek-v4.1-flash" and body["response_format"] == {"type": "json_object"}
     assert body["messages"] == [{"role": "system", "content": "sys"}, {"role": "user", "content": "user"}]
     assert "thinking" not in body                       # a DeepSeek-only knob
     assert post["headers"]["Authorization"] == f"Bearer {KEY}"

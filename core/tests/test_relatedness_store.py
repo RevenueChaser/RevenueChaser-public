@@ -8,13 +8,13 @@ def test_llm_cache_and_profiles(rawstore_tmp_db):
     key = "flash|think0|low|v1|AAPL|abc"
     rawstore.write_rows("llm_cache", [{
         "cache_key": key, "ticker": "AAPL", "cik": "320193",
-        "model": "deepseek-flash", "thinking": 0, "effort": "low",
+        "model": "deepseek-v4-flash", "thinking": 0, "effort": "low",
         "prompt_version": "v1", "input_hash": "abc", "response": {"segments": []},
         "fetched_at": 1.0, "status": "ok"}])
     assert rawstore.get("llm_cache", key)["response"] == {"segments": []}
 
     rawstore.write_rows("relatedness_profiles", [{
-        "ticker": "AAPL", "cik": "320193", "model": "deepseek-flash",
+        "ticker": "AAPL", "cik": "320193", "model": "deepseek-v4-flash",
         "prompt_version": "v1", "fetched_at": 1.0, "cache_key": key,
         "status": "ok"}])
     assert rawstore.get("relatedness_profiles", "AAPL")["cik"] == "320193"
