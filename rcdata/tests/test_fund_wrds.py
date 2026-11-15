@@ -95,8 +95,8 @@ def test_funda_is_compared_with_the_value_the_year_first_reported_277():
     con.execute("INSERT INTO stg VALUES ('g1', DATE '2017-06-30', 89950), ('g2', DATE '2017-06-30', 500)")
     for cik, value, first in (("1", 96_571e6, 89_950e6), ("2", 500e6, None)):
         con.execute("INSERT INTO fundamental_fact (cik, field, period_type, period_end, value, unit, accn, filed, "
-                    "derived, preliminary, first_value) VALUES (?, 'revenue', 'annual', DATE '2017-06-30', ?, 'USD', "
-                    "'a', DATE '2018-08-03', false, false, ?)", [cik, value, first])
+                    "derived, preliminary, source, first_value) VALUES (?, 'revenue', 'annual', DATE '2017-06-30', "
+                    "?, 'USD', 'a', DATE '2018-08-03', false, false, 'sec/companyfacts', ?)", [cik, value, first])
     assert wrds_fund.agreement(con, "stg", "revt", "revenue", "annual", None, first_reported=True) == (2, 2)
     assert wrds_fund.agreement(con, "stg", "revt", "revenue", "annual", None) == (2, 1)
 
