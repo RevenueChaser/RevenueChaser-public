@@ -260,7 +260,7 @@ def test_beta_is_measured_over_the_sessions_the_two_series_share(monkeypatch, no
 
 
 def test_the_cells_follow_the_cell_grid(no_data):
-    """avo, 13 Nov 2026 (rules/ui-tasarim.md, "Cell grid"): the leftmost cell is left-aligned, a middle one centred,
+    """avo, 13 Nov 2026 (rules/ui-design.md, "Cell grid"): the leftmost cell is left-aligned, a middle one centred,
     the rightmost right-aligned; and a missing value leaves its own cell, so nothing spans the numbers."""
     css = board._CSS
     assert ".wl th,.wl td{padding:3px var(--sp-3);text-align:center;" in css, "the numbers sit in the middle"

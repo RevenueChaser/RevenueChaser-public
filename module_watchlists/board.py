@@ -501,7 +501,7 @@ _CSS = """
 
 /* the table */
 .wl table{width:100%;border-collapse:collapse}
-/* The cell grid (avo, 13 Nov 2026, vault-memory rules/ui-tasarim.md "Cell grid"): every cell of a column is as wide
+/* The cell grid (avo, 13 Nov 2026, vault-memory rules/ui-design.md "Cell grid"): every cell of a column is as wide
    as the column's widest value (the table does that), and a cell's text sits where the cell stands: the symbol,
    leftmost, to the left; the numbers between, centred; the ×, rightmost, to the right. */
 .wl th,.wl td{padding:3px var(--sp-3);text-align:center;font-size:var(--fs-base);white-space:nowrap;
@@ -630,7 +630,7 @@ _GRIP = ('<svg viewBox="0 0 10 14" fill="currentColor" aria-hidden="true"><circl
 #: Each tab's columns: ``(key, label, unit, kind)``. ``unit`` is the header's own "$" or "%", said there
 #: instead of on every row (avo, 12 Nov 2026: "USD yazmana gerek yok her satira yukari yazsan yeterli"), and as
 #: the currency's symbol, not its code (avo, 13 Nov 2026: "Dolar için USD kullanmana gerek yok ... simge kullanırsan
-#: daha az yer kaplarlar"; vault-memory rules/ui-tasarim.md).
+#: daha az yer kaplarlar"; vault-memory rules/ui-design.md).
 #: ``kind`` is how the browser draws the value: ``sym`` the symbol cell, ``num`` a plain number, ``signed`` a
 #: number that takes a colour from its sign, ``pct`` a signed percent, ``big`` a T/B/M/K abbreviation,
 #: ``rating`` a word with its score in the title.
