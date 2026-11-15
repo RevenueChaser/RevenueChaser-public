@@ -309,14 +309,41 @@ def _github(sel: Selection, changed: list[str]) -> None:
             f.write("\n".join(lines) + "\n")
 
 
+DURATIONS = Path(__file__).with_name("test_durations.json")
+
+
+@cache
+def _measured_homes(n: int) -> dict[str, int]:
+    """The measured files' shards: heaviest first, each to the lightest shard so far (ties to the lowest index).
+
+    ``test_durations.json`` holds each file's summed test time from one FULL run's junit artifacts (files under 1 s
+    are left out). It depends only on that file, never on what was collected, so every shard computes the same split.
+    """
+    try:
+        seconds = json.loads(DURATIONS.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    loads, homes = [0.0] * n, {}
+    for rel, s in sorted(seconds.items(), key=lambda kv: (-kv[1], kv[0])):
+        i = min(range(n), key=lambda j: (loads[j], j))
+        homes[rel] = i
+        loads[i] += s
+    return homes
+
+
 def in_shard(nodeid: str, shard: str) -> bool:
-    """CI's unit matrix (``RC_SHARD="i/n"``, tests.yml job ``unit``): a test runs in shard ``i`` of ``n`` when its
-    file's path hashes there. A whole file stays in one shard (``--dist loadfile`` relies on that), and the split
-    does not depend on which other files exist, so adding a file moves no other file."""
+    """CI's unit matrix (``RC_SHARD="i/n"``, tests.yml job ``unit``): a test runs in shard ``i`` of ``n``.
+
+    A whole file stays in one shard (``--dist loadfile`` relies on that). A file with a measured time is placed by
+    ``_measured_homes`` (#896: by hash the six shards held 437 to 827 s of tests on 15 Nov 2026; by time, 594 to
+    600 s). Any other file hashes there, so adding a new file moves no other file.
+    """
     i, n = (int(x) for x in shard.split("/"))
     if not 0 <= i < n:
         raise ValueError(f"RC_SHARD {shard!r}: want i/n with 0 <= i < n")
-    return zlib.crc32(nodeid.split("::", 1)[0].encode()) % n == i
+    rel = nodeid.split("::", 1)[0]
+    home = _measured_homes(n).get(rel)
+    return (zlib.crc32(rel.encode()) % n if home is None else home) == i
 
 
 def main(argv: list[str]) -> int:

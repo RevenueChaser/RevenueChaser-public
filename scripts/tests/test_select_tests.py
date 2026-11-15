@@ -264,6 +264,32 @@ def test_every_test_file_lands_in_exactly_one_unit_shard():
     homes = {f: [i for i in range(n) if mod.in_shard(f"{f}::test_x[1]", f"{i}/{n}")] for f in files}
     assert all(len(h) == 1 for h in homes.values())
     assert all(sum(h == [i] for h in homes.values()) > len(files) / (2 * n) for i in range(n)), "a shard far too small"
+
+
+def test_the_measured_files_split_the_unit_time_evenly():
+    """#896: by hash the six shards held 437 to 827 s of tests; the measured files are placed by time instead."""
+    import json
+    seconds = json.loads(mod.DURATIONS.read_text(encoding="utf-8"))
+    assert seconds and all(isinstance(v, (int, float)) and v >= 0 for v in seconds.values())
+    loads = [0.0] * 6
+    for rel, s in seconds.items():
+        homes = [i for i in range(6) if mod.in_shard(f"{rel}::t", f"{i}/6")]
+        assert len(homes) == 1, rel
+        loads[homes[0]] += s
+    assert max(loads) <= 1.05 * sum(loads) / 6, [round(x) for x in loads]
+
+
+def test_a_file_without_a_measured_time_keeps_its_hash_shard(monkeypatch, tmp_path):
+    import zlib
+    (tmp_path / "d.json").write_text('{"a/test_heavy.py": 100, "a/test_light.py": 1}', encoding="utf-8")
+    monkeypatch.setattr(mod, "DURATIONS", tmp_path / "d.json")
+    mod._measured_homes.cache_clear()
+    try:
+        assert mod.in_shard("a/test_heavy.py::t", "0/2") and mod.in_shard("a/test_light.py::t", "1/2")
+        new = "b/test_new.py"
+        assert mod.in_shard(f"{new}::t", f"{zlib.crc32(new.encode()) % 2}/2")
+    finally:
+        mod._measured_homes.cache_clear()
     assert mod.in_shard("a/test_a.py::t", "0/1")
     with pytest.raises(ValueError):
         mod.in_shard("a/test_a.py::t", "4/4")
