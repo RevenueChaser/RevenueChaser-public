@@ -346,6 +346,9 @@ PROVIDERS: dict[str, ProviderWords] = {
     "treasury": ProviderWords("Treasury", "yields and auctions"),
     "cboe": ProviderWords("Cboe", "VIX and the index series"),
     "cftc": ProviderWords("CFTC", "futures positioning"),
+    "evren": ProviderWords("EVREN", "the SEC reader tool's answers (no fee)", "1 request at a time"),
+    "deepseek": ProviderWords("DeepSeek API", "the SEC reader tool's answers (Flash only, off-peak)",
+                              "8 requests at a time", paid=True),
     "fed": ProviderWords("Fed", "policy rates"),
     "bls": ProviderWords("BLS", "CPI and jobs"),
 }

@@ -89,6 +89,11 @@ ROLE_WORDS = {"first": "the first source: its value is served", "only source": "
 
 # Source icons: Tabler Icons (MIT licence, see THIRD-PARTY-NOTICES.md), the outline paths the design drew.
 ICONS: dict[str, str] = {
+    # The SEC reader tool's model providers share one icon (Tabler ``message-chatbot``).
+    "evren": "M4 21v-13a3 3 0 0 1 3 -3h10a3 3 0 0 1 3 3v6a3 3 0 0 1 -3 3h-9l-4 4 M9.5 9h.01 M14.5 9h.01 "
+             "M9.5 13a3.5 3.5 0 0 0 5 0",
+    "deepseek": "M4 21v-13a3 3 0 0 1 3 -3h10a3 3 0 0 1 3 3v6a3 3 0 0 1 -3 3h-9l-4 4 M9.5 9h.01 M14.5 9h.01 "
+                "M9.5 13a3.5 3.5 0 0 0 5 0",
     "sec": "M14 3v4a1 1 0 0 0 1 1h4 M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2z M9 9l1 0 "
            "M9 13l6 0 M9 17l6 0",
     "wrds": "M12 6m-8 0a8 3 0 1 0 16 0a8 3 0 1 0 -16 0 M4 6v6a8 3 0 0 0 16 0v-6 M4 12v6a8 3 0 0 0 16 0v-6",

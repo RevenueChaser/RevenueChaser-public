@@ -19,7 +19,6 @@ next run, so a queued pass never holds the builder lock for hours. A long read r
 """
 from __future__ import annotations
 
-import importlib
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
@@ -31,7 +30,7 @@ from .questions import Input, Question
 
 #: Requests at a time, per provider.
 POOLS = {"evren": evren.MAX_WORKERS, "deepseek": 8}
-MODULES = {"evren": "RevenueChaser.core.providers.evren", "deepseek": "RevenueChaser.core.providers.deepseek"}
+CLIENTS = {"evren": evren, "deepseek": deepseek}
 #: The longest a run asks before it stops and leaves the rest for the next run (R1).
 SLICE_S = 15 * 60.0
 #: The Relatedness board's own model job (``module_relatedness.engine``); one model job at a time until it moves here.
@@ -80,7 +79,7 @@ def _ask_one(ctx: base.RunContext, job: Job, started: float, lock: threading.Loc
     q = job.question
     with lock:
         ctx.check_cap(q.provider)
-    client = importlib.import_module(MODULES[q.provider])
+    client = CLIENTS[q.provider]
     parts: list[dict] = []
     raws: list[str] = []
     missing: list[int] = []
