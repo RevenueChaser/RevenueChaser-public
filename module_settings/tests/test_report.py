@@ -400,7 +400,9 @@ def test_the_automation_line_carries_its_name_schedule_state_result_and_next_run
     line = _one_line(_render_rows([_live_row()]))
     first = _autos()[0]
     assert first["label"] in line and first["name"] in line
-    assert first["schedule"] in line
+    # The closed line carries the clock part only (autoWhen): a weekly row's day list reads in the detail.
+    import re
+    assert re.sub(r"^weekly\s+.*?\s(\d{1,2}:\d{2}\s+\(local\))$", r"weekly \1", first["schedule"]) in line
     assert "Enabled" in line
     assert "last result: ok" in line
     assert "next run: 2026-10-24 04:00" in line
