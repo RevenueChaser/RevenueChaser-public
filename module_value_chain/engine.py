@@ -528,6 +528,7 @@ def build_edges(info: dict | None = None) -> list[dict]:
     A caller that passes ``info`` (the result history, #387) learns how many filings were read (``filings``) and
     whether the stored edges were kept because none came out (``kept``)."""
     edges: list[dict] = []
+    covered: set[str] = set()   # the tickers this run scanned: only their stored keys can be retired
     profiles = _stored_profiles()
     n_filings, names = 0, (_spine_names() if profiles else None)
     for rows in _corpus_batches():
@@ -542,21 +543,49 @@ def build_edges(info: dict | None = None) -> list[dict]:
             text = "" if splitter.base(f.get("quality")) == "missing" else (f.get("item_text") or "")
             if not text and t not in customers and t not in profiles:
                 continue
+            covered.add(t)
             found = filing_edges(t, text, filed, customers.get(t), names)
             edges.extend(merge_profile(found, profile_edges(t, profiles[t], filed, names)) if t in profiles else found)
     rawstore.ensure_table("chain_mentions")
     if info is not None:
-        info.update(filings=n_filings, kept=not edges)
+        info.update(filings=n_filings, kept=not edges, retired=0)
     if not edges:
-        # No filing yielded an edge (every row missing or text-less, an empty corpus): replace_all
-        # would delete the stored edges and write none. Keep them and return what the store holds, so
-        # the board, ``n_mentions`` and a later Refresh agree (#284).
+        # No filing yielded an edge (every row missing or text-less, an empty corpus): a degraded run retires
+        # nothing. Keep the stored edges and return what the store holds, so the board, ``n_mentions`` and a
+        # later Refresh agree (#284).
         kept = rawstore.get_all("chain_mentions")
         logger.warning("value_chain: no edges came out of %d filings; kept the %d stored chain_mentions",
                        n_filings, len(kept))
         return kept
-    rawstore.replace_all("chain_mentions", edges)
-    return edges
+    retired = _sync_mentions(edges, covered)
+    if info is not None:
+        info["retired"] = retired
+    logger.info("value_chain: %d chain_mentions written, %d retired", len(edges), retired)
+    # A ticker this run did not scan keeps its stored edges, and they stay on the board.
+    return edges + [r for r in rawstore.get_all("chain_mentions") if r["src"] not in covered]
+
+
+_MENTION_KEY = ("src", "dst_name", "relation")   # the MANIFEST key of chain_mentions
+
+
+def _sync_mentions(edges: list[dict], covered: set[str]) -> int:
+    """Upsert ``edges`` by key and delete, in the same transaction, only the stored keys of the ``covered`` tickers
+    this run no longer produces (plan 2026-11-08 §10: a board table is never written from scratch, #863). Returns
+    the number of keys retired."""
+    new = {tuple(e.get(k) for k in _MENTION_KEY) for e in edges}
+
+    def _write(tx):
+        tx.ensure_table("chain_mentions")
+        gone = [k for k in tx.execute("SELECT src, dst_name, relation FROM chain_mentions").fetchall()
+                if k[0] in covered and tuple(k) not in new]
+        for i in range(0, len(gone), 500):
+            chunk = gone[i:i + 500]
+            tx.execute("DELETE FROM chain_mentions WHERE (src, dst_name, relation) IN ("
+                       + ", ".join(["(?, ?, ?)"] * len(chunk)) + ")", [v for k in chunk for v in k])
+        tx.write_rows("chain_mentions", edges)
+        return len(gone)
+
+    return rawstore.atomic(_write, db=_DB)
 
 
 def _board_filings(filings: list[dict]) -> list[dict]:
