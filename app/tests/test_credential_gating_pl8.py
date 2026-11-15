@@ -19,7 +19,7 @@ from RevenueChaser.core.tests.panel_client import panel_test_client
 DUMMY_TOKEN = "pl8-dummy-provider-key-value"
 
 # The providers core/credentials.py marks optional: a missing key degrades a board, it does not break a job.
-OPTIONAL_PROVIDERS = ("fred", "openfigi", "deepseek", "claude_subscription", "grok_subscription")
+OPTIONAL_PROVIDERS = ("fred", "openfigi", "deepseek")
 
 
 class _FakeUW:

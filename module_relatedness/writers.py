@@ -2,7 +2,7 @@
 
 One row per writer: its chat module, a short model list (the first is its default) and the one credential it needs.
 The board's choice is a setting (``module_relatedness.settings``, ``WRITER`` / ``WRITER_MODEL``); EVREN is the
-default and has no fee, DeepSeek is paid (off-peak gated, USD cap), Grok uses the SuperGrok allowance.
+default and has no fee, DeepSeek is paid (off-peak gated, USD cap).
 
 An option is available when its credential is present. Only the variable NAME is ever reported (``missing``),
 never a value: the check is presence only, like ``core.credentials.problem``.
@@ -31,11 +31,6 @@ WRITERS: dict[str, Writer] = {
                     ("deepseek-v4.1-flash", "glm-5.3", "qwen3.8-flash-next"), "LITELLM_RC_KEY"),
     "deepseek": Writer("deepseek", "DeepSeek API (paid, off-peak)", "RevenueChaser.core.providers.deepseek",
                        ("deepseek-flash",), "LITELLM_RC_KEY", paid=True),
-    "grok": Writer("grok", "Grok (SuperGrok allowance)", "RevenueChaser.core.providers.grok",
-                   ("grok-4.6",), "RC_XAI_AUTH_FILE"),
-    # Headless Claude Code on the subscription login, never an API key (avo, 11 Nov 2026: the first round).
-    "claude": Writer("claude", "Claude (subscription, stops at 80% weekly)", "RevenueChaser.core.providers.claude_code",
-                     ("claude-haiku-5-5", "claude-sonnet-5-5"), "RC_CLAUDE_CONFIG_DIR"),
 }
 DEFAULT = "evren"
 
@@ -59,21 +54,6 @@ def all_models() -> tuple[str, ...]:
 def missing(slug: str) -> str | None:
     """The NAME of the absent credential of ``slug``, or ``None`` when it is present. Never a value."""
     w = get(slug)
-    if slug == "grok":
-        # Presence only, no request (#368): the Settings card renders with zero network; a run refreshes the login.
-        import os
-        from RevenueChaser.core import subscription_usage, xai_login
-        if os.getenv("XAI_OAUTH_TOKEN", "").strip() or xai_login.present(subscription_usage.xai_auth_file()):
-            return None
-        try:
-            subscription_usage.xai_token()      # a Hermes file: its offline reader (an RC login never reaches here)
-        except subscription_usage.SubscriptionUsageError:
-            return w.credential
-        return None
-    if slug == "claude":
-        # Presence of the Claude Code login file only, no request (as Grok's).
-        from RevenueChaser.core import subscription_usage
-        return None if subscription_usage.claude_credentials_path().is_file() else w.credential
     return None if credentials.key_for(slug) else w.credential
 
 

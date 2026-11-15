@@ -4,9 +4,7 @@ DeepSeek bills peak hours at **2×** the off-peak rate. This plan makes the
 optional LLM steps of the Relatedness board (profile extraction and theme naming;
 `module_relatedness` is the only caller of `core/providers/deepseek.py`) run
 **off-peak only**, stop automatically at the peak boundary, and resume on the
-next off-peak run. It is deliberately small: a gate, not a scheduler. The
-optional Grok writer (#388, below) has no off-peak gate; its gate is the
-SuperGrok allowance.
+next off-peak run. It is deliberately small: a gate, not a scheduler.
 
 Status: **implemented.** `core/offpeak.py`, `core/providers/deepseek.py`
 (durable `llm_cache`), `module_relatedness/store.py` (durable profiles) and the
@@ -111,60 +109,17 @@ Reference (informational; DST shifts these):
   (#388 D5). Both wait for the run's `$` cap like any pending name. "Another
   mode" is another `prompt_version` for every writer; a DeepSeek profile must
   also match the mode's model, thinking and effort (v3, #400: no thinking and no effort for every writer). The
-  input hash covers every chunk's prompt, context included (SIC, sector, industry, segment note, candidates). A Grok profile (its cache key
-  carries `"provider": "grok"`) at the current `prompt_version` is current for
-  both writers (`store.is_stale`, `ALT_WRITERS`), so the nightly DeepSeek run
-  does not redo it; see the Grok writer below.
+  input hash covers every chunk's prompt, context included (SIC, sector, industry, segment note, candidates). Another
+  writer's profile at the current `prompt_version` is current (`store.is_stale`),
+  so the nightly run does not redo it.
 
-## Grok writer (#388, no off-peak gate)
+## Profile writers (#360)
 
-The D5 v2 re-profile may run through a SuperGrok subscription instead of DeepSeek. It is a manual CLI path;
-since #360 the dashboard Fetch and the scheduled `RC-Relatedness-OffPeak` (`--run --cap 10`) write with the
-board's writer (Settings: EVREN by default, no fee; DeepSeek capped at 10 USD and off-peak gated; Grok). One writer
-per board: a profile of another writer is stale and stays out of the peer matrix until it is redone.
-
-Two consequences to expect (PR 362 review nit5):
-
-- **Deploy day.** EVREN becomes the board's writer, so every stored DeepSeek or Grok profile leaves the peer matrix
-  and counts as pending until the first EVREN run redoes it. The board shows few or no peers in between.
-- **One model everywhere.** Pick the model on the board, not with `RC_EVREN_MODEL` / `RC_DEEPSEEK_MODEL` /
-  `RC_GROK_MODEL`. The board's model goes to every caller with each call. An environment default can differ
-  between the dashboard and the scheduled unit, and then each process redoes the other's profiles.
-
-- **Client** `core/providers/grok.py`: order **cache → login → allowance → HTTP**.
-  The login is an xAI OAuth token, read at call time through
-  `subscription_usage.xai_token` (`XAI_OAUTH_TOKEN`, else the file named by
-  `RC_XAI_AUTH_FILE`); a missing or expired login stops before any request, and
-  the token never appears in a log or an error. On homesrv the file is **RC's own login** (#368,
-  `core/xai_login.py`): avo creates it once with `python -m RevenueChaser.core.xai_login` (the Grok CLI's device
-  flow, a link to approve, no token printed), and RC refreshes it under the `xai-login` lock when 30 minutes or less
-  remain. A refused refresh asks for the login again; a transient failure keeps a still-valid token. The login refuses
-  to replace a file that is not an RC login (Hermes's, the usage monitor's `xai_auth.json`) unless `--force`. Endpoint `RC_GROK_BASE` +
-  `/chat/completions` (default the Grok CLI chat proxy
-  `https://cli-chat-proxy.grok.com/v1`; only `grok.com` hosts or a loopback mock
-  are accepted), model `RC_GROK_MODEL` (default `grok-4.6`). DeepSeek's
-  `thinking`, `reasoning_effort` and `temperature` are **not sent**; `json_mode`
-  becomes `response_format: {"type": "json_object"}`.
-- **No off-peak gate.** SuperGrok bills by allowance, not by time of day. Its gate
-  is the allowance (`core/subscription_usage`): read before the first request of a
-  run and again after every 25 requests; a window at its ceiling (session 80 %,
-  weekly 90 %, the weekly one set by `RC_GROK_CAP` up to 95, a value outside that
-  falls back to 90; `--status` reads the same cap) or an unreadable reading stops the run cleanly (`stopped_reason`
-  `allowance`, `next_reset`), exit 0, and the rest stays pending.
-- **Cost accounting:** a call costs 0 USD (subscription); the run summary counts
-  the calls. `--cap` (USD) is DeepSeek's; with Grok, `--limit N` caps the calls and
-  never shortens the universe the board covers.
-- **Stored writer:** `relatedness_profiles.model` is the Grok model and the cache
-  key names `"provider": "grok"`; the `llm_cache` row's `model` is the Grok model
-  and its key hash starts with the provider, so a Grok reply never replays as
-  DeepSeek's or back.
-- **Stops:** `auth` (login), `request` (any other 4xx: endpoint, model or a
-  parameter is wrong), `transient` (repeated), `unusable` (the run's first 5
-  replies held no profile; none of them counts an attempt) exit 1; `allowance`
-  exits 0.
-- **CLI:** `--grok-ping` (one live call with the profile prompt and a run's
-  parameters, writes nothing), `--run --provider grok --limit N`,
-  `--name-themes --provider grok`, `--rebuild-themes --name --provider grok`.
+Since #360 the dashboard Fetch and the scheduled `RC-Relatedness-OffPeak` (`--run --cap 10`) write with the
+board's writer (Settings: EVREN by default, no fee; DeepSeek capped at 10 USD and off-peak gated). Pick the model
+on the board, not with `RC_EVREN_MODEL` / `RC_DEEPSEEK_MODEL`: the board's model goes to every caller with each
+call. The Grok and Claude subscription writers were one-off and are removed (avo, 15 Nov 2026); their stored
+profiles stay current at the current `prompt_version` (`store.is_stale`).
 
 ## Tests
 

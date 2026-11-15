@@ -10,10 +10,8 @@ def _card():
     return next(c for c in boards.BOARD_INPUTS if c["key"] == "module_relatedness")
 
 
-def test_the_card_offers_the_writer_and_its_model(rawstore_tmp_db, monkeypatch, tmp_path):
+def test_the_card_offers_the_writer_and_its_model(rawstore_tmp_db, monkeypatch):
     monkeypatch.delenv("LITELLM_RC_KEY", raising=False)
-    monkeypatch.setenv("RC_XAI_AUTH_FILE", str(tmp_path / "none.json"))
-    monkeypatch.delenv("XAI_OAUTH_TOKEN", raising=False)
     s = _card()["settings"]()
     assert s["board"] == "module_relatedness"
     rows = {f["key"]: f for f in s["inputs"]}
@@ -21,14 +19,12 @@ def test_the_card_offers_the_writer_and_its_model(rawstore_tmp_db, monkeypatch, 
     writer = {c[0]: c for c in rows["WRITER"]["choices"]}
     assert writer["evren"][2] == "LITELLM_RC_KEY is not set on this box"
     assert writer["deepseek"][2] == "LITELLM_RC_KEY is not set on this box"  # one gate key for both
-    assert writer["grok"][2] == "RC_XAI_AUTH_FILE is not set on this box"
+    assert set(writer) == {"evren", "deepseek"}
 
 
-def test_a_greyed_option_renders_disabled_and_no_value_leaks(rawstore_tmp_db, monkeypatch, tmp_path):
+def test_a_greyed_option_renders_disabled_and_no_value_leaks(rawstore_tmp_db, monkeypatch):
     monkeypatch.delenv("LITELLM_RC_KEY", raising=False)
     monkeypatch.setenv("DEEPSEEK_API_KEY", DS_KEY)          # a key from before the gate: never used, never shown
-    monkeypatch.setenv("RC_XAI_AUTH_FILE", str(tmp_path / "none.json"))
-    monkeypatch.delenv("XAI_OAUTH_TOKEN", raising=False)
     s = _card()["settings"]()
     html = "".join(report._setting_field(f) for f in s["inputs"])
     assert '<option value="evren" selected disabled>' in html

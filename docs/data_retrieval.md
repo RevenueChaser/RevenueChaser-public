@@ -435,8 +435,6 @@ whole app at a local server:
 | `RC_FDA_OOPD_BASE` | FDA Office of Orphan Products Development (OOPD) search |
 | `RC_DEEPSEEK_BASE` | DeepSeek chat API (`core/providers/deepseek.py`; read at call time; default the LiteLLM gate `http://127.0.0.1:9720/v1`) |
 | `RC_EVREN_BASE` | EVREN chat API, the default Relatedness writer (`core/providers/evren.py`, #360; read at call time). Default the LiteLLM gate `http://127.0.0.1:9720/v1`, which names the models `evren-<model>`; the model is `RC_EVREN_MODEL` or the board's `WRITER_MODEL` |
-| `RC_GROK_BASE` | SuperGrok chat API, the Relatedness Grok writer (`core/providers/grok.py`, #388; read at call time). Default the Grok CLI chat proxy `https://cli-chat-proxy.grok.com/v1`. Only https on `grok.com` / `*.grok.com` or a loopback mock is accepted, so the subscription token never goes elsewhere (`api.x.ai`, the metered developer API, is refused); the model is `RC_GROK_MODEL` |
-| `RC_GROK_CLIENT_VERSION` | The `x-grok-client-version` header the Grok writer sends (`core/providers/grok.py`, #375). cli-chat-proxy answers HTTP 426 to a client below its minimum; the default `CLIENT_VERSION` is the Grok CLI release it was read from (xai-org/grok-build). Set it to the version a 426 names until the default is bumped |
 | `RC_OPENFIGI_BASE` | OpenFIGI mapping API (identity refresh; the 13F CUSIP map, `core/providers/openfigi.py`, read at call time; the spine's `openfigi/map`, both its `ID_CUSIP`/`ID_CINS` and its `TICKER` jobs) |
 | `RC_NASDAQTRADER_BASE` | Nasdaq Trader symbol directory (identity refresh) |
 | `RC_FDIC_BASE` | FDIC institution list (identity refresh) |
