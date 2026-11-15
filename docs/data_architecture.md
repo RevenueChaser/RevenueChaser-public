@@ -1067,8 +1067,10 @@ loss, a session inside it that lost rows is. A table whose row count the source 
 accumulates is named in `serving.SHRINKS_BY_CHOICE` (`my_universe`; `economic_event` since 14 Nov 2026, because UW's
 calendar is a forward window and a snapshot day's partition is replaced whole by that day's newest fetch): it may
 shrink by any amount and still may not empty. A build also refuses
-a missing Parquet root (the raw disk not mounted). Then the live file is hard-linked to `<kind>.prev.duckdb` and
-`os.replace` moves the new file over the live name, so the live name is never missing. Any failure deletes the new
+a missing Parquet root (the raw disk not mounted). Then the live file is copied to `<kind>.prev.duckdb` under
+`serving_prev/` of the raw root (the HDD; `RC_SERVING_PREV_DIR` moves it) and
+`os.replace` moves the new file over the live name, so the live name is never missing. A build does not start when the live files' disk has less free space than
+`RC_BUILD_MIN_FREE` (10 GiB) or twice the live file (`serving.check_room`, 15 Nov 2026: a full root SSD froze homesrv). Any failure deletes the new
 file and leaves the live file byte-identical (test T3, `rcdata/tests/test_serving.py`). The dashboard opens a serving
 file read-only on every request (`rcdata.serving.open_read`) and never writes one; serving files are never
 compacted, they are rebuilt. Pages only enqueue requests; the builder takes them in order.
