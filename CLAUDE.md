@@ -70,12 +70,17 @@ Code, comments, commit messages, issues and docs are written in **English**.
   (`rawstore_template`, never opened by a test), not by running the ~1 s apply per test. A test of the schema apply
   or a migration itself is marked `@pytest.mark.rawstore_schema_from_scratch` and gets the apply on its own file.
 - CI (`.github/workflows/tests.yml`) runs both tiers on every pull request into `main` and on `main`. The unit tier
-  runs as 4 parallel jobs (`unit (FULL) 0/4` ... `3/4`; `RC_SHARD` splits by test file), each under
+  runs as 6 parallel jobs (`unit (FULL) 0/6` ... `5/6`; `RC_SHARD` splits by test file), each under
   `pytest -n auto --dist loadfile`, because a single pytest process is single-core bound.
   A push to a PR runs only the test files that import a changed file (`scripts/select_tests.py`; check names
-  `unit (SELECTIVE)` / `e2e (SELECTIVE)`), and falls back to FULL when that is not safe to say. **The merge gate is a
-  green `merge-gate` check on the current head** (it fails on purpose for a SELECTIVE run): label the PR `full-ci` before merging, and every
-  later push stays FULL. `main` and a manual dispatch always run FULL.
+  `unit (SELECTIVE)` / `e2e (SELECTIVE)`), and falls back to FULL when that is not safe to say. A change that stays
+  inside board folders runs only those boards' e2e files and the shell's (`select_tests.E2E_BY_BOARD`). **The merge
+  gate is a green `merge-gate` check on the current head** (it fails on purpose for a SELECTIVE run): label the PR
+  `full-ci` at the **last** push. The label buys one FULL run and is removed when it finishes (job `full-ci-once`), so
+  a later push is SELECTIVE again and needs the label once more. A push to `main` whose tree that PR run already
+  tested green is skipped (`plan` mode SKIP); any other push to `main`, and a manual dispatch, run FULL. Each run
+  uploads junit files with per-test times (`junit-unit-<shard>`, `junit-e2e`), and the venv is cached per ISO week
+  (`.github/actions/python-deps`).
 - **TDD, read in CI:** "seen red first" is the `red-on-base` job's result (the PR's new tests run against the
   merge-base), quoted in the PR report. It does not cover e2e tests: say "e2e: not checked". A mutation check is a
   commit: push the mutation, read the red run, push the revert; required only for money, store, identity and

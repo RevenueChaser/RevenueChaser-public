@@ -128,7 +128,7 @@ Two tiers, both required for a change to be done.
   Claude Code sessions run no test themselves, not one file (`CLAUDE.md` → Tests):
   they open a draft PR at the first push and read CI on the head. A push runs only the
   test files that import a changed file (`unit (SELECTIVE)` / `e2e (SELECTIVE)`, or
-  FULL when that is not safe to say), and the `full-ci` label makes every run FULL.
+  FULL when that is not safe to say), and the `full-ci` label, added at the last push, makes that one run FULL.
   The merge gate is a green `merge-gate` check on the current head, which only a FULL
   run gives (`CLAUDE.md` → Tests).
 - No test touches the network, today's date, or real `.store`/`.cache`.
