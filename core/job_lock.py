@@ -2,20 +2,12 @@
 
 There is one name per writer family, so a second run of the same writer is refused rather than interleaved — not one
 lock shared by different families, whose cross-family order stays on the automation registry's ``after=`` chain and
-its times. The names in use: ``"edgar_sync"`` (``module_value_chain/sync.py`` and ``reslice.py``), ``"relatedness"``
-(``module_relatedness/engine.py``), ``"daily_bars"`` (``core/prices.py``), ``"index_lists"``
-(``core/index_lists.py``) and ``"index_levels"`` (``core/index_levels.py``); ``"identity"``
-(``core/identity/refresh.py``: the dashboard job and the ``python -m RevenueChaser.core.identity`` CLI alike),
-``"sec_13f"`` (the three 13F jobs, ``app/runners.py``), ``"forecast_outcomes"`` (``scripts/forecast_outcomes.py``) and
-``"nightly_inputs_<step>"`` (``scripts/nightly_inputs.py``, one per step, so two different steps still run together)
-— ``identity``, ``sec_13f``, ``forecast_outcomes`` and ``nightly_inputs_<step>`` added for #26 (PL6-a) — and
-``"forecast_baselines"`` (``scripts/forecast_baselines.py``, #25 HR-1). ``"rcdata_build"`` is the market-store builder
-(``python -m RevenueChaser.rcdata.build``, #206), held for its whole run so a second builder is refused.
-
-``"universe"`` (``core/universe_fetch.universe_write_lock``) is the universe writers, and the whole universe refresh
-job and its CLI (#244), with ``"universe_run"`` beside it while the refresh job runs, so a board Fetch can tell it
-from Phase B, and ``"board_fetch_<board>"`` while a single-board Fetch runs, so a universe run can tell it is running
-(``universe_fetch.board_fetch_lock``, #356).
+its times. The names in use: ``"edgar_sync"`` (``module_value_chain/reslice.py``), ``"relatedness"``
+(``module_relatedness/engine.py``), ``"sec_13f"`` (the 13F jobs, ``app/runners.py``), ``"forecast_outcomes"``
+(``scripts/forecast_outcomes.py``) and ``"forecast_baselines"`` (``scripts/forecast_baselines.py``, #25 HR-1);
+``"rcdata_build"`` is the market-store builder (``python -m RevenueChaser.rcdata.build``,
+#206), held for its whole run so a second builder is refused. The old store's writers (daily bars, index lists,
+identity, the universe refresh, the single-board Fetch lock and the nightly inputs) went with #860.
 
 The lock is a file in the store dir, and **the kernel owns its liveness**: ``acquire()`` opens it and takes a
 non-blocking OS lock on it (``fcntl.flock`` on POSIX, ``msvcrt.locking`` on Windows). So a holder that dies releases
@@ -326,12 +318,6 @@ UNKNOWN = "*"
 WRITES: dict[str, tuple[str, ...]] = {
     "edgar_sync": (STORE,),
     "relatedness": (STORE,),
-    "universe": (STORE,),
-    "universe_run": (STORE,),
-    "daily_bars": (STORE,),
-    "index_lists": (STORE,),
-    "index_levels": (STORE,),
-    "identity": (STORE,),
     "sec_13f": (STORE,),
     "forecast_outcomes": (STORE,),
     "forecast_baselines": (STORE,),
@@ -341,8 +327,6 @@ WRITES: dict[str, tuple[str, ...]] = {
 }
 #: The families whose name carries a tail — one per step, one per board. Matched by prefix.
 WRITES_PREFIX: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("nightly_inputs_", (STORE,)),
-    ("board_fetch_", (STORE,)),
     # One dataset's fetch-only run (``build ... --no-duckdb`` or ``--no-parquet``): it writes raw files, and
     # Parquet partitions unless it is raw-only, and opens no serving file, so it holds off nothing and nothing
     # holds it off. A partition only ever appears whole (``base.write_parquet`` renames into place), so a builder

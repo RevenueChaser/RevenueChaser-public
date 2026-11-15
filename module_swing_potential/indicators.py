@@ -11,7 +11,7 @@ import logging
 import pandas as pd
 
 from RevenueChaser.core.info_fallback import has_fields, refetch_or_keep
-from RevenueChaser.core.providers import yf_session  # at import: its 401 watcher sees the first .info read (#402)
+from RevenueChaser.core.providers import yf_session  # noqa: F401 - at import: its 401 watcher sees the first .info read (#402)
 from RevenueChaser.module_swing_potential import config
 
 logger = logging.getLogger(__name__)
@@ -214,120 +214,8 @@ def compute_indicators(df: pd.DataFrame, spy_df: pd.DataFrame | None = None,
     return ind
 
 
-def load_ohlc(ticker: str, ttl_days: float = 1.0, retries: int = 3,
-              no_fetch: bool = False) -> pd.DataFrame:
-    """2y daily OHLCV (normalized), cache-first in ``.store/raw.duckdb`` (swing_ohlc).
-
-    Cache-first so re-scans reuse the same OHLC instead of hammering yfinance
-    (which rate-limits under load and caused whole scans to drop to ~0 results).
-    On a cache miss/expiry it fetches with backoff. When the refetch fails and a
-    (stale) cached series exists, that series is returned with
-    ``df.attrs["stale"] = True`` — stale-but-present beats empty (#205); with no
-    cache the empty frame carries ``attrs["fetch_failed"] = True``.
-
-    Freshness uses ``swing_ohlc.cached_at`` (per ticker), seeded from the source
-    CSV mtime at migration. A series is also stale, whatever its age, when its last
-    bar is D or older (D = the latest complete session) and it was written before D's
-    close + 30 min (#128): it cannot hold a complete D bar, and the forecast ledger
-    freezes only complete-D boards. That covers bars that end before D and a D bar
-    cached mid-session (a partial bar). ``no_fetch=True`` (model-only refresh) reads the cache
-    regardless of age and never touches the network (and never evaluates that rule);
-    returns empty when there is no cache.
-    """
-    import time
-
-    from RevenueChaser.core import ledger, rawstore
-    from RevenueChaser.module_swing_potential import config
-
-    ticker = (ticker or "").strip().upper()
-    if not ticker:
-        return pd.DataFrame()
-
-    rows = rawstore.query(
-        "SELECT ts, \"open\", \"high\", \"low\", \"close\", \"volume\", cached_at "
-        "FROM swing_ohlc WHERE ticker = ? ORDER BY ts", [ticker])
-    if rows:
-        if no_fetch:
-            return _df_from_rows(rows)
-        cached_at = rows[-1]["cached_at"] or 0
-        if ((time.time() - cached_at) < ttl_days * 86400
-                and not ledger.needs_session_refetch(rows[-1]["ts"], cached_at)):
-            return _df_from_rows(rows)
-
-    if no_fetch:
-        return pd.DataFrame()
-
-    import yfinance as yf
-    df = pd.DataFrame()
-    reset = False                     # one session reset and retry per call after Yahoo's 401 (U1, #402)
-    attempt = 0
-    while attempt < retries:
-        started, error = yf_session.clock(), None
-        try:
-            raw = yf.Ticker(ticker).history(period="2y", interval="1d")
-            df = normalize_ohlcv(raw)
-            if not df.empty:
-                break
-        except Exception as exc:  # noqa: BLE001 - rate limit / transient
-            error = exc
-            logger.debug("ohlc %s attempt %d/%d: %s", ticker, attempt + 1, retries, exc)
-            # Counted for the board banner (#80); the frame returned below is unchanged.
-            from RevenueChaser.core.providers.yfinance import _HEALTH
-            _HEALTH.call(error=str(exc) or type(exc).__name__, endpoint=f"{ticker}.history")
-        if not reset and yf_session.recover(started, error):
-            reset = True
-            continue                  # the retry, at once; it is not one of ``retries``
-        attempt += 1
-        if error is not None and attempt < retries:
-            time.sleep(2 * attempt)
-    if not df.empty:
-        try:
-            outcome = _write_ohlc(ticker, df)
-        except Exception:  # noqa: BLE001
-            logger.warning("ohlc cache write failed for %s", ticker)
-            outcome = "failed"
-        if outcome == "refused" and rows:
-            # #261 + F2b (``module_swing_potential/ohlc_cache.py``): a short refetch never replaces a longer stored
-            # history, unless it is a new listing (no shared session, starting more than 30 days after the stored
-            # last bar).
-            kept = _df_from_rows(rows)
-            kept.attrs["stale"] = True
-            kept.attrs["short_refetch_refused"] = True
-            return kept
-        return df
-    if rows:
-        logger.warning("ohlc %s: refetch failed; serving the stale cache", ticker)
-        stale = _df_from_rows(rows)
-        stale.attrs["stale"] = True
-        return stale
-    df.attrs["fetch_failed"] = True
-    return df
-
-
-def _df_from_rows(rows: list[dict]) -> pd.DataFrame:
-    df = pd.DataFrame(rows)
-    if df.empty:
-        return pd.DataFrame()
-    df = df.rename(columns={"open": "Open", "high": "High", "low": "Low",
-                            "close": "Close", "volume": "Volume"})
-    # utc=True: legacy CSVs mix tz-aware and naive timestamps — normalize_ohlcv
-    # strips the tz afterwards.
-    df.index = pd.to_datetime(df["ts"], errors="coerce", utc=True)
-    df = df.drop(columns=["ts"])
-    return normalize_ohlcv(df)
-
-
-def _write_ohlc(ticker: str, df: pd.DataFrame) -> str:
-    """``df`` as ``ticker``'s cached series, through the one ``swing_ohlc`` writer (C8, #383 R3): "written" or
-    "refused" (``module_swing_potential/ohlc_cache.write``)."""
-    import time as _time
-
-    from RevenueChaser.module_swing_potential import ohlc_cache
-    return ohlc_cache.write(ohlc_cache.rows_for(ticker, df, _time.time())).get(ticker, "written")
-
-
 def load_ticker_info(ticker: str, no_fetch: bool = False) -> dict:
-    """yfinance ticker ``.info``, cached to ``.store/raw.duckdb`` (swing_info).
+    """yfinance ticker ``.info``, cached in ``boards/swing_potential.duckdb`` (swing_info).
 
     ``no_fetch=True`` reads the cache regardless of age (model-only refresh);
     returns {} when there is no cache.

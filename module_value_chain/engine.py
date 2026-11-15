@@ -14,7 +14,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 
-from RevenueChaser.core import ledger, rawstore
+from RevenueChaser.core import rawstore
 from RevenueChaser.core.providers import sec_edgar
 from RevenueChaser.rcdata import opens  # #566: pooled reads count for this run
 
@@ -240,8 +240,8 @@ def miss_is_current(miss: dict | None, cik, now: datetime | None = None) -> bool
 def corpus_miss_summary(tickers: list[str]) -> dict | None:
     """Recorded misses for ``tickers`` by reason, plus the no-CIK count (read only).
 
-    Store reads only, no network: the CIK map comes from the stored SEC exchange file
-    (``core.sec_files.latest``), never through ``sec_edgar._cik_map`` (which fetches when empty).
+    Store reads only, no network: the CIK map comes from the spine (``_stored_ciks``), never through
+    ``sec_edgar._cik_map`` (which fetches when empty).
     A ``miss:`` key is deleted only when a slice is written, so a ticker that left
     the universe keeps its key; only ``tickers`` are counted. ``due`` is the
     misses the next sync asks SEC about again (``not miss_is_current``).
@@ -271,18 +271,15 @@ def corpus_miss_summary(tickers: list[str]) -> dict | None:
 
 
 def _stored_ciks() -> dict[str, str]:
-    """The stored SEC ticker map, read only: the newest present row per ticker of ``sec_exchange_file``.
-
-    The file is pulled once a night by RC-Daily-Bars (#301 D21). ``sec_company_tickers`` is **retired, not
-    unreadable**: nothing writes it any more, but a store that has it and not the new file still has a usable
-    map, so it is the second source — the same chain ``sec_edgar._cik_map`` uses. What this must never do is
-    reach the network, so unlike ``_cik_map`` there is no third step: no map is "unknown", not a fetch.
-    """
-    from RevenueChaser.core import rawstore, sec_files
-    rows = sec_files.latest("exchange")
-    if not rows:
-        rows = rawstore.query("SELECT ticker, cik FROM sec_company_tickers")
-    return {r["ticker"]: r["cik"] for r in rows if r.get("cik")}
+    """The ticker -> CIK map of the spine (``rcdata.read.identity``), read only and never the network: no spine is
+    "unknown" (``{}``), not a fetch. The old SEC exchange file rows (``sec_exchange_file`` / ``sec_company_tickers``
+    in ``raw.duckdb``) were the source until #860 removed the old store."""
+    from RevenueChaser.rcdata import read
+    try:
+        rows = read.identity()
+    except Exception:  # noqa: BLE001 - no spine file reads as no map
+        return {}
+    return {r["ticker"]: str(r["cik"]).strip().lstrip("0") or "0" for r in rows if r.get("ticker") and r.get("cik")}
 
 
 def fetch_corpus(tickers: list[str] | None = None, no_fetch: bool = False,
@@ -633,9 +630,8 @@ def _board_payload(filings: list[dict], edges: list[dict], as_of: str,
 
 def run(no_fetch: bool = False, tickers: list[str] | None = None,
         limit: int | None = None, force: bool = False, run_id: str | None = None) -> dict:
-    """The board's payload. A Fetch records its edges and payload in result history (#387) under ``run_id`` (the
-    dashboard job's id, else ``ledger.new_run_id()``); a Refresh writes nothing."""
-    run_at = time.time()
+    """The board's payload. ``run_id`` is kept for the callers; the result history it keyed went with history.duckdb
+    (#860). A Refresh writes nothing."""
     if not no_fetch:
         health_mod.EDGAR.reset()      # this run's SEC calls only (#299); a Refresh makes none
     fetch = fetch_corpus(tickers=tickers, no_fetch=no_fetch, limit=limit, force=force)
@@ -665,22 +661,7 @@ def run(no_fetch: bool = False, tickers: list[str] | None = None,
     # The banner the board already renders, and the run's recorded health (#299). A Refresh leaves the field
     # out, so re-rendering never replaces a Fetch's banner with zeros.
     payload["provider_health"] = health_mod.EDGAR.health()
-    record_history(edges, info, run_id=run_id, run_at=run_at, payload=payload, counts=fetch)
     return payload
-
-
-def record_history(edges: list[dict], info: dict, *, run_id: str | None, run_at: float, counts: dict,
-                   payload: dict | None = None, provider_health: dict | None = None) -> None:
-    """Result history of a ``chain_mentions`` write (#387): a Value Chain Fetch or an EDGAR sync. A failure is a job
-    note, never a failed run: the latest table and the board do not depend on it."""
-    from . import history
-    try:
-        history.record(edges, run_id=run_id or ledger.new_run_id(), run_at=run_at, kept=bool(info.get("kept")),
-                       counts=counts, filings=info.get("filings"), payload=payload,
-                       provider_health=provider_health or (payload or {}).get("provider_health"))
-    except Exception as exc:
-        logger.exception("Value Chain result history failed")
-        ledger.add_note(f"Value Chain result history was not recorded: {type(exc).__name__}: {exc}")
 
 
 def _stored_sync() -> str | None:

@@ -31,7 +31,7 @@ import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Callable
@@ -77,16 +77,16 @@ class Prefiltered:
 def prefilter(rows: list[dict], cfg: Any, quotes: dict[str, dict] | None = None) -> Prefiltered:
     """The 7-A prefilter (avo 2026-10-02; #383 R3 C12): price and dollar volume only.
 
-    The inputs are D04's (``quotes.prefilter_quotes``: each name's newest session row, Yahoo first), not the
-    universe row's screener quote; ``quotes`` stands in for that read in tests. A name drops as ``no_quote`` with no
+    The inputs are the prices store's (``rcdata.read.latest_volume``: each name's newest close and its average daily
+    volume; the old D04 quote table went with the old store, #860), not the universe row's screener quote; ``quotes`` stands in for that read in tests. A name drops as ``no_quote`` with no
     D04 price, ``low_price`` under ``cfg.MIN_PRICE``, ``low_dollar_volume`` when price times the average daily volume
     is under ``cfg.MIN_DOLLAR_VOLUME``. The volume is the newest Yahoo average D04 holds (``prefilter_quotes``); a name
     with none anywhere is kept, since its price passed, and listed in ``no_volume`` so the board counts it (S4, #434
     review). The trend rules (52-week distance, above the 50-day average) are gone: the gates test them on fresh bars.
     """
     if quotes is None:
-        from RevenueChaser.core import quotes as _quotes
-        quotes = _quotes.prefilter_quotes([r.get("ticker") for r in rows])
+        from RevenueChaser.rcdata import read as _read
+        quotes = _read.latest_volume([r.get("ticker") for r in rows])
     kept: list[dict] = []
     drops: dict[str, list[str]] = {}
     no_volume: list[str] = []
@@ -137,15 +137,13 @@ def spy_summary(spy_df) -> dict:
 SPY_BASELINE_DAYS = 730          # the window of the old read (``load_ohlc``: yfinance ``period="2y"``)
 
 
-def load_spy(fallback: Callable[[], Any], now=None):
+def load_spy(now=None):
     """SPY's daily bars, the Swing and Fundamentals baseline (U1, #402; K8b's SPY part).
 
-    D01 (``price_bars_daily``, written by RC-Daily-Bars) when its SPY bar of the latest complete session is complete:
-    the test the freeze anchor uses (``ledger.d01_has_session``), so the baseline and the anchor agree. The series is
-    D01's split- and dividend-adjusted one (``prices.daily_bars``), as yfinance's ``auto_adjust`` was, over the last
-    ``SPY_BASELINE_DAYS``, in the frame shape ``load_ohlc`` returns. Otherwise ``fallback()``, the board's old read
-    (``swing_ohlc`` through yfinance), stale flag and all: when D01 lacks that session, when the calendar cannot place
-    the run, and when the D01 read fails.
+    D01 (the prices store) when its SPY bar of the latest complete session is complete: the test the freeze anchor
+    uses (``ledger.d01_has_session``), so the baseline and the anchor agree. The series is D01's split- and
+    dividend-adjusted one (``prices.daily_bars``) over the last ``SPY_BASELINE_DAYS``. Otherwise an empty frame
+    marked ``fetch_failed``: the old ``swing_ohlc`` fallback went with raw.duckdb (#860).
     """
     try:
         session = calendar.latest_complete_session(now)
@@ -156,10 +154,12 @@ def load_spy(fallback: Callable[[], Any], now=None):
             if not frame.empty:
                 logger.info("SPY baseline: D01 through %s (%d bars)", session, len(frame))
                 return frame
-        logger.info("SPY baseline: D01 has no complete %s bar; using the board's OHLC read", session)
-    except Exception as exc:  # noqa: BLE001 - D01 never fails a scan: the old read is the fallback
-        logger.warning("SPY baseline: D01 could not be read (%s); using the board's OHLC read", exc)
-    return fallback()
+        logger.warning("SPY baseline: D01 has no complete %s bar", session)
+    except Exception as exc:  # noqa: BLE001 - a missing baseline is an empty frame, never a failed scan
+        logger.warning("SPY baseline: D01 could not be read (%s)", exc)
+    empty = pd.DataFrame()
+    empty.attrs["fetch_failed"] = True
+    return empty
 
 
 def _ohlcv(bars: pd.DataFrame) -> pd.DataFrame:
@@ -262,36 +262,16 @@ def _score(compute_row: Callable[..., dict | None], ticker: str, bars, *args):
         _PRELOADED.bars = None
 
 
-def _generated(payload: dict) -> float:
-    """``payload["generated_at"]`` as epoch seconds; a missing or unreadable stamp is the oldest."""
-    try:
-        return datetime.fromisoformat(str(payload.get("generated_at"))).timestamp()
-    except (TypeError, ValueError):
-        return float("-inf")
-
-
 def stored_payload(*, board: str, refreshed_by: str, build_payload: Callable[..., dict],
                    load_universe: Callable[..., tuple[list[dict], dict]], history_board: str | None = None,
                    saved: Path | None = None) -> dict:
     """What a Refresh shows (K4, #383 R1): the board the last Fetch built, never a re-score.
 
-    Two stores can hold it: the last history header's ``payload`` (``core/history.last_run``; the Fetch records it,
-    ``history.record``) and the board's saved JSON (``saved``, written by every render). The newer of the two by
-    ``generated_at`` wins, so a Fetch whose history write failed is still what the board shows, and a Refresh never
-    overwrites it with an older header. A saved board that is empty or the demo fixture never counts. A header from
-    before K4 has no payload: the saved JSON alone. With neither, the board's no-data message: no stored universe,
-    or a universe with no stored scan. No ``compute_row``, no pool, no network, no write.
+    The board's saved JSON (``saved``, written by every render); the last history header's payload that could also
+    hold it went with the old history file (#860), so ``history_board`` is ignored. A saved board that is empty or the
+    demo fixture never counts. Without one, the board's no-data message: no stored universe, or a universe with no
+    stored scan. No ``compute_row``, no pool, no network, no write.
     """
-    recorded = None
-    if history_board:
-        from RevenueChaser.core import history
-        try:
-            last = history.last_run(history_board, payload=True)
-        except Exception as exc:  # noqa: BLE001 - a locked or unreadable history file falls back below
-            logger.warning("%s: the last Fetch's header could not be read: %s", board, exc)
-            last = None
-        if last and isinstance(last.get("payload"), dict):
-            recorded = last["payload"]
     shown = None
     if saved is not None:
         try:
@@ -300,12 +280,7 @@ def stored_payload(*, board: str, refreshed_by: str, build_payload: Callable[...
             shown = None
         if not isinstance(shown, dict) or shown.get("no_data") or shown.get("is_fixture"):
             shown = None
-    if recorded is not None and (shown is None or _generated(recorded) >= _generated(shown)):
-        return recorded
     if shown is not None:
-        if recorded is not None:
-            logger.warning("%s: the saved board is newer than the last recorded Fetch (a history write failed?); "
-                           "showing the saved board", board)
         return shown
     rows, _ = load_universe(refreshed_by=refreshed_by, refresh=False, no_fetch=True)
     reason = "no_scan_stored" if rows else "no_universe_stored"

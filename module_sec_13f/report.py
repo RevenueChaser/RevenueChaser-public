@@ -18,7 +18,7 @@ shows the last ``WINDOW_QUARTERS`` settled quarters (owner, 12 Nov 2026), plus a
 from RevenueChaser.core.reporting_common import (FILTERS_CSS, FILTERS_JS, PAYLOAD_JS, THEME_CSS,
                                                  THEME_JS, THEME_SCALE, THEME_TOKENS, filters_bar_html,
                                                  filters_meta, help_html, notice_html, provider_health_html,
-                                                 recorded_sessions_html, watchlist_html, write_board)
+                                                 watchlist_html, write_board)
 import math
 from datetime import datetime
 from pathlib import Path
@@ -1193,7 +1193,7 @@ def _render_page(quarters: list, entries: list, fields: list, kit_notice: str | 
 {status_html}</div>
 {provider_health_html(provider_health)}{notice_html(notice)}{notice_html(kit_notice)}
 {help_block}
-{recorded_sessions_html("module_sec_13f")}
+
 {filters_bar_html("rc-filters")}
 <div class="kit-count" id="kit-count" aria-live="polite"></div>
 {types_html}

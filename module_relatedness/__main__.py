@@ -59,7 +59,7 @@ from __future__ import annotations
 import argparse
 import json
 
-from RevenueChaser.core import offpeak, rawstore, subscription_usage
+from RevenueChaser.core import offpeak, subscription_usage
 from RevenueChaser.core.providers import claude_code, deepseek, evren, grok
 
 from . import engine, writers
@@ -77,14 +77,6 @@ _GROK_FAILURES = (deepseek.DeepSeekAuthError, grok.GrokAuthError, grok.GrokReque
 # The ping's company: a made-up, public-domain-style description (no real issuer, no store read).
 _PING_TEXT = ("Example Semiconductor Corp designs graphics processors and networking chips sold to cloud data "
               "center operators and PC makers; manufacturing is outsourced to foundries.")
-
-
-def _last_run() -> dict:
-    try:
-        row = rawstore.get("run_registry", "relatedness_run")
-    except Exception:  # noqa: BLE001 - table may not exist yet
-        return {}
-    return row.get("value") if row else {}
 
 
 def _summary(**kwargs) -> str:
@@ -289,7 +281,6 @@ def main(argv: list[str] | None = None) -> int:
     if args.grok_ping:
         return _grok_ping()
     if args.status:
-        print("last run:", json.dumps(_last_run(), ensure_ascii=False))
         # Claude / Grok bill by allowance, not by time of day: one line each when
         # a login is present. Read failures are swallowed inside check().
         for _provider, line in subscription_usage.check():

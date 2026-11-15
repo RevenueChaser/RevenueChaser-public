@@ -108,11 +108,7 @@ def annotate_cards(cards: list[dict], registry: dict | None = None) -> list[dict
 
 
 def _main(argv: list[str]) -> int:
-    """``--refresh`` runs the weekly step (``scripts/index_lists.py --weekly``: lock, floors, run id and provider on
-    the change rows); without it the stored registry is only read."""
-    if "--refresh" in argv:
-        from RevenueChaser.scripts import index_lists
-        return index_lists.main(["--weekly"])
+    """Read the registry and print its size (the weekly ``--refresh`` step went with raw.duckdb, #860)."""
     reg = load_registry() or {}
     print(f"registry: {len(reg)} tickers (the identity spine)")
     return 0

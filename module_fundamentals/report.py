@@ -25,7 +25,6 @@ from RevenueChaser.core.reporting_common import (
     filters_meta,
     help_html,
     provider_health_html,
-    recorded_sessions_html,
     universe_provenance_html,
     watchlist_html,
 )
@@ -527,7 +526,7 @@ function start(){
 
   {provider_health_html(payload.get("provider_health"))}
   {help_block}
-  {recorded_sessions_html("module_fundamentals")}
+  
 
   {summary_html}
 

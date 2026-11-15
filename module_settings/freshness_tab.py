@@ -1,7 +1,8 @@
 """The Health tab's "Board freshness" part (#566): did each board's last run read the newest build of every source
 DuckDB it reads?
 
-The data is ``core/board_sources.freshness`` over ``core/history.last_runs``; this module only draws it, in the
+The data came from the result history (``core/history.last_runs``), which went with history.duckdb (#860), so
+the part lists no board now; this module only draws it, in the
 ``#needs`` frame and palette (``static/needs.css``). One card per board, the boards that need a look first. Under
 600 px the cards are one column; every line wraps rather than scroll sideways.
 """
@@ -28,13 +29,9 @@ STATES = {
 
 
 def collect() -> dict:
-    """``{"boards": [...]}`` read now, or ``{"error": ...}``: an unreadable file is a line on the page, never a
-    blank tab."""
-    try:
-        from RevenueChaser.core import board_sources, history
-        return {"boards": board_sources.freshness(history.last_runs())}
-    except Exception as exc:  # noqa: BLE001 - the part says what failed; the rest of the tab still draws
-        return {"error": f"{type(exc).__name__}: {exc}"[:300]}
+    """``{"boards": []}``: the per-board run headers this read came from the result history (history.duckdb), which
+    went with #860, so no board has a recorded run to compare with the live files."""
+    return {"boards": []}
 
 
 def _at(ts) -> str:

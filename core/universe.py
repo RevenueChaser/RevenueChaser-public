@@ -22,15 +22,13 @@ The rule has two parts:
   name is never hidden, only counted (`unknown_type`). Each board's default is
   `BOARD_OPERATING_ONLY`, the set it read before PR 2.
 
-The types are read with a separate query, never a JOIN: `rawstore.query` answers
-`[]` for a missing table, so a JOIN against an absent `security_master` would
-silently empty the universe. `_security_types` is the one seam for them.
+The types come from the spine alone (#860: the old `security_master` is gone).
+`_security_types` is the one seam for them.
 
 **The source** (build plan PR 5; the only one since #642 PR 6): the identity spine through ``rcdata.read``. The
 members are avo's ``my_universe`` list (the spine's listed names, Tier A and B, where it holds no list), with the
 spine's name, sector, industry and security type, and the same two-part rule applied to them; the market cap and
-price come from the prices store (PR 7, ``rcdata.read.latest_market``), each from the old ``equity_universe`` by
-ticker where the prices store has none, and ``quote`` from the old table. The index badges of ``filter_fields`` come
+price come from the prices store (PR 7, ``rcdata.read.latest_market``) only (#860). The index badges of ``filter_fields`` come
 from the spine's current membership (``index_registry``). No spine file reads as no names; ``source_state`` says why.
 """
 from __future__ import annotations
@@ -157,9 +155,8 @@ def _universe_ids() -> list[dict]:
 
 
 def _spine_universe() -> list[dict]:
-    """The universe as ``equity_universe`` rows: identity from ``rcdata.read``; market cap and price from
-    the prices store (``read.latest_market``), each from the old ``equity_universe`` by ticker where the prices store
-    has none (NULL where neither has one); ``quote`` from the old table. The cap is the issuer's (every listed class,
+    """The universe rows: identity from ``rcdata.read``; market cap and price from the prices store
+    (``read.latest_market``), NULL where it has none; ``quote`` is always None (the old quote table is gone, #860). The cap is the issuer's (every listed class,
     as Yahoo's was), a fund's its own: one trust's CIK files many funds. No spine file yet: no rows.
 
     **Which names.** avo's own list when the live spine holds one (``my_universe``, the same list the prices store
@@ -171,21 +168,13 @@ def _spine_universe() -> list[dict]:
     ids = _universe_ids()
     if not ids:
         return []
-    # Cap, price and quote still come from the old table where the prices store has none. Taking them away is
-    # avo's rule of 11 Nov 2026 ("the old tables are not read"), but it is a board change, not a switch removal:
-    # on the market store a name with no price bar has no cap at all, so it leaves every cap-filtered board. It
-    # carries its own PR and its own decision (#706); this one only removes the switches.
-    market = {r["ticker"]: r for r in rawstore.query(
-        "SELECT ticker, market_cap, price, quote FROM equity_universe")}
     latest = spine_reads.latest_market(r["ticker"] for r in ids)
     out = []
     for r in ids:
-        m, n = market.get(r["ticker"]) or {}, latest.get(r["ticker"]) or {}
+        n = latest.get(r["ticker"]) or {}
         cap = n.get("market_cap") if r.get("security_type") in EXCLUDED_TYPES else n.get("issuer_market_cap")
-        out.append({"ticker": r["ticker"],
-                    "market_cap": cap if cap is not None else m.get("market_cap"),
-                    "price": n["price"] if n.get("price") is not None else m.get("price"),
-                    "quote": m.get("quote"), "name": r.get("name") or "", "sector": r.get("sector") or "",
+        out.append({"ticker": r["ticker"], "market_cap": cap, "price": n.get("price"), "quote": None,
+                    "name": r.get("name") or "", "sector": r.get("sector") or "",
                     "industry": r.get("industry") or "", "industry_group": None, "sub_industry": None})
     return out
 
@@ -213,18 +202,6 @@ def _security_types() -> dict[str, str]:
     from . import spine_reads
     rows = [r for r in spine_reads.identity_all() if r.get("ticker")]
     spine = {r["ticker"]: r["security_type"] for r in rows}
-    # A spine name left untyped (no OpenFIGI answer, no Compustat link) takes the identity master's type, so the
-    # flag does not let through an ETF the old path excluded (review should-fix 6). A type whose only source is
-    # Compustat's tpci is a guess: the master's type wins over it unless the master says "common" (delta S4).
-    weak = [r["ticker"] for r in rows if r["security_type"] in (None, "unknown", "other")
-            or str(r.get("type_source") or "").startswith("compustat_tpci")]
-    if weak:
-        master = {r["ticker"]: r["security_type"] for r in rawstore.query(
-            "SELECT ticker, security_type FROM security_master") if r.get("security_type")}
-        for t in weak:
-            m = master.get(t)
-            if m and (spine[t] in (None, "unknown", "other") or m != "common"):
-                spine[t] = m
     return spine
 
 
@@ -317,14 +294,6 @@ def universe_counts(mc_min: float = DEFAULT_MC_MIN) -> dict:
             "floor": mc_min}
 
 
-def load_universe_meta() -> dict:
-    row = rawstore.get("equity_universe_provenance", UNIVERSE_META_KEY)
-    if not row:
-        return {}
-    return {"generated_at": row.get("generated_at") or "",
-            "refreshed_by": row.get("refreshed_by") or ""}
-
-
 def has_universe() -> bool:
     """Whether the universe the boards read holds any name, asked of the same rows the boards get
     (``_universe_ids``). Opus review M1 (PR 6): the "Loading universe…" gate and AG's no-card Refresh asked the old
@@ -359,6 +328,17 @@ def load_cached_universe() -> list[dict]:
                 rec["quote"] = {}
         out.append(rec)
     return out
+
+
+def universe_with_stats(*_args, **_kwargs) -> tuple[list[dict], dict]:
+    """``(load_cached_universe(), stats)``: the screeners' universe and the funnel's stats about it, never a fetch.
+
+    It takes the place of the old Yahoo universe pull (``core/universe_fetch``, gone with the old store, #860), whose
+    arguments the callers still pass and this ignores: the universe is the spine's, built by the builder.
+    """
+    rows = load_cached_universe()
+    return rows, {"raw_total": len(rows), "out_of_universe": None, "cached": True, "partial": False,
+                  "empty_store": not rows, "universe_generated_at": None, "universe_refreshed_by": None}
 
 
 _SUFFIX_RE = re.compile(r"\s+\(\d+\)$")
@@ -544,6 +524,6 @@ def filter_fields(tickers: list[str] | None = None) -> dict[str, dict]:
     return {c["ticker"]: c for c in cards}
 
 
-__all__ = ["classification_universe", "classification_universe_rows", "spine_gics", "gics_of",
+__all__ = ["classification_universe", "universe_with_stats", "classification_universe_rows", "spine_gics", "gics_of",
            "DEFAULT_MC_MIN", "TYPE_GROUPS", "BOARD_OPERATING_ONLY", "excluded_tickers", "filter_fields", "theme_catalog",
            "current_theme_run", "universe_counts", "universe_source", "spine_provenance", "SPINE"]

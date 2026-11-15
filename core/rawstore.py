@@ -35,7 +35,6 @@ import logging
 import os
 import re
 import subprocess
-import tempfile
 import threading
 import time
 import zlib
@@ -91,6 +90,27 @@ def _db_path(db: str | None) -> Path:
     if db in BOARD_DBS:
         return board_db_path(db)
     raise RawStoreError(f"no store file {db!r}: only the board files are left (#860)")
+
+
+# Write lock-wait budget ~6.9s — the first, tiny delays absorb the in-process
+# attach race; the tail absorbs another process holding the lock. Plenty for the
+# small per-ticker writes. A long ingest must stay chunked so it never holds the
+# file lock for minutes; the 13F data-set ingest that set this budget is retired
+# (G9: the builder keeps the filings and holdings in Parquet).
+_WRITE_DELAYS = (0.01, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 3.0)
+# Reader budget is longer so a reader out-waits a chunked ingest.
+_READ_DELAYS = (0.01, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0)
+
+# Serializes only the attach/detach of the database file within one process.
+# duckdb.connect() on the SAME path from two threads at the same instant races
+# on the library's global instance cache (BinderException "unique file handle
+# conflict"), and on Windows a thread's close() can still hold the file lock a
+# beat after returning, so a neighbouring thread's reopen raises a lock error.
+# Both disappear if the connect() and close() calls themselves cannot overlap —
+# the lock is NEVER held around the transaction/statements, so operations still
+# overlap exactly as documented (a read during a held write handle works).
+_ATTACH_LOCK = threading.Lock()
+_SCHEMA_VERSION = "13"
 
 
 # A manifest "column" entry is either a column definition (``name TYPE ...``) or
@@ -1442,8 +1462,6 @@ def _has_primary_key(spec: dict) -> bool:
     return any("PRIMARY KEY" in c.upper() for c in spec["columns"])
 
 
-
-
 def table_names() -> list[str]:
     return sorted(MANIFEST)
 
@@ -1689,8 +1707,8 @@ def _reconcile_table(conn, name: str, existing: dict[str, str],
 # a changed key or constraint, and a live column the MANIFEST dropped it used to skip without a word
 # (and a ``compress`` rebuild then drops the extra column for good). They are recorded here and logged,
 # once per (file, table, kind, column) per process. ``schema_drift()`` is what Settings / Data Health will
-# list. Nothing migrates by itself. #312 item 1: ``ensure_all_tables`` also keeps what it saw in
-# ``store_meta`` (key ``schema_drift``, see ``_persist_drift``), so the record outlives the process.
+# list. Nothing migrates by itself. The ``store_meta`` record of it lived in
+# raw.duckdb and went with it (#860): the log keeps the history.
 _SCHEMA_DRIFT: dict[tuple, dict] = {}
 _DRIFT_LOCK = threading.Lock()
 _TYPE_CANON: dict[str, str] = {}
@@ -1712,9 +1730,6 @@ def _record_drift(name: str, kind: str, column: str | None, live, manifest, rebu
     which recreates it from the MANIFEST, so the difference is replaced, not skipped."""
     db = _db_of(name)
     k = (db, name, kind, column)
-    seen = getattr(_LOCAL, "drift_seen", None)
-    if seen is not None:                 # inside ensure_all_tables: what this store's apply saw (#312)
-        seen.add(k)
     with _DRIFT_LOCK:
         if k in _SCHEMA_DRIFT:
             return
@@ -1727,34 +1742,6 @@ def _record_drift(name: str, kind: str, column: str | None, live, manifest, rebu
                "so this difference is replaced (an extra column's data is dropped)" if rebuilt
                else "skipped, nothing migrates by itself")
     logger.warning("rawstore schema drift in %s.%s: %s; %s", db, name, what, outcome)
-
-
-DRIFT_META_KEY = "schema_drift"
-
-
-def _persist_drift(seen: set[tuple]) -> None:
-    """Keep the drift ``ensure_all_tables`` saw in ``store_meta`` (#312 item 1); best effort, never raises.
-
-    ``seen`` holds the keys recorded during this apply, so a difference another store file showed earlier in the
-    same process (``schema_drift()`` is per process) is not written into this one. The row is
-    ``{"recorded_at": <UTC, e.g. 2026-10-15T01:00:00Z>, "drift": [<schema_drift() dicts>]}`` and is written only when the list differs
-    from the stored one: a store with drift gets it, a store whose drift is gone gets an empty list (the record
-    clears), and a fresh store or an unchanged list writes nothing. ``store_meta`` is a latest table: the row says
-    what the last apply saw; the history stays in the log. Runs only inside ``ensure_all_tables``, which opens
-    every file read-write; with ``RC_STORE_AUTO_ENSURE=0`` (the read-only protocol) nothing calls it.
-    """
-    try:
-        with _DRIFT_LOCK:
-            drift = [dict(d) for k, d in sorted(_SCHEMA_DRIFT.items(), key=lambda kv: tuple(map(str, kv[0])))
-                     if k in seen]
-        row = get("store_meta", DRIFT_META_KEY)
-        stored = row["value"] if row else None
-        if (stored["drift"] if isinstance(stored, dict) else None) == drift or (stored is None and not drift):
-            return
-        write_rows("store_meta", [{"key": DRIFT_META_KEY, "value": {
-            "recorded_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "drift": drift}}])
-    except Exception:  # noqa: BLE001 - recording the drift must never fail the first store call
-        logger.warning("rawstore: could not record the schema drift in store_meta", exc_info=True)
 
 
 def _forget_drift(name: str) -> None:
@@ -1788,18 +1775,6 @@ def _live_primary_keys(conn, table: str | None = None) -> dict[str, list[str]]:
         sql += " AND table_name = ?"
         params = [table]
     return {t: list(cols) for t, cols in conn.execute(sql, params).fetchall()}
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 def _canon_type(conn, declared: str) -> str:
@@ -1877,32 +1852,6 @@ def ensure_table(name: str) -> None:
     _auto_ensure(write=True)
     with connect(db=_db_of(name)) as conn:
         _ensure_table(conn, name)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 # ── per-file schema stamp (#26 PL7-a) ────────────────────────────────────────────────────────
@@ -2123,18 +2072,14 @@ def _ensure_db_tables(conn, db: str) -> None:
 def ensure_all_tables() -> None:
     """Reconcile every board file with the MANIFEST (each board's own file, made eagerly)."""
     prev = getattr(_LOCAL, "ensuring", False)
-    prev_seen = getattr(_LOCAL, "drift_seen", None)
     _LOCAL.ensuring = True  # the steps below call the public API themselves
-    _LOCAL.drift_seen = seen = set()   # the drift this apply sees, for _persist_drift (#312)
     try:
         _refuse_ensure_if_ahead(_SCHEMA_FILES)   # before any ALTER (PL7-b)
         for board in BOARD_DBS:
             with connect(db=board) as conn:
                 _ensure_db_tables(conn, board)
-        _persist_drift(seen)                 # every file is reconciled now; never raises
     finally:
         _LOCAL.ensuring = prev
-        _LOCAL.drift_seen = prev_seen
     _ENSURED[str(Path(STORE_DIR))] = 0.0
 
 
@@ -2171,18 +2116,6 @@ def _auto_ensure(write: bool) -> None:
             logger.warning("rawstore: applying the schema manifest failed; "
                            "retrying in %.0fs", _ENSURE_RETRY_S, exc_info=True)
             _ENSURED[key] = time.time()
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 def _sql_text(path: Path) -> str:
@@ -2274,8 +2207,6 @@ def _col_sql(cols: list[str]) -> str:
     # quote every identifier — column names come from the manifest unquoted and
     # some (e.g. rotation_snapshots."group") are SQL reserved words
     return ", ".join(f'"{c}"' for c in cols)
-
-
 
 
 # ── change capture (schema 11, history redesign C) ──────────────────────────────────────────────────────────────
@@ -2502,18 +2433,6 @@ class _Fetched:
 
     def fetchone(self):
         return self._rows.pop(0) if self._rows else None
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 def _apply_write(conn, name: str, spec: dict, rows: list[dict]) -> None:

@@ -270,7 +270,7 @@ def _score(s: dict) -> int:
     return int(round(min(100, score)))
 
 
-# ── cache (.store/raw.duckdb -> leaps_cache) ──
+# ── cache (boards/leaps.duckdb -> leaps_cache) ──
 def load_cache(ticker: str) -> Optional[dict]:
     row = rawstore.get("leaps_cache", ticker.upper())
     if not row:
@@ -311,17 +311,8 @@ def baseline_prior_quarter(history: list[dict], quarter_end: str) -> Optional[di
 
 
 def _baselines_for(ticker: str, d: date) -> tuple[Optional[dict], Optional[dict]]:
-    """The recorded baselines of one ticker (a scan passes a batch; a single call reads its own).
-
-    A history read never raises into the Fetch: a locked or unreadable file gives no baselines, so growth is None.
-    """
-    from RevenueChaser.module_leaps import history as leaps_history
-    try:
-        base = leaps_history.baselines([ticker], d).get(ticker.upper()) or {}
-    except Exception as e:  # noqa: BLE001 - no baseline, never a failed Fetch
-        logger.warning("leaps %s: recorded baselines not read: %s", ticker, e)
-        return None, None
-    return base.get("1d"), base.get("q")
+    """The recorded baselines of one ticker: none since the result history (history.duckdb) went (#860)."""
+    return None, None
 
 
 def fetch_and_classify(ticker: str, uw, today: Optional[date] = None, inputs: Optional[dict] = None,
@@ -389,7 +380,7 @@ def _prev_quarter_end(today: Optional[date] = None) -> str:
 
 
 # ── DuckDB persistence (flow-print dedup + daily scores) ──────────────────
-# .store/raw.duckdb: leaps_flow_prints (dedup on id) and leaps_cache (per-ticker rolling 60-day history).
+# boards/leaps.duckdb: leaps_flow_prints (dedup on id) and leaps_cache (per-ticker rolling 60-day history).
 # leaps_daily_scores is no longer persisted (retired: only the legacy import ever filled it).
 
 PRINTS_SOURCE = "uw"   # /option-trades is the only source of leaps_flow_prints (D09)
@@ -499,7 +490,7 @@ def discover_flow_prints(uw, min_dte: int = MIN_DTE, min_premium: float = MIN_PR
                          limit: int = 250, max_pages: int = 5, today: Optional[date] = None,
                          warnings: Optional[list] = None,
                          now: Optional[datetime] = None) -> tuple[list[dict], int]:
-    """Fetch market-wide far-dated large prints, dedup into raw.duckdb.
+    """Fetch market-wide far-dated large prints, dedup into boards/leaps.duckdb.
 
     Returns ``(rows, new_count)`` where ``rows`` is the list of
     (ticker, premium, option_type, delta, ned, ask_vol, bid_vol) tuples over

@@ -22,7 +22,6 @@ from RevenueChaser.core.reporting_common import (
     filters_meta,
     help_html,
     provider_health_html,
-    recorded_sessions_html,
     watch_buttons_html,
     watchlist_html,
 )
@@ -416,7 +415,7 @@ def render_oipd_dashboard(payload: dict) -> str:
   </div>
   {provider_health_html(payload.get("provider_health"))}
   {help_block}
-  {recorded_sessions_html("module_oipd")}
+  
 {chrome}
 {body}
 </div>

@@ -14,9 +14,8 @@ The steps, in the order they run (``--only`` picks some of them, or one DuckDB k
   table against the source) and only then renamed; a swap between copy and check reads as a mismatch and the copy is
   taken again (3 tries). A copy taken with ``--only <kind>`` (before a deploy) is tagged ``source: manual`` and
   pruned on its own count (``KEEP_MANUAL``), so it never costs a weekly copy.
-- ``boards``: the board-result DuckDBs, which the dashboard writes live: the old store's ``raw``, ``edgar``,
-  ``history`` and ``prices`` files while they exist, and every ``<RC_STORE_DIR>/boards/<board>.duckdb`` (DECISIONS
-  S6). Each is first opened through ``rawstore`` (the peer-lock budget: a dashboard holding the file is waited out,
+- ``boards``: the board-result DuckDBs, which the dashboard writes live: every
+  ``<RC_STORE_DIR>/boards/<board>.duckdb`` (DECISIONS S6). Each is first opened through ``rawstore`` (the peer-lock budget: a dashboard holding the file is waited out,
   outer ``ATTEMPTS`` tries a second apart) for a ``CHECKPOINT``, so the ``.wal`` is in the main file, then copied and
   verified like a ``duckdb`` copy. The manifest carries the file's ``store_schema`` version. A board writer must open
   its file through ``rawstore`` too: the ``.rc-proc-<pid>`` marker beside the file is how its lock reads as a peer's.

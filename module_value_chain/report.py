@@ -24,7 +24,6 @@ from RevenueChaser.core.reporting_common import (
     filters_meta,
     help_html,
     provider_health_html,
-    recorded_sessions_html,
     watchlist_html,
 )
 
@@ -405,7 +404,7 @@ function init(){
   </div>
   {provider_health_html(payload.get("provider_health"))}
   {help_block}
-  {recorded_sessions_html("module_value_chain")}
+  
   {body}
   <div class="note">
     ⚠ v1 uses keyword rules on filing text: a link means the filing names the company

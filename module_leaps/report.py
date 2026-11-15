@@ -17,8 +17,8 @@ import html as _html
 from RevenueChaser.core import universe
 from RevenueChaser.core.html_safe import script_json
 from RevenueChaser.core.reporting_common import (FILTERS_CSS, FILTERS_JS, filters_bar_html, filters_meta, help_html,
-                                                 notice_html, provider_health_html, recorded_sessions_html,
-                                                 watch_buttons_html, watchlist_html, write_artifact)
+                                                 notice_html, provider_health_html, watch_buttons_html, watchlist_html,
+                                                 write_artifact)
 from datetime import datetime
 from pathlib import Path
 
@@ -273,7 +273,7 @@ def _kit_themes() -> dict:
 def render_leaps_dashboard(watched: list[dict], unwatched: list[dict],
                            filename: str = None, watchlist: set = None,
                            provider_health: dict | None = None, notice: str | None = None) -> Path:
-    # regenerable artifact -> .cache/ (OUTPUT_DIR); .store/ holds raw.duckdb only
+    # regenerable artifact -> .cache/ (OUTPUT_DIR); .store/ holds the board files only
     path = OUTPUT_DIR / (filename or "leaps_latest.html")
 
     wl = watchlist or {s.get("ticker") for s in watched}
@@ -318,7 +318,6 @@ def render_leaps_dashboard(watched: list[dict], unwatched: list[dict],
         "to stay blank until about a quarter of sessions is stored. <b>Fetch</b> scans the last five days of "
         "flow on <b>Unusual Whales</b> and stores the prints and watchlist footprints. <b>Refresh</b> "
         "rebuilds the board from the stored prints and footprints with no network call.")
-    body += recorded_sessions_html("module_leaps")
 
     if not watched and not unwatched:
         body += ('<div class="empty-state"><b>No LEAPS data yet.</b><br>No far-dated flow prints '

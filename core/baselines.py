@@ -20,10 +20,9 @@ move of the stock, and one such day inside a 20-session window distorts a volati
 days is not distorted by it, and the pick a baseline is compared with is measured on nominal prices
 (``core/outcomes.py``), so the baseline is too.
 
-The snapshot is the store's own history (``rawstore.changes_as_of("equity_universe", ...)``), never today's
-membership: a name that has since left the universe still counts on the day it was in it, or the baseline is
-survivorship-biased. A freeze date before the store's first change capture has no snapshot, and the row says ``n = 0``
-rather than quietly using today's list.
+The snapshot must be the universe of that day, never today's membership: a name that has since left the universe
+still counts on the day it was in it, or the baseline is survivorship-biased. The old store's change history gave
+that snapshot; it went with the old store (#860), so every row says ``n = 0`` until a dated universe exists again.
 
 Rules (HR-1 of #25; every number below is a constant, so a change is one edit plus a ``MODEL_VERSION`` bump):
 - One row per freeze date, horizon (``outcomes.HORIZONS``: 30 and 90 calendar days) and basis, always all eleven
@@ -55,7 +54,7 @@ Rules (HR-1 of #25; every number below is a constant, so a change is one edit pl
 - With no daily bar stored at all while a freeze date is in the past, the run refuses before any write: it would
   otherwise turn every baseline into ``n = 0`` (the same guard ``core/outcomes.py`` carries).
 
-Reads ``forecast_ledger`` (which dates to compute), ``equity_universe_changes`` and the D01 bars; writes
+Reads ``forecast_ledger`` (which dates to compute) and the D01 bars; writes
 ``forecast_baselines`` only, through ``rawstore.write_rows``. ``prices.daily_bars_bases`` reads the store only.
 """
 from __future__ import annotations
@@ -95,16 +94,13 @@ def day_end(day: date) -> float:
 
 
 def universe_at(day: date) -> list[str]:
-    """The tickers the equity universe held at the end of ``day`` (empty: no snapshot that far back).
+    """The tickers the equity universe held at the end of ``day``: always empty since #860.
 
-    A failed read is no snapshot (logged), never a reason to fall back on today's membership.
+    The snapshot was read from the old store's change history (``equity_universe_changes`` in ``raw.duckdb``), which
+    went with it; today's membership is never a stand-in for a past one, so no baseline is computed until a dated
+    universe exists in the new files.
     """
-    try:
-        rows = rawstore.changes_as_of("equity_universe", day_end(day))
-    except Exception as exc:  # noqa: BLE001 - no change history is no snapshot, never a wrong one
-        logger.warning("baselines: the universe snapshot of %s could not be read (%s)", day, exc)
-        return []
-    return sorted({str(r.get("ticker") or "").strip().upper() for r in rows} - {""})
+    return []
 
 
 def _value(v) -> float | None:

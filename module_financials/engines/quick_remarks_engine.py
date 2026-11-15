@@ -16,9 +16,13 @@ logger = logging.getLogger(__name__)
 
 
 def _session(stamp) -> str | None:
-    """The New York session ``stamp`` belongs to, the day the header and the comps name (``history._as_of``)."""
-    from RevenueChaser.module_financials import history as fin_history
-    return fin_history._as_of(stamp, None) if stamp else None
+    """The New York session ``stamp`` (an ISO instant) belongs to, the day the header names; None when unreadable."""
+    from RevenueChaser.core.calendar import to_session_date
+    try:
+        day = to_session_date(str(stamp).strip()) if stamp else None
+    except Exception:  # noqa: BLE001 - a label is never worth an error
+        return None
+    return day.isoformat() if day else None
 
 
 def _from_card(ticker: str, card: dict, source: str, as_of: str | None = None, as_of_note: str | None = None) -> dict:
@@ -60,11 +64,9 @@ def run_quick_remarks(ticker: str, no_fetch: bool = False, financials: dict | No
         logger.debug("ticker_scores %s: %s", ticker, exc)
 
     # 2. yfinance fallback — Hunter'ın kendi score_ticker'ını kullan (birebir aynı metod).
-    #    ``no_fetch`` (store-only re-render) fetches nothing: it shows what the last stored Fetch scored, dated by
-    #    that Fetch, instead of an empty card (review S5).
+    #    ``no_fetch`` (store-only re-render) fetches nothing.
     if no_fetch:
-        from RevenueChaser.module_financials import history as fin_history
-        return fin_history.last_quick_remarks(ticker) or _from_card(ticker, {}, "yfinance")
+        return _from_card(ticker, {}, "yfinance")
     try:
         from RevenueChaser.module_asymmetric_growth.engine import score_ticker
         if financials is None:

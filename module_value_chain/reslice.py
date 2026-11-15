@@ -21,7 +21,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import time
 import zlib
 from pathlib import Path
 
@@ -108,8 +107,8 @@ def _slice_stored(row: dict, docs_dir, fetched_at: float | None = None) -> dict 
 
     The stored ``primary_doc`` is already the full document URL (``slice_document``
     builds it from the file name), so only its last segment is passed back in.
-    ``fetched_at`` is the stored document's download time (``edgar_documents``, K6);
-    without one the slice time is used, as ``edgar_text.document_slice`` does.
+    ``fetched_at`` is the stored document's download time; without one (the ``edgar_documents`` rows that held it
+    went with edgar.duckdb, #860) the slice time is used, as ``edgar_text.document_slice`` does.
     """
     accession = row.get("accession")
     if not accession:
@@ -119,13 +118,6 @@ def _slice_stored(row: dict, docs_dir, fetched_at: float | None = None) -> dict 
         return None
     filing = {**row, "primary_doc": str(row.get("primary_doc") or "").rsplit("/", 1)[-1]}
     return edgar_text.slice_document(row.get("ticker"), row.get("cik"), filing, html, fetched_at=fetched_at)
-
-
-def _doc_stamps() -> dict[str, float]:
-    """``accession -> fetched_at`` of the stored documents (``edgar_documents``), read once."""
-    rows = rawstore.query("SELECT accession, fetched_at FROM edgar_documents WHERE fetched_at IS NOT NULL",
-                          db="edgar")
-    return {r["accession"]: r["fetched_at"] for r in rows}
 
 
 def _has_table(conn, name: str) -> bool:
@@ -297,19 +289,17 @@ def apply(docs_dir=None, out_dir=None, run_id: str | None = None) -> dict:
             return {"locked": True, "lock": "edgar_sync"}
         if not got_rel:
             return {"locked": True, "lock": "relatedness"}
-        run_at = time.time()
         rid = run_id or ledger.new_run_id()
         rows = rawstore.get_all("chain_filings")
         counts = {g: 0 for g in _GROUPS}
         counts.update({k: 0 for k in _EXTRA})
         transitions: dict[str, int] = {}
-        stamps = _doc_stamps()
         to_write: list[dict] = []
         for row in rows:
             old_quality = row.get("quality")
             stored_text = _as_text(row.get("item_text"))
             try:
-                new = _slice_stored(row, docs_dir, stamps.get(row.get("accession")))
+                new = _slice_stored(row, docs_dir, None)
                 if new is None:
                     counts["no_doc"] += 1
                     continue
@@ -329,7 +319,6 @@ def apply(docs_dir=None, out_dir=None, run_id: str | None = None) -> dict:
         written, kept = engine.store_slices(to_write)
         info: dict = {}
         edges = engine.build_edges(info)
-        engine.record_history(edges, info, run_id=rid, run_at=run_at, counts=counts)
 
         result = {**counts, "rows": len(rows), "written": written, "kept": kept, "transitions": transitions,
                   "edges_before": len(edges_before), "edges_after": len(edges),

@@ -24,7 +24,6 @@ from RevenueChaser.core.reporting_common import (
     filters_meta,
     help_html,
     provider_health_html,
-    recorded_sessions_html,
     watchlist_html,
 )
 
@@ -304,7 +303,7 @@ function init(){
   </div>
   {provider_health_html(payload.get("provider_health"))}
   {help_block}
-  {recorded_sessions_html("module_relatedness")}
+  
   {body}
 </div>
 <script>{FILTERS_JS}</script>

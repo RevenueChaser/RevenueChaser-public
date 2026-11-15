@@ -12,10 +12,9 @@ import logging
 import math
 import re
 import threading
-import time
 from datetime import datetime, timezone
 
-from RevenueChaser.core import job_lock, ledger, rawstore
+from RevenueChaser.core import job_lock, rawstore
 from RevenueChaser.core.reporting_common import write_artifact
 from RevenueChaser.core.providers import claude_code, deepseek, evren, grok
 from RevenueChaser.module_value_chain import engine as vc_engine
@@ -500,8 +499,8 @@ def build_profiles(tickers: list[str], use_llm: bool = True,
     """Ensure a durable profile per ticker (cache-first, CIK-grained).
 
     Profiles live in ``relatedness_profiles`` / ``relatedness_attributes`` (not
-    ``.cache``). The mode stamp (model/thinking/effort/prompt_version) in
-    ``run_registry`` records the current mode; profiles made under another mode stay
+    ``.cache``). Each profile carries its mode stamp
+    (model/thinking/effort/prompt_version); profiles made under another mode stay
     visible (stale) until re-profiled. Dual-class
     shares (same CIK) are profiled once and copied to every ticker. ``use_llm=False``
     never calls the LLM. ``usd_cap`` caps the number of LLM calls this run (the rest
@@ -527,10 +526,6 @@ def build_profiles(tickers: list[str], use_llm: bool = True,
     w_model, w_thinking, w_effort = _writer(provider)
     w_model = model or w_model                 # the board's model (#360): sent and stamped, never swapped in a module
     mode = store.mode_stamp((provider, w_model))
-    if use_llm and store.get_mode() != mode:
-        # Never delete on a mode change (#114 C2): profiles made under the old
-        # mode stay visible, flagged stale, until each is re-profiled below.
-        store.set_mode(mode)
 
     if not use_llm:
         return store.load_profiles(tickers)
@@ -1078,19 +1073,6 @@ def _payload(profiles: dict[str, dict], stale: set[str] | None = None, model: st
     }
 
 
-def _stored_provider_health() -> dict | None:
-    """The last Fetch's stored health, for a Refresh (no live provider call). None when nothing is recorded."""
-    from RevenueChaser.core import history
-
-    from . import history as rel_history
-
-    try:
-        row = history.last_run(rel_history.BOARD)
-    except Exception:  # noqa: BLE001 - a locked history file never fails the render
-        return None
-    return (row or {}).get("provider_health")
-
-
 def _stop_health(provider: str, reason: str | None, message: str | None) -> dict | None:
     """The banner's health when this run stopped on a provider failure (#80).
 
@@ -1112,8 +1094,8 @@ class AlreadyRunning(RuntimeError):
 def run(no_fetch: bool = False, tickers: list[str] | None = None,
         limit: int | None = None, usd_cap: float | None = None, run_id: str | None = None,
         provider: str = "deepseek", max_calls: int | None = None, model: str | None = None) -> dict:
-    """A Fetch records its scores and payload in result history (#388) under ``run_id`` (the dashboard job's id; the
-    CLI gets ``ledger.new_run_id()``, a scheduled task's ``job_runs`` id).
+    """A Fetch of the profiles and scores. ``run_id`` is kept for the callers; the result history it keyed went with
+    history.duckdb (#860).
 
     ``provider`` is the profile writer (``writers.WRITERS``, #360): the CLI and the dashboard pass the board's
     (``settings.writer``); ``deepseek`` stays this function's default for its callers and tests. A free writer
@@ -1132,37 +1114,10 @@ def run(no_fetch: bool = False, tickers: list[str] | None = None,
         return _run(False, tickers, limit, usd_cap, run_id, provider=provider, max_calls=max_calls, model=model)
 
 
-def _record_history(payload: dict, requested: int, run_id: str | None, run_at: float) -> None:
-    """Result history of a Fetch (#388): after the latest table. A failure is a job note, never a failed run: the
-    latest table and the board do not depend on it."""
-    from . import history
-    try:
-        history.record(payload, requested=requested, run_id=run_id or ledger.new_run_id(), run_at=run_at)
-    except Exception as exc:
-        logger.exception("Relatedness result history failed")
-        ledger.add_note(f"Relatedness result history was not recorded: {type(exc).__name__}: {exc}")
-
-
-def _last_run_as_of() -> str | None:
-    """The ``as_of`` of the last Fetch (``run_registry`` ``relatedness_run``), or None before the first one."""
-    try:
-        row = rawstore.get("run_registry", "relatedness_run")
-    except Exception:  # noqa: BLE001 - the table may not exist yet
-        return None
-    value = (row or {}).get("value")
-    if isinstance(value, str):
-        try:
-            value = json.loads(value)
-        except ValueError:
-            return None
-    return value.get("as_of") if isinstance(value, dict) else None
-
-
 def _run(no_fetch: bool, tickers: list[str] | None, limit: int | None,
          usd_cap: float | None, run_id: str | None = None, provider: str = "deepseek",
          max_calls: int | None = None, model: str | None = None) -> dict:
     from . import store
-    run_at = time.time()
     tickers = select_pilot() if tickers is None else list(tickers)
     if limit:
         tickers = tickers[:limit]
@@ -1227,9 +1182,6 @@ def _run(no_fetch: bool, tickers: list[str] | None, limit: int | None,
         if r["ticker"] in set(tickers) and isinstance(r.get("label_source"), dict)
         and r["label_source"].get("input") == "llm_locator")
     payload["pending"] = max(0, len(tickers) - len(profiles) - len(no_text) - len(short_text) - len(shell))
-    if no_fetch:
-        # A Refresh changes no profile or score, so it shows when the last Fetch ran (#388 REL-10).
-        payload["as_of"] = _last_run_as_of() or payload["as_of"]
     if next_off_peak is not None:
         payload["next_off_peak"] = next_off_peak.strftime("%Y-%m-%d %H:%M")
     if next_reset is not None:
@@ -1242,18 +1194,6 @@ def _run(no_fetch: bool, tickers: list[str] | None, limit: int | None,
     health = _stop_health(provider, stopped_reason, stopped_message)
     if health:
         payload["provider_health"] = health
-    elif no_fetch:
-        payload["provider_health"] = _stored_provider_health()
-    if not no_fetch:
-        # Refresh is pure: run_registry changes only on Fetch. ``relatedness_scores`` is no longer written: no board
-        # reads it (#594 DF65); the result history keeps each run's scores (the table stays until avo's "sil").
-        rawstore.write_rows("run_registry", [{
-            "key": "relatedness_run",
-            "value": json.dumps({"as_of": payload["as_of"], "n": payload["n"],
-                                 "pending": payload["pending"], "no_text": payload["no_text"],
-                                 "short_text": payload["short_text"], "shell": payload["shell"],
-                                 "next_off_peak": payload.get("next_off_peak")})}])
-        _record_history(payload, len(tickers), run_id, run_at)
     _save(config.RELATEDNESS_JSON, payload)
     return payload
 
