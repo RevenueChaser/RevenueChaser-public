@@ -322,6 +322,22 @@ class WrdsPrices:
         sql = year_sql(table, year) if year is not None else TABLES[table]["sql"]
         return wrds._ask(ctx, raw_dir(table, year) / f"{as_of.isoformat()}{RAW_SUFFIX}", sql, as_of)
 
+    @staticmethod
+    def _held_snapshot(table: str, as_of: date) -> Path | None:
+        """The newest raw snapshot of ``table`` asked within ``SNAPSHOT_DAYS`` before ``as_of`` and not typed yet: a
+        held answer is typed again rather than asked again (#503; ``wrds._ask`` writes a raw file whole or not at
+        all, so one that exists with its sidecar is a whole answer)."""
+        typed = {day for day, _ in _snapshots(table)}
+        for raw in sorted(raw_dir(table).glob(f"*{RAW_SUFFIX}"), reverse=True):
+            day = raw.name[: -len(RAW_SUFFIX)]
+            try:
+                age = (as_of - date.fromisoformat(day)).days
+            except ValueError:
+                continue
+            if 0 <= age < SNAPSHOT_DAYS and day not in typed and _meta(raw).exists():
+                return raw
+        return None
+
     def _snapshot_due(self, table: str, as_of: date) -> bool:
         snaps = _snapshots(table)
         return not snaps or (as_of - date.fromisoformat(snaps[-1][0])) >= timedelta(days=SNAPSHOT_DAYS)
@@ -401,7 +417,8 @@ class WrdsPrices:
     def fetch(self, ctx: base.RunContext, as_of: date) -> list[Path]:
         """The monthly run: the snapshots when due, then the last ``REFRESH_YEARS`` years of each table again."""
         run = {"refused": [], "checked": False}
-        out = [self._ask_or_skip(ctx, t, None, as_of, run) for t in SNAPSHOTS if self._snapshot_due(t, as_of)]
+        out = [self._held_snapshot(t, as_of) or self._ask_or_skip(ctx, t, None, as_of, run)
+               for t in SNAPSHOTS if self._snapshot_due(t, as_of)]
         out += [self._ask_or_skip(ctx, t, y, as_of, run) for t, y in self._plan(as_of, None, refresh=True)]
         out = [p for p in out if p is not None]
         if not any(partition_path("secd", y).is_file() for y in years("secd", as_of)[:-REFRESH_YEARS]):
@@ -415,7 +432,7 @@ class WrdsPrices:
         try:
             for table in SNAPSHOTS:
                 if not _snapshots(table):
-                    raw = self._ask_or_skip(ctx, table, None, end, run)
+                    raw = self._held_snapshot(table, end) or self._ask_or_skip(ctx, table, None, end, run)
                     if raw is not None:
                         self.to_parquet_all(ctx, [raw])
                         asked += 1

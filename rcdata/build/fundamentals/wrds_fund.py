@@ -159,7 +159,31 @@ class WrdsFund:
     def snapshot_file(self, as_of: str) -> Path:
         return common.parquet_dir(self.name) / f"snapshot={as_of}" / f"{self.table}.parquet"
 
+    def held(self, as_of: date) -> list[Path]:
+        """The raw files of the newest snapshot asked within ``SNAPSHOT_DAYS`` before ``as_of`` and not typed yet
+        (every part's, with its sidecar), or []: a held answer is typed again rather than asked again (#503)."""
+        root = common.raw_dir(self.name)
+        typed = set(self.snapshots())
+        for folder in sorted(root.iterdir() if root.is_dir() else [], reverse=True):
+            try:
+                day = date.fromisoformat(folder.name)
+            except ValueError:
+                continue
+            if not 0 <= (as_of - day).days < SNAPSHOT_DAYS or folder.name in typed:
+                continue
+            raws = [self.raw_path(day, *part) for part in self._parts()]
+            if all(r.exists() and common.meta_path(r).exists() for r in raws):
+                return raws
+        return []
+
+    def _parts(self) -> list[tuple]:
+        return [()]
+
     def fetch(self, ctx: base.RunContext, as_of: date) -> list[Path]:
+        held = self.held(as_of)
+        if held:
+            ctx.notes.append(f"raw snapshot of {held[0].parent.name} typed again, nothing asked (#503)")
+            return held
         snaps = self.snapshots()
         if snaps and (as_of - date.fromisoformat(snaps[-1])).days < SNAPSHOT_DAYS \
                 and not self.raw_path(as_of).exists():
@@ -354,6 +378,9 @@ class WrdsSegments(WrdsFund):
 
     def snapshot_file(self, as_of: str, part: str = "wrds_segmerged") -> Path:
         return common.parquet_dir(self.name) / f"snapshot={as_of}" / f"{part}.parquet"
+
+    def _parts(self) -> list[tuple]:
+        return [(p,) for p in self.PARTS]
 
     def snapshots(self) -> list[str]:
         folder = common.parquet_dir(self.name)

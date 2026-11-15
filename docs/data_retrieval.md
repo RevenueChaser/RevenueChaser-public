@@ -226,10 +226,10 @@ the next ordinary run walks and types them at no provider call. A new dataset wh
 of its own does the same.
 
 For the rest, the raw file is the resume marker, so a later ordinary run (or `--no-duckdb` run) converts what is
-already on disk at no provider call. **Two datasets are the exception and should not be fetched raw-only:**
-`wrds/prices` and `wrds/fundamentals` resume from their *Parquet* snapshot, not from raw
-(`prices/wrds_history.py` `_snapshots`, `fundamentals/wrds_fund.py` `snapshots`), so a second raw-only run asks
-the snapshot query again — an attended query with a WRDS login, a Duo confirm and a query budget.
+already on disk at no provider call. That holds for `wrds/prices` and the WRDS fundamentals too since #503: a
+snapshot asked within `SNAPSHOT_DAYS` and not yet typed is typed from its raw file rather than asked again
+(`prices/wrds_history.py` `_held_snapshot`, `fundamentals/wrds_fund.py` `held`), so a second raw-only run sends no
+attended WRDS query.
 
 `--no-build` is the old name of `--no-duckdb`, kept as a deprecated alias so a queued request and a runbook line
 keep working; a request's params accept `no_build` as well as `no_duckdb`.

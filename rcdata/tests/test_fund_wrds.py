@@ -11,7 +11,7 @@ import pytest
 from RevenueChaser.core.providers import sec_edgar
 from RevenueChaser.rcdata import ops
 from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.fundamentals import companyfacts, tables, wrds_fund
+from RevenueChaser.rcdata.build.fundamentals import common, companyfacts, tables, wrds_fund
 from RevenueChaser.rcdata.build.spine import wrds as spine_wrds
 
 from . import fund_fixture as fx
@@ -99,3 +99,20 @@ def test_funda_is_compared_with_the_value_the_year_first_reported_277():
                     "'a', DATE '2018-08-03', false, false, ?)", [cik, value, first])
     assert wrds_fund.agreement(con, "stg", "revt", "revenue", "annual", None, first_reported=True) == (2, 2)
     assert wrds_fund.agreement(con, "stg", "revt", "revenue", "annual", None) == (2, 1)
+
+
+def test_a_held_raw_snapshot_is_typed_again_not_asked_again_503():
+    # A raw-only Monday run, then Tuesday: the answer Monday holds is Tuesday's, with no WRDS query.
+    monday, tuesday = date(2026, 11, 9), date(2026, 11, 10)
+    raw = wrds_fund.FUNDA.raw_path(monday)
+    assert wrds_fund.FUNDA.held(tuesday) == []
+    base.write_raw_json(common.meta_path(raw), {"as_of": monday.isoformat(), "rows": 1})
+    assert wrds_fund.FUNDA.held(tuesday) == []                              # a sidecar alone is no answer
+    raw.write_bytes(b"")
+    assert wrds_fund.FUNDA.held(tuesday) == [raw]
+    assert wrds_fund.FUNDA.held(date(2026, 12, 9)) == []                    # older than SNAPSHOT_DAYS: asked again
+    seg = wrds_fund.SEGMENTS
+    first = seg.raw_path(monday, "wrds_segmerged")
+    base.write_raw_json(common.meta_path(first), {"as_of": monday.isoformat()})
+    first.write_bytes(b"")
+    assert seg.held(tuesday) == []                                          # every part, or none

@@ -1005,3 +1005,14 @@ def test_a_crsp_column_wrds_lacks_skips_crsp_and_compustat_still_serves(fake, mo
     cap = _q("SELECT market_cap FROM market_cap_daily WHERE security_id = ? AND session_date = '2025-06-02'",
              [AAPL])
     assert cap and cap[0]["market_cap"] == pytest.approx(200.0 * 7.5e9)
+
+
+def test_a_held_raw_snapshot_is_typed_again_not_asked_again_503():
+    monday, tuesday = date(2026, 11, 9), date(2026, 11, 10)
+    raw = wrds_history.raw_dir("sec_split") / f"{monday.isoformat()}{wrds_history.RAW_SUFFIX}"
+    raw.parent.mkdir(parents=True, exist_ok=True)
+    raw.write_bytes(b"")
+    assert wrds_history.WrdsPrices._held_snapshot("sec_split", tuesday) is None   # no sidecar: not a whole answer
+    wrds_history._meta(raw).write_text("{}")
+    assert wrds_history.WrdsPrices._held_snapshot("sec_split", tuesday) == raw
+    assert wrds_history.WrdsPrices._held_snapshot("sec_split", date(2026, 12, 9)) is None
