@@ -75,7 +75,7 @@ SHARED_TABLES = {
     "core/automations.py": {"job_runs"},
     "core/company_profile.py": {"equity_universe"},
     "core/earnings_dates.py": {"earnings_calendar"},
-    "core/edgar_bulk.py": {"edgar_facts", "sec_company_sic"},
+    "core/edgar_bulk.py": {"sec_company_sic"},   # edgar_facts left with #860 stage 2
     "core/edgar_store.py": {"edgar_documents"},
     "core/history.py": {"result_runs"},
     "core/identity/apply.py": {"identity_cusip", "security_master"},

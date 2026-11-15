@@ -18,10 +18,10 @@ V10_TABLES = (
     "vendor_financials", "vendor_valuation", "earnings_history", "estimate_snapshots",
     "identity_cusip", "ownership_snapshot", "sec_mf_file", "sec_exchange_file",
     "earnings_calendar", "macro_series", "vol_index_daily", "cftc_cot",
-    "economic_calendar", "source_checks", "sec13f_filers", "edgar_companyfacts",
+    "economic_calendar", "source_checks", "sec13f_filers",
     "sec_submissions", "sec_submissions_cik",
-)
-EDGAR_TABLES = frozenset({"edgar_companyfacts", "sec_submissions", "sec_submissions_cik"})
+)   # the 22nd, edgar_companyfacts, left the MANIFEST with #860 stage 2 (no writer, no reader)
+EDGAR_TABLES = frozenset({"sec_submissions", "sec_submissions_cik"})
 PRICES_TABLES = frozenset({"price_actions",         # moved to prices.duckdb before its fill (#156, avo 2026-10-09)
                            "index_levels_daily"})   # D03 beside D01, before its writer (#293, avo 2026-10-10)
 
@@ -213,7 +213,7 @@ def test_v9_store_gains_the_22_tables_and_keeps_every_row(v9_store):
     rawstore.ensure_all_tables()
     files = {"raw": _tables(rawstore.DB_PATH), "edgar": _tables(rawstore.edgar_db_path()),
              "prices": _tables(rawstore.prices_db_path())}
-    assert len(V10_TABLES) == 22
+    assert len(V10_TABLES) == 21
     for name in V10_TABLES:
         assert [db for db, tables in files.items() if name in tables] == [_file_of(name)], name
         assert rawstore.count(name) == 0

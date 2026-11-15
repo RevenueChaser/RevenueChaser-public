@@ -29,7 +29,6 @@ from RevenueChaser.core import rawstore
 #   orphan_designations  the OOPD writer is #190's, not in the tree
 #   orphan_lookups       the outcome table of that same #190 lookup
 #   sec13f_filers        never named in production code; docs/data_architecture.md: G1 (#292), manifest only
-#   edgar_companyfacts   same: never named in production code; G1 (#292), manifest only
 #   retired — the only writer is in the past
 #   leaps_daily_scores     only scripts/migrate_rawdata_to_duckdb.py, the legacy one-time import
 #   sec13f_edgar_backfill  same, and the backfill itself is retired (leaves the manifest at the next bump)
@@ -44,7 +43,6 @@ PLANNED = frozenset({
     "orphan_designations",
     "orphan_lookups",
     "sec13f_filers",
-    "edgar_companyfacts",
 })
 RETIRED = frozenset({
     "leaps_daily_scores",
@@ -127,12 +125,6 @@ FROZEN_DDL = {
     "sec13f_filers": {
         "accession": "VARCHAR", "cik": "VARCHAR", "period": "VARCHAR", "name": "VARCHAR",
         "source": "VARCHAR", "fetched_at": "DOUBLE", "run_id": "VARCHAR", "run_at": "DOUBLE",
-    },
-    "edgar_companyfacts": {
-        "cik": "VARCHAR", "taxonomy": "VARCHAR", "concept": "VARCHAR", "unit": "VARCHAR",
-        "period_start": "VARCHAR", "period_end": "DATE", "accn": "VARCHAR", "value": "DOUBLE",
-        "form": "VARCHAR", "fy": "INTEGER", "fp": "VARCHAR", "filed": "DATE", "source": "VARCHAR",
-        "fetched_at": "DOUBLE", "run_id": "VARCHAR", "run_at": "DOUBLE",
     },
 }
 

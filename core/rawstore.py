@@ -743,22 +743,6 @@ MANIFEST: dict[str, dict] = {
         "db": "edgar",
         "sources": [],
     },
-    "edgar_facts": {
-        "history_mode": "event",
-        # XBRL fact spine from the bulk ``companyfacts.zip`` ingest (Phase 4,
-        # option A): typed grain ``(cik, concept, period, form)``. Separate from
-        # ``edgar_financials`` (per-ticker JSON the financials boards read).
-        "key": ["cik", "concept", "period", "form"],
-        "columns": [
-            "cik TEXT", "concept TEXT", "period TEXT", "form TEXT",
-            "value DOUBLE", "unit TEXT",
-            "PRIMARY KEY (cik, concept, period, form)",
-        ],
-        "kind": "tabular",
-        "write": "upsert",
-        "db": "edgar",
-        "sources": [],
-    },
     "swing_info": {
         "db": "swing_potential",
         "history_mode": "session_snapshot",
@@ -2174,17 +2158,6 @@ MANIFEST: dict[str, dict] = {
             "fetched_at DOUBLE", "run_id TEXT", "run_at DOUBLE",
         ],
         "kind": "tabular", "write": "append", "history_mode": "event", "sources": [],
-    },
-    "edgar_companyfacts": {
-        "planned": True,          # no writer yet (#289): G1 #292, manifest only
-        "key": ["cik", "taxonomy", "concept", "unit", "period_start", "period_end", "accn"],
-        "columns": [
-            "cik TEXT", "taxonomy TEXT", "concept TEXT", "unit TEXT", "period_start TEXT",
-            "period_end DATE", "accn TEXT", "value DOUBLE", "form TEXT", "fy INTEGER", "fp TEXT",
-            "filed DATE", "source TEXT", "fetched_at DOUBLE", "run_id TEXT", "run_at DOUBLE",
-            "PRIMARY KEY (cik, taxonomy, concept, unit, period_start, period_end, accn)",
-        ],
-        "kind": "tabular", "write": "append", "history_mode": "event", "db": "edgar", "sources": [],
     },
     "sec_submissions": {
         "key": ["cik", "accession"],

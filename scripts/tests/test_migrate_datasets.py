@@ -365,7 +365,7 @@ class TestEveryManifestDatasetHasARoundTripTest:
                     "comov_runs", "comov_nodes", "comov_members", "comov_lag",
                     "chain_filings", "chain_mentions", "chain_meta", "run_registry",
                     "ticker_themes", "fundamentals_scores", "fundamentals_gates",
-                    "swing_scores", "swing_gates", "edgar_facts", "edgar_documents",
+                    "swing_scores", "swing_gates", "edgar_documents",
                     "llm_cache", "relatedness_profiles", "relatedness_attributes",
                     "relatedness_scores", "theme_runs", "relatedness_themes",
                     "relatedness_theme_tags", "relatedness_theme_members",
@@ -380,7 +380,7 @@ class TestEveryManifestDatasetHasARoundTripTest:
                     "vendor_financials", "vendor_valuation", "earnings_history", "estimate_snapshots",
                     "identity_cusip", "ownership_snapshot", "sec_mf_file", "sec_exchange_file",
                     "earnings_calendar", "macro_series", "vol_index_daily", "cftc_cot", "economic_calendar",
-                    "source_checks", "sec13f_filers", "edgar_companyfacts", "sec_submissions",
+                    "source_checks", "sec13f_filers", "sec_submissions",
                     "sec_submissions_cik",
                     # the price watermarks in prices.duckdb (#156): filled only by core/prices
                     "price_checks",

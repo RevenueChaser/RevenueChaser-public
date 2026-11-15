@@ -1,14 +1,16 @@
-"""EDGAR bulk-file ingest (official free zips) -> ``raw.duckdb``.
+"""EDGAR bulk-file ingest (official free zip) -> ``raw.duckdb``.
 
-Downloads the two bulk archives to ``.cache/edgar_bulk/``, ingests them, then
-deletes each zip (they are large and regenerable) **only after** that archive was
+Downloads the bulk archive to ``.cache/edgar_bulk/``, ingests it, then
+deletes the zip (it is large and regenerable) **only after** that archive was
 ingested in full. A zip is never deleted after an error, with ``--limit`` (the
 ingest stopped early) or with ``--keep``. A download goes to ``<name>.part`` and
 replaces the zip only when it finished, so a failed download leaves the previous
 zip as it was:
 
-- ``companyfacts.zip`` -> ``edgar_facts`` (typed grain ``(cik, concept, period, form)``)
-- ``submissions.zip``  -> ``sec_company_sic`` (SIC coverage for the universe)
+- ``submissions.zip`` -> ``sec_company_sic`` (SIC coverage for the universe)
+
+The ``companyfacts.zip`` -> ``edgar_facts`` ingest went with #860 stage 2: the table lived in
+``edgar.duckdb``, which is going away, and nothing read it.
 
 The live download is deliberately separate from ingest so the 10-CIK fixture gate
 and re-ingest can run offline:
@@ -33,40 +35,12 @@ logger = logging.getLogger(__name__)
 
 # Paths under ``sec_edgar.SEC_WWW_BASE``. The host is read when a download starts (a test or
 # the e2e harness can point it at a local mock), so it is never frozen into a constant here.
-COMPANYFACTS_PATH = "/Archives/edgar/daily-index/xbrl/companyfacts.zip"
 SUBMISSIONS_PATH = "/Archives/edgar/daily-index/bulkdata/submissions.zip"
-
-_FACT_CHUNK = 50_000
-
-
-def _used_concepts() -> set[str]:
-    """Concept names the app actually reads (``sec_edgar.CONCEPTS``).
-
-    The bulk ingest keeps only these, which cuts ``edgar_facts`` ~10x versus
-    storing every XBRL concept.
-    """
-    out: set[str] = set()
-    for spec in getattr(sec_edgar, "CONCEPTS", {}).values():
-        if isinstance(spec, (tuple, list)) and spec:
-            out.update(spec[0] or [])
-    return out
-
-
-USED_CONCEPTS = _used_concepts()
-
 
 def bulk_dir() -> Path:
     p = OUTPUT_DIR / "edgar_bulk"
     p.mkdir(parents=True, exist_ok=True)
     return p
-
-
-def _f(v):
-    try:
-        f = float(v)
-        return f if f == f else None
-    except (TypeError, ValueError):
-        return None
 
 
 def download(url: str, dest: Path, client=None) -> Path:
@@ -103,8 +77,7 @@ def download(url: str, dest: Path, client=None) -> Path:
 def bulk_urls() -> dict[str, str]:
     """``{zip name: url}`` under the SEC host as it is *now* (``sec_edgar.SEC_WWW_BASE``)."""
     base = sec_edgar.SEC_WWW_BASE.rstrip("/")
-    return {"companyfacts.zip": base + COMPANYFACTS_PATH,
-            "submissions.zip": base + SUBMISSIONS_PATH}
+    return {"submissions.zip": base + SUBMISSIONS_PATH}
 
 
 def download_all(client=None) -> dict:
@@ -113,55 +86,6 @@ def download_all(client=None) -> dict:
     for name, url in bulk_urls().items():
         out[name] = str(download(url, d / name, client))
     return out
-
-
-def companyfacts_rows(payload: dict) -> list[dict]:
-    """Flatten one ``CIK##########.json`` companyfacts payload to fact rows."""
-    cik = str(payload.get("cik") or "")
-    if not cik:
-        return []
-    rows = []
-    for _taxonomy, concepts in (payload.get("facts") or {}).items():
-        for concept, body in (concepts or {}).items():
-            if USED_CONCEPTS and concept not in USED_CONCEPTS:
-                continue
-            for unit, facts in ((body or {}).get("units") or {}).items():
-                for fact in facts or []:
-                    val = _f(fact.get("val"))
-                    if val is None:
-                        continue
-                    period = fact.get("end") or fact.get("start")
-                    form = fact.get("form") or ""
-                    if not period:
-                        continue
-                    rows.append({"cik": cik, "concept": concept, "period": period,
-                                 "form": form, "value": val, "unit": unit})
-    return rows
-
-
-def ingest_companyfacts(zip_path: Path, limit: int | None = None) -> dict:
-    """Ingest ``companyfacts.zip`` -> ``edgar_facts`` (upsert by fact key)."""
-    rawstore.ensure_table("edgar_facts")
-    files = facts = 0
-    buf: list[dict] = []
-    with zipfile.ZipFile(zip_path) as zf:
-        for name in zf.namelist():
-            if not name.endswith(".json"):
-                continue
-            try:
-                payload = json.loads(zf.read(name))
-            except (json.JSONDecodeError, KeyError):
-                continue
-            buf.extend(companyfacts_rows(payload))
-            files += 1
-            while len(buf) >= _FACT_CHUNK:
-                facts += rawstore.write_rows("edgar_facts", buf[:_FACT_CHUNK])
-                buf = buf[_FACT_CHUNK:]
-            if limit and files >= limit:
-                break
-    if buf:
-        facts += rawstore.write_rows("edgar_facts", buf)
-    return {"files": files, "facts": facts}
 
 
 def submissions_rows(payload: dict) -> dict | None:
@@ -214,8 +138,7 @@ def ingest_dir(limit: int | None = None, delete: bool = True) -> dict:
     """
     d = bulk_dir()
     out: dict = {}
-    for name, fn in (("companyfacts.zip", ingest_companyfacts),
-                     ("submissions.zip", ingest_submissions)):
+    for name, fn in (("submissions.zip", ingest_submissions),):
         p = d / name
         if not p.is_file():
             continue

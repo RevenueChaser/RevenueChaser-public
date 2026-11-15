@@ -611,20 +611,6 @@ REGISTRY: tuple[DatasetSpec, ...] = (
         writer_note="CLI core.edgar_bulk and core/sic_registry.py; not an automations.REGISTRY entry",
         freshness=("sec_company_sic", "fetched_at"),
     ),
-    DatasetSpec(
-        key="edgar_facts", label="EDGAR fact spine",
-        tables=("edgar_facts",),
-        db="edgar", source=Source.sec, writer=None,
-        writer_note="CLI core.edgar_bulk companyfacts.zip ingest; not an automations.REGISTRY entry",
-        freshness=("edgar_facts", "period"),
-    ),
-    DatasetSpec(
-        key="edgar_companyfacts", label="EDGAR companyfacts (planned)",
-        tables=("edgar_companyfacts",),
-        db="edgar", source=Source.sec, writer=None,
-        writer_note="planned (alsanvolkan/RevenueChaser#289): MANIFEST only, no writer yet",
-        freshness=("edgar_companyfacts", "fetched_at"),
-    ),
     # source unknown: biotech catalysts; the writer is not in the tree and no enum value names the provider.
     DatasetSpec(
         key="catalysts", label="Catalyst events (planned)",

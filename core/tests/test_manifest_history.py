@@ -100,6 +100,8 @@ LEGACY_MODES = {
     ),
 }
 LEGACY = {name: mode for mode, names in LEGACY_MODES.items() for name in names}
+# Tables that left the MANIFEST: still counted above as history, no longer declared (#860 stage 2, no reader).
+GONE = frozenset({"edgar_facts", "edgar_companyfacts"})
 
 
 def test_every_entry_has_one_of_the_five_modes():
@@ -152,7 +154,8 @@ def test_legacy_table_list_is_the_66_remaining_pre_g1_tables():
     assert len(V11) == 25
     assert set(LEGACY) | set(ddl292_frozen.ENTRIES) | set(V11) | set(LATER_CHANGE_TABLES) | set(PRICES_DB) \
         | set(LATER_HISTORY_TABLES) | set(LATER_DERIVED_TABLES) | set(SCHEMA_STAMP) | set(V13) | set(BOARD_TABLES) \
-        == set(rawstore.MANIFEST)
+        == set(rawstore.MANIFEST) | GONE
+    assert not GONE & set(rawstore.MANIFEST)
     assert all(rawstore.MANIFEST[t]["db"] in rawstore.BOARD_DBS for t in BOARD_TABLES)
     assert rawstore.MANIFEST["store_schema"]["history_mode"] == "latest_cache"
     assert not set(LATER_DERIVED_TABLES) & (set(LEGACY) | set(ddl292_frozen.ENTRIES) | set(V11) | set(PRICES_DB))
@@ -164,7 +167,7 @@ def test_legacy_table_list_is_the_66_remaining_pre_g1_tables():
     assert not set(LATER_CHANGE_TABLES) & (set(LEGACY) | set(ddl292_frozen.ENTRIES) | set(V11))
 
 
-@pytest.mark.parametrize("name", sorted(LEGACY))
+@pytest.mark.parametrize("name", sorted(set(LEGACY) - GONE))
 def test_legacy_table_mode(name):
     assert rawstore.MANIFEST[name]["history_mode"] == LEGACY[name]
 
@@ -185,7 +188,7 @@ def test_frozen_copy_has_22_entries():
     assert len(ddl292_frozen.ENTRIES) == 22
 
 
-@pytest.mark.parametrize("name", sorted(ddl292_frozen.ENTRIES))
+@pytest.mark.parametrize("name", sorted(set(ddl292_frozen.ENTRIES) - GONE))
 def test_g1_entries_match_frozen_ddl(name):
     """The whole entry (key, columns in order, compress, kind, write, history_mode, db, sources) is the reviewed one."""
     assert rawstore.MANIFEST[name] == ddl292_frozen.ENTRIES[name]

@@ -34,9 +34,8 @@ def test_the_three_tables_resolve_to_the_boards_folder(isolate_rawstore):
 def test_no_chain_table_is_left_in_the_edgar_file():
     left = sorted(n for n, m in rawstore.MANIFEST.items() if m.get("db") == "edgar")
     assert not [n for n in left if n.startswith("chain_")], left
-    # stage 1 only: the shared SEC tables are still there, so the file cannot go yet (#860 stages 2-4)
-    assert set(left) == {"edgar_financials", "edgar_facts", "edgar_companyfacts",
-                         "edgar_documents", "sec_submissions", "sec_submissions_cik"}
+    # stage 2 took edgar_facts and edgar_companyfacts; the rest goes with stages 2b-3 (#860)
+    assert set(left) == {"edgar_financials", "edgar_documents", "sec_submissions", "sec_submissions_cik"}
 
 
 def test_the_board_file_is_backed_up_and_schema_stamped():

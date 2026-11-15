@@ -370,7 +370,6 @@ POPULATION: dict[str, str] = {
     "ticker_payload_cache": f"{_HERE}::test_cache_get_or_fetch_populates_ticker_cache",
     "edgar_financials": f"{_HERE}::test_sec_edgar_populates_sec_facts",
     "edgar_documents": "core/tests/test_edgar_store.py::test_round_trip",
-    "edgar_facts": "core/tests/test_edgar_bulk.py::test_ingest_companyfacts",
     "swing_info": f"{_HERE}::test_swing_info_populated",
     "leaps_cache": f"{_HERE}::test_leaps_store_populated",
     "rotation_holdings": f"{_HERE}::test_rotation_holdings_populated",
@@ -467,7 +466,6 @@ POPULATION: dict[str, str] = {
     "source_checks": "core/tests/test_schema_v10_tables.py::test_a_written_row_reads_back",
     "price_checks": "core/tests/test_prices_db.py::test_price_writes_land_in_prices_duckdb_and_one_transaction_stays_in_one_file",
     "sec13f_filers": "core/tests/test_schema_v10_tables.py::test_a_written_row_reads_back",
-    "edgar_companyfacts": "core/tests/test_schema_v10_tables.py::test_a_written_row_reads_back",
     "sec_submissions": "core/tests/test_schema_v10_tables.py::test_a_written_row_reads_back",
     "sec_submissions_cik": "core/tests/test_schema_v10_tables.py::test_a_written_row_reads_back",
     # the 25 schema-11 tables (history redesign C): change tables are filled by the store, result tables by record_run

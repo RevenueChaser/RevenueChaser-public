@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core import edgar_bulk
 from RevenueChaser.core.providers import sec_edgar as se
 
 _ENDS = {"annual": ("2022-12-31", "2023-12-31"), "quarterly": ("2023-03-31", "2023-06-30")}
@@ -261,18 +260,6 @@ def test_a_period_with_only_sti_facts_adds_no_record(kind, ends):
     old, new = ends
     facts = _facts(kind, **{_CASH: {old: 100.0}, "ShortTermInvestments": {new: 40.0}})
     assert set(_recs(kind, facts)) == {_key(kind, old)}
-
-
-# ── bulk concepts ───────────────────────────────────────────────────────────
-
-def test_every_investment_tag_is_in_the_bulk_concepts():
-    tags = ["ShortTermInvestments", "MarketableSecuritiesCurrent",
-            "AvailableForSaleSecuritiesDebtSecuritiesCurrent", "AvailableForSaleSecuritiesCurrent",
-            "HeldToMaturitySecuritiesCurrent",
-            "DebtSecuritiesHeldToMaturityAmortizedCostAfterAllowanceForCreditLossCurrent",
-            "MarketableSecuritiesNoncurrent", "AvailableForSaleSecuritiesDebtSecuritiesNoncurrent",
-            "LongTermInvestments"]
-    assert [t for t in tags if t not in edgar_bulk.USED_CONCEPTS] == []
 
 
 # ── liquid_assets ───────────────────────────────────────────────────────────
