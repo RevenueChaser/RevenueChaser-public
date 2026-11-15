@@ -968,7 +968,7 @@ MANIFEST: dict[str, dict] = {
             "status TEXT",
             # LLM tries that ended in an empty profile (retried up to 3 runs).
             "attempts INTEGER",
-            # The writer's provider beside its model (#360: evren / deepseek / grok). Nullable, added by
+            # The writer's provider beside its model (#360: evren / deepseek). Nullable, added by
             # ``_reconcile_table`` (ALTER TABLE ADD COLUMN), no schema bump.
             "provider TEXT",
             # Relatedness v2 (#401, schema 13): the v3 structured profile (summary, segments, customers,
