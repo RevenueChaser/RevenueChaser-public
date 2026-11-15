@@ -35,6 +35,11 @@ PR 2 (the universe is Tiers A and B whole) added Swing's type filter to its ``se
 #737 (debt-free inference) added the additive per-candidate ``debt_basis`` key; the five Fundamentals candidates
 all read ``filed`` here (the scenario's filers tag a total), nothing else in the snapshot moved, and the key was
 edited into the golden by hand the same way as the ones above.
+#860 (the old store's removal) re-captured it in CI (avo's rule: no local test run), from a temporary commit that
+printed the snapshot: the prefilter reads the D01 bars instead of the stored quote, so NOBARS1 drops as
+``no_quote`` first (and ``no_bars`` leaves ``data_quality``), DOWN1 is priced from its bars (15.98, not the stored
+quote's 1.00) and its gate values and the sort order of the gate rows move with it; ``earnings_date``,
+``universe_generated_at`` and ``universe_refreshed_by`` read None because their old-store sources went.
 To re-capture on another commit, run this file with ``RC_PARITY_CAPTURE=<path>`` (it writes the snapshot there
 instead of comparing).
 """
@@ -68,9 +73,7 @@ def test_the_scan_output_matches_the_golden_from_main(scenario):
     if capture:
         Path(capture).write_text(_dump(snap), encoding="utf-8")
         pytest.skip(f"captured to {capture}")
-    import base64, gzip  # TEMPORARY capture in CI (no local test runs); reverted in the next commit
-    print("PARITY_SNAPSHOT_B64=" + base64.b64encode(gzip.compress(_dump(snap).encode("utf-8"))).decode())
-    assert False, "capture run"
+    assert json.loads(_dump(snap)) == json.loads(GOLDEN.read_text(encoding="utf-8"))
 
 
 def test_the_scenario_exercises_every_branch_of_the_scan(scenario):
