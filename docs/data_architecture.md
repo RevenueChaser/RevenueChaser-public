@@ -1030,12 +1030,12 @@ from `RC_DUCKDB_MAX_TEMP` (default `200GB`), held to 90 % of the spill disk's fr
 spill's parent folder (unset: `<MARKET_RAW_DIR>/build_tmp`). Each dataset's build logs one line with its seconds and
 its spill peak (`base.spill_peak`, sampled every 2 s), the measure for moving the spill to the SSD or chunking a kind.
 
-**Files.** Serving kinds: `market`, `spine`, `prices`, `ownership`, `fundamentals`, `options`, `sec_forms`. Each kind is one
+**Files.** Serving kinds: `market`, `spine`, `prices`, `ownership`, `fundamentals`, `options`, `sec_forms`, `sec_reads`. Each kind is one
 file, `<MARKET_DIR>/<kind>.duckdb`. The identity spine, `spine` (serving schema version `6`), is described under
 "The identity spine" below; the prices store, `prices` (serving schema version `1`), under "The prices store"
 below; the ownership store, `ownership` (serving schema version `4`), under "The ownership store" below; the
 fundamentals layer, `fundamentals` (serving schema version `3`), under "Fundamentals" after it; and the options
-data, `options` (serving schema version `3`), under "The options data" after it; and the SEC form reader, `sec_forms` (serving schema version `1`), under "The SEC form reader" last. The seven numbers live in `rcdata/serving_versions.py`, outside the builder's rules fingerprint
+data, `options` (serving schema version `3`), under "The options data" after it; and the SEC form reader, `sec_forms` (serving schema version `1`), under "The SEC form reader"; and the SEC reader tool, `sec_reads` (serving schema version `1`), under "The SEC reader tool" last. The eight numbers live in `rcdata/serving_versions.py`, outside the builder's rules fingerprint
 (`rcdata/build/dirty.py`), so a bump makes only its own kind's next build whole (#649). The market data,
 `market` (serving schema version `4`): `serving_schema_version` (one row: kind, version, build time, build id, build mode),
 `spx_gamma_expiry_strike` (key session date, expiry, strike; every numeric field UW serves, typed DOUBLE; provenance
@@ -2052,6 +2052,34 @@ version is read and logged rather than dropped.
 keyed by `cik`, so each carries a `where` on its own `section`; without it a summary would read its state off
 another section's rows. `max_lag` is 400 **days** for all four, not sessions: an annual report is up to fifteen
 months old by design.
+
+### The SEC reader tool (`sec_reads.duckdb`)
+
+One dataset, `sec/reads`, and one served table (`sec_reads` serving schema version `1`). Plan:
+claude-coordinator `plans/2026-11-15_1119_sec-reader-tool-plan.md`. `sec/forms` **cuts** a filing; this layer
+**asks** a model about it, for every board, so no board keeps its own prompt pool, caps or answers table.
+
+**A question is declared once** (`rcdata/build/sec_reads/questions.py`, `register`): its id and owner, the
+companies (`scope`), their text (`inputs`), the system prompt and its `prompt_version`, the parser, the chunk size
+(60,000 characters by default) and the writer (EVREN or the DeepSeek API; DeepSeek is always its Flash model). A
+board adds one entry and reads the answers through `rcdata.read.sec_reads(ciks, question)` or the need `sec.read`.
+No question is registered yet; each board's question is its own change.
+
+**One asker** (`asker.py`), one pool per provider: EVREN 1 request at a time, DeepSeek 8. The HTTP clients are
+`core/providers`' own, called with `use_cache=False`, so `llm_cache` gets nothing from the tool. On homesrv the
+calls go through LiteLLM by unit setting (the clients' base URL from the environment), not by code. The asker
+refuses to start while the Relatedness board's model job holds its `relatedness` lock (one model job at a time),
+and stops a run after 15 minutes of asking, leaving the rest stale for the next run, so a queued pass never holds
+the builder lock for hours; a long read runs fetch-only (`--no-duckdb`) under its own lock instead.
+
+**Served table.** `read_answer` — one row per (question, prompt version, company, filing, document, input hash,
+provider, model): `filing_date`, `status` (`ok`, `partial`, `empty`, `no_text`), `attempts`, `answer` (the parsed
+JSON), `raw` (the replies, one per chunk), `missing_chunks`, `rules_version` (the cutter version of the text), and
+`fetched_at` (when it was asked) and `run_id`. The input hash is the hash of the exact bytes sent, so the same text
+and prompt are never asked twice. An unusable reply is counted on its key; after three the company waits for a new
+filing or prompt, and a `partial` answer is never replaced by an `empty` one. Parquet: one partition per question,
+`parquet/sec/reads/question=<id>/answers.parquet`, plus one raw file per run under `raw/sec/reads/`; the Parquet
+tree is the durable copy of the answers.
 
 ## Migration
 Two separate things, deliberately not conflated:

@@ -15,6 +15,7 @@ in the read log. No serving file yet means no rows, not an error: the status say
 """
 from __future__ import annotations
 
+import json
 import logging
 import re
 from datetime import date, timedelta
@@ -1768,3 +1769,38 @@ def form_notes(ciks: Iterable = (), local_name: str | None = None, kind: str | N
             "ORDER BY cik, document, seq")
     return _rows("filing_note", sql, params)
 
+
+# ── The SEC reader tool: ``sec_reads.duckdb`` ───────────────────────────────────────────────────────────────────
+
+DATASET_OF_TABLE.update({"read_answer": "sec/reads"})
+KIND_OF_TABLE.update({"read_answer": "sec_reads"})
+
+
+def sec_reads(ciks: Iterable = (), question: str | None = None, *, provider: str | None = None,
+              model: str | None = None, raw: bool = False) -> list[dict]:
+    """Per company the newest answer to ``question`` (``sec.read``), one each; a company with none is absent.
+
+    The writer is the question's configured one (``build/sec_reads/questions.py``) unless ``provider`` / ``model``
+    name another: a comparison stores two writers' answers and a board reads its own. ``answer`` is the parsed
+    JSON; only ``ok`` and ``partial`` rows are answers. ``raw=False`` leaves the replies out.
+    """
+    wanted = sorted({_cik(c) for c in ciks if str(c or "").strip()})
+    if not wanted or not question:
+        return []
+    from .build.sec_reads.questions import QUESTIONS
+    q = QUESTIONS.get(str(question))
+    provider = provider or (q.provider if q else None)
+    model = model or (q.writer_model if q else None)
+    sql = (f"SELECT {'*' if raw else '* EXCLUDE (raw)'} FROM read_answer WHERE question = ? "
+           f"AND status IN ('ok', 'partial') AND cik IN ({', '.join('?' * len(wanted))})")
+    params: list = [str(question), *wanted]
+    for col, value in (("provider", provider), ("model", model)):
+        if value:
+            sql += f" AND {col} = ?"
+            params.append(str(value))
+    sql += (" QUALIFY row_number() OVER (PARTITION BY cik ORDER BY filing_date DESC NULLS LAST, fetched_at DESC) = 1"
+            " ORDER BY cik")
+    rows = _rows("read_answer", sql, params)
+    for r in rows:
+        r["answer"] = json.loads(r["answer"]) if r.get("answer") else None
+    return rows

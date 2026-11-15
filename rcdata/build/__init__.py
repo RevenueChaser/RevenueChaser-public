@@ -72,3 +72,8 @@ DATASETS.update({d.name: d for d in (_options_uw_list.DATASET, _options_uw_scree
 from .sec_forms import forms as sec_forms_forms  # noqa: E402
 
 DATASETS.update({sec_forms_forms.DATASET.name: sec_forms_forms.DATASET})
+
+# The SEC reader tool (serving kind ``sec_reads``): a model's answers to the registered questions about a filing.
+from .sec_reads import reads as sec_reads_reads  # noqa: E402
+
+DATASETS.update({sec_reads_reads.DATASET.name: sec_reads_reads.DATASET})
