@@ -164,7 +164,8 @@ def test_apply_sets_the_universe_and_a_reload_keeps_it(dashboard, browser, marke
     got = browser.eval("window.CTLX.applied()")
     assert got["on"][off] is False and got["hand"] == ["TSM"], f"the next press runs without the set: {got}"
     assert browser.eval("document.getElementById('uni-draft').hidden") is True, "no draft is left open"
-    _open(browser, dashboard)
+    # A reload, not _open: the page reopens on the tab it was left on (Fetch/Health here).
+    browser.open(f"{dashboard.url}/view/{_APP}", ready="!!document.getElementById('ctl') && !!window.CTL")
     _tab(browser, "health")
     assert browser.eval(seg + ".getAttribute('data-on')") == "0", "a reload keeps the applied universe"
     assert browser.eval("window.CTLX.applied().hand") == ["TSM"], "and the names typed by hand"
