@@ -1,5 +1,13 @@
 # Data Architecture — RevenueChaser
 
+> **#860, 15 Nov 2026: the old store files are gone.** `.store/raw.duckdb`, `edgar.duckdb`, `history.duckdb` and
+> `.store/prices.duckdb` were removed with every code path to them, in one PR, and no data was moved across. The
+> store keeps only the board files, `.store/boards/<board>.duckdb`; the boards read market data from rcdata's
+> serving layer under `RC_MARKET_DIR` (its `prices.duckdb` there is a different, new file).
+> `core/tests/test_no_old_store.py` fails any code that names an old file, sends a store call to one, or imports a
+> module removed with them. Where the text below describes those four files, their tables or their writers, it is
+> history, not the current design.
+
 This document describes the data pipeline and where data lives at each stage.
 Companions: [`data_retrieval.md`](data_retrieval.md) for how data gets in and
 out (Fetch vs Refresh), [`e2e_testing.md`](e2e_testing.md) for how that is
