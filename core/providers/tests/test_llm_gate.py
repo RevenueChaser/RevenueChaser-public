@@ -44,12 +44,16 @@ def test_both_writers_share_rc_s_gate_key_which_never_comes_from_dotenv():
 
 
 @pytest.mark.parametrize("thinking, wire", [(False, "deepseek-v4-flash-nothink"), (True, "deepseek-v4-flash-think")])
-def test_deepseek_goes_to_the_gate_by_its_flash_name(thinking, wire):
+def test_deepseek_goes_to_the_gate_by_its_flash_name_and_caches_by_the_board_s_name(thinking, wire, monkeypatch):
+    looked = []
+    monkeypatch.setattr(deepseek, "_cache_get", lambda key: looked.append(key))   # a miss
     c = _Client()
-    deepseek.complete("s", "u", thinking=thinking, client=c, use_cache=False, model="deepseek-flash")
+    deepseek.complete("s", "u", thinking=thinking, client=c, model="deepseek-flash")
     (post,) = c.posts
     assert post["url"] == GATE and post["headers"]["Authorization"] == f"Bearer {KEY}"
     assert post["json"]["model"] == wire and "pro" not in wire
+    # The board's name stays the cache key, so the answers stored before the gate are still found.
+    assert looked == [deepseek._cache_key("s", "u", thinking, "deepseek-flash", None)]
 
 
 @pytest.mark.parametrize("model", ["deepseek-v4.1-flash", "glm-5.3", "qwen3.8-flash-next"])
@@ -61,9 +65,3 @@ def test_evren_goes_to_the_gate_by_its_evren_name(model):
                                                         "Content-Type": "application/json"}
     assert post["json"]["model"] == f"evren-{model}"
 
-
-def test_the_cache_key_keeps_the_board_s_model_name(monkeypatch):
-    seen = []
-    monkeypatch.setattr(deepseek, "_cache_get", lambda key: seen.append(key) or "{}")
-    deepseek.complete("s", "u", thinking=False, client=_Client(), model="deepseek-flash")
-    assert seen == [deepseek._cache_key("s", "u", False, "deepseek-flash", None)]
