@@ -326,4 +326,4 @@ def test_an_evren_pool_never_opens_more_than_the_account_allows(rawstore_tmp_db,
     monkeypatch.setattr(engine.profiles_mod, "profile_for", auth)
     with pytest.raises(engine.RunStopped):
         engine.build_profiles([f"T{i}" for i in range(8)], use_llm=True, workers=8, provider="evren")
-    assert seen["max_workers"] == evren.MAX_WORKERS == 4
+    assert seen["max_workers"] == evren.MAX_WORKERS == 1

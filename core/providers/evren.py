@@ -33,12 +33,14 @@ DEFAULT_BASE = "https://evren-llmapi.ssyz.org.tr/v1"
 MODEL = os.getenv("RC_EVREN_MODEL") or "deepseek-v4.1-flash"
 COST_USD_PER_CALL = 0.0
 MAX_ATTEMPTS = 2
-# The account may hold at most 4 requests open on a model (HTTP 429 on 15 Nov 2026, measured on the relatedness
-# run: 8 workers, half the calls refused, run stopped as transient); a pool that sends to EVREN stays at this.
-MAX_WORKERS = 4
+# One request at a time (avo 15 Nov 2026 11:22 "4 yerine 1 istek gonder madem yogun"): the account may hold at most 4
+# open on a model, and the fair-share 429 came even at 4 workers while the model was busy (measured 15 Nov 10:35 with 8,
+# 11:15 with 4). A pool that sends to EVREN stays at this.
+MAX_WORKERS = 1
 # EVREN answers HTTP 503 ``model_capacity_exhausted`` with ``error.evren.resets_at`` when the shared model is full
 # (measured 15 Nov 2026 10:54-10:58: 12 calls, every one refused, the run stopped as transient). Such a reply is
-# waited out until ``resets_at`` (bounded) and retried up to CAPACITY_ATTEMPTS times; any other 5xx stays final.
+# waited out until ``resets_at`` (bounded) and retried up to CAPACITY_ATTEMPTS times; any other 5xx stays final. A 429
+# that carries ``resets_at`` (``fair_share_limit_exceeded``) is waited out the same way.
 CAPACITY_ATTEMPTS = 6
 CAPACITY_WAIT_MIN_S = 5.0
 CAPACITY_WAIT_MAX_S = 120.0
@@ -156,6 +158,12 @@ def complete(system: str, user: str, *, thinking: bool = False,
             except httpx.HTTPError as exc:      # the request may have run: never replayed
                 raise EvrenTransientError(f"EVREN request failed: {_scrub(str(exc), api_key)}") from exc
             text = _scrub((r.text or "")[:300], api_key)
+            if r.status_code == 429 and "resets_at" in (r.text or "") and capacity < CAPACITY_ATTEMPTS:
+                # The account's fair share is full (``fair_share_limit_exceeded``, measured 15 Nov 2026 11:15 with 4
+                # workers): wait for its reset like a capacity 503, not the two-second 429 retry.
+                capacity += 1
+                _sleep(_capacity_wait(r))
+                continue
             if r.status_code == 429:
                 if attempt - capacity < MAX_ATTEMPTS:
                     _sleep(deepseek._retry_delay(r, attempt))

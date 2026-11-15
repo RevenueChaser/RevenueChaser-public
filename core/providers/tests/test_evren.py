@@ -108,6 +108,16 @@ def test_a_capacity_503_is_waited_out_and_retried(monkeypatch):
     assert len(c.posts) == 2 and waits == [evren.CAPACITY_WAIT_MIN_S]      # a past resets_at waits the floor
 
 
+def test_a_fair_share_429_with_a_reset_time_is_waited_out_not_retried_at_once(monkeypatch):
+    waits = []
+    monkeypatch.setattr(evren, "_sleep", waits.append)
+    busy = _Resp(429, {"error": {"message": "Model şu an yoğun", "type": "rate_limit_error",
+                                 "code": "fair_share_limit_exceeded", "evren": {"resets_at": "2020-01-01T00:00:00Z"}}})
+    c = _Client(busy, busy, _ok())
+    assert evren.complete("s", "u", client=c, use_cache=False)
+    assert len(c.posts) == 3 and waits == [evren.CAPACITY_WAIT_MIN_S] * 2
+
+
 def test_a_capacity_503_that_never_clears_is_transient_after_its_own_budget():
     c = _Client(_capacity())
     with pytest.raises(evren.EvrenTransientError):
