@@ -71,7 +71,9 @@ def test_the_scan_output_matches_the_golden_from_main(scenario):
     if capture:
         Path(capture).write_text(_dump(snap), encoding="utf-8")
         pytest.skip(f"captured to {capture}")
-    assert json.loads(_dump(snap)) == json.loads(GOLDEN.read_text(encoding="utf-8"))
+    import base64, gzip  # TEMPORARY capture in CI (no local test runs); reverted in the next commit
+    print("PARITY_SNAPSHOT_B64=" + base64.b64encode(gzip.compress(_dump(snap).encode("utf-8"))).decode())
+    assert False, "capture run"
 
 
 def test_the_scenario_exercises_every_branch_of_the_scan(scenario):
