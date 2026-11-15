@@ -24,6 +24,16 @@ def market_roots(tmp_path, monkeypatch):
     return ssd, hdd
 
 
+@pytest.fixture(autouse=True)
+def no_backoff_wait(monkeypatch):
+    """``run_request`` waits on the real clock between HTTP retries (2 s, then 4 s): a test of a failing source slept
+    6 s per name (18 s in one spine test, #896). The default ``sleep`` becomes a no-op; a test that checks the waits
+    passes its own ``sleep=`` and is not affected."""
+    from RevenueChaser.rcdata.build import base
+    monkeypatch.setattr(base.run_request, "__kwdefaults__",
+                        {**base.run_request.__kwdefaults__, "sleep": lambda s: None})
+
+
 @pytest.fixture
 def kinds_full():
     """Every dataset's own automation at raw + Parquet + DuckDB: the hourly pass these tests were written for, from

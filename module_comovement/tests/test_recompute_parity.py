@@ -130,9 +130,11 @@ def _seed(ret: pd.DataFrame) -> list[str]:
     now = time.time()
     rows = []
     for t in ret.columns:
-        price = 100 * np.exp(ret[t].fillna(0.0).cumsum())
-        for ts, p in price.items():
-            if np.isnan(ret[t].loc[ts]):
+        col = ret[t]
+        price = 100 * np.exp(col.fillna(0.0).cumsum())
+        # Plain lists, not ret[t].loc[ts] per row: 1.5M pandas lookups were 66 s of the suite (#896).
+        for ts, p, r in zip(price.index, price.tolist(), col.tolist()):
+            if np.isnan(r):
                 continue
             rows.append({"ticker": t, "ts": ts.isoformat(), "open": p, "high": p,
                          "low": p, "close": float(p), "volume": 1.0, "cached_at": now})
