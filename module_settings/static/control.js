@@ -1,6 +1,6 @@
 /* The Settings / Data control board (design v28). The page's data is window.CTL (routes, the universe, the
    calendars, the fill switch) and window.RC_FLOW (the flow diagram). A press does one of four things: Fetch and
-   Pause put one request in the builder's queue; Apply saves the universe; Refresh the example rows reads five
+   Pause put one request in the builder's queue; Apply sets the universe in this browser; Refresh the example rows reads five
    rows of the live file. Fill and "Fill this range" are off unless the server says otherwise (CTL.fill_enabled).
    No timer repeats: the page checks its own age when it is shown again, and a press follows its request with a
    short chain of timeouts that ends. Every string put into markup goes through rcEsc. */
@@ -221,10 +221,11 @@
 
 })();
 
-/* The universe control (Karar 86 A). A press on a tier set or a group makes a draft; Apply saves it (the board
-   settings of module_settings) and makes it the universe of the next presses. Names typed by hand join the same
-   draft; they stay in this browser and ride with the next press, they are not saved on the server.
-   shortcut: hand-typed names live in localStorage only; upgrade to a saved list when avo wants them kept. */
+/* The universe control (Karar 86 A). A press on a tier set or a group makes a draft; Apply makes it the universe of
+   the next presses. The applied sets, groups and hand-typed names stay in this browser (localStorage) and ride with
+   each press; the server keeps no copy since the old store's board_settings went (#860).
+   shortcut: the applied universe lives in localStorage only (one browser); upgrade to a saved row in a board file
+   when avo wants it shared across devices. */
 (function () {
   var C = window.CTL, X = window.CTLX;
   if (!C || !X) return;
@@ -233,7 +234,7 @@
   if (!segs.length) return;
   var input = document.getElementById('uni-names'), add = document.getElementById('uni-add'),
       handn = document.getElementById('uni-handn'), chips = document.getElementById('uni-hchips'),
-      box = document.getElementById('uni-draft'), KEY = 'rc-ctl-hand';
+      box = document.getElementById('uni-draft'), KEY = 'rc-ctl-hand', UKEY = 'rc-ctl-universe';
   var hand = [], dhand = [];
   try { hand = JSON.parse(localStorage.getItem(KEY) || '[]') || []; } catch (e) { hand = []; }
   if (!Array.isArray(hand)) hand = [];
@@ -241,6 +242,17 @@
   dhand = hand.slice(); X.hand = hand.slice();
   function pressed(b) { return b.getAttribute('aria-pressed') === 'true'; }
   function on(b) { return b.getAttribute('data-on') === '1'; }
+  function setOn(b, v) { b.setAttribute('data-on', v ? '1' : '0'); b.setAttribute('aria-pressed', v ? 'true' : 'false'); }
+  /* the universe applied earlier in this browser; a stored set this page does not offer is ignored, and one with no
+     offered tier set left falls back to the page's own default */
+  (function restore() {
+    var u = null;
+    try { u = JSON.parse(localStorage.getItem(UKEY) || 'null'); } catch (e) { u = null; }
+    if (!u || !Array.isArray(u.sets) || !Array.isArray(u.include)) return;
+    if (!segs.some(function (b) { return u.sets.indexOf(b.getAttribute('data-tier')) >= 0; })) return;
+    segs.forEach(function (b) { setOn(b, u.sets.indexOf(b.getAttribute('data-tier')) >= 0); });
+    incs.forEach(function (b) { setOn(b, u.include.indexOf(b.getAttribute('data-inc')) >= 0); });
+  })();
   function sum(list, h) {
     var n = list.reduce(function (a, b) { return a + (+b.getAttribute('data-n')); }, 0);
     var t = list.length ? list.map(function (b) { return b.getAttribute('data-label'); }).join(' + ') : 'no tier set';
@@ -286,19 +298,22 @@
   }
   add.addEventListener('click', addNames);
   input.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); addNames(); } });
-  function bits(list, map, key) {
-    return list.filter(pressed).reduce(function (n, b) { return n + (map[b.getAttribute(key)] || 0); }, 0);
-  }
-  function apply(btn) {
-    // The universe setting was a board setting, stored in raw.duckdb's board_settings; it went with that file (#860).
-    btn.disabled = true;
-    X.say('Not applied: the universe setting went with the old store (#860)');
+  function apply() {
+    segs.concat(incs).forEach(function (b) { b.setAttribute('data-on', pressed(b) ? '1' : '0'); });
+    hand = dhand.slice();
+    try {
+      localStorage.setItem(KEY, JSON.stringify(hand));
+      localStorage.setItem(UKEY, JSON.stringify({
+        sets: segs.filter(on).map(function (b) { return b.getAttribute('data-tier'); }),
+        include: incs.filter(on).map(function (b) { return b.getAttribute('data-inc'); })}));
+    } catch (e) { X.say('Applied for this page only: this browser does not keep it'); }
+    paintApplied(); paintDraft();
   }
   document.getElementById('universe').addEventListener('click', function (e) {
     var t = e.target.closest('button'); if (!t) return;
     if (t.getAttribute('data-rm')) { var x = t.getAttribute('data-rm'); dhand = dhand.filter(function (y) { return y !== x; }); paintDraft(); input.focus(); return; }
     if (t.id === 'uni-hclear') { dhand = []; paintDraft(); input.focus(); return; }
-    if (t.id === 'uni-apply') { apply(t); return; }
+    if (t.id === 'uni-apply') { apply(); return; }
     if (t.id === 'uni-undo') {
       segs.concat(incs).forEach(function (b) { b.setAttribute('aria-pressed', on(b) ? 'true' : 'false'); });
       dhand = hand.slice(); paintDraft();

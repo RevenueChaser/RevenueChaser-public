@@ -35,6 +35,11 @@ PR 2 (the universe is Tiers A and B whole) added Swing's type filter to its ``se
 #737 (debt-free inference) added the additive per-candidate ``debt_basis`` key; the five Fundamentals candidates
 all read ``filed`` here (the scenario's filers tag a total), nothing else in the snapshot moved, and the key was
 edited into the golden by hand the same way as the ones above.
+#860 (the old store's removal) re-captured it in CI (avo's rule: no local test run), from a temporary commit that
+printed the snapshot: the prefilter reads the D01 bars instead of the stored quote, so NOBARS1 drops as
+``no_quote`` first (and ``no_bars`` leaves ``data_quality``), DOWN1 is priced from its bars (15.98, not the stored
+quote's 1.00) and its gate values and the sort order of the gate rows move with it; ``earnings_date``,
+``universe_generated_at`` and ``universe_refreshed_by`` read None because their old-store sources went.
 To re-capture on another commit, run this file with ``RC_PARITY_CAPTURE=<path>`` (it writes the snapshot there
 instead of comparing).
 """
@@ -62,9 +67,6 @@ def _dump(snap: dict) -> str:
     return json.dumps(snap, sort_keys=True, indent=1, ensure_ascii=False)
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "#860 took the stored quote (the prefilter's input) and the old caps: the scan moved on purpose and the golden "
-    "needs a re-capture (RC_PARITY_CAPTURE), which is a local run of this file"))
 def test_the_scan_output_matches_the_golden_from_main(scenario):
     snap = scn.snapshot()
     capture = os.environ.get("RC_PARITY_CAPTURE")

@@ -202,14 +202,6 @@ def test_the_calendar_counts_only_the_universes_sets_on_each_session(tmp_path):
     assert "c.universe ||" not in control_render.CTL_JS, "the fill state compares with the applied sets' size"
 
 
-def test_the_bits_apply_saves_are_the_servers_own_maps():
-    """Review S4: the page computes what Apply saves from these maps, so they are the server's, not a copy."""
-    from RevenueChaser.core import board_settings
-    data = control_render.client(control.build(control_nd(), now=NOW))
-    assert data["universe"]["bits"] is board_settings.UNIVERSE_SET_BITS
-    assert data["universe"]["inc_bits"] is board_settings.UNIVERSE_INCLUDE_BITS
-
-
 def _flow_js() -> str:
     """The flow diagram's own block of ``control.js`` (it has its own ``paint`` and ``hit``)."""
     js = control_render.CTL_JS

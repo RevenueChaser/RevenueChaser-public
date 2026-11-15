@@ -1,5 +1,7 @@
 # How the RevenueChaser data system works
 
+> **Historical since 15 Nov 2026:** this describes the old store that #860 removed; see [docs/data_architecture.md](../docs/data_architecture.md) for the layout today.
+
 State: main 7acbe1a (merge of PR #268), read 2026-10-04. Parts marked **Planned** come from the data study and
 change as its decisions land. Cites are `path:line` in this repo; `:NNNN` alone is a line of the MANIFEST in
 `core/rawstore.py`.

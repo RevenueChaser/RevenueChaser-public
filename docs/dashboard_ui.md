@@ -502,15 +502,9 @@ cluster  ● Coarse  ● Medium  ● Fine               at (n, benchmark)
   persistence line is replaced by `payload.oos_note`.
 - **Every number the board prints** (window, MIN_OBS, holdout) comes from
   `payload.settings`, never from `config`.
-- **"Custom settings" badge + Reset to defaults** appear in the board settings row (not
-  the top bar, section 6) only when a Settings override exists. Reset POSTs
-  `{reset: true}` (header `X-RC-Panel: board-settings`) to `/api/settings/board/module_comovement` and polls the job with the
-  shared `settingsJobVerdict` (`reporting_common.JOB_JS`).
-- **Settings → Board inputs → Co-movement** edits the default window, `MIN_OBS` and the
-  OOS holdout, with `WINSOR_K`, `MIN_PERIODS` and benchmark lag under a collapsed
-  "Fine tuning". Each field shows its allowed range; the server's 400 messages appear
-  next to the fields without a reload; a 202 shows Queued / Running and reloads when the
-  job is done.
+- **Settings → Board inputs → Co-movement** shows the default window, `MIN_OBS` and the OOS holdout, with
+  `WINSOR_K`, `MIN_PERIODS` and benchmark lag under a collapsed "Fine tuning", read-only at their config
+  defaults: the saved overrides, Save and Reset went with the old store (#860).
 
 ### Not this design
 

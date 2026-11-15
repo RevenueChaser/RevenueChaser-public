@@ -158,8 +158,9 @@ closed fold under it (`details#old-settings`), unchanged.
   ("no folder yet"), and past a day the line says how old the picture is.
 - **What can be pressed where.** Fetch and Pause are pressed in the Grafana board framed on the Fetch/Health tab
   (#715); the universe, Fill and **Recount folders** are under that frame; the Data cards show bars and
-  no button. A press on a tier set only drafts; **Apply** saves the universe as the Settings board's
-  `UNIVERSE_SETS` and `UNIVERSE_INCLUDE` (`POST /api/settings/board/module_settings`) and fetches nothing. C and D are
+  no button. A press on a tier set only drafts; **Apply** makes it the universe of the next presses, kept in this
+  browser (localStorage `rc-ctl-universe`, with the hand-typed names in `rc-ctl-hand`), and fetches nothing; the
+  server keeps no copy since the old store's `board_settings` went (#860). C and D are
   shown greyed and are never offered. The default universe (A and all of B) asks no scope: it is the daily run.
 - **Filled** is counted per tier set: the hourly read joins each session's bars to the spine's sets, and the
   universe tile and the Backfill calendar sum only the sets the universe holds, so a fund-only universe is not

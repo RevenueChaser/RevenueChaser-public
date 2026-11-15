@@ -68,10 +68,6 @@ table.inv .warnv{color:var(--amber)}
    The pill's text always names the file, so colour is never the only signal. */
 .db{display:inline-block;background:transparent;border:1px solid currentColor;border-radius:99px;
   padding:0 6px;font:600 10.5px/1.4 inherit;letter-spacing:0;text-transform:none;vertical-align:middle}
-.db-raw{color:#4f8cff}
-.db-edgar{color:#e0a030}
-.db-history{color:#3cb89a}
-.db-prices{color:#e06088}
 .db-board{color:#9b7be0}
 .dblegend{color:var(--muted);font-size:11.5px;margin:6px 2px 0}
 .dblegend .db{margin:0 8px 0 4px}
@@ -87,7 +83,7 @@ table.inv .warnv{color:var(--amber)}
 .gap-none{color:var(--neon)}
 /* G6b (#124): the Data Flow picture — provider → job → store file, rendered server-side from the
    table's own rows. Page weight only: it reads no store and takes no second pass over the registry.
-   A line's colour is its store file (the pills' hues); the legend names the four, so colour is not
+   A line's colour says a board file or not (the pill's hue); the legend says it in words, so colour is not
    the only signal. Press a provider or a job to follow its lines, press it again to show all. */
 .flow{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:10px 16px;margin-bottom:14px;overflow-x:auto}
 .flow>summary{cursor:pointer;font-size:15px;font-weight:600;letter-spacing:-.2px}
@@ -121,9 +117,9 @@ table.inv tr.detail .dline b{color:var(--text);font-weight:600;margin-right:6px}
   font:600 10.5px/1.2 inherit;padding:1px 6px;margin-left:6px;cursor:pointer;text-transform:none;letter-spacing:0}
 .grp:hover,.grp[aria-pressed="true"]{border-color:var(--accent);color:var(--accent)}
 .hlabel{color:var(--muted);font-size:11px;margin-left:6px}
-.fetch-btn,.set-btn{background:var(--accent-soft);border:1px solid var(--accent);color:var(--accent);border-radius:6px;padding:4px 10px;font:600 12px/1.2 inherit;cursor:pointer}
-.fetch-btn:hover,.set-btn:hover{background:var(--hover)}
-.fetch-btn:disabled,.set-btn:disabled{opacity:.55;cursor:default}
+.fetch-btn{background:var(--accent-soft);border:1px solid var(--accent);color:var(--accent);border-radius:6px;padding:4px 10px;font:600 12px/1.2 inherit;cursor:pointer}
+.fetch-btn:hover{background:var(--hover)}
+.fetch-btn:disabled{opacity:.55;cursor:default}
 .fetchmsg{color:var(--muted);font-size:11.5px;margin-left:8px}
 /* G5 (#124): the summary tiles above the table, counted from the rows already collected. */
 .stiles{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px}
@@ -195,14 +191,12 @@ h2.sec{font-size:15px;margin:22px 0 10px;letter-spacing:-.2px}
 .frow2 .tag{color:var(--muted);font-size:11.5px;margin-left:6px}
 .bset{border-top:1px solid var(--border);margin-top:12px;padding-top:10px}
 .bset h4{margin:0 0 8px;font-size:13px;display:flex;align-items:center;gap:8px}
-.bset .custom{background:var(--amber-soft);border:1px solid var(--amber);color:var(--amber);border-radius:99px;padding:0 8px;font-size:11px;font-weight:600}
 .sfield{display:grid;grid-template-columns:minmax(200px,260px) 110px 1fr;gap:4px 12px;align-items:center;padding:4px 0;font-size:12.5px}
 .sfield label{color:var(--text)}
 .sfield input,.sfield select{width:100%;height:30px}
 .sfield .rng{color:var(--muted);font-size:11.5px}
 .sfield .ovr{color:var(--amber);font-size:11.5px;margin-left:6px}
-.sfield .ferr{grid-column:2/-1;color:var(--red);font-size:12px;white-space:normal}
-.sfield .ferr:empty{display:none}
+.sfields{border:0;margin:0;padding:0;min-width:0}
 /* #715: the forms sit in a fold under Database; on a phone a field is its label and input, the range under them */
 @media(max-width:900px){.sfield{grid-template-columns:minmax(0,1fr) 110px}.sfield .rng{grid-column:1/-1;overflow-wrap:anywhere}
 .sfield input,.sfield select{height:44px}}
@@ -210,9 +204,6 @@ h2.sec{font-size:15px;margin:22px 0 10px;letter-spacing:-.2px}
 .sderived b{color:var(--text)}
 details.fine{margin:8px 0}
 details.fine>summary{cursor:pointer;color:var(--accent);font-size:12.5px;font-weight:600}
-.sactions{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:10px}
-.seterr{color:var(--red);font-size:12px;white-space:normal}
-.seterr:empty{display:none}
 .bcard h4{margin:14px 0 6px;font-size:13px}
 .bcard table.mini{width:auto;min-width:300px;margin:0 0 6px}
 .bcard .tag{color:var(--muted);font-size:11.5px;margin-left:6px}
@@ -306,68 +297,6 @@ function settingsFetch(btn){
     btn.disabled = false; btn.textContent = 'Retry'; if(out) out.textContent = String(e);
   });
 }
-function settingsSubjectKeys(msg, keys){
-  // The keys a message is about: those named before " must" ("WINDOW + OOS_HOLDOUT
-  // must not exceed ..." is about both), never the ones it merely mentions.
-  var i = msg.indexOf(' must'), subject = i < 0 ? msg : msg.slice(0, i);
-  var words = subject.split(/[^A-Za-z0-9_]+/);
-  return keys.filter(function(k){ return words.indexOf(k) >= 0; });
-}
-function settingsSave(btn){
-  var board = btn.getAttribute('data-board');
-  var out = document.getElementById('msg-set-' + board);
-  var general = document.getElementById('seterr-' + board);
-  var inputs = Array.prototype.slice.call(document.querySelectorAll('#settings-' + board + ' [data-setting]'));
-  var keys = inputs.map(function(i){ return i.getAttribute('data-setting'); });
-  keys.forEach(function(k){ document.getElementById('err-' + k).textContent = ''; });
-  if(general) general.textContent = '';
-  var changes = {};
-  inputs.forEach(function(i){
-    if(String(i.value).trim() !== String(i.getAttribute('data-orig'))){
-      var text = i.getAttribute('data-kind') === 'text';
-      changes[i.getAttribute('data-setting')] = String(i.value).trim() === '' ? null : (text ? String(i.value) : Number(i.value));
-    }
-  });
-  if(!Object.keys(changes).length){ if(out) out.textContent = 'No changes to save.'; return; }
-  btn.disabled = true;
-  if(out) out.textContent = 'Saving…';
-  fetch('/api/settings/board/' + encodeURIComponent(board), {
-    method: 'POST', headers: {'Content-Type': 'application/json', 'X-RC-Panel': 'settings'},
-    body: JSON.stringify({changes: changes})
-  }).then(function(r){
-    return r.json().then(function(d){ return {status: r.status, d: d || {}}; });
-  }).then(function(res){
-    var d = res.d;
-    if(res.status === 202 && d.job_id){
-      if(out) out.textContent = 'Queued…';
-      try{ parent.postMessage({type:'rc-job-submitted', job_id: d.job_id}, location.origin); }catch(e){}
-      settingsPoll(btn, out, d.job_id);
-      return;
-    }
-    btn.disabled = false;
-    var msgs = d.messages || [d.error || ('Save failed (HTTP ' + res.status + ')')];
-    if(out) out.textContent = 'Not saved — nothing changed.';
-    msgs.forEach(function(m){
-      var hit = settingsSubjectKeys(String(m), keys);
-      if(!hit.length){
-        if(general) general.textContent = (general.textContent ? general.textContent + ' ' : '') + m;
-        return;
-      }
-      hit.forEach(function(k){
-        var el = document.getElementById('err-' + k);
-        el.textContent = (el.textContent ? el.textContent + ' ' : '') + m;
-        var det = el.closest && el.closest('details');
-        if(det) det.open = true;
-      });
-    });
-  }).catch(function(e){
-    btn.disabled = false; if(out) out.textContent = String(e);
-  });
-}
-function settingsReset(btn){
-  var board = btn.getAttribute('data-board');
-  boardSettingsReset(btn, document.getElementById('msg-set-' + board), board);
-}
 // S5 (#124): each dataset's detail row (store tables, writer, action, notes) opens from its name.
 // A button, not a click on a <td>: it is focusable and announces its state.
 function settingsDetail(btn){
@@ -452,12 +381,6 @@ document.querySelectorAll('.det-btn').forEach(function(b){
 });
 document.querySelectorAll('.fetch-btn').forEach(function(b){
   b.addEventListener('click', function(){ settingsFetch(b); });
-});
-document.querySelectorAll('.set-save').forEach(function(b){
-  b.addEventListener('click', function(){ settingsSave(b); });
-});
-document.querySelectorAll('.set-reset').forEach(function(b){
-  b.addEventListener('click', function(){ settingsReset(b); });
 });
 """
 
@@ -969,31 +892,28 @@ def _setting_field(f: dict) -> str:
         mark = (f'<span class="ovr">custom (default {_html.escape(val(f.get("default")))})</span>')
     rng = f'<span class="rng">{_html.escape(str(f.get("range") or ""))}</span>'
     return (f'<div class="sfield"><label for="in-{k}">{label}{mark}</label>{control}{rng}'
-            f'<div class="ferr" id="err-{k}" role="alert"></div></div>')
+            '</div>')
 
 
 def _settings_form(card: dict) -> str:
-    """The editable inputs of a board (Save / Reset wired to ``settingsSave`` /
-    ``settingsReset``). Every data-derived string is escaped."""
+    """A board's inputs at their config defaults, read-only: the store that held the overrides, and the Save and
+    Reset that wrote them, went with the old store (#860). Every data-derived string is escaped."""
     s = card.get("settings")
     if not s:
         return ""
     board = _html.escape(str(s.get("board") or card.get("key") or ""), quote=True)
-    badge = '<span class="custom" id="custom-badge">Custom settings</span>' if s.get("custom") else ""
     inputs = "".join(_setting_field(f) for f in s.get("inputs") or [])
     fine = "".join(_setting_field(f) for f in s.get("fine") or [])
     d = s.get("derived") or {}
     derived = (f'<div class="sderived">{_html.escape(str(d.get("label") or ""))}: '
                f'<b>{_html.escape(_num(d.get("value")))}</b> (read-only)</div>' if d else "")
+    # One disabled fieldset turns off every input inside it.
     return (
-        f'<div class="bset" id="settings-{board}"><h4>Editable inputs {badge}</h4>'
-        f'{inputs}{derived}'
-        f'<details class="fine"><summary>Fine tuning</summary>{fine}</details>'
-        f'<div class="seterr" id="seterr-{board}" role="alert"></div>'
-        f'<div class="sactions">'
-        f'<button class="set-btn set-save" type="button" data-board="{board}">Save settings</button>'
-        f'<button class="set-btn set-reset" type="button" data-board="{board}">Reset to defaults</button>'
-        f'<span class="fetchmsg" id="msg-set-{board}"></span></div></div>')
+        f'<div class="bset" id="settings-{board}"><h4>Inputs</h4>'
+        f'<fieldset disabled class="sfields">{inputs}{derived}'
+        f'<details class="fine"><summary>Fine tuning</summary>{fine}</details></fieldset>'
+        f'<p class="muted">These are the board\'s config defaults. They cannot be changed here: the saved '
+        f'overrides went with the old store (#860).</p></div>')
 
 
 def _provider_name(source) -> str:
@@ -1182,31 +1102,20 @@ def _coverage_cell(row: dict) -> str:
     return bar + out
 
 
-# The four store files a dataset can be written to: the Data Flow artifact's DB hues (G2).
-DB_PILLS = ("raw", "edgar", "history", "prices")
-
-
 def _db_pill(db) -> str:
-    """The store-file pill for ``db``, or ``""`` for no file and for any name outside the palette.
-
-    The name is matched against the palette, never interpolated into the class, so a hostile value
-    draws nothing rather than a class.
-    """
+    """The store-file pill for ``db`` (a board's own file, boards/<board>.duckdb, DECISIONS S9), or ``""`` for no
+    file and for any other name. The name is matched against the list, never interpolated into the class."""
     name = str(db or "").strip().lower()
-    if name in rawstore.BOARD_DBS:   # a board's own file, boards/<board>.duckdb (DECISIONS S9)
-        title = _html.escape(f"stored in boards/{name}.duckdb under .store/", quote=True)
-        return f'<span class="db db-board" title="{title}">{_html.escape(name)}</span>'
-    if name not in DB_PILLS:
+    if name not in rawstore.BOARD_DBS:
         return ""
-    title = _html.escape(f"stored in {name}.duckdb under .store/", quote=True)
-    return f'<span class="db db-{name}" title="{title}">{name}</span>'
+    title = _html.escape(f"stored in boards/{name}.duckdb under .store/", quote=True)
+    return f'<span class="db db-board" title="{title}">{_html.escape(name)}</span>'
 
 
 def _db_legend() -> str:
     """One line under the table naming every store file, so a pill is explained once (G2)."""
-    pills = " ".join(_db_pill(db) for db in DB_PILLS)
     board = '<span class="db db-board" title="a board\'s own file under .store/boards/">board name</span>'
-    return (f'<div class="dblegend" id="db-legend">Store file: {pills} {board} '
+    return (f'<div class="dblegend" id="db-legend">Store file: {board} '
             "— each pill names the .store/ DuckDB that dataset is written to.</div>")
 
 
@@ -1244,10 +1153,9 @@ FLOW_NO_STORE = "no store file recorded"
 # Past this much SVG the <details> starts collapsed, so a much larger registry cannot cost the
 # first paint of the table above it (the brief's 60 KB line). Measured on the SVG alone.
 FLOW_MAX_BYTES = 60_000
-# The inks the edges and store nodes use: the .db-* pills' hues, so a colour means one file
-# everywhere on this board. A file outside the four (or none) draws in the page's muted ink.
-DB_COLORS = {"raw": "#4f8cff", "edgar": "#e0a030",
-             "history": "#3cb89a", "prices": "#e06088"}
+# The inks the edges and store nodes use: a board file draws in the .db-board pill's hue,
+# anything else (or no file) in the page's muted ink.
+BOARD_COLOR = "#9b7be0"   # the .db-board pill's hue
 FLOW_UNKNOWN_COLOR = "#8a93a6"
 
 
@@ -1277,8 +1185,8 @@ def _flow_provider(value) -> str:
 
 
 def _flow_store_order(name: str) -> tuple:
-    """The legend's own order for the four store files, then any other name by its spelling."""
-    return (DB_PILLS.index(name) if name in DB_PILLS else len(DB_PILLS), name.lower())
+    """The board files first, then any other name, each by its spelling."""
+    return (name not in rawstore.BOARD_DBS, name.lower())
 
 
 def _flow_nodes(counts: dict[str, int], order) -> list[dict]:
@@ -1332,15 +1240,14 @@ def _flow_node(kind: str, name: str, x: int, y: int, width: int, count: int) -> 
     """One rounded rectangle. A provider or a job is a real button (keyboard reachable); a store
     file is not, because pressing it would select nothing a reader could act on."""
     node_id = _html.escape(f"{kind}:{name}", quote=True)
-    said = f"{name}.duckdb" if kind == "store" and name in DB_PILLS else name
+    said = f"boards/{name}.duckdb" if kind == "store" and name in rawstore.BOARD_DBS else name
     title = _html.escape(f"{said} — {_flow_count(count)}")
     if kind == "store":
-        # The border carries the file's hue. The palette lives in DB_COLORS, so it is written
-        # inline: an inline style outranks the stylesheet's default border, and the four colours
-        # keep one source.
+        # The border carries the file's hue, written inline: an inline style outranks the
+        # stylesheet's default border.
         return (f'<g class="flow-node" data-node="{node_id}"><title>{title}</title>'
                 f'<rect x="{x}" y="{y}" width="{width}" height="{FLOW_H}" rx="6"'
-                f' style="stroke:{DB_COLORS.get(name, FLOW_UNKNOWN_COLOR)}"/>'
+                f' style="stroke:{BOARD_COLOR if name in rawstore.BOARD_DBS else FLOW_UNKNOWN_COLOR}"/>'
                 f'<text x="{x + 10}" y="{y + 19}">{_html.escape(_flow_words(said))}</text></g>')
     who = "Provider" if kind == "provider" else "Job"
     label = _html.escape(f"{who} {name}: {_flow_count(count)}; press to follow its lines", quote=True)
@@ -1385,8 +1292,9 @@ def _flow_svg(graph: dict) -> str:
     segments = []
     total: dict[tuple[str, str], int] = {}
     for edge in graph["edges"]:
-        colour = DB_COLORS.get(edge["store"], FLOW_UNKNOWN_COLOR)
-        store = f"{edge['store']}.duckdb" if edge["store"] in DB_PILLS else edge["store"]
+        board = edge["store"] in rawstore.BOARD_DBS
+        colour = BOARD_COLOR if board else FLOW_UNKNOWN_COLOR
+        store = f"boards/{edge['store']}.duckdb" if board else edge["store"]
         said = _html.escape(f"{edge['provider']} → {edge['job']} → {store} · "
                             f"{_flow_count(edge['count'])}")
         provider_y = centre["providers"][edge["provider"]]
@@ -1420,12 +1328,12 @@ def _flow_svg(graph: dict) -> str:
 
 
 def _flow_legend(store_names: list[str]) -> str:
-    """The four store files in the pills' own hues, so a line's colour is named once (G2's palette)."""
-    items = "".join(f'<span id="flow-store-{db}"><i style="background:{DB_COLORS[db]}"></i>'
-                    f"{db}.duckdb</span>" for db in DB_PILLS)
-    extra = ("" if all(name in DB_PILLS for name in store_names) else
+    """The line colours named once: the board files' hue, and grey for anything else."""
+    items = (f'<span id="flow-store-board"><i style="background:{BOARD_COLOR}"></i>'
+             "a board's own file, boards/&lt;board&gt;.duckdb</span>")
+    extra = ("" if all(name in rawstore.BOARD_DBS for name in store_names) else
              f'<span id="flow-store-unknown"><i style="background:{FLOW_UNKNOWN_COLOR}"></i>'
-             "a grey line means the registry names no store file, or names one outside the four</span>")
+             "a grey line means the registry names no store file, or names one outside the board files</span>")
     return (f'<div class="flowlegend" id="flow-legend"><b>Line colour is the store file:</b>'
             f"{items}{extra}</div>")
 

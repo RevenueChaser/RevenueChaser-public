@@ -4,7 +4,7 @@ Every string goes through ``html_safe.esc``; the page's own data (the flow diagr
 rides in one ``script_json`` block the script reads. The board is the Data tab's panel (``render_data``;
 ``render_fetch`` is an empty alias); the styles are ``static/control.css`` and ``static/data_tree.css``, scoped to
 ``.ctl``, and the behaviour ``static/control.js`` and ``static/data_tree.js``. Nothing a press does here fetches by itself: Fetch and Pause put one request in
-the builder's queue, exactly as before; Apply saves the universe; Fill and "Fill this range" stay off unless the
+the builder's queue, exactly as before; Apply sets the universe in this browser; Fill and "Fill this range" stay off unless the
 server's ``RC_FILL_ENABLED`` is set (avo's word); "Refresh the example rows" reads five rows of the live file; and
 "Take the disk picture" (in Fetch, where presses live) queues the storage-picture job, which walks the HDD trees
 off the request thread (#434).
@@ -14,7 +14,6 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 
-from RevenueChaser.core import board_settings
 from RevenueChaser.core.html_safe import esc, script_json
 from RevenueChaser.module_settings import control
 from RevenueChaser.rcdata.needs import screen
@@ -81,7 +80,7 @@ WIAL = ("<p>This page is the control board for every dataset the system holds. I
         "could not be read is written as unknown, never shown as zero.</p>"
         "<p><b>What a press does.</b> Fetch puts one request in the builder's queue (its ▾ asks for raw only, or "
         "raw and Parquet); Pause cancels a queued request, stops a running fetch before its next provider call and "
-        "holds the dataset until Resume. Apply saves the universe. Fill and "
+        "holds the dataset until Resume. Apply sets the universe of the next presses in this browser. Fill and "
         "&ldquo;Fill this range&rdquo; stay off until your word. Refresh the example rows reads five rows of the live "
         "file and calls no provider.</p>")
 
@@ -156,8 +155,8 @@ def _universe(view: dict) -> str:
         '<input id="uni-names" type="text" placeholder="e.g. TSM, ASML · comma separated" autocomplete="off">'
         '<button type="button" class="btn" id="uni-add">Add</button><span class="uhchips" id="uni-hchips"></span>'
         '<span class="dim" id="uni-handn">no names added</span></div>'
-        '<p class="dim uhnote">Names typed by hand stay in this browser until Apply sends them with the next press; '
-        'they are not saved on the server.</p>'
+        '<p class="dim uhnote">Apply keeps the tier sets, the groups and the names typed by hand in this browser, and '
+        'every later press sends them; they are not saved on the server.</p>'
         f'{_uni_cards(view)}{_funnel(view)}</div>')
 
 
@@ -720,9 +719,7 @@ def client(view: dict) -> dict:
             "fill_enabled": view["fill_enabled"], "fill_off_why": view["fill_off_why"],
             "universe": {"sets": [{"k": s["key"], "tier": s["tier"], "label": s["label"], "n": s["n"] or 0,
                                    "on": s["on"]} for s in u["sets"] if s["offered"]],
-                         "include": [g["key"] for g in u["include"]], "tickers": u["tickers"],
-                         "bits": board_settings.UNIVERSE_SET_BITS,
-                         "inc_bits": board_settings.UNIVERSE_INCLUDE_BITS},
+                         "include": [g["key"] for g in u["include"]], "tickers": u["tickers"]},
             "calendars": cals, "today": view["read_at_iso"][:10]}
 
 

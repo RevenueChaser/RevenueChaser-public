@@ -17,11 +17,10 @@ from pathlib import Path
 
 from RevenueChaser.core.html_safe import ESC_JS
 
-# ── Job poller + board-settings reset, shared by Settings and Co-movement ──
+# ── Job poller, shared by the Settings board and its control panel ──
 # One truthful verdict for every status of ``/api/job/<id>`` (#37): a job that
 # is unknown, cancelled or failed never reads as done. ``settingsPoll`` reloads
 # the board with ``?refresh=1`` only once the job is really done.
-# ``boardSettingsReset`` POSTs ``{reset: true}`` and hands the job to the poller.
 JOB_JS = r"""
 function settingsJobVerdict(d){
   if(!d || !d.ok || !d.job){
@@ -45,24 +44,6 @@ function settingsPoll(btn, out, jobId){
     location.search = '?refresh=1';
   }).catch(function(e){
     btn.disabled = false; btn.textContent = 'Retry'; if(out) out.textContent = String(e);
-  });
-}
-function boardSettingsReset(btn, out, board){
-  btn.disabled = true;
-  if(out) out.textContent = 'Resetting…';
-  fetch('/api/settings/board/' + encodeURIComponent(board), {
-    method: 'POST', headers: {'Content-Type': 'application/json', 'X-RC-Panel': 'board-settings'},
-    body: JSON.stringify({reset: true})
-  }).then(function(r){ return r.json(); }).then(function(d){
-    if(!d.ok || !d.job_id){
-      btn.disabled = false;
-      if(out) out.textContent = (d.messages && d.messages.join('; ')) || d.error || 'failed to reset';
-      return;
-    }
-    try{ parent.postMessage({type:'rc-job-submitted', job_id: d.job_id}, location.origin); }catch(e){}
-    settingsPoll(btn, out, d.job_id);
-  }).catch(function(e){
-    btn.disabled = false; if(out) out.textContent = String(e);
   });
 }
 """

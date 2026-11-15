@@ -1919,20 +1919,6 @@ def test_a_non_default_window_leaves_no_stale_config_text():
     assert "84 sessions they never saw" in html
 
 
-def test_the_badge_and_reset_appear_only_when_settings_are_custom():
-    custom = _render(window=252, custom=True)
-    plain = _render(window=252, custom=False)
-    for needle in ('id="custom-badge"', "Custom settings", 'id="reset-settings"',
-                   "Reset to defaults"):
-        assert needle in custom, needle
-        assert needle not in plain, needle
-    # AGENTS.md section 6: the top bar is title + subtitle + Last sync only.
-    top = re.search(r'<header class="topbar">.*?</header>', custom, re.S).group(0)
-    assert "Custom settings" not in top and "Reset to defaults" not in top
-    row = re.search(r'<section class="rcf-boardrow".*?</section>', custom, re.S).group(0)
-    assert 'id="custom-badge"' in row and 'id="reset-settings"' in row
-
-
 def test_a_legacy_payload_without_settings_still_renders_the_defaults():
     from RevenueChaser.module_comovement import report
     html = report.render_comovement_dashboard(_report_payload())
@@ -1964,7 +1950,7 @@ def test_the_funnel_shows_the_split_steps():
     assert "Short history" not in body
 
 
-# JS: the board URL builder and the reset handler run under node.
+# JS: the board URL builder runs under node.
 _FETCH_STUB = r"""
 var FETCHES = [], RESP = [];
 globalThis.fetch = function(url, opts){
@@ -2013,20 +1999,6 @@ console.log(JSON.stringify({search: location.search}));
     assert got["search"] == ""
 
 
-
-
-@pytest.mark.skipif(shutil.which("node") is None, reason="node not on PATH")
-def test_a_failed_reset_does_not_reload(tmp_path):
-    got = _run_board_snippet(_render(window=252, custom=True), tmp_path, r"""
-RESP.push({status: 400, body: {ok: false, error: "nope", messages: ["nope"]}});
-resetSettings(document.getElementById("reset-settings"));
-setTimeout(function(){
-  console.log(JSON.stringify({search: location.search,
-    msg: document.getElementById("reset-msg").textContent}));
-  process.exit(0);
-}, 40);
-""")
-    assert got["search"] == "" and "nope" in got["msg"]
 
 
 # ── security-type filter rows and the unknown-type note (#87, Identity R4) ───

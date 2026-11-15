@@ -170,89 +170,7 @@ def _settings_block(custom=False, **over):
     return s
 
 
-_NODE_STUB = r"""
-var _els = {}, FETCHES = [], RESP = [];
-function mk(id, extra){
-  var a = {}, o = {id: id, textContent: "", innerHTML: "", disabled: false, value: "",
-    open: false, hidden: false, style: {}, classList: {add(){}, remove(){}},
-    setAttribute(k, v){ a[k] = String(v); }, getAttribute(k){ return k in a ? a[k] : null; },
-    closest(){ return o._details || null; }, addEventListener(){}};
-  return Object.assign(o, extra || {});
-}
-globalThis.document = {
-  getElementById(id){ return _els[id] || (_els[id] = mk(id)); },
-  querySelectorAll(sel){ return sel.indexOf("[data-setting]") >= 0 ? (globalThis.INPUTS || []) : []; },
-  querySelector(){ return null; }
-};
-globalThis.location = {search: "", origin: "http://x"};
-globalThis.parent = {postMessage(){}};
-globalThis.fetch = function(url, opts){
-  FETCHES.push({url: url, body: opts && opts.body ? JSON.parse(opts.body) : null});
-  var r = RESP.shift() || {status: 200, body: {ok: true, job: {status: "running"}}};
-  return Promise.resolve({status: r.status, ok: r.status < 400,
-                          json(){ return Promise.resolve(r.body); }});
-};
-function input(key, orig, value){
-  var a = {"data-setting": key, "data-orig": String(orig)};
-  return {value: String(value), getAttribute(k){ return a[k] == null ? null : a[k]; }};
-}
-function saveBtn(){
-  var b = mk("b"); _els["msg-set-module_comovement"] = mk("m");
-  b.getAttribute = function(k){ return k === "data-board" ? "module_comovement" : null; };
-  return b;
-}
-"""
-
-
-def _run_settings_js(driver: str) -> dict:
-    """Run the Settings board's own JS under node with a small DOM/fetch stub."""
-    import json
-    import shutil
-    import subprocess
-    import pytest
-    if shutil.which("node") is None:
-        pytest.skip("node not on PATH")
-    js = report.JS.replace("document.querySelectorAll('.fetch-btn').forEach", "[].forEach")
-    js = js.replace("document.querySelectorAll('.set-save').forEach", "[].forEach")
-    js = js.replace("document.querySelectorAll('.set-reset').forEach", "[].forEach")
-    script = _NODE_STUB + js + "\n" + driver
-    out = subprocess.run(["node", "-e", script], capture_output=True, text=True,
-                         encoding="utf-8", check=True)
-    return json.loads(out.stdout.strip().splitlines()[-1])
-
-
-class TestSaveHandler:
-
-
-    def test_a_finished_job_reloads_with_refresh(self):
-        got = _run_settings_js(r"""
-globalThis.INPUTS = [input("MIN_OBS", 126, 200)];
-RESP.push({status: 202, body: {ok: true, job_id: "J2", values: {}}});
-RESP.push({status: 200, body: {ok: true, job: {status: "done", message: "ok"}}});
-settingsSave(saveBtn());
-setTimeout(function(){ console.log(JSON.stringify({search: location.search})); process.exit(0); }, 60);
-""")
-        assert got["search"] == "?refresh=1"
-
-    def test_nothing_changed_sends_nothing(self):
-        got = _run_settings_js(r"""
-globalThis.INPUTS = [input("MIN_OBS", 126, 126)];
-settingsSave(saveBtn());
-setTimeout(function(){
-  console.log(JSON.stringify({n: FETCHES.length,
-    msg: _els["msg-set-module_comovement"].textContent}));
-  process.exit(0); }, 20);
-""")
-        assert got["n"] == 0 and "No changes" in got["msg"]
-
-    def test_reset_posts_reset_true_and_polls(self):
-        got = _run_settings_js(r"""
-RESP.push({status: 202, body: {ok: true, job_id: "J3", values: {}}});
-settingsReset(saveBtn());
-setTimeout(function(){ console.log(JSON.stringify({f: FETCHES})); process.exit(0); }, 40);
-""")
-        assert got["f"][0]["body"] == {"reset": True}
-        assert got["f"][1]["url"] == "/api/job/J3"
+class TestJobPoller:
 
     def test_one_shared_verdict_function(self):
         from RevenueChaser.core import reporting_common as rc
@@ -796,8 +714,9 @@ def test_a_legend_under_the_table_explains_each_pill_once():
     assert html.index("</tbody></table>") < html.index('id="db-legend"'), "under the table"
     legend = html[html.index('id="db-legend"'):]
     assert "Store file" in legend
+    assert 'class="db db-board"' in legend
     for db in ("raw", "edgar", "history", "prices"):
-        assert f'class="db db-{db}"' in legend, db
+        assert f"db-{db}" not in legend, f"{db}.duckdb is gone (#860)"
 
 
 # ── S5b / G3 of the GUI brief (#124): the Fresh cell's named states ─────────────────────────
@@ -1115,17 +1034,17 @@ def _flow_section(rows) -> str:
 
 
 def test_a_dataset_without_a_writer_joins_the_started_by_hand_node():
-    graph = report.flow_graph([{"key": "x", "source": "sec", "writer": None, "db": "raw"}])
+    graph = report.flow_graph([{"key": "x", "source": "sec", "writer": None, "db": "news"}])
     assert [j["name"] for j in graph["jobs"]] == ["started by hand from the dashboard"]
     assert graph["providers"] == [{"name": "SEC EDGAR filings", "count": 1}]
 
 
 @pytest.mark.parametrize("row,words", [
     # the registry does not know it: no source key, or an empty one
-    ({"key": "x", "db": "raw"}, "unknown provider"),
-    ({"key": "x", "source": "", "db": "raw"}, "unknown provider"),
+    ({"key": "x", "db": "news"}, "unknown provider"),
+    ({"key": "x", "source": "", "db": "news"}, "unknown provider"),
     # the registry's own "no single provider" value keeps the words the dataset table uses for it
-    ({"key": "x", "source": "unknown", "db": "raw"}, "more than one provider, or not known"),
+    ({"key": "x", "source": "unknown", "db": "news"}, "more than one provider, or not known"),
 ])
 def test_a_dataset_without_a_provider_says_unknown_provider_in_words(row, words):
     graph = report.flow_graph([row])
@@ -1147,7 +1066,7 @@ def test_a_row_without_a_store_file_takes_the_registry_file_without_reading_the_
 
 def test_a_hostile_provider_or_job_name_is_escaped_in_text_and_in_an_attribute():
     bad = """<img src=x onerror=__x(1)>"&'"""
-    section = report._flow_section([{"key": "x", "source": bad, "writer": bad, "db": "raw"}])
+    section = report._flow_section([{"key": "x", "source": bad, "writer": bad, "db": "news"}])
     assert "<img" not in section
     assert "&lt;img src=x onerror=__x(1)&gt;" in section
     assert 'data-provider="' in section and 'data-job="' in section
@@ -1158,7 +1077,7 @@ def test_a_name_too_long_for_its_column_is_cut_and_its_hover_title_keeps_all_of_
     """A layout guard, not a wording rule: the real providers and jobs all fit, so only a value
     that could not fit is cut, and the node's own title still carries every word of it."""
     long_name = "RC-" + "VeryLongTaskName" * 4
-    section = _flow_section([{"key": "x", "source": "sec", "writer": long_name, "db": "raw"}])
+    section = _flow_section([{"key": "x", "source": "sec", "writer": long_name, "db": "news"}])
     shown = long_name[:report.FLOW_TEXT_MAX - 1] + "…"
     assert f">{shown}</text>" in section
     assert f">{long_name}</text>" not in section, "the column cannot hold it"
@@ -1167,29 +1086,28 @@ def test_a_name_too_long_for_its_column_is_cut_and_its_hover_title_keeps_all_of_
 
 
 
-def test_two_flows_sharing_one_pair_draw_side_by_side_so_neither_colour_hides_the_other():
+def test_two_flows_sharing_one_pair_draw_side_by_side_so_neither_hides_the_other():
     """Two datasets from one provider, written by one job, landing in different store files take the
-    same provider-to-job box pair. Drawn on one exact line, the second file's colour would cover the
-    first and the picture would silently lose a flow."""
-    graph = report.flow_graph([{"key": "a", "source": "sec", "writer": "W", "db": "raw"},
-                               {"key": "b", "source": "sec", "writer": "W", "db": "edgar"}])
+    same provider-to-job box pair. Drawn on one exact line, the second would cover the first and the
+    picture would silently lose a flow."""
+    graph = report.flow_graph([{"key": "a", "source": "sec", "writer": "W", "db": "news"},
+                               {"key": "b", "source": "sec", "writer": "W", "db": "sec_13f"}])
     svg = report._flow_svg(graph)
     shared = [tag for tag in re.findall(r'<path class="flow-edge"[^>]*>', svg)
               if 'data-a="provider:SEC EDGAR filings"' in tag and 'data-b="job:W"' in tag]
     assert len(shared) == 2
-    assert len({re.search(r' d="([^"]+)"', tag).group(1) for tag in shared}) == 2, (
-        "the two lines are the same line, so one store file's colour is hidden")
-    assert any('stroke="#4f8cff"' in tag for tag in shared), "raw's line is still its own"
-    assert any('stroke="#e0a030"' in tag for tag in shared), "edgar's line is still its own"
+    assert len({re.search(r' d="([^"]+)"', tag).group(1) for tag in shared}) == 2, "the two lines are one line"
+    assert all(f'stroke="{report.BOARD_COLOR}"' in tag for tag in shared), "a board file draws in the board hue"
+    assert "boards/news.duckdb" in svg and "boards/sec_13f.duckdb" in svg
 
 
-def test_a_store_file_outside_the_four_files_draws_in_muted_ink_and_says_so():
+def test_a_store_file_outside_the_board_files_draws_in_muted_ink_and_says_so():
     svg = report._flow_svg(report.flow_graph([{"key": "x", "source": "sec", "writer": "W"}]))
     assert report.FLOW_NO_STORE in svg
     assert 'stroke="#8a93a6"' in svg
     section = _flow_section([{"key": "x", "source": "sec", "writer": "W"}])
     assert "names no store file" in section, "the legend explains the grey line"
-    assert len(report.DB_PILLS) == 4 and "outside the four" in section, "the legend counts the files it lists"
+    assert "outside the board files" in section, "the legend says which files it colours"
 
 
 

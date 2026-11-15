@@ -52,7 +52,6 @@ def clock(monkeypatch):
     """The universe is written an hour before ``D`` ended, so ``universe_at(D)`` finds it (the store stamps the wall
     clock, and these dates are in the past)."""
     ticks = [baselines.day_end(D) - 3600]
-    monkeypatch.setattr(rawstore, "_change_clock", lambda: ticks.__setitem__(0, ticks[0] + 1) or ticks[0])
     return ticks
 
 

@@ -69,7 +69,6 @@ class Clock:
 def clock(monkeypatch):
     """The universe is written an hour before ``D`` ended: ``universe_at(D)`` finds it."""
     c = Clock(baselines.day_end(D) - 3600)
-    monkeypatch.setattr(rawstore, "_change_clock", c.tick)
     return c
 
 
