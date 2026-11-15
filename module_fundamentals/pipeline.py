@@ -370,7 +370,10 @@ def _quality_of(a: dict, debt_free: bool = False) -> dict:
     if ebit is not None and debt is not None and eq is not None and cash is not None:
         nopat = ebit * (1 - config.TAX_RATE)
         ic = debt + eq - cash
-        out["roic"] = nopat / ic if ic > 0 else None
+        # #831: a sliver of invested capital makes the ratio meaningless (MANH 17,044%), so it is unknown.
+        assets = _to_float(a.get("total_assets"))
+        floor = config.ROIC_IC_MIN_SHARE * assets if assets is not None and assets > 0 else 0.0
+        out["roic"] = nopat / ic if ic > 0 and ic >= floor else None
     return out
 
 
@@ -380,6 +383,9 @@ def _quality_ttm(annual: list[dict], quarterly: list[dict], i: int) -> dict | No
     rec = trailing_year.trailing_year(annual, quarterly, i, _QUALITY_FLOWS, _QUALITY_BALANCE)
     if rec is not None:
         rec["net_income"] = _to_float(annual[i].get("net_income"))
+        # #831: total assets of the quarter the record ends on, for the ROIC floor; not required, so no TTM is lost.
+        q = next((q for q in quarterly or [] if str(q.get("period"))[:10] == rec["period"]), None)
+        rec["total_assets"] = _to_float(q.get("total_assets")) if q else None
     return rec
 
 

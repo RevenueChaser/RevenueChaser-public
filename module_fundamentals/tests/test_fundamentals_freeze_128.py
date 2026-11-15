@@ -57,13 +57,14 @@ def test_rank_is_the_one_based_position_in_candidates():
 # Spelled out on purpose: the thresholds the board scores with today. Editing one in config.py fails
 # this test until ``SELECTION_VERSION`` is bumped and this block is updated with it.
 GOLDEN_CONFIG = {
-    "MIN_PRICE": 5.0, "MIN_DOLLAR_VOLUME": 250000, "RO40_MIN": 40.0, "GROWTH_MIN": 0.2, "ROIC_MIN": 0.15, "GM_MIN": 0.3,
+    "MIN_PRICE": 5.0, "MIN_DOLLAR_VOLUME": 250000, "RO40_MIN": 40.0, "GROWTH_MIN": 0.2, "ROIC_MIN": 0.15,
+    "ROIC_IC_MIN_SHARE": 0.05, "GM_MIN": 0.3,
     "ND_EBITDA_MAX": 3.0, "DIST_52W_MAX": 0.25, "RS_6M_MIN": 0.0, "ABOVE_200D": True,
     "DISTORTED_GROWTH": 2.0, "DISTORTED_REV_MIN": 10000000, "TAX_RATE": 0.21,
     "EXCLUDED_SECTORS": ["Financial Services", "Real Estate"], "RO40_BARRIER": 150.0,
 }
-GOLDEN_VERSION = "8"
-GOLDEN_MODEL_VERSION = "8+e68896f3"
+GOLDEN_VERSION = "9"
+GOLDEN_MODEL_VERSION = "9+f60b68e4"
 
 
 def test_the_effective_config_is_the_golden_config():
