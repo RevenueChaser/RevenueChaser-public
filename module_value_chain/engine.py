@@ -132,7 +132,7 @@ def _board_filings_rows() -> list[dict]:
 
 
 # ── the one write path for chain_filings (#116 C6) ──────────────────────────
-_DB = rawstore.MANIFEST[_TABLE].get("db", "raw")   # chain_filings and chain_meta share it
+_DB = rawstore.MANIFEST[_TABLE]["db"]   # chain_filings and chain_meta share it
 # A slice is replaced only by one of the same rank or better. ``overrun`` still
 # holds all of Item 1, and ``capped`` its start (cut only at the cap), so both
 # are protected too; ``short`` and ``missing`` rank 0.
