@@ -9,10 +9,13 @@ again by the next run; a run where every request failed is a failed run.
 
 Raw: ``raw/yfinance/fx/<as-of>/<CUR>.json.gz`` (``{day: rate}``, the resume marker). Parquet:
 ``parquet/yfinance/fx/part-0.parquet``, every raw day typed into one file, the newest answer per (currency, day).
-Staging: ``stg_yf_fx``. Nothing reads it yet: the IFRS reader of #105 converts statement values with it.
+Staging: ``stg_yf_fx``. The companyfacts typing reads the Parquet file (``held_rates``) to convert an IFRS filer's
+statement values to USD (#105); a company typed before its currency's rates were held is converted at its next
+re-type.
 """
 from __future__ import annotations
 
+import itertools
 import time
 from datetime import date, timedelta
 from pathlib import Path
@@ -34,6 +37,30 @@ CURRENCIES = ("AED", "ARS", "AUD", "BRL", "CAD", "CHF", "CLP", "CNY", "COP", "DK
               "ILS", "INR", "JPY", "KRW", "KZT", "MXN", "MYR", "PEN", "PHP", "SEK", "SGD", "TRY", "TWD", "ZAR")
 SCHEMA = [("currency", "TEXT"), ("day", "DATE"), ("usd_per_unit", "DOUBLE"), ("source_as_of", "DATE"),
           ("fetched_at", "DOUBLE"), ("run_id", "TEXT")]
+
+
+def index_rates(rows) -> dict[str, tuple[list[str], list[float], list[float]]]:
+    """``{currency: (days, rates, prefix sums)}`` of ``(currency, ISO day, usd_per_unit)`` rows sorted by currency
+    and day: the shape ``facts.as_gaap`` reads."""
+    out = {}
+    for cur, group in itertools.groupby(rows, key=lambda r: r[0]):
+        group = list(group)
+        rates = [float(r[2]) for r in group]
+        out[cur] = ([str(r[1])[:10] for r in group], rates, [0.0, *itertools.accumulate(rates)])
+    return out
+
+
+def held_rates() -> dict:
+    """The rates of the Parquet file, indexed (``index_rates``); empty before the first fetch."""
+    path = common.parquet_dir(NAME) / "part-0.parquet"
+    if not path.exists():
+        return {}
+    con = duckdb.connect()
+    try:
+        return index_rates(con.execute("SELECT currency, strftime(day, '%Y-%m-%d'), usd_per_unit FROM read_parquet(?) "
+                                       "ORDER BY currency, day", [str(path)]).fetchall())
+    finally:
+        con.close()
 
 
 def day_dir(as_of: date | str) -> Path:

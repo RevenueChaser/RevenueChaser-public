@@ -11,7 +11,7 @@ import pytest
 from RevenueChaser.core.providers import sec_edgar
 from RevenueChaser.rcdata import ops
 from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.fundamentals import companyfacts, facts, sec_index, tables
+from RevenueChaser.rcdata.build.fundamentals import companyfacts, facts, fx_rates, sec_index, tables
 
 from . import fund_fixture as fx
 from .sec_answers import MISSING_HEADERS, MISSING_OBJECT, REFUSED_HEADERS, REFUSED_PAGE
@@ -686,3 +686,17 @@ def test_a_us_gaap_filer_is_read_as_before_even_with_ifrs_facts_beside():
     f["facts"]["ifrs-full"] = {"Revenue": {"units": {"USD": [fx._fact(7, "2025-12-31", "x", "2026-02-01", "10-K", "FY",
                                                                        2025, "2025-01-01")]}}}
     assert facts.as_gaap(f) is f
+
+
+def test_a_non_usd_ifrs_filer_is_read_in_usd_at_the_period_rates_105():
+    # avo, 15 Nov 2026, option B: a flow at the mean daily rate of its own span, a balance at its last day's rate.
+    rates = fx_rates.index_rates([("EUR", "2025-01-01", 1.0), ("EUR", "2025-12-31", 1.2)])
+    rows, company, _ = facts.fact_rows(_ifrs_filer("EUR"), "2", rates)
+    by, y = _by_key(rows), date(2025, 12, 31)
+    assert by[("revenue", "annual", y)]["value"] == pytest.approx(1_100)          # mean of 1.0 and 1.2
+    assert by[("total_assets", "annual", y)]["value"] == pytest.approx(6_000)     # the 31 Dec rate
+    assert by[("revenue", "annual", y)]["unit"] == "USD" and company["non_usd_units"] is None
+    # Rates that stop in June reach neither the year's end nor its balance day: nothing is guessed.
+    rows, company, _ = facts.fact_rows(_ifrs_filer("EUR"), "2", fx_rates.index_rates([("EUR", "2025-01-01", 1.0),
+                                                                                       ("EUR", "2025-06-30", 1.1)]))
+    assert not [r for r in rows if r["field"] == "revenue"] and company["non_usd_units"] == "EUR"

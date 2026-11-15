@@ -48,6 +48,7 @@ today. What this layer adds:
 """
 from __future__ import annotations
 
+import bisect
 from datetime import date
 
 from ....core.providers import sec_edgar
@@ -89,7 +90,8 @@ EPS_CONCEPTS = {
 # us-gaap concept of the same meaning (plan: claude-coordinator notes/revenuechaser/plans/
 # 2026-11-15_1226_fundamentals-ifrs-reader-plan.md). Attributable-to-parent figures map to the parent concepts and
 # the whole-group ones to the group concepts, as ``CONCEPTS`` orders them. Debt is not mapped: its ladders were
-# measured on us-gaap filers only. A non-USD value stays non-USD here (``non_usd_units``); the FX step converts it.
+# measured on us-gaap filers only. A value in another currency is converted to USD by ``_in_usd`` (#105, avo 15 Nov
+# 2026, option B); one with no rate for its period stays as tagged and is counted in ``non_usd_units``.
 IFRS_AS_GAAP = {
     "Revenue": "Revenues",
     "RevenueFromContractsWithCustomers": "RevenueFromContractWithCustomerExcludingAssessedTax",
@@ -111,14 +113,58 @@ IFRS_AS_GAAP = {
 }
 
 
-def as_gaap(facts: dict) -> dict:
+# A rate counts for a day when one is held at most this many days before it (weekends, holidays, a late fetch).
+FX_GAP_DAYS = 7
+
+
+def _gap(a: str, b: str) -> int:
+    return (date.fromisoformat(b[:10]) - date.fromisoformat(a[:10])).days
+
+
+def _rate(fx: dict, cur: str, start: str | None, end: str) -> float | None:
+    """USD per unit of ``cur`` for a fact: the mean daily rate over ``[start, end]`` for a flow, the rate of ``end``
+    for a balance (``start`` None); None when the held rates do not reach the period's edges."""
+    days, rates, sums = fx[cur]
+    hi = bisect.bisect_right(days, end)
+    if not hi or _gap(days[hi - 1], end) > FX_GAP_DAYS:
+        return None
+    if not start:
+        return rates[hi - 1]
+    lo = bisect.bisect_left(days, start)
+    if lo >= hi or _gap(start, days[lo]) > FX_GAP_DAYS:
+        return None
+    return (sums[hi] - sums[lo]) / (hi - lo)
+
+
+def _in_usd(body: dict, fx: dict) -> dict:
+    """``body`` with its first convertible currency's facts added under ``USD`` (#105). A concept tagged in USD
+    already, a per-share unit (an ADR holds an unknown number of ordinary shares) and a currency with no rates stay
+    as they are."""
+    units = body.get("units") or {}
+    if "USD" in units:
+        return body
+    for unit, items in units.items():
+        if unit not in fx:
+            continue
+        usd = []
+        for f in items or []:
+            r = _rate(fx, unit, f.get("start"), str(f.get("end")))
+            if r is not None and isinstance(f.get("val"), (int, float)):
+                usd.append({**f, "val": f["val"] * r})
+        if usd:
+            return {**body, "units": {**units, "USD": usd}}
+    return body
+
+
+def as_gaap(facts: dict, fx: dict | None = None) -> dict:
     """``facts`` itself when it holds us-gaap facts or no ifrs-full; else a copy whose us-gaap branch is the
-    ifrs-full concepts of ``IFRS_AS_GAAP`` under their us-gaap names (#105)."""
+    ifrs-full concepts of ``IFRS_AS_GAAP`` under their us-gaap names (#105), converted to USD with ``fx``
+    (``fx_rates.index_rates``) where they are tagged in another currency."""
     branches = facts.get("facts") or {}
     ifrs = branches.get("ifrs-full") or {}
     if branches.get("us-gaap") or not ifrs:
         return facts
-    gaap = {IFRS_AS_GAAP[c]: body for c, body in ifrs.items() if c in IFRS_AS_GAAP}
+    gaap = {IFRS_AS_GAAP[c]: _in_usd(body, fx or {}) for c, body in ifrs.items() if c in IFRS_AS_GAAP}
     return {**facts, "facts": {"us-gaap": gaap}}
 
 
@@ -422,16 +468,16 @@ def _eps_rows(facts: dict, index: _Index) -> list[dict]:
     return out
 
 
-def fact_rows(facts: dict, cik: str) -> tuple[list[dict], dict, dict]:
+def fact_rows(facts: dict, cik: str, fx: dict | None = None) -> tuple[list[dict], dict, dict]:
     """``(rows, company, counts)`` of one company's ``companyfacts`` answer (no stamps: the caller adds them).
 
     ``company``: ``entity_name``, ``is_us``, ``non_usd_units`` (the currencies a money concept was tagged in instead
     of USD, #46) and ``us_gaap`` (False: no us-gaap facts at all, an IFRS filer, whose ifrs-full statements are read
-    through ``as_gaap``, #105). ``counts``: ``no_provenance``, values left out for want of an accession.
+    through ``as_gaap``, #105, in USD at the rates of ``fx``). ``counts``: ``no_provenance``, values left out for want of an accession.
     """
     counts: dict[str, int] = {}
     us_gaap = bool(sec_edgar._gaap(facts))
-    facts = as_gaap(facts)
+    facts = as_gaap(facts, fx)
     index = _Index(facts)
     non_usd: set[str] = set()
     annual = sec_edgar.extract_annual(facts, non_usd)
