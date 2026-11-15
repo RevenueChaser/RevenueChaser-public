@@ -231,17 +231,17 @@ def test_the_prompt_carries_the_segment_note_and_the_concentration_note():
     assert profile_v3.system_prompt().endswith("Prompt version: v3d.")
 
 
-def test_a_note_block_is_joined_in_document_order_and_cut(monkeypatch):
+def test_a_note_block_is_joined_in_document_order_and_never_cut(monkeypatch):
     asked = []
 
     def notes(ciks, local_name=None, **k):
         asked.append((list(ciks), local_name))
-        return [{"text": " first part "}, {"text": ""}, {"text": "x" * engine.MAX_NOTE_CHARS}]
+        return [{"text": " first part "}, {"text": ""}, {"text": "x" * 64_294}]   # the longest real segment note
 
     monkeypatch.setattr(read, "form_notes", notes)
     block = engine._note_block("1045810", "SegmentReportingDisclosureTextBlock")
     assert asked == [(["1045810"], "SegmentReportingDisclosureTextBlock")]
-    assert block.startswith("first part\nxxx") and len(block) == engine.MAX_NOTE_CHARS
+    assert block == "first part\n" + "x" * 64_294
 
 
 def test_the_extras_offer_both_blocks_and_leave_out_an_absent_one(layer, monkeypatch):
