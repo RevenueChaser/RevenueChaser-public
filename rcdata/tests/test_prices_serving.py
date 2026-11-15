@@ -327,6 +327,22 @@ def test_a_listed_class_the_spine_lacks_gets_bars_and_counts_in_the_issuer_cap(h
         485.0 * 1_300_000_000 + 720_005.0 * 540_000)
     assert _q("SELECT symbol FROM security_symbol WHERE security_id = ?", [brk_a]) == [{"symbol": "BRK-A"}]
 
+def test_a_compustat_class_the_spine_holds_outside_the_universe_gets_no_bar_893():
+    # A member's gvkey also carries its warrants and preferreds in comp.secd; the spine holds them as Tier B rows.
+    # The class rule is for a class the spine lacks (BRK-A), not for those (762 such ids on 15 Nov 2026).
+    serving.live_path("spine").unlink()
+    write_spine(WEEK_SPINE + [{"ticker": "BRK-PD", "cik": "1067983", "name": "BERKSHIRE HATHAWAY INC", "exchange": "NYSE",
+                               "tier": "B", "security_type": "preferred", "gvkey": "072726", "iid": "05",
+                               "composite_figi": None}])
+    _shares_and_floats(extra={"072726:05": ("BRK.PD", [(d, 25.0) for d in DAYS]),
+                              "072726:01": ("BRK.A", [(d, 720_000.0) for d in DAYS])})
+    base.run_request({"dataset": actions.NAME, "params": {"as_of": "2026-10-27"}})
+    base.run_request({"dataset": bars.NAME, "params": {"as_of": "2026-10-27"}})
+    held = {r["security_id"] for r in _q("SELECT DISTINCT security_id FROM price_bar_daily")}
+    assert "072726:05" not in held
+    assert {"072726:01", "072726:02"} <= held
+
+
 def test_a_cover_count_far_from_yahoos_shares_outstanding_is_an_issue(http_mock):
     # The Opus review's S2 and the sample's AEHL: its cap was 0.0025 of Yahoo's, from a cover count of 4,580,550 as
     # of 30 Sep 2025 moved over two reverse splits (1:6, 1:16) to 47,714, while Yahoo counts about 19 million after
