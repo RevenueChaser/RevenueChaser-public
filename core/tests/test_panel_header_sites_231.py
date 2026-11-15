@@ -98,7 +98,7 @@ def test_no_write_goes_around_fetch(rel):
 
 # POST calls each page ships (JOB_JS is shared by the boards that carry a settings reset).
 EXPECTED_POSTS = {"module_uw_interaction": 1, "module_leaps": 1,
-                  "module_settings": 4}
+                  "module_settings": 3}   # Save and Reset went with the old store (#860)
 
 
 @pytest.mark.parametrize("key", sorted(BOARDS))

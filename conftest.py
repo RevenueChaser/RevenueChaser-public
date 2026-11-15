@@ -364,7 +364,7 @@ def _reset_cik_map():
 # helpers), the stamp constants (``_SCHEMA_FILES``, ``_SCHEMA_STAMP_TABLE``, ``_SCHEMA_STAMP_KEY``) and the
 # environment (``RC_STORE_SCHEMA_OK``, ``RC_STORE_SCHEMA_REFUSE``). A test that patches
 # one of those before its store exists must carry ``@pytest.mark.rawstore_schema_from_scratch``.
-_SCHEMA_INPUTS = ("_SCHEMA_VERSION", "MANIFEST", "CHANGES")
+_SCHEMA_INPUTS = ("_SCHEMA_VERSION", "MANIFEST")
 SCHEMA_FROM_SCRATCH = "rawstore_schema_from_scratch"
 
 

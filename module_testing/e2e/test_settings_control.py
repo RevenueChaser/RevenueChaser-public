@@ -157,13 +157,18 @@ def test_apply_sets_the_universe_and_a_reload_keeps_it(dashboard, browser, marke
     off = tiers[-1]
     seg = f"document.querySelector('#universe button.useg[data-tier=\"{off}\"]')"
     browser.eval(seg + ".click()")
+    # A name by hand too: the fixture's sets may count no names, and a draft of no names cannot be applied.
+    browser.eval("document.getElementById('uni-names').value = 'TSM'; document.getElementById('uni-add').click()")
+    assert browser.eval("document.getElementById('uni-apply').disabled") is False, "the draft can be applied"
     browser.eval("document.getElementById('uni-apply').click()")
-    assert browser.eval("window.CTLX.applied().on")[off] is False, "the next press runs without the set"
+    got = browser.eval("window.CTLX.applied()")
+    assert got["on"][off] is False and got["hand"] == ["TSM"], f"the next press runs without the set: {got}"
     assert browser.eval("document.getElementById('uni-draft').hidden") is True, "no draft is left open"
     _open(browser, dashboard)
     _tab(browser, "health")
     assert browser.eval(seg + ".getAttribute('data-on')") == "0", "a reload keeps the applied universe"
-    browser.eval("localStorage.removeItem('rc-ctl-universe')")
+    assert browser.eval("window.CTLX.applied().hand") == ["TSM"], "and the names typed by hand"
+    browser.eval("localStorage.removeItem('rc-ctl-universe'); localStorage.removeItem('rc-ctl-hand')")
     assert len(provider_routes.requests()) == before
 
 
