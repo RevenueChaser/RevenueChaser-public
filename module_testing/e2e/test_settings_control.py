@@ -1,8 +1,8 @@
 """The Settings / Data control board (design v28), end to end, against a real dashboard and a real browser.
 
-The board is the Data tab of Data/Health (#492); the Health tab follows. A tier press only drafts and Apply saves
-the universe; Fetch puts one row in the builder queue; Fill and "Fill this range" are off by default; Refresh the
-example rows reads a serving file read-only. None of them reaches a provider. On a 390 x 844 phone the board is one
+The board is the Data tab of Data/Health (#492); the Health tab follows. A tier press only drafts and Apply sets
+the universe in this browser; Fetch puts one row in the builder queue; Fill and "Fill this range" are off by default;
+Refresh the example rows reads a serving file read-only. None of them reaches a provider. On a 390 x 844 phone the board is one
 column, nothing reaches past the right edge, and every target is at least 44 px, in light and in dark.
 """
 from __future__ import annotations
@@ -141,6 +141,30 @@ def test_fetch_the_universe_is_still_pressed_on_the_page_and_asks_no_provider(da
     else:
         assert pill.startswith("jst st-f") and rows == [], f"neither queued nor refused: {pill} {rows}"
     assert len(provider_routes.requests()) == before, "a request is not a fetch: no provider was asked"
+
+
+def test_apply_sets_the_universe_and_a_reload_keeps_it(dashboard, browser, market, provider_routes):
+    """#860 took the stored universe setting with raw.duckdb; Apply now keeps the choice in this browser. A tier set
+    pressed off and applied reads as off to the next press, and still after a reload. Apply asks no provider."""
+    before = len(provider_routes.requests())
+    _open(browser, dashboard)
+    _tab(browser, "health")
+    segs = "Array.prototype.slice.call(document.querySelectorAll('#universe button.useg:not(.uoff)'))"
+    tiers = browser.eval(segs + ".filter(function(b){ return b.getAttribute('data-on') === '1'; })"
+                         ".map(function(b){ return b.getAttribute('data-tier'); })")
+    if len(tiers) < 2:
+        pytest.skip(f"the fixture offers {tiers}: one set cannot be pressed off")
+    off = tiers[-1]
+    seg = f"document.querySelector('#universe button.useg[data-tier=\"{off}\"]')"
+    browser.eval(seg + ".click()")
+    browser.eval("document.getElementById('uni-apply').click()")
+    assert browser.eval("window.CTLX.applied().on")[off] is False, "the next press runs without the set"
+    assert browser.eval("document.getElementById('uni-draft').hidden") is True, "no draft is left open"
+    _open(browser, dashboard)
+    _tab(browser, "health")
+    assert browser.eval(seg + ".getAttribute('data-on')") == "0", "a reload keeps the applied universe"
+    browser.eval("localStorage.removeItem('rc-ctl-universe')")
+    assert len(provider_routes.requests()) == before
 
 
 def test_fill_and_fill_this_range_are_off_by_default(dashboard, browser, market, provider_routes):
