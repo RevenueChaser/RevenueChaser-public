@@ -116,3 +116,34 @@ def test_a_held_raw_snapshot_is_typed_again_not_asked_again_503():
     base.write_raw_json(common.meta_path(first), {"as_of": monday.isoformat()})
     first.write_bytes(b"")
     assert seg.held(tuesday) == []                                          # every part, or none
+
+
+def _agreement_store(rows: list[tuple]) -> duckdb.DuckDBPyConnection:
+    """A store with one SEC fact per row ``(cik, sic, field, value)`` on 2024-12-31, its gvkey ``g<cik>``."""
+    con = duckdb.connect()
+    tables.create(con, "fundamental_fact")
+    con.execute("CREATE TABLE fundamental_company (cik TEXT, gvkey TEXT, sic TEXT)")
+    for cik, sic, field, value in rows:
+        con.execute("INSERT INTO fundamental_company VALUES (?, ?, ?)", [cik, f"g{cik}", sic])
+        con.execute("INSERT INTO fundamental_fact (cik, field, period_type, period_end, value, unit, accn, filed, "
+                    "derived, preliminary, source) VALUES (?, ?, 'annual', DATE '2024-12-31', ?, 'USD', 'a', "
+                    "DATE '2025-02-01', false, false, 'sec/companyfacts')", [cik, field, value])
+    return con
+
+
+def test_a_bank_is_left_out_of_the_revenue_agreement_277():
+    # JPM 2024: served revenue is net (177,556 M), Compustat's revt gross. A bank year is not a disagreement.
+    con = _agreement_store([("19617", "6021", "revenue", 177_556e6), ("789019", "7372", "revenue", 245_122e6)])
+    con.execute("CREATE TABLE stg (gvkey TEXT, datadate DATE, revt DOUBLE)")
+    con.execute("INSERT INTO stg VALUES ('g19617', DATE '2024-12-31', 278906), ('g789019', DATE '2024-12-31', 245122)")
+    assert wrds_fund.agreement(con, "stg", "revt", "revenue", "annual", None, banks=False) == (1, 1)
+    assert wrds_fund.agreement(con, "stg", "revt", "revenue", "annual", None) == (2, 1)
+
+
+def test_total_debt_is_compared_as_long_term_plus_current_277():
+    con = _agreement_store([("1", "3711", "total_debt", 150e6), ("2", "3711", "total_debt", 90e6),
+                            ("3", "3711", "total_debt", 40e6)])
+    con.execute("CREATE TABLE stg (gvkey TEXT, datadate DATE, dltt DOUBLE, dlc DOUBLE)")
+    con.execute("INSERT INTO stg VALUES ('g1', DATE '2024-12-31', 120, 30), ('g2', DATE '2024-12-31', 80, 30), "
+                "('g3', DATE '2024-12-31', 40, NULL)")                # g3: no current item, not compared
+    assert wrds_fund.agreement(con, "stg", ("dltt", "dlc"), "total_debt", "annual", None) == (2, 1)

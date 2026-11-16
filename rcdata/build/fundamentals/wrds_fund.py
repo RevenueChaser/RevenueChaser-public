@@ -14,8 +14,8 @@ the one real run. The SEC's own as-filed values (``sec/fsds``) are the check tha
 **A check source, not a served value.** The served statement values are the SEC's (``sec/companyfacts``). What WRDS
 adds: (1) **the revision table**: each monthly snapshot of ``fundq`` / ``funda`` against the one before, every value
 that changed for a period both hold (a restatement, or a correction at Compustat), served as
-``fundamental_revision``; a new period is not a revision; (2) **the agreement notes**: revenue, net income and
-diluted EPS against the SEC's facts of the same period (Compustat's millions times a million, within 0.5%; EPS
+``fundamental_revision``; a new period is not a revision; (2) **the agreement notes**: revenue (banks left out),
+net income, diluted EPS and total debt (``dltt + dlc``) against the SEC's facts of the same period (Compustat's millions times a million, within 0.5%; EPS
 within a cent; period ends within 7 days, for the 52/53-week years).
 
 **Attended and monthly, on the spine's one WRDS worker** (``spine/wrds.py``: one login, at most one Duo push per
@@ -53,6 +53,9 @@ PERIOD_DAYS = 7
 MONEY_TOLERANCE = 0.005
 EPS_TOLERANCE = 0.01
 MILLION = 1_000_000.0
+#: SEC SIC 6000-6199: depository institutions and non-depository credit (JPM is 6021). Left out of the revenue
+#: agreement only (#277): their served revenue is net, Compustat's ``revt`` gross.
+BANK_SIC = (6000, 6199)
 SEGMENT_LIBRARY = "comp_segments_hist_daily"
 CATALOG = [("table_schema", "TEXT"), ("table_name", "TEXT"), ("column_name", "TEXT")]
 SEGMENT_YEARS = 5
@@ -307,9 +310,13 @@ class WrdsFund:
                 ("revenue", "revenue", f"revt{sfx}", None), ("net income", "net_income", f"ni{sfx}", None),
                 ("diluted EPS", "eps_diluted", f"epsfx{sfx}", EPS_TOLERANCE)):
             n, ok = agreement(con, self.staging, item, field, period_type, tolerance,
-                              first_reported=self.table == "funda")
+                              first_reported=self.table == "funda", banks=label != "revenue")
             parts.append(f"{label} {ok} of {n}")
-        note = f"WRDS {self.table} vs the SEC: {', '.join(parts)} agree"
+        note = f"WRDS {self.table} vs the SEC: {', '.join(parts)} agree (banks left out of revenue)"
+        # #277 / plan step 9: the debt Compustat holds (long-term + current) against the SEC's derived total.
+        n, ok = agreement(con, self.staging, (f"dltt{sfx}", f"dlc{sfx}"), "total_debt", period_type, None,
+                          first_reported=self.table == "funda")
+        note += f"; total debt {ok} of {n} agree"
         snaps = self.snapshots()
         if len(snaps) >= 2:
             n = con.execute(f"SELECT count(*) FROM {self.revision_staging} WHERE new_as_of = DATE '{snaps[-1]}'"
@@ -324,21 +331,30 @@ def _links() -> str:
     return "(SELECT DISTINCT gvkey, cik FROM fundamental_company WHERE gvkey IS NOT NULL)"
 
 
-def agreement(con: duckdb.DuckDBPyConnection, staging: str, item: str, field: str, period_type: str,
-              eps_tolerance: float | None, first_reported: bool = False) -> tuple[int, int]:
+def agreement(con: duckdb.DuckDBPyConnection, staging: str, item: str | tuple[str, ...], field: str,
+              period_type: str, eps_tolerance: float | None, first_reported: bool = False,
+              banks: bool = True) -> tuple[int, int]:
     """``(compared, agreeing)``: the periods where Compustat's ``item`` and the SEC's ``field`` both have a value
     (period ends within ``PERIOD_DAYS``). Money in millions at Compustat; EPS as is. ``first_reported``: compare the
     value the year's own report first gave (``first_value``), which ``funda`` keeps where the SEC serves a later
-    restatement or split-adjusted figure (#277: 11 of 59 EPS years, 3 net income, 4 revenue on the 29 Oct sample)."""
+    restatement or split-adjusted figure (#277: 11 of 59 EPS years, 3 net income, 4 revenue on the 29 Oct sample).
+
+    ``item`` as a tuple is the sum of those Compustat items, compared only where every one has a value (total debt
+    is ``dltt + dlc``). ``banks`` False leaves out the filers whose SEC SIC is in ``BANK_SIC``: a bank's served
+    revenue is its tagged ``Revenues``, net of interest expense, while Compustat's ``revt`` is gross, so every
+    bank year would disagree for a reason that is not an error (#277, JPM)."""
     value = "coalesce(first_value, value)" if first_reported else "value"
+    v = " + ".join(f's."{i}"' for i in ((item,) if isinstance(item, str) else item))
+    skip = "" if banks else (" AND c.cik NOT IN (SELECT cik FROM fundamental_company WHERE "
+                             f"TRY_CAST(sic AS INTEGER) BETWEEN {BANK_SIC[0]} AND {BANK_SIC[1]})")
     if eps_tolerance is None:
         ok = (f"abs(f.value - w.v * {MILLION}) <= {MONEY_TOLERANCE} * "
               f"greatest(abs(f.value), abs(w.v * {MILLION}))")
     else:
         ok = f"abs(f.value - w.v) <= {eps_tolerance}"
     n, agree = con.execute(f"""
-        WITH w AS (SELECT c.cik, s.datadate, s."{item}" AS v FROM {staging} s JOIN {_links()} c ON c.gvkey = s.gvkey
-                   WHERE s."{item}" IS NOT NULL),
+        WITH w AS (SELECT c.cik, s.datadate, {v} AS v FROM {staging} s JOIN {_links()} c ON c.gvkey = s.gvkey
+                   WHERE {v} IS NOT NULL{skip}),
              f AS (SELECT cik, period_end, {value} AS value FROM fundamental_fact
                    WHERE field = '{field}' AND period_type = '{period_type}' AND NOT preliminary)
         SELECT count(*), count(*) FILTER (WHERE {ok})

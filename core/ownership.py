@@ -94,6 +94,33 @@ def sec13f_type_holdings(tag: str) -> list[dict]:
              "snapshot_date": r["snapshot_date"].isoformat() if r.get("snapshot_date") else None} for r in rows]
 
 
+def sec13f_type_sector(tag: str) -> list[dict]:
+    """One investor type's ``sec13f_type_sector`` rows (#788 A1): per quarter and sector its value and ``share`` (%)
+    of the type's portfolio, periods as ISO dates. ``[]`` and a warning when the store cannot be read (or was built
+    before the table, ownership version 5)."""
+    from RevenueChaser.rcdata import read as rcread
+
+    try:
+        rows = rcread.type_sector_13f([tag])
+    except Exception as exc:                      # noqa: BLE001 - an empty chart, never a failed board
+        logger.warning("13F investor-type sectors unreadable: %s", exc)
+        return []
+    return [{**r, "period": r["period"].isoformat()} for r in rows]
+
+
+def sec13f_type_flow(tag: str) -> list[dict]:
+    """One investor type's ``sec13f_type_flow`` rows (#788 A2): per quarter the dollars its continuing filers bought
+    and sold and the net, periods as ISO dates. ``[]`` and a warning when the store cannot be read."""
+    from RevenueChaser.rcdata import read as rcread
+
+    try:
+        rows = rcread.type_flow_13f([tag])
+    except Exception as exc:                      # noqa: BLE001 - an empty chart, never a failed board
+        logger.warning("13F investor-type flows unreadable: %s", exc)
+        return []
+    return [{**r, "period": r["period"].isoformat()} for r in rows]
+
+
 def sec13f_type_filers() -> dict[str, int]:
     """``{tag: filers}``: each investor type's 13F filers in its newest stored quarter (#760), for the board's picker
     to show how thin a type is (13 Nov 2026: 4 energy investors, no ESG one). ``{}`` when the store cannot be read."""
