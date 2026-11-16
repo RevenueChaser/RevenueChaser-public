@@ -1020,14 +1020,14 @@ def test_each_filers_largest_names_per_quarter_and_the_rest_add_up_to_100(store)
 
 
 def test_a_filer_family_is_one_holder_for_the_top_10_and_hhi_but_not_for_the_holder_count(monkeypatch, http_mock):
-    """#925 (avo, 16 Nov 2026, Q17 A, Q18 A): two filers of one family hold one name: HHI 1, holders still 2."""
+    """#925 (avo, 16 Nov 2026, Q17 A, Q18 A): two filers of one family hold one name: HHI 10,000 (not 5,000), holders still 2."""
     monkeypatch.setattr(sec, "_shared_pace", lambda: True)
     monkeypatch.setenv("RC_HTTP_CONTACT", "ops@example.org")
     monkeypatch.setattr(serve, "family_roots", lambda edges, books: {"2000002": "2000001"})
     _book_day(http_mock, {"2026-10-27": [(1.0, "09-30-2026")] * 2})
     _serve()
     assert _served("SELECT holders, round(hhi, 6), round(top10_pct, 6) FROM sec13f_ticker_period "
-                   "WHERE ticker = 'MSFT'") == [(2, 1.0, 100.0)]
+                   "WHERE ticker = 'MSFT'") == [(2, 10000.0, 100.0)]      # HHI in points: 5,000 per filer
 
 
 def test_a_family_needs_the_included_manager_link_and_the_same_firm_word():
