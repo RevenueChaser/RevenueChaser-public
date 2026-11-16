@@ -296,10 +296,6 @@ class SchedulerUnavailable(AutomationError):
     http_status = 409
 
 
-class AlreadyInstalled(AutomationError):
-    http_status = 409
-
-
 def entry(name: str) -> AutomationEntry:
     try:
         return _BY_NAME[name]
@@ -776,6 +772,8 @@ class LinuxScheduler(Scheduler):
             "",
         ])
         service, timer = self._files(e.name)
+        # #191 item 1: a reinstall over a working pair that then fails puts that pair back, rather than removing it.
+        before = {p: p.read_text(encoding="utf-8") for p in (service, timer) if p.is_file()}
         try:
             self.unit_dir.mkdir(parents=True, exist_ok=True)
             for path, text in ((service, service_text), (timer, timer_text)):
@@ -787,7 +785,7 @@ class LinuxScheduler(Scheduler):
                     tmp.unlink(missing_ok=True)
         except OSError as exc:
             try:
-                self._unlink(e.name)
+                self._roll_back(e.name, before)
             except AutomationError:
                 pass
             raise AutomationError(f"the unit files could not be written: {exc}") from None
@@ -796,9 +794,23 @@ class LinuxScheduler(Scheduler):
             self._exec("enable", "--now", timer.name)
         except AutomationError:
             # Roll back: a half-installed task reads as an error row, which the panel offers no button for.
-            self._unlink(e.name)
+            self._roll_back(e.name, before)
             self._try("daemon-reload")
             raise
+
+    def _roll_back(self, name: str, before: dict) -> None:
+        """Undo an install: the files it created go, the files it overwrote get their old text back."""
+        if not before:
+            self._unlink(name)
+            return
+        try:
+            for path in self._files(name):
+                if path in before:
+                    path.write_text(before[path], encoding="utf-8")
+                else:
+                    path.unlink(missing_ok=True)
+        except OSError as exc:
+            raise AutomationError(f"the unit files could not be restored: {exc}") from None
 
     def _try(self, *args: str) -> AutomationError | None:
         try:
@@ -1004,9 +1016,6 @@ def apply(name: str, action: str, sched: Scheduler | None = None) -> dict:
     if not sched.available:
         raise SchedulerUnavailable("No scheduler is available on this host")
     if action == "install":
-        # #191 item 1: an install over an installed task could fail and its rollback then removed the working pair
-        if sched.status(e.name) is not None:
-            raise AlreadyInstalled(f"{e.name} is already installed; remove it first to install it again")
         sched.install(e)
     elif action == "enable":
         sched.set_enabled(e.name, True)
