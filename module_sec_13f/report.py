@@ -95,6 +95,12 @@ details.types>summary:focus-visible{outline:2px solid var(--focus);outline-offse
 #type-chart{width:100%;min-height:360px}
 .kit-count{color:var(--muted);font-size:var(--fs-sm);margin:8px 0 12px;min-height:1.2em}
 .kit-hide{display:none}
+.more-bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:var(--sp-3);margin:var(--sp-3) 0}
+.more-bar button{min-height:var(--touch);padding:0 var(--sp-4);border-radius:var(--r-sm);font:inherit;font-size:var(--fs-sm);
+  cursor:pointer;background:var(--card);color:var(--fg);border:1px solid var(--border)}
+.more-bar button.link{background:none;border:0;color:var(--muted);text-decoration:underline}
+.more-bar button:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
+.more-bar button[hidden]{display:none}
 table{width:100%;border-collapse:collapse;font-size:12px;background:var(--card);border:1px solid var(--border);
   border-radius:var(--r-md);overflow:hidden}
 th{text-align:right;padding:8px;color:var(--muted);font-size:var(--fs-xs);font-weight:600;letter-spacing:.03em;
@@ -238,6 +244,9 @@ var COL_LABELS = __COL_LABELS__;
 var TABLE_SNAP = __TABLE_SNAP__;          // snapshot columns drawn in the table; the rest go to the row's detail panel
 var DETAIL = {};                          // ticker -> [[label, text, cls, title], ...] for the detail panel          // a cell's header text, shown beside it when a phone stacks the row as a card
 var BREAKS = {};
+// #167: the rows live in ROWS (payload order); a sort or a filter works on the array, and only VIEW's first SHOWN rows
+// are in the DOM, PAGE more per "Show more" (decision C, avo 16 Nov 2026). A row element is built once, when first shown.
+var ROWS = [], COLS = [], COLIX = {}, SH_IX = [], VIEW = [], SHOWN = 0, PAGE = 100, ROW_EL = {}, SHOW_EMPTY = false;
 var MARK_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" '
   + 'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2 21h20L12 3z"></path>'
   + '<path d="M12 10v4"></path><path d="M12 17.5v.01"></path></svg>';
@@ -274,27 +283,44 @@ function openBreaks(ticker){
   document.getElementById('breaks-close').focus();
 }
 function closeBreaks(){ document.getElementById('breaks').classList.remove('open'); }
-function cellVal(row, col){ var el = row.querySelector('[data-col="'+col+'"]'); return el ? el.getAttribute('data-val') : ''; }
+function rowVal(r, col){
+  if(col === 'ticker'){ return r[0]; }
+  if(col === 'sector'){ return r[2] || null; }
+  var c = (r[3] || [])[COLIX[col]];
+  return (c && c[1] !== null && c[1] !== undefined) ? c[1] : null;
+}
+// A row with no 13F shares in any quarter shown is dashes from end to end (decision J): hidden unless asked for.
+function isEmptyRow(r){
+  for(var i = 0; i < SH_IX.length; i++){ var c = (r[3] || [])[SH_IX[i]]; if(c && c[1]){ return false; } }
+  return true;
+}
 function sortTable(col, el){
-  closeDetails();
   if(SORT_COL === col){ SORT_ASC = !SORT_ASC; } else { SORT_COL = col; SORT_ASC = false; }
   document.querySelectorAll('th, .chg-sort').forEach(function(th){ th.classList.remove('sort-asc','sort-desc'); });
   el.classList.add(SORT_ASC ? 'sort-asc' : 'sort-desc');
-  var tbody = document.querySelector('tbody');
-  var rows = Array.from(tbody.querySelectorAll('tr[data-ticker]'));
-  rows.sort(function(a,b){
-    var av = cellVal(a, col), bv = cellVal(b, col);
-    var aNull = av === '', bNull = bv === '';
-    if(aNull || bNull) return (aNull && bNull) ? 0 : (aNull ? 1 : -1);
-    var an = Number(av), bn = Number(bv);
-    var r = (!isNaN(an) && !isNaN(bn)) ? an - bn : (av < bv ? -1 : (av > bv ? 1 : 0));
+  ROWS.sort(function(a, b){
+    var av = rowVal(a, col), bv = rowVal(b, col);
+    if(av === null || bv === null){ return (av === null && bv === null) ? 0 : (av === null ? 1 : -1); }
+    var r = (typeof av === 'number' && typeof bv === 'number') ? av - bv : (av < bv ? -1 : (av > bv ? 1 : 0));
     return SORT_ASC ? r : -r;
   });
-  rows.forEach(function(r){ tbody.appendChild(r); });
   applyFilters();
 }
 // The figure is drawn on the page's theme (#761): its paper, text, grid and series colours are read from the tokens,
 // so the chart matches the light or dark board around it. The series keep the ramp colours the figure carries (#767).
+// Plotly loads on the first chart, not with the page (#167): the table does not wait for 3.5 MB of script.
+var PLOTLY_WAIT = null;
+function withPlotly(fn){
+  if(window.Plotly){ fn(); return; }
+  if(!PLOTLY_WAIT){
+    PLOTLY_WAIT = new Promise(function(ok, no){
+      var s = document.createElement('script'); s.src = PLOTLY_URL; s.onload = ok;
+      s.onerror = function(){ PLOTLY_WAIT = null; no(new Error('chart library not loaded')); };
+      document.head.appendChild(s);
+    });
+  }
+  PLOTLY_WAIT.then(fn);
+}
 function themedFig(fig){
   var cs = getComputedStyle(document.documentElement), v = function(n){ return cs.getPropertyValue(n).trim(); };
   var lay = fig.layout || {}, grid = v('--grid'), muted = v('--muted');
@@ -400,7 +426,7 @@ function toggleDetail(row){
         });
         plot.innerHTML = '';
         if(!xs.length){ plot.appendChild(el('div', 'empty', 'No series data.')); return; }
-        miniChart(plot, xs, ys, spec[1], color || getComputedStyle(document.documentElement).getPropertyValue('--data-1').trim());
+        withPlotly(function(){ miniChart(plot, xs, ys, spec[1], color || getComputedStyle(document.documentElement).getPropertyValue('--data-1').trim()); });
       });
     })
     .catch(function(){ boxes.forEach(function(p){ p[0].innerHTML = ''; p[0].appendChild(el('div', 'empty neg', 'Failed to load chart.')); }); });
@@ -415,7 +441,7 @@ function openChart(ticker){
     .then(function(r){ return r.json(); })
     .then(function(d){
       if(!d.fig){ chart.innerHTML = '<div class="empty">No series data.</div>'; return; }
-      Plotly.react('chart', themedFig(d.fig), {}, {displayModeBar: true, responsive: true});
+      withPlotly(function(){ Plotly.react('chart', themedFig(d.fig), {}, {displayModeBar: true, responsive: true}); });
     })
     .catch(function(){ chart.innerHTML = '<div class="empty neg">Failed to load chart.</div>'; });
 }
@@ -428,7 +454,7 @@ function loadType(tag){
   try { localStorage.setItem(TYPE_KEY, tag); } catch(e) {}
   note.textContent = '';
   // Purged before the spinner replaces it: Plotly.react on a host whose nodes were wiped draws nothing.
-  Plotly.purge(host);
+  if(window.Plotly){ Plotly.purge(host); }
   host.innerHTML = '<span class="spin"></span>';
   fetch('/api/sec_13f/types/' + encodeURIComponent(tag))
     .then(function(r){ return r.json(); })
@@ -436,7 +462,7 @@ function loadType(tag){
       if(seq !== TYPE_SEQ){ return; }           // a later pick is on its way: this answer is stale
       host.innerHTML = '';
       note.textContent = d.note || d.error || '';
-      if(d.fig){ Plotly.newPlot(host, themedFig(d.fig).data, d.fig.layout, {displayModeBar: false, responsive: true}); }
+      if(d.fig){ withPlotly(function(){ Plotly.newPlot(host, themedFig(d.fig).data, d.fig.layout, {displayModeBar: false, responsive: true}); }); }
     })
     .catch(function(){
       if(seq !== TYPE_SEQ){ return; }
@@ -445,21 +471,40 @@ function loadType(tag){
 }
 function applyFilters(){
   closeDetails();
-  var kitOn = !!(RCF && RCF.active()), q = SEARCH_Q.toLowerCase();
-  var rows = document.querySelectorAll('tbody tr[data-ticker]');
-  var shown = 0, total = rows.length;
-  for(var i = 0; i < rows.length; i++){
-    var r = rows[i], t = r.getAttribute('data-ticker'), f = FIELDS[t], ok = true;
-    if(q){
-      var hay = (t + ' ' + (f && f.name ? f.name : '')).toLowerCase();
-      if(hay.indexOf(q) === -1) ok = false;
-    }
-    if(ok && kitOn && f && !RCF.pass(f)) ok = false;
-    r.style.display = ok ? '' : 'none';
-    if(ok) shown++;
+  var kitOn = !!(RCF && RCF.active()), q = SEARCH_Q.toLowerCase(), empties = 0;
+  VIEW = [];
+  for(var i = 0; i < ROWS.length; i++){
+    var r = ROWS[i], t = r[0], f = FIELDS[t];
+    if(q && (t + ' ' + (f && f.name ? f.name : '')).toLowerCase().indexOf(q) === -1){ continue; }
+    if(kitOn && f && !RCF.pass(f)){ continue; }
+    if(!SHOW_EMPTY && isEmptyRow(r)){ empties++; continue; }
+    VIEW.push(r);
   }
+  var tbody = document.getElementById('rows');
+  while(tbody.firstChild){ tbody.removeChild(tbody.firstChild); }
+  SHOWN = 0;
+  showMore();
   var line = document.getElementById('kit-count');
-  if(line){ line.textContent = kitOn ? (shown + ' of ' + total + ' names') : ''; }
+  if(line){ line.textContent = (kitOn || q) ? (VIEW.length + ' of ' + ROWS.length + ' names') : ''; }
+  var eb = document.getElementById('empties');
+  if(eb){
+    eb.hidden = !SHOW_EMPTY && !empties;
+    eb.textContent = SHOW_EMPTY ? 'Hide rows with no 13F shares' : ('Show ' + empties + ' rows with no 13F shares');
+  }
+}
+function showMore(){
+  var tbody = document.getElementById('rows'), frag = document.createDocumentFragment();
+  var end = Math.min(VIEW.length, SHOWN + PAGE);
+  for(var i = SHOWN; i < end; i++){ frag.appendChild(ROW_EL[VIEW[i][0]] || (ROW_EL[VIEW[i][0]] = makeRow(VIEW[i]))); }
+  if(typeof rcWatchSync === 'function'){ rcWatchSync(frag); }   // a row built earlier may show an old list state
+  tbody.appendChild(frag);
+  SHOWN = end;
+  var more = document.getElementById('more');
+  if(more){
+    var left = VIEW.length - SHOWN;
+    more.hidden = left <= 0;
+    more.textContent = 'Show ' + Math.min(PAGE, left) + ' more (' + left + ' left)';
+  }
 }
 function initKit(){
   var rows = [];
@@ -470,13 +515,16 @@ function initKit(){
 function build(p){
   // The rows come from the payload route (#429); every string reaches the DOM as text or an attribute, never markup.
   // The filter rows ride the same payload (KF #375), not the HTML, so the page stays small.
-  var tbody = document.getElementById('rows');
-  var frag = document.createDocumentFragment();
-  var rows = (p && p.rows) || [];
-  var cols = (p && p.cols) || [];
+  ROWS = ((p && p.rows) || []).slice();
+  COLS = (p && p.cols) || [];
   FIELDS = (p && p.fields) || {};
-  for(var i = 0; i < rows.length; i++){
-    var r = rows[i];
+  COLIX = {}; SH_IX = [];
+  COLS.forEach(function(c, j){ COLIX[c] = j; if(c.indexOf('sh_') === 0){ SH_IX.push(j); } });
+  ROW_EL = {};
+  initKit();
+}
+function makeRow(r){
+    var cols = COLS;
     var tr = document.createElement('tr');
     tr.setAttribute('data-ticker', r[0]);
     var tdT = document.createElement('td');
@@ -554,11 +602,7 @@ function build(p){
       }
       tr.appendChild(td);
     }
-    frag.appendChild(tr);
-  }
-  while(tbody.firstChild){ tbody.removeChild(tbody.firstChild); }
-  tbody.appendChild(frag);
-  initKit();
+    return tr;
 }
 function fail(e){
   var tbody = document.getElementById('rows');
@@ -584,7 +628,10 @@ document.addEventListener('DOMContentLoaded', function(){
   }
   var q = document.getElementById('board-q');
   if(q){
-    q.addEventListener('input', function(e){ SEARCH_Q = e.target.value; applyFilters(); });
+    var wait = null;      // one filter pass per pause in typing, not one per key (#167)
+    q.addEventListener('input', function(e){
+      SEARCH_Q = e.target.value; clearTimeout(wait); wait = setTimeout(applyFilters, 200);
+    });
   }
   document.getElementById('rows').addEventListener('click', function(e){
     var tr = e.target.closest('tr[data-ticker]');
@@ -595,6 +642,8 @@ document.addEventListener('DOMContentLoaded', function(){
     if(e.target.closest('.break-mark')){ if(tr){ openBreaks(tr.getAttribute('data-ticker')); } return; }
     if(tr){ toggleDetail(tr); }
   });
+  document.getElementById('more').addEventListener('click', showMore);
+  document.getElementById('empties').addEventListener('click', function(){ SHOW_EMPTY = !SHOW_EMPTY; applyFilters(); });
   document.getElementById('modal').addEventListener('click', function(e){ if(e.target === this) closeModal(); });
   document.getElementById('modal-close').addEventListener('click', closeModal);
   document.getElementById('breaks').addEventListener('click', function(e){ if(e.target === this) closeBreaks(); });
@@ -1223,7 +1272,7 @@ def _render_page(quarters: list, entries: list, fields: list, kit_notice: str | 
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>RevenueChaser — SEC 13F Ownership</title>
 <script>{THEME_JS}</script><style>{THEME_CSS}</style>
-<script src="{PLOTLY_CDN_URL}"></script>
+<script>var PLOTLY_URL = {script_json(PLOTLY_CDN_URL)};</script>
 {CSS}{FILTERS_CSS}</head><body>
 <div class="header"><h1>SEC 13F — Total Institutional Ownership</h1>
 <div class="meta">{len(entries)} tickers · all 13F filers (incl. BlackRock/Vanguard/State Street) · quarterly · click a row for the chart</div>
@@ -1236,6 +1285,7 @@ def _render_page(quarters: list, entries: list, fields: list, kit_notice: str | 
 {types_html}
 <div class="board-search"><input type="search" id="board-q" placeholder="Search ticker or name" autocomplete="off" spellcheck="false"></div>
 <table><thead>{header}</thead><tbody id="rows">{rows_html}</tbody></table>
+<div class="more-bar"><button type="button" id="more" hidden></button><button type="button" id="empties" class="link" hidden></button></div>
 <div class="legend-note">
 <b>Total ownership</b> = shares held by every 13F filer, on <b>today's share basis</b>: a quarter's count is divided
 by the split factor of its quarter end, so a split is not read as buying (hover a cell for the count as filed).
