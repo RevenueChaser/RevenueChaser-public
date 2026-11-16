@@ -416,7 +416,7 @@ def filing_edges(ticker: str, text: str, filed: str = "", customers: list[dict] 
             for c in _xbrl_customer_edges(ticker, customers or [], names)]
 
 
-# A profile field and the relation its companies have to the filer (module_relatedness/profile_v3.py).
+# A profile field and the relation its companies have to the filer (rcdata/sec_profile.py).
 _PROFILE_RELATIONS = (("customers", "customer"), ("suppliers", "supplier"), ("named_competitors", "competitor"))
 
 

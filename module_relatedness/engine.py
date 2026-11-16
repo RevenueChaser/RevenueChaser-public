@@ -10,7 +10,6 @@ from __future__ import annotations
 import json
 import logging
 import math
-import re
 import threading
 from datetime import datetime, timezone
 
@@ -19,6 +18,9 @@ from RevenueChaser.core.reporting_common import write_artifact
 from RevenueChaser.core.providers import deepseek, evren
 from RevenueChaser.module_value_chain import engine as vc_engine
 from RevenueChaser.rcdata import opens  # #566: pooled reads count for this run
+# The input's pure half (#894): the SEC reading service sends the same bytes for one filing.
+from RevenueChaser.rcdata.sec_profile_input import (MAX_SENTENCES, MAX_XBRL_CUSTOMERS, clean_input,  # noqa: F401
+                                                    filing_sentences)
 
 from . import config
 from . import locator, profile_v3
@@ -196,52 +198,6 @@ def _filing_input(ticker: str) -> dict:
         out = {"name": name, "text": text, "fallback": status or "short_text", "source": _filing_source(ticker)}
     out["locate"] = None if elsewhere else whole
     out["hash_text"] = "locator\n" + whole["text"] if out["locate"] else out["text"]
-    return out
-
-
-# ── the B input (#400 WP6; avo's decision C, 8 Nov 2026; the pilot's rounds 1-3) ────────────────────────────────
-MAX_SENTENCES = 40
-MAX_XBRL_CUSTOMERS = 15
-_DROP_HEADINGS = re.compile(r"^\s*(available information|information about our executive officers|executive officers"
-                            r"( of the registrant)?|human capital( resources| management)?|our employees|employees)\s*$",
-                            re.I)
-_TAGGY = re.compile(r"\b[a-z][\w-]*:[A-Za-z]\w*")
-_SENT = re.compile(r"(?<=[.!?])\s+(?=[A-Z])")
-_KEY = re.compile(r"\b(customers?|suppliers?|vendors?|sole[- ]source|single[- ]source|concentration|"
-                  r"distributors?|contract manufactur\w*|foundr(y|ies)|accounted for (approximately )?\d+|"
-                  r"\d+(\.\d+)?\s?% of (our )?(total |net |consolidated )?(sales|revenues?))\b", re.I)
-
-
-def clean_input(text: str) -> str:
-    """The profile's text: without the sections that say nothing about the business, and without a tail of XBRL
-    tags or number tables (ONEG, RCON). Pure, so ``_input_hashes`` hashes what ``_prepare`` sends."""
-    secs = profile_v3._sections(text or "")
-    keep = [sec for sec in secs if not _DROP_HEADINGS.match(sec.strip().splitlines()[0] if sec.strip() else "")]
-    lines = "".join(keep).rstrip().split("\n")
-    popped = False
-    while lines:
-        ln = lines[-1].replace("\u200b", "").strip()
-        dense = sum(c.isdigit() or c in "¥$€£,.%()-" for c in ln) / max(len(ln.replace(" ", "")), 1)
-        if ln and not _TAGGY.search(ln) and dense < 0.5:
-            break
-        lines.pop()
-        popped = True
-    # A text with nothing to drop is sent as it is, so its hash and its kept profile stay the same.
-    return "\n".join(lines) if popped or len(keep) < len(secs) else (text or "")
-
-
-def filing_sentences(whole: str, item: str) -> list[str]:
-    """The filing's customer / supplier / concentration sentences that ``item`` does not already hold, at most 40."""
-    have = re.sub(r"\s+", " ", item or "")
-    out, seen = [], set()
-    for sent in _SENT.split(re.sub(r"\s+", " ", whole or "")):
-        sent = sent.strip()
-        if not (40 <= len(sent) <= 500) or not _KEY.search(sent) or sent[:120] in have or sent.lower()[:120] in seen:
-            continue
-        seen.add(sent.lower()[:120])
-        out.append(sent)
-        if len(out) >= MAX_SENTENCES:
-            break
     return out
 
 

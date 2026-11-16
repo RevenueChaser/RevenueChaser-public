@@ -143,7 +143,7 @@ def _plan(q: Question, ctx: base.RunContext) -> tuple[list[asker.Job], dict[tupl
     jobs, prior, no_text = [], {}, []
     for cik in ciks:
         inp = inputs.get(cik)
-        if inp is None or not inp.text:
+        if inp is None or not (inp.text or inp.hash):
             row = {"question": q.id, "prompt_version": q.prompt_version, "cik": cik, "accession": "",
                    "document": "", "input_hash": "", "provider": q.provider, "model": q.writer_model}
             if _key(row) not in have and (q.id, q.prompt_version, cik) not in textless:

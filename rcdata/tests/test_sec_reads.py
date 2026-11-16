@@ -219,6 +219,44 @@ def test_a_stop_inside_a_filing_keeps_the_chunks_already_answered(http_mock):
             reads.held("test.products").values()] == [("partial", 0, "1", '{"products": ["a"]}')]  # not an attempt
 
 
+def test_a_questions_merge_is_given_each_answer_with_the_length_of_its_message(http_mock):
+    """The profile weights a segment's share by its chunk's length, so the lengths go to the merge."""
+    http_mock.add("/chat/completions", chat('{"products": ["a"]}'))
+    seen = []
+    question(ciks=("789019",), chunk_chars=30,
+             merge=lambda parts: seen.append([chars for _answer, chars in parts]) or parts[0][0])
+    run()
+    assert seen == [[30, len(TEXT["789019"]) - 30]]
+    assert [r["answer"] for r in reads.held("test.products").values()] == ['{"products": ["a"]}']
+
+
+def test_a_question_that_keeps_no_text_reads_one_company_at_a_time(http_mock):
+    """``inputs`` gives a hash and no text; ``fill`` gives the text of the company being asked, and only of it."""
+    from dataclasses import replace
+    http_mock.add("/chat/completions", chat('{"products": ["Azure"]}'))
+    filled = []
+
+    def fill(cik, inp):
+        filled.append(cik)
+        return replace(inp, text=TEXT[cik], messages=(f"Company {cik}: {TEXT[cik]}",))
+
+    q = questions.register(questions.Question(
+        id="test.light", owner="test", system="List the products as JSON.", prompt_version="t1",
+        scope=lambda: ["789019", "320193", "999"],
+        inputs=lambda wanted: {c: questions.Input(f"acc-{c}", f"{c}.htm", date(2026, 2, 1), "", "ours-2",
+                                                  hash=f"hash-of-{c}") for c in wanted if c in TEXT},
+        parse=parse, fill=fill))
+    run()
+    assert sorted(filled) == ["320193", "789019"]
+    sent = sorted(json.loads(r.content)["messages"][1]["content"] for r in http_mock.requests)
+    assert sent == [f"Company 320193: {TEXT['320193']}", f"Company 789019: {TEXT['789019']}"]
+    assert [(k[2], k[5], r["status"]) for k, r in sorted(reads.held(q.id).items())] == [
+        ("320193", "hash-of-320193", "ok"), ("789019", "hash-of-789019", "ok"), ("999", "", "no_text")]
+
+    run()
+    assert len(filled) == 2 and len(http_mock.requests) == 2        # the same hash: nothing is read or asked again
+
+
 def test_deepseek_off_peak_holds_back_only_its_own_questions(http_mock, monkeypatch):
     http_mock.add("/chat/completions", chat('{"products": ["x"]}'))
     monkeypatch.setattr(deepseek, "peak_blocked", lambda now=None: True)
