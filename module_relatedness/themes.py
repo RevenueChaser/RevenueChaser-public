@@ -92,10 +92,21 @@ def nmf_assign(X, k: int, seed: int = 0, fit: NmfFit = DEFAULT_FIT) -> np.ndarra
     return W.argmax(axis=1)
 
 
-def stability(X, k: int, seeds: int = SEEDS, fit: NmfFit = DEFAULT_FIT) -> float:
-    """Mean pairwise ARI of the fine assignment across ``seeds`` NMF runs."""
+def kmeans_assign(X, k: int, seed: int = 0, fit: NmfFit = DEFAULT_FIT) -> np.ndarray:
+    """Fine themes of the ``embedding`` method (avo, 16 Nov 2026): k-means on the companies' unit vectors (bge-small,
+    ``embeddings.company_vectors``). ``fit`` is the NMF's and is not read; it keeps one ``assign`` signature."""
+    from sklearn.cluster import KMeans
+    return KMeans(n_clusters=k, random_state=seed, n_init=1).fit_predict(X)
+
+
+METHODS = ("nmf", "embedding")
+
+
+def stability(X, k: int, seeds: int = SEEDS, fit: NmfFit = DEFAULT_FIT, assign=None) -> float:
+    """Mean pairwise ARI of the fine assignment across ``seeds`` runs of ``assign`` (NMF when None)."""
     from sklearn.metrics import adjusted_rand_score
-    labels = [nmf_assign(X, k, seed=s, fit=fit) for s in range(seeds)]
+    assign = assign or nmf_assign
+    labels = [assign(X, k, seed=s, fit=fit) for s in range(seeds)]
     pairs = [(i, j) for i in range(seeds) for j in range(i + 1, seeds)]
     if not pairs:
         return 1.0
@@ -108,7 +119,7 @@ def _min_size(labels: np.ndarray) -> int:
 
 
 def _choose(X, candidates: list[int], seeds: int, min_size: int,
-            floor: float, fit: NmfFit = DEFAULT_FIT) -> tuple[int, float]:
+            floor: float, fit: NmfFit = DEFAULT_FIT, assign=None) -> tuple[int, float]:
     """``(k, stability)``: the smallest stable ``k`` with every theme >= ``min_size``.
 
     Candidates are clamped to ``k < min(n, n_features)`` (the nndsvd inits raise
@@ -116,15 +127,16 @@ def _choose(X, candidates: list[int], seeds: int, min_size: int,
     stable candidate wins (ties: smaller ``k``); when none is usable at all, the
     size-based default ``max(2, n // MIN_SIZE)``. Every NMF here uses ``fit``.
     """
+    assign = assign or nmf_assign
     n = X.shape[0]
     cap = min(n, X.shape[1])
     scored = []
     for k in sorted({int(c) for c in candidates if 2 <= int(c) < cap}):
-        lab = nmf_assign(X, k, seed=0, fit=fit)
-        scored.append((k, stability(X, k, seeds, fit=fit), _min_size(lab)))
+        lab = assign(X, k, seed=0, fit=fit)
+        scored.append((k, stability(X, k, seeds, fit=fit, assign=assign), _min_size(lab)))
     if not scored:
         k = max(2, min(n // MIN_SIZE, cap - 1))
-        return k, stability(X, k, seeds, fit=fit)
+        return k, stability(X, k, seeds, fit=fit, assign=assign)
     ok = [s for s in scored if s[1] >= floor and s[2] >= min_size]
     if ok:
         best = min(ok, key=lambda s: s[0])
@@ -180,7 +192,7 @@ def nested_parents(X, fine: np.ndarray, k_medium: int, k_coarse: int):
 def build_shadow(candidates=(60, 90, 120, 150), k_medium: int | None = None,
                  k_coarse: int = 25, run_id: str | None = None,
                  profiles: dict | None = None, universe=None,
-                 fit: NmfFit = DEFAULT_FIT) -> dict:
+                 fit: NmfFit = DEFAULT_FIT, method: str = "nmf") -> dict:
     """Compute the nested themes and write the shadow tables. No LLM naming.
 
     The fit covers ``universe`` only (#108 S0): the stored profiles also hold names that fell below the floor, left
@@ -196,7 +208,15 @@ def build_shadow(candidates=(60, 90, 120, 150), k_medium: int | None = None,
     ``k_medium_requested`` in the result is the value asked for (``None`` when derived), so a caller can see the
     clamp instead of only its effect: #57 compares ``k_medium`` in ``{n_fine, n_fine // 2, n_fine // 3}``, and the
     first of those is clamped by definition.
+
+    ``method`` picks the fine cut (avo, 16 Nov 2026: build both and compare): ``nmf`` factorises the TF-IDF tag
+    matrix; ``embedding`` clusters the companies' stored bge-small vectors with k-means. Both share the k search,
+    the medium/coarse merge, the tag rows the namer reads and the tables, so naming and cutover take either run.
+    A company with no vector is unthemed under ``embedding``.
     """
+    if method not in METHODS:
+        raise ValueError(f"theme method must be one of {METHODS}, not {method!r}")
+    assign = kmeans_assign if method == "embedding" else nmf_assign   # looked up per call: tests patch them
     if profiles is None:
         profiles = rel_store.load_profiles()
         if universe is None:
@@ -212,26 +232,34 @@ def build_shadow(candidates=(60, 90, 120, 150), k_medium: int | None = None,
     if len(profiles) < MIN_PROFILES:
         return {"n": len(profiles), "error": "not enough profiles", "out_of_universe": out_of_universe}
 
-    try:
-        X, terms, tickers = tag_matrix(profiles)
-    except ValueError as exc:             # e.g. every tag pruned by min_df/max_df
-        return {"n": len(profiles), "error": f"no usable tags: {exc}", "out_of_universe": out_of_universe}
-    if X.shape[1] < 3:
-        return {"n": len(profiles), "error": "not enough distinct tags", "out_of_universe": out_of_universe}
-    # A name whose tags are all below min_df has an all-zero row: NMF would park
-    # it in theme 0 (argmax of zeros). Leave it unthemed instead.
-    keep = np.asarray(X.getnnz(axis=1) > 0)
-    unthemed = int((~keep).sum())
-    if unthemed:
-        X = X[keep]
-        tickers = [t for t, k in zip(tickers, keep) if k]
+    if method == "embedding":
+        from . import embeddings
+        vectors = embeddings.company_vectors(rel_store.load_profile_json(list(profiles)), write=False)
+        tickers = sorted(t for t in profiles if t in vectors)
+        unthemed = len(profiles) - len(tickers)
         profiles = {t: profiles[t] for t in tickers}
+        X = np.vstack([vectors[t] for t in tickers]) if tickers else np.zeros((0, 1))
+    else:
+        try:
+            X, terms, tickers = tag_matrix(profiles)
+        except ValueError as exc:             # e.g. every tag pruned by min_df/max_df
+            return {"n": len(profiles), "error": f"no usable tags: {exc}", "out_of_universe": out_of_universe}
+        if X.shape[1] < 3:
+            return {"n": len(profiles), "error": "not enough distinct tags", "out_of_universe": out_of_universe}
+        # A name whose tags are all below min_df has an all-zero row: NMF would park
+        # it in theme 0 (argmax of zeros). Leave it unthemed instead.
+        keep = np.asarray(X.getnnz(axis=1) > 0)
+        unthemed = int((~keep).sum())
+        if unthemed:
+            X = X[keep]
+            tickers = [t for t, k in zip(tickers, keep) if k]
+            profiles = {t: profiles[t] for t in tickers}
     if len(tickers) < MIN_PROFILES:
         return {"n": len(tickers), "error": "not enough profiles", "unthemed": unthemed,
                 "out_of_universe": out_of_universe}
     k_fine, fine_stability = _choose(X, list(candidates), SEEDS, MIN_SIZE,
-                                     STABILITY_FLOOR, fit)
-    fine = nmf_assign(X, k_fine, seed=0, fit=fit)
+                                     STABILITY_FLOOR, fit, assign)
+    fine = assign(X, k_fine, seed=0, fit=fit)
     n_fine = len(set(fine.tolist()))      # an empty NMF component leaves fewer fine themes
     # The medium level is halved from the realised fine count (#433). An explicit
     # k_medium is honoured; when none is given we derive it. In every case the
@@ -244,7 +272,7 @@ def build_shadow(candidates=(60, 90, 120, 150), k_medium: int | None = None,
                     "default" if requested is None else requested, derived, clamped, n_fine)
     k_medium = clamped
     ids, med, coarse = nested_parents(X, fine, k_medium, k_coarse)
-    run_id = run_id or f"nmf-{_now()}"
+    run_id = run_id or f"{'emb' if method == 'embedding' else 'nmf'}-{_now()}"
 
     tag_index: dict[int, set] = {i: set() for i in ids}
     _, docs = tag_docs(profiles)
@@ -311,7 +339,8 @@ def build_shadow(candidates=(60, 90, 120, 150), k_medium: int | None = None,
             "k_medium": int(len(set(med.tolist()))), "k_medium_requested": requested,
             "k_coarse": int(len(set(coarse.tolist()))),
             "themes": len(theme_rows), "members": len(member_rows),
-            "unthemed": unthemed, "out_of_universe": out_of_universe, "fit": asdict(fit)}
+            "unthemed": unthemed, "out_of_universe": out_of_universe, "fit": asdict(fit), "method": method,
+            "stability": fine_stability}
 
 
 def _delete_run_rows(tx, run_id: str, tables) -> None:
@@ -375,6 +404,33 @@ def run_rows(table: str, run_id: str, level: str | None = None) -> list[dict]:
         args.append(level)
     order = ROW_ORDER.get(table)
     return rawstore.query(f"{sql} ORDER BY {order}" if order else sql, args, db="relatedness")
+
+
+def _level_paths(run_id: str) -> dict[str, dict[str, str]]:
+    """``{ticker: {level: theme_id}}`` of a run, walking each member's fine theme up its parents."""
+    parent = {r["theme_id"]: r.get("parent_id") or "" for r in run_rows("relatedness_themes", run_id)}
+    out = {}
+    for m in run_rows("relatedness_theme_members", run_id):
+        fine = m["theme_id"]
+        medium = parent.get(fine, "")
+        out[m["ticker"]] = {"fine": fine, "medium": medium, "coarse": parent.get(medium, "")}
+    return out
+
+
+def compare_runs(a: str, b: str) -> dict:
+    """Two theme runs side by side over the companies both theme (avo, 16 Nov 2026: the tag NMF against the
+    embedding clusters before one is cut over). Per level: each run's theme count and the adjusted Rand index of
+    the two assignments (1 = the same grouping, about 0 = unrelated)."""
+    from sklearn.metrics import adjusted_rand_score
+    pa, pb = _level_paths(a), _level_paths(b)
+    both = sorted(set(pa) & set(pb))
+    out: dict = {"companies": {a: len(pa), b: len(pb), "both": len(both)}}
+    for level in LEVELS:
+        out[level] = {a: len({p[level] for p in pa.values()}), b: len({p[level] for p in pb.values()}),
+                      "ari": (round(float(adjusted_rand_score([pa[t][level] for t in both],
+                                                              [pb[t][level] for t in both])), 3)
+                              if both else None)}
+    return out
 
 
 def _useful_tag(tag: str) -> bool:
