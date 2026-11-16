@@ -30,3 +30,27 @@ def test_an_empty_run_deletes_nothing(rawstore_tmp_db):
     store.save_scores({"AAA": [{"peer": "BBB", "score": 0.5}]})
     assert store.save_scores({}) == 0
     assert _pairs() == {("AAA", "BBB"): 0.5}
+
+
+def _fetch_returns(monkeypatch, peers):
+    from RevenueChaser.module_relatedness import engine
+    monkeypatch.setattr(engine, "_run", lambda *a, **k: {"n": len(peers), "peers": peers})
+    return engine
+
+
+def test_a_whole_board_fetch_keeps_its_peer_scores(rawstore_tmp_db, monkeypatch):
+    """Decision F (avo, 16 Nov 2026): the Fetch's scores replace the stored ones, so the old v3b rows retire."""
+    store.save_scores({"OLD": [{"peer": "V3B", "score": 0.1}]})
+    engine = _fetch_returns(monkeypatch, {"AAA": [{"peer": "BBB", "score": 0.7}]})
+    engine.run(no_fetch=False, provider="evren")
+    assert _pairs() == {("AAA", "BBB"): 0.7}
+
+
+def test_a_sliced_fetch_or_a_refresh_leaves_the_stored_scores(rawstore_tmp_db, monkeypatch, tmp_path):
+    store.save_scores({"AAA": [{"peer": "BBB", "score": 0.5}]})
+    engine = _fetch_returns(monkeypatch, {"CCC": [{"peer": "DDD", "score": 0.9}]})
+    monkeypatch.setattr(engine.config, "RELATEDNESS_JSON", tmp_path / "missing.json")
+    engine.run(no_fetch=False, tickers=["CCC"], provider="evren")
+    engine.run(no_fetch=False, limit=1, provider="evren")
+    engine.run(no_fetch=True)
+    assert _pairs() == {("AAA", "BBB"): 0.5}
