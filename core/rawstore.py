@@ -74,7 +74,7 @@ def _db_of(name: str) -> str:
 #: the peer lock, the schema stamp and the ``boards`` backup step — and for nothing else. It is never rebuilt and
 #: never written whole.
 BOARD_DBS = ("news", "welcome", "relatedness", "comovement", "asymmetric_growth", "swing_potential",
-             "fundamentals", "sector_rotation", "leaps", "oipd", "forecast", "spx_gamma", "sec_13f", "watchlists",
+             "fundamentals", "sector_rotation", "oipd", "forecast", "spx_gamma", "sec_13f", "watchlists",
              "value_chain")
 #: The folder of the board files, beside the raw store; ``rcdata/backup.py`` copies ``boards/*.duckdb``.
 BOARDS_DIRNAME = "boards"
@@ -674,17 +674,6 @@ MANIFEST: dict[str, dict] = {
         "write": "upsert",
         "sources": ["swing_potential/info/{TICKER}.json"],
     },
-    "leaps_cache": {
-        "db": "leaps",
-        "history_mode": "latest_cache",
-        "key": ["ticker"],
-        "columns": ["ticker TEXT PRIMARY KEY", "payload JSON",
-                    # #127: epoch seconds at fetch. NULL on older rows (unknown, never 0). ALTER, no bump.
-                    "fetched_at DOUBLE"],
-        "kind": "json_payload",
-        "write": "upsert",
-        "sources": ["leaps/cache/{TICKER}.json"],
-    },
     "rotation_holdings": {
         "db": "sector_rotation",
         "history_mode": "latest_cache",
@@ -1107,21 +1096,6 @@ MANIFEST: dict[str, dict] = {
         "kind": "tabular",
         "write": "replace",
         "sources": ["sector_rotation/snapshots/{ASOF}.json"],
-    },
-    "leaps_flow_prints": {
-        "db": "leaps",
-        "history_mode": "event",
-        "key": ["id"],
-        "columns": [
-            "id TEXT PRIMARY KEY", "ticker TEXT", "strike DOUBLE", "expiry TEXT",
-            "premium DOUBLE", "size INTEGER", "option_type TEXT", "delta DOUBLE",
-            "next_earnings_date TEXT", "executed_at TEXT", "discovered_at TEXT",
-            "ask_vol DOUBLE", "bid_vol DOUBLE", "source TEXT", "fetched_at DOUBLE",
-            "session_date DATE", "run_at DOUBLE",
-        ],
-        "kind": "tabular",
-        "write": "append",
-        "sources": ["leaps/radar.db"],
     },
     "ticker_scores": {
         "db": "asymmetric_growth",

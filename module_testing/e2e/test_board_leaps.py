@@ -32,8 +32,6 @@ class TestScanIsSwitchedOff:
         dashboard.post_fetch("/run/module_leaps")
         dashboard.wait_until_idle()
         assert provider_routes.request_count == before
-        assert dashboard.table_count("leaps_flow_prints") == 0
-        assert dashboard.table_count("leaps_cache") == 0
 
     def test_the_tab_serves_the_no_data_page(self, dashboard):
         """No far-dated session is stored yet (#746), so the tab says so -- 200 with a reason, not a 500."""

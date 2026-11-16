@@ -138,9 +138,12 @@ class TestBulkParity:
 
 
     def test_append_duplicate_keys_first_wins(self, rawstore_tmp_db):
-        rows = [{"id": "P1", "ticker": "AAPL", "premium": float(i)} for i in range(100)]
-        rawstore.write_rows("leaps_flow_prints", rows)
-        assert rawstore.get("leaps_flow_prints", "P1")["premium"] == 0.0
+        # forecast_ledger is the one append table left since leaps_flow_prints went (#746 plan step 5).
+        rows = [{"source": "s", "forecast_date": "2026-11-02", "subject": "AAPL", "target_type": "t",
+                 "target_date": "2026-12-01", "score": float(i)} for i in range(100)]
+        rawstore.write_rows("forecast_ledger", rows)
+        got = rawstore.query("SELECT score FROM forecast_ledger", db="forecast")
+        assert [r["score"] for r in got] == [0.0]
 
 
 # ── one handle per burst ─────────────────────────────────────────────────────

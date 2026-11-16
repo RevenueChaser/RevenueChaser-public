@@ -56,18 +56,6 @@ def test_rotation_snapshot_populated(rawstore_tmp_db):
 
 
 
-def test_leaps_store_populated(rawstore_tmp_db):
-    # The old scan that wrote these two is gone (#746); the tables stay in the manifest until avo's "sil".
-    rawstore.write_rows("leaps_cache", [{"ticker": "NOK", "payload": {"latest": {"label": "Quiet"}, "history": []}}])
-    assert rawstore.get("leaps_cache", "NOK")["payload"]["latest"]["label"] == "Quiet"
-    rawstore.write_rows("leaps_flow_prints", [{"id": "p1", "ticker": "AAPL", "strike": 200.0, "expiry": "2027-01-15",
-                                               "premium": 1000.0, "size": 1, "option_type": "call", "delta": 0.8,
-                                               "executed_at": "2026-08-17T00:00:00Z", "ask_vol": 1, "bid_vol": 1}])
-    assert rawstore.count("leaps_flow_prints") == 1
-
-
-
-
 def test_watchlist_populated(rawstore_tmp_db):
     rawstore.save_watchlist({"AAPL", "MSFT"})
     assert rawstore.load_watchlist() == {"AAPL", "MSFT"}
@@ -165,7 +153,6 @@ _ROOT = Path(__file__).resolve().parent.parent.parent
 
 POPULATION: dict[str, str] = {
     "swing_info": f"{_HERE}::test_swing_info_populated",
-    "leaps_cache": f"{_HERE}::test_leaps_store_populated",
     "rotation_holdings": f"{_HERE}::test_rotation_holdings_populated",
     "comov_runs": "module_comovement/tests/test_comovement.py"
                    "::test_engine_run_persists_and_clusters",
@@ -183,7 +170,6 @@ POPULATION: dict[str, str] = {
                    "::test_run_persists_corpus_and_edges",
     "store_schema": "core/tests/test_store_schema_stamp.py::test_an_existing_unstamped_file_is_stamped_with_the_current_version",
     "rotation_snapshots": f"{_HERE}::test_rotation_snapshot_populated",
-    "leaps_flow_prints": f"{_HERE}::test_leaps_store_populated",
     "ticker_scores": f"{_HERE}::test_ticker_store_populated",
     "ticker_themes": "core/tests/test_ticker_themes.py::test_backfill_writes_legacy_rows",
     "fundamentals_scores": "module_fundamentals/tests/test_fundamental_scores.py::test_persist_writes_both",
