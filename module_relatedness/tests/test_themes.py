@@ -624,7 +624,7 @@ def test_choose_k_follows_its_docstring(monkeypatch):
     stab = {2: 0.95, 3: 0.99, 4: 0.99}
     sizes = {2: 25, 3: 40, 4: 40}
     monkeypatch.setattr(themes, "nmf_assign", lambda X, k, seed=0, fit=None: np.repeat(np.arange(k), 50 // k))
-    monkeypatch.setattr(themes, "stability", lambda X, k, seeds=themes.SEEDS, fit=None: stab[k])
+    monkeypatch.setattr(themes, "stability", lambda X, k, seeds=themes.SEEDS, fit=None, assign=None: stab[k])
     monkeypatch.setattr(themes, "_min_size", lambda lab: sizes[len(set(lab.tolist()))])
     X = np.zeros((50, 10))
     assert themes.choose_k(X, [2, 3, 4], min_size=20, floor=0.9) == 2
@@ -640,7 +640,7 @@ def test_stability_is_computed_once_per_candidate(rawstore_tmp_db, monkeypatch):
     calls = []
     real = themes.stability
     monkeypatch.setattr(themes, "stability",
-                        lambda X, k, seeds=themes.SEEDS, fit=themes.DEFAULT_FIT: calls.append(k) or real(X, k, 2, fit))
+                        lambda X, k, seeds=themes.SEEDS, fit=themes.DEFAULT_FIT, assign=None: calls.append(k) or real(X, k, 2, fit, assign))
     themes.build_shadow(run_id="once", profiles=_half(30), candidates=(2, 3),
                         k_medium=2, k_coarse=2)
     assert sorted(calls) == [2, 3]                          # nothing recomputed for the winner
