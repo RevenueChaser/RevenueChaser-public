@@ -183,39 +183,3 @@ class TestProviderEarningsRows:
         assert uw.earnings_data("AAPL") == {"a": 1}
         assert uw.earnings_history("AAPL") == [{"a": 1}, {"a": 2}]
         assert calls == ["/earnings/AAPL"] * 3
-
-
-class _LeapsCountingUW(_CountingUW):
-    """Counts the LEAPS reads the scoring pool makes; C26 expects none."""
-
-    def __init__(self, **ov):
-        super().__init__(**ov)
-        self.leaps_calls = []
-
-    def oi_per_expiry(self, ticker):
-        self.leaps_calls.append(ticker)
-        return []
-
-    def flow_per_expiry(self, ticker):
-        self.leaps_calls.append(ticker)
-        return []
-
-    def iv_rank(self, ticker):
-        self.leaps_calls.append(ticker)
-        return []
-
-
-class TestLeapsIsReadOnly:
-    """C26 (#383, LP-D): the Earnings scoring pool never fetches or writes LEAPS.
-
-    Every card is "N/A" (#746: no LEAPS label until the opened share is tested) — no UW call, no store write.
-    """
-
-    def test_the_pool_makes_no_leaps_uw_call_and_stays_n_a(self):
-        ts = _tickers(8)
-        uw = _LeapsCountingUW()
-        _, _, cards = _run(ts, {t: _strong() for t in ts}, uw=uw)
-        assert len(cards) == 8
-        assert uw.leaps_calls == []                     # no LEAPS UW read at all
-        assert {c.leaps_label for c in cards} == {"N/A"}
-        assert {c.leaps_as_of for c in cards} == {""}

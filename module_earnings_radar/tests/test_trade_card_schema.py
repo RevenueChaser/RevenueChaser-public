@@ -30,8 +30,6 @@ RADAR_FIELDS = {
     "agh_points", "agh_accel", "agh_owners", "agh_dilution",
     # Decision packet extras
     "direction_score", "volatility_edge_score", "macro_veto", "attention_score",
-    # LEAPS label age (C26)
-    "leaps_as_of",
 }
 
 

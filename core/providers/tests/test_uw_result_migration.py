@@ -43,11 +43,6 @@ METHODS = [
     ("greek_exposure_by_strike", "greek_exposure_by_strike_result", ("AAPL",), {}),
     ("greek_exposure_by_expiry", "greek_exposure_by_expiry_result", ("AAPL",), {}),
     ("spot_exposures_by_strike", "spot_exposures_by_strike_result", ("AAPL",), {"min_strike": 1.0}),
-    ("oi_per_expiry", "oi_per_expiry_result", ("AAPL",), {}),
-    ("flow_per_expiry", "flow_per_expiry_result", ("AAPL",), {}),
-    ("iv_rank", "iv_rank_result", ("AAPL",), {}),
-    ("market_oi_change", "market_oi_change_result", (), {"limit": 10}),
-    ("option_trades", "option_trades_result", (), {"ticker": "AAPL", "min_dte": 365}),
     ("flow_alerts", "flow_alerts_result", (), {"min_premium": 1e6}),
     ("expiry_breakdown", "expiry_breakdown_result", ("AAPL",), {}),
     ("short_interest", "short_interest_result", ("AAPL",), {}),
@@ -240,12 +235,6 @@ def test_the_module_still_exposes_the_compatibility_wrapper():
 
 
 # ── #519 finding 5: a dashed ticker outside a path is sent and keyed the way the caller wrote it ─────────────────
-
-def test_option_trades_sends_a_share_class_the_way_uw_writes_it():
-    c, calls = _client(_ok({"data": []}))
-    c.option_trades_result("BRK-B")
-    assert calls[0][1]["ticker_symbol"] == "BRK.B"
-
 
 @pytest.mark.parametrize("twin,param,key", [("screener_batch_result", "ticker", "ticker"),
                                             ("short_screener_result", "tickers", "symbol")])

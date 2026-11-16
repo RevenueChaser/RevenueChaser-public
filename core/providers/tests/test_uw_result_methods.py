@@ -62,8 +62,8 @@ TICKER_METHODS = [
     "earnings_data", "earnings_history", "stock_earnings", "earnings_rows", "fundamentals",
     "financials", "income_statements", "balance_sheets", "cash_flows", "flow_recent", "dark_pool",
     "greeks", "gex_levels", "term_structure", "greek_exposure", "greek_exposure_by_strike",
-    "greek_exposure_by_expiry", "spot_exposures_by_strike", "oi_per_expiry", "flow_per_expiry",
-    "iv_rank", "expiry_breakdown", "option_contracts", "short_interest", "insider", "etf_holdings",
+    "greek_exposure_by_expiry", "spot_exposures_by_strike", "expiry_breakdown", "option_contracts",
+    "short_interest", "insider", "etf_holdings",
     "etf_ohlc", "ohlc_daily", "ohlc_latest", "ticker_info", "options_volume", "etf_flow",
     "etf_ohlc_result", "ohlc_daily_result", "flow_recent_result", "option_contracts_result",
 ]

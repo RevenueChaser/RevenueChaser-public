@@ -241,15 +241,3 @@ class TradeCard:
     agh_accel: Optional[bool] = None
     agh_owners: str = ""
     agh_dilution: bool = False
-    leaps_label: str = ""
-    leaps_as_of: str = ""
-    # None, not 0, when the LEAPS cache has no footprint for the name (#730 item 3). The card's LEAPS row is
-    # hidden while the label is N/A, so a 0 was invisible on the board but was written into the card history as
-    # if it had been measured: a score of 0 and "no far-dated open interest" are not the same reading.
-    leaps_score: Optional[int] = None
-    leaps_far_call_oi: Optional[int] = None
-    leaps_far_put_oi: Optional[int] = None
-    leaps_far_call_share: Optional[float] = None
-    leaps_growth_1d_pct: Optional[float] = None
-    leaps_growth_q_pct: Optional[float] = None
-    leaps_iv_rank: Optional[float] = None

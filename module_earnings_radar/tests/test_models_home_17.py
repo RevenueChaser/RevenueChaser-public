@@ -268,15 +268,6 @@ TRADE_CARD = [
     ("agh_accel", None),
     ("agh_owners", ""),
     ("agh_dilution", False),
-    ("leaps_label", ""),
-    ("leaps_as_of", ""),
-    ("leaps_score", None),
-    ("leaps_far_call_oi", None),
-    ("leaps_far_put_oi", None),
-    ("leaps_far_call_share", None),
-    ("leaps_growth_1d_pct", None),
-    ("leaps_growth_q_pct", None),
-    ("leaps_iv_rank", None),
 ]
 
 EXPECTED = {

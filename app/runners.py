@@ -147,7 +147,6 @@ def _no_events_text_days(days: list[date]) -> tuple[str, str]:
 
 
 EARNINGS_LATEST = OUTPUT_DIR / "earnings_radar_latest.html"
-LEAPS_LATEST = OUTPUT_DIR / "leaps_latest.html"
 NEWS_LATEST = OUTPUT_DIR / "news_latest.html"
 WELCOME_LATEST = OUTPUT_DIR / "welcome_latest.html"
 ROTATION_LATEST = OUTPUT_DIR / "sector_rotation_latest.html"

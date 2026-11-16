@@ -823,10 +823,6 @@ class EarningsPipeline:
         inst_prints, inst_span = _flow_window(flow_recent_raw)
         gex_struct = _gex_structure_label(spot, gex, gex_profile)
 
-        # No LEAPS label (#746): the old scan that wrote one is off and its cache is gone, and the opened share
-        # carries no label until #746 step 6 tests it. The card keeps the fields empty, so the row stays hidden.
-        leaps = {}
-
         inst_call_premium = float(flow.get("inst_call", 0) or 0)
         inst_put_premium = float(flow.get("inst_put", 0) or 0)
         sweep_premium = float(flow.get("sweep", 0) or 0)
@@ -846,7 +842,6 @@ class EarningsPipeline:
             "options_source": (f"stored {stored_opt['session_date']}" if stored_opt else "live"),
             "fin_records": fin_records,
             "current_price": spot,
-            "leaps": leaps,
             "calendar_event": cal_raw,
             "rotation_quadrant": rotation_quadrant,
             "watchlist": ticker in self._watchlist,
@@ -1009,15 +1004,6 @@ class EarningsPipeline:
             agh_accel=agh.get("agh_accel"),
             agh_owners=agh.get("agh_owners") or "",
             agh_dilution=bool(agh.get("agh_dilution")),
-            leaps_label=leaps.get("label", "N/A"),
-            leaps_as_of=str(leaps.get("as_of") or ""),
-            leaps_score=_leaps_int(leaps.get("score")),
-            leaps_far_call_oi=_leaps_int(leaps.get("far_call_oi")),
-            leaps_far_put_oi=_leaps_int(leaps.get("far_put_oi")),
-            leaps_far_call_share=leaps.get("far_call_share"),
-            leaps_growth_1d_pct=leaps.get("far_oi_growth_1d_pct"),
-            leaps_growth_q_pct=leaps.get("far_oi_growth_q_pct"),
-            leaps_iv_rank=leaps.get("iv_rank"),
             rule_audit=rule_audit,
             detail_json=detail_json,
             trade_read=trade_read,
@@ -1727,20 +1713,6 @@ def _safe_float(v):
     """
     try:
         return float(v) if v not in (None, "") else None
-    except (ValueError, TypeError):
-        return None
-
-
-def _leaps_int(v):
-    """A LEAPS count or score as an int, or ``None`` when the footprint has none (#730 item 3).
-
-    Not ``int(v or 0)``: the LEAPS cache holds no row for most names, and a 0 recorded in the card history
-    reads as a measured zero. A real 0 the cache does carry stays 0.
-    """
-    if v in (None, ""):
-        return None
-    try:
-        return int(v)
     except (ValueError, TypeError):
         return None
 

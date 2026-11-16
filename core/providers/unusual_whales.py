@@ -773,68 +773,7 @@ class UWClient:
             params["max_strike"] = max_strike
         return self._shaped(f"/stock/{_seg(uw_symbol(ticker))}/spot-exposures/strike", params, _rows)
 
-    # ── OI / Flow per expiry (LEAPS accumulation) ──
-    def oi_per_expiry(self, ticker: str, date: str = None) -> list[dict]:
-        return self.oi_per_expiry_result(ticker, date).data
-
-    def oi_per_expiry_result(self, ticker: str, date: str = None) -> ProviderResult:
-        """:meth:`oi_per_expiry` with the request outcome (``ok`` or ``failed``)."""
-        params = {"date": date} if date else None
-        return self._shaped(f"/stock/{_seg(uw_symbol(ticker))}/oi-per-expiry", params, _rows)
-
-    def flow_per_expiry(self, ticker: str) -> list[dict]:
-        return self.flow_per_expiry_result(ticker).data
-
-    def flow_per_expiry_result(self, ticker: str) -> ProviderResult:
-        """:meth:`flow_per_expiry` with the request outcome (``ok`` or ``failed``)."""
-        return self._shaped(f"/stock/{_seg(uw_symbol(ticker))}/flow-per-expiry", None, _rows)
-
-    def iv_rank(self, ticker: str) -> list[dict]:
-        return self.iv_rank_result(ticker).data
-
-    def iv_rank_result(self, ticker: str) -> ProviderResult:
-        """:meth:`iv_rank` with the request outcome (``ok`` or ``failed``)."""
-        return self._shaped(f"/stock/{_seg(uw_symbol(ticker))}/iv-rank", None, _rows)
-
-    def market_oi_change(self, limit: int = 200) -> list[dict]:
-        return self.market_oi_change_result(limit).data
-
-    def market_oi_change_result(self, limit: int = 200) -> ProviderResult:
-        """:meth:`market_oi_change` with the request outcome (``ok`` or ``failed``)."""
-        return self._shaped("/market/oi-change", {"limit": limit}, _rows)
-
-    # ── Option trades (raw tape) & flow alerts (LEAPS discovery) ──
-    def option_trades(self, ticker: str = None, min_dte: int = None,
-                      max_dte: int = None, min_premium: float = None,
-                      size_greater_oi: bool = None, limit: int = 250,
-                      page: int = 1, **extra) -> list[dict]:
-        """Raw option tape prints via /api/option-trades.
-
-        Native far-dated filtering via ``min_dte``/``max_dte``; each print
-        carries its own ``delta`` (no separate Greeks call needed).
-        """
-        return self.option_trades_result(ticker, min_dte, max_dte, min_premium, size_greater_oi,
-                                         limit, page, **extra).data
-
-    def option_trades_result(self, ticker: str = None, min_dte: int = None,
-                             max_dte: int = None, min_premium: float = None,
-                             size_greater_oi: bool = None, limit: int = 250,
-                             page: int = 1, **extra) -> ProviderResult:
-        """:meth:`option_trades` with the request outcome (``ok`` or ``failed``)."""
-        params = {"limit": limit, "page": page}
-        if ticker:
-            params["ticker_symbol"] = uw_symbol(ticker)
-        if min_dte is not None:
-            params["min_dte"] = min_dte
-        if max_dte is not None:
-            params["max_dte"] = max_dte
-        if min_premium is not None:
-            params["min_premium"] = min_premium
-        if size_greater_oi is not None:
-            params["size_greater_oi"] = size_greater_oi
-        params.update(extra)
-        return self._shaped("/option-trades", params, _rows)
-
+    # ── Flow alerts ──
     def flow_alerts(self, min_premium: float = None, size_greater_oi: bool = None,
                     is_otm: bool = None, limit: int = 250, **extra) -> list[dict]:
         """Unusual-activity alerts via /api/option-trades/flow-alerts.
