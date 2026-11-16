@@ -3,23 +3,33 @@
 
   Written by a runner whose scan produced no rows, so the tab visibly changes
   instead of silently keeping a stale (or missing) artifact.
+
+  Colours, type and spacing are the shared design system's tokens (``theme_css`` / ``theme_js``,
+  core/reporting_common, set as Jinja globals by core/templating): dark by default, light or auto when the
+  shell's theme switch says so. No colour of its own; a test pins that.
 #}
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>{{ title }}</title>
+<script>{{ theme_js }}</script>
 <style>
-body{background:#0d1117;color:#c9d1d9;font-family:'Segoe UI',Consolas,monospace;padding:40px;font-size:13px}
-@media (max-width:600px){body{padding:16px}}
-h1{color:#58a6ff;font-size:18px;margin-bottom:10px}
-.msg{color:#c9d1d9;font-size:14px;margin:14px 0;line-height:1.6}
-.hint{color:#8b949e;font-size:12px;line-height:1.7}
-.stamp{color:#484f58;font-size:11px;margin-top:24px;border-top:1px solid #21262d;padding-top:10px}
+{{ theme_css }}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:var(--fs-base)/var(--lh-body) var(--font-sans);padding:var(--sp-6)}
+.empty{max-width:72ch;background:var(--card);border:1px solid var(--border);border-radius:var(--r-md);box-shadow:var(--elev-1);padding:var(--sp-5);text-align:left;overflow-wrap:anywhere}
+h1{margin:0 0 var(--sp-3);color:var(--bright);font-size:var(--fs-lg);line-height:var(--lh-head);font-weight:600}
+.msg{margin:0 0 var(--sp-3);font-size:var(--fs-md)}
+.hint{color:var(--muted);font-size:var(--fs-sm)}
+.stamp{color:var(--muted);font-size:var(--fs-xs);margin-top:var(--sp-5);border-top:1px solid var(--border);padding-top:var(--sp-3);font-variant-numeric:tabular-nums}
+@media (max-width:760px){body{padding:var(--sp-4)}.empty{max-width:none;padding:var(--sp-4)}}
 </style></head><body>
+<main class="empty">
 <h1>{{ title }}</h1>
 <div class="msg">{{ message }}</div>
 {% if hint %}
 <div class="hint">{{ hint }}</div>
 {% endif %}
 <div class="stamp">Generated {{ stamp }}</div>
+</main>
 </body></html>
