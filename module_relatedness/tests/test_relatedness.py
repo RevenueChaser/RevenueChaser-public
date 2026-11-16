@@ -281,11 +281,10 @@ def _two_sector_board():
 
 
 def test_the_focal_line_shows_the_sector_then_the_industry(tmp_path):
-    """#266: ``sector · industry · theme``; the sub-industry the line used to show no longer exists."""
+    """#266: ``sector · industry``; no theme until #894 (decision E), no sub-industry."""
     from RevenueChaser.core.tests.board_js import run_board_js
     tail = 'FOCAL = "MSFT"; render(); console.log(JSON.stringify(_els["meta"].textContent));'
-    assert run_board_js(_two_sector_board(), tail, tmp_path) == (
-        "Technology · Software - Application · Cloud")
+    assert run_board_js(_two_sector_board(), tail, tmp_path) == "Technology · Software - Application"
 
 
 def test_the_sector_filter_narrows_the_picker_at_either_level(tmp_path):
