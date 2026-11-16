@@ -27,7 +27,7 @@ from enum import Enum
 from RevenueChaser.core.datahealth import Health
 
 DBS = ("news", "welcome", "relatedness", "comovement", "asymmetric_growth", "swing_potential", "fundamentals",
-       "sector_rotation", "leaps", "oipd", "forecast", "spx_gamma", "sec_13f", "watchlists", "value_chain")
+       "sector_rotation", "oipd", "forecast", "spx_gamma", "sec_13f", "watchlists", "value_chain")
 # the board files (S9, S16); the old raw, edgar, prices and history files are gone (#860)
 
 FROM_RUN_LOG = "from_run_log"
@@ -282,13 +282,6 @@ REGISTRY: tuple[DatasetSpec, ...] = (
         db="relatedness", source=Source.derived, writer=None,
         writer_note="module_relatedness/themes.py; not listed on RC-Relatedness-OffPeak",
         freshness=("theme_runs", "session_date"),
-    ),
-    DatasetSpec(
-        key="leaps", label="LEAPS flow",
-        tables=("leaps_flow_prints", "leaps_cache"),
-        db="leaps", source=Source.uw, writer=None,
-        writer_note="no writer: the LEAPS scan is switched off, so nothing writes these tables",
-        freshness=("leaps_flow_prints", "session_date"),
     ),
     # source unknown: DeepSeek and Grok are not in the provider enum.
     DatasetSpec(

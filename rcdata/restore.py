@@ -1,7 +1,7 @@
 """``python -m RevenueChaser.rcdata restore`` and ``restore-check``: a weekly backup copy back into use.
 
     rcdata restore --step duckdb --latest market --into /tmp/rc-restore     # verify and copy into a folder
-    rcdata restore --step boards --file leaps_20261108_023000_000000.duckdb --live
+    rcdata restore --step boards --file oipd_20261108_023000_000000.duckdb --live
     rcdata restore --step ops --latest --into /tmp/rc-restore
     rcdata restore --step uw-raw --latest --into /mnt/data/scratch          # the whole week folder
     rcdata restore --step edgar-docs --latest --into /tmp/rc-restore        # the zip; unzip it by hand
@@ -232,7 +232,7 @@ def add_parsers(sub) -> None:
     pick = r.add_mutually_exclusive_group(required=True)
     pick.add_argument("--file", help="the copy's name as the backup folder lists it (a week folder for uw-raw)")
     pick.add_argument("--latest", nargs="?", const="", metavar="KIND",
-                      help="the newest copy; for duckdb and boards name the kind or board file (e.g. market, leaps)")
+                      help="the newest copy; for duckdb and boards name the kind or board file (e.g. market, oipd)")
     where = r.add_mutually_exclusive_group(required=True)
     where.add_argument("--into", type=Path, help="write the verified copy into this folder (nothing live is touched)")
     where.add_argument("--live", action="store_true",

@@ -46,10 +46,9 @@ class TestResolvers:
 
 
     def test_leaps_is_the_newest_far_contract_session_not_the_old_tables(self, rawstore_tmp_db, monkeypatch):
-        """#746: the chip reads the table the board reads; the old scan's two tables are never asked."""
+        """#746: the chip reads the table the board reads; the old scan's two tables are gone."""
         from datetime import date
         from RevenueChaser.rcdata import read
-        rawstore.write_rows("leaps_flow_prints", [{"id": "p1", "ticker": "AAPL", "discovered_at": "2026-09-02"}])
         monkeypatch.setattr(read, "far_contract_sessions", lambda: [])
         assert provenance.data_as_of("module_leaps") is None
         monkeypatch.setattr(read, "far_contract_sessions", lambda: [{"session_date": date(2026, 11, 13)},

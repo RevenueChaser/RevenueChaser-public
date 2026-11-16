@@ -654,15 +654,13 @@ class TestRefreshReadsStoreFetchReadsNetwork:
         """Nothing in ``option_far_contract`` yet (#746): the no-data page. No key, no network, no accumulation wording."""
         from RevenueChaser.core import rawstore
         rawstore.save_watchlist({"AAPL"})
-        rawstore.write_rows("leaps_cache", [{"ticker": "AAPL", "payload": {
-            "latest": {"ticker": "AAPL", "label": "Accumulating", "score": 50, "as_of": "2026-09-01"}, "history": []}}])
         monkeypatch.setattr(dashboard, "UWClient", lambda: _NoKey())
 
         body = dashboard.app.test_client().get("/view/module_leaps").get_data(as_text=True)
         assert "No data yet" in body
         assert "#746" in body
         assert "ACCUMULATION RADAR" not in body.upper()   # the old board is never served
-        assert "AAPL" not in body                      # nor does a seeded footprint
+        assert "AAPL" not in body                      # nor a watched name
 
     def test_a_cached_leaps_artifact_is_never_served_again(self, rawstore_tmp_db, tmp_path, monkeypatch):
         """An older build left ``leaps_latest.html`` in .cache/: the no-data page wins, on a Refresh too."""
