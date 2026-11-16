@@ -2092,9 +2092,13 @@ planned, so registration order is run order. A run whose first five replies are 
 stores none of them; a key at three attempts is tried once more after 30 days; and nothing is asked while the
 live table holds more `ok` answers than the Parquet tree (a lost tree must not start a full re-read). **No mass
 re-read without the owner's word:** a run asks by itself only a company's new filing and a retry; a DeepSeek question at most
-200 companies a day (`RC_SEC_READS_DAY_CAP`; provisional until the owner sets it), going on the next day, and an
+200 companies a day (`RC_SEC_READS_DAY_CAP`; the owner's number, 16 Nov 2026), going on the next day, and an
 EVREN question with no day cap, because EVREN has no quota; a changed prompt, a re-cut text and a question's first pass wait for a request that says `"reread": true` (the
 CLI's `--reread`). The run writes and converts every answer inside the ask lock and hands the builder no raw file.
+**The daily check runs at night:** the dataset's day starts at 19:00 New York (`reads.DUE_FROM_NY`), so the hourly
+pass that finds it due is 19:05 New York, 01:05 Amsterdam (the owner, 16 Nov 2026), once its file's automation is on
+and a first run was started by hand. The Settings page and the Grafana RC Fetch board show that next pass and the
+dataset's `limits` line (EVREN no day cap, DeepSeek 200 companies a day).
 A question's
 input may carry its own ready user messages (`Input.messages`) when a plain 60,000-character slice is not what
 its prompt sends. A transient error (a timeout, a 5xx) gives up on that company only, with no attempt counted,

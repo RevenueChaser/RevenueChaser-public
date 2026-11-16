@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import threading
 import time
-from datetime import date
+from datetime import date, datetime, timezone
 
 import pytest
 
@@ -576,3 +576,16 @@ def test_a_flash_model_whose_name_only_contains_the_letters_pro_is_not_refused()
     question(id="test.improved", provider="deepseek", model="deepseek-v4-flash-improved")
     with pytest.raises(ValueError, match="never Pro"):
         question(id="test.pro", provider="deepseek", model="deepseek-v4-pro")
+
+
+def test_the_daily_check_is_due_from_the_0105_amsterdam_pass(monkeypatch):
+    """avo, 16 Nov 2026 09:51: the check runs at night. Its day starts at 19:00 New York, which is 01:00 Amsterdam."""
+    from RevenueChaser.core import calendar
+    monkeypatch.setattr(calendar, "_now", lambda: datetime(2026, 11, 16, 23, 59, tzinfo=timezone.utc))  # 00:59 Tue
+    assert reads.DATASET.default_as_of() == date(2026, 11, 15)
+    monkeypatch.setattr(calendar, "_now", lambda: datetime(2026, 11, 17, 0, 5, tzinfo=timezone.utc))    # 01:05 Tue
+    assert reads.DATASET.default_as_of() == date(2026, 11, 16)
+
+
+def test_the_dataset_says_its_limits_for_the_settings_page_and_grafana():
+    assert reads.DATASET.limits == "EVREN: no day cap · DeepSeek: 200 companies a day"

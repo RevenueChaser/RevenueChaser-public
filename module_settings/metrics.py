@@ -407,7 +407,9 @@ def datasets_detail(now: datetime | None = None, *, datasets: dict | None = None
                 "next": control.next_run_words(schedule, last, control.as_of_kind(ds), cadence,
                                                attended=row["attended"],
                                                starts_by_hand=bool(getattr(ds, "starts_by_hand", False)),
-                                               timer=timer, now=now, mode=mode),
+                                               timer=timer, now=now, mode=mode,
+                                               starts=getattr(ds, "due_from_ny", None)),
+                "limits": getattr(ds, "limits", None),
                 "last": ({k: last.get(k) for k in ("checked_on", "result", "rows", "added", "removed", "note")}
                          if last else None),
                 "runs": [[r.get("checked_on"), r.get("result")] for r in recent],

@@ -15,9 +15,9 @@ OPEN = {"paused": False, "paused_by": None, "paused_at": None}
 
 
 def words(check=None, kind="today_ny", cadence="daily", *, schedule=OPEN, attended=False, starts_by_hand=False,
-          timer=ON, now=NOW, mode="full"):
+          timer=ON, now=NOW, mode="full", starts=None):
     return control.next_run_words(schedule, check, kind, cadence, attended=attended, starts_by_hand=starts_by_hand,
-                                  timer=timer, now=now, mode=mode)
+                                  timer=timer, now=now, mode=mode, starts=starts)
 
 
 def ok(**kw):
@@ -35,6 +35,12 @@ def test_an_attended_dataset_runs_by_hand_only():
 def test_a_dataset_that_starts_by_hand_waits_for_its_first_fetch():
     assert words(None, starts_by_hand=True) == "not before a first Fetch"
     assert words(ok(next_check_due="2026-11-13"), starts_by_hand=True) == "Fri 13 Nov, 06:07 (00:07 New York)"
+
+
+def test_a_dataset_whose_day_starts_in_the_new_york_evening_runs_on_the_night_pass():
+    """The SEC reads' check (avo, 16 Nov 2026): the day starts at 19:00 New York, so the pass is 01:xx Amsterdam."""
+    from datetime import time
+    assert words(ok(next_check_due="2026-11-13"), starts=time(19, 0)) == "Sat 14 Nov, 01:07 (19:07 New York)"
 
 
 def test_an_hourly_dataset_runs_on_every_pass():

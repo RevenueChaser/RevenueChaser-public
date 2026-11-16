@@ -518,6 +518,9 @@ def _jrows(f: dict) -> tuple[str, list[str]]:
             f'<tr class="jd" id="jd-{esc(f["kind"])}-{i}" hidden><td colspan="2"><div class="jdg">'
             f'<div class="jdl"><span class="jk">code name</span><code>{esc(d["dataset"])}</code></div>'
             f'<div class="jdl"><span class="jk">how often</span><span>{esc(d["cadence"] or "")}</span></div>'
+            f'<div class="jdl"><span class="jk">next check</span><span>{esc(d.get("next_words") or "")}</span></div>'
+            + (f'<div class="jdl"><span class="jk">limits</span><span>{esc(d["limits"])}</span></div>'
+               if d.get("limits") else "") +
             f'<div class="jdl"><span class="jk">role</span><span>{esc(control.ROLE_WORDS.get(role, role))}</span></div>'
             f'<div class="jdl"><span class="jk">last check</span><span>{esc(control.day_words(d["checked_on"]))} · '
             f'source as of {esc(control.day_words(d["source_as_of"]))}</span></div></div></td></tr>')
