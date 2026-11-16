@@ -77,3 +77,12 @@ DATASETS.update({sec_forms_forms.DATASET.name: sec_forms_forms.DATASET})
 from .sec_reads import reads as sec_reads_reads  # noqa: E402
 
 DATASETS.update({sec_reads_reads.DATASET.name: sec_reads_reads.DATASET})
+
+# The service's two questions, registered where the dataset is: the builder is the only thing that asks (#894).
+from .sec_reads import company_profile as _sec_questions  # noqa: E402
+
+_sec_questions.register_all()
+# #737: the Fundamentals board's question, last: registration order is run order.
+from .sec_reads import debt_note as _debt_note  # noqa: E402
+
+_debt_note.register_all()

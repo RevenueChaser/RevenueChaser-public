@@ -7,8 +7,8 @@ outside the two sectors the Fundamentals board never scores, whose newest annual
 "debt-free" reading is not repeated here: a filer that tags nothing and pays no interest seldom carries a debt
 note, and when it does, the note is the better answer (``module_fundamentals.debt``: filed > note > inferred).
 
-**Registered on import** (``sec_reads/__init__.py``), so the board's reader knows the current prompt version. Nothing
-is asked by that alone: the dataset ``starts_by_hand``, its automation is off, and a question's first pass waits for a
+**Registered by ``rcdata.build``** (:func:`register_all`, after ``company_profile``'s two, so it runs last), so the
+board's reader knows the current prompt version. Nothing is asked by that alone: the dataset ``starts_by_hand``, its automation is off, and a question's first pass waits for a
 request that says ``reread`` (``reads._plan``, ``NEW_COMPANY_LIMIT``). DeepSeek Flash, at most :data:`MAX_CALLS` a run
 (avo's standing permission for DeepSeek Flash; the day cap of ``reads.DAY_CAP`` applies on top).
 """
@@ -110,4 +110,7 @@ DEBT_NOTE = Question(
     inputs=inputs, parse=note.parse, provider="deepseek", max_calls=MAX_CALLS, chunk_chars=note.MAX_CHARS,
     max_tokens=1_000)
 
-register(DEBT_NOTE)
+
+def register_all() -> None:
+    """Register ``debt.note``. ``rcdata.build`` calls it at import, after ``company_profile.register_all``."""
+    register(DEBT_NOTE)

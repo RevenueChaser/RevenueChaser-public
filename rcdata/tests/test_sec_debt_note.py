@@ -10,7 +10,7 @@ from datetime import date
 import pytest
 
 from RevenueChaser.rcdata import read, sec_debt_note as note
-from RevenueChaser.rcdata.build.sec_reads import company_profile, debt_note, questions
+from RevenueChaser.rcdata.build.sec_reads import company_profile, debt_note
 
 END = date(2025, 12, 31)
 
@@ -111,9 +111,10 @@ def test_the_message_names_the_balance_date_and_holds_each_block_once():
 
 # ── the question ───────────────────────────────────────────────────────────────────────────────────────────────
 
-def test_debt_note_is_registered_on_deepseek_flash_with_a_call_cap():
+def test_debt_note_is_deepseek_flash_with_a_call_cap():
+    """Its registration, and its place in the run order, are checked in a fresh interpreter
+    (``module_relatedness/tests/test_service_profile_bytes.py``): this process's registry is emptied by fixtures."""
     q = debt_note.DEBT_NOTE
-    assert questions.QUESTIONS.get(debt_note.ID) is q
     assert (q.provider, q.max_calls, q.prompt_version) == ("deepseek", 200, note.PROMPT_VERSION)
     assert "pro" not in q.writer_model.lower()
     assert note.PROMPT_VERSION in q.system

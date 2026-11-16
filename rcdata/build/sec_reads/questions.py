@@ -2,7 +2,7 @@
 
 "Kim neresinin okunmasini istiyorsa o araca soyler" (avo, 15 Nov 2026 11:14). The service owns its questions and
 names them by content (plan 2026-11-15_1722 §4.1): one :class:`Question` is added with :func:`register`, and a
-board only reads the answers through ``rcdata.read.sec_reads``. ``debt.note`` is registered (``debt_note.py``).
+board only reads the answers through ``rcdata.read.sec_reads``. ``rcdata.build`` registers ``business.locate``, ``company.profile`` and ``debt.note``, in run order.
 """
 from __future__ import annotations
 

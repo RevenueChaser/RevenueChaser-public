@@ -1,24 +1,27 @@
-"""Value Chain edge precision — the ``>= 0.70`` quality gate.
+"""Value Chain edge precision: the census gate of plan v31 section 6.
 
 Labels live in ``module_value_chain/fixtures/labeled_80.json``: a list of
 ``{id, src, dst_ticker, relation, label, borderline, snippet}`` where ``label``
-is ``true``/``false`` (a human judgement that the edge is correct). They are the
-stratified sample (40 supplier + 40 customer, seed 26) hand-labelled in
-``docs/reviews/2026-09-26_value_chain_dashboard_review.md`` Appendix A;
-borderline calls are labelled false, as in the review. Precision = TP / (TP + FP).
+is ``true``/``false`` (a labeller's judgement, with the filing open, that the edge
+is right: marks 1-4 of section 6). The file is empty since plan v31 step 1(g): its
+80 labels judged the keyword scan that #748 deleted, so they spoke for edges the
+board no longer draws. The census of the profile source fills it again.
+
+The rule (section 6): the Wilson 95% lower bound of the right rate is at or above
+0.70. At 175 labels that is 135 right; a writer whose true precision is 0.80 clears
+about 85% of the time, one at 0.70 about 2%. The bound replaces the old fixed
+minimum of 30 labels: a small sample has a low bound by itself.
 """
 from __future__ import annotations
 
 import json
+import math
 from collections import Counter
 from pathlib import Path
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "labeled_80.json"
 MIN_PRECISION = 0.70
-# Below this many judged labels the gate reports "insufficient sample", never a
-# pass: at n = 30 a 0.70 precision is about +-0.17 at 95% (#118 C27). Served
-# filtering shrinks n, so a handful of surviving labels could otherwise pass.
-MIN_LABELED_N = 30
+_Z = 1.959963984540054          # the two-sided 95% normal quantile
 MAX_EDGES_PER_TICKER = 40
 
 
@@ -33,17 +36,27 @@ def load_labels(path: Path | None = None) -> list[dict]:
     return data if isinstance(data, list) else []
 
 
+def wilson_lower(right: int, n: int) -> float | None:
+    """The Wilson score interval's 95% lower bound of ``right / n``; ``None`` for no labels."""
+    if n <= 0:
+        return None
+    p, z2 = right / n, _Z * _Z
+    return ((p + z2 / (2 * n)) - _Z * math.sqrt(p * (1 - p) / n + z2 / (4 * n * n))) / (1 + z2 / n)
+
+
 def precision(labels: list[dict]) -> dict:
     judged = [l for l in labels if l.get("label") in (True, False)]
     tp = sum(1 for l in judged if l["label"])
     fp = len(judged) - tp
     prec = (tp / len(judged)) if judged else None
-    if prec is None or len(judged) < MIN_LABELED_N:
-        status = "insufficient sample"
+    lower = wilson_lower(tp, len(judged))
+    if lower is None:
+        status = "not measured"
     else:
-        status = "pass" if prec >= MIN_PRECISION else "fail"
+        status = "pass" if lower >= MIN_PRECISION else "fail"
     return {"n": len(judged), "tp": tp, "fp": fp,
             "precision": round(prec, 4) if prec is not None else None,
+            "lower_bound": round(lower, 4) if lower is not None else None,
             "passes": status == "pass", "status": status}
 
 

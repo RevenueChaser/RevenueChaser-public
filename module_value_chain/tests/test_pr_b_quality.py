@@ -14,32 +14,24 @@ def test_unsafe_prefix_resolver_is_gone():
     assert not hasattr(aliases, "resolve_name")
 
 
-# ── C27 ────────────────────────────────────────────────────────────────────
+# ── C27, replaced by plan v31 section 6 ─────────────────────────────────────
 def _labels(n_true, n_false):
     return ([{"src": "A", "dst_ticker": "B", "relation": "supplier", "label": True}] * n_true
             + [{"src": "A", "dst_ticker": "C", "relation": "customer", "label": False}] * n_false)
 
 
-def test_gate_needs_a_minimum_labelled_sample():
-    assert precision.MIN_LABELED_N == 30
+def test_a_small_sample_fails_by_its_own_lower_bound():
+    """C27's fixed minimum of 30 is gone: the Wilson lower bound of a small sample is low by itself."""
+    assert not hasattr(precision, "MIN_LABELED_N")
     rep = precision.precision(_labels(1, 0))
-    assert rep["precision"] == 1.0 and rep["passes"] is False
-    assert rep["status"] == "insufficient sample"
-    rep = precision.precision(_labels(20, 9))   # n = 29
-    assert rep["passes"] is False and rep["status"] == "insufficient sample"
+    assert rep["precision"] == 1.0 and rep["passes"] is False and rep["status"] == "fail"
 
 
-def test_gate_passes_at_the_minimum_sample():
-    rep = precision.precision(_labels(21, 9))   # n = 30, precision 0.70
-    assert rep["passes"] is True and rep["status"] == "pass"
-    assert precision.precision(_labels(20, 10))["status"] == "fail"
-
-
-def test_tile_shows_the_below_minimum_state():
-    html = report._precision_tile({"n": 2, "tp": 2, "precision": 1.0, "passes": False,
-                                   "status": "insufficient sample", "links": 147, "covered": 2})
+def test_tile_shows_the_lower_bound_and_the_gate():
+    html = report._precision_tile({"n": 2, "tp": 2, "precision": 1.0, "lower_bound": 0.3424, "passes": False,
+                                   "status": "fail", "links": 147, "covered": 2})
     assert 'class="stat warn"' in html
-    assert "insufficient sample (min 30)" in html
+    assert "lower bound 34% · gate 70%" in html
     assert "hand-checked n=2" in html and "labels cover 2 of 147 links" in html
 
 

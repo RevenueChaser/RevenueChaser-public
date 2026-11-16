@@ -6,13 +6,10 @@ by the service (:mod:`questions`; no board registers anything), the one asker se
 (:mod:`asker`), and the answers are the served table ``read_answer`` of ``sec_reads.duckdb`` (:mod:`reads`), read
 through ``rcdata.read.sec_reads``.
 
-Each question is its own PR. Registered: ``debt.note`` (#737, :mod:`debt_note`), imported at the end of this file so
-every process that reads answers knows its prompt version. ``company.profile`` and ``business.locate`` are declared
-in :mod:`company_profile` and not registered (their cutover is the owner's word).
+``business.locate`` and ``company.profile`` (:mod:`company_profile`), then ``debt.note`` (#737, :mod:`debt_note`),
+are registered by ``rcdata.build``, in that order, which is run order; each further question is its own PR.
 """
 from __future__ import annotations
 
 #: The serving kind this layer builds (``sec_reads.duckdb``).
 KIND = "sec_reads"
-
-from . import debt_note  # noqa: E402,F401 - registers debt.note; after KIND, which reads.py imports from here

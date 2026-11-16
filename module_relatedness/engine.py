@@ -422,6 +422,54 @@ def _cik_for(tickers: list[str]) -> dict[str, str]:
     return {t: str((cmap.get(t.upper()) or {}).get("cik") or "") for t in tickers}
 
 
+# What the service says a profile was read from (``read_answer.input_kind``), in the board's words.
+_SERVICE_INPUT = {"section:business": "item", "located": "llm_locator"}
+
+
+def mirror_service(tickers: list[str]) -> dict[str, dict]:
+    """Copy the SEC reading service's ``company.profile`` answers into ``relatedness_profiles`` /
+    ``relatedness_attributes`` and return the stored profiles (avo, 16 Nov 2026). No model call, no SEC request.
+
+    Every ticker of a company gets its company's answer. A row whose key already names that answer is left alone,
+    and a company the service has no answer for keeps what is stored, so a run before the service has read anything
+    changes nothing. The key carries the service's input hash, writer and filing; scoring, embeddings, themes and
+    Value Chain read the same two tables as before.
+    """
+    from RevenueChaser.rcdata import read
+    from . import store
+
+    ciks = _cik_for(tickers)
+    wanted = {c for c in ciks.values() if c}
+    answers = {str(r["cik"]).lstrip("0"): r for r in read.sec_reads(wanted, "company.profile")} if wanted else {}
+    meta = store.profile_meta(tickers)
+    # shortcut: a company the service leaves out (SIC 6770) or has no text for gets no ``shell`` / ``no_text`` row
+    # here and counts as pending; write those rows when the pending count on the board misleads.
+    for t in tickers:
+        r = answers.get(str(ciks.get(t) or "").lstrip("0"))
+        v3 = (r or {}).get("answer")
+        if not v3:
+            continue
+        partial = r["status"] == "partial"
+        ck = store.cache_key(r["model"], False, "", r["prompt_version"], t,
+                             r["input_hash"] + (PARTIAL if partial else ""), provider=r["provider"],
+                             source={"cik": r["cik"], "accession": r["accession"], "form": r.get("form"),
+                                     "filed": r.get("filing_date")})
+        if store._key_mode((meta.get(t) or {}).get("cache_key")) == json.loads(ck):
+            continue
+        kind = str(r.get("input_kind") or "")
+        labels = {"input": _SERVICE_INPUT.get(kind, "whole_document" if kind.startswith("whole") else kind),
+                  "from": "sec/reads"}
+        if r.get("missing_chunks"):
+            labels["missing_chunks"] = [int(i) for i in str(r["missing_chunks"]).split(",") if i]
+        shell = profile_v3.is_shell(v3)
+        store.save_profile(t, ciks.get(t), {f: [] for f in config.PROFILE_FIELDS} if shell
+                           else profile_v3.to_attributes(v3), ck, r["model"], prompt_version=r["prompt_version"],
+                           status="shell" if shell else "ok", attempts=int(r.get("attempts") or 0),
+                           provider=r["provider"], profile_json=v3, label_source=labels,
+                           accession=r.get("accession") or None)
+    return store.load_profiles(tickers)
+
+
 def _writer(provider: str) -> tuple[str, bool, str]:
     """``(model, thinking, effort)`` a profile written by ``provider`` records in its cache key.
 
@@ -459,6 +507,8 @@ def build_profiles(tickers: list[str], use_llm: bool = True,
 
     from . import store
 
+    if use_llm and config.PROFILES_FROM == "service":
+        return mirror_service(tickers)
     profiles_mod.llm(provider)                 # an unknown writer fails here, before anything is written
     if use_llm:
         _spine_ready()                         # no spine, no names: stop before anything is written (#642 D3)
@@ -576,11 +626,12 @@ def build_profiles(tickers: list[str], use_llm: bool = True,
                 f"the endpoint and model (model {w_model})"))
         return first
 
-    def _save_shell(ts, ck, v3=None, labels=None):
+    def _save_shell(ts, ck, v3=None, labels=None, accession=None):
         """A shell (SIC 6770, or the writer's ``stage = shell``): no profile, no peers, no theme (#400)."""
         for t in ts:
             store.save_profile(t, ciks.get(t), {f: [] for f in config.PROFILE_FIELDS}, ck, w_model,
-                               status="shell", provider=provider, profile_json=v3, label_source=labels)
+                               status="shell", provider=provider, profile_json=v3, label_source=labels,
+                               accession=accession)
 
     def _locate(rep, name, inp):
         """The writer's cut of the business section from the heading list, or None (a reply it cannot use; a
@@ -602,7 +653,7 @@ def build_profiles(tickers: list[str], use_llm: bool = True,
             if any((have.get(t) or {}).values()):
                 continue
             store.save_profile(t, ciks.get(t), {f: [] for f in config.PROFILE_FIELDS}, "", w_model,
-                               status=inp["fallback"], provider=provider)
+                               status=inp["fallback"], provider=provider, accession=None)
 
     def _work(item):
         if stop.is_set():
@@ -614,7 +665,8 @@ def build_profiles(tickers: list[str], use_llm: bool = True,
         if profile_v3.is_shell(None, inp["context"].get("sic")):
             # A blank check: nothing is sent. Its key carries the input, so the next run does not read it again.
             _save_shell(ts, store.cache_key(w_model, w_thinking, w_effort, store.PROMPT_VERSION, rep,
-                                            inp["hash"] or "", provider=provider, source=inp.get("source")))
+                                            inp["hash"] or "", provider=provider, source=inp.get("source")),
+                        accession=(inp.get("source") or {}).get("accession"))
             return
         if inp["fallback"] not in FALLBACKS and not inp.get("locate"):
             # No filing text (``no_text``) or one under Value Chain's MIN_ITEM_CHARS (``short_text``, #313) in every
@@ -624,7 +676,7 @@ def build_profiles(tickers: list[str], use_llm: bool = True,
                     continue               # keep a usable (stale) profile
                 store.save_profile(t, ciks.get(t),
                                    {f: [] for f in config.PROFILE_FIELDS},
-                                   "", w_model, status=inp["fallback"], provider=provider)
+                                   "", w_model, status=inp["fallback"], provider=provider, accession=None)
             return
         # The profile's own cache key (structured JSON, the mode stamp checked by
         # ``store.is_stale``) is deliberately not the LLM cache key
@@ -666,9 +718,11 @@ def build_profiles(tickers: list[str], use_llm: bool = True,
             prof = {f: [] for f in config.PROFILE_FIELDS}
         v3 = getattr(prof, "v3", None)
         labels = {**(getattr(prof, "labels", None) or {}), "input": inp["fallback"]}
+        # The filing the reply read (plan v31 step 1(d)): a profile edge carries it onto the Value Chain board.
+        accession = (inp.get("source") or {}).get("accession")
         if v3 is not None and profile_v3.is_shell(v3):
             _unusable_before_any_usable(True)
-            _save_shell(ts, ck, v3, labels)
+            _save_shell(ts, ck, v3, labels, accession)
             return
         usable = any(prof.values())
         if _unusable_before_any_usable(usable):
@@ -686,11 +740,12 @@ def build_profiles(tickers: list[str], use_llm: bool = True,
                 pck = store.cache_key(w_model, w_thinking, w_effort, store.PROMPT_VERSION, rep, inp["hash"] + PARTIAL,
                                       provider=provider, source=inp.get("source"))
                 store.save_profile(t, ciks.get(t), prof, pck, w_model, provider=provider, attempts=tries,
-                                   profile_json=v3, label_source=labels)
+                                   profile_json=v3, label_source=labels, accession=accession)
                 continue
             if usable:
                 store.save_profile(t, ciks.get(t), prof, ck, w_model, provider=provider,
-                                   profile_json=v3, label_source=labels if v3 is not None else None)
+                                   profile_json=v3, label_source=labels if v3 is not None else None,
+                                   accession=accession)
                 continue
             # Unusable answer: counted, never saved as done, and never allowed
             # to overwrite a profile that still has content (nor its v3 JSON: ``save_profile`` keeps it).

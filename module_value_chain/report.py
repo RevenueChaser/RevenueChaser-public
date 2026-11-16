@@ -92,7 +92,8 @@ def _graphs(payload: dict, tickers: list[str]) -> dict:
 
 
 def _precision_tile(rep: dict | None) -> str:
-    """Measured precision of supplier/customer links on the hand-labelled fixture."""
+    """Measured precision of supplier/customer links on the census labels (plan v31 section 6): the share labelled
+    right, and the Wilson 95% lower bound the gate reads."""
     rep = rep or {}
     p = rep.get("precision")
     cover = ""
@@ -102,14 +103,28 @@ def _precision_tile(rep: dict | None) -> str:
         return ('<div class="stat"><div class="v">—</div><div class="l">Precision</div>'
                 f'<div class="d">not measured{cover}</div></div>')
     n = rep.get("n") or 0
-    # Below the minimum sample the gate is not judged (#118 C27).
-    small = rep.get("status") == "insufficient sample" or n < precision.MIN_LABELED_N
-    cls = "stat" if rep.get("passes") and not small else "stat warn"
-    gate = f"insufficient sample (min {precision.MIN_LABELED_N})" if small else "gate 70%"
-    detail = esc(f"hand-checked n={n} · {gate}{cover}")
+    cls = "stat" if rep.get("passes") else "stat warn"
+    lower = rep.get("lower_bound")
+    bound = f"lower bound {round(lower * 100)}%" if lower is not None else "no lower bound"
+    detail = esc(f"hand-checked n={n} · {bound} · gate 70%{cover}")
     return (f'<div class="{cls}"><div class="v">{round(p * 100)}%</div>'
             f'<div class="l">Precision</div>'
             f'<div class="d">{detail}</div></div>')
+
+
+def _status_notes(payload: dict) -> str:
+    """What the board holds back or carries over (plan v31 G-F and step 1(f)), one note each."""
+    notes = []
+    if payload.get("kept"):
+        notes.append("Edges from an earlier run: the last sync found none, so the board shows the stored ones.")
+    hidden = int(payload.get("profile_hidden") or 0)
+    if hidden:
+        notes.append(f"Profile relationships not yet verified: {hidden} links read from company profiles are "
+                     "hidden until a hand-checked sample clears them. The board shows the customers each filing "
+                     "tags in its XBRL.")
+    notes.append("A link is what the filing states, not a confirmed relationship: read its source line before "
+                 "relying on one.")
+    return "".join(f'<div class="note">⚠ {esc(n)}</div>' for n in notes)
 
 
 def _summary_html(payload: dict, n_filings: int, n_drawn: int) -> str:
@@ -128,7 +143,7 @@ def _summary_html(payload: dict, n_filings: int, n_drawn: int) -> str:
         f'<div class="stat"><div class="v">{n_filings}</div>'
         f'<div class="l">Filings</div><div class="d">latest 10-K / 20-F</div></div>',
         f'<div class="stat"><div class="v">{n_drawn}</div>'
-        f'<div class="l">Links drawn</div><div class="d">named near supplier / customer words</div></div>',
+        f'<div class="l">Links drawn</div><div class="d">supplier / customer links served</div></div>',
         f'<div class="stat"><div class="v">{payload.get("universe_total") or 0}</div>'
         f'<div class="l">Universe</div><div class="d">operating companies, no market-cap floor</div></div>',
         f'<div class="stat"><div class="v">{pending}</div>'
@@ -404,14 +419,8 @@ function init(){
   </div>
   {provider_health_html(payload.get("provider_health"))}
   {help_block}
-  
+  {_status_notes(payload)}
   {body}
-  <div class="note">
-    ⚠ v1 uses keyword rules on filing text: a link means the filing names the company
-    near a supplier / customer word, not that the relationship is confirmed. A
-    hand-checked sample found most such links wrong, so read the source sentence
-    before relying on one.
-  </div>
 </div>
 <script>{FILTERS_JS}</script>
 {watchlist_html("value_chain")}

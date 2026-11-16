@@ -101,7 +101,7 @@ def test_run_persists_corpus_and_edges(rawstore_tmp_db, monkeypatch):
     assert payload["fetch"]["fetched"] == 2
     assert rawstore.count("chain_filings") == 2
     assert rawstore.count("chain_mentions") == 0          # #748: a filing's text alone states no edge any more
-    assert rawstore.count("chain_meta") == 3
+    assert rawstore.count("chain_meta") == 4                 # last_sync, n_filings, n_mentions, edges_kept (G-F)
 
     loaded = engine.load_payload()
     assert {f["ticker"] for f in loaded["filings"]} == {"NVDA", "TSM"}
@@ -196,7 +196,7 @@ def test_report_has_readability_layer():
     html = report.render_value_chain_dashboard(payload)
     assert "What am I looking at?" in html
     assert "Supplier" in html and "Customer" in html and "Focal" in html
-    assert "v1 uses keyword rules" in html
+    assert "not a confirmed relationship" in html
     assert "TSM" in html
     assert 'id="q"' in html
     assert '"name": "NVIDIA Corporation"' in html
@@ -225,21 +225,22 @@ def test_report_labels_are_honest():
     assert "fixed list of about 50 large public companies" in html
 
 
-def test_board_payload_carries_precision(rawstore_tmp_db):
+def test_board_payload_carries_precision(rawstore_tmp_db, tmp_path, monkeypatch):
     """Precision is measured on the labelled edges the board still serves."""
+    import json
+
     from RevenueChaser.module_value_chain import precision
-    labels = precision.load_labels()
-    served = [{"src": l["src"], "dst_ticker": l["dst_ticker"], "relation": l["relation"]}
-              for l in labels]
+    labels = ([{"src": "A", "dst_ticker": f"R{i}", "relation": "customer", "label": True} for i in range(135)]
+              + [{"src": "A", "dst_ticker": f"W{i}", "relation": "customer", "label": False} for i in range(40)])
+    p = tmp_path / "labels.json"
+    p.write_text(json.dumps(labels), encoding="utf-8")
+    monkeypatch.setattr(precision, "FIXTURE", p)
+    served = [{"src": l["src"], "dst_ticker": l["dst_ticker"], "relation": l["relation"]} for l in labels]
     payload = engine._board_payload([], served, "2026-09-17T00:00:00+00:00", None)
-    assert (payload["precision"]["n"], payload["precision"]["tp"]) == (80, 31)
-    good = [l for l in labels if l["label"]][:3]
-    payload = engine._board_payload([], [{"src": l["src"], "dst_ticker": l["dst_ticker"],
-                                          "relation": l["relation"]} for l in good],
-                                    "2026-09-17T00:00:00+00:00", None)
-    # three surviving labels are below the minimum sample: not a pass (#118 C27)
+    assert (payload["precision"]["n"], payload["precision"]["tp"], payload["precision"]["passes"]) == (175, 135, True)
+    payload = engine._board_payload([], served[:3], "2026-09-17T00:00:00+00:00", None)
+    # three surviving labels: their lower bound is far under the gate
     assert (payload["precision"]["n"], payload["precision"]["passes"]) == (3, False)
-    assert payload["precision"]["status"] == "insufficient sample"
     assert engine._board_payload([], [], "x", None)["precision"]["precision"] is None
 
 

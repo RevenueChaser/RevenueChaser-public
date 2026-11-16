@@ -189,6 +189,14 @@ def _plan(q: Question, ctx: base.RunContext) -> tuple[list[asker.Job], dict[tupl
     return jobs, prior, no_text
 
 
+def plan_counts(reread: bool = False) -> dict:
+    """``{"would_ask": {question: companies}, "notes": [...]}``: what a run would ask now, with no call and nothing
+    written (``python -m RevenueChaser.rcdata.build.sec_reads --plan [--reread]``). A question that reads another's
+    answers (the profile reads the locator's) is planned on what is stored now."""
+    ctx = base.RunContext(run_id="plan", dataset=NAME, reread=reread)
+    return {"would_ask": {q.id: len(_plan(q, ctx)[0]) for q in QUESTIONS.values()}, "notes": ctx.notes}
+
+
 def _now() -> float:
     return time.time()
 
