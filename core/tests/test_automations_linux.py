@@ -91,18 +91,14 @@ class FailOn(FakeSystemctl):
 def test_a_failed_reinstall_puts_the_working_pair_back(tmp_path):
     """#191 item 1: a reinstall over an installed task whose ``enable`` failed used to remove the working pair too."""
     name = "RC-Relatedness-OffPeak"
+    with pytest.raises(A.AutomationError):                     # a failed first install still leaves no files
+        _linux(tmp_path, FailOn("enable")).install(A.entry(name))
+    assert not any((tmp_path / "units").glob(f"{name}.*"))
     _linux(tmp_path, FakeSystemctl()).install(A.entry(name))
     service, timer = _unit(tmp_path, name, "service"), _unit(tmp_path, name, "timer")
     with pytest.raises(A.AutomationError):
         _linux(tmp_path, FailOn("enable")).install(A.entry(name))
     assert _unit(tmp_path, name, "service") == service and _unit(tmp_path, name, "timer") == timer
-
-
-def test_a_failed_first_install_leaves_no_files(tmp_path):
-    name = "RC-Relatedness-OffPeak"
-    with pytest.raises(A.AutomationError):
-        _linux(tmp_path, FailOn("enable")).install(A.entry(name))
-    assert not any((tmp_path / "units").glob(f"{name}.*"))
 
 
 # --- the other four buttons ---------------------------------------------------------
