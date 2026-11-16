@@ -722,7 +722,7 @@ class PricesServing:
                  split AS (SELECT DISTINCT cik FROM stg_sec_dei GROUP BY cik, as_of HAVING count(DISTINCT shares) > 1)
             SELECT o.security_id, o.ticker, d.* FROM stg_sec_dei d JOIN one o USING (cik)
             WHERE o.security_type IS DISTINCT FROM 'adr' AND d.shares > 0
-              AND d.cik NOT IN (SELECT cik FROM split)
+              AND d.cik NOT IN (SELECT cik FROM multi) AND d.cik NOT IN (SELECT cik FROM split)
               AND NOT EXISTS (SELECT 1 FROM _cover c WHERE c.security_id = o.security_id AND c.as_of = d.as_of)
             QUALIFY row_number() OVER (PARTITION BY d.cik, d.as_of
                                        ORDER BY d.filed DESC NULLS LAST, d.accession DESC) = 1""")
