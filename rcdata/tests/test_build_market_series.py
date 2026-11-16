@@ -262,6 +262,18 @@ def test_a_new_as_of_with_the_same_values_is_unchanged(sources):
     assert later["result"] == "unchanged" and later["added"] == later["removed"] == 0
 
 
+def test_a_cboe_file_without_its_as_of_close_is_fetched_again_and_the_session_stays_due(sources):
+    """The evening pass comes before Cboe adds the close it is for: the next pass fetches Cboe again for the same
+    session, so SPX Gamma's 06:30 run finds the close (exit 3 every morning, 11-16 Nov 2026)."""
+    assert _run()["next_check_due"] == "2026-10-28"         # the fixtures hold 27 Oct: the next session
+    late = {"dataset": ms.NAME, "params": {"as_of": "2026-10-28"}}
+    assert base.run_request(late, sleep=lambda s: None)["next_check_due"] == "2026-10-28"
+    calls = len(sources.requests)
+    again = base.run_request(late, sleep=lambda s: None)
+    assert len(sources.requests) - calls == len(cboe.SYMBOLS), "only the Cboe files are fetched again"
+    assert again["next_check_due"] == "2026-10-28" and "Cboe SPX to 2026-10-27" in again["note"]
+
+
 def test_a_run_that_raises_writes_a_failed_check_and_leaves_the_live_file(sources, monkeypatch):
     _run()
     live = serving.live_path("market").read_bytes()

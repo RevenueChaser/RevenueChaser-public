@@ -26,7 +26,9 @@ def fetch(ctx, as_of: date) -> list[Path]:
     out, failed = [], 0
     for sym in SYMBOLS:
         path = base.raw_root() / SOURCE / DATASET_DIR / as_of.isoformat() / f"{sym}_History.csv"
-        if not path.exists():
+        # The evening pass (as-of = the session just closed) comes before Cboe adds that close: fetch again until
+        # the file holds it, or the close lands only with the next session's file, after SPX Gamma's 06:30 run.
+        if not path.exists() or newest(path) < as_of:
             url = f"{BASE}/{sym}_History.csv"
             try:
                 r = base.http_get(ctx, SOURCE, url)
@@ -41,6 +43,12 @@ def fetch(ctx, as_of: date) -> list[Path]:
     if failed and not out:
         raise base.SourceError(f"every cboe file failed ({failed})")
     return out
+
+
+def newest(path: Path) -> date:
+    """The last day a stored Cboe file holds (its rows are oldest first); ``date.min`` when none parses."""
+    rows = parse(path.read_text(), {"symbol": path.name.split("_", 1)[0]})
+    return max((r["obs_date"] for r in rows), default=date.min)
 
 
 def backfill(ctx, start: date, end: date) -> list[Path]:
