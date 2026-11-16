@@ -1041,8 +1041,16 @@ def run(no_fetch: bool = False, tickers: list[str] | None = None,
         if not got:
             raise AlreadyRunning("Another Relatedness run is already in progress.")
         if provider == "deepseek" and model is None:
-            return _run(False, tickers, limit, usd_cap, run_id)
-        return _run(False, tickers, limit, usd_cap, run_id, provider=provider, max_calls=max_calls, model=model)
+            payload = _run(False, tickers, limit, usd_cap, run_id)
+        else:
+            payload = _run(False, tickers, limit, usd_cap, run_id, provider=provider, max_calls=max_calls,
+                           model=model)
+        # Decision F (avo, 16 Nov 2026): a whole-board Fetch keeps its peer scores in the store. A sliced run scored
+        # a subset only, and syncing it would retire every other pair.
+        if tickers is None and not limit:
+            from . import store
+            store.save_scores(payload.get("peers") or {})
+        return payload
 
 
 def _run(no_fetch: bool, tickers: list[str] | None, limit: int | None,
