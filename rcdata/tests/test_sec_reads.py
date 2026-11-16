@@ -551,6 +551,16 @@ def test_many_companies_with_no_answer_at_once_are_a_scope_change_and_wait_for_t
     assert len(http_mock.requests) == 6
 
 
+def test_the_plan_counts_what_a_run_would_ask_and_calls_nobody(http_mock):
+    http_mock.add("/chat/completions", chat('{"products": ["x"]}'))
+    question(ciks=("789019", "320193"))
+    assert reads.plan_counts()["would_ask"] == {"test.products": 0}        # a first pass waits for the word
+    assert reads.plan_counts(reread=True)["would_ask"] == {"test.products": 2}
+    assert len(http_mock.requests) == 0
+    run()
+    assert reads.plan_counts(reread=True)["would_ask"] == {"test.products": 0}
+
+
 def test_a_usable_reply_after_the_unusable_stop_does_not_store_the_held_back_ones(http_mock, monkeypatch):
     many = {str(1000 + i): f"company {i}" for i in range(8)}
     gave_up = threading.Event()
