@@ -228,7 +228,8 @@ def shares_outstanding(tickers, today: date | None = None) -> dict[str, dict]:
         one_class = not issuer or abs(issuer - cap) <= 0.01 * cap      # the issuer's cap is this class's own
         if types.get(t) in ESTIMATE_TYPES and one_class:
             out[t] = {"shares": est, "as_of": read._day(m.get("cap_session")), "source": "estimate", "note": None}
+        elif types.get(t) not in ESTIMATE_TYPES:
+            out[t]["note"] = f"no shares count; market cap ÷ price is not used for this type ({types.get(t) or 'untyped'})"
         else:
-            out[t]["note"] = f"no shares count; market cap ÷ price is not used for a {types.get(t) or 'untyped'} " \
-                             "or multi-class security"
+            out[t]["note"] = "no shares count; market cap ÷ price is not used: the issuer has another listed class"
     return out
