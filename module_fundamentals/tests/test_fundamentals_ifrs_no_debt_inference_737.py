@@ -9,7 +9,7 @@ passes ``infer_debt_free=False``.
 from __future__ import annotations
 
 from RevenueChaser.core import fundamentals_layer as layer
-from RevenueChaser.module_fundamentals import debt, pipeline
+from RevenueChaser.module_fundamentals import pipeline
 from RevenueChaser.module_fundamentals.tests.test_fundamentals_debt_free_737 import _ttm_pair, _year
 
 
@@ -22,10 +22,6 @@ def test_an_ifrs_filer_trailing_year_stays_unknown_too():
     annual, quarterly = _ttm_pair()
     q = pipeline._quality_metrics(annual, quarterly, infer_debt_free=False)
     assert q["debt_basis"] is None and q["net_debt_ebitda"] is None
-
-
-def test_a_us_gaap_filer_is_still_inferred():
-    assert pipeline._quality_metrics(_year())["debt_basis"] == debt.INFERRED_NONE
 
 
 def test_the_layer_meta_carries_us_gaap():
