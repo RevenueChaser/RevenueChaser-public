@@ -109,21 +109,11 @@ def _sec13f_day() -> str | None:
     return max(periods) if periods else None
 
 
-# Newest print times read for the LEAPS chip: text order is near the time order (offsets can move a value a few
-# hours), so the session is taken over this many newest values, not only the first.
-_LEAPS_CANDIDATES = 50
-
-
 def _leaps_day() -> str | None:
-    """NY session of the newest flow print (its ``executed_at``, else when the store found it), falling back to the
-    newest cached snapshot. ``discovered_at`` alone dated a print by its discovery: a Saturday scan read Saturday."""
-    rows = rawstore.query(
-        "SELECT v FROM (SELECT DISTINCT COALESCE(NULLIF(executed_at, ''), discovered_at) AS v "
-        "FROM leaps_flow_prints) WHERE v IS NOT NULL AND v <> '' ORDER BY v DESC LIMIT ?", [_LEAPS_CANDIDATES], db="leaps")
-    sessions = [d for d in (session_of(r["v"]) for r in rows) if d]
-    if sessions:
-        return max(sessions)
-    return _max("SELECT max(json_extract_string(payload, '$.latest.as_of')) AS v FROM leaps_cache", db="leaps")
+    """The newest session of ``option_far_contract``, the one table the LEAPS board reads (#746)."""
+    from RevenueChaser.rcdata import read
+    sessions = read.far_contract_sessions()
+    return str(sessions[0]["session_date"]) if sessions else None
 
 
 def _spx_gamma_day() -> str | None:
