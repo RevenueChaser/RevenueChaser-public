@@ -603,7 +603,7 @@ def build_profiles(tickers: list[str], use_llm: bool = True,
             if any((have.get(t) or {}).values()):
                 continue
             store.save_profile(t, ciks.get(t), {f: [] for f in config.PROFILE_FIELDS}, "", w_model,
-                               status=inp["fallback"], provider=provider)
+                               status=inp["fallback"], provider=provider, accession=None)
 
     def _work(item):
         if stop.is_set():
@@ -626,7 +626,7 @@ def build_profiles(tickers: list[str], use_llm: bool = True,
                     continue               # keep a usable (stale) profile
                 store.save_profile(t, ciks.get(t),
                                    {f: [] for f in config.PROFILE_FIELDS},
-                                   "", w_model, status=inp["fallback"], provider=provider)
+                                   "", w_model, status=inp["fallback"], provider=provider, accession=None)
             return
         # The profile's own cache key (structured JSON, the mode stamp checked by
         # ``store.is_stale``) is deliberately not the LLM cache key

@@ -115,6 +115,9 @@ def save_profile(ticker: str, cik, profile: dict, cache_key_value: str,
     # relatedness_attributes is "replace" grouped by ticker, so the write
     # clears the ticker's previous fields itself.
     def _write(tx):
+        # A store that predates the ``accession`` column gains it first: otherwise ``_stored_json``'s SELECT fails,
+        # reads every kept column as None and the upsert wipes the stored JSON (#400 again).
+        tx.ensure_table("relatedness_profiles")
         given = {"profile_json": profile_json, "label_source": label_source, "accession": accession}
         if any(v is KEEP for v in given.values()):
             kept = _stored_json(tx, t)

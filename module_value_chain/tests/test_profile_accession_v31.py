@@ -20,6 +20,15 @@ def test_save_profile_stores_the_accession_and_a_plain_resave_keeps_it(rawstore_
     assert rawstore.get("relatedness_profiles", "NVDA")["accession"] == "0001045810-26-000010"
 
 
+def test_a_store_without_the_column_keeps_its_json_on_a_resave(rawstore_tmp_db):
+    """Review of #956: a table that predates ``accession`` must not lose ``profile_json`` on a plain re-save."""
+    store.save_profile("NVDA", "1045810", ATTRS, "ck", "m", profile_json={"summary": "s"}, label_source={"a": 1})
+    rawstore.execute("ALTER TABLE relatedness_profiles DROP COLUMN accession", db="relatedness")
+    store.save_profile("NVDA", "1045810", ATTRS, "ck", "m", status="ok", attempts=2)
+    row = rawstore.get("relatedness_profiles", "NVDA")
+    assert (row["profile_json"], row["label_source"], row["accession"]) == ({"summary": "s"}, {"a": 1}, None)
+
+
 def test_profile_edges_carry_the_accession():
     edges = engine.profile_edges("AMKR", PROFILE, "2026-02-01", accession="acc-1")
     assert edges and {e["accession"] for e in edges} == {"acc-1"}
