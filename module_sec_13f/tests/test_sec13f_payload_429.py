@@ -83,7 +83,7 @@ def test_the_cells_carry_todays_text_val_and_class():
     assert cells["value"] == ["$1.5K", 1500.0, "zero", "as of 2025 Q2"]
     assert cells["pct_out"] == ["7.5%", 7.5, "zero", "as of 2025 Q2"]
     assert cells["new_exit"] == ["+1/−1", 0, "zero", "as of 2025 Q2"]
-    assert cells["netflow"] == ["50", 50.0, "pos", "as of 2025 Q2"]
+    assert cells["netflow"] == ["+2.50%", 2.5, "pos", "as of 2025 Q2; +50 shares"]   # 50 of 2,000 out (#732 B)
     assert cells["streak"] == ["1", 1, "zero"]
 
 
