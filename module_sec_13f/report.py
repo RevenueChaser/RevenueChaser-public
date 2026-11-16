@@ -858,7 +858,8 @@ def _fmt_money(v):
 
 
 def build_chart_fig(ticker: str, periods: dict, enrichment: dict = None) -> dict:
-    """Shares + price (row 1) and $ value + holders (row 2) over quarters.
+    """Four stacked panels over the quarters, one y-axis each (#732 E, M7: the two dual-axis panels mixed scales a
+    reader could not tell apart): shares (today's share basis), close, $ value, holders.
 
     A quarter still arriving (#514) is drawn as what it is, a part of itself (#521): its bars are hatched, its
     label carries the board's mark, the holders line goes dashed into it, and a note names it."""
@@ -872,35 +873,36 @@ def build_chart_fig(ticker: str, periods: dict, enrichment: dict = None) -> dict
     shares = [_on_todays_basis(periods[q].get("shares") or 0, factors.get(q)) for q in qs]
     value = [periods[q].get("value") or 0 for q in qs]
     holders = [periods[q].get("holders") or 0 for q in qs]
-    price = None
-    if enrichment:
-        px = (enrichment.get("price") or {})
-        price = [px.get(q) * factors.get(q, 1.0) if px.get(q) is not None else None for q in qs]
-    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.10,
-                        subplot_titles=(f"{ticker} — total shares & price (today's share basis)", "market value ($) & holders"),
-                        specs=[[{"secondary_y": True}], [{"secondary_y": True}]])
+    px = (enrichment or {}).get("price") or {}
+    price = [px.get(q) * factors.get(q, 1.0) if px.get(q) is not None else None for q in qs]
+    has_price = any(p is not None for p in price)
+    titles = [f"{ticker} — 13F shares (today's share basis)"] + (["Close (same basis)"] if has_price else []) \
+        + ["Market value held ($)", "Holders"]
+    rows = len(titles)
+    fig = make_subplots(rows=rows, cols=1, shared_xaxes=True, vertical_spacing=0.07, subplot_titles=titles)
     fig.add_trace(go.Bar(x=labels, y=shares, name="Shares", marker=dict(color=THEME_SCALE["c1"], pattern=pattern),
                          hovertemplate="%{y:,.0f}"), 1, 1)
-    if price:
-        fig.add_trace(go.Scatter(x=labels, y=price, name="Price",
-                                 line=dict(color=THEME_SCALE["c2"], width=2)), 1, 1, secondary_y=True)
+    row = 2
+    if has_price:
+        fig.add_trace(go.Scatter(x=labels, y=price, name="Price", line=dict(color=THEME_SCALE["c2"], width=2)), row, 1)
+        row += 1
     fig.add_trace(go.Bar(x=labels, y=value, name="Value ($)", marker=dict(color=THEME_SCALE["c3"], pattern=pattern),
-                         hovertemplate="%{y:,.0f}"), 2, 1)
+                         hovertemplate="%{y:,.0f}"), row, 1)
+    row += 1
     n = len(qs) - len(still_arriving)           # the settled quarters come first: the arriving set is a suffix
     fig.add_trace(go.Scatter(x=labels[:n], y=holders[:n], name="Holders",
-                             line=dict(color=THEME_SCALE["c4"], width=2)), 2, 1, secondary_y=True)
+                             line=dict(color=THEME_SCALE["c4"], width=2)), row, 1)
     if still_arriving:
         start = max(n - 1, 0)
         fig.add_trace(go.Scatter(x=labels[start:], y=holders[start:], name="Holders (filed so far)",
-                                 line=dict(color=THEME_SCALE["c4"], width=2, dash="dash"), showlegend=False), 2, 1, secondary_y=True)
+                                 line=dict(color=THEME_SCALE["c4"], width=2, dash="dash"), showlegend=False), row, 1)
         names = ", ".join(_qlabel(q) for q in sorted(still_arriving))
         fig.add_annotation(text=f"{ARRIVING_MARK} {names} still arriving: filed so far, not a drop",
-                           xref="paper", yref="paper", x=0, y=-0.08, xanchor="left", yanchor="top",
+                           xref="paper", yref="paper", x=0, y=-0.06, xanchor="left", yanchor="top",
                            showarrow=False, font=dict(size=12, color=THEME_TOKENS["dark"]["muted"]))
-    fig.update_layout(template="plotly_dark", height=620, hovermode="x unified",
-                      # Anchored at its bottom so a legend that wraps on a phone grows up into the margin, not over the title.
-                      legend=dict(orientation="h", y=1.08, yanchor="bottom", x=0),
-                      margin=dict(l=60, r=60, t=110, b=60 if still_arriving else 40))
+    # Each panel is titled, so no legend: on a phone it wrapped over the first title.
+    fig.update_layout(template="plotly_dark", height=200 * rows + 80, hovermode="x unified", showlegend=False,
+                      margin=dict(l=60, r=20, t=40, b=60 if still_arriving else 40))
     fig.update_xaxes(type="category")
     return fig.to_dict()
 
