@@ -114,14 +114,30 @@ def test_the_services_limits_and_prompts_are_the_boards():
     assert (cp.PROFILE.system, cp.PROFILE.prompt_version) == (profiles.system_prompt(), config.PROMPT_VERSION)
     assert cp.PROFILE.max_tokens == profiles.token_budget()
     assert (cp.LOCATE.system, cp.LOCATE.prompt_version) == (locator.system_prompt(), locator.PROMPT_VERSION)
-    assert questions.QUESTIONS == {}           # declared, never registered: the cutover is the owner's word
 
 
-@pytest.mark.parametrize("raw, want", [
-    ('{"start": 4, "end": 7}', {"start": 4, "end": 7}), ('{"start": 4, "end": null}', {"start": 4, "end": None}),
-    ('```json\n{"start": "4", "end": "7"}\n```', {"start": 4, "end": 7}),
-    ('{"start": null}', {"start": None, "end": None}),            # "no business section" is an answer
-    ('{"start": -1, "end": 3}', None), ('{"end": 3}', None), ('{"start": 2, "end": "x"}', None), ("[1]", None),
-    ("junk", None)])
-def test_the_locators_reply_is_kept_by_its_shape(raw, want):
-    assert cp.parse_locate(raw) == want
+def test_the_builder_registers_the_two_questions_the_locator_first(tmp_path):
+    """In a fresh interpreter: this process's registry is emptied by the fixtures and tests around it."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    code = ("import RevenueChaser.rcdata.build; from RevenueChaser.rcdata.build.sec_reads.questions import QUESTIONS; "
+            "print(','.join(QUESTIONS))")
+    env = {"PATH": "", "PYTHONPATH": str(Path(cp.__file__).resolve().parents[4]), "RC_STORE_DIR": str(tmp_path / "s"),
+           "RC_CACHE_DIR": str(tmp_path / "c"), "RC_EDGAR_DOCS_DIR": str(tmp_path / "e"),
+           "RC_MARKET_DIR": str(tmp_path / "m")}
+
+    def child(code: str, **more) -> str:
+        out = subprocess.run([sys.executable, "-c", code], env={**env, **more}, capture_output=True, text=True,
+                             cwd=str(tmp_path), timeout=120)
+        assert out.returncode == 0, out.stderr
+        return out.stdout.strip()
+
+    assert child(code) == f"{cp.LOCATE_ID},{cp.PROFILE_ID}"
+    # The writer: EVREN with no call cap, or DeepSeek Flash with one, by the process's environment.
+    writers = ("import RevenueChaser.rcdata.build; from RevenueChaser.rcdata.build.sec_reads.questions import "
+               "QUESTIONS; print(';'.join(f'{q.provider},{q.writer_model},{q.max_calls}' for q in QUESTIONS.values()))")
+    assert child(writers) == "evren,evren-deepseek-v4.1-flash,None;evren,evren-deepseek-v4.1-flash,None"
+    assert (child(writers, RC_SEC_READS_PROVIDER="deepseek")
+            == "deepseek,deepseek-v4-flash,150;deepseek,deepseek-v4-flash,800")

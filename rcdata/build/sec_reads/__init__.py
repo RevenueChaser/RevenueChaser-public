@@ -6,7 +6,8 @@ by the service (:mod:`questions`; no board registers anything), the one asker se
 (:mod:`asker`), and the answers are the served table ``read_answer`` of ``sec_reads.duckdb`` (:mod:`reads`), read
 through ``rcdata.read.sec_reads``.
 
-No real question is registered yet; each question is its own PR.
+``business.locate`` and ``company.profile`` are registered by ``rcdata.build`` (:mod:`company_profile`); each
+further question is its own PR.
 """
 from __future__ import annotations
 
