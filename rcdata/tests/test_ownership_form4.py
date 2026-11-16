@@ -368,3 +368,22 @@ def test_a_weekday_the_set_holds_no_filing_for_is_not_marked_done(tmp_path):
     assert feed.is_done(date(2026, 9, 14)) and feed.is_done(date(2026, 9, 16))
     assert not feed.is_done(date(2026, 9, 15)), "a day the set holds no filing for must stay open"
     assert any("1 weekday(s) it holds no filing for" in n and "2026-09-15" in n for n in ctx.notes), ctx.notes
+
+
+def test_a_filing_edgar_lists_again_on_a_later_day_is_served_once(monkeypatch, http_mock):
+    """#936, live v4: 0001999371-26-024599 was listed on 2026-11-05 and 2026-11-06 and served twice; 11 Schedules
+    13D/G the same way. The first index day's rows are kept."""
+    monkeypatch.setattr(sec_edgar, "SEC_WWW_BASE", "https://sec.test")
+    monkeypatch.setattr(sec, "_shared_pace", lambda: True)
+    acc, later = "0001234567-26-000001", "2026-10-28"
+    sale = ox.f4_filing(acc, DAY, 789019, "MICROSOFT CORP", "MSFT", [CEO],
+                        non_derivative=[ox.f4_transaction("S", 1000, 510.25, after=50000)])
+    e = ox.Edgar()
+    e.add_day(DAY, [(ox.idx_row(789019, "MICROSOFT CORP", "4", DAY, acc), sale)])
+    e.add_day(later, [(ox.idx_row(789019, "MICROSOFT CORP", "4", later, acc), sale)])
+    e.install(http_mock)
+    ox.make_spine()
+    row = _run("2026-10-29")
+    assert _served("SELECT index_day, count(*) FROM insider_transactions WHERE accession = ? GROUP BY 1", acc) == [
+        (date(2026, 10, 27), 1)]
+    assert "1 insider_transactions rows of filings listed again on a later index day left out" in row["note"]
