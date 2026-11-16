@@ -2085,12 +2085,17 @@ the last unusable call failed). The input hash is the hash of the system prompt 
 the text sent, or `Input.hash_text` when a question leaves its context lines out of it, so a changed context does
 not pay for the answer again. An `ok` answer on (question, prompt version, company, input hash) is current
 **whoever wrote it**: changing a question's writer asks nothing again, and the reader serves every writer's rows,
-the configured writer's first where two answered one filing. Every call writes one row to the request log (the
+an answer under the question's current prompt version first, then the newest filing. Every call writes one row to the request log (the
 question, the company, the chunk, and `ok`, `unusable reply` or the error with its words). One asker at a time,
 whoever started the run (the lock `sec_reads_ask`); a question is finished and in Parquet before the next one is
 planned, so registration order is run order. A run whose first five replies are all unusable stops as failed and
 stores none of them; a key at three attempts is tried once more after 30 days; and nothing is asked while the
-live table holds more `ok` answers than the Parquet tree (a lost tree must not start a full re-read). A question's
+live table holds more `ok` answers than the Parquet tree (a lost tree must not start a full re-read). **No mass
+re-read without the owner's word:** a run asks by itself only a company's new filing and a retry, at most 200
+companies a day per question (`RC_SEC_READS_DAY_CAP`; provisional until the owner sets it), and goes on the next
+day; a changed prompt, a re-cut text and a question's first pass wait for a request that says `"reread": true` (the
+CLI's `--reread`). The run writes and converts every answer inside the ask lock and hands the builder no raw file.
+A question's
 input may carry its own ready user messages (`Input.messages`) when a plain 60,000-character slice is not what
 its prompt sends. A transient error (a timeout, a 5xx) gives up on that company only, with no attempt counted,
 and stops the run at the fifth such company. A question may name `max_calls`, the most calls one run sends for it

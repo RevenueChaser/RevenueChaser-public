@@ -5,9 +5,14 @@ Its ``fetch`` asks (:mod:`asker`), the answers are Parquet, one partition per qu
 through ``rcdata.read.sec_reads`` and the need ``sec.read``. Nothing of it lives in a board.
 
 **Never asked twice.** One row per (question, prompt version, company, filing, document, input hash, provider,
-model). A company is asked when the key of its current text has no ``ok`` row and fewer than :data:`MAX_ATTEMPTS`
-attempts: a new filing, a new text (its hash) or a new prompt version is a new key; the same key is not asked
-again. Two writers of one question (a comparison) are two keys.
+model). A company is asked when its current text (question, prompt version, company, input hash) has no ``ok`` row
+by any writer and fewer than :data:`MAX_ATTEMPTS` attempts: a new text (its hash) or a new prompt version is asked,
+a new filing that carries the same text is not, and a second writer is not asked for a text one writer answered.
+
+**No mass re-read without the owner's word** (avo, 15 Nov 2026 18:53; :func:`stale_reason`). A run asks by itself
+only a company's new filing and a retry, at most :data:`DAY_CAP` companies a day; past the cap it stops and goes on
+the next day (avo, 15 Nov 23:48). Everything else that is stale (a changed prompt, a re-cut text, a question's
+first pass) waits for a request that says ``"reread": true`` (the CLI's ``--reread``), which asks all of it.
 
 **The attempts rule** (from ``module_relatedness.engine``): an unusable reply is counted on its key, three of them
 and the company waits for a new filing, a new prompt or :data:`RETRY_AFTER_S`, and a ``partial`` answer is never
@@ -27,6 +32,7 @@ run).
 from __future__ import annotations
 
 import json
+import os
 import time
 from datetime import date
 from pathlib import Path
@@ -48,6 +54,12 @@ MAX_ATTEMPTS = 3
 #: ...or this long: a key at its attempts is tried once more after it, so nothing a passing fault caused (a gate
 #: down for three runs) is parked until next year's filing. A filing that can never be read costs one call a month.
 RETRY_AFTER_S = 30 * 86400.0
+#: Why a company is stale. A run asks the first two by itself; the other two need the request's ``reread``.
+NEW_FILING, RETRY, CHANGED, FIRST = "new_filing", "retry", "changed", "first"
+AUTOMATIC = (NEW_FILING, RETRY)
+#: Companies one question is asked in a day without ``reread``. Provisional: the number is the owner's, to be set
+#: from the count of annual reports filed per week (plan 2026-11-15_1722 §12, measurement M8).
+DAY_CAP = int(os.environ.get("RC_SEC_READS_DAY_CAP", "200"))
 
 KEY = ["question", "prompt_version", "cik", "accession", "document", "input_hash", "provider", "model"]
 #: ``fetched_at`` is when the answer was asked; ``answer`` is the parsed JSON, ``raw`` the replies (JSON list, one
@@ -113,13 +125,20 @@ def _plan(q: Question, ctx: base.RunContext) -> tuple[list[asker.Job], dict[tupl
         raise base.SourceError(behind)
     inputs = q.inputs(ciks)
     answered = {_text_key(k) for k, r in have.items() if r["status"] == asker.OK}
+    textless = {(k[0], k[1], k[2]) for k, r in have.items() if r["status"] == asker.NO_TEXT}   # by any writer
+    by_cik: dict[str, list[dict]] = {}
+    for r in have.values():
+        if r["status"] != asker.NO_TEXT:
+            by_cik.setdefault(r["cik"], []).append(r)
+    begun = any(r["prompt_version"] == q.prompt_version and r["status"] == asker.OK for r in have.values())
+    waiting: dict[str, int] = {}
     jobs, prior, no_text = [], {}, []
     for cik in ciks:
         inp = inputs.get(cik)
         if inp is None or not inp.text:
             row = {"question": q.id, "prompt_version": q.prompt_version, "cik": cik, "accession": "",
                    "document": "", "input_hash": "", "provider": q.provider, "model": q.writer_model}
-            if _key(row) not in have:
+            if _key(row) not in have and (q.id, q.prompt_version, cik) not in textless:
                 no_text.append({**row, "status": asker.NO_TEXT, "attempts": 0, "fetched_at": time.time(),
                                 "run_id": ctx.run_id})
             continue
@@ -129,9 +148,51 @@ def _plan(q: Question, ctx: base.RunContext) -> tuple[list[asker.Job], dict[tupl
                 old is not None and old["attempts"] >= MAX_ATTEMPTS
                 and time.time() - (old["fetched_at"] or 0) < RETRY_AFTER_S):
             continue
+        why = stale_reason(job, by_cik.get(cik, []), begun)
+        if why not in AUTOMATIC and not ctx.reread:
+            waiting[why] = waiting.get(why, 0) + 1
+            continue
         jobs.append(job)
         prior[_job_key(job)] = old
+    if waiting:
+        ctx.notes.append(f"{q.id}: {sum(waiting.values())} wait for the owner's word, a request with reread ("
+                         + ", ".join(f"{w} {n}" for w, n in sorted(waiting.items())) + ")")
+    if not ctx.reread:
+        day = _now() - 86400.0
+        today = len({r["cik"] for rows in by_cik.values() for r in rows if (r["fetched_at"] or 0) > day})
+        room = max(0, DAY_CAP - today)
+        if len(jobs) > room:
+            ctx.notes.append(f"{q.id}: the day cap of {DAY_CAP} companies is reached ({today} asked in the last "
+                             f"24 hours); {len(jobs) - room} wait for tomorrow")
+            jobs = jobs[:room]
+            prior = {_job_key(j): prior[_job_key(j)] for j in jobs}
     return jobs, prior, no_text
+
+
+def _now() -> float:
+    return time.time()
+
+
+def stale_reason(job: asker.Job, rows: list[dict], begun: bool) -> str:
+    """Why ``job``'s company is asked: ``rows`` are its stored answers to the question (every prompt version),
+    ``begun`` whether the question has an ``ok`` answer under its current prompt version at all.
+
+    - ``retry``: this text under this prompt was asked before and has no ``ok`` answer;
+    - ``new_filing``: a filing the company has no row for, when it was read under this prompt before; also a company
+      with no row at all once the question's first pass has begun (a new company's first report);
+    - ``first``: no row, and the question has no answer under this prompt yet (its first pass);
+    - ``changed``: the rest, the same filing with another text (a re-cut) or a prompt version the company was not
+      read under.
+    """
+    q = job.question
+    if any(r["prompt_version"] == q.prompt_version and r["input_hash"] == job.input_hash for r in rows):
+        return RETRY
+    if not rows:
+        return NEW_FILING if begun else FIRST
+    known = {r["accession"] for r in rows}
+    if job.input.accession not in known and any(r["prompt_version"] == q.prompt_version for r in rows):
+        return NEW_FILING
+    return CHANGED
 
 
 def tree_behind(q: Question, have: dict[tuple, dict]) -> str | None:
@@ -201,6 +262,10 @@ class Reads:
         **One asker at a time** (:data:`asker.ASK_LOCK`), whoever started the run: a run that does not get the lock
         asks nothing and stages nothing, and its build still loads what the other run has written.
 
+        **Nothing is handed back to the builder**: every answer is written and converted inside the lock, and the
+        run returns no raw file, so the builder's own conversion after ``fetch`` (outside the lock) cannot write a
+        partition another asker is writing.
+
         **A question is finished before the next is planned**: its answers are in Parquet when the next question
         builds its inputs, so a question that reads another's answer (the business section the locator found,
         for the profile) never runs on the text it would have had without it. Registration order is run order.
@@ -241,7 +306,7 @@ class Reads:
                          + (f"; {left_all} left for the next run" if left_all else ""))
         if stop is not None:
             raise stop
-        return raws
+        return []
 
     def backfill(self, ctx: base.RunContext, start: date | None, end: date) -> None:
         raise base.SourceError(f"{NAME} has no backfill: a run asks what is stale")

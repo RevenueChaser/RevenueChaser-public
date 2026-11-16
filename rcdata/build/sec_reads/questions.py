@@ -1,12 +1,13 @@
 """The question registry: a question is declared once, here, and the tool runs it for whoever asked.
 
-"Kim neresinin okunmasini istiyorsa o araca soyler" (avo, 15 Nov 2026 11:14): a board adds one :class:`Question` with
-:func:`register` and reads the answers through ``rcdata.read.sec_reads``. Its prompt and parser stay next to the
-board's rules in review, but run only inside the tool. Step 1 registers none.
+"Kim neresinin okunmasini istiyorsa o araca soyler" (avo, 15 Nov 2026 11:14). The service owns its questions and
+names them by content (plan 2026-11-15_1722 §4.1): one :class:`Question` is added with :func:`register`, and a
+board only reads the answers through ``rcdata.read.sec_reads``. None is registered yet.
 """
 from __future__ import annotations
 
 import hashlib
+import re
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Callable, Iterable
@@ -104,7 +105,7 @@ def register(q: Question) -> Question:
     """Add ``q`` to the registry; refused in words for an unknown provider, a Pro model or a second ``id``."""
     if q.provider not in PROVIDERS:
         raise ValueError(f"{q.id}: provider {q.provider!r} has no pool; one of {', '.join(PROVIDERS)}")
-    if q.provider == "deepseek" and "pro" in q.writer_model.lower():
+    if q.provider == "deepseek" and re.search(r"(^|[^a-z])pro($|[^a-z])", q.writer_model.lower()):
         raise ValueError(f"{q.id}: DeepSeek is always Flash, never Pro (avo, 15 Nov 2026)")
     if q.provider == "deepseek" and not q.max_calls:
         raise ValueError(f"{q.id}: a DeepSeek question needs max_calls, the most calls one run may send")

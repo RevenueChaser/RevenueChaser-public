@@ -1,6 +1,6 @@
 """``python -m RevenueChaser.rcdata.build`` — the builder CLI.
 
-    run [--once] [--dataset X [--as-of YYYY-MM-DD] [--allow-shrink] [--no-duckdb] [--no-parquet]
+    run [--once] [--dataset X [--as-of YYYY-MM-DD] [--allow-shrink] [--reread] [--no-duckdb] [--no-parquet]
                   [--tiers A,B] [--names KO,MSFT]]
                                         take queued requests in order (FIFO) and run each; without --dataset, every
                                         dataset that is due (``due.py``) is queued first (by "schedule", once);
@@ -332,6 +332,9 @@ def main(argv: list[str] | None = None) -> int:
                    "without it a table that empties or loses more than 1%% of its rows refuses the swap, and "
                    "another dataset's table keeps that guard even with it")
     run.add_argument("--allow-shrink", action="store_true", help="with --dataset: " + shrink_help)
+    run.add_argument("--reread", action="store_true",
+                     help="with --dataset sec/reads: the owner's word for a mass re-read. Without it a run asks only "
+                          "new filings and retries, up to the day cap; with it every stale company is asked")
     scope_help = ("with --dataset: ask only these spine tiers (A,B,C,D) / only these tickers, instead of the "
                   "dataset's own set; a dataset that cannot narrow its fetch says so on its check row (#265)")
     group_help = ("the extra groups to ask besides the tiers and names: anchors (the benchmarks and rotation "
@@ -380,10 +383,10 @@ def main(argv: list[str] | None = None) -> int:
     if getattr(args, "no_build", False):
         print("--no-build is deprecated: it is --no-duckdb (fetch and Parquet, no serving build). "
               "--no-parquet is the raw-only mode.", file=sys.stderr)
-    if args.cmd == "run" and not args.dataset and (args.as_of or args.allow_shrink or args.no_duckdb or args.tiers
+    if args.cmd == "run" and not args.dataset and (args.as_of or args.allow_shrink or args.reread or args.no_duckdb or args.tiers
                                                    or args.names or args.include):
         # They only shape the request queued for --dataset; without it they would be dropped silently (F5).
-        p.error("--as-of, --allow-shrink, --no-duckdb, --no-parquet (and the deprecated --no-build), --tiers, "
+        p.error("--as-of, --allow-shrink, --reread, --no-duckdb, --no-parquet (and the deprecated --no-build), --tiers, "
                 "--names and --include need --dataset")
     scope = {k: [n.strip() for n in v.split(",") if n.strip()]
              for k, v in (("tiers", getattr(args, "tiers", None)), ("names", getattr(args, "names", None)),
@@ -487,10 +490,11 @@ def main(argv: list[str] | None = None) -> int:
                 worst = max(worst, int(row["result"] == "failed"))
             return worst
         mine = _own_requests_only(args.dataset) if args.dataset else None
-        if args.dataset and (args.as_of or args.allow_shrink or args.no_duckdb or scope
+        if args.dataset and (args.as_of or args.allow_shrink or args.reread or args.no_duckdb or scope
                              or not ops.queued(args.dataset, by=mine)):
             params = {**({"as_of": args.as_of} if args.as_of else {}),
                       **({"allow_shrink": True} if args.allow_shrink else {}),
+                      **({"reread": True} if args.reread else {}),
                       **({"no_duckdb": True, "no_build": True} if args.no_duckdb else {}),
                       **({"no_parquet": True} if args.no_parquet else {}), **scope}
             ops.enqueue(args.dataset, params or None, by="cli")

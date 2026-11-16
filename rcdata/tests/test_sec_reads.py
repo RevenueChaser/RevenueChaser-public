@@ -59,8 +59,10 @@ def question(ciks=("789019", "320193", "999"), text=None, **kw) -> questions.Que
     return questions.register(q)
 
 
-def run() -> dict:
-    return fx.run(reads.NAME)
+def run(reread: bool = True) -> dict:
+    """One request. ``reread`` is the owner's word, on by default so a test's first pass is asked; the tests of the
+    guard itself pass False, which is what a timer or a plain Fetch sends."""
+    return fx.run(reads.NAME, **({"reread": True} if reread else {}))
 
 
 def rows(sql: str = "SELECT cik, status, attempts FROM read_answer ORDER BY cik") -> list[tuple]:
@@ -427,3 +429,147 @@ def test_a_run_sends_at_most_the_questions_max_calls(http_mock):
     assert "cap of 4 calls" in check["note"] and "2 left for the next run" in check["note"]
     run()
     assert len(http_mock.requests) == 6                             # the next run asks the rest
+
+
+# ── The review of 16 Nov 2026 (claude-coordinator reviews/2026-11-16_0750_sec-engine-review-summary.md) ─────────
+def filing(accession: str, day: date, text: str, **kw):
+    """A question over company 789019 whose one input is this filing."""
+    questions.QUESTIONS.clear()
+    return questions.register(questions.Question(
+        id="test.products", owner="test", system="s", prompt_version=kw.pop("prompt_version", "t1"),
+        scope=lambda: ["789019"], parse=parse,
+        inputs=lambda wanted: {"789019": questions.Input(accession, "d.htm", day, text)}, **kw))
+
+
+def test_a_run_without_the_owners_word_asks_a_new_filing_and_never_a_changed_prompt(http_mock):
+    http_mock.add("/chat/completions", chat('{"products": ["x"]}'))
+    filing("acc-2025", date(2025, 2, 1), "Microsoft makes software.")
+    check = run(reread=False)                               # a question's first pass waits for the word
+    assert http_mock.requests == [] and "1 wait for the owner's word" in check["note"] and "first 1" in check["note"]
+    run()
+    assert len(http_mock.requests) == 1
+    filing("acc-2026", date(2026, 2, 1), "Microsoft makes software and games.")
+    run(reread=False)                                       # next year's report: asked by itself
+    assert len(http_mock.requests) == 2
+    filing("acc-2026", date(2026, 2, 1), "Microsoft makes software and games.", prompt_version="t2")
+    check = run(reread=False)                               # a new prompt would re-read every company
+    assert len(http_mock.requests) == 2 and "changed 1" in check["note"]
+    filing("acc-2026", date(2026, 2, 1), "Microsoft makes software, games and chips.")
+    check = run(reread=False)                               # the same filing cut again: a re-cut of every filing
+    assert len(http_mock.requests) == 2 and "changed 1" in check["note"]
+    run()
+    assert len(http_mock.requests) == 3
+
+
+def test_a_new_company_is_asked_by_itself_once_the_question_has_answers(http_mock):
+    http_mock.add("/chat/completions", chat('{"products": ["x"]}'))
+    question(ciks=("789019",))
+    run()
+    questions.QUESTIONS.clear()
+    question(ciks=("789019", "320193"))                     # a company that filed its first report
+    run(reread=False)
+    assert rows() == [("320193", "ok", 1), ("789019", "ok", 1)]
+
+
+def test_a_run_without_the_word_stops_at_the_day_cap_and_goes_on_the_next_day(http_mock, monkeypatch):
+    many = {str(1000 + i): f"company {i}" for i in range(6)}
+    http_mock.add("/chat/completions", chat('{"products": ["x"]}'))
+    monkeypatch.setattr(reads, "DAY_CAP", 3)
+    question(ciks=("1000",), text=many)
+    run()                                                   # one company asked today, by hand
+    questions.QUESTIONS.clear()
+    question(ciks=tuple(many), text=many)
+    check = run(reread=False)
+    assert len(http_mock.requests) == 3                     # the cap counts today's companies, whoever asked
+    assert "day cap of 3" in check["note"] and "3 wait for tomorrow" in check["note"]
+    assert run(reread=False) and len(http_mock.requests) == 3
+    monkeypatch.setattr(reads, "_now", lambda: time.time() + 2 * 86400)
+    run(reread=False)
+    assert len(http_mock.requests) == 6
+
+
+def test_a_usable_reply_after_the_unusable_stop_does_not_store_the_held_back_ones(http_mock, monkeypatch):
+    many = {str(1000 + i): f"company {i}" for i in range(8)}
+    gave_up = threading.Event()
+    real = asker.as_completed
+
+    def in_order(futs):
+        for n, f in enumerate(real(futs)):
+            yield f
+            if n == asker.UNUSABLE_STOP - 1:                # the run has read its fifth unusable reply
+                gave_up.set()
+
+    def reply(req):
+        if any(f"company {i}" in req.content.decode() for i in range(5)):
+            return 200, json.dumps(chat('{"products": []}')), {}
+        gave_up.wait(10)                                    # in flight until the run has given up
+        return 200, json.dumps(chat('{"products": ["x"]}')), {}
+
+    monkeypatch.setattr(asker, "as_completed", in_order)
+    http_mock.add("/chat/completions", reply)
+    question(ciks=tuple(many), text=many, provider="deepseek")      # eight at a time
+    check = run()
+    assert check["result"] == "failed" and "all unusable" in check["note"]
+    assert sorted((r["cik"], r["status"]) for r in reads.held("test.products").values()) == [
+        ("1005", "ok"), ("1006", "ok"), ("1007", "ok")]
+
+
+def test_the_builder_converts_nothing_after_the_ask_lock_is_released(http_mock, monkeypatch):
+    http_mock.add("/chat/completions", chat('{"products": ["x"]}'))
+    seen = []
+    real = reads.Reads.to_parquet_all
+
+    def spy(self, ctx, raws):
+        seen.append((len(raws), asker.ASK_LOCK in [name for name, _ in job_lock.holders()]))
+        return real(self, ctx, raws)
+
+    monkeypatch.setattr(reads.Reads, "to_parquet_all", spy)
+    question()
+    run()
+    assert (1, True) in seen and all(locked for n, locked in seen if n)   # every write happens under the lock
+    assert rows() == [("320193", "ok", 1), ("789019", "ok", 1), ("999", "no_text", 0)]
+
+
+def test_a_board_reads_the_current_prompt_over_a_newer_filing_under_an_older_one(http_mock):
+    replies = iter([chat('{"products": ["old prompt"]}'), chat('{"products": ["current prompt"]}')])
+    http_mock.add("/chat/completions", lambda req: (200, json.dumps(next(replies)), {}))
+    filing("acc-2026", date(2026, 2, 1), "the newer filing", prompt_version="t1")
+    run()
+    filing("acc-2025", date(2025, 2, 1), "the older filing", prompt_version="t2")     # e.g. an imported row
+    run()
+    assert [(r["prompt_version"], r["accession"]) for r in read.sec_reads(["789019"], "test.products")] == [
+        ("t2", "acc-2025")]
+
+
+def test_an_error_text_never_carries_the_gate_key(http_mock):
+    http_mock.add("/chat/completions", lambda req: (400, "invalid key sentinel-gate for this model", {}))
+    question(ciks=("789019",), provider="deepseek")
+    run()
+    (error,), = rows("SELECT error FROM read_answer")
+    assert "sentinel-gate" not in error and "[key]" in error
+
+
+def test_a_company_with_no_text_keeps_one_row_when_the_writer_changes(http_mock):
+    http_mock.add("/chat/completions", chat('{"products": ["x"]}'))
+    question()
+    run()
+    questions.QUESTIONS.clear()
+    question(provider="deepseek")
+    run()
+    assert rows("SELECT count(*) FROM read_answer WHERE status = 'no_text'") == [(1,)]
+
+
+def test_a_company_given_up_on_gives_its_calls_back_to_the_runs_cap(http_mock):
+    many = {str(1000 + i): f"company {i}" for i in range(3)}
+    calls = iter([(500, "busy", {})] + [(200, json.dumps(chat('{"products": ["x"]}')), {})] * 2)
+    http_mock.add("/chat/completions", lambda req: next(calls))
+    question(ciks=tuple(many), text=many, max_calls=2)
+    run()
+    assert len(http_mock.requests) == 3                     # the failed company did not use up the cap
+    assert rows("SELECT cik FROM read_answer WHERE status = 'ok' ORDER BY cik") == [("1001",), ("1002",)]
+
+
+def test_a_flash_model_whose_name_only_contains_the_letters_pro_is_not_refused():
+    question(id="test.improved", provider="deepseek", model="deepseek-v4-flash-improved")
+    with pytest.raises(ValueError, match="never Pro"):
+        question(id="test.pro", provider="deepseek", model="deepseek-v4-pro")

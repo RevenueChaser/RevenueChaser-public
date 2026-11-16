@@ -132,6 +132,7 @@ def _ask_one(ctx: base.RunContext, job: Job, started: float, lock: threading.Loc
         reply = _ask_chunks(ctx, job, lock)
     except deepseek.DeepSeekTransientError:
         with lock:
+            run["calls"][q.id] -= n     # nothing was answered: the reservation goes back to the run
             run["transient"] += 1
             if run["transient"] >= TRANSIENT_STOP:
                 run["halt"] = True      # no further company is sent while the caller reads this stop
@@ -171,7 +172,7 @@ def _ask_chunks(ctx: base.RunContext, job: Job, lock: threading.Lock) -> Reply:
             reply = client.complete(q.system, chunk, model=q.writer_model, max_tokens=q.max_tokens,
                                     use_cache=False, cik=job.cik, prompt_version=q.prompt_version, usage=usage)
         except (base.Paused, base.CapReached, *_STOP) as e:
-            if not isinstance(e, (base.Paused, base.CapReached)):
+            if not isinstance(e, (base.Paused, base.CapReached, deepseek.PeakHoursError)):   # these sent nothing
                 with lock:
                     ctx.count(q.provider, calls=1, failures=1, logged=True)
                     log(i, _why(e), t0)
@@ -230,6 +231,7 @@ def ask(ctx: base.RunContext, jobs: list[Job],
     replies: list[Reply] = []
     held_back: list[Reply] = []         # unusable, and no usable reply yet in this run
     usable = False
+    gave_up = False                     # the five-unusable stop fired: its held-back replies are never stored
     stop: BaseException | None = None
     by_provider: dict[str, list[Job]] = {}
     for j in jobs:
@@ -249,9 +251,12 @@ def ask(ctx: base.RunContext, jobs: list[Job],
                 continue
             if r is None:
                 continue
+            if gave_up and r.status == EMPTY:
+                continue                # in flight when the run gave up: dropped like the five, no attempt
             usable = usable or r.status != EMPTY
             (replies if usable else held_back).append(r)
             if r.stop is None and len(held_back) >= UNUSABLE_STOP and not usable and stop is None:
+                gave_up = True
                 r.stop = base.SourceError(
                     f"the first {UNUSABLE_STOP} replies of this run were all unusable (last: {r.error or '?'}); "
                     f"check the endpoint and the model ({r.job.question.writer_model}). None was stored")
@@ -262,6 +267,6 @@ def ask(ctx: base.RunContext, jobs: list[Job],
     finally:
         for pool in pools.values():
             pool.shutdown(wait=True, cancel_futures=True)
-    if usable or len(held_back) < UNUSABLE_STOP:
+    if not gave_up:                     # a usable reply landing after the stop (eight workers) does not store them
         replies += held_back
     return replies, stop, total - len(replies)

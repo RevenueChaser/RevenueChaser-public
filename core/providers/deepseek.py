@@ -264,22 +264,22 @@ def complete(system: str, user: str, *, thinking: bool = False,
                 if attempt < MAX_ATTEMPTS:
                     _sleep(_retry_delay(None, attempt))
                     continue
-                raise DeepSeekTransientError(f"DeepSeek request failed: {exc}") from exc
+                raise DeepSeekTransientError(f"DeepSeek request failed: {_scrub(str(exc))}") from exc
             except httpx.HTTPError as exc:   # the request may have run: never replayed
-                raise DeepSeekTransientError(f"DeepSeek request failed: {exc}") from exc
+                raise DeepSeekTransientError(f"DeepSeek request failed: {_scrub(str(exc))}") from exc
             if r.status_code == 429:
                 if attempt < MAX_ATTEMPTS:
                     _sleep(_retry_delay(r, attempt))
                     continue
-                raise DeepSeekTransientError(f"DeepSeek HTTP 429: {r.text[:300]}")
+                raise DeepSeekTransientError(f"DeepSeek HTTP 429: {_scrub(r.text[:300])}")
             if 500 <= r.status_code < 600:   # may already be billed: final
-                raise DeepSeekTransientError(f"DeepSeek HTTP {r.status_code}: {r.text[:300]}")
+                raise DeepSeekTransientError(f"DeepSeek HTTP {r.status_code}: {_scrub(r.text[:300])}")
             if r.status_code in (401, 403):
                 raise DeepSeekAuthError(
                     f"DeepSeek rejected the API key (HTTP {r.status_code}). "
                     f"Check LITELLM_RC_KEY (the gate key) and re-run.")
             if r.status_code >= 400:
-                raise DeepSeekError(f"DeepSeek HTTP {r.status_code}: {r.text[:300]}")
+                raise DeepSeekError(f"DeepSeek HTTP {r.status_code}: {_scrub(r.text[:300])}")
             return _finish(r, key, use_cache, validate, effort, thinking, ticker, cik,
                            prompt_version, model, usage)
         raise DeepSeekError("DeepSeek request failed")  # pragma: no cover - loop always returns or raises
@@ -288,21 +288,28 @@ def complete(system: str, user: str, *, thinking: bool = False,
             client.close()
 
 
+def _scrub(text: str) -> str:
+    """``text`` without the gate key: an error text goes to the logs and to ``read_answer.error``, and a gate may
+    echo the key it was sent (the EVREN client does the same, ``evren._scrub``)."""
+    secret = key_for("deepseek")
+    return text.replace(secret, "[key]") if secret else text
+
+
 def _finish(r, key: str, use_cache: bool, validate, effort, thinking: bool, ticker, cik,
             prompt_version, model: str | None = None, usage: dict | None = None) -> str:
     """Turn a 2xx reply into the message content (and cache it when the caller accepts it)."""
     try:
         data = r.json()
     except ValueError as exc:
-        raise DeepSeekError(f"DeepSeek returned a reply that is not JSON: {r.text[:300]}") from exc
+        raise DeepSeekError(f"DeepSeek returned a reply that is not JSON: {_scrub(r.text[:300])}") from exc
     if not isinstance(data, dict):
-        raise DeepSeekError(f"DeepSeek returned an unexpected reply: {str(data)[:300]}")
+        raise DeepSeekError(f"DeepSeek returned an unexpected reply: {_scrub(str(data)[:300])}")
     choices = data.get("choices")
     first = choices[0] if isinstance(choices, list) and choices else {}
     message = first.get("message") if isinstance(first, dict) else None
     content = message.get("content") if isinstance(message, dict) else None
     if not content:
-        raise DeepSeekError(f"DeepSeek returned no content: {str(data)[:300]}")
+        raise DeepSeekError(f"DeepSeek returned no content: {_scrub(str(data)[:300])}")
     if usage is not None and isinstance(data.get("usage"), dict):
         usage.update(data["usage"])      # the caller's own count (the SEC reader tool stores tokens per answer)
     cacheable = use_cache
