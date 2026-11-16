@@ -93,6 +93,24 @@ def replace(rows: list[dict]) -> None:
     _write(list(rows), replace=True)
 
 
+def changes(rows) -> None:
+    """``my_universe_changes`` rows (``ticker``, ``kind``, ``change``, ``as_of``), in the order given, as the whole
+    table: the dated universe ``read.my_universe_spans`` reads. ``my_universe`` itself is left absent on purpose."""
+    from RevenueChaser.rcdata.build.spine import my_universe
+    cols = [c for c, _ in my_universe.CHANGES_SCHEMA]
+    con = _connect()
+    try:
+        con.execute(f"CREATE OR REPLACE TABLE {my_universe.CHANGES} "
+                    f"({', '.join(f'{c} {t}' for c, t in my_universe.CHANGES_SCHEMA)})")
+        con.executemany(f"INSERT INTO {my_universe.CHANGES} VALUES ({', '.join('?' * len(cols))})",
+                        [[r.get(c) for c in cols] for r in rows])
+        con.execute("CHECKPOINT")
+    finally:
+        con.close()
+    if ops.latest_unskipped_check("spine/security") is None:
+        ops.record_check("spine/security", "changed")
+
+
 def membership(slug: str, tickers) -> None:
     """``tickers`` as the current members of index ``slug`` in the spine, replacing that slug's rows.
 

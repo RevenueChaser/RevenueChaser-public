@@ -2,8 +2,8 @@
 
 ``--nightly`` recomputes only the baseline rows still open (chained on RC-Forecast-Outcomes, so the two raw.duckdb
 writers of the night do not overlap); ``--full`` recomputes every date (the first fill, or after a rule change).
-``--dry-run`` computes and counts without writing. Reads ``forecast_ledger``, the equity-universe change history and
-the stored bars, writes ``forecast_baselines`` only (``core/baselines.py``), no network call.
+``--dry-run`` computes and counts without writing. Reads ``forecast_ledger``, the dated universe (the spine's
+``my_universe_changes``) and the stored bars, writes ``forecast_baselines`` only (``core/baselines.py``), no network call.
 
 One writer at a time (``job_lock`` name ``"forecast_baselines"``, #26): a run that holds the lock makes this exit
 ``BUSY_EXIT`` with one line on stderr and no table write; ``--report`` still gets a ``{"status": "busy"}`` record, so

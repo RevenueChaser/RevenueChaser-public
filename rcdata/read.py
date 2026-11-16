@@ -290,6 +290,33 @@ def my_universe_changes(limit: int = 200) -> list[dict]:
                                         f"LIMIT {int(limit)}", [], missing_table_ok=True)
 
 
+def my_universe_spans(kinds: Iterable[str] = ()) -> list[dict]:
+    """The dated universe: ``{ticker, kind, entered_on, left_on}``, one row per stay of a name in avo's list, from
+    ``my_universe_changes``; ``kinds`` narrows to ``stock`` or ``etf``.
+
+    A name is a member at the end of day ``D`` when ``entered_on <= D`` and ``left_on`` is NULL (still in) or after
+    ``D``. Each build applies the rules to that build's own spine, so a span is the rule as it read on those days,
+    and a name that has since left keeps its span (no survivorship). The record starts at the first build that wrote
+    the table: before its ``as_of`` no span exists, which says "no snapshot", never "nobody". Rows are read in
+    insertion order within a day (``rowid``): the build appends them chronologically (``spine/my_universe._changes``).
+    """
+    wanted = [str(k).strip().lower() for k in kinds if str(k or "").strip()]
+    sql = "SELECT ticker, kind, change, as_of FROM my_universe_changes WHERE ticker IS NOT NULL AND as_of IS NOT NULL"
+    if wanted:
+        sql += f" AND kind IN ({', '.join('?' * len(wanted))})"
+    rows = _rows("my_universe_changes", sql + " ORDER BY as_of, rowid", wanted, missing_table_ok=True)
+    spans: list[dict] = []
+    stay: dict[str, dict] = {}
+    for r in rows:
+        ticker, day = r["ticker"], _day(r["as_of"])
+        if r["change"] == "entered" and ticker not in stay:          # ``my_universe.ENTERED`` / ``LEFT``
+            stay[ticker] = {"ticker": ticker, "kind": r["kind"], "entered_on": day, "left_on": None}
+            spans.append(stay[ticker])
+        elif r["change"] == "left" and ticker in stay:
+            stay.pop(ticker)["left_on"] = day
+    return sorted(spans, key=lambda s: (s["ticker"], s["entered_on"]))
+
+
 def etf_holdings(etfs: Iterable[str]) -> list[dict]:
     """Every line (``etf``, ``as_of``, ``provider``, ``ticker``, ``name``, ``weight``) of each of ``etfs`` (upper-cased) on that
     fund's own newest day of ``etf_holdings``, by fund and weight (largest first). ``ticker`` is NULL for a line with

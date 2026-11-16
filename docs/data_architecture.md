@@ -287,7 +287,7 @@ Computed from raw caches and persisted in `raw.duckdb`.
 |---|---|---|
 | `forecast_ledger` | Frozen forecasts of every board (#128 / #62 D-3) | **append-only, first write wins** (nothing is ever updated; don't call `update_columns`/`replace_all`/`delete`/`clear` on it); `forecast_date` = the NY session of the newest complete bar used; `target_date` = the session the forecast resolves on (the forecast date for picks). Outcomes live in the derived `forecast_outcomes` table (62b-1, #380 S0) |
 | `forecast_outcomes` | `forecast_ledger` picks + D01 bars (`price_bars_daily` / `price_actions`, nominal basis) | **derived, keyed upsert** (`latest_cache`): recomputed from the ledger and the bars, never a fact of its own. Writer `core/outcomes.py` (CLI `scripts/forecast_outcomes.py`, task RC-Forecast-Outcomes 23:45, after RC-Daily-Bars); one row per pick and horizon (30 and 90 calendar days). See "The forecast-outcomes writer" below |
-| `forecast_baselines` | the `equity_universe` snapshot of a freeze date (`equity_universe_changes`) + D01 bars (nominal outcomes, adjusted closes for the volatility) | **derived, keyed upsert** (`latest_cache`, #25 HR-1, added with no schema bump): what the same day's universe did, so a family's hit rate can be compared with something. Writer `core/baselines.py` (CLI `scripts/forecast_baselines.py`, task RC-Forecast-Baselines 23:50, after RC-Forecast-Outcomes); one row per freeze date, horizon (30 and 90) and basis (`universe`, `vol_decile_1` … `vol_decile_10`) |
+| `forecast_baselines` | the dated universe of a freeze date (`my_universe_changes` in the spine, stocks only) + D01 bars (nominal outcomes, adjusted closes for the volatility) | **derived, keyed upsert** (`latest_cache`, #25 HR-1, added with no schema bump): what the same day's universe did, so a family's hit rate can be compared with something. Writer `core/baselines.py` (CLI `scripts/forecast_baselines.py`, task RC-Forecast-Baselines 23:50, after RC-Forecast-Outcomes); one row per freeze date, horizon (30 and 90) and basis (`universe`, `vol_decile_1` … `vol_decile_10`) |
 | `index_constituents` | UW screener (sp500), DIA holdings (dow), ticker-exchanges (nasdaq); sp600 from the last accepted S&P 1500 snapshot in `identity_source_cache` (#302) | replace per slug; written by `index_lists.refresh_lists` (job `index_lists`, task RC-Index-Lists Saturday 10:00, CLI `scripts/index_lists.py`); a list under its floor (`MIN_INDEX`: 400 / 25 / 1,000 / 480) is not written; the first sp600 fill needs the user's OK for that run; joins and leaves are in `index_constituents_changes`. sp600 shows as "S&P SmallCap 600" on the badge and in the filter once stored (#214); `fetch_index` never fills it (Common K1). No board reads it since #642 PR 6: the boards' index badges come from the spine |
 | `index_tickers` (VIEW) | `index_constituents` ⨝ `equity_universe` | adds `name`/`sector`; replaces the old `ticker_registry` |
 | `ticker_scores` | Asymmetric Growth cards (ex-SQLite `tickers.db`) | single writer = market-cap scan; others read-only |
@@ -386,9 +386,12 @@ per horizon (`HORIZONS` = 30 and 90 calendar days), keyed by the ledger's key pl
 store alone (no provider call, no ledger write). A hit rate on its own says nothing — 41% means a different thing in a
 market where the average name rose 20% — so for every date the ledger froze a pick on it records what the same day's
 universe did, over the same windows (`outcomes.outcome` is reused, so the rules cannot drift):
-- `basis` `universe`: every ticker in that date's `equity_universe` snapshot, read at the end of the date from its
-  change history (`rawstore.changes_as_of`). Never today's membership: a name that has since left still counts on the
-  day it was in it. A date before the store recorded membership has no snapshot, and the rows say `n = 0`;
+- `basis` `universe`: every stock of avo's list (`my_universe`, kind `stock`) on that date, from the **dated
+  universe** `rcdata.read.my_universe_spans` (one span `entered_on` .. `left_on` per stay, read from the spine's
+  append-only `my_universe_changes`; each build applied the rules to that day's spine). Never today's membership: a
+  name that has since left still counts on the day it was in it. A date before the list's first build has no
+  snapshot, and the rows say `n = 0`. A member the prices store holds no bar for is counted in the run's `members`,
+  not in `n`;
 - `basis` `vol_decile_1` … `vol_decile_10`: the same names split into ten groups by trailing realised volatility (the
   standard deviation of the last 20 daily log returns of the **adjusted** closes up to and including the date,
   annualised; 1 the calmest). A name with fewer than 21 closes is in the universe baseline and in no decile. Fewer
