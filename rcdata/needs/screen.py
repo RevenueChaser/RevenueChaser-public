@@ -147,6 +147,7 @@ WRITTEN_COLUMN: dict[str, str] = {
     'sec13f_cusip_map': 'period',
     'sec13f_filer_breaks': 'period',
     'sec13f_filer_period': 'period',
+    'sec13f_filer_style': 'period',
     'sec13f_filings': 'filed',
     'sec13f_periods': 'period',
     'sec13f_ticker_period': 'period',

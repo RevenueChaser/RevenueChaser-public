@@ -1716,7 +1716,7 @@ carried a `succeeded_by`, while HPS Investment Partners → BlackRock (effective
 `predecessors` alone.
 
 **Served tables** (`ownership` serving schema version `5`; 5 since #253 and #788: split-adjusted flows,
-`sec13f_type_sector` and `sec13f_type_flow`; 4 since #760: `sec13f_type_holdings`; 3 since #775:
+`sec13f_type_sector`, `sec13f_type_flow`, and `sec13f_filer_style` (#779); 4 since #760: `sec13f_type_holdings`; 3 since #775:
 `uw_institution` and `uw_institution_succession`; 2 since #732: the continuing-filer flows and `sec13f_filer_breaks`):
 
 | Table | Rows |
@@ -1736,6 +1736,7 @@ carried a `succeeded_by`, while HPS Investment Partners → BlackRock (effective
 | `sec13f_type_holdings` | one per investor type, period and rank: the type's 25 largest tickers (`TYPE_TOP`) by the value its filers hold, each with its `share` (%) of the type's mapped portfolio, and one row with `ticker` NULL for the rest, so a quarter's shares add up to 100; `type_value`, `type_filers` and the `uw_institution` `snapshot_date` its types come from. A type is a tag UW gives the filer's CIK in the newest snapshot (a filer can carry several), plus `all` for every filer (#760) |
 | `sec13f_type_sector` | one per investor type, period and sector: the value the type's filers hold in that sector (the spine's `sector` of each ticker, today's for every quarter; `Unclassified` where the spine has none), its `share` (%) of the type's mapped portfolio, `tickers`, `filers` and the `snapshot_date` its types come from (#788) |
 | `sec13f_type_flow` | one per investor type and period: dollars `bought` and `sold` and the `net`, per filer and ticker the split-adjusted change in shares against the quarter before at the quarter's 13F price (value over shares), over the type's `filers` that reported both quarters, as the ticker flows are (#788) |
+| `sec13f_filer_style` | one per filer of the newest settled quarter holding 5 or more names, over that quarter and the 7 before it: `quarters` reported, `names` and `value` now, `turnover` (median over its quarter pairs of half the summed change of each name's weight in its book), `top10_share`, and `held_share` (its value in names held every quarter it reported). Data only until the single-investor view (#928) (#779) |
 | `uw_institution` | one per snapshot day and CIK: `name`, `short_name`, `tags` (sorted), `is_hedge_fund`, the report and filing dates, total and share value, `succeeded_by_cik` with its `succeeded_by_report_date`, and `current_holder_cik` |
 | `uw_institution_succession` | one per snapshot day, predecessor CIK, successor CIK and `effective_report_date`, with both names and `origin` (`predecessors`, `succeeded_by` or `both`) |
 | `sec13f_data_sets` | one per 13F data set the SEC page ever listed: `name`, `first_day`, `last_day`, `url`, `first_seen`; a period is `closed` once a listed set's window holds its filing deadline (#732) |

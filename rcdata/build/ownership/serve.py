@@ -184,10 +184,15 @@ TYPE_SECTOR = [("tag", "TEXT"), ("period", "DATE"), ("sector", "TEXT"), ("value"
                ("tickers", "INTEGER"), ("filers", "INTEGER"), ("snapshot_date", "DATE")]
 TYPE_FLOW = [("tag", "TEXT"), ("period", "DATE"), ("bought", "DOUBLE"), ("sold", "DOUBLE"), ("net", "DOUBLE"),
              ("filers", "INTEGER"), ("snapshot_date", "DATE")]
+# #779 B2 (avo, 16 Nov 2026, Q7 and Q12 of the 13F plan): each filer's style over the last ``STYLE_QUARTERS`` settled
+# quarters; data only until the single-investor view (#928) shows it.
+STYLE = [("cik", "TEXT"), ("period", "DATE"), ("filer_name", "TEXT"), ("quarters", "INTEGER"), ("names", "INTEGER"),
+         ("value", "DOUBLE"), ("turnover", "DOUBLE"), ("top10_share", "DOUBLE"), ("held_share", "DOUBLE")]
+STYLE_QUARTERS = 8
 STARTED, STOPPED = "started", "stopped"
 SCHEMAS = {"sec13f_cusip_map": MAP, "sec13f_filer_period": FILER, "sec13f_ticker_period": TICKER,
            "sec13f_periods": PERIODS, "sec13f_filer_breaks": BREAKS, "sec13f_type_holdings": TYPES,
-           "sec13f_type_sector": TYPE_SECTOR, "sec13f_type_flow": TYPE_FLOW}
+           "sec13f_type_sector": TYPE_SECTOR, "sec13f_type_flow": TYPE_FLOW, "sec13f_filer_style": STYLE}
 TABLES = tuple(SCHEMAS)
 # The old sec13f_totals entry's keys, in its order (module_sec_13f/engine.py compute_period_metrics).
 METRICS = ("shares", "value", "holders", "top10_pct", "hhi", "new_holders", "exited_holders", "buy_flow",
@@ -633,6 +638,7 @@ class OwnershipServe:
             counts["sec13f_type_holdings"] = self._types(con, snap)
             counts["sec13f_type_sector"] = self._type_sector(con, snap)
             counts["sec13f_type_flow"] = self._type_flow(con, snap)
+            counts["sec13f_filer_style"] = self._style(con, ctx.as_of or self.default_as_of())
             found += self._issues(con, ctx.as_of or self.default_as_of())
             summary["rescaled"] = common.count(con, "sec13f_filer_period", "value_factor <> 1")
             summary["px_fixed"] = common.count(con, "_pxfix")
@@ -1090,6 +1096,56 @@ class OwnershipServe:
                 WHERE status = 'unparsed' GROUP BY index_day ORDER BY index_day""").fetchall():
             found.append(("filings_unparsed", str(day), f"{n} 13F filing(s) unparsed, e.g. {acc}: {why}"))
         return found
+
+    @staticmethod
+    def _style(con: duckdb.DuckDBPyConnection, as_of: date) -> int:
+        """``sec13f_filer_style``: per filer of the newest settled quarter holding ``MIN_NAMES`` or more names, over
+        that quarter and the ``STYLE_QUARTERS`` - 1 before it: ``turnover``, the median over its quarter pairs of
+        half the summed change of each name's weight in its book (weights of value, so a split moves nothing);
+        ``top10_share``, its ten largest names' share of its value; ``held_share``, the share of its value in names it
+        held in every quarter of the window it reported. Measured 16 Nov 2026 over the 500 largest: value investors
+        turn 7.6% a quarter with 56% in ten names, activists 23% and 57%, all filers 9.5% and 33% (#779)."""
+        common.create_table(con, "sec13f_filer_style", STYLE)
+        rows = con.execute("""SELECT p.period FROM sec13f_periods p LEFT JOIN _closed cl ON cl.period = p.period
+            JOIN _deadline d ON d.period = p.period WHERE coalesce(cl.closed, d.deadline < ?)
+            ORDER BY p.period DESC""", [as_of]).fetchall()
+        window = [r[0] for r in rows[:STYLE_QUARTERS]]
+        if not window:
+            return 0
+        common.temp_rows(con, "_sw", [("period", "DATE")], [{"period": q} for q in window])
+        con.execute(f"""CREATE OR REPLACE TEMP TABLE _swt AS
+            WITH h AS (SELECT cik, period, cusip, value FROM _held WHERE period IN (SELECT period FROM _sw)
+                       AND value > 0),
+                 b AS (SELECT cik, period, sum(value) AS book FROM h GROUP BY ALL)
+            SELECT h.cik, h.period, h.cusip, h.value / b.book AS wt FROM h JOIN b USING (cik, period)""")
+        common.temp_rows(con, "_sturn", [("cik", "TEXT"), ("period", "DATE"), ("turn", "DOUBLE")], [])
+        for prev, now in zip(window[1:], window):           # one quarter pair at a time (the derive's memory rule)
+            con.execute("""INSERT INTO _sturn
+                WITH a AS (SELECT cik, cusip, wt FROM _swt WHERE period = ?),
+                     b AS (SELECT cik, cusip, wt FROM _swt WHERE period = ?),
+                     both_ AS (SELECT DISTINCT cik FROM a INTERSECT SELECT DISTINCT cik FROM b)
+                SELECT coalesce(a.cik, b.cik), ?, sum(abs(coalesce(a.wt, 0) - coalesce(b.wt, 0))) / 2
+                FROM a FULL JOIN b ON a.cik = b.cik AND a.cusip = b.cusip
+                WHERE coalesce(a.cik, b.cik) IN (SELECT cik FROM both_) GROUP BY 1""", [now, prev, now])
+        newest = window[0]
+        con.execute(f"""INSERT INTO sec13f_filer_style
+            WITH n AS (SELECT cik, cusip, value, row_number() OVER (PARTITION BY cik ORDER BY value DESC, cusip) AS rk
+                       FROM _held WHERE period = ? AND value > 0),
+                 q AS (SELECT cik, count(DISTINCT period) AS quarters FROM _swt GROUP BY cik),
+                 k AS (SELECT s.cik, s.cusip FROM _swt s JOIN q ON q.cik = s.cik GROUP BY s.cik, s.cusip, q.quarters
+                       HAVING count(DISTINCT s.period) = q.quarters),
+                 tm AS (SELECT cik, median(turn) AS turn FROM _sturn GROUP BY cik)
+            SELECT n.cik, ?, max(f.filer_name), any_value(q.quarters), count(*), sum(n.value), any_value(tm.turn),
+                   sum(n.value) FILTER (WHERE n.rk <= 10) / sum(n.value),
+                   sum(n.value) FILTER (WHERE k.cusip IS NOT NULL) / sum(n.value)
+            FROM n JOIN q ON q.cik = n.cik
+            LEFT JOIN tm ON tm.cik = n.cik
+            LEFT JOIN k ON k.cik = n.cik AND k.cusip = n.cusip
+            LEFT JOIN sec13f_filer_period f ON f.cik = n.cik AND f.period = ?
+            GROUP BY n.cik HAVING count(*) >= {MIN_NAMES} ORDER BY n.cik""", [newest, newest, newest])
+        for t in ("_sw", "_swt", "_sturn"):
+            con.execute(f"DROP TABLE IF EXISTS {t}")
+        return common.count(con, "sec13f_filer_style")
 
     @staticmethod
     def _summary(con: duckdb.DuckDBPyConnection, as_of: date) -> dict:
