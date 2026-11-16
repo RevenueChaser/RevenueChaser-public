@@ -1224,6 +1224,9 @@ def render_sec13f_dashboard(totals: dict, meta: dict, enrichment: dict = None,
                         arriving(totals, quarters), quarter_status(totals, quarters))
 
 
+# avo, 16 Nov 2026 (Q1 of the 13F plan): the column stays off, and the board says why.
+INSIDER_OFF = ("Insider % is off: Form 4 data does not give it reliably (a two-year cut drops large long-time "
+               "owners; without the cut some names exceed 100%).")
 DEFAULT_TYPE = "value_investor"     # the owner's example (12 Nov 2026: UW's "Value / Energy Investors" chart)
 
 
@@ -1335,7 +1338,7 @@ def _render_page(quarters: list, entries: list, fields: list, kit_notice: str | 
 <div class="header"><h1>SEC 13F — Total Institutional Ownership</h1>
 <div class="meta">{len(entries)} tickers · all 13F filers (incl. BlackRock/Vanguard/State Street) · quarterly · click a row for the chart</div>
 {status_html}</div>
-{provider_health_html(provider_health)}{notice_html(notice)}{notice_html(kit_notice)}
+{provider_health_html(provider_health)}{notice_html(notice)}{notice_html(kit_notice)}{notice_html(INSIDER_OFF)}
 {help_block}
 
 {filters_bar_html("rc-filters")}
