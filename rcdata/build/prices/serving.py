@@ -1060,9 +1060,7 @@ MARKET_CAP_SQL = f"""
                       close * shares AS market_cap, coalesce(issuer, security_id) AS iss
                -- No cap for an ADR (#711): Compustat's count, as the cover's, is the issuer's ordinary shares and the
                -- close is the ADS's. shortcut: until an ADS ratio is read; then divide instead (``adr_no_ratio``).
-               FROM s WHERE shares IS NOT NULL
-                 AND security_id NOT IN (SELECT security_id FROM stg_spine
-                                         WHERE security_type = 'adr' AND security_id IS NOT NULL)),
+               FROM s WHERE shares IS NOT NULL),
          -- Each class of the issuer at its newest cap on or before the session, if at most ISSUER_WITHIN_DAYS old:
          -- a class with no bar that day (GOOG on a day GOOGL traded) still counts.
          k AS (SELECT DISTINCT iss, security_id AS cls FROM c),
