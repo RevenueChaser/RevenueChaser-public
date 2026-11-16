@@ -23,6 +23,13 @@ submissions file has no ``FORMS`` filing. A filing that has a raw file is never 
 **Parquet**: ``parquet/sec/cover_shares/year=<year filed>/part-0.parquet`` keyed ``(accession, class_member)``
 (``class_member`` empty for a single class). ``as_of`` is the cover's date (the context's instant), ``filed`` the
 filing date, ``period_end`` the period the filing reports.
+
+**The cover count history** (13F plan decision L, 16 Nov 2026): the covers above start in 2024 and hold about one
+filing per company, so a past quarter has no count. ``sec/companyfacts`` (fundamentals) already stores each company's
+whole facts answer, and its ``dei:EntityCommonStockSharesOutstanding`` is every past cover's count, undimensioned (the
+issuer's whole count: right for a single class, a sum or one class's for several). A run of this dataset types the
+newest company facts raw of each company whose file is missing or older than that raw (no request) into
+``parquet/sec/cover_shares_dei/cik=<CIK>/part-0.parquet``; ``prices/serving`` serves it for single-class issuers only.
 """
 from __future__ import annotations
 
@@ -92,6 +99,36 @@ def none_path(cik: str, accession: str) -> Path:
 
 def partition_path(year: int) -> Path:
     return base.parquet_root() / "sec" / "cover_shares" / f"year={year}" / "part-0.parquet"
+
+
+#: The ``source`` of the ``shares_class`` rows the company facts history gives.
+DEI_SOURCE = "sec/companyfacts"
+DEI_SCHEMA = [("cik", "TEXT"), ("accession", "TEXT"), ("form", "TEXT"), ("filed", "DATE"), ("as_of", "DATE"),
+              ("shares", "DOUBLE"), ("source_as_of", "DATE"), ("fetched_at", "DOUBLE"), ("run_id", "TEXT")]
+
+
+def dei_dir() -> Path:
+    return base.parquet_root() / "sec" / "cover_shares_dei"
+
+
+def dei_path(cik: str) -> Path:
+    return dei_dir() / f"cik={cik}" / "part-0.parquet"
+
+
+def dei_rows(body: dict, cik: str) -> list[dict]:
+    """Every cover count of a company facts answer: its ``dei:EntityCommonStockSharesOutstanding`` values, ``{cik,
+    accession, form, filed, as_of, shares}``; a value with no date or no number is left out."""
+    fact = (((body or {}).get("facts") or {}).get("dei") or {}).get("EntityCommonStockSharesOutstanding") or {}
+    out = []
+    for v in (fact.get("units") or {}).get("shares") or []:
+        try:
+            as_of, shares = date.fromisoformat(v["end"]), float(v["val"])
+            filed = date.fromisoformat(v["filed"]) if v.get("filed") else None
+        except (KeyError, TypeError, ValueError):
+            continue
+        out.append({"cik": cik, "accession": v.get("accn"), "form": v.get("form"), "filed": filed, "as_of": as_of,
+                    "shares": shares})
+    return out
 
 
 def parse_index(text: str) -> list[dict]:
@@ -369,11 +406,45 @@ class SecCoverShares:
                     "class_member": f.get("class_member") or "", "symbol": f.get("symbol"), "shares": f["shares"],
                     "as_of": f.get("as_of"), "source_as_of": p["as_of"], "fetched_at": p["fetched_at"],
                     "run_id": p["run_id"]})
-        return [base.upsert_partition(rows, SCHEMA, KEY, partition_path(y)) for y, rows in sorted(years.items())]
+        out = [base.upsert_partition(rows, SCHEMA, KEY, partition_path(y)) for y, rows in sorted(years.items())]
+        return out + self.dei_to_parquet(ctx)
+
+    @staticmethod
+    def dei_to_parquet(ctx: base.RunContext) -> list[Path]:
+        """The cover count history: type the newest company facts raw of every company whose ``dei_path`` is
+        missing or older than it (mtime, as ``companyfacts._untyped``). The first run reads every company (about
+        ten minutes, measured 16 Nov 2026: 5,312 raws), later ones only the companies re-read since."""
+        if base.raw_only():
+            return []
+        from ..fundamentals import common as fcommon, companyfacts
+        root = fcommon.raw_dir(companyfacts.NAME)
+        written, failed = [], []
+        for folder in sorted(root.iterdir()) if root.is_dir() else ():
+            raws = sorted(folder.glob("*.json.gz"))
+            out = dei_path(folder.name)
+            if not raws or (out.exists() and out.stat().st_mtime >= raws[-1].stat().st_mtime):
+                continue
+            try:
+                meta = base.read_raw_json(fcommon.meta_path(raws[-1]))
+                stamps = {"source_as_of": date.fromisoformat(meta["as_of"]), "fetched_at": float(meta["fetched_at"]),
+                          "run_id": meta["run_id"]}
+                rows = dei_rows(base.read_raw_json(raws[-1]), folder.name)
+            except Exception as e:  # noqa: BLE001 - one unreadable raw must not stop the other companies
+                failed.append(folder.name)
+                ctx.issue("dei_type_failed", folder.name, f"{raws[-1].name}: {type(e).__name__}: {e}"[:400])
+                continue
+            written.append(stage.write_rows([{**r, **stamps} for r in rows], DEI_SCHEMA, out, "as_of, accession"))
+        if written:
+            ctx.notes.append(f"cover count history: {len(written)} company facts file(s) typed")
+        if failed:
+            ctx.notes.append(f"cover count history: {len(failed)} company(ies) not typed: " + ", ".join(failed[:5]))
+        return written
 
     def build(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> dict[str, int]:
+        from ..fundamentals import common as fcommon
         stage.create(con, "stg_sec_cover", SCHEMA,
                      [f for _, f in stage.partitions(base.parquet_root() / "sec" / "cover_shares", "year")])
+        fcommon.stage_glob(con, "stg_sec_dei", DEI_SCHEMA, dei_dir(), "cik=*/part-0.parquet")
         return {}
 
     def check(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> dict:

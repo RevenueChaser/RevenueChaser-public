@@ -18,8 +18,9 @@
   dividend after it). A bar after the last ex-date, or of a security with no action, has both factors 1. The
   factors are applied on read (``rcdata.read.bars``); nothing stored is ever adjusted;
 - ``shares_class``: shares per class and day: ``outstanding`` from the SEC covers (an unlisted class keyed
-  ``class:<CIK>:<member>``, and so is an ADR issuer's count, which is of ordinary shares, not of the ADSs),
-  ``float`` from Yahoo and from Unusual Whales;
+  ``class:<CIK>:<member>``, and so is an ADR issuer's count, which is of ordinary shares, not of the ADSs) and, for a
+  single-class issuer, every past cover's count from its company facts (``sec/companyfacts``, the history the covers
+  lack), ``float`` from Yahoo and from Unusual Whales;
 - ``security_symbol``: the symbols each security traded under and when (from its bars; the spine's ticker for a Tier
   A name with none yet);
 - ``market_cap_daily``: close times shares per security and session, the shares being the bar's own (a history
@@ -61,6 +62,7 @@ import duckdb
 from ... import ops
 from .. import base
 from . import KIND, incremental, stage, universe, wrds_history
+from .cover_shares import DEI_SOURCE as DEI
 
 logger = logging.getLogger(__name__)
 
@@ -708,11 +710,31 @@ class PricesServing:
                            ELSE 'class:' || cik || ':' || coalesce(nullif(class_member, ''), 'common')
                       END AS security_id
             FROM m""")
+        # The company facts history (13F plan decision L): the issuer's undimensioned cover count, so a single-class
+        # issuer's only: the CIK's one Tier A row and not an ADR (as ``_cover``), no cover filing of the CIK with
+        # two classes, and no day the facts give two counts for (a multi-class issuer's classes reported apart). A
+        # day a cover row serves for the security stays the cover's; of one day's counts the newest filing's wins.
+        con.execute("""CREATE OR REPLACE TEMP TABLE _dei AS
+            WITH one AS (SELECT cik, any_value(security_id) AS security_id, any_value(security_type) AS security_type,
+                                any_value(ticker) AS ticker
+                         FROM stg_spine WHERE tier = 'A' GROUP BY cik HAVING count(*) = 1),
+                 multi AS (SELECT DISTINCT cik FROM stg_sec_cover GROUP BY cik, accession HAVING count(*) > 1),
+                 split AS (SELECT DISTINCT cik FROM stg_sec_dei GROUP BY cik, as_of HAVING count(DISTINCT shares) > 1)
+            SELECT o.security_id, o.ticker, d.* FROM stg_sec_dei d JOIN one o USING (cik)
+            WHERE o.security_type IS DISTINCT FROM 'adr' AND d.shares > 0
+              AND d.cik NOT IN (SELECT cik FROM multi) AND d.cik NOT IN (SELECT cik FROM split)
+              AND NOT EXISTS (SELECT 1 FROM _cover c WHERE c.security_id = o.security_id AND c.as_of = d.as_of)
+            QUALIFY row_number() OVER (PARTITION BY d.cik, d.as_of
+                                       ORDER BY d.filed DESC NULLS LAST, d.accession DESC) = 1""")
         n = _create(con, "shares_class", f"""
             SELECT c.security_id, 'outstanding' AS measure, c.as_of, c.shares AS value, c.symbol, c.cik,
                    nullif(c.class_member, '') AS class_member, '{COVER}' AS source, c.accession AS source_ref,
                    c.filed, c.source_as_of, c.fetched_at, c.run_id
             FROM _cover c
+            UNION ALL
+            SELECT d.security_id, 'outstanding', d.as_of, d.shares, d.ticker, d.cik, NULL, '{DEI}', d.accession,
+                   d.filed, d.source_as_of, d.fetched_at, d.run_id
+            FROM _dei d
             UNION ALL
             SELECT coalesce(s.security_id, y.security_id), 'float', y.source_as_of, y.float_shares, y.ticker, y.cik,
                    NULL, '{YAHOO}', NULL, NULL, y.source_as_of, y.fetched_at, y.run_id
@@ -884,7 +906,7 @@ class PricesServing:
                            QUALIFY row_number() OVER (PARTITION BY coalesce(s.security_id, y.security_id)
                                                       ORDER BY y.source_as_of DESC, y.fetched_at DESC) = 1)
                 SELECT y.security_id, m.shares, m.shares_as_of, y.yahoo, m.session_date
-                FROM y ASOF JOIN (SELECT * FROM market_cap_daily WHERE shares_source = '{COVER}') m
+                FROM y ASOF JOIN (SELECT * FROM market_cap_daily WHERE shares_source IN ('{COVER}', '{DEI}')) m
                     ON m.security_id = y.security_id AND y.source_as_of >= m.session_date
                 WHERE abs(m.shares - y.yahoo) > {SHARES_DISAGREE} * greatest(m.shares, y.yahoo)
                 ORDER BY 1""").fetchall():
