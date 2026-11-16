@@ -7,9 +7,9 @@ Inputs:
   ``totals`` = ``{ticker: {period: {shares, value, holders, new_holders,
                  exited_holders, top10_pct, hhi, buy_flow, sell_flow}}}``
   ``meta``  = ``{ticker: {"name": str, "sector": str}}``
-  ``enrichment`` = ``{ticker: {price, shares_outstanding, split_factor, float_shares}}`` (optional): the snapshot
-                   inputs, ``enrich.load_inputs`` (#375 F2: ``ownership_snapshot`` and D01; #732: the split factor
-                   per quarter end from the prices store).
+  ``enrichment`` = ``{ticker: {price, shares_outstanding, shares_source, shares_note, short_pct, short_pct_as_of,
+                   split_factor, breaks}}`` (optional): the snapshot inputs, ``enrich.load_inputs`` (D01 closes; the
+                   shared shares and FINRA readers, #646 #576; #732: split factors and filer breaks).
 
 Every share count on the board is on today's share basis (#732): a quarter's shares and flows are divided by that
 quarter end's split factor and its close multiplied by it, so a split reads as what it is, not as buying. The board
@@ -846,6 +846,8 @@ def _fmt_money(v):
     if v is None:
         return "—"
     v = float(v)
+    if abs(v) >= 1e12:
+        return f"${v / 1e12:.2f}T"      # NVDA read $3355.32B (plan 16 Nov 2026, step 6)
     if abs(v) >= 1e9:
         return f"${v / 1e9:.2f}B"
     if abs(v) >= 1e6:
@@ -972,7 +974,7 @@ _SNAP_COLS = [
 
 def board_entries(totals: dict, meta: dict, enrichment: dict = None) -> tuple[list, list]:
     """``(quarters, entries)``: the board's quarter columns and one entry per ticker, in board order (most shares in
-    the latest quarter first). The board renders these; the result history (``history.py``, #375) records them."""
+    the latest quarter first). The board renders these."""
     quarters = _quarters(totals)
     still_arriving = arriving(totals, quarters)
     enrichment = enrichment or {}
@@ -1055,11 +1057,9 @@ def board_entries(totals: dict, meta: dict, enrichment: dict = None) -> tuple[li
             "streak": streak, "accel": accel, "pct_out": pct_out, "pct_note": pct_note,
             "pct_estimate": enr.get("shares_source") == "estimate",
             "price_delta": price_delta, "price": price,
-            # Not shown since #732 (owner, 12 Nov 2026); kept on the entry for the result history only.
             "short_pct": enr.get("short_pct"), "short_pct_as_of": enr.get("short_pct_as_of"),
-            "insider_pct": enr.get("insider_pct"),
             "shares_filed": filed, "split_factor": {q: factors[q] for q in quarters if q in factors},
-            "shares_outstanding": so, "float_shares": enr.get("float_shares"),
+            "shares_outstanding": so,
         })
 
     order = max((i for i, q in enumerate(quarters) if q not in still_arriving), default=len(quarters) - 1)
@@ -1321,9 +1321,9 @@ def _render_page(quarters: list, entries: list, fields: list, kit_notice: str | 
         "holdings. This board adds them up per company: how many shares all 13F filers hold, the change "
         "against the prior quarter, new and exited holders, concentration and the streak of quarters with "
         "net buying. The legend under the table defines each column; click a row for its chart. "
-        "<b>Fetch</b> downloads the newest SEC 13F data set from <b>SEC EDGAR</b> and stores the totals; it also "
-        "reads names, sectors and shares outstanding from <b>Unusual Whales</b>. "
-        "<b>Refresh</b> redraws the board from the stored totals with no network call.")
+        "The SEC 13F data sets are fetched and built by the hourly builder; <b>Fetch</b> and <b>Refresh</b> both "
+        "redraw the board from that build, the identity spine's names and sectors, the SEC cover share counts and "
+        "FINRA's short interest, with no network call.")
     return f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>RevenueChaser — SEC 13F Ownership</title>
