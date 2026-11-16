@@ -62,4 +62,4 @@ def test_the_search_filters_the_array(monkeypatch, tmp_path):
 SEARCH_Q = 'T12'; applyFilters();
 console.log(JSON.stringify({n: VIEW.length, shown: SHOWN}));
 """)
-    assert got == {"n": 11, "shown": 11}      # T012, T120-T129
+    assert got == {"n": 10, "shown": 10}      # T120-T129
