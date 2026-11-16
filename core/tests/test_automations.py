@@ -549,3 +549,12 @@ def test_a_connected_scheduler_never_asks_the_system_manager():
         raise AssertionError("the system manager was asked")
     rows = A.live_state(A.FakeScheduler(), NOW, boom)["rows"]
     assert {r["state"] for r in rows} == {"not_installed"} and not any("managed" in r for r in rows)
+
+
+def test_relatedness_reads_every_other_sunday_and_its_trigger_is_unchanged():
+    """avo, 15 Nov 2026 16:31: Relatedness refreshes every two weeks, on Sunday. The words say so; the row's own
+    trigger is still the Sunday one, because the server's timer carries the fortnight."""
+    e = A.entry("RC-Relatedness-OffPeak")
+    assert e.schedule == "every other Sunday 07:30 (local)"
+    assert A.on_calendar(e).endswith("*-*-* 07:30:00") and "Sun" in A.on_calendar(e)
+    assert A.entry("RC-Backup-Weekly").schedule == "weekly Sunday 03:30 (local)"

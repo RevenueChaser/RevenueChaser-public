@@ -97,6 +97,7 @@ class AutomationEntry:
     chain_wait_minutes: int = 120  # how long a chained task waits for that run before it gives up
     hourly: bool = False           # every hour at ``time``'s minute (its hour is ignored); never chained, no ``days``
     unit_name: str | None = None   # the systemd unit (and nothing else) under another name than ``name``
+    fortnightly: bool = False      # words only: the server's timer carries the fortnight (1st and 3rd week), not this row
 
     @property
     def unit(self) -> str:
@@ -110,7 +111,8 @@ class AutomationEntry:
         if self.days == _WEEKDAYS:
             text = f"Monday to Friday {self.time} (local)"     # five days a week is not "weekly" (16 Nov 2026)
         elif self.days:
-            text = f"weekly {', '.join(self.days)} {self.time} (local)"
+            every = "every other" if self.fortnightly else "weekly"
+            text = f"{every} {', '.join(self.days)} {self.time} (local)"
         else:
             text = f"daily {self.time} (local)"
         return f"{text}, after {self.after}" if self.after else text
@@ -140,6 +142,7 @@ REGISTRY: tuple[AutomationEntry, ...] = (
     AutomationEntry(
         name="RC-Relatedness-OffPeak", label="Relatedness (every other Sunday)",
         args=("-m", "RevenueChaser.module_relatedness", "--run", "--cap", "10"), time="07:30", days=("Sunday",),
+        fortnightly=True,
         description=("Relatedness profiling with the board's writer (Settings, #360: EVREN by default, no call cap), "
                      "incremental (only changed filings), then every pair scored (~1 h 45 min CPU, 15 Nov 2026) and the "
                      "board rendered. Every other Sunday 07:30 (avo 15 Nov 2026; the homesrv timer carries the fortnight, "
