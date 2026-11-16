@@ -158,7 +158,7 @@ def resolve(name: str, names: dict | None = None) -> dict | None:
     return {"name": name, "ticker": ticker} if ticker else None
 
 
-# The profile fields that name other companies (module_relatedness/profile_v3.py).
+# The profile fields that name other companies (rcdata/sec_profile.py).
 PROFILE_PARTIES = ("customers", "suppliers", "named_competitors")
 
 
