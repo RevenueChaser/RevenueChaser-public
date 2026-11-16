@@ -146,7 +146,7 @@ ISSUE_KINDS: dict[str, str] = {
                                              "filed more than 400 days before the build's as-of; also a filer that "
                                              "moved to IFRS, whose last us-gaap statement is years old (TM: 2020)"),
     "no_statement": "a Tier A company with no SEC statement fact (not read yet, or no XBRL facts at the SEC)",
-    "no_us_gaap_facts": "a Tier A company whose XBRL facts hold no us-gaap taxonomy (an IFRS filer; not read yet)",
+    "no_us_gaap_facts": "a Tier A company whose statements are not read from us-gaap (an IFRS filer or mover, read from ifrs-full)",
 }
 
 

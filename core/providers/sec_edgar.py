@@ -1032,7 +1032,7 @@ def _is_us_filer(facts: dict) -> bool | None:
     """
     forms = {f.get("form") for concepts in (facts.get("facts") or {}).values() for body in concepts.values()
              for items in (body.get("units") or {}).values() for f in items if f.get("fp") == "FY"}
-    if forms & {"10-K", "10-K/A", "10-KT"}:
+    if forms & {"10-K", "10-K/A", "10-KT", "10-KT/A"}:
         return True
     if forms & {"20-F", "20-F/A", "40-F", "40-F/A"}:
         return False

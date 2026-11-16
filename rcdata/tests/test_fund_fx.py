@@ -99,3 +99,12 @@ def test_a_second_run_on_the_same_day_keeps_the_whole_history(yf):
     assert asked[-1] == ("CADUSD=X", "2026-10-29")
     assert [r for r in _parquet() if r[0] == "CAD"] == [("CAD", date(2001, 1, 2), 0.65), ("CAD", date(2026, 11, 4), 0.5),
                                                         ("CAD", date(2026, 11, 5), 0.52)]
+
+
+def test_a_one_day_spike_is_left_out_of_the_index_but_a_lasting_move_stays():
+    days = [f"2025-01-{d:02d}" for d in range(1, 10)]
+    spike = fx_rates.index_rates([("TRY", d, 100.0 if d == "2025-01-05" else 0.03) for d in days])
+    assert "2025-01-05" not in spike["TRY"][0] and len(spike["TRY"][1]) == 8
+    step = [0.03] * 4 + [0.015] * 5                                  # a devaluation: the neighbours move too
+    moved = fx_rates.index_rates([("TRY", d, r) for d, r in zip(days, step)])
+    assert moved["TRY"][1] == step

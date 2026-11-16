@@ -726,3 +726,79 @@ def test_the_reporting_currency_wins_per_period_over_a_few_usd_facts_105():
            if ("revenue", "annual", date(y, 12, 31)) in by}
     assert rev[2024] == pytest.approx(1_100) and rev[2025] == pytest.approx(1_200)    # EUR at the year's mean rate
     assert rev[2023] == 999                                                            # no EUR fact: the USD one
+
+
+# Fundamentals plan step 4 (avo, 16 Nov 2026: "Yes, all of step 4").
+def _ifrs_with(unit: str = "USD", **tags) -> dict:
+    """``_ifrs_filer`` plus ifrs-full balance tags on its 2025 year end (the borrowing lines, ``FinanceCosts``)."""
+    filer = _ifrs_filer(unit)
+    accn, filed, end = "0000000002-26-000001", "2026-03-01", "2025-12-31"
+    for tag, val in tags.items():
+        start = "2025-01-01" if tag == "FinanceCosts" else None
+        filer["facts"]["ifrs-full"][tag] = {"units": {unit: [fx._fact(val, end, accn, filed, "20-F", "FY", 2025,
+                                                                        start)]}}
+    return filer
+
+
+def test_an_ifrs_borrower_gets_a_total_debt_from_its_borrowing_lines():
+    # BP, UL, RELX, WPP were read debt-free: no IFRS borrowing concept was mapped.
+    by = _by_key(facts.fact_rows(_ifrs_with(NoncurrentPortionOfNoncurrentBorrowings=900,
+                                            CurrentPortionOfNoncurrentBorrowings=100, ShorttermBorrowings=50),
+                                 "2")[0])
+    assert by[("total_debt", "annual", date(2025, 12, 31))]["value"] == 1_050
+
+
+def test_an_ifrs_current_borrowings_line_is_the_whole_current_part():
+    by = _by_key(facts.fact_rows(_ifrs_with(NoncurrentPortionOfNoncurrentBorrowings=900,
+                                            CurrentBorrowingsAndCurrentPortionOfNoncurrentBorrowings=150,
+                                            ShorttermBorrowings=50), "2")[0])
+    assert by[("total_debt", "annual", date(2025, 12, 31))]["value"] == 1_050    # DebtCurrent: nothing added beside
+
+
+def test_ifrs_borrowings_alone_is_a_fallback_whole_line():
+    by = _by_key(facts.fact_rows(_ifrs_with(Borrowings=700), "2")[0])
+    assert by[("total_debt", "annual", date(2025, 12, 31))]["value"] == 700
+
+
+def test_finance_costs_is_an_interest_presence_signal_not_the_interest_expense():
+    by = _by_key(facts.fact_rows(_ifrs_with(FinanceCosts=40), "2")[0])
+    y = date(2025, 12, 31)
+    assert by[("interest_expense_other", "annual", y)]["value"] == 40
+    assert ("interest_expense", "annual", y) not in by
+
+
+def test_a_mover_to_ifrs_is_read_from_ifrs_full_105():
+    # AEM, NAAS, TM, FMS, FRO: old us-gaap years, newer ifrs-full ones. The newer taxonomy is read, alone.
+    filer = _ifrs_filer("USD")
+    filer["facts"]["us-gaap"] = {"Revenues": {"units": {"USD": [
+        fx._fact(500, "2021-12-31", "old", "2022-03-01", "10-K", "FY", 2021, "2021-01-01")]}}}
+    assert facts.reads_ifrs(filer)
+    rows, company, _ = facts.fact_rows(filer, "2")
+    assert {r["period_end"] for r in rows if r["field"] == "revenue"} == {date(2025, 12, 31)}
+    assert company["us_gaap"] is False
+
+
+def test_is_us_is_read_from_the_filers_own_facts_before_the_mapping():
+    # The 16 Nov review: an IFRS filer whose mapped concepts carry no FY fact got is_us NULL.
+    filer = {"cik": 3, "entityName": "Y", "facts": {"ifrs-full": {
+        "Revenue": {"units": {"USD": [fx._fact(10, "2025-06-30", "h", "2025-08-01", "6-K", "H1", 2025,
+                                               "2025-01-01")]}},
+        "InterestIncome": {"units": {"USD": [fx._fact(5, "2024-12-31", "a", "2025-03-01", "20-F", "FY", 2024,
+                                                      "2024-01-01")]}}}}}
+    assert facts.fact_rows(filer, "3")[1]["is_us"] is False
+
+
+def test_a_10kt_amendment_says_us():
+    assert sec_edgar._is_us_filer({"facts": {"us-gaap": {"X": {"units": {"USD": [
+        fx._fact(1, "2025-12-31", "a", "2026-02-01", "10-KT/A", "FY", 2025)]}}}}}) is True
+
+
+def test_an_ifrs_eps_in_its_own_currency_is_converted_per_share():
+    # An ADR row held USD net income beside a EUR/share EPS. It is converted at the period's rate, per ordinary share.
+    filer = _ifrs_filer("EUR")
+    filer["facts"]["ifrs-full"]["DilutedEarningsLossPerShare"] = {"units": {"EUR/shares": [
+        fx._fact(2.0, "2025-12-31", "0000000002-26-000001", "2026-03-01", "20-F", "FY", 2025, "2025-01-01")]}}
+    rates = fx_rates.index_rates([("EUR", "2025-01-01", 1.0), ("EUR", "2025-12-31", 1.2)])
+    by = _by_key(facts.fact_rows(filer, "2", rates)[0])
+    eps = by[("eps_diluted", "annual", date(2025, 12, 31))]
+    assert eps["value"] == pytest.approx(2.2) and eps["unit"] == "USD/shares"
