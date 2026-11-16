@@ -716,7 +716,9 @@ class PricesServing:
         # issuer's only: the CIK's one Tier A row and not an ADR (as ``_cover``), no cover filing of the CIK with
         # two classes, and no day the facts give two counts for (a multi-class issuer's classes reported apart). A
         # day a cover row serves for the security stays the cover's; of one day's counts the newest filing's wins (a
-        # 10-Q/A restating a count). Two counts of one day in one filing are a multi-class issuer's classes.
+        # 10-Q/A restating a count). Two counts of one day in one filing are a multi-class issuer's classes. A count
+        # dated after its filing is a typo (measured 16 Nov 2026: 2033-10-31 in a 10-Q filed 2023-11-08, 76 of 37,992
+        # values of 727 companies) and would be the "newest" count for years: left out.
         con.execute("""CREATE OR REPLACE TEMP TABLE _dei AS
             WITH one AS (SELECT cik, any_value(security_id) AS security_id, any_value(security_type) AS security_type,
                                 any_value(ticker) AS ticker
@@ -725,7 +727,7 @@ class PricesServing:
                            UNION SELECT cik FROM stg_sec_dei GROUP BY cik, accession, as_of
                                  HAVING count(DISTINCT shares) > 1)
             SELECT o.security_id, o.ticker, d.* FROM stg_sec_dei d JOIN one o USING (cik)
-            WHERE o.security_type IS DISTINCT FROM 'adr' AND d.shares > 0
+            WHERE o.security_type IS DISTINCT FROM 'adr' AND d.shares > 0 AND (d.filed IS NULL OR d.as_of <= d.filed)
               AND NOT EXISTS (SELECT 1 FROM multi m WHERE m.cik = d.cik)
               AND NOT EXISTS (SELECT 1 FROM _cover c WHERE c.security_id = o.security_id AND c.as_of = d.as_of)
             QUALIFY row_number() OVER (PARTITION BY d.cik, d.as_of
