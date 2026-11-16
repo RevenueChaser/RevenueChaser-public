@@ -21,3 +21,11 @@ def _spine_file():
     swaps this file out."""
     from RevenueChaser.rcdata.tests import spine_fixture
     spine_fixture.write_security([])
+
+
+@pytest.fixture(autouse=True)
+def _own_writer(monkeypatch):
+    """The tests of this folder drive the board's own writer (``config.PROFILES_FROM = "own"``), which stays until
+    the clean-up. A test of the mirror sets ``service`` itself."""
+    from RevenueChaser.module_relatedness import config
+    monkeypatch.setattr(config, "PROFILES_FROM", "own")

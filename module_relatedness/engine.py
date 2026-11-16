@@ -422,6 +422,53 @@ def _cik_for(tickers: list[str]) -> dict[str, str]:
     return {t: str((cmap.get(t.upper()) or {}).get("cik") or "") for t in tickers}
 
 
+# What the service says a profile was read from (``read_answer.input_kind``), in the board's words.
+_SERVICE_INPUT = {"section:business": "item", "located": "llm_locator"}
+
+
+def mirror_service(tickers: list[str]) -> dict[str, dict]:
+    """Copy the SEC reading service's ``company.profile`` answers into ``relatedness_profiles`` /
+    ``relatedness_attributes`` and return the stored profiles (avo, 16 Nov 2026). No model call, no SEC request.
+
+    Every ticker of a company gets its company's answer. A row whose key already names that answer is left alone,
+    and a company the service has no answer for keeps what is stored, so a run before the service has read anything
+    changes nothing. The key carries the service's input hash, writer and filing; scoring, embeddings, themes and
+    Value Chain read the same two tables as before.
+    """
+    from RevenueChaser.rcdata import read
+    from . import store
+
+    ciks = _cik_for(tickers)
+    wanted = {c for c in ciks.values() if c}
+    answers = {str(r["cik"]).lstrip("0"): r for r in read.sec_reads(wanted, "company.profile")} if wanted else {}
+    meta = store.profile_meta(tickers)
+    # shortcut: a company the service leaves out (SIC 6770) or has no text for gets no ``shell`` / ``no_text`` row
+    # here and counts as pending; write those rows when the pending count on the board misleads.
+    for t in tickers:
+        r = answers.get(str(ciks.get(t) or "").lstrip("0"))
+        v3 = (r or {}).get("answer")
+        if not v3:
+            continue
+        partial = r["status"] == "partial"
+        ck = store.cache_key(r["model"], False, "", r["prompt_version"], t,
+                             r["input_hash"] + (PARTIAL if partial else ""), provider=r["provider"],
+                             source={"cik": r["cik"], "accession": r["accession"], "form": r.get("form"),
+                                     "filed": r.get("filing_date")})
+        if store._key_mode((meta.get(t) or {}).get("cache_key")) == json.loads(ck):
+            continue
+        kind = str(r.get("input_kind") or "")
+        labels = {"input": _SERVICE_INPUT.get(kind, "whole_document" if kind.startswith("whole") else kind),
+                  "from": "sec/reads"}
+        if r.get("missing_chunks"):
+            labels["missing_chunks"] = [int(i) for i in str(r["missing_chunks"]).split(",") if i]
+        shell = profile_v3.is_shell(v3)
+        store.save_profile(t, ciks.get(t), {f: [] for f in config.PROFILE_FIELDS} if shell
+                           else profile_v3.to_attributes(v3), ck, r["model"], prompt_version=r["prompt_version"],
+                           status="shell" if shell else "ok", attempts=int(r.get("attempts") or 0),
+                           provider=r["provider"], profile_json=v3, label_source=labels)
+    return store.load_profiles(tickers)
+
+
 def _writer(provider: str) -> tuple[str, bool, str]:
     """``(model, thinking, effort)`` a profile written by ``provider`` records in its cache key.
 
@@ -459,6 +506,8 @@ def build_profiles(tickers: list[str], use_llm: bool = True,
 
     from . import store
 
+    if use_llm and config.PROFILES_FROM == "service":
+        return mirror_service(tickers)
     profiles_mod.llm(provider)                 # an unknown writer fails here, before anything is written
     if use_llm:
         _spine_ready()                         # no spine, no names: stop before anything is written (#642 D3)
