@@ -1006,7 +1006,7 @@ code:
 | `rc_builder_last_run_timestamp_seconds` | | when the builder last started a run |
 | `rc_builder_timer_on` | | 1 on, 0 off, absent when not known |
 | `rc_backup_newest_timestamp_seconds` | `kind`, `step` | the newest backup of a kind, per backup step (`duckdb`, `boards`, `ops`, `uw-raw`, `edgar-docs`); the old store's files are not reported |
-| `rc_switch_on` | `name` | the fetch and backup switches |
+| `rc_switch_on` | `name` | the fetch and backup switches and the eight `file-<kind>` switches |
 | `rc_ibkr_state` | `state` | 1 for the gateway's login state: up, silent (port open, API not answering), down, unknown, not_set; any other text reads unknown |
 | `rc_news_feed_state` | `feed`, `state` | 1 for an IBKR news feed's state from the listener's record: refused, live, subscribed, waiting, unknown; any other text reads unknown |
 | `rc_news_tape_written_timestamp_seconds` | | when the news listener last wrote its record; absent while there is none |
