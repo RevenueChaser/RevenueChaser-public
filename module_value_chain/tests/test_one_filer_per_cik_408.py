@@ -44,3 +44,10 @@ def test_an_unlisted_pair_keeps_the_first_ticker_and_other_issuers_are_untouched
     for t in ("UA", "UAA", "AMKR"):
         _profile(t)
     assert {e["src"] for e in engine.build_edges()} == {"UA", "AMKR"}
+
+
+def test_the_share_class_rule_keeps_one_ticker_per_cik_and_lists_the_rest():
+    from RevenueChaser.module_value_chain import aliases
+    rows = [{"ticker": "FOXA", "cik": "0001754301"}, {"ticker": "FOX", "cik": "1754301"},
+            {"ticker": "AAPL", "cik": "320193"}, {"ticker": "NOCIK", "cik": ""}]
+    assert aliases.share_class_groups(rows) == {"FOXA": ["FOX"]}   # the class SAME_ISSUER names

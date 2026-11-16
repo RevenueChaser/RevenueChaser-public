@@ -235,7 +235,8 @@ function render(){
   panel.innerHTML = "Most related to " + rcEsc(FOCAL) +
     (c.name ? ' <span class="nm">— ' + rcEsc(c.name) + '</span>' : "") + staleBadge(FOCAL) + rcWatchButtons(FOCAL);
   meta.textContent =
-    (c.sector || "") + (c.industry ? " · " + c.industry : "");
+    (c.sector || "") + (c.industry ? " · " + c.industry : "") +
+    ((c.also || []).length ? " · also " + c.also.join(", ") : "");
   var list = PEERS[FOCAL] || [];
   body.innerHTML = list.map(peerRow).join("") || '<div class="empty">No peers.</div>';
 }

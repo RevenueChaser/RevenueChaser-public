@@ -343,6 +343,19 @@ def test_companies_carry_the_filter_path_and_theme_ids(rawstore_tmp_db):
     assert payload["theme_catalog"] == {}             # no pinned run in a fresh store
 
 
+def test_two_share_classes_are_one_row_and_never_each_others_peer(rawstore_tmp_db):
+    """Decision C (avo, 16 Nov 2026; #408): one row per CIK; the kept class lists the other on its row."""
+    from RevenueChaser.module_relatedness import store
+    _seed_universe(["GOOG", "GOOGL", "MSFT"])
+    for t, cik in (("GOOG", "0001652044"), ("GOOGL", "1652044"), ("MSFT", "789019")):
+        store.save_profile(t, cik, _prof(products=["search", "cloud"]), "k", "m")
+    payload = engine._payload(store.load_profiles(["GOOG", "GOOGL", "MSFT"]), {})
+    rows = {c["ticker"]: c["also"] for c in payload["companies"]}
+    kept = "GOOGL" if "GOOGL" in rows else "GOOG"
+    assert set(rows) == {kept, "MSFT"} and rows[kept] == [({"GOOG", "GOOGL"} - {kept}).pop()]
+    assert all(p["peer"] in rows for ps in payload["peers"].values() for p in ps)
+
+
 def test_companies_with_an_unknown_sector_read_unclassified(rawstore_tmp_db):
     """R3 (#86): the legacy vendor ``Other`` and a missing sector both read as the unknown bucket."""
     from RevenueChaser.module_relatedness import store
