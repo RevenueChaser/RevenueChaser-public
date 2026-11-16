@@ -38,8 +38,8 @@ SYSTEMS = {"today": sec_profile.SYSTEM, "before #748": sec_profile.SYSTEM.replac
 
 def plan() -> dict:
     """``{"counts": {...}, "rows": [read_answer rows], "examples": {reason: six CIKs}}``: what the import would
-    write, and why a company is left out (``no_profile``: nothing usable stored; ``text_changed``: stored from another text or name, so the service
-    asks it again; ``no_text``: nothing to send today)."""
+    write, and why a company is left out (``no_profile``: nothing usable stored; ``text_changed``: stored from
+    another text or name, so the service asks it again; ``no_text``: nothing to send today)."""
     from ..rcdata.build.sec_reads import company_profile as cp
 
     comp = cp.companies()
