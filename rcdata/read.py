@@ -43,7 +43,8 @@ KIND_OF_TABLE = {"market_series": "market", "spx_gamma_expiry_strike": "market",
 # The ownership store (PR 16).
 DATASET_OF_TABLE.update({"sec13f_ticker_period": "ownership/serve", "sec13f_periods": "ownership/serve",
                          "sec13f_cusip_map": "ownership/serve", "sec13f_filer_breaks": "ownership/serve",
-                         "sec13f_type_holdings": "ownership/serve",
+                         "sec13f_type_holdings": "ownership/serve", "sec13f_type_sector": "ownership/serve",
+                         "sec13f_type_flow": "ownership/serve",
                          "finra_short_interest": "finra/short_interest", "ibkr_shortable": "ibkr/shortable",
                          "regsho_threshold": "regsho/threshold", "sec_ftd": "sec/ftd",
                          "insider_transactions": "sec/form4", "beneficial_ownership": "sec/13dg",
@@ -51,6 +52,7 @@ DATASET_OF_TABLE.update({"sec13f_ticker_period": "ownership/serve", "sec13f_peri
                          "uw_institution_succession": "uw/institutions"})
 KIND_OF_TABLE.update({t: "ownership" for t in ("sec13f_ticker_period", "sec13f_periods", "sec13f_cusip_map",
                                                "sec13f_filer_breaks", "sec13f_type_holdings",
+                                               "sec13f_type_sector", "sec13f_type_flow",
                                                "finra_short_interest",
                                                "ibkr_shortable", "regsho_threshold", "sec_ftd",
                                                "insider_transactions", "beneficial_ownership",
@@ -816,6 +818,47 @@ def type_holdings_13f(tags: Iterable[str] | None = None, periods: Iterable | Non
         params += days
     return _rows("sec13f_type_holdings", f"SELECT * FROM sec13f_type_holdings{sql} "
                  "ORDER BY tag, period, rank NULLS LAST", params, missing_table_ok=True)
+
+
+def _type_filter(tags: Iterable[str] | None, periods: Iterable | None) -> tuple[str, list] | None:
+    """The ``WHERE`` of a per-type 13F table for ``tags`` and ``periods`` (None: every one), None when either asks for
+    nothing."""
+    sql, params = " WHERE true", []
+    if tags is not None:
+        wanted = sorted({str(t).strip().lower() for t in tags if str(t).strip()})
+        if not wanted:
+            return None
+        sql += f" AND tag IN ({', '.join('?' * len(wanted))})"
+        params += wanted
+    if periods is not None:
+        days = sorted({_day(p) for p in periods})
+        if not days:
+            return None
+        sql += f" AND period IN ({', '.join('?' * len(days))})"
+        params += days
+    return sql, params
+
+
+def type_sector_13f(tags: Iterable[str] | None = None, periods: Iterable | None = None) -> list[dict]:
+    """``sec13f_type_sector`` rows of investor ``tags`` and ``periods`` (None: every one): per type, quarter and
+    sector (the spine's, today's) the value its filers hold and its ``share`` (%) of the type's portfolio (#788). By
+    tag, period and value, largest first. A store built before the table existed gives no rows."""
+    where = _type_filter(tags, periods)
+    if where is None:
+        return []
+    return _rows("sec13f_type_sector", f"SELECT * FROM sec13f_type_sector{where[0]} "
+                 "ORDER BY tag, period, value DESC, sector", where[1], missing_table_ok=True)
+
+
+def type_flow_13f(tags: Iterable[str] | None = None, periods: Iterable | None = None) -> list[dict]:
+    """``sec13f_type_flow`` rows of investor ``tags`` and ``periods`` (None: every one): per type and quarter the
+    dollars its continuing filers bought and sold, split-adjusted, and the net (#788). By tag and period. A store
+    built before the table existed gives no rows."""
+    where = _type_filter(tags, periods)
+    if where is None:
+        return []
+    return _rows("sec13f_type_flow", f"SELECT * FROM sec13f_type_flow{where[0]} ORDER BY tag, period", where[1],
+                 missing_table_ok=True)
 
 
 def periods_13f() -> list[dict]:

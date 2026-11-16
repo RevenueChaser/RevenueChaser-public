@@ -235,6 +235,11 @@ _NEEDS = (
     # What each investor type (UW's institution tags) holds most, per quarter (#760).
     Need("ownership.type_holdings_13f", "type_holdings_13f", "sec13f_type_holdings", "period", "tag", 65,
          providers=("sec", "uw")),
+    # Each investor type's value per sector and its dollars bought and sold, per quarter (#788).
+    Need("ownership.type_sector_13f", "type_sector_13f", "sec13f_type_sector", "period", "tag", 65,
+         providers=("sec", "uw")),
+    Need("ownership.type_flow_13f", "type_flow_13f", "sec13f_type_flow", "period", "tag", 65,
+         providers=("sec", "uw")),
     Need("ownership.shortable", "shortable", "ibkr_shortable", "session_date", "ticker", 1,
          ask_param="tickers", normalize=TICKER, providers=("ibkr",)),
     Need("ownership.threshold", "threshold_list", "regsho_threshold", "list_date", "ticker", 1,

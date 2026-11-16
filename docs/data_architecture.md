@@ -1033,7 +1033,7 @@ its spill peak (`base.spill_peak`, sampled every 2 s), the measure for moving th
 **Files.** Serving kinds: `market`, `spine`, `prices`, `ownership`, `fundamentals`, `options`, `sec_forms`, `sec_reads`. Each kind is one
 file, `<MARKET_DIR>/<kind>.duckdb`. The identity spine, `spine` (serving schema version `6`), is described under
 "The identity spine" below; the prices store, `prices` (serving schema version `1`), under "The prices store"
-below; the ownership store, `ownership` (serving schema version `4`), under "The ownership store" below; the
+below; the ownership store, `ownership` (serving schema version `5`), under "The ownership store" below; the
 fundamentals layer, `fundamentals` (serving schema version `3`), under "Fundamentals" after it; and the options
 data, `options` (serving schema version `3`), under "The options data" after it; and the SEC form reader, `sec_forms` (serving schema version `1`), under "The SEC form reader"; and the SEC reader tool, `sec_reads` (serving schema version `2`), under "The SEC reader tool" last. The eight numbers live in `rcdata/serving_versions.py`, outside the builder's rules fingerprint
 (`rcdata/build/dirty.py`), so a bump makes only its own kind's next build whole (#649). The market data,
@@ -1715,7 +1715,8 @@ are read from **both** sides UW names — an institution's `succession.predecess
 carried a `succeeded_by`, while HPS Investment Partners → BlackRock (effective 2025-09-30) was in BlackRock's
 `predecessors` alone.
 
-**Served tables** (`ownership` serving schema version `4`; 4 since #760: `sec13f_type_holdings`; 3 since #775:
+**Served tables** (`ownership` serving schema version `5`; 5 since #253 and #788: split-adjusted flows,
+`sec13f_type_sector` and `sec13f_type_flow`; 4 since #760: `sec13f_type_holdings`; 3 since #775:
 `uw_institution` and `uw_institution_succession`; 2 since #732: the continuing-filer flows and `sec13f_filer_breaks`):
 
 | Table | Rows |
@@ -1729,10 +1730,12 @@ carried a `succeeded_by`, while HPS Investment Partners → BlackRock (effective
 | `beneficial_ownership` | one per Schedule 13D/G reporting person (or one `header_only` / `unparsed` row per filing) |
 | `sec13f_cusip_map` | one per CUSIP and period: its ticker and `map_source` (`compustat/owner` when Compustat's one owner of the CUSIP in the period named it, #278), or the refused `candidate_ticker` |
 | `sec13f_filer_period` | one per filer and period: names, value, `median_ratio`, `value_factor`, `confidential_omitted` |
-| `sec13f_ticker_period` | one per ticker and period: shares, value, holders, top-10 %, HHI, new / exited holders, buy / sell flow, breadth and its change, `prev_period`, `filing_deadline`. The period is the calendar quarter end; a filing's period that is not one (09-29 for the September quarter) counts in its quarter, and `sec13f_filings` keeps it as written |
+| `sec13f_ticker_period` | one per ticker and period: shares, value, holders, top-10 %, HHI, new / exited holders, buy / sell flow (the quarter before put on the quarter's share basis with the prices store's split factor at each quarter end, #253; as filed where the prices store does not place the ticker), breadth and its change, `prev_period`, `filing_deadline`. The period is the calendar quarter end; a filing's period that is not one (09-29 for the September quarter) counts in its quarter, and `sec13f_filings` keeps it as written |
 | `sec13f_periods` | one per period: filers, value, value mapped, `coverage`, unmapped CUSIPs, refused value, rescaled filers |
 | `sec13f_filer_breaks` | one per ticker, settled period and filer that started (`started`: no report in the quarter before) or stopped (`stopped`: none in the quarter) reporting it, with its shares; the flows leave these filers out (#732). A filer UW lists as succeeded in the quarter it stops (`uw_institution_succession`, newest snapshot), whose successor reports that quarter, is its successor in the quarter before: one filer across the hand-over, no stop and no start (#776) |
 | `sec13f_type_holdings` | one per investor type, period and rank: the type's 25 largest tickers (`TYPE_TOP`) by the value its filers hold, each with its `share` (%) of the type's mapped portfolio, and one row with `ticker` NULL for the rest, so a quarter's shares add up to 100; `type_value`, `type_filers` and the `uw_institution` `snapshot_date` its types come from. A type is a tag UW gives the filer's CIK in the newest snapshot (a filer can carry several), plus `all` for every filer (#760) |
+| `sec13f_type_sector` | one per investor type, period and sector: the value the type's filers hold in that sector (the spine's `sector` of each ticker, today's for every quarter; `Unclassified` where the spine has none), its `share` (%) of the type's mapped portfolio, `tickers`, `filers` and the `snapshot_date` its types come from (#788) |
+| `sec13f_type_flow` | one per investor type and period: dollars `bought` and `sold` and the `net`, per filer and ticker the split-adjusted change in shares against the quarter before at the quarter's 13F price (value over shares), over the type's `filers` that reported both quarters, as the ticker flows are (#788) |
 | `uw_institution` | one per snapshot day and CIK: `name`, `short_name`, `tags` (sorted), `is_hedge_fund`, the report and filing dates, total and share value, `succeeded_by_cik` with its `succeeded_by_report_date`, and `current_holder_cik` |
 | `uw_institution_succession` | one per snapshot day, predecessor CIK, successor CIK and `effective_report_date`, with both names and `origin` (`predecessors`, `succeeded_by` or `both`) |
 | `sec13f_data_sets` | one per 13F data set the SEC page ever listed: `name`, `first_day`, `last_day`, `url`, `first_seen`; a period is `closed` once a listed set's window holds its filing deadline (#732) |

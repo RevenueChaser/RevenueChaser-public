@@ -18,6 +18,7 @@ from RevenueChaser.rcdata.build.ownership import common, finra, ibkr, sec, sec13
 from RevenueChaser.rcdata.build.spine import openfigi_map, wrds
 
 from . import ownership_fixture as ox
+from . import prices_store
 from . import spine_fixture as fx
 from .test_spine_security import built, run_all  # noqa: F401 (the spine built from every one of its sources)
 
@@ -707,6 +708,57 @@ def test_each_investor_type_lists_its_largest_names_and_the_rest_per_quarter(mon
     assert [(r["ticker"], r["share"]) for r in read.type_holdings_13f(["Value_Investor"], periods=[Q3])] == [
         ("AAPL", 66.6667), (None, 33.3333)]
     assert read.type_holdings_13f(["activist"]) == []
+
+
+def _split_book(monkeypatch, http_mock) -> None:
+    """MSFT splits 2-for-1 on 3 Aug 2026. 4000001 (a value investor) held 100 before and 200 after: no trade.
+    4000002 (untagged) held 100 before and 300 after, and bought 100 AAPL: a buy of 100 MSFT on the new basis."""
+    _uw_ready(monkeypatch)
+    ox.make_spine(sectors={"MSFT": "Technology"})
+    prices_store.put_bars([{"ticker": "MSFT", "session_date": "2026-06-30", "close": 400.0},
+                           {"ticker": "MSFT", "session_date": "2026-09-30", "close": 200.0}])
+    prices_store.put_action("MSFT", "2026-08-03", "split", 2.0)
+    e = ox.Edgar()
+    e.add_day("2026-08-14", [
+        _f("0004000001-26-000001", 4000001, "2026-08-14", [_h("MICROSOFT CORP", "594918104", 40_000, 100)],
+           period="06-30-2026"),
+        _f("0004000002-26-000002", 4000002, "2026-08-14", [_h("MICROSOFT CORP", "594918104", 40_000, 100)],
+           period="06-30-2026")])
+    e.add_day("2026-10-27", [
+        _f("0004000001-26-000011", 4000001, "2026-10-27", [_h("MICROSOFT CORP", "594918104", 40_000, 200)]),
+        _f("0004000002-26-000012", 4000002, "2026-10-27", [_h("MICROSOFT CORP", "594918104", 60_000, 300),
+                                                         _h("APPLE INC", "037833100", 50_000, 100)])])
+    e.install(http_mock)
+    _uw_institutions(http_mock, [_institution("0004000001", ["value_investor"])])
+    _thirteen_f(as_of="2026-10-28")
+    _thirteen_f(mode="backfill", **{"from": "2026-08-14", "to": "2026-08-14"})
+    _serve(day="2026-11-20")
+
+
+def test_a_split_between_two_quarters_is_not_a_buy(monkeypatch, http_mock):
+    """#253 (owner's decision E, 16 Nov 2026): the quarter before is put on the quarter's share basis with the
+    prices store's split factor before the buy or sell is taken. Before, 4000001's 100 -> 200 read as a buy of 100
+    and the flow was 300; ``shares`` stays as filed."""
+    _split_book(monkeypatch, http_mock)
+    assert _served("SELECT period, shares, buy_flow, sell_flow FROM sec13f_ticker_period WHERE ticker = 'MSFT' "
+                   "ORDER BY period") == [(Q2, 200.0, None, None), (Q3, 500.0, 100.0, 0.0)]
+
+
+def test_each_investor_types_sector_split_and_dollar_flow_per_quarter(monkeypatch, http_mock):
+    """#788 A2: the type's portfolio by the spine's sector (a ticker with none is Unclassified), and its dollars
+    bought and sold: per filer and ticker the split-adjusted change at the quarter's 13F price (MSFT $200, AAPL
+    $500), over the filers that reported both quarters. Q2 has no quarter before in the store: no flow row."""
+    _split_book(monkeypatch, http_mock)
+    assert _served("SELECT tag, sector, value, share, tickers, filers, snapshot_date FROM sec13f_type_sector "
+                   "WHERE period = ? ORDER BY tag, value DESC", Q3) == [
+        ("all", "Technology", 100_000.0, 66.6667, 1, 2, date(2026, 11, 12)),
+        ("all", "Unclassified", 50_000.0, 33.3333, 1, 1, date(2026, 11, 12)),
+        ("value_investor", "Technology", 40_000.0, 100.0, 1, 1, date(2026, 11, 12))]
+    assert _served("SELECT tag, period, bought, sold, net, filers FROM sec13f_type_flow ORDER BY tag, period") == [
+        ("all", Q3, 70_000.0, 0.0, 70_000.0, 2), ("value_investor", Q3, 0.0, 0.0, 0.0, 1)]
+    assert [r["sector"] for r in read.type_sector_13f(["Value_Investor"], periods=[Q3])] == ["Technology"]
+    assert [(r["tag"], r["net"]) for r in read.type_flow_13f()] == [("all", 70_000.0), ("value_investor", 0.0)]
+    assert read.type_flow_13f(["activist"]) == [] and read.type_sector_13f(periods=[]) == []
 
 
 def test_a_quarter_still_arriving_lists_no_breaks(monkeypatch, http_mock):
