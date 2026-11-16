@@ -100,6 +100,23 @@ def _parse(q: Question, reply: str) -> dict | None:
 
 
 def _ask_one(ctx: base.RunContext, job: Job, started: float, lock: threading.Lock, run: dict) -> Reply | None:
+    """:func:`_ask_filled`, with the company's text read just before it is asked when the question has a ``fill``:
+    the job holds that text only while its calls are out, so a run never holds every company's text."""
+    q = job.question
+    if q.fill is None:
+        return _ask_filled(ctx, job, started, lock, run)
+    with lock:
+        if run["halt"] or ctx.clock() - started > SLICE_S:
+            return None
+    kept = job.input
+    job.input = q.fill(job.cik, kept)
+    try:
+        return _ask_filled(ctx, job, started, lock, run)
+    finally:
+        job.input = kept
+
+
+def _ask_filled(ctx: base.RunContext, job: Job, started: float, lock: threading.Lock, run: dict) -> Reply | None:
     """One company's chunks, in order; None when the run's slice ran out, or the run was halted, before it started.
 
     ``run`` is the run's shared count of companies with and without a usable reply (read and written under

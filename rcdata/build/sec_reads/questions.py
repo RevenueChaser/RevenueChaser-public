@@ -44,6 +44,9 @@ class Input:
     #: whose every part carries the company, its context and a part label, split on headings (the Relatedness
     #: profile). Empty: ``text`` is sent in ``Question.chunk_chars`` slices.
     messages: tuple[str, ...] = ()
+    #: The staleness hash, when the question computed it itself and kept no text (``Question.fill``): a run then
+    #: holds one company's text at a time instead of every company's (a whole document runs to 1.4M characters).
+    hash: str = ""
 
 
 def _one(parts: list[tuple[dict, int]]) -> dict:
@@ -62,6 +65,9 @@ class Question:
 
     ``max_calls`` is the most calls one run sends for this question; the companies past it wait for the next run.
     A DeepSeek question must name one: a paid call is capped in its own code (``CLAUDE.md``, Keys).
+
+    ``fill(cik, input)`` is for a question whose ``inputs`` returns inputs with a ``hash`` and no text: it returns
+    that company's input with its text and messages, and is called just before the company is asked.
     """
 
     id: str
@@ -78,6 +84,7 @@ class Question:
     chunk_chars: int = CHUNK_CHARS
     max_tokens: int = MAX_TOKENS
     max_calls: int | None = None
+    fill: Callable[[str, Input], Input] | None = None
 
     @property
     def writer_model(self) -> str:
@@ -94,7 +101,9 @@ class Question:
 
     def input_hash(self, inp: Input) -> str:
         """The staleness hash: the system prompt and every chunk of ``inp.hash_text`` (of what is sent, when it
-        names none). The same hash, no new call."""
+        names none), or the input's own ``hash``. The same hash, no new call."""
+        if inp.hash:
+            return inp.hash
         h = hashlib.sha256(self.system.encode("utf-8"))
         for chunk in self.messages(inp) if inp.hash_text is None else self.chunks(inp.hash_text):
             h.update(b"\x00" + chunk.encode("utf-8"))
