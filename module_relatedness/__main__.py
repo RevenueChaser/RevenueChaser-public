@@ -7,6 +7,14 @@
         [--floor M | --tickers A,B] [--nmf-init INIT] [--nmf-max-iter N] [--coarse {nmf,sector}]
     python -m RevenueChaser.module_relatedness --cutover --run-id ID
         [--adopt-medium-from ID] [--coarse {nmf,sector}]
+    python -m RevenueChaser.module_relatedness --compare-themes A,B
+
+``--method embedding`` (avo, 16 Nov 2026) builds the fine themes from the companies' stored vectors (k-means)
+instead of the tag NMF; everything after the fine cut is shared. ``--compare-themes A,B`` prints two runs side by
+side (theme counts per level, adjusted Rand index over the companies both theme) and writes nothing.
+``--adopt-medium-from current`` adopts the live run's medium names, which is what the monthly run does (decision D:
+an unchanged theme keeps its name). A run that leaves more than ``MAX_UNTHEMED`` of its companies unthemed is not
+cut over; the live run stays.
 
 ``--coarse sector`` (#108) builds the coarse level from the 11 Morningstar sectors instead of the agglomerative cut;
 once the live run is a sector run, every later --rebuild-themes / --cutover must pass it too (the default is nmf).
@@ -130,6 +138,10 @@ def _selection(args) -> list[str] | None:
     return None
 
 
+# The check before a rebuild cuts over (themes plan, 16 Nov 2026): more unthemed than this keeps the live run.
+MAX_UNTHEMED = 0.10
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="Relatedness board (off-peak LLM)")
     p.add_argument("--run", action="store_true", help="run the profile job")
@@ -148,10 +160,14 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--name", action="store_true",
                    help="with --rebuild-themes, also LLM-name the new run")
     p.add_argument("--run-id", default=None, help="theme run id (default: current)")
-    from .themes import COARSE_MODES, DEFAULT_FIT, NMF_INITS, NmfFit
+    from .themes import COARSE_MODES, DEFAULT_FIT, METHODS, NMF_INITS, NmfFit
     p.add_argument("--coarse", choices=COARSE_MODES, default="nmf",
                    help="coarse level at --cutover / --rebuild-themes: nmf (agglomerative + rebalance, default) "
                         "or sector (one coarse per Morningstar sector, #108)")
+    p.add_argument("--method", choices=METHODS, default="nmf",
+                   help="with --rebuild-themes: the fine cut, nmf (tags) or embedding (stored vectors, k-means)")
+    p.add_argument("--compare-themes", default=None, metavar="A,B",
+                   help="print two theme runs side by side; writes nothing")
     p.add_argument("--build-only", action="store_true",
                    help="with --rebuild-themes: write the shadow run only (no cutover, no naming)")
     pick = p.add_mutually_exclusive_group()
@@ -218,6 +234,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.status:
         return 0
 
+    if args.compare_themes:
+        from . import themes
+        a, _, b = args.compare_themes.partition(",")
+        if not (a and b):
+            p.error("--compare-themes takes two run ids: A,B")
+        print(json.dumps(themes.compare_runs(a, b), ensure_ascii=False, indent=1))
+        return 0
+
     if args.name_themes:
         from . import naming
         try:
@@ -248,6 +272,10 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         return 0
 
+    if args.adopt_medium_from == "current":
+        from . import themes
+        args.adopt_medium_from = themes.current_run_id()
+
     if args.rebuild_themes:
         from . import naming, themes
         if args.run_id and args.run_id == themes.current_run_id():
@@ -255,7 +283,8 @@ def main(argv: list[str] | None = None) -> int:
                               "(live) run; a rebuild would blank it in place. "
                               "Use a new --run-id."}, ensure_ascii=False))
             return 1
-        built = themes.build_shadow(run_id=args.run_id, universe=chosen, fit=fit, k_medium=args.k_medium)
+        built = themes.build_shadow(run_id=args.run_id, universe=chosen, fit=fit, k_medium=args.k_medium,
+                                    method=args.method)
         run_id = built.get("run_id")
         if not run_id:
             print(json.dumps(built, ensure_ascii=False))
@@ -267,6 +296,11 @@ def main(argv: list[str] | None = None) -> int:
             print(_summary(run_id=run_id, themes=built.get("themes"), unthemed=built.get("unthemed"),
                            out_of_universe=built.get("out_of_universe"), fit=built.get("fit"), **cuts))
             return 0
+        share = built.get("unthemed", 0) / max(1, built.get("n", 0) + built.get("unthemed", 0))
+        if share > MAX_UNTHEMED:
+            print(json.dumps({"error": f"run {run_id!r} leaves {share:.0%} of its companies unthemed "
+                              f"(limit {MAX_UNTHEMED:.0%}); not cut over, the live run stays"}, ensure_ascii=False))
+            return 1
         try:
             cut = themes.finalize_run(run_id, args.adopt_medium_from, coarse=args.coarse)
         except ValueError as exc:
