@@ -62,3 +62,6 @@ SERVING_SCHEMA_VERSION["sec_reads"] = 1
 # sec_reads 2 (plan 2026-11-15_1722, step 1): ``read_answer`` gains ``form``, ``input_kind``, ``calls``,
 #             ``tokens_in``, ``tokens_out`` and ``error``. No live rows to checkpoint: no question was registered.
 SERVING_SCHEMA_VERSION["sec_reads"] = 2
+# sec_reads 3 (avo, 16 Nov 2026): ``read_answer`` gains ``report_date``, the period the filing reports on, so a
+#             board can say which fiscal year an answer is about. No live rows to checkpoint: no question is registered.
+SERVING_SCHEMA_VERSION["sec_reads"] = 3

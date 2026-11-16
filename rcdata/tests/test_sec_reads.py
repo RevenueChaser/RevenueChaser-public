@@ -321,11 +321,14 @@ def test_an_answer_carries_what_was_read_and_what_it_cost(http_mock):
     questions.register(questions.Question(
         id="test.products", owner="test", system="s", prompt_version="t1", scope=lambda: ["789019"],
         inputs=lambda wanted: {"789019": questions.Input("acc", "d.htm", date(2026, 2, 1), TEXT["789019"],
-                                                         kind="section:business", form="10-K")},
+                                                         kind="section:business", form="10-K",
+                                                         report_date=date(2025, 12, 31))},
         parse=parse, chunk_chars=30))                      # the text is 44 characters: two calls
     run()
     assert rows("SELECT form, input_kind, calls, tokens_in, tokens_out, error FROM read_answer") == [
         ("10-K", "section:business", 2, 80, 14, None)]
+    assert rows("SELECT report_date FROM read_answer") == [(date(2025, 12, 31),)]     # serving version 3
+    assert read.sec_reads(["789019"], "test.products")[0]["report_date"] == date(2025, 12, 31)
 
 
 def test_every_call_is_logged_with_how_it_failed(http_mock, monkeypatch):

@@ -65,7 +65,7 @@ def plan() -> dict:
         counts["imported"] += 1
         counts[f"hash of {system}"] = counts.get(f"hash of {system}", 0) + 1
         doc, labels = got["doc"], row.get("label_source") or {}
-        filed = doc.get("filing_date")
+        filed, reported = doc.get("filing_date"), doc.get("report_date")
         provider, model = store.key_writer(key)
         rows.append({
             "question": cp.PROFILE_ID, "prompt_version": key.get("prompt_version"), "cik": cik,
@@ -78,7 +78,7 @@ def plan() -> dict:
             "rules_version": str(doc.get("rules_version") or ""), "fetched_at": row.get("fetched_at"),
             "run_id": RUN_ID, "form": str(doc.get("form") or ""),
             "input_kind": KIND.get(labels.get("input"), got["kind"]), "calls": 0, "tokens_in": 0, "tokens_out": 0,
-            "error": None})
+            "error": None, "report_date": reported.isoformat() if hasattr(reported, "isoformat") else reported})
     counts["no_text"] = len(comp) - len(seen)
     return {"counts": counts, "rows": rows}
 

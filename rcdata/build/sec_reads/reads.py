@@ -78,7 +78,9 @@ SCHEMA = [("question", "TEXT"), ("prompt_version", "TEXT"), ("cik", "TEXT"), ("a
           ("missing_chunks", "TEXT"), ("rules_version", "TEXT"), ("fetched_at", "DOUBLE"), ("run_id", "TEXT"),
           # Serving version 2: what was read, what it cost, and how the last unusable call failed.
           ("form", "TEXT"), ("input_kind", "TEXT"), ("calls", "INTEGER"), ("tokens_in", "INTEGER"),
-          ("tokens_out", "INTEGER"), ("error", "TEXT")]
+          ("tokens_out", "INTEGER"), ("error", "TEXT"),
+          # Serving version 3: the period the filing reports on (``filing_section.report_date``).
+          ("report_date", "DATE")]
 SCHEMAS = {TABLE: SCHEMA}
 STATUSES = (asker.OK, asker.PARTIAL, asker.EMPTY, asker.NO_TEXT)
 
@@ -244,6 +246,7 @@ def row_of(ctx: base.RunContext, reply: asker.Reply, old: dict | None) -> dict:
            "raw": json.dumps(reply.raws), "missing_chunks": ",".join(map(str, reply.missing)),
            "rules_version": j.input.rules_version, "fetched_at": time.time(), "run_id": ctx.run_id,
            "form": j.input.form, "input_kind": j.input.kind, "error": reply.error or None,
+           "report_date": j.input.report_date.isoformat() if j.input.report_date else None,
            # What the key has cost in all, over every attempt.
            **{c: ((old or {}).get(c) or 0) + getattr(reply, c) for c in ("calls", "tokens_in", "tokens_out")}}
     if old is not None and old["status"] == asker.PARTIAL and len(reply.missing) >= _count(old["missing_chunks"]):
