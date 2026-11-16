@@ -37,6 +37,7 @@ function _el(id){
 globalThis.document = {
   getElementById: function(id){ if(!_els[id]) _els[id] = _el(id); return _els[id]; },
   createElement: function(){ return _el(""); },
+  createDocumentFragment: function(){ return _el(""); },
   querySelector: function(){ return _el(""); },
   querySelectorAll: function(){ return []; },
   addEventListener: function(){},
