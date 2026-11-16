@@ -1900,13 +1900,18 @@ def api_sec13f_types(tag: str):
     """Plotly figure and note for one investor type's top 13F holdings per quarter (#760). 404 for a type the board
     does not offer; a type with no rows answers ``fig`` None and a note that says so."""
     from RevenueChaser.core import ownership
-    from RevenueChaser.module_sec_13f.report import build_type_fig
+    from RevenueChaser.module_sec_13f.report import build_flow_fig, build_sector_fig, build_type_fig
     labels = dict(ownership.SEC13F_TYPES)
     t = (tag or "").strip().lower()
     if t not in labels:
         return jsonify({"ok": False, "error": "unknown investor type"}), 404
-    fig, note = build_type_fig(labels[t], ownership.sec13f_type_holdings(t), ownership.sec13f_open_periods())
-    return jsonify({"ok": True, "tag": t, "label": labels[t], "fig": fig, "note": note})
+    arriving = ownership.sec13f_open_periods()
+    fig, note = build_type_fig(labels[t], ownership.sec13f_type_holdings(t), arriving)
+    # #788 A1/A4 (plan step 12): the type's sector exposure and its dollars bought and sold, None before the
+    # ownership build that adds those tables.
+    return jsonify({"ok": True, "tag": t, "label": labels[t], "fig": fig, "note": note,
+                    "sector_fig": build_sector_fig(labels[t], ownership.sec13f_type_sector(t), arriving),
+                    "flow_fig": build_flow_fig(labels[t], ownership.sec13f_type_flow(t), arriving)})
 
 
 @app.route("/api/watchlist/<kind>/toggle/<ticker>", methods=["POST"])
