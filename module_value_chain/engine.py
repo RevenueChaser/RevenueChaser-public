@@ -101,7 +101,10 @@ def _layer_filings(tickers: list[str] | None = None, text: bool = False):
                 off_version[version] = off_version.get(version, 0) + 1
             row = {"cik": read._cik(d["cik"]), "form": d.get("form"), "filed": str(d.get("filing_date") or ""),
                    "accession": d.get("accession"), "primary_doc": d.get("document"),
-                   "quality": d.get("quality")}
+                   "quality": d.get("quality"),
+                   # The period the filing reports on (``filing_section.report_date``, the SEC's reportDate): G-E's "FY<year>",
+                   # plan v31 1h.
+                   "period_end": str(d.get("report_date") or "")}
             if text:
                 row["item_text"] = d.get("text") or ""
             batch.extend({"ticker": t, **row} for t in by_cik.get(row["cik"], []))
