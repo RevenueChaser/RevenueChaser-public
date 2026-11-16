@@ -43,11 +43,6 @@ PROMPT_VERSION = "v3d"
 # Not the ``MAX_INPUT_CHARS`` v2 cut every text at (removed by v3, #400).
 MAX_BUSINESS_CHARS: int | None = None
 
-# Where a profile run gets its profiles (avo, 16 Nov 2026): ``service`` mirrors the SEC reading service's answers to
-# ``company.profile`` into ``relatedness_profiles`` and calls no model; ``own`` is the board's own writer, kept until
-# the clean-up for the tests of it and for the writer comparison.
-PROFILES_FROM = "service"
-
 # The rule version the business sections must be cut with before a profile run reads them (``_forms_ready``,
 # #841). None turns the check off.
 FORMS_RULES_VERSION = "ours-2"

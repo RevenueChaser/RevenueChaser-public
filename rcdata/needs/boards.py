@@ -79,10 +79,9 @@ PLANNED_READS: dict[str, tuple[str, ...]] = {
     # ``identity.etf_holdings`` (#642 PR 2b): the theme-to-ETF ranks read the spine's holdings (D4, 9 Nov 2026).
     # #841: the business text, the whole document and the two note blocks are the SEC form reader's (``sec.*``,
     # ``read.form_business`` / ``form_whole`` / ``form_notes``), no longer ``fundamentals.filings``.
-    # ``sec.read`` (#894): a profile run mirrors the SEC reading service's ``company.profile`` answers.
     "module_relatedness": ("identity.universe", "identity.security", "identity.etf_holdings", "fundamentals.companies",
                            "fundamentals.segments", "fundamentals.customers", "sec.business", "sec.whole",
-                           "sec.note", "sec.read"),
+                           "sec.note"),
 }
 
 

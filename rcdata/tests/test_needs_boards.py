@@ -173,8 +173,7 @@ def test_relatedness_plans_the_universe_and_the_fundamentals_needs_it_reads():
     ``read.identity`` (10 Nov 2026). #642: its run's ETF scan calls ``read.etf_holding_tickers``."""
     # #841: the filing texts come from the SEC form reader (``read.form_business`` / ``form_whole`` / ``form_notes``).
     want = ("identity.universe", "identity.security", "identity.etf_holdings", "fundamentals.companies",
-            "fundamentals.segments", "fundamentals.customers", "sec.business", "sec.whole", "sec.note",
-            "sec.read")                    # #894: a profile run mirrors the SEC reading service's answers
+            "fundamentals.segments", "fundamentals.customers", "sec.business", "sec.whole", "sec.note")
     assert boards.PLANNED_READS["module_relatedness"] == want
     assert boards.reads_of("module_relatedness") == {"declared": False, "needs": want}
 
