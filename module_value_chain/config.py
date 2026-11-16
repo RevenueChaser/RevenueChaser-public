@@ -41,6 +41,13 @@ _spaced = spaced
 
 MAX_HOP2 = 40                 # cap edges followed on the second hop
 
+# The board serves edges read from a Relatedness profile only once the census of plan v31 section 6 clears them
+# (step 3); until then it serves the filings' XBRL customer lines. Read where the board is served
+# (``engine._board_payload``), so the stored ``chain_mentions`` keep every edge and the switch needs no re-sync.
+SERVE_PROFILE_EDGES = False
+#: The relations the board serves (plan v31 step 1(e)); a competitor is a Relatedness question, not a chain link.
+SERVED_RELATIONS = ("customer", "supplier")
+
 # A ticker whose CIK has no usable annual filing (none, or a 40-F) is recorded as
 # a ``miss:<TICKER>`` key in ``chain_meta`` and not requested again for this many
 # days, or sooner when its CIK changes (#116 C26). 7 days: the daily sync's

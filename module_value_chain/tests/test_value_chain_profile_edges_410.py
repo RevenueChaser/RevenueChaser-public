@@ -1,9 +1,9 @@
 """#410 part 2: the Relatedness profile's customers, suppliers and competitors are Value Chain edges.
 
 Each named company becomes a ``source = "profile"`` edge with its quote and stated share, resolved to a ticker
-through ``aliases.resolve``; a name it cannot resolve stays as text. For a (counterparty, relation) pair the
-profile names, the profile's edge wins over a sentence, keyword or XBRL edge (and takes their share when it
-states none; #725 made the relation part of that key); a filer without a profile keeps the regex edges.
+through ``aliases.resolve``; a name it cannot resolve stays as text. For a (counterparty, relation) pair both the
+profile and the filing's XBRL state, the XBRL row is kept and no share is copied (plan v31 step 1(b); #725 made the
+relation part of that key); a filer without a profile gets no edge from its text (#748).
 """
 from __future__ import annotations
 

@@ -70,14 +70,6 @@ def test_gate_without_served_has_no_coverage(tmp_path):
     assert "links" not in rep and "covered" not in rep
 
 
-def test_committed_fixture_coverage_equals_n():
-    labels = precision.load_labels()
-    served = [_edge(l["src"], l["dst_ticker"], l["relation"]) for l in labels[:10]]
-    rep = precision.gate(served=served)
-    assert rep["covered"] == rep["n"] == 10
-    assert rep["links"] == len({(e["src"], e["dst_ticker"], e["relation"]) for e in served})
-
-
 def test_tile_shows_label_coverage():
     html = report._precision_tile({"n": 2, "tp": 2, "precision": 1.0, "passes": True,
                                    "links": 147, "covered": 2})

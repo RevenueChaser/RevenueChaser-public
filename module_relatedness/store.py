@@ -76,15 +76,17 @@ JSON_COLUMNS = ("profile_json", "label_source")
 
 
 def _stored_json(tx, ticker: str) -> dict:
-    """The stored ``profile_json`` / ``label_source`` of ``ticker`` (decoded), read inside ``tx``."""
+    """The stored ``profile_json`` / ``label_source`` of ``ticker`` (decoded) and its ``accession``, read inside
+    ``tx``."""
+    cols = (*JSON_COLUMNS, "accession")
     try:
-        row = tx.execute("SELECT profile_json, label_source FROM relatedness_profiles WHERE ticker = ?",
+        row = tx.execute(f"SELECT {', '.join(cols)} FROM relatedness_profiles WHERE ticker = ?",
                          [ticker]).fetchone()
     except Exception:  # noqa: BLE001 - no table yet: nothing to carry
-        return {c: None for c in JSON_COLUMNS}
+        return {c: None for c in cols}
     out = {}
-    for col, v in zip(JSON_COLUMNS, row or (None, None)):
-        if isinstance(v, str):
+    for col, v in zip(cols, row or (None,) * len(cols)):
+        if col in JSON_COLUMNS and isinstance(v, str):
             try:
                 v = json.loads(v)
             except (json.JSONDecodeError, TypeError):
@@ -96,13 +98,13 @@ def _stored_json(tx, ticker: str) -> dict:
 def save_profile(ticker: str, cik, profile: dict, cache_key_value: str,
                  model: str, prompt_version: str = PROMPT_VERSION,
                  status: str = "ok", attempts: int = 0, provider: str = "deepseek",
-                 profile_json=KEEP, label_source=KEEP) -> None:
+                 profile_json=KEEP, label_source=KEEP, accession=KEEP) -> None:
     """Write one ticker's profile row and its attribute rows in one transaction.
 
     ``profile_json`` / ``label_source`` (schema 13, #401) are the v3 structured profile and where each field came
     from. Left out (``KEEP``), the stored values are carried: ``relatedness_profiles`` is an upsert that sets every
     column from the row, so a re-save that named neither column used to set both to NULL (#400). Pass ``None`` to
-    clear them.
+    clear them. ``accession`` (plan v31 step 1(d)) is the filing the profile was written from, carried the same way.
     """
     t = ticker.upper()
     rows = [{"ticker": t, "field": f,
@@ -113,7 +115,10 @@ def save_profile(ticker: str, cik, profile: dict, cache_key_value: str,
     # relatedness_attributes is "replace" grouped by ticker, so the write
     # clears the ticker's previous fields itself.
     def _write(tx):
-        given = {"profile_json": profile_json, "label_source": label_source}
+        # A store that predates the ``accession`` column gains it first: otherwise ``_stored_json``'s SELECT fails,
+        # reads every kept column as None and the upsert wipes the stored JSON (#400 again).
+        tx.ensure_table("relatedness_profiles")
+        given = {"profile_json": profile_json, "label_source": label_source, "accession": accession}
         if any(v is KEEP for v in given.values()):
             kept = _stored_json(tx, t)
             given = {c: (kept[c] if v is KEEP else v) for c, v in given.items()}

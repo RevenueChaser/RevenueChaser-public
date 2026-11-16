@@ -817,6 +817,9 @@ MANIFEST: dict[str, dict] = {
             # competitors), ``xbrl`` (the annual report's major customers) or ``regex`` (sentences and keywords);
             # NULL on an edge stored before the column. Added like ``share_pct``.
             "source TEXT",
+            # Plan v31 step 1(d): the filing a ``profile`` edge was read from (its profile's accession); NULL on
+            # another source and on an edge stored before the column. Added like ``share_pct``.
+            "accession TEXT",
         ],
         "kind": "tabular",
         "write": "replace",
@@ -964,6 +967,10 @@ MANIFEST: dict[str, dict] = {
             # suppliers, named_competitors, business_model, channel, geography, stage, keywords) and, per field,
             # which chunk or table its value came from under the merge rule. Nullable: a v2 row reads NULL.
             "profile_json JSON", "label_source JSON",
+            # Plan v31 step 1(d): the accession of the filing the profile was written from, so a profile edge
+            # can say which annual report it read (G-D). Nullable, added by ``_reconcile_table`` like ``provider``,
+            # no schema bump; NULL on a row written before it.
+            "accession TEXT",
         ],
         "kind": "tabular",
         "write": "upsert",

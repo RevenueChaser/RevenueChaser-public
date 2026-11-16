@@ -59,6 +59,15 @@ def test_the_board_lists_the_layers_filings_without_text(layer):
     assert row["primary_doc"] == f"{fx.K25}.html.gz"
 
 
+
+def test_a_corpus_row_carries_the_period_its_filing_reports_on(layer):
+    """Plan v31 step 1(h): the corpus row had ``form``, ``filed`` and ``accession`` but no period, which G-E's
+    "as stated in the FY<year> <form>" needs. It is the form row's ``report_date``."""
+    (row,) = engine._board_filings_rows()
+    assert row["period_end"] == "2025-06-30"
+    (full,) = next(engine._corpus_batches())
+    assert full["period_end"] == "2025-06-30"
+
 def test_the_corpus_is_the_form_reader_and_not_filing_item(layer, monkeypatch):
     """#841: the two read sites ask ``sec/forms`` only. ``filing_item`` is ``sec/filings``' own second cut of the
     same documents, and a board that still touched it would keep both rules alive at once."""

@@ -101,7 +101,10 @@ def _layer_filings(tickers: list[str] | None = None, text: bool = False):
                 off_version[version] = off_version.get(version, 0) + 1
             row = {"cik": read._cik(d["cik"]), "form": d.get("form"), "filed": str(d.get("filing_date") or ""),
                    "accession": d.get("accession"), "primary_doc": d.get("document"),
-                   "quality": d.get("quality")}
+                   "quality": d.get("quality"),
+                   # The period the filing reports on (``filing_section.report_date``, the SEC's reportDate): G-E's "FY<year>",
+                   # plan v31 step 1(h).
+                   "period_end": str(d.get("report_date") or "")}
             if text:
                 row["item_text"] = d.get("text") or ""
             batch.extend({"ticker": t, **row} for t in by_cik.get(row["cik"], []))
@@ -424,10 +427,12 @@ def _counterparty(edge: dict) -> str:
     return aliases.issuer(edge["dst_ticker"]) if edge.get("dst_ticker") else aliases._key(edge.get("dst_name") or "")
 
 
-def profile_edges(ticker: str, profile: dict, filed: str = "", names: dict | None = None) -> list[dict]:
+def profile_edges(ticker: str, profile: dict, filed: str = "", names: dict | None = None,
+                  accession: str | None = None) -> list[dict]:
     """``chain_mentions`` rows of one Relatedness profile (#410): each named customer, supplier and competitor, with
     its quote and stated share, resolved to a ticker through ``aliases.resolve``; a name it cannot resolve stays as
-    text with an empty ``dst_ticker``. The filer itself is no edge."""
+    text with an empty ``dst_ticker``. The filer itself is no edge. ``accession`` is the filing the profile was
+    written from (plan v31 step 1(d)), carried onto every edge."""
     me, out = aliases.issuer(ticker), []
     for field, relation in _PROFILE_RELATIONS:
         for p in profile.get(field) or []:
@@ -440,7 +445,7 @@ def profile_edges(ticker: str, profile: dict, filed: str = "", names: dict | Non
             out.append({"src": ticker, "dst_name": name, "dst_ticker": hit["ticker"] if hit else "",
                         "relation": relation, "snippet": p.get("quote") or "", "filed": filed,
                         "share_pct": round(float(share) * 100, 2) if isinstance(share, (int, float)) else None,
-                        "source": "profile"})
+                        "source": "profile", "accession": accession or None})
     return out
 
 
@@ -457,27 +462,21 @@ def _party_relation(edge: dict) -> tuple[str, str]:
 
 
 def merge_profile(regex_edges: list[dict], prof_edges: list[dict]) -> list[dict]:
-    """One filer's edges: the profile's first; a filing edge (XBRL since #748) only for a
-    (counterparty, relation) pair the profile does not name (#410: "prefers the profile row for a (filer,
-    counterparty) pair", narrowed to the store's own key by #725). A profile edge with no share takes the XBRL
-    share stated for the same company in the same relation.
+    """One filer's edges, one row per (counterparty, relation) (#725): for a pair both sources state, the filing's
+    XBRL row, which the filer tagged; for any other pair, the edge of whichever source states it (plan v31 step 1(b)).
+    No share is copied from one row to another: a row's share is the one its own source stated, so a served share
+    always has the quote or the tagged line it came from.
 
-    A display-only ``other`` edge (written by the keyword scan until #748; stored rows may still hold some) is the one exception to
-    the per-relation key: it states no relation at all, so a profile that names that company in *any* relation
-    already says more, and the ``other`` row would only double the company on the board.
+    A display-only ``other`` edge (written by the keyword scan until #748; stored rows may still hold some) is the
+    one exception to the per-relation key: it states no relation at all, so a profile that names that company in
+    *any* relation already says more, and the ``other`` row would only double the company on the board.
     """
     if not prof_edges:
         return regex_edges
-    by_party, parties = {}, set()
-    for e in prof_edges:
-        by_party.setdefault(_party_relation(e), e)
-        parties.add(_counterparty(e))
-    for e in regex_edges:
-        p = by_party.get(_party_relation(e))
-        if p is not None and p["share_pct"] is None and e.get("share_pct") is not None:
-            p["share_pct"] = e["share_pct"]
-    return prof_edges + [e for e in regex_edges if _party_relation(e) not in by_party
-                         and not (e["relation"] == "other" and _counterparty(e) in parties)]
+    filed = {_party_relation(e) for e in regex_edges if e["relation"] != "other"}
+    parties = {_counterparty(e) for e in prof_edges}
+    return ([e for e in prof_edges if _party_relation(e) not in filed]
+            + [e for e in regex_edges if not (e["relation"] == "other" and _counterparty(e) in parties)])
 
 
 def _stored_profiles() -> dict[str, dict]:
@@ -490,6 +489,16 @@ def _stored_profiles() -> dict[str, dict]:
         return {}
 
 
+def _profile_accessions() -> dict[str, str]:
+    """``{ticker: accession}`` of the stored profiles that name the filing they were written from (plan v31 step 1(d))."""
+    try:
+        return {r["ticker"]: r["accession"] for r in rawstore.get_all("relatedness_profiles", ["ticker", "accession"])
+                if r.get("accession")}
+    except Exception:  # noqa: BLE001 - no profile table or column yet: no edge carries an accession
+        logger.exception("value_chain: profile accessions could not be read")
+        return {}
+
+
 def build_edges(info: dict | None = None) -> list[dict]:
     """Recompute mentions from the cached corpus and persist them.
 
@@ -498,6 +507,7 @@ def build_edges(info: dict | None = None) -> list[dict]:
     edges: list[dict] = []
     covered: set[str] = set()   # the tickers this run scanned: only their stored keys can be retired
     profiles = _stored_profiles()
+    accessions = _profile_accessions() if profiles else {}
     n_filings, names = 0, (_spine_names() if profiles else None)
     for rows in _corpus_batches():
         n_filings += len(rows)
@@ -517,7 +527,8 @@ def build_edges(info: dict | None = None) -> list[dict]:
                 continue
             covered.add(t)
             found = filing_edges(t, text, filed, customers.get(t), names)
-            edges.extend(merge_profile(found, profile_edges(t, profiles[t], filed, names)) if t in profiles else found)
+            edges.extend(merge_profile(found, profile_edges(t, profiles[t], filed, names, accessions.get(t)))
+                         if t in profiles else found)
     rawstore.ensure_table("chain_mentions")
     if info is not None:
         info.update(filings=n_filings, kept=not edges, retired=0)
@@ -597,7 +608,11 @@ def _board_payload(filings: list[dict], edges: list[dict], as_of: str,
                                              theme_catalog)
     excluded = excluded_tickers()
     filings = [f for f in filings if f["ticker"] not in excluded]
-    edges = [e for e in edges if e.get("src") not in excluded]
+    edges = [e for e in edges if e.get("src") not in excluded and e.get("relation") in config.SERVED_RELATIONS]
+    # Plan v31 step 1(f): a profile edge waits for the census; the count says what the switch holds back.
+    profile_hidden = 0 if config.SERVE_PROFILE_EDGES else sum(1 for e in edges if e.get("source") == "profile")
+    if profile_hidden:
+        edges = [e for e in edges if e.get("source") != "profile"]
     universe = classification_universe(operating_only=BOARD_OPERATING_ONLY["module_value_chain"])
     universe_total = len(universe)
     # Universe tickers with no filing row that are known not to be fetchable:
@@ -622,6 +637,9 @@ def _board_payload(filings: list[dict], edges: list[dict], as_of: str,
         "misses": len(missed),
         "no_cik": len(no_cik),
         "corpus": "layer" if _reads_layer() else _TABLE,
+        "profile_hidden": profile_hidden,
+        # G-F (#284): the last sync found no edge and kept the stored ones; the board says so.
+        "kept": _stored_meta().get("edges_kept") == "1",
         # Hand-labelled fixture precision (file read only: no store, no network).
         "precision": precision_mod.gate(served=edges),
         # The Theme facet's vocabulary: the pinned theme run (#383 C1b), a store read.
@@ -657,6 +675,7 @@ def run(no_fetch: bool = False, tickers: list[str] | None = None,
         {"key": "last_sync", "value": as_of, "fetched_at": fetched_at},
         {"key": "n_filings", "value": str(len(filings)), "fetched_at": fetched_at},
         {"key": "n_mentions", "value": str(len(edges)), "fetched_at": fetched_at},
+        {"key": "edges_kept", "value": "1" if info.get("kept") else "0", "fetched_at": fetched_at},
     ])
     payload = _board_payload(filings, edges, as_of, fetch)
     # The banner the board already renders, and the run's recorded health (#299). A Refresh leaves the field
@@ -665,9 +684,12 @@ def run(no_fetch: bool = False, tickers: list[str] | None = None,
     return payload
 
 
+def _stored_meta() -> dict[str, str]:
+    return {r["key"]: r["value"] for r in rawstore.get_all("chain_meta")}
+
+
 def _stored_sync() -> str | None:
-    meta = {r["key"]: r["value"] for r in rawstore.get_all("chain_meta")}
-    return meta.get("last_sync")
+    return _stored_meta().get("last_sync")
 
 
 def load_payload() -> dict:
