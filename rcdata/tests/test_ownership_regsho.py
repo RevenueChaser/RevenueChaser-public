@@ -109,3 +109,16 @@ def test_a_redirect_to_the_same_file_is_the_file_not_an_absent_day(src, http_moc
     assert not regsho.none_path("nyse", date(2026, 10, 20)).exists()
     assert _served("SELECT market, symbol FROM regsho_threshold WHERE list_date = '2026-10-20'") == [("nyse", "BRK-B")]
     assert regsho.none_path("nasdaq", date(2026, 10, 20)).exists()            # Nasdaq's not-found page: absent
+
+
+def test_a_raw_day_a_failed_run_left_untyped_is_typed_by_the_next_run_without_asking_again(src, http_mock):
+    # #347: a run that stopped after writing raw files but before typing them left days no later run typed, because
+    # the raw file is the resume marker and only the days fetched in the run were typed.
+    _run("2026-10-27")
+    part = regsho.parquet_dir() / "date=2026-10-27" / "part-0.parquet"
+    part.unlink()
+    http_mock.requests.clear()
+    _run("2026-10-27", mode="backfill", **{"from": "2026-10-27", "to": "2026-10-27"})
+    assert part.exists()
+    assert http_mock.calls("regsho.test") == []                       # the kept raw is typed, not asked again
+    assert "NYSE" not in {c.url.params["market"] for c in http_mock.calls("nyse.test")}

@@ -121,6 +121,11 @@ def done(market: str, day: date) -> bool:
     return raw_path(market, day).exists() or none_path(market, day).exists()
 
 
+def typed(day: date) -> bool:
+    """Whether ``day`` has its Parquet partition (every market of the day in one file)."""
+    return (parquet_dir() / f"date={day.isoformat()}" / "part-0.parquet").exists()
+
+
 def first_day() -> date | None:
     days = [date.fromisoformat(p.name[:10]) for m in MARKETS if raw_dir(m).is_dir()
             for p in raw_dir(m).iterdir() if p.name.endswith((".txt", ".none"))]
@@ -166,6 +171,10 @@ class RegShoThreshold:
                     raw = self._fetch_one(ctx, market, day, as_of, pacer)
                     if raw is not None:
                         out.append(raw)
+                elif raw_path(market, day).exists() and not typed(day):
+                    # #347: a raw file a failed run never typed is typed now; it is the resume marker, so it is
+                    # never asked again and would otherwise stay untyped for good.
+                    out.append(raw_path(market, day))
         return out
 
     def fetch(self, ctx: base.RunContext, as_of: date) -> list[Path]:

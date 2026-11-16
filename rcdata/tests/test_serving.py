@@ -246,6 +246,22 @@ def test_b2_a_shrink_is_allowed_only_when_asked_for():
     _build_t(11)                                   # growing is always fine
 
 
+def test_a_shrink_under_the_limit_swaps_in_and_leaves_a_build_issue():
+    """#292 N-3: 2,220 of 222,009 SPX rows went in without a trace. A shrink under MAX_SHRINK still swaps in, and
+    now leaves one open ``build_issues`` row naming the table and both counts; growing leaves none."""
+    from RevenueChaser.rcdata import ops
+    _build_t(1000)
+    _build_t(1001)
+    assert ops.open_issues("market")[0] == 0
+    _build_t(995)
+    with serving.open_read("market") as con:
+        assert con.execute("SELECT count(*) FROM t").fetchone()[0] == 995
+    n, rows = ops.open_issues("market")
+    assert n == 1 and rows[0]["kind"] == "shrink" and rows[0]["key"] == "t" and "1001 -> 995" in rows[0]["detail"]
+    _build_t(990)                                  # shrinks again: still one open row, no flood
+    assert ops.open_issues("market")[0] == 1
+
+
 def test_a_table_that_shrinks_by_choice_may_shrink_without_allow_shrink_but_may_not_empty():
     """``SHRINKS_BY_CHOICE``: the source or avo chooses the row count, so a smaller one is not a partial build.
     A request-wide ``allow_shrink`` is not needed for it (it would relax every other table of the kind with it),
