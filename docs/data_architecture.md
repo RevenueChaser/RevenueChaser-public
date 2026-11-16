@@ -2099,6 +2099,10 @@ CLI's `--reread`). The run writes and converts every answer inside the ask lock 
 pass that finds it due is 19:05 New York, 01:05 Amsterdam (the owner, 16 Nov 2026), once its file's automation is on
 and a first run was started by hand. The Settings page and the Grafana RC Fetch board show that next pass and the
 dataset's `limits` line (EVREN no day cap, DeepSeek 200 companies a day).
+**It is also a job of its own:** the registry row RC-SEC-Read (`core/automations.py`, unit `life-rc-sec-read`, daily
+01:10 Amsterdam, 90 min limit) runs `rcdata.build run --once --dataset sec/reads`, so the check has a row on the
+Settings page and on the Grafana Jobs board, and it runs whatever the file's automation says. 01:10 is five minutes
+after the hourly pass, so the two never start together.
 A question's
 input may carry its own ready user messages (`Input.messages`) when a plain 60,000-character slice is not what
 its prompt sends. A transient error (a timeout, a 5xx) gives up on that company only, with no attempt counted,
