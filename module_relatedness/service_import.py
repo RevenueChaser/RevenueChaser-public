@@ -37,15 +37,15 @@ SYSTEMS = {"today": sec_profile.SYSTEM, "before #748": sec_profile.SYSTEM.replac
 
 
 def plan() -> dict:
-    """``{"counts": {...}, "rows": [read_answer rows]}``: what the import would write, and why a company is left
-    out (``no_profile``: nothing usable stored; ``text_changed``: stored from another text or name, so the service
+    """``{"counts": {...}, "rows": [read_answer rows], "examples": {reason: six CIKs}}``: what the import would
+    write, and why a company is left out (``no_profile``: nothing usable stored; ``text_changed``: stored from another text or name, so the service
     asks it again; ``no_text``: nothing to send today)."""
     from ..rcdata.build.sec_reads import company_profile as cp
 
     comp = cp.companies()
     stored = {r["ticker"]: r for r in rawstore.get_all("relatedness_profiles")}
     counts = {"companies": len(comp), "imported": 0, "no_profile": 0, "text_changed": 0, "no_text": 0}
-    rows, seen = [], set()
+    rows, seen, examples = [], set(), {"no_profile": [], "text_changed": []}
     for cik, got in cp.survey(list(comp), comp, located=False):
         seen.add(cik)
         company = comp[cik]
@@ -54,6 +54,7 @@ def plan() -> dict:
         v3 = row.get("profile_json")
         if row.get("status") != "ok" or not v3 or not key.get("input_hash"):
             counts["no_profile"] += 1
+            examples["no_profile"][5:] or examples["no_profile"].append(cik)
             continue
         had = str(key["input_hash"])
         partial = had.endswith(PARTIAL)
@@ -62,6 +63,7 @@ def plan() -> dict:
         system = next((name for name, s in SYSTEMS.items() if store.prompt_hash(s, user) == had), None)
         if system is None:
             counts["text_changed"] += 1
+            examples["text_changed"][5:] or examples["text_changed"].append(cik)
             continue
         counts["imported"] += 1
         counts[f"hash of {system}"] = counts.get(f"hash of {system}", 0) + 1
@@ -81,7 +83,8 @@ def plan() -> dict:
             "input_kind": KIND.get(labels.get("input"), got["kind"]), "calls": 0, "tokens_in": 0, "tokens_out": 0,
             "error": None, "report_date": reported.isoformat() if hasattr(reported, "isoformat") else reported})
     counts["no_text"] = len(comp) - len(seen)
-    return {"counts": counts, "rows": rows}
+    examples["no_text"] = sorted(set(comp) - seen)[:6]
+    return {"counts": counts, "rows": rows, "examples": examples}
 
 
 def write() -> dict:
@@ -106,4 +109,8 @@ def write() -> dict:
 
 if __name__ == "__main__":
     import sys
-    print(json.dumps(write() if "--write" in sys.argv[1:] else plan()["counts"], indent=1))
+    if "--write" in sys.argv[1:]:
+        print(json.dumps(write(), indent=1))
+    else:
+        made = plan()
+        print(json.dumps({"counts": made["counts"], "examples": made["examples"]}, indent=1))
