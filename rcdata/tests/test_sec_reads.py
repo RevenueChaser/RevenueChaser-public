@@ -532,6 +532,25 @@ def test_an_evren_question_has_no_day_cap(http_mock, monkeypatch):
     assert len(http_mock.requests) == 6 and "day cap" not in check["note"]
 
 
+def test_many_companies_with_no_answer_at_once_are_a_scope_change_and_wait_for_the_word(http_mock, monkeypatch):
+    many = {str(1000 + i): f"company {i}" for i in range(6)}
+    http_mock.add("/chat/completions", chat('{"products": ["x"]}'))
+    monkeypatch.setattr(reads, "NEW_COMPANY_LIMIT", 3)
+    question(ciks=("1000",), text=many)
+    run()
+    questions.QUESTIONS.clear()
+    question(ciks=tuple(many)[:4], text=many)               # three new companies: asked by themselves
+    run(reread=False)
+    assert len(http_mock.requests) == 4
+    questions.QUESTIONS.clear()
+    monkeypatch.setattr(reads, "NEW_COMPANY_LIMIT", 1)
+    question(ciks=tuple(many), text=many)                   # two more at once, over the limit: a scope change
+    check = run(reread=False)
+    assert len(http_mock.requests) == 4 and "new_company 2" in check["note"]
+    run()                                                   # the owner's word
+    assert len(http_mock.requests) == 6
+
+
 def test_a_usable_reply_after_the_unusable_stop_does_not_store_the_held_back_ones(http_mock, monkeypatch):
     many = {str(1000 + i): f"company {i}" for i in range(8)}
     gave_up = threading.Event()

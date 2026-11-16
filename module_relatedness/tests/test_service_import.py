@@ -1,5 +1,5 @@
-"""The stored Relatedness profiles handed to the SEC reading service: the dry run (#894). The code under test
-writes nothing; the one write below is the test's own, to show an imported row is not asked again.
+"""The stored Relatedness profiles handed to the SEC reading service: the dry run (#894). The dry run
+writes nothing; the write puts the rows in the service's Parquet tree, and an imported row is not asked again.
 """
 from __future__ import annotations
 
@@ -10,7 +10,6 @@ from RevenueChaser.module_relatedness import engine, service_import, store
 from RevenueChaser.module_relatedness.tests.test_sec_forms_reader_841 import filings_only, layer  # noqa: F401
 from RevenueChaser.module_relatedness.tests.test_service_profile_bytes import MSFT, ask_the_service, world  # noqa: F401
 from RevenueChaser.rcdata import read, sec_profile
-from RevenueChaser.rcdata.build import base
 from RevenueChaser.rcdata.build.sec_reads import company_profile as cp
 from RevenueChaser.rcdata.build.sec_reads import reads
 from RevenueChaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401  (fixtures)
@@ -31,9 +30,13 @@ def test_a_stored_profile_is_imported_with_the_services_hash_and_is_not_asked_ag
     assert json.loads(row["answer"]) == stored["profile_json"]
     assert read.sec_reads([MSFT], cp.PROFILE_ID) == []                        # the plan wrote nothing
 
-    base.upsert_partition(plan["rows"], reads.SCHEMA, reads.KEY, reads.partition_path(cp.PROFILE_ID))  # the test's
+    assert service_import.write() == plan["counts"]
+    assert read.sec_reads([MSFT], cp.PROFILE_ID) == []                        # served after the next build
     ask_the_service()
     assert mock.calls("/chat/completions") == []
+    (served,) = read.sec_reads([MSFT], cp.PROFILE_ID)
+    assert (served["answer"], served["run_id"]) == (stored["profile_json"], service_import.RUN_ID)
+    assert service_import.write() == plan["counts"] and len(reads.held(cp.PROFILE_ID)) == 1   # twice changes nothing
 
 
 def test_a_profile_stored_before_the_candidates_sentence_left_the_prompt_is_imported_too(world, monkeypatch):
