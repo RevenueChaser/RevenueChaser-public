@@ -93,6 +93,7 @@ details.types>summary:focus-visible{outline:2px solid var(--focus);outline-offse
 .types-pick select:focus{outline:2px solid var(--focus);outline-offset:1px}
 #type-note{color:var(--muted);font-size:var(--fs-sm);line-height:var(--lh-body);margin-top:var(--sp-2)}
 #type-chart{width:100%;min-height:360px}
+.type-more{width:100%;margin-top:var(--sp-4)}
 .kit-count{color:var(--muted);font-size:var(--fs-sm);margin:8px 0 12px;min-height:1.2em}
 .kit-hide{display:none}
 .more-bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:var(--sp-3);margin:var(--sp-3) 0}
@@ -454,7 +455,9 @@ function loadType(tag){
   try { localStorage.setItem(TYPE_KEY, tag); } catch(e) {}
   note.textContent = '';
   // Purged before the spinner replaces it: Plotly.react on a host whose nodes were wiped draws nothing.
-  if(window.Plotly){ Plotly.purge(host); }
+  var more = [document.getElementById('type-sector'), document.getElementById('type-flow')];
+  if(window.Plotly){ Plotly.purge(host); more.forEach(function(m){ if(m){ Plotly.purge(m); } }); }
+  more.forEach(function(m){ if(m){ m.innerHTML = ''; } });
   host.innerHTML = '<span class="spin"></span>';
   fetch('/api/sec_13f/types/' + encodeURIComponent(tag))
     .then(function(r){ return r.json(); })
@@ -463,6 +466,9 @@ function loadType(tag){
       host.innerHTML = '';
       note.textContent = d.note || d.error || '';
       if(d.fig){ withPlotly(function(){ Plotly.newPlot(host, themedFig(d.fig).data, d.fig.layout, {displayModeBar: false, responsive: true}); }); }
+      [[more[0], d.sector_fig], [more[1], d.flow_fig]].forEach(function(p){
+        if(p[0] && p[1]){ withPlotly(function(){ Plotly.newPlot(p[0], themedFig(p[1]).data, p[1].layout, {displayModeBar: false, responsive: true}); }); }
+      });
     })
     .catch(function(){
       if(seq !== TYPE_SEQ){ return; }
@@ -954,6 +960,73 @@ def build_type_fig(label: str, rows: list[dict], still_arriving=frozenset()) -> 
     return fig.to_dict(), note
 
 
+SECTOR_COLS = 3          # small multiples per row; 11 GICS sectors and Unclassified fill four rows
+
+
+def build_sector_fig(label: str, rows: list[dict], still_arriving=frozenset()) -> dict | None:
+    """Sector exposure over time for one investor type (#788 A1, plan step 12): small multiples, one panel per
+    sector on one shared y scale (the share of the type's 13F portfolio, %), rather than a ten-colour stack where
+    the small sectors are slivers. ``rows`` are ``sec13f_type_sector`` rows. None when there are none."""
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
+    qs = sorted({r["period"] for r in rows})
+    if not qs:
+        return None
+    share: dict[str, dict] = {}
+    for r in rows:
+        share.setdefault(r.get("sector") or UNCLASSIFIED, {})[r["period"]] = float(r.get("share") or 0)
+    newest = qs[-1]
+    sectors = sorted(share, key=lambda s: (-share[s].get(newest, 0.0), s))
+    nrows = -(-len(sectors) // SECTOR_COLS)
+    labels = [_qlabel(q) + (ARRIVING_MARK if q in still_arriving else "") for q in qs]
+    top = max(v for per in share.values() for v in per.values()) or 1.0
+    fig = make_subplots(rows=nrows, cols=SECTOR_COLS, shared_xaxes=True, shared_yaxes=True,
+                        subplot_titles=[f"{s} {share[s].get(newest, 0.0):.1f}%" for s in sectors],
+                        vertical_spacing=0.08, horizontal_spacing=0.04)
+    for i, sector in enumerate(sectors):
+        fig.add_trace(go.Scatter(x=labels, y=[share[sector].get(q, 0.0) for q in qs], name=sector, mode="lines",
+                                 fill="tozeroy", line=dict(width=1.5, color=THEME_SCALE["c1"]),
+                                 hovertemplate=f"{sector} %{{x}}: %{{y:.1f}}%<extra></extra>"),
+                      i // SECTOR_COLS + 1, i % SECTOR_COLS + 1)
+    fig.update_yaxes(range=[0, top * 1.08], ticksuffix="%", nticks=3)
+    fig.update_xaxes(type="category", nticks=4, tickangle=0)
+    fig.update_layout(template="plotly_dark", height=150 * nrows + 60, showlegend=False,
+                      margin=dict(l=44, r=10, t=36, b=30),
+                      title=dict(text=f"{label}: share of the 13F portfolio by sector", x=0, font=dict(size=13)))
+    for a in fig.layout.annotations:
+        a.font = dict(size=11)
+    return fig.to_dict()
+
+
+def build_flow_fig(label: str, rows: list[dict], still_arriving=frozenset()) -> dict | None:
+    """Dollars bought and sold per quarter by one investor type's continuing filers (#788 A4, plan step 12): two
+    stacked panels on one quarter axis (gross bought and sold as bars, the net as its own bars below), never a dual
+    axis. ``rows`` are ``sec13f_type_flow`` rows. None when there are none."""
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
+    rows = sorted(rows, key=lambda r: r["period"])
+    if not rows:
+        return None
+    labels = [_qlabel(r["period"]) + (ARRIVING_MARK if r["period"] in still_arriving else "") for r in rows]
+    bought = [float(r.get("bought") or 0) for r in rows]
+    sold = [-float(r.get("sold") or 0) for r in rows]
+    net = [float(r.get("net") or 0) for r in rows]
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.12, row_heights=[0.6, 0.4],
+                        subplot_titles=(f"{label}: bought and sold ($)", "Net ($)"))
+    fig.add_trace(go.Bar(x=labels, y=bought, name="Bought", marker_color=THEME_SCALE["c1"],
+                         hovertemplate="%{x} bought: $%{y:,.0f}<extra></extra>"), 1, 1)
+    fig.add_trace(go.Bar(x=labels, y=sold, name="Sold", marker_color=THEME_SCALE["c3"], customdata=[-v for v in sold],
+                         hovertemplate="%{x} sold: $%{customdata:,.0f}<extra></extra>"), 1, 1)
+    fig.add_trace(go.Bar(x=labels, y=net, name="Net",
+                         marker_color=[THEME_SCALE["c2"] if v >= 0 else THEME_SCALE["c4"] for v in net],
+                         hovertemplate="%{x} net: $%{y:,.0f}<extra></extra>"), 2, 1)
+    fig.update_layout(template="plotly_dark", height=460, barmode="relative", showlegend=False,
+                      margin=dict(l=60, r=10, t=40, b=40))
+    fig.update_xaxes(type="category")
+    fig.update_yaxes(tickprefix="$")
+    return fig.to_dict()
+
+
 #: The snapshot columns the table keeps (avo 12 Nov 2026: the board must fit his 1187 px laptop with no sideways
 #: scroll). The other snapshot values ride the payload as before and are shown in the row's detail panel.
 _TABLE_SNAP = ("value", "pct_out", "netflow", "streak")
@@ -1243,7 +1316,9 @@ def types_section_html(filers: dict[str, int] | None = None) -> str:
     return ('<details class="types" id="types"><summary>Top holdings by investor type</summary>'
             '<div class="types-body"><div class="types-pick"><label for="type-pick">Investor type</label>'
             f'<select id="type-pick">{options}</select></div>'
-            '<div id="type-chart"></div><div id="type-note" aria-live="polite"></div></div></details>')
+            '<div id="type-chart"></div><div id="type-note" aria-live="polite"></div>'
+            '<div id="type-sector" class="type-more"></div><div id="type-flow" class="type-more"></div>'
+            '</div></details>')
 
 
 def _render_page(quarters: list, entries: list, fields: list, kit_notice: str | None = None,
