@@ -10,7 +10,7 @@ yapılma olasılığı olanlardan").
 - ``trfd_empty``: a priced ``comp.secd`` day without ``trfd`` (its return read with ``trfd`` = 1, a dividend day
   flagged ``price_dividend``: the days most worth a second source);
 - ``dividend`` / ``spin_off``: a cash dividend or a spin-off going ex in the window (``corporate_action``);
-- ``price_gap``: an open ``price_gap_no_action`` issue of ``prices/serving``;
+- ``price_gap``: an open ``price_gap_no_action`` or ``price_gap_warrant`` issue of ``prices/serving``;
 - ``exchange_move``: a ``comp.sec_idhist`` EXCHG period starting in the window (``secd.exchg`` is today's code);
 - ``low_price``: the newest ``prccd`` under ``LOW_PRICE``.
 
@@ -82,7 +82,7 @@ def at_risk(as_of: date) -> dict[str, list[str]]:
     from .serving import NAME as SERVING
     n, _ = ops.open_issues(SERVING, limit=1)
     for issue in ops.open_issues(SERVING, limit=max(n, 1))[1]:
-        if issue["kind"] == "price_gap_no_action":
+        if issue["kind"] in ("price_gap_no_action", "price_gap_warrant"):
             rows.append((issue["key"].rsplit(":", 1)[0], "price_gap"))
     for sid, why in rows:
         found.setdefault(sid, set()).add(why)

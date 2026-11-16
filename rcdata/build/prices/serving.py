@@ -588,13 +588,16 @@ class PricesServing:
         # Compustat's cash dividend that Alpaca has with the same amount a day or few off (Compustat's day is not
         # always Alpaca's ex-date) is the same dividend: Alpaca's is kept, as on the same day, and the dropped ones
         # are counted for the build note (prices plan 16 Nov 2026, P5: 041545:03 0.0516 on 21, 22 and 23 Oct).
-        # Side effect: a real second dividend of the same amount within SPLIT_SAME_DAYS would be dropped too.
+        # Side effect: a real second dividend of the same amount within SPLIT_SAME_DAYS would be dropped too. A special
+        # or a non-USD Alpaca row never stands in for Compustat's. On the live copy a pair across the rebuilt window's
+        # start stays until the next whole build.
         twins = con.execute(f"""DELETE FROM _act w WHERE w.source = '{wrds_history.NAME}'
             AND {ACTION_KIND.format(a='w')} = 'cash_dividend'{mine}
             AND EXISTS (SELECT 1 FROM _act p WHERE p.security_id = w.security_id AND p.source = '{ALPACA_ACTIONS}'
                         AND {ACTION_KIND.format(a='p')} = 'cash_dividend'
                         AND abs(date_diff('day', p.ex_date, w.ex_date)) <= {SPLIT_SAME_DAYS}
-                        AND abs(p.rate - w.rate) < 1e-9)""").fetchone()[0]
+                        AND abs(p.rate - w.rate) < 1e-9 AND p.special IS NOT DISTINCT FROM w.special
+                        AND coalesce(upper(p.currency), 'USD') = 'USD')""").fetchone()[0]
         con.execute("CREATE TEMP TABLE IF NOT EXISTS _div_twin (n BIGINT)")
         con.execute("INSERT INTO _div_twin VALUES (?)", [twins])
         # CRSP's splits are the cross-check only (Order 4; the WRDS access inventory of 3 Nov 2026 prefers
@@ -620,6 +623,15 @@ class PricesServing:
         if twins:
             ctx.notes.append(f"{twins} Compustat cash dividend(s) left out: Alpaca has the same amount within "
                              f"{SPLIT_SAME_DAYS} days")
+        # Alpaca's own repeats (041545:03 on 22 and 23 Oct 2026) are counted, not dropped: avo decides (prices plan P5).
+        alpaca_twins = con.execute(f"""SELECT count(*) FROM _act a JOIN _act b ON b.security_id = a.security_id
+            AND a.source = '{ALPACA_ACTIONS}' AND b.source = '{ALPACA_ACTIONS}' AND a.ex_date < b.ex_date
+            AND date_diff('day', a.ex_date, b.ex_date) <= {SPLIT_SAME_DAYS} AND abs(a.rate - b.rate) < 1e-9
+            AND {ACTION_KIND.format(a='a')} = 'cash_dividend' AND {ACTION_KIND.format(a='b')} = 'cash_dividend'
+            """).fetchone()[0]
+        if alpaca_twins:
+            ctx.notes.append(f"{alpaca_twins} pair(s) of Alpaca cash dividends with the same amount within "
+                             f"{SPLIT_SAME_DAYS} days, both kept")
         # Review M6 of #382: such a split stands in for the ``price_gap_no_action`` it explains, so it carries the
         # served close's move across its ex-date, from the security's last served bar before it to its first on or
         # after it: the same two bars the gap check pairs, but their raw closes, not its split-adjusted ones (the two
@@ -721,7 +733,7 @@ class PricesServing:
         # shortcut: an ADR gets no market cap from the store at all; once a source of its ADS ratio (or its ADS count)
         # is read, divide the ordinary count by the ratio and map it to the ADR's row.
         # A count of 0 (an unissued class) or dated after its filing (a typo, as ``_dei``) is no count (prices plan
-        # 16 Nov 2026, P2: 71 zero covers, 4 dated after their filing).
+        # 16 Nov 2026, P2: 71 zero covers, 4 dated after their filing), nor a cover_* issue.
         con.execute("""CREATE OR REPLACE TEMP TABLE _cover AS
             WITH one AS (SELECT cik, any_value(security_id) AS security_id, any_value(security_type) AS security_type
                          FROM stg_spine WHERE tier = 'A' GROUP BY cik HAVING count(*) = 1),
@@ -851,7 +863,7 @@ class PricesServing:
                       "WHERE x.security_id = s.security_id AND x.session_date = ?) ORDER BY s.security_id")
             for sid, ticker in con.execute(tier_a.format(t="price_bar_daily"), [newest]).fetchall():
                 found.append(("tier_a_no_bar", sid, f"{ticker}: no bar on {newest}"))
-            adr = set(r[0] for r in con.execute("SELECT security_id FROM stg_spine WHERE security_type = 'adr'"
+            adr = set(r[0] for r in con.execute("SELECT security_id FROM stg_spine WHERE security_type = 'adr' "
                                                 "AND security_id IS NOT NULL").fetchall())
             bars_now = set(r[0] for r in con.execute(
                 "SELECT security_id FROM price_bar_daily WHERE session_date = ?", [newest]).fetchall())
