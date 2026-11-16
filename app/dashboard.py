@@ -467,6 +467,10 @@ def view(mod: str):
         # The payload file (K10) goes with it: the rebuild writes a new one or none.
         f.unlink(missing_ok=True)
         payload_path(f).unlink(missing_ok=True)
+    if mod == "module_sec_13f" and f.exists() and _sec13f_stale():
+        # A build or a new day the board file has not taken: the page was rendered from older rows (#732).
+        f.unlink(missing_ok=True)
+        payload_path(f).unlink(missing_ok=True)
     if not f.exists():
         if mod == "module_sec_13f":
             # Write the re-rendered board back to its artifact (it used to be
@@ -544,6 +548,17 @@ def _import_runners():
 # The boards that read the shared universe, and the jobs that load it when the store has none (#145 D1).
 _UNIVERSE_BOARDS = ("module_asymmetric_growth", "module_swing_potential", "module_fundamentals")
 _UNIVERSE_JOBS = ("module_asymmetric_growth", "swing", "module_fundamentals")
+
+
+def _sec13f_stale() -> bool:
+    """The 13F board file has not taken the live ownership build or today's date (#732); False when that cannot be
+    read, so a read error never costs a re-render."""
+    from RevenueChaser.module_sec_13f import store as sec13f_store
+    try:
+        return sec13f_store.is_stale()
+    except Exception as exc:  # noqa: BLE001 - serve the page as it is
+        logger.warning("13F board stamp unread: %s", exc)
+        return False
 
 
 def _universe_loading(mod: str) -> bool:
@@ -1867,14 +1882,13 @@ def view_rotation_trail():
 @app.route("/api/sec_13f/<ticker>")
 def api_sec13f(ticker: str):
     """Plotly figure for a ticker's SEC 13F total-ownership chart."""
-    from RevenueChaser.module_sec_13f import engine as module_sec_13f
     from RevenueChaser.module_sec_13f.enrich import load_inputs
     from RevenueChaser.module_sec_13f.report import build_chart_fig
     t = ticker.strip().upper()
     if not _valid_ticker(t):
         return jsonify({"ok": False, "error": "bad ticker"}), 400
-    totals = module_sec_13f.load_totals()
-    periods = totals.get(t)
+    from RevenueChaser.module_sec_13f import store as sec13f_store
+    periods = sec13f_store.read_ticker(t)              # one ticker's rows, not the whole board file (#732)
     if not periods:
         return jsonify({"ok": False, "error": "no series", "ticker": t}), 404
     enrich = load_inputs({t: periods}).get(t, {})       # the board's inputs (#375 F2): D01 closes, store only

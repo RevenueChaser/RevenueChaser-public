@@ -18,7 +18,7 @@ SEC13F_METRICS = ("shares", "value", "holders", "top10_pct", "hhi", "new_holders
                   "sell_flow", "breadth", "breadth_chg")
 
 
-def sec13f_totals() -> dict[str, dict]:
+def sec13f_totals(tickers=None) -> dict[str, dict]:
     """The served 13F per-ticker totals, ``{ticker: {"YYYY-MM-DD": metrics + ``complete``}}`` — nothing recomputed,
     no network. ``complete`` says the period's filing deadline has passed; before it the quarter is still arriving
     and its numbers are a part of themselves (#514).
@@ -35,7 +35,7 @@ def sec13f_totals() -> dict[str, dict]:
     from RevenueChaser.rcdata import read as rcread
 
     out: dict[str, dict] = {}
-    for r in rcread.holders_13f():
+    for r in rcread.holders_13f(tickers):       # every ticker when None; the chart route asks for one (#732)
         # ``complete`` is not one of the store's metrics, and it is not optional either: a period whose filing
         # deadline has not passed holds a part of itself, so a reader that cannot tell shows a quarter still
         # arriving as a collapse (#514). ``rcdata.read`` computes it from the deadline; this used to drop it.
