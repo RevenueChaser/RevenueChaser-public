@@ -918,8 +918,13 @@ def test_a_filer_ten_times_too_high_is_rescaled_down_and_one_ten_times_too_low_i
     _book_day(http_mock, {"2026-10-27": [(1.0, "09-30-2026")] * 4 + [(10.0, "09-30-2026"), (0.1, "09-30-2026")]})
     _serve()
     assert _served("SELECT cik, value_factor FROM sec13f_filer_period WHERE value_factor <> 1") == [("2000005", 0.1)]
-    assert _issues()[("value_rescaled", "2000005|2026-09-30")].startswith(
+    issues = _issues()
+    assert issues[("value_rescaled", "2000005|2026-09-30")].startswith(
         "MANAGER 2000005, 2026-09-30: VALUE read as 10 times too high")
+    # Q14 (avo, 16 Nov 2026): the one left as filed is listed, not changed.
+    assert issues[("value_suspect", "2000006|2026-09-30")].startswith(
+        "MANAGER 2000006, 2026-09-30: VALUE per share at 0.1 times the 13F's own prices over 6 names, left as filed")
+    assert not any(k == "value_suspect" and key.startswith("2000005") for k, key in issues)
 
 
 def test_a_holding_whose_share_count_is_wrong_is_not_read_above_its_filings_cover_total(monkeypatch, http_mock):

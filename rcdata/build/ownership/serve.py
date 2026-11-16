@@ -112,7 +112,9 @@ from the live file otherwise, so a FINRA or IBKR run does not read millions of h
 ``cusip_unmapped_large`` (the ``UNMAPPED_TOP`` largest CUSIPs no source names, of the newest complete quarter, as
 the plan's counts are, else the newest),
 ``filings_unparsed`` (per index day) and ``value_rescaled`` (the ``RESCALED_TOP`` filer-quarters whose rescale moved
-the most dollars, keyed ``cik|period``, with the median ratio and the names it rests on).
+the most dollars, keyed ``cik|period``, with the median ratio and the names it rests on) and ``value_suspect`` (the
+``RESCALED_TOP`` largest filer-quarters left as filed whose median ratio lies over 3 or under 1/3: their VALUE or their
+share counts are wrong, which the prices alone cannot tell; avo, 16 Nov 2026, Q14 of the 13F plan: listed, not changed).
 """
 from __future__ import annotations
 
@@ -200,6 +202,8 @@ ISSUE_KINDS = {
                       "was rescaled",
     "value_row_replaced": "one of the largest holdings whose value lay 300 times or more from the 13F's own price "
                           "for it and was read at that price",
+    "value_suspect": "one of the largest filer-quarters left as filed whose VALUE per share lies over 3 times above or "
+                     "below the 13F's own prices (VALUE or share counts wrong)",
 }
 
 # FINRA publishes a settlement date's short interest on the seventh business day after it (FINRA's equity short
@@ -1069,6 +1073,13 @@ class OwnershipServe:
             found.append(("value_rescaled", f"{cik}|{period}",
                           f"{name or cik}, {period}: VALUE {how} (median ratio {ratio:g} to the 13F's own prices over "
                           f"{names} names): ${value / factor:,.0f} read as ${value:,.0f}"))
+        for cik, period, name, ratio, names, value in con.execute(f"""
+                SELECT cik, period, filer_name, median_ratio, names, value FROM sec13f_filer_period
+                WHERE value_factor = 1 AND names >= {MIN_NAMES} AND (median_ratio > 3 OR median_ratio < 1.0 / 3)
+                ORDER BY value DESC, cik, period LIMIT {RESCALED_TOP}""").fetchall():
+            found.append(("value_suspect", f"{cik}|{period}",
+                          f"{name or cik}, {period}: VALUE per share at {ratio:g} times the 13F's own prices over "
+                          f"{names} names, left as filed (${value:,.0f}): VALUE or share counts wrong"))
         for cik, period, cusip, name, old, new in con.execute(f"""
                 SELECT cik, period, cusip, filer_name, old_value, new_value FROM _rowfix
                 ORDER BY abs(old_value - new_value) DESC, cik, period, cusip LIMIT {ROWS_TOP}""").fetchall():
