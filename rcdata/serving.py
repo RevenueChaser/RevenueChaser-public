@@ -274,17 +274,18 @@ class BuildFile:
 
 
 def _record_small_shrinks(kind: str, build_id: str, shrank: list[tuple[str, int, int]]) -> None:
-    """A shrink under ``MAX_SHRINK`` swaps in, but no longer without a trace (#292 N-3): one ``build_issues`` row per
-    table, under the kind's name. Recording is best effort: the swap has happened and stays."""
+    """A shrink under ``MAX_SHRINK`` swaps in, but no longer without a trace (#292 N-3): one open ``build_issues`` row
+    per table, under the kind's name, kept until someone resolves it. A table that shrinks again adds no second row,
+    so an hourly build cannot flood the list. Recording is best effort: the swap has happened and stays."""
     if not shrank:
         return
-    from . import ops
-    for table, before, after in shrank:
-        try:
-            ops.record_issue(kind, "shrink", table, f"{before} -> {after} rows (under {MAX_SHRINK:.0%}, swapped in)",
-                             run_id=build_id)
-        except ops.STORE_ERRORS:
-            pass
+    try:
+        from . import ops
+        found = [("shrink", table, f"{before} -> {after} rows (under {MAX_SHRINK:.0%}, swapped in)")
+                 for table, before, after in shrank]
+        ops.sync_issues(kind, ["shrink"], found, run_id=build_id, keep=lambda kind_, key: True)
+    except Exception:  # noqa: BLE001 - the file is already live; a failed note must not report a failed build
+        pass
 
 
 def _verify(kind: str, path: Path, expected_counts: dict[str, int], checks: list[dict]) -> None:

@@ -258,6 +258,8 @@ def test_a_shrink_under_the_limit_swaps_in_and_leaves_a_build_issue():
         assert con.execute("SELECT count(*) FROM t").fetchone()[0] == 995
     n, rows = ops.open_issues("market")
     assert n == 1 and rows[0]["kind"] == "shrink" and rows[0]["key"] == "t" and "1001 -> 995" in rows[0]["detail"]
+    _build_t(990)                                  # shrinks again: still one open row, no flood
+    assert ops.open_issues("market")[0] == 1
 
 
 def test_a_table_that_shrinks_by_choice_may_shrink_without_allow_shrink_but_may_not_empty():
