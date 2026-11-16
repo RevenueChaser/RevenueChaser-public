@@ -494,6 +494,9 @@ def test_an_evren_question_has_no_day_cap(http_mock, monkeypatch):
 def test_a_usable_reply_after_the_unusable_stop_does_not_store_the_held_back_ones(http_mock, monkeypatch):
     many = {str(1000 + i): f"company {i}" for i in range(8)}
     gave_up = threading.Event()
+    # Every request is in flight before any reply comes back: on a loaded runner the fifth unusable reply could
+    # otherwise land before the eighth request was sent, and that one is then not asked at all (a flake, #920).
+    arrived, all_in = [], threading.Event()
     real = asker.as_completed
 
     def in_order(futs):
@@ -503,6 +506,10 @@ def test_a_usable_reply_after_the_unusable_stop_does_not_store_the_held_back_one
                 gave_up.set()
 
     def reply(req):
+        arrived.append(1)
+        if len(arrived) >= len(many):
+            all_in.set()
+        all_in.wait(10)
         if any(f"company {i}" in req.content.decode() for i in range(5)):
             return 200, json.dumps(chat('{"products": []}')), {}
         gave_up.wait(10)                                    # in flight until the run has given up

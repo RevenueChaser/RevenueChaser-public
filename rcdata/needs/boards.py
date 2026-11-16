@@ -59,14 +59,19 @@ PLANNED_READS: dict[str, tuple[str, ...]] = {
     "module_sector_rotation": ("identity.membership", "identity.universe", "identity.etf_holdings", "prices.bars",
                                "prices.latest", "market.series"),
     # #481: the 13F share's split factor reads ``prices.security_ids`` and ``prices.bars`` (basis "split").
-    "module_asymmetric_growth": ("identity.universe", "prices.bars", "prices.security_ids",
+    # #646: the shares outstanding of the institutional share are the 13F board's reader (``prices.latest``,
+    # ``prices.shares``).
+    "module_asymmetric_growth": ("identity.universe", "prices.bars", "prices.security_ids", "prices.latest",
+                                 "prices.shares",
                                  "fundamentals.statements", "fundamentals.companies", "fundamentals.earnings_event",
                                  "ownership.beneficial", "earnings.next"),
     "module_swing_potential": ("identity.universe", "prices.bars", "earnings.next"),
     "module_fundamentals": ("identity.universe", "prices.bars", "fundamentals.statements", "fundamentals.companies",
                             "fundamentals.filings", "earnings.next"),
+    # #646 / #576: % Out reads the shared shares reader (``prices.latest``, ``prices.shares``), Short% FINRA.
     "module_sec_13f": ("ownership.filer_breaks_13f", "ownership.holders_13f", "ownership.periods_13f",
-                       "ownership.type_holdings_13f", "prices.actions", "identity.security"),
+                       "ownership.type_holdings_13f", "prices.actions", "identity.security", "prices.latest",
+                       "prices.shares", "prices.security_ids", "ownership.short_interest"),
     # 11 Nov 2026: the calendar build reads the builder's economic calendar, not raw.economic_calendar.
     "module_news": ("market.economic_calendar",),
     # #490: ``engine.py`` reads the company records and the served filing texts.

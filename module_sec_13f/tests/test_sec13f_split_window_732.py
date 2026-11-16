@@ -124,3 +124,11 @@ def test_a_quarter_still_arriving_rides_after_the_six():
     totals = {"AAA": {q: _cell(100.0 + i, complete=(q != EIGHT[-1])) for i, q in enumerate(EIGHT)}}
     cols = report.board_payload(totals, META, {})["cols"]
     assert [c for c in cols if c.startswith("sh_")] == [f"sh_{q}" for q in EIGHT[1:]]
+
+
+def test_the_chart_has_one_axis_per_panel():
+    """#732 E (M7): no panel carries a second y-axis; shares, close, value and holders each get their own."""
+    fig = report.build_chart_fig("AAA", SPLIT_TOTALS["AAA"], SPLIT_INPUTS["AAA"])
+    axes = [t.get("yaxis") or "y" for t in fig["data"]]
+    assert set(axes) == {"y", "y2", "y3", "y4"}       # shares, close, value, holders (a dashed tail shares y4)
+    assert not any(k for k, v in fig["layout"].items() if k.startswith("yaxis") and (v or {}).get("overlaying"))

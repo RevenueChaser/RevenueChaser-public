@@ -526,9 +526,9 @@ def run_sec_13f_latest(uw: UWClient | None = None, notice: str | None = None,
                        provider_health: dict | None = None, capture: dict | None = None) -> Path:
     """Render the SEC 13F total-ownership dashboard from cached totals.
 
-    No API calls — reads ``sec13f_totals``, the meta and the snapshot inputs from the store: shares outstanding
-    and insider % from ``ownership_snapshot``, quarter-end prices from D01 (``enrich.load_inputs``, #375 F2; the
-    retired ``sec13f_enrichment`` is not read). The Fetch renders through here too, so a Refresh shows the numbers
+    No API calls — reads the board file's totals, the meta and the snapshot inputs from the stores: shares
+    outstanding (the shared reader, #646), FINRA short interest (#576), quarter-end prices from D01, split factors
+    and filer breaks (``enrich.load_inputs``). The Fetch renders through here too, so a Refresh shows the numbers
     the Fetch showed. The board banner comes from ``provider_health`` (or ``uw.health()`` when a client is
     passed), and ``notice`` adds a one-line note (e.g. "names were not refreshed"). ``capture`` (the Fetch only)
     receives the totals, meta and inputs (under ``enrichment``) the board was rendered from, for the result

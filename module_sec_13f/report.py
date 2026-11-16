@@ -7,9 +7,9 @@ Inputs:
   ``totals`` = ``{ticker: {period: {shares, value, holders, new_holders,
                  exited_holders, top10_pct, hhi, buy_flow, sell_flow}}}``
   ``meta``  = ``{ticker: {"name": str, "sector": str}}``
-  ``enrichment`` = ``{ticker: {price, shares_outstanding, split_factor, float_shares}}`` (optional): the snapshot
-                   inputs, ``enrich.load_inputs`` (#375 F2: ``ownership_snapshot`` and D01; #732: the split factor
-                   per quarter end from the prices store).
+  ``enrichment`` = ``{ticker: {price, shares_outstanding, shares_source, shares_note, short_pct, short_pct_as_of,
+                   split_factor, breaks}}`` (optional): the snapshot inputs, ``enrich.load_inputs`` (D01 closes; the
+                   shared shares and FINRA readers, #646 #576; #732: split factors and filer breaks).
 
 Every share count on the board is on today's share basis (#732): a quarter's shares and flows are divided by that
 quarter end's split factor and its close multiplied by it, so a split reads as what it is, not as buying. The board
@@ -95,6 +95,12 @@ details.types>summary:focus-visible{outline:2px solid var(--focus);outline-offse
 #type-chart{width:100%;min-height:360px}
 .kit-count{color:var(--muted);font-size:var(--fs-sm);margin:8px 0 12px;min-height:1.2em}
 .kit-hide{display:none}
+.more-bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:var(--sp-3);margin:var(--sp-3) 0}
+.more-bar button{min-height:var(--touch);padding:0 var(--sp-4);border-radius:var(--r-sm);font:inherit;font-size:var(--fs-sm);
+  cursor:pointer;background:var(--card);color:var(--fg);border:1px solid var(--border)}
+.more-bar button.link{background:none;border:0;color:var(--muted);text-decoration:underline}
+.more-bar button:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
+.more-bar button[hidden]{display:none}
 table{width:100%;border-collapse:collapse;font-size:12px;background:var(--card);border:1px solid var(--border);
   border-radius:var(--r-md);overflow:hidden}
 th{text-align:right;padding:8px;color:var(--muted);font-size:var(--fs-xs);font-weight:600;letter-spacing:.03em;
@@ -238,6 +244,9 @@ var COL_LABELS = __COL_LABELS__;
 var TABLE_SNAP = __TABLE_SNAP__;          // snapshot columns drawn in the table; the rest go to the row's detail panel
 var DETAIL = {};                          // ticker -> [[label, text, cls, title], ...] for the detail panel          // a cell's header text, shown beside it when a phone stacks the row as a card
 var BREAKS = {};
+// #167: the rows live in ROWS (payload order); a sort or a filter works on the array, and only VIEW's first SHOWN rows
+// are in the DOM, PAGE more per "Show more" (decision C, avo 16 Nov 2026). A row element is built once, when first shown.
+var ROWS = [], COLS = [], COLIX = {}, SH_IX = [], VIEW = [], SHOWN = 0, PAGE = 100, ROW_EL = {}, SHOW_EMPTY = false;
 var MARK_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" '
   + 'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2 21h20L12 3z"></path>'
   + '<path d="M12 10v4"></path><path d="M12 17.5v.01"></path></svg>';
@@ -274,27 +283,44 @@ function openBreaks(ticker){
   document.getElementById('breaks-close').focus();
 }
 function closeBreaks(){ document.getElementById('breaks').classList.remove('open'); }
-function cellVal(row, col){ var el = row.querySelector('[data-col="'+col+'"]'); return el ? el.getAttribute('data-val') : ''; }
+function rowVal(r, col){
+  if(col === 'ticker'){ return r[0]; }
+  if(col === 'sector'){ return r[2] || null; }
+  var c = (r[3] || [])[COLIX[col]];
+  return (c && c[1] !== null && c[1] !== undefined) ? c[1] : null;
+}
+// A row with no 13F shares in any quarter shown is dashes from end to end (decision J): hidden unless asked for.
+function isEmptyRow(r){
+  for(var i = 0; i < SH_IX.length; i++){ var c = (r[3] || [])[SH_IX[i]]; if(c && c[1]){ return false; } }
+  return true;
+}
 function sortTable(col, el){
-  closeDetails();
   if(SORT_COL === col){ SORT_ASC = !SORT_ASC; } else { SORT_COL = col; SORT_ASC = false; }
   document.querySelectorAll('th, .chg-sort').forEach(function(th){ th.classList.remove('sort-asc','sort-desc'); });
   el.classList.add(SORT_ASC ? 'sort-asc' : 'sort-desc');
-  var tbody = document.querySelector('tbody');
-  var rows = Array.from(tbody.querySelectorAll('tr[data-ticker]'));
-  rows.sort(function(a,b){
-    var av = cellVal(a, col), bv = cellVal(b, col);
-    var aNull = av === '', bNull = bv === '';
-    if(aNull || bNull) return (aNull && bNull) ? 0 : (aNull ? 1 : -1);
-    var an = Number(av), bn = Number(bv);
-    var r = (!isNaN(an) && !isNaN(bn)) ? an - bn : (av < bv ? -1 : (av > bv ? 1 : 0));
+  ROWS.sort(function(a, b){
+    var av = rowVal(a, col), bv = rowVal(b, col);
+    if(av === null || bv === null){ return (av === null && bv === null) ? 0 : (av === null ? 1 : -1); }
+    var r = (typeof av === 'number' && typeof bv === 'number') ? av - bv : (av < bv ? -1 : (av > bv ? 1 : 0));
     return SORT_ASC ? r : -r;
   });
-  rows.forEach(function(r){ tbody.appendChild(r); });
   applyFilters();
 }
 // The figure is drawn on the page's theme (#761): its paper, text, grid and series colours are read from the tokens,
 // so the chart matches the light or dark board around it. The series keep the ramp colours the figure carries (#767).
+// Plotly loads on the first chart, not with the page (#167): the table does not wait for 3.5 MB of script.
+var PLOTLY_WAIT = null;
+function withPlotly(fn){
+  if(window.Plotly){ fn(); return; }
+  if(!PLOTLY_WAIT){
+    PLOTLY_WAIT = new Promise(function(ok, no){
+      var s = document.createElement('script'); s.src = PLOTLY_URL; s.onload = ok;
+      s.onerror = function(){ PLOTLY_WAIT = null; no(new Error('chart library not loaded')); };
+      document.head.appendChild(s);
+    });
+  }
+  PLOTLY_WAIT.then(fn);
+}
 function themedFig(fig){
   var cs = getComputedStyle(document.documentElement), v = function(n){ return cs.getPropertyValue(n).trim(); };
   var lay = fig.layout || {}, grid = v('--grid'), muted = v('--muted');
@@ -400,7 +426,7 @@ function toggleDetail(row){
         });
         plot.innerHTML = '';
         if(!xs.length){ plot.appendChild(el('div', 'empty', 'No series data.')); return; }
-        miniChart(plot, xs, ys, spec[1], color || getComputedStyle(document.documentElement).getPropertyValue('--data-1').trim());
+        withPlotly(function(){ miniChart(plot, xs, ys, spec[1], color || getComputedStyle(document.documentElement).getPropertyValue('--data-1').trim()); });
       });
     })
     .catch(function(){ boxes.forEach(function(p){ p[0].innerHTML = ''; p[0].appendChild(el('div', 'empty neg', 'Failed to load chart.')); }); });
@@ -415,7 +441,7 @@ function openChart(ticker){
     .then(function(r){ return r.json(); })
     .then(function(d){
       if(!d.fig){ chart.innerHTML = '<div class="empty">No series data.</div>'; return; }
-      Plotly.react('chart', themedFig(d.fig), {}, {displayModeBar: true, responsive: true});
+      withPlotly(function(){ Plotly.react('chart', themedFig(d.fig), {}, {displayModeBar: true, responsive: true}); });
     })
     .catch(function(){ chart.innerHTML = '<div class="empty neg">Failed to load chart.</div>'; });
 }
@@ -428,7 +454,7 @@ function loadType(tag){
   try { localStorage.setItem(TYPE_KEY, tag); } catch(e) {}
   note.textContent = '';
   // Purged before the spinner replaces it: Plotly.react on a host whose nodes were wiped draws nothing.
-  Plotly.purge(host);
+  if(window.Plotly){ Plotly.purge(host); }
   host.innerHTML = '<span class="spin"></span>';
   fetch('/api/sec_13f/types/' + encodeURIComponent(tag))
     .then(function(r){ return r.json(); })
@@ -436,7 +462,7 @@ function loadType(tag){
       if(seq !== TYPE_SEQ){ return; }           // a later pick is on its way: this answer is stale
       host.innerHTML = '';
       note.textContent = d.note || d.error || '';
-      if(d.fig){ Plotly.newPlot(host, themedFig(d.fig).data, d.fig.layout, {displayModeBar: false, responsive: true}); }
+      if(d.fig){ withPlotly(function(){ Plotly.newPlot(host, themedFig(d.fig).data, d.fig.layout, {displayModeBar: false, responsive: true}); }); }
     })
     .catch(function(){
       if(seq !== TYPE_SEQ){ return; }
@@ -445,21 +471,40 @@ function loadType(tag){
 }
 function applyFilters(){
   closeDetails();
-  var kitOn = !!(RCF && RCF.active()), q = SEARCH_Q.toLowerCase();
-  var rows = document.querySelectorAll('tbody tr[data-ticker]');
-  var shown = 0, total = rows.length;
-  for(var i = 0; i < rows.length; i++){
-    var r = rows[i], t = r.getAttribute('data-ticker'), f = FIELDS[t], ok = true;
-    if(q){
-      var hay = (t + ' ' + (f && f.name ? f.name : '')).toLowerCase();
-      if(hay.indexOf(q) === -1) ok = false;
-    }
-    if(ok && kitOn && f && !RCF.pass(f)) ok = false;
-    r.style.display = ok ? '' : 'none';
-    if(ok) shown++;
+  var kitOn = !!(RCF && RCF.active()), q = SEARCH_Q.toLowerCase(), empties = 0;
+  VIEW = [];
+  for(var i = 0; i < ROWS.length; i++){
+    var r = ROWS[i], t = r[0], f = FIELDS[t];
+    if(q && (t + ' ' + (f && f.name ? f.name : '')).toLowerCase().indexOf(q) === -1){ continue; }
+    if(kitOn && f && !RCF.pass(f)){ continue; }
+    if(!SHOW_EMPTY && isEmptyRow(r)){ empties++; continue; }
+    VIEW.push(r);
   }
+  var tbody = document.getElementById('rows');
+  while(tbody.firstChild){ tbody.removeChild(tbody.firstChild); }
+  SHOWN = 0;
+  showMore();
   var line = document.getElementById('kit-count');
-  if(line){ line.textContent = kitOn ? (shown + ' of ' + total + ' names') : ''; }
+  if(line){ line.textContent = (kitOn || q) ? (VIEW.length + ' of ' + ROWS.length + ' names') : ''; }
+  var eb = document.getElementById('empties');
+  if(eb){
+    eb.hidden = !SHOW_EMPTY && !empties;
+    eb.textContent = SHOW_EMPTY ? 'Hide rows with no 13F shares' : ('Show ' + empties + ' rows with no 13F shares');
+  }
+}
+function showMore(){
+  var tbody = document.getElementById('rows'), frag = document.createDocumentFragment();
+  var end = Math.min(VIEW.length, SHOWN + PAGE);
+  for(var i = SHOWN; i < end; i++){ frag.appendChild(ROW_EL[VIEW[i][0]] || (ROW_EL[VIEW[i][0]] = makeRow(VIEW[i]))); }
+  if(typeof rcWatchSync === 'function'){ rcWatchSync(frag); }   // a row built earlier may show an old list state
+  tbody.appendChild(frag);
+  SHOWN = end;
+  var more = document.getElementById('more');
+  if(more){
+    var left = VIEW.length - SHOWN;
+    more.hidden = left <= 0;
+    more.textContent = 'Show ' + Math.min(PAGE, left) + ' more (' + left + ' left)';
+  }
 }
 function initKit(){
   var rows = [];
@@ -470,13 +515,16 @@ function initKit(){
 function build(p){
   // The rows come from the payload route (#429); every string reaches the DOM as text or an attribute, never markup.
   // The filter rows ride the same payload (KF #375), not the HTML, so the page stays small.
-  var tbody = document.getElementById('rows');
-  var frag = document.createDocumentFragment();
-  var rows = (p && p.rows) || [];
-  var cols = (p && p.cols) || [];
+  ROWS = ((p && p.rows) || []).slice();
+  COLS = (p && p.cols) || [];
   FIELDS = (p && p.fields) || {};
-  for(var i = 0; i < rows.length; i++){
-    var r = rows[i];
+  COLIX = {}; SH_IX = [];
+  COLS.forEach(function(c, j){ COLIX[c] = j; if(c.indexOf('sh_') === 0){ SH_IX.push(j); } });
+  ROW_EL = {};
+  initKit();
+}
+function makeRow(r){
+    var cols = COLS;
     var tr = document.createElement('tr');
     tr.setAttribute('data-ticker', r[0]);
     var tdT = document.createElement('td');
@@ -499,8 +547,8 @@ function build(p){
     line1.appendChild(spT);
     who.appendChild(line1);
     tk.appendChild(who);
-    if(r[4] && r[4].length){
-      BREAKS[r[0]] = r[4];
+    if(r[4] && r[4].length){ BREAKS[r[0]] = r[4]; }
+    if(r[5] && r[4] && r[4].length){
       var mk = document.createElement('button');
       mk.type = 'button';
       mk.className = 'break-mark';
@@ -554,11 +602,7 @@ function build(p){
       }
       tr.appendChild(td);
     }
-    frag.appendChild(tr);
-  }
-  while(tbody.firstChild){ tbody.removeChild(tbody.firstChild); }
-  tbody.appendChild(frag);
-  initKit();
+    return tr;
 }
 function fail(e){
   var tbody = document.getElementById('rows');
@@ -584,7 +628,10 @@ document.addEventListener('DOMContentLoaded', function(){
   }
   var q = document.getElementById('board-q');
   if(q){
-    q.addEventListener('input', function(e){ SEARCH_Q = e.target.value; applyFilters(); });
+    var wait = null;      // one filter pass per pause in typing, not one per key (#167)
+    q.addEventListener('input', function(e){
+      SEARCH_Q = e.target.value; clearTimeout(wait); wait = setTimeout(applyFilters, 200);
+    });
   }
   document.getElementById('rows').addEventListener('click', function(e){
     var tr = e.target.closest('tr[data-ticker]');
@@ -595,6 +642,8 @@ document.addEventListener('DOMContentLoaded', function(){
     if(e.target.closest('.break-mark')){ if(tr){ openBreaks(tr.getAttribute('data-ticker')); } return; }
     if(tr){ toggleDetail(tr); }
   });
+  document.getElementById('more').addEventListener('click', showMore);
+  document.getElementById('empties').addEventListener('click', function(){ SHOW_EMPTY = !SHOW_EMPTY; applyFilters(); });
   document.getElementById('modal').addEventListener('click', function(e){ if(e.target === this) closeModal(); });
   document.getElementById('modal-close').addEventListener('click', closeModal);
   document.getElementById('breaks').addEventListener('click', function(e){ if(e.target === this) closeBreaks(); });
@@ -720,8 +769,38 @@ def _breaks(raw: list, quarters: list, settled: set, factors: dict, shares_by_q:
     return [by_q[q] for q in sorted(by_q, reverse=True)]
 
 
+def _moved(ticker: str, raw: list, quarters: list, factors: dict) -> dict[str, tuple[float, float]]:
+    """``{quarter: (started, stopped)}``: the shares of the filers that started reporting the ticker in the quarter
+    (held then, on that quarter's basis) and of those that stopped (held the quarter before, on its basis)."""
+    out: dict[str, list[float]] = {}
+    for b in raw or []:
+        q, kind = b.get("period"), b.get("kind")
+        if q not in quarters or kind not in ("started", "stopped") or not b.get("shares"):
+            continue
+        i = quarters.index(q)
+        if kind == "stopped" and i == 0:
+            continue
+        basis = q if kind == "started" else quarters[i - 1]
+        out.setdefault(q, [0.0, 0.0])[0 if kind == "started" else 1] += _on_todays_basis(float(b["shares"]),
+                                                                                       factors.get(basis))
+    return {q: (v[0], v[1]) for q, v in out.items()}
+
+
+def _break_mark(raw: list, newest: str | None, factors: dict, shares_by_q: dict) -> bool:
+    """The ⚠ beside the ticker (decision H, avo 16 Nov 2026 "Tamam yuzde 5 olsun"): only when the filers that started
+    or stopped reporting it in its newest settled quarter hold at least ``BREAK_MARK_NEWEST`` of its 13F shares
+    then. Older breaks stay in the row detail and the break list."""
+    total = shares_by_q.get(newest) if newest else None
+    if not total:
+        return False
+    moved = sum(_on_todays_basis(float(b.get("shares") or 0), factors.get(newest)) for b in raw or []
+                if b.get("period") == newest and b.get("kind") in ("started", "stopped"))
+    return moved >= BREAK_MARK_NEWEST * total
+
+
+BREAK_MARK_NEWEST = 0.05
 BREAK_NAMES = 3     # the largest filers named per line of the break list
-BREAK_MARK_SHARE = 0.01   # a quarter's breaks are marked from 1% of the ticker's 13F shares (owner, 12 Nov 2026)
+BREAK_MARK_SHARE = 0.01   # a quarter's breaks are listed from 1% of the ticker's 13F shares (owner, 12 Nov 2026)
 
 
 def _break_lines(e: dict) -> list[list]:
@@ -767,6 +846,8 @@ def _fmt_money(v):
     if v is None:
         return "—"
     v = float(v)
+    if abs(v) >= 1e12:
+        return f"${v / 1e12:.2f}T"      # NVDA read $3355.32B (plan 16 Nov 2026, step 6)
     if abs(v) >= 1e9:
         return f"${v / 1e9:.2f}B"
     if abs(v) >= 1e6:
@@ -777,7 +858,8 @@ def _fmt_money(v):
 
 
 def build_chart_fig(ticker: str, periods: dict, enrichment: dict = None) -> dict:
-    """Shares + price (row 1) and $ value + holders (row 2) over quarters.
+    """Four stacked panels over the quarters, one y-axis each (#732 E, M7: the two dual-axis panels mixed scales a
+    reader could not tell apart): shares (today's share basis), close, $ value, holders.
 
     A quarter still arriving (#514) is drawn as what it is, a part of itself (#521): its bars are hatched, its
     label carries the board's mark, the holders line goes dashed into it, and a note names it."""
@@ -791,35 +873,36 @@ def build_chart_fig(ticker: str, periods: dict, enrichment: dict = None) -> dict
     shares = [_on_todays_basis(periods[q].get("shares") or 0, factors.get(q)) for q in qs]
     value = [periods[q].get("value") or 0 for q in qs]
     holders = [periods[q].get("holders") or 0 for q in qs]
-    price = None
-    if enrichment:
-        px = (enrichment.get("price") or {})
-        price = [px.get(q) * factors.get(q, 1.0) if px.get(q) is not None else None for q in qs]
-    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.10,
-                        subplot_titles=(f"{ticker} — total shares & price (today's share basis)", "market value ($) & holders"),
-                        specs=[[{"secondary_y": True}], [{"secondary_y": True}]])
+    px = (enrichment or {}).get("price") or {}
+    price = [px.get(q) * factors.get(q, 1.0) if px.get(q) is not None else None for q in qs]
+    has_price = any(p is not None for p in price)
+    titles = [f"{ticker} — 13F shares (today's share basis)"] + (["Close (same basis)"] if has_price else []) \
+        + ["Market value held ($)", "Holders"]
+    rows = len(titles)
+    fig = make_subplots(rows=rows, cols=1, shared_xaxes=True, vertical_spacing=0.07, subplot_titles=titles)
     fig.add_trace(go.Bar(x=labels, y=shares, name="Shares", marker=dict(color=THEME_SCALE["c1"], pattern=pattern),
                          hovertemplate="%{y:,.0f}"), 1, 1)
-    if price:
-        fig.add_trace(go.Scatter(x=labels, y=price, name="Price",
-                                 line=dict(color=THEME_SCALE["c2"], width=2)), 1, 1, secondary_y=True)
+    row = 2
+    if has_price:
+        fig.add_trace(go.Scatter(x=labels, y=price, name="Price", line=dict(color=THEME_SCALE["c2"], width=2)), row, 1)
+        row += 1
     fig.add_trace(go.Bar(x=labels, y=value, name="Value ($)", marker=dict(color=THEME_SCALE["c3"], pattern=pattern),
-                         hovertemplate="%{y:,.0f}"), 2, 1)
+                         hovertemplate="%{y:,.0f}"), row, 1)
+    row += 1
     n = len(qs) - len(still_arriving)           # the settled quarters come first: the arriving set is a suffix
     fig.add_trace(go.Scatter(x=labels[:n], y=holders[:n], name="Holders",
-                             line=dict(color=THEME_SCALE["c4"], width=2)), 2, 1, secondary_y=True)
+                             line=dict(color=THEME_SCALE["c4"], width=2)), row, 1)
     if still_arriving:
         start = max(n - 1, 0)
         fig.add_trace(go.Scatter(x=labels[start:], y=holders[start:], name="Holders (filed so far)",
-                                 line=dict(color=THEME_SCALE["c4"], width=2, dash="dash"), showlegend=False), 2, 1, secondary_y=True)
+                                 line=dict(color=THEME_SCALE["c4"], width=2, dash="dash"), showlegend=False), row, 1)
         names = ", ".join(_qlabel(q) for q in sorted(still_arriving))
         fig.add_annotation(text=f"{ARRIVING_MARK} {names} still arriving: filed so far, not a drop",
-                           xref="paper", yref="paper", x=0, y=-0.08, xanchor="left", yanchor="top",
+                           xref="paper", yref="paper", x=0, y=-0.06, xanchor="left", yanchor="top",
                            showarrow=False, font=dict(size=12, color=THEME_TOKENS["dark"]["muted"]))
-    fig.update_layout(template="plotly_dark", height=620, hovermode="x unified",
-                      # Anchored at its bottom so a legend that wraps on a phone grows up into the margin, not over the title.
-                      legend=dict(orientation="h", y=1.08, yanchor="bottom", x=0),
-                      margin=dict(l=60, r=60, t=110, b=60 if still_arriving else 40))
+    # Each panel is titled, so no legend: on a phone it wrapped over the first title.
+    fig.update_layout(template="plotly_dark", height=200 * rows + 80, hovermode="x unified", showlegend=False,
+                      margin=dict(l=60, r=20, t=40, b=60 if still_arriving else 40))
     fig.update_xaxes(type="category")
     return fig.to_dict()
 
@@ -887,18 +970,21 @@ _SNAP_COLS = [
     ("streak", "Streak"),
     ("accel", "Accel"),
     ("price_delta", "Price Δ"),
+    ("short", "Short%"),
 ]
 
 
 def board_entries(totals: dict, meta: dict, enrichment: dict = None) -> tuple[list, list]:
     """``(quarters, entries)``: the board's quarter columns and one entry per ticker, in board order (most shares in
-    the latest quarter first). The board renders these; the result history (``history.py``, #375) records them."""
+    the latest quarter first). The board renders these."""
     quarters = _quarters(totals)
     still_arriving = arriving(totals, quarters)
     enrichment = enrichment or {}
     entries = []
     for t, periods in totals.items():
         factors = (enrichment.get(t) or {}).get("split_factor") or {}
+        moved = _moved(t, (enrichment.get(t) or {}).get("breaks"), quarters, factors)
+        flows = []          # per quarter: the change in shares of the filers that reported in both quarters
         filed = []
         shares = []
         chgs = []
@@ -915,8 +1001,15 @@ def board_entries(totals: dict, meta: dict, enrichment: dict = None) -> tuple[li
             # comparison is a measurement of how much of it has been filed (#514).
             # No change against a quarter still arriving, in either direction: it holds a part of itself. The
             # "out of" half is a tautology while the set is a suffix; it is kept as cheap defence.
-            chgs.append(None if i == 0 or q in still_arriving or quarters[i - 1] in still_arriving
-                        else _pct(s, prev))
+            # Over the filers that reported in both quarters (#732 decision B): this quarter less the filers that
+            # started reporting, against the quarter before less the filers that stopped, both on today's basis.
+            cont = None
+            if not (i == 0 or q in still_arriving or quarters[i - 1] in still_arriving) and s is not None \
+                    and prev is not None:
+                started, stopped = moved.get(q, (0.0, 0.0))
+                cont = (s - started, prev - stopped)
+            chgs.append(_pct(*cont) if cont else None)
+            flows.append(cont[0] - cont[1] if cont else None)
             prev = s
             if cell and q not in still_arriving:
                 # The snapshot block (holders, breadth, value, the flows) is the last *settled* quarter's, for the
@@ -930,12 +1023,10 @@ def board_entries(totals: dict, meta: dict, enrichment: dict = None) -> tuple[li
         # Over the settled quarters only: a quarter still arriving is below the one before it by construction, so
         # it would end every streak and poison the acceleration (#514).
         kept = [i for i, q in enumerate(quarters) if q not in still_arriving]
-        s_shares = [shares[i] for i in kept]
         s_chgs = [chgs[i] for i in kept]
-        streak = 0
-        for i in range(len(s_shares) - 1, 0, -1):
-            cur, pr = s_shares[i], s_shares[i - 1]
-            if cur is not None and pr is not None and cur > pr:
+        streak = 0              # quarters in a row whose continuing filers added shares (#732 decision B)
+        for c in reversed(s_chgs[1:]):
+            if c is not None and c > 0:
                 streak += 1
             else:
                 break
@@ -945,6 +1036,7 @@ def board_entries(totals: dict, meta: dict, enrichment: dict = None) -> tuple[li
 
         pct_out, pct_note = _pct_out(last, enr)
         so = enr.get("shares_outstanding")
+        netflow = flows[quarters.index(last_period)] if last_period else None
 
         price_delta = None
         px = enr.get("price") or {}
@@ -961,15 +1053,15 @@ def board_entries(totals: dict, meta: dict, enrichment: dict = None) -> tuple[li
         entries.append({
             "ticker": t, "name": info.get("name", ""), "sector": _row_sector(info.get("sector")),
             "breaks": _breaks(enr.get("breaks"), quarters, settled_qs, factors, dict(zip(quarters, shares))),
+            "break_mark": _break_mark(enr.get("breaks"), last_period, factors, dict(zip(quarters, shares))),
+            "netflow": netflow, "netflow_pct": netflow / so * 100.0 if netflow is not None and so else None,
             "shares": shares, "chgs": chgs, "last": last, "last_period": last_period,
             "streak": streak, "accel": accel, "pct_out": pct_out, "pct_note": pct_note,
             "pct_estimate": enr.get("shares_source") == "estimate",
             "price_delta": price_delta, "price": price,
-            # Not shown since #732 (owner, 12 Nov 2026); kept on the entry for the result history only.
             "short_pct": enr.get("short_pct"), "short_pct_as_of": enr.get("short_pct_as_of"),
-            "insider_pct": enr.get("insider_pct"),
             "shares_filed": filed, "split_factor": {q: factors[q] for q in quarters if q in factors},
-            "shares_outstanding": so, "float_shares": enr.get("float_shares"),
+            "shares_outstanding": so,
         })
 
     order = max((i for i, q in enumerate(quarters) if q not in still_arriving), default=len(quarters) - 1)
@@ -994,6 +1086,18 @@ def _pct_out(last: dict | None, enr: dict) -> tuple[float | None, str | None]:
     if pct > PCT_OUT_DOUBLE_MAX:
         return None, f"13F shares are {pct:,.0f}% of {so:,.0f} shares outstanding: shares count or CUSIP map wrong, check"
     return pct, None
+
+
+def _short_cell(e: dict):
+    """The Short% cell (#576, decision A): FINRA's newest settlement short interest over the shares outstanding
+    ``% Out`` divides by, with the settlement date; ``≈`` where those shares are an estimate."""
+    pct = e.get("short_pct")
+    if pct is None:
+        return _cell("—", None, "zero")
+    est = e.get("pct_estimate")
+    note = (f"FINRA short interest, settlement {e.get('short_pct_as_of')}; of shares outstanding"
+            + (" (estimate: market cap ÷ price)" if est else ""))
+    return _cell(("≈" if est else "") + _f(pct, 1, "%", False), pct, "zero", note)
 
 
 def _pct_cell(e: dict, of: str | None):
@@ -1040,9 +1144,7 @@ def _payload(quarters: list, entries: list, fields: dict | None = None) -> dict:
     rows = []
     for e in entries:
         last = e["last"] or {}
-        netflow = None
-        if last.get("buy_flow") is not None:
-            netflow = (last.get("buy_flow") or 0) - (last.get("sell_flow") or 0)
+        netflow, netflow_pct = e.get("netflow"), e.get("netflow_pct")
         new_exit = None
         if last.get("new_holders") is not None:
             new_exit = f'+{last["new_holders"]}/−{last["exited_holders"]}'
@@ -1079,12 +1181,17 @@ def _payload(quarters: list, entries: list, fields: dict | None = None) -> dict:
         cells.append(_cell(breadth_text, breadth, "zero", of))
         cells.append(_cell(_f(last.get("top10_pct"), 1, "%", False), last.get("top10_pct"), "zero", of))
         cells.append(_cell(str(_num(last.get("hhi"))), last.get("hhi"), "zero", of))
-        cells.append(_cell(_fmt_shares(netflow), netflow, _sign_class(netflow), of))
+        if netflow_pct is not None:     # as % of shares outstanding (decision B); shares where there is no count
+            cells.append(_cell(_f(netflow_pct, 2), netflow_pct, _sign_class(netflow_pct),
+                               f"{of}; {netflow:+,.0f} shares" if of else f"{netflow:+,.0f} shares"))
+        else:
+            cells.append(_cell(_fmt_shares(netflow), netflow, _sign_class(netflow), of))
         cells.append(_cell(str(e["streak"]) if e["streak"] is not None else "—", e["streak"], "zero"))
         cells.append(_cell(_f(e["accel"], 1, "pp"), e["accel"], _sign_class(e["accel"])))
         cells.append(_cell(_f(e["price_delta"]), e["price_delta"], _sign_class(e["price_delta"])))
+        cells.append(_short_cell(e))
         breaks = [[_qlabel(b["period"]), _break_lines(b)] for b in e.get("breaks") or []]
-        rows.append([e["ticker"], e["name"], _sector(e, by_field), cells, breaks])
+        rows.append([e["ticker"], e["name"], _sector(e, by_field), cells, breaks, bool(e.get("break_mark"))])
     return {"cols": cols, "rows": rows, "fields": by_field}
 
 
@@ -1216,14 +1323,14 @@ def _render_page(quarters: list, entries: list, fields: list, kit_notice: str | 
         "holdings. This board adds them up per company: how many shares all 13F filers hold, the change "
         "against the prior quarter, new and exited holders, concentration and the streak of quarters with "
         "net buying. The legend under the table defines each column; click a row for its chart. "
-        "<b>Fetch</b> downloads the newest SEC 13F data set from <b>SEC EDGAR</b> and stores the totals; it also "
-        "reads names, sectors and shares outstanding from <b>Unusual Whales</b>. "
-        "<b>Refresh</b> redraws the board from the stored totals with no network call.")
+        "The SEC 13F data sets are fetched and built by the hourly builder; <b>Fetch</b> and <b>Refresh</b> both "
+        "redraw the board from that build, the identity spine's names and sectors, the SEC cover share counts and "
+        "FINRA's short interest, with no network call.")
     return f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>RevenueChaser — SEC 13F Ownership</title>
 <script>{THEME_JS}</script><style>{THEME_CSS}</style>
-<script src="{PLOTLY_CDN_URL}"></script>
+<script>var PLOTLY_URL = {script_json(PLOTLY_CDN_URL)};</script>
 {CSS}{FILTERS_CSS}</head><body>
 <div class="header"><h1>SEC 13F — Total Institutional Ownership</h1>
 <div class="meta">{len(entries)} tickers · all 13F filers (incl. BlackRock/Vanguard/State Street) · quarterly · click a row for the chart</div>
@@ -1236,11 +1343,13 @@ def _render_page(quarters: list, entries: list, fields: list, kit_notice: str | 
 {types_html}
 <div class="board-search"><input type="search" id="board-q" placeholder="Search ticker or name" autocomplete="off" spellcheck="false"></div>
 <table><thead>{header}</thead><tbody id="rows">{rows_html}</tbody></table>
+<div class="more-bar"><button type="button" id="more" hidden></button><button type="button" id="empties" class="link" hidden></button></div>
 <div class="legend-note">
 <b>Total ownership</b> = shares held by every 13F filer, on <b>today's share basis</b>: a quarter's count is divided
 by the split factor of its quarter end, so a split is not read as buying (hover a cell for the count as filed).
 The board shows the last {WINDOW_QUARTERS} settled quarters; the chart shows every stored one.
-<b>Δ% vs prior</b> = QoQ change in shares, shown small under each quarter's count (click Δ% in the header to sort by it).
+<b>Δ% vs prior</b> = QoQ change in the shares of the filers that reported in both quarters, shown small under each
+quarter's count (click Δ% in the header to sort by it); the counts above it are every filer's.
 <b>Value</b> = $ market value held. <b>% Out</b> = shares ÷ shares outstanding (newest SEC cover count; ≈ = market cap ÷ price for one-class common; † = over 100%, 13F can count a block twice; — over 150% or no usable count).
 <b>New/Exit</b> = holders entered / exited vs prior quarter.
 <b>Breadth</b> = share of that quarter's 13F filers holding the name (holders ÷ filers), with the change in
@@ -1248,12 +1357,15 @@ percentage points vs the name's own previous stored quarter, which is not necess
 before it; as of quarter-end, filed up to 45 days later.
 <b>Top10%/HHI</b> = concentration among the 13F filers' own holdings (the top 10 filers' share of the 13F
 total, and its Herfindahl index), not of all shares outstanding.
-<b>Net flow</b> = shares bought − sold (holder-level deltas). <b>Streak</b> = consecutive quarters of net accumulation.
-<b>Accel</b> = Δ%(latest) − Δ%(prior).
+<b>Net flow</b> = the change in shares of the filers that reported in both quarters, as % of shares outstanding
+(in shares where there is no count). <b>Streak</b> = consecutive quarters with a positive Δ%.
+<b>Accel</b> = Δ%(latest) − Δ%(prior). <b>Short%</b> = FINRA short interest (twice a month, newest settlement)
+÷ the same shares outstanding as % Out; the cell names its settlement day.
 {arriving_legend}
 <b>Price Δ</b> = close change from the first to the last quarter end shown, on the same share basis.
 <b>Flows</b> (Δ%, Net flow, New/Exit) count only the filers that reported in both quarters; a filer that started or
-stopped filing is left out, and the <b class="warn-mark">⚠</b> beside a ticker lists those breaks by quarter.
+stopped filing is left out. The <b class="warn-mark">⚠</b> beside a ticker says those filers held at least 5% of its
+13F shares in its newest settled quarter; the row's detail lists every quarter's breaks.
 A quarter is <b>closed</b> once the SEC publishes the data set that covers its filing deadline; a closed quarter
 does not change.
 </div>

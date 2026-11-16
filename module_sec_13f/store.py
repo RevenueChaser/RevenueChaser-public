@@ -76,6 +76,13 @@ def stored_stamp() -> str | None:
     return json.loads(rows[0]["value"]) if rows and rows[0]["value"] is not None else None
 
 
+def is_stale() -> bool:
+    """A live ownership build or a new New York day the file has not taken yet: a board page rendered from the file
+    is out of date (#732). False when there is no ownership store, so a page is not re-rendered for nothing."""
+    stamp = source_stamp()
+    return stamp is not None and stamp != stored_stamp()
+
+
 def is_current() -> bool:
     """The file holds the rows of the live build of today: the board reads it and asks the builder nothing."""
     stamp = source_stamp()
@@ -84,10 +91,17 @@ def is_current() -> bool:
 
 # ── what the file holds ──────────────────────────────────────────────────────
 
-def stored_totals() -> dict[str, dict]:
-    """``{ticker: {period: cell}}`` from the file, in ``core.ownership.sec13f_totals``' shape."""
+def stored_totals(tickers=None) -> dict[str, dict]:
+    """``{ticker: {period: cell}}`` from the file, in ``core.ownership.sec13f_totals``' shape; only ``tickers`` when
+    given (the chart route reads one ticker, not the whole file: #732)."""
     out: dict[str, dict] = {}
-    for r in _query(f"SELECT * FROM {CELLS} ORDER BY ticker, period"):
+    sql, params = f"SELECT * FROM {CELLS}", []
+    if tickers is not None:
+        params = sorted({str(t).strip().upper() for t in tickers if t})
+        if not params:
+            return {}
+        sql += f" WHERE ticker IN ({', '.join('?' * len(params))})"
+    for r in _query(sql + " ORDER BY ticker, period", params):
         cell = {m: r.get(m) for m in METRICS}
         cell["complete"] = bool(r["complete"])
         if r.get("closed") is not None:
@@ -156,6 +170,13 @@ def read_totals() -> dict:
     if is_current():
         return stored_totals()
     return merge(stored_totals(), ownership.sec13f_totals(), {}, {})[0]
+
+
+def read_ticker(ticker: str) -> dict:
+    """One ticker's ``{period: cell}`` by the rule of ``read_totals``, reading only that ticker's rows."""
+    if is_current():
+        return stored_totals([ticker]).get(ticker, {})
+    return merge(stored_totals([ticker]), ownership.sec13f_totals([ticker]), {}, {})[0].get(ticker, {})
 
 
 def read_breaks(tickers) -> dict[str, list[dict]]:

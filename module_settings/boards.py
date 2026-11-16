@@ -315,8 +315,9 @@ BOARD_INPUTS: list[dict] = [
            funnel="funnel_steps",
            price_basis="daily price bars: levels nominal, returns adjusted",
            params=_fundamentals_params, settings=_fundamentals_settings),
+    # #732: the board reads its own file (``boards/sec_13f.duckdb``); the served reads are ``rcdata/needs/boards.py``'s.
     _board("module_sec_13f", "SEC 13F",
-           ["sec13f_totals", "equity_universe"],
+           ["sec13f_board_cells", "sec13f_board_breaks", "equity_universe"],
            lambda: _html("sec_13f")),
     # #746: the board reads only ``option_far_contract`` through its need (``options.far_contracts``), rendered in
     # memory on every load, so its as-of is the newest stored session, not a file.

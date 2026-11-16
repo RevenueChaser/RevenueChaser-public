@@ -21,8 +21,11 @@ Per 13F ticker (``load_inputs``), in the shape ``report.board_entries`` reads:
   filers that started or stopped reporting the ticker in a settled quarter, which the flows leave out. The board
   marks the ticker and lists them, newest first.
 
-Short % and Insider % are not shown (owner, 12 Nov 2026, #732: both read old tables, and they come back with their
-new readers, #646 and #576). A ticker with no
+- ``short_pct``, ``short_pct_as_of``: FINRA's newest settlement short interest (``core.ownership.finra_short``, the
+  Earnings board's reader too; #576, decision A) over ``shares_outstanding``, in %, and its settlement day. A
+  settlement older than the ``ownership.short_interest`` need allows is not read.
+
+Insider % is not shown (owner, 12 Nov 2026, #732; it comes back with its new reader, #646). A ticker with no
 value for a field has no key for it, so the board shows "—", never 0.
 
 The Fetch (after its shares step), the store-only Refresh and the ``/api/sec_13f/<t>`` chart all read these inputs
@@ -31,9 +34,12 @@ here, so every number comes out of the same path.
 """
 from __future__ import annotations
 
+import logging
 from datetime import date, timedelta
 
 from RevenueChaser.core import ownership
+
+logger = logging.getLogger(__name__)
 
 PRICE_LOOKBACK_DAYS = 10     # a quarter end on a weekend or a holiday still finds the session before it
 
@@ -75,6 +81,16 @@ def quarter_end_closes(tickers, quarters) -> dict[str, dict[str, float]]:
     return out
 
 
+def _short_interest(tickers) -> dict[str, dict]:
+    """FINRA's newest settlement of each ticker inside the ``ownership.short_interest`` age; ``{}`` and a warning
+    when the store cannot be read, never a failed board."""
+    try:
+        return ownership.finra_short_recent(tickers)
+    except Exception as exc:  # noqa: BLE001 - no FINRA rows is "no Short%", never a failed board
+        logger.warning("13F short interest unread, Short%% stays empty: %s: %s", type(exc).__name__, exc)
+        return {}
+
+
 def load_inputs(totals: dict) -> dict[str, dict]:
     """The board's snapshot inputs of every ticker in ``totals`` (``{ticker: {period: cell}}``): see the module
     docstring. Store reads only, zero network."""
@@ -85,6 +101,11 @@ def load_inputs(totals: dict) -> dict[str, dict]:
     for ticker, so in ownership.shares_outstanding(tickers).items():
         out[ticker] = {"shares_outstanding": so["shares"], "shares_source": so["source"],
                        "shares_as_of": so["as_of"], "shares_note": so["note"]}
+    for ticker, row in _short_interest(tickers).items():
+        so = out.get(ticker, {}).get("shares_outstanding")
+        if row.get("current_short") is not None and so:
+            out[ticker].update(short_pct=100.0 * float(row["current_short"]) / so,
+                               short_pct_as_of=row["settlement_date"].isoformat())
     for ticker, px in quarter_end_closes(tickers, quarters).items():
         out.setdefault(ticker, {})["price"] = px
     wanted = {t: [q for q in periods if q >= engine.START_QUARTER] for t, periods in totals.items() if t}
