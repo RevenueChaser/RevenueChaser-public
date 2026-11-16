@@ -997,7 +997,7 @@ def _pct_out(last: dict | None, enr: dict) -> tuple[float | None, str | None]:
 
 
 def _pct_cell(e: dict, of: str | None):
-    """The ``% Out`` cell: ``≈`` before an estimate (market cap ÷ price), ``*`` after a share over 100% (13F double
+    """The ``% Out`` cell: ``≈`` before an estimate (market cap ÷ price), ``†`` after a share over 100% (13F double
     counting), a dash with the reason where there is no number (decisions I and K)."""
     pct = e["pct_out"]
     if pct is None:
@@ -1007,7 +1007,7 @@ def _pct_cell(e: dict, of: str | None):
     if e.get("pct_estimate"):
         notes.append("estimate: market cap ÷ price, no SEC shares count")
     if pct > 100:
-        text += "*"
+        text += "†"
         notes.append("over 100%: 13F can count one block twice (lent shares, a fund and its manager)")
     return _cell(text, pct, "zero", "; ".join(notes) or None)
 
@@ -1241,7 +1241,7 @@ def _render_page(quarters: list, entries: list, fields: list, kit_notice: str | 
 by the split factor of its quarter end, so a split is not read as buying (hover a cell for the count as filed).
 The board shows the last {WINDOW_QUARTERS} settled quarters; the chart shows every stored one.
 <b>Δ% vs prior</b> = QoQ change in shares, shown small under each quarter's count (click Δ% in the header to sort by it).
-<b>Value</b> = $ market value held. <b>% Out</b> = shares ÷ shares outstanding (newest SEC cover count; ≈ = market cap ÷ price for one-class common; * = over 100%, 13F can count a block twice; — over 150% or no usable count).
+<b>Value</b> = $ market value held. <b>% Out</b> = shares ÷ shares outstanding (newest SEC cover count; ≈ = market cap ÷ price for one-class common; † = over 100%, 13F can count a block twice; — over 150% or no usable count).
 <b>New/Exit</b> = holders entered / exited vs prior quarter.
 <b>Breadth</b> = share of that quarter's 13F filers holding the name (holders ÷ filers), with the change in
 percentage points vs the name's own previous stored quarter, which is not necessarily the calendar quarter

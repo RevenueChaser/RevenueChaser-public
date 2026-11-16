@@ -3,7 +3,7 @@ Asymmetric Growth, and the cell rules on it.
 
 The reader (``core.ownership.shares_outstanding``) is driven at the ``rcdata.read`` boundary: a cover count is used
 unless it is over a year old or differs over 3x from market cap ÷ price; without one, market cap ÷ price stands in
-only for one-class common. The board marks an estimate ``≈``, a share over 100% ``*``, and shows a dash with the
+only for one-class common. The board marks an estimate ``≈``, a share over 100% ``†``, and shows a dash with the
 reason over 150%. Offline.
 """
 from __future__ import annotations
@@ -73,7 +73,7 @@ def _pct_cell(held, enrich):
 @pytest.mark.parametrize("held, enrich, text, val, note", [
     (300.0, {"shares_outstanding": 1000.0, "shares_source": "cover"}, "30.0%", 30.0, None),
     (300.0, {"shares_outstanding": 1000.0, "shares_source": "estimate"}, "≈30.0%", 30.0, "estimate"),
-    (1200.0, {"shares_outstanding": 1000.0, "shares_source": "cover"}, "120.0%*", 120.0, "count one block twice"),
+    (1200.0, {"shares_outstanding": 1000.0, "shares_source": "cover"}, "120.0%†", 120.0, "count one block twice"),
     (1600.0, {"shares_outstanding": 1000.0, "shares_source": "cover"}, "—", None, "check"),
     (300.0, {"shares_note": "shares count of 2025-01-01 is over a year old: check"}, "—", None, "over a year old"),
 ])
