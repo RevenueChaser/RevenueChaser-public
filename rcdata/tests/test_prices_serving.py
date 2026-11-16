@@ -16,6 +16,7 @@ import math
 from datetime import date, datetime, timezone
 from types import SimpleNamespace
 
+import duckdb
 import pytest
 
 from RevenueChaser.core import calendar
@@ -97,7 +98,8 @@ def _shares_and_floats(raw=None, skip=(), extra=None):
               "2026-07-17"),
              ("1652044", "0001652044-26-000071", "10-Q", "goog:CapitalClassCMember", "GOOG", 5_450_000_000,
               "2026-07-17")]
-    base.upsert_partition([{"cik": c, "accession": a, "form": f, "filed": date(2026, 10, 1), "period_end": None,
+    # Filed after every cover day: a count dated after its filing is no count (prices plan P2).
+    base.upsert_partition([{"cik": c, "accession": a, "form": f, "filed": date(2026, 10, 20), "period_end": None,
                             "class_member": m, "symbol": s, "shares": n, "as_of": date.fromisoformat(d),
                             "source_as_of": date(2026, 10, 27), "fetched_at": 1.0, "run_id": "cover"}
                            for c, a, f, m, s, n, d in cover], cover_shares.SCHEMA, cover_shares.KEY,
@@ -263,7 +265,8 @@ def test_an_adrs_cover_count_is_ordinary_shares_so_it_gives_no_market_cap(http_m
     series = {"raw": {**RAW, "TSM": [300.0] * 6}, "all": {**ALL, "TSM": [300.0] * 6}}
     http_mock.routes.insert(0, ("/v2/stocks/bars", BarsAnswer(
         {k: {s: [bar(d, c) for d, c in zip(DAYS, cs)] for s, cs in v.items()} for k, v in series.items()}), 200, {}))
-    _shares_and_floats(extra={"099001:01": ("TSM", [(d, 300.0) for d in DAYS])})
+    # Compustat's count of an ADR is the issuer's ordinary shares too (#711: TSM 25.93 bn at the ADS's close).
+    _shares_and_floats(extra={"099001:01": ("TSM", [(d, 300.0) for d in DAYS], 25_930_000_000)})
     base.upsert_partition([{"cik": "1046179", "accession": "0001046179-26-000010", "form": "20-F",
                             "filed": date(2026, 4, 15), "period_end": date(2025, 12, 31), "class_member": "",
                             "symbol": symbol, "shares": 25_930_000_000, "as_of": as_of,
@@ -277,7 +280,8 @@ def test_an_adrs_cover_count_is_ordinary_shares_so_it_gives_no_market_cap(http_m
     held = _q("SELECT security_id, value FROM shares_class WHERE cik = '1046179'")
     assert held == [{"security_id": "class:1046179:common", "value": 25_930_000_000}]
     issues = _issues()
-    assert issues["cover_adr_ordinary"] == {sid} and sid in issues["tier_a_no_shares"]
+    assert issues["cover_adr_ordinary"] == {sid} and issues["adr_no_ratio"] == {sid}
+    assert sid not in issues.get("tier_a_no_shares", set())
     assert "1046179:TSM" not in issues.get("cover_class_unmapped", set())
 
 def _bars_answer(http_mock, raw: dict, all_: dict, skip=()) -> None:
@@ -466,3 +470,59 @@ def test_a_company_facts_count_over_a_year_old_gives_no_market_cap():
     assert _q("SELECT as_of FROM shares_class WHERE security_id = ?", [GAPX]) == [{"as_of": date(2025, 8, 1)}]
     assert _q("SELECT count(*) AS n FROM market_cap_daily WHERE security_id = ?", [GAPX]) == [{"n": 0}]
     assert GAPX in _issues()["tier_a_no_shares"]
+
+
+def test_a_zero_share_count_gives_no_cap_and_a_zero_or_post_filing_cover_is_no_count():
+    # Prices plan 16 Nov 2026, P1b and P2: a SPAC unit's Compustat cshoc of 0 made a cap of 0 (66 on 13 Nov), and 71
+    # covers counted 0 shares (an unissued class), 4 were dated after their filing. None of them is a count.
+    _shares_and_floats(extra={GAPX: ("GAPX", [(d, c) for d, c in zip(DAYS, RAW["GAPX"])], 0.0)})
+    base.upsert_partition([{"cik": "4000001", "accession": a, "form": "10-Q", "filed": date(2026, 10, 1),
+                            "period_end": None, "class_member": "", "symbol": "GAPX", "shares": n, "as_of": d,
+                            "source_as_of": date(2026, 10, 27), "fetched_at": 1.0, "run_id": "cover"}
+                           for a, n, d in (("0004000001-26-000003", 0.0, date(2026, 9, 30)),
+                                           ("0004000001-26-000004", 50_000_000, date(2026, 10, 20)))],
+                          cover_shares.SCHEMA, cover_shares.KEY, cover_shares.partition_path(2026))
+    base.run_request({"dataset": actions.NAME, "params": {"as_of": "2026-10-27"}})
+    base.run_request({"dataset": bars.NAME, "params": {"as_of": "2026-10-27"}})
+    assert _q("SELECT count(*) AS n FROM shares_class WHERE security_id = ? AND measure = 'outstanding'",
+              [GAPX]) == [{"n": 0}]
+    assert _q("SELECT count(*) AS n FROM market_cap_daily WHERE security_id = ?", [GAPX]) == [{"n": 0}]
+    assert GAPX in _issues()["tier_a_no_shares"]
+
+
+def test_compustats_dividend_alpaca_has_a_day_apart_is_applied_once():
+    # Prices plan 16 Nov 2026, P5 (#268): Compustat's 0.0516 on 21 Oct and Alpaca's on 22 and 23 Oct were all applied,
+    # so tr_factor counted one dividend three times. Alpaca's is kept, as on the same day.
+    from RevenueChaser.rcdata.build.prices import stage
+    _shares_and_floats()
+    stage.write_rows([{"gvkey": "001690", "iid": "01", "datadate": date(2026, 10, 22), "div": None, "divd": 0.26,
+                       "divsp": None, "curcddv": "USD", "paydate": None, "recorddate": None,
+                       "source_as_of": date(2026, 10, 27), "fetched_at": 1.0, "run_id": "seed"}],
+                     wrds_history.DIVID + wrds_history.PROVENANCE, wrds_history.partition_path("sec_divid", 2026))
+    base.run_request({"dataset": actions.NAME, "params": {"as_of": "2026-10-27"}})
+    row = base.run_request({"dataset": bars.NAME, "params": {"as_of": "2026-10-27"}})
+    divs = _q("SELECT ex_date, amount FROM corporate_action WHERE security_id = ? "
+              "AND action = 'cash_dividend' AND applied", [AAPL])
+    assert [(d["ex_date"], d["amount"]) for d in divs] == [(date(2026, 10, 23), 0.26)]
+    assert "1 Compustat cash dividend(s) left out" in row["note"]
+
+
+def test_a_warrants_price_gap_is_its_own_issue_kind():
+    # Prices plan 16 Nov 2026, P4 / decision C: of 1,503 gap days in a year, 589 were warrants' and units' (real
+    # moves); they keep an issue of their own kind, so the gaps of shares stand alone and nothing is hidden.
+    spine = [{**r, "security_type": "warrant"} if r["ticker"] == "GAPX" else r for r in WEEK_SPINE]
+    serving.live_path("spine").unlink()
+    write_spine(spine)
+    con = duckdb.connect(str(serving.live_path("spine")))
+    try:
+        con.execute("CREATE TABLE my_universe (ticker TEXT, kind TEXT)")
+        con.executemany("INSERT INTO my_universe VALUES (?, ?)",
+                        [(r["ticker"], "etf" if r["security_type"] == "etf" else "stock") for r in spine])
+    finally:
+        con.close()
+    _shares_and_floats()
+    base.run_request({"dataset": actions.NAME, "params": {"as_of": "2026-10-27"}})
+    base.run_request({"dataset": bars.NAME, "params": {"as_of": "2026-10-27"}})
+    issues = _issues()
+    assert issues["price_gap_warrant"] == {GAPX + ":2026-10-22"}
+    assert GAPX + ":2026-10-22" not in issues.get("price_gap_no_action", set())
