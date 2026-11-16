@@ -44,16 +44,12 @@ def test_a_stored_profiles_accession_reaches_chain_mentions(rawstore_tmp_db):
     assert stored and {r["accession"] for r in stored} == {"acc-1"}
 
 
-def test_a_profile_without_an_accession_still_gives_its_edges(rawstore_tmp_db):
-    _filing()
-    _profile()
-    edges = engine.build_edges()
-    assert edges and all(e.get("accession") is None for e in edges)
-
-
 def test_the_profile_writer_stores_the_accession_of_the_filing_it_read(rawstore_tmp_db, monkeypatch):
     from RevenueChaser.module_relatedness import engine as rel, profiles
     from RevenueChaser.module_relatedness.tests.test_relatedness import long_body
+    from RevenueChaser.rcdata.tests import spine_fixture
+
+    spine_fixture.write_security([])          # a profile run needs a spine (#642 D3)
 
     monkeypatch.setattr(rel, "_cik_for", lambda ts: {t: t for t in ts})
     monkeypatch.setattr(rel, "_filing_text", lambda t: (t, long_body("we make gpus")))

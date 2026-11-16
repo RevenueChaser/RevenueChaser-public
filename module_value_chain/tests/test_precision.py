@@ -27,11 +27,7 @@ def test_a_rate_of_070_on_30_labels_does_not_clear_the_bound():
     rep = prec.precision(_labels(21, 9))
     assert rep["precision"] == 0.7 and rep["passes"] is False and rep["status"] == "fail"
     assert rep["lower_bound"] == pytest.approx(0.5212, abs=1e-4)
-
-
-def test_a_handful_of_right_labels_is_not_a_pass():
-    rep = prec.precision(_labels(3, 0))
-    assert rep["precision"] == 1.0 and rep["passes"] is False
+    assert prec.precision(_labels(3, 0))["status"] == "fail"       # a handful of right labels is no pass either
 
 
 def test_unlabeled_ignored_and_empty_is_not_measured():
