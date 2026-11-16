@@ -5,8 +5,10 @@ report (``rcdata/sec_profile.py``, prompt ``v3d``); the Relatedness and Value Ch
 ``business.locate`` asks where that section is, from the document's heading list, for a filing whose rule cut is
 suspect (``rcdata/sec_locator.py``); only ``company.profile`` reads its answer.
 
-**Neither is registered.** :func:`register_all` is called by nobody: registering them is the cutover, which needs
-the stored profiles imported first (or every company would be asked again) and the owner's word.
+**Both are registered** by ``rcdata.build`` (:func:`register_all`; the owner's word, 16 Nov 2026). The stored
+Relatedness profiles are imported first (``module_relatedness/service_import.py``). Until they are, a run asks
+nothing by itself: a question with no ``ok`` answer under its prompt is on its first pass, which waits for
+``reread`` (``reads.stale_reason``).
 
 What is sent is what the Relatedness board sends today for the same filing, byte for byte; a test asks both and
 compares the requests (``module_relatedness/tests/test_service_profile_bytes.py``). The board's own input code stays
@@ -25,6 +27,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from dataclasses import replace
 
 from ... import read, sec_locator, sec_profile
@@ -380,20 +383,34 @@ def _merge_profile(parts: list[tuple[dict, int]]) -> dict:
 
 _PROFILE = _Profile()
 
+#: The writer of both questions: EVREN (the owner's K3), or DeepSeek Flash for a process started with
+#: ``RC_SEC_READS_PROVIDER=deepseek`` (the owner, 16 Nov 2026: the companies the import leaves are asked through
+#: DeepSeek). A stored answer of either writer is current, so switching asks nothing again.
+PROVIDER = os.environ.get("RC_SEC_READS_PROVIDER", "").strip().lower() or "evren"
+#: The most calls one DeepSeek run sends per question (a paid call is capped in its own code): the import left 69
+#: companies, a profile is a few calls each.
+DEEPSEEK_MAX_CALLS = {LOCATE_ID: 150, PROFILE_ID: 800}
+
+
+def _cap(question: str) -> int | None:
+    return DEEPSEEK_MAX_CALLS[question] if PROVIDER == "deepseek" else None
+
+
 LOCATE = Question(
     id=LOCATE_ID, owner=OWNER, system=sec_locator.system_prompt(), prompt_version=sec_locator.PROMPT_VERSION,
-    scope=_locate_scope, inputs=_locate_inputs, parse=parse_locate, max_tokens=200)
+    scope=_locate_scope, inputs=_locate_inputs, parse=parse_locate, max_tokens=200,
+    provider=PROVIDER, max_calls=_cap(LOCATE_ID))
 
 PROFILE = Question(
     id=PROFILE_ID, owner=OWNER, system=sec_profile.system_prompt(), prompt_version=sec_profile.PROMPT_VERSION,
     scope=_PROFILE.scope, inputs=_PROFILE.inputs, fill=_PROFILE.fill, parse=sec_profile.parse,
-    merge=_merge_profile, max_tokens=8000)
+    merge=_merge_profile, max_tokens=8000, provider=PROVIDER, max_calls=_cap(PROFILE_ID))
 
 #: Run order: the locator's answers are in Parquet before the profile builds its inputs.
 IN_ORDER = (LOCATE, PROFILE)
 
 
 def register_all() -> None:
-    """Register the two questions, the locator first. Called by nobody yet: see the module's first lines."""
+    """Register the two questions, the locator first. ``rcdata.build`` calls it at import."""
     for q in IN_ORDER:
         register(q)

@@ -465,7 +465,8 @@ def mirror_service(tickers: list[str]) -> dict[str, dict]:
         store.save_profile(t, ciks.get(t), {f: [] for f in config.PROFILE_FIELDS} if shell
                            else profile_v3.to_attributes(v3), ck, r["model"], prompt_version=r["prompt_version"],
                            status="shell" if shell else "ok", attempts=int(r.get("attempts") or 0),
-                           provider=r["provider"], profile_json=v3, label_source=labels)
+                           provider=r["provider"], profile_json=v3, label_source=labels,
+                           accession=r.get("accession") or None)
     return store.load_profiles(tickers)
 
 

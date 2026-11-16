@@ -41,6 +41,7 @@ def test_the_services_answer_becomes_the_boards_profile(from_service):
     assert row["label_source"] == {"input": "item", "from": "sec/reads"}
     assert store.input_hash(row["cache_key"]) == answer["input_hash"]
     assert store.profile_source(row["cache_key"])["accession"] == answer["accession"]
+    assert row["accession"] == answer["accession"]         # the column Value Chain reads (#956)
     assert not store.is_stale(store.profile_meta(["MSFT"])["MSFT"], store.mode_stamp())
 
     engine.build_profiles(["MSFT"], usd_cap=1.0)            # the same answer again: the row is left alone
