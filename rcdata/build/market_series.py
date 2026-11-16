@@ -155,9 +155,15 @@ class MarketSeries:
         rows = int(con.execute(f"SELECT count(*) FROM {TABLE}").fetchone()[0])
         sources = {r[0] for r in con.execute(f"SELECT DISTINCT source FROM {TABLE}").fetchall()}
         as_of = ctx.as_of or self.default_as_of()
-        return {"dataset": NAME, "result": "changed" if added or removed else "unchanged",
-                "source_as_of": as_of.isoformat(), "rows": rows, "added": added, "removed": removed,
-                "coverage": round(len(sources) / len(SOURCES), 4)}
+        spx = con.execute(f"SELECT max(obs_date) FROM {TABLE} WHERE source = ? AND series_id = 'SPX'",
+                          [cboe.SOURCE]).fetchone()[0]
+        out = {"dataset": NAME, "result": "changed" if added or removed else "unchanged",
+               "source_as_of": as_of.isoformat(), "rows": rows, "added": added, "removed": removed,
+               "coverage": round(len(sources) / len(SOURCES), 4)}
+        if spx is None or spx < as_of:
+            # shortcut: due again every hourly pass while Cboe lacks the close; no limit if Cboe stops publishing.
+            out.update(next_check_due=as_of.isoformat(), note=f"Cboe SPX to {spx}, not {as_of}: the same session again")
+        return out
 
 
 def _source_dir(src) -> Path:
