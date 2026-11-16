@@ -17,7 +17,12 @@ import pytest
 from RevenueChaser.core.reporting_common import THEME_STORAGE_KEY, THEME_TOKENS
 
 from .harness.cdp_browser import Page, find_chrome
-from .harness.devices import REALME_GT2_PRO, REALME_GT2_PRO_LANDSCAPE, Device
+from .harness.devices import REALME_GT2_PRO, Device
+from .harness.shared import shared_dashboard
+
+# The dashboard is shared by the file; the mock provider still gets its default routes back for every test, as
+# the function-scoped dashboard had them.
+pytestmark = pytest.mark.usefixtures("provider_routes")
 
 PHONE = (390, 844)
 DESKTOP = (1280, 800)
@@ -81,6 +86,15 @@ def chrome():
     return path
 
 
+@pytest.fixture(scope="module")
+def dashboard(tmp_path_factory, mock_provider):
+    """One dashboard per xdist worker for this file, not one per test (#896: the file's 44 tests booted a dashboard
+    each, 216 s of the e2e tier on 15 Nov 2026). Nothing here writes to the server: a theme choice lives in the
+    browser's localStorage, and the browser stays fresh per test."""
+    with shared_dashboard(tmp_path_factory, mock_provider, "phone-shell") as dash:
+        yield dash
+
+
 @pytest.fixture
 def browser(chrome):
     with Page(chrome) as page:          # a fresh profile per test: no theme choice carries over
@@ -102,9 +116,9 @@ def _click(browser, selector):
     return browser.eval(LAYOUT)
 
 
-# The generic narrow phone, and the owner's realme GT2 Pro upright and sideways (harness/devices.py).
-PHONES = [pytest.param(PHONE, id="390"), pytest.param(REALME_GT2_PRO, id="realme"),
-          pytest.param(REALME_GT2_PRO_LANDSCAPE, id="realme-landscape")]
+# avo 15 Nov 2026: the apps move to native APK screens in a few weeks, so the phone checks are cut to the basics
+# (no sideways scroll, the drawer, 44 px targets) on his own phone only.
+PHONES = [pytest.param(REALME_GT2_PRO, id="realme")]
 
 
 def _width(size) -> int:
@@ -229,26 +243,6 @@ def test_a_board_without_its_own_background_is_not_painted_white_in_dark(dashboa
     assert 0.2126 * r + 0.7152 * g + 0.0722 * b < 80, f"{tab} frame painted {(r, g, b)} in dark"
 
 
-@pytest.mark.parametrize("tab, button, popover", [
-    ("module_sector_rotation", "range-btn", "cal-popover"),
-    ("module_earnings_radar", "earnings-range-btn", "earnings-cal-popover"),
-    ("module_spx_gamma", "spxgamma-range-btn", "spxgamma-cal-popover"),
-])
-def test_a_calendar_opens_on_screen_below_its_button_on_a_phone(dashboard, browser, tab, button, popover):
-    """#190 review: position:fixed with top:auto left the pop-up's top edge 70-119 px above the screen."""
-    _open(browser, dashboard, PHONE, "dark", tab)
-    browser.eval(f"document.getElementById({button!r}).click()")
-    m = browser.eval(f"""(function(){{
-      var p = document.getElementById({popover!r}).getBoundingClientRect();
-      var b = document.getElementById({button!r}).getBoundingClientRect();
-      return {{top: p.top, bottom: p.bottom, left: p.left, right: p.right, h: p.height, btn: b.bottom,
-               vh: window.innerHeight, vw: document.documentElement.clientWidth}};
-    }})()""")
-    assert m["h"] > 0, "the pop-up did not open"
-    assert m["top"] >= m["btn"], f"the pop-up covers its own button or sits above it: {m}"
-    assert m["bottom"] <= m["vh"] and m["left"] >= 0 and m["right"] <= m["vw"], f"not fully on screen: {m}"
-
-
 @pytest.mark.parametrize("tab", ["module_earnings_radar", "module_swing_potential", "module_fundamentals",
                                  "module_sec_13f", "module_sector_rotation"])
 def test_the_theme_toggle_does_not_wrap_the_desktop_top_bar(dashboard, browser, tab):
@@ -272,79 +266,6 @@ def test_a_desktop_toggles_the_theme_from_the_sidebar(dashboard, browser):
     browser.eval("document.getElementById('theme-toggle').click()")
     assert browser.eval("document.documentElement.getAttribute('data-theme')") == "light"
     assert browser.eval("document.getElementById('theme-toggle').textContent") == "Theme: Light"
-
-
-def test_the_summaries_keep_their_arrow_on_a_phone(dashboard, browser):
-    """#190 review: the 44 px rule made "What am I looking at?" and "Recorded sessions" lose their
-    open/closed arrow on a phone or a touch screen. Every ``<details>`` now lives inside the board
-    document; the shell itself carries none since the open-issues group was removed."""
-    _open(browser, dashboard, PHONE, "dark", "module_settings")
-    # The help block lives on the Database tab, and a remembered choice may be another tab (#715): a
-    # hidden panel measures 0 px, so show the tab that holds it first.
-    browser.eval("document.querySelector('.frame.on').contentDocument.getElementById('tab-data').click()")
-    board = browser.eval("Array.prototype.map.call(document.querySelector('.frame.on').contentDocument"
-                         ".querySelectorAll('details.help > summary'), function(s){"
-                         " var r = s.getBoundingClientRect(); return [getComputedStyle(s).display, r.height]; })")
-    assert board and all(d == "list-item" for d, _ in board), f"board help summary: {board}"
-    assert all(h >= 44 for _, h in board), f"the help summary is under 44 px: {board}"
-
-
-@pytest.mark.parametrize("tab", ["module_earnings_radar", "module_sector_rotation", "module_spx_gamma",
-                                 "module_sec_13f", "module_financials"])
-def test_the_phone_top_bar_leaves_the_board_most_of_the_screen(dashboard, browser, tab):
-    """#190 review: the top bar took 262 px of 844 on Earnings and 314 on Sector Rotation."""
-    _open(browser, dashboard, PHONE, "dark", tab)
-    h = browser.eval("document.querySelector('.topbar').getBoundingClientRect().height")
-    assert h <= PHONE[1] / 4, f"{tab}: the top bar is {h} px of {PHONE[1]}"
-
-
-FOCUS = ("(function(){ var a = document.activeElement; return {tag: a.tagName, id: a.id,"
-         " tab: a.getAttribute('data-tab'), inSidebar: !!a.closest('#sidebar'), inMain: !!a.closest('.main')}; })()")
-
-
-def test_the_drawer_works_from_the_keyboard(dashboard, browser):
-    """#190 review: focus stayed on the menu button when the drawer opened, Tab went on into the board behind
-    the scrim, and choosing a tab dropped focus to <body>."""
-    _open(browser, dashboard, PHONE, "dark")
-    browser.eval("document.getElementById('nav-toggle').focus()")
-    browser.press("Enter")
-    browser.settle()
-    f = browser.eval(FOCUS)
-    assert f["inSidebar"] and f["tab"] == "module_settings", f"opening the drawer left focus on {f}"
-    for _ in range(40):                       # well past every control in the drawer
-        browser.press("Tab")
-        f = browser.eval(FOCUS)
-        assert not f["inMain"] and f["tag"] != "IFRAME", f"Tab reached the page behind the drawer: {f}"
-    browser.eval("document.querySelector('.nav-item[data-tab=\"module_settings\"]').focus()")
-    browser.press("Enter")
-    browser.settle()
-    m = browser.eval(LAYOUT)
-    f = browser.eval(FOCUS)
-    assert m["active"] == "module_settings" and m["expanded"] == "false"
-    assert f["id"] == "nav-toggle", f"choosing a tab left focus on {f}"
-    browser.press("Enter")                    # focus is on the menu button: open again
-    browser.settle()
-    browser.press("Escape")
-    browser.settle()
-    assert browser.eval(LAYOUT)["expanded"] == "false"
-    assert browser.eval(FOCUS)["id"] == "nav-toggle", "Escape returns focus to the menu button"
-
-
-def test_the_browser_bar_follows_the_manual_choice(dashboard, browser):
-    _open(browser, dashboard, PHONE, "dark")
-    _click(browser, "#nav-toggle")
-    _click(browser, "#theme-toggle")                           # dark -> light, on a dark device
-    metas = browser.eval("Array.prototype.map.call(document.querySelectorAll('meta[name=theme-color]'),"
-                         " function(m){ return m.content; })")
-    assert metas and set(metas) == {THEME_TOKENS["light"]["bg"]}, metas
-
-
-def test_an_open_drawer_closes_when_the_window_grows_past_the_breakpoint(dashboard, browser):
-    _open(browser, dashboard, PHONE, "dark")
-    _click(browser, "#nav-toggle")
-    browser.emulate(*DESKTOP, scheme="dark")
-    browser.wait_for("!document.body.classList.contains('nav-open')", timeout=5)
-    assert browser.eval("document.querySelector('.main').inert") is False
 
 
 def test_a_board_gets_the_choice_again_when_its_tab_is_shown(dashboard, browser):
@@ -383,42 +304,6 @@ CAL_BOX = """(function(){
   var b = document.getElementById('range-btn').getBoundingClientRect();
   return {top: p.top, bottom: p.bottom, h: p.height, btn: b.bottom, vh: window.innerHeight};
 })()"""
-
-
-@pytest.mark.parametrize("then", [DESKTOP, (844, 390)], ids=["grown-to-desktop", "phone-rotated"])
-def test_an_open_calendar_is_placed_again_when_the_window_changes(dashboard, browser, then):
-    """#190 delta review: placeCal ran only on open. Grown to 1280 px the pop-up kept top:158px, 126 px below its
-    button; a phone turned sideways kept a max-height taller than the screen."""
-    _open(browser, dashboard, PHONE, "dark", "module_sector_rotation")
-    browser.eval("document.getElementById('range-btn').click()")
-    browser.emulate(*then, scheme="dark")
-    placed = f"(function(){{ var m = {CAL_BOX.strip()}; return m.top - m.btn >= 0 && m.top - m.btn <= 8 && m.bottom <= m.vh; }})()"
-    try:
-        browser.wait_for(placed, timeout=5)           # the shell re-fits on a debounced resize
-    except RuntimeError:
-        pass                                          # the assertions below say what is wrong
-    m = browser.eval(CAL_BOX)
-    assert m["h"] > 0, "the pop-up closed"
-    assert 0 <= m["top"] - m["btn"] <= 8, f"the pop-up is not under its button: {m}"
-    assert m["bottom"] <= m["vh"], f"the pop-up runs off the bottom of the screen: {m}"
-
-
-def test_the_drawer_has_its_own_close_button(dashboard, browser):
-    """#190 delta review: a touch screen reader cannot press Escape, and the scrim is not a control; the
-    drawer needs a button of its own. A desktop, where the sidebar is a column, has none."""
-    _open(browser, dashboard, PHONE, "dark")
-    _click(browser, "#nav-toggle")
-    b = browser.eval("(function(){ var e = document.getElementById('nav-close'); if(!e) return null;"
-                     " var r = e.getBoundingClientRect(); return {w: r.width, h: r.height, l: r.left, t: r.top,"
-                     " label: e.getAttribute('aria-label')}; })()")
-    assert b, "no close button in the drawer"
-    assert b["w"] >= 44 and b["h"] >= 44 and b["l"] >= 0 and b["t"] >= 0, b
-    assert b["label"] == "Close the board menu"
-    m = _click(browser, "#nav-close")
-    assert m["expanded"] == "false" and browser.eval(FOCUS)["id"] == "nav-toggle"
-    browser.emulate(*DESKTOP, scheme="dark")
-    browser.open(f"{dashboard.url}/#runs", ready=FRAME_READY)
-    assert browser.eval("document.getElementById('nav-close').getBoundingClientRect().width") == 0
 
 
 # #527 step 10 (avo 6 Nov 2026: "horizontal bar a gerek var mi ... genis ekrana gecince sadece buyusun"): inside the

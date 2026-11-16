@@ -53,9 +53,11 @@ approves.
   push to a work branch runs nothing until its PR to `main` exists.
 - A push to a PR runs only the test files that import a changed file (`scripts/select_tests.py`; check names
   `unit (SELECTIVE)` / `e2e (SELECTIVE)`), and falls back to FULL when that is not safe to say. `main` and a
-  manual dispatch are always FULL.
+  manual dispatch are FULL, except a push to `main` whose tree the PR's green FULL run already tested (mode
+  SKIP). A change that stays inside board folders runs only those boards' e2e files (`E2E_BY_BOARD`).
 - **The merge gate is a green `merge-gate` check on the current head.** It fails on purpose for a SELECTIVE
-  run. Label the PR `full-ci` before merging; the label stays, so every later push is FULL too.
+  run. Label the PR `full-ci` at the last push: the label buys one FULL run and is removed when it finishes
+  (job `full-ci-once`), so a later push needs it again (avo, 15 Nov 2026).
 - A docs-only change (and a change under `.claude/`) is filtered out and leaves **no** check on the PR. That
   is a skipped run, not a missing one.
 - **Never re-run CI to get past a failure.** A failure the diff cannot explain is a flaky test: fix it, or

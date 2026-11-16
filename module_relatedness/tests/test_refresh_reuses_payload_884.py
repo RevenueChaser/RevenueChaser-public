@@ -43,15 +43,21 @@ def test_a_newer_profile_rescored(tmp_path, monkeypatch):
     assert engine.run(no_fetch=True, provider="deepseek", model="deepseek-flash")["rescored"]
 
 
-@pytest.mark.parametrize("kw", [{"tickers": ["AAPL"]}, {"limit": 5}, {"provider": "evren"}])
-def test_a_partial_refresh_or_another_writer_rescored(tmp_path, monkeypatch, kw):
+def test_another_board_writer_still_renders_the_saved_payload(tmp_path, monkeypatch):
+    """The board's writer is EVREN while the batch was written by DeepSeek (15 Nov 2026): the payload serves both."""
+    saved = _saved(tmp_path, monkeypatch)
+    _profiles(monkeypatch, (NOW - timedelta(seconds=13)).timestamp())
+    _run_must_not_happen(monkeypatch)
+    assert engine.run(no_fetch=True, provider="evren") == saved
+
+
+@pytest.mark.parametrize("kw", [{"tickers": ["AAPL"]}, {"limit": 5}])
+def test_a_partial_refresh_rescored(tmp_path, monkeypatch, kw):
     _saved(tmp_path, monkeypatch)
     _profiles(monkeypatch, (NOW - timedelta(seconds=13)).timestamp())
     monkeypatch.setattr(engine, "_run", lambda *a, **k: {"n": 0, "rescored": True})
     args = {"no_fetch": True, "provider": "deepseek", "model": "deepseek-flash"}
     args.update(kw)
-    if kw.get("provider") == "evren":
-        args["model"] = None
     assert engine.run(**args)["rescored"]
 
 

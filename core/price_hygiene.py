@@ -19,9 +19,9 @@ import pandas as pd
 
 REASONS = ("locked", "unexplained_jump", "repeat_jump", "broken_series", "bad_wick")
 LABELS = {
-    "locked": "Price not moving (5+ identical closes)",
-    "unexplained_jump": "One-day move over 35 % with no corporate action",
-    "repeat_jump": "Two or more one-day moves over 25 %",
+    "locked": "Price not moving (5+ identical closes in the last 60 sessions)",
+    "unexplained_jump": "One-day spike over 35 % that reverses within 2 sessions, with no corporate action",
+    "repeat_jump": "Two or more one-day moves over 25 % in the last 60 sessions",
     "broken_series": "Gap of more than 10 sessions in the bars",
     "bad_wick": "A bar whose high or low is 1.5x its body",
 }
@@ -30,11 +30,14 @@ JUMP = 0.35               # unexplained single-session move, on the nominal clos
 REPEAT_JUMP = 0.25        # two or more of these in the window
 GAP_SESSIONS = 10         # missing sessions in a row, against the bars' own business days
 WICK = 1.5                # high / max(open, close), or min(open, close) / low
+RECENT = 60               # sessions ``locked`` and ``repeat_jump`` look at (#891): a quiet or wild year ago is no defect
+REVERT = 0.8              # share of a spike taken back for it to be a bad print, not a move (#891)
+REVERT_SESSIONS = 2       # ... within this many sessions after it
 DROP_MAX_SHARE = 0.05     # when dropping is turned on: more flagged than this is a data failure, nothing drops
 
 
 def locked(nominal: pd.DataFrame) -> str | None:
-    close = nominal["Close"]
+    close = nominal["Close"].tail(RECENT)
     runs = close.ne(close.shift()).cumsum()
     return "locked" if len(close) and int(close.groupby(runs).size().max()) >= LOCKED_RUN else None
 
@@ -44,16 +47,25 @@ def _moves(frame: pd.DataFrame) -> pd.Series:
 
 
 def unexplained_jump(nominal: pd.DataFrame, adjusted: pd.DataFrame) -> str | None:
-    """A nominal move over ``JUMP`` that the adjusted series repeats: no split or other action explains it."""
+    """A bad print: a nominal move over ``JUMP`` that the adjusted series repeats (no split or other action explains
+    it) and then takes back by ``REVERT`` within ``REVERT_SESSIONS``. A move that holds is a real move (#891: two
+    years of small caps hold many), not a series a setup cannot be read off."""
     big = _moves(nominal) > JUMP
     if not big.any():
         return None
-    adj = _moves(adjusted).reindex(nominal.index)
-    return "unexplained_jump" if bool((big & (adj > JUMP)).any()) else None
+    adj = adjusted["Close"].reindex(nominal.index)
+    real = big & (adj.pct_change().abs() > JUMP)
+    for i in (int(k) for k in real.to_numpy().nonzero()[0]):
+        base = adj.iloc[i - 1]
+        move = abs(adj.iloc[i] / base - 1)
+        after = adj.iloc[i + 1:i + 1 + REVERT_SESSIONS]
+        if bool(((after / base - 1).abs() <= (1 - REVERT) * move).any()):
+            return "unexplained_jump"
+    return None
 
 
 def repeat_jump(adjusted: pd.DataFrame) -> str | None:
-    return "repeat_jump" if int((_moves(adjusted) > REPEAT_JUMP).sum()) >= 2 else None
+    return "repeat_jump" if int((_moves(adjusted.tail(RECENT + 1)) > REPEAT_JUMP).sum()) >= 2 else None
 
 
 def broken_series(nominal: pd.DataFrame) -> str | None:

@@ -49,6 +49,8 @@ def _redirect_data_roots() -> None:
     # The market store's SSD and HDD roots (#206).
     os.environ.setdefault("RC_MARKET_DIR", str(_root / "market"))
     os.environ.setdefault("RC_MARKET_RAW_DIR", str(_root / "market_raw"))
+    # A runner's disk is not the server's: the free-space floor of a build is the server's rule, not a test's.
+    os.environ["RC_BUILD_MIN_FREE"] = "1KB"
     # The WRDS switch is forced off: a server .env with RC_WRDS_UNATTENDED=1 would make the attended tests fail (#344).
     os.environ["RC_WRDS_UNATTENDED"] = ""
     # The ops store on Redis (master plan Order 3): never the server's named namespace (a .env with

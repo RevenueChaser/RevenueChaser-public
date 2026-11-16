@@ -6,6 +6,7 @@ be answered from that graph runs the full suite.
 """
 from __future__ import annotations
 
+import ast
 import os
 import re
 import subprocess
@@ -223,6 +224,7 @@ def test_the_merge_gate_check_is_green_only_for_a_full_run_that_passed():
         ("success", "FULL", "success", "success"): 0, ("success", "SELECTIVE", "success", "success"): 1,
         ("success", "FULL", "success", "failure"): 1, ("success", "FULL", "cancelled", "success"): 1,
         ("skipped", "", "skipped", "skipped"): 1, ("failure", "", "skipped", "skipped"): 1,
+        ("success", "SKIP", "skipped", "skipped"): 0,
     }.items():
         env = {**os.environ, "PLAN": plan, "MODE": mode, "UNIT": unit, "E2E": e2e}
         assert subprocess.run(["bash", "-e", "-c", script], env=env, capture_output=True).returncode == code, plan
@@ -252,14 +254,42 @@ def test_a_label_other_than_full_ci_keeps_the_heads_earlier_gate_result(earlier,
 
 
 def test_every_test_file_lands_in_exactly_one_unit_shard():
-    """Review 9 Nov 2026, F6: the unit tier runs as 4 jobs; a file in no shard would never run, one in two twice."""
+    """Review 9 Nov 2026, F6: the unit tier runs as 6 jobs; a file in no shard would never run, one in two twice."""
     wf = (_REPO / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
     unit = wf.split("\n  unit:\n", 1)[1].split("\n  e2e:\n", 1)[0]
-    assert "shard: [0, 1, 2, 3]" in unit and "RC_SHARD: ${{ matrix.shard }}/4" in unit and "fail-fast: false" in unit
+    n = 6
+    assert "shard: [0, 1, 2, 3, 4, 5]" in unit and f"RC_SHARD: ${{{{ matrix.shard }}}}/{n}" in unit
+    assert "fail-fast: false" in unit and f"${{{{ matrix.shard }}}}/{n}\n" in unit
     files = [p.relative_to(_REPO).as_posix() for p in _REPO.rglob("test_*.py") if ".git" not in p.parts]
-    homes = {f: [i for i in range(4) if mod.in_shard(f"{f}::test_x[1]", f"{i}/4")] for f in files}
+    homes = {f: [i for i in range(n) if mod.in_shard(f"{f}::test_x[1]", f"{i}/{n}")] for f in files}
     assert all(len(h) == 1 for h in homes.values())
-    assert all(sum(h == [i] for h in homes.values()) > len(files) / 8 for i in range(4)), "a shard far too small"
+    assert all(sum(h == [i] for h in homes.values()) > len(files) / (2 * n) for i in range(n)), "a shard far too small"
+
+
+def test_the_measured_files_split_the_unit_time_evenly():
+    """#896: by hash the six shards held 437 to 827 s of tests; the measured files are placed by time instead."""
+    import json
+    seconds = json.loads(mod.DURATIONS.read_text(encoding="utf-8"))
+    assert seconds and all(isinstance(v, (int, float)) and v >= 0 for v in seconds.values())
+    loads = [0.0] * 6
+    for rel, s in seconds.items():
+        homes = [i for i in range(6) if mod.in_shard(f"{rel}::t", f"{i}/6")]
+        assert len(homes) == 1, rel
+        loads[homes[0]] += s
+    assert max(loads) <= 1.05 * sum(loads) / 6, [round(x) for x in loads]
+
+
+def test_a_file_without_a_measured_time_keeps_its_hash_shard(monkeypatch, tmp_path):
+    import zlib
+    (tmp_path / "d.json").write_text('{"a/test_heavy.py": 100, "a/test_light.py": 1}', encoding="utf-8")
+    monkeypatch.setattr(mod, "DURATIONS", tmp_path / "d.json")
+    mod._measured_homes.cache_clear()
+    try:
+        assert mod.in_shard("a/test_heavy.py::t", "0/2") and mod.in_shard("a/test_light.py::t", "1/2")
+        new = "b/test_new.py"
+        assert mod.in_shard(f"{new}::t", f"{zlib.crc32(new.encode()) % 2}/2")
+    finally:
+        mod._measured_homes.cache_clear()
     assert mod.in_shard("a/test_a.py::t", "0/1")
     with pytest.raises(ValueError):
         mod.in_shard("a/test_a.py::t", "4/4")
@@ -278,3 +308,83 @@ def test_any_selector_error_falls_back_to_full(monkeypatch, capsys):
     assert mod.main(["origin/main"]) == 0
     out = capsys.readouterr().out
     assert '"mode": "FULL"' in out and "RecursionError" in out
+
+
+def _e2e(*names: str) -> list[str]:
+    return sorted(mod.E2E_DIR + n for n in names)
+
+
+def test_a_board_change_no_longer_reaches_the_root_conftest_through_app_runners():
+    """15 Nov 2026: the root conftest's autouse fixture imports app.runners, which imports every board, so every board
+    change ran FULL. The edge now stops at app/runners.py itself and the six config modules the fixture repoints."""
+    sel = mod.select(["module_oipd/report.py"])
+    assert sel.mode == "SELECTIVE", sel.reason
+    assert "module_oipd/tests/test_report_pool.py" in sel.unit
+    assert len([u for u in sel.unit if not u.startswith(mod.E2E_DIR)]) < len(mod.all_tests(_REPO)) / 2
+    assert mod.select(["app/runners.py"]).mode == "FULL"
+    assert mod.select(["module_oipd/config.py"]).mode == "FULL"
+
+
+def test_the_root_conftest_reads_list_matches_its_board_artifact_pairs():
+    tree = ast.parse((_REPO / "conftest.py").read_text(encoding="utf-8"))
+    pairs = next(n.value for n in ast.walk(tree) if isinstance(n, ast.Assign)
+                 and any(getattr(t, "id", "") == "BOARD_ARTIFACT_PAIRS" for t in n.targets))
+    assert {f"{m}.config" for _, m in ast.literal_eval(pairs)} == set(mod._ROOT_CONFTEST_READS)
+    assert "app.runners" in (_REPO / "conftest.py").read_text(encoding="utf-8")
+
+
+def test_a_change_inside_one_board_runs_only_that_boards_e2e_and_the_shell():
+    sel = mod.select(["module_oipd/report.py"])
+    assert sel.e2e == _e2e("test_board_oipd.py", *mod.E2E_ALWAYS)
+
+
+def test_a_board_another_board_imports_runs_the_importers_e2e_too():
+    """module_earnings_radar imports module_leaps directly, not only through app/."""
+    sel = mod.select(["module_leaps/__init__.py"])
+    assert sel.mode == "SELECTIVE", sel.reason
+    assert mod.E2E_DIR + "test_board_leaps.py" in sel.e2e
+    assert mod.E2E_DIR + "test_board_earnings_radar.py" in sel.e2e
+    assert mod.E2E_DIR + "test_board_value_chain.py" not in sel.e2e
+
+
+@pytest.mark.parametrize("changed", [["app/dashboard.py"], ["module_oipd/report.py", "core/provenance.py"]])
+def test_a_change_outside_the_board_folders_keeps_every_reached_e2e_test(changed):
+    sel = mod.select(changed)
+    assert sel.mode == "SELECTIVE", sel.reason
+    assert len(sel.e2e) == len([t for t in mod.all_tests(_REPO) if t.startswith(mod.E2E_DIR)])
+
+
+def test_a_settings_change_runs_every_e2e_test():
+    """module_settings has no row on purpose: the Settings board shows every board."""
+    assert "module_settings" not in mod.E2E_BY_BOARD
+    assert mod._board_e2e(["module_settings/newdata.py"], _REPO) is None
+
+
+def test_every_board_folder_and_every_e2e_file_has_its_place_in_the_board_table():
+    boards = {p.name for p in _REPO.glob("module_*") if p.is_dir()} - {"module_testing", "module_settings"}
+    assert boards == set(mod.E2E_BY_BOARD), "a board folder needs a row in select_tests.E2E_BY_BOARD"
+    e2e = {Path(t).name for t in mod.all_tests(_REPO) if t.startswith(mod.E2E_DIR)}
+    placed = set(mod.E2E_ALWAYS) | set(mod.E2E_HARNESS) | {n for row in mod.E2E_BY_BOARD.values() for n in row}
+    assert e2e == placed, f"missing: {sorted(e2e - placed)}; gone: {sorted(placed - e2e)}"
+
+
+def test_the_full_ci_label_is_removed_after_one_finished_full_run():
+    wf = (_REPO / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
+    job = wf.split("\n  full-ci-once:\n", 1)[1].split("\n  merge-gate:\n", 1)[0]
+    assert "needs.plan.outputs.mode == 'FULL'" in job and "contains(github.event.pull_request.labels.*.name, 'full-ci')" in job
+    assert "needs.unit.result != 'cancelled'" in job and "needs.e2e.result != 'cancelled'" in job
+    assert 'labels/full-ci"' in job and "pull-requests: write" in job
+    assert "unlabeled" not in wf.split("\njobs:\n", 1)[0], "removing the label must not start a run"
+
+
+def test_a_push_to_main_skips_only_on_a_green_note_for_its_own_tree():
+    wf = (_REPO / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
+    plan = wf.split("\n  plan:\n", 1)[1].split("\n  unit:\n", 1)[0]
+    assert "if: github.event_name == 'push'" in plan and "grep -qxF \"tested-tree $tree\"" in plan
+    assert 'select(.conclusion == "success")' in plan and "check_name=merge-gate" in plan
+    assert 'echo "mode=SKIP"' in plan
+    gate = wf.split("\n  merge-gate:\n", 1)[1]
+    assert 'echo "::notice title=tested-tree::tested-tree $TREE"' in gate
+    for job in ("unit", "e2e"):
+        body = wf.split(f"\n  {job}:\n", 1)[1]
+        assert body.split("\n", 2)[1] == "    if: needs.plan.outputs.mode != 'SKIP'", job
