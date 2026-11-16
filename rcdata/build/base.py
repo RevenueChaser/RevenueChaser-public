@@ -208,6 +208,7 @@ class RunContext:
     notes: list[str] = field(default_factory=list)
     uw_sampled: bool = False
     allow_shrink: bool = False                                      # a request's explicit "allow_shrink": true
+    reread: bool = False                                            # a request's explicit "reread": true (sec/reads)
     scope: Scope = field(default_factory=Scope)                     # a request's "tiers" / "names" (empty: daily)
     pending: dict[str, Any] = field(default_factory=dict)          # a build's results for its after_swap step
     # #446: the Parquet files changed since the live file was built (``dirty.plan``; None: not known), and the plan
@@ -1091,7 +1092,8 @@ def run_request(req: dict, *, trigger: str = "queue", attended_ok: bool = False,
     params = req.get("params") or {}
     run_id = new_run_id()
     ctx = RunContext(run_id=run_id, dataset=req["dataset"], trigger=trigger, sleep=sleep, clock=clock,
-                     allow_shrink=params.get("allow_shrink") is True)
+                     allow_shrink=params.get("allow_shrink") is True,
+                     reread=params.get("reread") is True)
     ops.start_run(run_id, req["dataset"], trigger, params)
     try:
         return _run(ctx, ds, req, params, attended_ok)
@@ -1248,7 +1250,8 @@ def run_batch(reqs: list[dict], *, trigger: str = "queue", attended_ok: bool = F
             ds = DATASETS.get(req["dataset"])
             params = req.get("params") or {}
             ctx = RunContext(run_id=new_run_id(), dataset=req["dataset"], trigger=trigger,
-                             allow_shrink=params.get("allow_shrink") is True)
+                             allow_shrink=params.get("allow_shrink") is True,
+                     reread=params.get("reread") is True)
             ops.start_run(ctx.run_id, req["dataset"], trigger, params)
             started.append((req, ctx))
             done, note = _stage(ctx, ds, req, params, attended_ok)

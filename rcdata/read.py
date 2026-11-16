@@ -1780,8 +1780,9 @@ def sec_reads(ciks: Iterable = (), question: str | None = None, *, provider: str
               model: str | None = None, raw: bool = False) -> list[dict]:
     """Per company the newest answer to ``question`` (``sec.read``), one each; a company with none is absent.
 
-    An answer is current whoever wrote it, so every writer's rows are read: of one filing's answers the one under
-    the question's current prompt version wins, then the newest asked. ``provider`` / ``model`` narrow the read to
+    An answer is current whoever wrote it, so every writer's rows are read: an answer under the question's current
+    prompt version wins over any other, then the newest filing, then the newest asked. In a process that has not
+    registered the question the prompt version is not known and the newest filing decides. ``provider`` / ``model`` narrow the read to
     one writer (a comparison). ``answer`` is the parsed JSON; only ``ok`` and ``partial`` rows are
     answers. ``raw=False`` leaves the replies out.
     """
@@ -1797,9 +1798,10 @@ def sec_reads(ciks: Iterable = (), question: str | None = None, *, provider: str
         if value:
             sql += f" AND {col} = ?"
             params.append(str(value))
-    # The current prompt's row first among one filing's answers; bound last, as the QUALIFY is last in the SQL.
-    sql += (" QUALIFY row_number() OVER (PARTITION BY cik ORDER BY filing_date DESC NULLS LAST, "
-            "(prompt_version = ?) DESC, fetched_at DESC) = 1 ORDER BY cik")
+    # The current prompt's row first, even over a newer filing read under an older prompt (an imported or rolled
+    # back row); bound last, as the QUALIFY is last in the SQL.
+    sql += (" QUALIFY row_number() OVER (PARTITION BY cik ORDER BY (prompt_version = ?) DESC, "
+            "filing_date DESC NULLS LAST, fetched_at DESC) = 1 ORDER BY cik")
     params.append(q.prompt_version if q else "")
     rows = _rows("read_answer", sql, params)
     for r in rows:
