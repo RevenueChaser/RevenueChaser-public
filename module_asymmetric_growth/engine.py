@@ -1017,7 +1017,7 @@ def run_asymmetric_growth_hunter(uw=None, max_workers: int = 10,
                     if day is not None and (data_as_of is None or day > data_as_of):
                         data_as_of = day
     totals = ownership.sec13f_totals()      # #16: the stored rows, not the 13F board's engine
-    shares_out: dict = {}       # the stored shares outstanding (``ownership_snapshot``) went with the old store (#860)
+    shares_out = ownership.shares_outstanding(c["ticker"] for c in cards)   # the 13F board's reader (#646)
     latest_13f = {}
     for c in cards:
         try:
@@ -1030,11 +1030,9 @@ def run_asymmetric_growth_hunter(uw=None, max_workers: int = 10,
     from RevenueChaser.module_asymmetric_growth import freeze
     version = freeze.model_version()        # the rows say which rules scored them (old-rows view, #380 S2)
     for c in cards:
-        so = (shares_out.get(c["ticker"]) or {}).get("shares_outstanding")
-        so_source = "stored"
-        if not so and c.get("market_cap") and c.get("price"):
-            # Measured 9 Nov 2026: the store held shares outstanding for 1,219 of 4,159 AG names; every card has these.
-            so, so_source = c["market_cap"] / c["price"], "market_cap/price"
+        so_row = shares_out.get(str(c["ticker"]).strip().upper()) or {}
+        so = so_row.get("shares")
+        so_source = "market_cap/price" if so_row.get("source") == "estimate" else "stored"
         inst = _institutional(c["ticker"], totals, so, so_source, splits.get(c["ticker"], 1.0))
         # The 13F quarters the card read are period ends it read: they ride in ``period_ends`` (a JSON column of
         # ``ticker_scores``), so a Refresh shows them too (AG review SF-3).

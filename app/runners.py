@@ -547,6 +547,10 @@ def run_sec_13f_latest(uw: UWClient | None = None, notice: str | None = None,
     except Exception as exc:                      # noqa: BLE001 - the board still renders from the builder
         logger.exception("13F board file was not updated")
         notice = "; ".join(n for n in (notice, f"13F board file not updated: {type(exc).__name__}") if n)
+    # The unmapped-CUSIP note is the store's (``_13f_coverage_note``), so a store-only Refresh says it too (#77).
+    coverage = _13f_coverage_note()
+    if coverage and coverage not in (notice or ""):
+        notice = "; ".join(n for n in (notice, coverage) if n)
     totals = sec_13f.load_totals()
     if capture is not None:
         capture["totals"] = totals

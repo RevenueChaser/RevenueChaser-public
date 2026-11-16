@@ -112,7 +112,7 @@ td{padding:8px;border-bottom:1px solid var(--border);white-space:nowrap;text-ali
 td[data-col="sector"]{white-space:normal;width:100px;min-width:100px;max-width:110px;color:var(--muted);font-size:var(--fs-xs);line-height:1.3}
 tbody tr:hover{background:var(--hover)}
 tr[data-ticker]{cursor:pointer}
-.ticker{color:var(--bright);font-weight:600}
+.ticker{color:var(--bright);font-weight:600;font-size:16px}
 .name{color:var(--muted);font-size:var(--fs-xs);font-weight:400;max-width:160px;overflow:hidden;text-overflow:ellipsis}
 td[data-col="ticker"] .tk{display:flex;align-items:center;gap:var(--sp-2);white-space:nowrap}
 td[data-col="ticker"] .who{min-width:0}
@@ -123,9 +123,8 @@ td[data-col="ticker"] .break-mark{margin:-12px -10px -12px -6px}
    only sizes it: 28 px with a mouse, 44 px on a touch screen. */
 td[data-col="ticker"] .rc-watch{margin:0;flex:none}
 td[data-col="ticker"] .rc-watch button{min-width:28px;min-height:28px;height:28px;padding:0 4px;border-radius:var(--r-sm)}
-td[data-col="ticker"] .rc-watch button svg{width:14px;height:14px}
-@media (pointer:coarse){td[data-col="ticker"] .rc-watch button{min-width:44px;min-height:44px;height:44px}
-  td[data-col="ticker"] .rc-watch button svg{width:18px;height:18px}}
+td[data-col="ticker"] .rc-watch button svg{width:15px;height:15px}
+@media (pointer:coarse){td[data-col="ticker"] .rc-watch button{min-width:44px;min-height:44px;height:44px}}
 .pos{color:var(--pos)}.neg{color:var(--neg)}.zero{color:var(--muted)}
 .empty{padding:40px;color:var(--muted)}
 #modal{position:fixed;inset:0;background:var(--scrim);display:none;align-items:center;justify-content:center;z-index:100}
@@ -178,7 +177,11 @@ td[data-col="ticker"] .rc-watch button svg{width:14px;height:14px}
     border:1px solid var(--border);border-radius:var(--r-md);padding:var(--sp-3);box-shadow:var(--elev-1)}
   tbody tr[data-ticker]:hover{background:var(--card)}
   td{display:block;border:0;padding:var(--sp-1) 0;text-align:left;white-space:normal;min-width:0}
-  td[data-col="ticker"]{grid-column:1/-1;padding-bottom:var(--sp-1)}
+  td[data-col="ticker"]{grid-column:1/-1;padding-bottom:var(--sp-1);padding-right:50px}
+  td[data-col="ticker"] .ticker{font-size:20px}
+  /* The bookmark sits in the card's top-right corner, as on Fundamentals (avo 16 Nov 2026 13:03). */
+  tbody tr[data-ticker]{position:relative}
+  td[data-col="ticker"] .rc-watch{position:absolute;top:6px;right:6px}
   td[data-col="ticker"] .name{max-width:none}
   td[data-col="sector"]{grid-column:1/-1;color:var(--muted);font-size:var(--fs-xs);padding:0 0 var(--sp-2);
     border-bottom:1px solid var(--border);margin-bottom:var(--sp-1)}
@@ -940,10 +943,8 @@ def board_entries(totals: dict, meta: dict, enrichment: dict = None) -> tuple[li
         if len(s_chgs) >= 3 and s_chgs[-1] is not None and s_chgs[-2] is not None:
             accel = s_chgs[-1] - s_chgs[-2]
 
-        pct_out = None
+        pct_out, pct_note = _pct_out(last, enr)
         so = enr.get("shares_outstanding")
-        if so and last and last.get("shares"):
-            pct_out = last["shares"] / so * 100.0
 
         price_delta = None
         px = enr.get("price") or {}
@@ -961,7 +962,8 @@ def board_entries(totals: dict, meta: dict, enrichment: dict = None) -> tuple[li
             "ticker": t, "name": info.get("name", ""), "sector": _row_sector(info.get("sector")),
             "breaks": _breaks(enr.get("breaks"), quarters, settled_qs, factors, dict(zip(quarters, shares))),
             "shares": shares, "chgs": chgs, "last": last, "last_period": last_period,
-            "streak": streak, "accel": accel, "pct_out": pct_out,
+            "streak": streak, "accel": accel, "pct_out": pct_out, "pct_note": pct_note,
+            "pct_estimate": enr.get("shares_source") == "estimate",
             "price_delta": price_delta, "price": price,
             # Not shown since #732 (owner, 12 Nov 2026); kept on the entry for the result history only.
             "short_pct": enr.get("short_pct"), "short_pct_as_of": enr.get("short_pct_as_of"),
@@ -973,6 +975,41 @@ def board_entries(totals: dict, meta: dict, enrichment: dict = None) -> tuple[li
     order = max((i for i, q in enumerate(quarters) if q not in still_arriving), default=len(quarters) - 1)
     entries.sort(key=lambda e: (e["shares"][order] is None, -(e["shares"][order] or 0)))
     return quarters, entries
+
+
+#: 13F can count one block twice (a lent share by lender and borrower, a fund and its manager), so up to this a
+#: share over 100% is shown with a mark; above it the shares count or the CUSIP map is wrong (decision K).
+PCT_OUT_DOUBLE_MAX = 150.0
+
+
+def _pct_out(last: dict | None, enr: dict) -> tuple[float | None, str | None]:
+    """``(% Out, note)``: the newest settled quarter's 13F shares over the shared reader's shares outstanding
+    (#646). None with a note where there is no count, or where the share is over ``PCT_OUT_DOUBLE_MAX``."""
+    so = enr.get("shares_outstanding")
+    if not (last and last.get("shares")):
+        return None, None
+    if not so:
+        return None, enr.get("shares_note")
+    pct = last["shares"] / so * 100.0
+    if pct > PCT_OUT_DOUBLE_MAX:
+        return None, f"13F shares are {pct:,.0f}% of {so:,.0f} shares outstanding: shares count or CUSIP map wrong, check"
+    return pct, None
+
+
+def _pct_cell(e: dict, of: str | None):
+    """The ``% Out`` cell: ``≈`` before an estimate (market cap ÷ price), ``†`` after a share over 100% (13F double
+    counting), a dash with the reason where there is no number (decisions I and K)."""
+    pct = e["pct_out"]
+    if pct is None:
+        return _cell("—", None, "zero", e.get("pct_note") or of)
+    text = ("≈" if e.get("pct_estimate") else "") + _f(pct, 1, "%", False)
+    notes = [of] if of else []
+    if e.get("pct_estimate"):
+        notes.append("estimate: market cap ÷ price, no SEC shares count")
+    if pct > 100:
+        text += "†"
+        notes.append("over 100%: 13F can count one block twice (lent shares, a fund and its manager)")
+    return _cell(text, pct, "zero", "; ".join(notes) or None)
 
 
 def _val(v):
@@ -1029,7 +1066,7 @@ def _payload(quarters: list, entries: list, fields: dict | None = None) -> dict:
         # The snapshot is the last settled quarter's, which differs per row; each cell says which (#521).
         of = f"as of {_qlabel(e['last_period'])}" if e.get("last_period") else None
         cells.append(_cell(_fmt_money(last.get("value")), last.get("value"), "zero", of))
-        cells.append(_cell(_f(e["pct_out"], 1, "%", False), e["pct_out"], "zero", of))
+        cells.append(_pct_cell(e, of))
         cells.append(_cell(str(_num(last.get("holders"))), last.get("holders"), "zero", of))
         cells.append(_cell(new_exit or "—", new_exit_val, "zero", of))
         breadth = last.get("breadth")
@@ -1204,7 +1241,7 @@ def _render_page(quarters: list, entries: list, fields: list, kit_notice: str | 
 by the split factor of its quarter end, so a split is not read as buying (hover a cell for the count as filed).
 The board shows the last {WINDOW_QUARTERS} settled quarters; the chart shows every stored one.
 <b>Δ% vs prior</b> = QoQ change in shares, shown small under each quarter's count (click Δ% in the header to sort by it).
-<b>Value</b> = $ market value held. <b>% Out</b> = shares ÷ shares outstanding (newest stored).
+<b>Value</b> = $ market value held. <b>% Out</b> = shares ÷ shares outstanding (newest SEC cover count; ≈ = market cap ÷ price for one-class common; † = over 100%, 13F can count a block twice; — over 150% or no usable count).
 <b>New/Exit</b> = holders entered / exited vs prior quarter.
 <b>Breadth</b> = share of that quarter's 13F filers holding the name (holders ÷ filers), with the change in
 percentage points vs the name's own previous stored quarter, which is not necessarily the calendar quarter

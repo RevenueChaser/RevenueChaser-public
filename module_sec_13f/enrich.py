@@ -2,8 +2,9 @@
 
 Per 13F ticker (``load_inputs``), in the shape ``report.board_entries`` reads:
 
-Shares out and insider % read the old ``ownership_snapshot`` until #860 removed it; they come back with a new
-reader. So:
+- ``shares_outstanding``, ``shares_source``, ``shares_as_of``, ``shares_note``: the shared reader
+  (``core.ownership.shares_outstanding``, #646): the newest SEC cover count, else market cap ÷ price for one-class
+  common (``estimate``), else none with the reason in ``shares_note``. The board's ``% Out`` divides by it.
 
 - ``price``: ``{quarter_end: close}`` from D01 (``price_bars_daily``), nominal (splits applied by
   ``prices.apply_events``, as ``prices.daily_bars`` applies them): the last close on or before each quarter end, at
@@ -80,7 +81,10 @@ def load_inputs(totals: dict) -> dict[str, dict]:
     from RevenueChaser.module_sec_13f import engine
     tickers = [t for t in totals if t]
     quarters = sorted({q for periods in totals.values() for q in periods if q >= engine.START_QUARTER})
-    out: dict[str, dict] = {}   # shares out and insider % came from the old ownership_snapshot (#860)
+    out: dict[str, dict] = {}
+    for ticker, so in ownership.shares_outstanding(tickers).items():
+        out[ticker] = {"shares_outstanding": so["shares"], "shares_source": so["source"],
+                       "shares_as_of": so["as_of"], "shares_note": so["note"]}
     for ticker, px in quarter_end_closes(tickers, quarters).items():
         out.setdefault(ticker, {})["price"] = px
     wanted = {t: [q for q in periods if q >= engine.START_QUARTER] for t, periods in totals.items() if t}

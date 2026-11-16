@@ -159,3 +159,77 @@ def split_factors_13f(periods: dict) -> dict[str, dict[str, float]]:
         logger.warning("13F split factors unread, shares stay as filed: %s: %s", type(exc).__name__, exc)
         return {}
     return out
+
+
+#: A cover count further than this from market cap ÷ price (either way) is not trusted (decision K, 16 Nov 2026:
+#: HQ's cover says 1 share, GENI's is 26x too small).
+SHARES_DISAGREE = 3.0
+#: A cover count older than this is not used (decision K: 429 board tickers had a count from before 2026).
+SHARES_MAX_AGE_DAYS = 365
+#: Where market cap ÷ price may stand in for a missing count: plain one-class common (decision I, narrowed by K).
+#: An ADR's cap is of the ordinary shares while its price is the ADS's; a preferred, a unit or a warrant has no
+#: cap of its own; a second listed class makes the class cap a part of the issuer's.
+ESTIMATE_TYPES = ("common", "reit")
+
+
+def shares_outstanding(tickers, today: date | None = None) -> dict[str, dict]:
+    """``{ticker: {"shares", "as_of", "source", "note"}}``: the shares outstanding the 13F board's ``% Out`` and
+    Asymmetric Growth's institutional share divide by. The one reader of it (#646): both screens used to carry a
+    rule of their own.
+
+    - ``source`` ``cover``: the newest SEC cover count of the ticker's own class (``shares_class``), unless it is
+      over ``SHARES_MAX_AGE_DAYS`` old or differs over ``SHARES_DISAGREE`` x from market cap ÷ price.
+    - ``source`` ``estimate``: no usable count, and the ticker is one-class common or a REIT: the newest market cap
+      ÷ the newest close. The board marks it ``≈``.
+    - ``shares`` None: neither; ``note`` says why, so the cell can say it rather than show a bare dash.
+
+    Every ticker asked for has a row. No network; a store it cannot read gives no shares and a warning, never a
+    failed board.
+    """
+    from datetime import timedelta
+
+    from RevenueChaser.rcdata import read
+    wanted = sorted({str(t).strip().upper() for t in tickers if str(t or "").strip()})
+    out = {t: {"shares": None, "as_of": None, "source": None, "note": "no shares count and no market cap"}
+           for t in wanted}
+    if not wanted:
+        return out
+    today = today or date.today()
+    try:
+        market = read.latest_market(wanted)
+        ids = read.security_ids(wanted)
+        covers: dict[str, dict] = {}
+        for r in read.shares(set(ids.values()), measure="outstanding"):
+            if r.get("value") is not None and float(r["value"]) > 0:
+                covers[r["security_id"]] = r       # rows come oldest first: the newest wins
+        types = {r["ticker"]: r.get("security_type") for r in read.identity(wanted)}
+    except Exception as exc:  # noqa: BLE001 - no store is "no shares", never a failed board
+        logger.warning("shares outstanding unread, %% Out stays empty: %s: %s", type(exc).__name__, exc)
+        return out
+    for t in wanted:
+        m = market.get(t) or {}
+        cap, price = m.get("market_cap"), m.get("price")
+        est = cap / price if cap and price and cap > 0 and price > 0 else None
+        cover = covers.get(ids.get(t, ""))
+        if cover is not None:
+            n, as_of = float(cover["value"]), read._day(cover.get("as_of"))
+            if as_of is not None and as_of < today - timedelta(days=SHARES_MAX_AGE_DAYS):
+                out[t]["note"] = f"shares count of {as_of} is over a year old: check"
+                continue
+            if est is not None and max(n / est, est / n) > SHARES_DISAGREE:
+                out[t]["note"] = (f"shares count {n:,.0f} and market cap ÷ price {est:,.0f} differ over "
+                                  f"{SHARES_DISAGREE:g}x: check")
+                continue
+            out[t] = {"shares": n, "as_of": as_of, "source": "cover", "note": None}
+            continue
+        if est is None:
+            continue
+        issuer = m.get("issuer_market_cap")
+        one_class = not issuer or abs(issuer - cap) <= 0.01 * cap      # the issuer's cap is this class's own
+        if types.get(t) in ESTIMATE_TYPES and one_class:
+            out[t] = {"shares": est, "as_of": read._day(m.get("cap_session")), "source": "estimate", "note": None}
+        elif types.get(t) not in ESTIMATE_TYPES:
+            out[t]["note"] = f"no shares count; market cap ÷ price is not used for this type ({types.get(t) or 'untyped'})"
+        else:
+            out[t]["note"] = "no shares count; market cap ÷ price is not used: the issuer has another listed class"
+    return out
