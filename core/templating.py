@@ -30,13 +30,19 @@ def environment(directory: str | Path = TEMPLATES_DIR,
     False only for a template that deliberately composes pre-rendered HTML
     fragments (what the existing report builders do).
     """
-    return Environment(
+    from markupsafe import Markup
+    from RevenueChaser.core.reporting_common import THEME_CSS, THEME_JS
+    env = Environment(
         loader=FileSystemLoader(str(directory)),
         autoescape=autoescape,
         auto_reload=True,
         trim_blocks=True,
         lstrip_blocks=True,
     )
+    # The shared design system's palette and theme script (#184), so a small page such as empty_board.html.j2
+    # follows the shell's theme switch; both are code constants, not data, hence Markup.
+    env.globals.update(theme_css=Markup(THEME_CSS), theme_js=Markup(THEME_JS))
+    return env
 
 
 def render(name: str, directory: str | Path = TEMPLATES_DIR,
