@@ -182,6 +182,24 @@ def issuer(ticker: str) -> str:
     return SAME_ISSUER.get(t, t)
 
 
+def share_class_groups(rows: list[dict]) -> dict[str, list[str]]:
+    """``{kept ticker: [its other share classes]}`` for every CIK with two or more tickers in ``rows`` (#408).
+
+    Two share classes of one issuer (GOOG/GOOGL, FOX/FOXA) carry the same filing and the same profile, so a board
+    keeps one ticker per CIK: the class ``SAME_ISSUER`` names, else the first alphabetically. Value Chain and
+    Relatedness both read this one rule."""
+    by_cik: dict[str, set[str]] = {}
+    for r in rows:
+        if r.get("cik"):
+            by_cik.setdefault(str(r["cik"]).lstrip("0"), set()).add(r["ticker"])
+    groups: dict[str, list[str]] = {}
+    for tickers in by_cik.values():
+        if len(tickers) > 1:
+            keep = min(tickers, key=lambda t: (issuer(t) != t.upper(), t))
+            groups[keep] = sorted(tickers - {keep})
+    return groups
+
+
 def _pattern() -> "re.Pattern[str]":
     alts = sorted(ALIASES, key=len, reverse=True)
     body = "|".join(re.escape(a).replace(r"\ ", r"\s+") for a in alts)

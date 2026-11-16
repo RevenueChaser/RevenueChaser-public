@@ -150,7 +150,7 @@ hash. The pure logic is `RCFilters.core`, unit-tested under node (`core/tests/te
 | Co-movement | yes (on it) | Knobs (Remove market / Horizon / Detail) stay above the bar. |
 | Implied Probability | yes (on it, C1b) | No extra search row. Combobox outside (`allowFree`). |
 | Value Chain | yes (on it, C1b) | Search + count row above the bar; combobox outside. |
-| Relatedness | yes (on it, C1b) | Search + count row above the bar; combobox outside. Theme = the kit's facet over the pinned run's `theme_ids` (the local coarse-label select is gone). |
+| Relatedness | yes (on it, C1b) | Search + count row above the bar; combobox outside. No Theme facet until the SEC service owns the profiles (#894; avo, 16 Nov 2026, decision E): `facets` is index, mc, gics, earnings. |
 | Asymmetric Growth Hunter | yes (on it, C1c) | Keep **Points**. |
 | Swing Screener | yes (on it, C1c) | Method toggles (card 5); **Multiplier** until then. |
 | Fundamental Analysis | yes (on it, C1c) | Rule toggles (card 3); **Gate** until then. |
@@ -535,6 +535,6 @@ HPE stays with DELL at every n, including after removing SPY. IBM’s 1d 0.18 is
 3. Shared `reporting_common` combobox + filter chrome.
 4. **Co-movement redesign:** Fetch SPY/DIA/QQQ; Remove market + Horizon 1/3/5/10d; cluster residuals; sort by tightness; new card UX (§8b).
 5. Value Chain: filters → Theme → ticker combobox.
-6. Relatedness: same chrome; one “Most related to” panel; peer row = cosine + **1/3/5/10 move + beyond SPY + cluster chips at (n, benchmark)**.
+6. Relatedness: same chrome; one “Most related to” panel; peer row = cosine + **1/3/5/10 move + beyond SPY** (cluster chips hidden until #894).
 7. Implied Probability: same chrome; retire `#oipd-ticker`.
 8. Sector Rotation: Theme pick maps to existing ETFs; RRG behaviour unchanged.
