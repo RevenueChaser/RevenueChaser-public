@@ -98,7 +98,8 @@ def _shares_and_floats(raw=None, skip=(), extra=None):
               "2026-07-17"),
              ("1652044", "0001652044-26-000071", "10-Q", "goog:CapitalClassCMember", "GOOG", 5_450_000_000,
               "2026-07-17")]
-    base.upsert_partition([{"cik": c, "accession": a, "form": f, "filed": date(2026, 10, 1), "period_end": None,
+    # Filed after every cover day: a count dated after its filing is no count (prices plan P2).
+    base.upsert_partition([{"cik": c, "accession": a, "form": f, "filed": date(2026, 10, 20), "period_end": None,
                             "class_member": m, "symbol": s, "shares": n, "as_of": date.fromisoformat(d),
                             "source_as_of": date(2026, 10, 27), "fetched_at": 1.0, "run_id": "cover"}
                            for c, a, f, m, s, n, d in cover], cover_shares.SCHEMA, cover_shares.KEY,
@@ -500,7 +501,7 @@ def test_compustats_dividend_alpaca_has_a_day_apart_is_applied_once():
                      wrds_history.DIVID + wrds_history.PROVENANCE, wrds_history.partition_path("sec_divid", 2026))
     base.run_request({"dataset": actions.NAME, "params": {"as_of": "2026-10-27"}})
     row = base.run_request({"dataset": bars.NAME, "params": {"as_of": "2026-10-27"}})
-    divs = _q("SELECT action_id, ex_date, amount FROM corporate_action WHERE security_id = ? "
+    divs = _q("SELECT ex_date, amount FROM corporate_action WHERE security_id = ? "
               "AND action = 'cash_dividend' AND applied", [AAPL])
     assert [(d["ex_date"], d["amount"]) for d in divs] == [(date(2026, 10, 23), 0.26)]
     assert "1 Compustat cash dividend(s) left out" in row["note"]
