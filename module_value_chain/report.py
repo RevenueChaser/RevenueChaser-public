@@ -419,9 +419,8 @@ function init(){
   </div>
   {provider_health_html(payload.get("provider_health"))}
   {help_block}
-  
-  {body}
   {_status_notes(payload)}
+  {body}
 </div>
 <script>{FILTERS_JS}</script>
 {watchlist_html("value_chain")}
