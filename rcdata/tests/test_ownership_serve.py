@@ -1005,3 +1005,16 @@ def test_each_filers_style_over_the_settled_quarters(monkeypatch, http_mock):
     period, quarters, names, turnover, top10, held = rows["2000002"]
     assert (period, quarters, names, top10) == (Q3, 2, 6, 1.0)
     assert 0 < turnover < 1 and 0 < held < 1
+
+
+def test_each_filers_largest_names_per_quarter_and_the_rest_add_up_to_100(store, monkeypatch):
+    """#928 (avo, 16 Nov 2026, Q16): one investor's holdings over time. Filer 1000004 holds a mapped ticker and two
+    CUSIPs no source names; with a top of one name the rest is one row with no ticker."""
+    monkeypatch.setattr(serve, "FILER_TOP", 1)
+    _serve()
+    rows = _served("SELECT cik, period, ticker, rank, round(weight, 6) FROM sec13f_filer_holdings "
+                   "WHERE cik = '1000001' AND period = ? ORDER BY rank NULLS LAST", Q3)
+    assert [r[2:4] for r in rows] == [("MSFT", 1), (None, None)]
+    assert _served("SELECT cik, period, round(sum(weight), 6) FROM sec13f_filer_holdings GROUP BY ALL "
+                   "HAVING round(sum(weight), 6) <> 100") == []
+    assert _served("SELECT max(rank) FROM sec13f_filer_holdings") == [(1,)]

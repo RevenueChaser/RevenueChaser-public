@@ -189,10 +189,16 @@ TYPE_FLOW = [("tag", "TEXT"), ("period", "DATE"), ("bought", "DOUBLE"), ("sold",
 STYLE = [("cik", "TEXT"), ("period", "DATE"), ("filer_name", "TEXT"), ("quarters", "INTEGER"), ("names", "INTEGER"),
          ("value", "DOUBLE"), ("turnover", "DOUBLE"), ("top10_share", "DOUBLE"), ("held_share", "DOUBLE")]
 STYLE_QUARTERS = 8
+# #928 (avo, 16 Nov 2026, Q16 of the 13F plan): each filer's largest names per quarter, for one investor's holdings
+# over time; the rest of its book is one row with no ticker, so a quarter's weights add up to 100.
+FILER_HOLDINGS = [("cik", "TEXT"), ("period", "DATE"), ("ticker", "TEXT"), ("shares", "DOUBLE"), ("value", "DOUBLE"),
+                  ("weight", "DOUBLE"), ("rank", "INTEGER")]
+FILER_TOP = 25
 STARTED, STOPPED = "started", "stopped"
 SCHEMAS = {"sec13f_cusip_map": MAP, "sec13f_filer_period": FILER, "sec13f_ticker_period": TICKER,
            "sec13f_periods": PERIODS, "sec13f_filer_breaks": BREAKS, "sec13f_type_holdings": TYPES,
-           "sec13f_type_sector": TYPE_SECTOR, "sec13f_type_flow": TYPE_FLOW, "sec13f_filer_style": STYLE}
+           "sec13f_type_sector": TYPE_SECTOR, "sec13f_type_flow": TYPE_FLOW, "sec13f_filer_style": STYLE,
+           "sec13f_filer_holdings": FILER_HOLDINGS}
 TABLES = tuple(SCHEMAS)
 # The old sec13f_totals entry's keys, in its order (module_sec_13f/engine.py compute_period_metrics).
 METRICS = ("shares", "value", "holders", "top10_pct", "hhi", "new_holders", "exited_holders", "buy_flow",
@@ -639,6 +645,7 @@ class OwnershipServe:
             counts["sec13f_type_sector"] = self._type_sector(con, snap)
             counts["sec13f_type_flow"] = self._type_flow(con, snap)
             counts["sec13f_filer_style"] = self._style(con, ctx.as_of or self.default_as_of())
+            counts["sec13f_filer_holdings"] = self._filer_holdings(con)
             found += self._issues(con, ctx.as_of or self.default_as_of())
             summary["rescaled"] = common.count(con, "sec13f_filer_period", "value_factor <> 1")
             summary["px_fixed"] = common.count(con, "_pxfix")
@@ -1096,6 +1103,29 @@ class OwnershipServe:
                 WHERE status = 'unparsed' GROUP BY index_day ORDER BY index_day""").fetchall():
             found.append(("filings_unparsed", str(day), f"{n} 13F filing(s) unparsed, e.g. {acc}: {why}"))
         return found
+
+    @staticmethod
+    def _filer_holdings(con: duckdb.DuckDBPyConnection) -> int:
+        """``sec13f_filer_holdings``: per filer and quarter its ``FILER_TOP`` largest named tickers by value (a
+        ticker's CUSIPs summed), each with its ``weight`` in percent of the filer's whole long-equity book, and one
+        row with no ticker for the rest of the book (unnamed CUSIPs included), so the weights add up to 100 (#928)."""
+        common.create_table(con, "sec13f_filer_holdings", FILER_HOLDINGS)
+        _by_period(con, _periods_of(con, "_held"), "sec13f_filer_holdings", f"""
+            WITH v AS (SELECT h.cik, h.period, m.ticker, sum(h.shares) AS shares, sum(h.value) AS value
+                       FROM _held h LEFT JOIN sec13f_cusip_map m ON m.cusip = h.cusip AND m.period = h.period
+                       WHERE h.period = ? AND h.value > 0 GROUP BY ALL),
+                 b AS (SELECT cik, period, sum(value) AS book FROM v GROUP BY ALL),
+                 r AS (SELECT *, row_number() OVER (PARTITION BY cik ORDER BY value DESC, ticker) AS rk
+                       FROM v WHERE ticker IS NOT NULL),
+                 top AS (SELECT * FROM r WHERE rk <= {FILER_TOP}),
+                 rest AS (SELECT b.cik, b.period, b.book - coalesce(sum(top.value), 0) AS value, b.book
+                          FROM b LEFT JOIN top ON top.cik = b.cik GROUP BY b.cik, b.period, b.book)
+            SELECT top.cik, top.period, top.ticker, top.shares, top.value, top.value * 100 / b.book, top.rk
+            FROM top JOIN b ON b.cik = top.cik
+            UNION ALL
+            SELECT cik, period, NULL, NULL, value, value * 100 / book, NULL FROM rest WHERE value > book * 1e-9
+            ORDER BY 1, 2, 7 NULLS LAST""")
+        return common.count(con, "sec13f_filer_holdings")
 
     @staticmethod
     def _style(con: duckdb.DuckDBPyConnection, as_of: date) -> int:

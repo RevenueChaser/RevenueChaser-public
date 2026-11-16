@@ -1718,7 +1718,7 @@ carried a `succeeded_by`, while HPS Investment Partners → BlackRock (effective
 `predecessors` alone.
 
 **Served tables** (`ownership` serving schema version `5`; 5 since #253 and #788: split-adjusted flows,
-`sec13f_type_sector`, `sec13f_type_flow`, `sec13f_filer_style` (#779) and `etf_holdings_nport` (#354); 4 since #760: `sec13f_type_holdings`; 3 since #775:
+`sec13f_type_sector`, `sec13f_type_flow`, `sec13f_filer_style` (#779), `sec13f_filer_holdings` (#928) and `etf_holdings_nport` (#354); 4 since #760: `sec13f_type_holdings`; 3 since #775:
 `uw_institution` and `uw_institution_succession`; 2 since #732: the continuing-filer flows and `sec13f_filer_breaks`):
 
 | Table | Rows |
@@ -1739,6 +1739,7 @@ carried a `succeeded_by`, while HPS Investment Partners → BlackRock (effective
 | `sec13f_type_sector` | one per investor type, period and sector: the value the type's filers hold in that sector (the spine's `sector` of each ticker, today's for every quarter; `Unclassified` where the spine has none), its `share` (%) of the type's mapped portfolio, `tickers`, `filers` and the `snapshot_date` its types come from (#788) |
 | `sec13f_type_flow` | one per investor type and period: dollars `bought` and `sold` and the `net`, per filer and ticker the split-adjusted change in shares against the quarter before at the quarter's 13F price (value over shares), over the type's `filers` that reported both quarters, as the ticker flows are (#788) |
 | `sec13f_filer_style` | one per filer of the newest settled quarter holding 5 or more names, over that quarter and the 7 before it: `quarters` reported, `names` and `value` now, `turnover` (median over its quarter pairs of half the summed change of each name's weight in its book), `top10_share`, and `held_share` (its value in names held every quarter it reported). Data only until the single-investor view (#928) (#779) |
+| `sec13f_filer_holdings` | one per filer, period and one of its 25 largest named tickers by value (a ticker's CUSIPs summed): `shares`, `value`, `weight` in percent of the filer's whole long-equity book and `rank`; plus one row with no ticker for the rest of the book, unnamed CUSIPs included, so a quarter's weights add up to 100. One investor's holdings over time (#928) |
 | `etf_holdings_nport` | one per spine ETF (`etf.series_id`, no ETN) and position of its newest Form N-PORT report in the newest typed quarter, only positions whose CUSIP is one spine ticker's current CUSIP: `etf_ticker`, `ticker`, `cusip`, `balance`, `currency_value`, `pct_of_net_assets`, `asset_cat`, the report's date and accession (`sec/nport`, #354 C2) |
 | `uw_institution` | one per snapshot day and CIK: `name`, `short_name`, `tags` (sorted), `is_hedge_fund`, the report and filing dates, total and share value, `succeeded_by_cik` with its `succeeded_by_report_date`, and `current_holder_cik` |
 | `uw_institution_succession` | one per snapshot day, predecessor CIK, successor CIK and `effective_report_date`, with both names and `origin` (`predecessors`, `succeeded_by` or `both`) |

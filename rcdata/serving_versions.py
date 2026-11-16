@@ -29,7 +29,8 @@ SERVING_SCHEMA_VERSION = {"market": 4, "spine": 6, "ownership": 5}
 #              all three, one whole ownership build (owner's decision E of 16 Nov 2026). Before it went live the
 #              same bump took ``sec13f_filer_style`` (each filer's turnover, top-ten share and names held, #779) and
 #              ``etf_holdings_nport``, the spine ETFs' holdings from Form N-PORT (#354 C2): one build for all (avo,
-#              16 Nov 2026, Q2 and Q11 of the 13F plan).
+#              16 Nov 2026, Q2 and Q11 of the 13F plan), and ``sec13f_filer_holdings``, each filer's largest names
+#              per quarter (#928, Q16).
 # spine 2: ``fund``, the SEC fund file's share classes and the ETF rule (``build/spine/sec_tickers_mf.py``).
 # spine 3: ``etf_holdings``, the rotation board's ETFs read whole (``build/spine/etf_holdings.py``).
 # spine 4: ``etf``, the ETF universe from Alpha Vantage and N-CEN (``build/spine/etf.py``, #346).
