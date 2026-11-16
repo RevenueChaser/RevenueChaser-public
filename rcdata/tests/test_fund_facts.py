@@ -629,18 +629,37 @@ def test_the_statement_older_than_120_days_check(sec):
     assert not [k for k in found if k[1] == "789019"]
 
 
-def test_an_annual_only_filer_past_400_days_is_a_build_issue(sec):
-    # TM's real shape on 2026-10-28: us-gaap statements up to the 20-F for March 2020, IFRS facts after its switch.
-    tm = fx.tm_facts()
+def _tm_with_old_us_gaap(ifrs: bool) -> dict:
+    """TM's real shape on 2026-10-28: us-gaap statements up to the 20-F for March 2020, and (``ifrs``) the IFRS
+    facts after its switch."""
+    tm = fx.tm_facts() if ifrs else {"cik": 1094517, "entityName": "TOYOTA MOTOR CORP", "facts": {}}
     tm["facts"]["us-gaap"] = {"Revenues": {"units": {"USD": [
         fx._fact(275_000, "2020-03-31", "0001193125-20-170000", "2020-06-24", "20-F", "FY", 2020, "2019-04-01")]}}}
-    fx.sec_routes(sec, {"789019": fx.msft_facts(with_new_quarter=True), "46619": fx.hei_facts(), "1094517": tm})
+    return tm
+
+
+def test_an_annual_only_filer_past_400_days_is_a_build_issue(sec):
+    fx.sec_routes(sec, {"789019": fx.msft_facts(with_new_quarter=True), "46619": fx.hei_facts(),
+                        "1094517": _tm_with_old_us_gaap(ifrs=False)})
     check = fx.run(companyfacts.NAME, mode="backfill", to="2026-10-28")
     assert "annual-only filers 0 of 1 within 400 days" in check["note"]
     _, issues = ops.open_issues(tables.NAME, limit=50)
     found = {(i["kind"], i["key"]): i["detail"] for i in issues}
     assert "newest statement filed 2020-06-24" in found[("annual_statement_older_than_400_days", "1094517")]
     assert ("no_us_gaap_facts", "1094517") not in found
+
+
+def test_a_mover_is_read_from_ifrs_full_not_from_its_stale_us_gaap_years_105(sec):
+    # Step 4 (avo, 16 Nov 2026): TM's newer IFRS year wins over its 2020 us-gaap one. Its JPY has no rate here,
+    # so it serves nothing and says it is an IFRS filer -- never the stale 2020 year.
+    fx.sec_routes(sec, {"789019": fx.msft_facts(with_new_quarter=True), "46619": fx.hei_facts(),
+                        "1094517": _tm_with_old_us_gaap(ifrs=True)})
+    fx.run(companyfacts.NAME, mode="backfill", to="2026-10-28")
+    _, issues = ops.open_issues(tables.NAME, limit=50)
+    found = {(i["kind"], i["key"]) for i in issues}
+    assert ("no_us_gaap_facts", "1094517") in found
+    assert ("annual_statement_older_than_400_days", "1094517") not in found
+    assert "1094517" not in {r[0] for r in fx.q("SELECT DISTINCT cik FROM fundamental_fact")}
 
 
 def test_the_views_keep_the_old_shapes(sec):
