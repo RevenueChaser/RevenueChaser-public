@@ -61,7 +61,7 @@ def test_the_board_lists_the_layers_filings_without_text(layer):
 
 
 def test_a_corpus_row_carries_the_period_its_filing_reports_on(layer):
-    """Plan v31 1h: the corpus row had ``form``, ``filed`` and ``accession`` but no period, which G-E's
+    """Plan v31 step 1(h): the corpus row had ``form``, ``filed`` and ``accession`` but no period, which G-E's
     "as stated in the FY<year> <form>" needs. It is the form row's ``report_date``."""
     (row,) = engine._board_filings_rows()
     assert row["period_end"] == "2025-06-30"

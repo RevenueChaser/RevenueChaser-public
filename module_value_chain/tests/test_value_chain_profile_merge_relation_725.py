@@ -29,20 +29,22 @@ def test_an_xbrl_customer_survives_a_profile_that_calls_the_same_company_a_compe
     assert got[("INTC", "competitor")]["source"] == "profile"
 
 
-def test_the_profile_still_wins_and_takes_the_share_in_the_same_relation():
+def test_for_a_pair_both_state_the_xbrl_row_is_kept_and_no_share_is_copied():
+    """Plan v31 step 1(b): the filer's tagged line wins over the model's reading of the same pair, and the profile row is
+    not given the XBRL share (it used to take it, so a served share could sit under a quote that never stated it)."""
     profile = {"customers": [{"name": "Intel", "share": None, "quote": "Intel is our largest"}]}
     got = _by_key(engine.merge_profile(engine.filing_edges("AMKR", "", "2026-02-01", _XBRL_CUSTOMERS),
                                        engine.profile_edges("AMKR", profile, "2026-02-01")))
     assert set(got) == {("INTC", "customer")}
-    assert (got[("INTC", "customer")]["source"], got[("INTC", "customer")]["share_pct"]) == ("profile", 20.0)
+    assert (got[("INTC", "customer")]["source"], got[("INTC", "customer")]["share_pct"]) == ("xbrl", 20.0)
 
 
-def test_each_relation_of_one_company_takes_its_own_stated_share():
-    """The profile names Intel as a customer and as a supplier; only the customer side has an XBRL share."""
+def test_a_relation_only_the_profile_states_keeps_its_own_share():
+    """The profile names Intel as a customer and as a supplier; the XBRL line covers the customer side only."""
     profile = {"customers": [{"name": "Intel", "share": None, "quote": "q1"}],
                "suppliers": [{"name": "Intel", "share": None, "quote": "q2"}]}
     got = _by_key(engine.merge_profile(engine.filing_edges("AMKR", "", "2026-02-01", _XBRL_CUSTOMERS),
                                        engine.profile_edges("AMKR", profile, "2026-02-01")))
     assert set(got) == {("INTC", "customer"), ("INTC", "supplier")}
-    assert got[("INTC", "customer")]["share_pct"] == 20.0
-    assert got[("INTC", "supplier")]["share_pct"] is None
+    assert (got[("INTC", "customer")]["source"], got[("INTC", "customer")]["share_pct"]) == ("xbrl", 20.0)
+    assert (got[("INTC", "supplier")]["source"], got[("INTC", "supplier")]["share_pct"]) == ("profile", None)

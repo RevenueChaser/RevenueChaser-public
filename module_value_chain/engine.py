@@ -103,7 +103,7 @@ def _layer_filings(tickers: list[str] | None = None, text: bool = False):
                    "accession": d.get("accession"), "primary_doc": d.get("document"),
                    "quality": d.get("quality"),
                    # The period the filing reports on (``filing_section.report_date``, the SEC's reportDate): G-E's "FY<year>",
-                   # plan v31 1h.
+                   # plan v31 step 1(h).
                    "period_end": str(d.get("report_date") or "")}
             if text:
                 row["item_text"] = d.get("text") or ""
@@ -460,27 +460,21 @@ def _party_relation(edge: dict) -> tuple[str, str]:
 
 
 def merge_profile(regex_edges: list[dict], prof_edges: list[dict]) -> list[dict]:
-    """One filer's edges: the profile's first; a filing edge (XBRL since #748) only for a
-    (counterparty, relation) pair the profile does not name (#410: "prefers the profile row for a (filer,
-    counterparty) pair", narrowed to the store's own key by #725). A profile edge with no share takes the XBRL
-    share stated for the same company in the same relation.
+    """One filer's edges, one row per (counterparty, relation) (#725): for a pair both sources state, the filing's
+    XBRL row, which the filer tagged; for any other pair, the edge of whichever source states it (plan v31 step 1(b)).
+    No share is copied from one row to another: a row's share is the one its own source stated, so a served share
+    always has the quote or the tagged line it came from.
 
-    A display-only ``other`` edge (written by the keyword scan until #748; stored rows may still hold some) is the one exception to
-    the per-relation key: it states no relation at all, so a profile that names that company in *any* relation
-    already says more, and the ``other`` row would only double the company on the board.
+    A display-only ``other`` edge (written by the keyword scan until #748; stored rows may still hold some) is the
+    one exception to the per-relation key: it states no relation at all, so a profile that names that company in
+    *any* relation already says more, and the ``other`` row would only double the company on the board.
     """
     if not prof_edges:
         return regex_edges
-    by_party, parties = {}, set()
-    for e in prof_edges:
-        by_party.setdefault(_party_relation(e), e)
-        parties.add(_counterparty(e))
-    for e in regex_edges:
-        p = by_party.get(_party_relation(e))
-        if p is not None and p["share_pct"] is None and e.get("share_pct") is not None:
-            p["share_pct"] = e["share_pct"]
-    return prof_edges + [e for e in regex_edges if _party_relation(e) not in by_party
-                         and not (e["relation"] == "other" and _counterparty(e) in parties)]
+    filed = {_party_relation(e) for e in regex_edges if e["relation"] != "other"}
+    parties = {_counterparty(e) for e in prof_edges}
+    return ([e for e in prof_edges if _party_relation(e) not in filed]
+            + [e for e in regex_edges if not (e["relation"] == "other" and _counterparty(e) in parties)])
 
 
 def _stored_profiles() -> dict[str, dict]:
