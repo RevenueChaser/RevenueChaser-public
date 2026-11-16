@@ -27,6 +27,9 @@ from RevenueChaser.rcdata import read
 
 BOARD = "leaps"          # the X-RC-Panel value of its watch-list pair, as before (#730)
 MIN_SESSIONS = 20
+#: False until #746 step 6 shows the opened share says something about the following weeks; only then may the
+#: board rank by it.
+TESTED = False
 PAGE_ROWS = 100
 # UW's issue_type for an index option; these roots are index products whatever the field says.
 INDEX_ROOTS = frozenset({"SPX", "SPXW", "RUT", "RUTW", "VIX", "VIXW", "NDX", "NDXP", "XSP", "DJX", "OEX", "XEO"})
@@ -95,11 +98,14 @@ def payload(session_date=None) -> dict | None:
     days = [s["session_date"] for s in sessions]
     chosen = session_date if session_date in days else days[0]
     info = sessions[days.index(chosen)]
+    measured = sum(1 for s in sessions if s["matched"])
     rows = sorted((row_of(r) for r in read.far_contracts(chosen)),
                   key=lambda x: (-(x["prem"] or 0), x["t"], x["sym"]))
     return {
-        "session": chosen.isoformat(), "stored": len(sessions), "min_sessions": MIN_SESSIONS,
-        "collecting": len(sessions) < MIN_SESSIONS,
+        # A session counts once its open interest is read: a sweep alone (pending) or a read that all went stale
+        # holds no opened share.
+        "session": chosen.isoformat(), "stored": measured, "min_sessions": MIN_SESSIONS,
+        "collecting": measured < MIN_SESSIONS, "tested": TESTED,
         "sessions": [{"date": s["session_date"].isoformat(), "contracts": s["contracts"]} for s in sessions],
         "counts": {"contracts": info["contracts"], "names": info["tickers"], "matched": info["matched"],
                    "pending": info["pending"], "stale": info["stale"] + info["missing"]},
@@ -333,8 +339,9 @@ def render_html(data: dict) -> str:
                               (c["matched"], "matched", ""), (c["pending"], "waiting for open interest", ""),
                               (c["stale"], "stale or missing", ' class="warn"' if c["stale"] else ""))
         if label != "waiting for open interest" or n)
-    # While collecting nothing is ranked by the measure itself, so the opened-share sort comes with the 20th session.
-    share_sort = "" if data["collecting"] else '<option value="share">Sort: opened share</option>'
+    # Nothing is ranked by the measure itself until it is collected and tested (#746 step 6).
+    share_sort = ('<option value="share">Sort: opened share</option>'
+                  if not data["collecting"] and data.get("tested") else "")
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>LEAPS</title><script>{THEME_JS}</script><style>{THEME_CSS}{_CSS}</style></head>

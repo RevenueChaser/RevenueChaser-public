@@ -208,11 +208,10 @@ class _LeapsCountingUW(_CountingUW):
 class TestLeapsIsReadOnly:
     """C26 (#383, LP-D): the Earnings scoring pool never fetches or writes LEAPS.
 
-    A cache miss is answered "N/A" locally — no UW call, no lazy store write.
+    Every card is "N/A" (#746: no LEAPS label until the opened share is tested) — no UW call, no store write.
     """
 
-    def test_a_cache_miss_makes_no_uw_call_and_stays_n_a(self, monkeypatch):
-        monkeypatch.setattr(pl, "leaps_load_cache", lambda t: {})
+    def test_the_pool_makes_no_leaps_uw_call_and_stays_n_a(self):
         ts = _tickers(8)
         uw = _LeapsCountingUW()
         _, _, cards = _run(ts, {t: _strong() for t in ts}, uw=uw)

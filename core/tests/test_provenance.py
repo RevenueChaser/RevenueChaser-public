@@ -45,13 +45,16 @@ class TestResolvers:
 
 
 
-    def test_leaps_prefers_prints_and_falls_back_to_the_cache(self, rawstore_tmp_db):
-        rawstore.write_rows("leaps_cache", [
-            {"ticker": "NOK", "payload": {"latest": {"as_of": "2026-08-27"}, "history": []}}])
-        assert provenance.data_as_of("module_leaps") == "2026-08-27"
-        rawstore.write_rows("leaps_flow_prints", [
-            {"id": "p1", "ticker": "AAPL", "discovered_at": "2026-09-02"}])
-        assert provenance.data_as_of("module_leaps") == "2026-09-02"
+    def test_leaps_is_the_newest_far_contract_session_not_the_old_tables(self, rawstore_tmp_db, monkeypatch):
+        """#746: the chip reads the table the board reads; the old scan's two tables are never asked."""
+        from datetime import date
+        from RevenueChaser.rcdata import read
+        rawstore.write_rows("leaps_flow_prints", [{"id": "p1", "ticker": "AAPL", "discovered_at": "2026-09-02"}])
+        monkeypatch.setattr(read, "far_contract_sessions", lambda: [])
+        assert provenance.data_as_of("module_leaps") is None
+        monkeypatch.setattr(read, "far_contract_sessions", lambda: [{"session_date": date(2026, 11, 13)},
+                                                                   {"session_date": date(2026, 11, 12)}])
+        assert provenance.data_as_of("module_leaps") == "2026-11-13"
 
 
     def test_an_unknown_module_reports_nothing(self, rawstore_tmp_db):

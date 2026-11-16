@@ -260,6 +260,9 @@ _NEEDS = (
          ask_param="tickers", normalize=TICKER, providers=("uw", "ibkr")),
     Need("options.screener", "option_screener", "option_screener_daily", "session_date", "ticker", 1,
          providers=("uw",)),
+    # #746: the market's far-dated contracts and their next-session open interest; the LEAPS board's one read.
+    Need("options.far_contracts", "far_contracts", "option_far_contract", "session_date", "ticker", 1,
+         providers=("uw",)),
     Need("earnings.options", "earnings_options", "er_options", "session_date", "ticker", 1,
          ask_param="tickers", normalize=TICKER, providers=("uw",)),
     # ── The prices store's remaining reads ──────────────────────────────────────────────────────────────────────

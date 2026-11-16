@@ -47,15 +47,6 @@ def test_chain_meta_writer_stamps_fetched_at(rawstore_tmp_db):
     _recent(row["fetched_at"], before)
 
 
-def test_leaps_cache_writer_stamps_fetched_at(rawstore_tmp_db):
-    from RevenueChaser.module_leaps.engine import save_cache
-    before = time.time()
-    save_cache("aaa", {"label": "Quiet"})
-    row = rawstore.get("leaps_cache", "AAA")
-    _recent(row["fetched_at"], before)
-    assert row["payload"]["latest"]["label"] == "Quiet"
-
-
 def test_rotation_holdings_writer_stamps_fetched_at(rawstore_tmp_db):
     from RevenueChaser.module_sector_rotation.store import save_holdings_cache
     before = time.time()

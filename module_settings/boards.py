@@ -224,6 +224,14 @@ def _spx_latest() -> dict | None:
     return spx_store.latest()
 
 
+def _leaps_latest() -> dict | None:
+    """LEAPS has no artifact (#746): the newest session of ``option_far_contract`` is its as-of, none yet is
+    "not rendered"."""
+    from RevenueChaser.rcdata import read
+    sessions = read.far_contract_sessions()
+    return {"as_of": str(sessions[0]["session_date"])} if sessions else None
+
+
 def _board(key: str, label: str, tables: list[str], payload_path, *,
            funnel: str = NO_FUNNEL, price_basis: str = "", params=None,
            settings=None, ops_tables: list[str] = ()) -> dict:
@@ -310,11 +318,9 @@ BOARD_INPUTS: list[dict] = [
     _board("module_sec_13f", "SEC 13F",
            ["sec13f_totals", "equity_universe"],
            lambda: _html("sec_13f")),
-    # The scan is switched off (issue 730), so no job writes these two tables any more; the card stays so
-    # the page still accounts for them instead of leaving them unclaimed.
-    _board("module_leaps", "LEAPS",
-           ["leaps_flow_prints", "leaps_cache"],
-           lambda: _html("leaps"), ops_tables=["watchlist_stock"]),
+    # #746: the board reads only ``option_far_contract`` through its need (``options.far_contracts``), rendered in
+    # memory on every load, so its as-of is the newest stored session, not a file.
+    _board("module_leaps", "LEAPS", [], _leaps_latest, ops_tables=["watchlist_stock"]),
 ]
 
 

@@ -22,7 +22,6 @@ from RevenueChaser.core.calendar import now_ny, today_ny
 from RevenueChaser.core.reaction_anchor import reaction_anchor, session_closes, timing_kind
 from RevenueChaser.module_earnings_radar.models import TradeCard, RuleResult
 from RevenueChaser.module_sector_rotation.engine import get_quadrant_for_ticker
-from RevenueChaser.module_leaps.engine import load_cache as leaps_load_cache
 from RevenueChaser.rcdata import opens  # #566: pooled reads count for this run
 
 logger = logging.getLogger(__name__)
@@ -824,10 +823,9 @@ class EarningsPipeline:
         inst_prints, inst_span = _flow_window(flow_recent_raw)
         gex_struct = _gex_structure_label(spot, gex, gex_profile)
 
-        # LEAPS is read-only here (C26, #383, LP-D): the label comes from leaps_cache, whose one
-        # writer is the LEAPS Fetch. No UW call, no store write, no lock on the scoring pool.
-        payload = leaps_load_cache(ticker) or {}
-        leaps = payload.get("latest") or {}
+        # No LEAPS label (#746): the old scan that wrote one is off and its cache is gone, and the opened share
+        # carries no label until #746 step 6 tests it. The card keeps the fields empty, so the row stays hidden.
+        leaps = {}
 
         inst_call_premium = float(flow.get("inst_call", 0) or 0)
         inst_put_premium = float(flow.get("inst_put", 0) or 0)

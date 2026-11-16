@@ -160,10 +160,29 @@ def test_the_tab_never_serves_the_old_board_left_on_disk(stored, tmp_path, monke
     assert "ACCUMULATION RADAR" not in body and "Collecting" in body
 
 
-def test_after_twenty_sessions_the_board_stops_collecting_and_offers_the_share_sort(stored):
-    data = dict(board.payload(), stored=20, collecting=False)
+def test_after_twenty_tested_sessions_the_board_stops_collecting_and_offers_the_share_sort(stored):
+    data = dict(board.payload(), stored=20, collecting=False, tested=True)
     page = board.render_html(data)
     assert "Collecting" not in page and "20 sessions stored." in page and "Sort: opened share" in page
+
+
+def test_twenty_sessions_not_yet_tested_offer_no_share_sort(stored):
+    """The measure is collected, not yet tested (#746 step 6): nothing is ranked by it."""
+    assert board.TESTED is False and board.payload()["tested"] is False
+    page = board.render_html(dict(board.payload(), stored=20, collecting=False))
+    assert "Collecting" not in page and "Sort: opened share" not in page
+
+
+def test_a_session_with_no_open_interest_read_does_not_count_as_stored(monkeypatch):
+    """A sweep waiting for its open interest, or a read that all went stale, holds no opened share."""
+    from datetime import date as d
+    sessions = [dict(session_date=d(2026, 11, 17), contracts=3, tickers=2, matched=0, pending=3, stale=0, missing=0),
+                dict(session_date=d(2026, 11, 16), contracts=3, tickers=2, matched=0, pending=0, stale=3, missing=0),
+                dict(session_date=d(2026, 11, 13), contracts=3, tickers=2, matched=2, pending=0, stale=1, missing=0)]
+    monkeypatch.setattr(board.read, "far_contract_sessions", lambda: sessions)
+    monkeypatch.setattr(board.read, "far_contracts", lambda *_a, **_k: [])
+    data = board.payload()
+    assert (data["stored"], data["collecting"], len(data["sessions"])) == (1, True, 3)
 
 
 def test_the_counts_say_how_many_wait_for_their_open_interest(stored):

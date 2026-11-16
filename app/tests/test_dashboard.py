@@ -653,9 +653,9 @@ class TestRefreshReadsStoreFetchReadsNetwork:
     def test_the_leaps_tab_serves_the_no_data_page(self, rawstore_tmp_db, tmp_path, monkeypatch):
         """Nothing in ``option_far_contract`` yet (#746): the no-data page. No key, no network, no accumulation wording."""
         from RevenueChaser.core import rawstore
-        from RevenueChaser.module_leaps.engine import save_cache
         rawstore.save_watchlist({"AAPL"})
-        save_cache("AAPL", {"ticker": "AAPL", "label": "Accumulating", "score": 50, "as_of": "2026-09-01"})
+        rawstore.write_rows("leaps_cache", [{"ticker": "AAPL", "payload": {
+            "latest": {"ticker": "AAPL", "label": "Accumulating", "score": 50, "as_of": "2026-09-01"}, "history": []}}])
         monkeypatch.setattr(dashboard, "UWClient", lambda: _NoKey())
 
         body = dashboard.app.test_client().get("/view/module_leaps").get_data(as_text=True)

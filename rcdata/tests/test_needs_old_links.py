@@ -18,7 +18,7 @@ from RevenueChaser.rcdata.needs import boards
 
 #: ``boards.UNDECLARED`` on 11 Nov 2026. Remove a board here when it migrates; never add one.
 UNDECLARED_CEILING = frozenset({
-    "module_asymmetric_growth", "module_financials", "module_fundamentals", "module_leaps",
+    "module_asymmetric_growth", "module_financials", "module_fundamentals",
     "module_news", "module_oipd", "module_relatedness", "module_sec_13f", "module_sector_rotation",
     "module_swing_potential", "module_uw_interaction", "module_value_chain",
 })
@@ -30,7 +30,6 @@ PROVIDER_FILES = {
     "module_financials": {"engines/comps_engine.py", "engines/credit_capacity_engine.py", "engines/dcf_engine.py",
                           "engines/quick_remarks_engine.py", "engines/three_statement_engine.py", "run.py"},
     "module_fundamentals": {"pipeline.py"},
-    "module_leaps": {"scan.py"},
     "module_news": {"headlines.py", "tape.py"},
     "module_oipd": {"engine.py"},
     "module_relatedness": {"__main__.py", "compare.py", "engine.py", "naming.py", "profiles.py", "store.py"},

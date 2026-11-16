@@ -321,38 +321,6 @@ def run_earnings_range(uw: UWClient, start: date | None = None, end: date | None
     return EARNINGS_LATEST
 
 
-def run_leaps_latest(uw: UWClient) -> Path:
-    from RevenueChaser.module_leaps.scan import scan_leaps
-    from RevenueChaser.module_leaps.report import render_leaps_dashboard
-    notes: list[str] = []
-    watched, unwatched = scan_leaps(uw, warnings=notes)
-    health = _uw_health(uw)
-    render_leaps_dashboard(watched, unwatched, watchlist=_load_watchlist(),
-                           filename=str(LEAPS_LATEST.relative_to(OUTPUT_DIR)),
-                           provider_health=health, notice=" ".join(notes) or None)
-    if not watched and not unwatched:
-        # The empty board is written above; say why on the job too (O13).
-        raise JobMessage(_provider_gap_text(uw)
-                         or "No far-dated flow prints in the lookback window and no watchlist "
-                            "footprint stored — the board shows its empty state.")
-    return LEAPS_LATEST
-
-
-def run_leaps_cached(uw=None) -> Path:
-    """Model-only LEAPS render from the store — no network.
-
-    Reads the last cached footprint per watchlist ticker (``leaps_cache``) and
-    the stored far-dated prints (``leaps_flow_prints``), then renders the board.
-    The dashboard's Refresh uses this; the live UW re-scan is ``run_leaps_latest``.
-    """
-    from RevenueChaser.module_leaps.scan import scan_leaps_cached
-    from RevenueChaser.module_leaps.report import render_leaps_dashboard
-    watched, unwatched = scan_leaps_cached()
-    render_leaps_dashboard(watched, unwatched, watchlist=_load_watchlist(),
-                           filename=str(LEAPS_LATEST.relative_to(OUTPUT_DIR)))
-    return LEAPS_LATEST
-
-
 def run_rotation_latest(uw: UWClient, benchmark: str = "SPY", start: str = None,
                         end: str = None) -> Path:
     from RevenueChaser.module_sector_rotation.engine import (

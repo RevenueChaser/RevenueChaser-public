@@ -1,9 +1,6 @@
-"""C26 (#383, LP-D): Earnings reads the LEAPS label read-only.
+"""Earnings and LEAPS (C26, #383; #746): the card carries no LEAPS label while the opened share is untested.
 
-The lazy ``get_or_fetch_leaps`` path and ``LEAPS_LAZY_FETCH`` are gone, so
-``leaps_cache`` has one writer, the LEAPS Fetch; the card shows the label's
-``as_of`` and its age. Offline: fake UW, ``rawstore_tmp_db`` keeps LEAPS reads off
-the real store.
+The drawer still draws a label's ``as_of`` and age when a card has one, so those stay tested. Offline: fake UW.
 """
 from datetime import date
 
@@ -50,62 +47,19 @@ def _pipeline(uw):
     return p
 
 
-def test_the_latest_snapshot_is_read_without_a_fetch(monkeypatch):
+def test_a_card_carries_no_leaps_label_and_makes_no_leaps_call():
+    """#746: Earnings reads no LEAPS label until the opened share is tested; nothing is fetched or guessed."""
     uw = _LeapsUW()
-    monkeypatch.setattr(pl, "leaps_load_cache", lambda t: {
-        "latest": {"label": "Accumulating", "as_of": "2026-10-10", "score": 70},
-        "history": [{"as_of": "2026-07-10", "label": "Quiet"}]})
-    card = _pipeline(uw)._score("AAPL")
-    assert card.leaps_label == "Accumulating"
-    assert card.leaps_as_of == "2026-10-10"
-    assert card.leaps_score == 70
-    assert uw.leaps_calls == []          # never a UW LEAPS call on the Earnings path
-
-
-def test_a_real_cache_payload_scores_the_same_label():
-    """The contract L3 keeps (#377 L3): ``save_cache``'s payload is what Earnings reads, unchanged."""
-    from RevenueChaser.module_leaps import engine
-    engine.save_cache("AAPL", {"ticker": "AAPL", "label": "Accumulating", "as_of": "2026-10-10", "score": 70,
-                               "far_call_oi": 1000, "far_put_oi": 100, "far_call_share": 0.9091,
-                               "far_oi_growth_1d_pct": 12.5, "far_oi_growth_q_pct": None, "iv_rank": 55.0})
-    uw = _LeapsUW()
-    card = _pipeline(uw)._score("AAPL")
-    assert (card.leaps_label, card.leaps_as_of, card.leaps_score) == ("Accumulating", "2026-10-10", 70)
-    assert uw.leaps_calls == []
-
-
-def test_no_cache_reads_n_a_and_writes_nothing(monkeypatch):
-    uw = _LeapsUW()
-    monkeypatch.setattr(pl, "leaps_load_cache", lambda t: None)
-    from RevenueChaser.module_leaps import engine as leaps_engine
-    monkeypatch.setattr(leaps_engine, "save_cache",
-                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("save_cache called")))
     card = _pipeline(uw)._score("AAPL")
     assert card.leaps_label == "N/A" and card.leaps_as_of == ""
+    assert card.leaps_score is None
+    assert card.leaps_far_call_oi is None and card.leaps_far_put_oi is None     # unknown, never a 0 (#730 item 3)
     assert uw.leaps_calls == []
 
 
-def test_a_missing_footprint_leaves_the_score_and_the_oi_counts_unknown(monkeypatch):
-    """#730 item 3: no cache row means nothing was measured, so the card keeps None -- never a 0.
-
-    The board hides the LEAPS row while the label is N/A, so the 0 was invisible there and still went into
-    ``earnings_cards_history`` as if a scan had counted it.
-    """
-    uw = _LeapsUW()
-    monkeypatch.setattr(pl, "leaps_load_cache", lambda t: None)
-    card = _pipeline(uw)._score("AAPL")
-    assert card.leaps_score is None
-    assert card.leaps_far_call_oi is None and card.leaps_far_put_oi is None
-
-
-def test_a_footprint_without_counts_keeps_them_unknown_and_keeps_a_real_zero(monkeypatch):
-    """A payload that carries the label but no counts: unknown stays unknown, a measured 0 stays 0."""
-    uw = _LeapsUW()
-    monkeypatch.setattr(pl, "leaps_load_cache", lambda t: {
-        "latest": {"label": "Quiet", "as_of": "2026-10-10", "score": 0, "far_put_oi": 0}})
-    card = _pipeline(uw)._score("AAPL")
-    assert card.leaps_score == 0 and card.leaps_far_put_oi == 0     # measured zeros
-    assert card.leaps_far_call_oi is None                           # never served
+def test_the_pipeline_no_longer_imports_the_old_leaps_engine():
+    import inspect
+    assert "module_leaps" not in inspect.getsource(pl)
 
 
 def test_the_drawer_carries_the_as_of_and_age():
