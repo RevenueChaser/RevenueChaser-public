@@ -31,7 +31,7 @@ from __future__ import annotations
 import logging
 from datetime import date, timedelta
 
-from RevenueChaser.core import calendar
+from RevenueChaser.core import calendar, ownership
 from RevenueChaser.core.rotation_reference import MACRO_SERIES
 from RevenueChaser.rcdata import read
 from RevenueChaser.rcdata.needs.catalog import FromCatalog
@@ -298,21 +298,12 @@ def short_interest(tickers, today: date | None = None) -> tuple[dict[str, dict],
     if not names:
         return {}, _missing("the short interest", None, "no ticker asked", source=SHORT_SOURCE, status=_short_status())
     try:
-        rows = read.finra_short_interest(names, start=oldest, end=today)
+        best = ownership.finra_short(names, oldest, today)   # newest settlement per name, the 13F board's reader too
     except Exception as exc:                                  # noqa: BLE001 - a store error is "not stored"
         logger.warning("earnings ownership-store read failed: %s", exc)
         return {}, _missing("the short interest", None, f"read failed: {type(exc).__name__}", source=SHORT_SOURCE,
                             status=_short_status())
     floats, fees = _extra(_floats, names, "float"), _extra(_fees, names, "borrow fee")
-    best: dict[str, dict] = {}
-    for r in rows:
-        ticker = str(r.get("ticker") or "").upper()
-        day = _day(r.get("settlement_date"))
-        if not ticker or day is None:
-            continue
-        rank = (day, r.get("symbol") == ticker)       # the newest settlement; on a tie, the ticker's own symbol
-        if ticker not in best or rank > best[ticker]["_rank"]:
-            best[ticker] = {**r, "_rank": rank}
     out: dict[str, dict] = {}
     for ticker, r in best.items():
         short, dtc = r.get("current_short"), r.get("days_to_cover")
@@ -320,7 +311,7 @@ def short_interest(tickers, today: date | None = None) -> tuple[dict[str, dict],
         si = 100.0 * short / base if short is not None and base else None
         out[ticker] = {"si_pct": si, "si_basis": basis if si is not None else None,
                        "days_to_cover": None if dtc is None else float(dtc), "borrow_fee": fees.get(ticker),
-                       "settlement_date": r["_rank"][0].isoformat()}
+                       "settlement_date": r["settlement_date"].isoformat()}
     if not out:
         return {}, _missing("the short interest", None, f"no settlement inside {MAX_AGE_DAYS['short_interest']} days",
                             source=SHORT_SOURCE, status=_short_status())
