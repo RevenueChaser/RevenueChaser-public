@@ -547,8 +547,8 @@ function makeRow(r){
     line1.appendChild(spT);
     who.appendChild(line1);
     tk.appendChild(who);
-    if(r[4] && r[4].length){
-      BREAKS[r[0]] = r[4];
+    if(r[4] && r[4].length){ BREAKS[r[0]] = r[4]; }
+    if(r[5] && r[4] && r[4].length){
       var mk = document.createElement('button');
       mk.type = 'button';
       mk.className = 'break-mark';
@@ -769,8 +769,38 @@ def _breaks(raw: list, quarters: list, settled: set, factors: dict, shares_by_q:
     return [by_q[q] for q in sorted(by_q, reverse=True)]
 
 
+def _moved(ticker: str, raw: list, quarters: list, factors: dict) -> dict[str, tuple[float, float]]:
+    """``{quarter: (started, stopped)}``: the shares of the filers that started reporting the ticker in the quarter
+    (held then, on that quarter's basis) and of those that stopped (held the quarter before, on its basis)."""
+    out: dict[str, list[float]] = {}
+    for b in raw or []:
+        q, kind = b.get("period"), b.get("kind")
+        if q not in quarters or kind not in ("started", "stopped") or not b.get("shares"):
+            continue
+        i = quarters.index(q)
+        if kind == "stopped" and i == 0:
+            continue
+        basis = q if kind == "started" else quarters[i - 1]
+        out.setdefault(q, [0.0, 0.0])[0 if kind == "started" else 1] += _on_todays_basis(float(b["shares"]),
+                                                                                       factors.get(basis))
+    return {q: (v[0], v[1]) for q, v in out.items()}
+
+
+def _break_mark(raw: list, newest: str | None, factors: dict, shares_by_q: dict) -> bool:
+    """The ⚠ beside the ticker (decision H, avo 16 Nov 2026 "Tamam yuzde 5 olsun"): only when the filers that started
+    or stopped reporting it in its newest settled quarter hold at least ``BREAK_MARK_NEWEST`` of its 13F shares
+    then. Older breaks stay in the row detail and the break list."""
+    total = shares_by_q.get(newest) if newest else None
+    if not total:
+        return False
+    moved = sum(_on_todays_basis(float(b.get("shares") or 0), factors.get(newest)) for b in raw or []
+                if b.get("period") == newest and b.get("kind") in ("started", "stopped"))
+    return moved >= BREAK_MARK_NEWEST * total
+
+
+BREAK_MARK_NEWEST = 0.05
 BREAK_NAMES = 3     # the largest filers named per line of the break list
-BREAK_MARK_SHARE = 0.01   # a quarter's breaks are marked from 1% of the ticker's 13F shares (owner, 12 Nov 2026)
+BREAK_MARK_SHARE = 0.01   # a quarter's breaks are listed from 1% of the ticker's 13F shares (owner, 12 Nov 2026)
 
 
 def _break_lines(e: dict) -> list[list]:
@@ -949,6 +979,8 @@ def board_entries(totals: dict, meta: dict, enrichment: dict = None) -> tuple[li
     entries = []
     for t, periods in totals.items():
         factors = (enrichment.get(t) or {}).get("split_factor") or {}
+        moved = _moved(t, (enrichment.get(t) or {}).get("breaks"), quarters, factors)
+        flows = []          # per quarter: the change in shares of the filers that reported in both quarters
         filed = []
         shares = []
         chgs = []
@@ -965,8 +997,15 @@ def board_entries(totals: dict, meta: dict, enrichment: dict = None) -> tuple[li
             # comparison is a measurement of how much of it has been filed (#514).
             # No change against a quarter still arriving, in either direction: it holds a part of itself. The
             # "out of" half is a tautology while the set is a suffix; it is kept as cheap defence.
-            chgs.append(None if i == 0 or q in still_arriving or quarters[i - 1] in still_arriving
-                        else _pct(s, prev))
+            # Over the filers that reported in both quarters (#732 decision B): this quarter less the filers that
+            # started reporting, against the quarter before less the filers that stopped, both on today's basis.
+            cont = None
+            if not (i == 0 or q in still_arriving or quarters[i - 1] in still_arriving) and s is not None \
+                    and prev is not None:
+                started, stopped = moved.get(q, (0.0, 0.0))
+                cont = (s - started, prev - stopped)
+            chgs.append(_pct(*cont) if cont else None)
+            flows.append(cont[0] - cont[1] if cont else None)
             prev = s
             if cell and q not in still_arriving:
                 # The snapshot block (holders, breadth, value, the flows) is the last *settled* quarter's, for the
@@ -980,12 +1019,10 @@ def board_entries(totals: dict, meta: dict, enrichment: dict = None) -> tuple[li
         # Over the settled quarters only: a quarter still arriving is below the one before it by construction, so
         # it would end every streak and poison the acceleration (#514).
         kept = [i for i, q in enumerate(quarters) if q not in still_arriving]
-        s_shares = [shares[i] for i in kept]
         s_chgs = [chgs[i] for i in kept]
-        streak = 0
-        for i in range(len(s_shares) - 1, 0, -1):
-            cur, pr = s_shares[i], s_shares[i - 1]
-            if cur is not None and pr is not None and cur > pr:
+        streak = 0              # quarters in a row whose continuing filers added shares (#732 decision B)
+        for c in reversed(s_chgs[1:]):
+            if c is not None and c > 0:
                 streak += 1
             else:
                 break
@@ -995,6 +1032,7 @@ def board_entries(totals: dict, meta: dict, enrichment: dict = None) -> tuple[li
 
         pct_out, pct_note = _pct_out(last, enr)
         so = enr.get("shares_outstanding")
+        netflow = flows[quarters.index(last_period)] if last_period else None
 
         price_delta = None
         px = enr.get("price") or {}
@@ -1011,6 +1049,8 @@ def board_entries(totals: dict, meta: dict, enrichment: dict = None) -> tuple[li
         entries.append({
             "ticker": t, "name": info.get("name", ""), "sector": _row_sector(info.get("sector")),
             "breaks": _breaks(enr.get("breaks"), quarters, settled_qs, factors, dict(zip(quarters, shares))),
+            "break_mark": _break_mark(enr.get("breaks"), last_period, factors, dict(zip(quarters, shares))),
+            "netflow": netflow, "netflow_pct": netflow / so * 100.0 if netflow is not None and so else None,
             "shares": shares, "chgs": chgs, "last": last, "last_period": last_period,
             "streak": streak, "accel": accel, "pct_out": pct_out, "pct_note": pct_note,
             "pct_estimate": enr.get("shares_source") == "estimate",
@@ -1102,9 +1142,7 @@ def _payload(quarters: list, entries: list, fields: dict | None = None) -> dict:
     rows = []
     for e in entries:
         last = e["last"] or {}
-        netflow = None
-        if last.get("buy_flow") is not None:
-            netflow = (last.get("buy_flow") or 0) - (last.get("sell_flow") or 0)
+        netflow, netflow_pct = e.get("netflow"), e.get("netflow_pct")
         new_exit = None
         if last.get("new_holders") is not None:
             new_exit = f'+{last["new_holders"]}/−{last["exited_holders"]}'
@@ -1141,13 +1179,17 @@ def _payload(quarters: list, entries: list, fields: dict | None = None) -> dict:
         cells.append(_cell(breadth_text, breadth, "zero", of))
         cells.append(_cell(_f(last.get("top10_pct"), 1, "%", False), last.get("top10_pct"), "zero", of))
         cells.append(_cell(str(_num(last.get("hhi"))), last.get("hhi"), "zero", of))
-        cells.append(_cell(_fmt_shares(netflow), netflow, _sign_class(netflow), of))
+        if netflow_pct is not None:     # as % of shares outstanding (decision B); shares where there is no count
+            cells.append(_cell(_f(netflow_pct, 2), netflow_pct, _sign_class(netflow_pct),
+                               f"{of}; {netflow:+,.0f} shares" if of else f"{netflow:+,.0f} shares"))
+        else:
+            cells.append(_cell(_fmt_shares(netflow), netflow, _sign_class(netflow), of))
         cells.append(_cell(str(e["streak"]) if e["streak"] is not None else "—", e["streak"], "zero"))
         cells.append(_cell(_f(e["accel"], 1, "pp"), e["accel"], _sign_class(e["accel"])))
         cells.append(_cell(_f(e["price_delta"]), e["price_delta"], _sign_class(e["price_delta"])))
         cells.append(_short_cell(e))
         breaks = [[_qlabel(b["period"]), _break_lines(b)] for b in e.get("breaks") or []]
-        rows.append([e["ticker"], e["name"], _sector(e, by_field), cells, breaks])
+        rows.append([e["ticker"], e["name"], _sector(e, by_field), cells, breaks, bool(e.get("break_mark"))])
     return {"cols": cols, "rows": rows, "fields": by_field}
 
 
@@ -1304,7 +1346,8 @@ def _render_page(quarters: list, entries: list, fields: list, kit_notice: str | 
 <b>Total ownership</b> = shares held by every 13F filer, on <b>today's share basis</b>: a quarter's count is divided
 by the split factor of its quarter end, so a split is not read as buying (hover a cell for the count as filed).
 The board shows the last {WINDOW_QUARTERS} settled quarters; the chart shows every stored one.
-<b>Δ% vs prior</b> = QoQ change in shares, shown small under each quarter's count (click Δ% in the header to sort by it).
+<b>Δ% vs prior</b> = QoQ change in the shares of the filers that reported in both quarters, shown small under each
+quarter's count (click Δ% in the header to sort by it); the counts above it are every filer's.
 <b>Value</b> = $ market value held. <b>% Out</b> = shares ÷ shares outstanding (newest SEC cover count; ≈ = market cap ÷ price for one-class common; † = over 100%, 13F can count a block twice; — over 150% or no usable count).
 <b>New/Exit</b> = holders entered / exited vs prior quarter.
 <b>Breadth</b> = share of that quarter's 13F filers holding the name (holders ÷ filers), with the change in
@@ -1312,13 +1355,15 @@ percentage points vs the name's own previous stored quarter, which is not necess
 before it; as of quarter-end, filed up to 45 days later.
 <b>Top10%/HHI</b> = concentration among the 13F filers' own holdings (the top 10 filers' share of the 13F
 total, and its Herfindahl index), not of all shares outstanding.
-<b>Net flow</b> = shares bought − sold (holder-level deltas). <b>Streak</b> = consecutive quarters of net accumulation.
+<b>Net flow</b> = the change in shares of the filers that reported in both quarters, as % of shares outstanding
+(in shares where there is no count). <b>Streak</b> = consecutive quarters with a positive Δ%.
 <b>Accel</b> = Δ%(latest) − Δ%(prior). <b>Short%</b> = FINRA short interest (twice a month, newest settlement)
 ÷ the same shares outstanding as % Out; the cell names its settlement day.
 {arriving_legend}
 <b>Price Δ</b> = close change from the first to the last quarter end shown, on the same share basis.
 <b>Flows</b> (Δ%, Net flow, New/Exit) count only the filers that reported in both quarters; a filer that started or
-stopped filing is left out, and the <b class="warn-mark">⚠</b> beside a ticker lists those breaks by quarter.
+stopped filing is left out. The <b class="warn-mark">⚠</b> beside a ticker says those filers held at least 5% of its
+13F shares in its newest settled quarter; the row's detail lists every quarter's breaks.
 A quarter is <b>closed</b> once the SEC publishes the data set that covers its filing deadline; a closed quarter
 does not change.
 </div>
