@@ -139,6 +139,9 @@ SCALE_STEPS = (1000.0, 1_000_000.0)      # a filer off by one or two steps of 1,
 # A filer 10 or 100 times too high (#934: ALPS 2015 Q3, Thornburg 2025 Q1 at exactly 10). Down only: a ratio under 1/3
 # can as well be share counts too high, which a larger VALUE would make worse (Castleview 2021 Q4).
 DOWN_STEPS = (10.0, 100.0)
+# A holding read at its consensus price may exceed its filing's cover total by a filer's thousands (too few names for
+# the median test) but not by more (#932).
+COVER_ROOM = 1.0 / SCALE_BAND[0]
 ROW_BAND = 300.0                         # one holding this far from its consensus price is read at that price (#780)
 NEIGHBOUR_DAYS = 100                     # a consensus price is checked against the quarters on either side (#780)
 ROWS_TOP = 50
@@ -694,8 +697,8 @@ class OwnershipServe:
             SELECT cik, period, names, ratio, {_factor_sql()} AS factor FROM _ratio""")
         # One holding far from its price inside a filer whose median is clean (#780: 2018 Q3, a few lines of one
         # filer worth $258T), or in a filer with too few names for the median test, is read at the consensus price;
-        # never at more than its filing's own cover total, so a share count that is itself wrong is not multiplied
-        # up (#932: 836 trillion shares put 2017 Q3 at $15,848T).
+        # never at more than ``COVER_ROOM`` times its filing's own cover total, so a share count that is itself wrong
+        # is not multiplied up (#932: 836 trillion shares put 2017 Q3 at $15,848T, a million times its cover).
         _by_period(con, periods, "_rowfix", f"""
             SELECT l.rowid, l.cik, l.period, l.cusip, min(l.filer_name), l.value_usd * coalesce(x.factor, 1.0),
                    l.shares * p.px, coalesce(x.factor, 1.0)
@@ -704,7 +707,7 @@ class OwnershipServe:
             WHERE l.period = ? AND l.shares > 0 AND l.value_usd > 0
               AND (l.value_usd * coalesce(x.factor, 1.0) > {ROW_BAND!r} * l.shares * p.px
                    OR l.value_usd * coalesce(x.factor, 1.0) * {ROW_BAND!r} < l.shares * p.px)
-              AND (l.cover_value IS NULL OR l.shares * p.px <= l.cover_value * coalesce(x.factor, 1.0))
+              AND (l.cover_value IS NULL OR l.shares * p.px <= l.cover_value * coalesce(x.factor, 1.0) * {COVER_ROOM!r})
             GROUP BY ALL""",
                    [("rid", "BIGINT"), ("cik", "TEXT"), ("period", "DATE"), ("cusip", "TEXT"),
                     ("filer_name", "TEXT"), ("old_value", "DOUBLE"), ("new_value", "DOUBLE"), ("factor", "DOUBLE")])
