@@ -10,8 +10,9 @@ by any writer and fewer than :data:`MAX_ATTEMPTS` attempts: a new text (its hash
 a new filing that carries the same text is not, and a second writer is not asked for a text one writer answered.
 
 **No mass re-read without the owner's word** (avo, 15 Nov 2026 18:53; :func:`stale_reason`). A run asks by itself
-only a company's new filing and a retry, at most :data:`DAY_CAP` companies a day; past the cap it stops and goes on
-the next day (avo, 15 Nov 23:48). Everything else that is stale (a changed prompt, a re-cut text, a question's
+only a company's new filing and a retry. A DeepSeek question is asked at most :data:`DAY_CAP` companies a day; past
+the cap it stops and goes on the next day (avo, 15 Nov 23:48). EVREN has no quota, so an EVREN question has no day
+cap and reads every new filing as it comes (avo, 16 Nov 2026 09:38). Everything else that is stale (a changed prompt, a re-cut text, a question's
 first pass) waits for a request that says ``"reread": true`` (the CLI's ``--reread``), which asks all of it.
 
 **The attempts rule** (from ``module_relatedness.engine``): an unusable reply is counted on its key, three of them
@@ -57,9 +58,10 @@ RETRY_AFTER_S = 30 * 86400.0
 #: Why a company is stale. A run asks the first two by itself; the other two need the request's ``reread``.
 NEW_FILING, RETRY, CHANGED, FIRST = "new_filing", "retry", "changed", "first"
 AUTOMATIC = (NEW_FILING, RETRY)
-#: Companies one question is asked in a day without ``reread``. Provisional: the number is the owner's, to be set
-#: from the count of annual reports filed per week (plan 2026-11-15_1722 §12, measurement M8).
+#: Companies one DeepSeek question is asked in a day without ``reread`` (a paid call is capped in its own code).
+#: Provisional: the number is the owner's. An EVREN question has none: EVREN has no quota (avo, 16 Nov 2026).
 DAY_CAP = int(os.environ.get("RC_SEC_READS_DAY_CAP", "200"))
+UNCAPPED = ("evren",)
 
 KEY = ["question", "prompt_version", "cik", "accession", "document", "input_hash", "provider", "model"]
 #: ``fetched_at`` is when the answer was asked; ``answer`` is the parsed JSON, ``raw`` the replies (JSON list, one
@@ -157,7 +159,7 @@ def _plan(q: Question, ctx: base.RunContext) -> tuple[list[asker.Job], dict[tupl
     if waiting:
         ctx.notes.append(f"{q.id}: {sum(waiting.values())} wait for the owner's word, a request with reread ("
                          + ", ".join(f"{w} {n}" for w, n in sorted(waiting.items())) + ")")
-    if not ctx.reread:
+    if not ctx.reread and q.provider not in UNCAPPED:
         day = _now() - 86400.0
         today = len({r["cik"] for rows in by_cik.values() for r in rows if (r["fetched_at"] or 0) > day})
         room = max(0, DAY_CAP - today)

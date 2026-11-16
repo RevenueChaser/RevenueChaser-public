@@ -2091,9 +2091,9 @@ whoever started the run (the lock `sec_reads_ask`); a question is finished and i
 planned, so registration order is run order. A run whose first five replies are all unusable stops as failed and
 stores none of them; a key at three attempts is tried once more after 30 days; and nothing is asked while the
 live table holds more `ok` answers than the Parquet tree (a lost tree must not start a full re-read). **No mass
-re-read without the owner's word:** a run asks by itself only a company's new filing and a retry, at most 200
-companies a day per question (`RC_SEC_READS_DAY_CAP`; provisional until the owner sets it), and goes on the next
-day; a changed prompt, a re-cut text and a question's first pass wait for a request that says `"reread": true` (the
+re-read without the owner's word:** a run asks by itself only a company's new filing and a retry; a DeepSeek question at most
+200 companies a day (`RC_SEC_READS_DAY_CAP`; provisional until the owner sets it), going on the next day, and an
+EVREN question with no day cap, because EVREN has no quota; a changed prompt, a re-cut text and a question's first pass wait for a request that says `"reread": true` (the
 CLI's `--reread`). The run writes and converts every answer inside the ask lock and hands the builder no raw file.
 A question's
 input may carry its own ready user messages (`Input.messages`) when a plain 60,000-character slice is not what

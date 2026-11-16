@@ -465,10 +465,10 @@ def test_a_run_without_the_word_stops_at_the_day_cap_and_goes_on_the_next_day(ht
     many = {str(1000 + i): f"company {i}" for i in range(6)}
     http_mock.add("/chat/completions", chat('{"products": ["x"]}'))
     monkeypatch.setattr(reads, "DAY_CAP", 3)
-    question(ciks=("1000",), text=many)
+    question(ciks=("1000",), text=many, provider="deepseek")
     run()                                                   # one company asked today, by hand
     questions.QUESTIONS.clear()
-    question(ciks=tuple(many), text=many)
+    question(ciks=tuple(many), text=many, provider="deepseek")
     check = run(reread=False)
     # New companies are asked by themselves once the question has answers; the cap counts today's, whoever asked.
     assert len(http_mock.requests) == 3
@@ -477,6 +477,18 @@ def test_a_run_without_the_word_stops_at_the_day_cap_and_goes_on_the_next_day(ht
     monkeypatch.setattr(reads, "_now", lambda: time.time() + 2 * 86400)
     run(reread=False)
     assert len(http_mock.requests) == 6
+
+
+def test_an_evren_question_has_no_day_cap(http_mock, monkeypatch):
+    many = {str(1000 + i): f"company {i}" for i in range(6)}
+    http_mock.add("/chat/completions", chat('{"products": ["x"]}'))
+    monkeypatch.setattr(reads, "DAY_CAP", 3)
+    question(ciks=("1000",), text=many)
+    run()
+    questions.QUESTIONS.clear()
+    question(ciks=tuple(many), text=many)                   # five new companies in one day: EVREN has no quota
+    check = run(reread=False)
+    assert len(http_mock.requests) == 6 and "day cap" not in check["note"]
 
 
 def test_a_usable_reply_after_the_unusable_stop_does_not_store_the_held_back_ones(http_mock, monkeypatch):
