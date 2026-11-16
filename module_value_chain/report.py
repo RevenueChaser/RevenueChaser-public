@@ -92,7 +92,8 @@ def _graphs(payload: dict, tickers: list[str]) -> dict:
 
 
 def _precision_tile(rep: dict | None) -> str:
-    """Measured precision of supplier/customer links on the hand-labelled fixture."""
+    """Measured precision of supplier/customer links on the census labels (plan v31 section 6): the share labelled
+    right, and the Wilson 95% lower bound the gate reads."""
     rep = rep or {}
     p = rep.get("precision")
     cover = ""
@@ -102,11 +103,10 @@ def _precision_tile(rep: dict | None) -> str:
         return ('<div class="stat"><div class="v">—</div><div class="l">Precision</div>'
                 f'<div class="d">not measured{cover}</div></div>')
     n = rep.get("n") or 0
-    # Below the minimum sample the gate is not judged (#118 C27).
-    small = rep.get("status") == "insufficient sample" or n < precision.MIN_LABELED_N
-    cls = "stat" if rep.get("passes") and not small else "stat warn"
-    gate = f"insufficient sample (min {precision.MIN_LABELED_N})" if small else "gate 70%"
-    detail = esc(f"hand-checked n={n} · {gate}{cover}")
+    cls = "stat" if rep.get("passes") else "stat warn"
+    lower = rep.get("lower_bound")
+    bound = f"lower bound {round(lower * 100)}%" if lower is not None else "no lower bound"
+    detail = esc(f"hand-checked n={n} · {bound} · gate 70%{cover}")
     return (f'<div class="{cls}"><div class="v">{round(p * 100)}%</div>'
             f'<div class="l">Precision</div>'
             f'<div class="d">{detail}</div></div>')
