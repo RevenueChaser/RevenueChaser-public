@@ -495,3 +495,15 @@ def test_the_ibkr_login_check_limit_is_the_installed_unit_s_five_minutes():
     assert A.entry("RC-IBKR-Login-Check").settings.limit_minutes == 5
 
 
+
+
+def test_the_sec_reads_nightly_check_is_a_job_of_its_own():
+    """avo, 16 Nov 2026: the SEC daily check shows as a job on the Settings page and on the Grafana Jobs board."""
+    e = A.entry("RC-SEC-Read")
+    assert list(e.args) == ["-m", "RevenueChaser.rcdata.build", "run", "--once", "--dataset", "sec/reads"]
+    assert (e.time, e.days, e.hourly, e.after) == ("01:10", (), False, None)
+    assert e.unit == A.SEC_READ_UNIT == "life-rc-sec-read"
+    assert e.schedule == "daily 01:10 (local)" and e.settings.limit_minutes == 90
+    assert A.on_calendar(e).endswith("*-*-* 01:10:00")
+    # five minutes after the hourly builder pass, so the two do not race for the builder lock every night
+    assert A.entry("RC-Build").time[-2:] == "05"

@@ -130,6 +130,9 @@ BUILDER_UNIT = "life-rc-builder"
 # The weekly backup (avo, 8 Nov 2026): one job, every step, onto the HDD, the newest 4 copies kept. Its unit pair is
 # installed from the home-server repository, not from the Settings page (one name, one timer).
 BACKUP_WEEKLY_UNIT = "life-rc-backup-weekly"
+# The SEC reads' nightly check (avo, 16 Nov 2026: "grafana jobs ve rc settings de job olarak gozukmeli"): a job of its
+# own, so it has a row on the Settings page and on the Grafana Jobs board. Its unit pair is in the home-server repository.
+SEC_READ_UNIT = "life-rc-sec-read"
 
 REGISTRY: tuple[AutomationEntry, ...] = (
     AutomationEntry(
@@ -184,6 +187,20 @@ REGISTRY: tuple[AutomationEntry, ...] = (
                     "the market store and ops.sqlite, with its own job_runs2 row per run.",
         # 2 h (avo 6 Nov 2026, #527): 166 runs since 20 Oct peaked at 107 min; at 50 min one was killed (2 Nov)
         settings=TaskSettings(restart_count=0, time_limit_minutes=120)),
+    AutomationEntry(
+        name="RC-SEC-Read", label="SEC reads (nightly check)",
+        args=("-m", "RevenueChaser.rcdata.build", "run", "--once", "--dataset", "sec/reads"), time="01:10",
+        unit_name=SEC_READ_UNIT,
+        description="The SEC reader's daily check (avo, 16 Nov 2026): every night, once the US session is over, one "
+                    "run of sec/reads. It asks the registered questions about the filings that are new since the "
+                    "last run and retries what failed; a changed prompt or a question's first pass waits for a "
+                    "request with reread. EVREN has no day cap, a DeepSeek question is asked at most 200 companies a "
+                    "day and goes on the next night. With no question registered it asks nothing. 01:10 is five "
+                    "minutes after the hourly builder pass, so the two do not start together; it waits up to 30 "
+                    "minutes for the store's writer turn. Writes sec_reads.duckdb and its Parquet tree through the "
+                    "builder, with its own job_runs2 row.",
+        # 30 min waiting for the turn at most, then one 15-minute slice of asking (asker.SLICE_S) and the build
+        settings=TaskSettings(restart_count=0, time_limit_minutes=90)),
     AutomationEntry(
         name="RC-Backup-Weekly", label="Weekly backup",
         args=("-m", "RevenueChaser.rcdata", "backup"),
