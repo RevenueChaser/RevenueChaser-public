@@ -70,10 +70,15 @@ def _int(v):
         return None
 
 
+def strip_fence(raw: str) -> str:
+    """``raw`` without the code fence a model may put around its JSON."""
+    return re.sub(r"^\s*```(?:json)?\s*|\s*```\s*$", "", raw.strip(), flags=re.IGNORECASE)
+
+
 def parse(raw, n: int) -> tuple[int, int] | None:
     """``(start, end)`` heading numbers (``end`` = ``n`` for "to the end"), or None when the reply is not usable."""
     if isinstance(raw, str):
-        raw = re.sub(r"^\s*```(?:json)?\s*|\s*```\s*$", "", raw.strip(), flags=re.IGNORECASE)
+        raw = strip_fence(raw)
     try:
         data = json.loads(raw) if isinstance(raw, str) else raw
     except (json.JSONDecodeError, TypeError):
