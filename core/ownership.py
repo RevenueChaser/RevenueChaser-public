@@ -233,3 +233,31 @@ def shares_outstanding(tickers, today: date | None = None) -> dict[str, dict]:
         else:
             out[t]["note"] = "no shares count; market cap ÷ price is not used: the issuer has another listed class"
     return out
+
+
+def finra_short_recent(tickers, today: date | None = None) -> dict[str, dict]:
+    """``finra_short`` over the age the ``ownership.short_interest`` need allows (calendar days) up to ``today``."""
+    from datetime import timedelta
+
+    from RevenueChaser.rcdata import needs
+    today = today or date.today()
+    return finra_short(tickers, today - timedelta(days=needs.catalog.NEEDS["ownership.short_interest"].max_lag), today)
+
+
+def finra_short(tickers, start: date, end: date) -> dict[str, dict]:
+    """``{ticker: row}``: FINRA's newest settlement of each ticker with ``start <= settlement_date <= end``; on two
+    rows of one day, the one under the ticker's own symbol. ``settlement_date`` is a ``date``; ``current_short`` and
+    ``days_to_cover`` are FINRA's. The one FINRA short-interest reader of the Earnings board (R5) and the 13F board's
+    Short% (#576, #646). A store error is raised: each caller says in its own words that the figure is not stored."""
+    from RevenueChaser.rcdata import read
+    best: dict[str, dict] = {}
+    for r in read.finra_short_interest(tickers, start=start, end=end):
+        ticker, day = str(r.get("ticker") or "").upper(), read._day(r.get("settlement_date"))
+        if not ticker or day is None:
+            continue
+        rank = (day, r.get("symbol") == ticker)
+        if ticker not in best or rank > best[ticker]["_rank"]:
+            best[ticker] = {**r, "settlement_date": day, "_rank": rank}
+    for row in best.values():
+        del row["_rank"]
+    return best

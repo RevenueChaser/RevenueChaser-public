@@ -936,6 +936,7 @@ _SNAP_COLS = [
     ("streak", "Streak"),
     ("accel", "Accel"),
     ("price_delta", "Price Δ"),
+    ("short", "Short%"),
 ]
 
 
@@ -1045,6 +1046,18 @@ def _pct_out(last: dict | None, enr: dict) -> tuple[float | None, str | None]:
     return pct, None
 
 
+def _short_cell(e: dict):
+    """The Short% cell (#576, decision A): FINRA's newest settlement short interest over the shares outstanding
+    ``% Out`` divides by, with the settlement date; ``≈`` where those shares are an estimate."""
+    pct = e.get("short_pct")
+    if pct is None:
+        return _cell("—", None, "zero")
+    est = e.get("pct_estimate")
+    note = (f"FINRA short interest, settlement {e.get('short_pct_as_of')}; of shares outstanding"
+            + (" (estimate: market cap ÷ price)" if est else ""))
+    return _cell(("≈" if est else "") + _f(pct, 1, "%", False), pct, "zero", note)
+
+
 def _pct_cell(e: dict, of: str | None):
     """The ``% Out`` cell: ``≈`` before an estimate (market cap ÷ price), ``†`` after a share over 100% (13F double
     counting), a dash with the reason where there is no number (decisions I and K)."""
@@ -1132,6 +1145,7 @@ def _payload(quarters: list, entries: list, fields: dict | None = None) -> dict:
         cells.append(_cell(str(e["streak"]) if e["streak"] is not None else "—", e["streak"], "zero"))
         cells.append(_cell(_f(e["accel"], 1, "pp"), e["accel"], _sign_class(e["accel"])))
         cells.append(_cell(_f(e["price_delta"]), e["price_delta"], _sign_class(e["price_delta"])))
+        cells.append(_short_cell(e))
         breaks = [[_qlabel(b["period"]), _break_lines(b)] for b in e.get("breaks") or []]
         rows.append([e["ticker"], e["name"], _sector(e, by_field), cells, breaks])
     return {"cols": cols, "rows": rows, "fields": by_field}
@@ -1299,7 +1313,8 @@ before it; as of quarter-end, filed up to 45 days later.
 <b>Top10%/HHI</b> = concentration among the 13F filers' own holdings (the top 10 filers' share of the 13F
 total, and its Herfindahl index), not of all shares outstanding.
 <b>Net flow</b> = shares bought − sold (holder-level deltas). <b>Streak</b> = consecutive quarters of net accumulation.
-<b>Accel</b> = Δ%(latest) − Δ%(prior).
+<b>Accel</b> = Δ%(latest) − Δ%(prior). <b>Short%</b> = FINRA short interest (twice a month, newest settlement)
+÷ the same shares outstanding as % Out; the cell names its settlement day.
 {arriving_legend}
 <b>Price Δ</b> = close change from the first to the last quarter end shown, on the same share basis.
 <b>Flows</b> (Δ%, Net flow, New/Exit) count only the filers that reported in both quarters; a filer that started or
