@@ -112,7 +112,9 @@ from the live file otherwise, so a FINRA or IBKR run does not read millions of h
 ``cusip_unmapped_large`` (the ``UNMAPPED_TOP`` largest CUSIPs no source names, of the newest complete quarter, as
 the plan's counts are, else the newest),
 ``filings_unparsed`` (per index day) and ``value_rescaled`` (the ``RESCALED_TOP`` filer-quarters whose rescale moved
-the most dollars, keyed ``cik|period``, with the median ratio and the names it rests on).
+the most dollars, keyed ``cik|period``, with the median ratio and the names it rests on) and ``value_suspect`` (the
+``RESCALED_TOP`` largest filer-quarters left as filed whose median ratio lies over 3 or under 1/3: their VALUE or their
+share counts are wrong, which the prices alone cannot tell; avo, 16 Nov 2026, Q14 of the 13F plan: listed, not changed).
 """
 from __future__ import annotations
 
@@ -121,6 +123,7 @@ from datetime import date, timedelta
 import duckdb
 
 from ....core import calendar
+from ....core.identity.isin import luhn_digit
 from ....core.gics_map import UNCLASSIFIED
 from ... import ops, serving
 from .. import base, dirty
@@ -135,6 +138,12 @@ CONSENSUS_FILERS = 3
 MIN_NAMES = 5
 SCALE_BAND = (1.0 / 3000.0, 1.0 / 300.0)
 SCALE_STEPS = (1000.0, 1_000_000.0)      # a filer off by one or two steps of 1,000 (#780: 2014 Q2, 2018 Q2 x1,000,000)
+# A filer 10 or 100 times too high (#934: ALPS 2015 Q3, Thornburg 2025 Q1 at exactly 10). Down only: a ratio under 1/3
+# can as well be share counts too high, which a larger VALUE would make worse (Castleview 2021 Q4).
+DOWN_STEPS = (10.0, 100.0)
+# A holding read at its consensus price may exceed its filing's cover total by a filer's thousands (too few names for
+# the median test) but not by more (#932).
+COVER_ROOM = 1.0 / SCALE_BAND[0]
 ROW_BAND = 300.0                         # one holding this far from its consensus price is read at that price (#780)
 NEIGHBOUR_DAYS = 100                     # a consensus price is checked against the quarters on either side (#780)
 ROWS_TOP = 50
@@ -175,10 +184,15 @@ TYPE_SECTOR = [("tag", "TEXT"), ("period", "DATE"), ("sector", "TEXT"), ("value"
                ("tickers", "INTEGER"), ("filers", "INTEGER"), ("snapshot_date", "DATE")]
 TYPE_FLOW = [("tag", "TEXT"), ("period", "DATE"), ("bought", "DOUBLE"), ("sold", "DOUBLE"), ("net", "DOUBLE"),
              ("filers", "INTEGER"), ("snapshot_date", "DATE")]
+# #779 B2 (avo, 16 Nov 2026, Q7 and Q12 of the 13F plan): each filer's style over the last ``STYLE_QUARTERS`` settled
+# quarters; data only until the single-investor view (#928) shows it.
+STYLE = [("cik", "TEXT"), ("period", "DATE"), ("filer_name", "TEXT"), ("quarters", "INTEGER"), ("names", "INTEGER"),
+         ("value", "DOUBLE"), ("turnover", "DOUBLE"), ("top10_share", "DOUBLE"), ("held_share", "DOUBLE")]
+STYLE_QUARTERS = 8
 STARTED, STOPPED = "started", "stopped"
 SCHEMAS = {"sec13f_cusip_map": MAP, "sec13f_filer_period": FILER, "sec13f_ticker_period": TICKER,
            "sec13f_periods": PERIODS, "sec13f_filer_breaks": BREAKS, "sec13f_type_holdings": TYPES,
-           "sec13f_type_sector": TYPE_SECTOR, "sec13f_type_flow": TYPE_FLOW}
+           "sec13f_type_sector": TYPE_SECTOR, "sec13f_type_flow": TYPE_FLOW, "sec13f_filer_style": STYLE}
 TABLES = tuple(SCHEMAS)
 # The old sec13f_totals entry's keys, in its order (module_sec_13f/engine.py compute_period_metrics).
 METRICS = ("shares", "value", "holders", "top10_pct", "hhi", "new_holders", "exited_holders", "buy_flow",
@@ -193,6 +207,8 @@ ISSUE_KINDS = {
                       "was rescaled",
     "value_row_replaced": "one of the largest holdings whose value lay 300 times or more from the 13F's own price "
                           "for it and was read at that price",
+    "value_suspect": "one of the largest filer-quarters left as filed whose VALUE per share lies over 3 times above or "
+                     "below the 13F's own prices (VALUE or share counts wrong)",
 }
 
 # FINRA publishes a settlement date's short interest on the seventh business day after it (FINRA's equity short
@@ -314,7 +330,20 @@ def _factor_sql() -> str:
                     f"THEN {step!r}")
         arms.append(f"WHEN names >= {MIN_NAMES} AND ratio > {step / (hi * 1000.0)!r} "
                     f"AND ratio < {step / (lo * 1000.0)!r} THEN {1.0 / step!r}")
+    for step in DOWN_STEPS:
+        arms.append(f"WHEN names >= {MIN_NAMES} AND ratio > {step / (hi * 1000.0)!r} "
+                    f"AND ratio < {step / (lo * 1000.0)!r} THEN {1.0 / step!r}")
     return "CASE " + " ".join(arms) + " ELSE 1.0 END"
+
+
+def _pad_cusips(con: duckdb.DuckDBPyConnection) -> None:
+    """#937: an all-digit CUSIP of eight characters that lost its leading zero (``37833100``, AAPL's ``037833100``)
+    gets it back when the zero makes its check digit right; any other short CUSIP stays as filed, unmapped."""
+    short = [r[0] for r in con.execute("SELECT DISTINCT cusip FROM _long WHERE regexp_full_match(cusip, '[0-9]{8}')")
+             .fetchall()]
+    fixed = [c for c in short if luhn_digit(("0" + c)[:8]) == int(c[-1])]
+    if fixed:
+        con.execute("UPDATE _long SET cusip = '0' || cusip WHERE cusip IN (SELECT unnest(?::TEXT[]))", (fixed,))
 
 
 def _consensus_guard(con: duckdb.DuckDBPyConnection) -> None:
@@ -609,6 +638,7 @@ class OwnershipServe:
             counts["sec13f_type_holdings"] = self._types(con, snap)
             counts["sec13f_type_sector"] = self._type_sector(con, snap)
             counts["sec13f_type_flow"] = self._type_flow(con, snap)
+            counts["sec13f_filer_style"] = self._style(con, ctx.as_of or self.default_as_of())
             found += self._issues(con, ctx.as_of or self.default_as_of())
             summary["rescaled"] = common.count(con, "sec13f_filer_period", "value_factor <> 1")
             summary["px_fixed"] = common.count(con, "_pxfix")
@@ -632,6 +662,12 @@ class OwnershipServe:
                            f"amendment_type FROM {sec13f.TABLE} WHERE status = 'ok' AND cik IS NOT NULL "
                            f"AND period IS NOT NULL ORDER BY cik, 3, filed, 5, is_amendment, accession").fetchall()
         first = sec13f.DATASET.first_day() or min((r[3] for r in rows), default=None)
+        # #935: the walk's first day can lie before the first holdings report (the sets begin 2013-04-01, their first
+        # XML information table is of 2013-05-20), and a quarter whose deadline fell in between has a handful of filers.
+        held_from = min((date.fromisoformat(f.parent.name[4:]) for f in files if f.parent.name.startswith("day=")),
+                        default=None)
+        if held_from is not None and (first is None or held_from > first):
+            first = held_from
         served = [p for p in sorted({r[2] for r in rows}) if first is None or filing_deadline(p) >= first]
         start = served[0] if served else date.max
         left = [r for r in rows if r[2] < start]
@@ -643,17 +679,18 @@ class OwnershipServe:
             FROM {sec13f.TABLE} f JOIN _active a ON a.accession = f.accession GROUP BY ALL""")
         long_cols = [("accession", "TEXT"), ("cik", "TEXT"), ("period", "DATE"), ("cusip", "TEXT"),
                      ("name_of_issuer", "TEXT"), ("shares", "DOUBLE"), ("value_usd", "DOUBLE"),
-                     ("value_scale", "INTEGER"), ("filer_name", "TEXT")]
+                     ("value_scale", "INTEGER"), ("filer_name", "TEXT"), ("cover_value", "DOUBLE")]
         _empty(con, "_long", long_cols)
         if files:
             con.execute(f"""INSERT INTO _long
                 SELECT h.accession, h.cik, {common.quarter_end('h.period')}, upper(h.cusip), h.name_of_issuer,
-                       h.shares, h.value_usd, f.value_scale, f.filer_name
+                       h.shares, h.value_usd, f.value_scale, f.filer_name, f.value_total * f.value_scale
                 FROM {common.files_sql(files)} h
                 JOIN _active a ON a.accession = h.accession
                 JOIN {sec13f.TABLE} f ON f.accession = h.accession
                 WHERE upper(h.sh_type) = 'SH' AND coalesce(trim(h.put_call), '') = '' AND h.cusip IS NOT NULL
                   AND h.cik IS NOT NULL AND h.period IS NOT NULL""")
+            _pad_cusips(con)
         periods = _periods_of(con, "_long")
         _by_period(con, periods, "_px", f"""
             SELECT cusip, period, median(value_usd / shares) FROM _long
@@ -669,7 +706,9 @@ class OwnershipServe:
         con.execute(f"""CREATE OR REPLACE TEMP TABLE _fac AS
             SELECT cik, period, names, ratio, {_factor_sql()} AS factor FROM _ratio""")
         # One holding far from its price inside a filer whose median is clean (#780: 2018 Q3, a few lines of one
-        # filer worth $258T), or in a filer with too few names for the median test, is read at the consensus price.
+        # filer worth $258T), or in a filer with too few names for the median test, is read at the consensus price;
+        # never at more than ``COVER_ROOM`` times its filing's own cover total, so a share count that is itself wrong
+        # is not multiplied up (#932: 836 trillion shares put 2017 Q3 at $15,848T, a million times its cover).
         _by_period(con, periods, "_rowfix", f"""
             SELECT l.rowid, l.cik, l.period, l.cusip, min(l.filer_name), l.value_usd * coalesce(x.factor, 1.0),
                    l.shares * p.px, coalesce(x.factor, 1.0)
@@ -678,6 +717,7 @@ class OwnershipServe:
             WHERE l.period = ? AND l.shares > 0 AND l.value_usd > 0
               AND (l.value_usd * coalesce(x.factor, 1.0) > {ROW_BAND!r} * l.shares * p.px
                    OR l.value_usd * coalesce(x.factor, 1.0) * {ROW_BAND!r} < l.shares * p.px)
+              AND (l.cover_value IS NULL OR l.shares * p.px <= l.cover_value * coalesce(x.factor, 1.0) * {COVER_ROOM!r})
             GROUP BY ALL""",
                    [("rid", "BIGINT"), ("cik", "TEXT"), ("period", "DATE"), ("cusip", "TEXT"),
                     ("filer_name", "TEXT"), ("old_value", "DOUBLE"), ("new_value", "DOUBLE"), ("factor", "DOUBLE")])
@@ -1039,6 +1079,13 @@ class OwnershipServe:
             found.append(("value_rescaled", f"{cik}|{period}",
                           f"{name or cik}, {period}: VALUE {how} (median ratio {ratio:g} to the 13F's own prices over "
                           f"{names} names): ${value / factor:,.0f} read as ${value:,.0f}"))
+        for cik, period, name, ratio, names, value in con.execute(f"""
+                SELECT cik, period, filer_name, median_ratio, names, value FROM sec13f_filer_period
+                WHERE value_factor = 1 AND names >= {MIN_NAMES} AND (median_ratio > 3 OR median_ratio < 1.0 / 3)
+                ORDER BY value DESC, cik, period LIMIT {RESCALED_TOP}""").fetchall():
+            found.append(("value_suspect", f"{cik}|{period}",
+                          f"{name or cik}, {period}: VALUE per share at {ratio:g} times the 13F's own prices over "
+                          f"{names} names, left as filed (${value:,.0f}): VALUE or share counts wrong"))
         for cik, period, cusip, name, old, new in con.execute(f"""
                 SELECT cik, period, cusip, filer_name, old_value, new_value FROM _rowfix
                 ORDER BY abs(old_value - new_value) DESC, cik, period, cusip LIMIT {ROWS_TOP}""").fetchall():
@@ -1049,6 +1096,56 @@ class OwnershipServe:
                 WHERE status = 'unparsed' GROUP BY index_day ORDER BY index_day""").fetchall():
             found.append(("filings_unparsed", str(day), f"{n} 13F filing(s) unparsed, e.g. {acc}: {why}"))
         return found
+
+    @staticmethod
+    def _style(con: duckdb.DuckDBPyConnection, as_of: date) -> int:
+        """``sec13f_filer_style``: per filer of the newest settled quarter holding ``MIN_NAMES`` or more names, over
+        that quarter and the ``STYLE_QUARTERS`` - 1 before it: ``turnover``, the median over its quarter pairs of
+        half the summed change of each name's weight in its book (weights of value, so a split moves nothing);
+        ``top10_share``, its ten largest names' share of its value; ``held_share``, the share of its value in names it
+        held in every quarter of the window it reported. Measured 16 Nov 2026 over the 500 largest: value investors
+        turn 7.6% a quarter with 56% in ten names, activists 23% and 57%, all filers 9.5% and 33% (#779)."""
+        common.create_table(con, "sec13f_filer_style", STYLE)
+        rows = con.execute("""SELECT p.period FROM sec13f_periods p LEFT JOIN _closed cl ON cl.period = p.period
+            JOIN _deadline d ON d.period = p.period WHERE coalesce(cl.closed, d.deadline < ?)
+            ORDER BY p.period DESC""", [as_of]).fetchall()
+        window = [r[0] for r in rows[:STYLE_QUARTERS]]
+        if not window:
+            return 0
+        common.temp_rows(con, "_sw", [("period", "DATE")], [{"period": q} for q in window])
+        con.execute(f"""CREATE OR REPLACE TEMP TABLE _swt AS
+            WITH h AS (SELECT cik, period, cusip, value FROM _held WHERE period IN (SELECT period FROM _sw)
+                       AND value > 0),
+                 b AS (SELECT cik, period, sum(value) AS book FROM h GROUP BY ALL)
+            SELECT h.cik, h.period, h.cusip, h.value / b.book AS wt FROM h JOIN b USING (cik, period)""")
+        common.temp_rows(con, "_sturn", [("cik", "TEXT"), ("period", "DATE"), ("turn", "DOUBLE")], [])
+        for prev, now in zip(window[1:], window):           # one quarter pair at a time (the derive's memory rule)
+            con.execute("""INSERT INTO _sturn
+                WITH a AS (SELECT cik, cusip, wt FROM _swt WHERE period = ?),
+                     b AS (SELECT cik, cusip, wt FROM _swt WHERE period = ?),
+                     both_ AS (SELECT DISTINCT cik FROM a INTERSECT SELECT DISTINCT cik FROM b)
+                SELECT coalesce(a.cik, b.cik), ?, sum(abs(coalesce(a.wt, 0) - coalesce(b.wt, 0))) / 2
+                FROM a FULL JOIN b ON a.cik = b.cik AND a.cusip = b.cusip
+                WHERE coalesce(a.cik, b.cik) IN (SELECT cik FROM both_) GROUP BY 1""", [now, prev, now])
+        newest = window[0]
+        con.execute(f"""INSERT INTO sec13f_filer_style
+            WITH n AS (SELECT cik, cusip, value, row_number() OVER (PARTITION BY cik ORDER BY value DESC, cusip) AS rk
+                       FROM _held WHERE period = ? AND value > 0),
+                 q AS (SELECT cik, count(DISTINCT period) AS quarters FROM _swt GROUP BY cik),
+                 k AS (SELECT s.cik, s.cusip FROM _swt s JOIN q ON q.cik = s.cik GROUP BY s.cik, s.cusip, q.quarters
+                       HAVING count(DISTINCT s.period) = q.quarters),
+                 tm AS (SELECT cik, median(turn) AS turn FROM _sturn GROUP BY cik)
+            SELECT n.cik, ?, max(f.filer_name), any_value(q.quarters), count(*), sum(n.value), any_value(tm.turn),
+                   sum(n.value) FILTER (WHERE n.rk <= 10) / sum(n.value),
+                   sum(n.value) FILTER (WHERE k.cusip IS NOT NULL) / sum(n.value)
+            FROM n JOIN q ON q.cik = n.cik
+            LEFT JOIN tm ON tm.cik = n.cik
+            LEFT JOIN k ON k.cik = n.cik AND k.cusip = n.cusip
+            LEFT JOIN sec13f_filer_period f ON f.cik = n.cik AND f.period = ?
+            GROUP BY n.cik HAVING count(*) >= {MIN_NAMES} ORDER BY n.cik""", [newest, newest, newest])
+        for t in ("_sw", "_swt", "_sturn"):
+            con.execute(f"DROP TABLE IF EXISTS {t}")
+        return common.count(con, "sec13f_filer_style")
 
     @staticmethod
     def _summary(con: duckdb.DuckDBPyConnection, as_of: date) -> dict:

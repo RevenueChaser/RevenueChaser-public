@@ -44,19 +44,20 @@ KIND_OF_TABLE = {"market_series": "market", "spx_gamma_expiry_strike": "market",
 DATASET_OF_TABLE.update({"sec13f_ticker_period": "ownership/serve", "sec13f_periods": "ownership/serve",
                          "sec13f_cusip_map": "ownership/serve", "sec13f_filer_breaks": "ownership/serve",
                          "sec13f_type_holdings": "ownership/serve", "sec13f_type_sector": "ownership/serve",
-                         "sec13f_type_flow": "ownership/serve",
+                         "sec13f_type_flow": "ownership/serve", "sec13f_filer_style": "ownership/serve",
                          "finra_short_interest": "finra/short_interest", "ibkr_shortable": "ibkr/shortable",
                          "regsho_threshold": "regsho/threshold", "sec_ftd": "sec/ftd",
                          "insider_transactions": "sec/form4", "beneficial_ownership": "sec/13dg",
                          "uw_institution": "uw/institutions",
-                         "uw_institution_succession": "uw/institutions"})
+                         "uw_institution_succession": "uw/institutions", "etf_holdings_nport": "sec/nport"})
 KIND_OF_TABLE.update({t: "ownership" for t in ("sec13f_ticker_period", "sec13f_periods", "sec13f_cusip_map",
                                                "sec13f_filer_breaks", "sec13f_type_holdings",
-                                               "sec13f_type_sector", "sec13f_type_flow",
+                                               "sec13f_type_sector", "sec13f_type_flow", "sec13f_filer_style",
                                                "finra_short_interest",
                                                "ibkr_shortable", "regsho_threshold", "sec_ftd",
                                                "insider_transactions", "beneficial_ownership",
-                                               "uw_institution", "uw_institution_succession")})
+                                               "uw_institution", "uw_institution_succession",
+                                               "etf_holdings_nport")})
 
 
 def missing(kind: str, dataset: str | None = None) -> str | None:
@@ -1564,8 +1565,10 @@ _MEMBER_NONVOTING = re.compile(r"Non[-]?voting", re.I)
 _MEMBER_ADR = re.compile(r"AdrMember", re.I)
 #: Rows older than this are a filing error, not a holding: the corpus runs from year 12 to 2047.
 _FORM4_FROM = date(1990, 1, 1)
-#: A position whose newest filing is older than this is stale. It is **not** dropped - 82.6% of the reported
-#: shares are older, so a cut would delete most of the number (measured 11 Nov 2026). It is counted and shown.
+#: A position whose newest filing is older than this is stale and is left out of the sum (D2 of 10 Nov 2026, put
+#: into the reader by decision D, avo 16 Nov 2026 "Hepsine evet"). 82.6% of the reported shares were older on
+#: 11 Nov 2026, so the cut shrinks the number a lot: ``stale_share`` says how much it left out, and the column stays
+#: off the board until the fresh-only comparison is shown to avo.
 _STALE_DAYS = 730
 
 
@@ -1590,14 +1593,17 @@ def insider_reported(tickers: Iterable[str], as_of=None) -> dict[str, dict]:
 
     One row per ticker that has a number, plus one for every ticker that has none and why. The fields:
 
-    - ``pct``: the summed, split-adjusted shares over the matched shares outstanding, times 100, or None.
-    - ``owners`` / ``owners_recent``: officers and directors counted, and how many filed inside two years.
+    - ``pct``: the summed, split-adjusted shares of the positions filed inside ``_STALE_DAYS`` over the matched
+      shares outstanding, times 100, or None.
+    - ``owners`` / ``owners_recent``: officers and directors found, and how many filed inside two years (only those
+      are summed).
     - ``newest_filed``: the newest filing the sum rests on.
-    - ``stale_share``: the fraction of the summed shares whose newest filing is older than two years. Over 0.5
-      the number is ``partial``: most of it was last confirmed years ago.
+    - ``stale_share``: the fraction of the reported shares left out as older than two years. Over 0.5 the number is
+      ``partial``: most of what the insiders ever reported was last confirmed years ago.
     - ``state``: ``ok``, ``partial``, ``inconsistent`` (over 100%, shown and marked, never capped and never
       blanked - a cap hides the fault and a blank only hides the loud ones), or a reason when ``pct`` is None:
-      ``no positions``, ``no shares outstanding``, ``unmatched class``, ``ambiguous titles``.
+      ``no positions``, ``only stale positions``, ``no shares outstanding``, ``unmatched class``,
+      ``ambiguous titles``.
     - ``other_securities``: positions dropped because they are not common equity (a preferred, a warrant, a
       unit), so the cell can say what it left out.
 
@@ -1717,22 +1723,25 @@ def _insider_cell(ticker: str, positions: list[dict], security_id: str | None,
         if adjusted is None:
             unadjustable += 1
             continue
+        owners.add(p["owner"])
+        if _day(row["transaction_date"]) < stale_from:
+            stale += adjusted                   # the two-year cut: counted in stale_share, not summed
+            continue
+        recent.add(p["owner"])
         part = "ads" if business == "ads" else (voting or klass)
         shares_by_class[part] = shares_by_class.get(part, 0.0) + adjusted
         total += adjusted
-        owners.add(p["owner"])
         filed = _day(row.get("filed"))
         if newest_filed is None or (filed is not None and filed > newest_filed):
             newest_filed = filed
-        if _day(row["transaction_date"]) >= stale_from:
-            recent.add(p["owner"])
-        else:
-            stale += adjusted
     cell.update({"owners": len(owners), "owners_recent": len(recent), "newest_filed": newest_filed,
                  "other_securities": other + unadjustable})
+    if stale + total > 0:
+        cell["stale_share"] = stale / (stale + total)
     if not shares_by_class or total <= 0:
+        if stale > 0:
+            cell["state"] = "only stale positions"
         return cell
-    cell["stale_share"] = stale / total
     held = divisors.get(security_id or "", {})
     # The issuer's one unlabelled cover figure serves its single kept class, never one class of several.
     outstanding = 0.0

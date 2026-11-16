@@ -1035,7 +1035,7 @@ file, `<MARKET_DIR>/<kind>.duckdb`. The identity spine, `spine` (serving schema 
 "The identity spine" below; the prices store, `prices` (serving schema version `1`), under "The prices store"
 below; the ownership store, `ownership` (serving schema version `5`), under "The ownership store" below; the
 fundamentals layer, `fundamentals` (serving schema version `3`), under "Fundamentals" after it; and the options
-data, `options` (serving schema version `3`), under "The options data" after it; and the SEC form reader, `sec_forms` (serving schema version `1`), under "The SEC form reader"; and the SEC reader tool, `sec_reads` (serving schema version `2`), under "The SEC reader tool" last. The eight numbers live in `rcdata/serving_versions.py`, outside the builder's rules fingerprint
+data, `options` (serving schema version `3`), under "The options data" after it; and the SEC form reader, `sec_forms` (serving schema version `1`), under "The SEC form reader"; and the SEC reader tool, `sec_reads` (serving schema version `3`), under "The SEC reader tool" last. The eight numbers live in `rcdata/serving_versions.py`, outside the builder's rules fingerprint
 (`rcdata/build/dirty.py`), so a bump makes only its own kind's next build whole (#649). The market data,
 `market` (serving schema version `4`): `serving_schema_version` (one row: kind, version, build time, build id, build mode),
 `spx_gamma_expiry_strike` (key session date, expiry, strike; every numeric field UW serves, typed DOUBLE; provenance
@@ -1677,6 +1677,7 @@ never writes it. Nothing here writes `raw.duckdb`: the old 13F, short and inside
 | `sec/form4` | daily | The SEC's Insider Transactions data sets (the first fill), then Form 4 and 4/A through the EDGAR daily index | `insider_transactions` |
 | `sec/13dg` | daily | Schedules 13D and 13G, old (`SC 13G`) and new (`SCHEDULE 13G`, XML since 2024-12-18) names | `beneficial_ownership` |
 | `uw/institutions` | quarterly | Unusual Whales' `GET /institutions` without a name: every 13F institution by value, 500 to a page (18 pages, 8,875 CIKs on 12 Nov 2026), with its tags, `is_hedge_fund` and its succession | `uw_institution`, `uw_institution_succession` |
+| `sec/nport` | monthly, newest listed quarter only (a held set is not asked again) | The SEC's Form N-PORT data sets (`<yyyy>q<n>_nport.zip`, about 440 MB, streamed to disk): every fund's series and holdings, typed to `parquet/sec/nport/quarter=<set>/` (`fund.parquet`, `holdings.parquet`) (#354) | `etf_holdings_nport` (the spine ETFs' newest report, positions whose CUSIP is a spine ticker) |
 | `ownership/serve` | daily | none: derives the 13F totals from the 13F tables and the spine | the four 13F tables below |
 
 **Starts by hand.** Every ownership dataset is not due until it has built once, so the first hourly pass after a
@@ -1716,7 +1717,7 @@ carried a `succeeded_by`, while HPS Investment Partners → BlackRock (effective
 `predecessors` alone.
 
 **Served tables** (`ownership` serving schema version `5`; 5 since #253 and #788: split-adjusted flows,
-`sec13f_type_sector` and `sec13f_type_flow`; 4 since #760: `sec13f_type_holdings`; 3 since #775:
+`sec13f_type_sector`, `sec13f_type_flow`, `sec13f_filer_style` (#779) and `etf_holdings_nport` (#354); 4 since #760: `sec13f_type_holdings`; 3 since #775:
 `uw_institution` and `uw_institution_succession`; 2 since #732: the continuing-filer flows and `sec13f_filer_breaks`):
 
 | Table | Rows |
@@ -1736,6 +1737,8 @@ carried a `succeeded_by`, while HPS Investment Partners → BlackRock (effective
 | `sec13f_type_holdings` | one per investor type, period and rank: the type's 25 largest tickers (`TYPE_TOP`) by the value its filers hold, each with its `share` (%) of the type's mapped portfolio, and one row with `ticker` NULL for the rest, so a quarter's shares add up to 100; `type_value`, `type_filers` and the `uw_institution` `snapshot_date` its types come from. A type is a tag UW gives the filer's CIK in the newest snapshot (a filer can carry several), plus `all` for every filer (#760) |
 | `sec13f_type_sector` | one per investor type, period and sector: the value the type's filers hold in that sector (the spine's `sector` of each ticker, today's for every quarter; `Unclassified` where the spine has none), its `share` (%) of the type's mapped portfolio, `tickers`, `filers` and the `snapshot_date` its types come from (#788) |
 | `sec13f_type_flow` | one per investor type and period: dollars `bought` and `sold` and the `net`, per filer and ticker the split-adjusted change in shares against the quarter before at the quarter's 13F price (value over shares), over the type's `filers` that reported both quarters, as the ticker flows are (#788) |
+| `sec13f_filer_style` | one per filer of the newest settled quarter holding 5 or more names, over that quarter and the 7 before it: `quarters` reported, `names` and `value` now, `turnover` (median over its quarter pairs of half the summed change of each name's weight in its book), `top10_share`, and `held_share` (its value in names held every quarter it reported). Data only until the single-investor view (#928) (#779) |
+| `etf_holdings_nport` | one per spine ETF (`etf.series_id`, no ETN) and position of its newest Form N-PORT report in the newest typed quarter, only positions whose CUSIP is one spine ticker's current CUSIP: `etf_ticker`, `ticker`, `cusip`, `balance`, `currency_value`, `pct_of_net_assets`, `asset_cat`, the report's date and accession (`sec/nport`, #354 C2) |
 | `uw_institution` | one per snapshot day and CIK: `name`, `short_name`, `tags` (sorted), `is_hedge_fund`, the report and filing dates, total and share value, `succeeded_by_cik` with its `succeeded_by_report_date`, and `current_holder_cik` |
 | `uw_institution_succession` | one per snapshot day, predecessor CIK, successor CIK and `effective_report_date`, with both names and `origin` (`predecessors`, `succeeded_by` or `both`) |
 | `sec13f_data_sets` | one per 13F data set the SEC page ever listed: `name`, `first_day`, `last_day`, `url`, `first_seen`; a period is `closed` once a listed set's window holds its filing deadline (#732) |
@@ -1747,10 +1750,12 @@ on the seventh after the close (#252), and that session's IBKR fee, rebate and s
 NULL).
 
 **Build issues** (`ownership/serve`): `spine_missing`, `cusip_owner_differs`, `cusip_unmapped_large`,
-`filings_unparsed`, `value_rescaled` (the 50 filer-quarters whose VALUE rescale, by 1,000 or 1,000,000, moved the
-most dollars, keyed `cik|period`, with the median ratio and the names it rests on) and `value_row_replaced` (the 50
-holdings, keyed `cik|period|cusip`, whose value lay 300 times or more from the 13F's own price and was read at that
-price, #780).
+`filings_unparsed`, `value_rescaled` (the 50 filer-quarters whose VALUE rescale, by 1,000 or 1,000,000, or down by 10
+or 100 (#934), moved the most dollars, keyed `cik|period`, with the median ratio and the names it rests on),
+`value_row_replaced` (the 50 holdings, keyed `cik|period|cusip`, whose value lay 300 times or more from the 13F's own
+price and was read at that price, #780; never above 3,000 times its filing's cover total, #932) and `value_suspect`
+(the 50 largest filer-quarters left as filed whose median ratio lies over 3 or under 1/3: VALUE or share counts
+wrong, listed and not changed; avo, 16 Nov 2026).
 
 **Reading it.** `rcdata.read.holders_13f(tickers, periods)`, `periods_13f()` (both with `complete`),
 `finra_short_interest(tickers, start, end)`, `shortable(tickers, session)`, `threshold_list(on)`,
@@ -2061,7 +2066,7 @@ months old by design.
 
 ### The SEC reader tool (`sec_reads.duckdb`)
 
-One dataset, `sec/reads`, and one served table (`sec_reads` serving schema version `2`). Plans:
+One dataset, `sec/reads`, and one served table (`sec_reads` serving schema version `3`). Plans:
 claude-coordinator `plans/2026-11-15_1119_sec-reader-tool-plan.md` and
 `plans/2026-11-15_1722_revenuechaser_sec-reading-service-board-needs-plan.md`. `sec/forms` **cuts** a filing; this layer
 **asks** a model about it, for every board, so no board keeps its own prompt pool, caps or answers table.
@@ -2084,7 +2089,7 @@ provider, model): `filing_date`, `status` (`ok`, `partial`, `empty`, `no_text`),
 JSON), `raw` (the replies, one per chunk), `missing_chunks`, `rules_version` (the cutter version of the text), and
 `fetched_at` (when it was asked) and `run_id`; since version 2 also `form` and `input_kind` (what was read, so a
 fallback shows), `calls`, `tokens_in` and `tokens_out` (what the key has cost over every attempt) and `error` (how
-the last unusable call failed). The input hash is the hash of the system prompt and the question's staleness text:
+the last unusable call failed); since version 3 `report_date` (the period the filing reports on). The input hash is the hash of the system prompt and the question's staleness text:
 the text sent, or `Input.hash_text` when a question leaves its context lines out of it, so a changed context does
 not pay for the answer again. An `ok` answer on (question, prompt version, company, input hash) is current
 **whoever wrote it**: changing a question's writer asks nothing again, and the reader serves every writer's rows,

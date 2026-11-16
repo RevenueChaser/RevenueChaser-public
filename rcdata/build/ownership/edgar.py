@@ -311,10 +311,21 @@ class Feed:
         return common.keyed_dirty(ctx, self, "day")
 
     def build_rows(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection, table: str,
-                   schema: list[tuple[str, str]], sub: str, order: str, naming=None) -> int:
-        """Served ``table`` from the feed's ``<sub>/day=<day>`` partitions (``common.build_keyed``)."""
-        return common.build_keyed(ctx, con, self.name, table, schema, partitions(self.parquet_dir() / sub, "day"),
-                                  "index_day", order, naming)
+                   schema: list[tuple[str, str]], sub: str, order: str, naming=None,
+                   unique: tuple[str, ...] = ()) -> int:
+        """Served ``table`` from the feed's ``<sub>/day=<day>`` partitions (``common.build_keyed``). With ``unique``
+        (the columns of one row of a filing), a filing EDGAR lists again on a later index day keeps only its first
+        day's rows (#936: 1 Form 4 and 11 Schedules 13D/G served twice on 16 Nov 2026)."""
+        n = common.build_keyed(ctx, con, self.name, table, schema, partitions(self.parquet_dir() / sub, "day"),
+                               "index_day", order, naming)
+        if not unique or not n:
+            return n
+        cols = ", ".join(unique)
+        gone = con.execute(f"""DELETE FROM {table} WHERE rowid IN (SELECT rowid FROM {table}
+            QUALIFY row_number() OVER (PARTITION BY {cols} ORDER BY index_day, rowid) > 1)""").fetchone()[0]
+        if gone:
+            ctx.notes.append(f"{gone} {table} rows of filings listed again on a later index day left out")
+        return n - gone
 
     def default_as_of(self) -> date:
         return calendar.today_ny()

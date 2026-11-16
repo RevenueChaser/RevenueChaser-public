@@ -413,7 +413,7 @@ def test_a_single_class_issuers_past_cover_counts_come_from_its_company_facts():
     # facts' undimensioned count is the issuer's whole: served for a single class only. AAPL (one class) keeps its
     # two past counts (a 10-Q/A's restated count wins its day), and the day its cover is stored stays the cover's;
     # GOOGL/GOOG (two spine rows), BRK (a cover with two classes) and FLG (two counts of one day in one filing: its
-    # classes) get none; GAPX, with no cover, gets a cap from it.
+    # classes) get none; GAPX, with no cover, gets a cap from it, and not its count dated after its filing (a typo).
     _shares_and_floats()
     base.upsert_partition([{"cik": "1067983", "accession": "0001067983-26-000040", "form": "10-Q",
                             "filed": date(2026, 8, 3), "period_end": date(2026, 6, 30), "class_member": m,
@@ -432,7 +432,8 @@ def test_a_single_class_issuers_past_cover_counts_come_from_its_company_facts():
     _company_facts("1067983", [("2026-04-21", 1_440_000, "0001067983-26-000020", "10-Q", "2026-05-04")])
     _company_facts("910073", [("2026-05-01", 1_200_000_000, "0000910073-26-000005", "10-Q", "2026-05-08"),
                               ("2026-05-01", 400_000_000, "0000910073-26-000005", "10-Q", "2026-05-08")])
-    _company_facts("4000001", [("2026-08-01", 50_000_000, "0004000001-26-000002", "10-Q", "2026-08-10")])
+    _company_facts("4000001", [("2026-08-01", 50_000_000, "0004000001-26-000002", "10-Q", "2026-08-10"),
+                               ("2033-10-31", 60_000_000, "0004000001-23-000009", "10-Q", "2023-11-08")])
     issues = []
     ctx = SimpleNamespace(notes=[], issue=lambda *a: issues.append(a))
     assert len(cover_shares.DATASET.dei_to_parquet(ctx)) == 5 and not issues

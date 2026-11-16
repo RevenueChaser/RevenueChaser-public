@@ -149,11 +149,12 @@ def test_a_recent_sum_over_its_own_class_is_ok():
     assert got["owners"] == 2 and got["owners_recent"] == 2
 
 
-def test_a_sum_that_is_mostly_years_old_is_partial_and_is_not_dropped():
-    """82.6% of the reported shares are older than two years, so a cut would delete most of the number."""
+def test_a_sum_that_is_mostly_years_old_is_partial_and_sums_only_the_recent_positions():
+    """D2, put into the reader by decision D and kept off the board (avo, 16 Nov 2026, Q1 of the 13F plan): a
+    position older than two years is left out of the sum; ``stale_share`` says how much, over 0.5 ``partial``."""
     got = _cell([_position("o1", 900_000.0, date(2018, 3, 1)),
                  _position("o2", 100_000.0, date(2026, 6, 1))], {"": 10_000_000.0})
-    assert got["state"] == "partial" and round(got["pct"], 2) == 10.0
+    assert got["state"] == "partial" and round(got["pct"], 2) == 1.0
     assert got["owners"] == 2 and got["owners_recent"] == 1 and round(got["stale_share"], 2) == 0.9
 
 

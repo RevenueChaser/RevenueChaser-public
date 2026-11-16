@@ -38,7 +38,7 @@ single work order.
   artifacts restricted to the classification universe.
 - EDGAR official/free only (bulk zips + per-document `.htm`); no npm/sec-api/GPL.
 - Relatedness profiles: **v3** (#400): one structured JSON per company from the whole Item 1 / Item 4 (no input cut),
-  read in chunks above 60k characters and merged (`module_relatedness/profile_v3.py`), JSON mode, **no thinking**;
+  read in chunks above 60k characters and merged (`rcdata/sec_profile.py`), JSON mode, **no thinking**;
   fallbacks: a short or missing Item -> the previous year's filing -> the whole document; SIC 6770 or `stage = shell`
   -> no profile (status `shell`). Theme naming: **thinking-low** (off-peak).
 - Relatedness peers (#395): field-weighted tags scaled by their idf over the run's profiles, cosine, top 25;
