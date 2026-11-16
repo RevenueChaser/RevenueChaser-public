@@ -2819,9 +2819,11 @@ DATA_HELP = help_html(
 )
 
 
-def _hfold(words: str, body: str) -> str:
-    """One part closed behind its own one-line summary; nothing when the part is empty."""
-    return f'<details class="hfold"><summary>{words}</summary>{body}</details>' if body else ""
+def _hfold(words: str, body: str, *, on_phone: bool = False) -> str:
+    """One part closed behind its own one-line summary; nothing when the part is empty. ``on_phone`` keeps it
+    drawn at phone width, where the other parts are hidden (needs.css)."""
+    cls = "hfold onphone" if on_phone else "hfold"
+    return f'<details class="{cls}"><summary>{words}</summary>{body}</details>' if body else ""
 
 
 def _database_more(payload: dict) -> str:
@@ -2843,7 +2845,7 @@ def _database_more(payload: dict) -> str:
             + _hfold("Board inputs: what each board reads and its settings",
                      _boards_section(payload.get("boards") or [], payload.get("rows") or []))
             + _hfold("Automations: the scheduled tasks RevenueChaser owns",
-                     _automations_section(payload.get("automations") or []))
+                     _automations_section(payload.get("automations") or []), on_phone=True)
             + '</div></div>')
 
 

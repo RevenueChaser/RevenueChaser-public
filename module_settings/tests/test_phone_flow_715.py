@@ -128,9 +128,17 @@ def test_the_icon_column_is_as_wide_as_the_step_with_the_most_icons():
 
 def test_the_reference_parts_under_the_files_are_not_drawn_on_a_phone():
     from RevenueChaser.module_settings import needs_tab
-    assert "#needs details.hfold{display:none}" in _phone_rules(needs_tab.NEEDS_CSS)
-    assert "#needs details.hfold{display:none}" not in needs_tab.NEEDS_CSS.replace(
-        "@media(max-width:900px){#needs details.hfold{display:none}}", ""), "the desk keeps them"
+    assert "#needs details.hfold:not(.onphone){display:none}" in _phone_rules(needs_tab.NEEDS_CSS)
+    assert "#needs details.hfold:not(.onphone){display:none}" not in needs_tab.NEEDS_CSS.replace(
+        "@media(max-width:900px){#needs details.hfold:not(.onphone){display:none}}", ""), "the desk keeps them"
+
+
+def test_the_automations_are_the_one_reference_part_a_phone_keeps():
+    """avo, 16 Nov 2026: the job list (RC-SEC-Read among them) must show on Settings, and he reads it on a phone."""
+    from RevenueChaser.module_settings import report
+    more = report._database_more({"automations": [{"name": "RC-SEC-Read"}]})
+    assert '<details class="hfold onphone"><summary>Automations:' in more
+    assert more.count('class="hfold onphone"') == 1
 
 
 def test_a_fill_box_on_a_phone_is_its_name_and_one_coverage_line():
@@ -155,4 +163,4 @@ def test_the_phone_rules_reach_the_width_he_actually_browses_at():
     phone = _phone_rules(control_render.CTL_CSS)
     assert ".ctl table.jt3 td.jh{display:none}" in phone
     assert ".ctl #sec-flow .flowlegend,.ctl #sec-flow .phoneonly .fnote{display:none}" in phone
-    assert "#needs details.hfold{display:none}" in _phone_rules(needs_tab.NEEDS_CSS)
+    assert "#needs details.hfold:not(.onphone){display:none}" in _phone_rules(needs_tab.NEEDS_CSS)
