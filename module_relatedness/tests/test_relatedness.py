@@ -256,9 +256,9 @@ def test_report_renders(rawstore_tmp_db, tmp_path, monkeypatch):
     for gone in ('id="mc-tabs"', 'id="index-tabs"', 'id="eweek-tabs"', '<select id="theme"', "initTickerCombo",
                  'MC = "all"'):
         assert gone not in html, f"constants kit left: {gone}"
-    # Peer row copy for move / beyond SPY / cluster (payload carries them).
+    # Peer row copy for move / beyond SPY; the cluster chips stay hidden until #894 (decision E).
     assert "move" in html and "beyond SPY" in html
-    assert "cluster" in html
+    assert "prow-cluster" not in html
     assert '"name": "NVIDIA"' in html
 
 
@@ -302,28 +302,25 @@ console.log(JSON.stringify(log));"""
     assert got == {"all": ["MSFT", "JPM"], "sector": ["JPM"], "industry": ["MSFT"]}
 
 
-def test_the_theme_filter_reads_the_pinned_theme_ids(tmp_path):
-    """#383 C1b: Theme is the kit's facet over ``theme_ids`` (the pinned run), not the local coarse-label select."""
+def test_the_board_hides_themes_until_the_sec_service_owns_profiles(tmp_path):
+    """Decision E option 2 (avo, 16 Nov 2026): no Theme facet, no cluster chips, no theme in the meta line (#894)."""
     from RevenueChaser.core.tests.board_js import run_board_js
     from RevenueChaser.module_relatedness import report
     co = lambda t, ids: {"ticker": t, "name": t, "sector": "Technology", "industry": "Semiconductors",
                          "market_cap": 1e12, "theme_coarse": "Chips", "theme_ids": ids}
     html = report.render_relatedness_dashboard({
-        "as_of": "2026-09-19T00:00:00+00:00", "model": "m", "n": 3,
-        "companies": [co("NVDA", ["r:c0", "r:m0"]), co("AMD", ["r:c0", "r:m1"]), co("NEW", [])],
-        "peers": {}, "scores": [],
-        "theme_catalog": {"r:c0": {"label": "Chips", "level": "coarse", "parent": ""},
-                          "r:m0": {"label": "GPUs", "level": "medium", "parent": "r:c0"},
-                          "r:m1": {"label": "CPUs", "level": "medium", "parent": "r:c0"}}})
-    tail = """
-function pool(){ return DATA.filter(pass).map(function(c){ return c.ticker; }); }
-var log = {all: pool(), themes: Object.keys(META.themes).sort()};
-RCF.set({theme: {key: "r:m1", label: "CPUs", level: 2}}); log.medium = pool();
-RCF.set({theme: {key: "__none__", label: "Unthemed", level: 1}}); log.none = pool();
-console.log(JSON.stringify(log));"""
+        "as_of": "2026-09-19T00:00:00+00:00", "model": "m", "n": 2,
+        "companies": [co("NVDA", ["r:c0"]), co("AMD", ["r:c0"])],
+        "peers": {"NVDA": [{"peer": "AMD", "score": 0.9, "percentile": 99, "shared": [],
+                            "cluster": {"coarse": True, "medium": False, "fine": False}}]},
+        "scores": [],
+        "theme_catalog": {"r:c0": {"label": "Chips", "level": "coarse", "parent": ""}}})
+    assert "fmtCluster" not in html and "prow-cluster" not in html
+    tail = """console.log(JSON.stringify({facets: META.facets, themes: META.themes || null,
+  meta: _els['meta'].textContent, focal: FOCAL, peers: _els['peers'].innerHTML.indexOf('cluster')}));"""
     got = run_board_js(html, tail, tmp_path)
-    assert got == {"all": ["NVDA", "AMD", "NEW"], "themes": ["r:c0", "r:m0", "r:m1"],
-                   "medium": ["AMD"], "none": ["NEW"]}
+    assert got == {"facets": ["index", "mc", "gics", "earnings"], "themes": None,
+                   "meta": "Technology · Semiconductors", "focal": "NVDA", "peers": -1}
 
 
 def test_no_filter_set_keeps_every_name_and_the_first_one_focal(tmp_path):
