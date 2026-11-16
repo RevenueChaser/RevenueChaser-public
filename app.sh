@@ -57,8 +57,6 @@ ${B}Modules${RST}
   spx --asof YYYY-MM-DD   SPX critical thresholds report
   fin --ticker AAPL ...   Fin Research engines (DCF / 3stmt / comps / ...)
 
-${B}LEAPS${RST}
-  leaps                   LEAPS accumulation scan
 
 ${B}Utility${RST}
   shell                   python REPL with the package importable
@@ -111,12 +109,6 @@ case "$cmd" in
   # Adds the tier that hits the REAL provider APIs (needs working credentials).
   test-e2e-live)
     export RC_E2E=1; run -m pytest "$REPO/module_testing/e2e" -q -m e2e --live "$@" ;;
-
-  # ── LEAPS ───────────────────────────────────────────────────────────────────
-  leaps)
-    require_key
-    run -m RevenueChaser.module_leaps.scan "$@"
-    ;;
 
   # ── utility ─────────────────────────────────────────────────────────────────
   shell|repl)  run ;;
