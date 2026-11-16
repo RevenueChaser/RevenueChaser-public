@@ -16,9 +16,14 @@ carries several). A CUSIP is kept only when it is nine letters or digits and not
 and ``000000000`` for none). Columns a set lacks are added empty (``sec13f_sets._load``'s ``add_missing``).
 
 Raw: ``raw/sec/nport/<zip>`` with a ``.meta.json`` sidecar. Parquet: ``parquet/sec/nport/quarter=<set>/fund.parquet``
-(one row per filing and series) and ``holdings.parquet`` (one row per reported holding). No served table yet: C2
-(``etf_holdings_nport`` in ``ownership.duckdb``) rides the combined ownership bump, so ``build`` writes nothing and
-``dirty`` is clean. ``heavy``: one run at a time per builder process (#812). Starts by hand.
+(one row per filing and series) and ``holdings.parquet`` (one row per reported holding). ``heavy``: one run at a time
+per builder process (#812). Starts by hand.
+
+Served (C2, avo 16 Nov 2026, Q11 of the 13F plan): ``etf_holdings_nport``, the holdings of the spine's ETFs only
+(``etf.series_id``, ETNs left out), from each series' newest report in the newest typed quarter (report date, then
+filing date, then accession), and only the positions whose CUSIP is one spine ticker's current CUSIP
+(``common.spine_cusips``): bonds, derivatives, cash and unmapped lines stay in Parquet. Built whole, from one quarter,
+whenever this dataset's Parquet changed; kept as it is on the live copy otherwise.
 """
 from __future__ import annotations
 
@@ -33,10 +38,16 @@ import duckdb
 import httpx
 
 from ....core import calendar
+from ... import serving
 from .. import base, dirty
-from . import KIND, sec, sec13f_sets
+from . import KIND, common, sec, sec13f_sets
 
 NAME = "sec/nport"
+TABLE = "etf_holdings_nport"
+SERVED = [("etf_ticker", "TEXT"), ("series_id", "TEXT"), ("report_date", "DATE"), ("filed", "DATE"),
+          ("accession", "TEXT"), ("ticker", "TEXT"), ("cusip", "TEXT"), ("issuer_name", "TEXT"),
+          ("balance", "DOUBLE"), ("unit", "TEXT"), ("currency_value", "DOUBLE"), ("pct_of_net_assets", "DOUBLE"),
+          ("asset_cat", "TEXT"), ("quarter", "TEXT")]
 INDEX_ENV = "RC_NPORT_INDEX_URL"
 INDEX_PATH = "/data-research/sec-markets-data/form-n-port-data-sets"
 SUFFIX = "_nport"
@@ -118,6 +129,19 @@ def _download(ctx: base.RunContext, pacer: sec.Pacer, name: str, url: str) -> Pa
     return path
 
 
+def _spine_etfs() -> list[tuple[str, str]]:
+    """``(ticker, series_id)`` of the live spine's ETFs that carry a series and are not notes; empty without a spine."""
+    try:
+        con = serving.open_read(common.SPINE)
+    except serving.ServingFileMissing:
+        return []
+    try:
+        return con.execute("SELECT ticker, series_id FROM etf WHERE series_id IS NOT NULL "
+                           "AND NOT coalesce(is_etn, false) ORDER BY ticker").fetchall()
+    finally:
+        con.close()
+
+
 def _num(col: str) -> str:
     return f"TRY_CAST(replace(trim({col}), ',', '') AS DOUBLE)"
 
@@ -170,7 +194,7 @@ class Nport:
     name = NAME
     kind = KIND
     providers = (sec.PROVIDER,)
-    tables: tuple[str, ...] = ()
+    tables = (TABLE,)
     cadence = "monthly"
     backfill_needs_from = False
     starts_by_hand = True             # the first run is a 440 MB request: avo's written word first (#354 C3)
@@ -226,15 +250,52 @@ class Nport:
         return [p for raw in raws for p in self.to_parquet(ctx, raw)]
 
     def dirty(self, ctx: base.RunContext):
-        return dirty.CLEAN            # no served table until C2
+        """Clean when none of its Parquet changed since the live file was built; else the table is built whole."""
+        changed = getattr(ctx, "changed", None)
+        root = parquet_dir().resolve()
+        if changed is not None and not any(root in Path(p).resolve().parents for p in changed):
+            return dirty.CLEAN
+        return dirty.ALL
 
     def build(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> dict[str, int]:
-        return {}
+        plan = getattr(ctx, "incremental", None)
+        if plan is not None and common.has_table(con, TABLE) and plan.dirty.get(NAME, dirty.ALL).clean:
+            return {TABLE: common.count(con, TABLE)}
+        con.execute(f"DROP TABLE IF EXISTS {TABLE}")
+        held = sorted(f for f in parquet_dir().glob("quarter=*") if (f / "fund.parquet").exists()
+                      and (f / "holdings.parquet").exists()) if parquet_dir().exists() else []
+        etfs = _spine_etfs()
+        cusips = common.spine_cusips() or {}
+        if not held or not etfs or not cusips:
+            ctx.notes.append(f"{TABLE}: " + ("no typed N-PORT quarter" if not held else "no live spine ETFs or CUSIPs"))
+            return {TABLE: common.create_table(con, TABLE, SERVED)}
+        # The newest quarter by its set's window (``2026q3`` sorts as its name; a dated name by its first day).
+        newest = max(held, key=lambda f: (sec13f_sets.window(f.name[8:] + SUFFIX + ".zip", SUFFIX) or (date.min,))[0])
+        common.temp_rows(con, "_np_etf", [("etf_ticker", "TEXT"), ("series_id", "TEXT")],
+                         [{"etf_ticker": t, "series_id": s} for t, s in etfs])
+        common.temp_rows(con, "_np_cusip", [("cusip", "TEXT"), ("ticker", "TEXT")],
+                         [{"cusip": c, "ticker": t} for c, t in cusips.items()])
+        fund, hold = (base.sql_path(newest / n) for n in ("fund.parquet", "holdings.parquet"))
+        n = common.create_table(con, TABLE, SERVED, f"""
+            WITH f AS (SELECT * FROM read_parquet({fund})
+                       QUALIFY row_number() OVER (PARTITION BY series_id
+                                                  ORDER BY report_date DESC NULLS LAST, filed DESC, accession DESC) = 1)
+            SELECT e.etf_ticker, f.series_id, f.report_date, f.filed, f.accession, c.ticker, h.cusip, h.issuer_name,
+                   h.balance, h.unit, h.currency_value, h.pct_of_net_assets, h.asset_cat, f.quarter
+            FROM f JOIN _np_etf e ON e.series_id = f.series_id
+            JOIN read_parquet({hold}) h ON h.accession = f.accession
+            JOIN _np_cusip c ON c.cusip = h.cusip
+            ORDER BY e.etf_ticker, h.currency_value DESC NULLS LAST, c.ticker""")
+        con.execute("DROP TABLE _np_etf; DROP TABLE _np_cusip")
+        funds = con.execute(f"SELECT count(DISTINCT etf_ticker) FROM {TABLE}").fetchone()[0]
+        ctx.notes.append(f"{TABLE}: {n} holdings of {funds} spine ETFs, quarter {newest.name[8:]}")
+        return {TABLE: n}
 
     def check(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> dict:
-        return {"dataset": NAME, "result": "changed" if ctx.pending.get(NAME) else "unchanged",
-                "source_as_of": (ctx.as_of or self.default_as_of()).isoformat(), "rows": 0, "added": 0,
-                "removed": 0}
+        added, removed = base.compare_with_live(con, KIND, TABLE, ["etf_ticker", "accession", "cusip"])
+        return {"dataset": NAME, "result": "changed" if added or removed else "unchanged",
+                "source_as_of": (ctx.as_of or self.default_as_of()).isoformat(),
+                "rows": common.count(con, TABLE), "added": added, "removed": removed}
 
 
 DATASET = Nport()

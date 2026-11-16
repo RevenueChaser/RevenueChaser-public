@@ -26,7 +26,9 @@ SERVING_SCHEMA_VERSION = {"market": 4, "spine": 6, "ownership": 5}
 # ownership 5: the buy and sell flows of ``sec13f_ticker_period`` take the quarter before on the quarter's share basis
 #              (the prices store's split factors, #253), and ``sec13f_type_sector`` and ``sec13f_type_flow``, each
 #              investor type's value per sector and its dollars bought and sold per quarter (#788 A2); one bump for
-#              all three, one whole ownership build (owner's decision E of 16 Nov 2026).
+#              all three, one whole ownership build (owner's decision E of 16 Nov 2026). Before it went live the
+#              same bump took ``etf_holdings_nport``, the spine ETFs' holdings from Form N-PORT (#354 C2; avo,
+#              16 Nov 2026, Q2 and Q11 of the 13F plan).
 # spine 2: ``fund``, the SEC fund file's share classes and the ETF rule (``build/spine/sec_tickers_mf.py``).
 # spine 3: ``etf_holdings``, the rotation board's ETFs read whole (``build/spine/etf_holdings.py``).
 # spine 4: ``etf``, the ETF universe from Alpha Vantage and N-CEN (``build/spine/etf.py``, #346).

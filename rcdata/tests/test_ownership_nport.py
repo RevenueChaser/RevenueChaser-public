@@ -10,8 +10,8 @@ import duckdb
 import pytest
 
 from RevenueChaser.core.providers import sec_edgar
-from RevenueChaser.rcdata.build import base, dirty
-from RevenueChaser.rcdata.build.ownership import nport, sec
+from RevenueChaser.rcdata.build import base
+from RevenueChaser.rcdata.build.ownership import common, nport, sec
 
 from . import ownership_fixture as ox
 
@@ -87,7 +87,7 @@ def test_only_the_newest_set_is_fetched_and_typed(sets):
                     ("12", None, None, None, 1.0, 5.0, 0.01, "STIV"),              # N/A is no CUSIP
                     ("13", None, "DE0000000001", None, None, None, None, "EC")]    # nor all zeros; "x" no number
     assert any("3 holdings (2 without a CUSIP)" in n for n in ctx.notes)
-    assert nport.DATASET.dirty(ctx) is dirty.CLEAN and nport.DATASET.tables == ()
+    assert nport.DATASET.tables == (nport.TABLE,)
 
 
 def test_a_held_set_is_not_asked_again_and_one_not_typed_is_typed(sets):
@@ -115,3 +115,24 @@ def test_a_set_without_an_optional_column_still_types(sets):
     _run()
     assert _read("holdings.parquet", "SELECT count(*), count(pct_of_net_assets), count(asset_cat) FROM {t}") == [
         (3, 0, 3)]
+
+
+def test_the_served_table_keeps_the_spine_etfs_newest_report_and_their_mapped_positions(sets, monkeypatch):
+    """C2 (avo, 16 Nov 2026, Q11): ETFs only, each series' newest report, positions whose CUSIP is a spine ticker."""
+    _run()
+    monkeypatch.setattr(nport, "_spine_etfs", lambda: [("VTI", "S000002848"), ("SPY", "S000000001")])
+    monkeypatch.setattr(common, "spine_cusips", lambda: {"594918104": "MSFT"})
+    ctx = base.RunContext(run_id="b1", dataset=nport.NAME)
+    con = duckdb.connect()
+    counts = nport.DATASET.build(ctx, con)
+    assert counts == {nport.TABLE: 1}
+    assert con.execute(f"SELECT etf_ticker, series_id, ticker, cusip, currency_value, quarter FROM {nport.TABLE}"
+                       ).fetchall() == [("VTI", "S000002848", "MSFT", "594918104", 40000.0, "2026q3")]
+    assert any("1 holdings of 1 spine ETFs, quarter 2026q3" in n for n in ctx.notes)
+
+
+def test_no_spine_gives_an_empty_table_not_a_failed_build(sets, monkeypatch):
+    _run()
+    monkeypatch.setattr(nport, "_spine_etfs", lambda: [])
+    con = duckdb.connect()
+    assert nport.DATASET.build(base.RunContext(run_id="b2", dataset=nport.NAME), con) == {nport.TABLE: 0}

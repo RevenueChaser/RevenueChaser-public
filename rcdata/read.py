@@ -49,14 +49,15 @@ DATASET_OF_TABLE.update({"sec13f_ticker_period": "ownership/serve", "sec13f_peri
                          "regsho_threshold": "regsho/threshold", "sec_ftd": "sec/ftd",
                          "insider_transactions": "sec/form4", "beneficial_ownership": "sec/13dg",
                          "uw_institution": "uw/institutions",
-                         "uw_institution_succession": "uw/institutions"})
+                         "uw_institution_succession": "uw/institutions", "etf_holdings_nport": "sec/nport"})
 KIND_OF_TABLE.update({t: "ownership" for t in ("sec13f_ticker_period", "sec13f_periods", "sec13f_cusip_map",
                                                "sec13f_filer_breaks", "sec13f_type_holdings",
                                                "sec13f_type_sector", "sec13f_type_flow",
                                                "finra_short_interest",
                                                "ibkr_shortable", "regsho_threshold", "sec_ftd",
                                                "insider_transactions", "beneficial_ownership",
-                                               "uw_institution", "uw_institution_succession")})
+                                               "uw_institution", "uw_institution_succession",
+                                               "etf_holdings_nport")})
 
 
 def missing(kind: str, dataset: str | None = None) -> str | None:

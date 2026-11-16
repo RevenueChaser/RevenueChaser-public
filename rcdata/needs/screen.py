@@ -146,6 +146,7 @@ WRITTEN_COLUMN: dict[str, str] = {
     'price_bar_daily': 'session_date',
     'price_revision': 'session_date',
     'regsho_threshold': 'list_date',
+    'etf_holdings_nport': 'report_date',
     'sec13f_cusip_map': 'period',
     'sec13f_filer_breaks': 'period',
     'sec13f_filer_period': 'period',
