@@ -48,6 +48,15 @@ def test_get_lists_registry_rows_with_live_state(client, fake):
 
 
 
+def test_an_install_over_an_installed_task_is_refused_and_touches_nothing(client, fake):
+    """#191 item 1: a reinstall that failed rolled back the working pair too, so the second install is refused."""
+    name = A.REGISTRY[0].name
+    assert client.post(f"/api/automations/{name}/install").status_code == 200
+    r = client.post(f"/api/automations/{name}/install")
+    assert r.status_code == 409 and "already installed" in r.get_data(as_text=True)
+    assert [c for c in fake.mutations if c[0] == "install"] == [("install", name)]
+
+
 def test_unknown_name_is_404_and_touches_nothing(client, fake):
     r = client.post("/api/automations/Some%20Other%20Task/remove")
     assert r.status_code == 404

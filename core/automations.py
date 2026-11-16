@@ -296,6 +296,10 @@ class SchedulerUnavailable(AutomationError):
     http_status = 409
 
 
+class AlreadyInstalled(AutomationError):
+    http_status = 409
+
+
 def entry(name: str) -> AutomationEntry:
     try:
         return _BY_NAME[name]
@@ -1000,6 +1004,9 @@ def apply(name: str, action: str, sched: Scheduler | None = None) -> dict:
     if not sched.available:
         raise SchedulerUnavailable("No scheduler is available on this host")
     if action == "install":
+        # #191 item 1: an install over an installed task could fail and its rollback then removed the working pair
+        if sched.status(e.name) is not None:
+            raise AlreadyInstalled(f"{e.name} is already installed; remove it first to install it again")
         sched.install(e)
     elif action == "enable":
         sched.set_enabled(e.name, True)
