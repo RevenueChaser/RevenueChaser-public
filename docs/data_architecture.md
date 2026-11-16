@@ -1599,12 +1599,13 @@ and for an ETF an inception day on or before it (review M1).
 **Build issues** (dataset `prices/serving`, synced after each swap): `source_never_run`, `crsp_ticker_link` (the CRSP
 PERMNO linked to a spine security, no ETF, by ticker alone: one issue per security, its PERMNO named), `tier_a_no_bar`
 and `tier_a_no_shares` (a Tier A name **of the stored universe** with no bar, or no market cap, on the newest served
-session: an untyped or excluded Tier A name is left out of the store on purpose), `universe_etf_no_bar` (a universe
+session: an untyped or excluded Tier A name is left out of the store on purpose; an ADR is `adr_no_ratio` instead: no
+market cap until an ADS ratio is read, #711), `universe_etf_no_bar` (a universe
 fund, a ticker of the spine's `etf` table or an `etf` of `my_universe`, with no bar on the newest served session;
 key: the ticker), `universe_etf_ticker_shared` (more than one recent Compustat series carries a routeless universe
 fund's ticker: one is stored, the one priced most recently, then the larger dollar volume; key: the ticker),
 `price_gap_no_action` (the split-adjusted close moved by 1.9 times or more, either way, within 7
-days, with no split), `split_only_crsp` (a split CRSP's `dlycumfacpr` records and no Compustat or Alpaca split is
+days, with no split; `price_gap_warrant` when the spine types the security a warrant or a unit), `split_only_crsp` (a split CRSP's `dlycumfacpr` records and no Compustat or Alpaca split is
 within 3 days of, between two served bars at most 7 days apart: not applied; the detail names the served close's
 move across it; key security:session), `adjustment_differs` (the store's total-return day return more than 1 bp from Alpaca's own, or
 more than half a cent on each of Alpaca's cent-rounded adjusted closes, the exact bound, where that is larger: about

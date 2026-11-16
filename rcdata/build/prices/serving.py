@@ -26,7 +26,8 @@
 - ``market_cap_daily``: close times shares per security and session, the shares being the bar's own (a history
   source's), else a WRDS source's of that session, else the newest cover on or before the session, moved over the
   splits between the two; and the issuer's sum over its listed classes, each at its newest cap at most
-  ``ISSUER_WITHIN_DAYS`` old (``issuer_market_cap``; an unlisted class has no price and is not in it);
+  ``ISSUER_WITHIN_DAYS`` old (``issuer_market_cap``; an unlisted class has no price and is not in it). A count of 0
+  is none, and an ADR has no cap (its counts are the issuer's ordinary shares; #711, until an ADS ratio is read);
 - ``price_revision``: the values a later read replaced (Alpaca's re-read of the last sessions, the monthly WRDS
   refresh), with when and by which run;
 - ``wrds_price_diff``: the WRDS difference report (``wrds_history.COMPARISONS``), one row per comparison: the closes
@@ -130,7 +131,10 @@ ISSUE_KINDS = {
     "tier_a_no_bar": ("a Tier A name of the stored universe with no bar on the newest served session (key: the "
                       "security id)"),
     "tier_a_no_shares": ("a Tier A name of the stored universe with no shares, so no market cap, on the newest "
-                         "session (key: the security id)"),
+                         "session (key: the security id); an ADR is ``adr_no_ratio`` instead"),
+    "adr_no_ratio": ("a Tier A ADR of the stored universe with a bar on the newest session and no market cap, because "
+                     "its share counts are the issuer's ordinary shares and no ADS ratio is read yet (key: the "
+                     "security id; #711, prices plan 16 Nov 2026 decision B)"),
     "universe_etf_no_bar": ("an ETF of the stored universe (a ticker of the spine's etf table, or a fund of the "
                             "my_universe list) with no bar on the newest served session (key: the ticker; review M3 "
                             "of #382, D5 of #420)"),
@@ -139,6 +143,9 @@ ISSUE_KINDS = {
                                    "review D1 of #420)"),
     "price_gap_no_action": ("the split-adjusted close moved by GAP_FACTOR or more with no split that day "
                             "(key: security:session)"),
+    "price_gap_warrant": ("``price_gap_no_action`` of a security the spine types a warrant or a unit, kept apart so the "
+                          "gaps of shares stand alone; nothing is dropped (key: security:session; prices plan 16 Nov "
+                          "2026 decision C)"),
     "split_only_crsp": ("CRSP's dlycumfacpr records a split no Compustat or Alpaca split is within SPLIT_SAME_DAYS of, "
                         "between two served bars at most GAP_DAYS apart; not applied, the cross-check of Compustat's "
                         "splits. The detail names the served close's move across it: a jump of GAP_FACTOR or more is "
@@ -578,6 +585,18 @@ class PricesServing:
             WHERE w.security_id IN (SELECT DISTINCT security_id FROM price_bar_daily){mine}
               AND NOT EXISTS (SELECT 1 FROM _act p WHERE p.security_id = w.security_id AND p.ex_date = w.ex_date
                               AND {ACTION_KIND.format(a='p')} = {ACTION_KIND.format(a='w')})""")
+        # Compustat's cash dividend that Alpaca has with the same amount a day or few off (Compustat's day is not
+        # always Alpaca's ex-date) is the same dividend: Alpaca's is kept, as on the same day, and the dropped ones
+        # are counted for the build note (prices plan 16 Nov 2026, P5: 041545:03 0.0516 on 21, 22 and 23 Oct).
+        # Side effect: a real second dividend of the same amount within SPLIT_SAME_DAYS would be dropped too.
+        twins = con.execute(f"""DELETE FROM _act w WHERE w.source = '{wrds_history.NAME}'
+            AND {ACTION_KIND.format(a='w')} = 'cash_dividend'{mine}
+            AND EXISTS (SELECT 1 FROM _act p WHERE p.security_id = w.security_id AND p.source = '{ALPACA_ACTIONS}'
+                        AND {ACTION_KIND.format(a='p')} = 'cash_dividend'
+                        AND abs(date_diff('day', p.ex_date, w.ex_date)) <= {SPLIT_SAME_DAYS}
+                        AND abs(p.rate - w.rate) < 1e-9)""").fetchone()[0]
+        con.execute("CREATE TEMP TABLE IF NOT EXISTS _div_twin (n BIGINT)")
+        con.execute("INSERT INTO _div_twin VALUES (?)", [twins])
         # CRSP's splits are the cross-check only (Order 4; the WRDS access inventory of 3 Nov 2026 prefers
         # Compustat's daily splits, and avo's rule of 4 Nov 2026 leaves CRSP no served bar): one no Alpaca or
         # Compustat split of the security is near is kept aside and named, never applied.
@@ -596,6 +615,11 @@ class PricesServing:
                  wrds: bool = True) -> int:
         if wrds:                                    # a chunked build added the WRDS part chunk by chunk
             PricesServing._wrds_actions(con, live)
+        con.execute("CREATE TEMP TABLE IF NOT EXISTS _div_twin (n BIGINT)")
+        twins = con.execute("SELECT coalesce(sum(n), 0) FROM _div_twin").fetchone()[0]
+        if twins:
+            ctx.notes.append(f"{twins} Compustat cash dividend(s) left out: Alpaca has the same amount within "
+                             f"{SPLIT_SAME_DAYS} days")
         # Review M6 of #382: such a split stands in for the ``price_gap_no_action`` it explains, so it carries the
         # served close's move across its ex-date, from the security's last served bar before it to its first on or
         # after it: the same two bars the gap check pairs, but their raw closes, not its split-adjusted ones (the two
@@ -696,6 +720,8 @@ class PricesServing:
         # (one TSM ADS is five shares), so the count stays under ``class:`` and the ADR has no cover shares.
         # shortcut: an ADR gets no market cap from the store at all; once a source of its ADS ratio (or its ADS count)
         # is read, divide the ordinary count by the ratio and map it to the ADR's row.
+        # A count of 0 (an unissued class) or dated after its filing (a typo, as ``_dei``) is no count (prices plan
+        # 16 Nov 2026, P2: 71 zero covers, 4 dated after their filing).
         con.execute("""CREATE OR REPLACE TEMP TABLE _cover AS
             WITH one AS (SELECT cik, any_value(security_id) AS security_id, any_value(security_type) AS security_type
                          FROM stg_spine WHERE tier = 'A' GROUP BY cik HAVING count(*) = 1),
@@ -705,7 +731,9 @@ class PricesServing:
                                   AS spine_id,
                               CASE WHEN s.security_id IS NOT NULL THEN s.security_type
                                    WHEN c.symbol IS NULL AND k.n = 1 THEN o.security_type END AS spine_type
-                       FROM stg_sec_cover c JOIN classes k USING (accession)
+                       FROM (SELECT * FROM stg_sec_cover WHERE shares > 0
+                                                        AND (filed IS NULL OR as_of IS NULL OR as_of <= filed)) c
+                       JOIN classes k USING (accession)
                        LEFT JOIN stg_spine s ON s.cik = c.cik AND s.ticker = replace(upper(c.symbol), '.', '-')
                        LEFT JOIN one o ON o.cik = c.cik)
             SELECT *, CASE WHEN spine_id IS NOT NULL AND spine_type IS DISTINCT FROM 'adr' THEN spine_id
@@ -823,8 +851,15 @@ class PricesServing:
                       "WHERE x.security_id = s.security_id AND x.session_date = ?) ORDER BY s.security_id")
             for sid, ticker in con.execute(tier_a.format(t="price_bar_daily"), [newest]).fetchall():
                 found.append(("tier_a_no_bar", sid, f"{ticker}: no bar on {newest}"))
+            adr = set(r[0] for r in con.execute("SELECT security_id FROM stg_spine WHERE security_type = 'adr'"
+                                                "AND security_id IS NOT NULL").fetchall())
+            bars_now = set(r[0] for r in con.execute(
+                "SELECT security_id FROM price_bar_daily WHERE session_date = ?", [newest]).fetchall())
             for sid, ticker in con.execute(tier_a.format(t="market_cap_daily"), [newest]).fetchall():
-                found.append(("tier_a_no_shares", sid, f"{ticker}: no shares for {newest}"))
+                if sid not in adr:
+                    found.append(("tier_a_no_shares", sid, f"{ticker}: no shares for {newest}"))
+                elif sid in bars_now:
+                    found.append(("adr_no_ratio", sid, f"{ticker}: an ADR, no ADS ratio read, so no market cap"))
             # A fund of the universe with no bar, by ticker: no spine id need exist (review M3 of #382).
             for (ticker,) in con.execute(
                     "SELECT u.ticker FROM _universe_etf u WHERE NOT EXISTS ("
@@ -850,8 +885,12 @@ class PricesServing:
             FROM price_bar_daily b {factor_join('a', 'b.security_id', 'b.session_date')}
             WHERE b.security_id NOT LIKE 'index:%' AND b.close > 0
             WINDOW w AS (PARTITION BY b.security_id ORDER BY b.session_date)""")
-        for sid, day, ratio in con.execute(f"""
-                SELECT r.security_id, r.session_date, r.split_close / r.prev_split FROM _ret r
+        for sid, day, ratio, kind in con.execute(f"""
+                SELECT r.security_id, r.session_date, r.split_close / r.prev_split,
+                       CASE WHEN t.security_type IN ('warrant', 'unit') THEN 'price_gap_warrant'
+                            ELSE 'price_gap_no_action' END
+                FROM _ret r LEFT JOIN (SELECT security_id, any_value(security_type) AS security_type FROM stg_spine
+                                       WHERE security_id IS NOT NULL GROUP BY 1) t USING (security_id)
                 WHERE r.prev_split > 0 AND date_diff('day', r.prev_day, r.session_date) <= {GAP_DAYS}
                   AND abs(ln(r.split_close / r.prev_split)) >= ln({GAP_FACTOR})
                   AND NOT EXISTS (SELECT 1 FROM corporate_action c WHERE c.security_id = r.security_id
@@ -863,7 +902,7 @@ class PricesServing:
                   {f"AND {incremental.where(f'r.session_date + INTERVAL {SPLIT_SAME_DAYS} DAY', 'r.security_id')}"
                    if live else ""}
                 ORDER BY 1, 2""").fetchall():
-            found.append(("price_gap_no_action", f"{sid}:{day}", f"split-adjusted close x{ratio:.3f}, no split"))
+            found.append((kind, f"{sid}:{day}", f"split-adjusted close x{ratio:.3f}, no split"))
         # Alpaca's previous adjusted close is close_all / (1 + all_return). The allowance is its exact rounding
         # bound, a hair wider (1e-6 of it) for the float error of a row that sits on it; none at a previous close of
         # half a cent or less, where the bound has no meaning and the flat 1 bp stays.
@@ -1001,8 +1040,10 @@ MARKET_CAP_SQL = f"""
                WHERE b.security_id NOT LIKE 'index:%' AND b.close IS NOT NULL /*near*/),
          -- The bar's own shares, else a WRDS source's of that session (an Alpaca bar Compustat also has), else the
          -- newest cover on or before the session.
-         j AS (SELECT b.security_id, b.session_date, b.issuer, b.close, coalesce(b.shares_outstanding, b.hist_shares) AS own,
-                      CASE WHEN b.shares_outstanding IS NOT NULL THEN b.source ELSE b.hist_source END AS bar_source,
+         -- A bar's own count of 0 (a SPAC unit's Compustat ``cshoc``) or below is none, as in ``h``.
+         j AS (SELECT b.security_id, b.session_date, b.issuer, b.close,
+                      CASE WHEN b.shares_outstanding > 0 THEN b.shares_outstanding ELSE b.hist_shares END AS own,
+                      CASE WHEN b.shares_outstanding > 0 THEN b.source ELSE b.hist_source END AS bar_source,
                       o.value AS cover, o.as_of AS cover_as_of, o.source AS cover_source
                FROM b ASOF LEFT JOIN o ON o.security_id = b.security_id AND b.session_date >= o.as_of),
          -- A company facts count older than DEI_MAX_AGE_DAYS gives no cap: its issuer may have stopped tagging it
@@ -1017,7 +1058,11 @@ MARKET_CAP_SQL = f"""
                       CASE WHEN own IS NOT NULL THEN bar_source ELSE cover_source END AS shares_source,
                       CASE WHEN own IS NOT NULL THEN session_date ELSE cover_as_of END AS shares_as_of,
                       close * shares AS market_cap, coalesce(issuer, security_id) AS iss
-               FROM s WHERE shares IS NOT NULL),
+               -- No cap for an ADR (#711): Compustat's count, as the cover's, is the issuer's ordinary shares and the
+               -- close is the ADS's. shortcut: until an ADS ratio is read; then divide instead (``adr_no_ratio``).
+               FROM s WHERE shares IS NOT NULL
+                 AND security_id NOT IN (SELECT security_id FROM stg_spine
+                                         WHERE security_type = 'adr' AND security_id IS NOT NULL)),
          -- Each class of the issuer at its newest cap on or before the session, if at most ISSUER_WITHIN_DAYS old:
          -- a class with no bar that day (GOOG on a day GOOGL traded) still counts.
          k AS (SELECT DISTINCT iss, security_id AS cls FROM c),
