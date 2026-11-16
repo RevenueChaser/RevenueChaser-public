@@ -314,6 +314,20 @@ def test_b2_an_empty_raw_root_never_swaps_in_an_empty_spx_table(sources, http_mo
     assert len(read.spx_expiry_strike("2026-10-26")) == 391
 
 
+def test_with_a_raw_disk_marker_set_an_unmounted_disk_is_refused_before_the_fetch(sources, monkeypatch, tmp_path):
+    """#292 N-2: the Parquet-root check ran after the fetch had written the tree onto the mount point. With
+    ``RC_MARKET_RAW_MARKER`` set, a run whose raw root lacks that file asks nothing and writes nothing."""
+    from RevenueChaser.core import config
+    monkeypatch.setenv(base.RAW_MARKER_ENV, ".rc-raw-disk")
+    monkeypatch.setattr(config, "MARKET_RAW_DIR", tmp_path / "unmounted")
+    row = _run()
+    assert row["result"] == "failed" and "raw disk marker" in row["note"]
+    assert sources.requests == [] and not (tmp_path / "unmounted").exists()
+    (tmp_path / "unmounted").mkdir()
+    (tmp_path / "unmounted" / ".rc-raw-disk").write_text("")
+    assert _run()["result"] == "changed"
+
+
 def test_b2_a_build_refuses_a_missing_parquet_root(monkeypatch, tmp_path):
     from RevenueChaser.core import config
     monkeypatch.setattr(config, "MARKET_RAW_DIR", tmp_path / "nowhere")

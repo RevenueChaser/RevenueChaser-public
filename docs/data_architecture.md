@@ -1016,6 +1016,7 @@ renders at once with what is stored.
 |---|---|---|
 | `RC_MARKET_DIR` | `MARKET_DIR` | The serving DuckDB files and `ops.sqlite` (the server's SSD); with `RC_REDIS_URL` set and no `RC_REDIS_NAMESPACE`, also the key of the Redis namespace the ops state lives in |
 | `RC_MARKET_RAW_DIR` | `MARKET_RAW_DIR` | `raw/<source>/<dataset>/...` and `parquet/<source>/<dataset>/<partition>/` (the HDD) |
+| `RC_MARKET_RAW_MARKER` | `rcdata.build.base.RAW_MARKER_ENV` | Optional: a file name under `RC_MARKET_RAW_DIR` that only the mounted HDD holds; when set, a run without that file refuses before its fetch (#292 N-2). Unset, nothing is checked |
 
 **Build memory.** The one read-write connection of a build (`serving.build`) is opened with DuckDB's `memory_limit`
 from `RC_DUCKDB_MEMORY_LIMIT` (a DuckDB size such as `5GB`; default `5GB`) and `threads` from `RC_DUCKDB_THREADS`

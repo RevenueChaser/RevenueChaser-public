@@ -117,6 +117,21 @@ def parquet_root() -> Path:
     return Path(config.MARKET_RAW_DIR) / "parquet"
 
 
+# #292 N-2: the name of a file that only the mounted raw disk holds. When it is set, a run refuses before its fetch
+# unless the file is there, so an unmounted disk is never written onto its mount point. Unset (tests, a laptop),
+# nothing is checked.
+RAW_MARKER_ENV = "RC_MARKET_RAW_MARKER"
+
+
+def raw_disk_problem() -> str | None:
+    """Why the raw disk is not the one the server meant, or None."""
+    name = (os.getenv(RAW_MARKER_ENV) or "").strip()
+    if name and not (Path(config.MARKET_RAW_DIR) / name).is_file():
+        return (f"the raw disk marker {name} is missing from {config.MARKET_RAW_DIR} (the raw disk is not mounted?); "
+                "nothing was fetched")
+    return None
+
+
 # ── What one request asks for ──────────────────────────────────────────────────────────────────────────────────
 
 # The spine's tiers, in the order they are reported (``rcdata/build/spine/tier.py``).
@@ -1174,6 +1189,9 @@ def _stage(ctx: RunContext, ds, req: dict, params: dict, attended_ok: bool = Fal
         if ctx.scope and not honours_scope(ds):
             ctx.notes.append(f"scope ignored: {ds.name} does not ask by name or tier ({ctx.scope.text()} "
                              "not applied)")
+        unmounted = raw_disk_problem()
+        if unmounted:
+            raise SourceError(unmounted)
         mode = params.get("mode", "daily")
         staged: int | None = None
         # The two "do not build" switches (#498). ``no_parquet`` is raw-only and implies ``no_duckdb``, because
