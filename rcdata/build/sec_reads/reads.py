@@ -58,8 +58,12 @@ MAX_ATTEMPTS = 3
 #: down for three runs) is parked until next year's filing. A filing that can never be read costs one call a month.
 RETRY_AFTER_S = 30 * 86400.0
 #: Why a company is stale. A run asks the first two by itself; the other two need the request's ``reread``.
-NEW_FILING, RETRY, CHANGED, FIRST = "new_filing", "retry", "changed", "first"
-AUTOMATIC = (NEW_FILING, RETRY)
+NEW_FILING, RETRY, CHANGED, FIRST, NEW_COMPANY = "new_filing", "retry", "changed", "first", "new_company"
+AUTOMATIC = (NEW_FILING, RETRY, NEW_COMPANY)
+#: The most companies with no answer at all one run asks by itself. A company that enters the universe is asked like
+#: a new filing; more than this many at once is a change of scope, which waits for the owner's word like any mass
+#: read (avo, 16 Nov 2026: "a scope change must not count as a new filing").
+NEW_COMPANY_LIMIT = int(os.environ.get("RC_SEC_READS_NEW_COMPANY_LIMIT", "100"))
 #: Companies one DeepSeek question is asked in a day without ``reread`` (a paid call is capped in its own code).
 #: Provisional: the number is the owner's. An EVREN question has none: EVREN has no quota (avo, 16 Nov 2026).
 DAY_CAP = int(os.environ.get("RC_SEC_READS_DAY_CAP", "200"))
@@ -142,7 +146,7 @@ def _plan(q: Question, ctx: base.RunContext) -> tuple[list[asker.Job], dict[tupl
             by_cik.setdefault(r["cik"], []).append(r)
     begun = any(r["prompt_version"] == q.prompt_version and r["status"] == asker.OK for r in have.values())
     waiting: dict[str, int] = {}
-    jobs, prior, no_text = [], {}, []
+    jobs, prior, no_text, new = [], {}, [], 0
     for cik in ciks:
         inp = inputs.get(cik)
         if inp is None or not (inp.text or inp.hash):
@@ -164,6 +168,12 @@ def _plan(q: Question, ctx: base.RunContext) -> tuple[list[asker.Job], dict[tupl
             continue
         jobs.append(job)
         prior[_job_key(job)] = old
+        new += why == NEW_COMPANY
+    if new > NEW_COMPANY_LIMIT and not ctx.reread:
+        # A change of scope, not a company's first report: none of them is asked without the owner's word.
+        waiting[NEW_COMPANY] = new
+        jobs = [j for j in jobs if by_cik.get(j.cik)]
+        prior = {_job_key(j): prior[_job_key(j)] for j in jobs}
     if waiting:
         ctx.notes.append(f"{q.id}: {sum(waiting.values())} wait for the owner's word, a request with reread ("
                          + ", ".join(f"{w} {n}" for w, n in sorted(waiting.items())) + ")")
@@ -188,8 +198,9 @@ def stale_reason(job: asker.Job, rows: list[dict], begun: bool) -> str:
     ``begun`` whether the question has an ``ok`` answer under its current prompt version at all.
 
     - ``retry``: this text under this prompt was asked before and has no ``ok`` answer;
-    - ``new_filing``: a filing the company has no row for, when it was read under this prompt before; also a company
-      with no row at all once the question's first pass has begun (a new company's first report);
+    - ``new_filing``: a filing the company has no row for, when it was read under this prompt before;
+    - ``new_company``: a company with no row at all once the question's first pass has begun (its first report);
+      asked by itself up to ``NEW_COMPANY_LIMIT`` a run (``_plan``);
     - ``first``: no row, and the question has no answer under this prompt yet (its first pass);
     - ``changed``: the rest, the same filing with another text (a re-cut) or a prompt version the company was not
       read under.
@@ -198,7 +209,7 @@ def stale_reason(job: asker.Job, rows: list[dict], begun: bool) -> str:
     if any(r["prompt_version"] == q.prompt_version and r["input_hash"] == job.input_hash for r in rows):
         return RETRY
     if not rows:
-        return NEW_FILING if begun else FIRST
+        return NEW_COMPANY if begun else FIRST
     known = {r["accession"] for r in rows}
     if job.input.accession not in known and any(r["prompt_version"] == q.prompt_version for r in rows):
         return NEW_FILING
