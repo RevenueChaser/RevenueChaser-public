@@ -55,3 +55,6 @@ SERVING_SCHEMA_VERSION["sec_forms"] = 1
 # The SEC reader tool (plan 2026-11-15_1119, step 1): ``sec_reads.duckdb``, the answers ``build/sec_reads/`` stores.
 # Its first number, not a bump: there is no live file to checkpoint.
 SERVING_SCHEMA_VERSION["sec_reads"] = 1
+# sec_reads 2 (plan 2026-11-15_1722, step 1): ``read_answer`` gains ``form``, ``input_kind``, ``calls``,
+#             ``tokens_in``, ``tokens_out`` and ``error``. No live rows to checkpoint: no question was registered.
+SERVING_SCHEMA_VERSION["sec_reads"] = 2

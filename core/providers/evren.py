@@ -119,7 +119,7 @@ def complete(system: str, user: str, *, thinking: bool = False,
              ticker: str | None = None, cik=None,
              prompt_version: str | None = None,
              validate: Callable[[str], bool] | None = None,
-             model: str | None = None) -> str:
+             model: str | None = None, usage: dict | None = None) -> str:
     """One chat completion: cache, then the key, then HTTP. ``thinking`` / ``reasoning_effort`` / ``now`` are
     accepted for the writer signature (``module_relatedness.profiles``) and not sent. ``model`` is the board's
     (#360), else ``MODEL``; it is a parameter, never a module-level swap."""
@@ -180,7 +180,7 @@ def complete(system: str, user: str, *, thinking: bool = False,
                                      f"Check LITELLM_RC_KEY (the gate key) in /etc/life/secrets.env and re-run.")
             if r.status_code >= 400:
                 raise EvrenError(f"EVREN HTTP {r.status_code}: {text}")
-            return _finish(r, key, use_cache, validate, ticker, cik, prompt_version, model, api_key)
+            return _finish(r, key, use_cache, validate, ticker, cik, prompt_version, model, api_key, usage)
         raise EvrenError("EVREN request failed")  # pragma: no cover - the loop always returns or raises
     finally:
         if own:
@@ -199,7 +199,8 @@ def _capacity_wait(r) -> float:
     return min(CAPACITY_WAIT_MAX_S, max(CAPACITY_WAIT_MIN_S, wait))
 
 
-def _finish(r, key: str, use_cache: bool, validate, ticker, cik, prompt_version, model: str, api_key: str) -> str:
+def _finish(r, key: str, use_cache: bool, validate, ticker, cik, prompt_version, model: str, api_key: str,
+            usage: dict | None = None) -> str:
     try:
         data = r.json()
     except ValueError as exc:
@@ -210,6 +211,8 @@ def _finish(r, key: str, use_cache: bool, validate, ticker, cik, prompt_version,
     content = message.get("content") if isinstance(message, dict) else None
     if not content:
         raise EvrenError(f"EVREN returned no content: {_scrub(str(data)[:300], api_key)}")
+    if usage is not None and isinstance(data.get("usage"), dict):
+        usage.update(data["usage"])      # the caller's own count (the SEC reader tool stores tokens per answer)
     cacheable = use_cache
     if cacheable and validate is not None:
         try:

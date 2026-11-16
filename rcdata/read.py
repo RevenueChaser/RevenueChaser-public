@@ -1780,17 +1780,16 @@ def sec_reads(ciks: Iterable = (), question: str | None = None, *, provider: str
               model: str | None = None, raw: bool = False) -> list[dict]:
     """Per company the newest answer to ``question`` (``sec.read``), one each; a company with none is absent.
 
-    The writer is the question's configured one (``build/sec_reads/questions.py``) unless ``provider`` / ``model``
-    name another: a comparison stores two writers' answers and a board reads its own. ``answer`` is the parsed
-    JSON; only ``ok`` and ``partial`` rows are answers. ``raw=False`` leaves the replies out.
+    An answer is current whoever wrote it, so every writer's rows are read: of one filing's answers the one under
+    the question's current prompt version wins, then the newest asked. ``provider`` / ``model`` narrow the read to
+    one writer (a comparison). ``answer`` is the parsed JSON; only ``ok`` and ``partial`` rows are
+    answers. ``raw=False`` leaves the replies out.
     """
     wanted = sorted({_cik(c) for c in ciks if str(c or "").strip()})
     if not wanted or not question:
         return []
     from .build.sec_reads.questions import QUESTIONS
     q = QUESTIONS.get(str(question))
-    provider = provider or (q.provider if q else None)
-    model = model or (q.writer_model if q else None)
     sql = (f"SELECT {'*' if raw else '* EXCLUDE (raw)'} FROM read_answer WHERE question = ? "
            f"AND status IN ('ok', 'partial') AND cik IN ({', '.join('?' * len(wanted))})")
     params: list = [str(question), *wanted]
@@ -1798,8 +1797,10 @@ def sec_reads(ciks: Iterable = (), question: str | None = None, *, provider: str
         if value:
             sql += f" AND {col} = ?"
             params.append(str(value))
-    sql += (" QUALIFY row_number() OVER (PARTITION BY cik ORDER BY filing_date DESC NULLS LAST, fetched_at DESC) = 1"
-            " ORDER BY cik")
+    # The current prompt's row first among one filing's answers; bound last, as the QUALIFY is last in the SQL.
+    sql += (" QUALIFY row_number() OVER (PARTITION BY cik ORDER BY filing_date DESC NULLS LAST, "
+            "(prompt_version = ?) DESC, fetched_at DESC) = 1 ORDER BY cik")
+    params.append(q.prompt_version if q else "")
     rows = _rows("read_answer", sql, params)
     for r in rows:
         r["answer"] = json.loads(r["answer"]) if r.get("answer") else None

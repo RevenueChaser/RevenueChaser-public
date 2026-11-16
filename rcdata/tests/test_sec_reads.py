@@ -48,9 +48,11 @@ def parse(reply: str) -> dict | None:
 
 def question(ciks=("789019", "320193", "999"), text=None, **kw) -> questions.Question:
     text = TEXT if text is None else text
+    if kw.get("provider") == "deepseek":
+        kw.setdefault("max_calls", 100)                     # a DeepSeek question must name its cap
     q = questions.Question(
         id=kw.pop("id", "test.products"), owner="test", system="List the products as JSON.",
-        prompt_version="t1", scope=lambda: list(ciks),
+        prompt_version=kw.pop("prompt_version", "t1"), scope=lambda: list(ciks),
         inputs=lambda wanted: {c: questions.Input(f"acc-{c}", f"{c}.htm", date(2026, 2, 1), text[c], "ours-2")
                                for c in wanted if c in text},
         parse=parse, **kw)
@@ -198,6 +200,8 @@ def test_the_registry_refuses_a_pro_model_an_unknown_provider_and_a_second_owner
         question(provider="deepseek", model="deepseek-pro")
     with pytest.raises(ValueError, match="no pool"):
         question(provider="grok")
+    with pytest.raises(ValueError, match="needs max_calls"):
+        question(provider="deepseek", max_calls=None)
     question()
     with pytest.raises(ValueError, match="already registered"):
         question()
@@ -235,3 +239,191 @@ def test_a_reply_cut_short_counts_no_attempt_and_never_shrinks_a_partial(http_mo
     run()
     held = list(reads.held("test.products").values())
     assert [(r["status"], r["attempts"], r["missing_chunks"]) for r in held] == [("partial", 1, "2")]
+
+
+# ── Serving version 2 (plan 2026-11-15_1722, step 1): the four gaps and the failure log ─────────────────────────
+
+def test_a_changed_context_asks_nothing_again_when_the_staleness_text_is_the_same(http_mock):
+    http_mock.add("/chat/completions", chat('{"products": ["x"]}'))
+
+    def ask_with(context: str):
+        questions.QUESTIONS.clear()
+        questions.register(questions.Question(
+            id="test.products", owner="test", system="s", prompt_version="t1", scope=lambda: ["789019"],
+            inputs=lambda wanted: {"789019": questions.Input("acc", "d.htm", date(2026, 2, 1),
+                                                             f"Sector: {context}\n\nMicrosoft makes software.",
+                                                             hash_text="Microsoft makes software.")},
+            parse=parse))
+        run()
+
+    ask_with("Technology")
+    ask_with("Communication Services")                     # reclassified: other bytes sent, the same staleness text
+    assert len(http_mock.requests) == 1
+    assert rows("SELECT count(*) FROM read_answer") == [(1,)]
+
+
+def test_an_answer_by_another_writer_is_current_and_is_what_a_board_reads(http_mock):
+    http_mock.add("/chat/completions", chat('{"products": ["Azure"]}'))
+    question(ciks=("789019",), provider="deepseek")
+    run()
+    questions.QUESTIONS.clear()
+    question(ciks=("789019",))                             # the writer goes back to EVREN: nothing is asked again
+    run()
+    assert len(http_mock.requests) == 1
+    assert [(r["provider"], r["answer"]) for r in read.sec_reads(["789019"], "test.products")] == [
+        ("deepseek", {"products": ["Azure"]})]
+    assert read.sec_reads(["789019"], "test.products", provider="evren") == []
+
+
+def test_an_answer_carries_what_was_read_and_what_it_cost(http_mock):
+    reply = {**chat('{"products": ["a"]}'), "usage": {"prompt_tokens": 40, "completion_tokens": 7}}
+    http_mock.add("/chat/completions", reply)
+    questions.register(questions.Question(
+        id="test.products", owner="test", system="s", prompt_version="t1", scope=lambda: ["789019"],
+        inputs=lambda wanted: {"789019": questions.Input("acc", "d.htm", date(2026, 2, 1), TEXT["789019"],
+                                                         kind="section:business", form="10-K")},
+        parse=parse, chunk_chars=30))                      # the text is 44 characters: two calls
+    run()
+    assert rows("SELECT form, input_kind, calls, tokens_in, tokens_out, error FROM read_answer") == [
+        ("10-K", "section:business", 2, 80, 14, None)]
+
+
+def test_every_call_is_logged_with_how_it_failed(http_mock, monkeypatch):
+    logged = []
+    monkeypatch.setattr(asker.ops, "log_call", lambda provider, what=None, **kw: logged.append((what, kw["result"])))
+    calls = iter([(400, "context too long", {}), (200, json.dumps(chat('{"products": []}')), {}),
+                  (200, json.dumps(chat('{"products": ["a"]}')), {})])
+    http_mock.add("/chat/completions", lambda req: next(calls))
+    question(ciks=("789019",), chunk_chars=15)             # three chunks: an error, an unusable reply, an answer
+    run()
+    assert [w for w, _ in logged] == [f"test.products cik 789019 chunk {i}/3" for i in (1, 2, 3)]
+    assert "EvrenError: EVREN HTTP 400: context too long" in logged[0][1] and [r for _, r in logged[1:]] == ["unusable reply", "ok"]
+    assert rows("SELECT status, missing_chunks, error FROM read_answer") == [("partial", "0,1", "unusable reply")]
+
+
+# ── The Fable review of 15 Nov 2026 (claude-coordinator reviews/2026-11-15_1905): F1 to F5 ─────────────────────
+
+def test_a_second_asker_asks_nothing_while_one_holds_the_ask_lock(http_mock):
+    http_mock.add("/chat/completions", chat('{"products": ["x"]}'))
+    question(ciks=("789019",))
+    with job_lock.acquire(asker.ASK_LOCK) as got:
+        assert got
+        check = run()
+    assert http_mock.requests == [] and "another SEC read is asking" in check["note"]
+    run()
+    assert len(http_mock.requests) == 1
+
+
+def test_a_question_is_answered_before_the_next_one_builds_its_inputs(http_mock):
+    http_mock.add("/chat/completions", chat('{"products": ["x"]}'))
+    seen = []
+    question(id="test.first", ciks=("789019",))
+
+    def inputs(wanted):
+        seen.append([r["status"] for r in reads.held("test.first").values()])
+        return {"789019": questions.Input("acc", "d.htm", date(2026, 2, 1), "second text")}
+
+    questions.register(questions.Question(id="test.second", owner="test", system="s", prompt_version="t1",
+                                          scope=lambda: ["789019"], inputs=inputs, parse=parse))
+    run()
+    assert seen == [["ok"]] and len(http_mock.requests) == 2
+
+
+def test_a_board_reads_the_current_prompt_version_whoever_wrote_it(http_mock):
+    replies = iter([chat('{"products": ["old"]}'), chat('{"products": ["new"]}')])
+    http_mock.add("/chat/completions", lambda req: (200, json.dumps(next(replies)), {}))
+    question(ciks=("789019",))                             # EVREN, the configured writer, prompt t1
+    run()
+    questions.QUESTIONS.clear()
+    question(ciks=("789019",), provider="deepseek", prompt_version="t2")   # a bulk pass by the other writer
+    run()
+    questions.QUESTIONS.clear()
+    question(ciks=("789019",), prompt_version="t2")        # the writer goes back to EVREN
+    run()
+    assert len(http_mock.requests) == 2                    # t2 is answered: nothing asked again
+    assert [(r["prompt_version"], r["answer"]) for r in read.sec_reads(["789019"], "test.products")] == [
+        ("t2", {"products": ["new"]})]
+
+
+def test_a_run_whose_first_replies_are_all_unusable_stops_and_stores_none(http_mock):
+    many = {str(1000 + i): f"company {i}" for i in range(8)}
+    http_mock.add("/chat/completions", chat('{"products": []}'))
+    question(ciks=tuple(many), text=many)
+    check = run()
+    assert check["result"] == "failed" and "all unusable" in check["note"]
+    assert len(http_mock.requests) == asker.UNUSABLE_STOP and reads.held("test.products") == {}
+
+
+def test_a_key_at_its_attempts_is_tried_again_after_the_retry_time(http_mock, monkeypatch):
+    http_mock.add("/chat/completions", chat('{"products": []}'))
+    question(ciks=("789019",))
+    for _ in range(4):
+        run()
+    assert len(http_mock.requests) == reads.MAX_ATTEMPTS
+    monkeypatch.setattr(reads, "RETRY_AFTER_S", 0.0)
+    run()
+    assert len(http_mock.requests) == reads.MAX_ATTEMPTS + 1
+
+
+def test_nothing_is_asked_when_the_parquet_tree_is_behind_the_live_table(http_mock):
+    http_mock.add("/chat/completions", chat('{"products": ["x"]}'))
+    question(ciks=("789019",))
+    run()
+    reads.partition_path("test.products").unlink()         # the tree is lost; the live table still has the answer
+    check = run()
+    assert check["result"] == "failed" and "the tree is behind" in check["note"]
+    assert len(http_mock.requests) == 1
+
+
+# ── The same review, F6, F8 and F9 ──────────────────────────────────────────────────────────────────────────────
+def test_a_question_sends_its_inputs_ready_messages_and_keeps_the_staleness_text(http_mock):
+    http_mock.add("/chat/completions", chat('{"products": ["x"]}'))
+    body = "Microsoft makes software. It sells cloud."
+
+    def ask_with(context: str):
+        questions.QUESTIONS.clear()
+        questions.register(questions.Question(
+            id="test.products", owner="test", system="s", prompt_version="t1", scope=lambda: ["789019"],
+            inputs=lambda wanted: {"789019": questions.Input(
+                "acc", "d.htm", date(2026, 2, 1), body, hash_text=body,
+                messages=(f"{context} (part 1 of 2)\nMicrosoft makes software.",
+                          f"{context} (part 2 of 2)\nIt sells cloud."))},
+            parse=parse))
+        run()
+
+    ask_with("Sector: Technology")
+    assert [json.loads(r.content)["messages"][-1]["content"] for r in http_mock.requests] == [
+        "Sector: Technology (part 1 of 2)\nMicrosoft makes software.",
+        "Sector: Technology (part 2 of 2)\nIt sells cloud."]       # the input's own bytes, not a slice of its text
+    ask_with("Sector: Communication Services")
+    assert len(http_mock.requests) == 2                             # the same staleness text: nothing asked again
+    assert rows("SELECT status, calls FROM read_answer") == [("ok", 2)]
+
+
+def test_a_transient_error_gives_up_on_one_company_and_the_run_goes_on(http_mock):
+    calls = iter([(500, "busy", {}), (200, json.dumps(chat('{"products": ["x"]}')), {})])
+    http_mock.add("/chat/completions", lambda req: next(calls))
+    question()                                                      # 320193 is asked first and times out
+    check = run()
+    assert check["result"] != "failed" and "1 left for the next run" in check["note"]
+    assert rows("SELECT cik, status, attempts FROM read_answer WHERE status <> 'no_text'") == [("789019", "ok", 1)]
+
+
+def test_the_fifth_company_with_a_transient_error_stops_the_run(http_mock):
+    many = {str(1000 + i): f"company {i}" for i in range(8)}
+    http_mock.add("/chat/completions", lambda req: (500, "busy", {}))
+    question(ciks=tuple(many), text=many)
+    check = run()
+    assert check["result"] == "failed"
+    assert len(http_mock.requests) == asker.TRANSIENT_STOP and reads.held("test.products") == {}
+
+
+def test_a_run_sends_at_most_the_questions_max_calls(http_mock):
+    many = {str(1000 + i): f"company {i}" for i in range(6)}
+    http_mock.add("/chat/completions", chat('{"products": ["x"]}'))
+    question(ciks=tuple(many), text=many, max_calls=4)
+    check = run()
+    assert len(http_mock.requests) == 4
+    assert "cap of 4 calls" in check["note"] and "2 left for the next run" in check["note"]
+    run()
+    assert len(http_mock.requests) == 6                             # the next run asks the rest
