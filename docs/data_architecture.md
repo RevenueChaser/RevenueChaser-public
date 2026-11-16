@@ -1677,6 +1677,7 @@ never writes it. Nothing here writes `raw.duckdb`: the old 13F, short and inside
 | `sec/form4` | daily | The SEC's Insider Transactions data sets (the first fill), then Form 4 and 4/A through the EDGAR daily index | `insider_transactions` |
 | `sec/13dg` | daily | Schedules 13D and 13G, old (`SC 13G`) and new (`SCHEDULE 13G`, XML since 2024-12-18) names | `beneficial_ownership` |
 | `uw/institutions` | quarterly | Unusual Whales' `GET /institutions` without a name: every 13F institution by value, 500 to a page (18 pages, 8,875 CIKs on 12 Nov 2026), with its tags, `is_hedge_fund` and its succession | `uw_institution`, `uw_institution_succession` |
+| `sec/nport` | monthly, newest listed quarter only (a held set is not asked again) | The SEC's Form N-PORT data sets (`<yyyy>q<n>_nport.zip`, about 440 MB, streamed to disk): every fund's series and holdings, typed to `parquet/sec/nport/quarter=<set>/` (`fund.parquet`, `holdings.parquet`) (#354) | none yet (C2: `etf_holdings_nport`) |
 | `ownership/serve` | daily | none: derives the 13F totals from the 13F tables and the spine | the four 13F tables below |
 
 **Starts by hand.** Every ownership dataset is not due until it has built once, so the first hourly pass after a
