@@ -9,7 +9,7 @@ import pytest
 
 from RevenueChaser.core import calendar
 from RevenueChaser.core.providers import unusual_whales
-from RevenueChaser.rcdata import read, serving
+from RevenueChaser.rcdata import ops, read, serving
 from RevenueChaser.rcdata.build import base
 from RevenueChaser.rcdata.build.options import uw_far_contracts as far
 
@@ -170,6 +170,7 @@ def test_the_morning_reads_each_ticker_s_chain_and_computes_the_opened_share(uw_
                    d["option_symbol"]: ["missing", None, None, None, None],
                    e["option_symbol"]: ["matched", 700, -300, -3.0, True]}, "raw, not clipped"
     assert "open interest of the newest read session: 3 matched, 1 stale, 1 missing" in row["note"]
+    assert row["coverage"] == 0.6, "matched over swept of the session read, not 1.0 for a sweep file"
     assert row["next_check_due"] == calendar.next_trading_day(SESSION).isoformat(), "nothing left: not due again"
     uw_opts.requests.clear()
     run()
@@ -279,6 +280,17 @@ def test_the_next_evening_reads_what_the_morning_missed_and_sweeps_its_own_sessi
     run()
     assert query("SELECT session_date, oi_status, opened_share FROM option_far_contract ORDER BY session_date") == [
         (SESSION, "matched", 0.8), (nxt, "pending", None)]
+
+
+def test_a_session_whose_sweep_window_closed_unswept_is_named_and_stays_an_open_issue(uw_opts, monkeypatch):
+    """No backfill: a session the builder did not sweep in its window is lost for good, so the check says so. The
+    sessions before the first sweep are not counted: the dataset was not collecting then."""
+    _swept(uw_opts, [contract("AAA", "C", 100)])
+    at(monkeypatch, AFTER_WINDOW)                                           # the next session's window is over
+    nxt = calendar.next_trading_day(SESSION)
+    row = run()
+    assert f"1 sessions lost, never swept: {nxt}" in row["note"]
+    assert [(i["kind"], i["key"]) for i in ops.open_issues(far.NAME)[1]] == [("session_lost", nxt.isoformat())]
 
 
 def test_after_the_window_an_unread_ticker_is_stale_and_the_session_is_closed(uw_opts, monkeypatch):
