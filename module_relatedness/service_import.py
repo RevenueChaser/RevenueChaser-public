@@ -1,6 +1,6 @@
 """The stored Relatedness profiles as rows of the SEC reading service: the dry run (#894; plan 2026-11-15_1722
-§12.3 step 3). **Nothing is written here**: :func:`plan` reads and counts, and the write is a later step that needs
-a backup and the owner's word.
+§12.3 step 3). :func:`plan` reads and counts and writes nothing; :func:`write` is the write, which needs a backup
+and the owner's word.
 
 Why an import: the service's staleness hash is not the board's (``company_profile``: the text alone; the board's:
 the system prompt, the company's name and the text), so without it the service would ask every company again.
@@ -11,7 +11,8 @@ sentence about candidate names out and kept the version, and the stored hash is 
 imported row carries the service's hash of the same text, and the stored row's own writer, status, attempts and
 ``fetched_at``.
 
-    python -m RevenueChaser.module_relatedness.service_import        # the counts, as JSON
+    python -m RevenueChaser.module_relatedness.service_import            # the counts, as JSON; writes nothing
+    python -m RevenueChaser.module_relatedness.service_import --write    # the write: the owner's word, a backup
 
 On the server: read-only, with ``RC_STORE_AUTO_ENSURE=0`` (``CLAUDE.md``, Data safety).
 """
@@ -83,5 +84,26 @@ def plan() -> dict:
     return {"counts": counts, "rows": rows}
 
 
+def write() -> dict:
+    """Write the plan's rows into the service's Parquet tree and return the counts. The owner's word and a backup
+    come first (``CLAUDE.md``, Data safety); the served table has the rows after the next ``sec/reads`` build.
+
+    Held under the asker's lock, so it never runs beside a read. Writing twice changes nothing: a row is keyed by
+    its question, prompt, company, filing, hash and writer, and a later answer of the service wins its key."""
+    from ..core import job_lock
+    from ..rcdata.build import base
+    from ..rcdata.build.sec_reads import asker, reads
+    from ..rcdata.build.sec_reads import company_profile as cp
+
+    with job_lock.acquire(asker.ASK_LOCK) as got:
+        if not got:
+            raise SystemExit("a SEC read is asking: nothing written")
+        made = plan()
+        if made["rows"]:
+            base.upsert_partition(made["rows"], reads.SCHEMA, reads.KEY, reads.partition_path(cp.PROFILE_ID))
+    return made["counts"]
+
+
 if __name__ == "__main__":
-    print(json.dumps(plan()["counts"], indent=1))
+    import sys
+    print(json.dumps(write() if "--write" in sys.argv[1:] else plan()["counts"], indent=1))
