@@ -56,6 +56,7 @@ def test_the_profile_writer_stores_the_accession_of_the_filing_it_read(rawstore_
 
     spine_fixture.write_security([])          # a profile run needs a spine (#642 D3)
 
+    monkeypatch.setattr(config, "PROFILES_FROM", "own")       # the board's own writer; the mirror has its own test
     monkeypatch.setattr(rel, "_cik_for", lambda ts: {t: t for t in ts})
     monkeypatch.setattr(rel, "_filing_text", lambda t: (t, long_body("we make gpus")))
     monkeypatch.setattr(rel, "_filing_source", lambda t: {"cik": "1045810", "accession": "acc-9", "form": "10-K",
