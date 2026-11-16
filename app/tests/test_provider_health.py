@@ -282,8 +282,3 @@ class TestPayloadBoards:
         assert "rc-provider-health" not in render_board(
             {"label": "t", "rows": [], "row_count": 0, "provider_health": _health()})
 
-    def test_leaps_renders_the_banner(self, tmp_path):
-        from RevenueChaser.module_leaps.report import render_leaps_dashboard
-        p = render_leaps_dashboard([], [], filename=str(tmp_path / "l.html"), watchlist=set(),
-                                   provider_health=_BAD)
-        assert "rc-provider-health" in p.read_text(encoding="utf-8")

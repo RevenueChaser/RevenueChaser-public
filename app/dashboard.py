@@ -204,7 +204,7 @@ jobs.register("earnings", runners.run_earnings_range, ["module_earnings_radar"])
 # ``option_far_contract`` (#746), which the builder's ``uw/far_contracts`` dataset fills on its own schedule, so the
 # board has no Fetch of its own. Leaving the name out of the registry is the gate: ``jobs.submit`` has no runner for
 # it, so no Fetch button, no ``POST /run/module_leaps`` and no scheduled call can start the old scan.
-# ``runners.run_leaps_latest`` stays in place -- switching off is not deleting.
+# The old scan's code is gone too (#746 plan step 4); only the 409 below is left for old bookmarks.
 # 13F Fetch = refresh the names/sectors and shares outstanding the dashboard owns, render the board (backend D4).
 # The numbers are the builder's (G9), so the Fetch asks the SEC for nothing. It needs no UW key — the
 # names/sectors step is best-effort and opens its own client (#206).

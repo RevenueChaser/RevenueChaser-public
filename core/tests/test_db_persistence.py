@@ -57,14 +57,12 @@ def test_rotation_snapshot_populated(rawstore_tmp_db):
 
 
 def test_leaps_store_populated(rawstore_tmp_db):
-    from RevenueChaser.module_leaps.engine import save_cache, store_prints
-    save_cache("NOK", {"ticker": "NOK", "label": "Quiet"})
+    # The old scan that wrote these two is gone (#746); the tables stay in the manifest until avo's "sil".
+    rawstore.write_rows("leaps_cache", [{"ticker": "NOK", "payload": {"latest": {"label": "Quiet"}, "history": []}}])
     assert rawstore.get("leaps_cache", "NOK")["payload"]["latest"]["label"] == "Quiet"
-    new = store_prints([{"id": "p1", "ticker": "AAPL", "strike": 200.0, "expiry": "2027-01-15",
-                         "premium": 1000.0, "size": 1, "option_type": "call", "delta": 0.8,
-                         "next_earnings_date": None, "executed_at": "2026-08-17T00:00:00Z",
-                         "ask_vol": 1, "bid_vol": 1}])
-    assert new == 1
+    rawstore.write_rows("leaps_flow_prints", [{"id": "p1", "ticker": "AAPL", "strike": 200.0, "expiry": "2027-01-15",
+                                               "premium": 1000.0, "size": 1, "option_type": "call", "delta": 0.8,
+                                               "executed_at": "2026-08-17T00:00:00Z", "ask_vol": 1, "bid_vol": 1}])
     assert rawstore.count("leaps_flow_prints") == 1
 
 

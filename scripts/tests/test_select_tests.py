@@ -339,10 +339,10 @@ def test_a_change_inside_one_board_runs_only_that_boards_e2e_and_the_shell():
 
 
 def test_a_board_another_board_imports_runs_the_importers_e2e_too():
-    """module_earnings_radar imports module_leaps directly, not only through app/."""
-    sel = mod.select(["module_leaps/__init__.py"])
+    """module_earnings_radar imports module_sector_rotation directly, not only through app/."""
+    sel = mod.select(["module_sector_rotation/__init__.py"])
     assert sel.mode == "SELECTIVE", sel.reason
-    assert mod.E2E_DIR + "test_board_leaps.py" in sel.e2e
+    assert mod.E2E_DIR + "test_board_sector_rotation.py" in sel.e2e
     assert mod.E2E_DIR + "test_board_earnings_radar.py" in sel.e2e
     assert mod.E2E_DIR + "test_board_value_chain.py" not in sel.e2e
 

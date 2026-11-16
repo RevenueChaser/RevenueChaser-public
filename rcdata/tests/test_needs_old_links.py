@@ -30,7 +30,6 @@ PROVIDER_FILES = {
     "module_financials": {"engines/comps_engine.py", "engines/credit_capacity_engine.py", "engines/dcf_engine.py",
                           "engines/quick_remarks_engine.py", "engines/three_statement_engine.py", "run.py"},
     "module_fundamentals": {"pipeline.py"},
-    "module_leaps": {"scan.py"},
     "module_news": {"headlines.py", "tape.py"},
     "module_oipd": {"engine.py"},
     "module_relatedness": {"__main__.py", "compare.py", "engine.py", "naming.py", "profiles.py", "store.py"},

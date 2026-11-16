@@ -99,30 +99,13 @@ def test_the_suite_never_points_at_the_developers_real_edgar_docs():
 
 # Every rendered board: the renderer's own return value must land under .cache/,
 # and it must be the exact path app/dashboard.py serves for that tab.
-def _render_leaps():
-    from RevenueChaser.module_leaps.report import render_leaps_dashboard
-    snap = {"ticker": "NOK", "name": "Nokia", "label": "Quiet", "score": 10,
-            "frequency": 1, "notional": 1000.0, "net_notional": 100.0,
-            "ask_share": 0.5, "near_term_event": False}
-    return render_leaps_dashboard([], [snap], filename="leaps_latest.html")
-
-
 class TestRenderedBoardsLandInCache:
-    def test_leaps_dashboard_is_written_under_cache(self, tmp_path, monkeypatch):
-        import RevenueChaser.module_leaps.report as lr
-        monkeypatch.setattr(lr, "OUTPUT_DIR", tmp_path)
-        path = _render_leaps()
-        assert path.exists()
-        assert path.parent == tmp_path, f"LEAPS artifact escaped OUTPUT_DIR: {path}"
-
     def test_leaps_has_no_served_artifact_while_it_waits_on_a_measurement(self):
         """The old regression here was the renderer writing ``.store/leaps_latest.html`` while
         ``_module_file`` looked in ``.cache/``. Since #730 the tab serves one fixed "no data yet"
-        page, so there is no served artifact at all and nothing can escape ``.cache/``. The renderer
-        still writes under ``OUTPUT_DIR`` (the test above), which is what the rest of the rule is about."""
+        page, so there is no served artifact at all and nothing can escape ``.cache/``; the old renderer
+        is gone (#746)."""
         from RevenueChaser.app import dashboard, runners
-        import RevenueChaser.module_leaps.report as lr
-        assert lr.OUTPUT_DIR == runners.OUTPUT_DIR
         assert runners.LEAPS_LATEST.parent == config.OUTPUT_DIR
         assert dashboard._module_file("module_leaps") is None
 
