@@ -980,3 +980,28 @@ def test_an_eight_digit_cusip_that_lost_its_leading_zero_gets_it_back_when_its_c
     _serve()
     assert _served("SELECT holders FROM sec13f_cusip_map WHERE cusip = '037833100'") == [(4,)]
     assert _served("SELECT cusip FROM sec13f_cusip_map WHERE length(cusip) < 9") == [("12345678",)]
+
+
+def test_each_filers_style_over_the_settled_quarters(monkeypatch, http_mock):
+    """#779 B2 (avo, 16 Nov 2026, Q12): every filer with 5 or more names in the newest settled quarter, its
+    turnover (weights of value, so a split moves nothing), top-ten share and the share it held every quarter."""
+    monkeypatch.setattr(sec, "_shared_pace", lambda: True)
+    monkeypatch.setenv("RC_HTTP_CONTACT", "ops@example.org")
+    ox.make_spine()
+    e = ox.Edgar()
+    e.add_day("2026-08-10", [_f("0002000001-26-000001", 2000001, "2026-08-10", _book(), period="06-30-2026"),
+                             _f("0002000002-26-000002", 2000002, "2026-08-10", _book(names=5), period="06-30-2026")])
+    e.add_day("2026-10-27", [_f("0002000001-26-000003", 2000001, "2026-10-27", _book()),
+                             _f("0002000002-26-000004", 2000002, "2026-10-27", _book()),
+                             _f("0002000003-26-000005", 2000003, "2026-10-27", _book(names=3))])     # too few
+    e.install(http_mock)
+    for day in ("2026-08-10", "2026-10-27"):
+        _thirteen_f(mode="backfill", **{"from": day, "to": day})
+    _serve("2026-11-20")                                           # both deadlines passed
+    rows = {r[0]: r[1:] for r in _served("SELECT cik, period, quarters, names, turnover, top10_share, held_share "
+                                         "FROM sec13f_filer_style ORDER BY cik")}
+    assert set(rows) == {"2000001", "2000002"}
+    assert rows["2000001"] == (Q3, 2, 6, 0.0, 1.0, 1.0)
+    period, quarters, names, turnover, top10, held = rows["2000002"]
+    assert (period, quarters, names, top10) == (Q3, 2, 6, 1.0)
+    assert 0 < turnover < 1 and 0 < held < 1
