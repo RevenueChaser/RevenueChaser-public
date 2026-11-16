@@ -504,8 +504,12 @@ def build_edges(info: dict | None = None) -> list[dict]:
         customers = _stored_customers(rows)
         if customers and names is None:
             names = _spine_names()
+        twins = _share_class_twins(rows)
         for f in rows:
             t, filed = f["ticker"], f.get("filed") or ""
+            if t in twins:
+                covered.add(t)      # its edges come from the issuer's kept ticker; a stored row of its own retires
+                continue
             # ``splitter.base``: a label can carry suspect flags (``missing;suspect:S1``), and a bare ``==`` would
             # read such a row as having text.
             text = "" if splitter.base(f.get("quality")) == "missing" else (f.get("item_text") or "")
@@ -531,6 +535,24 @@ def build_edges(info: dict | None = None) -> list[dict]:
     logger.info("value_chain: %d chain_mentions written, %d retired", len(edges), retired)
     # A ticker this run did not scan keeps its stored edges, and they stay on the board.
     return edges + [r for r in rawstore.get_all("chain_mentions") if r["src"] not in covered]
+
+
+def _share_class_twins(rows: list[dict]) -> set[str]:
+    """The tickers whose filing another ticker of the same CIK already stands for (#408).
+
+    Two share classes of one issuer (GOOG/GOOGL, FOX/FOXA) carry the same filing and the same profile, so each used
+    to write the same edges: "Links drawn" counted them twice and a focal company saw two incoming lines for one
+    filing. One ticker per CIK keeps the edges: the class ``aliases.SAME_ISSUER`` names, else the first in order."""
+    by_cik: dict[str, list[str]] = {}
+    for r in rows:
+        if r.get("cik"):
+            by_cik.setdefault(str(r["cik"]).lstrip("0"), []).append(r["ticker"])
+    twins: set[str] = set()
+    for tickers in by_cik.values():
+        if len(set(tickers)) > 1:
+            keep = min(set(tickers), key=lambda t: (aliases.issuer(t) != t.upper(), t))
+            twins.update(t for t in tickers if t != keep)
+    return twins
 
 
 _MENTION_KEY = ("src", "dst_name", "relation")   # the MANIFEST key of chain_mentions
