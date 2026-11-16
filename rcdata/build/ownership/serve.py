@@ -65,6 +65,12 @@
   that crossed the reporting threshold read as a new holder and a buy of its whole position. Each such filer, per
   ticker and settled quarter, is a row of ``sec13f_filer_breaks`` (kind ``started`` or ``stopped``, its shares), so
   the board can list where the series broke.
+- *Split-adjusted flows* (#253, owner 16 Nov 2026, decision E): a filer's shares of the quarter before are put on the
+  quarter's own share basis before the buy or sell is taken, with the prices store's ``split_factor`` at each quarter
+  end (``adj_factor`` read as ``rcdata.read.bars`` reads it, the ticker's security as ``read.security_ids`` finds it).
+  A 2-for-1 split between the two quarters is no longer a buy of the pre-split count. A ticker the prices store does
+  not place, or no live ``prices.duckdb``, keeps the shares as filed. ``shares`` and the breaks stay as filed; the
+  board puts every quarter on today's basis as before (``core/ownership.split_factors_13f``).
 - *Completeness*: ``filing_deadline`` is the period end plus 45 days, rolled past weekends and Washington's Birthday
   (``filing_deadline``). ``filed_through`` is its newest filing. A quarter is ``closed`` once the SEC has published
   the 13F data set whose filing window holds its deadline (``sec/13f_sets_listed``; ``sec13f_periods.data_set`` and
@@ -74,8 +80,10 @@
 **Tables**: ``sec13f_cusip_map`` (CUSIP and period: its ticker and how, its long-equity value and holders),
 ``sec13f_filer_period`` (filer and period: its long-equity names and value, ``value_factor``), ``sec13f_ticker_period``
 (the metrics), ``sec13f_periods`` (per period: filers, value, value mapped, coverage), ``sec13f_filer_breaks``
-(ticker, settled period and filer: a filer that started or stopped reporting, with its shares) and
-``sec13f_type_holdings`` (investor type and period: its ``TYPE_TOP`` largest names and the rest, #760).
+(ticker, settled period and filer: a filer that started or stopped reporting, with its shares),
+``sec13f_type_holdings`` (investor type and period: its ``TYPE_TOP`` largest names and the rest, #760),
+``sec13f_type_sector`` (investor type, period and sector: the value its filers hold there, #788) and
+``sec13f_type_flow`` (investor type and period: dollars bought and sold by its continuing filers, #788).
 
 - *Investor types* (#760, owner 12 Nov 2026): a filer's types are the ``tags`` Unusual Whales gives its CIK in the
   newest ``uw_institution`` snapshot (``value_investor``, ``energy``, ``tiger_club``, ...; a filer can carry several),
@@ -84,6 +92,11 @@
   that portfolio, and the rest is one row with ``ticker`` NULL. A ticker outside the top in a quarter is in that
   quarter's rest, so every quarter's shares add up to 100. One snapshot types every quarter: a filer's type is what
   UW says it is now, not what it was then.
+- *Sector and flow by type* (#788 A2): ``sec13f_type_sector`` splits the same portfolio by the spine's ``sector`` of
+  each ticker (today's sector for every quarter; a ticker the spine lacks is ``Unclassified``), so a quarter's shares
+  add up to 100. ``sec13f_type_flow`` is the type's split-adjusted buys and sells in dollars: per filer and ticker the
+  change in shares against the quarter before, at the quarter's 13F price (value over shares; for a name every holder
+  left, the quarter before's on the same basis), over the filers that reported both quarters, as the ticker flows are.
 
 **Views** under the old ``raw.duckdb`` names, with the old columns (D4): ``sec13f_totals`` (ticker, ``entry`` JSON
 ``{period: {shares, value, holders, ...}}``) and ``short_interest``: one row per ticker and session (an IBKR snapshot
@@ -108,6 +121,7 @@ from datetime import date, timedelta
 import duckdb
 
 from ....core import calendar
+from ....core.gics_map import UNCLASSIFIED
 from ... import ops, serving
 from .. import base, dirty
 from ..spine import openfigi_map, wrds
@@ -128,6 +142,7 @@ DEADLINE_DAYS = 45
 UNMAPPED_TOP = 50
 RESCALED_TOP = 50
 SP500, FUNDS = "sp500", "funds/index_holdings"
+PRICES = "prices"
 QE = common.quarter_end("period")
 PREV = "CAST(date_trunc('quarter', p.period) - INTERVAL 1 DAY AS DATE)"     # the calendar quarter before p's
 
@@ -156,9 +171,14 @@ TYPE_TOP = 25                            # names per investor type and quarter; 
                                          # board draws six: 25 keeps a name it draws from reading 0 in a quarter
                                          # where it ranked 11th
 ALL_TYPE = "all"                         # every filer, whatever UW tags it
+TYPE_SECTOR = [("tag", "TEXT"), ("period", "DATE"), ("sector", "TEXT"), ("value", "DOUBLE"), ("share", "DOUBLE"),
+               ("tickers", "INTEGER"), ("filers", "INTEGER"), ("snapshot_date", "DATE")]
+TYPE_FLOW = [("tag", "TEXT"), ("period", "DATE"), ("bought", "DOUBLE"), ("sold", "DOUBLE"), ("net", "DOUBLE"),
+             ("filers", "INTEGER"), ("snapshot_date", "DATE")]
 STARTED, STOPPED = "started", "stopped"
 SCHEMAS = {"sec13f_cusip_map": MAP, "sec13f_filer_period": FILER, "sec13f_ticker_period": TICKER,
-           "sec13f_periods": PERIODS, "sec13f_filer_breaks": BREAKS, "sec13f_type_holdings": TYPES}
+           "sec13f_periods": PERIODS, "sec13f_filer_breaks": BREAKS, "sec13f_type_holdings": TYPES,
+           "sec13f_type_sector": TYPE_SECTOR, "sec13f_type_flow": TYPE_FLOW}
 TABLES = tuple(SCHEMAS)
 # The old sec13f_totals entry's keys, in its order (module_sec_13f/engine.py compute_period_metrics).
 METRICS = ("shares", "value", "holders", "top10_pct", "hhi", "new_holders", "exited_holders", "buy_flow",
@@ -322,6 +342,27 @@ def _consensus_guard(con: duckdb.DuckDBPyConnection) -> None:
     con.execute("UPDATE _px SET px = f.px FROM _pxfix f WHERE _px.cusip = f.cusip AND _px.period = f.period")
 
 
+# A quarter's (``?``) mapped long-equity value per ticker and filer, and each filer's investor types (``_tag``) plus
+# ``all``: the portfolio ``sec13f_type_holdings`` and ``sec13f_type_sector`` split (#760, #788).
+_TYPE_POS = f"""pos AS MATERIALIZED (SELECT m.ticker, h.period, h.cik, sum(h.value) AS value
+                 FROM _held h JOIN sec13f_cusip_map m ON m.cusip = h.cusip AND m.period = h.period
+                 WHERE h.period = ? AND m.ticker IS NOT NULL GROUP BY ALL HAVING sum(h.value) > 0),
+         tg AS (SELECT cik, tag FROM _tag UNION ALL SELECT DISTINCT cik, '{ALL_TYPE}' FROM pos)"""
+# Each ``_pairs`` row with whether the filer has a holdings report in the quarter (``reported``, ``omitted``) and in
+# the quarter before (``reported_before``; a successor counts as its predecessor's report there), ``split_ratio``,
+# what turns a share count of the quarter before into the quarter's basis (``_split``; 1 where a factor is missing),
+# and ``prev_adj``, the shares of the quarter before on that basis.
+_PAIRS = f"""
+    SELECT p.*, c.cik IS NOT NULL AS reported, c.omitted, cp.cik IS NOT NULL AS reported_before,
+           coalesce(sn.factor / sp.factor, 1) AS split_ratio,
+           p.prev_s * coalesce(sn.factor / sp.factor, 1) AS prev_adj
+    FROM _pairs p LEFT JOIN _conf c ON c.cik = p.cik AND c.period = p.period
+    LEFT JOIN (SELECT cik, period FROM _conf UNION SELECT DISTINCT successor, {PREV} FROM _succ p) cp
+           ON cp.cik = p.cik AND cp.period = {PREV}
+    LEFT JOIN _split sn ON sn.ticker = p.ticker AND sn.period = p.period
+    LEFT JOIN _split sp ON sp.ticker = p.ticker AND sp.period = {PREV}"""
+
+
 def _successions(con: duckdb.DuckDBPyConnection) -> None:
     """``_succ`` (TEMP): ``predecessor`` and ``successor`` (13F CIKs, as filed) and the ``period`` the successor
     took over its reporting, from UW's newest succession snapshot (``uw/institutions``, #775).
@@ -362,9 +403,10 @@ def _by_period(con: duckdb.DuckDBPyConnection, periods: list, table: str, select
 
 
 def _spine(con: duckdb.DuckDBPyConnection, found: list) -> bool:
-    """``_sp_security``, ``_sp_hist`` and ``_sp_sp500`` (TEMP) from the live spine, attached read-only and detached
-    again; empty, and a ``spine_missing`` issue, without one."""
+    """``_sp_security``, ``_sp_hist``, ``_sp_sp500`` and ``_sp_sector`` (TEMP) from the live spine, attached read-only
+    and detached again; empty, and a ``spine_missing`` issue, without one."""
     _empty(con, "_sp_security", [("ticker", "TEXT"), ("gvkey", "TEXT"), ("iid", "TEXT"), ("cusip", "TEXT")])
+    _empty(con, "_sp_sector", [("ticker", "TEXT"), ("sector", "TEXT")])
     _empty(con, "_sp_hist", [("ticker", "TEXT"), ("cusip", "TEXT"), ("valid_from", "DATE"), ("valid_to", "DATE")])
     _empty(con, "_sp_sp500", [("ticker", "TEXT")])
     path = serving.live_path(SPINE)
@@ -379,6 +421,10 @@ def _spine(con: duckdb.DuckDBPyConnection, found: list) -> bool:
             found.append(("spine_missing", SPINE, "the live spine.duckdb has no security table"))
             return False
         con.execute("INSERT INTO _sp_security SELECT ticker, gvkey, iid, upper(cusip) FROM spine_src.security")
+        if common.count(con, "duckdb_columns()", "database_name = 'spine_src' AND table_name = 'security' "
+                                                  "AND column_name = 'sector'"):
+            con.execute("INSERT INTO _sp_sector SELECT ticker, min(sector) FROM spine_src.security "
+                        "WHERE ticker IS NOT NULL AND sector IS NOT NULL GROUP BY ticker")
         if "security_history" in have:
             con.execute("INSERT INTO _sp_hist SELECT ticker, upper(value), valid_from, valid_to "
                         "FROM spine_src.security_history "
@@ -390,6 +436,38 @@ def _spine(con: duckdb.DuckDBPyConnection, found: list) -> bool:
         return True
     finally:
         con.execute("DETACH spine_src")
+
+
+def _splits(con: duckdb.DuckDBPyConnection) -> None:
+    """``_split(ticker, period, factor)`` (TEMP): per ticker and quarter of ``_pos``, the live prices store's
+    ``split_factor`` at the quarter end (shares of that day ÷ factor = today's basis), attached read-only and detached
+    again. The ticker's security is the one ``rcdata.read.security_ids`` gives (its current symbol, the newer bar on a
+    tie) and the factor the one ``rcdata.read.bars`` joins (``adj_factor``, ASOF on ``valid_to``), so the builder and
+    the board share one split rule. Empty without a live prices file: every flow then stays as filed."""
+    _empty(con, "_split", [("ticker", "TEXT"), ("period", "DATE"), ("factor", "DOUBLE")])
+    path = serving.live_path(PRICES)
+    if not path.exists():
+        return
+    con.execute(f"ATTACH {base.sql_path(path)} AS prices_src (READ_ONLY)")
+    try:
+        have = {r[0] for r in con.execute(
+            "SELECT table_name FROM duckdb_tables() WHERE database_name = 'prices_src'").fetchall()}
+        if not {"security_symbol", "adj_factor", "price_bar_daily"} <= have:
+            return
+        con.execute("""INSERT INTO _split
+            WITH k AS (SELECT DISTINCT ticker, period FROM _pos),
+                 c AS (SELECT symbol, security_id FROM prices_src.security_symbol
+                       WHERE valid_to IS NULL AND symbol IN (SELECT ticker FROM k)),
+                 s AS (SELECT c.symbol, c.security_id FROM c
+                       LEFT JOIN (SELECT security_id, max(session_date) AS last FROM prices_src.price_bar_daily
+                                  WHERE security_id IN (SELECT security_id FROM c) GROUP BY ALL) b USING (security_id)
+                       QUALIFY row_number() OVER (PARTITION BY c.symbol
+                                                  ORDER BY b.last DESC NULLS LAST, c.security_id) = 1),
+                 q AS (SELECT k.ticker, k.period, s.security_id FROM k JOIN s ON s.symbol = k.ticker)
+            SELECT q.ticker, q.period, coalesce(a.split_factor, 1) FROM q
+            ASOF LEFT JOIN prices_src.adj_factor a ON a.security_id = q.security_id AND q.period < a.valid_to""")
+    finally:
+        con.execute("DETACH prices_src")
 
 
 OWNERS = [("cusip", "TEXT"), ("gvkey", "TEXT"), ("iid", "TEXT"), ("efffrom", "DATE"), ("effthru", "DATE")]
@@ -420,7 +498,7 @@ def _figi(con: duckdb.DuckDBPyConnection) -> None:
                     f"AND ticker IS NOT NULL")
 
 
-TEMPS = ("_closed", "_sets", "_sp_security", "_sp_hist", "_sp_sp500", "_owners", "_figi", "_active", "_conf", "_long", "_px", "_ratio",
+TEMPS = ("_closed", "_sets", "_sp_security", "_sp_hist", "_sp_sp500", "_sp_sector", "_split", "_owners", "_figi", "_active", "_conf", "_long", "_px", "_ratio",
          "_pxfix", "_fac", "_rowfix", "_held", "_succ",
          "_cp", "_m_hist", "_m_cur", "_m_owner", "_m_figi", "_filers", "_filed", "_deadline", "_tot", "_pos", "_shape",
          "_pairs", "_flow", "_tag")
@@ -527,7 +605,10 @@ class OwnershipServe:
             counts["sec13f_ticker_period"] = self._metrics(con)
             counts["sec13f_periods"] = self._periods(con)
             counts["sec13f_filer_breaks"] = self._breaks(con, ctx.as_of or self.default_as_of())
-            counts["sec13f_type_holdings"] = self._types(con)
+            snap = self._tags(con)
+            counts["sec13f_type_holdings"] = self._types(con, snap)
+            counts["sec13f_type_sector"] = self._type_sector(con, snap)
+            counts["sec13f_type_flow"] = self._type_flow(con, snap)
             found += self._issues(con, ctx.as_of or self.default_as_of())
             summary["rescaled"] = common.count(con, "sec13f_filer_period", "value_factor <> 1")
             summary["px_fixed"] = common.count(con, "_pxfix")
@@ -734,23 +815,23 @@ class OwnershipServe:
         # report for the quarter (not filed yet, a notice that another manager reports them, or no longer filing).
         # Only a filer with a holdings report in both quarters trades (#732): ``c`` is its report of the quarter,
         # ``cp`` of the quarter before; a filer missing one of them started or stopped reporting.
+        # The buys and sells take the quarter before on this quarter's share basis (#253, ``_split``).
+        _splits(con)
         con.execute(f"""CREATE OR REPLACE TEMP TABLE _flow AS
             SELECT p.ticker, p.period,
-                   count(*) FILTER (WHERE p.prev_s IS NULL AND cp.cik IS NOT NULL) AS new_holders,
-                   count(*) FILTER (WHERE p.now_s IS NULL AND c.cik IS NOT NULL) AS exited_holders,
-                   count(*) FILTER (WHERE p.now_s IS NULL AND c.omitted) AS exited_confidential,
-                   count(*) FILTER (WHERE p.now_s IS NULL AND c.cik IS NULL) AS exited_no_filing,
-                   coalesce(sum(greatest(coalesce(p.now_s, 0) - coalesce(p.prev_s, 0), 0))
-                            FILTER (WHERE c.cik IS NOT NULL AND cp.cik IS NOT NULL), 0) AS buy,
-                   coalesce(sum(greatest(coalesce(p.prev_s, 0) - coalesce(p.now_s, 0), 0))
-                            FILTER (WHERE c.cik IS NOT NULL AND cp.cik IS NOT NULL), 0) AS sell,
-                   count(*) FILTER (WHERE p.prev_s IS NULL AND cp.cik IS NULL) AS started_filers,
-                   coalesce(sum(p.now_s) FILTER (WHERE p.prev_s IS NULL AND cp.cik IS NULL), 0) AS started_shares,
-                   coalesce(sum(p.prev_s) FILTER (WHERE p.now_s IS NULL AND c.cik IS NULL), 0) AS stopped_shares
-            FROM _pairs p LEFT JOIN _conf c ON c.cik = p.cik AND c.period = p.period
-            LEFT JOIN (SELECT cik, period FROM _conf
-                       UNION SELECT DISTINCT successor, {PREV} FROM _succ p) cp
-                   ON cp.cik = p.cik AND cp.period = {PREV} GROUP BY ALL""")
+                   count(*) FILTER (WHERE p.prev_s IS NULL AND p.reported_before) AS new_holders,
+                   count(*) FILTER (WHERE p.now_s IS NULL AND p.reported) AS exited_holders,
+                   count(*) FILTER (WHERE p.now_s IS NULL AND p.omitted) AS exited_confidential,
+                   count(*) FILTER (WHERE p.now_s IS NULL AND NOT p.reported) AS exited_no_filing,
+                   coalesce(sum(greatest(coalesce(p.now_s, 0) - coalesce(p.prev_adj, 0), 0))
+                            FILTER (WHERE p.reported AND p.reported_before), 0) AS buy,
+                   coalesce(sum(greatest(coalesce(p.prev_adj, 0) - coalesce(p.now_s, 0), 0))
+                            FILTER (WHERE p.reported AND p.reported_before), 0) AS sell,
+                   count(*) FILTER (WHERE p.prev_s IS NULL AND NOT p.reported_before) AS started_filers,
+                   coalesce(sum(p.now_s) FILTER (WHERE p.prev_s IS NULL AND NOT p.reported_before), 0)
+                       AS started_shares,
+                   coalesce(sum(p.prev_s) FILTER (WHERE p.now_s IS NULL AND NOT p.reported), 0) AS stopped_shares
+            FROM ({_PAIRS}) p GROUP BY ALL""")
         return common.create_table(con, "sec13f_ticker_period", TICKER, f"""
             SELECT t.ticker, t.period, t.shares, t.value, t.holders,
                    CASE WHEN t.shares > 0 THEN round(s.top10 / t.shares * 100, 2) END AS top10_pct,
@@ -804,30 +885,15 @@ class OwnershipServe:
             ORDER BY f.period""")
 
     @staticmethod
-    def _types(con: duckdb.DuckDBPyConnection) -> int:
+    def _types(con: duckdb.DuckDBPyConnection, snap: str) -> int:
         """``sec13f_type_holdings``: per investor type and quarter, the type's ``TYPE_TOP`` largest tickers by the
         value its filers hold, each with its share of the type's mapped portfolio, and the rest as one row with
         ``ticker`` NULL (#760). The types are the newest ``uw_institution`` snapshot's tags, matched on the CIK with
         its zeros dropped (UW pads to ten digits, a 13F filing does not), plus ``all``; without the table only
-        ``all`` is served."""
-        _empty(con, "_tag", [("cik", "TEXT"), ("tag", "TEXT")])
-        table, snapshot = uw_institutions.TABLE, None
-        if common.has_table(con, table):
-            snapshot = con.execute(f"SELECT max(snapshot_date) FROM {table}").fetchone()[0]
-        if snapshot is not None:
-            con.execute(f"""INSERT INTO _tag
-                SELECT DISTINCT k.cik, u.tag
-                FROM (SELECT ltrim(cik, '0') AS bare, unnest(tags) AS tag FROM {table}
-                      WHERE snapshot_date = ? AND tags IS NOT NULL) u
-                JOIN (SELECT DISTINCT cik, ltrim(cik, '0') AS bare FROM sec13f_filer_period) k ON k.bare = u.bare
-                WHERE u.tag IS NOT NULL AND u.tag <> '{ALL_TYPE}'""", [snapshot])
-        snap = f"DATE '{snapshot}'" if snapshot is not None else "CAST(NULL AS DATE)"
+        ``all`` is served (``_tags``)."""
         common.create_table(con, "sec13f_type_holdings", TYPES)
         _by_period(con, _periods_of(con, "_held"), "sec13f_type_holdings", f"""
-            WITH pos AS MATERIALIZED (SELECT m.ticker, h.period, h.cik, sum(h.value) AS value
-                         FROM _held h JOIN sec13f_cusip_map m ON m.cusip = h.cusip AND m.period = h.period
-                         WHERE h.period = ? AND m.ticker IS NOT NULL GROUP BY ALL HAVING sum(h.value) > 0),
-                 tg AS (SELECT cik, tag FROM _tag UNION ALL SELECT DISTINCT cik, '{ALL_TYPE}' FROM pos),
+            WITH {_TYPE_POS},
                  v AS (SELECT tg.tag, pos.period, pos.ticker, sum(pos.value) AS value,
                               count(DISTINCT pos.cik) AS holders
                        FROM pos JOIN tg ON tg.cik = pos.cik GROUP BY ALL),
@@ -842,6 +908,66 @@ class OwnershipServe:
                    t.type_value, t.type_filers, {snap}
             FROM o JOIN t ON t.tag = o.tag""")
         return common.count(con, "sec13f_type_holdings")
+
+    @staticmethod
+    def _type_sector(con: duckdb.DuckDBPyConnection, snap: str) -> int:
+        """``sec13f_type_sector``: per investor type, quarter and the spine's sector of each ticker (today's;
+        ``Unclassified`` where the spine has none), the value the type's filers hold there and its share (%) of the
+        type's mapped portfolio, the same portfolio ``sec13f_type_holdings`` splits by name (#788 A2)."""
+        common.create_table(con, "sec13f_type_sector", TYPE_SECTOR)
+        _by_period(con, _periods_of(con, "_held"), "sec13f_type_sector", f"""
+            WITH {_TYPE_POS},
+                 v AS (SELECT tg.tag, pos.period, coalesce(s.sector, '{UNCLASSIFIED}') AS sector,
+                              sum(pos.value) AS value, count(DISTINCT pos.ticker) AS tickers,
+                              count(DISTINCT pos.cik) AS filers
+                       FROM pos JOIN tg ON tg.cik = pos.cik LEFT JOIN _sp_sector s ON s.ticker = pos.ticker
+                       GROUP BY ALL)
+            SELECT tag, period, sector, value, round(value / sum(value) OVER (PARTITION BY tag) * 100, 4), tickers,
+                   filers, {snap}
+            FROM v""")
+        return common.count(con, "sec13f_type_sector")
+
+    @staticmethod
+    def _type_flow(con: duckdb.DuckDBPyConnection, snap: str) -> int:
+        """``sec13f_type_flow``: per investor type and quarter, the dollars its filers bought and sold (#788 A2).
+        Per filer and ticker the change in shares against the quarter before, split-adjusted as the ticker flows
+        are (``_PAIRS``), times the quarter's 13F price of the ticker (value over shares); a name every holder left
+        takes the quarter before's price, put on the quarter's basis. Only filers that reported both quarters trade
+        (#732); ``filers`` counts them. A quarter whose quarter before the store does not hold has no row."""
+        common.create_table(con, "sec13f_type_flow", TYPE_FLOW)
+        _by_period(con, _periods_of(con, "_pairs"), "sec13f_type_flow", f"""
+            WITH d AS MATERIALIZED (
+                     SELECT p.period, p.cik, (coalesce(p.now_s, 0) - coalesce(p.prev_adj, 0))
+                                   * coalesce(t.value / nullif(t.shares, 0),
+                                              pt.value / nullif(pt.shares, 0) / p.split_ratio)
+                                   AS usd
+                     FROM ({_PAIRS}) p
+                     LEFT JOIN _tot t ON t.ticker = p.ticker AND t.period = p.period
+                     LEFT JOIN _tot pt ON pt.ticker = p.ticker AND pt.period = {PREV}
+                     WHERE p.period = ? AND p.reported AND p.reported_before),
+                 tg AS (SELECT cik, tag FROM _tag UNION ALL SELECT DISTINCT cik, '{ALL_TYPE}' FROM d)
+            SELECT tg.tag, d.period, round(coalesce(sum(d.usd) FILTER (WHERE d.usd > 0), 0), 1),
+                   round(coalesce(-sum(d.usd) FILTER (WHERE d.usd < 0), 0), 1),
+                   round(coalesce(sum(d.usd), 0), 1), count(DISTINCT d.cik), {snap}
+            FROM d JOIN tg ON tg.cik = d.cik GROUP BY tg.tag, d.period""")
+        return common.count(con, "sec13f_type_flow")
+
+    @staticmethod
+    def _tags(con: duckdb.DuckDBPyConnection) -> str:
+        """``_tag(cik, tag)`` (TEMP) from the newest ``uw_institution`` snapshot, and that snapshot's day as a SQL
+        literal (NULL without the table)."""
+        _empty(con, "_tag", [("cik", "TEXT"), ("tag", "TEXT")])
+        table, snapshot = uw_institutions.TABLE, None
+        if common.has_table(con, table):
+            snapshot = con.execute(f"SELECT max(snapshot_date) FROM {table}").fetchone()[0]
+        if snapshot is not None:
+            con.execute(f"""INSERT INTO _tag
+                SELECT DISTINCT k.cik, u.tag
+                FROM (SELECT ltrim(cik, '0') AS bare, unnest(tags) AS tag FROM {table}
+                      WHERE snapshot_date = ? AND tags IS NOT NULL) u
+                JOIN (SELECT DISTINCT cik, ltrim(cik, '0') AS bare FROM sec13f_filer_period) k ON k.bare = u.bare
+                WHERE u.tag IS NOT NULL AND u.tag <> '{ALL_TYPE}'""", [snapshot])
+        return f"DATE '{snapshot}'" if snapshot is not None else "CAST(NULL AS DATE)"
 
     @staticmethod
     def _breaks(con: duckdb.DuckDBPyConnection, as_of: date) -> int:
