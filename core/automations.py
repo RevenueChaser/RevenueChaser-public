@@ -97,6 +97,7 @@ class AutomationEntry:
     chain_wait_minutes: int = 120  # how long a chained task waits for that run before it gives up
     hourly: bool = False           # every hour at ``time``'s minute (its hour is ignored); never chained, no ``days``
     unit_name: str | None = None   # the systemd unit (and nothing else) under another name than ``name``
+    fortnightly: bool = False      # words only: the server's timer carries the fortnight (1st and 3rd week), not this row
 
     @property
     def unit(self) -> str:
@@ -107,8 +108,11 @@ class AutomationEntry:
     def schedule(self) -> str:
         if self.hourly:
             return f"hourly at :{self.time[-2:]} (local)"
-        if self.days:
-            text = f"weekly {', '.join(self.days)} {self.time} (local)"
+        if self.days == _WEEKDAYS:
+            text = f"Monday to Friday {self.time} (local)"     # five days a week is not "weekly" (16 Nov 2026)
+        elif self.days:
+            every = "every other" if self.fortnightly else "weekly"
+            text = f"{every} {', '.join(self.days)} {self.time} (local)"
         else:
             text = f"daily {self.time} (local)"
         return f"{text}, after {self.after}" if self.after else text
@@ -138,6 +142,7 @@ REGISTRY: tuple[AutomationEntry, ...] = (
     AutomationEntry(
         name="RC-Relatedness-OffPeak", label="Relatedness (every other Sunday)",
         args=("-m", "RevenueChaser.module_relatedness", "--run", "--cap", "10"), time="07:30", days=("Sunday",),
+        fortnightly=True,
         description=("Relatedness profiling with the board's writer (Settings, #360: EVREN by default, no call cap), "
                      "incremental (only changed filings), then every pair scored (~1 h 45 min CPU, 15 Nov 2026) and the "
                      "board rendered. Every other Sunday 07:30 (avo 15 Nov 2026; the homesrv timer carries the fortnight, "
@@ -633,6 +638,73 @@ def parse_show(text: str) -> tuple[dict[str, str], dict[str, str]]:
     return blocks[0], blocks[1]
 
 
+def _task_status(t: dict[str, str], sv: dict[str, str], hint: str) -> TaskStatus:
+    """A timer's and its service's ``systemctl show`` properties as a ``TaskStatus``; ``hint`` is the command that
+    shows a failed timer."""
+    if t.get("ActiveState") == "failed" or t.get("Result", "success") != "success":
+        # A failed timer never fires again until it is reset: an error row, never "disabled" (which it is not).
+        raise AutomationError(f"the timer failed ({t.get('Result') or t.get('ActiveState')}); {hint}")
+    started = _show_value(sv.get("ExecMainStartTimestamp"))
+    triggered = _show_value(t.get("LastTriggerUSec"))
+    if sv.get("ActiveState") in ("activating", "active", "reloading", "deactivating"):
+        state, result = "running", RESULT_RUNNING
+    else:
+        state = "ready" if t.get("ActiveState") == "active" else "disabled"
+        if started:
+            try:
+                code = int(sv.get("ExecMainStatus") or 0)
+            except ValueError:
+                raise AutomationError("unreadable scheduler answer") from None
+            result = code if code or sv.get("Result") == "success" else 1
+        elif triggered:
+            result = None            # the manager restarted since: the exit code is gone, the logs keep it
+        else:
+            result = RESULT_NOT_YET_RUN
+    return TaskStatus(state=state, last_run=started or triggered,
+                      next_run=_show_value(t.get("NextElapseUSecRealtime")), last_result=result)
+
+
+#: Registry names whose server unit is not ``life-`` + the name in lower case (home-server ``units/``).
+SYSTEM_UNITS = {"RC-Relatedness-OffPeak": "life-rc-relatedness"}
+
+
+def system_unit(e: AutomationEntry) -> str:
+    """The SYSTEM unit a server installs for ``e`` from the home-server repository."""
+    return e.unit_name or SYSTEM_UNITS.get(e.name) or "life-" + e.name.lower()
+
+
+def _systemctl_system(args: list[str]) -> tuple[int, str, str]:
+    """``systemctl <args>`` against the SYSTEM manager, unprivileged (``show`` needs no root), 10 s at most."""
+    try:
+        p = subprocess.run(["systemctl", *args], capture_output=True, encoding="utf-8", errors="replace",
+                           timeout=10, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return 1, "", ""
+    return p.returncode, p.stdout or "", p.stderr or ""
+
+
+def system_status(e: AutomationEntry, run: Callable[[list[str]], tuple[int, str, str]] = _systemctl_system
+                  ) -> TaskStatus | None:
+    """Read-only: the state of the server's own timer for ``e``, or None when the host has none.
+
+    On homesrv the tasks are SYSTEM units installed from home-server, which no scheduler of this module manages,
+    so the panel said "Scheduler unavailable" on every row (16 Nov 2026). Nothing here installs, switches or runs:
+    that stays with the Grafana Jobs board."""
+    unit = system_unit(e)
+    rc, out, _ = run(["show", "--timestamp=unix",
+                      "--property=" + ",".join(sorted({"LoadState", *_SHOW_TIMER, *_SHOW_SERVICE})),
+                      f"{unit}.timer", f"{unit}.service"])
+    if rc != 0:
+        return None
+    try:
+        t, sv = parse_show(out)
+    except AutomationError:
+        return None
+    if t.get("LoadState") != "loaded":
+        return None
+    return _task_status(t, sv, f"systemctl status {unit}.timer")
+
+
 class LinuxScheduler(Scheduler):
     """systemd user timers, exact registry names only, one unit pair per entry."""
 
@@ -664,29 +736,7 @@ class LinuxScheduler(Scheduler):
         out = self._exec("show", "--timestamp=unix",
                          "--property=" + ",".join(sorted(set(_SHOW_TIMER + _SHOW_SERVICE))),
                          timer.name, service.name)
-        t, sv = parse_show(out)
-        if t.get("ActiveState") == "failed" or t.get("Result", "success") != "success":
-            # A failed timer never fires again until it is reset: an error row, never "disabled" (which it is not).
-            raise AutomationError(f"the timer failed ({t.get('Result') or t.get('ActiveState')}); "
-                                  f"systemctl --user status {timer.name}")
-        started = _show_value(sv.get("ExecMainStartTimestamp"))
-        triggered = _show_value(t.get("LastTriggerUSec"))
-        if sv.get("ActiveState") in ("activating", "active", "reloading", "deactivating"):
-            state, result = "running", RESULT_RUNNING
-        else:
-            state = "ready" if t.get("ActiveState") == "active" else "disabled"
-            if started:
-                try:
-                    code = int(sv.get("ExecMainStatus") or 0)
-                except ValueError:
-                    raise AutomationError("unreadable scheduler answer") from None
-                result = code if code or sv.get("Result") == "success" else 1
-            elif triggered:
-                result = None            # the user manager restarted since: the exit code is gone, the logs keep it
-            else:
-                result = RESULT_NOT_YET_RUN
-        return TaskStatus(state=state, last_run=started or triggered,
-                          next_run=_show_value(t.get("NextElapseUSecRealtime")), last_result=result)
+        return _task_status(*parse_show(out), f"systemctl --user status {timer.name}")
 
     def install(self, e):
         e = entry(e.name)
@@ -886,11 +936,17 @@ def _age(iso: str | None, now: datetime) -> str:
     return f"{secs // 86400} d ago"
 
 
-def live_row(e: AutomationEntry, sched: Scheduler, now: datetime | None = None) -> dict:
+def live_row(e: AutomationEntry, sched: Scheduler, now: datetime | None = None, system=None) -> dict:
+    """``system`` reads the server's own timer when no scheduler is connected (default ``system_status``); a row
+    it answers is ``managed: "system"``: its state, last and next run are real, and the panel offers no button."""
     now = now or datetime.now(timezone.utc)
     row = static_row(e)
+    managed = None
     try:
-        st = sched.status(e.name) if sched.available else None
+        st = sched.status(e.name) if sched.available else (system or system_status)(e)
+        if st is not None and not sched.available:
+            managed = "system"
+            row.update(managed=managed, unit=system_unit(e))
     except AutomationError as exc:
         # One unreadable task is an error row, never "not installed" (which offers Install)
         # and never a failure of the whole list.
@@ -900,7 +956,7 @@ def live_row(e: AutomationEntry, sched: Scheduler, now: datetime | None = None) 
                    last_success_age=_age(last_success(e.log_path), now),
                    log_tail=log_tail(e.log_path))
         return row
-    if not sched.available:
+    if not sched.available and managed is None:
         state = "unavailable"
     elif st is None:
         state = "not_installed"
@@ -923,10 +979,16 @@ def live_row(e: AutomationEntry, sched: Scheduler, now: datetime | None = None) 
     return row
 
 
-def live_state(sched: Scheduler | None = None, now: datetime | None = None) -> dict:
+def live_state(sched: Scheduler | None = None, now: datetime | None = None, system=None) -> dict:
+    """``available`` is False only when nothing could be read: no scheduler and no server timer for any row."""
     sched = sched or get_scheduler()
-    return {"available": bool(sched.available),
-            "rows": [live_row(e, sched, now) for e in REGISTRY]}
+    rows = [live_row(e, sched, now, system) for e in REGISTRY]
+    served = any(r.get("managed") for r in rows)
+    for r in rows:
+        if served and r["state"] == "unavailable":
+            # this host runs its tasks as server timers and has none for this row: not installed, and no button
+            r.update(state="not_installed", managed="system", unit=None)
+    return {"available": bool(sched.available) or served, "rows": rows}
 
 
 def apply(name: str, action: str, sched: Scheduler | None = None) -> dict:

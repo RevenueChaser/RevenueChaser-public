@@ -426,6 +426,8 @@ function autoDetailHtml(r, live, btns, tables, tail){
     '<div class="aline"><b>Command</b><span class="tbl">' + rcEsc(r.command) + '</span></div>' +
     '<div class="aline"><b>Schedule</b>' + rcEsc(r.schedule) + '</div>' +
     '<div class="aline"><b>Run conditions</b>' + rcEsc(r.settings) + '</div>';
+  if(r.managed && r.unit) lines += '<div class="aline"><b>Run by</b>the server timer <span class="tbl">' + rcEsc(r.unit) +
+    '.timer</span>; switch it on the Grafana Jobs board</div>';
   if(r.offpeak_gated) lines += '<div class="aline"><b>Off-peak only</b>it defers itself outside the peak hours</div>';
   if(tables) lines += '<div class="aline"><b>Store tables it writes</b><span class="tbl">' + tables + '</span></div>';
   if(live){
@@ -445,7 +447,8 @@ function autoRowHtml(r){
   var stText = live ? st[0] : 'checking…';
   var rcls = AUTO_RESULT.hasOwnProperty(r.result_kind) ? AUTO_RESULT[r.result_kind] : '';
   var btns = '';
-  if(live && AUTO_BUTTONS.hasOwnProperty(r.state)){
+  // A row the server's own systemd timer runs is read-only here: its switch is on the Grafana Jobs board.
+  if(live && !r.managed && AUTO_BUTTONS.hasOwnProperty(r.state)){
     AUTO_BUTTONS[r.state].forEach(function(b){
       btns += '<button type="button" class="auto-btn" data-act="' + b[0] + '" data-name="' +
               rcEsc(r.name) + '">' + b[1] + '</button>';
