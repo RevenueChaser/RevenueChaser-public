@@ -349,10 +349,12 @@ _TYPE_POS = f"""pos AS MATERIALIZED (SELECT m.ticker, h.period, h.cik, sum(h.val
                  WHERE h.period = ? AND m.ticker IS NOT NULL GROUP BY ALL HAVING sum(h.value) > 0),
          tg AS (SELECT cik, tag FROM _tag UNION ALL SELECT DISTINCT cik, '{ALL_TYPE}' FROM pos)"""
 # Each ``_pairs`` row with whether the filer has a holdings report in the quarter (``reported``, ``omitted``) and in
-# the quarter before (``reported_before``; a successor counts as its predecessor's report there), and ``prev_adj``,
-# its shares of the quarter before on the quarter's share basis (``_split``; as filed where a factor is missing).
+# the quarter before (``reported_before``; a successor counts as its predecessor's report there), ``split_ratio``,
+# what turns a share count of the quarter before into the quarter's basis (``_split``; 1 where a factor is missing),
+# and ``prev_adj``, the shares of the quarter before on that basis.
 _PAIRS = f"""
     SELECT p.*, c.cik IS NOT NULL AS reported, c.omitted, cp.cik IS NOT NULL AS reported_before,
+           coalesce(sn.factor / sp.factor, 1) AS split_ratio,
            p.prev_s * coalesce(sn.factor / sp.factor, 1) AS prev_adj
     FROM _pairs p LEFT JOIN _conf c ON c.cik = p.cik AND c.period = p.period
     LEFT JOIN (SELECT cik, period FROM _conf UNION SELECT DISTINCT successor, {PREV} FROM _succ p) cp
@@ -937,7 +939,7 @@ class OwnershipServe:
             WITH d AS MATERIALIZED (
                      SELECT p.period, p.cik, (coalesce(p.now_s, 0) - coalesce(p.prev_adj, 0))
                                    * coalesce(t.value / nullif(t.shares, 0),
-                                              pt.value / nullif(pt.shares, 0) * coalesce(sp.factor / sn.factor, 1))
+                                              pt.value / nullif(pt.shares, 0) / p.split_ratio)
                                    AS usd
                      FROM ({_PAIRS}) p
                      LEFT JOIN _tot t ON t.ticker = p.ticker AND t.period = p.period
