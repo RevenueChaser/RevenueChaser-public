@@ -194,11 +194,12 @@ def save_vectors(model: str, blobs: dict[str, bytes], dim: int) -> None:
 
 
 def profile_meta(tickers: list[str] | None = None) -> dict[str, dict]:
-    """``{ticker: {status, attempts, cache_key}}`` for stored profile rows."""
+    """``{ticker: {status, attempts, cache_key, cik}}`` for stored profile rows."""
     want = {t.upper() for t in tickers} if tickers else None
     return {r["ticker"]: {"status": r.get("status") or "ok",
                           "attempts": int(r.get("attempts") or 0),
-                          "cache_key": r.get("cache_key") or ""}
+                          "cache_key": r.get("cache_key") or "",
+                          "cik": r.get("cik") or ""}
             for r in rawstore.get_all("relatedness_profiles")
             if want is None or r["ticker"] in want}
 

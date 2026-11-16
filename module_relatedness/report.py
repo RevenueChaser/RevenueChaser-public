@@ -1,11 +1,11 @@
 """Relatedness board — one focal combobox + top peers from LLM business profiles.
 
 Chrome follows docs/dashboard_ui.md §6: search + count, the shared filter bar
-(``rc_filters``; Theme is its facet over the pinned run's ``theme_ids``, #383 C1b),
-then **one** ticker combobox. One "Most related to"
-panel — no Company A / Company B selects. Each peer row carries the cosine
-score + percentile, the 1/3/5/10-day move and residual-vs-SPY correlation, and
-coarse/medium/fine cluster chips when the store has them.
+(``rc_filters``; no Theme facet and no cluster chips until the SEC service owns
+the profiles, #894 — avo, 16 Nov 2026, decision E option 2), then **one** ticker
+combobox. One "Most related to" panel — no Company A / Company B selects. Each
+peer row carries the cosine score + percentile and the 1/3/5/10-day move and
+residual-vs-SPY correlation.
 """
 from __future__ import annotations
 
@@ -58,8 +58,8 @@ input[type=text]{flex:1;min-width:200px}
 .tk{font-weight:750;min-width:64px;letter-spacing:-.2px}
 .peer-name{color:var(--text)}
 .pct{color:var(--muted);font-size:12.5px;font-variant-numeric:tabular-nums}
-.prow-move,.prow-cluster{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums;margin-top:3px}
-.prow-move .v,.prow-cluster .on{color:var(--text);font-weight:600}
+.prow-move{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums;margin-top:3px}
+.prow-move .v{color:var(--text);font-weight:600}
 .tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
 .tag{background:var(--panel2);border:1px solid var(--border);border-radius:6px;padding:1px 7px;font-size:11.5px;color:var(--muted)}
 .empty{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:24px;color:var(--muted);text-align:center}
@@ -197,19 +197,6 @@ function fmtMove(p){
   }
   return '<div class="prow-move">' + line + '</div>';
 }
-function fmtCluster(p){
-  if(!p.cluster) return "";
-  var levels = ['coarse','medium','fine'];
-  var out = [];
-  levels.forEach(function(lvl){
-    if(!(lvl in p.cluster)) return;
-    var on = p.cluster[lvl];
-    out.push('<span class="' + (on ? 'on' : '') + '">' + (on ? '●' : '○') + ' ' +
-             lvl.charAt(0).toUpperCase() + lvl.slice(1) + '</span>');
-  });
-  if(!out.length) return "";
-  return '<div class="prow-cluster">cluster  ' + out.join('  ') + '</div>';
-}
 function staleBadge(t){
   return ((BY[t] && BY[t].stale) ? '<span class="badge-stale" title="Profiled under an older model/prompt; refreshes on the next run">stale</span>' : "") + writerBadge(t);
 }
@@ -227,7 +214,7 @@ function peerRow(p){
     rcWatchRow(p.peer) +
     '<div class="pct">' + Number(p.score||0).toFixed(2) + ' · p' + p.percentile +
       (p.n_shared != null ? ' · ' + p.n_shared + ' shared' : '') + '</div>' +
-    fmtMove(p) + fmtCluster(p) +
+    fmtMove(p) +
     '<div class="tags">' + tags(p.shared) + '</div>' +
     '</div>';
 }
@@ -249,7 +236,7 @@ function render(){
     (c.name ? ' <span class="nm">— ' + rcEsc(c.name) + '</span>' : "") + staleBadge(FOCAL) + rcWatchButtons(FOCAL);
   meta.textContent =
     (c.sector || "") + (c.industry ? " · " + c.industry : "") +
-    (c.theme_coarse ? " · " + c.theme_coarse : "");
+    ((c.also || []).length ? " · also " + c.also.join(", ") : "");
   var list = PEERS[FOCAL] || [];
   body.innerHTML = list.map(peerRow).join("") || '<div class="empty">No peers.</div>';
 }
@@ -271,7 +258,7 @@ function init(){
                                                        ("provider", "model")) or None),
                    "__META__": script_json(filters_meta(
                        "relatedness", earnings_mode="filter",
-                       themes=payload.get("theme_catalog") or {}))})
+                       facets=["index", "mc", "gics", "earnings"]))})
 
     help_block = help_html(
         "Each company was read from its latest 10-K/20-F and summarized into business "

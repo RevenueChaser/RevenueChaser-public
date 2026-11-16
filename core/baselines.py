@@ -21,8 +21,11 @@ days is not distorted by it, and the pick a baseline is compared with is measure
 (``core/outcomes.py``), so the baseline is too.
 
 The snapshot must be the universe of that day, never today's membership: a name that has since left the universe
-still counts on the day it was in it, or the baseline is survivorship-biased. The old store's change history gave
-that snapshot; it went with the old store (#860), so every row says ``n = 0`` until a dated universe exists again.
+still counts on the day it was in it, or the baseline is survivorship-biased. The snapshot is the **dated universe**,
+``rcdata.read.my_universe_spans``: the stock names of avo's list (``my_universe``) with the days each was in it, from
+the spine's append-only ``my_universe_changes`` (each build applied the rules to that day's own spine). A freeze date
+before the list's first build has no snapshot and its rows say ``n = 0``. A member the prices store holds no bar for
+(it has left, and the store keeps today's universe) is in ``members`` and not in ``n``, so the gap stays visible.
 
 Rules (HR-1 of #25; every number below is a constant, so a change is one edit plus a ``MODEL_VERSION`` bump):
 - One row per freeze date, horizon (``outcomes.HORIZONS``: 30 and 90 calendar days) and basis, always all eleven
@@ -74,6 +77,7 @@ logger = logging.getLogger(__name__)
 
 TABLE = "forecast_baselines"
 UNIVERSE = "universe"
+STOCK = "stock"                          # the ``my_universe`` kind a baseline counts
 DECILES = 10
 # Trailing returns of the vol estimate: 21 closes, the last one on the freeze date.
 VOL_RETURNS = 20
@@ -84,7 +88,7 @@ GE = (("ge20", 0.20), ("ge10", 0.10), ("ge5", 0.05))     # the issue's buckets, 
 HORIZONS = outcomes.HORIZONS             # one definition of 30 and 90, never a second copy
 OPEN, CLOSED = outcomes.OPEN, outcomes.CLOSED
 # Bump when a rule above changes: every date is then recomputed, because the skip reads this column.
-MODEL_VERSION = "b2:universe+trailing20v-deciles"
+MODEL_VERSION = "b3:my-universe-stocks+trailing20v-deciles"
 CHUNK = 200                              # tickers per bar read (the outcomes writer's chunk)
 
 
@@ -93,14 +97,17 @@ def day_end(day: date) -> float:
     return datetime.combine(day, dt_time(23, 59, 59), tzinfo=calendar.NY).timestamp()
 
 
-def universe_at(day: date) -> list[str]:
-    """The tickers the equity universe held at the end of ``day``: always empty since #860.
+def universe_at(day: date, spans: list[dict] | None = None) -> list[str]:
+    """The stock tickers of avo's list (``my_universe``) at the end of ``day``, from its dated spans.
 
-    The snapshot was read from the old store's change history (``equity_universe_changes`` in ``raw.duckdb``), which
-    went with it; today's membership is never a stand-in for a past one, so no baseline is computed until a dated
-    universe exists in the new files.
+    ``spans`` is ``read.my_universe_spans((STOCK,))``, read once per run; a day before the list's first build has no
+    span and answers [] (no snapshot). Stocks only (#276): a fund in the baseline pulls it toward index returns.
     """
-    return []
+    if spans is None:
+        from RevenueChaser.rcdata import read          # imported inside, as core/ownership.py does
+        spans = read.my_universe_spans((STOCK,))
+    return sorted({s["ticker"] for s in spans
+                   if s["entered_on"] <= day and (s["left_on"] is None or s["left_on"] > day)})
 
 
 def _value(v) -> float | None:
@@ -344,11 +351,14 @@ def run(*, now: datetime | None = None, run_id: str | None = None, full: bool = 
     dates = _freeze_dates()
     todo = {d: HORIZONS for d in dates} if full else _open_rows(dates)
     res = {"run_id": run_id, "latest_session": latest.isoformat(), "freeze_dates": len(dates), "dates": 0,
-           "rows": 0, "written": 0, "tickers": 0, "no_snapshot": 0, "status": {}, "full": full,
+           "rows": 0, "written": 0, "tickers": 0, "members": 0, "no_snapshot": 0, "status": {}, "full": full,
            "dry_run": not write}
     if todo:
-        universes = {d: universe_at(d) for d in todo}
+        from RevenueChaser.rcdata import read
+        spans = read.my_universe_spans((STOCK,))
+        universes = {d: universe_at(d, spans) for d in todo}
         res["no_snapshot"] = sum(1 for tickers in universes.values() if not tickers)
+        res["members"] = sum(len(tickers) for tickers in universes.values())
         wanted = sorted({t for tickers in universes.values() for t in tickers})
         members, bars_seen = _membership(wanted, universes, todo, latest)
         newest = outcomes.newest_bar()           # the store's newest bar, not the clock (see _rows_for)

@@ -406,7 +406,7 @@ def _quarters_after(quarterly: list[dict], year_end, upto=None) -> list[dict]:
     return out
 
 
-def _quality_metrics(annual: list[dict], quarterly: list[dict] | None = None) -> dict:
+def _quality_metrics(annual: list[dict], quarterly: list[dict] | None = None, *, infer_debt_free: bool = True) -> dict:
     """Quality's three figures and their basis (G6, build plan PR 13: Quality reads the quarter store).
 
     ``quality_basis`` ``TTM`` when a 10-Q follows the anchor year and the quarters give every figure the year gives
@@ -418,10 +418,13 @@ def _quality_metrics(annual: list[dict], quarterly: list[dict] | None = None) ->
         return {**_quality_of({}), "quality_basis": None, "quality_period_end": None}
     a = annual[i]
     end = fiscal_year.period_end(a)
+    # ``infer_debt_free`` False: an IFRS filer, whose debt and finance-cost tags the facts do not map yet
+    # (``rcdata/build/fundamentals/facts.py`` ``IFRS_AS_GAAP``), so "no tag" says nothing; its debt stays unknown
+    # (avo, 16 Nov 2026: BP, UL, RELX, WPP were read debt-free).
     # #737. The year is counted debt-free only when its own balance sheet tags nothing and it paid no interest AND
     # no quarter after it does either: the board shows one leverage figure per name, and a name whose later balance
     # sheets carry notes is not debt-free on them, whatever the older year end said.
-    fy = _quality_of(a, debt_free=_debt.debt_free(a)
+    fy = _quality_of(a, debt_free=infer_debt_free and _debt.debt_free(a)
                      and all(_debt.debt_free(q, quarterly=True)
                              for q in _quarters_after(quarterly or [], end)))
     out = {**fy, "quality_basis": "FY", "quality_period_end": end.isoformat() if end else None}
@@ -435,7 +438,8 @@ def _quality_metrics(annual: list[dict], quarterly: list[dict] | None = None) ->
         # borrowing. A filer that tagged debt at its year end is not a filer that tagged nothing, and a quarter
         # that simply did not repeat the tag does not say it repaid.
         q = _quarter_at(quarterly or [], ttm_rec["period"])
-        ttm = _quality_of(ttm_rec, debt_free=_debt.debt_free(q, quarterly=True) and _debt.debt_free(a)
+        ttm = _quality_of(ttm_rec, debt_free=infer_debt_free
+                          and _debt.debt_free(q, quarterly=True) and _debt.debt_free(a)
                           and all(_debt.debt_free(x, quarterly=True)
                                   for x in _quarters_after(quarterly or [], end, ttm_rec["period"])))
         # The year's net income stays (P/E reads its own TTM, ``_ttm_metrics``); P/B reads the newest equity.
@@ -617,7 +621,7 @@ def _compute_row(row: dict, spy_df, no_fetch: bool = False, spine: dict | None =
     # #386 F1: an absurd Rule of 40 is a data problem, not a pick. Review N2 (default chosen, avo may prefer the
     # old drop): the name is no longer dropped, so Quality and Momentum still read it; the screener makes that Rule
     # of 40 unknown and the card DISTORTED (screeners.evaluate_rule_of_40, is_distorted).
-    qual = _quality_metrics(annual, quarterly)
+    qual = _quality_metrics(annual, quarterly, infer_debt_free=(emeta or {}).get("us_gaap") is not False)
     market_cap = _to_float(row.get("market_cap")) or _to_float(info.get("marketCap"))
 
     pe = (market_cap / ttm["ttm_net_income"]) if (market_cap and ttm["ttm_net_income"] and ttm["ttm_net_income"] > 0) else None

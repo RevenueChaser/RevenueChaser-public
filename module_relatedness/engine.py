@@ -935,11 +935,18 @@ def _payload(profiles: dict[str, dict], stale: set[str] | None = None, model: st
                                              theme_catalog)
     # One read of the company fields (#49): ``filter_fields`` carries name/sector/industry/market_cap already,
     # so the second ``equity_universe`` query this function used to run only risked disagreeing with it.
+    from RevenueChaser.module_value_chain import aliases
+    from . import store
+    meta = store.profile_meta(list(profiles))
+    # Decision C (avo, 16 Nov 2026; #408): one row per CIK. GOOG/GOOGL share a filing and a profile, so each was the
+    # other's top peer; the kept ticker lists its other classes.
+    classes = aliases.share_class_groups([{"ticker": t, "cik": m.get("cik")} for t, m in meta.items()])
+    twins = {t for others in classes.values() for t in others}
+    profiles = {t: p for t, p in profiles.items() if t not in twins}
     extra = filter_fields(list(profiles))
     scale = similarity.idf(profiles)       # one idf for the company weights and the peer scores (#395)
     themes = _theme_levels()
-    from . import store
-    sources = {t: store.profile_source(m.get("cache_key")) for t, m in store.profile_meta(list(profiles)).items()}
+    sources = {t: store.profile_source(m.get("cache_key")) for t, m in meta.items() if t in profiles}
     companies = []
     for t in sorted(profiles):
         x = extra.get(t) or {}
@@ -963,6 +970,7 @@ def _payload(profiles: dict[str, dict], stale: set[str] | None = None, model: st
             "theme_medium": tl.get("medium") or "",
             "theme_fine": tl.get("fine") or "",
             "stale": t in (stale or ()),
+            "also": classes.get(t, []),
             # Build plan PR 20 (G6): the filing the profile was read from (CIK, accession, form, filed).
             "source": sources.get(t),
             "weights": similarity.term_weights(profiles[t], scale),
@@ -1046,8 +1054,16 @@ def run(no_fetch: bool = False, tickers: list[str] | None = None,
         if not got:
             raise AlreadyRunning("Another Relatedness run is already in progress.")
         if provider == "deepseek" and model is None:
-            return _run(False, tickers, limit, usd_cap, run_id)
-        return _run(False, tickers, limit, usd_cap, run_id, provider=provider, max_calls=max_calls, model=model)
+            payload = _run(False, tickers, limit, usd_cap, run_id)
+        else:
+            payload = _run(False, tickers, limit, usd_cap, run_id, provider=provider, max_calls=max_calls,
+                           model=model)
+        # Decision F (avo, 16 Nov 2026): a whole-board Fetch keeps its peer scores in the store. A sliced run scored
+        # a subset only, and syncing it would retire every other pair.
+        if tickers is None and not limit:
+            from . import store
+            store.save_scores(payload.get("peers") or {})
+        return payload
 
 
 def _run(no_fetch: bool, tickers: list[str] | None, limit: int | None,

@@ -130,6 +130,49 @@ def test_manifest_entry_is_a_derived_upsert_keyed_by_date_horizon_and_basis():
 
 
 
+def _change(ticker, change, day, kind="stock"):
+    return {"ticker": ticker, "kind": kind, "change": change, "reason": "test", "as_of": day, "run_id": "b"}
+
+
+def test_the_dated_universe_is_each_names_stays_in_the_list(rawstore_tmp_db):
+    """``my_universe_changes`` read as spans: a name that left and came back has two, and a ``kinds`` filter keeps
+    the ETFs out."""
+    universe_store.changes([
+        _change("AAA", "entered", date(2026, 11, 5)), _change("BBB", "entered", date(2026, 11, 5)),
+        _change("SPY", "entered", date(2026, 11, 5), kind="etf"),
+        _change("BBB", "left", date(2026, 11, 9)), _change("BBB", "entered", date(2026, 11, 12))])
+    from RevenueChaser.rcdata import read
+    got = [(s["ticker"], s["entered_on"], s["left_on"]) for s in read.my_universe_spans(("stock",))]
+    assert got == [("AAA", date(2026, 11, 5), None), ("BBB", date(2026, 11, 5), date(2026, 11, 9)),
+                   ("BBB", date(2026, 11, 12), None)]
+    assert [s["ticker"] for s in read.my_universe_spans()] == ["AAA", "BBB", "BBB", "SPY"]
+
+
+def test_universe_at_is_the_membership_at_the_end_of_the_day():
+    spans = [{"ticker": "AAA", "entered_on": date(2026, 11, 5), "left_on": None},
+             {"ticker": "BBB", "entered_on": date(2026, 11, 5), "left_on": date(2026, 11, 9)}]
+    assert baselines.universe_at(date(2026, 11, 4), spans) == []                # before the first build
+    assert baselines.universe_at(date(2026, 11, 8), spans) == ["AAA", "BBB"]
+    assert baselines.universe_at(date(2026, 11, 9), spans) == ["AAA"]           # left that day: out at its end
+
+
+def test_a_name_that_has_left_since_still_counts_on_the_day_it_was_in(rawstore_tmp_db):
+    """No survivorship: the baseline of ``D`` is ``D``'s list. BBB left after ``D`` and counts; CCC entered after
+    ``D`` and does not; the fund is no stock and does not; DDD was in on ``D`` but the store holds no bar for it, so
+    it is a member (``members``) outside ``n``."""
+    write_d01(_series("AAA") + _series("BBB", mfe=0.30) + _series("CCC") + _series("SPY"))
+    first = D - timedelta(days=30)
+    universe_store.changes([_change("AAA", "entered", first), _change("BBB", "entered", first),
+                            _change("DDD", "entered", first), _change("SPY", "entered", first, kind="etf"),
+                            _change("BBB", "left", D + timedelta(days=5)),
+                            _change("CCC", "entered", D + timedelta(days=1))])
+    _freeze(["AAA"])
+    out = baselines.run(now=NOW, run_id="r1")
+    assert (out["no_snapshot"], out["members"]) == (0, 3)
+    row = _row("universe", 30)
+    assert row["n"] == 2 and row["ge20"] == 1 and row["ge10"] == 2
+
+
 def test_a_freeze_date_without_a_universe_snapshot_writes_zero_members(rawstore_tmp_db, clock):
     """Before the store recorded membership there is no snapshot: the rows say n = 0 rather than quietly using
     today's list, and the run counts the date as one without a snapshot."""

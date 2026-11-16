@@ -149,6 +149,7 @@ WRITTEN_COLUMN: dict[str, str] = {
     'etf_holdings_nport': 'report_date',
     'sec13f_cusip_map': 'period',
     'sec13f_filer_breaks': 'period',
+    'sec13f_filer_holdings': 'period',
     'sec13f_filer_period': 'period',
     'sec13f_filer_style': 'period',
     'sec13f_filings': 'filed',
