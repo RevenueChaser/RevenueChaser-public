@@ -121,6 +121,7 @@ from datetime import date, timedelta
 import duckdb
 
 from ....core import calendar
+from ....core.identity.isin import luhn_digit
 from ....core.gics_map import UNCLASSIFIED
 from ... import ops, serving
 from .. import base, dirty
@@ -135,6 +136,9 @@ CONSENSUS_FILERS = 3
 MIN_NAMES = 5
 SCALE_BAND = (1.0 / 3000.0, 1.0 / 300.0)
 SCALE_STEPS = (1000.0, 1_000_000.0)      # a filer off by one or two steps of 1,000 (#780: 2014 Q2, 2018 Q2 x1,000,000)
+# A filer 10 or 100 times too high (#934: ALPS 2015 Q3, Thornburg 2025 Q1 at exactly 10). Down only: a ratio under 1/3
+# can as well be share counts too high, which a larger VALUE would make worse (Castleview 2021 Q4).
+DOWN_STEPS = (10.0, 100.0)
 ROW_BAND = 300.0                         # one holding this far from its consensus price is read at that price (#780)
 NEIGHBOUR_DAYS = 100                     # a consensus price is checked against the quarters on either side (#780)
 ROWS_TOP = 50
@@ -314,7 +318,20 @@ def _factor_sql() -> str:
                     f"THEN {step!r}")
         arms.append(f"WHEN names >= {MIN_NAMES} AND ratio > {step / (hi * 1000.0)!r} "
                     f"AND ratio < {step / (lo * 1000.0)!r} THEN {1.0 / step!r}")
+    for step in DOWN_STEPS:
+        arms.append(f"WHEN names >= {MIN_NAMES} AND ratio > {step / (hi * 1000.0)!r} "
+                    f"AND ratio < {step / (lo * 1000.0)!r} THEN {1.0 / step!r}")
     return "CASE " + " ".join(arms) + " ELSE 1.0 END"
+
+
+def _pad_cusips(con: duckdb.DuckDBPyConnection) -> None:
+    """#937: an all-digit CUSIP of eight characters that lost its leading zero (``37833100``, AAPL's ``037833100``)
+    gets it back when the zero makes its check digit right; any other short CUSIP stays as filed, unmapped."""
+    short = [r[0] for r in con.execute("SELECT DISTINCT cusip FROM _long WHERE regexp_full_match(cusip, '[0-9]{8}')")
+             .fetchall()]
+    fixed = [c for c in short if luhn_digit(("0" + c)[:8]) == int(c[-1])]
+    if fixed:
+        con.execute("UPDATE _long SET cusip = '0' || cusip WHERE cusip IN (SELECT unnest(?::TEXT[]))", (fixed,))
 
 
 def _consensus_guard(con: duckdb.DuckDBPyConnection) -> None:
@@ -632,6 +649,12 @@ class OwnershipServe:
                            f"amendment_type FROM {sec13f.TABLE} WHERE status = 'ok' AND cik IS NOT NULL "
                            f"AND period IS NOT NULL ORDER BY cik, 3, filed, 5, is_amendment, accession").fetchall()
         first = sec13f.DATASET.first_day() or min((r[3] for r in rows), default=None)
+        # #935: the walk's first day can lie before the first holdings report (the sets begin 2013-04-01, their first
+        # XML information table is of 2013-05-20), and a quarter whose deadline fell in between has a handful of filers.
+        held_from = min((date.fromisoformat(f.parent.name[4:]) for f in files if f.parent.name.startswith("day=")),
+                        default=None)
+        if held_from is not None and (first is None or held_from > first):
+            first = held_from
         served = [p for p in sorted({r[2] for r in rows}) if first is None or filing_deadline(p) >= first]
         start = served[0] if served else date.max
         left = [r for r in rows if r[2] < start]
@@ -643,17 +666,18 @@ class OwnershipServe:
             FROM {sec13f.TABLE} f JOIN _active a ON a.accession = f.accession GROUP BY ALL""")
         long_cols = [("accession", "TEXT"), ("cik", "TEXT"), ("period", "DATE"), ("cusip", "TEXT"),
                      ("name_of_issuer", "TEXT"), ("shares", "DOUBLE"), ("value_usd", "DOUBLE"),
-                     ("value_scale", "INTEGER"), ("filer_name", "TEXT")]
+                     ("value_scale", "INTEGER"), ("filer_name", "TEXT"), ("cover_value", "DOUBLE")]
         _empty(con, "_long", long_cols)
         if files:
             con.execute(f"""INSERT INTO _long
                 SELECT h.accession, h.cik, {common.quarter_end('h.period')}, upper(h.cusip), h.name_of_issuer,
-                       h.shares, h.value_usd, f.value_scale, f.filer_name
+                       h.shares, h.value_usd, f.value_scale, f.filer_name, f.value_total * f.value_scale
                 FROM {common.files_sql(files)} h
                 JOIN _active a ON a.accession = h.accession
                 JOIN {sec13f.TABLE} f ON f.accession = h.accession
                 WHERE upper(h.sh_type) = 'SH' AND coalesce(trim(h.put_call), '') = '' AND h.cusip IS NOT NULL
                   AND h.cik IS NOT NULL AND h.period IS NOT NULL""")
+            _pad_cusips(con)
         periods = _periods_of(con, "_long")
         _by_period(con, periods, "_px", f"""
             SELECT cusip, period, median(value_usd / shares) FROM _long
@@ -669,7 +693,9 @@ class OwnershipServe:
         con.execute(f"""CREATE OR REPLACE TEMP TABLE _fac AS
             SELECT cik, period, names, ratio, {_factor_sql()} AS factor FROM _ratio""")
         # One holding far from its price inside a filer whose median is clean (#780: 2018 Q3, a few lines of one
-        # filer worth $258T), or in a filer with too few names for the median test, is read at the consensus price.
+        # filer worth $258T), or in a filer with too few names for the median test, is read at the consensus price;
+        # never at more than its filing's own cover total, so a share count that is itself wrong is not multiplied
+        # up (#932: 836 trillion shares put 2017 Q3 at $15,848T).
         _by_period(con, periods, "_rowfix", f"""
             SELECT l.rowid, l.cik, l.period, l.cusip, min(l.filer_name), l.value_usd * coalesce(x.factor, 1.0),
                    l.shares * p.px, coalesce(x.factor, 1.0)
@@ -678,6 +704,7 @@ class OwnershipServe:
             WHERE l.period = ? AND l.shares > 0 AND l.value_usd > 0
               AND (l.value_usd * coalesce(x.factor, 1.0) > {ROW_BAND!r} * l.shares * p.px
                    OR l.value_usd * coalesce(x.factor, 1.0) * {ROW_BAND!r} < l.shares * p.px)
+              AND (l.cover_value IS NULL OR l.shares * p.px <= l.cover_value * coalesce(x.factor, 1.0))
             GROUP BY ALL""",
                    [("rid", "BIGINT"), ("cik", "TEXT"), ("period", "DATE"), ("cusip", "TEXT"),
                     ("filer_name", "TEXT"), ("old_value", "DOUBLE"), ("new_value", "DOUBLE"), ("factor", "DOUBLE")])

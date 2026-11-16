@@ -149,7 +149,7 @@ class SecForm4(edgar.Feed):
 
     def build(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> dict[str, int]:
         return {TABLE: self.build_rows(ctx, con, TABLE, SERVED, "rows", "filed, accession, tx_table, line",
-                                       common.BY_ISSUER)}
+                                       common.BY_ISSUER, unique=("accession", "tx_table", "line"))}
 
     def check(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> dict:
         added, removed = base.compare_with_live(con, self.kind, TABLE, ["accession", "tx_table", "line", "status"])

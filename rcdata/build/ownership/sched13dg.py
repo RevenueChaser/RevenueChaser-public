@@ -137,7 +137,7 @@ class Sched13dg(edgar.Feed):
 
     def build(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> dict[str, int]:
         return {TABLE: self.build_rows(ctx, con, TABLE, SERVED, "rows", "filed, accession, person_line",
-                                       common.BY_CUSIP)}
+                                       common.BY_CUSIP, unique=("accession", "person_line"))}
 
     def check(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> dict:
         added, removed = base.compare_with_live(con, self.kind, TABLE, ["accession", "person_line", "status"])

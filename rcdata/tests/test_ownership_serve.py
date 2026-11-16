@@ -467,12 +467,12 @@ def test_a_quarter_whose_deadline_passed_before_the_first_13f_day_is_not_served(
     e.add_day("2026-10-27", [_f("0002000001-26-000001", 2000001, "2026-10-27", _book()),
                              _f("0002000002-26-000002", 2000002, "2026-10-27", _book(), period="09-30-2001")])
     e.install(http_mock)
-    _thirteen_f(as_of="2026-10-28")                  # the first run: the walk's first day is 2026-10-25
+    _thirteen_f(as_of="2026-10-28")       # the walk's first day is 2026-10-25, the first holdings report 2026-10-27
     row = _serve()
     assert _served("SELECT DISTINCT period FROM sec13f_ticker_period") == [(Q3,)]
     assert _served("SELECT period, filers FROM sec13f_periods") == [(Q3, 1)]
     assert _served(f"SELECT count(*) FROM {sec13f.TABLE} WHERE period = '2001-09-30'") == [(1,)]     # kept, raw
-    assert ("1 filings of 1 quarters whose filing deadline passed before the first 13F day (2026-10-25) left out"
+    assert ("1 filings of 1 quarters whose filing deadline passed before the first 13F day (2026-10-27) left out"
             in row["note"])
 
 
@@ -908,3 +908,70 @@ def test_nothing_built_yet_is_no_rows_from_any_ownership_reader():
     assert read.holders_13f() == [] and read.periods_13f() == [] and read.finra_short_interest(["MSFT"]) == []
     assert read.shortable() == [] and read.threshold_list() == [] and read.fails_to_deliver(["MSFT"]) == []
     assert read.insider_transactions(["MSFT"]) == [] and read.beneficial_ownership(["MSFT"]) == []
+
+
+def test_a_filer_ten_times_too_high_is_rescaled_down_and_one_ten_times_too_low_is_not(monkeypatch, http_mock):
+    """#934, live v4: ALPS 2015 Q3 and Thornburg 2025 Q1 sat at a median ratio of exactly 10, outside the 1,000 band.
+    Only down: a ratio of 1/10 can be share counts ten times too high, which a larger VALUE would make worse."""
+    monkeypatch.setattr(sec, "_shared_pace", lambda: True)
+    monkeypatch.setenv("RC_HTTP_CONTACT", "ops@example.org")
+    _book_day(http_mock, {"2026-10-27": [(1.0, "09-30-2026")] * 4 + [(10.0, "09-30-2026"), (0.1, "09-30-2026")]})
+    _serve()
+    assert _served("SELECT cik, value_factor FROM sec13f_filer_period WHERE value_factor <> 1") == [("2000005", 0.1)]
+    assert _issues()[("value_rescaled", "2000005|2026-09-30")].startswith(
+        "MANAGER 2000005, 2026-09-30: VALUE read as 10 times too high")
+
+
+def test_a_holding_whose_share_count_is_wrong_is_not_read_above_its_filings_cover_total(monkeypatch, http_mock):
+    """#932, live v4: one MassMutual line of 2017 Q3 carried 836 trillion shares at a filed $15.8B; read at the 13F's
+    own price it became $15,848T, the whole quarter's total. The filing's own cover total caps the replacement."""
+    monkeypatch.setattr(sec, "_shared_pace", lambda: True)
+    monkeypatch.setenv("RC_HTTP_CONTACT", "ops@example.org")
+    ox.make_spine()
+    e = ox.Edgar()
+    filers = [_f(f"000200000{i}-26-00000{i}", 2000000 + i, "2026-10-27", _book()) for i in range(1, 5)]
+    odd = _book()
+    odd[0] = _h("ISSUER 594918104", "594918104", 40_000, 100 * 1_000_000_000)          # MSFT shares x1e9
+    filers.append(_f("0002000005-26-000005", 2000005, "2026-10-27", odd))
+    e.add_day("2026-10-27", filers)
+    e.install(http_mock)
+    _thirteen_f(as_of="2026-10-28")
+    _serve()
+    assert _served("SELECT value FROM sec13f_ticker_period WHERE ticker = 'MSFT'") == [(40_000.0 * 5,)]
+    assert not any(k == "value_row_replaced" for k, _ in _issues())
+
+
+def test_a_quarter_whose_deadline_fell_before_the_first_holdings_report_is_not_served(monkeypatch, http_mock):
+    """#935, live v4: the data-set fill moved the walk's first day to 2013-04-01, but the first holdings report is of
+    2013-05-20, so 2013 Q1 (deadline 2013-05-15) was served with 232 filers against 3,425 the quarter after."""
+    monkeypatch.setattr(sec, "_shared_pace", lambda: True)
+    monkeypatch.setenv("RC_HTTP_CONTACT", "ops@example.org")
+    ox.make_spine()
+    e = ox.Edgar()
+    e.add_day("2026-10-27", [_f("0002000001-26-000001", 2000001, "2026-10-27", _book()),
+                             _f("0002000002-26-000002", 2000002, "2026-10-27", _book(), period="06-30-2026")])
+    e.install(http_mock)
+    _thirteen_f(as_of="2026-10-28")
+    monkeypatch.setattr(type(sec13f.DATASET), "first_day", lambda self: date(2026, 8, 1))    # before Q2's deadline
+    _serve()
+    assert _served("SELECT period, filers FROM sec13f_periods") == [(Q3, 1)]
+
+
+def test_an_eight_digit_cusip_that_lost_its_leading_zero_gets_it_back_when_its_check_digit_agrees(monkeypatch,
+                                                                                                   http_mock):
+    """#937, live v4: 54,086 CUSIP rows under nine characters, none mapped; '37833100' is AAPL's 037833100."""
+    monkeypatch.setattr(sec, "_shared_pace", lambda: True)
+    monkeypatch.setenv("RC_HTTP_CONTACT", "ops@example.org")
+    ox.make_spine()
+    e = ox.Edgar()
+    filers = [_f(f"000200000{i}-26-00000{i}", 2000000 + i, "2026-10-27", _book()) for i in range(1, 4)]
+    short = _book()
+    short[4] = _h("APPLE INC", "37833100", 23_000, 100)                                 # the zero dropped
+    short.append(_h("NOT A CUSIP", "12345678", 1_000, 10))                             # check digit wrong: kept
+    filers.append(_f("0002000004-26-000004", 2000004, "2026-10-27", short))
+    e.add_day("2026-10-27", filers)
+    e.install(http_mock)
+    _thirteen_f(as_of="2026-10-28")
+    _serve()
+    assert _served("SELECT holders FROM sec13f_cusip_map WHERE cusip = '037833100'") == [(4,)]
+    assert _served("SELECT cusip FROM sec13f_cusip_map WHERE length(cusip) < 9") == [("12345678",)]
