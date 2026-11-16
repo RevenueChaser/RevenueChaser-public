@@ -46,6 +46,11 @@ the closest volume. No label, no score, no tier.
 ``oi_status``: ``pending`` (sweep only, window open), ``matched``, ``stale``, ``missing`` (the ticker's chain was
 read and the contract is not in it).
 
+**The check.** A trading session from the first sweep on whose sweep window closed with no sweep file is lost for good
+(no backfill): the note names it and it stays an open ``session_lost`` build issue (Grafana's open issues, Settings'
+open problems). ``coverage`` is ``matched`` over swept rows of the newest session whose read is over (no row
+``pending``, or its window ended); before any such session it is 1.0 with a sweep of ``as_of`` and 0.0 without.
+
 The UW calls of a session: 10 for the sweep (the 11 Nov 2026 session: 1,376 calls, 798 puts) and one or two a ticker
 (406 tickers that session), about 420 to 435 in all. The builder has no UW day cap (``caps.py``).
 """
@@ -59,6 +64,7 @@ from pathlib import Path
 import duckdb
 
 from ....core import calendar
+from ... import ops
 from .. import base
 from . import KIND, rows, tables, uw
 
@@ -79,6 +85,7 @@ ROLL_MIN_SHARE = 0.25            # the issue's NVDA roll: the closing leg's shar
 ROLL_VOLUME_RATIO = 1.25
 RETYPE_SESSIONS = 20            # the newest sessions whose files are compared with their Parquet each run
 OPEN_SESSIONS = 5               # sweep folders looked at for open interest still to read or close
+LOST_KIND = "session_lost"
 TICKER_FIELDS = ("ticker_symbol", "ticker", "underlying_symbol")
 STATUSES = ("pending", "matched", "stale", "missing")
 
@@ -116,6 +123,20 @@ def sweep_open(session: date) -> bool:
     (after UW's open-interest update the screener's ``open_interest`` would be the next session's already)."""
     return uw.observed(session) and calendar.now_ny() < datetime.combine(
         calendar.next_trading_day(session), OI_UNTIL, tzinfo=calendar.NY)
+
+
+def lost_sessions(as_of: date) -> list[date]:
+    """The trading sessions from the first sweep up to ``as_of`` that can no longer be swept and have no sweep file.
+    None before the first sweep: the dataset was not collecting yet."""
+    root = base.raw_root() / "uw" / "far_contracts"
+    first = min((p.parent.name for p in root.glob("*/sweep.json.gz")), default=None) if root.exists() else None
+    out: list[date] = []
+    d = date.fromisoformat(first) if first else None
+    while d is not None and d <= as_of:
+        if not sweep_path(d).exists() and not sweep_open(d):
+            out.append(d)
+        d = calendar.next_trading_day(d)
+    return out
 
 
 def ticker_of(item: dict) -> str:
@@ -464,6 +485,18 @@ class UWFarContracts:
         if counts:
             note.append("open interest of the newest read session: "
                         + ", ".join(f"{counts.get(s, 0)} {s}" for s in STATUSES if s != "pending"))
+        lost = lost_sessions(as_of)
+        ctx.pending[NAME + ":lost"] = (as_of, lost)
+        if lost:
+            note.append(f"{len(lost)} sessions lost, never swept: " + ", ".join(d.isoformat() for d in lost[-10:]))
+        coverage = 1.0 if have_sweep else 0.0
+        for session, matched, total, pending in con.execute(
+                "SELECT session_date, count(*) FILTER (WHERE oi_status = 'matched'), count(*), "
+                "count(*) FILTER (WHERE oi_status = 'pending') FROM option_far_contract WHERE session_date <= ? "
+                "GROUP BY 1 ORDER BY 1 DESC", [as_of]).fetchall():
+            if not pending or calendar.now_ny() >= oi_window(session)[1]:
+                coverage = matched / total
+                break
         if state.get("waiting"):
             note.append("UW not updated yet: " + ", ".join(state["waiting"][:10]))
         if state.get("failed"):
@@ -476,8 +509,17 @@ class UWFarContracts:
         return {"dataset": NAME, "result": "changed" if added or removed else "unchanged",
                 "source_as_of": as_of.isoformat(),
                 "rows": int(con.execute("SELECT count(*) FROM option_far_contract").fetchone()[0]),
-                "added": added, "removed": removed, "coverage": 1.0 if have_sweep else 0.0,
+                "added": added, "removed": removed, "coverage": coverage,
                 "next_check_due": as_of.isoformat() if again else base.next_due(as_of), "note": "; ".join(note)}
+
+    def after_swap(self, ctx: base.RunContext) -> None:
+        """The lost sessions of the check as open ``build_issues``; one after a past ``as_of`` stays as it is."""
+        got = ctx.pending.get(NAME + ":lost")
+        if got is None:
+            return
+        as_of, lost = got
+        found = [(LOST_KIND, d.isoformat(), "its sweep window closed with no sweep; no backfill") for d in lost]
+        ops.sync_issues(NAME, [LOST_KIND], found, run_id=ctx.run_id, keep=lambda kind, key: key > as_of.isoformat())
 
 
 DATASET = UWFarContracts()
