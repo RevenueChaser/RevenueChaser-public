@@ -612,7 +612,11 @@ def _board_payload(filings: list[dict], edges: list[dict], as_of: str,
                                              theme_catalog)
     excluded = excluded_tickers()
     filings = [f for f in filings if f["ticker"] not in excluded]
-    edges = [e for e in edges if e.get("src") not in excluded]
+    edges = [e for e in edges if e.get("src") not in excluded and e.get("relation") in config.SERVED_RELATIONS]
+    # Plan v31 step 1(f): a profile edge waits for the census; the count says what the switch holds back.
+    profile_hidden = 0 if config.SERVE_PROFILE_EDGES else sum(1 for e in edges if e.get("source") == "profile")
+    if profile_hidden:
+        edges = [e for e in edges if e.get("source") != "profile"]
     universe = classification_universe(operating_only=BOARD_OPERATING_ONLY["module_value_chain"])
     universe_total = len(universe)
     # Universe tickers with no filing row that are known not to be fetchable:
@@ -637,6 +641,9 @@ def _board_payload(filings: list[dict], edges: list[dict], as_of: str,
         "misses": len(missed),
         "no_cik": len(no_cik),
         "corpus": "layer" if _reads_layer() else _TABLE,
+        "profile_hidden": profile_hidden,
+        # G-F (#284): the last sync found no edge and kept the stored ones; the board says so.
+        "kept": _stored_meta().get("edges_kept") == "1",
         # Hand-labelled fixture precision (file read only: no store, no network).
         "precision": precision_mod.gate(served=edges),
         # The Theme facet's vocabulary: the pinned theme run (#383 C1b), a store read.
@@ -672,6 +679,7 @@ def run(no_fetch: bool = False, tickers: list[str] | None = None,
         {"key": "last_sync", "value": as_of, "fetched_at": fetched_at},
         {"key": "n_filings", "value": str(len(filings)), "fetched_at": fetched_at},
         {"key": "n_mentions", "value": str(len(edges)), "fetched_at": fetched_at},
+        {"key": "edges_kept", "value": "1" if info.get("kept") else "0", "fetched_at": fetched_at},
     ])
     payload = _board_payload(filings, edges, as_of, fetch)
     # The banner the board already renders, and the run's recorded health (#299). A Refresh leaves the field
@@ -680,9 +688,12 @@ def run(no_fetch: bool = False, tickers: list[str] | None = None,
     return payload
 
 
+def _stored_meta() -> dict[str, str]:
+    return {r["key"]: r["value"] for r in rawstore.get_all("chain_meta")}
+
+
 def _stored_sync() -> str | None:
-    meta = {r["key"]: r["value"] for r in rawstore.get_all("chain_meta")}
-    return meta.get("last_sync")
+    return _stored_meta().get("last_sync")
 
 
 def load_payload() -> dict:

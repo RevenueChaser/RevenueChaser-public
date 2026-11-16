@@ -112,6 +112,21 @@ def _precision_tile(rep: dict | None) -> str:
             f'<div class="d">{detail}</div></div>')
 
 
+def _status_notes(payload: dict) -> str:
+    """What the board holds back or carries over (plan v31 G-F and step 1(f)), one note each."""
+    notes = []
+    if payload.get("kept"):
+        notes.append("Edges from an earlier run: the last sync found none, so the board shows the stored ones.")
+    hidden = int(payload.get("profile_hidden") or 0)
+    if hidden:
+        notes.append(f"Profile relationships not yet verified: {hidden} links read from company profiles are "
+                     "hidden until a hand-checked sample clears them. The board shows the customers each filing "
+                     "tags in its XBRL.")
+    notes.append("A link is what the filing states, not a confirmed relationship: read its source line before "
+                 "relying on one.")
+    return "".join(f'<div class="note">⚠ {esc(n)}</div>' for n in notes)
+
+
 def _summary_html(payload: dict, n_filings: int, n_drawn: int) -> str:
     fetch = payload.get("fetch") or {}
     pending = payload.get("pending")
@@ -128,7 +143,7 @@ def _summary_html(payload: dict, n_filings: int, n_drawn: int) -> str:
         f'<div class="stat"><div class="v">{n_filings}</div>'
         f'<div class="l">Filings</div><div class="d">latest 10-K / 20-F</div></div>',
         f'<div class="stat"><div class="v">{n_drawn}</div>'
-        f'<div class="l">Links drawn</div><div class="d">named near supplier / customer words</div></div>',
+        f'<div class="l">Links drawn</div><div class="d">supplier / customer links served</div></div>',
         f'<div class="stat"><div class="v">{payload.get("universe_total") or 0}</div>'
         f'<div class="l">Universe</div><div class="d">operating companies, no market-cap floor</div></div>',
         f'<div class="stat"><div class="v">{pending}</div>'
@@ -406,12 +421,7 @@ function init(){
   {help_block}
   
   {body}
-  <div class="note">
-    ⚠ v1 uses keyword rules on filing text: a link means the filing names the company
-    near a supplier / customer word, not that the relationship is confirmed. A
-    hand-checked sample found most such links wrong, so read the source sentence
-    before relying on one.
-  </div>
+  {_status_notes(payload)}
 </div>
 <script>{FILTERS_JS}</script>
 {watchlist_html("value_chain")}

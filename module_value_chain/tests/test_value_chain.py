@@ -101,7 +101,7 @@ def test_run_persists_corpus_and_edges(rawstore_tmp_db, monkeypatch):
     assert payload["fetch"]["fetched"] == 2
     assert rawstore.count("chain_filings") == 2
     assert rawstore.count("chain_mentions") == 0          # #748: a filing's text alone states no edge any more
-    assert rawstore.count("chain_meta") == 3
+    assert rawstore.count("chain_meta") == 4                 # last_sync, n_filings, n_mentions, edges_kept (G-F)
 
     loaded = engine.load_payload()
     assert {f["ticker"] for f in loaded["filings"]} == {"NVDA", "TSM"}
@@ -196,7 +196,7 @@ def test_report_has_readability_layer():
     html = report.render_value_chain_dashboard(payload)
     assert "What am I looking at?" in html
     assert "Supplier" in html and "Customer" in html and "Focal" in html
-    assert "v1 uses keyword rules" in html
+    assert "not a confirmed relationship" in html
     assert "TSM" in html
     assert 'id="q"' in html
     assert '"name": "NVIDIA Corporation"' in html
