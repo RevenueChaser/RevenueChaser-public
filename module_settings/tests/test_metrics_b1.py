@@ -346,6 +346,17 @@ def test_the_detail_carries_badges_and_the_runs_in_the_pickers_range():
     assert "history" not in plain["market_series"]
 
 
+def test_rc_switch_on_carries_the_main_and_the_eight_file_switches():
+    """Timer plan (avo 16 Nov 2026, Q11): RC Health shows every switch, the file switches included."""
+    from RevenueChaser.rcdata import ops
+    ops.switch_set("file-options", False, by="avo")
+    got = {lab["name"]: v for lab, v in metrics.collect(NOW, datasets={}, timer={}, ibkr=lambda: None,
+                                                        news=lambda: None)["rc_switch_on"]}
+    assert set(got) == set(ops.SWITCHES + ops.FILE_SWITCHES)
+    assert got["file-options"] == 0
+    assert got["file-prices"] == 1 and got["fetch"] == 1
+
+
 def test_the_board_head_says_the_switches_the_timer_and_the_gateway(monkeypatch):
     monkeypatch.setenv("RC_IBKR_LOGIN_URL", "javascript:alert(1)")
     monkeypatch.setattr(metrics.TIMER, "get", lambda wait=False: {"state": "on", "last": NOW, "next": None})

@@ -68,7 +68,7 @@ HELP = {
     "rc_builder_last_run_timestamp_seconds": ("gauge", "When the builder last started a run, epoch seconds."),
     "rc_builder_timer_on": ("gauge", "1 when the hourly builder timer is on, 0 when off (absent: not known)."),
     "rc_backup_newest_timestamp_seconds": ("gauge", "The newest backup of a kind, epoch seconds."),
-    "rc_switch_on": ("gauge", "1 when a switch (fetch, backup) is on."),
+    "rc_switch_on": ("gauge", "1 when a switch (fetch, backup, file-<kind>) is on."),
     "rc_ibkr_state": ("gauge", "1 for the IBKR gateway's current login state (up, silent, down, unknown, "
                       "not_set)."),
     "rc_news_feed_state": ("gauge", "1 for an IBKR news feed's current state (refused, live, subscribed, waiting, "
@@ -271,9 +271,14 @@ def collect(now: datetime | None = None, *, datasets: dict | None = None, timer:
                 out["rc_backup_newest_timestamp_seconds"].append(({"kind": k["kind"], "step": k["step"]}, when))
 
     def switches() -> None:
-        for name, view in control.switches_view(control._read_switches(), now).items():
+        rows = control._read_switches()
+        for name, view in control.switches_view(rows, now).items():
             if view["on"] is not None:
                 out["rc_switch_on"].append(({"name": name}, 1 if view["on"] else 0))
+        # timer plan (avo 16 Nov 2026, Q11): the eight file switches too, so RC Health draws every switch; no row
+        # is on, as board_head reads them
+        for name in ops.FILE_SWITCHES:
+            out["rc_switch_on"].append(({"name": name}, 1 if (rows.get(name) or {}).get("off_at") is None else 0))
 
     def gateway() -> None:
         if ibkr is not None:
