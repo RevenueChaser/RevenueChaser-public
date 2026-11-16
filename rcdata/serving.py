@@ -255,7 +255,7 @@ class BuildFile:
         self.close()
         try:
             _verify(self.kind, self.path, expected_counts, list(checks))
-            _verify_against_live(self.kind, self.path, relax=frozenset(allow_shrink))
+            shrank = _verify_against_live(self.kind, self.path, relax=frozenset(allow_shrink))
         except Exception as e:
             _remove(self.path)
             raise SwapRefused(f"{self.kind} build {self.build_id} refused: {e}") from e
@@ -269,7 +269,22 @@ class BuildFile:
                 shutil.copy2(live, prev)
         os.replace(self.path, live)
         self.swapped = True
+        _record_small_shrinks(self.kind, self.build_id, shrank)
         return live
+
+
+def _record_small_shrinks(kind: str, build_id: str, shrank: list[tuple[str, int, int]]) -> None:
+    """A shrink under ``MAX_SHRINK`` swaps in, but no longer without a trace (#292 N-3): one ``build_issues`` row per
+    table, under the kind's name. Recording is best effort: the swap has happened and stays."""
+    if not shrank:
+        return
+    from . import ops
+    for table, before, after in shrank:
+        try:
+            ops.record_issue(kind, "shrink", table, f"{before} -> {after} rows (under {MAX_SHRINK:.0%}, swapped in)",
+                             run_id=build_id)
+        except ops.STORE_ERRORS:
+            pass
 
 
 def _verify(kind: str, path: Path, expected_counts: dict[str, int], checks: list[dict]) -> None:
@@ -354,15 +369,17 @@ def _counts(path: Path, windows: dict[str, tuple[str, str]] | None = None) -> di
         con.close()
 
 
-def _verify_against_live(kind: str, path: Path, relax: frozenset[str] = frozenset()) -> None:
-    """Refuse a build missing a live table, or (outside ``relax``) emptying or shrinking one by over MAX_SHRINK.
+def _verify_against_live(kind: str, path: Path, relax: frozenset[str] = frozenset()) -> list[tuple[str, int, int]]:
+    """Refuse a build missing a live table, or (outside ``relax``) emptying or shrinking one by over MAX_SHRINK;
+    return the ``(table, before, after)`` of each table that shrank by less, so the swap can say so (#292 N-3).
 
     A table of :data:`SHRINKS_BY_CHOICE` may shrink by any amount; it may still not empty. A table of
     :data:`RETIRED_TABLES` may be missing from the build: the code no longer builds it.
     """
     live = live_path(kind)
     if not live.exists():
-        return
+        return []
+    small: list[tuple[str, int, int]] = []
     windows = _windows(path)
     old, new = _counts(live, windows), _counts(path, windows)
     retired = set(RETIRED_TABLES.get(kind, ()))
@@ -382,6 +399,9 @@ def _verify_against_live(kind: str, path: Path, relax: frozenset[str] = frozense
             continue
         if after < before * (1 - MAX_SHRINK):
             raise ValueError(f"{table} shrinks from {before} to {after} rows (more than {MAX_SHRINK:.0%})")
+        if after < before:
+            small.append((table, before, after))
+    return small
 
 
 def live_version(kind: str) -> int | None:
