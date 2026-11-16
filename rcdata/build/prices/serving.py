@@ -72,6 +72,8 @@ TABLES = ("price_bar_daily", "corporate_action", "adj_factor", "shares_class", "
           "market_cap_daily", "price_revision", "wrds_price_diff")
 ALPACA_BARS, ALPACA_ACTIONS = "alpaca/bars", "alpaca/corporate_actions"
 COVER, YAHOO, UW = "sec/cover_shares", "yfinance/float", "uw/total_float"
+# The oldest a company facts count may be on the session it gives a cap to: a year and a filing's lag.
+DEI_MAX_AGE_DAYS = 400
 INDEX_SOURCE = "market_series/cboe"
 # A day whose split-adjusted close moved by this factor or more, either way, with no split that day.
 GAP_FACTOR = 1.9
@@ -713,16 +715,18 @@ class PricesServing:
         # The company facts history (13F plan decision L): the issuer's undimensioned cover count, so a single-class
         # issuer's only: the CIK's one Tier A row and not an ADR (as ``_cover``), no cover filing of the CIK with
         # two classes, and no day the facts give two counts for (a multi-class issuer's classes reported apart). A
-        # day a cover row serves for the security stays the cover's; of one day's counts the newest filing's wins.
+        # day a cover row serves for the security stays the cover's; of one day's counts the newest filing's wins (a
+        # 10-Q/A restating a count). Two counts of one day in one filing are a multi-class issuer's classes.
         con.execute("""CREATE OR REPLACE TEMP TABLE _dei AS
             WITH one AS (SELECT cik, any_value(security_id) AS security_id, any_value(security_type) AS security_type,
                                 any_value(ticker) AS ticker
                          FROM stg_spine WHERE tier = 'A' GROUP BY cik HAVING count(*) = 1),
-                 multi AS (SELECT DISTINCT cik FROM stg_sec_cover GROUP BY cik, accession HAVING count(*) > 1),
-                 split AS (SELECT DISTINCT cik FROM stg_sec_dei GROUP BY cik, as_of HAVING count(DISTINCT shares) > 1)
+                 multi AS (SELECT cik FROM stg_sec_cover GROUP BY cik, accession HAVING count(*) > 1
+                           UNION SELECT cik FROM stg_sec_dei GROUP BY cik, accession, as_of
+                                 HAVING count(DISTINCT shares) > 1)
             SELECT o.security_id, o.ticker, d.* FROM stg_sec_dei d JOIN one o USING (cik)
             WHERE o.security_type IS DISTINCT FROM 'adr' AND d.shares > 0
-              AND d.cik NOT IN (SELECT cik FROM multi) AND d.cik NOT IN (SELECT cik FROM split)
+              AND NOT EXISTS (SELECT 1 FROM multi m WHERE m.cik = d.cik)
               AND NOT EXISTS (SELECT 1 FROM _cover c WHERE c.security_id = o.security_id AND c.as_of = d.as_of)
             QUALIFY row_number() OVER (PARTITION BY d.cik, d.as_of
                                        ORDER BY d.filed DESC NULLS LAST, d.accession DESC) = 1""")
@@ -999,7 +1003,11 @@ MARKET_CAP_SQL = f"""
                       CASE WHEN b.shares_outstanding IS NOT NULL THEN b.source ELSE b.hist_source END AS bar_source,
                       o.value AS cover, o.as_of AS cover_as_of, o.source AS cover_source
                FROM b ASOF LEFT JOIN o ON o.security_id = b.security_id AND b.session_date >= o.as_of),
+         -- A company facts count older than DEI_MAX_AGE_DAYS gives no cap: its issuer may have stopped tagging it
+         -- undimensioned (a second class), so it is not taken as today's.
          s AS (SELECT j.*, CASE WHEN own IS NOT NULL THEN own
+                                WHEN cover_source = '{DEI}'
+                                     AND date_diff('day', cover_as_of, session_date) > {DEI_MAX_AGE_DAYS} THEN NULL
                                 ELSE cover * coalesce(a1.split_factor, 1) / coalesce(a2.split_factor, 1) END AS shares
                FROM j {factor_join('a1', 'j.security_id', 'j.session_date')}
                {factor_join('a2', 'j.security_id', 'j.cover_as_of')}),

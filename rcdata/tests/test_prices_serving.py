@@ -411,8 +411,9 @@ def _company_facts(cik: str, values, as_of: str = "2026-10-27") -> None:
 def test_a_single_class_issuers_past_cover_counts_come_from_its_company_facts():
     # 13F plan decision L: the covers hold about one filing per company, so a past quarter had no count. The company
     # facts' undimensioned count is the issuer's whole: served for a single class only. AAPL (one class) keeps its
-    # two past counts, and the day its cover is stored stays the cover's; GOOGL/GOOG (two spine rows), BRK (a cover
-    # with two classes) and FLG (two counts for one day) get none; GAPX, with no cover, gets a cap from it.
+    # two past counts (a 10-Q/A's restated count wins its day), and the day its cover is stored stays the cover's;
+    # GOOGL/GOOG (two spine rows), BRK (a cover with two classes) and FLG (two counts of one day in one filing: its
+    # classes) get none; GAPX, with no cover, gets a cap from it.
     _shares_and_floats()
     base.upsert_partition([{"cik": "1067983", "accession": "0001067983-26-000040", "form": "10-Q",
                             "filed": date(2026, 8, 3), "period_end": date(2026, 6, 30), "class_member": m,
@@ -423,13 +424,14 @@ def test_a_single_class_issuers_past_cover_counts_come_from_its_company_facts():
                           cover_shares.SCHEMA, cover_shares.KEY, cover_shares.partition_path(2026))
     _company_facts("320193", [("not a day", 1, "0000320193-25-000001", "10-Q", None),
                               ("2025-04-18", 14_935_826_000, "0000320193-25-000057", "10-Q", "2025-05-02"),
+                              ("2025-04-18", 14_935_000_000, "0000320193-25-000061", "10-Q/A", "2025-05-20"),
                               ("2025-07-18", 14_840_390_000, "0000320193-25-000073", "10-Q", "2025-08-01"),
                               ("2025-07-18", 14_840_390_000, "0000320193-25-000079", "10-K", "2025-10-31"),
                               ("2026-10-17", 14_799_000_000, "0000320193-26-000090", "10-K", "2026-10-30")])
     _company_facts("1652044", [("2026-04-20", 12_100_000_000, "0001652044-26-000040", "10-Q", "2026-04-25")])
     _company_facts("1067983", [("2026-04-21", 1_440_000, "0001067983-26-000020", "10-Q", "2026-05-04")])
     _company_facts("910073", [("2026-05-01", 1_200_000_000, "0000910073-26-000005", "10-Q", "2026-05-08"),
-                              ("2026-05-01", 400_000_000, "0000910073-26-000006", "10-Q/A", "2026-05-20")])
+                              ("2026-05-01", 400_000_000, "0000910073-26-000005", "10-Q", "2026-05-08")])
     _company_facts("4000001", [("2026-08-01", 50_000_000, "0004000001-26-000002", "10-Q", "2026-08-10")])
     issues = []
     ctx = SimpleNamespace(notes=[], issue=lambda *a: issues.append(a))
@@ -440,7 +442,7 @@ def test_a_single_class_issuers_past_cover_counts_come_from_its_company_facts():
     rows = _q("SELECT security_id, as_of, value, symbol, source_ref FROM shares_class WHERE source = ? "
               "ORDER BY security_id, as_of", [cover_shares.DEI_SOURCE])
     assert [(r["security_id"], r["as_of"], r["value"], r["source_ref"]) for r in rows] == [
-        (AAPL, date(2025, 4, 18), 14_935_826_000, "0000320193-25-000057"),
+        (AAPL, date(2025, 4, 18), 14_935_000_000, "0000320193-25-000061"),
         (AAPL, date(2025, 7, 18), 14_840_390_000, "0000320193-25-000079"),
         (GAPX, date(2026, 8, 1), 50_000_000, "0004000001-26-000002")]
     assert {r["symbol"] for r in rows} == {"GAPX", "AAPL"}
@@ -450,3 +452,16 @@ def test_a_single_class_issuers_past_cover_counts_come_from_its_company_facts():
     assert cap[(GAPX, DAYS[-1])]["market_cap"] == pytest.approx(30.9 * 50_000_000)
     assert cap[(GAPX, DAYS[-1])]["shares_source"] == cover_shares.DEI_SOURCE
     assert GAPX not in _issues().get("tier_a_no_shares", set())
+
+
+def test_a_company_facts_count_over_a_year_old_gives_no_market_cap():
+    # Review of #923: an issuer that stopped tagging its count undimensioned (a second class since) would keep its
+    # last old count as today's. Past DEI_MAX_AGE_DAYS the session gets no cap, and the name stays an issue.
+    _shares_and_floats()
+    _company_facts("4000001", [("2025-08-01", 50_000_000, "0004000001-25-000002", "10-Q", "2025-08-10")])
+    cover_shares.DATASET.dei_to_parquet(SimpleNamespace(notes=[], issue=lambda *a: None))
+    base.run_request({"dataset": actions.NAME, "params": {"as_of": "2026-10-27"}})
+    base.run_request({"dataset": bars.NAME, "params": {"as_of": "2026-10-27"}})
+    assert _q("SELECT as_of FROM shares_class WHERE security_id = ?", [GAPX]) == [{"as_of": date(2025, 8, 1)}]
+    assert _q("SELECT count(*) AS n FROM market_cap_daily WHERE security_id = ?", [GAPX]) == [{"n": 0}]
+    assert GAPX in _issues()["tier_a_no_shares"]
