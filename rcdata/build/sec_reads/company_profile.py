@@ -256,8 +256,8 @@ def _context(cik: str, company: dict, got: dict) -> dict:
 def _doc_input(doc: dict, **more) -> Input:
     """An input that names ``doc`` as the filing it came from; ``more`` are its other fields."""
     return Input(accession=str(doc.get("accession") or ""), document=str(doc.get("document") or ""),
-                 filing_date=doc.get("filing_date"), rules_version=str(doc.get("rules_version") or ""),
-                 form=str(doc.get("form") or ""), **more)
+                 filing_date=doc.get("filing_date"), report_date=doc.get("report_date"),
+                 rules_version=str(doc.get("rules_version") or ""), form=str(doc.get("form") or ""), **more)
 
 
 def _headings_input(whole: dict, message: str) -> Input:

@@ -83,6 +83,8 @@ def test_the_service_sends_the_boards_request_for_a_rule_cut(world):
     (row,) = read.sec_reads([MSFT], cp.PROFILE_ID)
     assert row["answer"] == rawstore.get("relatedness_profiles", "MSFT")["profile_json"]
     assert row["input_hash"] == inp.hash
+    (doc,) = read.form_business([MSFT], text=False)
+    assert row["report_date"] == doc["report_date"]             # the period the filing reports on
     assert read.sec_reads([MSFT], cp.LOCATE_ID) == []                         # an unflagged cut asks no locator
 
 

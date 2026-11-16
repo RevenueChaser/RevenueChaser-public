@@ -47,6 +47,8 @@ class Input:
     #: The staleness hash, when the question computed it itself and kept no text (``Question.fill``): a run then
     #: holds one company's text at a time instead of every company's (a whole document runs to 1.4M characters).
     hash: str = ""
+    #: The period the filing reports on (``filing_section.report_date``), kept on the answer.
+    report_date: date | None = None
 
 
 def _one(parts: list[tuple[dict, int]]) -> dict:
