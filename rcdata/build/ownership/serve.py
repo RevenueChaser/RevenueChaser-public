@@ -47,7 +47,8 @@
   another security, or gives it to one with no dates (review S1, 2026-10-28). A refused row stays in the map
   (``map_source`` ``refused``, ``candidate_ticker``) and is a ``cusip_owner_differs`` issue; nothing is dropped, and
   OpenFIGI is not asked in its place.
-- *The metrics*, per ticker and period (summed over its CUSIPs; one holder per filer CIK), as the old derive defines
+- *The metrics*, per ticker and period (summed over its CUSIPs; one holder per filer CIK, except that the top 10 and
+  the HHI count a filer family as one: ``family_roots``, #925), as the old derive defines
   them (``module_sec_13f/engine.py`` ``compute_period_metrics``): shares, value, holders, the top 10 holders' share of
   the shares (%), the HHI of the holders' shares, and breadth, the holders as a share of the period's filers (%; a
   filer counts when it has a long-equity row). Against the **calendar quarter before** (``prev_period``), not the
@@ -118,6 +119,7 @@ share counts are wrong, which the prices alone cannot tell; avo, 16 Nov 2026, Q1
 """
 from __future__ import annotations
 
+import re
 from datetime import date, timedelta
 
 import duckdb
@@ -194,6 +196,8 @@ STYLE_QUARTERS = 8
 FILER_HOLDINGS = [("cik", "TEXT"), ("period", "DATE"), ("ticker", "TEXT"), ("shares", "DOUBLE"), ("value", "DOUBLE"),
                   ("weight", "DOUBLE"), ("rank", "INTEGER")]
 FILER_TOP = 25
+FAMILY_STOP = {"THE"}                    # a leading word that names no firm
+FAMILY_HOPS = 5                          # parent links followed to a family's root (a cycle stops sooner)
 STARTED, STOPPED = "started", "stopped"
 SCHEMAS = {"sec13f_cusip_map": MAP, "sec13f_filer_period": FILER, "sec13f_ticker_period": TICKER,
            "sec13f_periods": PERIODS, "sec13f_filer_breaks": BREAKS, "sec13f_type_holdings": TYPES,
@@ -350,6 +354,57 @@ def _pad_cusips(con: duckdb.DuckDBPyConnection) -> None:
     fixed = [c for c in short if luhn_digit(("0" + c)[:8]) == int(c[-1])]
     if fixed:
         con.execute("UPDATE _long SET cusip = '0' || cusip WHERE cusip IN (SELECT unnest(?::TEXT[]))", (fixed,))
+
+
+def _root_word(name: str | None) -> str | None:
+    """A filer name's first word that names the firm (``BLACKROCK`` of "BlackRock Advisors LLC")."""
+    words = [w for w in re.findall(r"[A-Z0-9]+", (name or "").upper()) if w not in FAMILY_STOP]
+    return words[0] if words else None
+
+
+def family_roots(edges, books: dict[str, float]) -> dict[str, str]:
+    """``{cik: family root cik}`` from the 13F's included managers (#925; avo, 16 Nov 2026, Q17 A): ``edges`` are
+    ``(manager cik, filer cik, manager name, filer name)``, a filer naming the manager in its List of Other Included
+    Managers. A pair counts only when both names start with the same firm word, because a filer also lists sub-advisers
+    of other firms. A manager named by several filers joins the largest (``books``, its largest quarter's value); the
+    links are followed to the top (at most ``FAMILY_HOPS``), and a link that would close a cycle is not taken. Only
+    ciks with a parent are returned."""
+    parent: dict[str, str] = {}
+
+    def top(cik: str) -> str:
+        for _ in range(FAMILY_HOPS):
+            if cik not in parent:
+                break
+            cik = parent[cik]
+        return cik
+    for child, par, child_name, par_name in sorted(edges, key=lambda e: (-books.get(e[1], 0.0), e[1], e[0])):
+        if child and par and child != par and child not in parent and top(par) != child:
+            word = _root_word(child_name)
+            if word and word == _root_word(par_name):
+                parent[child] = par
+    return {cik: top(cik) for cik in parent}
+
+
+def _families(con: duckdb.DuckDBPyConnection) -> int:
+    """``_family(cik, family_cik)`` (TEMP) from the managers Parquet (``sec/13f``'s ``managers``, the ``included``
+    list), named by ``family_roots``; empty without that Parquet. The number of filers put in a family."""
+    files = [f for _, f in sec13f.partitions(sec13f.DATASET.parquet_dir() / "managers", "day")]
+    edges = []
+    if files:
+        edges = con.execute(f"""
+            WITH m AS (SELECT DISTINCT ltrim(manager_cik, '0') AS child, ltrim(cik, '0') AS par, name
+                       FROM {common.files_sql(files)} WHERE kind = 'included' AND manager_cik IS NOT NULL
+                         AND cik IS NOT NULL),
+                 n AS (SELECT ltrim(cik, '0') AS cik, arg_max(filer_name, filed) AS name FROM {sec13f.TABLE}
+                       WHERE cik IS NOT NULL GROUP BY 1)
+            SELECT m.child, m.par, coalesce(nc.name, m.name), np.name
+            FROM m LEFT JOIN n nc ON nc.cik = m.child LEFT JOIN n np ON np.cik = m.par""").fetchall()
+    books = {c: v for c, v in con.execute(
+        "SELECT ltrim(cik, '0'), max(value) FROM sec13f_filer_period GROUP BY 1").fetchall()}
+    roots = family_roots(edges, books)
+    common.temp_rows(con, "_family", [("cik", "TEXT"), ("family_cik", "TEXT")],
+                     [{"cik": c, "family_cik": r} for c, r in roots.items()])
+    return len(roots)
 
 
 def _consensus_guard(con: duckdb.DuckDBPyConnection) -> None:
@@ -536,6 +591,7 @@ def _figi(con: duckdb.DuckDBPyConnection) -> None:
 TEMPS = ("_closed", "_sets", "_sp_security", "_sp_hist", "_sp_sp500", "_sp_sector", "_split", "_owners", "_figi", "_active", "_conf", "_long", "_px", "_ratio",
          "_pxfix", "_fac", "_rowfix", "_held", "_succ",
          "_cp", "_m_hist", "_m_cur", "_m_owner", "_m_figi", "_filers", "_filed", "_deadline", "_tot", "_pos", "_shape",
+         "_family",
          "_pairs", "_flow", "_tag")
 
 
@@ -834,11 +890,17 @@ class OwnershipServe:
             WHERE h.period = ? AND m.ticker IS NOT NULL GROUP BY m.ticker, h.period""",
                    [("ticker", "TEXT"), ("period", "DATE"), ("shares", "DOUBLE"), ("value", "DOUBLE"),
                     ("holders", "BIGINT"), ("cusips", "BIGINT"), ("prev_period", "DATE")])
+        # Top 10 and HHI count a filer family as one holder (#925; avo, 16 Nov 2026, Q18 A): two Vanguard filers are
+        # one Vanguard there. Holders, breadth and the flows stay per filer.
+        _families(con)
         _by_period(con, held, "_shape", """
             SELECT p.ticker, p.period, sum(p.shares) FILTER (WHERE p.rn <= 10),
                    sum(CASE WHEN t.shares > 0 THEN pow(p.shares / t.shares, 2) END)
-            FROM (SELECT *, row_number() OVER (PARTITION BY ticker, period ORDER BY shares DESC, cik) AS rn
-                  FROM _pos WHERE period = ?) p
+            FROM (SELECT *, row_number() OVER (PARTITION BY ticker, period ORDER BY shares DESC, holder) AS rn
+                  FROM (SELECT x.ticker, x.period, coalesce(f.family_cik, ltrim(x.cik, '0')) AS holder,
+                               sum(x.shares) AS shares
+                        FROM _pos x LEFT JOIN _family f ON f.cik = ltrim(x.cik, '0')
+                        WHERE x.period = ? GROUP BY ALL)) p
             JOIN _tot t ON t.ticker = p.ticker AND t.period = p.period GROUP BY ALL""",
                    [("ticker", "TEXT"), ("period", "DATE"), ("top10", "DOUBLE"), ("h", "DOUBLE")])
         _successions(con)

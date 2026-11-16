@@ -1007,14 +1007,36 @@ def test_each_filers_style_over_the_settled_quarters(monkeypatch, http_mock):
     assert 0 < turnover < 1 and 0 < held < 1
 
 
-def test_each_filers_largest_names_per_quarter_and_the_rest_add_up_to_100(store, monkeypatch):
-    """#928 (avo, 16 Nov 2026, Q16): one investor's holdings over time. Filer 1000004 holds a mapped ticker and two
-    CUSIPs no source names; with a top of one name the rest is one row with no ticker."""
-    monkeypatch.setattr(serve, "FILER_TOP", 1)
-    _serve()
-    rows = _served("SELECT cik, period, ticker, rank, round(weight, 6) FROM sec13f_filer_holdings "
-                   "WHERE cik = '1000001' AND period = ? ORDER BY rank NULLS LAST", Q3)
-    assert [r[2:4] for r in rows] == [("MSFT", 1), (None, None)]
+def test_each_filers_largest_names_per_quarter_and_the_rest_add_up_to_100(store):
+    """#928 (avo, 16 Nov 2026, Q16): one investor's holdings over time. A filer's named tickers are ranked by value;
+    the CUSIPs no source names (filer 1000004's) are one row with no ticker, and a quarter's weights add up to 100."""
+    rows = _served("SELECT ticker, rank FROM sec13f_filer_holdings WHERE cik = '1000001' AND period = ? "
+                   "ORDER BY rank NULLS LAST", Q3)
+    assert rows[0] == ("MSFT", 1) and [r[1] for r in rows] == list(range(1, len(rows) + 1))
+    assert _served("SELECT count(*) FROM sec13f_filer_holdings WHERE cik = '1000004' AND period = ? "
+                   "AND ticker IS NULL AND rank IS NULL", Q3) == [(1,)]
     assert _served("SELECT cik, period, round(sum(weight), 6) FROM sec13f_filer_holdings GROUP BY ALL "
                    "HAVING round(sum(weight), 6) <> 100") == []
-    assert _served("SELECT max(rank) FROM sec13f_filer_holdings") == [(1,)]
+
+
+def test_a_filer_family_is_one_holder_for_the_top_10_and_hhi_but_not_for_the_holder_count(monkeypatch, http_mock):
+    """#925 (avo, 16 Nov 2026, Q17 A, Q18 A): two filers of one family hold one name: HHI 1, holders still 2."""
+    monkeypatch.setattr(sec, "_shared_pace", lambda: True)
+    monkeypatch.setenv("RC_HTTP_CONTACT", "ops@example.org")
+    monkeypatch.setattr(serve, "family_roots", lambda edges, books: {"2000002": "2000001"})
+    _book_day(http_mock, {"2026-10-27": [(1.0, "09-30-2026")] * 2})
+    _serve()
+    assert _served("SELECT holders, round(hhi, 6), round(top10_pct, 6) FROM sec13f_ticker_period "
+                   "WHERE ticker = 'MSFT'") == [(2, 1.0, 100.0)]
+
+
+def test_a_family_needs_the_included_manager_link_and_the_same_firm_word():
+    """Q17 A: the SEC's List of Other Included Managers, guarded by the firm word (a filer also lists sub-advisers)."""
+    edges = [("11", "1", "VANGUARD ADVISERS INC", "VANGUARD GROUP INC"),
+             ("12", "1", "WELLINGTON MANAGEMENT CO", "VANGUARD GROUP INC"),          # a sub-adviser: not a family
+             ("13", "11", "Vanguard Fiduciary Trust", "VANGUARD ADVISERS INC"),     # two hops to the top
+             ("1", "13", "VANGUARD GROUP INC", "Vanguard Fiduciary Trust"),         # would close a cycle
+             ("21", "2", "The BlackRock Japan Co", "BlackRock, Inc."),              # "The" names no firm
+             ("21", "3", "BLACKROCK SMALL LTD", "BLACKROCK ADVISORS")]              # the larger parent wins
+    roots = serve.family_roots(edges, {"1": 9.0, "2": 8.0, "3": 1.0})
+    assert roots == {"11": "1", "13": "1", "21": "2"}
