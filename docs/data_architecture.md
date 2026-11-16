@@ -2081,7 +2081,7 @@ claude-coordinator `plans/2026-11-15_1119_sec-reader-tool-plan.md` and
 companies (`scope`), their text (`inputs`), the system prompt and its `prompt_version`, the parser, the chunk size
 (60,000 characters by default) and the writer (EVREN or the DeepSeek API; DeepSeek is always its Flash model). A
 board adds one entry and reads the answers through `rcdata.read.sec_reads(ciks, question)` or the need `sec.read`.
-No question is registered yet; each board's question is its own change.
+Registered: `debt.note` (#737; `rcdata/build/sec_reads/debt_note.py`, prompt and parse in `rcdata/sec_debt_note.py`), read by the Fundamentals board through `core/fundamentals_layer.py`. Each further question is its own change.
 
 **One asker** (`asker.py`), one pool per provider: EVREN 1 request at a time, DeepSeek 8. The HTTP clients are
 `core/providers`' own, called with `use_cache=False`, so `llm_cache` gets nothing from the tool. On homesrv the

@@ -252,6 +252,7 @@ def records_many(tickers) -> dict[str, tuple[list[dict], list[dict], dict]]:
     rows_of: dict[str, list[dict]] = {}
     for r in read.statements_many({c["cik"] for c in companies.values()}, ANNUAL_YEARS, QUARTERS):
         rows_of.setdefault(str(r["cik"]), []).append(r)
+    notes = _debt_notes({c["cik"] for c in companies.values()})
     out = {}
     for ticker, company in companies.items():
         rows = rows_of.get(str(company["cik"]), [])
@@ -259,7 +260,23 @@ def records_many(tickers) -> dict[str, tuple[list[dict], list[dict], dict]]:
         annual = _annual_records(annual_rows)
         quarterly, preliminary = _quarterly_records([r for r in rows if r["period_type"] == "quarterly"],
                                                     annual_rows)
-        out[ticker] = (annual, quarterly, _meta(company, bool(annual or quarterly), preliminary))
+        meta = _meta(company, bool(annual or quarterly), preliminary)
+        if str(company["cik"]) in notes:
+            meta["debt_note"] = notes[str(company["cik"])]
+        out[ticker] = (annual, quarterly, meta)
+    return out
+
+
+def _debt_notes(ciks) -> dict[str, dict]:
+    """``{cik: answer}`` of the SEC service's ``debt.note`` (#737): ``ok`` rows of the current prompt only, each
+    answer with its ``accession``. No ``sec_reads.duckdb`` reads as no answer. Whether an answer may be used for a
+    record is ``module_fundamentals.debt.note_debt``'s."""
+    from ..rcdata import read, sec_debt_note
+    out = {}
+    for r in read.sec_reads(ciks, "debt.note"):
+        if r.get("status") == "ok" and r.get("prompt_version") == sec_debt_note.PROMPT_VERSION \
+                and isinstance(r.get("answer"), dict):
+            out[str(r["cik"])] = {**r["answer"], "accession": r.get("accession")}
     return out
 
 

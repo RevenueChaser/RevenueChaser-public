@@ -72,6 +72,9 @@ def evaluate_rule_of_40(m: dict) -> dict:
 # rows hold ``passed``, ``actual`` and ``unit`` only (``scores.gate_rows``); the payload carries ``debt_basis``
 # instead (Fable review F3, 13 Nov 2026).
 INFERRED_DEBT_NOTE = "debt not tagged, no interest: counted 0"
+#: #737: the total came from the filing's debt note, read by the SEC service, not from a tagged figure.
+NOTE_DEBT_NOTE = "debt read from the filing's note"
+_BASIS_NOTE = {debt.INFERRED_NONE: INFERRED_DEBT_NOTE, debt.NOTE: NOTE_DEBT_NOTE}
 
 
 # #737 (avo, 14 Nov 2026 11:06 Amsterdam, option "A: Kaldı say"): what the leverage rule says about a company
@@ -97,8 +100,8 @@ def _leverage_rule(nde, net_cash, debt_basis=None) -> dict:
     the board read its total debt as 0 (``module_fundamentals.debt``). The label then says so. A filed total,
     zero included, is ``filed`` and reads exactly as it did before."""
     label = "Net Debt / EBITDA < 3×"
-    if debt_basis == debt.INFERRED_NONE:
-        label += f" ({INFERRED_DEBT_NOTE})"
+    if debt_basis in _BASIS_NOTE:
+        label += f" ({_BASIS_NOTE[debt_basis]})"
     if nde is None and net_cash is True:
         return _rule("net_debt_ebitda", label, "text", True, "Net cash", "< 3.0×")
     if nde is None and net_cash is False:
@@ -120,8 +123,8 @@ def evaluate_quality(m: dict) -> dict:
     # #737, Fable review F3: an inferred zero makes ROIC known as well as the leverage ratio, so when ROIC is in
     # play this rule rests on the same inference and says so. Growth alone never does.
     gor_label = "Growth ≥20% or ROIC ≥15%"
-    if roic is not None and m.get("debt_basis") == debt.INFERRED_NONE:
-        gor_label += f" ({INFERRED_DEBT_NOTE})"
+    if roic is not None and m.get("debt_basis") in _BASIS_NOTE:
+        gor_label += f" ({_BASIS_NOTE[m['debt_basis']]})"
     rules = [
         # One missing half cannot fail the rule, and cannot decide it unless the other half already passed.
         _rule("growth_or_roic", gor_label, "pct",

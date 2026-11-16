@@ -52,6 +52,7 @@ EDGAR is read (``pipeline._score_row``). That exclusion, not this module, is wha
 """
 from __future__ import annotations
 
+from datetime import date
 from functools import lru_cache
 
 
@@ -98,7 +99,11 @@ INTEREST_FIELDS = ("interest_expense", "interest_expense_borrowings", "interest_
 INTEREST_FLOOR_USD = 100_000.0
 
 FILED = "filed"                  # ``total_debt`` came from the facts (a sum of tagged lines), zero included
+NOTE = "note"                    # no total in the facts; the SEC service read it from the filing's debt note
 INFERRED_NONE = "inferred_none"  # no total in the facts; this module read it as 0
+
+#: A note's balance date and the record's balance sheet date may differ by this much (a 52/53-week year end).
+NOTE_DAYS = 7
 
 
 def _float(v):
@@ -137,3 +142,36 @@ def no_interest(rec: dict | None, *, quarterly: bool = False) -> bool:
 def debt_free(rec: dict | None, *, quarterly: bool = False) -> bool:
     """Both conditions on one record (the module docstring). ``quarterly`` annualises the interest figure."""
     return tags_no_debt(rec) and no_interest(rec, quarterly=quarterly)
+
+
+def note_debt(rec: dict | None, note: dict | None) -> float | None:
+    """The total debt the filing's debt note states for ``rec`` (the ``debt.note`` answer of the SEC service), or
+    None when it may not be used. Precedence is the caller's: filed > note > inferred (avo, 16 Nov 2026, decision 6).
+
+    ``note`` is the answer the facts layer put in the meta (``core.fundamentals_layer``: an ``ok`` row of the
+    current prompt only). Used only when every guard holds (review of 16 Nov 2026, §2):
+
+    * a ``stated`` total in USD above 0, finance leases left out (``total_usd``; decisions 5 and 7). A "no
+      borrowings" answer has no ``total_usd`` and never becomes 0 (decision 4);
+    * the note's balance date is the record's balance sheet date, within :data:`NOTE_DAYS` (the debt lines are read
+      on the ``total_assets`` end, ``rcdata/build/fundamentals/facts.py``);
+    * not below any debt line the filer did tag on the record, and not above its total assets.
+    """
+    if not rec or not note:
+        return None
+    total = _float(note.get("total_usd"))
+    if total is None or total <= 0:
+        return None
+    ends = rec.get("period_ends") if isinstance(rec.get("period_ends"), dict) else {}
+    try:
+        day = date.fromisoformat(str(note.get("balance_date"))[:10])
+        end = date.fromisoformat(str(ends.get("total_assets") or ends.get("revenue") or rec.get("period"))[:10])
+    except ValueError:
+        return None
+    if abs((day - end).days) > NOTE_DAYS:
+        return None
+    lines = [v for f in tag_fields() + PRESENCE_ONLY_FIELDS if (v := _float(rec.get(f))) is not None]
+    assets = _float(rec.get("total_assets"))
+    if lines and total < max(lines) * 0.99 or assets is not None and total > assets:
+        return None
+    return total
