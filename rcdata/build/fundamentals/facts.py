@@ -89,9 +89,14 @@ EPS_CONCEPTS = {
 # #105: an IFRS filer (no us-gaap facts) is read through the same extractor, its ifrs-full concepts renamed to the
 # us-gaap concept of the same meaning (plan: claude-coordinator notes/revenuechaser/plans/
 # 2026-11-15_1226_fundamentals-ifrs-reader-plan.md). Attributable-to-parent figures map to the parent concepts and
-# the whole-group ones to the group concepts, as ``CONCEPTS`` orders them. Debt is not mapped: its ladders were
-# measured on us-gaap filers only. A value in another currency is converted to USD by ``_in_usd`` (#105, avo 15 Nov
-# 2026, option B); one with no rate for its period stays as tagged and is counted in ``non_usd_units``.
+# the whole-group ones to the group concepts, as ``CONCEPTS`` orders them. A value in another currency is converted
+# to USD by ``_in_usd`` (#105, avo 15 Nov 2026, option B); one with no rate for its period stays as tagged and is
+# counted in ``non_usd_units``.
+# Debt (16 Nov 2026, Fundamentals plan step 4; BP, UL, RELX, WPP were read debt-free): each borrowing line goes to the
+# us-gaap slot of the same meaning, so ``_debt_lines`` sums it under the same rules -- a noncurrent line plus the
+# current ones, a whole line only when no noncurrent one is tagged, the whole ``Borrowings`` only in the fallback
+# pass. ``FinanceCosts`` is an interest-PRESENCE signal only (``InterestExpenseOther``): it holds lease and other
+# finance costs, so it never feeds ``interest_expense`` and the engines that read it.
 IFRS_AS_GAAP = {
     "Revenue": "Revenues",
     "RevenueFromContractsWithCustomers": "RevenueFromContractWithCustomerExcludingAssessedTax",
@@ -108,6 +113,14 @@ IFRS_AS_GAAP = {
     "Equity": "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest",
     "CashAndCashEquivalents": "CashAndCashEquivalentsAtCarryingValue",
     "InterestExpense": "InterestExpense",
+    "FinanceCosts": "InterestExpenseOther",
+    "NoncurrentPortionOfNoncurrentBorrowings": "LongTermDebtNoncurrent",
+    "NoncurrentBorrowings": "LongTermDebtAndCapitalLeaseObligations",
+    "LongtermBorrowings": "LongTermDebt",
+    "CurrentPortionOfNoncurrentBorrowings": "LongTermDebtCurrent",
+    "CurrentBorrowingsAndCurrentPortionOfNoncurrentBorrowings": "DebtCurrent",
+    "ShorttermBorrowings": "ShortTermBorrowings",
+    "Borrowings": "DebtAndCapitalLeaseObligations",
     "BasicEarningsLossPerShare": "EarningsPerShareBasic",
     "DilutedEarningsLossPerShare": "EarningsPerShareDiluted",
 }
@@ -140,30 +153,56 @@ def _in_usd(body: dict, fx: dict) -> dict:
     """``body`` with its first convertible currency's facts converted and served under ``USD`` (#105). Per period
     the reporting currency wins: a USD fact is kept only for a span no converted fact covers, because an IFRS filer's
     USD figures are a single year (SAP 2017) or a convenience translation at the year-end rate (TSM). A per-share
-    unit (an ADR holds an unknown number of ordinary shares) and a currency with no rates stay as they are."""
+    unit (``EUR/shares``) is converted the same way and served under ``USD/shares`` (16 Nov 2026: an ADR row held
+    its net income in USD and its EPS in the home currency); it stays per ORDINARY share, never per ADS, whose ratio
+    the facts do not carry. A currency with no rates stays as it is."""
     units = body.get("units") or {}
     for unit, items in units.items():
-        if unit not in fx:
+        cur, _, per = unit.partition("/")
+        if cur not in fx:
             continue
         conv = []
         for f in items or []:
-            r = _rate(fx, unit, f.get("start"), str(f.get("end")))
+            r = _rate(fx, cur, f.get("start"), str(f.get("end")))
             if r is not None and isinstance(f.get("val"), (int, float)):
                 conv.append({**f, "val": f["val"] * r})
         if conv:
+            usd = "USD" + (f"/{per}" if per else "")
             spans = {(f.get("start"), f.get("end")) for f in conv}
-            kept = [f for f in units.get("USD") or [] if (f.get("start"), f.get("end")) not in spans]
-            return {**body, "units": {**units, "USD": conv + kept}}
+            kept = [f for f in units.get(usd) or [] if (f.get("start"), f.get("end")) not in spans]
+            return {**body, "units": {**units, usd: conv + kept}}
     return body
 
 
-def as_gaap(facts: dict, fx: dict | None = None) -> dict:
-    """``facts`` itself when it holds us-gaap facts or no ifrs-full; else a copy whose us-gaap branch is the
-    ifrs-full concepts of ``IFRS_AS_GAAP`` under their us-gaap names (#105), converted to USD with ``fx``
-    (``fx_rates.index_rates``) where they are tagged in another currency."""
+_ANNUAL_FORMS = frozenset({"10-K", "10-K/A", "10-KT", "10-KT/A", "20-F", "20-F/A", "40-F", "40-F/A"})
+
+
+def _newest_annual(branch: dict) -> str:
+    """The newest period end of an annual-report fact in one taxonomy branch, or ``""``."""
+    return max((str(f.get("end")) for body in branch.values() for items in (body.get("units") or {}).values()
+                for f in items or [] if f.get("form") in _ANNUAL_FORMS and f.get("end")), default="")
+
+
+def reads_ifrs(facts: dict) -> bool:
+    """True when the statements are read from ifrs-full: no us-gaap facts, or (#105, the movers: AEM, NAAS, TM, FMS,
+    FRO) an ifrs-full annual report newer than the newest us-gaap one. A filer that moved to IFRS keeps its old
+    us-gaap years in companyfacts, and reading only those left its newer years blank."""
     branches = facts.get("facts") or {}
     ifrs = branches.get("ifrs-full") or {}
-    if branches.get("us-gaap") or not ifrs:
+    if not ifrs:
+        return False
+    gaap = branches.get("us-gaap") or {}
+    return not gaap or _newest_annual(ifrs) > _newest_annual(gaap)
+
+
+def as_gaap(facts: dict, fx: dict | None = None) -> dict:
+    """``facts`` itself unless ``reads_ifrs``; else a copy whose us-gaap branch is the ifrs-full concepts of
+    ``IFRS_AS_GAAP`` under their us-gaap names (#105), converted to USD with ``fx`` (``fx_rates.index_rates``)
+    where they are tagged in another currency. A mover's old us-gaap years are not mixed in: one taxonomy per
+    company, so no year is read under two definitions."""
+    branches = facts.get("facts") or {}
+    ifrs = branches.get("ifrs-full") or {}
+    if not reads_ifrs(facts):
         return facts
     gaap = {IFRS_AS_GAAP[c]: _in_usd(body, fx or {}) for c, body in ifrs.items() if c in IFRS_AS_GAAP}
     return {**facts, "facts": {"us-gaap": gaap}}
@@ -473,11 +512,16 @@ def fact_rows(facts: dict, cik: str, fx: dict | None = None) -> tuple[list[dict]
     """``(rows, company, counts)`` of one company's ``companyfacts`` answer (no stamps: the caller adds them).
 
     ``company``: ``entity_name``, ``is_us``, ``non_usd_units`` (the currencies a money concept was tagged in instead
-    of USD, #46) and ``us_gaap`` (False: no us-gaap facts at all, an IFRS filer, whose ifrs-full statements are read
-    through ``as_gaap``, #105, in USD at the rates of ``fx``). ``counts``: ``no_provenance``, values left out for want of an accession.
+    of USD, #46) and ``us_gaap`` (False: no us-gaap statements are read -- none at all, or an IFRS filer or mover
+    whose ifrs-full ones are read through ``as_gaap``, #105, in USD at the rates of ``fx``). ``counts``:
+    ``no_provenance``, values left out for want of an accession.
     """
     counts: dict[str, int] = {}
-    us_gaap = bool(sec_edgar._gaap(facts))
+    # Both read from the filer's own facts, before ``as_gaap`` keeps only the mapped concepts (the 16 Nov review:
+    # 60 IFRS filers got ``is_us`` NULL off the forms of 17 concepts). ``us_gaap`` False: the statements are read
+    # from ifrs-full (no us-gaap facts, or a mover), so the board does not infer debt from absent tags (#737, #946).
+    is_us = sec_edgar._is_us_filer(facts)
+    us_gaap = bool(sec_edgar._gaap(facts)) and not reads_ifrs(facts)
     facts = as_gaap(facts, fx)
     index = _Index(facts)
     non_usd: set[str] = set()
@@ -491,6 +535,6 @@ def fact_rows(facts: dict, cik: str, fx: dict | None = None) -> tuple[list[dict]
     rows += _eps_rows(facts, index)
     for r in rows:
         r["cik"] = cik
-    company = {"cik": cik, "entity_name": facts.get("entityName"), "is_us": sec_edgar._is_us_filer(facts),
+    company = {"cik": cik, "entity_name": facts.get("entityName"), "is_us": is_us,
                "non_usd_units": ",".join(sorted(non_usd)) or None, "us_gaap": us_gaap}
     return rows, company, counts

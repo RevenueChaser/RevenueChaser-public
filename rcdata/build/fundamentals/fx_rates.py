@@ -16,6 +16,7 @@ re-type.
 from __future__ import annotations
 
 import itertools
+import statistics
 import time
 from datetime import date, timedelta
 from pathlib import Path
@@ -33,8 +34,15 @@ OVERLAP_DAYS = 7
 STAGING = "stg_yf_fx"
 # shortcut: the currencies measured on the companyfacts raw of 6 Nov 2026 (the newest annual of the IFRS filers);
 # derive them from the facts once the IFRS reader keeps a non-USD value's unit.
-CURRENCIES = ("AED", "ARS", "AUD", "BRL", "CAD", "CHF", "CLP", "CNY", "COP", "DKK", "EUR", "GBP", "HKD", "IDR",
-              "ILS", "INR", "JPY", "KRW", "KZT", "MXN", "MYR", "PEN", "PHP", "SEK", "SGD", "TRY", "TWD", "ZAR")
+# 16 Nov 2026 (Fundamentals plan step 4, decision I): ten more, the currencies of the 13 unscored non-USD names.
+CURRENCIES = ("AED", "ARS", "AUD", "BRL", "CAD", "CHF", "CLP", "CNY", "COP", "CZK", "DKK", "EGP", "EUR", "GBP",
+              "HKD", "HUF", "IDR", "ILS", "INR", "JPY", "KRW", "KZT", "MXN", "MYR", "NGN", "NOK", "NZD", "PEN", "PHP",
+              "PLN", "RUB", "SAR", "SEK", "SGD", "THB", "TRY", "TWD", "ZAR")
+#: A day whose rate is this far from the median of the days before it and of the days after it (``SPIKE_WINDOW``
+#: each) is a bad print, not a move, and is left out of the index (Yahoo's ARS/TRY/IDR/KRW history carries such
+#: days). A real devaluation agrees with the days after it, so it stays.
+SPIKE_RATIO = 1.5
+SPIKE_WINDOW = 3
 SCHEMA = [("currency", "TEXT"), ("day", "DATE"), ("usd_per_unit", "DOUBLE"), ("source_as_of", "DATE"),
           ("fetched_at", "DOUBLE"), ("run_id", "TEXT")]
 
@@ -44,10 +52,25 @@ def index_rates(rows) -> dict[str, tuple[list[str], list[float], list[float]]]:
     and day: the shape ``facts.as_gaap`` reads."""
     out = {}
     for cur, group in itertools.groupby(rows, key=lambda r: r[0]):
-        group = list(group)
-        rates = [float(r[2]) for r in group]
-        out[cur] = ([str(r[1])[:10] for r in group], rates, [0.0, *itertools.accumulate(rates)])
+        group = [r for r in group if r[2] is not None and float(r[2]) > 0]
+        raw = [float(r[2]) for r in group]
+        keep = [i for i in range(len(raw)) if not _spike(raw, i)]
+        rates = [raw[i] for i in keep]
+        out[cur] = ([str(group[i][1])[:10] for i in keep], rates, [0.0, *itertools.accumulate(rates)])
     return out
+
+
+def _spike(rates: list[float], i: int) -> bool:
+    """True when ``rates[i]`` is ``SPIKE_RATIO`` or more off the median of the ``SPIKE_WINDOW`` days before it AND
+    of those after it. A devaluation agrees with one side, so it stays; the first and last days are kept."""
+    before, after = rates[max(0, i - SPIKE_WINDOW):i], rates[i + 1:i + 1 + SPIKE_WINDOW]
+    if not before or not after:
+        return False
+
+    def off(side: list[float]) -> bool:
+        mid = statistics.median(side)
+        return max(rates[i], mid) / min(rates[i], mid) >= SPIKE_RATIO
+    return off(before) and off(after)
 
 
 def held_rates() -> dict:
