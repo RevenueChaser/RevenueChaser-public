@@ -84,11 +84,8 @@ def quarter_end_closes(tickers, quarters) -> dict[str, dict[str, float]]:
 def _short_interest(tickers) -> dict[str, dict]:
     """FINRA's newest settlement of each ticker inside the ``ownership.short_interest`` age; ``{}`` and a warning
     when the store cannot be read, never a failed board."""
-    from RevenueChaser.rcdata import needs
-    today = date.today()
     try:
-        oldest = today - timedelta(days=needs.catalog.NEEDS["ownership.short_interest"].max_lag)
-        return ownership.finra_short(tickers, oldest, today)
+        return ownership.finra_short_recent(tickers)
     except Exception as exc:  # noqa: BLE001 - no FINRA rows is "no Short%", never a failed board
         logger.warning("13F short interest unread, Short%% stays empty: %s: %s", type(exc).__name__, exc)
         return {}

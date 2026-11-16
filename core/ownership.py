@@ -235,6 +235,15 @@ def shares_outstanding(tickers, today: date | None = None) -> dict[str, dict]:
     return out
 
 
+def finra_short_recent(tickers, today: date | None = None) -> dict[str, dict]:
+    """``finra_short`` over the age the ``ownership.short_interest`` need allows (calendar days) up to ``today``."""
+    from datetime import timedelta
+
+    from RevenueChaser.rcdata import needs
+    today = today or date.today()
+    return finra_short(tickers, today - timedelta(days=needs.catalog.NEEDS["ownership.short_interest"].max_lag), today)
+
+
 def finra_short(tickers, start: date, end: date) -> dict[str, dict]:
     """``{ticker: row}``: FINRA's newest settlement of each ticker with ``start <= settlement_date <= end``; on two
     rows of one day, the one under the ticker's own symbol. ``settlement_date`` is a ``date``; ``current_short`` and
