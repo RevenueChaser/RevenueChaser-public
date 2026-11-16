@@ -763,11 +763,11 @@ def tickers_13f(period=None) -> list[str]:
     ``holders_13f``; this exists so one does not pull a quarter of a million rows to build a list of eight
     thousand."""
     if period is None:
-        # The newest settled period, from this table's own deadline column rather than from ``sec13f_periods``:
-        # one table, one query, and the same fail-open rule as ``_completed`` (no deadline counts as settled).
+        # The newest settled period by ``_completed``'s rule (#732 F3): closed once the SEC lists its data set; where
+        # no listing is read (``closed`` NULL), its deadline has passed; no deadline counts as settled.
         sql = ("SELECT DISTINCT ticker FROM sec13f_ticker_period WHERE period = "
                "(SELECT max(period) FROM sec13f_ticker_period "
-               " WHERE filing_deadline IS NULL OR filing_deadline < ?) ORDER BY ticker")
+               " WHERE coalesce(closed, filing_deadline IS NULL OR filing_deadline < ?)) ORDER BY ticker")
         params = [calendar.today_ny()]
     else:
         sql = "SELECT DISTINCT ticker FROM sec13f_ticker_period WHERE period = ? ORDER BY ticker"

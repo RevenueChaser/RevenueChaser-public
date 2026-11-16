@@ -766,6 +766,18 @@ def test_a_quarter_closes_when_the_sec_lists_the_data_set_that_holds_its_deadlin
     assert [(r["period"], r["complete"]) for r in read.holders_13f(["msft"])][-2:] == [(Q2, True), (Q3, False)]
 
 
+def test_the_breaks_and_the_live_ticker_list_follow_the_closed_rule(store, built, monkeypatch):
+    """#732 F3: past 30 Sep's deadline but before its set is listed, the quarter is not settled for the breaks or for
+    ``tickers_13f`` either, as it is not for ``complete``: one rule for every reader."""
+    built.routes.insert(0, (ox.SETS_PAGE_PATH, ox.sets_page([f"/files/structureddata/data/form-13f-data-sets/{n}"
+                                                             for n in (SUMMER_SET, SPRING_SET)]), 200, {}))
+    base.run_request({"dataset": sec13f_listing.NAME, "requested_by": "cli", "params": {"as_of": "2026-10-28"}})
+    _serve(day="2026-11-20")
+    assert _served("SELECT count(*) FROM sec13f_filer_breaks WHERE period = ?", Q3) == [(0,)]
+    monkeypatch.setattr(read.calendar, "today_ny", lambda: date(2026, 11, 20))
+    assert read.tickers_13f() == read.tickers_13f(Q2)
+
+
 def test_with_no_listing_read_a_quarter_falls_back_to_its_deadline(store, monkeypatch):
     assert _served("SELECT DISTINCT closed FROM sec13f_ticker_period") == [(None,)]
     monkeypatch.setattr(read.calendar, "today_ny", lambda: date(2026, 11, 20))
