@@ -276,8 +276,9 @@ def scope(ctx: Any, con: duckdb.DuckDBPyConnection, rebuild_shares) -> Scope:
                                                UNION ALL (SELECT * FROM new EXCEPT SELECT * FROM old))
         GROUP BY ALL""").fetchall()
     add(moved)
-    # The covers: a changed count restates its security's caps from its as-of.
-    cover = "SELECT security_id, as_of, value, source, fetched_at FROM shares_class WHERE measure = 'outstanding'"
+    # The covers: a changed count restates its security's caps from its as-of. Not ``fetched_at``: a re-read that
+    # gives the same count changes no cap (and every company facts re-read stamps a company's whole history anew).
+    cover = "SELECT security_id, as_of, value, source FROM shares_class WHERE measure = 'outstanding'"
     con.execute(f"CREATE OR REPLACE TEMP TABLE _old_cover AS {cover}")
     rebuild_shares()
     covers = con.execute(f"""
