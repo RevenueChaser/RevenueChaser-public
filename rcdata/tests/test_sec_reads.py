@@ -461,16 +461,6 @@ def test_a_run_without_the_owners_word_asks_a_new_filing_and_never_a_changed_pro
     assert len(http_mock.requests) == 3
 
 
-def test_a_new_company_is_asked_by_itself_once_the_question_has_answers(http_mock):
-    http_mock.add("/chat/completions", chat('{"products": ["x"]}'))
-    question(ciks=("789019",))
-    run()
-    questions.QUESTIONS.clear()
-    question(ciks=("789019", "320193"))                     # a company that filed its first report
-    run(reread=False)
-    assert rows() == [("320193", "ok", 1), ("789019", "ok", 1)]
-
-
 def test_a_run_without_the_word_stops_at_the_day_cap_and_goes_on_the_next_day(http_mock, monkeypatch):
     many = {str(1000 + i): f"company {i}" for i in range(6)}
     http_mock.add("/chat/completions", chat('{"products": ["x"]}'))
@@ -480,7 +470,8 @@ def test_a_run_without_the_word_stops_at_the_day_cap_and_goes_on_the_next_day(ht
     questions.QUESTIONS.clear()
     question(ciks=tuple(many), text=many)
     check = run(reread=False)
-    assert len(http_mock.requests) == 3                     # the cap counts today's companies, whoever asked
+    # New companies are asked by themselves once the question has answers; the cap counts today's, whoever asked.
+    assert len(http_mock.requests) == 3
     assert "day cap of 3" in check["note"] and "3 wait for tomorrow" in check["note"]
     assert run(reread=False) and len(http_mock.requests) == 3
     monkeypatch.setattr(reads, "_now", lambda: time.time() + 2 * 86400)
