@@ -845,8 +845,9 @@ class OwnershipServe:
 
     @staticmethod
     def _breaks(con: duckdb.DuckDBPyConnection, as_of: date) -> int:
-        """``sec13f_filer_breaks``: per ticker and **settled** quarter (deadline before ``as_of``; a quarter still
-        arriving has every filer not yet filed in it), each filer holding the ticker that started reporting (no
+        """``sec13f_filer_breaks``: per ticker and **settled** quarter (closed: the SEC data set holding its deadline
+        is listed, ``_closed``; where no listing is read yet, its deadline is before ``as_of``. The one rule the
+        reader's ``complete`` follows, #732 F3. A quarter still arriving has every filer not yet filed in it), each filer holding the ticker that started reporting (no
         holdings report in the quarter before, one now) or stopped (one before, none now), with its shares. Only a
         quarter whose quarter before is in the store: before the store's first quarter nothing is known (#732)."""
         common.create_table(con, "sec13f_filer_breaks", BREAKS)
@@ -857,13 +858,15 @@ class OwnershipServe:
             JOIN _filers f ON f.period = p.period
             JOIN _filers pf ON pf.period = {PREV}
             JOIN _deadline d ON d.period = p.period
+            LEFT JOIN _closed cl ON cl.period = p.period
             LEFT JOIN _conf c ON c.cik = p.cik AND c.period = p.period
             LEFT JOIN (SELECT cik, period FROM _conf
                        UNION SELECT DISTINCT successor, {PREV} FROM _succ p) cp
                    ON cp.cik = p.cik AND cp.period = {PREV}
             LEFT JOIN sec13f_filer_period fn ON fn.cik = p.cik AND fn.period = p.period
             LEFT JOIN sec13f_filer_period fb ON fb.cik = p.cik AND fb.period = {PREV}
-            WHERE d.deadline < ? AND ((p.prev_s IS NULL AND cp.cik IS NULL) OR (p.now_s IS NULL AND c.cik IS NULL))
+            WHERE coalesce(cl.closed, d.deadline < ?)
+              AND ((p.prev_s IS NULL AND cp.cik IS NULL) OR (p.now_s IS NULL AND c.cik IS NULL))
             ORDER BY p.ticker, p.period, 5, 6 DESC, p.cik""", [as_of])
         return common.count(con, "sec13f_filer_breaks")
 

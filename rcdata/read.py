@@ -754,6 +754,12 @@ def holders_13f(tickers: Iterable[str] | None = None, periods: Iterable | None =
                             f"SELECT * FROM sec13f_ticker_period{sql} ORDER BY ticker, period", params))
 
 
+def _columns(table: str) -> set[str]:
+    """The column names of a served table (none when it is not there)."""
+    return {r["column_name"] for r in _rows(table, "SELECT column_name FROM information_schema.columns "
+                                                   "WHERE table_name = ?", [table], missing_table_ok=True)}
+
+
 def tickers_13f(period=None) -> list[str]:
     """The tickers the 13F store holds for one report period, sorted; by default the newest **settled** one.
 
@@ -763,11 +769,13 @@ def tickers_13f(period=None) -> list[str]:
     ``holders_13f``; this exists so one does not pull a quarter of a million rows to build a list of eight
     thousand."""
     if period is None:
-        # The newest settled period, from this table's own deadline column rather than from ``sec13f_periods``:
-        # one table, one query, and the same fail-open rule as ``_completed`` (no deadline counts as settled).
+        # The newest settled period by ``_completed``'s rule (#732 F3): closed once the SEC lists its data set; where
+        # no listing is read (``closed`` NULL), its deadline has passed; no deadline counts as settled. A store built
+        # before the ``closed`` column has only the deadline.
+        deadline = "filing_deadline IS NULL OR filing_deadline < ?"
+        settled = f"coalesce(closed, {deadline})" if "closed" in _columns("sec13f_ticker_period") else deadline
         sql = ("SELECT DISTINCT ticker FROM sec13f_ticker_period WHERE period = "
-               "(SELECT max(period) FROM sec13f_ticker_period "
-               " WHERE filing_deadline IS NULL OR filing_deadline < ?) ORDER BY ticker")
+               f"(SELECT max(period) FROM sec13f_ticker_period WHERE {settled}) ORDER BY ticker")
         params = [calendar.today_ny()]
     else:
         sql = "SELECT DISTINCT ticker FROM sec13f_ticker_period WHERE period = ? ORDER BY ticker"
