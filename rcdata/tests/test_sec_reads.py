@@ -219,6 +219,17 @@ def test_a_stop_inside_a_filing_keeps_the_chunks_already_answered(http_mock):
             reads.held("test.products").values()] == [("partial", 0, "1", '{"products": ["a"]}')]  # not an attempt
 
 
+def test_a_questions_merge_is_given_each_answer_with_the_length_of_its_message(http_mock):
+    """The profile weights a segment's share by its chunk's length, so the lengths go to the merge."""
+    http_mock.add("/chat/completions", chat('{"products": ["a"]}'))
+    seen = []
+    question(ciks=("789019",), chunk_chars=30,
+             merge=lambda parts: seen.append([chars for _answer, chars in parts]) or parts[0][0])
+    run()
+    assert seen == [[30, len(TEXT["789019"]) - 30]]
+    assert [r["answer"] for r in reads.held("test.products").values()] == ['{"products": ["a"]}']
+
+
 def test_deepseek_off_peak_holds_back_only_its_own_questions(http_mock, monkeypatch):
     http_mock.add("/chat/completions", chat('{"products": ["x"]}'))
     monkeypatch.setattr(deepseek, "peak_blocked", lambda now=None: True)

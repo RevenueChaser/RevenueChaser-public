@@ -46,8 +46,10 @@ class Input:
     messages: tuple[str, ...] = ()
 
 
-def _one(parts: list[dict]) -> dict:
-    return parts[0] if len(parts) == 1 else {"chunks": parts}
+def _one(parts: list[tuple[dict, int]]) -> dict:
+    """The default merge: the one answer, or the chunks' answers in order (their lengths are not kept)."""
+    answers = [answer for answer, _chars in parts]
+    return answers[0] if len(answers) == 1 else {"chunks": answers}
 
 
 @dataclass(frozen=True)
@@ -55,7 +57,8 @@ class Question:
     """One question. ``scope`` names the companies, ``inputs`` their text, ``parse`` turns a reply into an answer.
 
     ``parse`` returns None for an unusable reply (counted as an attempt, never stored over a good answer). A text
-    longer than ``chunk_chars`` is asked in chunks; ``merge`` joins the chunks' answers.
+    longer than ``chunk_chars`` is asked in chunks; ``merge`` joins the chunks' answers, each given with the length
+    of the message it answered (the profile weights a segment's share by it, ``sec_profile.merge_chunks``).
 
     ``max_calls`` is the most calls one run sends for this question; the companies past it wait for the next run.
     A DeepSeek question must name one: a paid call is capped in its own code (``CLAUDE.md``, Keys).
@@ -71,7 +74,7 @@ class Question:
     provider: str = "evren"
     model: str = ""
     user: Callable[[str], str] = field(default=lambda chunk: chunk)
-    merge: Callable[[list[dict]], dict] = field(default=_one)
+    merge: Callable[[list[tuple[dict, int]]], dict] = field(default=_one)
     chunk_chars: int = CHUNK_CHARS
     max_tokens: int = MAX_TOKENS
     max_calls: int | None = None

@@ -151,7 +151,7 @@ def _ask_one(ctx: base.RunContext, job: Job, started: float, lock: threading.Loc
 def _ask_chunks(ctx: base.RunContext, job: Job, lock: threading.Lock) -> Reply:
     q = job.question
     client = CLIENTS[q.provider]
-    parts: list[dict] = []
+    parts: list[tuple[dict, int]] = []      # each usable answer with the length of the message it answered
     raws: list[str] = []
     missing: list[int] = []
     chunks = q.messages(job.input)
@@ -196,7 +196,7 @@ def _ask_chunks(ctx: base.RunContext, job: Job, lock: threading.Lock) -> Reply:
         if parsed is None:
             missing.append(i)
         else:
-            parts.append(parsed)
+            parts.append((parsed, len(chunk)))
     if not parts:
         return Reply(job, EMPTY, None, raws, missing, **sent)
     return Reply(job, PARTIAL if missing else OK, q.merge(parts), raws, missing, **sent)
