@@ -466,7 +466,7 @@ def test_the_spx_gamma_fetch_runs_on_weekdays_after_the_stored_close():
     assert e.time == "06:30" and e.days == A._WEEKDAYS and e.after is None and not e.hourly
     assert e.tables_written == () and e.default_install is False
     assert e.settings.start_when_available is False
-    assert e.schedule == "weekly Monday, Tuesday, Wednesday, Thursday, Friday 06:30 (local)"
+    assert e.schedule == "Monday to Friday 06:30 (local)"      # five days a week is not "weekly"
 
 
 def test_the_weekly_backup_is_the_only_row_running_rcdata_backup_and_takes_every_step():
@@ -507,3 +507,45 @@ def test_the_sec_reads_nightly_check_is_a_job_of_its_own():
     assert A.on_calendar(e).endswith("*-*-* 01:10:00")
     # five minutes after the hourly builder pass, so the two do not race for the builder lock every night
     assert A.entry("RC-Build").time[-2:] == "05"
+
+
+SHOW = ("LoadState=loaded\nActiveState=active\nResult=success\nNextElapseUSecRealtime=1794787800000000\n"
+        "LastTriggerUSec=1794701400000000\n\n"
+        "LoadState=loaded\nActiveState=inactive\nResult=success\nExecMainStatus=0\n"
+        "ExecMainStartTimestamp=1794701400000000\n")
+NOT_FOUND = ("LoadState=not-found\nActiveState=inactive\nResult=success\n\n"
+             "LoadState=not-found\nActiveState=inactive\nResult=success\n")
+
+
+def test_a_host_with_no_scheduler_shows_the_servers_own_timers_read_only():
+    """16 Nov 2026 (homesrv): every row said "Scheduler unavailable" though the timers run as system units."""
+    asked = []
+
+    def run(args):
+        asked.append(args[-2:])
+        return 0, SHOW if "life-rc-sec-read.timer" in args else NOT_FOUND, ""
+
+    def system(e):
+        return A.system_status(e, run)
+
+    state = A.live_state(A.UnavailableScheduler(), NOW, system)
+    rows = {r["name"]: r for r in state["rows"]}
+    sec = rows["RC-SEC-Read"]
+    assert (sec["state"], sec["managed"], sec["unit"], sec["result_text"]) == (
+        "enabled", "system", "life-rc-sec-read", "ok")
+    assert sec["last_run"] and sec["next_run"]
+    # a row this server has no timer for is "not installed", with no button either (managed, no unit)
+    assert (rows["RC-Build"]["state"], rows["RC-Build"]["managed"], rows["RC-Build"]["unit"]) == (
+        "not_installed", "system", None)
+    assert state["available"] is True
+    assert ["life-rc-relatedness.timer", "life-rc-relatedness.service"] in asked
+    assert ["life-rc-forecast-outcomes.timer", "life-rc-forecast-outcomes.service"] in asked
+    nothing = A.live_state(A.UnavailableScheduler(), NOW, lambda e: None)
+    assert nothing["available"] is False and {r["state"] for r in nothing["rows"]} == {"unavailable"}
+
+
+def test_a_connected_scheduler_never_asks_the_system_manager():
+    def boom(e):
+        raise AssertionError("the system manager was asked")
+    rows = A.live_state(A.FakeScheduler(), NOW, boom)["rows"]
+    assert {r["state"] for r in rows} == {"not_installed"} and not any("managed" in r for r in rows)

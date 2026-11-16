@@ -1451,3 +1451,11 @@ def test_a_hostile_next_step_is_escaped_and_a_hostile_kind_never_sets_the_class(
     assert "<img" not in html
     assert "gap-" + bad not in html
     assert 'class="gap ' not in _main_row(html, "quotes")
+
+
+def test_a_row_the_server_timer_runs_has_no_button_and_names_its_unit():
+    """16 Nov 2026: on homesrv the timers are system units; the panel shows their state and offers no press."""
+    opened = _behind_the_click(_render_rows([_live_row(managed="system", unit="life-rc-sec-read")]))
+    assert "auto-btn" not in opened
+    assert "the server timer" in opened and "life-rc-sec-read.timer" in opened
+    assert "auto-btn" in _behind_the_click(_render_rows([_live_row()]))
