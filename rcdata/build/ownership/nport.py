@@ -130,7 +130,8 @@ def _download(ctx: base.RunContext, pacer: sec.Pacer, name: str, url: str) -> Pa
 
 
 def _spine_etfs() -> list[tuple[str, str]]:
-    """``(ticker, series_id)`` of the live spine's ETFs that carry a series and are not notes; empty without a spine."""
+    """``(ticker, series_id)`` of the live spine's ETFs that carry a series and are not notes; empty without a spine
+    or its ``etf`` table."""
     try:
         con = serving.open_read(common.SPINE)
     except serving.ServingFileMissing:
@@ -138,6 +139,8 @@ def _spine_etfs() -> list[tuple[str, str]]:
     try:
         return con.execute("SELECT ticker, series_id FROM etf WHERE series_id IS NOT NULL "
                            "AND NOT coalesce(is_etn, false) ORDER BY ticker").fetchall()
+    except duckdb.Error:
+        return []
     finally:
         con.close()
 
