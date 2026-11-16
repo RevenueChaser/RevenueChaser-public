@@ -427,10 +427,12 @@ def _counterparty(edge: dict) -> str:
     return aliases.issuer(edge["dst_ticker"]) if edge.get("dst_ticker") else aliases._key(edge.get("dst_name") or "")
 
 
-def profile_edges(ticker: str, profile: dict, filed: str = "", names: dict | None = None) -> list[dict]:
+def profile_edges(ticker: str, profile: dict, filed: str = "", names: dict | None = None,
+                  accession: str | None = None) -> list[dict]:
     """``chain_mentions`` rows of one Relatedness profile (#410): each named customer, supplier and competitor, with
     its quote and stated share, resolved to a ticker through ``aliases.resolve``; a name it cannot resolve stays as
-    text with an empty ``dst_ticker``. The filer itself is no edge."""
+    text with an empty ``dst_ticker``. The filer itself is no edge. ``accession`` is the filing the profile was
+    written from (plan v31 step 1(d)), carried onto every edge."""
     me, out = aliases.issuer(ticker), []
     for field, relation in _PROFILE_RELATIONS:
         for p in profile.get(field) or []:
@@ -443,7 +445,7 @@ def profile_edges(ticker: str, profile: dict, filed: str = "", names: dict | Non
             out.append({"src": ticker, "dst_name": name, "dst_ticker": hit["ticker"] if hit else "",
                         "relation": relation, "snippet": p.get("quote") or "", "filed": filed,
                         "share_pct": round(float(share) * 100, 2) if isinstance(share, (int, float)) else None,
-                        "source": "profile"})
+                        "source": "profile", "accession": accession or None})
     return out
 
 
@@ -487,6 +489,16 @@ def _stored_profiles() -> dict[str, dict]:
         return {}
 
 
+def _profile_accessions() -> dict[str, str]:
+    """``{ticker: accession}`` of the stored profiles that name the filing they were written from (plan v31 step 1(d))."""
+    try:
+        return {r["ticker"]: r["accession"] for r in rawstore.get_all("relatedness_profiles", ["ticker", "accession"])
+                if r.get("accession")}
+    except Exception:  # noqa: BLE001 - no profile table or column yet: no edge carries an accession
+        logger.exception("value_chain: profile accessions could not be read")
+        return {}
+
+
 def build_edges(info: dict | None = None) -> list[dict]:
     """Recompute mentions from the cached corpus and persist them.
 
@@ -495,6 +507,7 @@ def build_edges(info: dict | None = None) -> list[dict]:
     edges: list[dict] = []
     covered: set[str] = set()   # the tickers this run scanned: only their stored keys can be retired
     profiles = _stored_profiles()
+    accessions = _profile_accessions() if profiles else {}
     n_filings, names = 0, (_spine_names() if profiles else None)
     for rows in _corpus_batches():
         n_filings += len(rows)
@@ -514,7 +527,8 @@ def build_edges(info: dict | None = None) -> list[dict]:
                 continue
             covered.add(t)
             found = filing_edges(t, text, filed, customers.get(t), names)
-            edges.extend(merge_profile(found, profile_edges(t, profiles[t], filed, names)) if t in profiles else found)
+            edges.extend(merge_profile(found, profile_edges(t, profiles[t], filed, names, accessions.get(t)))
+                         if t in profiles else found)
     rawstore.ensure_table("chain_mentions")
     if info is not None:
         info.update(filings=n_filings, kept=not edges, retired=0)
