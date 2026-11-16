@@ -281,3 +281,12 @@ def test_the_roots_line_says_when_the_picture_was_taken_and_offers_the_control()
     old = control_render._walked("2026-11-01T12:00:00+00:00", datetime(2026, 11, 5, 13, 0, tzinfo=timezone.utc))
     assert "h ago" in old, old
     assert control_render.ROUTES["picture"] == "/run/storage-picture"
+
+
+def test_a_dataset_row_carries_its_limits_and_its_night_pass():
+    """The SEC reads' daily check on the Settings page (avo, 16 Nov 2026): when it runs next, and its caps."""
+    from RevenueChaser.rcdata.build import DATASETS
+    row = control._dataset_row(_card("sec/reads", last_result="changed", next_check_due="2026-11-13"),
+                               DATASETS["sec/reads"], "sec_reads", {}, NOW, {"state": "on", "minute": 5})
+    assert row["limits"] == "EVREN: no day cap · DeepSeek: 200 companies a day"
+    assert row["next_words"] == "Sat 14 Nov, 01:05 (19:05 New York)"

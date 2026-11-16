@@ -546,7 +546,8 @@ def _dataset_row(card: dict, ds, kind: str, universe_view: dict, now: datetime, 
         "next_due": (card.get("schedule") or {}).get("next_due"),
         "next_words": next_run_words(card.get("schedule"), _check_of(card), as_of_kind(ds), card.get("cadence"),
                                      attended=attended, starts_by_hand=bool(getattr(ds, "starts_by_hand", False)),
-                                     timer=timer, now=now, mode=mode),
+                                     timer=timer, now=now, mode=mode, starts=getattr(ds, "due_from_ny", None)),
+        "limits": getattr(ds, "limits", None),
         "since_words": since_words(card.get("schedule")),
         "backfill": card.get("backfill"), "calendar": name in CALENDARS,
         "recent": card.get("recent") or [], "samples": card.get("samples") or [],
@@ -595,12 +596,13 @@ def _pass_words(when: datetime, *, recurring: bool = False) -> str:
 
 def next_run_words(schedule: dict | None, check: dict | None, kind: str | None, cadence: str | None, *,
                    attended: bool, starts_by_hand: bool, timer: dict | None, now: datetime,
-                   mode: str = "full") -> str:
+                   mode: str = "full", starts: time | None = None) -> str:
     """When the hourly pass first runs a dataset, by the rules of ``rcdata.build.due.is_due``.
 
     ``check`` is the newest check (``result``, ``checked_on``, ``next_check_due``), None when it never built; ``kind``
     the dataset's ``as_of_kind``; ``timer`` the hourly builder timer (``view["timer"]``); ``mode`` its serving kind's
-    automation (``ops.KIND_MODES``)."""
+    automation (``ops.KIND_MODES``); ``starts`` the New York time its day starts at when the dataset names one
+    (``due_from_ny``: the SEC reads' night check)."""
     from RevenueChaser.core import calendar
     from RevenueChaser.rcdata.build import due
     schedule = schedule or {}
@@ -619,7 +621,7 @@ def next_run_words(schedule: dict | None, check: dict | None, kind: str | None, 
     prefix = "timer off · " if timer.get("state") == "off" else ""
     now = now if now.tzinfo else now.replace(tzinfo=timezone.utc)
     settle = (datetime.combine(date(2000, 1, 1), calendar.SESSION_CLOSE) + calendar.COMPLETE_MARGIN).time()
-    starts = settle if kind == "latest_complete_session" else time(0, 0)
+    starts = starts or (settle if kind == "latest_complete_session" else time(0, 0))
     cadence = cadence if cadence in due.CADENCES else due.DEFAULT_CADENCE
     day = None
     if check is not None and (check.get("result") not in ("failed", "skipped") or due._stage_done(check, mode)):

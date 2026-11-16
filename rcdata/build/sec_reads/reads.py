@@ -28,14 +28,16 @@ can stop, so an answer that was paid for is stored even when the run ends on a p
 Parquet tree is the durable copy of the answers (plan risk R4: it must be in the backup set before the first real
 run).
 
-**Never on a timer** (plan risk R7): ``starts_by_hand``, and no real question is registered in step 1.
+**The daily check runs at night** (avo, 16 Nov 2026 09:51): the hourly pass of 01:05 Amsterdam, once the US session
+is over (:data:`DUE_FROM_NY`). It still ``starts_by_hand`` (plan risk R7: not before a first run a person started),
+its file's automation is off until someone switches it on, and no real question is registered in step 1.
 """
 from __future__ import annotations
 
 import json
 import os
 import time
-from datetime import date
+from datetime import date, time as clock_time, timedelta
 from pathlib import Path
 
 import duckdb
@@ -62,6 +64,10 @@ AUTOMATIC = (NEW_FILING, RETRY)
 #: Provisional: the number is the owner's. An EVREN question has none: EVREN has no quota (avo, 16 Nov 2026).
 DAY_CAP = int(os.environ.get("RC_SEC_READS_DAY_CAP", "200"))
 UNCAPPED = ("evren",)
+#: The check's day starts at 19:00 New York, so the first hourly pass that finds it due is 19:05 New York: 01:05
+#: Amsterdam (00:05 in the few weeks a year the two clocks change apart). ``due.is_due`` reads it through
+#: ``default_as_of``, the Settings page and the Grafana board through ``due_from_ny``.
+DUE_FROM_NY = clock_time(19, 0)
 
 KEY = ["question", "prompt_version", "cik", "accession", "document", "input_hash", "provider", "model"]
 #: ``fetched_at`` is when the answer was asked; ``answer`` is the parsed JSON, ``raw`` the replies (JSON list, one
@@ -253,10 +259,14 @@ class Reads:
     cadence = "daily"
     backfill_needs_from = False
     starts_by_hand = True
+    due_from_ny = DUE_FROM_NY
+    #: Shown beside the dataset on the Settings page and the Grafana board.
+    limits = f"EVREN: no day cap · DeepSeek: {DAY_CAP} companies a day"
 
     def default_as_of(self) -> date:
+        """The New York day whose :data:`DUE_FROM_NY` has passed: the session the night's check is for."""
         from ....core import calendar
-        return calendar.today_ny()
+        return (calendar.now_ny() - timedelta(hours=DUE_FROM_NY.hour, minutes=DUE_FROM_NY.minute)).date()
 
     def fetch(self, ctx: base.RunContext, as_of: date) -> list[Path]:
         """Ask every registered question what is stale, one question after the other; one raw file per question.
