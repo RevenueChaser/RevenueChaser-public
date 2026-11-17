@@ -12,7 +12,7 @@ import hashlib
 import json
 import functools
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import numpy as np
 import pandas as pd
@@ -1006,6 +1006,12 @@ def _persist(as_of: str, chash: str, n: int, nodes: list[dict],
             {"as_of": as_of, "cut": int(cut), "lag_id": g["lag_id"], "ticker": t,
              "oos_r": g["oos_r"], "oos_base": g["oos_base"], "held": g["held"]}
             for cut, rows in (lag or {}).items() for g in rows for t in g["members"]])
+        # Review v2 N2 (avo, 17 Nov 2026): drop runs older than KEEP_DAYS, except each hash's newest run.
+        old = ("SELECT as_of FROM comov_runs r WHERE as_of < ? AND as_of < "
+               "(SELECT MAX(as_of) FROM comov_runs WHERE config_hash = r.config_hash)")
+        cutoff = (datetime.fromisoformat(as_of) - timedelta(days=config.KEEP_DAYS)).isoformat(timespec="microseconds")
+        for table in ("comov_nodes", "comov_members", "comov_lag", "comov_runs"):
+            tx.execute(f"DELETE FROM {table} WHERE as_of IN ({old})", [cutoff])
 
     rawstore.atomic(_write, db="comovement")
 
