@@ -10,7 +10,7 @@ Nothing here imports another module: a reference table that the price writer, th
 and the earnings radar all read must not drag a board in behind it.
 """
 
-# ── The RRG symbols: 89 ETFs (sector, theme, style, industry, region, bond); the 11 macro series below are listed for their
+# ── The RRG symbols: 99 ETFs (sector, theme, style, industry, region, bond); the 11 macro series below are listed for their
 #    names and go to the macro table, not the map (B1) ──
 ROTATION_ETFS = {
     # ── Sectors (11) ──
@@ -61,6 +61,21 @@ ROTATION_ETFS = {
     # from avo's watch lists (17 Nov 2026)
     "REMX": {"name": "Rare Earth / Strategic Metals", "group": "theme"},
     "ARKG": {"name": "Genomics", "group": "theme"},
+    # from the Relatedness thread's theme-ETF research (17 Nov 2026: one rule-based fund per theme, mostly US
+    # stocks, no repeat of a board row; each has stored bars)
+    "CIBR": {"name": "Cybersecurity (index)", "group": "theme"},
+    "ICLN": {"name": "Clean Energy", "group": "theme"},
+    "TAN":  {"name": "Solar", "group": "theme"},
+    "GDX":  {"name": "Gold Miners", "group": "theme"},
+    "CLOU": {"name": "Cloud Computing (pure play)", "group": "theme"},
+    "DTCR": {"name": "Data Centers", "group": "theme"},
+    "QTUM": {"name": "Quantum Computing", "group": "theme"},
+    "FINX": {"name": "Fintech", "group": "theme"},
+    "GRID": {"name": "Power Grid", "group": "theme"},
+    "DRIV": {"name": "EV & Autonomous", "group": "theme"},
+    "BLOK": {"name": "Blockchain", "group": "theme"},
+    "ESPO": {"name": "Video Games & Esports", "group": "theme"},
+    "COPX": {"name": "Copper Miners", "group": "theme"},
 
     # ── Style & size (avo's watch lists, 17 Nov 2026): breadth (RSP), growth vs value, the mega caps ──
     "QQQ":  {"name": "Nasdaq-100", "group": "style"},
@@ -72,13 +87,10 @@ ROTATION_ETFS = {
     # ── GICS industry groups (avo, 17 Nov 2026: "endüstri katmanlarına ekleyelim"): the map ETF of a group that no
     #    sector or theme row already stands for. ``INDUSTRY_GROUPS`` below is the whole layer ──
     "IYT":  {"name": "Transportation", "group": "industry"},
-    "CARZ": {"name": "Automobiles & Components", "group": "industry"},
     "PEJ":  {"name": "Consumer Services (Leisure)", "group": "industry"},
-    "PBJ":  {"name": "Food, Beverage & Tobacco", "group": "industry"},
     "KBE":  {"name": "Banks", "group": "industry"},
     "KCE":  {"name": "Capital Markets", "group": "industry"},
     "KIE":  {"name": "Insurance", "group": "industry"},
-    "XTH":  {"name": "Technology Hardware", "group": "industry"},
     "XTL":  {"name": "Telecom Services", "group": "industry"},
     "VNQ":  {"name": "REITs", "group": "industry"},
 
@@ -145,20 +157,20 @@ INDUSTRY_GROUPS: tuple[tuple[str, str, str, tuple[str, ...]], ...] = (
     ("2010", "Capital Goods", "Industrials", ("ITA", "XAR", "PAVE")),
     ("2020", "Commercial & Professional Services", "Industrials", ()),
     ("2030", "Transportation", "Industrials", ("IYT", "XTN", "JETS")),
-    ("2510", "Automobiles & Components", "Consumer Cyclical", ("CARZ",)),
+    ("2510", "Automobiles & Components", "Consumer Cyclical", ()),        # CARZ: no stored bars (17 Nov 2026)
     ("2520", "Consumer Durables & Apparel", "Consumer Cyclical", ("XHB", "ITB")),
     ("2530", "Consumer Services", "Consumer Cyclical", ("PEJ",)),
     ("2550", "Consumer Discretionary Distribution & Retail", "Consumer Cyclical", ("XRT",)),
     ("3010", "Consumer Staples Distribution & Retail", "Consumer Defensive", ()),
-    ("3020", "Food, Beverage & Tobacco", "Consumer Defensive", ("PBJ",)),
+    ("3020", "Food, Beverage & Tobacco", "Consumer Defensive", ()),       # PBJ: no stored bars
     ("3030", "Household & Personal Products", "Consumer Defensive", ()),
-    ("3510", "Health Care Equipment & Services", "Healthcare", ("IHI", "XHE", "IHF", "XHS")),
+    ("3510", "Health Care Equipment & Services", "Healthcare", ("IHI", "XHE", "IHF")),          # XHS: no stored bars
     ("3520", "Pharmaceuticals, Biotechnology & Life Sciences", "Healthcare", ("IBB", "XPH", "XBI")),
     ("4010", "Banks", "Financial Services", ("KBE", "KRE")),
     ("4020", "Financial Services", "Financial Services", ("KCE", "IAI")),
     ("4030", "Insurance", "Financial Services", ("KIE", "IAK")),
     ("4510", "Software & Services", "Technology", ("IGV", "XSW")),
-    ("4520", "Technology Hardware & Equipment", "Technology", ("XTH",)),
+    ("4520", "Technology Hardware & Equipment", "Technology", ()),        # XTH: no stored bars
     ("4530", "Semiconductors & Semiconductor Equipment", "Technology", ("SMH", "SOXX", "XSD")),
     ("5010", "Telecommunication Services", "Communication Services", ("XTL", "IYZ")),
     ("5020", "Media & Entertainment", "Communication Services", ()),

@@ -945,6 +945,9 @@ def export_rotation_dashboard(snapshots: list[ETFRotationSnapshot], filename: st
             color = GROUP_COLORS.get(s.group_name, "#8b949e")
             active = ' active' if s.group_name == 'sector' else ''
             filters += f'<button class="filter-btn{active}" data-group="{esc(s.group_name)}" onclick="filterGroup(this.dataset.group)" style="border-left:3px solid {color}">{esc(s.group_name)}</button>'
+    if "industry" not in groups_seen and any(s.ticker in INDUSTRY_MAP_ETFS for s in snapshots):
+        # the layer is drawn from rows of other groups too (SMH, XLE), so it has a button whenever one of them is here
+        filters += f'<button class="filter-btn" data-group="industry" onclick="filterGroup(this.dataset.group)" style="border-left:3px solid {GROUP_COLORS["industry"]}">industry</button>'
 
     theme_catalog = coarse_theme_catalog()
     theme_html, theme_etfs_json = _theme_control_html(theme_catalog)
