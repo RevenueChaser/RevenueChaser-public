@@ -74,6 +74,9 @@ BENCH_STALE_SESSIONS = 2   # benchmark this many sessions behind → truncate + 
 # counted with the missing bars (review 17 Nov 2026, F6): its returns would end sessions before everyone else's, so its
 # correlations read a different window. Live, 37 of 5,391 names were 3+ sessions behind (HCHL 108).
 STALE_SESSIONS = 2
+# Review v2 N2 (avo's card, 17 Nov 2026: "14 günden eskiyi sil"): a stored run deletes runs older than this many
+# days, keeping each config hash's newest run (a Refresh and the Relatedness board read the newest).
+KEEP_DAYS = 14
 # #95: windows a Fetch also computes and stores (store-only, after the board is
 # written), so switching to them serves the stored run instead of re-clustering.
 PRECOMPUTE_WINDOWS = (126, 252)   # 6m, 1y
