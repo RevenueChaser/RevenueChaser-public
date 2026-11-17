@@ -7,7 +7,6 @@ layer, whatever its own group: SMH stays a theme row and is also the semiconduct
 """
 from __future__ import annotations
 
-import json
 from datetime import date
 
 from RevenueChaser.core.gics_map import MORNINGSTAR_SECTORS
@@ -61,7 +60,7 @@ var out = {};
 });
 console.log(JSON.stringify(out));
 """
-    seen = json.loads(run_board_js(html, tail, tmp_path))
+    seen = run_board_js(html, tail, tmp_path)
     assert seen["sector"] == ["XLE", "XLK"]
     assert seen["industry"] == ["KBE", "SMH", "XLE"]                   # XLK and XBI stand for no group on the map
     assert seen["theme"] == ["SMH", "XBI"]
