@@ -184,9 +184,9 @@ What that means for history today (details and cites per table in [data_flow.md]
   store folder (`universe_write_lock`, core/universe_fetch.py:199; re-entrant in one thread; a second writer is told who
   holds it, makes no network call and writes nothing).
 - **The forecast freeze (#128):** the Swing, Fundamentals, AG and Universe Fetch jobs end by freezing the picks their
-  boards show into `forecast_ledger` (app/runners.py:859, :910, :931; `core/ledger.py:321`). It writes only when the
-  Fetch runs outside 09:30-16:30 ET and every shown pick has a complete bar of the latest complete session; otherwise it
-  writes nothing. A Refresh never freezes. Its outcome sentences are the job's `notes` (`/api/jobs`) and a
+  boards show into `forecast_ledger` (app/runners.py:859, :910, :931; `core/ledger.py:321`). It writes only when
+  every shown pick has a complete bar of the latest complete session (inside 09:30-16:30 ET: the session before);
+  otherwise it writes nothing. A Refresh never freezes. Its outcome sentences are the job's `notes` (`/api/jobs`) and a
   `forecast ledger:` line in the Server log; they are not the job's `message`, which the dashboard shows as a popup
   (app/jobs.py:261-273, templates/dashboard.html:900).
 - **The run log (#282):** every job writes one `job_runs` row, upserted when it starts running and when it ends

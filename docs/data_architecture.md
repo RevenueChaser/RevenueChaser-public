@@ -326,7 +326,8 @@ a Refresh never freezes), from `app/runners.py` (`run_swing`, `run_fundamentals`
 the module's own `freeze.py`, which maps the board to ledger rows. The rule, applied by `ledger.freeze_board`:
 - the data is one complete New York session D, and D is the latest complete session (`core/calendar.py`:
   30 minutes after the 16:00 ET close; early-close days use 16:00, which is conservative);
-- the run is outside the US session window (09:30–16:30 ET);
+- a run inside the US session window (09:30–16:30 ET) freezes the session before it (the prices store holds
+  complete sessions only; the old refusal there lost every daytime Fetch, #25);
 - the payload is real (not a fixture, not "no data", not empty; Swing and Fundamentals need SPY not stale, AG needs
   at most 1% scoring errors);
 - Swing and Fundamentals: each shown pick's last D01 bar (`price_bars_daily`, the bars the board scored from since
