@@ -185,7 +185,7 @@ def store_slices(rows: list[dict]) -> tuple[int, int]:
 # Only a CIK with no usable annual filing is recorded; a missing CIK costs no
 # request (the CIK map is local), so it is counted, never stored.
 _MISS_PREFIX = "miss:"
-MISS_NOTES = {"no_filing": "no 10-K / 20-F", "form_40f": "40-F, not supported yet"}
+MISS_NOTES = {"no_filing": "no 10-K / 20-F", "form_40f": "40-F, read from the SEC layer only"}
 
 
 def _cik_str(cik) -> str:
@@ -620,7 +620,10 @@ def _board_payload(filings: list[dict], edges: list[dict], as_of: str,
     # Universe tickers with no filing row that are known not to be fetchable:
     # a recorded miss, or no CIK in the stored map (reads only).
     have = {f["ticker"] for f in filings}
-    misses, ciks = stored_misses(), _stored_ciks()
+    layer = _reads_layer()
+    # On the layer nothing is downloaded, so a ``miss:`` key (the old download path's record) says nothing about
+    # what the SEC layer holds: a name with no layer filing is pending until the SEC service stores one.
+    misses, ciks = ({} if layer else stored_misses()), _stored_ciks()
     unfiled = [t for t in universe if t not in have and t not in excluded]
     no_cik = {t for t in unfiled if ciks and not ciks.get(t)}
     missed = {t for t in unfiled if t in misses} - no_cik
@@ -638,7 +641,7 @@ def _board_payload(filings: list[dict], edges: list[dict], as_of: str,
         "pending": pending,
         "misses": len(missed),
         "no_cik": len(no_cik),
-        "corpus": "layer" if _reads_layer() else _TABLE,
+        "corpus": "layer" if layer else _TABLE,
         "profile_hidden": profile_hidden,
         # G-F (#284): the last sync found no edge and kept the stored ones; the board says so.
         "kept": _stored_meta().get("edges_kept") == "1",

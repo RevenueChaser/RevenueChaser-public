@@ -222,7 +222,7 @@ def test_report_labels_are_honest():
     assert "MEDIUM" not in html and "confidence:" not in html
     assert "Private companies appear by name" not in html
     assert "possible supplier" in html and "possible customer" in html
-    assert "fixed list of about 50 large public companies" in html
+    assert "linked only when its name resolves to a listed company" in html
 
 
 def test_board_payload_carries_precision(rawstore_tmp_db, tmp_path, monkeypatch):

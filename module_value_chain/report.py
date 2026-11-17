@@ -6,8 +6,8 @@ filing snippet + form + date) sits next to every edge — without it the sankey 
 just a word cloud.
 
 Readability is deliberate: a legend with direction arrows (not colour alone), a
-"what am I looking at?" panel, and an explicit note that v1 relations are
-auto-extracted and can be wrong.
+"what am I looking at?" panel, and an explicit note that a link is what the filing
+states, not a confirmed relationship.
 """
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ from RevenueChaser.core.reporting_common import (
     watchlist_html,
 )
 
-from . import precision
+from . import config, precision
 
 CSS = """
 :root{--bg:#05111F;--panel:#12161e;--panel2:#1a1f2b;--border:#232a38;
@@ -79,7 +79,8 @@ input[type=text]{flex:1;min-width:200px}
 def _friendly(as_of: str) -> str:
     try:
         dt = datetime.fromisoformat(str(as_of).replace("Z", "+00:00"))
-        return dt.strftime("%A, %B %d, %Y EOD")
+        # A sync time, not a market close: no "EOD".
+        return dt.strftime("%A, %B %d, %Y")
     except (ValueError, TypeError):
         return str(as_of or "")
 
@@ -134,7 +135,7 @@ def _summary_html(payload: dict, n_filings: int, n_drawn: int) -> str:
         pending_d += f" · {no_cik} with no CIK"
     return "".join([
         f'<div class="stat"><div class="v">{n_filings}</div>'
-        f'<div class="l">Filings</div><div class="d">latest 10-K / 20-F</div></div>',
+        f'<div class="l">Filings</div><div class="d">latest annual report</div></div>',
         f'<div class="stat"><div class="v">{n_drawn}</div>'
         f'<div class="l">Links drawn</div><div class="d">supplier / customer links served</div></div>',
         f'<div class="stat"><div class="v">{payload.get("universe_total") or 0}</div>'
@@ -300,7 +301,7 @@ function render(){
   if(!FOCAL){
     var none = '<div class="empty">' + (DATA.length
       ? "No companies match the current filters."
-      : "No companies with supplier / customer edges. Fill the corpus from <b>Settings \u2192 Fetch 10-K sync</b>.") + "</div>";
+      : "No companies with supplier / customer links yet. <b>Fetch</b> reads them from the stored SEC filings.") + "</div>";
     document.getElementById("sankey").innerHTML = none;
     document.getElementById("edges").innerHTML = none;
     document.getElementById("fmeta").innerHTML = "";
@@ -368,7 +369,7 @@ function drawEdges(links){
       '<div class="snip">“'+rcEsc(l.snippet)+'”</div>' +
       '<div class="meta">'+(l.source === "profile" ? "from the company profile (LLM reading)"
         : l.source === "xbrl" ? "from the filing's XBRL" : "auto-extracted, unverified") +
-      ' · source: 10-K/20-F, '+rcEsc(FILINGS[l.src] ? FILINGS[l.src].filed : "")+'</div></div>';
+      ' · source: '+rcEsc((FILINGS[l.src] || {}).form || "annual report")+', '+rcEsc((FILINGS[l.src] || {}).filed || "")+'</div></div>';
   }).join("");
 }
 function loadGraph(ticker){
@@ -399,17 +400,23 @@ function init(){
                        "value_chain", earnings_mode="filter",
                        themes=payload.get("theme_catalog") or {}))})
 
+    fetch_help = ("<b>Fetch</b> reads the filings the SEC service has stored (it downloads nothing itself) and "
+                  "rebuilds the links" if payload.get("corpus") == "layer" else
+                  "<b>Fetch (EDGAR)</b> downloads a filing from SEC only for a name with none stored and rebuilds "
+                  "the links")
     help_block = help_html(
-        "Edges are sentences from the company's latest <b>10-K Item 1</b> (or "
-        "<b>20-F Item 4</b>) that name another company. The arrow shows the direction: "
+        "A link is a customer or supplier that a company's latest annual report (10-K, 20-F or 40-F) names. "
+        "Customers come from the filing's XBRL tags; links read from the company profile (an LLM reading of the "
+        "same report) "
+        + ("are shown too. " if config.SERVE_PROFILE_EDGES else "are hidden until a hand-checked sample clears them. ")
+        + "The arrow shows the direction: "
         "a <b>supplier</b> sells to the focal company, a <b>customer</b> buys from it. "
         "A <b>2-hop</b> edge is one step further out: a supplier or a customer of a first-hop company. "
         "A <b>percentage</b> on an edge is the share of the filer's sales (a customer) or purchases (a supplier) "
         "that the filing itself states; those edges are listed first, largest share first. "
-        "Only a fixed list of about 50 large public companies is recognised by name; "
-        "any other counterparty is not shown. <b>Fetch (EDGAR)</b> is cache-first: it downloads a "
-        "filing from SEC only for a name with none stored (newer 10-Ks come from the 10-K sync on "
-        "Settings); <b>Refresh</b> redraws the board from the stored filings with no network call.")
+        "A customer is linked only when its name resolves to a listed company; an anonymised one "
+        "(\"Customer A\") gives no link. "
+        + fetch_help + "; <b>Refresh</b> redraws the board from the stored links with no network call.")
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
