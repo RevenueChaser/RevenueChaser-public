@@ -45,4 +45,5 @@ def test_a_sync_stores_the_unnamed_customers_for_a_refresh(rawstore_tmp_db, monk
     monkeypatch.setattr(engine, "build_edges",
                         lambda info=None: info.update(kept=False, unnamed={"MSFT": ["Customer B"]}) or [])
     engine.run(no_fetch=False)
-    assert json.loads(rawstore.get("chain_meta", "unnamed_customers")["value"]) == {"MSFT": ["Customer B"]}
+    # chain_meta.value is a JSON column: it can read back as a dict
+    assert engine._json_dict(rawstore.get("chain_meta", "unnamed_customers")["value"]) == {"MSFT": ["Customer B"]}
