@@ -264,6 +264,7 @@ def ticker_answer(ticker: str, entry: dict) -> dict | None:
 
 class OpenFigiMap:
     name = NAME
+    parquet_reads = ("openfigi/map_ticker",)           # stg_figi_ticker (dirty.read_dirs)
     kind = KIND
     providers = (PROVIDER,)
     tables: tuple[str, ...] = ()

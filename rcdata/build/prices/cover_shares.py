@@ -235,6 +235,7 @@ class MissingObject(base.SourceError):
 
 class SecCoverShares:
     name = NAME
+    parquet_reads = ("sec/cover_shares_dei",)          # stg_sec_dei (dirty.read_dirs)
     kind = KIND
     providers = (PROVIDER,)
     tables = ("shares_class",)

@@ -101,6 +101,8 @@ def _changed(new, old) -> bool:
 
 class AlpacaBars:
     name = NAME
+    # The build serves price_revision from this sibling folder too (dirty.read_dirs: the files it reads).
+    parquet_reads = ("alpaca/bars_revision",)
     kind = KIND
     providers = (alpaca.PROVIDER,)
     tables = ("price_bar_daily",)
