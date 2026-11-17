@@ -258,6 +258,7 @@ def _persisted_source(chash: str) -> str | None:
             "SELECT prices_through FROM comov_runs WHERE config_hash = ? "
             "AND null_json IS NOT NULL ORDER BY as_of DESC LIMIT 1", [str(chash)], db="comovement")
     except Exception:  # noqa: BLE001 - store predates the column
+        logger.warning("comovement: no persisted source for %s", chash, exc_info=True)
         return None
     return row[0].get("prices_through") if row else None
 
@@ -414,6 +415,7 @@ def _persisted_null(chash: str) -> dict[int, float]:
             "SELECT null_json FROM comov_runs WHERE config_hash = ? "
             "AND null_json IS NOT NULL ORDER BY as_of DESC LIMIT 1", [str(chash)], db="comovement")
     except Exception:  # noqa: BLE001 - store predates the column
+        logger.warning("comovement: persisted null unreadable for %s; groups are not judged", chash, exc_info=True)
         return {}
     if not row or not row[0].get("null_json"):
         return {}
@@ -441,6 +443,7 @@ def _persisted_lag(chash: str) -> dict[int, list[dict]]:
             "SELECT cut, lag_id, ticker, oos_r, oos_base, held FROM comov_lag "
             "WHERE as_of = ?", [row[0]["as_of"]], db="comovement")
     except Exception:  # noqa: BLE001 - store predates the table
+        logger.warning("comovement: persisted lagged test unreadable for %s", chash, exc_info=True)
         return {}
     groups: dict[tuple, dict] = {}
     for r in rows:
@@ -506,6 +509,7 @@ def _stored_run(chash: str, prices_through: str | None,
             if {m["ticker"] for m in names} == clustered:
                 return r["as_of"]
     except Exception:  # noqa: BLE001 - store predates a table/column: recompute
+        logger.warning("comovement: stored run unreadable for %s; re-clustering", chash, exc_info=True)
         return None
     return None
 

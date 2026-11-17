@@ -1435,6 +1435,7 @@ globalThis.document = {
   querySelector: _q,
   querySelectorAll: function(){ return []; },
   addEventListener: function(){},
+  documentElement: _el("html"),          // the shared theme script sets data-theme on it
   body: {classList: {add: function(){}, remove: function(){}}}
 };
 globalThis.location = {hash: "", search: "", pathname: "/"};

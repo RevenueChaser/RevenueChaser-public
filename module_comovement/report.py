@@ -1,4 +1,4 @@
-"""Co-movement board — self-contained dark-theme HTML renderer.
+"""Co-movement board — HTML renderer, on the shared theme (light and dark).
 
 Layout (plan 2026-09-30_plan_filters_ux.md, pilot of the shared filter bar):
 
@@ -36,6 +36,9 @@ from RevenueChaser.core.reporting_common import (
     FILTERS_CSS,
     FILTERS_JS,
     JOB_JS,
+    PAYLOAD_JS,
+    THEME_CSS,
+    THEME_JS,
     combobox_html,
     control_html,
     filters_bar_html,
@@ -95,13 +98,12 @@ HELP_BODY = (
 )
 
 CSS = """
-:root{--bg:#05111F;--panel:#12161e;--panel2:#1a1f2b;--border:#232a38;
---text:#d7dce5;--muted:#8a93a6;--accent:#0EA5E9;--green:#2ecc71;--amber:#f1c40f;
---neon:#00e6a8;--down:#f87171;--focus:#4F9DFF;--input:#10151f;--input-b:#2a3345;
---seg1:#0EA5E9;--seg2:#a78bfa;--seg3:#5b6478;--seg4:#3a4150}
+:root{--panel:var(--card);--panel2:var(--card-2);--text:var(--fg);--green:var(--pos);--neon:var(--pos);
+--down:var(--neg);--input:var(--input-bg);--input-b:var(--input-border);
+--seg1:var(--data-1);--seg2:var(--data-2);--seg3:var(--badge-gray);--seg4:var(--input-border)}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.5}
-body.loading:after{content:"Refreshing…";position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(5,17,31,.72);color:var(--text);font-weight:700;letter-spacing:.04em;z-index:99}
+body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.5}
+body.loading:after{content:"Refreshing…";position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:var(--overlay);color:var(--text);font-weight:700;letter-spacing:.04em;z-index:99}
 :focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 .wrap{max-width:100%;margin:0 auto;padding:20px 24px 60px}
 .num,.r{font-variant-numeric:tabular-nums}
@@ -119,7 +121,7 @@ button{font:inherit;color:inherit}
 .universe .step b{color:var(--text)}
 .universe .arrow{opacity:.6}
 details.about{background:var(--panel);border:1px solid var(--border);border-radius:10px;margin-bottom:12px;font-size:12.5px;color:var(--muted)}
-details.about>summary{cursor:pointer;padding:9px 14px;font-weight:600;color:var(--accent)}
+details.about>summary{cursor:pointer;padding:12px 14px;min-height:44px;box-sizing:border-box;font-weight:600;color:var(--accent)}
 .about-body{padding:0 14px 12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px 24px;line-height:1.6}
 .about-body h3{margin:0 0 2px;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--text)}
 .about-body code{color:var(--neon)}
@@ -132,9 +134,9 @@ details.about>summary{cursor:pointer;padding:9px 14px;font-weight:600;color:var(
 .funnel .row.note{color:var(--amber)}
 .funnel .row.note .num{color:var(--amber)}
 .funnel .row.note a{color:var(--accent)}
-.alert{border-radius:10px;padding:8px 12px;margin-bottom:10px;font-size:12.5px;background:rgba(241,196,15,.10);border:1px solid rgba(241,196,15,.35);color:var(--amber)}
+.alert{border-radius:10px;padding:8px 12px;margin-bottom:10px;font-size:12.5px;background:var(--amber-soft);border:1px solid var(--amber);color:var(--amber)}
 .alert b{color:var(--text)}
-.warn{background:rgba(241,196,15,.10);border:1px solid rgba(241,196,15,.35);color:var(--amber);border-radius:10px;padding:9px 14px;margin-bottom:10px;font-size:12.5px;display:none}
+.warn{background:var(--amber-soft);border:1px solid var(--amber);color:var(--amber);border-radius:10px;padding:9px 14px;margin-bottom:10px;font-size:12.5px;display:none}
 .strip{background:var(--panel);border:1px solid var(--accent);border-radius:8px;padding:7px 12px;margin-bottom:10px;font-size:12.5px;display:none}
 .oos{font-size:12.5px;color:var(--muted);margin:0 0 10px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;position:relative}
 .oos[hidden]{display:none}
@@ -142,25 +144,25 @@ details.about>summary{cursor:pointer;padding:9px 14px;font-weight:600;color:var(
 .onlym{display:inline-flex;gap:6px;align-items:center;color:var(--muted);font-size:12px;align-self:center;cursor:pointer}
 .onlym input{accent-color:var(--accent)}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:12px}
-@media (max-width:520px){.grid{grid-template-columns:1fr}.wrap{padding:16px}}
-.card{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:9px;transition:box-shadow .2s ease-out}
-.card.tight{border-color:rgba(14,165,233,.45)}
+@media (max-width:760px){.grid{grid-template-columns:minmax(0,1fr)}.wrap{padding:16px}.card .badge,.topbar .sync{white-space:normal}}
+.card{min-width:0;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:9px;transition:box-shadow .2s ease-out}
+.card.tight{border-color:var(--accent)}
 .card.quiet{border-style:dashed}
 .card.flash{box-shadow:0 0 0 2px var(--accent)}
 .chead{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:baseline;justify-content:space-between}
 .chead .left{display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}
 .clabel{font-weight:750;font-size:15px;letter-spacing:-.2px}
 .meta{color:var(--muted);font-size:11.5px}
-.match{font-size:11px;color:var(--accent);border:1px solid rgba(14,165,233,.4);border-radius:99px;padding:0 7px}
+.match{font-size:11px;color:var(--accent);border:1px solid var(--accent);border-radius:99px;padding:0 7px}
 .badge{background:var(--panel2);border:1px solid var(--border);border-radius:99px;padding:0 7px;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
-.badge.ok{color:var(--neon);border-color:rgba(0,230,168,.35)}
-.badge.new{color:var(--amber);border-color:rgba(241,196,15,.35)}
-.stats{display:grid;grid-template-columns:auto 1fr;gap:6px 10px;align-items:start;font-size:12px;margin:0}
+.badge.ok{color:var(--neon);border-color:var(--pos)}
+.badge.new{color:var(--amber);border-color:var(--amber)}
+.stats{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 10px;align-items:start;font-size:12px;margin:0}
 .stats dt{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em;line-height:22px}
 .stats dd.col{flex-direction:column;align-items:flex-start;gap:2px}
 .rscale{color:var(--muted);font-size:10.5px;font-variant-numeric:tabular-nums}
 .stats dd{margin:0;display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-height:22px}
-.rbar{position:relative;flex:1;min-width:90px;height:6px;background:#1c2430;border-radius:99px}
+.rbar{position:relative;flex:1;min-width:90px;height:6px;background:var(--card-2);border-radius:99px}
 .rbar>i{position:absolute;left:0;top:0;bottom:0;background:var(--accent);border-radius:99px}
 .rbar>s{position:absolute;top:-3px;width:2px;height:12px;background:var(--amber);border-radius:1px}
 .dir.up{color:var(--neon)}
@@ -169,10 +171,10 @@ details.about>summary{cursor:pointer;padding:9px 14px;font-weight:600;color:var(
 .compbar{display:flex;height:10px;border-radius:99px;overflow:hidden;gap:2px}
 .compbar span{height:100%}
 .legend{display:flex;flex-wrap:wrap;gap:4px}
-.seg-btn{display:inline-flex;align-items:center;gap:6px;min-height:26px;padding:0 9px;background:var(--panel2);border:1px solid var(--border);border-radius:99px;cursor:pointer;font-size:12px;color:var(--text)}
+.seg-btn{display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:0 12px;background:var(--panel2);border:1px solid var(--border);border-radius:99px;cursor:pointer;font-size:12px;color:var(--text)}
 .seg-btn .sw{width:8px;height:8px;border-radius:2px;flex:none}
 .seg-btn .n{font-weight:700}
-.seg-btn[aria-expanded=true]{border-color:var(--accent);background:rgba(14,165,233,.1)}
+.seg-btn[aria-expanded=true]{border-color:var(--accent);background:var(--accent-soft)}
 .seg-btn.muted{color:var(--muted)}
 .seg-panel{background:var(--input);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:12px}
 .seg-panel[hidden]{display:none}
@@ -181,7 +183,7 @@ details.about>summary{cursor:pointer;padding:9px 14px;font-weight:600;color:var(
 .sub-grp>div:first-child{color:var(--muted);font-size:11.5px;margin-bottom:3px;display:flex;justify-content:space-between;gap:8px}
 .namelist{display:flex;flex-wrap:wrap;gap:4px 12px;color:var(--text)}
 .namelist b{margin-right:4px}
-.linkbtn{background:none;border:0;color:var(--accent);cursor:pointer;font-size:12px;padding:2px}
+.linkbtn{background:none;border:0;color:var(--accent);cursor:pointer;font-size:12px;padding:2px 6px;min-height:44px}
 .linkbtn:hover{text-decoration:underline}
 .chips{display:flex;flex-wrap:wrap;gap:5px}
 .chip{position:relative;background:var(--panel2);border:1px solid var(--border);border-left:3px solid var(--seg3);border-radius:6px;padding:0 7px;height:24px;font-size:12px;font-weight:600;white-space:nowrap;cursor:default;color:var(--text)}
@@ -189,10 +191,10 @@ details.about>summary{cursor:pointer;padding:9px 14px;font-weight:600;color:var(
 .chip.dim{opacity:.28}
 .chip.hit{box-shadow:0 0 0 2px var(--accent)}
 .chip.earn::after{content:"";position:absolute;top:-3px;right:-3px;width:7px;height:7px;border-radius:50%;background:var(--amber)}
-.tip{position:fixed;z-index:60;pointer-events:none;background:#0d1320;border:1px solid var(--border);border-radius:8px;box-shadow:0 10px 24px rgba(0,0,0,.5);padding:7px 10px;font-size:12px;line-height:1.45;max-width:320px;color:var(--muted)}
+.tip{position:fixed;z-index:60;pointer-events:none;background:var(--card);border:1px solid var(--border);border-radius:8px;box-shadow:0 10px 24px var(--shadow);padding:7px 10px;font-size:12px;line-height:1.45;max-width:320px;color:var(--muted)}
 .tip b{color:var(--text)}
 .tip[hidden]{display:none}
-details.members summary{cursor:pointer;color:var(--accent);font-size:12px}
+details.members summary{cursor:pointer;color:var(--accent);font-size:12px;padding:12px 0;box-sizing:border-box;min-height:44px}
 .cfoot{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:11.5px;color:var(--muted)}
 .empty{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:24px;color:var(--muted);text-align:center;grid-column:1/-1}
 .rcf-boardrow .rcf-seg [role=radio] .hint{font-weight:500;font-size:11px;color:var(--muted);margin-left:3px}
@@ -509,7 +511,26 @@ def _about(payload: dict, horizon: int, benchmark: str, applied: bool,
     return funnel_line, about
 
 
+# The K10 payload's version (#584): bump it when the packed shape changes, so a reader (the page, the phone app) can
+# tell an old file from a new one.
+PAYLOAD_SCHEMA = 1
+
+
 def render_comovement_dashboard(payload: dict) -> str:
+    """The one-file page: the board with its groups inlined, so it boots with no fetch (tests, the hostile guard)."""
+    return _render(payload, inline=True)[0]
+
+
+def render_comovement_board(payload: dict) -> tuple[str, dict | None]:
+    """The page and its K10 payload (#584), or ``None`` when there is no group to fetch.
+
+    The HTML holds no group and no name: it fetches the packed rows (``_pack_rows`` plus ``schema``) from
+    ``/view/module_comovement/payload.json``. An empty board keeps its server-rendered message and needs no file.
+    """
+    return _render(payload, inline=False)
+
+
+def _render(payload: dict, inline: bool) -> tuple[str, dict | None]:
     payload = payload or {}
     cuts = [str(c) for c in (payload.get("cuts") or [])]
     cut_words = [_CUT_WORDS[i] if i < len(_CUT_WORDS) else f"Level {i + 1}"
@@ -527,7 +548,7 @@ def render_comovement_dashboard(payload: dict) -> str:
         grid = ('<div class="empty">No clusters yet. The <b>prices build</b> fills the daily prices after '
                 'each close; run <b>Fetch</b> to cluster them.</div>')
     else:
-        grid = ""
+        grid = "" if inline else '<div class="empty">Loading the groups…</div>'
 
     # S11: the one-line statement of what this board does and does not claim.
     # ``n_factors`` (eigenvalues above the Marchenko–Pastur edge) is missing on
@@ -668,7 +689,7 @@ def render_comovement_dashboard(payload: dict) -> str:
         themes=payload.get("theme_catalog") or {},
     )
 
-    JS = r"""
+    JS = PAYLOAD_JS + r"""
 function rcUnpackRows(P){
   return P.members.map(function(m){
     var g = P.groups[m[0]], n = P.names[m[1]], r = {};
@@ -677,6 +698,7 @@ function rcUnpackRows(P){
   });
 }
 var DATA = rcUnpackRows(__DATA__);
+var FETCH = __FETCH__;
 var CUTS = __CUTS__;
 var CUT_WORDS = __CUT_WORDS__;
 var BETA_SHARE = __BETA__;
@@ -998,11 +1020,23 @@ function init(){
   ["mouseout", "focusout"].forEach(function(ev){ document.addEventListener(ev, function(e){ if(e.target.closest && e.target.closest(".chip")) tip.hidden = true; }); });
   render();
 }
+// K10 (#584): the served page fetches its groups; the one-file page (tests) has them inline and starts at once.
+function rcBoot(){
+  if(!FETCH){ init(); return; }
+  rcPayload("module_comovement").then(function(P){ DATA = rcUnpackRows(P); init(); }, function(e){
+    document.getElementById("grid").innerHTML = '<div class="empty">Could not load the groups (' +
+      rcEsc(String((e && e.message) || e)) + '). Reload the page.</div>';
+  });
+}
 """
 
     # One pass, and JSON with < > & escaped: a label holding "<!--<script>" or
     # spelling another placeholder cannot break the script (F3, #144).
-    JS = fill(JS, {"__DATA__": script_json(_pack_rows(members)),
+    packed = _pack_rows(members)
+    data = {"schema": PAYLOAD_SCHEMA, **packed} if members else None
+    fetch = data is not None and not inline          # inline or empty: the rows (or none) ride in the page
+    JS = fill(JS, {"__DATA__": script_json(_pack_rows([]) if fetch else packed),
+                   "__FETCH__": "true" if fetch else "false",
                    "__CUTS__": script_json(cuts),
                    "__CUT_WORDS__": script_json(cut_words),
                    "__BETA__": str(BETA_SHARE),
@@ -1023,12 +1057,13 @@ function init(){
     oos_note = payload.get("oos_note")
     oos_note_html = (f'<div class="oos" id="oos-note" role="status">'
                      f'<span>{_html.escape(str(oos_note))}</span></div>' if oos_note else "")
-    return f"""<!DOCTYPE html>
+    page = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Co-movement</title>
+<script>{THEME_JS}</script><style>{THEME_CSS}</style>
 <style>{CSS}</style>
 {FILTERS_CSS}
 </head>
@@ -1061,8 +1096,9 @@ function init(){
 {watchlist_html("comovement")}
 <script>{JOB_JS}
 {JS}
-init();
+rcBoot();
 </script>
 </body>
 </html>
 """
+    return page, data
