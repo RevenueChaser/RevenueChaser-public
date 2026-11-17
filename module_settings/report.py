@@ -530,7 +530,7 @@ function autoInit(){
 """
 AUTOMATIONS_BOOT = "autoInit();"
 
-# Drill picker: reads the shared `DATA` embedded by the renderer and fetches the
+# Drill picker: reads `DATA` (filled from /api/settings/tickers on first focus) and fetches the
 # per-ticker detail from the store-only API. The combobox behaviour itself is the
 # filter kit's RCCombobox (#383 C1b) — this only wires it to the detail panel.
 DRILL_JS = r"""
@@ -618,11 +618,22 @@ function onDrillPick(ticker){
   });
 }
 // The picker's options (a test reads them back); onPick/onClear look up onDrillPick at call time.
-var DRILL_COMBO_OPTS = {input: '#ticker-combo', list: '#ticker-combo-list', rows: DATA, clear: true,
-  onPick: function(r){ onDrillPick(r.ticker); }, onClear: function(){ onDrillPick(null); }};
-if(document.getElementById('ticker-combo') && typeof RCCombobox !== 'undefined'){
-  RCCombobox.mount(DRILL_COMBO_OPTS);
-}
+// The names are not in the page (335 KB, 17 Nov 2026): the box's first focus reads /api/settings/tickers.
+var DRILL_COMBO_OPTS = {input: '#ticker-combo', list: '#ticker-combo-list', rows: function(){ return DATA; },
+  clear: true, onPick: function(r){ onDrillPick(r.ticker); }, onClear: function(){ onDrillPick(null); }};
+(function(){
+  var input = document.getElementById('ticker-combo');
+  if(!input || typeof RCCombobox === 'undefined') return;
+  var box = RCCombobox.mount(DRILL_COMBO_OPTS), asked = false;
+  input.addEventListener('focus', function(){
+    if(asked || DATA.length) return;
+    asked = true;
+    fetch('/api/settings/tickers').then(function(r){ return r.json(); }).then(function(d){
+      DATA = (d && d.tickers) || [];
+      if(document.activeElement === input) box.render();
+    }, function(){ asked = false; });
+  });
+})();
 """
 
 # G6b (#124): the Data Flow picture's one behaviour. Press a provider or a job node to follow its
@@ -2947,7 +2958,7 @@ def render_settings_dashboard(payload: dict) -> str:
     the few presses Grafana does not carry (``control_render.render_fetch``); Logs is the framed ``rc-logs`` board.
     The Ticker lookup heads Database (#715); the old Settings sections fold is gone."""
     payload = payload or {}
-    data_json = script_json(payload.get("tickers") or [])
+    data_json = "[]"       # the Ticker lookup's names come from /api/settings/tickers on first focus
     # The payload's own ``newdata`` when the caller read it (tests, fixtures); else read here, per render.
     nd = payload["newdata"] if "newdata" in payload else _collect_newdata()
     view = _control_view(nd, payload)

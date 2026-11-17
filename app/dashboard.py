@@ -1239,10 +1239,22 @@ def api_settings_lookup(ticker: str):
     return jsonify({"ok": True, **found})
 
 
+@app.route("/api/settings/tickers")
+def api_settings_tickers():
+    """The Ticker lookup's names (the spine's), read when its box is first used rather than inlined (335 KB)."""
+    from RevenueChaser.module_settings import inventory
+
+    tickers, error = inventory._universe_tickers()
+    if error:
+        return jsonify({"ok": False, "error": error}), 503
+    return jsonify({"ok": True, "tickers": tickers})
+
+
 @app.route("/api/settings/sample/<table>")
 def api_settings_sample(table: str):
     """The control board's **Refresh the example rows**: five rows of one serving table, read again (design v28).
 
+    ``?cached=1`` (a block's first open) answers this hour's sample when the page already read one.
     One read-only handle on the table's own serving file and one SELECT: no job, no provider, no write. A name the
     cards do not sample is 404; a file or table not built yet is 409 and says which; a file DuckDB cannot open
     or read right now (locked, mid-swap) is 503 with the reason.
@@ -1252,7 +1264,7 @@ def api_settings_sample(table: str):
     from RevenueChaser.module_settings import newdata
 
     try:
-        sample = newdata.read_sample_now(table)
+        sample = newdata.read_sample_now(table, cached=request.args.get("cached") == "1")
     except KeyError:
         return jsonify({"ok": False, "error": "unknown table"}), 404
     except newdata.SampleUnavailable as exc:

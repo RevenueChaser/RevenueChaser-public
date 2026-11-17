@@ -79,7 +79,7 @@ def test_every_hostile_string_is_escaped_and_the_scripts_parse(tmp_path):
     nd["universe"]["tickers"]["E"] = [H("ticker")]
     html = _page(nd)
     ctl = _between(html, '<section id="ctl"', 'id="needs"')
-    for tag in ("label", "col", "cell"):
+    for tag in ("label", "col"):     # a sample's cells are not in the page any more: the route answers them
         assert f"onerror=__x(&#x27;{tag}T&#x27;)" in ctl, tag
     assert_inert(html)
     check_page(html)
@@ -223,3 +223,17 @@ def test_a_health_badge_picks_its_own_file():
     assert "picks.hs" not in flow, "the badge picks a file, so there is no health-state pick left"
     hit = function_source(flow, "hit")
     assert "'file:' + t.getAttribute('data-file')" in hit, "the badge picks the file it sits in"
+
+
+def test_the_page_carries_no_sample_rows_no_ticker_list_and_no_sessions_before_the_calendar(monkeypatch):
+    """17 Nov 2026: the live page was 3.4 MB; the example rows (1.4 MB), the calendar's sessions back to 1983
+    (0.5 MB) and the lookup's names (0.3 MB) were most of it. Each now comes from its route when it is wanted."""
+    nd = control_nd()
+    nd["datasets"][0]["samples"] = [{"table": "price_bar_daily", "built": True, "notes": (),
+                                     "columns": [{"name": "close", "type": "DOUBLE"}], "rows": [["ROW-SENTINEL"]]}]
+    nd["sessions"] = {"1990-01-02": {"A": 7}, **(nd.get("sessions") or {})}
+    html = report.render_settings_dashboard({"newdata": nd, "tickers": [{"ticker": "ZZZQ", "name": "Sentinel Co"}]})
+    assert "ROW-SENTINEL" not in html and 'data-sample="price_bar_daily" data-lazy' in html
+    assert "Sentinel Co" not in html and "var DATA = [];" in html
+    assert '"1990-01-02": {"A": 7}' not in html, "the calendar never reads a day before its first offered one"
+    assert '"2026-10-27": {' in html, "and keeps the days it does read"

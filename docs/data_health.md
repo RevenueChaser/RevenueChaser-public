@@ -170,7 +170,11 @@ closed fold under it (`details#old-settings`), unchanged.
 - **Refresh the example rows** calls `GET /api/settings/sample/<table>`: 5 rows of one sampled table, through one
   read-only `open_read` handle on its own file, replacing the hourly cached sample. 404 for any other table, 409 when
   the file or the table is not built yet, 503 when DuckDB cannot read the file right now (a swap). No job, no
-  provider, no write.
+  provider, no write. The rows are not in the page: a file's **Data structure** block reads them when it opens, with
+  `?cached=1` (this hour's sample when the render already read one), and a text cell longer than 300 characters is
+  cut. The Ticker lookup's names come from `GET /api/settings/tickers` on the box's first focus, and the Backfill
+  calendar carries the sessions from its first offered day only (17 Nov 2026: the page was 3.4 MB, 2.2 MB of it these
+  three).
 - **Stale page:** when the page is older than 60 minutes on returning to it, a bar offers a reload.
 - **Planned reads** (a board's table read that `boards` does not declare yet) are drawn dashed and marked planned.
 

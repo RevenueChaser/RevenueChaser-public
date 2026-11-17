@@ -170,10 +170,11 @@
                                               function () { say('Run on the server: ' + cmd); });
     } catch (e) { say('Run on the server: ' + cmd); }
   }
-  function sample(btn) {
+  /* cached: the block's first open reads the hourly sample; the button reads the file again */
+  function sample(btn, cached) {
     var t = btn.getAttribute('data-sample-refresh'), sec = btn.closest('.dsec'), note = btn.parentNode.querySelector('.dim');
     btn.disabled = true;
-    send('GET', C.routes.sample + encodeURIComponent(t)).then(function (r) {
+    send('GET', C.routes.sample + encodeURIComponent(t) + (cached ? '?cached=1' : '')).then(function (r) {
       btn.disabled = false;
       var s = r.body || {};
       if (r.status !== 200 || !s.ok) { if (note) note.textContent = s.error || ('could not read · HTTP ' + r.status); return; }
@@ -184,7 +185,7 @@
       if (body) body.innerHTML = (s.rows || []).map(function (row) {
         return '<tr>' + row.map(function (v, i) { return '<td class="' + (pv[i] || 'pv-build') + '">' + rcEsc(v == null ? '' : v) + '</td>'; }).join('') + '</tr>';
       }).join('');
-      if (note) note.textContent = 'read again at ' + new Date().toTimeString().slice(0, 5) + ' · ' + (s.rows || []).length + ' rows · no provider call';
+      if (note && !cached) note.textContent = 'read again at ' + new Date().toTimeString().slice(0, 5) + ' · ' + (s.rows || []).length + ' rows · no provider call';
     }, function () { btn.disabled = false; if (note) note.textContent = 'could not reach the dashboard'; });
   }
   function scrollTo(el) {
@@ -197,6 +198,15 @@
     if (p && p.hidden && window.RC_SETTINGS_SHOW_PANEL) window.RC_SETTINGS_SHOW_PANEL(p.id);
   }
   window.CTLX.scrollTo = scrollTo; window.CTLX.reveal = reveal;
+  /* The example rows are not in the page (1.4 MB of it on 17 Nov 2026): a Data structure block reads them when it
+     opens. toggle does not bubble, so this listens in the capture phase. */
+  root.addEventListener('toggle', function (e) {
+    var d = e.target;
+    if (!d.open || !d.classList || !d.classList.contains('b-ds')) return;
+    [].forEach.call(d.querySelectorAll('.dsec[data-lazy] [data-sample-refresh]'), function (b) {
+      b.closest('.dsec').removeAttribute('data-lazy'); sample(b, true);
+    });
+  }, true);
   root.addEventListener('click', function (e) {
     if (e.target.closest('[data-reload]')) { location.reload(); return; }
     var g = e.target.closest('[data-goto]');
