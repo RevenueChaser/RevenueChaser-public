@@ -567,7 +567,8 @@ def run_sec_13f_latest(uw: UWClient | None = None, notice: str | None = None,
         capture.update(meta=meta, enrichment=enrichment)
     export_sec13f_dashboard(totals, meta, enrichment,
                             filename="sec_13f_latest.html",
-                            provider_health=provider_health or _uw_health(uw), notice=notice)
+                            provider_health=provider_health or _uw_health(uw) or _sec13f_health(),
+                            notice=notice)
     return SEC_13F_LATEST
 
 
@@ -630,6 +631,33 @@ def _13f_coverage_note() -> str | None:
             f"13F {last['period']}: {unmapped:,} CUSIP(s) have no ticker.")
     logger.warning("13F coverage: %s", note)
     return note
+
+
+#: The builder datasets that still call SEC EDGAR for the 13F board (since G9 the board itself calls nothing).
+SEC13F_SOURCES = ("sec/13f", "sec/13f_sets_listed")
+
+
+def _sec13f_health() -> dict | None:
+    """The 13F board's SEC EDGAR banner (#299): the newest builder check of each source, one count each.
+
+    A source whose newest check ``failed`` counts as a failed call, with its date and note as the example, so a
+    failed SEC fetch shows on the board until a later run of that dataset succeeds. None when the ops state
+    cannot be read: a banner must never break a render.
+    """
+    from RevenueChaser.core.providers.result import ProviderHealth
+    from RevenueChaser.rcdata import ops
+    health = ProviderHealth("SEC EDGAR")
+    try:
+        checks = [(ds, ops.read_latest_check(ds)) for ds in SEC13F_SOURCES]
+    except Exception as exc:  # noqa: BLE001 - a banner must never break a render
+        logger.warning("13F builder health not read: %s", exc)
+        return None
+    for ds, check in checks:
+        if check:
+            failed = check.get("result") == "failed"
+            why = f"{check.get('checked_on')}: {(check.get('note') or 'build failed')[:200]}"
+            health.call(why if failed else None, endpoint=ds)
+    return health.health()
 
 
 def _render_13f(health: dict | None, note: str | None, capture: dict | None = None) -> Path:
