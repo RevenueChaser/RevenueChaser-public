@@ -35,7 +35,7 @@ PROVIDER_FILES = {
     "module_relatedness": {"__main__.py", "compare.py", "engine.py", "naming.py", "profiles.py", "store.py"},
     "module_sector_rotation": {"__main__.py", "engine.py"},
     "module_spx_gamma": {"run.py"},
-    "module_swing_potential": {"indicators.py", "pipeline.py"},
+    "module_swing_potential": {"indicators.py"},
     "module_uw_interaction": {"engine.py"},
     "module_value_chain": {"edgar_text.py", "engine.py", "health.py"},
 }
