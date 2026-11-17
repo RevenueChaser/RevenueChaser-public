@@ -30,6 +30,10 @@ A dataset is due (``is_due``) when nothing holds it and its last run is old enou
   run that wrote the last check started ``HOURLY_MIN`` minutes ago or more (``job_runs2.started_at`` through the
   check's ``run_id``; ``dataset_check`` holds only a day). Start, not finish: a run that took ten minutes would
   otherwise miss every second hourly pass. A check with no run behind it is due;
+- a dataset in ``CHECK_DATES`` (``(month, day)`` pairs in New York) ignores its cadence: it is due once the newest
+  of those dates has passed and no check since then succeeded, and only in ``NIGHT_HOURS`` (New York, = 02-05 in
+  Amsterdam), so a heavy quarterly source (N-PORT) runs at night a few days after its release; a check that failed
+  waits for the next night;
 - ``weekly`` / ``monthly`` / ``quarterly``: due 7 / 30 / 91 days after the last check's ``checked_on``. The cadence is the
   ``dataset_schedule`` row's, else the dataset's own ``cadence`` attribute (the spine's weekly sources), else daily.
 
@@ -59,6 +63,13 @@ WRDS_FAILED_WHY = ("the last WRDS run failed: it waits for a person (no hourly r
 #: Providers whose day is too small to retry a failure every hourly pass (Alpha Vantage: 25 calls a day, shared by
 #: the earnings calendar and the listing status): a failed check is due again on the next New York day (#349 S6).
 DAY_CAPPED = frozenset({"alphavantage"})
+#: Datasets checked on fixed days, not on a cadence. Kept here, not on the dataset: a change to an ownership module is a
+#: rule change and rebuilds the whole kind (``dirty.rules_fingerprint``). N-PORT: the SEC posts a quarter's set on the
+#: 3rd-9th of Jan/Apr/Jul/Oct (2024-2026; 2025q3 came 18 Nov, a shutdown), so the night of the 15th (avo, 17 Nov 2026:
+#: "Senede 4 defa baksın").
+CHECK_DATES = {"sec/nport": ((1, 15), (4, 15), (7, 15), (10, 15))}
+#: The New York hours a ``CHECK_DATES`` dataset may start in: 20:00-22:59, 02:00-04:59 in Amsterdam.
+NIGHT_HOURS = range(20, 23)
 BY_HAND_WHY = "starts by hand: not due until a first run from the CLI or a Fetch has built it"
 #: The stage notes a partial run leaves (``base.skip_note``), by the modes whose run they complete: a raw + Parquet
 #: run also completes a raw-only mode, a raw-only run does not complete a raw + Parquet one.
@@ -74,6 +85,21 @@ def _day_raw_held(ds) -> bool:
     build or swap may retry on the next hourly pass (review S6a of #349). A dataset with no ``raw_path`` holds none."""
     raw_path = getattr(sys.modules[type(ds).__module__], "raw_path", None)
     return bool(raw_path and raw_path(ds.default_as_of()).exists())
+
+
+def _dated(ds, check: dict | None) -> tuple[bool, str]:
+    """``is_due`` for a ``CHECK_DATES`` dataset: the newest date passed, nothing checked since, at night."""
+    today = calendar.today_ny()
+    last = max(date(y, m, d) for y in (today.year - 1, today.year) for m, d in CHECK_DATES[ds.name]
+               if date(y, m, d) <= today).isoformat()
+    on = str(check["checked_on"])[:10] if check else ""
+    if on >= last and check["result"] != "failed":
+        return False, f"checked on {on}, after its check date {last}"
+    if check and check["result"] == "failed" and on >= today.isoformat():
+        return False, "failed today: again the next night"
+    if calendar._now().astimezone(calendar.NY).hour not in NIGHT_HOURS:
+        return False, f"check date {last} passed: waits for the night"
+    return True, f"check date {last} passed"
 
 
 def is_due(ds, mode: str = "full") -> tuple[bool, str]:
@@ -93,6 +119,8 @@ def is_due(ds, mode: str = "full") -> tuple[bool, str]:
     if hold and str(hold) > today:
         return False, f"held until {hold}"
     check = ops.latest_check(ds.name)
+    if ds.name in CHECK_DATES:
+        return _dated(ds, check)
     if check is None:
         return True, "never built"
     if "wrds" in getattr(ds, "providers", ()) and check["result"] == "failed":

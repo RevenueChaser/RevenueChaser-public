@@ -14,7 +14,7 @@ import pytest
 from RevenueChaser.core.providers import sec_edgar
 from RevenueChaser.rcdata import ops, read, serving
 from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.ownership import common, finra, ibkr, sec, sec13f, sec13f_listing, serve
+from RevenueChaser.rcdata.build.ownership import common, finra, ibkr, sec, sec13f, sec13f_list, sec13f_listing, serve
 from RevenueChaser.rcdata.build.spine import openfigi_map, wrds
 
 from . import ownership_fixture as ox
@@ -1040,3 +1040,24 @@ def test_a_family_needs_the_included_manager_link_and_the_same_firm_word():
              ("21", "3", "BLACKROCK SMALL LTD", "BLACKROCK ADVISORS")]              # the larger parent wins
     roots = serve.family_roots(edges, {"1": 9.0, "2": 8.0, "3": 1.0})
     assert roots == {"11": "1", "13": "1", "21": "2"}
+
+
+def test_a_quarters_cusips_not_on_the_13f_list_are_counted_not_dropped(monkeypatch, http_mock):
+    """#926: the SEC's 13(f) list for the quarter marks a CUSIP it does not hold; nothing leaves the totals."""
+    monkeypatch.setattr(sec, "_shared_pace", lambda: True)
+    monkeypatch.setenv("RC_HTTP_CONTACT", "ops@example.org")
+    _book_day(http_mock, {"2026-10-27": [(1.0, "09-30-2026")] * 4})
+    _serve()
+    held = _served("SELECT cusip, value FROM sec13f_cusip_map WHERE period = DATE '2026-09-30' ORDER BY value DESC")
+    totals = _served("SELECT ticker, value FROM sec13f_ticker_period ORDER BY ticker")
+    (top, top_value), rest = held[0], held[1:]
+    sec13f_list.raw_dir().mkdir(parents=True, exist_ok=True)
+    (sec13f_list.raw_dir() / "2026q3.txt").write_bytes(b"".join(
+        f"{c} {'ISSUER':<30}{'COM':<39}E\n".encode() for c, _ in rest)
+        + f"{top} {'DELETED':<30}{'COM':<20}*D*{'':<16}E\n".encode())
+    sec13f_list.DATASET.to_parquet_all(base.RunContext(run_id="l1", dataset=sec13f_list.NAME), [])
+    _serve()
+    detail = _issues()[("cusip_not_listed", "2026-09-30")]
+    assert detail.startswith(f"2026-09-30: 1 of {len(held)} CUSIP(s), ${top_value:,.0f} of ")
+    assert f"; the largest {top} (" in detail
+    assert _served("SELECT ticker, value FROM sec13f_ticker_period ORDER BY ticker") == totals

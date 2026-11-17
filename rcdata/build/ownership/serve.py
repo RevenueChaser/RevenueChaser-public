@@ -115,7 +115,9 @@ the plan's counts are, else the newest),
 ``filings_unparsed`` (per index day) and ``value_rescaled`` (the ``RESCALED_TOP`` filer-quarters whose rescale moved
 the most dollars, keyed ``cik|period``, with the median ratio and the names it rests on) and ``value_suspect`` (the
 ``RESCALED_TOP`` largest filer-quarters left as filed whose median ratio lies over 3 or under 1/3: their VALUE or their
-share counts are wrong, which the prices alone cannot tell; avo, 16 Nov 2026, Q14 of the 13F plan: listed, not changed).
+share counts are wrong, which the prices alone cannot tell; avo, 16 Nov 2026, Q14 of the 13F plan: listed, not changed)
+and ``cusip_not_listed`` (per period with a list, ``sec/13f_list``: the CUSIPs and dollars not on the SEC's 13(f) list
+for that quarter, with the largest as the example; #926: marked, nothing dropped).
 """
 from __future__ import annotations
 
@@ -130,7 +132,7 @@ from ....core.gics_map import UNCLASSIFIED
 from ... import ops, serving
 from .. import base, dirty
 from ..spine import openfigi_map, wrds
-from . import KIND, common, sec13f, sec13f_listing, uw_institutions
+from . import KIND, common, sec13f, sec13f_list, sec13f_listing, uw_institutions
 
 NAME = "ownership/serve"
 SPINE = "spine"
@@ -219,6 +221,8 @@ ISSUE_KINDS = {
                           "for it and was read at that price",
     "value_suspect": "one of the largest filer-quarters left as filed whose VALUE per share lies over 3 times above or "
                      "below the 13F's own prices (VALUE or share counts wrong)",
+    "cusip_not_listed": "a quarter's CUSIPs and dollars not on the SEC's Official List of Section 13(f) Securities for "
+                        "it (a typo, a stale CUSIP or a security that is not a 13(f) one): marked, not dropped",
 }
 
 # FINRA publishes a settlement date's short interest on the seventh business day after it (FINRA's equity short
@@ -1160,6 +1164,24 @@ class OwnershipServe:
                 ORDER BY abs(old_value - new_value) DESC, cik, period, cusip LIMIT {ROWS_TOP}""").fetchall():
             found.append(("value_row_replaced", f"{cik}|{period}|{cusip}",
                           f"{name or cik}, {period}, {cusip}: ${old:,.0f} read at the 13F's own price, ${new:,.0f}"))
+        listed = base.sql_path(sec13f_list.parquet_path())
+        if sec13f_list.parquet_path().exists():
+            for period, quarter, n, cusips, value, total, cusip, issuer in con.execute(f"""
+                    WITH l AS (SELECT DISTINCT quarter, cusip FROM read_parquet({listed})),
+                         m AS (SELECT period, strftime(period, '%Y') || 'q' || CAST(quarter(period) AS TEXT) AS quarter,
+                                      cusip, issuer_name, coalesce(value, 0) AS value FROM sec13f_cusip_map)
+                    SELECT m.period, m.quarter, count(*) FILTER (WHERE l.cusip IS NULL), count(*),
+                           sum(m.value) FILTER (WHERE l.cusip IS NULL), sum(m.value),
+                           arg_max(m.cusip, m.value) FILTER (WHERE l.cusip IS NULL),
+                           arg_max(m.issuer_name, m.value) FILTER (WHERE l.cusip IS NULL)
+                    FROM m LEFT JOIN l ON l.quarter = m.quarter AND l.cusip = m.cusip
+                    WHERE m.quarter IN (SELECT quarter FROM l)
+                    GROUP BY m.period, m.quarter ORDER BY m.period""").fetchall():
+                if n:
+                    found.append(("cusip_not_listed", str(period),
+                                  f"{period}: {n:,} of {cusips:,} CUSIP(s), ${value or 0:,.0f} of ${total or 0:,.0f} "
+                                  f"({(value or 0) / total * 100 if total else 0:.2f}%), not on the 13(f) list "
+                                  f"{quarter}; the largest {cusip} ({issuer or '?'})"))
         for day, n, acc, why in con.execute(f"""
                 SELECT index_day, count(*), min(accession), any_value(detail) FROM {sec13f.TABLE}
                 WHERE status = 'unparsed' GROUP BY index_day ORDER BY index_day""").fetchall():
