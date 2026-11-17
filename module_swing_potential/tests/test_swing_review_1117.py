@@ -5,6 +5,7 @@ F5: ``OPERATING_ONLY`` changes who is scanned (so every percentile): a saved val
 default board keeps its hash.
 F15: a stale name scored above the stale-drop cap carries ``ohlc_stale`` onto its card (an "Old price" chip).
 F17: the scan never reads a bar dated after the latest complete session.
+F6: a #116 price-hygiene flag (flag only) is carried onto its card (a "Check price" chip).
 B2, C2, D1 (avo 17 Nov): Qullamaggie needs the prior move and a tightening; Minervini 30 % above the low;
 Weinstein's volume spike counts only on an up day.
 """
@@ -137,3 +138,17 @@ def test_d1_a_volume_spike_on_a_down_day_does_not_confirm():
     df.iloc[-1, df.columns.get_loc("Volume")] = 4_000_000.0
     df.iloc[-1, df.columns.get_loc("Close")] = df["Close"].iloc[-2] * 0.97     # the spike day closes down
     assert indicators.compute_indicators(df)["vol_ratio"] < 1.5
+
+
+# ── F6: a #116 price-hygiene flag reaches the card (the name is still scored) ───────────────────
+def test_a_price_flag_is_carried_onto_the_card(scenario, monkeypatch):
+    real = pipeline.build_payload
+
+    def flagged(results, top_n=None, run_stats=None, eff=None):
+        return real(results, top_n=top_n, run_stats={**(run_stats or {}), "price_flags": {"bad_wick": ["UP1"]}},
+                    eff=eff)
+    monkeypatch.setattr(pipeline, "build_payload", flagged)
+    payload = pipeline.run_scan()
+    flags = {c["ticker"]: c.get("price_flag") for c in payload["candidates"]}
+    assert flags.get("UP1") == "bad_wick"
+    assert all(v is None for t, v in flags.items() if t != "UP1")
