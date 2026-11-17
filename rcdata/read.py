@@ -1144,6 +1144,21 @@ _DOC_COLUMNS = ("cik, accession, form, filing_date, report_date, document AS pri
 _DOC_COLUMNS_NO_TEXT = _DOC_COLUMNS.replace("section AS item, text, chars", "section AS item, chars")
 
 
+def _newest_section_sql(cols: str, n: int) -> str:
+    """Per company the newest ``filing_section`` row of one section: params ``[section, *ciks] * 2``.
+
+    The window ranks the keys only and the text is fetched after, by key: a window over the text column held every
+    candidate's text in its buffers, and eight SEC-read workers doing that at once ran out of a 1 GiB and a 3 GiB
+    read limit (rc-sec-read, 16-17 Nov 2026).
+    """
+    where = f"section = ? AND cik IN ({', '.join('?' * n)})"
+    return (f"WITH newest AS (SELECT cik, accession, document FROM filing_section WHERE {where} "
+            "QUALIFY row_number() OVER (PARTITION BY cik ORDER BY filing_date DESC, accession DESC, "
+            "document DESC) = 1) "
+            f"SELECT {cols} FROM filing_section SEMI JOIN newest USING (cik, accession, document) "
+            f"WHERE {where} ORDER BY cik")
+
+
 def filing_text(cik, item: str = "business") -> dict | None:
     """The served text of company ``cik``'s newest annual report (``item`` ``business`` or ``whole``) or proxy
     (``proxy``), with its ``quality``; None when there is none."""
@@ -1168,10 +1183,7 @@ def filing_texts(ciks: Iterable, item: str = "business", text: bool = True) -> l
     if not wanted:
         return []
     cols = _DOC_COLUMNS if text else _DOC_COLUMNS_NO_TEXT
-    return _rows("filing_section", f"SELECT {cols} FROM filing_section WHERE section = ? "
-                                   f"AND cik IN ({', '.join('?' * len(wanted))}) "
-                                   "QUALIFY row_number() OVER (PARTITION BY cik ORDER BY filing_date DESC, "
-                                   "accession DESC, document DESC) = 1 ORDER BY cik", [str(item), *wanted])
+    return _rows("filing_section", _newest_section_sql(cols, len(wanted)), [str(item), *wanted] * 2)
 
 
 def segments(cik, axis: str | None = None, source: str | None = None) -> list[dict]:
@@ -1812,11 +1824,7 @@ def form_sections(ciks: Iterable = (), *, section: str, text: bool = True) -> li
     if not wanted:
         return []
     cols = "*" if text else "* EXCLUDE (text)"
-    return _rows("filing_section",
-                 f"SELECT {cols} FROM filing_section WHERE section = ? "
-                 f"AND cik IN ({', '.join('?' * len(wanted))}) "
-                 "QUALIFY row_number() OVER (PARTITION BY cik ORDER BY filing_date DESC, accession DESC, "
-                 "document DESC) = 1 ORDER BY cik", [str(section), *wanted])
+    return _rows("filing_section", _newest_section_sql(cols, len(wanted)), [str(section), *wanted] * 2)
 
 
 def form_whole(ciks: Iterable = (), text: bool = True) -> list[dict]:
@@ -1846,17 +1854,20 @@ def form_notes(ciks: Iterable = (), local_name: str | None = None, kind: str | N
     if not wanted:
         return []
     cols = "*" if text else "* EXCLUDE (text)"
-    sql = (f"SELECT {cols} FROM filing_note WHERE cik IN ({', '.join('?' * len(wanted))})")
+    where = f"cik IN ({', '.join('?' * len(wanted))})"
     params: list = list(wanted)
     if local_name is not None:
-        sql += " AND local_name = ?"
+        where += " AND local_name = ?"
         params.append(str(local_name))
     if kind is not None:
-        sql += " AND kind = ?"
+        where += " AND kind = ?"
         params.append(str(kind))
-    sql += (" QUALIFY dense_rank() OVER (PARTITION BY cik ORDER BY filing_date DESC, accession DESC) = 1 "
-            "ORDER BY cik, document, seq")
-    return _rows("filing_note", sql, params)
+    # The newest accession is ranked without the text, then its blocks are read by key (``_newest_section_sql``).
+    sql = (f"WITH newest AS (SELECT cik, accession FROM filing_note WHERE {where} "
+           "QUALIFY dense_rank() OVER (PARTITION BY cik ORDER BY filing_date DESC, accession DESC) = 1) "
+           f"SELECT {cols} FROM filing_note SEMI JOIN newest USING (cik, accession) WHERE {where} "
+           "ORDER BY cik, document, seq")
+    return _rows("filing_note", sql, params * 2)
 
 
 # ── The SEC reader tool: ``sec_reads.duckdb`` ───────────────────────────────────────────────────────────────────
