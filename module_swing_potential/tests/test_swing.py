@@ -10,10 +10,11 @@ from RevenueChaser.module_swing_potential.pipeline import build_payload
 from RevenueChaser.module_swing_potential.report import render_swing_dashboard
 
 
-def test_pipeline_imports_load_ticker_info():
+def test_swing_no_longer_imports_load_ticker_info():
+    """Swing review F1 (#645 A): Swing has no Yahoo ``.info`` read; Fundamentals' own read is its board's lane."""
     from RevenueChaser.module_swing_potential import pipeline as sp
     from RevenueChaser.module_fundamentals import pipeline as fp
-    assert hasattr(sp, "load_ticker_info")
+    assert not hasattr(sp, "load_ticker_info")
     assert hasattr(fp, "load_ticker_info")
 
 

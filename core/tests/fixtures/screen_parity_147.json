@@ -2009,7 +2009,6 @@
     "quote_session": "2026-10-14",
     "short_refetch_refused": 0,
     "spy_stale": false,
-    "stale_info": 0,
     "stale_ohlc": 0
    },
    "funnel_steps": [
@@ -2095,36 +2094,6 @@
     "minervini": 4,
     "qullamaggie": 0,
     "weinstein": 0
-   },
-   "provider_health": {
-    "auth_error": null,
-    "breaker_open": false,
-    "calls": 5,
-    "failed": 5,
-    "failures": [
-     {
-      "endpoint": "BELOW50.info",
-      "error": "empty"
-     },
-     {
-      "endpoint": "DOWN1.info",
-      "error": "empty"
-     },
-     {
-      "endpoint": "FAR.info",
-      "error": "empty"
-     },
-     {
-      "endpoint": "NOEDGAR.info",
-      "error": "empty"
-     },
-     {
-      "endpoint": "UP2.info",
-      "error": "empty"
-     }
-    ],
-    "provider": "yfinance",
-    "skipped_calls": 0
    },
    "regime": "RISK-ON",
    "selection_version": "5",

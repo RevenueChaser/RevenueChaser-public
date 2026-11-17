@@ -496,7 +496,8 @@ function start(){
         "A long-side momentum scan of US-listed stocks through three swing-trading setups: "
         "<b>Minervini</b> (the 8-point trend template), <b>Weinstein</b> (stage 2 advance) and "
         "<b>Qullamaggie</b> (breakout). The tiles count the names passing each one; options flow is not "
-        "part of the score. Prices and company data come from <b>Yahoo</b>. <b>Fetch</b> runs the scan "
+        "part of the score. Names come from the identity spine and prices from the prices store. "
+        "<b>Fetch</b> runs the scan "
         "and stores the scores. <b>Refresh</b> shows the last Fetch's stored result with no network "
         "call and no re-scoring.")
     if current_version:
@@ -588,7 +589,7 @@ function start(){
   <div class="grid" id="grid">{cards}</div>
 
   <footer>
-    <span>Sources: {names_from} (names) · daily bars (Unusual Whales, yfinance fallback) · Yahoo Finance (company info, market caps) · Unusual Whales (flow — manual only). For information only, not financial advice.</span>
+    <span>Sources: {names_from} (names) · daily bars and market caps (prices store) · Unusual Whales (flow — manual only). For information only, not financial advice.</span>
     <span id="flow-flag">Flow not scanned</span>
   </footer>
 </div>
