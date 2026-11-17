@@ -208,14 +208,14 @@ REGISTRY: tuple[AutomationEntry, ...] = (
         settings=TaskSettings(restart_count=0, time_limit_minutes=90)),
     AutomationEntry(
         name="RC-ValueChain-Sync", label="Value Chain links (nightly, after the SEC reads)",
-        args=("-m", "RevenueChaser.module_value_chain", "--nightly"), time="02:45", after="RC-SEC-Read",
+        args=("-m", "RevenueChaser.module_value_chain", "--nightly"), time="04:20", after="RC-SEC-Read",
         description="Rebuilds the Value Chain links once tonight's SEC reads exited 0 (avo, 17 Nov 2026: the SEC "
                     "engine first, then Value Chain; the Relatedness profiles of the Sunday run are read the night "
                     "after). It reads the SEC layer's annual reports, their XBRL customers and the stored profiles: "
                     "no download, no model call. Off the layer it exits 3 and asks for nothing. The rebuild runs in "
                     "the dashboard (POST /run/module_value_chain, the one writer): the task only queues it and "
-                    "waits; with the dashboard down it exits 1. 02:45 is after the SEC reads' 90-minute limit "
-                    "(01:10). Writes boards/value_chain.duckdb (chain_mentions, chain_meta).",
+                    "waits; with the dashboard down it exits 1. 04:20 is after the SEC reads' 90-minute limit "
+                    "(the server's timer starts them at 02:35) and clear of the hourly builder pass. Writes boards/value_chain.duckdb (chain_mentions, chain_meta).",
         tables_written=("chain_mentions", "chain_meta"),
         chain_wait_minutes=20,
         settings=TaskSettings(restart_count=0, time_limit_minutes=90)),
