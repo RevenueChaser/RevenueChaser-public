@@ -76,15 +76,20 @@ class TestTradeRead:
 class TestAttentionScore:
     def test_today_leading_excellent(self):
         today = date.today()
-        # 0.35*100 + 0.25*100 + 0.20*100 + 0.10*100 + 0.10*100 = 100
-        assert _attention_score(100, 100, "Excellent", "LEADING", today) == 100.0
+        # 0.35*100 + 0.25*100 + 0.20*100 + 0.10*50 (rotation neutral, D1) + 0.10*100 = 95
+        assert _attention_score(100, 100, "Excellent", "LEADING", today) == 95.0
 
     def test_low_everything(self):
         today = date.today()
-        # 0.35*0 + 0.25*0 + 0.20*20 + 0.10*0 + 0.10*100 = 4 + 10 = 14
-        assert _attention_score(0, 0, "Thin", "LAGGING", today) == 14.0
+        # 0.35*0 + 0.25*0 + 0.20*20 + 0.10*50 + 0.10*100 = 4 + 5 + 10 = 19
+        assert _attention_score(0, 0, "Thin", "LAGGING", today) == 19.0
 
     def test_far_future_proximity_zero(self):
         future = date.today().replace(year=date.today().year + 1)
-        # 0.35*100 + 0.25*0 + 0.20*100 + 0.10*100 + 0.10*0 = 35 + 20 + 10 = 65
-        assert _attention_score(100, 0, "Excellent", "LEADING", future) == 65.0
+        # 0.35*100 + 0.25*0 + 0.20*100 + 0.10*50 + 0.10*0 = 35 + 20 + 5 = 60
+        assert _attention_score(100, 0, "Excellent", "LEADING", future) == 60.0
+
+    def test_rotation_quadrant_is_neutral_d1(self):
+        today = date.today()
+        assert _attention_score(50, 50, "Tradeable", "LEADING", today) == \
+            _attention_score(50, 50, "Tradeable", "LAGGING", today)

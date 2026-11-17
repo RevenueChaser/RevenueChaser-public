@@ -73,5 +73,7 @@ class TestMethodologyStringsFollowConfig:
     def test_etf_count_is_the_rotation_universe(self, tmp_path):
         from RevenueChaser.module_sector_rotation.universe import ROTATION_ETFS
         html = self._html(tmp_path)
-        assert f"across all {len(ROTATION_ETFS)} ETFs" in html
+        etfs = [t for t, i in ROTATION_ETFS.items() if i.get("group") not in ("yield", "commodity")]
+        assert f"each of the {len(etfs)} ETFs against its own history" in html
+        assert "Z-score normalized" not in html
         assert "all 46 ETFs" not in html
