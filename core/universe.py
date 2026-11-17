@@ -175,7 +175,8 @@ def _spine_universe() -> list[dict]:
         cap = n.get("market_cap") if r.get("security_type") in EXCLUDED_TYPES else n.get("issuer_market_cap")
         out.append({"ticker": r["ticker"], "market_cap": cap, "price": n.get("price"), "quote": None,
                     "name": r.get("name") or "", "sector": r.get("sector") or "",
-                    "industry": r.get("industry") or "", "industry_group": None, "sub_industry": None})
+                    "industry": r.get("industry") or "", "industry_group": None, "sub_industry": None,
+                    "security_type": r.get("security_type")})
     return out
 
 
@@ -320,6 +321,7 @@ def load_cached_universe() -> list[dict]:
             "industry_group": r.get("industry_group") or "",
             "sub_industry": r.get("sub_industry") or "",
             "quote": r.get("quote"),
+            "security_type": r.get("security_type"),
         }
         if isinstance(rec["quote"], str):
             try:

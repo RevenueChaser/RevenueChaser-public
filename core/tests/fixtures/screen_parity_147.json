@@ -3,6 +3,7 @@
   "fetch": {
    "candidates": [
     {
+     "adr": false,
      "anchor_period_end": null,
      "bucket": "rule_of_40+momentum",
      "debt_basis": "filed",
@@ -126,6 +127,7 @@
      "ticker": "UP3"
     },
     {
+     "adr": false,
      "anchor_period_end": null,
      "bucket": "rule_of_40+momentum",
      "debt_basis": "filed",
@@ -249,6 +251,7 @@
      "ticker": "UP1"
     },
     {
+     "adr": false,
      "anchor_period_end": null,
      "bucket": "rule_of_40+quality",
      "debt_basis": "filed",
@@ -372,6 +375,7 @@
      "ticker": "BELOW50"
     },
     {
+     "adr": false,
      "anchor_period_end": null,
      "bucket": "rule_of_40+quality",
      "debt_basis": "filed",
@@ -495,6 +499,7 @@
      "ticker": "FAR"
     },
     {
+     "adr": false,
      "anchor_period_end": null,
      "bucket": "quality+momentum",
      "debt_basis": "filed",

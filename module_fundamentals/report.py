@@ -93,6 +93,7 @@ input[type=text]{flex:1;min-width:200px}
 .event{color:var(--amber);font-size:11px;line-height:1.35}
 .event .when{color:var(--muted)}
 .prov{color:var(--muted);font-size:11px;line-height:1.3}
+.adr-warn{color:var(--amber);font-size:11px;white-space:nowrap}
 .gate{flex:1;min-height:44px;background:var(--panel2);color:var(--muted);border:1px solid var(--border);border-radius:6px;padding:5px 0;cursor:pointer;font-weight:700;font-size:12px}
 .gate.on{color:var(--green);border-color:color-mix(in srgb,var(--pos) 40%,transparent)}
 .gate.off{color:var(--red)}
@@ -395,7 +396,9 @@ function cardHtml(c){
     + cell("Period", rcEsc(c.period))
     + cell("Growth / FCF margin", growthMargin(c))
     + cell("Price", usd(c.price))
-    + cell("Mkt cap", usd(c.market_cap))
+    // Plan decision B: an ADR's cap ignores the depositary ratio, so its P/E and P/B are "–" until the ratio arrives.
+    + cell("Mkt cap", usd(c.market_cap) + (c.adr ? ' <span class="adr-warn" title="ADR: the cap is the issuer\'s'
+        + ' and ignores the depositary ratio, so P/E and P/B show – until the ADR ratio arrives">⚠ P/E – P/B –</span>' : ''))
     + '</div>'
     + evLine
     + stLine

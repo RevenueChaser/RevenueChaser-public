@@ -634,8 +634,11 @@ def _compute_row(row: dict, spy_df, no_fetch: bool = False, spine: dict | None =
                             debt_note=(emeta or {}).get("debt_note"))
     market_cap = _to_float(row.get("market_cap")) or _to_float(info.get("marketCap"))
 
-    pe = (market_cap / ttm["ttm_net_income"]) if (market_cap and ttm["ttm_net_income"] and ttm["ttm_net_income"] > 0) else None
-    pb = (market_cap / qual["total_equity"]) if (market_cap and qual["total_equity"] and qual["total_equity"] > 0) else None
+    # Plan 2026-11-16 decision B (avo, 17 Nov): an ADR's cap is the issuer's, which ignores the depositary ratio
+    # (BP: $718B, P/E 13,050), so its P/E and P/B are unknown until the WRDS ADR ratio arrives; the card marks it.
+    adr = row.get("security_type") == "adr"
+    pe = None if adr else (market_cap / ttm["ttm_net_income"]) if (market_cap and ttm["ttm_net_income"] and ttm["ttm_net_income"] > 0) else None
+    pb = None if adr else (market_cap / qual["total_equity"]) if (market_cap and qual["total_equity"] and qual["total_equity"] > 0) else None
 
     rs_6m = None
     if spy_df is not None and not spy_df.empty:
@@ -675,7 +678,7 @@ def _compute_row(row: dict, spy_df, no_fetch: bool = False, spine: dict | None =
     anchor_end = fiscal_year.period_end(annual[ai]) if ai is not None else None
 
     return {
-        "ticker": ticker, "name": name, "price": price, "market_cap": market_cap,
+        "ticker": ticker, "name": name, "price": price, "market_cap": market_cap, "adr": adr,
         "sector": gics.sector, "industry": gics.industry,
         "themes": themes,
         "earnings_date": _to_float((row.get("quote") or {}).get("earningsTimestampStart")),
@@ -749,7 +752,7 @@ def build_payload(results: list[dict], top_n: int | None = None, run_stats: dict
             distorted_count += 1
         candidates.append({
             "ticker": r["ticker"], "name": r["name"], "price": r["price"],
-            "market_cap": r["market_cap"], "sector": r["sector"], "industry": r["industry"],
+            "market_cap": r["market_cap"], "adr": bool(r.get("adr")), "sector": r["sector"], "industry": r["industry"],
             "themes": r["themes"], "earnings_date": r["earnings_date"], "period": r["period"],
             "rules_passed": rules_passed,
             "passed_count": passed_count,

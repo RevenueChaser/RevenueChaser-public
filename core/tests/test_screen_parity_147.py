@@ -45,6 +45,8 @@ only difference (the scenario's ROICs sit well above the floor), edited by hand.
 revenue and P/E) moved it to 10 the same way.
 To re-capture on another commit, run this file with ``RC_PARITY_CAPTURE=<path>`` (it writes the snapshot there
 instead of comparing).
+Plan decision B (ADR P/E and P/B unknown) added the additive per-candidate ``adr`` key, false for all five
+scenario candidates (none is typed ADR), edited in by hand like ``debt_basis``.
 """
 from __future__ import annotations
 
