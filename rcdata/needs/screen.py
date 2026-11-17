@@ -118,6 +118,8 @@ WRITTEN_COLUMN: dict[str, str] = {
     'er_options': 'session_date',
     'estimate_latest': 'source_as_of',
     'etf': 'source_as_of',
+    'etf_class': 'as_of',
+    'etf_class_changes': 'as_of',
     'etf_holdings': 'as_of',
     'filing_item': 'filing_date',
     'filing_note': 'filing_date',

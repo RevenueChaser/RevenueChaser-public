@@ -59,7 +59,7 @@ MAX_SHRINK = 0.01
 #     source's choice, not ours. Read from ``RC-Build.log`` on homesrv, 14 Nov 2026: a build served 114 rows
 #     against 126 live (-9.5 %), and that one refused swap failed the whole ``market`` build every hour from
 #     00:05 UTC on (one serving file per kind, one swap: ``build/base.py`` ``build_kind_many``).
-SHRINKS_BY_CHOICE = ("my_universe", "economic_event")
+SHRINKS_BY_CHOICE = ("my_universe", "economic_event", "etf_class")
 # The tables a kind's code no longer builds, by kind: the live file may still hold one, and the build may leave it
 # out (its swap removes it with the old file). Any other live table missing from a build is still refused, because
 # that is a build from a partial Parquet tree. ``allow_shrink`` cannot stand in for this: the "missing" check comes

@@ -49,7 +49,7 @@ from ....core.gics_map import SHELL_SPAC, UNCLASSIFIED, canonical_sector
 from ....core.identity import isin as isin_mod
 from ... import ops
 from .. import base
-from . import KIND, etf, my_universe, stage, tier as tier_rule, views
+from . import KIND, etf, etf_class, my_universe, stage, tier as tier_rule, views
 from .funds import NAME as FUNDS
 from .openfigi_map import FIGI_BY_CUSIP, FIGI_BY_TICKER, NAME as OPENFIGI, PRESENT
 from .sec_tickers import NAME as SEC
@@ -58,7 +58,7 @@ from .wrds import CO_HGIC, IDXCST_HIS, INDEX_GVKEYX, SEC_IDHIST, norm_cik
 
 NAME = "spine/security"
 TABLES = ("security", "security_history", "gics_history", "index_membership", etf.TABLE,
-          my_universe.TABLE, my_universe.CHANGES)
+          my_universe.TABLE, my_universe.CHANGES, etf_class.TABLE, etf_class.CHANGES)
 # Compustat ``exchg`` codes of the US exchanges the SEC file's listed rows trade on: NYSE, AMEX, Nasdaq.
 US_EXCHG = (11, 12, 14)
 # How far ahead of a fund day's SEC snapshot (the newest on or before the day) a line is looked for (delta S1): a fund
@@ -94,7 +94,8 @@ def _sic_text(v) -> str | None:
 
 SCHEMAS = {"security": SECURITY, "security_history": HISTORY, "gics_history": GICS, "index_membership": MEMBERSHIP,
            etf.TABLE: etf.SCHEMA, my_universe.TABLE: my_universe.SCHEMA,
-           my_universe.CHANGES: my_universe.CHANGES_SCHEMA}
+           my_universe.CHANGES: my_universe.CHANGES_SCHEMA,
+           etf_class.TABLE: etf_class.SCHEMA, etf_class.CHANGES: etf_class.CHANGES_SCHEMA}
 
 # The plan's named problems, one kind each; ``key`` is the ticker unless the kind says otherwise.
 ISSUE_KINDS = {
@@ -129,6 +130,8 @@ ISSUE_KINDS = {
                                    "(key: the ticker)"),
     "my_universe_both_kinds": ("a ticker the stock rule and the ETF rule both claim; kept as the stock "
                                "(key: the ticker)"),
+    "etf_class_manual_unknown": ("a line of the manual ETF class file naming a ticker that is no ETF of "
+                                 "my_universe (key: the ticker)"),
 }
 
 # GICS names (the 2023 structure) of the two levels the bridge names come from.
@@ -370,6 +373,7 @@ class SpineSecurity:
     kind = KIND
     providers: tuple[str, ...] = ()
     tables = TABLES
+    parquet_reads = (etf_class.NPORT,)          # the ETFs' holdings behind ``etf_class`` (dirty.read_dirs)
     cadence = "daily"
     backfill_needs_from = False
     starts_by_hand = True             # not due until a first CLI run or Fetch built it (review should-fix 2)
@@ -524,6 +528,10 @@ class SpineSecurity:
         counts[my_universe.CHANGES] = _create(con, my_universe.CHANGES, changes)
         ctx.notes.append(f"{sum(1 for r in mine if r['kind'] == my_universe.STOCK)} stocks and "
                          f"{sum(1 for r in mine if r['kind'] == my_universe.ETF)} ETFs in {my_universe.TABLE}")
+        classes, class_changes, class_issues = etf_class.rows(ctx, con)       # reads all three: after them
+        found += class_issues
+        counts[etf_class.TABLE] = _create(con, etf_class.TABLE, classes)
+        counts[etf_class.CHANGES] = _create(con, etf_class.CHANGES, class_changes)
         views.create(con)
         ctx.pending[NAME] = found
         return counts
