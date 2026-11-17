@@ -567,8 +567,8 @@ def precompute(windows=None, horizon: int | None = None,
 
     Every run it stores carries ``run_id`` (the Fetch's, #379 D2; one fresh id
     for the whole call when none is given). ``as_ofs``, when given, receives
-    ``{window: as_of}`` of each window's run, computed or reused, so the Fetch's
-    header can list them. It records no header itself.
+    ``{window: as_of}`` of each window's run, computed or reused (no caller reads it today; the run header it
+    once fed is gone).
     """
     windows = config.PRECOMPUTE_WINDOWS if windows is None else tuple(windows)
     run_id = run_id or ledger.new_run_id()
@@ -669,15 +669,22 @@ def _window_prices(price_tickers, tickers, bench_ticker, eff, horizon):
     return prices, last, first, _flat_in_window(prices, tickers, eff.window, horizon, whole), cut is not None
 
 
-def _daily_under(prices, ret, horizon: int):
+def _daily_under(prices, ret, horizon: int, bench: str | None = None, winsor_k: float | None = None):
     """The daily log returns under ``ret``'s ``horizon``-session ones (``horizon - 1`` rows more, same columns),
-    which the h > 1 null shuffles and sums (Co-movement review S1); ``None`` at 1 day or when they do not line up."""
+    which the h > 1 null shuffles and sums (Co-movement review S1); ``None`` at 1 day or when they do not line up.
+
+    With ``bench`` they are residualised on its daily returns the way the board's groups are (``winsor_k``: the beta
+    on clipped returns), so the null is drawn from the same kind of series it judges (review v2, N10)."""
     if int(horizon) <= 1 or ret is None or ret.empty:
         return None
     p = prices.loc[:ret.index[-1], [c for c in ret.columns if c in prices.columns]].tail(len(ret) + int(horizon))
     if p.shape[1] != ret.shape[1] or len(p) != len(ret) + int(horizon) or not p.index[int(horizon):].equals(ret.index):
         return None
-    return np.log(p / p.shift(1)).iloc[1:].replace([np.inf, -np.inf], np.nan)
+    daily = np.log(p / p.shift(1)).iloc[1:].replace([np.inf, -np.inf], np.nan)
+    if bench and bench in prices.columns:
+        b = prices[bench].loc[p.index]
+        daily = returns_mod.residualize(daily, np.log(b / b.shift(1)).iloc[1:], winsor_k)
+    return daily
 
 
 def run(no_fetch: bool = False, tickers: list[str] | None = None,
@@ -840,7 +847,9 @@ def run(no_fetch: bool = False, tickers: list[str] | None = None,
     if persisting:
         null = noise.selected_group_null(clustered_ret, cuts, cluster_fn,
                                          n_perm=noise.NULL_PERMS, horizon=horizon,
-                                         daily=_daily_under(prices, clustered_ret, horizon),
+                                         daily=_daily_under(prices, clustered_ret, horizon,
+                                                           bench_ticker if benchmark_applied else None,
+                                                           eff.winsor_k),
                                          winsor_k=eff.winsor_k)
         # Out-of-sample persistence: one extra clustering on the window ending
         # a quarter ago, tested on that quarter only (persistence.py). A short
