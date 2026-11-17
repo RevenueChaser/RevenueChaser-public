@@ -236,8 +236,12 @@ _T3 = dict(rev_growth_ttm=0.30, fcf_margin=0.20, ro40=45.0, ttm_revenue=2e9,
            dist_52w_pct=0.95, rs_6m=0.1, above_200d=True)
 _C2 = dict(rev_growth_ttm=0.30, fcf_margin=0.20, ro40=90.0, ttm_revenue=2e9,
            roic=0.20, gross_margin=0.40, net_debt_ebitda=1.0)
-_D2 = dict(rev_growth_ttm=0.30, fcf_margin=0.20, ro40=95.0, ttm_revenue=5e6,   # a higher Ro40 than C2: only DISTORTED puts it last
-           roic=0.20, gross_margin=0.40, net_debt_ebitda=1.0)
+# A higher Ro40 than C2 and two rules passed as well: only DISTORTED puts it last. Since avo C1 and the 18 Nov 2026
+# re-review a distorted name passes neither the Rule of 40 nor (on a micro revenue) Quality, so its two are Quality on
+# ROIC and Momentum.
+_D2 = dict(rev_growth_ttm=3.0, fcf_margin=0.20, ro40=95.0, ttm_revenue=2e9,
+           roic=0.20, gross_margin=0.40, net_debt_ebitda=1.0,
+           dist_52w_pct=0.95, rs_6m=0.1, above_200d=True)
 
 
 def test_the_sort_is_count_then_distorted_then_rule_of_40():

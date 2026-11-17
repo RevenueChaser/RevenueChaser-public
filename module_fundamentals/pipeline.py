@@ -747,7 +747,7 @@ FUNDAMENTAL_GATES = frozenset({"rule_of_40", "quality"})
 
 def build_payload(results: list[dict], top_n: int | None = None, run_stats: dict = None) -> dict:
     """The board payload. Every candidate is kept (card 6/7, #383 R3 C12); ``top_n`` cuts only when given."""
-    run_stats = run_stats or {}
+    run_stats = {} if run_stats is None else run_stats      # an empty dict the caller passed is the one it reads
     results = results or []
 
     passing = {"rule_of_40": 0, "quality": 0, "momentum": 0}

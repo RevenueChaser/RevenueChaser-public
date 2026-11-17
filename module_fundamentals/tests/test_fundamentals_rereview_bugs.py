@@ -36,14 +36,17 @@ def test_the_old_period_note_is_added_once():
 
 
 def test_a_fiscal_year_basis_labels_the_card_with_its_years(monkeypatch):
-    """C1 of the TTM filings is a trailing-year Rule of 40, but it carries no Quality figure for the trailing year, so
-    D1 puts the card on the fiscal year; the label used to keep naming the quarters."""
+    """C1 of the TTM filings is a trailing-year Rule of 40. When Quality cannot read that trailing year, D1 puts the
+    card on the fiscal year; the label used to keep naming the quarters."""
     from RevenueChaser.core.providers import sec_edgar as se
     from RevenueChaser.module_fundamentals.tests import ttm_filings_148 as ft
     from RevenueChaser.module_fundamentals.tests.test_fundamentals_w3_386 import _compute
     (name,) = [k for k in ft.CASES if k.startswith("C1 ")]
     facts = ft.CASES[name]
     annual, quarterly = se.extract_annual(facts), se.extract_quarterly(facts)
+    from RevenueChaser.module_fundamentals import pipeline
+    real = pipeline._quality_metrics
+    monkeypatch.setattr(pipeline, "_quality_metrics", lambda *a, **k: {**real(*a, **k), "quality_basis": "FY"})
     row, _drops = _compute(monkeypatch, annual, edgar=lambda t, no_fetch=False: (annual, quarterly, {}))
     assert row is not None
     assert row["metrics"]["ro40_basis"].startswith("FY")
