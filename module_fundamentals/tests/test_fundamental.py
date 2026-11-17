@@ -152,7 +152,8 @@ def test_render_dashboard_universe_provenance():
     html = render_fundamental_dashboard(p)
     assert "Universe refreshed by" in html
     assert "Fundamentals" in html
-    assert "Flow not scanned" in html
+    # Plan 2026-11-16 (board cleanup): the board scans no flow and reads no Yahoo prices, so it says neither.
+    assert "Flow not scanned" not in html and "Yahoo" not in html and "Unusual Whales" not in html
 
 
 def test_help_states_the_note_length_rule_867():
