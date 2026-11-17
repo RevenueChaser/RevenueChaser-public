@@ -739,7 +739,7 @@
     "skipped_calls": 0
    },
    "regime": "RISK-ON",
-   "selection_version": "11",
+   "selection_version": "12",
    "statements_source": "layer",
    "summary": {
     "data_short": 1,
@@ -765,6 +765,7 @@
     "spy_3m_return": 0.0474,
     "spy_price": 57.58,
     "spy_sma200": 51.93,
+    "spy_missing": false,
     "spy_stale": false,
     "stale_ohlc": 0,
     "top_n": 5
