@@ -78,3 +78,19 @@ def test_locked_and_repeat_jump_read_only_the_last_60_sessions_891():
     assert ph.locked(_frame(_walk(80) + [50] * 5)) == "locked"
     old_jumps = _walk(20) + [130, 131, 130] + [170, 171, 170] + [170 + (i % 3) for i in range(ph.RECENT)]
     assert ph.repeat_jump(_frame(old_jumps)) is None
+
+
+def test_a_spike_and_a_wick_older_than_60_sessions_are_not_flagged_891():
+    """The 16 Nov measurement: over the whole bar window ``unexplained_jump`` flagged 8.5 % of the universe and
+    ``bad_wick`` 12.2 %, mostly for prints a year or more old. Both now read the last ``RECENT`` sessions only."""
+    tail = [100 + (i % 3) for i in range(ph.RECENT)]
+    old_spike = _walk(20) + [200] + _walk(5) + tail
+    assert ph.unexplained_jump(_frame(old_spike), _frame(old_spike)) is None
+    new_spike = _walk(80) + [200] + _walk(5)
+    assert ph.unexplained_jump(_frame(new_spike), _frame(new_spike)) == "unexplained_jump"
+    closes = _walk(10) + tail
+    highs = [c * 1.01 for c in closes]
+    highs[4] = closes[4] * 1.6                          # a wick 70 sessions back
+    assert ph.bad_wick(_frame(closes, highs=highs)) is None
+    highs[-3] = closes[-3] * 1.6                        # and one 3 sessions back
+    assert ph.bad_wick(_frame(closes, highs=highs)) == "bad_wick"
