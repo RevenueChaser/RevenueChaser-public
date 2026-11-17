@@ -10,7 +10,7 @@ Nothing here imports another module: a reference table that the price writer, th
 and the earnings radar all read must not drag a board in behind it.
 """
 
-# ── The RRG symbols: 99 ETFs (sector, theme, style, industry, region, bond); the 11 macro series below are listed for their
+# ── The RRG symbols: 97 ETFs (sector, theme, style, industry, region, bond); the 11 macro series below are listed for their
 #    names and go to the macro table, not the map (B1) ──
 ROTATION_ETFS = {
     # ── Sectors (11) ──
@@ -57,10 +57,8 @@ ROTATION_ETFS = {
     "HACK": {"name": "Cybersecurity", "group": "theme"},
     "XHB":  {"name": "Homebuilders", "group": "theme"},
     "XRT":  {"name": "Retail", "group": "theme"},
-    "ARKW": {"name": "Next Generation Internet", "group": "theme"},
     # from avo's watch lists (17 Nov 2026)
     "REMX": {"name": "Rare Earth / Strategic Metals", "group": "theme"},
-    "ARKG": {"name": "Genomics", "group": "theme"},
     # from the Relatedness thread's theme-ETF research (17 Nov 2026: one rule-based fund per theme, mostly US
     # stocks, no repeat of a board row; each has stored bars)
     "CIBR": {"name": "Cybersecurity (index)", "group": "theme"},

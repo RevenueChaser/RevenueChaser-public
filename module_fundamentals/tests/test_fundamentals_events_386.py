@@ -106,10 +106,9 @@ def test_an_item_outside_the_set_does_not_raise_the_flag(item, rawstore_tmp_db):
     assert events.corporate_events(["AAA"], today=TODAY) == {}
 
 
-def test_the_configured_item_set_is_the_eight_items():
-    """E2: the brief's eight items, in the brief's order."""
-    assert config.CORPORATE_EVENT_ITEMS == ["1.02", "2.01", "2.06", "3.01",
-                                           "4.01", "4.02", "5.01", "5.03"]
+def test_the_configured_item_set_is_the_six_items():
+    """E2: the brief's eight items without 1.02 and 5.03 (avo G1, 17 Nov 2026), in the brief's order."""
+    assert config.CORPORATE_EVENT_ITEMS == ["2.01", "2.06", "3.01", "4.01", "4.02", "5.01"]
 
 
 def test_a_10k_with_a_corporate_item_is_not_an_8k(rawstore_tmp_db):
@@ -180,7 +179,7 @@ def test_a_mixed_input_answers_exactly_what_the_unbounded_read_answered(rawstore
         _filing("1234", "a2", (TODAY - timedelta(days=5)).isoformat(), "4.02"),
         _filing("1234", "a3", _OUTSIDE, "5.01"),                       # outside the window: ignored
         _filing("2345", "b1", _INSIDE, "9.01"),                        # routine only
-        _filing("3456", "c1", _AT_THE_EDGE, "5.03,1.02"),              # the window edge is inside
+        _filing("3456", "c1", _AT_THE_EDGE, "5.03,2.06"),              # the window edge is inside; 5.03 not flagged
         _filing("3456", "c2", (TODAY - timedelta(days=1)).isoformat(), "3.01"),
         _filing("4567", "d1", _INSIDE, "2.01", form="10-Q"),           # not an 8-K
     )
@@ -189,7 +188,7 @@ def test_a_mixed_input_answers_exactly_what_the_unbounded_read_answered(rawstore
         # AAA and FFF are the same filer: both carry its items, sorted, and its newest qualifying date.
         "AAA": {"items": ["2.01", "4.02"], "last_filing_date": (TODAY - timedelta(days=5)).isoformat()},
         "FFF": {"items": ["2.01", "4.02"], "last_filing_date": (TODAY - timedelta(days=5)).isoformat()},
-        "CCC": {"items": ["1.02", "3.01", "5.03"], "last_filing_date": (TODAY - timedelta(days=1)).isoformat()},
+        "CCC": {"items": ["2.06", "3.01"], "last_filing_date": (TODAY - timedelta(days=1)).isoformat()},
         # BBB: routine items only; DDD: a 10-Q is not an 8-K; EEE: no CIK; GGG: no filings at all.
     }
 

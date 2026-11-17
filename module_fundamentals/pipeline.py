@@ -415,7 +415,7 @@ def _quarters_after(quarterly: list[dict], year_end, upto=None) -> list[dict]:
 
 
 def _quality_metrics(annual: list[dict], quarterly: list[dict] | None = None, *, infer_debt_free: bool = True,
-                     debt_note: dict | None = None) -> dict:
+                     debt_note: dict | None = None, trailing: bool = True) -> dict:
     """Quality's three figures and their basis (G6, build plan PR 13: Quality reads the quarter store).
 
     ``quality_basis`` ``TTM`` when a 10-Q follows the anchor year and the quarters give every figure the year gives
@@ -440,7 +440,9 @@ def _quality_metrics(annual: list[dict], quarterly: list[dict] | None = None, *,
                              for q in _quarters_after(quarterly or [], end)),
                      note=_debt.note_debt(a, debt_note))
     out = {**fy, "quality_basis": "FY", "quality_period_end": end.isoformat() if end else None}
-    ttm_rec = _quality_ttm(annual, quarterly or [], i)
+    # avo D1 (17 Nov 2026): one period per card. ``trailing`` False when the Rule of 40 reads the fiscal year, so
+    # Quality reads it too (``_compute_row``).
+    ttm_rec = _quality_ttm(annual, quarterly or [], i) if trailing else None
     if ttm_rec is not None:
         # The same rule on the trailing year, read on the quarter its balance sheet comes from: the debt tags are a
         # balance sheet's, so they are that quarter's and never the year's. The anchor year has to clear the rule
@@ -455,7 +457,10 @@ def _quality_metrics(annual: list[dict], quarterly: list[dict] | None = None, *,
                           and all(_debt.debt_free(x, quarterly=True)
                                   for x in _quarters_after(quarterly or [], end, ttm_rec["period"])))
         # The year's net income stays (P/E reads its own TTM, ``_ttm_metrics``); P/B reads the newest equity.
-        if all(ttm[k] is not None or fy[k] is None for k in ("gross_margin", "roic", "net_debt_ebitda", "net_cash")):
+        # avo D1 (17 Nov 2026): the trailing year stands even where it is worse: a loss with net debt fails the
+        # leverage rule on it, never on the older profitable year (review N1). The one exception is a debt total
+        # only the 10-K's note gives (#737): the trailing balance sheet cannot carry it, so the card reads the year.
+        if not (ttm["debt_basis"] is None and fy["debt_basis"] == _debt.NOTE):
             out = {**ttm, "net_income": fy["net_income"], "quality_basis": "TTM",
                    "quality_period_end": ttm_rec["period"]}
     return out
@@ -552,6 +557,11 @@ class _LayerChunks:
         return rows.get(ticker) or ([], [], fundamentals_layer._unavailable())
 
 
+def _old_period(end) -> bool:
+    days = _days(str(end)[:10], _today().isoformat()) if end else None
+    return days is not None and days > fiscal_year.STALE_DAYS
+
+
 def _compute_row(row: dict, spy_df, no_fetch: bool = False, spine: dict | None = None,
                  drops: list | None = None, non_usd: set[str] | None = None,
                  non_usd_seen: list | None = None, layer: _LayerChunks | None = None) -> dict | None:
@@ -575,7 +585,10 @@ def _compute_row(row: dict, spy_df, no_fetch: bool = False, spine: dict | None =
     if df.empty:
         return _drop("no_bars")
     reason = ohlc_drop_reason(df)
-    if reason:
+    # avo E1 (17 Nov 2026): under 252 bars the name is still scored, with every Momentum input unknown (a young
+    # listing is judged on its filings; its year high, 6-month RS and 200-day line are not a year's).
+    short = reason == "short_bars"
+    if reason and not short:
         return _drop(reason)
 
     # #386 F1: the spine sector, read before EDGAR so an excluded name costs no EDGAR read (card 4 (b), Common C17).
@@ -629,7 +642,11 @@ def _compute_row(row: dict, spy_df, no_fetch: bool = False, spine: dict | None =
     # old drop): the name is no longer dropped, so Quality and Momentum still read it; the screener makes that Rule
     # of 40 unknown and the card DISTORTED (screeners.evaluate_rule_of_40, is_distorted).
     qual = _quality_metrics(annual, quarterly, infer_debt_free=(emeta or {}).get("us_gaap") is not False,
-                            debt_note=(emeta or {}).get("debt_note"))
+                            debt_note=(emeta or {}).get("debt_note"), trailing=ttm["ro40_basis"] == "TTM")
+    if ttm["ro40_basis"] == "TTM" and qual["quality_basis"] != "TTM":
+        # avo D1: Quality could not read the trailing year, so the Rule of 40 reads the fiscal year with it.
+        ttm = {**ttm, **{k: v for k, v in _ttm_metrics([], annual).items()
+                         if k in ("rev_growth_ttm", "fcf_margin", "ro40", "ro40_basis")}}
     # #645 (avo 10 Nov, option A): the cap and the name are the universe (spine) row's, never Yahoo's ``.info``.
     market_cap = _to_float(row.get("market_cap"))
 
@@ -640,7 +657,7 @@ def _compute_row(row: dict, spy_df, no_fetch: bool = False, spine: dict | None =
     pb = None if adr else (market_cap / qual["total_equity"]) if (market_cap and qual["total_equity"] and qual["total_equity"] > 0) else None
 
     rs_6m = None
-    if spy_df is not None and not spy_df.empty:
+    if spy_df is not None and not spy_df.empty and not short:
         # A return: the dividend-adjusted closes (D3), against SPY's adjusted ones.
         own_6m, spy_6m = _ret(adjusted["Close"], 126), _ret(spy_df["Close"], 126)
         # A series under 127 bars has no 126-bar return: no value, never a TypeError (#147 U5).
@@ -659,11 +676,15 @@ def _compute_row(row: dict, spy_df, no_fetch: bool = False, spine: dict | None =
         # #737: "filed" (the facts gave a total), "note" (the filing's debt note, read by the SEC service),
         # "inferred_none" (no debt tag and no interest: read as 0) or None.
         "debt_basis": qual.get("debt_basis"),
+        # avo C1 (17 Nov 2026): the card's one period ended longer ago than fiscal_year.STALE_DAYS: its rules are
+        # unknown (screeners.data_mark).
+        "old_period": _old_period(qual.get("quality_period_end")),
         "pe": pe,
         "pb": pb,
-        "dist_52w_pct": ind.get("within_52w_high_pct"),
+        "dist_52w_pct": None if short else ind.get("within_52w_high_pct"),
         "rs_6m": rs_6m,
-        "above_200d": (price > ind["sma200"]) if (price is not None and ind.get("sma200") is not None) else None,
+        "above_200d": (price > ind["sma200"]) if (not short and price is not None and ind.get("sma200") is not None)
+        else None,
     }
 
     # R5 (#88), #266: the sector and industry are the spine's (UW's two levels). ``gics`` is read above, before EDGAR (#386 F1: the sector gate). The theme labels
@@ -720,6 +741,9 @@ def _data_short(run_stats: dict):
     return max(0, short - sum(_health_drops(run_stats).values()) - _non_usd_count(run_stats))
 
 
+FUNDAMENTAL_GATES = frozenset({"rule_of_40", "quality"})
+
+
 def build_payload(results: list[dict], top_n: int | None = None, run_stats: dict = None) -> dict:
     """The board payload. Every candidate is kept (card 6/7, #383 R3 C12); ``top_n`` cuts only when given."""
     run_stats = run_stats or {}
@@ -727,6 +751,7 @@ def build_payload(results: list[dict], top_n: int | None = None, run_stats: dict
 
     passing = {"rule_of_40": 0, "quality": 0, "momentum": 0}
     distorted_count = 0
+    momentum_only = 0
     candidates = []
     for r in results:
         m = r["metrics"]
@@ -739,6 +764,11 @@ def build_payload(results: list[dict], top_n: int | None = None, run_stats: dict
         # an opaque 3x/2x/1x multiplier.
         rules_passed = [k for k in passing if gates[k]["passed"]]
         if not rules_passed:
+            continue
+        # avo B1 (17 Nov 2026): a card needs the Rule of 40 or Quality; Momentum confirms, it never admits alone
+        # (Swing owns pure trend; 678 of 1,245 cards on 16 Nov were momentum-only).
+        if not FUNDAMENTAL_GATES & set(rules_passed):
+            momentum_only += 1
             continue
         passed_count = len(rules_passed)
         for k in rules_passed:
@@ -760,7 +790,8 @@ def build_payload(results: list[dict], top_n: int | None = None, run_stats: dict
             "anchor_period_end": r.get("anchor_period_end"),
             "quality_basis": r.get("quality_basis"), "quality_period_end": r.get("quality_period_end"),
             "statements": r.get("statements"),
-            "pe": m.get("pe"), "pb": m.get("pb"), "roic": m.get("roic"),
+            # avo F1 (17 Nov 2026): the card shows ROIC; P/E and P/B left the card (they stay in the metrics).
+            "roic": m.get("roic"), "old_period": bool(m.get("old_period")),
             # #737 (Fable review F3): the payload carries ``roic``, which an inferred zero can make known, so it
             # carries the basis of that zero beside it.
             "debt_basis": m.get("debt_basis"),
@@ -829,6 +860,7 @@ def build_payload(results: list[dict], top_n: int | None = None, run_stats: dict
             "health_drops": _health_drops(run_stats),
             "passing": passing,
             "distorted_count": distorted_count,
+            "momentum_only": momentum_only,
             "top_n": len(candidates),
         },
         "candidates": candidates,

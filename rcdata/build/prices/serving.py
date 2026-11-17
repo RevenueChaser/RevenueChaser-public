@@ -424,6 +424,7 @@ ACTION_AMOUNT = "CASE WHEN {a}.action_type IN ('cash_dividend', 'capital_gains_d
 
 class PricesServing:
     name = NAME
+    parquet_reads = ("cboe/index",)                     # the index:SPX bars (_index_levels; dirty.read_dirs)
     kind = KIND
     providers: tuple[str, ...] = ()
     tables = TABLES

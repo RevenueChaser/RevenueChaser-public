@@ -48,6 +48,7 @@ def evaluate_rule_of_40(m: dict) -> dict:
     ro40 = m.get("ro40")
     basis = m.get("ro40_basis")  # "TTM" (year + YTD - prior YTD) or "FY" (fiscal years): the row says which (#148)
     label = "Revenue growth + FCF margin" + (f" ({basis})" if basis else "")
+    mark = data_mark(m)
     # #386 F2: an EBITDA basis means the free-cash-flow margin was unavailable and an EBITDA margin stood in. The
     # value is shown, but the rule is unknown and never decides (the gate cannot pass on it).
     passed = (None if basis and "EBITDA" in basis
@@ -57,6 +58,9 @@ def evaluate_rule_of_40(m: dict) -> dict:
         # ways since plan 2026-11-16 F (RLAY -1,483, ROIV -9,255 were plain fails).
         passed = None
         label += f" (beyond ±{config.RO40_BARRIER:g}: a data problem)"
+    elif mark:
+        passed = None                                   # avo C1 (17 Nov 2026): a marked input is unknown, not a pass
+        label += f" ({mark})"
     rules = [_rule("ro40", label, "pts", passed, ro40, "≥ 40")]
     return {
         "name": "Rule of 40",
@@ -119,8 +123,12 @@ def evaluate_quality(m: dict) -> dict:
     gm = m.get("gross_margin")
     nde = m.get("net_debt_ebitda")
 
-    growth_ok = tri.rule((growth,), lambda g: g >= config.GROWTH_MIN)
-    roic_ok = tri.rule((roic,), lambda r: r >= config.ROIC_MIN)
+    mark = data_mark(m)
+    old = m.get("old_period")
+    # avo C1 (17 Nov 2026): a DISTORTED growth (or revenue base) and an old period make the rules that read them
+    # unknown, never a pass; the label says why.
+    growth_ok = None if mark else tri.rule((growth,), lambda g: g >= config.GROWTH_MIN)
+    roic_ok = None if old else tri.rule((roic,), lambda r: r >= config.ROIC_MIN)
     # #737, Fable review F3: an inferred zero makes ROIC known as well as the leverage ratio, so when ROIC is in
     # play this rule rests on the same inference and says so. Growth alone never does.
     gor_label = "Growth ≥20% or ROIC ≥15%"
@@ -134,6 +142,12 @@ def evaluate_quality(m: dict) -> dict:
               tri.rule((gm,), lambda g: g >= config.GM_MIN), gm, "≥ 30%"),
         _leverage_rule(nde, m.get("net_cash"), m.get("debt_basis")),
     ]
+    if mark:
+        rules[0]["label"] += f" ({mark})"
+    if old:
+        for r in rules:
+            r["passed"] = None
+            r["label"] += f" ({OLD_PERIOD_NOTE})"
     return _counted("Quality", rules)
 
 
@@ -151,6 +165,22 @@ def evaluate_momentum(m: dict) -> dict:
               tri.rule((above,), lambda a: a is True), above, "> 200d MA"),
     ]
     return _counted("Momentum", rules)
+
+
+OLD_PERIOD_NOTE = "the period read ended more than a year and a quarter ago: unknown"
+
+
+def data_mark(m: dict) -> str | None:
+    """Why the growth input of ``m`` cannot decide a rule (avo C1, 17 Nov 2026), or None: an old period, an absurd
+    growth, or a micro revenue base (the DISTORTED cases other than the Rule of 40 barrier, which has its own)."""
+    if m.get("old_period"):
+        return OLD_PERIOD_NOTE
+    growth, rev = m.get("rev_growth_ttm"), m.get("ttm_revenue")
+    if growth is not None and abs(growth) > config.DISTORTED_GROWTH:
+        return f"growth beyond ±{config.DISTORTED_GROWTH:.0%}: distorted, unknown"
+    if rev is not None and rev < config.DISTORTED_REV_MIN:
+        return f"revenue under ${config.DISTORTED_REV_MIN / 1e6:g}M: distorted, unknown"
+    return None
 
 
 def is_distorted(m: dict) -> bool:

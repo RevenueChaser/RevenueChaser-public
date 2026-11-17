@@ -160,6 +160,8 @@ def _summary_html(s: dict, data_quality: dict | None = None) -> str:
                       ("stale_annual", "stale annual report"), ("ro40_barrier", "Rule of 40 above 150")):
         if health.get(key):
             elim.append(f"{text} {_fmt_int(health.get(key))}")
+    if s.get("momentum_only"):
+        elim.append(f"Momentum only (no Rule of 40 or Quality pass) {_fmt_int(s.get('momentum_only'))}")
     if s.get("hygiene") is not None:
         # Plan 2026-11-16 E: this count is the price / dollar-volume floor (``screen_common.prefilter``), not the
         # price-hygiene gates of #116, which only flag.
@@ -339,12 +341,8 @@ function qualityAsOf(c, long){
   if(!end) return "";
   return (ttm ? (long ? "trailing year to " : "TTM to ") : (long ? "fiscal year to " : "FY to ")) + end;
 }
-// True when the anchor year ended more than OLD_ANCHOR_DAYS ago.
-var OLD_ANCHOR_DAYS = 730;
-function oldAnchor(c){
-  var end = c.anchor_period_end ? Date.parse(c.anchor_period_end) : NaN;
-  return !isNaN(end) && (Date.now() - end) > OLD_ANCHOR_DAYS * 86400000;
-}
+// avo C1 (17 Nov 2026): the card's one period ended more than fiscal_year.STALE_DAYS ago (the build decides).
+function oldAnchor(c){ return !!c.old_period; }
 // The two halves of the Rule of 40, the one figure of it the gate button does not carry.
 function growthMargin(c){
   if(c.rev_growth_ttm == null && c.fcf_margin == null) return "N/A";
@@ -357,8 +355,8 @@ function cardHtml(c){
   var sector = rcEsc(c.sector);
   var distTag = c.distorted ? '<span class="badge b-dist">DISTORTED</span>' : "";
   // Plan 2026-11-16 G: an anchor year that ended more than two years ago is marked, not hidden (DMAC FY2018).
-  var oldTag = oldAnchor(c) ? '<span class="badge b-dist" title="The fiscal year the scores read ended '
-    + rcEsc(c.anchor_period_end) + '">OLD YEAR</span>' : "";
+  var oldTag = oldAnchor(c) ? '<span class="badge b-dist" title="The period the rules read ended '
+    + rcEsc(c.quality_period_end || c.anchor_period_end) + ': its rules are unknown">OLD YEAR</span>' : "";
   var gates = RULES.map(function(k){
     var g = (c.gates || {})[k] || {};
     var lbl = {rule_of_40:"Ro40", quality:"Q", momentum:"M"}[k];
@@ -400,9 +398,11 @@ function cardHtml(c){
     + cell("Period", rcEsc(c.period))
     + cell("Growth / FCF margin", growthMargin(c))
     + cell("Price", usd(c.price))
-    // Plan decision B: an ADR's cap ignores the depositary ratio, so its P/E and P/B are "–" until the ratio arrives.
+    // Plan decision B: an ADR's cap ignores the depositary ratio.
     + cell("Mkt cap", usd(c.market_cap) + (c.adr ? ' <span class="adr-warn" title="ADR: the cap is the issuer\'s'
-        + ' and ignores the depositary ratio, so P/E and P/B show – until the ADR ratio arrives">⚠ P/E – P/B –</span>' : ''))
+        + ' and ignores the depositary ratio">⚠ ADR</span>' : ''))
+    // avo F1 (17 Nov 2026): ROIC on the card; P/E and P/B left it.
+    + cell("ROIC", c.roic == null ? "N/A" : fmtPct(c.roic))
     + '</div>'
     + evLine
     + stLine
@@ -425,9 +425,8 @@ function openGate(btn){
   var gate = (GATES[t]||{})[g];
   if(!gate) return;
   var period = PERIODS[t] || "";
-  // Review F1: Quality mixes two time bases; its window names both.
-  if(g === "quality" && ANCHORS[t])
-    period = "growth: TTM " + period + " · ROIC, gross margin, net debt: " + ANCHORS[t];
+  // avo D1 (17 Nov 2026): one period per card, so every gate's window names the card's one period.
+  if(ANCHORS[t]) period = ANCHORS[t];
   document.getElementById("m-title").textContent = gate.name;
   document.getElementById("m-sub").textContent = t + " — " + gate.score + (gate.passed ? " (PASS)" : " (FAIL)") + (period ? " · " + period : "");
   var rules = gate.rules.map(function(r){

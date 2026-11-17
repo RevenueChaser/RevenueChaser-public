@@ -106,5 +106,9 @@ def test_a_fetch_on_bars_a_day_behind_says_so(scenario, mod):
         if t != "SPY":
             drop_d01(t)
             scn.seed_d01(t, scn._bars(kind, drift, scn.LONG_BARS, end=date(2026, 10, 13)), fetched_at=EVENING)
+    # avo E1 (17 Nov 2026): Fundamentals scores the short-history SHORT1 too (Momentum unknown), so its bars stop
+    # on 13 Oct as well.
+    drop_d01("SHORT1")
+    scn.seed_d01("SHORT1", scn._bars("up", 0.004, scn.SHORT_BARS, end=date(2026, 10, 13)), fetched_at=EVENING)
     payload = mod.run_scan()
     assert payload["candidates"] and payload["data_as_of"] == "2026-10-13"

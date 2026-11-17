@@ -27,7 +27,7 @@ def test_the_price_floor_count_is_called_the_liquidity_filter_not_hygiene():
 
 def test_the_card_marks_an_old_anchor_year_and_shows_no_theme_row():
     html = render_fundamental_dashboard(build_payload([], run_stats={}))
-    assert "OLD YEAR" in html and "OLD_ANCHOR_DAYS = 730" in html
+    assert "OLD YEAR" in html and "return !!c.old_period" in html       # avo C1: the build decides, 470 days
     assert "tagsRow" not in html and 'class="tags' not in html
 
 

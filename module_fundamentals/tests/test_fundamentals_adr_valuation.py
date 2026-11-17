@@ -38,4 +38,4 @@ def test_the_universe_rows_carry_the_security_type(monkeypatch):
 
 def test_the_card_marks_an_adr():
     html = render_fundamental_dashboard(pipeline.build_payload([], run_stats={}))
-    assert "adr-warn" in html and "P/E – P/B –" in html
+    assert "adr-warn" in html and "P/E – P/B –" not in html         # avo F1: P/E and P/B left the card
