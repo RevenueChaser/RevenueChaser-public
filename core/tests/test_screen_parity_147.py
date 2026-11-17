@@ -48,7 +48,8 @@ instead of comparing).
 Plan decision B (ADR P/E and P/B unknown) added the additive per-candidate ``adr`` key, false for all five
 scenario candidates (none is typed ADR), edited in by hand like ``debt_basis``.
 #645 (Fundamentals reads no Yahoo ``.info``) removed Fundamentals' per-candidate ``info_stale`` and
-``data_quality.stale_info``, edited out by hand.
+``data_quality.stale_info``, edited out by hand; UP1 and UP3 now carry the spine's name (``Inc``), not the
+scenario's ``.info`` one (``Holdings``).
 """
 from __future__ import annotations
 
