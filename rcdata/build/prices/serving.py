@@ -27,7 +27,8 @@
   source's), else a WRDS source's of that session, else the newest cover on or before the session, moved over the
   splits between the two; and the issuer's sum over its listed classes, each at its newest cap at most
   ``ISSUER_WITHIN_DAYS`` old (``issuer_market_cap``; an unlisted class has no price and is not in it). A count of 0
-  is none, and an ADR has no cap (its counts are the issuer's ordinary shares; #711, until an ADS ratio is read);
+  is none, and an ADR has no cap (its counts are the issuer's ordinary shares; #711, until an ADS ratio is read):
+  both keep their row with ``market_cap`` and ``shares`` NULL and ``shares_source`` ``zero_count`` or ``adr_no_ratio``;
 - ``price_revision``: the values a later read replaced (Alpaca's re-read of the last sessions, the monthly WRDS
   refresh), with when and by which run;
 - ``wrds_price_diff``: the WRDS difference report (``wrds_history.COMPARISONS``), one row per comparison: the closes
@@ -860,14 +861,16 @@ class PricesServing:
             # the store on purpose, so its missing bar is no finding.
             tier_a = ("SELECT s.security_id, s.ticker FROM stg_spine s WHERE s.tier = 'A' "
                       "AND s.ticker IN (SELECT ticker FROM _universe_ticker) AND NOT EXISTS (SELECT 1 FROM {t} x "
-                      "WHERE x.security_id = s.security_id AND x.session_date = ?) ORDER BY s.security_id")
-            for sid, ticker in con.execute(tier_a.format(t="price_bar_daily"), [newest]).fetchall():
+                      "WHERE x.security_id = s.security_id AND x.session_date = ?{has}) ORDER BY s.security_id")
+            for sid, ticker in con.execute(tier_a.format(t="price_bar_daily", has=""), [newest]).fetchall():
                 found.append(("tier_a_no_bar", sid, f"{ticker}: no bar on {newest}"))
             adr = set(r[0] for r in con.execute("SELECT security_id FROM stg_spine WHERE security_type = 'adr' "
                                                 "AND security_id IS NOT NULL").fetchall())
             bars_now = set(r[0] for r in con.execute(
                 "SELECT security_id FROM price_bar_daily WHERE session_date = ?", [newest]).fetchall())
-            for sid, ticker in con.execute(tier_a.format(t="market_cap_daily"), [newest]).fetchall():
+            # A row with no cap (an ADR's, a zero count's) is no market cap.
+            for sid, ticker in con.execute(tier_a.format(t="market_cap_daily", has=" AND x.market_cap IS NOT NULL"),
+                                           [newest]).fetchall():
                 if sid not in adr:
                     found.append(("tier_a_no_shares", sid, f"{ticker}: no shares for {newest}"))
                 elif sid in bars_now:
@@ -1056,6 +1059,7 @@ MARKET_CAP_SQL = f"""
          j AS (SELECT b.security_id, b.session_date, b.issuer, b.close,
                       CASE WHEN b.shares_outstanding > 0 THEN b.shares_outstanding ELSE b.hist_shares END AS own,
                       CASE WHEN b.shares_outstanding > 0 THEN b.source ELSE b.hist_source END AS bar_source,
+                      coalesce(b.shares_outstanding <= 0, false) AS zero_count,
                       o.value AS cover, o.as_of AS cover_as_of, o.source AS cover_source
                FROM b ASOF LEFT JOIN o ON o.security_id = b.security_id AND b.session_date >= o.as_of),
          -- A company facts count older than DEI_MAX_AGE_DAYS gives no cap: its issuer may have stopped tagging it
@@ -1066,21 +1070,28 @@ MARKET_CAP_SQL = f"""
                                 ELSE cover * coalesce(a1.split_factor, 1) / coalesce(a2.split_factor, 1) END AS shares
                FROM j {factor_join('a1', 'j.security_id', 'j.session_date')}
                {factor_join('a2', 'j.security_id', 'j.cover_as_of')}),
-         c AS (SELECT security_id, session_date, issuer AS cik, close, shares,
-                      CASE WHEN own IS NOT NULL THEN bar_source ELSE cover_source END AS shares_source,
-                      CASE WHEN own IS NOT NULL THEN session_date ELSE cover_as_of END AS shares_as_of,
-                      close * shares AS market_cap, coalesce(issuer, security_id) AS iss
-               -- No cap for an ADR (#711): Compustat's count, as the cover's, is the issuer's ordinary shares and the
-               -- close is the ADS's. shortcut: until an ADS ratio is read; then divide instead (``adr_no_ratio``).
-               FROM s WHERE shares IS NOT NULL
-                 AND security_id NOT IN (SELECT security_id FROM stg_spine
-                                         WHERE security_type = 'adr' AND security_id IS NOT NULL)),
+         -- No cap for an ADR (#711): Compustat's count, as the cover's, is the issuer's ordinary shares and the
+         -- close is the ADS's. shortcut: until an ADS ratio is read; then divide instead (``adr_no_ratio``).
+         -- A bar whose own count is 0 and that no other count serves has no cap either (``zero_count``). Both keep
+         -- their row, cap and shares NULL and the reason in ``shares_source``: the store narrows nothing (S18).
+         a AS (SELECT s.*, s.security_id IN (SELECT security_id FROM stg_spine
+                                             WHERE security_type = 'adr' AND security_id IS NOT NULL) AS adr
+               FROM s WHERE shares IS NOT NULL OR zero_count),
+         c AS (SELECT security_id, session_date, issuer AS cik, close,
+                      CASE WHEN NOT adr THEN shares END AS shares,
+                      CASE WHEN adr THEN 'adr_no_ratio' WHEN shares IS NULL THEN 'zero_count'
+                           WHEN own IS NOT NULL THEN bar_source ELSE cover_source END AS shares_source,
+                      CASE WHEN adr OR shares IS NULL THEN NULL
+                           WHEN own IS NOT NULL THEN session_date ELSE cover_as_of END AS shares_as_of,
+                      CASE WHEN NOT adr THEN close * shares END AS market_cap, coalesce(issuer, security_id) AS iss
+               FROM a),
          -- Each class of the issuer at its newest cap on or before the session, if at most ISSUER_WITHIN_DAYS old:
-         -- a class with no bar that day (GOOG on a day GOOGL traded) still counts.
+         -- a class with no bar that day (GOOG on a day GOOGL traded) still counts; a row with no cap is none.
          k AS (SELECT DISTINCT iss, security_id AS cls FROM c),
          g AS (SELECT c.security_id, c.session_date, k.cls FROM c JOIN k USING (iss)),
          p AS (SELECT g.security_id, g.session_date, x.market_cap, x.session_date AS cap_day
-               FROM g ASOF LEFT JOIN c x ON x.security_id = g.cls AND g.session_date >= x.session_date),
+               FROM g ASOF LEFT JOIN (SELECT * FROM c WHERE market_cap IS NOT NULL) x
+                    ON x.security_id = g.cls AND g.session_date >= x.session_date),
          i AS (SELECT security_id, session_date,
                       sum(market_cap) FILTER (WHERE date_diff('day', cap_day, session_date) <= {{within}})
                           AS issuer_market_cap
