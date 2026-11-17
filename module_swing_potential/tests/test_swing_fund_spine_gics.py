@@ -27,10 +27,7 @@ def _seed(rows, master=None):
 
 @pytest.fixture
 def swing_inputs(monkeypatch):
-    # yfinance says Technology / Semiconductors; the spine says Healthcare / Biotechnology.
-    info = {"sector": "Technology", "industry": "Semiconductors", "longName": "X Corp"}
     monkeypatch.setattr(screen_common, "load_bars", lambda *a, **k: (_ohlcv(), _ohlcv()))   # D01 (C12, #383 R3)
-    monkeypatch.setattr(sp, "load_ticker_info", lambda *a, **k: info)
 
 
 def test_swing_card_sector_and_industry_are_the_spine_not_yfinance(rawstore_tmp_db, swing_inputs):

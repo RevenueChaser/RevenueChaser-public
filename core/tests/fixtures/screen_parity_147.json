@@ -1495,7 +1495,7 @@
       "minervini"
      ],
      "momentum": 71.43,
-     "name": "UP3 Holdings",
+     "name": "UP3 Inc",
      "price": 117.000316,
      "quality": 84,
      "rr": 2.0,
@@ -1657,7 +1657,7 @@
       "minervini"
      ],
      "momentum": 64.28,
-     "name": "UP1 Holdings",
+     "name": "UP1 Inc",
      "price": 99.173021,
      "quality": 84,
      "rr": 2.0,
@@ -2003,7 +2003,6 @@
     "quote_session": "2026-10-14",
     "short_refetch_refused": 0,
     "spy_stale": false,
-    "stale_info": 0,
     "stale_ohlc": 0
    },
    "funnel_steps": [
@@ -2090,36 +2089,6 @@
     "qullamaggie": 0,
     "weinstein": 0
    },
-   "provider_health": {
-    "auth_error": null,
-    "breaker_open": false,
-    "calls": 5,
-    "failed": 5,
-    "failures": [
-     {
-      "endpoint": "BELOW50.info",
-      "error": "empty"
-     },
-     {
-      "endpoint": "DOWN1.info",
-      "error": "empty"
-     },
-     {
-      "endpoint": "FAR.info",
-      "error": "empty"
-     },
-     {
-      "endpoint": "NOEDGAR.info",
-      "error": "empty"
-     },
-     {
-      "endpoint": "UP2.info",
-      "error": "empty"
-     }
-    ],
-    "provider": "yfinance",
-    "skipped_calls": 0
-   },
    "regime": "RISK-ON",
    "selection_version": "5",
    "settings": {
@@ -2155,6 +2124,7 @@
     },
     "regime": "RISK-ON",
     "spy_3m_return": 0.0474,
+    "spy_missing": false,
     "spy_price": 57.58,
     "spy_sma200": 51.93,
     "spy_stale": false,

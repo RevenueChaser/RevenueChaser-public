@@ -114,7 +114,7 @@ def correlation(ret: pd.DataFrame, min_periods: int | None = None) -> pd.DataFra
     identical in all 26 183 451 cells, the largest difference is 2.4e-15, and no cell differs by
     more than 1e-12. Downstream that changes nothing anyone can see: the linkage's merge pairs and
     cluster sizes are identical, only the merge heights move (at most 7.8e-14), and the cluster
-    membership is the same at every cut from 2 to 300 -- the board draws 20, 80 and 250.
+    membership is the same at every cut from 2 to 300 -- the board draws 60, 120 and 250 (#582).
     """
     min_periods = (settings_mod.effective().min_periods if min_periods is None
                    else min_periods)

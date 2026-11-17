@@ -49,7 +49,6 @@ def test_the_pipeline_counts_a_refused_short_frame_as_stale(rawstore_tmp_db, mon
     frame.attrs["stale"] = True
     frame.attrs["short_refetch_refused"] = True
     monkeypatch.setattr(pipeline.screen_common, "load_bars", lambda *a, **k: (frame, frame))
-    monkeypatch.setattr(pipeline, "load_ticker_info", lambda *a, **k: {})
     monkeypatch.setattr(pipeline, "compute_indicators",
                         lambda df, spy, **k: {"price": 100.0, "atr14": 2.0})
     row = pipeline._compute_row({"ticker": "AAPL"}, None)
