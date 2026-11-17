@@ -152,6 +152,53 @@ JOB_LISTS = {
 }
 
 
+#: Lists the code keeps (avo, 17 Nov 2026: "sistem watch listleri"): read-only on this board, built on every load from
+#: ``core/rotation_reference.py``, so they cannot drift from the Sector Rotation board's own sector and industry
+#: layers. An id holds a dot, like a job list's, so one of avo's lists cannot take it.
+SYSTEM_LISTS = {
+    "system.sectors": {
+        "name": "Sector ETFs · the 11 SPDRs",
+        "description": "The 11 GICS sectors' SPDR funds, as on the Sector Rotation map. Kept by the code: read-only.",
+    },
+    "system.industries": {
+        "name": "Industry group ETFs · GICS",
+        "description": ("ETFs for the 25 GICS industry groups, one section per sector; the first of each group is on "
+                        "the Sector Rotation map's industry layer. Kept by the code: read-only."),
+    },
+}
+
+
+def is_system(list_id: str | None) -> bool:
+    return (list_id or "") in SYSTEM_LISTS
+
+
+def _system_sections(list_id: str) -> list[dict]:
+    """A system list's sections: the sector SPDRs as one unnamed section, or the industry-group ETFs by sector, each
+    ETF once, its group as the row's note. A group with no ETF of its own is named in the section heading."""
+    from RevenueChaser.core.rotation_reference import INDUSTRY_GROUPS, SECTOR_ETF
+    if list_id == "system.sectors":
+        return [{"section_id": store.DEFAULT_SECTION, "name": "",
+                 "items": [{"symbol": t, "note": sector} for sector, t in SECTOR_ETF.items()]}]
+    out = []
+    for sector in SECTOR_ETF:
+        groups = [(g, etfs) for _c, g, s, etfs in INDUSTRY_GROUPS if s == sector]
+        seen: dict[str, str] = {}
+        for g, etfs in groups:
+            for t in etfs:
+                seen.setdefault(t, g)
+        empty = [g for g, etfs in groups if not etfs]
+        name = sector + (f" · no ETF: {', '.join(empty)}" if empty else "")
+        out.append({"section_id": "sys-" + SECTOR_ETF[sector].lower(), "name": name,
+                    "items": [{"symbol": t, "note": g} for t, g in seen.items()]})
+    return out
+
+
+def _system_lists() -> list[dict]:
+    return [{"list_id": list_id, "name": spec["name"],
+             "symbols": sum(len(sec["items"]) for sec in _system_sections(list_id))}
+            for list_id, spec in SYSTEM_LISTS.items()]
+
+
 def job_kind(list_id: str | None) -> str | None:
     """``option`` or ``stock`` for one of the two job lists' ids, None for one of avo's own lists."""
     found = JOB_LISTS.get(list_id or "")
@@ -173,6 +220,10 @@ def _job_lists() -> list[dict]:
 def _whole(list_id: str) -> dict | None:
     """One list whole, whichever file holds it: avo's from ``store.read_list``, a job list as one unnamed
     section of its tickers. None for an unknown id."""
+    if is_system(list_id):
+        spec = SYSTEM_LISTS[list_id]
+        return {"list_id": list_id, "name": spec["name"], "description": spec["description"],
+                "sections": _system_sections(list_id)}
     spec = JOB_LISTS.get(list_id)
     if spec is None:
         return store.read_list(list_id)
@@ -198,27 +249,29 @@ def payload(list_id: str | None = None) -> dict | None:
     own, jobs = store.lists(), _job_lists()
     if not own and not any(r["symbols"] for r in jobs):   # nothing typed anywhere yet: the empty page
         return None
-    lists = own + jobs
+    lists = own + jobs + _system_lists()
     chosen = next((r for r in lists if r["list_id"] == list_id), lists[0])
     whole = _whole(chosen["list_id"])
     if whole is None:                                     # deleted between the two reads
         return None
     job = job_kind(whole["list_id"])
+    system = is_system(whole["list_id"])
+    bare = bool(job) or system                            # both hold plain US tickers, no exchange prefix
     items = [i for section in whole["sections"] for i in section["items"]]
-    parsed = [_parse(i["symbol"], bool(job)) for i in items]
+    parsed = [_parse(i["symbol"], bare) for i in items]
     equities = _equity_numbers(sorted({p.ticker for p in parsed if p.coverage == "us_equity"}))
     series = _series_numbers(sorted({p.series_id for p in parsed if p.series_id}))
     names = {r["ticker"]: r.get("name") for r in read.identity(sorted({p.ticker for p in parsed
                                                                       if p.coverage == "us_equity"}))}
     sections = [{"id": s["section_id"], "name": s["name"],
-                 "rows": [_row(i, equities, series, names, job=bool(job)) for i in s["items"]]}
+                 "rows": [_row(i, equities, series, names, job=bare) for i in s["items"]]}
                 for s in whole["sections"]]
     sessions = sorted({v["session"] for v in equities.values() if v.get("session")})
     return {
         "lists": [{"id": r["list_id"], "name": r["name"], "symbols": r.get("symbols") or 0,
-                   "job": bool(job_kind(r["list_id"]))} for r in lists],
+                   "job": bool(job_kind(r["list_id"])), "system": is_system(r["list_id"])} for r in lists],
         "list": {"id": whole["list_id"], "name": whole["name"], "description": whole.get("description") or "",
-                 "job": job or ""},
+                 "job": job or "", "system": system},
         "sections": sections,
         "counts": {"symbols": len(items), "sections": len(sections),
                    "unsupported": sum(1 for p in parsed if not p.is_supported)},
@@ -335,7 +388,7 @@ def columns(list_id: str, tab: str) -> dict | None:
     whole = _whole(list_id) if tab in DERIVED_TABS else None
     if whole is None:
         return None
-    job = bool(job_kind(list_id))
+    job = bool(job_kind(list_id)) or is_system(list_id)
     parsed = [_parse(i["symbol"], job) for s in whole["sections"] for i in s["items"]]
     wanted = sorted({p.ticker for p in parsed if p.coverage == "us_equity"})
     if tab == "financials":
@@ -460,6 +513,8 @@ _CSS = """
   color:var(--muted)}
 /* A list the jobs read has no sections, no order of its own and no name to change: those controls are not drawn. */
 .wl-job .wl-own{display:none !important}
+/* A system list is the code's: no add box, no remove, no section tools. */
+.wl-system .wl-add,.wl-system .wl-x,.wl-system .secttools{display:none !important}
 
 /* the column tabs and the row density */
 .wl-bar{display:flex;align-items:center;gap:var(--sp-3);margin:var(--sp-3) 0 var(--sp-2)}
@@ -670,11 +725,16 @@ def render_html(data: dict) -> str:
         return (f'<button type="button" data-list="{e(r["id"])}">{e(r["name"])}'
                 f'<span class="ex">{r["symbols"]}</span></button>')
     # avo's own lists first, then the two the jobs read under a heading of their own.
-    options = "".join(option(r) for r in data["lists"] if not r.get("job"))
+    options = "".join(option(r) for r in data["lists"] if not r.get("job") and not r.get("system"))
     fed = "".join(option(r) for r in data["lists"] if r.get("job"))
     if fed:
         options += f'<span class="sep"></span><span class="wl-cap">Read by the jobs</span>{fed}'
+    kept = "".join(option(r) for r in data["lists"] if r.get("system"))
+    if kept:
+        options += f'<span class="sep"></span><span class="wl-cap">System</span>{kept}'
     job = " wl-job" if data["list"].get("job") else ""
+    if data["list"].get("system"):
+        job = " wl-job wl-system"
     tabs = "".join(f'<button class="wl-tab" type="button" role="tab" data-tab="{e(t["key"])}" '
                    f'aria-selected="{"true" if t["key"] == "price" else "false"}">{e(t["label"])}</button>'
                    for t in data["tabs"])
@@ -807,7 +867,7 @@ _JS = r"""
     return out;
   }
   function grip(kind, id){
-    if(data.list.job) return '';           // a job list is kept by ticker: there is nothing to reorder
+    if(data.list.job || data.list.system) return '';   // a job or system list is kept by the code: nothing to reorder
     return '<button class="wl-grip" type="button" draggable="true" data-drag="' + kind + '" data-id="' +
       rcEsc(id) + '" aria-label="Reorder">' + GRIP + '</button>';
   }

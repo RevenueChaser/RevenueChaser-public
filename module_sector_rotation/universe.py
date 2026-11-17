@@ -1,6 +1,6 @@
 """Universe for the RRG rotation engine.
 
-- ``ROTATION_ETFS`` — 90 symbols: 79 ETFs run through the SPY-relative rotation engine (A1: each against its own
+- ``ROTATION_ETFS`` — 100 symbols: 89 ETFs run through the SPY-relative rotation engine (A1: each against its own
   history; quadrants, money flow) plus 11 macro indicators (yield curve + volatility/commodities) that are named here
   and shown in the macro table, not on the map (B1). ``MACRO_SERIES`` holds their ``market_series`` rows and two more
   macro-table-only series (the HY and IG credit spreads).
@@ -39,6 +39,7 @@ GROUP_COLORS = {
     "sector": "#58a6ff",
     "theme": "#d2991d",
     "style": "#db61a2",
+    "industry": "#3fb9a0",
     "bond": "#f85149",
     "region": "#a371f7",
     "yield": "#22d3ee",

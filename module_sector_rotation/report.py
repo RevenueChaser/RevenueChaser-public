@@ -9,6 +9,7 @@ from typing import Optional
 from RevenueChaser.core.config import OUTPUT_DIR
 from RevenueChaser.core.gics_map import UNCLASSIFIED
 from RevenueChaser.module_sector_rotation.models import ETFRotationSnapshot
+from RevenueChaser.core.rotation_reference import INDUSTRY_MAP_ETFS
 from .universe import MACRO_SERIES, ROTATION_ETFS, GROUP_COLORS, QUADRANT_COLORS
 from .theme_focus import coarse_theme_catalog
 
@@ -145,6 +146,10 @@ __ESC_JS__
 var ACTIVE_GROUP = 'sector';
 var THEME = 'all';
 var THEME_ETFS = __THEME_ETFS_JSON__;
+var INDUSTRY_ETFS = __INDUSTRY_ETFS_JSON__;  // the industry layer: one ETF per GICS industry group, whatever its own group
+function inGroup(t, g) {
+    return ACTIVE_GROUP === 'industry' ? INDUSTRY_ETFS.indexOf(t) >= 0 : String(g).trim().toLowerCase() === ACTIVE_GROUP;
+}
 var HIDDEN = {};  // ticker -> true means hidden (unchecked in picker)
 var ROTATION_HOLDINGS = __HOLDINGS_JSON__;  // ticker -> pre-rendered holdings <td> fragment
 function filterGroup(g) {
@@ -167,7 +172,7 @@ function rowVisible(row) {
         var allowed = THEME_ETFS[THEME] || [];
         return allowed.indexOf(t) >= 0;
     }
-    return String(row.dataset.group).trim().toLowerCase() === ACTIVE_GROUP;
+    return inGroup(t, row.dataset.group);
 }
 function renderChart() {
     // map rows only: a nested holdings row has no group and would be hidden by the filter
@@ -770,7 +775,7 @@ var QCOL = {LEADING:'#3fb950', WEAKENING:'#d2991d', LAGGING:'#f85149', IMPROVING
 function rrgVisible(e) {
     if (HIDDEN[e.ticker]) return false;
     if (THEME !== 'all') return (THEME_ETFS[THEME] || []).indexOf(e.ticker) >= 0;
-    return String(e.group).toLowerCase() === ACTIVE_GROUP;
+    return inGroup(e.ticker, e.group);
 }
 function setTrail(n) {
     TRAIL = n;
@@ -1025,6 +1030,7 @@ def export_rotation_dashboard(snapshots: list[ETFRotationSnapshot], filename: st
                           for t, tree in sector_holdings.items()})
     js = fill(JS, {"__HOLDINGS_JSON__": script_json(fragments),
                    "__THEME_ETFS_JSON__": theme_etfs_json,
+                   "__INDUSTRY_ETFS_JSON__": script_json(list(INDUSTRY_MAP_ETFS)),
                    "__ESC_JS__": ESC_JS})
     help_block = help_html(
         "A relative rotation map of sector and theme ETFs against the benchmark. Each dot's position "

@@ -49,9 +49,9 @@ def test_the_job_lists_come_after_avos_own_lists_with_their_counts(no_data):
     ops.watch_add("option", "NVDA", by="test")
     ops.watch_add("option", "AMD", by="test")
     lists = board.payload()["lists"]
-    assert [r["id"] for r in lists] == [own, "jobs.option", "jobs.stock"]
-    assert [r["job"] for r in lists] == [False, True, True]
-    assert [r["symbols"] for r in lists] == [0, 2, 0]
+    assert [r["id"] for r in lists][:3] == [own, "jobs.option", "jobs.stock"]     # the system lists follow (PR 3)
+    assert [r["job"] for r in lists][:3] == [False, True, True]
+    assert [r["symbols"] for r in lists][:3] == [0, 2, 0]
 
 
 def test_a_job_list_opens_with_its_tickers_as_us_listings_in_one_unnamed_section(monkeypatch, no_data):
