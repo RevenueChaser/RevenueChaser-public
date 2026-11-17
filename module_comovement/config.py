@@ -93,7 +93,8 @@ ENGINE_EPOCH = "2026-10-17T01:30:00+00:00"
 # 3: PR 8 (G3), the closes come from the prices store (Alpaca, total-return factors) instead of D01.
 # 4: the review of 17 Nov 2026, F6 (a name with no recent bar is not clustered) and F7 (flat printers judged on the
 #    run's window, not the whole stored history).
-METHOD = 4
+# 5: the xReview of 17 Nov 2026: the market beta is fitted on winsorised returns.
+METHOD = 5
 
 # ── Clustering ──────────────────────────────────────────────────────────────
 # Ward (review 2026-10-01 §1): average linkage chained a quarter to half of the
