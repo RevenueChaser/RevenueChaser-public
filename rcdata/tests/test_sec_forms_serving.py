@@ -386,22 +386,27 @@ def test_the_filing_list_stays_sec_filings_and_carries_no_text(sec):
 NEWCO = "2000001"
 
 
-def _moved(sec, monkeypatch) -> None:
+@pytest.fixture
+def moved(monkeypatch, http_mock):
     """MSFT's filings now belong to a successor CIK that has filed only its 8-K12B and a proxy, as ExxonMobil
-    Holdings had (its FY2025 10-K is under CIK 34088). MSFT itself is no longer in the universe."""
+    Holdings had (its FY2025 10-K is under CIK 34088). MSFT itself is no longer in the universe. A spine of its own
+    (not ``sec``'s): a second spine build that drops five of six names is refused as a shrink."""
     from RevenueChaser.rcdata.build import cik_history
+    monkeypatch.setattr(sec_edgar, "SEC_WWW_BASE", "https://sec.test")
+    monkeypatch.setattr(sec_edgar, "SEC_DATA_BASE", "https://data.sec.test")
     monkeypatch.setattr(cik_history, "seed", lambda: {MSFT: NEWCO})
     fx.spine(rows=[{**fx.COMPANIES[0], "cik": NEWCO}])
+    sec = http_mock
     own = [("0002000001-26-000001", "8-K12B", "2026-07-01", "2026-07-01", "newco-8k12b.htm", "8.01"),
            ("0002000001-26-000002", "DEF 14A", "2026-09-01", "2026-10-20", "newco-def14a.htm", "")]
     fx.filing_routes(sec, {NEWCO: fx.submissions(int(NEWCO), own, "NEWCO"),
                            MSFT: fx.submissions(789019, fx.MSFT_FILINGS, "MICROSOFT CORP")},
                      {"msft-10k.htm": annual(), "msft-def14a.htm": fx.proxy(), "newco-def14a.htm": fx.proxy()})
     fx.run(filings.NAME, mode="backfill", to=AS_OF)
+    return sec
 
 
-def test_a_successor_with_no_annual_report_of_its_own_serves_its_predecessors(sec, monkeypatch):
-    _moved(sec, monkeypatch)
+def test_a_successor_with_no_annual_report_of_its_own_serves_its_predecessors(moved):
     assert _cut()["result"] != "failed"
     notes = q("SELECT accession, local_name FROM filing_note WHERE cik = ?", NEWCO)
     assert notes == [(fx.K25, "DebtDisclosureTextBlock")], "the debt note is the predecessor's 10-K, by its own accn"
