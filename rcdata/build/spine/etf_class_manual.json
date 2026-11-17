@@ -1,5 +1,5 @@
 {
-  "_": "Corrections to etf_class by hand, over and above the rule in etf_class.py. Owned by avo; changed only by a pull request. This file corrects a wrong call of the rule; it never fills a fund that has no data (avo, 17 Nov 2026: a label needs a source). Each line: ticker, primary, optional code (the GICS code or country the primary names), reason. A ticker that is no ETF of my_universe is reported as an etf_class_manual_unknown build issue.",
+  "_": "Corrections to etf_class by hand, over and above the rule in etf_class.py. Owned by avo; changed only by a pull request. This file corrects a wrong call of the rule; it never fills a fund that has no data (avo, 17 Nov 2026: a label needs a source). Each line: ticker, primary_class, optional code (the GICS code or country it names), reason. A ticker that is no ETF of my_universe is reported as an etf_class_manual_unknown build issue.",
   "version": 1,
   "set": []
 }
