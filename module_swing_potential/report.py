@@ -172,6 +172,10 @@ def _summary_html(s: dict) -> str:
         bits = ([f"{_fmt_int(stale_n)} tickers"] if stale_n else []) + (["SPY"] if s.get("spy_stale") else [])
         stale_part += (f" Stale price cache (refetch failed, last cached bars used): "
                        f"{_html.escape(' + '.join(bits))}.")
+    if s.get("spy_missing"):
+        # Swing review F2: with no SPY bar of the latest session RS is unknown, so Weinstein (5 of 5) cannot pass.
+        stale_part += (" <b>SPY has no bar of the latest session</b>: the RS rating and Weinstein's relative-strength "
+                       "rule are unknown, so no name passes Weinstein on this Fetch.")
 
     return (
         '<div class="summary">'

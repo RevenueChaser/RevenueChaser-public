@@ -2130,6 +2130,7 @@
     },
     "regime": "RISK-ON",
     "spy_3m_return": 0.0474,
+    "spy_missing": false,
     "spy_price": 57.58,
     "spy_sma200": 51.93,
     "spy_stale": false,

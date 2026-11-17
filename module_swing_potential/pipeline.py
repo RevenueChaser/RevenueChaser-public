@@ -238,6 +238,7 @@ def build_payload(results: list[dict], top_n: int | None = None, run_stats: dict
         "summary": {
             "stale_ohlc": run_stats.get("stale_ohlc", 0),
             "spy_stale": bool(run_stats.get("spy_stale")),
+            "spy_missing": bool(run_stats.get("spy_missing")),
             "regime": regime,
             "spy_price": run_stats.get("spy_price"),
             "spy_sma200": run_stats.get("spy_sma200"),
