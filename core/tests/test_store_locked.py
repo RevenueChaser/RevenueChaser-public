@@ -20,10 +20,12 @@ from RevenueChaser.core.rawstore import StoreLockedError
 #: A board file that is never opened: ``duckdb.connect`` is replaced in every test that names it.
 _FILE = Path("/x/.store/news.duckdb")
 
+# Never this process's own PID: an xdist worker ran as PID 2832 on a runner (17 Nov 2026) and the lock read as ours.
+FAKE_PID = 2832 if os.getpid() != 2832 else 2833
 VSCODE = (
     'IO Error: Could not set lock on file "/x/.store/boards/news.duckdb": Conflicting '
     'lock is held in /Applications/Visual Studio Code.app/Contents/Frameworks/'
-    'Code Helper (Plugin).app/Contents/MacOS/Code Helper (Plugin) (PID 2832) '
+    f'Code Helper (Plugin).app/Contents/MacOS/Code Helper (Plugin) (PID {FAKE_PID}) '
     'by user someone. However, you would be able to open this database in '
     'read-only mode.'
 )
@@ -35,13 +37,13 @@ GENERIC = (
 
 @pytest.fixture(autouse=True)
 def _pid_is_gone(monkeypatch):
-    """``_process_name`` would run a real ``ps -p <pid>``; PID 2832 can be alive on a runner (#196)."""
+    """``_process_name`` would run a real ``ps -p <pid>``; the fake PID can be alive on a runner (#196)."""
     monkeypatch.setattr(rawstore, "_process_name", lambda pid: "")
 
 
 class TestHolderParsing:
     def test_the_pid_is_extracted(self):
-        assert rawstore._lock_error(VSCODE).holder_pid == 2832
+        assert rawstore._lock_error(VSCODE).holder_pid == FAKE_PID
 
     def test_the_holder_path_is_extracted(self):
         assert "Code Helper" in rawstore._lock_error(VSCODE).holder_path
@@ -69,7 +71,7 @@ class TestMessage:
 
     def test_the_headline_names_the_holder_and_pid(self):
         head = rawstore._lock_error(VSCODE).headline()
-        assert "2832" in head and "Code Helper" in head
+        assert str(FAKE_PID) in head and "Code Helper" in head
 
     def test_vscode_gets_the_extension_specific_remedy(self):
         remedy = rawstore._lock_error(VSCODE).remedy()
