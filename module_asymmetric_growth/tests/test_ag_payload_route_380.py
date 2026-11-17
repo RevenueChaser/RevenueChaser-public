@@ -158,3 +158,33 @@ setTimeout(function(){ console.log(JSON.stringify({grid: _els['grid'].innerHTML}
 """, tmp_path)
     assert "could not be loaded" in log["grid"] and "404" in log["grid"]
     assert "No companies match" not in log["grid"]
+
+
+# ── review F3: a Refresh keeps the Fetch's header when the stored rows are that Fetch's ─────────────────────────
+_FUNNEL = [{"key": "universe", "label": "Universe", "count": 2, "kind": "start"},
+           {"key": "scored", "label": "Scored", "count": 2, "kind": "result"}]
+
+
+def _fetched(monkeypatch):
+    result = {**_result([_card("AAA"), _card("BBB", points=5)]), "data_as_of": "2026-10-15",
+              "funnel_steps": _FUNNEL, "summary": {"scanned": 2, "low_liquidity": 1}}
+    monkeypatch.setattr(engine, "run_asymmetric_growth_hunter", lambda uw, **k: result)
+    runners.run_asymmetric_growth(None)
+
+
+def test_a_refresh_after_a_fetch_keeps_its_date_session_and_funnel(out, monkeypatch):
+    _fetched(monkeypatch)
+    runners.run_asymmetric_growth(None, no_fetch=True)
+    shown = json.loads(runners.ASYMMETRIC_GROWTH_JSON.read_text(encoding="utf-8"))
+    assert shown["asof"] == "2026-10-15T22:05:00+00:00" and shown["data_as_of"] == "2026-10-15"
+    assert shown["funnel_steps"] == _FUNNEL and shown["summary"]["low_liquidity"] == 1
+    assert [c["ticker"] for c in shown["cards"]] == ["AAA", "BBB"]
+
+
+def test_a_refresh_over_other_rows_does_not_borrow_the_header(out, monkeypatch):
+    _fetched(monkeypatch)
+    ticker_store.write_from_cards([_card("ZZZ", points=9)], asof="2026-10-16T22:05:00+00:00")
+    runners.run_asymmetric_growth(None, no_fetch=True)
+    shown = json.loads(runners.ASYMMETRIC_GROWTH_JSON.read_text(encoding="utf-8"))
+    assert shown["funnel_steps"] is None and shown["data_as_of"] is None
+    assert shown["summary"]["scanned"] == 1
