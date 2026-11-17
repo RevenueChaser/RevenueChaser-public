@@ -55,9 +55,12 @@ def test_a_quality_only_name_carries_only_quality():
     assert c["rules_passed"] == ["quality"] and c["passed_count"] == 1 and c["bucket"] == "quality"
 
 
-def test_a_momentum_only_name_carries_only_momentum():
-    p = build_payload([_row("M", _m(**_NO_RO40, **_MOM))], top_n=10)
-    assert p["candidates"][0]["rules_passed"] == ["momentum"]
+def test_a_momentum_only_name_gets_no_card_and_is_counted():
+    """avo B1 (17 Nov 2026): Momentum confirms, it never admits a card alone."""
+    p = build_payload([_row("M", _m(**_NO_RO40, **_MOM)), _row("T", _m(**_RO40, **_MOM))], top_n=10)
+    assert [c["ticker"] for c in p["candidates"]] == ["T"]
+    assert p["candidates"][0]["rules_passed"] == ["rule_of_40", "momentum"]
+    assert p["summary"]["momentum_only"] == 1
 
 
 def test_a_rule_of_40_only_name_carries_only_the_rule_of_40():

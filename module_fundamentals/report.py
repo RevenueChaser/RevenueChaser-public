@@ -160,6 +160,8 @@ def _summary_html(s: dict, data_quality: dict | None = None) -> str:
                       ("stale_annual", "stale annual report"), ("ro40_barrier", "Rule of 40 above 150")):
         if health.get(key):
             elim.append(f"{text} {_fmt_int(health.get(key))}")
+    if s.get("momentum_only"):
+        elim.append(f"Momentum only (no Rule of 40 or Quality pass) {_fmt_int(s.get('momentum_only'))}")
     if s.get("hygiene") is not None:
         # Plan 2026-11-16 E: this count is the price / dollar-volume floor (``screen_common.prefilter``), not the
         # price-hygiene gates of #116, which only flag.

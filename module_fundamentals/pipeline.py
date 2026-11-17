@@ -720,6 +720,9 @@ def _data_short(run_stats: dict):
     return max(0, short - sum(_health_drops(run_stats).values()) - _non_usd_count(run_stats))
 
 
+FUNDAMENTAL_GATES = frozenset({"rule_of_40", "quality"})
+
+
 def build_payload(results: list[dict], top_n: int | None = None, run_stats: dict = None) -> dict:
     """The board payload. Every candidate is kept (card 6/7, #383 R3 C12); ``top_n`` cuts only when given."""
     run_stats = run_stats or {}
@@ -727,6 +730,7 @@ def build_payload(results: list[dict], top_n: int | None = None, run_stats: dict
 
     passing = {"rule_of_40": 0, "quality": 0, "momentum": 0}
     distorted_count = 0
+    momentum_only = 0
     candidates = []
     for r in results:
         m = r["metrics"]
@@ -739,6 +743,11 @@ def build_payload(results: list[dict], top_n: int | None = None, run_stats: dict
         # an opaque 3x/2x/1x multiplier.
         rules_passed = [k for k in passing if gates[k]["passed"]]
         if not rules_passed:
+            continue
+        # avo B1 (17 Nov 2026): a card needs the Rule of 40 or Quality; Momentum confirms, it never admits alone
+        # (Swing owns pure trend; 678 of 1,245 cards on 16 Nov were momentum-only).
+        if not FUNDAMENTAL_GATES & set(rules_passed):
+            momentum_only += 1
             continue
         passed_count = len(rules_passed)
         for k in rules_passed:
@@ -829,6 +838,7 @@ def build_payload(results: list[dict], top_n: int | None = None, run_stats: dict
             "health_drops": _health_drops(run_stats),
             "passing": passing,
             "distorted_count": distorted_count,
+            "momentum_only": momentum_only,
             "top_n": len(candidates),
         },
         "candidates": candidates,
