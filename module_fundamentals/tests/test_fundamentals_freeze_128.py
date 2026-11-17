@@ -63,8 +63,8 @@ GOLDEN_CONFIG = {
     "DISTORTED_GROWTH": 2.0, "DISTORTED_REV_MIN": 10000000, "TAX_RATE": 0.21,
     "EXCLUDED_SECTORS": ["Financial Services", "Real Estate"], "RO40_BARRIER": 150.0,
 }
-GOLDEN_VERSION = "10"
-GOLDEN_MODEL_VERSION = "10+f60b68e4"
+GOLDEN_VERSION = "11"
+GOLDEN_MODEL_VERSION = "11+f60b68e4"
 
 
 def test_the_effective_config_is_the_golden_config():
