@@ -23,7 +23,7 @@ AS_OF = date(2026, 10, 16)
 # ── F1: the data-health gates ─────────────────────────────────────────────────
 
 def _patch_row(monkeypatch, annual, *, edgar=None):
-    """The store-free inputs ``_compute_row`` reads: bars, ticker info, indicators, EDGAR."""
+    """The store-free inputs ``_compute_row`` reads: bars, indicators, EDGAR."""
     frame = pd.DataFrame({"Close": [1.0]})
     if edgar is None:
         monkeypatch.setattr(pipeline.sec_edgar, "get_fundamentals",
@@ -31,7 +31,6 @@ def _patch_row(monkeypatch, annual, *, edgar=None):
     else:
         monkeypatch.setattr(pipeline.sec_edgar, "get_fundamentals", edgar)
     monkeypatch.setattr(pipeline.screen_common, "load_bars", lambda *a, **k: (frame, frame))
-    monkeypatch.setattr(pipeline, "load_ticker_info", lambda *a, **k: {})
     monkeypatch.setattr(pipeline, "ohlc_drop_reason", lambda df: None)
     monkeypatch.setattr(pipeline, "compute_indicators",
                         lambda df, spy, **k: {"price": 10.0, "sma200": 5.0, "within_52w_high_pct": 0.9})

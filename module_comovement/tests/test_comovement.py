@@ -20,7 +20,7 @@ from RevenueChaser.module_comovement import (cluster, config, engine, label, noi
 
 # ── config ──────────────────────────────────────────────────────────────────
 def test_cuts_scale_with_universe_size():
-    assert config.cuts_for(3000) == (20, 80, 250)
+    assert config.cuts_for(3000) == (60, 120, 250)
     assert config.cuts_for(800) == (10, 30, 80)
     assert config.cuts_for(120) == (5, 15, 40)
 

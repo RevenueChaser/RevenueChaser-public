@@ -66,7 +66,6 @@ def scan_env(rawstore_tmp_db, monkeypatch):
     monkeypatch.setattr(cal, "_now", lambda: NOW)
     monkeypatch.setattr(fp, "fetch_universe_stats", lambda **kw: (rows, {"out_of_universe": 0}))
     monkeypatch.setattr(fp, "prefilter", lambda r: screen_common.Prefiltered(list(r)))
-    monkeypatch.setattr(fp, "load_ticker_info", lambda *a, **k: {"longName": "Test"})
     monkeypatch.setattr("yfinance.Ticker", _OfflineTicker)
     return rows
 

@@ -79,17 +79,19 @@ def test_a_fresh_row_is_returned_without_calling_yfinance(rawstore_tmp_db, monke
     assert indicators.load_ticker_info("AAPL") == {"longName": "Apple Inc."}
 
 
-def test_the_pipeline_counts_the_stale_info_and_strips_the_marker(rawstore_tmp_db, monkeypatch):
+def test_the_swing_row_never_reads_yahoo_info_and_names_from_the_spine(rawstore_tmp_db, monkeypatch):
+    """#645 option A (Swing review F1, 17 Nov 2026): no ``.info`` read per name; the name is the universe row's."""
     monkeypatch.setattr(pipeline.screen_common, "load_bars", lambda *a, **k: (_df(300), _df(300)))   # D01 (C12)
-    monkeypatch.setattr(pipeline, "load_ticker_info",
-                        lambda *a, **k: {"longName": "Apple Inc.", "industry": "Tech", "_stale": True})
+    monkeypatch.setattr(indicators, "load_ticker_info",
+                        lambda *a, **k: pytest.fail("Swing must not read Yahoo .info"))
+    monkeypatch.setattr("yfinance.Ticker", lambda t: pytest.fail("Swing must not call yfinance"))
     monkeypatch.setattr(pipeline, "compute_indicators",
                         lambda df, spy, **k: {"price": 100.0, "atr14": 2.0})
-    row = pipeline._compute_row({"ticker": "AAPL"}, None)
-    assert row["info_stale"] is True
-    assert row["name"] == "Apple Inc."                       # the marker never reaches a card field
+    row = pipeline._compute_row({"ticker": "AAPL", "name": "Apple Inc."}, None)
+    assert row["name"] == "Apple Inc."
+    assert "info_stale" not in row
     payload = pipeline.build_payload([row], run_stats={})
-    assert payload["data_quality"]["stale_info"] == 1
+    assert "stale_info" not in payload["data_quality"]
 
 
 # ── review round (2026-10-14): a stub answer is no answer (F1) ─────────────────

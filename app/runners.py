@@ -842,8 +842,13 @@ def run_quick_cached(uw=None, ticker: str | None = None) -> Path | None:
     return QUICK_LATEST if QUICK_LATEST.exists() else None
 
 
+def _ag_header_path() -> Path:
+    """The last AG Fetch's header (``engine.fetch_header``), beside the page; written only by a Fetch."""
+    return Path(ASYMMETRIC_GROWTH_LATEST).with_name("asymmetric_growth_fetch_header.json")
+
+
 def run_asymmetric_growth(uw, refresh_universe: bool = False, no_fetch: bool = False) -> Path:
-    """Run the Asymmetric Growth Hunter scan (US-listed, all caps, SEC EDGAR + yfinance).
+    """Run the Asymmetric Growth Hunter scan (US-listed, all caps, stored SEC EDGAR figures and prices-store bars).
 
     ``refresh_universe=True`` re-fetches the shared ticker universe first;
     ``no_fetch=True`` (a Refresh) renders the last Fetch's stored cards (``engine.stored_result``), no scoring.
@@ -859,14 +864,24 @@ def run_asymmetric_growth(uw, refresh_universe: bool = False, no_fetch: bool = F
     # One id per Fetch (jobs.py:97): its freeze.
     run = None if no_fetch else _freeze_run_id()
     # A Refresh shows the last Fetch read back from the store and never re-scores (S5, Common K4 #383 R1).
-    result = (stored_result() if no_fetch else
-              run_asymmetric_growth_hunter(uw, refresh_universe=refresh_universe, no_fetch=False, run_id=run))
+    # The Fetch's header (date, prices session, funnel) rides beside the stored rows, so a Refresh keeps it (F3).
+    if no_fetch:
+        try:
+            header = json.loads(_ag_header_path().read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            header = None
+        result = stored_result(header)
+    else:
+        result = run_asymmetric_growth_hunter(uw, refresh_universe=refresh_universe, no_fetch=False, run_id=run)
     _write_output("asymmetric_growth", json.dumps(result, ensure_ascii=False, default=str), "latest", ext="json")
     # The page and its cards (S7, K10 #383 C6a): the cards go to the gzip payload file next to the page.
     write_board(ASYMMETRIC_GROWTH_LATEST, render_asymmetric_growth_hunter_html(result), board_payload(result))
     if not no_fetch:
         # Only a Fetch rewrites the durable per-ticker table; a Refresh renders and leaves it alone (#145 D5).
         ticker_store.write_from_cards(result["cards"], result.get("asof"))
+        from RevenueChaser.core.reporting_common import write_artifact
+        from RevenueChaser.module_asymmetric_growth.engine import fetch_header
+        write_artifact(_ag_header_path(), json.dumps(fetch_header(result), ensure_ascii=False, default=str))
         # Last step of a Fetch, after the board files are written. A Refresh (no_fetch) never freezes.
         # The outcome is a job note (core.ledger), not a JobMessage: ``run_universe_refresh`` still has
         # two boards to run. A freeze *error* propagates, so the job shows it.
@@ -888,8 +903,8 @@ def _end_empty_fetch(payload: dict, no_fetch: bool) -> None:
 def run_swing(uw, refresh_universe: bool = False, no_fetch: bool = False) -> Path:
     """Run the Swing Screener (broad US scan, Minervini/Weinstein/Qullamaggie).
 
-    Reads the store's daily bars (filled nightly from UW with a yfinance fallback); yfinance is called only for
-    company info and the SPY fallback, and ``uw`` is unused here (options flow is manual-review). Writes the
+    Reads the prices store's daily bars and the spine's names; no yfinance call at all (#645, Swing review F1), and
+    ``uw`` is unused here (options flow is manual-review). Writes the
     structured JSON payload, the HTML board and its rows file (K10, #383 R3).
     ``refresh_universe=True`` re-fetches the shared ticker universe first;
     ``no_fetch=True`` (model-only) runs purely from cached per-ticker data.

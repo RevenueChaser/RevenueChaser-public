@@ -28,18 +28,19 @@ def _pct(share: float) -> str:
 
 
 def _gate(name: str, rules: list[dict], min_passes: int | None = None,
-          decides: list[str] | None = None) -> dict:
+          decides: list[str] | None = None, required: tuple[str, ...] = ()) -> dict:
     """Passes when at least ``min_passes`` rules are KNOWN passes (all of them by default).
 
     An unknown rule is never a pass, so a gate that needs every rule passes only when every rule is known and
-    passed (decision 8-A); Qullamaggie (5 of 6) passes on five known passes. ``decides`` (a list of rule ids)
+    passed (decision 8-A); Qullamaggie (6 of 7) passes on six known passes, its move and tightening among them. ``decides`` (a list of rule ids)
     narrows what decides ``passed`` to just those rules, while ``score`` / ``known`` / ``total`` still cover every
     rule: Minervini shows and counts its RS rule but the seven price rules decide ``passed`` (#65 / #384 SW-S1).
+    ``required`` rule ids must also be KNOWN passes on top of ``min_passes`` (Qullamaggie's move and tightening, B2).
     """
     passed_count, n_known, total = tri.tally(rules)
     min_passes = total if min_passes is None else min_passes
     if decides is None:
-        passed = passed_count >= min_passes
+        passed = passed_count >= min_passes and all(r["passed"] is True for r in rules if r["id"] in required)
     else:
         decided = [r for r in rules if r["id"] in decides]
         passed = bool(decided) and all(r["passed"] is True for r in decided)
@@ -77,7 +78,7 @@ def evaluate_minervini(ind: dict, rs_rating: float | None, eff=None) -> dict:
         _rule("price_above_50", "Price above 50-day MA", "price",
               tri.rule((g("price"), g("sma50")), lambda p, a: p > a),
               g("price"), "above 50-day MA"),
-        _rule("above_52w_low", "At least 25% above 52-week low", "ratio",
+        _rule("above_52w_low", f"At least {_pct(config.ABOVE_52W_LOW - 1)}% above 52-week low", "ratio",
               tri.rule((g("above_52w_low_pct"),), lambda v: v >= config.ABOVE_52W_LOW),
               g("above_52w_low_pct"), f"≥ {config.ABOVE_52W_LOW:g}× the low"),
         _rule("within_52w_high", "Within 25% of 52-week high", "pct_high",
@@ -105,9 +106,9 @@ def evaluate_weinstein(ind: dict, eff=None) -> dict:
         _rule("overhead_breakout", "Above overhead resistance (near 52w high)", "pct_high",
               tri.rule((g("within_52w_high_pct"),), lambda v: v >= e.breakout_high_pct),
               g("within_52w_high_pct"), f"≥ {_pct(e.breakout_high_pct)}% of the high"),
-        _rule("volume_confirmation", f"Volume at least {e.vol_confirm:g}× average", "ratio",
+        _rule("volume_confirmation", f"Volume at least {e.vol_confirm:g}× average on an up day", "ratio",
               tri.rule((g("vol_ratio"),), lambda v: v >= e.vol_confirm),
-              g("vol_ratio"), f"≥ {e.vol_confirm:g}× 20-day avg, best of {config.VOL_WINDOW} days"),
+              g("vol_ratio"), f"≥ {e.vol_confirm:g}× 20-day avg, best up day of {config.VOL_WINDOW}"),
         _rule("rs_3m_gt_spy", "3-month relative strength above SPY", "diff_pct",
               tri.rule((g("rs_vs_spy_3m"),), lambda v: v > 0),
               g("rs_vs_spy_3m"), "beats SPY"),
@@ -116,7 +117,7 @@ def evaluate_weinstein(ind: dict, eff=None) -> dict:
 
 
 def evaluate_qullamaggie(ind: dict, eff=None) -> dict:
-    """Qullamaggie — 5/6 rule-set (breakout momentum)."""
+    """Qullamaggie — 6 of 7, the prior move and the tightening required (breakout momentum; Swing review B2)."""
     e = eff or swing_settings.effective()
     g = ind.get
     rules = [
@@ -139,8 +140,11 @@ def evaluate_qullamaggie(ind: dict, eff=None) -> dict:
         _rule("adr_ge_3", f"Average daily range at least {_pct(e.adr_min)}%", "pct",
               tri.rule((g("adr_pct"),), lambda v: v >= e.adr_min),
               g("adr_pct"), f"≥ {_pct(e.adr_min)}%"),
+        _rule("tightening", f"Last {config.TIGHT_RECENT} days tighter than the {config.TIGHT_BEFORE} before", "pct",
+              tri.rule((g("range_recent"), g("range_before")), lambda a, b: a < b),
+              g("range_recent"), f"daily range below the prior {config.TIGHT_BEFORE} days'"),
     ]
-    return _gate("Qullamaggie", rules, min_passes=5)
+    return _gate("Qullamaggie", rules, min_passes=6, required=("large_move", "tightening"))
 
 
 def evaluate_direction(ind: dict) -> dict:

@@ -29,7 +29,9 @@ _TECH = {"price": 100.0, "dist_52w_pct": 0.05, "vol_ratio": 1.6, "above_sma50": 
 
 
 def _rec(fy, revenue, **kw) -> dict:
-    base = {"fiscal_year": fy, "revenue": revenue, "gross_profit": revenue * 0.5 if revenue else None}
+    # A filed debt total, so no card here is read debt-free (decision B1, flagged ``debt_inferred_none``).
+    base = {"fiscal_year": fy, "revenue": revenue, "gross_profit": revenue * 0.5 if revenue else None,
+            "total_debt": 10.0}
     base.update(kw)
     return base
 
@@ -54,11 +56,11 @@ def test_a_prior_year_that_is_not_positive_gives_unknown_growth(prior):
     assert "prior_nonpositive" in card["flags"]
 
 
-def test_growth_above_500_pct_keeps_its_value_and_is_flagged():
+def test_growth_above_500_pct_keeps_its_value_is_flagged_and_scores_unknown():
     card = _card([_rec(2024, 100.0), _rec(2025, 700.0)])              # +600 %
     assert card["rev_growth"] == pytest.approx(6.0)
     assert "suspicious_growth" in card["flags"]
-    assert _sub(card, "rev_growth")["passed"] is True                 # the rule still reads the value
+    assert _sub(card, "rev_growth")["passed"] is None                 # F1 (avo, 17 Nov 2026): unknown, not a pass
 
 
 def test_growth_at_500_pct_is_not_flagged():

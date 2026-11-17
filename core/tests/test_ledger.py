@@ -229,11 +229,10 @@ def test_the_gate_uses_the_new_york_date_after_midnight_utc():
     assert ledger.session_gate(_utc(2026, 10, 27, 0, 30)) == (date(2026, 10, 26), None)
 
 
-def test_the_gate_refuses_inside_the_session_window():
-    d, why = ledger.session_gate(_utc(2026, 10, 2, 16, 0))                  # 12:00 ET
-    assert d is None and "session window" in why
-    d, why = ledger.session_gate(_utc(2026, 10, 2, 20, 15))                 # 16:15 ET: still in the 16:30 margin
-    assert d is None and "session window" in why
+def test_the_gate_inside_the_session_window_names_the_session_before():
+    """#25: the prices store holds complete sessions only, so a daytime Fetch freezes yesterday's, never refuses."""
+    assert ledger.session_gate(_utc(2026, 10, 2, 16, 0)) == (date(2026, 10, 1), None)    # 12:00 ET
+    assert ledger.session_gate(_utc(2026, 10, 2, 20, 15)) == (date(2026, 10, 1), None)   # 16:15 ET: in the margin
 
 
 def test_the_gate_allows_a_weekend_run_and_names_friday():
@@ -399,11 +398,11 @@ def test_freeze_board_writes_the_shown_picks_and_notes_it(rawstore_tmp_db):
     assert ledger.take_notes() == ["Froze 3 Swing rows for 2026-10-02."]
 
 
-def test_freeze_board_inside_the_session_window_freezes_nothing_and_says_why(rawstore_tmp_db):
+def test_freeze_board_inside_the_session_window_freezes_the_session_before(rawstore_tmp_db):
+    """#25: 8 of 8 freezes 9-16 Nov were refused; three of them only for running in the daytime."""
     out = _freeze(_board(3), now=INTRADAY)
-    assert out.frozen == 0 and rawstore.count("forecast_ledger") == 0
-    (note,) = ledger.take_notes()
-    assert note.startswith("Swing not frozen: inside the US session window")
+    assert (out.frozen, out.forecast_date) == (3, date(2026, 10, 1))
+    assert ledger.take_notes() == ["Froze 3 Swing rows for 2026-10-01."]
 
 
 @pytest.mark.parametrize("payload", [_payload(is_fixture=True), _payload(no_data=True), _payload(candidates=[])])
@@ -466,10 +465,10 @@ def test_all_or_nothing_still_keeps_first_write_wins(rawstore_tmp_db):
 
 
 def test_the_gap_check_runs_after_the_other_refusals(rawstore_tmp_db):
-    """An intraday run is refused by the window before any bar is looked at."""
+    """A run past the holiday table is refused by the calendar before any bar is looked at."""
     def boom(session, subjects):
         raise AssertionError("the bar check must not run for a run that is already refused")
-    assert _freeze(_board(2), now=INTRADAY, bar_gaps=boom).frozen == 0
+    assert _freeze(_board(2), now=_utc(2029, 3, 1, 22, 0), bar_gaps=boom).frozen == 0
 
 
 def test_the_refusal_note_splits_the_incomplete_picks_by_cause_in_rank_order(rawstore_tmp_db):
@@ -554,7 +553,7 @@ def test_freeze_board_past_the_holiday_table_skips_with_a_message(rawstore_tmp_d
 def test_freeze_board_never_raises_job_message(rawstore_tmp_db):
     """A skipped freeze inside ``run_universe_refresh`` must not stop the next family."""
     from RevenueChaser.app import jobs
-    for payload, now in ((_board(2), INTRADAY), (_payload(is_fixture=True), POST_CLOSE)):
+    for payload, now in ((_board(2), _utc(2029, 3, 1, 22, 0)), (_payload(is_fixture=True), POST_CLOSE)):
         try:
             _freeze(payload, now=now)
         except jobs.JobMessage:                      # pragma: no cover - the failure being tested

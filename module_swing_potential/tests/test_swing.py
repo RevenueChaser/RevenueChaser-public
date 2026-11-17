@@ -10,11 +10,12 @@ from RevenueChaser.module_swing_potential.pipeline import build_payload
 from RevenueChaser.module_swing_potential.report import render_swing_dashboard
 
 
-def test_pipeline_imports_load_ticker_info():
+def test_swing_no_longer_imports_load_ticker_info():
+    """#645 A: neither Swing (review F1) nor Fundamentals reads Yahoo ``.info``."""
     from RevenueChaser.module_swing_potential import pipeline as sp
     from RevenueChaser.module_fundamentals import pipeline as fp
-    assert hasattr(sp, "load_ticker_info")
-    assert hasattr(fp, "load_ticker_info")
+    assert not hasattr(sp, "load_ticker_info")
+    assert not hasattr(fp, "load_ticker_info")    # #645: Fundamentals reads no Yahoo .info either
 
 
 def _ohlcv(periods=300) -> pd.DataFrame:
@@ -63,7 +64,7 @@ def _pass_ind() -> dict:
         "vol_ratio": 2.0, "rs_vs_spy_3m": 0.05, "rs_vs_spy_12m": 0.1,
         "ema10": 96.0, "ema20": 92.0, "ema10_prev": 90.0, "ema20_prev": 88.0,
         "move_max_1_3m": 0.35, "adr_pct": 0.04, "atr14": 2.0,
-        "change_pct": 0.01, "ret_3m": 0.10,
+        "change_pct": 0.01, "ret_3m": 0.10, "range_recent": 0.02, "range_before": 0.03,
     }
 
 
@@ -77,12 +78,12 @@ def test_minervini_rs_no_longer_fails_the_gate():
     assert rs_rule["unit"] == "rating"
 
 
-def test_qullamaggie_five_of_six():
+def test_qullamaggie_six_of_seven():
     ind = _pass_ind()
-    ind["adr_pct"] = 0.01  # drop ADR below 3% -> still 5/6
+    ind["adr_pct"] = 0.01  # drop ADR below 3% -> still 6/7
     g = screeners.evaluate_qullamaggie(ind)
     assert g["passed"] is True
-    assert g["score"] == "5/6"
+    assert g["score"] == "6/7"
     adr_rule = next(r for r in g["rules"] if r["id"] == "adr_ge_3")
     assert adr_rule["passed"] is False
 
@@ -93,7 +94,7 @@ def test_qullamaggie_fails_below_five():
     ind["move_max_1_3m"] = 0.10  # move < 25% -> fail
     g = screeners.evaluate_qullamaggie(ind)
     assert g["passed"] is False
-    assert g["score"] == "4/6"
+    assert g["score"] == "5/7"
 
 
 # ── ranking ──

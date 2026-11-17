@@ -1,7 +1,7 @@
 """#151 (27-7, decision 8-A) on the Swing board: a missing indicator makes a rule UNKNOWN, not a fail.
 
 A gate that needs every rule (Minervini 8/8, Weinstein 5/5) passes only when every rule is known and passed.
-Qullamaggie (5 of 6) passes on five KNOWN passes: an unknown rule is never counted as a pass. The gate rows store
+Qullamaggie (6 of 7, the move and the tightening required) passes on six KNOWN passes: an unknown rule is never counted as a pass. The gate rows store
 NULL for an unknown rule. Synthetic indicators, no network.
 """
 from __future__ import annotations
@@ -22,7 +22,7 @@ def _without(*keys):
 
 def test_a_full_ind_is_unchanged():
     for g, n in ((evaluate_minervini(_PASS, 85.0), 8), (evaluate_weinstein(_PASS), 5),
-                 (evaluate_qullamaggie(_PASS), 6)):
+                 (evaluate_qullamaggie(_PASS), 7)):
         assert g["passed"] is True and (g["known"], g["total"]) == (n, n)
         assert "known" not in g["score"]
 
@@ -55,21 +55,21 @@ def test_weinstein_without_volume_is_four_of_four_known_and_does_not_pass():
     assert g["score"] == "4/5 of 4 known" and g["passed"] is False
 
 
-def test_qullamaggie_passes_on_five_known_passes_with_one_unknown():
+def test_qullamaggie_passes_on_six_known_passes_with_one_unknown():
     g = evaluate_qullamaggie(_without("adr_pct"))
     assert _rule(g, "adr_ge_3")["passed"] is None
-    assert g["score"] == "5/6 of 5 known" and g["passed"] is True
+    assert g["score"] == "6/7 of 6 known" and g["passed"] is True
 
 
 def test_qullamaggie_does_not_count_an_unknown_as_a_pass():
     g = evaluate_qullamaggie(_without("ema10"))     # three rules need ema10
     assert [r["passed"] for r in g["rules"]].count(None) == 3
-    assert g["score"] == "3/6 of 3 known" and g["passed"] is False
+    assert g["score"] == "4/7 of 4 known" and g["passed"] is False
 
 
-def test_qullamaggie_two_unknown_cannot_reach_five():
+def test_qullamaggie_two_unknown_cannot_reach_six():
     g = evaluate_qullamaggie(_without("adr_pct", "move_max_1_3m"))
-    assert g["score"] == "4/6 of 4 known" and g["passed"] is False
+    assert g["score"] == "5/7 of 5 known" and g["passed"] is False
 
 
 def test_a_zero_value_is_known():

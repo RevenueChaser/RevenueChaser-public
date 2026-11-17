@@ -396,7 +396,7 @@ Two different signals. Do **not** collapse the tabs.
 - Bars stay **daily close** (`interval="1d"`). We do **not** download 3d/5d/10d bars.
 - Lookback: last **252 trading sessions** of prices. Fetch cache is 2y; clustering uses the tail.
 - Pair score: Pearson of **1-day residual** log returns vs SPY by default (default horizon is 1d).
-- Detail Coarse / Medium / Fine = **how many clusters** (20 / 80 / 250). Same corr matrix at every cut.
+- Detail Coarse / Medium / Fine = **how many clusters** (60 / 120 / 250 on the live universe, #582). Same corr matrix at every cut.
 
 ---
 
@@ -415,7 +415,7 @@ together **more than the market**, up or down.
 3. **Remove market** = one benchmark, never three at once (SPY/DIA/QQQ are
    collinear). OLS: `r_i = a + b r_m + e_i`. Cluster **Pearson of residuals
    e**. Off = today’s raw corr (beta stays in the groups).
-4. Ward linkage on √(2(1−ρ)), same cuts (20 / 80 / 250) — average linkage
+4. Ward linkage on √(2(1−ρ)), same cuts (60 / 120 / 250) — average linkage
    chained a quarter to half of the universe into one catch-all (review
    2026-10-01). Persist `comov_runs` keyed by `(horizon, benchmark)`. Switching
    either control reclusters; Refresh is store-only once OHLC exists; Fetch is

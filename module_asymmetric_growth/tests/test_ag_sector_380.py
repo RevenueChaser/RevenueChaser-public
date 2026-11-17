@@ -26,7 +26,7 @@ def _scored(spine_sector: str, vendor_sector: str = "Technology") -> dict:
 @pytest.mark.parametrize("sector", ["Real Estate", "Financial Services"])
 def test_a_not_comparable_spine_sector_is_flagged_and_has_no_tier(sector):
     card = _scored(sector)
-    assert card is not None and card["total_points"] == 9      # still a card, its points unchanged
+    assert card is not None and card["total_points"] == 8      # still a card, its points unchanged
     assert card["sector"] == sector
     assert "sector_not_comparable" in card["flags"]
     assert card["tier"] is None
@@ -47,7 +47,7 @@ def test_a_flagged_card_stays_a_ledger_pick():
     card = _scored("Real Estate")
     card.update(price=10.0, market_cap=1e9)
     rows = freeze.picks([card])
-    assert len(rows) == 1 and rows[0]["bucket"] == "tier:none|pts_9"
+    assert len(rows) == 1 and rows[0]["bucket"] == "tier:none|pts_8_7"   # 8 points: runway not counted (C1)
 
 
 def test_the_summary_counts_the_flagged_cards():

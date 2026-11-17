@@ -63,7 +63,7 @@ def seeded(rawstore_tmp_db, monkeypatch):
     universe_store.replace(rows)
     for mod in (fp, sp):
         monkeypatch.setattr(mod, "prefilter", lambda r: screen_common.Prefiltered(list(r)))
-        monkeypatch.setattr(mod, "load_ticker_info", lambda *a, **k: {})
+        monkeypatch.setattr(mod, "load_ticker_info", lambda *a, **k: {}, raising=False)   # neither board has one (#645)
     monkeypatch.setattr(fp.sec_edgar, "get_fundamentals", lambda *a, **k: (ANNUAL, [], {}))
     monkeypatch.setattr(sp, "data_as_of", lambda: None)
     monkeypatch.setattr(cal, "_now", lambda: scn.NOW)

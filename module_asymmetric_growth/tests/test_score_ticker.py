@@ -35,10 +35,10 @@ def _tech(dist=0.05, vol=1.6, above=True) -> dict:
     return {"price": 100.0, "dist_52w_pct": dist, "vol_ratio": vol, "above_sma50": above}
 
 
-def test_full_pass_nine_points():
+def test_full_pass_eight_points():
     card = score_ticker("TEST", _fin(), _tech())
     assert card is not None
-    assert card["total_points"] == 9
+    assert card["total_points"] == 8   # positive FCF: runway not needed (C1), so 8 is the most
     assert card["us_listed"] is True
     assert card["rev_growth"] is not None and card["rev_growth"] >= 0.20
     assert card["gross_margin"] >= 0.40
@@ -48,7 +48,7 @@ def test_full_pass_nine_points():
 
 def test_partial_points_when_off_52w_high():
     card = score_ticker("TEST", _fin(), _tech(dist=0.30))
-    assert card["total_points"] == 8  # only momentum/dist fails
+    assert card["total_points"] == 7  # only momentum/dist fails
 
 
 def test_non_us_excluded():

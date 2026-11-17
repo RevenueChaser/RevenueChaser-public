@@ -12,36 +12,16 @@ import pandas as pd
 import pytest
 
 from RevenueChaser.core import rawstore, screen_common
-from RevenueChaser.core.providers import yfinance as yfp
 
 COMPLETE = datetime(2026, 10, 6, 22, 0, tzinfo=timezone.utc).timestamp()
 _BANNER = "rc-provider-health"
 
 
-def _yahoo_failure():
-    yfp.reset_health()
-    yfp._HEALTH.call(error="HTTP 429", endpoint="AAA.info")
-
-
 # ── Asymmetric Growth: the run's Yahoo ProviderHealth ────────────────────────────────────────────
 
 
-# ── Swing: the scan's Yahoo reads ────────────────────────────────────────────────────────────────
-def test_swing_rendered_from_a_failed_yahoo_run_shows_the_banner(rawstore_tmp_db, monkeypatch):
-    from RevenueChaser.module_swing_potential import pipeline, report
-
-    def screen(**_k):
-        _yahoo_failure()
-        return {"generated_at": "2026-10-06T22:00:00+00:00", "candidates": [], "summary": {},
-                "no_data": True, "no_data_message": "none"}
-
-    monkeypatch.setattr(pipeline.screen_common, "run_screen", screen)
-    payload = pipeline.run_scan(no_fetch=False)
-    html = report.render_swing_dashboard(payload)
-    assert _BANNER in html
-    assert "429" in html
-
-
+# Swing: no test here. Its scan makes no provider call (#645, Swing review F1, 17 Nov 2026); the banner's
+# render on that tab stays covered by test_provider_banner_every_tab.py.
 
 
 # ── Fundamentals: an EDGAR fetch that raised ─────────────────────────────────────────────────────

@@ -19,7 +19,7 @@ LABEL = "Swing"
 _HASHED = (
     "MIN_PRICE", "MIN_DOLLAR_VOLUME",
     "RS_MIN", "ABOVE_52W_LOW", "WITHIN_52W_HIGH", "VOL_CONFIRM", "VOL_WINDOW", "VOL_AVG_DAYS", "BREAKOUT_HIGH_PCT",
-    "MOVE_MIN",
+    "MOVE_MIN", "TIGHT_RECENT", "TIGHT_BEFORE",
     "ADR_MIN", "W_12_1", "W_PROX", "W_CONS", "CONSISTENCY_LOOKBACK", "STOP_ATR", "TARGET_R",
     "ATR_PERIOD", "Q_WEIGHTS", "Q_RULE_TOTALS",
 )
@@ -37,7 +37,9 @@ def effective_config(payload: dict | None = None) -> dict:
     run = swing_settings.from_payload((payload or {}).get("settings"))
     overrides = dict(run.override_values) if run is not None else swing_settings.stored_overrides()
     for name, value in overrides.items():
-        if name in cfg:
+        # OPERATING_ONLY changes who is scanned, so every percentile: a saved value versions the rows too. It is
+        # hashed only when overridden, so the default board keeps its hash (Swing review F5, 17 Nov 2026).
+        if name in cfg or name == "OPERATING_ONLY":
             cfg[name] = value
     return cfg
 

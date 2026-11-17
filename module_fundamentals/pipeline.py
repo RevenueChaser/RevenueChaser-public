@@ -25,7 +25,7 @@ from RevenueChaser.core.providers import sec_edgar
 from RevenueChaser.core.providers.result import ProviderHealth
 from RevenueChaser.core.reporting_common import write_artifact
 from RevenueChaser.core import funnel
-from RevenueChaser.module_swing_potential.indicators import compute_indicators, load_ticker_info
+from RevenueChaser.module_swing_potential.indicators import compute_indicators
 from RevenueChaser.core import fiscal_year, trailing_year
 from RevenueChaser.core import screen_common
 from RevenueChaser.core import universe as _universe
@@ -567,7 +567,7 @@ def _compute_row(row: dict, spy_df, no_fetch: bool = False, spine: dict | None =
         return None
 
     ticker = row["ticker"]
-    # D01 first (store only, C12): a name with no usable bars costs no EDGAR or ``.info`` call.
+    # D01 first (store only, C12): a name with no usable bars costs no EDGAR read.
     df, adjusted = screen_common.load_bars(ticker)
     if df.empty:
         return _drop("no_bars")
@@ -616,11 +616,6 @@ def _compute_row(row: dict, spy_df, no_fetch: bool = False, spine: dict | None =
     if fiscal_year.latest_is_stale(annual, _today()):
         return _drop("stale_annual")
 
-    info = load_ticker_info(ticker, no_fetch=no_fetch)
-    info_stale = bool(info.get("_stale"))
-    if info_stale:
-        info = {k: v for k, v in info.items() if k != "_stale"}
-
     ind = compute_indicators(df, spy_df, returns_df=adjusted)
     price = ind.get("price")
     if price is None:
@@ -632,7 +627,8 @@ def _compute_row(row: dict, spy_df, no_fetch: bool = False, spine: dict | None =
     # of 40 unknown and the card DISTORTED (screeners.evaluate_rule_of_40, is_distorted).
     qual = _quality_metrics(annual, quarterly, infer_debt_free=(emeta or {}).get("us_gaap") is not False,
                             debt_note=(emeta or {}).get("debt_note"))
-    market_cap = _to_float(row.get("market_cap")) or _to_float(info.get("marketCap"))
+    # #645 (avo 10 Nov, option A): the cap and the name are the universe (spine) row's, never Yahoo's ``.info``.
+    market_cap = _to_float(row.get("market_cap"))
 
     # Plan 2026-11-16 decision B (avo, 17 Nov): an ADR's cap is the issuer's, which ignores the depositary ratio
     # (BP: $718B, P/E 13,050), so its P/E and P/B are unknown until the WRDS ADR ratio arrives; the card marks it.
@@ -667,10 +663,9 @@ def _compute_row(row: dict, spy_df, no_fetch: bool = False, spine: dict | None =
         "above_200d": (price > ind["sma200"]) if (price is not None and ind.get("sma200") is not None) else None,
     }
 
-    # R5 (#88), #266: the sector and industry are the spine's (UW's two levels); the vendor ``.info`` ones never
-    # fill the row's own fields. ``gics`` is read above, before EDGAR (#386 F1: the sector gate). The theme labels
+    # R5 (#88), #266: the sector and industry are the spine's (UW's two levels). ``gics`` is read above, before EDGAR (#386 F1: the sector gate). The theme labels
     # are the pinned NMF medium run (C21, #383).
-    name = info.get("longName") or info.get("shortName") or row.get("name") or ""
+    name = row.get("name") or ""
     themes = assign_themes(ticker)
 
     # #386 F1: the anchor year's period end, the date the Quality/Quality-growth figures are read from.
@@ -688,7 +683,6 @@ def _compute_row(row: dict, spy_df, no_fetch: bool = False, spine: dict | None =
         "quality_basis": qual.get("quality_basis"), "quality_period_end": qual.get("quality_period_end"),
         "metrics": metrics,
         "ohlc_stale": bool(df.attrs.get("stale")),
-        "info_stale": info_stale,
         "edgar_extract_version": (emeta or {}).get("extract_version"),     # the result history checks it (#278)
         # Review F3 (G6): where the statements came from, the day the newest one was filed and the day the facts
         # were last read. On the layer the facts are read again on each filing day, so the stale gate above measures
@@ -727,7 +721,6 @@ def build_payload(results: list[dict], top_n: int | None = None, run_stats: dict
     """The board payload. Every candidate is kept (card 6/7, #383 R3 C12); ``top_n`` cuts only when given."""
     run_stats = run_stats or {}
     results = results or []
-    run_stats["stale_info"] = sum(1 for r in results if r.get("info_stale"))
 
     passing = {"rule_of_40": 0, "quality": 0, "momentum": 0}
     distorted_count = 0
@@ -769,7 +762,6 @@ def build_payload(results: list[dict], top_n: int | None = None, run_stats: dict
             # carries the basis of that zero beside it.
             "debt_basis": m.get("debt_basis"),
             "distorted": distorted,
-            "info_stale": bool(r.get("info_stale")),
             "gates": gates,
         })
 
@@ -809,7 +801,6 @@ def build_payload(results: list[dict], top_n: int | None = None, run_stats: dict
         "distorted_count": distorted_count,
         "no_data": False,
         "data_quality": {"stale_ohlc": run_stats.get("stale_ohlc", 0),
-                         "stale_info": run_stats.get("stale_info", 0),
                          "no_submissions": run_stats.get("no_submissions", 0),
                          "no_cik": run_stats.get("no_cik", 0),
                          "stale_submissions": run_stats.get("stale_submissions", 0),

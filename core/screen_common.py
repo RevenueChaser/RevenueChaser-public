@@ -185,6 +185,10 @@ def _split_bars(frame: pd.DataFrame, ticker: str, session: date) -> pd.DataFrame
     """One ticker's rows of a ``daily_bars`` frame in the ``load_ohlc`` shape, ``attrs["stale"]`` set."""
     one = _ohlcv(frame[frame["ticker"] == ticker]) if not frame.empty else pd.DataFrame()
     if not one.empty:
+        # Never a bar after the session (Swing review F17); trimmed here, not with ``end=``, which costs a third read
+        # per chunk. SPY needs none: ``d01_has_session`` refuses a later bar.
+        one = one[one.index.date <= session]
+    if not one.empty:
         one.attrs["stale"] = bool(one.index[-1].date() < session)
     return one
 
@@ -491,6 +495,9 @@ def run_screen(*, board: str, refreshed_by: str, cfg: Any,
         "earnings_stored": earnings_stored,
         "stale_ohlc": sum(1 for r in results if r.get("ohlc_stale")),
         "spy_stale": bool(getattr(spy_df, "attrs", {}).get("stale")),
+        # No SPY baseline at all (D01 lacks SPY's latest complete session, #881): RS is unknown; the board says so
+        # (Swing review F2). The freeze refuses on its own anchor, with the precise reason.
+        "spy_missing": bool(getattr(spy_df, "attrs", {}).get("fetch_failed")),
         # Only the SPY fallback (``load_ohlc``) can refuse a short refetch now; D01 bars never do (Swing review 8).
         "spy_short_refetch_refused": bool(getattr(spy_df, "attrs", {}).get("short_refetch_refused")),
         "dropped": count_drops(drops),
