@@ -67,6 +67,8 @@ def scan_env(rawstore_tmp_db, monkeypatch):
     monkeypatch.setattr(fp, "fetch_universe_stats", lambda **kw: (rows, {"out_of_universe": 0}))
     monkeypatch.setattr(fp, "prefilter", lambda r: screen_common.Prefiltered(list(r)))
     monkeypatch.setattr("yfinance.Ticker", _OfflineTicker)
+    # The fixture's figures are toy-sized; under the $10M revenue mark (avo C1) AAA's rules would be unknown.
+    monkeypatch.setattr(fp.config, "DISTORTED_REV_MIN", 0)
     return rows
 
 

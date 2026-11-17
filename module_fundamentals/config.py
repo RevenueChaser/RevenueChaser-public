@@ -53,12 +53,12 @@ RO40_BARRIER = 150.0
 # ── Corporate-event flag (#386 F5) ──
 # An 8-K item that breaks the comparability of a filer's fundamentals. Display only: it is deliberately NOT in
 # freeze._HASHED, so changing it moves no ledger model_version.
-#   1.02 termination of a material definitive agreement
 #   2.01 completion of an acquisition or disposition   2.06 material impairment
 #   3.01 delisting notice / listing-rule failure       4.01 change of certifying accountant
 #   4.02 non-reliance on previously issued financials  5.01 change in control
-#   5.03 amendments to articles of incorporation or bylaws / change in fiscal year
-CORPORATE_EVENT_ITEMS = ["1.02", "2.01", "2.06", "3.01", "4.01", "4.02", "5.01", "5.03"]
+# 1.02 (termination of an agreement) and 5.03 (bylaws / fiscal year) left on avo's G1, 17 Nov 2026: routine enough
+# that the flag sat on a third of the board (451 of 1,245 cards, 16 Nov).
+CORPORATE_EVENT_ITEMS = ["2.01", "2.06", "3.01", "4.01", "4.02", "5.01"]
 CORPORATE_EVENT_WINDOW_DAYS = 365
 # Review F2: a filer whose 8-K list the daily sync last checked longer ago than this (or never) is a blind spot,
 # counted on the board, not a clean "no event". Display only, like the flag (not in freeze._HASHED).
@@ -84,5 +84,8 @@ TAX_RATE = 0.21
 # 12: the fiscal-year Rule of 40 refuses a negative revenue or capex like the trailing year does; the model version
 #     hashes the debt inference floor, the debt-note window and the stale-annual cut, not the unread ABOVE_200D
 #     (Fundamentals review 17 Nov 2026)
-SELECTION_VERSION = "12"
+# 13: avo's rule decisions of 17 Nov 2026: a card needs the Rule of 40 or Quality (B1); one period per card, TTM
+#     else FY (D1); a distorted growth, a micro revenue base or a period older than STALE_DAYS leaves the rules that
+#     read it unknown (C1); under 252 bars Momentum is unknown, not dropped (E1); the 8-K flag leaves 1.02 and 5.03 (G1)
+SELECTION_VERSION = "13"
 

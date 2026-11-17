@@ -67,7 +67,8 @@ def test_rs_6m_has_no_value_without_an_spy_return_and_the_momentum_gate_still_ru
 
 def test_rs_6m_keeps_its_value_with_a_full_spy_series(scenario):
     fp.run_scan()
-    rows = rawstore.query("SELECT rs_6m FROM fundamentals_scores", db="fundamentals")
+    # SHORT1 (100 bars) is scored with Momentum unknown since avo E1 (17 Nov 2026), so it has no 6-month RS.
+    rows = rawstore.query("SELECT rs_6m FROM fundamentals_scores WHERE ticker <> 'SHORT1'", db="fundamentals")
     assert rows and all(r["rs_6m"] is not None for r in rows)
 
 

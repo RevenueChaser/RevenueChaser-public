@@ -64,8 +64,8 @@ GOLDEN_CONFIG = {
     "EXCLUDED_SECTORS": ["Financial Services", "Real Estate"], "RO40_BARRIER": 150.0,
     "INTEREST_FLOOR_USD": 100000.0, "NOTE_DAYS": 7, "STALE_DAYS": 470,
 }
-GOLDEN_VERSION = "12"
-GOLDEN_MODEL_VERSION = "12+c998a7b2"
+GOLDEN_VERSION = "13"
+GOLDEN_MODEL_VERSION = "13+c998a7b2"
 
 
 def test_the_effective_config_is_the_golden_config():
