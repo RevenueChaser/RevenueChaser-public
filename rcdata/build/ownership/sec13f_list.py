@@ -8,7 +8,7 @@ a stale CUSIP or a security that does not belong in a 13F. Nothing is dropped fo
 The page (``PAGE_PATH``) links a PDF for every quarter since 1996 and a text file since 2020q1 (some named
 ``-txt.txt``); only the text files are read. Each held quarter is not asked again, so a run after the first asks
 the page and the new quarter only. Fixed width: the CUSIP in columns 1-9, ``*`` in column 10 when options on it are
-listed too, the issuer in 11-40, then the class; a row marked ``*D*`` was deleted from the list and is not on it.
+listed too, the issuer in 11-40, the class in 41-60; a row marked ``*D*`` was deleted from the list and is not on it.
 
 Raw: ``raw/sec/13f_list/<yyyy>q<n>.txt``. Parquet: ``parquet/sec/13f_list/part-0.parquet`` (``quarter``, ``cusip``,
 ``has_options``, ``issuer``, ``description``), every held quarter, written again whole. No served table: ``serve``
@@ -65,7 +65,7 @@ def parse(quarter: str, body: bytes) -> list[dict]:
             continue
         text = line.decode("latin-1")
         rows.append({"quarter": quarter, "cusip": text[:9], "has_options": text[9] == "*",
-                     "issuer": text[10:40].strip() or None, "description": text[40:].strip() or None})
+                     "issuer": text[10:40].strip() or None, "description": text[40:60].strip() or None})
     return rows
 
 

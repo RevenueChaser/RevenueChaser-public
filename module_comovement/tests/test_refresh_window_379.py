@@ -71,8 +71,19 @@ def _edge_store(stale_spy: bool = False) -> list[str]:
     return names
 
 
+def _round(v):
+    """Floats to 9 significant digits: the two reads may sum in another order (CI, 17 Nov 2026: last digit off)."""
+    if isinstance(v, float):
+        return float(f"{v:.9g}")
+    if isinstance(v, dict):
+        return {k: _round(x) for k, x in v.items()}
+    if isinstance(v, (list, tuple)):
+        return [_round(x) for x in v]
+    return v
+
+
 def _strip(p: dict) -> str:
-    return json.dumps({k: v for k, v in p.items() if k not in ("as_of", "generated_at")},
+    return json.dumps(_round({k: v for k, v in p.items() if k not in ("as_of", "generated_at")}),
                       default=str, sort_keys=True)
 
 
