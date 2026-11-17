@@ -4,11 +4,12 @@
 shared freeze rule (``core.ledger.freeze_board``) to the scan just made and appends every shown card to
 ``forecast_ledger``. The mapping lives here, in the module, not in ``core/``.
 
-AG's momentum is read from D01 since #380 S4 (``price_bars_daily``, nominal, up to the scan's session), so the
-session is complete for the board when Daily Bars has written that session's SPY bar: the anchor is
-``core.ledger.d01_has_session``, the same test Swing and Fundamentals use — not the universe snapshot behind the
-quotes (the quote only fills a card price) and not ``ohlc_gaps`` (one gap in one name must not refuse the board).
-AG also has no fixture / no-data flag, so it brings its own guards: no cards, and too many scoring errors.
+AG's momentum is read from the prices store's daily bars up to the scan's session (#380 S4, PR 11), so the session is
+complete for the board when the served prices file holds that session's complete SPY bar (``core.ledger.
+d01_has_session``, which reads the served ``price_bars_daily`` view, the same test Swing and Fundamentals use) AND the
+scan itself read up to that session (``data_as_of``, review F4): a prices build that lands during a Fetch must not
+freeze cards scored on the session before under the new one. Not ``ohlc_gaps``: one gap in one name must not refuse
+the board. AG also has no fixture / no-data flag, so it brings its own guards: no cards, and too many scoring errors.
 """
 from __future__ import annotations
 
@@ -63,15 +64,16 @@ def _score_error_problem(result: dict) -> str | None:
 
 
 def _make_anchor(result: dict):
-    """The freeze anchor (#380 S4, decision 4): SPY's own D01 bar for the session.
-
-    ``result`` is kept in the signature (``history.py`` calls ``_make_anchor(result)``) but the anchor no longer
-    reads the payload: since S4 the board's momentum is D01's, so the board is as fresh as the session's SPY bar.
-    """
+    """The freeze anchor (#380 S4, decision 4): SPY's complete bar for the session in the served prices file, and the
+    scan's own prices session (``result["data_as_of"]``) equal to it (review F4)."""
     def anchor(session) -> str | None:
-        if ledger.d01_has_session(session, "SPY"):
-            return None
-        return f"no SPY D01 bar for the {session} session yet (RC-Daily-Bars runs at 23:00 Amsterdam)"
+        if not ledger.d01_has_session(session, "SPY"):
+            return f"no complete SPY bar for the {session} session in the prices store yet (the nightly prices build)"
+        scanned = str(result.get("data_as_of") or "")[:10]
+        if scanned != session.isoformat():
+            return (f"the scan read prices up to {scanned or 'no session'}, not the {session} session "
+                    "(a prices build landed during the Fetch, or the scan found no bars)")
+        return None
     return anchor
 
 

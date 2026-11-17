@@ -49,7 +49,8 @@ def _grid(p, tmp_path):
 
 
 def test_card_fields_are_escaped(tmp_path):
-    for field in ("ticker", "name", "sector", "themes", "index"):
+    # ``themes`` left the card (plan 2026-11-16 H: the tag row was empty on every live row, its source is gone).
+    for field in ("ticker", "name", "sector", "index"):
         grid = _grid(_hostile(field), tmp_path)
         assert "&lt;img src=x" in grid, field
         assert "<img" not in grid, field

@@ -5,9 +5,16 @@
         --edgar PATH --docs DIR [--out DIR]
     python -m RevenueChaser.module_value_chain --reslice-apply [--out DIR]
     python -m RevenueChaser.module_value_chain --resolve-rate
+    python -m RevenueChaser.module_value_chain --nightly
 
 ``--resolve-rate`` reads the stored Relatedness profiles and the spine and prints how many named customers,
 suppliers and competitors resolve to a ticker (#410; read only, no network).
+
+``--nightly`` (B, owner 17 Nov 2026; the RC-ValueChain-Sync task, chained on the nightly SEC read) rebuilds the links
+from what the SEC layer and the stored Relatedness profiles hold: no download, no model call. The rebuild runs in the
+dashboard, the one writer: the task posts ``/run/module_value_chain`` with the ``X-RC-Panel`` header and polls
+``/api/job/<id>``, the way the SPX Gamma night task does. Off the layer a Fetch would download from SEC, so it exits
+``EXIT_NOT_READY`` and asks for nothing.
 
 ``--floor`` (USD millions) and ``--tickers`` choose the names (#108 S0). Without either, the Fetch covers the
 whole classification universe. WARNING: the command with a selection makes SEC requests
@@ -18,9 +25,43 @@ from __future__ import annotations
 
 import argparse
 import json
+import time
 from pathlib import Path
 
+import httpx
+
 from . import aliases, config, engine, reslice
+
+EXIT_NOT_READY = 3
+DASHBOARD = "http://127.0.0.1:8000"     # app.dashboard.main's port
+_HEADERS = {"X-RC-Panel": "cli"}        # every non-GET request needs it (CLAUDE.md)
+_POLL_S = 10.0
+_WAIT_S = 60 * 60                       # under the task's time limit; the job itself keeps running past it
+
+
+def _nightly() -> int:
+    """Queue the board's rebuild on the dashboard and wait for it; one JSON line, exit 0 only when it is done."""
+    if not engine._reads_layer():
+        print(json.dumps({"status": "not_ready", "reason": "the SEC layer is not the corpus; a Fetch would download"}))
+        return EXIT_NOT_READY
+    try:
+        r = httpx.post(f"{DASHBOARD}/run/module_value_chain", headers=_HEADERS, timeout=60)
+        body = r.json()
+        if r.status_code != 202:
+            out = {"status": "refused", "http": r.status_code, "error": body.get("error")}
+        else:
+            out, deadline = {"status": "timeout", "job_id": body["job_id"]}, time.monotonic() + _WAIT_S
+            while time.monotonic() <= deadline:
+                job = httpx.get(f"{DASHBOARD}/api/job/{body['job_id']}", timeout=30).json().get("job") or {}
+                if job.get("status") in ("done", "error", "cancelled"):
+                    out = {"status": job["status"], "job_id": body["job_id"],
+                           "message": job.get("message") or job.get("error")}
+                    break
+                time.sleep(_POLL_S)
+    except httpx.HTTPError as exc:
+        out = {"status": "dashboard_down", "error": str(exc)}
+    print(json.dumps(out, ensure_ascii=False))
+    return 0 if out["status"] == "done" else 1
 
 
 def _print_summary(report: dict) -> None:
@@ -78,10 +119,14 @@ def main(argv: list[str] | None = None) -> int:
                            + warn)
     pick.add_argument("--tickers", default=None, metavar="A,B",
                       help="exactly these tickers, comma-separated." + warn)
+    p.add_argument("--nightly", action="store_true",
+                   help="rebuild the links from the SEC layer through the dashboard (the RC-ValueChain-Sync task)")
     p.add_argument("--resolve-rate", action="store_true",
                    help="print the share of the profiles' named companies the spine-name resolver gives a ticker "
                         "(read only)")
     args = p.parse_args(argv)
+    if args.nightly:
+        return _nightly()
     if args.resolve_rate:
         from RevenueChaser.module_relatedness import store
         from RevenueChaser.rcdata import read

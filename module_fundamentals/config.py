@@ -47,8 +47,8 @@ DISTORTED_REV_MIN = 10_000_000       # TTM revenue base < $10M
 # A spine sector that is not comparable on a quality-growth scan (card 4 (b), Common C17): the Financials and
 # Real Estate business models (balance-sheet driven) leave the universe before any EDGAR read.
 EXCLUDED_SECTORS = ["Financial Services", "Real Estate"]
-# A Rule of 40 above this is a data problem, not a pick (#386 F1): since review N2 the rule is unknown and the card
-# DISTORTED, the name is no longer dropped (Quality and Momentum still read it).
+# A Rule of 40 beyond this either way is a data problem, not a pick (#386 F1; below it too since plan 2026-11-16 F):
+# since review N2 the rule is unknown and the card DISTORTED, the name is no longer dropped.
 RO40_BARRIER = 150.0
 
 # ── Corporate-event flag (#386 F5) ──
@@ -81,7 +81,6 @@ TAX_RATE = 0.21
 #    the anchor year, else the year (G6, build plan PR 13); the statements come from the fundamentals layer
 # 9: ROIC is unknown when invested capital is under ROIC_IC_MIN_SHARE of total assets (#831)
 # 10: TTM revenue and P/E count a derived Q4 (fiscal year minus three quarters), so they are the last twelve months (#832)
-SELECTION_VERSION = "10"
+# 11: the Rule of 40 barrier holds both ways: below -RO40_BARRIER is unknown and DISTORTED too (plan 2026-11-16 F)
+SELECTION_VERSION = "11"
 
-# ── Options flow (constitutional bypass) ──
-MANUAL_FLOW_ONLY = True

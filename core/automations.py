@@ -207,6 +207,19 @@ REGISTRY: tuple[AutomationEntry, ...] = (
         # 30 min waiting for the turn at most, then one 15-minute slice of asking (asker.SLICE_S) and the build
         settings=TaskSettings(restart_count=0, time_limit_minutes=90)),
     AutomationEntry(
+        name="RC-ValueChain-Sync", label="Value Chain links (nightly, after the SEC reads)",
+        args=("-m", "RevenueChaser.module_value_chain", "--nightly"), time="04:20", after="RC-SEC-Read",
+        description="Rebuilds the Value Chain links once tonight's SEC reads exited 0 (avo, 17 Nov 2026: the SEC "
+                    "engine first, then Value Chain; the Relatedness profiles of the Sunday run are read the night "
+                    "after). It reads the SEC layer's annual reports, their XBRL customers and the stored profiles: "
+                    "no download, no model call. Off the layer it exits 3 and asks for nothing. The rebuild runs in "
+                    "the dashboard (POST /run/module_value_chain, the one writer): the task only queues it and "
+                    "waits; with the dashboard down it exits 1. 04:20 is after the SEC reads' 90-minute limit "
+                    "(the server's timer starts them at 02:35) and clear of the hourly builder pass. Writes boards/value_chain.duckdb (chain_mentions, chain_meta).",
+        tables_written=("chain_mentions", "chain_meta"),
+        chain_wait_minutes=20,
+        settings=TaskSettings(restart_count=0, time_limit_minutes=90)),
+    AutomationEntry(
         name="RC-Backup-Weekly", label="Weekly backup",
         args=("-m", "RevenueChaser.rcdata", "backup"),
         time="03:30", days=("Sunday",), unit_name=BACKUP_WEEKLY_UNIT,
@@ -236,6 +249,21 @@ REGISTRY: tuple[AutomationEntry, ...] = (
                     "nothing is fetched. The job writes the board file boards/spx_gamma.duckdb (raw day, Brier "
                     "record, GEX record, latest pointer; module_spx_gamma/store.py).",
         settings=TaskSettings(start_when_available=False, restart_count=0, time_limit_minutes=30)),
+    *(AutomationEntry(
+        name=f"RC-Fetch-{label.replace(' ', '')}", label=f"{label} Fetch (nightly)",
+        args=("-m", "RevenueChaser.scripts.board_fetch", board), time=at, unit_name=f"life-rc-fetch-{board}",
+        description=(f"The {label} board's Fetch after the nightly prices build (avo 17 Nov 2026, choice a), so the "
+                     "forecast ledger freezes every session (#25). It asks nothing until the prices store holds SPY's "
+                     "complete bar of the latest complete New York session (exit 3). The Fetch runs in the dashboard "
+                     f"(POST /run/{route}, the one writer): the task only queues it and waits; with the dashboard "
+                     "down it exits 1. The server's timer is installed switched off and is switched on per board once "
+                     "that board's review and rule decisions are done."),
+        settings=TaskSettings(restart_count=0, time_limit_minutes=120))
+      for board, label, route, at in (
+          ("ag", "Asymmetric Growth", "module_asymmetric_growth", "05:00"),
+          ("swing", "Swing", "swing", "05:10"),
+          ("fundamentals", "Fundamentals", "module_fundamentals", "05:20"),
+          ("comovement", "Co-movement", "module_comovement", "05:30"))),
 )
 _BY_NAME = {e.name: e for e in REGISTRY}
 

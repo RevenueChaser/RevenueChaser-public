@@ -379,3 +379,55 @@ def test_the_filing_list_stays_sec_filings_and_carries_no_text(sec):
     _stored(sec)
     assert fx.q("SELECT DISTINCT kind FROM filing_item") == [("item",)]
     assert fx.q("SELECT count(*) FROM filing_item WHERE text IS NOT NULL OR quality IS NOT NULL") == [(0,)]
+
+
+# ── a company with a new CIK (#749) ─────────────────────────────────────────────────────────────────────────────
+
+NEWCO = "2000001"
+
+
+@pytest.fixture
+def moved(monkeypatch, http_mock):
+    """MSFT's filings now belong to a successor CIK that has filed only its 8-K12B and a proxy, as ExxonMobil
+    Holdings had (its FY2025 10-K is under CIK 34088). MSFT itself is no longer in the universe. A spine of its own
+    (not ``sec``'s): a second spine build that drops five of six names is refused as a shrink."""
+    from RevenueChaser.rcdata.build import cik_history
+    monkeypatch.setattr(sec_edgar, "SEC_WWW_BASE", "https://sec.test")
+    monkeypatch.setattr(sec_edgar, "SEC_DATA_BASE", "https://data.sec.test")
+    monkeypatch.setattr(cik_history, "seed", lambda: {MSFT: NEWCO})
+    fx.spine(rows=[{**fx.COMPANIES[0], "cik": NEWCO}])
+    sec = http_mock
+    own = [("0002000001-26-000001", "8-K12B", "2026-07-01", "2026-07-01", "newco-8k12b.htm", "8.01"),
+           ("0002000001-26-000002", "DEF 14A", "2026-09-01", "2026-10-20", "newco-def14a.htm", "")]
+    fx.filing_routes(sec, {NEWCO: fx.submissions(int(NEWCO), own, "NEWCO"),
+                           MSFT: fx.submissions(789019, fx.MSFT_FILINGS, "MICROSOFT CORP")},
+                     {"msft-10k.htm": annual(), "msft-def14a.htm": fx.proxy(), "newco-def14a.htm": fx.proxy()})
+    fx.run(filings.NAME, mode="backfill", to=AS_OF)
+    return sec
+
+
+def test_a_successor_with_no_annual_report_of_its_own_serves_its_predecessors(moved):
+    assert _cut()["result"] != "failed"
+    notes = q("SELECT accession, local_name FROM filing_note WHERE cik = ?", NEWCO)
+    assert notes == [(fx.K25, "DebtDisclosureTextBlock")], "the debt note is the predecessor's 10-K, by its own accn"
+    sections = q("SELECT section, form, accession FROM filing_section WHERE cik = ?", NEWCO)
+    assert {s for s, f, _ in sections if f == "10-K"} == {"business", "whole"}
+    assert {a for s, f, a in sections if f == "DEF 14A"} == {"0002000001-26-000002"}, "its own proxy, never MSFT's"
+    # Nothing is moved: the predecessor's rows stay under its own CIK.
+    assert q("SELECT count(*) FROM filing_note WHERE cik = ?", MSFT) == [(1,)]
+
+
+def test_the_predecessors_annual_report_is_not_copied_once_the_successor_files_its_own(monkeypatch):
+    monkeypatch.setattr(common, "predecessor_ciks", lambda *a, **k: {NEWCO: [MSFT]})
+    row = {c: None for c, _ in forms.NOTE}
+    con = duckdb.connect()
+    try:
+        base.rows_table(con, forms.NOTE_TABLE, forms.NOTE, [
+            {**row, "cik": MSFT, "accession": fx.K25, "form": "10-K"},
+            {**row, "cik": NEWCO, "accession": "0002000001-27-000001", "form": "10-K"}])
+        assert forms._predecessor_rows(con, forms.NOTE_TABLE, None) == 0
+        con.execute(f"DELETE FROM {forms.NOTE_TABLE} WHERE cik = ?", [NEWCO])
+        assert forms._predecessor_rows(con, forms.NOTE_TABLE, frozenset({"1"})) == 0, "a clean successor is kept"
+        assert forms._predecessor_rows(con, forms.NOTE_TABLE, None) == 1
+    finally:
+        con.close()

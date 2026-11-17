@@ -567,7 +567,8 @@ def run_sec_13f_latest(uw: UWClient | None = None, notice: str | None = None,
         capture.update(meta=meta, enrichment=enrichment)
     export_sec13f_dashboard(totals, meta, enrichment,
                             filename="sec_13f_latest.html",
-                            provider_health=provider_health or _uw_health(uw), notice=notice)
+                            provider_health=provider_health or _uw_health(uw) or _sec13f_health(),
+                            notice=notice)
     return SEC_13F_LATEST
 
 
@@ -630,6 +631,33 @@ def _13f_coverage_note() -> str | None:
             f"13F {last['period']}: {unmapped:,} CUSIP(s) have no ticker.")
     logger.warning("13F coverage: %s", note)
     return note
+
+
+#: The builder datasets that still call SEC EDGAR for the 13F board (since G9 the board itself calls nothing).
+SEC13F_SOURCES = ("sec/13f", "sec/13f_sets_listed")
+
+
+def _sec13f_health() -> dict | None:
+    """The 13F board's SEC EDGAR banner (#299): the newest builder check of each source, one count each.
+
+    A source whose newest check ``failed`` counts as a failed call, with its date and note as the example, so a
+    failed SEC fetch shows on the board until a later run of that dataset succeeds. None when the ops state
+    cannot be read: a banner must never break a render.
+    """
+    from RevenueChaser.core.providers.result import ProviderHealth
+    from RevenueChaser.rcdata import ops
+    health = ProviderHealth("SEC EDGAR")
+    try:
+        checks = [(ds, ops.read_latest_check(ds)) for ds in SEC13F_SOURCES]
+    except Exception as exc:  # noqa: BLE001 - a banner must never break a render
+        logger.warning("13F builder health not read: %s", exc)
+        return None
+    for ds, check in checks:
+        if check:
+            failed = check.get("result") == "failed"
+            why = f"{check.get('checked_on')}: {(check.get('note') or 'build failed')[:200]}"
+            health.call(why if failed else None, endpoint=ds)
+    return health.health()
 
 
 def _render_13f(health: dict | None, note: str | None, capture: dict | None = None) -> Path:
@@ -814,8 +842,13 @@ def run_quick_cached(uw=None, ticker: str | None = None) -> Path | None:
     return QUICK_LATEST if QUICK_LATEST.exists() else None
 
 
+def _ag_header_path() -> Path:
+    """The last AG Fetch's header (``engine.fetch_header``), beside the page; written only by a Fetch."""
+    return Path(ASYMMETRIC_GROWTH_LATEST).with_name("asymmetric_growth_fetch_header.json")
+
+
 def run_asymmetric_growth(uw, refresh_universe: bool = False, no_fetch: bool = False) -> Path:
-    """Run the Asymmetric Growth Hunter scan (US-listed, all caps, SEC EDGAR + yfinance).
+    """Run the Asymmetric Growth Hunter scan (US-listed, all caps, stored SEC EDGAR figures and prices-store bars).
 
     ``refresh_universe=True`` re-fetches the shared ticker universe first;
     ``no_fetch=True`` (a Refresh) renders the last Fetch's stored cards (``engine.stored_result``), no scoring.
@@ -831,14 +864,24 @@ def run_asymmetric_growth(uw, refresh_universe: bool = False, no_fetch: bool = F
     # One id per Fetch (jobs.py:97): its freeze.
     run = None if no_fetch else _freeze_run_id()
     # A Refresh shows the last Fetch read back from the store and never re-scores (S5, Common K4 #383 R1).
-    result = (stored_result() if no_fetch else
-              run_asymmetric_growth_hunter(uw, refresh_universe=refresh_universe, no_fetch=False, run_id=run))
+    # The Fetch's header (date, prices session, funnel) rides beside the stored rows, so a Refresh keeps it (F3).
+    if no_fetch:
+        try:
+            header = json.loads(_ag_header_path().read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            header = None
+        result = stored_result(header)
+    else:
+        result = run_asymmetric_growth_hunter(uw, refresh_universe=refresh_universe, no_fetch=False, run_id=run)
     _write_output("asymmetric_growth", json.dumps(result, ensure_ascii=False, default=str), "latest", ext="json")
     # The page and its cards (S7, K10 #383 C6a): the cards go to the gzip payload file next to the page.
     write_board(ASYMMETRIC_GROWTH_LATEST, render_asymmetric_growth_hunter_html(result), board_payload(result))
     if not no_fetch:
         # Only a Fetch rewrites the durable per-ticker table; a Refresh renders and leaves it alone (#145 D5).
         ticker_store.write_from_cards(result["cards"], result.get("asof"))
+        from RevenueChaser.core.reporting_common import write_artifact
+        from RevenueChaser.module_asymmetric_growth.engine import fetch_header
+        write_artifact(_ag_header_path(), json.dumps(fetch_header(result), ensure_ascii=False, default=str))
         # Last step of a Fetch, after the board files are written. A Refresh (no_fetch) never freezes.
         # The outcome is a job note (core.ledger), not a JobMessage: ``run_universe_refresh`` still has
         # two boards to run. A freeze *error* propagates, so the job shows it.
@@ -860,8 +903,8 @@ def _end_empty_fetch(payload: dict, no_fetch: bool) -> None:
 def run_swing(uw, refresh_universe: bool = False, no_fetch: bool = False) -> Path:
     """Run the Swing Screener (broad US scan, Minervini/Weinstein/Qullamaggie).
 
-    Reads the store's daily bars (filled nightly from UW with a yfinance fallback); yfinance is called only for
-    company info and the SPY fallback, and ``uw`` is unused here (options flow is manual-review). Writes the
+    Reads the prices store's daily bars and the spine's names; no yfinance call at all (#645, Swing review F1), and
+    ``uw`` is unused here (options flow is manual-review). Writes the
     structured JSON payload, the HTML board and its rows file (K10, #383 R3).
     ``refresh_universe=True`` re-fetches the shared ticker universe first;
     ``no_fetch=True`` (model-only) runs purely from cached per-ticker data.
@@ -974,11 +1017,11 @@ def run_comovement_recompute(uw=None) -> None:
 
 
 def run_value_chain(uw=None, no_fetch: bool = False) -> Path:
-    """Run the Value Chain board (10-K/20-F supplier/customer edges).
+    """Run the Value Chain board (supplier/customer links from each company's latest annual report).
 
-    Fetch pulls the latest 10-K/20-F for the seed universe and slices Item 1/4;
-    the ``no_fetch`` (model-only) path reads the cached corpus and re-renders with
-    zero network.
+    On the SEC layer a Fetch downloads nothing: it reads the filings the SEC service stores, rebuilds the links and
+    says what it read. Off the layer it pulls the latest 10-K/20-F and slices Item 1/4. The ``no_fetch`` path
+    re-renders the stored links with zero network.
     """
     from RevenueChaser.module_value_chain import engine, report
 
@@ -986,16 +1029,35 @@ def run_value_chain(uw=None, no_fetch: bool = False) -> Path:
     _write_to(VALUE_CHAIN_JSON, json.dumps(payload, ensure_ascii=False, default=str))
     _write_to(VALUE_CHAIN_LATEST, report.render_value_chain_dashboard(payload))
     fetch = payload.get("fetch") or {}
+    if not no_fetch and fetch.get("corpus") == "layer":
+        raise JobMessage(_value_chain_layer_message(payload))
     if not no_fetch and not fetch.get("fetched"):
         # A Fetch that wrote nothing says why instead of looking like a silent no-op.
         message = f"No new filings fetched ({fetch.get('cached', 0)} already cached"
-        for key, label in (("kept", "kept"), ("form_40f", "40-F"),
+        for key, label in (("kept", "kept"), ("form_40f", "40-F, read from the SEC layer only"),
                            ("no_filing", "no 10-K/20-F"), ("known_miss", "recorded misses"),
                            ("no_cik", "no CIK"), ("failed", "failed")):
             if fetch.get(key):
                 message += f", {fetch[key]} {label}"
         raise JobMessage(message + ")")
     return VALUE_CHAIN_LATEST
+
+
+def _value_chain_layer_message(payload: dict) -> str:
+    """What a layer Fetch did, in counts (V2): it reads and rebuilds, so "no new filings fetched" was always true and
+    never the news."""
+    fetch = payload.get("fetch") or {}
+    edges = payload.get("edges") or []
+    msg = (f"Read {fetch.get('cached', 0):,} filings from the SEC layer; "
+           f"{len(edges):,} supplier / customer links on the board")
+    if payload.get("profile_hidden"):
+        msg += f", {payload['profile_hidden']:,} profile links held back"
+    if payload.get("kept"):
+        msg += " (this run found none, so the stored links stay)"
+    pending = payload.get("pending")
+    if pending:
+        msg += f"; {pending:,} companies not in the SEC layer yet"
+    return msg + "."
 
 
 def run_relatedness_compare(uw=None, provider: str = "", model: str = "", tickers: list | None = None) -> None:

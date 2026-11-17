@@ -124,8 +124,10 @@ def index_url(cik: str, accession: str) -> str:
 #: exhibit *type*; upgrade by reading the filing's ``<CIK>-index.htm`` description column. (2) The 99.1/99.2/99.3
 #: order is **one filer's** layout, not a rule of the form. (3) Only ``.htm`` and ``.html`` are considered, so a
 #: filer who files the AIF as a PDF is missed (``read_exhibits`` raises ``aif_not_named`` when it can tell).
-_AIF_NAME = re.compile(r"aif", re.I)
-_EX_99_1 = re.compile(r"ex(?:hibit)?[-_]?99[._-]?1(?![0-9])", re.I)
+#: #751 (measured 12 Nov 2026 on the 49 40-Fs with no exhibit stored): 25 name 99.1 ``…xex99d1.htm`` (or
+#: ``ex99z1``), and 10 spell the form out (``a2025annualinformationform.htm``, ``ballard993123125annualinfo.htm``).
+_AIF_NAME = re.compile(r"aif|annual[-_]?info", re.I)
+_EX_99_1 = re.compile(r"ex(?:hibit)?[-_]?99[._dz-]?1(?![0-9])", re.I)
 _EX_1 = re.compile(r"(?<![a-z])d?ex(?:hibit)?[-_]?0?1(?![0-9-])", re.I)     # RY files its AIF as Exhibit 1, dex1.htm (#400 WP3)
 _EX_99_ANY = re.compile(r"ex(?:hibit)?[-_]?99", re.I)
 
@@ -349,10 +351,13 @@ class Filings:
         return calendar.today_ny()
 
     def fetch(self, ctx: base.RunContext, as_of: date) -> list[Path]:
-        companies = common.ciks(common.universe())
+        rows = common.universe()
+        companies = common.ciks(rows)
         if not companies:
             ctx.notes.append("no Tier A companies yet (no spine file)")
             return []
+        # A predecessor's list and newest annual report are read as a company of their own (#749).
+        companies = common.with_predecessors(ctx, rows, companies)
         filed: dict[str, set[str]] = {}
         days = sec_index.lookback(ctx, NAME, as_of, lambda: min(filter(None, map(_newest_list, companies)),
                                                                 default=None))
@@ -373,7 +378,8 @@ class Filings:
 
     def backfill(self, ctx: base.RunContext, start: date | None, end: date) -> None:
         out, docs = [], 0
-        for cik in common.ciks(common.universe()):
+        rows = common.universe()
+        for cik in common.with_predecessors(ctx, rows, common.ciks(rows)):
             raws = _subs_raws(cik)
             raw = raws[-1] if raws else read_list(ctx, cik, end)
             if raw is None:

@@ -45,6 +45,14 @@ only difference (the scenario's ROICs sit well above the floor), edited by hand.
 revenue and P/E) moved it to 10 the same way.
 To re-capture on another commit, run this file with ``RC_PARITY_CAPTURE=<path>`` (it writes the snapshot there
 instead of comparing).
+Plan decision B (ADR P/E and P/B unknown) added the additive per-candidate ``adr`` key, false for all five
+scenario candidates (none is typed ADR), edited in by hand like ``debt_basis``.
+The Swing review of 17 Nov 2026 (F1, F2, #995) took Yahoo ``.info`` out of Swing: its candidates' names are the
+universe row's (UP1/UP3 read "<t> Inc", not the cached "<t> Holdings"), its ``provider_health`` and
+``data_quality.stale_info`` keys went, and its ``summary`` gained ``spy_missing: false``; edited in by hand.
+#645 (Fundamentals reads no Yahoo ``.info``) removed Fundamentals' per-candidate ``info_stale`` and
+``data_quality.stale_info``, edited out by hand; Fundamentals' UP1 and UP3 likewise read
+"<t> Inc".
 """
 from __future__ import annotations
 

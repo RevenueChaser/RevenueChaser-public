@@ -32,7 +32,7 @@ import pandas as pd
 
 from . import returns as returns_mod
 
-NULL_PERMS = 5     # shuffled re-clusterings per Fetch (~9 s each at N≈3,500)
+NULL_PERMS = 5     # shuffled re-clusterings per stored window of a Fetch (timing to re-measure at ~5,100 names)
 NULL_Q = 0.99
 NULL_MAX_N = 200   # beyond this the null is ~flat; read the 200 point
 

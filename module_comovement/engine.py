@@ -12,7 +12,7 @@ import hashlib
 import json
 import functools
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import numpy as np
 import pandas as pd
@@ -336,7 +336,8 @@ def _short_history_steps(f: dict, prices_fix: dict | None) -> list[dict]:
             f"Listed recently (first price inside the {window}-session window)",
             f["listed_recently"], "drop", by_design=True),
         funnel_mod.step(
-            "missing_bars", f"Missing price bars (< {min_obs} of {window} sessions; a missing session can come back "
+            "missing_bars", f"Missing price bars (< {min_obs} of {window} sessions, or no bar in the last {config.STALE_SESSIONS + 1}; "
+                            "a missing session can come back "
                             "with the next prices build or the history run)",
             f["missing_bars"], "drop", by_design=False, fix=prices_fix),
     ]
@@ -421,7 +422,8 @@ def _persisted_null(chash: str) -> dict[int, float]:
         return {}
     try:
         return {int(k): float(v) for k, v in json.loads(row[0]["null_json"]).items()}
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, AttributeError):
+        logger.warning("comovement: persisted null for %s is not valid JSON; groups are not judged", chash)
         return {}
 
 
@@ -565,8 +567,8 @@ def precompute(windows=None, horizon: int | None = None,
 
     Every run it stores carries ``run_id`` (the Fetch's, #379 D2; one fresh id
     for the whole call when none is given). ``as_ofs``, when given, receives
-    ``{window: as_of}`` of each window's run, computed or reused, so the Fetch's
-    header can list them. It records no header itself.
+    ``{window: as_of}`` of each window's run, computed or reused (no caller reads it today; the run header it
+    once fed is gone).
     """
     windows = config.PRECOMPUTE_WINDOWS if windows is None else tuple(windows)
     run_id = run_id or ledger.new_run_id()
@@ -603,14 +605,41 @@ def _flat(prices, tickers) -> list[str]:
                   if t in tickers)
 
 
+def _flat_in_window(prices, tickers, window: int, horizon: int, whole=None) -> list[str]:
+    """Flat printers judged on the sessions the returns use (review 17 Nov 2026, F7), not the whole stored history:
+    a name that sat still two years ago and trades today is clustered. ``whole`` holds the candidates' full history when
+    ``prices`` is a windowed read; it is cut to the same first session."""
+    span = prices.tail(int(window) + max(1, int(horizon)))
+    if span.empty:
+        return []
+    src = prices if whole is None or whole.empty else whole
+    return _flat(src.loc[span.index[0]:], tickers)
+
+
+def _stale(prices, tickers, prices_through, window: int, horizon: int) -> list[str]:
+    """Names with bars in the run's window but none in its last ``STALE_SESSIONS + 1`` sessions up to
+    ``prices_through`` (review 17 Nov 2026, F6). A name with no bar in the window is left to the short-history drop,
+    so a full and a windowed read agree."""
+    if prices is None or prices.empty or not prices_through:
+        return []
+    upto = prices.tail(int(window) + max(1, int(horizon))).loc[:pd.Timestamp(prices_through)]
+    want = set(tickers)
+    cols = [c for c in upto.columns if c in want]
+    if not cols or upto.empty:
+        return []
+    recent = upto[cols].tail(int(config.STALE_SESSIONS) + 1).notna().any()
+    seen = upto[cols].notna().any()
+    return sorted(c for c in cols if seen[c] and not recent[c])
+
+
 def _window_prices(price_tickers, tickers, bench_ticker, eff, horizon):
     """A store-only run's inputs from its window of the prices store (#379 COM-3): no number moves.
 
     The full read loaded every stored bar (two years of every name) only to use the last ``window + horizon``
     sessions. Three facts still need the whole history and come from one SQL read (``ohlc.history_facts``): each
     name's first and last bar (no prices, the median last date, listed recently vs missing bars), the session
-    index (a stale benchmark, where the window starts), and the flat printers, judged on the whole history by
-    the same ``flat_print_names`` over the few candidates SQL finds. The frame keeps every column the full
+    index (a stale benchmark, where the window starts), and the flat-printer candidates SQL finds, judged on the
+    run's window by the same ``flat_print_names`` (F7). The frame keeps every column the full
     read has (a name with bars only before the window is still dropped, not "no prices").
 
     Returns ``(prices, last, first, flat_prints, bench_stale)``.
@@ -637,18 +666,25 @@ def _window_prices(price_tickers, tickers, bench_ticker, eff, horizon):
     # A name's first bar stays its listing even when it falls after a stale benchmark's cut: it then listed after
     # the window began, not "missing bars" (Co-movement review N3).
     first = {t: pd.Timestamp(d) for t, d in facts["first"].items()}
-    return prices, last, first, _flat(whole, tickers), cut is not None
+    return prices, last, first, _flat_in_window(prices, tickers, eff.window, horizon, whole), cut is not None
 
 
-def _daily_under(prices, ret, horizon: int):
+def _daily_under(prices, ret, horizon: int, bench: str | None = None, winsor_k: float | None = None):
     """The daily log returns under ``ret``'s ``horizon``-session ones (``horizon - 1`` rows more, same columns),
-    which the h > 1 null shuffles and sums (Co-movement review S1); ``None`` at 1 day or when they do not line up."""
+    which the h > 1 null shuffles and sums (Co-movement review S1); ``None`` at 1 day or when they do not line up.
+
+    With ``bench`` they are residualised on its daily returns the way the board's groups are (``winsor_k``: the beta
+    on clipped returns), so the null is drawn from the same kind of series it judges (review v2, N10)."""
     if int(horizon) <= 1 or ret is None or ret.empty:
         return None
     p = prices.loc[:ret.index[-1], [c for c in ret.columns if c in prices.columns]].tail(len(ret) + int(horizon))
     if p.shape[1] != ret.shape[1] or len(p) != len(ret) + int(horizon) or not p.index[int(horizon):].equals(ret.index):
         return None
-    return np.log(p / p.shift(1)).iloc[1:].replace([np.inf, -np.inf], np.nan)
+    daily = np.log(p / p.shift(1)).iloc[1:].replace([np.inf, -np.inf], np.nan)
+    if bench and bench in prices.columns:
+        b = prices[bench].loc[p.index]
+        daily = returns_mod.residualize(daily, np.log(b / b.shift(1)).iloc[1:], winsor_k)
+    return daily
 
 
 def run(no_fetch: bool = False, tickers: list[str] | None = None,
@@ -710,17 +746,25 @@ def run(no_fetch: bool = False, tickers: list[str] | None = None,
         # Flat printers are judged on the history actually used (after any stale
         # truncation), and get their own bucket: they have prices and history, so
         # they belong in neither ``no_prices`` nor ``dropped``.
-        flat_prints = _flat(prices, tickers)
+        flat_prints = _flat_in_window(prices, tickers, eff.window, horizon)
     prices_through = _median_date([d for t, d in last.items() if t in tickers])
     no_prices = sorted(t for t in tickers if t not in last)
     if flat_prints:
         prices = prices.drop(columns=[t for t in flat_prints if t in prices.columns])
+    # F6: a name sessions behind is counted with the missing bars, not clustered on a window that ends early.
+    # The benchmark is never "stale" here: its own cut (``bench_stale_sessions``) already handled it (review v2, N4).
+    stale = _stale(prices, [t for t in tickers if t != bench_ticker], prices_through, eff.window, horizon)
+    if stale:
+        prices = prices.drop(columns=stale)
 
     ret, dropped = returns_mod.log_returns(prices, window=eff.window,
                                            min_obs=eff.min_obs, horizon=horizon)
     bench_short = bool(bench_ticker) and (bench_ticker in dropped or bench_ticker in ret.columns)
-    dropped = [t for t in dropped if t in tickers]
-    short_split = split_short_history(prices, dropped, eff.window, horizon, first=first)
+    short = [t for t in dropped if t in tickers]
+    # A stale name counts with the missing bars on both reads, wherever it listed (review v2, N3).
+    recent, missing = split_short_history(prices, short, eff.window, horizon, first=first)
+    short_split = (recent, sorted(missing + stale))
+    dropped = sorted(set(short) | set(stale))
 
     benchmark_applied = False
     # #392: "short" is a benchmark with prices but too few returns to remove the market with; "missing" has none.
@@ -761,7 +805,8 @@ def run(no_fetch: bool = False, tickers: list[str] | None = None,
                                  flat_prints=flat_prints, window_end=window_end,
                                  funnel=funnel)
     if benchmark_applied:
-        universe_ret = returns_mod.residualize(universe_ret, market)
+        # The beta is fitted on clipped returns (xReview 17 Nov 2026); the residuals stay unclipped for the direction line.
+        universe_ret = returns_mod.residualize(universe_ret, market, eff.winsor_k)
     # The honest counterweight to 250 groups: how many common moves the window
     # holds beyond noise (eigenvalues above the Marchenko–Pastur edge).
     n_factors = noise.factors_above_noise(universe_ret, horizon=horizon)
@@ -802,7 +847,9 @@ def run(no_fetch: bool = False, tickers: list[str] | None = None,
     if persisting:
         null = noise.selected_group_null(clustered_ret, cuts, cluster_fn,
                                          n_perm=noise.NULL_PERMS, horizon=horizon,
-                                         daily=_daily_under(prices, clustered_ret, horizon),
+                                         daily=_daily_under(prices, clustered_ret, horizon,
+                                                           bench_ticker if benchmark_applied else None,
+                                                           eff.winsor_k),
                                          winsor_k=eff.winsor_k)
         # Out-of-sample persistence: one extra clustering on the window ending
         # a quarter ago, tested on that quarter only (persistence.py). A short
@@ -854,8 +901,9 @@ def run(no_fetch: bool = False, tickers: list[str] | None = None,
                           "catchall": _catchall(len(mem), cut_total),
                           "last_residual_pct": last_pct,
                           "persist": persist,
-                          "members": [{**by_ticker[t], "core": core[t]}
-                                      for t in ordered if t in by_ticker]})
+                          # A name filter_fields does not know is stubbed, as load_payload does: the card lists n names.
+                          "members": [{**(by_ticker.get(t) or {"ticker": t, "name": t}), "core": core[t]}
+                                      for t in ordered]})
         items.sort(key=lambda x: (-x["n"], x["label"]))
         clusters[str(cut)] = items
 
@@ -958,6 +1006,12 @@ def _persist(as_of: str, chash: str, n: int, nodes: list[dict],
             {"as_of": as_of, "cut": int(cut), "lag_id": g["lag_id"], "ticker": t,
              "oos_r": g["oos_r"], "oos_base": g["oos_base"], "held": g["held"]}
             for cut, rows in (lag or {}).items() for g in rows for t in g["members"]])
+        # Review v2 N2 (avo, 17 Nov 2026): drop runs older than KEEP_DAYS, except each hash's newest run.
+        old = ("SELECT as_of FROM comov_runs r WHERE as_of < ? AND as_of < "
+               "(SELECT MAX(as_of) FROM comov_runs WHERE config_hash = r.config_hash)")
+        cutoff = (datetime.fromisoformat(as_of) - timedelta(days=config.KEEP_DAYS)).isoformat(timespec="microseconds")
+        for table in ("comov_nodes", "comov_members", "comov_lag", "comov_runs"):
+            tx.execute(f"DELETE FROM {table} WHERE as_of IN ({old})", [cutoff])
 
     rawstore.atomic(_write, db="comovement")
 

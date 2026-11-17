@@ -48,7 +48,7 @@ def _technical_fail() -> dict:
 def test_full_pass():
     c = agh.score_ticker("TEST", _financials(), _technical_pass())
     assert c is not None
-    assert c["total_points"] == 9
+    assert c["total_points"] == 8   # positive FCF: runway not needed (C1)
     assert c["tech_breakthrough"] is True
     assert c["themes"] == []          # C21 (#383): no pinned medium theme → no label; the points above are the proof
                                       # that dropping the keyword guess moved no signal
@@ -63,8 +63,8 @@ def test_non_us_excluded():
 def test_partial_points():
     c = agh.score_ticker("TEST", _financials(), _technical_fail())
     assert c is not None
-    # growth 3/3, survival 3/3, momentum 1/3 (dist 5% <= 10% geÃ§er) -> total 7
-    assert c["total_points"] == 7
+    # growth 3/3, survival 2/2 (runway not needed, C1), momentum 1/3 (dist 5% <= 10% passes) -> total 6
+    assert c["total_points"] == 6
 
 
 def test_institutional():
@@ -174,15 +174,6 @@ def _screen_quotes(monkeypatch, quotes):
 
 
 
-
-
-def test_technical_from_quote():
-    q = {"regularMarketPrice": 10.0, "fiftyTwoWeekHigh": 10.1, "fiftyDayAverage": 9.0,
-         "averageDailyVolume10Day": 1000, "averageDailyVolume3Month": 500}
-    t = agh.technical_from_quote(q)
-    assert abs(t["dist_52w_pct"] - 0.1 / 10.1) < 1e-9
-    assert t["vol_ratio"] == 2.0
-    assert t["above_sma50"] is True
 
 
 def test_render_dashboard_universe_provenance():

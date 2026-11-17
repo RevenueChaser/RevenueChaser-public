@@ -984,6 +984,22 @@ class TestRunValueChainEmptyFetch:
         assert exc.value.message == (
             "No new filings fetched (7 already cached, 2 no 10-K/20-F, 1 no CIK)")
 
+    def test_a_layer_fetch_says_what_it_read_in_counts(self, monkeypatch, tmp_path):
+        """V2 (16 Nov plan): on the layer ``fetched`` is always 0, so every Fetch said "No new filings fetched"."""
+        from RevenueChaser.app.jobs import JobMessage
+        from RevenueChaser.module_value_chain import engine, report
+
+        payload = {"fetch": {"fetched": 0, "cached": 4812, "corpus": "layer"}, "edges": [{}] * 9,
+                   "profile_hidden": 20583, "pending": 312}
+        monkeypatch.setattr(engine, "run", lambda no_fetch=False, **kw: payload)
+        monkeypatch.setattr(report, "render_value_chain_dashboard", lambda p: "<html></html>")
+        monkeypatch.setattr(runners, "_write_output", lambda *a, **k: tmp_path / "x")
+        with pytest.raises(JobMessage) as exc:
+            runners.run_value_chain(None, no_fetch=False)
+        assert exc.value.message == (
+            "Read 4,812 filings from the SEC layer; 9 supplier / customer links on the board, "
+            "20,583 profile links held back; 312 companies not in the SEC layer yet.")
+
     def test_a_fetch_that_wrote_rows_and_a_refresh_return_the_path(self, monkeypatch, tmp_path):
         self._stub(monkeypatch, tmp_path, {"fetched": 3, "cached": 0})
         assert runners.run_value_chain(None, no_fetch=False) == runners.VALUE_CHAIN_LATEST

@@ -227,7 +227,7 @@ network.
 | `equity_universe` | Shared US universe (members = the SEC exchange file's Nasdaq / NYSE / CBOE rows, with Yahoo market data joined on, #264) + provenance snapshot | raw | refreshed on scan |
 | `sec_company_tickers` | SEC CIK map (ticker → cik/name); **retired** (#301 D21): nothing writes it, and the readers use `sec_exchange_file` first — it stays as the CIK map's second source, ahead of a live `company_tickers.json` read | raw | frozen |
 | `sec_company_sic` | SIC per CIK — the fallback behind the SEC submissions code for the SIC sector step (#272) | raw | until refetched |
-| `comov_runs` / `comov_nodes` / `comov_members` / `comov_lag` | Co-movement board: dated return-cluster runs, clusters, members; groups formed a quarter earlier with their held-out-quarter test | comovement | per Fetch run (latest as_of wins) |
+| `comov_runs` / `comov_nodes` / `comov_members` / `comov_lag` | Co-movement board: dated return-cluster runs, clusters, members; groups formed a quarter earlier with their held-out-quarter test | comovement | per Fetch run (latest as_of wins); each stored run deletes runs older than 14 days (`config.KEEP_DAYS`), keeping each config hash's newest (review v2 N2) |
 | `chain_filings` / `chain_mentions` / `chain_meta` | Value Chain board: latest 10-K/20-F Item 1/4 text + supplier/customer edges. `chain_meta.fetched_at DOUBLE` (#127) is the fetch time; NULL on older rows is unknown, never 0 | value_chain | per fetch (resumable by ticker) |
 | `llm_cache` | DeepSeek and EVREN prompt/response cache (Relatedness + Value Chain) | relatedness | none (immutable) |
 | `ticker_themes` | Runtime theme SSoT `(ticker, theme_id, theme, level, theme_run_id)`. `fetched_at DOUBLE` (#127) is when the row was written; NULL on older rows is unknown, never 0 | relatedness | per theme run |
@@ -326,7 +326,8 @@ a Refresh never freezes), from `app/runners.py` (`run_swing`, `run_fundamentals`
 the module's own `freeze.py`, which maps the board to ledger rows. The rule, applied by `ledger.freeze_board`:
 - the data is one complete New York session D, and D is the latest complete session (`core/calendar.py`:
   30 minutes after the 16:00 ET close; early-close days use 16:00, which is conservative);
-- the run is outside the US session window (09:30–16:30 ET);
+- a run inside the US session window (09:30–16:30 ET) freezes the session before it (the prices store holds
+  complete sessions only; the old refusal there lost every daytime Fetch, #25);
 - the payload is real (not a fixture, not "no data", not empty; Swing and Fundamentals need SPY not stale, AG needs
   at most 1% scoring errors);
 - Swing and Fundamentals: each shown pick's last D01 bar (`price_bars_daily`, the bars the board scored from since
@@ -1566,7 +1567,7 @@ applied on read.
 | `adj_factor` | per security, the periods between two ex-dates and their `split_factor` (the product of `1 / ratio` of every later split and stock dividend) and `tr_factor` (that, times `1 - amount / close before the ex-date` of every later cash dividend, the close at most 7 days before) |
 | `shares_class` | `outstanding` per class from the SEC covers (an unlisted class keyed `class:<CIK>:<member>`, and so is an ADR issuer's count of ordinary shares) and, for a single-class issuer, every past cover's count from its company facts (source `sec/companyfacts`), `float` from Yahoo and from UW |
 | `security_symbol` | the symbols a security traded under and when |
-| `market_cap_daily` | close times shares per security and session (the bar's own shares, else a WRDS source's of that session, else the newest cover on or before it moved over the splits between); `issuer_market_cap` sums the issuer's listed classes, each at its newest cap at most 14 days old (a class with no bar that session still counts); a Compustat class the spine lacks (BRK-A) is the issuer's of the spine classes that share its gvkey A share count of 0 is none; an ADR has no cap until an ADS ratio is read (#711). |
+| `market_cap_daily` | close times shares per security and session (the bar's own shares, else a WRDS source's of that session, else the newest cover on or before it moved over the splits between); `issuer_market_cap` sums the issuer's listed classes, each at its newest cap at most 14 days old (a class with no bar that session still counts); a Compustat class the spine lacks (BRK-A) is the issuer's of the spine classes that share its gvkey A share count of 0 is none; an ADR has no cap until an ADS ratio is read (#711): both keep their row, `market_cap` and `shares` NULL, `shares_source` `zero_count` or `adr_no_ratio` (S18: the store narrows nothing). |
 | `price_revision` | the values a later read replaced: Alpaca's re-read and the monthly WRDS refresh, with `revised_at` and `revised_by` |
 | `wrds_price_diff` | the WRDS difference report, one row per comparison: CRSP against Compustat and each against Alpaca on the closes of the sessions both have, and each WRDS source's own day return (Compustat's `COMP_RETURN`, CRSP's `dlyret`) against the store's on consecutive sessions; a difference over 1 bp counts; on the `wrds/prices` Settings card |
 

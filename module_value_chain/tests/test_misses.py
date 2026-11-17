@@ -132,7 +132,7 @@ def test_40f_filer_is_a_named_miss_without_download(fetch_env):
     fetch_env["subs"][1] = _subs(("40-F", "2026-03-02", "a40"))
     out = engine.fetch_corpus(tickers=["AAA"])
     m = _miss("AAA")
-    assert m["reason"] == "form_40f" and m["note"] == "40-F, not supported yet"
+    assert m["reason"] == "form_40f" and m["note"] == "40-F, read from the SEC layer only"
     assert out["form_40f"] == 1 and rawstore.get("chain_filings", "AAA") is None
 
 

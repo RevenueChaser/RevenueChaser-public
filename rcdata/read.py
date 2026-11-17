@@ -524,7 +524,8 @@ def latest_market(tickers: Iterable[str]) -> dict[str, dict]:
              cap AS (SELECT security_id, arg_max(market_cap, session_date) AS market_cap,
                             arg_max(issuer_market_cap, session_date) AS issuer_market_cap,
                             max(session_date) AS cap_session
-                     FROM market_cap_daily WHERE session_date >= (SELECT d FROM since) GROUP BY ALL)
+                     FROM market_cap_daily WHERE market_cap IS NOT NULL AND session_date >= (SELECT d FROM since)
+                     GROUP BY ALL)
         SELECT s.symbol AS ticker, s.security_id, bar.price, bar.price_session, cap.market_cap, cap.issuer_market_cap,
                cap.cap_session
         FROM security_symbol s JOIN bar USING (security_id) LEFT JOIN cap USING (security_id)

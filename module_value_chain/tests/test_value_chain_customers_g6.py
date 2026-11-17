@@ -101,3 +101,11 @@ def test_only_one_named_other_company_is_an_edge_and_the_biggest_share_wins():
             {"customer": "Apple Inc.", "share": 0.10}, {"customer": "Customer A", "share": 0.4}]
     (edge,) = engine._xbrl_customer_edges("MSFT", rows)
     assert (edge["dst_ticker"], edge["share_pct"]) == ("AAPL", 12.0) and "wrds/segments" in edge["snippet"]
+
+
+def test_a_sync_counts_the_customers_a_filing_does_not_name(layer):
+    """D (owner, 17 Nov 2026): "Customer B" is no edge, but the sync records it so the row can say so."""
+    _filing("We build cloud software for enterprises around the world.")
+    info: dict = {}
+    engine.build_edges(info)
+    assert info["unnamed"] == {"MSFT": ["Customer B"]}

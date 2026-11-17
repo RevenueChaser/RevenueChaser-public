@@ -74,7 +74,7 @@ def test_the_about_box_names_the_prices_store(rawstore_tmp_db):
 
 def test_a_run_of_the_d01_method_is_never_served(rawstore_tmp_db):
     """The closes changed source, so the method moved and a stored D01-era run no longer matches its hash."""
-    assert config.METHOD == 3
+    assert config.METHOD >= 3
 
 
 def test_the_missing_bars_step_says_a_session_can_come_back():

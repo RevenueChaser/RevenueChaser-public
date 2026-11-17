@@ -26,6 +26,7 @@ def _result(cards, *, universe_total=None, excluded=0, errors=0, **kw):
         "universe_total": len(cards) + excluded + errors if universe_total is None else universe_total,
         "summary": {"excluded_types": excluded, "score_errors": errors},
         "cards": cards,
+        "data_as_of": D.isoformat(),        # the session the scan read prices up to (review F4)
     }
     r.update(kw)
     return r
@@ -86,10 +87,11 @@ GOLDEN_CONFIG = {
     "RULES": {"stale_days": 470, "suspicious_growth": 5.0,           # #380 S1 (C18)
               "tier_min_passes": 2,                                   # #380 S2 (tiers)
               "not_comparable_sectors": ["Financial Services", "Real Estate"],   # #380 S6 (C17)
-              "momentum_windows": {"high_52w": 252, "sma50": 50, "vol_3m": 63, "vol_10d": 10}},  # #380 S4
+              "momentum_windows": {"high_52w": 252, "high_52w_min": 63,   # #380 S4, D1 (#1001)
+                                   "sma50": 50, "vol_3m": 63, "vol_10d": 10}},
 }
-GOLDEN_VERSION = "8"
-GOLDEN_MODEL_VERSION = "8+0dcadf0b"
+GOLDEN_VERSION = "9"
+GOLDEN_MODEL_VERSION = "9+64bc4699"
 
 
 def test_the_effective_config_is_the_golden_config():
@@ -137,7 +139,7 @@ def test_a_session_without_a_spy_d01_bar_freezes_nothing(store):
     out = freeze.freeze_result(_result([_card("AAA", 9)]), run_id="x", now=POST_CLOSE)
     assert out.frozen == 0 and rawstore.count("forecast_ledger") == 0
     (note,) = ledger.take_notes()
-    assert "SPY D01 bar" in note and "2026-10-02" in note
+    assert "complete SPY bar" in note and "2026-10-02" in note
 
 
 def test_a_spy_bar_for_another_session_freezes_nothing(store):
@@ -191,3 +193,12 @@ def test_a_missing_summary_is_not_a_crash(store):
     result = _result([_card("AAA", 9)])
     del result["summary"]
     assert freeze.freeze_result(result, run_id="x", now=POST_CLOSE).frozen == 1
+
+
+@pytest.mark.parametrize("scanned", ["2026-10-01", None])
+def test_a_scan_that_read_another_session_freezes_nothing(store, scanned):
+    """Review F4: a prices build that lands during the Fetch must not freeze cards scored on the session before."""
+    out = freeze.freeze_result(_result([_card("AAA", 9)], data_as_of=scanned), run_id="x", now=POST_CLOSE)
+    assert out.frozen == 0 and rawstore.count("forecast_ledger") == 0
+    (note,) = ledger.take_notes()
+    assert "read prices up to" in note and "2026-10-02" in note

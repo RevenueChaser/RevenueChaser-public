@@ -3,6 +3,7 @@
   "fetch": {
    "candidates": [
     {
+     "adr": false,
      "anchor_period_end": null,
      "bucket": "rule_of_40+momentum",
      "debt_basis": "filed",
@@ -96,10 +97,9 @@
      },
      "index": [],
      "industry": "Unclassified",
-     "info_stale": false,
      "market_cap": 600000000.0,
      "momentum_score": "3/3",
-     "name": "UP3 Holdings",
+     "name": "UP3 Inc",
      "passed_count": 2,
      "pb": 6000000.0,
      "pe": 41666666.666667,
@@ -126,6 +126,7 @@
      "ticker": "UP3"
     },
     {
+     "adr": false,
      "anchor_period_end": null,
      "bucket": "rule_of_40+momentum",
      "debt_basis": "filed",
@@ -219,10 +220,9 @@
      },
      "index": [],
      "industry": "Unclassified",
-     "info_stale": false,
      "market_cap": 1000000000.0,
      "momentum_score": "3/3",
-     "name": "UP1 Holdings",
+     "name": "UP1 Inc",
      "passed_count": 2,
      "pb": 10000000.0,
      "pe": 83333333.333333,
@@ -249,6 +249,7 @@
      "ticker": "UP1"
     },
     {
+     "adr": false,
      "anchor_period_end": null,
      "bucket": "rule_of_40+quality",
      "debt_basis": "filed",
@@ -342,7 +343,6 @@
      },
      "index": [],
      "industry": "Unclassified",
-     "info_stale": false,
      "market_cap": 550000000.0,
      "momentum_score": "2/3",
      "name": "BELOW50 Inc",
@@ -372,6 +372,7 @@
      "ticker": "BELOW50"
     },
     {
+     "adr": false,
      "anchor_period_end": null,
      "bucket": "rule_of_40+quality",
      "debt_basis": "filed",
@@ -465,7 +466,6 @@
      },
      "index": [],
      "industry": "Unclassified",
-     "info_stale": false,
      "market_cap": 500000000.0,
      "momentum_score": "2/3",
      "name": "FAR Inc",
@@ -495,6 +495,7 @@
      "ticker": "FAR"
     },
     {
+     "adr": false,
      "anchor_period_end": null,
      "bucket": "quality+momentum",
      "debt_basis": "filed",
@@ -588,7 +589,6 @@
      },
      "index": [],
      "industry": "Unclassified",
-     "info_stale": false,
      "market_cap": 2500000000.0,
      "momentum_score": "3/3",
      "name": "UP2 Inc",
@@ -631,7 +631,6 @@
     "quote_session": "2026-10-14",
     "short_refetch_refused": 0,
     "spy_stale": false,
-    "stale_info": 0,
     "stale_ohlc": 0,
     "stale_submissions": 0
    },
@@ -740,7 +739,7 @@
     "skipped_calls": 0
    },
    "regime": "RISK-ON",
-   "selection_version": "10",
+   "selection_version": "11",
    "statements_source": "layer",
    "summary": {
     "data_short": 1,
@@ -1343,7 +1342,7 @@
  },
  "swing": {
   "fetch": {
-   "avg_quality": 82.75,
+   "avg_quality": 79.75,
    "candidates": [
     {
      "atr": 2.29,
@@ -1452,9 +1451,14 @@
          "actual": 0.02,
          "id": "adr_ge_3",
          "passed": false
+        },
+        {
+         "actual": 0.02,
+         "id": "tightening",
+         "passed": false
         }
        ],
-       "score": "4/6"
+       "score": "4/7"
       },
       "weinstein": {
        "passed": false,
@@ -1496,9 +1500,9 @@
       "minervini"
      ],
      "momentum": 71.43,
-     "name": "UP3 Holdings",
+     "name": "UP3 Inc",
      "price": 117.000316,
-     "quality": 84,
+     "quality": 81,
      "rr": 2.0,
      "rs_rating": 100.0,
      "sector": "Technology",
@@ -1614,9 +1618,14 @@
          "actual": 0.02,
          "id": "adr_ge_3",
          "passed": false
+        },
+        {
+         "actual": 0.02,
+         "id": "tightening",
+         "passed": false
         }
        ],
-       "score": "4/6"
+       "score": "4/7"
       },
       "weinstein": {
        "passed": false,
@@ -1658,9 +1667,9 @@
       "minervini"
      ],
      "momentum": 64.28,
-     "name": "UP1 Holdings",
+     "name": "UP1 Inc",
      "price": 99.173021,
-     "quality": 84,
+     "quality": 81,
      "rr": 2.0,
      "rs_rating": 85.71,
      "sector": "Technology",
@@ -1776,9 +1785,14 @@
          "actual": 0.02,
          "id": "adr_ge_3",
          "passed": false
+        },
+        {
+         "actual": 0.02,
+         "id": "tightening",
+         "passed": false
         }
        ],
-       "score": "4/6"
+       "score": "4/7"
       },
       "weinstein": {
        "passed": false,
@@ -1822,7 +1836,7 @@
      "momentum": 57.14,
      "name": "NOEDGAR Inc",
      "price": 87.288158,
-     "quality": 84,
+     "quality": 81,
      "rr": 2.0,
      "rs_rating": 71.43,
      "sector": "Utilities",
@@ -1938,9 +1952,14 @@
          "actual": 0.02,
          "id": "adr_ge_3",
          "passed": false
+        },
+        {
+         "actual": 0.02,
+         "id": "tightening",
+         "passed": false
         }
        ],
-       "score": "4/6"
+       "score": "4/7"
       },
       "weinstein": {
        "passed": false,
@@ -1984,7 +2003,7 @@
      "momentum": 50.0,
      "name": "UP2 Inc",
      "price": 75.403295,
-     "quality": 79,
+     "quality": 76,
      "rr": 2.0,
      "rs_rating": 57.14,
      "sector": "Healthcare",
@@ -2004,7 +2023,6 @@
     "quote_session": "2026-10-14",
     "short_refetch_refused": 0,
     "spy_stale": false,
-    "stale_info": 0,
     "stale_ohlc": 0
    },
    "funnel_steps": [
@@ -2091,38 +2109,8 @@
     "qullamaggie": 0,
     "weinstein": 0
    },
-   "provider_health": {
-    "auth_error": null,
-    "breaker_open": false,
-    "calls": 5,
-    "failed": 5,
-    "failures": [
-     {
-      "endpoint": "BELOW50.info",
-      "error": "empty"
-     },
-     {
-      "endpoint": "DOWN1.info",
-      "error": "empty"
-     },
-     {
-      "endpoint": "FAR.info",
-      "error": "empty"
-     },
-     {
-      "endpoint": "NOEDGAR.info",
-      "error": "empty"
-     },
-     {
-      "endpoint": "UP2.info",
-      "error": "empty"
-     }
-    ],
-    "provider": "yfinance",
-    "skipped_calls": 0
-   },
    "regime": "RISK-ON",
-   "selection_version": "5",
+   "selection_version": "6",
    "settings": {
     "adr_min": 0.03,
     "breakout_high_pct": 0.98,
@@ -2141,7 +2129,7 @@
     "w_prox": 0.25
    },
    "summary": {
-    "avg_quality": 82.75,
+    "avg_quality": 79.75,
     "data_short": 1,
     "excluded_types": 1,
     "filtered_universe": 9,
@@ -2156,6 +2144,7 @@
     },
     "regime": "RISK-ON",
     "spy_3m_return": 0.0474,
+    "spy_missing": false,
     "spy_price": 57.58,
     "spy_sma200": 51.93,
     "spy_stale": false,
@@ -2257,6 +2246,14 @@
      "unit": "rating"
     },
     {
+     "actual": 0.0,
+     "gate": "weinstein",
+     "passed": 0,
+     "rule_id": "volume_confirmation",
+     "ticker": "DOWN1",
+     "unit": "ratio"
+    },
+    {
      "actual": 0.002794,
      "gate": "weinstein",
      "passed": 1,
@@ -2334,6 +2331,70 @@
      "passed": 0,
      "rule_id": "adr_ge_3",
      "ticker": "UP3",
+     "unit": "pct"
+    },
+    {
+     "actual": 0.02,
+     "gate": "qullamaggie",
+     "passed": 0,
+     "rule_id": "tightening",
+     "ticker": "NOEDGAR",
+     "unit": "pct"
+    },
+    {
+     "actual": 0.02,
+     "gate": "qullamaggie",
+     "passed": 0,
+     "rule_id": "tightening",
+     "ticker": "UP1",
+     "unit": "pct"
+    },
+    {
+     "actual": 0.02,
+     "gate": "qullamaggie",
+     "passed": 0,
+     "rule_id": "tightening",
+     "ticker": "UP2",
+     "unit": "pct"
+    },
+    {
+     "actual": 0.02,
+     "gate": "qullamaggie",
+     "passed": 0,
+     "rule_id": "tightening",
+     "ticker": "UP3",
+     "unit": "pct"
+    },
+    {
+     "actual": 0.02,
+     "gate": "qullamaggie",
+     "passed": 1,
+     "rule_id": "tightening",
+     "ticker": "BELOW50",
+     "unit": "pct"
+    },
+    {
+     "actual": 0.02,
+     "gate": "qullamaggie",
+     "passed": 1,
+     "rule_id": "tightening",
+     "ticker": "DOWN1",
+     "unit": "pct"
+    },
+    {
+     "actual": 0.02,
+     "gate": "qullamaggie",
+     "passed": 1,
+     "rule_id": "tightening",
+     "ticker": "FAR",
+     "unit": "pct"
+    },
+    {
+     "actual": 0.02,
+     "gate": "qullamaggie",
+     "passed": 1,
+     "rule_id": "tightening",
+     "ticker": "FLAT1",
      "unit": "pct"
     },
     {
@@ -2630,14 +2691,6 @@
      "passed": 0,
      "rule_id": "volume_confirmation",
      "ticker": "BELOW50",
-     "unit": "ratio"
-    },
-    {
-     "actual": 1.0,
-     "gate": "weinstein",
-     "passed": 0,
-     "rule_id": "volume_confirmation",
-     "ticker": "DOWN1",
      "unit": "ratio"
     },
     {
@@ -3526,7 +3579,7 @@
      "multiplier": 0,
      "price": 15.97898,
      "q_pass": 0,
-     "quality": 0.0,
+     "quality": 4.0,
      "rr": 2.0,
      "rs_rating": 0.0,
      "stop": 15.32,
@@ -3546,7 +3599,7 @@
      "multiplier": 0,
      "price": 39.748706,
      "q_pass": 0,
-     "quality": 26.0,
+     "quality": 29.0,
      "rr": 2.0,
      "rs_rating": 14.29,
      "stop": 38.17,
@@ -3566,7 +3619,7 @@
      "multiplier": 0,
      "price": 51.633569,
      "q_pass": 0,
-     "quality": 68.0,
+     "quality": 69.0,
      "rr": 2.0,
      "rs_rating": 28.57,
      "stop": 49.59,
@@ -3586,7 +3639,7 @@
      "multiplier": 0,
      "price": 51.633569,
      "q_pass": 0,
-     "quality": 68.0,
+     "quality": 69.0,
      "rr": 2.0,
      "rs_rating": 28.57,
      "stop": 49.59,
@@ -3606,7 +3659,7 @@
      "multiplier": 1,
      "price": 75.403295,
      "q_pass": 0,
-     "quality": 79.0,
+     "quality": 76.0,
      "rr": 2.0,
      "rs_rating": 57.14,
      "stop": 72.43,
@@ -3626,7 +3679,7 @@
      "multiplier": 1,
      "price": 87.288158,
      "q_pass": 0,
-     "quality": 84.0,
+     "quality": 81.0,
      "rr": 2.0,
      "rs_rating": 71.43,
      "stop": 83.86,
@@ -3646,7 +3699,7 @@
      "multiplier": 1,
      "price": 99.173021,
      "q_pass": 0,
-     "quality": 84.0,
+     "quality": 81.0,
      "rr": 2.0,
      "rs_rating": 85.71,
      "stop": 95.28,
@@ -3666,7 +3719,7 @@
      "multiplier": 1,
      "price": 117.000316,
      "q_pass": 0,
-     "quality": 84.0,
+     "quality": 81.0,
      "rr": 2.0,
      "rs_rating": 100.0,
      "stop": 112.41,

@@ -220,8 +220,7 @@ REGISTRY: tuple[DatasetSpec, ...] = (
     DatasetSpec(
         key="value_chain", label="Value Chain edges",
         tables=("chain_mentions", "chain_meta"),
-        db="value_chain", source=Source.sec, writer=None,
-        writer_note="the Value Chain board's Fetch (module_value_chain --fetch); not an automations.REGISTRY entry",
+        db="value_chain", source=Source.sec, writer="RC-ValueChain-Sync",
         freshness=("chain_mentions", "filed"),
     ),
     DatasetSpec(

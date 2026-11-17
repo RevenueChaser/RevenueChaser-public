@@ -10,8 +10,10 @@ Rules (decisions D1 / 4-A):
 - Only a Fetch freezes. Refresh (``no_fetch=True``) never reaches this module.
 - The market data behind a freeze is one complete New York session D, and D is the latest
   complete session when the freeze runs (``core.calendar``: 30 minutes after the 16:00 ET close).
-- A freeze never runs inside the US trading window (09:30-16:30 ET): that run would mix
-  unfinished and finished bars.
+- A run inside the US trading window (09:30-16:30 ET) freezes the session before it. The window refusal (D1) guarded
+  against the old yfinance cache, which held today's unfinished bar; the prices store holds complete sessions only
+  (``rcdata/build/prices/bars.py`` refuses a session before its close + 30 min), so a daytime Fetch scores and
+  freezes on yesterday's complete bars and the refusal only lost days (none of 8 refusals 9-16 Nov froze, #25).
 - The payload must be real (not a fixture, not "no data", not empty).
 - All or nothing: every shown pick must have one complete D bar in the OHLC cache. One pick without it
   refuses the whole board for the day, and the note says which picks and why (see ``ohlc_gaps``). A
@@ -115,12 +117,10 @@ def skipped(source: str, label: str, reason: str, forecast_date: date | None = N
 def session_gate(now=None) -> tuple[date | None, str | None]:
     """``(D, None)`` when a freeze may run now, else ``(None, reason)``.
 
-    D is the latest complete New York session. Outside the holiday table the calendar raises;
-    that becomes a reason, never a guess.
+    D is the latest complete New York session, also inside the trading window (then: the session before). Outside the
+    holiday table the calendar raises; that becomes a reason, never a guess.
     """
     try:
-        if calendar.in_us_session_window(now):
-            return None, "inside the US session window (09:30-16:30 ET), when bars are unfinished"
         return calendar.latest_complete_session(now), None
     except ValueError as exc:
         return None, f"the market calendar cannot place this run ({exc})"

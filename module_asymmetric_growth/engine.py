@@ -1,7 +1,7 @@
 """Asymmetric Growth Hunter — ABD hisseleri, 3 sinyal taraması.
 
-Universe (#264): the Nasdaq / NYSE / CBOE rows of the SEC ``company_tickers_exchange.json`` are the
-member list; the Yahoo screener only adds market data (cap, price, quote) to that list, by ticker.
+Universe: the spine's (``core.universe``); market cap and price from the prices store. Financials: the stored SEC
+EDGAR figures only (no Yahoo, #645). Momentum: the prices store's daily bars.
 Üç sinyal (her biri 3 alt kriter, X/3):
   1. Accelerated Growth — rev >= 20%, hızlanan YoY, gross margin >= 40%
   2. Survival          — FCF > 0, net debt/assets <= 10%, runway >= 2 yıl
@@ -27,13 +27,12 @@ from RevenueChaser.core import job_control
 from RevenueChaser.core import ownership
 from RevenueChaser.core import tristate as tri
 from RevenueChaser.core.config import to_float
-from RevenueChaser.core.info_fallback import has_fields, refetch_or_keep
 from RevenueChaser.core.liquidity import liquid_assets
 from RevenueChaser.core.providers import sec_edgar
-from RevenueChaser.core.providers import yfinance as yfinance_client
 from RevenueChaser.core import universe as _spine
 from RevenueChaser.core.taxonomy import themes_for_many
 from RevenueChaser.module_asymmetric_growth import sector_rules          # #18: AG's own rule, beside it now
+from RevenueChaser.module_fundamentals import debt as _debt              # decision B1 (avo, 17 Nov 2026)
 from RevenueChaser.rcdata import opens  # #566: pooled reads count for this run
 
 logger = logging.getLogger(__name__)
@@ -62,6 +61,7 @@ PRELOAD_BATCH = 500   # tickers whose stored rows one bulk read loads (bounds me
 # Momentum from the stored daily bars (#380 S4, decision 2; the prices store since PR 11): the sessions each input needs, and how far back the one windowed read
 # looks (380 calendar days: 252 sessions plus the market's closed days, with room for a gap).
 BARS_52W = 252        # the 52-week high is the highest HIGH of these sessions
+BARS_52W_MIN = 63     # decision D1 (avo, 17 Nov 2026): a recent listing reads its high from this many, flagged
 BARS_SMA = 50         # the mean close of these sessions
 BARS_3M = 63          # Yahoo's "3-month" average volume: the mean volume of these sessions
 BARS_10D = 10         # the short volume mean
@@ -124,6 +124,24 @@ def _trailing_years(annual: list[dict], quarterly: list[dict], ai: int | None) -
             return None
         out.append(r)
     return out[::-1]
+
+
+def _debt_free(financials: dict, annual: list[dict], ai: int | None, ttm: dict | None) -> bool:
+    """Decision B1 (avo, 17 Nov 2026): the Fundamentals rule (``module_fundamentals.debt``, #737) on this card's
+    record. A US-GAAP filer whose anchor year tags no debt and pays no interest, and so does every quarter after it
+    (up to the trailing year's balance-sheet quarter on a TTM card), owes nothing; anything else stays unknown."""
+    if ai is None or financials.get("us_gaap") is False or not _debt.debt_free(annual[ai]):
+        return False
+    end = fiscal_year.period_end(annual[ai])
+    if end is None:
+        return False
+    e0 = end.isoformat()
+    upto = str(ttm["period"])[:10] if ttm else None
+    later = [q for q in financials.get("quarterly") or []
+             if str(q.get("period"))[:10] > e0 and (upto is None or str(q.get("period"))[:10] <= upto)]
+    if upto and not any(str(q.get("period"))[:10] == upto for q in later):
+        return False   # the trailing year's balance sheet is a quarter we cannot read
+    return all(_debt.debt_free(q, quarterly=True) for q in later)
 
 
 def _growth(annual: list[dict], i: int | None, field: str) -> tuple[float | None, list[str]]:
@@ -201,25 +219,6 @@ def _is_us(info: dict) -> bool:
     return not country or country == US_COUNTRY
 
 
-def technical_from_quote(q: dict) -> dict:
-    """Yahoo screener quote'undan teknik alt kriter değerlerini türetir (bulk, per-ticker çağrısız)."""
-    price = to_float(q.get("regularMarketPrice"))
-    high = to_float(q.get("fiftyTwoWeekHigh"))
-    sma50 = to_float(q.get("fiftyDayAverage"))
-    v10 = to_float(q.get("averageDailyVolume10Day"))
-    v3m = to_float(q.get("averageDailyVolume3Month"))
-    return {
-        "price": price,
-        "high_52w": high,
-        "dist_52w_pct": (high - price) / high if (price and high) else None,
-        "sma50": sma50,
-        "above_sma50": (price > sma50) if (price is not None and sma50 is not None) else None,
-        "vol_10d": v10,
-        "vol_90d": v3m,
-        "vol_ratio": v10 / v3m if (v10 and v3m) else None,
-    }
-
-
 def _bar_day(row) -> date | None:
     """A bar row's session date as a ``date`` (the frame gives a timestamp, a test may give a date or ISO text)."""
     day = row.get("session_date")
@@ -246,14 +245,14 @@ def _mean_last(values: list, n: int):
 
 
 def technical_from_bars(rows, session: date | None = None) -> dict:
-    """Momentum inputs from the stored daily bars (#380 S4, decision 2), the same keys as ``technical_from_quote``.
+    """Momentum inputs from the stored daily bars (#380 S4, decision 2), the keys the card reads.
 
     ``rows`` are bar rows of ONE ticker (the prices store's split basis, ``rcdata.read.ticker_bars``), up to and including
     ``session``; a later bar is ignored. price = the last close; ``high_52w`` = the highest **High** of the last
     ``BARS_52W`` sessions; ``dist_52w_pct`` keeps the quote path's sign, ``(high - price) / high`` (>= 0), because
     ``DIST_52W_MAX`` compares it with ``<=``; ``sma50`` = the mean of the last ``BARS_SMA`` closes; ``vol_10d`` /
     ``vol_90d`` = the mean volume of the last ``BARS_10D`` / ``BARS_3M`` sessions (Yahoo's "3-month" average, the
-    "90d" label) and their ratio. Fewer bars than a window make that input unknown (None): 252 for the high, 63 for
+    "90d" label) and their ratio. Fewer bars than a window make that input unknown (None): 252 for the high (but see ``BARS_52W_MIN``), 63 for
     the volume, 50 for the mean, 10 for the short volume.
     """
     bars = []
@@ -267,6 +266,9 @@ def technical_from_bars(rows, session: date | None = None) -> dict:
     closes = [b[2] for b in bars]
     price = closes[-1] if closes else None
     high = _max_last([b[1] for b in bars], BARS_52W)
+    short = high is None and _max_last([b[1] for b in bars], BARS_52W_MIN) is not None
+    if short:
+        high = max(h for h in [b[1] for b in bars][-BARS_52W:] if h is not None)
     sma50 = _mean_last(closes, BARS_SMA)
     vol_10d = _mean_last([b[3] for b in bars], BARS_10D)
     vol_90d = _mean_last([b[3] for b in bars], BARS_3M)
@@ -274,6 +276,7 @@ def technical_from_bars(rows, session: date | None = None) -> dict:
         "price": price,
         "bar_date": bars[-1][0].isoformat() if bars else None,   # the session this card's price is from (SF-1)
         "high_52w": high,
+        "high_short_history": short,     # D1: fewer than BARS_52W bars, the high is over what there is
         "dist_52w_pct": (high - price) / high if (price is not None and high) else None,
         "sma50": sma50,
         "above_sma50": (price > sma50) if (price is not None and sma50 is not None) else None,
@@ -323,6 +326,9 @@ def score_ticker(ticker: str, financials: dict, technical: dict, meta: dict | No
     fcf = (ocf - capex) if (ocf is not None and capex is not None) else None
 
     total_debt = to_float(cur.get("total_debt"))
+    if total_debt is None and _debt_free(financials, annual, ai, cur if trailing else None):
+        total_debt = 0.0
+        flags.append("debt_inferred_none")
     # Liquidity = cash + short-term investments, both from the anchor record (#187).
     liquid, _liquidity_basis = liquid_assets(cur)
     total_assets = to_float(cur.get("total_assets"))
@@ -340,7 +346,8 @@ def score_ticker(ticker: str, financials: dict, technical: dict, meta: dict | No
     rd_intensity = _pct_div(to_float(cur.get("rd_expense")), to_float(cur.get("revenue")))
 
     dilution_yoy, share_flags = _share_change(cur, series[sp] if sp is not None else None)
-    flags = [*anchor_flags, *flags, *margin_flags, *share_flags]
+    flags = [*anchor_flags, *flags, *margin_flags, *share_flags,
+             *(["short_price_history"] if technical.get("high_short_history") else [])]
 
     market_cap = financials.get("market_cap") or meta.get("market_cap")
     price = technical.get("price") or financials.get("current_price") or meta.get("price")
@@ -362,7 +369,9 @@ def score_ticker(ticker: str, financials: dict, technical: dict, meta: dict | No
     s1 = [
         {"label": "Revenue growth ≥ 20%", "value": rev_growth, "unit": "pct", "threshold": "≥ 20%",
          "op": "gte", "param": "rev_growth",
-         "passed": tri.rule((rev_growth,), lambda g: g >= REV_GROWTH_MIN)},
+         # Decision F1 (avo, 17 Nov 2026): growth above +500 % keeps its value and flag but scores as unknown.
+         "suspicious": "suspicious_growth" in flags,
+         "passed": None if "suspicious_growth" in flags else tri.rule((rev_growth,), lambda g: g >= REV_GROWTH_MIN)},
         {"label": "Growth accelerating YoY", "value": (rev_growth, rev_growth_last), "unit": "pair_pct", "threshold": "this > last",
          "op": "pair", "param": "accelerating",
          "passed": tri.rule((rev_growth, rev_growth_last), lambda a, b: a > b)},
@@ -381,7 +390,10 @@ def score_ticker(ticker: str, financials: dict, technical: dict, meta: dict | No
          "passed": tri.rule((net_debt_assets,), lambda n: n <= NET_DEBT_ASSETS_MAX)},
         {"label": "Cash runway ≥ 2 years", "value": runway, "unit": "runway", "threshold": "≥ 2y",
          "op": "gte", "param": "runway",
-         "passed": tri.rule((runway,), lambda r: r >= RUNWAY_YEARS_MIN)},
+         # Decision C1 (avo, 17 Nov 2026): positive FCF already scored the point; runway is not needed, so it is
+         # neither a second point nor an unknown, and leaves the signal's count.
+         "not_needed": bool(fcf is not None and fcf > 0),
+         "passed": None if (fcf is not None and fcf > 0) else tri.rule((runway,), lambda r: r >= RUNWAY_YEARS_MIN)},
     ]
 
     # ── Sinyal 3: Momentum/Volume ──
@@ -399,7 +411,7 @@ def score_ticker(ticker: str, financials: dict, technical: dict, meta: dict | No
     ]
 
     def _signal(key, subs):
-        passed, n_known, total = tri.tally(subs)
+        passed, n_known, total = tri.tally([x for x in subs if not x.get("not_needed")])
         return {"key": key, "name": SIGNAL_NAMES[key], "passed": passed, "known": n_known, "total": total,
                 "subs": subs}
 
@@ -447,89 +459,42 @@ def score_ticker(ticker: str, financials: dict, technical: dict, meta: dict | No
     }
 
 
-def _has_answer(fin: dict | None) -> bool:
-    """True when a refetched payload is an answer: real ``info`` fields OR non-empty ``annual`` (#260 C15)."""
-    return bool(fin) and (has_fields(fin.get("info")) or bool(fin.get("annual")))
-
-
-def _note_info_refetch(preload: dict | None, outcome: str) -> None:
-    """Count a ``stale`` / ``none`` refetch outcome so the run can say so (the batch's ``_Drops`` carries it)."""
-    drops = preload.get("drops") if isinstance(preload, dict) else None
-    if drops is not None:
-        drops.note_info_refetch(outcome)
-
-
 def _cached_financials(ticker: str, no_fetch: bool = False, preload: dict | None = None) -> dict | None:
-    """SEC EDGAR (tam kapsam) + yfinance info (sektör/endüstri/ülke) birleşimi.
+    """The stored SEC EDGAR annual and quarterly figures of ``ticker``, or None when there are none.
 
-    EDGAR companyfacts yıllık finansalları birincil; yfinance yalnızca info
-    (sector/industry/country/name/themes) ve EDGAR boşsa fallback sağlar.
-    ``no_fetch=True`` (model-only) yalnızca cache'den okur; eksikse None döner.
-
-    A name with EDGAR annual figures costs Yahoo one ``.info`` request, not four (#150 U13); the
-    info-only payload is stored flagged ``info_only`` so no other board reads it as a full one.
-    ``preload`` is ``_preload`` of the batch: the stored EDGAR rows and payloads read in bulk.
+    Yahoo is not asked (owner, 10 Nov 2026, #645 option A): a name with no SEC annual data gets no card, and the
+    card's market cap, price and name come from the universe row (the prices store) and the EDGAR entity name.
+    ``preload`` is ``_preload`` of the batch: the stored EDGAR rows read in bulk. ``no_fetch`` keeps a store-only
+    run off EDGAR's network for a name the bulk read did not hold.
     """
     if preload is not None and ticker in preload["edgar"]:
         edgar_annual, edgar_meta = preload["edgar"][ticker]
         edgar_quarterly = (preload.get("quarterly") or {}).get(ticker) or []
     elif preload is not None and no_fetch:
-        edgar_annual, edgar_quarterly, edgar_meta = [], [], {}   # no stored row; a store-only run never goes online
+        return None   # no stored row; a store-only run never goes online
     else:
         edgar_annual, edgar_quarterly, edgar_meta = sec_edgar.get_fundamentals(ticker, no_fetch=no_fetch)
-
-    # The yfinance payload cache lived in the old store (``ticker_payload_cache``, #860): a Fetch asks Yahoo
-    # afresh, a store-only run scores from EDGAR alone.
-    financials = None
-    if financials is None:
-        if no_fetch:
-            if not edgar_annual:
-                return None
-            financials = {"info": {}}  # EDGAR alone is enough to score a store-only run (#150 U7)
-        else:
-            stored = None
-            replies: list[dict] = []
-
-            def fetch():
-                reply = (yfinance_client.get_info if edgar_annual else yfinance_client.get_financials)(ticker)
-                replies.append(reply)
-                return reply
-            # With no EDGAR years only Yahoo's ``annual`` can score the name, so an info-only reply is no answer
-            # there (R2B-4). The board catches what main caught; anything else reaches score_errors (R2B-3, #202).
-            is_answer = _has_answer if edgar_annual else (lambda fin: bool(fin) and bool(fin.get("annual")))
-            financials, status = refetch_or_keep(stored, fetch, is_answer, catch=(OSError, ValueError, KeyError),
-                                                 label=ticker, log_level=logging.WARNING)
-            if status != "fresh":
-                _note_info_refetch(preload, status)
-                financials = {"info": {}} if edgar_annual else None
-
-    if edgar_annual:
-        financials["annual"] = edgar_annual
-        financials["quarterly"] = edgar_quarterly     # review SF-4 (G6): the trailing years read them
-        financials["source"] = EDGAR_SOURCE
-        info = financials.get("info") or {}
-        # G4 K1: non-US = a 20-F / 40-F filer (``is_us`` False) or an SEC business address outside the US. The
-        # address wins over Yahoo's country; while it is unread (None) Yahoo's country still decides, as before.
-        business_country = (edgar_meta.get("business_country") or "").strip().upper()
-        if edgar_meta.get("is_us") is False or (business_country and business_country != "US"):
-            info["country"] = "Foreign"
-        elif business_country == "US" or not info.get("country"):
-            info["country"] = US_COUNTRY
-        if edgar_meta.get("entity_name") and not info.get("longName"):
-            info["longName"] = edgar_meta["entity_name"]
-        financials["info"] = info
-
-    return financials
+    if not edgar_annual:
+        return None
+    info: dict = {}
+    # G4 K1: non-US = a 20-F / 40-F filer (``is_us`` False) or an SEC business address outside the US; a name whose
+    # address is unread is US, as the spine universe is US-listed by construction.
+    business_country = (edgar_meta.get("business_country") or "").strip().upper()
+    if edgar_meta.get("is_us") is False or (business_country and business_country != "US"):
+        info["country"] = "Foreign"
+    else:
+        info["country"] = US_COUNTRY
+    if edgar_meta.get("entity_name"):
+        info["longName"] = edgar_meta["entity_name"]
+    # review SF-4 (G6): the trailing years read the quarters. ``us_gaap`` gates the debt-free inference (B1).
+    return {"info": info, "annual": edgar_annual, "quarterly": edgar_quarterly, "source": EDGAR_SOURCE,
+            "us_gaap": edgar_meta.get("us_gaap")}
 
 
 def _price_session() -> date | None:
     """The newest prices-store session SPY has a bar for: the session an AG card's momentum is read up to (#380 S4,
     PR 11: ``rcdata.read.last_sessions``). No store or no SPY bar reads as no session, and the scan then scores every
-    card with unknown momentum instead of failing.
-
-    shortcut: the freeze anchor still asks D01 (``freeze.py``, ``ledger.d01_has_session``); it moves with the
-    ledger's own switch to the prices store (G4, PR 10), and until then a session SPY has here but not in D01 scores
-    without being frozen.
+    card with unknown momentum instead of failing. The freeze checks the same served file (``freeze._make_anchor``).
     """
     from RevenueChaser.rcdata import read
     return read.last_sessions(["SPY"]).get("SPY")
@@ -585,24 +550,18 @@ def _preload(tickers: list[str], no_fetch: bool, session: date | None = None) ->
 class _Drops:
     """Why names got no card, by reason (#150 / #232): the funnel's drop steps. Thread-safe.
 
-    It also carries the run's reporting notes (#41, #260 C15) — ``info_refetch_failed`` and the scored names under
-    ``THIN_DOLLAR_VOLUME`` — which are counted in the summary and never enter the drop arithmetic.
+    It also carries the run's reporting note (#41): the scored names under ``THIN_DOLLAR_VOLUME``, counted in the
+    summary and never entering the drop arithmetic.
     """
 
     def __init__(self):
         self._lock = threading.Lock()
         self.by_reason: dict[str, list[str]] = {}
-        self.info_refetch_failed = 0   # a refetch that answered nothing (stale or none, #260 C15)
         self.thin: list[str] = []      # scored names under THIN_DOLLAR_VOLUME (#41): a note, never a drop
 
     def add(self, reason: str, ticker: str) -> None:
         with self._lock:
             self.by_reason.setdefault(reason, []).append(ticker)
-
-    def note_info_refetch(self, outcome: str) -> None:
-        """A ``stale`` or ``none`` info refetch, counted once per name so the run summary can report it."""
-        with self._lock:
-            self.info_refetch_failed += 1
 
     def note_thin(self, ticker: str) -> None:
         """A scored name whose ``price * vol_90d`` is under ``THIN_DOLLAR_VOLUME``: reported, never dropped."""
@@ -653,7 +612,7 @@ def _is_thin(price, vol_90d) -> bool:
 
 def enrich_and_score(ticker: str, meta: dict, no_fetch: bool = False,
                      spine: dict | None = None, preload: dict | None = None) -> dict | None:
-    """Ticker için yfinance finansal (cache'li) çeker; momentum fiyat deposunun barlarından (#380 S4, PR 11).
+    """Scores one name from its stored EDGAR figures; momentum from the prices store's bars (#380 S4, PR 11).
 
     A name that gets no card is recorded in ``preload["drops"]`` (when the batch has one) with the reason.
     A US name whose newest annual record ended more than ``fiscal_year.STALE_DAYS`` before the run day
@@ -704,7 +663,7 @@ def enrich_and_score(ticker: str, meta: dict, no_fetch: bool = False,
 _DROP_STEPS = (
     ("foreign", "Non-US filers (a 20-F / 40-F filer, or an SEC business address outside the US)", True),
     ("stale_annual", f"Latest annual report ended more than {fiscal_year.STALE_DAYS} days ago", True),
-    ("no_annual", "No annual financials (no EDGAR record and no Yahoo statements)", False),
+    ("no_annual", "No stored SEC EDGAR annual financials", False),
     ("no_price", "No price in any source (the stored close, the financials, the stored quote)", False),
     ("fetch_failed", "Provider error while reading the financials", False),
 )
@@ -885,7 +844,7 @@ def _ownership_counts(cards: list[dict]) -> dict:
 
 
 def _summary(cards: list[dict], excluded_types: int | None, score_errors: dict[str, int],
-             info_refetch_failed: int = 0, thin: list[str] | None = None) -> dict:
+             thin: list[str] | None = None) -> dict:
     """The run's counts. ``thin`` is the batch's low-liquidity note (``_Drops.thin``, #41).
 
     ``low_liquidity`` and ``unreadable_sec`` answer two independent questions — is this name too thin to read, and
@@ -918,7 +877,6 @@ def _summary(cards: list[dict], excluded_types: int | None, score_errors: dict[s
         "tech_breakthrough": sum(1 for c in cards if c["tech_breakthrough"]),
         "score_errors": sum(score_errors.values()),
         "score_error_types": score_errors,
-        "info_refetch_failed": info_refetch_failed,   # #260 C15: a stale or empty Yahoo refetch
         # #41: reporting only, and the two overlap on purpose (a thin Yahoo-sourced name is in both) — each one
         # answers its own question. The names that got no card for a filings reason (``no_annual`` /
         # ``fetch_failed``) are drops and are not counted here.
@@ -929,12 +887,30 @@ def _summary(cards: list[dict], excluded_types: int | None, score_errors: dict[s
     }
 
 
-def stored_result() -> dict:
+HEADER_KEYS = ("asof", "data_as_of", "universe_total", "universe_generated_at", "universe_refreshed_by",
+               "universe_partial", "funnel_steps", "summary")
+
+
+def cards_key(cards: list[dict]) -> str:
+    """A key of the set of tickers a card list holds: a Fetch's header belongs to the stored rows it wrote."""
+    import hashlib
+    return hashlib.sha256(",".join(sorted(str(c.get("ticker")) for c in cards)).encode()).hexdigest()[:16]
+
+
+def fetch_header(result: dict) -> dict:
+    """The part of a Fetch's result a Refresh cannot count from the cards (review F3): when it ran, the prices session,
+    the universe, the funnel and the run's notes; keyed to the cards it wrote (``cards_key``)."""
+    return {**{k: result.get(k) for k in HEADER_KEYS}, "cards_key": cards_key(result.get("cards") or [])}
+
+
+def stored_result(header: dict | None = None) -> dict:
     """What a Refresh shows (S5, Common K4 #383 R1): the last Fetch, read back, never re-scored.
 
     The cards are the ``ticker_scores`` rows (``ticker_store``), sorted as a Fetch sorts them, with their index
-    labels; the summary is counted from the cards and there is no funnel (the history header went, #860).
-    No stored card: the no-data message (no stored universe, or no stored scan). No scorer, no network, no write.
+    labels. ``header`` is the last Fetch's ``fetch_header``: used when it was written for these very rows (same
+    ``cards_key``), so the page keeps its date, prices session and funnel (review F3); otherwise the summary is
+    counted from the cards and there is no funnel. No stored card: the no-data message (no stored universe, or no
+    stored scan). No scorer, no network, no write.
     """
     from RevenueChaser.core import ticker_store
     from RevenueChaser.core.index_registry import annotate_cards
@@ -952,8 +928,10 @@ def stored_result() -> dict:
         return result
     _sort_cards(cards)
     annotate_cards(cards)
-    # The last Fetch's header (universe, funnel, provider health) lived in the old history file (#860).
-    result["summary"] = _summary(cards, None, {})
+    if header and header.get("cards_key") == cards_key(cards):
+        result.update({k: header.get(k) for k in HEADER_KEYS})
+    else:
+        result["summary"] = _summary(cards, None, {})
     return result
 
 
@@ -962,18 +940,12 @@ def run_asymmetric_growth_hunter(uw=None, max_workers: int = 10,
                                  no_fetch: bool = False, run_id: str | None = None) -> dict:
     """Evreni çeker, paralel skorlar, 13F ile zenginleştirir, özet + kart listesi döndürür.
 
-    ``refresh_universe=True`` forces a fresh screener fetch (``refresh=True``);
-    otherwise the shared cached universe is reused. ``no_fetch=True`` (model-only)
-    runs purely from cached per-ticker data — no network.
+    ``no_fetch=True`` (store only) never goes online, not even to EDGAR for a name the store lacks. No provider
+    besides EDGAR is asked (#645).
 
-    The yfinance answers a Fetch gets are stored in ``vendor_financials`` / ``vendor_valuation`` (#297) after each
-    batch, stamped ``run_id`` (the job's id; a fresh one without it). A store failure is a job note, not an error.
     ``data_as_of`` is the newest prices-store session among the cards this Fetch scored (#380 S4): the price session their
     momentum came from, None when no card has a bar.
     """
-    # This Fetch's Yahoo reads only (Common K3). A Refresh never calls Yahoo, so it does not reset the counter.
-    if not no_fetch:
-        yfinance_client.reset_health()
     universe, u_stats = _spine.universe_with_stats()
     # R5 D-2 (#88): the board's type filter (PR 2, ``BOARD_OPERATING_ONLY``): growth signals need company data,
     # so by default the identity master's excluded types (CEF, ETF/ETP, SPAC, preferred, unit, warrant) do not screen.
@@ -1045,7 +1017,7 @@ def run_asymmetric_growth_hunter(uw=None, max_workers: int = 10,
     from RevenueChaser.core.index_registry import annotate_cards
     annotate_cards(cards)
 
-    summary = _summary(cards, len(universe) - len(to_score), score_errors, drops.info_refetch_failed, drops.thin)
+    summary = _summary(cards, len(universe) - len(to_score), score_errors, drops.thin)
 
     result = {
         "asof": datetime.now(timezone.utc).isoformat(),
@@ -1066,9 +1038,6 @@ def run_asymmetric_growth_hunter(uw=None, max_workers: int = 10,
         reason = "no_universe_stored" if no_fetch else "no_universe"
         result["no_data_reason"] = reason
         result["no_data_message"] = no_data_message(reason)
-    # The banner reads this key (#80). A Refresh has no live counter: ``stored_result`` copies the recorded one.
-    if not no_fetch:
-        result["provider_health"] = yfinance_client.health()
     return result
 
 
@@ -1096,7 +1065,7 @@ RULES = {
     "not_comparable_sectors": sorted(sector_rules.NOT_COMPARABLE_SECTORS),   # #380 S6 (C17)
     # #380 S4: the momentum windows, read from the prices store (split basis) up to the scan's session. In RULES so a change moves
     # the ledger's hash like every other rule the board scores with.
-    "momentum_windows": {"high_52w": BARS_52W, "sma50": BARS_SMA, "vol_3m": BARS_3M, "vol_10d": BARS_10D},
+    "momentum_windows": {"high_52w": BARS_52W, "high_52w_min": BARS_52W_MIN, "sma50": BARS_SMA, "vol_3m": BARS_3M, "vol_10d": BARS_10D},
 }
 
 # ── Forecast ledger (#128) ──
@@ -1110,7 +1079,9 @@ RULES = {
 #    when 10-Qs follow the anchor year, else the fiscal years; the statements come from the fundamentals layer.
 # 8: PR 11 (G3) the momentum bars come from the prices store (Alpaca, split basis) instead of D01. G3 and G6 each
 #    bumped 6 to 7 on their own branches; the second to land takes 8.
-SELECTION_VERSION = "8"
+# 9: board review of 17 Nov 2026 (#1001): B1 debt-free inference, C1 runway not needed with positive FCF, D1 52-week
+#    high from 63 bars, F1 growth above +500 % scores unknown.
+SELECTION_VERSION = "9"
 # A run where more than this share of the tickers it attempted failed to score is not frozen:
 # the board is missing too much to stand for the day (#202 counts the errors).
 FREEZE_MAX_SCORE_ERROR_RATE = 0.01

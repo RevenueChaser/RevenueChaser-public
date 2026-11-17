@@ -809,7 +809,7 @@ function composition(items){
 function persistTxt(p){
   // Out-of-sample persistence (persistence.py): the best-matching group formed
   // on data ending a quarter ago, and whether it held on that unseen quarter.
-  if(!p) return LOCKED ? '<span class="meta">not evaluated (short window)</span>' : '<span class="meta">not checked — run Fetch</span>';
+  if(!p) return LOCKED ? '<span class="meta">not evaluated (short window)</span>' : '<span class="meta">not checked — a Fetch checks 1-day groups vs the S&amp;P 500 at the default, 6-month and 1-year windows</span>';
   if(p.new) return '<span class="badge new">new this quarter</span> <span class="meta">no group a quarter ago shared half its names</span>';
   var same = Math.round(Number(p.jaccard || 0) * 100) + '% same names as a quarter ago';
   var nums = (p.oos_r == null || p.oos_base == null) ? "" :
@@ -861,7 +861,7 @@ function cardHtml(g){
   var tick = base == null ? "" : '<s style="left:' + Math.max(0, Math.min(100, Math.round(base * 100))) + '%"></s>';
   var tight = res
     ? '<dt>Tightness</dt><dd><span class="r">r ' + rTxt + '</span><span class="rscale">0</span><span class="rbar" role="img" aria-label="Correlation r ' + rTxt + ' on a 0 to 1 scale' + (base == null ? '' : ', noise level ' + Number(base).toFixed(2)) + '"><i style="width:' + w + '%"></i>' + tick + '</span><span class="rscale">1</span>' +
-      (base == null ? '' : '<span class="meta">vs noise <span class="num">' + Number(base).toFixed(2) + '</span></span>') + '</dd>' +
+      (base == null ? '<span class="meta unjudged">vs noise: not evaluated — a Fetch measures 1-day groups vs the S&amp;P 500 at the default, 6-month and 1-year windows</span>' : '<span class="meta">vs noise <span class="num">' + Number(base).toFixed(2) + '</span></span>') + '</dd>' +
       '<dt></dt><dd class="meta">Average pairwise correlation (r, from 0 = unrelated to 1 = move in lockstep) of ' + HORIZON + '-day returns after removing ' + rcEsc(b) + '. Not a percentage.' + (base == null ? '' : ' Amber tick = what pure-noise groups of this size reach.') + '</dd>'
     : '<dt>Tightness</dt><dd><span class="r">r ' + rTxt + '</span><span class="rscale">0</span><span class="rbar"><i style="width:' + w + '%"></i></span><span class="rscale">1</span><span class="meta">raw correlation, market included</span></dd>';
   var catchRow = plain ? '<dt>Catch-all</dt><dd><span class="badge">catch-all: ' + g.catch_pct + '% of names · weak shared move, not a theme</span></dd>' : '';
