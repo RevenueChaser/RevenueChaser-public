@@ -69,6 +69,7 @@ E2E_BY_BOARD: dict[str, tuple[str, ...]] = {
     "module_earnings_radar": ("test_board_earnings_radar.py",),
     "module_financials": ("test_board_financials.py",),
     "module_fundamentals": ("test_board_fundamentals.py",),
+    "module_hit_rate": (),
     "module_leaps": ("test_board_leaps.py",),
     "module_news": (),
     "module_oipd": ("test_board_oipd.py",),

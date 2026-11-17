@@ -320,6 +320,8 @@ TABS = [
     {"type": "tab", "key": "module_asymmetric_growth", "label": "Asymmetric Growth", "url": "/view/module_asymmetric_growth", "sub": True},
     {"type": "tab", "key": "module_swing_potential", "label": "Swing Potential", "url": "/view/module_swing_potential", "sub": True},
     {"type": "tab", "key": "module_fundamentals", "label": "Fundamentals", "url": "/view/module_fundamentals", "sub": True},
+    # #25: whether each screener's frozen picks worked, read from the forecast store on every load.
+    {"type": "tab", "key": "module_hit_rate", "label": "Hit Rate", "url": "/view/module_hit_rate", "sub": True},
     {"type": "header", "label": "Ownership"},
     {"type": "tab", "key": "module_sec_13f", "label": "SEC 13F", "url": "/view/module_sec_13f", "sub": True},
     # The board (#746): far-dated contracts from the rcdata layer, rendered in memory on each load.
@@ -374,6 +376,7 @@ NAV_ICONS = {
     "module_asymmetric_growth": "M3 17l6-6 4 4 8-8M15 7h6v6",
     "module_swing_potential": "M3 14l4-6 4 8 4-10 4 6 2-2",
     "module_fundamentals": "M6 3h9l4 4v14H6zM9 12h7M9 16h7M9 8h3",
+    "module_hit_rate": "M3 12a9 9 0 1 0 18 0a9 9 0 1 0-18 0M8 12a4 4 0 1 0 8 0a4 4 0 1 0-8 0M12 12h.01",
     "module_sec_13f": "M3 21h18M5 21V9l7-5 7 5v12M9 21v-6h6v6",
     "module_leaps": "M4 6h16v14H4zM4 10h16M8 3v4M16 3v4",
     "module_settings": "M9 12a3 3 0 1 0 6 0a3 3 0 1 0-6 0M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2",
@@ -450,6 +453,8 @@ def view(mod: str):
         return _view_leaps()
     if mod == "module_watchlists":     # #786: avo's own lists, read from their own board file on every load
         return _view_watchlists()
+    if mod == "module_hit_rate":       # #25: read from the forecast store on every load; no Fetch, no artifact
+        return _view_hit_rate()
     if mod == "logs":
         return logview.render_page(logview.page_payload())
     if mod == "runs":
@@ -698,6 +703,12 @@ def _view_leaps() -> str:
               "uw/far_contracts dataset, which sweeps each session after the New York close and reads its open "
               "interest the next morning. The first session appears once that sweep has run. Issue #746."),
         stamp=datetime.now(timezone.utc).isoformat(timespec="seconds"))
+
+
+def _view_hit_rate() -> str:
+    """The Hit Rate board (#25), rendered in memory from the forecast store like LEAPS (``_memo_render``)."""
+    from RevenueChaser.module_hit_rate import board as hr_board
+    return _memo_render("module_hit_rate", None, lambda: hr_board.render_html(hr_board.payload()))
 
 
 def _view_watchlists() -> str:
