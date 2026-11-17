@@ -617,18 +617,58 @@ def _universe_loading(mod: str) -> bool:
     return not universe.has_universe()          # the universe the boards read (Opus review M1), not the old table
 
 
+#: The last LEAPS / Watch lists page per board, served again while its inputs are the same (``_memo_render``).
+_RENDER_MEMO: dict[str, tuple] = {}
+
+
+def _data_version() -> tuple:
+    """Today's date, and every serving and board DuckDB file (with its WAL) by mtime and size: a build swap, a board
+    write (a watch-list edit included) or a new day changes it; nothing else feeds those two pages."""
+    from RevenueChaser.core import config
+    dirs = (Path(config.MARKET_DIR), Path(rawstore.STORE_DIR) / rawstore.BOARDS_DIRNAME)
+    stamp = []
+    for p in sorted(f for d in dirs for f in d.glob("*.duckdb*")):
+        try:
+            st = p.stat()
+            stamp.append((str(p), st.st_mtime_ns, st.st_size))
+        except FileNotFoundError:          # a swap or a checkpoint removed it between glob and stat
+            stamp.append((str(p), None, None))
+    return (date.today().isoformat(), *stamp)
+
+
+def _memo_render(board: str, args, render):
+    """``render()``'s page for ``board``, re-used while ``args`` and ``_data_version()`` are unchanged.
+
+    Measured on homesrv 17 Nov 2026: Watch lists took ~1.9 s and LEAPS' payload 1.06 s cold on every load, so even
+    an unchanged page (a 304) paid the whole build before its ETag. One entry per board keeps memory to two pages.
+    """
+    key = (args, _data_version())
+    hit = _RENDER_MEMO.get(board)
+    if hit is not None and hit[0] == key:
+        return hit[1]
+    page = render()
+    _RENDER_MEMO[board] = (key, page)
+    return page
+
+
 def _view_leaps() -> str:
     """The LEAPS board (#746), or its "no data yet" page while ``option_far_contract`` holds no session.
 
-    Rendered in memory on every load, like every transient state: nothing is written to ``.cache``, and the old
-    board an older build left on disk (``leaps_latest.html``) is never served again (#730). ``?session=`` picks a
-    stored session; an unknown one shows the newest.
+    Rendered in memory, never written to ``.cache``; the old board an older build left on disk
+    (``leaps_latest.html``) is never served again (#730). The page is re-used while no data file changed
+    (``_memo_render``). ``?session=`` picks a stored session; an unknown one shows the newest.
     """
     from datetime import datetime, timezone
     from RevenueChaser.module_leaps import board as leaps_board
-    data = leaps_board.payload(leaps_board.parse_session(request.args.get("session")))
-    if data is not None:
-        return leaps_board.render_html(data)
+    session = request.args.get("session")
+
+    def render():
+        data = leaps_board.payload(leaps_board.parse_session(session))
+        return None if data is None else leaps_board.render_html(data)
+
+    page = _memo_render("module_leaps", session, render)
+    if page is not None:
+        return page
     return templating.render(
         "empty_board.html.j2", title="LEAPS",
         message="No data yet: the first session is still being collected.",
@@ -641,15 +681,21 @@ def _view_leaps() -> str:
 def _view_watchlists() -> str:
     """The Watch lists board (#786), or its empty page while no list has been made.
 
-    Rendered in memory on every load, like LEAPS: the lists are read from ``boards/watchlists.duckdb`` and the
-    numbers from the rcdata layer, nothing is cached and nothing is written. ``?list=`` picks a list; an unknown
-    one opens the first.
+    Rendered in memory like LEAPS: the lists are read from ``boards/watchlists.duckdb`` and the numbers from the
+    rcdata layer; nothing is written, and the page is re-used while no data file changed (``_memo_render``).
+    ``?list=`` picks a list; an unknown one opens the first.
     """
     from datetime import datetime, timezone
     from RevenueChaser.module_watchlists import board as wl_board
-    data = wl_board.payload((request.args.get("list") or "").strip() or None)
-    if data is not None:
-        return wl_board.render_html(data)
+    list_id = (request.args.get("list") or "").strip() or None
+
+    def render():
+        data = wl_board.payload(list_id)
+        return None if data is None else wl_board.render_html(data)
+
+    page = _memo_render("module_watchlists", list_id, render)
+    if page is not None:
+        return page
     return templating.render(
         "empty_board.html.j2", title="Watch lists",
         message="No watch list yet.",
