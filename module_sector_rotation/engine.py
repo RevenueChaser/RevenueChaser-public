@@ -527,7 +527,7 @@ CLUSTER_TO_ETFS: dict[str, list[tuple[str, float]]] = {
     "C1_saas":              [("IGV", 0.40), ("WCLD", 0.35), ("SKYY", 0.25)],
     "C2_hardware":          [("SMH", 0.50), ("SOXX", 0.30), ("XLK", 0.20)],
     "C3_fintech_lending":   [("XLF", 0.55), ("KRE", 0.25), ("XHB", 0.20)],
-    "C4_crypto_mining":     [("IWM", 0.40), ("ARKW", 0.35), ("XLK", 0.25)],
+    "C4_crypto_mining":     [("IWM", 0.40), ("BLOK", 0.35), ("XLK", 0.25)],
     "C5_marketplace_consumer": [("XLY", 0.50), ("JETS", 0.25), ("XRT", 0.25)],
     "C6_energy_utilities":  [("XLE", 0.50), ("XOP", 0.25), ("XLU", 0.25)],
     "C7_healthcare":        [("IHI", 0.40), ("IBB", 0.30), ("XBI", 0.30)],

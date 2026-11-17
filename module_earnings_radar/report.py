@@ -1632,7 +1632,7 @@ def _methodology_tables(filter_stats: dict = None) -> str:
         ("C1 — SaaS", "Software, Cloud, Internet Services", "IGV, WCLD, SKYY"),
         ("C2 — Hardware", "Semiconductors, Electronics, Aerospace", "SMH, SOXX, XLK"),
         ("C3 — Fintech", "Banks, Lending, Financial Services", "XLF, KRE, XHB"),
-        ("C4 — Crypto", "Crypto Mining, Blockchain", "IWM, ARKW, XLK"),
+        ("C4 — Crypto", "Crypto Mining, Blockchain", "IWM, BLOK, XLK"),
         ("C5 — Consumer", "Retail, Travel, Entertainment", "XLY, JETS, XRT"),
         ("C6 — Energy", "Oil, Gas, Utilities, Mining", "XLE, XOP, XLU"),
         ("C7 — Healthcare", "Pharma, Biotech, Medical Devices, Hospitals", "IHI, IBB, XBI"),
@@ -2005,7 +2005,7 @@ def export_html(cards: list, calendar_events: list[dict] = None, nrc_results: di
     <div class="board" id="board">
       {filter_html}
       <details class="section methodology" style="margin-top:4px"><summary class="section-title" style="color:#d2991d;cursor:pointer">Scoring formulas (Rotation + NRC)</summary>
-      <div class="formula" style="line-height:1.7"><b>Rotation Mapping:</b> Weekly candles vs SPY · C1 SaaS→IGV/WCLD/SKYY · C2 Hardware→SMH/SOXX/XLK · C3 Fintech→XLF/KRE/XHB · C4 Crypto→IWM/ARKW/XLK · C5 Consumer→XLY/JETS/XRT · C6 Energy→XLE/XOP/XLU · C7 Healthcare→IHI/IBB/XBI</div>
+      <div class="formula" style="line-height:1.7"><b>Rotation Mapping:</b> Weekly candles vs SPY · C1 SaaS→IGV/WCLD/SKYY · C2 Hardware→SMH/SOXX/XLK · C3 Fintech→XLF/KRE/XHB · C4 Crypto→IWM/BLOK/XLK · C5 Consumer→XLY/JETS/XRT · C6 Energy→XLE/XOP/XLU · C7 Healthcare→IHI/IBB/XBI</div>
       <div class="formula" style="line-height:1.7"><b>NRC:</b> live slots only (growth · accel · R7 quality · event), weights renormalized. No 50-fills.<br>
       Quality gate: capped at 49 if R7-mapped quality &lt;12<br>
       <span>Tier A</span> (≥70) · <span>Tier B</span> (55–69) · <span>Tier C</span> (40–54) · <span>Ignore</span> (&lt;40)</div>
