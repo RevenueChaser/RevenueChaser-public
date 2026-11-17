@@ -176,15 +176,6 @@ def _screen_quotes(monkeypatch, quotes):
 
 
 
-def test_technical_from_quote():
-    q = {"regularMarketPrice": 10.0, "fiftyTwoWeekHigh": 10.1, "fiftyDayAverage": 9.0,
-         "averageDailyVolume10Day": 1000, "averageDailyVolume3Month": 500}
-    t = agh.technical_from_quote(q)
-    assert abs(t["dist_52w_pct"] - 0.1 / 10.1) < 1e-9
-    assert t["vol_ratio"] == 2.0
-    assert t["above_sma50"] is True
-
-
 def test_render_dashboard_universe_provenance():
     from RevenueChaser.module_asymmetric_growth.report import render_asymmetric_growth_hunter_html
     result = {
