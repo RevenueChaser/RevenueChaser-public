@@ -140,6 +140,36 @@ def test_crypto_is_its_own_class_by_the_registered_name_and_a_miners_fund_is_not
     assert etf_class.classify(_no_report("SPDR Gold Shares", asset_class="commodity"), BENCH)["primary_class"] == "commodity"
 
 
+def test_a_registered_fund_with_no_report_yet_is_not_a_crypto_asset_by_its_name_alone():
+    """Review finding 10: "Crypto Industry Innovators" holds shares; a new fund has no public N-PORT for months."""
+    r = etf_class.classify(_no_report("Bitwise Crypto Industry Innovators ETF", series_id="S9"), BENCH)
+    assert r["primary_class"] == etf_class.UNCLASSIFIED
+    for name in ("REX-Osprey SOL + Staking ETF", "REX-Osprey DOGE ETF"):          # trusts: the name is all there is
+        assert etf_class.classify(_no_report(name), BENCH)["primary_class"] == "crypto"
+    assert not etf_class.CRYPTO_NAME.search("iShares MSCI Netherlands ETF")
+
+
+def test_a_fund_whose_lines_are_all_incorporated_offshore_says_it_has_no_country():
+    r = etf_class.classify(_p(country={"KY": 99.0}), BENCH)
+    assert r["primary_class"] == "international" and "offshore" in r["reason"] and "None" not in r["reason"]
+
+
+def test_the_live_label_is_held_at_its_own_level_and_a_finer_one_that_passes_in_full_wins():
+    """Review finding 6: the lower cuts also let a finer level in; that is not the live label holding."""
+    bench = etf_class.benchmark_of({"40101010": 24.0, "40101015": 6.0, "40201020": 70.0, "45103010": 50.0})
+    p = _p({"40101015": 52.0, "40101010": 6.0, "40201020": 30.0, "45103010": 11.0})
+    cuts = etf_class.Cuts()
+    strict = etf_class.classify(p, bench, cuts)
+    assert (strict["primary_class"], strict["code"]) == ("sector", "40")
+    assert etf_class.classify(p, bench, cuts.relaxed())["primary_class"] == "sub_industry"     # what the old check saw
+    kept = etf_class.hold(p, bench, cuts, {"primary_class": "industry_group", "code": "4010"}, strict)
+    assert (kept["primary_class"], kept["code"]) == ("industry_group", "4010") and "kept" in kept["reason"]
+    banks = _p({"40101010": 49.5, "40101015": 49.5})
+    new = etf_class.classify(banks, BENCH, cuts)
+    assert etf_class.hold(banks, BENCH, cuts, {"primary_class": "sector", "code": "40"}, new) is new
+    assert new["primary_class"] == "industry_group"
+
+
 def test_a_fund_with_no_report_is_unclassified_and_says_why_it_is_never_guessed():
     r = etf_class.classify(_no_report("SPDR S&P 500 ETF Trust"), BENCH)
     assert r["primary_class"] == etf_class.UNCLASSIFIED and "no series" in r["reason"]
@@ -324,10 +354,32 @@ def test_a_fund_that_fell_past_the_lower_cut_changes_and_the_change_is_written(n
     assert len([c for c in changes if c["as_of"] == date(2026, 8, 30)]) == 2      # the live rows, carried forward
 
 
+def test_a_fund_that_becomes_hidden_writes_a_change_row_though_its_label_stands(nport, live_etf_class):
+    """Review finding 7: 9.9 -> 10.1 % derivatives hid a fund on the boards with nothing in the change table."""
+    live_etf_class([{"ticker": "CIBR", "primary_class": "sector", "code": "45", "structure": "plain",
+                     "hidden_by_default": False, "since": date(2026, 8, 30), "manual": False}])
+    nport([h for h in HOLDINGS if h["accession"] != "A3"]
+          + [_line("A3", 88.0, ticker="MSFT"), _line("A3", 12.0, asset_cat="DE")])
+    rows, changes, _ = _rows(manual=[])
+    assert rows["CIBR"]["primary_class"] == "sector" and rows["CIBR"]["hidden_by_default"] is True
+    assert rows["CIBR"]["since"] == date(2026, 8, 30)
+    new = [c for c in changes if c["ticker"] == "CIBR" and c["as_of"] == date(2026, 11, 17)]
+    assert [(c["change"], c["was"], c["now"]) for c in new] == [("changed", "sector 45", "sector 45")]
+    assert new[0]["reason"].startswith("structure plain -> synthetic")
+
+
+def test_a_ticker_codes_a_holding_only_on_a_us_line(nport):
+    """Review finding 9: a local ticker abroad that spells a US one must not take that company's GICS."""
+    nport([h for h in HOLDINGS if h["accession"] != "A3"]
+          + [_line("A3", 50.0, ticker="MSFT"), _line("A3", 49.0, ticker="MSFT", country="JP", isin="JP3000000001")])
+    cibr = _rows(manual=[])[0]["CIBR"]
+    assert cibr["coded_pct"] == pytest.approx(50.5, abs=0.1)
+
+
 # ── The manual file ───────────────────────────────────────────────────────────────────────────────────────────
 
-def test_the_manual_file_ships_empty_so_every_label_is_the_rules():
-    assert etf_class.load_manual() == []
+def test_the_shipped_manual_file_loads_and_every_line_carries_a_reason():
+    assert all(line["reason"] for line in etf_class.load_manual())      # not pinned empty: a correction may land
     assert json.loads(etf_class.MANUAL_FILE.read_text(encoding="utf-8"))["version"] == 1
 
 

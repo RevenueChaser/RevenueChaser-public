@@ -30,8 +30,10 @@ with the second reviewer):
   Bermuda are places of incorporation and are left out), ``international`` under 50 % US, ``low_coverage`` when
   under 60 % of the equity is coded, ``broad`` when the sector mix is within 0.15 of the benchmark's (half the
   absolute differences; ``broad_global`` when not a US fund), else ``diversified`` (avo's A: two classes);
-- **hysteresis**: a fund keeps its live label while it still holds with every cut 10 points lower (the distance
-  0.05 wider), so a fund sitting on a cut does not flip every quarter;
+- **hysteresis**: a fund keeps its live label while that label, at its own level, still holds with every cut 10
+  points lower (the distance 0.05 wider), so a fund sitting on a cut does not flip every quarter; a finer level that
+  passes the full cuts is a new label and wins. The 10 % derivative cut and the fixed equity and US cuts have none;
+  a fund that starts or stops being hidden writes a change row all the same;
 - a fund with no report is ``unclassified`` and says why. It is never guessed.
 
 :data:`MANUAL_FILE` corrects a wrong call; it does not fill a missing one. A line names a ticker, a ``primary_class``
@@ -88,8 +90,8 @@ BENCHMARKS = ("IVV", "VOO", "SPLG")
 OFFSHORE = frozenset({"KY", "VG", "BM"})
 UNCLASSIFIED = "unclassified"
 #: The fund's registered name says it holds a crypto asset (avo's E, 17 Nov 2026).
-CRYPTO_NAME = re.compile(r"\b(bitcoin|btc|ether|ethereum|crypto\w*|solana|xrp|litecoin|dogecoin|digital assets?)\b",
-                         re.IGNORECASE)
+CRYPTO_NAME = re.compile(r"\b(bitcoin|btc|ether|ethereum|crypto\w*|solana|sol|xrp|litecoin|dogecoin|doge|"
+                         r"digital assets?)\b", re.IGNORECASE)
 _FUND_NAME = r"\bETF\b|ISHARES TRUST|SELECT SECTOR SPDR"
 
 
@@ -130,7 +132,7 @@ def benchmark_of(g: dict[str, float]) -> dict:
     return out
 
 
-def classify(p: dict, bench: dict | None, cuts: Cuts = Cuts()) -> dict:
+def classify(p: dict, bench: dict | None, cuts: Cuts = Cuts(), upto: int | None = None) -> dict:
     """One fund's axes, ``primary_class``, ``code`` and ``reason`` from its profile ``p``.
 
     ``p``: ``name``, the ``etf`` flags (``lev``, ``opt``, ``fof``, ``mm``), ``asset_class`` (the ``etf`` row's), and
@@ -138,6 +140,7 @@ def classify(p: dict, bench: dict | None, cuts: Cuts = Cuts()) -> dict:
     ``cash``, ``derivative``, ``commodity``, ``fund``, ``real_estate``, ``coded``), ``g`` (gsubind to percent) and
     ``country`` (code to percent of equity lines). ``bench`` is :func:`benchmark_of` the benchmark fund, or None
     when the build has none: then no finer level and no ``broad`` is decided, because both are relative to it.
+    ``upto`` stops the search at that index of :data:`LEVELS` (the hysteresis asks about the live level only).
     """
     crypto = bool(CRYPTO_NAME.search(p.get("name") or ""))
     out = {"code": None, "is_synthetic": False, "asset_class": None, "geo": None, "country": None,
@@ -155,7 +158,9 @@ def classify(p: dict, bench: dict | None, cuts: Cuts = Cuts()) -> dict:
 
     if p.get("no_report"):
         why = p.get("why") or "no N-PORT report"
-        if crypto:
+        # A registered fund (it has a series) files N-PORT: its name alone decides nothing until the report is in
+        # ("Crypto Industry Innovators" holds shares). A trust files none, so its name is all there is.
+        if crypto and not p.get("series_id"):
             return done("crypto", f"registered name; {why}", asset_class="crypto")
         if p.get("asset_class"):
             return done(p["asset_class"], f"the etf row's asset class; {why}", asset_class=p["asset_class"])
@@ -199,11 +204,11 @@ def classify(p: dict, bench: dict | None, cuts: Cuts = Cuts()) -> dict:
     out["geo"], out["country"] = geo, (fc if geo == "country" else None)
 
     best = None
-    for name, col, n in LEVELS:
+    for i, (name, col, n) in enumerate(LEVELS):
         code, w = _top(_roll(p["g"], n))
         share = 100.0 * w / coded if coded else 0.0
         out[col], out[f"{col}_share"] = code, (round(share, 2) if code else None)
-        if not code or share < cuts.share or 100.0 * w / eq < cuts.floor:
+        if not code or share < cuts.share or 100.0 * w / eq < cuts.floor or (upto is not None and i > upto):
             continue
         if name == "sector":
             best = (name, code, share, None)
@@ -221,6 +226,9 @@ def classify(p: dict, bench: dict | None, cuts: Cuts = Cuts()) -> dict:
     if geo == "country":
         return done("country", f"{fc} {fshare:.0f}% of equity, {cov}", code=fc)
     if geo == "international":
+        if fc is None and not us:
+            return done("international", f"every equity line is incorporated offshore ({', '.join(sorted(OFFSHORE))}): "
+                                         f"no country of business, {cov}")
         return done("international", f"US {us:.0f}%, largest {fc} {fshare:.0f}%, {cov}")
     if cover < cuts.cover:
         return done("low_coverage", f"{cov}, geo {geo}")
@@ -317,6 +325,8 @@ def profiles(con: duckdb.DuckDBPyConnection, funds: list[dict], folder: Path | N
              bt AS (SELECT ticker, gsubind AS g FROM security WHERE gsubind IS NOT NULL),
              h AS (SELECT f.ticker AS etf, h.pct_of_net_assets AS pct, h.country, h.asset_cat,
                           h.cusip, h.isin, replace(h.ticker, '.', '-') AS tic,
+                          -- a ticker is a US ticker only on a US line: a local ticker abroad can spell the same
+                          (h.country = 'US' OR h.isin LIKE 'US%' OR (h.country IS NULL AND h.isin IS NULL)) AS us_line,
                           CASE WHEN h.asset_cat IN ('EC', 'EP') THEN 'equity'
                                WHEN h.asset_cat IN ('DBT', 'LON', 'SN') OR h.asset_cat LIKE 'ABS%' THEN 'debt'
                                WHEN h.asset_cat IN ('STIV', 'RA') THEN 'cash'
@@ -334,7 +344,8 @@ def profiles(con: duckdb.DuckDBPyConnection, funds: list[dict], folder: Path | N
                     ELSE h.bucket END AS bucket,
                CAST(coalesce(bc.g, bi.g, bt.g) AS VARCHAR) AS gsubind
         FROM h LEFT JOIN bc ON bc.cusip = h.cusip LEFT JOIN bi ON bi.isin = h.isin
-        LEFT JOIN bt ON bt.ticker = h.tic LEFT JOIN {etf_mod.TABLE} e ON e.ticker = h.tic""")
+        LEFT JOIN bt ON bt.ticker = h.tic AND h.us_line
+        LEFT JOIN {etf_mod.TABLE} e ON e.ticker = h.tic AND h.us_line""")
     keys = ("equity", "preferred", "debt", "cash", "derivative", "commodity", "fund", "real_estate", "coded")
     for r in con.execute("""
             SELECT etf, sum(pct) FILTER (WHERE bucket = 'equity'),
@@ -375,6 +386,20 @@ def _key(r: dict) -> str:
     return r["primary_class"] + (f" {r['code']}" if r.get("code") else "")
 
 
+def hold(p: dict, bench: dict | None, cuts: Cuts, was: dict, r: dict) -> dict:
+    """``r`` (the rule's answer), or the live label ``was`` where it still holds with every cut ``leave`` points
+    lower. The live label is asked about at its OWN level: the lower cuts also let a finer level in, which is not
+    the live label holding (review finding 6). A finer level that passed the full cuts is a new label and wins."""
+    level = {name: i for i, (name, _, _) in enumerate(LEVELS)}
+    live, new = level.get(was["primary_class"]), level.get(r["primary_class"])
+    if _key(was) == _key(r) or p.get("no_report") or (live is not None and new is not None and new > live):
+        return r
+    held = classify(p, bench, cuts.relaxed(), upto=live)
+    if _key(held) != _key(was):
+        return r
+    return {**held, "reason": held["reason"] + f"; kept, within {cuts.leave:.0f} points of the cut"}
+
+
 def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, manual: list[dict] | None = None,
          cuts: Cuts = Cuts()) -> tuple[list[dict], list[dict], list[tuple[str, str, str]]]:
     """``(etf_class rows, etf_class_changes rows, issues)`` for the ETFs of the ``my_universe`` table of ``con``."""
@@ -394,10 +419,8 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, manual: list[dict
             out[t] = {**was, "run_id": ctx.run_id}          # an input outage is not a rule change
             continue
         r = classify(p, bench, cuts)
-        if was is not None and not was.get("manual") and _key(was) != _key(r) and not p.get("no_report"):
-            held = classify(p, bench, cuts.relaxed())
-            if _key(held) == _key(was):
-                r = {**held, "reason": held["reason"] + f"; kept, within {cuts.leave:.0f} points of the cut"}
+        if was is not None and not was.get("manual"):
+            r = hold(p, bench, cuts, was, r)
         r.update(ticker=t, label=_label(r["primary_class"], r["code"]), manual=False, as_of=p.get("as_of"),
                  source=None if p.get("no_report") else source, run_id=ctx.run_id)
         out[t] = r
@@ -416,9 +439,13 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, manual: list[dict
         r, was = out[t], live.get(t)
         same = was is not None and _key(was) == _key(r)
         r["since"] = (was.get("since") or as_of) if same else as_of
-        if not same:
+        # A fund that starts or stops being hidden on the boards is a change too, though its label stands.
+        flip = same and was.get("hidden_by_default") is not None and bool(was["hidden_by_default"]) != bool(
+            r.get("hidden_by_default"))
+        if not same or flip:
+            why = f"structure {was.get('structure')} -> {r.get('structure')}; {r['reason']}" if flip else r["reason"]
             changes.append({"ticker": t, "change": CHANGED if was is not None else ENTERED,
-                            "was": _key(was) if was is not None else None, "now": _key(r), "reason": r["reason"],
+                            "was": _key(was) if was is not None else None, "now": _key(r), "reason": why,
                             "as_of": as_of, "run_id": ctx.run_id})
     changes += [{"ticker": t, "change": LEFT, "was": _key(was), "now": None, "reason": "no longer an ETF of "
                  "my_universe", "as_of": as_of, "run_id": ctx.run_id} for t, was in sorted(live.items())
