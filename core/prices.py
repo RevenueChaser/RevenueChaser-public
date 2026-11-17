@@ -371,15 +371,18 @@ def _read_series(tickers: list[str], start: date | None = None, end: date | None
                    list(tickers), layer=True):
         actions.setdefault(r["ticker"], []).append(r)
     cols = ", ".join(f"b.{c}" for c in _READ_COLUMNS)
-    where, params = [f"b.ticker IN ({marks})"], list(tickers)
+    source, where, params = "price_bars_daily b", [f"b.ticker IN ({marks})"], list(tickers)
     if start is not None:
-        where.append("b.session_date >= COALESCE((SELECT MAX(p.session_date) FROM price_bars_daily p "
-                     "WHERE p.ticker = b.ticker AND p.session_date < ?), ?)")
-        params += [start, start]
+        # One grouped read of each ticker's last bar before start, joined once: a correlated MAX per row took
+        # ~20 s a call on the served view (Swing Fetch timing, 17 Nov 2026: 22.7 s vs 0.2 s for one name).
+        source += (f" LEFT JOIN (SELECT ticker, MAX(session_date) AS prev_day FROM price_bars_daily "
+                   f"WHERE ticker IN ({marks}) AND session_date < ? GROUP BY ticker) f ON f.ticker = b.ticker")
+        where.append("b.session_date >= COALESCE(f.prev_day, ?)")
+        params = [*tickers, start, *tickers, start]
     if end is not None:
         where.append("b.session_date <= ?")
         params.append(end)
-    parts = [_read_columns(f"SELECT {cols} FROM price_bars_daily b WHERE {' AND '.join(where)}", params)]
+    parts = [_read_columns(f"SELECT {cols} FROM {source} WHERE {' AND '.join(where)}", params)]
     if end is not None:
         # Past end: each ticker's first bar (it has bars to adjust exactly when the unbounded read had: the skipped
         # count and an empty frame stay the same) and, for the adjusted basis, each C_prev bar.

@@ -116,3 +116,15 @@ def test_skipped_events_count_only_the_events_that_touch_the_window(rawstore_tmp
     write_d01([], [_act("T", days[0], "dividend", 1.0)])
     assert prices.daily_bars(["T"], basis="adjusted").attrs["skipped_events"] == 1
     assert prices.daily_bars(["T"], basis="adjusted", start=days[2]).attrs["skipped_events"] == 0
+
+
+def test_the_window_floor_is_one_grouped_read_not_a_subquery_per_row(series, monkeypatch):
+    """Swing Fetch timing (17 Nov 2026): the correlated ``MAX(session_date)`` per bar cost ~20 s a call on the
+    served view (1 name: 22.7 s with ``start=``, 0.2 s without). The floor is read once per ticker and joined."""
+    sqls: list[str] = []
+    real = prices._read_columns
+    monkeypatch.setattr(prices, "_read_columns", lambda sql, params: (sqls.append(sql), real(sql, params))[1])
+    got = prices.daily_bars(["TTT"], basis="adjusted", start=series[50])
+    assert len(got) == len(series) - 50
+    assert sqls and all("= b.ticker AND" not in s for s in sqls), sqls
+    assert any("GROUP BY ticker" in s for s in sqls), sqls
