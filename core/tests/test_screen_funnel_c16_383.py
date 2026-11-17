@@ -82,13 +82,13 @@ def test_scored_names_that_pass_no_screen_are_their_own_by_design_step(scenario,
 
 @pytest.mark.parametrize("mod", BOARDS)
 def test_a_ticker_that_raises_is_a_named_scoring_error(scenario, monkeypatch, mod):
-    real = mod.load_ticker_info
+    real = mod.assign_themes    # a per-ticker call both boards make (Swing has no .info read, #645)
 
     def info(ticker, *a, **k):
         if ticker == "UP3":
             raise ValueError("bad payload")
         return real(ticker, *a, **k)
-    monkeypatch.setattr(mod, "load_ticker_info", info)
+    monkeypatch.setattr(mod, "assign_themes", info)
     payload = mod.run_scan()
     steps = _steps(payload)
     assert steps["compute_error"]["tickers"] == ["UP3"] and steps["compute_error"]["by_design"] is False
@@ -99,7 +99,7 @@ def test_a_ticker_that_raises_is_a_named_scoring_error(scenario, monkeypatch, mo
 def test_a_scan_with_nothing_scored_still_says_where_every_name_went(scenario, monkeypatch, mod):
     def boom(ticker, *a, **k):
         raise ValueError("bad payload")
-    monkeypatch.setattr(mod, "load_ticker_info", boom)
+    monkeypatch.setattr(mod, "assign_themes", boom)
     payload = mod.run_scan()
     assert payload["no_data"] is True
     assert funnel.validate(payload["funnel_steps"]) == []

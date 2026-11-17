@@ -28,7 +28,7 @@ from . import config
 from . import flow as flow_mod
 from . import settings as swing_settings
 from RevenueChaser.core.scan_quality import ohlc_drop_reason
-from .indicators import compute_indicators, load_ticker_info
+from .indicators import compute_indicators
 from .ranking import composite, execution_levels, ma_alignment, percentile_ranks, quality_403030
 from .screeners import evaluate_direction, evaluate_minervini, evaluate_qullamaggie, evaluate_weinstein
 
@@ -88,15 +88,12 @@ def _compute_row(row: dict, spy_df, no_fetch: bool = False, spine: dict | None =
     reason = ohlc_drop_reason(df)
     if reason:
         return _drop(reason)
-    info = load_ticker_info(t, no_fetch=no_fetch)
-    info_stale = bool(info.get("_stale"))
-    if info_stale:
-        info = {k: v for k, v in info.items() if k != "_stale"}
     ind = compute_indicators(df, spy_df, returns_df=adjusted)
     if ind.get("price") is None:
         return _drop("no_price")
 
-    name = info.get("longName") or info.get("shortName") or row.get("name") or ""
+    # #645 (avo 10 Nov, option A): the name is the spine's, never Yahoo's ``.info`` (Swing review F1, 17 Nov).
+    name = row.get("name") or ""
     # R5 (#88), #266: the sector and industry are the spine's (UW's two levels); the vendor ``.info`` ones never
     # fill the row's own fields. The theme labels are the pinned NMF medium run (C21, #383).
     gics = _universe.gics_of(t, _universe.spine_gics([t]) if spine is None else spine)
@@ -113,7 +110,6 @@ def _compute_row(row: dict, spy_df, no_fetch: bool = False, spine: dict | None =
         "earnings_date": earnings_date,
         "ind": ind,
         "ohlc_stale": bool(df.attrs.get("stale")),
-        "info_stale": info_stale,
     }
 
 
@@ -143,7 +139,6 @@ def build_payload(results: list[dict], top_n: int | None = None, run_stats: dict
     e = eff or swing_settings.effective()
     run_stats = run_stats or {}
     results = results or []
-    run_stats["stale_info"] = sum(1 for r in results if r.get("info_stale"))
 
     rs_pct = percentile_ranks([(r["ticker"], r["ind"].get("rs_vs_spy_12m")) for r in results])
     mom_pct = percentile_ranks([(r["ticker"], r["ind"].get("mom_12_1")) for r in results])
@@ -236,7 +231,6 @@ def build_payload(results: list[dict], top_n: int | None = None, run_stats: dict
         "avg_quality": avg_quality,
         "no_data": False,
         "data_quality": {"stale_ohlc": run_stats.get("stale_ohlc", 0),
-                         "stale_info": run_stats.get("stale_info", 0),
                          # SPY's frame, the only one ``load_ohlc`` can still refuse (review 8): 0 or 1
                          "short_refetch_refused": int(bool(run_stats.get("spy_short_refetch_refused"))),
                          "spy_stale": bool(run_stats.get("spy_stale")),
@@ -244,6 +238,7 @@ def build_payload(results: list[dict], top_n: int | None = None, run_stats: dict
         "summary": {
             "stale_ohlc": run_stats.get("stale_ohlc", 0),
             "spy_stale": bool(run_stats.get("spy_stale")),
+            "spy_missing": bool(run_stats.get("spy_missing")),
             "regime": regime,
             "spy_price": run_stats.get("spy_price"),
             "spy_sma200": run_stats.get("spy_sma200"),
@@ -274,16 +269,11 @@ def run_scan(uw=None, top_n: int = None, refresh_universe: bool = False,
     ``rows_sink`` (a dict) receives the score and gate rows a Fetch persisted (``scores.persist``), for the result
     history; a Refresh persists nothing and leaves it empty.
     """
-    from RevenueChaser.core.providers import yfinance as yfp
-
     from . import scores
     # Without a sink the one-argument call stays as it was (stand-ins of ``scores.persist`` keep working).
     # The settings are resolved once and pinned for the whole run (Swing review finding 2): prefilter /
     # build_payload / persist each still call ``effective()``, and all of them get these.
     persist = scores.persist if rows_sink is None else (lambda results: scores.persist(results, sink=rows_sink))
-    # This Fetch's Yahoo reads only (#80). A Refresh serves the stored payload, which already carries the key.
-    if not no_fetch:
-        yfp.reset_health()
     with swing_settings.pinned(swing_settings.effective()) as eff:
         payload = screen_common.run_screen(
             board="swing", refreshed_by="Swing Potential", cfg=config,
@@ -293,8 +283,6 @@ def run_scan(uw=None, top_n: int = None, refresh_universe: bool = False,
             top_n=top_n, refresh_universe=refresh_universe, no_fetch=no_fetch,
             history_board="module_swing_potential", saved=config.SWING_JSON,
             operating_only=eff.operating_only)
-    if not no_fetch:
-        payload["provider_health"] = yfp.health()
     return payload
 
 

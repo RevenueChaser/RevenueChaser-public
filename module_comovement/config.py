@@ -93,7 +93,8 @@ ENGINE_EPOCH = "2026-10-17T01:30:00+00:00"
 # 3: PR 8 (G3), the closes come from the prices store (Alpaca, total-return factors) instead of D01.
 # 4: the review of 17 Nov 2026, F6 (a name with no recent bar is not clustered) and F7 (flat printers judged on the
 #    run's window, not the whole stored history).
-METHOD = 4
+# 5: the xReview of 17 Nov 2026: the market beta is fitted on winsorised returns.
+METHOD = 5
 
 # ── Clustering ──────────────────────────────────────────────────────────────
 # Ward (review 2026-10-01 §1): average linkage chained a quarter to half of the
@@ -105,8 +106,12 @@ LINKAGE = "ward"
 
 # Cut tiers by universe size: (min_n, cuts). The first tier whose min_n <= n
 # applies. Three views — broad / medium / tight — never a single hidden k.
+# The large tier, measured on live data (#582, 17 Nov 2026, ~5,100 names, two held-out quarters): the out-of-sample
+# R² of a name on its group's other members (lift over same-size random groups) was k20 .15 with one group holding 33 %
+# of the names, k60 .19-.20 (largest 13-16 %), k120 .22, k250 .23, k600 .24-.25 with 36+ groups under 4 names. R² is flat
+# above ~120. avo chose 60 / 120 / 250 (17 Nov 2026).
 CUT_TIERS: tuple[tuple[int, tuple[int, ...]], ...] = (
-    (2000, (20, 80, 250)),
+    (2000, (60, 120, 250)),
     (500, (10, 30, 80)),
     (0, (5, 15, 40)),
 )

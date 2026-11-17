@@ -124,8 +124,10 @@ def index_url(cik: str, accession: str) -> str:
 #: exhibit *type*; upgrade by reading the filing's ``<CIK>-index.htm`` description column. (2) The 99.1/99.2/99.3
 #: order is **one filer's** layout, not a rule of the form. (3) Only ``.htm`` and ``.html`` are considered, so a
 #: filer who files the AIF as a PDF is missed (``read_exhibits`` raises ``aif_not_named`` when it can tell).
-_AIF_NAME = re.compile(r"aif", re.I)
-_EX_99_1 = re.compile(r"ex(?:hibit)?[-_]?99[._-]?1(?![0-9])", re.I)
+#: #751 (measured 12 Nov 2026 on the 49 40-Fs with no exhibit stored): 25 name 99.1 ``…xex99d1.htm`` (or
+#: ``ex99z1``), and 10 spell the form out (``a2025annualinformationform.htm``, ``ballard993123125annualinfo.htm``).
+_AIF_NAME = re.compile(r"aif|annual[-_]?info", re.I)
+_EX_99_1 = re.compile(r"ex(?:hibit)?[-_]?99[._dz-]?1(?![0-9])", re.I)
 _EX_1 = re.compile(r"(?<![a-z])d?ex(?:hibit)?[-_]?0?1(?![0-9-])", re.I)     # RY files its AIF as Exhibit 1, dex1.htm (#400 WP3)
 _EX_99_ANY = re.compile(r"ex(?:hibit)?[-_]?99", re.I)
 

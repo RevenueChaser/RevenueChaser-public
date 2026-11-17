@@ -47,6 +47,9 @@ To re-capture on another commit, run this file with ``RC_PARITY_CAPTURE=<path>``
 instead of comparing).
 Plan decision B (ADR P/E and P/B unknown) added the additive per-candidate ``adr`` key, false for all five
 scenario candidates (none is typed ADR), edited in by hand like ``debt_basis``.
+The Swing review of 17 Nov 2026 (F1, F2, #995) took Yahoo ``.info`` out of Swing: its candidates' names are the
+universe row's (UP1/UP3 read "<t> Inc", not the cached "<t> Holdings"), its ``provider_health`` and
+``data_quality.stale_info`` keys went, and its ``summary`` gained ``spy_missing: false``; edited in by hand.
 """
 from __future__ import annotations
 

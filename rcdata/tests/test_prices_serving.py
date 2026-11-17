@@ -252,7 +252,7 @@ def test_market_cap_from_the_cover_shares_split_adjusted_and_summed_per_issuer(b
 
 
 @pytest.mark.parametrize("symbol, as_of", [("TSM", date(2026, 2, 28)), (None, date(2026, 2, 28)), ("TSM", None)])
-def test_an_adrs_cover_count_is_ordinary_shares_so_it_gives_no_market_cap(http_mock, symbol, as_of):
+def test_an_adrs_cover_count_is_ordinary_shares_so_its_rows_have_no_market_cap(http_mock, symbol, as_of):
     # The Opus review's M1: a 20-F cover counts the issuer's ordinary shares and the bar is the ADS's (TSM: one ADS
     # is five shares), so cover times close was five times the cap. Matched by the symbol, or as the one class of the
     # CIK's one Tier A row, the count stays under ``class:``, the ADR has no shares (no cap), and it is an issue. A
@@ -276,7 +276,10 @@ def test_an_adrs_cover_count_is_ordinary_shares_so_it_gives_no_market_cap(http_m
     base.run_request({"dataset": bars.NAME, "params": {"as_of": "2026-10-27"}})
     sid = "099001:01"
     assert _q("SELECT count(*) AS n FROM price_bar_daily WHERE security_id = ?", [sid])[0]["n"] == 6
-    assert _q("SELECT count(*) AS n FROM market_cap_daily WHERE security_id = ?", [sid])[0]["n"] == 0
+    # Every bar keeps its row (S18: the store narrows nothing), with no cap and the reason (the shrink check of 17 Nov).
+    assert _q("SELECT count(*) AS n, count(market_cap) AS caps, count(shares) AS shares, "
+              "count(issuer_market_cap) AS iss, any_value(shares_source) AS why FROM market_cap_daily "
+              "WHERE security_id = ?", [sid]) == [{"n": 6, "caps": 0, "shares": 0, "iss": 0, "why": "adr_no_ratio"}]
     held = _q("SELECT security_id, value FROM shares_class WHERE cik = '1046179'")
     assert held == [{"security_id": "class:1046179:common", "value": 25_930_000_000}]
     issues = _issues()
@@ -472,7 +475,7 @@ def test_a_company_facts_count_over_a_year_old_gives_no_market_cap():
     assert GAPX in _issues()["tier_a_no_shares"]
 
 
-def test_a_zero_share_count_gives_no_cap_and_a_zero_or_post_filing_cover_is_no_count():
+def test_a_zero_share_count_keeps_its_row_with_no_cap_and_a_zero_or_post_filing_cover_is_no_count():
     # Prices plan 16 Nov 2026, P1b and P2: a SPAC unit's Compustat cshoc of 0 made a cap of 0 (66 on 13 Nov), and 71
     # covers counted 0 shares (an unissued class), 4 were dated after their filing. None of them is a count.
     _shares_and_floats(extra={GAPX: ("GAPX", [(d, c) for d, c in zip(DAYS, RAW["GAPX"])], 0.0)})
@@ -486,7 +489,8 @@ def test_a_zero_share_count_gives_no_cap_and_a_zero_or_post_filing_cover_is_no_c
     base.run_request({"dataset": bars.NAME, "params": {"as_of": "2026-10-27"}})
     assert _q("SELECT count(*) AS n FROM shares_class WHERE security_id = ? AND measure = 'outstanding'",
               [GAPX]) == [{"n": 0}]
-    assert _q("SELECT count(*) AS n FROM market_cap_daily WHERE security_id = ?", [GAPX]) == [{"n": 0}]
+    rows = _q("SELECT market_cap, shares, shares_source FROM market_cap_daily WHERE security_id = ?", [GAPX])
+    assert rows and all(r == {"market_cap": None, "shares": None, "shares_source": "zero_count"} for r in rows)
     assert GAPX in _issues()["tier_a_no_shares"]
 
 
