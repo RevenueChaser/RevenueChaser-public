@@ -382,7 +382,10 @@ def score_ticker(ticker: str, financials: dict, technical: dict, meta: dict | No
          "passed": tri.rule((net_debt_assets,), lambda n: n <= NET_DEBT_ASSETS_MAX)},
         {"label": "Cash runway ≥ 2 years", "value": runway, "unit": "runway", "threshold": "≥ 2y",
          "op": "gte", "param": "runway",
-         "passed": tri.rule((runway,), lambda r: r >= RUNWAY_YEARS_MIN)},
+         # Decision C1 (avo, 17 Nov 2026): positive FCF already scored the point; runway is not needed, so it is
+         # neither a second point nor an unknown, and leaves the signal's count.
+         "not_needed": bool(fcf is not None and fcf > 0),
+         "passed": None if (fcf is not None and fcf > 0) else tri.rule((runway,), lambda r: r >= RUNWAY_YEARS_MIN)},
     ]
 
     # ── Sinyal 3: Momentum/Volume ──
@@ -400,7 +403,7 @@ def score_ticker(ticker: str, financials: dict, technical: dict, meta: dict | No
     ]
 
     def _signal(key, subs):
-        passed, n_known, total = tri.tally(subs)
+        passed, n_known, total = tri.tally([x for x in subs if not x.get("not_needed")])
         return {"key": key, "name": SIGNAL_NAMES[key], "passed": passed, "known": n_known, "total": total,
                 "subs": subs}
 

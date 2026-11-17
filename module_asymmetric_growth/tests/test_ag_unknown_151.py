@@ -41,9 +41,11 @@ def _sub(card, param):
 
 def test_a_fully_known_card_is_unchanged():
     card = _card(_years())
-    assert all(s["known"] == 3 and s["total"] == 3 for s in card["signals"])
-    assert card["total_points"] == 8   # growth 3/3 (+18%, accelerating, gm 60%), survival 3/3, momentum 3/3 -> see below
-    assert all(isinstance(sub["passed"], bool) for sig in card["signals"] for sub in sig["subs"])
+    # Survival counts 2: positive FCF makes the runway not needed (C1).
+    assert [(s["known"], s["total"]) for s in card["signals"]] == [(3, 3), (2, 2), (3, 3)]
+    assert card["total_points"] == 7   # growth 2/3 (+18% < 20%), survival 2/2, momentum 3/3
+    assert all(isinstance(sub["passed"], bool) for sig in card["signals"] for sub in sig["subs"]
+               if not sub.get("not_needed"))
 
 
 def test_missing_revenue_history_leaves_growth_unknown_not_failed():

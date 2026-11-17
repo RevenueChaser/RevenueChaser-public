@@ -358,7 +358,7 @@ def render_asymmetric_growth_hunter_html(result: dict) -> str:
         <tr><th>Section</th><th>Signal</th><th>Criteria (each sub-criterion counts toward the signal's X/3)</th></tr>
         <tr><td>Universe</td><td>—</td><td><b>United States (US)-listed common stocks only</b> (American Depositary Receipts (ADRs) and foreign companies excluded) · all market capitalizations · all sectors</td></tr>
         <tr><td rowspan="3">Signal 1</td><td>Accelerated Growth</td><td>Revenue growth of at least 20% · growth accelerating year-over-year (YoY) · gross profit margin of at least 40%</td></tr>
-        <tr><td>Survival / Runway</td><td>Positive free cash flow (FCF) · net debt divided by total assets of at most 10% · cash runway of at least 2 years</td></tr>
+        <tr><td>Survival / Runway</td><td>Positive free cash flow (FCF) · net debt divided by total assets of at most 10% · cash runway of at least 2 years, read only when FCF is not positive (positive FCF needs no runway)</td></tr>
         <tr><td>Momentum / Volume</td><td>Price within 10% of the 52-week high · 10-day average trading volume at least 1.4× the 3-month average volume · price above the 50-day moving average (MA), read from the stored daily bars (the prices store) of the scored session</td></tr>
         <tr><td>Scoring</td><td>—</td><td>Total points = the number of passed sub-criteria (0 to 9). Point buckets: 9 · 8-7 · 6-5 · below 5.</td></tr>
         <tr><td>Tier</td><td>—</td><td>A signal is strong with at least {engine.TIER_MIN_PASSES} of its 3 sub-criteria passed. Balanced = 3 strong signals, Strong = 2. Computed with the default thresholds (the sliders move points only). Cards sort by tier, then points, then revenue growth capped at +100%.</td></tr>
@@ -665,6 +665,7 @@ function resetThr() {{
 function evalSub(sub) {{
   // true / false / null (unknown: an input is missing). A switched-off rule counts as passed, as before.
   var v = sub.value, op = sub.op;
+  if (sub.not_needed) return null;   // C1: runway with positive FCF, out of the count (engine._signal)
   if (op === "pair") {{
     if (THRESHOLDS.accelerating === false) return true;
     return (Array.isArray(v) && v[0] != null && v[1] != null) ? v[0] > v[1] : null;
@@ -691,7 +692,7 @@ function rescore(c) {{
       var p = evalSub(sub);
       if (p === true) passed++;
       if (p !== null) known++;
-      return {{ label:sub.label, value:sub.value, unit:sub.unit, threshold:sub.threshold, op:sub.op, param:sub.param, passed:p }};
+      return {{ label:sub.label, value:sub.value, unit:sub.unit, threshold:sub.threshold, op:sub.op, param:sub.param, not_needed:sub.not_needed, passed:p }};
     }});
     return {{ key:s.key, name:s.name, passed:passed, known:known, total:s.total, subs:subs }};
   }});

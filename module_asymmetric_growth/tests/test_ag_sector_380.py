@@ -26,7 +26,7 @@ def _scored(spine_sector: str, vendor_sector: str = "Technology") -> dict:
 @pytest.mark.parametrize("sector", ["Real Estate", "Financial Services"])
 def test_a_not_comparable_spine_sector_is_flagged_and_has_no_tier(sector):
     card = _scored(sector)
-    assert card is not None and card["total_points"] == 9      # still a card, its points unchanged
+    assert card is not None and card["total_points"] == 8      # still a card, its points unchanged
     assert card["sector"] == sector
     assert "sector_not_comparable" in card["flags"]
     assert card["tier"] is None
