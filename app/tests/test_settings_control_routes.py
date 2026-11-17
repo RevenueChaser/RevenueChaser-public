@@ -130,3 +130,28 @@ def test_a_file_that_cannot_be_read_right_now_is_503_not_a_crash(client, market_
     assert r.status_code == 503
     body = r.get_json()
     assert body["ok"] is False and "could not be read right now" in body["error"] and "lock" in body["error"]
+
+
+def test_a_blocks_first_open_answers_this_hours_sample_without_opening_the_file(client, market_roots, reads,
+                                                                                monkeypatch):
+    _bars(["2026-10-27", "2026-10-28"])
+    monkeypatch.setattr(newdata, "_sample_key", lambda table, now: "this hour")
+    hourly = {"columns": [{"name": "close", "type": "DOUBLE"}], "rows": [[0.5]]}
+    newdata._cached_sample("price_bar_daily", None, lambda t: hourly)
+    body = client.get("/api/settings/sample/price_bar_daily?cached=1").get_json()
+    assert body["rows"] == [[0.5]] and reads == [], "the page already read it this hour"
+
+
+def test_a_long_text_cell_is_cut_in_the_example():
+    long = "x" * 5000
+    assert newdata._cell(long) == "x" * newdata.SAMPLE_CELL_CHARS + "… (5,000 characters)"
+    assert newdata._cell("short") == "short" and newdata._cell(3) == 3
+
+
+def test_the_lookup_names_come_from_their_own_route(client, monkeypatch):
+    from RevenueChaser.module_settings import inventory
+    monkeypatch.setattr(inventory, "_universe_tickers", lambda: ([{"ticker": "AAA", "name": "A Co"}], None))
+    assert client.get("/api/settings/tickers").get_json() == {"ok": True, "tickers": [{"ticker": "AAA", "name": "A Co"}]}
+    monkeypatch.setattr(inventory, "_universe_tickers", lambda: ([], "IOException: locked"))
+    r = client.get("/api/settings/tickers")
+    assert r.status_code == 503 and r.get_json()["ok"] is False

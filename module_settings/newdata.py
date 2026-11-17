@@ -461,15 +461,28 @@ def _read_sample(con, table: str, day_column: str | None) -> dict:
     order = f' ORDER BY "{day_column}" DESC' if day_column else ""
     cur = con.execute(f'SELECT * FROM "{table}"{order} LIMIT {SAMPLE_ROWS}')
     columns = [{"name": d[0], "type": str(d[1])} for d in cur.description]
-    rows = [[v.isoformat() if isinstance(v, (date, datetime)) else v for v in r] for r in cur.fetchall()]
+    rows = [[_cell(v) for v in r] for r in cur.fetchall()]
     return {"columns": columns, "rows": rows}
+
+
+SAMPLE_CELL_CHARS = 300
+
+
+def _cell(v):
+    """One example cell: a day as ISO text, and long text cut, since an example shows the shape and not the
+    document (one ``filing_section`` cell was 468 KB of the Settings page, 17 Nov 2026)."""
+    if isinstance(v, (date, datetime)):
+        return v.isoformat()
+    if isinstance(v, str) and len(v) > SAMPLE_CELL_CHARS:
+        return f"{v[:SAMPLE_CELL_CHARS]}… ({len(v):,} characters)"
+    return v
 
 
 class SampleUnavailable(LookupError):
     """The table is one the screen samples, but its serving file is not built, or was built without it."""
 
 
-def read_sample_now(table: str, now: datetime | None = None) -> dict:
+def read_sample_now(table: str, now: datetime | None = None, cached: bool = False) -> dict:
     """The control board's **Refresh the example rows**: one table's newest rows, read again past the hourly cache.
 
     Only a table the cards sample (``DATE_COLUMN``) is read, through one ``open_read`` handle on its own file; the
@@ -479,6 +492,10 @@ def read_sample_now(table: str, now: datetime | None = None) -> dict:
     from RevenueChaser.rcdata import read
     if table not in DATE_COLUMN or table not in read.KIND_OF_TABLE:
         raise KeyError(table)
+    if cached:      # the page's first look at a block: this hour's sample when there is one (the rows left the page)
+        hit = _SAMPLE_CACHE.get(table)
+        if hit is not None and hit[1] is not None and hit[0] == _sample_key(table, now or datetime.now(timezone.utc)):
+            return hit[1]
     kind = read.KIND_OF_TABLE[table]
     try:
         con = serving.open_read(kind)

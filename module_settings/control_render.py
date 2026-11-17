@@ -664,15 +664,15 @@ def _samples(f: dict) -> str:
                         runs.append([k, 1])
                 src = '<tr class="srcrow">' + "".join(
                     f'<th class="pv-{esc(k)}" colspan="{n}">{esc(labels.get(k, k))}</th>' for k, n in runs) + "</tr>"
-            body = "".join("<tr>" + "".join(
-                f'<td class="pv-{esc(keys[j] if j < len(keys) else "build")}">{esc("" if v is None else v)}</td>'
-                for j, v in enumerate(r)) + "</tr>" for r in s.get("rows") or [])
+            # The rows are not in the page (one filing_section cell alone was 468 KB, 17 Nov 2026): the script reads
+            # them from the sample route when this block opens.
+            body = (f'<tr><td colspan="{max(1, len(cols))}" class="dim">the rows load when this opens</td></tr>')
             if not s.get("built"):
                 body = (f'<tr><td colspan="{max(1, len(cols))}" class="dim">the file is not built yet: these are the '
                         'columns the code declares</td></tr>')
             notes = "".join(f'<p class="hint">{esc(n)}</p>' for n in s.get("notes") or ())
             blocks.append(
-                f'<section class="dsec" data-sample="{esc(t)}"><h3 class="dsh"><code>{esc(t)}</code> as served '
+                f'<section class="dsec" data-sample="{esc(t)}"{" data-lazy" if s.get("built") else ""}><h3 class="dsh"><code>{esc(t)}</code> as served '
                 f'<span class="dim">{len(s.get("rows") or [])} rows</span></h3><div class="dsact"><button type="button" '
                 f'class="btn sm" '
                 f'data-sample-refresh="{esc(t)}">Refresh the example rows</button><span class="dim">reads 5 rows of '
@@ -716,6 +716,9 @@ def client(view: dict) -> dict:
     u = view["universe"]
     cals = {}
     for name, c in view["calendars"].items():
+        if c.get("names_per_session") and c.get("from"):
+            # the calendar never reads a day before its first offered one; the bars go back to 1983 (−500 KB)
+            c = {**c, "names_per_session": {k: v for k, v in c["names_per_session"].items() if k >= c["from"]}}
         cals[_cal_key(name)] = {**c, "sets": [{"k": s["key"], "label": s["label"], "n": s["n"] or 0}
                                               for s in u["sets"] if s["offered"]]}
     return {"routes": ROUTES, "read_at": view["read_at_iso"], "stale_ms": STALE_MINUTES * 60 * 1000,

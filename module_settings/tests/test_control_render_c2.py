@@ -38,8 +38,8 @@ def test_samples_draw_one_srcrow_with_a_run_per_source(monkeypatch):
     assert html.index('class="srcrow"') < html.index(">c0<")
     heads = re.findall(r'<th class="(pv-\w+)">c\d', html)
     assert heads == ["pv-sec"] * 5 + ["pv-rule"] * 2 + ["pv-build"] * 3
-    cells = re.findall(r'<td class="(pv-\w+)">\d</td>', html)
-    assert cells == heads
+    # the cells come from the sample route when the block opens; the script colours each by its head's class
+    assert re.findall(r'<td class="(pv-\w+)">\d</td>', html) == [] and "the rows load when this opens" in html
 
 
 def test_samples_without_pv_draw_no_srcrow_and_stay_build():
