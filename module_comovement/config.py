@@ -70,6 +70,10 @@ DEFAULT_HORIZON = 1
 DEFAULT_BENCHMARK = "spy"
 BENCHMARKS = {"off": None, "spy": "SPY", "dia": "DIA", "qqq": "QQQ"}
 BENCH_STALE_SESSIONS = 2   # benchmark this many sessions behind → truncate + warn
+# A name with no bar in the last ``STALE_SESSIONS + 1`` sessions up to ``prices_through`` is left out of the groups and
+# counted with the missing bars (review 17 Nov 2026, F6): its returns would end sessions before everyone else's, so its
+# correlations read a different window. Live, 37 of 5,391 names were 3+ sessions behind (HCHL 108).
+STALE_SESSIONS = 2
 # #95: windows a Fetch also computes and stores (store-only, after the board is
 # written), so switching to them serves the stored run instead of re-clustering.
 PRECOMPUTE_WINDOWS = (126, 252)   # 6m, 1y
@@ -87,7 +91,9 @@ ENGINE_EPOCH = "2026-10-17T01:30:00+00:00"
 # reused, with no race against a run the older build stores before the restart (unlike ``ENGINE_EPOCH``).
 # 2: the Fable review of 28 Oct 2026 (held-out test winsorised, S3; h>1 null and factor count, S1; null mean, N1).
 # 3: PR 8 (G3), the closes come from the prices store (Alpaca, total-return factors) instead of D01.
-METHOD = 3
+# 4: the review of 17 Nov 2026, F6 (a name with no recent bar is not clustered) and F7 (flat printers judged on the
+#    run's window, not the whole stored history).
+METHOD = 4
 
 # ── Clustering ──────────────────────────────────────────────────────────────
 # Ward (review 2026-10-01 §1): average linkage chained a quarter to half of the
