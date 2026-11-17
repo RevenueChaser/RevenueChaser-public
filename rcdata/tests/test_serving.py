@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -107,6 +108,21 @@ def test_open_read_caps_the_buffer_pool(monkeypatch):
         assert con.execute("SELECT current_setting('memory_limit')").fetchone()[0] == "512.0 MiB"
     monkeypatch.setenv("RC_DUCKDB_READ_MEMORY_LIMIT", "lots")          # not a size: the default holds
     assert serving.read_memory_limit() == serving.READ_MEMORY_LIMIT_DEFAULT
+
+
+def test_open_read_spills_into_its_own_process_directory():
+    """DuckDB's default spill directory, ``<file>.tmp``, is shared by every process reading the file and its spill
+    file names restart at 0 in each: on 17 Nov 2026 two readers of prices.duckdb crashed inside DuckDB 4 s apart."""
+    _build(2)
+    live = serving.live_path("market")
+    with serving.open_read("market") as con:
+        got = con.execute("SELECT current_setting('temp_directory')").fetchone()[0]
+        assert got == str(live.with_name(f"market.duckdb.tmp-{os.getpid()}"))
+        assert got != str(live) + ".tmp"
+        # A second open of the same path while the first is open shares its instance: same configuration, no error.
+        assert serving.live_stamp("market") is not None
+        with serving.open_read("market") as again:
+            assert again.execute("SELECT count(*) FROM t").fetchone()[0] == 2
 
 
 def test_open_read_resolves_the_path_on_every_call(tmp_path, monkeypatch):

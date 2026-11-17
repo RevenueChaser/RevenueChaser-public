@@ -80,7 +80,7 @@ def live_rows(table: str, columns: list[str]) -> list[dict] | None:
     live = serving.live_path(KIND)
     if not live.exists():
         return None
-    con = duckdb.connect(str(live), read_only=True)
+    con = serving.connect_read(live)
     try:
         known = {r[0] for r in con.execute("SELECT table_name FROM duckdb_tables()").fetchall()}
         if table not in known:

@@ -116,7 +116,7 @@ def _table_fingerprints(db_path: Path) -> dict[str, tuple[int, int]]:
     if not db_path.is_file():
         raise BackupFailed(f"file not found: {db_path}")
     try:
-        conn = duckdb.connect(str(db_path), read_only=True)
+        conn = serving.connect_read(db_path)
     except duckdb.Error as exc:
         raise BackupFailed(f"could not open {db_path} read-only (another writer?): {exc}") from exc
     try:
@@ -142,7 +142,7 @@ def _fingerprints(path: Path) -> dict[str, tuple[int, int]]:
 def _store_schema(path: Path) -> int | None:
     """The ``store_schema`` version a store file carries, or None (a file without the table, or unreadable)."""
     try:
-        conn = duckdb.connect(str(path), read_only=True)
+        conn = serving.connect_read(path)
     except duckdb.Error:
         return None
     try:
