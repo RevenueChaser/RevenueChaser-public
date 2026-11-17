@@ -1377,7 +1377,7 @@ def _render_page(quarters: list, entries: list, fields: list, kit_notice: str | 
         "sec_13f",
         facets=["index", "mc", "gics", "theme"],
         themes=kit_themes,
-        explain={"mc": "Latest market value from <code>equity_universe</code>. Pick one or more size buckets, "
+        explain={"mc": "Latest market value from the prices store's daily market cap (a company's whole-issuer value, a fund's own). Pick one or more size buckets, "
                        "or type a custom range in $ millions (min ≤ cap &lt; max). Names not on the equity "
                        "spine show as <b>Unclassified</b> with no market cap, so any cap filter hides them."})
     meta_js = f"<script>var META = {script_json(kit_meta)};</script>"
