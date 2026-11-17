@@ -11,8 +11,27 @@ import pytest
 
 from RevenueChaser.core import screen_common as sc
 from RevenueChaser.core.tests import screen_parity as scn
-from RevenueChaser.module_swing_potential import pipeline
+from RevenueChaser.module_swing_potential import freeze, pipeline
+from RevenueChaser.module_swing_potential import settings as S
 from RevenueChaser.module_swing_potential.report import render_swing_dashboard
+
+
+def _run_payload(**overrides) -> dict:
+    p = S.effective().payload()
+    p["overrides"] = dict(overrides)
+    p["overridden"] = list(overrides)
+    p["custom"] = bool(overrides)
+    return {"settings": p}
+
+
+def test_operating_only_overridden_moves_the_model_version(rawstore_tmp_db):
+    default = freeze.model_version(_run_payload())
+    assert default == freeze.model_version()                         # the default hash does not move
+    assert freeze.model_version(_run_payload(OPERATING_ONLY=0)) != default
+
+
+def test_operating_only_is_not_hashed_at_its_default(rawstore_tmp_db):
+    assert "OPERATING_ONLY" not in freeze.effective_config(_run_payload())
 
 
 @pytest.fixture
