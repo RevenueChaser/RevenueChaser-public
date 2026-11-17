@@ -34,7 +34,7 @@ with the second reviewer):
   0.05 wider), so a fund sitting on a cut does not flip every quarter;
 - a fund with no report is ``unclassified`` and says why. It is never guessed.
 
-:data:`MANUAL_FILE` corrects a wrong call; it does not fill a missing one. A line names a ticker, a ``primary``
+:data:`MANUAL_FILE` corrects a wrong call; it does not fill a missing one. A line names a ticker, a ``primary_class``
 and a reason, is changed only by a pull request, and a ticker that is no universe ETF is an
 ``etf_class_manual_unknown`` issue.
 
@@ -65,8 +65,9 @@ ISSUES = ("etf_class_manual_unknown",)
 
 #: The share columns are percent of the **coded** equity; ``equity_pct`` is percent of net assets and
 #: ``coded_pct`` percent of the equity that has a GICS code. ``source`` is the dataset and its quarter, ``as_of``
-#: the report's own day, ``since`` the build day the current ``primary`` and ``code`` first held.
-SCHEMA = [("ticker", "TEXT PRIMARY KEY"), ("primary", "TEXT"), ("code", "TEXT"), ("label", "TEXT"),
+#: the report's own day, ``since`` the build day the current ``primary_class`` and ``code`` first held.
+#: ``primary_class`` and not ``primary``: that is a reserved word in SQL, and a reader would have to quote it.
+SCHEMA = [("ticker", "TEXT PRIMARY KEY"), ("primary_class", "TEXT"), ("code", "TEXT"), ("label", "TEXT"),
           ("reason", "TEXT"), ("structure", "TEXT"), ("is_synthetic", "BOOLEAN"),
           ("hidden_by_default", "BOOLEAN"), ("asset_class", "TEXT"), ("geo", "TEXT"), ("country", "TEXT"),
           ("equity_pct", "DOUBLE"), ("coded_pct", "DOUBLE"),
@@ -130,7 +131,7 @@ def benchmark_of(g: dict[str, float]) -> dict:
 
 
 def classify(p: dict, bench: dict | None, cuts: Cuts = Cuts()) -> dict:
-    """One fund's axes, ``primary``, ``code`` and ``reason`` from its profile ``p``.
+    """One fund's axes, ``primary_class``, ``code`` and ``reason`` from its profile ``p``.
 
     ``p``: ``name``, the ``etf`` flags (``lev``, ``opt``, ``fof``, ``mm``), ``asset_class`` (the ``etf`` row's), and
     either ``no_report`` (with ``why``) or the buckets in percent of net assets (``equity``, ``preferred``, ``debt``,
@@ -149,7 +150,7 @@ def classify(p: dict, bench: dict | None, cuts: Cuts = Cuts()) -> dict:
         out["structure"] = ("leveraged" if p.get("lev") else "option_income" if p.get("opt")
                             else "synthetic" if synthetic else "plain")
         out["hidden_by_default"] = out["structure"] != "plain"
-        out["primary"], out["reason"] = primary, reason
+        out["primary_class"], out["reason"] = primary, reason
         return out
 
     if p.get("no_report"):
@@ -238,15 +239,15 @@ def classify(p: dict, bench: dict | None, cuts: Cuts = Cuts()) -> dict:
 
 
 def load_manual(path: Path | None = None) -> list[dict]:
-    """The lines of :data:`MANUAL_FILE` (or ``path``): ``ticker`` (upper-cased), ``primary``, optional ``code``,
-    ``reason``. A line without a primary or a reason raises: a correction nobody can explain is a hand-filled row."""
+    """The lines of :data:`MANUAL_FILE` (or ``path``): ``ticker`` (upper-cased), ``primary_class``, optional ``code``,
+    ``reason``. A line without a primary_class or a reason raises: a correction nobody can explain is a hand-filled row."""
     path = Path(path) if path is not None else MANUAL_FILE
     out = []
     for row in json.loads(path.read_text(encoding="utf-8")).get("set") or []:
-        line = {k: str(row.get(k) or "").strip() for k in ("ticker", "primary", "code", "reason")}
+        line = {k: str(row.get(k) or "").strip() for k in ("ticker", "primary_class", "code", "reason")}
         line["ticker"] = line["ticker"].upper()
-        if not (line["ticker"] and line["primary"] and line["reason"]):
-            raise ValueError(f"{path.name}: a line needs ticker, primary and reason: {row!r}")
+        if not (line["ticker"] and line["primary_class"] and line["reason"]):
+            raise ValueError(f"{path.name}: a line needs ticker, primary_class and reason: {row!r}")
         out.append(line)
     return out
 
@@ -371,7 +372,7 @@ def _label(primary: str, code: str | None) -> str | None:
 
 
 def _key(r: dict) -> str:
-    return r["primary"] + (f" {r['code']}" if r.get("code") else "")
+    return r["primary_class"] + (f" {r['code']}" if r.get("code") else "")
 
 
 def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, manual: list[dict] | None = None,
@@ -397,7 +398,7 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, manual: list[dict
             held = classify(p, bench, cuts.relaxed())
             if _key(held) == _key(was):
                 r = {**held, "reason": held["reason"] + f"; kept, within {cuts.leave:.0f} points of the cut"}
-        r.update(ticker=t, label=_label(r["primary"], r["code"]), manual=False, as_of=p.get("as_of"),
+        r.update(ticker=t, label=_label(r["primary_class"], r["code"]), manual=False, as_of=p.get("as_of"),
                  source=None if p.get("no_report") else source, run_id=ctx.run_id)
         out[t] = r
     issues: list[tuple[str, str, str]] = []
@@ -408,7 +409,7 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, manual: list[dict
                            f"a line of {MANUAL_FILE.name} naming a ticker that is no ETF of my_universe"))
             continue
         code = line["code"] or None
-        r.update(primary=line["primary"], code=code, label=_label(line["primary"], code), manual=True,
+        r.update(primary_class=line["primary_class"], code=code, label=_label(line["primary_class"], code), manual=True,
                  reason=f"by hand in {MANUAL_FILE.name}: {line['reason']} (the rule said: {r['reason']})")
     changes = list(stage.live_rows(CHANGES, [c for c, _ in CHANGES_SCHEMA]) or [])
     for t in sorted(out):
@@ -422,7 +423,7 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, manual: list[dict
     changes += [{"ticker": t, "change": LEFT, "was": _key(was), "now": None, "reason": "no longer an ETF of "
                  "my_universe", "as_of": as_of, "run_id": ctx.run_id} for t, was in sorted(live.items())
                 if t not in out]
-    kinds = Counter(r["primary"] for r in out.values())
+    kinds = Counter(r["primary_class"] for r in out.values())
     ctx.notes.append(f"{len(out)} in {TABLE} from {source or 'no N-PORT Parquet'}, benchmark {bench_name}: "
                      + ", ".join(f"{k} {n}" for k, n in kinds.most_common(6)))
     return [out[t] for t in sorted(out)], changes, issues
