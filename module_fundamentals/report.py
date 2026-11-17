@@ -351,7 +351,6 @@ function cardHtml(c){
   var name = rcEsc(c.name);
   var sector = rcEsc(c.sector);
   var distTag = c.distorted ? '<span class="badge b-dist">DISTORTED</span>' : "";
-  var staleTag = c.info_stale ? '<span class="badge b-dist">STALE INFO</span>' : "";
   // Plan 2026-11-16 G: an anchor year that ended more than two years ago is marked, not hidden (DMAC FY2018).
   var oldTag = oldAnchor(c) ? '<span class="badge b-dist" title="The fiscal year the scores read ended '
     + rcEsc(c.anchor_period_end) + '">OLD YEAR</span>' : "";
@@ -384,7 +383,7 @@ function cardHtml(c){
     + (watch ? '<div class="watch-corner">' + watch + '</div>' : '')
     + '<div class="head">'
     + (sector ? '<span class="badge b-sector">'+sector+'</span>' : '')
-    + indexBadges + distTag + staleTag + oldTag + '</div>'
+    + indexBadges + distTag + oldTag + '</div>'
     + '<div class="tick"><b>' + t + '</b>'
     + (name ? '<span class="sep"> • </span>'+name : '') + '</div>'
     // avo, 14 Nov 2026 12:07 Amsterdam ("Yap"): four cells, not seven. The Rule of 40, Quality and Momentum

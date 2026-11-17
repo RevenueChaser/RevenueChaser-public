@@ -47,6 +47,8 @@ To re-capture on another commit, run this file with ``RC_PARITY_CAPTURE=<path>``
 instead of comparing).
 Plan decision B (ADR P/E and P/B unknown) added the additive per-candidate ``adr`` key, false for all five
 scenario candidates (none is typed ADR), edited in by hand like ``debt_basis``.
+#645 (Fundamentals reads no Yahoo ``.info``) removed Fundamentals' per-candidate ``info_stale`` and
+``data_quality.stale_info``, edited out by hand.
 """
 from __future__ import annotations
 

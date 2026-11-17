@@ -88,7 +88,6 @@ def test_compute_row_carries_the_extract_version_of_the_edgar_row(monkeypatch, m
     monkeypatch.setattr(pipeline.sec_edgar, "get_fundamentals", lambda t, no_fetch=False: ([{"x": 1}], [], meta))
     frame = pd.DataFrame({"Close": [1.0]})
     monkeypatch.setattr(pipeline.screen_common, "load_bars", lambda *a, **k: (frame, frame))     # D01 (C12)
-    monkeypatch.setattr(pipeline, "load_ticker_info", lambda *a, **k: {})
     monkeypatch.setattr(pipeline, "ohlc_drop_reason", lambda df: None)
     monkeypatch.setattr(pipeline, "compute_indicators", lambda df, spy, **k: {"price": 10.0, "sma200": 5.0,
                                                                               "within_52w_high_pct": 0.9})

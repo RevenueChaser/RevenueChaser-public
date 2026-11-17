@@ -51,7 +51,7 @@ def scan_env(rawstore_tmp_db, monkeypatch):
     for mod in (fp, sp):
         monkeypatch.setattr(mod, "fetch_universe_stats", lambda **kw: (rows, {"out_of_universe": 0}))
         monkeypatch.setattr(mod, "prefilter", lambda r: screen_common.Prefiltered(list(r)))
-        monkeypatch.setattr(mod, "load_ticker_info", lambda *a, **k: {})
+        monkeypatch.setattr(mod, "load_ticker_info", lambda *a, **k: {}, raising=False)   # Fundamentals has none (#645)
     monkeypatch.setattr(fp.sec_edgar, "get_fundamentals", lambda *a, **k: (ANNUAL, [], {}))
     monkeypatch.setattr(sp, "data_as_of", lambda: None)
     monkeypatch.setattr("yfinance.Ticker", _FailingTicker)

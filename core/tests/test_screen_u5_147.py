@@ -36,13 +36,13 @@ def _short_spy(bars: int):
 
 
 def _poison(monkeypatch, mod, *tickers):
-    real = mod.load_ticker_info
+    real = mod.assign_themes    # a per-ticker call both boards make (Swing has no .info read, #645)
 
     def info(ticker, *a, **k):
         if ticker in tickers:
             raise ValueError(f"bad payload for {ticker}")
         return real(ticker, *a, **k)
-    monkeypatch.setattr(mod, "load_ticker_info", info)
+    monkeypatch.setattr(mod, "assign_themes", info)
 
 
 # ── a short SPY series ────────────────────────────────────────────────────────
