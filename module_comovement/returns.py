@@ -41,18 +41,26 @@ def log_returns(prices: pd.DataFrame, window: int | None = None,
     return ret[keep], dropped
 
 
-def residualize(ret: pd.DataFrame, market: pd.Series) -> pd.DataFrame:
+def residualize(ret: pd.DataFrame, market: pd.Series, winsor_k: float | None = None) -> pd.DataFrame:
     """Remove the market factor from each column by one-factor OLS.
 
     Per-column ``r_i = a + b * r_m + e_i`` with an intercept, fitted on the
     overlapping non-null rows. Returns the residuals ``e_i`` (same shape as
     ``ret``); a column with too few overlapping rows becomes all-NaN.
+
+    With ``winsor_k`` the fit reads the returns and the market clipped by ``winsorize_mad`` first, and the residuals
+    are taken from the unclipped ones: one ``|log r| > 1`` print (a collapse, a missed split) no longer sets the
+    name's beta, which every one of its residuals would carry (Co-movement xReview, 17 Nov 2026).
     """
     if ret is None or ret.empty:
         return pd.DataFrame() if ret is None else ret.copy()
     m = market.reindex(ret.index) if isinstance(market, pd.Series) else \
         pd.Series(market, index=ret.index)
     mvals = m.to_numpy(dtype=float)
+    fit, mfit = ret, mvals
+    if winsor_k is not None:
+        fit = winsorize_mad(ret, winsor_k)
+        mfit = winsorize_mad(m.to_frame(), winsor_k).iloc[:, 0].to_numpy(dtype=float)
     # Collect the columns and build the frame once: inserting them one by one
     # fragments the frame (pandas PerformanceWarning, #93) and slows the run.
     data: dict = {}
@@ -62,8 +70,8 @@ def residualize(ret: pd.DataFrame, market: pd.Series) -> pd.DataFrame:
         if int(mask.sum()) < 3:
             data[col] = np.full(len(ret.index), np.nan)
             continue
-        x = np.column_stack([np.ones(int(mask.sum())), mvals[mask]])
-        beta, *_ = np.linalg.lstsq(x, y[mask], rcond=None)
+        x = np.column_stack([np.ones(int(mask.sum())), mfit[mask]])
+        beta, *_ = np.linalg.lstsq(x, fit[col].to_numpy(dtype=float)[mask], rcond=None)
         resid = y - (beta[0] + beta[1] * mvals)
         resid[~mask] = np.nan
         data[col] = resid

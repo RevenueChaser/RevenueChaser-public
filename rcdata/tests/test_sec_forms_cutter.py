@@ -367,7 +367,7 @@ def test_the_worker_s_environment_is_a_whitelist_and_not_a_blacklist(monkeypatch
 
 class FakeWorker:
     """What :data:`cutter._factory` makes in these tests. ``plan`` is read one document at a time: ``"ok"``,
-    ``"fail"``, or an exception to raise."""
+    ``"fail"``, ``(sections, swallowed)``, or an exception to raise."""
 
     made: list["FakeWorker"] = []
 
@@ -388,9 +388,12 @@ class FakeWorker:
             raise step
         self.done += 1
         out.parent.mkdir(parents=True, exist_ok=True)
+        # A ``(sections, swallowed)`` step is an answer that carries a count of the library's swallowed failures.
+        sections, swallowed = step if isinstance(step, tuple) else (1, 0)
         with gzip.open(out, "wt", encoding="utf-8") as fh:
-            fh.write(json.dumps({"item": "Item 1", "text": "x", "chars": 1}) + "\n")
-        return 1, 0
+            for i in range(sections):
+                fh.write(json.dumps({"item": f"Item {i + 1}", "text": "x", "chars": 1}) + "\n")
+        return sections, swallowed
 
     def close(self):
         self.closed = True
@@ -2019,3 +2022,92 @@ def test_the_worker_imports_nothing_of_ours(stub):
             names.add((node.module or "").split(".")[0])
     assert names <= {"errno", "gzip", "json", "logging", "os", "socket", "sys", "edgar",
                      "__future__"}, sorted(names)
+
+
+# ── #802: a cut the library swallowed a failure on ─────────────────────────────────────────────────────────────
+
+def _rows(accession):
+    return len(_answers(cutter.answer_path(accession)))
+
+
+def test_a_cut_the_library_swallowed_a_failure_on_is_kept_marked_and_cut_again(fake, tmp_path):
+    """#802. Sections **and** a swallowed failure: TOC detection raised, the library logged it and returned
+    nothing, and the pattern fallback found a few sections. That is a degraded cut, and before #802 it was cached
+    for good, because a cached document is never sent to the worker again. It is kept -- a short cut beats none --
+    and marked, so the next run cuts it again; a clean re-cut replaces it and the mark goes."""
+    fake.extend([[(2, 1)], [(5, 0)]])
+    with cutter.Cutter() as c:
+        assert c.cut("0000-802", tmp_path / "a.htm", "10-K") is not None, "the degraded cut is still an answer"
+    assert _rows("0000-802") == 2
+    assert cutter.read_sidecar("0000-802")["degraded"] == 1, "the swallowed count is written down"
+    assert cutter.tries_so_far("0000-802") == 1
+    with cutter.Cutter() as c:
+        assert c.cut("0000-802", tmp_path / "a.htm", "10-K") is not None
+        assert c.cached == 0 and c.cut_now == 1, "a degraded cut is not a cached one: the worker saw it again"
+    assert _rows("0000-802") == 5, "the clean re-cut replaced the degraded one"
+    assert not cutter.failed_path("0000-802").exists(), "and the mark went with it"
+
+
+def test_a_degraded_cut_is_kept_when_its_re_cut_fails(fake, tmp_path):
+    """The re-cut must never cost the answer we already have: a refused or lost re-cut leaves the degraded file
+    where it was, still marked, with the attempt charged."""
+    fake.extend([[(2, 1)], [cutter.DocumentFailed("boom")], [cutter.WorkerLost("gone")]])
+    with cutter.Cutter() as c:
+        c.cut("0000-803", tmp_path / "a.htm", "10-K")
+    for run in (2, 3):
+        with cutter.Cutter() as c:
+            assert c.cut("0000-803", tmp_path / "a.htm", "10-K") == cutter.answer_path("0000-803")
+            assert "0000-803" not in c.failed, "a document handed back as cut is not reported as failed"
+        assert _rows("0000-803") == 2, "the degraded answer survived the failed re-cut"
+        assert cutter.read_sidecar("0000-803")["degraded"] == 1
+        assert cutter.tries_so_far("0000-803") == run
+    assert not list(cutter.answers_dir().glob("*.held")), "nothing set aside is left behind"
+
+
+def test_a_cut_that_stays_degraded_is_accepted_at_the_cap_and_keeps_its_mark(fake, tmp_path):
+    """Bounded like every other retry here: after ``max_tries`` attempts the degraded cut is the answer, served
+    from the cache with no worker started, and the mark stays so a later pass (#757) can still find it."""
+    fake.extend([[(2, 1)], [(3, 2)], [(2, 1)]])
+    for _ in range(3):
+        with cutter.Cutter() as c:
+            assert c.cut("0000-804", tmp_path / "a.htm", "10-K") is not None
+    assert cutter.tries_so_far("0000-804") == 3
+    made = len(FakeWorker.made)
+    with cutter.Cutter() as c:
+        assert c.cut("0000-804", tmp_path / "a.htm", "10-K") is not None and c.cached == 1
+    assert len(FakeWorker.made) == made, "past the cap no worker is started for it"
+    assert cutter.read_sidecar("0000-804")["degraded"] == 1
+
+
+def test_a_degraded_cut_set_aside_by_a_killed_run_is_put_back(fake, tmp_path):
+    """A run killed while the degraded answer was set aside for its re-cut must not lose it."""
+    fake.extend([[(2, 1)], [cutter.DocumentFailed("boom")]])
+    with cutter.Cutter() as c:
+        c.cut("0000-805", tmp_path / "a.htm", "10-K")
+    out = cutter.answer_path("0000-805")
+    os.replace(out, out.with_name(out.name + ".held"))
+    with cutter.Cutter() as c:
+        assert c.cut("0000-805", tmp_path / "a.htm", "10-K") == out
+    assert _rows("0000-805") == 2
+
+
+def test_sections_with_no_text_and_a_swallowed_failure_are_not_charged_to_the_filing(tmp_path, monkeypatch):
+    """#802, the second half: "sections but no text at all" was charged to the filing before ``swallowed`` was
+    looked at. With a swallowed failure the cause is unknown, so it is deferred like the zero-section case."""
+    monkeypatch.setattr(cutter, "answers_dir", lambda: tmp_path / "answers")
+    monkeypatch.setenv(cutter.PYTHON_ENV, sys.executable)
+    script = tmp_path / "textless.py"
+    script.write_text('import gzip, json, sys\n'
+                      'print(json.dumps({"edgar_version": "6.0.0"}), flush=True)\n'
+                      'for line in sys.stdin:\n'
+                      '    out = json.loads(line)["out"]\n'
+                      '    with gzip.open(out, "wt", encoding="utf-8") as fh:\n'
+                      '        fh.write(json.dumps({"item": "1", "text": ""}) + "\\n")\n'
+                      '    print(json.dumps({"ok": True, "sections": 2, "chars": 0, "swallowed": 1}), flush=True)\n',
+                      encoding="utf-8")
+    monkeypatch.setattr(cutter, "WORKER", script)
+    with cutter.Cutter() as c:
+        assert c.cut("0000-806", tmp_path / "a.htm", "10-K") is None
+        assert "not this filing's" in c.failed["0000-806"]
+    assert not cutter.answer_path("0000-806").exists()
+    assert cutter.tries_so_far("0000-806") == 0 and cutter.stops_so_far("0000-806") == 1

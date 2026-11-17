@@ -175,6 +175,23 @@ def predecessor_ciks(rows: Iterable[dict] | None = None) -> dict[str, list[str]]
     return cik_history.predecessors(ciks(universe() if rows is None else rows))
 
 
+def with_predecessors(ctx: base.RunContext, rows: list[dict], companies: list[str]) -> list[str]:
+    """``companies`` and the CIKs they used to file under (#749), in number order.
+
+    A company that reorganised or redomiciled keeps its older statements under the predecessor's CIK, and the SEC
+    serves them only there: asked for as a company of its own, the file is read once like any new company's, and
+    ``tables._facts`` serves its older periods under the successor. ``sec/filings`` reads its filing list and
+    documents the same way, and ``sec/forms`` cuts them (``forms._predecessor_rows``). The pairs and their source:
+    ``build/cik_history.py``.
+    """
+    pairs = predecessor_ciks(rows)
+    extra = sorted({c for pres in pairs.values() for c in pres} - set(companies), key=int)
+    if extra:
+        ctx.notes.append(f"{len(extra)} predecessor CIK(s) of {len(pairs)} company(ies) read as well "
+                         f"({cik_history.SEED_SOURCE})")
+    return sorted(set(companies) | set(extra), key=int)
+
+
 def tickers_by_cik(rows: Iterable[dict]) -> dict[str, list[str]]:
     out: dict[str, list[str]] = {}
     for r in rows:

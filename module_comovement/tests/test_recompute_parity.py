@@ -69,6 +69,14 @@ notes ("Kept, of which: ...", count 0, no ``by_design``) instead of by-design dr
 is off by default. No number, cluster, member, label or verdict changed. Then ``json.dumps(payloads())`` was
 written. The review's M1 then put the type filter into ``config_hash``: the four ``config_hash`` values moved and
 nothing else, edited by hand.
+
+The review of 17 Nov 2026 (F6 stale names, F7 flat printers on the window) bumped ``config.METHOD`` to 4. The fixture
+has no name 3+ sessions behind (its gappy names' last gaps are sessions 394 and 380 of 400) and no flat stretch, so
+only the four ``config_hash`` values move; edited by hand, each recomputed from ``engine.config_hash``'s formula.
+
+The xReview of the same day (the market beta fitted on winsorised returns) bumped it to 5. No return or market value
+of the fixture lies beyond 5 MADs in any case's window, the lagged one or the held-out quarter (checked on
+``_market()``), so the clip changes no beta: again only the four ``config_hash`` values move, edited by hand.
 """
 from __future__ import annotations
 

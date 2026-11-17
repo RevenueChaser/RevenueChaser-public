@@ -151,12 +151,24 @@ def test_peer_market_equals_the_full_matrix_values(rawstore_tmp_db, monkeypatch)
 
 
 
-def test_pairs_stat_reads_n_pairs():
+def test_the_pairs_stat_counts_the_peer_pairs_shown_with_separators_and_names_the_pairs_compared():
+    # #391 R4: it showed every pair compared (12982060, no separator) as "Pairs scored".
     from RevenueChaser.module_relatedness import report
-    assert ">77<" in report._summary_html({"n": 1, "n_pairs": 77})
+    html = report._summary_html({"n": 2, "n_pairs": 12982060,
+                                 "peers": {"A": [{"peer": "B"}] * 1200, "B": [{"peer": "A"}]}})
+    assert ">1,201<" in html and "Peer pairs" in html and "of 12,982,060 compared" in html
+    assert "Pairs scored" not in html
 
 
 
 
 
 
+
+
+def test_a_profile_that_names_no_party_is_counted_on_the_board():
+    # Plan 16 Nov step 12 (V3): 900 live profiles (MSFT, AAPL among them) named no customer, supplier or competitor.
+    from RevenueChaser.module_relatedness import report
+    html = report._summary_html({"n": 3, "no_parties": ["AAPL", "MSFT"]})
+    assert "2 name no customer, supplier or competitor" in html
+    assert "name no customer" not in report._summary_html({"n": 3, "no_parties": []})

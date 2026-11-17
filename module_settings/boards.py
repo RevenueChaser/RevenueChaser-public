@@ -232,6 +232,13 @@ def _leaps_latest() -> dict | None:
     return {"as_of": str(sessions[0]["session_date"])} if sessions else None
 
 
+def _hit_rate_latest() -> dict | None:
+    """Hit Rate has no artifact (#25): the newest freeze date in ``forecast_ledger`` is its as-of."""
+    from RevenueChaser.core import rawstore
+    rows = rawstore.query("SELECT max(forecast_date) AS d FROM forecast_ledger", db="forecast")
+    return {"as_of": str(rows[0]["d"])} if rows and rows[0]["d"] is not None else None
+
+
 def _board(key: str, label: str, tables: list[str], payload_path, *,
            funnel: str = NO_FUNNEL, price_basis: str = "", params=None,
            settings=None, ops_tables: list[str] = ()) -> dict:
@@ -315,6 +322,9 @@ BOARD_INPUTS: list[dict] = [
            funnel="funnel_steps",
            price_basis="daily price bars: levels nominal, returns adjusted",
            params=_fundamentals_params, settings=_fundamentals_settings),
+    # #25: rendered in memory from the forecast store on every load, like LEAPS.
+    _board("module_hit_rate", "Hit Rate", ["forecast_ledger", "forecast_outcomes", "forecast_baselines"],
+           _hit_rate_latest),
     # #732: the board reads its own file (``boards/sec_13f.duckdb``); the served reads are ``rcdata/needs/boards.py``'s.
     _board("module_sec_13f", "SEC 13F",
            ["sec13f_board_cells", "sec13f_board_breaks", "equity_universe"],

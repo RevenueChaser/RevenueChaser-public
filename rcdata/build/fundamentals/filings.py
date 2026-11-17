@@ -351,10 +351,13 @@ class Filings:
         return calendar.today_ny()
 
     def fetch(self, ctx: base.RunContext, as_of: date) -> list[Path]:
-        companies = common.ciks(common.universe())
+        rows = common.universe()
+        companies = common.ciks(rows)
         if not companies:
             ctx.notes.append("no Tier A companies yet (no spine file)")
             return []
+        # A predecessor's list and newest annual report are read as a company of their own (#749).
+        companies = common.with_predecessors(ctx, rows, companies)
         filed: dict[str, set[str]] = {}
         days = sec_index.lookback(ctx, NAME, as_of, lambda: min(filter(None, map(_newest_list, companies)),
                                                                 default=None))
@@ -375,7 +378,8 @@ class Filings:
 
     def backfill(self, ctx: base.RunContext, start: date | None, end: date) -> None:
         out, docs = [], 0
-        for cik in common.ciks(common.universe()):
+        rows = common.universe()
+        for cik in common.with_predecessors(ctx, rows, common.ciks(rows)):
             raws = _subs_raws(cik)
             raw = raws[-1] if raws else read_list(ctx, cik, end)
             if raw is None:

@@ -956,7 +956,7 @@ def _attach_peer_market(peers: dict) -> None:
 
 
 def _peers(profiles: dict[str, dict], companies: list[dict], write: bool):
-    """``(peers, scores, method)``: similarity v2 on the local embeddings when any profile has a vector (#669),
+    """``(peers, scores, method, pjs)``: similarity v2 on the local embeddings when any profile has a vector (#669),
     else the tag cosine. A failing embedder (no model file, no network for its first download) falls back to the
     tag cosine with a warning, so the board still renders."""
     from . import embeddings, store
@@ -971,11 +971,11 @@ def _peers(profiles: dict[str, dict], companies: list[dict], write: bool):
         sectors = {c["ticker"]: c["sector"] for c in companies if c["sector"] != "Unclassified"}
         try:
             peers, scores = similarity.blended_peer_lists(profiles, pjs, vectors, sectors, config.TOP_PEERS)
-            return peers, scores, "embedding"
+            return peers, scores, "embedding", pjs
         except Exception as exc:  # noqa: BLE001 - a bad cached vector must not empty the board
             logger.warning("relatedness similarity v2 failed, scoring on tags: %s", exc)
     peers, scores = similarity.peer_lists(profiles, config.TOP_PEERS)
-    return peers, scores, "tags"
+    return peers, scores, "tags", pjs
 
 
 def _payload(profiles: dict[str, dict], stale: set[str] | None = None, model: str | None = None,
@@ -1029,7 +1029,7 @@ def _payload(profiles: dict[str, dict], stale: set[str] | None = None, model: st
 
     names = {c["ticker"]: c["name"] for c in companies}
     import numpy as np
-    peers, raw_scores, method = _peers(profiles, companies, write)
+    peers, raw_scores, method, pjs = _peers(profiles, companies, write)
     # float32 for the v2 path: every pair is kept (~12.5M at 5,000 names), so no float64 copy (review of #680).
     arr = (np.sort(np.asarray(raw_scores, dtype="float32" if method == "embedding" else "float64"))
            if len(raw_scores) else np.zeros(0))
@@ -1058,6 +1058,10 @@ def _payload(profiles: dict[str, dict], stale: set[str] | None = None, model: st
         "n_scored": n_scored,
         "similarity": method,
         "fields": list(config.PROFILE_FIELDS),
+        # Plan 16 Nov step 12 (V3): profiles that name no customer, supplier or competitor at all (live: 900, MSFT
+        # and AAPL among them). Value Chain gets no edge from them; the prompt fix waits for #894.
+        "no_parties": sorted(t for t in profiles
+                             if not any((pjs.get(t) or {}).get(k) for k in aliases.PROFILE_PARTIES)),
         "universe_total": len(classification_universe(operating_only=BOARD_OPERATING_ONLY["module_relatedness"])),
         "theme_catalog": theme_catalog(),
     }

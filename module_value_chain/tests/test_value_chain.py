@@ -101,7 +101,7 @@ def test_run_persists_corpus_and_edges(rawstore_tmp_db, monkeypatch):
     assert payload["fetch"]["fetched"] == 2
     assert rawstore.count("chain_filings") == 2
     assert rawstore.count("chain_mentions") == 0          # #748: a filing's text alone states no edge any more
-    assert rawstore.count("chain_meta") == 4                 # last_sync, n_filings, n_mentions, edges_kept (G-F)
+    assert rawstore.count("chain_meta") == 5   # last_sync, n_filings, n_mentions, edges_kept (G-F), unnamed_customers (D)
 
     loaded = engine.load_payload()
     assert {f["ticker"] for f in loaded["filings"]} == {"NVDA", "TSM"}
@@ -222,7 +222,7 @@ def test_report_labels_are_honest():
     assert "MEDIUM" not in html and "confidence:" not in html
     assert "Private companies appear by name" not in html
     assert "possible supplier" in html and "possible customer" in html
-    assert "fixed list of about 50 large public companies" in html
+    assert "linked only when its name resolves to a listed company" in html
 
 
 def test_board_payload_carries_precision(rawstore_tmp_db, tmp_path, monkeypatch):
@@ -287,7 +287,7 @@ def test_report_uses_ticker_combobox_after_filters():
     assert html.index('id="rc-filters"') < html.index('id="ticker-combo"')
     for gone in ('id="mc-tabs"', 'id="index-tabs"', 'id="eweek-tabs"', 'id="sector"', "initTickerCombo"):
         assert gone not in html, f"constants kit left: {gone}"
-    assert "No companies with supplier / customer edges" in html
+    assert "No companies with supplier / customer links yet" in html
 
 
 def test_report_hides_tickers_without_edges():
@@ -317,7 +317,7 @@ def test_report_empty_state():
     from RevenueChaser.module_value_chain import report
     html = report.render_value_chain_dashboard({"as_of": "2026-09-17T00:00:00+00:00",
                                                 "filings": [], "edges": []})
-    assert "No companies with supplier / customer edges" in html
+    assert "No companies with supplier / customer links yet" in html
 
 
 def test_board_rows_without_a_classification_read_unclassified(rawstore_tmp_db):

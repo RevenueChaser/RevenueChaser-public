@@ -13,12 +13,12 @@ def test_an_empty_payload_claims_no_sync_date():
 def test_a_run_with_names_shows_its_date():
     html = render_relatedness_dashboard({"as_of": "2026-11-11T10:00:00", "n": 1,
                                          "companies": [{"ticker": "A"}], "peers": {}})
-    assert "Last sync: Wednesday, November 11, 2026 EOD" in html
+    assert "Last sync: Wednesday, November 11, 2026 10:00 UTC" in html and "EOD" not in html
 
 
-def test_the_empty_state_names_the_off_peak_job_not_a_fetch():
+def test_the_empty_state_names_the_weekly_run_and_the_sec_service_not_a_fetch():
     html = render_relatedness_dashboard({"n": 0, "companies": [], "peers": {}})
-    assert "Run <b>Fetch</b>" not in html and "RC-Relatedness-OffPeak builds them" in html
+    assert "Run <b>Fetch</b>" not in html and "copies them from the SEC service" in html
 
 
 def test_no_payload_file_has_no_data_date(monkeypatch, tmp_path):

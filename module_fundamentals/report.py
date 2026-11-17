@@ -52,7 +52,7 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,"
 .summary b{color:var(--text);font-weight:600}
 .summary .on{color:var(--green);font-weight:700}
 .summary .off{color:var(--red);font-weight:700}
-.badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10.5px;font-weight:700}
+.badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700}
 .b-sector{background:var(--panel2);color:var(--muted)}
 .b-index{background:var(--accent-soft);color:var(--accent)}
 .b-dist{background:var(--neg-soft);color:var(--red)}
@@ -69,12 +69,12 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,"
 .tog input{accent-color:var(--neon);width:15px;height:15px}
 .notice{background:var(--panel);border:1px solid var(--border);border-left:3px solid var(--amber);border-radius:8px;padding:8px 12px;color:var(--muted);font-size:12.5px}
 .tabs{display:inline-flex;background:var(--panel);border:1px solid var(--border);border-radius:8px;overflow:hidden;flex-wrap:wrap}
-.tab{padding:0 14px;height:34px;line-height:34px;cursor:pointer;font-weight:600;font-size:13px;color:var(--muted);border-right:1px solid var(--border);user-select:none}
+.tab{padding:0 14px;height:44px;line-height:44px;cursor:pointer;font-weight:600;font-size:13px;color:var(--muted);border-right:1px solid var(--border);user-select:none}
 .tab:last-child{border-right:none}
 .tab.on{background:var(--panel2);color:var(--text)}
 .tab .cnt{color:var(--muted);font-size:11px;font-weight:400}
 .tab.on .cnt{color:var(--neon)}
-select,input[type=text],input[type=number]{background:var(--input-bg);border:1px solid var(--input-border);color:var(--text);border-radius:6px;height:34px;padding:0 10px;font:500 13px/1 inherit}
+select,input[type=text],input[type=number]{background:var(--input-bg);border:1px solid var(--input-border);color:var(--text);border-radius:6px;height:44px;padding:0 10px;font:500 13px/1 inherit}
 input[type=text]{flex:1;min-width:200px}
 .count{color:var(--muted);font-size:12px;margin-left:auto;white-space:nowrap}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
@@ -87,19 +87,17 @@ input[type=text]{flex:1;min-width:200px}
 .tick .sep{color:var(--muted)}
 .metrics{display:grid;grid-template-columns:repeat(2,1fr);gap:4px}
 .m{background:var(--panel2);border-radius:8px;padding:5px 4px;text-align:center;min-width:0}
-.m .k{font-size:9px;color:var(--muted);letter-spacing:.3px;text-transform:uppercase}
+.m .k{font-size:11px;color:var(--muted);letter-spacing:.3px;text-transform:uppercase}
 .m .val{font-weight:700;font-size:11.5px;overflow-wrap:break-word;line-height:1.15}
 .gates{display:flex;gap:6px;border-top:1px solid var(--panel2);padding-top:8px}
 .event{color:var(--amber);font-size:11px;line-height:1.35}
 .event .when{color:var(--muted)}
-.prov{color:var(--muted);font-size:10.5px;line-height:1.3}
-.gate{flex:1;background:var(--panel2);color:var(--muted);border:1px solid var(--border);border-radius:6px;padding:5px 0;cursor:pointer;font-weight:700;font-size:12px}
+.prov{color:var(--muted);font-size:11px;line-height:1.3}
+.adr-warn{color:var(--amber);font-size:11px;white-space:nowrap}
+.gate{flex:1;min-height:44px;background:var(--panel2);color:var(--muted);border:1px solid var(--border);border-radius:6px;padding:5px 0;cursor:pointer;font-weight:700;font-size:12px}
 .gate.on{color:var(--green);border-color:color-mix(in srgb,var(--pos) 40%,transparent)}
 .gate.off{color:var(--red)}
 .gate.unk{color:var(--amber)}
-.tags{display:flex;flex-wrap:wrap;gap:6px;min-height:18px}
-.tags.empty{min-height:18px}
-.tag{font-size:10px;padding:2px 7px;border-radius:20px;background:var(--panel2);color:var(--muted)}
 .empty{color:var(--muted);padding:40px;text-align:center}
 footer{color:var(--muted);font-size:11px;margin-top:28px;border-top:1px solid var(--border);padding-top:14px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
 .modal{display:none;position:fixed;inset:0;background:var(--scrim);z-index:50;align-items:center;justify-content:center}
@@ -163,7 +161,9 @@ def _summary_html(s: dict, data_quality: dict | None = None) -> str:
         if health.get(key):
             elim.append(f"{text} {_fmt_int(health.get(key))}")
     if s.get("hygiene") is not None:
-        elim.append(f"hygiene {_fmt_int(s.get('hygiene'))}")
+        # Plan 2026-11-16 E: this count is the price / dollar-volume floor (``screen_common.prefilter``), not the
+        # price-hygiene gates of #116, which only flag.
+        elim.append(f"liquidity filter (price, dollar volume) {_fmt_int(s.get('hygiene'))}")
     elim_part = f" Eliminated: {' · '.join(elim)}." if elim else ""
     stale_n = s.get("stale_ohlc") or 0
     if stale_n or s.get("spy_stale"):
@@ -334,6 +334,12 @@ function qualityAsOf(c, long){
   if(!end) return "";
   return (ttm ? (long ? "trailing year to " : "TTM to ") : (long ? "fiscal year to " : "FY to ")) + end;
 }
+// True when the anchor year ended more than OLD_ANCHOR_DAYS ago.
+var OLD_ANCHOR_DAYS = 730;
+function oldAnchor(c){
+  var end = c.anchor_period_end ? Date.parse(c.anchor_period_end) : NaN;
+  return !isNaN(end) && (Date.now() - end) > OLD_ANCHOR_DAYS * 86400000;
+}
 // The two halves of the Rule of 40, the one figure of it the gate button does not carry.
 function growthMargin(c){
   if(c.rev_growth_ttm == null && c.fcf_margin == null) return "N/A";
@@ -346,6 +352,9 @@ function cardHtml(c){
   var sector = rcEsc(c.sector);
   var distTag = c.distorted ? '<span class="badge b-dist">DISTORTED</span>' : "";
   var staleTag = c.info_stale ? '<span class="badge b-dist">STALE INFO</span>' : "";
+  // Plan 2026-11-16 G: an anchor year that ended more than two years ago is marked, not hidden (DMAC FY2018).
+  var oldTag = oldAnchor(c) ? '<span class="badge b-dist" title="The fiscal year the scores read ended '
+    + rcEsc(c.anchor_period_end) + '">OLD YEAR</span>' : "";
   var gates = RULES.map(function(k){
     var g = (c.gates || {})[k] || {};
     var lbl = {rule_of_40:"Ro40", quality:"Q", momentum:"M"}[k];
@@ -353,9 +362,6 @@ function cardHtml(c){
     var cls = st === "pass" ? "on" : (st === "fail" ? "off" : "unk");
     return '<button class="gate ' + cls + '" data-ticker="' + t + '" data-gate="' + k + '" onclick="openGate(this)">' + lbl + ' ' + rcEsc(g.score) + '</button>';
   }).join("");
-  var themes = c.themes || [];
-  var tags = themes.slice(0,3).map(function(x){ return '<span class="tag">'+rcEsc(x)+'</span>'; }).join("");
-  var tagsRow = tags ? '<div class="tags">'+tags+'</div>' : '<div class="tags empty"></div>';
   var indexBadges = (c.index || []).map(function(i){ return '<span class="badge b-index">'+rcEsc(i)+'</span>'; }).join("");
   // #386 F5: the corporate-event flag, a display-only note under the metrics (the item codes of the filer's 8-Ks).
   var ev = c.corporate_event || null;
@@ -378,7 +384,7 @@ function cardHtml(c){
     + (watch ? '<div class="watch-corner">' + watch + '</div>' : '')
     + '<div class="head">'
     + (sector ? '<span class="badge b-sector">'+sector+'</span>' : '')
-    + indexBadges + distTag + staleTag + '</div>'
+    + indexBadges + distTag + staleTag + oldTag + '</div>'
     + '<div class="tick"><b>' + t + '</b>'
     + (name ? '<span class="sep"> • </span>'+name : '') + '</div>'
     // avo, 14 Nov 2026 12:07 Amsterdam ("Yap"): four cells, not seven. The Rule of 40, Quality and Momentum
@@ -390,12 +396,13 @@ function cardHtml(c){
     + cell("Period", rcEsc(c.period))
     + cell("Growth / FCF margin", growthMargin(c))
     + cell("Price", usd(c.price))
-    + cell("Mkt cap", usd(c.market_cap))
+    // Plan decision B: an ADR's cap ignores the depositary ratio, so its P/E and P/B are "–" until the ratio arrives.
+    + cell("Mkt cap", usd(c.market_cap) + (c.adr ? ' <span class="adr-warn" title="ADR: the cap is the issuer\'s'
+        + ' and ignores the depositary ratio, so P/E and P/B show – until the ADR ratio arrives">⚠ P/E – P/B –</span>' : ''))
     + '</div>'
     + evLine
     + stLine
     + '<div class="gates">' + gates + '</div>'
-    + tagsRow
     + '</div>';
 }
 function fmtVal(unit, v){
@@ -432,6 +439,9 @@ function openGate(btn){
   document.getElementById("modal").classList.add("open");
 }
 function closeModal(){ document.getElementById("modal").classList.remove("open"); }
+// The search box re-renders every card; typing waits for a 150 ms pause instead of rebuilding on each key.
+var renderTimer = null;
+function renderSoon(){ clearTimeout(renderTimer); renderTimer = setTimeout(render, 150); }
 function render(){
   if(!DATA.length){ document.getElementById("count").textContent = "0 names shown"; return; }   // keep the server-side empty / no-data message (DF111)
   var q = document.getElementById("q").value.trim().toLowerCase();
@@ -501,7 +511,7 @@ function start(){
         "A quality-growth scan of US-listed stocks through three methods: the <b>Rule of 40</b> "
         "(revenue growth plus margin), <b>Quality</b> and <b>Momentum</b>. Tick the rules a card must pass; "
         "<b>DISTORTED</b> rows have figures that need a manual look. "
-        f"Statements come from {statements_from}, prices from <b>Yahoo</b>. <b>Fetch</b> runs the scan "
+        f"Statements come from {statements_from}, prices from the <b>prices layer</b> (daily bars). <b>Fetch</b> runs the scan "
         "and stores the scores. <b>Refresh</b> shows the last Fetch's stored result with no network "
         "call and no re-scoring. "
         # #867 (avo 15 Nov 2026): the note-length rule, formerly MAX_NOTE_CHARS = 6_000 (removed by #866).
@@ -544,7 +554,7 @@ function start(){
   <div class="controls">
     {rules_row}
     <div class="frow">
-      <input type="text" id="q" placeholder="Search ticker / company" oninput="render()" />
+      <input type="text" id="q" placeholder="Search ticker / company" oninput="renderSoon()" />
       <span class="count" id="count"></span>
     </div>
   </div>
@@ -554,8 +564,7 @@ function start(){
   <div class="grid" id="grid">{cards}</div>
 
   <footer>
-    <span>Fundamentals: {statements_foot} · Price: Yahoo Finance · Unusual Whales flow manual-only (K3) · No SA confirmation. For information only, not financial advice.</span>
-    <span id="flow-flag">Flow not scanned</span>
+    <span>Fundamentals: {statements_foot} · Price: the prices layer (daily bars) · No SA confirmation. For information only, not financial advice.</span>
   </footer>
 </div>
 <div class="modal" id="modal">
