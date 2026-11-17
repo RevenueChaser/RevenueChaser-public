@@ -27,6 +27,9 @@ from dataclasses import dataclass
 # ``is_unclassified``) but is never emitted by those.
 UNCLASSIFIED = "Unclassified"
 _LEGACY_UNKNOWN = "Other"
+# Blank-check / shell / SPAC companies (SIC 9995 and 6770) with no GICS sector: a bucket of their own that boards can
+# show or filter, never one of the 11 sectors (avo, 17 Nov 2026). ``canonical_sector`` passes it through.
+SHELL_SPAC = "Shell/SPAC"
 
 
 def is_unclassified(label) -> bool:
@@ -87,8 +90,10 @@ SECTOR_ALIASES: dict[str, str] = {
 
 
 def canonical_sector(raw) -> str:
-    """The Morningstar sector for a vendor or older sector string; anything else reads ``Unclassified``."""
-    return SECTOR_ALIASES.get(_norm(raw) if isinstance(raw, str) else "", UNCLASSIFIED)
+    """The Morningstar sector for a vendor or older sector string, or ``Shell/SPAC``; anything else reads
+    ``Unclassified``."""
+    key = _norm(raw) if isinstance(raw, str) else ""
+    return SHELL_SPAC if key == SHELL_SPAC.lower() else SECTOR_ALIASES.get(key, UNCLASSIFIED)
 
 
 @dataclass(frozen=True)
@@ -114,5 +119,5 @@ def sector_path(sector, industry) -> list[str]:
 
 __all__ = [
     "MORNINGSTAR_SECTORS", "SECTORS_11", "SECTOR_ALIASES", "GicsPath", "canonical_sector", "sector_path",
-    "UNCLASSIFIED", "is_unclassified", "sector_or_unclassified",
+    "UNCLASSIFIED", "SHELL_SPAC", "is_unclassified", "sector_or_unclassified",
 ]

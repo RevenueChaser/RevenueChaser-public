@@ -1,0 +1,17 @@
+{
+  "_": "Sector and industry group by hand for listed names that have no Compustat GICS and no Compustat SIC (no Compustat link at all), one row per ticker with a reason. GICS codes, so the names come from security.GICS_SECTORS / GICS_GROUPS like every other row. A row here beats Compustat's GICS. Changed only by a pull request. avo approved the first eleven on 17 Nov 2026 (the 'Unclassified' My Universe names, fix C).",
+  "version": 1,
+  "rows": {
+    "FWONA": {"gsector": "50", "ggroup": "5020", "reason": "Liberty Media's Formula One tracking stock (series A); SEC SIC 4833 television broadcasting"},
+    "FWONK": {"gsector": "50", "ggroup": "5020", "reason": "Liberty Media's Formula One tracking stock (series C); SEC SIC 4833 television broadcasting"},
+    "AGMB": {"gsector": "35", "ggroup": "3520", "reason": "AgomAb Therapeutics NV, clinical-stage biotech; SEC SIC 2836 biological products"},
+    "DUKR": {"gsector": "20", "ggroup": "2010", "reason": "Duke Robotics, robotic and drone systems for defence; SEC SIC 3721 aircraft"},
+    "KNDI": {"gsector": "25", "ggroup": "2510", "reason": "Kandi Technologies, electric and off-road vehicles and parts; SEC SIC 3714 motor vehicle parts"},
+    "NSTR": {"gsector": "50", "ggroup": "5010", "reason": "NorthStar Earth & Space, satellite-based monitoring services; SEC SIC 4899 communications services"},
+    "SOAR": {"gsector": "20", "ggroup": "2030", "reason": "SOAR AI (formerly Volato), private aviation; SEC SIC 4522 nonscheduled air transportation"},
+    "UROY": {"gsector": "10", "ggroup": "1010", "reason": "Uranium Royalty Corp, uranium royalties and physical uranium; GICS puts uranium in Energy (coal & consumable fuels); SEC SIC 1090"},
+    "WQEY": {"gsector": "45", "ggroup": "4510", "reason": "WISeQey, post-quantum security and digital identity services; SEC SIC 7374 computer processing"},
+    "XHG": {"gsector": "40", "ggroup": "4030", "reason": "XChange TEC.INC, insurance agency and brokerage; SEC SIC 6411 insurance agents"},
+    "XTLB": {"gsector": "35", "ggroup": "3520", "reason": "XTL Biopharmaceuticals, drug development; SEC SIC 2834 pharmaceutical preparations"}
+  }
+}
