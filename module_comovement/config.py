@@ -106,8 +106,12 @@ LINKAGE = "ward"
 
 # Cut tiers by universe size: (min_n, cuts). The first tier whose min_n <= n
 # applies. Three views — broad / medium / tight — never a single hidden k.
+# The large tier, measured on live data (#582, 17 Nov 2026, ~5,100 names, two held-out quarters): the out-of-sample
+# R² of a name on its group's other members (lift over same-size random groups) was k20 .15 with one group holding 33 %
+# of the names, k60 .19-.20 (largest 13-16 %), k120 .22, k250 .23, k600 .24-.25 with 36+ groups under 4 names. R² is flat
+# above ~120. avo chose 60 / 120 / 250 (17 Nov 2026).
 CUT_TIERS: tuple[tuple[int, tuple[int, ...]], ...] = (
-    (2000, (20, 80, 250)),
+    (2000, (60, 120, 250)),
     (500, (10, 30, 80)),
     (0, (5, 15, 40)),
 )
