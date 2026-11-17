@@ -134,6 +134,24 @@ def test_an_exhibit_named_exhibit991_is_found_too():
     assert filings.aif_exhibits({"directory": {"item": [{"name": "ex99-13.htm", "size": "9"}]}}) == []
 
 
+def test_ex99d1_and_an_aif_named_in_words_are_found():
+    """#751: the 40-Fs with no exhibit stored. 25 of 49 name 99.1 ``…xex99d1.htm``; 10 spell the form out."""
+    for name in ("dnn-20251231xex99d1.htm", "bh_ex99z1.htm"):
+        listing = {"directory": {"item": [{"name": name, "size": "500000"},
+                                          {"name": name.replace("99d1", "99d2").replace("99z1", "99z2"),
+                                           "size": "900000"},
+                                          {"name": name.replace("99d1", "99d10").replace("99z1", "99z10"),
+                                           "size": "9"}]}}
+        assert filings.aif_exhibits(listing) == [name], name
+    for name in ("a2025annualinformationform.htm", "ballard993123125annualinfo.htm",
+                 "a9972026annualinformatio.htm", "cybin-annualinformationfor.htm"):
+        listing = {"directory": {"item": [{"name": name, "size": "500000"},
+                                          {"name": "a2025managementsdiscussion.htm", "size": "900000"},
+                                          {"name": "a2025supplementaryinformat.htm", "size": "800000"}]}}
+        assert filings.aif_exhibits(listing) == [name], name
+        assert filings.picked_by_name(listing, name) is True
+
+
 def test_ex99_pages_with_no_aif_among_them_are_a_named_miss():
     """"The AIF is in the primary document" and "the AIF was missed" are not the same answer, and this is the one
     case the code can tell apart."""
