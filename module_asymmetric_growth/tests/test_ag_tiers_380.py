@@ -48,10 +48,10 @@ def test_a_signal_with_two_known_passes_of_three_is_strong_whatever_is_unknown()
     assert engine.tier_of(sigs) == 2
 
 
-def test_a_3_3_1_card_has_tier_2():
+def test_a_3_2_1_card_has_tier_2():
     from RevenueChaser.module_asymmetric_growth.tests.test_score_ticker import _fin, _tech
     card = score_ticker("TEST", _fin(), _tech(dist=0.30, vol=1.0))    # momentum 1/3
-    assert [s["passed"] for s in card["signals"]] == [3, 3, 1]
+    assert [s["passed"] for s in card["signals"]] == [3, 2, 1]   # survival 2/2: runway not counted (C1)
     assert card["tier"] == 2
 
 

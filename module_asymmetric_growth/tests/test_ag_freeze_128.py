@@ -87,10 +87,11 @@ GOLDEN_CONFIG = {
     "RULES": {"stale_days": 470, "suspicious_growth": 5.0,           # #380 S1 (C18)
               "tier_min_passes": 2,                                   # #380 S2 (tiers)
               "not_comparable_sectors": ["Financial Services", "Real Estate"],   # #380 S6 (C17)
-              "momentum_windows": {"high_52w": 252, "sma50": 50, "vol_3m": 63, "vol_10d": 10}},  # #380 S4
+              "momentum_windows": {"high_52w": 252, "high_52w_min": 63,   # #380 S4, D1 (#1001)
+                                   "sma50": 50, "vol_3m": 63, "vol_10d": 10}},
 }
-GOLDEN_VERSION = "8"
-GOLDEN_MODEL_VERSION = "8+0dcadf0b"
+GOLDEN_VERSION = "9"
+GOLDEN_MODEL_VERSION = "9+64bc4699"
 
 
 def test_the_effective_config_is_the_golden_config():

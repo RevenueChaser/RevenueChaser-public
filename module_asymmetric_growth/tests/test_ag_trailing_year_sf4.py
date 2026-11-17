@@ -109,4 +109,4 @@ def test_the_provenance_line_names_the_trailing_years(tmp_path, rawstore_tmp_db)
 
 
 def test_the_selection_version_moves_with_the_basis():
-    assert engine.SELECTION_VERSION == "8"                  # 7 was this change; 8 adds G3's prices-store momentum
+    assert engine.SELECTION_VERSION == "9"                  # 7 this change, 8 G3 momentum, 9 review #1001

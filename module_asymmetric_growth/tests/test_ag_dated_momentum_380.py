@@ -12,7 +12,7 @@ The three D01 rules (decision 2, the sign of ``dist_52w_pct`` kept as ``technica
 - ``sma50`` = the last 50 closes' mean; ``above_sma50 = price > sma50``;
 - ``vol_ratio`` = the last 10 sessions' mean volume / the last 63's (Yahoo's "3-month" average, the "90d" label).
 
-Fewer bars than a window make that input unknown: 252 for the high, 63 for the volume, 50 for the mean, 10 for the
+Fewer bars than a window make that input unknown: 252 for the high (63 since D1, flagged), 63 for the volume, 50 for the mean, 10 for the
 short volume. A name with a price but no bars keeps its card with unknown momentum (decision 3); only a name with no
 price in any source (D01 close, ``financials.current_price``, the quote's ``regularMarketPrice``) drops as
 ``no_price``. Offline: a temp store.
@@ -165,8 +165,13 @@ def test_a_bar_after_the_scored_session_is_ignored():
 def test_fewer_bars_than_a_window_make_only_that_input_unknown():
     days = sessions()
     rows = _hand_rows(days)
-    assert engine.technical_from_bars(rows[-251:], SESSION)["high_52w"] is None
-    assert engine.technical_from_bars(rows[-251:], SESSION)["dist_52w_pct"] is None
+    # Decision D1 (avo, 17 Nov 2026): from BARS_52W_MIN (63) bars the high is the highest there is, flagged.
+    recent = engine.technical_from_bars(rows[-251:], SESSION)
+    assert recent["high_52w"] == max(r["high"] for r in rows[-251:]) and recent["high_short_history"] is True
+    assert recent["dist_52w_pct"] is not None
+    assert engine.technical_from_bars(rows[-252:], SESSION)["high_short_history"] is False
+    assert engine.technical_from_bars(rows[-62:], SESSION)["high_52w"] is None
+    assert engine.technical_from_bars(rows[-62:], SESSION)["dist_52w_pct"] is None
     short = engine.technical_from_bars(rows[-62:], SESSION)
     assert short["vol_90d"] is None and short["vol_ratio"] is None
     assert short["vol_10d"] is not None and short["sma50"] is not None
@@ -174,9 +179,9 @@ def test_fewer_bars_than_a_window_make_only_that_input_unknown():
     assert mean["sma50"] is None and mean["above_sma50"] is None
     assert engine.technical_from_bars(rows[-9:], SESSION)["vol_10d"] is None
     empty = engine.technical_from_bars([], SESSION)
-    assert set(empty) == {"price", "bar_date", "high_52w", "dist_52w_pct", "sma50", "above_sma50",
-                          "vol_10d", "vol_90d", "vol_ratio"}                # bar_date: the card's session (PR 6)
-    assert all(v is None for v in empty.values())
+    assert set(empty) == {"price", "bar_date", "high_52w", "high_short_history", "dist_52w_pct", "sma50",
+                          "above_sma50", "vol_10d", "vol_90d", "vol_ratio"}  # bar_date: the card's session (PR 6)
+    assert empty.pop("high_short_history") is False and all(v is None for v in empty.values())
 
 
 # ── 2. the per-name Yahoo fallback is gone ───────────────────────────────────────────────────────────────────────
