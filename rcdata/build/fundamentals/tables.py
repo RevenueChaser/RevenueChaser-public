@@ -220,7 +220,7 @@ def _predecessor_facts(con: duckdb.DuckDBPyConnection, ciks=None) -> int:
 
     A reorganisation or a redomicile gives the new registrant a new CIK, and the SEC serves everything filed before
     it only under the old one (Exxon Mobil: 20 annual years under CIK 34088, none under the successor). The
-    predecessor's file is fetched as a company of its own (``companyfacts._with_predecessors``) and its rows stay
+    predecessor's file is fetched as a company of its own (``common.with_predecessors``) and its rows stay
     under its own CIK as well; this adds a copy under the successor.
 
     **The guard is per field and period type**: only a period that ends *before* the successor's earliest period of
@@ -263,7 +263,35 @@ def _filing_items(con: duckdb.DuckDBPyConnection, ciks=None) -> int:
         INSERT INTO filing_item
         SELECT cik, accession, form, filing_date, report_date, primary_document, 'item', item, NULL, NULL, NULL,
                '{filings.NAME}', source_as_of, fetched_at, run_id FROM {filings.STAGING['filings']}""")
+    _predecessor_filings(con, ciks)
     return common.count(con, "filing_item")
+
+
+def _predecessor_filings(con: duckdb.DuckDBPyConnection, ciks=None) -> int:
+    """A predecessor's filings, listed under its successor's CIK too (#749); how many rows.
+
+    As ``_predecessor_facts``: only a filing dated before the successor's earliest filing of its own, so the two
+    lists never overlap, and the predecessor's rows stay under its own CIK as well. A dirty build reaches here only
+    for a dirty successor (``common.dirty_ciks``), whose rows were just cleared.
+    """
+    pairs = common.predecessor_ciks()
+    if ciks is not None:
+        pairs = {c: p for c, p in pairs.items() if c in ciks}
+    rows = [{"predecessor_cik": pre, "cik": cik} for cik, pres in pairs.items() for pre in pres]
+    if not rows:
+        return 0
+    base.rows_table(con, "_predecessor", [("predecessor_cik", "TEXT"), ("cik", "TEXT")], rows)
+    cols = ", ".join(f'f."{c}"' for c, _ in SCHEMAS["filing_item"] if c != "cik")
+    before = common.count(con, "filing_item")
+    con.execute(f"""
+        INSERT INTO filing_item
+        SELECT m.cik, {cols}
+        FROM (SELECT * FROM filing_item WHERE cik IN (SELECT predecessor_cik FROM _predecessor)) f
+        JOIN _predecessor m ON m.predecessor_cik = f.cik
+        LEFT JOIN (SELECT cik, min(filing_date) AS earliest FROM filing_item GROUP BY cik) s ON s.cik = m.cik
+        WHERE s.earliest IS NULL OR f.filing_date < s.earliest""")
+    con.execute("DROP TABLE _predecessor")
+    return common.count(con, "filing_item") - before
 
 
 EARNINGS_8K_ITEM = "2.02"

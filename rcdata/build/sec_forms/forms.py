@@ -231,6 +231,34 @@ def _partitions(name: str, ciks: frozenset[str] | None) -> list[Path]:
     return [p for c in sorted(ciks, key=int) if (p := folder / f"cik={c}" / name).exists()]
 
 
+def _predecessor_rows(con: duckdb.DuckDBPyConnection, table: str, ciks: frozenset[str] | None) -> int:
+    """A predecessor's annual-report rows of ``table``, served under its successor's CIK (#749); how many rows.
+
+    A reorganised company files its first annual report under the new CIK only a year later (ExxonMobil Holdings:
+    its FY2025 10-K is under CIK 34088), so until then its newest annual report is the predecessor's. **The guard:**
+    only while the successor holds no annual-report row of its own in ``table``; a proxy is never copied. The copy
+    keeps the predecessor's accession, form and filing date, which say who filed it. On a dirty build only a dirty
+    successor reaches here, whose rows were just cleared (``dirty_ciks`` adds a successor whose predecessor changed).
+    """
+    pairs = common.predecessor_ciks()
+    if ciks is not None:
+        pairs = {c: p for c, p in pairs.items() if c in ciks}
+    links = [(cik, pre) for cik, pres in pairs.items() for pre in pres]
+    if not links:
+        return 0
+    cols = ", ".join(f't."{c}"' for c, _ in SCHEMAS[table] if c != "cik")
+    annual = ", ".join(f"'{f}'" for f in filings.ANNUAL_FORMS)
+    before = con.execute(f'SELECT count(*) FROM "{table}"').fetchone()[0]
+    con.execute(f"""
+        INSERT INTO "{table}"
+        SELECT m.cik, {cols}
+        FROM "{table}" t JOIN (SELECT unnest(?) AS cik, unnest(?) AS pre) m ON t.cik = m.pre
+        WHERE t.form IN ({annual})
+          AND m.cik NOT IN (SELECT cik FROM "{table}" WHERE form IN ({annual}))""",
+                [[c for c, _ in links], [p for _, p in links]])
+    return con.execute(f'SELECT count(*) FROM "{table}"').fetchone()[0] - before
+
+
 def dirty_ciks(ctx: base.RunContext) -> frozenset[str] | None:
     """The companies a build on the live copy reloads; None for a whole build.
 
@@ -243,7 +271,10 @@ def dirty_ciks(ctx: base.RunContext) -> frozenset[str] | None:
     d = plan.dirty.get(NAME)
     if d is None or d.all:
         return None
-    return frozenset(d.keys)
+    keys = set(d.keys)
+    # A successor serves its predecessor's cut (``_predecessor_rows``), so a changed predecessor rebuilds it (#749).
+    keys |= {cik for cik, pres in common.predecessor_ciks().items() if keys & set(pres)}
+    return frozenset(keys)
 
 
 def _by_version(con: duckdb.DuckDBPyConnection, table: str) -> dict[str, int]:
@@ -271,10 +302,12 @@ class Forms:
 
     def fetch(self, ctx: base.RunContext, as_of: date) -> list[Path]:
         """The stale companies' documents. No network: see the module docstring."""
-        companies = common.ciks(common.universe())
+        rows = common.universe()
+        companies = common.ciks(rows)
         if not companies:
             ctx.notes.append("no companies yet (no spine file)")
             return []
+        companies = common.with_predecessors(ctx, rows, companies)
         docs, old = held()
         out: list[Path] = []
         stale = 0
@@ -294,7 +327,8 @@ class Forms:
     def backfill(self, ctx: base.RunContext, start: date | None, end: date) -> None:
         """Cut every company that has a stored document, whatever its Parquet holds."""
         out: list[Path] = []
-        for cik in common.ciks(common.universe()):
+        rows = common.universe()
+        for cik in common.with_predecessors(ctx, rows, common.ciks(rows)):
             ctx.check_pause()
             out += [p for _, p, _ in targets(cik)]
         ctx.notes.append(f"backfill: {len(out)} documents")
@@ -368,6 +402,7 @@ class Forms:
                 src = f"read_parquet([{', '.join(base.sql_path(f) for f in files)}], union_by_name = true)"
                 con.execute(f"INSERT INTO {table} SELECT {cols} FROM {base.with_all(con, schema, src)} "
                             "ORDER BY cik, accession, document")
+            _predecessor_rows(con, table, ciks)
             rows[table] = con.execute(f'SELECT count(*) FROM "{table}"').fetchone()[0]
         return rows
 
