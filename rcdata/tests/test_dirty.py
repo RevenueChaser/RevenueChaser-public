@@ -211,3 +211,13 @@ def test_a_partition_deleted_after_the_build_is_dirty():
     built_at = dirty.live_built_at("market")
     old.unlink()
     assert dirty.changed_partitions(built_at), "the kind still serves rows no partition backs any more"
+
+
+@pytest.mark.parametrize("name, sibling", [("alpaca/bars", "alpaca/bars_revision"),
+                                           ("sec/cover_shares", "sec/cover_shares_dei"),
+                                           ("openfigi/map", "openfigi/map_ticker")])
+def test_read_dirs_names_the_sibling_folder_a_build_reads(name, sibling):
+    """price_revision, stg_sec_dei and stg_figi_ticker come from a folder beside the dataset's own: a build packed or
+    tracked by read_dirs alone lost them (rc-rebuild, 17 Nov 2026: price_revision 17472 -> 1551 rows)."""
+    from RevenueChaser.rcdata.build import DATASETS
+    assert base.parquet_root().joinpath(*sibling.split("/")) in dirty.read_dirs(DATASETS[name])
