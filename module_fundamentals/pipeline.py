@@ -701,7 +701,8 @@ def _compute_row(row: dict, spy_df, no_fetch: bool = False, spine: dict | None =
         "sector": gics.sector, "industry": gics.industry,
         "themes": themes,
         "earnings_date": _to_float((row.get("quote") or {}).get("earningsTimestampStart")),
-        "period": _period_label(quarterly, annual),
+        # Re-review F4 (18 Nov 2026): on a fiscal-year basis (D1's fallback included) the label names the years.
+        "period": _period_label([] if str(ttm["ro40_basis"] or "").startswith("FY") else quarterly, annual),
         "anchor_period_end": anchor_end.isoformat() if anchor_end else None,
         # G6 (build plan PR 13): Quality's basis and the day it reads to (TTM on the quarters, else the anchor year).
         "quality_basis": qual.get("quality_basis"), "quality_period_end": qual.get("quality_period_end"),
@@ -751,7 +752,7 @@ def build_payload(results: list[dict], top_n: int | None = None, run_stats: dict
 
     passing = {"rule_of_40": 0, "quality": 0, "momentum": 0}
     distorted_count = 0
-    momentum_only = 0
+    momentum_only: list[str] = []
     candidates = []
     for r in results:
         m = r["metrics"]
@@ -768,7 +769,7 @@ def build_payload(results: list[dict], top_n: int | None = None, run_stats: dict
         # avo B1 (17 Nov 2026): a card needs the Rule of 40 or Quality; Momentum confirms, it never admits alone
         # (Swing owns pure trend; 678 of 1,245 cards on 16 Nov were momentum-only).
         if not FUNDAMENTAL_GATES & set(rules_passed):
-            momentum_only += 1
+            momentum_only.append(r["ticker"])
             continue
         passed_count = len(rules_passed)
         for k in rules_passed:
@@ -803,6 +804,9 @@ def build_payload(results: list[dict], top_n: int | None = None, run_stats: dict
     candidates.sort(key=lambda c: (-c["passed_count"], c["distorted"],
                                    -c["ro40"] if c["ro40"] is not None else float("inf"), c["ticker"]))
     run_stats["passed_screens"] = len(candidates)       # before any top_n cut (the C16 funnel)
+    # Re-review F9 (18 Nov 2026): momentum-only names are their own funnel step, not "passed none of the three".
+    run_stats["screen_drops"] = [("momentum_only", "Passed Momentum only (a card needs the Rule of 40 or Quality)",
+                                  momentum_only)]
     if top_n:
         candidates = candidates[:top_n]
     annotate_cards(candidates)
@@ -860,7 +864,7 @@ def build_payload(results: list[dict], top_n: int | None = None, run_stats: dict
             "health_drops": _health_drops(run_stats),
             "passing": passing,
             "distorted_count": distorted_count,
-            "momentum_only": momentum_only,
+            "momentum_only": len(momentum_only),
             "top_n": len(candidates),
         },
         "candidates": candidates,

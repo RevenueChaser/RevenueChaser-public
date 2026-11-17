@@ -170,7 +170,7 @@ def _summary_html(s: dict, data_quality: dict | None = None) -> str:
     stale_n = s.get("stale_ohlc") or 0
     if stale_n or s.get("spy_stale"):
         bits = ([f"{_fmt_int(stale_n)} tickers"] if stale_n else []) + (["SPY"] if s.get("spy_stale") else [])
-        elim_part += (f" Stale price cache (refetch failed, last cached bars used): "
+        elim_part += (f" Prices store behind (no bar of the latest session; last stored bars used): "
                       f"{_html.escape(' + '.join(bits))}.")
     if s.get("spy_missing"):
         # Fundamentals review 17 Nov (as Swing review F2): with no SPY bar of the latest session the 6-month RS rule
@@ -428,7 +428,7 @@ function openGate(btn){
   // avo D1 (17 Nov 2026): one period per card, so every gate's window names the card's one period.
   if(ANCHORS[t]) period = ANCHORS[t];
   document.getElementById("m-title").textContent = gate.name;
-  document.getElementById("m-sub").textContent = t + " — " + gate.score + (gate.passed ? " (PASS)" : " (FAIL)") + (period ? " · " + period : "");
+  document.getElementById("m-sub").textContent = t + " — " + gate.score + (gate.passed ? " (PASS)" : (gate.rules.some(function(r){ return r.passed === false; }) ? " (FAIL)" : " (UNKNOWN)")) + (period ? " · " + period : "");
   var rules = gate.rules.map(function(r){
     var ok = r.passed;   // true / false / null (unknown: an input is missing)
     var cls = ok === null ? 'm-unk' : (ok ? 'm-ok' : 'm-no');
