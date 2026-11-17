@@ -238,8 +238,44 @@ class TestSmallRoutes:
         assert r.status_code == 200
         assert "no-store" not in (r.headers.get("Cache-Control") or "")
 
-    def test_html_views_stay_no_store(self, client):
-        assert "no-store" in client.get("/").headers.get("Cache-Control", "")
+    def test_html_views_are_revalidated_not_stored(self, client):
+        r = client.get("/")
+        assert r.status_code == 200
+        assert r.headers.get("Cache-Control") == "no-cache", "the browser must ask every time"
+        assert r.headers.get("ETag")
+
+    def test_html_goes_out_gzipped_and_answers_304_when_unchanged(self, client):
+        import gzip
+        r = client.get("/", headers={"Accept-Encoding": "gzip"})
+        assert r.headers.get("Content-Encoding") == "gzip"
+        assert "Accept-Encoding" in r.headers.get("Vary", "")
+        html = gzip.decompress(r.data)
+        assert html == client.get("/", headers={"Accept-Encoding": "identity"}).data
+        etag = r.headers["ETag"]
+        again = client.get("/", headers={"Accept-Encoding": "gzip", "If-None-Match": etag})
+        assert again.status_code == 304 and again.data == b""
+        assert again.headers.get("Cache-Control") == "no-cache"
+
+    def test_plain_and_gzip_forms_have_different_etags(self, client):
+        plain = client.get("/", headers={"Accept-Encoding": "identity"})
+        assert "Content-Encoding" not in plain.headers
+        gz = client.get("/", headers={"Accept-Encoding": "gzip"})
+        assert plain.headers["ETag"] != gz.headers["ETag"]
+        r = client.get("/", headers={"Accept-Encoding": "identity", "If-None-Match": gz.headers["ETag"]})
+        assert r.status_code == 200, "a gzip ETag must not validate the plain form"
+
+    def test_vendored_plotly_is_compressed_and_revalidates(self, client):
+        import gzip
+        from pathlib import Path
+        f = Path(dashboard.app.static_folder) / "vendor" / "plotly.min.js"
+        r = client.get("/static/vendor/plotly.min.js", headers={"Accept-Encoding": "gzip"})
+        assert r.status_code == 200 and r.headers.get("Content-Encoding") == "gzip"
+        assert len(r.data) < f.stat().st_size // 3
+        assert gzip.decompress(r.data) == f.read_bytes()
+        assert "no-store" not in (r.headers.get("Cache-Control") or "")
+        again = client.get("/static/vendor/plotly.min.js",
+                           headers={"Accept-Encoding": "gzip", "If-None-Match": r.headers["ETag"]})
+        assert again.status_code == 304 and again.data == b""
 
     def test_bad_rotation_date_is_rejected_before_the_key_check(self, client, monkeypatch):
         monkeypatch.setattr(dashboard, "UWClient",
