@@ -58,10 +58,7 @@ def test_a_fetch_that_clusters_nothing_says_why(out, monkeypatch):
         runners.run_comovement(None)
     assert runners.COMOVEMENT_LATEST.exists()                         # the empty board is written first
     assert not rc.payload_path(runners.COMOVEMENT_LATEST).exists()
-
-
-def test_a_refresh_that_clusters_nothing_stays_quiet(out, monkeypatch):
-    monkeypatch.setattr(engine, "run", _empty)
+    # A Refresh is a GET with no job to carry a message: it stays quiet.
     assert runners.run_comovement(None, no_fetch=True) == runners.COMOVEMENT_LATEST
 
 
