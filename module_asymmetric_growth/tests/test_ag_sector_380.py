@@ -47,7 +47,7 @@ def test_a_flagged_card_stays_a_ledger_pick():
     card = _scored("Real Estate")
     card.update(price=10.0, market_cap=1e9)
     rows = freeze.picks([card])
-    assert len(rows) == 1 and rows[0]["bucket"] == "tier:none|pts_9"
+    assert len(rows) == 1 and rows[0]["bucket"] == "tier:none|pts_8_7"   # 8 points: runway not counted (C1)
 
 
 def test_the_summary_counts_the_flagged_cards():
