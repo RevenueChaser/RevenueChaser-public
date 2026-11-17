@@ -22,6 +22,7 @@ call, never a connection kept across requests. Serving files are never compacted
 """
 from __future__ import annotations
 
+import atexit
 import os
 import shutil
 import time
@@ -202,11 +203,39 @@ def open_read(kind: str) -> duckdb.DuckDBPyConnection:
     path = live_path(kind)
     if not path.exists():
         raise ServingFileMissing(f"no {kind} serving file at {path} yet")
-    con = duckdb.connect(str(path), read_only=True)
+    con = connect_read(path)
     con.execute(f"SET memory_limit = '{read_memory_limit()}'")
     from . import opens
     opens.note(kind, path, con, VERSION_TABLE)       # #566: which build this job read; never raises
     return con
+
+
+def connect_read(path: Path) -> duckdb.DuckDBPyConnection:
+    """A read-only connection to ``path`` that spills into this process's own directory (``read_spill_dir``).
+
+    Every read-only open of a serving file goes through here, so the one database instance a process keeps per path
+    is always asked for with the same configuration.
+    """
+    return duckdb.connect(str(path), read_only=True, config={"temp_directory": str(read_spill_dir(path))})
+
+
+_SPILL_DIRS: set[Path] = set()
+
+
+def read_spill_dir(path: Path) -> Path:
+    """``<file>.tmp-<pid>`` beside ``path``, removed when this process exits.
+
+    DuckDB's default, ``<file>.tmp``, is one directory for every process that reads the file, and its spill file names
+    (``duckdb_temp_storage_<size>-<n>.tmp``) restart at 0 in each process: two readers that spill at once write over
+    each other's blocks. On 17 Nov 2026 the forecast baselines (SIGBUS) and the dashboard (SIGSEGV) crashed inside
+    DuckDB 4 s apart, both reading ``prices.duckdb`` through the shared ``prices.duckdb.tmp``.
+    """
+    spill = path.with_name(f"{path.name}.tmp-{os.getpid()}")
+    if spill not in _SPILL_DIRS:
+        _SPILL_DIRS.add(spill)
+        # shortcut: a process that crashes leaves its directory behind; sweep dead pids if they pile up.
+        atexit.register(shutil.rmtree, spill, True)
+    return spill
 
 
 def read_memory_limit() -> str:
@@ -294,7 +323,7 @@ def _verify(kind: str, path: Path, expected_counts: dict[str, int], checks: list
         raise ValueError(f"failed dataset checks: {failed}")
     if path.with_name(path.name + ".wal").exists():
         raise ValueError("the build file still has a .wal after its checkpoint")
-    con = duckdb.connect(str(path), read_only=True)
+    con = connect_read(path)
     try:
         rows = con.execute(f"SELECT kind, version FROM {VERSION_TABLE}").fetchall()
         if rows != [(kind, SERVING_SCHEMA_VERSION[kind])]:
@@ -339,7 +368,7 @@ def declare_window(con: duckdb.DuckDBPyConnection, table: str, column: str, firs
 
 
 def _windows(path: Path) -> dict[str, tuple[str, str]]:
-    con = duckdb.connect(str(path), read_only=True)
+    con = connect_read(path)
     try:
         names = {r[0] for r in con.execute("SELECT table_name FROM duckdb_tables()").fetchall()}
         if WINDOW_TABLE not in names:
@@ -352,7 +381,7 @@ def _windows(path: Path) -> dict[str, tuple[str, str]]:
 def _counts(path: Path, windows: dict[str, tuple[str, str]] | None = None) -> dict[str, int]:
     """Rows per table; a windowed table counts only its rows inside the window (``windows``, the build's)."""
     windows = windows or {}
-    con = duckdb.connect(str(path), read_only=True)
+    con = connect_read(path)
     try:
         names = [r[0] for r in con.execute("SELECT table_name FROM duckdb_tables() WHERE database_name = "
                                            "current_database()").fetchall()
@@ -426,7 +455,7 @@ def live_stamp(kind: str) -> dict | None:
     if not path.exists():
         return None
     try:
-        with duckdb.connect(str(path), read_only=True) as con:
+        with connect_read(path) as con:
             build_id, built_at = opens.stamp_of(con, VERSION_TABLE, kind)
     except duckdb.Error:
         return None
