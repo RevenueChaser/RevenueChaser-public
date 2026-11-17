@@ -14,7 +14,7 @@ def test_pipeline_imports_load_ticker_info():
     from RevenueChaser.module_swing_potential import pipeline as sp
     from RevenueChaser.module_fundamentals import pipeline as fp
     assert hasattr(sp, "load_ticker_info")
-    assert hasattr(fp, "load_ticker_info")
+    assert not hasattr(fp, "load_ticker_info")    # #645: Fundamentals reads no Yahoo .info either
 
 
 def _ohlcv(periods=300) -> pd.DataFrame:

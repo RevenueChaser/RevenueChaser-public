@@ -31,7 +31,6 @@ def swing_inputs(monkeypatch):
     info = {"sector": "Technology", "industry": "Semiconductors", "longName": "X Corp"}
     monkeypatch.setattr(screen_common, "load_bars", lambda *a, **k: (_ohlcv(), _ohlcv()))   # D01 (C12, #383 R3)
     monkeypatch.setattr(sp, "load_ticker_info", lambda *a, **k: info)
-    monkeypatch.setattr(fp, "load_ticker_info", lambda *a, **k: info)
 
 
 def test_swing_card_sector_and_industry_are_the_spine_not_yfinance(rawstore_tmp_db, swing_inputs):
@@ -101,7 +100,7 @@ def test_run_scan_drops_excluded_types_and_counts_them(rawstore_tmp_db, monkeypa
         {"out_of_universe": 0}))
     monkeypatch.setattr(mod, "prefilter", lambda rows: screen_common.Prefiltered(seen.setdefault("rows", rows)))
     monkeypatch.setattr(screen_common, "load_bars", lambda *a, **k: (pd.DataFrame(), pd.DataFrame()))
-    monkeypatch.setattr(mod, "load_ticker_info", lambda *a, **k: {})      # no live yfinance info call
+    monkeypatch.setattr(mod, "load_ticker_info", lambda *a, **k: {}, raising=False)   # no live .info call (#645)
     mod.run_scan()
     assert [r["ticker"] for r in seen["rows"]] == ["OPCO"]
 
