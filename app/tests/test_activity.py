@@ -25,6 +25,23 @@ def test_a_board_feeds_on_a_table_only_by_its_whole_name(monkeypatch):
     assert [b["key"] for b in got["boards"] if b["jobs"]] == ["module_b"]
 
 
+def test_a_boards_own_nightly_fetch_stands_under_that_board_in_menu_order():
+    """avo, 17 Nov 2026: the four board Fetch jobs write no table, so they were all under System; each belongs to the
+    board it fetches, and the boards keep the menu's order."""
+    got = activity.job_boards()
+    by_key = {b["key"]: b["jobs"] for b in got["boards"]}
+    for name, key in (("RC-Fetch-AsymmetricGrowth", "module_asymmetric_growth"), ("RC-Fetch-Swing", "module_swing_potential"),
+                      ("RC-Fetch-Fundamentals", "module_fundamentals"), ("RC-Fetch-Co-movement", "module_comovement")):
+        assert name in by_key[key], name
+        assert name not in by_key[activity.SYSTEM], name
+        assert got["jobs"][name]["boards"] == [key]
+    from RevenueChaser.app import dashboard
+    menu = [t["key"] for t in dashboard.TABS if t.get("type") == "tab"]
+    keys = [b["key"] for b in got["boards"] if b["key"] != activity.SYSTEM]
+    assert keys == sorted(keys, key=menu.index)
+    assert got["boards"][-1]["key"] == activity.SYSTEM
+
+
 def test_pressed_runs_count_per_board_and_others_are_system():
     rows = [{"module": "module_news", "status": "done", "started_at": 10.0},
             {"module": "module_news", "status": "failed", "started_at": 20.0},
