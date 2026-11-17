@@ -32,6 +32,7 @@ from RevenueChaser.core.providers import sec_edgar
 from RevenueChaser.core import universe as _spine
 from RevenueChaser.core.taxonomy import themes_for_many
 from RevenueChaser.module_asymmetric_growth import sector_rules          # #18: AG's own rule, beside it now
+from RevenueChaser.module_fundamentals import debt as _debt              # decision B1 (avo, 17 Nov 2026)
 from RevenueChaser.rcdata import opens  # #566: pooled reads count for this run
 
 logger = logging.getLogger(__name__)
@@ -60,6 +61,7 @@ PRELOAD_BATCH = 500   # tickers whose stored rows one bulk read loads (bounds me
 # Momentum from the stored daily bars (#380 S4, decision 2; the prices store since PR 11): the sessions each input needs, and how far back the one windowed read
 # looks (380 calendar days: 252 sessions plus the market's closed days, with room for a gap).
 BARS_52W = 252        # the 52-week high is the highest HIGH of these sessions
+BARS_52W_MIN = 63     # decision D1 (avo, 17 Nov 2026): a recent listing reads its high from this many, flagged
 BARS_SMA = 50         # the mean close of these sessions
 BARS_3M = 63          # Yahoo's "3-month" average volume: the mean volume of these sessions
 BARS_10D = 10         # the short volume mean
@@ -122,6 +124,24 @@ def _trailing_years(annual: list[dict], quarterly: list[dict], ai: int | None) -
             return None
         out.append(r)
     return out[::-1]
+
+
+def _debt_free(financials: dict, annual: list[dict], ai: int | None, ttm: dict | None) -> bool:
+    """Decision B1 (avo, 17 Nov 2026): the Fundamentals rule (``module_fundamentals.debt``, #737) on this card's
+    record. A US-GAAP filer whose anchor year tags no debt and pays no interest, and so does every quarter after it
+    (up to the trailing year's balance-sheet quarter on a TTM card), owes nothing; anything else stays unknown."""
+    if ai is None or financials.get("us_gaap") is False or not _debt.debt_free(annual[ai]):
+        return False
+    end = fiscal_year.period_end(annual[ai])
+    if end is None:
+        return False
+    e0 = end.isoformat()
+    upto = str(ttm["period"])[:10] if ttm else None
+    later = [q for q in financials.get("quarterly") or []
+             if str(q.get("period"))[:10] > e0 and (upto is None or str(q.get("period"))[:10] <= upto)]
+    if upto and not any(str(q.get("period"))[:10] == upto for q in later):
+        return False   # the trailing year's balance sheet is a quarter we cannot read
+    return all(_debt.debt_free(q, quarterly=True) for q in later)
 
 
 def _growth(annual: list[dict], i: int | None, field: str) -> tuple[float | None, list[str]]:
@@ -232,7 +252,7 @@ def technical_from_bars(rows, session: date | None = None) -> dict:
     ``BARS_52W`` sessions; ``dist_52w_pct`` keeps the quote path's sign, ``(high - price) / high`` (>= 0), because
     ``DIST_52W_MAX`` compares it with ``<=``; ``sma50`` = the mean of the last ``BARS_SMA`` closes; ``vol_10d`` /
     ``vol_90d`` = the mean volume of the last ``BARS_10D`` / ``BARS_3M`` sessions (Yahoo's "3-month" average, the
-    "90d" label) and their ratio. Fewer bars than a window make that input unknown (None): 252 for the high, 63 for
+    "90d" label) and their ratio. Fewer bars than a window make that input unknown (None): 252 for the high (but see ``BARS_52W_MIN``), 63 for
     the volume, 50 for the mean, 10 for the short volume.
     """
     bars = []
@@ -246,6 +266,9 @@ def technical_from_bars(rows, session: date | None = None) -> dict:
     closes = [b[2] for b in bars]
     price = closes[-1] if closes else None
     high = _max_last([b[1] for b in bars], BARS_52W)
+    short = high is None and _max_last([b[1] for b in bars], BARS_52W_MIN) is not None
+    if short:
+        high = max(h for h in [b[1] for b in bars][-BARS_52W:] if h is not None)
     sma50 = _mean_last(closes, BARS_SMA)
     vol_10d = _mean_last([b[3] for b in bars], BARS_10D)
     vol_90d = _mean_last([b[3] for b in bars], BARS_3M)
@@ -253,6 +276,7 @@ def technical_from_bars(rows, session: date | None = None) -> dict:
         "price": price,
         "bar_date": bars[-1][0].isoformat() if bars else None,   # the session this card's price is from (SF-1)
         "high_52w": high,
+        "high_short_history": short,     # D1: fewer than BARS_52W bars, the high is over what there is
         "dist_52w_pct": (high - price) / high if (price is not None and high) else None,
         "sma50": sma50,
         "above_sma50": (price > sma50) if (price is not None and sma50 is not None) else None,
@@ -302,6 +326,9 @@ def score_ticker(ticker: str, financials: dict, technical: dict, meta: dict | No
     fcf = (ocf - capex) if (ocf is not None and capex is not None) else None
 
     total_debt = to_float(cur.get("total_debt"))
+    if total_debt is None and _debt_free(financials, annual, ai, cur if trailing else None):
+        total_debt = 0.0
+        flags.append("debt_inferred_none")
     # Liquidity = cash + short-term investments, both from the anchor record (#187).
     liquid, _liquidity_basis = liquid_assets(cur)
     total_assets = to_float(cur.get("total_assets"))
@@ -319,7 +346,8 @@ def score_ticker(ticker: str, financials: dict, technical: dict, meta: dict | No
     rd_intensity = _pct_div(to_float(cur.get("rd_expense")), to_float(cur.get("revenue")))
 
     dilution_yoy, share_flags = _share_change(cur, series[sp] if sp is not None else None)
-    flags = [*anchor_flags, *flags, *margin_flags, *share_flags]
+    flags = [*anchor_flags, *flags, *margin_flags, *share_flags,
+             *(["short_price_history"] if technical.get("high_short_history") else [])]
 
     market_cap = financials.get("market_cap") or meta.get("market_cap")
     price = technical.get("price") or financials.get("current_price") or meta.get("price")
@@ -341,7 +369,9 @@ def score_ticker(ticker: str, financials: dict, technical: dict, meta: dict | No
     s1 = [
         {"label": "Revenue growth ≥ 20%", "value": rev_growth, "unit": "pct", "threshold": "≥ 20%",
          "op": "gte", "param": "rev_growth",
-         "passed": tri.rule((rev_growth,), lambda g: g >= REV_GROWTH_MIN)},
+         # Decision F1 (avo, 17 Nov 2026): growth above +500 % keeps its value and flag but scores as unknown.
+         "suspicious": "suspicious_growth" in flags,
+         "passed": None if "suspicious_growth" in flags else tri.rule((rev_growth,), lambda g: g >= REV_GROWTH_MIN)},
         {"label": "Growth accelerating YoY", "value": (rev_growth, rev_growth_last), "unit": "pair_pct", "threshold": "this > last",
          "op": "pair", "param": "accelerating",
          "passed": tri.rule((rev_growth, rev_growth_last), lambda a, b: a > b)},
@@ -360,7 +390,10 @@ def score_ticker(ticker: str, financials: dict, technical: dict, meta: dict | No
          "passed": tri.rule((net_debt_assets,), lambda n: n <= NET_DEBT_ASSETS_MAX)},
         {"label": "Cash runway ≥ 2 years", "value": runway, "unit": "runway", "threshold": "≥ 2y",
          "op": "gte", "param": "runway",
-         "passed": tri.rule((runway,), lambda r: r >= RUNWAY_YEARS_MIN)},
+         # Decision C1 (avo, 17 Nov 2026): positive FCF already scored the point; runway is not needed, so it is
+         # neither a second point nor an unknown, and leaves the signal's count.
+         "not_needed": bool(fcf is not None and fcf > 0),
+         "passed": None if (fcf is not None and fcf > 0) else tri.rule((runway,), lambda r: r >= RUNWAY_YEARS_MIN)},
     ]
 
     # ── Sinyal 3: Momentum/Volume ──
@@ -378,7 +411,7 @@ def score_ticker(ticker: str, financials: dict, technical: dict, meta: dict | No
     ]
 
     def _signal(key, subs):
-        passed, n_known, total = tri.tally(subs)
+        passed, n_known, total = tri.tally([x for x in subs if not x.get("not_needed")])
         return {"key": key, "name": SIGNAL_NAMES[key], "passed": passed, "known": n_known, "total": total,
                 "subs": subs}
 
@@ -453,8 +486,9 @@ def _cached_financials(ticker: str, no_fetch: bool = False, preload: dict | None
         info["country"] = US_COUNTRY
     if edgar_meta.get("entity_name"):
         info["longName"] = edgar_meta["entity_name"]
-    # review SF-4 (G6): the trailing years read the quarters.
-    return {"info": info, "annual": edgar_annual, "quarterly": edgar_quarterly, "source": EDGAR_SOURCE}
+    # review SF-4 (G6): the trailing years read the quarters. ``us_gaap`` gates the debt-free inference (B1).
+    return {"info": info, "annual": edgar_annual, "quarterly": edgar_quarterly, "source": EDGAR_SOURCE,
+            "us_gaap": edgar_meta.get("us_gaap")}
 
 
 def _price_session() -> date | None:
@@ -1031,7 +1065,7 @@ RULES = {
     "not_comparable_sectors": sorted(sector_rules.NOT_COMPARABLE_SECTORS),   # #380 S6 (C17)
     # #380 S4: the momentum windows, read from the prices store (split basis) up to the scan's session. In RULES so a change moves
     # the ledger's hash like every other rule the board scores with.
-    "momentum_windows": {"high_52w": BARS_52W, "sma50": BARS_SMA, "vol_3m": BARS_3M, "vol_10d": BARS_10D},
+    "momentum_windows": {"high_52w": BARS_52W, "high_52w_min": BARS_52W_MIN, "sma50": BARS_SMA, "vol_3m": BARS_3M, "vol_10d": BARS_10D},
 }
 
 # ── Forecast ledger (#128) ──
@@ -1045,7 +1079,9 @@ RULES = {
 #    when 10-Qs follow the anchor year, else the fiscal years; the statements come from the fundamentals layer.
 # 8: PR 11 (G3) the momentum bars come from the prices store (Alpaca, split basis) instead of D01. G3 and G6 each
 #    bumped 6 to 7 on their own branches; the second to land takes 8.
-SELECTION_VERSION = "8"
+# 9: board review of 17 Nov 2026 (#1001): B1 debt-free inference, C1 runway not needed with positive FCF, D1 52-week
+#    high from 63 bars, F1 growth above +500 % scores unknown.
+SELECTION_VERSION = "9"
 # A run where more than this share of the tickers it attempted failed to score is not frozen:
 # the board is missing too much to stand for the day (#202 counts the errors).
 FREEZE_MAX_SCORE_ERROR_RATE = 0.01
