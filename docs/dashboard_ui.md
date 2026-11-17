@@ -150,7 +150,7 @@ hash. The pure logic is `RCFilters.core`, unit-tested under node (`core/tests/te
 | Co-movement | yes (on it) | Knobs (Remove market / Horizon / Detail) stay above the bar. |
 | Implied Probability | yes (on it, C1b) | No extra search row. Combobox outside (`allowFree`). |
 | Value Chain | yes (on it, C1b) | Search + count row above the bar; combobox outside. |
-| Relatedness | yes (on it, C1b) | Search + count row above the bar; combobox outside. No Theme facet until the SEC service owns the profiles (#894; avo, 16 Nov 2026, decision E): `facets` is index, mc, gics, earnings. |
+| Relatedness | yes (on it, C1b) | Search + count row above the bar; combobox outside. No Theme facet until the SEC service owns the profiles (#894; avo, 16 Nov 2026, decision E): `facets` is index, mc, gics, earnings. The served page holds no row: companies from its K10 payload, the focal ticker's peers from `/api/relatedness/peers/<ticker>` on pick (the inlined lists were 32 of 35 MB). |
 | Asymmetric Growth Hunter | yes (on it, C1c) | Keep **Points**. |
 | Swing Screener | yes (on it, C1c) | Method toggles (card 5); **Multiplier** until then. |
 | Fundamental Analysis | yes (on it, C1c) | Rule toggles (card 3); **Gate** until then. |

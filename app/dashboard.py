@@ -1385,6 +1385,23 @@ def api_ticker_list():
     })
 
 
+@app.route("/api/relatedness/peers/<ticker>")
+def api_relatedness_peers(ticker: str):
+    """One focal ticker's Relatedness peers (``{"ticker", "peers"}``), as the last board run wrote them.
+
+    The board page fetches this on pick instead of carrying every list (32 MB); the phone app reads the same.
+    404 for a ticker the run did not score.
+    """
+    ticker = ticker.strip().upper()
+    if not _valid_ticker(ticker):   # also keeps the name inside the folder: no "/" and never "." or ".."
+        return jsonify({"ok": False, "error": "bad ticker"}), 400
+    try:
+        data = (runners.RELATEDNESS_PEERS_DIR / f"{ticker}.json").read_bytes()
+    except FileNotFoundError:
+        return jsonify({"ok": False, "error": "no peers", "ticker": ticker}), 404
+    return Response(data, mimetype="application/json")
+
+
 @app.route("/api/ticker/<ticker>")
 def api_ticker(ticker: str):
     """Tek ticker'ın tüm zengin verisi (Asymmetric Growth Hunter skorları + 13F + temalar...)."""
