@@ -37,7 +37,7 @@ from typing import Any, Callable, Iterable, Protocol
 import duckdb
 import httpx
 
-from ...core import calendar, config, job_lock, rawstore
+from ...core import calendar, config, job_lock, notify, rawstore
 from .. import caps, ops, serving
 
 logger = logging.getLogger(__name__)
@@ -1120,6 +1120,12 @@ def run_request(req: dict, *, trigger: str = "queue", attended_ok: bool = False,
         ctx.flush_counts()
 
 
+def _pressed(req: dict) -> bool:
+    """A request a person made (a Build button, the CLI), not one the hourly pass queued (``due.REQUESTED_BY``,
+    not imported: due.py imports this module)."""
+    return req.get("id") is not None and req.get("requested_by") != "schedule"
+
+
 def _abort(run_id: str | None, req: dict, e: BaseException) -> None:
     """End a run (when it started) and its request after ``e`` got past ``_run``.
 
@@ -1140,6 +1146,8 @@ def _abort(run_id: str | None, req: dict, e: BaseException) -> None:
             ops.finish_request(req["id"], "failed", note=f"killed: {why}"[:300])
         except ops.STORE_ERRORS:
             logger.warning("could not end request %s", req["id"], exc_info=True)
+    if run_id is not None:   # a claimed request never reached (no run) is not a run that ended
+        notify.build_end(str(req.get("dataset") or "?"), status, why, requested=_pressed(req))
 
 
 def _run(ctx: RunContext, ds, req: dict, params: dict, attended_ok: bool = False) -> dict:
@@ -1329,6 +1337,7 @@ def _finish(ctx: RunContext, req: dict, check: dict, status: str, error: str | N
     ops.finish_run(ctx.run_id, status, error)
     if req.get("id") is not None:
         ops.finish_request(req["id"], {"ok": "done", "skipped": "skipped"}.get(status, "failed"), note=notes)
+    notify.build_end(ctx.dataset, status, error or notes, requested=_pressed(req))
     out = ops.latest_check(ctx.dataset)
     logger.info(format_check(out))
     return out

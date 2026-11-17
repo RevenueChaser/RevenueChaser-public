@@ -272,3 +272,19 @@ class TestForecastFreezeNotes:
         assert job["status"] == "error" and job["error"] == "kaput"
         assert job["message"] is None
 
+
+
+def test_a_finished_job_is_handed_to_notify(monkeypatch):
+    """avo, 17 Nov 2026: a Fetch job's end reaches the phone (core/notify.py)."""
+    _reset()
+    monkeypatch.setattr(jobs, "UWClient", lambda: _FakeUW())
+    ended = []
+    monkeypatch.setattr(jobs.notify, "job_end", lambda job: ended.append((job["module"], job["status"])))
+    jobs.register("ok", lambda uw, **p: "x", ["tab"])
+    jobs.register("bad", lambda uw, **p: 1 / 0, ["tab"])
+    _wait_until(jobs.submit("ok"), ("done", "error"))
+    _wait_until(jobs.submit("bad"), ("done", "error"))
+    end = time.time() + 5
+    while len(ended) < 2 and time.time() < end:   # the notify call follows the status by a moment
+        time.sleep(0.02)
+    assert ended == [("ok", "done"), ("bad", "error")]
