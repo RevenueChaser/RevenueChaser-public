@@ -43,7 +43,8 @@ def test_the_rrg_reads_the_prices_store_not_d01(world):
     snaps = {s.ticker: s for s in engine.RotationEngine().process_all()}
     assert {"XLK", "XLE"} <= set(snaps)
     assert snaps["XLK"].rs_1m > 0 > snaps["XLE"].rs_1m
-    assert snaps["XLK"].close_price == pytest.approx(_bars("XLK", 0.002)[-1]["close"])
+    week_close = [b for b in _bars("XLK", 0.002) if b["session_date"] <= engine.week_cut(SESSION)][-1]["close"]
+    assert snaps["XLK"].close_price == pytest.approx(week_close)          # the map's own week (A1), not the last bar
 
 
 def test_a_split_is_applied_to_the_weekly_closes(world):

@@ -64,7 +64,6 @@ def test_the_table_and_points_escape_the_ticker_and_name(evil_etf, tmp_path, mon
     assert "<img src=x onerror=__x(1)>" not in html
     assert 'id="caret-&quot;&#x27;&gt;&lt;img src=x onerror=__x(1)&gt;T"' in html
     assert 'data-ticker="&quot;&#x27;&gt;&lt;img src=x onerror=__x(1)&gt;T"' in html
-    assert 'data-name="&quot;&#x27;&gt;&lt;img src=x onerror=__x(1)&gt;N"' in html
 
 
 def test_the_trail_page_escapes_the_ticker_quadrant_and_group(evil_etf):
@@ -82,14 +81,29 @@ console.log(JSON.stringify(_els['dd-menu'].innerHTML));
 """
 
 
-@pytest.mark.parametrize("page", ["rotation", "trail"])
-def test_the_ticker_picker_escapes_ticker_and_name(page, evil_etf, tmp_path, monkeypatch, rawstore_tmp_db):
-    """Both ``buildPicker`` copies write ``innerHTML``; node runs the real script."""
-    html = _page(evil_etf, tmp_path, monkeypatch) if page == "rotation" else _trail(evil_etf)
+def test_the_ticker_picker_escapes_ticker_and_name(evil_etf, tmp_path):
+    """The trail page's ``buildPicker`` writes ``innerHTML``; node runs the real script."""
+    html = _trail(evil_etf)
     tail = _PICKER % {"t": json.dumps(EVIL + "T"), "n": json.dumps(EVIL + "N")}
     menu = run_board_js(html, tail, tmp_path)
     assert "<img" not in menu and "&lt;img src=x onerror=__x(1)&gt;" in menu
     assert menu.count('data-t="') == 1 and 'data-t="&quot;&#39;&gt;' in menu
+
+
+def test_the_rrg_chart_and_tooltip_escape_ticker_and_name(evil_etf, tmp_path, monkeypatch, rawstore_tmp_db):
+    """The map (17 Nov 2026 redesign) is drawn in client JS from a JSON payload: ``drawRRG`` and ``rrgTip`` write
+    ``innerHTML`` with the ticker and the configured name."""
+    html = _page(evil_etf, tmp_path, monkeypatch)
+    tail = """
+var svg = document.getElementById('rrg'); svg.style.setProperty = function(){};
+RRG.etfs.forEach(function(e){ e.group = 'sector'; }); ACTIVE_GROUP = 'sector'; THEME = 'all';
+drawRRG();
+var evil = RRG.etfs.filter(function(e){ return e.ticker !== 'XLK'; })[0];
+rrgTip({clientX: 0, clientY: 0}, evil);
+console.log(JSON.stringify(svg.innerHTML + document.getElementById('rrg-tip').innerHTML));
+"""
+    out = run_board_js(html, tail, tmp_path)
+    assert "<img" not in out and out.count("&lt;img src=x onerror=__x(1)&gt;") >= 3   # dot label, data-ticker, tip
 
 
 def test_money_flow_cards_escape_ticker_and_name(evil_etf, tmp_path, monkeypatch, rawstore_tmp_db):
@@ -118,7 +132,7 @@ def test_the_group_filter_touches_map_rows_only():
     """Sector Rotation review 17 Nov 2026 (G4): an expanded theme's holding rows carry ``data-ticker`` but no group,
     so a filter over every ``tr[data-ticker]`` hid them on any zoom or filter."""
     from RevenueChaser.module_sector_rotation import report
-    body = report.JS[report.JS.index("function renderChart()"):report.JS.index("function svgPoint(")]
+    body = report.JS[report.JS.index("function renderChart()"):report.JS.index("function toggleHoldings(")]
     assert "tbody tr[data-group]" in body and "tbody tr[data-ticker]" not in body
 
 
