@@ -25,7 +25,10 @@ link, and no CUSIP.
 
 **Bridge names.** ``sector`` is the GICS sector through ``core.gics_map.canonical_sector`` (one of the 11 Morningstar
 names the boards use); ``industry`` is the GICS industry group's name (working choice: the spine holds no Unusual
-Whales industry text). Both feed the views only.
+Whales industry text). Both feed the views only. ``gics_source`` says where they came from (``bridge_sector``): a row
+of :data:`GICS_MANUAL_FILE` (``manual``), Compustat's current GICS (``wrds/co_hgic``), or, for a name with no GICS,
+Compustat's company SIC (``sic``): a blank check or shell (:data:`SHELL_SICS`) is the ``Shell/SPAC`` bucket, a code
+of :data:`SIC_GICS` its GICS sector and group. Anything else stays ``Unclassified`` with no source.
 
 **Build issues** (``ISSUE_KINDS``) are computed here and written to ``ops.sqlite`` once the new file is live
 (``after_swap``, ``ops.sync_issues``): an issue found again stays open, one no longer found is resolved. A rule that
@@ -33,14 +36,16 @@ needs a source that has never run is not applied; that source is one ``source_ne
 """
 from __future__ import annotations
 
+import json
 from bisect import bisect_right
 from collections import defaultdict
 from datetime import date, timedelta
+from pathlib import Path
 
 import duckdb
 
 from ....core import calendar
-from ....core.gics_map import UNCLASSIFIED, canonical_sector
+from ....core.gics_map import SHELL_SPAC, UNCLASSIFIED, canonical_sector
 from ....core.identity import isin as isin_mod
 from ... import ops
 from .. import base
@@ -163,6 +168,57 @@ def sector_names(gsector, ggroup) -> tuple[str, str]:
     """The bridge ``(sector, industry)``: the Morningstar sector of the GICS sector, and the GICS group's name."""
     name = GICS_SECTORS.get(str(gsector or ""))
     return (canonical_sector(name) if name else UNCLASSIFIED), GICS_GROUPS.get(str(ggroup or ""), UNCLASSIFIED)
+
+
+# A name with no Compustat GICS (avo, 17 Nov 2026: the 221 ``Unclassified`` listed names). Compustat's SIC 9995
+# ("non-operating establishments") and 6770 ("blank checks") are shells: their own bucket, not a sector.
+SHELL_SICS = frozenset({6770, 9995})
+SIC_SOURCE = "sic"
+MANUAL_SOURCE = "manual"
+# SIC -> (GICS sector, GICS industry group) for a name with a SIC but no GICS yet. Only codes seen on such names
+# are listed, each read against the GICS 2023 structure.
+# shortcut: an explicit list, not the full SIC range map; add a code when a build's Unclassified names carry it.
+SIC_GICS: dict[int, tuple[str, str]] = {
+    1090: ("10", "1010"),   # miscellaneous metal ores (uranium) -> Energy
+    2834: ("35", "3520"),   # pharmaceutical preparations
+    2836: ("35", "3520"),   # biological products
+    2890: ("15", "1510"),   # miscellaneous chemical products
+    3841: ("35", "3510"),   # surgical and medical instruments
+    4412: ("20", "2030"),   # deep-sea foreign freight transportation
+    5600: ("25", "2550"),   # apparel and accessory stores
+    6020: ("40", "4010"),   # commercial banks
+    6022: ("40", "4010"),   # state commercial banks
+    6036: ("40", "4010"),   # savings institutions, not federally chartered
+    6726: ("40", "4020"),   # unit investment trusts, face-amount certificate offices, closed-end funds
+    7372: ("45", "4510"),   # prepackaged software
+    7374: ("45", "4510"),   # computer processing and data preparation
+    7900: ("25", "2530"),   # amusement and recreation services
+}
+GICS_MANUAL_FILE = Path(__file__).with_name("gics_manual.json")
+
+
+def gics_manual(path: Path | None = None) -> dict[str, dict]:
+    """``ticker -> {"gsector", "ggroup", "reason"}`` of :data:`GICS_MANUAL_FILE`; a row needs both codes known."""
+    rows = json.loads(Path(path or GICS_MANUAL_FILE).read_text(encoding="utf-8"))["rows"]
+    for t, r in rows.items():
+        if r.get("gsector") not in GICS_SECTORS or r.get("ggroup") not in GICS_GROUPS or not r.get("reason"):
+            raise ValueError(f"{GICS_MANUAL_FILE.name}: {t} needs a known gsector, a known ggroup and a reason")
+    return rows
+
+
+def bridge_sector(ticker: str, gics: dict | None, sic, manual: dict[str, dict]) -> tuple[str, str, str | None]:
+    """``(sector, industry, gics_source)``: the manual file, then Compustat's GICS, then the SIC, else Unclassified."""
+    m = manual.get(ticker)
+    if m:
+        return (*sector_names(m["gsector"], m["ggroup"]), MANUAL_SOURCE)
+    if gics:
+        return (*sector_names(gics.get("gsector"), gics.get("ggroup")), CO_HGIC.name)
+    code = tier_rule.sic_code(sic)
+    if code in SHELL_SICS:
+        return SHELL_SPAC, SHELL_SPAC, SIC_SOURCE
+    if code in SIC_GICS:
+        return (*sector_names(*SIC_GICS[code]), SIC_SOURCE)
+    return UNCLASSIFIED, UNCLASSIFIED, None
 
 
 # ── The link ──────────────────────────────────────────────────────────────────────────────────────────────────
@@ -372,6 +428,7 @@ class SpineSecurity:
         for g in _rows(con, "SELECT * FROM stg_wrds_hgic WHERE indthru IS NULL ORDER BY gvkey, indfrom"):
             hgic[g["gvkey"]].append(g)
 
+        manual = gics_manual()
         rows, linked = [], {}
         for r in sec:
             sec_row, how, problem = link(r["ticker"], r["cik"], gvkeys_of_cik, securities, tickers_of_cik)
@@ -390,11 +447,11 @@ class SpineSecurity:
             # de-SPAC guard (``tier.shell_sector``).
             current = [g for g in hgic.get((sec_row or {}).get("gvkey"), []) if g.get("indthru") is None]
             g = current[-1] if current else None
+            sic = sic_of_gvkey.get((sec_row or {}).get("gvkey"))
             typ, typ_src = tier_rule.security_type(r["ticker"], r["name"], f_ok, (sec_row or {}).get("tpci"),
-                                                    exchange=r["exchange"],
-                                                    sic=sic_of_gvkey.get((sec_row or {}).get("gvkey")),
+                                                    exchange=r["exchange"], sic=sic,
                                                     gsector=(g or {}).get("gsector"))
-            sector, industry = sector_names(g and g.get("gsector"), g and g.get("ggroup"))
+            sector, industry, gics_src = bridge_sector(r["ticker"], g, sic, manual)
             isin = isin_mod.from_cusip(cusip)
             row = {
                 "ticker": r["ticker"], "cik": r["cik"], "name": r["name"], "exchange": r["exchange"],
@@ -410,8 +467,8 @@ class SpineSecurity:
                 "figi_source": figi_src,
                 "gsector": (g or {}).get("gsector"), "ggroup": (g or {}).get("ggroup"), "gind": (g or {}).get("gind"),
                 "gsubind": (g or {}).get("gsubind"), "gics_from": (g or {}).get("indfrom"),
-                "gics_source": CO_HGIC.name if g else None, "sector": sector, "industry": industry,
-                "sic": _sic_text(sic_of_gvkey.get((sec_row or {}).get("gvkey"))),
+                "gics_source": gics_src, "sector": sector, "industry": industry,
+                "sic": _sic_text(sic),
                 "source": SEC, "source_as_of": r["source_as_of"], "fetched_at": r["fetched_at"], "run_id": r["run_id"],
             }
             rows.append(row)

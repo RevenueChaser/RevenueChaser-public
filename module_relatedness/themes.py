@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 import numpy as np
 
 from RevenueChaser.core import rawstore
-from RevenueChaser.core.gics_map import MORNINGSTAR_SECTORS, UNCLASSIFIED, canonical_sector
+from RevenueChaser.core.gics_map import MORNINGSTAR_SECTORS, SHELL_SPAC, UNCLASSIFIED, canonical_sector
 from RevenueChaser.core.universe import SECTOR_COARSE_PREFIX
 
 from . import config, store as rel_store
@@ -898,11 +898,12 @@ def sector_coarse_id(run_id: str, sector: str) -> str:
 
 
 def _sector_votes(members, sector_by: dict[str, str]) -> Counter:
-    """Morningstar sector -> member count; names with no sector value (or ``Unclassified``) do not vote."""
+    """Morningstar sector -> member count; names with no sector value (``Unclassified``, ``Shell/SPAC``) do not
+    vote."""
     votes: Counter = Counter()
     for t in members:
         sec = canonical_sector(sector_by.get(t) or "")
-        if sec != UNCLASSIFIED:
+        if sec not in (UNCLASSIFIED, SHELL_SPAC):
             votes[sec] += 1
     return votes
 
