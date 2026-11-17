@@ -106,3 +106,19 @@ def test_the_read_api_gives_a_tickers_fails_by_settlement_date(src):
         ("AAPL", date(2026, 9, 16), 120345), ("GME", date(2026, 9, 17), 9000)]
     assert read.fails_to_deliver(["AAPL"], start=date(2026, 9, 17)) == []
     assert {r["source"] for r in rows} == {ftd.NAME}
+
+
+def test_a_half_the_sec_keeps_elsewhere_is_read_from_the_pages_link(src, http_mock):
+    """17 Nov 2026: 2020-02a to 2020-04b live under /files/node/add/data_distribution/, 2019-10a as ..._0.zip; they
+    answered 404 at the usual path and were marked absent. The page's link is asked, a marked half again."""
+    moved = "/files/node/add/data_distribution/cnsfails202002a.zip"
+    http_mock.add(ftd.INDEX_PATH, f'<a href="{moved}">Feb 2020 a</a> <a href="/files/data/fails-deliver-data/'
+                                  f'cnsfails201910a_0.zip">Oct 2019 a</a>'.encode())
+    http_mock.add(moved, ox.ftd_zip(["20200203|037833100|AAPL|7|APPLE INC (COM)|300.00"], "cnsfails202002a.txt"))
+    base.write_raw_json(ftd.none_path("202002a"), {"status": 404})
+    row = base.run_request({"dataset": ftd.NAME, "params": {"mode": "backfill", "from": "2020-02-01",
+                                                            "to": "2020-02-15"}}, sleep=lambda s: None)
+    assert row["result"] == "changed" and "202002a" in ftd.stored()
+    assert base.read_raw_json(ftd._meta(ftd.raw_path("202002a")))["url"] == "https://sec.test" + moved
+    assert ftd.parse_index('<a href="/x/cnsfails201910a_0.zip">', "https://sec.test/p") == {
+        "201910a": "https://sec.test/x/cnsfails201910a_0.zip"}
