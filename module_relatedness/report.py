@@ -10,7 +10,7 @@ residual-vs-SPY correlation.
 from __future__ import annotations
 
 import html as _html
-from datetime import datetime
+from datetime import datetime, timezone
 
 from RevenueChaser.core.html_safe import fill, script_json
 from RevenueChaser.module_comovement import config as comov_config
@@ -73,7 +73,8 @@ input[type=text]{flex:1;min-width:200px}
 def _friendly(as_of: str) -> str:
     try:
         dt = datetime.fromisoformat(str(as_of).replace("Z", "+00:00"))
-        return dt.strftime("%A, %B %d, %Y EOD")
+        # A run's time, not a market close (#391 R4): the weekly run lands on a Sunday night.
+        return (dt.astimezone(timezone.utc) if dt.tzinfo else dt).strftime("%A, %B %d, %Y %H:%M UTC")
     except (ValueError, TypeError):
         return str(as_of or "")
 
@@ -83,24 +84,30 @@ def _summary_html(payload: dict) -> str:
     pending = payload.get("pending") or 0
     no_text = payload.get("no_text") or 0
     short_text = payload.get("short_text") or 0
-    pairs = payload.get("n_pairs") or len(payload.get("scores") or [])
+    # The pairs the board stores and shows (each company's top peers), not every pair compared (#391 R4).
+    shown = sum(len(v) for v in (payload.get("peers") or {}).values())
+    compared = payload.get("n_pairs") or len(payload.get("scores") or [])
     # Which scorer the peers came from (#669): the board looked the same either way, so it says so (WP0, 11 Nov 2026).
-    method = ("similarity v2 (embeddings)" if payload.get("similarity") == "embedding"
-              else "tag cosine (v1)")
+    method = ("description embeddings + customers/suppliers" if payload.get("similarity") == "embedding"
+              else "shared tags (fallback)")
     # The names without filing text are not pending (#388 D4): they wait for a 10-K text, not for the next run.
     # Nor are the ones whose Item 1 came out under the splitter's own floor (#313): too short to profile from.
     no_text_line = f'<div class="d">{no_text:,} without filing text</div>' if no_text else ""
     short_text_line = (f'<div class="d">{short_text:,} with too short a filing text</div>'
                        if short_text else "")
+    no_parties = len(payload.get("no_parties") or [])
+    no_parties_line = (f'<div class="d">{no_parties:,} name no customer, supplier or competitor</div>'
+                       if no_parties else "")
     return "".join([
         f'<div class="stat"><div class="v">{n}</div>'
-        f'<div class="l">Profiled</div><div class="d">business profiles</div></div>',
+        f'<div class="l">Profiled</div><div class="d">business profiles</div>{no_parties_line}</div>',
         f'<div class="stat"><div class="v">{pending}</div>'
-        f'<div class="l">Pending</div><div class="d">next off-peak run</div>{no_text_line}{short_text_line}</div>',
+        f'<div class="l">Pending</div><div class="d">no SEC service read yet</div>{no_text_line}{short_text_line}</div>',
         f'<div class="stat"><div class="v">{payload.get("universe_total") or 0}</div>'
         f'<div class="l">Universe</div><div class="d">operating companies, no market-cap floor</div></div>',
-        f'<div class="stat"><div class="v">{pairs}</div>'
-        f'<div class="l">Pairs scored</div><div class="d">{method}</div></div>',
+        f'<div class="stat"><div class="v">{shown:,}</div>'
+        f'<div class="l">Peer pairs</div><div class="d">top {config.TOP_PEERS} per company of {compared:,} '
+        f'compared · {method}</div></div>',
     ])
 
 
@@ -254,7 +261,7 @@ function render(){
     panel.textContent = "Most related to";
     body.innerHTML = '<div class="empty">' + (DATA.length
       ? "No companies match the current filters."
-      : "No profiles yet. This board has no Fetch: the off-peak job RC-Relatedness-OffPeak builds them.") + '</div>';
+      : "No profiles yet. The weekly Sunday run (RC-Relatedness-OffPeak) copies them from the SEC service.") + '</div>';
     return;
   }
   var c = BY[FOCAL] || {};
@@ -319,15 +326,15 @@ function init(){
                        facets=["index", "mc", "gics", "earnings"]))})
 
     help_block = help_html(
-        "Each company was read from its latest 10-K/20-F and summarized into business "
-        "attributes (products, end markets, business model, customers, value-chain role). "
-        "Relatedness is how much two companies' attributes overlap — it measures "
+        "Each company's profile is the SEC reading service's answer for its latest 10-K, 20-F or 40-F: what it "
+        "sells, to whom, its customers and suppliers, its value-chain role. Relatedness measures "
         "<b>similar business</b>, not co-movement (see Co-movement) or trading links "
-        f"(see Value Chain). {n} companies · model <b>{model}</b>. <b>Fetch</b> (the off-peak run) "
-        "downloads missing filings from SEC and asks the LLM for new profiles; <b>Refresh</b> rebuilds "
-        "the board from the stored profiles and scores with no network call. A tag shared by many companies "
-        f"weighs less than a rare one; peers with fewer than {config.PEER_MIN_SHARED} shared tags are hidden, and "
-        "the percentile ranks a peer among the scored (non-zero) pairs.")
+        f"(see Value Chain). {n} companies · model <b>{model}</b>. <b>Fetch</b> (also the weekly Sunday run) "
+        "copies new profiles from the service (no model call here) and rescores every pair; <b>Refresh</b> rebuilds the board from "
+        f"the stored profiles and scores with no network call. A pair's score is {config.W_DO:g} × how alike the "
+        f"two business descriptions read (local embeddings) + {config.W_CHAIN:g} × the customer and supplier "
+        f"types and names they share + {config.W_STRUCT:g} × matching structure (business model, role). Each "
+        f"company shows its top {config.TOP_PEERS} peers; the percentile ranks a peer among every pair compared.")
     page = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
