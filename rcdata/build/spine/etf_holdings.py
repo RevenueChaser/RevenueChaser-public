@@ -10,7 +10,7 @@ relatedness peer sets can have a source. They read it (owner's decision E1 of #3
 |---|---|---|
 | SSGA SPDR (21) | the 11 sector funds, ``XBI XOP XME KRE XHB XRT KIE KBE KCE XPH`` | the issuer's daily holdings xlsx |
 | iShares (10) | ``SOXX IBB ITA ITB IGV IAK IYT IHI IHF ICLN`` | the product page's ``latest-holdings.csv`` |
-| Unusual Whales (21) | ``SMH PAVE AIQ LIT URA NLR AIRR SKYY WCLD ARKQ ROBO JETS TAN PBW GDX OIH CIBR HACK REMX ARKW ARKG`` | ``/etfs/<t>/holdings`` |
+| Unusual Whales (30) | ``SMH PAVE AIQ LIT URA NLR AIRR SKYY WCLD ARKQ ROBO JETS TAN PBW GDX OIH CIBR HACK REMX ARKW ARKG CLOU DTCR QTUM FINX GRID DRIV BLOK ESPO COPX`` | ``/etfs/<t>/holdings`` |
 | ARK, behind UW (1) | ``ARKQ``, on a day UW holds nothing for it | ARK's daily holdings CSV |
 
 **The issuer of each fund was confirmed by fetching it once, 30 Oct 2026**, not taken from memory: IAK is iShares'
@@ -26,12 +26,12 @@ the browser. None of those is a file, so those four stay UW's alone and are not 
 which source served a fund's day (``uw-ARKQ.json`` or ``ark-ARKQ.csv``), and the run note names each fallback.
 
 The funds are the board's ``sector`` and ``theme`` ETFs (``core/rotation_reference.ROTATION_ETFS``) less GLD, SLV and
-USO — commodity trusts, with no equity holdings — plus the 14 in ``EXTRA`` that the peer sets need and the board
+USO — commodity trusts, with no equity holdings — plus the 10 in ``EXTRA`` that the peer sets need and the board
 does not run. **UW's answer is kept whole:** the top-10 cap is the Rotation board's own
 (``module_sector_rotation/etf_holdings.py``), and that board's ``raw.duckdb.etf_holdings`` is untouched by this
 dataset, which writes only the market store.
 
-One request per fund per run (31 issuer files, 21 UW calls, plus ARK's file on a day it is needed), each inside
+One request per fund per run (31 issuer files, 30 UW calls, plus ARK's file on a day it is needed), each inside
 its provider's day cap.
 
 **The sweep (#358, avo 1-2 Nov 2026), off until ``RC_ETF_HOLDINGS_SWEEP=1``** (avo, 2 Nov: UW answers at most 250
@@ -124,12 +124,13 @@ UW_FUNDS = ("SMH", "PAVE", "AIQ", "LIT", "URA", "NLR", "AIRR", "SKYY", "WCLD", "
             "GDX", "OIH", "CIBR",
             # the board's themes of 17 Nov 2026 (D1, avo's watch lists) with no keyless file here: Amplify (HACK),
             # VanEck (REMX); ARKW and ARKG from UW, as ARKQ is, with no ARK fallback named yet
-            "HACK", "REMX", "ARKW", "ARKG")
+            "HACK", "REMX", "ARKW", "ARKG",
+            # the themes the Relatedness research added (17 Nov 2026), none with a keyless issuer file wired here
+            "CLOU", "DTCR", "QTUM", "FINX", "GRID", "DRIV", "BLOK", "ESPO", "COPX")
 # The funds the relatedness peer sets need that the rotation board does not run (every ETF of
 # ``module_relatedness/validation/sets/etf_sets.json``; the review of 9 Nov 2026 added the last ten).
-# XHB, XRT and IHI joined the board on 17 Nov 2026, so they are the board's now and not listed here.
-EXTRA = frozenset({"KIE", "IAK", "ITB", "TAN", "PBW",
-                   "KBE", "KCE", "XPH", "IYT", "IHF", "ICLN", "GDX", "OIH", "CIBR"})
+# XHB, XRT, IHI, TAN, ICLN, GDX and CIBR joined the board's themes on 17 Nov 2026, so they are the board's now.
+EXTRA = frozenset({"KIE", "IAK", "ITB", "PBW", "KBE", "KCE", "XPH", "IYT", "IHF", "OIH"})
 # The sweep (#358, avo 1-2 Nov 2026): every other ETF of the spine's ``etf`` table, no ETN and no CEF, from UW once
 # every ``SWEEP_DAYS``. One run asks at most ``SWEEP_PER_RUN`` of them (the step's own guard, under the ``uw`` cap);
 # the rest wait for the next run, which goes on with the same sweep day.

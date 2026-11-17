@@ -33,7 +33,10 @@ _ROTATION_KEYS = (
     "AIQ", "ARKQ", "IGV", "ROBO", "SKYY", "SMH", "SOXX", "WCLD", "AIRR", "ITA", "PAVE",
     "GLD", "LIT", "NLR", "SLV", "URA", "USO", "XME", "XOP", "IBB", "XBI", "JETS", "KRE",
     # added 17 Nov 2026 (Sector Rotation review, D1 and avo's watch lists)
-    "IHI", "HACK", "XHB", "XRT", "ARKW", "REMX", "ARKG", "QQQ", "RSP", "VUG", "VTV", "MAGS",
+    "IHI", "HACK", "XHB", "XRT", "ARKW", "REMX", "ARKG",
+    "CIBR", "ICLN", "TAN", "GDX", "CLOU", "DTCR", "QTUM", "FINX", "GRID", "DRIV", "BLOK", "ESPO", "COPX",
+    "QQQ", "RSP", "VUG", "VTV", "MAGS",
+    "IYT", "PEJ", "KBE", "KCE", "KIE", "XTL", "VNQ",
     "EEM", "IWM", "HYG", "LQD", "TLT",
     "EWZ", "EWY", "FXI", "INDA", "EWT", "EWC", "EWA", "EWJ", "EWU", "MCHI", "EWG", "EWW",
     "VNM", "EWS", "EIDO", "ECH", "EWP", "KSA", "EWM", "EPOL", "THD", "EEMV", "EZA", "TUR",
