@@ -71,3 +71,19 @@ SERVING_SCHEMA_VERSION["sec_reads"] = 2
 # sec_reads 3 (avo, 16 Nov 2026): ``read_answer`` gains ``report_date``, the period the filing reports on, so a
 #             board can say which fiscal year an answer is about. No live rows to checkpoint: no question is registered.
 SERVING_SCHEMA_VERSION["sec_reads"] = 3
+
+# A table whose row count is a **chosen** list and not an accumulation, so a smaller count is the intended outcome
+# of the choice changing and not a sign of a partial build; it must not need a request-wide ``allow_shrink`` (which
+# would relax every other table of the kind with it). The "empties" guard still applies to all of them.
+#   ``my_universe``: avo's rules plus his manual removes, so a shorter list is what he asked for.
+#   ``economic_event``: UW's economic calendar is a forward-looking window ("this week and next"), fetched hourly,
+#     and a snapshot day's partition is replaced whole by that day's newest fetch
+#     (``build/uw_economic_calendar.py``). So an event that has rolled out of the window, or that UW dropped, is
+#     gone from the day it was fetched on: the newest fetch of a day holds fewer rows than the first one, by the
+#     source's choice, not ours. Read from ``RC-Build.log`` on homesrv, 14 Nov 2026: a build served 114 rows
+#     against 126 live (-9.5 %), and that one refused swap failed the whole ``market`` build every hour from
+#     00:05 UTC on (one serving file per kind, one swap: ``build/base.py`` ``build_kind_many``).
+#   ``etf_class``: one row per ETF of ``my_universe`` (``build/spine/etf_class.py``, #1031), so it shrinks with it.
+# Kept here and not in ``serving.py`` since #1031: that file is in every kind's rules fingerprint, so a table added
+# to this list there was a whole build of all six kinds (the second reviewer's finding, 17 Nov 2026).
+SHRINKS_BY_CHOICE = ("my_universe", "economic_event", "etf_class")
