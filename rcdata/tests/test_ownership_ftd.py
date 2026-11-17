@@ -40,7 +40,7 @@ def _served(sql: str, *args) -> list[tuple]:
 
 
 def _asked(http_mock) -> list[str]:
-    return [str(c.url).rsplit("/", 1)[1] for c in http_mock.calls("fails-deliver-data")]
+    return [str(c.url).rsplit("/", 1)[1] for c in http_mock.calls("/cnsfails")]       # the zips, not the page
 
 
 def test_the_first_run_takes_the_newest_published_half(src, http_mock):
