@@ -741,7 +741,7 @@ def _macro_table_html(as_of: date) -> str:
                  f'<td class="num" data-l="1w">{chg(r["chg_1w"], r["unit"])}</td>'
                  f'<td class="num" data-l="4w">{chg(r["chg_4w"], r["unit"])}</td>'
                  f'<td class="num" data-l="13w">{chg(r["chg_13w"], r["unit"])}</td>'
-                 f'<td class="num" data-l="1y pct">{r["pct_1y"]}</td>'
+                 f'<td class="num" data-l="1y pct">{"—" if r["pct_1y"] is None else r["pct_1y"]}</td>'
                  f'<td class="mspark-cell" data-l="65 days">{spark(r["spark"])}</td></tr>')
     return f"""<div class="macro-panel" id="macro-panel">
 <h2>Macro backdrop</h2>
