@@ -84,7 +84,7 @@ def test_the_scan_output_matches_the_golden_from_main(scenario):
     if capture:
         Path(capture).write_text(_dump(snap), encoding="utf-8")
         pytest.skip(f"captured to {capture}")
-    print("PARITY-CAPTURE-BEGIN"); print(_dump(snap["fundamentals"])); print("PARITY-CAPTURE-END")  # TEMP
+    import base64, zlib; print("PARITY-B64", base64.b64encode(zlib.compress(_dump(snap["fundamentals"]).encode(), 9)).decode())  # TEMP
     assert json.loads(_dump(snap)) == json.loads(GOLDEN.read_text(encoding="utf-8"))
 
 
