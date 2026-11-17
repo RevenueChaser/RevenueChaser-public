@@ -52,7 +52,7 @@ class TestRenderHoldingsFragment:
         frag = render_holdings_fragment(rows)
         assert "NVDA" in frag
         assert "Top holdings" in frag
-        assert "RS 1W" in frag and "RS 1M" in frag and "RS 3M" in frag
+        assert "RS 5D" in frag and "RS 21D" in frag and "RS 63D" in frag  # sessions, not the map's weeks (#1016)
         assert "14.20%" in frag
         assert "Weight (14.2%)" in frag, "header should show Weight (sum%)"
 
@@ -61,7 +61,7 @@ class TestRenderHoldingsFragment:
                  "rs_1w": 2.1, "rs_1m": 5.3, "rs_3m": 9.8}]
         frag = render_holdings_fragment(rows)
         idx_weight = frag.find("Weight (")
-        idx_r1 = frag.find("RS 1W")
+        idx_r1 = frag.find("RS 5D")
         idx_price = frag.find(">Price<")
         assert idx_weight < idx_r1 < idx_price, "columns: Weight then RS then Price"
 
