@@ -34,7 +34,7 @@ def test_score_rows():
 
 def test_gate_rows_shape():
     rows = scores.gate_rows(_results())
-    assert len(rows) == 2 * 21  # minervini 8 + weinstein 5 + qullamaggie 6 + direction 2
+    assert len(rows) == 2 * 22  # minervini 8 + weinstein 5 + qullamaggie 7 + direction 2
     assert {r["gate"] for r in rows} == {"minervini", "weinstein", "qullamaggie", "direction"}
     assert all(set(r) == {"ticker", "gate", "rule_id", "passed", "actual", "unit"}
                for r in rows)
@@ -42,6 +42,6 @@ def test_gate_rows_shape():
 
 def test_persist_writes_both(rawstore_tmp_db):
     out = scores.persist(_results())
-    assert out == {"scores": 2, "gates": 42}
+    assert out == {"scores": 2, "gates": 44}
     assert rawstore.count("swing_scores") == 2
-    assert rawstore.count("swing_gates") == 42
+    assert rawstore.count("swing_gates") == 44

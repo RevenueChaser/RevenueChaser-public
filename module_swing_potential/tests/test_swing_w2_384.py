@@ -48,10 +48,10 @@ def _row(ticker: str, ind: dict, **over) -> dict:
 # ── a) the 40/30/30 quality ──────────────────────────────────────────────────
 
 def test_quality_403030_known_cases():
-    assert quality_403030(8, 5, 6) == 100
-    assert quality_403030(4, 0, 3) == 35
+    assert quality_403030(8, 5, 7) == 100          # Qullamaggie has 7 rules since the Swing review's B2
+    assert quality_403030(4, 0, 3) == 33           # round(20 + 0 + 12.86)
     assert quality_403030(0, 0, 0) == 0
-    assert quality_403030(1, 1, 1) == 16          # round(5 + 6 + 5)
+    assert quality_403030(1, 1, 1) == 15          # round(5 + 6 + 4.29)
 
 
 # ── b) RS ranks only: Minervini passes on the 7 price rules ──────────────────
@@ -129,9 +129,9 @@ def test_score_rows_carry_the_new_quality_and_direction_columns():
     assert row["multiplier"] == 3                  # the number of methods passed stays in the row
 
 
-def test_gate_rows_are_21_per_name_including_direction():
+def test_gate_rows_are_22_per_name_including_direction():
     rows = scores.gate_rows([_row("AAA", _ind()), _row("BBB", _ind())])
-    assert len(rows) == 2 * 21
+    assert len(rows) == 2 * 22                 # 8 + 5 + 7 + 2 (Qullamaggie's tightening, Swing review B2)
     assert {r["gate"] for r in rows} == {"minervini", "weinstein", "qullamaggie", "direction"}
 
 
@@ -279,7 +279,7 @@ var n = 0, ids = [];
 for(var k in GATE_SPEC.rules){ n++; ids.push(k); }
 console.log(JSON.stringify({n: n, dir: GATE_SPEC.gates.direction, rs: GATE_SPEC.rules.rs_ge_70.unit}));
 """, tmp_path)
-    assert out["n"] == 21
+    assert out["n"] == 22
     assert out["dir"] == "Direction"
     assert out["rs"] == "rating"
 
