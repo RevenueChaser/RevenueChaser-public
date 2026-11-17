@@ -427,9 +427,8 @@ function openGate(btn){
   var gate = (GATES[t]||{})[g];
   if(!gate) return;
   var period = PERIODS[t] || "";
-  // Review F1: Quality mixes two time bases; its window names both.
-  if(g === "quality" && ANCHORS[t])
-    period = "growth: TTM " + period + " · ROIC, gross margin, net debt: " + ANCHORS[t];
+  // avo D1 (17 Nov 2026): one period per card, so every gate's window names the card's one period.
+  if(ANCHORS[t]) period = ANCHORS[t];
   document.getElementById("m-title").textContent = gate.name;
   document.getElementById("m-sub").textContent = t + " — " + gate.score + (gate.passed ? " (PASS)" : " (FAIL)") + (period ? " · " + period : "");
   var rules = gate.rules.map(function(r){

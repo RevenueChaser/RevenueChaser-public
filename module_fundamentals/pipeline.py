@@ -415,7 +415,7 @@ def _quarters_after(quarterly: list[dict], year_end, upto=None) -> list[dict]:
 
 
 def _quality_metrics(annual: list[dict], quarterly: list[dict] | None = None, *, infer_debt_free: bool = True,
-                     debt_note: dict | None = None) -> dict:
+                     debt_note: dict | None = None, trailing: bool = True) -> dict:
     """Quality's three figures and their basis (G6, build plan PR 13: Quality reads the quarter store).
 
     ``quality_basis`` ``TTM`` when a 10-Q follows the anchor year and the quarters give every figure the year gives
@@ -440,7 +440,9 @@ def _quality_metrics(annual: list[dict], quarterly: list[dict] | None = None, *,
                              for q in _quarters_after(quarterly or [], end)),
                      note=_debt.note_debt(a, debt_note))
     out = {**fy, "quality_basis": "FY", "quality_period_end": end.isoformat() if end else None}
-    ttm_rec = _quality_ttm(annual, quarterly or [], i)
+    # avo D1 (17 Nov 2026): one period per card. ``trailing`` False when the Rule of 40 reads the fiscal year, so
+    # Quality reads it too (``_compute_row``).
+    ttm_rec = _quality_ttm(annual, quarterly or [], i) if trailing else None
     if ttm_rec is not None:
         # The same rule on the trailing year, read on the quarter its balance sheet comes from: the debt tags are a
         # balance sheet's, so they are that quarter's and never the year's. The anchor year has to clear the rule
@@ -455,7 +457,10 @@ def _quality_metrics(annual: list[dict], quarterly: list[dict] | None = None, *,
                           and all(_debt.debt_free(x, quarterly=True)
                                   for x in _quarters_after(quarterly or [], end, ttm_rec["period"])))
         # The year's net income stays (P/E reads its own TTM, ``_ttm_metrics``); P/B reads the newest equity.
-        if all(ttm[k] is not None or fy[k] is None for k in ("gross_margin", "roic", "net_debt_ebitda", "net_cash")):
+        # avo D1 (17 Nov 2026): the trailing year stands even where it is worse: a loss with net debt fails the
+        # leverage rule on it, never on the older profitable year (review N1). The one exception is a debt total
+        # only the 10-K's note gives (#737): the trailing balance sheet cannot carry it, so the card reads the year.
+        if not (ttm["debt_basis"] is None and fy["debt_basis"] == _debt.NOTE):
             out = {**ttm, "net_income": fy["net_income"], "quality_basis": "TTM",
                    "quality_period_end": ttm_rec["period"]}
     return out
@@ -629,7 +634,11 @@ def _compute_row(row: dict, spy_df, no_fetch: bool = False, spine: dict | None =
     # old drop): the name is no longer dropped, so Quality and Momentum still read it; the screener makes that Rule
     # of 40 unknown and the card DISTORTED (screeners.evaluate_rule_of_40, is_distorted).
     qual = _quality_metrics(annual, quarterly, infer_debt_free=(emeta or {}).get("us_gaap") is not False,
-                            debt_note=(emeta or {}).get("debt_note"))
+                            debt_note=(emeta or {}).get("debt_note"), trailing=ttm["ro40_basis"] == "TTM")
+    if ttm["ro40_basis"] == "TTM" and qual["quality_basis"] != "TTM":
+        # avo D1: Quality could not read the trailing year, so the Rule of 40 reads the fiscal year with it.
+        ttm = {**ttm, **{k: v for k, v in _ttm_metrics([], annual).items()
+                         if k in ("rev_growth_ttm", "fcf_margin", "ro40", "ro40_basis")}}
     # #645 (avo 10 Nov, option A): the cap and the name are the universe (spine) row's, never Yahoo's ``.info``.
     market_cap = _to_float(row.get("market_cap"))
 
