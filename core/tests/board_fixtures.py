@@ -371,6 +371,19 @@ def _leaps(tmp_path, monkeypatch):
                               "rows": [row]})
 
 
+def _hit_rate(tmp_path, monkeypatch):
+    """The Hit Rate board (#25): a readable line and a dirty record, every free-text value hostile."""
+    from datetime import date, timedelta
+    from RevenueChaser.module_hit_rate import board
+    d0 = date(2026, 1, 5)
+    picks = [{"source": H("source"), "subject": f"T{i}", "forecast_date": d0 + timedelta(days=i % 3),
+              "model_version": H("model_version"), "horizon_days": 30, "status": "closed", "mfe": 0.2}
+             for i in range(30)]
+    picks.append({"source": H("source"), "subject": H("subject"), "forecast_date": d0,
+                  "model_version": H("model_version"), "horizon_days": 30, "status": "split_check", "mfe": 3.0})
+    return board.render_html(board.build(picks, []))
+
+
 def _watchlists(tmp_path, monkeypatch):
     """The Watch lists board (#786): one list, one section, one row, drawn by the browser from WL_DATA.
 
@@ -597,6 +610,7 @@ BOARDS: dict[str, Board] = {
     "module_sec_13f": Board(_sec_13f),
     "module_leaps": Board(_leaps),
     "module_watchlists": Board(_watchlists),
+    "module_hit_rate": Board(_hit_rate),
     # Executes nothing, but "<!--<script>" in a name still breaks its script.
     "module_settings": Board(_settings),
     # Not a data board: the dashboard's own log files, whose request lines carry attacker-chosen paths.
