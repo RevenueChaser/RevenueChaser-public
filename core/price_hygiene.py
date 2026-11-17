@@ -20,17 +20,18 @@ import pandas as pd
 REASONS = ("locked", "unexplained_jump", "repeat_jump", "broken_series", "bad_wick")
 LABELS = {
     "locked": "Price not moving (5+ identical closes in the last 60 sessions)",
-    "unexplained_jump": "One-day spike over 35 % that reverses within 2 sessions, with no corporate action",
+    "unexplained_jump": ("One-day spike over 35 % in the last 60 sessions that reverses within 2 sessions, "
+                         "with no corporate action"),
     "repeat_jump": "Two or more one-day moves over 25 % in the last 60 sessions",
     "broken_series": "Gap of more than 10 sessions in the bars",
-    "bad_wick": "A bar whose high or low is 1.5x its body",
+    "bad_wick": "A bar in the last 60 sessions whose high or low is 1.5x its body",
 }
 LOCKED_RUN = 5            # consecutive sessions with an identical close
 JUMP = 0.35               # unexplained single-session move, on the nominal closes
 REPEAT_JUMP = 0.25        # two or more of these in the window
 GAP_SESSIONS = 10         # missing sessions in a row, against the bars' own business days
 WICK = 1.5                # high / max(open, close), or min(open, close) / low
-RECENT = 60               # sessions ``locked`` and ``repeat_jump`` look at (#891): a quiet or wild year ago is no defect
+RECENT = 60               # sessions every gate but ``broken_series`` looks at (#891): a year-old move is no defect
 REVERT = 0.8              # share of a spike taken back for it to be a bad print, not a move (#891)
 REVERT_SESSIONS = 2       # ... within this many sessions after it
 DROP_MAX_SHARE = 0.05     # when dropping is turned on: more flagged than this is a data failure, nothing drops
@@ -49,7 +50,9 @@ def _moves(frame: pd.DataFrame) -> pd.Series:
 def unexplained_jump(nominal: pd.DataFrame, adjusted: pd.DataFrame) -> str | None:
     """A bad print: a nominal move over ``JUMP`` that the adjusted series repeats (no split or other action explains
     it) and then takes back by ``REVERT`` within ``REVERT_SESSIONS``. A move that holds is a real move (#891: two
-    years of small caps hold many), not a series a setup cannot be read off."""
+    years of small caps hold many), not a series a setup cannot be read off. Only a spike in the last ``RECENT``
+    sessions counts (#891; the 16 Nov measurement flagged 8.5 % of the universe over the whole bar window)."""
+    nominal = nominal.tail(RECENT + 1)
     big = _moves(nominal) > JUMP
     if not big.any():
         return None
@@ -79,6 +82,9 @@ def broken_series(nominal: pd.DataFrame) -> str | None:
 
 
 def bad_wick(nominal: pd.DataFrame) -> str | None:
+    """A bar of the last ``RECENT`` sessions whose wick runs ``WICK`` times past its body (#891: 12.2 % of the
+    universe was flagged over the whole bar window, mostly for prints a year or more old)."""
+    nominal = nominal.tail(RECENT)
     body_hi = nominal[["Open", "Close"]].max(axis=1)
     body_lo = nominal[["Open", "Close"]].min(axis=1)
     bad = (nominal["High"] > WICK * body_hi) | (body_lo > WICK * nominal["Low"])

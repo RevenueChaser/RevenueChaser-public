@@ -603,14 +603,41 @@ def _flat(prices, tickers) -> list[str]:
                   if t in tickers)
 
 
+def _flat_in_window(prices, tickers, window: int, horizon: int, whole=None) -> list[str]:
+    """Flat printers judged on the sessions the returns use (review 17 Nov 2026, F7), not the whole stored history:
+    a name that sat still two years ago and trades today is clustered. ``whole`` holds the candidates' full history when
+    ``prices`` is a windowed read; it is cut to the same first session."""
+    span = prices.tail(int(window) + max(1, int(horizon)))
+    if span.empty:
+        return []
+    src = prices if whole is None or whole.empty else whole
+    return _flat(src.loc[span.index[0]:], tickers)
+
+
+def _stale(prices, tickers, prices_through, window: int, horizon: int) -> list[str]:
+    """Names with bars in the run's window but none in its last ``STALE_SESSIONS + 1`` sessions up to
+    ``prices_through`` (review 17 Nov 2026, F6). A name with no bar in the window is left to the short-history drop,
+    so a full and a windowed read agree."""
+    if prices is None or prices.empty or not prices_through:
+        return []
+    upto = prices.tail(int(window) + max(1, int(horizon))).loc[:pd.Timestamp(prices_through)]
+    want = set(tickers)
+    cols = [c for c in upto.columns if c in want]
+    if not cols or upto.empty:
+        return []
+    recent = upto[cols].tail(int(config.STALE_SESSIONS) + 1).notna().any()
+    seen = upto[cols].notna().any()
+    return sorted(c for c in cols if seen[c] and not recent[c])
+
+
 def _window_prices(price_tickers, tickers, bench_ticker, eff, horizon):
     """A store-only run's inputs from its window of the prices store (#379 COM-3): no number moves.
 
     The full read loaded every stored bar (two years of every name) only to use the last ``window + horizon``
     sessions. Three facts still need the whole history and come from one SQL read (``ohlc.history_facts``): each
     name's first and last bar (no prices, the median last date, listed recently vs missing bars), the session
-    index (a stale benchmark, where the window starts), and the flat printers, judged on the whole history by
-    the same ``flat_print_names`` over the few candidates SQL finds. The frame keeps every column the full
+    index (a stale benchmark, where the window starts), and the flat-printer candidates SQL finds, judged on the
+    run's window by the same ``flat_print_names`` (F7). The frame keeps every column the full
     read has (a name with bars only before the window is still dropped, not "no prices").
 
     Returns ``(prices, last, first, flat_prints, bench_stale)``.
@@ -637,7 +664,7 @@ def _window_prices(price_tickers, tickers, bench_ticker, eff, horizon):
     # A name's first bar stays its listing even when it falls after a stale benchmark's cut: it then listed after
     # the window began, not "missing bars" (Co-movement review N3).
     first = {t: pd.Timestamp(d) for t, d in facts["first"].items()}
-    return prices, last, first, _flat(whole, tickers), cut is not None
+    return prices, last, first, _flat_in_window(prices, tickers, eff.window, horizon, whole), cut is not None
 
 
 def _daily_under(prices, ret, horizon: int):
@@ -710,16 +737,20 @@ def run(no_fetch: bool = False, tickers: list[str] | None = None,
         # Flat printers are judged on the history actually used (after any stale
         # truncation), and get their own bucket: they have prices and history, so
         # they belong in neither ``no_prices`` nor ``dropped``.
-        flat_prints = _flat(prices, tickers)
+        flat_prints = _flat_in_window(prices, tickers, eff.window, horizon)
     prices_through = _median_date([d for t, d in last.items() if t in tickers])
     no_prices = sorted(t for t in tickers if t not in last)
     if flat_prints:
         prices = prices.drop(columns=[t for t in flat_prints if t in prices.columns])
+    # F6: a name sessions behind is counted with the missing bars, not clustered on a window that ends early.
+    stale = _stale(prices, tickers, prices_through, eff.window, horizon)
+    if stale:
+        prices = prices.drop(columns=stale)
 
     ret, dropped = returns_mod.log_returns(prices, window=eff.window,
                                            min_obs=eff.min_obs, horizon=horizon)
     bench_short = bool(bench_ticker) and (bench_ticker in dropped or bench_ticker in ret.columns)
-    dropped = [t for t in dropped if t in tickers]
+    dropped = sorted({t for t in dropped if t in tickers} | set(stale))
     short_split = split_short_history(prices, dropped, eff.window, horizon, first=first)
 
     benchmark_applied = False

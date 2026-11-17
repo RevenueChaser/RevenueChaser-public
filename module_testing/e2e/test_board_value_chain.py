@@ -54,4 +54,4 @@ class TestEmptyStore:
     def test_a_board_with_no_data_renders_an_empty_state(self, dashboard):
         r = dashboard.view("module_value_chain")
         assert r.status_code == 200
-        assert "No companies with supplier / customer edges" in r.text
+        assert "No companies with supplier / customer links yet" in r.text

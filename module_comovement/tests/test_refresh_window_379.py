@@ -4,7 +4,7 @@ The engine used to load every stored bar of every name (two years, ~1.96M rows l
 serve a stored run. A store-only run now reads the bars from the first session its numbers use
 (``ohlc.price_frame(start=...)``) and takes the three facts that need the whole history from SQL instead: each name's
 first and last session, the sessions of the union index, and the halted / flat names (only the few candidates SQL
-finds are read whole and judged by the same ``returns.flat_print_names``). A Fetch and a precompute still read the
+finds are read whole, cut to the window and judged by the same ``returns.flat_print_names``). A Fetch and a precompute still read the
 whole history (the lagged test needs it).
 
 Since the D01 switch the bars are stored ones, the prices store's since PR 8 (``rcdata.read.ticker_bars(
@@ -47,7 +47,7 @@ def _edge_store(stale_spy: bool = False) -> list[str]:
     def walk() -> pd.Series:
         return pd.Series(100 * np.exp(np.cumsum(rng.normal(0, 0.01, len(idx)))), index=idx)
 
-    # Flat for 12 sessions long before any window: flagged only on the whole history.
+    # Flat for 12 sessions long before any window: not flagged, flat printers are judged on the window (F7).
     s = walk(); s.iloc[40:52] = s.iloc[40]; extra["FLATOLD"] = s
     # Flat for 12 sessions inside every window.
     s = walk(); s.iloc[-16:-4] = s.iloc[-16]; extra["FLATNEW"] = s
@@ -114,10 +114,11 @@ def test_a_stale_benchmark_window_matches_the_full_read(rawstore_tmp_db, monkeyp
 
 
 def test_the_edge_names_are_judged_on_the_whole_history(rawstore_tmp_db):
-    """The fixture means what it says: the full-history facts decide these names."""
+    """The fixture means what it says: the full-history facts decide these names, except the flat printers, which
+    are judged on the window (review 17 Nov 2026, F7)."""
     tickers = _edge_store()
     p = engine.run(no_fetch=True, tickers=tickers, window=252)
-    assert {"FLATOLD", "FLATNEW"} <= set(p["flat_prints"]) and "THIN" not in p["flat_prints"]
+    assert "FLATNEW" in p["flat_prints"] and not {"FLATOLD", "THIN"} & set(p["flat_prints"])
     assert {"OLDONLY", "GAPPY"} <= set(p["dropped"]) and "SHORT" in p["dropped"]
     assert "OLDONLY" not in p["no_prices"]
     f = p["funnel"]
