@@ -125,6 +125,27 @@ def test_open_read_spills_into_its_own_process_directory():
             assert again.execute("SELECT count(*) FROM t").fetchone()[0] == 2
 
 
+def test_with_the_ssd_temp_root_set_a_reader_spills_under_it(tmp_path, monkeypatch):
+    """avo 17 Nov 2026: one temp root per disk. ``RC_TMP_DIR`` (homesrv: /srv/tmp/rc) takes the per-process spill
+    out of the market folder; a hash of the file's folder keeps two same-named files of one process apart (two
+    DuckDB instances on one spill folder is the 17 Nov crash)."""
+    monkeypatch.setenv("RC_TMP_DIR", str(tmp_path / "ssdtmp"))
+    a = serving.read_spill_dir(tmp_path / "one" / "market.duckdb")
+    b = serving.read_spill_dir(tmp_path / "two" / "market.duckdb")
+    assert a.parent == b.parent == tmp_path / "ssdtmp" / "duckdb-read" and a.parent.is_dir()
+    assert a != b and a.name.startswith("market.duckdb.") and a.name.endswith(f".tmp-{os.getpid()}")
+    assert serving.stale_spill(a.parent / a.name.replace(f".tmp-{os.getpid()}", ".tmp-999999999")) is False  # no dir
+
+
+def test_scratch_dir_is_the_hdd_temp_root_when_set_else_the_fallback(tmp_path, monkeypatch):
+    monkeypatch.delenv("RC_TMP_HDD_DIR", raising=False)
+    assert serving.scratch_dir("13f_sets", tmp_path / "raw") == tmp_path / "raw"
+    assert serving.scratch_dir("restore-check", None) is None
+    monkeypatch.setenv("RC_TMP_HDD_DIR", str(tmp_path / "hddtmp"))
+    got = serving.scratch_dir("13f_sets", tmp_path / "raw")
+    assert got == tmp_path / "hddtmp" / "13f_sets" and got.is_dir()
+
+
 def test_open_read_resolves_the_path_on_every_call(tmp_path, monkeypatch):
     _build(2)
     with serving.open_read("market") as con:

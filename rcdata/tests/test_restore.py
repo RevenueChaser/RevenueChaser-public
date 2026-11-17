@@ -128,3 +128,16 @@ def test_a_week_folder_is_restored_whole_and_verified(backup_dir, tmp_path, monk
 
 
 
+
+
+def test_the_restore_check_scratch_goes_under_the_hdd_temp_root(backup_dir, tmp_path, monkeypatch):
+    """Before 17 Nov 2026 the monthly check restored a board copy into the system temp folder: a RAM tmpfs on
+    homesrv. With ``RC_TMP_HDD_DIR`` set it goes to ``<root>/restore-check`` on the HDD."""
+    import contextlib
+    import tempfile
+    monkeypatch.setenv("RC_TMP_HDD_DIR", str(tmp_path / "hddtmp"))
+    seen, real = [], tempfile.mkdtemp
+    monkeypatch.setattr(restore.tempfile, "mkdtemp", lambda **kw: seen.append(kw.get("dir")) or real(**kw))
+    with contextlib.suppress(Exception):
+        restore.restore_check()
+    assert seen == [tmp_path / "hddtmp" / "restore-check"]
