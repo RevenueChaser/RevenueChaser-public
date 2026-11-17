@@ -29,7 +29,9 @@ _TECH = {"price": 100.0, "dist_52w_pct": 0.05, "vol_ratio": 1.6, "above_sma50": 
 
 
 def _rec(fy, revenue, **kw) -> dict:
-    base = {"fiscal_year": fy, "revenue": revenue, "gross_profit": revenue * 0.5 if revenue else None}
+    # A filed debt total, so no card here is read debt-free (decision B1, flagged ``debt_inferred_none``).
+    base = {"fiscal_year": fy, "revenue": revenue, "gross_profit": revenue * 0.5 if revenue else None,
+            "total_debt": 10.0}
     base.update(kw)
     return base
 

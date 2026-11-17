@@ -556,6 +556,7 @@ var FLAG_TEXT = {{
   suspicious_growth: "Growth above +500%: check the filing (sorts with the unknowns)",
   revenue_nonpositive: "Revenue of zero or less: margin unknown",
   gross_profit_exceeds_revenue: "Gross profit above revenue: margin unknown",
+  debt_inferred_none: "No debt line tagged and no interest paid: net debt read as zero debt (as on Fundamentals)",
   mixed_share_basis: "Share counts on different bases (diluted against basic): dilution unknown",
   price_bar_older: "Price and momentum from an older session than the board's (a halt or a gap in the stored bars)",
   no_recent_revenue: "No revenue figure in the last {engine.RULES["stale_days"]} days (the newer reports carry none): revenue unknown, no tier"

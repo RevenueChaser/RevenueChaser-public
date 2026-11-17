@@ -32,6 +32,7 @@ from RevenueChaser.core.providers import sec_edgar
 from RevenueChaser.core import universe as _spine
 from RevenueChaser.core.taxonomy import themes_for_many
 from RevenueChaser.module_asymmetric_growth import sector_rules          # #18: AG's own rule, beside it now
+from RevenueChaser.module_fundamentals import debt as _debt              # decision B1 (avo, 17 Nov 2026)
 from RevenueChaser.rcdata import opens  # #566: pooled reads count for this run
 
 logger = logging.getLogger(__name__)
@@ -122,6 +123,24 @@ def _trailing_years(annual: list[dict], quarterly: list[dict], ai: int | None) -
             return None
         out.append(r)
     return out[::-1]
+
+
+def _debt_free(financials: dict, annual: list[dict], ai: int | None, ttm: dict | None) -> bool:
+    """Decision B1 (avo, 17 Nov 2026): the Fundamentals rule (``module_fundamentals.debt``, #737) on this card's
+    record. A US-GAAP filer whose anchor year tags no debt and pays no interest, and so does every quarter after it
+    (up to the trailing year's balance-sheet quarter on a TTM card), owes nothing; anything else stays unknown."""
+    if ai is None or financials.get("us_gaap") is False or not _debt.debt_free(annual[ai]):
+        return False
+    end = fiscal_year.period_end(annual[ai])
+    if end is None:
+        return False
+    e0 = end.isoformat()
+    upto = str(ttm["period"])[:10] if ttm else None
+    later = [q for q in financials.get("quarterly") or []
+             if str(q.get("period"))[:10] > e0 and (upto is None or str(q.get("period"))[:10] <= upto)]
+    if upto and not any(str(q.get("period"))[:10] == upto for q in later):
+        return False   # the trailing year's balance sheet is a quarter we cannot read
+    return all(_debt.debt_free(q, quarterly=True) for q in later)
 
 
 def _growth(annual: list[dict], i: int | None, field: str) -> tuple[float | None, list[str]]:
@@ -302,6 +321,9 @@ def score_ticker(ticker: str, financials: dict, technical: dict, meta: dict | No
     fcf = (ocf - capex) if (ocf is not None and capex is not None) else None
 
     total_debt = to_float(cur.get("total_debt"))
+    if total_debt is None and _debt_free(financials, annual, ai, cur if trailing else None):
+        total_debt = 0.0
+        flags.append("debt_inferred_none")
     # Liquidity = cash + short-term investments, both from the anchor record (#187).
     liquid, _liquidity_basis = liquid_assets(cur)
     total_assets = to_float(cur.get("total_assets"))
@@ -453,8 +475,9 @@ def _cached_financials(ticker: str, no_fetch: bool = False, preload: dict | None
         info["country"] = US_COUNTRY
     if edgar_meta.get("entity_name"):
         info["longName"] = edgar_meta["entity_name"]
-    # review SF-4 (G6): the trailing years read the quarters.
-    return {"info": info, "annual": edgar_annual, "quarterly": edgar_quarterly, "source": EDGAR_SOURCE}
+    # review SF-4 (G6): the trailing years read the quarters. ``us_gaap`` gates the debt-free inference (B1).
+    return {"info": info, "annual": edgar_annual, "quarterly": edgar_quarterly, "source": EDGAR_SOURCE,
+            "us_gaap": edgar_meta.get("us_gaap")}
 
 
 def _price_session() -> date | None:
