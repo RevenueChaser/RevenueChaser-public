@@ -292,12 +292,15 @@ def _ttm_metrics(quarterly: list[dict], annual: list[dict]) -> dict:
         j = fiscal_year.prior(annual, i)
         r0 = _to_float(a.get("revenue"))
         r1 = _to_float(annual[j].get("revenue")) if j is not None else None
-        if r0 is not None and r1:
+        # Fundamentals review 17 Nov (Grok): the year gets the TTM point's guards (``_negative_fields``,
+        # ``nonpositive_revenue``, ``nonpositive_prior_ttm``): a negative revenue or capex is an artefact, not a figure.
+        if r0 is not None and r0 > 0 and r1 is not None and r1 > 0:
             out["rev_growth_ttm"] = (r0 - r1) / r1
         o0, c0 = _to_float(a.get("operating_cash_flow")), _to_float(a.get("capex"))
-        if r0 and o0 is not None and c0 is not None:
-            out["fcf_margin"] = (o0 - c0) / r0
-        elif r0 and (o0 is None or c0 is None):
+        if r0 is not None and r0 > 0 and o0 is not None and c0 is not None:
+            if c0 >= 0:                                 # a negative capex leaves the margin, and the rule, unknown
+                out["fcf_margin"] = (o0 - c0) / r0
+        elif r0 is not None and r0 > 0:
             # #386 F2: the free-cash-flow margin needs operating cash flow and capex; without either the Rule of 40
             # reads the anchor year's EBITDA margin instead (review: a capex backfill alone must not turn a shown
             # EBITDA Rule of 40 into nothing when cash flow is still missing, scripts/tests/test_reextract_dryrun_246.py) ((ebit + depreciation) / revenue, ebit / revenue without depreciation). The
@@ -811,6 +814,7 @@ def build_payload(results: list[dict], top_n: int | None = None, run_stats: dict
         "summary": {
             "stale_ohlc": run_stats.get("stale_ohlc", 0),
             "spy_stale": bool(run_stats.get("spy_stale")),
+            "spy_missing": bool(run_stats.get("spy_missing")),
             "regime": regime,
             "spy_price": run_stats.get("spy_price"),
             "spy_sma200": run_stats.get("spy_sma200"),
