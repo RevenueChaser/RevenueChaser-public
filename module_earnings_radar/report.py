@@ -2,7 +2,7 @@
 from RevenueChaser.core import universe
 from RevenueChaser.core.reporting_common import (FILTERS_CSS, FILTERS_JS, filters_bar_html, filters_meta, help_html,
                                                  notice_html, provider_health_html, watchlist_html, write_artifact)
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 import json
 from RevenueChaser.core import rawstore
@@ -583,7 +583,7 @@ function renderDecision() {
     + '<details class="radar-details"><summary>Show radar</summary><div class="ruleweb" id="dr-web"></div></details></div>';
   el.innerHTML = s;
 
-  // Structure card — parsed context rows (regime / levels / flow / LEAPS).
+  // Structure card — parsed context rows (regime / levels / flow).
   var st = document.getElementById('dr-structure');
   if (st) {
     var ctx = [];
@@ -596,12 +596,6 @@ function renderDecision() {
         + (d.inst_flow_net ? ' · ' + fmtMoney(d.inst_flow_net) + ' net' : '')
         + (d.inst_flow_prints ? ' · ' + d.inst_flow_prints + ' prints' : '')
         + (d.inst_flow_span != null ? ' · ' + d.inst_flow_span + 'h' : '') + '</span></div>');
-    if (d.leaps && d.leaps !== 'N/A') {
-      var leapsTxt = rcEsc(d.leaps);
-      if (d.leaps_as_of) leapsTxt += ' · as of ' + rcEsc(d.leaps_as_of)
-          + (d.leaps_age_days != null ? ' (' + d.leaps_age_days + ' d old)' : '');
-      ctx.push('<div class="struct-row"><b>LEAPS</b> <span>' + leapsTxt + '</span></div>');
-    }
     var priceParts = [];
     if (d.past_1d) priceParts.push('1D ' + rcEsc(d.past_1d));
     if (d.past_1w) priceParts.push('1W ' + rcEsc(d.past_1w));
@@ -1060,19 +1054,6 @@ TIER_DESC = {
     "Tier C — Emerging": "NRC 40&ndash;54 — <em>Mixed signals.</em> Monitor for improvement in revisions or flow.",
     "Ignore": "NRC &lt; 40 — <em>No clear revenue catalyst.</em> May have valid non-revenue trade thesis.",
 }
-
-
-def _leaps_age_days(as_of: str, gen_date: date) -> int | None:
-    """Whole days between a LEAPS snapshot's ``as_of`` and the page's generation date.
-
-    ``None`` when ``as_of`` is empty or unparseable, so the drawer shows the label alone (C26).
-    """
-    if not as_of:
-        return None
-    try:
-        return (gen_date - date.fromisoformat(str(as_of)[:10])).days
-    except (ValueError, TypeError):
-        return None
 
 
 def _pc_color(val: str) -> str:
@@ -1917,7 +1898,6 @@ def export_html(cards: list, calendar_events: list[dict] = None, nrc_results: di
     detail_script = f'<script>const DETAIL_DATA = {script_json(detail_data)};</script>'
     colwidths_script = f'<script>const COL_WIDTHS = {script_json(col_widths)};</script>'
 
-    gen_date = date.today()
     decision_data = {}
     for c in cards:
         rules = []
@@ -1949,9 +1929,6 @@ def export_html(cards: list, calendar_events: list[dict] = None, nrc_results: di
             "inst_flow_tone": c.inst_flow_tone or "",
             "inst_flow_prints": getattr(c, "inst_flow_prints", 0) or 0,
             "inst_flow_span": getattr(c, "inst_flow_span_hours", None),
-            "leaps": c.leaps_label or "",
-            "leaps_as_of": c.leaps_as_of or "",
-            "leaps_age_days": _leaps_age_days(c.leaps_as_of, gen_date),
             "past_1d": c.past_1d or "",
             "past_1w": c.past_1w or "",
             "past_2w": c.past_2w or "",

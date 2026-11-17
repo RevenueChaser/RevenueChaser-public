@@ -563,7 +563,6 @@ class TestRunners:
 
     def test_stable_filenames(self):
         assert runners.EARNINGS_LATEST.name == "earnings_radar_latest.html"
-        assert runners.LEAPS_LATEST.name == "leaps_latest.html"
         assert runners.ROTATION_LATEST.name == "sector_rotation_latest.html"
         assert runners.SEC_13F_LATEST.name == "sec_13f_latest.html"
         assert runners.ASYMMETRIC_GROWTH_LATEST.name == "asymmetric_growth_latest.html"
@@ -666,7 +665,6 @@ class TestRefreshReadsStoreFetchReadsNetwork:
         """An older build left ``leaps_latest.html`` in .cache/: the no-data page wins, on a Refresh too."""
         import RevenueChaser.app.runners as rn
         monkeypatch.setattr(rn, "OUTPUT_DIR", tmp_path)
-        monkeypatch.setattr(rn, "LEAPS_LATEST", tmp_path / "leaps_latest.html")
         (tmp_path / "leaps_latest.html").write_text("<h1>LEAPS ACCUMULATION RADAR</h1>", encoding="utf-8")
         monkeypatch.setattr(dashboard, "UWClient", lambda: _NoKey())
 

@@ -1218,7 +1218,7 @@ class TestExportEscaping:
             filter_reasons=evil, market_cap=evil, stock_volume=evil,
             option_volume=evil, total_open_interest=evil, current_price=evil,
             agh_owners=evil, rotation_quadrant=evil, trade_read=evil,
-            gex_structure=evil, inst_flow_label=evil, leaps_label=evil,
+            gex_structure=evil, inst_flow_label=evil,
             detail_json=json.dumps([{"q": evil}]),
             rule_audit={"rule2_guidance": {"available": True, "label": evil,
                                            "reasons": [evil], "score": 1}},

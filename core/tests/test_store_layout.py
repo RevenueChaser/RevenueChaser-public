@@ -105,8 +105,7 @@ class TestRenderedBoardsLandInCache:
         ``_module_file`` looked in ``.cache/``. Since #730 the tab serves one fixed "no data yet"
         page, so there is no served artifact at all and nothing can escape ``.cache/``; the old renderer
         is gone (#746)."""
-        from RevenueChaser.app import dashboard, runners
-        assert runners.LEAPS_LATEST.parent == config.OUTPUT_DIR
+        from RevenueChaser.app import dashboard
         assert dashboard._module_file("module_leaps") is None
 
     @pytest.mark.parametrize("mod", [

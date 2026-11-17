@@ -151,15 +151,6 @@ def test_the_tab_serves_the_board_once_a_session_is_stored(stored):
     assert _data_of(picked)["session"] == SESSION.isoformat(), "an unknown session shows the newest"
 
 
-def test_the_tab_never_serves_the_old_board_left_on_disk(stored, tmp_path, monkeypatch):
-    import RevenueChaser.app.runners as rn
-    from RevenueChaser.app import dashboard
-    monkeypatch.setattr(rn, "LEAPS_LATEST", tmp_path / "leaps_latest.html")
-    (tmp_path / "leaps_latest.html").write_text("<h1>LEAPS ACCUMULATION RADAR</h1>", encoding="utf-8")
-    body = dashboard.app.test_client().get("/view/module_leaps").get_data(as_text=True)
-    assert "ACCUMULATION RADAR" not in body and "Collecting" in body
-
-
 def test_after_twenty_tested_sessions_the_board_stops_collecting_and_offers_the_share_sort(stored):
     data = dict(board.payload(), stored=20, collecting=False, tested=True)
     page = board.render_html(data)
