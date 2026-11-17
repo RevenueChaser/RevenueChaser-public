@@ -35,6 +35,10 @@ POOLS = {"evren": evren.MAX_WORKERS, "deepseek": 8}
 CLIENTS = {"evren": evren, "deepseek": deepseek}
 #: The longest a run asks before it stops and leaves the rest for the next run (R1).
 SLICE_S = 15 * 60.0
+#: One worker reads its company's text at a time: the eight workers share one DuckDB instance and its read memory
+#: limit, and eight text reads at once ran out of 1 GiB and 3 GiB (rc-sec-read, 16-17 Nov 2026). A read takes well
+#: under a second; the model call it feeds takes tens of seconds, so the run is not slower.
+FILL_LOCK = threading.Lock()
 #: Companies whose reply was unusable, with no usable one yet in the run, before the run is called the endpoint's
 #: fault and stopped with none of them stored (the Relatedness rule, ``module_relatedness.config.UNUSABLE_STOP``).
 UNUSABLE_STOP = 5
@@ -109,7 +113,8 @@ def _ask_one(ctx: base.RunContext, job: Job, started: float, lock: threading.Loc
         if run["halt"] or ctx.clock() - started > SLICE_S:
             return None
     kept = job.input
-    job.input = q.fill(job.cik, kept)
+    with FILL_LOCK:
+        job.input = q.fill(job.cik, kept)
     try:
         return _ask_filled(ctx, job, started, lock, run)
     finally:
