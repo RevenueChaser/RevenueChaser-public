@@ -186,7 +186,8 @@ class SecFtd:
         url = sec.www_base() + PATH.format(half=h)
         r = sec.get(ctx, pacer, url, accept=(404,))
         old = half_end(h) < as_of - ABSENT_AFTER
-        if r.status_code == 404 and old and self._linked(ctx, pacer).get(h, url) != url:
+        due = half_end(h) < calendar.today_ny() - ABSENT_AFTER      # a backfill's as_of is its range's end
+        if r.status_code == 404 and due and self._linked(ctx, pacer).get(h, url) != url:
             url = self._linked(ctx, pacer)[h]
             r = sec.get(ctx, pacer, url, accept=(404,))
         if r.status_code == 404:
