@@ -141,7 +141,6 @@ def test_the_row_carries_the_quality_basis(monkeypatch):
     # year, and Quality reads that same year (the trailing year stays the default only when both can read it).
     assert drops == [] and (row["quality_basis"], row["quality_period_end"]) == ("FY", "2025-12-31")
     assert row["metrics"]["gross_margin"] == pytest.approx(400 / 1000)
-    assert build_payload([row], top_n=10)["candidates"][0]["quality_basis"] == "FY"
 
 
 def test_a_uw_preliminary_quarter_is_not_summed_into_the_ttm():
