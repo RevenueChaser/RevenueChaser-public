@@ -11,6 +11,12 @@ published before an earlier one); the first run asks back from the half before t
 ``FIRST_LOOKBACK`` halves. A backfill asks every half of its range. A 404 of a half that ended more than
 ``ABSENT_AFTER`` ago is marked absent (``.none``), never asked again. Each request is paced (``sec.Pacer``).
 
+A few halves live elsewhere on the SEC site (measured 17 Nov 2026: 2020-02a to 2020-04b under
+``/files/node/add/data_distribution/``, 2026-05a and b under ``/files/data/other/``, 2019-10a named ``..._0.zip``), so
+a 404 at ``PATH`` of a half that ended more than ``ABSENT_AFTER`` ago (one that should be out) reads the
+fails-to-deliver page once a run (``INDEX_PATH``) and asks the link it gives for that half. A backfill asks a half
+marked absent again when the page links it.
+
 Raw: ``raw/sec/ftd/cnsfails<YYYYMM><a|b>.zip`` (as answered) with a ``.meta.json`` sidecar. Parquet:
 ``parquet/sec/ftd/half=<YYYY-MM><a|b>/part-0.parquet``. Served: ``sec_ftd``, one row per settlement date, CUSIP and
 symbol as the SEC wrote them (a repeat is kept), the symbol named by the spine.
@@ -18,10 +24,12 @@ symbol as the SEC wrote them (a repeat is kept), the symbol named by the spine.
 from __future__ import annotations
 
 import io
+import re
 import time
 import zipfile
 from datetime import date, timedelta
 from pathlib import Path
+from urllib.parse import urljoin
 
 import duckdb
 
@@ -33,6 +41,8 @@ from . import KIND, common, sec
 NAME = "sec/ftd"
 TABLE = "sec_ftd"
 PATH = "/files/data/fails-deliver-data/cnsfails{half}.zip"
+INDEX_PATH = "/data-research/sec-markets-data/fails-deliver-data"
+LINK = re.compile(r"""href\s*=\s*["']([^"']*cnsfails(\d{6}[ab])(?:_\d+)?\.zip)["']""", re.I)
 FIRST_LOOKBACK = 3
 ABSENT_AFTER = timedelta(days=90)
 NEEDED = ("SETTLEMENT DATE", "CUSIP", "SYMBOL", "QUANTITY (FAILS)")
@@ -102,6 +112,11 @@ def done(h: str) -> bool:
     return raw_path(h).exists() or none_path(h).exists()
 
 
+def parse_index(html: str, page: str) -> dict[str, str]:
+    """``{half: absolute URL}`` of the zips the fails-to-deliver page links, each resolved against the page."""
+    return {m[2].lower(): urljoin(page, m[1]) for m in LINK.finditer(html)}
+
+
 def parse(body: bytes) -> tuple[list[dict], int | None]:
     """The half's rows, and the trailer's record count when it states one; ``SourceError`` for an answer that is
     not the zip of that file."""
@@ -157,11 +172,26 @@ class SecFtd:
     def default_as_of(self) -> date:
         return calendar.today_ny()
 
+    @staticmethod
+    def _linked(ctx: base.RunContext, pacer: sec.Pacer) -> dict[str, str]:
+        """The page's links, read once a run (kept in ``ctx.pending``)."""
+        key = NAME + ":linked"
+        if key not in ctx.pending:
+            page = sec.www_base() + INDEX_PATH
+            r = sec.get(ctx, pacer, page, accept=(404,))
+            ctx.pending[key] = parse_index(r.text, page) if r.status_code == 200 else {}
+        return ctx.pending[key]
+
     def _get(self, ctx: base.RunContext, pacer: sec.Pacer, h: str, as_of: date) -> Path | None:
         url = sec.www_base() + PATH.format(half=h)
         r = sec.get(ctx, pacer, url, accept=(404,))
+        old = half_end(h) < as_of - ABSENT_AFTER
+        due = half_end(h) < calendar.today_ny() - ABSENT_AFTER      # a backfill's as_of is its range's end
+        if r.status_code == 404 and due and self._linked(ctx, pacer).get(h, url) != url:
+            url = self._linked(ctx, pacer)[h]
+            r = sec.get(ctx, pacer, url, accept=(404,))
         if r.status_code == 404:
-            if half_end(h) < as_of - ABSENT_AFTER:
+            if old:
                 base.write_raw_json(none_path(h), {"status": 404, "url": url, "run_id": ctx.run_id})
             return None
         parse(r.content)                                  # refuse a foreign answer before it is kept
@@ -194,7 +224,7 @@ class SecFtd:
         last = min(half_of(end), prev_half(half_of(calendar.today_ny())))
         pacer, out, h = sec.Pacer(ctx), [], half_of(start or end)
         while h <= last:
-            if not done(h):
+            if not raw_path(h).exists() and (not none_path(h).exists() or h in self._linked(ctx, pacer)):
                 raw = self._get(ctx, pacer, h, end)
                 if raw is not None:
                     out.append(raw)

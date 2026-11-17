@@ -33,7 +33,7 @@ NOT_A_BOARD = frozenset({"module_testing", "module_settings"})
 #: PR that migrates that board, which is also the PR that adds its ``READS``.
 UNDECLARED = frozenset({
     "module_asymmetric_growth", "module_financials", "module_fundamentals",
-    "module_news", "module_oipd", "module_relatedness", "module_sec_13f", "module_sector_rotation",
+    "module_oipd", "module_relatedness", "module_sec_13f", "module_sector_rotation",
     "module_swing_potential", "module_uw_interaction", "module_value_chain",
 })
 
@@ -73,8 +73,6 @@ PLANNED_READS: dict[str, tuple[str, ...]] = {
     "module_sec_13f": ("ownership.filer_breaks_13f", "ownership.holders_13f", "ownership.periods_13f",
                        "ownership.type_holdings_13f", "prices.actions", "identity.security", "prices.latest",
                        "prices.shares", "prices.security_ids", "ownership.short_interest"),
-    # 11 Nov 2026: the calendar build reads the builder's economic calendar, not raw.economic_calendar.
-    "module_news": ("market.economic_calendar",),
     # #490: ``engine.py`` reads the company records and the served filing texts.
     # #400 WP6: the B input adds the filing's XBRL major customers (``fundamentals.customers``).
     # ``identity.etf_holdings`` (#642 PR 2b): the theme-to-ETF ranks read the spine's holdings (D4, 9 Nov 2026).

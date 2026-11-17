@@ -33,7 +33,7 @@ XOM = {"ticker": "XOM", "cik": XOM_NEW, "name": "EXXON MOBIL CORP", "exchange": 
 def test_the_seed_holds_the_hand_reviewed_pairs_as_predecessor_to_successor():
     pairs = cik_history.seed()
     assert pairs[XOM_OLD] == XOM_NEW
-    assert len(pairs) == 10 and all(p.isdigit() and s.isdigit() for p, s in pairs.items())
+    assert len(pairs) == 12 and all(p.isdigit() and s.isdigit() for p, s in pairs.items())
 
 
 def test_a_company_that_moved_twice_lists_every_cik_upstream_of_it():
@@ -184,5 +184,28 @@ def test_a_company_with_no_pair_is_left_exactly_as_it_was(monkeypatch):
     try:
         assert tables._predecessor_facts(con) == 0
         assert con.execute("SELECT count(*) FROM fundamental_fact").fetchone()[0] == 1
+    finally:
+        con.close()
+
+
+# ── The filing list (#749) ────────────────────────────────────────────────────────────────────────────────────
+
+def _items(rows: list[tuple[str, str, date]]) -> duckdb.DuckDBPyConnection:
+    con = duckdb.connect()
+    blank = {c: None for c, _ in tables.SCHEMAS["filing_item"]}
+    tables.load(con, "filing_item", [{**blank, "cik": c, "accession": a, "form": "10-K", "filing_date": d,
+                                      "kind": "item", "source": "sec/filings"} for c, a, d in rows])
+    return con
+
+
+def test_the_predecessors_older_filings_are_listed_under_the_companys_own_cik(monkeypatch):
+    monkeypatch.setattr(common, "predecessor_ciks", lambda *a, **k: {XOM_NEW: [XOM_OLD]})
+    con = _items([(XOM_NEW, S1, date(2026, 7, 1)), (XOM_OLD, P1, date(2026, 2, 18)),
+                  (XOM_OLD, "0000034088-26-000009", date(2026, 8, 1))])
+    try:
+        assert tables._predecessor_filings(con) == 1, "only the filing before the successor's own first one"
+        assert con.execute("SELECT accession FROM filing_item WHERE cik = ? ORDER BY filing_date",
+                           [XOM_NEW]).fetchall() == [(P1,), (S1,)]
+        assert con.execute("SELECT count(*) FROM filing_item WHERE cik = ?", [XOM_OLD]).fetchone()[0] == 2
     finally:
         con.close()
