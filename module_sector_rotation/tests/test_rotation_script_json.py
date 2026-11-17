@@ -31,11 +31,11 @@ def test_a_comment_opener_or_placeholder_in_a_theme_keeps_the_script_intact(
     assert_scripts_intact(p.read_text(encoding="utf-8"), tmp_path)
 
 
-def test_the_legend_says_dot_size_is_fixed(tmp_path, monkeypatch, rawstore_tmp_db):
-    """DF72 / SR-1: no stored 30d ADV, so every dot is one size on Fetch and Refresh alike; the legend says so."""
+def test_the_dots_carry_no_adv_size(tmp_path, monkeypatch, rawstore_tmp_db):
+    """DF72 / SR-1: no stored 30d ADV, so no dot is sized by it (since 17 Nov 2026 the head dot is fixed and the
+    trail's dots shrink with age; the notes say how to read a trail)."""
     import RevenueChaser.module_sector_rotation.report as rd
     monkeypatch.setattr(rd, "OUTPUT_DIR", tmp_path)
     p = rd.export_rotation_dashboard([_snap("XLK"), _snap("XLV", "IMPROVING")], filename="legend.html", uw=None)
     html = p.read_text(encoding="utf-8")
-    assert "Dot size fixed (no stored 30d ADV" in html
-    assert "Dot size \u221d" not in html
+    assert "Dot size \u221d" not in html and "Dot size fixed" not in html
