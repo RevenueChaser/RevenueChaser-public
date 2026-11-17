@@ -557,6 +557,11 @@ class _LayerChunks:
         return rows.get(ticker) or ([], [], fundamentals_layer._unavailable())
 
 
+def _old_period(end) -> bool:
+    days = _days(str(end)[:10], _today().isoformat()) if end else None
+    return days is not None and days > fiscal_year.STALE_DAYS
+
+
 def _compute_row(row: dict, spy_df, no_fetch: bool = False, spine: dict | None = None,
                  drops: list | None = None, non_usd: set[str] | None = None,
                  non_usd_seen: list | None = None, layer: _LayerChunks | None = None) -> dict | None:
@@ -580,7 +585,10 @@ def _compute_row(row: dict, spy_df, no_fetch: bool = False, spine: dict | None =
     if df.empty:
         return _drop("no_bars")
     reason = ohlc_drop_reason(df)
-    if reason:
+    # avo E1 (17 Nov 2026): under 252 bars the name is still scored, with every Momentum input unknown (a young
+    # listing is judged on its filings; its year high, 6-month RS and 200-day line are not a year's).
+    short = reason == "short_bars"
+    if reason and not short:
         return _drop(reason)
 
     # #386 F1: the spine sector, read before EDGAR so an excluded name costs no EDGAR read (card 4 (b), Common C17).
@@ -649,7 +657,7 @@ def _compute_row(row: dict, spy_df, no_fetch: bool = False, spine: dict | None =
     pb = None if adr else (market_cap / qual["total_equity"]) if (market_cap and qual["total_equity"] and qual["total_equity"] > 0) else None
 
     rs_6m = None
-    if spy_df is not None and not spy_df.empty:
+    if spy_df is not None and not spy_df.empty and not short:
         # A return: the dividend-adjusted closes (D3), against SPY's adjusted ones.
         own_6m, spy_6m = _ret(adjusted["Close"], 126), _ret(spy_df["Close"], 126)
         # A series under 127 bars has no 126-bar return: no value, never a TypeError (#147 U5).
@@ -668,11 +676,15 @@ def _compute_row(row: dict, spy_df, no_fetch: bool = False, spine: dict | None =
         # #737: "filed" (the facts gave a total), "note" (the filing's debt note, read by the SEC service),
         # "inferred_none" (no debt tag and no interest: read as 0) or None.
         "debt_basis": qual.get("debt_basis"),
+        # avo C1 (17 Nov 2026): the card's one period ended longer ago than fiscal_year.STALE_DAYS: its rules are
+        # unknown (screeners.data_mark).
+        "old_period": _old_period(qual.get("quality_period_end")),
         "pe": pe,
         "pb": pb,
-        "dist_52w_pct": ind.get("within_52w_high_pct"),
+        "dist_52w_pct": None if short else ind.get("within_52w_high_pct"),
         "rs_6m": rs_6m,
-        "above_200d": (price > ind["sma200"]) if (price is not None and ind.get("sma200") is not None) else None,
+        "above_200d": (price > ind["sma200"]) if (not short and price is not None and ind.get("sma200") is not None)
+        else None,
     }
 
     # R5 (#88), #266: the sector and industry are the spine's (UW's two levels). ``gics`` is read above, before EDGAR (#386 F1: the sector gate). The theme labels
@@ -778,7 +790,8 @@ def build_payload(results: list[dict], top_n: int | None = None, run_stats: dict
             "anchor_period_end": r.get("anchor_period_end"),
             "quality_basis": r.get("quality_basis"), "quality_period_end": r.get("quality_period_end"),
             "statements": r.get("statements"),
-            "pe": m.get("pe"), "pb": m.get("pb"), "roic": m.get("roic"),
+            # avo F1 (17 Nov 2026): the card shows ROIC; P/E and P/B left the card (they stay in the metrics).
+            "roic": m.get("roic"), "old_period": bool(m.get("old_period")),
             # #737 (Fable review F3): the payload carries ``roic``, which an inferred zero can make known, so it
             # carries the basis of that zero beside it.
             "debt_basis": m.get("debt_basis"),

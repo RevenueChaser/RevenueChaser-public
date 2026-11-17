@@ -341,12 +341,8 @@ function qualityAsOf(c, long){
   if(!end) return "";
   return (ttm ? (long ? "trailing year to " : "TTM to ") : (long ? "fiscal year to " : "FY to ")) + end;
 }
-// True when the anchor year ended more than OLD_ANCHOR_DAYS ago.
-var OLD_ANCHOR_DAYS = 730;
-function oldAnchor(c){
-  var end = c.anchor_period_end ? Date.parse(c.anchor_period_end) : NaN;
-  return !isNaN(end) && (Date.now() - end) > OLD_ANCHOR_DAYS * 86400000;
-}
+// avo C1 (17 Nov 2026): the card's one period ended more than fiscal_year.STALE_DAYS ago (the build decides).
+function oldAnchor(c){ return !!c.old_period; }
 // The two halves of the Rule of 40, the one figure of it the gate button does not carry.
 function growthMargin(c){
   if(c.rev_growth_ttm == null && c.fcf_margin == null) return "N/A";
@@ -359,8 +355,8 @@ function cardHtml(c){
   var sector = rcEsc(c.sector);
   var distTag = c.distorted ? '<span class="badge b-dist">DISTORTED</span>' : "";
   // Plan 2026-11-16 G: an anchor year that ended more than two years ago is marked, not hidden (DMAC FY2018).
-  var oldTag = oldAnchor(c) ? '<span class="badge b-dist" title="The fiscal year the scores read ended '
-    + rcEsc(c.anchor_period_end) + '">OLD YEAR</span>' : "";
+  var oldTag = oldAnchor(c) ? '<span class="badge b-dist" title="The period the rules read ended '
+    + rcEsc(c.quality_period_end || c.anchor_period_end) + ': its rules are unknown">OLD YEAR</span>' : "";
   var gates = RULES.map(function(k){
     var g = (c.gates || {})[k] || {};
     var lbl = {rule_of_40:"Ro40", quality:"Q", momentum:"M"}[k];
@@ -402,9 +398,11 @@ function cardHtml(c){
     + cell("Period", rcEsc(c.period))
     + cell("Growth / FCF margin", growthMargin(c))
     + cell("Price", usd(c.price))
-    // Plan decision B: an ADR's cap ignores the depositary ratio, so its P/E and P/B are "–" until the ratio arrives.
+    // Plan decision B: an ADR's cap ignores the depositary ratio.
     + cell("Mkt cap", usd(c.market_cap) + (c.adr ? ' <span class="adr-warn" title="ADR: the cap is the issuer\'s'
-        + ' and ignores the depositary ratio, so P/E and P/B show – until the ADR ratio arrives">⚠ P/E – P/B –</span>' : ''))
+        + ' and ignores the depositary ratio">⚠ ADR</span>' : ''))
+    // avo F1 (17 Nov 2026): ROIC on the card; P/E and P/B left it.
+    + cell("ROIC", c.roic == null ? "N/A" : fmtPct(c.roic))
     + '</div>'
     + evLine
     + stLine

@@ -110,7 +110,7 @@ def test_build_payload_shape():
     assert c["passed_count"] == 3 and c["bucket"] == "rule_of_40+quality+momentum"
     assert p["passing"] == {"rule_of_40": 1, "quality": 1, "momentum": 1}
     assert "multiplier" not in c and "tiers" not in p
-    assert c["pe"] == 15.0
+    assert "pe" not in c and "pb" not in c and c["roic"] == 0.20     # avo F1 (17 Nov 2026)
     assert set(c["gates"].keys()) == {"rule_of_40", "quality", "momentum"}
     assert (c["sector"], c["industry"]) == ("Technology", "Software")
     assert "industry_group" not in c and "sub_industry" not in c
