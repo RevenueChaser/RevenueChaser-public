@@ -65,3 +65,28 @@ def test_a_stale_page_is_dropped_before_it_is_served(monkeypatch, tmp_path):
         raise RuntimeError("board file locked")
     monkeypatch.setattr(store, "is_stale", boom)
     assert dashboard._sec13f_stale() is False             # a read error serves the page as it is
+
+
+def test_a_stale_page_is_rendered_again_in_the_background_once(monkeypatch):
+    """The day's first open took ~70 s rendering inside the request (17 Nov 2026): the old page is served and one
+    re-render runs beside it; a second stale load while it runs starts none."""
+    import threading
+    from RevenueChaser.app import dashboard, runners
+    started, release, calls = threading.Event(), threading.Event(), []
+
+    def render(_):
+        calls.append(1)
+        started.set()
+        release.wait(5)
+    monkeypatch.setattr(runners, "run_sec_13f_latest", render)
+    assert dashboard._sec13f_rerender_in_background() is True
+    assert started.wait(5)
+    assert dashboard._sec13f_rerender_in_background() is False
+    release.set()
+    for t in threading.enumerate():
+        if t.name == "sec13f-rerender":
+            t.join(5)
+    assert calls == [1] and dashboard._sec13f_rerender_in_background() is True     # free again
+    for t in threading.enumerate():
+        if t.name == "sec13f-rerender":
+            t.join(5)

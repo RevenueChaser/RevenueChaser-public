@@ -513,9 +513,9 @@ def view(mod: str):
         f.unlink(missing_ok=True)
         payload_path(f).unlink(missing_ok=True)
     if mod == "module_sec_13f" and f.exists() and _sec13f_stale():
-        # A build or a new day the board file has not taken: the page was rendered from older rows (#732).
-        f.unlink(missing_ok=True)
-        payload_path(f).unlink(missing_ok=True)
+        # A build or a new day the board file has not taken (#732): the older page is served now and the new one is
+        # rendered beside it, because rendering it inside this request took ~70 s on each day's first open.
+        _sec13f_rerender_in_background()
     if not f.exists():
         if mod == "module_sec_13f":
             # Write the re-rendered board back to its artifact (it used to be
@@ -593,6 +593,28 @@ def _import_runners():
 # The boards that read the shared universe, and the jobs that load it when the store has none (#145 D1).
 _UNIVERSE_BOARDS = ("module_asymmetric_growth", "module_swing_potential", "module_fundamentals")
 _UNIVERSE_JOBS = ("module_asymmetric_growth", "swing", "module_fundamentals")
+
+
+_SEC13F_RERENDER = threading.Lock()
+
+
+def _sec13f_rerender_in_background() -> bool:
+    """Start one re-render of the 13F board in a thread of this process (the store's writer); False when one is
+    already under way. The page is written whole (``write_board``), so a load during it serves the old one."""
+    if not _SEC13F_RERENDER.acquire(blocking=False):
+        return False
+
+    def work():
+        try:
+            runners.run_sec_13f_latest(None)
+        except jobs.JobMessage:
+            pass                                       # the empty board was written
+        except Exception:                              # noqa: BLE001 - the old page stays; the next load retries
+            logger.exception("13F board re-render failed")
+        finally:
+            _SEC13F_RERENDER.release()
+    threading.Thread(target=work, daemon=True, name="sec13f-rerender").start()
+    return True
 
 
 def _sec13f_stale() -> bool:
