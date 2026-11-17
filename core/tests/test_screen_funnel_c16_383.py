@@ -59,6 +59,9 @@ def test_the_excluded_types_and_the_prefilter_reasons_are_typed_steps(scenario, 
 def test_the_scorer_reasons_name_their_tickers(scenario, mod):
     steps = _steps(mod.run_scan())
     assert "no_bars" not in steps                          # NOBARS1 already left at the prefilter (no_quote)
+    if mod is fp:       # avo E1 (17 Nov 2026): Fundamentals scores SHORT1 with Momentum unknown
+        assert "short_bars" not in steps
+        return
     assert steps["short_bars"]["tickers"] == ["SHORT1"] and steps["short_bars"]["by_design"] is True
 
 

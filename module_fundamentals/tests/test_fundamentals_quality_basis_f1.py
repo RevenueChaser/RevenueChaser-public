@@ -37,14 +37,14 @@ console.log(JSON.stringify({grid: _els['grid'].innerHTML, sub: _els['m-sub'].tex
 
 def test_the_quality_window_names_the_fiscal_year(tmp_path):
     out = _run(_payload("2025-12-31"), tmp_path)
-    assert "growth: TTM Q2/2026 vs Q2/2025" in out["sub"]
-    assert "ROIC, gross margin, net debt: fiscal year to 2025-12-31" in out["sub"]
+    # avo D1 (17 Nov 2026): one period per card, so the window names that one period, never a split one.
+    assert "fiscal year to 2025-12-31" in out["sub"] and "growth: TTM" not in out["sub"]
     assert "FY to 2025-12-31" not in out["grid"], "the card face no longer repeats it"
 
 
-def test_other_gates_keep_their_window(tmp_path):
-    out = _run(_payload("2025-12-31"), tmp_path, gate="momentum")
-    assert "fiscal year" not in out["sub"]
+def test_every_gate_names_the_cards_one_period(tmp_path):
+    out = _run(_payload("2025-12-31"), tmp_path, gate="momentum")      # avo D1 (17 Nov 2026)
+    assert "fiscal year to 2025-12-31" in out["sub"]
 
 
 def test_no_anchor_says_nothing_and_a_hostile_one_cannot_run(tmp_path):

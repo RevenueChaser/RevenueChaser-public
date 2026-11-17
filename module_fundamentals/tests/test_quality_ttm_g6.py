@@ -134,6 +134,8 @@ def test_the_row_carries_the_quality_basis(monkeypatch):
 
     from RevenueChaser.module_fundamentals.tests.test_fundamentals_w3_386 import _compute
     monkeypatch.setattr(pipeline, "_today", lambda: date(2026, 10, 27))
+    # The fixture's figures are toy-sized; under the $10M revenue mark (avo C1) its rules would be unknown.
+    monkeypatch.setattr(pipeline.config, "DISTORTED_REV_MIN", 0)
     row, drops = _compute(monkeypatch, ANNUAL, edgar=lambda t, no_fetch=False: (ANNUAL, QUARTERLY, {}))
     assert drops == [] and (row["quality_basis"], row["quality_period_end"]) == ("TTM", "2026-06-30")
     assert row["metrics"]["gross_margin"] == pytest.approx(460 / 1100)
