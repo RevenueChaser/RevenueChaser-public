@@ -27,11 +27,8 @@ def _run_payload(**overrides) -> dict:
 def test_operating_only_overridden_moves_the_model_version(rawstore_tmp_db):
     default = freeze.model_version(_run_payload())
     assert default == freeze.model_version()                         # the default hash does not move
-    assert freeze.model_version(_run_payload(OPERATING_ONLY=0)) != default
-
-
-def test_operating_only_is_not_hashed_at_its_default(rawstore_tmp_db):
     assert "OPERATING_ONLY" not in freeze.effective_config(_run_payload())
+    assert freeze.model_version(_run_payload(OPERATING_ONLY=0)) != default
 
 
 @pytest.fixture
