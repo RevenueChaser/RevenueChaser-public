@@ -84,7 +84,7 @@ def test_the_scan_output_matches_the_golden_from_main(scenario):
     if capture:
         Path(capture).write_text(_dump(snap), encoding="utf-8")
         pytest.skip(f"captured to {capture}")
-    assert json.loads(_dump(snap)) == json.loads(GOLDEN.read_text(encoding="utf-8")), "NEW-GOLDEN-BEGIN" + _dump(snap) + "NEW-GOLDEN-END"   # TEMP: read the new golden from CI, then revert
+    assert json.loads(_dump(snap)) == json.loads(GOLDEN.read_text(encoding="utf-8"))
 
 
 def test_the_scenario_exercises_every_branch_of_the_scan(scenario):
