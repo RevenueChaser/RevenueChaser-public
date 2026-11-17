@@ -5,6 +5,8 @@ import hashlib
 import json
 import os
 import sqlite3
+import subprocess
+import sys
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -277,6 +279,25 @@ def test_a_killed_runs_temp_files_and_their_wal_and_shm_are_swept(sqlite_ops, ba
     assert not any(p.exists() for p in orphans)
     assert copy.exists() and kept.exists() and kept != copy
     assert kept.name in (out / backup.MANIFEST_NAME).read_text(encoding="utf-8")
+
+
+def test_a_killed_readers_spill_directories_are_swept_and_a_live_ones_kept(sqlite_ops, backup_dir):
+    """#1012 gave each reader a ``<file>.tmp-<pid>`` spill directory; a killed run leaves one beside its copy, and
+    unlinking it as a file failed the next backup (17 Nov 2026)."""
+    out = backup_dir / "ops"
+    out.mkdir(parents=True)
+    gone = subprocess.Popen([sys.executable, "-c", "pass"])
+    gone.wait()
+    dead = out / f"ops_1.sqlite.tmp.tmp-{gone.pid}"
+    shared = out / "ops_1.sqlite.tmp.tmp"                   # DuckDB's own default name: no reader to wait for
+    live = out / f"ops_1.sqlite.tmp.tmp-{os.getpid()}"
+    for d in (dead, shared, live):
+        d.mkdir()
+        (d / "duckdb_temp_storage_DEFAULT-0.tmp").write_bytes(b"x")
+    ops.ensure()
+    assert backup.run_backup(only="ops")["ops"].exists()
+    assert not dead.exists() and not shared.exists() and live.is_dir()
+    assert serving.stale_spill(live) is False and serving.stale_spill(out / "ops_1.sqlite.tmp") is False
 
 
 def test_a_file_this_job_did_not_write_is_logged_and_left_alone(sqlite_ops, backup_dir, caplog):
