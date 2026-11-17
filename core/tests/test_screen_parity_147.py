@@ -53,6 +53,10 @@ universe row's (UP1/UP3 read "<t> Inc", not the cached "<t> Holdings"), its ``pr
 #645 (Fundamentals reads no Yahoo ``.info``) removed Fundamentals' per-candidate ``info_stale`` and
 ``data_quality.stale_info``, edited out by hand; Fundamentals' UP1 and UP3 likewise read
 "<t> Inc".
+avo's Fundamentals rule decisions of 17 Nov 2026 (B1-G1, selection version 13) were re-captured in CI from a temporary
+print commit: every scenario filer's revenue is under $10M, so its growth and Rule of 40 are unknown (C1); a card
+needs a Rule of 40 or Quality pass (B1); SHORT1 is scored with Momentum unknown (E1); P/E and P/B left the card and
+``old_period`` joined it (F1, C1).
 """
 from __future__ import annotations
 
@@ -84,7 +88,6 @@ def test_the_scan_output_matches_the_golden_from_main(scenario):
     if capture:
         Path(capture).write_text(_dump(snap), encoding="utf-8")
         pytest.skip(f"captured to {capture}")
-    import base64, zlib; print("PARITY-B64", base64.b64encode(zlib.compress(_dump(snap["fundamentals"]).encode(), 9)).decode())  # TEMP
     assert json.loads(_dump(snap)) == json.loads(GOLDEN.read_text(encoding="utf-8"))
 
 
