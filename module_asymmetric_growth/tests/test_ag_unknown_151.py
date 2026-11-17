@@ -110,7 +110,7 @@ def test_the_signal_line_names_the_known_count(tmp_path):
     card = _card([dict(fiscal_year=2023, **_FULL)])
     out = _js(tmp_path, card, "console.log(JSON.stringify([sigHtml(DATA[0].signals[0]), sigHtml(DATA[0].signals[1])]))")
     assert "1/3 of 1 known" in out[0]
-    assert "3/3" in out[1] and "known" not in out[1]
+    assert "2/2" in out[1] and "known" not in out[1]   # positive FCF: runway not counted (C1)
 
 
 def test_the_rescoring_leaves_unknown_unknown_and_counts_known_passes(tmp_path):
