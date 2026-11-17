@@ -171,6 +171,8 @@ RESOLVERS = {
     "module_sector_rotation": _rotation_day,
     "module_sec_13f": _sec13f_day,
     "module_leaps": _leaps_day,
+    # Hit Rate (#25): derived from the frozen picks, no downloaded data of its own.
+    "module_hit_rate": None,
     # Watch lists (#786): the lists are avo's own and have no data date, so the stamp is the one the numbers beside
     # them carry — the prices store's newest close, the session the board's own header names.
     "module_watchlists": _comovement_day,
