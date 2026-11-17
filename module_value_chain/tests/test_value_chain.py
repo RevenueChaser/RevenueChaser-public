@@ -287,7 +287,7 @@ def test_report_uses_ticker_combobox_after_filters():
     assert html.index('id="rc-filters"') < html.index('id="ticker-combo"')
     for gone in ('id="mc-tabs"', 'id="index-tabs"', 'id="eweek-tabs"', 'id="sector"', "initTickerCombo"):
         assert gone not in html, f"constants kit left: {gone}"
-    assert "No companies with supplier / customer edges" in html
+    assert "No companies with supplier / customer links yet" in html
 
 
 def test_report_hides_tickers_without_edges():
@@ -317,7 +317,7 @@ def test_report_empty_state():
     from RevenueChaser.module_value_chain import report
     html = report.render_value_chain_dashboard({"as_of": "2026-09-17T00:00:00+00:00",
                                                 "filings": [], "edges": []})
-    assert "No companies with supplier / customer edges" in html
+    assert "No companies with supplier / customer links yet" in html
 
 
 def test_board_rows_without_a_classification_read_unclassified(rawstore_tmp_db):
