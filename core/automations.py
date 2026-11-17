@@ -249,6 +249,21 @@ REGISTRY: tuple[AutomationEntry, ...] = (
                     "nothing is fetched. The job writes the board file boards/spx_gamma.duckdb (raw day, Brier "
                     "record, GEX record, latest pointer; module_spx_gamma/store.py).",
         settings=TaskSettings(start_when_available=False, restart_count=0, time_limit_minutes=30)),
+    *(AutomationEntry(
+        name=f"RC-Fetch-{label.replace(' ', '')}", label=f"{label} Fetch (nightly)",
+        args=("-m", "RevenueChaser.scripts.board_fetch", board), time=at, unit_name=f"life-rc-fetch-{board}",
+        description=(f"The {label} board's Fetch after the nightly prices build (avo 17 Nov 2026, choice a), so the "
+                     "forecast ledger freezes every session (#25). It asks nothing until the prices store holds SPY's "
+                     "complete bar of the latest complete New York session (exit 3). The Fetch runs in the dashboard "
+                     f"(POST /run/{route}, the one writer): the task only queues it and waits; with the dashboard "
+                     "down it exits 1. The server's timer is installed switched off and is switched on per board once "
+                     "that board's review and rule decisions are done."),
+        settings=TaskSettings(restart_count=0, time_limit_minutes=120))
+      for board, label, route, at in (
+          ("ag", "Asymmetric Growth", "module_asymmetric_growth", "05:00"),
+          ("swing", "Swing", "swing", "05:10"),
+          ("fundamentals", "Fundamentals", "module_fundamentals", "05:20"),
+          ("comovement", "Co-movement", "module_comovement", "05:30"))),
 )
 _BY_NAME = {e.name: e for e in REGISTRY}
 
