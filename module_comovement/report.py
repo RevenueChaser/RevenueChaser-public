@@ -861,7 +861,7 @@ function cardHtml(g){
   var tick = base == null ? "" : '<s style="left:' + Math.max(0, Math.min(100, Math.round(base * 100))) + '%"></s>';
   var tight = res
     ? '<dt>Tightness</dt><dd><span class="r">r ' + rTxt + '</span><span class="rscale">0</span><span class="rbar" role="img" aria-label="Correlation r ' + rTxt + ' on a 0 to 1 scale' + (base == null ? '' : ', noise level ' + Number(base).toFixed(2)) + '"><i style="width:' + w + '%"></i>' + tick + '</span><span class="rscale">1</span>' +
-      (base == null ? '' : '<span class="meta">vs noise <span class="num">' + Number(base).toFixed(2) + '</span></span>') + '</dd>' +
+      (base == null ? '<span class="meta unjudged">vs noise: not evaluated — a Fetch at this window and horizon measures it</span>' : '<span class="meta">vs noise <span class="num">' + Number(base).toFixed(2) + '</span></span>') + '</dd>' +
       '<dt></dt><dd class="meta">Average pairwise correlation (r, from 0 = unrelated to 1 = move in lockstep) of ' + HORIZON + '-day returns after removing ' + rcEsc(b) + '. Not a percentage.' + (base == null ? '' : ' Amber tick = what pure-noise groups of this size reach.') + '</dd>'
     : '<dt>Tightness</dt><dd><span class="r">r ' + rTxt + '</span><span class="rscale">0</span><span class="rbar"><i style="width:' + w + '%"></i></span><span class="rscale">1</span><span class="meta">raw correlation, market included</span></dd>';
   var catchRow = plain ? '<dt>Catch-all</dt><dd><span class="badge">catch-all: ' + g.catch_pct + '% of names · weak shared move, not a theme</span></dd>' : '';
