@@ -215,7 +215,8 @@ def payload(list_id: str | None = None) -> dict | None:
                 for s in whole["sections"]]
     sessions = sorted({v["session"] for v in equities.values() if v.get("session")})
     return {
-        "lists": [{"id": r["list_id"], "name": r["name"], "symbols": r.get("symbols") or 0,
+        "lists": [{"id": r["list_id"], "name": r["name"],
+                   "symbols": r.get("symbols", r.get("symbol_count")) or 0,   # store.lists() says symbol_count
                    "job": bool(job_kind(r["list_id"]))} for r in lists],
         "list": {"id": whole["list_id"], "name": whole["name"], "description": whole.get("description") or "",
                  "job": job or ""},

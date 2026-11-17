@@ -105,6 +105,15 @@ def test_the_payload_walks_sections_in_avos_order_not_the_symbols_flat(no_data):
     assert [row["t"] for s in named for row in s["rows"]] == ["MSFT", "NVDA"]
 
 
+def test_the_list_picker_counts_the_symbols_of_avos_own_lists(no_data):
+    # avo, 17 Nov 2026: his lists showed 0 symbols on screen while they held names.
+    list_id = store.create_list("Growth")
+    store.add_symbol(list_id, "NASDAQ:NVDA")
+    store.add_symbol(list_id, "NASDAQ:AMD")
+    picker = {r["id"]: r["symbols"] for r in board.payload(list_id)["lists"]}
+    assert picker[list_id] == 2
+
+
 def test_an_unknown_list_id_opens_the_first_list_instead_of_failing(no_data):
     first = store.create_list("Growth")
     store.create_list("Dividends")
