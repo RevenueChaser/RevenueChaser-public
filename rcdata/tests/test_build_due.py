@@ -228,3 +228,30 @@ def test_a_due_step_error_fails_the_pass_after_the_queue_is_drained(clock, ran, 
     assert cli.main(["run", "--once"]) == 1
     assert [r["dataset"] for r in ran] == [MS]             # the queue is still drained
     assert f"{UW}: due check failed: ValueError: past the table" in capsys.readouterr().err
+
+
+class _Dated:
+    name, kind = "sec/nport", "ownership"
+
+
+@pytest.mark.parametrize("when, checked, expect", [
+    (datetime(2026, 10, 16, 1, 0, tzinfo=timezone.utc), "2026-07-15", True),     # 21:00 New York, 15 Oct
+    (datetime(2026, 10, 15, 15, 0, tzinfo=timezone.utc), "2026-07-15", False),   # the 15th, by day: waits
+    (datetime(2026, 10, 16, 1, 0, tzinfo=timezone.utc), "2026-10-15", False),    # checked after the date
+    (datetime(2026, 10, 14, 1, 0, tzinfo=timezone.utc), "2026-07-15", False),    # before the date
+    (datetime(2027, 1, 3, 1, 0, tzinfo=timezone.utc), "2026-10-15", False),      # last year's Oct date, checked
+    (datetime(2026, 11, 2, 1, 0, tzinfo=timezone.utc), None, True),              # never built, at night
+])
+def test_a_dataset_with_check_dates_runs_at_night_after_each_date_once(clock, when, checked, expect):
+    clock(when)
+    if checked:
+        _checked(_Dated.name, checked_on=checked)
+    assert due.is_due(_Dated())[0] is expect
+
+
+def test_a_failed_check_date_run_waits_for_the_next_night(clock):
+    clock(datetime(2026, 10, 16, 1, 0, tzinfo=timezone.utc))          # 21:00 New York, 15 Oct
+    _checked(_Dated.name, "failed", checked_on="2026-10-15")
+    assert due.is_due(_Dated()) == (False, "failed today: again the next night")
+    clock(datetime(2026, 10, 17, 1, 0, tzinfo=timezone.utc))
+    assert due.is_due(_Dated())[0] is True
