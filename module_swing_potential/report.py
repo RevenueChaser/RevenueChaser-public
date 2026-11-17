@@ -21,6 +21,8 @@ from RevenueChaser.core.reporting_common import (
     FILTERS_CSS,
     FILTERS_JS,
     PAYLOAD_JS,
+    THEME_CSS,
+    THEME_JS,
     filters_bar_html,
     filters_meta,
     help_html,
@@ -39,10 +41,10 @@ from RevenueChaser.module_swing_potential.screeners import (
 )
 
 CSS = """
-:root{--bg:#0a0d12;--panel:#12161e;--panel2:#1a1f2b;--border:#232a38;
---text:#d7dce5;--muted:#8a93a6;--accent:#4f9dff;--green:#2ecc71;
---red:#e74c3c;--amber:#f1c40f;--neon:#00e6a8;}
+:root{--panel:var(--card);--panel2:var(--card-2);--text:var(--fg);--green:var(--pos);--red:var(--neg);
+--neon:var(--accent);--rcf-pop-bg:var(--card)}
 *{box-sizing:border-box}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.5}
 .wrap{max-width:100%;margin:0 auto;padding:20px 24px 60px}
 .topbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;border-bottom:1px solid var(--border);padding-bottom:12px;margin-bottom:14px}
@@ -54,7 +56,7 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,"
 .summary .off{color:var(--red);font-weight:700}
 .badge{display:inline-block;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700}
 .b-sector{background:var(--panel2);color:var(--muted)}
-.b-index{background:rgba(79,157,255,.14);color:var(--accent)}
+.b-index{background:var(--accent-soft);color:var(--accent)}
 .banner{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:18px}
 .stat{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:12px 14px}
 .stat .v{font-size:22px;font-weight:800}
@@ -70,12 +72,12 @@ details.rules summary{cursor:pointer;padding:12px 16px;font-weight:700;color:var
 .frow{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
 .flbl{color:var(--muted);font-size:12px;font-weight:600}
 .tabs{display:inline-flex;background:var(--panel);border:1px solid var(--border);border-radius:8px;overflow:hidden;flex-wrap:wrap}
-.tab{padding:0 14px;height:34px;line-height:34px;cursor:pointer;font-weight:600;font-size:13px;color:var(--muted);border-right:1px solid var(--border);user-select:none}
+.tab{padding:0 14px;height:44px;line-height:44px;cursor:pointer;font-weight:600;font-size:13px;color:var(--muted);border-right:1px solid var(--border);user-select:none}
 .tab:last-child{border-right:none}
 .tab.on{background:var(--panel2);color:var(--text)}
 .tab .cnt{color:var(--muted);font-size:11px;font-weight:400}
 .tab.on .cnt{color:var(--neon)}
-select,input[type=text],input[type=number]{background:#10151f;border:1px solid #2a3345;color:var(--text);border-radius:6px;height:34px;padding:0 10px;font:500 13px/1 inherit}
+select,input[type=text],input[type=number]{background:var(--input-bg);border:1px solid var(--input-border);color:var(--text);border-radius:6px;height:44px;padding:0 10px;font:500 13px/1 inherit}
 input[type=text]{flex:1;min-width:200px}
 .count{color:var(--muted);font-size:12px;margin-left:auto;white-space:nowrap}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
@@ -108,20 +110,20 @@ input[type=text]{flex:1;min-width:200px}
 .rrcap{font-size:11px;color:var(--muted);white-space:nowrap}
 .rrcap b{color:var(--accent);font-weight:700}
 .gates{display:flex;gap:6px;border-top:1px solid var(--panel2);padding-top:8px}
-.gate{flex:1;background:var(--panel2);color:var(--muted);border:1px solid var(--border);border-radius:6px;padding:5px 0;cursor:pointer;font-weight:700;font-size:12px}
-.gate.on{color:var(--green);border-color:rgba(46,204,113,.4)}
+.gate{flex:1;min-height:44px;background:var(--panel2);color:var(--muted);border:1px solid var(--border);border-radius:6px;padding:5px 0;cursor:pointer;font-weight:700;font-size:12px}
+.gate.on{color:var(--green);border-color:color-mix(in srgb,var(--pos) 40%,transparent)}
 .gate.off{color:var(--red)}
 .tags{display:flex;flex-wrap:wrap;gap:6px;min-height:18px}
 .tags.empty{min-height:18px}
 .tag{font-size:10.5px;padding:2px 8px;border-radius:20px;background:var(--panel2);color:var(--muted)}
-.mchip{background:rgba(0,230,168,.14);color:var(--neon)}
+.mchip{background:var(--accent-soft);color:var(--neon)}
 .dok{color:var(--green)} .dno{color:var(--red)} .dunk{color:var(--muted)}
 .methods{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
-.methods label{color:var(--muted);font-size:12px;font-weight:600;display:flex;gap:4px;align-items:center;cursor:pointer}
-.notice{background:rgba(241,196,15,.10);border:1px solid rgba(241,196,15,.35);color:var(--amber);border-radius:8px;padding:8px 12px;font-size:12.5px;margin-bottom:12px}
+.methods label{color:var(--muted);font-size:12px;font-weight:600;display:flex;gap:4px;align-items:center;cursor:pointer;min-height:44px}
+.notice{background:var(--amber-soft);border:1px solid color-mix(in srgb,var(--amber) 35%,transparent);color:var(--amber);border-radius:8px;padding:8px 12px;font-size:12.5px;margin-bottom:12px}
 .empty{color:var(--muted);padding:40px;text-align:center}
 footer{color:var(--muted);font-size:11px;margin-top:28px;border-top:1px solid var(--border);padding-top:14px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
-.modal{display:none;position:fixed;inset:0;background:rgba(5,17,31,.7);z-index:50;align-items:center;justify-content:center}
+.modal{display:none;position:fixed;inset:0;background:var(--scrim);z-index:50;align-items:center;justify-content:center}
 .modal.open{display:flex}
 .modal .box{background:var(--panel);border:1px solid var(--border);border-radius:12px;width:min(560px,92vw);max-height:80vh;overflow:auto;padding:18px 20px}
 .modal h3{margin:0 0 4px;font-size:16px}
@@ -133,7 +135,11 @@ footer{color:var(--muted);font-size:11px;margin-top:28px;border-top:1px solid va
 .rule .lbl{flex:1;color:var(--text)}
 .rule .th{color:var(--muted);font-size:11px}
 .rule .act{color:var(--text);font-variant-numeric:tabular-nums;text-align:right}
-.close{margin-top:12px;width:100%}
+.close{margin-top:12px;width:100%;min-height:44px}
+/* A phone: the methodology table stacks, one rule set per block (Swing review F11). */
+@media (max-width:640px){.rules-body table,.rules-body tbody,.rules-body tr,.rules-body th,.rules-body td{display:block;width:100%}
+.rules-body tr:first-child{display:none}.rules-body tr{padding:8px 0;border-bottom:1px solid var(--panel2)}
+.rules-body td{border:none;padding:2px 0}.wrap{padding:16px 16px 48px}}
 """
 
 
@@ -529,6 +535,7 @@ function start(){
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Swing Screener</title>
+<script>{THEME_JS}</script><style>{THEME_CSS}</style>
 <style>{CSS}</style>
 {FILTERS_CSS}
 </head>
