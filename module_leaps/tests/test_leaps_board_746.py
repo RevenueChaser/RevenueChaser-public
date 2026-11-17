@@ -201,7 +201,7 @@ def _wide_css() -> str:
 
 
 def test_the_product_buttons_are_44_px_touch_targets():
-    assert ".lp-seg button{min-height:var(--touch);" in board._CSS and "min-height:40px;border:0" not in board._CSS
+    assert ".lp-seg button{min-height:var(--touch);" in board._CSS and ".lp-seg button{min-height:40px" not in board._CSS
 
 
 def test_the_wide_row_aligns_each_cell_by_where_it_stands():
