@@ -18,6 +18,10 @@ from .test_spine_spac_sic_240 import _sec, built_with  # noqa: F401 - the fixtur
 MSFT_GICS = {"gsector": "45", "ggroup": "4510"}
 
 
+def test_a_sic_row_carries_the_gics_codes_its_names_came_from():
+    assert security.bridge_sector("X", None, "7372", {})[3:] == ("45", "4510")
+
+
 @pytest.mark.parametrize("sic, want", [
     ("7372", ("Technology", "Software & Services")),
     ("2836.0", ("Healthcare", "Pharmaceuticals, Biotechnology & Life Sciences")),
@@ -25,28 +29,28 @@ MSFT_GICS = {"gsector": "45", "ggroup": "4510"}
     ("4412", ("Industrials", "Transportation")),
 ])
 def test_a_name_with_a_sic_and_no_gics_takes_the_sic_tables_sector(sic, want):
-    assert security.bridge_sector("X", None, sic, {}) == (*want, "sic")
+    assert security.bridge_sector("X", None, sic, {})[:3] == (*want, "sic")
 
 
 @pytest.mark.parametrize("sic", ["9995", "6770"])
 def test_a_shell_sic_is_the_shell_bucket_not_a_sector(sic):
-    assert security.bridge_sector("AESP", None, sic, {}) == (SHELL_SPAC, SHELL_SPAC, "sic")
+    assert security.bridge_sector("AESP", None, sic, {}) == (SHELL_SPAC, SHELL_SPAC, "sic", None, None)
 
 
 def test_compustat_gics_beats_the_sic():
     assert security.bridge_sector("MSFT", MSFT_GICS, "9995", {}) == ("Technology", "Software & Services",
-                                                                     "wrds/co_hgic")
+                                                                     "wrds/co_hgic", "45", "4510")
 
 
 def test_the_manual_file_beats_everything():
     manual = {"MSFT": {"gsector": "50", "ggroup": "5020", "reason": "x"}}
     assert security.bridge_sector("MSFT", MSFT_GICS, "7372", manual) == (
-        "Communication Services", "Media & Entertainment", "manual")
+        "Communication Services", "Media & Entertainment", "manual", "50", "5020")
 
 
 @pytest.mark.parametrize("sic", [None, "", "9999", "nan"])
 def test_an_unknown_sic_stays_unclassified_with_no_source(sic):
-    assert security.bridge_sector("X", None, sic, {}) == (UNCLASSIFIED, UNCLASSIFIED, None)
+    assert security.bridge_sector("X", None, sic, {}) == (UNCLASSIFIED, UNCLASSIFIED, None, None, None)
 
 
 def test_the_checked_in_manual_file_holds_the_eleven_names_avo_approved():
@@ -87,8 +91,8 @@ def test_the_build_writes_the_sic_sector_and_source(no_cna_gics, monkeypatch, bu
     monkeypatch.setitem(security.SIC_GICS, 6331, ("40", "4030"))
     built_with("002968", "6331")
     built = _sec("CNA")
-    assert (built["sector"], built["industry"], built["gics_source"], built["gsector"]) == (
-        "Financial Services", "Insurance", "sic", None)
+    assert (built["sector"], built["industry"], built["gics_source"], built["gsector"], built["ggroup"],
+            built["gsubind"]) == ("Financial Services", "Insurance", "sic", "40", "4030", None)
 
 
 def test_the_build_puts_a_shell_in_the_shell_bucket(no_cna_gics, built_with):

@@ -28,7 +28,9 @@ names the boards use); ``industry`` is the GICS industry group's name (working c
 Whales industry text). Both feed the views only. ``gics_source`` says where they came from (``bridge_sector``): a row
 of :data:`GICS_MANUAL_FILE` (``manual``), Compustat's current GICS (``wrds/co_hgic``), or, for a name with no GICS,
 Compustat's company SIC (``sic``): a blank check or shell (:data:`SHELL_SICS`) is the ``Shell/SPAC`` bucket, a code
-of :data:`SIC_GICS` its GICS sector and group. Anything else stays ``Unclassified`` with no source.
+of :data:`SIC_GICS` its GICS sector and group. Anything else stays ``Unclassified`` with no source. ``gsector`` and
+``ggroup`` are the codes the names came from, whatever the source; ``gind``, ``gsubind`` and ``gics_from`` are
+Compustat's only, so they are NULL on a ``manual`` or ``sic`` row.
 
 **Build issues** (``ISSUE_KINDS``) are computed here and written to ``ops.sqlite`` once the new file is live
 (``after_swap``, ``ops.sync_issues``): an issue found again stays open, one no longer found is resolved. A rule that
@@ -206,19 +208,22 @@ def gics_manual(path: Path | None = None) -> dict[str, dict]:
     return rows
 
 
-def bridge_sector(ticker: str, gics: dict | None, sic, manual: dict[str, dict]) -> tuple[str, str, str | None]:
-    """``(sector, industry, gics_source)``: the manual file, then Compustat's GICS, then the SIC, else Unclassified."""
+def bridge_sector(ticker: str, gics: dict | None, sic, manual: dict[str, dict]) -> tuple:
+    """``(sector, industry, gics_source, gsector, ggroup)``: the manual file, then Compustat's GICS, then the SIC,
+    else Unclassified. The codes are the ones the names came from (NULL for ``Shell/SPAC`` and ``Unclassified``)."""
+    def coded(gsector, ggroup, source):
+        return (*sector_names(gsector, ggroup), source, gsector, ggroup)
     m = manual.get(ticker)
     if m:
-        return (*sector_names(m["gsector"], m["ggroup"]), MANUAL_SOURCE)
+        return coded(m["gsector"], m["ggroup"], MANUAL_SOURCE)
     if gics:
-        return (*sector_names(gics.get("gsector"), gics.get("ggroup")), CO_HGIC.name)
+        return coded(gics.get("gsector"), gics.get("ggroup"), CO_HGIC.name)
     code = tier_rule.sic_code(sic)
     if code in SHELL_SICS:
-        return SHELL_SPAC, SHELL_SPAC, SIC_SOURCE
+        return SHELL_SPAC, SHELL_SPAC, SIC_SOURCE, None, None
     if code in SIC_GICS:
-        return (*sector_names(*SIC_GICS[code]), SIC_SOURCE)
-    return UNCLASSIFIED, UNCLASSIFIED, None
+        return coded(*SIC_GICS[code], SIC_SOURCE)
+    return UNCLASSIFIED, UNCLASSIFIED, None, None, None
 
 
 # ── The link ──────────────────────────────────────────────────────────────────────────────────────────────────
@@ -451,7 +456,8 @@ class SpineSecurity:
             typ, typ_src = tier_rule.security_type(r["ticker"], r["name"], f_ok, (sec_row or {}).get("tpci"),
                                                     exchange=r["exchange"], sic=sic,
                                                     gsector=(g or {}).get("gsector"))
-            sector, industry, gics_src = bridge_sector(r["ticker"], g, sic, manual)
+            sector, industry, gics_src, gsector, ggroup = bridge_sector(r["ticker"], g, sic, manual)
+            from_co = gics_src == CO_HGIC.name     # a manual row's codes must not sit beside Compustat's finer ones
             isin = isin_mod.from_cusip(cusip)
             row = {
                 "ticker": r["ticker"], "cik": r["cik"], "name": r["name"], "exchange": r["exchange"],
@@ -465,8 +471,9 @@ class SpineSecurity:
                 "figi_ticker": (f_ok or {}).get("ticker"),
                 "security_description": (f_ok or {}).get("security_description"),
                 "figi_source": figi_src,
-                "gsector": (g or {}).get("gsector"), "ggroup": (g or {}).get("ggroup"), "gind": (g or {}).get("gind"),
-                "gsubind": (g or {}).get("gsubind"), "gics_from": (g or {}).get("indfrom"),
+                "gsector": gsector, "ggroup": ggroup, "gind": (g or {}).get("gind") if from_co else None,
+                "gsubind": (g or {}).get("gsubind") if from_co else None,
+                "gics_from": (g or {}).get("indfrom") if from_co else None,
                 "gics_source": gics_src, "sector": sector, "industry": industry,
                 "sic": _sic_text(sic),
                 "source": SEC, "source_as_of": r["source_as_of"], "fetched_at": r["fetched_at"], "run_id": r["run_id"],
@@ -538,7 +545,7 @@ class SpineSecurity:
             out.append(("tier_a_no_wrds_link", t, f"CIK {row['cik']} finds no Compustat security"))
         if wrds_on and row["gvkey"] is not None and not row["cusip"]:
             out.append(("tier_a_no_cusip", t, f"gvkey {row['gvkey']} iid {row['iid']} has no CUSIP"))
-        if wrds_on and row["gvkey"] is not None and not row["gsubind"]:
+        if wrds_on and row["gvkey"] is not None and not row["gsubind"] and row["gics_source"] != MANUAL_SOURCE:
             out.append(("tier_a_no_gics", t, f"gvkey {row['gvkey']} has no current GICS"))
         # One issue per name, so ``issues_open`` does not count a name twice (review should-fix 5): a row with
         # a CUSIP is the CUSIP kind's, and its message names both lanes; a row without one is the ticker kind's.
