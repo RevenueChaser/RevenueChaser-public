@@ -235,12 +235,6 @@ def _safe_float(v) -> float:
         return 0.0
 
 
-def calculate_ratio_and_momentum(rs_1w: float, rs_1m: float, rs_3m: float) -> tuple[float, float]:
-    ratio = 0.20 * rs_1w + 0.35 * rs_1m + 0.45 * rs_3m
-    momentum = 0.55 * rs_1w + 0.30 * rs_1m - 0.15 * rs_3m
-    return round(ratio, 2), round(momentum, 2)
-
-
 def classify_rrg(ratio_z: float, momentum_z: float) -> str:
     if ratio_z >= 0 and momentum_z >= 0:
         return "LEADING"
@@ -256,20 +250,33 @@ def classify_quadrant(rs_ratio: float, rs_momentum: float) -> str:
     return classify_rrg(rs_ratio, rs_momentum)
 
 
-def zscore_normalize(values: list[float]) -> list[float]:
-    arr = np.array([v for v in values if _finite(v)], dtype=np.float64)
-    if arr.size == 0:
-        return [0.0] * len(values)
-    mean = arr.mean()
-    std = arr.std(ddof=0)
-    if std == 0:
-        return [0.0] * len(values)
-    return ((arr - mean) / std).round(4).tolist()
+# ── the RRG cross-section from the stored bars (M-ROT-2, #374; model A1, avo 17 Nov 2026) ──────────────────────────
+# A1: every ETF is scored against its OWN history (JdK-style), not against the other ETFs, on completed ISO weeks:
+#   rel   = ln(ETF / SPY)                       dev   = rel - mean(rel over the last TREND_WEEKS)
+#   ratio = 100 + dev / std(dev, last SCALE_WEEKS)        roc = ratio - ratio ROC_WEEKS before
+#   mom   = 100 + roc / std(roc, last SCALE_WEEKS)        quadrant by the 100/100 cross
+# so adding or removing an ETF never moves another ETF's dot (the old pooled z did).
+TREND_WEEKS = 14
+ROC_WEEKS = 4
+SCALE_WEEKS = 52
+MIN_SCALE = 26                    # a std over fewer points is too noisy to scale by
+# weekly closes an ETF (and SPY) needs for a first point: trend, MIN_SCALE devs, the roc, MIN_SCALE rocs
+MIN_WEEKS = (TREND_WEEKS - 1) + (MIN_SCALE - 1) + ROC_WEEKS + (MIN_SCALE - 1) + 1
+# read enough that both 52-week scales are full, so a live Fetch and a backfill of the same session agree
+READ_WEEKS = (TREND_WEEKS - 1) + (SCALE_WEEKS - 1) + ROC_WEEKS + (SCALE_WEEKS - 1) + 1 + 8
 
 
-# ── the RRG cross-section from the stored bars (M-ROT-2, #374: D-M3 "weekly, both"; #283 session date; PR 9) ─────────
-MIN_WEEKS = 48                    # weekly closes an ETF (and SPY) needs to be on the map; fewer is "too short"
-READ_WEEKS = MIN_WEEKS + 8        # the window read before a session: enough ISO weeks for the floor
+def week_cut(as_of: date) -> date:
+    """The last day whose ISO week is complete at ``as_of``: ``as_of`` itself when it is the last session of its week,
+    else the Sunday before its week (A1: completed weeks only, so a Tuesday never moves the map half a week)."""
+    from RevenueChaser.core import calendar
+    try:
+        nxt = calendar.next_trading_day(as_of)
+    except ValueError:                          # outside the holiday table: weekdays
+        nxt = as_of + timedelta(days=3 if as_of.weekday() == 4 else 1)
+    if tuple(nxt.isocalendar())[:2] != tuple(as_of.isocalendar())[:2]:
+        return as_of
+    return as_of - timedelta(days=as_of.weekday() + 1)
 
 
 def _weekly(points, as_of: date) -> dict[tuple, float]:
@@ -283,27 +290,22 @@ def _weekly(points, as_of: date) -> dict[tuple, float]:
 
 
 def weekly_closes(points, as_of: date) -> list[float]:
-    """ISO-week closes, oldest first, from ``(session, close)`` daily points: each week's last session up to
-    ``as_of``. The current week is closed at ``as_of`` (the store holds complete sessions only, so never intraday)."""
-    return list(_weekly(points, as_of).values())
-
-
-# A macro series may end one ISO week before SPY: ``market_series`` stores day D on D+1 at the earliest (one raw file
-# per as-of day, FRED's own lag, Yahoo's 16:00 cut-off), so on the first session of a week its newest value is in the
-# week before (review M1, PR 270). That week carries forward; a series further behind stopped and is missing.
-MACRO_CARRY_WEEKS = 1
+    """Completed ISO-week closes, oldest first, from ``(session, close)`` daily points: each week's last session up
+    to ``week_cut(as_of)``."""
+    return list(_weekly(points, week_cut(as_of)).values())
 
 
 def aligned_weekly_closes(points, benchmark_points, as_of: date, carry_weeks: int = 0) -> list[float]:
-    """``weekly_closes`` of one symbol lined up with the benchmark's ISO weeks, so the 1/4/12-week lookbacks of
-    ``relative_strength_pct`` (counted from the end of both lists) compare the same weeks.
+    """``weekly_closes`` of one symbol lined up with the benchmark's completed ISO weeks, so the lookbacks (counted
+    from the end of both lists) compare the same weeks.
 
     ``[]`` when the symbol has no close in the benchmark's last ``carry_weeks + 1`` weeks: a series that stopped early
     is not plotted as of the session (it is missing). A benchmark week the symbol lacks in between, or one of its last
     ``carry_weeks``, carries its previous week's close (a 0% week) instead of shifting every older week by one
     (review 2026-10-16)."""
-    own = _weekly(points, as_of)
-    weeks = list(_weekly(benchmark_points, as_of))
+    cut = week_cut(as_of)
+    own = _weekly(points, cut)
+    weeks = list(_weekly(benchmark_points, cut))
     if not own or not weeks or not any(w in own for w in weeks[-(carry_weeks + 1):]):
         return []
     out, last = [], None
@@ -315,11 +317,11 @@ def aligned_weekly_closes(points, benchmark_points, as_of: date, carry_weeks: in
 
 
 def bar_points(tickers, start: date, end: date) -> dict[str, list[tuple[date, float]]]:
-    """``{ticker: [(session, close), ...]}`` from one prices-store read (``rcdata.read.ticker_bars``, split basis: the
-    level a chart shows, as D01's "nominal" was); never fetches. A ticker the store holds no bar of in the window is
-    absent."""
+    """``{ticker: [(session, close), ...]}`` from one prices-store read (``rcdata.read.ticker_bars``, total-return
+    basis, C1: a high-dividend ETF is not read as lagging for paying out); never fetches. A ticker the store holds no
+    bar of in the window is absent."""
     from RevenueChaser.rcdata import read
-    frame = read.ticker_bars(list(tickers), start=start, end=end, basis="split")
+    frame = read.ticker_bars(list(tickers), start=start, end=end, basis="total_return")
     out: dict[str, list[tuple[date, float]]] = {}
     if frame is None or frame.empty:
         return out
@@ -348,7 +350,7 @@ def macro_points(start: date, end: date, tickers=None) -> dict[str, list[tuple[d
 
 
 def rrg_tickers() -> list[str]:
-    """The RRG symbols the prices store can hold: every rotation ETF but the benchmark and the macro series."""
+    """The RRG symbols: every rotation ETF but the benchmark and the macro series (B1: macro is a strip, not a dot)."""
     return [t for t in ROTATION_ETFS if t != "SPY" and t not in MACRO_SERIES]
 
 
@@ -357,65 +359,109 @@ def too_short(closes: dict[str, list[float]]) -> list[str]:
     return [t for t in ROTATION_ETFS if 0 < len(closes.get(t) or []) < MIN_WEEKS]
 
 
+def _scaled(values: list, i: int):
+    """``values[i]`` over the std of the last ``SCALE_WEEKS`` values up to ``i``; ``None`` under ``MIN_SCALE`` of them."""
+    win = [v for v in values[max(0, i - SCALE_WEEKS + 1):i + 1] if v is not None]
+    if values[i] is None or len(win) < MIN_SCALE:
+        return None
+    sd = float(np.std(win))
+    return values[i] / sd if sd > 0 else None
+
+
+def jdk_series(closes: list[float], spy_closes: list[float]) -> list[tuple[float, float] | None]:
+    """The A1 ``(ratio, momentum)`` of every week of ``closes`` against ``spy_closes`` (both oldest first, lined up
+    from the end), ``None`` where the history is too short. Pure."""
+    n = min(len(closes), len(spy_closes))
+    a, b = closes[len(closes) - n:], spy_closes[len(spy_closes) - n:]
+    rel = [math.log(x / y) if x and y and x > 0 and y > 0 else None for x, y in zip(a, b)]
+    dev: list = [None] * n
+    for i in range(TREND_WEEKS - 1, n):
+        win = rel[i - TREND_WEEKS + 1:i + 1]
+        if None not in win:
+            dev[i] = rel[i] - sum(win) / TREND_WEEKS
+    ratio = [None if (z := _scaled(dev, i)) is None else 100 + z for i in range(n)]
+    roc = [ratio[i] - ratio[i - ROC_WEEKS] if i >= ROC_WEEKS and ratio[i] is not None
+           and ratio[i - ROC_WEEKS] is not None else None for i in range(n)]
+    mom = [None if (z := _scaled(roc, i)) is None else 100 + z for i in range(n)]
+    return [None if r is None or m is None else (r, m) for r, m in zip(ratio, mom)]
+
+
 def cross_section(closes: dict[str, list[float]], spy_closes: list[float], as_of: date) -> list[ETFRotationSnapshot]:
-    """The RRG cross-section of ``as_of``: one snapshot per symbol of ``closes`` with at least ``MIN_WEEKS`` weekly
-    closes, SPY-relative strength over ``LOOKBACKS`` weeks, z-scores across the snapshots and the quadrant.
+    """The RRG of ``as_of``: one snapshot per RRG symbol of ``closes`` with at least ``MIN_WEEKS`` completed weekly
+    closes. ``rs_ratio`` / ``rs_momentum`` are the A1 values around 100 (``jdk_series``); ``rs_ratio_z`` /
+    ``rs_momentum_z`` are the same values less 100, the map's axes, and the quadrant is their signs. ``rs_1w`` /
+    ``rs_1m`` / ``rs_3m`` are the plain excess returns over SPY across ``LOOKBACKS`` weeks.
 
     The one function the live Fetch and the backfill share (D-M3): the same closes give the same rows.
     """
     snaps = []
     for ticker, info in ROTATION_ETFS.items():
         series = closes.get(ticker) or []
-        if ticker == "SPY" or len(series) < MIN_WEEKS:
+        if ticker == "SPY" or ticker in MACRO_SERIES or len(series) < MIN_WEEKS:
             continue
-        # Yield series are interest rates, not prices: a rising yield is bearish.
-        # Invert so that *falling* yields register as positive RS (outperforming).
-        rs_closes = [-c for c in series] if info.get("group") == "yield" else series
-        rs_1w = relative_strength_pct(rs_closes, spy_closes, LOOKBACKS["rs_1w"])
-        rs_1m = relative_strength_pct(rs_closes, spy_closes, LOOKBACKS["rs_1m"])
-        rs_3m = relative_strength_pct(rs_closes, spy_closes, LOOKBACKS["rs_3m"])
-        ratio, momentum = calculate_ratio_and_momentum(rs_1w, rs_1m, rs_3m)
+        point = jdk_series(series, spy_closes)[-1]
+        if point is None:
+            continue
+        ratio, mom = round(point[0], 3), round(point[1], 3)
+        rz, mz = round(ratio - 100, 3), round(mom - 100, 3)
         snaps.append(ETFRotationSnapshot(
             as_of_date=as_of, ticker=ticker, group_name=info.get("group", ""), close_price=series[-1],
-            rs_1w=rs_1w, rs_1m=rs_1m, rs_3m=rs_3m, rs_ratio=ratio, rs_momentum=momentum))
-    normalize_z_scores(snaps)
+            rs_1w=relative_strength_pct(series, spy_closes, LOOKBACKS["rs_1w"]),
+            rs_1m=relative_strength_pct(series, spy_closes, LOOKBACKS["rs_1m"]),
+            rs_3m=relative_strength_pct(series, spy_closes, LOOKBACKS["rs_3m"]),
+            rs_ratio=ratio, rs_momentum=mom, rs_ratio_z=rz, rs_momentum_z=mz, rrg_quadrant=classify_rrg(rz, mz)))
     return snaps
 
 
-def normalize_z_scores(snapshots: list[ETFRotationSnapshot]) -> None:
-    """Cross-sectional z-scores of ratio and momentum, and the quadrant, set on ``snapshots`` in place."""
-    ratios = [s.rs_ratio for s in snapshots if _finite(s.rs_ratio)]
-    momentums = [s.rs_momentum for s in snapshots if _finite(s.rs_momentum)]
-    if not ratios or not momentums:
-        return
-    ratio_zs = zscore_normalize(ratios)
-    momentum_zs = zscore_normalize(momentums)
-    # assign z-scores value-by-value over finite snapshots (not positionally),
-    # so a None/NaN entry can never misalign subsequent tickers.
-    ri = mi = 0
-    for snap in snapshots:
-        if _finite(snap.rs_ratio):
-            snap.rs_ratio_z = ratio_zs[ri]
-            ri += 1
-        if _finite(snap.rs_momentum):
-            snap.rs_momentum_z = momentum_zs[mi]
-            mi += 1
-        if snap.rs_ratio_z is not None and snap.rs_momentum_z is not None:
-            snap.rrg_quadrant = classify_quadrant(snap.rs_ratio_z, snap.rs_momentum_z)
+# ── B1: the macro table under the map (avo 17 Nov 2026) ───────────────────────────────────────────────────────────
+# Only series that compare with each other share a block: the rates in basis points, the rest in percent. MOVE and
+# VVIX are volatility, read by their 1-year percentile, in a block of their own.
+MACRO_BLOCKS = (
+    ("Rates", ("US02Y", "US05Y", "US10Y", "US20Y", "US30Y", "US10Y-US02Y", "USIRYY", "HY_OAS", "IG_OAS")),
+    ("Commodities", ("CL1!", "WHEATF")),
+    ("Volatility", ("MOVE", "VVIX")),
+)
+_BP = {"Rates"}
+_CHG_DAYS = (("1w", 5), ("4w", 21), ("13w", 63))
+
+
+def macro_table(as_of: date) -> list[dict]:
+    """One row per macro series with a stored value up to ``as_of``, in ``MACRO_BLOCKS`` order: the last value and
+    its day, the change over ~1/4/13 weeks of observations (basis points for a rate, percent otherwise), the 1-year
+    percentile of the last value, and up to 65 values for a sparkline. Read-only (``market_series``); never fetches."""
+    tickers = [t for _, ts in MACRO_BLOCKS for t in ts]
+    pts = macro_points(as_of - timedelta(days=400), as_of, tickers)
+    out = []
+    for block, ts in MACRO_BLOCKS:
+        for t in ts:
+            obs = sorted(pts.get(t) or [])
+            if not obs:
+                continue
+            vals = [v for _, v in obs]
+            last = vals[-1]
+            row = {"ticker": t, "block": block, "name": (ROTATION_ETFS.get(t) or MACRO_SERIES[t]).get("name", t),
+                   "last": round(last, 3), "last_date": str(obs[-1][0]), "unit": "bp" if block in _BP else "%"}
+            for key, n in _CHG_DAYS:
+                b = vals[-1 - n] if len(vals) > n else None
+                row[f"chg_{key}"] = (None if b is None else round(100 * (last - b), 1) if block in _BP
+                                     else None if not b else round(100 * (last / b - 1), 1))
+            yr = vals[-252:]
+            row["pct_1y"] = round(100 * sum(v <= last for v in yr) / len(yr))
+            row["spark"] = [round(v, 3) for v in vals[-65:]]
+            out.append(row)
+    return out
 
 
 class RotationEngine:
-    """The RRG pull (PR 9): weekly closes of the ETFs from the prices store, the 11 macro series from ``market_series``
-    (``macro_points``), both lined up with SPY's weeks, one ``cross_section`` dated by the session its closes end on.
-    Nothing is fetched: a Fetch and a Refresh of the same stores give the same map.
+    """The RRG pull (PR 9; A1): completed weekly total-return closes of the ETFs from the prices store, lined up with
+    SPY's weeks, one ``cross_section`` dated by the session its closes end on. The macro series are not on the map (B1,
+    ``macro_table``). Nothing is fetched: a Fetch and a Refresh of the same stores give the same map.
 
     After ``process_all``:
     - ``as_of`` is that session: the latest complete session, or SPY's last stored session before it when the prices
       build has not stored it yet (``stale`` then says so);
     - ``intraday`` is true when the run happened while the US session was open (rule B, ``calendar.session_for``);
-    - ``too_short`` lists the symbols left off the map for having under ``MIN_WEEKS`` weekly closes (a warning);
-    - ``carried`` lists the macro series on the map with no value in ``as_of``'s ISO week yet, whose previous week's
-      value stands for it (``MACRO_CARRY_WEEKS``; a warning).
+    - ``too_short`` lists the symbols left off the map for having under ``MIN_WEEKS`` weekly closes (a warning).
     ``uw`` is not called for closes any more; it is kept for the callers that pass one.
     """
 
@@ -429,11 +475,10 @@ class RotationEngine:
         self.stale: str | None = None
         self.intraday = False
         self.too_short: list[str] = []
-        self.carried: list[str] = []
 
     def process_all(self) -> list[ETFRotationSnapshot]:
         from RevenueChaser.core import calendar
-        self.snapshots, self.too_short, self.stale, self.carried = [], [], None, []
+        self.snapshots, self.too_short, self.stale = [], [], None
         try:
             session = calendar.latest_complete_session(self.now)
             self.intraday = calendar.session_for(
@@ -457,14 +502,6 @@ class RotationEngine:
                            self.benchmark, len(self.spy_closes), MIN_WEEKS)
             return []
         closes = {t: aligned_weekly_closes(points.get(t) or [], spy, self.as_of) for t in rrg_tickers()}
-        macro = macro_points(start, self.as_of, [t for t in MACRO_SERIES if t in ROTATION_ETFS])
-        last_week = tuple(self.as_of.isocalendar())[:2]
-        for ticker in MACRO_SERIES:
-            if ticker in ROTATION_ETFS:
-                own = macro.get(ticker) or []
-                closes[ticker] = aligned_weekly_closes(own, spy, self.as_of, carry_weeks=MACRO_CARRY_WEEKS)
-                if closes[ticker] and last_week not in _weekly(own, self.as_of):
-                    self.carried.append(ticker)
         self.too_short = too_short(closes)
         self.snapshots = cross_section(closes, self.spy_closes, self.as_of)
         return self.snapshots

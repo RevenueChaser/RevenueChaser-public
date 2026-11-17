@@ -1,7 +1,7 @@
 """M-ROT-2 (#374, A5 + #283): the Rotation RRG reads its closes from D01, one cross-section for live and backfill.
 
-D-M3 "weekly, both" (avo 2026-10-15): every path resamples D01's nominal daily closes to ISO weeks, the current week
-closed at the latest complete session, and keeps the 1/4/12-week lookbacks. ``as_of_date`` is that session (rule B),
+D-M3 "weekly, both" (avo 2026-10-15): every path resamples the stored daily closes to ISO weeks, completed weeks only
+since A1 (avo 17 Nov 2026), and keeps the 1/4/12-week lookbacks. ``as_of_date`` is that session (rule B),
 never the machine's ``date.today()``; a run that is not a complete session never replaces a complete stored one, and
 an ETF with too little D01 history is a warning, not a partial run. Offline: a temp store, the calendar clock pinned,
 a UW fake that records every call.
@@ -9,7 +9,7 @@ a UW fake that records every call.
 from __future__ import annotations
 
 import json
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -64,16 +64,16 @@ def _strip(rows: list[dict]) -> list[dict]:
 
 
 
-def test_the_cross_section_uses_weekly_lookbacks_on_iso_weeks():
-    """The partial week is closed at the session; lookbacks are 1/4/12 weeks, not 5/21/63 sessions."""
+def test_the_cross_section_uses_weekly_lookbacks_on_completed_iso_weeks():
+    """A1 (avo 17 Nov 2026): a partial week is not on the map yet; lookbacks are 1/4/12 weeks, not 5/21/63 sessions."""
     days = _sessions(date(2025, 6, 2), date(2026, 10, 7))
     spy = [(d, 100.0) for d in days]
     rising = [(d, 100.0 + i) for i, d in enumerate(days)]
     weeks = engine.weekly_closes(rising, date(2026, 10, 7))
-    assert weeks[-1] == rising[-1][1]                          # the current week closes at the session
     friday = date(2026, 10, 2)
-    assert weeks[-2] == dict(rising)[friday]                   # each past ISO week closes on its last session
-    assert len(weeks) == len({d.isocalendar()[:2] for d, _ in rising})
+    assert weeks[-1] == dict(rising)[friday]                   # Wednesday's week is not complete: last Friday closes
+    assert weeks[-2] == dict(rising)[friday - timedelta(days=7)]
+    assert len(weeks) == len({d.isocalendar()[:2] for d, _ in rising}) - 1
     snaps = engine.cross_section({"XLK": weeks}, engine.weekly_closes(spy, date(2026, 10, 7)), date(2026, 10, 7))
     (s,) = snaps
     assert s.as_of_date == date(2026, 10, 7)

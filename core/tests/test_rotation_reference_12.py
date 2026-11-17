@@ -18,7 +18,7 @@ What this file pins, and why each half matters:
 - **No lazy import is left for that reason.** ``module_earnings_radar/report.py`` imports the
   reference at module level, which it could not do while the cycle existed.
 - **Content parity.** Both key sequences are the ones ``universe.py`` held at the base commit,
-  so the move cannot silently drop a symbol.
+  so the move cannot silently drop a symbol (plus the symbols added on purpose since, each named).
 """
 from __future__ import annotations
 
@@ -32,6 +32,8 @@ _ROTATION_KEYS = (
     "XLC", "XLE", "XLF", "XLI", "XLB", "XLK", "XLP", "XLRE", "XLU", "XLV", "XLY",
     "AIQ", "ARKQ", "IGV", "ROBO", "SKYY", "SMH", "SOXX", "WCLD", "AIRR", "ITA", "PAVE",
     "GLD", "LIT", "NLR", "SLV", "URA", "USO", "XME", "XOP", "IBB", "XBI", "JETS", "KRE",
+    # added 17 Nov 2026 (Sector Rotation review, D1 and avo's watch lists)
+    "IHI", "HACK", "XHB", "XRT", "ARKW", "REMX", "ARKG", "QQQ", "RSP", "VUG", "VTV", "MAGS",
     "EEM", "IWM", "HYG", "LQD", "TLT",
     "EWZ", "EWY", "FXI", "INDA", "EWT", "EWC", "EWA", "EWJ", "EWU", "MCHI", "EWG", "EWW",
     "VNM", "EWS", "EIDO", "ECH", "EWP", "KSA", "EWM", "EPOL", "THD", "EEMV", "EZA", "TUR",
@@ -40,7 +42,7 @@ _ROTATION_KEYS = (
     "VVIX", "WHEATF",
 )
 _MACRO_KEYS = ("US02Y", "US05Y", "US10Y", "US20Y", "US30Y", "US10Y-US02Y", "USIRYY",
-               "CL1!", "MOVE", "VVIX", "WHEATF")
+               "CL1!", "MOVE", "VVIX", "WHEATF", "HY_OAS", "IG_OAS")   # the credit spreads: macro table, 17 Nov 2026
 
 # The packages that used to import the board module for these two names. ``app/`` is the
 # composition root and may name any area by design (#12), so it is not scanned.

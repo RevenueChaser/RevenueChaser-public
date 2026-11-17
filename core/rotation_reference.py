@@ -10,7 +10,8 @@ Nothing here imports another module: a reference table that the price writer, th
 and the earnings radar all read must not drag a board in behind it.
 """
 
-# ── The RRG symbols: 67 ETFs (sector, theme, region, bond) and the 11 macro series below ──
+# ── The RRG symbols: 79 ETFs (sector, theme, style, region, bond); the 11 macro series below are listed for their
+#    names and go to the macro table, not the map (B1) ──
 ROTATION_ETFS = {
     # ── Sectors (11) ──
     # The names are the Morningstar sector names, as stored in ``equity_universe.sector`` (Phase 1, #266):
@@ -51,6 +52,22 @@ ROTATION_ETFS = {
     "XBI":  {"name": "Biotechnology", "group": "theme"},
     "JETS": {"name": "Airlines", "group": "theme"},
     "KRE":  {"name": "Regional Banks", "group": "theme"},
+    # D1 (avo 17 Nov 2026): the cluster ETFs Earnings Radar names (``CLUSTER_TO_ETFS``) that were not scanned
+    "IHI":  {"name": "Medical Devices", "group": "theme"},
+    "HACK": {"name": "Cybersecurity", "group": "theme"},
+    "XHB":  {"name": "Homebuilders", "group": "theme"},
+    "XRT":  {"name": "Retail", "group": "theme"},
+    "ARKW": {"name": "Next Generation Internet", "group": "theme"},
+    # from avo's watch lists (17 Nov 2026)
+    "REMX": {"name": "Rare Earth / Strategic Metals", "group": "theme"},
+    "ARKG": {"name": "Genomics", "group": "theme"},
+
+    # ── Style & size (avo's watch lists, 17 Nov 2026): breadth (RSP), growth vs value, the mega caps ──
+    "QQQ":  {"name": "Nasdaq-100", "group": "style"},
+    "RSP":  {"name": "S&P 500 Equal Weight", "group": "style"},
+    "VUG":  {"name": "US Growth", "group": "style"},
+    "VTV":  {"name": "US Value", "group": "style"},
+    "MAGS": {"name": "Magnificent Seven", "group": "style"},
 
     # ── Asset Class, Regional (5) ──
     "EEM":  {"name": "Emerging Markets", "group": "region"},
@@ -120,4 +137,10 @@ MACRO_SERIES = {
     "MOVE":        {"fred": None, "yf": "^MOVE", "series": ("MOVE", "yahoo")},
     "VVIX":        {"fred": None,     "yf": "^VVIX", "series": ("VVIX", "cboe")},  # FRED VIXCLS is the VIX; no VVIX
     "WHEATF":      {"fred": None, "yf": "ZW=F", "series": ("WHEATF", "yahoo")},
+    # Macro table only (B1, avo 17 Nov 2026): not in ``ROTATION_ETFS``, so no price build asks for them; the FRED
+    # build already stores both. Values are percent, like the yields.
+    "HY_OAS":      {"fred": "BAMLH0A0HYM2", "yf": None, "series": ("BAMLH0A0HYM2", "fred"),
+                    "name": "High Yield Credit Spread (OAS)"},
+    "IG_OAS":      {"fred": "BAMLC0A0CM", "yf": None, "series": ("BAMLC0A0CM", "fred"),
+                    "name": "Investment Grade Credit Spread (OAS)"},
 }

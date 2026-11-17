@@ -1,13 +1,16 @@
-"""Tests for rotation engine quadrant classification + z-score alignment."""
+"""Tests for the rotation engine: quadrant classification and the A1 own-history model."""
 from datetime import date
 
+import pytest
+
 from RevenueChaser.module_sector_rotation.engine import (
+    MIN_WEEKS,
     classify_quadrant,
     classify_rrg,
-    normalize_z_scores,
-    zscore_normalize,
+    cross_section,
+    jdk_series,
+    week_cut,
 )
-from RevenueChaser.module_sector_rotation.models import ETFRotationSnapshot
 
 
 class TestClassifyQuadrant:
@@ -29,55 +32,57 @@ class TestClassifyQuadrant:
                 assert classify_quadrant(rz, mz) == classify_rrg(rz, mz)
 
 
-class TestNormalizeZAlignment:
-    def test_none_snapshot_does_not_misalign(self):
-        # A snapshot with None ratio/momentum must not shift subsequent z-scores.
-        from RevenueChaser.module_sector_rotation.engine import RotationEngine
-        eng = RotationEngine(benchmark="SPY")
-        eng.snapshots = [
-            ETFRotationSnapshot(as_of_date=date(2026, 8, 14), ticker="A",
-                                group_name="sector", rs_ratio=None, rs_momentum=None),
-            ETFRotationSnapshot(as_of_date=date(2026, 8, 14), ticker="B",
-                                group_name="sector", rs_ratio=1.0, rs_momentum=1.0),
-            ETFRotationSnapshot(as_of_date=date(2026, 8, 14), ticker="C",
-                                group_name="sector", rs_ratio=-1.0, rs_momentum=-1.0),
-        ]
-        normalize_z_scores(eng.snapshots)
-        b = eng.snapshots[1]
-        c = eng.snapshots[2]
-        assert b.rs_ratio_z is not None and b.rs_momentum_z is not None
-        assert c.rs_ratio_z is not None and c.rs_momentum_z is not None
-        assert b.rs_ratio_z > c.rs_ratio_z, "B (1.0) must rank above C (-1.0)"
-        assert b.rrg_quadrant == "LEADING"
-        assert c.rrg_quadrant == "LAGGING"
+class TestJdkSeries:
+    """A1 (avo 17 Nov 2026): each ETF against its own history; pure."""
 
-    def test_nan_snapshot_does_not_poison_other_zscores(self):
-        # One broken ticker (NaN ratio/momentum) must not NaN every other z-score.
+    @staticmethod
+    def _series(n, drift, wiggle):
         import math
-        from RevenueChaser.module_sector_rotation.engine import RotationEngine
-        eng = RotationEngine(benchmark="SPY")
-        eng.snapshots = [
-            ETFRotationSnapshot(as_of_date=date(2026, 8, 14), ticker="BROKEN",
-                                group_name="sector", rs_ratio=float("nan"),
-                                rs_momentum=float("nan")),
-            ETFRotationSnapshot(as_of_date=date(2026, 8, 14), ticker="B",
-                                group_name="sector", rs_ratio=1.0, rs_momentum=1.0),
-            ETFRotationSnapshot(as_of_date=date(2026, 8, 14), ticker="C",
-                                group_name="sector", rs_ratio=-1.0, rs_momentum=-1.0),
-        ]
-        normalize_z_scores(eng.snapshots)
-        broken, b, c = eng.snapshots
-        assert broken.rs_ratio_z is None and broken.rs_momentum_z is None
-        for s in (b, c):
-            assert s.rs_ratio_z is not None and not math.isnan(s.rs_ratio_z)
-            assert s.rs_momentum_z is not None and not math.isnan(s.rs_momentum_z)
-        assert b.rs_ratio_z > c.rs_ratio_z
-        assert b.rrg_quadrant == "LEADING"
-        assert c.rrg_quadrant == "LAGGING"
+        return [100 * (1 + drift) ** i * (1 + 0.01 * math.sin(i / wiggle)) for i in range(n)]
 
-    def test_zscore_normalize_drops_nan(self):
+    def test_too_short_is_none(self):
+        spy = [100.0] * (MIN_WEEKS - 1)
+        assert jdk_series(self._series(MIN_WEEKS - 1, 0.002, 3), spy)[-1] is None
+
+    def test_points_sit_around_100(self):
+        spy = self._series(120, 0.001, 5)
+        pts = [p for p in jdk_series(self._series(120, 0.001, 3), spy) if p]
+        assert len(pts) >= 120 - MIN_WEEKS + 1
+        assert all(90 < r < 110 and 90 < m < 110 for r, m in pts)
+
+    def test_a_rising_relative_line_is_right_of_100(self):
         import math
-        out = zscore_normalize([1.0, float("nan"), -1.0])
-        assert not any(isinstance(v, float) and math.isnan(v) for v in out)
-        assert len(out) == 2, "NaN inputs are dropped from the z-score set"
-        assert out[0] > out[1]
+        spy = [100.0] * 120
+        etf = [100 * (1 + 0.004 * math.sin(i / 2)) for i in range(110)] + [100 * 1.03 ** k for k in range(1, 11)]
+        r, m = jdk_series(etf, spy)[-1]
+        assert r > 100 and classify_rrg(r - 100, m - 100) in ("LEADING", "WEAKENING")
+
+    def test_one_etf_does_not_move_another(self):
+        """The old pooled z moved every dot when one ETF was added; A1 scores each alone."""
+        spy = self._series(120, 0.001, 5)
+        a, b = self._series(120, 0.002, 3), self._series(120, -0.003, 4)
+        alone = cross_section({"XLK": a}, spy, date(2026, 8, 14))
+        both = cross_section({"XLK": a, "XLE": b}, spy, date(2026, 8, 14))
+        assert alone[0].rs_ratio == [s for s in both if s.ticker == "XLK"][0].rs_ratio
+
+    def test_the_axes_are_the_values_less_100(self):
+        spy = self._series(120, 0.001, 5)
+        s = cross_section({"XLK": self._series(120, 0.002, 3)}, spy, date(2026, 8, 14))[0]
+        assert s.rs_ratio_z == pytest.approx(s.rs_ratio - 100, abs=1e-6)
+        assert s.rs_momentum_z == pytest.approx(s.rs_momentum - 100, abs=1e-6)
+        assert s.rrg_quadrant == classify_rrg(s.rs_ratio_z, s.rs_momentum_z)
+
+    def test_a_macro_series_is_not_on_the_map(self):
+        spy = self._series(120, 0.001, 5)
+        assert cross_section({"US10Y": self._series(120, 0.002, 3)}, spy, date(2026, 8, 14)) == []
+
+
+class TestWeekCut:
+    def test_a_friday_closes_its_week(self):
+        assert week_cut(date(2026, 8, 14)) == date(2026, 8, 14)
+
+    def test_a_tuesday_counts_only_the_weeks_before(self):
+        assert week_cut(date(2026, 8, 11)) == date(2026, 8, 9)
+
+    def test_a_thursday_before_a_good_friday_closes_its_week(self):
+        assert week_cut(date(2026, 4, 2)) == date(2026, 4, 2)
