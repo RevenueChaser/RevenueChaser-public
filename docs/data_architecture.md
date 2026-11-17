@@ -1677,6 +1677,7 @@ never writes it. Nothing here writes `raw.duckdb`: the old 13F, short and inside
 | `sec/form4` | daily | The SEC's Insider Transactions data sets (the first fill), then Form 4 and 4/A through the EDGAR daily index | `insider_transactions` |
 | `sec/13dg` | daily | Schedules 13D and 13G, old (`SC 13G`) and new (`SCHEDULE 13G`, XML since 2024-12-18) names | `beneficial_ownership` |
 | `uw/institutions` | quarterly | Unusual Whales' `GET /institutions` without a name: every 13F institution by value, 500 to a page (18 pages, 8,875 CIKs on 12 Nov 2026), with its tags, `is_hedge_fund` and its succession | `uw_institution`, `uw_institution_succession` |
+| `sec/13f_list` | quarterly (a held quarter is not asked again) | The SEC's Official List of Section 13(f) Securities, one text file per quarter since 2020 Q1 (`13flist<yyyy>q<n>.txt`, fixed width; a `*D*` row was deleted), typed to `parquet/sec/13f_list/part-0.parquet` (#926) | none: `ownership/serve` reads the Parquet for the `cusip_not_listed` issue |
 | `sec/nport` | monthly, newest listed quarter only (a held set is not asked again) | The SEC's Form N-PORT data sets (`<yyyy>q<n>_nport.zip`, about 440 MB, streamed to disk): every fund's series and holdings, typed to `parquet/sec/nport/quarter=<set>/` (`fund.parquet`, `holdings.parquet`) (#354) | `etf_holdings_nport` (the spine ETFs' newest report, positions whose CUSIP is a spine ticker) |
 | `ownership/serve` | daily | none: derives the 13F totals from the 13F tables and the spine | the four 13F tables below |
 
@@ -1756,7 +1757,9 @@ or 100 (#934), moved the most dollars, keyed `cik|period`, with the median ratio
 `value_row_replaced` (the 50 holdings, keyed `cik|period|cusip`, whose value lay 300 times or more from the 13F's own
 price and was read at that price, #780; never above 3,000 times its filing's cover total, #932) and `value_suspect`
 (the 50 largest filer-quarters left as filed whose median ratio lies over 3 or under 1/3: VALUE or share counts
-wrong, listed and not changed; avo, 16 Nov 2026).
+wrong, listed and not changed; avo, 16 Nov 2026) and `cusip_not_listed` (per period from 2020 Q1 on, keyed by the
+period: the CUSIPs and dollars not on that quarter's SEC 13(f) list, `sec/13f_list`, with the largest as the example;
+marked, nothing dropped, #926).
 
 **Reading it.** `rcdata.read.holders_13f(tickers, periods)`, `periods_13f()` (both with `complete`),
 `finra_short_interest(tickers, start, end)`, `shortable(tickers, session)`, `threshold_list(on)`,

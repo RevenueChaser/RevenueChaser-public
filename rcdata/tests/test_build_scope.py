@@ -124,6 +124,7 @@ def test_every_dataset_either_honours_the_scope_or_is_named_here():
         "sec/13dg": "the SEC daily index's 13D/G filers",
         "sec/13f": "the SEC daily index's 13F filers",
         "sec/13f_sets_listed": "one SEC page that lists every 13F data set",
+        "sec/13f_list": "one SEC page that lists every quarter's 13(f) list; a held quarter is not asked again",
         "sec/nport": "one N-PORT data set a quarter for every fund at once",
         "sec/company_tickers_exchange": "the SEC file is the spine's own source: the tiers come out of it",
         "alphavantage/listing_status": "one list of every US listing at once",
