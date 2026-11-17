@@ -363,7 +363,7 @@ def render_asymmetric_growth_hunter_html(result: dict) -> str:
         <tr><td>Scoring</td><td>—</td><td>Total points = the number of passed sub-criteria (0 to 9). Point buckets: 9 · 8-7 · 6-5 · below 5.</td></tr>
         <tr><td>Tier</td><td>—</td><td>A signal is strong with at least {engine.TIER_MIN_PASSES} of its 3 sub-criteria passed. Balanced = 3 strong signals, Strong = 2. Computed with the default thresholds (the sliders move points only). Cards sort by tier, then points, then revenue growth capped at +100%.</td></tr>
         <tr><td>Sector</td><td>—</td><td>Financial Services and Real Estate (the universe sector) are not comparable on revenue, margin and free cash flow: their cards keep their points, carry a "Not comparable" badge and get no tier.</td></tr>
-        <tr><td>Data checks</td><td>—</td><td>A prior year with revenue of zero or less, gross profit above revenue, or share counts on different bases (diluted against basic) make that figure unknown, not a fail. Growth above +{int(engine.RULES["suspicious_growth"] * 100)}% is flagged and sorts with the unknowns. A name whose latest annual report ended more than {engine.RULES["stale_days"]} days ago is excluded and listed in the funnel. When only its revenue figure is that old (the newer reports carry none), the card reads the latest report with revenue unknown, is flagged and gets no tier.</td></tr>
+        <tr><td>Data checks</td><td>—</td><td>A prior year with revenue of zero or less, gross profit above revenue, or share counts on different bases (diluted against basic) make that figure unknown, not a fail. Growth above +{int(engine.RULES["suspicious_growth"] * 100)}% is flagged, scores as unknown and sorts with the unknowns. A name whose latest annual report ended more than {engine.RULES["stale_days"]} days ago is excluded and listed in the funnel. When only its revenue figure is that old (the newer reports carry none), the card reads the latest report with revenue unknown, is flagged and gets no tier.</td></tr>
         <tr><td>Overlays</td><td>—</td><td>Themed (any pinned theme of the rotation map; no theme is graded as disruptive) · Technological Breakthrough (research and development (R&amp;D) spending divided by revenue of at least 15%)</td></tr>
         <tr><td>Warnings</td><td>—</td><td>High dilution (year-over-year (YoY) diluted share count growth above +20%)</td></tr>
       </table>
@@ -553,10 +553,11 @@ function instTable(c) {{
 // The data checks a card carries (#380 S1 C18 and S6 C17): what made a figure unknown, or what to read with care.
 var FLAG_TEXT = {{
   prior_nonpositive: "Prior-year revenue of zero or less: growth unknown",
-  suspicious_growth: "Growth above +500%: check the filing (sorts with the unknowns)",
+  suspicious_growth: "Growth above +500%: check the filing (scores and sorts as unknown)",
   revenue_nonpositive: "Revenue of zero or less: margin unknown",
   gross_profit_exceeds_revenue: "Gross profit above revenue: margin unknown",
   debt_inferred_none: "No debt line tagged and no interest paid: net debt read as zero debt (as on Fundamentals)",
+  short_price_history: "Listed less than a year: the 52-week high is the highest since listing (at least {engine.BARS_52W_MIN} sessions)",
   mixed_share_basis: "Share counts on different bases (diluted against basic): dilution unknown",
   price_bar_older: "Price and momentum from an older session than the board's (a halt or a gap in the stored bars)",
   no_recent_revenue: "No revenue figure in the last {engine.RULES["stale_days"]} days (the newer reports carry none): revenue unknown, no tier"
@@ -665,7 +666,7 @@ function resetThr() {{
 function evalSub(sub) {{
   // true / false / null (unknown: an input is missing). A switched-off rule counts as passed, as before.
   var v = sub.value, op = sub.op;
-  if (sub.not_needed) return null;   // C1: runway with positive FCF, out of the count (engine._signal)
+  if (sub.not_needed || sub.suspicious) return null;   // C1 runway not needed (out of the count); F1 growth above +500 % (unknown)
   if (op === "pair") {{
     if (THRESHOLDS.accelerating === false) return true;
     return (Array.isArray(v) && v[0] != null && v[1] != null) ? v[0] > v[1] : null;
@@ -692,7 +693,7 @@ function rescore(c) {{
       var p = evalSub(sub);
       if (p === true) passed++;
       if (p !== null) known++;
-      return {{ label:sub.label, value:sub.value, unit:sub.unit, threshold:sub.threshold, op:sub.op, param:sub.param, not_needed:sub.not_needed, passed:p }};
+      return {{ label:sub.label, value:sub.value, unit:sub.unit, threshold:sub.threshold, op:sub.op, param:sub.param, not_needed:sub.not_needed, suspicious:sub.suspicious, passed:p }};
     }});
     return {{ key:s.key, name:s.name, passed:passed, known:known, total:s.total, subs:subs }};
   }});
