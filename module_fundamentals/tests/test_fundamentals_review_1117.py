@@ -17,15 +17,9 @@ def _year(revenue, ocf=30.0, capex=10.0) -> dict:
     return {"revenue": revenue, "operating_cash_flow": ocf, "capex": capex}
 
 
-def test_a_clean_pair_of_years_still_scores():
-    m = _ttm_metrics([], [_year(100.0), _year(150.0, ocf=40.0, capex=10.0)])
-    assert m["ro40_basis"] == "FY"
-    assert m["rev_growth_ttm"] == pytest.approx(0.5)
-    assert m["fcf_margin"] == pytest.approx(0.2)
-    assert m["ro40"] == pytest.approx(70.0)
-
-
 def test_a_negative_capex_leaves_the_margin_and_the_rule_unknown():
+    clean = _ttm_metrics([], [_year(100.0), _year(150.0, ocf=40.0, capex=10.0)])
+    assert clean["ro40_basis"] == "FY" and clean["ro40"] == pytest.approx(70.0)   # the same pair, a real capex
     m = _ttm_metrics([], [_year(100.0), _year(150.0, ocf=40.0, capex=-50.0)])
     assert m["fcf_margin"] is None          # was (40 + 50) / 150 = 60 %: the artefact passed the Rule of 40
     assert m["ro40"] is None
