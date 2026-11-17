@@ -272,9 +272,11 @@ def _known_payload():
     return build_payload([_row("AAA", _m(**_T3), price=50.0, market_cap=1e9)], top_n=10)
 
 
-def test_the_page_has_the_three_rule_toggles_with_the_rule_of_40_checked():
+def test_the_page_has_the_three_rule_toggles_none_checked():
+    """avo M1 (18 Nov 2026): the page opens on every card; it used to tick the Rule of 40 and hide Quality-only cards."""
     html = render_fundamental_dashboard(_known_payload())
-    assert 'id="rule-rule_of_40" checked' in html
+    import re
+    assert 'id="rule-rule_of_40"' in html and not re.search(r'<input type="checkbox" id="rule-[^>]*checked', html)
     assert 'id="rule-quality"' in html and 'id="rule-momentum"' in html
     for gone in ("Triple Pass", "Dual Pass", 'class="tabs"', "data-pt", "setPt("):
         assert gone not in html, gone

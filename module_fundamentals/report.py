@@ -485,9 +485,9 @@ function start(){
     JS = fill(JS, {"__MOD__": script_json(MODULE),
                    "__BOOT__": script_json(boot),
                    "__RULE_ON__": script_json({} if stale_payload else
-                                              {"rule_of_40": True, "quality": False, "momentum": False}),
+                                              {"rule_of_40": False, "quality": False, "momentum": False}),
                    "__META__": meta})
-    # #386 F2.8/F2.9: the rule toggles a card must pass (Rule of 40 on by default); a payload scored before v6
+    # #386 F2.8/F2.9: the rule toggles a card must pass; avo M1 (18 Nov 2026): none ticked on open, every card shows. A payload scored before v6
     # renders no toggles and one notice instead.
     if stale_payload:
         rules_row = ('<div class="notice">Scored before v6 (data-health gates and the rule toggles). '
@@ -495,7 +495,7 @@ function start(){
     else:
         rules_row = (
             '<div class="frow"><span class="flbl">Rules</span><div class="toggles">'
-            '<label class="tog"><input type="checkbox" id="rule-rule_of_40" checked '
+            '<label class="tog"><input type="checkbox" id="rule-rule_of_40" '
             'onchange="setRule(\'rule_of_40\', this.checked)"> Rule of 40</label>'
             '<label class="tog"><input type="checkbox" id="rule-quality" '
             'onchange="setRule(\'quality\', this.checked)"> Quality</label>'
