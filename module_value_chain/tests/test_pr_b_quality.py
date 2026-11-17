@@ -99,7 +99,6 @@ def test_indexed_graphs_equal_the_old_per_ticker_graphs():
     names, edges = _fixture_edges()
     tickers = names + ["NONE", "t001"]
     want = {t: _reference_focal_graph(edges, t, depth=2) for t in tickers}
-    assert report._graphs({"edges": edges}, tickers) == want
     index = engine.edge_index(edges)
     for t in tickers:
         assert engine.focal_graph(edges, t, depth=2, index=index) == want[t]
@@ -107,8 +106,12 @@ def test_indexed_graphs_equal_the_old_per_ticker_graphs():
     assert engine.focal_graph(edges, "T001", depth=1) == _reference_focal_graph(edges, "T001", 1)
 
 
-def test_graphs_index_the_edges_once(monkeypatch):
+def test_graphs_index_the_edges_once(monkeypatch, tmp_path):
+    """The per-ticker endpoint reads the payload file and indexes its edges once, not once per request."""
+    import json
     names, edges = _fixture_edges(n_tickers=50, n_edges=500)
+    path = tmp_path / "value_chain_latest.json"
+    path.write_text(json.dumps({"edges": edges}), encoding="utf-8")
     calls = {"n": 0}
     real = engine._norm
 
@@ -117,5 +120,7 @@ def test_graphs_index_the_edges_once(monkeypatch):
         return real(e)
 
     monkeypatch.setattr(engine, "_norm", _counting)
-    report._graphs({"edges": edges}, names)
+    monkeypatch.setattr(engine, "_GRAPH_CACHE", {})
+    for t in names:
+        engine.focal_from_payload_file(path, t)
     assert calls["n"] == 1

@@ -1398,6 +1398,21 @@ def api_ticker(ticker: str):
     return jsonify({"ok": True, "asof": ticker_store.asof(), "data": data})
 
 
+@app.route("/api/value_chain/graph/<ticker>")
+def api_value_chain_graph(ticker: str):
+    """The Value Chain board's graph for one company (its suppliers, customers and their second hop): the page
+    fetches it when a company is picked instead of embedding every company's graph. From the board's last payload
+    file, so no store read."""
+    from RevenueChaser.module_value_chain import engine
+    ticker = ticker.strip().upper()
+    if not _valid_ticker(ticker):
+        return jsonify({"ok": False, "error": "bad ticker"}), 400
+    graph = engine.focal_from_payload_file(runners.VALUE_CHAIN_JSON, ticker)
+    if graph is None:
+        return jsonify({"ok": False, "error": "no Value Chain run yet", "ticker": ticker}), 404
+    return jsonify({"ok": True, "ticker": ticker, "graph": graph})
+
+
 @app.route("/api/spxgamma/latest")
 def api_spxgamma_latest():
     payload = _spxgamma_latest_payload()
