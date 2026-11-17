@@ -84,5 +84,8 @@ TAX_RATE = 0.21
 # 12: the fiscal-year Rule of 40 refuses a negative revenue or capex like the trailing year does; the model version
 #     hashes the debt inference floor, the debt-note window and the stale-annual cut, not the unread ABOVE_200D
 #     (Fundamentals review 17 Nov 2026)
-SELECTION_VERSION = "12"
+# 13: avo's rule decisions of 17 Nov 2026: a card needs the Rule of 40 or Quality (B1); one period per card, TTM
+#     else FY (D1); a distorted growth, a micro revenue base or a period older than STALE_DAYS leaves the rules that
+#     read it unknown (C1); under 252 bars Momentum is unknown, not dropped (E1); the 8-K flag leaves 1.02 and 5.03 (G1)
+SELECTION_VERSION = "13"
 
