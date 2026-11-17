@@ -166,6 +166,7 @@ def _picker_rows(filings: list[dict], extra: set[str]) -> list[dict]:
             "form": f.get("form"),
             "filed": f.get("filed"),
             "quality": f.get("quality"),
+            "unnamed_customers": f.get("unnamed_customers") or 0,
         })
     return rows
 
@@ -324,6 +325,10 @@ function render(){
     (q.split(";")[0] === "ok" ? "text: ok" : (q ? '<span class="chip warn">text: ' + rcEsc(q) + ' — item not fully extracted</span>' : ""));
   drawSankey(FOCAL, links);
   drawEdges(links);
+  // D: customers the filing does not name are no nodes; the row says how many there are.
+  var nu = fm.unnamed_customers || 0;
+  if(nu) document.getElementById("edges").insertAdjacentHTML("beforeend", '<div class="note">Also ' + nu +
+    (nu === 1 ? " unnamed customer: the filing does not name it." : " unnamed customers: the filing does not name them.") + "</div>");
 }
 function drawSankey(focal, links){
   var nodes = [focal], idx = {}; idx[focal] = 0;
@@ -414,8 +419,8 @@ function init(){
         "A <b>2-hop</b> edge is one step further out: a supplier or a customer of a first-hop company. "
         "A <b>percentage</b> on an edge is the share of the filer's sales (a customer) or purchases (a supplier) "
         "that the filing itself states; those edges are listed first, largest share first. "
-        "A customer is linked only when its name resolves to a listed company; an anonymised one "
-        "(\"Customer A\") gives no link. "
+        "A customer is linked only when its name resolves to a listed company; an unnamed one "
+        "(\"Customer A\") gives no link, and the company's row says how many it has. "
         + fetch_help + "; <b>Refresh</b> redraws the board from the stored links with no network call.")
     return f"""<!DOCTYPE html>
 <html lang="en">

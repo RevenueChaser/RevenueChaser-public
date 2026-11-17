@@ -511,6 +511,7 @@ def build_edges(info: dict | None = None) -> list[dict]:
     profiles = _stored_profiles()
     accessions = _profile_accessions() if profiles else {}
     n_filings, names = 0, (_spine_names() if profiles else None)
+    unnamed: dict[str, list[str]] = {}   # D: the customers each filing tags without a name ("Customer A")
     for rows in _corpus_batches():
         n_filings += len(rows)
         customers = _stored_customers(rows)
@@ -528,12 +529,15 @@ def build_edges(info: dict | None = None) -> list[dict]:
             if not text and t not in customers and t not in profiles:
                 continue
             covered.add(t)
+            anon = [str(c["customer"]) for c in customers.get(t) or [] if aliases.unnamed(c.get("customer"))]
+            if anon:
+                unnamed[t] = anon
             found = filing_edges(t, text, filed, customers.get(t), names)
             edges.extend(merge_profile(found, profile_edges(t, profiles[t], filed, names, accessions.get(t)))
                          if t in profiles else found)
     rawstore.ensure_table("chain_mentions")
     if info is not None:
-        info.update(filings=n_filings, kept=not edges, retired=0)
+        info.update(filings=n_filings, kept=not edges, retired=0, unnamed=unnamed)
     if not edges:
         # No filing yielded an edge (every row missing or text-less, an empty corpus): a degraded run retires
         # nothing. Keep the stored edges and return what the store holds, so the board, ``n_mentions`` and a
@@ -615,6 +619,17 @@ def _board_payload(filings: list[dict], edges: list[dict], as_of: str,
     profile_hidden = 0 if config.SERVE_PROFILE_EDGES else sum(1 for e in edges if e.get("source") == "profile")
     if profile_hidden:
         edges = [e for e in edges if e.get("source") != "profile"]
+    # D (owner, 17 Nov 2026): a customer the filing does not name is no node on the graph; its company's row says
+    # "also N unnamed customers". Only served, the stored rows stay.
+    meta = _stored_meta()
+    unnamed = {t: {aliases._key(n) for n in names} for t, names in _json_dict(meta.get("unnamed_customers")).items()}
+    served = []
+    for e in edges:
+        if e.get("relation") == "customer" and not e.get("dst_ticker") and aliases.unnamed(e.get("dst_name")):
+            unnamed.setdefault(e.get("src"), set()).add(aliases._key(e["dst_name"]))
+        else:
+            served.append(e)
+    edges = served
     universe = classification_universe(operating_only=BOARD_OPERATING_ONLY["module_value_chain"])
     universe_total = len(universe)
     # Universe tickers with no filing row that are known not to be fetchable:
@@ -632,9 +647,12 @@ def _board_payload(filings: list[dict], edges: list[dict], as_of: str,
     # unfiled universe names, not ``universe_total - len(filings)``, keeps a stored filing of a name now
     # below the floor from hiding a pending one; it is the count a Refresh's ``fetch_corpus`` gives.
     pending = len(unfiled) - len(no_cik) - len(missed)
+    board_filings = _board_filings(filings)
+    for f in board_filings:
+        f["unnamed_customers"] = len(unnamed.get(f["ticker"]) or ())
     return {
         "as_of": as_of,
-        "filings": _board_filings(filings),
+        "filings": board_filings,
         "edges": edges,
         "fetch": fetch,
         "universe_total": universe_total,
@@ -644,7 +662,7 @@ def _board_payload(filings: list[dict], edges: list[dict], as_of: str,
         "corpus": "layer" if layer else _TABLE,
         "profile_hidden": profile_hidden,
         # G-F (#284): the last sync found no edge and kept the stored ones; the board says so.
-        "kept": _stored_meta().get("edges_kept") == "1",
+        "kept": meta.get("edges_kept") == "1",
         # Hand-labelled fixture precision (file read only: no store, no network).
         "precision": precision_mod.gate(served=edges),
         # The Theme facet's vocabulary: the pinned theme run (#383 C1b), a store read.
@@ -681,6 +699,7 @@ def run(no_fetch: bool = False, tickers: list[str] | None = None,
         {"key": "n_filings", "value": str(len(filings)), "fetched_at": fetched_at},
         {"key": "n_mentions", "value": str(len(edges)), "fetched_at": fetched_at},
         {"key": "edges_kept", "value": "1" if info.get("kept") else "0", "fetched_at": fetched_at},
+        {"key": "unnamed_customers", "value": json.dumps(info.get("unnamed") or {}), "fetched_at": fetched_at},
     ])
     payload = _board_payload(filings, edges, as_of, fetch)
     # The banner the board already renders, and the run's recorded health (#299). A Refresh leaves the field
@@ -691,6 +710,14 @@ def run(no_fetch: bool = False, tickers: list[str] | None = None,
 
 def _stored_meta() -> dict[str, str]:
     return {r["key"]: r["value"] for r in rawstore.get_all("chain_meta")}
+
+
+def _json_dict(value) -> dict:
+    try:
+        out = json.loads(value) if isinstance(value, str) else value
+    except ValueError:
+        return {}
+    return out if isinstance(out, dict) else {}
 
 
 def _stored_sync() -> str | None:
