@@ -10,9 +10,11 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from RevenueChaser.core import rawstore
 from RevenueChaser.core.providers import sec_edgar
@@ -717,6 +719,31 @@ def edge_index(edges: list[dict]) -> dict[str, dict]:
 
 
 # Seen from the focal company, an incoming edge's relation is the other way round (#405).
+_GRAPH_CACHE: dict = {}
+_GRAPH_LOCK = threading.Lock()
+
+
+def focal_from_payload_file(path: Path, ticker: str, depth: int = 2) -> dict | None:
+    """One company's graph from the board's last payload file (``runners.VALUE_CHAIN_JSON``), for the per-ticker
+    endpoint the page fetches when a company is picked. ``None`` when no run has written the file yet.
+
+    The file holds the edges the board serves, so the graph is the one the page used to embed for every ticker
+    (14.6 MB on homesrv, claude-coordinator PR #919 section 8). The edges and their index are read once per file
+    version (path, mtime, size), so a request reads no store and waits on no job's writer lock."""
+    try:
+        st = Path(path).stat()
+    except OSError:
+        return None
+    key = (str(path), st.st_mtime_ns, st.st_size)
+    with _GRAPH_LOCK:
+        if _GRAPH_CACHE.get("key") != key:
+            edges = json.loads(Path(path).read_text(encoding="utf-8")).get("edges") or []
+            _GRAPH_CACHE.clear()
+            _GRAPH_CACHE.update(key=key, edges=edges, index=edge_index(edges))
+        edges, index = _GRAPH_CACHE["edges"], _GRAPH_CACHE["index"]
+    return focal_graph(edges, ticker, depth=depth, index=index)
+
+
 _INVERSE = {"supplier": "customer", "customer": "supplier"}
 
 

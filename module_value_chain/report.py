@@ -1,7 +1,7 @@
 """Value Chain board — Explorer: pick a ticker, see upstream / downstream / 2-hop.
 
 The 2-hop graph is computed server-side per ticker (``engine.focal_graph``) and
-embedded, so the client only draws it. Evidence (a plain-language sentence + the
+fetched for the picked company only (``/api/value_chain/graph/<ticker>``), so the client only draws it. Evidence (a plain-language sentence + the
 filing snippet + form + date) sits next to every edge — without it the sankey is
 just a word cloud.
 
@@ -27,7 +27,6 @@ from RevenueChaser.core.reporting_common import (
     watchlist_html,
 )
 
-from . import engine
 from . import precision
 
 CSS = """
@@ -83,12 +82,6 @@ def _friendly(as_of: str) -> str:
         return dt.strftime("%A, %B %d, %Y EOD")
     except (ValueError, TypeError):
         return str(as_of or "")
-
-
-def _graphs(payload: dict, tickers: list[str]) -> dict:
-    edges = payload.get("edges") or []
-    index = engine.edge_index(edges)   # once, not per ticker (#118 C19)
-    return {t: engine.focal_graph(edges, t, depth=2, index=index) for t in tickers}
 
 
 def _precision_tile(rep: dict | None) -> str:
@@ -203,10 +196,9 @@ def render_value_chain_dashboard(payload: dict) -> str:
     extra = informed
     picker = [r for r in _picker_rows(filings, extra) if r["ticker"] in informed]
     tickers = [r["ticker"] for r in picker]
-    graphs = _graphs(payload, tickers)
+    # The focal company's graph is fetched when it is picked (GRAPH_URL), not embedded for every ticker: the page
+    # carried every ticker's two-hop graph and measured 14.6 MB on homesrv (claude-coordinator PR #919, section 8).
     default_focal = _default_focal(tickers, edges)
-    shown = set(tickers)
-    filing_meta = {f["ticker"]: f for f in filings if f.get("ticker") in shown}
     n_drawn = sum(1 for e in edges if e.get("relation") in ("supplier", "customer"))
     summary = _summary_html(payload, len(filings), n_drawn)
 
@@ -239,8 +231,10 @@ def render_value_chain_dashboard(payload: dict) -> str:
 
     JS = r"""
 var DATA = __DATA__;
-var GRAPHS = __GRAPHS__;
-var FILINGS = __FILINGS__;
+var GRAPH_URL = "/api/value_chain/graph/";
+var GRAPHS = {};          // ticker -> its graph, filled from GRAPH_URL as companies are picked
+var FILINGS = {};         // the picker rows carry each filing's form, date and quality
+DATA.forEach(function(r){ FILINGS[r.ticker] = r; });
 var DEFAULT_FOCAL = __DEFAULT_FOCAL__;
 var META = __META__;
 var FOCAL = null;
@@ -276,7 +270,7 @@ function rebuildOptions(){
   document.getElementById("count").textContent = vis.length + " names";
 }
 function options(){
-  FOCAL = (DEFAULT_FOCAL && GRAPHS[DEFAULT_FOCAL]) ? DEFAULT_FOCAL : ((DATA[0]||{}).ticker || null);
+  FOCAL = (DEFAULT_FOCAL && FILINGS[DEFAULT_FOCAL]) ? DEFAULT_FOCAL : ((DATA[0]||{}).ticker || null);
   rebuildOptions();
 }
 // The relationship seen from the focal company, which is what the legend defines (#405). An edge stored
@@ -312,8 +306,16 @@ function render(){
     document.getElementById("fmeta").innerHTML = "";
     return;
   }
-  var g = GRAPHS[FOCAL] || {links: []};
+  var g = GRAPHS[FOCAL];
+  if(!g){ loadGraph(FOCAL); return; }
   var links = g.links || [];
+  if(g.failed){
+    var err = '<div class="empty">Could not load ' + rcEsc(FOCAL) + "'s links. Reload the page to try again.</div>";
+    document.getElementById("sankey").innerHTML = err;
+    document.getElementById("edges").innerHTML = err;
+    delete GRAPHS[FOCAL];      // a later pick asks again
+    return;
+  }
   var fm = FILINGS[FOCAL] || {};
   var q = fm.quality || "";
   document.getElementById("fmeta").innerHTML = rcWatchRow(FOCAL) +     // the focal company's pair (PR 4)
@@ -369,6 +371,18 @@ function drawEdges(links){
       ' · source: 10-K/20-F, '+rcEsc(FILINGS[l.src] ? FILINGS[l.src].filed : "")+'</div></div>';
   }).join("");
 }
+function loadGraph(ticker){
+  var msg = '<div class="empty">Loading ' + rcEsc(ticker) + '…</div>';
+  document.getElementById("edges").innerHTML = msg;
+  document.getElementById("sankey").innerHTML = msg;
+  fetch(GRAPH_URL + encodeURIComponent(ticker))
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .catch(function(){ return null; })
+    .then(function(j){
+      GRAPHS[ticker] = (j && j.graph) || {links: [], failed: !j};
+      if(FOCAL === ticker) render();
+    });
+}
 function init(){
   RCF = RCFilters.mount({root: "#rc-filters", rows: DATA, meta: META, onChange: function(){ render(); }});
   RCInfo.wire();
@@ -380,9 +394,7 @@ function init(){
 """
 
     JS = fill(JS, {"__DATA__": script_json(picker),
-                   "__GRAPHS__": script_json(graphs),
                    "__DEFAULT_FOCAL__": script_json(default_focal or ""),
-                   "__FILINGS__": script_json(filing_meta),
                    "__META__": script_json(filters_meta(
                        "value_chain", earnings_mode="filter",
                        themes=payload.get("theme_catalog") or {}))})

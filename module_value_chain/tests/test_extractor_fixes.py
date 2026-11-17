@@ -45,7 +45,9 @@ def test_picker_includes_destination_only_tickers():
                    "snippet": "we use TSMC", "filed": "2026-02-01"}],
     })
     assert '"ticker": "TSM"' in html
-    assert '"TSM": {"ticker": "TSM"' in html          # a graph is embedded for it
+    # Its graph is fetched when it is picked (/api/value_chain/graph/TSM, PR #919 section 8), not embedded.
+    assert engine.focal_graph([{"src": "NVDA", "dst_name": "Tsmc", "dst_ticker": "TSM", "relation": "supplier",
+                                "snippet": "we use TSMC", "filed": "2026-02-01"}], "TSM")["links"]
 
 
 # ── S3b alias hygiene ──────────────────────────────────────────────────────
