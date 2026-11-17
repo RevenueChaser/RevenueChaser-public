@@ -50,6 +50,9 @@ scenario candidates (none is typed ADR), edited in by hand like ``debt_basis``.
 The Swing review of 17 Nov 2026 (F1, F2, #995) took Yahoo ``.info`` out of Swing: its candidates' names are the
 universe row's (UP1/UP3 read "<t> Inc", not the cached "<t> Holdings"), its ``provider_health`` and
 ``data_quality.stale_info`` keys went, and its ``summary`` gained ``spy_missing: false``; edited in by hand.
+#645 (Fundamentals reads no Yahoo ``.info``) removed Fundamentals' per-candidate ``info_stale`` and
+``data_quality.stale_info``, edited out by hand; Fundamentals' UP1 and UP3 likewise read
+"<t> Inc".
 """
 from __future__ import annotations
 

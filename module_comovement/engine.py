@@ -421,7 +421,8 @@ def _persisted_null(chash: str) -> dict[int, float]:
         return {}
     try:
         return {int(k): float(v) for k, v in json.loads(row[0]["null_json"]).items()}
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, AttributeError):
+        logger.warning("comovement: persisted null for %s is not valid JSON; groups are not judged", chash)
         return {}
 
 
@@ -792,7 +793,8 @@ def run(no_fetch: bool = False, tickers: list[str] | None = None,
                                  flat_prints=flat_prints, window_end=window_end,
                                  funnel=funnel)
     if benchmark_applied:
-        universe_ret = returns_mod.residualize(universe_ret, market)
+        # The beta is fitted on clipped returns (xReview 17 Nov 2026); the residuals stay unclipped for the direction line.
+        universe_ret = returns_mod.residualize(universe_ret, market, eff.winsor_k)
     # The honest counterweight to 250 groups: how many common moves the window
     # holds beyond noise (eigenvalues above the Marchenko–Pastur edge).
     n_factors = noise.factors_above_noise(universe_ret, horizon=horizon)
@@ -885,8 +887,9 @@ def run(no_fetch: bool = False, tickers: list[str] | None = None,
                           "catchall": _catchall(len(mem), cut_total),
                           "last_residual_pct": last_pct,
                           "persist": persist,
-                          "members": [{**by_ticker[t], "core": core[t]}
-                                      for t in ordered if t in by_ticker]})
+                          # A name filter_fields does not know is stubbed, as load_payload does: the card lists n names.
+                          "members": [{**(by_ticker.get(t) or {"ticker": t, "name": t}), "core": core[t]}
+                                      for t in ordered]})
         items.sort(key=lambda x: (-x["n"], x["label"]))
         clusters[str(cut)] = items
 

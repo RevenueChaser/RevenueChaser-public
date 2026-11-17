@@ -11,11 +11,11 @@ from RevenueChaser.module_swing_potential.report import render_swing_dashboard
 
 
 def test_swing_no_longer_imports_load_ticker_info():
-    """Swing review F1 (#645 A): Swing has no Yahoo ``.info`` read; Fundamentals' own read is its board's lane."""
+    """#645 A: neither Swing (review F1) nor Fundamentals reads Yahoo ``.info``."""
     from RevenueChaser.module_swing_potential import pipeline as sp
     from RevenueChaser.module_fundamentals import pipeline as fp
     assert not hasattr(sp, "load_ticker_info")
-    assert hasattr(fp, "load_ticker_info")
+    assert not hasattr(fp, "load_ticker_info")    # #645: Fundamentals reads no Yahoo .info either
 
 
 def _ohlcv(periods=300) -> pd.DataFrame:
