@@ -10,7 +10,7 @@ relatedness peer sets can have a source. They read it (owner's decision E1 of #3
 |---|---|---|
 | SSGA SPDR (21) | the 11 sector funds, ``XBI XOP XME KRE XHB XRT KIE KBE KCE XPH`` | the issuer's daily holdings xlsx |
 | iShares (10) | ``SOXX IBB ITA ITB IGV IAK IYT IHI IHF ICLN`` | the product page's ``latest-holdings.csv`` |
-| Unusual Whales (30) | ``SMH PAVE AIQ LIT URA NLR AIRR SKYY WCLD ARKQ ROBO JETS TAN PBW GDX OIH CIBR HACK REMX ARKW ARKG CLOU DTCR QTUM FINX GRID DRIV BLOK ESPO COPX`` | ``/etfs/<t>/holdings`` |
+| Unusual Whales (28) | ``SMH PAVE AIQ LIT URA NLR AIRR SKYY WCLD ARKQ ROBO JETS TAN PBW GDX OIH CIBR HACK REMX CLOU DTCR QTUM FINX GRID DRIV BLOK ESPO COPX`` | ``/etfs/<t>/holdings`` |
 | ARK, behind UW (1) | ``ARKQ``, on a day UW holds nothing for it | ARK's daily holdings CSV |
 
 **The issuer of each fund was confirmed by fetching it once, 30 Oct 2026**, not taken from memory: IAK is iShares'
@@ -31,7 +31,7 @@ does not run. **UW's answer is kept whole:** the top-10 cap is the Rotation boar
 (``module_sector_rotation/etf_holdings.py``), and that board's ``raw.duckdb.etf_holdings`` is untouched by this
 dataset, which writes only the market store.
 
-One request per fund per run (31 issuer files, 30 UW calls, plus ARK's file on a day it is needed), each inside
+One request per fund per run (31 issuer files, 28 UW calls, plus ARK's file on a day it is needed), each inside
 its provider's day cap.
 
 **The sweep (#358, avo 1-2 Nov 2026), off until ``RC_ETF_HOLDINGS_SWEEP=1``** (avo, 2 Nov: UW answers at most 250
@@ -123,8 +123,8 @@ US_EXCHANGE_CODES = frozenset({"UA", "UN", "UP", "UQ", "UR", "US", "UV", "UW"})
 UW_FUNDS = ("SMH", "PAVE", "AIQ", "LIT", "URA", "NLR", "AIRR", "SKYY", "WCLD", "ARKQ", "ROBO", "JETS", "TAN", "PBW",
             "GDX", "OIH", "CIBR",
             # the board's themes of 17 Nov 2026 (D1, avo's watch lists) with no keyless file here: Amplify (HACK),
-            # VanEck (REMX); ARKW and ARKG from UW, as ARKQ is, with no ARK fallback named yet
-            "HACK", "REMX", "ARKW", "ARKG",
+            # VanEck (REMX). ARKW and ARKG left the board the same day (avo: active funds, poor theme proxies)
+            "HACK", "REMX",
             # the themes the Relatedness research added (17 Nov 2026), none with a keyless issuer file wired here
             "CLOU", "DTCR", "QTUM", "FINX", "GRID", "DRIV", "BLOK", "ESPO", "COPX")
 # The funds the relatedness peer sets need that the rotation board does not run (every ETF of

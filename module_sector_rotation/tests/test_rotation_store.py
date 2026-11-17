@@ -214,12 +214,12 @@ class TestUniverseShape:
 
     def test_rrg_symbols(self):
         from RevenueChaser.module_sector_rotation.universe import ROTATION_ETFS
-        assert len(ROTATION_ETFS) == 110, f"expected 110 RRG symbols, got {len(ROTATION_ETFS)}"
+        assert len(ROTATION_ETFS) == 108, f"expected 108 RRG symbols, got {len(ROTATION_ETFS)}"
         groups = {}
         for t, info in ROTATION_ETFS.items():
             groups.setdefault(info["group"], []).append(t)
         assert len(groups["sector"]) == 11, "11 sectors"
-        assert len(groups["theme"]) == 43, "43 themes (23 + 7 of 17 Nov D1 / watch lists + 13 from the Relatedness research)"
+        assert len(groups["theme"]) == 41, "41 themes (23 + 5 of 17 Nov D1 and watch lists + 13 from the Relatedness research; ARKW and ARKG dropped)"
         assert len(groups["style"]) == 5, "5 style & size (QQQ RSP VUG VTV MAGS)"
         assert len(groups["industry"]) == 7, "7 GICS industry-group ETFs no other row stands for (17 Nov 2026)"
         assert len(groups["bond"]) == 3, "3 bond ETFs"
