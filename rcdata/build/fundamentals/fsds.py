@@ -28,6 +28,7 @@ from pathlib import Path
 import duckdb
 
 from ....core import calendar
+from ... import serving
 from .. import base
 from .. import dirty as dirty_set
 from . import KIND, common, facts
@@ -110,7 +111,8 @@ class Fsds:
         for raw in raws:
             meta = base.read_raw_json(common.meta_path(raw))
             quarter = meta["quarter"]
-            with tempfile.TemporaryDirectory(dir=raw.parent) as tmp, zipfile.ZipFile(raw) as z:
+            with tempfile.TemporaryDirectory(dir=serving.scratch_dir(raw.parent.name, raw.parent)) as tmp, \
+                    zipfile.ZipFile(raw) as z:
                 names = {Path(n).name: n for n in z.namelist()}
                 missing = [n for n in ("sub.txt", "num.txt") if n not in names]
                 if missing:

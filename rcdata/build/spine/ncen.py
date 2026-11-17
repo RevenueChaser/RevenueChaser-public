@@ -39,6 +39,7 @@ from pathlib import Path
 import duckdb
 
 from ....core import calendar
+from ... import serving
 from ..fundamentals.fsds import ended_quarters
 from .. import base
 from . import KIND, stage
@@ -157,7 +158,8 @@ class Ncen:
             meta = base.read_raw_json(meta_path(raw))
             quarter = meta["quarter"]
             folder = parquet_dir() / f"quarter={quarter}"
-            with tempfile.TemporaryDirectory(dir=raw.parent) as tmp, zipfile.ZipFile(raw) as z:
+            with tempfile.TemporaryDirectory(dir=serving.scratch_dir(raw.parent.name, raw.parent)) as tmp, \
+                    zipfile.ZipFile(raw) as z:
                 names = {Path(n).name: n for n in z.namelist()}
                 fund, exch, sub = (Path(z.extract(names[n], tmp)) for n in FILES)
                 con = duckdb.connect()

@@ -27,6 +27,7 @@ import os
 import shutil
 import time
 import uuid
+import zlib
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -223,21 +224,40 @@ _SPILL_DIRS: set[Path] = set()
 
 
 def read_spill_dir(path: Path) -> Path:
-    """``<file>.tmp-<pid>`` beside ``path``, removed when this process exits.
+    """``<file>.tmp-<pid>`` beside ``path``, removed when this process exits; with ``RC_TMP_DIR`` set (homesrv:
+    the SSD temp root ``/srv/tmp/rc``, avo 17 Nov 2026), ``<RC_TMP_DIR>/duckdb-read/<file>.<folder hash>.tmp-<pid>``.
 
     DuckDB's default, ``<file>.tmp``, is one directory for every process that reads the file, and its spill file names
     (``duckdb_temp_storage_<size>-<n>.tmp``) restart at 0 in each process: two readers that spill at once write over
     each other's blocks. On 17 Nov 2026 the forecast baselines (SIGBUS) and the dashboard (SIGSEGV) crashed inside
-    DuckDB 4 s apart, both reading ``prices.duckdb`` through the shared ``prices.duckdb.tmp``.
+    DuckDB 4 s apart, both reading ``prices.duckdb`` through the shared ``prices.duckdb.tmp``. The folder hash keeps
+    two same-named files of one process (a live file and its backup copy) on two folders under the temp root.
     """
-    spill = path.with_name(f"{path.name}.tmp-{os.getpid()}")
+    root = os.getenv("RC_TMP_DIR", "").strip()
+    if root:
+        parent, name = Path(root) / "duckdb-read", f"{path.name}.{zlib.crc32(str(path.parent).encode()):08x}"
+        parent.mkdir(parents=True, exist_ok=True)
+    else:
+        parent, name = path.parent, path.name
+    spill = parent / f"{name}.tmp-{os.getpid()}"
     if spill not in _SPILL_DIRS:
         _SPILL_DIRS.add(spill)
         atexit.register(shutil.rmtree, spill, True)
-        for old in path.parent.glob(f"{path.name}.tmp-*"):     # left by a process that was killed (SIGKILL, OOM)
+        for old in parent.glob(f"{name}.tmp-*"):     # left by a process that was killed (SIGKILL, OOM)
             if stale_spill(old):
                 shutil.rmtree(old, True)
     return spill
+
+
+def scratch_dir(name: str, fallback: Path | None) -> Path | None:
+    """Where a big scratch folder goes: ``<RC_TMP_HDD_DIR>/<name>`` (made here) when that is set (homesrv: the HDD
+    temp root ``/mnt/data/tmp/rc``, avo 17 Nov 2026), else ``fallback`` (the raw folder; ``None`` = the system's)."""
+    root = os.getenv("RC_TMP_HDD_DIR", "").strip()
+    if not root:
+        return fallback
+    folder = Path(root) / name
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder
 
 
 def stale_spill(path: Path) -> bool:
