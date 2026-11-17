@@ -12,7 +12,7 @@ def _ind(price=100.0, rs=0.30):
         "ema20": 97.0, "ema10_prev": 98.0, "ema20_prev": 96.0,
         "above_52w_low_pct": 1.5, "within_52w_high_pct": 0.99, "vol_ratio": 1.6,
         "rs_vs_spy_3m": 0.05, "rs_vs_spy_12m": rs, "mom_12_1": 0.3,
-        "consistency_6m": 0.8, "move_max_1_3m": 0.4, "adr_pct": 0.04,
+        "consistency_6m": 0.8, "move_max_1_3m": 0.4, "adr_pct": 0.04, "range_recent": 0.02, "range_before": 0.03,
         "atr14": 3.0, "change_pct": 0.01, "change_1w": 0.02, "change_1m": 0.05,
     }
 

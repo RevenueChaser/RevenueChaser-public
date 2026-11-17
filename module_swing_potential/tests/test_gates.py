@@ -34,14 +34,14 @@ _PASS = {
     "above_52w_low_pct": 1.5, "within_52w_high_pct": 0.99,
     "vol_ratio": 2.0, "rs_vs_spy_3m": 0.05, "rs_vs_spy_12m": 0.1,
     "ema10": 96.0, "ema20": 92.0, "ema10_prev": 90.0, "ema20_prev": 88.0,
-    "move_max_1_3m": 0.35, "adr_pct": 0.04, "ret_3m": 0.10,
+    "move_max_1_3m": 0.35, "adr_pct": 0.04, "ret_3m": 0.10, "range_recent": 0.02, "range_before": 0.03,
 }
 
 
 @pytest.mark.parametrize("name,gate,expected_score", [
     ("minervini", lambda: evaluate_minervini(_PASS, rs_rating=85.0), "8/8"),
     ("weinstein", lambda: evaluate_weinstein(_PASS), "5/5"),
-    ("qullamaggie", lambda: evaluate_qullamaggie(_PASS), "6/6"),
+    ("qullamaggie", lambda: evaluate_qullamaggie(_PASS), "7/7"),
 ])
 def test_gate_rules_checklist(name, gate, expected_score):
     g = gate()

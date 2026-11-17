@@ -43,7 +43,7 @@ def _ind(**over):
         "above_52w_low_pct": 1.5, "within_52w_high_pct": 0.99,
         "vol_ratio": 2.0, "rs_vs_spy_3m": 0.05, "rs_vs_spy_12m": 0.10,
         "ema10": 96.0, "ema20": 92.0, "ema10_prev": 90.0, "ema20_prev": 88.0,
-        "move_max_1_3m": 0.35, "adr_pct": 0.04, "atr14": 2.0,
+        "move_max_1_3m": 0.35, "adr_pct": 0.04, "atr14": 2.0, "range_recent": 0.02, "range_before": 0.03,
         "change_pct": 0.01, "ret_3m": 0.10, "mom_12_1": 0.30, "consistency_6m": 0.8,
     }
     ind.update(over)
@@ -169,17 +169,17 @@ def test_cross_rule_the_weights_leave_momentum_the_largest_tilt(rawstore_tmp_db)
 
 # ── the model version ───────────────────────────────────────────────────────
 def test_model_version_is_unchanged_at_defaults(rawstore_tmp_db):
-    """The literal from before this slice: an unconfigured board versions exactly what it did (the version, 5
-    since the Weinstein volume window of PR 6, moved with the model; the settings slice still moves nothing)."""
-    assert freeze.model_version() == "5+c94564a9"
+    """The literal from before this slice: an unconfigured board versions exactly what it did (the version, 6
+    since the Swing review's B2/C2/D1 rules, moved with the model; the settings slice still moves nothing)."""
+    assert freeze.model_version() == "6+de083dc2"
 
 
 
 
 def test_the_model_version_still_hashes_the_non_editable_thresholds(rawstore_tmp_db, monkeypatch):
     before = freeze.model_version()
-    monkeypatch.setattr(config, "ABOVE_52W_LOW", 1.3)
-    assert freeze.effective_config()["ABOVE_52W_LOW"] == 1.3
+    monkeypatch.setattr(config, "ABOVE_52W_LOW", 1.4)
+    assert freeze.effective_config()["ABOVE_52W_LOW"] == 1.4
     assert freeze.model_version() != before
 
 

@@ -29,7 +29,7 @@ def _ind(**over) -> dict:
         "ema20": 92.0, "ema10_prev": 90.0, "ema20_prev": 88.0,
         "above_52w_low_pct": 1.5, "within_52w_high_pct": 0.99, "vol_ratio": 2.0,
         "rs_vs_spy_3m": 0.05, "rs_vs_spy_12m": 0.1, "mom_12_1": 0.9,
-        "consistency_6m": 0.9, "move_max_1_3m": 0.35, "adr_pct": 0.04,
+        "consistency_6m": 0.9, "move_max_1_3m": 0.35, "adr_pct": 0.04, "range_recent": 0.02, "range_before": 0.03,
         "atr14": 2.0, "change_pct": 0.01, "change_1w": 0.02, "change_1m": 0.05,
         "ret_3m": 0.10,
     }

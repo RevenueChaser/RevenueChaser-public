@@ -5,6 +5,8 @@ F5: ``OPERATING_ONLY`` changes who is scanned (so every percentile): a saved val
 default board keeps its hash.
 F15: a stale name scored above the stale-drop cap carries ``ohlc_stale`` onto its card (an "Old price" chip).
 F17: the scan never reads a bar dated after the latest complete session.
+B2, C2, D1 (avo 17 Nov): Qullamaggie needs the prior move and a tightening; Minervini 30 % above the low;
+Weinstein's volume spike counts only on an up day.
 """
 from __future__ import annotations
 
@@ -17,7 +19,7 @@ from RevenueChaser.core import calendar as cal
 from RevenueChaser.core import screen_common as sc
 from RevenueChaser.core.tests import screen_parity as scn
 from RevenueChaser.core.tests.d01_seed import write_d01
-from RevenueChaser.module_swing_potential import freeze, pipeline
+from RevenueChaser.module_swing_potential import freeze, indicators, pipeline, screeners
 from RevenueChaser.module_swing_potential import settings as S
 from RevenueChaser.module_swing_potential.report import render_swing_dashboard
 
@@ -93,3 +95,45 @@ def test_bar_reads_stop_at_the_latest_complete_session(rawstore_tmp_db, monkeypa
     nominal, adjusted = sc.load_bars_many(["AAA"])["AAA"]
     assert nominal.index[-1].date() == session and adjusted.index[-1].date() == session
     assert nominal.attrs["stale"] is False
+
+
+# ── avo's decisions of 17 Nov 2026 (B2, C2, D1) ─────────────────────────────────────────────────
+def _q(**over) -> dict:
+    from RevenueChaser.module_swing_potential.tests.test_gates import _PASS
+    return screeners.evaluate_qullamaggie({**_PASS, **over})
+
+
+def test_b2_qullamaggie_needs_the_prior_move():
+    assert _q()["passed"] is True
+    assert _q(move_max_1_3m=0.10)["passed"] is False            # 6 of 7 known passes, but the move is required
+
+
+def test_b2_qullamaggie_needs_a_tightening():
+    g = _q(range_recent=0.04)                                    # the last 10 days are wider than the 20 before
+    assert g["passed"] is False and g["score"] == "6/7"
+    assert _q(range_recent=None)["passed"] is False              # unknown is never a pass
+
+
+def test_b2_the_tightening_is_measured_from_the_bars():
+    from RevenueChaser.module_swing_potential.tests.test_swing import _ohlcv
+    df = _ohlcv()
+    df.loc[df.index[-10:], "High"] = df["Close"].iloc[-10:] * 1.002     # a tight last 10 sessions
+    df.loc[df.index[-10:], "Low"] = df["Close"].iloc[-10:] * 0.998
+    ind = indicators.compute_indicators(df)
+    assert ind["range_recent"] == pytest.approx(0.004) and ind["range_before"] == pytest.approx(0.02)
+
+
+def test_c2_minervini_wants_30_percent_above_the_low():
+    from RevenueChaser.module_swing_potential.tests.test_gates import _PASS
+    g = screeners.evaluate_minervini({**_PASS, "above_52w_low_pct": 1.27}, rs_rating=85.0)
+    rule = next(r for r in g["rules"] if r["id"] == "above_52w_low")
+    assert rule["passed"] is False and "30%" in rule["label"]
+
+
+def test_d1_a_volume_spike_on_a_down_day_does_not_confirm():
+    from RevenueChaser.module_swing_potential.tests.test_swing import _ohlcv
+    df = _ohlcv()
+    df["Volume"] = 1_000_000.0
+    df.iloc[-1, df.columns.get_loc("Volume")] = 4_000_000.0
+    df.iloc[-1, df.columns.get_loc("Close")] = df["Close"].iloc[-2] * 0.97     # the spike day closes down
+    assert indicators.compute_indicators(df)["vol_ratio"] < 1.5

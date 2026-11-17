@@ -105,15 +105,22 @@ def _max_move_1_3m(close: pd.Series) -> float | None:
     return best if best > -1.0 else None
 
 
-def _breakout_volume(vol: pd.Series) -> float | None:
+def _breakout_volume(vol: pd.Series, close: pd.Series | None = None) -> float | None:
     """Weinstein's volume confirmation (Swing review finding 3, PR 6): the best of the last ``VOL_WINDOW`` sessions'
     volume, each over the mean of the ``VOL_AVG_DAYS`` sessions before it (itself excluded, so a spike does not
-    inflate its own average). None without enough bars, or when no session of the window has both numbers."""
+    inflate its own average). None without enough bars, or when no session of the window has both numbers.
+    With ``close`` only an up day (close above the previous close) counts (Swing review D1, avo 17 Nov): heavy
+    volume on a down day is selling, not a breakout. With no up day in the window the ratio is 0.0."""
     vol = pd.to_numeric(vol, errors="coerce")
     if len(vol) < config.VOL_WINDOW + config.VOL_AVG_DAYS:
         return None
     ratios = []
     for i in range(len(vol) - config.VOL_WINDOW, len(vol)):
+        if close is not None:
+            today, prev = _to_float(close.iloc[i]), _to_float(close.iloc[i - 1])
+            if today is None or prev is None or today <= prev:      # not a known up day: its volume never counts
+                ratios.append(0.0)
+                continue
         day = _to_float(vol.iloc[i])
         avg = _to_float(vol.iloc[i - config.VOL_AVG_DAYS:i].mean())
         if day is not None and avg:
@@ -140,7 +147,7 @@ def compute_indicators(df: pd.DataFrame, spy_df: pd.DataFrame | None = None,
         "vol_20d": None, "vol_ratio": None,
         "move_max_1_3m": None, "mom_12_1": None, "consistency_6m": None,
         "rs_vs_spy_12m": None, "rs_vs_spy_3m": None,
-        "atr14": None,
+        "atr14": None, "range_recent": None, "range_before": None,
     }
     df = normalize_ohlcv(df)
     if df.empty:
@@ -172,6 +179,11 @@ def compute_indicators(df: pd.DataFrame, spy_df: pd.DataFrame | None = None,
 
     rng = (df["High"] - df["Low"]) / close
     ind["adr_pct"] = _to_float(rng.tail(20).mean())
+    # Swing review B2: a consolidation proxy, the last sessions' mean range against the ones before them.
+    n_recent, n_before = config.TIGHT_RECENT, config.TIGHT_BEFORE
+    if len(rng) >= n_recent + n_before:
+        ind["range_recent"] = _to_float(rng.tail(n_recent).mean())
+        ind["range_before"] = _to_float(rng.iloc[-(n_recent + n_before):-n_recent].mean())
 
     if len(df) >= 252:
         low = _to_float(df["Low"].tail(252).min())
@@ -189,7 +201,7 @@ def compute_indicators(df: pd.DataFrame, spy_df: pd.DataFrame | None = None,
     # last VOL_WINDOW days, each against the VOL_AVG_DAYS before it (review 3). No card or row shows them side by
     # side (Opus review N4); do not divide one by the other.
     ind["vol_20d"] = _to_float(vol.tail(20).mean())
-    ind["vol_ratio"] = _breakout_volume(vol)
+    ind["vol_ratio"] = _breakout_volume(vol, close)
 
     ind["move_max_1_3m"] = _max_move_1_3m(rclose)
     mom_12 = _ret(rclose, 252)
