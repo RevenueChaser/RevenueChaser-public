@@ -178,7 +178,9 @@ def failed_path(accession: str) -> Path:
 #: breaker returned, ``stops`` the runs that failed on it for a reason called the box's fault, ``stopped_at`` is
 #: when the last of those was (unix seconds, so the back-off can be read without parsing a date), and
 #: ``no_vocabulary`` says the library has no sections for its form at all, which is terminal and costs nothing.
-COUNTERS = ("tries", "gave_back", "stops", "stopped_at", "no_vocabulary")
+#: ``degraded`` is the swallowed-failure count of a cut that *did* find sections (#802): the answer is kept and cut
+#: again by the next run, up to ``max_tries``, and the mark stays on the one finally accepted.
+COUNTERS = ("tries", "gave_back", "stops", "stopped_at", "no_vocabulary", "degraded")
 
 
 def _count(value: object) -> int:
@@ -510,6 +512,13 @@ class Worker:
                 # here. Leaving it would cache the very thing this check exists to refuse, and the next run
                 # would hand it back as a cut document.
                 _forget_answer(out)
+                swallowed = _count(answer.get("swallowed"))
+                if swallowed:
+                    # #802: the library swallowed a failure on the way, so the cause is unknown and the filing is
+                    # not charged -- the same call the zero-section branch of ``Cutter.cut`` makes.
+                    raise CutterUnusable(f"the cutter answered {sections} sections and no text for {html.name} "
+                                         f"and edgartools swallowed {swallowed} failure(s) on the way there: the "
+                                         "cause is not this filing's")
                 # This document's failure and not the run's, which is the opposite of what it was. A moved field
                 # does it to *every* document, so five in a row trip the breaker and the run stops with this
                 # text in the message -- the diagnosis arrives either way. But a single filing can do it on its
@@ -651,14 +660,48 @@ class Cutter:
         cuts, which is the only evidence that tells a bad file from a bad box.
         """
         out = answer_path(accession)
+        held = out.with_name(out.name + ".held")
+        try:
+            if held.exists() and not _is_cut(out):
+                os.replace(held, out)       # a run killed while it was set aside for a re-cut
+        except OSError as e:
+            raise CutterUnusable(f"the cutter cannot put back {held.name}: {type(e).__name__}: {e}") from e
+        counts = read_sidecar(accession)
+        if (_is_cut(out) and counts["degraded"] and counts["tries"] < self.max_tries
+                and not deferred_for(accession, self.max_stops)):
+            return self._recut(accession, html, form, out, held)
         if _is_cut(out):
             self.cached += 1
+            if counts["degraded"]:
+                return out                  # accepted at the cap; the mark stays for whoever re-cuts (#757)
             # A document that failed and was then cut -- by another process, or by a run that was killed between
             # the worker's rename and the client's bookkeeping -- must not keep the note that says it failed, or
             # it stays one run from the cap for the rest of the corpus's life.
             _forget_failure(accession)
             return out
-        counts = read_sidecar(accession)
+        return self._cut_now(accession, html, form, out, counts)
+
+    def _recut(self, accession: str, html: Path, form: str, out: Path, held: Path) -> Path:
+        """Cut a degraded answer again (#802), keeping the one we have until a new one replaces it: it is set
+        aside under ``held`` and put back whatever the re-cut does, so the worst a re-cut costs is its attempt."""
+        try:
+            os.replace(out, held)
+        except OSError as e:
+            raise CutterUnusable(f"the cutter cannot set {out.name} aside: {type(e).__name__}: {e}") from e
+        try:
+            self._cut_now(accession, html, form, out, read_sidecar(accession))
+        finally:
+            try:
+                if _is_cut(out):
+                    held.unlink(missing_ok=True)
+                else:
+                    os.replace(held, out)
+                    self.failed.pop(accession, None)    # handed back as cut, so not reported as failed
+            except OSError:
+                pass                        # the next run's put-back above tries again
+        return out
+
+    def _cut_now(self, accession: str, html: Path, form: str, out: Path, counts: dict[str, int]) -> Path | None:
         spent, stops = counts["tries"], counts["stops"]
         if counts["no_vocabulary"] and _base_form(form) not in KNOWN_FORMS:
             # Terminal and free: edgartools has no sections for this form, which is a fact about the form and not
@@ -768,8 +811,15 @@ class Cutter:
             # A zero the library reached by looking and finding nothing, which is this filing's own answer.
             return self._document_failed(accession, spent, "the cutter found no section in it", lost=False)
         self._in_a_row.clear()
-        _forget_failure(accession)
         self.cut_now += 1
+        if swallowed:
+            # #802: sections **and** a swallowed failure -- TOC detection raised, the pattern fallback found a
+            # few. Kept, because a short cut beats none, but charged an attempt and marked, so the next run cuts
+            # it again instead of serving it from the cache for the life of the corpus.
+            _note_failure(accession, f"degraded: {sections} sections while edgartools swallowed {swallowed} "
+                                     "failure(s); kept and cut again next run", tries=spent + 1, degraded=swallowed)
+        else:
+            _forget_failure(accession)
         return out
 
     def _document_failed(self, accession: str, spent: int, error: str, lost: bool) -> None:
