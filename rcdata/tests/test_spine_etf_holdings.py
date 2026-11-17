@@ -345,7 +345,7 @@ def test_an_empty_uw_answer_falls_back_to_the_issuer_file_and_the_note_says_so(e
     says which source served the day, and no issue is opened (the fund is served)."""
     _uw_empty(http_mock, "ARKQ")
     row = base.run_request({"dataset": etf.NAME, "params": {"as_of": AS_OF}})
-    assert row["result"] == "changed" and row["coverage"] == 1.0 and row["calls"] == 49
+    assert row["result"] == "changed" and row["coverage"] == 1.0 and row["calls"] == 53
     assert ops.open_issues(etf.NAME)[0] == 0
     arkq = _served("etf = 'ARKQ'")
     assert {r[2] for r in arkq} == {"ark"} and {(r[3], r[4]) for r in arkq} == {(t, c) for t, c, _n in fx.SP500}
