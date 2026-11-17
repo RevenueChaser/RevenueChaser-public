@@ -218,7 +218,10 @@ def _copy_bytes(src: Path, dest: Path) -> None:
 
 def _sweep_tmp(out: Path) -> None:
     for stale in out.glob("*.tmp*"):                    # a run that was killed mid-copy, its -wal/-shm too
-        stale.unlink(missing_ok=True)
+        if not stale.is_dir():
+            stale.unlink(missing_ok=True)
+        elif not stale.name.rpartition(".tmp-")[2].isdigit() or serving.stale_spill(stale):
+            shutil.rmtree(stale, True)                  # a DuckDB spill directory, unless its reader still runs
     for stale in out.glob("*.partial.zip"):
         stale.unlink(missing_ok=True)
 

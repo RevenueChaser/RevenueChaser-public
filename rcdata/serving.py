@@ -233,9 +233,25 @@ def read_spill_dir(path: Path) -> Path:
     spill = path.with_name(f"{path.name}.tmp-{os.getpid()}")
     if spill not in _SPILL_DIRS:
         _SPILL_DIRS.add(spill)
-        # shortcut: a process that crashes leaves its directory behind; sweep dead pids if they pile up.
         atexit.register(shutil.rmtree, spill, True)
+        for old in path.parent.glob(f"{path.name}.tmp-*"):     # left by a process that was killed (SIGKILL, OOM)
+            if stale_spill(old):
+                shutil.rmtree(old, True)
     return spill
+
+
+def stale_spill(path: Path) -> bool:
+    """A ``<file>.tmp-<pid>`` spill directory (``read_spill_dir``) whose process is gone."""
+    _, sep, pid = path.name.rpartition(".tmp-")
+    if not (sep and pid.isdigit() and path.is_dir()):
+        return False
+    try:
+        os.kill(int(pid), 0)
+    except ProcessLookupError:
+        return True
+    except PermissionError:                                    # alive, another user's
+        return False
+    return False
 
 
 def read_memory_limit() -> str:
