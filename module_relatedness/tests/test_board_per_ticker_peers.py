@@ -12,7 +12,7 @@ import json
 import pytest
 
 from RevenueChaser.core.reporting_common import payload_path
-from RevenueChaser.core.tests.board_js import PROBE, assert_scripts_intact
+from RevenueChaser.core.tests.board_js import assert_scripts_parse
 from RevenueChaser.module_relatedness import engine, report
 
 
@@ -42,10 +42,9 @@ def test_an_empty_board_needs_no_payload_and_keeps_its_message():
     assert "No profiles yet" in html
 
 
-def test_the_served_page_scripts_stay_intact(tmp_path):
-    p = _payload(2)
-    p["companies"][0]["name"] = PROBE
-    assert_scripts_intact(report.render_relatedness_board(p)[0], tmp_path)
+def test_the_served_page_scripts_parse(tmp_path):
+    # No value reaches the served page (the probe test of the one-file page covers escaping); its scripts must parse.
+    assert_scripts_parse(report.render_relatedness_board(_payload(2))[0], tmp_path)
 
 
 @pytest.fixture
