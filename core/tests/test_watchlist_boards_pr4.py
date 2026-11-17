@@ -50,6 +50,7 @@ WITHOUT_PAIR = {
     # so a button that puts it on the shared stock or option list says nothing. #786 step 5 adds the other
     # direction instead: a menu on the OTHER boards that puts a ticker on one of these lists.
     "module_watchlists": "the board is avo's own named lists; a row here is already on a list",
+    "module_hit_rate": "a card per screener and rule version, not a row of names (#25)",
 }
 
 # ``[^"']``: the client template in the mounted script spells the same attributes around ``' + rcEsc(t) + '``; a
