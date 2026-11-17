@@ -63,6 +63,8 @@ DATASETS: dict[str, DatasetCard] = {
     'sec/13f': DatasetCard('13F holdings (SEC data sets, then forms)', step=10, role='first'),
     'sec/13f_sets_listed': DatasetCard('13F data sets the SEC has published (closes a quarter)', coverage_target=None,
                                        step=10, role='first'),
+    'sec/13f_list': DatasetCard('Official List of Section 13(f) Securities, per quarter (SEC)', cadence='quarterly',
+                                coverage_target=None, step=10, role='first'),
     'sec/nport': DatasetCard('Fund holdings from the Form N-PORT data sets, newest quarter (SEC)', cadence='monthly',
                              coverage_target=None, step=10, role='first'),
     'sec/company_tickers_exchange': DatasetCard('SEC ticker and exchange file', step=1, role='first'),
