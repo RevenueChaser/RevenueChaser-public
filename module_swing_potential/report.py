@@ -13,6 +13,7 @@ from __future__ import annotations
 import html as _html
 
 from RevenueChaser.core import funnel as funnel_mod
+from RevenueChaser.core import price_hygiene
 from RevenueChaser.core import universe as _universe
 from RevenueChaser.core.gics_map import sector_path
 from RevenueChaser.core.html_safe import ESC_JS, fill, script_json
@@ -304,6 +305,7 @@ var BOOT = __BOOT__;
 var DATA = [];
 var GATES = {};
 var GATE_SPEC = __GATE_SPEC__;
+var PRICE_FLAGS = __PRICE_FLAGS__;
 var METHODS_ON = __METHODS_ON__;
 var METHODS = {minervini: true, weinstein: false, qullamaggie: false};
 var METHOD_LABEL = {minervini: "Minervini", weinstein: "Weinstein", qullamaggie: "Qullamaggie"};
@@ -388,7 +390,8 @@ function cardHtml(c){
   var tags = themes.slice(0,3).map(function(x){ return '<span class="tag">'+rcEsc(x)+'</span>'; }).join("");
   var tagsRow = tags ? '<div class="tags">'+tags+'</div>' : '';
   var staleChip = c.ohlc_stale ? '<span class="tag dno" title="No bar of the latest session: price and levels are from an older day">Old price</span>' : '';
-  var chipsRow = '<div class="tags">'+chips+dirChip+staleChip+'</div>';
+  var flagChip = c.price_flag ? '<span class="tag dno" title="'+rcEsc(PRICE_FLAGS[c.price_flag]||c.price_flag)+'">Check price</span>' : '';
+  var chipsRow = '<div class="tags">'+chips+dirChip+staleChip+flagChip+'</div>';
   var indexBadges = (c.index || []).map(function(i){ return '<span class="badge b-index">'+rcEsc(i)+'</span>'; }).join("");
   var slider = (rr != null && price != null && stop != null)
     ? '<input type="range" min="1" max="5" step="0.1" value="' + rr.toFixed(1) + '" data-ticker="' + t + '" oninput="setRR(this.dataset.ticker, this.value)">'
@@ -494,6 +497,7 @@ function start(){
     JS = fill(JS, {"__MOD__": script_json(MODULE),
                    "__BOOT__": script_json(boot),
                    "__GATE_SPEC__": script_json(_gate_spec(run)),
+                   "__PRICE_FLAGS__": script_json(price_hygiene.LABELS),
                    "__METHODS_ON__": script_json(current_version),
                    "__META__": meta})
 

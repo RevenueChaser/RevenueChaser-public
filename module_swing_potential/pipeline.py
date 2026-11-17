@@ -148,6 +148,8 @@ def build_payload(results: list[dict], top_n: int | None = None, run_stats: dict
     passing = {"minervini": 0, "weinstein": 0, "qullamaggie": 0, "direction": 0}
     candidates = []
     direction_failed: list[str] = []          # passed a method, failed the direction rule: the funnel names them
+    # #116 flags (flag only, the name is scored): shown on the card (Swing review F6).
+    price_flag = {t: k for k, names in (run_stats.get("price_flags") or {}).items() for t in names}
     for r in results:
         t = r["ticker"]
         ind = r["ind"]
@@ -202,6 +204,7 @@ def build_payload(results: list[dict], top_n: int | None = None, run_stats: dict
             "flow": flow,
             # Swing review F15: above the stale-drop cap a stale name is scored; its card says so.
             **({"ohlc_stale": True} if r.get("ohlc_stale") else {}),
+            **({"price_flag": price_flag[t]} if t in price_flag else {}),
         })
 
     candidates.sort(key=lambda c: (-c["quality"],
