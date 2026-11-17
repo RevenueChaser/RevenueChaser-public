@@ -31,9 +31,11 @@ body{background:#0d1117;color:#c9d1d9;font-family:'Segoe UI',Consolas,monospace;
 .sum-card .sc-drawer{display:none;margin-top:6px}
 .sum-card .sc-drawer.open{display:flex;flex-wrap:wrap;gap:6px}
 .grid{display:flex;gap:24px;flex-wrap:wrap}
-.quadrant-panel{flex:1;min-width:550px;max-width:900px;background:#161b22;border:1px solid #21262d;border-radius:8px;padding:16px}
+.quadrant-panel{flex:1 1 0;min-width:0;max-width:900px;background:#161b22;border:1px solid #21262d;border-radius:8px;padding:16px}
 .quadrant-panel h2{color:#c9d1d9;font-size:16px;margin-bottom:14px}
-.table-panel{flex:2;min-width:700px;background:#161b22;border:1px solid #21262d;border-radius:8px;padding:16px}
+.table-panel{flex:1.25 1 0;min-width:0;overflow-x:auto;background:#161b22;border:1px solid #21262d;border-radius:8px;padding:16px}
+.grid>.quadrant-panel,.grid>.table-panel{align-self:flex-start}
+@media (max-width:1000px){.grid>.quadrant-panel,.grid>.table-panel{flex-basis:100%;max-width:none}}
 .topbar{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:center}
 .topbar .filters{display:flex;gap:10px;flex-wrap:wrap}
 .filters button{background:#161b22;color:#8b949e;border:1px solid #21262d;padding:5px 14px;border-radius:12px;cursor:pointer;font-size:12px;transition:all .2s}
@@ -46,7 +48,7 @@ th.num,td.num{text-align:right;font-family:ui-monospace,'Cascadia Mono',Consolas
 th.center,td.center{text-align:center}
 td{padding:8px 6px;border-bottom:1px solid #161b22;white-space:nowrap;font-size:12px}
 tr:hover{background:#161b22}
-.ticker{color:#F1F5F9;font-weight:700}
+.ticker{color:#F1F5F9;font-weight:700;white-space:nowrap}
 .group{font-size:10px;border-radius:4px;padding:1px 6px;color:#94A3B8}
 .pos{color:#34D399}.neg{color:#F87171}.zero{color:#8b949e}
 .badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:700}
@@ -101,10 +103,11 @@ tr.holdings-row td{background:#0b1828;border-bottom:1px solid #30363d}
 .mf-row .mf-score{font-weight:700;font-variant-numeric:tabular-nums}
 .mf-pos{color:#34D399}.mf-neg{color:#F87171}
 /* the rotation chart (A1, 17 Nov 2026): drawn by RRG_JS; labels scale with --k so a phone keeps them legible */
-svg.rrg{width:100%;height:auto;display:block;touch-action:manipulation}
+svg.rrg{width:100%;height:auto;display:block;touch-action:manipulation;user-select:none;-webkit-user-select:none}
 .map-controls{display:flex;align-items:center;gap:6px;margin-bottom:10px;flex-wrap:wrap}
 .map-controls .lbl{font-size:11px;color:#8b949e;margin:0 4px}
 .map-controls .filter-btn{background:#161b22;color:#8b949e;border:1px solid #21262d;min-height:44px;padding:0 14px;border-radius:12px;cursor:pointer;font-size:12px}
+.map-controls .zoom-btn{min-width:44px;padding:0 10px;font-size:16px}
 .map-controls .filter-btn.active{color:#58a6ff;border-color:#1f6feb;background:#1a1a2e}
 .qlabel{font-size:calc(12px*var(--k,1));font-weight:600;letter-spacing:.04em}
 .axis{font-size:calc(11px*var(--k,1));fill:#8b949e}
@@ -754,6 +757,15 @@ def _macro_table_html(as_of: date) -> str:
 RRG_JS = r"""<script>
 var RRG = __RRG_JSON__;
 var TRAIL = 8, FOCUS = null, HOVER = null;
+var VIEW = {z: 1, cx: 100, cy: 100}, GEOM = null;   // zoom factor and centre, in RS units; GEOM = the last draw's scale
+function zoomBy(f, cx, cy) {
+    var z = Math.min(12, Math.max(1, VIEW.z * f));
+    if (cx != null) { VIEW.cx = cx + (VIEW.cx - cx) * VIEW.z / z; VIEW.cy = cy + (VIEW.cy - cy) * VIEW.z / z; }
+    VIEW.z = z;
+    if (z === 1) { VIEW.cx = 100; VIEW.cy = 100; }
+    drawRRG();
+}
+function zoomReset() { VIEW = {z: 1, cx: 100, cy: 100}; drawRRG(); }
 var QCOL = {LEADING:'#3fb950', WEAKENING:'#d2991d', LAGGING:'#f85149', IMPROVING:'#58a6ff'};
 function rrgVisible(e) {
     if (HIDDEN[e.ticker]) return false;
@@ -773,29 +785,41 @@ function drawRRG() {
     var m = 1.5;
     rows.forEach(function(e){ e.points.slice(-TRAIL).forEach(function(p){ if (p) m = Math.max(m, Math.abs(p[0]-100), Math.abs(p[1]-100)); }); });
     m = Math.ceil(m*2)/2 + 0.25;
+    var M = m / VIEW.z;
     var K = Math.max(1, 600 / (svg.clientWidth || 600));
     svg.style.setProperty('--k', K);
-    var W = 600, P = Math.round(34*Math.min(K, 1.7)), S = (W-2*P)/(2*m);
-    function X(v){ return P + (v-100+m)*S; } function Y(v){ return W-P-(v-100+m)*S; }
+    var W = 600, P = Math.round(34*Math.min(K, 1.7)), S = (W-2*P)/(2*M);
+    function X(v){ return P + (v-VIEW.cx+M)*S; } function Y(v){ return W-P-(v-VIEW.cy+M)*S; }
+    GEOM = {S: S, P: P, M: M};
+    function cl(v){ return Math.min(W-P, Math.max(P, v)); }
+    var X0 = cl(X(100)), Y0 = cl(Y(100));
+    svg.style.touchAction = VIEW.z > 1 ? 'none' : 'manipulation';
+    var rs = document.getElementById('zoom-reset'); if (rs) rs.classList.toggle('active', VIEW.z > 1);
     var s = '';
-    [['LEADING',X(100),P,W-P-X(100),Y(100)-P,'Leading','end',W-P-8,P+18],
-     ['WEAKENING',X(100),Y(100),W-P-X(100),W-P-Y(100),'Weakening','end',W-P-8,W-P-8],
-     ['LAGGING',P,Y(100),X(100)-P,W-P-Y(100),'Lagging','start',P+8,W-P-8],
-     ['IMPROVING',P,P,X(100)-P,Y(100)-P,'Improving','start',P+8,P+18]].forEach(function(q){
+    s += '<defs><clipPath id="rrg-clip"><rect x="'+P+'" y="'+P+'" width="'+(W-2*P)+'" height="'+(W-2*P)+'"/></clipPath></defs>';
+    [['LEADING',X0,P,W-P-X0,Y0-P,'Leading','end',W-P-8,P+18],
+     ['WEAKENING',X0,Y0,W-P-X0,W-P-Y0,'Weakening','end',W-P-8,W-P-8],
+     ['LAGGING',P,Y0,X0-P,W-P-Y0,'Lagging','start',P+8,W-P-8],
+     ['IMPROVING',P,P,X0-P,Y0-P,'Improving','start',P+8,P+18]].forEach(function(q){
+        if (q[3] <= 0 || q[4] <= 0) return;
         s += '<rect x="'+q[1]+'" y="'+q[2]+'" width="'+q[3]+'" height="'+q[4]+'" fill="'+QCOL[q[0]]+'" opacity=".06"/>'
            + '<text class="qlabel" x="'+q[7]+'" y="'+q[8]+'" text-anchor="'+q[6]+'" fill="'+QCOL[q[0]]+'">'+q[5]+'</text>';
     });
-    for (var v = Math.ceil(100-m); v <= 100+m; v++) {
+    var st = M > 4 ? 2 : M > 1.6 ? 1 : M > 0.7 ? 0.5 : 0.25;
+    for (var v = Math.ceil((VIEW.cx-M)/st)*st; v <= VIEW.cx+M + 1e-9; v += st) {
         s += '<line x1="'+X(v)+'" y1="'+P+'" x2="'+X(v)+'" y2="'+(W-P)+'" stroke="#21262d"/>'
-           + '<line x1="'+P+'" y1="'+Y(v)+'" x2="'+(W-P)+'" y2="'+Y(v)+'" stroke="#21262d"/>'
-           + '<text class="tick" x="'+X(v)+'" y="'+(W-P+14)+'" text-anchor="middle">'+v+'</text>'
-           + '<text class="tick" x="'+(P-6)+'" y="'+(Y(v)+3)+'" text-anchor="end">'+v+'</text>';
+           + '<text class="tick" x="'+X(v)+'" y="'+(W-P+14)+'" text-anchor="middle">'+(+v.toFixed(2))+'</text>';
     }
-    s += '<line x1="'+X(100)+'" y1="'+P+'" x2="'+X(100)+'" y2="'+(W-P)+'" stroke="#8b949e"/>'
-       + '<line x1="'+P+'" y1="'+Y(100)+'" x2="'+(W-P)+'" y2="'+Y(100)+'" stroke="#8b949e"/>'
-       + '<text class="axis" x="'+(W-P)+'" y="'+(W-6)+'" text-anchor="end">RS-Ratio →</text>'
+    for (var u = Math.ceil((VIEW.cy-M)/st)*st; u <= VIEW.cy+M + 1e-9; u += st) {
+        s += '<line x1="'+P+'" y1="'+Y(u)+'" x2="'+(W-P)+'" y2="'+Y(u)+'" stroke="#21262d"/>'
+           + '<text class="tick" x="'+(P-6)+'" y="'+(Y(u)+3)+'" text-anchor="end">'+(+u.toFixed(2))+'</text>';
+    }
+    if (X(100) >= P && X(100) <= W-P) s += '<line x1="'+X(100)+'" y1="'+P+'" x2="'+X(100)+'" y2="'+(W-P)+'" stroke="#8b949e"/>';
+    if (Y(100) >= P && Y(100) <= W-P) s += '<line x1="'+P+'" y1="'+Y(100)+'" x2="'+(W-P)+'" y2="'+Y(100)+'" stroke="#8b949e"/>';
+    s += '<text class="axis" x="'+(W-P)+'" y="'+(W-6)+'" text-anchor="end">RS-Ratio →</text>'
        + '<text class="axis" x="10" y="'+(P-12)+'">↑ RS-Momentum</text>';
     var lit = FOCUS || HOVER;
+    s += '<g clip-path="url(#rrg-clip)">';
     rows.sort(function(a,b){ return (a.ticker === lit) - (b.ticker === lit); }).forEach(function(e){
         var pts = e.points.slice(-TRAIL).filter(Boolean).map(function(p){ return [X(p[0]), Y(p[1]), p[2]]; });
         var on = lit === e.ticker, op = (lit && !on) ? 0.15 : 1, c = QCOL[e.quadrant] || '#8b949e';
@@ -814,6 +838,7 @@ function drawRRG() {
            + '<circle cx="'+h[0]+'" cy="'+h[1]+'" r="'+((on?8:6.5)*Math.sqrt(K))+'" fill="'+c+'" stroke="#161b22" stroke-width="2"/>'
            + '<text class="dlabel" x="'+(h[0]+10*K)+'" y="'+(h[1]+4)+'">'+rcEsc(e.ticker)+'</text></g>';
     });
+    s += '</g>';
     svg.innerHTML = s;
     svg.querySelectorAll('g.rrg-dot').forEach(function(g){
         var e = RRG.etfs.filter(function(x){ return x.ticker === g.dataset.ticker; })[0];
@@ -833,6 +858,35 @@ function rrgTip(ev, e) {
     t.style.display = 'block'; t.style.left = (ev.clientX + 12) + 'px'; t.style.top = (ev.clientY + 12) + 'px';
 }
 window.addEventListener('resize', function(){ drawRRG(); });
+// zoom with the wheel around the cursor; drag to pan (a finger pans only when zoomed in, so the page still scrolls)
+function rrgAt(svg, ev) {
+    var r = svg.getBoundingClientRect(), k = 600 / (r.width || 600);
+    return [VIEW.cx - GEOM.M + ((ev.clientX - r.left)*k - GEOM.P) / GEOM.S, VIEW.cy + GEOM.M - ((ev.clientY - r.top)*k - GEOM.P) / GEOM.S];
+}
+document.addEventListener('DOMContentLoaded', function(){
+    var svg = document.getElementById('rrg'), drag = null;
+    if (!svg || !svg.addEventListener) return;
+    svg.addEventListener('wheel', function(ev){
+        if (!GEOM) return;
+        ev.preventDefault();
+        var at = rrgAt(svg, ev);
+        zoomBy(ev.deltaY < 0 ? 1.25 : 0.8, at[0], at[1]);
+    }, {passive: false});
+    svg.addEventListener('pointerdown', function(ev){
+        if (!GEOM || (ev.pointerType !== 'mouse' && VIEW.z <= 1) || ev.target.closest('g.rrg-dot')) return;
+        drag = {x: ev.clientX, y: ev.clientY, cx: VIEW.cx, cy: VIEW.cy, k: 600 / (svg.getBoundingClientRect().width || 600)};
+        ev.preventDefault(); svg.setPointerCapture(ev.pointerId);
+    });
+    svg.addEventListener('pointermove', function(ev){
+        if (!drag) return;
+        VIEW.cx = drag.cx - (ev.clientX - drag.x) * drag.k / GEOM.S;
+        VIEW.cy = drag.cy + (ev.clientY - drag.y) * drag.k / GEOM.S;
+        drawRRG();
+    });
+    svg.addEventListener('pointerup', function(){ drag = null; });
+    svg.addEventListener('pointercancel', function(){ drag = null; });
+    svg.addEventListener('dblclick', function(){ zoomReset(); });
+});
 document.addEventListener('DOMContentLoaded', function(){
     document.querySelectorAll('tbody tr[data-ticker]').forEach(function(row){
         row.addEventListener('mouseenter', function(){ HOVER = row.dataset.ticker; drawRRG(); });
@@ -990,7 +1044,7 @@ def export_rotation_dashboard(snapshots: list[ETFRotationSnapshot], filename: st
 
 <div class="grid">
 <div class="quadrant-panel">
-<div class="map-controls"><span class="lbl">Trail</span><button class="filter-btn trail-btn" data-n="4" onclick="setTrail(4)">4w</button><button class="filter-btn trail-btn active" data-n="8" onclick="setTrail(8)">8w</button><button class="filter-btn trail-btn" data-n="13" onclick="setTrail(13)">13w</button><span class="lbl" id="chart-count"></span></div>
+<div class="map-controls"><span class="lbl">Trail</span><button class="filter-btn trail-btn" data-n="4" onclick="setTrail(4)">4w</button><button class="filter-btn trail-btn active" data-n="8" onclick="setTrail(8)">8w</button><button class="filter-btn trail-btn" data-n="13" onclick="setTrail(13)">13w</button><span class="lbl">Zoom</span><button class="filter-btn zoom-btn" onclick="zoomBy(1.5)" aria-label="Zoom in">+</button><button class="filter-btn zoom-btn" onclick="zoomBy(1/1.5)" aria-label="Zoom out">−</button><button class="filter-btn" id="zoom-reset" onclick="zoomReset()">Reset</button><span class="lbl" id="chart-count"></span></div>
 <svg class="rrg" id="rrg" viewBox="0 0 600 600" role="img" aria-label="Relative rotation graph: each ETF against its own history vs {benchmark}"></svg>
 <div class="note">Each dot is the last completed week; the line is its path over the weeks before (faint = older). Right of 100 = stronger than {benchmark} against its own 14-week trend, above 100 = that strength is rising. ETFs usually turn clockwise. Tap a dot or a row to follow one path.</div>
 <div class="note"><b style="color:#c9d1d9">How it is computed:</b> total-return weekly closes vs {benchmark}, completed weeks only. RS-Ratio = 100 + how far the ETF/{benchmark} line sits above its own 14-week average, in units of its last year's spread; RS-Momentum = 100 + the 4-week change of RS-Ratio, in the same units. Each ETF is measured against its own history, so adding or removing an ETF never moves another's dot.<br>
