@@ -36,6 +36,7 @@ from RevenueChaser.core.reporting_common import (
     FILTERS_CSS,
     FILTERS_JS,
     JOB_JS,
+    PAYLOAD_JS,
     combobox_html,
     control_html,
     filters_bar_html,
@@ -509,7 +510,26 @@ def _about(payload: dict, horizon: int, benchmark: str, applied: bool,
     return funnel_line, about
 
 
+# The K10 payload's version (#584): bump it when the packed shape changes, so a reader (the page, the phone app) can
+# tell an old file from a new one.
+PAYLOAD_SCHEMA = 1
+
+
 def render_comovement_dashboard(payload: dict) -> str:
+    """The one-file page: the board with its groups inlined, so it boots with no fetch (tests, the hostile guard)."""
+    return _render(payload, inline=True)[0]
+
+
+def render_comovement_board(payload: dict) -> tuple[str, dict | None]:
+    """The page and its K10 payload (#584), or ``None`` when there is no group to fetch.
+
+    The HTML holds no group and no name: it fetches the packed rows (``_pack_rows`` plus ``schema``) from
+    ``/view/module_comovement/payload.json``. An empty board keeps its server-rendered message and needs no file.
+    """
+    return _render(payload, inline=False)
+
+
+def _render(payload: dict, inline: bool) -> tuple[str, dict | None]:
     payload = payload or {}
     cuts = [str(c) for c in (payload.get("cuts") or [])]
     cut_words = [_CUT_WORDS[i] if i < len(_CUT_WORDS) else f"Level {i + 1}"
@@ -527,7 +547,7 @@ def render_comovement_dashboard(payload: dict) -> str:
         grid = ('<div class="empty">No clusters yet. The <b>prices build</b> fills the daily prices after '
                 'each close; run <b>Fetch</b> to cluster them.</div>')
     else:
-        grid = ""
+        grid = "" if inline else '<div class="empty">Loading the groups…</div>'
 
     # S11: the one-line statement of what this board does and does not claim.
     # ``n_factors`` (eigenvalues above the Marchenko–Pastur edge) is missing on
@@ -668,7 +688,7 @@ def render_comovement_dashboard(payload: dict) -> str:
         themes=payload.get("theme_catalog") or {},
     )
 
-    JS = r"""
+    JS = PAYLOAD_JS + r"""
 function rcUnpackRows(P){
   return P.members.map(function(m){
     var g = P.groups[m[0]], n = P.names[m[1]], r = {};
@@ -677,6 +697,7 @@ function rcUnpackRows(P){
   });
 }
 var DATA = rcUnpackRows(__DATA__);
+var FETCH = __FETCH__;
 var CUTS = __CUTS__;
 var CUT_WORDS = __CUT_WORDS__;
 var BETA_SHARE = __BETA__;
@@ -998,11 +1019,23 @@ function init(){
   ["mouseout", "focusout"].forEach(function(ev){ document.addEventListener(ev, function(e){ if(e.target.closest && e.target.closest(".chip")) tip.hidden = true; }); });
   render();
 }
+// K10 (#584): the served page fetches its groups; the one-file page (tests) has them inline and starts at once.
+function rcBoot(){
+  if(!FETCH){ init(); return; }
+  rcPayload("module_comovement").then(function(P){ DATA = rcUnpackRows(P); init(); }, function(e){
+    document.getElementById("grid").innerHTML = '<div class="empty">Could not load the groups (' +
+      rcEsc(String((e && e.message) || e)) + '). Reload the page.</div>';
+  });
+}
 """
 
     # One pass, and JSON with < > & escaped: a label holding "<!--<script>" or
     # spelling another placeholder cannot break the script (F3, #144).
-    JS = fill(JS, {"__DATA__": script_json(_pack_rows(members)),
+    packed = _pack_rows(members)
+    data = {"schema": PAYLOAD_SCHEMA, **packed} if members else None
+    fetch = data is not None and not inline          # inline or empty: the rows (or none) ride in the page
+    JS = fill(JS, {"__DATA__": script_json(_pack_rows([]) if fetch else packed),
+                   "__FETCH__": "true" if fetch else "false",
                    "__CUTS__": script_json(cuts),
                    "__CUT_WORDS__": script_json(cut_words),
                    "__BETA__": str(BETA_SHARE),
@@ -1023,7 +1056,7 @@ function init(){
     oos_note = payload.get("oos_note")
     oos_note_html = (f'<div class="oos" id="oos-note" role="status">'
                      f'<span>{_html.escape(str(oos_note))}</span></div>' if oos_note else "")
-    return f"""<!DOCTYPE html>
+    page = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -1061,8 +1094,9 @@ function init(){
 {watchlist_html("comovement")}
 <script>{JOB_JS}
 {JS}
-init();
+rcBoot();
 </script>
 </body>
 </html>
 """
+    return page, data

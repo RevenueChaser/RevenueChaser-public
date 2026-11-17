@@ -89,6 +89,17 @@ def _seed() -> None:
     write_bars(rows)
 
 
+def _packed(dashboard) -> dict:
+    """The groups the page fetches after its HTML (K10, #584): the board's payload route."""
+    r = dashboard.get("/view/module_comovement/payload.json")
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def _tickers(dashboard) -> set[str]:
+    return {n["ticker"] for n in _packed(dashboard)["names"]}
+
+
 @dataclass
 class Fetched:
     dashboard: Dashboard
@@ -126,15 +137,24 @@ class TestFetch:
     def test_the_board_renders_clusters(self, fetched):
         html = fetched.dashboard.view("module_comovement").text
         assert "Co-movement" in html
-        assert "A1" in html and "B1" in html
+        assert {"A1", "B1"} <= _tickers(fetched.dashboard)
+
+    @SHARED
+    def test_the_page_fetches_its_groups(self, fetched):
+        """K10 (#584): the served HTML carries no name; the groups come from the payload route, versioned."""
+        html = fetched.dashboard.view("module_comovement").text
+        assert '"A1"' not in html and "Loading the groups" in html
+        packed = _packed(fetched.dashboard)
+        assert packed["schema"] == 1 and packed["members"] and packed["keys"]
 
     @SHARED
     def test_the_board_names_each_group_by_its_industry(self, fetched):
-        html = fetched.dashboard.view("module_comovement").text
+        groups = list(_packed(fetched.dashboard)["groups"].values())
         # At the broad cut the four banks are one group, named after their shared industry text (#266).
         # (The four semiconductor names are not a group on this seed, and the finer cuts leave single names.)
-        assert '"cluster_label": "Banks - Diversified 100%, ×4.0", "cluster_n": 4' in html
-        assert "sub_industry" not in html and "industry_group" not in html
+        assert any(g["cluster_label"] == "Banks - Diversified 100%, ×4.0" and g["cluster_n"] == 4 for g in groups)
+        names = _packed(fetched.dashboard)["names"]
+        assert not any("sub_industry" in n or "industry_group" in n for n in names)
 
 
 
@@ -151,7 +171,7 @@ class TestRefreshIsOfflineAndFaithful:
         assert "Co-movement" in r.text
         # The empty-state page also says "Co-movement": only the rebuilt artifact and its clusters prove the rebuild.
         assert dashboard.artifact("comovement_latest.html").exists(), "Refresh did not rebuild the artifact"
-        assert "A1" in r.text and "B1" in r.text
+        assert {"A1", "B1"} <= _tickers(dashboard)
 
     @SHARED
     def test_refresh_makes_no_network_calls(self, fetched, provider_routes):

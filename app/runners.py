@@ -911,8 +911,8 @@ def run_comovement(uw=None, no_fetch: bool = False,
     zero network. ``horizon`` (1/3/5/10) and ``benchmark`` (off/spy/dia/qqq)
     come from the board's Remove-market / Horizon controls and drive the
     residual clustering; ``window`` (sessions) is the board's window control,
-    ``None`` meaning the Settings default. Writes the JSON payload + the
-    self-contained HTML board.
+    ``None`` meaning the Settings default. Writes the JSON payload, the
+    HTML board and its K10 payload file (#584).
 
     After a Fetch's board is written, the popular windows
     (``config.PRECOMPUTE_WINDOWS``) are computed and stored so switching to them
@@ -927,9 +927,14 @@ def run_comovement(uw=None, no_fetch: bool = False,
     payload = engine.run(no_fetch=no_fetch, horizon=horizon, benchmark=benchmark,
                          window=window, **({} if no_fetch else {"run_id": run}))
     _write_to(COMOVEMENT_JSON, json.dumps(payload, ensure_ascii=False, default=str))
-    _write_to(COMOVEMENT_LATEST, report.render_comovement_dashboard(payload))
+    _write_board(COMOVEMENT_LATEST, *report.render_comovement_board(payload))
     if no_fetch:
         return COMOVEMENT_LATEST
+    if not payload.get("clusters"):
+        # #392 (3): a Fetch that clustered nothing says why instead of ending "done" without a word. The empty board
+        # is already written; there is nothing to precompute.
+        raise JobMessage(f"No groups: {int(payload.get('eligible') or 0)} names had enough daily prices in the "
+                         f"window to cluster (3 needed). The prices build fills them after each close.")
     as_ofs: dict[int, str] = {}
     done: dict[int, str] = {}
     warnings: list[str] = []
