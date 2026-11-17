@@ -37,7 +37,6 @@ ND_EBITDA_MAX = 3.0                  # net debt / EBITDA
 # ── Momentum (x/3) ──
 DIST_52W_MAX = 0.25                  # within 25% of 52-week high
 RS_6M_MIN = 0.0                      # 6-month RS vs SPY > 0 (pp)
-ABOVE_200D = True                    # price > 200-day MA
 
 # ── Data-health guardrail ([DISTORTED] -> manual review) ──
 DISTORTED_GROWTH = 2.0               # abs(TTM YoY growth) > 200%
@@ -82,5 +81,8 @@ TAX_RATE = 0.21
 # 9: ROIC is unknown when invested capital is under ROIC_IC_MIN_SHARE of total assets (#831)
 # 10: TTM revenue and P/E count a derived Q4 (fiscal year minus three quarters), so they are the last twelve months (#832)
 # 11: the Rule of 40 barrier holds both ways: below -RO40_BARRIER is unknown and DISTORTED too (plan 2026-11-16 F)
-SELECTION_VERSION = "11"
+# 12: the fiscal-year Rule of 40 refuses a negative revenue or capex like the trailing year does; the model version
+#     hashes the debt inference floor, the debt-note window and the stale-annual cut, not the unread ABOVE_200D
+#     (Fundamentals review 17 Nov 2026)
+SELECTION_VERSION = "12"
 

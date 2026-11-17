@@ -6,8 +6,9 @@ shown candidates to ``forecast_ledger``. The mapping lives here, in the module, 
 """
 from __future__ import annotations
 
-from RevenueChaser.core import ledger
+from RevenueChaser.core import fiscal_year, ledger
 from RevenueChaser.module_fundamentals import config
+from RevenueChaser.module_fundamentals import debt as _debt
 
 SOURCE = "fundamentals"
 LABEL = "Fundamentals"
@@ -18,14 +19,19 @@ LABEL = "Fundamentals"
 _HASHED = (
     "MIN_PRICE", "MIN_DOLLAR_VOLUME",
     "RO40_MIN", "GROWTH_MIN", "ROIC_MIN", "ROIC_IC_MIN_SHARE", "GM_MIN", "ND_EBITDA_MAX",
-    "DIST_52W_MAX", "RS_6M_MIN", "ABOVE_200D", "DISTORTED_GROWTH", "DISTORTED_REV_MIN", "TAX_RATE",
+    "DIST_52W_MAX", "RS_6M_MIN", "DISTORTED_GROWTH", "DISTORTED_REV_MIN", "TAX_RATE",
     "EXCLUDED_SECTORS", "RO40_BARRIER",     # #386 F1 data-health gates
 )
+# Fundamentals review 17 Nov N7: thresholds that live outside config.py but move a score (the debt inference, the
+# debt note's date window, the stale-annual cut). ``ABOVE_200D`` left the hash: no rule reads it.
+_HASHED_ELSEWHERE = ((_debt, "INTEREST_FLOOR_USD"), (_debt, "NOTE_DAYS"), (fiscal_year, "STALE_DAYS"))
 
 
 def effective_config() -> dict:
     from RevenueChaser.module_fundamentals import settings as fund_settings
-    return {**{name: getattr(config, name) for name in _HASHED}, **fund_settings.stored_overrides()}
+    return {**{name: getattr(config, name) for name in _HASHED},
+            **{name: getattr(mod, name) for mod, name in _HASHED_ELSEWHERE},
+            **fund_settings.stored_overrides()}
 
 
 def model_version() -> str:
@@ -50,8 +56,8 @@ def picks(candidates: list[dict]) -> list[dict]:
 def freeze_payload(payload: dict, *, run_id: str | None = None, now=None) -> ledger.Outcome:
     """Freeze a finished Fundamentals payload when the rule allows it; the outcome is also a job note.
 
-    The board's price comes from the shared daily-bar cache, so the anchor and the per-candidate
-    check are the same as Swing's: SPY and each frozen name must end on one complete session D.
+    The board's prices come from the prices store (D01), so the anchor and the per-candidate check are the same as
+    Swing's: SPY and each frozen name must end on one complete session D.
     """
     return ledger.freeze_board(
         SOURCE, LABEL, payload, rows_key="candidates", to_rows=picks, model_version=model_version(),

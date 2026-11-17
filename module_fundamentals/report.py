@@ -170,6 +170,11 @@ def _summary_html(s: dict, data_quality: dict | None = None) -> str:
         bits = ([f"{_fmt_int(stale_n)} tickers"] if stale_n else []) + (["SPY"] if s.get("spy_stale") else [])
         elim_part += (f" Stale price cache (refetch failed, last cached bars used): "
                       f"{_html.escape(' + '.join(bits))}.")
+    if s.get("spy_missing"):
+        # Fundamentals review 17 Nov (as Swing review F2): with no SPY bar of the latest session the 6-month RS rule
+        # is unknown on every card, so no name passes Momentum on this Fetch.
+        elim_part += (" <b>SPY has no bar of the latest session</b>: the 6-month RS rule is unknown, so no name "
+                      "passes Momentum on this Fetch.")
     # The F5 blind spots (#58): a card with no amber event line is either clean or one the store cannot answer for.
     # The counters cover the shown cards (counted after top_n); a payload from before they existed has neither key.
     dq = data_quality or {}

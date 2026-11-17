@@ -48,7 +48,7 @@ PCAR passes no gate, so its reading reaches no card.
 (``core/providers/sec_edgar.py``). A bank or an insurer writes interest under other labels (deposit interest,
 policyholder credits), so one of them could come through here with neither a debt tag nor an interest figure. The
 Fundamentals board never scores them: ``config.EXCLUDED_SECTORS`` drops Financial Services and Real Estate before
-EDGAR is read (``pipeline._score_row``). That exclusion, not this module, is what keeps them out.
+EDGAR is read (``pipeline._compute_row``). That exclusion, not this module, is what keeps them out.
 """
 from __future__ import annotations
 
