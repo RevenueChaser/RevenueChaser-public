@@ -926,6 +926,11 @@ def stored_result(header: dict | None = None) -> dict:
         reason = "no_scan_stored" if stored else "no_universe_stored"
         result.update(universe_total=0, no_data_reason=reason, no_data_message=no_data_message(reason))
         return result
+    for c in cards:
+        # The two card fields the table keeps under another name (#587 live check, 17 Nov 2026): a Refresh's JSON
+        # carries them as a Fetch's does. ``ownership`` (the 13F provenance) has no column and stays None.
+        c.setdefault("fiscal_year", c.get("anchor_fy"))
+        c.setdefault("basis", (c.get("period_ends") or {}).get("basis"))
     _sort_cards(cards)
     annotate_cards(cards)
     if header and header.get("cards_key") == cards_key(cards):
