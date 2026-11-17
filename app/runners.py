@@ -167,6 +167,7 @@ VALUE_CHAIN_LATEST = OUTPUT_DIR / "value_chain_latest.html"
 VALUE_CHAIN_JSON = OUTPUT_DIR / "value_chain" / "value_chain_latest.json"
 RELATEDNESS_LATEST = OUTPUT_DIR / "relatedness_latest.html"
 RELATEDNESS_JSON = OUTPUT_DIR / "relatedness" / "relatedness_latest.json"
+RELATEDNESS_PEERS_DIR = OUTPUT_DIR / "relatedness" / "peers"   # <TICKER>.json, served by /api/relatedness/peers/
 OIPD_LATEST = OUTPUT_DIR / "oipd_latest.html"
 OIPD_JSON = OUTPUT_DIR / "oipd" / "oipd_latest.json"
 SETTINGS_LATEST = OUTPUT_DIR / "settings_latest.html"
@@ -1006,6 +1007,24 @@ def run_relatedness_compare(uw=None, provider: str = "", model: str = "", ticker
     raise JobMessage(json.dumps(out, ensure_ascii=False))
 
 
+def _write_relatedness_peers(peers: dict) -> None:
+    """One ``{"peers": [...]}`` file per focal ticker: the board fetches only the one it shows (a whole-board
+    list inlined was 32 of the page's 35 MB). Built in a sibling folder and swapped in, so no stale ticker stays."""
+    import shutil
+    new, old = RELATEDNESS_PEERS_DIR.with_name("peers.new"), RELATEDNESS_PEERS_DIR.with_name("peers.old")
+    shutil.rmtree(new, ignore_errors=True)
+    new.mkdir(parents=True)
+    for ticker, rows in peers.items():
+        (new / f"{ticker}.json").write_text(
+            json.dumps({"ticker": ticker, "peers": rows}, ensure_ascii=False, default=str, separators=(",", ":")),
+            encoding="utf-8")
+    shutil.rmtree(old, ignore_errors=True)
+    if RELATEDNESS_PEERS_DIR.exists():
+        RELATEDNESS_PEERS_DIR.rename(old)
+    new.rename(RELATEDNESS_PEERS_DIR)
+    shutil.rmtree(old, ignore_errors=True)
+
+
 def run_relatedness(uw=None, no_fetch: bool = False) -> Path:
     """Run the Relatedness board (LLM business-profile similarity).
 
@@ -1025,7 +1044,9 @@ def run_relatedness(uw=None, no_fetch: bool = False) -> Path:
     except engine.AlreadyRunning as exc:
         raise JobMessage(str(exc)) from exc
     _write_to(RELATEDNESS_JSON, json.dumps(payload, ensure_ascii=False, default=str))
-    _write_to(RELATEDNESS_LATEST, report.render_relatedness_dashboard(payload))
+    # Peers first, so a page loaded from the new HTML never asks for a list that is not written yet.
+    _write_relatedness_peers(payload.get("peers") or {})
+    _write_board(RELATEDNESS_LATEST, *report.render_relatedness_board(payload))
     # A Fetch that stopped early (peak, missing key, auth, the worker-pool stop)
     # or left work pending is not a silent success: say what is done and what waits.
     # A Refresh is a GET that writes nothing and must never raise (C-F6), so the

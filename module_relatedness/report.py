@@ -19,6 +19,7 @@ from . import config
 from RevenueChaser.core.reporting_common import (
     FILTERS_CSS,
     FILTERS_JS,
+    PAYLOAD_JS,
     combobox_html,
     filters_bar_html,
     filters_meta,
@@ -113,7 +114,27 @@ def _embed_companies(companies: list[dict]) -> list[dict]:
     return [{k: v for k, v in c.items() if k not in _EMBED_SKIP} for c in companies]
 
 
+MODULE = "module_relatedness"
+# The per-ticker peer list the board fetches (#383 K10 + the 35 MB page, coordinator PR #919 §8): the served page
+# holds no peer row, so it stays small; app/dashboard.py serves the files ``runners`` writes.
+PEERS_URL = "/api/relatedness/peers/"
+
+
 def render_relatedness_dashboard(payload: dict) -> str:
+    """The one-file page: every company and every peer list inlined, so it boots with no fetch (tests, guards)."""
+    return _render(payload, inline=True)[0]
+
+
+def render_relatedness_board(payload: dict) -> tuple[str, dict | None]:
+    """The served page and its K10 payload (``{"companies": [...]}``), or ``None`` when no company was profiled.
+
+    The HTML holds no company and no peer: it fetches the companies from ``/view/module_relatedness/payload.json``
+    and each focal ticker's peers from ``PEERS_URL`` on pick. With no company the empty message needs no fetch.
+    """
+    return _render(payload, inline=False)
+
+
+def _render(payload: dict, inline: bool) -> tuple[str, dict | None]:
     payload = payload or {}
     companies = payload.get("companies") or []
     peers = payload.get("peers") or {}
@@ -143,15 +164,20 @@ def render_relatedness_dashboard(payload: dict) -> str:
     <div id="peers" aria-live="polite"></div>
   </div>"""
 
-    JS = r"""
-var DATA = __COMPANIES__;
-var PEERS = __PEERS__;
+    JS = PAYLOAD_JS + r"""
+var MOD = __MOD__;
+var BOOT = __BOOT__;
+var PEERS_URL = __PEERS_URL__;
+var DATA = [];
+var PEERS = {};
+var LOADING = {};
+var INLINE = false;
 var META = __META__;
 var WRITER = __WRITER__;
 var QUERY = "";
 var FOCAL = null;
 var RCF = null;
-var BY = {}; DATA.forEach(function(c){ BY[c.ticker] = c; });
+var BY = {};
 // The shared filter bar (rc_filters, #383 C1b) plus the board's own search box narrow the focal picker.
 function pass(c){
   if(RCF && !RCF.pass(c)) return false;
@@ -237,8 +263,36 @@ function render(){
   meta.textContent =
     (c.sector || "") + (c.industry ? " · " + c.industry : "") +
     ((c.also || []).length ? " · also " + c.also.join(", ") : "");
-  var list = PEERS[FOCAL] || [];
+  var list = INLINE ? (PEERS[FOCAL] || []) : PEERS[FOCAL];
+  if(list === undefined){ loadPeers(FOCAL); body.innerHTML = '<div class="empty">Loading…</div>'; return; }
+  if(list === null){ body.innerHTML = '<div class="empty">The peers did not load. Press Refresh.</div>'; return; }
   body.innerHTML = list.map(peerRow).join("") || '<div class="empty">No peers.</div>';
+}
+// One small request per focal ticker; the answer is kept, so going back to a ticker costs nothing.
+function loadPeers(t){
+  if(LOADING[t]) return;
+  LOADING[t] = true;
+  fetch(PEERS_URL + encodeURIComponent(t), {cache: "no-cache", credentials: "same-origin"})
+    .then(function(r){
+      if(r.status === 404) return {peers: []};
+      if(!r.ok) throw new Error("peers " + r.status);
+      return r.json();
+    })
+    .then(function(d){ PEERS[t] = d.peers || []; }, function(){ PEERS[t] = null; })
+    .then(function(){ LOADING[t] = false; if(FOCAL === t) render(); });
+}
+function boot(data){
+  DATA = data.companies || [];
+  if(data.peers){ PEERS = data.peers; INLINE = true; }
+  BY = {}; DATA.forEach(function(c){ BY[c.ticker] = c; });
+  init();
+}
+function start(){
+  if(BOOT){ boot(BOOT); return; }
+  document.getElementById("count").textContent = "Loading…";
+  rcPayload(MOD).then(boot, function(e){
+    document.getElementById("count").textContent = "The board did not load (" + e.message + "). Press Refresh.";
+  });
 }
 function init(){
   RCF = RCFilters.mount({root: "#rc-filters", rows: DATA, meta: META, onChange: function(){ render(); }});
@@ -251,9 +305,13 @@ function init(){
 }
 """
 
+    embedded = {"companies": _embed_companies(companies)}
+    # Inline: the whole board in the page. Served: no row in the page, unless there is none to fetch.
+    boot = {**embedded, "peers": peers} if inline else (None if companies else embedded)
     JS = fill(JS, {"__BEYOND_H__": str(int(comov_config.DEFAULT_HORIZON)),
-                   "__COMPANIES__": script_json(_embed_companies(companies)),
-                   "__PEERS__": script_json(peers),
+                   "__MOD__": script_json(MODULE),
+                   "__BOOT__": script_json(boot),
+                   "__PEERS_URL__": script_json(PEERS_URL),
                    "__WRITER__": script_json("/".join((payload.get("writer") or {}).get(k) or "" for k in
                                                        ("provider", "model")) or None),
                    "__META__": script_json(filters_meta(
@@ -270,7 +328,7 @@ function init(){
         "the board from the stored profiles and scores with no network call. A tag shared by many companies "
         f"weighs less than a rare one; peers with fewer than {config.PEER_MIN_SHARED} shared tags are hidden, and "
         "the percentile ranks a peer among the scored (non-zero) pairs.")
-    return f"""<!DOCTYPE html>
+    page = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -296,8 +354,9 @@ function init(){
 <script>{FILTERS_JS}</script>
 {watchlist_html("relatedness")}
 <script>{JS}
-init();
+start();
 </script>
 </body>
 </html>
 """
+    return page, (None if inline or not companies else embedded)
