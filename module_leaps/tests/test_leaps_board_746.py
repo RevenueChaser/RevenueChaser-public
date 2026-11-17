@@ -162,6 +162,7 @@ def test_twenty_sessions_not_yet_tested_offer_no_share_sort(stored):
     assert board.TESTED is False and board.payload()["tested"] is False
     page = board.render_html(dict(board.payload(), stored=20, collecting=False))
     assert "Collecting" not in page and "Sort: opened share" not in page
+    assert "20 sessions stored, not tested yet" in page, "stored is not tested: the banner keeps saying so"
 
 
 def test_a_session_with_no_open_interest_read_does_not_count_as_stored(monkeypatch):
@@ -182,3 +183,37 @@ def test_the_counts_say_how_many_wait_for_their_open_interest(stored):
     page = board.render_html(data)
     assert "waiting for open interest" in page and "stale or missing" in page, "a partial read keeps both counts"
     assert "waiting for open interest" not in board.render_html(board.payload()), "shown only while some wait"
+
+
+# ── Layout and sort rules (review round 2: F3, M4, M5) ─────────────────────────────────────────────────────────
+
+def _wide_css() -> str:
+    return board._CSS[board._CSS.index("@media (min-width:900px)"):]
+
+
+def test_the_product_buttons_are_44_px_touch_targets():
+    assert ".lp-seg button{min-height:var(--touch);" in board._CSS and ".lp-seg button{min-height:40px" not in board._CSS
+
+
+def test_the_wide_row_aligns_each_cell_by_where_it_stands():
+    """rules/ui-design.md cell grid: Watch (leftmost) left, the middle cells centred, Flags (rightmost) right."""
+    wide = _wide_css()
+    assert ".lp-head>:first-child{text-align:left}.lp-head>:last-child{text-align:right}" in wide
+    assert "text-align:center}" in wide[wide.index(".lp-head{font-size"):wide.index(".lp-head>:first-child")]
+    assert "justify-content:center" in wide[wide.index("  .c-n{flex-direction:row"):]
+    assert ".c-p{text-align:center}" in wide and ".c-x div{align-items:center}" in wide
+    assert ".c-f{grid-area:f;justify-content:flex-end}" in wide
+    assert "align-items:flex-end" not in wide and ".lp-head .r{" not in wide
+
+
+def test_the_wide_row_keeps_the_stat_names_for_screen_readers():
+    """The header row is aria-hidden, so each cell's name is only hidden from sight, never display:none."""
+    wide = _wide_css()
+    assert "small{display:none}" not in wide and ".lab{display:none}" not in wide
+    assert ".ct .sh .lab,.c-x small{position:absolute;width:1px;height:1px;" in wide
+
+
+def test_the_open_interest_sort_puts_the_largest_rise_first(stored):
+    assert "-r.chg;" in board._JS and "Math.abs(r.chg)" not in board._JS, "signed change, not its size"
+    page = board.render_html(board.payload())
+    assert '<option value="change">Sort: open interest rise</option>' in page

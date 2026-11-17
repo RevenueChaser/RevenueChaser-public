@@ -152,7 +152,7 @@ body{margin:0;background:var(--bg);color:var(--fg);font:var(--fs-base)/1.4 var(-
   color:var(--bright);padding:0 var(--sp-2);font:500 var(--fs-sm) var(--font-sans);min-width:0}
 .lp-seg{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:2px;padding:2px;border-radius:var(--r-sm);
   background:var(--card-2);border:1px solid var(--border)}
-.lp-seg button{min-height:40px;border:0;border-radius:var(--r-sm);background:transparent;color:var(--fg);cursor:pointer;
+.lp-seg button{min-height:var(--touch);border:0;border-radius:var(--r-sm);background:transparent;color:var(--fg);cursor:pointer;
   font:500 var(--fs-sm) var(--font-sans)}
 .lp-seg button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);font-weight:600}
 .lp-seg button span{color:var(--muted);font-weight:400;margin-left:4px;font-size:var(--fs-xs)}
@@ -214,18 +214,21 @@ body{margin:0;background:var(--bg);color:var(--fg);font:var(--fs-base)/1.4 var(-
   .lp-head,.ct{display:grid;grid-template-columns:60px minmax(0,1.7fr) 64px minmax(0,1.3fr) minmax(0,2fr) minmax(0,1.1fr);
     grid-template-areas:"w n p s x f";gap:var(--sp-3);padding:4px var(--sp-3);align-items:center}
   .lp-head{font-size:var(--fs-xs);color:var(--muted);background:var(--card-2);border-bottom:1px solid var(--border);
-    padding-top:6px;padding-bottom:6px}
-  .lp-head .r{text-align:right}
-  .lp-head .x{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--sp-2);text-align:right}
+    padding-top:6px;padding-bottom:6px;text-align:center}
+  /* Cell grid (rules/ui-design.md): the leftmost cell left, middle cells centred, the rightmost cell right. */
+  .lp-head>:first-child{text-align:left}.lp-head>:last-child{text-align:right}
+  .lp-head .x{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--sp-2)}
   .lp-rows{gap:0}
   .ct{min-height:40px;border:0;border-bottom:1px solid var(--border);border-radius:0;background:transparent}
   .ct:hover{background:var(--hover-faint)}
-  .c-n{flex-direction:row;align-items:baseline;gap:var(--sp-2)}
-  .ct .sh .lab{display:none}
-  .c-x small{display:none}
-  .c-x div{align-items:flex-end}
+  .c-n{flex-direction:row;align-items:baseline;justify-content:center;gap:var(--sp-2)}
+  .c-p{text-align:center}.c-s .note{justify-content:center}
+  /* The header row is aria-hidden: the per-cell names stay for screen readers, hidden only from sight. */
+  .ct .sh .lab,.c-x small{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);
+    white-space:nowrap}
+  .c-x div{align-items:center}
   .c-x b{font-weight:500}
-  .c-f{grid-area:f}
+  .c-f{grid-area:f;justify-content:flex-end}
 }
 """
 
@@ -273,7 +276,7 @@ var LP_SORTS = {
   premium: function(r){ return -(r.prem || 0); },
   share: function(r){ return r.share == null ? Infinity : -r.share; },
   volume: function(r){ return -(r.vol || 0); },
-  change: function(r){ return r.chg == null ? Infinity : -Math.abs(r.chg); }
+  change: function(r){ return r.chg == null ? Infinity : -r.chg; }  // the largest rise first, falls last
 };
 function lpVisible(){
   var key = LP_SORTS[LP.sort] || LP_SORTS.premium;
@@ -332,7 +335,9 @@ def render_html(data: dict) -> str:
                  f'<i style="width:{min(100, stored * 100 // need)}%"></i></span><span>{stored} / {need} sessions</span>'
                  f'</div>')
     else:
-        state = f'<div class="lp-collect lp-muted">{stored} sessions stored.</div>'
+        # Stored is not tested (#746 step 6): until then the banner says so and nothing is ranked by the share.
+        state = (f'<div class="lp-collect lp-muted">{stored} sessions stored.</div>' if data.get("tested") else
+                 f'<div class="lp-collect lp-muted">{stored} sessions stored, not tested yet: raw numbers only.</div>')
     counts = "".join(
         f'<span{cls}><b>{n:,}</b> {label}</span>'
         for n, label, cls in ((c["contracts"], "contracts", ""), (c["names"], "names", ""),
@@ -357,11 +362,11 @@ def render_html(data: dict) -> str:
 <option value="C">Calls</option><option value="P">Puts</option></select>
 <select id="lp-sort" aria-label="Sort"><option value="premium">Sort: premium</option>
 {share_sort}<option value="volume">Sort: volume</option>
-<option value="change">Sort: open interest change</option></select></div>
+<option value="change">Sort: open interest rise</option></select></div>
 <div class="lp-counts">{counts}</div>
 </div>
 <div class="lp-table"><div class="lp-head" aria-hidden="true"><span>Watch</span><span>Contract</span>
-<span class="r">Premium</span><span>Opened share</span><span class="x"><span>Volume</span><span>Open int.</span>
+<span>Premium</span><span>Opened share</span><span class="x"><span>Volume</span><span>Open int.</span>
 <span>At ask</span><span>Multi-leg</span></span>
 <span>Flags</span></div><div class="lp-rows" id="lp-rows"></div></div>
 <button type="button" class="lp-more" id="lp-more" hidden><span></span><span aria-hidden="true">›</span></button>
