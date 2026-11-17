@@ -81,7 +81,8 @@ console.log(JSON.stringify(_els['dd-menu'].innerHTML));
 """
 
 
-def test_the_ticker_picker_escapes_ticker_and_name(evil_etf, tmp_path):
+@pytest.mark.parametrize("page", ["trail"])              # the rotation page's picker went with the 17 Nov redesign
+def test_the_ticker_picker_escapes_ticker_and_name(page, evil_etf, tmp_path):
     """The trail page's ``buildPicker`` writes ``innerHTML``; node runs the real script."""
     html = _trail(evil_etf)
     tail = _PICKER % {"t": json.dumps(EVIL + "T"), "n": json.dumps(EVIL + "N")}

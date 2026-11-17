@@ -206,7 +206,8 @@ def test_yields_and_index_levels_print_no_dollar_sign(board):
 
 # ── SR-1, PNG, dead helpers ──────────────────────────────────────────────────────────────────────────────────────────
 
-def test_the_render_asks_uw_for_no_adv(board):
+def test_the_render_asks_uw_for_no_adv_and_the_caption_says_dots_are_fixed(board):
+    """The dots are fixed since the 17 Nov 2026 redesign; the caption no longer says so, the size is not ADV."""
     class _NoScreener:
         def screener_batch(self, tickers):
             pytest.fail("the render asked UW for ADV")
