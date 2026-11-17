@@ -715,7 +715,7 @@ PAYLOAD_SUFFIX = ".payload.json.gz"
 # The page side: ``rcPayload("module_x").then(function(data){ ... })``.
 PAYLOAD_JS = r"""
 function rcPayload(mod){
-  return fetch("/view/" + encodeURIComponent(mod) + "/payload.json", {cache: "no-store", credentials: "same-origin"})
+  return fetch("/view/" + encodeURIComponent(mod) + "/payload.json", {cache: "no-cache", credentials: "same-origin"})
     .then(function(r){ if(!r.ok) throw new Error("payload " + r.status); return r.json(); });
 }
 """

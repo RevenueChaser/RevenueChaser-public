@@ -65,9 +65,22 @@ def test_the_route_serves_the_payload_precompressed(board):
     assert r.headers["Content-Encoding"] == "gzip"
     assert r.headers["Content-Type"].startswith("application/json")
     assert "Accept-Encoding" in r.headers.get("Vary", "")
-    assert r.headers.get("Cache-Control", "").startswith("no-store")
+    assert r.headers.get("Cache-Control") == "no-cache"
     assert r.data == rc.payload_path(html).read_bytes(), "served as stored, not compressed per request"
     assert json.loads(gzip.decompress(r.data)) == PAYLOAD
+
+
+def test_an_unchanged_payload_answers_304_and_a_new_one_does_not(board):
+    client, html = board
+    rc.write_board(html, "<html>x</html>", PAYLOAD)
+    hdr = {"Accept-Encoding": "gzip"}
+    etag = client.get("/view/module_relatedness/payload.json", headers=hdr).headers["ETag"]
+    same = client.get("/view/module_relatedness/payload.json", headers={**hdr, "If-None-Match": etag})
+    assert same.status_code == 304 and same.data == b""
+    rc.write_board(html, "<html>x</html>", {"rows": [], "n": 0})
+    new = client.get("/view/module_relatedness/payload.json", headers={**hdr, "If-None-Match": etag})
+    assert new.status_code == 200, "new data must never hide behind an old ETag"
+    assert json.loads(gzip.decompress(new.data)) == {"rows": [], "n": 0}
 
 
 def test_a_client_without_gzip_gets_plain_json(board):
@@ -151,4 +164,4 @@ def test_js_rc_payload_fetches_the_route(tmp_path):
     assert got["data"] == {"n": 1}
     assert got["miss"] == "payload 404"
     assert got["calls"][0][0] == "/view/module_ok/payload.json"
-    assert got["calls"][0][1]["cache"] == "no-store"
+    assert got["calls"][0][1]["cache"] == "no-cache", "revalidate: an unchanged payload answers 304"

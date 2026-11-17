@@ -11,6 +11,7 @@ Each tab is an iframe serving the module's latest generated HTML
 This is a LOCAL, on-demand tool.
 """
 import gzip
+import hashlib
 import json
 import logging
 import os
@@ -183,14 +184,58 @@ def _close_store_session(exc):
         sess.__exit__(None, None, None)
 
 
+#: What ``_compress_and_tag`` gzips and tags: pages, data and static text. Fonts and images are compressed already.
+_COMPRESSIBLE = frozenset({"text/html", "application/json", "text/css", "text/javascript",
+                           "application/javascript", "image/svg+xml"})
+#: Static files compressed once per version (key: their ETag). shortcut: one entry per static file version, emptied
+#: by the restart every deploy does; bound it if static files ever change without a restart.
+_STATIC_GZ: dict[str, bytes] = {}
+
+
+def _compress_and_tag(resp):
+    """gzip a page, JSON or static text answer and give it an ETag, so an unchanged one answers ``304``.
+
+    The ETag is the file's own (``send_file``) or a hash of the body, with ``-gz`` for the compressed form; a
+    matching ``If-None-Match`` gets ``304`` and no body. A generator (streamed) answer is left alone.
+    """
+    if resp.status_code != 200 or resp.mimetype not in _COMPRESSIBLE:
+        return resp
+    if resp.is_streamed and not resp.direct_passthrough:
+        return resp
+    resp.direct_passthrough = False  # send_file's file wrapper: read it so it can be hashed and compressed
+    body = resp.get_data()
+    gz = ("Content-Encoding" not in resp.headers and len(body) >= 1024
+          and bool(request.accept_encodings["gzip"]))
+    etag = (resp.get_etag()[0] or hashlib.blake2b(body, digest_size=16).hexdigest()) + ("-gz" if gz else "")
+    resp.set_etag(etag)
+    resp.vary.add("Accept-Encoding")
+    if request.if_none_match.contains(etag):
+        resp.status_code = 304  # Werkzeug drops the body and its entity headers
+        return resp
+    if gz:
+        if request.endpoint == "static":
+            data = _STATIC_GZ.get(etag) or _STATIC_GZ.setdefault(etag, gzip.compress(body, compresslevel=6))
+        else:
+            data = gzip.compress(body, compresslevel=5)
+        resp.set_data(data)
+        resp.headers["Content-Encoding"] = "gzip"
+    return resp
+
+
 @app.after_request
 def _no_cache(resp):
-    """Never cache dashboard HTML/views — the running app window must always
-    pick up the latest generated report + template after a restart."""
+    """The running app window must always pick up the latest board + template, so nothing is cached unchecked.
+
+    Pages and JSON with an ETag go out ``no-cache``: the browser asks every time and an unchanged one answers
+    ``304`` with no body, so the data is still always fresh. Other answers stay ``no-store``.
+    """
+    resp = _compress_and_tag(resp)
     if request.endpoint == "static":
-        return resp  # vendor JS / icons are immutable: let the browser cache them
+        return resp  # vendor JS / icons: the browser keeps them and revalidates by ETag
     ct = (resp.headers.get("Content-Type") or "")
-    if "text/html" in ct or resp.status_code in (200, 302):
+    if resp.status_code in (200, 304) and resp.get_etag()[0]:
+        resp.headers["Cache-Control"] = "no-cache"
+    elif "text/html" in ct or resp.status_code in (200, 302):
         resp.headers["Cache-Control"] = "no-store, max-age=0"
         resp.headers["Pragma"] = "no-cache"
         resp.headers["Expires"] = "0"
@@ -389,7 +434,7 @@ def view_payload(mod: str):
         resp.headers["Content-Encoding"] = "gzip"
     else:
         resp = Response(gzip.decompress(data), mimetype="application/json")
-    resp.headers["Vary"] = "Accept-Encoding"  # Cache-Control: no-store comes from _no_cache
+    resp.headers["Vary"] = "Accept-Encoding"  # ETag and Cache-Control: no-cache come from _no_cache
     return resp
 
 
