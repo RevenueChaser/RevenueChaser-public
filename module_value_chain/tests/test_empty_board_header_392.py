@@ -2,7 +2,7 @@
 
 With an empty store the header printed ``_now()`` as the data date, so a skim read "synced today" while the body
 said there was no data; and the empty state told the user to press "Fetch (EDGAR)", a button this board does not
-render -- the control that fills the corpus is Settings -> "Fetch 10-K sync".
+render. Settings' "Fetch 10-K sync" went with #860; the board's own Fetch reads the SEC layer (V2/V4, 16 Nov plan).
 
 The Relatedness and Co-movement halves of both issues belong to those boards.
 """
@@ -22,10 +22,11 @@ def test_an_empty_board_does_not_claim_a_sync_today():
 def test_a_stored_sync_is_still_printed():
     html = report.render_value_chain_dashboard({"as_of": "2026-09-17T00:00:00+00:00",
                                                 "filings": [], "edges": [], "universe_total": 0, "pending": 0})
-    assert "Last sync: Thursday, September 17, 2026 EOD" in html
+    assert "Last sync: Thursday, September 17, 2026<" in html, "a sync time is not a market close: no EOD"
 
 
 def test_the_empty_state_points_at_the_control_that_exists():
     html = report.render_value_chain_dashboard({"filings": [], "edges": [], "universe_total": 0, "pending": 0})
-    assert "Fetch 10-K sync" in html
+    assert "<b>Fetch</b> reads them from the stored SEC filings" in html
+    assert "Fetch 10-K sync" not in html
     assert "Run <b>Fetch (EDGAR)</b>" not in html

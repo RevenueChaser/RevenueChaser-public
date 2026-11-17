@@ -158,6 +158,19 @@ def resolve(name: str, names: dict | None = None) -> dict | None:
     return {"name": name, "ticker": ticker} if ticker else None
 
 
+# A customer a filing withholds the name of: "Customer A", "Customer 1", "One customer", "big customer" (D, owner
+# 17 Nov 2026). The D2 measurement's rule, with a few more lead words.
+_UNNAMED = re.compile(
+    r"^\s*(?:(?:one|a|an|our|the|its|largest|large|major|significant|single|big|key|another|other|second|third)\s+)*"
+    r"(?:customer|client|distributor|wholesaler|retailer|reseller|partner|payer|tenant|oem)s?"
+    r"(?:\s+(?:[A-Z]|[0-9]{1,2}|one|two|three|four|five|no\.?\s*[0-9]{1,2}|#\s*[0-9]{1,2}))?\s*$", re.I)
+
+
+def unnamed(name: str | None) -> bool:
+    """True for a placeholder that names no company ("Customer A", "One customer")."""
+    return bool(_UNNAMED.match(name or ""))
+
+
 # The profile fields that name other companies (rcdata/sec_profile.py).
 PROFILE_PARTIES = ("customers", "suppliers", "named_competitors")
 
