@@ -61,6 +61,15 @@ def test_an_etf_with_no_stored_bars_makes_the_result_partial_and_is_named(d01):
     assert "XLK" not in ranked and res["inflows"]            # the others are still ranked
 
 
+def test_an_etf_with_fewer_bars_than_the_window_is_missing_not_ranked(d01):
+    """Sector Rotation review 17 Nov 2026 (G3): a 21-day score needs 21 daily changes; two bars once scored ~+-100."""
+    d01(skip={"XLK"})
+    seed("XLK", SESSION, start=date(2026, 8, 10), closes=lambda i: 100.0 + 10 * i)    # 5 bars, all up
+    res = mf.compute_money_flow(days=30, window=21, top_n=10)
+    assert res["partial"] is True and res["missing"] == ["XLK"]
+    assert "XLK" not in {r["ticker"] for r in res["inflows"] + res["outflows"]}
+
+
 def test_only_the_last_days_sessions_up_to_the_session_are_read(d01):
     d01()
     seed("XLK", date(2026, 8, 21), start=date(2026, 8, 17), closes=lambda i: 1.0)   # after the session: not read

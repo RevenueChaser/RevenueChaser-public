@@ -68,7 +68,7 @@ def get_money_flow_leaderboards(df, window: int = 21, top_n: int = 4) -> dict:
     df["directional_flow"] = df["dollar_vol"] * np.sign(df["price_change"])
 
     # rolling sums per ticker
-    net_flow = df.groupby("ticker")["directional_flow"].rolling(window, min_periods=1).sum().reset_index(level=0, drop=True)
+    net_flow = df.groupby("ticker")["directional_flow"].rolling(window, min_periods=window).sum().reset_index(level=0, drop=True)
     tot_vol = df.groupby("ticker")["dollar_vol"].rolling(window, min_periods=1).sum().reset_index(level=0, drop=True)
 
     df["flow_score"] = (net_flow / tot_vol.replace(0, np.nan) * 100).fillna(0.0)
@@ -116,6 +116,11 @@ def compute_money_flow(days: int = 30, window: int = 21, top_n: int = 4) -> dict
         for r in rows:
             last[r["ticker"]] = max(last.get(r["ticker"], ""), r["date"])
         rows = [r for r in rows if last[r["ticker"]] == newest]
+    # An ETF needs ``window`` daily changes (``window + 1`` bars) to get a ``window``-day score; fewer is missing.
+    count: dict[str, int] = {}
+    for r in rows:
+        count[r["ticker"]] = count.get(r["ticker"], 0) + 1
+    rows = [r for r in rows if count[r["ticker"]] > window]
     got = {r["ticker"] for r in rows}
     missing = [t for t in wanted if t not in got]
     if not rows:

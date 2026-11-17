@@ -161,6 +161,12 @@ class TestDashboardRoutes:
         assert jobs._RUNNERS["module_sec_13f"] is runners.build_sec13f
         assert jobs._REQUIRES_UW["module_sec_13f"] is False
 
+    def test_rotation_and_money_flow_need_no_uw_key(self):
+        """Sector Rotation review 17 Nov 2026 (F12): both jobs read only stored bars and fund lists."""
+        from RevenueChaser.app import jobs
+        assert jobs._REQUIRES_UW["rotation"] is False
+        assert jobs._REQUIRES_UW["moneyflow"] is False
+
     def test_run_earnings_bad_date(self):
         c = self._client()
         r = c.post("/run/earnings", data={"start": "not-a-date", "end": "not-a-date"})
