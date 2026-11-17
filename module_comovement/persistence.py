@@ -32,14 +32,14 @@ RANDOM_DRAWS = 200
 
 
 def _residual(ret: pd.DataFrame, bench_ticker: str | None,
-              apply: bool) -> pd.DataFrame:
+              apply: bool, winsor_k: float | None = None) -> pd.DataFrame:
     """The board's market removal: the benchmark column never joins a group;
     when the board applied it, one-factor OLS residuals, else raw returns."""
     if bench_ticker and bench_ticker in ret.columns:
         market = ret[bench_ticker]
         uni = ret.drop(columns=[bench_ticker])
         if apply and int(market.notna().sum()) >= 3 and uni.shape[1] >= 3:
-            return returns_mod.residualize(uni, market)
+            return returns_mod.residualize(uni, market, winsor_k)
         return uni
     return ret
 
@@ -96,7 +96,7 @@ def lagged_test(prices: pd.DataFrame, cuts, horizon: int,
         return {}
     lag_ret, _ = returns_mod.log_returns(prices.iloc[:-holdout], window=eff.window,
                                          min_obs=eff.min_obs, horizon=horizon)
-    lag = returns_mod.winsorize_mad(_residual(lag_ret, bench_ticker, apply_bench),
+    lag = returns_mod.winsorize_mad(_residual(lag_ret, bench_ticker, apply_bench, eff.winsor_k),
                                     eff.winsor_k)
     if lag.shape[1] < 3:
         return {}
@@ -109,7 +109,7 @@ def lagged_test(prices: pd.DataFrame, cuts, horizon: int,
                                           min_obs=oos_min_obs, horizon=horizon)
     # Winsorised like the formation window (S10), so one shared print in the held-out quarter cannot make a group
     # that broke up read as held (Co-movement review S3).
-    test = returns_mod.winsorize_mad(_residual(test_ret, bench_ticker, apply_bench), eff.winsor_k)
+    test = returns_mod.winsorize_mad(_residual(test_ret, bench_ticker, apply_bench, eff.winsor_k), eff.winsor_k)
     corr = test.corr(min_periods=oos_min_obs)
     a = np.where(np.isnan(corr.to_numpy(dtype=float)), 0.0, corr.to_numpy(dtype=float))
     pos = {t: i for i, t in enumerate(corr.columns)}
