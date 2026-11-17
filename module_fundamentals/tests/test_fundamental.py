@@ -153,7 +153,10 @@ def test_render_dashboard_universe_provenance():
     assert "Universe refreshed by" in html
     assert "Fundamentals" in html
     # Plan 2026-11-16 (board cleanup): the board scans no flow and reads no Yahoo prices, so it says neither.
-    assert "Flow not scanned" not in html and "Yahoo" not in html and "Unusual Whales" not in html
+    # (The shared sector filter's help still names Yahoo and Unusual Whales as classification sources: true.)
+    assert "Flow not scanned" not in html and 'id="flow-flag"' not in html
+    assert "prices from <b>Yahoo</b>" not in html and "Price: Yahoo Finance" not in html
+    assert "Unusual Whales flow" not in html
 
 
 def test_help_states_the_note_length_rule_867():
