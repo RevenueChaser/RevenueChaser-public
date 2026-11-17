@@ -6,6 +6,7 @@ default board keeps its hash.
 F15: a stale name scored above the stale-drop cap carries ``ohlc_stale`` onto its card (an "Old price" chip).
 F17: the scan never reads a bar dated after the latest complete session.
 F6: a #116 price-hygiene flag (flag only) is carried onto its card (a "Check price" chip).
+F11: the page uses the shared light/dark theme and 44 px controls; the rules table stacks on a phone.
 B2, C2, D1 (avo 17 Nov): Qullamaggie needs the prior move and a tightening; Minervini 30 % above the low;
 Weinstein's volume spike counts only on an up day.
 """
@@ -152,3 +153,14 @@ def test_a_price_flag_is_carried_onto_the_card(scenario, monkeypatch):
     flags = {c["ticker"]: c.get("price_flag") for c in payload["candidates"]}
     assert flags.get("UP1") == "bad_wick"
     assert all(v is None for t, v in flags.items() if t != "UP1")
+
+
+# ── F11: the page is on the shared theme (light and dark) with 44 px controls ───────────────────
+def test_the_swing_page_has_no_palette_of_its_own_and_ships_the_theme():
+    import re
+    from pathlib import Path
+    from RevenueChaser.module_swing_potential import report
+    assert not re.findall(r"#[0-9a-fA-F]{6}|rgba\(", report.CSS), "colours should be theme tokens, not literals"
+    assert not re.findall(r"height:3\dpx", report.CSS), "controls are at least 44 px tall"
+    src = Path(report.__file__).read_text(encoding="utf-8")
+    assert "{THEME_CSS}" in src and "{THEME_JS}" in src
