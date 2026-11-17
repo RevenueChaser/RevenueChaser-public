@@ -387,7 +387,8 @@ function cardHtml(c){
   var themes = c.themes || [];
   var tags = themes.slice(0,3).map(function(x){ return '<span class="tag">'+rcEsc(x)+'</span>'; }).join("");
   var tagsRow = tags ? '<div class="tags">'+tags+'</div>' : '';
-  var chipsRow = '<div class="tags">'+chips+dirChip+'</div>';
+  var staleChip = c.ohlc_stale ? '<span class="tag dno" title="No bar of the latest session: price and levels are from an older day">Old price</span>' : '';
+  var chipsRow = '<div class="tags">'+chips+dirChip+staleChip+'</div>';
   var indexBadges = (c.index || []).map(function(i){ return '<span class="badge b-index">'+rcEsc(i)+'</span>'; }).join("");
   var slider = (rr != null && price != null && stop != null)
     ? '<input type="range" min="1" max="5" step="0.1" value="' + rr.toFixed(1) + '" data-ticker="' + t + '" oninput="setRR(this.dataset.ticker, this.value)">'

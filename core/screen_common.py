@@ -195,7 +195,8 @@ def load_bars_many(tickers, now=None) -> dict[str, tuple[pd.DataFrame, pd.DataFr
     from RevenueChaser.core import prices
     names = list(dict.fromkeys(str(t).strip().upper() for t in tickers if t))
     session = calendar.latest_complete_session(now)
-    both = prices.daily_bars_bases(names, start=session - timedelta(days=BAR_DAYS))
+    # ``end``: never a bar after the session (Swing review F17); SPY needs none, ``d01_has_session`` refuses one.
+    both = prices.daily_bars_bases(names, start=session - timedelta(days=BAR_DAYS), end=session)
     return {t: (_split_bars(both["nominal"], t, session), _split_bars(both["adjusted"], t, session))
             for t in names}
 

@@ -200,6 +200,8 @@ def build_payload(results: list[dict], top_n: int | None = None, run_stats: dict
             "atr": levels.get("atr"),
             "gates": {k: _slim_gate(v) for k, v in gates.items()},
             "flow": flow,
+            # Swing review F15: above the stale-drop cap a stale name is scored; its card says so.
+            **({"ohlc_stale": True} if r.get("ohlc_stale") else {}),
         })
 
     candidates.sort(key=lambda c: (-c["quality"],
