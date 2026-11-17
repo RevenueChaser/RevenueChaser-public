@@ -24,7 +24,7 @@ class _Resp:
 @pytest.fixture
 def seams(monkeypatch):
     """The dashboard at the HTTP boundary, and a prices store that is ready unless a test says otherwise."""
-    seen: dict = {"posts": [], "job": {"status": "done", "notes": ["Froze 3 Swing rows for 2026-11-16."]}}
+    seen: dict = {"posts": [], "idle": [{"idle": True, "reasons": []}], "job": {"status": "done", "notes": ["Froze 3 Swing rows for 2026-11-16."]}}
     monkeypatch.setattr(cli, "_POLL_S", 0)
     monkeypatch.setattr(cli.ledger, "d01_has_session", lambda session, ticker: ticker == "SPY")
 
@@ -33,6 +33,8 @@ def seams(monkeypatch):
         return _Resp(202, {"ok": True, "job_id": "j1"})
 
     def fake_get(url, timeout=None):
+        if url.endswith("/api/idle"):
+            return _Resp(200, seen["idle"].pop(0) if len(seen["idle"]) > 1 else seen["idle"][0])
         assert url.endswith("/api/job/j1")
         return _Resp(200, {"ok": True, "job": seen["job"]})
 
@@ -67,3 +69,18 @@ def test_one_registry_row_and_unit_per_board_each_running_its_own_route():
     for board, route in cli.ROUTES.items():
         (e,) = [e for e in automations.REGISTRY if e.args == ("-m", "RevenueChaser.scripts.board_fetch", board)]
         assert e.unit == f"life-rc-fetch-{board}" and route in e.description and not e.after
+
+
+def test_the_fetch_waits_while_the_builder_holds_its_lock(seams, capsys):
+    """17 Nov 2026: the builder runs hourly, so the task waits on ``/api/idle`` before it asks for anything."""
+    seams["idle"] = [{"idle": False, "reasons": ["job lock rcdata_build held by pid 7"]}, {"idle": True, "reasons": []}]
+    assert cli.main(["comovement"]) == 0
+    assert len(seams["posts"]) == 1 and seams["idle"] == [{"idle": True, "reasons": []}]
+
+
+def test_a_store_still_busy_at_the_deadline_asks_for_nothing(seams, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "_WAIT_S", -1)
+    seams["idle"] = [{"idle": False, "reasons": ["job lock rcdata_build held by pid 7"]}]
+    assert cli.main(["comovement"]) == cli.EXIT_NOT_READY
+    line = _line(capsys)
+    assert seams["posts"] == [] and line["status"] == "not_ready" and "rcdata_build" in line["reason"]

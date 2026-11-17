@@ -2,7 +2,9 @@
 
 One RC-Fetch-<Board> registry row per board, each its own server timer, installed disabled: a board's timer is switched
 on only once its review and rule decisions are done. The task runs after the nightly prices build and asks nothing until
-that build holds SPY's complete bar of the latest complete New York session (``ledger.d01_has_session``, the freeze's own
+the dashboard reports nothing writing a store (``/api/idle``: no dashboard job, no job lock such as the hourly
+builder's ``rcdata_build``, no other store process), waiting for that up to the task's deadline, and until that build
+holds SPY's complete bar of the latest complete New York session (``ledger.d01_has_session``, the freeze's own
 anchor), so the Fetch scores on the same session the forecast ledger freezes; otherwise it exits ``EXIT_NOT_READY``.
 The Fetch runs in the dashboard, the one writer: the task posts ``/run/<route>`` with the ``X-RC-Panel`` header and
 polls ``/api/job/<id>``, as the Value Chain and SPX Gamma night tasks do. It prints one JSON line with the job's notes
@@ -33,7 +35,28 @@ ROUTES = {
 }
 
 
+def _wait_idle(deadline: float) -> list[str]:
+    """Poll ``/api/idle`` until it says idle (``[]``) or ``deadline`` passes (the last reasons). The builder runs
+    hourly, not after a fixed nightly step, so a timer alone cannot order a Fetch after it (17 Nov 2026)."""
+    while True:
+        body = httpx.get(f"{DASHBOARD}/api/idle", timeout=30).json()
+        if body.get("idle"):
+            return []
+        if time.monotonic() > deadline:
+            return body.get("reasons") or ["not idle"]
+        time.sleep(_POLL_S)
+
+
 def run(board: str) -> int:
+    deadline = time.monotonic() + _WAIT_S
+    try:
+        busy = _wait_idle(deadline)
+    except httpx.HTTPError as exc:
+        print(json.dumps({"board": board, "status": "dashboard_down", "error": str(exc)}))
+        return 1
+    if busy:
+        print(json.dumps({"board": board, "status": "not_ready", "reason": "store busy: " + "; ".join(busy)}))
+        return EXIT_NOT_READY
     session = calendar.latest_complete_session()
     if not ledger.d01_has_session(session, "SPY"):
         print(json.dumps({"status": "not_ready", "reason": f"the prices store has no complete SPY bar for {session}"}))
@@ -45,7 +68,7 @@ def run(board: str) -> int:
         if r.status_code != 202:
             out = {"status": "refused", "http": r.status_code, "error": body.get("error")}
         else:
-            out, deadline = {"status": "timeout", "job_id": body["job_id"]}, time.monotonic() + _WAIT_S
+            out = {"status": "timeout", "job_id": body["job_id"]}
             while time.monotonic() <= deadline:
                 job = httpx.get(f"{DASHBOARD}/api/job/{body['job_id']}", timeout=30).json().get("job") or {}
                 if job.get("status") in ("done", "error", "cancelled"):
