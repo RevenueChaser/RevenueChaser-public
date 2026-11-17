@@ -10,7 +10,7 @@ Nothing here imports another module: a reference table that the price writer, th
 and the earnings radar all read must not drag a board in behind it.
 """
 
-# ── 41 ETFs for the RRG rotation pipeline ──
+# ── The RRG symbols: 67 ETFs (sector, theme, region, bond) and the 11 macro series below ──
 ROTATION_ETFS = {
     # ── Sectors (11) ──
     # The names are the Morningstar sector names, as stored in ``equity_universe.sector`` (Phase 1, #266):

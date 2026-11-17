@@ -1,7 +1,7 @@
 """Rotation snapshot persistence — DuckDB-backed session cross-sections + backfill.
 
 A snapshot is the rotation engine's cross-section (z-normalized) keyed by its session (``as_of_date``, #283), stored
-in ``.store/raw.duckdb`` (``rotation_snapshots``). Backfill reconstructs past sessions from the stored daily bars (the prices
+in the board file ``.store/boards/sector_rotation.duckdb`` (``rotation_snapshots``). Backfill reconstructs past sessions from the stored daily bars (the prices
 store, ``rcdata.read.ticker_bars``; one read for the whole window, every session computed locally with ``engine.cross_section``, the live Fetch's
 function: D-M3 "weekly, both", M-ROT-2), so the trail view works without waiting for live snapshots to accumulate.
 It makes no provider call; the macro series (``market_series``) are not backfilled and stay live-only.

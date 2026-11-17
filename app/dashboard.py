@@ -256,8 +256,9 @@ jobs.register("earnings", runners.run_earnings_range, ["module_earnings_radar"])
 jobs.register("module_sec_13f", runners.build_sec13f, ["module_sec_13f"], requires_uw=False, lane="long",
               cancellable=True)
 # no deadline: fewer than 5 recorded runs (23 Oct); set from job_runs when measured
-jobs.register("rotation", runners.run_rotation_latest, ["module_sector_rotation"])
-jobs.register("moneyflow", runners.run_money_flow_latest, ["module_sector_rotation"])
+# Store-only: the map, holdings and money flow read stored bars and fund lists, no provider call.
+jobs.register("rotation", runners.run_rotation_latest, ["module_sector_rotation"], requires_uw=False)
+jobs.register("moneyflow", runners.run_money_flow_latest, ["module_sector_rotation"], requires_uw=False)
 jobs.register("spxgamma", runners.run_spxgamma, ["module_spx_gamma"])
 jobs.register("spxgamma_stored", runners.run_spxgamma_stored, ["module_spx_gamma"], requires_uw=False)  # #179 D5
 # The 2-year history pull (D1): past raw days only, so no board reloads. Checkpoints between sessions.

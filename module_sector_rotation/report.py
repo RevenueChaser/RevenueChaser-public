@@ -162,7 +162,8 @@ function renderChart() {
     });
 
     // table rows follow the same filter
-    document.querySelectorAll('tbody tr[data-ticker]').forEach(function(row){
+    // map rows only: a nested holdings row has no group and would be hidden by the filter
+    document.querySelectorAll('tbody tr[data-group]').forEach(function(row){
         row.style.display = rowVisible(row) ? '' : 'none';
     });
 
@@ -363,7 +364,7 @@ function renderMoneyFlow() {
             var note = document.createElement('div');
             note.id = 'mf-note';
             note.style.cssText = 'color:#F59E0B;font-size:12px;margin-top:10px';
-            note.textContent = 'Partial leaderboard: ' + miss.length + ' ETF(s) could not be fetched'
+            note.textContent = 'Partial leaderboard: ' + miss.length + ' ETF(s) have too few stored daily bars for the window'
                 + (miss.length ? ' (' + miss.join(', ') + ')' : '') + ', so the ranking may be incomplete.';
             mfGrid.parentNode.insertBefore(note, mfGrid);
         }
@@ -596,7 +597,7 @@ def _quadrant_badge(q: str) -> str:
     return f'<span class="badge {cls}">{label}</span>'
 
 
-# Fixed axis range (-2..+2 z) shared by the map and trail views.
+# Base axis range (-2..+2 z) shared by the map and trail views; ``_axis_limit`` widens it to the largest |z|.
 QUADRANT_BASE_LIMIT = 2.0
 
 
@@ -1011,9 +1012,8 @@ def export_rotation_dashboard(snapshots: list[ETFRotationSnapshot], filename: st
         "A relative rotation map of sector and theme ETFs against the benchmark. Each dot's position "
         "combines <b>relative strength</b> (is it beating the benchmark?) with its <b>momentum</b> (is "
         "that getting better?), which places it in one of four quadrants: Leading, Weakening, Lagging, "
-        "Improving. ETFs usually move around the map clockwise. <b>Fetch</b> downloads ETF prices and "
-        "holdings from <b>Unusual Whales</b> (holdings fall back to other providers) and stores a "
-        "snapshot. <b>Refresh</b> redraws the map from the newest stored snapshot with no network call.")
+        "Improving. ETFs usually move around the map clockwise. <b>Fetch</b> computes the map from the stored daily "
+        "prices and fund holdings (no provider call) and stores a snapshot. <b>Refresh</b> redraws the map from the newest stored snapshot with no network call.")
     html = f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>RevenueChaser — Rotation Map</title>{CSS}</head><body>
 <div class="header"><h1>ROTATION MAP — Sector &amp; Theme</h1><div class="meta">{as_of.isoformat()}{fetched_html} | {len(snapshots)} ETFs | {benchmark}-Relative RS</div></div>
 {provider_health_html(provider_health)}
@@ -1084,7 +1084,7 @@ A high positive score = persistent net buying pressure relative to the fund's ow
 </div>
 </div>
 
-<footer>RevenueChaser v1 — Rotation Engine — Unusual Whales API &mdash; {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</footer>
+<footer>RevenueChaser v1 — Rotation Engine — stored prices &mdash; {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</footer>
 {HOVER_JS}
 {watchlist_html("sector_rotation")}
 {js}</body></html>"""
@@ -1449,7 +1449,7 @@ def render_holdings_fragment(rows: list[dict]) -> str:
         f'<div style="padding:10px 14px"><div style="color:#c9d1d9;font-size:12px;font-weight:600;margin-bottom:6px">Top holdings — RS vs SPY</div>'
         f'<table style="font-size:11px"><thead><tr>'
         f'<th>Ticker</th><th class="num">Weight ({total_w:.1f}%)</th>'
-        f'<th class="num">RS 1W</th><th class="num">RS 1M</th><th class="num">RS 3M</th><th class="num">Price</th>'
+        f'<th class="num">RS 5D</th><th class="num">RS 21D</th><th class="num">RS 63D</th><th class="num">Price</th>'
         f'</tr></thead><tbody>{body}</tbody></table></div>'
     )
     return f'<td colspan="11">{inner}</td>'

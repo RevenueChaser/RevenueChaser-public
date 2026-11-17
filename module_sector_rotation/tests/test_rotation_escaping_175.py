@@ -112,3 +112,18 @@ def test_the_pages_define_the_escaper_they_call(evil_etf, tmp_path, monkeypatch,
     for html in (_page(evil_etf, tmp_path, monkeypatch), _trail(evil_etf)):
         assert "function rcEsc(" in html
         assert not re.search(r"(?<![A-Za-z])esc\(", html), "a call to an undefined esc()"
+
+
+def test_the_group_filter_touches_map_rows_only():
+    """Sector Rotation review 17 Nov 2026 (G4): an expanded theme's holding rows carry ``data-ticker`` but no group,
+    so a filter over every ``tr[data-ticker]`` hid them on any zoom or filter."""
+    from RevenueChaser.module_sector_rotation import report
+    body = report.JS[report.JS.index("function renderChart()"):report.JS.index("function svgPoint(")]
+    assert "tbody tr[data-group]" in body and "tbody tr[data-ticker]" not in body
+
+
+def test_the_holdings_drill_labels_its_session_windows():
+    """G2: the drill's RS is 5/21/63 sessions, the map's 1/4/12 weeks; they no longer share a label."""
+    from RevenueChaser.module_sector_rotation import report
+    html = report.render_holdings_fragment([{"ticker": "AAA", "name": "A", "weight": 5.0}])
+    assert "RS 5D" in html and "RS 63D" in html and "RS 1W" not in html
