@@ -325,7 +325,7 @@ _QUALITY_FLOWS = ("revenue", "gross_profit", "cost_of_revenue", "ebit", "depreci
 _QUALITY_BALANCE = ("total_debt", "cash", "short_term_investments", "total_equity")
 
 
-def _quality_of(a: dict, debt_free: bool = False) -> dict:
+def _quality_of(a: dict, debt_free: bool = False, note: float | None = None) -> dict:
     """ROIC, gross margin and net debt / EBITDA of one record (a fiscal year, or a trailing year).
 
     ``debt_free`` is the caller's answer to #737 (``module_fundamentals.debt``): this record tags no debt line at
@@ -333,6 +333,9 @@ def _quality_of(a: dict, debt_free: bool = False) -> dict:
     reading is kept apart from a filed figure in ``debt_basis`` (``filed`` / ``inferred_none`` / None). The rules
     that rest on it carry a note on their label, which the Q modal shows, and the basis itself rides in the board
     payload, so an inferred zero is never presented as the filer's own.
+
+    ``note`` is the total the filing's debt note states for this record (``debt.note_debt``), used when the facts
+    give none: basis ``note``, ahead of the inference (filed > note > inferred).
     """
     out = {"gross_margin": None, "roic": None, "net_debt_ebitda": None, "net_cash": None,
            "net_income": None, "total_equity": None, "debt_basis": None}
@@ -341,6 +344,8 @@ def _quality_of(a: dict, debt_free: bool = False) -> dict:
     debt = _to_float(a.get("total_debt"))
     if debt is not None:
         out["debt_basis"] = _debt.FILED
+    elif note is not None:
+        debt, out["debt_basis"] = note, _debt.NOTE
     elif debt_free:
         debt, out["debt_basis"] = 0.0, _debt.INFERRED_NONE
     cash = _to_float(a.get("cash"))
@@ -406,7 +411,8 @@ def _quarters_after(quarterly: list[dict], year_end, upto=None) -> list[dict]:
     return out
 
 
-def _quality_metrics(annual: list[dict], quarterly: list[dict] | None = None, *, infer_debt_free: bool = True) -> dict:
+def _quality_metrics(annual: list[dict], quarterly: list[dict] | None = None, *, infer_debt_free: bool = True,
+                     debt_note: dict | None = None) -> dict:
     """Quality's three figures and their basis (G6, build plan PR 13: Quality reads the quarter store).
 
     ``quality_basis`` ``TTM`` when a 10-Q follows the anchor year and the quarters give every figure the year gives
@@ -424,9 +430,12 @@ def _quality_metrics(annual: list[dict], quarterly: list[dict] | None = None, *,
     # #737. The year is counted debt-free only when its own balance sheet tags nothing and it paid no interest AND
     # no quarter after it does either: the board shows one leverage figure per name, and a name whose later balance
     # sheets carry notes is not debt-free on them, whatever the older year end said.
+    # ``debt_note`` (#737): the filing's note gives the anchor year's total when the facts do not. The year only: the
+    # trailing record's balance sheet is a later quarter's, so its debt stays unknown and the basis falls to FY below.
     fy = _quality_of(a, debt_free=infer_debt_free and _debt.debt_free(a)
                      and all(_debt.debt_free(q, quarterly=True)
-                             for q in _quarters_after(quarterly or [], end)))
+                             for q in _quarters_after(quarterly or [], end)),
+                     note=_debt.note_debt(a, debt_note))
     out = {**fy, "quality_basis": "FY", "quality_period_end": end.isoformat() if end else None}
     ttm_rec = _quality_ttm(annual, quarterly or [], i)
     if ttm_rec is not None:
@@ -621,7 +630,8 @@ def _compute_row(row: dict, spy_df, no_fetch: bool = False, spine: dict | None =
     # #386 F1: an absurd Rule of 40 is a data problem, not a pick. Review N2 (default chosen, avo may prefer the
     # old drop): the name is no longer dropped, so Quality and Momentum still read it; the screener makes that Rule
     # of 40 unknown and the card DISTORTED (screeners.evaluate_rule_of_40, is_distorted).
-    qual = _quality_metrics(annual, quarterly, infer_debt_free=(emeta or {}).get("us_gaap") is not False)
+    qual = _quality_metrics(annual, quarterly, infer_debt_free=(emeta or {}).get("us_gaap") is not False,
+                            debt_note=(emeta or {}).get("debt_note"))
     market_cap = _to_float(row.get("market_cap")) or _to_float(info.get("marketCap"))
 
     pe = (market_cap / ttm["ttm_net_income"]) if (market_cap and ttm["ttm_net_income"] and ttm["ttm_net_income"] > 0) else None
@@ -644,7 +654,8 @@ def _compute_row(row: dict, spy_df, no_fetch: bool = False, spine: dict | None =
         "roic": qual["roic"],
         "net_debt_ebitda": qual["net_debt_ebitda"],
         "net_cash": qual.get("net_cash"),
-        # #737: "filed" (the facts gave a total), "inferred_none" (no debt tag and no interest: read as 0) or None.
+        # #737: "filed" (the facts gave a total), "note" (the filing's debt note, read by the SEC service),
+        # "inferred_none" (no debt tag and no interest: read as 0) or None.
         "debt_basis": qual.get("debt_basis"),
         "pe": pe,
         "pb": pb,

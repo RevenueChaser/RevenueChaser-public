@@ -116,7 +116,7 @@ def test_the_services_limits_and_prompts_are_the_boards():
     assert (cp.LOCATE.system, cp.LOCATE.prompt_version) == (locator.system_prompt(), locator.PROMPT_VERSION)
 
 
-def test_the_builder_registers_the_two_questions_the_locator_first(tmp_path):
+def test_the_builder_registers_the_three_questions_the_locator_first(tmp_path):
     """In a fresh interpreter: this process's registry is emptied by the fixtures and tests around it."""
     import subprocess
     import sys
@@ -134,10 +134,12 @@ def test_the_builder_registers_the_two_questions_the_locator_first(tmp_path):
         assert out.returncode == 0, out.stderr
         return out.stdout.strip()
 
-    assert child(code) == f"{cp.LOCATE_ID},{cp.PROFILE_ID}"
+    assert child(code) == f"{cp.LOCATE_ID},{cp.PROFILE_ID},debt.note"        # #737's question runs last
     # The writer: EVREN with no call cap, or DeepSeek Flash with one, by the process's environment.
     writers = ("import RevenueChaser.rcdata.build; from RevenueChaser.rcdata.build.sec_reads.questions import "
                "QUESTIONS; print(';'.join(f'{q.provider},{q.writer_model},{q.max_calls}' for q in QUESTIONS.values()))")
-    assert child(writers) == "evren,evren-deepseek-v4.1-flash,None;evren,evren-deepseek-v4.1-flash,None"
+    # debt.note is DeepSeek Flash with its own cap of 200 whatever the environment says (#737).
+    assert child(writers) == ("evren,evren-deepseek-v4.1-flash,None;evren,evren-deepseek-v4.1-flash,None;"
+                              "deepseek,deepseek-v4-flash,200")
     assert (child(writers, RC_SEC_READS_PROVIDER="deepseek")
-            == "deepseek,deepseek-v4-flash,150;deepseek,deepseek-v4-flash,800")
+            == "deepseek,deepseek-v4-flash,150;deepseek,deepseek-v4-flash,800;deepseek,deepseek-v4-flash,200")

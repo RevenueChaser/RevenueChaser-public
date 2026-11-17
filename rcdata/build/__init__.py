@@ -82,3 +82,7 @@ DATASETS.update({sec_reads_reads.DATASET.name: sec_reads_reads.DATASET})
 from .sec_reads import company_profile as _sec_questions  # noqa: E402
 
 _sec_questions.register_all()
+# #737: the Fundamentals board's question, last: registration order is run order.
+from .sec_reads import debt_note as _debt_note  # noqa: E402
+
+_debt_note.register_all()

@@ -6,8 +6,8 @@ by the service (:mod:`questions`; no board registers anything), the one asker se
 (:mod:`asker`), and the answers are the served table ``read_answer`` of ``sec_reads.duckdb`` (:mod:`reads`), read
 through ``rcdata.read.sec_reads``.
 
-``business.locate`` and ``company.profile`` are registered by ``rcdata.build`` (:mod:`company_profile`); each
-further question is its own PR.
+``business.locate`` and ``company.profile`` (:mod:`company_profile`), then ``debt.note`` (#737, :mod:`debt_note`),
+are registered by ``rcdata.build``, in that order, which is run order; each further question is its own PR.
 """
 from __future__ import annotations
 

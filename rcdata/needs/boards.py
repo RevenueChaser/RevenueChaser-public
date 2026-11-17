@@ -66,8 +66,9 @@ PLANNED_READS: dict[str, tuple[str, ...]] = {
                                  "fundamentals.statements", "fundamentals.companies", "fundamentals.earnings_event",
                                  "ownership.beneficial", "earnings.next"),
     "module_swing_potential": ("identity.universe", "prices.bars", "earnings.next"),
+    # #737: the SEC service's ``debt.note`` answers, read by ``core.fundamentals_layer`` (``sec.read``).
     "module_fundamentals": ("identity.universe", "prices.bars", "fundamentals.statements", "fundamentals.companies",
-                            "fundamentals.filings", "earnings.next"),
+                            "fundamentals.filings", "earnings.next", "sec.read"),
     # #646 / #576: % Out reads the shared shares reader (``prices.latest``, ``prices.shares``), Short% FINRA.
     "module_sec_13f": ("ownership.filer_breaks_13f", "ownership.holders_13f", "ownership.periods_13f",
                        "ownership.type_holdings_13f", "prices.actions", "identity.security", "prices.latest",
