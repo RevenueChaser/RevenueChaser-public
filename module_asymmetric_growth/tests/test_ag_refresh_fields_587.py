@@ -7,9 +7,16 @@ from RevenueChaser.module_asymmetric_growth import engine
 from RevenueChaser.module_asymmetric_growth.tests.test_score_ticker import _fin, _tech
 
 
+def _dated_fin() -> dict:
+    fin = _fin()
+    for y, rec in zip((2021, 2022, 2023), fin["annual"]):
+        rec["fiscal_year"] = str(y)
+    return fin
+
+
 def test_a_refresh_card_keeps_fiscal_year_and_basis(rawstore_tmp_db):
-    card = engine.score_ticker("AAA", _fin(), _tech())
-    assert card["fiscal_year"] is not None and card["basis"] in ("FY", "TTM")
+    card = engine.score_ticker("AAA", _dated_fin(), _tech())
+    assert card["fiscal_year"] == 2023 and card["basis"] in ("FY", "TTM")
     ticker_store.write_from_cards([card], asof="2026-11-17T00:00:00")
     back = engine.stored_result()["cards"][0]
     assert (back["fiscal_year"], back["basis"]) == (card["fiscal_year"], card["basis"])
