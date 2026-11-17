@@ -1,10 +1,11 @@
 {
  "_what": "#763 hand-checked section boundaries: the truth the sec_forms cutters (ours-1, ours-2, the pinned edgartools worker) are scored against. Unlike the *_golden.json files this is not a capture of any cutter's output; every boundary was read by hand off the document.",
- "_status": "DRAFT 2026-11-17: 20 cases read once by one reader (Claude), not yet second-checked; the agreement block is empty and the scorer is not written. Do not quote scores from it until a second reading confirms the boundaries.",
+ "_status": "20 cases, read twice (17 Nov 2026). The second reading checked every start against the TOC and the line before it, searched every slice for another item heading inside it, and read the 100 characters either side of every end; it moved one boundary (BCE start, see the commit). Still one reader: a boundary a person later finds wrong is corrected in its own commit.",
  "_text": "Offsets index rcdata.sec_sections.strip_html(document) of the stored raw document; doc_sha256 is that text's SHA-256, so a changed strip_html or a different download shows up as a mismatch instead of a silent shift. head/tail are the first and last 60 characters of the section with whitespace collapsed, the keys a scorer matches on when offsets do not line up.",
- "_boundary": "start = the first character of the line that holds the section's own heading in the body (never the TOC line); end = the first character of the line holding the next heading that is not part of the section (exclusive). item_1 = 10-K Item 1 up to Item 1A; item_4 = 20-F Item 4 up to Item 4A; aif_business = General Development of the Business plus Description of the Business, up to the first of Risk Factors, the reserves statement, Dividends or Capital Structure. expect='crossref' means the document carries no such section, only a Form 20-F/AIF cross-reference table, and the right answer is 'missing'/'crossref', not a slice.",
+ "_boundary": "start = the first character of the line that holds the section's own heading in the body (never the TOC line), including a section number written on a line of its own (BCE's '3'); end = the first character of the line holding the next heading that is not part of the section (exclusive). item_1 = 10-K Item 1 up to Item 1A; item_4 = 20-F Item 4 up to Item 4A; aif_business = General Development of the Business plus Description of the Business, up to the first of Risk Factors, the reserves statement, Dividends or Capital Structure. Page furniture (a page number, a running header such as MSFT's 'PART I / Item 1A', a 'Table of Contents' link) between the last body sentence and the next heading is inside the section, and a scorer does not count up to end_slack characters of it against a cutter. expect='crossref' means the document carries no such section, only a Form 20-F/AIF cross-reference table, and the right answer is 'missing'/'crossref', not a slice.",
  "_held_out": "A change to a cutter may not edit this file. A boundary found wrong is corrected in its own commit with the reading that justifies it, and the scores before and after are both reported (#763).",
- "checked_by": "Claude (thread 'Fix SEC breaker caching bad cut'), first reading",
+ "end_slack": 200,
+ "checked_by": "Claude (thread 'Fix SEC breaker caching bad cut'), two readings",
  "checked_at": "2026-11-17",
  "cases": [
   {
@@ -325,10 +326,10 @@
    "section": "aif_business",
    "why": "AIF exhibit 99.1 with numbered sections in the other order: '3 Description of our business' before '4 General development of our business – three-year history'; no Risk Factors heading at all",
    "expect": "section",
-   "start": 22454,
+   "start": 22450,
    "end": 141120,
-   "chars": 118666,
-   "head": "Description of our business This section contains forward-lo",
+   "chars": 118670,
+   "head": "3 Description of our business This section contains forward-",
    "tail": ". BCE INC. 2025 ANNUAL INFORMATION FORM 31 Table of Contents"
   },
   {
