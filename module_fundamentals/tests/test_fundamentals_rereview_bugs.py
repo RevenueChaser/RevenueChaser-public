@@ -23,14 +23,11 @@ def _rule(gate: dict, rid: str) -> dict:
 
 
 def test_gross_margin_is_unknown_under_the_revenue_mark():
-    rule = _rule(screeners.evaluate_quality(_m(ttm_revenue=5e6, gross_margin=0.5, roic=0.2, net_debt_ebitda=1.0)),
-                 "gross_margin")
+    m = _m(ttm_revenue=5e6, gross_margin=0.5, roic=0.2, net_debt_ebitda=1.0)
+    rule = _rule(screeners.evaluate_quality(m), "gross_margin")
     assert rule["passed"] is None and "under $10M" in rule["label"]
-
-
-def test_gross_margin_still_decides_above_the_mark():
-    m = _m(ttm_revenue=5e8, gross_margin=0.5, roic=0.2, net_debt_ebitda=1.0)
-    assert _rule(screeners.evaluate_quality(m), "gross_margin")["passed"] is True
+    # The control: above the mark the same margin decides.
+    assert _rule(screeners.evaluate_quality({**m, "ttm_revenue": 5e8}), "gross_margin")["passed"] is True
 
 
 def test_the_old_period_note_is_added_once():
