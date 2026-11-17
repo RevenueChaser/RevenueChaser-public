@@ -387,7 +387,8 @@ function cardHtml(c){
   var themes = c.themes || [];
   var tags = themes.slice(0,3).map(function(x){ return '<span class="tag">'+rcEsc(x)+'</span>'; }).join("");
   var tagsRow = tags ? '<div class="tags">'+tags+'</div>' : '';
-  var chipsRow = '<div class="tags">'+chips+dirChip+'</div>';
+  var staleChip = c.ohlc_stale ? '<span class="tag dno" title="No bar of the latest session: price and levels are from an older day">Old price</span>' : '';
+  var chipsRow = '<div class="tags">'+chips+dirChip+staleChip+'</div>';
   var indexBadges = (c.index || []).map(function(i){ return '<span class="badge b-index">'+rcEsc(i)+'</span>'; }).join("");
   var slider = (rr != null && price != null && stop != null)
     ? '<input type="range" min="1" max="5" step="0.1" value="' + rr.toFixed(1) + '" data-ticker="' + t + '" oninput="setRR(this.dataset.ticker, this.value)">'
@@ -549,7 +550,7 @@ function start(){
     <div class="stat"><div class="v">{payload.get("universe_total") or 0}</div><div class="l">Scanned Universe</div><div class="d">US-listed · all caps</div></div>
     <div class="stat"><div class="v">{passing.get("minervini") or 0}</div><div class="l">Minervini</div><div class="d">7 price rules · RS ranks</div></div>
     <div class="stat"><div class="v">{passing.get("weinstein") or 0}</div><div class="l">Weinstein</div><div class="d">5/5 stage 2</div></div>
-    <div class="stat"><div class="v">{passing.get("qullamaggie") or 0}</div><div class="l">Qullamaggie</div><div class="d">5/6 breakout</div></div>
+    <div class="stat"><div class="v">{passing.get("qullamaggie") or 0}</div><div class="l">Qullamaggie</div><div class="d">6/7 breakout</div></div>
     <div class="stat"><div class="v">{avg_quality if avg_quality is not None else "—"}</div><div class="l">Avg Quality</div><div class="d">40/30/30 quality</div></div>
   </div>
 
@@ -562,13 +563,13 @@ function start(){
           <td>Price above 150 &amp; 200-day MA · 150&gt;200-day MA · 200-day MA rising · 50&gt;150-day MA · price above 50-day MA · ≥{_pct(config.ABOVE_52W_LOW - 1)} above 52-week low · within {_pct(1 - config.WITHIN_52W_HIGH)} of 52-week high · RS rating ≥ {run.rs_min:g} (a percentile, among the names scanned, of the 12-month return vs SPY)</td>
           <td>7/7 price rules required; RS rating ≥ {run.rs_min:g} ranks, does not decide</td></tr>
         <tr><td><b>Weinstein Stage</b></td>
-          <td>Price above 30-week MA · 30-week MA rising · overhead breakout (≥{_pct(run.breakout_high_pct)} of 52w high) · volume ≥{run.vol_confirm:g}× average on one of the last {config.VOL_WINDOW} sessions · 3-month RS &gt; SPY</td>
+          <td>Price above 30-week MA · 30-week MA rising · overhead breakout (≥{_pct(run.breakout_high_pct)} of 52w high) · volume ≥{run.vol_confirm:g}× average on an up day among the last {config.VOL_WINDOW} sessions · 3-month RS &gt; SPY</td>
           <td>5/5 required</td></tr>
         <tr><td><b>Qullamaggie</b></td>
-          <td>Preceding move ≥{_pct(run.move_min)} (1–3 mo) · price above 10 &amp; 20-day EMA · 10&gt;20-day EMA · EMAs rising · ADR ≥{_pct(run.adr_min)}</td>
-          <td>5 of 6 required</td></tr>
+          <td>Preceding move ≥{_pct(run.move_min)} (1–3 mo) · price above 10 &amp; 20-day EMA · 10&gt;20-day EMA · EMAs rising · ADR ≥{_pct(run.adr_min)} · last {config.TIGHT_RECENT} days tighter than the {config.TIGHT_BEFORE} before</td>
+          <td>6 of 7; the prior move and the tightening required</td></tr>
         <tr><td><b>Quality</b></td>
-          <td>Quality = 40 × Minervini rules passed/8 + 30 × Weinstein/5 + 30 × Qullamaggie/6; momentum ({_weights(run)}) breaks ties</td>
+          <td>Quality = 40 × Minervini rules passed/8 + 30 × Weinstein/5 + 30 × Qullamaggie/7; momentum ({_weights(run)}) breaks ties</td>
           <td>0–100; ranks the board</td></tr>
         <tr><td><b>Direction</b></td>
           <td>Direction (required): 50-day MA ≥ 200-day MA and 3-month return ≥ 0; for a Minervini pass the first half is already implied (50 &gt; 150 &gt; 200-day MA), so there only the 3-month return adds a test</td>

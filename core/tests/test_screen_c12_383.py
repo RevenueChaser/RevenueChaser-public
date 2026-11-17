@@ -126,7 +126,7 @@ def _swing_result(t: str, rs: float) -> dict:
     ind = {"price": 50.0, "sma50": 45.0, "sma150": 40.0, "sma200": 35.0, "sma200_prev_1m": 34.0,
            "above_52w_low_pct": 1.5, "within_52w_high_pct": 0.95, "rs_vs_spy_12m": rs, "mom_12_1": rs,
            "consistency_6m": 0.8, "atr14": 1.0, "sma150_prev_1m": 39.0, "ema10": 49.0, "ema20": 48.0,
-           "ema10_prev": 48.5, "ema20_prev": 47.5, "adr_pct": 0.04, "move_max_1_3m": 0.3,
+           "ema10_prev": 48.5, "ema20_prev": 47.5, "adr_pct": 0.04, "move_max_1_3m": 0.3, "range_recent": 0.02, "range_before": 0.03,
            "high_52w": 52.0, "vol_ratio": 2.0, "rs_vs_spy_3m": 0.1, "ret_3m": 0.1}   # the direction rule (#384)
     return {"ticker": t, "name": t, "market_cap": 1e9, "sector": "Technology", "industry": "Software",
             "themes": [], "earnings_date": None, "ind": ind}

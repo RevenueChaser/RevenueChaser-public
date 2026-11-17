@@ -185,6 +185,10 @@ def _split_bars(frame: pd.DataFrame, ticker: str, session: date) -> pd.DataFrame
     """One ticker's rows of a ``daily_bars`` frame in the ``load_ohlc`` shape, ``attrs["stale"]`` set."""
     one = _ohlcv(frame[frame["ticker"] == ticker]) if not frame.empty else pd.DataFrame()
     if not one.empty:
+        # Never a bar after the session (Swing review F17); trimmed here, not with ``end=``, which costs a third read
+        # per chunk. SPY needs none: ``d01_has_session`` refuses a later bar.
+        one = one[one.index.date <= session]
+    if not one.empty:
         one.attrs["stale"] = bool(one.index[-1].date() < session)
     return one
 
