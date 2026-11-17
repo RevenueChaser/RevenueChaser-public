@@ -137,9 +137,11 @@ def test_the_row_carries_the_quality_basis(monkeypatch):
     # The fixture's figures are toy-sized; under the $10M revenue mark (avo C1) its rules would be unknown.
     monkeypatch.setattr(pipeline.config, "DISTORTED_REV_MIN", 0)
     row, drops = _compute(monkeypatch, ANNUAL, edgar=lambda t, no_fetch=False: (ANNUAL, QUARTERLY, {}))
-    assert drops == [] and (row["quality_basis"], row["quality_period_end"]) == ("TTM", "2026-06-30")
-    assert row["metrics"]["gross_margin"] == pytest.approx(460 / 1100)
-    assert build_payload([row], top_n=10)["candidates"][0]["quality_basis"] == "TTM"
+    # avo D1 (17 Nov 2026): one period per card. The quarters carry no cash flow, so the Rule of 40 reads the fiscal
+    # year, and Quality reads that same year (the trailing year stays the default only when both can read it).
+    assert drops == [] and (row["quality_basis"], row["quality_period_end"]) == ("FY", "2025-12-31")
+    assert row["metrics"]["gross_margin"] == pytest.approx(400 / 1000)
+    assert build_payload([row], top_n=10)["candidates"][0]["quality_basis"] == "FY"
 
 
 def test_a_uw_preliminary_quarter_is_not_summed_into_the_ttm():
