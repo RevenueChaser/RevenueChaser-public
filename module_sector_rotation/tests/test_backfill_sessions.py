@@ -5,6 +5,7 @@ holds one regular-session bar per (ticker, session), and resamples it to ISO wee
 """
 from __future__ import annotations
 
+import math
 from datetime import date, timedelta
 
 from RevenueChaser.module_sector_rotation import engine, store
@@ -18,14 +19,15 @@ def test_weekly_closes_count_weeks_not_sessions():
     assert len(weeks) == 10
     fridays = [d for d in days if d.weekday() == 4]
     assert weeks == [dict(points)[f] for f in fridays]              # each week closes on its last session
-    assert engine.weekly_closes(points, fridays[-1] - timedelta(days=1))[-1] == dict(points)[fridays[-1] -
-                                                                                            timedelta(days=1)]
+    # a Thursday's own week is not complete yet (A1): its last weekly close is the Friday before
+    assert engine.weekly_closes(points, fridays[-1] - timedelta(days=1))[-1] == dict(points)[fridays[-2]]
 
 
 def test_force_recomputes_a_stored_day(rawstore_tmp_db, monkeypatch):
     pin_clock(monkeypatch, ny(2026, 3, 13, 18))
-    seed("SPY", date(2026, 3, 13), closes=lambda i: 100.0 + i)
-    seed("XLK", date(2026, 3, 13), closes=lambda i: 100.0 + i)
+    start = date(2024, 6, 3)                                  # enough weeks for A1's 52-week scales
+    seed("SPY", date(2026, 3, 13), start=start, closes=lambda i: 100.0 + i)
+    seed("XLK", date(2026, 3, 13), start=start, closes=lambda i: 100.0 + i + 3 * math.sin(i / 7))
     calls = []
     real = engine.cross_section
 

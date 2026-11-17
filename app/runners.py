@@ -330,7 +330,7 @@ def run_rotation_latest(uw: UWClient, benchmark: str = "SPY", start: str = None,
     from RevenueChaser.module_sector_rotation import engine as rotation_engine, store as rotation_store
 
     kept, notes = None, []
-    short, stale, carried = [], None, []
+    short, stale = [], None
     if start or end:
         # Range fetch: reconstruct snapshots for every week in [start, end].
         from datetime import date as _date
@@ -364,11 +364,10 @@ def run_rotation_latest(uw: UWClient, benchmark: str = "SPY", start: str = None,
         if not snapshots:
             return _rotation_empty_fetch(uw, benchmark)
         short = list(getattr(engine, "too_short", None) or [])
-        carried = list(getattr(engine, "carried", None) or [])
         stale = getattr(engine, "stale", None)
         early = stale or ("an intraday run (the US session is open)" if getattr(engine, "intraday", False) else None)
         # ROT-5: a symbol with no series is missing. A thinner pull must not replace a session snapshot that covers
-        # more ETFs: z-scores are cross-sectional, so every other point would move too. #283: a run that is not a
+        # more ETFs (since A1 the other points would not move, but the missing ETF's row would be lost). #283: a run that is not a
         # complete session (intraday, or D01 short of the session) never replaces a stored one at least as wide.
         # The stored rows are shown and kept; the job says why. Too-short symbols are a warning, never missing.
         missing = _rotation_missing(snapshots, short)
@@ -394,9 +393,6 @@ def run_rotation_latest(uw: UWClient, benchmark: str = "SPY", start: str = None,
         if short:
             notes.append(f"{len(short)} rotation symbol(s) have under {rotation_engine.MIN_WEEKS} weeks of stored "
                          f"daily bars and are left off the map until their history grows: {', '.join(short)}.")
-        if carried and not kept:
-            notes.append(f"{len(carried)} macro series have no value of the session's week in market_series yet "
-                         f"and are plotted with the week before's: {', '.join(carried)}.")
     # Embed holdings so the served map is self-contained (expandable rows work
     # even if the holdings route is unavailable / server is stale). Theme rows
     # only (ROT-4): sector rows expand to the sector -> industry tree
@@ -418,10 +414,11 @@ def run_rotation_latest(uw: UWClient, benchmark: str = "SPY", start: str = None,
 
 
 def _rotation_missing(snapshots, short=()) -> list[str]:
-    """Rotation symbols the live pull did not return, in universe order; the too-short ones (a warning) are not."""
-    from RevenueChaser.module_sector_rotation.universe import ROTATION_ETFS
+    """Map ETFs the live pull did not return, in universe order; the too-short ones (a warning) are not, and neither are
+    the macro series, which are never on the map (B1)."""
+    from RevenueChaser.module_sector_rotation.engine import rrg_tickers
     got = {s.ticker for s in snapshots}
-    return [t for t in ROTATION_ETFS if t != "SPY" and t not in got and t not in short]
+    return [t for t in rrg_tickers() if t not in got and t not in short]
 
 
 def _stored_session_snapshot(snapshots, same_width: bool = False) -> list:
@@ -435,7 +432,9 @@ def _stored_session_snapshot(snapshots, same_width: bool = False) -> list:
     day = getattr(snapshots[0], "as_of_date", None)
     if day is None:
         return []
-    rows = (rotation_store.load_snapshot(day) or {}).get("etfs") or []
+    from RevenueChaser.module_sector_rotation.universe import MACRO_SERIES
+    # a row stored before B1 may hold a macro series, which a pull never returns any more: not an ETF the pull lacks
+    rows = [r for r in (rotation_store.load_snapshot(day) or {}).get("etfs") or [] if r.get("ticker") not in MACRO_SERIES]
     stored, live = {r.get("ticker") for r in rows}, {s.ticker for s in snapshots}
     return _rows_to_snapshots(rows) if rows and (stored > live or (same_width and stored >= live)) else []
 

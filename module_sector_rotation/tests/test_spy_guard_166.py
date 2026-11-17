@@ -143,9 +143,10 @@ class TestWeeklyBackfillSpyGuard:
         assert "SPY" in res.message()
 
     def test_every_day_is_guarded_not_only_the_last_one(self, rawstore_tmp_db, fixed_today):
-        # SPY starts in ISO week 2025-W36, the ETFs months earlier: the Wednesdays before 2026-W31 have ETF history but
-        # fewer than 48 SPY weeks. A short benchmark would read every RS as 0.0.
-        _full_d01(spy_start=date(2025, 9, 1))
+        # SPY starts in ISO week 2025-W15, the ETFs weeks earlier: 2026-W30 is SPY's 68th completed week (MIN_WEEKS,
+        # A1), so the Wednesdays before 2026-07-29 have ETF history but too few SPY weeks. A short benchmark would read
+        # every RS as 0.0.
+        _full_d01(spy_start=date(2025, 4, 7))
         res = store.backfill_weekly(None, date(2026, 6, 1), date(2026, 8, 14))
         assert _stored_dates() == ["2026-07-29", "2026-08-05", "2026-08-12"]
         assert res == 3 and res.skipped == 8
@@ -190,11 +191,12 @@ class TestDailyBackfillGuards:
         assert res == 0 and _stored_dates() == [] and res.skipped == 5
 
     def test_every_day_is_guarded_not_only_the_last_one(self, rawstore_tmp_db, fixed_today):
-        # SPY starts in ISO week 2025-W38: the week of 2026-08-10 (W33) is its 48th, the week before its 47th.
-        _full_d01(spy_start=date(2025, 9, 15))
+        # SPY starts in ISO week 2025-W17: 2026-W32 is its 68th completed week (MIN_WEEKS, A1). Friday 2026-08-07 closes
+        # W32 and the sessions after it read the same completed weeks; Thursday 2026-08-06 sees only W31.
+        _full_d01(spy_start=date(2025, 4, 21))
         res = store.backfill_snapshots(None, days=7)
-        assert _stored_dates() == ["2026-08-10", "2026-08-11", "2026-08-12", "2026-08-13", "2026-08-14"]
-        assert res == 5 and res.skipped == 2
+        assert _stored_dates() == ["2026-08-07", "2026-08-10", "2026-08-11", "2026-08-12", "2026-08-13", "2026-08-14"]
+        assert res == 6 and res.skipped == 1
 
     def test_an_etf_with_no_bars_is_not_a_failure(self, rawstore_tmp_db, fixed_today):
         _full_d01(skip={"XLE"})

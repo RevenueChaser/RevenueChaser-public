@@ -34,7 +34,7 @@ def test_a_backfill_stamps_source_backfill(rawstore_tmp_db, monkeypatch):
     import RevenueChaser.module_sector_rotation.store as rs
     pin_clock(monkeypatch, ny(2026, 8, 14, 18))
     seed("SPY", date(2026, 8, 14), closes=lambda i: 100.0 + i)
-    seed("XLK", date(2026, 8, 14), closes=lambda i: 100.0 + i)
+    seed("XLK", date(2026, 8, 14), closes=lambda i: 100.0 + i * 1.01)   # A1 needs a moving ratio to scale by
     assert rs.backfill_snapshots(_FakeUW(), days=2) == 2
     assert {r["source"] for r in rawstore.query("SELECT source FROM rotation_snapshots", db="sector_rotation")} == {"backfill"}
 

@@ -486,7 +486,7 @@ def _earnings_detail(tmp_path, monkeypatch):
 def _rotation(tmp_path, monkeypatch):
     """Hostile ETF identity (#175): a ticker, a configured name and a group name that no
     config entry spells. They reach the quadrant points, the table, the filter buttons
-    and the summary chips; the config names are what ``_build_svg`` and the table read."""
+    and the summary chips; the config names are what the chart payload and the table read."""
     import RevenueChaser.module_sector_rotation.report as rd
     from RevenueChaser.module_sector_rotation.models import ETFRotationSnapshot
     monkeypatch.setattr(rd, "OUTPUT_DIR", tmp_path)

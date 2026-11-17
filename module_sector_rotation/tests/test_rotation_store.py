@@ -77,7 +77,7 @@ class TestBackfill:
         pin_clock(monkeypatch, ny(2026, 8, 14, 18))
         base = date(2026, 8, 14)
         seed("SPY", base, closes=lambda i: 100.0 + i)
-        seed("XLK", base, closes=lambda i: 100.0 + i)
+        seed("XLK", base, closes=lambda i: 100.0 + i * 1.01)
         rotation_store.backfill_snapshots(_FakeUW(), days=3)
         assert rotation_store.backfill_snapshots(_FakeUW(), days=3) == 0
         assert len(rotation_store.list_snapshot_dates()) == 3
@@ -105,18 +105,6 @@ class TestEarlyTurn:
         _seed_snapshot("2026-08-13", [_row("2026-08-13", ticker="ITA", rz=-0.5, mz=0.4)])
         snaps = _rows_to_snapshots([_row("2026-08-14", ticker="ITA", rz=-0.3, mz=0.5)])
         assert _early_turn_tickers(date(2026, 8, 14), snaps) == set()
-
-
-class TestAdvRadius:
-    def test_bounds(self):
-        from RevenueChaser.module_sector_rotation.report import _adv_radius
-        assert 3.0 <= _adv_radius(0) <= 9.0
-        assert 3.0 <= _adv_radius(1_000_000_000) <= 9.0
-        assert _adv_radius(None) == 5.0
-
-    def test_monotonic(self):
-        from RevenueChaser.module_sector_rotation.report import _adv_radius
-        assert _adv_radius(10_000_000) >= _adv_radius(100_000)
 
 
 class TestHeatStyle:
@@ -196,7 +184,7 @@ class TestBackfillWeekly:
         pin_clock(monkeypatch, ny(2026, 8, 14, 18))
         base = date(2026, 8, 14)
         seed("SPY", base, closes=lambda i: 100.0 + i)
-        seed("XLK", base, closes=lambda i: 100.0 + i)
+        seed("XLK", base, closes=lambda i: 100.0 + i * 1.01)
         written = rotation_store.backfill_weekly(_FakeUW(), date(2026, 8, 1), date(2026, 8, 14))
         dates = rotation_store.list_snapshot_dates()
         for d in dates:
@@ -208,7 +196,7 @@ class TestBackfillWeekly:
         _seed_snapshot("2026-08-12", [_row("2026-08-12", ticker="XLK")])
         base = date(2026, 8, 14)
         seed("SPY", base, closes=lambda i: 100.0 + i)
-        seed("XLK", base, closes=lambda i: 100.0 + i)
+        seed("XLK", base, closes=lambda i: 100.0 + i * 1.01)
         rotation_store.backfill_weekly(_FakeUW(), date(2026, 8, 1), date(2026, 8, 14))
         assert rotation_store.load_snapshot(date(2026, 8, 12))["etfs"][0]["rs_ratio_z"] == -0.5   # not rewritten
         assert rotation_store.list_snapshot_dates() == ["2026-08-05", "2026-08-12"]
@@ -219,18 +207,20 @@ class TestUniverseShape:
         """#49: the docstring said 50 symbols and 39/41 ETFs while the code held 78 (67 ETFs + 11 macro)."""
         from RevenueChaser.module_sector_rotation import universe
         doc = universe.__doc__ or ""
+        macro = [t for t in universe.ROTATION_ETFS if t in universe.MACRO_SERIES]
         assert f"{len(universe.ROTATION_ETFS)} symbols" in doc
-        assert f"{len(universe.ROTATION_ETFS) - len(universe.MACRO_SERIES)} ETFs" in doc
-        assert f"{len(universe.MACRO_SERIES)} macro" in doc
+        assert f"{len(universe.ROTATION_ETFS) - len(macro)} ETFs" in doc
+        assert f"{len(macro)} macro" in doc
 
     def test_rrg_symbols(self):
         from RevenueChaser.module_sector_rotation.universe import ROTATION_ETFS
-        assert len(ROTATION_ETFS) == 78, f"expected 78 RRG symbols, got {len(ROTATION_ETFS)}"
+        assert len(ROTATION_ETFS) == 90, f"expected 90 RRG symbols, got {len(ROTATION_ETFS)}"
         groups = {}
         for t, info in ROTATION_ETFS.items():
             groups.setdefault(info["group"], []).append(t)
         assert len(groups["sector"]) == 11, "11 sectors"
-        assert len(groups["theme"]) == 23, "23 themes"
+        assert len(groups["theme"]) == 30, "30 themes (23 + IHI HACK XHB XRT ARKW REMX ARKG, 17 Nov 2026)"
+        assert len(groups["style"]) == 5, "5 style & size (QQQ RSP VUG VTV MAGS)"
         assert len(groups["bond"]) == 3, "3 bond ETFs"
         assert len(groups["region"]) == 30, "30 region (2 broad + 28 country)"
         assert len(groups["yield"]) == 7, "7 yield-curve symbols"
@@ -252,7 +242,7 @@ class TestUniverseShape:
 
     def test_benchmark_removed(self):
         from RevenueChaser.module_sector_rotation.universe import ROTATION_ETFS
-        assert "MAGS" not in ROTATION_ETFS
+        assert "SPY" not in ROTATION_ETFS
         assert "benchmark" not in {v["group"] for v in ROTATION_ETFS.values()}
 
 
@@ -309,91 +299,9 @@ class TestUiContract:
         assert 'class="filter-btn active" data-group="sector"' in c, \
             "Sector should be the default active filter"
 
-    def test_watermark_transparency(self, tmp_path, monkeypatch):
-        c = self._render(tmp_path, monkeypatch)
-        # quadrant labels (class qlabel) should be more transparent than 0.9
-        assert 'class="qlabel"' in c
-        assert 'opacity="0.4" class="qlabel"' in c, "Quadrant labels should use opacity 0.4"
-        assert 'opacity="0.12"' in c, "Quadrant background rects should use opacity 0.12"
-
-    def test_axis_units(self, tmp_path, monkeypatch):
-        c = self._render(tmp_path, monkeypatch)
-        assert 'RS Ratio (z)' in c, "X axis should show 'RS Ratio (z)'"
-        assert 'RS Momentum (z)' in c, "Y axis should show 'RS Momentum (z)'"
-
-    def test_zoom_controls_present(self, tmp_path, monkeypatch):
-        c = self._render(tmp_path, monkeypatch)
-        assert 'setZoom' in c, "Zoom controls (setZoom) should be present"
-        assert 'zoom-label' in c, "Zoom label should be present"
-
-    def test_full_name_on_map(self, tmp_path, monkeypatch):
-        c = self._render(tmp_path, monkeypatch)
-        assert '>Technology</text>' in c, "Map should show full name for sector ETFs"
-
-    def test_all_tickers_use_full_name(self, tmp_path, monkeypatch):
-        c = self._render(tmp_path, monkeypatch)
-        # sector ETF (XLK) should show its full name "Technology", not just ticker
-        assert '>Technology</text>' in c, "Map should show full name for every ticker"
-        assert '>XLK</text>' not in c, "Map should not label a sector ETF with just its ticker"
-
-    def test_ticker_picker_present(self, tmp_path, monkeypatch):
-        c = self._render(tmp_path, monkeypatch)
-        assert 'dd-menu' in c, "Ticker multi-select dropdown should be present"
-        assert 'Show tickers' in c, "Ticker picker button label should be present"
-
-    def test_picker_uses_full_name(self, tmp_path, monkeypatch):
-        c = self._render(tmp_path, monkeypatch)
-        # data-name attribute must be present so the picker can show full names
-        assert 'data-name="Technology"' in c, "Map points should carry data-name (full name)"
-        assert "it.name" in c, "Picker JS should use the full name"
-
-    def test_ticker_filter_js_present(self, tmp_path, monkeypatch):
-        c = self._render(tmp_path, monkeypatch)
-        assert 'toggleTicker' in c, "toggleTicker JS should be present"
-        assert 'selectAll' in c, "selectAll JS should be present"
-        assert 'buildPicker' in c, "buildPicker JS should be present"
-
-    def test_dynamic_axis_range(self, tmp_path, monkeypatch):
-        c = self._render(tmp_path, monkeypatch)
-        assert 'data-base-limit=' in c, "SVG should carry a dynamic data-base-limit"
-        assert 'baseLimit' in c, "JS should read the dynamic base limit"
-        assert 'wheelZoom' in c, "Wheel-zoom handler should be present"
-        assert 'PAN_X' in c, "Pan state should be present"
-        assert 'id="map-layer"' in c, "Map content should be wrapped in a zoom/pan layer"
-
     def test_table_filtering_js(self, tmp_path, monkeypatch):
         c = self._render(tmp_path, monkeypatch)
         assert "tbody tr[data-ticker]" in c, "Table rows should be filtered by the same group/ticker filter"
-
-    def test_dynamic_axis_expands_to_fit_extreme(self, tmp_path, monkeypatch):
-        import RevenueChaser.module_sector_rotation.report as rd
-        monkeypatch.setattr(rd, "OUTPUT_DIR", tmp_path)
-        monkeypatch.setattr(rd, "OUTPUT_DIR", tmp_path)
-        # a ticker with z = 3.5 should expand the axis (limit ≈ 4.0), not be flagged
-        snaps = [ETFRotationSnapshot(as_of_date=date(2026, 8, 14), ticker="XLE",
-                                     group_name="sector", close_price=100.0,
-                                     rs_1w=1.0, rs_1m=2.0, rs_3m=3.0,
-                                     rs_ratio=5.0, rs_momentum=5.0,
-                                     rs_ratio_z=3.5, rs_momentum_z=2.8, rrg_quadrant="LEADING")]
-        p = rd.export_rotation_dashboard(snaps, filename="test_rot2.html", uw=None)
-        c = p.read_text(encoding="utf-8")
-        assert 'data-over="1"' not in c, "No ticker should be flagged overflow with a dynamic axis"
-        assert 'data-base-limit="4.0"' in c, "Axis should expand to ≈4.0 for z=3.5"
-
-    def test_darken_helper(self):
-        from RevenueChaser.module_sector_rotation.report import _darken
-        assert _darken("#3fb950", 0.5) == "#1f5c28"
-        assert _darken("#58a6ff", 0.55) == "#305b8c"
-        assert _darken("bad", 0.5) == "bad"
-
-    def test_hover_tooltip_shows_ratio_and_zscores(self, tmp_path, monkeypatch):
-        c = self._render(tmp_path, monkeypatch)
-        # tooltip should include raw ratio/momentum and z-scores
-        assert 'RS Ratio:' in c, "Hover tooltip should show RS Ratio"
-        assert 'RS Momentum:' in c, "Hover tooltip should show RS Momentum"
-        assert 'Ratio Z:' in c, "Hover tooltip should show Ratio Z"
-        assert 'Momentum Z:' in c, "Hover tooltip should show Momentum Z"
-        assert 'RS 1W:' in c, "Hover tooltip should show RS 1W/1M/3M"
 
     def test_holdings_caret_present(self, tmp_path, monkeypatch):
         c = self._render(tmp_path, monkeypatch)
@@ -418,17 +326,6 @@ class TestUiContract:
         assert 'holdings-row' in c, "Detail row class (holdings-row) should be referenced"
         assert "row.addEventListener('click'" in c, "Row click should be bound to expand holdings"
 
-    def test_map_labels_use_text_anchor(self, tmp_path, monkeypatch):
-        c = self._render_dense(tmp_path, monkeypatch)
-        assert 'text-anchor="end"' in c, "Map labels should use text-anchor for left-side placement"
-        assert 'text-anchor="middle"' in c, "Map labels should use text-anchor for centered placement"
-
-    def test_map_leader_line_present(self, tmp_path, monkeypatch):
-        c = self._render_dense(tmp_path, monkeypatch)
-        assert 'class="quadrant-point"' in c
-        assert 'stroke-width="0.7"' in c, "Map should render leader lines for displaced labels"
-        assert 'stroke-dasharray="3,2"' in c, "Leader lines should be dashed"
-
     def test_radial_quadrant_bias(self):
         from RevenueChaser.module_sector_rotation.report import _quadrant_bias_offset
         # chart center at (0,0): each quadrant pushes outward diagonally
@@ -437,11 +334,18 @@ class TestUiContract:
         assert _quadrant_bias_offset(-5, -5, 0, 0, 8) == (-8, -8) # LAGGING (x-, y-)
         assert _quadrant_bias_offset(5, -5, 0, 0, 8) == (8, -8)   # WEAKENING (x+, y-)
 
-    def test_trajectory_columns_present(self, tmp_path, monkeypatch):
+    def test_the_chart_draws_trails_from_embedded_data(self, tmp_path, monkeypatch):
+        """avo 17 Nov 2026: the map shows each ETF's path; the chart is drawn from one embedded payload."""
         c = self._render(tmp_path, monkeypatch)
-        assert 'Trajectory' in c, "Table should have a Trajectory group header"
-        assert 'θ°' in c, "Table should have a theta column"
-        assert 'data-col="r"' in c, "Rows should carry r values"
+        assert 'id="rrg"' in c and "var RRG = " in c and "drawRRG" in c
+        assert 'onclick="setTrail(13)"' in c and "setFocus" in c
+        assert "RS-Ratio" in c and "RS-Momentum" in c and "Z-Scores" not in c
+
+    def test_the_table_shows_ratio_and_momentum_around_100(self, tmp_path, monkeypatch):
+        c = self._render(tmp_path, monkeypatch)
+        assert 'data-col="rs_ratio_z" data-val="1.0000">101.0<' in c
+        assert 'data-col="rs_momentum_z" data-val="0.5000">100.5<' in c
+        assert 'data-col="theta"' not in c
 
     def test_moneyflow_panel_present(self, tmp_path, monkeypatch):
         c = self._render(tmp_path, monkeypatch)
@@ -454,7 +358,7 @@ class TestUiContract:
     def test_summary_cards_replace_raw_transitions(self, tmp_path, monkeypatch):
         c = self._render(tmp_path, monkeypatch)
         assert 'summary-cards' in c, "3-card metric strip should be present"
-        assert 'Sector + Commodity Counts' in c, "Card 1 (sector+commodity counts) should be present"
+        assert 'Sector Counts' in c, "Card 1 (the sectors' counts; no macro on the map since B1) should be present"
         assert '⚡ Early Turn' in c, "Card 2 (early turn) should be present"
         assert '⚠️ Breakdown' in c, "Card 3 (breakdown) should be present"
         assert 'Quadrant transitions:' not in c, "Raw transitions list should be removed"
@@ -515,20 +419,6 @@ class TestUiContract:
         c = p.read_text(encoding="utf-8")
         assert '⚠️ Breakdown' in c, "Breakdown badge should appear for a transition into LAGGING"
         assert 'XLK — Technology' in c
-
-    def _render_dense(self, tmp_path, monkeypatch):
-        import RevenueChaser.module_sector_rotation.report as rd
-        monkeypatch.setattr(rd, "OUTPUT_DIR", tmp_path)
-        monkeypatch.setattr(rd, "OUTPUT_DIR", tmp_path)
-        # densely cluster many named points near the origin to force collisions
-        snaps = [ETFRotationSnapshot(as_of_date=date(2026, 8, 14), ticker=f"T{i}",
-                                     group_name="sector", close_price=100.0,
-                                     rs_1w=1.0, rs_1m=2.0, rs_3m=3.0,
-                                     rs_ratio=1.0, rs_momentum=1.0,
-                                     rs_ratio_z=(i % 5) * 0.05, rs_momentum_z=(i % 4) * 0.05,
-                                     rrg_quadrant="LEADING") for i in range(30)]
-        p = rd.export_rotation_dashboard(snaps, filename="test_dense.html", uw=None)
-        return p.read_text(encoding="utf-8")
 
 
 class TestTrailUiContract:

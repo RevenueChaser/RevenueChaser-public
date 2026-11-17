@@ -190,7 +190,7 @@ def test_a_missing_z_renders_a_dash_and_sorts_last(board):
         [_snap("XLK", rz=None, mz=None), _snap("XLE", rz=0.3, mz=-0.5)], filename="z.html")
     html = out.read_text(encoding="utf-8")
     assert _cell(html, "XLK", "rs_ratio_z") == "—" and _cell(html, "XLK", "rs_momentum_z") == "—"
-    assert _cell(html, "XLE", "rs_ratio_z") == "+0.30"
+    assert _cell(html, "XLE", "rs_ratio_z") == "100.3"                         # A1: shown around 100
     assert _table_rows(html) == ["XLE", "XLK"]                                 # same quadrant: the missing z last
 
 
@@ -207,6 +207,7 @@ def test_yields_and_index_levels_print_no_dollar_sign(board):
 # ── SR-1, PNG, dead helpers ──────────────────────────────────────────────────────────────────────────────────────────
 
 def test_the_render_asks_uw_for_no_adv_and_the_caption_says_dots_are_fixed(board):
+    """The dots are fixed since the 17 Nov 2026 redesign; the caption no longer says so, the size is not ADV."""
     class _NoScreener:
         def screener_batch(self, tickers):
             pytest.fail("the render asked UW for ADV")
@@ -214,7 +215,7 @@ def test_the_render_asks_uw_for_no_adv_and_the_caption_says_dots_are_fixed(board
     out = rot_report.export_rotation_dashboard([_snap("XLK"), _snap("XLE")], filename="adv.html",
                                                uw=_NoScreener())
     html = out.read_text(encoding="utf-8")
-    assert "Dot size fixed" in html and "Dot size ∝" not in html
+    assert "Dot size ∝" not in html
 
 
 def test_a_live_fetch_exports_no_png_and_the_dead_helpers_are_gone(board, monkeypatch):
@@ -231,9 +232,10 @@ def test_a_live_fetch_exports_no_png_and_the_dead_helpers_are_gone(board, monkey
 # ── DF69 text (D-M7 default) ─────────────────────────────────────────────────────────────────────────────────────────
 
 def test_the_yield_note_says_the_inversion_is_not_applied(board):
+    """B1 (avo 17 Nov 2026): yields left the map for the macro table, so the map page carries no inversion note; the
+    trail page still draws stored rows from before B1 and keeps it."""
     html = rot_report.export_rotation_dashboard([_snap("US10Y", close=4.25)], filename="y.html").read_text(
         encoding="utf-8")
-    assert "inversion is not applied" in html
     assert "is <b>inverted</b> before RS" not in html and "inverted so falling yields" not in html
     trail = rot_report._trail_html(date(2026, 8, 1), date(2026, 8, 31), [], {})
     assert "Yield symbols are inverted" not in trail and "inversion is not applied" in trail

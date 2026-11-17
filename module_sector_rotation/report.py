@@ -31,10 +31,11 @@ body{background:#0d1117;color:#c9d1d9;font-family:'Segoe UI',Consolas,monospace;
 .sum-card .sc-drawer{display:none;margin-top:6px}
 .sum-card .sc-drawer.open{display:flex;flex-wrap:wrap;gap:6px}
 .grid{display:flex;gap:24px;flex-wrap:wrap}
-.quadrant-panel{flex:1;min-width:550px;max-width:900px;background:#161b22;border:1px solid #21262d;border-radius:8px;padding:16px}
+.quadrant-panel{flex:1 1 0;min-width:0;max-width:900px;background:#161b22;border:1px solid #21262d;border-radius:8px;padding:16px}
 .quadrant-panel h2{color:#c9d1d9;font-size:16px;margin-bottom:14px}
-.quadrant-svg{width:100%;height:650px}
-.table-panel{flex:2;min-width:700px;background:#161b22;border:1px solid #21262d;border-radius:8px;padding:16px}
+.table-panel{flex:1.25 1 0;min-width:0;overflow-x:auto;background:#161b22;border:1px solid #21262d;border-radius:8px;padding:16px}
+.grid>.quadrant-panel,.grid>.table-panel{align-self:flex-start}
+@media (max-width:1000px){.grid>.quadrant-panel,.grid>.table-panel{flex-basis:100%;max-width:none}}
 .topbar{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:center}
 .topbar .filters{display:flex;gap:10px;flex-wrap:wrap}
 .filters button{background:#161b22;color:#8b949e;border:1px solid #21262d;padding:5px 14px;border-radius:12px;cursor:pointer;font-size:12px;transition:all .2s}
@@ -47,7 +48,7 @@ th.num,td.num{text-align:right;font-family:ui-monospace,'Cascadia Mono',Consolas
 th.center,td.center{text-align:center}
 td{padding:8px 6px;border-bottom:1px solid #161b22;white-space:nowrap;font-size:12px}
 tr:hover{background:#161b22}
-.ticker{color:#F1F5F9;font-weight:700}
+.ticker{color:#F1F5F9;font-weight:700;white-space:nowrap}
 .group{font-size:10px;border-radius:4px;padding:1px 6px;color:#94A3B8}
 .pos{color:#34D399}.neg{color:#F87171}.zero{color:#8b949e}
 .badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:700}
@@ -69,7 +70,8 @@ footer{margin-top:32px;padding-top:12px;border-top:1px solid #21262d;color:#484f
 .crosshair-line{stroke:#30363d;stroke-width:1;stroke-dasharray:4,4}
 .axis-label{fill:#8b949e;font-size:10px}
 .tooltip{position:absolute;background:#21262d;color:#c9d1d9;padding:6px 10px;border-radius:6px;font-size:11px;border:1px solid #30363d;pointer-events:none;display:none;z-index:10}
-/* ticker multi-select dropdown */
+/* ticker multi-select dropdown and the zoomable svg (the trail page) */
+.quadrant-svg{width:100%;height:650px}
 .dd{position:relative;display:inline-block}
 .dd-btn{background:#161b22;color:#c9d1d9;border:1px solid #30363d;padding:5px 12px;border-radius:12px;cursor:pointer;font-size:12px}
 .dd-btn:hover{border-color:#58a6ff}
@@ -100,42 +102,60 @@ tr.holdings-row td{background:#0b1828;border-bottom:1px solid #30363d}
 .mf-row .mf-name{color:#8b949e;font-size:11px}
 .mf-row .mf-score{font-weight:700;font-variant-numeric:tabular-nums}
 .mf-pos{color:#34D399}.mf-neg{color:#F87171}
+/* the rotation chart (A1, 17 Nov 2026): drawn by RRG_JS; labels scale with --k so a phone keeps them legible */
+svg.rrg{width:100%;height:auto;display:block;touch-action:manipulation;user-select:none;-webkit-user-select:none}
+.map-controls{display:flex;align-items:center;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+.map-controls .lbl{font-size:11px;color:#8b949e;margin:0 4px}
+.map-controls .filter-btn{background:#161b22;color:#8b949e;border:1px solid #21262d;min-height:44px;padding:0 14px;border-radius:12px;cursor:pointer;font-size:12px}
+.map-controls .zoom-btn{min-width:44px;padding:0 10px;font-size:16px}
+.map-controls .filter-btn.active{color:#58a6ff;border-color:#1f6feb;background:#1a1a2e}
+.qlabel{font-size:calc(12px*var(--k,1));font-weight:600;letter-spacing:.04em}
+.axis{font-size:calc(11px*var(--k,1));fill:#8b949e}
+.tick{font-size:calc(10px*var(--k,1));fill:#8b949e}
+.dlabel{font-size:calc(11.5px*var(--k,1));font-weight:600;fill:#f0f6fc;paint-order:stroke;stroke:#161b22;stroke-width:3px}
+.wlabel{font-size:calc(10px*var(--k,1));fill:#8b949e;paint-order:stroke;stroke:#161b22;stroke-width:3px}
+.note{font-size:11px;color:#8b949e;margin-top:10px;line-height:1.6}
+.tooltip{position:fixed}
+tbody tr.on{background:#1a1a2e;outline:1px solid #1f6feb}
+.macro-panel{background:#161b22;border:1px solid #21262d;border-radius:8px;padding:16px;margin-top:24px}
+.macro-panel h2{color:#c9d1d9;font-size:16px;margin-bottom:10px}
+.macro-table tr.mblock td{color:#8b949e;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;padding-top:14px;border-bottom:1px solid #30363d}
+.macro-table .msub{display:block;color:#8b949e;font-size:10px}
+.macro-table .mspark-cell{width:140px}
+.mspark{width:130px;height:24px;display:block}
+@media (max-width:760px){
+ body{padding:12px}
+ .quadrant-panel,.table-panel,.moneyflow-panel{min-width:0;max-width:none;flex-basis:100%}
+ .c-1w,.c-rot,.c-price{display:none}
+ td{white-space:normal}
+ .macro-table thead{display:none}
+ .macro-table tr.mrow{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px 8px;padding:8px 0;border-bottom:1px solid #21262d}
+ .macro-table tr.mrow td{display:block;border:0;padding:0;text-align:left}
+ .macro-table tr.mrow td::before{content:attr(data-l);display:block;color:#8b949e;font-size:10px}
+ .macro-table tr.mrow td.mname,.macro-table tr.mrow td.mspark-cell{grid-column:1/-1}
+ .macro-table tr.mrow td.mname::before{content:none}
+ .mspark{width:100%}
+ .macro-table tr.mblock{display:block}
+ .macro-table tr.mblock td{display:block}
+}
 </style>"""
 
 JS = """<script>
 __ESC_JS__
-var ZOOM = 1.0;
-var PAN_X = 0, PAN_Y = 0;
 var ACTIVE_GROUP = 'sector';
 var THEME = 'all';
 var THEME_ETFS = __THEME_ETFS_JSON__;
 var HIDDEN = {};  // ticker -> true means hidden (unchecked in picker)
 var ROTATION_HOLDINGS = __HOLDINGS_JSON__;  // ticker -> pre-rendered holdings <td> fragment
-function baseLimit() {
-    var svg = document.querySelector('.quadrant-svg');
-    var bl = svg && svg.getAttribute('data-base-limit');
-    return bl ? parseFloat(bl) : 2.0;
-}
 function filterGroup(g) {
     ACTIVE_GROUP = String(g).trim().toLowerCase();
     document.querySelectorAll('.filter-btn').forEach(function(btn) {
         btn.classList.toggle('active', String(btn.dataset.group).trim().toLowerCase() === ACTIVE_GROUP);
     });
-    buildPicker();
     renderChart();
 }
 function setTheme(v) {
     THEME = (v == null || v === '') ? 'all' : String(v);
-    renderChart();
-}
-function setZoom(z) {
-    ZOOM = Math.max(0.5, Math.min(4.0, z));
-    document.getElementById('zoom-label').textContent = ZOOM.toFixed(1) + 'x';
-    renderChart();
-}
-function resetView() {
-    ZOOM = 1.0; PAN_X = 0; PAN_Y = 0;
-    document.getElementById('zoom-label').textContent = '1.0x';
     renderChart();
 }
 function rowVisible(row) {
@@ -150,102 +170,11 @@ function rowVisible(row) {
     return String(row.dataset.group).trim().toLowerCase() === ACTIVE_GROUP;
 }
 function renderChart() {
-    var svg = document.querySelector('.quadrant-svg');
-    var layer = document.getElementById('map-layer');
-    if (layer) layer.setAttribute('transform', 'translate(' + PAN_X + ',' + PAN_Y + ') scale(' + ZOOM + ')');
-
-    var points = Array.from(svg.querySelectorAll('.quadrant-point'));
-    var visible = points.filter(function(p){ return rowVisible(p); });
-
-    points.forEach(function(point) {
-        point.style.display = rowVisible(point) ? '' : 'none';
-    });
-
-    // table rows follow the same filter
     // map rows only: a nested holdings row has no group and would be hidden by the filter
     document.querySelectorAll('tbody tr[data-group]').forEach(function(row){
         row.style.display = rowVisible(row) ? '' : 'none';
     });
-
-    var limit = baseLimit() / ZOOM;
-    document.getElementById('chart-scale').textContent = ' | Axis: -' + limit.toFixed(2) + ' to +' + limit.toFixed(2) + ' z | ' + visible.length + ' ETFs';
-}
-function svgPoint(svg, clientX, clientY) {
-    var pt = svg.createSVGPoint(); pt.x = clientX; pt.y = clientY;
-    return pt.matrixTransform(svg.getScreenCTM().inverse());
-}
-function wheelZoom(e) {
-    e.preventDefault();
-    var svg = document.querySelector('.quadrant-svg');
-    var p = svgPoint(svg, e.clientX, e.clientY);
-    var factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
-    var nz = Math.max(0.5, Math.min(4.0, ZOOM * factor));
-    // keep the point under the cursor fixed
-    PAN_X = p.x - (p.x - PAN_X) * (nz / ZOOM);
-    PAN_Y = p.y - (p.y - PAN_Y) * (nz / ZOOM);
-    ZOOM = nz;
-    document.getElementById('zoom-label').textContent = ZOOM.toFixed(1) + 'x';
-    renderChart();
-}
-var DRAG = null;
-function startDrag(e) { DRAG = {x: e.clientX, y: e.clientY, px: PAN_X, py: PAN_Y}; }
-function moveDrag(e) {
-    if (!DRAG) return;
-    var svg = document.querySelector('.quadrant-svg');
-    var p = svgPoint(svg, e.clientX, e.clientY);
-    var s = svgPoint(svg, DRAG.x, DRAG.y);
-    PAN_X = DRAG.px + (p.x - s.x);
-    PAN_Y = DRAG.py + (p.y - s.y);
-    renderChart();
-}
-function endDrag() { DRAG = null; }
-function buildPicker() {
-    var menu = document.getElementById('dd-menu');
-    if (!menu) return;
-    var svg = document.querySelector('.quadrant-svg');
-    var points = Array.from(svg.querySelectorAll('.quadrant-point'));
-    var groupPoints = points.filter(function(p){ return String(p.dataset.group).trim().toLowerCase() === ACTIVE_GROUP; });
-    // collect unique tickers in this group (ticker -> display name), sorted
-    var items = [];
-    var seen = {};
-    groupPoints.forEach(function(p){
-        if(seen[p.dataset.ticker]) return;
-        seen[p.dataset.ticker] = 1;
-        var name = p.dataset.name || '';
-        items.push({t: p.dataset.ticker, name: name});
-    });
-    items.sort(function(a,b){ return a.t < b.t ? -1 : 1; });
-    var html = '<div class="dd-actions"><button onclick="selectAll()">All</button><button onclick="selectNone()">None</button></div>';
-    items.forEach(function(it){
-        var label = it.t + (it.name ? ' — ' + it.name : '');
-        var chk = HIDDEN[it.t] ? '' : ' checked';
-        html += '<label class="dd-item"><input type="checkbox" data-t="' + rcEsc(it.t) + '"' + chk + ' onchange="toggleTicker(this)">' + rcEsc(label) + '</label>';
-    });
-    menu.innerHTML = html;
-}
-function toggleTicker(cb) {
-    var t = cb.getAttribute('data-t');
-    if (cb.checked) delete HIDDEN[t]; else HIDDEN[t] = 1;
-    renderChart();
-}
-function selectAll(){
-    // clear only the ACTIVE_GROUP's hidden tickers (keep groups independent)
-    var svg = document.querySelector('.quadrant-svg');
-    Array.from(svg.querySelectorAll('.quadrant-point')).forEach(function(p){
-        if (String(p.dataset.group).trim().toLowerCase() === ACTIVE_GROUP) delete HIDDEN[p.dataset.ticker];
-    });
-    buildPicker(); renderChart();
-}
-function selectNone(){
-    var svg = document.querySelector('.quadrant-svg');
-    Array.from(svg.querySelectorAll('.quadrant-point')).forEach(function(p){
-        if (String(p.dataset.group).trim().toLowerCase() === ACTIVE_GROUP) HIDDEN[p.dataset.ticker] = 1;
-    });
-    buildPicker(); renderChart();
-}
-function toggleDd() {
-    var m = document.getElementById('dd-menu');
-    if (m) m.classList.toggle('open');
+    if (typeof drawRRG === 'function') drawRRG();
 }
 function toggleHoldings(ticker) {
     var caret = document.getElementById('caret-' + ticker);
@@ -261,7 +190,7 @@ function toggleHoldings(ticker) {
     }
     var det = document.createElement('tr');
     det.className = 'holdings-row';
-    det.innerHTML = '<td colspan="11" style="color:#8b949e;padding:10px 14px">Loading holdings…</td>';
+    det.innerHTML = '<td colspan="9" style="color:#8b949e;padding:10px 14px">Loading holdings…</td>';
     row.parentNode.insertBefore(det, row.nextSibling);
     if (caret) caret.textContent = '▾';
     if (ROTATION_HOLDINGS && ROTATION_HOLDINGS[ticker]) {
@@ -278,7 +207,7 @@ function toggleHoldings(ticker) {
     var ui = 0;
     (function tryNext() {
         if (ui >= urls.length) {
-            det.innerHTML = '<td colspan="11" style="color:#f85149;padding:10px 14px">Failed to load holdings.</td>';
+            det.innerHTML = '<td colspan="9" style="color:#f85149;padding:10px 14px">Failed to load holdings.</td>';
             return;
         }
         fetch(urls[ui++])
@@ -302,7 +231,7 @@ function sortTable(col, el) {
     rows.forEach(r => tbody.appendChild(r));
 }
 document.addEventListener('DOMContentLoaded', function(){
-    buildPicker(); renderChart();
+    renderChart();
     document.querySelectorAll('tbody tr[data-ticker]').forEach(function(row){
         row.addEventListener('click', function(e){
             if (e.target.closest('.holdings-row') || e.target.closest('a')) return;
@@ -310,17 +239,6 @@ document.addEventListener('DOMContentLoaded', function(){
             toggleHoldings(row.getAttribute('data-ticker'));
         });
     });
-    var svg = document.querySelector('.quadrant-svg');
-    if (svg) {
-        svg.addEventListener('wheel', wheelZoom, { passive: false });
-        svg.addEventListener('mousedown', startDrag);
-        window.addEventListener('mousemove', moveDrag);
-        window.addEventListener('mouseup', endDrag);
-    }
-});
-document.addEventListener('click', function(e){
-    var dd = document.getElementById('dd');
-    if (dd && !dd.contains(e.target)) { var m = document.getElementById('dd-menu'); if (m) m.classList.remove('open'); }
 });
 function toggleDrawer(el) {
     var card = el.closest('.sum-card');
@@ -374,33 +292,6 @@ function renderMoneyFlow() {
 document.addEventListener('DOMContentLoaded', function(){ renderMoneyFlow(); });
 </script>"""
 
-HOVER_JS = """<script>
-// Bi-directional hover sync between table rows and chart dots
-(function(){
-  function sync(ticker, on){
-    var dot = document.querySelector('.quadrant-point[data-ticker="' + ticker + '"]');
-    if(dot){ dot.style.opacity = on ? '1' : '0.35'; }
-  }
-  document.querySelectorAll('tbody tr[data-ticker]').forEach(function(row){
-    row.addEventListener('mouseenter', function(){ sync(row.getAttribute('data-ticker'), true); });
-    row.addEventListener('mouseleave', function(){ sync(row.getAttribute('data-ticker'), false); });
-  });
-  document.querySelectorAll('.quadrant-point[data-ticker]').forEach(function(dot){
-    dot.addEventListener('mouseenter', function(){
-      var t = dot.getAttribute('data-ticker');
-      var row = document.querySelector('tbody tr[data-ticker="' + t + '"]');
-      if(row){ row.style.background = '#161b22'; }
-    });
-    dot.addEventListener('mouseleave', function(){
-      var t = dot.getAttribute('data-ticker');
-      var row = document.querySelector('tbody tr[data-ticker="' + t + '"]');
-      if(row){ row.style.background = ''; }
-    });
-  });
-})();
-</script>"""
-
-
 def _format_rs(val: Optional[float]) -> str:
     """Signed percent-point RS; a missing value is a dash, never a fake +0.0% (DF67)."""
     if val is None:
@@ -409,10 +300,11 @@ def _format_rs(val: Optional[float]) -> str:
 
 
 def _z_cell(col: str, val: Optional[float]) -> str:
-    """A Z-score cell; a missing z is a dash with an empty sort value, never a fake +0.00."""
+    """An RS-Ratio / RS-Momentum cell (A1): the stored value less 100, shown around 100 as the chart's axes are; a
+    missing value is a dash with an empty sort value, never a fake 100."""
     if val is None:
-        return f'<td class="num zero td-g3" data-col="{col}" data-val="">—</td>'
-    return f'<td class="num {_rs_color(val)} td-g3" data-col="{col}" data-val="{val:.4f}">{val:+.2f}</td>'
+        return f'<td class="num zero td-g3 c-rot" data-col="{col}" data-val="">—</td>'
+    return f'<td class="num {_rs_color(val)} td-g3 c-rot" data-col="{col}" data-val="{val:.4f}">{100 + val:.1f}</td>'
 
 
 def _format_close(ticker: str, close: Optional[float]) -> str:
@@ -443,20 +335,6 @@ def _theme_control_html(catalog: dict[str, list[str]]) -> tuple[str, str]:
         '</span>'
     )
     return html, theme_etfs_json
-
-
-def _trajectory_metrics(rz, mz):
-    """Render-only derived metrics: r = distance from origin, theta = heading angle."""
-    import math
-    if rz is None or mz is None:
-        return None, None
-    if isinstance(rz, float) and math.isnan(rz):
-        return None, None
-    if isinstance(mz, float) and math.isnan(mz):
-        return None, None
-    r = math.hypot(rz, mz)
-    theta = math.degrees(math.atan2(mz, rz)) % 360.0
-    return round(r, 3), round(theta, 1)
 
 
 def _rows_to_snapshots(rows: list[dict]) -> list[ETFRotationSnapshot]:
@@ -559,27 +437,6 @@ def _rs_heat_style(val: float) -> str:
     if val < 0:
         return "background:rgba(248,113,113,0.12);"
     return ""
-
-
-def _adv_radius(adv: float) -> float:
-    """Dot radius from 30-day ADV (UW ``avg30_volume``) on a log scale (3..9 px)."""
-    import math
-    if adv is None or adv <= 0:
-        return 5.0
-    return max(3.0, min(9.0, 4.0 + math.log10(adv) - 6.0))
-
-
-def _darken(hex_color: str, factor: float) -> str:
-    """Return a darker shade of a #rrggbb hex color (factor < 1 dims each channel)."""
-    h = hex_color.lstrip("#")
-    if len(h) != 6:
-        return hex_color
-    try:
-        r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
-        r = int(r * factor); g = int(g * factor); b = int(b * factor)
-        return f"#{r:02x}{g:02x}{b:02x}"
-    except ValueError:
-        return hex_color
 
 
 def _rs_color(val: float) -> str:
@@ -804,75 +661,243 @@ def _quadrant_watermark_boxes(limit: float, W: int, H: int, margin: int, cx: flo
     return boxes
 
 
-def _build_svg(snapshots: list[ETFRotationSnapshot], prev_quadrants: dict[str, str] = None,
-               adv_map: dict[str, float] = None, early_turn: set = None) -> str:
-    prev_quadrants = prev_quadrants or {}
-    adv_map = adv_map or {}
-    early_turn = early_turn or set()
-    pts = [(s.rs_ratio_z, s.rs_momentum_z, s.ticker, s.group_name, s.rrg_quadrant,
-            s.rs_ratio, s.rs_momentum, s.rs_1w, s.rs_1m, s.rs_3m)
-           for s in snapshots if s.rs_ratio_z is not None and s.rs_momentum_z is not None]
-    if not pts:
-        return '<text x="50%" y="50%" text-anchor="middle" fill="#8b949e" font-size="13">No data</text>'
+TRAIL_WEEKS = 13        # the longest trail the chips offer; the chart's default is 8
 
-    W, H = 700, 580
-    margin = 40
-    cx, cy = W // 2, H // 2 + 10
 
-    # dynamic symmetric axis range from the data's ratio_z / momentum_z extremes
-    limit = _axis_limit([v for p in pts for v in (p[0], p[1])])
+def _rrg_payload(snapshots: list[ETFRotationSnapshot], as_of: date) -> dict:
+    """The data the chart draws (A1): per map ETF its point of every completed week in the last ``TRAIL_WEEKS``, from
+    the stored snapshots (one per week: the last stored session of each completed week) and ``snapshots`` as the
+    newest. A point is ``[ratio, momentum, week-ending day]`` around 100 (``100 + z``: a row stored before A1 carries a
+    pooled z there, so a trail through an old week stays on the same axes until the backfill rewrites it).
+    ``weeks_in_quadrant`` counts the newest points in the same quadrant."""
+    from datetime import timedelta
+    from .engine import classify_rrg, week_cut
+    from .store import load_range
+    try:
+        stored = load_range(as_of - timedelta(weeks=TRAIL_WEEKS + 2), as_of)
+    except Exception:                                   # noqa: BLE001 - no board file yet: the newest point only
+        stored = {}
+    by_week: dict[str, dict] = {}
+    for day in sorted(stored):
+        wk = week_cut(date.fromisoformat(day)).isoformat()
+        by_week[wk] = {r["ticker"]: r for r in stored[day]}
+    now_wk = week_cut(as_of).isoformat()
+    by_week[now_wk] = {s.ticker: {"rs_ratio_z": s.rs_ratio_z, "rs_momentum_z": s.rs_momentum_z} for s in snapshots}
+    weeks = sorted(by_week)[-TRAIL_WEEKS:]
+    etfs = []
+    for s in snapshots:
+        if s.ticker in MACRO_SERIES or s.rs_ratio_z is None or s.rs_momentum_z is None:
+            continue
+        pts = []
+        for wk in weeks:
+            r = by_week[wk].get(s.ticker) or {}
+            rz, mz = r.get("rs_ratio_z"), r.get("rs_momentum_z")
+            pts.append(None if rz is None or mz is None else [round(100 + rz, 3), round(100 + mz, 3), wk])
+        quads = [classify_rrg(p[0] - 100, p[1] - 100) if p else None for p in pts]
+        held = 0
+        for q in reversed(quads):
+            if q != quads[-1]:
+                break
+            held += 1
+        etfs.append({"ticker": s.ticker, "name": ROTATION_ETFS.get(s.ticker, {}).get("name", s.ticker),
+                     "group": s.group_name, "quadrant": s.rrg_quadrant, "weeks_in_quadrant": held, "points": pts,
+                     "rs_1m": s.rs_1m, "rs_3m": s.rs_3m})
+    return {"weeks": weeks, "etfs": etfs}
 
-    def tx(v): return cx + (v / limit) * (cx - margin)
-    def ty(v): return cy - (v / limit) * (cy - margin)
 
-    svg_rows = [
-        f'<svg viewBox="0 0 {W} {H}" class="quadrant-svg" data-base-limit="{limit}" xmlns="http://www.w3.org/2000/svg">',
-        f'<rect width="{W}" height="{H}" fill="#0d1117" rx="8"/>',
-        '<g id="map-layer">',
-    ]
-    svg_rows += _quadrant_backdrop(limit, W, H, margin, cx, cy)
+def _macro_table_html(as_of: date) -> str:
+    """B1: the macro series as their own table under the map, one block per kind (``engine.MACRO_BLOCKS``); each row
+    stacks into a card on a phone. Read-only; an empty store gives no section."""
+    from .engine import macro_table
+    try:
+        rows = macro_table(as_of)
+    except Exception:                                   # noqa: BLE001 - no market store: no section
+        rows = []
+    if not rows:
+        return ""
 
-    # sort points by importance (|ratio_z|) so most important label places first
-    ordered = sorted(pts, key=lambda p: -max(abs(p[0]), abs(p[1])))
-    placed = _quadrant_watermark_boxes(limit, W, H, margin, cx, cy)  # keep dot labels off the quadrant titles
-    for px, py, ticker, group, q, ratio, momentum, rs1w, rs1m, rs3m in ordered:
-        color = QUADRANT_COLORS.get(q, "#8b949e")
-        name = ROTATION_ETFS.get(ticker, {}).get("name", "")
-        px_c = _clamp(px, limit)
-        py_c = _clamp(py, limit)
-        # full name for every ticker (smaller font), anti-overlap "best position"
-        label = name or ticker
-        lw = min(len(label) * 4.2, 120)
-        lh = 12
-        r = _adv_radius(adv_map.get(ticker))
-        cx_p, cy_p = tx(px_c), ty(py_c)
-        ox, oy, anchor, baseline, box = _place_label(cx_p, cy_p, lw, lh, r, placed, cx, cy)
-        placed.append(box)
+    def chg(v, unit):
+        if v is None:
+            return '<span class="zero">—</span>'
+        cls = "pos" if v > 0 else "neg" if v < 0 else "zero"
+        return f'<span class="{cls}">{v:+.0f} bp</span>' if unit == "bp" else f'<span class="{cls}">{v:+.1f}%</span>'
 
-        transitioned = _transition(prev_quadrants.get(ticker, ""), q)
-        ring = ''
-        if ticker in early_turn:
-            ring = 'stroke="#8B5CF6" stroke-width="1.5"'
-        svg_rows.append(
-            f'<g class="quadrant-point" data-group="{esc(group)}" data-ticker="{esc(ticker)}" data-name="{esc(name)}" data-ox="{px}" data-oy="{py}" '
-            f'transform="translate({cx_p:.1f},{cy_p:.1f})">'
-            f'<circle r="{r:.1f}" fill="{color}" opacity="0.9" {ring}>'
-            f'<title>{esc(ticker)} — {esc(name)} ({esc(q)})'
-            f'\nRS Ratio: {ratio:+.2f} | RS Momentum: {momentum:+.2f}'
-            f'\nRatio Z: {px:+.2f} | Momentum Z: {py:+.2f}'
-            f'\nRS 1W: {_format_rs(rs1w)} | 1M: {_format_rs(rs1m)} | 3M: {_format_rs(rs3m)}'
-            f'{" ⚡ early turn" if ticker in early_turn else ""}</title>'
-            f'</circle>')
-        if transitioned:
-            svg_rows.append(f'<circle r="{r+3:.1f}" fill="none" stroke="#fff" stroke-width="1.2" opacity="0.8"><title>quadrant transition</title></circle>')
-        if (ox, oy) != (0, -(r + 4)):
-            svg_rows.append(_leader_line(r, ox, oy, anchor, lw, color))
-        svg_rows.append(f'<text x="{ox:.0f}" y="{oy:.0f}" text-anchor="{anchor}" dominant-baseline="{baseline}" fill="{color}" font-size="8" font-weight="600" style="paint-order:stroke" stroke="#0d1117" stroke-width="2">{esc(label)}</text>')
-        svg_rows.append('</g>')
+    def spark(vals):
+        if len(vals) < 2:
+            return ""
+        lo, hi = min(vals), max(vals)
+        pts = " ".join(f"{i / (len(vals) - 1) * 100:.1f},{22 - (v - lo) / ((hi - lo) or 1) * 20:.1f}"
+                       for i, v in enumerate(vals))
+        return (f'<svg class="mspark" viewBox="0 0 100 24" preserveAspectRatio="none" aria-hidden="true">'
+                f'<polyline points="{pts}" fill="none" stroke="#58a6ff" stroke-width="1.5" '
+                f'vector-effect="non-scaling-stroke"/></svg>')
 
-    svg_rows.append('</g>')
-    svg_rows.append('</svg>')
-    return "\n".join(svg_rows)
+    body, block = "", None
+    for r in rows:
+        if r["block"] != block:
+            block = r["block"]
+            body += f'<tr class="mblock"><td colspan="7">{esc(block)}</td></tr>'
+        last = f'{r["last"]:.2f}%' if r["unit"] == "bp" else f'{r["last"]:.2f}'
+        body += (f'<tr class="mrow" data-macro="{esc(r["ticker"])}">'
+                 f'<td class="mname" data-l="Series"><b>{esc(r["ticker"])}</b> <span class="mf-name">{esc(r["name"])}</span></td>'
+                 f'<td class="num" data-l="Last">{last}<span class="msub">{esc(r["last_date"])}</span></td>'
+                 f'<td class="num" data-l="1w">{chg(r["chg_1w"], r["unit"])}</td>'
+                 f'<td class="num" data-l="4w">{chg(r["chg_4w"], r["unit"])}</td>'
+                 f'<td class="num" data-l="13w">{chg(r["chg_13w"], r["unit"])}</td>'
+                 f'<td class="num" data-l="1y pct">{"—" if r["pct_1y"] is None else r["pct_1y"]}</td>'
+                 f'<td class="mspark-cell" data-l="65 days">{spark(r["spark"])}</td></tr>')
+    return f"""<div class="macro-panel" id="macro-panel">
+<h2>Macro backdrop</h2>
+<table class="macro-table"><thead><tr><th>Series</th><th class="num">Last</th><th class="num">1w</th><th class="num">4w</th><th class="num">13w</th><th class="num">1y pct</th><th>Last 65 days</th></tr></thead>
+<tbody>{body}</tbody></table>
+<div class="note">Not on the map: a rate or an index level has no "beating SPY". Rates and credit spreads change in basis points, the rest in percent; 1y pct = where the last value sits in its own last year (100 = the year's high).</div>
+</div>"""
+
+
+RRG_JS = r"""<script>
+var RRG = __RRG_JSON__;
+var TRAIL = 8, FOCUS = null, HOVER = null;
+var VIEW = {z: 1, cx: 100, cy: 100}, GEOM = null;   // zoom factor and centre, in RS units; GEOM = the last draw's scale
+function zoomBy(f, cx, cy) {
+    var z = Math.min(12, Math.max(1, VIEW.z * f));
+    if (cx != null) { VIEW.cx = cx + (VIEW.cx - cx) * VIEW.z / z; VIEW.cy = cy + (VIEW.cy - cy) * VIEW.z / z; }
+    VIEW.z = z;
+    if (z === 1) { VIEW.cx = 100; VIEW.cy = 100; }
+    drawRRG();
+}
+function zoomReset() { VIEW = {z: 1, cx: 100, cy: 100}; drawRRG(); }
+var QCOL = {LEADING:'#3fb950', WEAKENING:'#d2991d', LAGGING:'#f85149', IMPROVING:'#58a6ff'};
+function rrgVisible(e) {
+    if (HIDDEN[e.ticker]) return false;
+    if (THEME !== 'all') return (THEME_ETFS[THEME] || []).indexOf(e.ticker) >= 0;
+    return String(e.group).toLowerCase() === ACTIVE_GROUP;
+}
+function setTrail(n) {
+    TRAIL = n;
+    document.querySelectorAll('.trail-btn').forEach(function(b){ b.classList.toggle('active', +b.dataset.n === n); });
+    drawRRG();
+}
+function setFocus(t) { FOCUS = (FOCUS === t) ? null : t; drawRRG(); }
+function drawRRG() {
+    var svg = document.getElementById('rrg');
+    if (!svg) return;
+    var rows = RRG.etfs.filter(function(e){ return rrgVisible(e) && e.points.length && e.points[e.points.length-1]; });
+    var m = 1.5;
+    rows.forEach(function(e){ e.points.slice(-TRAIL).forEach(function(p){ if (p) m = Math.max(m, Math.abs(p[0]-100), Math.abs(p[1]-100)); }); });
+    m = Math.ceil(m*2)/2 + 0.25;
+    var M = m / VIEW.z;
+    var K = Math.max(1, 600 / (svg.clientWidth || 600));
+    svg.style.setProperty('--k', K);
+    var W = 600, P = Math.round(34*Math.min(K, 1.7)), S = (W-2*P)/(2*M);
+    function X(v){ return P + (v-VIEW.cx+M)*S; } function Y(v){ return W-P-(v-VIEW.cy+M)*S; }
+    GEOM = {S: S, P: P, M: M};
+    function cl(v){ return Math.min(W-P, Math.max(P, v)); }
+    var X0 = cl(X(100)), Y0 = cl(Y(100));
+    svg.style.touchAction = VIEW.z > 1 ? 'none' : 'manipulation';
+    var rs = document.getElementById('zoom-reset'); if (rs) rs.classList.toggle('active', VIEW.z > 1);
+    var s = '';
+    s += '<defs><clipPath id="rrg-clip"><rect x="'+P+'" y="'+P+'" width="'+(W-2*P)+'" height="'+(W-2*P)+'"/></clipPath></defs>';
+    [['LEADING',X0,P,W-P-X0,Y0-P,'Leading','end',W-P-8,P+18],
+     ['WEAKENING',X0,Y0,W-P-X0,W-P-Y0,'Weakening','end',W-P-8,W-P-8],
+     ['LAGGING',P,Y0,X0-P,W-P-Y0,'Lagging','start',P+8,W-P-8],
+     ['IMPROVING',P,P,X0-P,Y0-P,'Improving','start',P+8,P+18]].forEach(function(q){
+        if (q[3] <= 0 || q[4] <= 0) return;
+        s += '<rect x="'+q[1]+'" y="'+q[2]+'" width="'+q[3]+'" height="'+q[4]+'" fill="'+QCOL[q[0]]+'" opacity=".06"/>'
+           + '<text class="qlabel" x="'+q[7]+'" y="'+q[8]+'" text-anchor="'+q[6]+'" fill="'+QCOL[q[0]]+'">'+q[5]+'</text>';
+    });
+    var st = M > 4 ? 2 : M > 1.6 ? 1 : M > 0.7 ? 0.5 : 0.25;
+    for (var v = Math.ceil((VIEW.cx-M)/st)*st; v <= VIEW.cx+M + 1e-9; v += st) {
+        s += '<line x1="'+X(v)+'" y1="'+P+'" x2="'+X(v)+'" y2="'+(W-P)+'" stroke="#21262d"/>'
+           + '<text class="tick" x="'+X(v)+'" y="'+(W-P+14)+'" text-anchor="middle">'+(+v.toFixed(2))+'</text>';
+    }
+    for (var u = Math.ceil((VIEW.cy-M)/st)*st; u <= VIEW.cy+M + 1e-9; u += st) {
+        s += '<line x1="'+P+'" y1="'+Y(u)+'" x2="'+(W-P)+'" y2="'+Y(u)+'" stroke="#21262d"/>'
+           + '<text class="tick" x="'+(P-6)+'" y="'+(Y(u)+3)+'" text-anchor="end">'+(+u.toFixed(2))+'</text>';
+    }
+    if (X(100) >= P && X(100) <= W-P) s += '<line x1="'+X(100)+'" y1="'+P+'" x2="'+X(100)+'" y2="'+(W-P)+'" stroke="#8b949e"/>';
+    if (Y(100) >= P && Y(100) <= W-P) s += '<line x1="'+P+'" y1="'+Y(100)+'" x2="'+(W-P)+'" y2="'+Y(100)+'" stroke="#8b949e"/>';
+    s += '<text class="axis" x="'+(W-P)+'" y="'+(W-6)+'" text-anchor="end">RS-Ratio →</text>'
+       + '<text class="axis" x="10" y="'+(P-12)+'">↑ RS-Momentum</text>';
+    var lit = FOCUS || HOVER;
+    s += '<g clip-path="url(#rrg-clip)">';
+    rows.sort(function(a,b){ return (a.ticker === lit) - (b.ticker === lit); }).forEach(function(e){
+        var pts = e.points.slice(-TRAIL).filter(Boolean).map(function(p){ return [X(p[0]), Y(p[1]), p[2]]; });
+        var on = lit === e.ticker, op = (lit && !on) ? 0.15 : 1, c = QCOL[e.quadrant] || '#8b949e';
+        for (var i = 1; i < pts.length; i++) {
+            var f = 0.25 + 0.75*(i/(pts.length-1));
+            s += '<line x1="'+pts[i-1][0]+'" y1="'+pts[i-1][1]+'" x2="'+pts[i][0]+'" y2="'+pts[i][1]+'" stroke="'+(on?'#f0f6fc':c)
+               + '" stroke-width="'+(on?2.5:1.6)+'" stroke-linecap="round" opacity="'+((on?1:f*0.8)*op)+'"/>';
+        }
+        pts.slice(0,-1).forEach(function(p){
+            s += '<circle cx="'+p[0]+'" cy="'+p[1]+'" r="'+(on?3.5:2.2)+'" fill="'+(on?'#f0f6fc':c)+'" opacity="'+((on?0.9:0.5)*op)+'"/>';
+            if (on) s += '<text class="wlabel" x="'+(p[0]+6)+'" y="'+(p[1]-5)+'">'+rcEsc(String(p[2]).slice(5))+'</text>';
+        });
+        var h = pts[pts.length-1];
+        s += '<g class="rrg-dot" data-ticker="'+rcEsc(e.ticker)+'" style="cursor:pointer" opacity="'+op+'">'
+           + '<circle cx="'+h[0]+'" cy="'+h[1]+'" r="22" fill="transparent"/>'
+           + '<circle cx="'+h[0]+'" cy="'+h[1]+'" r="'+((on?8:6.5)*Math.sqrt(K))+'" fill="'+c+'" stroke="#161b22" stroke-width="2"/>'
+           + '<text class="dlabel" x="'+(h[0]+10*K)+'" y="'+(h[1]+4)+'">'+rcEsc(e.ticker)+'</text></g>';
+    });
+    s += '</g>';
+    svg.innerHTML = s;
+    svg.querySelectorAll('g.rrg-dot').forEach(function(g){
+        var e = RRG.etfs.filter(function(x){ return x.ticker === g.dataset.ticker; })[0];
+        g.addEventListener('click', function(){ setFocus(g.dataset.ticker); });
+        g.addEventListener('mousemove', function(ev){ rrgTip(ev, e); });
+        g.addEventListener('mouseleave', function(){ document.getElementById('rrg-tip').style.display = 'none'; });
+    });
+    document.querySelectorAll('tbody tr[data-ticker]').forEach(function(r){ r.classList.toggle('on', r.dataset.ticker === FOCUS); });
+    var cnt = document.getElementById('chart-count');
+    if (cnt) cnt.textContent = rows.length + ' ETFs';
+}
+function rrgTip(ev, e) {
+    var p = e.points[e.points.length-1], t = document.getElementById('rrg-tip');
+    function f(v){ return v == null ? '—' : (v > 0 ? '+' : '') + v.toFixed(1) + '%'; }
+    t.innerHTML = '<b>' + rcEsc(e.ticker) + '</b> ' + rcEsc(e.name) + '<br>Ratio ' + p[0].toFixed(1) + ' · Momentum ' + p[1].toFixed(1)
+        + '<br>' + rcEsc(e.quadrant.toLowerCase()) + ' for ' + e.weeks_in_quadrant + ' wk · vs SPY 4w ' + f(e.rs_1m) + ' · 12w ' + f(e.rs_3m);
+    t.style.display = 'block'; t.style.left = (ev.clientX + 12) + 'px'; t.style.top = (ev.clientY + 12) + 'px';
+}
+window.addEventListener('resize', function(){ drawRRG(); });
+// zoom with the wheel around the cursor; drag to pan (a finger pans only when zoomed in, so the page still scrolls)
+function rrgAt(svg, ev) {
+    var r = svg.getBoundingClientRect(), k = 600 / (r.width || 600);
+    return [VIEW.cx - GEOM.M + ((ev.clientX - r.left)*k - GEOM.P) / GEOM.S, VIEW.cy + GEOM.M - ((ev.clientY - r.top)*k - GEOM.P) / GEOM.S];
+}
+document.addEventListener('DOMContentLoaded', function(){
+    var svg = document.getElementById('rrg'), drag = null;
+    if (!svg || !svg.addEventListener) return;
+    svg.addEventListener('wheel', function(ev){
+        if (!GEOM) return;
+        ev.preventDefault();
+        var at = rrgAt(svg, ev);
+        zoomBy(ev.deltaY < 0 ? 1.25 : 0.8, at[0], at[1]);
+    }, {passive: false});
+    svg.addEventListener('pointerdown', function(ev){
+        if (!GEOM || (ev.pointerType !== 'mouse' && VIEW.z <= 1) || ev.target.closest('g.rrg-dot')) return;
+        drag = {x: ev.clientX, y: ev.clientY, cx: VIEW.cx, cy: VIEW.cy, k: 600 / (svg.getBoundingClientRect().width || 600)};
+        ev.preventDefault(); svg.setPointerCapture(ev.pointerId);
+    });
+    svg.addEventListener('pointermove', function(ev){
+        if (!drag) return;
+        VIEW.cx = drag.cx - (ev.clientX - drag.x) * drag.k / GEOM.S;
+        VIEW.cy = drag.cy + (ev.clientY - drag.y) * drag.k / GEOM.S;
+        drawRRG();
+    });
+    svg.addEventListener('pointerup', function(){ drag = null; });
+    svg.addEventListener('pointercancel', function(){ drag = null; });
+    svg.addEventListener('dblclick', function(){ zoomReset(); });
+});
+document.addEventListener('DOMContentLoaded', function(){
+    document.querySelectorAll('tbody tr[data-ticker]').forEach(function(row){
+        row.addEventListener('mouseenter', function(){ HOVER = row.dataset.ticker; drawRRG(); });
+        row.addEventListener('mouseleave', function(){ HOVER = null; drawRRG(); });
+        row.addEventListener('click', function(e){
+            if (e.target.closest('.holdings-row') || e.target.closest('a') || e.target.closest('button')) return;
+            setFocus(row.dataset.ticker);
+        });
+    });
+});
+</script>"""
 
 
 def export_rotation_dashboard(snapshots: list[ETFRotationSnapshot], filename: str = None,
@@ -883,10 +908,10 @@ def export_rotation_dashboard(snapshots: list[ETFRotationSnapshot], filename: st
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     path = OUTPUT_DIR / (filename or f"rotation/rotation_map_{ts}.html")
 
-    # Stats — sector+commodity quadrant counts (Card 1 in the metric strip)
+    # Stats — the sectors' quadrant counts (Card 1 in the metric strip)
     quad_counts = {"LEADING": 0, "WEAKENING": 0, "LAGGING": 0, "IMPROVING": 0}
     for s in snapshots:
-        if s.group_name in ("sector", "commodity") and s.rrg_quadrant in quad_counts:
+        if s.group_name == "sector" and s.rrg_quadrant in quad_counts:
             quad_counts[s.rrg_quadrant] += 1
 
     # previous-day quadrant map (for arrows / early-turn). The newest date shown (DF66): a range Fetch renders each
@@ -895,7 +920,7 @@ def export_rotation_dashboard(snapshots: list[ETFRotationSnapshot], filename: st
     fetched_at = _snapshot_fetched_at(as_of) or (snapshots[0].retrieved_at if snapshots else None)
     prev_quadrants = _previous_quadrants(as_of)
     group_of = {s.ticker: s.group_name for s in snapshots}
-    core_groups = ("sector", "commodity")
+    core_groups = ("sector",)
     transitions = [s.ticker for s in snapshots
                    if _transition(prev_quadrants.get(s.ticker, ""), s.rrg_quadrant)]
     breakdowns = [s.ticker for s in snapshots
@@ -905,10 +930,6 @@ def export_rotation_dashboard(snapshots: list[ETFRotationSnapshot], filename: st
                   and s.ticker in transitions]
     early_turn = {t for t in _early_turn_tickers(as_of, snapshots)
                   if group_of.get(t, "") in core_groups}
-
-    # SR-1: no stored table carries a 30-day ADV per ETF, and asking UW for it at render made a Fetch and a Refresh
-    # draw different dots. Every dot is one size (``_adv_radius(None)``); the caption says so. ``uw`` is unused.
-    adv_map: dict[str, float] = {}
 
     # Filters (no "All" — default to sector; groups only)
     filters = ''
@@ -935,7 +956,6 @@ def export_rotation_dashboard(snapshots: list[ETFRotationSnapshot], filename: st
         info = ROTATION_ETFS.get(s.ticker, {})
         color = GROUP_COLORS.get(s.group_name, "#8b949e")
         r1c = _rs_color(s.rs_1w or 0); r2c = _rs_color(s.rs_1m or 0); r3c = _rs_color(s.rs_3m or 0)
-        r_val, theta_val = _trajectory_metrics(s.rs_ratio_z, s.rs_momentum_z)
         et_badge = '<span class="badge" style="background:rgba(139,92,246,.15);color:#8B5CF6;border:1px solid #8B5CF6">⚡</span> ' if s.ticker in early_turn else ''
 
         rows += f'<tr data-group="{esc(s.group_name)}" data-ticker="{esc(s.ticker)}">'
@@ -945,14 +965,12 @@ def export_rotation_dashboard(snapshots: list[ETFRotationSnapshot], filename: st
         rows += f'<td class="ticker td-g1">{caret}{et_badge}{esc(s.ticker)}{pair}</td>'
         rows += f'<td class="td-g1"><span class="group" style="color:{color}">{esc(info.get("name", s.ticker))}</span></td>'
         rows += f'<td class="td-g1 center">{_quadrant_badge(s.rrg_quadrant)}</td>'
-        rows += f'<td class="num {r1c} td-g2" style="{_rs_heat_style(s.rs_1w)}" data-col="rs_1w" data-val="{"" if s.rs_1w is None else s.rs_1w}">{_format_rs(s.rs_1w)}</td>'
+        rows += f'<td class="num {r1c} td-g2 c-1w" style="{_rs_heat_style(s.rs_1w)}" data-col="rs_1w" data-val="{"" if s.rs_1w is None else s.rs_1w}">{_format_rs(s.rs_1w)}</td>'
         rows += f'<td class="num {r2c} td-g2" style="{_rs_heat_style(s.rs_1m)}" data-col="rs_1m" data-val="{"" if s.rs_1m is None else s.rs_1m}">{_format_rs(s.rs_1m)}</td>'
         rows += f'<td class="num {r3c} td-g2" style="{_rs_heat_style(s.rs_3m)}" data-col="rs_3m" data-val="{"" if s.rs_3m is None else s.rs_3m}">{_format_rs(s.rs_3m)}</td>'
         rows += _z_cell("rs_ratio_z", s.rs_ratio_z)
         rows += _z_cell("rs_momentum_z", s.rs_momentum_z)
-        rows += f'<td class="num td-g4" data-col="r" data-val="{r_val or 0}">{r_val:.2f}</td>' if r_val is not None else '<td class="num td-g4">—</td>'
-        rows += f'<td class="num td-g4" data-col="theta" data-val="{theta_val or 0}">{theta_val:.0f}°</td>' if theta_val is not None else '<td class="num td-g4">—</td>'
-        rows += f'<td class="num td-g1" data-col="close">{_format_close(s.ticker, s.close_price)}</td>'
+        rows += f'<td class="num td-g1 c-price" data-col="close">{_format_close(s.ticker, s.close_price)}</td>'
         rows += f'</tr>'
 
     # ── 3-card metric strip ──
@@ -980,7 +998,7 @@ def export_rotation_dashboard(snapshots: list[ETFRotationSnapshot], filename: st
 
     summary_cards = (
         f'<div class="summary-cards">'
-        f'<div class="sum-card"><div class="sc-title">Sector + Commodity Counts</div><div class="sc-body">{counts_chips}</div></div>'
+        f'<div class="sum-card"><div class="sc-title">Sector Counts</div><div class="sc-body">{counts_chips}</div></div>'
         f'{_chips_card("⚡ Early Turn", sorted(early_turn), "et")}'
         f'{_chips_card("⚠️ Breakdown", breakdowns, "bd")}'
         f'</div>'
@@ -1015,8 +1033,9 @@ def export_rotation_dashboard(snapshots: list[ETFRotationSnapshot], filename: st
         "Improving. ETFs usually move around the map clockwise. <b>Fetch</b> computes the map from the stored daily "
         "prices and fund holdings (no provider call) and stores a snapshot. <b>Refresh</b> redraws the map from the newest stored snapshot with no network call.")
     html = f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>RevenueChaser — Rotation Map</title>{CSS}</head><body>
-<div class="header"><h1>ROTATION MAP — Sector &amp; Theme</h1><div class="meta">{as_of.isoformat()}{fetched_html} | {len(snapshots)} ETFs | {benchmark}-Relative RS</div></div>
+<div class="header"><h1>ROTATION MAP — Sector &amp; Theme</h1><div class="meta">{as_of.isoformat()}{fetched_html} | {len(snapshots)} ETFs | vs {benchmark}, total return, completed weeks</div></div>
 {provider_health_html(provider_health)}
+<div class="tooltip" id="rrg-tip"></div>
 {help_block}
 
 {summary_cards}
@@ -1025,46 +1044,29 @@ def export_rotation_dashboard(snapshots: list[ETFRotationSnapshot], filename: st
 
 <div class="grid">
 <div class="quadrant-panel">
-<div class="map-controls" style="display:flex;align-items:center;gap:6px;margin-bottom:10px"><div class="dd" id="dd"><button class="dd-btn" onclick="toggleDd()">Show tickers ▾</button><div class="dd-menu" id="dd-menu"></div></div><button class="filter-btn" onclick="setZoom(ZOOM*1.25)">+</button><button class="filter-btn" onclick="setZoom(ZOOM/1.25)">−</button><button class="filter-btn" onclick="resetView()">Reset</button><span style="font-size:11px;color:#8b949e" id="zoom-label">1.0x</span></div>
-{_build_svg(snapshots_sorted, prev_quadrants, adv_map, early_turn)}
-<div style="font-size:11px;color:#8b949e;margin-top:10px;text-align:center">RS Ratio → | RS Momentum ↑ | Dot size fixed (no stored 30d ADV, so Fetch and Refresh draw the same map) <span id="chart-scale"></span></div>
-<div style="font-size:11px;color:#8b949e;margin-top:14px;line-height:1.6;text-align:left">
-<b style="color:#c9d1d9">Computed on weekly closes (1w), {benchmark}-relative, z-normalized across {len(snapshots)} symbols.</b><br>
-<b>RS 1W / 1M / 3M</b> = the symbol's total return over 1 week / 4 weeks / 12 weeks, <b>minus</b> the benchmark's return over the same window (percentage points).<br>
-Ratio = 0.20·1W + 0.35·1M + 0.45·3M &nbsp;·&nbsp; Momentum = 0.55·1W + 0.30·1M − 0.15·3M.<br>
-<b style="color:#3fb950">Ratio Z:</b> long-term RS leadership. Positive = outperforming {benchmark} over 1W/1M/3M.<br>
-<b style="color:#58a6ff">Momentum Z:</b> direction. Positive = RS accelerating upward.<br>
-<b>r, θ°:</b> trajectory in the (Ratio Z, Mom Z) plane — r = distance from the origin (magnitude of the move), θ = heading angle (0° = +Ratio, 90° = +Momentum).<br>
-<b style="color:#d2991d">Yield group (US02Y…USIRYY):</b> these are interest rates, not prices — a <i>rising</i> yield is bearish. The intended inversion is not applied: RS compares returns, and negating the series leaves them unchanged. So a positive RS here means the yield <b>rose</b> faster than the benchmark (not that it fell).<br>
-White ring = quadrant transition vs prior snapshot. <span style="color:#8B5CF6">Purple ring</span> = early turn (momentum above 0 on the two prior stored snapshots while ratio is below 0).<br><br>
-<b style="color:#c9d1d9">Quadrants:</b><br>
-<span style="color:#3fb950">LEADING</span>: strong + strengthening → best earnings backdrop.<br>
-<span style="color:#58a6ff">IMPROVING</span>: weak but turning up → early recovery.<br>
-<span style="color:#d2991d">WEAKENING</span>: strong but losing steam → cautious.<br>
-<span style="color:#f85149">LAGGING</span>: weak + weakening → avoid.
-</div>
+<div class="map-controls"><span class="lbl">Trail</span><button class="filter-btn trail-btn" data-n="4" onclick="setTrail(4)">4w</button><button class="filter-btn trail-btn active" data-n="8" onclick="setTrail(8)">8w</button><button class="filter-btn trail-btn" data-n="13" onclick="setTrail(13)">13w</button><span class="lbl">Zoom</span><button class="filter-btn zoom-btn" onclick="zoomBy(1.5)" aria-label="Zoom in">+</button><button class="filter-btn zoom-btn" onclick="zoomBy(1/1.5)" aria-label="Zoom out">−</button><button class="filter-btn" id="zoom-reset" onclick="zoomReset()">Reset</button><span class="lbl" id="chart-count"></span></div>
+<svg class="rrg" id="rrg" viewBox="0 0 600 600" role="img" aria-label="Relative rotation graph: each ETF against its own history vs {benchmark}"></svg>
+<div class="note">Each dot is the last completed week; the line is its path over the weeks before (faint = older). Right of 100 = stronger than {benchmark} against its own 14-week trend, above 100 = that strength is rising. ETFs usually turn clockwise. Tap a dot or a row to follow one path.</div>
+<div class="note"><b style="color:#c9d1d9">How it is computed:</b> total-return weekly closes vs {benchmark}, completed weeks only. RS-Ratio = 100 + how far the ETF/{benchmark} line sits above its own 14-week average, in units of its last year's spread; RS-Momentum = 100 + the 4-week change of RS-Ratio, in the same units. Each ETF is measured against its own history, so adding or removing an ETF never moves another's dot.<br>
+<b>RS 1W / 1M / 3M</b> = the ETF's return over 1 / 4 / 12 weeks minus {benchmark}'s (percentage points). <span style="color:#8B5CF6">⚡ Early turn</span> = momentum above 100 on the two prior stored snapshots while ratio is below 100.</div>
 </div>
 
 <div class="table-panel">
 <table><thead>
 <tr>
 <th class="group th-g1" colspan="3">Identity</th>
-<th class="group th-g2" colspan="3">Relative Strength vs {benchmark}</th>
-<th class="group th-g3" colspan="2">Z-Scores</th>
-<th class="group th-g4" colspan="2">Trajectory</th>
-<th class="group th-g1" colspan="1">Price</th>
+<th class="group th-g2" colspan="3">Return vs {benchmark}</th>
+<th class="group th-g3 c-rot" colspan="2">Rotation</th>
+<th class="group th-g1 c-price" colspan="1">Price</th>
 </tr><tr>
 <th class="th-g1">Ticker</th><th class="th-g1">Name</th><th class="th-g1 center">Quadrant</th>
-<th class="th-g2 num">RS 1W</th><th class="th-g2 num">RS 1M</th><th class="th-g2 num">RS 3M</th>
-<th class="th-g3 num">Ratio Z</th><th class="th-g3 num">Mom Z</th>
-<th class="th-g4 num">r</th><th class="th-g4 num">θ°</th>
-<th class="th-g1 num">Price</th>
+<th class="th-g2 num c-1w">RS 1W</th><th class="th-g2 num">RS 1M</th><th class="th-g2 num">RS 3M</th>
+<th class="th-g3 num c-rot">RS-Ratio</th><th class="th-g3 num c-rot">RS-Mom</th>
+<th class="th-g1 num c-price">Price</th>
 </tr></thead><tbody>{rows}</tbody></table>
-<div style="font-size:11px;color:#8b949e;margin-top:8px;line-height:1.5">
-<b style="color:#c9d1d9">Columns:</b> RS 1W/1M/3M = excess return vs {benchmark} (percentage points). Ratio Z / Mom Z = cross-sectional z-scores of RS Ratio / RS Momentum. r / θ° = magnitude + heading angle of the (Ratio Z, Mom Z) vector.<br>
-<b style="color:#c9d1d9">Groups:</b> sector, theme, bond &amp; commodity are traded prices (RS vs {benchmark} is a standard cross-asset comparison). <b style="color:#d2991d">yield</b> symbols are interest rates; the inversion is not applied, so a rising yield reads as positive RS.
-</div>
 </div></div>
+
+{_macro_table_html(as_of)}
 
 <div class="grid">
 <div class="moneyflow-panel" id="mf-panel">
@@ -1085,7 +1087,7 @@ A high positive score = persistent net buying pressure relative to the fund's ow
 </div>
 
 <footer>RevenueChaser v1 — Rotation Engine — stored prices &mdash; {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</footer>
-{HOVER_JS}
+{RRG_JS.replace('__RRG_JSON__', script_json(_rrg_payload(snapshots, as_of)))}
 {watchlist_html("sector_rotation")}
 {js}</body></html>"""
 
@@ -1277,7 +1279,7 @@ def _trail_html(start: date, end: date, sampled: list[str], series: dict[str, li
 <div class="filters" style="margin-bottom:10px">{filters}{theme_html} <span style="margin-left:auto;display:inline-flex;gap:6px;align-items:center"><div class="dd" id="dd"><button class="dd-btn" onclick="toggleDd()">Show tickers ▾</button><div class="dd-menu" id="dd-menu"></div></div><button class="filter-btn" onclick="setZoom(ZOOM*1.25)">+</button><button class="filter-btn" onclick="setZoom(ZOOM/1.25)">−</button><button class="filter-btn" onclick="resetView()">Reset</button><span style="font-size:11px;color:#8b949e" id="zoom-label">1.0x</span></span></div>
 {svg}
 </div>
-<footer>Rotation trail — weekly-candle RS, z-normalized cross-section per day</footer>
+<footer>Rotation trail — each ETF against its own history (A1), stored weekly snapshots</footer>
 <div style="font-size:11px;color:#8b949e;max-width:760px;margin:0 auto 20px;line-height:1.6">
 <b style="color:#c9d1d9">Trail legend:</b> each line traces one symbol's (RS Ratio Z, RS Momentum Z) path across the selected weeks — the trail direction is your rotational momentum over time.<br>
 Newest week = largest dot (head node); older dots shrink exponentially. The <b>arrowhead at the head node</b> points in the direction of travel from the previous week (clockwise = improving rotation, counter-clockwise = deteriorating).<br>

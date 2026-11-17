@@ -1,9 +1,9 @@
 """Universe for the RRG rotation engine.
 
-- ``ROTATION_ETFS`` — 78 symbols run through the SPY-relative rotation engine
-  (Z-score, quadrants, trajectory r/theta, money flow). Includes 67 ETFs plus
-  11 macro indicators (yield curve + volatility/commodities) sourced weekly
-  from FRED/yfinance via ``MACRO_SERIES``.
+- ``ROTATION_ETFS`` — 90 symbols: 79 ETFs run through the SPY-relative rotation engine (A1: each against its own
+  history; quadrants, money flow) plus 11 macro indicators (yield curve + volatility/commodities) that are named here
+  and shown in the macro table, not on the map (B1). ``MACRO_SERIES`` holds their ``market_series`` rows and two more
+  macro-table-only series (the HY and IG credit spreads).
 
 Both are reference data, not a board's own, so they live in ``core/rotation_reference.py``
 (since #12) and are re-exported here: ``core/prices.py``, ``module_relatedness`` and
@@ -38,6 +38,7 @@ COUNTRY_FLAGS = {
 GROUP_COLORS = {
     "sector": "#58a6ff",
     "theme": "#d2991d",
+    "style": "#db61a2",
     "bond": "#f85149",
     "region": "#a371f7",
     "yield": "#22d3ee",

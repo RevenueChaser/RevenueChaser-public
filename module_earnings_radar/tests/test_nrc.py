@@ -75,6 +75,13 @@ def test_nrc_from_card_skips_unknown_accel(rawstore_tmp_db):
     assert d["growth"] == 50.0
 
 
+def test_nrc_ignores_the_rotation_quadrant_d1(rawstore_tmp_db):
+    """D1 (avo 17 Nov 2026): the Sector Rotation quadrant adds no bonus until a backtest shows it helps."""
+    lead = nrc_from_card(TradeCard(ticker="AAA", direction_score=20, key_thesis="", rotation_quadrant="LEADING"))
+    lag = nrc_from_card(TradeCard(ticker="AAA", direction_score=20, key_thesis="", rotation_quadrant="LAGGING"))
+    assert lead["nrc"] == lag["nrc"]
+
+
 def test_agh_context_from_ticker_store(rawstore_tmp_db):
     from RevenueChaser.core import ticker_store
     ticker_store.write_from_cards([{

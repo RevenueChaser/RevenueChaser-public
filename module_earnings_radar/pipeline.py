@@ -1317,7 +1317,7 @@ def _trade_read(direction: float, confidence: float, veto: bool, binary: bool, l
 
 def _attention_score(conf: float, vol_edge: float, liquidity: str, rotation_quadrant: str, ed) -> float:
     liq = {"Excellent": 100, "Tradeable": 60, "Thin": 20}.get(liquidity, 40)
-    rot = {"LEADING": 100, "IMPROVING": 60, "WEAKENING": 40, "LAGGING": 0}.get(rotation_quadrant, 30)
+    rot = 50   # D1 (avo 17 Nov 2026): the rotation quadrant is neutral here until a backtest shows it helps
     try:
         days = (ed - today_ny()).days if ed else 999
     except TypeError:
@@ -1652,8 +1652,8 @@ def nrc_from_card(card, watchlist: set = None) -> dict:
     """Build one NRC result dict from a TradeCard (live slots only)."""
     growth = max(0.0, min(100.0, 50.0 + (card.direction_score or 0) * 0.5))
     beat = _nrc_beat(card)
-    rot = card.rotation_quadrant
-    rot_bonus = 10 if rot == "LEADING" else (5 if rot == "IMPROVING" else (-10 if rot == "LAGGING" else 0))
+    # D1 (avo 17 Nov 2026): the Sector Rotation quadrant adds nothing to the score until a backtest shows it helps.
+    rot_bonus = 0
     accel = nrc_acceleration(card)
     quality = nrc_quality(card)
     nrc, tier = compute_nrc_score(

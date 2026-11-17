@@ -72,7 +72,7 @@ def test_a_rotation_fetch_makes_no_holdings_call(rawstore_tmp_db, monkeypatch):
 # ── Data Health summary ────────────────────────────────────────────────────────────────────────────────────────────
 def test_health_summary_on_an_empty_store(rawstore_tmp_db):
     h = eh.health_summary()
-    assert h["expected"] == len(SYNCED) == 34
+    assert h["expected"] == len(SYNCED) == 41
     assert h["stored"] == 0 and h["newest_session"] is None and h["missing"] == sorted(SYNCED)
 
 
@@ -98,12 +98,12 @@ def test_health_summary_counts_the_newest_day_providers_and_rs(rawstore_tmp_db):
     assert h["lines"] == 2 * (len(SYNCED) - 1)
     assert h["providers"] == {"ssga": len(SYNCED) - 2, "uw": 1}
     assert h["missing"] == ["AIQ"]
-    assert h["themes"] == 23 and h["rs_stored"] == 1
+    assert h["themes"] == 30 and h["rs_stored"] == 1
 
 
 # ── the typed numbers (#124 S4) ───────────────────────────────────────────────────────────────────────────────────
 def test_health_is_the_summary_numbers_typed(rawstore_tmp_db):
-    """Covered is the ETFs with spine holdings against the board's 34; the provider share is the provider of
+    """Covered is the ETFs with spine holdings against the board's 41; the provider share is the provider of
     every ETF's list. The newest day is the spine's, not a population."""
     from RevenueChaser.core import datahealth
 
@@ -112,12 +112,12 @@ def test_health_is_the_summary_numbers_typed(rawstore_tmp_db):
     n = eh.health_summary()
     h = eh.health()
 
-    assert h.covered == n["stored"] == len(SYNCED) == 34
-    assert h.expected == n["expected"] == 34
+    assert h.covered == n["stored"] == len(SYNCED) == 41
+    assert h.expected == n["expected"] == 41
     assert (h.newest, h.expected_as_of) == (n["newest_session"], None) == ("2026-10-09", None)
     assert h.source_share == {p: c / n["stored"] for p, c in n["providers"].items()}
     assert h.problems == ()
-    assert datahealth.coverage_text(h) == "100.0% (34 of 34)"
+    assert datahealth.coverage_text(h) == "100.0% (41 of 41)"
 
 
 def test_health_counts_a_missing_etf(rawstore_tmp_db):
@@ -128,6 +128,6 @@ def test_health_counts_a_missing_etf(rawstore_tmp_db):
     n = eh.health_summary()
     h = eh.health()
 
-    assert (h.covered, h.expected) == (n["stored"], n["expected"]) == (33, 34)
-    assert n["missing"] == ["AIQ"] and n["providers"] == {"ssga": 33}
-    assert datahealth.coverage_text(h) == "97.1% (33 of 34)"
+    assert (h.covered, h.expected) == (n["stored"], n["expected"]) == (40, 41)
+    assert n["missing"] == ["AIQ"] and n["providers"] == {"ssga": 40}
+    assert datahealth.coverage_text(h) == "97.6% (40 of 41)"
