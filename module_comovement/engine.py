@@ -336,7 +336,8 @@ def _short_history_steps(f: dict, prices_fix: dict | None) -> list[dict]:
             f"Listed recently (first price inside the {window}-session window)",
             f["listed_recently"], "drop", by_design=True),
         funnel_mod.step(
-            "missing_bars", f"Missing price bars (< {min_obs} of {window} sessions; a missing session can come back "
+            "missing_bars", f"Missing price bars (< {min_obs} of {window} sessions, or no bar in the last {config.STALE_SESSIONS + 1}; "
+                            "a missing session can come back "
                             "with the next prices build or the history run)",
             f["missing_bars"], "drop", by_design=False, fix=prices_fix),
     ]
@@ -744,15 +745,19 @@ def run(no_fetch: bool = False, tickers: list[str] | None = None,
     if flat_prints:
         prices = prices.drop(columns=[t for t in flat_prints if t in prices.columns])
     # F6: a name sessions behind is counted with the missing bars, not clustered on a window that ends early.
-    stale = _stale(prices, tickers, prices_through, eff.window, horizon)
+    # The benchmark is never "stale" here: its own cut (``bench_stale_sessions``) already handled it (review v2, N4).
+    stale = _stale(prices, [t for t in tickers if t != bench_ticker], prices_through, eff.window, horizon)
     if stale:
         prices = prices.drop(columns=stale)
 
     ret, dropped = returns_mod.log_returns(prices, window=eff.window,
                                            min_obs=eff.min_obs, horizon=horizon)
     bench_short = bool(bench_ticker) and (bench_ticker in dropped or bench_ticker in ret.columns)
-    dropped = sorted({t for t in dropped if t in tickers} | set(stale))
-    short_split = split_short_history(prices, dropped, eff.window, horizon, first=first)
+    short = [t for t in dropped if t in tickers]
+    # A stale name counts with the missing bars on both reads, wherever it listed (review v2, N3).
+    recent, missing = split_short_history(prices, short, eff.window, horizon, first=first)
+    short_split = (recent, sorted(missing + stale))
+    dropped = sorted(set(short) | set(stale))
 
     benchmark_applied = False
     # #392: "short" is a benchmark with prices but too few returns to remove the market with; "missing" has none.
