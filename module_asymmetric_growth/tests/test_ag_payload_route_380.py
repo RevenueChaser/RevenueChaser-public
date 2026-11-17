@@ -175,7 +175,7 @@ def _fetched(monkeypatch):
 def test_a_refresh_after_a_fetch_keeps_its_date_session_and_funnel(out, monkeypatch):
     _fetched(monkeypatch)
     runners.run_asymmetric_growth(None, no_fetch=True)
-    shown = json.loads(runners.ASYMMETRIC_GROWTH_JSON.read_text(encoding="utf-8"))
+    shown = json.loads((out / "asymmetric_growth" / "asymmetric_growth_latest.json").read_text(encoding="utf-8"))
     assert shown["asof"] == "2026-10-15T22:05:00+00:00" and shown["data_as_of"] == "2026-10-15"
     assert shown["funnel_steps"] == _FUNNEL and shown["summary"]["low_liquidity"] == 1
     assert [c["ticker"] for c in shown["cards"]] == ["AAA", "BBB"]
@@ -185,6 +185,6 @@ def test_a_refresh_over_other_rows_does_not_borrow_the_header(out, monkeypatch):
     _fetched(monkeypatch)
     ticker_store.write_from_cards([_card("ZZZ", points=9)], asof="2026-10-16T22:05:00+00:00")
     runners.run_asymmetric_growth(None, no_fetch=True)
-    shown = json.loads(runners.ASYMMETRIC_GROWTH_JSON.read_text(encoding="utf-8"))
+    shown = json.loads((out / "asymmetric_growth" / "asymmetric_growth_latest.json").read_text(encoding="utf-8"))
     assert shown["funnel_steps"] is None and shown["data_as_of"] is None
     assert shown["summary"]["scanned"] == 1

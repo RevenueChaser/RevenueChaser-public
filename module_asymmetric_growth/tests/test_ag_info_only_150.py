@@ -1,5 +1,7 @@
-"""#645 (owner, 10 Nov 2026, option A): the AG Fetch asks Yahoo for nothing. A name with stored SEC EDGAR annual
-figures is scored from them alone; a name without them gets no card. Synthetic stores, no network."""
+"""#150 / #645 (owner, 10 Nov 2026, option A): the AG Fetch asks Yahoo for nothing. A name with stored SEC EDGAR
+annual figures is scored from them alone; a name without them gets no card. Synthetic stores, no network.
+
+The constants below are shared by other AG test files (``_QUOTE``, ``_ANNUAL``, ``_YF_ANNUAL``, ``_edgar``)."""
 from __future__ import annotations
 
 import copy
@@ -11,15 +13,18 @@ from RevenueChaser.core.providers import yfinance as yfinance_client
 from RevenueChaser.module_asymmetric_growth import engine
 from RevenueChaser.rcdata.tests import fund_store
 
+_QUOTE = {"regularMarketPrice": 100.0, "fiftyTwoWeekHigh": 105.0, "fiftyDayAverage": 90.0,
+          "averageDailyVolume10Day": 160.0, "averageDailyVolume3Month": 100.0, "earningsTimestampStart": 1.8e9}
 _ANNUAL = [{"fiscal_year": y, "revenue": r, "gross_profit": r * 0.6, "operating_cash_flow": r * 0.3,
             "capex": r * 0.05, "total_debt": 10.0, "cash": 200.0, "total_assets": 1000.0,
             "rd_expense": r * 0.2, "diluted_shares": 100.0 + i}
            for i, (y, r) in enumerate([(2021, 100.0), (2022, 130.0), (2023, 190.0)])]
+_YF_ANNUAL = [dict(r, capital_expenditure=r["capex"]) for r in _ANNUAL]
 
 
-def _edgar(ticker, **meta):
-    return {"ticker": ticker, "annual": copy.deepcopy(_ANNUAL), "quarterly": [],
-            "meta": {"source": "sec_edgar", "entity_name": f"{ticker} Corp", "is_us": True, "available": True,
+def _edgar(ticker, annual=_ANNUAL, is_us=True, **meta):
+    return {"ticker": ticker, "annual": copy.deepcopy(annual), "quarterly": [],
+            "meta": {"source": "sec_edgar", "entity_name": f"{ticker} Corp", "is_us": is_us, "available": True,
                      **meta}}
 
 
