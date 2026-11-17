@@ -37,7 +37,7 @@ from typing import Any, Callable, Iterable, Protocol
 import duckdb
 import httpx
 
-from ...core import calendar, config, job_lock, rawstore
+from ...core import calendar, config, job_lock, notify, rawstore
 from .. import caps, ops, serving
 
 logger = logging.getLogger(__name__)
@@ -1140,6 +1140,8 @@ def _abort(run_id: str | None, req: dict, e: BaseException) -> None:
             ops.finish_request(req["id"], "failed", note=f"killed: {why}"[:300])
         except ops.STORE_ERRORS:
             logger.warning("could not end request %s", req["id"], exc_info=True)
+    if run_id is not None:   # a claimed request never reached (no run) is not a run that ended
+        notify.build_end(str(req.get("dataset") or "?"), status, why, requested=req.get("id") is not None)
 
 
 def _run(ctx: RunContext, ds, req: dict, params: dict, attended_ok: bool = False) -> dict:
@@ -1329,6 +1331,7 @@ def _finish(ctx: RunContext, req: dict, check: dict, status: str, error: str | N
     ops.finish_run(ctx.run_id, status, error)
     if req.get("id") is not None:
         ops.finish_request(req["id"], {"ok": "done", "skipped": "skipped"}.get(status, "failed"), note=notes)
+    notify.build_end(ctx.dataset, status, error or notes, requested=req.get("id") is not None)
     out = ops.latest_check(ctx.dataset)
     logger.info(format_check(out))
     return out
