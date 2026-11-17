@@ -184,7 +184,8 @@ def restore_check(scratch: Path | None = None) -> dict:
 
     ``{step: {"file", "bytes", "tables"}}``; raises ``RestoreRefused`` on a mismatch or when a step has no copy."""
     own = scratch is None
-    scratch = Path(tempfile.mkdtemp(prefix="rc-restore-check-")) if own else Path(scratch)
+    scratch = (Path(tempfile.mkdtemp(prefix="rc-restore-check-", dir=serving.scratch_dir("restore-check", None)))
+               if own else Path(scratch))
     result: dict = {}
     written: list[Path] = []
     try:

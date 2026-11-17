@@ -54,6 +54,7 @@ from urllib.parse import urljoin
 
 import duckdb
 
+from ... import serving
 from .. import base
 from . import edgar, sec
 
@@ -148,8 +149,8 @@ def download(ctx: base.RunContext, pacer: sec.Pacer, name: str, url: str, sub: s
 def _clear_scratch(ctx: base.RunContext, sub: str = "13f_sets", label: str = "13F") -> None:
     """Remove the typing folders a killed run left beside the raw zips (several GB each; ``./app.sh clean-scratch``
     does not look here). One builder process writes, so a folder found before a fill is always a dead run's."""
-    root = raw_dir(sub)
-    stale = sorted(root.glob(SCRATCH + "*")) if root.is_dir() else []
+    roots = {raw_dir(sub), serving.scratch_dir(sub, raw_dir(sub))}     # beside the zips, or the HDD temp root
+    stale = sorted(d for root in roots if root.is_dir() for d in root.glob(SCRATCH + "*"))
     for d in stale:
         shutil.rmtree(d, ignore_errors=True)
     if stale:
@@ -377,7 +378,7 @@ def _fill_one(ctx: base.RunContext, feed: edgar.Feed, zip_path: Path, name: str,
         return 0
     raw_dir().mkdir(parents=True, exist_ok=True)
     fetched_at = (base.read_raw_json(_meta(zip_path)) if _meta(zip_path).exists() else {}).get("fetched_at")
-    with tempfile.TemporaryDirectory(dir=raw_dir(), prefix=SCRATCH) as tmp:
+    with tempfile.TemporaryDirectory(dir=serving.scratch_dir(raw_dir().name, raw_dir()), prefix=SCRATCH) as tmp:
         con = duckdb.connect(str(Path(tmp) / "set.duckdb"))
         try:
             _load(con, zip_path, Path(tmp), name, ctx.notes)

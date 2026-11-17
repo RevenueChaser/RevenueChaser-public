@@ -49,6 +49,7 @@ from pathlib import Path
 import duckdb
 
 from ....core import calendar
+from ... import serving
 from .. import base
 from . import common, edgar, sec, sec13f_sets
 
@@ -200,7 +201,7 @@ def _fill_one(ctx: base.RunContext, feed: edgar.Feed, zip_path: Path, name: str,
     root.mkdir(parents=True, exist_ok=True)
     meta = sec13f_sets._meta(zip_path)
     fetched_at = (base.read_raw_json(meta) if meta.exists() else {}).get("fetched_at")
-    with tempfile.TemporaryDirectory(dir=root, prefix=sec13f_sets.SCRATCH) as tmp:
+    with tempfile.TemporaryDirectory(dir=serving.scratch_dir(root.name, root), prefix=sec13f_sets.SCRATCH) as tmp:
         con = duckdb.connect(str(Path(tmp) / "set.duckdb"))
         try:
             sec13f_sets._load(con, zip_path, Path(tmp), name, ctx.notes, MEMBERS, {}, LABEL)

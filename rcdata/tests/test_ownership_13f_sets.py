@@ -524,3 +524,18 @@ def test_a_killed_runs_typing_scratch_is_removed_by_the_next_fill(feed, http_moc
     row = _backfill(start, end)
     assert not stale.exists() and not list(sec13f_sets.raw_dir().glob(".typing-*"))
     assert "13F data sets: 1 typing folder of a killed run removed" in row["note"]
+
+
+def test_with_the_hdd_temp_root_set_a_killed_runs_typing_scratch_there_is_removed_too(feed, http_mock, tmp_path,
+                                                                                       monkeypatch):
+    """avo 17 Nov 2026: one temp root per disk. ``RC_TMP_HDD_DIR`` (homesrv: /mnt/data/tmp/rc) takes the typing
+    folders out of the raw tree, into ``<root>/13f_sets``; the next fill still removes a killed run's."""
+    monkeypatch.setenv("RC_TMP_HDD_DIR", str(tmp_path / "hddtmp"))
+    feed.add_day("2026-07-31", [(ox.idx_row(1000007, "MANAGER 1000007", "13F-HR", "2026-07-31", "0001000007-26-000099"),
+                                 ox.f13_filing("0001000007-26-000099", 1000007, "2026-07-31",
+                                               [ox.f13_holding("NVR INC", "62944T105", 1_000, 1)], "06-30-2026"))])
+    stale = tmp_path / "hddtmp" / "13f_sets" / ".typing-killed"
+    stale.mkdir(parents=True)
+    row = _backfill("2026-07-29", "2026-07-31")
+    assert not stale.exists() and (tmp_path / "hddtmp" / "13f_sets").is_dir()
+    assert "13F data sets: 1 typing folder of a killed run removed" in row["note"]

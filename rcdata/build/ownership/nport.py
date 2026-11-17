@@ -230,7 +230,8 @@ class Nport:
         folder = parquet_dir() / f"quarter={quarter}"
         meta = sec13f_sets._meta(raw)
         info = base.read_raw_json(meta) if meta.exists() else {}
-        with tempfile.TemporaryDirectory(dir=raw.parent, prefix=sec13f_sets.SCRATCH) as tmp:
+        with tempfile.TemporaryDirectory(dir=serving.scratch_dir(raw.parent.name, raw.parent),
+                                         prefix=sec13f_sets.SCRATCH) as tmp:
             con = duckdb.connect(str(Path(tmp) / "set.duckdb"))
             try:
                 con.execute(f"SET memory_limit = '{MEMORY_LIMIT}'; SET threads = 2; "
