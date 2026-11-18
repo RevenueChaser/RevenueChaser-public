@@ -347,6 +347,13 @@ function qualityAsOf(c, long){
 }
 // avo C1 (17 Nov 2026): the card's one period ended more than fiscal_year.STALE_DAYS ago (the build decides).
 function oldAnchor(c){ return !!c.old_period; }
+// avo N1 (18 Nov 2026): the card face says how long ago its one period ended ("ended 10 mo ago").
+function periodAge(c){
+  var e = c.quality_period_end || c.anchor_period_end;
+  var ms = e ? Date.now() - Date.parse(e) : NaN;
+  if(!(ms >= 0)) return "";
+  return ' <span class="when">· ended ' + Math.round(ms / (30.44 * 864e5)) + ' mo ago</span>';
+}
 // The two halves of the Rule of 40, the one figure of it the gate button does not carry.
 function growthMargin(c){
   if(c.rev_growth_ttm == null && c.fcf_margin == null) return "N/A";
@@ -399,7 +406,7 @@ function cardHtml(c){
     // likewise already in those windows, so nothing on the card is lost; the two halves of the Rule of 40 were
     // only here, and keep a cell of their own.
     + '<div class="metrics">'
-    + cell("Period", rcEsc(c.period))
+    + cell("Period", rcEsc(c.period) + periodAge(c))
     + cell("Growth / FCF margin", growthMargin(c))
     + cell("Price", usd(c.price))
     // Plan decision B: an ADR's cap ignores the depositary ratio.

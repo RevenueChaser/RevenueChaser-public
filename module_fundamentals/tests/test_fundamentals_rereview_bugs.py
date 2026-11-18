@@ -74,3 +74,14 @@ def test_ifrs_filers_quality_cannot_judge_are_counted_and_named():
     p = build_payload([unread, failed, us], top_n=10)
     assert p["summary"]["ifrs_quality_unjudged"] == 1
     assert "Quality not judged for 1 IFRS filers" in render_fundamental_dashboard(p)
+
+
+def test_the_card_says_how_long_ago_its_period_ended(tmp_path):
+    """avo N1 (18 Nov 2026): D1 stays, and the card face shows the period's age."""
+    from RevenueChaser.core.tests.board_js import run_board_js
+    p = build_payload([{**_row("T", _m(**_RO40)), "anchor_period_end": "2025-12-31"}], top_n=10)
+    out = run_board_js(render_fundamental_dashboard(p), """
+render();
+console.log(JSON.stringify({grid: _els['grid'].innerHTML}));
+""", tmp_path)
+    assert "ended " in out["grid"] and " mo ago" in out["grid"]
