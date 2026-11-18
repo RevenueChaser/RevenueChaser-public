@@ -69,7 +69,9 @@ def test_a_down_gateway_shows_the_data_incomplete_banner(monkeypatch, tmp_path):
 
 def test_a_name_ibkr_does_not_know_is_no_banner(monkeypatch, tmp_path):
     from RevenueChaser.module_news import headlines, report
+    from RevenueChaser.rcdata import read
     monkeypatch.setattr(report, "OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(read, "watched", lambda kind: set())
     monkeypatch.setattr(headlines, "fetch", lambda names, **kw:
                         {"tickers": len(names), "stored": 3, "skipped": ["BRK.B"], "error": None})
     assert 'class="rc-provider-health"' not in runners.run_news().read_text(encoding="utf-8")
@@ -148,3 +150,35 @@ def test_the_history_drops_the_five_minute_passes_first(monkeypatch):
         jobs._SEQ[f"j{i}"] = i
     jobs._trim_history()
     assert sorted(jobs._JOBS) == ["j0", "j2", "j3"]
+
+
+def test_a_refused_request_that_is_not_an_unknown_name_shows_the_banner(monkeypatch, tmp_path):
+    # Review F1 (18 Nov 2026): a lapsed feed or pacing error must not pass for a quiet lane (avo's D5: "Panoda bant").
+    from RevenueChaser.module_news import headlines, report
+    from RevenueChaser.rcdata import read
+    monkeypatch.setattr(report, "OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(read, "watched", lambda kind: set())
+    monkeypatch.setattr(headlines, "load_tape", lambda **kw: {"read": 0, "stored": 0})
+    monkeypatch.setattr(headlines, "fetch", lambda names, **kw:
+                        {"tickers": len(names), "stored": 0, "skipped": [], "error": None,
+                         "failed": ["AAPL (IBKR error 10276: News feed is not allowed)"]})
+    page = runners.run_news_headlines().read_text(encoding="utf-8")
+    assert page.count('class="rc-provider-health"') == 1 and "10276" in page
+
+
+def test_an_unreadable_stock_list_is_said_not_read_as_empty(monkeypatch, tmp_path):
+    # Review F6: the job reads the strict accessor, so a list it cannot read shows on the board.
+    from RevenueChaser.module_news import headlines, report
+    from RevenueChaser.rcdata import read
+
+    def unreadable(kind):
+        raise read.JobListUnreadable("watchlists.duckdb: no such file")
+    monkeypatch.setattr(report, "OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(read, "watched", unreadable)
+    monkeypatch.setattr(headlines, "load_tape", lambda **kw: {"read": 0, "stored": 0})
+    asked = []
+    monkeypatch.setattr(headlines, "fetch", lambda names, **kw: asked.append(names) or
+                        {"tickers": len(names), "stored": 1, "skipped": [], "failed": [], "error": None})
+    page = runners.run_news_headlines().read_text(encoding="utf-8")
+    assert asked and asked[0][0] == "AAPL"                      # the large caps are still asked
+    assert page.count('class="rc-provider-health"') == 1 and "stock watch list" in page

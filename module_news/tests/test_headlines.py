@@ -24,6 +24,13 @@ class NewsGateway(FakeGateway):
         self.con_ids = {"AAPL": 265598, "NVDA": 4815747, "CRWV": 7001}
         self.news: dict[int, list[tuple]] = {}
         self.unknown: set[str] = set()
+        self.refused: dict[str, tuple[int, str]] = {}     # con id -> the error a news request gets
+        self.hmds_down = False                            # 2105 at startApi, then news requests get no answer
+
+    def recv(self, n: int) -> bytes:
+        if not self._out and self.hmds_down:
+            raise TimeoutError("timed out")               # the real socket's read timeout
+        return super().recv(n)
 
     def _answer(self, fields):
         msg = fields[0]
@@ -37,11 +44,19 @@ class NewsGateway(FakeGateway):
             self._out += frame(52, 1, req_id)
         elif msg == "86":                                 # [86, reqId, conId, providers, start, end, total, options]
             req_id, con_id = fields[1], int(fields[2])
+            if self.hmds_down:
+                return                                    # measured 18 Nov 2026: no answer at all, not even an error
+            if fields[2] in self.refused:
+                code, text = self.refused[fields[2]]
+                self._out += frame(4, 2, req_id, code, text, "")
+                return
             for row in self.news.get(con_id, []):
                 self._out += frame(86, req_id, *row)
             self._out += frame(87, req_id, 0)
         else:
             super()._answer(fields)
+            if msg == "71" and self.hmds_down:
+                self._out += frame(4, 2, -1, 2105, "HMDS data farm connection is broken:ushmds", "")
 
 
 @pytest.fixture(autouse=True)
@@ -146,3 +161,27 @@ def test_a_later_pass_reuses_the_contract_id(gw):
     headlines.fetch(["AAPL"], now=NOW, run_id="r1")
     headlines.fetch(["AAPL"], now=NOW + 300, run_id="r2")
     assert gw.message_ids().count("9") == 1 and gw.message_ids().count("86") == 2
+
+
+def test_a_broken_historical_data_farm_is_named_not_a_bare_timeout(gw):
+    # Measured on homesrv 18 Nov 2026: notice 2105 "broken:ushmds", then every news request silent until the timeout.
+    gw.hmds_down = True
+    out = headlines.fetch(["AAPL"], now=NOW, run_id="r1")
+    assert out["stored"] == 0 and "historical data farm is down" in out["error"] and "ushmds" in out["error"]
+
+
+def test_a_farm_that_comes_back_is_no_longer_blamed():
+    client = ibkr.TWSClient("127.0.0.1", 4001)
+    client._buf = frame(4, 2, -1, 2105, "HMDS data farm connection is broken:ushmds", "") + \
+        frame(4, 2, -1, 2106, "HMDS data farm connection is OK:ushmds", "")
+    client._read(), client._read()
+    assert client.hmds_broken is None
+
+
+def test_a_refused_news_request_is_a_failure_not_an_unknown_name(gw):
+    # Review F1: only 200 "no security definition" is an unknown name; another code is shown on the board.
+    gw.refused["4815747"] = (10276, "News feed is not allowed")
+    out = headlines.fetch(["NVDA", "AAPL"], now=NOW, run_id="r1")
+    assert out["skipped"] == [] and len(out["failed"]) == 1 and out["failed"][0].startswith("NVDA (IBKR error 10276")
+    assert out["stored"] == 2                                   # the other name still stores
+    assert rawstore.query("SELECT value FROM news_meta WHERE key = 'headlines_mark'", db="news") == []

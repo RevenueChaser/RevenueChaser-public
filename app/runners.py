@@ -1187,7 +1187,13 @@ def _news_headlines_pass(rid: str) -> dict | None:
     checked = x_check.run(UWClient)
     if checked["calls"]:
         ledger.add_note(f"News X: {checked['checked']} option posts checked against UW ({checked['calls']} calls)")
-    names = headlines.tickers(_load_watchlist())
+    from RevenueChaser.rcdata import read
+    try:
+        watch, unread = read.watched("stock"), None      # strict: an unreadable list is not an empty one (F6)
+    except read.JobListUnreadable as e:
+        watch, unread = set(), str(e)
+        ledger.add_note(f"News headlines: the stock watch list could not be read ({e}); large caps only")
+    names = headlines.tickers(watch)
     got = headlines.fetch(names, run_id=rid)
     health = None
     if got["error"]:
@@ -1201,6 +1207,15 @@ def _news_headlines_pass(rid: str) -> dict | None:
     else:
         skipped = f"; not known to IBKR: {', '.join(got['skipped'])}" if got["skipped"] else ""
         ledger.add_note(f"News headlines: {got['stored']} from {got['tickers']} names (IBKR, Dow Jones){skipped}")
+        failed = got.get("failed", [])
+        problems = failed + ([f"stock watch list ({unread})"] if unread else [])
+        if problems:
+            # A refused request other than "unknown name" (a lapsed feed, pacing) or an unread list: the board shows
+            # it, or the lane would only look quieter (review F1/F6, avo's D5 18 Nov 2026: "Panoda bant").
+            health = {"provider": "ibkr", "calls": len(names), "failed": len(failed), "auth_error": None,
+                      "failures": [{"endpoint": "headlines", "error": p} for p in problems],
+                      "message": f"{GAPS}: {len(failed)} of {len(names)} Interactive Brokers calls failed"
+                                 f" ({'; '.join(problems[:3])}). The board may be incomplete."}
     return health
 
 

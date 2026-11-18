@@ -198,7 +198,8 @@ _CON_IDS: dict[str, int] = {}
 
 def fetch(names: list[str], now: float | None = None, run_id: str | None = None,
           target: tuple[str, int] | None = None) -> dict:
-    """One incremental pass over ``names``. Returns ``tickers``, ``stored``, ``skipped`` and ``error`` (or None)."""
+    """One incremental pass over ``names``. Returns ``tickers``, ``stored``, ``skipped`` (names IBKR does not know),
+    ``failed`` (names whose request IBKR refused for another reason, with the error) and ``error`` (or None)."""
     now = time.time() if now is None else now
     run_id = run_id or f"news-{int(now)}"
     mark = _mark()
@@ -206,6 +207,7 @@ def fetch(names: list[str], now: float | None = None, run_id: str | None = None,
     host, port = target or ibkr_login.target()
     found: dict[str, dict] = {}            # story key -> row
     skipped: list[str] = []
+    failed: list[str] = []
     try:
         with ibkr.TWSClient(host, port, client_id=CLIENT_ID) as client:
             req = 0
@@ -217,8 +219,10 @@ def fetch(names: list[str], now: float | None = None, run_id: str | None = None,
                     con_id = _CON_IDS[name]
                     req += 1
                     items = client.news(req, con_id, PROVIDERS, "", "", PER_TICKER)   # the newest; see news()
-                except ibkr.HistoryError:
-                    skipped.append(name)
+                except ibkr.HistoryError as e:
+                    # 200 "no security definition": a name IBKR does not know, the same every run, only a note.
+                    # Any other code (a lapsed feed, pacing) is a failure the board shows.
+                    (skipped if e.code == 200 else failed).append(name if e.code == 200 else f"{name} ({e})")
                     continue
                 for it in items:
                     text, at = clean(it["headline"]), _epoch(it["time"])
@@ -231,13 +235,13 @@ def fetch(names: list[str], now: float | None = None, run_id: str | None = None,
                     if name not in row["tickers"]:
                         row["tickers"].append(name)
     except ibkr.TWSError as e:                 # no session, or the gateway went away: nothing is written
-        return {"tickers": len(names), "stored": 0, "skipped": skipped, "error": str(e)}
+        return {"tickers": len(names), "stored": 0, "skipped": skipped, "failed": failed, "error": str(e)}
     rows = list(found.values())
     _merge_tickers(rows)
     rawstore.write_rows(TABLE, rows)
     # The mark is the newest headline stored, on IBKR's own clock, and moves only when every name answered: a name
     # skipped now has its gap asked for again next time (the upsert makes the overlap harmless).
-    if rows and not skipped:
+    if rows and not skipped and not failed:
         rawstore.write_rows(META, [{"key": MARK_KEY, "value": repr(max(r["published_at"] for r in rows)),
                                     "run_at": now}])
-    return {"tickers": len(names), "stored": len(rows), "skipped": skipped, "error": None}
+    return {"tickers": len(names), "stored": len(rows), "skipped": skipped, "failed": failed, "error": None}
