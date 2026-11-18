@@ -16,7 +16,7 @@ from RevenueChaser.core.config import OUTPUT_DIR
 from RevenueChaser.core.html_safe import esc
 from RevenueChaser.core.reporting_common import THEME_CSS, THEME_JS, help_html, provider_health_html, write_artifact
 from RevenueChaser.module_news.calendar import AMS, EVENTS, HIGHLIGHT, local_day, tr_value
-from RevenueChaser.module_news import x_check
+from RevenueChaser.module_news import headlines, x_check
 from RevenueChaser.module_news.x_feed import PROVIDER as X_PROVIDER
 
 FILENAME = "news_latest.html"
@@ -254,13 +254,17 @@ def _headlines(rows: list[dict]) -> dict[str, str]:
 
 
 def api_rows(since: float, limit: int = 2 * HEADLINE_LIMIT) -> list[dict]:
-    """Headlines stored after ``since`` (their ``run_at``), newest first, as the poll draws them."""
+    """Headlines stored after ``since`` (their ``run_at``), plus the tape lines not stored yet (``peek_tape``), newest
+    first, as the poll draws them."""
     rows = rawstore.query(
         f"SELECT headline_id, provider, published_at, headline, source, tickers, url, kind, option, x_check, run_at "
         f"FROM {HEADLINES} "
         f"WHERE run_at > ? AND published_at >= ? ORDER BY published_at DESC LIMIT {int(limit)}",
         [float(since), time.time() - HEADLINE_HOURS * 3600], db="news")
     rows = [r for r in rows if not (lane(r) == "x" and r.get("kind") == "other")]
+    cutoff, seen = time.time() - HEADLINE_HOURS * 3600, {r["headline_id"] for r in rows}
+    rows += [r for r in headlines.peek_tape() if r["headline_id"] not in seen and r["published_at"] >= cutoff]
+    rows = sorted(rows, key=lambda r: -float(r["published_at"]))[:int(limit)]
     return [{"headline_id": r["headline_id"], "published_at": r["published_at"], "hm": hm(r["published_at"]),
              "headline": r["headline"], "source": r.get("source") or "",
              "tickers": [x_lines(r)[0]] if lane(r) == "x" and x_lines(r)[0] else (
@@ -424,7 +428,7 @@ function newsPoll(){
       d.rows.forEach(function(r){ NEWS_SINCE = Math.max(NEWS_SINCE, r.run_at); _addHead(r); });
     }).catch(function(){});
 }
-setInterval(newsPoll, 60000);
+setInterval(function(){ if(!document.hidden) newsPoll(); }, 2000);   // the tape is read live (peek_tape)
 function pageTab(btn, keep){
   newsTab(btn);
   if(!keep){ try { localStorage.setItem('rc-news-page', btn.getAttribute('aria-controls')); } catch(e) {} }
@@ -452,7 +456,7 @@ HELP = help_html(
     "aranır (rozet: ✓ UW teyitli, ✗ UW'de yok, ◷ bekliyor; opsiyon dışı kayıtlarda ✓ X kimliği) ve kayıtlar hisseye göre gruplanır, her grubun üstünde seansın 5 dakikalık fiyatı ve tweet anları çizilir: tweet saatinin 4 saat öncesinden 15 dakika sonrasına kadar o kontratın $25 bin üstü işlemleri (adet, "
     "kontrat, prim, ask/bid tarafı) ve ertesi gün açık pozisyon (OI) değişimi gösterilir. "
     "Gerçekleşen değer gösterilmez: beklenti ve önceki değer.</p>"
-    "<p>Başlıklar 5 dakikada bir saklanır; sayfa açıkken dakikada bir yenileri kendisi ekler.</p>"
+    "<p>Piyasa başlıkları geldiği anda, birkaç saniye içinde sayfaya düşer; hisse başlıkları 5 dakikada bir gelir.</p>"
     "<p><b>Fetch</b> saklı takvimi <code>boards/news.duckdb</code> içine artımlı yazar (yeni ve değişen "
     "olaylar; listeden düşen olay silinmez, emekliye ayrılır) ve IBKR Gateway'den son başlıkları sorar. "
     "<b>Refresh</b> yalnızca saklı veriden sayfayı yeniden çizer, hiçbir şey indirmez.</p>")

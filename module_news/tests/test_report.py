@@ -97,5 +97,5 @@ def test_market_and_stock_headlines_get_their_own_lane_and_the_page_polls():
     market, stocks = page.index('id="heads-market"'), page.index('id="heads-stocks"')
     assert "Piyasa · son 24 saat" in page and "Hisseler · son 24 saat" in page
     assert market < page.index("Fed holds rates") < stocks < page.index("Apple beats")
-    assert f"NEWS_SINCE = {NOW - 40!r}" in page and "/api/news/headlines?since=" in page
+    assert f"NEWS_SINCE = {NOW - 40!r}" in page and "/api/news/headlines?since=" in page and "}, 2000);" in page
     assert "textContent" in page and "innerHTML" not in page         # polled text is never parsed as HTML
