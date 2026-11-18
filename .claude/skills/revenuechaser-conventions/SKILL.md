@@ -76,7 +76,7 @@ file disagree, trust the code, then fix this file in the same change.
 
 - **Target component (ADR-2):** the shared filter bar `filters_bar_html()` +
   `core/static/rc_filters.js` (`RCFilters`, `RCCombobox`). The facet order is fixed:
-  **Index → Market cap → Sector (2 levels: sector, industry) → Theme → Earnings**. A board may omit a
+  **Index → Market cap → Sector (up to 4 GICS levels: sector, group, industry and sub-industry codes; K6) → Theme → Earnings**. A board may omit a
   facet, never reorder one. State is in localStorage `rc.filters.v1` plus the URL hash.
   The row contract is `core/universe.py::filter_fields`.
 - **Migration status:** Co-movement uses the new bar (pilot). Asymmetric, Swing,

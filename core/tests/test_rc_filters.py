@@ -91,6 +91,17 @@ var out = {
   gkeysBlankPath: C.gicsKeys({ticker:"B3", gics:["",""]}),
   gkeysSectorOnly: C.gicsKeys({ticker:"S1", sector:"Energy"}),
   gkeysFromRowFields: C.gicsKeys({ticker:"S2", sector:"Energy", industry:"Oil & Gas E&P"}),
+  gkeysFour: C.gicsKeys({ticker:"MSFT", gics:["Technology","Software & Services","451030","45103020"]}),
+  subInd: [{ticker:"MSFT", gics:["Technology","Software & Services","451030","45103020"]},
+           {ticker:"ORCL", gics:["Technology","Software & Services","451030","45103010"]},
+           {ticker:"ACN", gics:["Technology","Software & Services","451020","45102010"]}].filter(function(r){
+      return C.makeCore({now: ts(now)}).pass(r, Object.assign(C.defaults(),
+          {gics:{key:"Technology›Software & Services›451030›45103020", level:4}})); }).map(function(r){ return r.ticker; }),
+  gind: [{ticker:"MSFT", gics:["Technology","Software & Services","451030","45103020"]},
+         {ticker:"ORCL", gics:["Technology","Software & Services","451030","45103010"]},
+         {ticker:"ACN", gics:["Technology","Software & Services","451020","45102010"]}].filter(function(r){
+      return C.makeCore({now: ts(now)}).pass(r, Object.assign(C.defaults(),
+          {gics:{key:"Technology›Software & Services›451030", level:3}})); }).map(function(r){ return r.ticker; }),
   legacy: C.sanitize({gics:{key:"Other", label:"Other", level:1}}, {themes:{}}, rows),
   legacyNested: C.sanitize({gics:{key:"Financial Services›Other", label:"Other", level:2}}, {themes:{}},
       [{ticker:"Z", gics:["Financial Services","Unclassified"]}]),
@@ -145,10 +156,16 @@ def test_js_a_filter_saved_on_the_old_four_level_tree_is_cleared_with_a_note(js_
     assert any("Gold" in n for n in s["notes"])
 
 
-def test_the_sector_facet_is_two_levels_and_not_called_gics():
+def test_the_sector_facet_has_the_four_gics_levels_and_is_still_called_sector(js_out):
+    """K6: a row's path carries the GICS industry and sub-industry codes; a pick at either keeps only its names."""
     js = rc.FILTERS_JS
-    assert 'var GICS_LEVELS = ["sector", "industry"];' in js
-    assert "Sector (GICS)" not in js and "industry group" not in js and "sub-industry" not in js
+    assert 'var GICS_LEVELS = ["sector", "industry group", "industry", "sub-industry"];' in js
+    assert "Sector (GICS)" not in js
+    assert js_out["gkeysFour"] == ["Technology", "Technology›Software & Services",
+                                   "Technology›Software & Services›451030",
+                                   "Technology›Software & Services›451030›45103020"]
+    assert js_out["subInd"] == ["MSFT"]
+    assert js_out["gind"] == ["MSFT", "ORCL"]
     assert 'trigger("gics", "Sector",' in js
 
 

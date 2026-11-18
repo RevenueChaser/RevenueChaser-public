@@ -32,6 +32,7 @@ def _seed(rows):
         "ticker": r["ticker"], "cik": "", "name": r["ticker"], "market_cap": r["market_cap"],
         "price": 10.0, "sector": r.get("sector") or "Energy", "industry": r.get("industry", "Oil & Gas E&P"),
         "industry_group": None, "sub_industry": None, "quote": {"symbol": r["ticker"]},
+        "ggroup": r.get("ggroup"), "gind": r.get("gind"), "gsubind": r.get("gsubind"),
     } for r in rows])
 
 
@@ -70,6 +71,19 @@ def test_the_ladder_widens_to_the_sector_when_the_industry_is_short(rawstore_tmp
     assert got[:2] == ["OIL1", "OIL2"]                      # the industry rung first
     assert set(got[2:]) == {f"GAS{i}" for i in range(1, 7)}  # then the sector rung fills the rest
     assert "BANK" not in got                                # another sector is never a peer
+
+
+def test_the_ladder_ignores_the_finer_gics_codes(rawstore_tmp_db):
+    """K6 pin: the universe rows now carry ``ggroup`` / ``gind`` / ``gsubind``; the ladder stays industry text,
+    then sector. A same-sub-industry name in another industry text is not pulled ahead of the industry rung."""
+    _seed([{"ticker": "TEST", "market_cap": 1.0e9, "ggroup": "1010", "gind": "101020", "gsubind": "10102020"},
+           {"ticker": "OIL1", "market_cap": 1.3e9, "ggroup": "1010", "gind": "101010", "gsubind": "10101010"},
+           {"ticker": "SUB1", "market_cap": 1.0e9, "industry": "Oil & Gas Integrated",
+            "ggroup": "1010", "gind": "101020", "gsubind": "10102020"},
+           {"ticker": "SUB2", "market_cap": 1.01e9, "sector": "Utilities", "industry": "Gas Utilities",
+            "ggroup": "1010", "gind": "101020", "gsubind": "10102020"}])
+    got = peer_ladder.select_peers("TEST", spine.classification_universe_rows(), k=2)
+    assert got == ["OIL1", "SUB1"]       # industry rung (OIL1), then the sector rung (SUB1); never SUB2
 
 
 def test_the_target_is_never_its_own_peer(rawstore_tmp_db):

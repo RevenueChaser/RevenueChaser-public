@@ -12,7 +12,7 @@ Layout (plan 2026-09-30_plan_filters_ux.md, pilot of the shared filter bar):
   collinear), Horizon (overlapping 1/3/5/10-day log returns), Detail (the cut),
   and a Find type-ahead listing every clustered name.
 * **Filters · shared across boards** — ``core/static/rc_filters.js``: Index →
-  Market cap → Sector (2 levels: sector, industry) → Theme (10-K) → Earnings. Filters
+  Market cap → Sector (up to 4 GICS levels) → Theme (10-K) → Earnings. Filters
   select groups and dim non-matching members; a card's numbers always describe
   the whole group and say so (decision Q1). Earnings marks names on this board
   unless the user switches it to filter (Q2).

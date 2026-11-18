@@ -246,6 +246,46 @@ def ixbrl_10k() -> str:
             "<p>Item 8. Financial Statements</p><table><tr><td>" + facts + "</td></tr></table></body></html>")
 
 
+def def_linkbase(roles: dict[str, dict[str, list[str]]]) -> str:
+    """A definition linkbase (``_def.xml``) in the shape a filing has it: per role (``{role id: {axis: [members]}}``,
+    names as the linkbase writes them, ``us-gaap_ProductMember``) a table whose axis reaches a domain and the
+    domain its members."""
+    arc = '<link:definitionArc xlink:arcrole="http://xbrl.org/int/dim/arcrole/{}" xlink:from="{}" xlink:to="{}"/>'
+    loc = '<link:loc xlink:type="locator" xlink:label="{0}" xlink:href="https://sec.test/elts.xsd#{0}"/>'
+    links = []
+    for role, axes in roles.items():
+        parts = [loc.format("us-gaap_StatementTable")]
+        for axis, members in axes.items():
+            domain = axis.replace("Axis", "Domain")
+            parts += [loc.format(axis), arc.format("hypercube-dimension", "us-gaap_StatementTable", axis),
+                      loc.format(domain), arc.format("dimension-domain", axis, domain)]
+            for member in members:
+                parts += [loc.format(member), arc.format("domain-member", domain, member)]
+        links.append(f'<link:definitionLink xlink:type="extended" xlink:role="http://sec.test/role/{role}">'
+                     + "".join(parts) + "</link:definitionLink>")
+    return ('<?xml version="1.0" encoding="UTF-8"?><link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase" '
+            'xmlns:xlink="http://www.w3.org/1999/xlink">' + "".join(links) + "</link:linkbase>")
+
+
+# The linkbase of ``ixbrl_10k``'s filing: the two segments stand in the segment note, the country there and in a
+# second table, and the product member in none.
+MSFT_DEF_NAME = "msft-20250630_def.xml"
+MSFT_DEF = def_linkbase({
+    "SegmentDetails": {"us-gaap_StatementBusinessSegmentsAxis": ["msft_IntelligentCloudMember",
+                                                                 "msft_MorePersonalComputingMember"],
+                       "srt_StatementGeographicalAxis": ["country_US"]},
+    "GeographicDetails": {"srt_StatementGeographicalAxis": ["country_US"]},
+})
+
+
+def linkbase_routes(http_mock, xml: str | None = MSFT_DEF, name: str = MSFT_DEF_NAME) -> None:
+    """Answer a filing's ``index.json`` (listing ``name`` when ``xml`` is given) and the linkbase itself."""
+    items = [{"name": "msft-10k.htm", "size": "900000"}, {"name": "msft-20250630.xsd", "size": "50000"}]
+    http_mock.add("index.json", {"directory": {"item": items + ([{"name": name, "size": "9000"}] if xml else [])}})
+    if xml:
+        http_mock.add(f"/{name}", xml)
+
+
 def filing_routes(http_mock, lists: dict, documents: dict | None = None) -> None:
     """Answer the submissions URLs (``lists`` {cik: body}) and the archive documents (``documents`` {file: html}).
     A daily index no test named answers an index with no rows, as EDGAR does for an open day."""
