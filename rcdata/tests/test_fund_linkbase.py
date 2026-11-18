@@ -6,6 +6,8 @@
 each, the ``ProductOrServiceAxis`` chain only."""
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from RevenueChaser.core.providers import sec_edgar
@@ -77,6 +79,15 @@ def test_a_filing_with_no_def_xml_names_its_schema_file_and_the_def_xml_wins_whe
     two = [{"name": "other.xsd", "size": ""}, {"name": "small.xsd", "size": "900"}, {"name": "tm-20260331.xsd",
                                                                                      "size": "50000"}]
     assert linkbase.name({"directory": {"item": two}}) == "tm-20260331.xsd"      # the largest listed
+
+
+def test_a_listed_name_that_names_a_folder_is_not_taken_as_the_linkbase():
+    """The name is put into the archive URL and the raw path as listed (review of #1068)."""
+    bad = [{"name": "../other/x_def.xml", "size": "9000"}, {"name": "sub/x.xsd", "size": "90000"},
+           {"name": "sub\\y.xsd", "size": "90000"}]
+    assert linkbase.name({"directory": {"item": bad}}) is None
+    assert linkbase.name({"directory": {"item": bad + [{"name": "x-20251231.xsd", "size": "10"}]}}) == "x-20251231.xsd"
+    assert linkbase.name({"directory": {"item": bad + [{"name": "x-20251231_def.xml"}]}}) == "x-20251231_def.xml"
 
 
 # ── The fetch ─────────────────────────────────────────────────────────────────────────────────────────────────
@@ -180,6 +191,38 @@ def test_a_linkbase_embedded_in_the_schema_file_is_fetched_once_stored_and_names
         ("product", "Xbox Content And Services", None)]
     fx.run(filings.NAME, mode="backfill", to="2026-10-29")
     assert len(sec.calls("index.json")) == 1 and len(sec.calls(fx.MSFT_XSD_NAME)) == 1   # resumable
+
+
+def test_a_schema_file_that_only_mentions_the_word_holds_no_linkbase(sec):
+    """A comment or a documentation line may say "definitionLink"; only the element's start tag counts."""
+    said = fx.schema().replace("</xsd:schema>", "<!-- this schema holds no definitionLink element --></xsd:schema>")
+    assert "definitionLink " in said and not re.search(r"<(?:\w+:)?definitionLink[\s>]", said)
+    fx.linkbase_routes(sec, xml=None, xsd=said)
+    check = fx.run(filings.NAME, mode="backfill", to="2026-10-28")
+    assert "0 definition linkbases fetched, 1 annual reports without one" in check["note"], check["note"]
+    assert "not served" not in check["note"]
+    assert fx.q("SELECT count(*), count(report_tables) FROM segment_revenue") == [(4, 0)]
+
+
+def test_a_schema_file_cut_off_mid_way_does_not_stop_the_run_and_names_no_table(sec):
+    whole = fx.schema(fx.MSFT_DEF)
+    cut = whole[:re.search(r"<(?:\w+:)?definitionLink[\s>]", whole).start() + 300]
+    assert linkbase.parse(cut.encode("utf-8")) == {} and len(cut) < len(whole), "cut inside the linkbase: not XML"
+    fx.linkbase_routes(sec, xml=None, xsd=cut)
+    check = fx.run(filings.NAME, mode="backfill", to="2026-10-28")
+    assert check["result"] == "changed", check["note"]
+    assert _issues() == []
+    assert fx.q("SELECT count(*), count(report_tables) FROM segment_revenue") == [(4, 0)]
+
+
+def test_a_schema_file_the_archive_lists_but_does_not_hold_is_counted_as_without_one(sec):
+    sec.add("index.json", {"directory": {"item": [{"name": fx.MSFT_XSD_NAME, "size": "50000"}]}})
+    sec.add(f"/{fx.MSFT_XSD_NAME}", MISSING_OBJECT, status=403, headers=MISSING_HEADERS)
+    check = fx.run(filings.NAME, mode="backfill", to="2026-10-28")
+    assert check["result"] == "changed", check["note"]
+    assert "0 definition linkbases fetched, 1 annual reports without one" in check["note"]
+    assert filings.stored_linkbase("789019", fx.K25) is None and _issues() == []
+    assert fx.q("SELECT count(*), count(report_tables) FROM segment_revenue") == [(4, 0)]
 
 
 def test_a_schema_file_with_no_linkbase_is_stored_counted_as_without_one_and_not_asked_again(sec):
