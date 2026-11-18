@@ -123,11 +123,11 @@ flowchart LR
     end
 
     subgraph boards["Boards (.cache/, rendered from the store)"]
-        B_RESEARCH["Earnings Radar · SPX Gamma · Implied Probability · Financials · UW Interaction"]
+        B_RESEARCH["Earnings Radar · SPX Gamma · Implied Probability · Financials"]
         B_CLASS["Co-movement · Value Chain · Relatedness"]
         B_SCREEN["Sector Rotation · Asymmetric Growth · Swing Potential · Fundamentals"]
         B_OWN["SEC 13F · LEAPS"]
-        B_OPS["Settings · Logs"]
+        B_OPS["Settings · UW Interaction · Logs"]
     end
 
     UW --> MKT & SCR & ERN & OWN & UNI

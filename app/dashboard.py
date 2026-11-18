@@ -311,7 +311,6 @@ TABS = [
     {"type": "tab", "key": "module_spx_gamma", "label": "SPX Gamma", "url": "/view/module_spx_gamma", "sub": True},
     {"type": "tab", "key": "module_oipd", "label": "Implied Probability", "url": "/view/module_oipd", "sub": True},
     {"type": "tab", "key": "module_financials", "label": "Financials", "url": "/view/module_financials", "sub": True},
-    {"type": "tab", "key": "module_uw_interaction", "label": "UW Interaction (lab)", "url": "/view/module_uw_interaction", "sub": True},
     {"type": "header", "label": "Classification"},
     {"type": "tab", "key": "module_comovement", "label": "Co-movement", "url": "/view/module_comovement", "sub": True},
     {"type": "tab", "key": "module_value_chain", "label": "Value Chain", "url": "/view/module_value_chain", "sub": True},
@@ -330,6 +329,8 @@ TABS = [
      "sub": True},
     {"type": "header", "label": "Ops"},
     {"type": "tab", "key": "module_settings", "label": "Settings", "url": "/view/module_settings", "sub": True},
+    # A raw UW API console, not a research board: Ops beside Settings (avo 18 Nov 2026).
+    {"type": "tab", "key": "module_uw_interaction", "label": "UW Interaction (lab)", "url": "/view/module_uw_interaction", "sub": True},
 ]
 
 
