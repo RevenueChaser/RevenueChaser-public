@@ -1130,23 +1130,16 @@ def run_relatedness(uw=None, no_fetch: bool = False) -> Path:
     return RELATEDNESS_LATEST
 
 
-def run_oipd(uw: UWClient, ticker: str | None = None, no_fetch: bool = False) -> Path:
-    """Run the Implied Probability (OIPD) board for one ticker.
+def run_oipd(uw=None, ticker: str | None = None, no_fetch: bool = False) -> Path:
+    """Render the Implied Probability (OIPD) board for one ticker from the nightly options build.
 
-    Fetch pulls the Unusual Whales option chain, fits an SVI smile per expiry and
-    persists the chain to ``oipd_chain`` / ``oipd_meta``; the ``no_fetch``
-    (Refresh) path re-fits from the store with zero network. Writes the JSON
-    payload + the self-contained HTML board.
-
-    A run that fits no expiry still writes the board (with its error/warning
-    state) and raises ``JobMessage`` so the UI explains itself rather than
-    looking like a silent success.
+    Store-only (decision B, avo 10 Nov 2026): ``engine.build`` reads the stored chain and fits it; no provider call,
+    no write but the payload and the board. A Fetch and a Refresh do the same thing. A run that fits no expiry still
+    writes the board (with its error state) and raises ``JobMessage`` so the UI explains itself.
     """
     from RevenueChaser.module_oipd import engine
 
-    payload = engine.run(uw=uw, ticker=ticker, no_fetch=no_fetch)
-    if not no_fetch:
-        payload["provider_health"] = _uw_health(uw)
+    payload = engine.build(ticker=ticker)
     path = _render_oipd(payload)
     if not payload.get("expiries"):
         msg = payload.get("error")
@@ -1259,7 +1252,7 @@ def run_oipd_cached(uw=None, ticker: str | None = None) -> Path:
     store still writes an error board and returns it.
     """
     from RevenueChaser.module_oipd import engine
-    return _render_oipd(engine.run(uw=None, ticker=ticker, no_fetch=True))
+    return _render_oipd(engine.build(ticker=ticker))
 
 
 def _render_oipd(payload: dict) -> Path:

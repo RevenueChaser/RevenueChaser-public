@@ -195,7 +195,7 @@ class TestDashboardRoutes:
     def test_run_no_api_key(self, monkeypatch):
         c = self._client()
         monkeypatch.setattr(dashboard, "UWClient", lambda: _NoKey())
-        r = c.post("/run/module_oipd")  # Fetch = live UW scan -> gated on the key
+        r = c.post("/run/spxgamma", data={"force": "1"})  # a live UW fetch -> gated on the key
         assert r.status_code == 400
         data = r.get_json()
         assert data["ok"] is False
@@ -204,6 +204,14 @@ class TestDashboardRoutes:
         assert "UNUSUAL_WHALES_API_KEY" in data["error"]
         assert ".env" in data["error"]
         assert "https://unusualwhales.com/api" in data["error"]
+
+    def test_implied_probability_needs_no_key(self, monkeypatch):
+        """Decision B: the board reads the nightly options build, so its run is not gated on the UW key."""
+        import RevenueChaser.app.dashboard as d
+        monkeypatch.setattr(d, "UWClient", lambda: _NoKey())
+        monkeypatch.setattr(d.jobs, "submit", lambda module, params: "stubjob")
+        r = self._client().post("/run/module_oipd")
+        assert r.status_code == 202 and r.get_json()["job_id"] == "stubjob"
 
     def test_run_returns_job_id(self, monkeypatch):
         import RevenueChaser.app.dashboard as d

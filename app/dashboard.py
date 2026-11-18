@@ -288,7 +288,8 @@ jobs.register("storage_picture", runners.run_storage_picture, ["module_settings"
 jobs.register("module_value_chain", runners.run_value_chain, ["module_value_chain"], requires_uw=False)
 # The Relatedness writer comparison (#370): one provider + model on at most 100 names, no board table written.
 jobs.register("relatedness_compare", runners.run_relatedness_compare, [], requires_uw=False, lane="long")
-jobs.register("module_oipd", runners.run_oipd, ["module_oipd"], requires_uw=True)
+# Implied Probability (decision B): store-only, reads the nightly options build.
+jobs.register("module_oipd", runners.run_oipd, ["module_oipd"], requires_uw=False)
 # News (S9, S16): store-only; builds boards/news.duckdb from market.economic_event, then renders.
 jobs.register("module_news", runners.run_news, ["module_news"], requires_uw=False)
 # News live (#673): the listener (module_news/tape.py) queues this every 5 minutes; headlines only, then the page.

@@ -1,6 +1,11 @@
-"""Implied Probability (OIPD) engine — UW chain -> SVI surface -> risk-neutral PDF.
+"""Implied Probability (OIPD) engine — option chain -> SVI surface -> risk-neutral PDF.
 
-Two paths, mirroring every store-backed board:
+**The board's path is** :func:`build`: it reads one session's chain from the nightly options build
+(``options.duckdb`` ``option_eod``, through ``rcdata.read``) for a name the build stores a chain for (SPX, the option
+watch list, the evening's earnings set) and makes no provider call (avo's decision B, 10 Nov 2026; F2, 18 Nov 2026).
+
+The older UW path below (``run``, ``fetch_result``, ``oipd_chain`` / ``oipd_meta``) is no longer called by the
+dashboard; it goes with the board's own store in a later step:
 
 - **Fetch** (``no_fetch=False``): pull the option chain from Unusual Whales,
   persist it to ``oipd_chain`` / ``oipd_meta``, then fit.
@@ -389,6 +394,83 @@ def _empty_payload(ticker: str, message: str) -> dict:
         "n_contracts": 0, "expiries": [], "fan": None,
         "warnings": [], "error": message,
     }
+
+
+# ── the nightly build (decision B) ──────────────────────────────────────────────────────────────────────────
+def list_names() -> list[str]:
+    """The names the build stores a chain for: SPX, the option watch list (``read.watched``, the one list source;
+    strict, so an unreadable list raises ``read.JobListUnreadable``) and the newest evening's earnings set."""
+    from RevenueChaser.rcdata import read
+    names = {"SPX", *read.watched("option")}
+    er = read.earnings_options()
+    newest = max((str(r["session_date"])[:10] for r in er), default=None)
+    names.update(r["ticker"] for r in er if str(r["session_date"])[:10] == newest)
+    return sorted(names)
+
+
+def _iso_time(epoch) -> str | None:
+    try:
+        return datetime.fromtimestamp(float(epoch), timezone.utc).isoformat(timespec="seconds")
+    except (TypeError, ValueError):
+        return None
+
+
+def stored_chain(ticker: str, session: str | None = None) -> tuple[str | None, list[dict], float | None, str | None]:
+    """``(session, contracts, spot, fetched_at)`` of one name's stored chain: the newest session when ``session`` is
+    None. Spot is the session's close (``option_daily``), else the price UW served with the earnings set's spot
+    exposures (``option_strike``), else None (the forward then stands on the chain alone)."""
+    from RevenueChaser.rcdata import read
+    rows = read.option_chain(ticker, session)
+    if not rows:
+        return None, [], None, None
+    day = str(rows[0]["session_date"])[:10]
+    spot = next((to_float(r.get("close")) for r in read.option_daily(ticker, day, day) if r.get("close")), None)
+    if spot is None:
+        spot = next((to_float(r.get("price")) for r in read.option_strikes(ticker, day, "earnings")
+                     if r.get("price")), None)
+    fetched = max((r["fetched_at"] for r in rows if r.get("fetched_at") is not None), default=None)
+    return day, uw_chain.map_rows(rows), spot, _iso_time(fetched)
+
+
+def pick_expiries(contracts: list[dict], asof: str) -> list[dict]:
+    """The contracts of the expiries a fit uses: ``MIN_DTE``-``MAX_DTE`` days out, the ``MAX_EXPIRIES`` with the most
+    open interest (the rule the UW fetch applied to the breakdown; the stored chain holds every expiry)."""
+    oi: dict[str, float] = {}
+    for c in contracts:
+        d = uw_chain.dte(asof, c["expiry"])
+        if d is not None and config.MIN_DTE <= d <= config.MAX_DTE:
+            oi[c["expiry"]] = oi.get(c["expiry"], 0.0) + (c.get("open_interest") or 0.0)
+    keep = set(sorted(oi, key=lambda e: (-oi[e], e))[:config.MAX_EXPIRIES])
+    return [c for c in contracts if c["expiry"] in keep]
+
+
+def build(ticker: str | None = None, session: str | None = None) -> dict:
+    """The board's payload for ``ticker`` from the stored chain: no provider call, no write."""
+    from RevenueChaser.rcdata import read
+    try:
+        names = list_names()
+    except read.JobListUnreadable as exc:
+        return _empty_payload((ticker or config.DEFAULT_TICKER).upper(),
+                              f"The option list could not be read ({exc}). Try again in a moment.")
+    default = config.DEFAULT_TICKER if config.DEFAULT_TICKER in names else (names[0] if names else None)
+    ticker = (ticker or default or config.DEFAULT_TICKER).upper()
+    if ticker not in names:
+        p = _empty_payload(ticker, f"{ticker} is not on the option list. Add it on the Watchlists board; "
+                                   "its chain comes with the next session's build.")
+        p["names"] = names
+        return p
+    asof, contracts, spot, fetched = stored_chain(ticker, session)
+    if not contracts:
+        p = _empty_payload(ticker, f"No stored chain for {ticker} yet: the nightly options build stores it after "
+                                   "the close.")
+        p["names"] = names
+        return p
+    meta = {"as_of": asof, "spot": spot, "risk_free": config.RISK_FREE_RATE, "horizon_days": config.MAX_DTE,
+            "fetched_at": fetched}
+    warnings = [] if spot is not None else ["No close stored for this session; the forward stands on the chain."]
+    payload = _fit_payload(ticker, pick_expiries(contracts, asof), meta, warnings)
+    payload.update(source="Unusual Whales, nightly options build", names=names)
+    return payload
 
 
 def run(uw=None, ticker: str | None = None, no_fetch: bool = False, capture: dict | None = None) -> dict:

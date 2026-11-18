@@ -246,7 +246,7 @@ function init(){
   RCF = RCFilters.mount({root: "#rc-filters", rows: DATA, meta: META, onChange: function(){ render(); }});
   RCInfo.wire();
   var input = document.getElementById("ticker-combo");
-  if(input) RCCombobox.mount({input: input, list: "#ticker-combo-list", rows: DATA, filter: pass, allowFree: true, clear: true,
+  if(input) RCCombobox.mount({input: input, list: "#ticker-combo-list", rows: DATA, filter: pass, allowFree: false, clear: true,
     onPick: function(r){ onPick(r.ticker); }});
   FOCAL = DEFAULT_TICKER || null;
   render();
@@ -260,7 +260,7 @@ function init(){
   if(!PAYLOAD.expiries.length){
     document.getElementById('body').innerHTML=
       '<div class="empty">No expiry could be fitted for '+rcEsc(PAYLOAD.ticker)+'. '+
-      'Run a Fetch, or check the warnings above.</div>';
+      'Check the warnings above.</div>';
     return;
   }
   if(PAYLOAD.warnings && PAYLOAD.warnings.length){
@@ -296,16 +296,13 @@ def _friendly(asof: str | None) -> str:
         return asof
 
 
-def _filter_universe() -> list[dict]:
-    """The shared classification universe with the universal-filter fields.
-
-    The OIPD filters only narrow the ticker combobox — they never slice the
-    fitted PDF — so this is the picker's pool, not a board filter.
-    """
-    from RevenueChaser.core.universe import BOARD_OPERATING_ONLY, classification_universe, filter_fields
-    tickers = classification_universe(operating_only=BOARD_OPERATING_ONLY["module_oipd"])
-    fields = filter_fields(tickers)
-    return [fields[t] for t in tickers if t in fields]
+def _filter_universe(names: list[str]) -> list[dict]:
+    """The picker's pool: the names the nightly build stores a chain for (``engine.list_names``, carried in the
+    payload), with the universal-filter fields where the universe has them. The filters only narrow the picker;
+    a name the universe lacks (an ETF, SPX) still shows, by its ticker."""
+    from RevenueChaser.core.universe import filter_fields
+    fields = filter_fields(names) if names else {}
+    return [fields.get(t) or {"ticker": t, "name": t} for t in names]
 
 
 def _theme_catalog() -> dict:
@@ -322,7 +319,7 @@ def render_oipd_dashboard(payload: dict) -> str:
     expiries = payload.get("expiries") or []
     error = payload.get("error")
     asof = payload.get("asof")
-    universe = _filter_universe()
+    universe = _filter_universe(payload.get("names") or [])
     px = _share_price(spot)
 
     chrome = f"""  {filters_bar_html("rc-filters")}
@@ -391,8 +388,9 @@ def render_oipd_dashboard(payload: dict) -> str:
         "The <b>fan</b> shows the 5–95% and 25–75% price bands across maturities; the <b>median</b> "
         "is the 50th percentile. Use the expiry tabs to inspect one distribution's PDF/CDF, its "
         "fitted smile, and tail probabilities. All figures are <b>risk-neutral</b> — a pricing "
-        "convention, not a real-world forecast. <b>Fetch</b> pulls the picked ticker's option chain "
-        "from Unusual Whales; <b>Refresh</b> re-fits the stored chain with no network call.")
+        "convention, not a real-world forecast. The chains come from the nightly options build (Unusual "
+        "Whales, after the close): the option watch list, SPX and the evening's earnings names. Add a name on the "
+        "Watchlists board; its chain arrives with the next session. The board itself calls no provider.")
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
