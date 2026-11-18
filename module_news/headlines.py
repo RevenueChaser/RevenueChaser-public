@@ -2,7 +2,7 @@
 
 IBKR serves news per contract, not as one market feed (measured 9 Nov: Dow Jones live, 50+ headlines a name a week,
 none for SPY). So the board asks for the Dow Jones headlines (``DJ-N`` news, ``DJ-RT`` real-time) of the names on two watch lists
-(``LISTS``): the stock picks, then the News list, every name. Two requests a name (its contract id,
+(``LISTS``): avo's own lists, the stock picks, then the News list, every name. Two requests a name (its contract id,
 then its headlines), headlines only: the article body is never fetched.
 
 Incremental (S16): a fetch asks only from the newest stored headline's time (less ``OVERLAP_S``), at most
@@ -41,9 +41,10 @@ PER_TICKER = 20
 WINDOW_S = 24 * 3600
 OVERLAP_S = 600
 #: The watch lists the per-ticker headlines read (avo, 18 Nov 2026 21:53 Amsterdam: "Hepsini watchliste.duckdb ye
-#: bagla"): the stock picks, then the News list (``jobs.news``, seeded with the large caps the code held until then).
-#: No cap: every name of both is asked each pass.
-LISTS = ("stock", "news")
+#: bagla"; 22:31: "Artik watchlist.duckbd den secmeliler"), by ``wl_list.feeds``: ``""`` is every one of avo's own
+#: lists, then the stock picks, then the News list (``jobs.news``, seeded with the large caps the code held until
+#: then). No cap: every name is asked each pass.
+LISTS = ("", "stock", "news")
 
 _META_PREFIX = re.compile(r"^\{[^}]*\}!?")
 _IB_TIME = "%Y-%m-%d %H:%M:%S.0"

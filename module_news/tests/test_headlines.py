@@ -135,7 +135,7 @@ def test_the_names_are_both_lists_in_order_with_no_cap_and_no_list_in_code():
     names = headlines.tickers(stock, ["NVDA", "AAPL"])
     assert names[:31] == sorted(stock) and names[31:] == ["AAPL"] and len(set(names)) == len(names)
     assert not hasattr(headlines, "BASE_TICKERS") and not hasattr(headlines, "MAX_TICKERS")
-    assert headlines.LISTS == ("stock", "news")
+    assert headlines.LISTS == ("", "stock", "news")              # avo's own lists first
 
 
 def test_the_mark_is_the_newest_stored_headline_not_the_clock(gw):

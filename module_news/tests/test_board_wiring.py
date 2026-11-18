@@ -41,7 +41,7 @@ def test_the_job_builds_then_renders(monkeypatch, tmp_path):
     from RevenueChaser.module_news import headlines, report
     from RevenueChaser.rcdata import read
     monkeypatch.setattr(report, "OUTPUT_DIR", tmp_path)
-    monkeypatch.setattr(read, "job_list", lambda kind: {"stock": ["OKLO"], "news": ["AAPL"]}[kind])
+    monkeypatch.setattr(read, "job_list", lambda kind: {"": ["RKLB"], "stock": ["OKLO"], "news": ["AAPL"]}[kind])
     asked = []
     monkeypatch.setattr(headlines, "fetch", lambda names, **kw: asked.append(names) or
                         {"tickers": len(names), "stored": 0, "skipped": [], "error": "no API session"})
@@ -52,7 +52,7 @@ def test_the_job_builds_then_renders(monkeypatch, tmp_path):
         runners.run_news()
     assert (tmp_path / "news_latest.html").exists()
     assert rawstore.query("SELECT event FROM news_events", db="news") == [{"event": "CPI, M/M%"}]
-    assert asked == [["OKLO", "AAPL"]]                        # the stock picks, then the News list
+    assert asked == [["RKLB", "OKLO", "AAPL"]]                # avo's own lists, the stock picks, the News list
 
 
 def test_a_down_gateway_shows_the_data_incomplete_banner(monkeypatch, tmp_path):
@@ -176,7 +176,7 @@ def test_an_unreadable_stock_list_is_said_not_read_as_empty(monkeypatch, tmp_pat
     def job_list(kind):
         if kind == "stock":
             raise read.JobListUnreadable("watchlists.duckdb: no such file")
-        return ["AAPL"]
+        return ["AAPL"] if kind == "news" else []
     monkeypatch.setattr(report, "OUTPUT_DIR", tmp_path)
     monkeypatch.setattr(read, "job_list", job_list)
     monkeypatch.setattr(headlines, "load_tape", lambda **kw: {"read": 0, "stored": 0})
@@ -185,4 +185,4 @@ def test_an_unreadable_stock_list_is_said_not_read_as_empty(monkeypatch, tmp_pat
                         {"tickers": len(names), "stored": 1, "skipped": [], "failed": [], "error": None})
     page = runners.run_news_headlines().read_text(encoding="utf-8")
     assert asked == [["AAPL"]]                                  # the News list is still asked
-    assert page.count('class="rc-provider-health"') == 1 and "stock watch list" in page
+    assert page.count('class="rc-provider-health"') == 1 and "stock watch lists" in page

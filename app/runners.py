@@ -1153,7 +1153,7 @@ def run_oipd(uw=None, ticker: str | None = None, no_fetch: bool = False) -> Path
 
 def run_news(uw=None) -> Path:
     """The News board's Fetch: the incremental calendar build into ``boards/news.duckdb``, the Dow Jones headlines from
-    the IBKR Gateway (every name of the stock and News watch lists), then the page.
+    the IBKR Gateway (every name of avo's own, the stock and the News watch lists), then the page.
 
     The calendar reads ``market.economic_event`` (the builder's hourly ``uw/economic_calendar``). The headlines are two gateway
     requests a name and no UW call; a gateway that is down is a job note, never a failed Fetch.
@@ -1193,8 +1193,8 @@ def _news_headlines_pass(rid: str) -> dict | None:
         try:
             lists.append(read.job_list(kind))
         except read.JobListUnreadable as e:
-            unread.append(f"{kind} watch list ({e})")
-            ledger.add_note(f"News headlines: the {kind} watch list could not be read ({e})")
+            unread.append(f"{kind or 'own'} watch lists ({e})")
+            ledger.add_note(f"News headlines: the {kind or 'own'} watch lists could not be read ({e})")
     names = headlines.tickers(*lists)
     got = headlines.fetch(names, run_id=rid)
     health = None

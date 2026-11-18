@@ -52,3 +52,12 @@ def test_the_news_list_sits_under_read_by_the_jobs_without_a_hand_written_line(n
 
 def test_the_stock_list_says_news_reads_it():
     assert "News" in board.JOB_LISTS["jobs.stock"]["name"]
+
+
+def test_avos_own_lists_are_read_as_one_list_for_news():
+    # avo, 18 Nov 2026 22:31: "Artik watchlist.duckbd den secmeliler": News reads his own lists (feeds "") too.
+    store.seed_news_lists()
+    own = store.create_list("Growth")
+    store.add_symbol(own, "NASDAQ:NVDA")
+    store.add_symbol(own, "RKLB")
+    assert read.job_list("") == ["NVDA", "RKLB"]
