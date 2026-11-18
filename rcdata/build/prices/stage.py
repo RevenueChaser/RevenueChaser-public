@@ -98,7 +98,6 @@ def live_served(con: duckdb.DuckDBPyConnection, table: str = "price_bar_daily") 
         con.execute("DETACH live_served")
 
 
-<<<<<<< HEAD
 def carry_live(con: duckdb.DuckDBPyConnection, ids: list[str], table: str = "price_bar_daily") -> int:
     """Copy the live file's ``table`` rows of ``ids`` into the build's (by column name); the rows copied."""
     from ... import serving
@@ -114,8 +113,6 @@ def carry_live(con: duckdb.DuckDBPyConnection, ids: list[str], table: str = "pri
         con.execute("DETACH live_carry")
 
 
-=======
->>>>>>> d293ae9
 def view(con: duckdb.DuckDBPyConnection, name: str, schema: list[tuple[str, str]], files=(),
          added_later=()) -> None:
     """``CREATE TEMP VIEW name`` over ``files`` (Parquet, by name), typed by ``schema``: what :func:`create` would
