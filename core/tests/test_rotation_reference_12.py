@@ -85,6 +85,8 @@ def test_no_reader_package_imports_the_board_for_the_reference_data():
 def test_no_run_reads_the_seed():
     """Plan v5 step 7b: the seed makes the lists once and feeds the tests. A source file that names it would be a
     code-dict fallback beside the watch list."""
+    from RevenueChaser.core import rotation_reference
+    assert rotation_reference.SEED_ROTATION_ETFS and rotation_reference.SEED_INDUSTRY_GROUPS
     allowed = {"core/rotation_reference.py"}
     offenders = []
     for path in sorted(_ROOT.rglob("*.py")):
