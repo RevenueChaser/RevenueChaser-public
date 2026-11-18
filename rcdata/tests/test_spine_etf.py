@@ -213,7 +213,7 @@ def test_the_spine_note_counts_etfs_without_the_etns(built):
 
 def test_the_spine_serves_etf_at_the_current_schema_version(built):
     """4 brought ``etf`` itself (#346); 5 the two ``my_universe`` tables beside it (avo, 4 Nov 2026)."""
-    assert serving.SERVING_SCHEMA_VERSION["spine"] == 6 and "etf" in security.TABLES
+    assert serving.SERVING_SCHEMA_VERSION["spine"] == 7 and "etf" in security.TABLES
     with serving.open_read("spine") as con:
         assert con.execute("SELECT version FROM serving_schema_version").fetchone() == (serving.SERVING_SCHEMA_VERSION["spine"],)
 
