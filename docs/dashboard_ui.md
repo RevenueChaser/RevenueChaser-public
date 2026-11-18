@@ -220,7 +220,9 @@ one-screen intro.
 
 ## 2c. The "add to list" button (PR 4; one menu since #786 step 5)
 
-One 44 px bookmark next to a ticker. Pressing it opens a menu of every watch list: avo's own named lists under
+One 44 px bookmark **left of the ticker it belongs to**, never after it (avo, 18 Nov 2026: "Bookmark simgesi solda
+olmali"; the universal rule is "Row actions before the label" in claude-coordinator `ref/design-system/DESIGN.md`).
+Where the button has a line of its own (a card, a panel title), that line starts at the left edge. Pressing it opens a menu of every watch list: avo's own named lists under
 **Your lists**, then the two the jobs read under **Read by the jobs** (*Stock picks*, which prices, LEAPS and
 Earnings take, and *Option chains*, which the options build takes). Each row is a checkbox with the list's size;
 a tick puts the ticker on that list and an untick takes it off (`POST /api/watchlists/<id>/tick/<ticker>`,
@@ -240,16 +242,16 @@ Where each board puts it (`core/tests/test_watchlist_boards_pr4.py` classifies e
 
 | Board | Where |
 |---|---|
-| LEAPS | The last column of every tier (it replaced the ★ pin; Stk is the pinned list) |
-| SEC 13F | Each row's ticker cell |
+| LEAPS | First in every contract and name card, before the ticker (it replaced the ★ pin; Stk is the pinned list) |
+| SEC 13F | Each row's ticker cell, before the ticker |
 | Asymmetric Growth, Swing, Fundamentals | Its own line under each card's ticker line |
-| Sector Rotation | Each fund's ticker cell (not a macro series), and every holding and industry member when expanded |
-| Earnings Radar | The ticker's drawer header (the table's ticker column is a 50 px sticky column) |
+| Sector Rotation | Before the ticker in each fund's ticker cell (not a macro series), and before every holding and industry member when expanded |
+| Earnings Radar | Before the ticker in its drawer header (the table's ticker column is a 50 px sticky column) |
 | Implied Probability | Under the title, for the focal ticker |
-| Financials | The company's ticker and each comps peer |
+| Financials | Before the company name in the title, and before each comps peer |
 | Co-movement | The found name's line after a Find (each name is itself a chip button) |
 | Value Chain | The focal company's filing line |
-| Relatedness | The focal company in the panel title, and each peer row |
+| Relatedness | The focal company in the panel title (still after the name: open with the Relatedness thread), and each peer row |
 | Watch lists | None (avo, 12 Nov 2026: "bu liste icin bookmark simgesine gerek yok"): a row of a named list is already on a list. #786 step 5 goes the other way — a menu on the other boards that puts a ticker on one of these lists |
 | SPX Gamma, UW Interaction, the Rotation trail, Settings, Logs, Runs | None: SPX is always built; a lab of raw columns; a chart of the funds the table already carries; the cards themselves; not data boards |
 

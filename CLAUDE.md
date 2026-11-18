@@ -24,6 +24,13 @@ merged here, because this is where CI runs. The issues live here too, and so doe
 - **Work that touches only `.hermes/` or `scripts/pc/`** is the one exception to "nothing new in private",
   and it is rare. `.bookkeeping/` is published here, so it is not one of them.
 
+## Dashboard UI
+
+Before touching what a board shows, read the universal design rules (claude-coordinator
+`ref/design-system/DESIGN.md` and `vault-memory/rules/ui-design.md`) and this repository's
+[`docs/dashboard_ui.md`](docs/dashboard_ui.md). One rule that was missed before: the watch-list bookmark stands
+**left of the ticker**, never after it (avo, 18 Nov 2026).
+
 ## Language
 
 Code, comments, commit messages, issues and docs are written in **English**.
