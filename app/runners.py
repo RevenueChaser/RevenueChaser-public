@@ -1246,6 +1246,25 @@ def run_news_ticker(uw=None, ticker: str = "") -> None:
     return None
 
 
+def run_news_x_follow(uw=None) -> Path | None:
+    """The X lane's own reader (plan step 5): the Following timeline of RC's X account into ``boards/news.duckdb``,
+    then the page. The timer queues it every 30 minutes; ``x_reader.due`` thins that to every 4 hours outside the US
+    session. A refused read is a job note and the page's banner, not a job message (the shell alerts every message)."""
+    from RevenueChaser.module_news import report, x_reader
+    try:
+        got = x_reader.run(run_id=run_id())
+    except x_reader.ReadFailed as e:
+        ledger.add_note(f"News X reader: nothing read ({e})")
+        return report.render(provider_health={
+            "provider": "X", "calls": 1, "failed": 1, "auth_error": None,
+            "failures": [{"endpoint": "following", "error": str(e)}],
+            "message": f"{GAPS}: RC's X reader could not read the Following timeline ({e})."})
+    if got["skipped"]:
+        return None
+    ledger.add_note(f"News X reader: {got['stored']} new posts stored of {got['read']} read")
+    return report.render()
+
+
 def run_news_cached(uw=None) -> Path:
     """Store-only News render (Refresh, first load): reads ``boards/news.duckdb``, writes nothing to the store."""
     from RevenueChaser.module_news import report

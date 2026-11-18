@@ -39,6 +39,9 @@ from zoneinfo import ZoneInfo
 
 AMS = ZoneInfo("Europe/Amsterdam")
 PROVIDER = "grok-x"
+#: RC's own X reader (``x_reader.py``, plan step 5): the Following timeline of RC's X account. Both are the X lane.
+FOLLOW_PROVIDER = "x-follow"
+X_PROVIDERS = (PROVIDER, FOLLOW_PROVIDER)
 # The IMAP folder of avo's Gmail label (measured on homesrv 11 Nov 2026: 275 mails; the web search name 00_invest-grok is not a folder).
 LABEL = "00_invest/Grok"
 KINDS = frozenset({"news", "level", "option", "macro", "position", "other"})

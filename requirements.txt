@@ -40,3 +40,6 @@ tzdata>=2024.1
 # The ops state's store when RC_REDIS_URL is set (rcdata/ops_redis.py, master plan Order 3). Pinned: the WATCH/MULTI
 # pipeline behaviour the ops transactions rely on is this client's.
 redis==7.0.1
+# News X lane (module_news/x_reader.py): twifork, the maintained fork of twikit (import name twikit). Pinned: the
+# timeline shape x_reader.tweet() parses is this version's.
+twifork==2.4.0

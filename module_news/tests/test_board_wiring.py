@@ -218,3 +218,26 @@ def test_the_page_carries_the_ticker_box(monkeypatch, tmp_path):
     page = report.render_html()
     assert 'id="tq"' in page and "Bir hisse için haber" in page and "/run/news_ticker" in page
     assert "TQ_PICK = " in page and "rcWatchInit(" in page
+
+
+def test_the_x_reader_route_queues_one_pass(monkeypatch):
+    captured = []
+    monkeypatch.setattr(dashboard.jobs, "submit", lambda module, params: captured.append((module, params)) or "j1")
+    monkeypatch.setattr(dashboard.jobs, "active_id", lambda modules: None)
+    assert _client().post("/run/news_x_follow").status_code == 202
+    assert captured == [("news_x_follow", {})]
+    monkeypatch.setattr(dashboard.jobs, "active_id", lambda modules: "busy")
+    assert _client().post("/run/news_x_follow").status_code == 409 and len(captured) == 1
+
+
+def test_a_refused_x_read_is_the_pages_banner_not_a_job_message(monkeypatch, tmp_path):
+    from RevenueChaser.module_news import report, x_reader
+    monkeypatch.setattr(report, "OUTPUT_DIR", tmp_path)
+
+    def refused(**kw):
+        raise x_reader.ReadFailed("X refused the page (Unauthorized: 401)")
+    monkeypatch.setattr(x_reader, "run", refused)
+    page = runners.run_news_x_follow().read_text(encoding="utf-8")
+    assert page.count('class="rc-provider-health"') == 1 and "Unauthorized" in page
+    monkeypatch.setattr(x_reader, "run", lambda **kw: {"skipped": True, "read": 0, "stored": 0})
+    assert runners.run_news_x_follow() is None
