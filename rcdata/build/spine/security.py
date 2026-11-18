@@ -503,7 +503,7 @@ class SpineSecurity:
             isin = isin_mod.from_cusip(cusip)
             row = {
                 "ticker": r["ticker"], "cik": r["cik"], "name": r["name"], "exchange": r["exchange"],
-                "tier": tier_rule.tier(r["exchange"], typ), "tier_rule": tier_rule.VERSION,
+                "tier": tier_rule.tier(r["exchange"], typ, (sec_row or {}).get("exchg")), "tier_rule": tier_rule.VERSION,
                 "security_type": typ, "type_source": typ_src,
                 "gvkey": (sec_row or {}).get("gvkey"), "iid": (sec_row or {}).get("iid"), "link_source": how,
                 "cusip": cusip, "cusip_source": SEC_IDHIST.name if cusip else None,
