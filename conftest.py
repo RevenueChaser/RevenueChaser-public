@@ -352,6 +352,17 @@ def isolate_deepseek_gate(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def empty_my_universe_manual(tmp_path, monkeypatch):
+    """A test builds My Universe from its own rows, never from the names avo added by hand in the shipped
+    ``my_universe_manual.json``: a shipped add of a ticker a fixture does not hold would be a build issue in every
+    such test. The test of the shipped file passes its path."""
+    from RevenueChaser.rcdata.build.spine import my_universe
+    path = tmp_path / "my_universe_manual.json"
+    path.write_text('{"version": 1, "add": [], "remove": []}', encoding="utf-8")
+    monkeypatch.setattr(my_universe, "MANUAL_FILE", path)
+
+
+@pytest.fixture(autouse=True)
 def _reset_cik_map():
     """The CIK map is cached per process (#301 review MUST-2); no test may inherit another's map."""
     from RevenueChaser.core.providers import sec_edgar

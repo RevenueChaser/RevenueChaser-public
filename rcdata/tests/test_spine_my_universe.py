@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 from datetime import date
+from pathlib import Path
 
 import duckdb
 import pytest
@@ -81,7 +82,7 @@ def test_the_rules_file_holds_avos_numbers_and_the_module_reads_them():
 
 def test_the_shipped_manual_file_adds_the_map_etf_avo_named_and_every_line_carries_his_reason():
     """avo, 18 Nov 2026: an ETF on the Sector Rotation map that is not in My Universe is added (IDX was the one)."""
-    adds, removes = my_universe.load_manual()
+    adds, removes = my_universe.load_manual(Path(my_universe.__file__).with_name("my_universe_manual.json"))
     assert "IDX" in {line["ticker"] for line in adds}
     assert all(line["reason"] for line in adds + removes)
 
