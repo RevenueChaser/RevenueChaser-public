@@ -201,7 +201,6 @@ PANEL_JS = r"""<script>
 var HM = __HEATMAP_JSON__;
 var P = 0, SCALE = 'fixed', OPEN = null, PICK = null, UNI = 0;
 function $(id){ return document.getElementById(id); }
-function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function pct(v){ return v == null ? '—' : (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v).toFixed(2) + '%'; }
 function cap(b){ return b >= 1000 ? '$' + (b / 1000).toFixed(2) + 'T' : b >= 1 ? '$' + Math.round(b) + 'B' : '$' + Math.round(b * 1000) + 'M'; }
 function ch(s){ return s[5 + P]; }
@@ -270,9 +269,9 @@ function drawMap(){
     squarify(groups(), {x: 0, y: 0, w: W, h: H}).forEach(function(g){
       var fs = Math.max(11, Math.min(18, Math.min(g.w, g.h) / 6)), inner = g.w < 90 || g.h < 70 ?
         '<span class="c" style="font-size:11px">' + pct(g.avg) + '</span>' :
-        '<span class="t" style="font-size:' + fs + 'px">' + esc(g.g) + ' ›</span><span class="c" style="font-size:' + Math.max(11, fs * .8) +
+        '<span class="t" style="font-size:' + fs + 'px">' + rcEsc(g.g) + ' ›</span><span class="c" style="font-size:' + Math.max(11, fs * .8) +
         'px">' + pct(g.avg) + '</span><span class="c" style="font-size:11px;opacity:.75">' + g.m.length + ' names</span>';
-      html += tile(g.x, g.y, g.w, g.h, colour(g.avg, st), 'data-sec="' + esc(g.g) + '" aria-label="' + esc(g.g) + ', ' + pct(g.avg) + ', open"', inner);
+      html += tile(g.x, g.y, g.w, g.h, colour(g.avg, st), 'data-sec="' + rcEsc(g.g) + '" aria-label="' + rcEsc(g.g) + ', ' + pct(g.avg) + ', open"', inner);
     });
     el.innerHTML = html;
     return;
@@ -280,14 +279,14 @@ function drawMap(){
   squarify(groups(), {x: 0, y: 0, w: W, h: H}).forEach(function(g){
     var head = g.h > 40 && g.w > 60 ? 24 : 0;
     html += '<div class="hm-sec" style="left:' + g.x + 'px;top:' + g.y + 'px;width:' + g.w + 'px;height:' + g.h + 'px">';
-    if(head) html += '<button class="hm-sech" type="button"' + (OPEN ? '' : ' data-sec="' + esc(g.g) + '"') + ' title="' + esc(g.g) + '">' +
-      esc(g.g) + (OPEN ? '' : ' ›') + ' <span class="avg">' + pct(g.avg) + '</span></button>';
+    if(head) html += '<button class="hm-sech" type="button"' + (OPEN ? '' : ' data-sec="' + rcEsc(g.g) + '"') + ' title="' + rcEsc(g.g) + '">' +
+      rcEsc(g.g) + (OPEN ? '' : ' ›') + ' <span class="avg">' + pct(g.avg) + '</span></button>';
     squarify(g.m.map(function(s){ return {v: s[4], s: s}; }), {x: 1, y: head, w: g.w - 2, h: g.h - head - 1}).forEach(function(t){
       var s = t.s, m = Math.min(t.w, t.h), fs = Math.max(10, Math.min(30, m / 4.2)), inner = '';
-      if(t.w >= 34 && t.h >= 22) inner = '<span class="t" style="font-size:' + fs + 'px">' + esc(s[0]) + '</span>';
+      if(t.w >= 34 && t.h >= 22) inner = '<span class="t" style="font-size:' + fs + 'px">' + rcEsc(s[0]) + '</span>';
       if(t.w >= 44 && t.h >= 38) inner += '<span class="c" style="font-size:' + Math.max(10, fs * .62) + 'px">' + pct(ch(s)) + '</span>';
-      html += tile(t.x, t.y, t.w, t.h, colour(ch(s), st), 'data-t="' + esc(s[0]) + '"' + (s[0] === PICK ? ' aria-current="true"' : '') +
-        ' aria-label="' + esc(s[0]) + ' ' + esc(s[1]) + ', ' + pct(ch(s)) + '"', inner);
+      html += tile(t.x, t.y, t.w, t.h, colour(ch(s), st), 'data-t="' + rcEsc(s[0]) + '"' + (s[0] === PICK ? ' aria-current="true"' : '') +
+        ' aria-label="' + rcEsc(s[0]) + ' ' + rcEsc(s[1]) + ', ' + pct(ch(s)) + '"', inner);
     });
     html += '</div>';
   });
@@ -297,13 +296,13 @@ function drawList(){
   var st = stop(), html = '';
   groups().sort(function(a, b){ return b.v - a.v; }).forEach(function(g){
     var rows = g.m.slice().sort(function(a, b){ return b[4] - a[4]; });
-    html += '<div class="hm-card"><button class="hm-cardh" type="button"' + (OPEN ? '' : ' data-sec="' + esc(g.g) + '"') + '><span>' + esc(g.g) +
+    html += '<div class="hm-card"><button class="hm-cardh" type="button"' + (OPEN ? '' : ' data-sec="' + rcEsc(g.g) + '"') + '><span>' + rcEsc(g.g) +
       (OPEN ? '' : ' ›') + '</span><span class="' + (g.avg >= 0 ? 'pos' : 'neg') + '">' + pct(g.avg) + '</span></button>';
     rows.slice(0, OPEN ? rows.length : 6).forEach(function(s){
-      html += '<div class="hm-row">' + watch(s[0]) + '<span class="tk">' + esc(s[0]) + '</span><span class="nm">' + esc(s[1]) + ' · ' + cap(s[4]) +
+      html += '<div class="hm-row">' + watch(s[0]) + '<span class="tk">' + rcEsc(s[0]) + '</span><span class="nm">' + rcEsc(s[1]) + ' · ' + cap(s[4]) +
         '</span><span class="hm-sw sw" style="background:' + colour(ch(s), st) + '">' + pct(ch(s)) + '</span></div>';
     });
-    if(!OPEN && rows.length > 6) html += '<button class="hm-more" type="button" data-sec="' + esc(g.g) + '">Show all ' + rows.length + '</button>';
+    if(!OPEN && rows.length > 6) html += '<button class="hm-more" type="button" data-sec="' + rcEsc(g.g) + '">Show all ' + rows.length + '</button>';
     html += '</div>';
   });
   $('hm-list').innerHTML = html;
@@ -313,12 +312,12 @@ function drawPick(){
   HM.stocks.forEach(function(x){ if(x[0] === PICK) s = x; });
   if(!s){ el.hidden = true; el.innerHTML = ''; return; }
   el.hidden = false;
-  el.innerHTML = watch(s[0]) + '<span class="tk">' + esc(s[0]) + '</span><span>' + esc(s[1]) + '</span><span class="ch ' +
-    ((ch(s) || 0) >= 0 ? 'pos' : 'neg') + '">' + pct(ch(s)) + ' ' + HM.periods[P] + '</span><span class="meta">' + esc(s[2]) + ' › ' +
-    esc(s[3]) + ' · ' + cap(s[4]) + '</span>';
+  el.innerHTML = watch(s[0]) + '<span class="tk">' + rcEsc(s[0]) + '</span><span>' + rcEsc(s[1]) + '</span><span class="ch ' +
+    ((ch(s) || 0) >= 0 ? 'pos' : 'neg') + '">' + pct(ch(s)) + ' ' + HM.periods[P] + '</span><span class="meta">' + rcEsc(s[2]) + ' › ' +
+    rcEsc(s[3]) + ' · ' + cap(s[4]) + '</span>';
 }
 function drawCrumb(){
-  $('hm-crumb').innerHTML = OPEN ? '<button type="button" data-all="1">‹ All sectors</button><b>' + esc(OPEN) + '</b><span>· grouped by industry</span>' :
+  $('hm-crumb').innerHTML = OPEN ? '<button type="button" data-all="1">‹ All sectors</button><b>' + rcEsc(OPEN) + '</b><span>· grouped by industry</span>' :
     '<span>All sectors · ' + names().length + ' names</span>';
 }
 function drawRamp(){
@@ -333,8 +332,8 @@ function press(groupId, btn){ [].forEach.call(document.querySelectorAll('#' + gr
 function init(){
   if(!HM || !HM.stocks || !HM.stocks.length || !$('hm')) return;
   $('hm-asof').textContent = HM.as_of;
-  $('hm-uni').innerHTML = HM.universes.map(function(u, i){ return '<option value="' + i + '">' + esc(u.name) + ' · ' + u.idx.length + '</option>'; }).join('');
-  $('hm-per').innerHTML = HM.periods.map(function(p, i){ return '<button type="button" aria-pressed="' + (i === 0) + '" data-p="' + i + '">' + esc(p) + '</button>'; }).join('');
+  $('hm-uni').innerHTML = HM.universes.map(function(u, i){ return '<option value="' + i + '">' + rcEsc(u.name) + ' · ' + u.idx.length + '</option>'; }).join('');
+  $('hm-per').innerHTML = HM.periods.map(function(p, i){ return '<button type="button" aria-pressed="' + (i === 0) + '" data-p="' + i + '">' + rcEsc(p) + '</button>'; }).join('');
   $('hm-uni').addEventListener('change', function(){ UNI = +this.value; OPEN = null; draw(); });
   $('hm').addEventListener('click', function(e){
     var b = e.target.closest('button'); if(!b || b.closest('.rc-watch')) return;
@@ -350,8 +349,8 @@ function init(){
     var b = e.target.closest('.hm-tile'), s = null; if(!b || !b.dataset.t){ tip.hidden = true; return; }
     HM.stocks.forEach(function(x){ if(x[0] === b.dataset.t) s = x; });
     if(!s){ tip.hidden = true; return; }
-    tip.innerHTML = '<b>' + esc(s[0]) + '</b> ' + esc(s[1]) + '<br><span class="' + ((ch(s) || 0) >= 0 ? 'pos' : 'neg') + '">' + pct(ch(s)) + '</span> ' +
-      HM.periods[P] + ' · ' + cap(s[4]) + '<br>' + esc(s[3]);
+    tip.innerHTML = '<b>' + rcEsc(s[0]) + '</b> ' + rcEsc(s[1]) + '<br><span class="' + ((ch(s) || 0) >= 0 ? 'pos' : 'neg') + '">' + pct(ch(s)) + '</span> ' +
+      HM.periods[P] + ' · ' + cap(s[4]) + '<br>' + rcEsc(s[3]);
     tip.style.left = Math.min(e.clientX + 14, innerWidth - 270) + 'px'; tip.style.top = (e.clientY + 14) + 'px'; tip.hidden = false;
   });
   map.addEventListener('mouseleave', function(){ tip.hidden = true; });
@@ -368,7 +367,7 @@ def panel_html(data: dict | None) -> str:
     """The heatmap section for ``data`` (:func:`payload`), or ``""`` when there is none."""
     if not data or not data.get("stocks"):
         return ""
-    from RevenueChaser.core.html_safe import fill, script_json
+    from RevenueChaser.core.html_safe import ESC_JS, fill, script_json
     from RevenueChaser.core.reporting_common import THEME_CSS, THEME_JS
-    return (f"<style>{THEME_CSS}</style><script>{THEME_JS}</script>{PANEL_CSS}{PANEL_HTML}"
+    return (f"<style>{THEME_CSS}</style><script>{THEME_JS}{ESC_JS}</script>{PANEL_CSS}{PANEL_HTML}"
             + fill(PANEL_JS, {"__HEATMAP_JSON__": script_json(data)}))
