@@ -247,7 +247,7 @@ Where each board puts it (`core/tests/test_watchlist_boards_pr4.py` classifies e
 | LEAPS | First in every contract and name card, before the ticker (it replaced the ★ pin; Stk is the pinned list) |
 | SEC 13F | Each row's ticker cell, before the ticker |
 | Asymmetric Growth, Swing, Fundamentals | Its own line under each card's ticker line |
-| Sector Rotation | Before the ticker in each fund's ticker cell (not a macro series), and before every holding and industry member when expanded |
+| Sector Rotation | Before the ticker in each fund's ticker cell (not a macro series), before every holding and industry member when expanded, and before each stock of the stock heatmap's list and its picked-stock line (#782) |
 | Earnings Radar | Before the ticker in its drawer header (the table's ticker column is a 50 px sticky column) |
 | Implied Probability | Under the title, for the focal ticker |
 | Financials | Before the company name in the title, and before each comps peer |

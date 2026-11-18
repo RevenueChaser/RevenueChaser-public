@@ -729,6 +729,13 @@ def _rrg_payload(snapshots: list[ETFRotationSnapshot], as_of: date) -> dict:
     return {"weeks": weeks, "etfs": etfs}
 
 
+def _heatmap_html() -> str:
+    """#782: the stock heatmap (S&P 500 by default, or one of avo's watch lists), drawn in the page; no data, no
+    section."""
+    from . import heatmap
+    return heatmap.panel_html(heatmap.payload())
+
+
 def _macro_table_html(as_of: date) -> str:
     """B1: the macro series as their own table under the map, one block per kind (``engine.MACRO_BLOCKS``); each row
     stacks into a card on a phone. Read-only; an empty store gives no section."""
@@ -1098,6 +1105,8 @@ def export_rotation_dashboard(snapshots: list[ETFRotationSnapshot], filename: st
 <th class="th-g1 num c-price">Price</th>
 </tr></thead><tbody>{rows}</tbody></table>
 </div></div>
+
+{_heatmap_html()}
 
 {_macro_table_html(as_of)}
 
