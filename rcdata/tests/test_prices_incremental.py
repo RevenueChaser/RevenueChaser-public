@@ -208,18 +208,31 @@ def _shrunk_build(where: str):
     return con
 
 
-@pytest.mark.parametrize("where", [f"security_id = '{AAPL}'",
-                                   f"security_id = '{AAPL}' AND session_date = (SELECT min(session_date) "
-                                   f"FROM l.price_bar_daily WHERE security_id = '{AAPL}')"],
-                         ids=["a security", "one row"])
-def test_the_build_refuses_to_lose_a_security_or_a_row_unless_asked(live, where):
-    """#1079's 20 lost securities were 0.13 % of the rows, under the swap's 1 % guard: this one counts both."""
-    con = _shrunk_build(where)
+def test_the_build_refuses_to_lose_a_row_unless_asked(live):
+    """#1079's 20 lost securities were 0.13 % of the rows, under the swap's 1 % guard: this one counts rows."""
+    con = _shrunk_build(f"security_id = '{AAPL}' AND session_date = (SELECT min(session_date) "
+                        f"FROM l.price_bar_daily WHERE security_id = '{AAPL}')")
     try:
         with pytest.raises(ValueError, match="price_bar_daily would lose"):
             prices_serving._refuse_shrink(base.RunContext(run_id="t", dataset=prices_serving.NAME), con)
         prices_serving._refuse_shrink(base.RunContext(run_id="t", dataset=prices_serving.NAME, allow_shrink=True),
                                       con)
+    finally:
+        con.close()
+
+
+def test_a_security_no_source_returns_keeps_its_stored_bars(live):
+    """19 Nov 2026: the whole build after #1089 found no bar of VBNK, KPTI, KNRXF and PLCE in any source (gone from
+    Compustat's and Alpaca's files); their stored bars are carried over from the live file, not lost."""
+    want = sorted(tuple(r.values()) for r in _q("SELECT * FROM price_bar_daily WHERE security_id = ?", [AAPL]))
+    assert want
+    con = _shrunk_build(f"security_id = '{AAPL}'")
+    try:
+        ctx = base.RunContext(run_id="t", dataset=prices_serving.NAME)
+        prices_serving._refuse_shrink(ctx, con)
+        got = sorted(con.execute("SELECT * FROM price_bar_daily WHERE security_id = ?", [AAPL]).fetchall())
+        assert got == want
+        assert any(AAPL in n and "kept with their" in n for n in ctx.notes), ctx.notes
     finally:
         con.close()
 
