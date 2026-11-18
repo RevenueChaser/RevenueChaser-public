@@ -514,9 +514,7 @@ def test_a_manual_line_without_a_reason_is_refused(tmp_path):
 
 # ── The build and the reader ──────────────────────────────────────────────────────────────────────────────────
 
-def test_the_spine_build_serves_both_tables_at_version_7_and_the_reader_reads_them(built, monkeypatch):  # noqa: F811
-    from RevenueChaser.rcdata.build.spine import my_universe
-    monkeypatch.setattr(my_universe, "listed_etfs", dict)        # no fund enters on a list here (rule E)
+def test_the_spine_build_serves_both_tables_at_version_7_and_the_reader_reads_them(built):  # noqa: F811
     built()
     assert serving.SERVING_SCHEMA_VERSION["spine"] == 7
     assert etf_class.TABLE in security.TABLES and etf_class.CHANGES in security.TABLES
