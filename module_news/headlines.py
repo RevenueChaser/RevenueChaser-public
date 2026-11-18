@@ -28,6 +28,7 @@ from RevenueChaser.core import config, ibkr_login, rawstore
 from RevenueChaser.core.providers import ibkr_tws as ibkr
 from RevenueChaser.module_news import tape, x_feed
 from RevenueChaser.module_news.calendar import META
+from RevenueChaser.rcdata import read
 
 TABLE = "news_headlines"
 MARK_KEY = "headlines_mark"
@@ -42,9 +43,10 @@ WINDOW_S = 24 * 3600
 OVERLAP_S = 600
 #: The watch lists the per-ticker headlines read (avo, 18 Nov 2026 21:53 Amsterdam: "Hepsini watchliste.duckdb ye
 #: bagla"; 22:31: "Artik watchlist.duckbd den secmeliler"), by ``wl_list.feeds``: ``""`` is every one of avo's own
-#: lists, then the stock picks, then the News list (``jobs.news``, seeded with the large caps the code held until
-#: then). No cap: every name is asked each pass.
-LISTS = ("", "stock", "news")
+#: lists, then the stock picks (together ``rcdata.read.PICKED``, the one definition of avo's picks), then the News
+#: list (``jobs.news``, seeded with the large caps the code held until then). No cap: every name is asked each pass.
+#: Read strictly, list by list (``read.job_list``), so an unreadable list is named on the board, not dropped.
+LISTS = (*read.PICKED, "news")
 
 _META_PREFIX = re.compile(r"^\{[^}]*\}!?")
 _IB_TIME = "%Y-%m-%d %H:%M:%S.0"
