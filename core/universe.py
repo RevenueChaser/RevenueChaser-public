@@ -511,7 +511,6 @@ def filter_fields(tickers: list[str] | None = None) -> dict[str, dict]:
             "name": r.get("name") or t,
             "sector": canonical_sector(r.get("sector")),
             "industry": (r.get("industry") or "").strip(),
-            "gind": r.get("gind"), "gsubind": r.get("gsubind"),
             "market_cap": r.get("market_cap"),
             "earnings_date": earnings.get(t),
         })
@@ -524,7 +523,8 @@ def filter_fields(tickers: list[str] | None = None) -> dict[str, dict]:
     run = current_theme_run()
     themes = _theme_ids_by_ticker(theme_catalog(run), run) if run else {}
     for c in cards:
-        c["gics"] = sector_path(c["sector"], c["industry"], c.get("gind"), c.get("gsubind"))
+        r = by.get(c["ticker"]) or {}   # the codes ride only in the path: board payloads keep their keys
+        c["gics"] = sector_path(c["sector"], c["industry"], r.get("gind"), r.get("gsubind"))
         c["theme_ids"] = themes.get(c["ticker"], [])
     annotate_cards(cards)
     return {c["ticker"]: c for c in cards}
