@@ -34,7 +34,13 @@ with the second reviewer):
   points lower (the distance 0.05 wider), so a fund sitting on a cut does not flip every quarter; a finer level that
   passes the full cuts is a new label and wins. The 10 % derivative cut and the fixed equity and US cuts have none;
   a fund that starts or stops being hidden writes a change row all the same;
-- a fund with no report is ``unclassified`` and says why. It is never guessed. A fund that HAD a sourced label and
+- **a fund with no N-PORT report** (a unit trust: SPY, MDY) is read from its issuer's own daily file where
+  ``funds/index_holdings`` fetches one (plan v5 step 2). That file carries ticker, CUSIP, name and weight only, so
+  the rule for it is stated here: its parser already dropped cash and futures, so every line is equity; a line whose
+  ticker is an ``etf`` row is a fund; a line is coded by CUSIP, then ticker; a line the spine knows is a US line
+  (``security`` holds US listings only) and any other has no country. A file whose weights add to under 90 is not
+  read. ``source`` names the dataset and the file's day;
+- a fund with no report and no such file is ``unclassified`` and says why. It is never guessed. A fund that HAD a sourced label and
   misses the newest quarter keeps it, with the quarter it came from in ``source`` and the gap in ``reason`` (avo's F).
 
 :data:`MANUAL_FILE` corrects a wrong call; it does not fill a missing one. A line names a ticker, a ``primary_class``
@@ -62,6 +68,10 @@ TABLE = "etf_class"
 CHANGES = "etf_class_changes"
 #: The dataset whose Parquet this reads (``dirty.read_dirs`` through ``SpineSecurity.parquet_reads``).
 NPORT = "sec/nport"
+#: The staged issuer files of the index funds (``funds/index_holdings``): the source of a fund that files no N-PORT.
+FUND_LINES, FUND_FILES = "stg_fund_lines", "funds/index_holdings"
+#: An issuer file whose weights add to less than this (percent of net assets) is no holdings file to classify from.
+FILE_COVER = 90.0
 #: Corrections by hand. Owned by avo; changed only by a pull request.
 MANUAL_FILE = Path(__file__).with_name("etf_class_manual.json")
 ISSUES = ("etf_class_manual_unknown",)
@@ -374,6 +384,49 @@ def profiles(con: duckdb.DuckDBPyConnection, funds: list[dict], folder: Path | N
     return out
 
 
+def issuer_profiles(con: duckdb.DuckDBPyConnection, out: dict[str, dict]) -> None:
+    """Fills the profile of each fund of ``out`` that has no N-PORT report from the newest day of its issuer's own
+    file in :data:`FUND_LINES`, by the rule in the module docstring. A build with no such staging changes nothing."""
+    want = [{"ticker": t} for t, p in out.items() if p.get("no_report")]
+    if not want or not con.execute("SELECT 1 FROM information_schema.tables WHERE table_name = ?",
+                                   [FUND_LINES]).fetchone():
+        return
+    base.rows_table(con, "_ec_want", [("ticker", "TEXT")], want)
+    lines = con.execute(f"""
+        WITH day AS (SELECT l.fund, max(l.as_of) AS d FROM {FUND_LINES} l JOIN _ec_want w ON w.ticker = l.fund
+                     GROUP BY 1),
+             bc AS (SELECT cusip, min(gsubind) AS g FROM security WHERE cusip IS NOT NULL AND gsubind IS NOT NULL
+                    GROUP BY 1 HAVING count(*) = 1),
+             bt AS (SELECT ticker, gsubind AS g FROM security WHERE gsubind IS NOT NULL)
+        SELECT l.fund, l.as_of, l.weight, CAST(coalesce(bc.g, bt.g) AS VARCHAR), e.ticker IS NOT NULL,
+               EXISTS (SELECT 1 FROM security s WHERE s.cusip = l.cusip OR s.ticker = l.ticker)
+        FROM {FUND_LINES} l JOIN day ON day.fund = l.fund AND day.d = l.as_of
+        LEFT JOIN bc ON bc.cusip = l.cusip LEFT JOIN bt ON bt.ticker = l.ticker
+        LEFT JOIN {etf_mod.TABLE} e ON e.ticker = l.ticker""").fetchall()
+    con.execute("DROP TABLE _ec_want")
+    by_fund: dict[str, list] = {}
+    for fund, *line in lines:
+        by_fund.setdefault(fund, []).append(line)
+    for t, held in by_fund.items():
+        p, day = out[t], held[0][0]
+        total = sum(w or 0.0 for _, w, _, _, _ in held)
+        if total < FILE_COVER:
+            p["why"] += f"; its issuer file of {day} carries weights for {total:.0f}% of net assets only"
+            continue
+        stock = [(w or 0.0, g, known) for _, w, g, is_fund, known in held if not is_fund]
+        g: Counter = Counter()
+        for w, code, _ in stock:
+            if code:
+                g[code] += w
+        equity = sum(w for w, _, _ in stock)
+        us = sum(w for w, _, known in stock if known)
+        p.update(equity=equity, preferred=0.0, debt=0.0, cash=0.0, derivative=0.0, commodity=0.0,
+                 fund=total - equity, real_estate=0.0, coded=sum(g.values()), g=dict(g),
+                 country={k: v for k, v in (("US", us), ("?", equity - us)) if v}, as_of=day,
+                 source=f"{FUND_FILES} {day}")
+        p.pop("no_report"), p.pop("why")
+
+
 def _label(primary: str, code: str | None) -> str | None:
     from . import security                 # ``security`` imports this module
     if primary == "sector":
@@ -423,6 +476,7 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, manual: list[dict
     live_rows = stage.live_rows(TABLE, [c for c, _ in SCHEMA])
     live = {r["ticker"]: r for r in live_rows or []}
     profs = profiles(con, funds, newest[1] if newest else None)
+    issuer_profiles(con, profs)
     bench_name = next((t for t in BENCHMARKS if profs.get(t, {}).get("coded")), None)
     bench = benchmark_of(profs[bench_name]["g"]) if bench_name else None
     source = f"{NPORT} {newest[0]}" if newest else None
@@ -442,7 +496,7 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, manual: list[dict
         if was is not None and not was.get("manual"):
             r = hold(p, bench, cuts, was, r)
         r.update(ticker=t, label=_label(r["primary_class"], r["code"]), manual=False, as_of=p.get("as_of"),
-                 source=None if p.get("no_report") else source, run_id=ctx.run_id)
+                 source=None if p.get("no_report") else p.get("source", source), run_id=ctx.run_id)
         out[t] = r
     issues: list[tuple[str, str, str]] = []
     for line in manual if manual is not None else load_manual():
