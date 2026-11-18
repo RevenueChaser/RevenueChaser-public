@@ -79,7 +79,7 @@
 <div class="wrap">
 
 <header>
-  <h1>{{ company }} <span style="color:var(--accent)">{{ ticker }}</span>{{ watch_pair(ticker) }}</h1>
+  <h1>{{ watch_pair(ticker) }}{{ company }} <span style="color:var(--accent)">{{ ticker }}</span></h1>
   <div class="sub">Fin Research — Quick Remarks + Financial Model</div>
   <div class="meta">
     <span>Sector: {{ sector or "N/A" }}</span>
@@ -255,7 +255,7 @@
       <tbody>
       {% for p in comps.peers %}
         <tr>
-          <td>{{ p.ticker }}{{ watch_pair(p.ticker) }}</td>
+          <td>{{ watch_pair(p.ticker) }}{{ p.ticker }}</td>
           {% if not comps.pe_only %}<td>{{ p.ev_ebitda|num }}</td>
           <td>{{ p.ev_revenue|num }}</td>{% endif %}
           <td>{{ p.pe|num }}</td>

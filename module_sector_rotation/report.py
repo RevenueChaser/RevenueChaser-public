@@ -974,7 +974,7 @@ def export_rotation_dashboard(snapshots: list[ETFRotationSnapshot], filename: st
         caret = f'<span class="hold-caret" id="caret-{esc(s.ticker)}">▸</span> ' if s.group_name in ("sector", "theme") else ''
         # The watch-list pair (PR 4) for a fund; a macro series (a yield, an index level) is no name to watch.
         pair = "" if s.ticker in MACRO_SERIES else watch_buttons_html(s.ticker)
-        rows += f'<td class="ticker td-g1">{caret}{et_badge}{esc(s.ticker)}{pair}</td>'
+        rows += f'<td class="ticker td-g1">{pair}{caret}{et_badge}{esc(s.ticker)}</td>'
         data_label = data_labels.get(s.ticker)
         by_data = f'<div class="by-data" title="From the fund\'s holdings">{esc(data_label)}</div>' if data_label else ''
         rows += f'<td class="td-g1"><span class="group" style="color:{color}">{esc(info.get("name", s.ticker))}</span>{by_data}</td>'
@@ -1455,8 +1455,8 @@ def render_holdings_fragment(rows: list[dict]) -> str:
         name = _html.escape(str(r.get("name") or ""))
         body += (
             f'<tr data-ticker="{tick}">'
-            f'<td><b>{tick}</b> <span style="color:#8b949e;font-size:10px">{name}</span>'
-            f'{watch_buttons_html(r.get("ticker"))}</td>'
+            f'<td>{watch_buttons_html(r.get("ticker"))}<b>{tick}</b> '
+            f'<span style="color:#8b949e;font-size:10px">{name}</span></td>'
             f'<td class="num">{w:.2f}%</td>'
             f'{_rs_cell(r.get("rs_1w"))}{_rs_cell(r.get("rs_1m"))}{_rs_cell(r.get("rs_3m"))}'
             f'<td class="num">{"—" if close is None else f"${close:.2f}"}</td>'
@@ -1490,7 +1490,7 @@ def render_industry_fragment(tree: list[dict]) -> str:
             label = f'<b style="color:#c9d1d9">{name}</b>' if i == 0 else ""
             body += (
                 f'<tr><td>{label}</td>'
-                f'<td><b>{_html.escape(h.get("ticker") or "")}</b>{watch_buttons_html(h.get("ticker"))}</td>'
+                f'<td>{watch_buttons_html(h.get("ticker"))}<b>{_html.escape(h.get("ticker") or "")}</b></td>'
                 f'<td><span style="color:#8b949e;font-size:10px">{_html.escape(h.get("name") or "")}</span></td>'
                 f'<td class="num">{h.get("weight", 0):.2f}%</td></tr>'
             )

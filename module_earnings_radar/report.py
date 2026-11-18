@@ -513,7 +513,7 @@ function buildDrawer(ticker) {
   var sess = row ? (row.getAttribute('data-am-pm') || '') : '';
   // The watch-list pair sits here, in the drawer, not in the table's 50 px sticky ticker column (PR 4).
   var pair = (typeof rcWatchButtons === 'function') ? rcWatchButtons(ticker) : '';
-  return '<div class="drawer-header"><div><h3 class="drawer-title">' + rcEsc(ticker) + '</h3>' + pair
+  return '<div class="drawer-header"><div><h3 class="drawer-title">' + pair + rcEsc(ticker) + '</h3>'
     + '<div class="drawer-sub">' + rcEsc(name) + ' · ' + rcEsc(price) + ' · ' + rcEsc(sess) + '</div></div>'
     + '<button class="drawer-close" onclick="closeDetail()">✕</button></div>'
     + '<div class="drawer-toolbar"><span class="dp-label">History:</span>'
