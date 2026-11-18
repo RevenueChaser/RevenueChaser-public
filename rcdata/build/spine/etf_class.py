@@ -362,7 +362,11 @@ def profiles(con: duckdb.DuckDBPyConnection, funds: list[dict], folder: Path | N
                           h.cusip, h.isin, replace(h.ticker, '.', '-') AS tic,
                           -- a ticker is a US ticker only on a US line: a local ticker abroad can spell the same
                           (h.country = 'US' OR h.isin LIKE 'US%' OR (h.country IS NULL AND h.isin IS NULL)) AS us_line,
-                          CASE WHEN h.asset_cat IN ('EC', 'EP') THEN 'equity'
+                          -- a company's share the report files under OTHER (a Thai NVDR, a Brazilian unit):
+                          -- a corporate issuer with an ISIN. Measured 18 Nov 2026 on 2,053 reports: THD 99 %
+                          -- and ILF 42 % of net assets sat on such lines, 24 funds had 5 % or more
+                          CASE WHEN h.asset_cat IN ('EC', 'EP') OR (h.asset_cat = 'OTHER' AND h.issuer_type = 'CORP'
+                                                                    AND h.isin IS NOT NULL) THEN 'equity'
                                WHEN h.asset_cat IN ('DBT', 'LON', 'SN') OR h.asset_cat LIKE 'ABS%' THEN 'debt'
                                WHEN h.asset_cat IN ('STIV', 'RA') THEN 'cash'
                                WHEN h.asset_cat IN ('DCO', 'DCR', 'DE', 'DFE', 'DIR', 'DO') THEN 'derivative'
