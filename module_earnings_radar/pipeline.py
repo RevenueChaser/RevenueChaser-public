@@ -11,7 +11,8 @@ from RevenueChaser.module_earnings_radar.rules import (
 )
 from RevenueChaser.module_earnings_radar.composite import compute_composite_scores, select_action, classify_bias, classify_conviction, recommend_options_structure
 from RevenueChaser.module_earnings_radar import store_reads, stored_inputs
-from RevenueChaser.core import calendar, rawstore
+from RevenueChaser.core import calendar
+from RevenueChaser.rcdata import read
 from RevenueChaser.core import universe as _spine
 from RevenueChaser.core.gics_map import is_unclassified
 from RevenueChaser.core.config import (
@@ -433,7 +434,7 @@ class EarningsPipeline:
         self._peers_registered = False
         _ = self.screener_cache  # warm cache
 
-        wl = watchlist or (rawstore.load_watchlist())
+        wl = watchlist or read.picked()           # avo's own lists and the stock list, as the runner reads them
         self._watchlist = wl
 
         # The tickers that get the deep (12+ provider calls) score. A run past 20 names applies the

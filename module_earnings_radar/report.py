@@ -5,7 +5,7 @@ from RevenueChaser.core.reporting_common import (FILTERS_CSS, FILTERS_JS, filter
 from datetime import datetime, timezone
 from pathlib import Path
 import json
-from RevenueChaser.core import rawstore
+from RevenueChaser.rcdata import read
 from .composite import classify_bias
 from RevenueChaser.core.html_safe import ESC_JS, esc, script_json
 from RevenueChaser.core import rotation_reference
@@ -1690,7 +1690,7 @@ def export_html(cards: list, calendar_events: list[dict] = None, nrc_results: di
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     path = OUTPUT_DIR / (filename or f"earnings/revenue_chaser_{ts}.html")
 
-    wl = rawstore.load_watchlist()
+    wl = read.picked()                     # avo's own watch lists and the stock list
     cal_lookup = {e["ticker"]: e for e in (calendar_events or [])}
     col_widths = _compute_col_widths(cards, cal_lookup)
 
