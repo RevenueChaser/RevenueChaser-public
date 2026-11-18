@@ -185,6 +185,9 @@ SHELL_SICS = frozenset({6770, 9995})
 SIC_SOURCE = "sic"
 SEC_SIC_SOURCE = "sec_sic"
 SEC_FILINGS = "sec/filings"      # its ``cik=<cik>/header.parquet`` carries the SIC the SEC assigns the company
+# The SEC's code describes the ISSUER. For an exchange-traded note or a closed-end fund that is the bank or the
+# trust, not what the product holds (measured 18 Nov 2026: Deutsche Bank's gold notes DGP, DGZ and DZZ read "Banks").
+ISSUER_IS_NOT_THE_PRODUCT = frozenset({"etp", "cef"})
 MANUAL_SOURCE = "manual"
 # SIC -> (GICS sector, GICS industry group) for a name with a SIC but no GICS yet. Only codes seen on such names
 # are listed, each read against the GICS 2023 structure.
@@ -490,8 +493,8 @@ class SpineSecurity:
                                                     exchange=r["exchange"], sic=sic,
                                                     gsector=(g or {}).get("gsector"))
             # The SEC's SIC goes to the sector only; ``security_type`` above and ``sic`` below keep Compustat's.
-            sector, industry, gics_src, gsector, ggroup = bridge_sector(r["ticker"], g, sic, manual,
-                                                                        sec_sic.get(norm_cik(r["cik"])))
+            its_sec_sic = None if typ in ISSUER_IS_NOT_THE_PRODUCT else sec_sic.get(norm_cik(r["cik"]))
+            sector, industry, gics_src, gsector, ggroup = bridge_sector(r["ticker"], g, sic, manual, its_sec_sic)
             from_co = gics_src == CO_HGIC.name     # a manual row's codes must not sit beside Compustat's finer ones
             isin = isin_mod.from_cusip(cusip)
             row = {

@@ -155,3 +155,14 @@ def test_a_stale_blank_check_code_of_the_secs_never_types_a_name_a_spac(built_wi
     assert (after["security_type"], after["type_source"], after["tier"]) == (
         before["security_type"], before["type_source"], before["tier"])
     assert after["security_type"] != "spac" and after["sector"] == UNCLASSIFIED and after["sic"] is None
+
+
+def test_a_note_or_a_fund_does_not_take_its_issuers_sector(built_with):
+    """Measured on the live data, 18 Nov 2026: the SEC's code of an exchange-traded note is its bank's (6022), so
+    Deutsche Bank's gold notes read "Banks". The code describes the issuer, not what the product holds."""
+    _sec_header("3000001", "6022")                      # OTCX, a company: its own code is its sector
+    _sec_header("884394", "6022")                       # SPY, a trust
+    built_with("002968", "6331")
+    assert _sec("OTCX")["gics_source"] == "sec_sic"
+    spy = _sec("SPY")
+    assert spy["security_type"] == "etp" and (spy["sector"], spy["gics_source"]) == (UNCLASSIFIED, None)
