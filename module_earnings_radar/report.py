@@ -1630,21 +1630,13 @@ def _methodology_tables(filter_stats: dict = None) -> str:
     h += '· <span style="color:#d2991d">25–49%</span> — thin coverage or mixed signs → WATCH_LOW_COVERAGE.<br>'
     h += '</div>'
 
-    # Table 3: Rotation Clusters
-    h += '<h3 style="color:#58a6ff;font-size:13px;margin:20px 0 8px">Rotation — Cluster to ETF Mapping</h3>'
-    h += '<table style="font-size:11px"><tr><th>Cluster</th><th>Sectors</th><th>Tracked ETFs</th></tr>'
-    clusters = [
-        ("C1 — SaaS", "Software, Cloud, Internet Services", "IGV, WCLD, SKYY"),
-        ("C2 — Hardware", "Semiconductors, Electronics, Aerospace", "SMH, SOXX, XLK"),
-        ("C3 — Fintech", "Banks, Lending, Financial Services", "XLF, KRE, XHB"),
-        ("C4 — Crypto", "Crypto Mining, Blockchain", "IWM, BLOK, XLK"),
-        ("C5 — Consumer", "Retail, Travel, Entertainment", "XLY, JETS, XRT"),
-        ("C6 — Energy", "Oil, Gas, Utilities, Mining", "XLE, XOP, XLU"),
-        ("C7 — Healthcare", "Pharma, Biotech, Medical Devices, Hospitals", "IHI, IBB, XBI"),
-    ]
-    for cl, sec, etfs in clusters:
-        h += f'<tr><td style="color:#c9d1d9;font-weight:600">{cl}</td><td style="color:#8b949e">{sec}</td><td style="color:#58a6ff">{etfs}</td></tr>'
-    h += '</table>'
+    # Rotation: the rule as built (plan v5 7e). The typed cluster-to-ETF table that stood here named pairs nothing reads.
+    h += '<h3 style="color:#58a6ff;font-size:13px;margin:20px 0 8px">Rotation — where a company\'s quadrant comes from</h3>'
+    h += '<div style="color:#8b949e;font-size:11px;line-height:1.7">'
+    h += '· <b style="color:#c9d1d9">The funds that hold it.</b> Every sector, theme and industry fund of the Sector Rotation map that holds the company, weighted by the company\'s share of that fund\'s newest holdings. The quadrant with the most weight wins.<br>'
+    h += '· <b style="color:#c9d1d9">Else its own sector fund</b>, marked <b>·sec</b>: when no map fund with a quadrant holds it.<br>'
+    h += '· No pair of company and fund is typed by hand.'
+    h += '</div>'
     h += '<p style="color:#8b949e;font-size:10px;margin-top:4px">Quadrants from the Sector Rotation board: each of the ' + str(len([t for t, i in rotation_reference.rotation_etfs().items() if i.get("group") not in ("yield", "commodity")])) + ' ETFs against its own history vs SPY, completed weeks, total return. The quadrant adds nothing to the score or the attention rank (held at 0 until a backtest shows it helps).</p>'
 
     h += '</details>'

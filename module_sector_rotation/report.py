@@ -51,6 +51,7 @@ td{padding:8px 6px;border-bottom:1px solid #161b22;white-space:nowrap;font-size:
 tr:hover{background:#161b22}
 .ticker{color:#F1F5F9;font-weight:700;white-space:nowrap}
 .group{font-size:10px;border-radius:4px;padding:1px 6px;color:#94A3B8}
+.by-data{font-size:10px;padding:1px 6px;color:#8b949e}
 .pos{color:#34D399}.neg{color:#F87171}.zero{color:#8b949e}
 .badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:700}
 .bd-L{background:#1a3a1a;color:#3fb950;border:1px solid #238636}
@@ -958,7 +959,10 @@ def export_rotation_dashboard(snapshots: list[ETFRotationSnapshot], filename: st
     snapshots_sorted = sorted(snapshots, key=lambda s: (order.get(s.rrg_quadrant, 9), s.rs_momentum_z is None,
                                                         -(s.rs_momentum_z or 0)))
 
-    # Table
+    # Table. Under avo's hand-written name, what the fund is by its holdings (``etf_class``), so the two are never
+    # taken for each other (avo's B, 18 Nov 2026); a fund with no label (a macro series, no spine yet) shows none.
+    from RevenueChaser.module_watchlists.board import class_labels
+    data_labels = class_labels([s.ticker for s in snapshots_sorted if s.ticker not in MACRO_SERIES])
     rows = ""
     for s in snapshots_sorted:
         info = rotation_reference.rotation_etfs().get(s.ticker, {})
@@ -971,7 +975,9 @@ def export_rotation_dashboard(snapshots: list[ETFRotationSnapshot], filename: st
         # The watch-list pair (PR 4) for a fund; a macro series (a yield, an index level) is no name to watch.
         pair = "" if s.ticker in MACRO_SERIES else watch_buttons_html(s.ticker)
         rows += f'<td class="ticker td-g1">{caret}{et_badge}{esc(s.ticker)}{pair}</td>'
-        rows += f'<td class="td-g1"><span class="group" style="color:{color}">{esc(info.get("name", s.ticker))}</span></td>'
+        data_label = data_labels.get(s.ticker)
+        by_data = f'<div class="by-data" title="From the fund\'s holdings">{esc(data_label)}</div>' if data_label else ''
+        rows += f'<td class="td-g1"><span class="group" style="color:{color}">{esc(info.get("name", s.ticker))}</span>{by_data}</td>'
         rows += f'<td class="td-g1 center">{_quadrant_badge(s.rrg_quadrant)}</td>'
         rows += f'<td class="num {r1c} td-g2 c-1w" style="{_rs_heat_style(s.rs_1w)}" data-col="rs_1w" data-val="{"" if s.rs_1w is None else s.rs_1w}">{_format_rs(s.rs_1w)}</td>'
         rows += f'<td class="num {r2c} td-g2" style="{_rs_heat_style(s.rs_1m)}" data-col="rs_1m" data-val="{"" if s.rs_1m is None else s.rs_1m}">{_format_rs(s.rs_1m)}</td>'
