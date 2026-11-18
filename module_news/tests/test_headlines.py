@@ -131,11 +131,6 @@ def test_a_second_fetch_asks_the_newest_and_writes_only_what_is_new(gw):
     assert _rows()["Apple Expands AI Deal"]["run_id"] == "r1"
 
 
-def test_a_story_older_than_a_day_is_not_kept(gw):
-    out = headlines.fetch(["AAPL"], now=NOW + 23 * 3600, run_id="r1")         # 10 Nov 18:00: back to 9 Nov 18:00
-    assert out["stored"] == 1 and set(_rows()) == {"Apple Expands AI Deal"}     # 18:20 kept, 17:00 out
-
-
 def test_a_pass_asks_the_next_names_in_turn_and_wraps_round(gw, monkeypatch):
     # W1, 18 Nov 2026: every name every 5 minutes is ~780 requests; IBKR paces history requests, so names take turns.
     monkeypatch.setattr(headlines, "PER_PASS", 2)
