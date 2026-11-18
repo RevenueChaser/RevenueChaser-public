@@ -118,3 +118,6 @@ def test_the_board_follows_the_shared_theme():
                                   "horizon_days": 30, "risk_free": 0.04, "error": None, "warnings": [],
                                   "expiries": []})
     assert THEME_CSS in page and "#05111F" not in page and "height:34px" not in page
+    # The fan's bands are translucent fills of the token colour; a trace opacity would paint one solid block.
+    assert "fillcolor:cva('data-1',0.18)" in page and "opacity:0.18" not in page
+    assert ".pgrid>div{min-width:0}" in page

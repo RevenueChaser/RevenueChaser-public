@@ -74,7 +74,9 @@ body.loading:after{content:"Refreshing…";position:fixed;inset:0;display:flex;a
 .qrow input{background:var(--input-bg);border:1px solid var(--input-border);color:var(--text);border-radius:6px;height:44px;padding:0 10px;font:500 13px/1 inherit;width:140px}
 .qout{font-size:13px;color:var(--muted)}
 .qout b{color:var(--text);font-variant-numeric:tabular-nums}
-.chart{width:100%}
+.chart{width:100%;min-width:0;overflow:hidden}
+.panel,.pgrid>div{min-width:0}
+@media (max-width:600px){.wrap{padding:12px 16px 48px}}
 table.mini{border-collapse:collapse;width:100%;font-size:12px}
 table.mini th,table.mini td{padding:5px 8px;border-bottom:1px solid var(--border);text-align:right}
 table.mini th:first-child,table.mini td:first-child{text-align:left;color:var(--muted)}
@@ -84,7 +86,13 @@ table.mini th:first-child,table.mini td:first-child{text-align:left;color:var(--
 
 JS = r"""
 var PLOTCFG={responsive:true,displayModeBar:false};
+// Re-fit every chart to its box once the page has laid out (a phone otherwise keeps Plotly's first width).
+window.addEventListener('load',function(){ document.querySelectorAll('.chart').forEach(function(d){ if(d.data){ Plotly.Plots.resize(d); } }); });
 function cv(n){ return getComputedStyle(document.documentElement).getPropertyValue('--'+n).trim(); }  // theme token
+function cva(n,a){  // a hex theme token as rgba: Plotly fills take no trace opacity
+  var h=cv(n).replace('#',''); if(h.length===3){ h=h.replace(/./g,'$&$&'); }
+  var v=parseInt(h,16); return 'rgba('+((v>>16)&255)+','+((v>>8)&255)+','+(v&255)+','+a+')';
+}
 var FOCAL=null;
 var RCF=null;
 function baseLayout(extra){
@@ -103,9 +111,9 @@ function fanChart(){
   var x=f.dte, q=f.quantiles;
   var tr=[
     {x:x,y:q['0.95'],type:'scatter',mode:'lines',line:{width:0},hoverinfo:'skip',showlegend:false},
-    {x:x,y:q['0.05'],type:'scatter',mode:'lines',line:{width:0},fill:'tonexty',fillcolor:cv('data-1'),opacity:0.18,name:'5–95%',hoverinfo:'skip'},
+    {x:x,y:q['0.05'],type:'scatter',mode:'lines',line:{width:0},fill:'tonexty',fillcolor:cva('data-1',0.18),name:'5–95%',hoverinfo:'skip'},
     {x:x,y:q['0.75'],type:'scatter',mode:'lines',line:{width:0},hoverinfo:'skip',showlegend:false},
-    {x:x,y:q['0.25'],type:'scatter',mode:'lines',line:{width:0},fill:'tonexty',fillcolor:cv('data-1'),opacity:0.35,name:'25–75%',hoverinfo:'skip'},
+    {x:x,y:q['0.25'],type:'scatter',mode:'lines',line:{width:0},fill:'tonexty',fillcolor:cva('data-1',0.35),name:'25–75%',hoverinfo:'skip'},
     {x:x,y:q['0.50'],type:'scatter',mode:'lines+markers',line:{color:cv('pos'),width:3},marker:{size:8},name:'median',
      hovertemplate:'%{x}d · median %{y:.2f}<extra></extra>'}
   ];
