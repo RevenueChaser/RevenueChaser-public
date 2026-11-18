@@ -46,25 +46,16 @@ def test_no_file_and_no_marked_list_are_errors_not_empty_lists():
         read.job_list("option")
 
 
-def test_a_lock_is_waited_out_and_one_that_stays_is_an_error(monkeypatch):
+def test_a_lock_that_stays_is_an_error(monkeypatch):
     """Measured on homesrv, 18 Nov 2026: the dashboard holds the file while it serves a watch-list request and a
-    second process is refused at once."""
+    second process is refused at once. ``rawstore.connect`` waits it out; one that stays must not read as empty."""
     store.add_symbol(store.create_list("Option chains", feeds="option"), "AMEX:SPY")
-    real, tries = duckdb.connect, []
 
-    def held(n):
-        def connect(*a, **kw):
-            tries.append(1)
-            if len(tries) <= n:
-                raise duckdb.IOException("Could not set lock on file: Conflicting lock is held")
-            return real(*a, **kw)
-        return connect
+    def locked(*a, **kw):
+        raise rawstore.StoreLockedError("watchlists.duckdb is locked by another process")
 
-    monkeypatch.setattr(duckdb, "connect", held(3))
-    assert read.job_list("option") == ["SPY"] and len(tries) == 4
-    tries.clear()
-    monkeypatch.setattr(duckdb, "connect", held(99))
-    with pytest.raises(read.JobListUnreadable, match="still locked after 8 tries"):
+    monkeypatch.setattr(rawstore, "_connect_with_retry", locked)
+    with pytest.raises(read.JobListUnreadable, match="StoreLockedError"):
         read.job_list("option")
 
 

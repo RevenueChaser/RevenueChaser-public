@@ -226,13 +226,6 @@ class JobListUnreadable(RuntimeError):
     failed query. Never an empty answer: a job that reads "no names" for any of these would drop its whole list."""
 
 
-#: Waits before each further try of the open. The dashboard holds ``watchlists.duckdb`` exclusively while it serves
-#: a watch-list request, and a second process is refused at once rather than delayed (measured on homesrv,
-#: 18 Nov 2026: 9 of 20 opens refused within 13-78 ms during 40 page loads, 20 of 20 open when idle, slowest
-#: 161 ms). The lock is short, so the open is tried again for about 6 s.
-JOB_LIST_DELAYS = (0.05, 0.1, 0.2, 0.4, 0.8, 1.6, 3.2)
-
-
 def job_list(feeds: str) -> list[str]:
     """The US-listed tickers (a spread, a series or a foreign symbol is no ticker a job can fetch) of every
     watch list marked for the job group ``feeds`` (``wl_list.feeds``), sorted, read from
@@ -241,36 +234,28 @@ def job_list(feeds: str) -> list[str]:
 
     Strict, unlike ``module_watchlists.store`` (whose readers answer ``[]`` for a missing file, a lock and a SQL
     error alike): an empty list here only ever means a marked list that holds no ticker. Everything else raises
-    :class:`JobListUnreadable`, so the run fails and the next one tries again. The file is opened read-only with
-    plain duckdb, never through ``rawstore`` (which would apply the schema manifest to a file a job only reads).
+    :class:`JobListUnreadable`, so the run fails and the next one tries again. The handle is ``rawstore.connect``
+    (the one opener of a board file), which waits out the dashboard's lock: it holds the file while it serves a
+    watch-list request and a second process is refused at once (measured on homesrv, 18 Nov 2026: 9 of 20 opens
+    refused during 40 page loads, 20 of 20 open when idle). ``connect`` applies no schema, and the file is checked
+    first because a read-write open would create it.
     """
-    import time
-
     import duckdb
 
     from ..core import rawstore
     path = rawstore.board_db_path("watchlists")
     if not path.is_file():
         raise JobListUnreadable(f"{path.name}: no such file")
-    last: Exception | None = None
-    for delay in (0.0, *JOB_LIST_DELAYS):
-        time.sleep(delay)
-        try:
-            con = duckdb.connect(str(path), read_only=True)
-        except duckdb.IOException as e:                 # the dashboard holds the file for this moment
-            last = e
-            continue
-        try:
+    try:
+        with rawstore.connect(read_only=True, db="watchlists") as con:
             if not con.execute("SELECT 1 FROM wl_list WHERE feeds = ?", [feeds]).fetchone():
                 raise JobListUnreadable(f"{path.name}: no list is marked for {feeds!r}")
             rows = con.execute("SELECT DISTINCT i.ticker FROM wl_item i JOIN wl_list l USING (list_id) "
-                               "WHERE l.feeds = ? AND i.ticker IS NOT NULL AND i.coverage = 'us_equity' ORDER BY 1", [feeds]).fetchall()
-        except duckdb.Error as e:
-            raise JobListUnreadable(f"{path.name}: {type(e).__name__}: {str(e)[:200]}") from e
-        finally:
-            con.close()
-        return [r[0] for r in rows]
-    raise JobListUnreadable(f"{path.name}: still locked after {len(JOB_LIST_DELAYS) + 1} tries: {str(last)[:200]}")
+                               "WHERE l.feeds = ? AND i.ticker IS NOT NULL AND i.coverage = 'us_equity' ORDER BY 1",
+                               [feeds]).fetchall()
+    except (duckdb.Error, rawstore.RawStoreError) as e:
+        raise JobListUnreadable(f"{path.name}: {type(e).__name__}: {str(e)[:200]}") from e
+    return [r[0] for r in rows]
 
 
 # ── The identity spine (PR 5) ─────────────────────────────────────────────────────────────────────────────────
