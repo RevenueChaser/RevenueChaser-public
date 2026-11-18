@@ -382,8 +382,9 @@ def _read_linkbase(ctx: base.RunContext, cik: str, f: dict, as_of: date, counts:
     if r is None:
         counts["none"] += 1
         return False
-    # The element, not the word: a schema names ``.../role/definitionLinkbaseRef`` without holding a linkbase.
-    held = re.search(rb"definitionLink[\s>]", r.content) is not None
+    # The element's own start tag, not the word: a schema names ``.../role/definitionLinkbaseRef`` and may say
+    # "definitionLink" in a comment or a documentation line without holding a linkbase.
+    held = re.search(rb"<(?:\w+:)?definitionLink[\s>]", r.content) is not None
     if not held and not (name.endswith(linkbase.SCHEMA_SUFFIX) and linkbase.SCHEMA_NS in r.content):
         counts["failed"] += 1
         return False

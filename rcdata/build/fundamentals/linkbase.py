@@ -32,7 +32,10 @@ def name(listing: dict) -> str | None:
 
     Measured 18 Nov 2026 on the 5,130 stored indexes: 4,281 list a ``_def.xml``, 819 none but exactly one
     ``.xsd``, 30 neither; "the largest" only says which one when a filing ever lists two."""
-    items = ((listing or {}).get("directory") or {}).get("item") or []
+    # The name goes into the archive URL and the raw path as it is listed, so one that names a folder is not a file
+    # of this filing and is passed over.
+    items = [i for i in ((listing or {}).get("directory") or {}).get("item") or []
+             if "/" not in str(i.get("name") or "") and "\\" not in str(i.get("name") or "")]
     names = [str(i.get("name") or "") for i in items]
     found = next((n for n in names if n.endswith(SUFFIX)), None)
     if found is not None:
