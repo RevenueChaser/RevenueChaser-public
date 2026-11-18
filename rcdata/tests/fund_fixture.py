@@ -278,12 +278,30 @@ MSFT_DEF = def_linkbase({
 })
 
 
-def linkbase_routes(http_mock, xml: str | None = MSFT_DEF, name: str = MSFT_DEF_NAME) -> None:
-    """Answer a filing's ``index.json`` (listing ``name`` when ``xml`` is given) and the linkbase itself."""
-    items = [{"name": "msft-10k.htm", "size": "900000"}, {"name": "msft-20250630.xsd", "size": "50000"}]
+MSFT_XSD_NAME = "msft-20250630.xsd"
+
+
+def schema(linkbase: str = "") -> str:
+    """A filing's schema file (``.xsd``); ``linkbase`` (a ``def_linkbase``) is embedded as the filers who file no
+    ``_def.xml`` do it (#1066), in the schema's ``appinfo``. Without one it still names the linkbase files' roles,
+    as every filing's schema does."""
+    return ('<?xml version="1.0" encoding="UTF-8"?><xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema" '
+            'xmlns:link="http://www.xbrl.org/2003/linkbase" xmlns:xlink="http://www.w3.org/1999/xlink">'
+            '<xsd:annotation><xsd:appinfo><link:linkbaseRef xlink:type="simple" xlink:href="msft-20250630_pre.xml" '
+            'xlink:role="http://www.xbrl.org/2003/role/definitionLinkbaseRef"/>' + linkbase.split("?>", 1)[-1] +
+            '</xsd:appinfo></xsd:annotation><xsd:element name="IntelligentCloudMember"/></xsd:schema>')
+
+
+def linkbase_routes(http_mock, xml: str | None = MSFT_DEF, name: str = MSFT_DEF_NAME, xsd: str | None = None) -> None:
+    """Answer a filing's ``index.json`` and the linkbase itself: ``name`` is listed when ``xml`` is given, the
+    schema file when either is (a filing with a ``_def.xml`` has its ``.xsd`` too) and answered when ``xsd`` is."""
+    items = [{"name": "msft-10k.htm", "size": "900000"}]
+    items += [{"name": MSFT_XSD_NAME, "size": "50000"}] if xml or xsd is not None else []
     http_mock.add("index.json", {"directory": {"item": items + ([{"name": name, "size": "9000"}] if xml else [])}})
     if xml:
         http_mock.add(f"/{name}", xml)
+    if xsd is not None:
+        http_mock.add(f"/{MSFT_XSD_NAME}", xsd)
 
 
 def filing_routes(http_mock, lists: dict, documents: dict | None = None) -> None:
