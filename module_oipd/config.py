@@ -34,6 +34,8 @@ G_FLOOR = 0.0
 CLIP_FLAG_PCT = 0.01
 # A fitted 5-95 % band wider than this multiple of what ATM IV alone implies is flagged (a runaway wing).
 TAIL_FLAG_RATIO = 2.0
+# g(k) must fall below -G_FLAG_TOL to flag "negative density": the board shows g-min to 3 decimals.
+G_FLAG_TOL = 5e-4
 PENALTY_WEIGHT = 25.0
 
 # ── Fit inputs (review N3/N4, avo's D1, 18 Nov 2026) ───────────────────────────
@@ -55,7 +57,7 @@ def fit_config() -> dict:
     return {"min_dte": MIN_DTE, "max_dte": MAX_DTE, "max_expiries": MAX_EXPIRIES, "min_contracts": MIN_CONTRACTS,
             "g_floor": G_FLOOR, "penalty_weight": PENALTY_WEIGHT, "risk_free": RISK_FREE_RATE,
             "max_rel_spread": MAX_REL_SPREAD, "grid": GRID, "clip_flag_pct": CLIP_FLAG_PCT,
-            "tail_flag_ratio": TAIL_FLAG_RATIO,
+            "tail_flag_ratio": TAIL_FLAG_RATIO, "g_flag_tol": G_FLAG_TOL,
             "inputs": "otm-two-sided-no-vendor-iv", "expiries": "oi-top", "roots": "largest"}
 
 

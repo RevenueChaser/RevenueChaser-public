@@ -101,7 +101,7 @@ function baseLayout(extra){
     margin:{l:56,r:56,t:44,b:88},
     xaxis:{gridcolor:cv('grid'),zerolinecolor:cv('grid')},
     yaxis:{gridcolor:cv('grid'),zerolinecolor:cv('grid')},
-    legend:{orientation:'h',x:0,y:-0.3,yanchor:'top'},   // below the axis title, never on the chart title
+    legend:{orientation:'h',x:0,y:-0.36,yanchor:'top'},   // below the axis title, never on the chart title
     hovermode:'x unified'};
   for(var k in extra){ l[k]=extra[k]; }
   return l;
@@ -150,7 +150,7 @@ function smileChart(e){
     {x:s.k_fit,y:s.iv_fit,type:'scatter',mode:'lines',
      line:{color:cv('pos'),width:2},name:'SVI fit'}
   ];
-  Plotly.newPlot('smile',tr,baseLayout({height:300,title:'SVI volatility smile',
+  Plotly.newPlot('smile',tr,baseLayout({height:380,title:'SVI volatility smile',
     xaxis:{title:'log(K / F)',gridcolor:cv('grid')},
     yaxis:{title:'Implied vol',tickformat:'.0%',gridcolor:cv('grid')},hovermode:'closest'}),PLOTCFG);
 }
@@ -224,7 +224,7 @@ function selectExpiry(i){
   document.getElementById('qtable').innerHTML=quantTable(e);
   document.getElementById('gtable').innerHTML=greeksTable(e);
   document.getElementById('exp-title').textContent=
-    e.date+' · '+e.dte+' days · forward '+num(e.forward)+' · '+e.n+' strikes';
+    e.date+' · '+e.dte+(e.dte===1?' day':' days')+' · forward '+num(e.forward)+' · '+e.n+' strikes';
   distChart(e); smileChart(e);
   var box=document.getElementById('qx');
   if(!box.value) box.value=num(PAYLOAD.spot,2);

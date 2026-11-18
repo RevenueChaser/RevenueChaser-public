@@ -201,7 +201,8 @@ def atm_greeks(params: dict, T: float, r: float, forward: float,
 
 
 def density_check(g_min: float, g_min_window: float, clipped_pct: float, min_var: float,
-                  clip_flag_pct: float, tail_ratio: float | None = None, tail_flag: float | None = None) -> dict:
+                  clip_flag_pct: float, tail_ratio: float | None = None, tail_flag: float | None = None,
+                  g_tol: float = 0.0) -> dict:
     """Is the fitted density trustworthy over the whole density window? (#172 D2)
 
     ``flag`` is true when mass was clipped beyond ``clip_flag_pct`` (percent), g is negative anywhere in the
@@ -213,7 +214,7 @@ def density_check(g_min: float, g_min_window: float, clipped_pct: float, min_var
     g_shown = round(min(g_min, g_min_window), 5)
     if clipped_pct > clip_flag_pct:
         note = f"density clipped {clipped_pct:.2f}%"
-    elif g_shown < 0:
+    elif g_shown < -g_tol:          # a g-min that rounds to -0.000 is not a negative density
         note = "negative density!"
     elif min_var < 0:
         note = "min variance < 0"

@@ -323,7 +323,7 @@ def _fit_expiry(expiry: str, contracts: list[dict], spot: float, r: float,
         "min_var": round(curve.min_var, 6),
         **{f"density_{k}": v for k, v in opd_math.density_check(
             params["g_min"], curve.g_min_window, 100.0 * curve.clipped_mass, curve.min_var,
-            config.CLIP_FLAG_PCT, tail_ratio, config.TAIL_FLAG_RATIO).items()},
+            config.CLIP_FLAG_PCT, tail_ratio, config.TAIL_FLAG_RATIO, config.G_FLAG_TOL).items()},
         "tail_ratio": round(tail_ratio, 3) if tail_ratio is not None else None,
         "rmse": round(params["rmse"], 6),
         "mean": round(st["mean"], 4),

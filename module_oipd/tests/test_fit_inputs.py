@@ -62,7 +62,7 @@ class TestOneRoot:
 class TestModelVersion:
     def test_golden(self):
         # A changed fit knob changes the hash: bump SELECTION_VERSION in the same change, then this value.
-        assert config.model_version() == "oipd-1+0230df43"
+        assert config.model_version() == "oipd-1+f586afce"
 
     def test_the_density_grid_is_in_the_version(self, monkeypatch):
         before = config.model_version()
@@ -121,3 +121,10 @@ def test_the_board_follows_the_shared_theme():
     # The fan's bands are translucent fills of the token colour; a trace opacity would paint one solid block.
     assert "fillcolor:cva('data-1',0.18)" in page and "opacity:0.18" not in page
     assert ".pgrid>div{min-width:0}" in page
+
+
+def test_a_g_min_that_rounds_to_zero_is_not_a_negative_density():
+    near = opd_math.density_check(-0.0002, 0.1, 0.0, 0.01, config.CLIP_FLAG_PCT, g_tol=config.G_FLAG_TOL)
+    assert not near["flag"]
+    real = opd_math.density_check(-0.002, 0.1, 0.0, 0.01, config.CLIP_FLAG_PCT, g_tol=config.G_FLAG_TOL)
+    assert real["flag"] and real["note"] == "negative density!"
