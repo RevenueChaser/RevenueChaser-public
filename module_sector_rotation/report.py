@@ -1455,7 +1455,7 @@ def render_holdings_fragment(rows: list[dict]) -> str:
         name = _html.escape(str(r.get("name") or ""))
         body += (
             f'<tr data-ticker="{tick}">'
-            f'<td>{watch_buttons_html(r.get("ticker"))}<b>{tick}</b> '
+            f'<td><span style="white-space:nowrap">{watch_buttons_html(r.get("ticker"))}<b>{tick}</b></span> '
             f'<span style="color:#8b949e;font-size:10px">{name}</span></td>'
             f'<td class="num">{w:.2f}%</td>'
             f'{_rs_cell(r.get("rs_1w"))}{_rs_cell(r.get("rs_1m"))}{_rs_cell(r.get("rs_3m"))}'
@@ -1490,7 +1490,7 @@ def render_industry_fragment(tree: list[dict]) -> str:
             label = f'<b style="color:#c9d1d9">{name}</b>' if i == 0 else ""
             body += (
                 f'<tr><td>{label}</td>'
-                f'<td>{watch_buttons_html(h.get("ticker"))}<b>{_html.escape(h.get("ticker") or "")}</b></td>'
+                f'<td style="white-space:nowrap">{watch_buttons_html(h.get("ticker"))}<b>{_html.escape(h.get("ticker") or "")}</b></td>'
                 f'<td><span style="color:#8b949e;font-size:10px">{_html.escape(h.get("name") or "")}</span></td>'
                 f'<td class="num">{h.get("weight", 0):.2f}%</td></tr>'
             )
