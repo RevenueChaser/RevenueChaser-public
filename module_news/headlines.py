@@ -1,8 +1,8 @@
 """Market headlines for the News board from the IBKR Gateway (avo, 9 Nov 2026 20:54 Amsterdam: "Ibkr kullanalim").
 
 IBKR serves news per contract, not as one market feed (measured 9 Nov: Dow Jones live, 50+ headlines a name a week,
-none for SPY). So the board asks for the Dow Jones headlines (``DJ-N`` news, ``DJ-RT`` real-time) of a fixed list:
-the stock watch list first, then the largest US names, at most ``MAX_TICKERS``. Two requests a name (its contract id,
+none for SPY). So the board asks for the Dow Jones headlines (``DJ-N`` news, ``DJ-RT`` real-time) of the names on two watch lists
+(``LISTS``): avo's own lists, the stock picks, then the News list, every name. Two requests a name (its contract id,
 then its headlines), headlines only: the article body is never fetched.
 
 Incremental (S16): a fetch asks only from the newest stored headline's time (less ``OVERLAP_S``), at most
@@ -28,6 +28,7 @@ from RevenueChaser.core import config, ibkr_login, rawstore
 from RevenueChaser.core.providers import ibkr_tws as ibkr
 from RevenueChaser.module_news import tape, x_feed
 from RevenueChaser.module_news.calendar import META
+from RevenueChaser.rcdata import read
 
 TABLE = "news_headlines"
 MARK_KEY = "headlines_mark"
@@ -38,23 +39,27 @@ CLIENT_ID = 74
 PROVIDERS = "DJ-N+DJ-RT"
 SOURCE = "Dow Jones"
 PER_TICKER = 20
-MAX_TICKERS = 25
 WINDOW_S = 24 * 3600
 OVERLAP_S = 600
-#: The largest US names, after the watch list, so the board has market news even with an empty list.
-BASE_TICKERS = ("AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "AVGO", "JPM", "BRK.B", "LLY", "XOM")
+#: The watch lists the per-ticker headlines read (avo, 18 Nov 2026 21:53 Amsterdam: "Hepsini watchliste.duckdb ye
+#: bagla"; 22:31: "Artik watchlist.duckbd den secmeliler"), by ``wl_list.feeds``: ``""`` is every one of avo's own
+#: lists, then the stock picks (together ``rcdata.read.PICKED``, the one definition of avo's picks), then the News
+#: list (``jobs.news``, seeded with the large caps the code held until then). No cap: every name is asked each pass.
+#: Read strictly, list by list (``read.job_list``), so an unreadable list is named on the board, not dropped.
+LISTS = (*read.PICKED, "news")
 
 _META_PREFIX = re.compile(r"^\{[^}]*\}!?")
 _IB_TIME = "%Y-%m-%d %H:%M:%S.0"
 
 
-def tickers(watchlist) -> list[str]:
-    """Watch-list names (sorted) first, then ``BASE_TICKERS``, no repeats, at most ``MAX_TICKERS``."""
+def tickers(*lists) -> list[str]:
+    """The names of ``lists`` in their order, each list sorted, no repeats."""
     out: list[str] = []
-    for t in [*sorted(str(x).upper() for x in watchlist or ()), *BASE_TICKERS]:
-        if t and t not in out:
-            out.append(t)
-    return out[:MAX_TICKERS]
+    for names in lists:
+        for t in sorted(str(x).upper() for x in names or ()):
+            if t and t not in out:
+                out.append(t)
+    return out
 
 
 def clean(headline: str) -> str:
@@ -198,7 +203,8 @@ _CON_IDS: dict[str, int] = {}
 
 def fetch(names: list[str], now: float | None = None, run_id: str | None = None,
           target: tuple[str, int] | None = None) -> dict:
-    """One incremental pass over ``names``. Returns ``tickers``, ``stored``, ``skipped`` and ``error`` (or None)."""
+    """One incremental pass over ``names``. Returns ``tickers``, ``stored``, ``skipped`` (names IBKR does not know),
+    ``failed`` (names whose request IBKR refused for another reason, with the error) and ``error`` (or None)."""
     now = time.time() if now is None else now
     run_id = run_id or f"news-{int(now)}"
     mark = _mark()
@@ -206,6 +212,7 @@ def fetch(names: list[str], now: float | None = None, run_id: str | None = None,
     host, port = target or ibkr_login.target()
     found: dict[str, dict] = {}            # story key -> row
     skipped: list[str] = []
+    failed: list[str] = []
     try:
         with ibkr.TWSClient(host, port, client_id=CLIENT_ID) as client:
             req = 0
@@ -217,8 +224,10 @@ def fetch(names: list[str], now: float | None = None, run_id: str | None = None,
                     con_id = _CON_IDS[name]
                     req += 1
                     items = client.news(req, con_id, PROVIDERS, "", "", PER_TICKER)   # the newest; see news()
-                except ibkr.HistoryError:
-                    skipped.append(name)
+                except ibkr.HistoryError as e:
+                    # 200 "no security definition": a name IBKR does not know, the same every run, only a note.
+                    # Any other code (a lapsed feed, pacing) is a failure the board shows.
+                    (skipped if e.code == 200 else failed).append(name if e.code == 200 else f"{name} ({e})")
                     continue
                 for it in items:
                     text, at = clean(it["headline"]), _epoch(it["time"])
@@ -231,13 +240,13 @@ def fetch(names: list[str], now: float | None = None, run_id: str | None = None,
                     if name not in row["tickers"]:
                         row["tickers"].append(name)
     except ibkr.TWSError as e:                 # no session, or the gateway went away: nothing is written
-        return {"tickers": len(names), "stored": 0, "skipped": skipped, "error": str(e)}
+        return {"tickers": len(names), "stored": 0, "skipped": skipped, "failed": failed, "error": str(e)}
     rows = list(found.values())
     _merge_tickers(rows)
     rawstore.write_rows(TABLE, rows)
     # The mark is the newest headline stored, on IBKR's own clock, and moves only when every name answered: a name
     # skipped now has its gap asked for again next time (the upsert makes the overlap harmless).
-    if rows and not skipped:
+    if rows and not skipped and not failed:
         rawstore.write_rows(META, [{"key": MARK_KEY, "value": repr(max(r["published_at"] for r in rows)),
                                     "run_at": now}])
-    return {"tickers": len(names), "stored": len(rows), "skipped": skipped, "error": None}
+    return {"tickers": len(names), "stored": len(rows), "skipped": skipped, "failed": failed, "error": None}
