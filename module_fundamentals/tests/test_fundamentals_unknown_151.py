@@ -123,6 +123,7 @@ def test_the_gate_modal_marks_an_unknown_rule_as_unknown_not_failed(tmp_path):
 openGate({getAttribute: function(k){ return k === "data-ticker" ? "AAA" : "quality"; }});
 console.log(JSON.stringify({sub: _els['m-sub'].textContent, rules: _els['m-rules'].innerHTML}));
 """, tmp_path)
-    assert "2/3 of 2 known" in out["sub"] and "(FAIL)" in out["sub"]
+    # Fundamentals re-review (18 Nov 2026): no rule failed, so the gate is unknown, not failed.
+    assert "2/3 of 2 known" in out["sub"] and "(UNKNOWN)" in out["sub"] and "(FAIL)" not in out["sub"]
     assert out["rules"].count("m-unk") == 1 and out["rules"].count("m-ok") == 2 and "m-no" not in out["rules"]
     assert out["rules"].count(">?<") == 1

@@ -23,8 +23,10 @@ def test_is_distorted(growth, rev, expected):
 
 
 def test_distorted_not_dropped_from_payload():
+    # A distorted growth: Quality still passes on ROIC. (A micro revenue base passes nothing since avo C1 and the
+    # 18 Nov 2026 re-review, so it has no card to flag.)
     m = {
-        "rev_growth_ttm": 0.25, "fcf_margin": 0.25, "ro40": 50.0, "ttm_revenue": 5e6,
+        "rev_growth_ttm": 3.0, "fcf_margin": 0.25, "ro40": 50.0, "ttm_revenue": 5e8,
         "gross_margin": 0.35, "roic": 0.2, "net_debt_ebitda": 1.0,
         "pe": 20.0, "pb": 3.0, "dist_52w_pct": 0.9, "rs_6m": 0.05, "above_200d": True,
     }

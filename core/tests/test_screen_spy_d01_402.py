@@ -117,3 +117,24 @@ def test_the_baseline_and_the_freeze_anchor_agree(rawstore_tmp_db, clock):
 
 # ── the two boards are wired to it ──────────────────────────────────────────
 
+
+
+# ── avo L1 (18 Nov 2026): Fundamentals scores as of SPY's newest stored session ──
+
+def test_the_newest_baseline_reads_spys_newest_session_when_d01_lacks_the_latest(rawstore_tmp_db, clock):
+    _seed_d01("SPY", _sessions(D - timedelta(days=1), 300))
+    assert _failed(screen_common.load_spy())                       # Swing's baseline is unchanged
+    spy = screen_common.load_spy_newest()
+    assert not spy.empty and spy.index[-1] == pd.Timestamp(D - timedelta(days=1))
+    assert spy.attrs["behind"] == (D - timedelta(days=1)).isoformat() and not spy.attrs.get("fetch_failed")
+
+
+def test_the_newest_baseline_is_load_spy_when_the_session_is_there(rawstore_tmp_db, clock):
+    _seed_d01("SPY", _sessions(D, 300))
+    spy = screen_common.load_spy_newest()
+    assert spy.index[-1] == pd.Timestamp(D) and "behind" not in spy.attrs
+
+
+def test_the_newest_baseline_is_empty_with_no_spy_at_all(rawstore_tmp_db, clock):
+    _seed_d01("QQQ", _sessions(D, 10))
+    assert _failed(screen_common.load_spy_newest())

@@ -236,8 +236,12 @@ _T3 = dict(rev_growth_ttm=0.30, fcf_margin=0.20, ro40=45.0, ttm_revenue=2e9,
            dist_52w_pct=0.95, rs_6m=0.1, above_200d=True)
 _C2 = dict(rev_growth_ttm=0.30, fcf_margin=0.20, ro40=90.0, ttm_revenue=2e9,
            roic=0.20, gross_margin=0.40, net_debt_ebitda=1.0)
-_D2 = dict(rev_growth_ttm=0.30, fcf_margin=0.20, ro40=95.0, ttm_revenue=5e6,   # a higher Ro40 than C2: only DISTORTED puts it last
-           roic=0.20, gross_margin=0.40, net_debt_ebitda=1.0)
+# A higher Ro40 than C2 and two rules passed as well: only DISTORTED puts it last. Since avo C1 and the 18 Nov 2026
+# re-review a distorted name passes neither the Rule of 40 nor (on a micro revenue) Quality, so its two are Quality on
+# ROIC and Momentum.
+_D2 = dict(rev_growth_ttm=3.0, fcf_margin=0.20, ro40=95.0, ttm_revenue=2e9,
+           roic=0.20, gross_margin=0.40, net_debt_ebitda=1.0,
+           dist_52w_pct=0.95, rs_6m=0.1, above_200d=True)
 
 
 def test_the_sort_is_count_then_distorted_then_rule_of_40():
@@ -268,9 +272,11 @@ def _known_payload():
     return build_payload([_row("AAA", _m(**_T3), price=50.0, market_cap=1e9)], top_n=10)
 
 
-def test_the_page_has_the_three_rule_toggles_with_the_rule_of_40_checked():
+def test_the_page_has_the_three_rule_toggles_none_checked():
+    """avo M1 (18 Nov 2026): the page opens on every card; it used to tick the Rule of 40 and hide Quality-only cards."""
     html = render_fundamental_dashboard(_known_payload())
-    assert 'id="rule-rule_of_40" checked' in html
+    import re
+    assert 'id="rule-rule_of_40"' in html and not re.search(r'id="rule-\w+" checked', html)
     assert 'id="rule-quality"' in html and 'id="rule-momentum"' in html
     for gone in ("Triple Pass", "Dual Pass", 'class="tabs"', "data-pt", "setPt("):
         assert gone not in html, gone

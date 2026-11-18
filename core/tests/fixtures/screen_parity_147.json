@@ -5,11 +5,11 @@
     {
      "adr": false,
      "anchor_period_end": null,
-     "bucket": "quality+momentum",
+     "bucket": "rule_of_40+momentum",
      "debt_basis": "filed",
-     "distorted": true,
+     "distorted": false,
      "earnings_date": null,
-     "fcf_margin": 0.104167,
+     "fcf_margin": 0.097656,
      "gates": {
       "momentum": {
        "known": 3,
@@ -25,7 +25,7 @@
          "unit": "pct_high"
         },
         {
-         "actual": 0.098955,
+         "actual": 0.23584,
          "id": "rs_6m",
          "label": "6-month RS vs SPY positive",
          "passed": true,
@@ -47,26 +47,26 @@
       "quality": {
        "known": 3,
        "name": "Quality",
-       "passed": true,
+       "passed": false,
        "rules": [
         {
-         "actual": 0.158,
+         "actual": 0.6,
          "id": "growth_or_roic",
-         "label": "Growth ≥20% or ROIC ≥15% (revenue under $10M: distorted, unknown)",
+         "label": "Growth ≥20% or ROIC ≥15%",
          "passed": true,
          "threshold": "≥20% / ≥15%",
          "unit": "pct"
         },
         {
-         "actual": 0.305556,
+         "actual": 0.257812,
          "id": "gross_margin",
          "label": "Gross margin ≥30%",
-         "passed": true,
+         "passed": false,
          "threshold": "≥ 30%",
          "unit": "pct"
         },
         {
-         "actual": -1.052632,
+         "actual": -0.740741,
          "id": "net_debt_ebitda",
          "label": "Net Debt / EBITDA < 3×",
          "passed": true,
@@ -74,62 +74,184 @@
          "unit": "ratio"
         }
        ],
-       "score": "3/3",
+       "score": "2/3",
        "total": 3
       },
       "rule_of_40": {
-       "known": 0,
+       "known": 1,
        "name": "Rule of 40",
-       "passed": false,
+       "passed": true,
        "rules": [
         {
-         "actual": 30.416667,
+         "actual": 69.765625,
          "id": "ro40",
-         "label": "Revenue growth + FCF margin (FY) (revenue under $10M: distorted, unknown)",
-         "passed": null,
+         "label": "Revenue growth + FCF margin (FY)",
+         "passed": true,
          "threshold": "≥ 40",
          "unit": "pts"
         }
        ],
-       "score": "30.4",
+       "score": "69.8",
        "total": 1
       }
      },
      "index": [],
      "industry": "Unclassified",
-     "market_cap": 2500000000.0,
+     "market_cap": 600000000.0,
      "momentum_score": "3/3",
-     "name": "UP2 Inc",
+     "name": "UP3 Inc",
      "old_period": false,
      "passed_count": 2,
      "period": "FY2024 vs FY2023",
-     "price": 75.403295,
+     "price": 117.000316,
      "quality_basis": "FY",
      "quality_period_end": null,
-     "quality_score": "3/3",
-     "rev_growth_ttm": 0.2,
-     "ro40": 30.416667,
+     "quality_score": "2/3",
+     "rev_growth_ttm": 0.6,
+     "ro40": 69.765625,
      "ro40_basis": "FY",
-     "roic": 0.158,
+     "roic": 0.237,
      "rules_passed": [
-      "quality",
+      "rule_of_40",
       "momentum"
      ],
-     "sector": "Healthcare",
+     "sector": "Technology",
      "statements": {
       "filed": null,
       "read": null,
       "source": "store"
      },
      "themes": [],
-     "ticker": "UP2"
+     "ticker": "UP3"
     },
     {
      "adr": false,
      "anchor_period_end": null,
-     "bucket": "quality",
+     "bucket": "rule_of_40+momentum",
      "debt_basis": "filed",
-     "distorted": true,
+     "distorted": false,
+     "earnings_date": null,
+     "fcf_margin": 0.095125,
+     "gates": {
+      "momentum": {
+       "known": 3,
+       "name": "Momentum",
+       "passed": true,
+       "rules": [
+        {
+         "actual": 0.990099,
+         "id": "near_52w_high",
+         "label": "Within 25% of 52-week high",
+         "passed": true,
+         "threshold": "≥ 75% of high",
+         "unit": "pct_high"
+        },
+        {
+         "actual": 0.188059,
+         "id": "rs_6m",
+         "label": "6-month RS vs SPY positive",
+         "passed": true,
+         "threshold": "> 0 pp",
+         "unit": "pp"
+        },
+        {
+         "actual": true,
+         "id": "above_200d",
+         "label": "Price above 200-day MA",
+         "passed": true,
+         "threshold": "> 200d MA",
+         "unit": "bool"
+        }
+       ],
+       "score": "3/3",
+       "total": 3
+      },
+      "quality": {
+       "known": 3,
+       "name": "Quality",
+       "passed": false,
+       "rules": [
+        {
+         "actual": 0.45,
+         "id": "growth_or_roic",
+         "label": "Growth ≥20% or ROIC ≥15%",
+         "passed": true,
+         "threshold": "≥20% / ≥15%",
+         "unit": "pct"
+        },
+        {
+         "actual": 0.261593,
+         "id": "gross_margin",
+         "label": "Gross margin ≥30%",
+         "passed": false,
+         "threshold": "≥ 30%",
+         "unit": "pct"
+        },
+        {
+         "actual": -0.869565,
+         "id": "net_debt_ebitda",
+         "label": "Net Debt / EBITDA < 3×",
+         "passed": true,
+         "threshold": "< 3.0×",
+         "unit": "ratio"
+        }
+       ],
+       "score": "2/3",
+       "total": 3
+      },
+      "rule_of_40": {
+       "known": 1,
+       "name": "Rule of 40",
+       "passed": true,
+       "rules": [
+        {
+         "actual": 54.512485,
+         "id": "ro40",
+         "label": "Revenue growth + FCF margin (FY)",
+         "passed": true,
+         "threshold": "≥ 40",
+         "unit": "pts"
+        }
+       ],
+       "score": "54.5",
+       "total": 1
+      }
+     },
+     "index": [],
+     "industry": "Unclassified",
+     "market_cap": 1000000000.0,
+     "momentum_score": "3/3",
+     "name": "UP1 Inc",
+     "old_period": false,
+     "passed_count": 2,
+     "period": "FY2024 vs FY2023",
+     "price": 99.173021,
+     "quality_basis": "FY",
+     "quality_period_end": null,
+     "quality_score": "2/3",
+     "rev_growth_ttm": 0.45,
+     "ro40": 54.512485,
+     "ro40_basis": "FY",
+     "roic": 0.1975,
+     "rules_passed": [
+      "rule_of_40",
+      "momentum"
+     ],
+     "sector": "Technology",
+     "statements": {
+      "filed": null,
+      "read": null,
+      "source": "store"
+     },
+     "themes": [],
+     "ticker": "UP1"
+    },
+    {
+     "adr": false,
+     "anchor_period_end": null,
+     "bucket": "rule_of_40+quality",
+     "debt_basis": "filed",
+     "distorted": false,
      "earnings_date": null,
      "fcf_margin": 0.118343,
      "gates": {
@@ -172,9 +294,9 @@
        "passed": true,
        "rules": [
         {
-         "actual": 0.1975,
+         "actual": 0.3,
          "id": "growth_or_roic",
-         "label": "Growth ≥20% or ROIC ≥15% (revenue under $10M: distorted, unknown)",
+         "label": "Growth ≥20% or ROIC ≥15%",
          "passed": true,
          "threshold": "≥20% / ≥15%",
          "unit": "pct"
@@ -200,15 +322,15 @@
        "total": 3
       },
       "rule_of_40": {
-       "known": 0,
+       "known": 1,
        "name": "Rule of 40",
-       "passed": false,
+       "passed": true,
        "rules": [
         {
          "actual": 41.83432,
          "id": "ro40",
-         "label": "Revenue growth + FCF margin (FY) (revenue under $10M: distorted, unknown)",
-         "passed": null,
+         "label": "Revenue growth + FCF margin (FY)",
+         "passed": true,
          "threshold": "≥ 40",
          "unit": "pts"
         }
@@ -223,7 +345,7 @@
      "momentum_score": "2/3",
      "name": "BELOW50 Inc",
      "old_period": false,
-     "passed_count": 1,
+     "passed_count": 2,
      "period": "FY2024 vs FY2023",
      "price": 51.633569,
      "quality_basis": "FY",
@@ -234,6 +356,7 @@
      "ro40_basis": "FY",
      "roic": 0.1975,
      "rules_passed": [
+      "rule_of_40",
       "quality"
      ],
      "sector": "Utilities",
@@ -248,9 +371,9 @@
     {
      "adr": false,
      "anchor_period_end": null,
-     "bucket": "quality",
+     "bucket": "rule_of_40+quality",
      "debt_basis": "filed",
-     "distorted": true,
+     "distorted": false,
      "earnings_date": null,
      "fcf_margin": 0.118343,
      "gates": {
@@ -293,9 +416,9 @@
        "passed": true,
        "rules": [
         {
-         "actual": 0.1975,
+         "actual": 0.3,
          "id": "growth_or_roic",
-         "label": "Growth ≥20% or ROIC ≥15% (revenue under $10M: distorted, unknown)",
+         "label": "Growth ≥20% or ROIC ≥15%",
          "passed": true,
          "threshold": "≥20% / ≥15%",
          "unit": "pct"
@@ -321,15 +444,15 @@
        "total": 3
       },
       "rule_of_40": {
-       "known": 0,
+       "known": 1,
        "name": "Rule of 40",
-       "passed": false,
+       "passed": true,
        "rules": [
         {
          "actual": 41.83432,
          "id": "ro40",
-         "label": "Revenue growth + FCF margin (FY) (revenue under $10M: distorted, unknown)",
-         "passed": null,
+         "label": "Revenue growth + FCF margin (FY)",
+         "passed": true,
          "threshold": "≥ 40",
          "unit": "pts"
         }
@@ -344,7 +467,7 @@
      "momentum_score": "2/3",
      "name": "FAR Inc",
      "old_period": false,
-     "passed_count": 1,
+     "passed_count": 2,
      "period": "FY2024 vs FY2023",
      "price": 51.633569,
      "quality_basis": "FY",
@@ -355,6 +478,7 @@
      "ro40_basis": "FY",
      "roic": 0.1975,
      "rules_passed": [
+      "rule_of_40",
       "quality"
      ],
      "sector": "Utilities",
@@ -369,9 +493,9 @@
     {
      "adr": false,
      "anchor_period_end": null,
-     "bucket": "quality",
+     "bucket": "rule_of_40+quality",
      "debt_basis": "filed",
-     "distorted": true,
+     "distorted": false,
      "earnings_date": null,
      "fcf_margin": 0.118343,
      "gates": {
@@ -414,9 +538,9 @@
        "passed": true,
        "rules": [
         {
-         "actual": 0.1975,
+         "actual": 0.3,
          "id": "growth_or_roic",
-         "label": "Growth ≥20% or ROIC ≥15% (revenue under $10M: distorted, unknown)",
+         "label": "Growth ≥20% or ROIC ≥15%",
          "passed": true,
          "threshold": "≥20% / ≥15%",
          "unit": "pct"
@@ -442,15 +566,15 @@
        "total": 3
       },
       "rule_of_40": {
-       "known": 0,
+       "known": 1,
        "name": "Rule of 40",
-       "passed": false,
+       "passed": true,
        "rules": [
         {
          "actual": 41.83432,
          "id": "ro40",
-         "label": "Revenue growth + FCF margin (FY) (revenue under $10M: distorted, unknown)",
-         "passed": null,
+         "label": "Revenue growth + FCF margin (FY)",
+         "passed": true,
          "threshold": "≥ 40",
          "unit": "pts"
         }
@@ -465,7 +589,7 @@
      "momentum_score": "0/3 of 0 known",
      "name": "SHORT1 Inc",
      "old_period": false,
-     "passed_count": 1,
+     "passed_count": 2,
      "period": "FY2024 vs FY2023",
      "price": 55.243809,
      "quality_basis": "FY",
@@ -476,6 +600,7 @@
      "ro40_basis": "FY",
      "roic": 0.1975,
      "rules_passed": [
+      "rule_of_40",
       "quality"
      ],
      "sector": "Utilities",
@@ -486,6 +611,128 @@
      },
      "themes": [],
      "ticker": "SHORT1"
+    },
+    {
+     "adr": false,
+     "anchor_period_end": null,
+     "bucket": "quality+momentum",
+     "debt_basis": "filed",
+     "distorted": false,
+     "earnings_date": null,
+     "fcf_margin": 0.104167,
+     "gates": {
+      "momentum": {
+       "known": 3,
+       "name": "Momentum",
+       "passed": true,
+       "rules": [
+        {
+         "actual": 0.990099,
+         "id": "near_52w_high",
+         "label": "Within 25% of 52-week high",
+         "passed": true,
+         "threshold": "≥ 75% of high",
+         "unit": "pct_high"
+        },
+        {
+         "actual": 0.098955,
+         "id": "rs_6m",
+         "label": "6-month RS vs SPY positive",
+         "passed": true,
+         "threshold": "> 0 pp",
+         "unit": "pp"
+        },
+        {
+         "actual": true,
+         "id": "above_200d",
+         "label": "Price above 200-day MA",
+         "passed": true,
+         "threshold": "> 200d MA",
+         "unit": "bool"
+        }
+       ],
+       "score": "3/3",
+       "total": 3
+      },
+      "quality": {
+       "known": 3,
+       "name": "Quality",
+       "passed": true,
+       "rules": [
+        {
+         "actual": 0.2,
+         "id": "growth_or_roic",
+         "label": "Growth ≥20% or ROIC ≥15%",
+         "passed": true,
+         "threshold": "≥20% / ≥15%",
+         "unit": "pct"
+        },
+        {
+         "actual": 0.305556,
+         "id": "gross_margin",
+         "label": "Gross margin ≥30%",
+         "passed": true,
+         "threshold": "≥ 30%",
+         "unit": "pct"
+        },
+        {
+         "actual": -1.052632,
+         "id": "net_debt_ebitda",
+         "label": "Net Debt / EBITDA < 3×",
+         "passed": true,
+         "threshold": "< 3.0×",
+         "unit": "ratio"
+        }
+       ],
+       "score": "3/3",
+       "total": 3
+      },
+      "rule_of_40": {
+       "known": 1,
+       "name": "Rule of 40",
+       "passed": false,
+       "rules": [
+        {
+         "actual": 30.416667,
+         "id": "ro40",
+         "label": "Revenue growth + FCF margin (FY)",
+         "passed": false,
+         "threshold": "≥ 40",
+         "unit": "pts"
+        }
+       ],
+       "score": "30.4",
+       "total": 1
+      }
+     },
+     "index": [],
+     "industry": "Unclassified",
+     "market_cap": 2500000000.0,
+     "momentum_score": "3/3",
+     "name": "UP2 Inc",
+     "old_period": false,
+     "passed_count": 2,
+     "period": "FY2024 vs FY2023",
+     "price": 75.403295,
+     "quality_basis": "FY",
+     "quality_period_end": null,
+     "quality_score": "3/3",
+     "rev_growth_ttm": 0.2,
+     "ro40": 30.416667,
+     "ro40_basis": "FY",
+     "roic": 0.158,
+     "rules_passed": [
+      "quality",
+      "momentum"
+     ],
+     "sector": "Healthcare",
+     "statements": {
+      "filed": null,
+      "read": null,
+      "source": "store"
+     },
+     "themes": [],
+     "ticker": "UP2"
     }
    ],
    "data_as_of": "2026-10-14",
@@ -494,7 +741,7 @@
      "no_edgar_annual": 1
     },
     "no_avg_volume": 0,
-    "no_cik": 4,
+    "no_cik": 6,
     "no_submissions": 0,
     "older_quotes": 0,
     "quote_session": "2026-10-14",
@@ -503,7 +750,7 @@
     "stale_ohlc": 0,
     "stale_submissions": 0
    },
-   "distorted_count": 4,
+   "distorted_count": 0,
    "funnel_steps": [
     {
      "count": 13,
@@ -566,14 +813,14 @@
     },
     {
      "by_design": true,
-     "count": 4,
+     "count": 2,
      "fix": null,
      "key": "passed_no_screen",
      "kind": "drop",
      "label": "Scored, passed none of the board's three screens"
     },
     {
-     "count": 4,
+     "count": 6,
      "fix": null,
      "key": "candidates",
      "kind": "result",
@@ -583,9 +830,9 @@
    "generated_at": "<ts>",
    "no_data": false,
    "passing": {
-    "momentum": 1,
+    "momentum": 3,
     "quality": 4,
-    "rule_of_40": 0
+    "rule_of_40": 5
    },
    "provider_health": {
     "auth_error": null,
@@ -597,11 +844,11 @@
     "skipped_calls": 0
    },
    "regime": "RISK-ON",
-   "selection_version": "13",
+   "selection_version": "14",
    "statements_source": "layer",
    "summary": {
     "data_short": 0,
-    "distorted_count": 4,
+    "distorted_count": 0,
     "excluded_types": 1,
     "filtered_universe": 9,
     "health_drops": {
@@ -611,23 +858,25 @@
      "stale_annual": 0
     },
     "hygiene": 3,
-    "momentum_only": 2,
+    "ifrs_quality_unjudged": 0,
+    "momentum_only": 0,
     "no_edgar": 1,
     "no_spine_gics": 0,
     "out_of_universe": null,
     "passing": {
-     "momentum": 1,
+     "momentum": 3,
      "quality": 4,
-     "rule_of_40": 0
+     "rule_of_40": 5
     },
     "regime": "RISK-ON",
     "spy_3m_return": 0.0474,
+    "spy_behind": null,
     "spy_missing": false,
     "spy_price": 57.58,
     "spy_sma200": 51.93,
     "spy_stale": false,
     "stale_ohlc": 0,
-    "top_n": 4
+    "top_n": 6
    },
    "universe_generated_at": null,
    "universe_refreshed_by": null,
@@ -734,7 +983,7 @@
     {
      "actual": -2.229917,
      "gate": "rule_of_40",
-     "passed": null,
+     "passed": 0,
      "rule_id": "ro40",
      "ticker": "DOWN1",
      "unit": "pts"
@@ -758,7 +1007,7 @@
     {
      "actual": 0.05925,
      "gate": "quality",
-     "passed": null,
+     "passed": 0,
      "rule_id": "growth_or_roic",
      "ticker": "DOWN1",
      "unit": "pct"
@@ -766,7 +1015,7 @@
     {
      "actual": 0.09875,
      "gate": "quality",
-     "passed": null,
+     "passed": 0,
      "rule_id": "growth_or_roic",
      "ticker": "FLAT1",
      "unit": "pct"
@@ -778,14 +1027,6 @@
      "rule_id": "rs_6m",
      "ticker": "UP2",
      "unit": "pp"
-    },
-    {
-     "actual": 0.158,
-     "gate": "quality",
-     "passed": 1,
-     "rule_id": "growth_or_roic",
-     "ticker": "UP2",
-     "unit": "pct"
     },
     {
      "actual": 0.182825,
@@ -804,35 +1045,11 @@
      "unit": "pp"
     },
     {
-     "actual": 0.1975,
+     "actual": 0.2,
      "gate": "quality",
      "passed": 1,
      "rule_id": "growth_or_roic",
-     "ticker": "BELOW50",
-     "unit": "pct"
-    },
-    {
-     "actual": 0.1975,
-     "gate": "quality",
-     "passed": 1,
-     "rule_id": "growth_or_roic",
-     "ticker": "FAR",
-     "unit": "pct"
-    },
-    {
-     "actual": 0.1975,
-     "gate": "quality",
-     "passed": 1,
-     "rule_id": "growth_or_roic",
-     "ticker": "SHORT1",
-     "unit": "pct"
-    },
-    {
-     "actual": 0.1975,
-     "gate": "quality",
-     "passed": 1,
-     "rule_id": "growth_or_roic",
-     "ticker": "UP1",
+     "ticker": "UP2",
      "unit": "pct"
     },
     {
@@ -842,14 +1059,6 @@
      "rule_id": "rs_6m",
      "ticker": "UP3",
      "unit": "pp"
-    },
-    {
-     "actual": 0.237,
-     "gate": "quality",
-     "passed": 1,
-     "rule_id": "growth_or_roic",
-     "ticker": "UP3",
-     "unit": "pct"
     },
     {
      "actual": 0.257812,
@@ -873,6 +1082,30 @@
      "passed": 0,
      "rule_id": "gross_margin",
      "ticker": "FLAT1",
+     "unit": "pct"
+    },
+    {
+     "actual": 0.3,
+     "gate": "quality",
+     "passed": 1,
+     "rule_id": "growth_or_roic",
+     "ticker": "BELOW50",
+     "unit": "pct"
+    },
+    {
+     "actual": 0.3,
+     "gate": "quality",
+     "passed": 1,
+     "rule_id": "growth_or_roic",
+     "ticker": "FAR",
+     "unit": "pct"
+    },
+    {
+     "actual": 0.3,
+     "gate": "quality",
+     "passed": 1,
+     "rule_id": "growth_or_roic",
+     "ticker": "SHORT1",
      "unit": "pct"
     },
     {
@@ -914,6 +1147,22 @@
      "rule_id": "near_52w_high",
      "ticker": "DOWN1",
      "unit": "pct_high"
+    },
+    {
+     "actual": 0.45,
+     "gate": "quality",
+     "passed": 1,
+     "rule_id": "growth_or_roic",
+     "ticker": "UP1",
+     "unit": "pct"
+    },
+    {
+     "actual": 0.6,
+     "gate": "quality",
+     "passed": 1,
+     "rule_id": "growth_or_roic",
+     "ticker": "UP3",
+     "unit": "pct"
     },
     {
      "actual": 0.96934,
@@ -1006,7 +1255,7 @@
     {
      "actual": 30.416667,
      "gate": "rule_of_40",
-     "passed": null,
+     "passed": 0,
      "rule_id": "ro40",
      "ticker": "UP2",
      "unit": "pts"
@@ -1014,7 +1263,7 @@
     {
      "actual": 41.83432,
      "gate": "rule_of_40",
-     "passed": null,
+     "passed": 1,
      "rule_id": "ro40",
      "ticker": "BELOW50",
      "unit": "pts"
@@ -1022,7 +1271,7 @@
     {
      "actual": 41.83432,
      "gate": "rule_of_40",
-     "passed": null,
+     "passed": 1,
      "rule_id": "ro40",
      "ticker": "FAR",
      "unit": "pts"
@@ -1030,7 +1279,7 @@
     {
      "actual": 41.83432,
      "gate": "rule_of_40",
-     "passed": null,
+     "passed": 1,
      "rule_id": "ro40",
      "ticker": "SHORT1",
      "unit": "pts"
@@ -1038,7 +1287,7 @@
     {
      "actual": 54.512485,
      "gate": "rule_of_40",
-     "passed": null,
+     "passed": 1,
      "rule_id": "ro40",
      "ticker": "UP1",
      "unit": "pts"
@@ -1046,7 +1295,7 @@
     {
      "actual": 69.765625,
      "gate": "rule_of_40",
-     "passed": null,
+     "passed": 1,
      "rule_id": "ro40",
      "ticker": "UP3",
      "unit": "pts"
@@ -1054,7 +1303,7 @@
     {
      "actual": 9.208766,
      "gate": "rule_of_40",
-     "passed": null,
+     "passed": 0,
      "rule_id": "ro40",
      "ticker": "FLAT1",
      "unit": "pts"
@@ -1089,15 +1338,15 @@
      "above_200d": 0,
      "anchor_period_end": null,
      "dist_52w_pct": 0.431123,
-     "distorted": 1,
+     "distorted": 0,
      "fcf_margin": 0.027701,
      "gross_margin": 0.182825,
      "market_cap": 900000000.0,
      "momentum_pass": 0,
      "multiplier": 0,
      "net_debt_ebitda": -2.222222,
-     "pb": 9000000.0,
-     "pe": 250000000.0,
+     "pb": 9.0,
+     "pe": 250.0,
      "period": "FY2024 vs FY2023",
      "price": 15.97898,
      "quality_pass": 1,
@@ -1107,21 +1356,21 @@
      "roic": 0.05925,
      "rs_6m": -0.536283,
      "ticker": "DOWN1",
-     "ttm_revenue": 90.25
+     "ttm_revenue": 90250000.0
     },
     {
      "above_200d": 0,
      "anchor_period_end": null,
      "dist_52w_pct": 0.96934,
-     "distorted": 1,
+     "distorted": 0,
      "fcf_margin": 0.072088,
      "gross_margin": 0.264321,
      "market_cap": 1500000000.0,
      "momentum_pass": 1,
      "multiplier": 0,
      "net_debt_ebitda": -1.538462,
-     "pb": 15000000.0,
-     "pe": 250000000.0,
+     "pb": 15.0,
+     "pe": 250.0,
      "period": "FY2024 vs FY2023",
      "price": 39.748706,
      "quality_pass": 1,
@@ -1131,21 +1380,21 @@
      "roic": 0.09875,
      "rs_6m": -0.150313,
      "ticker": "FLAT1",
-     "ttm_revenue": 104.04
+     "ttm_revenue": 104040000.0
     },
     {
      "above_200d": 1,
      "anchor_period_end": null,
      "dist_52w_pct": 0.988155,
-     "distorted": 1,
+     "distorted": 0,
      "fcf_margin": 0.118343,
      "gross_margin": 0.325444,
      "market_cap": 500000000.0,
      "momentum_pass": 2,
-     "multiplier": 1,
+     "multiplier": 2,
      "net_debt_ebitda": -0.869565,
-     "pb": 5000000.0,
-     "pe": 41666666.666667,
+     "pb": 5.0,
+     "pe": 41.666667,
      "period": "FY2024 vs FY2023",
      "price": 51.633569,
      "quality_pass": 3,
@@ -1155,21 +1404,21 @@
      "roic": 0.1975,
      "rs_6m": -0.042715,
      "ticker": "FAR",
-     "ttm_revenue": 169.0
+     "ttm_revenue": 169000000.0
     },
     {
      "above_200d": 1,
      "anchor_period_end": null,
      "dist_52w_pct": 0.988155,
-     "distorted": 1,
+     "distorted": 0,
      "fcf_margin": 0.118343,
      "gross_margin": 0.325444,
      "market_cap": 550000000.0,
      "momentum_pass": 2,
-     "multiplier": 1,
+     "multiplier": 2,
      "net_debt_ebitda": -0.869565,
-     "pb": 5500000.0,
-     "pe": 45833333.333333,
+     "pb": 5.5,
+     "pe": 45.833333,
      "period": "FY2024 vs FY2023",
      "price": 51.633569,
      "quality_pass": 3,
@@ -1179,21 +1428,21 @@
      "roic": 0.1975,
      "rs_6m": -0.042715,
      "ticker": "BELOW50",
-     "ttm_revenue": 169.0
+     "ttm_revenue": 169000000.0
     },
     {
      "above_200d": 1,
      "anchor_period_end": null,
      "dist_52w_pct": 0.990099,
-     "distorted": 1,
+     "distorted": 0,
      "fcf_margin": 0.095125,
      "gross_margin": 0.261593,
      "market_cap": 1000000000.0,
      "momentum_pass": 3,
-     "multiplier": 1,
+     "multiplier": 2,
      "net_debt_ebitda": -0.869565,
-     "pb": 10000000.0,
-     "pe": 83333333.333333,
+     "pb": 10.0,
+     "pe": 83.333333,
      "period": "FY2024 vs FY2023",
      "price": 99.173021,
      "quality_pass": 2,
@@ -1203,21 +1452,21 @@
      "roic": 0.1975,
      "rs_6m": 0.188059,
      "ticker": "UP1",
-     "ttm_revenue": 210.25
+     "ttm_revenue": 210250000.0
     },
     {
      "above_200d": 1,
      "anchor_period_end": null,
      "dist_52w_pct": 0.990099,
-     "distorted": 1,
+     "distorted": 0,
      "fcf_margin": 0.097656,
      "gross_margin": 0.257812,
      "market_cap": 600000000.0,
      "momentum_pass": 3,
-     "multiplier": 1,
+     "multiplier": 2,
      "net_debt_ebitda": -0.740741,
-     "pb": 6000000.0,
-     "pe": 41666666.666667,
+     "pb": 6.0,
+     "pe": 41.666667,
      "period": "FY2024 vs FY2023",
      "price": 117.000316,
      "quality_pass": 2,
@@ -1227,21 +1476,21 @@
      "roic": 0.237,
      "rs_6m": 0.23584,
      "ticker": "UP3",
-     "ttm_revenue": 256.0
+     "ttm_revenue": 256000000.0
     },
     {
      "above_200d": 1,
      "anchor_period_end": null,
      "dist_52w_pct": 0.990099,
-     "distorted": 1,
+     "distorted": 0,
      "fcf_margin": 0.104167,
      "gross_margin": 0.305556,
      "market_cap": 2500000000.0,
      "momentum_pass": 3,
      "multiplier": 2,
      "net_debt_ebitda": -1.052632,
-     "pb": 25000000.0,
-     "pe": 260416666.666667,
+     "pb": 25.0,
+     "pe": 260.416667,
      "period": "FY2024 vs FY2023",
      "price": 75.403295,
      "quality_pass": 3,
@@ -1251,21 +1500,21 @@
      "roic": 0.158,
      "rs_6m": 0.098955,
      "ticker": "UP2",
-     "ttm_revenue": 144.0
+     "ttm_revenue": 144000000.0
     },
     {
      "above_200d": null,
      "anchor_period_end": null,
      "dist_52w_pct": null,
-     "distorted": 1,
+     "distorted": 0,
      "fcf_margin": 0.118343,
      "gross_margin": 0.325444,
      "market_cap": 700000000.0,
      "momentum_pass": 0,
-     "multiplier": 1,
+     "multiplier": 2,
      "net_debt_ebitda": -0.869565,
-     "pb": 7000000.0,
-     "pe": 58333333.333333,
+     "pb": 7.0,
+     "pe": 58.333333,
      "period": "FY2024 vs FY2023",
      "price": 55.243809,
      "quality_pass": 3,
@@ -1275,7 +1524,7 @@
      "roic": 0.1975,
      "rs_6m": null,
      "ticker": "SHORT1",
-     "ttm_revenue": 169.0
+     "ttm_revenue": 169000000.0
     }
    ]
   }

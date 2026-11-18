@@ -87,5 +87,7 @@ TAX_RATE = 0.21
 # 13: avo's rule decisions of 17 Nov 2026: a card needs the Rule of 40 or Quality (B1); one period per card, TTM
 #     else FY (D1); a distorted growth, a micro revenue base or a period older than STALE_DAYS leaves the rules that
 #     read it unknown (C1); under 252 bars Momentum is unknown, not dropped (E1); the 8-K flag leaves 1.02 and 5.03 (G1)
-SELECTION_VERSION = "13"
+# 14: gross margin is unknown under the $10M revenue mark too, completing C1; the Period label names the fiscal years
+#     whenever the Rule of 40 reads them (Fundamentals re-review, 18 Nov 2026)
+SELECTION_VERSION = "14"
 
