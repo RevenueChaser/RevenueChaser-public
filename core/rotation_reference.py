@@ -217,10 +217,7 @@ def _rows(feed: str) -> list[dict]:
     stamp = read.job_lists_stamp()
     hit = _CACHE.get(feed)
     if hit is None or hit[0] != stamp:
-        try:
-            hit = _CACHE[feed] = (stamp, read.job_sections(feed))
-        except read.JobListUnreadable:
-            return seed_sections(feed)
+        hit = _CACHE[feed] = (stamp, read.job_sections(feed))
     return hit[1]
 
 
