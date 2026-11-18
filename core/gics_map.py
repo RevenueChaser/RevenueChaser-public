@@ -104,8 +104,8 @@ class GicsPath:
     industry: str
 
 
-def sector_path(sector, industry) -> list[str]:
-    """``[sector, industry]`` for the filter tree.
+def sector_path(sector, industry, gind=None, gsubind=None) -> list[str]:
+    """``[sector, industry]`` for the filter tree, then the GICS ``gind`` and ``gsubind`` codes when known (K6).
 
     The stored sector is normalised onto the Morningstar names (``canonical_sector``); an empty or unknown one
     reads ``Unclassified``. The industry is the stored text, trimmed; ``Unclassified`` and the legacy ``Other``
@@ -114,7 +114,13 @@ def sector_path(sector, industry) -> list[str]:
     ind = industry.strip() if isinstance(industry, str) else ""
     if is_unclassified(ind):
         ind = UNCLASSIFIED
-    return [canonical_sector(sector), ind]
+    path = [canonical_sector(sector), ind]
+    # Codes only until the names arrive (plan v5 step 6); a sub-industry needs its industry, both need a real level 2.
+    if ind and ind != UNCLASSIFIED and gind:
+        path.append(str(gind))
+        if gsubind:
+            path.append(str(gsubind))
+    return path
 
 
 __all__ = [

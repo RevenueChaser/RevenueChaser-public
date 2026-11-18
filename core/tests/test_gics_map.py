@@ -68,8 +68,14 @@ class TestSectorPath:
     def test_the_industry_is_trimmed_and_kept_as_the_provider_wrote_it(self):
         assert sector_path("Energy", "  Oil & Gas E&P ") == ["Energy", "Oil & Gas E&P"]
 
-    def test_a_path_has_exactly_two_levels(self):
+    def test_a_path_without_codes_has_two_levels(self):
         assert len(sector_path("Energy", "x")) == 2
+
+    def test_the_gics_codes_extend_the_path_k6(self):
+        assert sector_path("Energy", "Energy", "101020", "10102020") == ["Energy", "Energy", "101020", "10102020"]
+        assert sector_path("Energy", "Energy", "101020") == ["Energy", "Energy", "101020"]
+        assert sector_path("Energy", "Energy", None, "10102020") == ["Energy", "Energy"]   # no sub-industry alone
+        assert sector_path("Energy", "", "101020", "10102020") == ["Energy", ""]           # nothing past an empty level
 
 
 def test_gicspath_carries_the_sector_and_the_industry_only():

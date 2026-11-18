@@ -13,6 +13,7 @@ def _seed_universe(rows):
         "ticker": r["ticker"], "cik": "", "name": r.get("name") or r["ticker"],
         "market_cap": r.get("market_cap", 1.0e9), "price": 10.0,
         "sector": r.get("sector") or "Technology", "industry": r.get("industry", "x"),
+        "ggroup": r.get("ggroup"), "gind": r.get("gind"), "gsubind": r.get("gsubind"),
         "quote": {"symbol": r["ticker"]},
     } for r in rows])
 
@@ -84,6 +85,28 @@ def test_filter_fields_carries_the_two_levels(rawstore_tmp_db):
     assert row["industry"] == "Gold"
     assert row["gics"] == ["Basic Materials", "Gold"]
     assert "industry_group" not in row and "sub_industry" not in row
+
+
+def test_filter_fields_adds_the_gics_industry_and_sub_industry_codes(rawstore_tmp_db):
+    """K6: Compustat's ``gind`` / ``gsubind`` extend the path; a row without them keeps two levels."""
+    _seed_universe([{"ticker": "MSFT", "sector": "Technology", "industry": "Software & Services",
+                     "ggroup": "4510", "gind": "451030", "gsubind": "45103020"},
+                    {"ticker": "NOSUB", "sector": "Technology", "industry": "Software & Services",
+                     "ggroup": "4510", "gind": "451030"},
+                    {"ticker": "SIC", "sector": "Technology", "industry": "Software & Services", "ggroup": "4510"}])
+    rows = universe.filter_fields(["MSFT", "NOSUB", "SIC"])
+    assert rows["MSFT"]["gics"] == ["Technology", "Software & Services", "451030", "45103020"]
+    assert rows["NOSUB"]["gics"] == ["Technology", "Software & Services", "451030"]
+    assert rows["SIC"]["gics"] == ["Technology", "Software & Services"]
+
+
+def test_classification_universe_rows_carry_the_gics_codes(rawstore_tmp_db):
+    _seed_universe([{"ticker": "MSFT", "ggroup": "4510", "gind": "451030", "gsubind": "45103020"},
+                    {"ticker": "BARE"}])
+    rows = {r["ticker"]: r for r in universe.classification_universe_rows()}
+    assert (rows["MSFT"]["ggroup"], rows["MSFT"]["gind"], rows["MSFT"]["gsubind"]) == ("4510", "451030", "45103020")
+    assert (rows["BARE"]["ggroup"], rows["BARE"]["gind"], rows["BARE"]["gsubind"]) == (None, None, None)
+    assert "industry_group" not in rows["MSFT"] and "sub_industry" not in rows["MSFT"]
 
 
 def test_filter_fields_normalises_an_old_gics_sector_to_the_morningstar_name(rawstore_tmp_db):
