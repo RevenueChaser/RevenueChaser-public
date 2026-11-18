@@ -74,3 +74,18 @@ def test_a_file_without_the_tables_is_an_error(tmp_path, monkeypatch):
     monkeypatch.setattr(rawstore, "board_db_path", lambda board: empty)
     with pytest.raises(read.JobListUnreadable, match="CatalogException"):
         read.job_list("option")
+
+
+def test_a_list_a_job_reads_is_never_emptied_or_deleted():
+    """Plan v5 step 7c: "empty" must only ever mean a list with no row, so the board cannot make one."""
+    marked = store.create_list("Option chains", feeds="option")
+    store.add_symbol(marked, "AMEX:SPY")
+    store.add_symbol(marked, "NASDAQ:QQQ")
+    assert store.remove_symbol(marked, "NASDAQ:QQQ") is True
+    with pytest.raises(store.WatchlistError, match="last symbol"):
+        store.remove_symbol(marked, "AMEX:SPY")
+    with pytest.raises(store.WatchlistError, match="jobs read"):
+        store.delete_list(marked)
+    assert read.job_list("option") == ["SPY"]
+    store.update_list(marked, feeds="")
+    assert store.delete_list(marked) is True
