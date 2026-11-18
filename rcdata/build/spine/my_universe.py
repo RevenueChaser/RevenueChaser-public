@@ -11,8 +11,9 @@ the list can be swapped by editing one file:
 - a **stock** is a ``security`` row of Tier A or D whose ``security_type`` is common, ADR, REIT or MLP. A royalty
   trust, a BDC and a non-SEC bank are operating types the identity master knows and avo left out; an untyped name
   stays out until it is typed (321 of them on 4 Nov 2026), and Tier B and C never enter whatever the type says;
-- an **ETF** is an ``etf`` row that is no ETN and no CEF, with an ``aum`` at or over 100 million, or, where N-CEN
-  gives it no AUM at all, an ``adv_usd_20d`` (the 20-session average daily dollar volume of Compustat's own
+- an **ETF** is an ``etf`` row that is no ETN and no CEF, with an ``aum`` at or over 100 million (since spine 9
+  the fund's own shares times close, else N-CEN's series figure: ``etf.aum_source``, #357), or, where it has no
+  AUM at all, an ``adv_usd_20d`` (the 20-session average daily dollar volume of Compustat's own
   ``comp.secd``, ``etf.adv_usd_20d``, not of the live prices store: #357) at or over
   10 million. A **known** AUM under the floor is the answer: the volume test only decides a fund N-CEN is silent
   about (SPY and DIA as unit investment trusts, GLD, SLV, IBIT and the other commodity and crypto trusts). A fund

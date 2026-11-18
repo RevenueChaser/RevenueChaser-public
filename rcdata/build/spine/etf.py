@@ -46,9 +46,11 @@ SCHEMA = [("ticker", "TEXT PRIMARY KEY"), ("name", "TEXT"), ("series_id", "TEXT"
           ("is_cef", "BOOLEAN"), ("asset_class", "TEXT"), ("focus", "TEXT"), ("country", "TEXT"),
           ("is_index", "BOOLEAN"), ("is_lev_inverse", "BOOLEAN"), ("is_money_market", "BOOLEAN"),
           ("is_option_income", "BOOLEAN"), ("is_fund_of_funds", "BOOLEAN"), ("inception", "DATE"),
-          # aum: N-CEN's average net assets over the filing's fiscal year (daily, else monthly average), not a
-          # point-in-time AUM; aum_as_of is that year's end (review N4 of #349). A point-in-time AUM is a later PR's.
-          ("aum", "DOUBLE"), ("aum_as_of", "DATE"), ("adv_usd_20d", "DOUBLE"), ("expense_ratio", "DOUBLE"),
+          # aum (spine 9, #357): the fund's own shares times its close on aum_as_of (``shares_x_close``), else N-CEN's
+          # average net assets over the filing's fiscal year, aum_as_of that year's end (``ncen_series``: the whole
+          # series, mutual-fund classes included). aum_source says which.
+          ("aum", "DOUBLE"), ("aum_as_of", "DATE"), ("aum_source", "TEXT"), ("adv_usd_20d", "DOUBLE"),
+          ("expense_ratio", "DOUBLE"),
           ("source_as_of", "DATE"), ("fetched_at", "DOUBLE"), ("run_id", "TEXT")]
 
 #: A note, by its name: ETN / ETRACS, a dated note, or a bank issuer's name (Alpha Vantage lists BMO's, UBS's,
@@ -171,6 +173,45 @@ def adv_usd_20d(tickers: list[str], as_of: date | None = None) -> dict[str, floa
     return {str(t): float(v) for t, v in rows if v is not None}
 
 
+SHARES_X_CLOSE, NCEN_SERIES = "shares_x_close", "ncen_series"
+
+
+def shares_x_close(tickers: list[str], as_of: date | None = None) -> dict[str, tuple[float, date]]:
+    """``{ticker: (shares outstanding x close, its day)}`` from the same raw ``comp.secd`` Parquet and the same
+    series rule as :func:`adv_usd_20d` (#357): N-CEN's figure is a fiscal-year average of the whole series (VTI
+    1.90 T$ with Vanguard's mutual-fund classes, against 679 B$ here) and is silent on a unit trust (SPY, QQQ).
+
+    The day is the series' newest priced US-dollar day with a share count (``cshoc`` > 0) within
+    :data:`TIC_RECENT_DAYS` of Compustat's newest priced day; where two live series claim the ticker the larger
+    figure is the answer. A fund Compustat has no such day for is absent (unknown, not zero).
+    """
+    wanted = sorted({str(t).strip().upper() for t in tickers if str(t or "").strip()})
+    files = secd_files(as_of)
+    if not wanted or not files:
+        return {}
+    src = f"read_parquet([{', '.join(base.sql_path(f) for f in files)}], union_by_name = true)"
+    cutoff = "" if as_of is None else f" AND datadate <= DATE '{as_of.isoformat()}'"
+    con = duckdb.connect()
+    try:
+        found = con.execute(f"""
+            WITH priced AS (
+                SELECT gvkey || ':' || iid AS gid, replace(upper(tic), '.', '-') AS ticker, datadate, prccd, cshoc
+                FROM {src}
+                WHERE prccd > 0 AND tic IS NOT NULL AND coalesce(upper(curcdd), 'USD') = 'USD'{cutoff}),
+            recent AS (SELECT * FROM priced WHERE datadate > (SELECT max(datadate) FROM priced)
+                                                             - INTERVAL {TIC_RECENT_DAYS} DAY),
+            claim AS (SELECT gid, ticker FROM recent
+                      QUALIFY row_number() OVER (PARTITION BY gid ORDER BY datadate DESC) = 1),
+            counted AS (SELECT c.ticker, r.gid, r.prccd * r.cshoc AS aum, r.datadate FROM recent r
+                        JOIN claim c USING (gid) WHERE r.cshoc > 0 AND c.ticker IN ({', '.join('?' * len(wanted))})
+                        QUALIFY row_number() OVER (PARTITION BY r.gid ORDER BY r.datadate DESC) = 1)
+            SELECT ticker, aum, datadate FROM counted
+            QUALIFY row_number() OVER (PARTITION BY ticker ORDER BY aum DESC, gid) = 1""", wanted).fetchall()
+    finally:
+        con.close()
+    return {str(t): (float(v), d) for t, v, d in found}
+
+
 def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> list[dict]:
     """Every ETF ticker's row, from the staging tables and the ``security`` table this build just created."""
     cur = con.execute(f"""
@@ -199,12 +240,15 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> list[dict]:
     # Fewer quarters hold a fraction of the filers: "files no N-CEN" is only known over a full year (review M1).
     year_held = ncen.quarters_held() >= ncen.BACKFILL_QUARTERS
     adv = adv_usd_20d([r["ticker"] for r in found], ctx.as_of)
+    own = shares_x_close([r["ticker"] for r in found], ctx.as_of)
     out = []
     for r in found:
         names = (r["fund_name"], r["av_name"], r["etp_name"])
         nc = r["in_nc"]
         etn = not nc and is_etn(*names)          # N-CEN's IS_ETF=Y is a registered fund's word: no note (N3)
         aum = r["daily_avg_net_assets"] if r["daily_avg_net_assets"] is not None else r["monthly_avg_net_assets"]
+        aum, aum_day, aum_src = ((*own[r["ticker"]], SHARES_X_CLOSE) if r["ticker"] in own else
+                                 (aum, r["report_end"], NCEN_SERIES) if aum is not None else (None, None, None))
         commodity = r["in_etp"] and not nc and not etn and year_held and r["etp_cik"] not in filers
         out.append({
             "ticker": r["ticker"], "name": next((n for n in names if n), None), "series_id": r["series_id"],
@@ -216,7 +260,7 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> list[dict]:
             "is_lev_inverse": True if is_lev_inverse(*names) else _flag(nc, r["is_multi_inverse_index"]),
             "is_money_market": _flag(nc, r["is_money_market"]), "is_option_income": is_option_income(*names),
             "is_fund_of_funds": _flag(nc, r["is_fund_of_fund"]), "inception": r["ipo_date"], "aum": aum,
-            "aum_as_of": r["report_end"] if aum is not None else None,
+            "aum_as_of": aum_day, "aum_source": aum_src,
             "adv_usd_20d": adv.get(r["ticker"]), "expense_ratio": None,
             "source_as_of": r["source_as_of"],
             # The newest of its sources' fetch times; run_id is the build that wrote the row (it is derived).
