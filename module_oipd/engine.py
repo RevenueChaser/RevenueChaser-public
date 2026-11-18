@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import numpy as np
 
@@ -406,7 +406,7 @@ def list_names() -> list[str]:
     strict, so an unreadable list raises ``read.JobListUnreadable``) and the newest evening's earnings set."""
     from RevenueChaser.rcdata import read
     names = {"SPX", *read.watched("option")}
-    er = read.earnings_options()
+    er = read.earnings_options(start=calendar.today_ny() - timedelta(days=14))   # bounded: er_options grows forever
     newest = max((str(r["session_date"])[:10] for r in er), default=None)
     names.update(r["ticker"] for r in er if str(r["session_date"])[:10] == newest)
     return sorted(names)
@@ -459,7 +459,7 @@ def build(ticker: str | None = None, session: str | None = None) -> dict:
     default = config.DEFAULT_TICKER if config.DEFAULT_TICKER in names else (names[0] if names else None)
     ticker = (ticker or default or config.DEFAULT_TICKER).upper()
     if ticker not in names:
-        p = _empty_payload(ticker, f"{ticker} is not on the option list. Add it on the Watchlists board; "
+        p = _empty_payload(ticker, f"{ticker} is not on the option list nor in the newest earnings set. Add it on the Watchlists board; "
                                    "its chain comes with the next session's build.")
         p["names"] = names
         return p

@@ -62,11 +62,16 @@ class TestOneRoot:
 class TestModelVersion:
     def test_golden(self):
         # A changed fit knob changes the hash: bump SELECTION_VERSION in the same change, then this value.
-        assert config.model_version() == "oipd-1+ffe723a0"
+        assert config.model_version() == "oipd-1+a8be9185"
 
     def test_the_density_grid_is_in_the_version(self, monkeypatch):
         before = config.model_version()
         monkeypatch.setattr(config, "GRID", {**config.GRID, "grid_n": 401})
+        assert config.model_version() != before
+
+    def test_the_density_flag_threshold_is_in_the_version(self, monkeypatch):
+        before = config.model_version()
+        monkeypatch.setattr(config, "CLIP_FLAG_PCT", config.CLIP_FLAG_PCT * 2)
         assert config.model_version() != before
 
     def test_the_payload_carries_it(self):

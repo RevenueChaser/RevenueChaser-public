@@ -1124,7 +1124,8 @@ def run_quick():
 
 @app.route("/run/module_oipd", methods=["POST"])
 def run_module_oipd():
-    """Fetch the Implied Probability board for the ticker selected in the iframe.
+    """Rebuild the Implied Probability board for the ticker selected in the iframe, from the stored nightly build
+    (no provider call).
 
     The board owns its ticker picker (an in-board combobox); the parent reads the
     iframe's ``window.OIPD_TICKER`` and passes it here, not a header text box.

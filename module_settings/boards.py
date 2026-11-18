@@ -279,8 +279,10 @@ BOARD_INPUTS: list[dict] = [
     _board("module_spx_gamma", "SPX Gamma",
            ["index_levels_daily"], _spx_latest,
            price_basis="index_levels_daily closes"),
+    # #1059: the board fits ``option_eod`` of the nightly options build through ``rcdata.read``; its own
+    # ``oipd_chain`` / ``oipd_meta`` are no longer written, so they are not its inputs.
     _board("module_oipd", "Implied Probability",
-           ["oipd_chain", "oipd_meta"], lambda: _json("oipd", "oipd_latest.json"),
+           [], lambda: _json("oipd", "oipd_latest.json"),
            price_basis="option chain marks, not equity closes"),
     _board("module_financials", "Financials",
            ["equity_universe"],

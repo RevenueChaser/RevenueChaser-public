@@ -91,3 +91,14 @@ def test_the_fit_takes_the_heaviest_expiries_1_to_365_days_out():
     chain = [c(0, 10**9), c(400, 10**9)] + [c(d, 100 * d) for d in range(1, 21)] + [c(20, 5)]
     got = sorted({x["expiry"] for x in engine.pick_expiries(chain, asof.isoformat())})
     assert got == [(asof + timedelta(days=d)).isoformat() for d in range(21 - config.MAX_EXPIRIES, 21)]
+
+
+def test_settings_does_not_read_the_retired_board_store():
+    """Review F1 (#1060): the board no longer writes ``oipd_chain`` / ``oipd_meta``, so Settings must not judge its
+    freshness by them (it would show a fresh board as never fetched)."""
+    from RevenueChaser.core import datasets
+    from RevenueChaser.module_settings.boards import BOARD_INPUTS
+    row = next(b for b in BOARD_INPUTS if b["key"] == "module_oipd")
+    assert not {"oipd_chain", "oipd_meta"} & set(row["tables"])
+    spec = next(s for s in datasets.REGISTRY if s.key == "oipd")
+    assert spec.freshness == datasets.NO_CLAIM and "retired" in spec.label

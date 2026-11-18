@@ -52,7 +52,8 @@ def fit_config() -> dict:
     """Every knob that changes a fitted distribution, hashed into the model version."""
     return {"min_dte": MIN_DTE, "max_dte": MAX_DTE, "max_expiries": MAX_EXPIRIES, "min_contracts": MIN_CONTRACTS,
             "g_floor": G_FLOOR, "penalty_weight": PENALTY_WEIGHT, "risk_free": RISK_FREE_RATE,
-            "max_rel_spread": MAX_REL_SPREAD, "grid": GRID, "inputs": "otm-two-sided-no-vendor-iv"}
+            "max_rel_spread": MAX_REL_SPREAD, "grid": GRID, "clip_flag_pct": CLIP_FLAG_PCT,
+            "inputs": "otm-two-sided-no-vendor-iv", "expiries": "oi-top", "roots": "largest"}
 
 
 def model_version() -> str:
