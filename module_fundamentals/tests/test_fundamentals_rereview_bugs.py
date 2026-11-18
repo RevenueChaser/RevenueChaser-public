@@ -64,3 +64,13 @@ def test_the_stale_text_says_the_store_is_behind_not_that_a_refetch_failed():
     p = build_payload([_row("T", _m(**_RO40, **_MOM))], top_n=10, run_stats={"stale_ohlc": 3})
     html = render_fundamental_dashboard(p)
     assert "Prices store behind" in html and "refetch failed" not in html
+
+
+def test_ifrs_filers_quality_cannot_judge_are_counted_and_named():
+    """avo K1 (18 Nov 2026): the page says how many IFRS filers Quality could not judge."""
+    unread = {**_row("I", _m(**_RO40, roic=0.2, gross_margin=0.5)), "us_gaap": False}       # leverage unknown
+    failed = {**_row("F", _m(**_RO40, roic=0.2, gross_margin=0.1)), "us_gaap": False}       # a rule failed
+    us = _row("U", _m(**_RO40, roic=0.2, gross_margin=0.5))
+    p = build_payload([unread, failed, us], top_n=10)
+    assert p["summary"]["ifrs_quality_unjudged"] == 1
+    assert "Quality not judged for 1 IFRS filers" in render_fundamental_dashboard(p)

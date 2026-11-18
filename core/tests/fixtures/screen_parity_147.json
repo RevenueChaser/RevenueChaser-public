@@ -858,6 +858,7 @@
      "stale_annual": 0
     },
     "hygiene": 3,
+    "ifrs_quality_unjudged": 0,
     "momentum_only": 0,
     "no_edgar": 1,
     "no_spine_gics": 0,

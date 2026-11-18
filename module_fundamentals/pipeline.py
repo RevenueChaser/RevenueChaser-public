@@ -709,6 +709,7 @@ def _compute_row(row: dict, spy_df, no_fetch: bool = False, spine: dict | None =
         "metrics": metrics,
         "ohlc_stale": bool(df.attrs.get("stale")),
         "edgar_extract_version": (emeta or {}).get("extract_version"),     # the result history checks it (#278)
+        "us_gaap": (emeta or {}).get("us_gaap"),        # False: read from ifrs-full (avo K1, 18 Nov 2026)
         # Review F3 (G6): where the statements came from, the day the newest one was filed and the day the facts
         # were last read. On the layer the facts are read again on each filing day, so the stale gate above measures
         # the filer; the old store has neither date (its row was never read again).
@@ -753,6 +754,7 @@ def build_payload(results: list[dict], top_n: int | None = None, run_stats: dict
     passing = {"rule_of_40": 0, "quality": 0, "momentum": 0}
     distorted_count = 0
     momentum_only: list[str] = []
+    ifrs_unjudged = 0
     candidates = []
     for r in results:
         m = r["metrics"]
@@ -764,6 +766,10 @@ def build_payload(results: list[dict], top_n: int | None = None, run_stats: dict
         # #386 F2: a candidate passes at least one rule; each carries the rules it passed (fixed order) rather than
         # an opaque 3x/2x/1x multiplier.
         rules_passed = [k for k in passing if gates[k]["passed"]]
+        # avo K1 (18 Nov 2026): an IFRS filer whose Quality is left unknown (its debt is not read yet) is counted.
+        if r.get("us_gaap") is False and not gates["quality"]["passed"] and \
+                not any(x["passed"] is False for x in gates["quality"]["rules"]):
+            ifrs_unjudged += 1
         if not rules_passed:
             continue
         # avo B1 (17 Nov 2026): a card needs the Rule of 40 or Quality; Momentum confirms, it never admits alone
@@ -865,6 +871,7 @@ def build_payload(results: list[dict], top_n: int | None = None, run_stats: dict
             "passing": passing,
             "distorted_count": distorted_count,
             "momentum_only": len(momentum_only),
+            "ifrs_quality_unjudged": ifrs_unjudged,
             "top_n": len(candidates),
         },
         "candidates": candidates,

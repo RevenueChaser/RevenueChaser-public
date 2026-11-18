@@ -172,6 +172,10 @@ def _summary_html(s: dict, data_quality: dict | None = None) -> str:
         bits = ([f"{_fmt_int(stale_n)} tickers"] if stale_n else []) + (["SPY"] if s.get("spy_stale") else [])
         elim_part += (f" Prices store behind (no bar of the latest session; last stored bars used): "
                       f"{_html.escape(' + '.join(bits))}.")
+    if s.get("ifrs_quality_unjudged"):
+        # avo K1 (18 Nov 2026): until the IFRS debt read is served, these filers cannot pass Quality.
+        elim_part += (f" Quality not judged for {_fmt_int(s['ifrs_quality_unjudged'])} IFRS filers "
+                      "(a Quality input, usually debt, is not read).")
     if s.get("spy_missing"):
         # Fundamentals review 17 Nov (as Swing review F2): with no SPY bar of the latest session the 6-month RS rule
         # is unknown on every card, so no name passes Momentum on this Fetch.

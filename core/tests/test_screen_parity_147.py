@@ -60,7 +60,8 @@ needs a Rule of 40 or Quality pass (B1); SHORT1 is scored with Momentum unknown 
 The Fundamentals re-review of 18 Nov 2026 (selection version 14) made gross margin unknown under the $10M mark too, so
 the scenario's filings moved to millions of dollars (``screen_parity._M``); re-captured in CI the same way: the Rule of
 40 is known again, six candidates, and the funnel has no momentum-only step because UP1 and UP3 now pass the Rule of
-40.
+40. avo K1 added the additive ``summary.ifrs_quality_unjudged`` (0 here: no scenario filer reads ifrs-full), edited in by
+hand.
 """
 from __future__ import annotations
 
