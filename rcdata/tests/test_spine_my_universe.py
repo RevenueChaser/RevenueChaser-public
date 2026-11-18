@@ -79,9 +79,11 @@ def test_the_rules_file_holds_avos_numbers_and_the_module_reads_them():
     assert r.exclude_etn is True and r.exclude_cef is True
 
 
-def test_every_line_of_the_shipped_manual_file_carries_avos_reason():
+def test_the_shipped_manual_file_adds_the_map_etf_avo_named_and_every_line_carries_his_reason():
+    """avo, 18 Nov 2026: an ETF on the Sector Rotation map that is not in My Universe is added (IDX was the one)."""
     adds, removes = my_universe.load_manual()
-    assert all(line["reason"] for line in adds + removes)       # not pinned empty: avo added IDX on 18 Nov 2026
+    assert "IDX" in {line["ticker"] for line in adds}
+    assert all(line["reason"] for line in adds + removes)
 
 
 def test_a_rules_file_without_a_rule_is_refused_rather_than_defaulted(tmp_path):
