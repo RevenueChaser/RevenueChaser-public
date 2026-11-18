@@ -1,5 +1,6 @@
-"""Implied Probability: the picker pool is the typed universe, but a ticker outside it
-(a fund, SPY, ...) can still be opened (#87, Identity R4)."""
+"""Implied Probability: the picker pool is the names the nightly options build stores a chain for (the payload's
+``names``: SPX, the option watch list, the evening's earnings set; decision B), with the universal filter fields
+where the universe has them. No free ticker: a name off the list has no chain to fit."""
 from __future__ import annotations
 
 import json
@@ -37,9 +38,9 @@ def test_the_filter_meta_comes_from_the_registry_and_the_pinned_themes(rawstore_
 
 
 
-def test_the_ticker_combobox_lets_a_free_ticker_be_typed(rawstore_tmp_db):
+def test_the_ticker_combobox_takes_only_the_list_names(rawstore_tmp_db):
     html = report.render_oipd_dashboard(engine._empty_payload("AAA", "x"))
-    assert "allowFree: true" in html.split("RCCombobox.mount(", 1)[1].split("});", 1)[0]
+    assert "allowFree: false" in html.split("RCCombobox.mount(", 1)[1].split("});", 1)[0]
     assert "clear: true" in html.split("RCCombobox.mount(", 1)[1].split("});", 1)[0]   # the × works
 
 
@@ -54,7 +55,7 @@ def test_the_sector_filter_narrows_the_picker_pool(rawstore_tmp_db, tmp_path):
          "quote": {"symbol": t}}
         for t, s, i in (("AAA", "Healthcare", "Biotechnology"), ("BBB", "Healthcare", "Medical Devices"),
                         ("CCC", "Technology", "Software - Application"))])
-    html = report.render_oipd_dashboard(engine._empty_payload("AAA", "x"))
+    html = report.render_oipd_dashboard({**engine._empty_payload("AAA", "x"), "names": ["AAA", "BBB", "CCC"]})
     got = run_board_js(html, """
 function pool(){ return DATA.filter(pass).map(function(c){ return c.ticker; }); }
 var log = {all: pool()};
@@ -63,3 +64,9 @@ RCF.set({gics: {key: "Healthcare›Biotechnology", label: "Biotechnology", level
 console.log(JSON.stringify(log));
 """, tmp_path)
     assert got == {"all": ["AAA", "BBB", "CCC"], "sector": ["AAA", "BBB"], "industry": ["AAA"]}
+
+
+def test_a_list_name_the_universe_lacks_is_still_in_the_pool(rawstore_tmp_db, tmp_path):
+    html = report.render_oipd_dashboard({**engine._empty_payload("SPY", "x"), "names": ["SPX", "SPY"]})
+    got = run_board_js(html, "console.log(JSON.stringify(DATA.map(function(c){ return c.ticker; })));", tmp_path)
+    assert got == ["SPX", "SPY"]

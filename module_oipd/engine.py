@@ -1,6 +1,11 @@
-"""Implied Probability (OIPD) engine — UW chain -> SVI surface -> risk-neutral PDF.
+"""Implied Probability (OIPD) engine — option chain -> SVI surface -> risk-neutral PDF.
 
-Two paths, mirroring every store-backed board:
+**The board's path is** :func:`build`: it reads one session's chain from the nightly options build
+(``options.duckdb`` ``option_eod``, through ``rcdata.read``) for a name the build stores a quoted chain for (the option
+watch list, the evening's earnings set) and makes no provider call (avo's decision B, 10 Nov 2026; F2, 18 Nov 2026).
+
+The older UW path below (``run``, ``fetch_result``, ``oipd_chain`` / ``oipd_meta``) is no longer called by the
+dashboard; it goes with the board's own store in a later step:
 
 - **Fetch** (``no_fetch=False``): pull the option chain from Unusual Whales,
   persist it to ``oipd_chain`` / ``oipd_meta``, then fit.
@@ -13,8 +18,9 @@ Refresh reproduces the Fetch board exactly.
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import numpy as np
 
@@ -266,14 +272,13 @@ def _fit_expiry(expiry: str, contracts: list[dict], spot: float, r: float,
     if d is None or d <= 0:
         return None, f"{expiry}: no valid DTE"
     T = d / 365.0
-    F = uw_chain.infer_forward(contracts, T, r, spot)
+    F = uw_chain.infer_forward([c for c in contracts if uw_chain.two_sided(c)], T, r, spot)
     if not np.isfinite(F) or F <= 0:
         return None, f"{expiry}: no forward (no quoted put/call pairs)"
 
+    inputs = uw_chain.fit_inputs(contracts, F, config.MAX_REL_SPREAD)
     ks, ws = [], []
-    for c in contracts:
-        if c["strike"] <= 0:
-            continue
+    for c in inputs:
         iv = uw_chain.contract_iv(c, F, T, r)
         if iv is None:
             continue
@@ -290,9 +295,11 @@ def _fit_expiry(expiry: str, contracts: list[dict], spot: float, r: float,
         svi[expiry] = {k: float(params[k]) for k in ("a", "b", "rho", "m", "sigma")}
     # A negative g_min is not fatal — the board renders and flags it in the
     # skew KPI — so the expiry is kept rather than dropped.
-    curve = opd_math.ProbCurve(expiry, T, F, params, r)
+    curve = opd_math.ProbCurve(expiry, T, F, params, r, **config.GRID)
     st = curve.stats()
     atm = opd_math.atm_iv(params, T)
+    tail_ratio = (math.log(st["p95"] / st["p05"]) / (2 * 1.645 * atm * math.sqrt(T))
+                  if atm and st["p05"] > 0 and st["p95"] > 0 else None)
     greeks = opd_math.atm_greeks(params, T, r, F)
     # With no spot (UW returned no regular-session bar) the fit stands on the
     # chain's forward; only the spot-relative probabilities are unknown.
@@ -316,7 +323,8 @@ def _fit_expiry(expiry: str, contracts: list[dict], spot: float, r: float,
         "min_var": round(curve.min_var, 6),
         **{f"density_{k}": v for k, v in opd_math.density_check(
             params["g_min"], curve.g_min_window, 100.0 * curve.clipped_mass, curve.min_var,
-            config.CLIP_FLAG_PCT).items()},
+            config.CLIP_FLAG_PCT, tail_ratio, config.TAIL_FLAG_RATIO, config.G_FLAG_TOL).items()},
+        "tail_ratio": round(tail_ratio, 3) if tail_ratio is not None else None,
         "rmse": round(params["rmse"], 6),
         "mean": round(st["mean"], 4),
         "quantiles": {kk: round(st[kk], 4) for kk in
@@ -324,7 +332,7 @@ def _fit_expiry(expiry: str, contracts: list[dict], spot: float, r: float,
         **spot_probs,
         "greeks": {kk: round(float(v), 6) for kk, v in greeks.items()},
         "curve": _curve_view(curve),
-        "smile": _smile_view(contracts, params, F, T, r),
+        "smile": _smile_view(inputs, params, F, T, r),
     }
     return entry, None
 
@@ -341,7 +349,11 @@ def _fit_payload(ticker: str, contracts: list[dict], meta: dict,
 
     entries, curves = [], []
     for expiry in sorted(by_expiry):
-        entry, err = _fit_expiry(expiry, by_expiry[expiry], spot, r, asof, svi)
+        chain, dropped = uw_chain.one_root(by_expiry[expiry])
+        if dropped:
+            warnings.append(f"{expiry}: fitted the {chain[0].get('root')} chain; left out {', '.join(dropped)} "
+                            "(a separate contract with its own settlement, e.g. SPX AM)")
+        entry, err = _fit_expiry(expiry, chain, spot, r, asof, svi)
         if err:
             warnings.append(err)
             continue
@@ -357,23 +369,33 @@ def _fit_payload(ticker: str, contracts: list[dict], meta: dict,
         "fetched_at": meta.get("fetched_at"),
         "horizon_days": meta.get("horizon_days"),
         "n_contracts": len(contracts),
+        "model_version": config.model_version(),
         "expiries": entries,
         "fan": None,
         "warnings": warnings,
         "error": None,
     }
-    if entries:
-        # Fan chart from the fitted curves (quantiles across expiries).
-        fan = {"expiries": [e["date"] for e in entries],
-               "dte": [e["dte"] for e in entries],
+    fanned = [e for e in entries if not e["density_flag"]]   # a flagged density is shown muted, never fanned
+    if len(fanned) < len(entries):
+        warnings.append(f"{len(entries) - len(fanned)} flagged expir{'y' if len(entries) - len(fanned) == 1 else 'ies'} "
+                        "left out of the fan: " + "; ".join(f"{e['date']} {e['density_note']}"
+                                                            for e in entries if e["density_flag"]))
+    if fanned:
+        # Fan chart from the trustworthy fitted curves (quantiles across expiries).
+        fan = {"expiries": [e["date"] for e in fanned],
+               "dte": [e["dte"] for e in fanned],
                "quantiles": {
-                   q: [e["quantiles"][k] for e in entries]
+                   q: [e["quantiles"][k] for e in fanned]
                    for q, k in (("0.05", "p05"), ("0.25", "p25"),
                                 ("0.50", "median"), ("0.75", "p75"),
                                 ("0.95", "p95"))},
-               "spot_ref": [e["forward"] for e in entries]}
+               "spot_ref": [e["forward"] for e in fanned]}
         payload["fan"] = fan
-    elif not payload["error"]:
+    if contracts and not any(uw_chain.two_sided(c) for c in contracts):
+        payload["error"] = (f"The stored {ticker} chain of {asof} carries no two-sided quote (no bid on any of "
+                            f"{len(contracts):,} contracts), so nothing is fitted: the fit uses quotes, never last "
+                            "trades or the vendor's IV.")
+    if not entries and not payload["error"]:
         payload["error"] = (
             f"No expiry could be fitted for {ticker}."
             + ((" " + "; ".join(warnings)) if warnings else "")
@@ -389,6 +411,85 @@ def _empty_payload(ticker: str, message: str) -> dict:
         "n_contracts": 0, "expiries": [], "fan": None,
         "warnings": [], "error": message,
     }
+
+
+# ── the nightly build (decision B) ──────────────────────────────────────────────────────────────────────────
+def list_names() -> list[str]:
+    """The names the build stores a quoted chain for: the option watch list (``read.watched``, the one list source;
+    strict, so an unreadable list raises ``read.JobListUnreadable``) and the newest evening's earnings set."""
+    from RevenueChaser.rcdata import read
+    # Not SPX: UW stores its chain with a zero NBBO, so it cannot be fitted on quotes; SPY stands for the S&P 500
+    # here (avo's G1, 18 Nov 2026; #1061).
+    names = set(read.watched("option")) - {"SPX"}
+    er = read.earnings_options(start=calendar.today_ny() - timedelta(days=14))   # bounded: er_options grows forever
+    newest = max((str(r["session_date"])[:10] for r in er), default=None)
+    names.update(r["ticker"] for r in er if str(r["session_date"])[:10] == newest)
+    return sorted(names)
+
+
+def _iso_time(epoch) -> str | None:
+    try:
+        return datetime.fromtimestamp(float(epoch), timezone.utc).isoformat(timespec="seconds")
+    except (TypeError, ValueError):
+        return None
+
+
+def stored_chain(ticker: str, session: str | None = None) -> tuple[str | None, list[dict], float | None, str | None]:
+    """``(session, contracts, spot, fetched_at)`` of one name's stored chain: the newest session when ``session`` is
+    None. Spot is the session's close (``option_daily``), else the price UW served with the earnings set's spot
+    exposures (``option_strike``), else None (the forward then stands on the chain alone)."""
+    from RevenueChaser.rcdata import read
+    rows = read.option_chain(ticker, session)
+    if not rows:
+        return None, [], None, None
+    day = str(rows[0]["session_date"])[:10]
+    spot = next((to_float(r.get("close")) for r in read.option_daily(ticker, day, day) if r.get("close")), None)
+    if spot is None:
+        spot = next((to_float(r.get("price")) for r in read.option_strikes(ticker, day, "earnings")
+                     if r.get("price")), None)
+    fetched = max((r["fetched_at"] for r in rows if r.get("fetched_at") is not None), default=None)
+    return day, uw_chain.map_rows(rows), spot, _iso_time(fetched)
+
+
+def pick_expiries(contracts: list[dict], asof: str) -> list[dict]:
+    """The contracts of the expiries a fit uses: ``MIN_DTE``-``MAX_DTE`` days out, the ``MAX_EXPIRIES`` with the most
+    open interest (the rule the UW fetch applied to the breakdown; the stored chain holds every expiry)."""
+    oi: dict[str, float] = {}
+    for c in contracts:
+        d = uw_chain.dte(asof, c["expiry"])
+        if d is not None and config.MIN_DTE <= d <= config.MAX_DTE:
+            oi[c["expiry"]] = oi.get(c["expiry"], 0.0) + (c.get("open_interest") or 0.0)
+    keep = set(sorted(oi, key=lambda e: (-oi[e], e))[:config.MAX_EXPIRIES])
+    return [c for c in contracts if c["expiry"] in keep]
+
+
+def build(ticker: str | None = None, session: str | None = None) -> dict:
+    """The board's payload for ``ticker`` from the stored chain: no provider call, no write."""
+    from RevenueChaser.rcdata import read
+    try:
+        names = list_names()
+    except read.JobListUnreadable as exc:
+        return _empty_payload((ticker or config.DEFAULT_TICKER).upper(),
+                              f"The option list could not be read ({exc}). Try again in a moment.")
+    default = config.DEFAULT_TICKER if config.DEFAULT_TICKER in names else (names[0] if names else None)
+    ticker = (ticker or default or config.DEFAULT_TICKER).upper()
+    if ticker not in names:
+        p = _empty_payload(ticker, f"{ticker} is not on the option list nor in the newest earnings set. Add it on the Watchlists board; "
+                                   "its chain comes with the next session's build.")
+        p["names"] = names
+        return p
+    asof, contracts, spot, fetched = stored_chain(ticker, session)
+    if not contracts:
+        p = _empty_payload(ticker, f"No stored chain for {ticker} yet: the nightly options build stores it after "
+                                   "the close.")
+        p["names"] = names
+        return p
+    meta = {"as_of": asof, "spot": spot, "risk_free": config.RISK_FREE_RATE, "horizon_days": config.MAX_DTE,
+            "fetched_at": fetched}
+    warnings = [] if spot is not None else ["No close stored for this session; the forward stands on the chain."]
+    payload = _fit_payload(ticker, pick_expiries(contracts, asof), meta, warnings)
+    payload.update(source="Unusual Whales, nightly options build", names=names)
+    return payload
 
 
 def run(uw=None, ticker: str | None = None, no_fetch: bool = False, capture: dict | None = None) -> dict:

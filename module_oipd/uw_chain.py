@@ -78,6 +78,7 @@ def map_rows(rows: list[dict]) -> list[dict]:
         mid = mid_price(bid, ask, last)
         out.append({
             "option_symbol": r.get("option_symbol"),
+            "root": sym["root"],
             "expiry": sym["expiry"],
             "option_type": sym["type"],
             "strike": sym["strike"],
@@ -115,19 +116,45 @@ def infer_forward(contracts: list[dict], T: float, r: float, spot: float,
     return float(spot * disc_inv) if spot and spot > 0 else float("nan")
 
 
-def contract_iv(c: dict, F: float, T: float, r: float) -> float | None:
-    """IV for one contract: prefer the price-implied vol, fall back to UW's.
+def two_sided(c: dict) -> bool:
+    """A live NBBO on both sides that is not crossed."""
+    bid, ask = c.get("bid"), c.get("ask")
+    return bid is not None and ask is not None and bid > 0 and ask >= bid
 
-    Re-solving from the mid keeps the surface a function of *prices* (the OIPD
-    convention) rather than of the vendor's own IV methodology.
+
+def rel_spread(c: dict) -> float:
+    """``(ask - bid) / mid`` of a two-sided quote."""
+    return (c["ask"] - c["bid"]) / ((c["ask"] + c["bid"]) / 2.0)
+
+
+def fit_inputs(contracts: list[dict], F: float, max_rel_spread: float) -> list[dict]:
+    """The contracts the smile is fitted on (review N3, N4; avo's D1, 18 Nov 2026): a two-sided quote within the
+    relative-spread cap, and only the out-of-the-money leg of each strike (calls at ``K >= F``, puts below), so
+    every strike counts once and the deep in-the-money leg, whose time value drowns in its spread, stays out."""
+    return [c for c in contracts
+            if c["strike"] > 0 and two_sided(c) and rel_spread(c) <= max_rel_spread
+            and (c["option_type"] == "C") == (c["strike"] >= F)]
+
+
+def one_root(contracts: list[dict]) -> tuple[list[dict], list[str]]:
+    """One option root per expiry (review N10): SPX (AM-settled monthlies) and SPXW (PM-settled) share a date but are
+    different contracts. The root with the most contracts stays; returns ``(kept, dropped roots)``."""
+    roots: dict[str, int] = {}
+    for c in contracts:
+        roots[c.get("root") or ""] = roots.get(c.get("root") or "", 0) + 1
+    if len(roots) < 2:
+        return contracts, []
+    keep = max(sorted(roots), key=lambda r: roots[r])
+    return [c for c in contracts if (c.get("root") or "") == keep], sorted(r for r in roots if r != keep)
+
+
+def contract_iv(c: dict, F: float, T: float, r: float) -> float | None:
+    """IV for one contract, solved from its mid; None when it does not solve.
+
+    No vendor-IV fallback (review N4): the surface is a function of *prices* (the OIPD convention), never of the
+    vendor's own IV methodology.
     """
-    solved = None
-    if c.get("mid"):
-        solved = opd_math.implied_vol_black76(F, c["strike"], T, r, c["mid"],
-                                              c["option_type"])
-    if solved is not None and 0.0 < solved < 5.0:
-        return solved
-    iv = c.get("iv")
-    if iv is not None and 0.0 < iv < 5.0:
-        return iv
-    return None
+    if not c.get("mid"):
+        return None
+    solved = opd_math.implied_vol_black76(F, c["strike"], T, r, c["mid"], c["option_type"])
+    return solved if solved is not None and 0.0 < solved < 5.0 else None

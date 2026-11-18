@@ -131,22 +131,14 @@ def _chain_day() -> str | None:
 
 
 def _oipd_day() -> str | None:
-    """As-of day of the cached chain of the ticker on the board (falls back to its fetch time).
-
-    The shown ticker is the one in the last rendered payload (``.cache/oipd/oipd_latest.json``); with none
-    rendered there is no shown ticker and no date. Not the newest ``as_of`` of any ticker (OIPD-7).
-    """
+    """Session of the stored chain the board last rendered (``.cache/oipd/oipd_latest.json``): the board reads the
+    nightly options build, so the payload's ``asof`` is that chain's session. None with no rendered chain."""
     from RevenueChaser.core.config import OUTPUT_DIR as CACHE_ROOT
     p = CACHE_ROOT / "oipd" / "oipd_latest.json"
     if not p.exists():
         return None
-    ticker = (json.loads(p.read_text(encoding="utf-8")).get("ticker") or "").strip().upper()
-    if not ticker:
-        return None
-    rows = rawstore.query("SELECT as_of, fetched_at FROM oipd_meta WHERE ticker = ?", [ticker], db="oipd")
-    if not rows:
-        return None
-    return _day(rows[0].get("as_of")) or _day(rows[0].get("fetched_at"))
+    payload = json.loads(p.read_text(encoding="utf-8"))
+    return _day(payload.get("asof")) if payload.get("expiries") else None
 
 
 def _news_day() -> str | None:
