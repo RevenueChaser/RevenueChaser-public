@@ -192,11 +192,12 @@ REGISTRY: tuple[DatasetSpec, ...] = (
         writer_note="the Value Chain board's Fetch (module_value_chain --fetch) writes it too",
     ),
     DatasetSpec(
-        key="oipd", label="Implied Probability chain",
+        key="oipd", label="Implied Probability chain (retired)",
         tables=("oipd_chain", "oipd_meta"),
         db="oipd", source=Source.uw, writer=None,
-        writer_note="dashboard job POST /run/module_oipd; not an automations.REGISTRY entry",
-        freshness=("oipd_meta", "as_of"),
+        writer_note=("nothing writes it since #1059: the board fits option_eod from the nightly options build; "
+                     "the tables go in plan step 6 (avo's 'sil')"),
+        freshness=NO_CLAIM,
     ),
     DatasetSpec(
         key="relatedness", label="Relatedness profiles",

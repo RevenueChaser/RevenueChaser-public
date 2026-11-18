@@ -17,6 +17,8 @@ from RevenueChaser.core.html_safe import script_json
 from RevenueChaser.core.reporting_common import (
     FILTERS_CSS,
     FILTERS_JS,
+    THEME_CSS,
+    THEME_JS,
     combobox_html,
     filters_bar_html,
     filters_meta,
@@ -27,42 +29,41 @@ from RevenueChaser.core.reporting_common import (
 )
 
 CSS = """
-:root{--bg:#05111F;--panel:#12161e;--panel2:#1a1f2b;--border:#232a38;
---text:#d7dce5;--muted:#8a93a6;--accent:#0EA5E9;--green:#2ecc71;--amber:#f1c40f;
---neon:#00e6a8;--red:#e74c3c;}
+:root{--panel:var(--card);--panel2:var(--card-2);--text:var(--fg);--green:var(--pos);--neon:var(--pos);
+--red:var(--neg)}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.5}
+body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.5}
 .wrap{max-width:100%;margin:0 auto;padding:20px 24px 60px}
 .topbar{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px;border-bottom:1px solid var(--border);padding-bottom:12px;margin-bottom:14px}
 .topbar h1{margin:0;font-size:22px;letter-spacing:-.4px}
 .topbar .sub{color:var(--muted);margin-top:2px;font-size:13px}
 .sync{color:var(--muted);font-size:12.5px;white-space:nowrap}
-.warn{background:rgba(241,196,15,.10);border:1px solid rgba(241,196,15,.35);color:var(--amber);border-radius:10px;padding:9px 14px;margin-bottom:14px;font-size:12.5px;display:none}
-.err{background:rgba(231,76,60,.10);border:1px solid rgba(231,76,60,.4);color:#ff9b8f;border-radius:10px;padding:14px 16px;margin-bottom:14px;font-size:13px}
+.warn{background:var(--amber-soft);border:1px solid var(--amber);color:var(--amber);border-radius:10px;padding:9px 14px;margin-bottom:14px;font-size:12.5px;display:none}
+.err{background:var(--neg-soft);border:1px solid var(--neg);color:var(--neg);border-radius:10px;padding:14px 16px;margin-bottom:14px;font-size:13px}
 .banner{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
 .stat{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:12px 14px}
 .stat .v{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums}
 .stat .l{color:var(--text);font-size:12px;font-weight:600;margin-top:2px}
 .stat .d{color:var(--muted);font-size:11px}
 .controls{display:flex;flex-direction:column;gap:8px;margin-bottom:16px}
-select,input[type=text],input[type=number]{background:#10151f;border:1px solid #2a3345;color:var(--text);border-radius:6px;height:34px;padding:0 10px;font:500 13px/1 inherit}
+select,input[type=text],input[type=number]{background:var(--input-bg);border:1px solid var(--input-border);color:var(--text);border-radius:6px;height:44px;padding:0 10px;font:500 13px/1 inherit}
 input[type=text]{flex:1;min-width:200px}
 .count{color:var(--muted);font-size:12px;margin-left:auto;white-space:nowrap}
 .pick .rcf-combo{width:300px}
 .share-px{font-size:18px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--text);margin-left:4px}
 .share-px .d{display:block;color:var(--muted);font-size:11px;font-weight:600}
-body.loading:after{content:"Refreshing…";position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(5,17,31,.72);color:var(--text);font-weight:700;letter-spacing:.04em;z-index:99}
+body.loading:after{content:"Refreshing…";position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:var(--overlay);color:var(--text);font-weight:700;letter-spacing:.04em;z-index:99}
 .frow{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
 .flbl{color:var(--muted);font-size:12px;font-weight:600}
 .tabs{display:inline-flex;background:var(--panel);border:1px solid var(--border);border-radius:8px;overflow:hidden;flex-wrap:wrap}
-.tab{padding:0 14px;height:34px;line-height:34px;cursor:pointer;font-weight:600;font-size:13px;color:var(--muted);border-right:1px solid var(--border);user-select:none}
+.tab{padding:0 14px;height:44px;line-height:44px;cursor:pointer;font-weight:600;font-size:13px;color:var(--muted);border-right:1px solid var(--border);user-select:none}
 .tab:last-child{border-right:none}
 .tab.on{background:var(--panel2);color:var(--text)}
 .tab .cnt{color:var(--muted);font-size:11px;font-weight:400}
 .tab.on .cnt{color:var(--neon)}
 .panel{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:16px}
 .panel h2{margin:0 0 10px;font-size:15px;letter-spacing:-.2px}
-.pgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
+.pgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(320px,100%),1fr));gap:14px}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:12px}
 .kpi{background:var(--panel2);border:1px solid var(--border);border-radius:9px;padding:9px 11px}
 .kpi .v{font-size:18px;font-weight:800;font-variant-numeric:tabular-nums}
@@ -70,10 +71,12 @@ body.loading:after{content:"Refreshing…";position:fixed;inset:0;display:flex;a
 .muted{opacity:.45;filter:grayscale(1)}
 .pos{color:var(--green)}.neg{color:var(--red)}.acc{color:var(--accent)}.neu{color:var(--text)}
 .qrow{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:10px}
-.qrow input{background:#10151f;border:1px solid #2a3345;color:var(--text);border-radius:6px;height:34px;padding:0 10px;font:500 13px/1 inherit;width:140px}
+.qrow input{background:var(--input-bg);border:1px solid var(--input-border);color:var(--text);border-radius:6px;height:44px;padding:0 10px;font:500 13px/1 inherit;width:140px}
 .qout{font-size:13px;color:var(--muted)}
 .qout b{color:var(--text);font-variant-numeric:tabular-nums}
-.chart{width:100%}
+.chart{width:100%;min-width:0;overflow:hidden}
+.panel,.pgrid>div{min-width:0}
+@media (max-width:600px){.wrap{padding:12px 16px 48px}}
 table.mini{border-collapse:collapse;width:100%;font-size:12px}
 table.mini th,table.mini td{padding:5px 8px;border-bottom:1px solid var(--border);text-align:right}
 table.mini th:first-child,table.mini td:first-child{text-align:left;color:var(--muted)}
@@ -83,16 +86,22 @@ table.mini th:first-child,table.mini td:first-child{text-align:left;color:var(--
 
 JS = r"""
 var PLOTCFG={responsive:true,displayModeBar:false};
-var FAN_COLORS={outer:'rgba(14,165,233,0.15)',inner:'rgba(14,165,233,0.30)'};
+// Re-fit every chart to its box once the page has laid out (a phone otherwise keeps Plotly's first width).
+window.addEventListener('load',function(){ document.querySelectorAll('.chart').forEach(function(d){ if(d.data){ Plotly.Plots.resize(d); } }); });
+function cv(n){ return getComputedStyle(document.documentElement).getPropertyValue('--'+n).trim(); }  // theme token
+function cva(n,a){  // a hex theme token as rgba: Plotly fills take no trace opacity
+  var h=cv(n).replace('#',''); if(h.length===3){ h=h.replace(/./g,'$&$&'); }
+  var v=parseInt(h,16); return 'rgba('+((v>>16)&255)+','+((v>>8)&255)+','+(v&255)+','+a+')';
+}
 var FOCAL=null;
 var RCF=null;
 function baseLayout(extra){
   var l={paper_bgcolor:'rgba(0,0,0,0)',plot_bgcolor:'rgba(0,0,0,0)',
-    font:{color:'#d7dce5',size:12},
-    margin:{l:56,r:56,t:44,b:44},
-    xaxis:{gridcolor:'#232a38',zerolinecolor:'#232a38'},
-    yaxis:{gridcolor:'#232a38',zerolinecolor:'#232a38'},
-    legend:{orientation:'h',y:1.12,x:0},
+    font:{color:cv('fg'),size:12},
+    margin:{l:56,r:56,t:44,b:88},
+    xaxis:{gridcolor:cv('grid'),zerolinecolor:cv('grid')},
+    yaxis:{gridcolor:cv('grid'),zerolinecolor:cv('grid')},
+    legend:{orientation:'h',x:0,y:-0.36,yanchor:'top'},   // below the axis title, never on the chart title
     hovermode:'x unified'};
   for(var k in extra){ l[k]=extra[k]; }
   return l;
@@ -102,32 +111,32 @@ function fanChart(){
   var x=f.dte, q=f.quantiles;
   var tr=[
     {x:x,y:q['0.95'],type:'scatter',mode:'lines',line:{width:0},hoverinfo:'skip',showlegend:false},
-    {x:x,y:q['0.05'],type:'scatter',mode:'lines',line:{width:0},fill:'tonexty',fillcolor:FAN_COLORS.outer,name:'5–95%',hoverinfo:'skip'},
+    {x:x,y:q['0.05'],type:'scatter',mode:'lines',line:{width:0},fill:'tonexty',fillcolor:cva('data-1',0.18),name:'5–95%',hoverinfo:'skip'},
     {x:x,y:q['0.75'],type:'scatter',mode:'lines',line:{width:0},hoverinfo:'skip',showlegend:false},
-    {x:x,y:q['0.25'],type:'scatter',mode:'lines',line:{width:0},fill:'tonexty',fillcolor:FAN_COLORS.inner,name:'25–75%',hoverinfo:'skip'},
-    {x:x,y:q['0.50'],type:'scatter',mode:'lines+markers',line:{color:'#00e6a8',width:3},marker:{size:8},name:'median',
+    {x:x,y:q['0.25'],type:'scatter',mode:'lines',line:{width:0},fill:'tonexty',fillcolor:cva('data-1',0.35),name:'25–75%',hoverinfo:'skip'},
+    {x:x,y:q['0.50'],type:'scatter',mode:'lines+markers',line:{color:cv('pos'),width:3},marker:{size:8},name:'median',
      hovertemplate:'%{x}d · median %{y:.2f}<extra></extra>'}
   ];
   if(PAYLOAD.spot){
     tr.push({x:[x[0],x[x.length-1]],y:[PAYLOAD.spot,PAYLOAD.spot],type:'scatter',mode:'lines',
-      line:{color:'#f1c40f',width:1.5,dash:'dot'},name:'spot',
+      line:{color:cv('amber'),width:1.5,dash:'dot'},name:'spot',
       hovertemplate:'spot '+PAYLOAD.spot+'<extra></extra>'});
   }
-  Plotly.newPlot('fan',tr,baseLayout({height:340,title:'Market-implied price fan',
-    xaxis:{title:'Days to expiry',gridcolor:'#232a38'},yaxis:{title:'Price at expiry',gridcolor:'#232a38'}}),PLOTCFG);
+  Plotly.newPlot('fan',tr,baseLayout({height:380,title:'Market-implied price fan',
+    xaxis:{title:'Days to expiry',gridcolor:cv('grid')},yaxis:{title:'Price at expiry',gridcolor:cv('grid')}}),PLOTCFG);
 }
 function distChart(e){
   var tr=[
     {x:e.curve.S,y:e.curve.pdf,type:'scatter',mode:'lines',fill:'tozeroy',
-     fillcolor:'rgba(14,165,233,0.18)',line:{color:'#0EA5E9',width:2},name:'PDF',
+     fillcolor:cv('accent-soft'),line:{color:cv('data-1'),width:2},name:'PDF',
      hovertemplate:'%{x:.2f} · density %{y:.5f}<extra></extra>'},
     {x:e.curve.S,y:e.curve.cdf,type:'scatter',mode:'lines',
-     line:{color:'#f1c40f',width:2},name:'CDF',yaxis:'y2',
+     line:{color:cv('amber'),width:2},name:'CDF',yaxis:'y2',
      hovertemplate:'%{x:.2f} · P(S<X) %{y:.3f}<extra></extra>'}
   ];
-  var l=baseLayout({height:340,title:'Risk-neutral distribution',
-    xaxis:{title:'Price at expiry',gridcolor:'#232a38'},
-    yaxis:{title:'Density',gridcolor:'#232a38'},
+  var l=baseLayout({height:380,title:'Risk-neutral distribution',
+    xaxis:{title:'Price at expiry',gridcolor:cv('grid')},
+    yaxis:{title:'Density',gridcolor:cv('grid')},
     yaxis2:{title:'Cumulative',overlaying:'y',side:'right',range:[0,1],
             gridcolor:'rgba(0,0,0,0)'},hovermode:'x'});
   Plotly.newPlot('dist',tr,l,PLOTCFG);
@@ -136,14 +145,14 @@ function smileChart(e){
   var s=e.smile;
   var tr=[
     {x:s.k_mkt,y:s.iv_mkt,type:'scatter',mode:'markers',
-     marker:{color:'#8a93a6',size:5},name:'Market IV',
+     marker:{color:cv('muted'),size:5},name:'Market IV',
      hovertemplate:'k %{x:.3f} · IV %{y:.3f}<extra></extra>'},
     {x:s.k_fit,y:s.iv_fit,type:'scatter',mode:'lines',
-     line:{color:'#00e6a8',width:2},name:'SVI fit'}
+     line:{color:cv('pos'),width:2},name:'SVI fit'}
   ];
-  Plotly.newPlot('smile',tr,baseLayout({height:300,title:'SVI volatility smile',
-    xaxis:{title:'log(K / F)',gridcolor:'#232a38'},
-    yaxis:{title:'Implied vol',tickformat:'.0%',gridcolor:'#232a38'},hovermode:'closest'}),PLOTCFG);
+  Plotly.newPlot('smile',tr,baseLayout({height:380,title:'SVI volatility smile',
+    xaxis:{title:'log(K / F)',gridcolor:cv('grid')},
+    yaxis:{title:'Implied vol',tickformat:'.0%',gridcolor:cv('grid')},hovermode:'closest'}),PLOTCFG);
 }
 function pct(x){ return (x==null)?'—':(x*100).toFixed(1)+'%'; }
 function num(x,d){ return (x==null)?'—':Number(x).toFixed(d==null?2:d); }
@@ -215,7 +224,7 @@ function selectExpiry(i){
   document.getElementById('qtable').innerHTML=quantTable(e);
   document.getElementById('gtable').innerHTML=greeksTable(e);
   document.getElementById('exp-title').textContent=
-    e.date+' · '+e.dte+' days · forward '+num(e.forward)+' · '+e.n+' strikes';
+    e.date+' · '+e.dte+(e.dte===1?' day':' days')+' · forward '+num(e.forward)+' · '+e.n+' strikes';
   distChart(e); smileChart(e);
   var box=document.getElementById('qx');
   if(!box.value) box.value=num(PAYLOAD.spot,2);
@@ -246,7 +255,7 @@ function init(){
   RCF = RCFilters.mount({root: "#rc-filters", rows: DATA, meta: META, onChange: function(){ render(); }});
   RCInfo.wire();
   var input = document.getElementById("ticker-combo");
-  if(input) RCCombobox.mount({input: input, list: "#ticker-combo-list", rows: DATA, filter: pass, allowFree: true, clear: true,
+  if(input) RCCombobox.mount({input: input, list: "#ticker-combo-list", rows: DATA, filter: pass, allowFree: false, clear: true,
     onPick: function(r){ onPick(r.ticker); }});
   FOCAL = DEFAULT_TICKER || null;
   render();
@@ -260,7 +269,7 @@ function init(){
   if(!PAYLOAD.expiries.length){
     document.getElementById('body').innerHTML=
       '<div class="empty">No expiry could be fitted for '+rcEsc(PAYLOAD.ticker)+'. '+
-      'Run a Fetch, or check the warnings above.</div>';
+      'Check the warnings above.</div>';
     return;
   }
   if(PAYLOAD.warnings && PAYLOAD.warnings.length){
@@ -296,16 +305,13 @@ def _friendly(asof: str | None) -> str:
         return asof
 
 
-def _filter_universe() -> list[dict]:
-    """The shared classification universe with the universal-filter fields.
-
-    The OIPD filters only narrow the ticker combobox — they never slice the
-    fitted PDF — so this is the picker's pool, not a board filter.
-    """
-    from RevenueChaser.core.universe import BOARD_OPERATING_ONLY, classification_universe, filter_fields
-    tickers = classification_universe(operating_only=BOARD_OPERATING_ONLY["module_oipd"])
-    fields = filter_fields(tickers)
-    return [fields[t] for t in tickers if t in fields]
+def _filter_universe(names: list[str]) -> list[dict]:
+    """The picker's pool: the names the nightly build stores a chain for (``engine.list_names``, carried in the
+    payload), with the universal-filter fields where the universe has them. The filters only narrow the picker;
+    a name the universe lacks (an ETF, SPX) still shows, by its ticker."""
+    from RevenueChaser.core.universe import filter_fields
+    fields = filter_fields(names) if names else {}
+    return [fields.get(t) or {"ticker": t, "name": t} for t in names]
 
 
 def _theme_catalog() -> dict:
@@ -322,7 +328,7 @@ def render_oipd_dashboard(payload: dict) -> str:
     expiries = payload.get("expiries") or []
     error = payload.get("error")
     asof = payload.get("asof")
-    universe = _filter_universe()
+    universe = _filter_universe(payload.get("names") or [])
     px = _share_price(spot)
 
     chrome = f"""  {filters_bar_html("rc-filters")}
@@ -391,8 +397,10 @@ def render_oipd_dashboard(payload: dict) -> str:
         "The <b>fan</b> shows the 5–95% and 25–75% price bands across maturities; the <b>median</b> "
         "is the 50th percentile. Use the expiry tabs to inspect one distribution's PDF/CDF, its "
         "fitted smile, and tail probabilities. All figures are <b>risk-neutral</b> — a pricing "
-        "convention, not a real-world forecast. <b>Fetch</b> pulls the picked ticker's option chain "
-        "from Unusual Whales; <b>Refresh</b> re-fits the stored chain with no network call.")
+        "convention, not a real-world forecast. The chains come from the nightly options build (Unusual "
+        "Whales, after the close): the option watch list and the evening's earnings names (SPY for the S&P 500). Add a name on the "
+        "Watchlists board; its chain arrives with the next session. <b>Fetch</b> and <b>Refresh</b> do the same here: "
+        "both re-fit the stored chain, and the board itself calls no provider.")
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -400,6 +408,7 @@ def render_oipd_dashboard(payload: dict) -> str:
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Implied Probability — {_html.escape(ticker)}</title>
 <script src="{PLOTLY_CDN_URL}"></script>
+<script>{THEME_JS}</script><style>{THEME_CSS}</style>
 <style>{CSS}</style>
 {FILTERS_CSS}
 </head>

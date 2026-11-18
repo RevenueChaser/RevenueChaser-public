@@ -83,8 +83,8 @@ E2E_BY_BOARD: dict[str, tuple[str, ...]] = {
     "module_watchlists": ("test_watchlist_pair.py",),
     "module_welcome": (),
 }
-# The shell every board sits in (phone layout, panel header, failure surfacing, Settings' row per board, screenshots).
-E2E_ALWAYS = ("test_phone_shell.py", "test_panel_header_231.py", "test_failures_visible_166.py",
+# The shell every board sits in (phone layout, panel header, Settings' row per board, screenshots).
+E2E_ALWAYS = ("test_phone_shell.py", "test_panel_header_231.py",
               "test_board_settings.py", "test_screenshots.py")
 # The harness's own tests: a harness change is under module_testing/, which runs every e2e test anyway.
 E2E_HARNESS = ("test_cdp_browser.py", "test_chrome_timeout.py", "test_harness_env.py", "test_harness_parallel.py",

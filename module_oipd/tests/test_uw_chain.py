@@ -86,6 +86,6 @@ class TestContractIv:
         iv = uw_chain.contract_iv(c, F, T, r)
         assert abs(iv - 0.30) < 1e-4
 
-    def test_falls_back_to_vendor_iv(self):
+    def test_never_falls_back_to_the_vendor_iv(self):
         c = {"option_type": "C", "strike": 100.0, "mid": None, "iv": 0.42}
-        assert uw_chain.contract_iv(c, 100.0, 0.25, 0.04) == 0.42
+        assert uw_chain.contract_iv(c, 100.0, 0.25, 0.04) is None
