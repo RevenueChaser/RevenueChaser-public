@@ -11,7 +11,7 @@ from RevenueChaser.module_sector_rotation.engine import (
 from RevenueChaser.module_sector_rotation.report import (
     render_holdings_fragment, render_industry_fragment,
 )
-from RevenueChaser.module_sector_rotation.universe import ROTATION_ETFS
+from RevenueChaser.core.rotation_reference import SEED_ROTATION_ETFS as ROTATION_ETFS
 
 # The Morningstar sector -> its SPDR sector ETF (the 11 rows the rotation map expands).
 SECTOR_ETF = {

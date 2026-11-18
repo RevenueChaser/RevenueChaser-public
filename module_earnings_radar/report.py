@@ -8,7 +8,7 @@ import json
 from RevenueChaser.core import rawstore
 from .composite import classify_bias
 from RevenueChaser.core.html_safe import ESC_JS, esc, script_json
-from RevenueChaser.core.rotation_reference import ROTATION_ETFS
+from RevenueChaser.core import rotation_reference
 from RevenueChaser.core.config import (
     OUTPUT_DIR, MIN_OPTION_VOLUME, MIN_TOTAL_OI, MIN_DOLLAR_OPTION_VOLUME, RULE_WEIGHTS,
 )
@@ -1645,7 +1645,7 @@ def _methodology_tables(filter_stats: dict = None) -> str:
     for cl, sec, etfs in clusters:
         h += f'<tr><td style="color:#c9d1d9;font-weight:600">{cl}</td><td style="color:#8b949e">{sec}</td><td style="color:#58a6ff">{etfs}</td></tr>'
     h += '</table>'
-    h += '<p style="color:#8b949e;font-size:10px;margin-top:4px">Quadrants from the Sector Rotation board: each of the ' + str(len([t for t, i in ROTATION_ETFS.items() if i.get("group") not in ("yield", "commodity")])) + ' ETFs against its own history vs SPY, completed weeks, total return. The quadrant adds nothing to the score or the attention rank (held at 0 until a backtest shows it helps).</p>'
+    h += '<p style="color:#8b949e;font-size:10px;margin-top:4px">Quadrants from the Sector Rotation board: each of the ' + str(len([t for t, i in rotation_reference.rotation_etfs().items() if i.get("group") not in ("yield", "commodity")])) + ' ETFs against its own history vs SPY, completed weeks, total return. The quadrant adds nothing to the score or the attention rank (held at 0 until a backtest shows it helps).</p>'
 
     h += '</details>'
     return h

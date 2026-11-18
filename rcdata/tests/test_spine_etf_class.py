@@ -474,6 +474,18 @@ def test_a_fund_that_becomes_hidden_writes_a_change_row_though_its_label_stands(
     assert new[0]["reason"].startswith("structure plain -> synthetic")
 
 
+def test_a_companys_share_filed_under_other_counts_as_equity(nport):
+    """Plan v5 step 4, gap A: THD read 0 % equity because its NVDR lines carry the asset category OTHER. A
+    corporate issuer with an ISIN is a share; OTHER with no ISIN, or from another kind of issuer, stays other."""
+    nport([h for h in HOLDINGS if h["accession"] != "A3"]
+          + [_line("A3", 70.0, asset_cat="OTHER", country="TH", isin="TH0000000001"),
+             _line("A3", 20.0, asset_cat="OTHER", country="TH"),
+             _line("A3", 9.0, asset_cat="OTHER", issuer_type="OTHER", country="TH", isin="TH0000000002")])
+    rows, _, _ = _rows(manual=[])
+    assert rows["CIBR"]["equity_pct"] == pytest.approx(70.0)
+    assert (rows["CIBR"]["primary_class"], rows["CIBR"]["code"]) == ("country", "TH")
+
+
 def test_a_ticker_codes_a_holding_only_on_a_us_line(nport):
     """Review finding 9: a local ticker abroad that spells a US one must not take that company's GICS."""
     nport([h for h in HOLDINGS if h["accession"] != "A3"]

@@ -416,6 +416,52 @@ def seed_job_lists(*, by: str = "seed") -> dict[str, dict]:
     return out
 
 
+def seed_map_lists(*, by: str = "seed") -> dict[str, dict]:
+    """Make the Sector Rotation map list and its industry-group list from the seed in
+    ``core/rotation_reference.py``, once (plan v5 step 7b): a list already marked for a feed is left as it is.
+    ``{feed: {created, seed, list, same}}``; ``same`` says the marked list holds the seed's funds, section by
+    section and in its order (after avo's first edit it no longer does, which is the point)."""
+    from ..core import rotation_reference
+    from ..rcdata import read
+    from .board import MAP_LISTS
+    out = {}
+    for list_id, spec in MAP_LISTS.items():
+        feed, rows = spec["feed"], rotation_reference.seed_sections(spec["feed"])
+        created = job_list_id(feed) is None
+        if created:
+            # Marked for the job last: a seed that stops half way leaves an unmarked list, which no job reads.
+            create_list(spec["name"], description=spec["description"], by=by, list_id=list_id)
+            for r in rows:
+                add_section(list_id, r["name"], section_id=r["section"])
+                if r["ticker"]:
+                    add_symbol(list_id, r["ticker"], section_id=r["section"], by=by, note=r["note"])
+            delete_section(list_id, DEFAULT_SECTION)
+            update_list(list_id, feeds=feed)
+        was, now = _by_section(rows), _by_section(read.job_sections(feed))
+        out[feed] = {"created": created, "seed": sum(map(len, was.values())), "list": sum(map(len, now.values())),
+                     "same": was == now}
+    return out
+
+
+def _by_section(rows: list[dict]) -> dict[str, list[str]]:
+    out: dict[str, list[str]] = {}
+    for r in rows:
+        out.setdefault(r["section"], []).extend([r["ticker"]] if r["ticker"] else [])
+    return out
+
+
+def set_note(list_id: str, symbol: str, note: str | None, *, by: str = "avo") -> None:
+    """Write one symbol's note: on a map list it is the fund's hand-written short name (plan v5 step 7b)."""
+    parsed = symbols_mod.parse(symbol)
+    if not _query(f"SELECT 1 AS x FROM {ITEMS} WHERE list_id = ? AND symbol = ?", [list_id, parsed.raw]):
+        raise WatchlistError(f"{parsed.raw!r} is not on watch list {list_id!r}")
+    note = (note or "").strip()[:MAX_NAME] or None
+    rawstore.execute(f"UPDATE {ITEMS} SET note = ? WHERE list_id = ? AND symbol = ?", [note, list_id, parsed.raw],
+                     db=DB)
+    _record(list_id, parsed.raw, "note", by, note)
+    _touch(list_id)
+
+
 def _job_tickers(list_id: str) -> dict[str, str]:
     return {str(i.get("ticker") or "").upper(): i["symbol"] for i in items(list_id)}
 

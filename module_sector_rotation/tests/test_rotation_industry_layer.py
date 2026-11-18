@@ -1,7 +1,7 @@
 """The industry-group layer (avo, 17 Nov 2026: "Endüstri gruplarının ETF'leri var mı? ... bunları da ekleyelim
 endüstri katmanlarına").
 
-``core/rotation_reference.INDUSTRY_GROUPS`` holds the 25 GICS industry groups, the same codes and names the spine
+``core/rotation_reference.industry_groups()`` (avo's ``industry`` watch list, here its seed) holds the 25 GICS industry groups, the same codes and names the spine
 classifies a company by, with the ETFs that stand for each. The first ETF of a group is on the map's ``industry``
 layer, whatever its own group: SMH stays a theme row and is also the semiconductor group's dot.
 """
@@ -10,7 +10,9 @@ from __future__ import annotations
 from datetime import date
 
 from RevenueChaser.core.gics_map import MORNINGSTAR_SECTORS
-from RevenueChaser.core.rotation_reference import INDUSTRY_GROUPS, INDUSTRY_MAP_ETFS, ROTATION_ETFS, SECTOR_ETF
+from RevenueChaser.core import rotation_reference
+from RevenueChaser.core.rotation_reference import SEED_INDUSTRY_GROUPS as INDUSTRY_GROUPS
+from RevenueChaser.core.rotation_reference import SEED_ROTATION_ETFS as ROTATION_ETFS
 from RevenueChaser.core.tests.board_js import run_board_js
 from RevenueChaser.module_sector_rotation.models import ETFRotationSnapshot
 from RevenueChaser.rcdata.build.spine.security import GICS_GROUPS, GICS_SECTORS, sector_names
@@ -21,10 +23,12 @@ def test_the_layer_is_the_spines_25_gics_groups_under_their_own_sectors():
     for code, group, sector, _etfs in INDUSTRY_GROUPS:
         assert sector_names(code[:2], code) == (sector, group), code
     assert {s for *_x, s, _e in INDUSTRY_GROUPS} == set(MORNINGSTAR_SECTORS)
-    assert len(GICS_SECTORS) == len(SECTOR_ETF) == 11
+    assert len(GICS_SECTORS) == len(rotation_reference.sector_etf()) == 11
+    assert rotation_reference.industry_groups() == INDUSTRY_GROUPS      # the list reads back as its seed
 
 
 def test_each_map_etf_is_a_rotation_row_and_an_etf_is_in_one_group_only():
+    INDUSTRY_MAP_ETFS = rotation_reference.industry_map_etfs()
     assert INDUSTRY_MAP_ETFS and all(t in ROTATION_ETFS for t in INDUSTRY_MAP_ETFS)
     every = [t for *_x, etfs in INDUSTRY_GROUPS for t in etfs]
     assert len(every) == len(set(every))

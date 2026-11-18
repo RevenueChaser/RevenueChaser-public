@@ -488,11 +488,12 @@ def _rotation(tmp_path, monkeypatch):
     config entry spells. They reach the quadrant points, the table, the filter buttons
     and the summary chips; the config names are what the chart payload and the table read."""
     import RevenueChaser.module_sector_rotation.report as rd
+    from RevenueChaser.core import rotation_reference
     from RevenueChaser.module_sector_rotation.models import ETFRotationSnapshot
     monkeypatch.setattr(rd, "OUTPUT_DIR", tmp_path)
     monkeypatch.setattr(rd, "coarse_theme_catalog", lambda: {H("theme"): ["XLK"]})
     hostile = H("rot_ticker")
-    monkeypatch.setitem(rd.ROTATION_ETFS, hostile, {"name": H("rot_name"), "group": H("rot_group")})
+    monkeypatch.setitem(rotation_reference.SEED_ROTATION_ETFS, hostile, {"name": H("rot_name"), "group": H("rot_group")})
     snap = lambda t, q, group="sector": ETFRotationSnapshot(
         as_of_date=date(2026, 8, 14), ticker=t, group_name=group, close_price=100.0,
         rs_1w=1.0, rs_1m=2.0, rs_3m=3.0, rs_ratio=2.0, rs_momentum=1.0,
@@ -510,9 +511,10 @@ def _rotation_trail(tmp_path, monkeypatch):
     """The trail page (``/view/rotation/trail``) is a second page with its own markup
     and its own picker: the same hostile ETF identity, over two sampled weeks."""
     import RevenueChaser.module_sector_rotation.report as rd
+    from RevenueChaser.core import rotation_reference
     monkeypatch.setattr(rd, "coarse_theme_catalog", lambda: {H("theme"): ["XLK"]})
     hostile = H("trail_ticker")
-    monkeypatch.setitem(rd.ROTATION_ETFS, hostile,
+    monkeypatch.setitem(rotation_reference.SEED_ROTATION_ETFS, hostile,
                         {"name": H("trail_name"), "group": H("trail_group")})
     entry = lambda t, rz, mz: {"ticker": t, "rs_ratio_z": rz, "rs_momentum_z": mz,
                                "quadrant": H("trail_quadrant"), "rs_ratio": 1.0,

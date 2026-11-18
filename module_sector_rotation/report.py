@@ -9,8 +9,8 @@ from typing import Optional
 from RevenueChaser.core.config import OUTPUT_DIR
 from RevenueChaser.core.gics_map import UNCLASSIFIED
 from RevenueChaser.module_sector_rotation.models import ETFRotationSnapshot
-from RevenueChaser.core.rotation_reference import INDUSTRY_MAP_ETFS
-from .universe import MACRO_SERIES, ROTATION_ETFS, GROUP_COLORS, QUADRANT_COLORS
+from RevenueChaser.core import rotation_reference
+from .universe import MACRO_SERIES, GROUP_COLORS, QUADRANT_COLORS
 from .theme_focus import coarse_theme_catalog
 
 
@@ -322,7 +322,7 @@ def _format_close(ticker: str, close: Optional[float]) -> str:
 
 def _ticker_label(t: str) -> str:
     """Return 'TICKER — Name' (or just ticker when no name is known)."""
-    name = ROTATION_ETFS.get(t, {}).get("name", "")
+    name = rotation_reference.rotation_etfs().get(t, {}).get("name", "")
     return f"{t} — {name}" if name else t
 
 
@@ -704,7 +704,7 @@ def _rrg_payload(snapshots: list[ETFRotationSnapshot], as_of: date) -> dict:
             if q != quads[-1]:
                 break
             held += 1
-        etfs.append({"ticker": s.ticker, "name": ROTATION_ETFS.get(s.ticker, {}).get("name", s.ticker),
+        etfs.append({"ticker": s.ticker, "name": rotation_reference.rotation_etfs().get(s.ticker, {}).get("name", s.ticker),
                      "group": s.group_name, "quadrant": s.rrg_quadrant, "weeks_in_quadrant": held, "points": pts,
                      "rs_1m": s.rs_1m, "rs_3m": s.rs_3m})
     return {"weeks": weeks, "etfs": etfs}
@@ -945,7 +945,7 @@ def export_rotation_dashboard(snapshots: list[ETFRotationSnapshot], filename: st
             color = GROUP_COLORS.get(s.group_name, "#8b949e")
             active = ' active' if s.group_name == 'sector' else ''
             filters += f'<button class="filter-btn{active}" data-group="{esc(s.group_name)}" onclick="filterGroup(this.dataset.group)" style="border-left:3px solid {color}">{esc(s.group_name)}</button>'
-    if "industry" not in groups_seen and any(s.ticker in INDUSTRY_MAP_ETFS for s in snapshots):
+    if "industry" not in groups_seen and any(s.ticker in rotation_reference.industry_map_etfs() for s in snapshots):
         # the layer is drawn from rows of other groups too (SMH, XLE), so it has a button whenever one of them is here
         filters += f'<button class="filter-btn" data-group="industry" onclick="filterGroup(this.dataset.group)" style="border-left:3px solid {GROUP_COLORS["industry"]}">industry</button>'
 
@@ -961,7 +961,7 @@ def export_rotation_dashboard(snapshots: list[ETFRotationSnapshot], filename: st
     # Table
     rows = ""
     for s in snapshots_sorted:
-        info = ROTATION_ETFS.get(s.ticker, {})
+        info = rotation_reference.rotation_etfs().get(s.ticker, {})
         color = GROUP_COLORS.get(s.group_name, "#8b949e")
         r1c = _rs_color(s.rs_1w or 0); r2c = _rs_color(s.rs_1m or 0); r3c = _rs_color(s.rs_3m or 0)
         et_badge = '<span class="badge" style="background:rgba(139,92,246,.15);color:#8B5CF6;border:1px solid #8B5CF6">⚡</span> ' if s.ticker in early_turn else ''
@@ -1033,7 +1033,7 @@ def export_rotation_dashboard(snapshots: list[ETFRotationSnapshot], filename: st
                           for t, tree in sector_holdings.items()})
     js = fill(JS, {"__HOLDINGS_JSON__": script_json(fragments),
                    "__THEME_ETFS_JSON__": theme_etfs_json,
-                   "__INDUSTRY_ETFS_JSON__": script_json(list(INDUSTRY_MAP_ETFS)),
+                   "__INDUSTRY_ETFS_JSON__": script_json(list(rotation_reference.industry_map_etfs())),
                    "__ESC_JS__": ESC_JS})
     help_block = help_html(
         "A relative rotation map of sector and theme ETFs against the benchmark. Each dot's position "
@@ -1186,7 +1186,7 @@ def _trail_html(start: date, end: date, sampled: list[str], series: dict[str, li
             tickers.add(e["ticker"])
             if e.get("rs_ratio_z") is not None and e.get("rs_momentum_z") is not None:
                 all_z.extend([e["rs_ratio_z"], e["rs_momentum_z"]])
-    group_of = {t: ROTATION_ETFS.get(t, {}).get("group", "") for t in tickers}
+    group_of = {t: rotation_reference.rotation_etfs().get(t, {}).get("group", "") for t in tickers}
     limit = _axis_limit(all_z)
 
     def tx(v): return cx + (v / limit) * (cx - margin)
@@ -1226,7 +1226,7 @@ def _trail_html(start: date, end: date, sampled: list[str], series: dict[str, li
             grp = group_of.get(ticker, "")
             final_q = pts[-1][3].get("quadrant", "")
             color = QUADRANT_COLORS.get(final_q, "#8b949e")
-            name = ROTATION_ETFS.get(ticker, {}).get("name", "")
+            name = rotation_reference.rotation_etfs().get(ticker, {}).get("name", "")
             trails.append((ticker, grp, color, name, pts, pts[-1][0], pts[-1][1]))
 
         # place labels with anti-overlap (newest-dot radius = TRAIL_MAX_R)

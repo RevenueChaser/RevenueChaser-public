@@ -484,7 +484,7 @@ class TestDashboardRoutes:
         # XLK/XLV/XLF/XLB/XLY/XLP used to fall silently back to the ETF top 10 once the stored sector
         # carried a Morningstar name; every sector row must find its tree.
         from RevenueChaser.core.gics_map import MORNINGSTAR_SECTORS
-        from RevenueChaser.module_sector_rotation.universe import ROTATION_ETFS
+        from RevenueChaser.core.rotation_reference import SEED_ROTATION_ETFS as ROTATION_ETFS
         import RevenueChaser.module_sector_rotation.store as rs
         sector_etfs = {i["name"]: t for t, i in ROTATION_ETFS.items() if i["group"] == "sector"}
         assert set(sector_etfs) == set(MORNINGSTAR_SECTORS)

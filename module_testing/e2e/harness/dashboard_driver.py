@@ -107,6 +107,9 @@ class Dashboard:
                                             headers={"X-RC-Panel": "e2e"})
             try:
                 if self._client.get("/", timeout=2.0).status_code == 200:
+                    # The lists the jobs and the Sector Rotation map read are made once per store, as a deploy
+                    # does (plan v5 steps 7g and 7b); a second call writes nothing.
+                    self._client.post("/api/watchlists/jobs/seed").raise_for_status()
                     return
             except httpx.HTTPError:
                 time.sleep(0.15)

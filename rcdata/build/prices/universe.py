@@ -164,16 +164,16 @@ def etf_tickers() -> set[str]:
 
 def kept_beside(watched: set[str] | None = None) -> set[str]:
     """The tickers the store keeps **beside** the universe: the three benchmarks and the rotation ETFs
-    (``prices.BENCHMARKS``, ``prices.ROTATION``) and the stock watch list, the same named groups the daily scope
+    (``prices.BENCHMARKS``, ``prices.rotation()``) and the stock watch list, the same named groups the daily scope
     asks for (``prices.scope``'s ``anchors`` and ``watchlist``). A board reads these from the store -- the S&P
     benchmark of a chart, the sector ETFs of the rotation boards -- so the universe rule must not drop one, whatever
     its AUM or type says. The other listed classes of a universe issuer (``prices.cover_classes``) are kept by
     ``UNIVERSE_SQL``'s CIK rule instead, because they are asked under ids of their own."""
-    from . import BENCHMARKS, ROTATION
+    from . import BENCHMARKS, rotation
     if watched is None:
         from ... import read
         watched = read.watched("stock")
-    return {str(t).strip().upper() for t in (*BENCHMARKS, *ROTATION, *watched) if str(t).strip()}
+    return {str(t).strip().upper() for t in (*BENCHMARKS, *rotation(), *watched) if str(t).strip()}
 
 
 def stored_tickers() -> set[str] | None:

@@ -34,7 +34,7 @@ from pathlib import Path
 
 import duckdb
 
-from ....core.rotation_reference import ROTATION_ETFS
+from ....core import rotation_reference
 from .. import base
 from .av_listing import STAGING as AV
 from . import ncen, stage
@@ -77,8 +77,12 @@ LEV_INVERSE_NAME = re.compile(
     r"\b(?:[2-5]|1\.\d+)\s*x\b|-\s*1\s*x\b|\b1\s*x\s+short\b"
     r"|\bproshares\s+(?:ultra|short\b)|\binverse\b|\bleveraged\b(?!\s+loans?)"
     r"|\bdaily\b.*\b(?:long|short|bull|bear)\b|\b(?:long|short|bull|bear)\b.*\bdaily\b", re.I)
-#: The 11 sector SPDRs' Morningstar sector names, the ones ``engine.sector_etf_trees`` matches.
-SECTOR_NAMES = {t: e["name"] for t, e in ROTATION_ETFS.items() if e.get("group") == "sector"}
+
+
+def sector_names() -> dict[str, str]:
+    """The sector funds' Morningstar sector names, the ones ``engine.sector_etf_trees`` matches: the ``sector``
+    section of avo's ``map`` watch list, read at call time (plan v5 step 7b)."""
+    return {t: sector for sector, t in rotation_reference.sector_etf().items()}
 
 
 def is_etn(*names) -> bool:
@@ -203,6 +207,7 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> list[dict]:
     # Fewer quarters hold a fraction of the filers: "files no N-CEN" is only known over a full year (review M1).
     year_held = ncen.quarters_held() >= ncen.BACKFILL_QUARTERS
     adv = adv_usd_20d([r["ticker"] for r in found], ctx.as_of)
+    names_of_sectors = sector_names()
     out = []
     for r in found:
         names = (r["fund_name"], r["av_name"], r["etp_name"])
@@ -222,7 +227,7 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> list[dict]:
             "is_fund_of_funds": _flag(nc, r["is_fund_of_fund"]), "inception": r["ipo_date"], "aum": aum,
             "aum_as_of": r["report_end"] if aum is not None else None,
             "adv_usd_20d": adv.get(r["ticker"]), "expense_ratio": None,
-            "sector_name": SECTOR_NAMES.get(r["ticker"]), "source_as_of": r["source_as_of"],
+            "sector_name": names_of_sectors.get(r["ticker"]), "source_as_of": r["source_as_of"],
             # The newest of its sources' fetch times; run_id is the build that wrote the row (it is derived).
             "fetched_at": r["fetched_at"], "run_id": ctx.run_id})
     etns = sum(1 for r in out if r["is_etn"])

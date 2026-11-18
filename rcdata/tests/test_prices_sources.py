@@ -32,7 +32,7 @@ def env(monkeypatch):
     monkeypatch.setattr(sec_edgar, "SEC_WWW_BASE", "https://sec.test")
     monkeypatch.setattr(sec_edgar, "SEC_DATA_BASE", "https://data.sec.test")
     monkeypatch.setattr(calendar, "_now", lambda: datetime(2026, 10, 27, 21, 0, tzinfo=timezone.utc))
-    monkeypatch.setattr("RevenueChaser.rcdata.build.prices.ROTATION", ())
+    monkeypatch.setattr("RevenueChaser.rcdata.build.prices.rotation", lambda: ())
     monkeypatch.setattr("RevenueChaser.rcdata.build.prices.BENCHMARKS", ("SPY",))
     monkeypatch.setattr("RevenueChaser.rcdata.read.watched", lambda kind: set())
     write_spine(SPINE + ALPHABET)

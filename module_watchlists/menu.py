@@ -47,7 +47,9 @@ def lists() -> list[dict]:
     """
     out = [{"id": row["list_id"], "name": row["name"], "group": OWN, "job": False,
             "count": int(row.get("symbol_count") or 0), "tickers": _own_tickers(row["list_id"])}
-           for row in store.lists() if row["list_id"] not in board.JOB_LISTS]
+           # the two map lists are left out: a tick from another board would land in the unnamed section,
+           # which is a group the Sector Rotation map does not have. They are edited on the Watch lists board.
+           for row in store.lists() if row["list_id"] not in board.JOB_LISTS and not board.fed(row)]
     both = read.watchlists()
     for list_id, spec in board.JOB_LISTS.items():
         tickers = [r["ticker"] for r in both.get(spec["kind"]) or []]

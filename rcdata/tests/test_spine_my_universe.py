@@ -66,6 +66,7 @@ def live_my_universe():
 
 
 def _rows(con, **kw):
+    kw.setdefault("listed", {})                    # no fund is on a job list unless the test says so (rule E)
     rows, changes, issues = my_universe.rows(_ctx(), con, **kw)
     return {r["ticker"]: r for r in rows}, changes, issues
 
@@ -80,11 +81,67 @@ def test_the_rules_file_holds_avos_numbers_and_the_module_reads_them():
     assert r.exclude_etn is True and r.exclude_cef is True
 
 
-def test_the_shipped_manual_file_adds_the_map_etf_avo_named_and_every_line_carries_his_reason():
-    """avo, 18 Nov 2026: an ETF on the Sector Rotation map that is not in My Universe is added (IDX was the one)."""
+def test_the_shipped_manual_file_no_longer_names_idx_and_every_line_carries_a_reason():
+    """IDX is in by rule E now (it is on the map list), so its hand-written line is gone: one home (plan v5 7d)."""
     adds, removes = my_universe.load_manual(Path(my_universe.__file__).with_name("my_universe_manual.json"))
-    assert "IDX" in {line["ticker"] for line in adds}
+    assert "IDX" not in {line["ticker"] for line in adds}
     assert all(line["reason"] for line in adds + removes)
+
+
+# ── rule E: a fund on a list the jobs read is a universe name ────────────────────────────────────────────────────
+
+def test_the_lists_the_rule_reads_are_the_map_and_the_industry_groups_without_the_macro_rows():
+    listed = my_universe.listed_etfs()
+    assert listed["IDX"] == "on the Sector Rotation map list" and listed["XLK"] == "on the Sector Rotation map list"
+    assert listed["KRE"].startswith("on the ") and "US10Y" not in listed
+
+
+def test_a_listed_fund_the_rules_left_out_enters_and_one_they_let_in_keeps_its_row():
+    con = _con([], [_etf("IDX", aum=30e6), _etf("XLK", aum=60e9), _etf("TINY", aum=30e6)])
+    rows, _, issues = _rows(con, listed={"IDX": "on the Sector Rotation map list",
+                                         "XLK": "on the Sector Rotation map list"})
+    assert sorted(rows) == ["IDX", "XLK"] and issues == []
+    assert (rows["IDX"]["rule"], rows["IDX"]["reason"], rows["IDX"]["kind"]) == (
+        "job_list", "on the Sector Rotation map list", "etf")
+    assert rows["XLK"]["rule"] == "etf_aum"
+
+
+def test_a_fund_taken_off_the_list_stays_until_a_manual_remove(live_my_universe):
+    was = {c: None for c, _ in my_universe.SCHEMA}
+    was.update(ticker="IDX", kind="etf", rule="job_list", reason="on the Sector Rotation map list",
+               entered_on=date(2026, 11, 1))
+    live_my_universe([was])
+    con = _con([], [_etf("IDX", aum=30e6)])
+    rows, changes, _ = _rows(con)                                        # on no list today
+    assert rows["IDX"]["rule"] == "job_list" and rows["IDX"]["entered_on"] == date(2026, 11, 1)
+    assert rows["IDX"]["reason"] == "on the Sector Rotation map list" and changes == []
+    rows, changes, _ = _rows(con, manual=([], [{"ticker": "IDX", "reason": "avo: no longer watched"}]))
+    assert "IDX" not in rows and changes[0]["change"] == "left"
+
+
+def test_a_manual_remove_wins_over_the_list():
+    con = _con([], [_etf("IDX", aum=30e6)])
+    rows, _, issues = _rows(con, listed={"IDX": "on the Sector Rotation map list"},
+                            manual=([], [{"ticker": "IDX", "reason": "avo: out"}]))
+    assert rows == {} and issues == []
+
+
+def test_listed_funds_the_etf_table_does_not_hold_are_one_issue_never_a_row():
+    rows, _, issues = _rows(_con([], [_etf("XLK", aum=60e9)]), listed={"NOPE": "x", "GONE": "x", "XLK": "x"})
+    assert sorted(rows) == ["XLK"]
+    assert [(k, key) for k, key, _ in issues] == [("my_universe_list_unknown", "etf")]
+    assert "2 funds" in issues[0][2] and "GONE, NOPE" in issues[0][2]
+
+
+def test_a_list_that_cannot_be_read_fails_the_build(monkeypatch):
+    from RevenueChaser.core import rotation_reference
+    from RevenueChaser.rcdata import read
+
+    def unreadable(feed):
+        raise read.JobListUnreadable("watchlists.duckdb: no such file")
+    monkeypatch.setattr(rotation_reference, "_rows", unreadable)
+    with pytest.raises(read.JobListUnreadable):
+        my_universe.rows(_ctx(), _con([], [_etf("XLK", aum=60e9)]))
 
 
 def test_a_rules_file_without_a_rule_is_refused_rather_than_defaulted(tmp_path):

@@ -71,7 +71,7 @@ class TestMethodologyStringsFollowConfig:
         assert f"$Vol≥${MIN_DOLLAR_OPTION_VOLUME // 1000}K" in html
 
     def test_etf_count_is_the_rotation_universe(self, tmp_path):
-        from RevenueChaser.module_sector_rotation.universe import ROTATION_ETFS
+        from RevenueChaser.core.rotation_reference import SEED_ROTATION_ETFS as ROTATION_ETFS
         html = self._html(tmp_path)
         etfs = [t for t, i in ROTATION_ETFS.items() if i.get("group") not in ("yield", "commodity")]
         assert f"each of the {len(etfs)} ETFs against its own history" in html
