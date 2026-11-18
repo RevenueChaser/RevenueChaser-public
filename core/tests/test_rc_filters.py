@@ -150,25 +150,22 @@ def test_js_a_row_without_a_path_builds_its_keys_from_sector_and_industry(js_out
     assert js_out["gkeysFromRowFields"] == ["Energy", "Energy›Oil & Gas E&P"]
 
 
-def test_js_the_finer_gics_codes_are_levels_three_and_four(js_out):
-    """K6: a row's path carries the GICS industry and sub-industry codes; a pick at either keeps only its names."""
-    assert js_out["gkeysFour"] == ["Technology", "Technology›Software & Services",
-                                   "Technology›Software & Services›451030",
-                                   "Technology›Software & Services›451030›45103020"]
-    assert js_out["subInd"] == ["MSFT"]
-    assert js_out["gind"] == ["MSFT", "ORCL"]
-
-
 def test_js_a_filter_saved_on_the_old_four_level_tree_is_cleared_with_a_note(js_out):
     s = js_out["oldGicsLevel4"]
     assert s["state"]["gics"] is None
     assert any("Gold" in n for n in s["notes"])
 
 
-def test_the_sector_facet_has_the_four_gics_levels_and_is_still_called_sector():
+def test_the_sector_facet_has_the_four_gics_levels_and_is_still_called_sector(js_out):
+    """K6: a row's path carries the GICS industry and sub-industry codes; a pick at either keeps only its names."""
     js = rc.FILTERS_JS
     assert 'var GICS_LEVELS = ["sector", "industry group", "industry", "sub-industry"];' in js
     assert "Sector (GICS)" not in js
+    assert js_out["gkeysFour"] == ["Technology", "Technology›Software & Services",
+                                   "Technology›Software & Services›451030",
+                                   "Technology›Software & Services›451030›45103020"]
+    assert js_out["subInd"] == ["MSFT"]
+    assert js_out["gind"] == ["MSFT", "ORCL"]
     assert 'trigger("gics", "Sector",' in js
 
 

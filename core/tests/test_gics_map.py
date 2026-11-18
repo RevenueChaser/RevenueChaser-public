@@ -68,7 +68,7 @@ class TestSectorPath:
     def test_the_industry_is_trimmed_and_kept_as_the_provider_wrote_it(self):
         assert sector_path("Energy", "  Oil & Gas E&P ") == ["Energy", "Oil & Gas E&P"]
 
-    def test_a_path_without_codes_has_two_levels(self):
+    def test_a_path_has_exactly_two_levels(self):   # without the K6 codes
         assert len(sector_path("Energy", "x")) == 2
 
     def test_the_gics_codes_extend_the_path_k6(self):
