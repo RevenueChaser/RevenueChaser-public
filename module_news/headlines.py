@@ -1,8 +1,8 @@
 """Market headlines for the News board from the IBKR Gateway (avo, 9 Nov 2026 20:54 Amsterdam: "Ibkr kullanalim").
 
 IBKR serves news per contract, not as one market feed (measured 9 Nov: Dow Jones live, 50+ headlines a name a week,
-none for SPY). So the board asks for the Dow Jones headlines (``DJ-N`` news, ``DJ-RT`` real-time) of a fixed list:
-the stock watch list first, then the largest US names, at most ``MAX_TICKERS``. Two requests a name (its contract id,
+none for SPY). So the board asks for the Dow Jones headlines (``DJ-N`` news, ``DJ-RT`` real-time) of the names on two watch lists
+(``LISTS``): the stock picks, then the News list, every name. Two requests a name (its contract id,
 then its headlines), headlines only: the article body is never fetched.
 
 Incremental (S16): a fetch asks only from the newest stored headline's time (less ``OVERLAP_S``), at most
@@ -38,23 +38,25 @@ CLIENT_ID = 74
 PROVIDERS = "DJ-N+DJ-RT"
 SOURCE = "Dow Jones"
 PER_TICKER = 20
-MAX_TICKERS = 25
 WINDOW_S = 24 * 3600
 OVERLAP_S = 600
-#: The largest US names, after the watch list, so the board has market news even with an empty list.
-BASE_TICKERS = ("AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "AVGO", "JPM", "BRK.B", "LLY", "XOM")
+#: The watch lists the per-ticker headlines read (avo, 18 Nov 2026 21:53 Amsterdam: "Hepsini watchliste.duckdb ye
+#: bagla"): the stock picks, then the News list (``jobs.news``, seeded with the large caps the code held until then).
+#: No cap: every name of both is asked each pass.
+LISTS = ("stock", "news")
 
 _META_PREFIX = re.compile(r"^\{[^}]*\}!?")
 _IB_TIME = "%Y-%m-%d %H:%M:%S.0"
 
 
-def tickers(watchlist) -> list[str]:
-    """Watch-list names (sorted) first, then ``BASE_TICKERS``, no repeats, at most ``MAX_TICKERS``."""
+def tickers(*lists) -> list[str]:
+    """The names of ``lists`` in their order, each list sorted, no repeats."""
     out: list[str] = []
-    for t in [*sorted(str(x).upper() for x in watchlist or ()), *BASE_TICKERS]:
-        if t and t not in out:
-            out.append(t)
-    return out[:MAX_TICKERS]
+    for names in lists:
+        for t in sorted(str(x).upper() for x in names or ()):
+            if t and t not in out:
+                out.append(t)
+    return out
 
 
 def clean(headline: str) -> str:

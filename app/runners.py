@@ -1153,7 +1153,7 @@ def run_oipd(uw=None, ticker: str | None = None, no_fetch: bool = False) -> Path
 
 def run_news(uw=None) -> Path:
     """The News board's Fetch: the incremental calendar build into ``boards/news.duckdb``, the Dow Jones headlines from
-    the IBKR Gateway (watch list first, then the largest names), then the page.
+    the IBKR Gateway (every name of the stock and News watch lists), then the page.
 
     The calendar reads ``market.economic_event`` (the builder's hourly ``uw/economic_calendar``). The headlines are two gateway
     requests a name and no UW call; a gateway that is down is a job note, never a failed Fetch.
@@ -1188,12 +1188,14 @@ def _news_headlines_pass(rid: str) -> dict | None:
     if checked["calls"]:
         ledger.add_note(f"News X: {checked['checked']} option posts checked against UW ({checked['calls']} calls)")
     from RevenueChaser.rcdata import read
-    try:
-        watch, unread = read.watched("stock"), None      # strict: an unreadable list is not an empty one (F6)
-    except read.JobListUnreadable as e:
-        watch, unread = set(), str(e)
-        ledger.add_note(f"News headlines: the stock watch list could not be read ({e}); large caps only")
-    names = headlines.tickers(watch)
+    lists, unread = [], []
+    for kind in headlines.LISTS:                      # strict: an unreadable list is not an empty one (F6)
+        try:
+            lists.append(read.job_list(kind))
+        except read.JobListUnreadable as e:
+            unread.append(f"{kind} watch list ({e})")
+            ledger.add_note(f"News headlines: the {kind} watch list could not be read ({e})")
+    names = headlines.tickers(*lists)
     got = headlines.fetch(names, run_id=rid)
     health = None
     if got["error"]:
@@ -1208,7 +1210,7 @@ def _news_headlines_pass(rid: str) -> dict | None:
         skipped = f"; not known to IBKR: {', '.join(got['skipped'])}" if got["skipped"] else ""
         ledger.add_note(f"News headlines: {got['stored']} from {got['tickers']} names (IBKR, Dow Jones){skipped}")
         failed = got.get("failed", [])
-        problems = failed + ([f"stock watch list ({unread})"] if unread else [])
+        problems = failed + unread
         if problems:
             # A refused request other than "unknown name" (a lapsed feed, pacing) or an unread list: the board shows
             # it, or the lane would only look quieter (review F1/F6, avo's D5 18 Nov 2026: "Panoda bant").

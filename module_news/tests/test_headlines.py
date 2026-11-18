@@ -129,10 +129,13 @@ def test_a_second_fetch_asks_the_newest_and_keeps_only_since_the_last_one(gw):
     assert out["stored"] == 1                                   # 17:00 is before the mark (18:20) - 10 min
 
 
-def test_the_ticker_list_puts_the_watch_list_first_and_is_capped():
-    names = headlines.tickers({"OKLO", "AAPL", "ZZZ"})
-    assert names[:3] == ["AAPL", "OKLO", "ZZZ"] and len(names) <= headlines.MAX_TICKERS
-    assert "NVDA" in names and len(set(names)) == len(names)
+def test_the_names_are_both_lists_in_order_with_no_cap_and_no_list_in_code():
+    # avo, 18 Nov 2026: every list News reads is a watch list; no hard-coded names, no 25-name cut.
+    stock = [f"S{i:02d}" for i in range(30)] + ["NVDA"]
+    names = headlines.tickers(stock, ["NVDA", "AAPL"])
+    assert names[:31] == sorted(stock) and names[31:] == ["AAPL"] and len(set(names)) == len(names)
+    assert not hasattr(headlines, "BASE_TICKERS") and not hasattr(headlines, "MAX_TICKERS")
+    assert headlines.LISTS == ("stock", "news")
 
 
 def test_the_mark_is_the_newest_stored_headline_not_the_clock(gw):

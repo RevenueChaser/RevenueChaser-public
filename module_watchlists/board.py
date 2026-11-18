@@ -146,9 +146,9 @@ JOB_LISTS = {
                         "index names it always takes. Add a name to get its chain from the next run."),
     },
     "jobs.stock": {
-        "kind": "stock", "name": "Stock picks · prices, LEAPS, Earnings",
+        "kind": "stock", "name": "Stock picks · prices, LEAPS, Earnings, News",
         "description": ("The prices build keeps every name here whatever the universe rule says, LEAPS pins "
-                        "it, and Earnings marks it as watched."),
+                        "it, Earnings marks it as watched, and News asks its headlines."),
     },
 }
 
@@ -173,10 +173,25 @@ MAP_LISTS = {
 }
 
 
+#: The list the News board's per-ticker headlines read next to ``jobs.stock`` (avo, 18 Nov 2026 21:53-21:54
+#: Amsterdam: "Hepsini watchliste.duckdb ye bagla", "watchlist my universe icinde secilmis ticklerin tutuldugu yer").
+#: An ordinary ``wl_list`` marked ``feeds`` = ``news``, made once (``store.seed_news_lists``) from the large caps
+#: ``module_news/headlines.py`` held in code until then; avo edits it here like his own.
+NEWS_LISTS = {
+    "jobs.news": {
+        "feed": "news", "name": "News · headlines per name",
+        "description": ("The News board asks the Dow Jones headlines of every name here, next to the stock picks, "
+                        "every five minutes. Add a name to get its headlines from the next pass."),
+        "seed": ("AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "AVGO", "JPM", "BRK.B", "LLY", "XOM"),
+    },
+}
+
+
 def fed(row: dict | None) -> str:
-    """The job group one of the map lists is marked for (``map`` / ``industry``), ``""`` for any other list."""
+    """The job group one of the map or News lists is marked for (``map`` / ``industry`` / ``news``), ``""`` for any
+    other list."""
     feeds = (row or {}).get("feeds") or ""
-    return feeds if feeds in {spec["feed"] for spec in MAP_LISTS.values()} else ""
+    return feeds if feeds in {spec["feed"] for spec in (*MAP_LISTS.values(), *NEWS_LISTS.values())} else ""
 
 
 def class_labels(tickers: list[str]) -> dict[str, str]:
@@ -242,6 +257,7 @@ def payload(list_id: str | None = None) -> dict | None:
         return None
     job = job_kind(whole["list_id"])
     feed = fed(whole)
+    on_map = feed in {spec["feed"] for spec in MAP_LISTS.values()}     # the News list has no hand names or labels
     bare = bool(job) or bool(feed)                        # both hold plain US tickers, no exchange prefix
     items = [i for section in whole["sections"] for i in section["items"]]
     parsed = [_parse(i["symbol"], bare) for i in items]
@@ -249,11 +265,11 @@ def payload(list_id: str | None = None) -> dict | None:
     series = _series_numbers(sorted({p.series_id for p in parsed if p.series_id}))
     names = {r["ticker"]: r.get("name") for r in read.identity(sorted({p.ticker for p in parsed
                                                                       if p.coverage == "us_equity"}))}
-    labels = class_labels(sorted({p.ticker for p in parsed if p.coverage == "us_equity"})) if feed else {}
+    labels = class_labels(sorted({p.ticker for p in parsed if p.coverage == "us_equity"})) if on_map else {}
     sections = [{"id": s["section_id"], "name": s["name"],
                  "rows": [_row(i, equities, series, names, job=bare) for i in s["items"]]}
                 for s in whole["sections"]]
-    for section in sections if feed else ():
+    for section in sections if on_map else ():
         for row in section["rows"]:
             row["lab"] = labels.get(row["t"])
     sessions = sorted({v["session"] for v in equities.values() if v.get("session")})
@@ -261,7 +277,7 @@ def payload(list_id: str | None = None) -> dict | None:
         "lists": [{"id": r["list_id"], "name": r["name"], "symbols": r.get("symbols") or r.get("symbol_count") or 0,
                    "job": bool(job_kind(r["list_id"])), "fed": fed(r)} for r in lists],
         "list": {"id": whole["list_id"], "name": whole["name"], "description": whole.get("description") or "",
-                 "job": job or "", "fed": feed},
+                 "job": job or "", "fed": feed, "map": on_map},
         "sections": sections,
         "counts": {"symbols": len(items), "sections": len(sections),
                    "unsupported": sum(1 for p in parsed if not p.is_supported)},
@@ -880,7 +896,7 @@ _JS = r"""
   }
   function handHtml(row){
     // A map list only: the short name avo wrote (pencil, a click edits it) and what the holdings say the fund is.
-    if(!data.list.fed) return '';
+    if(!data.list.map) return '';
     return '<tr class="wl-hand"><td colspan="' + (cols().length + 1) + '"><button type="button" data-note="' +
       rcEsc(row.sym) + '" title="Written by hand. Click to change it.">✎ ' + rcEsc(row.note || 'no short name') +
       '</button> · from holdings: ' + rcEsc(row.lab || 'no label') + '</td></tr>';
