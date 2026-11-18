@@ -143,6 +143,10 @@ tbody tr.on{background:#1a1a2e;outline:1px solid #1f6feb}
  .table-panel tr[data-group]>td:nth-child(2){grid-row:2;grid-column:1/-1;padding-top:0}
  .table-panel tr[data-group]>td:nth-child(2) .by-data{display:inline}
  .table-panel tr[data-group]>td:nth-child(2){display:block}
+ /* The table and its sections are blocks here, so an expanded row's cell has the panel's width and its own
+    overflow-x works. As table boxes the cell took its content's width and widened the panel (seen live: 397 px in
+    a 386 px panel, #1077). */
+ .table-panel>table,.table-panel>table>thead,.table-panel>table>tbody{display:block}
  .table-panel tr.holdings-row,.table-panel tr.holdings-row>td{display:block;overflow-x:auto}
  .macro-table thead{display:none}
  .macro-table tr.mrow{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px 8px;padding:8px 0;border-bottom:1px solid #21262d}
