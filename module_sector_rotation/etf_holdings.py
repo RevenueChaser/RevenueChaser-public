@@ -35,7 +35,8 @@ WEIGHT_GROUPS = ("sector", "theme", "industry")
 
 def ticker_weights() -> dict[str, list[tuple[str, float]]]:
     """``{ticker: [(etf, share), ...]}``, largest share first: each company's share of every sector, theme and
-    industry map fund that holds it, from the fund's newest holdings in the spine (``rcdata.read.etf_holdings``).
+    industry map fund that holds it, from the fund's newest holdings in the spine (``rcdata.read.etf_holdings``),
+    or, for a fund the daily file does not hold, from its newest N-PORT report (``read.etf_holdings_nport``).
     The share is the line's weight over the sum of that fund's weights, so a fund published in percent and one in
     fractions compare. A line with no ticker or no weight is left out. A map fund with no weighted line is named in
     a warning and gives nothing: it is missing data, never weight 0."""
@@ -43,10 +44,16 @@ def ticker_weights() -> dict[str, list[tuple[str, float]]]:
     from RevenueChaser.core import rotation_reference
     funds = [t for t, info in rotation_reference.rotation_etfs().items() if info.get("group") in WEIGHT_GROUPS]
     by_fund: dict[str, dict[str, float]] = {}
-    for r in read.etf_holdings(funds):
-        if r.get("ticker") and (r.get("weight") or 0) > 0:
-            lines = by_fund.setdefault(r["etf"], {})
-            lines[r["ticker"]] = lines.get(r["ticker"], 0.0) + float(r["weight"])
+
+    def take(rows):
+        for r in rows:
+            if r.get("ticker") and (r.get("weight") or 0) > 0:
+                lines = by_fund.setdefault(r["etf"], {})
+                lines[r["ticker"]] = lines.get(r["ticker"], 0.0) + float(r["weight"])
+    take(read.etf_holdings(funds))
+    # A map fund the daily file does not hold (avo adds funds on the Watch lists board; PEJ, VNQ, XTL, #1063)
+    # reads its newest N-PORT report: quarterly, but sourced, and better than not counting the fund.
+    take(read.etf_holdings_nport(sorted(set(funds) - set(by_fund))))
     missing = sorted(set(funds) - set(by_fund))
     if missing:
         logger.warning("rotation weights: %d map fund(s) have no weighted holdings: %s", len(missing), ", ".join(missing))
