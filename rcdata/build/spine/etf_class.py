@@ -76,6 +76,10 @@ FUND_LINES, FUND_FILES = "stg_fund_lines", "funds/index_holdings"
 FILE_COVER = 90.0
 #: Compustat Global, staged by ``wrds/co_hgic``: a foreign listing's ISIN, its company's GICS, the code names.
 G_SECURITY, G_COMPANY, GICCD = "stg_wrds_g_security", "stg_wrds_g_company", "stg_wrds_giccd"
+#: Compustat North America's company rows, staged: ``loc`` is the company's own country (alpha-3).
+COMPANY = "stg_wrds_company"
+#: ISO 3166-1 alpha-3 to alpha-2, from a published list (the file names its source); never edited by hand.
+ISO_FILE = Path(__file__).with_name("iso3166.json")
 #: Corrections by hand. Owned by avo; changed only by a pull request.
 MANUAL_FILE = Path(__file__).with_name("etf_class_manual.json")
 ISSUES = ("etf_class_manual_unknown",)
@@ -350,6 +354,13 @@ def profiles(con: duckdb.DuckDBPyConnection, funds: list[dict], folder: Path | N
     world = (f"SELECT s.isin, min(c.gsubind) AS g FROM {G_SECURITY} s JOIN {G_COMPANY} c USING (gvkey) "
              "WHERE s.isin IS NOT NULL AND c.gsubind IS NOT NULL GROUP BY 1 HAVING count(DISTINCT c.gsubind) = 1"
              if _staged(con, G_SECURITY, G_COMPANY) else "SELECT NULL::VARCHAR AS isin, NULL::VARCHAR AS g WHERE false")
+    # A company listed in the US has a US line whatever country its business is in (ARGT read US 87 %, measured
+    # 18 Nov 2026): such a line takes the company's own country, where its CUSIP finds one Compustat company.
+    base.rows_table(con, "_ec_iso", [("a3", "TEXT"), ("a2", "TEXT")],
+                    [{"a3": k, "a2": v} for k, v in json.loads(ISO_FILE.read_text(encoding="utf-8"))["codes"].items()])
+    home = (f"SELECT s.cusip, min(i.a2) AS a2 FROM security s JOIN {COMPANY} c USING (gvkey) "
+            "JOIN _ec_iso i ON i.a3 = c.loc WHERE s.cusip IS NOT NULL GROUP BY 1 HAVING count(DISTINCT i.a2) = 1"
+            if _staged(con, COMPANY) else "SELECT NULL::VARCHAR AS cusip, NULL::VARCHAR AS a2 WHERE false")
     con.execute(f"""
         CREATE OR REPLACE TEMP TABLE _ec_h AS
         WITH bc AS (SELECT cusip, min(gsubind) AS g FROM security WHERE cusip IS NOT NULL AND gsubind IS NOT NULL
@@ -358,6 +369,7 @@ def profiles(con: duckdb.DuckDBPyConnection, funds: list[dict], folder: Path | N
                     GROUP BY 1 HAVING count(*) = 1),
              bt AS (SELECT ticker, gsubind AS g FROM security WHERE gsubind IS NOT NULL),
              bg AS ({world}),
+             hm AS ({home}),
              h AS (SELECT f.ticker AS etf, h.pct_of_net_assets AS pct, h.country, h.asset_cat,
                           h.cusip, h.isin, replace(h.ticker, '.', '-') AS tic,
                           -- a ticker is a US ticker only on a US line: a local ticker abroad can spell the same
@@ -375,7 +387,8 @@ def profiles(con: duckdb.DuckDBPyConnection, funds: list[dict], folder: Path | N
                           h.issuer_type = 'RF' AS is_rf,
                           regexp_matches(upper(coalesce(h.issuer_name, '')), '{_FUND_NAME}') AS fund_name
                    FROM _ec_fund f JOIN read_parquet({hold}) h ON h.accession = f.accession)
-        SELECT h.etf, h.pct, h.country, h.asset_cat,
+        SELECT h.etf, h.pct, coalesce(CASE WHEN h.country = 'US' THEN hm.a2 END, h.country) AS country,
+               h.asset_cat,
                -- a registered fund is a fund whatever its asset category says (AOR, HEFA); a ticker or a name
                -- only decides a line N-PORT calls equity
                CASE WHEN coalesce(h.is_rf, false) THEN 'fund'
@@ -383,6 +396,7 @@ def profiles(con: duckdb.DuckDBPyConnection, funds: list[dict], folder: Path | N
                     ELSE h.bucket END AS bucket,
                CAST(coalesce(bc.g, bi.g, bt.g, bg.g) AS VARCHAR) AS gsubind
         FROM h LEFT JOIN bc ON bc.cusip = h.cusip LEFT JOIN bi ON bi.isin = h.isin
+        LEFT JOIN hm ON hm.cusip = h.cusip
         LEFT JOIN bt ON bt.ticker = h.tic AND h.us_line LEFT JOIN bg ON bg.isin = h.isin
         LEFT JOIN {etf_mod.TABLE} e ON e.ticker = h.tic AND h.us_line""")
     keys = ("equity", "preferred", "debt", "cash", "derivative", "commodity", "fund", "real_estate", "coded")
@@ -403,7 +417,7 @@ def profiles(con: duckdb.DuckDBPyConnection, funds: list[dict], folder: Path | N
     for t, k, w in con.execute("SELECT etf, country, sum(pct) FROM _ec_h WHERE bucket = 'equity' "
                                "GROUP BY 1, 2").fetchall():
         out[t]["country"][k or "?"] = float(w or 0.0)
-    for t in ("_ec_h", "_ec_fund"):
+    for t in ("_ec_h", "_ec_fund", "_ec_iso"):
         con.execute(f"DROP TABLE {t}")
     for f in linked:                       # a linked report with no holding line at all
         p = out[f["ticker"]]

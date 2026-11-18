@@ -486,6 +486,33 @@ def test_a_companys_share_filed_under_other_counts_as_equity(nport):
     assert (rows["CIBR"]["primary_class"], rows["CIBR"]["code"]) == ("country", "TH")
 
 
+def test_a_us_line_takes_its_companys_own_country(nport):
+    """Plan v5 step 4, gap B: a company listed in the US has a US line whatever country its business is in (ARGT
+    read US 87 %). Where the line's CUSIP finds one Compustat company, the line counts for that company's country
+    (``comp.company.loc``, alpha-3, read through the ISO list). With no company table staged nothing moves."""
+    from RevenueChaser.rcdata.build.spine import wrds
+    nport([h for h in HOLDINGS if h["accession"] != "A3"]
+          + [_line("A3", 70.0, cusip="00000AR10"), _line("A3", 29.0, ticker="MSFT")])
+
+    def cibr(staged: bool) -> dict:
+        con = _con()
+        con.execute("INSERT INTO security (ticker, tier, cusip, gvkey) VALUES ('ARGO', 'A', '00000AR10', '900001')")
+        if staged:
+            base.rows_table(con, etf_class.COMPANY, wrds.COMPANY, [{"gvkey": "900001", "loc": "ARG"},
+                                                                   {"gvkey": "012141", "loc": "USA"}])
+        return {r["ticker"]: r for r in etf_class.rows(_ctx(), con, manual=[])[0]}["CIBR"]
+
+    assert (cibr(False)["geo"], cibr(False)["country"]) == ("US", None)
+    assert (cibr(True)["geo"], cibr(True)["country"]) == ("country", "AR")
+
+
+def test_the_iso_list_is_the_whole_standard_and_names_its_source():
+    import json
+    doc = json.loads(etf_class.ISO_FILE.read_text(encoding="utf-8"))
+    assert len(doc["codes"]) == 249 and doc["codes"]["ARG"] == "AR" and doc["codes"]["USA"] == "US"
+    assert all(len(k) == 3 and len(v) == 2 for k, v in doc["codes"].items()) and "Source:" in doc["_"]
+
+
 def test_a_ticker_codes_a_holding_only_on_a_us_line(nport):
     """Review finding 9: a local ticker abroad that spells a US one must not take that company's GICS."""
     nport([h for h in HOLDINGS if h["accession"] != "A3"]
