@@ -306,6 +306,23 @@ def test_after_the_window_an_unread_ticker_is_stale_and_the_session_is_closed(uw
     assert query("SELECT oi_status FROM option_far_contract WHERE session_date = ?", [SESSION]) == [("stale",)]
 
 
+def test_a_session_older_than_the_open_ones_is_still_closed_when_its_window_ends(uw_opts, monkeypatch):
+    """M2/R7 (LEAPS review 18 Nov 2026): a session that drops out of the newest ``OPEN_SESSIONS`` with a ticker
+    unread is closed once its read window ends, so its rows say stale instead of "read next morning" for good."""
+    monkeypatch.setattr(far, "OPEN_SESSIONS", 1)
+    _swept(uw_opts, [contract("AAA", "C", 100)])
+    uw_opts.fail["/stock/AAA/option-contracts"] = 503
+    at(monkeypatch, MORNING)
+    run()
+    at(monkeypatch, NEXT_EVENING)                                           # sweeps 27 Oct: now the newest session
+    run()
+    at(monkeypatch, AFTER_WINDOW)                                           # 26 Oct's read window is over
+    uw_opts.contract_screener = {"call": [], "put": []}
+    run()
+    assert far.closed_path(SESSION).exists()
+    assert query("SELECT oi_status FROM option_far_contract WHERE session_date = ?", [SESSION]) == [("stale",)]
+
+
 # ── The roll flag ──────────────────────────────────────────────────────────────────────────────────────────────
 
 def test_a_roll_is_one_contract_closing_while_another_opens_on_the_same_name_side_and_day(uw_opts, monkeypatch):
