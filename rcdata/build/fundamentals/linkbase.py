@@ -1,5 +1,5 @@
-"""The definition linkbase of an annual report (``<ticker>-<date>_def.xml``): which members stand on an axis in
-which table of the report.
+"""The definition linkbase of an annual report (``<ticker>-<date>_def.xml``, or embedded in the filing's schema
+file, ``<ticker>-<date>.xsd``): which members stand on an axis in which table of the report.
 
 The inline XBRL (``ixbrl.py``) gives a revenue fact its axis and member, but not whether two members belong
 together: Amazon tags {Product, Service} on the income statement and seven finer members in the segment note, all
@@ -18,14 +18,28 @@ from xml.etree import ElementTree
 from . import ixbrl
 
 SUFFIX = "_def.xml"
+SCHEMA_SUFFIX = ".xsd"
+#: What every XML schema declares: tells a schema file with no linkbase in it from an error page.
+SCHEMA_NS = b"http://www.w3.org/2001/XMLSchema"
 _LINK = "{http://www.xbrl.org/2003/linkbase}"
 _XLINK = "{http://www.w3.org/1999/xlink}"
 
 
 def name(listing: dict) -> str | None:
-    """The definition linkbase's file name in a filing's ``index.json``; None when it lists none."""
+    """The file of a filing's ``index.json`` that holds its definition linkbase: the ``_def.xml`` when it lists
+    one, else the largest ``.xsd`` it lists (#1066: some filers embed the linkbases in the schema file; Microsoft's
+    FY2026 10-K lists no ``_def.xml`` and its ``.xsd`` holds 57 ``definitionLink``); None when it lists neither.
+
+    Measured 18 Nov 2026 on the 5,130 stored indexes: 4,281 list a ``_def.xml``, 819 none but exactly one
+    ``.xsd``, 30 neither; "the largest" only says which one when a filing ever lists two."""
     items = ((listing or {}).get("directory") or {}).get("item") or []
-    return next((n for n in (str(i.get("name") or "") for i in items) if n.endswith(SUFFIX)), None)
+    names = [str(i.get("name") or "") for i in items]
+    found = next((n for n in names if n.endswith(SUFFIX)), None)
+    if found is not None:
+        return found
+    sizes = [str(i.get("size") or "") for i in items]
+    schemas = [(int(size) if size.isdigit() else 0, n) for n, size in zip(names, sizes) if n.endswith(SCHEMA_SUFFIX)]
+    return max(schemas, key=lambda s: s[0])[1] if schemas else None
 
 
 def _local(fragment: str | None) -> str:
