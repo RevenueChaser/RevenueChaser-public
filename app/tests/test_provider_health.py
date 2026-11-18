@@ -264,9 +264,15 @@ class TestRotationBoard:
 
 
 class TestPayloadBoards:
-    def test_oipd_renders_the_banner_of_a_payload_that_carries_one(self):
-        """The board makes no provider call since decision B, so its run adds no health; the page still shows one."""
-        from RevenueChaser.module_oipd import report
+    def test_oipd_asks_no_provider_and_carries_no_health(self, monkeypatch):
+        """Decision B: the board fits the stored build, so a failing UW client is never asked and adds no banner."""
+        from RevenueChaser.module_oipd import engine, report
+        monkeypatch.setattr(engine, "build", lambda **kw: {"ticker": "AAA", "expiries": [{"x": 1}]})
+        monkeypatch.setattr(engine, "run", lambda **kw: {"ticker": "AAA", "expiries": [{"x": 1}]})
+        seen = {}
+        monkeypatch.setattr(runners, "_render_oipd", lambda p: seen.update(p) or None)
+        runners.run_oipd(_FakeUW(_BAD), ticker="AAA")
+        assert seen["ticker"] == "AAA" and "provider_health" not in seen
         html = report.render_oipd_dashboard({"ticker": "AAA", "provider_health": _BAD})
         assert "rc-provider-health" in html
 
