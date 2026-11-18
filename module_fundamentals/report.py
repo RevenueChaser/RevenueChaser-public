@@ -172,6 +172,10 @@ def _summary_html(s: dict, data_quality: dict | None = None) -> str:
         bits = ([f"{_fmt_int(stale_n)} tickers"] if stale_n else []) + (["SPY"] if s.get("spy_stale") else [])
         elim_part += (f" Prices store behind (no bar of the latest session; last stored bars used): "
                       f"{_html.escape(' + '.join(bits))}.")
+    if s.get("spy_behind"):
+        # avo L1 (18 Nov 2026): no SPY bar of the latest session, so RS reads SPY's newest stored one.
+        elim_part += (f" <b>Prices behind</b>: the 6-month RS is scored as of SPY's "
+                      f"{_html.escape(str(s['spy_behind']))} session (the store has no bar of the latest one).")
     if s.get("ifrs_quality_unjudged"):
         # avo K1 (18 Nov 2026): until the IFRS debt read is served, these filers cannot pass Quality.
         elim_part += (f" Quality not judged for {_fmt_int(s['ifrs_quality_unjudged'])} IFRS filers "

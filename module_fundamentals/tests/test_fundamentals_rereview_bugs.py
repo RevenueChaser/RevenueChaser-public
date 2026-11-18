@@ -85,3 +85,11 @@ render();
 console.log(JSON.stringify({grid: _els['grid'].innerHTML}));
 """, tmp_path)
     assert "ended " in out["grid"] and " mo ago" in out["grid"]
+
+
+def test_the_summary_says_prices_are_behind_and_names_spys_session():
+    """avo L1 (18 Nov 2026): RS is scored as of SPY's newest stored session, and the board says so."""
+    p = build_payload([_row("T", _m(**_RO40, **_MOM))], top_n=10, run_stats={"spy_behind": "2026-11-16"})
+    assert p["summary"]["spy_behind"] == "2026-11-16"
+    html = render_fundamental_dashboard(p)
+    assert "Prices behind" in html and "2026-11-16" in html

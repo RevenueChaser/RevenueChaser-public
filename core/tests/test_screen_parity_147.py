@@ -61,7 +61,7 @@ The Fundamentals re-review of 18 Nov 2026 (selection version 14) made gross marg
 the scenario's filings moved to millions of dollars (``screen_parity._M``); re-captured in CI the same way: the Rule of
 40 is known again, six candidates, and the funnel has no momentum-only step because UP1 and UP3 now pass the Rule of
 40. avo K1 added the additive ``summary.ifrs_quality_unjudged`` (0 here: no scenario filer reads ifrs-full), edited in by
-hand.
+hand. avo L1 added ``summary.spy_behind`` (None here: the scenario's SPY has the session), edited in the same way.
 """
 from __future__ import annotations
 

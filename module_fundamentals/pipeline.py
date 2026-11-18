@@ -856,6 +856,7 @@ def build_payload(results: list[dict], top_n: int | None = None, run_stats: dict
             "stale_ohlc": run_stats.get("stale_ohlc", 0),
             "spy_stale": bool(run_stats.get("spy_stale")),
             "spy_missing": bool(run_stats.get("spy_missing")),
+            "spy_behind": run_stats.get("spy_behind"),
             "regime": regime,
             "spy_price": run_stats.get("spy_price"),
             "spy_sma200": run_stats.get("spy_sma200"),
@@ -936,7 +937,7 @@ def run_scan(uw=None, top_n: int = None, refresh_universe: bool = False,
     payload = screen_common.run_screen(
         board="fundamental", refreshed_by="Fundamentals", cfg=config,
         load_universe=fetch_universe_stats, prefilter=prefilter_and_chunk,
-        load_spy=screen_common.load_spy,
+        load_spy=screen_common.load_spy_newest,          # avo L1 (18 Nov 2026)
         compute_row=compute_row, build_payload=build_payload, persist=scores.persist if rows_sink is None else (lambda results: scores.persist(results, sink=rows_sink)),
         top_n=top_n, refresh_universe=refresh_universe, no_fetch=no_fetch,
         history_board="module_fundamentals", saved=config.FUNDAMENTALS_JSON,
