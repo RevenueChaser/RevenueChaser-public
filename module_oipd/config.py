@@ -32,6 +32,8 @@ MAX_PAGES = 6        # 3000 contracts is far more than one expiry ever returns
 G_FLOOR = 0.0
 # The board greys its statistics when the density window clips more than this share (percent of mass).
 CLIP_FLAG_PCT = 0.01
+# A fitted 5-95 % band wider than this multiple of what ATM IV alone implies is flagged (a runaway wing).
+TAIL_FLAG_RATIO = 2.0
 PENALTY_WEIGHT = 25.0
 
 # ── Fit inputs (review N3/N4, avo's D1, 18 Nov 2026) ───────────────────────────
@@ -53,6 +55,7 @@ def fit_config() -> dict:
     return {"min_dte": MIN_DTE, "max_dte": MAX_DTE, "max_expiries": MAX_EXPIRIES, "min_contracts": MIN_CONTRACTS,
             "g_floor": G_FLOOR, "penalty_weight": PENALTY_WEIGHT, "risk_free": RISK_FREE_RATE,
             "max_rel_spread": MAX_REL_SPREAD, "grid": GRID, "clip_flag_pct": CLIP_FLAG_PCT,
+            "tail_flag_ratio": TAIL_FLAG_RATIO,
             "inputs": "otm-two-sided-no-vendor-iv", "expiries": "oi-top", "roots": "largest"}
 
 

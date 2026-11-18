@@ -18,6 +18,7 @@ Refresh reproduces the Fetch board exactly.
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
@@ -297,6 +298,8 @@ def _fit_expiry(expiry: str, contracts: list[dict], spot: float, r: float,
     curve = opd_math.ProbCurve(expiry, T, F, params, r, **config.GRID)
     st = curve.stats()
     atm = opd_math.atm_iv(params, T)
+    tail_ratio = (math.log(st["p95"] / st["p05"]) / (2 * 1.645 * atm * math.sqrt(T))
+                  if atm and st["p05"] > 0 and st["p95"] > 0 else None)
     greeks = opd_math.atm_greeks(params, T, r, F)
     # With no spot (UW returned no regular-session bar) the fit stands on the
     # chain's forward; only the spot-relative probabilities are unknown.
@@ -320,7 +323,8 @@ def _fit_expiry(expiry: str, contracts: list[dict], spot: float, r: float,
         "min_var": round(curve.min_var, 6),
         **{f"density_{k}": v for k, v in opd_math.density_check(
             params["g_min"], curve.g_min_window, 100.0 * curve.clipped_mass, curve.min_var,
-            config.CLIP_FLAG_PCT).items()},
+            config.CLIP_FLAG_PCT, tail_ratio, config.TAIL_FLAG_RATIO).items()},
+        "tail_ratio": round(tail_ratio, 3) if tail_ratio is not None else None,
         "rmse": round(params["rmse"], 6),
         "mean": round(st["mean"], 4),
         "quantiles": {kk: round(st[kk], 4) for kk in
@@ -371,18 +375,27 @@ def _fit_payload(ticker: str, contracts: list[dict], meta: dict,
         "warnings": warnings,
         "error": None,
     }
-    if entries:
-        # Fan chart from the fitted curves (quantiles across expiries).
-        fan = {"expiries": [e["date"] for e in entries],
-               "dte": [e["dte"] for e in entries],
+    fanned = [e for e in entries if not e["density_flag"]]   # a flagged density is shown muted, never fanned
+    if len(fanned) < len(entries):
+        warnings.append(f"{len(entries) - len(fanned)} flagged expir{'y' if len(entries) - len(fanned) == 1 else 'ies'} "
+                        "left out of the fan: " + "; ".join(f"{e['date']} {e['density_note']}"
+                                                            for e in entries if e["density_flag"]))
+    if fanned:
+        # Fan chart from the trustworthy fitted curves (quantiles across expiries).
+        fan = {"expiries": [e["date"] for e in fanned],
+               "dte": [e["dte"] for e in fanned],
                "quantiles": {
-                   q: [e["quantiles"][k] for e in entries]
+                   q: [e["quantiles"][k] for e in fanned]
                    for q, k in (("0.05", "p05"), ("0.25", "p25"),
                                 ("0.50", "median"), ("0.75", "p75"),
                                 ("0.95", "p95"))},
-               "spot_ref": [e["forward"] for e in entries]}
+               "spot_ref": [e["forward"] for e in fanned]}
         payload["fan"] = fan
-    elif not payload["error"]:
+    if contracts and not any(uw_chain.two_sided(c) for c in contracts):
+        payload["error"] = (f"The stored {ticker} chain of {asof} carries no two-sided quote (no bid on any of "
+                            f"{len(contracts):,} contracts), so nothing is fitted: the fit uses quotes, never last "
+                            "trades or the vendor's IV.")
+    if not entries and not payload["error"]:
         payload["error"] = (
             f"No expiry could be fitted for {ticker}."
             + ((" " + "; ".join(warnings)) if warnings else "")

@@ -201,12 +201,14 @@ def atm_greeks(params: dict, T: float, r: float, forward: float,
 
 
 def density_check(g_min: float, g_min_window: float, clipped_pct: float, min_var: float,
-                  clip_flag_pct: float) -> dict:
+                  clip_flag_pct: float, tail_ratio: float | None = None, tail_flag: float | None = None) -> dict:
     """Is the fitted density trustworthy over the whole density window? (#172 D2)
 
     ``flag`` is true when mass was clipped beyond ``clip_flag_pct`` (percent), g is negative anywhere in the
     window, or the SVI minimum variance is negative; ``note`` is the board label and ``g_min_shown`` the
-    smaller of the fit-grid and window g-min.
+    smaller of the fit-grid and window g-min. ``tail_ratio`` (the 5-95 % width over the width ATM IV alone implies)
+    above ``tail_flag`` flags a wing the smile extrapolates far beyond its quotes (#1060: an SPY 60-day p95 near 3x
+    spot).
     """
     g_shown = round(min(g_min, g_min_window), 5)
     if clipped_pct > clip_flag_pct:
@@ -215,6 +217,8 @@ def density_check(g_min: float, g_min_window: float, clipped_pct: float, min_var
         note = "negative density!"
     elif min_var < 0:
         note = "min variance < 0"
+    elif tail_ratio is not None and tail_flag is not None and tail_ratio > tail_flag:
+        note = f"tails {tail_ratio:.1f}x the ATM-IV width"
     else:
         return {"flag": False, "note": "butterfly ok", "g_min_shown": g_shown}
     return {"flag": True, "note": note, "g_min_shown": g_shown}
