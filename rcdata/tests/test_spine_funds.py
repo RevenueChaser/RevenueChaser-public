@@ -6,7 +6,7 @@ import pytest
 
 from RevenueChaser.rcdata import caps, ops
 from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.spine import funds
+from RevenueChaser.rcdata.build.spine import funds, security
 
 from . import spine_fixture as fx
 
@@ -112,6 +112,14 @@ def test_ndx_is_voted_by_the_nasdaq_list_and_invescos_qqq():
     assert caps.cap_for("invesco") is None             # no published limit: no cap (master plan Order 5, rule 3)
 
 
+def test_dias_file_is_fetched_for_the_classifier_and_votes_no_index():
+    """DIA is a unit trust and files no N-PORT (plan v5 step 2): its lines are staged for ``etf_class``, under a
+    slug that is no index, so no reader of the four indexes sees a fifth."""
+    dia = next(f for f in funds.FILES if f.fund == "DIA")
+    assert dia.url().endswith("holdings-daily-us-en-dia.xlsx") and dia.index_slug not in funds.INDEXES
+    assert "'dow'" not in security.VOTE_SQL and all(f"'{i}'" in security.VOTE_SQL for i in funds.INDEXES)
+
+
 def test_tickers_are_written_the_sec_way():
     assert funds.norm_ticker("BRK.B") == "BRK-B" and funds.norm_ticker("BRK/B") == "BRK-B"
     assert funds.norm_ticker("CASH_USD") is None and funds.norm_ticker("-") is None
@@ -119,10 +127,10 @@ def test_tickers_are_written_the_sec_way():
 
 def test_one_request_per_file_a_failed_file_is_an_issue_and_the_others_count(env):
     row = base.run_request({"dataset": funds.NAME, "params": {"as_of": "2026-10-27"}})
-    assert row["result"] == "changed" and row["calls"] == 11            # the three SmallCap files 404: no retry
+    assert row["result"] == "changed" and row["calls"] == 12            # the three SmallCap files 404: no retry
     n, issues = ops.open_issues(funds.NAME)
     assert n == 3 and {i["key"] for i in issues} == {"ssga-SPSM.xlsx", "ishares-IJR.csv", "vanguard-VIOO.json"}
-    assert row["coverage"] == round(8 / 11, 4) and "failed files" in row["note"]
+    assert row["coverage"] == round(9 / 12, 4) and "failed files" in row["note"]
     assert row["calls"] == len(env.calls())
 
 

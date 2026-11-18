@@ -11,8 +11,9 @@ others go on), never a guess.
 | ``sp400`` | SSGA MDY, iShares IJH, Vanguard IVOO |
 | ``sp600`` | SSGA SPSM, iShares IJR, Vanguard VIOO |
 | ``ndx`` | Nasdaq ``/api/quote/list-type/nasdaq100`` (json), Invesco QQQ (json) |
+| none (``dow``) | SSGA DIA: no index is voted from it; ``etf_class`` reads it, because the trust files no N-PORT |
 
-One request per file, every file each run (11 a run), each under its provider's day cap. Base URLs:
+One request per file, every file each run (12 a run), each under its provider's day cap. Base URLs:
 ``RC_SSGA_BASE``, ``RC_ISHARES_BASE``, ``RC_VANGUARD_BASE``, ``RC_NASDAQ_API_BASE``, ``RC_INVESCO_API_BASE``.
 
 **The membership rule (working choice).** On each day, a file counts when it parsed and holds at least its index's
@@ -243,6 +244,8 @@ FILES = (
     FundFile("sp600", "vanguard", "VIOO", "json", parse_vanguard),
     FundFile("ndx", "nasdaq", "NDX", "json", parse_nasdaq),
     FundFile("ndx", "invesco", "QQQ", "json", parse_invesco),
+    # A slug outside INDEXES: the lines are staged for ``etf_class`` and ``spine/security`` votes no index from it.
+    FundFile("dow", "ssga", "DIA", "xlsx", parse_ssga),
 )
 PROVIDERS = tuple(dict.fromkeys(f.provider for f in FILES))
 _BY_RAW = {f.raw_name(): f for f in FILES}
