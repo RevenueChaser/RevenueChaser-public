@@ -208,10 +208,13 @@ def _shrunk_build(where: str):
     return con
 
 
-def test_the_build_refuses_to_lose_a_row_unless_asked(live):
-    """#1079's 20 lost securities were 0.13 % of the rows, under the swap's 1 % guard: this one counts rows."""
-    con = _shrunk_build(f"security_id = '{AAPL}' AND session_date = (SELECT min(session_date) "
-                        f"FROM l.price_bar_daily WHERE security_id = '{AAPL}')")
+@pytest.mark.parametrize("where", [f"security_id = '{AAPL}' AND session_date = (SELECT min(session_date) "
+                                   f"FROM l.price_bar_daily WHERE security_id = '{AAPL}')"],
+                         ids=["one row"])
+def test_the_build_refuses_to_lose_a_security_or_a_row_unless_asked(live, where):
+    """#1079's 20 lost securities were 0.13 % of the rows, under the swap's 1 % guard: this one counts rows. A whole
+    security no source returns is carried over instead (``test_a_security_no_source_returns_keeps_its_stored_bars``)."""
+    con = _shrunk_build(where)
     try:
         with pytest.raises(ValueError, match="price_bar_daily would lose"):
             prices_serving._refuse_shrink(base.RunContext(run_id="t", dataset=prices_serving.NAME), con)
