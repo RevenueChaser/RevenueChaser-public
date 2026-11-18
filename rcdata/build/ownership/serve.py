@@ -605,6 +605,8 @@ class OwnershipServe:
     name = NAME
     kind = KIND
     providers: tuple[str, ...] = ()
+    # The spine Parquet it reads (_owners, _figi): dirty.read_dirs packs and tracks it (rc-github-rebuild, 18 Nov 2026).
+    parquet_reads = ("wrds/sec_idhist", "openfigi/map")
     tables = TABLES
     cadence = "daily"
     backfill_needs_from = False
