@@ -59,6 +59,10 @@ TICK_NEWS = "84"
 NOTICE_CODES = range(2100, 2200)
 # "Connectivity restored, data lost": the gateway forgot every market data subscription; the caller resubscribes.
 DATA_LOST = 1101
+# The historical data farm's notices: 2105 "HMDS data farm connection is broken", 2106 "... is OK". While it is broken
+# a historical news request gets no answer at all, not even an error (measured on homesrv, 18 Nov 2026: 3 of 3 news
+# requests silent for 20 s while the contract lookup answered in 0.2 s and the notice said "broken: ushmds").
+HMDS_BROKEN, HMDS_OK = 2105, 2106
 
 
 class TWSError(RuntimeError):
@@ -123,6 +127,7 @@ class TWSClient:
     def __init__(self, host: str, port: int, *, client_id: int = CLIENT_ID, timeout: float = READ_TIMEOUT_S):
         self.host, self.port, self.client_id, self.timeout = host, port, client_id, timeout
         self.server_version: int | None = None
+        self.hmds_broken: str | None = None     # the text of the last 2105 notice, cleared by a 2106
         self._sock = None
         self._buf = b""
 
@@ -165,7 +170,10 @@ class TWSClient:
                     raise TWSError(f"a {n}-byte message is not a TWS frame")
                 if len(self._buf) >= 4 + n:
                     msg, self._buf = self._buf[4:4 + n], self._buf[4 + n:]
-                    return msg.decode(errors="replace").split("\0")[:-1]
+                    fields = msg.decode(errors="replace").split("\0")[:-1]
+                    if fields[:1] == [ERR_MSG] and len(fields) >= 5 and fields[3] in (str(HMDS_BROKEN), str(HMDS_OK)):
+                        self.hmds_broken = fields[4] if fields[3] == str(HMDS_BROKEN) else None
+                    return fields
             try:
                 data = self._sock.recv(65536)
             except OSError as e:
@@ -223,7 +231,13 @@ class TWSClient:
         self._sock.sendall(encode(REQ_HISTORICAL_NEWS, req_id, con_id, providers, start, end, total, ""))
         out = []
         while True:
-            got = self._read()
+            try:
+                got = self._read()
+            except TWSError as e:
+                if self.hmds_broken and isinstance(e.__cause__, TimeoutError):
+                    raise TWSError(f"IBKR's historical data farm is down ({self.hmds_broken}), so no headlines "
+                                   "came back") from e
+                raise
             self._request_error(got, req_id)
             if got[0] == HISTORICAL_NEWS and got[1] == str(req_id):
                 out.append({"time": got[2], "provider": got[3], "article_id": got[4], "headline": got[5]})

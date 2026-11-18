@@ -227,6 +227,25 @@ def watched(kind: str) -> set[str]:
     return set(job_list(kind))
 
 
+#: The lists a board treats as avo's picks: every list of his own (``feeds`` ``""``) and the stock job list (avo,
+#: 18 Nov 2026 22:31 Amsterdam: "Artik watchlist.duckbd den secmeliler"; a watch list holds tickers picked inside
+#: My Universe). Earnings Radar, Welcome and News read this; LEAPS' "My lists" reads the same lists in the page.
+PICKED = ("", "stock")
+
+
+def picked(feeds: Iterable[str] = PICKED) -> set[str]:
+    """The tickers on any list marked one of ``feeds`` (:func:`job_list`), for a board's "watched" names. A list
+    that cannot be read is logged and left out, so one bad list never empties the others; a job that must fail on
+    an unreadable list calls :func:`job_list` itself."""
+    out: set[str] = set()
+    for feeds_ in feeds:
+        try:
+            out.update(job_list(feeds_))
+        except JobListUnreadable as e:
+            logger.warning("watch lists %r not read: %s", feeds_ or "own", e)
+    return out
+
+
 class JobListUnreadable(RuntimeError):
     """A job's watch list could not be read: no file, no list marked for the job, a lock that did not clear, or a
     failed query. Never an empty answer: a job that reads "no names" for any of these would drop its whole list."""

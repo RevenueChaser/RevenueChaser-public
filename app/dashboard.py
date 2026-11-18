@@ -2298,11 +2298,12 @@ def api_watchlists_update(list_id: str):
 def api_watchlists_jobs_seed():
     """Make the lists the jobs read, once; a second call only compares. The option and stock lists from the old
     ``ops.sqlite`` rows (plan v5 step 7g), the Sector Rotation map and its industry layer from the code's seed
-    (step 7b). ``{ok, option: {created, ops, list, same}, stock: {...}, map: {created, seed, list, same},
-    industry: {...}}``."""
+    (step 7b), the News list from its seed (avo, 18 Nov 2026). ``{ok, option: {created, ops, list, same}, stock: {...},
+    map: {created, seed, list, same}, industry: {...}, news: {created, seed, list}}``."""
     from RevenueChaser.module_watchlists import store
     by = _requested_by()
-    return jsonify({"ok": True, **store.seed_job_lists(by=by), **store.seed_map_lists(by=by)})
+    return jsonify({"ok": True, **store.seed_job_lists(by=by), **store.seed_map_lists(by=by),
+                    **store.seed_news_lists(by=by)})
 
 
 @app.route("/api/watchlists/<list_id>/delete", methods=["POST"])

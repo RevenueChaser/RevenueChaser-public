@@ -220,3 +220,19 @@ def test_concurrent_whole_list_replaces_raise_nothing_and_the_history_replays_to
     for r in ops.rows("watchlist_stock_changes"):
         state[r["ticker"]] = r["action"] == "add"
     assert {t for t, on in state.items() if on} == set(ops.watch_list("stock"))
+
+
+def test_picked_reads_avos_own_lists_and_the_stock_list_only():
+    """avo, 18 Nov 2026: the boards take their watched names from watchlists.duckdb, his own lists included."""
+    from RevenueChaser.module_watchlists import store
+    store.add_symbol(store.create_list("Growth"), "AAA")
+    store.job_set("stock", "BBB", True, by="settings")
+    store.job_set("option", "CCC", True, by="leaps")                # an option-job name is not a pick
+    assert read.picked() == {"AAA", "BBB"}
+
+
+def test_picked_leaves_out_a_list_it_cannot_read_and_keeps_the_rest():
+    from RevenueChaser.module_watchlists import store
+    assert read.picked() == set()                                  # no file: nothing, never an error
+    store.add_symbol(store.create_list("Growth"), "AAA")
+    assert read.picked() == {"AAA"}                                # no stock list yet: the own list still counts

@@ -443,6 +443,24 @@ def seed_map_lists(*, by: str = "seed") -> dict[str, dict]:
     return out
 
 
+def seed_news_lists(*, by: str = "seed") -> dict[str, dict]:
+    """Make the News list from its seed in ``board.NEWS_LISTS``, once: a list already marked for the feed is left as
+    it is. ``{feed: {created, seed, list}}``."""
+    from ..rcdata import read
+    from .board import NEWS_LISTS
+    out = {}
+    for list_id, spec in NEWS_LISTS.items():
+        created = job_list_id(spec["feed"]) is None
+        if created:
+            # Marked for the job last: a seed that stops half way leaves an unmarked list, which no job reads.
+            create_list(spec["name"], description=spec["description"], by=by, list_id=list_id)
+            for ticker in spec["seed"]:
+                add_symbol(list_id, ticker, by=by)
+            update_list(list_id, feeds=spec["feed"])
+        out[spec["feed"]] = {"created": created, "seed": len(spec["seed"]), "list": len(read.job_list(spec["feed"]))}
+    return out
+
+
 def _by_section(rows: list[dict]) -> dict[str, list[str]]:
     out: dict[str, list[str]] = {}
     for r in rows:

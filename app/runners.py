@@ -173,9 +173,10 @@ OIPD_JSON = OUTPUT_DIR / "oipd" / "oipd_latest.json"
 SETTINGS_LATEST = OUTPUT_DIR / "settings_latest.html"
 
 def _load_watchlist() -> set:
-    """The stock watch list (``rcdata.read.watched``; PR 4, plan v5 step 7g): LEAPS pins and Earnings' watched names."""
+    """avo's picks (``rcdata.read.picked``: his own watch lists and the stock list): Earnings' and Welcome's watched
+    names. An unreadable list is left out, as on a page."""
     from RevenueChaser.rcdata import read
-    return {r["ticker"] for r in read.watchlists()["stock"]}     # a page: an unreadable list shows as empty
+    return read.picked()
 
 
 def _compute_nrc_results(cards) -> dict:
@@ -1153,7 +1154,7 @@ def run_oipd(uw=None, ticker: str | None = None, no_fetch: bool = False) -> Path
 
 def run_news(uw=None) -> Path:
     """The News board's Fetch: the incremental calendar build into ``boards/news.duckdb``, the Dow Jones headlines from
-    the IBKR Gateway (watch list first, then the largest names), then the page.
+    the IBKR Gateway (every name of avo's own, the stock and the News watch lists), then the page.
 
     The calendar reads ``market.economic_event`` (the builder's hourly ``uw/economic_calendar``). The headlines are two gateway
     requests a name and no UW call; a gateway that is down is a job note, never a failed Fetch.
@@ -1187,20 +1188,43 @@ def _news_headlines_pass(rid: str) -> dict | None:
     checked = x_check.run(UWClient)
     if checked["calls"]:
         ledger.add_note(f"News X: {checked['checked']} option posts checked against UW ({checked['calls']} calls)")
-    names = headlines.tickers(_load_watchlist())
+    from RevenueChaser.rcdata import read
+    lists, unread = [], []
+    for kind in headlines.LISTS:                      # strict: an unreadable list is not an empty one (F6)
+        try:
+            lists.append(read.job_list(kind))
+        except read.JobListUnreadable as e:
+            unread.append(f"{kind or 'own'} watch lists ({e})")
+            ledger.add_note(f"News headlines: the {kind or 'own'} watch lists could not be read ({e})")
+    names = headlines.tickers(*lists)
     got = headlines.fetch(names, run_id=rid)
     health = None
     if got["error"]:
         ledger.add_note(f"News headlines not fetched: {got['error']}")
         # The board says so too, or a down gateway would pass for a quiet news day. A name IBKR does not know is
         # only a note: it is the same names every run, and a banner on every Fetch would be noise.
-        health = {"provider": "ibkr", "calls": len(names), "failed": len(names), "auth_error": None,
+        asked = max(1, got["tickers"])
+        health = {"provider": "ibkr", "calls": asked, "failed": asked,
+                  "auth_error": None,
                   "failures": [{"endpoint": "headlines", "error": got["error"]}],
-                  "message": f"{GAPS}: {len(names)} of {len(names)} Interactive Brokers calls failed "
+                  "message": f"{GAPS}: {asked} of {asked} Interactive Brokers calls failed "
                              f"(headlines: {got['error']}). The board may be incomplete — run Fetch again later."}
     else:
         skipped = f"; not known to IBKR: {', '.join(got['skipped'])}" if got["skipped"] else ""
-        ledger.add_note(f"News headlines: {got['stored']} from {got['tickers']} names (IBKR, Dow Jones){skipped}")
+        of = got.get("of", got["tickers"])
+        ledger.add_note(f"News headlines: {got['stored']} new from {got['tickers']} of {of} names "
+                        f"(IBKR, Dow Jones; the rest in later passes){skipped}")
+        failed = got.get("failed", [])
+        problems = failed + unread
+        if problems:
+            # A refused request other than "unknown name" (a lapsed feed, pacing) or an unread list: the board shows
+            # it, or the lane would only look quieter (review F1/F6, avo's D5 18 Nov 2026: "Panoda bant").
+            # An unread list counts as one failed read, so the banner shows even when every name answered.
+            health = {"provider": "ibkr", "calls": got["tickers"] + len(unread), "failed": len(problems),
+                      "auth_error": None,
+                      "failures": [{"endpoint": "headlines", "error": p} for p in problems],
+                      "message": f"{GAPS}: {len(problems)} of {got['tickers'] + len(unread)} Interactive Brokers reads "
+                                 f"failed ({'; '.join(problems[:3])}). The board may be incomplete."}
     return health
 
 
