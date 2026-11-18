@@ -72,7 +72,12 @@ def test_the_board_mounts_the_pair_once_with_its_own_key(key, tmp_path, monkeypa
     check_page(page)
 
 
-@pytest.mark.parametrize("key", sorted(WITH_PAIR))
+# Boards whose button is drawn only in the browser (rcWatchButtons, which checks the same pattern): no server
+# button to check, so a case here would pass on any code.
+CLIENT_ONLY = {"module_news": "the ticker box draws the asked name's button after the ask"}
+
+
+@pytest.mark.parametrize("key", sorted(set(WITH_PAIR) - set(CLIENT_ONLY)))
 def test_a_hostile_ticker_gets_no_button(key, tmp_path, monkeypatch, rawstore_tmp_db):
     from RevenueChaser.core.reporting_common import WATCH_TICKER_PATTERN
     page = BOARDS[key].render(tmp_path, monkeypatch)
