@@ -271,14 +271,13 @@ def _fit_expiry(expiry: str, contracts: list[dict], spot: float, r: float,
     if d is None or d <= 0:
         return None, f"{expiry}: no valid DTE"
     T = d / 365.0
-    F = uw_chain.infer_forward(contracts, T, r, spot)
+    F = uw_chain.infer_forward([c for c in contracts if uw_chain.two_sided(c)], T, r, spot)
     if not np.isfinite(F) or F <= 0:
         return None, f"{expiry}: no forward (no quoted put/call pairs)"
 
+    inputs = uw_chain.fit_inputs(contracts, F, config.MAX_REL_SPREAD)
     ks, ws = [], []
-    for c in contracts:
-        if c["strike"] <= 0:
-            continue
+    for c in inputs:
         iv = uw_chain.contract_iv(c, F, T, r)
         if iv is None:
             continue
@@ -295,7 +294,7 @@ def _fit_expiry(expiry: str, contracts: list[dict], spot: float, r: float,
         svi[expiry] = {k: float(params[k]) for k in ("a", "b", "rho", "m", "sigma")}
     # A negative g_min is not fatal — the board renders and flags it in the
     # skew KPI — so the expiry is kept rather than dropped.
-    curve = opd_math.ProbCurve(expiry, T, F, params, r)
+    curve = opd_math.ProbCurve(expiry, T, F, params, r, **config.GRID)
     st = curve.stats()
     atm = opd_math.atm_iv(params, T)
     greeks = opd_math.atm_greeks(params, T, r, F)
@@ -329,7 +328,7 @@ def _fit_expiry(expiry: str, contracts: list[dict], spot: float, r: float,
         **spot_probs,
         "greeks": {kk: round(float(v), 6) for kk, v in greeks.items()},
         "curve": _curve_view(curve),
-        "smile": _smile_view(contracts, params, F, T, r),
+        "smile": _smile_view(inputs, params, F, T, r),
     }
     return entry, None
 
@@ -346,7 +345,11 @@ def _fit_payload(ticker: str, contracts: list[dict], meta: dict,
 
     entries, curves = [], []
     for expiry in sorted(by_expiry):
-        entry, err = _fit_expiry(expiry, by_expiry[expiry], spot, r, asof, svi)
+        chain, dropped = uw_chain.one_root(by_expiry[expiry])
+        if dropped:
+            warnings.append(f"{expiry}: fitted the {chain[0].get('root')} chain; left out {', '.join(dropped)} "
+                            "(a separate contract with its own settlement, e.g. SPX AM)")
+        entry, err = _fit_expiry(expiry, chain, spot, r, asof, svi)
         if err:
             warnings.append(err)
             continue
@@ -362,6 +365,7 @@ def _fit_payload(ticker: str, contracts: list[dict], meta: dict,
         "fetched_at": meta.get("fetched_at"),
         "horizon_days": meta.get("horizon_days"),
         "n_contracts": len(contracts),
+        "model_version": config.model_version(),
         "expiries": entries,
         "fan": None,
         "warnings": warnings,

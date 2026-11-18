@@ -33,3 +33,28 @@ G_FLOOR = 0.0
 # The board greys its statistics when the density window clips more than this share (percent of mass).
 CLIP_FLAG_PCT = 0.01
 PENALTY_WEIGHT = 25.0
+
+# ── Fit inputs (review N3/N4, avo's D1, 18 Nov 2026) ───────────────────────────
+# A quote wider than this share of its mid stays out of the fit. The measured median relative spread on the stored
+# chains is 0.06 to 0.17 per name (live check L2, 18 Nov 2026), so the cap drops only the wide wings.
+MAX_REL_SPREAD = 0.5
+
+# ── Density grid (review N13) ───────────────────────────────────────────────
+# The log-moneyness grid ProbCurve integrates on: half-width = clamp(SD_MULT * sd, MIN_HALF_WIDTH, HALF_CAP).
+GRID = {"min_half_width": 2.5, "sd_mult": 8.0, "half_cap": 6.0, "grid_n": 801}
+
+# ── Model version ───────────────────────────────────────────────────────────
+# Bump by hand when a fit knob changes; the golden test in tests/test_fit_inputs.py fails until it is.
+SELECTION_VERSION = "oipd-1"
+
+
+def fit_config() -> dict:
+    """Every knob that changes a fitted distribution, hashed into the model version."""
+    return {"min_dte": MIN_DTE, "max_dte": MAX_DTE, "max_expiries": MAX_EXPIRIES, "min_contracts": MIN_CONTRACTS,
+            "g_floor": G_FLOOR, "penalty_weight": PENALTY_WEIGHT, "risk_free": RISK_FREE_RATE,
+            "max_rel_spread": MAX_REL_SPREAD, "grid": GRID, "inputs": "otm-two-sided-no-vendor-iv"}
+
+
+def model_version() -> str:
+    from RevenueChaser.core.ledger import model_version as _mv
+    return _mv(SELECTION_VERSION, fit_config())
