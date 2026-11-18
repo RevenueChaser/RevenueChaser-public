@@ -1040,6 +1040,48 @@ def type_flow_13f(tags: Iterable[str] | None = None, periods: Iterable | None = 
                  missing_table_ok=True)
 
 
+def filer_style_13f(query: str | None = None, ciks: Iterable[str] | None = None, limit: int = 20) -> list[dict]:
+    """``sec13f_filer_style`` rows (#779): each filer's style over the newest settled quarters, one row per filer.
+    ``ciks`` picks filers by CIK (leading zeros ignored); ``query`` finds them by a piece of the name or a CIK, for
+    the board's filer picker (#928). Largest book first, at most ``limit`` rows. Neither given: no rows. A store
+    built before the table existed gives no rows."""
+    if ciks is not None:
+        wanted = sorted({str(c).strip().lstrip("0") for c in ciks if str(c).strip().lstrip("0")})
+        if not wanted:
+            return []
+        sql, params = f"ltrim(cik, '0') IN ({', '.join('?' * len(wanted))})", wanted
+    elif query and query.strip():
+        q = query.strip()
+        sql, params = "(filer_name ILIKE ? OR ltrim(cik, '0') = ?)", [f"%{q}%", q.lstrip("0")]
+    else:
+        return []
+    return _rows("sec13f_filer_style", f"SELECT * FROM sec13f_filer_style WHERE {sql} "
+                 "ORDER BY value DESC NULLS LAST, cik LIMIT ?", params + [int(limit)], missing_table_ok=True)
+
+
+def filer_holdings_13f(cik: str) -> list[dict]:
+    """``sec13f_filer_holdings`` rows of one filer (#928): per quarter its largest named tickers with their ``weight``
+    (%) of its book, and the rest as one row whose ``ticker`` is None. By period and rank, the rest last. A store
+    built before the table existed gives no rows."""
+    bare = str(cik or "").strip().lstrip("0")
+    if not bare:
+        return []
+    return _rows("sec13f_filer_holdings", "SELECT * FROM sec13f_filer_holdings WHERE ltrim(cik, '0') = ? "
+                 "ORDER BY period, rank NULLS LAST", [bare], missing_table_ok=True)
+
+
+def institution_tags(cik: str) -> list[str]:
+    """Unusual Whales' tags of one 13F filer in the newest ``uw_institution`` snapshot (#779: shown beside the
+    style our own data measures), sorted; ``[]`` when the filer or the table is not there."""
+    bare = str(cik or "").strip().lstrip("0")
+    if not bare:
+        return []
+    rows = _rows("uw_institution", "SELECT DISTINCT unnest(tags) AS tag FROM uw_institution "
+                 "WHERE ltrim(cik, '0') = ? AND snapshot_date = (SELECT max(snapshot_date) FROM uw_institution) "
+                 "ORDER BY 1", [bare], missing_table_ok=True)
+    return [r["tag"] for r in rows if r["tag"]]
+
+
 def periods_13f() -> list[dict]:
     """``sec13f_periods``: per report period its filers, value, the share of value named a ticker (``coverage``) and
     ``complete``, by period."""

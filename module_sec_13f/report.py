@@ -960,6 +960,70 @@ def build_type_fig(label: str, rows: list[dict], still_arriving=frozenset()) -> 
     return fig.to_dict(), note
 
 
+FILER_WINDOW = 20         # quarters the Investors view draws by default (five years, the approved mock of 18 Nov 2026)
+
+
+def build_filer_fig(name: str, rows: list[dict], still_arriving=frozenset(),
+                    quarters: int | None = FILER_WINDOW) -> tuple[dict | None, str]:
+    """``(figure, note)`` for one filer's top holdings over time (#928): a stacked area of each quarter's weight (%)
+    in the filer's own 13F book over its last ``quarters`` quarters (None: every stored one). The ``TYPE_SERIES``
+    names with the highest weight anywhere in that window keep their colour (#788's rule: a name it sold out of
+    still shows where it was large); every other name is "Other", so each quarter adds up to 100. ``rows`` are
+    ``sec13f_filer_holdings`` rows. None when the filer has none."""
+    import plotly.graph_objects as go
+    qs = sorted({r["period"] for r in rows})
+    if quarters:
+        qs = qs[-quarters:]
+    if not qs:
+        return None, f"No 13F holdings of {name} in the store yet."
+    keep = set(qs)
+    weight: dict[str, dict[str, float]] = {}
+    for r in rows:
+        if r.get("ticker") and r["period"] in keep:
+            weight.setdefault(r["ticker"], {})[r["period"]] = float(r.get("weight") or 0)
+    names = sorted(weight, key=lambda t: (-max(weight[t].values()), t))[:TYPE_SERIES]
+    labels = [_qlabel(q) + (ARRIVING_MARK if q in still_arriving else "") for q in qs]
+    fig = go.Figure()
+    for i, t in enumerate(names):
+        fig.add_trace(go.Scatter(x=labels, y=[weight[t].get(q, 0.0) for q in qs], name=t, mode="lines",
+                                 stackgroup="one", line=dict(width=1.5, color=THEME_SCALE[f"c{i + 1}"]),
+                                 hovertemplate=f"{t}: %{{y:.1f}}%<extra></extra>"))
+    rest = [max(100.0 - sum(weight[t].get(q, 0.0) for t in names), 0.0) for q in qs]
+    fig.add_trace(go.Scatter(x=labels, y=rest, name=OTHER_LABEL, mode="lines", stackgroup="one",
+                             line=dict(width=1, color="rgba(128,128,128,0.55)"), fillcolor="rgba(128,128,128,0.22)",
+                             hovertemplate=f"{OTHER_LABEL}: %{{y:.1f}}%<extra></extra>"))
+    fig.update_layout(height=400, hovermode="x unified", showlegend=True,
+                      legend=dict(orientation="h", y=-0.22, yanchor="top", x=0),
+                      margin=dict(l=48, r=16, t=16, b=40))
+    fig.update_xaxes(type="category", tickangle=-40, automargin=True)
+    fig.update_yaxes(range=[0, 100], ticksuffix="%", nticks=6)
+    note = (f"Weight of each name in {name}'s own 13F book per quarter, {_qlabel(qs[0])} to {_qlabel(qs[-1])}. "
+            f"The {len(names)} names with the highest weight anywhere in the window keep their colour; the rest is "
+            f"{OTHER_LABEL}."
+            + (f" {ARRIVING_MARK} {', '.join(_qlabel(q) for q in sorted(still_arriving & keep))}: still arriving, "
+               "filed so far." if still_arriving & keep else ""))
+    return fig.to_dict(), note
+
+
+def filer_holdings_view(rows: list[dict], still_arriving=frozenset()) -> tuple[str | None, list[dict]]:
+    """``(period, holdings)``: the filer's named holdings of its newest settled quarter, largest first, each with
+    ``ticker``, ``weight`` (%), ``value``, ``shares`` and ``change`` (%, shares against the quarter before; None
+    where the name was not among that quarter's stored largest, so a new position and one that only climbed into
+    the top read alike). ``(None, [])`` when no quarter is settled."""
+    settled = sorted({r["period"] for r in rows} - set(still_arriving))
+    if not settled:
+        return None, []
+    now = settled[-1]
+    before = settled[-2] if len(settled) > 1 else None
+    prev = {r["ticker"]: r.get("shares") for r in rows if before and r["period"] == before and r.get("ticker")}
+    out = []
+    for r in sorted((r for r in rows if r["period"] == now and r.get("ticker")), key=lambda r: r.get("rank") or 0):
+        p, sh = prev.get(r["ticker"]), r.get("shares")
+        out.append({"ticker": r["ticker"], "weight": r.get("weight"), "value": r.get("value"), "shares": sh,
+                    "change": (sh / p - 1) * 100 if p and sh is not None else None})
+    return now, out
+
+
 SECTOR_COLS = 3          # small multiples per row; 11 GICS sectors and Unclassified fill four rows
 
 
@@ -1300,6 +1364,213 @@ def render_sec13f_dashboard(totals: dict, meta: dict, enrichment: dict = None,
 # avo, 16 Nov 2026 (Q1 of the 13F plan): the column stays off, and the board says why.
 INSIDER_OFF = ("Insider % is off: Form 4 data does not give it reliably (a two-year cut drops large long-time "
                "owners; without the cut some names exceed 100%).")
+DEFAULT_FILER = "1067983"           # Berkshire Hathaway, the issue's own example (#928) and the approved mock's
+
+# The Investors tab (#928, #779; mock approved by avo 18 Nov 2026 23:19): one filer's holdings over time, its newest
+# holdings and its style profile, beside the investor-type view (#760) as "Group". Loaded on first open only.
+INVESTORS_CSS = """<style>
+.tabs{display:flex;gap:var(--sp-1);border-bottom:1px solid var(--border);margin:0 0 var(--sp-4)}
+.tabs button{min-height:var(--touch);padding:0 var(--sp-4);border:0;border-bottom:2px solid transparent;background:none;
+  color:var(--muted);font:600 var(--fs-base) var(--font-sans);cursor:pointer}
+.tabs button[aria-selected="true"]{color:var(--bright);border-bottom-color:var(--accent)}
+.tabs button:focus-visible,.inv-seg button:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+.inv-pick{display:flex;flex-wrap:wrap;gap:var(--sp-2);align-items:center;margin-bottom:var(--sp-4)}
+.inv-seg{display:inline-flex;border:1px solid var(--input-border);border-radius:var(--r-sm);overflow:hidden}
+.inv-seg button{min-height:var(--touch);min-width:72px;border:0;background:var(--input-bg);color:var(--muted);
+  font:600 var(--fs-sm) var(--font-sans);cursor:pointer}
+.inv-seg button[aria-pressed="true"]{background:var(--accent-soft);color:var(--bright)}
+.inv-find{position:relative;flex:1 1 280px;min-width:0}
+.inv-find input,.inv-pick select{width:100%;height:var(--touch);padding:0 var(--sp-3);border:1px solid var(--input-border);
+  border-radius:var(--r-sm);background:var(--input-bg);color:var(--fg);font:inherit}
+.inv-pick select{width:auto}
+#inv-hits{position:absolute;z-index:20;left:0;right:0;top:calc(100% + 4px);margin:0;padding:4px 0;list-style:none;
+  background:var(--card);border:1px solid var(--border);border-radius:var(--r-md);box-shadow:var(--elev-2);
+  max-height:60vh;overflow-y:auto}
+#inv-hits[hidden]{display:none}
+#inv-hits button{display:flex;justify-content:space-between;gap:var(--sp-3);width:100%;min-height:var(--touch);
+  padding:0 var(--sp-3);border:0;background:none;color:var(--fg);font:inherit;text-align:left;cursor:pointer}
+#inv-hits button:hover,#inv-hits button:focus-visible{background:var(--hover);outline:none}
+#inv-hits small{color:var(--muted);white-space:nowrap}
+.inv-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--sp-3);margin-bottom:var(--sp-4)}
+.inv-kpi{background:var(--card);border:1px solid var(--border);border-radius:var(--r-md);padding:var(--sp-3) var(--sp-4)}
+.inv-kpi span{display:block;color:var(--muted);font-size:var(--fs-xs)}
+.inv-kpi b{color:var(--bright);font-size:var(--fs-lg);font-variant-numeric:tabular-nums}
+.inv-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);grid-template-areas:"chart prof" "hold prof";
+  gap:var(--sp-4);align-items:start}
+.inv-card{background:var(--card);border:1px solid var(--border);border-radius:var(--r-md);padding:var(--sp-4);min-width:0}
+.inv-card h2{color:var(--bright);font-size:var(--fs-md);margin:0 0 2px}
+.inv-cap{color:var(--muted);font-size:var(--fs-sm);margin:0 0 var(--sp-3)}
+#inv-chart{width:100%;min-height:360px}
+.inv-prof .m{display:grid;grid-template-columns:1fr auto;gap:2px var(--sp-3);padding:var(--sp-2) 0;border-top:1px solid var(--border)}
+.inv-prof dt{font-weight:600}.inv-prof dd{margin:0;text-align:right;color:var(--bright);font-weight:600;font-variant-numeric:tabular-nums}
+.inv-prof .m small{grid-column:1/-1;color:var(--muted);font-size:var(--fs-xs)}
+.inv-tags{margin-top:var(--sp-3);padding:var(--sp-3);border-radius:var(--r-sm);background:var(--accent-soft);font-size:var(--fs-sm)}
+.inv-chip{display:inline-block;padding:2px 8px;margin:2px 4px 0 0;border-radius:var(--r-pill);background:var(--card);
+  color:var(--accent);font-size:var(--fs-xs);font-weight:600}
+#inv-holdings{width:100%;border-collapse:collapse;font-size:var(--fs-sm)}
+#inv-holdings th{text-align:left;color:var(--muted);font-weight:600;font-size:var(--fs-xs);padding:6px 8px;border-bottom:1px solid var(--border)}
+#inv-holdings td{padding:4px 8px;border-bottom:1px solid var(--border)}
+#inv-holdings .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+#inv-holdings .tk{display:flex;align-items:center;white-space:nowrap}
+#inv-holdings .tk b{color:var(--bright);font-size:var(--fs-md)}
+#inv-holdings .nm{color:var(--muted)}
+.inv-bar{display:inline-block;width:60px;height:6px;margin-right:8px;vertical-align:middle;border-radius:3px;
+  background:var(--grid);overflow:hidden}.inv-bar i{display:block;height:100%;border-radius:3px;background:var(--data-1)}
+#inv-holdings tr.more{display:none}#inv-holdings.all tr.more{display:table-row}
+#inv-more{width:100%;min-height:var(--touch);margin-top:var(--sp-3);border:1px solid var(--input-border);
+  border-radius:var(--r-sm);background:var(--input-bg);color:var(--fg);font:600 var(--fs-sm) var(--font-sans);cursor:pointer}
+@media (max-width: 900px){
+  .inv-grid{grid-template-columns:1fr;grid-template-areas:"chart" "prof" "hold"}
+  .inv-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  #inv-holdings thead{display:none}
+  #inv-holdings,#inv-holdings tbody,#inv-holdings tr,#inv-holdings td{display:block}
+  #inv-holdings tr{border:1px solid var(--border);border-radius:var(--r-md);padding:var(--sp-2) var(--sp-3);margin-bottom:var(--sp-2)}
+  #inv-holdings.all tr.more{display:block}
+  #inv-holdings td{border:0;padding:2px 0}
+  #inv-holdings td.num{display:flex;justify-content:space-between;text-align:left}
+  #inv-holdings td.num::before{content:attr(data-l);color:var(--muted)}
+}
+</style>"""
+
+
+def investors_html(types_html: str) -> str:
+    """The Investors tab's body (#928): Filer / Group switch, the filer picker and window, and the hosts the script
+    fills; Group is the investor-type section (#760)."""
+    return ('<div id="pane-investors" hidden>'
+            '<div class="inv-pick"><div class="inv-seg" role="group" aria-label="Show">'
+            '<button type="button" data-mode="filer" aria-pressed="true">Filer</button>'
+            '<button type="button" data-mode="group" aria-pressed="false">Group</button></div>'
+            '<div class="inv-find" id="inv-find"><input type="search" id="inv-q" placeholder="Find a 13F filer by name '
+            'or CIK" autocomplete="off" spellcheck="false" aria-label="13F filer" aria-controls="inv-hits">'
+            '<ul id="inv-hits" hidden></ul></div>'
+            '<select id="inv-window" aria-label="Window"><option value="12">3 years</option>'
+            '<option value="20" selected>5 years</option><option value="all">All quarters</option></select></div>'
+            '<div id="inv-filer"><div id="inv-status" class="inv-cap" aria-live="polite"></div>'
+            '<div class="inv-kpis" id="inv-kpis"></div>'
+            '<div class="inv-grid">'
+            '<section class="inv-card" style="grid-area:chart"><h2>Top holdings over time</h2>'
+            '<p class="inv-cap" id="inv-note"></p><div id="inv-chart"></div></section>'
+            '<section class="inv-card inv-prof" style="grid-area:prof"><h2>Style profile</h2>'
+            '<p class="inv-cap">Measured from our own 13F history, not a label we import.</p><div id="inv-style"></div></section>'
+            '<section class="inv-card" style="grid-area:hold"><h2 id="inv-hold-title">Holdings</h2>'
+            '<p class="inv-cap">Its largest named holdings in the newest settled quarter; shares against the '
+            'quarter before (— where the name was not among that quarter\'s stored largest).</p>'
+            '<table id="inv-holdings"><thead><tr><th>Ticker</th><th>Name</th><th class="num">Weight</th>'
+            '<th class="num">Value</th><th class="num">Shares vs prior</th></tr></thead><tbody></tbody></table>'
+            '<button type="button" id="inv-more" hidden></button></section>'
+            '</div></div>'
+            f'<div id="inv-group" hidden>{types_html}</div></div>')
+
+
+INVESTORS_JS = r"""<script>
+(function(){
+  var KEY = 'rc.sec13f.filer', SEQ = 0, CIK = null, LOADED = false;
+  function $(id){ return document.getElementById(id); }
+  function money(v){ if(v === null || v === undefined){ return '—'; } var a = Math.abs(v);
+    return a >= 1e12 ? '$' + (v / 1e12).toFixed(2) + 'T' : a >= 1e9 ? '$' + (v / 1e9).toFixed(1) + 'B' : '$' + (v / 1e6).toFixed(0) + 'M'; }
+  function pct(v, d){ return (v === null || v === undefined) ? '—' : v.toFixed(d === undefined ? 1 : d) + '%'; }
+  function q(iso){ if(!iso){ return ''; } var m = +iso.slice(5, 7); return iso.slice(0, 4) + ' Q' + Math.ceil(m / 3); }
+  function node(tag, cls, text){ var x = document.createElement(tag); if(cls){ x.className = cls; } if(text !== undefined){ x.textContent = text; } return x; }
+  function tab(name){
+    document.querySelectorAll('.tabs button').forEach(function(b){ b.setAttribute('aria-selected', String(b.dataset.tab === name)); });
+    $('pane-tickers').hidden = name !== 'tickers'; $('pane-investors').hidden = name !== 'investors';
+    if(name === 'investors' && !LOADED){ LOADED = true; var c = DEFAULT_FILER; try { c = localStorage.getItem(KEY) || c; } catch(e) {} load(c); }
+  }
+  function mode(m){
+    document.querySelectorAll('.inv-seg button').forEach(function(b){ b.setAttribute('aria-pressed', String(b.dataset.mode === m)); });
+    $('inv-filer').hidden = m !== 'filer'; $('inv-find').hidden = m !== 'filer'; $('inv-window').hidden = m !== 'filer';
+    $('inv-group').hidden = m !== 'group';
+    var t = $('types'); if(m === 'group' && t && !t.open){ t.open = true; }
+  }
+  function kpi(label, value){ var d = node('div', 'inv-kpi'); d.appendChild(node('span', '', label)); d.appendChild(node('b', '', value)); return d; }
+  function metric(dt, dd, small){ var m = node('div', 'm'); m.appendChild(node('dt', '', dt)); m.appendChild(node('dd', '', dd)); m.appendChild(node('small', '', small)); return m; }
+  function render(d){
+    var s = d.style || {}, kp = $('inv-kpis'); kp.innerHTML = '';
+    $('inv-q').value = d.name;
+    kp.appendChild(kpi('13F book' + (s.period ? ', ' + q(s.period) : ''), money(s.value)));
+    kp.appendChild(kpi('Names held', s.names == null ? '—' : String(s.names)));
+    kp.appendChild(kpi('Top-10 weight', s.top10_share == null ? '—' : pct(s.top10_share * 100)));
+    kp.appendChild(kpi('Turnover', s.turnover == null ? '—' : pct(s.turnover * 100) + ' / q'));
+    $('inv-note').textContent = d.note || '';
+    var host = $('inv-chart');
+    if(window.Plotly){ Plotly.purge(host); }
+    host.innerHTML = '';
+    if(d.fig){ withPlotly(function(){ Plotly.newPlot(host, themedFig(d.fig).data, d.fig.layout, {displayModeBar: false, responsive: true}); }); }
+    var st = $('inv-style'); st.innerHTML = '';
+    if(d.style){
+      var dl = node('dl');
+      dl.appendChild(metric('Turnover', pct(s.turnover * 100) + ' / q', 'Half the summed change of the names\' weights, median over the last ' + s.quarters + ' quarters'));
+      dl.appendChild(metric('Holding period', pct(s.held_share * 100), 'of the book in names held in every one of those ' + s.quarters + ' quarters'));
+      dl.appendChild(metric('Concentration', pct(s.top10_share * 100), 'the ten largest names\' share of the book'));
+      dl.appendChild(metric('Breadth', s.names + ' names', 'in ' + q(s.period)));
+      st.appendChild(dl);
+    } else { st.appendChild(node('p', 'inv-cap', 'No style row: the filer is not in the newest settled quarter, or holds too few names.')); }
+    var tg = node('div', 'inv-tags');
+    tg.appendChild(document.createTextNode('Unusual Whales tags: '));
+    if(d.tags && d.tags.length){ d.tags.forEach(function(t){ tg.appendChild(node('span', 'inv-chip', t)); }); }
+    else { tg.appendChild(document.createTextNode('none')); }
+    st.appendChild(tg);
+    $('inv-hold-title').textContent = 'Holdings' + (d.period ? ', ' + q(d.period) : '');
+    var tb = $('inv-holdings').querySelector('tbody'); tb.innerHTML = ''; $('inv-holdings').classList.remove('all');
+    var top = (d.holdings[0] && d.holdings[0].weight) || 1;
+    d.holdings.forEach(function(h, i){
+      var tr = node('tr', i >= 10 ? 'more' : '');
+      var tk = node('td', 'tk'); tk.insertAdjacentHTML('beforeend', rcWatchButtons(h.ticker)); tk.appendChild(node('b', '', h.ticker)); tr.appendChild(tk);
+      tr.appendChild(node('td', 'nm', (FIELDS[h.ticker] && FIELDS[h.ticker].name) || ''));
+      var w = node('td', 'num'); w.setAttribute('data-l', 'Weight');
+      var bar = node('span', 'inv-bar'), fill = node('i'); fill.style.width = Math.round(100 * (h.weight || 0) / top) + '%'; bar.appendChild(fill);
+      w.appendChild(bar); w.appendChild(document.createTextNode(pct(h.weight))); tr.appendChild(w);
+      var v = node('td', 'num', money(h.value)); v.setAttribute('data-l', 'Value'); tr.appendChild(v);
+      var c = h.change, ch = node('td', 'num ' + (c > 0 ? 'pos' : c < 0 ? 'neg' : 'zero'),
+        c === null || c === undefined ? '—' : (Math.abs(c) < 0.05 ? 'unchanged' : (c > 0 ? '+' : '') + c.toFixed(1) + '%'));
+      ch.setAttribute('data-l', 'Shares vs prior'); tr.appendChild(ch);
+      tb.appendChild(tr);
+    });
+    if(typeof rcWatchSync === 'function'){ rcWatchSync(tb); }
+    var more = $('inv-more'); more.hidden = d.holdings.length <= 10;
+    more.textContent = 'Show all ' + d.holdings.length;
+  }
+  function load(cik){
+    var seq = ++SEQ; CIK = cik;
+    try { localStorage.setItem(KEY, cik); } catch(e) {}
+    $('inv-status').textContent = 'Loading…';
+    fetch('/api/sec_13f/filers/' + encodeURIComponent(cik) + '?quarters=' + encodeURIComponent($('inv-window').value))
+      .then(function(r){ return r.json(); })
+      .then(function(d){ if(seq !== SEQ){ return; } $('inv-status').textContent = d.ok ? '' : 'No 13F holdings stored for this filer.'; if(d.ok){ render(d); } })
+      .catch(function(){ if(seq === SEQ){ $('inv-status').textContent = 'The filer could not be loaded.'; } });
+  }
+  function find(text){
+    var hits = $('inv-hits');
+    if(text.trim().length < 2){ hits.hidden = true; return; }
+    fetch('/api/sec_13f/filers?q=' + encodeURIComponent(text.trim())).then(function(r){ return r.json(); }).then(function(d){
+      hits.innerHTML = '';
+      (d.filers || []).forEach(function(f){
+        var li = node('li'), b = node('button'); b.type = 'button';
+        b.appendChild(node('span', '', f.name || ('CIK ' + f.cik))); b.appendChild(node('small', '', money(f.value)));
+        b.addEventListener('click', function(){ hits.hidden = true; load(f.cik); });
+        li.appendChild(b); hits.appendChild(li);
+      });
+      if(!hits.children.length){ hits.appendChild(node('li', 'inv-cap', 'No filer found.')); }
+      hits.hidden = false;
+    }).catch(function(){ hits.hidden = true; });
+  }
+  document.addEventListener('DOMContentLoaded', function(){
+    document.querySelectorAll('.tabs button').forEach(function(b){ b.addEventListener('click', function(){ tab(b.dataset.tab); }); });
+    document.querySelectorAll('.inv-seg button').forEach(function(b){ b.addEventListener('click', function(){ mode(b.dataset.mode); }); });
+    var wait = null;
+    $('inv-q').addEventListener('input', function(e){ clearTimeout(wait); wait = setTimeout(function(){ find(e.target.value); }, 250); });
+    $('inv-window').addEventListener('change', function(){ if(CIK){ load(CIK); } });
+    $('inv-more').addEventListener('click', function(){
+      var t = $('inv-holdings'); t.classList.toggle('all');
+      this.textContent = t.classList.contains('all') ? 'Show top 10' : 'Show all ' + t.querySelectorAll('tbody tr').length;
+    });
+    document.addEventListener('click', function(e){ if(!e.target.closest('#inv-find')){ $('inv-hits').hidden = true; } });
+    if(location.hash === '#investors'){ tab('investors'); }
+  });
+})();
+</script>"""
+
+
 DEFAULT_TYPE = "value_investor"     # the owner's example (12 Nov 2026: UW's "Value / Energy Investors" chart)
 
 
@@ -1409,16 +1680,17 @@ def _render_page(quarters: list, entries: list, fields: list, kit_notice: str | 
 <title>RevenueChaser — SEC 13F Ownership</title>
 <script>{THEME_JS}</script><style>{THEME_CSS}</style>
 <script>var PLOTLY_URL = {script_json(PLOTLY_CDN_URL)};</script>
-{CSS}{FILTERS_CSS}</head><body>
+{CSS}{FILTERS_CSS}{INVESTORS_CSS}</head><body>
 <div class="header"><h1>SEC 13F — Total Institutional Ownership</h1>
 <div class="meta">{len(entries)} tickers · all 13F filers (incl. BlackRock/Vanguard/State Street) · quarterly · click a row for the chart</div>
 {status_html}</div>
 {provider_health_html(provider_health)}{notice_html(notice)}{notice_html(kit_notice)}{notice_html(INSIDER_OFF)}
 {help_block}
 
+<div class="tabs" role="tablist"><button type="button" role="tab" data-tab="tickers" aria-selected="true">Tickers</button><button type="button" role="tab" data-tab="investors" aria-selected="false">Investors</button></div>
+<div id="pane-tickers">
 {filters_bar_html("rc-filters")}
 <div class="kit-count" id="kit-count" aria-live="polite"></div>
-{types_html}
 <div class="board-search"><input type="search" id="board-q" placeholder="Search ticker or name" autocomplete="off" spellcheck="false"></div>
 <table><thead>{header}</thead><tbody id="rows">{rows_html}</tbody></table>
 <div class="more-bar"><button type="button" id="more" hidden></button><button type="button" id="empties" class="link" hidden></button></div>
@@ -1447,6 +1719,8 @@ stopped filing is left out. The <b class="warn-mark">⚠</b> beside a ticker say
 A quarter is <b>closed</b> once the SEC publishes the data set that covers its filing deadline; a closed quarter
 does not change.
 </div>
+</div>
+{investors_html(types_html)}
 <div id="breaks" role="dialog" aria-modal="true" aria-labelledby="breaks-title"><div id="breaks-card">
 <div id="breaks-head"><span id="breaks-title"></span><button type="button" id="breaks-close" aria-label="Close">×</button></div>
 <div id="breaks-note">These filers are left out of the flow. Newest first; shares on today's basis.</div>
@@ -1457,7 +1731,7 @@ does not change.
 <div id="chart"></div>
 </div></div>
 <footer>RevenueChaser — SEC 13F · SEC EDGAR bulk data · {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</footer>
-{payload_js}{meta_js}<script>{FILTERS_JS}</script>{watchlist_html("sec_13f")}{js}</body></html>"""
+{payload_js}{meta_js}<script>{FILTERS_JS}</script>{watchlist_html("sec_13f")}{js}<script>var DEFAULT_FILER = {script_json(DEFAULT_FILER)};</script>{INVESTORS_JS}</body></html>"""
 
 
 def _pct(cur, prev):

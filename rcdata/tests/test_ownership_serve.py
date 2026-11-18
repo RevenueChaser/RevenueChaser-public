@@ -759,6 +759,8 @@ def test_each_investor_types_sector_split_and_dollar_flow_per_quarter(monkeypatc
     assert [r["sector"] for r in read.type_sector_13f(["Value_Investor"], periods=[Q3])] == ["Technology"]
     assert [(r["tag"], r["net"]) for r in read.type_flow_13f()] == [("all", 70_000.0), ("value_investor", 0.0)]
     assert read.type_flow_13f(["activist"]) == [] and read.type_sector_13f(periods=[]) == []
+    # #779: the UW tags shown beside a filer's own style, matched on the CIK without its leading zeros.
+    assert read.institution_tags("4000001") == ["value_investor"] and read.institution_tags("4000002") == []
 
 
 def test_a_quarter_still_arriving_lists_no_breaks(monkeypatch, http_mock):
@@ -1005,6 +1007,11 @@ def test_each_filers_style_over_the_settled_quarters(monkeypatch, http_mock):
     period, quarters, names, turnover, top10, held = rows["2000002"]
     assert (period, quarters, names, top10) == (Q3, 2, 6, 1.0)
     assert 0 < turnover < 1 and 0 < held < 1
+    # #928's picker: a piece of the name or the CIK finds the filer, largest book first; nothing asked, nothing read.
+    assert [r["cik"] for r in read.filer_style_13f(ciks=["0002000002"])] == ["2000002"]
+    assert {r["cik"] for r in read.filer_style_13f("manager 200000")} == {"2000001", "2000002"}
+    assert [r["cik"] for r in read.filer_style_13f("2000001")] == ["2000001"]
+    assert read.filer_style_13f() == [] and read.filer_style_13f("   ") == [] and read.filer_style_13f(ciks=[]) == []
 
 
 def test_each_filers_largest_names_per_quarter_and_the_rest_add_up_to_100(store):
@@ -1017,6 +1024,9 @@ def test_each_filers_largest_names_per_quarter_and_the_rest_add_up_to_100(store)
                    "AND ticker IS NULL AND rank IS NULL", Q3) == [(1,)]
     assert _served("SELECT cik, period, round(sum(weight), 6) FROM sec13f_filer_holdings GROUP BY ALL "
                    "HAVING round(sum(weight), 6) <> 100") == []
+    mine = read.filer_holdings_13f("0001000001")                 # the reader takes the CIK with or without zeros
+    assert [r["ticker"] for r in mine if r["period"] == Q3][:1] == ["MSFT"]
+    assert [r["period"] for r in mine] == sorted(r["period"] for r in mine) and read.filer_holdings_13f("") == []
 
 
 def test_a_filer_family_is_one_holder_for_the_top_10_and_hhi_but_not_for_the_holder_count(monkeypatch, http_mock):

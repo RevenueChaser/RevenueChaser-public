@@ -138,6 +138,40 @@ def sec13f_type_filers() -> dict[str, int]:
     return {tag: filers for tag, (_, filers) in newest.items()}
 
 
+def _iso_row(r: dict) -> dict:
+    return {k: (v.isoformat() if hasattr(v, "isoformat") else v) for k, v in r.items()}
+
+
+def sec13f_filer_search(query: str, limit: int = 20) -> list[dict]:
+    """The filers whose name holds ``query`` (or whose CIK it is), largest book first, for the board's filer picker
+    (#928): their ``sec13f_filer_style`` rows, periods as ISO dates. ``[]`` and a warning when the store cannot be
+    read."""
+    from RevenueChaser.rcdata import read as rcread
+
+    try:
+        return [_iso_row(r) for r in rcread.filer_style_13f(query, limit=limit)]
+    except Exception as exc:                      # noqa: BLE001 - no matches, never a failed board
+        logger.warning("13F filer search unreadable: %s", exc)
+        return []
+
+
+def sec13f_filer(cik: str) -> dict:
+    """One 13F filer for the board's Investors view (#928, #779): ``holdings`` (its ``sec13f_filer_holdings`` rows),
+    ``style`` (its ``sec13f_filer_style`` row, None without one) and ``tags`` (Unusual Whales' tags), periods as ISO
+    dates. A part the store cannot give is empty, with a warning, never a failed board."""
+    from RevenueChaser.rcdata import read as rcread
+
+    out: dict = {"holdings": [], "style": None, "tags": []}
+    try:
+        out["holdings"] = [_iso_row(r) for r in rcread.filer_holdings_13f(cik)]
+        style = rcread.filer_style_13f(ciks=[cik], limit=1)
+        out["style"] = _iso_row(style[0]) if style else None
+        out["tags"] = rcread.institution_tags(cik)
+    except Exception as exc:                      # noqa: BLE001 - an empty view, never a failed board
+        logger.warning("13F filer %s unreadable: %s", cik, exc)
+    return out
+
+
 def sec13f_open_periods() -> set[str]:
     """The 13F report periods still arriving (their filing deadline not passed, nor their data set published), as
     ISO dates; ``set()`` when the store cannot be read."""
