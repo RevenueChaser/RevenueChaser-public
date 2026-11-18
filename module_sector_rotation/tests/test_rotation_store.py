@@ -236,11 +236,9 @@ class TestUniverseShape:
 
     def test_country_etfs_present(self):
         from RevenueChaser.core.rotation_reference import SEED_ROTATION_ETFS as ROTATION_ETFS
-        from RevenueChaser.module_sector_rotation.universe import COUNTRY_FLAGS
         for t in ("EWZ", "EWY", "FXI", "INDA", "EWT", "MCHI", "VNM", "IDX", "EPU"):
             assert t in ROTATION_ETFS, f"{t} should be in the RRG universe"
             assert ROTATION_ETFS[t]["group"] == "region", f"{t} should be region"
-            assert t in COUNTRY_FLAGS, f"{t} should have a flag"
 
     def test_benchmark_removed(self):
         from RevenueChaser.core.rotation_reference import SEED_ROTATION_ETFS as ROTATION_ETFS

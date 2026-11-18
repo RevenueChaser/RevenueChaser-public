@@ -12,16 +12,6 @@ it lives in ``core/rotation_reference.py`` (since #12) and is re-exported here (
 """
 from RevenueChaser.core.rotation_reference import MACRO_SERIES  # noqa: F401
 
-# Country flag emoji per single-country ETF (rendered on the RRG map + table).
-COUNTRY_FLAGS = {
-    "EWZ": "🇧🇷", "EWY": "🇰🇷", "FXI": "🇨🇳", "INDA": "🇮🇳", "EWT": "🇹🇼",
-    "EWC": "🇨🇦", "EWA": "🇦🇺", "EWJ": "🇯🇵", "EWU": "🇬🇧", "MCHI": "🇨🇳",
-    "EWG": "🇩🇪", "EWW": "🇲🇽", "VNM": "🇻🇳", "EWS": "🇸🇬", "EIDO": "🇮🇩",
-    "ECH": "🇨🇱", "EWP": "🇪🇸", "KSA": "🇸🇦", "EWM": "🇲🇾", "EPOL": "🇵🇱",
-    "THD": "🇹🇭", "EEMV": "🌐", "EZA": "🇿🇦", "TUR": "🇹🇷", "ARGT": "🇦🇷",
-    "EPHE": "🇵🇭", "IDX": "🇮🇩", "EPU": "🇵🇪",
-}
-
 GROUP_COLORS = {
     "sector": "#58a6ff",
     "theme": "#d2991d",
