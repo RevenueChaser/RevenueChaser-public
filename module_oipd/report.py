@@ -98,10 +98,10 @@ var RCF=null;
 function baseLayout(extra){
   var l={paper_bgcolor:'rgba(0,0,0,0)',plot_bgcolor:'rgba(0,0,0,0)',
     font:{color:cv('fg'),size:12},
-    margin:{l:56,r:56,t:44,b:44},
+    margin:{l:56,r:56,t:44,b:88},
     xaxis:{gridcolor:cv('grid'),zerolinecolor:cv('grid')},
     yaxis:{gridcolor:cv('grid'),zerolinecolor:cv('grid')},
-    legend:{orientation:'h',y:1.12,x:0},
+    legend:{orientation:'h',x:0,y:-0.3,yanchor:'top'},   // below the axis title, never on the chart title
     hovermode:'x unified'};
   for(var k in extra){ l[k]=extra[k]; }
   return l;
@@ -122,7 +122,7 @@ function fanChart(){
       line:{color:cv('amber'),width:1.5,dash:'dot'},name:'spot',
       hovertemplate:'spot '+PAYLOAD.spot+'<extra></extra>'});
   }
-  Plotly.newPlot('fan',tr,baseLayout({height:340,title:'Market-implied price fan',
+  Plotly.newPlot('fan',tr,baseLayout({height:380,title:'Market-implied price fan',
     xaxis:{title:'Days to expiry',gridcolor:cv('grid')},yaxis:{title:'Price at expiry',gridcolor:cv('grid')}}),PLOTCFG);
 }
 function distChart(e){
@@ -134,7 +134,7 @@ function distChart(e){
      line:{color:cv('amber'),width:2},name:'CDF',yaxis:'y2',
      hovertemplate:'%{x:.2f} · P(S<X) %{y:.3f}<extra></extra>'}
   ];
-  var l=baseLayout({height:340,title:'Risk-neutral distribution',
+  var l=baseLayout({height:380,title:'Risk-neutral distribution',
     xaxis:{title:'Price at expiry',gridcolor:cv('grid')},
     yaxis:{title:'Density',gridcolor:cv('grid')},
     yaxis2:{title:'Cumulative',overlaying:'y',side:'right',range:[0,1],
