@@ -272,3 +272,15 @@ def test_the_page_offers_a_names_view_a_ticker_search_and_a_my_lists_filter(stor
     assert "view: 'contracts'" in board._JS, "the contract list is the default"
     for word in ("score", "rank", "Accumulat"):
         assert word not in board._JS[board._JS.index("function lpNames"):board._JS.index("function lpNameCard")]
+
+
+def test_the_spine_says_what_is_a_fund_and_a_leveraged_one_is_marked_for_the_switch(stored, monkeypatch):
+    from RevenueChaser.rcdata import read
+    plain = board.payload()["rows"]
+    assert all("lev" not in r for r in plain), "no spine row: UW's group stands and nothing is marked"
+    some = next(r["t"] for r in plain if r["prod"] == "stocks")
+    monkeypatch.setattr(read, "etf_class", lambda etfs: [{"ticker": some, "hidden_by_default": True}])
+    rows = [r for r in board.payload()["rows"] if r["t"] == some]
+    assert rows and all(r["prod"] == "etfs" and r["lev"] is True for r in rows)
+    page = board.render_html(board.payload())
+    assert 'id="lp-lev"' in page and "Leveraged funds hidden" in page and "!r.lev" in page

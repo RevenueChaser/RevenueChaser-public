@@ -107,6 +107,13 @@ def payload(session_date=None) -> dict | None:
     measured = sum(1 for s in sessions if s["matched"])
     rows = sorted((row_of(r) for r in read.far_contracts(chosen)),
                   key=lambda x: (-(x["prem"] or 0), x["t"], x["sym"]))
+    # The spine's word on a fund (``etf_class``, #1031): a ticker it classifies is an ETF whatever UW's field says
+    # (BRZU and BSOL came as stocks, 17 Nov 2026), and a leveraged, option-income or synthetic one is marked so the
+    # page hides it until its filter is switched on (avo's B). No spine row: UW's group stands.
+    funds = {c["ticker"]: bool(c.get("hidden_by_default")) for c in read.etf_class({r["t"] for r in rows})}
+    for r in rows:
+        if r["t"] in funds and r["prod"] != "index":
+            r["prod"], r["lev"] = "etfs", funds[r["t"]]
     return {
         # A session counts once its open interest is read: a sweep alone (pending) or a read that all went stale
         # holds no opened share.
@@ -254,7 +261,7 @@ body{margin:0;background:var(--bg);color:var(--fg);font:var(--fs-base)/1.4 var(-
 """
 
 _JS = r"""
-var LP = {view: 'contracts', product: 'stocks', side: 'all', sort: 'premium', q: '', list: '', shown: PAGE_ROWS};
+var LP = {view: 'contracts', product: 'stocks', side: 'all', sort: 'premium', q: '', list: '', lev: false, shown: PAGE_ROWS};
 function lpMoney(v){ if(v == null) return '–'; var a = Math.abs(v);
   if(a >= 1e9) return '$' + (v / 1e9).toFixed(1) + 'B'; if(a >= 1e6) return '$' + (v / 1e6).toFixed(1) + 'M';
   if(a >= 1e3) return '$' + Math.round(v / 1e3) + 'k'; return '$' + Math.round(v); }
@@ -304,8 +311,10 @@ function lpOnList(t){
   if(!LP.list) return true;
   return RC_WATCH.lists.some(function(l){ return (LP.list === '*' || l.id === LP.list) && l.has[t]; });
 }
-// Side, search and "My lists" (D2 A): display filters only, the store keeps every name.
-function lpSided(r){ return (LP.side === 'all' || r.side === LP.side) && (!LP.q || r.t.indexOf(LP.q) === 0) && lpOnList(r.t); }
+// Side, search, "My lists" (D2 A) and the leveraged funds (hidden until switched on): display filters only, the
+// store keeps every name. A search for a ticker shows it whatever the switch says.
+function lpSided(r){ return (LP.side === 'all' || r.side === LP.side) && (!LP.q || r.t.indexOf(LP.q) === 0) && lpOnList(r.t)
+  && (LP.lev || LP.q || !r.lev); }
 function lpSorted(rows){
   var key = LP_SORTS[LP.view === 'names' && LP.sort === 'share' ? 'premium' : LP.sort] || LP_SORTS.premium;
   return rows.map(function(r, i){ return [key(r), i, r]; }).sort(function(a, b){
@@ -397,6 +406,7 @@ document.querySelectorAll('.lp-view button').forEach(function(b){
 document.getElementById('lp-q').addEventListener('input', function(ev){
   LP.q = ev.target.value.trim().toUpperCase(); LP.shown = PAGE_ROWS; lpDraw(); });
 document.getElementById('lp-list').addEventListener('change', function(ev){ LP.list = ev.target.value; LP.shown = PAGE_ROWS; lpDraw(); });
+document.getElementById('lp-lev').addEventListener('change', function(ev){ LP.lev = !!ev.target.value; LP.shown = PAGE_ROWS; lpDraw(); });
 document.getElementById('lp-rows').addEventListener('click', function(ev){
   var b = ev.target.closest('.lp-open');
   if(!b) return;
@@ -474,7 +484,9 @@ def render_html(data: dict) -> str:
 {share_sort}<option value="volume">Sort: volume</option>
 <option value="change">Sort: open interest rise</option></select>
 <select id="lp-list" aria-label="My lists"><option value="">All names</option>
-<option value="*">On any of my lists</option></select></div>
+<option value="*">On any of my lists</option></select>
+<select id="lp-lev" aria-label="Leveraged funds"><option value="">Leveraged funds hidden</option>
+<option value="1">Leveraged funds shown</option></select></div>
 <input type="search" id="lp-q" placeholder="Ticker" aria-label="Search a ticker" autocomplete="off" spellcheck="false"
  autocapitalize="characters">
 <div class="lp-counts" id="lp-counts">{counts}</div>
