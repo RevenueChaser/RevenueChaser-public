@@ -81,7 +81,7 @@ HGIC = [("gvkey", "TEXT"), ("indfrom", "DATE"), ("indthru", "DATE"), ("gsector",
 IDX = [("gvkey", "TEXT"), ("iid", "TEXT"), ("gvkeyx", "TEXT"), ("valid_from", "DATE"), ("thru", "DATE")]
 # Compustat Global (plan v5 step 3 of the spine classification, #1031): a foreign company's current GICS and
 # country, its listings' ISINs, and the names of the GICS codes. Column names read from WRDS on 18 Nov 2026
-# (``information_schema.columns``): 135,583 ``g_security`` rows, 97,168 with an ISIN; 354 ``r_giccd`` rows.
+# (``information_schema.columns``): 135,583 ``g_security`` rows, 97,168 with an ISIN; 337 ``r_giccd`` rows (273 active, 64 inactive; first fetch, 18 Nov 2026).
 G_COMPANY = [("gvkey", "TEXT"), ("conm", "TEXT"), ("loc", "TEXT"), ("gsector", "TEXT"), ("ggroup", "TEXT"),
              ("gind", "TEXT"), ("gsubind", "TEXT")]
 G_SECURITY = [("gvkey", "TEXT"), ("iid", "TEXT"), ("isin", "TEXT"), ("excntry", "TEXT"), ("secstat", "TEXT"),
