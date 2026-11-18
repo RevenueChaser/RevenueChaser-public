@@ -262,6 +262,10 @@ def _render(payload: dict, inline: bool) -> tuple[str, dict | None]:
             "top_n": len(candidates),
         }
     summary_html = _summary_html(summary, payload.get("data_quality"))
+    # avo O1 (18 Nov 2026): the funnel on the page, "failed" and "could not be judged" as separate steps.
+    from RevenueChaser.core import funnel as funnel_mod
+    funnel_html = funnel_mod.funnel_panel_html(funnel_mod.from_dict(payload.get("funnel_steps")),
+                                               panel_id="fundamentals-funnel")
     universe_prov = universe_provenance_html(
         payload.get("universe_generated_at"), payload.get("universe_refreshed_by"),
         partial=bool(payload.get("universe_partial")))
@@ -563,6 +567,7 @@ function start(){
   
 
   {summary_html}
+  {funnel_html}
 
   <div class="banner">
     <div class="stat"><div class="v">{payload.get("universe_total") or 0}</div><div class="l">Scanned Universe</div><div class="d">US-listed · all caps</div></div>

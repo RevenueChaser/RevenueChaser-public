@@ -56,7 +56,7 @@ def test_a_fiscal_year_basis_labels_the_card_with_its_years(monkeypatch):
 def test_momentum_only_names_are_their_own_funnel_step():
     stats: dict = {}
     build_payload([_row("M", _m(**_MOM)), _row("T", _m(**_RO40, **_MOM))], top_n=10, run_stats=stats)
-    assert [(k, names) for k, _label, names in stats["screen_drops"]] == [("momentum_only", ["M"])]
+    assert {k: names for k, _label, names in stats["screen_drops"]}["momentum_only"] == ["M"]
     assert stats["passed_screens"] == 1      # the funnel takes the step out of "passed none of the three"
 
 
@@ -93,3 +93,23 @@ def test_the_summary_says_prices_are_behind_and_names_spys_session():
     assert p["summary"]["spy_behind"] == "2026-11-16"
     html = render_fundamental_dashboard(p)
     assert "Prices behind" in html and "2026-11-16" in html
+
+
+def test_a_name_whose_rules_could_not_be_judged_is_its_own_funnel_step():
+    """avo O1 (18 Nov 2026): "failed" and "could not be judged" are separate steps."""
+    stats: dict = {}
+    unknown = _row("U", _m(roic=0.2, gross_margin=0.5))                         # Ro40 and leverage unknown
+    failed = _row("F", _m(rev_growth_ttm=0.05, fcf_margin=0.05, ro40=10.0, ttm_revenue=5e8, roic=0.05,
+                          gross_margin=0.1, net_debt_ebitda=5.0))
+    build_payload([unknown, failed], top_n=10, run_stats=stats)
+    assert {k: names for k, _label, names in stats["screen_drops"]}["not_judged"] == ["U"]
+
+
+def test_the_page_shows_the_funnel(tmp_path):
+    p = build_payload([_row("T", _m(**_RO40, **_MOM))], top_n=10)
+    p["funnel_steps"] = [{"key": "universe", "label": "Universe", "count": 2, "kind": "start", "fix": None},
+                         {"key": "not_judged", "label": "Could not be judged", "count": 1, "kind": "drop",
+                          "by_design": True, "fix": None, "tickers": ["U"]},
+                         {"key": "candidates", "label": "Candidates", "count": 1, "kind": "result", "fix": None}]
+    html = render_fundamental_dashboard(p)
+    assert 'id="fundamentals-funnel"' in html and "Could not be judged" in html

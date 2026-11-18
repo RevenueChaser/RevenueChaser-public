@@ -754,6 +754,7 @@ def build_payload(results: list[dict], top_n: int | None = None, run_stats: dict
     passing = {"rule_of_40": 0, "quality": 0, "momentum": 0}
     distorted_count = 0
     momentum_only: list[str] = []
+    unjudged: list[str] = []
     ifrs_unjudged = 0
     candidates = []
     for r in results:
@@ -771,6 +772,10 @@ def build_payload(results: list[dict], top_n: int | None = None, run_stats: dict
                 not any(x["passed"] is False for x in gates["quality"]["rules"]):
             ifrs_unjudged += 1
         if not rules_passed:
+            # avo O1 (18 Nov 2026): a name whose Rule of 40 or Quality is unknown (no rule failed) was not judged,
+            # which is not the same as failing.
+            if any(not any(x["passed"] is False for x in gates[k]["rules"]) for k in FUNDAMENTAL_GATES):
+                unjudged.append(r["ticker"])
             continue
         # avo B1 (17 Nov 2026): a card needs the Rule of 40 or Quality; Momentum confirms, it never admits alone
         # (Swing owns pure trend; 678 of 1,245 cards on 16 Nov were momentum-only).
@@ -812,7 +817,9 @@ def build_payload(results: list[dict], top_n: int | None = None, run_stats: dict
     run_stats["passed_screens"] = len(candidates)       # before any top_n cut (the C16 funnel)
     # Re-review F9 (18 Nov 2026): momentum-only names are their own funnel step, not "passed none of the three".
     run_stats["screen_drops"] = [("momentum_only", "Passed Momentum only (a card needs the Rule of 40 or Quality)",
-                                  momentum_only)]
+                                  momentum_only),
+                                 ("not_judged", "Passed no screen; the Rule of 40 or Quality could not be judged "
+                                  "(an input missing or marked)", unjudged)]
     if top_n:
         candidates = candidates[:top_n]
     annotate_cards(candidates)
