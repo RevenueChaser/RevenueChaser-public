@@ -35,6 +35,7 @@ WITH_PAIR = {
     "module_comovement": "comovement",
     "module_value_chain": "value_chain",
     "module_relatedness": "relatedness",
+    "module_news": "news",                 # the ticker box (plan step 3): the asked name carries the bookmark
 }
 # board key -> why it has no pair (deliberately left in PR 4)
 WITHOUT_PAIR = {
@@ -44,7 +45,6 @@ WITHOUT_PAIR = {
     "runs": "not a data board",
     "module_sector_rotation_trail": "a chart of the same funds' trails; the board's own table carries their pair",
     "module_uw_interaction": "a lab: raw columns of whatever UW tool was run, not a board of names",
-    "module_news": "a calendar and headlines; the tickers on a headline are a tag, not a row of names (follow-up)",
     "module_welcome": "a summary page; its earnings card links to Earnings Radar, whose rows carry the pair",
     # avo, 12 Nov 2026: "bu liste icin bookmark simgesine gerek yok" — a row of a named list is already on a list,
     # so a button that puts it on the shared stock or option list says nothing. #786 step 5 adds the other
@@ -72,7 +72,12 @@ def test_the_board_mounts_the_pair_once_with_its_own_key(key, tmp_path, monkeypa
     check_page(page)
 
 
-@pytest.mark.parametrize("key", sorted(WITH_PAIR))
+# Boards whose button is drawn only in the browser (rcWatchButtons, which checks the same pattern): no server
+# button to check, so a case here would pass on any code.
+CLIENT_ONLY = {"module_news": "the ticker box draws the asked name's button after the ask"}
+
+
+@pytest.mark.parametrize("key", sorted(set(WITH_PAIR) - set(CLIENT_ONLY)))
 def test_a_hostile_ticker_gets_no_button(key, tmp_path, monkeypatch, rawstore_tmp_db):
     from RevenueChaser.core.reporting_common import WATCH_TICKER_PATTERN
     page = BOARDS[key].render(tmp_path, monkeypatch)

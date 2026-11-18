@@ -14,7 +14,9 @@ from pathlib import Path
 from RevenueChaser.core import econ_importance, rawstore
 from RevenueChaser.core.config import OUTPUT_DIR
 from RevenueChaser.core.html_safe import esc
-from RevenueChaser.core.reporting_common import THEME_CSS, THEME_JS, help_html, provider_health_html, write_artifact
+from RevenueChaser.core.html_safe import script_json
+from RevenueChaser.core.reporting_common import (FILTERS_CSS, FILTERS_JS, THEME_CSS, THEME_JS, combobox_html, help_html,
+                                                 provider_health_html, watchlist_html, write_artifact)
 from RevenueChaser.module_news.calendar import AMS, EVENTS, HIGHLIGHT, local_day, tr_value
 from RevenueChaser.module_news import headlines, x_check
 from RevenueChaser.module_news.x_feed import PROVIDER as X_PROVIDER
@@ -278,6 +280,30 @@ def api_rows(since: float, limit: int = 2 * HEADLINE_LIMIT) -> list[dict]:
              "lane": lane(r), "run_at": r["run_at"]} for r in rows]
 
 
+def _picker() -> list[dict]:
+    """The ticker box's names: My Universe (a watch list holds names picked inside it; avo, 18 Nov 2026), with the
+    spine's company name. A spine that cannot be read leaves the box open to any symbol instead of empty."""
+    from RevenueChaser.rcdata import read
+    try:
+        names = read.my_universe_tickers() or set()
+        by = {r["ticker"]: r.get("name") or "" for r in read.identity(names)} if names else {}
+    except Exception:  # noqa: BLE001 - a page must render; the box then takes any symbol
+        return []
+    return [{"ticker": t, "name": by.get(t, "")} for t in sorted(names)]
+
+
+def _ticker_box() -> str:
+    """One name's headlines on demand (plan step 3, mock approved by avo 18 Nov 2026 23:16): pick, ask IBKR, read back."""
+    return (f'<section class="card tbox" aria-labelledby="tq-l"><h2 class="lbl" id="tq-l">Bir hisse için haber</h2>'
+            f'<div class="tq">{combobox_html("tq", "tq-l", "Ticker ya da şirket adı, ör. NVDA")}'
+            f'<button type="button" class="go" id="tq-go" disabled onclick="tqAsk()">Haberleri getir</button></div>'
+            f'<div id="tq-out" hidden><div class="th"><span id="tq-watch"></span><span class="sym" id="tq-sym"></span>'
+            f'<span class="muted" id="tq-meta"></span></div>'
+            f'<div class="chips" id="tq-chips" role="group" aria-label="Kaynak"></div>'
+            f'<div class="state" id="tq-state" role="status" hidden></div>'
+            f'<ul class="list" id="tq-rows"></ul></div></section>')
+
+
 _CSS = """
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
@@ -371,6 +397,27 @@ h1{margin:2px 0 0;color:var(--bright);font-size:22px}
 .xp .lg i.tw{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--amber);margin-right:4px;
  vertical-align:-1px}
 .empty{color:var(--muted);margin:6px 0}
+.tbox{margin-bottom:16px}
+.tq{display:flex;gap:8px;align-items:stretch;flex-wrap:wrap}
+.tq .rcf-combo{flex:1 1 220px;min-width:0}
+.tq .rcf-combo input{min-height:44px;width:100%;background:var(--input-bg);color:var(--fg);border:1px solid var(--border);
+ border-radius:10px}
+.tq .go{min-height:44px;padding:0 18px;border-radius:10px;border:1px solid var(--amber);background:var(--input-bg);
+ color:var(--bright);font:inherit;font-weight:600;cursor:pointer}
+.tq .go:disabled{opacity:.5;cursor:default}
+.th{display:flex;align-items:center;flex-wrap:wrap;gap:4px 10px;margin:14px 0 4px}
+.th .sym{font-size:18px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 4px}
+.chip{min-height:44px;display:inline-flex;align-items:center;padding:0 12px;border-radius:999px;background:transparent;
+ border:1px solid var(--border);color:var(--muted);font:inherit;font-size:12.5px;cursor:pointer}
+.chip[aria-pressed="true"]{color:var(--bright);border-color:var(--amber)}
+.tday{margin:12px 0 0;font-size:12.5px;color:var(--muted);font-weight:600}
+.state{margin:10px 0;padding:12px 14px;border-radius:10px;border:1px dashed var(--border)}
+.state.err{border:1px solid var(--neg)}
+.spin{display:inline-block;width:12px;height:12px;border:2px solid var(--border);border-top-color:var(--amber);
+ border-radius:50%;margin-right:8px;vertical-align:-1px;animation:tqspin 1s linear infinite}
+@keyframes tqspin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation:none}}
 .foot{margin-top:16px;color:var(--muted);font-size:12px}
 [hidden]{display:none!important}
 @media (max-width:900px){.grid,.cols{grid-template-columns:minmax(0,1fr)}.feat{order:-1}}
@@ -448,6 +495,114 @@ function newsTab(btn){
 """
 
 
+_TQ_JS = r"""
+var TQ = {t: null, src: '', data: null};
+var TQ_MONTHS = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+function tqParts(sec){
+  var p = {}; new Intl.DateTimeFormat('en-GB', {timeZone: 'Europe/Amsterdam', year: 'numeric', month: '2-digit',
+    day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'}).formatToParts(new Date(sec * 1000))
+    .forEach(function(x){ p[x.type] = x.value; });
+  return {day: p.year + '-' + p.month + '-' + p.day, hm: p.hour + ':' + p.minute, d: +p.day, m: +p.month};
+}
+function tqDay(sec){
+  var a = tqParts(sec), now = Date.now() / 1000;
+  if(a.day === tqParts(now).day) return 'Bugün';
+  if(a.day === tqParts(now - 86400).day) return 'Dün';
+  return a.d + ' ' + TQ_MONTHS[a.m - 1];
+}
+function tqEl(tag, cls, text){ var e = document.createElement(tag); if(cls) e.className = cls;
+  if(text != null) e.textContent = text; return e; }
+function tqState(kind, text){
+  var s = document.getElementById('tq-state'); s.hidden = !kind; s.className = 'state' + (kind === 'err' ? ' err' : '');
+  s.textContent = '';
+  if(kind === 'wait'){ var sp = tqEl('span', 'spin'); sp.setAttribute('aria-hidden', 'true'); s.appendChild(sp); }
+  if(text) s.appendChild(document.createTextNode(text));
+  document.getElementById('tq-out').hidden = false;
+}
+function tqWhy(err){
+  if(/historical data farm is down/.test(err)) return "IBKR'ın geçmiş haber sunucusu şu an kapalı, başlık gelmedi.";
+  if(/does not know/.test(err)) return 'IBKR bu sembolü tanımıyor.';
+  if(/gateway|session|connect/i.test(err)) return "IBKR Gateway'e bağlanılamadı.";
+  return 'IBKR yanıtı: ' + err;
+}
+function tqPick(t){
+  TQ.t = t; TQ.src = ''; TQ.data = null;
+  document.getElementById('tq-go').disabled = !t;
+  if(t) tqLoad(null);
+}
+function tqLoad(after){
+  var t = TQ.t;
+  fetch('/api/news/ticker/' + encodeURIComponent(t), {cache: 'no-store'}).then(function(r){ return r.json(); })
+    .then(function(d){ if(d && d.ok && d.ticker === TQ.t){ TQ.data = d; tqDraw(after); } })
+    .catch(function(){ if(TQ.t === t) tqState('err', 'Saklı başlıklar okunamadı.'); });
+}
+function tqAsk(retry){
+  var t = TQ.t; if(!t) return;
+  document.getElementById('tq-go').disabled = true;
+  tqState('wait', "IBKR'dan " + t + ' soruluyor, birkaç saniye sürer.');
+  fetch('/run/news_ticker', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-RC-Panel': 'news'},
+    body: JSON.stringify({ticker: t})})
+    .then(function(r){ return r.json().then(function(d){ return {s: r.status, d: d || {}}; }); })
+    .then(function(x){
+      if(!x.d.job_id){ document.getElementById('tq-go').disabled = false;
+        tqState('err', x.d.error || 'İstek başlamadı.'); return; }
+      // 409: another name's ask is running; follow it, then ask for this one once.
+      tqWait(x.d.job_id, 0, function(){ if(x.s === 409 && !retry) tqAsk(true); else if(TQ.t === t) tqLoad('asked'); });
+    })
+    .catch(function(){ document.getElementById('tq-go').disabled = false; tqState('err', 'Panoya ulaşılamadı.'); });
+}
+function tqWait(id, n, then){
+  fetch('/api/job/' + encodeURIComponent(id), {cache: 'no-store'}).then(function(r){ return r.json(); })
+    .then(function(d){
+      var s = d && d.job && d.job.status;
+      if(s === 'done' || s === 'error' || s === 'cancelled' || n > 120){
+        document.getElementById('tq-go').disabled = !TQ.t; then(); return; }
+      setTimeout(function(){ tqWait(id, n + 1, then); }, 1000);
+    }).catch(function(){ setTimeout(function(){ tqWait(id, n + 1, then); }, 2000); });
+}
+function tqDraw(after){
+  var d = TQ.data, t = d.ticker, rows = d.rows || [], ask = d.ask;
+  document.getElementById('tq-out').hidden = false;
+  document.getElementById('tq-sym').textContent = t;
+  document.getElementById('tq-watch').innerHTML = rcWatchButtons(t);
+  var meta = 'son 7 gün · ' + rows.length + ' başlık · ' +
+    (ask ? tqParts(ask.at).hm + "'de soruldu" : 'henüz sorulmadı');
+  document.getElementById('tq-meta').textContent = meta;
+  var counts = {}; rows.forEach(function(r){ counts[r.source] = (counts[r.source] || 0) + 1; });
+  var chips = document.getElementById('tq-chips'); chips.textContent = '';
+  [['', 'Hepsi ' + rows.length]].concat(Object.keys(counts).sort().map(function(k){ return [k, k + ' ' + counts[k]]; }))
+    .forEach(function(c){
+      var b = tqEl('button', 'chip', c[1]); b.type = 'button';
+      b.setAttribute('aria-pressed', TQ.src === c[0] ? 'true' : 'false');
+      b.onclick = function(){ TQ.src = c[0]; tqDraw(null); }; chips.appendChild(b);
+    });
+  if(ask && ask.error) tqState('err', tqWhy(ask.error) + (rows.length ? ' Saklı son başlıklar aşağıda.' : ''));
+  else if(!rows.length) tqState('', ask ? t + ' için son 7 günde Dow Jones ya da Briefing başlığı yok.'
+                                        : "Henüz sorulmadı: 'Haberleri getir'e basın.");
+  else tqState(null);
+  if(!(ask && ask.error) && !rows.length) document.getElementById('tq-state').hidden = false;
+  var ul = document.getElementById('tq-rows'); ul.textContent = '';
+  var last = null;
+  rows.filter(function(r){ return !TQ.src || r.source === TQ.src; }).forEach(function(r){
+    var day = tqDay(r.published_at);
+    if(day !== last){ ul.appendChild(tqEl('li', 'tday', day)); last = day; }
+    var li = tqEl('li', 'hd'), m = tqEl('div', 'muted meta', tqParts(r.published_at).hm + ' · ' + (r.source || ''));
+    var others = []; try { others = JSON.parse(r.tickers || '[]'); } catch(e) {}
+    others.filter(function(x){ return x !== t; }).forEach(function(x){ m.appendChild(tqEl('span', 'tk', x)); });
+    var h = tqEl('div', 'htext');
+    if(/^https?:\/\//.test(r.url || '')){ var a = tqEl('a', null, r.headline); a.href = r.url; a.target = '_blank';
+      a.rel = 'noopener noreferrer'; h.appendChild(a); } else { h.textContent = r.headline; }
+    li.appendChild(m); li.appendChild(h); ul.appendChild(li);
+  });
+}
+(function(){
+  var input = document.getElementById('tq');
+  if(input && window.RCCombobox) RCCombobox.mount({input: input, list: '#tq-list', rows: TQ_PICK,
+    allowFree: !TQ_PICK.length, clear: true, onPick: function(r){ tqPick(r.ticker); }});
+})();
+"""
+
+
 HELP = help_html(
     "<p>ABD ekonomik takvimi (bugün ve bu hafta, saatler Amsterdam) ve izleme listesindeki ve en büyük ABD "
     "şirketlerinin Dow Jones başlıkları (<b>Hisseler</b>), IBKR'nin piyasa geneli haber akışı (<b>Piyasa</b>) ve "
@@ -457,6 +612,9 @@ HELP = help_html(
     "kontrat, prim, ask/bid tarafı) ve ertesi gün açık pozisyon (OI) değişimi gösterilir. "
     "Gerçekleşen değer gösterilmez: beklenti ve önceki değer.</p>"
     "<p>Piyasa başlıkları geldiği anda, birkaç saniye içinde sayfaya düşer; hisse başlıkları 5 dakikada bir gelir.</p>"
+    "<p><b>Bir hisse için haber</b>: My Universe'den bir hisse seçip <b>Haberleri getir</b>'e basınca IBKR'dan o hissenin "
+    "son 7 günlük Dow Jones ve Briefing başlıkları sorulur (en çok 300) ve saklanır; IBKR yanıt vermezse saklı son "
+    "başlıklar gösterilir.</p>"
     "<p><b>Fetch</b> saklı takvimi <code>boards/news.duckdb</code> içine artımlı yazar (yeni ve değişen "
     "olaylar; listeden düşen olay silinmez, emekliye ayrılır) ve IBKR Gateway'den son başlıkları sorar. "
     "<b>Refresh</b> yalnızca saklı veriden sayfayı yeniden çizer, hiçbir şey indirmez.</p>")
@@ -475,7 +633,7 @@ def render_html(now: float | None = None, provider_health: dict | None = None) -
     lanes = _headlines(heads)
     return f"""<!doctype html>
 <html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Haberler</title><script>{THEME_JS}</script><style>{THEME_CSS}{_CSS}</style></head>
+<title>Haberler</title><script>{THEME_JS}</script><style>{THEME_CSS}{_CSS}</style>{FILTERS_CSS}</head>
 <body><div class="wrap">
 <header class="top"><div><div class="eyebrow">ABD · Ekonomik takvim</div><h1>{long_date(today)}</h1>
 <div class="muted">{WEEKDAYS[today.weekday()]} · bugün {n_today} veri</div></div>
@@ -496,11 +654,13 @@ def render_html(now: float | None = None, provider_health: dict | None = None) -
 <div id="news-week" role="tabpanel" hidden>{week_html}</div></section>
 <div class="side">{_highlight(hl)}</div>
 </div></div>
-<div id="pg-heads" role="tabpanel" hidden><div class="cols">{lanes["market"]}{lanes["stocks"]}</div></div>
+<div id="pg-heads" role="tabpanel" hidden>{_ticker_box()}<div class="cols">{lanes["market"]}{lanes["stocks"]}</div></div>
 <div id="pg-x" role="tabpanel" hidden>{lanes["x"]}</div>
 <p class="foot">Kaynak: takvim Unusual Whales, başlıklar Dow Jones (IBKR), X kayıtları Grok özetleri · Saatler Europe/Amsterdam · Önem: ●●● yüksek ●●○ orta ●○○ düşük</p>
 {HELP}
-</div><script>var NEWS_SINCE = {since!r}, HEAD_LIMIT = {HEADLINE_LIMIT};{_JS}</script></body></html>"""
+</div>{watchlist_html("news")}<script>{FILTERS_JS}</script>
+<script>var NEWS_SINCE = {since!r}, HEAD_LIMIT = {HEADLINE_LIMIT}, TQ_PICK = {script_json(_picker())};{_JS}{_TQ_JS}</script>
+</body></html>"""
 
 
 def render(now: float | None = None, provider_health: dict | None = None) -> Path:

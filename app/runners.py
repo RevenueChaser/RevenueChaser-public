@@ -1236,6 +1236,16 @@ def run_news_headlines(uw=None) -> Path:
     return report.render(provider_health=_news_headlines_pass(run_id()))
 
 
+def run_news_ticker(uw=None, ticker: str = "") -> None:
+    """One name's headlines on demand (the News page's ticker box): one IBKR request, stored like a pass. The answer,
+    an error included, is kept for the page (``headlines.ticker_rows``); a job message would alert the shell."""
+    from RevenueChaser.module_news import headlines
+    ask = headlines.fetch_ticker(ticker)
+    ledger.add_note(f"News {ticker}: {ask['found']} headlines from IBKR, {ask['stored']} new"
+                    + (f" ({ask['error']})" if ask["error"] else ""))
+    return None
+
+
 def run_news_cached(uw=None) -> Path:
     """Store-only News render (Refresh, first load): reads ``boards/news.duckdb``, writes nothing to the store."""
     from RevenueChaser.module_news import report

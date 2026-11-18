@@ -295,6 +295,8 @@ jobs.register("module_news", runners.run_news, ["module_news"], requires_uw=Fals
 # News live (#673): the listener (module_news/tape.py) queues this every 5 minutes; headlines only, then the page.
 # produces nothing: the shell would reload the News frame (and alert a gap) every 5 minutes; the page polls itself.
 jobs.register("news_headlines", runners.run_news_headlines, [], requires_uw=False)
+# News ticker box (plan step 3): one name's headlines from IBKR on a click; the page reads them back by GET.
+jobs.register("news_ticker", runners.run_news_ticker, [], requires_uw=False)
 # Welcome (decision A): store-only; builds boards/welcome.duckdb from stored inputs, then renders.
 jobs.register("module_welcome", runners.run_welcome, ["module_welcome"], requires_uw=False)
 
@@ -931,6 +933,28 @@ def run_news_headlines():
     if refused:
         return refused
     return _submit("news_headlines", {})
+
+
+@app.route("/run/news_ticker", methods=["POST"])
+def run_news_ticker():
+    """Ask IBKR for one name's headlines: JSON ``{ticker}``. One ask at a time; a second click follows the first."""
+    ticker = str((request.get_json(silent=True) or {}).get("ticker") or "").strip().upper()
+    if not _valid_ticker(ticker):
+        return jsonify({"ok": False, "error": "ticker must be a symbol such as NVDA"}), 400
+    refused = _busy(("news_ticker",), "A News ticker ask is already running.")
+    if refused:
+        return refused
+    return _submit("news_ticker", {"ticker": ticker})
+
+
+@app.route("/api/news/ticker/<ticker>")
+def api_news_ticker(ticker):
+    """One name's stored headlines of the last week and the last ask's answer (store read, no IBKR call)."""
+    from RevenueChaser.module_news import headlines
+    ticker = ticker.strip().upper()
+    if not _valid_ticker(ticker):
+        return jsonify({"ok": False, "error": "ticker must be a symbol such as NVDA"}), 400
+    return jsonify({"ok": True, **headlines.ticker_rows(ticker)})
 
 
 @app.route("/api/news/headlines")
