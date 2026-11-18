@@ -1,7 +1,7 @@
 """Tests for rotation snapshot persistence, backfill, and trail rendering."""
 from datetime import date, timedelta
 
-from RevenueChaser.core import rawstore
+from RevenueChaser.core import rawstore, rotation_reference
 from RevenueChaser.module_sector_rotation.models import ETFRotationSnapshot
 from RevenueChaser.module_sector_rotation import store as rotation_store
 from RevenueChaser.module_sector_rotation.tests.bars_seed import ny, pin_clock, seed
@@ -207,13 +207,13 @@ class TestUniverseShape:
         """#49: the docstring said 50 symbols and 39/41 ETFs while the code held 78 (67 ETFs + 11 macro)."""
         from RevenueChaser.module_sector_rotation import universe
         doc = universe.__doc__ or ""
-        macro = [t for t in universe.ROTATION_ETFS if t in universe.MACRO_SERIES]
-        assert f"{len(universe.ROTATION_ETFS)} symbols" in doc
-        assert f"{len(universe.ROTATION_ETFS) - len(macro)} ETFs" in doc
+        macro = [t for t in rotation_reference.SEED_ROTATION_ETFS if t in universe.MACRO_SERIES]
+        assert f"{len(rotation_reference.SEED_ROTATION_ETFS)} symbols" in doc
+        assert f"{len(rotation_reference.SEED_ROTATION_ETFS) - len(macro)} ETFs" in doc
         assert f"{len(macro)} macro" in doc
 
     def test_rrg_symbols(self):
-        from RevenueChaser.module_sector_rotation.universe import ROTATION_ETFS
+        from RevenueChaser.core.rotation_reference import SEED_ROTATION_ETFS as ROTATION_ETFS
         assert len(ROTATION_ETFS) == 108, f"expected 108 RRG symbols, got {len(ROTATION_ETFS)}"
         groups = {}
         for t, info in ROTATION_ETFS.items():
@@ -229,20 +229,21 @@ class TestUniverseShape:
         assert "benchmark" not in groups, "benchmark group should be removed"
 
     def test_macro_symbols_mapped(self):
-        from RevenueChaser.module_sector_rotation.universe import ROTATION_ETFS, MACRO_SERIES
+        from RevenueChaser.core.rotation_reference import MACRO_SERIES, SEED_ROTATION_ETFS as ROTATION_ETFS
         for sym, info in ROTATION_ETFS.items():
             if info["group"] in ("yield", "commodity"):
                 assert sym in MACRO_SERIES, f"{sym} should be in MACRO_SERIES"
 
     def test_country_etfs_present(self):
-        from RevenueChaser.module_sector_rotation.universe import ROTATION_ETFS, COUNTRY_FLAGS
+        from RevenueChaser.core.rotation_reference import SEED_ROTATION_ETFS as ROTATION_ETFS
+        from RevenueChaser.module_sector_rotation.universe import COUNTRY_FLAGS
         for t in ("EWZ", "EWY", "FXI", "INDA", "EWT", "MCHI", "VNM", "IDX", "EPU"):
             assert t in ROTATION_ETFS, f"{t} should be in the RRG universe"
             assert ROTATION_ETFS[t]["group"] == "region", f"{t} should be region"
             assert t in COUNTRY_FLAGS, f"{t} should have a flag"
 
     def test_benchmark_removed(self):
-        from RevenueChaser.module_sector_rotation.universe import ROTATION_ETFS
+        from RevenueChaser.core.rotation_reference import SEED_ROTATION_ETFS as ROTATION_ETFS
         assert "SPY" not in ROTATION_ETFS
         assert "benchmark" not in {v["group"] for v in ROTATION_ETFS.values()}
 

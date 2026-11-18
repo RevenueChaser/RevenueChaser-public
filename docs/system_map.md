@@ -258,14 +258,16 @@ Line numbers are this worktree's.
   vendor statements vs the ownership snapshot). Core-to-core, so cheaper than the
   above, but the same shape. **Not worth its own issue.**
 
-### `ROTATION_ETFS` — moved out of the board (fixed, #12)
+### The rotation map's funds — out of the board (#12), then out of the code (plan v5 step 7b)
 
-`ROTATION_ETFS` and `MACRO_SERIES` are reference data, not a board's, so they live in
-`core/rotation_reference.py`: `core/prices.py`, `module_relatedness/themes.py` and
-`module_earnings_radar/report.py`/`macro_watch.py` import them from there, and
-`module_sector_rotation/universe.py` re-exports both names — the same objects, so a test
-that patches one in place still patches what every reader sees. The board's own
-`history.py` and the composition root (`app/runners.py`) keep importing `universe`.
+`MACRO_SERIES` is reference data, not a board's, so it lives in `core/rotation_reference.py` and
+`module_sector_rotation/universe.py` re-exports it. The funds on the map and the industry-group funds are avo's two
+watch lists in `boards/watchlists.duckdb`, marked `map` and `industry` (list ids `jobs.map`, `jobs.industry`):
+every reader calls `rotation_reference.rotation_etfs()`, `industry_groups()`, `sector_etf()` or
+`industry_map_etfs()` at run time, through the module, and the read is strict (`rcdata.read.job_sections`: a
+missing file or list raises). `SEED_ROTATION_ETFS` and `SEED_INDUSTRY_GROUPS` make the lists once
+(`module_watchlists.store.seed_map_lists`, `POST /api/watchlists/jobs/seed`) and feed the tests; no run reads them
+(`core/tests/test_rotation_reference_12.py`).
 
 ### A file whose directory is not its area
 

@@ -15,8 +15,8 @@ logger = logging.getLogger(__name__)
 
 def synced_etfs() -> list[str]:
     """The ETFs the board shows holdings for: every sector and theme ETF of the Rotation universe."""
-    from .universe import ROTATION_ETFS
-    return [t for t, info in ROTATION_ETFS.items() if info.get("group") in ("sector", "theme")]
+    from RevenueChaser.core import rotation_reference
+    return [t for t, info in rotation_reference.rotation_etfs().items() if info.get("group") in ("sector", "theme")]
 
 
 def stored_holdings(ticker: str) -> list[dict]:
@@ -40,8 +40,8 @@ def ticker_weights() -> dict[str, list[tuple[str, float]]]:
     fractions compare. A line with no ticker or no weight is left out. A map fund with no weighted line is named in
     a warning and gives nothing: it is missing data, never weight 0."""
     from RevenueChaser.rcdata import read
-    from .universe import ROTATION_ETFS
-    funds = [t for t, info in ROTATION_ETFS.items() if info.get("group") in WEIGHT_GROUPS]
+    from RevenueChaser.core import rotation_reference
+    funds = [t for t, info in rotation_reference.rotation_etfs().items() if info.get("group") in WEIGHT_GROUPS]
     by_fund: dict[str, dict[str, float]] = {}
     for r in read.etf_holdings(funds):
         if r.get("ticker") and (r.get("weight") or 0) > 0:
@@ -69,7 +69,7 @@ def health_summary() -> dict:
     ``rs_stored`` the theme ETFs with stored RS rows (``rotation_holdings``, which the Rotation Fetch writes)."""
     from RevenueChaser.core import rawstore
     from RevenueChaser.rcdata import read
-    from .universe import ROTATION_ETFS
+    from RevenueChaser.core import rotation_reference
     expected = synced_etfs()
     lines = read.etf_holdings(expected)
     rows = {r["etf"]: r for r in lines}                 # one per ETF: all of an ETF's lines share as_of and provider
@@ -79,7 +79,7 @@ def health_summary() -> dict:
     for r in rows.values():
         if r.get("provider"):
             providers[r["provider"]] = providers.get(r["provider"], 0) + 1
-    themes = [t for t, info in ROTATION_ETFS.items() if info.get("group") == "theme"]
+    themes = [t for t, info in rotation_reference.rotation_etfs().items() if info.get("group") == "theme"]
     with_rs = {r["ticker"] for r in rawstore.query(
         "SELECT ticker FROM rotation_holdings WHERE rows IS NOT NULL AND json_array_length(rows) > 0", db="sector_rotation")}
     return {

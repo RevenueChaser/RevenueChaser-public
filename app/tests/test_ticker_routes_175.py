@@ -11,7 +11,7 @@ from urllib.parse import quote
 import pytest
 
 from RevenueChaser.app import dashboard
-from RevenueChaser.module_sector_rotation.universe import ROTATION_ETFS
+from RevenueChaser.core.rotation_reference import SEED_ROTATION_ETFS as ROTATION_ETFS
 
 HOSTILE = ["<img src=x onerror=alert(1)>", "\"'><b>x</b>", "AAPL/../../x", "A B", ".", "-",
            "ABCDEFGHIJK", "a;b", "AAPL%00"]

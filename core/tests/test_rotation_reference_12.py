@@ -1,28 +1,22 @@
 """#12 (and the first half of #13): the rotation reference data has a neutral home.
 
-``ROTATION_ETFS`` and ``MACRO_SERIES`` were defined by the Sector Rotation board, so
-``core/``, ``module_relatedness/`` and ``module_earnings_radar/`` imported a board module to
-read two reference dicts. They now live in ``core/rotation_reference.py``; the board's
-``module_sector_rotation/universe.py`` re-exports the same objects.
+``ROTATION_ETFS`` and ``MACRO_SERIES`` were defined by the Sector Rotation board, so ``core/``,
+``module_relatedness/`` and ``module_earnings_radar/`` imported a board module to read two reference dicts. They
+live in ``core/rotation_reference.py``. Since plan v5 step 7b the ETFs are avo's ``map`` watch list, read through
+``rotation_reference.rotation_etfs()``; the dict is ``SEED_ROTATION_ETFS``, what the list is first made from.
 
-What this file pins, and why each half matters:
+What this file pins:
 
-- **Identity.** ``universe.ROTATION_ETFS is rotation_reference.ROTATION_ETFS``. Tests patch
-  in place (``monkeypatch.setitem(rd.ROTATION_ETFS, ...)`` in ``core/tests/board_fixtures.py``
-  and ``module_sector_rotation/tests/``), which works only if every reader holds one dict.
-- **The board still binds the names.** ``universe`` keeps binding both names, because tests
-  rebind the attribute (``monkeypatch.setattr(engine, "ROTATION_ETFS", UNIVERSE)`` in
-  ``test_rotation_a5_374.py``) — a call-time lookup through another module would miss it.
+- **The board re-exports the macro table.** ``universe.MACRO_SERIES is rotation_reference.MACRO_SERIES``.
 - **The edges are gone.** No non-test source under ``core/``, ``module_relatedness/`` or
-  ``module_earnings_radar/`` reaches into the board module for either dict.
-- **No lazy import is left for that reason.** ``module_earnings_radar/report.py`` imports the
-  reference at module level, which it could not do while the cycle existed.
-- **Content parity.** Both key sequences are the ones ``universe.py`` held at the base commit,
-  so the move cannot silently drop a symbol (plus the symbols added on purpose since, each named).
+  ``module_earnings_radar/`` reaches into the board module for the reference data.
+- **No reader keeps a copy.** No non-test source names the seed dicts but the reference module and the seeding
+  store: a reader that imported the seed would be the code-dict fallback 7b removes.
+- **Content parity.** The seed's key sequence is the one ``universe.py`` held at the base commit (plus the symbols
+  added on purpose since, each named), and the list reads back as its seed.
 """
 from __future__ import annotations
 
-import ast
 from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -66,12 +60,12 @@ def _reader_sources():
             yield path
 
 
-def test_the_board_reexports_the_reference_objects():
+def test_the_board_reexports_the_macro_table():
     from RevenueChaser.core import rotation_reference
     from RevenueChaser.module_sector_rotation import universe
 
-    assert universe.ROTATION_ETFS is rotation_reference.ROTATION_ETFS
     assert universe.MACRO_SERIES is rotation_reference.MACRO_SERIES
+    assert not hasattr(universe, "ROTATION_ETFS") and not hasattr(rotation_reference, "ROTATION_ETFS")
 
 
 def test_no_reader_package_imports_the_board_for_the_reference_data():
@@ -88,25 +82,25 @@ def test_no_reader_package_imports_the_board_for_the_reference_data():
         f"RevenueChaser.core.rotation_reference instead: {offenders}")
 
 
-def test_earnings_radar_report_imports_the_reference_at_module_level():
-    src = (_ROOT / "module_earnings_radar" / "report.py").read_text(encoding="utf-8")
-    tree = ast.parse(src)
-
-    assert any(
-        isinstance(node, ast.ImportFrom)
-        and node.module == "RevenueChaser.core.rotation_reference"
-        and any(alias.name == "ROTATION_ETFS" for alias in node.names)
-        for node in tree.body), "report.py must import ROTATION_ETFS at module level"
-
-    nested = [node.lineno for node in ast.walk(tree)
-              if isinstance(node, ast.ImportFrom)
-              and (node.module or "").endswith("rotation_reference")
-              and node not in tree.body]
-    assert not nested, f"no function-level reference import may remain (lines {nested})"
+def test_no_run_reads_the_seed():
+    """Plan v5 step 7b: the seed makes the lists once and feeds the tests. A source file that names it would be a
+    code-dict fallback beside the watch list."""
+    allowed = {"core/rotation_reference.py"}
+    offenders = []
+    for path in sorted(_ROOT.rglob("*.py")):
+        rel = path.relative_to(_ROOT).as_posix()
+        if "/tests/" in rel or rel.startswith((".", "module_testing/")) or rel == "conftest.py" or rel in allowed:
+            continue
+        if "SEED_ROTATION_ETFS" in path.read_text(encoding="utf-8", errors="replace") \
+                or "SEED_INDUSTRY_GROUPS" in path.read_text(encoding="utf-8", errors="replace"):
+            offenders.append(rel)
+    assert not offenders, offenders
 
 
-def test_the_reference_keeps_every_symbol_the_board_defined():
+def test_the_seed_keeps_every_symbol_the_board_defined_and_the_list_reads_back_as_it():
     from RevenueChaser.core import rotation_reference
 
-    assert tuple(rotation_reference.ROTATION_ETFS) == _ROTATION_KEYS
+    assert tuple(rotation_reference.SEED_ROTATION_ETFS) == _ROTATION_KEYS
     assert tuple(rotation_reference.MACRO_SERIES) == _MACRO_KEYS
+    assert rotation_reference.rotation_etfs() == rotation_reference.SEED_ROTATION_ETFS
+    assert list(rotation_reference.rotation_etfs()) == list(_ROTATION_KEYS)

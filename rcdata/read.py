@@ -248,9 +248,14 @@ def job_list(feeds: str) -> list[str]:
     return sorted({r["ticker"] for r in _job_items(feeds)})
 
 
-def _job_items(feeds: str) -> list[dict]:
-    """The rows behind :func:`job_list`, by ticker: ``{ticker, added_at, added_by, note}``. A bare ticker (no
-    exchange prefix, what a board's button writes to a job list) counts beside a ``us_equity`` spelling."""
+_BARE_TICKER = ("i.ticker <> '' "
+                # shortcut: a bare ``A-B`` reads as one ticker (BRK-B is on the option list), split it when a
+                # marked list ever holds a bare spread
+                "AND (i.coverage = 'us_equity' OR (i.exchange = '' AND i.ticker NOT LIKE '%/%'))")
+
+
+def _job_query(feeds: str, sql: str) -> list[tuple]:
+    """``sql`` (one ``?``: the feed) over the lists marked ``feeds``, strict: see :func:`job_list`."""
     import duckdb
 
     from ..core import rawstore
@@ -261,16 +266,46 @@ def _job_items(feeds: str) -> list[dict]:
         with rawstore.connect(read_only=True, db="watchlists") as con:
             if not con.execute("SELECT 1 FROM wl_list WHERE feeds = ?", [feeds]).fetchone():
                 raise JobListUnreadable(f"{path.name}: no list is marked for {feeds!r}")
-            rows = con.execute(
-                "SELECT i.ticker, min(i.added_at), any_value(i.added_by), any_value(i.note) "
-                "FROM wl_item i JOIN wl_list l USING (list_id) WHERE l.feeds = ? AND i.ticker <> '' "
-                # shortcut: a bare ``A-B`` reads as one ticker (BRK-B is on the option list), split it when a
-                # marked list ever holds a bare spread
-                "AND (i.coverage = 'us_equity' OR (i.exchange = '' AND i.ticker NOT LIKE '%/%')) "
-                "GROUP BY 1 ORDER BY 1", [feeds]).fetchall()
+            return con.execute(sql, [feeds]).fetchall()
     except (duckdb.Error, rawstore.RawStoreError) as e:
         raise JobListUnreadable(f"{path.name}: {type(e).__name__}: {str(e)[:200]}") from e
+
+
+def _job_items(feeds: str) -> list[dict]:
+    """The rows behind :func:`job_list`, by ticker: ``{ticker, added_at, added_by, note}``. A bare ticker (no
+    exchange prefix, what a board's button writes to a job list) counts beside a ``us_equity`` spelling."""
+    rows = _job_query(feeds, "SELECT i.ticker, min(i.added_at), any_value(i.added_by), any_value(i.note) "
+                             f"FROM wl_item i JOIN wl_list l USING (list_id) WHERE l.feeds = ? AND {_BARE_TICKER} "
+                             "GROUP BY 1 ORDER BY 1")
     return [dict(zip(("ticker", "added_at", "added_by", "note"), r)) for r in rows]
+
+
+def job_sections(feeds: str) -> list[dict]:
+    """The lists marked ``feeds`` with their sections, in avo's order: ``{section, name, ticker, note}`` per fund
+    (``section`` is the section's id, ``name`` its heading, ``note`` the item's hand-written note), and one row
+    with ``ticker`` None for a section that holds no fund. Strict like :func:`job_list`. The Sector Rotation map
+    and its industry layer read this (plan v5 step 7b): the section is the fund's group."""
+    rows = _job_query(feeds, "SELECT s.section_id, s.name, i.ticker, i.note FROM wl_section s "
+                             "JOIN wl_list l USING (list_id) LEFT JOIN wl_item i "
+                             f"ON i.list_id = s.list_id AND i.section_id = s.section_id AND {_BARE_TICKER} "
+                             "WHERE l.feeds = ? ORDER BY l.position, l.list_id, s.position, s.name, i.position, "
+                             "i.symbol")
+    return [dict(zip(("section", "name", "ticker", "note"), r)) for r in rows]
+
+
+def job_lists_stamp() -> tuple:
+    """What changes when the watch-list file is written: its path, and size and mtime of the file and of its
+    write-ahead log. A reader that keeps a list in memory reads again when this differs."""
+    from ..core import rawstore
+    path = rawstore.board_db_path("watchlists")
+    out = [str(path)]
+    for p in (path, path.with_name(path.name + ".wal")):
+        try:
+            st = p.stat()
+            out.append((st.st_size, st.st_mtime_ns))
+        except OSError:
+            out.append(None)
+    return tuple(out)
 
 
 # ── The identity spine (PR 5) ─────────────────────────────────────────────────────────────────────────────────

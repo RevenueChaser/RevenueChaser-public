@@ -14,7 +14,7 @@ from RevenueChaser.module_sector_rotation.models import ETFRotationSnapshot
 from RevenueChaser.module_sector_rotation import engine
 from RevenueChaser.module_sector_rotation import etf_holdings as eh
 from RevenueChaser.module_sector_rotation.tests.bars_seed import seed
-from RevenueChaser.module_sector_rotation.universe import ROTATION_ETFS
+from RevenueChaser.core.rotation_reference import SEED_ROTATION_ETFS as ROTATION_ETFS
 
 SYNCED = [t for t, i in ROTATION_ETFS.items() if i.get("group") in ("sector", "theme")]
 HOLD = [{"ticker": "NVDA", "name": "NVIDIA", "weight": 14.2}, {"ticker": "AAPL", "name": "Apple", "weight": 12.1}]

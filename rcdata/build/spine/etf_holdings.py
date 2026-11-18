@@ -25,7 +25,7 @@ the list in its page and refused the builder's User-Agent, and Exchange Traded C
 the browser. None of those is a file, so those four stay UW's alone and are not scraped. The raw file's name says
 which source served a fund's day (``uw-ARKQ.json`` or ``ark-ARKQ.csv``), and the run note names each fallback.
 
-The funds are the board's ``sector`` and ``theme`` ETFs (``core/rotation_reference.ROTATION_ETFS``) less GLD, SLV and
+The funds are the board's ``sector`` and ``theme`` ETFs (``core/rotation_reference.rotation_etfs()``, avo's ``map`` watch list) less GLD, SLV and
 USO — commodity trusts, with no equity holdings — plus the 10 in ``EXTRA`` that the peer sets need and the board
 does not run. **UW's answer is kept whole:** the top-10 cap is the Rotation board's own
 (``module_sector_rotation/etf_holdings.py``), and that board's ``raw.duckdb.etf_holdings`` is untouched by this

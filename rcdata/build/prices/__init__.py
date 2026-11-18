@@ -33,13 +33,20 @@ reaches the old rows too, and a ticker reused by another company (another CIK) n
 """
 from __future__ import annotations
 
-from ....core.rotation_reference import ROTATION_ETFS
+from ....core import rotation_reference
 from . import universe
 
 KIND = "prices"
 BENCHMARKS = ("SPY", "DIA", "QQQ")
-# The rotation ETFs the old nightly kept bars for (``core/prices.bar_scope``): every group but yield and commodity.
-ROTATION = tuple(t for t, info in ROTATION_ETFS.items() if (info or {}).get("group") not in ("yield", "commodity"))
+
+
+def rotation() -> tuple[str, ...]:
+    """The funds on the Sector Rotation map (avo's ``map`` watch list, read at call time and strictly: plan v5
+    step 7b), every group but the macro indicators. The store keeps bars for each."""
+    return tuple(t for t, info in rotation_reference.rotation_etfs().items()
+                 if (info or {}).get("group") not in rotation_reference.MACRO_GROUPS)
+
+
 SPINE_COLUMNS = ("ticker", "cik", "tier", "gvkey", "iid", "composite_figi", "exchange", "security_type", "name")
 # What a daily fetch asks when the request names none: today's universe, the one list ``prices.universe`` owns
 # (avo, 4 Nov 2026). The earlier ``DEFAULT_TIERS = ("A", "B")`` (avo, 30 Oct 2026, 7,670 names) asked whole tiers,
@@ -182,7 +189,7 @@ def scope(rows: list[dict] | None = None, watched: set[str] | None = None,
     for t in want.names:
         add(t)
     if "anchors" in groups:
-        for t in (*BENCHMARKS, *ROTATION):
+        for t in (*BENCHMARKS, *rotation()):
             add(t)
     if "watchlist" in groups:
         if watched is None:

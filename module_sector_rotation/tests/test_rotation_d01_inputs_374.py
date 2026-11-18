@@ -21,7 +21,7 @@ from RevenueChaser.core import ledger, rawstore
 from RevenueChaser.module_sector_rotation.models import ETFRotationSnapshot
 from RevenueChaser.module_sector_rotation import engine, money_flow
 from RevenueChaser.module_sector_rotation.tests.bars_seed import ny, pin_clock, seed, sessions
-from RevenueChaser.module_sector_rotation.universe import ROTATION_ETFS
+from RevenueChaser.core.rotation_reference import SEED_ROTATION_ETFS as ROTATION_ETFS
 from RevenueChaser.rcdata.tests import spine_fixture
 
 SESSION = date(2026, 10, 7)

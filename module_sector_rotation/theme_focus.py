@@ -1,4 +1,4 @@
-"""Coarse NMF theme → ROTATION_ETFS focus map (store-only).
+"""Coarse NMF theme → map-fund focus map (store-only).
 
 Sector Rotation keeps plotting ETFs; the Theme control only focuses which
 dots are visible. See docs/dashboard_ui.md §4.
@@ -6,7 +6,7 @@ dots are visible. See docs/dashboard_ui.md §4.
 from __future__ import annotations
 
 from RevenueChaser.core import rawstore
-from .universe import ROTATION_ETFS
+from RevenueChaser.core import rotation_reference
 
 # Hand overlay when relatedness_theme_etfs has no row for a coarse label.
 # Primary ETF only; fuzzy-match on the coarse label (lowercased).
@@ -45,7 +45,7 @@ def _overlay_etf(label: str) -> str | None:
         return None
     for needles, etf in _OVERLAY_RULES:
         if any(n in low for n in needles):
-            return etf if etf in ROTATION_ETFS else None
+            return etf if etf in rotation_reference.rotation_etfs() else None
     return None
 
 
@@ -62,7 +62,7 @@ def _jaccard_etfs(theme_id: str) -> list[str]:
     seen: set[str] = set()
     for r in rows:
         etf = (r.get("etf") or "").strip().upper()
-        if not etf or etf in seen or etf not in ROTATION_ETFS:
+        if not etf or etf in seen or etf not in rotation_reference.rotation_etfs():
             continue
         seen.add(etf)
         out.append(etf)
@@ -106,7 +106,7 @@ def _coarse_rows() -> list[dict]:
 
 
 def theme_etfs_for_coarse(label: str | None) -> list[str]:
-    """ETF tickers in ROTATION_ETFS for a coarse NMF label, ordered by rank.
+    """Map ETF tickers (``rotation_reference.rotation_etfs()``) for a coarse NMF label, ordered by rank.
 
     Prefers ``relatedness_theme_etfs`` (Jaccard). If that table has no row for
     the matching coarse theme, falls back to the hand overlay in

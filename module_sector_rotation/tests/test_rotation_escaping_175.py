@@ -29,7 +29,8 @@ def _snap(ticker: str, quadrant: str = "LEADING", group: str = "sector") -> ETFR
 @pytest.fixture
 def evil_etf(monkeypatch):
     import RevenueChaser.module_sector_rotation.report as rd
-    monkeypatch.setitem(rd.ROTATION_ETFS, EVIL + "T", {"name": EVIL + "N", "group": EVIL + "G"})
+    from RevenueChaser.core import rotation_reference
+    monkeypatch.setitem(rotation_reference.SEED_ROTATION_ETFS, EVIL + "T", {"name": EVIL + "N", "group": EVIL + "G"})
     monkeypatch.setattr(rd, "coarse_theme_catalog", lambda: {})
     return rd
 

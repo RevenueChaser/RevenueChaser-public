@@ -2294,10 +2294,13 @@ def api_watchlists_update(list_id: str):
 
 @app.route("/api/watchlists/jobs/seed", methods=["POST"])
 def api_watchlists_jobs_seed():
-    """Make the two job lists from the old ``ops.sqlite`` rows, once (plan v5 step 7g); a second call only compares.
-    ``{ok, option: {created, ops, list, same}, stock: {...}}``."""
+    """Make the lists the jobs read, once; a second call only compares. The option and stock lists from the old
+    ``ops.sqlite`` rows (plan v5 step 7g), the Sector Rotation map and its industry layer from the code's seed
+    (step 7b). ``{ok, option: {created, ops, list, same}, stock: {...}, map: {created, seed, list, same},
+    industry: {...}}``."""
     from RevenueChaser.module_watchlists import store
-    return jsonify({"ok": True, **store.seed_job_lists(by=_requested_by())})
+    by = _requested_by()
+    return jsonify({"ok": True, **store.seed_job_lists(by=by), **store.seed_map_lists(by=by)})
 
 
 @app.route("/api/watchlists/<list_id>/delete", methods=["POST"])
@@ -2388,6 +2391,24 @@ def api_watchlists_symbol_remove(list_id: str):
         return _wl_payload(list_id)
     try:
         store.remove_symbol(list_id, symbol, by=_requested_by())
+    except store.WatchlistError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    return _wl_payload(list_id)
+
+
+@app.route("/api/watchlists/<list_id>/symbol/note", methods=["POST"])
+def api_watchlists_symbol_note(list_id: str):
+    """Write one symbol's note: a map list's hand-written short name (plan v5 step 7b). Empty clears it."""
+    from RevenueChaser.module_watchlists import store
+    body = _wl_body()
+    symbol, error = _wl_text(body, "symbol")
+    if error:
+        return jsonify({"ok": False, "error": error}), 400
+    note = body.get("note")
+    if note is not None and not isinstance(note, str):
+        return jsonify({"ok": False, "error": "note must be text"}), 400
+    try:
+        store.set_note(list_id, symbol, note, by=_requested_by())
     except store.WatchlistError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
     return _wl_payload(list_id)
