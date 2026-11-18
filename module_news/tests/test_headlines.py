@@ -106,7 +106,7 @@ def test_fetch_stores_clean_headlines_with_their_tickers_once(gw):
     assert rows["Apple Expands AI Deal"]["provider"] == "ibkr" and rows["Apple Expands AI Deal"]["source"] == "Dow Jones"
     same = rows["Tech Stocks Rally as Yields Slip"]                     # one story, two tickers, two article ids
     assert sorted(json.loads(same["tickers"])) == ["AAPL", "NVDA"]
-    assert out == {"tickers": 2, "stored": 3, "skipped": [], "failed": [], "error": None}
+    assert out == {"tickers": 2, "of": 2, "stored": 3, "skipped": [], "failed": [], "error": None}
 
 
 def test_a_name_the_gateway_does_not_know_is_skipped_not_fatal(gw):
@@ -121,12 +121,36 @@ def test_a_gateway_that_is_down_writes_nothing_and_says_so(gw):
     assert out["stored"] == 0 and "gateway" in out["error"] and _rows() == {}
 
 
-def test_a_second_fetch_asks_the_newest_and_keeps_only_since_the_last_one(gw):
+def test_a_second_fetch_asks_the_newest_and_writes_only_what_is_new(gw):
     headlines.fetch(["AAPL"], now=NOW, run_id="r1")
+    gw.news[265598].insert(0, ("2026-11-09 19:40:00.0", "DJ-N", "DJ-N$new", "Apple Sets Event Date"))
     out = headlines.fetch(["AAPL"], now=NOW + 3600, run_id="r2")
     # The gateway reads a start time as the newest time to return (11 Nov: the board sat a day behind), so none is sent.
     assert [f[4] for f in gw.sent if f[0] == "86"] == ["", ""]
-    assert out["stored"] == 1                                   # 17:00 is before the mark (18:20) - 10 min
+    assert out["stored"] == 1                                   # the two stories of the first pass are not rewritten
+    assert _rows()["Apple Expands AI Deal"]["run_id"] == "r1"
+
+
+def test_a_pass_asks_the_next_names_in_turn_and_wraps_round(gw, monkeypatch):
+    # W1, 18 Nov 2026: every name every 5 minutes is ~780 requests; IBKR paces history requests, so names take turns.
+    monkeypatch.setattr(headlines, "PER_PASS", 2)
+    names = ["NVDA", "CRWV", "AAPL"]
+    assert headlines.fetch(names, now=NOW, run_id="r1")["tickers"] == 2
+    headlines.fetch(names, now=NOW + 300, run_id="r2")
+    asked = [int(f[2]) for f in gw.sent if f[0] == "86"]
+    assert asked == [265598, 7001, 4815747, 265598]            # AAPL, CRWV; then NVDA and round again to AAPL
+
+
+def test_a_down_gateway_does_not_move_the_turn(gw, monkeypatch):
+    monkeypatch.setattr(headlines, "PER_PASS", 1)
+    gw.down = True
+    headlines.fetch(["NVDA", "AAPL"], now=NOW, run_id="r1")
+    assert headlines.batch(["NVDA", "AAPL"]) == ["AAPL"]
+
+
+def test_a_pass_never_asks_more_than_its_share_of_a_long_list():
+    names = [f"T{i:03d}" for i in range(391)]
+    assert len(headlines.batch(names)) == headlines.PER_PASS <= 30
 
 
 def test_the_names_are_both_lists_in_order_with_no_cap_and_no_list_in_code():
@@ -136,20 +160,6 @@ def test_the_names_are_both_lists_in_order_with_no_cap_and_no_list_in_code():
     assert names[:31] == sorted(stock) and names[31:] == ["AAPL"] and len(set(names)) == len(names)
     assert not hasattr(headlines, "BASE_TICKERS") and not hasattr(headlines, "MAX_TICKERS")
     assert headlines.LISTS == ("", "stock", "news")              # avo's own lists first
-
-
-def test_the_mark_is_the_newest_stored_headline_not_the_clock(gw):
-    headlines.fetch(["AAPL"], now=NOW, run_id="r1")
-    mark = rawstore.query("SELECT value FROM news_meta WHERE key = 'headlines_mark'", db="news")[0]["value"]
-    assert float(mark) == datetime(2026, 11, 9, 18, 20, tzinfo=timezone.utc).timestamp()
-
-
-def test_a_skipped_name_keeps_the_mark_so_its_gap_is_asked_again(gw):
-    headlines.fetch(["AAPL"], now=NOW, run_id="r1")
-    before = rawstore.query("SELECT value FROM news_meta WHERE key = 'headlines_mark'", db="news")
-    gw.unknown.add("NVDA")
-    headlines.fetch(["NVDA", "AAPL"], now=NOW + 3600, run_id="r2")
-    assert rawstore.query("SELECT value FROM news_meta WHERE key = 'headlines_mark'", db="news") == before
 
 
 def test_the_same_story_under_another_provider_in_a_later_run_is_one_row(gw):
@@ -187,4 +197,3 @@ def test_a_refused_news_request_is_a_failure_not_an_unknown_name(gw):
     out = headlines.fetch(["NVDA", "AAPL"], now=NOW, run_id="r1")
     assert out["skipped"] == [] and len(out["failed"]) == 1 and out["failed"][0].startswith("NVDA (IBKR error 10276")
     assert out["stored"] == 2                                   # the other name still stores
-    assert rawstore.query("SELECT value FROM news_meta WHERE key = 'headlines_mark'", db="news") == []

@@ -1203,24 +1203,27 @@ def _news_headlines_pass(rid: str) -> dict | None:
         ledger.add_note(f"News headlines not fetched: {got['error']}")
         # The board says so too, or a down gateway would pass for a quiet news day. A name IBKR does not know is
         # only a note: it is the same names every run, and a banner on every Fetch would be noise.
-        health = {"provider": "ibkr", "calls": max(1, len(names)), "failed": max(1, len(names)),
+        asked = max(1, got["tickers"])
+        health = {"provider": "ibkr", "calls": asked, "failed": asked,
                   "auth_error": None,
                   "failures": [{"endpoint": "headlines", "error": got["error"]}],
-                  "message": f"{GAPS}: {len(names)} of {len(names)} Interactive Brokers calls failed "
+                  "message": f"{GAPS}: {asked} of {asked} Interactive Brokers calls failed "
                              f"(headlines: {got['error']}). The board may be incomplete — run Fetch again later."}
     else:
         skipped = f"; not known to IBKR: {', '.join(got['skipped'])}" if got["skipped"] else ""
-        ledger.add_note(f"News headlines: {got['stored']} from {got['tickers']} names (IBKR, Dow Jones){skipped}")
+        of = got.get("of", got["tickers"])
+        ledger.add_note(f"News headlines: {got['stored']} new from {got['tickers']} of {of} names "
+                        f"(IBKR, Dow Jones; the rest in later passes){skipped}")
         failed = got.get("failed", [])
         problems = failed + unread
         if problems:
             # A refused request other than "unknown name" (a lapsed feed, pacing) or an unread list: the board shows
             # it, or the lane would only look quieter (review F1/F6, avo's D5 18 Nov 2026: "Panoda bant").
             # An unread list counts as one failed read, so the banner shows even when every name answered.
-            health = {"provider": "ibkr", "calls": len(names) + len(unread), "failed": len(problems),
+            health = {"provider": "ibkr", "calls": got["tickers"] + len(unread), "failed": len(problems),
                       "auth_error": None,
                       "failures": [{"endpoint": "headlines", "error": p} for p in problems],
-                      "message": f"{GAPS}: {len(problems)} of {len(names) + len(unread)} Interactive Brokers reads "
+                      "message": f"{GAPS}: {len(problems)} of {got['tickers'] + len(unread)} Interactive Brokers reads "
                                  f"failed ({'; '.join(problems[:3])}). The board may be incomplete."}
     return health
 

@@ -5,9 +5,12 @@ none for SPY). So the board asks for the Dow Jones headlines (``DJ-N`` news, ``D
 (``LISTS``): avo's own lists, the stock picks, then the News list, every name. Two requests a name (its contract id,
 then its headlines), headlines only: the article body is never fetched.
 
-Incremental (S16): a fetch asks only from the newest stored headline's time (less ``OVERLAP_S``), at most
-``WINDOW_S`` back, and upserts by a headline id made from the story's words. The same story under two names or two providers is one row whose ``tickers`` lists every
-name. A gateway that is down writes nothing, moves no mark and says why; a name it does not know is skipped.
+Paced: a pass asks ``PER_PASS`` names, the next ones after the ``news_meta`` cursor ``headlines_cursor``, so every
+name is asked in turn, about once an hour, and IBKR's farm gets about 30 news requests a 5-minute pass, not one per
+name of every list. Each name's newest headlines of the last ``WINDOW_S`` are kept, and only a story not stored yet,
+or met under a new name, is written; a headline id is made from the story's words, so the same story under two names
+or two providers is one row whose ``tickers`` lists every name. A gateway that is down writes nothing, moves no cursor
+and says why; a name it does not know is skipped.
 
 ``load_tape`` (#673) loads the market-wide headlines the listener (``module_news/tape.py``) appended since the last
 load: same ids, ``tickers`` empty (the page's "Piyasa" lane). A story also met under a name keeps that name.
@@ -31,7 +34,7 @@ from RevenueChaser.module_news.calendar import META
 from RevenueChaser.rcdata import read
 
 TABLE = "news_headlines"
-MARK_KEY = "headlines_mark"
+CURSOR_KEY = "headlines_cursor"
 TAPE_MARK_KEY = "tape_mark"
 X_MARK_KEY = "x_mark"
 # A client id of its own: the IV history client is 73, and a second client with the same id is refused (326).
@@ -40,7 +43,9 @@ PROVIDERS = "DJ-N+DJ-RT"
 SOURCE = "Dow Jones"
 PER_TICKER = 20
 WINDOW_S = 24 * 3600
-OVERLAP_S = 600
+#: Names asked a pass (W1's note, 18 Nov 2026: 391 names every 5 minutes is ~780 requests, more than IBKR paces).
+#: Thirty a pass is ~60 news requests in 10 minutes, IBKR's historical-data pacing; 391 names go round in ~65 min.
+PER_PASS = 30
 #: The watch lists the per-ticker headlines read (avo, 18 Nov 2026 21:53 Amsterdam: "Hepsini watchliste.duckdb ye
 #: bagla"; 22:31: "Artik watchlist.duckbd den secmeliler"), by ``wl_list.feeds``: ``""`` is every one of avo's own
 #: lists, then the stock picks (together ``rcdata.read.PICKED``, the one definition of avo's picks), then the News
@@ -74,12 +79,13 @@ def _epoch(text: str) -> float | None:
         return None
 
 
-def _mark() -> float | None:
-    rows = rawstore.query(f"SELECT value FROM {META} WHERE key = ?", [MARK_KEY], db="news")
-    try:
-        return float(rows[0]["value"]) if rows else None
-    except (TypeError, ValueError):
-        return None
+def batch(names: list[str]) -> list[str]:
+    """The next ``PER_PASS`` of ``names`` (alphabetical) after the cursor, wrapping round; every name once at most."""
+    order = sorted(set(names))
+    rows = rawstore.query(f"SELECT value FROM {META} WHERE key = ?", [CURSOR_KEY], db="news")
+    after = str(rows[0]["value"]) if rows else ""
+    start = next((i for i, t in enumerate(order) if t > after), 0)
+    return (order[start:] + order[:start])[:PER_PASS]
 
 
 def story_id(text: str) -> str:
@@ -88,14 +94,20 @@ def story_id(text: str) -> str:
     return "ibkr:" + hashlib.sha1(key.encode()).hexdigest()[:16]
 
 
-def _merge_tickers(rows: list[dict]) -> None:
-    """Each row's ``tickers`` (a list) joined with what is stored under its id, as the JSON text the table keeps."""
+def _merge_tickers(rows: list[dict]) -> list[dict]:
+    """Each row's ``tickers`` (a list) joined with what is stored under its id, as the JSON text the table keeps.
+    Returns the rows that are new or gained a name: the others are already stored as they are."""
     stored = {r["headline_id"]: r for r in rawstore.query(
         f"SELECT headline_id, tickers FROM {TABLE} WHERE headline_id IN ({', '.join('?' for _ in rows)})",
         [r["headline_id"] for r in rows], db="news")} if rows else {}
+    changed = []
     for r in rows:
         old = json.loads(stored[r["headline_id"]]["tickers"] or "[]") if r["headline_id"] in stored else []
-        r["tickers"] = json.dumps(sorted(set(old) | set(r["tickers"])))
+        merged = sorted(set(old) | set(r["tickers"]))
+        if r["headline_id"] not in stored or merged != sorted(old):
+            changed.append(r)
+        r["tickers"] = json.dumps(merged)
+    return changed
 
 
 def _new_lines(folder: Path, key: str, first: str) -> tuple[list[bytes], dict | None, dict | None]:
@@ -203,12 +215,13 @@ _CON_IDS: dict[str, int] = {}
 
 def fetch(names: list[str], now: float | None = None, run_id: str | None = None,
           target: tuple[str, int] | None = None) -> dict:
-    """One incremental pass over ``names``. Returns ``tickers``, ``stored``, ``skipped`` (names IBKR does not know),
-    ``failed`` (names whose request IBKR refused for another reason, with the error) and ``error`` (or None)."""
+    """One pass over the next ``batch`` of ``names``. Returns ``tickers`` (names asked), ``of`` (all names),
+    ``stored``, ``skipped`` (names IBKR does not know), ``failed`` (names whose request IBKR refused for another
+    reason, with the error) and ``error`` (or None)."""
     now = time.time() if now is None else now
     run_id = run_id or f"news-{int(now)}"
-    mark = _mark()
-    since = max(now - WINDOW_S, (mark - OVERLAP_S) if mark else now - WINDOW_S)
+    of, names = len(set(names)), batch(names)
+    since = now - WINDOW_S
     host, port = target or ibkr_login.target()
     found: dict[str, dict] = {}            # story key -> row
     skipped: list[str] = []
@@ -240,13 +253,11 @@ def fetch(names: list[str], now: float | None = None, run_id: str | None = None,
                     if name not in row["tickers"]:
                         row["tickers"].append(name)
     except ibkr.TWSError as e:                 # no session, or the gateway went away: nothing is written
-        return {"tickers": len(names), "stored": 0, "skipped": skipped, "failed": failed, "error": str(e)}
-    rows = list(found.values())
-    _merge_tickers(rows)
-    rawstore.write_rows(TABLE, rows)
-    # The mark is the newest headline stored, on IBKR's own clock, and moves only when every name answered: a name
-    # skipped now has its gap asked for again next time (the upsert makes the overlap harmless).
-    if rows and not skipped and not failed:
-        rawstore.write_rows(META, [{"key": MARK_KEY, "value": repr(max(r["published_at"] for r in rows)),
-                                    "run_at": now}])
-    return {"tickers": len(names), "stored": len(rows), "skipped": skipped, "failed": failed, "error": None}
+        return {"tickers": len(names), "of": of, "stored": 0, "skipped": skipped, "failed": failed, "error": str(e)}
+    rows = _merge_tickers(list(found.values()))
+    if rows:
+        rawstore.write_rows(TABLE, rows)
+    # The gateway answered: the next pass asks the next names. A refused name waits its turn and the banner names it.
+    if names:
+        rawstore.write_rows(META, [{"key": CURSOR_KEY, "value": names[-1], "run_at": now}])
+    return {"tickers": len(names), "of": of, "stored": len(rows), "skipped": skipped, "failed": failed, "error": None}
