@@ -17,7 +17,7 @@ import os
 import pytest
 
 from .harness.cdp_browser import Page, find_chrome
-from .harness.shared import ops_rows
+from .harness.shared import store_of
 from .test_board_sec_13f import TOTALS
 
 PHONE = (390, 844)
@@ -43,8 +43,10 @@ def browser(chrome):
 
 
 def _history(dashboard, kind: str) -> list[tuple]:
-    return [(r["ticker"], r["action"], r["by"]) for r in ops_rows(dashboard.env["RC_MARKET_DIR"],
-                                                                    f"watchlist_{kind}_changes")]
+    """The job list's own history (``wl_change`` of ``jobs.<kind>`` in the dashboard's watch-list file, 7g)."""
+    from RevenueChaser.module_watchlists import store
+    with store_of(dashboard):
+        return [(r["symbol"], r["action"], r["changed_by"]) for r in reversed(store.changes(f"jobs.{kind}"))]
 
 
 def _q(selector: str) -> str:
