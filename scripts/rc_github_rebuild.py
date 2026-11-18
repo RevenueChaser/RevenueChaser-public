@@ -1,12 +1,12 @@
 """One whole build of a RevenueChaser serving kind on a GitHub runner (avo, 17 Nov 2026: slow one-off rebuilds go to a
 runner; the output is a DuckDB file the code would have built on homesrv).
 
-    python RevenueChaser/scripts/rc_rebuild.py KIND
+    python runner/scripts/rc_github_rebuild.py KIND
         build KIND from the unpacked Parquet with RevenueChaser's own builder; write result.json: the build's checks
         and every table's (row count, checksum)
 
-Runs inside .github/workflows/rc-rebuild.yml with RC_MARKET_DIR / RC_MARKET_RAW_DIR pointed at the unpacked input
-bundle (home-server bin/rc-rebuild send).
+Runs inside .github/workflows/rc-github-rebuild.yml with RC_MARKET_DIR / RC_MARKET_RAW_DIR pointed at the unpacked input
+bundle (home-server bin/rc-github-rebuild send).
 It is RevenueChaser's ``base.build_kind_many`` itself, never a copy of its rules:
 - RC_BUILD_WHOLE=1 (set by the workflow) makes ``dirty.plan`` build the kind whole and still write its manifest, so
   homesrv's next pass sees the Parquet as already built;
@@ -28,7 +28,7 @@ def main(kind: str) -> int:
         sys.exit(f"unknown kind {kind!r}")
     # The kind's derived dataset (no provider: prices/serving, ownership/serve, ...) leads, as its own request would.
     lead = next((d for d in members if not tuple(d.providers)), members[0])
-    ctx = base.RunContext(run_id=base.new_run_id(), dataset=lead.name, trigger="rc-rebuild")
+    ctx = base.RunContext(run_id=base.new_run_id(), dataset=lead.name, trigger="rc-github-rebuild")
     ctx.as_of = lead.default_as_of()
     t0 = time.monotonic()
     checks = base.build_kind_many(kind, [(lead, ctx)], lead=ctx)
