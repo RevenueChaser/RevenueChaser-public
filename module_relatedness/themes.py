@@ -1161,10 +1161,10 @@ def match_theme_etfs(run_id: str) -> dict:
     ``>= 0.02``, top 3. Always include the modal Morningstar sector's SPDR as rank 1
     when available (even if it failed the thresholds), bumping others.
     """
-    from RevenueChaser.core.rotation_reference import ROTATION_ETFS
+    from RevenueChaser.core import rotation_reference
 
     candidates = {
-        t: info for t, info in ROTATION_ETFS.items()
+        t: info for t, info in rotation_reference.rotation_etfs().items()
         if info.get("group") in ("sector", "theme")
     }
     from RevenueChaser.rcdata import read
@@ -1207,7 +1207,7 @@ def match_theme_etfs(run_id: str) -> dict:
         themes_touched += 1
         ov_by = {s[2]: s[0] for s in scored}
         for rank, etf in enumerate(top_etfs, start=1):
-            info = candidates.get(etf) or ROTATION_ETFS.get(etf) or {}
+            info = candidates.get(etf) or rotation_reference.rotation_etfs().get(etf) or {}
             ov = ov_by.get(etf)
             if ov is None and etf in holdings:
                 ov = _jaccard(holdings[etf], tset)

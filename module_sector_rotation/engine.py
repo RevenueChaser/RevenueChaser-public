@@ -6,7 +6,8 @@ from datetime import date, datetime, timedelta
 from typing import Optional
 import numpy as np
 
-from .universe import ROTATION_ETFS, MACRO_SERIES
+from RevenueChaser.core import rotation_reference
+from .universe import MACRO_SERIES
 from RevenueChaser.core.gics_map import UNCLASSIFIED, canonical_sector, is_unclassified
 from RevenueChaser.core.providers.unusual_whales import UWClient
 from RevenueChaser.module_sector_rotation.models import ETFRotationSnapshot
@@ -124,7 +125,7 @@ def etf_trees(tree: dict[str, list[dict]]) -> dict[str, list[dict]]:
     ``sector``.
     """
     out: dict[str, list[dict]] = {}
-    for ticker, info in ROTATION_ETFS.items():
+    for ticker, info in rotation_reference.rotation_etfs().items():
         if info.get("group") != "sector":
             continue
         if info.get("name") in tree:
@@ -351,12 +352,12 @@ def macro_points(start: date, end: date, tickers=None) -> dict[str, list[tuple[d
 
 def rrg_tickers() -> list[str]:
     """The RRG symbols: every rotation ETF but the benchmark and the macro series (B1: macro is a strip, not a dot)."""
-    return [t for t in ROTATION_ETFS if t != "SPY" and t not in MACRO_SERIES]
+    return [t for t in rotation_reference.rotation_etfs() if t != "SPY" and t not in MACRO_SERIES]
 
 
 def too_short(closes: dict[str, list[float]]) -> list[str]:
     """Symbols with some weekly closes but fewer than ``MIN_WEEKS``, in universe order: a warning, not a failure."""
-    return [t for t in ROTATION_ETFS if 0 < len(closes.get(t) or []) < MIN_WEEKS]
+    return [t for t in rotation_reference.rotation_etfs() if 0 < len(closes.get(t) or []) < MIN_WEEKS]
 
 
 def _scaled(values: list, i: int):
@@ -395,7 +396,7 @@ def cross_section(closes: dict[str, list[float]], spy_closes: list[float], as_of
     The one function the live Fetch and the backfill share (D-M3): the same closes give the same rows.
     """
     snaps = []
-    for ticker, info in ROTATION_ETFS.items():
+    for ticker, info in rotation_reference.rotation_etfs().items():
         series = closes.get(ticker) or []
         if ticker == "SPY" or ticker in MACRO_SERIES or len(series) < MIN_WEEKS:
             continue
@@ -439,7 +440,7 @@ def macro_table(as_of: date) -> list[dict]:
                 continue
             vals = [v for _, v in obs]
             last = vals[-1]
-            row = {"ticker": t, "block": block, "name": (ROTATION_ETFS.get(t) or MACRO_SERIES[t]).get("name", t),
+            row = {"ticker": t, "block": block, "name": (rotation_reference.rotation_etfs().get(t) or MACRO_SERIES[t]).get("name", t),
                    "last": round(last, 3), "last_date": str(obs[-1][0]), "unit": "bp" if block in _BP else "%"}
             for key, n in _CHG_DAYS:
                 b = vals[-1 - n] if len(vals) > n else None
@@ -534,7 +535,6 @@ def get_quadrant_for_ticker(ticker: str, weights: dict[str, list[tuple[str, floa
     it, the quadrant of its own sector's fund (``sector`` is the spine's sector name), basis ``"sector XLY"``, so the
     board can mark it (avo, 18 Nov 2026: 347 of 455 calendar names were empty without it). ``("", "")`` when
     neither gives one."""
-    from RevenueChaser.core.rotation_reference import SECTOR_ETF
     votes: dict[str, float] = {}
     for etf, weight in weights.get(ticker, ()):
         q = snapshots_map.get(etf, "")
@@ -542,7 +542,7 @@ def get_quadrant_for_ticker(ticker: str, weights: dict[str, list[tuple[str, floa
             votes[q] = votes.get(q, 0.0) + weight
     if votes:
         return min(votes, key=lambda q: (-votes[q], QUADRANT_ORDER.get(q, 9))), "funds"
-    etf = SECTOR_ETF.get(sector, "")
+    etf = rotation_reference.sector_etf().get(sector, "")
     q = snapshots_map.get(etf, "")
     return (q, f"sector {etf}") if q else ("", "")
 

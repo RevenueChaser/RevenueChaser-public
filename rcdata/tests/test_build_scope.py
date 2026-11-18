@@ -426,7 +426,7 @@ def test_karar_82_a_narrowed_fill_asks_no_benchmark_no_watch_list_and_no_cover_c
 def test_karar_82_the_anchors_are_a_scope_of_their_own(spine, monkeypatch):
     monkeypatch.setattr(prices, "cover_classes", lambda rows: [])
     rows = prices.scope(watched={"NVDA"}, want=base.Scope(include=("anchors",)))
-    assert set(_tickers(rows)) == {*prices.BENCHMARKS, *prices.ROTATION}
+    assert set(_tickers(rows)) == {*prices.BENCHMARKS, *prices.rotation()}
     assert "AAPL" not in _tickers(rows) and "NVDA" not in _tickers(rows)
 
 

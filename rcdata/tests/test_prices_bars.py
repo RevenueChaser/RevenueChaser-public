@@ -35,7 +35,7 @@ def alpaca_env(monkeypatch):
     monkeypatch.setenv("RC_ALPACA_BASE", "https://alpaca.test")
     _clock(monkeypatch, datetime(2026, 10, 27, 17, 0, tzinfo=calendar.NY))
     # The scope: the five spine names, the benchmarks and ETFs cut to SPY, no watch list.
-    monkeypatch.setattr("RevenueChaser.rcdata.build.prices.ROTATION", ())
+    monkeypatch.setattr("RevenueChaser.rcdata.build.prices.rotation", lambda: ())
     monkeypatch.setattr("RevenueChaser.rcdata.build.prices.BENCHMARKS", ("SPY",))
     monkeypatch.setattr("RevenueChaser.rcdata.read.watched", lambda kind: set())
     write_spine()

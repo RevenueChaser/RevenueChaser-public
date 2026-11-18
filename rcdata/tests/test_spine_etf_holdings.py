@@ -44,7 +44,7 @@ def test_the_funds_are_the_rotation_boards_sector_and_theme_etfs_but_the_commodi
 
     The ``52`` is deliberate: adding an ETF to the board's sector or theme groups fails this test, which is where
     the decision whether the new fund has a keyless holdings file or goes to UW belongs."""
-    from RevenueChaser.core.rotation_reference import ROTATION_ETFS
+    from RevenueChaser.core.rotation_reference import SEED_ROTATION_ETFS as ROTATION_ETFS
     board = {t for t, info in ROTATION_ETFS.items() if info["group"] in ("sector", "theme")}
     assert len(board) == 52
     assert {f.etf for f in etf.FILES} == (board - {"GLD", "SLV", "USO"}) | etf.EXTRA
@@ -55,7 +55,7 @@ def test_every_peer_set_etf_and_every_rotation_equity_etf_is_a_daily_fund():
     """Review of 9 Nov 2026, section 10: a relatedness peer set can never be "no holdings" by omission. Every ETF
     of ``etf_sets.json``, and every Rotation ``sector`` or ``theme`` ETF that holds stocks, is fetched daily."""
     import json
-    from RevenueChaser.core.rotation_reference import ROTATION_ETFS
+    from RevenueChaser.core.rotation_reference import SEED_ROTATION_ETFS as ROTATION_ETFS
     from RevenueChaser.module_relatedness.validation import peer_sets
     _version, sets = peer_sets.read_etf_list()
     board = {t for t, info in ROTATION_ETFS.items() if info["group"] in ("sector", "theme")}

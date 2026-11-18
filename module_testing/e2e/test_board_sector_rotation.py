@@ -92,11 +92,11 @@ def _rotation_candle_calls(routes, since: int = 0) -> list[str]:
 
 
 def _rotation_candle_paths(paths: list[str]) -> list[str]:
-    from RevenueChaser.module_sector_rotation.universe import ROTATION_ETFS
+    from RevenueChaser.core import rotation_reference
     out = []
     for path in paths:
         parts = path.strip("/").split("/")
-        if len(parts) > 3 and parts[3] == "ohlc" and parts[2] in ROTATION_ETFS:
+        if len(parts) > 3 and parts[3] == "ohlc" and parts[2] in rotation_reference.rotation_etfs():
             out.append(path)
     return out
 

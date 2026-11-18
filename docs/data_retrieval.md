@@ -270,6 +270,14 @@ The two watch lists (D2) are lists of `boards/watchlists.duckdb` marked for the 
 emptied (no name is avo's choice), any other marked list keeps its last name. `POST /api/watchlists/jobs/seed` made the two lists once from the old `ops.sqlite` rows
 (`watchlist_option`, `watchlist_stock`), which are no longer read. No provider call.
 
+Two more marked lists carry the Sector Rotation map (plan v5 step 7b): `jobs.map` (`feeds` `map`; a section's id is
+the fund's group, the item's note its hand-written short name) and `jobs.industry` (`feeds` `industry`; a section's
+id is the GICS group code, its first fund is the map's). They are ordinary lists with sections, edited on the Watch
+lists board like avo's own (`POST /api/watchlists/<id>/symbol/note` writes the short name), and neither can be
+deleted or emptied. A read is `core.rotation_reference.rotation_etfs()` / `industry_groups()`, over
+`rcdata.read.job_sections(feeds)`, strict in the same way. The same seed route makes them once from
+`core/rotation_reference.py`'s seed.
+
 - **`POST /api/watchlist/<option|stock>/toggle/<ticker>`**: puts the ticker on that list or takes it off;
   `{ok, list, ticker, on}`. The `X-RC-Panel` value (the board) is the row's `added_by` and the history row's `by`.
   404 for another list, 400 for a ticker `_valid_ticker` refuses, 403 without the panel header; none writes.

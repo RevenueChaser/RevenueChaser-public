@@ -13,7 +13,7 @@ from __future__ import annotations
 import math
 from datetime import date, timedelta
 
-from .universe import ROTATION_ETFS
+from RevenueChaser.core import rotation_reference
 
 _NOT_RANKED = ("region", "bond", "yield", "commodity")
 
@@ -21,7 +21,7 @@ _NOT_RANKED = ("region", "bond", "yield", "commodity")
 def ranked_tickers() -> list[str]:
     """The ETFs the leaderboard ranks, in universe order: every rotation ETF but the region, bond, yield and commodity
     groups (the last two are macro/futures series with no meaningful equity dollar volume)."""
-    return [t for t, info in ROTATION_ETFS.items() if info.get("group") not in _NOT_RANKED]
+    return [t for t, info in rotation_reference.rotation_etfs().items() if info.get("group") not in _NOT_RANKED]
 
 
 def bar_rows(tickers, session: date, days: int = 30) -> list[dict]:
@@ -79,7 +79,7 @@ def get_money_flow_leaderboards(df, window: int = 21, top_n: int = 4) -> dict:
         for _, r in subset.iterrows():
             out.append({
                 "ticker": r.get("ticker"),
-                "name": ROTATION_ETFS.get(r.get("ticker"), {}).get("name", ""),
+                "name": rotation_reference.rotation_etfs().get(r.get("ticker"), {}).get("name", ""),
                 "flow_score": round(float(r.get("flow_score") or 0.0), 2),
             })
         return out

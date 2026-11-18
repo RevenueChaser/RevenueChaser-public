@@ -11,7 +11,8 @@ import time
 from datetime import date, datetime, timedelta
 
 from RevenueChaser.core import calendar, rawstore
-from .universe import MACRO_SERIES, ROTATION_ETFS  # noqa: F401 - re-exported names tests patch
+from RevenueChaser.core import rotation_reference
+from .universe import MACRO_SERIES  # noqa: F401 - re-exported name tests patch
 from . import engine
 from .engine import _finite
 
@@ -77,7 +78,7 @@ def _snap_to_dict(s) -> dict:
     return {
         "as_of_date": s.as_of_date.isoformat(),
         "ticker": s.ticker,
-        "name": ROTATION_ETFS.get(s.ticker, {}).get("name", ""),
+        "name": rotation_reference.rotation_etfs().get(s.ticker, {}).get("name", ""),
         "group": s.group_name,
         "close_price": s.close_price if _finite(s.close_price) else None,
         "rs_1w": _val(s.rs_1w), "rs_1m": _val(s.rs_1m), "rs_3m": _val(s.rs_3m),

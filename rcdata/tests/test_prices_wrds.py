@@ -124,7 +124,7 @@ def env(monkeypatch, http_mock):
     monkeypatch.setenv("ALPACA_API_SECRET_KEY", "test-secret")
     monkeypatch.setenv("RC_ALPACA_BASE", "https://alpaca.test")
     monkeypatch.setattr(calendar, "_now", lambda: datetime(2026, 10, 27, 21, 0, tzinfo=timezone.utc))
-    monkeypatch.setattr("RevenueChaser.rcdata.build.prices.ROTATION", ())
+    monkeypatch.setattr("RevenueChaser.rcdata.build.prices.rotation", lambda: ())
     monkeypatch.setattr("RevenueChaser.rcdata.build.prices.BENCHMARKS", ("SPY",))
     monkeypatch.setattr("RevenueChaser.rcdata.read.watched", lambda kind: set())
     monkeypatch.setattr(wrds_history, "START_YEAR", 2024)

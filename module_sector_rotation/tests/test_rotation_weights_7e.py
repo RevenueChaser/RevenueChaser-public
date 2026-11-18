@@ -5,6 +5,7 @@ import logging
 
 import pytest
 
+from RevenueChaser.core import rotation_reference
 from RevenueChaser.module_sector_rotation import engine, etf_holdings, universe
 from RevenueChaser.rcdata import read
 
@@ -38,7 +39,7 @@ def test_share_is_the_line_over_the_funds_weighted_lines_largest_first(holdings)
 
 def test_only_sector_theme_and_industry_funds_are_read(holdings):
     etf_holdings.ticker_weights()
-    groups = {universe.ROTATION_ETFS[e]["group"] for e in holdings}
+    groups = {rotation_reference.rotation_etfs()[e]["group"] for e in holdings}
     assert groups == {"sector", "theme", "industry"}
     assert "SPY" not in holdings and "IWM" not in holdings
 

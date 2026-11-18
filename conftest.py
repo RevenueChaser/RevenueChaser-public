@@ -260,6 +260,17 @@ BOARD_ARTIFACT_PAIRS = (("FUNDAMENTALS", "module_fundamentals"), ("SWING", "modu
 
 
 @pytest.fixture(autouse=True)
+def seeded_map_lists(request, monkeypatch):
+    """The Sector Rotation map and its industry layer read as the seed in ``core/rotation_reference.py``: at run
+    time they are avo's two watch lists (plan v5 step 7b), which a test's empty store does not hold. A test of the
+    list read itself is marked ``map_lists_from_store`` and fills its own file."""
+    from RevenueChaser.core import rotation_reference
+    rotation_reference._CACHE.clear()
+    if "map_lists_from_store" not in request.keywords:
+        monkeypatch.setattr(rotation_reference, "_rows", rotation_reference.seed_sections)
+
+
+@pytest.fixture(autouse=True)
 def isolate_board_artifacts():
     """Point both copies of the six boards' artifact paths, and Asymmetric Growth's and SEC 13F's, at a folder of
     this test's own.

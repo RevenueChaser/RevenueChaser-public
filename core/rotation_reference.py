@@ -1,18 +1,26 @@
 """Reference data for the RRG rotation board, in a neutral home (#12).
 
-``ROTATION_ETFS`` and ``MACRO_SERIES`` describe *what* the rotation engine scans, not *how*
-the Sector Rotation board renders it, so they live here rather than in
-``module_sector_rotation/universe.py``. That module re-exports both names, so the board and
-its tests keep reading them from where they always did, and a test that patches the dict in
-place still patches the one object every reader holds.
+What the rotation engine scans, not how the Sector Rotation board renders it. Since plan v5 step 7b (#1031) the
+two selections are avo's watch lists in ``boards/watchlists.duckdb``, marked for the jobs (``wl_list.feeds``):
 
-Nothing here imports another module: a reference table that the price writer, the taxonomy
-and the earnings radar all read must not drag a board in behind it.
+- ``map``: the funds on the map. A section's id is the fund's group (``sector``, ``theme``, ...), the item's note
+  its short name. Both are written by hand. :func:`rotation_etfs` reads it and adds the macro indicators.
+- ``industry``: the GICS industry-group funds. A section's id is the group's GICS code, its name the group's
+  name; the first fund of a section is the one on the map. :func:`industry_groups` reads it.
+
+Every reader calls a function here at run time, through the module (``rotation_reference.rotation_etfs()``), so
+an edit on the Watch lists board reaches a long-lived process and a test can replace one function for all readers.
+The read is strict (``rcdata.read.job_sections``): a missing file or list raises, it is never an empty map.
+``SEED_ROTATION_ETFS`` and ``SEED_INDUSTRY_GROUPS`` are what the two lists are made from once
+(:func:`seed_sections`, ``module_watchlists.store.seed_job_lists``) and what the tests read; no run reads them.
+
+Nothing here imports another module at import time: a reference table that the price writer, the taxonomy and the
+earnings radar all read must not drag a board in behind it. The list read is imported inside the function.
 """
 
 # ── The RRG symbols: 97 ETFs (sector, theme, style, industry, region, bond); the 11 macro series below are listed for their
 #    names and go to the macro table, not the map (B1) ──
-ROTATION_ETFS = {
+SEED_ROTATION_ETFS = {
     # ── Sectors (11) ──
     # The names are the Morningstar sector names, as stored in ``equity_universe.sector`` (Phase 1, #266):
     # a sector row finds its industry tree (``engine.sector_etf_trees``) by this name.
@@ -149,7 +157,7 @@ ROTATION_ETFS = {
 # the others are on the "Industry group ETFs" system watch list. A group with no ETF of its own has none: no clean
 # US fund holds only that group, and its sector ETF (``SECTOR_ETF``) is the nearest stand-in. A one-group sector
 # (Energy, Materials, Utilities) is its sector ETF.
-INDUSTRY_GROUPS: tuple[tuple[str, str, str, tuple[str, ...]], ...] = (
+SEED_INDUSTRY_GROUPS: tuple[tuple[str, str, str, tuple[str, ...]], ...] = (
     ("1010", "Energy", "Energy", ("XLE", "XOP", "OIH", "XES")),
     ("1510", "Materials", "Basic Materials", ("XLB", "XME")),
     ("2010", "Capital Goods", "Industrials", ("ITA", "XAR", "PAVE")),
@@ -176,10 +184,70 @@ INDUSTRY_GROUPS: tuple[tuple[str, str, str, tuple[str, ...]], ...] = (
     ("6010", "Equity Real Estate Investment Trusts (REITs)", "Real Estate", ("VNQ",)),
     ("6020", "Real Estate Management & Development", "Real Estate", ()),
 )
-#: Morningstar sector name -> its SPDR (the ``sector`` rows of ``ROTATION_ETFS``).
-SECTOR_ETF = {info["name"]: t for t, info in ROTATION_ETFS.items() if info["group"] == "sector"}
-#: The map's industry layer: each group's first ETF, in GICS order.
-INDUSTRY_MAP_ETFS: tuple[str, ...] = tuple(etfs[0] for _c, _g, _s, etfs in INDUSTRY_GROUPS if etfs)
+#: The macro indicators on the map's pipeline: not funds, so not on a watch list. ``MACRO_SERIES`` says where each
+#: is read from.
+MACRO_GROUPS = ("yield", "commodity")
+MACRO_INDICATORS = {t: info for t, info in SEED_ROTATION_ETFS.items() if info["group"] in MACRO_GROUPS}
+#: GICS sector code -> Morningstar sector name: the taxonomy, not a selection.
+GICS_SECTOR_NAME = {code[:2]: sector for code, _g, sector, _e in SEED_INDUSTRY_GROUPS}
+MAP_FEED, INDUSTRY_FEED = "map", "industry"
+MAP_SECTION_NAMES = {"sector": "Sectors", "theme": "Themes", "style": "Style & size", "industry": "Industry groups",
+                     "region": "Regions & countries", "bond": "Bonds"}
+
+
+def seed_sections(feed: str) -> list[dict]:
+    """The rows a list is first made from, in the shape ``rcdata.read.job_sections`` answers: ``{section, name,
+    ticker, note}``, a section with no fund as one row with ``ticker`` None."""
+    if feed == MAP_FEED:
+        return [{"section": info["group"], "name": MAP_SECTION_NAMES.get(info["group"], info["group"]),
+                 "ticker": t, "note": info["name"]}
+                for t, info in SEED_ROTATION_ETFS.items() if info["group"] not in MACRO_GROUPS]
+    if feed == INDUSTRY_FEED:
+        return [{"section": code, "name": group, "ticker": t, "note": None}
+                for code, group, _s, etfs in SEED_INDUSTRY_GROUPS for t in (etfs or (None,))]
+    raise KeyError(feed)
+
+
+_CACHE: dict[str, tuple] = {}
+
+
+def _rows(feed: str) -> list[dict]:
+    """One list's rows, read again only when the watch-list file changed (a board page asks hundreds of times)."""
+    from ..rcdata import read
+    stamp = read.job_lists_stamp()
+    hit = _CACHE.get(feed)
+    if hit is None or hit[0] != stamp:
+        hit = _CACHE[feed] = (stamp, read.job_sections(feed))
+    return hit[1]
+
+
+def rotation_etfs() -> dict[str, dict]:
+    """``{symbol: {"name", "group"}}``: the map list's funds in avo's order, then the macro indicators."""
+    out = {r["ticker"]: {"name": r["note"] or r["ticker"], "group": r["section"]}
+           for r in _rows(MAP_FEED) if r["ticker"]}
+    out.update(MACRO_INDICATORS)
+    return out
+
+
+def industry_groups() -> tuple[tuple[str, str, str, tuple[str, ...]], ...]:
+    """``(code, group, Morningstar sector, ETFs)`` per section of the industry list, in avo's order; a section with
+    no fund has ``()``."""
+    out: dict[str, list] = {}
+    for r in _rows(INDUSTRY_FEED):
+        row = out.setdefault(r["section"], [r["section"], r["name"], GICS_SECTOR_NAME.get(r["section"][:2], ""), []])
+        if r["ticker"]:
+            row[3].append(r["ticker"])
+    return tuple((code, name, sector, tuple(etfs)) for code, name, sector, etfs in out.values())
+
+
+def sector_etf() -> dict[str, str]:
+    """Morningstar sector name -> its SPDR (the ``sector`` rows of the map list)."""
+    return {info["name"]: t for t, info in rotation_etfs().items() if info["group"] == "sector"}
+
+
+def industry_map_etfs() -> tuple[str, ...]:
+    """The map's industry layer: each group's first ETF, in the list's order."""
+    return tuple(etfs[0] for _c, _g, _s, etfs in industry_groups() if etfs)
 
 
 # Per-symbol data resolution for RRG-mapped macro symbols: the market_series row, and the FRED id / yf proxy.
