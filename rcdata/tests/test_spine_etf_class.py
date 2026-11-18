@@ -354,6 +354,23 @@ def test_a_fund_that_fell_past_the_lower_cut_changes_and_the_change_is_written(n
     assert len([c for c in changes if c["as_of"] == date(2026, 8, 30)]) == 2      # the live rows, carried forward
 
 
+def test_a_fund_that_misses_the_newest_quarter_keeps_its_last_sourced_label_and_says_so(nport, live_etf_class):
+    """avo's F, 18 Nov 2026: an old label with its source beats ``unclassified``; a fund never labelled stays so."""
+    live_etf_class([{"ticker": "KRE", "primary_class": "sub_industry", "code": "40101015", "reason": "as built",
+                     "source": "sec/nport 2026q2", "as_of": date(2026, 3, 31), "since": date(2026, 5, 30),
+                     "manual": False},
+                    {"ticker": "SPY", "primary_class": etf_class.UNCLASSIFIED, "reason": "no series",
+                     "since": date(2026, 5, 30), "manual": False}])
+    nport([h for h in HOLDINGS if h["accession"] != "A2"])                    # KRE's report has no line this quarter
+    rows, changes, _ = _rows(manual=[])
+    kre = rows["KRE"]
+    assert (kre["primary_class"], kre["code"], kre["source"]) == ("sub_industry", "40101015", "sec/nport 2026q2")
+    assert kre["reason"] == "as built; no report in 2026q3, label kept from sec/nport 2026q2"
+    assert kre["as_of"] == date(2026, 3, 31) and kre["since"] == date(2026, 5, 30)
+    assert rows["SPY"]["primary_class"] == etf_class.UNCLASSIFIED
+    assert not [c for c in changes if c["ticker"] == "KRE" and c["as_of"] == date(2026, 11, 17)]
+
+
 def test_a_fund_that_becomes_hidden_writes_a_change_row_though_its_label_stands(nport, live_etf_class):
     """Review finding 7: 9.9 -> 10.1 % derivatives hid a fund on the boards with nothing in the change table."""
     live_etf_class([{"ticker": "CIBR", "primary_class": "sector", "code": "45", "structure": "plain",

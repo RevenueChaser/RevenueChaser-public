@@ -34,7 +34,8 @@ with the second reviewer):
   points lower (the distance 0.05 wider), so a fund sitting on a cut does not flip every quarter; a finer level that
   passes the full cuts is a new label and wins. The 10 % derivative cut and the fixed equity and US cuts have none;
   a fund that starts or stops being hidden writes a change row all the same;
-- a fund with no report is ``unclassified`` and says why. It is never guessed.
+- a fund with no report is ``unclassified`` and says why. It is never guessed. A fund that HAD a sourced label and
+  misses the newest quarter keeps it, with the quarter it came from in ``source`` and the gap in ``reason`` (avo's F).
 
 :data:`MANUAL_FILE` corrects a wrong call; it does not fill a missing one. A line names a ticker, a ``primary_class``
 and a reason, is changed only by a pull request, and a ticker that is no universe ETF is an
@@ -417,6 +418,12 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, manual: list[dict
         t, p, was = f["ticker"], profs[f["ticker"]], live.get(f["ticker"])
         if newest is None and was is not None:
             out[t] = {**was, "run_id": ctx.run_id}          # an input outage is not a rule change
+            continue
+        if p.get("no_report") and was is not None and was.get("source") and not was.get("manual"):
+            # avo's F (18 Nov 2026): a fund that misses one quarter keeps its last SOURCED label, and says so.
+            said = (was.get("reason") or "").split("; no report in ")[0]
+            out[t] = {**was, "reason": f"{said}; no report in {newest[0]}, label kept from {was['source']}",
+                      "run_id": ctx.run_id}
             continue
         r = classify(p, bench, cuts)
         if was is not None and not was.get("manual"):
