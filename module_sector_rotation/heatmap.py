@@ -258,6 +258,17 @@ function groups(){
     return {g: g, m: m, v: v, avg: wsum ? w / wsum : null};
   });
 }
+// Phone sector tiles: the full name when its longest word fits the tile, else a short form, never cut.
+var SHORT = {"Communication Services": "Comm.", "Consumer Defensive": "Staples", "Consumer Cyclical": "Cons. Cyc.",
+  "Financial Services": "Financials", "Basic Materials": "Materials", "Real Estate": "Real Est.", "Technology": "Tech",
+  "Healthcare": "Health", "Industrials": "Indust.", "Utilities": "Util.", "Energy": "Energy"};
+function secLabel(name, room, max){
+  function fit(t){ var n = Math.max.apply(null, t.split(' ').map(function(x){ return x.length; })) + 1;
+    return Math.min(max, room / (n * .62)); }
+  var fs = fit(name); if(fs >= 11) return [name, Math.floor(fs)];
+  var sh = SHORT[name] || name.split(' ')[0].slice(0, 6) + '.';
+  return [sh, Math.max(9, Math.floor(Math.min(max, fit(sh))))];
+}
 function tile(x, y, w, h, bg, attrs, inner){
   return '<button class="hm-tile" type="button" ' + attrs + ' style="left:' + x + 'px;top:' + y + 'px;width:' + w + 'px;height:' + h +
     'px;background:' + bg + '">' + inner + '</button>';
@@ -267,10 +278,10 @@ function drawMap(){
   if(!OPEN && W <= 600){
     // A phone opens on one tile per sector; a tap expands it.
     squarify(groups(), {x: 0, y: 0, w: W, h: H}).forEach(function(g){
-      var fs = Math.max(11, Math.min(18, Math.min(g.w, g.h) / 6)), inner = g.w < 90 || g.h < 70 ?
-        '<span class="c" style="font-size:11px">' + pct(g.avg) + '</span>' :
-        '<span class="t" style="font-size:' + fs + 'px">' + rcEsc(g.g) + ' ›</span><span class="c" style="font-size:' + Math.max(11, fs * .8) +
-        'px">' + pct(g.avg) + '</span><span class="c" style="font-size:11px;opacity:.75">' + g.m.length + ' names</span>';
+      var lab = secLabel(g.g, g.w - 8, Math.max(11, Math.min(18, Math.min(g.w, g.h) / 6))), fs = lab[1], inner =
+        '<span class="t" style="font-size:' + fs + 'px">' + rcEsc(lab[0]) + (g.w >= 90 ? ' ›' : '') + '</span>';
+      if(g.h >= 34) inner += '<span class="c" style="font-size:' + Math.max(10, Math.min(15, fs * .85)) + 'px">' + pct(g.avg) + '</span>';
+      if(g.h >= 70 && g.w >= 70) inner += '<span class="c" style="font-size:11px;opacity:.75">' + g.m.length + ' names</span>';
       html += tile(g.x, g.y, g.w, g.h, colour(g.avg, st), 'data-sec="' + rcEsc(g.g) + '" aria-label="' + rcEsc(g.g) + ', ' + pct(g.avg) + ', open"', inner);
     });
     el.innerHTML = html;
