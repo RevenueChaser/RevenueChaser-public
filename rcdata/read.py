@@ -35,13 +35,14 @@ DATASET_OF_TABLE = {"market_series": "market_series", "spx_gamma_expiry_strike":
                     "security": "spine/security", "index_membership": "funds/index_holdings",
                     "fund": "sec/company_tickers_mf", "etf_holdings": "funds/etf_holdings", "etf": "spine/security",
                     "my_universe": "spine/security", "my_universe_changes": "spine/security",
-                    "etf_class": "spine/security", "etf_class_changes": "spine/security"}
+                    "etf_class": "spine/security", "etf_class_changes": "spine/security",
+                    "etf_theme": "spine/security"}
 KIND_OF_TABLE = {"market_series": "market", "spx_gamma_expiry_strike": "market",
                  "spx_greek_expiry_strike": "market", "economic_event": "market",
                  "security": "spine",
                  "index_membership": "spine", "fund": "spine", "etf_holdings": "spine", "etf": "spine",
                  "my_universe": "spine", "my_universe_changes": "spine",
-                 "etf_class": "spine", "etf_class_changes": "spine"}
+                 "etf_class": "spine", "etf_class_changes": "spine", "etf_theme": "spine"}
 # The ownership store (PR 16).
 DATASET_OF_TABLE.update({"sec13f_ticker_period": "ownership/serve", "sec13f_periods": "ownership/serve",
                          "sec13f_cusip_map": "ownership/serve", "sec13f_filer_breaks": "ownership/serve",

@@ -63,6 +63,7 @@ from pathlib import Path
 
 import duckdb
 
+from ....core import rotation_reference
 from .. import base
 from . import etf as etf_mod, my_universe, stage
 
@@ -99,6 +100,13 @@ SCHEMA = [("ticker", "TEXT PRIMARY KEY"), ("primary_class", "TEXT"), ("code", "T
 CHANGES_SCHEMA = [("ticker", "TEXT"), ("change", "TEXT"), ("was", "TEXT"), ("now", "TEXT"), ("reason", "TEXT"),
                   ("as_of", "DATE"), ("run_id", "TEXT")]
 ENTERED, CHANGED, LEFT = "entered", "changed", "left"
+#: The ETF theme list (avo's G, 18 Nov 2026): the funds of the map's theme section that sit in no one GICS branch.
+#: ``theme`` is the issuer's own name for the fund, with its source; ``as_of`` is the report the label was read from.
+THEME = "etf_theme"
+THEME_SCHEMA = [("ticker", "TEXT PRIMARY KEY"), ("theme", "TEXT"), ("theme_source", "TEXT"),
+                ("primary_class", "TEXT"), ("geo", "TEXT"), ("as_of", "DATE"), ("run_id", "TEXT")]
+#: The labels that name no GICS branch. SMH, KRE and XBI are described by their class and are not theme funds.
+NO_BRANCH = ("diversified", "international")
 
 #: The GICS levels, coarse to fine: the primary's name, the ``security`` column, the code's length.
 LEVELS = (("sector", "gsector", 2), ("industry_group", "ggroup", 4), ("industry", "gind", 6),
@@ -574,3 +582,14 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, manual: list[dict
     ctx.notes.append(f"{len(out)} in {TABLE} from {source or 'no N-PORT Parquet'}, benchmark {bench_name}: "
                      + ", ".join(f"{k} {n}" for k, n in kinds.most_common(6)))
     return [out[t] for t in sorted(out)], changes, issues
+
+
+def themes(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, classes: list[dict]) -> list[dict]:
+    """The ``etf_theme`` rows: a fund of the theme section of avo's ``map`` watch list (read strictly at call time)
+    whose label names no GICS branch. The theme's name is the fund's registered name, never typed here."""
+    themed = {t for t, info in rotation_reference.rotation_etfs().items() if info["group"] == "theme"}
+    names = dict(con.execute(f"SELECT ticker, name FROM {etf_mod.TABLE}").fetchall())
+    return [{"ticker": r["ticker"], "theme": names.get(r["ticker"]), "theme_source": "the fund's registered name",
+             "primary_class": r["primary_class"], "geo": r["geo"], "as_of": r["as_of"], "run_id": ctx.run_id}
+            for r in sorted(classes, key=lambda r: r["ticker"])
+            if r["ticker"] in themed and r["primary_class"] in NO_BRANCH]
