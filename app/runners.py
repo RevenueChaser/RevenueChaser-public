@@ -173,9 +173,10 @@ OIPD_JSON = OUTPUT_DIR / "oipd" / "oipd_latest.json"
 SETTINGS_LATEST = OUTPUT_DIR / "settings_latest.html"
 
 def _load_watchlist() -> set:
-    """The stock watch list (``rcdata.read.watched``; PR 4, plan v5 step 7g): LEAPS pins and Earnings' watched names."""
+    """avo's picks (``rcdata.read.picked``: his own watch lists and the stock list): Earnings' and Welcome's watched
+    names. An unreadable list is left out, as on a page."""
     from RevenueChaser.rcdata import read
-    return {r["ticker"] for r in read.watchlists()["stock"]}     # a page: an unreadable list shows as empty
+    return read.picked()
 
 
 def _compute_nrc_results(cards) -> dict:
