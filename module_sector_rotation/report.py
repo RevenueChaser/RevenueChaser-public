@@ -130,6 +130,20 @@ tbody tr.on{background:#1a1a2e;outline:1px solid #1f6feb}
  .quadrant-panel,.table-panel,.moneyflow-panel{min-width:0;max-width:none;flex-basis:100%}
  .c-1w,.c-rot,.c-price{display:none}
  td{white-space:normal}
+ /* The fund table on a phone (avo, 18 Nov 2026): no sideways scroll. Each row is a grid of ticker, quadrant, RS 1M
+    and RS 3M, with the name and its data label on a second line under them. */
+ .table-panel{padding:8px}
+ .table-panel>table>thead>tr:first-child,.table-panel>table>thead>tr>th:nth-child(2){display:none}
+ .table-panel>table>thead>tr,.table-panel tr[data-group]{display:grid;grid-template-columns:minmax(0,1fr) 86px 58px 58px}
+ .table-panel tr[data-group]{border-bottom:1px solid #21262d}
+ .table-panel tr[data-group]>td{border-bottom:0;display:flex;align-items:center;gap:3px}
+ .table-panel tr[data-group]>td.center{justify-content:center}
+ .table-panel tr[data-group]>td.num{justify-content:flex-end}
+ .table-panel tr[data-group]>td.c-1w,.table-panel tr[data-group]>td.c-rot,.table-panel tr[data-group]>td.c-price{display:none}
+ .table-panel tr[data-group]>td:nth-child(2){grid-row:2;grid-column:1/-1;padding-top:0}
+ .table-panel tr[data-group]>td:nth-child(2) .by-data{display:inline}
+ .table-panel tr[data-group]>td:nth-child(2){display:block}
+ .table-panel tr.holdings-row,.table-panel tr.holdings-row>td{display:block;overflow-x:auto}
  .macro-table thead{display:none}
  .macro-table tr.mrow{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px 8px;padding:8px 0;border-bottom:1px solid #21262d}
  .macro-table tr.mrow td{display:block;border:0;padding:0;text-align:left}
