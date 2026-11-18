@@ -239,7 +239,7 @@ def combobox_html(input_id: str, label_id: str, placeholder: str) -> str:
 
 
 # ── The "add to list" button (#786 step 5; was the Stock / Option pair of PR 4, D2) ──
-# One 44 px bookmark next to a ticker. Pressing it opens a menu of every watch list: avo's own named lists first
+# One 36 px bookmark with a 12 px icon (avo, 18 Nov 2026: "Düğmeyi 36 yap, simge 12") left of a ticker. Pressing it opens a menu of every watch list: avo's own named lists first
 # ("Your lists"), then the two the jobs read ("Read by the jobs": the stock list LEAPS, prices and Earnings take, the
 # option list the options build takes). Each row is a checkbox with the list's size; a tick puts the ticker on that
 # list, an untick takes it off (``POST /api/watchlists/<id>/tick/<ticker>``, ``module_watchlists/menu.py``). The
@@ -250,15 +250,15 @@ def combobox_html(input_id: str, label_id: str, placeholder: str) -> str:
 # (``app/dashboard.py`` ``_TICKER_RE``) refuses gets no button. On a phone the menu is a bottom sheet with 44 px
 # rows; the button is ``aria-haspopup``, the rows ``menuitemcheckbox``, Escape closes and focus returns.
 WATCH_TICKER_PATTERN = r"[A-Z0-9][A-Z0-9.\-]{0,9}"
-WATCH_ICON = ('<svg class="rc-watch-ico" viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" '
+WATCH_ICON = ('<svg class="rc-watch-ico" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" '
               'focusable="false"><path d="M4 2h8v12l-4-3-4 3z" fill="var(--rc-watch-fill,none)" '
               'stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>')
 _WATCH_TICKER_RE = re.compile(WATCH_TICKER_PATTERN)
 
 WATCHLIST_CSS = """<style>
 .rc-watch{display:inline-flex;align-items:center;vertical-align:middle;margin:0 6px 0 0;flex:none}
-.rc-watch button{position:relative;display:flex;align-items:center;justify-content:center;gap:2px;min-width:44px;
-  min-height:44px;padding:0 6px;box-sizing:border-box;cursor:pointer;border:1px solid var(--input-border,#2F434C);
+.rc-watch button{position:relative;display:flex;align-items:center;justify-content:center;gap:2px;min-width:36px;
+  min-height:36px;padding:0 6px;box-sizing:border-box;cursor:pointer;border:1px solid var(--input-border,#2F434C);
   border-radius:8px;background:var(--input-bg,#101F33);color:var(--muted,#9C9DA1);
   transition:color 150ms ease,background-color 150ms ease}
 .rc-watch button:hover{color:var(--fg,#C5C6C8);background:var(--hover,#18293a)}

@@ -61,9 +61,11 @@ def test_the_button_is_a_glyph_with_a_count_and_no_word():
     assert 'aria-label="NVDA is on 1 watch list"' in one
 
 
-def test_the_targets_are_44px_the_rows_44px_on_a_phone_and_use_the_theme_tokens():
+def test_the_button_is_36px_with_a_12px_icon_the_rows_44px_on_a_phone_and_use_the_theme_tokens():
     css = rc.WATCHLIST_CSS
-    assert "min-width:44px" in css and "min-height:44px" in css
+    # avo, 18 Nov 2026: "Düğmeyi 36 yap, simge 12". The menu rows keep 44 px.
+    assert "min-width:36px" in css and "min-height:36px" in css
+    assert 'width="12" height="12"' in rc.WATCH_ICON
     phone = css[css.index("@media (max-width:600px)"):]
     assert ".rc-wm-i{min-height:44px}" in phone and "bottom:0" in phone, "a bottom sheet with 44 px rows"
     assert "var(--input-bg" in css and "var(--sky" in css and "var(--card" in css

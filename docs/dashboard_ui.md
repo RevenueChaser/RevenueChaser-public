@@ -220,7 +220,9 @@ one-screen intro.
 
 ## 2c. The "add to list" button (PR 4; one menu since #786 step 5)
 
-One 44 px bookmark **left of the ticker it belongs to**, never after it (avo, 18 Nov 2026: "Bookmark simgesi solda
+One 36 px bookmark with a 12 px icon (avo, 18 Nov 2026: "Düğmeyi 36 yap, simge 12"; his exception to the 44 px
+touch rule, for this button only; the menu rows stay 44 px; a mouse on LEAPS and 13F keeps 28 px), **left of the
+ticker it belongs to**, never after it (avo, 18 Nov 2026: "Bookmark simgesi solda
 olmali"; the universal rule is "Row actions before the label" in claude-coordinator `ref/design-system/DESIGN.md`).
 Where the button has a line of its own (a card, a panel title), that line starts at the left edge. Pressing it opens a menu of every watch list: avo's own named lists under
 **Your lists**, then the two the jobs read under **Read by the jobs** (*Stock picks*, which prices, LEAPS and

@@ -130,8 +130,8 @@ td[data-col="ticker"] .break-mark{margin:-12px -10px -12px -6px}
    only sizes it: 28 px with a mouse, 44 px on a touch screen. */
 td[data-col="ticker"] .rc-watch{margin:0;flex:none}
 td[data-col="ticker"] .rc-watch button{min-width:28px;min-height:28px;height:28px;padding:0 4px;border-radius:var(--r-sm)}
-td[data-col="ticker"] .rc-watch button svg{width:15px;height:15px}
-@media (pointer:coarse){td[data-col="ticker"] .rc-watch button{min-width:44px;min-height:44px;height:44px}}
+td[data-col="ticker"] .rc-watch button svg{width:12px;height:12px}
+@media (pointer:coarse){td[data-col="ticker"] .rc-watch button{min-width:36px;min-height:36px;height:36px}}
 .pos{color:var(--pos)}.neg{color:var(--neg)}.zero{color:var(--muted)}
 .empty{padding:40px;color:var(--muted)}
 #modal{position:fixed;inset:0;background:var(--scrim);display:none;align-items:center;justify-content:center;z-index:100}

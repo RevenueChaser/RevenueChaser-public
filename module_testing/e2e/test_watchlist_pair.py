@@ -4,8 +4,8 @@ board (SEC 13F), and the Watch lists board after it.
 The name is pinned through the old route (the stock list now), one 13F Fetch renders its row from the seeded
 ownership store, and the page counts the lists that hold it. The bookmark opens the menu; ticking **Option chains**
 puts it on the option list with ``sec_13f`` as ``added_by``, unticking **Stock picks** unpins it. The Watch lists
-board then shows it on the option list the jobs read. On a 390 px phone the button and each menu row are at least
-44 px tall and the page does not scroll sideways.
+board then shows it on the option list the jobs read. On a 390 px phone the button is at least 36 px (avo, 18 Nov 2026), each
+menu row at least 44 px tall and the page does not scroll sideways.
 
 It was pinned on LEAPS until 12 Nov 2026; that board serves no rows (#730), so the same clicks are made on
 13F, which renders the same shared pair.
@@ -66,7 +66,7 @@ def test_the_menu_on_a_board_puts_a_name_on_each_list_and_the_watch_lists_board_
     browser.wait_for(f"{_q(_BTN)}.getAttribute('data-on') === '1'")     # the live read counted the stock list
     w, h = browser.eval(f"(function(b){{ var r = b.getBoundingClientRect(); return [r.width, r.height]; }})"
                         f"({_q(_BTN)})")
-    assert w >= 44 and h >= 44, (w, h)
+    assert w >= 36 and h >= 36, (w, h)
 
     browser.eval(f"{_q(_BTN)}.click()")
     browser.wait_for(f"!!{_q(_ITEM.format(lst='jobs.option'))}")
