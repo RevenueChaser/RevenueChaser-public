@@ -71,7 +71,9 @@ _GVKEY = re.compile(r"^\d{6}$")
 # ``sic`` since #240: Compustat's company SIC, the spine's only SPAC source (``spine/tier.SIC_SPAC``). A
 # snapshot taken before this column was asked for has no ``sic`` in its Parquet; staging reads it as NULL
 # (``stage.create``), so the rule types nothing until the next attended snapshot.
-COMPANY = [("gvkey", "TEXT"), ("conm", "TEXT"), ("cik", "TEXT"), ("sic", "TEXT")]
+#: ``loc`` is the company's country of business (ISO 3166-1 alpha-3, "ARG"): what ``etf_class`` needs for a
+#: US-listed foreign company, whose N-PORT line says US (plan v5 step 4; ARGT read US 87 %, 18 Nov 2026).
+COMPANY = [("gvkey", "TEXT"), ("conm", "TEXT"), ("cik", "TEXT"), ("sic", "TEXT"), ("loc", "TEXT")]
 SECURITY = [("gvkey", "TEXT"), ("iid", "TEXT"), ("tic", "TEXT"), ("cusip", "TEXT"), ("exchg", "INTEGER"),
             ("excntry", "TEXT"), ("secstat", "TEXT"), ("tpci", "TEXT"), ("dldtei", "DATE")]
 IDHIST = [("gvkey", "TEXT"), ("iid", "TEXT"), ("item", "TEXT"), ("itemvalue", "TEXT"), ("efffrom", "DATE"),
@@ -91,7 +93,7 @@ PROVENANCE = [("source_as_of", "DATE"), ("fetched_at", "DOUBLE"), ("run_id", "TE
 
 TABLES: dict[str, dict] = {
     "company": {"dataset": "wrds/sec_idhist", "schema": COMPANY, "key": ["gvkey"],
-                "sql": "SELECT gvkey, conm, cik, sic FROM comp.company"},
+                "sql": "SELECT gvkey, conm, cik, sic, loc FROM comp.company"},
     "security": {"dataset": "wrds/sec_idhist", "schema": SECURITY, "key": ["gvkey", "iid"],
                  "sql": "SELECT gvkey, iid, tic, cusip, exchg, excntry, secstat, tpci, dldtei FROM comp.security"},
     "sec_idhist": {"dataset": "wrds/sec_idhist", "schema": IDHIST, "key": ["gvkey", "iid", "item", "efffrom"],
@@ -113,7 +115,7 @@ STAGING = {"company": "stg_wrds_company", "security": "stg_wrds_security", "sec_
            "g_security": "stg_wrds_g_security", "r_giccd": "stg_wrds_giccd"}
 # Per table, the columns asked for after its stored snapshot was written: read as NULL, with a warning, until the
 # next attended backfill (``stage.create``). Any other missing column still fails the build.
-ADDED_LATER = {"company": {"sic"}}
+ADDED_LATER = {"company": {"sic", "loc"}}
 
 
 # ── The one connection: a worker subprocess under the interpreter that has ``wrds`` ──────────────────────────
