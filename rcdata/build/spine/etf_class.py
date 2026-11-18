@@ -390,15 +390,28 @@ def _key(r: dict) -> str:
 def hold(p: dict, bench: dict | None, cuts: Cuts, was: dict, r: dict) -> dict:
     """``r`` (the rule's answer), or the live label ``was`` where it still holds with every cut ``leave`` points
     lower. The live label is asked about at its OWN level: the lower cuts also let a finer level in, which is not
-    the live label holding (review finding 6). A finer level that passed the full cuts is a new label and wins."""
+    the live label holding (review finding 6). A finer level that passed the full cuts is a new label and wins.
+
+    A live label that is no GICS level (``country``, ``broad``, ``diversified``, ...) is asked with the level search
+    closed: with it open, a sector at the LOWER cuts answered first and the live label was dropped though its own
+    lower cut held (plan-v4 review: a China fund at 55 % with a 52 % sector turned ``international``)."""
     level = {name: i for i, (name, _, _) in enumerate(LEVELS)}
     live, new = level.get(was["primary_class"]), level.get(r["primary_class"])
-    if _key(was) == _key(r) or p.get("no_report") or (live is not None and new is not None and new > live):
+    if _key(was) == _key(r) or p.get("no_report") or (new is not None and (live is None or new > live)):
         return r
-    held = classify(p, bench, cuts.relaxed(), upto=live)
+    held = classify(p, bench, cuts.relaxed(), upto=-1 if live is None else live)
     if _key(held) != _key(was):
         return r
     return {**held, "reason": held["reason"] + f"; kept, within {cuts.leave:.0f} points of the cut"}
+
+
+def _carried(was: dict, p: dict) -> dict:
+    """A kept live row, with its structure read again from the ``etf`` row: a fund that turned leveraged while
+    its label is carried must not stay ``plain`` and shown (plan-v4 review, N6). Whether it is synthetic is the old
+    report's word, since there is no newer one."""
+    structure = ("leveraged" if p.get("lev") else "option_income" if p.get("opt")
+                 else "synthetic" if was.get("is_synthetic") else "plain")
+    return {**was, "structure": structure, "hidden_by_default": structure != "plain"}
 
 
 def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, manual: list[dict] | None = None,
@@ -417,12 +430,12 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, manual: list[dict
     for f in funds:
         t, p, was = f["ticker"], profs[f["ticker"]], live.get(f["ticker"])
         if newest is None and was is not None:
-            out[t] = {**was, "run_id": ctx.run_id}          # an input outage is not a rule change
+            out[t] = {**_carried(was, p), "run_id": ctx.run_id}          # an input outage is not a rule change
             continue
         if p.get("no_report") and was is not None and was.get("source") and not was.get("manual"):
             # avo's F (18 Nov 2026): a fund that misses one quarter keeps its last SOURCED label, and says so.
             said = (was.get("reason") or "").split("; no report in ")[0]
-            out[t] = {**was, "reason": f"{said}; no report in {newest[0]}, label kept from {was['source']}",
+            out[t] = {**_carried(was, p), "reason": f"{said}; no report in {newest[0]}, label kept from {was['source']}",
                       "run_id": ctx.run_id}
             continue
         r = classify(p, bench, cuts)

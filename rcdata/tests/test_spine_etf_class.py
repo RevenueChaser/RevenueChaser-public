@@ -170,6 +170,20 @@ def test_the_live_label_is_held_at_its_own_level_and_a_finer_one_that_passes_in_
     assert new["primary_class"] == "industry_group"
 
 
+def test_a_live_label_that_is_no_gics_level_is_held_at_its_own_cut_not_lost_to_a_sector_at_the_lower_cuts():
+    """Plan-v4 review (Grok, agreed): a country fund at 55 % of equity with a 52 % sector turned ``international``."""
+    cuts = etf_class.Cuts()
+    japan = _p({"45103010": 51.5, "40101010": 24.0, "35202010": 23.5}, country={"JP": 55.0, "KR": 44.0})
+    strict = etf_class.classify(japan, BENCH, cuts)
+    assert strict["primary_class"] == "international"
+    assert etf_class.classify(japan, BENCH, cuts.relaxed())["primary_class"] == "sector"      # what the old check saw
+    kept = etf_class.hold(japan, BENCH, cuts, {"primary_class": "country", "code": "JP"}, strict)
+    assert (kept["primary_class"], kept["code"]) == ("country", "JP") and "kept" in kept["reason"]
+    tech = _p({"45103010": 99.0}, country={"JP": 55.0, "KR": 44.0})          # a level at the full cuts is a new label
+    new = etf_class.classify(tech, BENCH, cuts)
+    assert etf_class.hold(tech, BENCH, cuts, {"primary_class": "country", "code": "JP"}, new) is new
+
+
 def test_a_fund_with_no_report_is_unclassified_and_says_why_it_is_never_guessed():
     r = etf_class.classify(_no_report("SPDR S&P 500 ETF Trust"), BENCH)
     assert r["primary_class"] == etf_class.UNCLASSIFIED and "no series" in r["reason"]
@@ -369,6 +383,20 @@ def test_a_fund_that_misses_the_newest_quarter_keeps_its_last_sourced_label_and_
     assert kre["as_of"] == date(2026, 3, 31) and kre["since"] == date(2026, 5, 30)
     assert rows["SPY"]["primary_class"] == etf_class.UNCLASSIFIED
     assert not [c for c in changes if c["ticker"] == "KRE" and c["as_of"] == date(2026, 11, 17)]
+
+
+def test_a_carried_label_reads_its_structure_again_so_a_fund_that_turned_leveraged_is_hidden(nport, live_etf_class):
+    """Plan-v4 review N6: the kept row copied ``plain`` for as long as the fund filed nothing."""
+    live_etf_class([{"ticker": "TNA", "primary_class": "sector", "code": "45", "reason": "as built",
+                     "structure": "plain", "hidden_by_default": False, "is_synthetic": False,
+                     "source": "sec/nport 2026q2", "since": date(2026, 5, 30), "manual": False}])
+    nport([h for h in HOLDINGS if h["accession"] != "A5"])                    # TNA's report has no line this quarter
+    rows, changes, _ = _rows(manual=[])
+    tna = rows["TNA"]
+    assert (tna["primary_class"], tna["code"], tna["since"]) == ("sector", "45", date(2026, 5, 30))
+    assert tna["structure"] == "leveraged" and tna["hidden_by_default"] is True
+    new = [c for c in changes if c["ticker"] == "TNA" and c["as_of"] == date(2026, 11, 17)]
+    assert [(c["change"], c["was"], c["now"]) for c in new] == [("changed", "sector 45", "sector 45")]
 
 
 def test_a_fund_that_becomes_hidden_writes_a_change_row_though_its_label_stands(nport, live_etf_class):
