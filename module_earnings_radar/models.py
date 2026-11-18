@@ -211,7 +211,6 @@ class TradeCard:
     market_cap: str = ""
     total_open_interest: str = ""
     rotation_quadrant: str = ""
-    rotation_basis: str = ""        # "funds" (the map funds that hold it), "sector XLY" (its sector's fund), or ""
     rotation_score: float = 0.0
     current_price: str = ""
     gex_call_wall: str = ""
@@ -242,3 +241,4 @@ class TradeCard:
     agh_accel: Optional[bool] = None
     agh_owners: str = ""
     agh_dilution: bool = False
+    rotation_basis: str = ""        # "funds" (the map funds that hold it), "sector XLY" (its sector's fund), or ""

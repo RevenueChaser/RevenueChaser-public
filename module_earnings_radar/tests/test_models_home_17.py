@@ -268,6 +268,7 @@ TRADE_CARD = [
     ("agh_accel", None),
     ("agh_owners", ""),
     ("agh_dilution", False),
+    ("rotation_basis", ""),          # plan v5 7e: where the quadrant was read from
 ]
 
 EXPECTED = {
