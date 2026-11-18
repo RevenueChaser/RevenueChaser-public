@@ -9,9 +9,10 @@ from "not read lately" (the Fundamentals review's F2).
 
 **The documents.** The primary document of the newest annual report (10-K, else 20-F, else 40-F) and of the newest
 proxy (DEF 14A), plus a 40-F's Annual Information Form exhibits, fetched once each (the raw file is the resume
-marker) and stored on disk. Beside the annual report, its definition linkbase (``<ticker>-<date>_def.xml``, found
+marker) and stored on disk. Beside the annual report, its definition linkbase (``<ticker>-<date>_def.xml``, or the
+schema file ``<ticker>-<date>.xsd`` of a filing that lists no ``_def.xml`` and embeds its linkbases there; found
 through the filing's ``index.json``; ``linkbase.py``), which says in which table of the report a segment member
-stands; a filing that lists none is counted in the run's note, not an issue.
+stands; a filing that has none is counted in the run's note, not an issue.
 
 **This layer no longer cuts them (#858).** It did: ``document_sections`` sliced the business section with the Value
 Chain board's splitter and stored ``whole``, ``proxy``, ``business`` and ``aif`` as ``filing_item``'s
@@ -27,7 +28,8 @@ filing list yet, and its two documents, resumable.
 
 Raw: ``raw/sec/filings/submissions/<cik>/<as-of>.json.gz`` (with a ``.meta.json``: the accessions it holds) and
 ``raw/sec/filings/documents/<cik>/<accession>.html.gz`` (and ``<accession>.index.json.gz``,
-``<accession>.<name>_def.xml.gz`` beside it). Parquet: ``parquet/sec/filings/cik=<cik>/filings.parquet``
+``<accession>.<name>_def.xml.gz`` or ``<accession>.<name>.xsd.gz`` beside it). Parquet:
+``parquet/sec/filings/cik=<cik>/filings.parquet``
 (one row per filing and 8-K item), ``.../segments.parquet`` / ``.../customers.parquet`` (the annual report's inline
 XBRL, ``ixbrl.py``: revenue by segment, product and country, and major customers' shares), each replaced whole from
 the newest list, and ``.../header.parquet`` (the list's company header: SEC SIC, state of incorporation, the
@@ -317,7 +319,9 @@ _LINKBASES = "_sec_linkbases"
 
 
 def stored_linkbase(cik: str, accession: str) -> Path | None:
-    """The definition linkbase stored for one filing, named by its stored ``index.json``; None when there is none."""
+    """The definition linkbase stored for one filing, named by its stored ``index.json``; None when there is none.
+    A stored schema file (``.xsd``) that embeds no linkbase is returned too: ``linkbase.parse`` reads no table in
+    it."""
     index = _exhibit_path(cik, accession, "index.json")
     name = linkbase.name(base.read_raw_json(index)) if index.exists() else None
     path = _exhibit_path(cik, accession, name) if name else None
@@ -328,12 +332,15 @@ def read_linkbase(ctx: base.RunContext, cik: str, f: dict, as_of: date) -> bool:
     """Fetch an annual report's definition linkbase when it is not stored yet; True when it was fetched.
 
     At most two requests per filing, once: its ``index.json`` (shared with :func:`read_exhibits`) and the file. A
-    filing that lists no ``_def.xml`` is counted (``none``) and, its index being stored, never asked again; a
-    missing index or file is counted the same way and asked again on the next read of the company.
+    filing that lists no ``_def.xml`` and no ``.xsd`` is counted (``none``) and, its index being stored, never
+    asked again; a missing index or file is counted the same way and asked again on the next read of the company.
+    A schema file (``.xsd``, read when no ``_def.xml`` is listed) that embeds no linkbase is counted ``none`` as
+    well and stored, so it is downloaded once.
 
     The linkbase is optional, so nothing here stops the run: a request the SEC does not serve (``SourceError``, a
-    5xx or a refusal after the retries) and an answer that is not a definition linkbase (an error page sent with
-    200) are counted (``failed``), nothing is stored, and the next read of the company asks again. After
+    5xx or a refusal after the retries) and an answer that is neither a definition linkbase nor, for an ``.xsd``,
+    a schema (an error page sent with 200) are counted (``failed``), nothing is stored, and the next read of the
+    company asks again. After
     ``base.MISSING_RUN`` of them in a row the host is taken to be refusing, and no further linkbase is asked for in
     this run. A reached cap is not swallowed.
     """
@@ -375,15 +382,17 @@ def _read_linkbase(ctx: base.RunContext, cik: str, f: dict, as_of: date, counts:
     if r is None:
         counts["none"] += 1
         return False
-    if b"definitionLink" not in r.content:
+    # The element, not the word: a schema names ``.../role/definitionLinkbaseRef`` without holding a linkbase.
+    held = re.search(rb"definitionLink[\s>]", r.content) is not None
+    if not held and not (name.endswith(linkbase.SCHEMA_SUFFIX) and linkbase.SCHEMA_NS in r.content):
         counts["failed"] += 1
         return False
     base.write_raw_json(common.meta_path(path), {"cik": cik, "accession": f["accession"], "form": f["form"],
                                                  "linkbase": name, "as_of": as_of.isoformat(), "url": url,
                                                  "fetched_at": time.time(), "run_id": ctx.run_id})
     base.write_raw(path, r.content)
-    counts["fetched"] += 1
-    return True
+    counts["fetched" if held else "none"] += 1       # a schema with no linkbase in it: kept, so not asked again
+    return held
 
 
 def _linkbase_note(ctx: base.RunContext) -> None:

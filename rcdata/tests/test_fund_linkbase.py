@@ -63,7 +63,20 @@ def test_the_linkbase_is_named_by_the_filings_index():
     listing = {"directory": {"item": [{"name": "amzn-20251231.htm"}, {"name": "amzn-20251231_def.xml"},
                                       {"name": "amzn-20251231_pre.xml"}]}}
     assert linkbase.name(listing) == "amzn-20251231_def.xml"
-    assert linkbase.name({"directory": {"item": [{"name": "tm-20260331.xsd"}]}}) is None and linkbase.name({}) is None
+    assert linkbase.name({"directory": {"item": [{"name": "amzn-20251231.htm"}]}}) is None
+    assert linkbase.name({}) is None
+
+
+def test_a_filing_with_no_def_xml_names_its_schema_file_and_the_def_xml_wins_when_both_are_listed():
+    """#1066: Microsoft's FY2026 10-K lists no ``_def.xml``; its ``.xsd`` embeds the linkbases."""
+    items = [{"name": "msft-20260630.htm", "size": "8585501"}, {"name": "msft-20260630.xsd", "size": "2170276"},
+             {"name": "msft-20260630_htm.xml", "size": "10948157"}]
+    assert linkbase.name({"directory": {"item": items}}) == "msft-20260630.xsd"
+    both = items + [{"name": "msft-20260630_def.xml", "size": "9000"}]
+    assert linkbase.name({"directory": {"item": both}}) == "msft-20260630_def.xml"
+    two = [{"name": "other.xsd", "size": ""}, {"name": "small.xsd", "size": "900"}, {"name": "tm-20260331.xsd",
+                                                                                     "size": "50000"}]
+    assert linkbase.name({"directory": {"item": two}}) == "tm-20260331.xsd"      # the largest listed
 
 
 # ── The fetch ─────────────────────────────────────────────────────────────────────────────────────────────────
@@ -95,6 +108,7 @@ def test_the_annual_reports_linkbase_is_fetched_once_and_stored_beside_the_docum
     assert f"/789019/{fx.K25.replace('-', '')}/{fx.MSFT_DEF_NAME}" in str(sec.calls(fx.MSFT_DEF_NAME)[0].url)
     fx.run(filings.NAME, mode="backfill", to="2026-10-29")
     assert len(sec.calls("index.json")) == 1 and len(sec.calls(fx.MSFT_DEF_NAME)) == 1   # resumable
+    assert sec.calls(fx.MSFT_XSD_NAME) == [], "the schema file is not asked for when a _def.xml is listed"
 
 
 def test_a_filing_that_lists_no_linkbase_is_counted_not_an_issue_and_not_asked_again(sec):
@@ -144,6 +158,55 @@ def test_an_error_page_sent_as_the_linkbase_is_not_stored_and_is_asked_again(sec
     assert filings.stored_linkbase("789019", fx.K25) is None, "a page is not kept as the linkbase"
     sec.routes = [r for r in sec.routes if not (isinstance(r[1], bytes) and b"Undeclared" in r[1])]   # the page is gone
     fx.run(filings.NAME, mode="backfill", to="2026-10-29")
+    assert filings.stored_linkbase("789019", fx.K25) is not None
+    assert fx.q("SELECT count(report_tables) FROM segment_revenue")[0][0] > 0
+
+
+# ── The linkbase embedded in the schema file (#1066) ─────────────────────────────────────────────────────────
+
+def test_a_linkbase_embedded_in_the_schema_file_is_fetched_once_stored_and_names_the_rows_tables(sec):
+    fx.linkbase_routes(sec, xml=None, xsd=fx.schema(fx.MSFT_DEF))
+    check = fx.run(filings.NAME, mode="backfill", to="2026-10-28")
+    assert check["result"] == "changed", check["note"]
+    assert "1 definition linkbases fetched, 0 annual reports without one" in check["note"]
+    stored = filings.stored_linkbase("789019", fx.K25)
+    assert stored is not None and stored.name.startswith(f"{fx.K25}.{fx.MSFT_XSD_NAME}")
+    assert base.read_raw(stored).decode("utf-8") == fx.schema(fx.MSFT_DEF)
+    assert f"/789019/{fx.K25.replace('-', '')}/{fx.MSFT_XSD_NAME}" in str(sec.calls(fx.MSFT_XSD_NAME)[0].url)
+    assert fx.q("SELECT axis, segment, report_tables FROM segment_revenue ORDER BY axis, segment") == [
+        ("business", "Intelligent Cloud", ["SegmentDetails"]),
+        ("business", "More Personal Computing", ["SegmentDetails"]),
+        ("geographic", "US", ["GeographicDetails", "SegmentDetails"]),
+        ("product", "Xbox Content And Services", None)]
+    fx.run(filings.NAME, mode="backfill", to="2026-10-29")
+    assert len(sec.calls("index.json")) == 1 and len(sec.calls(fx.MSFT_XSD_NAME)) == 1   # resumable
+
+
+def test_a_schema_file_with_no_linkbase_is_stored_counted_as_without_one_and_not_asked_again(sec):
+    fx.linkbase_routes(sec, xml=None, xsd=fx.schema())
+    check = fx.run(filings.NAME, mode="backfill", to="2026-10-28")
+    assert check["result"] == "changed", check["note"]
+    assert "0 definition linkbases fetched, 1 annual reports without one" in check["note"]
+    assert "not served" not in check["note"] and _issues() == []
+    stored = filings.stored_linkbase("789019", fx.K25)
+    assert stored is not None and base.read_raw(stored).decode("utf-8") == fx.schema(), "kept, so it is read once"
+    assert fx.q("SELECT count(*), count(report_tables) FROM segment_revenue") == [(4, 0)]
+    fx.run(filings.NAME, mode="backfill", to="2026-10-29")
+    assert len(sec.calls(fx.MSFT_XSD_NAME)) == 1, "the stored schema is not downloaded again"
+    assert fx.q("SELECT count(*), count(report_tables) FROM segment_revenue") == [(4, 0)]
+
+
+def test_an_error_page_sent_as_the_schema_file_is_not_stored_and_is_asked_again(sec):
+    sec.add(f"/{fx.MSFT_XSD_NAME}", b"<html><body>Undeclared Automated Tool</body></html>", status=200)
+    fx.linkbase_routes(sec, xml=None, xsd=fx.schema(fx.MSFT_DEF))        # the real schema stands behind the page
+    check = fx.run(filings.NAME, mode="backfill", to="2026-10-28")
+    assert check["result"] == "changed", check["note"]
+    assert "0 definition linkbases fetched, 0 annual reports without one, 1 not served (asked again)" in check["note"]
+    assert filings.stored_linkbase("789019", fx.K25) is None, "a page is not kept as the schema file"
+    assert fx.q("SELECT count(*), count(report_tables) FROM segment_revenue") == [(4, 0)]
+    sec.routes = [r for r in sec.routes if not (isinstance(r[1], bytes) and b"Undeclared" in r[1])]   # the page is gone
+    fx.run(filings.NAME, mode="backfill", to="2026-10-29")
+    assert len(sec.calls(fx.MSFT_XSD_NAME)) == 2
     assert filings.stored_linkbase("789019", fx.K25) is not None
     assert fx.q("SELECT count(report_tables) FROM segment_revenue")[0][0] > 0
 
