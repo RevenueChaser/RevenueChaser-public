@@ -71,7 +71,7 @@ def test_the_columns_are_the_plans_and_there_is_no_active_column(built):
         cols = [d[0] for d in con.execute("SELECT * FROM etf LIMIT 0").description]
     assert cols == ["ticker", "name", "series_id", "cik", "source", "is_etn", "is_cef", "asset_class", "focus",
                     "country", "is_index", "is_lev_inverse", "is_money_market", "is_option_income", "is_fund_of_funds",
-                    "inception", "aum", "aum_as_of", "adv_usd_20d", "expense_ratio", "source_as_of",
+                    "inception", "aum", "aum_as_of", "aum_source", "adv_usd_20d", "expense_ratio", "source_as_of",
                     "fetched_at", "run_id"]
 
 
@@ -84,6 +84,21 @@ def test_ncen_fills_the_flags_the_newest_filings_aum_and_av_the_inception(built)
     assert xlk["inception"] == date(1998, 12, 16)
     assert (soxx["aum"], soxx["aum_as_of"]) == (15_000_000_000.0, date(2026, 3, 31))   # daily first, then monthly
     assert soxl["is_lev_inverse"] is True and soxl["inception"] is None
+    assert xlk["aum_source"] == soxx["aum_source"] == etf.NCEN_SERIES    # no Compustat bar in this fixture
+
+
+def test_the_funds_own_shares_times_close_is_the_aum_and_ncen_only_fills_the_rest(request):
+    """#357: SPY (a unit trust, no N-CEN assets) gets a figure, XLK's replaces N-CEN's series average, and SOXX,
+    which Compustat does not price here, keeps N-CEN's."""
+    from .test_spine_etf_adv import put_secd, series
+    put_secd(series("131855", "01", "SPY", 3, 1.0, close=700.0, cshoc=1e9)
+             + series("131856", "01", "XLK", 3, 1.0, close=200.0, cshoc=5e8))
+    request.getfixturevalue("built")
+    spy, xlk, soxx = (_etf()[t] for t in ("SPY", "XLK", "SOXX"))
+    assert (spy["aum"], spy["aum_as_of"], spy["aum_source"]) == (7e11, date(2026, 11, 2), etf.SHARES_X_CLOSE)
+    assert (xlk["aum"], xlk["aum_as_of"], xlk["aum_source"]) == (1e11, date(2026, 11, 2), etf.SHARES_X_CLOSE)
+    assert (soxx["aum"], soxx["aum_as_of"], soxx["aum_source"]) == (15e9, date(2026, 3, 31), etf.NCEN_SERIES)
+    assert _etf()["QYLD"]["aum"] is None and _etf()["QYLD"]["aum_source"] is None
 
 
 def test_a_row_without_ncen_has_unknown_flags_not_false_ones(built):
@@ -213,7 +228,7 @@ def test_the_spine_note_counts_etfs_without_the_etns(built):
 
 def test_the_spine_serves_etf_at_the_current_schema_version(built):
     """4 brought ``etf`` itself (#346); 5 the two ``my_universe`` tables beside it (avo, 4 Nov 2026)."""
-    assert serving.SERVING_SCHEMA_VERSION["spine"] == 8 and "etf" in security.TABLES
+    assert serving.SERVING_SCHEMA_VERSION["spine"] == 9 and "etf" in security.TABLES
     with serving.open_read("spine") as con:
         assert con.execute("SELECT version FROM serving_schema_version").fetchone() == (serving.SERVING_SCHEMA_VERSION["spine"],)
 

@@ -11,11 +11,12 @@ the list can be swapped by editing one file:
 - a **stock** is a ``security`` row of Tier A or D whose ``security_type`` is common, ADR, REIT or MLP. A royalty
   trust, a BDC and a non-SEC bank are operating types the identity master knows and avo left out; an untyped name
   stays out until it is typed (321 of them on 4 Nov 2026), and Tier B and C never enter whatever the type says;
-- an **ETF** is an ``etf`` row that is no ETN and no CEF, with an ``aum`` at or over 100 million, or, where N-CEN
-  gives it no AUM at all, an ``adv_usd_20d`` (the 20-session average daily dollar volume of Compustat's own
-  ``comp.secd``, ``etf.adv_usd_20d``, not of the live prices store: #357) at or over
-  10 million. A **known** AUM under the floor is the answer: the volume test only decides a fund N-CEN is silent
-  about (SPY and DIA as unit investment trusts, GLD, SLV, IBIT and the other commodity and crypto trusts). A fund
+- an **ETF** is an ``etf`` row that is no ETN and no CEF, with an ``aum`` at or over 100 million (since spine 9
+  the fund's own shares times close, else N-CEN's series figure: ``etf.aum_source``, #357), **or** an
+  ``adv_usd_20d`` (the 20-session average daily dollar volume of Compustat's own ``comp.secd``,
+  ``etf.adv_usd_20d``, not of the live prices store: #357) at or over 10 million. Either number is enough (avo,
+  18 Nov 2026, "Kalsın: hacim de yeter": ZSL, KOLD and TSLQ hold under 100 M$ and trade far over 10 M$ a day);
+  until then a known AUM under the floor was the answer whatever the volume. A fund
   with neither number is **undecided**: it does not enter, and all of them together are **one**
   ``my_universe_etf_undecided`` issue that names them -- one row per fund would be thousands of rows in
   ``ops.sqlite`` for a single input gap. The issue names only the funds :data:`MANUAL_FILE` says nothing about,
@@ -43,12 +44,10 @@ file is typed ``etp``, so it is Tier B and no stock), which is why it is worth s
 **An input outage is not a rule change,** and it is per fund. ``my_universe`` is exempt from the swap guard's
 shrink limit (``serving.SHRINKS_BY_CHOICE``), so a fund that lost its dollar volume would otherwise be dropped,
 accepted, and written as a ``left`` row no later build can take back. ``etf.adv_usd_20d`` is NULL for *unknown*,
-never for zero, so a fund the volume rule can no longer measure -- no ``aum`` **and** no ``adv_usd_20d`` today, the
-case where that rule would in fact have read the volume -- is held: :func:`_hold_lost_volume` carries its live row
+never for zero, so a fund that entered on its volume and has no ``adv_usd_20d`` today is held, whatever its ``aum`` says: :func:`_hold_lost_volume` carries its live row
 forward and :func:`_held_issue` names the held funds the manual file did not then remove in one
 ``my_universe_etf_volume_lost`` issue (avo's decision B, #424, and the review findings of #431). A volume that is
-**present** and under the floor is the rule's answer, and so is an ``aum`` under it, so those funds leave as they
-always did. When no
+**present** and under the floor is the rule's answer, so such a fund leaves as it always did. When no
 ``etf`` row has a volume at all the source itself is gone, and :func:`_no_volume_source` fails the build rather
 than holding the whole list on yesterday's numbers.
 
@@ -222,16 +221,15 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, rules: Rules | No
     etfs = _etfs(con, rules)
     for e in etfs:
         aum, adv = e["aum"], e["adv_usd_20d"]
-        if aum is not None:
-            if aum < rules.etf_aum_floor:
-                continue
+        if aum is not None and aum >= rules.etf_aum_floor:
             rule, reason = "etf_aum", f"AUM {_money(aum)}"
-        elif adv is not None:
-            if adv < rules.etf_adv_floor:
-                continue
-            rule, reason = "etf_adv", f"no AUM; 20-session dollar volume {_money(adv)}"
-        else:
+        elif adv is not None and adv >= rules.etf_adv_floor:
+            rule = "etf_adv"
+            reason = ("no AUM" if aum is None else f"AUM {_money(aum)}") + f"; 20-session dollar volume {_money(adv)}"
+        elif aum is None and adv is None:
             undecided.append(e["ticker"])
+            continue
+        else:
             continue
         if e["ticker"] in kept:
             issues.append(("my_universe_both_kinds", e["ticker"],
@@ -323,9 +321,8 @@ def _hold_lost_volume(live: list[dict] | None, etfs: list[dict], kept: dict[str,
     loss of every other: IBIT is on Nasdaq and GLD, SLV, SPY and DIA are not, so an outage of the Arca partitions
     alone passed that check and dropped the Arca funds as if the rules no longer held. ``adv_usd_20d`` is NULL for
     unknown and never for zero (:func:`etf.adv_usd_20d`), so a NULL where the live row had a number is a missing
-    measurement, not a fund below the floor. A fund is held only where the rule would in fact have read its volume,
-    which is where N-CEN gives it **no AUM at all**: one that now has an ``aum`` under the floor is answered by that
-    AUM whatever its volume says, so it leaves and Compustat is not blamed for it. A held fund keeps its live row --
+    measurement, not a fund below the floor, whatever its ``aum`` says (either number lets a fund in since #357).
+    A held fund keeps its live row --
     its own numbers, its ``entered_on`` and the ``run_id`` of the build that measured them -- and no ``left`` row is
     written. A volume that is present and under the floor leaves as before, and so does an ``etf_aum`` name: that is
     the AUM's story, not the volume's.
@@ -339,7 +336,7 @@ def _hold_lost_volume(live: list[dict] | None, etfs: list[dict], kept: dict[str,
     now = {e["ticker"]: (e["aum"], e["adv_usd_20d"]) for e in etfs}
     held = sorted(r["ticker"] for r in live
                   if r.get("rule") == "etf_adv" and r["ticker"] not in kept
-                  and r["ticker"] in now and now[r["ticker"]] == (None, None))
+                  and r["ticker"] in now and now[r["ticker"]][1] is None)
     by_ticker = {r["ticker"]: r for r in live}
     for ticker in held:
         kept[ticker] = {c: by_ticker[ticker].get(c) for c, _ in SCHEMA}

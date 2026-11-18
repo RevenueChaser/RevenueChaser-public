@@ -571,7 +571,7 @@ def test_a_theme_fund_is_a_map_theme_fund_that_sits_in_no_one_branch():
 
 def test_the_spine_build_serves_both_tables_at_version_8_and_the_reader_reads_them(built):  # noqa: F811
     built()
-    assert serving.SERVING_SCHEMA_VERSION["spine"] == 8
+    assert serving.SERVING_SCHEMA_VERSION["spine"] == 9
     assert etf_class.TABLE in security.TABLES and etf_class.CHANGES in security.TABLES
     assert etf_class.THEME in security.TABLES
     with serving.open_read("spine") as con:

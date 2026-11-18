@@ -131,6 +131,34 @@ def test_the_answer_does_not_read_the_live_prices_store(monkeypatch):
     assert etf.adv_usd_20d(["GLD"]) == pytest.approx({"GLD": 2_000_000_000.0})
 
 
+# ── shares x close (#357) ────────────────────────────────────────────────────────────────────────────────────
+
+def test_shares_times_close_of_the_newest_day_with_a_share_count():
+    rows = series("131855", "01", "SPY", 3, 1.0, close=700.0, cshoc=1e9)
+    rows[0]["cshoc"] = None                                   # the newest day has no count yet: the day before answers
+    rows[1]["prccd"] = 690.0
+    put_secd(rows)
+    assert etf.shares_x_close(["SPY", "NONE"]) == {"SPY": (690.0 * 1e9, date(2026, 11, 1))}
+
+
+def test_shares_times_close_needs_a_positive_count_a_price_and_dollars():
+    put_secd(series("888888", "01", "MAPLE", 3, 1.0, curcdd="CAD") + series("777777", "01", "ZERO", 3, 1.0, cshoc=0.0)
+             + series("666666", "01", "DEAD", 3, 1.0, prccd=0.0))
+    assert etf.shares_x_close(["MAPLE", "ZERO", "DEAD"]) == {}
+
+
+def test_shares_times_close_ignores_a_series_that_carried_the_ticker_long_ago_and_a_later_day():
+    put_secd(series("099999", "01", "IBIT", 3, 1.0, last=date(2024, 3, 1), cshoc=9e9)
+             + series("131855", "01", "GLD", 3, 1.0, close=300.0, cshoc=1e8)
+             + series("131855", "01", "GLD", 3, 1.0, close=999.0, cshoc=1e8, last=date(2026, 12, 1)))
+    assert etf.shares_x_close(["IBIT", "GLD"], as_of=date(2026, 11, 2)) == {"GLD": (3e10, date(2026, 11, 2))}
+
+
+def test_two_live_series_on_one_ticker_leave_the_larger_figure_and_a_dot_is_a_dash():
+    put_secd(series("131855", "01", "BRK.B", 3, 1.0, cshoc=1e9) + series("222222", "02", "BRK.B", 3, 1.0, cshoc=1e6))
+    assert etf.shares_x_close(["BRK-B"]) == {"BRK-B": (1e11, date(2026, 11, 2))}
+
+
 def test_the_window_and_the_recency_rule_are_the_numbers_the_plan_names():
     assert etf.ADV_SESSIONS == 20
     # Two weeks, the same recency rule as the prices build's own ticker-to-series step

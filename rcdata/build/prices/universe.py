@@ -38,7 +38,7 @@ STOCK_TIERS = ("A", "D")
 #: trust and a non-SEC bank operate a business too, and the identity master keeps them in ``OPERATING_TYPES``, but
 #: they are not stored. Every one of these is one of the identity master's operating types, which a test pins.
 STOCK_TYPES = ("adr", "common", "mlp", "reit")
-#: The smallest average net assets (N-CEN, ``etf.aum``) an ETF is kept for: 100 million dollars.
+#: The smallest ``etf.aum`` (shares times close, else N-CEN's series average) an ETF is kept for: 100 million dollars.
 ETF_MIN_AUM = 100_000_000.0
 #: The spine table that holds avo's own list, one row per ticker, when it exists: then it **is** the universe.
 MY_UNIVERSE_TABLE = "my_universe"

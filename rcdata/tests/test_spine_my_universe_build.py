@@ -26,7 +26,7 @@ GVKEYS = {"SPY": "109503", "GLD": "131855", "QYLD": "200001"}
 
 def _secd(ticker: str, sessions: int, dollars: float) -> list[dict]:
     """``sessions`` priced Compustat days of ``ticker`` whose close times volume is ``dollars`` a day."""
-    return series(GVKEYS[ticker], "01", ticker, sessions, dollars, last=date(2026, 11, 2))
+    return series(GVKEYS[ticker], "01", ticker, sessions, dollars, last=date(2026, 11, 2), cshoc=None)   # no AUM
 
 
 @pytest.fixture
@@ -135,7 +135,7 @@ def test_a_second_build_keeps_the_entered_day_and_appends_what_changed(built, mo
 
 def test_the_served_schema_version_names_the_two_new_tables(built):
     built()
-    assert serving.SERVING_SCHEMA_VERSION["spine"] == 8
+    assert serving.SERVING_SCHEMA_VERSION["spine"] == 9
     assert my_universe.TABLE in security.TABLES and my_universe.CHANGES in security.TABLES
     assert etf.ADV_SESSIONS == 20
 

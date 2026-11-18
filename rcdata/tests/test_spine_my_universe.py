@@ -194,10 +194,15 @@ def test_an_etf_with_no_aum_enters_on_a_20_session_dollar_volume_at_or_over_the_
     assert rows["SPY"]["rule"] == "etf_adv" and rows["SPY"]["adv_usd_20d"] == 40_000_000_000.0
 
 
-def test_a_known_aum_under_the_floor_is_the_answer_and_the_volume_test_does_not_rescue_it():
-    con = _con(etfs=[_etf("CCOI", aum=50_000_000.0, adv=500_000_000.0)])
-    rows, _, _ = _rows(con)
-    assert rows == {}
+def test_a_fund_under_the_aum_floor_stays_on_its_volume_and_is_out_without_it():
+    """avo, 18 Nov 2026 22:30 ("Kalsın: hacim de yeter", #357): either number at its floor is enough. ZSL's own
+    assets are under 100 M$ and it trades 88 M$ a day."""
+    con = _con(etfs=[_etf("ZSL", aum=50_000_000.0, adv=500_000_000.0), _etf("THIN", aum=50_000_000.0, adv=9_999_999.0),
+                     _etf("NOVOL", aum=50_000_000.0)])
+    rows, _, issues = _rows(con)
+    assert sorted(rows) == ["ZSL"] and issues == []           # a known AUM is no undecided fund
+    assert rows["ZSL"]["rule"] == "etf_adv"
+    assert rows["ZSL"]["reason"] == "AUM 50.0M USD; 20-session dollar volume 500.0M USD"
 
 
 def test_an_etn_or_a_cef_never_enters_however_large_it_is():
@@ -403,17 +408,16 @@ def test_a_held_fund_is_not_also_called_undecided(live_my_universe):
     assert [k for k, _, _ in issues] == ["my_universe_etf_volume_lost"]
 
 
-def test_a_fund_that_got_an_aum_under_the_floor_leaves_even_with_no_volume(live_my_universe):
-    """The hold is only for a fund the rule would have judged **on its volume**, and the rule reads the volume only
-    where N-CEN gives no AUM at all. A fund N-CEN now prices under the floor is answered by that AUM, whatever its
-    volume says, so it leaves and Compustat is not blamed for it (review S1 of PR 428)."""
+def test_a_volume_fund_that_got_an_aum_under_the_floor_is_still_held_when_its_volume_is_lost(live_my_universe):
+    """Since the volume alone lets a fund in (#357), an AUM under the floor no longer answers for it: a lost volume
+    is a missing measurement whatever the AUM says, so the fund is held and named."""
     live_my_universe(rows=[{"ticker": "SPY", "kind": "etf", "rule": "etf_adv", "adv_usd_20d": 4e10,
                             "entered_on": date(2026, 10, 1)}])
     con = _con(etfs=[_etf("SPY", aum=1_000_000.0), _etf("GLD", adv=50_000_000.0)])
     rows, changes, issues = _rows(con)
-    assert sorted(rows) == ["GLD"]
-    assert ("SPY", "left") in [(c["ticker"], c["change"]) for c in changes]
-    assert issues == []
+    assert sorted(rows) == ["GLD", "SPY"] and rows["SPY"]["entered_on"] == date(2026, 10, 1)
+    assert ("SPY", "left") not in [(c["ticker"], c["change"]) for c in changes]
+    assert [k for k, _, _ in issues] == ["my_universe_etf_volume_lost"]
 
 
 def test_a_fund_a_manual_remove_takes_out_is_not_named_as_held(live_my_universe):
