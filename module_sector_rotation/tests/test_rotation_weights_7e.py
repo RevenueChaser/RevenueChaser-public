@@ -27,6 +27,7 @@ def holdings(monkeypatch):
         asked.extend(etfs)
         return [r for r in rows if r["etf"] in set(etfs)]
     monkeypatch.setattr(read, "etf_holdings", fake)
+    monkeypatch.setattr(read, "etf_holdings_nport", lambda etfs: [])
     return asked
 
 
@@ -49,6 +50,20 @@ def test_a_fund_with_no_weighted_line_is_named_and_gives_nothing(holdings, caplo
         w = etf_holdings.ticker_weights()
     assert "CRM" not in w and all(etf != "IGV" for etf, _ in w["MSFT"])
     assert "IGV" in caplog.text
+
+
+def test_a_fund_the_daily_file_lacks_reads_its_n_port_report_and_no_other_fund_does(holdings, monkeypatch, caplog):
+    asked = []
+
+    def nport(etfs):
+        asked.extend(etfs)
+        return _lines(("PEJ", "DIS", 6.0), ("PEJ", "RCL", 2.0), ("SMH", "NVDA", 99.0))      # SMH has a daily file
+    monkeypatch.setattr(read, "etf_holdings_nport", nport)
+    with caplog.at_level(logging.WARNING):
+        w = etf_holdings.ticker_weights()
+    assert w["DIS"] == [("PEJ", pytest.approx(0.75))] and w["RCL"] == [("PEJ", pytest.approx(0.25))]
+    assert "PEJ" in asked and "SMH" not in asked and "XLK" not in asked
+    assert "PEJ" not in caplog.text and "IGV" in caplog.text
 
 
 def test_quadrant_is_where_most_of_the_weight_sits():

@@ -437,6 +437,22 @@ def etf_holdings(etfs: Iterable[str]) -> list[dict]:
     return _rows("etf_holdings", sql, wanted, missing_table_ok=True)
 
 
+def etf_holdings_nport(etfs: Iterable[str]) -> list[dict]:
+    """The lines (``etf``, ``as_of``, ``provider``, ``ticker``, ``name``, ``weight``), in :func:`etf_holdings`'s
+    shape, of each of ``etfs`` (upper-cased) from its newest Form N-PORT report (``etf_holdings_nport``, the
+    ownership store): ``as_of`` is the report date, ``weight`` the line's percent of net assets, ``provider``
+    ``nport``. Only the lines whose CUSIP the spine holds are served there. Quarterly, so a reader takes it for a
+    fund the daily file does not hold (#1063). No line, or no ownership file at all, is no rows."""
+    wanted = sorted({str(e).strip().upper() for e in etfs if str(e or "").strip()})
+    if not wanted:
+        return []
+    marks = ", ".join("?" * len(wanted))
+    sql = ("SELECT etf_ticker AS etf, report_date AS as_of, 'nport' AS provider, ticker, issuer_name AS name, "
+           f"pct_of_net_assets AS weight FROM etf_holdings_nport WHERE etf_ticker IN ({marks}) "
+           "ORDER BY etf_ticker, pct_of_net_assets DESC NULLS LAST, ticker NULLS LAST")
+    return _rows("etf_holdings_nport", sql, wanted, missing_table_ok=True)
+
+
 def etf_holding_tickers(etfs: Iterable[str]) -> dict[str, set[str]]:
     """The holding tickers of each of ``etfs`` (upper-cased) on that fund's own newest day of ``etf_holdings``, the
     whole lists ``funds/etf_holdings`` serves. A fund with no line, or no spine file at all, is an empty set; a line
