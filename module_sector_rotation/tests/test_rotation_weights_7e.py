@@ -50,10 +50,10 @@ def test_a_fund_with_no_weighted_line_is_named_and_gives_nothing(holdings, caplo
 
 
 def test_quadrant_is_where_most_of_the_weight_sits():
-    w = {"SMCI": [("SMH", 0.07), ("XLK", 0.01), ("SOXX", 0.05)]}
+    w = {"AMD": [("SMH", 0.07), ("XLK", 0.01), ("SOXX", 0.05)]}
     quadrants = {"SMH": "LAGGING", "XLK": "LEADING", "SOXX": "LEADING"}
-    assert engine.get_quadrant_for_ticker("SMCI", w, quadrants) == "LAGGING"
-    assert engine.get_quadrant_for_ticker("SMCI", w, {**quadrants, "SMH": ""}) == "LEADING"
+    assert engine.get_quadrant_for_ticker("AMD", w, quadrants) == "LAGGING"
+    assert engine.get_quadrant_for_ticker("AMD", w, {**quadrants, "SMH": ""}) == "LEADING"
 
 
 def test_a_tie_goes_to_the_better_quadrant():
