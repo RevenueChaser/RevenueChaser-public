@@ -285,8 +285,6 @@ BOARD_INPUTS: list[dict] = [
     _board("module_financials", "Financials",
            ["equity_universe"],
            lambda: _json("financials", "financials_latest.json")),
-    _board("module_uw_interaction", "Unusual Whales Interaction (lab)", [],
-           lambda: _json("uw_interaction", "uw_interaction_latest.json")),
     _board("module_comovement", "Co-movement",
            # The engine reads the daily price bars since #379 (module_comovement/ohlc.py), not swing_ohlc.
            ["equity_universe", "price_bars_daily"],
@@ -332,6 +330,8 @@ BOARD_INPUTS: list[dict] = [
     # #746: the board reads only ``option_far_contract`` through its need (``options.far_contracts``), rendered in
     # memory on every load, so its as-of is the newest stored session, not a file.
     _board("module_leaps", "LEAPS", [], _leaps_latest, ops_tables=["watchlist_stock"]),
+    _board("module_uw_interaction", "Unusual Whales Interaction (lab)", [],
+           lambda: _json("uw_interaction", "uw_interaction_latest.json")),
 ]
 
 

@@ -44,15 +44,14 @@ LOCAL = ZoneInfo("Europe/Amsterdam")
 BOARD_MENU: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
     ("Home", (("module_welcome", "Welcome"), ("module_watchlists", "Watch lists"))),
     ("Research", (("module_news", "News"), ("module_earnings_radar", "Earnings Radar"), ("module_spx_gamma", "SPX Gamma"),
-                  ("module_oipd", "Implied Probability"), ("module_financials", "Financials"),
-                  ("module_uw_interaction", "UW Interaction (lab)"))),
+                  ("module_oipd", "Implied Probability"), ("module_financials", "Financials"))),
     ("Classification", (("module_comovement", "Co-movement"), ("module_value_chain", "Value Chain"),
                         ("module_relatedness", "Relatedness"))),
     ("Screeners", (("module_sector_rotation", "Sector Rotation"), ("module_asymmetric_growth", "Asymmetric Growth"),
                    ("module_swing_potential", "Swing Potential"), ("module_fundamentals", "Fundamentals"),
                    ("module_hit_rate", "Hit Rate"))),
     ("Ownership", (("module_sec_13f", "SEC 13F"), ("module_leaps", "LEAPS"))),
-    ("Ops", (("module_settings", "Settings"),)),
+    ("Ops", (("module_settings", "Settings"), ("module_uw_interaction", "UW Interaction (lab)"))),
 )
 
 #: One hue per serving file (the design's colour key); a file's tables are darker shades of it.
