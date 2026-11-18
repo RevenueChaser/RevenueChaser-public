@@ -49,7 +49,8 @@ def _security_row(r: dict) -> dict:
     ticker = str(r["ticker"]).strip().upper()
     return {"ticker": ticker, "cik": (str(r["cik"]) if r.get("cik") else None), "name": r.get("name") or ticker,
             "exchange": r.get("exchange"), "tier": r.get("tier") or "A", "security_type": r.get("security_type"),
-            "sector": r.get("sector"), "industry": r.get("industry"), "source": "sec/company_tickers_exchange"}
+            "sector": r.get("sector"), "industry": r.get("industry"), "ggroup": r.get("ggroup"), "gind": r.get("gind"),
+            "gsubind": r.get("gsubind"), "source": "sec/company_tickers_exchange"}
 
 
 #: ``{ticker: {"market_cap", "price"}}`` of the rows ``put``/``replace`` wrote in this test (cleared per test).
