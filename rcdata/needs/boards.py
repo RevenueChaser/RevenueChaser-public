@@ -45,7 +45,8 @@ UNDECLARED = frozenset({
 #: is left out rather than given a need it does not read. A test compares each entry with the ``rcdata.read``
 #: calls of the board's own package (``unplanned_reads``, #491), so a read the code makes cannot go missing again.
 PLANNED_READS: dict[str, tuple[str, ...]] = {
-    "module_oipd": ("macro.dgs10", "options.chain", "options.strikes", "options.expiries"),
+    "module_oipd": ("macro.dgs10", "options.chain", "options.strikes", "options.expiries", "options.daily",
+                    "earnings.options"),
     "module_financials": ("identity.universe", "prices.bars", "prices.shares", "prices.market_cap", "prices.latest",
                           "macro.dgs10", "fundamentals.statements", "fundamentals.segments", "fundamentals.peers"),
     "module_uw_interaction": ("options.prints",),
