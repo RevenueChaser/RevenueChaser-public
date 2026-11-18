@@ -217,3 +217,24 @@ def test_the_open_interest_sort_puts_the_largest_rise_first(stored):
     assert "-r.chg;" in board._JS and "Math.abs(r.chg)" not in board._JS, "signed change, not its size"
     page = board.render_html(board.payload())
     assert '<option value="change">Sort: open interest rise</option>' in page
+
+
+# ── Review 18 Nov 2026: R3, R6/R11 and R8 ────────────────────────────────────────────────────────────
+
+def test_the_help_gives_the_builder_s_causes_for_beyond_one():
+    """R3: the builder names an exercise, an adjustment or a data error; the help no longer guesses a cause."""
+    assert "an exercise, an adjustment or a data error" in board.HELP
+    assert "settled into it" not in board.HELP
+
+
+def test_a_matched_row_with_no_next_open_interest_says_not_read_not_no_volume():
+    """R8: "No volume" only when the next open interest was read; an unread one has its own note."""
+    assert "Open interest not read" in board._JS
+    assert "r.next == null ? 'unread' : 'noshare'" in board._JS
+
+
+def test_the_counts_follow_the_rows_listed(stored):
+    """R6/R11: the counts line and the product counts are redrawn from the rows of the picked product and side."""
+    page = board.render_html(board.payload())
+    assert '<div class="lp-counts" id="lp-counts">' in page
+    assert "lpCounts(rows);" in board._JS and "if(lpSided(r)) LP_COUNT[r.prod]" in board._JS
