@@ -7,7 +7,7 @@ compare in ``dirty.full_rebuild_reason`` and ``serving._copy_live``. ``serving.S
 from __future__ import annotations
 
 # The serving schema of each kind. A change to a kind's tables bumps its number in its own PR (box rule).
-SERVING_SCHEMA_VERSION = {"market": 4, "spine": 8, "ownership": 5}
+SERVING_SCHEMA_VERSION = {"market": 4, "spine": 9, "ownership": 5}
 # market 3: ``economic_event``, UW's economic calendar by snapshot day (``build/uw_economic_calendar.py``), and
 #           ``news_headline``, IBKR's Dow Jones headlines (``build/ibkr_news.py``); #643, avo's D4 of 10 Nov 2026.
 # market 4: ``news_headline`` leaves; headlines live only in the News board's ``boards/news.duckdb`` (avo's option A,
@@ -41,6 +41,8 @@ SERVING_SCHEMA_VERSION = {"market": 4, "spine": 8, "ownership": 5}
 #          (``build/spine/etf_class.py``, #1031, avo's decisions of 17 Nov 2026).
 # spine 8: ``etf_theme``, the map's theme funds that sit in no one GICS branch, each with the issuer's name for it
 #          (``etf_class.themes``, avo's G of 18 Nov 2026); ``etf.sector_name`` leaves, a hand label nothing read.
+# spine 9: ``etf.aum_source``; ``etf.aum`` is the fund's own shares x close where Compustat has it, else N-CEN's
+#          series figure (#357; avo, 18 Nov 2026: funds enter and leave ``my_universe`` on the new figure).
 
 # PR 7 (G2): ``prices.duckdb``, the daily bars, corporate actions, shares and market cap (``build/prices/``).
 SERVING_SCHEMA_VERSION["prices"] = 1

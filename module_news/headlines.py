@@ -261,3 +261,72 @@ def fetch(names: list[str], now: float | None = None, run_id: str | None = None,
     if names:
         rawstore.write_rows(META, [{"key": CURSOR_KEY, "value": names[-1], "run_at": now}])
     return {"tickers": len(names), "of": of, "stored": len(rows), "skipped": skipped, "failed": failed, "error": None}
+
+
+# ── One name on demand (plan step 3; avo, 18 Nov 2026 21:43 Amsterdam, card D1 "B"; 23:16 "sen yayina al") ──
+#: Its own client id, so a click never meets the 5-minute pass's 74 (326 "client id already in use").
+ON_DEMAND_CLIENT_ID = 75
+#: Dow Jones (news, real time) and Briefing (general, upgrades/downgrades): the four of the eight IBKR lists for
+#: this account that carry per-name stories (measured 18 Nov 2026 on homesrv, reqNewsProviders).
+ON_DEMAND_PROVIDERS = "DJ-N+DJ-RT+BRFG+BRFUPDN"
+#: IBKR's cap on one reqHistoricalNews; one request, so a click is far inside the pacing.
+ON_DEMAND_TOTAL = 300
+ON_DEMAND_DAYS = 7
+ASK_KEY = "ticker_ask:"
+
+
+def source_of(provider: str) -> str:
+    """The newsroom behind an IBKR provider code: ``DJ-…`` Dow Jones, ``BRF…`` Briefing, else the code."""
+    code = str(provider or "")
+    return SOURCE if code.startswith("DJ") else "Briefing" if code.startswith("BRF") else code
+
+
+def fetch_ticker(name: str, now: float | None = None, target: tuple[str, int] | None = None) -> dict:
+    """Ask IBKR for one name's newest ``ON_DEMAND_TOTAL`` headlines of the last ``ON_DEMAND_DAYS`` and store them
+    like a pass does (one row a story, ``tickers`` merged). The answer is kept in ``news_meta`` under
+    ``ticker_ask:<NAME>`` (``at``, ``stored``, ``error``), which the page reads back with the rows. Returns it."""
+    now = time.time() if now is None else now
+    name = str(name).strip().upper()
+    since = now - ON_DEMAND_DAYS * 86400
+    host, port = target or ibkr_login.target()
+    found: dict[str, dict] = {}
+    error = None
+    try:
+        with ibkr.TWSClient(host, port, client_id=ON_DEMAND_CLIENT_ID) as client:
+            if name not in _CON_IDS:
+                _CON_IDS[name] = client.con_id(1, ibkr.contract_for(name))
+            for it in client.news(2, _CON_IDS[name], ON_DEMAND_PROVIDERS, "", "", ON_DEMAND_TOTAL):
+                text, at = clean(it["headline"]), _epoch(it["time"])
+                if text and at is not None and at >= since:
+                    found.setdefault(story_id(text), {
+                        "headline_id": story_id(text), "provider": "ibkr", "published_at": at, "headline": text,
+                        "source": source_of(it.get("provider")), "tickers": [name], "url": None,
+                        "fetched_at": now, "run_id": f"news-ticker-{int(now)}", "run_at": now})
+    except ibkr.HistoryError as e:
+        error = f"IBKR does not know {name}" if e.code == 200 else str(e)
+    except ibkr.TWSError as e:
+        error = str(e)
+    rows = _merge_tickers(list(found.values())) if not error else []
+    if rows:
+        rawstore.write_rows(TABLE, rows)
+    ask = {"at": now, "stored": len(rows), "found": len(found), "error": error}
+    rawstore.write_rows(META, [{"key": ASK_KEY + name, "value": json.dumps(ask), "run_at": now}])
+    return ask
+
+
+def ticker_rows(name: str, now: float | None = None) -> dict:
+    """What the page shows for one name: its stored headlines of the last ``ON_DEMAND_DAYS``, newest first, and the
+    last ask's answer (``None`` before the first ask)."""
+    now = time.time() if now is None else now
+    name = str(name).strip().upper()
+    rows = rawstore.query(
+        f"SELECT headline_id, published_at, headline, source, tickers, url FROM {TABLE} "
+        f"WHERE provider = 'ibkr' AND tickers LIKE ? AND published_at >= ? "
+        f"ORDER BY published_at DESC LIMIT {ON_DEMAND_TOTAL}",
+        [f'%"{name}"%', now - ON_DEMAND_DAYS * 86400], db="news")
+    got = rawstore.query(f"SELECT value FROM {META} WHERE key = ?", [ASK_KEY + name], db="news")
+    try:
+        ask = json.loads(got[0]["value"]) if got else None
+    except (TypeError, ValueError):
+        ask = None
+    return {"ticker": name, "rows": rows, "ask": ask}

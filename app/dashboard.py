@@ -295,6 +295,8 @@ jobs.register("module_news", runners.run_news, ["module_news"], requires_uw=Fals
 # News live (#673): the listener (module_news/tape.py) queues this every 5 minutes; headlines only, then the page.
 # produces nothing: the shell would reload the News frame (and alert a gap) every 5 minutes; the page polls itself.
 jobs.register("news_headlines", runners.run_news_headlines, [], requires_uw=False)
+# News ticker box (plan step 3): one name's headlines from IBKR on a click; the page reads them back by GET.
+jobs.register("news_ticker", runners.run_news_ticker, [], requires_uw=False)
 # Welcome (decision A): store-only; builds boards/welcome.duckdb from stored inputs, then renders.
 jobs.register("module_welcome", runners.run_welcome, ["module_welcome"], requires_uw=False)
 
@@ -931,6 +933,28 @@ def run_news_headlines():
     if refused:
         return refused
     return _submit("news_headlines", {})
+
+
+@app.route("/run/news_ticker", methods=["POST"])
+def run_news_ticker():
+    """Ask IBKR for one name's headlines: JSON ``{ticker}``. One ask at a time; a second click follows the first."""
+    ticker = str((request.get_json(silent=True) or {}).get("ticker") or "").strip().upper()
+    if not _valid_ticker(ticker):
+        return jsonify({"ok": False, "error": "ticker must be a symbol such as NVDA"}), 400
+    refused = _busy(("news_ticker",), "A News ticker ask is already running.")
+    if refused:
+        return refused
+    return _submit("news_ticker", {"ticker": ticker})
+
+
+@app.route("/api/news/ticker/<ticker>")
+def api_news_ticker(ticker):
+    """One name's stored headlines of the last week and the last ask's answer (store read, no IBKR call)."""
+    from RevenueChaser.module_news import headlines
+    ticker = ticker.strip().upper()
+    if not _valid_ticker(ticker):
+        return jsonify({"ok": False, "error": "ticker must be a symbol such as NVDA"}), 400
+    return jsonify({"ok": True, **headlines.ticker_rows(ticker)})
 
 
 @app.route("/api/news/headlines")
@@ -2084,6 +2108,40 @@ def api_sec13f_types(tag: str):
     return jsonify({"ok": True, "tag": t, "label": labels[t], "fig": fig, "note": note,
                     "sector_fig": build_sector_fig(labels[t], ownership.sec13f_type_sector(t), arriving),
                     "flow_fig": build_flow_fig(labels[t], ownership.sec13f_type_flow(t), arriving)})
+
+
+@app.route("/api/sec_13f/filers")
+def api_sec13f_filers():
+    """The 13F Investors view's filer picker (#928): filers whose name holds ``q`` (two characters or more) or whose
+    CIK it is, largest book first, at most 20."""
+    from RevenueChaser.core import ownership
+    q = (request.args.get("q") or "").strip()[:80]
+    rows = ownership.sec13f_filer_search(q) if len(q) >= 2 else []
+    return jsonify({"ok": True, "filers": [{"cik": r["cik"], "name": r.get("filer_name"), "value": r.get("value"),
+                                            "names": r.get("names"), "period": r.get("period")} for r in rows]})
+
+
+@app.route("/api/sec_13f/filers/<cik>")
+def api_sec13f_filer(cik: str):
+    """One filer for the 13F Investors view (#928, #779): its holdings over the last ``quarters`` quarters (12, 20
+    or ``all``) as a Plotly figure, its newest settled quarter's holdings, its style row and its UW tags. 400 for a
+    CIK that is not 1 to 10 digits, 404 for a filer the store does not hold."""
+    from RevenueChaser.core import ownership
+    from RevenueChaser.module_sec_13f.report import FILER_WINDOW, build_filer_fig, filer_holdings_view
+    c = (cik or "").strip()
+    if not (c.isdigit() and 1 <= len(c) <= 10):
+        return jsonify({"ok": False, "error": "bad cik"}), 400
+    span = request.args.get("quarters", "")
+    quarters = None if span == "all" else (int(span) if span in ("12", "20") else FILER_WINDOW)
+    data = ownership.sec13f_filer(c)
+    if not data["holdings"] and not data["style"]:
+        return jsonify({"ok": False, "error": "no such filer", "cik": c}), 404
+    name = (data["style"] or {}).get("filer_name") or f"CIK {c.lstrip('0')}"
+    arriving = ownership.sec13f_open_periods()
+    fig, note = build_filer_fig(name, data["holdings"], arriving, quarters)
+    period, holdings = filer_holdings_view(data["holdings"], arriving)
+    return jsonify({"ok": True, "cik": c, "name": name, "fig": fig, "note": note, "period": period,
+                    "holdings": holdings, "style": data["style"], "tags": data["tags"]})
 
 
 @app.route("/api/watchlist/<kind>/toggle/<ticker>", methods=["POST"])

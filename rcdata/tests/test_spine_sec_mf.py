@@ -194,7 +194,7 @@ def test_the_build_stages_only_the_newest_snapshot(monkeypatch):
 def test_the_spine_serves_the_fund_table_at_the_current_schema_version():
     """2 brought ``fund``; 3 is ``etf_holdings`` (``funds/etf_holdings``); 4 is ``etf`` (#346); 5 is
     ``my_universe`` with ``my_universe_changes`` (avo, 4 Nov 2026)."""
-    assert serving.SERVING_SCHEMA_VERSION["spine"] == 8
+    assert serving.SERVING_SCHEMA_VERSION["spine"] == 9
     _run()
     with serving.open_read("spine") as con:
         assert con.execute("SELECT version FROM serving_schema_version").fetchone() == (serving.SERVING_SCHEMA_VERSION["spine"],)

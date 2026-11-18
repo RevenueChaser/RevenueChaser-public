@@ -197,3 +197,34 @@ def test_a_refused_news_request_is_a_failure_not_an_unknown_name(gw):
     out = headlines.fetch(["NVDA", "AAPL"], now=NOW, run_id="r1")
     assert out["skipped"] == [] and len(out["failed"]) == 1 and out["failed"][0].startswith("NVDA (IBKR error 10276")
     assert out["stored"] == 2                                   # the other name still stores
+
+
+# ── One name on demand (plan step 3, the page's ticker box) ──
+
+def test_a_ticker_ask_is_one_request_of_its_own_client_with_briefing_too(gw):
+    gw.news[4815747] = [("2026-11-09 18:25:00.0", "DJ-N", "DJ-N$3c", "Nvidia, Apple Lead Gains"),
+                        ("2026-11-08 14:00:00.0", "BRFUPDN", "BRF$1", "NVDA upgraded to Buy at Example Securities"),
+                        ("2026-11-01 14:00:00.0", "BRFG", "BRF$2", "Older than a week")]
+    ask = headlines.fetch_ticker("nvda", now=NOW)
+    assert gw.sent[0] == ["71", "2", str(headlines.ON_DEMAND_CLIENT_ID), ""] and headlines.ON_DEMAND_CLIENT_ID != headlines.CLIENT_ID
+    news = [f for f in gw.sent if f[0] == "86"]
+    assert len(news) == 1 and news[0][3] == "DJ-N+DJ-RT+BRFG+BRFUPDN" and news[0][6] == "300"
+    assert ask == {"at": NOW, "stored": 2, "found": 2, "error": None}
+    rows = _rows()
+    assert rows["NVDA upgraded to Buy at Example Securities"]["source"] == "Briefing"
+    assert rows["Nvidia, Apple Lead Gains"]["source"] == "Dow Jones" and "Older than a week" not in rows
+
+
+def test_the_page_reads_back_the_names_rows_and_the_last_answer(gw):
+    headlines.fetch(["AAPL", "NVDA"], now=NOW, run_id="r1")
+    gw.hmds_down = True
+    ask = headlines.fetch_ticker("NVDA", now=NOW + 60)
+    got = headlines.ticker_rows("NVDA", now=NOW + 120)
+    assert "historical data farm is down" in ask["error"] and got["ask"]["error"] == ask["error"]
+    assert [r["headline"] for r in got["rows"]] == ["Nvidia, Apple Lead Gains", "Tech Stocks Rally as Yields Slip"]
+    assert headlines.ticker_rows("MSFT", now=NOW)["ask"] is None
+
+
+def test_a_name_ibkr_does_not_know_is_said_so(gw):
+    gw.unknown.add("ZZZZ")
+    assert headlines.fetch_ticker("ZZZZ", now=NOW)["error"] == "IBKR does not know ZZZZ"
