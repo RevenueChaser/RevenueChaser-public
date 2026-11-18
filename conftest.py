@@ -355,8 +355,14 @@ def isolate_deepseek_gate(tmp_path, monkeypatch):
 def empty_my_universe_manual(tmp_path, monkeypatch):
     """A test builds My Universe from its own rows, never from the names avo added by hand in the shipped
     ``my_universe_manual.json``: a shipped add of a ticker a fixture does not hold would be a build issue in every
-    such test. The test of the shipped file passes its path."""
-    from RevenueChaser.rcdata.build.spine import my_universe
+    such test. The test of the shipped file passes its path.
+
+    Only a module some test file already imported is patched: importing it here, before the per-test path fixtures
+    ran, froze board paths at import time (five isolation tests failed on 6395d60)."""
+    import sys
+    my_universe = sys.modules.get("RevenueChaser.rcdata.build.spine.my_universe")
+    if my_universe is None:
+        return
     path = tmp_path / "my_universe_manual.json"
     path.write_text('{"version": 1, "add": [], "remove": []}', encoding="utf-8")
     monkeypatch.setattr(my_universe, "MANUAL_FILE", path)
