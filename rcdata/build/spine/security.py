@@ -136,6 +136,8 @@ ISSUE_KINDS = {
                                    "(key: the ticker)"),
     "my_universe_both_kinds": ("a ticker the stock rule and the ETF rule both claim; kept as the stock "
                                "(key: the ticker)"),
+    "my_universe_list_unknown": ("the funds on a list the jobs read (the map list, the industry-group list) that "
+                                 "the etf table does not hold: one issue naming them (key: etf)"),
     "etf_class_manual_unknown": ("a line of the manual ETF class file naming a ticker that is no ETF of "
                                  "my_universe (key: the ticker)"),
 }
