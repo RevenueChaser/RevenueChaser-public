@@ -701,13 +701,15 @@ def _compute_row(row: dict, spy_df, no_fetch: bool = False, spine: dict | None =
         "sector": gics.sector, "industry": gics.industry,
         "themes": themes,
         "earnings_date": _to_float((row.get("quote") or {}).get("earningsTimestampStart")),
-        "period": _period_label(quarterly, annual),
+        # Re-review F4 (18 Nov 2026): on a fiscal-year basis (D1's fallback included) the label names the years.
+        "period": _period_label([] if str(ttm["ro40_basis"] or "").startswith("FY") else quarterly, annual),
         "anchor_period_end": anchor_end.isoformat() if anchor_end else None,
         # G6 (build plan PR 13): Quality's basis and the day it reads to (TTM on the quarters, else the anchor year).
         "quality_basis": qual.get("quality_basis"), "quality_period_end": qual.get("quality_period_end"),
         "metrics": metrics,
         "ohlc_stale": bool(df.attrs.get("stale")),
         "edgar_extract_version": (emeta or {}).get("extract_version"),     # the result history checks it (#278)
+        "us_gaap": (emeta or {}).get("us_gaap"),        # False: read from ifrs-full (avo K1, 18 Nov 2026)
         # Review F3 (G6): where the statements came from, the day the newest one was filed and the day the facts
         # were last read. On the layer the facts are read again on each filing day, so the stale gate above measures
         # the filer; the old store has neither date (its row was never read again).
@@ -746,12 +748,14 @@ FUNDAMENTAL_GATES = frozenset({"rule_of_40", "quality"})
 
 def build_payload(results: list[dict], top_n: int | None = None, run_stats: dict = None) -> dict:
     """The board payload. Every candidate is kept (card 6/7, #383 R3 C12); ``top_n`` cuts only when given."""
-    run_stats = run_stats or {}
+    run_stats = {} if run_stats is None else run_stats      # an empty dict the caller passed is the one it reads
     results = results or []
 
     passing = {"rule_of_40": 0, "quality": 0, "momentum": 0}
     distorted_count = 0
-    momentum_only = 0
+    momentum_only: list[str] = []
+    unjudged: list[str] = []
+    ifrs_unjudged = 0
     candidates = []
     for r in results:
         m = r["metrics"]
@@ -763,12 +767,20 @@ def build_payload(results: list[dict], top_n: int | None = None, run_stats: dict
         # #386 F2: a candidate passes at least one rule; each carries the rules it passed (fixed order) rather than
         # an opaque 3x/2x/1x multiplier.
         rules_passed = [k for k in passing if gates[k]["passed"]]
+        # avo K1 (18 Nov 2026): an IFRS filer whose Quality is left unknown (its debt is not read yet) is counted.
+        if r.get("us_gaap") is False and not gates["quality"]["passed"] and \
+                not any(x["passed"] is False for x in gates["quality"]["rules"]):
+            ifrs_unjudged += 1
         if not rules_passed:
+            # avo O1 (18 Nov 2026): a name whose Rule of 40 or Quality is unknown (no rule failed) was not judged,
+            # which is not the same as failing.
+            if any(not any(x["passed"] is False for x in gates[k]["rules"]) for k in FUNDAMENTAL_GATES):
+                unjudged.append(r["ticker"])
             continue
         # avo B1 (17 Nov 2026): a card needs the Rule of 40 or Quality; Momentum confirms, it never admits alone
         # (Swing owns pure trend; 678 of 1,245 cards on 16 Nov were momentum-only).
         if not FUNDAMENTAL_GATES & set(rules_passed):
-            momentum_only += 1
+            momentum_only.append(r["ticker"])
             continue
         passed_count = len(rules_passed)
         for k in rules_passed:
@@ -803,6 +815,11 @@ def build_payload(results: list[dict], top_n: int | None = None, run_stats: dict
     candidates.sort(key=lambda c: (-c["passed_count"], c["distorted"],
                                    -c["ro40"] if c["ro40"] is not None else float("inf"), c["ticker"]))
     run_stats["passed_screens"] = len(candidates)       # before any top_n cut (the C16 funnel)
+    # Re-review F9 (18 Nov 2026): momentum-only names are their own funnel step, not "passed none of the three".
+    run_stats["screen_drops"] = [("momentum_only", "Passed Momentum only (a card needs the Rule of 40 or Quality)",
+                                  momentum_only),
+                                 ("not_judged", "Passed no screen; the Rule of 40 or Quality could not be judged "
+                                  "(an input missing or marked)", unjudged)]
     if top_n:
         candidates = candidates[:top_n]
     annotate_cards(candidates)
@@ -846,6 +863,7 @@ def build_payload(results: list[dict], top_n: int | None = None, run_stats: dict
             "stale_ohlc": run_stats.get("stale_ohlc", 0),
             "spy_stale": bool(run_stats.get("spy_stale")),
             "spy_missing": bool(run_stats.get("spy_missing")),
+            "spy_behind": run_stats.get("spy_behind"),
             "regime": regime,
             "spy_price": run_stats.get("spy_price"),
             "spy_sma200": run_stats.get("spy_sma200"),
@@ -860,7 +878,8 @@ def build_payload(results: list[dict], top_n: int | None = None, run_stats: dict
             "health_drops": _health_drops(run_stats),
             "passing": passing,
             "distorted_count": distorted_count,
-            "momentum_only": momentum_only,
+            "momentum_only": len(momentum_only),
+            "ifrs_quality_unjudged": ifrs_unjudged,
             "top_n": len(candidates),
         },
         "candidates": candidates,
@@ -925,7 +944,7 @@ def run_scan(uw=None, top_n: int = None, refresh_universe: bool = False,
     payload = screen_common.run_screen(
         board="fundamental", refreshed_by="Fundamentals", cfg=config,
         load_universe=fetch_universe_stats, prefilter=prefilter_and_chunk,
-        load_spy=screen_common.load_spy,
+        load_spy=screen_common.load_spy_newest,          # avo L1 (18 Nov 2026)
         compute_row=compute_row, build_payload=build_payload, persist=scores.persist if rows_sink is None else (lambda results: scores.persist(results, sink=rows_sink)),
         top_n=top_n, refresh_universe=refresh_universe, no_fetch=no_fetch,
         history_board="module_fundamentals", saved=config.FUNDAMENTALS_JSON,

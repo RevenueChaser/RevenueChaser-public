@@ -132,7 +132,8 @@ console.log(JSON.stringify(log));
 
 def test_a_ticked_rule_shows_only_cards_that_pass_it_an_unknown_is_hidden(tmp_path, rawstore_tmp_db):
     """#386 F2, card 3 (avo): a card shows when it PASSES every ticked rule. A Rule of 40 that is unknown (an
-    EBITDA-basis fallback) is not a pass, so the default Rule-of-40 toggle hides it; with no rule ticked it shows."""
+    EBITDA-basis fallback) is not a pass, so ticking the Rule of 40 hides it. avo M1 (18 Nov 2026): nothing is ticked
+    on open, so both show first."""
     from RevenueChaser.core.tests.board_js import run_board_js
     _seed_one_theme()
     html = _render([
@@ -143,8 +144,8 @@ def test_a_ticked_rule_shows_only_cards_that_pass_it_an_unknown_is_hidden(tmp_pa
 function shown(){ var g = _els['grid'].innerHTML; return ['AAA','CCC'].filter(function(t){ return g.indexOf(t) >= 0; }); }
 var log = {};
 log.default = shown();
-setRule('rule_of_40', false); log.none = shown();
+setRule('rule_of_40', true); log.ro40 = shown();
 console.log(JSON.stringify(log));
 """, tmp_path)
-    assert out["default"] == ["AAA"]
-    assert out["none"] == ["AAA", "CCC"]
+    assert out["default"] == ["AAA", "CCC"]
+    assert out["ro40"] == ["AAA"]

@@ -958,10 +958,19 @@ def test_the_ends_are_read_forward_only_and_not_from_the_start_for_every_start()
     """
     # Round 4: 8,000 pairs and a 3.0 s limit could not fail on the code this guards -- the pre-fix walk took
     # 1.19 s there. 16,000 pairs quadruples that and the limit is tighter than the pre-fix cost.
-    text = AIF + ("BUSINESS OVERVIEW\nx\nRISK FACTORS\ny\n" * 16_000)
-    started = time.monotonic()
-    _cut2(text)
-    assert time.monotonic() - started < 2.0
+    # 18 Nov 2026: a fixed 2.0 s limit failed on a loaded CI runner (2.35 s, RevenueChaser-public #1036), so the
+    # test now compares the walk with itself: forward-only is linear, so 4x the pairs costs about 4x the time;
+    # the pre-fix walk was quadratic (16x). Best of three runs each, against the runner's own speed.
+    def best(pairs: int) -> float:
+        text = AIF + ("BUSINESS OVERVIEW\nx\nRISK FACTORS\ny\n" * pairs)
+        runs = []
+        for _ in range(3):
+            started = time.monotonic()
+            _cut2(text)
+            runs.append(time.monotonic() - started)
+        return min(runs)
+    small, big = best(4_000), best(16_000)
+    assert big < 8 * small + 0.05, (small, big)
 
 
 def test_the_two_passes_are_two_passes_and_the_first_one_to_close_answers():

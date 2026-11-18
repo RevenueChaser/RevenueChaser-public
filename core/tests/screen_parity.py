@@ -71,11 +71,17 @@ LONG_BARS = 300
 SHORT_BARS = 100                                   # fewer than the 252 a score needs
 
 
+#: The filings are in millions of dollars: under avo's $10M revenue mark (C1, and gross margin since the 18 Nov 2026
+#: re-review) toy-sized figures would leave every Fundamentals rule that reads them unknown.
+_M = 1e6
+
+
 def _annual(growth: float, margin_scale: float = 1.0) -> list[dict]:
-    return [{"revenue": 100.0 * (1 + growth) ** i, "gross_profit": 55.0 * margin_scale,
-             "operating_cash_flow": 25.0 * margin_scale, "capex": 5.0, "total_debt": 10.0, "cash": 30.0,
-             "ebit": 20.0 * margin_scale, "depreciation": 3.0, "total_assets": 200.0,
-             "total_equity": 100.0, "net_income": 12.0 * margin_scale, "fiscal_year": 2022 + i}
+    return [{"revenue": 100.0 * _M * (1 + growth) ** i, "gross_profit": 55.0 * _M * margin_scale,
+             "operating_cash_flow": 25.0 * _M * margin_scale, "capex": 5.0 * _M, "total_debt": 10.0 * _M,
+             "cash": 30.0 * _M, "ebit": 20.0 * _M * margin_scale, "depreciation": 3.0 * _M,
+             "total_assets": 200.0 * _M, "total_equity": 100.0 * _M, "net_income": 12.0 * _M * margin_scale,
+             "fiscal_year": 2022 + i}
             for i in range(3)]
 
 

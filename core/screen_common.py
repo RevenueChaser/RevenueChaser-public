@@ -162,6 +162,28 @@ def load_spy(now=None):
     return empty
 
 
+def load_spy_newest(now=None):
+    """``load_spy``, else SPY's newest stored session (avo L1, 18 Nov 2026, Fundamentals only): when D01 lacks the
+    latest complete session, RS is scored as of the newest SPY bar it holds and the frame is marked
+    ``attrs["behind"]`` with that day, so the board says "prices behind". The freeze anchor is not moved: the ledger
+    still refuses on the calendar session."""
+    frame = load_spy(now)
+    if not frame.empty:
+        return frame
+    try:
+        from RevenueChaser.core import prices
+        session = calendar.latest_complete_session(now)
+        newest = _ohlcv(prices.daily_bars(["SPY"], basis="adjusted", start=session - timedelta(days=SPY_BASELINE_DAYS)))
+        newest = newest[newest.index.date <= session] if not newest.empty else newest
+        if not newest.empty:
+            newest.attrs["behind"] = newest.index[-1].date().isoformat()
+            logger.warning("SPY baseline: scored as of SPY's newest stored session %s", newest.attrs["behind"])
+            return newest
+    except Exception as exc:  # noqa: BLE001 - as load_spy: a missing baseline is an empty frame
+        logger.warning("SPY baseline: D01 could not be read (%s)", exc)
+    return frame
+
+
 def _ohlcv(bars: pd.DataFrame) -> pd.DataFrame:
     """D01 rows as a date-indexed Open/High/Low/Close/Volume frame, marked ``attrs["source"] = "d01"``."""
     if bars is None or bars.empty:
@@ -498,6 +520,8 @@ def run_screen(*, board: str, refreshed_by: str, cfg: Any,
         # No SPY baseline at all (D01 lacks SPY's latest complete session, #881): RS is unknown; the board says so
         # (Swing review F2). The freeze refuses on its own anchor, with the precise reason.
         "spy_missing": bool(getattr(spy_df, "attrs", {}).get("fetch_failed")),
+        # avo L1 (Fundamentals): the SPY session RS was scored on when D01 lacks the latest one (``load_spy_newest``).
+        "spy_behind": getattr(spy_df, "attrs", {}).get("behind"),
         # Only the SPY fallback (``load_ohlc``) can refuse a short refetch now; D01 bars never do (Swing review 8).
         "spy_short_refetch_refused": bool(getattr(spy_df, "attrs", {}).get("short_refetch_refused")),
         "dropped": count_drops(drops),

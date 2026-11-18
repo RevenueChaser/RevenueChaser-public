@@ -113,6 +113,19 @@ def test_the_api_returns_headlines_stored_after_since_with_their_lane():
     assert _client().get("/api/news/headlines", query_string={"since": "x"}).status_code == 400
 
 
+def test_the_api_shows_a_tape_headline_before_the_five_minute_pass_stores_it():
+    import json
+    import time
+    from RevenueChaser.module_news import tape
+    now = time.time()
+    path = tape.day_file(now)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"received_at": now, "feed": "BRFG", "time_ms": str(int((now - 2) * 1000)),
+                                "provider": "BRFG", "article_id": "a", "headline": "Oil jumps"}) + "\n")
+    rows = _client().get("/api/news/headlines", query_string={"since": now}).get_json()["rows"]
+    assert [(r["headline"], r["lane"], r["run_at"]) for r in rows] == [("Oil jumps", "market", None)]
+
+
 def test_the_five_minute_pass_reloads_no_frame_and_a_down_gateway_raises_no_alert(monkeypatch, tmp_path):
     from RevenueChaser.app import jobs
     from RevenueChaser.module_news import headlines, report

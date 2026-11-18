@@ -128,6 +128,9 @@ def evaluate_quality(m: dict) -> dict:
     # avo C1 (17 Nov 2026): a DISTORTED growth (or revenue base) and an old period make the rules that read them
     # unknown, never a pass; the label says why.
     growth_ok = None if mark else tri.rule((growth,), lambda g: g >= config.GROWTH_MIN)
+    # Re-review G-b (18 Nov 2026): a margin on a revenue under the mark is as distorted as the growth beside it.
+    rev = m.get("ttm_revenue")
+    micro = rev is not None and rev < config.DISTORTED_REV_MIN
     roic_ok = None if old else tri.rule((roic,), lambda r: r >= config.ROIC_MIN)
     # #737, Fable review F3: an inferred zero makes ROIC known as well as the leverage ratio, so when ROIC is in
     # play this rule rests on the same inference and says so. Growth alone never does.
@@ -139,11 +142,14 @@ def evaluate_quality(m: dict) -> dict:
         _rule("growth_or_roic", gor_label, "pct",
               tri.either(growth_ok, roic_ok), growth if growth_ok else roic, "≥20% / ≥15%"),
         _rule("gross_margin", "Gross margin ≥30%", "pct",
-              tri.rule((gm,), lambda g: g >= config.GM_MIN), gm, "≥ 30%"),
+              None if micro else tri.rule((gm,), lambda g: g >= config.GM_MIN), gm, "≥ 30%"),
         _leverage_rule(nde, m.get("net_cash"), m.get("debt_basis")),
     ]
-    if mark:
+    # Re-review G-c: an old period's note is added once, by the loop below.
+    if mark and not old:
         rules[0]["label"] += f" ({mark})"
+    if micro and not old:
+        rules[1]["label"] += f" ({_micro_note()})"
     if old:
         for r in rules:
             r["passed"] = None
@@ -179,8 +185,12 @@ def data_mark(m: dict) -> str | None:
     if growth is not None and abs(growth) > config.DISTORTED_GROWTH:
         return f"growth beyond ±{config.DISTORTED_GROWTH:.0%}: distorted, unknown"
     if rev is not None and rev < config.DISTORTED_REV_MIN:
-        return f"revenue under ${config.DISTORTED_REV_MIN / 1e6:g}M: distorted, unknown"
+        return _micro_note()
     return None
+
+
+def _micro_note() -> str:
+    return f"revenue under ${config.DISTORTED_REV_MIN / 1e6:g}M: distorted, unknown"
 
 
 def is_distorted(m: dict) -> bool:

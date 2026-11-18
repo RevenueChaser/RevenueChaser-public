@@ -170,8 +170,16 @@ def _summary_html(s: dict, data_quality: dict | None = None) -> str:
     stale_n = s.get("stale_ohlc") or 0
     if stale_n or s.get("spy_stale"):
         bits = ([f"{_fmt_int(stale_n)} tickers"] if stale_n else []) + (["SPY"] if s.get("spy_stale") else [])
-        elim_part += (f" Stale price cache (refetch failed, last cached bars used): "
+        elim_part += (f" Prices store behind (no bar of the latest session; last stored bars used): "
                       f"{_html.escape(' + '.join(bits))}.")
+    if s.get("spy_behind"):
+        # avo L1 (18 Nov 2026): no SPY bar of the latest session, so RS reads SPY's newest stored one.
+        elim_part += (f" <b>Prices behind</b>: the 6-month RS is scored as of SPY's "
+                      f"{_html.escape(str(s['spy_behind']))} session (the store has no bar of the latest one).")
+    if s.get("ifrs_quality_unjudged"):
+        # avo K1 (18 Nov 2026): until the IFRS debt read is served, these filers cannot pass Quality.
+        elim_part += (f" Quality not judged for {_fmt_int(s['ifrs_quality_unjudged'])} IFRS filers "
+                      "(a Quality input, usually debt, is not read).")
     if s.get("spy_missing"):
         # Fundamentals review 17 Nov (as Swing review F2): with no SPY bar of the latest session the 6-month RS rule
         # is unknown on every card, so no name passes Momentum on this Fetch.
@@ -254,6 +262,10 @@ def _render(payload: dict, inline: bool) -> tuple[str, dict | None]:
             "top_n": len(candidates),
         }
     summary_html = _summary_html(summary, payload.get("data_quality"))
+    # avo O1 (18 Nov 2026): the funnel on the page, "failed" and "could not be judged" as separate steps.
+    from RevenueChaser.core import funnel as funnel_mod
+    funnel_html = funnel_mod.funnel_panel_html(funnel_mod.from_dict(payload.get("funnel_steps")),
+                                               panel_id="fundamentals-funnel")
     universe_prov = universe_provenance_html(
         payload.get("universe_generated_at"), payload.get("universe_refreshed_by"),
         partial=bool(payload.get("universe_partial")))
@@ -343,6 +355,13 @@ function qualityAsOf(c, long){
 }
 // avo C1 (17 Nov 2026): the card's one period ended more than fiscal_year.STALE_DAYS ago (the build decides).
 function oldAnchor(c){ return !!c.old_period; }
+// avo N1 (18 Nov 2026): the card face says how long ago its one period ended ("ended 10 mo ago").
+function periodAge(c){
+  var e = c.quality_period_end || c.anchor_period_end;
+  var ms = e ? Date.now() - Date.parse(e) : NaN;
+  if(!(ms >= 0)) return "";
+  return ' <span class="when">· ended ' + Math.round(ms / (30.44 * 864e5)) + ' mo ago</span>';
+}
 // The two halves of the Rule of 40, the one figure of it the gate button does not carry.
 function growthMargin(c){
   if(c.rev_growth_ttm == null && c.fcf_margin == null) return "N/A";
@@ -395,7 +414,7 @@ function cardHtml(c){
     // likewise already in those windows, so nothing on the card is lost; the two halves of the Rule of 40 were
     // only here, and keep a cell of their own.
     + '<div class="metrics">'
-    + cell("Period", rcEsc(c.period))
+    + cell("Period", rcEsc(c.period) + periodAge(c))
     + cell("Growth / FCF margin", growthMargin(c))
     + cell("Price", usd(c.price))
     // Plan decision B: an ADR's cap ignores the depositary ratio.
@@ -428,7 +447,7 @@ function openGate(btn){
   // avo D1 (17 Nov 2026): one period per card, so every gate's window names the card's one period.
   if(ANCHORS[t]) period = ANCHORS[t];
   document.getElementById("m-title").textContent = gate.name;
-  document.getElementById("m-sub").textContent = t + " — " + gate.score + (gate.passed ? " (PASS)" : " (FAIL)") + (period ? " · " + period : "");
+  document.getElementById("m-sub").textContent = t + " — " + gate.score + (gate.passed ? " (PASS)" : (gate.rules.some(function(r){ return r.passed === false; }) ? " (FAIL)" : " (UNKNOWN)")) + (period ? " · " + period : "");
   var rules = gate.rules.map(function(r){
     var ok = r.passed;   // true / false / null (unknown: an input is missing)
     var cls = ok === null ? 'm-unk' : (ok ? 'm-ok' : 'm-no');
@@ -485,9 +504,9 @@ function start(){
     JS = fill(JS, {"__MOD__": script_json(MODULE),
                    "__BOOT__": script_json(boot),
                    "__RULE_ON__": script_json({} if stale_payload else
-                                              {"rule_of_40": True, "quality": False, "momentum": False}),
+                                              {"rule_of_40": False, "quality": False, "momentum": False}),
                    "__META__": meta})
-    # #386 F2.8/F2.9: the rule toggles a card must pass (Rule of 40 on by default); a payload scored before v6
+    # #386 F2.8/F2.9: the rule toggles a card must pass; avo M1 (18 Nov 2026): none ticked on open, every card shows. A payload scored before v6
     # renders no toggles and one notice instead.
     if stale_payload:
         rules_row = ('<div class="notice">Scored before v6 (data-health gates and the rule toggles). '
@@ -495,7 +514,7 @@ function start(){
     else:
         rules_row = (
             '<div class="frow"><span class="flbl">Rules</span><div class="toggles">'
-            '<label class="tog"><input type="checkbox" id="rule-rule_of_40" checked '
+            '<label class="tog"><input type="checkbox" id="rule-rule_of_40" '
             'onchange="setRule(\'rule_of_40\', this.checked)"> Rule of 40</label>'
             '<label class="tog"><input type="checkbox" id="rule-quality" '
             'onchange="setRule(\'quality\', this.checked)"> Quality</label>'
@@ -548,6 +567,7 @@ function start(){
   
 
   {summary_html}
+  {funnel_html}
 
   <div class="banner">
     <div class="stat"><div class="v">{payload.get("universe_total") or 0}</div><div class="l">Scanned Universe</div><div class="d">US-listed · all caps</div></div>

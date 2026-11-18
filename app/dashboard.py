@@ -933,7 +933,7 @@ def run_news_headlines():
 
 @app.route("/api/news/headlines")
 def api_news_headlines():
-    """The News and Welcome pages' 60 s poll (#673): headlines newer than ``since`` (epoch seconds). Read-only."""
+    """The News page's 2 s poll and the Welcome page's (#673): headlines newer than ``since`` (epoch seconds). Read-only."""
     from RevenueChaser.module_news import report as news_report
     try:
         since = float(request.args.get("since") or 0)

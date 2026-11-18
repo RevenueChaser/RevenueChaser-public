@@ -178,6 +178,15 @@ def test_load_tape_reads_into_the_next_day_and_keeps_a_ticker_already_stored():
     assert json.loads(rows["Apple beats"]["tickers"]) == ["AAPL"] and "Asia opens" in rows
 
 
+def test_peek_tape_shows_the_lines_not_stored_yet_and_writes_nothing():
+    _tape([_line("Fed holds rates"), _line("Fed holds rates", provider="DJ-N")])
+    rows = headlines.peek_tape(now=NOW)
+    assert [(r["headline"], r["tickers"], r["run_at"]) for r in rows] == [("Fed holds rates", "[]", None)]
+    assert _heads() == {}                                   # nothing stored, no mark moved
+    headlines.load_tape(now=NOW)
+    assert headlines.peek_tape(now=NOW) == []               # stored now: the poll reads it from the table
+
+
 def test_a_refused_feed_is_asked_again_and_an_unknown_request_error_is_ignored():
     t = [NOW]
     client = FakeClient([_refused(1), _refused(99), None, None])

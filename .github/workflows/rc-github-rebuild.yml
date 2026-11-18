@@ -1,0 +1,109 @@
+# One whole rebuild of a RevenueChaser serving DuckDB on a GitHub runner (avo, 17 Nov 2026): the slow one-off
+# rebuilds our code changes cause (prices, a 13F quarter) leave homesrv; routine nightly jobs stay there.
+# One workflow for every kind. Started by `bin/rc-github-rebuild send KIND` on homesrv (home-server), which uploads the
+# input bundle to the release TAG of this repo; the result goes back to the same release and homesrv takes it with
+# `bin/rc-github-rebuild fetch TAG`. Nothing here swaps anything live, and no secret is used (a build fetches nothing).
+# Runs here, on this repo's public runner (avo, 17 Nov 2026 23:44: "kendi repomuzun runner'inda"); the bundle and
+# the result are prereleases of this repo, so public: the market data, and the ops.sqlite copy with the watchlists.
+# Runbook: claude-coordinator vault-memory/reference/rc-github-rebuild.md
+name: rc-github-rebuild
+run-name: "rc-github-rebuild ${{ inputs.kind }} (${{ inputs.tag }})"
+on:
+  workflow_dispatch:
+    inputs:
+      kind:
+        description: serving kind to rebuild
+        type: choice
+        options: [prices, ownership, market, fundamentals, spine, options, sec_forms, sec_reads]
+      tag:
+        description: release tag holding the input bundle (bin/rc-github-rebuild send prints it)
+        required: true
+      rc_sha:
+        description: commit of this repo to build with (40 chars; homesrv's deployed HEAD by default)
+        required: true
+      python:
+        description: Python version of homesrv's RevenueChaser venv
+        default: "3.13"
+permissions:
+  contents: write          # download the input from the release, upload the result to it
+concurrency:
+  group: rc-github-rebuild-${{ inputs.kind }}
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ inputs.tag }}
+      KIND: ${{ inputs.kind }}
+      RC_SHA: ${{ inputs.rc_sha }}
+    steps:
+      - name: check inputs
+        run: |
+          [[ "$TAG" =~ ^rc-github-rebuild-[a-z_]+-[0-9]{8}-[0-9]{4}$ ]] || { echo "bad tag $TAG"; exit 1; }
+          [[ "$RC_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "rc_sha must be 40 hex chars"; exit 1; }
+      # The code imports itself as `RevenueChaser.*`, so the checkout directory carries that name.
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.rc_sha }}
+          path: RevenueChaser
+      # The build script comes from this workflow's own commit, so a --rc-sha older than the script still builds.
+      - uses: actions/checkout@v5
+        with:
+          path: runner
+          sparse-checkout: scripts/rc_github_rebuild.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ inputs.python }}
+      - run: pip install -q -r RevenueChaser/requirements.txt
+      - name: free the root disk
+        # A hosted runner had one 72 GB disk with ~14 GB free and no /mnt (first prices run, 17 Nov 2026:
+        # 9.3 GiB free, the build's guard wants twice the live file). The preinstalled toolchains give ~25-30 GB back.
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL \
+            /usr/local/share/boost /usr/share/swift /usr/local/julia* /opt/az /usr/local/share/powershell
+          sudo docker image prune -af >/dev/null 2>&1 || true
+          df -h /
+      - name: pick the disk with the most room
+        # The ownership build spilled 23.8 GB on homesrv (12 Nov 2026): the root disk has ~14 GB free, /mnt more.
+        run: |
+          df -h / /mnt || true
+          if [ -d /mnt ] && [ "$(df --output=avail /mnt | tail -1)" -gt "$(df --output=avail / | tail -1)" ]; then
+            sudo mkdir -p /mnt/rc && sudo chown "$USER" /mnt/rc && echo "WORK=/mnt/rc" >> "$GITHUB_ENV"
+          else
+            echo "WORK=$RUNNER_TEMP/rc" >> "$GITHUB_ENV"
+          fi
+      - name: download and verify the input bundle
+        run: |
+          mkdir -p "$WORK/in" && cd "$WORK/in"
+          gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p 'input.*'
+          sha256sum -c input.sha256
+          cat input.tar.zst.* | zstd -dc | tar -x -C "$WORK"
+          rm input.tar.zst.*
+          cat input.json
+          du -sh "$WORK"/market "$WORK"/raw; nproc; free -g
+      - name: build
+        env:
+          RC_MARKET_DIR: ${{ env.WORK }}/market
+          RC_MARKET_RAW_DIR: ${{ env.WORK }}/raw
+          RC_STORE_DIR: ${{ env.WORK }}/store
+          RC_CACHE_DIR: ${{ env.WORK }}/cache
+          RC_DUCKDB_TEMP_DIR: ${{ env.WORK }}/build_tmp
+          RC_STORE_AUTO_ENSURE: "0"
+          RC_BUILD_WHOLE: "1"
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          export RC_DUCKDB_THREADS=$(nproc)
+          export RC_DUCKDB_MEMORY_LIMIT="$(( $(awk '/MemTotal/ {print $2}' /proc/meminfo) * 7 / 10 / 1024 ))MB"
+          /usr/bin/time -v python runner/scripts/rc_github_rebuild.py "$KIND" 2> >(tee time.txt >&2)
+          grep -E "Maximum resident|Elapsed" time.txt
+      - name: upload the result to the release
+        run: |
+          mkdir -p "$WORK/out" && cd "$WORK/out"
+          cp "$GITHUB_WORKSPACE/result.json" .
+          sha256sum "$WORK/market/$KIND.duckdb" | sed "s#  .*#  $KIND.duckdb#" > output.sha256
+          zstd -T0 -6 -c "$WORK/market/$KIND.duckdb" | split -b 1900M -d - "$KIND.duckdb.zst."
+          sha256sum "$KIND".duckdb.zst.* >> output.sha256
+          ls -l
+          gh release upload "$TAG" -R "$GITHUB_REPOSITORY" --clobber output.sha256 result.json "$KIND".duckdb.zst.*
