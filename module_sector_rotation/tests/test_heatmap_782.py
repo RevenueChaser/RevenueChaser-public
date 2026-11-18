@@ -126,3 +126,14 @@ def test_the_board_carries_the_panel_only_with_data(monkeypatch):
     monkeypatch.setattr(heatmap, "payload", lambda today=None: _data())
     page = report._heatmap_html()
     assert 'id="hm"' in page and '"AAPL"' in page and "--pos" in page
+
+
+def test_a_phone_sector_label_shortens_rather_than_cut(tmp_path):
+    src = function_source(heatmap.PANEL_JS, "secLabel")
+    tail = ("console.log(JSON.stringify([secLabel('Communication Services', 300, 18), "
+            "secLabel('Communication Services', 60, 18), secLabel('Utilities', 30, 18)]));")
+    out = run_board_js("<script>var SHORT = {'Communication Services': 'Comm.', 'Utilities': 'Util.'};" + src +
+                       "</script>", tail, tmp_path)
+    assert out[0] == ["Communication Services", 18]           # room for the whole name
+    assert out[1][0] == "Comm." and out[1][1] >= 9            # too narrow: the short form, never a cut word
+    assert out[2][0] == "Util."
