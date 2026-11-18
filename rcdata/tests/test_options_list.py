@@ -10,6 +10,7 @@ from RevenueChaser.core.providers import unusual_whales
 from RevenueChaser.rcdata import ops, serving
 from RevenueChaser.rcdata.build import base
 from RevenueChaser.rcdata.build.options import rows as option_rows, tables, uw_list
+from RevenueChaser.module_watchlists import store as wl_store
 
 from .options_fixture import SESSION, UWOptions
 
@@ -43,12 +44,12 @@ def _query(sql: str, params=()):
 
 def test_the_list_set_is_spx_and_the_option_watch_list_read_at_each_run(uw_opts):
     """A name added to the list is fetched by the next run; the names already done are not asked again."""
-    ops.watch_add("option", "aapl", by="test")
+    wl_store.job_set("option", "aapl", True, by="test")
     row = _daily()
     assert row["result"] == "changed" and row["coverage"] == 1.0
     assert row["calls"] == 2 * uw_opts.per_name()
     assert {p.split("/")[2] for p, _ in uw_opts.calls("/stock/")} == {"SPX", "AAPL"}
-    ops.watch_add("option", "MSFT", by="test")
+    wl_store.job_set("option", "MSFT", True, by="test")
     uw_opts.requests.clear()
     row = _daily()
     assert {p.split("/")[2] for p, _ in uw_opts.calls("/stock/")} == {"MSFT"}
@@ -152,7 +153,7 @@ def test_outside_the_observed_window_no_call_is_sent(uw_opts, monkeypatch):
 
 
 def test_a_name_whose_call_fails_is_asked_again_by_the_next_run(uw_opts):
-    ops.watch_add("option", "AAPL", by="test")
+    wl_store.job_set("option", "AAPL", True, by="test")
     uw_opts.fail["/stock/AAPL/greeks"] = 500
     row = _daily()
     assert row["result"] == "changed" and row["coverage"] == 0.5
@@ -181,7 +182,7 @@ def test_a_refused_key_fails_the_run(uw_opts):
 
 def test_the_run_budget_stops_starting_names_and_the_next_run_resumes(uw_opts):
     for t in ("AAPL", "MSFT"):
-        ops.watch_add("option", t, by="test")
+        wl_store.job_set("option", t, True, by="test")
     reads = iter([0, 0])                    # the run's start, then SPX's turn; every later read is past the budget
     row = _daily(clock=lambda: next(reads, uw_list.RUN_BUDGET_S))
     assert row["coverage"] == round(1 / 3, 4) and "budget" in row["note"]

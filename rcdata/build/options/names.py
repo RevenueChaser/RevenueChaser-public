@@ -1,7 +1,8 @@
 """Which names the options datasets fetch.
 
 - **The list set** (decision D2): SPX always, and the option watch list, read at each run through
-  ``rcdata.read.watched("option")`` (``ops.sqlite`` ``watchlist_option``; there is no second accessor). A name added
+  ``rcdata.read.watched("option")`` (the list of ``boards/watchlists.duckdb`` marked ``option``; there is no second
+  accessor, and an unreadable list fails the run rather than read as empty). A name added
   to the list is in the next run's set; a name taken off it is no longer fetched, and its rows stay.
 - **The earnings set** of session S: the screener-set names that report on one of the next ``REPORT_DAYS`` sessions
   (whether before the open or after the close), pass the Earnings Radar gates on S, and are not in the list set,

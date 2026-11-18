@@ -18,6 +18,7 @@ from RevenueChaser.core import calendar, config
 from RevenueChaser.module_settings import newdata
 from RevenueChaser.rcdata import caps, ops, serving
 from RevenueChaser.rcdata.build import uw_spot_expiry_strike as spx
+from RevenueChaser.module_watchlists import store as wl_store
 
 # 23:00 New York on Wednesday 28 Oct 2026: the latest complete session is that day.
 NOW = datetime(2026, 10, 29, 3, 0, tzinfo=timezone.utc)
@@ -305,9 +306,9 @@ def test_a_zero_retention_is_no_retention(monkeypatch):
 
 
 def test_watch_list_counts_schedule_state_and_the_queue():
-    ops.watch_add("option", "spy", by="t")
-    ops.watch_add("stock", "aapl", by="t")
-    ops.watch_add("stock", "msft", by="t")
+    wl_store.job_set("option", "spy", True, by="t")
+    wl_store.job_set("stock", "aapl", True, by="t")
+    wl_store.job_set("stock", "msft", True, by="t")
     ops.schedule_pause("market_series", by="settings")
     rid = ops.enqueue("market_series", None, by="settings")
     data = newdata.collect(NOW)

@@ -2095,7 +2095,8 @@ def api_watchlist_kind_toggle(kind: str, ticker: str):
     t = (ticker or "").strip().upper()
     if not _valid_ticker(t):
         return jsonify({"ok": False, "error": "bad ticker"}), 400
-    on = ops.watch_toggle(kind, t, by=_requested_by())
+    from RevenueChaser.module_watchlists import store
+    on = store.job_toggle(kind, t, by=_requested_by())
     return jsonify({"ok": True, "list": kind, "ticker": t, "on": on})
 
 
@@ -2110,7 +2111,11 @@ def api_watchlist_add(kind: str, ticker: str):
     t = (ticker or "").strip().upper()
     if not _valid_ticker(t):
         return jsonify({"ok": False, "error": "bad ticker"}), 400
-    added = ops.watch_add(kind, t, by=_requested_by())
+    from RevenueChaser.module_watchlists import store
+    try:
+        added = store.job_set(kind, t, True, by=_requested_by())
+    except store.WatchlistError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
     return jsonify({"ok": True, "list": kind, "ticker": t, "added": added})
 
 
@@ -2142,7 +2147,11 @@ def api_watchlist_remove(kind: str, ticker: str):
     t = (ticker or "").strip().upper()
     if not _valid_ticker(t):
         return jsonify({"ok": False, "error": "bad ticker"}), 400
-    removed = ops.watch_remove(kind, t, by=_requested_by())
+    from RevenueChaser.module_watchlists import store
+    try:
+        removed = store.job_set(kind, t, False, by=_requested_by())
+    except store.WatchlistError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
     return jsonify({"ok": True, "list": kind, "ticker": t, "removed": removed})
 
 
@@ -2274,11 +2283,21 @@ def api_watchlists_update(list_id: str):
     description = body.get("description")
     if description is not None and not isinstance(description, str):
         return jsonify({"ok": False, "error": "description must be text"}), 400
+    if _wl_job_kind(list_id):
+        return jsonify({"ok": False, "error": "a job list keeps its name"}), 400
     try:
         store.update_list(list_id, name=name, description=description)
     except store.WatchlistError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
     return _wl_payload(list_id)
+
+
+@app.route("/api/watchlists/jobs/seed", methods=["POST"])
+def api_watchlists_jobs_seed():
+    """Make the two job lists from the old ``ops.sqlite`` rows, once (plan v5 step 7g); a second call only compares.
+    ``{ok, option: {created, ops, list, same}, stock: {...}}``."""
+    from RevenueChaser.module_watchlists import store
+    return jsonify({"ok": True, **store.seed_job_lists(by=_requested_by())})
 
 
 @app.route("/api/watchlists/<list_id>/delete", methods=["POST"])
@@ -2336,11 +2355,13 @@ def api_watchlists_symbol_add(list_id: str):
         return jsonify({"ok": False, "error": section_error}), 400
     kind = _wl_job_kind(list_id)
     if kind:                               # one of the two lists the jobs read: a board button's write
-        from RevenueChaser.rcdata import ops
         ticker = _wl_job_ticker(symbol)
         if not ticker:
             return jsonify({"ok": False, "error": "a job list takes a plain ticker"}), 400
-        ops.watch_add(kind, ticker, by=_requested_by())
+        try:
+            store.job_set(kind, ticker, True, by=_requested_by())
+        except store.WatchlistError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
         return _wl_payload(list_id)
     try:
         store.add_symbol(list_id, symbol, section_id=section_id or store.DEFAULT_SECTION, by=_requested_by())
@@ -2358,10 +2379,12 @@ def api_watchlists_symbol_remove(list_id: str):
         return jsonify({"ok": False, "error": error}), 400
     kind = _wl_job_kind(list_id)
     if kind:
-        from RevenueChaser.rcdata import ops
         ticker = _wl_job_ticker(symbol)
-        if ticker:
-            ops.watch_remove(kind, ticker, by=_requested_by())
+        try:
+            if ticker:
+                store.job_set(kind, ticker, False, by=_requested_by())
+        except store.WatchlistError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
         return _wl_payload(list_id)
     try:
         store.remove_symbol(list_id, symbol, by=_requested_by())

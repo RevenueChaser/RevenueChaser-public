@@ -11,6 +11,7 @@ from RevenueChaser.core.providers import unusual_whales
 from RevenueChaser.rcdata import ops, serving
 from RevenueChaser.rcdata.build import base
 from RevenueChaser.rcdata.build.options import names, tables, uw_screener
+from RevenueChaser.module_watchlists import store as wl_store
 
 from .options_fixture import SESSION, UWOptions
 
@@ -74,7 +75,7 @@ def test_a_name_that_passes_reports_next_session_and_is_not_on_the_list_is_fetch
 
 
 def test_a_name_on_the_option_list_is_not_in_the_earnings_set(uw_opts):
-    ops.watch_add("option", "LISTED", by="test")
+    wl_store.job_set("option", "LISTED", True, by="test")
     _setup(uw_opts, LISTED=(NEXT, LIQUID), GOOD=(NEXT, LIQUID))
     _daily()
     assert _fetched(uw_opts) == {"GOOD"}

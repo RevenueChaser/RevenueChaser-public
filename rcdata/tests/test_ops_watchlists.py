@@ -118,14 +118,16 @@ def test_add_keeps_the_note_on_the_row_and_its_history():
 
 def test_the_reads_never_create_the_ops_file():
     assert read.watchlists() == {"option": [], "stock": []}
-    assert read.watched("stock") == set()
+    with pytest.raises(read.JobListUnreadable):          # a job never reads "no list yet" as an empty one (7g)
+        read.watched("stock")
     assert not ops.ops_path().exists()
 
 
 def test_read_watchlists_returns_both_lists_by_ticker_and_counts_its_reads():
-    ops.watch_add("stock", "MSFT", by="leaps")
-    ops.watch_add("stock", "AAPL", by="settings")
-    ops.watch_add("option", "NVDA", by="sec_13f")
+    from RevenueChaser.module_watchlists import store
+    store.job_set("stock", "MSFT", True, by="leaps")
+    store.job_set("stock", "AAPL", True, by="settings")
+    store.job_set("option", "NVDA", True, by="sec_13f")
     got = read.watchlists()
     assert [r["ticker"] for r in got["stock"]] == ["AAPL", "MSFT"]
     assert got["option"][0] == {"ticker": "NVDA", "added_at": got["option"][0]["added_at"],
@@ -133,7 +135,7 @@ def test_read_watchlists_returns_both_lists_by_ticker_and_counts_its_reads():
     assert read.watched("option") == {"NVDA"}
     ops.read_log.flush()
     n = {r["table_name"]: r["reads"] for r in ops.rows("read_log")}
-    assert n == {"watchlist_option": 2, "watchlist_stock": 1}
+    assert n == {"watchlist_option": 3, "watchlist_stock": 2}        # +1 each: the first write's seed compares
 
 
 # ── The lossless rollback (review should-fix 1): stamp the file down, the v1 code runs on it ──────────────────────

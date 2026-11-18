@@ -132,11 +132,11 @@ def _row(item: dict, equities: dict[str, dict], series: dict[str, dict], names: 
     return row
 
 
-#: The two lists the jobs read (``ops.sqlite``, ``rcdata.read.watchlists``), shown here after avo's own lists
+#: The two lists the jobs read (``rcdata.read.watched``), shown here after avo's own lists
 #: (avo, 13 Nov 2026: "Watchlist panosuna bunlari ekle. Ne amacla kullandiklari da listenin isminde olsun"). They
 #: were edited on Settings' Watch lists tab until then. The name says what the list is fetched for; the
-#: description says who reads it. Not rows of ``wl_list``: the jobs still read ``ops.sqlite``, so this board reads
-#: and writes that same list and there is no second copy to keep in step. An id holds a dot, which
+#: description says who reads it. Rows of ``wl_list`` under these ids since plan v5 step 7g, marked
+#: ``feeds`` = the kind (``store.seed_job_lists`` made them once from ``ops.sqlite``). An id holds a dot, which
 #: ``store.derive_id`` never produces, so one of avo's lists cannot take it.
 JOB_LISTS = {
     "jobs.option": {
@@ -246,7 +246,7 @@ def payload(list_id: str | None = None) -> dict | None:
     ``list_id`` picks the list; an unknown one falls back to the first, so a stale link opens a board rather than
     an error. One prices read and one series read for the whole list, whatever its length.
     """
-    own, jobs = store.lists(), _job_lists()
+    own, jobs = [r for r in store.lists() if r["list_id"] not in JOB_LISTS], _job_lists()
     if not own and not any(r["symbols"] for r in jobs):   # nothing typed anywhere yet: the empty page
         return None
     lists = own + jobs + _system_lists()

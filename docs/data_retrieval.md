@@ -263,8 +263,12 @@ provider, write nothing and open no second DuckDB writer, so a page may ask them
 
 ### The watch-list routes (PR 4)
 
-The two watch lists (D2) live in `ops.sqlite` (`rcdata/ops.py`); each write is one `BEGIN IMMEDIATE` transaction
-with its history row. No provider call, no DuckDB file.
+The two watch lists (D2) are lists of `boards/watchlists.duckdb` marked for the jobs (`wl_list.feeds` `option` /
+`stock`, ids `jobs.option` / `jobs.stock`; plan v5 step 7g, avo 18 Nov 2026: one source). A write is
+`module_watchlists.store.job_set` with its `wl_change` row; a read is `rcdata.read.watched(kind)`, which raises
+`JobListUnreadable` rather than answer an empty set. A job list cannot be deleted or renamed; these two may be
+emptied (no name is avo's choice), any other marked list keeps its last name. `POST /api/watchlists/jobs/seed` made the two lists once from the old `ops.sqlite` rows
+(`watchlist_option`, `watchlist_stock`), which are no longer read. No provider call.
 
 - **`POST /api/watchlist/<option|stock>/toggle/<ticker>`**: puts the ticker on that list or takes it off;
   `{ok, list, ticker, on}`. The `X-RC-Panel` value (the board) is the row's `added_by` and the history row's `by`.
@@ -279,8 +283,8 @@ with its history row. No provider call, no DuckDB file.
   listings on it (the ones a board's ticker can match) and `count` the list's whole size.
 - **`POST /api/watchlists/<list_id>/tick/<ticker>`** `{on: true|false}` -> `{ok, list_id, ticker, on}`: the menu's
   write. On one of avo's lists a tick stores the spine's spelling (`NASDAQ:NVDA`) in the unnamed top section and an
-  untick removes every US listing of the ticker; on `jobs.option` / `jobs.stock` it is `ops.watch_add` /
-  `ops.watch_remove`. Both ways it writes nothing when there is nothing to change. 400 for a bad ticker, a missing
+  untick removes every US listing of the ticker; on `jobs.option` / `jobs.stock` it is `store.job_set`
+  with the bare ticker. Both ways it writes nothing when there is nothing to change. 400 for a bad ticker, a missing
   `on` or a ticker the spine cannot place on a US exchange; 404 for an unknown list; 403 without the panel header.
   The read itself never creates `ops.sqlite`; the read log it counts into is flushed to it once a minute, which
   may, as for every `rcdata.read` call. A flush that fails keeps its counts for the next one and never fails the
@@ -291,7 +295,7 @@ with its history row. No provider call, no DuckDB file.
 These are avo's named lists (`boards/watchlists.duckdb`, `module_watchlists/store.py`). The two shared
 `option` / `stock` lists above are on the same board since 13 Nov 2026 as the list ids `jobs.option` and
 `jobs.stock`: of these routes only `symbol/add`, `symbol/remove` and `columns/<tab>` answer for them, and the two
-writes go to `ops.sqlite` (`ops.watch_add` / `ops.watch_remove`), not to the store. Every write is store-only — one list, one section or one symbol — and answers
+writes store the bare ticker (`store.job_set`). Every write is store-only — one list, one section or one symbol — and answers
 `{ok, payload}` with the list's whole payload again, so the page redraws from what was stored. Each needs
 `X-RC-Panel` like every non-GET.
 

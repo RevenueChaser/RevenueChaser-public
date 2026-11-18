@@ -2773,30 +2773,33 @@ def clear(name: str) -> None:
             conn.execute(f"DELETE FROM {name}")
 
 
-# ── watchlist: the stock watch list in ops.sqlite (PR 4) ─────────────────────
-# Since PR 4 "the watchlist" is the stock watch list of ``rcdata.ops`` (D2, D6). These three keep their names for the
+# ── watchlist: the stock watch list (PR 4; in watchlists.duckdb since plan v5 7g) ─
+# Since PR 4 "the watchlist" is the stock job list (D2; ``module_watchlists.store.job_set``). These three keep their names for the
 # readers that call them (Earnings, the old toggle route, the tests); the ``watchlist`` store table stays in the
 # manifest, untouched and unread by them (purged on 27 Oct, D5), until its retirement.
 def load_watchlist() -> set[str]:
-    """The stock watch list's tickers (``rcdata.read.watched("stock")``)."""
+    """The stock watch list's tickers, for a page (``rcdata.read.watchlists``: an unreadable list shows as empty;
+    a job reads ``rcdata.read.watched("stock")``, which raises)."""
     from RevenueChaser.rcdata import read
-    return read.watched("stock")
+    return {r["ticker"] for r in read.watchlists()["stock"]}
 
 
 def save_watchlist(tickers: set[str], *, by: str = "save_watchlist") -> None:
     """Make the stock watch list exactly ``tickers``, one history row per ticker added or removed. An empty set clears
     it: that is the user's choice. The dashboard does not call it: a click goes through ``toggle_watchlist``."""
-    from RevenueChaser.rcdata import ops
-    ops.watch_replace("stock", tickers, by=by)
+    from RevenueChaser.module_watchlists import store
+    want = {str(t).strip().upper() for t in tickers if str(t).strip()}
+    for t in sorted(want ^ load_watchlist()):
+        store.job_set("stock", t, t in want, by=by)
 
 
 def toggle_watchlist(ticker: str, *, by: str = "dashboard") -> bool:
     """Add ``ticker`` to the stock watch list, or remove it when it is there; whether it is on the list now.
 
-    One ``BEGIN IMMEDIATE`` transaction on ``ops.sqlite`` that reads and writes this ticker only, so two clicks that
-    race cannot drop each other's ticker; each flip writes its history row (``watchlist_stock_changes``, with ``by``)."""
-    from RevenueChaser.rcdata import ops
-    return ops.watch_toggle("stock", ticker, by=by)
+    It reads and writes this ticker's row only, so two clicks cannot drop each other's ticker; each flip writes its
+    history row (``wl_change``, with ``by``)."""
+    from RevenueChaser.module_watchlists import store
+    return store.job_toggle("stock", ticker, by=by)
 
 
 def reset_db() -> None:
