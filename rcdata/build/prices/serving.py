@@ -374,6 +374,7 @@ def _refuse_shrink(ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> None
 
     A Compustat series that became a served fund's alias (``_gvkey_alias``) is moved, not lost: its id goes and its
     sessions join the fund's, so neither its id nor its rows count, and the fund's rows are compared with the fund's
+<<<<<<< HEAD
     alone.
 
     A security the live file serves that this build's sources return no bar for at all (a name gone from Compustat's
@@ -396,6 +397,15 @@ def _refuse_shrink(ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> None
         ctx.notes.append(f"{len(gone)} securities no source returns a bar for kept with their {carried:,} stored "
                          f"bars: {', '.join(gone[:20])}{' ...' if len(gone) > 20 else ''}")
         now = served()
+=======
+    alone."""
+    live = stage.live_served(con)
+    if not live or ctx.allow_shrink:
+        return
+    now = dict(con.execute("SELECT security_id, count(*) FROM price_bar_daily "
+                           "WHERE security_id NOT LIKE 'index:%' GROUP BY 1").fetchall())
+    moved = {g for g, sid in con.execute("SELECT gid, security_id FROM _gvkey_alias").fetchall() if sid in now}
+>>>>>>> d293ae9
     lost = sorted(set(live) - set(now) - moved)
     before = sum(n for sid, n in live.items() if sid not in moved)
     after = sum(now.values())
