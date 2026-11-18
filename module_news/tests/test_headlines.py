@@ -106,7 +106,7 @@ def test_fetch_stores_clean_headlines_with_their_tickers_once(gw):
     assert rows["Apple Expands AI Deal"]["provider"] == "ibkr" and rows["Apple Expands AI Deal"]["source"] == "Dow Jones"
     same = rows["Tech Stocks Rally as Yields Slip"]                     # one story, two tickers, two article ids
     assert sorted(json.loads(same["tickers"])) == ["AAPL", "NVDA"]
-    assert out == {"tickers": 2, "stored": 3, "skipped": [], "error": None}
+    assert out == {"tickers": 2, "stored": 3, "skipped": [], "failed": [], "error": None}
 
 
 def test_a_name_the_gateway_does_not_know_is_skipped_not_fatal(gw):
