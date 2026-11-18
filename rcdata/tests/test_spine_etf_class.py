@@ -551,12 +551,29 @@ def test_a_manual_line_without_a_reason_is_refused(tmp_path):
         etf_class.load_manual(path)
 
 
+def test_a_theme_fund_is_a_map_theme_fund_that_sits_in_no_one_branch():
+    con = _con()                                             # the map's theme section is the seed here (conftest)
+    con.execute(f"INSERT INTO {etf.TABLE} (ticker, name) VALUES ('DRIV', 'Global X Autonomous & Electric Vehicles "
+                "ETF'), ('LIT', 'Global X Lithium & Battery Tech ETF'), ('SMH', 'VanEck Semiconductor ETF')")
+    day = date(2026, 9, 30)
+    classes = [{"ticker": "SMH", "primary_class": "industry_group", "geo": "US", "as_of": day},      # one branch
+               {"ticker": "LIT", "primary_class": "international", "geo": "international", "as_of": day},
+               {"ticker": "DRIV", "primary_class": "diversified", "geo": "global", "as_of": day},
+               {"ticker": "VTV", "primary_class": "diversified", "geo": "US", "as_of": day}]         # not on the map
+    rows = etf_class.themes(_ctx(), con, classes)
+    assert [(r["ticker"], r["theme"], r["primary_class"]) for r in rows] == [
+        ("DRIV", "Global X Autonomous & Electric Vehicles ETF", "diversified"),
+        ("LIT", "Global X Lithium & Battery Tech ETF", "international")]
+    assert {r["theme_source"] for r in rows} == {"the fund's registered name"} and rows[0]["as_of"] == day
+
+
 # ── The build and the reader ──────────────────────────────────────────────────────────────────────────────────
 
-def test_the_spine_build_serves_both_tables_at_version_7_and_the_reader_reads_them(built):  # noqa: F811
+def test_the_spine_build_serves_both_tables_at_version_8_and_the_reader_reads_them(built):  # noqa: F811
     built()
-    assert serving.SERVING_SCHEMA_VERSION["spine"] == 7
+    assert serving.SERVING_SCHEMA_VERSION["spine"] == 8
     assert etf_class.TABLE in security.TABLES and etf_class.CHANGES in security.TABLES
+    assert etf_class.THEME in security.TABLES
     with serving.open_read("spine") as con:
         cols = [d[0] for d in con.execute(f"SELECT * FROM {etf_class.TABLE} LIMIT 0").description]
         changes = con.execute(f"SELECT ticker, change FROM {etf_class.CHANGES} ORDER BY 1").fetchall()

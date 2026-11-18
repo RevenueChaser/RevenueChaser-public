@@ -71,7 +71,7 @@ def test_the_columns_are_the_plans_and_there_is_no_active_column(built):
         cols = [d[0] for d in con.execute("SELECT * FROM etf LIMIT 0").description]
     assert cols == ["ticker", "name", "series_id", "cik", "source", "is_etn", "is_cef", "asset_class", "focus",
                     "country", "is_index", "is_lev_inverse", "is_money_market", "is_option_income", "is_fund_of_funds",
-                    "inception", "aum", "aum_as_of", "adv_usd_20d", "expense_ratio", "sector_name", "source_as_of",
+                    "inception", "aum", "aum_as_of", "adv_usd_20d", "expense_ratio", "source_as_of",
                     "fetched_at", "run_id"]
 
 
@@ -81,9 +81,9 @@ def test_ncen_fills_the_flags_the_newest_filings_aum_and_av_the_inception(built)
                                                            "1064641")
     assert xlk["is_index"] is True and xlk["is_lev_inverse"] is False and xlk["is_money_market"] is False
     assert (xlk["aum"], xlk["aum_as_of"]) == (80_000_000_000.0, date(2026, 4, 30))     # the July filing, not April's
-    assert xlk["inception"] == date(1998, 12, 16) and xlk["sector_name"] == "Technology"
+    assert xlk["inception"] == date(1998, 12, 16)
     assert (soxx["aum"], soxx["aum_as_of"]) == (15_000_000_000.0, date(2026, 3, 31))   # daily first, then monthly
-    assert soxl["is_lev_inverse"] is True and soxl["inception"] is None and soxl["sector_name"] is None
+    assert soxl["is_lev_inverse"] is True and soxl["inception"] is None
 
 
 def test_a_row_without_ncen_has_unknown_flags_not_false_ones(built):
@@ -213,7 +213,7 @@ def test_the_spine_note_counts_etfs_without_the_etns(built):
 
 def test_the_spine_serves_etf_at_the_current_schema_version(built):
     """4 brought ``etf`` itself (#346); 5 the two ``my_universe`` tables beside it (avo, 4 Nov 2026)."""
-    assert serving.SERVING_SCHEMA_VERSION["spine"] == 7 and "etf" in security.TABLES
+    assert serving.SERVING_SCHEMA_VERSION["spine"] == 8 and "etf" in security.TABLES
     with serving.open_read("spine") as con:
         assert con.execute("SELECT version FROM serving_schema_version").fetchone() == (serving.SERVING_SCHEMA_VERSION["spine"],)
 

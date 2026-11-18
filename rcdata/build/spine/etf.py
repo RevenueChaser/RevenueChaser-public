@@ -13,7 +13,7 @@ and no ``active`` column** here; a board's thresholds (AUM, dollar volume) are i
 **What fills which column in this PR:** the ``is_*`` fund flags and ``aum`` (``DAILY_AVG_NET_ASSETS``, else
 ``MONTHLY_AVG_NET_ASSETS``, with the filing's report end as ``aum_as_of``) from the series' newest N-CEN, NULL for
 a row N-CEN does not hold (unknown, not false); ``inception`` from AV's ``ipoDate``; ``is_option_income`` by a name
-rule; ``asset_class`` only ``commodity``, by the trust rule below; ``sector_name`` for the 11 sector SPDRs. NULL
+rule; ``asset_class`` only ``commodity``, by the trust rule below. NULL
 until later PRs: ``focus``, ``country``, ``expense_ratio`` and every other ``asset_class``. ``adv_usd_20d`` is the
 20-session average daily dollar volume, read from the **raw** Compustat ``comp.secd`` Parquet
 (:func:`adv_usd_20d`); it is what decides a fund N-CEN gives no AUM for in ``my_universe`` (avo, 4 Nov 2026), and
@@ -34,7 +34,6 @@ from pathlib import Path
 
 import duckdb
 
-from ....core import rotation_reference
 from .. import base
 from .av_listing import STAGING as AV
 from . import ncen, stage
@@ -50,7 +49,6 @@ SCHEMA = [("ticker", "TEXT PRIMARY KEY"), ("name", "TEXT"), ("series_id", "TEXT"
           # aum: N-CEN's average net assets over the filing's fiscal year (daily, else monthly average), not a
           # point-in-time AUM; aum_as_of is that year's end (review N4 of #349). A point-in-time AUM is a later PR's.
           ("aum", "DOUBLE"), ("aum_as_of", "DATE"), ("adv_usd_20d", "DOUBLE"), ("expense_ratio", "DOUBLE"),
-          ("sector_name", "TEXT"),
           ("source_as_of", "DATE"), ("fetched_at", "DOUBLE"), ("run_id", "TEXT")]
 
 #: A note, by its name: ETN / ETRACS, a dated note, or a bank issuer's name (Alpha Vantage lists BMO's, UBS's,
@@ -77,12 +75,6 @@ LEV_INVERSE_NAME = re.compile(
     r"\b(?:[2-5]|1\.\d+)\s*x\b|-\s*1\s*x\b|\b1\s*x\s+short\b"
     r"|\bproshares\s+(?:ultra|short\b)|\binverse\b|\bleveraged\b(?!\s+loans?)"
     r"|\bdaily\b.*\b(?:long|short|bull|bear)\b|\b(?:long|short|bull|bear)\b.*\bdaily\b", re.I)
-
-
-def sector_names() -> dict[str, str]:
-    """The sector funds' Morningstar sector names, the ones ``engine.sector_etf_trees`` matches: the ``sector``
-    section of avo's ``map`` watch list, read at call time (plan v5 step 7b)."""
-    return {t: sector for sector, t in rotation_reference.sector_etf().items()}
 
 
 def is_etn(*names) -> bool:
@@ -207,7 +199,6 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> list[dict]:
     # Fewer quarters hold a fraction of the filers: "files no N-CEN" is only known over a full year (review M1).
     year_held = ncen.quarters_held() >= ncen.BACKFILL_QUARTERS
     adv = adv_usd_20d([r["ticker"] for r in found], ctx.as_of)
-    names_of_sectors = sector_names()
     out = []
     for r in found:
         names = (r["fund_name"], r["av_name"], r["etp_name"])
@@ -227,7 +218,7 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> list[dict]:
             "is_fund_of_funds": _flag(nc, r["is_fund_of_fund"]), "inception": r["ipo_date"], "aum": aum,
             "aum_as_of": r["report_end"] if aum is not None else None,
             "adv_usd_20d": adv.get(r["ticker"]), "expense_ratio": None,
-            "sector_name": names_of_sectors.get(r["ticker"]), "source_as_of": r["source_as_of"],
+            "source_as_of": r["source_as_of"],
             # The newest of its sources' fetch times; run_id is the build that wrote the row (it is derived).
             "fetched_at": r["fetched_at"], "run_id": ctx.run_id})
     etns = sum(1 for r in out if r["is_etn"])

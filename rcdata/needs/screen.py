@@ -121,6 +121,7 @@ WRITTEN_COLUMN: dict[str, str] = {
     'etf_class': 'as_of',
     'etf_class_changes': 'as_of',
     'etf_holdings': 'as_of',
+    'etf_theme': 'as_of',
     'filing_item': 'filing_date',
     'filing_note': 'filing_date',
     'filing_section': 'filing_date',

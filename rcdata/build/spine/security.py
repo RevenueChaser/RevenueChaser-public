@@ -64,7 +64,7 @@ from .wrds import CO_HGIC, IDXCST_HIS, INDEX_GVKEYX, SEC_IDHIST, norm_cik
 
 NAME = "spine/security"
 TABLES = ("security", "security_history", "gics_history", "index_membership", etf.TABLE,
-          my_universe.TABLE, my_universe.CHANGES, etf_class.TABLE, etf_class.CHANGES)
+          my_universe.TABLE, my_universe.CHANGES, etf_class.TABLE, etf_class.CHANGES, etf_class.THEME)
 # Compustat ``exchg`` codes of the US exchanges the SEC file's listed rows trade on: NYSE, AMEX, Nasdaq.
 US_EXCHG = (11, 12, 14)
 # How far ahead of a fund day's SEC snapshot (the newest on or before the day) a line is looked for (delta S1): a fund
@@ -101,7 +101,8 @@ def _sic_text(v) -> str | None:
 SCHEMAS = {"security": SECURITY, "security_history": HISTORY, "gics_history": GICS, "index_membership": MEMBERSHIP,
            etf.TABLE: etf.SCHEMA, my_universe.TABLE: my_universe.SCHEMA,
            my_universe.CHANGES: my_universe.CHANGES_SCHEMA,
-           etf_class.TABLE: etf_class.SCHEMA, etf_class.CHANGES: etf_class.CHANGES_SCHEMA}
+           etf_class.TABLE: etf_class.SCHEMA, etf_class.CHANGES: etf_class.CHANGES_SCHEMA,
+           etf_class.THEME: etf_class.THEME_SCHEMA}
 
 # The plan's named problems, one kind each; ``key`` is the ticker unless the kind says otherwise.
 ISSUE_KINDS = {
@@ -576,6 +577,7 @@ class SpineSecurity:
         found += class_issues
         counts[etf_class.TABLE] = _create(con, etf_class.TABLE, classes)
         counts[etf_class.CHANGES] = _create(con, etf_class.CHANGES, class_changes)
+        counts[etf_class.THEME] = _create(con, etf_class.THEME, etf_class.themes(ctx, con, classes))
         views.create(con)
         ctx.pending[NAME] = found
         return counts

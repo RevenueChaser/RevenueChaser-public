@@ -86,12 +86,11 @@ def test_the_first_fund_of_a_group_is_the_one_on_the_map():
 
 def test_the_prices_build_and_the_spine_read_the_list():
     from RevenueChaser.rcdata.build import prices
-    from RevenueChaser.rcdata.build.spine import etf
     with pytest.raises(read.JobListUnreadable):
         prices.rotation()
     store.seed_map_lists()
     assert "XLK" in prices.rotation() and "US10Y" not in prices.rotation()
-    assert etf.sector_names()["XLK"] == "Technology"
+    assert ref.sector_etf()["Technology"] == "XLK"
 
 
 def test_a_map_list_cannot_be_deleted_or_emptied():
