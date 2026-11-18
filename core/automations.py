@@ -134,6 +134,8 @@ BUILDER_UNIT = "life-rc-builder"
 # The weekly backup (avo, 8 Nov 2026): one job, every step, onto the HDD, the newest 4 copies kept. Its unit pair is
 # installed from the home-server repository, not from the Settings page (one name, one timer).
 BACKUP_WEEKLY_UNIT = "life-rc-backup-weekly"
+# The daily copy of avo's watch lists (decision C, 17 Nov 2026; timer avo 18 Nov): home-server units too.
+BACKUP_WATCHLISTS_DAILY_UNIT = "life-rc-backup-watchlists-daily"
 # The SEC reads' nightly check (avo, 16 Nov 2026: "grafana jobs ve rc settings de job olarak gozukmeli"): a job of its
 # own, so it has a row on the Settings page and on the Grafana Jobs board. Its unit pair is in the home-server repository.
 SEC_READ_UNIT = "life-rc-sec-read"
@@ -235,6 +237,16 @@ REGISTRY: tuple[AutomationEntry, ...] = (
                     "`rcdata backup --only <kind>` takes a copy by hand that is kept apart from the weekly ones. "
                     "Writes no table.",
         settings=TaskSettings(restart_count=0, time_limit_minutes=60)),
+    AutomationEntry(
+        name="RC-Backup-Watchlists-Daily", label="Watch lists daily backup",
+        args=("-m", "RevenueChaser.rcdata", "backup", "--only", "watchlists-daily"),
+        time="03:10", unit_name=BACKUP_WATCHLISTS_DAILY_UNIT,
+        description="Decision C of the spine classification plan (avo, 17 Nov 2026; 03:10 on 18 Nov): every day "
+                    "it copies boards/watchlists.duckdb (avo's own lists, nothing rebuilds them) into "
+                    "RAW_STORE_BACKUP_DIR/weekly-v2/watchlists-daily/ on the HDD, only when the file changed since "
+                    "the newest daily copy, verified, the newest 7 kept. An unchanged day writes nothing and is a "
+                    "good run. The weekly copy of the same file goes on. Held by the Backup switch. Writes no table.",
+        settings=TaskSettings(restart_count=0, time_limit_minutes=15)),
     AutomationEntry(
         name="RC-SPX-Gamma-Fetch", label="SPX Gamma Fetch (nightly)",
         args=("-m", "RevenueChaser.module_spx_gamma", "--nightly"), time="06:30", days=_WEEKDAYS,
@@ -1151,7 +1163,7 @@ def wait_for_chain(e: AutomationEntry, *, clock: Callable[[], datetime] | None =
 
 #: The registry rows the board's backup switch stops (#527); the fetch switch stops every other row but these and
 #: ``SWITCH_EXEMPT``.
-BACKUP_TASKS = frozenset({"RC-Backup-Weekly"})
+BACKUP_TASKS = frozenset({"RC-Backup-Weekly", "RC-Backup-Watchlists-Daily"})
 #: A status read, not a fetch: the top bar's IBKR state comes from it, so it runs whatever the switches say.
 SWITCH_EXEMPT = frozenset({"RC-IBKR-Login-Check"})
 

@@ -2456,7 +2456,9 @@ def _nd_backups(b: dict) -> str:
         rows.append(_nd_row(f"Newest {k.get('kind')} copy", _nd_level(text, k)))
     return ('<div class="nd-card" id="nd-backups"><h3>Weekly backups</h3>'
             f'<div class="nd-sub">One job every Sunday 03:30, the newest 4 copies of every file kept on the HDD. '
-            f'Amber past {_nd(b.get("warn_days"))} days, red past {_nd(b.get("alert_days"))}.</div>'
+            f'Amber past {_nd(b.get("warn_days"))} days, red past {_nd(b.get("alert_days"))}. '
+            f'The watch lists also get a daily copy on a day they changed, 7 kept, red past '
+            f'{_nd(b.get("daily_alert_days"))} days.</div>'
             f'<div class="nd-rows">{"".join(rows)}</div></div>')
 
 

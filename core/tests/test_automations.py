@@ -472,8 +472,20 @@ def test_the_spx_gamma_fetch_runs_on_weekdays_after_the_stored_close():
 def test_the_weekly_backup_is_the_only_row_running_rcdata_backup_and_takes_every_step():
     """One job, every step (avo, 8 Nov 2026): a new step or DuckDB kind lands in the weekly run by itself."""
     rows = [e for e in A.REGISTRY if list(e.args)[:3] == ["-m", "RevenueChaser.rcdata", "backup"]]
-    assert [e.name for e in rows] == ["RC-Backup-Weekly"]
+    assert [e.name for e in rows] == ["RC-Backup-Weekly", "RC-Backup-Watchlists-Daily"]
     assert "--only" not in rows[0].args and "--subdir" not in rows[0].args
+    # the one other row is the daily watch-list copy, which never runs a weekly step (decision C, 17 Nov 2026)
+    assert rows[1].args[3:] == ("--only", "watchlists-daily")
+
+
+def test_the_daily_watchlists_backup_runs_every_day_0310_under_the_backup_switch():
+    """avo, 18 Nov 2026 (card A): every day 03:10, before the weekly 03:30, held by the Backup switch."""
+    e = A.entry("RC-Backup-Watchlists-Daily")
+    assert (e.time, e.days, e.hourly, e.after) == ("03:10", (), False, None)
+    assert e.schedule == "daily 03:10 (local)" and A.on_calendar(e) == "*-*-* 03:10:00"
+    assert e.unit == A.BACKUP_WATCHLISTS_DAILY_UNIT == "life-rc-backup-watchlists-daily"
+    assert e.settings.time_limit_minutes == 15 and e.tables_written == () and not e.default_install
+    assert A.switch_for(e.name) == "backup"
 
 
 def test_a_task_with_no_time_limit_says_so_and_installs_none():

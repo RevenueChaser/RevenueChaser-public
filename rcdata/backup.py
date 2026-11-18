@@ -34,6 +34,12 @@ The steps, in the order they run (``--only`` picks some of them, or one DuckDB k
 - ``edgar-docs``: the ``edgar_docs/`` tree as one verified zip (every member's CRC and the document count); an
   unchanged tree (same ``stat`` fingerprint) keeps the newest zip instead of zipping again (#336).
 
+One more step runs on its own, daily, never in the weekly run (``--only watchlists-daily``; avo, 17 Nov 2026,
+decision C of the spine classification plan): ``watchlists-daily``, a copy of ``boards/watchlists.duckdb`` (avo's
+own lists, which nothing can rebuild), checkpointed and verified like a board copy, tagged ``source: daily`` and the
+newest ``KEEP_DAILY`` (7) kept. A day the file is unchanged (its table fingerprints equal the newest daily copy's)
+writes no copy and still records a good run. The weekly ``boards`` copy of the same file goes on as before.
+
 Every step has its own folder and its own ``.manifest.json`` (sha256, size, table fingerprints of every copy kept).
 A step that fails is logged and the other steps still run; the exit code is 1 when any failed. A failed copy leaves
 nothing behind (no ``.tmp``, no manifest entry) and prunes nothing.
@@ -65,6 +71,7 @@ logger = logging.getLogger(__name__)
 ROOT = "weekly-v2"                  # never ``weekly/``: the retired nightly job's raw snapshots sit there on homesrv
 KEEP = 4
 KEEP_MANUAL = 1                     # copies taken by hand with ``--only <kind>`` (before a deploy)
+KEEP_DAILY = 7                      # the daily watch-list copies (avo, 17 Nov 2026, decision C)
 ATTEMPTS = 3
 MANIFEST_NAME = ".manifest.json"
 SETTLE_SECONDS = 600                # a file modified more recently than this may still be downloading
@@ -77,6 +84,10 @@ STEP_OPS = "ops"
 STEP_UW_RAW = "uw-raw"
 STEP_EDGAR_DOCS = "edgar-docs"
 STEPS = (STEP_DUCKDB, STEP_BOARDS, STEP_OPS, STEP_UW_RAW, STEP_EDGAR_DOCS)
+#: Steps with a run of their own, never part of the weekly run (``--only`` names them).
+STEP_WATCHLISTS_DAILY = "watchlists-daily"
+DAILY_STEPS = (STEP_WATCHLISTS_DAILY,)
+WATCHLISTS_FILE = "watchlists.duckdb"
 
 BOARDS_DIRNAME = "boards"
 #: The ops tables a backup keeps. The queue (``build_requests``), the read log, the call counters, the UW header
@@ -284,7 +295,17 @@ def board_files() -> list[Path]:
     return sorted(p for p in boards.glob("*.duckdb") if p.is_file()) if boards.is_dir() else []
 
 
-def _backup_board(path: Path, out: Path, manifest: _Manifest) -> Path:
+def _newest_tables(out: Path, manifest: _Manifest, stem: str, source: str) -> dict | None:
+    """The table fingerprints of the newest ``source`` copy of ``stem`` still on disk, or None."""
+    mine = [v for name, v in manifest.data["files"].items()
+            if name.startswith(f"{stem}_") and isinstance(v, dict) and v.get("source", "weekly") == source
+            and (out / name).is_file()]
+    return max(mine, key=lambda v: v.get("at", ""), default={}).get("tables")
+
+
+def _backup_board(path: Path, out: Path, manifest: _Manifest, *, source: str = "weekly", keep: int | None = None,
+                  skip_unchanged: bool = False) -> Path | None:
+    """A verified copy of one live board file; None when ``skip_unchanged`` and its tables equal the newest copy's."""
     last: Exception | None = None
     for _ in range(ATTEMPTS):
         try:
@@ -293,7 +314,13 @@ def _backup_board(path: Path, out: Path, manifest: _Manifest) -> Path:
             last = exc
             time.sleep(1.0)
             continue
-        return _copy_duckdb(path, out, path.stem, manifest, store_schema=_store_schema(path))
+        if skip_unchanged:
+            now = {t: list(v) for t, v in _fingerprints(path).items()}
+            if now == _newest_tables(out, manifest, path.stem, source):
+                logger.info("%s: unchanged since the newest %s copy, no copy taken", path.name, source)
+                return None
+        return _copy_duckdb(path, out, path.stem, manifest, source=source, keep=keep,
+                            store_schema=_store_schema(path))
     raise BackupFailed(f"{path.name}: could not checkpoint the live file after {ATTEMPTS} tries ({last})")
 
 
@@ -309,6 +336,16 @@ def _backup_boards(out: Path, manifest: _Manifest) -> dict[str, Path]:
     if failed:
         raise BackupFailed("; ".join(failed))
     return done
+
+
+def _backup_watchlists_daily(out: Path, manifest: _Manifest) -> Path | None:
+    """The daily copy of ``boards/watchlists.duckdb``: None when the file is missing or unchanged since the newest
+    daily copy (a good run either way)."""
+    from ..core import rawstore
+    live = Path(rawstore.STORE_DIR) / BOARDS_DIRNAME / WATCHLISTS_FILE
+    if not live.is_file():
+        return None
+    return _backup_board(live, out, manifest, source="daily", keep=KEEP_DAILY, skip_unchanged=True)
 
 
 # ── ops: the needed tables only ─────────────────────────────────────────────────────────────────────────────────
@@ -644,11 +681,11 @@ def _check_only(only) -> tuple[tuple[str, ...], tuple[str, ...]]:
     names = [n for n in names if n]
     if not names:
         raise BackupRefused("--only was given no step name")
-    unknown = [n for n in names if n not in STEPS and n not in serving.KINDS]
+    unknown = [n for n in names if n not in STEPS + DAILY_STEPS and n not in serving.KINDS]
     if unknown:
         raise BackupRefused(f"--only: unknown step(s) {', '.join(unknown)}; "
-                            f"known: {', '.join(STEPS)}, or a DuckDB kind: {', '.join(serving.KINDS)}")
-    steps = tuple(s for s in STEPS if s in names)
+                            f"known: {', '.join(STEPS + DAILY_STEPS)}, or a DuckDB kind: {', '.join(serving.KINDS)}")
+    steps = tuple(s for s in STEPS + DAILY_STEPS if s in names)
     kinds = tuple(k for k in serving.KINDS if k in names)
     return steps, kinds
 
@@ -670,7 +707,7 @@ def _open_step(step: str) -> tuple[Path, _Manifest]:
     _sweep_tmp(out)
     foreign = [p.name for p in out.iterdir()
                if p.is_file() and not p.name.startswith(".") and not p.name.startswith(tuple(
-                   (*serving.KINDS, "ops", "edgar_docs")))
+                   (*serving.KINDS, "ops", "edgar_docs", "watchlists")))
                and step != STEP_BOARDS]
     if foreign:                                         # logged, never a refusal and never a delete
         logger.warning("%s: %d file(s) this job did not write, left alone: %s", step, len(foreign), foreign[:5])
@@ -727,6 +764,8 @@ def run_backup(only=None) -> dict:
             run(step, lambda: _backup_uw_raw(out, manifest))
         elif step == STEP_EDGAR_DOCS:
             run(step, lambda: _backup_edgar_docs(out, manifest))
+        elif step == STEP_WATCHLISTS_DAILY:
+            run(step, lambda: _backup_watchlists_daily(out, manifest))
         _record(manifest, before, failed)
     if failed:
         raise BackupFailed("; ".join(failed))
@@ -784,9 +823,10 @@ def main(argv: list[str] | None = None) -> int:
     sub = p.add_subparsers(dest="cmd", required=True)
     bk = sub.add_parser("backup", help="the weekly backup: every step, verified, the newest 4 copies kept")
     bk.add_argument("--only", default=None,
-                    help="comma-separated steps to run, out of " + ", ".join(STEPS) + "; or one DuckDB kind ("
+                    help="comma-separated steps to run, out of " + ", ".join(STEPS + DAILY_STEPS)
+                         + "; or one DuckDB kind ("
                          + ", ".join(serving.KINDS) + ") for a copy by hand before a deploy (kept apart from the "
-                         "weekly copies). The default runs every step")
+                         "weekly copies). The default runs every weekly step (not watchlists-daily)")
     empty = sub.add_parser("create-empty-stores",
                            help="create a serving file with its tables and no rows for every kind that has none; "
                                 "an existing file is never touched. Says what it would do unless --apply is given")
