@@ -26,7 +26,8 @@ BY_NAME = {"RC-SPX-Gamma-Fetch": "module_spx_gamma", "RC-ValueChain-Sync": "modu
            "RC-Fetch-AsymmetricGrowth": "module_asymmetric_growth", "RC-Fetch-Swing": "module_swing_potential",
            "RC-Fetch-Fundamentals": "module_fundamentals", "RC-Fetch-Co-movement": "module_comovement"}
 #: The builder, the backup and the checks: they serve every board, so they are System, whatever they write.
-SYSTEM_JOBS = frozenset({"RC-Build", "RC-Backup-Weekly", "RC-IBKR-Login-Check", "RC-SEC-Read"})
+SYSTEM_JOBS = frozenset({"RC-Build", "RC-Backup-Weekly", "RC-Backup-Watchlists-Daily", "RC-IBKR-Login-Check",
+                         "RC-SEC-Read"})
 #: Settings reads every table, so naming it would put every job under it.
 NOT_A_FEED = frozenset({"module_settings"})
 

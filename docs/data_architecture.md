@@ -2198,8 +2198,9 @@ Two separate things, deliberately not conflated:
   nothing rebuilds) into `weekly-v2/watchlists-daily/`, checkpointed and verified like a `boards` copy, tagged
   `daily`, the newest 7 kept. A day the file is unchanged (its table fingerprints equal the newest daily copy's)
   writes no copy and still records a good run. The weekly `boards` copy of the same file goes on. Its card row is
-  red once the last good run is older than 2 days. What starts it each day (a timer and its switch) is its own step,
-  on avo's word.
+  red once the last good run is older than 2 days. It runs every day at 03:10 (avo, 18 Nov 2026) as registry row
+  RC-Backup-Watchlists-Daily (unit `life-rc-backup-watchlists-daily` from the home-server repository, 15 min limit),
+  held by the Backup switch like the weekly job.
 - **What shows it** — the Data/Health "Weekly backups" card (each step's last good run and the error of a failed
   one, the newest copy of every file and how many are kept; amber past 8 days, red past 15) and the Health strip's
   backup alert; the home-server health board and Grafana read the same manifests per step.
