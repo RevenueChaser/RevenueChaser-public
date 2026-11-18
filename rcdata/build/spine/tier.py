@@ -1,4 +1,4 @@
-"""Tier rule v2: which SEC-file names the boards screen (Tier A) and why the others are not.
+"""Tier rule v3: which SEC-file names the boards screen (Tier A) and why the others are not.
 
 The rule is the one ``equity_universe`` and ``core/universe.py`` already apply, written once for the spine:
 
@@ -11,7 +11,8 @@ So:
 
 - **A**: listed on Nasdaq, NYSE or Cboe, and a type that is not excluded (or no type yet);
 - **B**: listed, but an excluded type (``EXCLUDED_TYPES``);
-- **C**: over the counter (``OTC``);
+- **C**: over the counter (``OTC``), or (v3) listed in the SEC file while Compustat's linked security is over
+  the counter (``COMPUSTAT_OTC``);
 - **D**: no exchange in the SEC file (or one outside these).
 
 Tier A is therefore not every listed name: the plan's "A 7,691 exchange-listed" (2026-10-26) is A and B together.
@@ -48,7 +49,7 @@ import re
 
 from ....core.identity.types import _COMMON_LIKE, EXCLUDED_TYPES, classify_type, sic_int
 
-VERSION = 2
+VERSION = 3
 LISTED = ("Nasdaq", "NYSE", "CBOE")
 OTC = "OTC"
 TIERS = ("A", "B", "C", "D")
@@ -60,9 +61,20 @@ def listed(exchange: str | None) -> bool:
     return (exchange or "").strip().upper() in {e.upper() for e in LISTED}
 
 
-def tier(exchange: str | None, security_type: str | None) -> str:
-    """The tier of one SEC-file row from its exchange and its security type (``None`` = not typed yet)."""
+#: Compustat's exchange code (``comp.security.exchg``) of a security that trades over the counter. v3 (#962): the
+#: SEC file kept PSQH and ALUR on NYSE and ANEB on Nasdaq months after their bars stopped (18 Nov 2026).
+COMPUSTAT_OTC = (19,)
+
+
+def tier(exchange: str | None, security_type: str | None, compustat_exchg: int | None = None) -> str:
+    """The tier of one SEC-file row from its exchange and its security type (``None`` = not typed yet).
+
+    ``compustat_exchg`` is the linked Compustat security's current exchange code: over the counter there
+    (:data:`COMPUSTAT_OTC`) is Tier C whatever the SEC file still says.
+    """
     ex = (exchange or "").strip().upper()
+    if compustat_exchg in COMPUSTAT_OTC and listed(ex):
+        return "C"
     if listed(ex):
         return "B" if security_type in EXCLUDED_TYPES else "A"
     if ex == OTC:

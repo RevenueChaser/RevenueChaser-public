@@ -403,6 +403,33 @@ def test_tier_rule_v1(exchange, typ, want):
     assert tier.tier(exchange, typ) == want
 
 
+@pytest.mark.parametrize("exchange, typ, exchg, want", [
+    ("NYSE", "common", 19, "C"), ("Nasdaq", "etp", 19, "C"),           # Compustat: over the counter now (#962)
+    ("NYSE", "common", 11, "A"), ("Nasdaq", "common", None, "A"), ("NYSE", "etp", 14, "B"),
+    ("OTC", "common", 14, "C"),                                         # the SEC file's OTC is never promoted
+    (None, "common", 19, "D")])
+def test_tier_rule_v3_compustat_otc_is_tier_c(exchange, typ, exchg, want):
+    assert tier.tier(exchange, typ, exchg) == want
+
+
+def test_a_name_compustat_moved_over_the_counter_leaves_tier_a_and_my_universe(built, monkeypatch):
+    """PSQH's case (#962): the SEC file still says NYSE, Compustat's security row says exchg 19."""
+    assert _sec("FDX")["tier"] == "A" and _q("SELECT count(*) FROM my_universe WHERE ticker = 'FDX'")[0][0] == 1
+    fdx = [s for s in fx.SECURITY if s["tic"] == "FDX"][0]
+    monkeypatch.setitem(fdx, "exchg", 19)
+    for p in wrds.parquet_dir(wrds.SEC_IDHIST.name).glob("snapshot=*"):
+        for f in p.iterdir():
+            f.unlink()
+        p.rmdir()
+    for p in wrds.raw_dir(wrds.SEC_IDHIST.name).glob("*"):
+        for f in p.iterdir():
+            f.unlink()
+    base.run_request({"dataset": wrds.SEC_IDHIST.name, "requested_by": "cli",
+                      "params": {"mode": "backfill", "to": "2026-10-28"}})
+    assert (_sec("FDX")["exchange"], _sec("FDX")["tier"]) == ("NYSE", "C")
+    assert _q("SELECT count(*) FROM my_universe WHERE ticker = 'FDX'")[0][0] == 0
+
+
 def test_the_type_comes_from_the_identity_rules():
     assert tier.security_type("WFC-PC", "WELLS FARGO", None)[0] == "preferred"
     assert tier.security_type("TM", "TOYOTA", {"security_type": "ADR"})[0] == "adr"
@@ -511,7 +538,7 @@ def test_the_spine_gives_the_type_rules_the_exchange(built, monkeypatch):
     run_all("2026-10-28", names=(sec_tickers.NAME, security.NAME))
     got = {t: (_sec(t)["security_type"], _sec(t)["tier"]) for t in ("SOMEW", "FNGU", "XETP", "SOME-UN")}
     assert got == {"SOMEW": ("warrant", "B"), "FNGU": ("etp", "B"), "XETP": ("etp", "B"), "SOME-UN": ("unit", "B")}
-    assert _sec("MSFT")["tier_rule"] == tier.VERSION == 2
+    assert _sec("MSFT")["tier_rule"] == tier.VERSION == 3
 
 
 def test_the_spine_uses_tpci_for_a_name_openfigi_did_not_answer(built, monkeypatch):

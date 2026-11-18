@@ -1404,8 +1404,10 @@ the build is refused outright: a missing or unreadable Compustat `secd` Parquet 
 the rules. The check is per fund because a table-wide one masked the loss: IBIT is on Nasdaq and GLD, SLV, SPY and
 DIA are not, so IBIT's volume alone passed it while the Arca funds were dropped.
 
-**Tier rule v2** (`rcdata/build/spine/tier.py`): A = listed on Nasdaq, NYSE or Cboe and not an excluded type
-(`core.identity.types.EXCLUDED_TYPES`; an untyped name stays); B = listed, excluded type; C = OTC; D = no exchange.
+**Tier rule v3** (`rcdata/build/spine/tier.py`): A = listed on Nasdaq, NYSE or Cboe and not an excluded type
+(`core.identity.types.EXCLUDED_TYPES`; an untyped name stays); B = listed, excluded type; C = OTC, in the SEC file or
+(v3, #962) by the linked Compustat security's current `exchg` 19 while the SEC file still names an exchange; D = no
+exchange.
 So Tier A is not every listed name: listed is A and B. The type comes from `core.identity.types.classify_type` over
 OpenFIGI's types and the name (no SEC submissions); a name those leave untyped takes, in order, its ticker's type (a
 warrant, unit or right: `-WT`, `-UN`, `-RI`, or a Nasdaq fifth letter W, U, R; a right is typed warrant), Compustat's
