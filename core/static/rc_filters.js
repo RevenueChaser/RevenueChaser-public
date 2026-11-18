@@ -1,6 +1,6 @@
 /* RevenueChaser shared filter bar (ADR-2, plan 2026-09-30_plan_filters_ux.md).
  *
- * One component for every board: Index -> Market cap -> Sector (2 levels: sector, industry)
+ * One component for every board: Index -> Market cap -> Sector (GICS: sector, group, industry, sub-industry)
  * -> Theme (10-K, 3 levels) -> Earnings. Order is fixed; a board may omit a
  * facet, never reorder; an omitted facet never filters that board (its shared
  * state is kept for the others). State lives in localStorage ("rc.filters.v1", shared by
@@ -9,7 +9,7 @@
  * same-origin board iframes.
  *
  * Row contract (core/universe.py::filter_fields):
- *   {ticker, name, index:[label], market_cap, gics:[sector, industry],
+ *   {ticker, name, index:[label], market_cap, gics:[sector, group, gind?, gsubind?],
  *    theme_ids:[id], earnings_date (Unix s | ISO | null)}
  * meta (core/reporting_common.py::filters_meta): {board, floor_mc, earnings_mode:"filter"|"mark",
  *        themes:{id:{label,level,parent}}, indexes:[label], index_labels:{label: short text},
@@ -31,7 +31,7 @@
     {key: "large", label: "Large", range: "$10B – 200B", min: 10e9, max: 200e9},
     {key: "mega", label: "Mega", range: "> $200B", min: 200e9, max: Infinity}];
   var MC_PRESETS = [{label: "$50M–$5B", min: 50e6, max: 5e9}];
-  var GICS_LEVELS = ["sector", "industry"];
+  var GICS_LEVELS = ["sector", "industry group", "industry", "sub-industry"];
   var UNCLASSIFIED = "Unclassified";   // the sector unknown bucket (core/gics_map.UNCLASSIFIED)
   var THEME_LEVELS = ["coarse", "medium", "fine"];
   var EARN_KEYS = ["any", "0", "1", "2", "3", "4", "unknown"];
@@ -271,7 +271,7 @@
         "<div class='rcf-now'>Counts are names <b>on this board</b> that pass your other filters, not the size of the index.</div>",
       mc: "Latest market value from the prices store's daily market cap (a company's whole-issuer value, a fund's own). Pick one or more size buckets, or type a custom range in $ millions (min ≤ cap &lt; max)." +
         (floor ? "<div class='rcf-now'>This board only covers names <b>≥ " + rcEsc(fmtCap(floor)) + "</b>, so smaller buckets are empty here.</div>" : ""),
-      gics: "Two levels: <b>sector → industry</b>, the 11 Morningstar sector names plus an industry text. Every stock has one path, taken from the identity master: the sector comes from the S&amp;P 1500 list for the names on it, then Unusual Whales, then Yahoo, then the SEC industry code; the industry is Unusual Whales' text (Yahoo's where it has none). Pick at either level: picking a sector keeps every industry under it. Names the identity master cannot place show as <b>Unclassified</b>.",
+      gics: "Up to four GICS levels: <b>sector → industry group → industry → sub-industry</b>. The sector is one of the 11 Morningstar names and the industry group is named; the industry and sub-industry show as GICS codes until their names are loaded. Source: the identity spine (Compustat's GICS; a name with only an SEC industry code stops at the industry group). Pick at any level: a level keeps every name under it. Names the spine cannot place show as <b>Unclassified</b>.",
       theme: "Built by <b>Relatedness</b> from each company's 10-K business description, grouped at three levels (<b>coarse → medium → fine</b>). A theme follows what a company says it sells and to whom, which can cut across sectors." +
         "<div class='rcf-now'>Only profiled companies have themes; the rest are listed as <b>Unthemed</b> so they are never silently dropped.</div>",
       earnings: "Next reported earnings date, bucketed by calendar week (Mon–Sun)." +
@@ -342,7 +342,7 @@
       html += trigger("gics", "Sector",
         '<input class="rcf-search" type="search" placeholder="Search sectors and industries" aria-label="Search sectors">' +
         '<ul class="rcf-tree" role="tree" aria-label="Sector"></ul>' +
-        '<div class="rcf-foot"><span class="rcf-meta">Sector › industry</span><button class="rcf-link" type="button" data-clear>All sectors</button></div>');
+        '<div class="rcf-foot"><span class="rcf-meta">Sector › group › industry › sub-industry</span><button class="rcf-link" type="button" data-clear>All sectors</button></div>');
     }
     if (facets.indexOf("theme") >= 0) {
       html += trigger("theme", "Theme (10-K)",

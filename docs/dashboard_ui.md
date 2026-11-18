@@ -83,8 +83,10 @@ new classification-style tab). Omit on date-only or non-equity tools
 | **Sector cascade** | All sectors → All industries. |
 | **Theme cascade** | All themes → All mediums → All fines (pinned NMF tree). |
 
-The sector path is UW's two levels, sector → industry (one path per ticker; the
-identity master stores it, Yahoo fills where UW has none). Themes are overlapping NMF groups
+The sector path is the spine's GICS, up to four levels: sector → industry group → industry → sub-industry (one
+path per ticker, `core/universe.py::filter_fields`). The sector is a Morningstar name and the group is named; the
+industry and sub-industry are Compustat's GICS codes, shown as codes until their names are loaded (K6, plan v5
+step 6). A name with no Compustat GICS stops at the group. Themes are overlapping NMF groups
 with **one assigned path per ticker** after cutover (`ticker_themes` at
 coarse/medium/fine). Theme is **not** a third sector level — it is a parallel
 cascade in the same filter bar.

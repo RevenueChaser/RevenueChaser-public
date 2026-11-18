@@ -176,7 +176,8 @@ def _spine_universe() -> list[dict]:
         out.append({"ticker": r["ticker"], "market_cap": cap, "price": n.get("price"), "quote": None,
                     "name": r.get("name") or "", "sector": r.get("sector") or "",
                     "industry": r.get("industry") or "", "industry_group": None, "sub_industry": None,
-                    "security_type": r.get("security_type")})
+                    "ggroup": r.get("ggroup") or None, "gind": r.get("gind") or None,
+                    "gsubind": r.get("gsubind") or None, "security_type": r.get("security_type")})
     return out
 
 
@@ -226,11 +227,12 @@ def classification_universe_rows(mc_min: float = DEFAULT_MC_MIN, *, operating_on
 
     Same floor, same type filter and same cap-descending order as :func:`classification_universe`; one row per
     name: ``ticker``, ``market_cap``, ``sector`` (the stored label, not normalised), ``industry`` and
-    ``security_type`` (the type seam's, None for an untyped name: the data a board filters on, PR 2). FIN-3's comps
-    peer ladder is the reader.
+    ``security_type`` (the type seam's, None for an untyped name: the data a board filters on, PR 2), and the spine's
+    GICS codes ``ggroup`` / ``gind`` / ``gsubind`` (K6; Compustat's only, None on a manual or SIC row). FIN-3's
+    comps peer ladder is the reader; it ranks on ``industry`` then ``sector`` and never on the codes (pinned by
+    ``test_the_ladder_ignores_the_finer_gics_codes``).
 
-    ``sub_industry`` is deliberately absent: the identity master writes it and ``industry_group``
-    NULL (the GICS-only levels were dropped), so a ladder can never widen through them.
+    The old ``industry_group`` / ``sub_industry`` names stay absent: the codes are the finer levels.
     """
     rows = _by_cap(_spine_universe(), mc_min)
     types = _security_types()
@@ -238,6 +240,7 @@ def classification_universe_rows(mc_min: float = DEFAULT_MC_MIN, *, operating_on
              "market_cap": r.get("market_cap"),
              "sector": r.get("sector") or "",
              "industry": r.get("industry") or "",
+             "ggroup": r.get("ggroup"), "gind": r.get("gind"), "gsubind": r.get("gsubind"),
              "security_type": types.get(r["ticker"])}
             for r in rows if not (operating_only and types.get(r["ticker"]) in EXCLUDED_TYPES)]
 
@@ -482,8 +485,8 @@ def filter_fields(tickers: list[str] | None = None) -> dict[str, dict]:
 
     Joins the spine universe (name/sector/industry/market_cap) with ``ticker_scores``
     (earnings_date), the index membership via ``annotate_cards`` (``index_registry``, the spine's)
-    and the pinned theme run. Every row carries ``gics`` (the filter path: sector,
-    then industry when there is one) and ``theme_ids`` (all levels; empty = unthemed).
+    and the pinned theme run. Every row carries ``gics`` (the filter path: sector, then the industry group's
+    name when there is one, then the GICS industry and sub-industry codes when Compustat gave them, K6) and ``theme_ids`` (all levels; empty = unthemed).
     Tickers not on the spine still get a row so a picker never drops a known
     name.
     """
@@ -520,7 +523,8 @@ def filter_fields(tickers: list[str] | None = None) -> dict[str, dict]:
     run = current_theme_run()
     themes = _theme_ids_by_ticker(theme_catalog(run), run) if run else {}
     for c in cards:
-        c["gics"] = sector_path(c["sector"], c["industry"])
+        r = by.get(c["ticker"]) or {}   # the codes ride only in the path: board payloads keep their keys
+        c["gics"] = sector_path(c["sector"], c["industry"], r.get("gind"), r.get("gsubind"))
         c["theme_ids"] = themes.get(c["ticker"], [])
     annotate_cards(cards)
     return {c["ticker"]: c for c in cards}
