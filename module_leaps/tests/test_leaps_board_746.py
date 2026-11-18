@@ -50,6 +50,11 @@ def stored(http_mock, monkeypatch):
     return {"near": near, "far": far, "put": put, "etf": etf, "idx": idx, "stale": stale}
 
 
+def _counts_of(page: str) -> str:
+    """The server-drawn counts line (the page's JS redraws it from the rows listed, and carries the same words)."""
+    return page.split('<div class="lp-counts" id="lp-counts">', 1)[1].split("</div>", 1)[0]
+
+
 def _data_of(page: str) -> dict:
     m = re.search(r"var LP_DATA = (\{.*?\});\n", page, re.S)
     assert m, "the page carries its session as LP_DATA"
@@ -180,9 +185,9 @@ def test_a_session_with_no_open_interest_read_does_not_count_as_stored(monkeypat
 def test_the_counts_say_how_many_wait_for_their_open_interest(stored):
     data = board.payload()
     data["counts"] = dict(data["counts"], matched=0, pending=6, stale=0)
-    page = board.render_html(data)
-    assert "waiting for open interest" in page and "stale or missing" in page, "a partial read keeps both counts"
-    assert "waiting for open interest" not in board.render_html(board.payload()), "shown only while some wait"
+    line = _counts_of(board.render_html(data))
+    assert "waiting for open interest" in line and "stale or missing" in line, "a partial read keeps both counts"
+    assert "waiting for open interest" not in _counts_of(board.render_html(board.payload())), "shown only while some wait"
 
 
 # ── Layout and sort rules (review round 2: F3, M4, M5) ─────────────────────────────────────────────────────────
