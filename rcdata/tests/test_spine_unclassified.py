@@ -145,8 +145,10 @@ def test_the_build_takes_the_sector_of_a_name_compustat_does_not_know_from_the_s
 def test_a_stale_blank_check_code_of_the_secs_never_types_a_name_a_spac(built_with):
     """The plan-v4 review's blocker: one ``sic`` value fed the sector AND the type rule, so the SEC's 6770 would
     have typed an operating company a SPAC, which is Tier B and out of My Universe."""
+    _sec_header("3000001", "3721")
     built_with("002968", "6331")
     before = _sec("OTCX")
+    assert before["gics_source"] == "sec_sic"                    # the header is read: the next build reads 6770
     _sec_header("3000001", "6770")
     run_all("2026-10-28", names=[security.NAME])
     after = _sec("OTCX")
