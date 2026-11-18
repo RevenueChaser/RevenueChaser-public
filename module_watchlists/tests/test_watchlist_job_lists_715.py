@@ -157,6 +157,7 @@ def test_the_first_board_write_makes_the_lists_from_ops_so_no_name_is_lost(clien
     ops.watch_add("option", "AMD", by="leaps")
     assert client.post("/api/watchlist/option/toggle/NVDA").get_json()["on"] is True
     assert read.watched("option") == {"AMD", "NVDA"}
+    assert sorted(store.symbols("jobs.option")) == ["AMD", "NVDA"], "the names are rows of the watch-list file"
     assert client.post("/api/watchlist/option/toggle/AMD").get_json()["on"] is False
     assert client.post("/api/watchlist/option/toggle/NVDA").get_json()["on"] is False
     assert read.watched("option") == set(), "the option list may be emptied: no name is avo's choice"
