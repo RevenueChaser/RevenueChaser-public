@@ -56,7 +56,7 @@ from ....core.identity import isin as isin_mod
 from ... import ops
 from .. import base
 from . import KIND, etf, etf_class, my_universe, stage, tier as tier_rule, views
-from .funds import NAME as FUNDS
+from .funds import INDEXES, NAME as FUNDS
 from .openfigi_map import FIGI_BY_CUSIP, FIGI_BY_TICKER, NAME as OPENFIGI, PRESENT
 from .sec_tickers import NAME as SEC
 from .sec_tickers_mf import NAME as SEC_MF
@@ -351,7 +351,8 @@ def match_holding(line: dict, by_cusip: dict[str, str], cusip_owners: dict[str, 
 # ending on the index's next day with a counting file, so a day with no counting file is no absence.
 VOTE_SQL = """
 CREATE OR REPLACE TEMP TABLE _fund_days AS
-    SELECT as_of, index_slug, count(*) AS files FROM stg_fund_files WHERE counted GROUP BY ALL;
+    SELECT as_of, index_slug, count(*) AS files FROM stg_fund_files
+    WHERE counted AND index_slug IN (__INDEXES__) GROUP BY ALL;
 CREATE OR REPLACE TEMP TABLE _fund_held AS
     SELECT l.as_of, l.index_slug, m.sec_ticker AS ticker, count(DISTINCT l.provider || '/' || l.fund) AS held,
            min(m.msnap) AS msnap
@@ -386,7 +387,7 @@ CREATE OR REPLACE TEMP TABLE _fund_periods AS
     FROM islands i
     JOIN _fund_dense x ON x.index_slug = i.index_slug AND x.ticker = i.ticker AND x.as_of = i.last_day
     JOIN _fund_held h ON h.index_slug = i.index_slug AND h.ticker = i.ticker AND h.as_of = i.last_day;
-"""
+""".replace("__INDEXES__", ", ".join(f"'{i}'" for i in INDEXES))   # DIA's file (slug ``dow``) votes nothing
 
 
 # ── The build ─────────────────────────────────────────────────────────────────────────────────────────────────
@@ -685,7 +686,8 @@ class SpineSecurity:
                                  "JOIN _fund_map m ON m.snap = s.snap AND m.tk = coalesce(l.ticker, '') "
                                  "AND m.cu = coalesce(l.cusip, '') JOIN stg_fund_files f ON f.as_of = l.as_of "
                                  "AND f.index_slug = l.index_slug AND f.provider = l.provider AND f.fund = l.fund "
-                                 f"AND f.counted WHERE m.sec_ticker IS NULL AND l.as_of = DATE '{latest}'"):
+                                 "AND f.counted JOIN _fund_days d ON d.as_of = l.as_of AND d.index_slug = "
+                                 f"l.index_slug WHERE m.sec_ticker IS NULL AND l.as_of = DATE '{latest}'"):
                 found.append(("member_not_in_sec", f"{ln['index_slug']}:{ln.get('ticker') or ln.get('cusip')}",
                               f"{ln['provider']} {ln['fund']} holds {ln.get('name') or '?'}"))
             for d in _rows(con, f"SELECT index_slug, ticker, held, files, member FROM _fund_dense "
