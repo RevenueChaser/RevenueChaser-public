@@ -249,7 +249,7 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, rules: Rules | No
     removed = {r["ticker"] for r in removes}
     listed = listed if listed is not None else listed_etfs()
     # rule E only ever adds: a fund that entered on a list and has since left it stays, on its live reason
-    was_listed = {r["ticker"]: r["reason"] for r in live or [] if r.get("rule") == JOB_LIST}
+    was_listed = {}   # MUTATION
     for ticker in sorted({**was_listed, **listed}):
         if ticker not in kept and ticker in known_etf:
             kept[ticker] = row(known_etf[ticker], ETF, JOB_LIST, listed.get(ticker) or was_listed[ticker])
