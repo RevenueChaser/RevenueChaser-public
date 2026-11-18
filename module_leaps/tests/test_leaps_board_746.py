@@ -50,6 +50,11 @@ def stored(http_mock, monkeypatch):
     return {"near": near, "far": far, "put": put, "etf": etf, "idx": idx, "stale": stale}
 
 
+def _counts_of(page: str) -> str:
+    """The server-drawn counts line (the page's JS redraws it from the rows listed, and carries the same words)."""
+    return page.split('<div class="lp-counts" id="lp-counts">', 1)[1].split("</div>", 1)[0]
+
+
 def _data_of(page: str) -> dict:
     m = re.search(r"var LP_DATA = (\{.*?\});\n", page, re.S)
     assert m, "the page carries its session as LP_DATA"
@@ -180,9 +185,9 @@ def test_a_session_with_no_open_interest_read_does_not_count_as_stored(monkeypat
 def test_the_counts_say_how_many_wait_for_their_open_interest(stored):
     data = board.payload()
     data["counts"] = dict(data["counts"], matched=0, pending=6, stale=0)
-    page = board.render_html(data)
-    assert "waiting for open interest" in page and "stale or missing" in page, "a partial read keeps both counts"
-    assert "waiting for open interest" not in board.render_html(board.payload()), "shown only while some wait"
+    line = _counts_of(board.render_html(data))
+    assert "waiting for open interest" in line and "stale or missing" in line, "a partial read keeps both counts"
+    assert "waiting for open interest" not in _counts_of(board.render_html(board.payload())), "shown only while some wait"
 
 
 # ── Layout and sort rules (review round 2: F3, M4, M5) ─────────────────────────────────────────────────────────
@@ -217,3 +222,30 @@ def test_the_open_interest_sort_puts_the_largest_rise_first(stored):
     assert "-r.chg;" in board._JS and "Math.abs(r.chg)" not in board._JS, "signed change, not its size"
     page = board.render_html(board.payload())
     assert '<option value="change">Sort: open interest rise</option>' in page
+
+
+# ── Review 18 Nov 2026: R3, R6/R11, R8 and the "Possible roll" chip (D4 B) ───────────────────────────────────
+
+def test_the_help_gives_the_builder_s_causes_for_beyond_one():
+    """R3: the builder names an exercise, an adjustment or a data error; the help no longer guesses a cause."""
+    assert "an exercise, an adjustment or a data error" in board.HELP
+    assert "settled into it" not in board.HELP
+
+
+def test_the_roll_chip_says_possible_roll_and_the_rule_stays():
+    """D4 B (avo, 18 Nov 09:23): the chip is renamed, the builder's rule is unchanged."""
+    assert "'<span class=\"chip\">Possible roll ↔ '" in board._JS and "\">Roll ↔ " not in board._JS
+    assert "<b>possible roll</b>" in board.HELP
+
+
+def test_a_matched_row_with_no_next_open_interest_says_not_read_not_no_volume():
+    """R8: "No volume" only when the next open interest was read; an unread one has its own note."""
+    assert "Open interest not read" in board._JS
+    assert "r.next == null ? 'unread' : 'noshare'" in board._JS
+
+
+def test_the_counts_follow_the_rows_listed(stored):
+    """R6/R11: the counts line and the product counts are redrawn from the rows of the picked product and side."""
+    page = board.render_html(board.payload())
+    assert '<div class="lp-counts" id="lp-counts">' in page
+    assert "lpCounts(rows);" in board._JS and "if(lpSided(r)) LP_COUNT[r.prod]" in board._JS

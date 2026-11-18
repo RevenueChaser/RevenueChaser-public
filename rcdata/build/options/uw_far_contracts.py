@@ -379,13 +379,17 @@ class UWFarContracts:
             state["written"].add(session)
 
     def open_sessions(self, as_of: date) -> list[date]:
-        """The newest ``OPEN_SESSIONS`` swept sessions up to ``as_of`` still open: no close marker, and a ticker whose
-        chain is not read yet."""
+        """The swept sessions up to ``as_of`` still open: no close marker, and either one of the newest
+        ``OPEN_SESSIONS`` with a ticker whose chain is not read yet, or an older one whose read window has ended,
+        so ``_open_interest`` closes it (M2/R7: otherwise its unread rows stay pending for good)."""
         root = base.raw_root() / "uw" / "far_contracts"
         days = sorted(date.fromisoformat(p.parent.name) for p in root.glob("*/sweep.json.gz")
                       if p.parent.name <= as_of.isoformat()) if root.exists() else []
-        return [d for d in days[-OPEN_SESSIONS:] if not closed_path(d).exists()
-                and any(not oi_path(d, t).exists() for t in tickers_of(swept(d)))]
+        recent = set(days[-OPEN_SESSIONS:])
+        now = calendar.now_ny()
+        return [d for d in days if not closed_path(d).exists() and (
+            any(not oi_path(d, t).exists() for t in tickers_of(swept(d))) if d in recent
+            else now >= oi_window(d)[1])]
 
     def fetch(self, ctx: base.RunContext, as_of: date) -> list[Path]:
         state = ctx.pending.setdefault(NAME, {"stopped": None, "start": ctx.clock(), "failed": [], "waiting": [],
@@ -416,11 +420,18 @@ class UWFarContracts:
         killed between its fetch and its typing)."""
         out = []
         root = base.raw_root() / "uw" / "far_contracts"
-        for p in (sorted(root.glob("*/sweep.json.gz"))[-RETYPE_SESSIONS:] if root.exists() else []):
+        paths = sorted(root.glob("*/sweep.json.gz")) if root.exists() else []
+        written = state.get("written", ())
+        for i, p in enumerate(paths):
             session = date.fromisoformat(p.parent.name)
+            if session in written:          # an old session closed this run is typed too, whatever its age
+                out.append(p)
+                continue
+            if i < len(paths) - RETYPE_SESSIONS:
+                continue
             part = tables.partition_path(SOURCE, OWNED[0], session)
             newest = max(f.stat().st_mtime for f in p.parent.rglob("*.json.gz"))
-            if session in state.get("written", ()) or not part.exists() or newest > part.stat().st_mtime:
+            if not part.exists() or newest > part.stat().st_mtime:
                 out.append(p)
         return out
 

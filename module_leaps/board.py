@@ -123,11 +123,12 @@ def parse_session(text) -> date | None:
 HELP = help_html(
     "<p><b>Opened share</b> = (next session's open interest − open interest) ÷ the day's volume. +1: the volume "
     "became new positions. 0: positions changed hands. −1: positions were closed. Beyond ±1, open interest moved "
-    "more than the day's volume (other days' trades settled into it).</p>"
+    "more than the day's volume, which trading alone cannot do: an exercise, an adjustment or a data error.</p>"
     "<p>Contracts 183 days or more from expiry with $50k premium or more on the day, every name, from Unusual "
     "Whales. Open interest is read the next trading morning from 07:30 New York; <b>stale</b> means that read "
-    "did not line up with this session, so no share is shown. A <b>roll</b> pairs a closing contract with an "
-    "opening one of the same name and side on the same day.</p>"
+    "did not line up with this session, so no share is shown. A <b>possible roll</b> pairs a closing contract "
+    "with an opening one of the same name and side on the same day, by volume alone: two legs of a spread can "
+    "look the same.</p>"
     "<p>Not answered here: who traded, and whether the opener bought or sold. Until 20 sessions are stored "
     "and tested the board shows raw numbers only, with no ranking or label.</p>"
     "<p>There is no <b>Fetch</b> on this tab: the builder sweeps each session after the New York close and reads "
@@ -246,7 +247,8 @@ function lpBar(v){ var c = Math.max(-1, Math.min(1, v)), w = Math.abs(c) * 50;
 var LP_NOTES = {pending: ['', 'Open interest is read the next trading morning from 07:30 New York.', 'Read next morning, 07:30 NY'],
   stale: ['warn', 'Stale: the next-morning read did not line up with this session, so no share is shown.', 'Stale: read did not match'],
   missing: ['warn', 'Missing: the contract was not in the next-morning chain, so no share is shown.', 'Missing from next chain'],
-  noshare: ['', 'Open interest was read, but the day has no volume to divide by, so no share is shown.', 'No volume: no share']};
+  noshare: ['', 'Open interest was read, but the day has no volume to divide by, so no share is shown.', 'No volume: no share'],
+  unread: ['', 'The contract was in the next-morning chain without an open interest, so no share is shown.', 'Open interest not read']};
 function lpCard(r){
   var e = rcEsc, mid;
   if(r.st === 'matched' && r.share != null){
@@ -254,7 +256,7 @@ function lpCard(r){
       lpShare(r.share) + ' on a scale from minus 1 to plus 1"><s></s><i style="' + lpBar(r.share) + '"></i></div>' +
       '<b class="val">' + lpShare(r.share) + '</b></div>';
   } else {
-    var n = LP_NOTES[r.st === 'matched' ? 'noshare' : r.st] || LP_NOTES.pending;
+    var n = LP_NOTES[r.st !== 'matched' ? r.st : r.next == null ? 'unread' : 'noshare'] || LP_NOTES.pending;
     mid = '<div class="note ' + n[0] + '" title="' + e(n[1]) + '"><i aria-hidden="true"></i><span>' + e(n[2]) +
       '</span></div>';
   }
@@ -263,7 +265,7 @@ function lpCard(r){
                 'Open interest before: ' + lpInt(r.oi)],
                ['At ask', lpPct(r.ask), ''], ['Multi-leg', lpPct(r.multi), '']];
   var flags = (r.out ? '<span class="chip warn">Beyond ±1</span>' : '') +
-              (r.roll ? '<span class="chip">Roll ↔ ' + e(r.roll) + '</span>' : '');
+              (r.roll ? '<span class="chip">Possible roll ↔ ' + e(r.roll) + '</span>' : '');
   return '<article class="ct" data-sym="' + e(r.sym) + '"><div class="c-w">' + rcWatchButtons(r.t) + '</div>' +
     '<div class="c-n"><b>' + e(r.t) + '</b><span>' + e(r.con) + '</span></div>' +
     '<div class="c-p" title="Premium"><b>' + lpMoney(r.prem) + '</b></div><div class="c-s">' + mid + '</div>' +
@@ -278,15 +280,31 @@ var LP_SORTS = {
   volume: function(r){ return -(r.vol || 0); },
   change: function(r){ return r.chg == null ? Infinity : -r.chg; }  // the largest rise first, falls last
 };
+function lpSided(r){ return LP.side === 'all' || r.side === LP.side; }
 function lpVisible(){
   var key = LP_SORTS[LP.sort] || LP_SORTS.premium;
-  return LP_DATA.rows.filter(function(r){
-    return r.prod === LP.product && (LP.side === 'all' || r.side === LP.side);
-  }).map(function(r, i){ return [key(r), i, r]; }).sort(function(a, b){
+  return LP_DATA.rows.filter(function(r){ return r.prod === LP.product && lpSided(r); })
+    .map(function(r, i){ return [key(r), i, r]; }).sort(function(a, b){
     return a[0] - b[0] || a[1] - b[1]; }).map(function(x){ return x[2]; });
+}
+// The counts follow the side picked (R11) and the counts line the rows listed (R6), not the whole session.
+function lpCounts(rows){
+  LP_COUNT = {stocks: 0, etfs: 0, index: 0};
+  LP_DATA.rows.forEach(function(r){ if(lpSided(r)) LP_COUNT[r.prod] = (LP_COUNT[r.prod] || 0) + 1; });
+  document.querySelectorAll('.lp-seg button').forEach(function(b){
+    b.querySelector('span').textContent = lpInt(LP_COUNT[b.getAttribute('data-product')] || 0); });
+  document.getElementById('lp-index').querySelector('b').textContent = lpInt(LP_COUNT.index);
+  var st = {matched: 0, pending: 0, stale: 0}, names = {};
+  rows.forEach(function(r){ names[r.t] = 1; var k = r.st === 'missing' ? 'stale' : r.st; st[k] = (st[k] || 0) + 1; });
+  document.getElementById('lp-counts').innerHTML = [[rows.length, 'contracts'], [Object.keys(names).length, 'names'],
+    [st.matched, 'matched'], [st.pending, 'waiting for open interest'], [st.stale, 'stale or missing', st.stale]]
+    .filter(function(c){ return c[1] !== 'waiting for open interest' || c[0]; })
+    .map(function(c){ return '<span' + (c[2] ? ' class="warn"' : '') + '><b>' + lpInt(c[0]) + '</b> ' + c[1] + '</span>'; })
+    .join('');
 }
 function lpDraw(){
   var rows = lpVisible(), box = document.getElementById('lp-rows');
+  lpCounts(rows);
   box.innerHTML = rows.length ? rows.slice(0, LP.shown).map(lpCard).join('')
     : '<div class="lp-empty">No contract in this group for this session.</div>';
   var more = document.getElementById('lp-more');
@@ -301,10 +319,8 @@ function lpDraw(){
 var LP_COUNT = {stocks: 0, etfs: 0, index: 0};
 LP_DATA.rows.forEach(function(r){ LP_COUNT[r.prod] = (LP_COUNT[r.prod] || 0) + 1; });
 document.querySelectorAll('.lp-seg button').forEach(function(b){
-  b.querySelector('span').textContent = lpInt(LP_COUNT[b.getAttribute('data-product')] || 0);
   b.addEventListener('click', function(){ LP.product = b.getAttribute('data-product'); LP.shown = PAGE_ROWS; lpDraw(); });
 });
-document.getElementById('lp-index').querySelector('b').textContent = lpInt(LP_COUNT.index);
 document.getElementById('lp-index').addEventListener('click', function(){ LP.product = 'index'; LP.shown = PAGE_ROWS; lpDraw(); });
 document.getElementById('lp-side').addEventListener('change', function(ev){ LP.side = ev.target.value; LP.shown = PAGE_ROWS; lpDraw(); });
 document.getElementById('lp-sort').addEventListener('change', function(ev){ LP.sort = ev.target.value; lpDraw(); });
@@ -363,7 +379,7 @@ def render_html(data: dict) -> str:
 <select id="lp-sort" aria-label="Sort"><option value="premium">Sort: premium</option>
 {share_sort}<option value="volume">Sort: volume</option>
 <option value="change">Sort: open interest rise</option></select></div>
-<div class="lp-counts">{counts}</div>
+<div class="lp-counts" id="lp-counts">{counts}</div>
 </div>
 <div class="lp-table"><div class="lp-head" aria-hidden="true"><span>Watch</span><span>Contract</span>
 <span>Premium</span><span>Opened share</span><span class="x"><span>Volume</span><span>Open int.</span>
