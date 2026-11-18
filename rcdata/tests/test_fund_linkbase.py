@@ -129,8 +129,10 @@ def test_a_linkbase_the_sec_fails_to_serve_does_not_stop_the_run_and_is_fetched_
     assert fx.q("SELECT count(*), count(report_tables) FROM segment_revenue") == [(4, 0)]
     sec.routes = [r for r in sec.routes if r[2] != 500]
     check = fx.run(filings.NAME, mode="backfill", to="2026-10-29")
-    assert check["result"] == "changed", check["note"]
+    assert "1 definition linkbases fetched" in check["note"], check["note"]
     assert filings.stored_linkbase("789019", fx.K25) is not None and len(sec.calls("msft-10k.htm")) == 1
+    # the linkbase alone, arriving after the document, still reaches the served rows
+    assert fx.q("SELECT count(report_tables) FROM segment_revenue")[0][0] > 0
 
 
 def test_an_error_page_sent_as_the_linkbase_is_not_stored_and_is_asked_again(sec):
@@ -143,6 +145,7 @@ def test_an_error_page_sent_as_the_linkbase_is_not_stored_and_is_asked_again(sec
     sec.routes = [r for r in sec.routes if not (isinstance(r[1], bytes) and b"Undeclared" in r[1])]   # the page is gone
     fx.run(filings.NAME, mode="backfill", to="2026-10-29")
     assert filings.stored_linkbase("789019", fx.K25) is not None
+    assert fx.q("SELECT count(report_tables) FROM segment_revenue")[0][0] > 0
 
 
 # ── The column ────────────────────────────────────────────────────────────────────────────────────────────────
