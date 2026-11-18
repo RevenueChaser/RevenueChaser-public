@@ -117,18 +117,32 @@ def test_a_linkbase_the_archive_lists_but_does_not_hold_is_counted_too(sec):
     assert filings.stored_linkbase("789019", fx.K25) is None and _issues() == []
 
 
-def test_a_linkbase_the_sec_fails_to_serve_fails_the_run_and_is_fetched_by_the_next(sec):
+def test_a_linkbase_the_sec_fails_to_serve_does_not_stop_the_run_and_is_fetched_by_the_next(sec):
     sec.add(f"/{fx.MSFT_DEF_NAME}", b"busy", status=500)
     fx.linkbase_routes(sec)                                              # its linkbase route stands behind the 500
     check = fx.run(filings.NAME, mode="backfill", to="2026-10-28")
-    assert check["result"] == "failed" and "HTTP 500" in check["note"], check["note"]
+    assert check["result"] == "changed", check["note"]                   # the linkbase is optional: the run goes on
+    assert "0 definition linkbases fetched, 0 annual reports without one, 1 not served (asked again)" in check["note"]
     assert len(sec.calls(fx.MSFT_DEF_NAME)) == base.HTTP_ATTEMPTS
-    assert filings.stored_linkbase("789019", fx.K25) is None
+    assert filings.stored_linkbase("789019", fx.K25) is None and _issues() == []
     assert filings._doc_path("789019", fx.K25).exists(), "the document fetched before it is kept"
+    assert fx.q("SELECT count(*), count(report_tables) FROM segment_revenue") == [(4, 0)]
     sec.routes = [r for r in sec.routes if r[2] != 500]
     check = fx.run(filings.NAME, mode="backfill", to="2026-10-29")
     assert check["result"] == "changed", check["note"]
     assert filings.stored_linkbase("789019", fx.K25) is not None and len(sec.calls("msft-10k.htm")) == 1
+
+
+def test_an_error_page_sent_as_the_linkbase_is_not_stored_and_is_asked_again(sec):
+    sec.add(f"/{fx.MSFT_DEF_NAME}", b"<html><body>Undeclared Automated Tool</body></html>", status=200)
+    fx.linkbase_routes(sec)                                              # the real linkbase stands behind the page
+    check = fx.run(filings.NAME, mode="backfill", to="2026-10-28")
+    assert check["result"] == "changed", check["note"]
+    assert "1 not served (asked again)" in check["note"]
+    assert filings.stored_linkbase("789019", fx.K25) is None, "a page is not kept as the linkbase"
+    sec.routes = [r for r in sec.routes if not (isinstance(r[1], bytes) and b"Undeclared" in r[1])]   # the page is gone
+    fx.run(filings.NAME, mode="backfill", to="2026-10-29")
+    assert filings.stored_linkbase("789019", fx.K25) is not None
 
 
 # ── The column ────────────────────────────────────────────────────────────────────────────────────────────────

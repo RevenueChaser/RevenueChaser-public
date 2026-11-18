@@ -330,8 +330,29 @@ def read_linkbase(ctx: base.RunContext, cik: str, f: dict, as_of: date) -> bool:
     At most two requests per filing, once: its ``index.json`` (shared with :func:`read_exhibits`) and the file. A
     filing that lists no ``_def.xml`` is counted (``none``) and, its index being stored, never asked again; a
     missing index or file is counted the same way and asked again on the next read of the company.
+
+    The linkbase is optional, so nothing here stops the run: a request the SEC does not serve (``SourceError``, a
+    5xx or a refusal after the retries) and an answer that is not a definition linkbase (an error page sent with
+    200) are counted (``failed``), nothing is stored, and the next read of the company asks again. After
+    ``base.MISSING_RUN`` of them in a row the host is taken to be refusing, and no further linkbase is asked for in
+    this run. A reached cap is not swallowed.
     """
-    counts = ctx.pending.setdefault(_LINKBASES, {"fetched": 0, "none": 0})
+    counts = ctx.pending.setdefault(_LINKBASES, {"fetched": 0, "none": 0, "failed": 0, "in_a_row": 0})
+    if counts["in_a_row"] >= base.MISSING_RUN:
+        return False
+    failed = counts["failed"]
+    try:
+        fetched = _read_linkbase(ctx, cik, f, as_of, counts)
+    except base.CapReached:
+        raise
+    except base.SourceError:
+        counts["failed"] += 1
+        fetched = False
+    counts["in_a_row"] = counts["in_a_row"] + 1 if counts["failed"] > failed else 0
+    return fetched
+
+
+def _read_linkbase(ctx: base.RunContext, cik: str, f: dict, as_of: date, counts: dict) -> bool:
     first = _exhibit_path(cik, f["accession"], "index.json")
     if first.exists():
         listing = base.read_raw_json(first)
@@ -354,6 +375,9 @@ def read_linkbase(ctx: base.RunContext, cik: str, f: dict, as_of: date) -> bool:
     if r is None:
         counts["none"] += 1
         return False
+    if b"definitionLink" not in r.content:
+        counts["failed"] += 1
+        return False
     base.write_raw_json(common.meta_path(path), {"cik": cik, "accession": f["accession"], "form": f["form"],
                                                  "linkbase": name, "as_of": as_of.isoformat(), "url": url,
                                                  "fetched_at": time.time(), "run_id": ctx.run_id})
@@ -364,9 +388,9 @@ def read_linkbase(ctx: base.RunContext, cik: str, f: dict, as_of: date) -> bool:
 
 def _linkbase_note(ctx: base.RunContext) -> None:
     counts = ctx.pending.get(_LINKBASES)
-    if counts and (counts["fetched"] or counts["none"]):
+    if counts and (counts["fetched"] or counts["none"] or counts["failed"]):
         ctx.notes.append(f"{counts['fetched']} definition linkbases fetched, {counts['none']} annual reports "
-                         "without one")
+                         "without one" + (f", {counts['failed']} not served (asked again)" if counts["failed"] else ""))
 
 
 def read_exhibits(ctx: base.RunContext, cik: str, f: dict, as_of: date) -> int:
