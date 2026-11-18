@@ -204,6 +204,7 @@ def _shrunk_build(where: str):
     con.execute(f"ATTACH '{serving.live_path('prices')}' AS l (READ_ONLY)")
     con.execute(f"CREATE TABLE price_bar_daily AS SELECT * FROM l.price_bar_daily WHERE NOT ({where})")
     con.execute("DETACH l")
+    con.execute("CREATE TABLE _gvkey_alias (gid TEXT, security_id TEXT)")
     return con
 
 

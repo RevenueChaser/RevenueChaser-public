@@ -79,22 +79,21 @@ def compare_live(con: duckdb.DuckDBPyConnection, table: str, columns: list[str],
         con.execute("DETACH live_prices")
 
 
-def live_served(con: duckdb.DuckDBPyConnection, table: str = "price_bar_daily") -> tuple[set[str], int]:
-    """``(security ids, rows)`` the live ``prices.duckdb``'s ``table`` serves, the index bars aside; ``(set(), 0)``
-    with no live file or table. Read from the file on disk, so a build on the live copy sees what is live, not its
-    own half-rebuilt copy."""
+def live_served(con: duckdb.DuckDBPyConnection, table: str = "price_bar_daily") -> dict[str, int]:
+    """Rows per security id the live ``prices.duckdb``'s ``table`` serves, the index bars aside; empty with no live
+    file or table. Read from the file on disk, so a build on the live copy sees what is live, not its own
+    half-rebuilt copy."""
     from ... import serving
     live = serving.live_path(KIND)
     if not live.exists():
-        return set(), 0
+        return {}
     con.execute(f"ATTACH {base.sql_path(live)} AS live_served (READ_ONLY)")
     try:
         if not con.execute("SELECT count(*) FROM duckdb_tables() WHERE database_name = 'live_served' "
                            "AND table_name = ?", [table]).fetchone()[0]:
-            return set(), 0
-        ids = {r[0] for r in con.execute(f'SELECT DISTINCT security_id FROM live_served."{table}" '
-                                         "WHERE security_id NOT LIKE 'index:%'").fetchall()}
-        return ids, int(con.execute(f'SELECT count(*) FROM live_served."{table}"').fetchone()[0])
+            return {}
+        return dict(con.execute(f'SELECT security_id, count(*) FROM live_served."{table}" '
+                                "WHERE security_id NOT LIKE 'index:%' GROUP BY 1").fetchall())
     finally:
         con.execute("DETACH live_served")
 

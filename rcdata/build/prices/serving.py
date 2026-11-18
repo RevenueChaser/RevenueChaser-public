@@ -346,7 +346,7 @@ def _universe(ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> int:
     # A name that left the universe keeps its stored bars (avo, DECISIONS S18: the store collects everything and is
     # never narrowed; #1079 dropped 20 securities when names left ``my_universe``). It stops getting new fetches
     # (``prices.scope``), but every id the live file serves stays in what this build stores.
-    held, _ = stage.live_served(con)
+    held = stage.live_served(con)
     kept = 0
     if held:
         kept = stage.count(con, "_universe")
@@ -370,12 +370,20 @@ def _universe(ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> int:
 def _refuse_shrink(ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> None:
     """Refuse a build whose ``price_bar_daily`` serves fewer securities or fewer rows than the live file, unless the
     request asked for it (``allow_shrink``). The serving swap's own guard allows a 1 % row shrink per table, and
-    #1079's loss of 20 securities was 40,327 of 30 million rows, 0.13 %: it went through."""
-    ids, before = stage.live_served(con)
-    if not before or ctx.allow_shrink:
+    #1079's loss of 20 securities was 40,327 of 30 million rows, 0.13 %: it went through.
+
+    A Compustat series that became a served fund's alias (``_gvkey_alias``) is moved, not lost: its id goes and its
+    sessions join the fund's, so neither its id nor its rows count, and the fund's rows are compared with the fund's
+    alone."""
+    live = stage.live_served(con)
+    if not live or ctx.allow_shrink:
         return
-    now = {r[0] for r in con.execute("SELECT DISTINCT security_id FROM price_bar_daily").fetchall()}
-    lost, after = sorted(ids - now), stage.count(con, "price_bar_daily")
+    now = dict(con.execute("SELECT security_id, count(*) FROM price_bar_daily "
+                           "WHERE security_id NOT LIKE 'index:%' GROUP BY 1").fetchall())
+    moved = {g for g, sid in con.execute("SELECT gid, security_id FROM _gvkey_alias").fetchall() if sid in now}
+    lost = sorted(set(live) - set(now) - moved)
+    before = sum(n for sid, n in live.items() if sid not in moved)
+    after = sum(now.values())
     if lost or after < before:
         raise ValueError(f"price_bar_daily would lose {len(lost)} securities (rows {before:,} -> {after:,}) against "
                          f"the live file; lost: {', '.join(lost[:20]) or 'none'}"
