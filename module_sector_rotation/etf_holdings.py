@@ -28,6 +28,38 @@ def stored_holdings(ticker: str) -> list[dict]:
             for r in read.etf_holdings([ticker]) if r.get("ticker")]
 
 
+# The map funds whose holdings say where a company sits: a broad style, region, bond or yield fund holds
+# everything, so it would outvote the sector and theme funds (plan v5 7e).
+WEIGHT_GROUPS = ("sector", "theme", "industry")
+
+
+def ticker_weights() -> dict[str, list[tuple[str, float]]]:
+    """``{ticker: [(etf, share), ...]}``, largest share first: each company's share of every sector, theme and
+    industry map fund that holds it, from the fund's newest holdings in the spine (``rcdata.read.etf_holdings``).
+    The share is the line's weight over the sum of that fund's weights, so a fund published in percent and one in
+    fractions compare. A line with no ticker or no weight is left out. A map fund with no weighted line is named in
+    a warning and gives nothing: it is missing data, never weight 0."""
+    from RevenueChaser.rcdata import read
+    from .universe import ROTATION_ETFS
+    funds = [t for t, info in ROTATION_ETFS.items() if info.get("group") in WEIGHT_GROUPS]
+    by_fund: dict[str, dict[str, float]] = {}
+    for r in read.etf_holdings(funds):
+        if r.get("ticker") and (r.get("weight") or 0) > 0:
+            lines = by_fund.setdefault(r["etf"], {})
+            lines[r["ticker"]] = lines.get(r["ticker"], 0.0) + float(r["weight"])
+    missing = sorted(set(funds) - set(by_fund))
+    if missing:
+        logger.warning("rotation weights: %d map fund(s) have no weighted holdings: %s", len(missing), ", ".join(missing))
+    out: dict[str, list[tuple[str, float]]] = {}
+    for etf in sorted(by_fund):
+        total = sum(by_fund[etf].values())
+        for ticker, weight in by_fund[etf].items():
+            out.setdefault(ticker, []).append((etf, weight / total))
+    for pairs in out.values():
+        pairs.sort(key=lambda p: (-p[1], p[0]))
+    return out
+
+
 @datahealth.scoped
 def health_summary() -> dict:
     """What Data Health says about the board's holdings: the spine's lists, no network.

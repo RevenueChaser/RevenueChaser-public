@@ -22,6 +22,7 @@ from RevenueChaser.core.calendar import now_ny, today_ny
 from RevenueChaser.core.reaction_anchor import reaction_anchor, session_closes, timing_kind
 from RevenueChaser.module_earnings_radar.models import TradeCard, RuleResult
 from RevenueChaser.module_sector_rotation.engine import get_quadrant_for_ticker
+from RevenueChaser.module_sector_rotation.etf_holdings import ticker_weights
 from RevenueChaser.rcdata import opens  # #566: pooled reads count for this run
 
 logger = logging.getLogger(__name__)
@@ -452,6 +453,8 @@ class EarningsPipeline:
         self._warm_er_options(scoring)
         if getattr(self, "_spine_gics", None) is None:
             self._spine_gics = _spine.spine_gics()   # once, before the workers start
+        if self.etf_quadrant_map and getattr(self, "_rotation_weights", None) is None:
+            self._rotation_weights = ticker_weights()   # once too: every map fund's holdings (7e)
 
         def score_one(ticker):
             try:
@@ -637,7 +640,9 @@ class EarningsPipeline:
 
         rotation_quadrant = ""
         if self.etf_quadrant_map:
-            rotation_quadrant = get_quadrant_for_ticker(ticker, cluster, self.etf_quadrant_map)
+            if getattr(self, "_rotation_weights", None) is None:
+                self._rotation_weights = ticker_weights()
+            rotation_quadrant = get_quadrant_for_ticker(ticker, self._rotation_weights, self.etf_quadrant_map)
 
         em_pct = _expected_move_pct(cal_raw, earn)
         report_date = str(cal_raw.get("earnings_date") or cal_raw.get("report_date") or earn.get("report_date") or "") or ""

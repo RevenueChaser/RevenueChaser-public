@@ -1080,7 +1080,7 @@ def _badge(tone: str, label: str, extra: str = "", icon: str = "", title: str = 
 
 def _quadrant_badge(quadrant: str) -> str:
     if not quadrant:
-        return '<span class="badge bd-I tone-info">N/A</span>'
+        return '<span class="badge bd-I tone-info" title="No map fund holds it.">N/A</span>'
     lead = quadrant in ("LEADING", "IMPROVING")
     arrow = "↑" if lead else "↓"
     cls_map = {"LEADING": "bd-L", "IMPROVING": "bd-IM", "WEAKENING": "bd-W", "LAGGING": "bd-LG"}

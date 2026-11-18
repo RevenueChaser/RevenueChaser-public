@@ -523,33 +523,23 @@ def ticker_rotation_adjustment(
     return 0, 0.75
 
 
-CLUSTER_TO_ETFS: dict[str, list[tuple[str, float]]] = {
-    "C1_saas":              [("IGV", 0.40), ("WCLD", 0.35), ("SKYY", 0.25)],
-    "C2_hardware":          [("SMH", 0.50), ("SOXX", 0.30), ("XLK", 0.20)],
-    "C3_fintech_lending":   [("XLF", 0.55), ("KRE", 0.25), ("XHB", 0.20)],
-    "C4_crypto_mining":     [("IWM", 0.40), ("BLOK", 0.35), ("XLK", 0.25)],
-    "C5_marketplace_consumer": [("XLY", 0.50), ("JETS", 0.25), ("XRT", 0.25)],
-    "C6_energy_utilities":  [("XLE", 0.50), ("XOP", 0.25), ("XLU", 0.25)],
-    "C7_healthcare":        [("IHI", 0.40), ("IBB", 0.30), ("XBI", 0.30)],
-    "unmapped":             [("SPY", 1.00)],
-}
-
 QUADRANT_ORDER = {"LEADING": 0, "IMPROVING": 1, "WEAKENING": 2, "LAGGING": 3}
 
 
-def get_quadrant_for_ticker(ticker: str, cluster: str, snapshots_map: dict[str, str]) -> str:
-    from .universe import TICKER_ETF_MAP
-    exposures = TICKER_ETF_MAP.get(ticker) or CLUSTER_TO_ETFS.get(cluster, [("SPY", 1.0)])
-    quadrants = {}
-    for etf, weight in exposures:
+def get_quadrant_for_ticker(ticker: str, weights: dict[str, list[tuple[str, float]]],
+                            snapshots_map: dict[str, str]) -> str:
+    """The quadrant most of ``ticker``'s map-fund weight sits in. ``weights`` is ``etf_holdings.ticker_weights()``:
+    the ticker's share of each map fund that holds it. No typed pairs (plan v5 7e, avo's D). ``""`` when no map fund
+    holds the ticker, or none of the funds that do has a quadrant: the field stays empty, no sector or SPY stand-in
+    (O2). A tie goes to the better quadrant (``QUADRANT_ORDER``)."""
+    votes: dict[str, float] = {}
+    for etf, weight in weights.get(ticker, ()):
         q = snapshots_map.get(etf, "")
         if q:
-            quadrants[q] = quadrants.get(q, 0) + weight
-
-    if not quadrants:
+            votes[q] = votes.get(q, 0.0) + weight
+    if not votes:
         return ""
-
-    return max(quadrants, key=quadrants.get)
+    return min(votes, key=lambda q: (-votes[q], QUADRANT_ORDER.get(q, 9)))
 
 
 def rotation_quadrant_map(uw: UWClient = None, compute: bool = True,
