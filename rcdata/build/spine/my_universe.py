@@ -28,7 +28,13 @@ the list can be swapped by editing one file:
   wins over an add of the same ticker; a line naming a ticker neither table holds is a
   ``my_universe_manual_unknown`` issue, never invented as a row. A name a remove takes out of the live list says
   so in ``my_universe_changes``, with avo's own reason, rather than "the rules no longer hold": his line is the one
-  case where the rules were not applied at all.
+  case where the rules were not applied at all;
+- **a fund on a list the jobs read is a universe name** (rule E, avo, 18 Nov 2026 01:08: "eger bunlar my universe
+  de yok ise ekleyelim"): :func:`listed_etfs` reads the Sector Rotation map list and the industry-group list, and
+  a fund on one that the AUM and volume rules left out enters with ``rule = 'job_list'``. The rule only ever adds
+  (avo, 18 Nov 07:54): a fund taken off a list stays, carried from the live row, until a remove line in
+  :data:`MANUAL_FILE` takes it out. A listed ticker the ``etf`` table does not hold is named in one
+  ``my_universe_list_unknown`` issue. An unreadable list fails the build (``read.JobListUnreadable``).
 
 **Both kinds at once.** A ticker the stock rule and the ETF rule both claim is kept once, as the stock, and
 reported as ``my_universe_both_kinds``. It does not happen in a normal build (an ``etf`` row of the SEC equity
@@ -59,6 +65,7 @@ from pathlib import Path
 
 import duckdb
 
+from ....core import rotation_reference
 from .. import base
 from . import etf as etf_mod, stage
 
@@ -70,7 +77,7 @@ RULES_FILE = Path(__file__).with_name("my_universe_rules.json")
 MANUAL_FILE = Path(__file__).with_name("my_universe_manual.json")
 
 #: ``kind`` is what the name is to us, ``security_type`` the spine's own word for it (``etf`` for every ETF row).
-#: ``rule`` is what let it in: ``stock``, ``etf_aum``, ``etf_adv`` or ``manual``; ``reason`` carries the number or
+#: ``rule`` is what let it in: ``stock``, ``etf_aum``, ``etf_adv``, ``job_list`` or ``manual``; ``reason`` carries the number or
 #: avo's words behind that rule. ``source`` names the spine table the row came from, or ``manual``.
 SCHEMA = [("ticker", "TEXT PRIMARY KEY"), ("kind", "TEXT"), ("security_type", "TEXT"), ("name", "TEXT"),
           ("exchange", "TEXT"), ("tier", "TEXT"), ("rule", "TEXT"), ("reason", "TEXT"),
@@ -85,7 +92,20 @@ ENTERED, LEFT = "entered", "left"
 MANY = 20
 #: The issue kinds this module finds; ``security.ISSUE_KINDS`` holds their wording for ``ops.sqlite``.
 ISSUES = ("my_universe_etf_undecided", "my_universe_etf_volume_lost", "my_universe_manual_unknown",
-          "my_universe_both_kinds")
+          "my_universe_both_kinds", "my_universe_list_unknown")
+#: The ``rule`` of a fund that entered because it is on a list the jobs read (rule E).
+JOB_LIST = "job_list"
+
+
+def listed_etfs() -> dict[str, str]:
+    """``{ticker: which list}`` of the funds on avo's Sector Rotation map list and industry-group list, read
+    strictly at call time (``rotation_reference``): an unreadable list raises, it is never "no funds"."""
+    # shortcut: the option and stock-picks lists are not read here (their funds are large and enter on AUM),
+    # add them when one of their ETFs is measured outside my_universe
+    out = {t: "on the industry-group list" for *_x, etfs in rotation_reference.industry_groups() for t in etfs}
+    out.update({t: "on the Sector Rotation map list" for t, info in rotation_reference.rotation_etfs().items()
+                if info["group"] not in rotation_reference.MACRO_GROUPS})
+    return out
 
 
 @dataclass(frozen=True)
@@ -173,11 +193,12 @@ def _money(value: float) -> str:
 
 
 def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, rules: Rules | None = None,
-         manual: tuple[list[dict], list[dict]] | None = None,
+         manual: tuple[list[dict], list[dict]] | None = None, listed: dict[str, str] | None = None,
          ) -> tuple[list[dict], list[dict], list[tuple[str, str, str]]]:
     """``(my_universe rows, my_universe_changes rows, issues)`` from the ``security`` and ``etf`` tables of ``con``.
 
-    ``rules`` and ``manual`` default to the two files; a test passes its own. The changes are the live file's rows
+    ``rules`` and ``manual`` default to the two files and ``listed`` to :func:`listed_etfs`; a test passes its
+    own. The changes are the live file's rows
     carried forward plus today's diff against the live ``my_universe`` (every name entered when there is none).
     """
     rules = rules if rules is not None else load_rules()
@@ -226,6 +247,18 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, rules: Rules | No
     known_etf = {r["ticker"]: r for r in _rows(con, "SELECT ticker, name, aum, aum_as_of, adv_usd_20d, source, "
                                                     f"source_as_of, fetched_at FROM {etf_mod.TABLE}")}
     removed = {r["ticker"] for r in removes}
+    listed = listed if listed is not None else listed_etfs()
+    # rule E only ever adds: a fund that entered on a list and has since left it stays, on its live reason
+    was_listed = {r["ticker"]: r["reason"] for r in live or [] if r.get("rule") == JOB_LIST}
+    for ticker in sorted({**was_listed, **listed}):
+        if ticker not in kept and ticker in known_etf:
+            kept[ticker] = row(known_etf[ticker], ETF, JOB_LIST, listed.get(ticker) or was_listed[ticker])
+    unknown = sorted(t for t in listed if t not in kept and t not in known_etf and t not in removed)
+    if unknown:
+        issues.append(("my_universe_list_unknown", ETF,
+                       f"{len(unknown)} funds on a list the jobs read are not in the etf table: "
+                       + ", ".join(unknown[:MANY])
+                       + (f" and {len(unknown) - MANY} more" if len(unknown) > MANY else "")))
     for line in adds:
         ticker = line["ticker"]
         if ticker in removed:

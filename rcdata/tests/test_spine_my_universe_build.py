@@ -32,9 +32,11 @@ def _secd(ticker: str, sessions: int, dollars: float) -> list[dict]:
 @pytest.fixture
 def built(monkeypatch, http_mock):
     """The spine built once, after ``secd`` (if the test asked for any) is in Compustat's Parquet."""
-    def build(secd: list[dict] | None = None):
+    def build(secd: list[dict] | None = None, listed: dict[str, str] | None = None):
         if secd:
             put_secd(secd)
+        # no fund is on a job list unless the test says so (rule E): the tests here pin the two numeric rules
+        monkeypatch.setattr(my_universe, "listed_etfs", lambda: listed or {})
         monkeypatch.setattr(sec_edgar, "SEC_WWW_BASE", "https://sec.test")
         monkeypatch.setenv("RC_HTTP_CONTACT", "ops@example.org")
         monkeypatch.setenv("RC_ALPHAVANTAGE_BASE", "https://av.test")
@@ -72,6 +74,18 @@ def test_the_build_serves_both_tables_with_the_plans_columns(built):
     assert mine == ["ticker", "kind", "security_type", "name", "exchange", "tier", "rule", "reason", "aum",
                     "aum_as_of", "adv_usd_20d", "entered_on", "source", "source_as_of", "fetched_at", "run_id"]
     assert changes == ["ticker", "kind", "change", "reason", "as_of", "run_id"]
+
+
+def test_a_fund_on_a_job_list_enters_through_the_whole_build(built):
+    """Rule E (plan v5 7d): GLD has no AUM and no volume here, so the numeric rules leave it out; on the map list
+    it is a universe name, and it is no longer called undecided."""
+    built(listed={"GLD": "on the Sector Rotation map list"})
+    rows = _mine()
+    assert sorted(rows) == ["GLD", "SOXL", "SOXX", "XLK"]
+    assert (rows["GLD"]["rule"], rows["GLD"]["reason"]) == ("job_list", "on the Sector Rotation map list")
+    detail = next(i for i in ops.open_issues(security.NAME, limit=50)[1]
+                  if i["kind"] == "my_universe_etf_undecided")["detail"]
+    assert detail.startswith("3 ETFs") and "GLD" not in detail
 
 
 def test_the_rules_pick_the_three_large_etfs_and_no_stock_of_this_fixture(built):

@@ -135,3 +135,10 @@ def test_the_tick_route_needs_the_panel_header():
     raw = dashboard.app.test_client()
     assert raw.post("/api/watchlists/jobs.option/tick/NVDA", json={"on": True}).status_code == 403
     assert read.watchlists()["option"] == []
+
+
+def test_the_map_lists_are_not_offered_by_the_menu():
+    """Plan v5 7b: a tick from another board would put a name in the map list's unnamed section, a group the
+    Sector Rotation map does not have. The two map lists are edited on the Watch lists board only."""
+    store.seed_map_lists()
+    assert not {"jobs.map", "jobs.industry"} & {r["id"] for r in menu.lists()}

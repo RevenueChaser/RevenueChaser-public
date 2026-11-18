@@ -2348,7 +2348,8 @@ def _nd_identity(f: dict | None) -> str:
 
 #: The rules' labels on the "Our universe" card, in the order the card lists them.
 ND_MY_UNIVERSE_RULES = {"stock": "Stocks, by the rules", "etf_aum": "ETFs, by AUM",
-                        "etf_adv": "ETFs, by dollar volume", "manual": "Added by hand"}
+                        "etf_adv": "ETFs, by dollar volume",
+                        "job_list": "ETFs, on a list the jobs read", "manual": "Added by hand"}
 
 
 def _nd_my_universe(u: dict | None) -> str:
