@@ -52,10 +52,10 @@ def test_a_lock_that_stays_is_an_error(monkeypatch):
     store.add_symbol(store.create_list("Option chains", feeds="option"), "AMEX:SPY")
 
     def locked(*a, **kw):
-        raise rawstore.StoreLockedError("watchlists.duckdb is locked by another process")
+        raise rawstore.RawStoreError("watchlists.duckdb is locked by another process")
 
     monkeypatch.setattr(rawstore, "_connect_with_retry", locked)
-    with pytest.raises(read.JobListUnreadable, match="StoreLockedError"):
+    with pytest.raises(read.JobListUnreadable, match="RawStoreError: watchlists.duckdb is locked"):
         read.job_list("option")
 
 
