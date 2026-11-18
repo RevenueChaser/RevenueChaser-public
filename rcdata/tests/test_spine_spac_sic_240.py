@@ -66,7 +66,7 @@ def test_the_sic_is_optional_so_every_caller_that_has_none_is_unchanged():
 
 def test_the_company_snapshot_asks_for_sic():
     assert "sic" in [c for c, _ in wrds.COMPANY]
-    assert wrds.TABLES["company"]["sql"] == "SELECT gvkey, conm, cik, sic FROM comp.company"
+    assert wrds.TABLES["company"]["sql"] == "SELECT gvkey, conm, cik, sic, loc FROM comp.company"
 
 
 def test_the_new_name_query_asks_for_the_same_columns_as_the_snapshot(monkeypatch, tmp_path):
@@ -214,8 +214,10 @@ def test_a_column_read_as_null_is_logged(tmp_path, caplog):
     assert "sic" in caplog.text and "stg_w" in caplog.text
 
 
-def test_the_company_table_declares_sic_as_added_later():
-    assert wrds.ADDED_LATER == {"company": {"sic"}}
+def test_the_company_table_declares_sic_and_loc_as_added_later():
+    """``loc`` (the company's country, plan v5 step 4) joined ``sic``: a snapshot taken before it reads NULL."""
+    assert wrds.ADDED_LATER == {"company": {"sic", "loc"}}
+    assert ("loc", "TEXT") in wrds.COMPANY
 
 
 # ── A stored snapshot written before the column existed (review SHOULD 3) ────────────────────────────────────
