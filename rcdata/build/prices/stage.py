@@ -98,6 +98,21 @@ def live_served(con: duckdb.DuckDBPyConnection, table: str = "price_bar_daily") 
         con.execute("DETACH live_served")
 
 
+def carry_live(con: duckdb.DuckDBPyConnection, ids: list[str], table: str = "price_bar_daily") -> int:
+    """Copy the live file's ``table`` rows of ``ids`` into the build's (by column name); the rows copied."""
+    from ... import serving
+    if not ids:
+        return 0
+    con.execute(f"ATTACH {base.sql_path(serving.live_path(KIND))} AS live_carry (READ_ONLY)")
+    try:
+        before = count(con, table)
+        con.execute(f'INSERT INTO "{table}" BY NAME SELECT * FROM live_carry."{table}" '
+                    "WHERE security_id IN (SELECT unnest(?))", [ids])
+        return count(con, table) - before
+    finally:
+        con.execute("DETACH live_carry")
+
+
 def view(con: duckdb.DuckDBPyConnection, name: str, schema: list[tuple[str, str]], files=(),
          added_later=()) -> None:
     """``CREATE TEMP VIEW name`` over ``files`` (Parquet, by name), typed by ``schema``: what :func:`create` would
