@@ -2193,6 +2193,13 @@ Two separate things, deliberately not conflated:
     never replaces a copy that is. The newest 4 week folders stay.
   - `edgar-docs` — the `edgar_docs/` tree as one verified zip (member CRCs and the document count); an unchanged
     tree (same `stat` fingerprint in the zip comment) keeps the newest zip instead of zipping again.
+- **One daily step (avo, 17 Nov 2026, decision C of the spine classification plan)** — `rcdata backup --only
+  watchlists-daily`, never part of the weekly run: a copy of `boards/watchlists.duckdb` (avo's own lists, which
+  nothing rebuilds) into `weekly-v2/watchlists-daily/`, checkpointed and verified like a `boards` copy, tagged
+  `daily`, the newest 7 kept. A day the file is unchanged (its table fingerprints equal the newest daily copy's)
+  writes no copy and still records a good run. The weekly `boards` copy of the same file goes on. Its card row is
+  red once the last good run is older than 2 days. What starts it each day (a timer and its switch) is its own step,
+  on avo's word.
 - **What shows it** — the Data/Health "Weekly backups" card (each step's last good run and the error of a failed
   one, the newest copy of every file and how many are kept; amber past 8 days, red past 15) and the Health strip's
   backup alert; the home-server health board and Grafana read the same manifests per step.
