@@ -2110,6 +2110,40 @@ def api_sec13f_types(tag: str):
                     "flow_fig": build_flow_fig(labels[t], ownership.sec13f_type_flow(t), arriving)})
 
 
+@app.route("/api/sec_13f/filers")
+def api_sec13f_filers():
+    """The 13F Investors view's filer picker (#928): filers whose name holds ``q`` (two characters or more) or whose
+    CIK it is, largest book first, at most 20."""
+    from RevenueChaser.core import ownership
+    q = (request.args.get("q") or "").strip()[:80]
+    rows = ownership.sec13f_filer_search(q) if len(q) >= 2 else []
+    return jsonify({"ok": True, "filers": [{"cik": r["cik"], "name": r.get("filer_name"), "value": r.get("value"),
+                                            "names": r.get("names"), "period": r.get("period")} for r in rows]})
+
+
+@app.route("/api/sec_13f/filers/<cik>")
+def api_sec13f_filer(cik: str):
+    """One filer for the 13F Investors view (#928, #779): its holdings over the last ``quarters`` quarters (12, 20
+    or ``all``) as a Plotly figure, its newest settled quarter's holdings, its style row and its UW tags. 400 for a
+    CIK that is not 1 to 10 digits, 404 for a filer the store does not hold."""
+    from RevenueChaser.core import ownership
+    from RevenueChaser.module_sec_13f.report import FILER_WINDOW, build_filer_fig, filer_holdings_view
+    c = (cik or "").strip()
+    if not (c.isdigit() and 1 <= len(c) <= 10):
+        return jsonify({"ok": False, "error": "bad cik"}), 400
+    span = request.args.get("quarters", "")
+    quarters = None if span == "all" else (int(span) if span in ("12", "20") else FILER_WINDOW)
+    data = ownership.sec13f_filer(c)
+    if not data["holdings"] and not data["style"]:
+        return jsonify({"ok": False, "error": "no such filer", "cik": c}), 404
+    name = (data["style"] or {}).get("filer_name") or f"CIK {c.lstrip('0')}"
+    arriving = ownership.sec13f_open_periods()
+    fig, note = build_filer_fig(name, data["holdings"], arriving, quarters)
+    period, holdings = filer_holdings_view(data["holdings"], arriving)
+    return jsonify({"ok": True, "cik": c, "name": name, "fig": fig, "note": note, "period": period,
+                    "holdings": holdings, "style": data["style"], "tags": data["tags"]})
+
+
 @app.route("/api/watchlist/<kind>/toggle/<ticker>", methods=["POST"])
 def api_watchlist_kind_toggle(kind: str, ticker: str):
     """Put ``ticker`` on the ``option`` or ``stock`` watch list, or take it off (PR 4, D2). The board that sent the
