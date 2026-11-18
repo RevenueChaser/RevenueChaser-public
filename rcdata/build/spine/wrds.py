@@ -31,7 +31,13 @@ asked again (resumable). Parquet: ``parquet/wrds/<dataset>/snapshot=<as-of>/<tab
 ``.../delta=<as-of>/<table>.parquet``; the build reads the newest snapshot and every delta after it, a delta row
 replacing the snapshot's row of its key.
 
-Staging: ``stg_wrds_company``, ``stg_wrds_security``, ``stg_wrds_idhist``, ``stg_wrds_hgic``, ``stg_wrds_idx``.
+``wrds/co_hgic`` also asks three Compustat Global tables whole (18 Nov 2026): ``comp.g_company`` (a foreign
+company's current GICS and country), ``comp.g_security`` (its listings that have an ISIN) and ``comp.r_giccd`` (the
+names of the GICS codes). A snapshot taken before that has no file of them, and their staging is empty until the
+next one (``backfill wrds/co_hgic`` takes it at once).
+
+Staging: ``stg_wrds_company``, ``stg_wrds_security``, ``stg_wrds_idhist``, ``stg_wrds_hgic``, ``stg_wrds_idx``,
+``stg_wrds_g_company``, ``stg_wrds_g_security``, ``stg_wrds_giccd``.
 """
 from __future__ import annotations
 
@@ -73,6 +79,14 @@ IDHIST = [("gvkey", "TEXT"), ("iid", "TEXT"), ("item", "TEXT"), ("itemvalue", "T
 HGIC = [("gvkey", "TEXT"), ("indfrom", "DATE"), ("indthru", "DATE"), ("gsector", "TEXT"), ("ggroup", "TEXT"),
         ("gind", "TEXT"), ("gsubind", "TEXT")]
 IDX = [("gvkey", "TEXT"), ("iid", "TEXT"), ("gvkeyx", "TEXT"), ("valid_from", "DATE"), ("thru", "DATE")]
+# Compustat Global (plan v5 step 3 of the spine classification, #1031): a foreign company's current GICS and
+# country, its listings' ISINs, and the names of the GICS codes. Column names read from WRDS on 18 Nov 2026
+# (``information_schema.columns``): 135,583 ``g_security`` rows, 97,168 with an ISIN; 354 ``r_giccd`` rows.
+G_COMPANY = [("gvkey", "TEXT"), ("conm", "TEXT"), ("loc", "TEXT"), ("gsector", "TEXT"), ("ggroup", "TEXT"),
+             ("gind", "TEXT"), ("gsubind", "TEXT")]
+G_SECURITY = [("gvkey", "TEXT"), ("iid", "TEXT"), ("isin", "TEXT"), ("excntry", "TEXT"), ("secstat", "TEXT"),
+              ("tpci", "TEXT")]
+GICCD = [("giccd", "TEXT"), ("gictype", "TEXT"), ("gicdesc", "TEXT"), ("gicstat", "TEXT")]
 PROVENANCE = [("source_as_of", "DATE"), ("fetched_at", "DOUBLE"), ("run_id", "TEXT")]
 
 TABLES: dict[str, dict] = {
@@ -84,12 +98,19 @@ TABLES: dict[str, dict] = {
                    "sql": "SELECT gvkey, iid, item, itemvalue, efffrom, effthru FROM comp.sec_idhist"},
     "co_hgic": {"dataset": "wrds/co_hgic", "schema": HGIC, "key": ["gvkey", "indfrom"],
                 "sql": "SELECT gvkey, indfrom, indthru, gsector, ggroup, gind, gsubind FROM comp.co_hgic"},
+    "g_company": {"dataset": "wrds/co_hgic", "schema": G_COMPANY, "key": ["gvkey"],
+                  "sql": "SELECT gvkey, conm, loc, gsector, ggroup, gind, gsubind FROM comp.g_company"},
+    "g_security": {"dataset": "wrds/co_hgic", "schema": G_SECURITY, "key": ["gvkey", "iid"],
+                   "sql": "SELECT gvkey, iid, isin, excntry, secstat, tpci FROM comp.g_security WHERE isin IS NOT NULL"},
+    "r_giccd": {"dataset": "wrds/co_hgic", "schema": GICCD, "key": ["giccd", "gictype"],
+                "sql": "SELECT giccd, gictype, gicdesc, gicstat FROM comp.r_giccd"},
     "idxcst_his": {"dataset": "wrds/idxcst_his", "schema": IDX, "key": ["gvkey", "iid", "gvkeyx", "valid_from"],
                    "sql": ('SELECT gvkey, iid, gvkeyx, "from" AS valid_from, thru FROM comp.idxcst_his '
                            "WHERE gvkeyx IN (" + ", ".join(f"'{k}'" for k in INDEX_GVKEYX.values()) + ")")},
 }
 STAGING = {"company": "stg_wrds_company", "security": "stg_wrds_security", "sec_idhist": "stg_wrds_idhist",
-           "co_hgic": "stg_wrds_hgic", "idxcst_his": "stg_wrds_idx"}
+           "co_hgic": "stg_wrds_hgic", "idxcst_his": "stg_wrds_idx", "g_company": "stg_wrds_g_company",
+           "g_security": "stg_wrds_g_security", "r_giccd": "stg_wrds_giccd"}
 # Per table, the columns asked for after its stored snapshot was written: read as NULL, with a warning, until the
 # next attended backfill (``stage.create``). Any other missing column still fails the build.
 ADDED_LATER = {"company": {"sic"}}
