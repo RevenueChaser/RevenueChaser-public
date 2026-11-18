@@ -186,3 +186,35 @@ def test_an_unreadable_stock_list_is_said_not_read_as_empty(monkeypatch, tmp_pat
     page = runners.run_news_headlines().read_text(encoding="utf-8")
     assert asked == [["AAPL"]]                                  # the News list is still asked
     assert page.count('class="rc-provider-health"') == 1 and "stock watch lists" in page
+
+
+def test_the_ticker_box_queues_one_ask_for_a_valid_symbol(monkeypatch):
+    captured = []
+    monkeypatch.setattr(dashboard.jobs, "submit", lambda module, params: captured.append((module, params)) or "j1")
+    monkeypatch.setattr(dashboard.jobs, "active_id", lambda modules: None)
+    assert _client().post("/run/news_ticker", json={"ticker": "nvda"}).status_code == 202
+    assert captured == [("news_ticker", {"ticker": "NVDA"})]
+    assert _client().post("/run/news_ticker", json={"ticker": "../x"}).status_code == 400
+    monkeypatch.setattr(dashboard.jobs, "active_id", lambda modules: "busy")
+    r = _client().post("/run/news_ticker", json={"ticker": "AAPL"})
+    assert r.status_code == 409 and r.get_json()["job_id"] == "busy" and len(captured) == 1
+
+
+def test_the_ticker_box_reads_the_names_stored_rows(monkeypatch):
+    import time as _time
+    now = _time.time()
+    rawstore.write_rows("news_headlines", [
+        {"headline_id": h, "provider": "ibkr", "published_at": at, "headline": h, "source": "Dow Jones",
+         "tickers": t, "url": None, "fetched_at": now, "run_id": "r", "run_at": now}
+        for h, t, at in (("mine", '["NVDA"]', now - 3600), ("other", '["AAPL"]', now - 60),
+                         ("old", '["NVDA"]', now - 8 * 86400))])
+    r = _client().get("/api/news/ticker/nvda").get_json()
+    assert r["ok"] and r["ticker"] == "NVDA" and [x["headline"] for x in r["rows"]] == ["mine"] and r["ask"] is None
+    assert _client().get("/api/news/ticker/..").status_code in (400, 404)
+
+
+def test_the_page_carries_the_ticker_box(monkeypatch, tmp_path):
+    from RevenueChaser.module_news import report
+    page = report.render_html()
+    assert 'id="tq"' in page and "Bir hisse için haber" in page and "/run/news_ticker" in page
+    assert "TQ_PICK = " in page and "rcWatchInit(" in page
