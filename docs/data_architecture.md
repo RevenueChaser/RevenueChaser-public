@@ -1925,7 +1925,7 @@ name, and the earnings set of the evening. Built by the same builder, swapped th
 
 | Table | Key | Holds |
 |---|---|---|
-| `option_eod` | session date, option symbol | The chain at the close: every contract of SPX and the list names, its quotes, IV, greeks, open interest and its change, volume by side, charm and vanna; the last 30 sessions (the Parquet keeps every one). `cross_volume` is a spec field UW has not sent yet (NULL on all 19,774 rows of the first real run, 2026-10-28) |
+| `option_eod` | session date, option symbol | The chain at the close: every contract of SPX and the list names, and of the earnings set's names on their evenings (the 12 expiries with the most open interest 1 to 365 days out, no greeks; avo's F2, 18 Nov 2026), its quotes, IV, greeks, open interest and its change, volume by side, charm and vanna; the last 30 sessions (the Parquet keeps every one). `cross_volume` is a spec field UW has not sent yet (NULL on all 19,774 rows of the first real run, 2026-10-28) |
 | `option_strike` | session date, ticker, set, strike | Spot exposures by strike (the four greeks for calls and puts by OI, volume, bid and ask) and the greek exposure by strike |
 | `option_expiry` | session date, ticker, set, expiry | Contracts, open interest and volume per expiry, greek exposure by expiry, the day's flow per expiry, the IV term structure |
 | `option_daily` | session date, ticker | The GEX levels, the day's option volume and premium, IV rank, and the chain's size |
@@ -1952,7 +1952,9 @@ CLI or Settings):
   afterhours, 100 a page), the screener row of every name on it (`/screener/stocks`, 100 names a call), and the
   earnings set: once per name an evening, on each of the two evenings before its report, each name that passes the Earnings Radar gates and
   is not on the option list gets spot exposures by strike, GEX levels, term structure, options volume, the last
-  50 prints (not the chain) and its earnings tape (`/earnings/{ticker}`). Once a session it also asks
+  50 prints, its earnings tape (`/earnings/{ticker}`) and, since avo's F2 (18 Nov 2026, for the Implied Probability
+  board), its chain: `expiry-breakdown`, then `option-contracts` (no greeks) for the 12 expiries with the most open
+  interest 1 to 365 days out, into `option_eod`. Once a session it also asks
   `/option-trades` for the market's far prints (`min_dte` 183, `min_premium` 50,000, 500 a call), paged back with
   `older_than` (UW ignores `page`), at most 3 calls.
 - `uw/far_contracts` (#746, avo's universe "A: Tum piyasa" of 12 Nov 2026): in a session's observed window the
@@ -1988,10 +1990,10 @@ has the name.
 
 **UW calls a session** (`rcdata/build/options/__init__.py`, the plan's arithmetic: list names x (chain + stats +
 prints) + screener pages + earnings-set names + far-print pages). A list name is 11 calls plus 2 per expiry plus one
-per extra page; an earnings-set name 6; the far prints at most 3; the screener one per 100 reporting names; the calendar one per day and report session plus
+per extra page; an earnings-set name 6 plus its chain (one `expiry-breakdown` and one call per expiry, 12, plus extra pages); the far prints at most 3; the screener one per 100 reporting names; the calendar one per day and report session plus
 one per extra 100 names. With the planning numbers (25 expiries and 5 extra pages a name, SPX 400, 2,500 reporting
-names, 150 in the earnings set: assumptions until the first week's real counts replace them) that is 1,393 calls
-with SPX alone, 7,993 with 100 list names and 34,393 with 500, and UW has no day cap since avo removed it on
+names, 150 in the earnings set: assumptions until the first week's real counts replace them) that is 3,343 calls
+with SPX alone, 9,943 with 100 list names and 36,343 with 500, and UW has no day cap since avo removed it on
 2026-11-10 (`rcdata/caps.py`); the other UW datasets spend the same UW day. The real count is the builder's, per request, in `provider_calls_daily`.
 
 **Raw retention.** A hook after each `options` swap (`rcdata/build/options/raw_retention.py`) removes the

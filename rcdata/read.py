@@ -1471,8 +1471,8 @@ def _session_clause(table: str, session_date, ticker_param: str) -> tuple[str, l
 
 
 def option_chain(ticker: str, session_date=None) -> list[dict]:
-    """``option_eod``: every contract of one list name (SPX or the option watch list) at one session's close, the
-    newest served when ``session_date`` is None (the file serves the last 30), by expiry, strike and type."""
+    """``option_eod``: every contract of one list name (SPX or the option watch list), or of an earnings-set name on its
+    evening (avo's F2), at one session's close, the newest served when ``session_date`` is None (the file serves the last 30), by expiry, strike and type."""
     t = str(ticker).strip().upper()
     where, params = _session_clause("option_eod", session_date, t)
     return _option_rows("option_eod", f"SELECT * FROM option_eod WHERE ticker = ? AND {where} "

@@ -44,13 +44,15 @@ def test_the_screener_side_costs_the_arithmetic_s_calls(http_mock):
     calendar_calls = 2 * days + 1                  # one extra page: 150 names on one day and session
     screener_calls = 2                             # 150 names, 100 a call
     far_calls = 1                                  # no far print: the first page brings nothing new
-    assert row["calls"] == calendar_calls + screener_calls + 3 * options.EARNINGS_CALLS + far_calls
+    # each earnings-set name: its six parts plus its chain (avo's F2): the breakdown and one call per expiry
+    assert row["calls"] == calendar_calls + screener_calls + 3 * options.earnings_name_calls(len(mock.expiries)) \
+        + far_calls
 
 
 def test_the_planning_figure_leaves_most_of_uw_s_day_cap_to_the_other_datasets():
     cap = 100_000                                          # the planning yardstick; UW has no cap since 2026-11-10
-    assert options.uw_calls_a_session(0) < 2_000
+    assert options.uw_calls_a_session(0) < 4_000           # 3,343: 150 earnings-set names with their chains (F2)
     assert options.uw_calls_a_session(100) < cap / 10
-    assert options.uw_calls_a_session(500) < cap / 2       # 34,393 of 100,000: a third of the day
+    assert options.uw_calls_a_session(500) < cap / 2       # 36,343 of 100,000: about a third of the day
     assert options.uw_calls_a_session(1) - options.uw_calls_a_session(0) == options.list_name_calls(
         options.EXPIRIES_A_NAME, options.EXTRA_PAGES_A_NAME)
