@@ -127,11 +127,11 @@ def test_the_tick_route_refuses_what_it_cannot_write(client):
     assert client.post(f"/api/watchlists/{lid}/tick/%3Cb%3E", json={"on": True}).status_code == 400
     refused = client.post(f"/api/watchlists/{lid}/tick/ZZZZ", json={"on": True})
     assert refused.status_code == 400 and "spine" in refused.get_json()["error"]
-    assert store.symbols(lid) == [] and read.watched("option") == set()
+    assert store.symbols(lid) == [] and read.watchlists()["option"] == []
 
 
 def test_the_tick_route_needs_the_panel_header():
     dashboard.app.config["TESTING"] = True
     raw = dashboard.app.test_client()
     assert raw.post("/api/watchlists/jobs.option/tick/NVDA", json={"on": True}).status_code == 403
-    assert read.watched("option") == set()
+    assert read.watchlists()["option"] == []
