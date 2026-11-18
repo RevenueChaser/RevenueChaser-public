@@ -32,7 +32,7 @@ def uw_env(monkeypatch):
 
 @pytest.fixture
 def built(http_mock):
-    """LIST on the option list (with SPX); GOOD reports the next session and passes the gates (the earnings set)."""
+    """LIST on the option list; GOOD reports the next session and passes the gates (the earnings set)."""
     mock = UWOptions()
     wl_store.job_set("option", "LIST", True, by="test")
     mock.calendar[(NEXT, "premarket")] = ["GOOD"]
@@ -43,8 +43,9 @@ def built(http_mock):
     return mock
 
 
-def test_the_names_are_spx_the_option_list_and_the_newest_earnings_set(built):
-    assert engine.list_names() == ["GOOD", "LIST", "SPX"]
+def test_the_names_are_the_option_list_and_the_newest_earnings_set_not_spx(built):
+    """avo's G1 (18 Nov 2026, #1061): SPX is stored with a zero NBBO, so the board leaves it out; SPY stands in."""
+    assert engine.list_names() == ["GOOD", "LIST"]
 
 
 def test_the_board_fits_the_stored_chain_with_no_provider_call(built):
@@ -53,7 +54,7 @@ def test_the_board_fits_the_stored_chain_with_no_provider_call(built):
     assert len(built.requests) == before, "the board called Unusual Whales"
     assert p["ticker"] == "LIST" and p["asof"] == SESSION.isoformat()
     assert p["n_contracts"] == len(built.expiries) * len(built.strikes) * 2
-    assert p["names"] == ["GOOD", "LIST", "SPX"] and p["fetched_at"]
+    assert p["names"] == ["GOOD", "LIST"] and p["fetched_at"]
 
 
 def test_an_earnings_set_name_is_read_from_its_own_chain(built):

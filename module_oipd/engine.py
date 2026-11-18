@@ -1,7 +1,7 @@
 """Implied Probability (OIPD) engine — option chain -> SVI surface -> risk-neutral PDF.
 
 **The board's path is** :func:`build`: it reads one session's chain from the nightly options build
-(``options.duckdb`` ``option_eod``, through ``rcdata.read``) for a name the build stores a chain for (SPX, the option
+(``options.duckdb`` ``option_eod``, through ``rcdata.read``) for a name the build stores a quoted chain for (the option
 watch list, the evening's earnings set) and makes no provider call (avo's decision B, 10 Nov 2026; F2, 18 Nov 2026).
 
 The older UW path below (``run``, ``fetch_result``, ``oipd_chain`` / ``oipd_meta``) is no longer called by the
@@ -415,10 +415,12 @@ def _empty_payload(ticker: str, message: str) -> dict:
 
 # ── the nightly build (decision B) ──────────────────────────────────────────────────────────────────────────
 def list_names() -> list[str]:
-    """The names the build stores a chain for: SPX, the option watch list (``read.watched``, the one list source;
+    """The names the build stores a quoted chain for: the option watch list (``read.watched``, the one list source;
     strict, so an unreadable list raises ``read.JobListUnreadable``) and the newest evening's earnings set."""
     from RevenueChaser.rcdata import read
-    names = {"SPX", *read.watched("option")}
+    # Not SPX: UW stores its chain with a zero NBBO, so it cannot be fitted on quotes; SPY stands for the S&P 500
+    # here (avo's G1, 18 Nov 2026; #1061).
+    names = set(read.watched("option")) - {"SPX"}
     er = read.earnings_options(start=calendar.today_ny() - timedelta(days=14))   # bounded: er_options grows forever
     newest = max((str(r["session_date"])[:10] for r in er), default=None)
     names.update(r["ticker"] for r in er if str(r["session_date"])[:10] == newest)

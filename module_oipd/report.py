@@ -398,7 +398,7 @@ def render_oipd_dashboard(payload: dict) -> str:
         "is the 50th percentile. Use the expiry tabs to inspect one distribution's PDF/CDF, its "
         "fitted smile, and tail probabilities. All figures are <b>risk-neutral</b> — a pricing "
         "convention, not a real-world forecast. The chains come from the nightly options build (Unusual "
-        "Whales, after the close): the option watch list, SPX and the evening's earnings names. Add a name on the "
+        "Whales, after the close): the option watch list and the evening's earnings names (SPY for the S&P 500). Add a name on the "
         "Watchlists board; its chain arrives with the next session. <b>Fetch</b> and <b>Refresh</b> do the same here: "
         "both re-fit the stored chain, and the board itself calls no provider.")
     html = f"""<!DOCTYPE html>
