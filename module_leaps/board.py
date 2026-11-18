@@ -199,9 +199,8 @@ body{margin:0;background:var(--bg);color:var(--fg);font:var(--fs-base)/1.4 var(-
    28 px with a mouse, 44 px on a touch screen. */
 .lp .rc-watch{margin:0;flex:none}
 .lp .rc-watch button{min-width:28px;min-height:28px;height:28px;padding:0 4px;border-radius:var(--r-sm)}
-.lp .rc-watch button svg{width:14px;height:14px}
-@media (pointer:coarse){.lp .rc-watch button{min-width:44px;min-height:44px;height:44px}
-  .lp .rc-watch button svg{width:18px;height:18px}}
+.lp .rc-watch button svg{width:12px;height:12px}
+@media (pointer:coarse){.lp .rc-watch button{min-width:36px;min-height:36px;height:36px}}
 .sh{display:flex;align-items:center;gap:var(--sp-2)}
 .sh .lab{font-size:var(--fs-xs);color:var(--muted);flex:none}
 .sh .val{font-size:var(--fs-base);font-weight:700;color:var(--bright);width:48px;text-align:right;flex:none}

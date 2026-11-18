@@ -68,7 +68,7 @@ def test_the_board_mounts_the_pair_once_with_its_own_key(key, tmp_path, monkeypa
     page = BOARDS[key].render(tmp_path, monkeypatch)
     assert page.count("rcWatchInit(") == 2, "the definition and exactly one mount"
     assert f'rcWatchInit("{WITH_PAIR[key]}");' in page
-    assert "min-width:44px;min-height:44px" in page
+    assert "min-width:36px;\n  min-height:36px" in page
     check_page(page)
 
 
