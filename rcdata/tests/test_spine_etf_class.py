@@ -356,6 +356,36 @@ def test_an_issuer_file_without_weights_is_not_read_and_the_fund_says_so(nport):
     assert "issuer file of 2026-11-16 carries weights for 0%" in spy["reason"]
 
 
+def _world(con):
+    """Compustat Global as ``wrds/co_hgic`` stages it: one Dutch company with an ISIN, and two code names."""
+    from RevenueChaser.rcdata.build.spine import wrds
+    base.rows_table(con, etf_class.G_COMPANY, wrds.G_COMPANY, [{"gvkey": "001166", "loc": "NLD", "gsubind": "45301010"}])
+    base.rows_table(con, etf_class.G_SECURITY, wrds.G_SECURITY, [{"gvkey": "001166", "iid": "01W",
+                                                                    "isin": "NL0000334118"}])
+    base.rows_table(con, etf_class.GICCD, wrds.GICCD, [
+        {"giccd": "40101015", "gictype": "GSUBIND", "gicdesc": "Regional Banks", "gicstat": "A"},
+        {"giccd": "45", "gictype": "GSECTOR", "gicdesc": "Information Technology", "gicstat": "A"}])
+    return con
+
+
+def test_a_foreign_holding_is_coded_by_its_isin_from_compustat_global(nport):
+    """A foreign share has an ISIN and no spine row (plan v5 step 3): without Compustat Global the fund's equity
+    is uncoded; with it the line carries its company's sub-industry."""
+    foreign = [h for h in HOLDINGS if h["accession"] != "A3"] + [
+        _line("A3", 99.0, isin="NL0000334118", country="NL")]
+    nport(foreign)
+    plain = {r["ticker"]: r for r in etf_class.rows(_ctx(), _con(), manual=[])[0]}["CIBR"]
+    assert plain["coded_pct"] == 0.0
+    coded = {r["ticker"]: r for r in etf_class.rows(_ctx(), _world(_con()), manual=[])[0]}["CIBR"]
+    assert coded["coded_pct"] == 100.0 and coded["gsubind"] == "45301010"
+
+
+def test_a_finer_code_takes_its_name_from_the_sources_code_table(nport):
+    nport()
+    rows = {r["ticker"]: r for r in etf_class.rows(_ctx(), _world(_con()), manual=[])[0]}
+    assert rows["KRE"]["label"] == "Regional Banks" and rows["CIBR"]["label"] == "Information Technology"
+
+
 def test_a_held_fund_is_not_a_stock_whatever_the_report_calls_it(nport):
     """TMF, TNA and BNDW passed "equity at or over half" with no coded holding: they hold funds."""
     nport()

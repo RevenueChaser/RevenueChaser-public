@@ -13,7 +13,9 @@ with the second reviewer):
   real estate, other. A line whose issuer is a registered fund (issuer type ``RF``), whose ticker is an ``etf``
   row, or whose name says so, is bucket ``fund`` and never equity: TMF and BNDW hold funds, not stocks;
 - an equity line gets its GICS from ``security`` by CUSIP, then ISIN, then ticker (Exxon Mobil's CUSIP found no
-  spine row in 55 funds; the ISIN and the ticker did);
+  spine row in 55 funds; the ISIN and the ticker did); a line the spine does not hold (a foreign share) gets it
+  from Compustat Global by its ISIN (``wrds/co_hgic``: ``g_security`` to ``g_company``, plan v5 step 3), where
+  every company of that ISIN agrees on the sub-industry. A finer code's name is the source's (``r_giccd``);
 - **structure**: derivative lines of 10 % of net assets or more make a fund ``synthetic``; the ``etf`` flags say
   leveraged and option income. Such a fund is ``hidden_by_default`` (avo's B: labelled, hidden on boards unless
   the filter is switched on);
@@ -72,6 +74,8 @@ NPORT = "sec/nport"
 FUND_LINES, FUND_FILES = "stg_fund_lines", "funds/index_holdings"
 #: An issuer file whose weights add to less than this (percent of net assets) is no holdings file to classify from.
 FILE_COVER = 90.0
+#: Compustat Global, staged by ``wrds/co_hgic``: a foreign listing's ISIN, its company's GICS, the code names.
+G_SECURITY, G_COMPANY, GICCD = "stg_wrds_g_security", "stg_wrds_g_company", "stg_wrds_giccd"
 #: Corrections by hand. Owned by avo; changed only by a pull request.
 MANUAL_FILE = Path(__file__).with_name("etf_class_manual.json")
 ISSUES = ("etf_class_manual_unknown",)
@@ -283,6 +287,22 @@ def newest_quarter() -> tuple[str, Path] | None:
     return held[-1] if held else None
 
 
+def _staged(con: duckdb.DuckDBPyConnection, *tables: str) -> bool:
+    """Whether every one of ``tables`` is in ``con``: a build without the WRDS Global snapshot codes by the spine
+    alone, as before."""
+    have = {r[0] for r in con.execute("SELECT table_name FROM information_schema.tables").fetchall()}
+    return set(tables) <= have
+
+
+def gics_names(con: duckdb.DuckDBPyConnection) -> dict[str, str]:
+    """``{GICS code: its name}`` from Compustat's code table, an active row before a retired one; empty when the
+    table is not staged."""
+    if not _staged(con, GICCD):
+        return {}
+    return dict(con.execute(f"SELECT giccd, gicdesc FROM {GICCD} WHERE gicdesc IS NOT NULL "
+                            "ORDER BY (gicstat = 'A') ASC NULLS FIRST, giccd").fetchall())
+
+
 def _universe(con: duckdb.DuckDBPyConnection) -> list[dict]:
     cur = con.execute(f"""
         SELECT e.ticker, e.name, e.series_id, e.asset_class, coalesce(e.is_lev_inverse, false) AS lev,
@@ -327,6 +347,9 @@ def profiles(con: duckdb.DuckDBPyConnection, funds: list[dict], folder: Path | N
     if not linked:
         return out
     base.rows_table(con, "_ec_fund", [("ticker", "TEXT"), ("accession", "TEXT")], linked)
+    world = (f"SELECT s.isin, min(c.gsubind) AS g FROM {G_SECURITY} s JOIN {G_COMPANY} c USING (gvkey) "
+             "WHERE s.isin IS NOT NULL AND c.gsubind IS NOT NULL GROUP BY 1 HAVING count(DISTINCT c.gsubind) = 1"
+             if _staged(con, G_SECURITY, G_COMPANY) else "SELECT NULL::VARCHAR AS isin, NULL::VARCHAR AS g WHERE false")
     con.execute(f"""
         CREATE OR REPLACE TEMP TABLE _ec_h AS
         WITH bc AS (SELECT cusip, min(gsubind) AS g FROM security WHERE cusip IS NOT NULL AND gsubind IS NOT NULL
@@ -334,6 +357,7 @@ def profiles(con: duckdb.DuckDBPyConnection, funds: list[dict], folder: Path | N
              bi AS (SELECT isin, min(gsubind) AS g FROM security WHERE isin IS NOT NULL AND gsubind IS NOT NULL
                     GROUP BY 1 HAVING count(*) = 1),
              bt AS (SELECT ticker, gsubind AS g FROM security WHERE gsubind IS NOT NULL),
+             bg AS ({world}),
              h AS (SELECT f.ticker AS etf, h.pct_of_net_assets AS pct, h.country, h.asset_cat,
                           h.cusip, h.isin, replace(h.ticker, '.', '-') AS tic,
                           -- a ticker is a US ticker only on a US line: a local ticker abroad can spell the same
@@ -353,9 +377,9 @@ def profiles(con: duckdb.DuckDBPyConnection, funds: list[dict], folder: Path | N
                CASE WHEN coalesce(h.is_rf, false) THEN 'fund'
                     WHEN h.bucket = 'equity' AND (e.ticker IS NOT NULL OR h.fund_name) THEN 'fund'
                     ELSE h.bucket END AS bucket,
-               CAST(coalesce(bc.g, bi.g, bt.g) AS VARCHAR) AS gsubind
+               CAST(coalesce(bc.g, bi.g, bt.g, bg.g) AS VARCHAR) AS gsubind
         FROM h LEFT JOIN bc ON bc.cusip = h.cusip LEFT JOIN bi ON bi.isin = h.isin
-        LEFT JOIN bt ON bt.ticker = h.tic AND h.us_line
+        LEFT JOIN bt ON bt.ticker = h.tic AND h.us_line LEFT JOIN bg ON bg.isin = h.isin
         LEFT JOIN {etf_mod.TABLE} e ON e.ticker = h.tic AND h.us_line""")
     keys = ("equity", "preferred", "debt", "cash", "derivative", "commodity", "fund", "real_estate", "coded")
     for r in con.execute("""
@@ -427,8 +451,10 @@ def issuer_profiles(con: duckdb.DuckDBPyConnection, out: dict[str, dict]) -> Non
         p.pop("no_report"), p.pop("why")
 
 
-def _label(primary: str, code: str | None) -> str | None:
+def _label(primary: str, code: str | None, names: dict[str, str] | None = None) -> str | None:
     from . import security                 # ``security`` imports this module
+    if names and code in names and primary in {name for name, _, _ in LEVELS}:
+        return names[code]
     if primary == "sector":
         return security.GICS_SECTORS.get(code or "")
     if primary == "industry_group":
@@ -477,6 +503,7 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, manual: list[dict
     live = {r["ticker"]: r for r in live_rows or []}
     profs = profiles(con, funds, newest[1] if newest else None)
     issuer_profiles(con, profs)
+    names = gics_names(con)
     bench_name = next((t for t in BENCHMARKS if profs.get(t, {}).get("coded")), None)
     bench = benchmark_of(profs[bench_name]["g"]) if bench_name else None
     source = f"{NPORT} {newest[0]}" if newest else None
@@ -495,7 +522,7 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, manual: list[dict
         r = classify(p, bench, cuts)
         if was is not None and not was.get("manual"):
             r = hold(p, bench, cuts, was, r)
-        r.update(ticker=t, label=_label(r["primary_class"], r["code"]), manual=False, as_of=p.get("as_of"),
+        r.update(ticker=t, label=_label(r["primary_class"], r["code"], names), manual=False, as_of=p.get("as_of"),
                  source=None if p.get("no_report") else p.get("source", source), run_id=ctx.run_id)
         out[t] = r
     issues: list[tuple[str, str, str]] = []
@@ -506,7 +533,8 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, manual: list[dict
                            f"a line of {MANUAL_FILE.name} naming a ticker that is no ETF of my_universe"))
             continue
         code = line["code"] or None
-        r.update(primary_class=line["primary_class"], code=code, label=_label(line["primary_class"], code), manual=True,
+        r.update(primary_class=line["primary_class"], code=code, label=_label(line["primary_class"], code, names),
+                 manual=True,
                  reason=f"by hand in {MANUAL_FILE.name}: {line['reason']} (the rule said: {r['reason']})")
     changes = list(stage.live_rows(CHANGES, [c for c, _ in CHANGES_SCHEMA]) or [])
     for t in sorted(out):
