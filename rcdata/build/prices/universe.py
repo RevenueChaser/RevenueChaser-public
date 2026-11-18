@@ -15,6 +15,10 @@ avo, 4 Nov 2026 (PR 382): the store holds **today's universe**, not every tier a
   without that table an unknown-AUM fund is not stored. That build reads the volume from Compustat's **raw**
   ``comp.secd`` Parquet (#421), not from this store: a store cut to the universe holds no bar of a fund outside it,
   so a new fund could never earn a volume here (review M4 of #382, avo's decision B of 5 Nov 2026).
+- **A name that leaves is kept.** Whatever this rule or ``my_universe`` drops, the serving build keeps every id the
+  live file already serves (``serving._universe``; avo, DECISIONS S18): the name stops getting new fetches, its
+  history stays. A build that would still serve fewer securities or rows is refused unless asked
+  (``serving._refuse_shrink``, ``allow_shrink``).
 - **A delisted name is never in it.** The list is read from the live spine, which holds today's listings only, so
   nothing delisted reaches the served tables at all (the reason PR 382's "CRSP for delisted names" step is gone).
 

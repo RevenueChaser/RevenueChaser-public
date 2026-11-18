@@ -343,6 +343,15 @@ def _universe(ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> int:
     con.execute(f"CREATE OR REPLACE TEMP TABLE _universe_etf AS {universe.UNIVERSE_ETF_SQL}")
     con.execute(f"CREATE OR REPLACE TEMP TABLE _etf_tic_series AS {universe.ETF_TIC_SERIES_SQL}")
     con.execute(f"CREATE OR REPLACE TEMP TABLE _universe AS {universe.UNIVERSE_SQL}")
+    # A name that left the universe keeps its stored bars (avo, DECISIONS S18: the store collects everything and is
+    # never narrowed; #1079 dropped 20 securities when names left ``my_universe``). It stops getting new fetches
+    # (``prices.scope``), but every id the live file serves stays in what this build stores.
+    held, _ = stage.live_served(con)
+    kept = 0
+    if held:
+        kept = stage.count(con, "_universe")
+        con.execute("INSERT INTO _universe SELECT unnest(?) EXCEPT SELECT security_id FROM _universe", [sorted(held)])
+        kept = stage.count(con, "_universe") - kept
     n = stage.count(con, "_universe")
     if mine:
         held = stage.count(con, f"stg_{universe.MY_UNIVERSE_TABLE}")
@@ -354,8 +363,23 @@ def _universe(ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> int:
                  f"{', '.join(universe.STOCK_TYPES)}) and {funds} ETFs over "
                  f"{universe.ETF_MIN_AUM:,.0f} AUM, by the rule (no {universe.MY_UNIVERSE_TABLE} list yet)")
     ctx.notes.append(f"universe: {where}, {len(beside)} benchmarks, rotation ETFs and watched names beside them, "
-                     f"{n} security ids stored")
+                     f"{kept} ids the live file serves outside it kept, {n} security ids stored")
     return n
+
+
+def _refuse_shrink(ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> None:
+    """Refuse a build whose ``price_bar_daily`` serves fewer securities or fewer rows than the live file, unless the
+    request asked for it (``allow_shrink``). The serving swap's own guard allows a 1 % row shrink per table, and
+    #1079's loss of 20 securities was 40,327 of 30 million rows, 0.13 %: it went through."""
+    ids, before = stage.live_served(con)
+    if not before or ctx.allow_shrink:
+        return
+    now = {r[0] for r in con.execute("SELECT DISTINCT security_id FROM price_bar_daily").fetchall()}
+    lost, after = sorted(ids - now), stage.count(con, "price_bar_daily")
+    if lost or after < before:
+        raise ValueError(f"price_bar_daily would lose {len(lost)} securities (rows {before:,} -> {after:,}) against "
+                         f"the live file; lost: {', '.join(lost[:20]) or 'none'}"
+                         f"{' ...' if len(lost) > 20 else ''}. Pass allow_shrink only on avo's word (DECISIONS S18)")
 
 
 def _index_levels(con: duckdb.DuckDBPyConnection) -> str:
@@ -492,6 +516,7 @@ class PricesServing:
         else:
             counts["price_bar_daily"], moved, basis = chunked.bars(self)
         self._key_check(ctx, con, "price_bar_daily", found)
+        _refuse_shrink(ctx, con)
         # The dated exchange rule against today's code: what it serves that today's code would not, and the reverse.
         if any(moved):
             ctx.notes.append(f"exchange history: {moved[0]} secd rows of {moved[1]} securities listed that day though "

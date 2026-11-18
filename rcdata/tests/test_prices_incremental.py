@@ -181,16 +181,54 @@ def test_a_name_that_joins_the_universe_gets_its_whole_history(live, monkeypatch
     _same_as_whole(monkeypatch, row)
 
 
-def test_a_name_that_leaves_the_universe_is_removed(live, monkeypatch):
+def test_a_name_that_leaves_the_universe_keeps_its_bars(live, monkeypatch):
+    """avo's rule (DECISIONS S18): the store is never narrowed. #1079 dropped 20 securities when names left
+    ``my_universe``; a name that leaves keeps every bar it had, with no ``allow_shrink``, whole build or not."""
+    before = _q("SELECT * FROM price_bar_daily WHERE security_id = ? ORDER BY session_date", [AAPL])
+    assert before
     _respine([r for r in SPINE if r["ticker"] != "AAPL"])
-    row = base.run_request({"dataset": prices_serving.NAME, "params": {"allow_shrink": True}})
-    assert row["result"] != "failed", row
-    assert not _q("SELECT 1 FROM price_bar_daily WHERE security_id = ?", [AAPL])
+    row = _serve()
     assert "built on the live file" in _note(row), _note(row)
+    assert " 0 ids the live file serves outside it kept" not in _note(row), _note(row)
+    assert _q("SELECT * FROM price_bar_daily WHERE security_id = ? ORDER BY session_date", [AAPL]) == before
     got = _snapshot()
     monkeypatch.setenv(dirty.WHOLE_ENV, "1")
-    assert base.run_request({"dataset": prices_serving.NAME, "params": {"allow_shrink": True}})["result"] != "failed"
+    assert _serve()["result"] != "failed"
     assert _snapshot() == got
+
+
+def _shrunk_build(where: str):
+    """A build connection whose ``price_bar_daily`` is the live file's without the rows ``where`` names."""
+    import duckdb
+    con = duckdb.connect()
+    con.execute(f"ATTACH '{serving.live_path('prices')}' AS l (READ_ONLY)")
+    con.execute(f"CREATE TABLE price_bar_daily AS SELECT * FROM l.price_bar_daily WHERE NOT ({where})")
+    con.execute("DETACH l")
+    return con
+
+
+@pytest.mark.parametrize("where", [f"security_id = '{AAPL}'",
+                                   f"security_id = '{AAPL}' AND session_date = (SELECT min(session_date) "
+                                   f"FROM l.price_bar_daily WHERE security_id = '{AAPL}')"],
+                         ids=["a security", "one row"])
+def test_the_build_refuses_to_lose_a_security_or_a_row_unless_asked(live, where):
+    """#1079's 20 lost securities were 0.13 % of the rows, under the swap's 1 % guard: this one counts both."""
+    con = _shrunk_build(where)
+    try:
+        with pytest.raises(ValueError, match="price_bar_daily would lose"):
+            prices_serving._refuse_shrink(base.RunContext(run_id="t", dataset=prices_serving.NAME), con)
+        prices_serving._refuse_shrink(base.RunContext(run_id="t", dataset=prices_serving.NAME, allow_shrink=True),
+                                      con)
+    finally:
+        con.close()
+
+
+def test_the_build_lets_the_same_or_more_through(live):
+    con = _shrunk_build("false")
+    try:
+        prices_serving._refuse_shrink(base.RunContext(run_id="t", dataset=prices_serving.NAME), con)
+    finally:
+        con.close()
 
 
 def test_a_late_cover_restates_the_caps_from_its_day(live, monkeypatch):
