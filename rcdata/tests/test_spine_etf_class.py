@@ -325,6 +325,37 @@ def test_a_fund_with_no_series_is_linked_by_its_registered_name_and_a_unit_trust
     assert spy["primary_class"] == etf_class.UNCLASSIFIED and spy["source"] is None and "no series" in spy["reason"]
 
 
+def _fund_lines(con, weights=(60.0, 39.0)):
+    """SPY's issuer file as ``funds/index_holdings`` stages it: an older day (not read), then JPM by CUSIP and
+    Microsoft by ticker."""
+    from RevenueChaser.rcdata.build.spine import funds
+    line = {"index_slug": "sp500", "provider": "ssga", "fund": "SPY"}
+    base.rows_table(con, etf_class.FUND_LINES, _plain(funds.SCHEMA), [
+        {**line, "as_of": date(2026, 11, 13), "ticker": "RF", "cusip": "7591EP100", "weight": 99.0},
+        {**line, "as_of": date(2026, 11, 16), "ticker": "JPM", "cusip": "46625H100", "weight": weights[0]},
+        {**line, "as_of": date(2026, 11, 16), "ticker": "MSFT", "cusip": "594918104", "weight": weights[1]}])
+    return con
+
+
+def test_a_unit_trust_is_read_from_its_issuers_own_file_and_names_that_file_as_its_source(nport):
+    """SPY and MDY file no N-PORT (plan v5 step 2): the file has no asset category and no country, so every line
+    is equity, coded by CUSIP then ticker, and a line the spine knows is a US line."""
+    nport()
+    rows, _, _ = etf_class.rows(_ctx(), _fund_lines(_con()), manual=[])
+    spy = {r["ticker"]: r for r in rows}["SPY"]
+    assert spy["source"] == "funds/index_holdings 2026-11-16" and spy["as_of"] == date(2026, 11, 16)
+    assert (spy["equity_pct"], spy["coded_pct"], spy["geo"]) == (99.0, 100.0, "US")
+    assert (spy["primary_class"], spy["code"]) == ("sector", "40")              # 60 of 99: the newest day only
+
+
+def test_an_issuer_file_without_weights_is_not_read_and_the_fund_says_so(nport):
+    nport()
+    rows, _, _ = etf_class.rows(_ctx(), _fund_lines(_con(), weights=(None, None)), manual=[])
+    spy = {r["ticker"]: r for r in rows}["SPY"]
+    assert spy["primary_class"] == etf_class.UNCLASSIFIED and spy["source"] is None
+    assert "issuer file of 2026-11-16 carries weights for 0%" in spy["reason"]
+
+
 def test_a_held_fund_is_not_a_stock_whatever_the_report_calls_it(nport):
     """TMF, TNA and BNDW passed "equity at or over half" with no coded holding: they hold funds."""
     nport()
