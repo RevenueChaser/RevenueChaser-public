@@ -131,6 +131,8 @@ NO_WRDS = {"text": "no WRDS run yet", "produced": False}
 # The weekly backup (avo, 8 Nov 2026; ``rcdata/backup.py``): amber once a Sunday run is missed, red once two are.
 BACKUP_WARN_DAYS = 8
 BACKUP_ALERT_DAYS = 15
+# The daily watch-list copy (avo, 17 Nov 2026, decision C): red once its last good run is older than 2 days.
+BACKUP_DAILY_ALERT_DAYS = 2
 # The raw-option retention: on as a warning until one of these says how many days raw option files are kept
 # (``rcdata/retention.py``, the rule the builder's retention hook reads too).
 RETENTION_ENV = retention.ENV
@@ -894,7 +896,7 @@ def _backups(now: datetime) -> dict:
     folder = (config.RAW_STORE_BACKUP_DIR or "").strip()
     root = Path(folder) / backup.ROOT if folder else None
     manifests = {step: (_read_manifest(root / step / backup.MANIFEST_NAME) if root else None) or {"files": {}}
-                 for step in backup.STEPS}
+                 for step in backup.STEPS + backup.DAILY_STEPS}
 
     def flags(age: int | None) -> dict:
         return {"warn": age is None or age > BACKUP_WARN_DAYS, "alert": age is None or age > BACKUP_ALERT_DAYS}
@@ -906,6 +908,13 @@ def _backups(now: datetime) -> dict:
         age = _age_days(last_ok, now)
         steps.append({"step": step, "last_ok": last_ok.isoformat() if last_ok else None, "age_days": age,
                       **flags(age), "error": m.get("last_error") or None})
+    daily = manifests[backup.STEP_WATCHLISTS_DAILY]
+    daily_ok = _parse_utc(daily.get("last_ok"))
+    # Hours, not whole days: one missed run is ~48 h, so the limit trips on the second miss, not the third.
+    late = daily_ok is None or now - daily_ok > timedelta(days=BACKUP_DAILY_ALERT_DAYS)
+    steps.append({"step": backup.STEP_WATCHLISTS_DAILY, "last_ok": daily_ok.isoformat() if daily_ok else None,
+                  "age_days": _age_days(daily_ok, now), "warn": late, "alert": late,
+                  "error": daily.get("last_error") or None})
 
     def newest_of(step: str, prefix: str) -> tuple[datetime | None, int]:
         stamps = [_parse_utc(v.get("at")) for name, v in manifests[step]["files"].items()
@@ -929,8 +938,14 @@ def _backups(now: datetime) -> dict:
     docs = manifests[backup.STEP_EDGAR_DOCS]
     _, zips = newest_of(backup.STEP_EDGAR_DOCS, "edgar_docs")
     kinds.append(_kind_row("edgar_docs", backup.STEP_EDGAR_DOCS, _parse_utc(docs.get("last_ok")), zips, now, flags))
+    # An unchanged day writes no copy, so the newest copy may be old by design: the row carries the step's health.
+    copies = sum(1 for name, v in daily["files"].items()
+                 if name.startswith("watchlists_") and isinstance(v, dict) and v.get("source") == "daily")
+    kinds.append({**_kind_row("watchlists-daily", backup.STEP_WATCHLISTS_DAILY, daily_ok, copies, now, flags),
+                  "warn": late, "alert": late})
     return {"configured": bool(folder), "root": str(root) if root else None, "steps": steps, "kinds": kinds,
-            "warn_days": BACKUP_WARN_DAYS, "alert_days": BACKUP_ALERT_DAYS}
+            "warn_days": BACKUP_WARN_DAYS, "alert_days": BACKUP_ALERT_DAYS,
+            "daily_alert_days": BACKUP_DAILY_ALERT_DAYS}
 
 
 def _kind_row(kind: str, step: str, newest: datetime | None, copies: int, now: datetime, flags) -> dict:

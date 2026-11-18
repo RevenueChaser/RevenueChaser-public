@@ -171,6 +171,72 @@ def test_the_boards_step_with_no_board_file_writes_nothing_but_the_folder(backup
     assert not list((backup_dir / "boards").glob("*.duckdb"))
 
 
+# ── watchlists-daily: avo's lists, a copy on every day they changed (decision C, 17 Nov 2026) ───────────────────
+
+def _watchlists() -> Path:
+    return Path(rawstore.STORE_DIR) / backup.BOARDS_DIRNAME / backup.WATCHLISTS_FILE
+
+
+def _daily(backup_dir: Path) -> list[Path]:
+    return sorted((backup_dir / backup.STEP_WATCHLISTS_DAILY).glob("watchlists_*.duckdb"))
+
+
+def test_the_daily_step_is_never_part_of_the_weekly_run(backup_dir):
+    assert backup.KEEP_DAILY == 7 and backup.STEP_WATCHLISTS_DAILY not in backup.STEPS
+    assert backup._check_only(None) == (backup.STEPS, ())
+    assert backup._check_only("watchlists-daily") == (("watchlists-daily",), ())
+    _board(_watchlists(), 3)
+    backup.run_backup(only="boards")
+    assert not (backup_dir / backup.STEP_WATCHLISTS_DAILY).exists()
+
+
+def test_the_daily_copy_is_verified_tagged_daily_and_records_a_good_run(backup_dir):
+    _board(_watchlists(), 3, keep_wal=True)
+    dest = backup.run_backup(only="watchlists-daily")["watchlists-daily"]
+    assert dest is not None and _daily(backup_dir) == [dest]
+    m = _manifest(backup_dir / backup.STEP_WATCHLISTS_DAILY)
+    assert m["files"][dest.name]["source"] == "daily" and m["files"][dest.name]["tables"]["r"][0] == 3
+    assert m["last_ok"] and "last_error" not in m
+    assert duckdb.connect(str(dest), read_only=True).execute("SELECT count(*) FROM r").fetchone()[0] == 3
+
+
+def test_an_unchanged_day_takes_no_copy_and_a_changed_one_does(backup_dir):
+    _board(_watchlists(), 3)
+    first = backup.run_backup(only="watchlists-daily")["watchlists-daily"]
+    ok_before = _manifest(backup_dir / backup.STEP_WATCHLISTS_DAILY)["last_ok"]
+    assert backup.run_backup(only="watchlists-daily")["watchlists-daily"] is None
+    assert _daily(backup_dir) == [first]
+    assert _manifest(backup_dir / backup.STEP_WATCHLISTS_DAILY)["last_ok"] > ok_before, "unchanged is a good run"
+    con = duckdb.connect(str(_watchlists()))
+    con.execute("UPDATE r SET i = i + 100 WHERE i = 0")                     # same count, other content
+    con.close()
+    assert backup.run_backup(only="watchlists-daily")["watchlists-daily"] is not None
+    assert len(_daily(backup_dir)) == 2
+
+
+def test_a_weekly_copy_does_not_count_as_the_newest_daily_one(backup_dir):
+    _board(_watchlists(), 3)
+    backup.run_backup(only="boards")
+    assert backup.run_backup(only="watchlists-daily")["watchlists-daily"] is not None
+
+
+def test_the_daily_copies_keep_seven_and_never_touch_the_weekly_ones(backup_dir):
+    _board(_watchlists(), 1)
+    backup.run_backup(only="boards")
+    for n in range(9):
+        con = duckdb.connect(str(_watchlists()))
+        con.execute("INSERT INTO r VALUES (?)", [1000 + n])
+        con.close()
+        assert backup.run_backup(only="watchlists-daily")["watchlists-daily"] is not None
+    assert len(_daily(backup_dir)) == 7
+    assert len(list((backup_dir / "boards").glob("watchlists_*.duckdb"))) == 1
+
+
+def test_no_watchlists_file_is_a_good_run_with_nothing_written(backup_dir):
+    assert backup.run_backup(only="watchlists-daily")["watchlists-daily"] is None
+    assert _daily(backup_dir) == [] and _manifest(backup_dir / backup.STEP_WATCHLISTS_DAILY)["last_ok"]
+
+
 # ── ops: the needed tables only ─────────────────────────────────────────────────────────────────────────────────
 
 

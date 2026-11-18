@@ -489,7 +489,9 @@ def _last_done(now: datetime) -> dict:
         pass
     try:
         from RevenueChaser.module_settings import newdata
-        done = [datetime.fromisoformat(s["last_ok"]) for s in newdata._backups(now)["steps"] if s.get("last_ok")]
+        from RevenueChaser.rcdata import backup
+        done = [datetime.fromisoformat(s["last_ok"]) for s in newdata._backups(now)["steps"]
+                if s.get("last_ok") and s["step"] in backup.STEPS]       # the weekly run, not the daily copy
         if done:
             out["backup"] = {"at": stamp(max(done))}
     except Exception:  # noqa: BLE001

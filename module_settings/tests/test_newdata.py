@@ -208,7 +208,7 @@ def test_the_backups_card_reads_every_step_of_the_weekly_job(roots):
     assert b["configured"] is True and b["root"].endswith("weekly-v2")
     assert (b["warn_days"], b["alert_days"]) == (newdata.BACKUP_WARN_DAYS, newdata.BACKUP_ALERT_DAYS) == (8, 15)
     steps = {s["step"]: s for s in b["steps"]}
-    assert list(steps) == ["duckdb", "boards", "ops", "uw-raw", "edgar-docs"]
+    assert list(steps) == ["duckdb", "boards", "ops", "uw-raw", "edgar-docs", "watchlists-daily"]
     assert steps["duckdb"] == {"step": "duckdb", "last_ok": _iso(3), "age_days": 3, "warn": False, "alert": False,
                                "error": None}
     assert steps["uw-raw"]["age_days"] == 10 and steps["uw-raw"]["warn"] is True and steps["uw-raw"]["alert"] is False
@@ -236,6 +236,23 @@ def test_a_step_that_never_ran_and_a_kind_past_15_days_are_red(roots):
     kinds = {k["kind"]: k for k in b["kinds"]}
     assert kinds["market"]["age_days"] == 16 and kinds["market"]["alert"] is True
     assert kinds["ops"]["newest"] is None and kinds["ops"]["alert"] is True
+
+
+def test_the_daily_watchlists_row_is_red_past_two_days_whatever_the_copy_age(roots):
+    """Decision C (avo, 17 Nov 2026): an unchanged day writes no copy, so the last good run is what counts."""
+    _manifest(roots, "watchlists-daily", {"watchlists_20261101_000000_000000.duckdb": {"at": _iso(9),
+                                                                                         "source": "daily"}},
+              last_ok=_iso(1.9), last_run=_iso(1.9))
+    b = newdata.collect(NOW)["backups"]
+    assert b["daily_alert_days"] == newdata.BACKUP_DAILY_ALERT_DAYS == 2
+    step = next(s for s in b["steps"] if s["step"] == "watchlists-daily")
+    assert step["alert"] is False and step["last_ok"] == _iso(1.9)
+    row = next(k for k in b["kinds"] if k["kind"] == "watchlists-daily")
+    assert row["copies"] == 1 and row["alert"] is False
+    _manifest(roots, "watchlists-daily", {}, last_ok=_iso(2.1), last_run=_iso(0.1), last_error="boom")
+    b = newdata.collect(NOW)["backups"]
+    step = next(s for s in b["steps"] if s["step"] == "watchlists-daily")
+    assert step["alert"] is True and step["warn"] is True and step["error"] == "boom"
 
 
 def test_the_backups_with_no_folder_say_so(monkeypatch):
