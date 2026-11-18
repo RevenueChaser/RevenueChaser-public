@@ -249,3 +249,26 @@ def test_the_counts_follow_the_rows_listed(stored):
     page = board.render_html(board.payload())
     assert '<div class="lp-counts" id="lp-counts">' in page
     assert "lpCounts(rows);" in board._JS and "if(lpSided(r)) LP_COUNT[r.prod]" in board._JS
+
+
+# ── Step 3 (avo's D1 A, D2 A, D5 A; mock approved 18 Nov 13:33) ─────────────────────────────────────────────────
+
+def test_a_row_carries_its_bid_share_beside_its_ask_share(stored):
+    """D5 A: bid_side_volume / volume, raw, from the stored row (the fixture puts a quarter of the volume at the bid)."""
+    rows = {r["sym"]: r for r in board.payload()["rows"]}
+    far = rows[stored["far"]["option_symbol"]]
+    assert far["bid"] == pytest.approx(0.25) and far["ask"] == pytest.approx(0.5)
+    assert board._bid_share({"bid_side_volume": None, "volume": 10}) is None
+    assert board._bid_share({"bid_side_volume": 3, "volume": 0}) is None
+    assert "['At bid', lpPct(r.bid), '']" in board._JS and "<span>At bid</span>" in board.render_html(board.payload())
+
+
+def test_the_page_offers_a_names_view_a_ticker_search_and_a_my_lists_filter(stored):
+    """D1 A (contract list stays the default, names show sums only) and D2 A (display filters only)."""
+    page = board.render_html(board.payload())
+    assert '<button type="button" data-view="contracts" aria-pressed="true">Contracts</button>' in page
+    assert '<button type="button" data-view="names" aria-pressed="false">Names</button>' in page
+    assert 'id="lp-q"' in page and 'id="lp-list"' in page and "On any of my lists" in page
+    assert "view: 'contracts'" in board._JS, "the contract list is the default"
+    for word in ("score", "rank", "Accumulat"):
+        assert word not in board._JS[board._JS.index("function lpNames"):board._JS.index("function lpNameCard")]

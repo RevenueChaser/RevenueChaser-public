@@ -73,6 +73,12 @@ def _int(v):
     return None if v is None else int(v)
 
 
+def _bid_share(r: dict):
+    """``bid_side_volume / volume``, as the builder computes ``ask_share``: raw, no bought/sold word (D5 A)."""
+    bid, vol = r.get("bid_side_volume"), r.get("volume")
+    return None if bid is None or not vol else float(bid) / float(vol)
+
+
 def row_of(r: dict) -> dict:
     """One stored contract as the page's compact row (short keys: the payload carries thousands)."""
     exp = r["expiry"]
@@ -84,7 +90,7 @@ def row_of(r: dict) -> dict:
         "prem": _num(r.get("premium")), "vol": _int(r.get("volume")),
         "oi": _int(r.get("open_interest")), "next": _int(r.get("oi_next")), "chg": _int(r.get("oi_change")),
         "st": r.get("oi_status") or "pending", "share": _num(r.get("opened_share")),
-        "ask": _num(r.get("ask_share")), "multi": _num(r.get("multileg_share")),
+        "ask": _num(r.get("ask_share")), "bid": _bid_share(r), "multi": _num(r.get("multileg_share")),
         "out": bool(r.get("out_of_range")), "roll": partner_label(r["roll_partner"]) if r.get("roll") else None,
     }
 
@@ -129,6 +135,9 @@ HELP = help_html(
     "did not line up with this session, so no share is shown. A <b>possible roll</b> pairs a closing contract "
     "with an opening one of the same name and side on the same day, by volume alone: two legs of a spread can "
     "look the same.</p>"
+    "<p><b>At ask</b> and <b>at bid</b> are the shares of the day's volume UW put at the ask and at the bid; the "
+    "rest traded between them. <b>Names</b> folds a name's contracts into sums: premium, volume and open "
+    "interest change. <b>My lists</b> shows only names on your watch lists; the store keeps every name.</p>"
     "<p>Not answered here: who traded, and whether the opener bought or sold. Until 20 sessions are stored "
     "and tested the board shows raw numbers only, with no ranking or label.</p>"
     "<p>There is no <b>Fetch</b> on this tab: the builder sweeps each session after the New York close and reads "
@@ -148,6 +157,14 @@ body{margin:0;background:var(--bg);color:var(--fg);font:var(--fs-base)/1.4 var(-
 .lp-track>i{position:absolute;top:0;bottom:0;left:0;border-radius:var(--r-pill);background:var(--data-1)}
 .lp-controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sp-2)}
 .lp-controls>#lp-session,.lp-seg,.lp-counts{grid-column:1/-1}
+.lp-seg.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+.lp input[type=search]{height:var(--touch);border-radius:var(--r-sm);border:1px solid var(--input-border);
+  background:var(--input-bg);color:var(--bright);padding:0 var(--sp-2);font:500 var(--fs-sm) var(--font-sans);min-width:0}
+.lp input:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.lp-open{align-self:flex-start;min-height:var(--touch);margin:-10px 0;padding:0;border:0;background:none;cursor:pointer;
+  font:600 var(--fs-base) var(--font-sans);color:var(--accent);text-align:left}
+.lp-open:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.c-x.three{grid-template-columns:repeat(3,minmax(0,1fr))}
 .lp-pick{display:contents}
 .lp select{height:var(--touch);border-radius:var(--r-sm);border:1px solid var(--input-border);background:var(--input-bg);
   color:var(--bright);padding:0 var(--sp-2);font:500 var(--fs-sm) var(--font-sans);min-width:0}
@@ -189,7 +206,7 @@ body{margin:0;background:var(--bg);color:var(--fg);font:var(--fs-base)/1.4 var(-
 .note i{width:6px;height:6px;flex:none;border-radius:var(--r-pill);background:var(--muted)}
 .note.warn{background:var(--amber-soft);color:var(--amber)}
 .note.warn i{background:var(--amber)}
-.c-x{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--sp-2)}
+.c-x{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:var(--sp-2)}
 .c-x div{display:flex;flex-direction:column;min-width:0}
 .c-x small{font-size:var(--fs-xs);color:var(--muted)}
 .c-x b{font-size:var(--fs-sm);font-weight:600;color:var(--bright);overflow-wrap:anywhere}
@@ -209,6 +226,7 @@ body{margin:0;background:var(--bg);color:var(--fg);font:var(--fs-base)/1.4 var(-
   .lp{padding:var(--sp-4) var(--sp-5);gap:var(--sp-3)}
   .lp-controls{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2)}
   .lp-controls>#lp-session{min-width:240px}
+  .lp-controls>#lp-q{width:160px}
   .lp-seg{display:flex}.lp-seg button{padding:0 var(--sp-3)}
   .lp-counts{margin-left:auto}
   .lp-table{border-radius:var(--r-md);background:var(--card);border:1px solid var(--border);overflow:hidden}
@@ -218,7 +236,9 @@ body{margin:0;background:var(--bg);color:var(--fg);font:var(--fs-base)/1.4 var(-
     padding-top:6px;padding-bottom:6px;text-align:center}
   /* Cell grid (rules/ui-design.md): the leftmost cell left, middle cells centred, the rightmost cell right. */
   .lp-head>:first-child{text-align:left}.lp-head>:last-child{text-align:right}
-  .lp-head .x{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--sp-2)}
+  .lp-head .x{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:var(--sp-2)}
+  .lp-head .x.three{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .lp-head[hidden]{display:none}
   .lp-rows{gap:0}
   .ct{min-height:40px;border:0;border-bottom:1px solid var(--border);border-radius:0;background:transparent}
   .ct:hover{background:var(--hover-faint)}
@@ -234,7 +254,7 @@ body{margin:0;background:var(--bg);color:var(--fg);font:var(--fs-base)/1.4 var(-
 """
 
 _JS = r"""
-var LP = {product: 'stocks', side: 'all', sort: 'premium', shown: PAGE_ROWS};
+var LP = {view: 'contracts', product: 'stocks', side: 'all', sort: 'premium', q: '', list: '', shown: PAGE_ROWS};
 function lpMoney(v){ if(v == null) return '–'; var a = Math.abs(v);
   if(a >= 1e9) return '$' + (v / 1e9).toFixed(1) + 'B'; if(a >= 1e6) return '$' + (v / 1e6).toFixed(1) + 'M';
   if(a >= 1e3) return '$' + Math.round(v / 1e3) + 'k'; return '$' + Math.round(v); }
@@ -263,7 +283,7 @@ function lpCard(r){
   var oiSub = r.st === 'matched' && r.chg != null ? lpSigned(r.chg) : (r.st === 'pending' ? 'next morning' : '?');
   var stats = [['Volume', lpInt(r.vol), ''], ['Open int.', r.st === 'matched' && r.next != null ? lpInt(r.next) : lpInt(r.oi), oiSub,
                 'Open interest before: ' + lpInt(r.oi)],
-               ['At ask', lpPct(r.ask), ''], ['Multi-leg', lpPct(r.multi), '']];
+               ['At ask', lpPct(r.ask), ''], ['At bid', lpPct(r.bid), ''], ['Multi-leg', lpPct(r.multi), '']];
   var flags = (r.out ? '<span class="chip warn">Beyond ±1</span>' : '') +
               (r.roll ? '<span class="chip">Possible roll ↔ ' + e(r.roll) + '</span>' : '');
   return '<article class="ct" data-sym="' + e(r.sym) + '"><div class="c-w">' + rcWatchButtons(r.t) + '</div>' +
@@ -280,18 +300,54 @@ var LP_SORTS = {
   volume: function(r){ return -(r.vol || 0); },
   change: function(r){ return r.chg == null ? Infinity : -r.chg; }  // the largest rise first, falls last
 };
-function lpSided(r){ return LP.side === 'all' || r.side === LP.side; }
-function lpVisible(){
-  var key = LP_SORTS[LP.sort] || LP_SORTS.premium;
-  return LP_DATA.rows.filter(function(r){ return r.prod === LP.product && lpSided(r); })
-    .map(function(r, i){ return [key(r), i, r]; }).sort(function(a, b){
+function lpOnList(t){
+  if(!LP.list) return true;
+  return RC_WATCH.lists.some(function(l){ return (LP.list === '*' || l.id === LP.list) && l.has[t]; });
+}
+// Side, search and "My lists" (D2 A): display filters only, the store keeps every name.
+function lpSided(r){ return (LP.side === 'all' || r.side === LP.side) && (!LP.q || r.t.indexOf(LP.q) === 0) && lpOnList(r.t); }
+function lpSorted(rows){
+  var key = LP_SORTS[LP.view === 'names' && LP.sort === 'share' ? 'premium' : LP.sort] || LP_SORTS.premium;
+  return rows.map(function(r, i){ return [key(r), i, r]; }).sort(function(a, b){
     return a[0] - b[0] || a[1] - b[1]; }).map(function(x){ return x[2]; });
+}
+function lpVisible(){ return LP_DATA.rows.filter(function(r){ return r.prod === LP.product && lpSided(r); }); }
+// "Names" (D1 A): a name's contracts folded into sums, in premium order until a sort is picked. Sums only.
+function lpNames(rows){
+  var by = {}, out = [];
+  rows.forEach(function(r){
+    var g = by[r.t];
+    if(!g){ g = by[r.t] = {t: r.t, n: 0, prem: 0, vol: 0, chg: null, read: 0, calls: 0, puts: 0, out: 0, roll: 0};
+            out.push(g); }
+    g.n++; g.prem += r.prem || 0; g.vol += r.vol || 0; g[r.side === 'C' ? 'calls' : 'puts'] += r.prem || 0;
+    if(r.st === 'matched' && r.chg != null){ g.chg = (g.chg || 0) + r.chg; g.read++; }
+    if(r.out) g.out++; if(r.roll) g.roll++;
+  });
+  return out;
+}
+function lpNameCard(g){
+  var e = rcEsc;
+  var flags = (g.out ? '<span class="chip warn">Beyond ±1 × ' + g.out + '</span>' : '') +
+              (g.roll ? '<span class="chip">Possible roll × ' + g.roll + '</span>' : '');
+  var stats = [['Volume', lpInt(g.vol), ''], ['Open int. change', g.chg == null ? '–' : (lpSigned(g.chg) || '0'),
+                g.read + ' of ' + g.n + ' read'], ['Contracts', lpInt(g.n), '']];
+  return '<article class="ct nm" data-t="' + e(g.t) + '"><div class="c-w">' + rcWatchButtons(g.t) + '</div>' +
+    '<div class="c-n"><button type="button" class="lp-open" data-t="' + e(g.t) + '" title="Show the contracts of ' +
+    e(g.t) + '">' + e(g.t) + ' ›</button><span>' + g.n + (g.n === 1 ? ' contract' : ' contracts') + '</span></div>' +
+    '<div class="c-p" title="Premium, all contracts"><b>' + lpMoney(g.prem) + '</b></div>' +
+    '<div class="c-s"><div class="note"><span>Calls ' + lpMoney(g.calls) + ' · Puts ' + lpMoney(g.puts) +
+    '</span></div></div><div class="c-x three">' + stats.map(function(s){ return '<div><small>' + s[0] +
+      '</small><b>' + e(s[1]) + '</b><em>' + e(s[2]) + '</em></div>'; }).join('') + '</div>' +
+    (flags ? '<div class="c-f">' + flags + '</div>' : '') + '</article>';
 }
 // The counts follow the side picked (R11) and the counts line the rows listed (R6), not the whole session.
 function lpCounts(rows){
   LP_COUNT = {stocks: 0, etfs: 0, index: 0};
-  LP_DATA.rows.forEach(function(r){ if(lpSided(r)) LP_COUNT[r.prod] = (LP_COUNT[r.prod] || 0) + 1; });
-  document.querySelectorAll('.lp-seg button').forEach(function(b){
+  var seen = {};
+  LP_DATA.rows.forEach(function(r){
+    if(!lpSided(r) || (LP.view === 'names' && seen[r.prod + '|' + r.t])) return;
+    seen[r.prod + '|' + r.t] = 1; LP_COUNT[r.prod] = (LP_COUNT[r.prod] || 0) + 1; });
+  document.querySelectorAll('.lp-prod button').forEach(function(b){
     b.querySelector('span').textContent = lpInt(LP_COUNT[b.getAttribute('data-product')] || 0); });
   document.getElementById('lp-index').querySelector('b').textContent = lpInt(LP_COUNT.index);
   var st = {matched: 0, pending: 0, stale: 0}, names = {};
@@ -305,23 +361,58 @@ function lpCounts(rows){
 function lpDraw(){
   var rows = lpVisible(), box = document.getElementById('lp-rows');
   lpCounts(rows);
-  box.innerHTML = rows.length ? rows.slice(0, LP.shown).map(lpCard).join('')
-    : '<div class="lp-empty">No contract in this group for this session.</div>';
+  // A search that finds nothing in the picked group but finds it in another moves there (SPY typed on Stocks).
+  if(!rows.length && LP.q){
+    var other = ['stocks', 'etfs', 'index'].filter(function(k){ return LP_COUNT[k]; })[0];
+    if(other){ LP.product = other; rows = lpVisible(); lpCounts(rows); }
+  }
+  var names = LP.view === 'names';
+  rows = lpSorted(names ? lpNames(rows) : rows);
+  document.getElementById('lp-head-c').hidden = names;
+  document.getElementById('lp-head-n').hidden = !names;
+  box.innerHTML = rows.length ? rows.slice(0, LP.shown).map(names ? lpNameCard : lpCard).join('')
+    : '<div class="lp-empty">' + (LP.q || LP.list ? 'Nothing matches the search or the list in this group.'
+                                                   : 'No contract in this group for this session.') + '</div>';
   var more = document.getElementById('lp-more');
   more.hidden = rows.length <= LP.shown;
   more.querySelector('span').textContent = 'Show more · ' + Math.min(rows.length, LP.shown) + ' of ' + rows.length;
   var idx = document.getElementById('lp-index');
   idx.hidden = LP.product === 'index' || !LP_COUNT.index;
-  document.querySelectorAll('.lp-seg button').forEach(function(b){
+  document.querySelectorAll('.lp-prod button').forEach(function(b){
     b.setAttribute('aria-pressed', b.getAttribute('data-product') === LP.product ? 'true' : 'false'); });
   rcWatchSync(box);
 }
 var LP_COUNT = {stocks: 0, etfs: 0, index: 0};
 LP_DATA.rows.forEach(function(r){ LP_COUNT[r.prod] = (LP_COUNT[r.prod] || 0) + 1; });
-document.querySelectorAll('.lp-seg button').forEach(function(b){
+document.querySelectorAll('.lp-prod button').forEach(function(b){
   b.addEventListener('click', function(){ LP.product = b.getAttribute('data-product'); LP.shown = PAGE_ROWS; lpDraw(); });
 });
 document.getElementById('lp-index').addEventListener('click', function(){ LP.product = 'index'; LP.shown = PAGE_ROWS; lpDraw(); });
+document.querySelectorAll('.lp-view button').forEach(function(b){
+  b.addEventListener('click', function(){
+    LP.view = b.getAttribute('data-view'); LP.shown = PAGE_ROWS;
+    document.querySelectorAll('.lp-view button').forEach(function(x){ x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
+    lpDraw(); });
+});
+document.getElementById('lp-q').addEventListener('input', function(ev){
+  LP.q = ev.target.value.trim().toUpperCase(); LP.shown = PAGE_ROWS; lpDraw(); });
+document.getElementById('lp-list').addEventListener('change', function(ev){ LP.list = ev.target.value; LP.shown = PAGE_ROWS; lpDraw(); });
+document.getElementById('lp-rows').addEventListener('click', function(ev){
+  var b = ev.target.closest('.lp-open');
+  if(!b) return;
+  LP.q = b.getAttribute('data-t'); document.getElementById('lp-q').value = LP.q;
+  document.querySelector('.lp-view [data-view="contracts"]').click();
+});
+// The lists come from the shared watch-list read (GET /api/watchlists) after the page loads: fill the picker then.
+function lpLists(){
+  var sel = document.getElementById('lp-list'), keep = sel.value;
+  sel.innerHTML = '<option value="">All names</option><option value="*">On any of my lists</option>' +
+    RC_WATCH.lists.map(function(l){ return '<option value="' + rcEsc(l.id) + '">' + rcEsc(l.name) + ' · ' +
+      lpInt(l.count) + '</option>'; }).join('');
+  sel.value = keep;
+}
+var lpWatchSync = rcWatchSync;
+rcWatchSync = function(root){ lpWatchSync(root); if(root === document) lpLists(); };
 document.getElementById('lp-side').addEventListener('change', function(ev){ LP.side = ev.target.value; LP.shown = PAGE_ROWS; lpDraw(); });
 document.getElementById('lp-sort').addEventListener('change', function(ev){ LP.sort = ev.target.value; lpDraw(); });
 document.getElementById('lp-more').addEventListener('click', function(){ LP.shown += PAGE_ROWS; lpDraw(); });
@@ -370,7 +461,10 @@ def render_html(data: dict) -> str:
 <header class="lp-top"><h1>LEAPS</h1><span class="sub">183+ days · $50k+ premium · every name</span>{state}</header>
 <div class="lp-controls">
 <select id="lp-session" aria-label="Session">{options}</select>
-<div class="lp-seg" role="group" aria-label="Product">
+<div class="lp-seg two lp-view" role="group" aria-label="View">
+<button type="button" data-view="contracts" aria-pressed="true">Contracts</button>
+<button type="button" data-view="names" aria-pressed="false">Names</button></div>
+<div class="lp-seg lp-prod" role="group" aria-label="Product">
 <button type="button" data-product="stocks" aria-pressed="true">Stocks<span></span></button>
 <button type="button" data-product="etfs" aria-pressed="false">ETFs<span></span></button>
 <button type="button" data-product="index" aria-pressed="false">Index<span></span></button></div>
@@ -378,13 +472,19 @@ def render_html(data: dict) -> str:
 <option value="C">Calls</option><option value="P">Puts</option></select>
 <select id="lp-sort" aria-label="Sort"><option value="premium">Sort: premium</option>
 {share_sort}<option value="volume">Sort: volume</option>
-<option value="change">Sort: open interest rise</option></select></div>
+<option value="change">Sort: open interest rise</option></select>
+<select id="lp-list" aria-label="My lists"><option value="">All names</option>
+<option value="*">On any of my lists</option></select></div>
+<input type="search" id="lp-q" placeholder="Ticker" aria-label="Search a ticker" autocomplete="off" spellcheck="false"
+ autocapitalize="characters">
 <div class="lp-counts" id="lp-counts">{counts}</div>
 </div>
-<div class="lp-table"><div class="lp-head" aria-hidden="true"><span>Watch</span><span>Contract</span>
+<div class="lp-table"><div class="lp-head" id="lp-head-c" aria-hidden="true"><span>Watch</span><span>Contract</span>
 <span>Premium</span><span>Opened share</span><span class="x"><span>Volume</span><span>Open int.</span>
-<span>At ask</span><span>Multi-leg</span></span>
-<span>Flags</span></div><div class="lp-rows" id="lp-rows"></div></div>
+<span>At ask</span><span>At bid</span><span>Multi-leg</span></span>
+<span>Flags</span></div><div class="lp-head" id="lp-head-n" aria-hidden="true" hidden><span>Watch</span><span>Name</span>
+<span>Premium</span><span>Calls · puts</span><span class="x three"><span>Volume</span><span>Open int. change</span>
+<span>Contracts</span></span><span>Flags</span></div><div class="lp-rows" id="lp-rows"></div></div>
 <button type="button" class="lp-more" id="lp-more" hidden><span></span><span aria-hidden="true">›</span></button>
 <button type="button" class="lp-index" id="lp-index" hidden><span>Index products (SPX, SPXW, RUT, VIX)</span>
 <span class="lp-muted"><b></b> ›</span></button>
