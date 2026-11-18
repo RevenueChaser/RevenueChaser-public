@@ -32,6 +32,11 @@ ROUTES = {
     "swing": "swing",
     "fundamentals": "module_fundamentals",
     "comovement": "module_comovement",
+    # avo 18 Nov 2026 ("Zamanlayiciyi kur"): the two boards that only had a dashboard button. /run/rotation also
+    # queues the Money flow refresh; /run/earnings with no dates fetches the server's today (Amsterdam), which at
+    # the timer's hour is the coming New York session.
+    "rotation": "rotation",
+    "earnings": "earnings",
 }
 
 
