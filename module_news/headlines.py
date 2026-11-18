@@ -123,12 +123,8 @@ def _move_mark(key: str, mark: dict | None, new_mark: dict | None, now: float) -
         rawstore.write_rows(META, [{"key": key, "value": json.dumps(new_mark), "run_at": now}])
 
 
-def load_tape(now: float | None = None, run_id: str | None = None) -> dict:
-    """Load the tape lines appended since the mark into ``news_headlines``. Returns ``read`` and ``stored``.
-    With no mark, only the files of the last ``WINDOW_S`` are read."""
-    now = time.time() if now is None else now
-    run_id = run_id or f"news-{int(now)}"
-    lines, mark, new_mark = _new_lines(tape.tape_dir(), TAPE_MARK_KEY, tape.day_file(now - WINDOW_S).name)
+def _tape_rows(lines: list[bytes], now: float, run_id: str) -> list[dict]:
+    """The tape lines as ``news_headlines`` rows, one a story, ``tickers`` still a list."""
     found: dict[str, dict] = {}
     for line in lines:
         try:
@@ -143,12 +139,30 @@ def load_tape(now: float | None = None, run_id: str | None = None) -> dict:
             "headline_id": story_id(text), "provider": "ibkr", "published_at": at, "headline": text,
             "source": SOURCE if str(it.get("provider", "")).startswith("DJ") else str(it.get("provider") or ""),
             "tickers": [], "url": None, "fetched_at": now, "run_id": run_id, "run_at": now})
-    rows = list(found.values())
+    return list(found.values())
+
+
+def load_tape(now: float | None = None, run_id: str | None = None) -> dict:
+    """Load the tape lines appended since the mark into ``news_headlines``. Returns ``read`` and ``stored``.
+    With no mark, only the files of the last ``WINDOW_S`` are read."""
+    now = time.time() if now is None else now
+    run_id = run_id or f"news-{int(now)}"
+    lines, mark, new_mark = _new_lines(tape.tape_dir(), TAPE_MARK_KEY, tape.day_file(now - WINDOW_S).name)
+    rows = _tape_rows(lines, now, run_id)
     _merge_tickers(rows)
     if rows:
         rawstore.write_rows(TABLE, rows)
     _move_mark(TAPE_MARK_KEY, mark, new_mark, now)
     return {"read": len(lines), "stored": len(rows)}
+
+
+def peek_tape(now: float | None = None) -> list[dict]:
+    """The tape lines the next ``load_tape`` will store, as rows, without writing anything: the page's poll shows a
+    market headline the moment the listener appends it, not at the next 5-minute pass (avo, 18 Nov 2026). Their
+    ``run_at`` is ``None``: the poll's cursor must not move past rows a running pass has not written yet."""
+    now = time.time() if now is None else now
+    lines, _, _ = _new_lines(tape.tape_dir(), TAPE_MARK_KEY, tape.day_file(now - WINDOW_S).name)
+    return [{**r, "tickers": "[]", "run_at": None} for r in _tape_rows(lines, now, "peek")]
 
 
 def load_x(now: float | None = None, run_id: str | None = None) -> dict:
