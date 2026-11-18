@@ -30,7 +30,7 @@ def _decision(html: str) -> dict:
 
 
 def test_the_quadrant_badge_takes_no_score():
-    assert list(inspect.signature(report._quadrant_badge).parameters) == ["quadrant"]
+    assert list(inspect.signature(report._quadrant_badge).parameters) == ["quadrant", "basis"]   # basis: where it was read from (7e), still no score
     assert "rotation_score" not in inspect.getsource(report)
 
 
