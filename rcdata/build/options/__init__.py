@@ -43,6 +43,10 @@ KIND = "options"
 LIST_CALLS = 11       # expiry-breakdown, the nine stats parts and flow-recent: one call each (a paged one: page 0)
 EXPIRY_CALLS = 2      # option-contracts (page 0) and greeks, per expiry
 EARNINGS_CALLS = 6    # spot exposures by strike, GEX levels, term structure, options volume, flow-recent, the tape
+# An earnings-set name's chain (avo's F2, 18 Nov 2026, for the Implied Probability board): expiry-breakdown, then
+# option-contracts for the open-interest-heaviest expiries 1 to 365 days out (no greeks: the board fits prices).
+EARNINGS_CHAIN_EXPIRIES = 12
+EARNINGS_CHAIN_DAYS = (1, 365)
 FAR_CALLS = 3         # the market's far prints (LEAPS scan): at most three pages a session
 CALENDAR_DAYS = 20    # trading days in the 28 calendar days ahead (DAYS_AHEAD), each asked twice
 PAGE_ROWS = 100       # the screener's ticker batch and the calendar's page
@@ -59,6 +63,10 @@ def list_name_calls(expiries: int, extra_pages: int = 0) -> int:
     return LIST_CALLS + EXPIRY_CALLS * expiries + extra_pages
 
 
+def earnings_name_calls(expiries: int = EARNINGS_CHAIN_EXPIRIES, extra_pages: int = 0) -> int:
+    return EARNINGS_CALLS + 1 + expiries + extra_pages
+
+
 def uw_calls_a_session(list_names: int, *, expiries: int = EXPIRIES_A_NAME,
                        extra_pages: int = EXTRA_PAGES_A_NAME, spx_calls: int = SPX_CALLS,
                        reporting_names: int = REPORTING_NAMES, earnings_names: int = EARNINGS_NAMES) -> int:
@@ -67,5 +75,5 @@ def uw_calls_a_session(list_names: int, *, expiries: int = EXPIRIES_A_NAME,
     return (list_names * list_name_calls(expiries, extra_pages) + spx_calls
             + batches                                    # the screener
             + 2 * CALENDAR_DAYS + batches                # the calendar: each day and session, and its extra pages
-            + EARNINGS_CALLS * earnings_names
+            + earnings_name_calls() * earnings_names
             + FAR_CALLS)

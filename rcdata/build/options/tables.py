@@ -121,7 +121,7 @@ OPTION_EOD = Table(
     + _doubles(CONTRACT_DOUBLES) + _counts(CONTRACT_COUNTS)
     + [("oi_change", "BIGINT"), ("charm", "DOUBLE"), ("vanna", "DOUBLE"), ("greeks_iv", "DOUBLE"),
        ("last_tape_time", "TEXT")] + PROVENANCE,
-    ("session_date", "option_symbol"), (LIST_SOURCE,), window=EOD_SESSIONS)
+    ("session_date", "option_symbol"), (LIST_SOURCE, SCREENER_SOURCE), window=EOD_SESSIONS)
 
 OPTION_STRIKE = Table(
     "option_strike",
