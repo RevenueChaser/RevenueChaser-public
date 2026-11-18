@@ -22,8 +22,8 @@ def _evil_payload() -> dict:
 def _assert_inert(html: str) -> None:
     # The page's own scripts: Plotly CDN, the shared filter kit (#383 C1b), the watch-list pair (PR 4) and the
     # board's inline block.
-    assert len(re.findall(r"<script", html, re.I)) == 4
-    assert len(re.findall(r"</script", html, re.I)) == 4
+    assert len(re.findall(r"<script", html, re.I)) == 5   # plotly, theme, filters, watchlist, the board (#1060 added the theme)
+    assert len(re.findall(r"</script", html, re.I)) == 5
     assert "<img" not in html.lower()
 
 
