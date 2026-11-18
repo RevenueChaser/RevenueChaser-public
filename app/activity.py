@@ -24,7 +24,8 @@ BY_NAME = {"RC-SPX-Gamma-Fetch": "module_spx_gamma", "RC-ValueChain-Sync": "modu
            # no table itself, so the table rule put all four under System (avo, the same day, on the Grafana Jobs
            # list: "use sub groups according to revenue chaser organization and order of the dashboards")
            "RC-Fetch-AsymmetricGrowth": "module_asymmetric_growth", "RC-Fetch-Swing": "module_swing_potential",
-           "RC-Fetch-Fundamentals": "module_fundamentals", "RC-Fetch-Co-movement": "module_comovement"}
+           "RC-Fetch-Fundamentals": "module_fundamentals", "RC-Fetch-Co-movement": "module_comovement",
+           "RC-Fetch-SectorRotation": "module_sector_rotation", "RC-Fetch-EarningsRadar": "module_earnings_radar"}
 #: The builder, the backup and the checks: they serve every board, so they are System, whatever they write.
 SYSTEM_JOBS = frozenset({"RC-Build", "RC-Backup-Weekly", "RC-Backup-Watchlists-Daily", "RC-IBKR-Login-Check",
                          "RC-SEC-Read"})

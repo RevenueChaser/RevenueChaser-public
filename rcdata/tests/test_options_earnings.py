@@ -2,7 +2,7 @@
 passes the gates and is not on the option watch list. UW is mocked at the HTTP boundary."""
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
@@ -64,9 +64,11 @@ def test_a_name_that_passes_reports_next_session_and_is_not_on_the_list_is_fetch
     row = _daily()
     assert _fetched(uw_opts) == {"GOOD"}
     asked = [p.split("/", 3)[3] for p, _ in uw_opts.calls("/stock/GOOD/")]
-    assert sorted(asked) == sorted(ER_PARTS), "spot exposures, GEX levels, term structure, volume, prints; no chain"
+    chain = ["expiry-breakdown"] + ["option-contracts"] * len(uw_opts.expiries)   # avo's F2: the chain, no greeks
+    assert sorted(asked) == sorted([*ER_PARTS, *chain]), "spot exposures, GEX levels, term structure, volume, prints"
     assert [p for p, _ in uw_opts.calls("/earnings/GOOD")] == ["/earnings/GOOD"], "the tape, once"
-    assert row["calls"] == 2 * len(uw_screener.report_days(SESSION)) + 1 + len(ER_PARTS) + 1 + 1   # tape, far
+    assert row["calls"] == (2 * len(uw_screener.report_days(SESSION)) + 1 + len(ER_PARTS) + len(chain)
+                            + 1 + 1)   # tape, far
     assert _query("SELECT ticker, report_date, report_session, option_volume, total_open_interest, gamma_flip, "
                   "call_volume, prints FROM er_options") == [("GOOD", NEXT, "premarket", 600, 5000, 102.5, 600, 50)]
     uw_opts.requests.clear()
@@ -137,3 +139,23 @@ def test_the_check_names_the_earnings_set_of_the_evening(uw_opts):
     row = _daily()
     assert f"earnings set 2/2 for {NEXT}" in row["note"] and row["next_check_due"] == NEXT.isoformat()
     assert set(tables.names_done(uw_screener.SOURCE, SESSION)) == {"GOOD", "MORE"}
+
+
+def test_an_earnings_set_name_s_chain_lands_in_option_eod(uw_opts):
+    """avo's F2 (18 Nov 2026): the Implied Probability board fits earnings-set names too, so their chain is stored
+    like a list name's, without greeks."""
+    _setup(uw_opts, GOOD=(NEXT, LIQUID))
+    _daily()
+    got = _query("SELECT ticker, count(*), count(DISTINCT expiry), min(nbbo_bid), max(charm) FROM option_eod "
+                 "GROUP BY ticker")
+    assert got == [("GOOD", len(uw_opts.expiries) * len(uw_opts.strikes) * 2, len(uw_opts.expiries), 1.1, None)]
+
+
+def test_the_earnings_chain_takes_the_12_heaviest_expiries_1_to_365_days_out():
+    def row(days, oi):
+        return {"expires": (SESSION + timedelta(days=days)).isoformat(), "open_interest": oi}
+    body = {"data": [row(0, 10**9), row(400, 10**9)] + [row(d, 100 * d) for d in range(1, 21)]}
+    got = uw_screener.chain_expiries(body, SESSION)
+    assert got == [SESSION + timedelta(days=d) for d in range(9, 21)], \
+        "same-day and over a year out are left out; the 12 with the most open interest, by date"
+    assert uw_screener.chain_expiries(None, SESSION) == []

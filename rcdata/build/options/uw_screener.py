@@ -23,7 +23,9 @@ contracts with under $50k of premium, or with no premium served, which fails the
 the gates on S and is not in the list set (SPX and the option watch list, which have their full chain), once, on
 that evening: ``spot-exposures/strike?date=S`` (paged), ``gex-levels?date=S``, ``volatility/term-structure?date=S``,
 ``options-volume?limit=5`` (the row of S), ``flow-recent`` (the newest 50 prints of S) and ``/earnings/{ticker}`` (the
-earnings tape, avo's D2): six calls a name, not the full chain (the plan: 527 names over 9 report days).
+earnings tape, avo's D2): six calls a name. Since avo's F2 (18 Nov 2026, for the Implied Probability board) also
+``expiry-breakdown?date=S`` and ``option-contracts?expiry=E`` (paged, no greeks) for the ``EARNINGS_CHAIN_EXPIRIES``
+expiries with the most open interest ``EARNINGS_CHAIN_DAYS`` out (``chain_expiries``), into ``option_eod``.
 Raw: ``raw/uw/er_options/<S>/<TICKER>.json.gz``, the name's resume marker. ``er_options``: one row per name and evening, with the report date it was fetched for, the gate
 inputs, the GEX levels and the option volume; its strikes, term structure and prints go to ``option_strike``,
 ``option_expiry`` and ``option_print`` as set ``earnings``, its tape to ``earnings_tape``.
@@ -52,7 +54,7 @@ import duckdb
 
 from ....core import calendar, config
 from .. import base
-from . import FAR_CALLS, KIND, names, rows, tables, uw
+from . import EARNINGS_CHAIN_DAYS, EARNINGS_CHAIN_EXPIRIES, FAR_CALLS, KIND, names, rows, tables, uw
 
 NAME = "uw/option_screener"
 SOURCE = tables.SCREENER_SOURCE
@@ -110,6 +112,18 @@ def calendar_names(session: date) -> dict[str, tuple[date, str, dict]]:
                            (out[ticker][0], CALENDAR_SESSIONS.index(out[ticker][1]))):
                 out[ticker] = (day, rs, item)
     return out
+
+
+def chain_expiries(breakdown, session: date) -> list[date]:
+    """The expiries of an earnings-set name's chain: ``EARNINGS_CHAIN_DAYS`` out, the ``EARNINGS_CHAIN_EXPIRIES`` with
+    the most open interest (then the nearest), by date."""
+    lo, hi = EARNINGS_CHAIN_DAYS
+    oi: dict[date, int] = {}
+    for r in uw.rows_of(breakdown):
+        e = rows.expiry_of(r) if isinstance(r, dict) else None
+        if e is not None and lo <= (e - session).days <= hi:
+            oi[e] = max(oi.get(e, 0), tables.to_int(r.get("open_interest")) or 0)
+    return sorted(sorted(oi, key=lambda e: (-oi[e], e))[:EARNINGS_CHAIN_EXPIRIES])
 
 
 def batches(names) -> list[list[str]]:
@@ -269,7 +283,12 @@ class UWOptionScreener:
                                              errors),
                     "prints": uw.get(ctx, uw.stock(ticker, "flow-recent"), None, "prints", errors),
                     "tape": uw.get(ctx, f"/earnings/{uw.uw_segment(ticker)}", None, "tape", errors),
+                    "expiry_breakdown": uw.get(ctx, uw.stock(ticker, "expiry-breakdown"), {"date": day},
+                                               "expiry_breakdown", errors),
                 }
+                parts["chain"] = {e.isoformat(): {"contracts": uw.paged(
+                    ctx, uw.stock(ticker, "option-contracts"), {"expiry": e.isoformat()}, f"contracts {e}", errors,
+                    key=lambda x: str(x["option_symbol"]))} for e in chain_expiries(parts["expiry_breakdown"], session)}
             except uw.NameFailed as e:
                 state["failed"].append(ticker)
                 ctx.issue("fetch_failed", f"{session} {ticker}", str(e)[:300])
@@ -356,7 +375,8 @@ class UWOptionScreener:
         if errors:
             issue("part_empty", f"{session} {ticker}",
                   ("UW refused, stored empty: " + "; ".join(f"{k} {v}" for k, v in sorted(errors.items())))[:300])
-        out = {"er_options": [er], "option_strike": strike, "option_expiry": expiry, "option_print": prints,
+        out = {"er_options": [er], "option_eod": rows.eod_rows(session, ticker, parts.get("chain") or {}, prov, issue),
+               "option_strike": strike, "option_expiry": expiry, "option_print": prints,
                "earnings_tape": rows.tape_rows(session, ticker, parts.get("tape"), prov)}
         return out, {"session_date": session, "ticker": ticker, "set_name": tables.SET_EARNINGS,
                      "raw_bytes": raw.stat().st_size, "calls": doc.get("calls"),

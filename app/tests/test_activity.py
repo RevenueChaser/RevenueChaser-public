@@ -32,7 +32,9 @@ def test_a_boards_own_nightly_fetch_stands_under_that_board_in_menu_order():
     got = activity.job_boards()
     by_key = {b["key"]: b["jobs"] for b in got["boards"]}
     for name, key in (("RC-Fetch-AsymmetricGrowth", "module_asymmetric_growth"), ("RC-Fetch-Swing", "module_swing_potential"),
-                      ("RC-Fetch-Fundamentals", "module_fundamentals"), ("RC-Fetch-Co-movement", "module_comovement")):
+                      ("RC-Fetch-Fundamentals", "module_fundamentals"), ("RC-Fetch-Co-movement", "module_comovement"),
+                      ("RC-Fetch-SectorRotation", "module_sector_rotation"),
+                      ("RC-Fetch-EarningsRadar", "module_earnings_radar")):
         assert name in by_key[key], name
         assert name not in by_key[activity.SYSTEM], name
         assert got["jobs"][name]["boards"] == [key]
