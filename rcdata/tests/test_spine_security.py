@@ -376,6 +376,8 @@ def test_a_dropped_cusip_is_a_build_issue_and_coming_back_resolves_it(built, mon
 
 
 def test_a_source_that_never_ran_is_one_issue_not_thousands(monkeypatch, http_mock):
+    from RevenueChaser.rcdata.build.spine import my_universe
+    monkeypatch.setattr(my_universe, "listed_etfs", dict)        # rule E's own issue is my_universe's test
     monkeypatch.setattr(sec_edgar, "SEC_WWW_BASE", "https://sec.test")
     http_mock.add("company_tickers_exchange.json", fx.SEC_FILE)
     base.run_request({"dataset": sec_tickers.NAME, "params": {"as_of": "2026-10-27"}})
