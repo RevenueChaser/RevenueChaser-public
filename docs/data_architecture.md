@@ -1033,7 +1033,7 @@ its spill peak (`base.spill_peak`, sampled every 2 s), the measure for moving th
 file, `<MARKET_DIR>/<kind>.duckdb`. The identity spine, `spine` (serving schema version `7`), is described under
 "The identity spine" below; the prices store, `prices` (serving schema version `1`), under "The prices store"
 below; the ownership store, `ownership` (serving schema version `5`), under "The ownership store" below; the
-fundamentals layer, `fundamentals` (serving schema version `3`), under "Fundamentals" after it; and the options
+fundamentals layer, `fundamentals` (serving schema version `4`), under "Fundamentals" after it; and the options
 data, `options` (serving schema version `3`), under "The options data" after it; and the SEC form reader, `sec_forms` (serving schema version `1`), under "The SEC form reader"; and the SEC reader tool, `sec_reads` (serving schema version `3`), under "The SEC reader tool" last. The eight numbers live in `rcdata/serving_versions.py`, outside the builder's rules fingerprint
 (`rcdata/build/dirty.py`), so a bump makes only its own kind's next build whole (#649). The market data,
 `market` (serving schema version `4`): `serving_schema_version` (one row: kind, version, build time, build id, build mode),
@@ -1859,7 +1859,7 @@ the period.
 **Starts by hand.** Every fundamentals dataset is not due until it has built once, as the spine's are, so the first
 hourly pass after a deploy calls no source before the attended backfill.
 
-**Served tables** (`fundamentals` serving schema version `3`):
+**Served tables** (`fundamentals` serving schema version `4`):
 
 | Table | Rows |
 |---|---|
@@ -1869,7 +1869,7 @@ hourly pass after a deploy calls no source before the attended backfill.
 | `earnings_event` | one per report: a coming one from the calendar (`confirmed` false) or one that happened (an 8-K with item 2.02, `confirmed` true, its accession kept) |
 | `earnings_reported` | one per company and reported quarter: the EPS the company itself reported as UW serves it, with UW's consensus and surprise. **Not** a `fundamental_fact` row -- it has no filing behind it, and its basis is usually the company's adjusted (non-GAAP) figure, so `source` is on every row (avo, 5 Nov 2026) |
 | `fundamental_revision` | one per Compustat value that changed between two monthly snapshots |
-| `segment_revenue` | revenue by business segment, product or country (`axis`), from the annual report's inline XBRL (its newest year) and from Compustat |
+| `segment_revenue` | revenue by business segment, product or country (`axis`), from the annual report's inline XBRL (its newest year) and from Compustat; `report_tables` (#1048, version 4): the tables of the report, as role ids of the filing's definition linkbase (`<ticker>-<date>_def.xml`, fetched beside the document, `rcdata/build/fundamentals/linkbase.py`), in which the row's member stands on the row's axis, NULL for a Compustat row and for a filing with no linkbase stored. `rcdata.read.segment_sets(rows, total)` (pure) gives the member sets one table declares together that sum to the revenue within 2% |
 | `customer_share` | a major customer's share of revenue (or of receivables, `benchmark`), from `ConcentrationRiskPercentage1` and from Compustat |
 | `estimate_latest` | the newest analyst estimates per company, ticker and period (the weekly snapshots stay in Parquet) |
 | `peer_group` | each company's 10 nearest companies on the GICS ladder (sub-industry, industry, industry group, sector), the closest annual revenue first within a rung |

@@ -70,12 +70,14 @@ REVISION = [("cik", "TEXT"), ("gvkey", "TEXT NOT NULL"), ("source", "TEXT NOT NU
 
 # Revenue by segment, product or country: the annual report's inline XBRL (``sec/filings``, its newest year) and
 # Compustat's segments (``wrds/segments``). ``document_date`` is the date of the document a value came from (the
-# SEC filing date; Compustat's ``srcdate``).
+# SEC filing date; Compustat's ``srcdate``). ``report_tables`` (fundamentals 4): the tables of the filing, as role ids
+# of its definition linkbase, in which the row's member stands on the row's axis (``linkbase.py``); NULL for
+# Compustat's rows and for a filing with no linkbase stored.
 SEGMENT_REVENUE = [("cik", "TEXT NOT NULL"), ("period_end", "DATE NOT NULL"), ("period_start", "DATE"),
                    ("axis", "TEXT NOT NULL"), ("segment", "TEXT"), ("member", "TEXT"), ("concept", "TEXT"),
                    ("value", "DOUBLE NOT NULL"), ("unit", "TEXT"), ("accession", "TEXT"), ("form", "TEXT"),
                    ("document_date", "DATE"), ("source", "TEXT NOT NULL"), ("source_as_of", "DATE"),
-                   ("fetched_at", "DOUBLE"), ("run_id", "TEXT")]
+                   ("fetched_at", "DOUBLE"), ("run_id", "TEXT"), ("report_tables", "VARCHAR[]")]
 # A major customer's share: the annual report's ConcentrationRiskPercentage1, or Compustat's customer sales over the
 # SEC's revenue of that year (``share`` NULL when there is none to divide by, or the ratio is above 1).
 CUSTOMER_SHARE = [("cik", "TEXT NOT NULL"), ("period_end", "DATE NOT NULL"), ("customer", "TEXT"),
@@ -346,12 +348,12 @@ def _segments(con: duckdb.DuckDBPyConnection, ciks=None) -> int:
     con.execute(f"""
         INSERT INTO segment_revenue
         SELECT cik, period_end, period_start, axis, segment, member, concept, value, unit, accession, form,
-               filing_date, '{filings.NAME}', source_as_of, fetched_at, run_id
+               filing_date, '{filings.NAME}', source_as_of, fetched_at, run_id, report_tables
         FROM {filings.STAGING['segments']} WHERE period_end IS NOT NULL AND value IS NOT NULL
         UNION ALL
         SELECT c.cik, w.datadate, NULL, CASE w.stype {axis} END, w.snms, w.stype || ' ' || w.sid, 'sales',
                w.sales * {wrds_fund.MILLION}, 'USD', NULL, NULL, w.srcdate, '{seg.name}', w.source_as_of,
-               w.fetched_at, w.run_id
+               w.fetched_at, w.run_id, NULL
         FROM {seg.STAGING['wrds_segmerged']} w JOIN {_links()} c ON c.gvkey = w.gvkey
         WHERE w.datadate IS NOT NULL AND w.sales IS NOT NULL AND w.stype IN
               ({", ".join(f"'{t}'" for t in sorted(wrds_fund.SEGMENT_TYPES))})""")

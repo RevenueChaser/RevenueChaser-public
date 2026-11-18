@@ -17,7 +17,7 @@ FUND = [n for n, d in DATASETS.items() if d.kind == KIND]
 
 def test_the_fundamentals_kind_is_served_at_version_3():
     """2 since ``earnings_reported`` (``uw/earnings``, avo's decision of 5 Nov 2026); 3 since the freeze of #645."""
-    assert serving.SERVING_SCHEMA_VERSION["fundamentals"] == 3 and "fundamentals" in serving.KINDS
+    assert serving.SERVING_SCHEMA_VERSION["fundamentals"] == 4 and "fundamentals" in serving.KINDS
 
 
 def test_every_fundamentals_dataset_starts_by_hand_and_the_served_tables_build_last():
