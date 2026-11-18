@@ -220,7 +220,8 @@ def scope(ctx: Any, con: duckdb.DuckDBPyConnection, rebuild_shares) -> Scope:
     served = "(SELECT DISTINCT security_id FROM price_bar_daily WHERE security_id NOT LIKE 'index:%')"
     old = _old_identity(con)
     if old is not None:
-        # Against the identity the live file was built with: a name that left loses its rows, one that joined gets
+        # Against the identity the live file was built with: a name that left (none does: ``serving._universe`` keeps
+        # every id the live file serves) would lose its rows, one that joined gets
         # its whole history, a series whose Compustat alias formed, moved or went is reloaded under both ids, and a
         # security whose PERMNO link changed has its CRSP cross-check (which splits count, ``LINKED_BY_ID``) found
         # again over its whole history.
