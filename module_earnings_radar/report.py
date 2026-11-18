@@ -1078,17 +1078,22 @@ def _badge(tone: str, label: str, extra: str = "", icon: str = "", title: str = 
     return f'<span class="{cls}"{tip}>{ic}{esc(label)}</span>'
 
 
-def _quadrant_badge(quadrant: str) -> str:
+def _quadrant_badge(quadrant: str, basis: str = "") -> str:
+    """The Rotation cell. ``basis`` ``"sector XLY"`` marks a value read off the company's sector fund (no map fund
+    holds the company) with a trailing ``·sec``; the tooltip names the fund."""
     if not quadrant:
-        return '<span class="badge bd-I tone-info" title="No map fund holds it.">N/A</span>'
+        return '<span class="badge bd-I tone-info" title="No map fund holds it, and its sector has no fund.">N/A</span>'
     lead = quadrant in ("LEADING", "IMPROVING")
     arrow = "↑" if lead else "↓"
     cls_map = {"LEADING": "bd-L", "IMPROVING": "bd-IM", "WEAKENING": "bd-W", "LAGGING": "bd-LG"}
     cls = cls_map.get(quadrant, "bd-I")
     tone = "bull" if lead else ("neutral" if quadrant == "WEAKENING" else "bear")
     label = quadrant if quadrant == "IMPROVING" else (quadrant[:4] if quadrant == "LEADING" else quadrant[:7])
-    tip = "Sector/theme relative strength quadrant (SPY-relative RS)."
-    return f'<span class="badge {cls} tone-{tone}" title="{tip}">{esc(label)} {arrow}</span>'
+    by_sector = basis.startswith("sector ")
+    tip = (f"From its sector fund {basis[7:]}: no map fund holds this company." if by_sector
+           else "From the map funds that hold this company, weighted by its share of each (SPY-relative RS).")
+    mark = '<span style="opacity:.7"> ·sec</span>' if by_sector else ""
+    return f'<span class="badge {cls} tone-{tone}" title="{esc(tip)}">{esc(label)} {arrow}{mark}</span>'
 
 
 def _conf_cell(confidence: float) -> str:
@@ -1801,7 +1806,7 @@ def export_html(cards: list, calendar_events: list[dict] = None, nrc_results: di
                 "ticker": f'<span class="ticker">{th}</span>{_hard_block_icon(card)}{excl_tag}',
                 "name": name,
                 "sector": sect,
-                "rotation": _quadrant_badge(card.rotation_quadrant),
+                "rotation": _quadrant_badge(card.rotation_quadrant, getattr(card, "rotation_basis", "")),
                 "cov": _conf_cell(card.confidence_score),
                 "bias": _bias_cell(bias_display, card.direction_score),
                 "action": (f'<span class="badge tone-{act_tone}" style="font-size:9px" title="{_action_tip(card)}">'

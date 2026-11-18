@@ -638,11 +638,12 @@ class EarningsPipeline:
         else:
             report_time_label = "—"
 
-        rotation_quadrant = ""
+        rotation_quadrant = rotation_basis = ""
         if self.etf_quadrant_map:
             if getattr(self, "_rotation_weights", None) is None:
                 self._rotation_weights = ticker_weights()
-            rotation_quadrant = get_quadrant_for_ticker(ticker, self._rotation_weights, self.etf_quadrant_map)
+            rotation_quadrant, rotation_basis = get_quadrant_for_ticker(
+                ticker, self._rotation_weights, self.etf_quadrant_map, sector)
 
         em_pct = _expected_move_pct(cal_raw, earn)
         report_date = str(cal_raw.get("earnings_date") or cal_raw.get("report_date") or earn.get("report_date") or "") or ""
@@ -849,6 +850,7 @@ class EarningsPipeline:
             "current_price": spot,
             "calendar_event": cal_raw,
             "rotation_quadrant": rotation_quadrant,
+            "rotation_basis": rotation_basis,
             "watchlist": ticker in self._watchlist,
             "agh": agh,
             "filter_status": self._filter_outcome.get(ticker, ("", []))[0],
@@ -999,6 +1001,7 @@ class EarningsPipeline:
             stock_volume=stk_vol, option_volume=opt_vol,
             market_cap=mcap, total_open_interest=oi,
             rotation_quadrant=rotation_quadrant,
+            rotation_basis=rotation_basis,
             current_price=current_price,
             gex_call_wall=_fmt_gex(gex.get("call_wall")),
             gex_put_wall=_fmt_gex(gex.get("put_wall")),

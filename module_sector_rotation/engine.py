@@ -527,19 +527,24 @@ QUADRANT_ORDER = {"LEADING": 0, "IMPROVING": 1, "WEAKENING": 2, "LAGGING": 3}
 
 
 def get_quadrant_for_ticker(ticker: str, weights: dict[str, list[tuple[str, float]]],
-                            snapshots_map: dict[str, str]) -> str:
-    """The quadrant most of ``ticker``'s map-fund weight sits in. ``weights`` is ``etf_holdings.ticker_weights()``:
-    the ticker's share of each map fund that holds it. No typed pairs (plan v5 7e, avo's D). ``""`` when no map fund
-    holds the ticker, or none of the funds that do has a quadrant: the field stays empty, no sector or SPY stand-in
-    (O2). A tie goes to the better quadrant (``QUADRANT_ORDER``)."""
+                            snapshots_map: dict[str, str], sector: str = "") -> tuple[str, str]:
+    """``(quadrant, basis)`` of a company. The quadrant most of its map-fund weight sits in, basis ``"funds"``:
+    ``weights`` is ``etf_holdings.ticker_weights()``, its share of each map fund that holds it; no typed pairs (plan
+    v5 7e, avo's D); a tie goes to the better quadrant (``QUADRANT_ORDER``). When no map fund with a quadrant holds
+    it, the quadrant of its own sector's fund (``sector`` is the spine's sector name), basis ``"sector XLY"``, so the
+    board can mark it (avo, 18 Nov 2026: 347 of 455 calendar names were empty without it). ``("", "")`` when
+    neither gives one."""
+    from RevenueChaser.core.rotation_reference import SECTOR_ETF
     votes: dict[str, float] = {}
     for etf, weight in weights.get(ticker, ()):
         q = snapshots_map.get(etf, "")
         if q:
             votes[q] = votes.get(q, 0.0) + weight
-    if not votes:
-        return ""
-    return min(votes, key=lambda q: (-votes[q], QUADRANT_ORDER.get(q, 9)))
+    if votes:
+        return min(votes, key=lambda q: (-votes[q], QUADRANT_ORDER.get(q, 9))), "funds"
+    etf = SECTOR_ETF.get(sector, "")
+    q = snapshots_map.get(etf, "")
+    return (q, f"sector {etf}") if q else ("", "")
 
 
 def rotation_quadrant_map(uw: UWClient = None, compute: bool = True,

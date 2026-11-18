@@ -1,5 +1,6 @@
 """Plan v5 step 7e: a company's rotation quadrant comes from the map funds that hold it, weighted by its share of
-each fund's newest holdings. No typed ticker or cluster pairs, and no stand-in when no map fund holds it (O2)."""
+each fund's newest holdings. No typed ticker or cluster pairs. A company no map fund holds reads its own sector's
+fund and says so (avo, 18 Nov 2026)."""
 import logging
 
 import pytest
@@ -52,17 +53,34 @@ def test_a_fund_with_no_weighted_line_is_named_and_gives_nothing(holdings, caplo
 def test_quadrant_is_where_most_of_the_weight_sits():
     w = {"AMD": [("SMH", 0.07), ("XLK", 0.01), ("SOXX", 0.05)]}
     quadrants = {"SMH": "LAGGING", "XLK": "LEADING", "SOXX": "LEADING"}
-    assert engine.get_quadrant_for_ticker("AMD", w, quadrants) == "LAGGING"
-    assert engine.get_quadrant_for_ticker("AMD", w, {**quadrants, "SMH": ""}) == "LEADING"
+    assert engine.get_quadrant_for_ticker("AMD", w, quadrants) == ("LAGGING", "funds")
+    assert engine.get_quadrant_for_ticker("AMD", w, {**quadrants, "SMH": ""}) == ("LEADING", "funds")
 
 
 def test_a_tie_goes_to_the_better_quadrant():
     w = {"X": [("A", 0.1), ("B", 0.1)]}
-    assert engine.get_quadrant_for_ticker("X", w, {"A": "LAGGING", "B": "IMPROVING"}) == "IMPROVING"
+    assert engine.get_quadrant_for_ticker("X", w, {"A": "LAGGING", "B": "IMPROVING"}) == ("IMPROVING", "funds")
 
 
-def test_a_company_no_map_fund_holds_has_no_quadrant():
-    assert engine.get_quadrant_for_ticker("ZZZZ", {}, {"SPY": "LEADING", "XLK": "LEADING"}) == ""
+def test_a_company_no_map_fund_holds_reads_its_sector_fund_and_says_so():
+    quadrants = {"SPY": "LEADING", "XLY": "WEAKENING"}
+    assert engine.get_quadrant_for_ticker("ONON", {}, quadrants, "Consumer Cyclical") == ("WEAKENING", "sector XLY")
+    held = {"ONON": [("XRT", 0.01)]}                       # held, but by a fund with no quadrant yet
+    assert engine.get_quadrant_for_ticker("ONON", held, quadrants, "Consumer Cyclical") == ("WEAKENING", "sector XLY")
+
+
+def test_no_fund_and_no_sector_is_empty_never_spy():
+    quadrants = {"SPY": "LEADING", "XLK": "LEADING"}
+    assert engine.get_quadrant_for_ticker("ZZZZ", {}, quadrants) == ("", "")
+    assert engine.get_quadrant_for_ticker("ZZZZ", {}, quadrants, "Unclassified") == ("", "")
+    assert engine.get_quadrant_for_ticker("ZZZZ", {}, {}, "Technology") == ("", "")
+
+
+def test_the_badge_marks_a_sector_reading():
+    from RevenueChaser.module_earnings_radar.report import _quadrant_badge
+    assert "·sec" in _quadrant_badge("LAGGING", "sector XLY") and "XLY" in _quadrant_badge("LAGGING", "sector XLY")
+    assert "·sec" not in _quadrant_badge("LAGGING", "funds")
+    assert "N/A" in _quadrant_badge("")
 
 
 def test_the_typed_maps_are_gone():
