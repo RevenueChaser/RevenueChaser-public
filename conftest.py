@@ -352,6 +352,32 @@ def isolate_deepseek_gate(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def empty_my_universe_manual(tmp_path_factory):
+    """A test builds My Universe from its own rows, never from the names avo added by hand in the shipped
+    ``my_universe_manual.json``: a shipped add of a ticker a fixture does not hold would be a build issue in every
+    such test. The test of the shipped file passes its path.
+
+    Three things this must not do, each seen red in CI: import the module (it froze board paths at import time, so
+    only an already imported module is patched); write into ``tmp_path`` (a test lists its own folder); ask for
+    the ``monkeypatch`` fixture (autouse fixtures run in name order, so that created it before
+    ``isolate_board_artifacts`` and a test's own path patch was undone after that fixture's, leaving a stale path).
+    """
+    import sys
+    my_universe = sys.modules.get("RevenueChaser.rcdata.build.spine.my_universe")
+    if my_universe is None:
+        yield
+        return
+    path = tmp_path_factory.mktemp("manual") / "my_universe_manual.json"
+    path.write_text('{"version": 1, "add": [], "remove": []}', encoding="utf-8")
+    mp = pytest.MonkeyPatch()
+    mp.setattr(my_universe, "MANUAL_FILE", path)
+    try:
+        yield
+    finally:
+        mp.undo()
+
+
+@pytest.fixture(autouse=True)
 def _reset_cik_map():
     """The CIK map is cached per process (#301 review MUST-2); no test may inherit another's map."""
     from RevenueChaser.core.providers import sec_edgar

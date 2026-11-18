@@ -58,6 +58,7 @@ checks). Its build is 4.4-5.8 s measured, so narrowing buys nothing and risks id
 | `index_membership` | derivation (whole) | built from the index lists and the history |
 | `etf`, `etf_holdings`, `fund` | derivation (whole) | the fund files are read whole each build |
 | `my_universe`, `my_universe_changes` | chosen list | avo's rules plus his manual removes; `serving.SHRINKS_BY_CHOICE` already treats a smaller list as intended |
+| `etf_class`, `etf_class_changes` | derivation (whole) | one row per ETF of `my_universe`, from the newest `sec/nport` Parquet quarter; the count follows `my_universe`, so `etf_class` is in `serving.SHRINKS_BY_CHOICE` |
 
 ## prices
 

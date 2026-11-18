@@ -34,12 +34,14 @@ DATASET_OF_TABLE = {"market_series": "market_series", "spx_gamma_expiry_strike":
                     "economic_event": "uw/economic_calendar",
                     "security": "spine/security", "index_membership": "funds/index_holdings",
                     "fund": "sec/company_tickers_mf", "etf_holdings": "funds/etf_holdings", "etf": "spine/security",
-                    "my_universe": "spine/security", "my_universe_changes": "spine/security"}
+                    "my_universe": "spine/security", "my_universe_changes": "spine/security",
+                    "etf_class": "spine/security", "etf_class_changes": "spine/security"}
 KIND_OF_TABLE = {"market_series": "market", "spx_gamma_expiry_strike": "market",
                  "spx_greek_expiry_strike": "market", "economic_event": "market",
                  "security": "spine",
                  "index_membership": "spine", "fund": "spine", "etf_holdings": "spine", "etf": "spine",
-                 "my_universe": "spine", "my_universe_changes": "spine"}
+                 "my_universe": "spine", "my_universe_changes": "spine",
+                 "etf_class": "spine", "etf_class_changes": "spine"}
 # The ownership store (PR 16).
 DATASET_OF_TABLE.update({"sec13f_ticker_period": "ownership/serve", "sec13f_periods": "ownership/serve",
                          "sec13f_cusip_map": "ownership/serve", "sec13f_filer_breaks": "ownership/serve",
@@ -315,6 +317,21 @@ def my_universe_spans(kinds: Iterable[str] = ()) -> list[dict]:
         elif r["change"] == "left" and ticker in stay:
             stay.pop(ticker)["left_on"] = day
     return sorted(spans, key=lambda s: (s["ticker"], s["entered_on"]))
+
+
+def etf_class(etfs: Iterable[str] = (), include_hidden: bool = True) -> list[dict]:
+    """What each ETF of ``my_universe`` is (``etf_class``, ``build/spine/etf_class.py``, #1031), by ticker; ``etfs``
+    narrows to those tickers. ``include_hidden=False`` leaves out the swap, leveraged and option-income funds
+    (``hidden_by_default``; avo's B of 17 Nov 2026: hidden on a board unless its filter is switched on). A spine
+    file built before the table existed reads as no rows."""
+    wanted = sorted({str(e).strip().upper() for e in etfs if str(e or "").strip()})
+    where = []
+    if wanted:
+        where.append(f"ticker IN ({', '.join('?' * len(wanted))})")
+    if not include_hidden:
+        where.append("NOT coalesce(hidden_by_default, false)")
+    sql = "SELECT * FROM etf_class" + (" WHERE " + " AND ".join(where) if where else "") + " ORDER BY ticker"
+    return _rows("etf_class", sql, wanted, missing_table_ok=True)
 
 
 def etf_holdings(etfs: Iterable[str]) -> list[dict]:
