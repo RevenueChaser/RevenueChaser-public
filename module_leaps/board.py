@@ -126,8 +126,9 @@ HELP = help_html(
     "more than the day's volume, which trading alone cannot do: an exercise, an adjustment or a data error.</p>"
     "<p>Contracts 183 days or more from expiry with $50k premium or more on the day, every name, from Unusual "
     "Whales. Open interest is read the next trading morning from 07:30 New York; <b>stale</b> means that read "
-    "did not line up with this session, so no share is shown. A <b>roll</b> pairs a closing contract with an "
-    "opening one of the same name and side on the same day.</p>"
+    "did not line up with this session, so no share is shown. A <b>possible roll</b> pairs a closing contract "
+    "with an opening one of the same name and side on the same day, by volume alone: two legs of a spread can "
+    "look the same.</p>"
     "<p>Not answered here: who traded, and whether the opener bought or sold. Until 20 sessions are stored "
     "and tested the board shows raw numbers only, with no ranking or label.</p>"
     "<p>There is no <b>Fetch</b> on this tab: the builder sweeps each session after the New York close and reads "
@@ -264,7 +265,7 @@ function lpCard(r){
                 'Open interest before: ' + lpInt(r.oi)],
                ['At ask', lpPct(r.ask), ''], ['Multi-leg', lpPct(r.multi), '']];
   var flags = (r.out ? '<span class="chip warn">Beyond ±1</span>' : '') +
-              (r.roll ? '<span class="chip">Roll ↔ ' + e(r.roll) + '</span>' : '');
+              (r.roll ? '<span class="chip">Possible roll ↔ ' + e(r.roll) + '</span>' : '');
   return '<article class="ct" data-sym="' + e(r.sym) + '"><div class="c-w">' + rcWatchButtons(r.t) + '</div>' +
     '<div class="c-n"><b>' + e(r.t) + '</b><span>' + e(r.con) + '</span></div>' +
     '<div class="c-p" title="Premium"><b>' + lpMoney(r.prem) + '</b></div><div class="c-s">' + mid + '</div>' +

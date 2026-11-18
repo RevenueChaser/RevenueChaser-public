@@ -219,12 +219,18 @@ def test_the_open_interest_sort_puts_the_largest_rise_first(stored):
     assert '<option value="change">Sort: open interest rise</option>' in page
 
 
-# ── Review 18 Nov 2026: R3, R6/R11 and R8 ────────────────────────────────────────────────────────────
+# ── Review 18 Nov 2026: R3, R6/R11, R8 and the "Possible roll" chip (D4 B) ───────────────────────────────────
 
 def test_the_help_gives_the_builder_s_causes_for_beyond_one():
     """R3: the builder names an exercise, an adjustment or a data error; the help no longer guesses a cause."""
     assert "an exercise, an adjustment or a data error" in board.HELP
     assert "settled into it" not in board.HELP
+
+
+def test_the_roll_chip_says_possible_roll_and_the_rule_stays():
+    """D4 B (avo, 18 Nov 09:23): the chip is renamed, the builder's rule is unchanged."""
+    assert "'<span class=\"chip\">Possible roll ↔ '" in board._JS and "\">Roll ↔ " not in board._JS
+    assert "<b>possible roll</b>" in board.HELP
 
 
 def test_a_matched_row_with_no_next_open_interest_says_not_read_not_no_volume():
