@@ -189,8 +189,8 @@ def check(uw, row: dict, now: float, px_cache: dict | None = None) -> tuple[dict
 
 def _waiting(now: float) -> list[dict]:
     rows = rawstore.query(
-        f"SELECT * FROM {TABLE} WHERE provider = ? AND kind <> 'other' AND published_at >= ? "
-        f"ORDER BY published_at DESC", [x_feed.PROVIDER, now - RECHECK_DAYS * 86400], db="news")
+        f"SELECT * FROM {TABLE} WHERE provider IN (?, ?) AND kind <> 'other' AND published_at >= ? "
+        f"ORDER BY published_at DESC", [*x_feed.X_PROVIDERS, now - RECHECK_DAYS * 86400], db="news")
     out = []
     for r in rows:
         state = json.loads(r["x_check"]) if r.get("x_check") else {}

@@ -19,7 +19,7 @@ from RevenueChaser.core.reporting_common import (FILTERS_CSS, FILTERS_JS, THEME_
                                                  provider_health_html, watchlist_html, write_artifact)
 from RevenueChaser.module_news.calendar import AMS, EVENTS, HIGHLIGHT, local_day, tr_value
 from RevenueChaser.module_news import headlines, x_check
-from RevenueChaser.module_news.x_feed import PROVIDER as X_PROVIDER
+from RevenueChaser.module_news.x_feed import X_PROVIDERS
 
 FILENAME = "news_latest.html"
 HEADLINES = "news_headlines"
@@ -54,7 +54,7 @@ def _load(now: float) -> tuple[list[dict], dict | None, list[dict], float | None
         f"SELECT * FROM {EVENTS} WHERE event_ts >= ? AND event_ts < ? AND retired_at IS NULL ORDER BY event_ts, event",
         [start.timestamp(), end.timestamp()], db="news")
     hl = rawstore.query(f"SELECT * FROM {HIGHLIGHT} WHERE session_date = ?", [today.isoformat()], db="news")
-    x = f"coalesce(provider, '') = '{X_PROVIDER}'"
+    x = f"coalesce(provider, '') IN ({', '.join(repr(p) for p in X_PROVIDERS)})"
     lanes = (f"NOT {x} AND coalesce(tickers, '[]') = '[]'", f"NOT {x} AND coalesce(tickers, '[]') <> '[]'",
              f"{x} AND coalesce(kind, '') <> 'other'")        # the X lane leaves out what Grok filed as "other"
     heads = [r for cond in lanes for r in rawstore.query(      # each lane its own newest LIMIT
@@ -122,9 +122,9 @@ def _tickers(value) -> list[str]:
 
 
 def lane(row: dict) -> str:
-    """``x`` for a tweet from the Grok X mails, ``market`` for a broad-tape headline (no ticker, #673), else
+    """``x`` for a tweet (the Grok X mails or RC's own X reader), ``market`` for a broad-tape headline (no ticker, #673), else
     ``stocks``."""
-    if row.get("provider") == X_PROVIDER:
+    if row.get("provider") in X_PROVIDERS:
         return "x"
     return "stocks" if _tickers(row.get("tickers")) else "market"
 
@@ -606,7 +606,7 @@ function tqDraw(after){
 HELP = help_html(
     "<p>ABD ekonomik takvimi (bugün ve bu hafta, saatler Amsterdam) ve izleme listesindeki ve en büyük ABD "
     "şirketlerinin Dow Jones başlıkları (<b>Hisseler</b>), IBKR'nin piyasa geneli haber akışı (<b>Piyasa</b>) ve "
-    "Grok'un saatlik X özet maillerindeki paylaşımlar (<b>X</b>; her kaydın X kimliği kendi zamanıyla doğrulanır, "
+    "Grok'un saatlik X özet maillerindeki ve RC'nin kendi X hesabının takip akışındaki paylaşımlar (<b>X</b>; her kaydın X kimliği kendi zamanıyla doğrulanır, "
     "\"diğer\" türü ve aynı kontratın tekrarları düşer). Bir opsiyon paylaşımının kontratı Unusual Whales'ta "
     "aranır (rozet: ✓ UW teyitli, ✗ UW'de yok, ◷ bekliyor; opsiyon dışı kayıtlarda ✓ X kimliği) ve kayıtlar hisseye göre gruplanır, her grubun üstünde seansın 5 dakikalık fiyatı ve tweet anları çizilir: tweet saatinin 4 saat öncesinden 15 dakika sonrasına kadar o kontratın $25 bin üstü işlemleri (adet, "
     "kontrat, prim, ask/bid tarafı) ve ertesi gün açık pozisyon (OI) değişimi gösterilir. "
@@ -656,7 +656,7 @@ def render_html(now: float | None = None, provider_health: dict | None = None) -
 </div></div>
 <div id="pg-heads" role="tabpanel" hidden>{_ticker_box()}<div class="cols">{lanes["market"]}{lanes["stocks"]}</div></div>
 <div id="pg-x" role="tabpanel" hidden>{lanes["x"]}</div>
-<p class="foot">Kaynak: takvim Unusual Whales, başlıklar Dow Jones (IBKR), X kayıtları Grok özetleri · Saatler Europe/Amsterdam · Önem: ●●● yüksek ●●○ orta ●○○ düşük</p>
+<p class="foot">Kaynak: takvim Unusual Whales, başlıklar Dow Jones (IBKR), X kayıtları Grok özetleri ve RC'nin X okuyucusu · Saatler Europe/Amsterdam · Önem: ●●● yüksek ●●○ orta ●○○ düşük</p>
 {HELP}
 </div>{watchlist_html("news")}<script>{FILTERS_JS}</script>
 <script>var NEWS_SINCE = {since!r}, HEAD_LIMIT = {HEADLINE_LIMIT}, TQ_PICK = {script_json(_picker())};{_JS}{_TQ_JS}</script>

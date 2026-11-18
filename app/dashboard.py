@@ -297,6 +297,8 @@ jobs.register("module_news", runners.run_news, ["module_news"], requires_uw=Fals
 jobs.register("news_headlines", runners.run_news_headlines, [], requires_uw=False)
 # News ticker box (plan step 3): one name's headlines from IBKR on a click; the page reads them back by GET.
 jobs.register("news_ticker", runners.run_news_ticker, [], requires_uw=False)
+# News X lane (plan step 5): RC's own X reader, queued every 30 minutes by life-rc-x-follow.timer.
+jobs.register("news_x_follow", runners.run_news_x_follow, [], requires_uw=False)
 # Welcome (decision A): store-only; builds boards/welcome.duckdb from stored inputs, then renders.
 jobs.register("module_welcome", runners.run_welcome, ["module_welcome"], requires_uw=False)
 
@@ -945,6 +947,15 @@ def run_news_ticker():
     if refused:
         return refused
     return _submit("news_ticker", {"ticker": ticker})
+
+
+@app.route("/run/news_x_follow", methods=["POST"])
+def run_news_x_follow():
+    """RC's X reader (plan step 5); the job itself decides whether a pass is due. One at a time."""
+    refused = _busy(("news_x_follow",), "The News X reader is already queued or running.")
+    if refused:
+        return refused
+    return _submit("news_x_follow", {})
 
 
 @app.route("/api/news/ticker/<ticker>")
