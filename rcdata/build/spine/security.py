@@ -28,7 +28,11 @@ names the boards use); ``industry`` is the GICS industry group's name (working c
 Whales industry text). Both feed the views only. ``gics_source`` says where they came from (``bridge_sector``): a row
 of :data:`GICS_MANUAL_FILE` (``manual``), Compustat's current GICS (``wrds/co_hgic``), or, for a name with no GICS,
 Compustat's company SIC (``sic``): a blank check or shell (:data:`SHELL_SICS`) is the ``Shell/SPAC`` bucket, a code
-of :data:`SIC_GICS` its GICS sector and group. Anything else stays ``Unclassified`` with no source. ``gsector`` and
+of :data:`SIC_GICS` its GICS sector and group; then the SEC's own SIC of the company (``sec_sic``, the submissions
+header ``sec/filings`` stores), through :data:`SIC_GICS` only. The SEC's code decides the SECTOR and nothing else:
+the type rule and the served ``sic`` column stay Compustat's, because the SEC changes a code only on request and a
+stale 6770 would type an operating company a SPAC and take it out of My Universe (avo's K5, 18 Nov 2026, and the
+plan-v4 review). Anything else stays ``Unclassified`` with no source. ``gsector`` and
 ``ggroup`` are the codes the names came from, whatever the source; ``gind``, ``gsubind`` and ``gics_from`` are
 Compustat's only, so they are NULL on a ``manual`` or ``sic`` row.
 
@@ -179,6 +183,8 @@ def sector_names(gsector, ggroup) -> tuple[str, str]:
 # ("non-operating establishments") and 6770 ("blank checks") are shells: their own bucket, not a sector.
 SHELL_SICS = frozenset({6770, 9995})
 SIC_SOURCE = "sic"
+SEC_SIC_SOURCE = "sec_sic"
+SEC_FILINGS = "sec/filings"      # its ``cik=<cik>/header.parquet`` carries the SIC the SEC assigns the company
 MANUAL_SOURCE = "manual"
 # SIC -> (GICS sector, GICS industry group) for a name with a SIC but no GICS yet. Only codes seen on such names
 # are listed, each read against the GICS 2023 structure.
@@ -188,12 +194,18 @@ SIC_GICS: dict[int, tuple[str, str]] = {
     2834: ("35", "3520"),   # pharmaceutical preparations
     2836: ("35", "3520"),   # biological products
     2890: ("15", "1510"),   # miscellaneous chemical products
+    3714: ("25", "2510"),   # motor vehicle parts and accessories
+    3721: ("20", "2010"),   # aircraft
     3841: ("35", "3510"),   # surgical and medical instruments
     4412: ("20", "2030"),   # deep-sea foreign freight transportation
+    4522: ("20", "2030"),   # air transportation, nonscheduled
+    4833: ("50", "5020"),   # television broadcasting stations
+    4899: ("50", "5010"),   # communications services, not elsewhere classified
     5600: ("25", "2550"),   # apparel and accessory stores
     6020: ("40", "4010"),   # commercial banks
     6022: ("40", "4010"),   # state commercial banks
     6036: ("40", "4010"),   # savings institutions, not federally chartered
+    6411: ("40", "4030"),   # insurance agents, brokers and service
     6726: ("40", "4020"),   # unit investment trusts, face-amount certificate offices, closed-end funds
     7372: ("45", "4510"),   # prepackaged software
     7374: ("45", "4510"),   # computer processing and data preparation
@@ -211,9 +223,21 @@ def gics_manual(path: Path | None = None) -> dict[str, dict]:
     return rows
 
 
-def bridge_sector(ticker: str, gics: dict | None, sic, manual: dict[str, dict]) -> tuple:
-    """``(sector, industry, gics_source, gsector, ggroup)``: the manual file, then Compustat's GICS, then the SIC,
-    else Unclassified. The codes are the ones the names came from (NULL for ``Shell/SPAC`` and ``Unclassified``)."""
+def sec_sic_by_cik(con: duckdb.DuckDBPyConnection) -> dict[str, str]:
+    """``cik -> SIC`` as the SEC assigns it, from every ``header.parquet`` :data:`SEC_FILINGS` wrote; empty when
+    that dataset has not run on this machine."""
+    root = base.parquet_root().joinpath(*SEC_FILINGS.split("/"))
+    if not next(root.glob("cik=*/header.parquet"), None):
+        return {}
+    cur = con.execute(f"SELECT cik, sic FROM read_parquet({base.sql_path(root / 'cik=*' / 'header.parquet')}, "
+                      "union_by_name = true, hive_partitioning = false) WHERE sic IS NOT NULL")
+    return {cik: sic for cik, sic in ((norm_cik(c), s) for c, s in cur.fetchall()) if cik}
+
+
+def bridge_sector(ticker: str, gics: dict | None, sic, manual: dict[str, dict], sec_sic=None) -> tuple:
+    """``(sector, industry, gics_source, gsector, ggroup)``: the manual file, then Compustat's GICS, then Compustat's
+    SIC, then the SEC's SIC (``sec_sic``, a sector code only: a shell code of the SEC's decides nothing), else
+    Unclassified. The codes are the ones the names came from (NULL for ``Shell/SPAC`` and ``Unclassified``)."""
     def coded(gsector, ggroup, source):
         return (*sector_names(gsector, ggroup), source, gsector, ggroup)
     m = manual.get(ticker)
@@ -226,6 +250,9 @@ def bridge_sector(ticker: str, gics: dict | None, sic, manual: dict[str, dict]) 
         return SHELL_SPAC, SHELL_SPAC, SIC_SOURCE, None, None
     if code in SIC_GICS:
         return coded(*SIC_GICS[code], SIC_SOURCE)
+    sec_code = tier_rule.sic_code(sec_sic)
+    if sec_code in SIC_GICS:
+        return coded(*SIC_GICS[sec_code], SEC_SIC_SOURCE)
     return UNCLASSIFIED, UNCLASSIFIED, None, None, None
 
 
@@ -378,7 +405,8 @@ class SpineSecurity:
     kind = KIND
     providers: tuple[str, ...] = ()
     tables = TABLES
-    parquet_reads = (etf_class.NPORT,)          # the ETFs' holdings behind ``etf_class`` (dirty.read_dirs)
+    # The ETFs' holdings behind ``etf_class``, and the SEC's SIC per company (dirty.read_dirs).
+    parquet_reads = (etf_class.NPORT, SEC_FILINGS)
     cadence = "daily"
     backfill_needs_from = False
     starts_by_hand = True             # not due until a first CLI run or Fetch built it (review should-fix 2)
@@ -438,6 +466,7 @@ class SpineSecurity:
             hgic[g["gvkey"]].append(g)
 
         manual = gics_manual()
+        sec_sic = sec_sic_by_cik(con)
         rows, linked = [], {}
         for r in sec:
             sec_row, how, problem = link(r["ticker"], r["cik"], gvkeys_of_cik, securities, tickers_of_cik)
@@ -460,7 +489,9 @@ class SpineSecurity:
             typ, typ_src = tier_rule.security_type(r["ticker"], r["name"], f_ok, (sec_row or {}).get("tpci"),
                                                     exchange=r["exchange"], sic=sic,
                                                     gsector=(g or {}).get("gsector"))
-            sector, industry, gics_src, gsector, ggroup = bridge_sector(r["ticker"], g, sic, manual)
+            # The SEC's SIC goes to the sector only; ``security_type`` above and ``sic`` below keep Compustat's.
+            sector, industry, gics_src, gsector, ggroup = bridge_sector(r["ticker"], g, sic, manual,
+                                                                        sec_sic.get(norm_cik(r["cik"])))
             from_co = gics_src == CO_HGIC.name     # a manual row's codes must not sit beside Compustat's finer ones
             isin = isin_mod.from_cusip(cusip)
             row = {
