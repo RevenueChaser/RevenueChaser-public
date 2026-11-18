@@ -52,7 +52,7 @@ ROTATION_ETFS = {
     "XBI":  {"name": "Biotechnology", "group": "theme"},
     "JETS": {"name": "Airlines", "group": "theme"},
     "KRE":  {"name": "Regional Banks", "group": "theme"},
-    # D1 (avo 17 Nov 2026): the cluster ETFs Earnings Radar names (``CLUSTER_TO_ETFS``) that were not scanned
+    # D1 (avo 17 Nov 2026): the cluster ETFs Earnings Radar named in its typed map (gone with 7e) that were not scanned
     "IHI":  {"name": "Medical Devices", "group": "theme"},
     "HACK": {"name": "Cybersecurity", "group": "theme"},
     "XHB":  {"name": "Homebuilders", "group": "theme"},

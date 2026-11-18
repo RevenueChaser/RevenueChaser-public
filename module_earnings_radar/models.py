@@ -241,3 +241,4 @@ class TradeCard:
     agh_accel: Optional[bool] = None
     agh_owners: str = ""
     agh_dilution: bool = False
+    rotation_basis: str = ""        # "funds" (the map funds that hold it), "sector XLY" (its sector's fund), or ""
