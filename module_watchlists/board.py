@@ -179,7 +179,7 @@ def fed(row: dict | None) -> str:
     return feeds if feeds in {spec["feed"] for spec in MAP_LISTS.values()} else ""
 
 
-def _class_labels(tickers: list[str]) -> dict[str, str]:
+def class_labels(tickers: list[str]) -> dict[str, str]:
     """``{ETF: "industry group · Software & Services"}``: what each fund is by its holdings (``etf_class``)."""
     out = {}
     for r in read.etf_class(tickers) if tickers else []:
@@ -249,7 +249,7 @@ def payload(list_id: str | None = None) -> dict | None:
     series = _series_numbers(sorted({p.series_id for p in parsed if p.series_id}))
     names = {r["ticker"]: r.get("name") for r in read.identity(sorted({p.ticker for p in parsed
                                                                       if p.coverage == "us_equity"}))}
-    labels = _class_labels(sorted({p.ticker for p in parsed if p.coverage == "us_equity"})) if feed else {}
+    labels = class_labels(sorted({p.ticker for p in parsed if p.coverage == "us_equity"})) if feed else {}
     sections = [{"id": s["section_id"], "name": s["name"],
                  "rows": [_row(i, equities, series, names, job=bare) for i in s["items"]]}
                 for s in whole["sections"]]

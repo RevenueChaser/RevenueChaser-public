@@ -32,3 +32,22 @@ def test_df67_a_missing_rs_prints_a_dash_not_plus_zero(tmp_path, monkeypatch, ra
     assert cell("rs_1w") == "—"
     assert cell("rs_1m") == "+0.0%"        # a real zero still prints as zero
     assert cell("rs_3m") == "+2.0%"
+
+
+def test_the_table_shows_what_a_fund_is_by_its_holdings_under_the_hand_written_name(tmp_path, monkeypatch,
+                                                                                     rawstore_tmp_db):
+    from datetime import date
+
+    from RevenueChaser.module_sector_rotation.models import ETFRotationSnapshot
+    from RevenueChaser.rcdata import read
+
+    monkeypatch.setattr(report, "OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(report, "coarse_theme_catalog", lambda: {})
+    monkeypatch.setattr(read, "etf_class", lambda etfs: [
+        {"ticker": "SMH", "primary_class": "industry_group", "code": "4530", "label": "Semiconductors <b>"}])
+    snaps = [ETFRotationSnapshot(as_of_date=date(2026, 8, 14), ticker=t, group_name=g, close_price=100.0, rs_1w=0.0,
+                                 rs_1m=0.0, rs_3m=0.0, rs_ratio=1.0, rs_momentum=1.0, rs_ratio_z=1.0,
+                                 rs_momentum_z=0.5, rrg_quadrant="LEADING") for t, g in (("SMH", "theme"), ("XLK", "sector"))]
+    html = report.export_rotation_dashboard(snaps, filename="labels.html", uw=None).read_text(encoding="utf-8")
+    assert '<div class="by-data" title="From the fund\'s holdings">industry group · Semiconductors &lt;b&gt;</div>' in html
+    assert html.count('class="by-data"') == 1, "XLK has no label in this build: no empty line"
