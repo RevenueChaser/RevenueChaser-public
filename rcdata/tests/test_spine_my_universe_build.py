@@ -26,7 +26,7 @@ GVKEYS = {"SPY": "109503", "GLD": "131855", "QYLD": "200001"}
 
 def _secd(ticker: str, sessions: int, dollars: float) -> list[dict]:
     """``sessions`` priced Compustat days of ``ticker`` whose close times volume is ``dollars`` a day."""
-    return series(GVKEYS[ticker], "01", ticker, sessions, dollars, last=date(2026, 11, 2))
+    return series(GVKEYS[ticker], "01", ticker, sessions, dollars, last=date(2026, 11, 2), cshoc=None)   # no AUM
 
 
 @pytest.fixture
