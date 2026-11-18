@@ -12,6 +12,7 @@ from RevenueChaser.app import dashboard
 from RevenueChaser.core.tests.panel_client import panel_test_client
 from RevenueChaser.module_watchlists import board, store
 from RevenueChaser.rcdata import ops, read
+from RevenueChaser.module_watchlists import store as wl_store
 
 pytestmark = pytest.mark.rawstore_schema_from_scratch
 
@@ -46,8 +47,8 @@ def test_a_job_list_id_is_one_avos_own_list_can_never_take():
 
 def test_the_job_lists_come_after_avos_own_lists_with_their_counts(no_data):
     own = store.create_list("Growth")
-    ops.watch_add("option", "NVDA", by="test")
-    ops.watch_add("option", "AMD", by="test")
+    wl_store.job_set("option", "NVDA", True, by="test")
+    wl_store.job_set("option", "AMD", True, by="test")
     lists = board.payload()["lists"]
     assert [r["id"] for r in lists][:3] == [own, "jobs.option", "jobs.stock"]     # the system lists follow (PR 3)
     assert [r["job"] for r in lists][:3] == [False, True, True]
@@ -55,7 +56,7 @@ def test_the_job_lists_come_after_avos_own_lists_with_their_counts(no_data):
 
 
 def test_a_job_list_opens_with_its_tickers_as_us_listings_in_one_unnamed_section(monkeypatch, no_data):
-    ops.watch_add("stock", "NVDA", by="test")
+    wl_store.job_set("stock", "NVDA", True, by="test")
     monkeypatch.setattr(board.read, "latest_market",
                         lambda *a, **k: {"NVDA": {"price": 110.0, "market_cap": 4.19e12}})
     data = board.payload("jobs.stock")
@@ -69,7 +70,7 @@ def test_a_job_list_opens_with_its_tickers_as_us_listings_in_one_unnamed_section
 
 def test_with_no_list_of_avos_a_filled_job_list_still_opens_the_board(no_data):
     assert board.payload() is None
-    ops.watch_add("option", "NVDA", by="test")
+    wl_store.job_set("option", "NVDA", True, by="test")
     assert board.payload()["list"]["id"] == "jobs.option"
 
 
@@ -80,7 +81,7 @@ def test_one_of_avos_lists_is_not_a_job_list(no_data):
 
 
 def test_the_page_draws_no_rename_section_or_export_control_on_a_job_list(no_data):
-    ops.watch_add("option", "NVDA", by="test")
+    wl_store.job_set("option", "NVDA", True, by="test")
     own = store.create_list("Growth")
     job_page, own_page = board.render_html(board.payload("jobs.option")), board.render_html(board.payload(own))
     assert '<main class="wl wl-job">' in job_page and '<main class="wl">' in own_page
@@ -92,7 +93,7 @@ def test_the_page_draws_no_rename_section_or_export_control_on_a_job_list(no_dat
 
 
 def test_adding_on_a_job_list_writes_the_ops_list_the_jobs_read(client):
-    ops.watch_add("option", "AMD", by="test")
+    wl_store.job_set("option", "AMD", True, by="test")
     answer = client.post("/api/watchlists/jobs.option/symbol/add", json={"symbol": "NASDAQ:NVDA", "section_id": "_"})
     assert answer.status_code == 200, answer.get_data(as_text=True)
     assert read.watched("option") == {"AMD", "NVDA"}
@@ -102,15 +103,15 @@ def test_adding_on_a_job_list_writes_the_ops_list_the_jobs_read(client):
 
 
 def test_removing_on_a_job_list_takes_the_ticker_off_the_ops_list(client):
-    ops.watch_add("stock", "NVDA", by="test")
-    ops.watch_add("stock", "AMD", by="test")
+    wl_store.job_set("stock", "NVDA", True, by="test")
+    wl_store.job_set("stock", "AMD", True, by="test")
     answer = client.post("/api/watchlists/jobs.stock/symbol/remove", json={"symbol": "NVDA"})
     assert answer.status_code == 200
     assert read.watched("stock") == {"AMD"}
 
 
 def test_a_spread_or_a_series_is_refused_on_a_job_list_and_nothing_is_written(client):
-    ops.watch_add("option", "AMD", by="test")
+    wl_store.job_set("option", "AMD", True, by="test")
     answer = client.post("/api/watchlists/jobs.option/symbol/add", json={"symbol": "TVC:US10Y-TVC:US02Y"})
     assert answer.status_code == 400
     assert answer.get_json()["error"] == "a job list takes a plain ticker"
@@ -118,7 +119,7 @@ def test_a_spread_or_a_series_is_refused_on_a_job_list_and_nothing_is_written(cl
 
 
 def test_a_job_list_cannot_be_renamed_or_deleted(client):
-    ops.watch_add("option", "AMD", by="test")
+    wl_store.job_set("option", "AMD", True, by="test")
     assert client.post("/api/watchlists/jobs.option", json={"name": "Mine"}).status_code in (400, 404)
     assert client.post("/api/watchlists/jobs.option/delete", json={}).status_code in (400, 404)
     assert read.watched("option") == {"AMD"}
@@ -127,6 +128,36 @@ def test_a_job_list_cannot_be_renamed_or_deleted(client):
 
 
 def test_a_derived_tab_answers_for_a_job_list(monkeypatch, no_data):
-    ops.watch_add("stock", "NVDA", by="test")
+    wl_store.job_set("stock", "NVDA", True, by="test")
     answer = board.columns("jobs.stock", "performance")
     assert answer is not None and answer["tab"] == "performance"
+
+
+# ── plan v5 step 7g: the two lists are rows of watchlists.duckdb, made once from the ops rows ───────────────────
+
+def test_the_seed_copies_the_ops_rows_once_and_says_the_two_sets_are_the_same():
+    for t in ("NVDA", "BRK-B", "SPY"):
+        ops.watch_add("option", t, by="leaps", note="n" if t == "SPY" else None)
+    with pytest.raises(read.JobListUnreadable):
+        read.watched("option")                                  # a job never reads "not moved yet" as no names
+    assert read.watchlists() == {"option": [], "stock": []}     # a page shows it as empty
+    first = store.seed_job_lists()
+    assert first == {"option": {"created": True, "ops": 3, "list": 3, "same": True},
+                     "stock": {"created": True, "ops": 0, "list": 0, "same": True}}
+    assert read.watched("option") == {"NVDA", "BRK-B", "SPY"} and read.watched("stock") == set()
+    spy = next(r for r in read.watchlists()["option"] if r["ticker"] == "SPY")
+    assert (spy["added_by"], spy["note"]) == ("leaps", "n")
+    assert store.get_list("jobs.option")["feeds"] == "option"
+    ops.watch_add("option", "LATE", by="leaps")                 # ops is no longer read: a second seed only compares
+    again = store.seed_job_lists()
+    assert again["option"] == {"created": False, "ops": 4, "list": 3, "same": False}
+
+
+def test_the_first_board_write_makes_the_lists_from_ops_so_no_name_is_lost(client):
+    ops.watch_add("option", "AMD", by="leaps")
+    assert client.post("/api/watchlist/option/toggle/NVDA").get_json()["on"] is True
+    assert read.watched("option") == {"AMD", "NVDA"}
+    assert sorted(store.symbols("jobs.option")) == ["AMD", "NVDA"], "the names are rows of the watch-list file"
+    assert client.post("/api/watchlist/option/toggle/AMD").get_json()["on"] is False
+    assert client.post("/api/watchlist/option/toggle/NVDA").get_json()["on"] is False
+    assert read.watched("option") == set(), "the option list may be emptied: no name is avo's choice"

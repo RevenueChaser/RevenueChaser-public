@@ -204,21 +204,26 @@ def spx_greek_expiry_strike(session_date, min_dte: int = 0, max_dte: int = 3_650
 
 
 def watchlists() -> dict[str, list[dict]]:
-    """The two watch lists (D2) from ``ops.sqlite``: ``{"option": rows, "stock": rows}``, each by ticker, a row
-    ``{ticker, added_at, added_by, note}``. Operational state, not market data: no provenance and no ``status``. No
-    ops file yet reads as two empty lists. The read itself never creates it; the read log it counts into is
-    written to ops.sqlite once a minute (``ops.ReadLog``), and that flush does, as for every read here."""
+    """The two lists the jobs read (D2), for a page: ``{"option": rows, "stock": rows}``, each by ticker, a row
+    ``{ticker, added_at, added_by, note}``. Operational state, not market data: no provenance and no ``status``.
+    They live in ``boards/watchlists.duckdb`` as the lists marked ``option`` and ``stock`` (plan v5 step 7g; avo,
+    18 Nov 2026: "listeni tek bir kaynaktan almalisin"). A page shows an unreadable list as empty; a job never
+    calls this, it calls :func:`watched`, which raises."""
     out = {}
     for kind in ops.WATCH_KINDS:
         ops.read_log.bump(f"watchlist_{kind}")
-        out[kind] = ops.watch_rows(kind)
+        try:
+            out[kind] = _job_items(kind)
+        except JobListUnreadable:
+            out[kind] = []
     return out
 
 
 def watched(kind: str) -> set[str]:
-    """The tickers of one watch list (``option`` or ``stock``), for a board that only asks "is it on the list"."""
+    """The tickers of one job list (``option`` or ``stock``): the one accessor a job and a board use. Strict
+    (:func:`job_list`): an unreadable list raises :class:`JobListUnreadable`, it is never an empty set."""
     ops.read_log.bump(f"watchlist_{kind}")
-    return {r["ticker"] for r in ops.watch_rows(kind)}
+    return set(job_list(kind))
 
 
 class JobListUnreadable(RuntimeError):
@@ -240,6 +245,12 @@ def job_list(feeds: str) -> list[str]:
     refused during 40 page loads, 20 of 20 open when idle). ``connect`` applies no schema, and the file is checked
     first because a read-write open would create it.
     """
+    return sorted({r["ticker"] for r in _job_items(feeds)})
+
+
+def _job_items(feeds: str) -> list[dict]:
+    """The rows behind :func:`job_list`, by ticker: ``{ticker, added_at, added_by, note}``. A bare ticker (no
+    exchange prefix, what a board's button writes to a job list) counts beside a ``us_equity`` spelling."""
     import duckdb
 
     from ..core import rawstore
@@ -250,12 +261,16 @@ def job_list(feeds: str) -> list[str]:
         with rawstore.connect(read_only=True, db="watchlists") as con:
             if not con.execute("SELECT 1 FROM wl_list WHERE feeds = ?", [feeds]).fetchone():
                 raise JobListUnreadable(f"{path.name}: no list is marked for {feeds!r}")
-            rows = con.execute("SELECT DISTINCT i.ticker FROM wl_item i JOIN wl_list l USING (list_id) "
-                               "WHERE l.feeds = ? AND i.ticker IS NOT NULL AND i.coverage = 'us_equity' ORDER BY 1",
-                               [feeds]).fetchall()
+            rows = con.execute(
+                "SELECT i.ticker, min(i.added_at), any_value(i.added_by), any_value(i.note) "
+                "FROM wl_item i JOIN wl_list l USING (list_id) WHERE l.feeds = ? AND i.ticker <> '' "
+                # shortcut: a bare ``A-B`` reads as one ticker (BRK-B is on the option list), split it when a
+                # marked list ever holds a bare spread
+                "AND (i.coverage = 'us_equity' OR (i.exchange = '' AND i.ticker NOT LIKE '%/%')) "
+                "GROUP BY 1 ORDER BY 1", [feeds]).fetchall()
     except (duckdb.Error, rawstore.RawStoreError) as e:
         raise JobListUnreadable(f"{path.name}: {type(e).__name__}: {str(e)[:200]}") from e
-    return [r[0] for r in rows]
+    return [dict(zip(("ticker", "added_at", "added_by", "note"), r)) for r in rows]
 
 
 # ── The identity spine (PR 5) ─────────────────────────────────────────────────────────────────────────────────

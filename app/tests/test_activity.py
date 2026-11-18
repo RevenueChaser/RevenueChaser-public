@@ -6,6 +6,7 @@ import pytest
 from RevenueChaser.app import activity
 from RevenueChaser.app.dashboard import app
 from RevenueChaser.core.tests.panel_client import panel_test_client
+from RevenueChaser.rcdata import read as wl_read
 
 
 @pytest.fixture()
@@ -62,7 +63,7 @@ def test_add_never_removes_and_remove_never_adds(client):
     r = client.post("/api/watchlist/option/add/nvda").get_json()
     assert r["ok"] and r["added"] is True and r["ticker"] == "NVDA"
     assert client.post("/api/watchlist/option/add/NVDA").get_json()["added"] is False
-    assert [w["ticker"] for w in ops.watch_rows("option")] == ["NVDA"], "a second Add keeps the name"
+    assert [w["ticker"] for w in wl_read.watchlists()["option"]] == ["NVDA"], "a second Add keeps the name"
     assert client.post("/api/watchlist/nope/add/NVDA").status_code == 404
     assert client.post("/api/watchlist/option/add/bad%20t").status_code == 400
 

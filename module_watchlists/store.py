@@ -4,7 +4,7 @@ database ihtiyacin var, duckdb onerim").
 The one module that writes the file. Four tables (``core/rawstore.py`` MANIFEST, ``"db": "watchlists"``):
 
 - ``wl_list``: one row per list — its name, avo's free-text description, where it sits in the list of lists, and
-  ``feeds``, which job group it serves (empty for now; the jobs still read ``ops.sqlite``'s two lists).
+  ``feeds``, which job group it serves (``option`` and ``stock`` since plan v5 step 7g; empty for avo's own).
 - ``wl_section``: the ordered headings inside a list (avo's own, e.g. "AI ÇIPLERI — GPU VE ACCELERATOR").
   A list with no headings has one section whose name is empty, so a reader never special-cases "no sections".
 - ``wl_item``: one row per symbol on a list, in its section, at its position, with avo's spelling kept
@@ -26,6 +26,7 @@ clash gets a numeric suffix.
 """
 from __future__ import annotations
 
+import threading
 import logging
 import re
 import time
@@ -353,14 +354,15 @@ def add_symbol(list_id: str, symbol: str, *, section_id: str = DEFAULT_SECTION, 
     return True
 
 
-def remove_symbol(list_id: str, symbol: str, *, by: str = "avo") -> bool:
+def remove_symbol(list_id: str, symbol: str, *, by: str = "avo", may_empty: bool = False) -> bool:
     """Take one symbol off a list. False when it was not there. The last symbol of a list a job reads stays:
-    an emptied list would read to the job as "fetch nothing" (plan v5 step 7c)."""
+    an emptied list would read to the job as "fetch nothing" (plan v5 step 7c). ``may_empty`` is for the option
+    and stock lists, where no name at all is avo's choice (the stock list was empty on 17 Nov 2026)."""
     parsed = symbols_mod.parse(symbol)
     if not _query(f"SELECT 1 AS x FROM {ITEMS} WHERE list_id = ? AND symbol = ?", [list_id, parsed.raw]):
         return False
     feeds = (get_list(list_id) or {}).get("feeds")
-    if feeds and len(symbols(list_id)) == 1:
+    if feeds and not may_empty and len(symbols(list_id)) == 1:
         raise WatchlistError(f"{parsed.raw!r} is the last symbol of a list the {feeds!r} jobs read")
     rawstore.execute(f"DELETE FROM {ITEMS} WHERE list_id = ? AND symbol = ?", [list_id, parsed.raw], db=DB)
     _record(list_id, parsed.raw, "remove", by, None)
@@ -385,6 +387,73 @@ def delete_list(list_id: str, *, by: str = "avo") -> bool:
     for symbol in held:
         _record(list_id, symbol, "remove", by, "list deleted")
     return True
+
+
+def job_list_id(kind: str) -> str | None:
+    """The id of the list the ``kind`` jobs read (``wl_list.feeds``), the first by position; None when no list is
+    marked yet."""
+    rows = _query(f"SELECT list_id FROM {LISTS} WHERE feeds = ? ORDER BY position, list_id LIMIT 1", [kind])
+    return rows[0]["list_id"] if rows else None
+
+
+def seed_job_lists(*, by: str = "seed") -> dict[str, dict]:
+    """Make the option and stock lists from ``ops.sqlite``'s rows, once (plan v5 step 7g; avo, 18 Nov 2026:
+    "listeni tek bir kaynaktan almalisin"): a list already marked for a kind is left as it is.
+    ``{kind: {created, ops, list, same}}``; ``same`` says the marked list holds exactly the tickers ops holds, which
+    is what the switch is checked by."""
+    from ..rcdata import ops, read
+    from .board import JOB_LISTS
+    out = {}
+    for list_id, spec in JOB_LISTS.items():
+        kind, rows = spec["kind"], ops.watch_rows(spec["kind"])
+        created = job_list_id(kind) is None
+        if created:
+            create_list(spec["name"], description=spec["description"], by=by, feeds=kind, list_id=list_id)
+            for r in rows:
+                add_symbol(list_id, r["ticker"], by=r.get("added_by") or by, note=r.get("note"))
+        was, now = {r["ticker"] for r in rows}, read.watched(kind)
+        out[kind] = {"created": created, "ops": len(was), "list": len(now), "same": was == now}
+    return out
+
+
+def _job_tickers(list_id: str) -> dict[str, str]:
+    return {str(i.get("ticker") or "").upper(): i["symbol"] for i in items(list_id)}
+
+
+#: One job-list write at a time in this process: the dashboard's request threads share the file, and a toggle is a
+#: read then a write (two clicks that race must flip in turn, and the first write of all makes the list once).
+_JOB_LOCK = threading.RLock()
+
+
+def _job_list(kind: str, by: str) -> str:
+    """The id of the ``kind`` job list. The first write makes it from the ``ops.sqlite`` rows
+    (:func:`seed_job_lists`), never as a new list of one name: that would read to the job as its whole list."""
+    list_id = job_list_id(kind)
+    if list_id is None:
+        seed_job_lists(by=by)
+        list_id = job_list_id(kind)
+    if list_id is None:
+        raise WatchlistError(f"no watch list for the {kind!r} jobs")
+    return list_id
+
+
+def job_set(kind: str, ticker: str, on: bool, *, by: str) -> bool:
+    """Put the bare ``ticker`` on the list the ``kind`` jobs read, or take it off: a board button's write (plan v5
+    step 7g). True when a row was written."""
+    with _JOB_LOCK:
+        list_id = _job_list(kind, by)
+        ticker, held = (ticker or "").strip().upper(), _job_tickers(list_id)
+        if on:
+            return ticker not in held and add_symbol(list_id, ticker, by=by)
+        return ticker in held and remove_symbol(list_id, held[ticker], by=by, may_empty=True)
+
+
+def job_toggle(kind: str, ticker: str, *, by: str) -> bool:
+    """Flip ``ticker`` on the ``kind`` job list; whether it is on the list now."""
+    with _JOB_LOCK:
+        on = (ticker or "").strip().upper() not in _job_tickers(_job_list(kind, by))
+        job_set(kind, ticker, on, by=by)
+        return on
 
 
 def move_symbol(list_id: str, symbol: str, *, section_id: str, position: int | None = None) -> None:

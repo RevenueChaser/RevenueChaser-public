@@ -1,6 +1,6 @@
 """The LEAPS pin's watchlist toggle writes one ticker and leaves a change row per click (#306, D36).
 
-Since PR 4 the route toggles the stock watch list in ops.sqlite; its history is ``watchlist_stock_changes``.
+The route toggles the stock job list (``watchlists.duckdb`` since plan v5 step 7g); its history is ``wl_change``.
 """
 from __future__ import annotations
 
@@ -10,6 +10,8 @@ from RevenueChaser.app import dashboard
 from RevenueChaser.core import rawstore
 from RevenueChaser.core.tests.panel_client import panel_test_client
 from RevenueChaser.rcdata import ops
+from RevenueChaser.module_watchlists import store as wl_store
+from RevenueChaser.rcdata import read as wl_read
 
 
 @pytest.fixture
@@ -19,7 +21,7 @@ def client():
 
 
 def _actions(ticker: str) -> list[str]:
-    return [r["action"] for r in ops.rows("watchlist_stock_changes") if r["ticker"] == ticker]
+    return [r["action"] for r in reversed(wl_store.changes("jobs.stock")) if r["symbol"] == ticker]
 
 
 def test_off_then_on_in_one_session_keeps_both_rows(client):
@@ -31,11 +33,11 @@ def test_off_then_on_in_one_session_keeps_both_rows(client):
 
 def test_a_toggle_on_a_stale_read_keeps_a_ticker_added_meanwhile(client, monkeypatch):
     """Two clicks race: the other request added BBB after this one read the list. Only AAA may move."""
-    ops.watch_add("stock", "BBB", by="leaps")
+    wl_store.job_set("stock", "BBB", True, by="leaps")
     monkeypatch.setattr(rawstore, "load_watchlist", lambda: set())
     r = client.post("/api/watchlist/toggle/AAA")
     assert r.get_json() == {"ok": True, "ticker": "AAA", "in_watchlist": True}
-    assert ops.watch_list("stock") == ["AAA", "BBB"]
+    assert [r["ticker"] for r in wl_read.watchlists()["stock"]] == ["AAA", "BBB"]
     assert _actions("BBB") == ["add"]
 
 

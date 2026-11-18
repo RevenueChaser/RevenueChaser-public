@@ -11,6 +11,7 @@ from RevenueChaser.app import dashboard
 from RevenueChaser.core import rawstore
 from RevenueChaser.core.tests.panel_client import panel_test_client
 from RevenueChaser.rcdata import ops
+from RevenueChaser.rcdata import read as wl_read
 
 # Each is refused by _valid_ticker: markup, a quote that would end an attribute, a path, a space, too long, empty-ish.
 HOSTILE = ["<script>", "A\"B", "A'B", "..", "A B", "ABCDEFGHIJK", "-AAA", "A%3CB", "A&B", "A;B"]
@@ -23,7 +24,8 @@ def client():
 
 
 def _history(kind: str) -> list[tuple]:
-    return [(r["ticker"], r["action"], r["by"]) for r in ops.rows(f"watchlist_{kind}_changes")]
+    from RevenueChaser.module_watchlists import store
+    return [(r["symbol"], r["action"], r["changed_by"]) for r in reversed(store.changes(f"jobs.{kind}"))]
 
 
 @pytest.mark.parametrize("kind", ["option", "stock"])
@@ -31,7 +33,7 @@ def test_toggle_puts_a_ticker_on_and_off_one_list_with_the_board_as_by(client, k
     other = "stock" if kind == "option" else "option"
     r = client.post(f"/api/watchlist/{kind}/toggle/nvda", headers={"X-RC-Panel": "sec_13f"})
     assert r.status_code == 200 and r.get_json() == {"ok": True, "list": kind, "ticker": "NVDA", "on": True}
-    assert ops.watch_rows(kind)[0]["added_by"] == "sec_13f" and ops.watch_list(other) == []
+    assert wl_read.watchlists()[kind][0]["added_by"] == "sec_13f" and [r["ticker"] for r in wl_read.watchlists()[other]] == []
     assert client.post(f"/api/watchlist/{kind}/toggle/NVDA").get_json()["on"] is False
     assert _history(kind) == [("NVDA", "add", "sec_13f"), ("NVDA", "remove", "test")]
 
@@ -71,20 +73,20 @@ def test_without_the_panel_header_nothing_is_written():
 def test_the_old_route_toggles_the_stock_list_and_answers_in_watchlist(client):
     r = client.post("/api/watchlist/toggle/aaa", headers={"X-RC-Panel": "leaps"})
     assert r.get_json() == {"ok": True, "ticker": "AAA", "in_watchlist": True}
-    assert ops.watch_list("stock") == ["AAA"] and ops.watch_list("option") == []
+    assert [r["ticker"] for r in wl_read.watchlists()["stock"]] == ["AAA"] and [r["ticker"] for r in wl_read.watchlists()["option"]] == []
     assert client.post("/api/watchlist/toggle/AAA", headers={"X-RC-Panel": "leaps"}).get_json()["in_watchlist"] is False
     assert _history("stock") == [("AAA", "add", "leaps"), ("AAA", "remove", "leaps")]
 
 
 def test_rawstore_watchlist_accessors_are_the_stock_list():
     assert rawstore.toggle_watchlist("aaa", by="leaps") is True
-    assert rawstore.load_watchlist() == {"AAA"} == set(ops.watch_list("stock"))
+    assert rawstore.load_watchlist() == {"AAA"} == set([r["ticker"] for r in wl_read.watchlists()["stock"]])
     rawstore.save_watchlist({"BBB", "CCC"})
     assert rawstore.load_watchlist() == {"BBB", "CCC"}
     assert _history("stock")[1:] == [("AAA", "remove", "save_watchlist"), ("BBB", "add", "save_watchlist"),
                                      ("CCC", "add", "save_watchlist")]
     rawstore.save_watchlist(set())
-    assert rawstore.load_watchlist() == set() and ops.watch_list("option") == []
+    assert rawstore.load_watchlist() == set() and [r["ticker"] for r in wl_read.watchlists()["option"]] == []
 
 
 def test_the_lists_read_is_both_tickers_lists_and_never_creates_the_file(client):
@@ -104,7 +106,7 @@ def test_remove_takes_a_name_off_and_never_adds_it(client):
     r = client.post("/api/watchlist/option/remove/nvda", headers={"X-RC-Panel": "settings"})
     assert r.get_json() == {"ok": True, "list": "option", "ticker": "NVDA", "removed": True}
     again = client.post("/api/watchlist/option/remove/NVDA", headers={"X-RC-Panel": "settings"})
-    assert again.get_json()["removed"] is False and ops.watch_list("option") == []
+    assert again.get_json()["removed"] is False and [r["ticker"] for r in wl_read.watchlists()["option"]] == []
     assert _history("option") == [("NVDA", "add", "leaps"), ("NVDA", "remove", "settings")]
 
 

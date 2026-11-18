@@ -24,6 +24,39 @@ def market_roots(tmp_path, monkeypatch):
     return ssd, hdd
 
 
+@pytest.fixture(scope="session")
+def job_lists_file(tmp_path_factory):
+    """A ``watchlists.duckdb`` holding the two job lists, both empty, made once per process through the store."""
+    from RevenueChaser.core import rawstore
+    from RevenueChaser.module_watchlists import store
+    root, mp = tmp_path_factory.mktemp("job-lists"), pytest.MonkeyPatch()
+    mp.setattr(rawstore, "STORE_DIR", root)
+    try:
+        store.seed_job_lists(by="test")
+    finally:
+        mp.undo()
+    return root / rawstore.BOARDS_DIRNAME / "watchlists.duckdb"
+
+
+#: Test files that start with no watch-list file at all: they test its absence or the board files' backup.
+NO_JOB_LISTS = ("test_ops_watchlists", "test_backup")
+
+
+@pytest.fixture(autouse=True)
+def job_lists(request, job_lists_file, isolate_rawstore):
+    """The option and stock lists exist, empty, as on a seeded server (plan v5 step 7g): a build reads them through
+    the strict ``read.watched``, which raises when there is no list, so a build test would otherwise fail on a
+    missing file it does not care about. A copy of a file, not two store writes per test."""
+    if request.module.__name__.rpartition(".")[2] in NO_JOB_LISTS:
+        return
+    import shutil
+
+    from RevenueChaser.core import rawstore
+    dest = isolate_rawstore / rawstore.BOARDS_DIRNAME / job_lists_file.name
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy(job_lists_file, dest)
+
+
 @pytest.fixture(autouse=True)
 def no_backoff_wait(monkeypatch):
     """``run_request`` waits on the real clock between HTTP retries (2 s, then 4 s): a test of a failing source slept

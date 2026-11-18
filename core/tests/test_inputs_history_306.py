@@ -14,6 +14,7 @@ import pytest
 from RevenueChaser.core import board_settings as bs
 from RevenueChaser.core import rawstore
 from RevenueChaser.module_comovement import config
+from RevenueChaser.rcdata import read as wl_read
 
 B = "module_comovement"
 
@@ -22,9 +23,9 @@ B = "module_comovement"
 # Since PR 4 the toggle is the stock watch list's, in ops.sqlite, and its history is ``watchlist_stock_changes``
 # (one add / remove row per flip, ordered by ``id``); the guarantees these tests pin are the same.
 def _stock_history(ticker: str | None = None) -> list[tuple]:
-    from RevenueChaser.rcdata import ops
-    return [(r["ticker"], r["action"]) for r in ops.rows("watchlist_stock_changes")
-            if ticker is None or r["ticker"] == ticker]
+    from RevenueChaser.module_watchlists import store
+    return [(r["symbol"], r["action"]) for r in reversed(store.changes("jobs.stock", limit=10_000))
+            if ticker is None or r["symbol"] == ticker]
 
 
 def _stock_history_equals_list() -> bool:
@@ -33,7 +34,7 @@ def _stock_history_equals_list() -> bool:
     state: dict[str, bool] = {}
     for t, action in _stock_history():
         state[t] = action == "add"
-    return {t for t, on in state.items() if on} == set(ops.watch_list("stock"))
+    return {t for t, on in state.items() if on} == set([r["ticker"] for r in wl_read.watchlists()["stock"]])
 
 
 def test_toggle_adds_then_removes_and_says_which():

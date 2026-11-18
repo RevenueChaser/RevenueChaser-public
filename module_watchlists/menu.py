@@ -1,8 +1,7 @@
 """The "add to list" menu every other board carries (#786 step 5).
 
 One button beside a ticker opens a menu of every watch list: avo's own named lists (``boards/watchlists.duckdb``)
-and the two lists the jobs read (``ops.sqlite``, shown on the Watch lists board as ``jobs.option`` and
-``jobs.stock``). Ticking a row puts the ticker on that list, unticking takes it off.
+and the two lists the jobs read (the same file, marked for the jobs: ``jobs.option`` and ``jobs.stock``). Ticking a row puts the ticker on that list, unticking takes it off.
 
 A board knows a plain ticker (``NVDA``); avo's lists hold TradingView spellings (``NASDAQ:NVDA``). So:
 
@@ -15,13 +14,13 @@ A board knows a plain ticker (``NVDA``); avo's lists hold TradingView spellings 
   A ticker the spine does not know is refused rather than stored as a symbol with no source;
 - **removing** takes off every US listing of that ticker on the list, so an untick never leaves the box ticked.
 
-The two job lists keep their own rules: a bare ticker, written through ``rcdata.ops``, exactly as the old
+The two job lists keep their own rules: a bare ticker (``store.job_set``), exactly as the old
 Stock / Option pair did. What the options build, LEAPS and Earnings read is unchanged.
 """
 from __future__ import annotations
 
 from RevenueChaser.module_watchlists import board, store, symbols
-from RevenueChaser.rcdata import ops, read
+from RevenueChaser.rcdata import read
 
 #: The menu's two groups, in the order it draws them.
 OWN, JOBS = "Your lists", "Read by the jobs"
@@ -48,7 +47,7 @@ def lists() -> list[dict]:
     """
     out = [{"id": row["list_id"], "name": row["name"], "group": OWN, "job": False,
             "count": int(row.get("symbol_count") or 0), "tickers": _own_tickers(row["list_id"])}
-           for row in store.lists()]
+           for row in store.lists() if row["list_id"] not in board.JOB_LISTS]
     both = read.watchlists()
     for list_id, spec in board.JOB_LISTS.items():
         tickers = [r["ticker"] for r in both.get(spec["kind"]) or []]
@@ -73,7 +72,7 @@ def is_on(list_id: str, ticker: str) -> bool:
     t = (ticker or "").strip().upper()
     kind = board.job_kind(list_id)
     if kind:
-        return t in read.watched(kind)
+        return t in {r["ticker"] for r in read.watchlists()[kind]}
     return t in _own_tickers(list_id)
 
 
@@ -85,7 +84,10 @@ def set_on(list_id: str, ticker: str, on: bool, *, by: str) -> bool:
     t = (ticker or "").strip().upper()
     kind = board.job_kind(list_id)
     if kind:
-        (ops.watch_add if on else ops.watch_remove)(kind, t, by=by)
+        try:
+            store.job_set(kind, t, on, by=by)
+        except store.WatchlistError as exc:
+            raise MenuError(str(exc)) from exc
         return on
     if store.get_list(list_id) is None:
         raise MenuError(f"no watch list {list_id!r}")

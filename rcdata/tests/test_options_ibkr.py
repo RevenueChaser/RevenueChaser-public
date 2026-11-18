@@ -13,6 +13,7 @@ from RevenueChaser.rcdata import ops, serving
 from RevenueChaser.rcdata.build import base
 from RevenueChaser.rcdata.build.options import ibkr_iv, uw_list
 from RevenueChaser.core.providers import ibkr_tws as ibkr
+from RevenueChaser.module_watchlists import store as wl_store
 
 from .ibkr_fixture import ACCOUNT_PLACEHOLDER, FakeGateway
 from .options_fixture import SESSION, UWOptions
@@ -85,11 +86,11 @@ def test_a_gateway_that_is_not_listening_is_a_tws_error(gateway):
 # ── the dataset ────────────────────────────────────────────────────────────────────────────────────────────────
 
 def test_a_name_added_to_the_list_gets_its_year_once(gateway):
-    ops.watch_add("option", "AAPL", by="test")
+    wl_store.job_set("option", "AAPL", True, by="test")
     row = _run()
     assert [r[3] for r in gateway.history_requests()] == ["SPX", "AAPL"] and row["calls"] == 2
     assert row["coverage"] == 1.0
-    ops.watch_add("option", "MSFT", by="test")
+    wl_store.job_set("option", "MSFT", True, by="test")
     gateway.sent.clear()
     row = _run()
     assert [r[3] for r in gateway.history_requests()] == ["MSFT"] and row["calls"] == 1
@@ -125,7 +126,7 @@ def test_the_gateway_down_while_names_are_missing_fails_the_check(gateway):
 
 def test_requests_are_paced_at_six_a_minute(gateway):
     for i in range(7):
-        ops.watch_add("option", f"N{i}", by="test")
+        wl_store.job_set("option", f"N{i}", True, by="test")
     now = [0.0]
     slept = []
 
@@ -141,7 +142,7 @@ def test_a_60_name_list_gets_every_iv_year_in_one_run(gateway):
     """IBKR publishes no day quota (master plan Order 5, rule 3), so ``ibkr`` has no day cap and 60 names are 61 calls."""
     from RevenueChaser.rcdata import caps
     for i in range(60):
-        ops.watch_add("option", f"N{i}", by="test")
+        wl_store.job_set("option", f"N{i}", True, by="test")
     now = [0.0]
 
     def sleep(s):
@@ -152,7 +153,7 @@ def test_a_60_name_list_gets_every_iv_year_in_one_run(gateway):
 
 
 def test_no_data_for_a_name_is_kept_once_with_an_issue(gateway):
-    ops.watch_add("option", "NODATA", by="test")
+    wl_store.job_set("option", "NODATA", True, by="test")
     gateway.errors["NODATA"] = (162, "Historical Market Data Service error message:HMDS query returned no data")
     row = _run()
     assert row["coverage"] == 1.0 and ibkr_iv.raw_path("NODATA").exists()

@@ -13,6 +13,7 @@ from RevenueChaser.app import dashboard
 from RevenueChaser.core.tests.panel_client import panel_test_client
 from RevenueChaser.module_watchlists import menu, store
 from RevenueChaser.rcdata import ops, read
+from RevenueChaser.module_watchlists import store as wl_store
 
 pytestmark = pytest.mark.rawstore_schema_from_scratch
 
@@ -36,7 +37,7 @@ def test_the_menu_offers_avos_lists_first_then_the_two_job_lists_with_their_us_t
     store.add_symbol(growth, "NASDAQ:NVDA")
     store.add_symbol(growth, "TVC:US10Y")          # a series: counted in the size, never matched to a ticker
     store.add_symbol(growth, "BIST:THYAO")         # unsupported: the same
-    ops.watch_add("option", "AMD", by="test")
+    wl_store.job_set("option", "AMD", True, by="test")
     lists = menu.lists()
     assert [(r["id"], r["group"], r["job"]) for r in lists] == [
         (growth, menu.OWN, False), ("jobs.option", menu.JOBS, True), ("jobs.stock", menu.JOBS, True)]
@@ -99,7 +100,7 @@ def test_the_job_lists_are_written_through_ops_as_the_pair_did(spine):
 def test_the_lists_route_carries_the_menu_and_keeps_the_old_keys(client):
     lid = store.create_list("Growth")
     store.add_symbol(lid, "NASDAQ:NVDA")
-    ops.watch_add("option", "AMD", by="test")
+    wl_store.job_set("option", "AMD", True, by="test")
     got = client.get("/api/watchlists").get_json()
     assert got["ok"] is True and got["option"] == ["AMD"] and got["stock"] == []
     assert [r["id"] for r in got["lists"]] == [lid, "jobs.option", "jobs.stock"]
@@ -126,11 +127,11 @@ def test_the_tick_route_refuses_what_it_cannot_write(client):
     assert client.post(f"/api/watchlists/{lid}/tick/%3Cb%3E", json={"on": True}).status_code == 400
     refused = client.post(f"/api/watchlists/{lid}/tick/ZZZZ", json={"on": True})
     assert refused.status_code == 400 and "spine" in refused.get_json()["error"]
-    assert store.symbols(lid) == [] and read.watched("option") == set()
+    assert store.symbols(lid) == [] and read.watchlists()["option"] == []
 
 
 def test_the_tick_route_needs_the_panel_header():
     dashboard.app.config["TESTING"] = True
     raw = dashboard.app.test_client()
     assert raw.post("/api/watchlists/jobs.option/tick/NVDA", json={"on": True}).status_code == 403
-    assert read.watched("option") == set()
+    assert read.watchlists()["option"] == []
