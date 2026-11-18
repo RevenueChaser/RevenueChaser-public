@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Hand-reduced from AAPL's FY2025 10-K definition linkbase: two roles, the ProductOrServiceAxis chain only. -->
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <link:definitionLink xlink:role="http://www.apple.com/role/CONSOLIDATEDSTATEMENTSOFOPERATIONS" xlink:type="extended">
+    <link:loc xlink:type="locator" xlink:label="us-gaap_StatementTable" xlink:href="us-gaap-2026.xsd#us-gaap_StatementTable"/>
+    <link:loc xlink:type="locator" xlink:label="srt_ProductOrServiceAxis" xlink:href="srt-2026.xsd#srt_ProductOrServiceAxis"/>
+    <link:definitionArc xlink:arcrole="http://xbrl.org/int/dim/arcrole/hypercube-dimension" xlink:from="us-gaap_StatementTable" xlink:to="srt_ProductOrServiceAxis" xlink:type="arc"/>
+    <link:loc xlink:type="locator" xlink:label="srt_ProductsAndServicesDomain" xlink:href="srt-2026.xsd#srt_ProductsAndServicesDomain"/>
+    <link:definitionArc xlink:arcrole="http://xbrl.org/int/dim/arcrole/dimension-default" xlink:from="srt_ProductOrServiceAxis" xlink:to="srt_ProductsAndServicesDomain" xlink:type="arc"/>
+    <link:loc xlink:type="locator" xlink:label="srt_ProductsAndServicesDomain_2" xlink:href="srt-2026.xsd#srt_ProductsAndServicesDomain"/>
+    <link:definitionArc xlink:arcrole="http://xbrl.org/int/dim/arcrole/dimension-domain" xlink:from="srt_ProductOrServiceAxis" xlink:to="srt_ProductsAndServicesDomain_2" xlink:type="arc"/>
+    <link:loc xlink:type="locator" xlink:label="us-gaap_ProductMember" xlink:href="us-gaap-2026.xsd#us-gaap_ProductMember"/>
+    <link:definitionArc xlink:arcrole="http://xbrl.org/int/dim/arcrole/domain-member" xlink:from="srt_ProductsAndServicesDomain_2" xlink:to="us-gaap_ProductMember" xlink:type="arc"/>
+    <link:loc xlink:type="locator" xlink:label="us-gaap_ServiceMember" xlink:href="us-gaap-2026.xsd#us-gaap_ServiceMember"/>
+    <link:definitionArc xlink:arcrole="http://xbrl.org/int/dim/arcrole/domain-member" xlink:from="srt_ProductsAndServicesDomain_2" xlink:to="us-gaap_ServiceMember" xlink:type="arc"/>
+  </link:definitionLink>
+  <link:definitionLink xlink:role="http://www.apple.com/role/RevenueDisaggregatedNetSalesandPortionofNetSalesThatWasPreviouslyDeferredDetails" xlink:type="extended">
+    <link:loc xlink:type="locator" xlink:label="us-gaap_DisaggregationOfRevenueTable" xlink:href="us-gaap-2026.xsd#us-gaap_DisaggregationOfRevenueTable"/>
+    <link:loc xlink:type="locator" xlink:label="srt_ProductOrServiceAxis" xlink:href="srt-2026.xsd#srt_ProductOrServiceAxis"/>
+    <link:definitionArc xlink:arcrole="http://xbrl.org/int/dim/arcrole/hypercube-dimension" xlink:from="us-gaap_DisaggregationOfRevenueTable" xlink:to="srt_ProductOrServiceAxis" xlink:type="arc"/>
+    <link:loc xlink:type="locator" xlink:label="srt_ProductsAndServicesDomain" xlink:href="srt-2026.xsd#srt_ProductsAndServicesDomain"/>
+    <link:definitionArc xlink:arcrole="http://xbrl.org/int/dim/arcrole/dimension-default" xlink:from="srt_ProductOrServiceAxis" xlink:to="srt_ProductsAndServicesDomain" xlink:type="arc"/>
+    <link:loc xlink:type="locator" xlink:label="srt_ProductsAndServicesDomain_2" xlink:href="srt-2026.xsd#srt_ProductsAndServicesDomain"/>
+    <link:definitionArc xlink:arcrole="http://xbrl.org/int/dim/arcrole/dimension-domain" xlink:from="srt_ProductOrServiceAxis" xlink:to="srt_ProductsAndServicesDomain_2" xlink:type="arc"/>
+    <link:loc xlink:type="locator" xlink:label="aapl_IPhoneMember" xlink:href="aapl-20260926.xsd#aapl_IPhoneMember"/>
+    <link:definitionArc xlink:arcrole="http://xbrl.org/int/dim/arcrole/domain-member" xlink:from="srt_ProductsAndServicesDomain_2" xlink:to="aapl_IPhoneMember" xlink:type="arc"/>
+    <link:loc xlink:type="locator" xlink:label="aapl_MacMember" xlink:href="aapl-20260926.xsd#aapl_MacMember"/>
+    <link:definitionArc xlink:arcrole="http://xbrl.org/int/dim/arcrole/domain-member" xlink:from="srt_ProductsAndServicesDomain_2" xlink:to="aapl_MacMember" xlink:type="arc"/>
+    <link:loc xlink:type="locator" xlink:label="aapl_IPadMember" xlink:href="aapl-20260926.xsd#aapl_IPadMember"/>
+    <link:definitionArc xlink:arcrole="http://xbrl.org/int/dim/arcrole/domain-member" xlink:from="srt_ProductsAndServicesDomain_2" xlink:to="aapl_IPadMember" xlink:type="arc"/>
+    <link:loc xlink:type="locator" xlink:label="aapl_WearablesHomeandAccessoriesMember" xlink:href="aapl-20260926.xsd#aapl_WearablesHomeandAccessoriesMember"/>
+    <link:definitionArc xlink:arcrole="http://xbrl.org/int/dim/arcrole/domain-member" xlink:from="srt_ProductsAndServicesDomain_2" xlink:to="aapl_WearablesHomeandAccessoriesMember" xlink:type="arc"/>
+    <link:loc xlink:type="locator" xlink:label="us-gaap_ServiceMember" xlink:href="us-gaap-2026.xsd#us-gaap_ServiceMember"/>
+    <link:definitionArc xlink:arcrole="http://xbrl.org/int/dim/arcrole/domain-member" xlink:from="srt_ProductsAndServicesDomain_2" xlink:to="us-gaap_ServiceMember" xlink:type="arc"/>
+  </link:definitionLink>
+</link:linkbase>

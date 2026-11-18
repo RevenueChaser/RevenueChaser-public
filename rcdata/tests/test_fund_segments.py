@@ -90,6 +90,17 @@ def test_compustat_segments_and_customers(fake):
     assert "1 of 4 Tier A companies with segments" in check["note"]
 
 
+def test_only_the_annual_reports_rows_name_their_report_tables_compustats_are_null(fake, sec):
+    """#1048: ``report_tables`` comes from the filing's definition linkbase, which Compustat's rows do not have."""
+    fx.filing_routes(sec, {"789019": fx.submissions(789019, fx.MSFT_FILINGS)},
+                     {"msft-10k.htm": fx.ixbrl_10k(), "msft-def14a.htm": fx.proxy()})
+    fx.linkbase_routes(sec)
+    fx.run(filings.NAME, mode="backfill", to="2026-10-28")
+    fx.run(wrds_fund.SEGMENTS.name, mode="backfill", to="2026-10-28")
+    assert fx.q("SELECT source, count(*), count(report_tables) FROM segment_revenue GROUP BY source ORDER BY source"
+                ) == [(filings.NAME, 4, 3), (wrds_fund.SEGMENTS.name, 2, 0)]
+
+
 def test_a_customer_table_without_its_sales_column_fails_naming_the_columns_wrds_has(fake):
     fake.catalog = {**fx.WRDS_CATALOG, ("comp_segments_hist_daily", "seg_customer"): ["gvkey", "datadate", "cnms"]}
     check = fx.run(wrds_fund.SEGMENTS.name, mode="backfill", to="2026-10-27")

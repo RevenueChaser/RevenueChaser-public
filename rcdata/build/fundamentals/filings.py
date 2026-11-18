@@ -9,7 +9,9 @@ from "not read lately" (the Fundamentals review's F2).
 
 **The documents.** The primary document of the newest annual report (10-K, else 20-F, else 40-F) and of the newest
 proxy (DEF 14A), plus a 40-F's Annual Information Form exhibits, fetched once each (the raw file is the resume
-marker) and stored on disk.
+marker) and stored on disk. Beside the annual report, its definition linkbase (``<ticker>-<date>_def.xml``, found
+through the filing's ``index.json``; ``linkbase.py``), which says in which table of the report a segment member
+stands; a filing that lists none is counted in the run's note, not an issue.
 
 **This layer no longer cuts them (#858).** It did: ``document_sections`` sliced the business section with the Value
 Chain board's splitter and stored ``whole``, ``proxy``, ``business`` and ``aif`` as ``filing_item``'s
@@ -24,7 +26,8 @@ Requests go through the shared SEC bucket and are counted under ``sec``. Backfil
 filing list yet, and its two documents, resumable.
 
 Raw: ``raw/sec/filings/submissions/<cik>/<as-of>.json.gz`` (with a ``.meta.json``: the accessions it holds) and
-``raw/sec/filings/documents/<cik>/<accession>.html.gz``. Parquet: ``parquet/sec/filings/cik=<cik>/filings.parquet``
+``raw/sec/filings/documents/<cik>/<accession>.html.gz`` (and ``<accession>.index.json.gz``,
+``<accession>.<name>_def.xml.gz`` beside it). Parquet: ``parquet/sec/filings/cik=<cik>/filings.parquet``
 (one row per filing and 8-K item), ``.../segments.parquet`` / ``.../customers.parquet`` (the annual report's inline
 XBRL, ``ixbrl.py``: revenue by segment, product and country, and major customers' shares), each replaced whole from
 the newest list, and ``.../header.parquet`` (the list's company header: SEC SIC, state of incorporation, the
@@ -45,7 +48,7 @@ import duckdb
 from ....core import calendar
 from .. import base
 from .. import dirty as dirty_set
-from . import KIND, common, edgar_codes, ixbrl, sec_index
+from . import KIND, common, edgar_codes, ixbrl, linkbase, sec_index
 
 NAME = "sec/filings"
 NEW_PER_RUN = 9000
@@ -71,7 +74,11 @@ FILING = [("cik", "TEXT"), ("accession", "TEXT"), ("form", "TEXT"), ("filing_dat
 _FILED = [("cik", "TEXT"), ("accession", "TEXT"), ("form", "TEXT"), ("filing_date", "DATE")]
 _STAMPS = [("source_as_of", "DATE"), ("fetched_at", "DOUBLE"), ("run_id", "TEXT")]
 SEGMENT = _FILED + [("axis", "TEXT"), ("member", "TEXT"), ("segment", "TEXT"), ("concept", "TEXT"),
-                    ("value", "DOUBLE"), ("unit", "TEXT"), ("period_start", "DATE"), ("period_end", "DATE")] + _STAMPS
+                    ("value", "DOUBLE"), ("unit", "TEXT"), ("period_start", "DATE"), ("period_end", "DATE")] + _STAMPS + [
+                        # The tables (role ids) of the filing's definition linkbase in which the member stands on
+                        # the axis (``linkbase.py``); NULL when the filing has no linkbase stored. Last, so a
+                        # Parquet file written before it reads it as NULL (``common.stage_glob``).
+                        ("report_tables", "VARCHAR[]")]
 # The company header of the newest list: SIC as the SEC assigns it, the state (or country) of incorporation as EDGAR
 # codes it, and the business address as a state (US, Canada) and an ISO country (``edgar_codes``).
 HEADER = [("cik", "TEXT"), ("sic", "TEXT"), ("sic_description", "TEXT"), ("state_of_incorporation", "TEXT"),
@@ -107,8 +114,8 @@ def _exhibit_path(cik: str, accession: str, name: str) -> Path:
 
 
 def index_url(cik: str, accession: str) -> str:
-    """The filing's own file listing. Only a 40-F needs it: every other form this layer reads keeps what it wants
-    in the primary document."""
+    """The filing's own file listing: where a 40-F's exhibits and an annual report's definition linkbase are
+    named."""
     return f"{common.sec_www()}/Archives/edgar/data/{int(cik)}/{accession.replace('-', '')}/index.json"
 
 
@@ -300,7 +307,90 @@ def read_documents(ctx: base.RunContext, cik: str, raw: Path, as_of: date) -> in
         # document (``aif_exhibits``), and the primary document is now read either way.
         if f["form"] == "40-F":
             fetched += read_exhibits(ctx, cik, f, as_of)
+        if forms is ANNUAL_FORMS and path.exists():
+            read_linkbase(ctx, cik, f, as_of)
     return fetched
+
+
+#: ``ctx.pending``'s key of a run's linkbase counts (``fetched``, ``none``), for the run's note.
+_LINKBASES = "_sec_linkbases"
+
+
+def stored_linkbase(cik: str, accession: str) -> Path | None:
+    """The definition linkbase stored for one filing, named by its stored ``index.json``; None when there is none."""
+    index = _exhibit_path(cik, accession, "index.json")
+    name = linkbase.name(base.read_raw_json(index)) if index.exists() else None
+    path = _exhibit_path(cik, accession, name) if name else None
+    return path if path is not None and path.exists() else None
+
+
+def read_linkbase(ctx: base.RunContext, cik: str, f: dict, as_of: date) -> bool:
+    """Fetch an annual report's definition linkbase when it is not stored yet; True when it was fetched.
+
+    At most two requests per filing, once: its ``index.json`` (shared with :func:`read_exhibits`) and the file. A
+    filing that lists no ``_def.xml`` is counted (``none``) and, its index being stored, never asked again; a
+    missing index or file is counted the same way and asked again on the next read of the company.
+
+    The linkbase is optional, so nothing here stops the run: a request the SEC does not serve (``SourceError``, a
+    5xx or a refusal after the retries) and an answer that is not a definition linkbase (an error page sent with
+    200) are counted (``failed``), nothing is stored, and the next read of the company asks again. After
+    ``base.MISSING_RUN`` of them in a row the host is taken to be refusing, and no further linkbase is asked for in
+    this run. A reached cap is not swallowed.
+    """
+    counts = ctx.pending.setdefault(_LINKBASES, {"fetched": 0, "none": 0, "failed": 0, "in_a_row": 0})
+    if counts["in_a_row"] >= base.MISSING_RUN:
+        return False
+    failed = counts["failed"]
+    try:
+        fetched = _read_linkbase(ctx, cik, f, as_of, counts)
+    except base.CapReached:
+        raise
+    except base.SourceError:
+        counts["failed"] += 1
+        fetched = False
+    counts["in_a_row"] = counts["in_a_row"] + 1 if counts["failed"] > failed else 0
+    return fetched
+
+
+def _read_linkbase(ctx: base.RunContext, cik: str, f: dict, as_of: date, counts: dict) -> bool:
+    first = _exhibit_path(cik, f["accession"], "index.json")
+    if first.exists():
+        listing = base.read_raw_json(first)
+    else:
+        r = common.sec_get(ctx, index_url(cik, f["accession"]), missing_object=True)
+        if r is None:
+            counts["none"] += 1
+            return False
+        listing = r.json()
+        base.write_raw_json(first, listing)
+    name = linkbase.name(listing)
+    if name is None:
+        counts["none"] += 1
+        return False
+    path = _exhibit_path(cik, f["accession"], name)
+    if path.exists():
+        return False
+    url = document_url(cik, f["accession"], name)
+    r = common.sec_get(ctx, url, missing_object=True)
+    if r is None:
+        counts["none"] += 1
+        return False
+    if b"definitionLink" not in r.content:
+        counts["failed"] += 1
+        return False
+    base.write_raw_json(common.meta_path(path), {"cik": cik, "accession": f["accession"], "form": f["form"],
+                                                 "linkbase": name, "as_of": as_of.isoformat(), "url": url,
+                                                 "fetched_at": time.time(), "run_id": ctx.run_id})
+    base.write_raw(path, r.content)
+    counts["fetched"] += 1
+    return True
+
+
+def _linkbase_note(ctx: base.RunContext) -> None:
+    counts = ctx.pending.get(_LINKBASES)
+    if counts and (counts["fetched"] or counts["none"] or counts["failed"]):
+        ctx.notes.append(f"{counts['fetched']} definition linkbases fetched, {counts['none']} annual reports "
+                         "without one" + (f", {counts['failed']} not served (asked again)" if counts["failed"] else ""))
 
 
 def read_exhibits(ctx: base.RunContext, cik: str, f: dict, as_of: date) -> int:
@@ -373,6 +463,7 @@ class Filings:
                 docs += read_documents(ctx, cik, raw, as_of)
         ctx.notes.append(f"{len(due)} filing lists re-read, {min(len(new), NEW_PER_RUN)} new, {docs} documents"
                          + (f"; {len(new) - NEW_PER_RUN} new left for the next run" if len(new) > NEW_PER_RUN else ""))
+        _linkbase_note(ctx)
         sec_index.mark_scanned(ctx, NAME, as_of)
         return out
 
@@ -390,6 +481,7 @@ class Filings:
             # row shape it did not have before (the ``whole`` row, 5 Nov 2026).
             out.append(raw)
         ctx.notes.append(f"backfill: {len(out)} filing lists, {docs} documents")
+        _linkbase_note(ctx)
         self.to_parquet_all(ctx, out)
 
     def to_parquet(self, ctx: base.RunContext, raw: Path) -> list[Path]:
@@ -436,7 +528,8 @@ class Filings:
         """The annual report's segment and customer rows (its inline XBRL).
 
         No text row any more (#858): the documents are on disk for ``sec/forms`` to cut, and this layer reads them
-        for their inline XBRL only. An exhibit carries none, so only the primary document is parsed.
+        for their inline XBRL only. An exhibit carries none, so only the primary document is parsed. A segment row
+        also names the tables of the filing's definition linkbase its member stands in (``report_tables``).
         """
         segments, customers = [], []
         f = pick(rows, ANNUAL_FORMS)
@@ -451,7 +544,10 @@ class Filings:
                   "fetched_at": float(meta["fetched_at"]), "run_id": meta["run_id"]}
         filed = {k: f.get(k) for k in ("cik", "accession", "form", "filing_date")}
         found_segments, found_customers = ixbrl.parse(html)
-        segments += [{**filed, **r, "segment": r["label"], **stamps} for r in found_segments]
+        stored = stored_linkbase(cik, f["accession"])
+        tables = linkbase.parse(base.read_raw(stored)) if stored is not None else {}
+        segments += [{**filed, **r, "segment": r["label"], **stamps,
+                      "report_tables": tables.get((r["axis"], r["label"]))} for r in found_segments]
         customers += [{**filed, **r, **stamps} for r in found_customers]
         return segments, customers
 

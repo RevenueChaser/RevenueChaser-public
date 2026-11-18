@@ -1252,6 +1252,31 @@ def segments(cik, axis: str | None = None, source: str | None = None) -> list[di
     return _rows("segment_revenue", sql + " ORDER BY period_end DESC, source, axis, value DESC", params)
 
 
+def segment_sets(rows: Iterable[dict], total: float | None, tolerance: float = 0.02) -> list[dict]:
+    """The member sets among one filing's ``segment_revenue`` rows that add up to the company's revenue (#1048).
+
+    The rows of one axis are a flat list in which a parent stands beside its children (Amazon: Product and Service
+    beside the seven lines they split into), so the list sums to more than the revenue. The members one table of
+    the report declares together on one axis (``report_tables``) are one set, and a set is usable when its values
+    sum to ``total`` within ``tolerance``. Every usable set, the one with the most members first:
+    ``{table, axis, members, shares}``, members by value, ``shares`` their values over ``total``. No choice is made
+    among them here. No I/O: ``rows`` are :func:`segments` rows of one filing, ``total`` its annual revenue.
+    """
+    if not total or total <= 0:
+        return []
+    sets: dict[tuple[str, str], list[dict]] = {}
+    for r in rows:
+        for table in r.get("report_tables") or ():
+            sets.setdefault((table, r["axis"]), []).append(r)
+    out = []
+    for (table, axis), members in sets.items():
+        if abs(sum(m["value"] for m in members) - total) <= tolerance * total:
+            members = sorted(members, key=lambda m: -m["value"])
+            out.append({"table": table, "axis": axis, "members": [m.get("segment") or m.get("member") for m in members],
+                        "shares": [m["value"] / total for m in members]})
+    return sorted(out, key=lambda s: (-len(s["members"]), s["table"], s["axis"]))
+
+
 def customers(cik) -> list[dict]:
     """``customer_share`` rows of company ``cik``, newest period first, the biggest share first."""
     return _rows("customer_share", "SELECT * FROM customer_share WHERE cik = ? "

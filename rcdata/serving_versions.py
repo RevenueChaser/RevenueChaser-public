@@ -43,7 +43,7 @@ SERVING_SCHEMA_VERSION = {"market": 4, "spine": 7, "ownership": 5}
 # PR 7 (G2): ``prices.duckdb``, the daily bars, corporate actions, shares and market cap (``build/prices/``).
 SERVING_SCHEMA_VERSION["prices"] = 1
 # PR 12 (G5): ``fundamentals.duckdb``, the facts, filings, earnings, estimates and checks (``build/fundamentals/``).
-SERVING_SCHEMA_VERSION["fundamentals"] = 3
+SERVING_SCHEMA_VERSION["fundamentals"] = 4
 # fundamentals 2: ``earnings_reported``, the EPS a company reported as UW serves it, in a table of its own
 #                 (``build/fundamentals/uw_earnings.py``, avo's decision of 5 Nov 2026). Bumped before the kind's
 #                 first build, so no live file had to be checkpointed for it.
@@ -51,6 +51,9 @@ SERVING_SCHEMA_VERSION["fundamentals"] = 3
 #                 header (``sic``, ``sic_description``, state of incorporation, ``business_state``,
 #                 ``business_country``) and ``fundamental_fact`` the first-reported value (#277 A2); the three SEC
 #                 fields (tax, pre-tax income, interest) are rows, not columns.
+# fundamentals 4: ``segment_revenue`` gains ``report_tables``, the tables (role ids) of the annual report's
+#                 definition linkbase in which the row's member stands on its axis (``build/fundamentals/linkbase.py``,
+#                 #1048); NULL for Compustat's rows and a filing with no linkbase. Every other column is built as before.
 # PR 18 (G8): ``options.duckdb``, the option chains, exposures, prints and IV (``build/options/``).
 SERVING_SCHEMA_VERSION["options"] = 2
 # options 2: the calendar item's fields on ``option_screener_daily`` (and the screener's ``realized_volatility``,
