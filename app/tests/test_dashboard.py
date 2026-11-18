@@ -836,6 +836,8 @@ class TestSettingsDataHealthBoard:
         assert "module_settings" in keys
         assert any(t["type"] == "header" and t["label"] == "Ops"
                    for t in dashboard.TABS)
+        ops = next(g for g in dashboard.NAV_GROUPS if g["label"] == "Ops")
+        assert [t["key"] for t in ops["tabs"]] == ["module_settings", "module_uw_interaction"]  # avo 18 Nov
         assert "module_settings" in dashboard._MODEL_ONLY_RENDERERS
         assert "module_settings" in dashboard._STORE_REFRESHABLE
         assert dashboard._module_file("module_settings") == runners.SETTINGS_LATEST
