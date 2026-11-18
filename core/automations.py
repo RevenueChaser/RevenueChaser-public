@@ -276,6 +276,29 @@ REGISTRY: tuple[AutomationEntry, ...] = (
           ("swing", "Swing", "swing", "05:10"),
           ("fundamentals", "Fundamentals", "module_fundamentals", "05:20"),
           ("comovement", "Co-movement", "module_comovement", "05:30"))),
+    # avo 18 Nov 2026 ("Zamanlayiciyi kur"): Sector Rotation and Earnings Radar had no schedule, only their buttons,
+    # so the quadrant snapshot sat at 6 Nov. Same task as the four above, switched ON at install.
+    AutomationEntry(
+        name="RC-Fetch-SectorRotation", label="Sector Rotation Fetch (nightly)",
+        args=("-m", "RevenueChaser.scripts.board_fetch", "rotation"), time="05:40", unit_name="life-rc-fetch-rotation",
+        description="The Sector Rotation board's Fetch after the nightly prices build (avo 18 Nov 2026), so the "
+                    "quadrant snapshot Earnings Radar reads is the latest complete session's. It asks nothing until "
+                    "the prices store holds SPY's complete bar of that session (exit 3). The Fetch runs in the "
+                    "dashboard (POST /run/rotation, the one writer; it also queues the Money flow refresh): the task "
+                    "only queues it and waits; with the dashboard down it exits 1. Stored closes only, no Unusual "
+                    "Whales call.",
+        settings=TaskSettings(restart_count=0, time_limit_minutes=120)),
+    AutomationEntry(
+        name="RC-Fetch-EarningsRadar", label="Earnings Radar Fetch (nightly)",
+        args=("-m", "RevenueChaser.scripts.board_fetch", "earnings"), time="05:50", days=_WEEKDAYS,
+        unit_name="life-rc-fetch-earnings",
+        description="The Earnings Radar board's Fetch of the coming New York session's earnings (avo 18 Nov 2026), "
+                    "Monday to Friday, after the Sector Rotation Fetch (05:40) stored the quadrants it reads. It asks "
+                    "nothing until the prices store holds SPY's complete bar of the last session (exit 3). The Fetch "
+                    "runs in the dashboard (POST /run/earnings with no dates: the server's today, which at 05:50 "
+                    "Amsterdam is the coming session): the task only queues it and waits; with the dashboard down it "
+                    "exits 1. The same Unusual Whales calls as one press of the board's Fetch button.",
+        settings=TaskSettings(restart_count=0, time_limit_minutes=120)),
 )
 _BY_NAME = {e.name: e for e in REGISTRY}
 

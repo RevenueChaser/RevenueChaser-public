@@ -84,3 +84,16 @@ def test_a_store_still_busy_at_the_deadline_asks_for_nothing(seams, monkeypatch,
     assert cli.main(["comovement"]) == cli.EXIT_NOT_READY
     line = _line(capsys)
     assert seams["posts"] == [] and line["status"] == "not_ready" and "rcdata_build" in line["reason"]
+
+
+@pytest.mark.parametrize("board", ["rotation", "earnings"])
+def test_sector_rotation_and_earnings_radar_fetch_on_their_own_routes(seams, capsys, board):
+    """avo 18 Nov 2026: the two boards that only had a button get the same nightly task, on the dashboard's routes."""
+    assert cli.main([board]) == 0
+    assert seams["posts"] == [(f"http://127.0.0.1:8000/run/{board}", {"X-RC-Panel": "cli"})]
+
+
+def test_earnings_radar_runs_on_weekdays_only_after_sector_rotation():
+    by = {e.name: e for e in automations.REGISTRY}
+    rot, er = by["RC-Fetch-SectorRotation"], by["RC-Fetch-EarningsRadar"]
+    assert er.days == automations._WEEKDAYS and not rot.days and rot.time < er.time
