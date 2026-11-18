@@ -410,8 +410,6 @@ def seed_job_lists(*, by: str = "seed") -> dict[str, dict]:
         if created:
             create_list(spec["name"], description=spec["description"], by=by, feeds=kind, list_id=list_id)
             for r in rows:
-                if "-" in r["ticker"]:
-                    continue
                 add_symbol(list_id, r["ticker"], by=r.get("added_by") or by, note=r.get("note"))
         was, now = {r["ticker"] for r in rows}, read.watched(kind)
         out[kind] = {"created": created, "ops": len(was), "list": len(now), "same": was == now}
