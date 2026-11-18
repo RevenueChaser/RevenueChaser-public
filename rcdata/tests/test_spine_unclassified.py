@@ -1,7 +1,8 @@
 """avo, 17 Nov 2026: the listed names the spine left ``Unclassified`` get a sector from a fallback.
 
 (A) a SIC but no Compustat GICS: the SIC table (``gics_source = 'sic'``); (B) SIC 9995 / 6770: the ``Shell/SPAC``
-bucket; (C) no Compustat link and no SIC: ``gics_manual.json`` (``gics_source = 'manual'``), one reason per row.
+bucket; (C) no Compustat link and no Compustat SIC: the SEC's own SIC (``gics_source = 'sec_sic'``, avo's K5,
+18 Nov 2026; the eleven hand rows of ``gics_manual.json`` are gone), a sector code only.
 """
 from __future__ import annotations
 
@@ -10,9 +11,11 @@ import json
 import pytest
 
 from RevenueChaser.core.gics_map import SHELL_SPAC, UNCLASSIFIED, canonical_sector
+from RevenueChaser.rcdata.build import base
 from RevenueChaser.rcdata.build.spine import security
 
 from . import spine_fixture as fx
+from .test_spine_security import run_all
 from .test_spine_spac_sic_240 import _sec, built_with  # noqa: F401 - the fixture build with one SIC replaced
 
 MSFT_GICS = {"gsector": "45", "ggroup": "4510"}
@@ -53,11 +56,30 @@ def test_an_unknown_sic_stays_unclassified_with_no_source(sic):
     assert security.bridge_sector("X", None, sic, {}) == (UNCLASSIFIED, UNCLASSIFIED, None, None, None)
 
 
-def test_the_checked_in_manual_file_holds_the_eleven_names_avo_approved():
-    rows = security.gics_manual()
-    assert set(rows) == {"FWONA", "FWONK", "AGMB", "DUKR", "KNDI", "NSTR", "SOAR", "UROY", "WQEY", "XHG", "XTLB"}
-    assert security.bridge_sector("FWONK", None, None, rows)[:2] == ("Communication Services",
-                                                                     "Media & Entertainment")
+# The eleven names avo approved by hand on 17 Nov 2026, each with the SIC the SEC assigns it (as the hand rows quoted
+# it) and the GICS sector and group the hand row gave. K5, 18 Nov 2026: the rule must give the same, with no row.
+ELEVEN = [("FWONA", "4833", "50", "5020"), ("FWONK", "4833", "50", "5020"), ("AGMB", "2836", "35", "3520"),
+          ("DUKR", "3721", "20", "2010"), ("KNDI", "3714", "25", "2510"), ("NSTR", "4899", "50", "5010"),
+          ("SOAR", "4522", "20", "2030"), ("UROY", "1090", "10", "1010"), ("WQEY", "7374", "45", "4510"),
+          ("XHG", "6411", "40", "4030"), ("XTLB", "2834", "35", "3520")]
+
+
+@pytest.mark.parametrize("ticker, sec_sic, gsector, ggroup", ELEVEN)
+def test_the_eleven_hand_rows_are_gone_and_the_secs_sic_gives_each_the_same_sector(ticker, sec_sic, gsector, ggroup):
+    assert security.gics_manual() == {}
+    assert security.bridge_sector(ticker, None, None, {}, sec_sic)[2:] == ("sec_sic", gsector, ggroup)
+
+
+@pytest.mark.parametrize("sec_sic", ["6770", "9995"])
+def test_a_shell_code_of_the_secs_decides_nothing(sec_sic):
+    """The SEC changes a code only on request: a company that merged with a blank check still reads 6770 there."""
+    assert security.bridge_sector("X", None, None, {}, sec_sic) == (UNCLASSIFIED, UNCLASSIFIED, None, None, None)
+
+
+def test_compustats_sic_beats_the_secs():
+    assert security.bridge_sector("X", None, "7372", {}, "2834")[2:] == ("sic", "45", "4510")
+    assert security.bridge_sector("X", None, "9995", {}, "2834")[:3] == (SHELL_SPAC, SHELL_SPAC, "sic")
+    assert security.bridge_sector("MSFT", MSFT_GICS, None, {}, "2834")[2] == "wrds/co_hgic"
 
 
 def test_a_manual_row_with_an_unknown_code_or_no_reason_fails_loudly(tmp_path):
@@ -99,3 +121,48 @@ def test_the_build_puts_a_shell_in_the_shell_bucket(no_cna_gics, built_with):
     built_with("002968", "9995")
     built = _sec("CNA")
     assert (built["sector"], built["gics_source"], built["tier"]) == (SHELL_SPAC, "sic", "A")
+
+
+def _sec_header(cik: str, sic: str) -> None:
+    """One company's ``header.parquet`` as ``sec/filings`` writes it (only the columns this build reads)."""
+    import duckdb
+    folder = base.parquet_root() / "sec" / "filings" / f"cik={cik}"
+    folder.mkdir(parents=True, exist_ok=True)
+    duckdb.connect().execute(f"COPY (SELECT '{cik}' AS cik, '{sic}' AS sic) TO '{folder / 'header.parquet'}' "
+                             "(FORMAT parquet)")
+
+
+def test_the_build_takes_the_sector_of_a_name_compustat_does_not_know_from_the_secs_sic(built_with):
+    """K5: OTCX has no Compustat company at all, so no GICS and no Compustat SIC; the SEC's header has one."""
+    _sec_header("3000001", "3721")
+    built_with("002968", "6331")
+    built = _sec("OTCX")
+    assert (built["sector"], built["industry"], built["gics_source"], built["gsector"], built["ggroup"]) == (
+        "Industrials", "Capital Goods", "sec_sic", "20", "2010")
+    assert built["sic"] is None and built["gsubind"] is None         # the served ``sic`` stays Compustat's
+
+
+def test_a_stale_blank_check_code_of_the_secs_never_types_a_name_a_spac(built_with):
+    """The plan-v4 review's blocker: one ``sic`` value fed the sector AND the type rule, so the SEC's 6770 would
+    have typed an operating company a SPAC, which is Tier B and out of My Universe."""
+    _sec_header("3000001", "3721")
+    built_with("002968", "6331")
+    before = _sec("OTCX")
+    assert before["gics_source"] == "sec_sic"                    # the header is read: the next build reads 6770
+    _sec_header("3000001", "6770")
+    run_all("2026-10-28", names=[security.NAME])
+    after = _sec("OTCX")
+    assert (after["security_type"], after["type_source"], after["tier"]) == (
+        before["security_type"], before["type_source"], before["tier"])
+    assert after["security_type"] != "spac" and after["sector"] == UNCLASSIFIED and after["sic"] is None
+
+
+def test_a_note_or_a_fund_does_not_take_its_issuers_sector(built_with):
+    """Measured on the live data, 18 Nov 2026: the SEC's code of an exchange-traded note is its bank's (6022), so
+    Deutsche Bank's gold notes read "Banks". The code describes the issuer, not what the product holds."""
+    _sec_header("3000001", "6022")                      # OTCX, a company: its own code is its sector
+    _sec_header("884394", "6022")                       # SPY, a trust
+    built_with("002968", "6331")
+    assert _sec("OTCX")["gics_source"] == "sec_sic"
+    spy = _sec("SPY")
+    assert spy["security_type"] == "etp" and (spy["sector"], spy["gics_source"]) == (UNCLASSIFIED, None)

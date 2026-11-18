@@ -218,6 +218,7 @@ def test_a_partition_deleted_after_the_build_is_dirty():
                                            ("openfigi/map", "openfigi/map_ticker"),
                                            ("prices/serving", "cboe/index"),
                                            ("spine/security", "sec/nport"),
+                                           ("spine/security", "sec/filings"),
                                            ("ownership/serve", "wrds/sec_idhist"),
                                            ("ownership/serve", "openfigi/map")])
 def test_read_dirs_names_the_sibling_folder_a_build_reads(name, sibling):
