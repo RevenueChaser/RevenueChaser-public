@@ -79,9 +79,9 @@ def test_the_rules_file_holds_avos_numbers_and_the_module_reads_them():
     assert r.exclude_etn is True and r.exclude_cef is True
 
 
-def test_the_manual_file_ships_empty_so_the_first_build_is_the_rules_alone():
+def test_every_line_of_the_shipped_manual_file_carries_avos_reason():
     adds, removes = my_universe.load_manual()
-    assert adds == [] and removes == []
+    assert all(line["reason"] for line in adds + removes)       # not pinned empty: avo added IDX on 18 Nov 2026
 
 
 def test_a_rules_file_without_a_rule_is_refused_rather_than_defaulted(tmp_path):
