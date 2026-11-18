@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 
+import duckdb
 import pytest
 
 from RevenueChaser.core.providers import sec_edgar
@@ -43,9 +44,28 @@ def test_three_datasets_one_login_and_one_query_per_table(fake):
         assert row["result"] == "changed", row
     assert logins == [1]
     assert [q.split(" FROM ")[1].split()[0] for q in conn.queries] == [
-        "comp.company", "comp.security", "comp.sec_idhist", "comp.co_hgic", "comp.idxcst_his"]
+        "comp.company", "comp.security", "comp.sec_idhist", "comp.co_hgic", "comp.g_company", "comp.g_security",
+        "comp.r_giccd", "comp.idxcst_his"]
     assert "gvkeyx IN ('000003', '024248', '030824')" in conn.queries[-1]
-    assert ops.calls_today("wrds") == 5
+    assert ops.calls_today("wrds") == 8
+
+
+def test_the_gics_dataset_also_stages_compustat_global_and_the_code_names(fake):
+    """Plan v5 step 3 (#1031): a foreign holding is coded by its ISIN, and a finer GICS code gets its name from
+    the source, so ``wrds/co_hgic`` asks ``g_company``, ``g_security`` (ISIN lines only) and ``r_giccd`` too."""
+    conn, _ = fake
+    _run(sec_tickers.NAME)
+    assert _run(wrds.CO_HGIC.name, mode="backfill")["result"] != "failed"    # nothing served reads them yet
+    assert any(q.endswith("FROM comp.g_security WHERE isin IS NOT NULL") for q in conn.queries)
+    con = duckdb.connect()
+    try:
+        wrds.CO_HGIC.build(base.RunContext(run_id="t", dataset=wrds.CO_HGIC.name), con)
+        assert con.execute("SELECT s.isin, c.loc, c.gsubind FROM stg_wrds_g_security s JOIN stg_wrds_g_company c "
+                           "USING (gvkey)").fetchall() == [("NL0000334118", "NLD", "45301010")]
+        assert con.execute("SELECT gicdesc FROM stg_wrds_giccd WHERE giccd = '45301010'").fetchone()[0] == (
+            "Semiconductor Materials & Equipment")
+    finally:
+        con.close()
 
 
 def test_a_wrds_dataset_queued_by_the_schedule_or_a_page_is_skipped_without_a_login(fake):

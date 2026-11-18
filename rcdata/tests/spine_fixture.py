@@ -178,6 +178,12 @@ HGIC = [
     {"gvkey": "008007", "indfrom": "1999-01-01", "indthru": None, "gsector": "40", "ggroup": "4010", "gind": "401010",
      "gsubind": "40101010"},
 ]
+# Compustat Global: one Dutch company with an ISIN, and the names of its GICS codes.
+G_COMPANY = [{"gvkey": "001166", "conm": "ASM INTERNATIONAL NV", "loc": "NLD", "gsector": "45", "ggroup": "4530",
+              "gind": "453010", "gsubind": "45301010"}]
+G_SECURITY = [{"gvkey": "001166", "iid": "01W", "isin": "NL0000334118", "excntry": "NLD", "secstat": "A", "tpci": "0"}]
+GICCD = [{"giccd": "45", "gictype": "GSECTOR", "gicdesc": "Information Technology", "gicstat": "A"},
+         {"giccd": "45301010", "gictype": "GSUBIND", "gicdesc": "Semiconductor Materials & Equipment", "gicstat": "A"}]
 IDX = [
     {"gvkey": "012141", "iid": "01", "gvkeyx": "000003", "valid_from": "1994-06-01", "thru": None},
     {"gvkey": "016478", "iid": "01", "gvkeyx": "000003", "valid_from": "1957-03-04", "thru": None},
@@ -191,7 +197,7 @@ IDX = [
 
 
 class FakeWrds:
-    """A WRDS connection that answers the five Compustat tables from the rows above and records every query."""
+    """A WRDS connection that answers the eight Compustat tables from the rows above and records every query."""
 
     def __init__(self, with_new=True):
         self.queries: list[str] = []
@@ -204,7 +210,7 @@ class FakeWrds:
         rows = {"company": COMPANY + (NEW_COMPANY if self.with_new else []),
                 "security": SECURITY + (NEW_SECURITY if self.with_new else []),
                 "sec_idhist": IDHIST + (NEW_IDHIST if self.with_new else []), "co_hgic": HGIC,
-                "idxcst_his": IDX}[table]
+                "idxcst_his": IDX, "g_company": G_COMPANY, "g_security": G_SECURITY, "r_giccd": GICCD}[table]
         ciks = re.search(r"cik IN \(([^)]*)\)", sql)
         if ciks:
             want = set(re.findall(r"'(\d+)'", ciks.group(1)))
