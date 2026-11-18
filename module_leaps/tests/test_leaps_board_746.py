@@ -248,7 +248,7 @@ def test_the_counts_follow_the_rows_listed(stored):
     """R6/R11: the counts line and the product counts are redrawn from the rows of the picked product and side."""
     page = board.render_html(board.payload())
     assert '<div class="lp-counts" id="lp-counts">' in page
-    assert "lpCounts(rows);" in board._JS and "if(lpSided(r)) LP_COUNT[r.prod]" in board._JS
+    assert "lpCounts(rows);" in board._JS and "if(!lpSided(r) || (LP.view === 'names'" in board._JS
 
 
 # ── Step 3 (avo's D1 A, D2 A, D5 A; mock approved 18 Nov 13:33) ─────────────────────────────────────────────────
