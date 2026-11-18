@@ -2285,7 +2285,10 @@ def api_watchlists_update(list_id: str):
 def api_watchlists_delete(list_id: str):
     """Delete a list, its sections and its symbols. The change rows stay, so what it held is still readable."""
     from RevenueChaser.module_watchlists import store
-    removed = store.delete_list(list_id, by=_requested_by())
+    try:
+        removed = store.delete_list(list_id, by=_requested_by())
+    except store.WatchlistError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
     if not removed:
         return jsonify({"ok": False, "error": "no such watch list"}), 404
     return jsonify({"ok": True, "list_id": list_id, "deleted": True})
@@ -2360,7 +2363,10 @@ def api_watchlists_symbol_remove(list_id: str):
         if ticker:
             ops.watch_remove(kind, ticker, by=_requested_by())
         return _wl_payload(list_id)
-    store.remove_symbol(list_id, symbol, by=_requested_by())
+    try:
+        store.remove_symbol(list_id, symbol, by=_requested_by())
+    except store.WatchlistError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
     return _wl_payload(list_id)
 
 

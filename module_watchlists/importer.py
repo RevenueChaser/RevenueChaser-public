@@ -78,6 +78,8 @@ def import_file(path: Path, *, apply: bool = False, replace: bool = False, by: s
     else:
         report.list_id = existing["list_id"]
         if replace:
+            if existing.get("feeds"):   # shortcut: refused whole, a replace that keeps the shared symbols when asked for
+                raise store.WatchlistError(f"the {existing['feeds']!r} jobs read {report.name!r}: it is not replaced")
             for symbol in store.symbols(report.list_id):
                 store.remove_symbol(report.list_id, symbol, by=by)
 

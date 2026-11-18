@@ -354,10 +354,14 @@ def add_symbol(list_id: str, symbol: str, *, section_id: str = DEFAULT_SECTION, 
 
 
 def remove_symbol(list_id: str, symbol: str, *, by: str = "avo") -> bool:
-    """Take one symbol off a list. False when it was not there."""
+    """Take one symbol off a list. False when it was not there. The last symbol of a list a job reads stays:
+    an emptied list would read to the job as "fetch nothing" (plan v5 step 7c)."""
     parsed = symbols_mod.parse(symbol)
     if not _query(f"SELECT 1 AS x FROM {ITEMS} WHERE list_id = ? AND symbol = ?", [list_id, parsed.raw]):
         return False
+    feeds = (get_list(list_id) or {}).get("feeds")
+    if feeds and len(symbols(list_id)) == 1:
+        raise WatchlistError(f"{parsed.raw!r} is the last symbol of a list the {feeds!r} jobs read")
     rawstore.execute(f"DELETE FROM {ITEMS} WHERE list_id = ? AND symbol = ?", [list_id, parsed.raw], db=DB)
     _record(list_id, parsed.raw, "remove", by, None)
     _touch(list_id)
@@ -366,9 +370,13 @@ def remove_symbol(list_id: str, symbol: str, *, by: str = "avo") -> bool:
 
 def delete_list(list_id: str, *, by: str = "avo") -> bool:
     """Remove a list, its sections and its symbols. The change rows are kept, so what the list held is still
-    readable afterwards. False when there is no such list."""
-    if get_list(list_id) is None:
+    readable afterwards. False when there is no such list. A list a job reads is refused: take its job mark off
+    first (``update_list(feeds="")``), so the job fails loudly instead of running on nothing."""
+    found = get_list(list_id)
+    if found is None:
         return False
+    if found.get("feeds"):
+        raise WatchlistError(f"the {found['feeds']!r} jobs read this watch list")
     held = symbols(list_id)
     with rawstore.transaction(db=DB) as tx:
         tx.execute(f"DELETE FROM {ITEMS} WHERE list_id = ?", [list_id])
