@@ -96,7 +96,7 @@ def test_the_headlines_job_loads_the_tape_then_renders_without_the_calendar(monk
     order = []
     monkeypatch.setattr(headlines, "load_tape", lambda **kw: order.append("tape") or {"read": 2, "stored": 1})
     monkeypatch.setattr(headlines, "load_x", lambda **kw: order.append("x") or
-                        {"mails": 1, "stored": 2, "refused": 0, "cut": 0})
+                        {"mails": 1, "stored": 2, "known": 0, "refused": 0, "cut": 0})
     monkeypatch.setattr(headlines, "fetch", lambda names, **kw: order.append("fetch") or
                         {"tickers": len(names), "stored": 0, "skipped": [], "error": None})
     assert runners.run_news_headlines().name == "news_latest.html" and order == ["tape", "x", "fetch"]
@@ -241,3 +241,35 @@ def test_a_refused_x_read_is_the_pages_banner_not_a_job_message(monkeypatch, tmp
     assert page.count('class="rc-provider-health"') == 1 and "Unauthorized" in page
     monkeypatch.setattr(x_reader, "run", lambda **kw: {"skipped": True, "read": 0, "stored": 0})
     assert runners.run_news_x_follow() is None
+    from RevenueChaser.module_news import headlines
+    assert headlines.lane_ok()["x"] is None                     # neither a refused nor a skipped read marks the lane
+    monkeypatch.setattr(x_reader, "run", lambda **kw: {"skipped": False, "read": 0, "stored": 0})
+    runners.run_news_x_follow()
+    assert headlines.lane_ok()["x"] is not None                 # a pass that read nothing new still came back clean
+
+
+def test_only_a_clean_per_ticker_pass_marks_the_stocks_lane_ok(monkeypatch, tmp_path):
+    """Review F2 / plan step 6: the mark Grafana alerts on moves on a pass that refused nothing, even one that
+    brought no headline, and stays put on a pass with a refused request or an unreadable list."""
+    from RevenueChaser.module_news import headlines, report
+    from RevenueChaser.rcdata import read
+    monkeypatch.setattr(report, "OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(read, "job_list", lambda kind: ["AAPL"] if kind == "news" else [])
+    monkeypatch.setattr(headlines, "load_tape", lambda **kw: {"read": 0, "stored": 0})
+    monkeypatch.setattr(headlines, "load_x", lambda **kw: {"mails": 0, "stored": 0, "known": 0, "refused": 0,
+                                                           "cut": 0})
+    clean = {"tickers": 1, "of": 1, "stored": 0, "skipped": [], "failed": [], "error": None}
+
+    monkeypatch.setattr(headlines, "fetch", lambda names, **kw: dict(clean, error="no API session"))
+    runners.run_news_headlines()
+    assert headlines.lane_ok()["stocks"] is None                     # a down gateway marks nothing
+
+    monkeypatch.setattr(headlines, "fetch", lambda names, **kw:
+                        dict(clean, failed=["AAPL (IBKR error 10276: News feed is not allowed)"]))
+    runners.run_news_headlines()
+    assert headlines.lane_ok()["stocks"] is None                     # nor does a refused request
+
+    monkeypatch.setattr(headlines, "fetch", lambda names, **kw: dict(clean))
+    runners.run_news_headlines()
+    first = headlines.lane_ok()["stocks"]
+    assert first is not None                                         # a clean pass with no new headline does
