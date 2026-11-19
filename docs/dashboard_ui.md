@@ -174,6 +174,18 @@ its pane (`fitFrameWidth` never grows it past the pane), so the page never scrol
 a phone scrolls inside its own frame until its own PR restacks it. On a narrow screen or a coarse pointer the
 shell's buttons, inputs, nav items and nav headers are 44 px; a desktop mouse keeps 32 / 38 / 40 px.
 
+### Earnings Radar on a phone (#581)
+
+The widest board there is: 23 columns, about 2600 px of fitted `<colgroup>` widths, and until this PR no
+`@media` rule at all, so inside the clamped frame the table was simply cut off. Under 640 px
+(`module_earnings_radar/report.py`) each row is a full-width card instead: the two header rows and the
+colgroup's pixel widths go, every cell prints its own column name from `data-label` through `::before`, the
+ticker, name and sector ride the card's head without a label, the wide cells (GEX profile, Return since print,
+Since ER, Edge, Action, Owners, Date/Time) take the whole card width, nothing stays sticky, the toolbar wraps at
+44 px per control (the `j/k · Enter` hint goes — no phone types it), and the 480 px right-hand drawer covers the
+page instead of standing beside it. The view buttons still choose which columns a card carries. The board is
+still dark-only: it has not taken the shared tokens yet, so the shell's Light choice does not reach it.
+
 The palette is `core/reporting_common.THEME_TOKENS`, rendered once as `THEME_CSS`. **Dark is the default on every
 device** (avo, 25 Oct 2026; the shell's look before #184, value for value): a first visit, and a browser whose
 storage is blocked, show dark. The "Theme:" button at the foot of the sidebar (inside the drawer on a phone)

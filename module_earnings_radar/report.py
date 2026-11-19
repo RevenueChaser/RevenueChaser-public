@@ -355,6 +355,89 @@ tr:not(.sel) td.sticky-name{border-right:1px solid var(--border-subtle)}
 .drawer-metrics b{color:var(--text-2)}
 .drawer-metrics .pos{color:var(--bull)}.drawer-metrics .neg{color:var(--bear)}
 .col-hidden{display:none!important}
+/* Phone (412 px, avo's realme GT2 Pro) — #581. The board is ~2600 px wide and had no breakpoint: the shell
+   clamps the frame to the pane, so the table was simply cut off. Below 640 px every row becomes a full-width
+   card, each cell carrying its column name (``data-label``), and the right-side drawer covers the page. */
+@media (max-width: 640px){
+  /* The page is one column that scrolls with the document, not two panes of its own height. */
+  .app{display:block;height:auto;overflow:visible}
+  .main{display:block}
+  .board{overflow-x:hidden;overflow-y:visible}
+  .header{flex-direction:column;align-items:flex-start;gap:4px;padding:10px 12px 8px}
+  .header h1{font-size:16px}
+  .header .sync{white-space:normal}
+  .session{position:static}
+  td{white-space:normal}
+  /* Toolbar: wraps instead of scrolling sideways, 44 px per control. */
+  .toolbar{height:auto;min-height:44px;flex-wrap:wrap;gap:8px;padding:8px 12px;overflow:visible}
+  .toolbar .spacer{display:none}
+  .tb-kbd{display:none}
+  .seg{flex:1 1 100%}
+  .seg button{flex:1 1 0;min-height:44px;font-size:13px}
+  .tb-search{width:100%;min-height:44px;font-size:14px}
+  .chips{flex:1 1 100%;flex-wrap:wrap;overflow:visible}
+  .chip{min-height:44px;display:inline-flex;align-items:center;padding:0 14px;font-size:12px}
+  .colpick>summary{min-height:44px;display:inline-flex;align-items:center}
+  .colpick-body{left:auto;right:0;grid-template-columns:minmax(0,1fr);min-width:0;width:min(320px,86vw);
+    max-height:60vh;overflow:auto}
+  .colpick-body label{white-space:normal;min-height:44px}
+  /* One card per ticker. The header rows go; the colgroup's pixel widths with them. */
+  table.data-table{display:block;table-layout:auto;width:100%;font-size:12px}
+  table.data-table colgroup,table.data-table col{display:none}
+  table.data-table thead{display:none}
+  table.data-table tbody{display:flex;flex-direction:column;gap:10px}
+  table.data-table tbody tr{height:auto}
+  table.data-table tbody tr[data-ticker]{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:0 10px;background:var(--bg-primary);border:1px solid var(--border-subtle);border-radius:10px;
+    padding:10px 12px;position:relative}
+  table.data-table tbody tr[data-ticker]:hover{background:var(--bg-primary)}
+  table.data-table tbody tr.sel[data-ticker],table.data-table tbody tr.sel td{background:var(--bg-selected)}
+  table.data-table td{display:block;border:0;padding:3px 0;background:none;white-space:normal;overflow:visible;
+    text-overflow:clip;min-width:0;font-size:12.5px}
+  table.data-table td[data-label]::before{content:attr(data-label);display:block;color:var(--text-3);
+    font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}
+  /* Nothing is sticky in a card. */
+  table.data-table td.sticky-tick,table.data-table td.sticky-name,table.data-table td.sticky-price{position:static}
+  table.data-table tr:not(.sel) td.sticky-name{border-right:0}
+  /* Identity is the card's head: ticker, then name and sector above a rule. */
+  table.data-table td[data-col="ticker"]{grid-column:1/-1;padding:0}
+  table.data-table td[data-col="ticker"] .ticker{font-size:20px}
+  table.data-table td[data-col="name"]{grid-column:1/-1;padding:0;color:var(--text-2);font-size:13px;max-width:none}
+  table.data-table td[data-col="sector"]{grid-column:1/-1;color:var(--text-3);font-size:11px;
+    padding:0 0 6px;margin-bottom:6px;border-bottom:1px solid var(--border-subtle)}
+  table.data-table td[data-col="ticker"]::before,table.data-table td[data-col="name"]::before,
+  table.data-table td[data-col="sector"]::before{display:none}
+  /* The wide cells take the card's full width; none of them keeps a desktop minimum. */
+  table.data-table td[data-col="gex"],table.data-table td[data-col="surprises"],
+  table.data-table td[data-col="sinceEr"],table.data-table td[data-col="edge"],
+  table.data-table td[data-col="action"],table.data-table td[data-col="owners"],
+  table.data-table td[data-col="datetime"]{grid-column:1/-1}
+  .gex-track-wrap,.gex-grid{min-width:0}
+  /* The Scoring formulas and Methodology tables are plain four-column text tables with no colgroup: they ran
+     past the right edge until their cells were allowed to wrap. */
+  table:not(.data-table){table-layout:fixed;width:100%}
+  table:not(.data-table) td,table:not(.data-table) th{white-space:normal;overflow-wrap:anywhere;padding:4px 6px}
+  /* Every fold on the page is a 44 px target, the section titles that open one included. */
+  summary{min-height:44px}
+  .section-title{align-items:center}
+  .name-cell{max-width:none}
+  .structure-cell{white-space:normal;overflow:visible;text-overflow:clip}
+  .why-cell,.why-cell:hover{max-width:none;white-space:normal}
+  /* The drawer covers the page instead of taking 480 px beside it. */
+  /* Closed it is ``display:none``, not translated off-canvas: a fixed box past the right edge is what the
+     phone check (no element reaches past the viewport) would see. */
+  /* A per-cent width, never an auto one: the board's content-fit rule (``test_report_table_fills_pane``) forbids
+     an auto width anywhere in the page, so that the data table cannot fall back to one. The rule reads the page's
+     text, so this comment must not spell that declaration out either. */
+  .drawer{position:fixed;top:0;right:0;bottom:0;left:0;width:100%;border-left:0;z-index:60;
+    display:none;overflow:auto;transition:none}
+  .drawer.open{display:block;width:100%}
+  .drawer-in{width:100%;padding:12px 14px 32px}
+  .drawer-close{width:44px;height:44px;font-size:18px}
+  .dcards{grid-template-columns:minmax(0,1fr)}
+  .decision-split{grid-template-columns:minmax(0,1fr)}
+  .dp{min-height:44px;min-width:44px}
+}
 .comfort{--row-h:52px}
 .gex-on{--row-h:64px}
 .comfort.gex-on{--row-h:76px}
@@ -400,6 +483,8 @@ _COL_GROUPS = [c[2] for c in _COLUMNS]
 _COL_WIDTHS = [c[4] for c in _COLUMNS]
 _COL_ALIGN = {c[0]: c[3] for c in _COLUMNS}
 _COL_CLASS = {c[0]: c[5] for c in _COLUMNS}
+# The column name a phone card prints above each value (``data-label``, #581).
+_COL_LABEL = {c[0]: c[1] for c in _COLUMNS}
 
 # Group order + labels for the header row.
 _GROUP_ORDER = ["identity", "decision", "earnings", "market", "gex", "hunter"]
@@ -1821,7 +1906,7 @@ def export_html(cards: list, calendar_events: list[dict] = None, nrc_results: di
             }
             for cid in _COL_IDS:
                 body += (f'<td class="{_COL_CLASS[cid]}" data-col="{cid}" '
-                         f'data-group="{group_by_id[cid]}">{cells[cid]}</td>')
+                         f'data-group="{group_by_id[cid]}" data-label="{_COL_LABEL[cid]}">{cells[cid]}</td>')
             body += '</tr>'
 
         body += "</tbody></table></div>"
