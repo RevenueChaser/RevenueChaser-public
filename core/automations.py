@@ -1282,6 +1282,26 @@ def _switched_off(name: str) -> str | None:
     return f"skipped: {ops.switch_words(switch, off)}" if off is not None else None
 
 
+#: How much of a failed run's reason ``run_task`` echoes. ``homeops/runs.py`` keeps a job's last line as its
+#: ``job_runs.message`` and cuts it at 500 characters.
+REASON_MAX = 500
+
+
+def last_reason(log: Path, start: int, limit: int = REASON_MAX) -> str:
+    """The last line the command wrote to ``log`` from byte ``start`` on, without this runner's own ``=== `` lines.
+
+    "" when the command said nothing, or the log cannot be read: a reason we do not have is never invented.
+    """
+    try:
+        with open(log, "r", encoding="utf-8", errors="replace") as fh:
+            fh.seek(start)
+            said = [ln.strip() for ln in fh.read().splitlines()
+                    if ln.strip() and not ln.startswith("=== ")]
+    except OSError:
+        return ""
+    return said[-1][:limit] if said else ""
+
+
 def run_task(name: str, python: str | None = None, cwd: Path | str | None = None, *,
              clock: Callable[[], datetime] | None = None, sleep: Callable[[float], None] | None = None,
              tz: tzinfo | None = None) -> int:
@@ -1293,6 +1313,12 @@ def run_task(name: str, python: str | None = None, cwd: Path | str | None = None
     The run also gets a row in the ops run log (#136): ``job`` is the registry name, and ``counts`` is the result
     object the step printed last (``counts_from_output``). A row is opened only for a run that reaches its command,
     so a switched-off or chain-blocked pass leaves none, as it leaves no output.
+
+    The command's own output goes to the log and nowhere else, so a command that failed also has its exit code and
+    its last line echoed on **this** process's stdout (#1119). On the server this runner is itself a child of
+    ``jobrun``, which keeps a job's last line as its ``job_runs.message`` and writes it to its own log and the
+    journal: without the echo a red hourly row says "exit 1" and names no reason in any of the three places a
+    person looks, and only ``<entry>.log`` holds it.
     """
     import os
     import uuid
@@ -1332,7 +1358,7 @@ def run_task(name: str, python: str | None = None, cwd: Path | str | None = None
             env = {**os.environ, rawstore.RUN_ID_ENV: run_id, rawstore.RUN_SOURCE_ENV: e.name}
         logged = _run_log_start(run_id, e.name)
         fh.flush()
-        before = fh.tell()                  # where the step's own output starts, for ``_counts_of_run``
+        before = fh.tell()                  # where the step's own output starts, for ``_counts_of_run`` and the echo
         try:
             rc = subprocess.run([python or sys.executable, *e.args],
                                 cwd=str(cwd or package_parent()),
@@ -1346,6 +1372,9 @@ def run_task(name: str, python: str | None = None, cwd: Path | str | None = None
         if logged:
             _run_log_finish(run_id, rc, _counts_of_run(log, before))
         fh.write(f"=== {stamp()} exit {rc}\n")
+    if rc != RESULT_OK:
+        why = last_reason(log, before)
+        print(f"{e.name} exit {rc}" + (f": {why}" if why else "") + f" (log: {log})", flush=True)
     return rc
 
 

@@ -1308,6 +1308,18 @@ turns the read off, which is what the test suite runs with). A request whose bui
 alone. Neither row writes an old `job_runs` row: the builder records its own `job_runs2` rows. The page and the routes only enqueue and read (`docs/data_retrieval.md`, "The
 market-store builder's routes").
 
+**Why a pass exited 1, and where that is written (#1119).** The hourly unit runs
+`jobrun rc-builder -- python -m RevenueChaser.core.automations run RC-Build`, and `run_task` sends the builder's
+whole stream to `<OUTPUT_DIR>/logs/RC-Build.log`. `jobrun` keeps only what its child printed, the **last line** of
+it as the job's `message`, so a failed pass ends with one summary line on stdout: `pass failed: <reason>;
+<reason>`, which carries every failed dataset with its step and exception, the due step's own failures (the one
+reason that fails a pass with every dataset run ok), a store that stayed busy, and `not started: <holder>` for an
+exit 3. `run_task` echoes a non-zero child as `<entry> exit <rc>: <its last line> (log: <path>)` on its own
+stdout, so the jobrun log, the journal and ops.db all name the reason and the log that holds the rest. A failed
+check row, the `job_runs2` error and the request's note name the step that raised first — `fetch`, `parquet`,
+`backfill`, `build`, `check`, `swap` or `after_swap` (`RunContext.step`) — so an HTTP 504 a fetch got is told from
+the same exception class out of a check read.
+
 **Known limits.** The idle gate is checked when the builder starts, not again before each request: a job that takes
 a lock after that runs beside it (both write different files, so nothing breaks). Since the gate only asks about the
 files the builder writes, that is now the same answer it would give later — only a second builder, or an undeclared

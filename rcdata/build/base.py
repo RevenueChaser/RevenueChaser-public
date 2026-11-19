@@ -225,6 +225,10 @@ class RunContext:
     allow_shrink: bool = False                                      # a request's explicit "allow_shrink": true
     reread: bool = False                                            # a request's explicit "reread": true (sec/reads)
     scope: Scope = field(default_factory=Scope)                     # a request's "tiers" / "names" (empty: daily)
+    # Which of the run's steps is in hand, so a failed check row says where the exception came from and not only
+    # its class (#1119): "start" before the first one, then "fetch", "parquet" or "backfill", then "build",
+    # "check" and "swap". A step sets it before it runs, never after, because what names it is the failure.
+    step: str = "start"
     pending: dict[str, Any] = field(default_factory=dict)          # a build's results for its after_swap step
     # #446: the Parquet files changed since the live file was built (``dirty.plan``; None: not known), and the plan
     # of a build made on the live copy (None: a whole build, every table made from the whole Parquet tree).
@@ -1092,6 +1096,8 @@ def build_kind_many(kind: str, members: list[tuple[Dataset, RunContext]], *, lea
             for table in serving.RETIRED_TABLES.get(kind, ()):
                 b.con.execute(f'DROP TABLE IF EXISTS "{table}"')
         counts: dict[str, int] = {}
+        for c in every:
+            c.step = "build"
         for d in kind_datasets(kind):
             started = time.monotonic()
             with spill_peak(serving.spill_dir(b.path)) as peak:
@@ -1104,11 +1110,17 @@ def build_kind_many(kind: str, members: list[tuple[Dataset, RunContext]], *, lea
             if not on_live and plan.reason is None:
                 plan.reason = "no live file to build on"
             lead.notes.append(plan.note())
+        for c in every:
+            c.step = "check"
         checks = {ds.name: ds.check(c, b.con) for ds, c in members}
+        for c in every:
+            c.step = "swap"
         b.swap(counts, checks=list(checks.values()), allow_shrink=shrink)
     for d in kind_datasets(kind):
         step = getattr(d, "after_swap", None)
         if step is not None:
+            for c in every:
+                c.step = "after_swap"
             step(ctxs.get(d.name, lead))
     return checks
 
@@ -1198,8 +1210,10 @@ def _run(ctx: RunContext, ds, req: dict, params: dict, attended_ok: bool = False
 
 
 def _failed(ctx: RunContext, req: dict, e: Exception) -> dict:
-    logger.exception("%s run %s failed", req["dataset"], ctx.run_id)
-    error = f"{type(e).__name__}: {e}"[:500]
+    logger.exception("%s %s step of run %s failed", req["dataset"], ctx.step, ctx.run_id)
+    # The step comes first, so a 504 a fetch got and the same class from a check read are told apart in the check
+    # row, the ``job_runs2`` error and the CLI line (#1119).
+    error = f"{ctx.step} failed: {type(e).__name__}: {e}"[:500]
     return _finish(ctx, req, {"result": "failed", "note": error}, "failed", error)
 
 
@@ -1248,12 +1262,15 @@ def _stage(ctx: RunContext, ds, req: dict, params: dict, attended_ok: bool = Fal
                 ctx.as_of = end
                 # A dataset's own backfill converts inside itself, so the switch reaches it through the
                 # ``raw_only`` guard in ``write_parquet`` rather than by skipping a call here.
+                ctx.step = "backfill"
                 ds.backfill(ctx, start, end)
             elif mode == "daily":
                 ctx.as_of = _parse_day(params["as_of"]) if params.get("as_of") else ds.default_as_of()
+                ctx.step = "fetch"
                 raws = ds.fetch(ctx, ctx.as_of)
                 staged = len(raws)
                 if not raw_only_mode:
+                    ctx.step = "parquet"
                     ds.to_parquet_all(ctx, raws)
             else:
                 raise ValueError(f"unknown mode {mode!r}")
