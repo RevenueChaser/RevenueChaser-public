@@ -1,9 +1,12 @@
-"""E5a (#372): the Earnings Fetch reads the ``earnings_calendar`` rows the nightly D26 sweep stored and calls UW
-only for the (day, session) pairs the store does not cover.
+"""E5a (#372), back on the new serving layer (#273 board half): the Earnings Fetch reads the served calendar and
+calls UW only for the (day, session) pairs the store does not cover.
 
-Offline: a fake client that counts its calls, a temp store seeded with the stored rows. The stored event must be
-byte-identical to the live one built from the same UW row (the live read is the reference), because the run
-downstream (screener, scoring) cannot tell which path a row came from except by its ``source``.
+The rows come from ``option_screener_daily`` now, not the nightly D26 sweep of the old raw.duckdb (#860). The
+stored event must be byte-identical to the live one built from the same UW row (the live read is the reference),
+because the run downstream (screener, scoring) cannot tell which path a row came from except by its ``source``.
+
+Offline: a fake client that counts its calls, and the board's one reader patched (the reader's own cases are
+``module_earnings_radar/tests/test_stored_calendar_273.py``).
 """
 from __future__ import annotations
 
@@ -38,9 +41,15 @@ def _item(ticker, **over):
     return item
 
 
-def _row(item, day=DAY, session="premarket", session_date=SESSION):
-    return {"session_date": session_date, "earnings_date": day, "ticker": item["symbol"],
-            "report_session": session, "item": item, "marketcap": 1_500_000_000, "source": "uw"}
+@pytest.fixture
+def stored(monkeypatch):
+    """``stored({(day, session): [item, ...]})``: what the board's reader answers for this test."""
+    from RevenueChaser.module_earnings_radar import stored_inputs
+
+    def make(pairs: dict, session=SESSION):
+        monkeypatch.setattr(stored_inputs, "calendar_items", lambda days, today=None: (dict(pairs), session))
+
+    return make
 
 
 class _UW:
@@ -83,7 +92,83 @@ def _key(ev):
 
 
 
+def test_a_served_pair_is_not_asked_of_uw(stored):
+    stored({(DAY, "premarket"): [_item("AAA")], (DAY, "afterhours"): []})
+    fake = _UW()
+
+    events, raw_cal = runners._fetch_calendar_days(fake, [DAY])
+
+    assert fake.calls == [], "the Fetch asked UW for a pair the store answered"
+    assert [e["ticker"] for e in events] == ["AAA"] and set(raw_cal) == {"AAA"}
+
+
+def test_a_pair_the_store_does_not_cover_is_still_asked_of_uw(stored):
+    stored({(DAY, "premarket"): [_item("AAA")]})      # no afterhours entry: that pair is UW's
+    fake = _UW({(DAY, "afterhours"): [_item("BBB")]})
+
+    events, _ = runners._fetch_calendar_days(fake, [DAY])
+
+    assert fake.calls == [(DAY, "afterhours")]
+    assert sorted(e["ticker"] for e in events) == ["AAA", "BBB"]
+
+
+def test_a_served_event_is_the_live_event_built_from_the_same_row(stored):
+    item = _item("AAA")
+    reference = _live_events(_UW({(DAY, "premarket"): [item]}), [DAY])
+    stored({(DAY, "premarket"): [item], (DAY, "afterhours"): []})
+
+    events, _ = runners._fetch_calendar_days(_UW(), [DAY])
+
+    assert events == reference
+    assert [_key(e) for e in events] == [_key(e) for e in reference]
+    assert {e["source"] for e in events} == {"UW"}, "the run downstream must not be able to tell the paths apart"
+
+
+def test_premarket_still_wins_in_raw_cal_when_both_pairs_are_served(stored):
+    stored({(DAY, "premarket"): [_item("AAA", full_name="AAA premarket")],
+            (DAY, "afterhours"): [_item("AAA", full_name="AAA afterhours")]})
+
+    _, raw_cal = runners._fetch_calendar_days(_UW(), [DAY])
+
+    assert raw_cal["AAA"]["full_name"] == "AAA premarket"
+
+
+def test_the_run_records_which_pairs_came_from_the_store(stored):
+    stored({(DAY, "premarket"): [_item("AAA")]})
+    fake = _UW({(DAY, "afterhours"): []})
+
+    runners._fetch_calendar_days(fake, [DAY])
+
+    assert runners._CALENDAR_SOURCES == {"stored": 1, "live": 1, "session": SESSION.isoformat()}
+
+
+def test_nothing_served_names_no_session_and_counts_every_pair_live(stored):
+    stored({}, session=None)
+    fake = _UW({(DAY, "premarket"): [_item("AAA")]})
+
+    runners._fetch_calendar_days(fake, [DAY])
+
+    assert fake.calls == [(DAY, "premarket"), (DAY, "afterhours")]
+    assert runners._CALENDAR_SOURCES == {"stored": 0, "live": 2, "session": None}
+
+
+def test_a_failing_reader_does_not_fail_the_fetch(monkeypatch):
+    from RevenueChaser.module_earnings_radar import stored_inputs
+
+    def boom(days, today=None):
+        raise RuntimeError("serving file locked")
+
+    monkeypatch.setattr(stored_inputs, "calendar_items", boom)
+    fake = _UW({(DAY, "premarket"): [_item("AAA")]})
+
+    events, _ = runners._fetch_calendar_days(fake, [DAY])
+
+    assert [e["ticker"] for e in events] == ["AAA"]
+    assert fake.calls == [(DAY, "premarket"), (DAY, "afterhours")]
+
+
 def test_weekends_are_skipped_without_a_read():
+    """No store is seeded here, so every pair is UW's: the reader answers nothing from an empty temp store."""
     fake = _UW({(DAY, "premarket"): [_item("AAA")]})
 
     events, _ = runners._fetch_calendar_days(fake, [SATURDAY, DAY])

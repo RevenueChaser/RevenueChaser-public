@@ -1,8 +1,9 @@
-"""The Earnings board's stored reads that are not in ``store_reads``: the rate events and the reaction bars.
+"""The Earnings board's stored reads that are not in ``store_reads``: the calendar, the rate events and the bars.
 
-``rate_events`` reads ``market.economic_event`` (R6) and ``ohlc_bars`` the prices store's daily bars. The stored
-earnings calendar (D26) this module also read lived in the old raw.duckdb and went with it (#860): the Fetch asks
-UW for every calendar day now.
+``calendar_items`` reads the served UW earnings calendar (``option_screener_daily``, the options builder's G8 read),
+``rate_events`` reads ``market.economic_event`` (R6) and ``ohlc_bars`` the prices store's daily bars. The old D26
+calendar sweep lived in raw.duckdb and went with it (#860), so every calendar day was asked of UW live again until
+``option_screener_daily`` began carrying the calendar's own expected move (#273's data half, 18 Nov 2026).
 
 A missing file or a read error is "nothing stored": the caller falls back to the live provider, and the error is
 logged once per table. Read only.
@@ -58,6 +59,134 @@ def _num(value) -> float | None:
 
 
 # ── D26: the earnings calendar ───────────────────────────────────────────────────────────────────────────────────
+
+CALENDAR_SOURCE = "rcdata:option_screener_daily"
+# The need the freshness comes from: ``options.screener``, one session (``rcdata/needs/catalog.py``). avo, 29 Oct
+# 2026: a calendar older than the last session is not read at all.
+_CALENDAR_NEED = "options.screener"
+
+
+def calendar_max_lag() -> int:
+    """Sessions the served calendar may lag the board's day by, read from the need catalog on every call."""
+    from RevenueChaser.rcdata import needs
+    need = needs.catalog.NEEDS[_CALENDAR_NEED]
+    if need.max_lag_unit != "sessions":
+        raise ValueError(f"{_CALENDAR_NEED}: this reader counts sessions, the catalog says {need.max_lag_unit}")
+    return need.max_lag
+
+
+def calendar_days_ahead() -> int:
+    """The report days a built session covers — the builder's own window, never a second copy of 28."""
+    from RevenueChaser.rcdata.build.options.uw_screener import DAYS_AHEAD
+    return int(DAYS_AHEAD)
+
+
+def _calendar_session(value) -> str | None:
+    """A stored ``report_session`` as the session name the Fetch asks UW for."""
+    v = str(value or "").strip().lower().replace("-", "")
+    if v in ("premarket", "bmo", "before"):
+        return "premarket"
+    if v in ("afterhours", "postmarket", "amc", "after"):
+        return "afterhours"
+    return None
+
+
+def _calendar_item(row: dict) -> dict:
+    """One served row as the UW calendar item ``app/runners._calendar_event`` reads.
+
+    The field names are UW's, not the table's, so the event is built by the one function either way and a stored
+    pair and a live pair cannot drift apart.
+    """
+    return {
+        "symbol": row.get("ticker"),
+        "sector": row.get("sector") or "",
+        "full_name": row.get("full_name") or "",
+        "marketcap": row.get("marketcap"),
+        "expected_move_perc": _num(row.get("expected_move_perc")),
+        "street_mean_est": _num(row.get("street_mean_est")),
+        "pre_earnings_close": _num(row.get("pre_earnings_close")),
+        "post_earnings_close": _num(row.get("post_earnings_close")),
+        "report_time": row.get("report_time") or "",
+    }
+
+
+def calendar_items(days, today=None) -> tuple[dict, date | None]:
+    """``({(report day, report session): [calendar item, ...]}, built session)`` from the served calendar.
+
+    One entry per **pair** the newest built session covers, empty list included: a covered day with no report is
+    answered, not asked of UW. A pair that is absent is the Fetch's to read live. Nothing is served when
+
+    * the table is empty or unreadable;
+    * the newest session lags ``calendar_max_lag()`` sessions behind ``today`` (default New York's today);
+    * the day falls outside the session's window (``session < day <= session + calendar_days_ahead()``);
+    * the day is today or the next trading day — UW moves the expected move, the estimate and the report time
+      during the day for the names about to report, so those pairs are always live (the rule the old D26 reader
+      had, kept).
+
+    Read only: never a provider call, and a store error is "nothing stored".
+    """
+    wanted = [d for d in days or () if isinstance(d, date) and d.weekday() < 5]
+    if not wanted:
+        return {}, None
+    try:
+        today = _as_date(today) or calendar.today_ny()
+    except ValueError:
+        today = calendar.today_ny()
+    live_always = {today}
+    try:
+        live_always.add(calendar.next_trading_day(today))
+    except ValueError:
+        pass
+    wanted = [d for d in wanted if d not in live_always]
+    if not wanted:
+        return {}, None
+    try:
+        rows = market_read.option_screener()
+    except Exception as exc:  # noqa: BLE001 - a Fetch must never fail on the store
+        _note_once("option_screener_daily", exc)
+        return {}, None
+    sessions = [s for s in (_as_date(r.get("session_date")) for r in rows or ()) if s is not None]
+    if not sessions:
+        _note_once("option_screener_daily")
+        return {}, None
+    session = max(sessions)
+    lag = _sessions_after(session, today)
+    if lag is None or lag > calendar_max_lag():
+        _note_once("option_screener_daily")
+        return {}, None
+    window_end = session + timedelta(days=calendar_days_ahead())
+    covered = [d for d in wanted if session < d <= window_end]
+    if not covered:
+        return {}, None
+    out = {(d, rs): [] for d in covered for rs in ("premarket", "afterhours")}
+    for row in rows:
+        # ``option_screener`` serves the newest session on its own; the check keeps an older row out should a
+        # caller ever hand this reader more than one session.
+        if _as_date(row.get("session_date")) != session:
+            continue
+        day, rs = _as_date(row.get("report_date")), _calendar_session(row.get("report_session"))
+        if day is None or rs is None or (day, rs) not in out:
+            continue
+        out[(day, rs)].append(_calendar_item(row))
+    return out, session
+
+
+def _sessions_after(obs: date, day: date) -> int | None:
+    """NYSE sessions after ``obs`` up to and including ``day`` (0 when ``obs >= day``); None past the calendar.
+
+    The same count ``store_reads._sessions_after`` makes, so the board measures one kind of lag.
+    """
+    n, d = 0, obs
+    while n <= 40:
+        try:
+            d = calendar.next_trading_day(d)
+        except ValueError:
+            return None
+        if d > day:
+            return n
+        n += 1
+    return None
+
 
 
 # ── D37: the economic calendar (rate events) ─────────────────────────────────────────────────────────────────────
