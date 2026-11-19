@@ -26,7 +26,6 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-import duckdb
 
 from ... import ops, serving
 from .. import base
@@ -44,7 +43,7 @@ def at_risk(as_of: date) -> dict[str, list[str]]:
     """``{security_id: [reason, ...]}`` of the securities at risk on ``as_of`` (see the module docstring)."""
     lo = as_of - timedelta(days=RISK_DAYS)
     found: dict[str, set[str]] = {}
-    con = duckdb.connect()
+    con = base.scratch_con()
     try:
         files = [p for p in (wrds_history.partition_path("secd", y) for y in range(lo.year, as_of.year + 1))
                  if p.is_file()]

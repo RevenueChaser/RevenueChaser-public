@@ -1017,8 +1017,16 @@ renders at once with what is stored.
 | `RC_MARKET_RAW_MARKER` | `rcdata.build.base.RAW_MARKER_ENV` | Optional: a file name under `RC_MARKET_RAW_DIR` that only the mounted HDD holds; when set, a run without that file refuses before its fetch (#292 N-2). Unset, nothing is checked |
 
 **Build memory.** The one read-write connection of a build (`serving.build`) is opened with DuckDB's `memory_limit`
-from `RC_DUCKDB_MEMORY_LIMIT` (a DuckDB size such as `5GB`; default `5GB`) and `threads` from `RC_DUCKDB_THREADS`
-(default `3`); an empty or invalid value keeps the default. Over the limit DuckDB spills rather than growing: without
+and `threads` from `RC_DUCKDB_THREADS` (default `3`); an empty or invalid value keeps the default. The memory limit
+**follows the machine at build start** (`serving.auto_memory_limit`): `RC_DUCKDB_MEMORY_SHARE` (default `0.6`) of
+what is still available, held between `RC_DUCKDB_MEMORY_FLOOR` (default `2GB`) and `RC_DUCKDB_MEMORY_CAP`
+(default `12GB`). "Available" is the smaller of the kernel's `MemAvailable` and the headroom of the process's own
+cgroup v2 limits (`memory.max` / `memory.high` minus `memory.current`, at every level up to the root, because a
+limit on a parent slice binds its children): on homesrv the builder runs under a systemd `MemoryMax`, so free host
+RAM alone would be a limit the cgroup kills the build for taking. A fixed 5 GB was both too much and too little —
+the `sec_forms` build of 19 Nov 2026 was OOM-killed at it while about 10 GB was free. `RC_DUCKDB_MEMORY_LIMIT`
+(a DuckDB size such as `5GB`) overrides all of it, and `5GB` stays the fallback for a machine whose free memory
+cannot be read. Each build logs the limit it got, its threads and what was available. Over the limit DuckDB spills rather than growing: without
 it a connection may take 80 % of the machine's RAM, and the kernel OOM-killed the first `prices/serving` build on
 #319's code (request #35, 30 Oct 2026, 7.7 GB peak on a 15 GB server). The spill goes to
 `<MARKET_RAW_DIR>/build_tmp/<build file>.tmp` (`serving.spill_dir`, the HDD), never beside the live files on the SSD
@@ -1026,7 +1034,16 @@ it a connection may take 80 % of the machine's RAM, and the kernel OOM-killed th
 from `RC_DUCKDB_MAX_TEMP` (default `200GB`), held to 90 % of the spill disk's free space when the build opens
 (DuckDB's own default, which a set cap replaces; #379): past it the build fails instead of filling the disk.
 `RC_DUCKDB_TEMP_DIR` moves the
-spill's parent folder (unset: `<MARKET_RAW_DIR>/build_tmp`). Each dataset's build logs one line with its seconds and
+spill's parent folder (unset: `<MARKET_RAW_DIR>/build_tmp`).
+
+A build step's own in-memory query connection (`base.scratch_con`, `serving.connect_scratch`) carries the same
+adaptive limit, overridden on its own by `RC_DUCKDB_SCRATCH_MEMORY_LIMIT`, and spills into a folder of its own
+under `<RC_TMP_HDD_DIR>/duckdb-scratch` (else the raw root), one per connection because two DuckDB instances on one
+spill folder write over each other's blocks. A bare `duckdb.connect()` is not allowed in `rcdata/` any more
+(`core/tests/test_scratch_connections.py`): it has no limit — DuckDB's own default is 80 % of the machine's RAM —
+and no spill folder, so such a step grows until the kernel ends the build. Serving **readers** keep their fixed cap
+(`RC_DUCKDB_READ_MEMORY_LIMIT`, default `1GiB`): many run at once, so a share of free memory each would add up to
+more than the machine has. Each dataset's build logs one line with its seconds and
 its spill peak (`base.spill_peak`, sampled every 2 s), the measure for moving the spill to the SSD or chunking a kind.
 
 **Files.** Serving kinds: `market`, `spine`, `prices`, `ownership`, `fundamentals`, `options`, `sec_forms`, `sec_reads`. Each kind is one

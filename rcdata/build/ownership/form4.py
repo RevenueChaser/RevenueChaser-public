@@ -135,7 +135,7 @@ class SecForm4(edgar.Feed):
         super().backfill(ctx, first, end)
 
     def type_day(self, ctx: base.RunContext, day: date) -> list[Path]:
-        con = duckdb.connect()
+        con = base.scratch_con()
         try:
             rows = edgar.Appender(con, "rows", ROWS)
             for _acc, entry, text in self.filings_of(day):

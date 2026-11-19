@@ -75,7 +75,7 @@ def catalog(ctx: base.RunContext, dataset: str, as_of: date, tables: list[str]) 
     names = ", ".join(f"'{t}'" for t in tables)
     wrds_session._ask(ctx, raw, "SELECT table_schema, table_name, column_name FROM information_schema.columns "
                                 f"WHERE table_name IN ({names})", as_of)
-    con = duckdb.connect()
+    con = base.scratch_con()
     try:
         rows = con.execute(wrds_session.raw_rows(raw, CATALOG)).fetchall()
     finally:
@@ -216,7 +216,7 @@ class WrdsFund:
         for raw in raws:
             meta = base.read_raw_json(common.meta_path(raw))
             as_of = meta["as_of"]
-            con = duckdb.connect()
+            con = base.scratch_con()
             try:
                 rows = int(con.execute(f"SELECT count(*) FROM ({wrds_session.raw_rows(raw, self.schema)})")
                            .fetchone()[0])
@@ -433,7 +433,7 @@ class WrdsSegments(WrdsFund):
             schema, key, _, _ = self.PARTS[part]
             meta = base.read_raw_json(common.meta_path(raw))
             as_of = meta["as_of"]
-            con = duckdb.connect()
+            con = base.scratch_con()
             try:
                 keep = (" WHERE stype IN (" + ", ".join(f"'{t}'" for t in sorted(SEGMENT_TYPES)) + ")"
                         if part == "wrds_segmerged" else "")

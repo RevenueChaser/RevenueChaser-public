@@ -251,7 +251,7 @@ class UWEarnings:
                 for k, n in counts.items():
                     left[k] = left.get(k, 0) + n
                 rows += [{**r, **stamps} for r in got]
-            con = duckdb.connect()
+            con = base.scratch_con()
             try:
                 base.rows_table(con, "rows", SCHEMA, rows)
                 out.append(base.write_parquet(con, "SELECT * FROM rows ORDER BY cik, period_end",

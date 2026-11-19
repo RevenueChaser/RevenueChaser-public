@@ -132,7 +132,7 @@ class YahooFloat:
         parts = _partitions("yfinance", "float")
         last: dict[str, float] = {}
         if parts:
-            con = duckdb.connect()
+            con = base.scratch_con()
             try:
                 last = dict(con.execute("SELECT ticker, max(fetched_at) FROM read_parquet(["
                                         + ", ".join(base.sql_path(p) for p in parts) + "]) GROUP BY ticker").fetchall())

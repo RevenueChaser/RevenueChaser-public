@@ -162,7 +162,7 @@ class Ncen:
                     zipfile.ZipFile(raw) as z:
                 names = {Path(n).name: n for n in z.namelist()}
                 fund, exch, sub = (Path(z.extract(names[n], tmp)) for n in FILES)
-                con = duckdb.connect()
+                con = base.scratch_con()
                 try:
                     out.append(base.write_parquet(con, self._series(fund, exch, sub, quarter, meta),
                                                   folder / "part-0.parquet"))

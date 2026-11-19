@@ -148,7 +148,7 @@ def adv_usd_20d(tickers: list[str], as_of: date | None = None) -> dict[str, floa
         return {}
     src = f"read_parquet([{', '.join(base.sql_path(f) for f in files)}], union_by_name = true)"
     cutoff = "" if as_of is None else f" AND datadate <= DATE '{as_of.isoformat()}'"
-    con = duckdb.connect()
+    con = base.scratch_con()
     try:
         rows = con.execute(f"""
             WITH priced AS (
@@ -191,7 +191,7 @@ def shares_x_close(tickers: list[str], as_of: date | None = None) -> dict[str, t
         return {}
     src = f"read_parquet([{', '.join(base.sql_path(f) for f in files)}], union_by_name = true)"
     cutoff = "" if as_of is None else f" AND datadate <= DATE '{as_of.isoformat()}'"
-    con = duckdb.connect()
+    con = base.scratch_con()
     try:
         found = con.execute(f"""
             WITH priced AS (

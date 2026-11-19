@@ -378,7 +378,7 @@ class SecCoverShares:
         parts = sorted((base.parquet_root() / "sec" / "cover_shares").glob("year=*/part-0.parquet"))
         if not files or not parts:
             return sorted(files)
-        con = duckdb.connect()
+        con = base.scratch_con()
         try:
             have = {r[0] for r in con.execute("SELECT DISTINCT accession FROM read_parquet(["
                                               + ", ".join(base.sql_path(p) for p in parts) + "])").fetchall()}

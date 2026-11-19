@@ -117,7 +117,7 @@ class UWEconomicCalendar:
             ctx.issue("unkeyed", day.isoformat(), f"{unkeyed} rows without a time, an event or a type")
         if not rows:
             raise base.SourceError(f"UW {ENDPOINT} {day}: no usable row in {raw.name}")
-        con = duckdb.connect()
+        con = base.scratch_con()
         try:
             base.rows_table(con, "snap", SCHEMA, rows)
             # The day's newest fetch replaces it whole: an event UW dropped is gone from that day too.

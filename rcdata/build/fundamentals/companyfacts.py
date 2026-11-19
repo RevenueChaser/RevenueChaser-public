@@ -233,7 +233,7 @@ class CompanyFacts:
         stamps = {"preliminary": False, "source": facts.SOURCE, "source_as_of": date.fromisoformat(meta["as_of"]),
                   "fetched_at": float(meta["fetched_at"]), "run_id": meta["run_id"]}
         folder = common.parquet_dir(NAME) / f"cik={cik}"
-        con = duckdb.connect()
+        con = base.scratch_con()
         try:
             base.rows_table(con, "rows", facts.FACT, [{**r, **stamps} for r in rows])
             written = [base.write_parquet(con, "SELECT * FROM rows ORDER BY field, period_type, period_end",

@@ -33,7 +33,7 @@ def chunks() -> int:
 
 def write_rows(rows: list[dict], schema: list[tuple[str, str]], final: Path, order: str = "") -> Path:
     """Write ``rows`` typed by ``schema`` to the Parquet file ``final`` (``.tmp`` and a rename)."""
-    con = duckdb.connect()
+    con = base.scratch_con()
     try:
         base.rows_table(con, "rows_out", schema, rows)
         return base.write_parquet(con, "SELECT * FROM rows_out" + (f" ORDER BY {order}" if order else ""), final)
@@ -45,7 +45,7 @@ def read_rows(path: Path) -> list[dict]:
     """Every row of one Parquet file, as dicts (``[]`` when it does not exist)."""
     if not path.is_file():
         return []
-    con = duckdb.connect()
+    con = base.scratch_con()
     try:
         cur = con.execute(f"SELECT * FROM read_parquet({base.sql_path(path)})")
         cols = [d[0] for d in cur.description]

@@ -204,7 +204,7 @@ class FinraShortInterest:
                 raise base.SourceError(f"finra {raw.name}: no row with a symbol")
             repeats += rep
             final = parquet_dir() / f"date={rows[0]['settlement_date'].isoformat()}" / "part-0.parquet"
-            con = duckdb.connect()
+            con = base.scratch_con()
             try:
                 base.rows_table(con, "rows", SCHEMA, rows)
                 out.append(base.write_parquet(con, "SELECT * FROM rows ORDER BY symbol", final))

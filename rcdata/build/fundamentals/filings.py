@@ -516,7 +516,7 @@ class Filings:
                 filing_rows += [{**r, "item": i, **stamps} for i in items]
             segment_rows, customer_rows = self._documents(cik, rows)
             folder = common.parquet_dir(NAME) / f"cik={cik}"
-            con = duckdb.connect()
+            con = base.scratch_con()
             try:
                 base.rows_table(con, "filings", FILING, filing_rows)
                 out.append(base.write_parquet(con, "SELECT * FROM filings ORDER BY filing_date, accession, item",

@@ -120,7 +120,7 @@ def id_type(code: str) -> str:
 
 
 def _query(sql: str) -> list[tuple]:
-    con = duckdb.connect()
+    con = base.scratch_con()
     try:
         return con.execute(sql).fetchall()
     finally:

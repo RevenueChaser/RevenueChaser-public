@@ -274,7 +274,7 @@ def names_done(source: str, session: date) -> dict[str, dict]:
     part = partition_path(source, NAMES.name, session)
     if not part.exists():
         return {}
-    con = duckdb.connect()
+    con = base.scratch_con()
     try:
         cur = con.execute(f"SELECT * FROM read_parquet({base.sql_path(part)})")
         cols = [d[0] for d in cur.description]

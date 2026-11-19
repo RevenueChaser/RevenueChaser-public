@@ -190,7 +190,7 @@ class IbkrShortable:
             day = date.fromisoformat(meta["as_of"])
             rows = [{**r, "snapshot_date": day, "session_date": _session(meta["fetched_at"]), "snapshot_at": stamp,
                      "fetched_at": meta["fetched_at"], "run_id": meta["run_id"]} for r in parsed]
-            con = duckdb.connect()
+            con = base.scratch_con()
             try:
                 base.rows_table(con, "rows", SCHEMA, rows)
                 out.append(base.write_parquet(con, "SELECT * FROM rows ORDER BY symbol",

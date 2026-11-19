@@ -301,7 +301,7 @@ class UWInstitutions:
                       f"{repeated} of {repeated + len(rows)} rows repeated across pages while paging; the first "
                       f"row of a CIK stands")
         out = []
-        con = duckdb.connect()
+        con = base.scratch_con()
         try:
             base.rows_table(con, "rows", SCHEMA, rows)
             out.append(base.write_parquet(con, "SELECT * FROM rows ORDER BY cik",
