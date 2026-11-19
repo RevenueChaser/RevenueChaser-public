@@ -1099,6 +1099,16 @@ def build_kind_many(kind: str, members: list[tuple[Dataset, RunContext]], *, lea
             # What a dataset costs, so a chunked or SSD-spilling build is decided from a measure (#654 review).
             logger.info("build %s %s (%s): %.1f s, spill peak %.2f GB", kind, d.name, b.mode,
                         time.monotonic() - started, peak[0] / 1e9)
+        if on_live:
+            # The sample that replaces the scheduled whole rebuild (#446 step 5): a few keys re-read from Parquet
+            # and compared with the file. A difference is evidence - a build issue and a key dirty next time -
+            # never a refusal, so the file still swaps in and the next pass rebuilds those keys.
+            from . import audit
+            differ = audit.run(lead, b.con, audit.subjects(kind_datasets(kind), lead), os.environ,
+                               getattr(lead, "run_id", None))
+            if differ:
+                named = ", ".join(f"{t}: {len(k)}" for t, k in sorted(differ.items()))
+                lead.notes.append(f"audit: key(s) that differ from a recompute, dirty next build ({named})")
         if plan is not None:
             dirty.write_manifest(b.con, plan)
             if not on_live and plan.reason is None:

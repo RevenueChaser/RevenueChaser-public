@@ -480,6 +480,7 @@ def plan(kind: str, ctx: Any, datasets: Iterable[Any] | None = None) -> Plan | N
     if reason is None:
         reason = full_rebuild_reason(kind, datasets, ctx)
     held = live_rules(kind)
+    audited = audit_dirty(kind, datasets)
     recoded: tuple[str, ...] = ()
     if reason is None and held is not None:
         # A live file built before the fingerprints existed is trusted once: it was built by the code just before
@@ -503,9 +504,27 @@ def plan(kind: str, ctx: Any, datasets: Iterable[Any] | None = None) -> Plan | N
                 reason = f"{d.name}: no narrower dirty set"
                 sets = {}
                 break
+    if reason is None:
+        # A key an earlier audit found a difference for is dirty until it is rebuilt (#446 step 5).
+        for d in datasets:
+            extra = audited.get(d.name) or frozenset()
+            if extra and d.name in sets and not sets[d.name].all:
+                sets[d.name] = Dirty(ranges=sets[d.name].ranges, keys=sets[d.name].keys | extra)
     if reason is not None:
         recoded = ()
     return Plan(reason, sets, current, rules, changed, recoded, fallback)
+
+
+def audit_dirty(kind: str, datasets: Iterable[Any]) -> dict[str, frozenset[str]]:
+    """Per dataset, the keys an earlier audit of one of its tables found a difference for (``audit.DIRTY``).
+
+    Empty for a live file that has no such table, which is every file built before the audit landed."""
+    from . import audit
+    try:
+        with serving.open_read(kind) as con:
+            return {d.name: audit.dirty_keys(con, getattr(d, "tables", ())) for d in datasets}
+    except (serving.ServingFileMissing, duckdb.Error):
+        return {}
 
 
 def write_manifest(con: duckdb.DuckDBPyConnection, p: Plan) -> None:
