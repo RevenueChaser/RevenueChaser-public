@@ -1120,9 +1120,40 @@ def run(no_fetch: bool = False, tickers: list[str] | None = None,
         return payload
 
 
+def score(only_if_new: bool = True, provider: str = "deepseek", model: str | None = None) -> dict:
+    """Rescore every pair from the stored profiles, persist the scores and the payload. No call, no download.
+
+    The weekly scoring step of #884 (avo, 16 Nov 2026: "A) Haftada bir, Pazar gecesi"). It is the Fetch's second
+    half without its first: the profiles are whatever the SEC reading service has mirrored
+    (``config.PROFILES_FROM``), so this function calls no writer, downloads nothing and spends nothing. What it
+    does that a Refresh does not: it writes. The new company vectors are cached
+    (``relatedness_embeddings``) and the peers go to ``relatedness_scores``, so the next render reads them
+    instead of making them again.
+
+    ``only_if_new`` skips the week whose profiles are all older than the saved payload (the same comparison
+    ``_reusable_payload`` makes), which is the "a Sunday with nothing marked is skipped" rule of the timer plan;
+    the answer then carries ``skipped``. It holds the board's job lock, as a Fetch does, because it writes.
+    """
+    from . import store
+    if only_if_new:
+        cached = _reusable_payload(provider, model)
+        if cached is not None:
+            logger.info("relatedness score: no profile is newer than the saved payload (%s); nothing rescored",
+                        cached.get("as_of"))
+            return {**cached, "skipped": "no profile is newer than the saved payload"}
+    with job_lock.acquire("relatedness", wait=0) as got:
+        if not got:
+            raise AlreadyRunning("Another Relatedness run is already in progress.")
+        payload = _run(True, None, None, None, provider=provider, model=model, write=True)
+        store.save_scores(payload.get("peers") or {})
+        return payload
+
+
 def _run(no_fetch: bool, tickers: list[str] | None, limit: int | None,
          usd_cap: float | None, run_id: str | None = None, provider: str = "deepseek",
-         max_calls: int | None = None, model: str | None = None) -> dict:
+         max_calls: int | None = None, model: str | None = None, write: bool | None = None) -> dict:
+    # ``write`` overrides the default "a Fetch writes, a Refresh does not" (``not no_fetch``): the weekly scoring
+    # step fetches nothing and still writes its vectors (``score``).
     from . import store
     tickers = select_pilot() if tickers is None else list(tickers)
     if limit:
@@ -1161,7 +1192,7 @@ def _run(no_fetch: bool, tickers: list[str] | None, limit: int | None,
     other = store.other_writer_tickers(list(profiles), writer)
     profiles = {t: p for t, p in profiles.items() if any(p.values())}
     payload = _payload(profiles, stale=store.stale_tickers(list(profiles), writer=writer), model=writer[1],
-                       write=not no_fetch)
+                       write=(not no_fetch) if write is None else write)
     by_writer = store.profile_writers(list(profiles))
     for c in payload.get("companies") or []:
         c["writer"] = by_writer.get(c["ticker"])
