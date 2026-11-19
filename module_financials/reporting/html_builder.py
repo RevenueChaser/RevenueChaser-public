@@ -49,22 +49,22 @@ def _fmt_usd(v) -> str:
 
 
 def _fmt_num(v, nd=2) -> str:
-    if v is None:
-        return "N/A"
     if isinstance(v, str):
         return v          # a word the engine chose ("NM": a non-positive denominator has no multiple)
+    if not isinstance(v, (int, float)) or isinstance(v, bool):
+        return "N/A"      # None, and a key the payload does not carry at all (Jinja ``Undefined``)
     return f"{v:,.{nd}f}"
 
 
 def _fmt_pct(v, nd=1) -> str:
-    if v is None:
-        return "N/A"
+    if not isinstance(v, (int, float)) or isinstance(v, bool):
+        return "N/A"      # None, and a key the payload does not carry at all (Jinja ``Undefined``)
     return f"{v * 100:,.{nd}f}%"
 
 
 def _fmt_price(v) -> str:
-    if v is None:
-        return "N/A"
+    if not isinstance(v, (int, float)) or isinstance(v, bool):
+        return "N/A"      # None, and a key the payload does not carry at all (Jinja ``Undefined``)
     return f"${v:,.2f}"
 
 

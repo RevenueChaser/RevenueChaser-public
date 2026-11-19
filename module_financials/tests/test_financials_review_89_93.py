@@ -160,7 +160,8 @@ def test_a_year_without_a_believable_rate_takes_the_models(financials):
 
 def test_a_peer_row_without_a_market_cap_still_renders(financials):
     """A comps result built without the column's field (an older payload, or a hand-built one) must not raise:
-    the cell reads N/A. ``_fmt_usd`` took ``abs()`` of Jinja's ``Undefined`` and lost the whole page."""
+    the cell reads N/A. The money, number, price and percent filters formatted Jinja's ``Undefined`` — a key the
+    payload does not carry at all — and lost the whole page rather than the one cell."""
     html = build_report_html({"ticker": "TEST", "financials": financials, "warnings": [], "modules": {"comps": {
         "ticker": "TEST", "warnings": [], "pe_only": False,
         "peers": [{"ticker": "AAA", "pe": 10.0, "ev_ebitda": 9.0, "ev_revenue": 2.0}],
