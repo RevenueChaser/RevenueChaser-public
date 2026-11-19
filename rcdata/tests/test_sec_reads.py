@@ -492,11 +492,14 @@ def test_a_transient_error_gives_up_on_one_company_and_the_run_goes_on(http_mock
 
 
 def test_the_fifth_company_with_a_transient_error_stops_the_run(http_mock):
+    """The fifth transient company still stops the asking and stores nothing; since 19 Nov 2026 the run itself does
+    not fail on it, because the writer being down is not the step's failure (``reads.outage``, and the test above:
+    a failed step keeps Value Chain from running that night)."""
     many = {str(1000 + i): f"company {i}" for i in range(8)}
     http_mock.add("/chat/completions", lambda req: (500, "busy", {}))
     question(ciks=tuple(many), text=many)
     check = run()
-    assert check["result"] == "failed"
+    assert check["result"] != "failed" and "evren is down" in check["note"]
     assert len(http_mock.requests) == asker.TRANSIENT_STOP and reads.held("test.products") == {}
 
 
