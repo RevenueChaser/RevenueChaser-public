@@ -413,6 +413,13 @@ tr:not(.sel) td.sticky-name{border-right:1px solid var(--border-subtle)}
   table.data-table td[data-col="action"],table.data-table td[data-col="owners"],
   table.data-table td[data-col="datetime"]{grid-column:1/-1}
   .gex-track-wrap,.gex-grid{min-width:0}
+  /* The Scoring formulas and Methodology tables are plain four-column text tables with no colgroup: they ran
+     past the right edge until their cells were allowed to wrap. */
+  table:not(.data-table){table-layout:fixed;width:100%}
+  table:not(.data-table) td,table:not(.data-table) th{white-space:normal;overflow-wrap:anywhere;padding:4px 6px}
+  /* Every fold on the page is a 44 px target, the section titles that open one included. */
+  summary{min-height:44px}
+  .section-title{align-items:center}
   .name-cell{max-width:none}
   .structure-cell{white-space:normal;overflow:visible;text-overflow:clip}
   .why-cell,.why-cell:hover{max-width:none;white-space:normal}

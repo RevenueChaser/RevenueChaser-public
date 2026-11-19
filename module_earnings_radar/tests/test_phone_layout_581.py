@@ -82,8 +82,17 @@ def test_a_finger_gets_44_px_targets():
     phone = _phone_css()
     for rule in (r"\.seg button\{[^}]*min-height:44px", r"\.tb-search\{[^}]*min-height:44px",
                  r"\.chip\{[^}]*min-height:44px", r"\.colpick>summary\{[^}]*min-height:44px",
-                 r"\.drawer-close\{[^}]*height:44px", r"\.dp\{[^}]*min-height:44px"):
+                 r"\.drawer-close\{[^}]*height:44px", r"\.dp\{[^}]*min-height:44px",
+                 r"summary\{[^}]*min-height:44px"):
         assert re.search(rule, phone), f"missing: {rule}"
+
+
+def test_the_methodology_tables_wrap_instead_of_running_off_the_edge():
+    """Scoring formulas and Methodology are plain four-column text tables with no colgroup (#581 CI run 1)."""
+    phone = _phone_css()
+    assert re.search(r"table:not\(\.data-table\)\{[^}]*table-layout:fixed", phone)
+    assert re.search(r"table:not\(\.data-table\) td,table:not\(\.data-table\) th\{[^}]*white-space:normal",
+                     phone)
 
 
 def test_the_drawer_covers_the_page_instead_of_taking_480_px_beside_it():
