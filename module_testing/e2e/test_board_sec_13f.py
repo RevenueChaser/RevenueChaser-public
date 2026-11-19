@@ -18,6 +18,7 @@ import duckdb
 import pytest
 
 from . import harness
+from .harness.shared import shared_dashboard, write_13f_totals
 
 TOTALS = {
     "NVDA": {"2026-03-31": {"holders": 2100, "shares": 5_000_000, "value": 700_000_000},
@@ -41,6 +42,31 @@ def _tickers(dashboard) -> set:
 @pytest.fixture
 def seeded_totals(serve_13f_totals):
     return serve_13f_totals(TOTALS)
+
+
+SHARED = pytest.mark.xdist_group("e2e-sec13f-shared-fetch")
+
+
+@pytest.fixture(scope="module")
+def _served_once(tmp_path_factory, mock_provider):
+    """One dashboard, seeded with ``TOTALS`` and refreshed once, for this file's read-only tests (#896).
+
+    Measured on the 19 Nov 2026 e2e run: the four tests that only read the served board took 70.4 s, and a
+    dashboard boot alone is about 6.3 s (what an empty-store test costs end to end). A test that changes the
+    store, the routes or the cache in a way a later test could see keeps the function-scoped ``dashboard``:
+    the Refresh, restart and empty-store tests below, and the off-spine test, which seeds different rows.
+    """
+    with shared_dashboard(tmp_path_factory, mock_provider, "sec13f-shared") as dash:
+        write_13f_totals(dash, TOTALS)
+        result = dash.run_job("/run/module_sec_13f")
+        yield dash, result
+
+
+@pytest.fixture
+def served(_served_once):
+    dash, result = _served_once
+    assert result.ok, f"13F refresh failed: {result}\n{dash.logs()}"
+    return dash
 
 
 
@@ -68,10 +94,10 @@ class TestCredentials:
 
 
 class TestRenderAndRefresh:
-    def test_fetch_renders_the_served_totals(self, dashboard, seeded_totals):
-        assert dashboard.run_job("/run/module_sec_13f").ok
-        assert dashboard.view("module_sec_13f").status_code == 200
-        assert {"NVDA", "AMD"} <= _tickers(dashboard)
+    @SHARED
+    def test_fetch_renders_the_served_totals(self, served):
+        assert served.view("module_sec_13f").status_code == 200
+        assert {"NVDA", "AMD"} <= _tickers(served)
 
     def test_refresh_makes_no_network_calls(self, dashboard, provider_routes,
                                             seeded_totals, clear_cache):
@@ -120,14 +146,14 @@ def _cells(dashboard, ticker) -> dict:
 class TestFilterKit:
     """#375 KF: the shared filter kit mounts on the 13F board and its rows/metadata ride the payload route."""
 
-    def test_render_includes_the_filter_bar(self, dashboard, seeded_totals):
-        assert dashboard.run_job("/run/module_sec_13f").ok
-        html = dashboard.view("module_sec_13f").text
+    @SHARED
+    def test_render_includes_the_filter_bar(self, served):
+        html = served.view("module_sec_13f").text
         assert '<section class="rcf-bar" id="rc-filters"></section>' in html
 
-    def test_payload_carries_filter_fields(self, dashboard, seeded_totals):
-        assert dashboard.run_job("/run/module_sec_13f").ok
-        payload = _payload(dashboard)
+    @SHARED
+    def test_payload_carries_filter_fields(self, served):
+        payload = _payload(served)
         assert "fields" in payload
         for t in ("NVDA", "AMD"):
             assert t in payload["fields"], payload["fields"].keys()
@@ -159,19 +185,19 @@ def _chrome_path() -> str | None:
 
 
 class TestRowsInTheBrowser:
-    def test_the_board_draws_its_rows_and_mounts_the_kit(self, dashboard, seeded_totals, tmp_path):
+    @SHARED
+    def test_the_board_draws_its_rows_and_mounts_the_kit(self, served, tmp_path):
         chrome = _chrome_path()
         if chrome is None:
             msg = "no Chrome/Chromium for the 13F browser check: set RC_CHROME"
             if os.environ.get("CI", "").lower() == "true":
                 pytest.fail(msg)
             pytest.skip(msg)
-        assert dashboard.run_job("/run/module_sec_13f").ok
         out = subprocess.run(
             [chrome, "--headless", "--no-sandbox", "--disable-gpu", "--no-first-run", "--disable-extensions",
              f"--user-data-dir={tmp_path / 'profile'}",
              "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost, EXCLUDE 127.0.0.1",
-             "--virtual-time-budget=5000", "--dump-dom", dashboard.url + "/view/module_sec_13f"],
+             "--virtual-time-budget=5000", "--dump-dom", served.url + "/view/module_sec_13f"],
             capture_output=True, text=True, encoding="utf-8", timeout=harness.CHROME_TIMEOUT_S)
         dom = out.stdout
         assert "<html" in dom.lower(), f"Chrome dumped no DOM (exit {out.returncode}): {out.stderr[-1500:]}"
