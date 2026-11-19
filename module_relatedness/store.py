@@ -277,7 +277,14 @@ def score_rows(peers: dict[str, list[dict]]) -> list[dict]:
 
 
 def save_scores(peers: dict[str, list[dict]]) -> int:
-    """Persist ``{ticker: [{peer, score}, ...]}`` to ``relatedness_scores``."""
+    """Persist ``{ticker: [{peer, score}, ...]}`` to ``relatedness_scores``.
+
+    The table is the **record** of what was scored, not a read path (#594, avo's "tut" of 19 Nov 2026):
+    the board's neighbours come from the run's own payload, so no board reads these rows back. It is
+    kept because it is the only durable record of which pair scored what -- ``relatedness_scores_history``
+    mirrors it, the guard below stops a run that scored nothing from wiping it, and the incremental
+    scoring of #884 would read it as the previous score.
+    """
     rows = score_rows(peers)
     if not rows:
         # A run that scored nothing (cold cache, peak-hours stop) must not wipe the last good
