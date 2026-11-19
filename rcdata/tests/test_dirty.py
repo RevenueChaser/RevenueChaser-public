@@ -241,6 +241,10 @@ def _module_path(ds) -> Path:
     return Path(sys.modules[type(ds).__module__].__file__).resolve()
 
 
+def _homes(ds) -> set[Path]:
+    return {Path(sys.modules[name].__file__).resolve() for name in dirty.home_modules(ds)}
+
+
 def _with_edit(monkeypatch, edited: Path, measure):
     """``measure()`` as the code is, and again with ``edited``'s bytes changed (a comment: it still parses)."""
     before = measure()
@@ -266,14 +270,18 @@ def test_a_dataset_answers_for_no_file_outside_its_own_package():
     """The package is the boundary a kind's fingerprint had, and this narrows it; it never widens it."""
     for kind in serving.KINDS:
         for d in base.kind_datasets(kind):
-            folder = _module_path(d).parent
-            assert {p.parent for p in dirty.code_files(d)} <= {folder}, d.name
+            folders = {p.parent for p in _homes(d)}
+            assert {p.parent for p in dirty.code_files(d)} <= folders, d.name
 
 
-def test_every_dataset_answers_for_its_own_module():
+def test_every_dataset_answers_for_the_module_it_lives_in_and_the_one_its_class_is_in():
+    """``spine/wrds`` defines one class several datasets are built from, and each lives in a module of its own
+    whose constants are as much its rules as the class is."""
     for kind in serving.KINDS:
         for d in base.kind_datasets(kind):
-            assert _module_path(d) in dirty.code_files(d), d.name
+            files = set(dirty.code_files(d))
+            assert _module_path(d) in files, d.name
+            assert _homes(d) <= files, d.name
 
 
 def test_an_edit_to_a_file_a_dataset_does_not_reach_leaves_its_fingerprint_alone(monkeypatch):
@@ -304,7 +312,12 @@ def test_the_fingerprints_are_the_shared_one_and_one_per_dataset():
     out = dirty.fingerprints(datasets)
     assert set(out) == {dirty.SHARED} | {d.name for d in datasets}
     assert out[dirty.SHARED] == dirty.shared_fingerprint()
-    assert len(set(out.values())) == len(out), "two datasets with one fingerprint cannot be told apart"
+    # Two datasets share a fingerprint only when they share their code — one class, one module, both restated by
+    # a change to it. Any other pair sharing one would hide a deploy from one of them.
+    by_home: dict[str, set] = {}
+    for d in datasets:
+        by_home.setdefault(out[d.name], set()).add(frozenset(_homes(d)))
+    assert all(len(homes) == 1 for homes in by_home.values()), by_home
 
 
 # ── what the plan does with a dataset whose code changed ───────────────────────────────────────────────────────

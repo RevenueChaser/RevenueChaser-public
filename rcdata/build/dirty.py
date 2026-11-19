@@ -263,14 +263,33 @@ def _imported(path: Path, module: str) -> list[str]:
     return out
 
 
-def reaches(ds: Any) -> set[Path]:
-    """Every build file ``ds``'s code reaches: the module that defines it and what that imports, on and on, inside
-    ``rcdata/build`` and stopping at :data:`SHARED_FILES` (which every dataset reaches, and which the registry
-    would carry the walk back out of into every dataset there is)."""
-    start = type(ds).__module__
+def home_modules(ds: Any) -> list[str]:
+    """The modules ``ds`` belongs to: the one its class is defined in, and the one that holds the dataset object.
+
+    They are usually the same file, but not always — ``spine/wrds`` defines one class that several of the spine's
+    datasets are built from, and each of those lives in a module of its own whose constants (its name, its schema,
+    its SQL) are as much its rules as the class is. Both are walked, so neither is missed.
+    """
+    out = [type(ds).__module__]
+    for name, module in list(sys.modules.items()):
+        if name in out or _module_file(name) is None:
+            continue
+        try:
+            held = any(value is ds for value in vars(module).values())
+        except Exception:                                   # a module that will not be read is not a home
+            continue
+        if held:
+            out.append(name)
+    return [name for name in out if _module_file(name) is not None]
+
+
+def reaches(start: Iterable[str]) -> set[Path]:
+    """Every build file the modules ``start`` reach: what they import, on and on, inside ``rcdata/build`` and
+    stopping at :data:`SHARED_FILES` (which every dataset reaches, and which the registry would otherwise carry the
+    walk back out of into every dataset there is)."""
     shared = {BUILD_ROOT / n for n in SHARED_FILES}
     seen: dict[str, Path] = {}
-    queue = [start]
+    queue = list(start)
     while queue:
         name = queue.pop()
         if name in seen:
@@ -284,7 +303,7 @@ def reaches(ds: Any) -> set[Path]:
 
 
 def code_files(ds: Any) -> list[Path]:
-    """The files whose bytes are ``ds``'s own build rules: the ones of its package that its code **reaches**.
+    """The files whose bytes are ``ds``'s own build rules: the ones of its own package(s) that its code **reaches**.
 
     The package is the boundary this has always had — a kind's fingerprint was every Python file in the packages
     that held its datasets — and it stays one here, so this narrows what a code change restates and never widens
@@ -293,14 +312,17 @@ def code_files(ds: Any) -> list[Path]:
     the files of its **own** package that its code never reaches: ``ownership/serve`` is not restated by an edit to
     ``ownership/regsho``, which is the 2,352 s rebuild the issue measured.
 
-    A dataset defined outside the package (a test's stand-in) answers for every build file, which is the slow, safe
-    answer rather than a wrong narrow one.
+    Two datasets built from one class, in one module, do share a fingerprint — they share the code, so a change to
+    it restates both, which is the answer.
+
+    A dataset whose modules are not in the package at all (a test's stand-in) answers for every build file, which
+    is the slow, safe answer rather than a wrong narrow one.
     """
-    own = _module_file(type(ds).__module__)
-    if own is None:
+    homes = home_modules(ds)
+    if not homes:
         return sorted(BUILD_ROOT.rglob("*.py"))
-    folder = own.parent
-    return sorted(p for p in reaches(ds) if p.parent == folder)
+    folders = {_module_file(name).parent for name in homes}
+    return sorted(p for p in reaches(homes) if p.parent in folders)
 
 
 def _digest(paths: Iterable[Path], *, head: bytes = b"") -> str:
