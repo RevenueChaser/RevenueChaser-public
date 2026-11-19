@@ -26,12 +26,13 @@ def _pct(vals: list[float]) -> dict[str, float]:
 
 
 def _default_fetch(ticker: str) -> dict:
-    import yfinance as yf
-    try:
-        return yf.Ticker(ticker).info or {}
-    except Exception as exc:  # pragma: no cover - network
-        logger.debug("yfinance info %s: %s", ticker, exc)
-        return {}
+    """One peer's Yahoo ``.info``, through the client so a failed peer read reaches the board banner (#299).
+
+    It used to call ``yf.Ticker(ticker).info`` here and swallow the error into the debug log, which left a
+    half-fetched comps ladder looking like a complete one.
+    """
+    from RevenueChaser.core.providers import yfinance as yfinance_client
+    return yfinance_client.raw_info(ticker) or {}
 
 
 # A multiple whose denominator was reported and is not positive is not meaningful: the cell reads NM and the
