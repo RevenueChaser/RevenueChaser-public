@@ -63,8 +63,8 @@ WRDS_FAILED_WHY = ("the last WRDS run failed: it waits for a person (no hourly r
 #: Providers whose day is too small to retry a failure every hourly pass (Alpha Vantage: 25 calls a day, shared by
 #: the earnings calendar and the listing status): a failed check is due again on the next New York day (#349 S6).
 DAY_CAPPED = frozenset({"alphavantage"})
-#: Datasets checked on fixed days, not on a cadence. Kept here, not on the dataset: a change to an ownership module is a
-#: rule change and rebuilds the whole kind (``dirty.rules_fingerprint``). N-PORT: the SEC posts a quarter's set on the
+#: Datasets checked on fixed days, not on a cadence. Kept here, not on the dataset: a change to the dataset's own
+#: module is a rule change and restates what that dataset serves (``dirty.dataset_fingerprint``). N-PORT: the SEC posts a quarter's set on the
 #: 3rd-9th of Jan/Apr/Jul/Oct (2024-2026; 2025q3 came 18 Nov, a shutdown), so the night of the 15th (avo, 17 Nov 2026:
 #: "Senede 4 defa baksın").
 CHECK_DATES = {"sec/nport": ((1, 15), (4, 15), (7, 15), (10, 15))}
