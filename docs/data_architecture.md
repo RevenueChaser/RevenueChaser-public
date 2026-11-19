@@ -1463,6 +1463,13 @@ rule's answer and that fund leaves as before. When no `etf` row has a volume at 
 the build is refused outright: a missing or unreadable Compustat `secd` Parquet is an input outage, not a change of
 the rules. The check is per fund because a table-wide one masked the loss: IBIT is on Nasdaq and GLD, SLV, SPY and
 DIA are not, so IBIT's volume alone passed it while the Arca funds were dropped.
+A live `etf_adv` fund the `etf` table holds **no row for at all** today is held the same way, per fund, and every
+such fund the manual file did not then remove is one `my_universe_etf_row_gone` issue (avo's decision A, #432):
+`etf` is the union of three sources (Alpha Vantage's listing, N-CEN's `IS_ETF` series, the spine's `etp` rows), so a
+fund one of them alone carries — GLD, SLV, USO and the bitcoin trusts file no N-CEN — is missing from the whole
+table when that source comes back short, and the `left` row that followed was irreversible. The check asks the whole
+`etf` table, so a fund whose row is there and is today flagged an ETN or a CEF is the rule's answer and leaves; an
+`etf_aum` fund that vanished leaves too, because that is the AUM source's own story.
 
 **Tier rule v3** (`rcdata/build/spine/tier.py`): A = listed on Nasdaq, NYSE or Cboe and not an excluded type
 (`core.identity.types.EXCLUDED_TYPES`; an untyped name stays); B = listed, excluded type; C = OTC, in the SEC file or
@@ -1497,7 +1504,7 @@ lane opens exactly one of these two, so `issues_open` never counts it twice: the
 from a `TICKER` job, because OpenFIGI did not answer for that CUSIP; nothing checks the two name the same
 security, so the row is named rather than trusted silently), `tier_a_no_gics`, `figi_ticker_differs`,
 `cusip_shared`, `cik_many_gvkeys`,
-`index_key_empty`, `fund_file_short`, `member_not_in_sec`, `member_not_tier_a`, `membership_files_disagree`, `membership_wrds_differs`, `etf_class_manual_unknown` (a line of `etf_class_manual.json` naming a ticker that is no ETF of `my_universe`), `my_universe_etf_undecided` (the funds with no AUM and no 20-session dollar volume yet **that the manual file says nothing about** — it is built after the manual adds and removes, #444 — one issue naming them, keyed `etf`; nothing is reported before N-CEN has answered at all), `my_universe_etf_volume_lost` (the live list's `etf_adv` funds Compustat gives no volume for today, held on their live numbers instead of dropped, one issue naming them, keyed `etf`), `my_universe_manual_unknown` (a manual line naming a ticker the spine does not hold), `my_universe_both_kinds` (the stock rule and the ETF rule both claim a ticker; kept as the stock), `my_universe_list_unknown` (the funds on the map list or the industry-group list that the `etf` table does not hold, one issue naming them, keyed `etf`).
+`index_key_empty`, `fund_file_short`, `member_not_in_sec`, `member_not_tier_a`, `membership_files_disagree`, `membership_wrds_differs`, `etf_class_manual_unknown` (a line of `etf_class_manual.json` naming a ticker that is no ETF of `my_universe`), `my_universe_etf_undecided` (the funds with no AUM and no 20-session dollar volume yet **that the manual file says nothing about** — it is built after the manual adds and removes, #444 — one issue naming them, keyed `etf`; nothing is reported before N-CEN has answered at all), `my_universe_etf_volume_lost` (the live list's `etf_adv` funds Compustat gives no volume for today, held on their live numbers instead of dropped, one issue naming them, keyed `etf`), `my_universe_etf_row_gone` (the live list's `etf_adv` funds the `etf` table holds no row for at all today, held on their live numbers instead of dropped, one issue naming them, keyed `etf`), `my_universe_manual_unknown` (a manual line naming a ticker the spine does not hold), `my_universe_both_kinds` (the stock rule and the ETF rule both claim a ticker; kept as the stock), `my_universe_list_unknown` (the funds on the map list or the industry-group list that the `etf` table does not hold, one issue naming them, keyed `etf`).
 A rule needing a source that has never run is not applied; that source is one `source_never_run` row.
 `index_key_empty`: an index key with no `comp.idxcst_his` rows in a run that answered rows for another.
 A WRDS raw value its schema cannot type (a DATE or INTEGER column) is typed to null and recorded as a `value_untyped` issue of that WRDS dataset, keyed `<table>.<column>`, with the row count; it is a one-off row of its run, not synced.

@@ -133,6 +133,9 @@ ISSUE_KINDS = {
     "my_universe_etf_volume_lost": ("the ETFs of the live my_universe that entered on their 20-session dollar "
                                     "volume and have none now: held on their live numbers, not dropped "
                                     "(key: etf)"),
+    "my_universe_etf_row_gone": ("the ETFs of the live my_universe that entered on their 20-session dollar volume "
+                                 "and that the etf table holds no row for at all today: held on their live "
+                                 "numbers, not dropped (key: etf)"),
     "my_universe_manual_unknown": ("a line of the manual universe file naming a ticker the spine does not hold "
                                    "(key: the ticker)"),
     "my_universe_both_kinds": ("a ticker the stock rule and the ETF rule both claim; kept as the stock "
