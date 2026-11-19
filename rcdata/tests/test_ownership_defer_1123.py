@@ -163,16 +163,23 @@ def test_more_than_the_ceiling_of_deferrals_on_one_day_stops_the_run(feed):
 def test_a_days_index_failing_leaves_the_day_open_instead_of_failing_the_run(feed, http_mock):
     """The same shape one level up: a 5xx on the daily index says nothing about the day, so the day is left
     unmarked and unwalked and the next pass asks for it again. A missing index (403 with no object) is a different
-    answer and still marks the day absent."""
+    answer and still marks the day absent. The day before answers, so the walk itself goes on."""
+    earlier = "0000315066-26-000003"
+    feed.add_day("2026-10-26", [
+        (ox.idx_row(320193, "APPLE INC", "SCHEDULE 13G", "2026-10-26", earlier),
+         ox.sched_filing(earlier, "SCHEDULE 13G", "2026-10-26", (320193, "APPLE INC"), (315066, "FMR LLC"),
+                         ox.sched_xml("13G", 320193, "APPLE INC", "037833100",
+                                      [("FMR LLC", 12_000_000, 5.1, 0)])))])
     feed.index_failing[DAY.replace("-", "")] = 504
     row = _run()
     assert row["result"] != "failed", row["note"]
     assert "the daily index failed" in row["note"], row["note"]
     assert not edgar.index_none(date.fromisoformat(DAY)).exists()
+    assert _accessions() == [earlier]                  # 26 October is in; 27 October is not written off
     assert row["next_check_due"] == AS_OF
     del feed.index_failing[DAY.replace("-", "")]
     assert _run()["result"] == "changed"
-    assert _accessions() == sorted([VANGUARD, ACTIVIST])
+    assert _accessions() == sorted([VANGUARD, ACTIVIST, earlier])
 
 
 def test_more_than_the_ceiling_of_failing_index_days_stops_the_run(feed):
