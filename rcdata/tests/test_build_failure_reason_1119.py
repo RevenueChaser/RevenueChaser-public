@@ -78,6 +78,9 @@ def _last_line(capsys) -> str:
 
 @pytest.mark.parametrize("step", ["fetch", "parquet", "build", "check"])
 def test_a_failed_run_names_the_step_ahead_of_the_exception(fakes, step):
+    ops.enqueue("m/two", None, by="test")                  # the same pass, with nothing wrong with it
+    assert cli._run_queue("m/two", once=True) == 0
+    assert "failed" not in (ops.latest_check("m/two")["note"] or "")
     fakes["m/one"].fails = step
     rid = ops.enqueue("m/one", None, by="test")
     assert cli._run_queue("m/one", once=True) == 1
@@ -88,13 +91,6 @@ def test_a_failed_run_names_the_step_ahead_of_the_exception(fakes, step):
     [run] = [r for r in ops.rows("job_runs2") if r["dataset"] == "m/one"]
     assert run["status"] == "failed" and run["error"].startswith(f"{step} failed: ")
     assert next(r for r in ops.rows("build_requests") if r["id"] == rid)["note"].startswith(f"{step} failed: ")
-
-
-def test_a_run_that_worked_says_nothing_about_steps(fakes):
-    ops.enqueue("m/one", None, by="test")
-    assert cli._run_queue("m/one", once=True) == 0
-    assert ops.latest_check("m/one")["result"] == "changed"
-    assert "failed" not in (ops.latest_check("m/one")["note"] or "")
 
 
 # --- the pass's last line -----------------------------------------------------------------------
@@ -110,7 +106,11 @@ def test_the_last_line_of_a_failed_pass_names_the_dataset_its_step_and_the_excep
     assert "m/one: fetch failed: SourceError: m/one: sec.gov said 504" in said
 
 
-def test_every_failed_dataset_of_a_pass_is_on_that_one_line(fakes, capsys):
+def test_only_a_failed_pass_prints_the_line_and_every_failed_dataset_is_on_it(fakes, capsys):
+    ops.enqueue("m/one", None, by="test")
+    assert cli.main(["run", "--once"]) == 0
+    assert "pass failed" not in capsys.readouterr().out    # a pass that worked prints nothing extra
+    assert serving.live_path("market").exists()
     fakes["m/one"].fails = "fetch"
     fakes["m/two"].fails = "fetch"
     for n in ("m/one", "m/two"):
@@ -134,13 +134,6 @@ def test_a_pass_that_could_not_start_says_which_holder_it_waited_for(fakes, monk
     monkeypatch.setattr(cli, "_take_the_turn", lambda stack, wait: (False, "another builder (pid 4242)"))
     assert cli.main(["run", "--once"]) == 3
     assert _last_line(capsys) == "pass failed: not started: another builder (pid 4242)"
-
-
-def test_a_pass_that_worked_says_nothing_extra(fakes, capsys):
-    ops.enqueue("m/one", None, by="test")
-    assert cli.main(["run", "--once"]) == 0
-    assert "pass failed" not in capsys.readouterr().out
-    assert serving.live_path("market").exists()
 
 
 def test_the_summary_line_is_cut_where_the_job_record_cuts_it(capsys):

@@ -30,18 +30,15 @@ def _registry(tmp_path, monkeypatch):
     A.set_scheduler(None)
 
 
-def test_a_failed_run_echoes_its_exit_code_its_last_line_and_the_log(capsys):
+def test_only_a_failed_run_echoes_its_exit_code_its_last_line_and_the_log(capsys):
+    assert A.run_task(WORKS.name) == 0
+    assert capsys.readouterr().out == ""        # a run that worked says nothing above the log
     assert A.run_task(FAILS.name) == 1
     [said] = [ln for ln in capsys.readouterr().out.splitlines() if ln.startswith("RC-Red ")]
     assert said.startswith("RC-Red exit 1: fetch failed: SourceError: sec.gov said 504")
     assert str(FAILS.log_path) in said          # where the whole output is
     # The log itself is unchanged: the echo is this process's stdout, not a line in the entry's log.
     assert "RC-Red exit 1:" not in FAILS.log_path.read_text(encoding="utf-8")
-
-
-def test_a_run_that_exits_0_echoes_nothing(capsys):
-    assert A.run_task(WORKS.name) == 0
-    assert capsys.readouterr().out == ""
 
 
 def test_a_failed_run_that_said_nothing_still_names_its_exit_code(capsys):
