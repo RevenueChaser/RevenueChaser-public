@@ -502,11 +502,12 @@ def open_issue_kinds(dataset: str) -> list[dict]:
     return sorted(counts, key=lambda c: (-c["count"], c["kind"]))
 
 
-def start_run(run_id: str, dataset: str, trigger: str, params: dict | None = None) -> None:
+def start_run(run_id: str, dataset: str | None, trigger: str, params: dict | None = None,
+              job: str | None = None) -> None:
     _ready()
     _write("job_runs2", {"run_id": run_id, "dataset": dataset, "trigger": trigger, "pid": os.getpid(),
                          "host": socket.gethostname(), "started_at": time.time(), "status": "running",
-                         "params": ops._json(params)})
+                         "params": ops._json(params), "job": job})
 
 
 def running_runs() -> list[dict]:
@@ -514,12 +515,14 @@ def running_runs() -> list[dict]:
             if r.get("status") == "running" and r.get("finished_at") is None]
 
 
-def finish_run(run_id: str, status: str, error: str | None = None) -> None:
+def finish_run(run_id: str, status: str, error: str | None = None, counts: dict | None = None) -> None:
     def work():
         row = _one("job_runs2", run_id)
         if row is None:
             return None, None
         row = {**row, "status": status, "finished_at": time.time(), "error": error}
+        if counts:                            # as on the file: no counts leaves what is there (#136)
+            row["counts"] = ops._json(counts)
         return None, lambda p: _put(p, "job_runs2", row)
     _transaction(["job_runs2"], work)
 
@@ -530,15 +533,41 @@ def run_started_at(run_id: str) -> float | None:
 
 
 def runs_between(start: float, end: float) -> list[dict]:
-    rows = _fetch("job_runs2", _client().zrangebyscore(_key("job_runs2"), float(start), f"({float(end)}"))
+    rows = [r for r in _fetch("job_runs2", _client().zrangebyscore(_key("job_runs2"), float(start),
+                                                                   f"({float(end)}"))
+            if r.get("dataset") is not None]            # the builder's own, as on the file (#136)
     rows.sort(key=lambda r: (r["started_at"] or 0.0, r["run_id"]))
     return [{c: r[c] for c in ("dataset", "started_at", "status")} for r in rows]
 
 
 def last_builder_run() -> dict | None:
-    newest = _fetch("job_runs2", _client().zrevrange(_key("job_runs2"), 0, 0))
     cols = ("run_id", "dataset", "trigger", "pid", "started_at", "finished_at", "status", "error")
-    return {c: newest[0][c] for c in cols} if newest else None
+    # The newest row with a dataset: a task or dashboard run has none and is not a build (#136). The scan walks
+    # back from the newest, so it stops at the first builder row rather than reading the whole log.
+    for pk in _client().zrevrange(_key("job_runs2"), 0, _RUN_SCAN - 1):
+        [row] = _fetch("job_runs2", [pk]) or [None]
+        if row is not None and row.get("dataset") is not None:
+            return {c: row[c] for c in cols}
+    return None
+
+
+#: How far back ``last_builder_run`` and ``job_runs`` walk the log. A day's task and dashboard runs are counted in
+#: tens, so a builder row is well inside this; past it the answer is "none" rather than a scan of the whole log.
+_RUN_SCAN = 2000
+
+
+def job_runs(limit: int = 200) -> list[dict]:
+    """The newest task and dashboard runs (``job`` set), newest first, counts as a dict (#136)."""
+    cols = ("run_id", "job", "trigger", "pid", "host", "started_at", "finished_at", "status", "error", "counts")
+    out = []
+    for pk in _client().zrevrange(_key("job_runs2"), 0, _RUN_SCAN - 1):
+        [row] = _fetch("job_runs2", [pk]) or [None]
+        if row is None or row.get("job") is None:
+            continue
+        out.append({**{c: row[c] for c in cols}, "counts": ops._loads(row.get("counts"))})
+        if len(out) >= int(limit):
+            break
+    return out
 
 
 # ── Provider accounting and the read log ───────────────────────────────────────────────────────────────────────
