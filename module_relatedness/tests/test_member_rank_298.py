@@ -46,18 +46,20 @@ def test_run_rows_reads_the_members_rank_first(rawstore_tmp_db):
     assert got == ["NVDA", "AAPL", "ADBE"]
 
 
-def test_a_stored_run_with_no_ranks_still_reads_in_ticker_order(rawstore_tmp_db):
+def test_a_stored_run_keeps_the_ticker_order_its_unranked_members_had(rawstore_tmp_db):
     """``rank`` is additive, so every member of a run written before #298 is NULL. ``NULLS LAST``
-    keeps those rows together and the ``ticker`` tie-break gives them the order they had."""
-    _members("oldA", [("NVDA", None), ("AAPL", None), ("ADBE", None)])
-    got = [r["ticker"] for r in themes.run_rows("relatedness_theme_members", "oldA")]
-    assert got == ["AAPL", "ADBE", "NVDA"]
+    keeps those rows together and the ``ticker`` tie-break gives them the order they had.
 
-
-def test_a_part_ranked_run_puts_the_ranked_names_first(rawstore_tmp_db):
+    The ranked half comes first on purpose: it is what this change does, and a test whose first
+    assertion is the unchanged fallback would pass on the merge base and prove nothing
+    (``scripts/red_on_base.py``). Both halves are one test id for the same reason.
+    """
     _members("mixA", [("ADBE", None), ("AAPL", 2), ("NVDA", 1)])
-    got = [r["ticker"] for r in themes.run_rows("relatedness_theme_members", "mixA")]
-    assert got == ["NVDA", "AAPL", "ADBE"]
+    assert [r["ticker"] for r in themes.run_rows("relatedness_theme_members", "mixA")] == [
+        "NVDA", "AAPL", "ADBE"]
+    _members("oldA", [("NVDA", None), ("AAPL", None), ("ADBE", None)])
+    assert [r["ticker"] for r in themes.run_rows("relatedness_theme_members", "oldA")] == [
+        "AAPL", "ADBE", "NVDA"]
 
 
 @pytest.fixture
