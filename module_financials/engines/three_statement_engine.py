@@ -39,8 +39,9 @@ def run_three_statement(financials: dict, assumptions: dict | None = None) -> di
         warnings.append(f"revenue growth given for {len(growth)} years, last rate held for "
                         f"the other {n - len(growth)} of {n}")
         growth += [growth[-1]] * (n - len(growth))
-    # The user's rate beats the statements' (a typed 0 is a 0), then provision / pretax, then the default (#173 M19).
-    tax_rate, tax_rate_source = effective_tax_rate(a, latest, financials.get("sector"))
+    # The user's rate beats the statements' (a typed 0 is a 0), then the median in-band year's provision / pretax
+    # (#89), then the default (#173 M19).
+    tax_rate, tax_rate_source = effective_tax_rate(a, latest, financials.get("sector"), annual)
 
     # The opening balance sheet needs debt and equity: unknown is not zero.
     missing = [k for k in ("total_debt", "total_equity") if _get(latest, k) is None]

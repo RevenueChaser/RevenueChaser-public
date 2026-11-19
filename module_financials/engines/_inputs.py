@@ -15,6 +15,13 @@ from ..config import DEFAULT_TAX_RATE, sector_defaults, to_float
 MEASURED_TAX_RATE_BAND = (0.0, 0.60)
 
 
+# The equity bridge subtracts net debt and nothing else: the statements the models read carry no minority
+# interest and no preferred stock line, so a per-share value of a company that has either is too high by that
+# much. Both engines that divide by shares say so in these words (#92).
+NO_MINORITY_BRIDGE = ("per share: only net debt is subtracted — minority interest and preferred stock are not "
+                      "(the statements the models read carry no such line)")
+
+
 # A missing D&A line is modelled as 0 (EBIT = EBITDA, no add-back); both engines say so in these words (FIN-2).
 DNA_ASSUMED_ZERO = "D&A: assumed 0 (not reported)"
 
@@ -78,13 +85,34 @@ def statement_tax_rate(statement: dict) -> float | None:
     return None if rate < low or rate > high else rate
 
 
-def effective_tax_rate(assumptions: dict, statement: dict, sector: str | None) -> tuple[float, str]:
+def median_tax_rate(annual: list[dict] | None) -> tuple[float | None, int]:
+    """``(median rate, how many years it rests on)`` over the years whose ratio is inside the band (#89).
+
+    The latest year alone was the DCF's tax proxy, so a one-off tax item or a loss year in it moved NOPAT, the
+    after-tax cost of debt, the WACC and the terminal value. The median of the in-band years is the firm's rate
+    as the statements report it, and a year the band rejects is simply not one of them. ``(None, 0)`` when no
+    year is in band: the rate is then unknown and the caller takes the labelled default.
+    """
+    rates = sorted(r for r in (statement_tax_rate(rec) for rec in (annual or [])) if r is not None)
+    n = len(rates)
+    if n == 0:
+        return None, 0
+    mid = n // 2
+    return (rates[mid] if n % 2 else (rates[mid - 1] + rates[mid]) / 2), n
+
+
+def effective_tax_rate(assumptions: dict, statement: dict, sector: str | None,
+                       annual: list[dict] | None = None) -> tuple[float, str]:
     """``(rate, source)``: the user's (0 included), then the statements, then the one default.
 
-    The statement rung is a stored ``tax_rate`` when the payload has one, else ``tax_provision / pretax_income``
-    inside ``MEASURED_TAX_RATE_BAND`` (FIN-3); an implausible ratio is unknown, so it takes the default and is
+    The statement rung is a stored ``tax_rate`` when the payload has one, else the **median** of the years whose
+    ``tax_provision / pretax_income`` is inside ``MEASURED_TAX_RATE_BAND`` (#89; it was the latest year alone,
+    FIN-3). ``annual`` is the run's fiscal years, newest last; without it only ``statement`` is measured, which is
+    what a caller that holds one year passes. No year in band is unknown, so the rate takes the default and is
     labelled ``default`` — the sector lookup of :func:`default_tax_rate` is not populated, so that default is
-    ``DEFAULT_TAX_RATE`` for every sector. ``source`` is ``assumption`` / ``statements`` / ``default``; the report
+    ``DEFAULT_TAX_RATE`` for every sector.
+
+    ``source`` is ``assumption`` / ``statements`` / ``statements (median of N years)`` / ``default``; the report
     labels the default (FIN-9 B). A rate the user typed is their number, band or no band — a typed 0 is a 0.
     """
     given = to_float((assumptions or {}).get("tax_rate"))
@@ -93,9 +121,10 @@ def effective_tax_rate(assumptions: dict, statement: dict, sector: str | None) -
     stored = to_float((statement or {}).get("tax_rate"))
     if stored is not None:
         return stored, "statements"
-    measured = statement_tax_rate(statement)
+    years = annual if annual else ([statement] if statement else [])
+    measured, n = median_tax_rate(years)
     if measured is not None:
-        return measured, "statements"
+        return measured, (f"statements (median of {n} years)" if n > 1 else "statements")
     return default_tax_rate(sector), "default"
 
 

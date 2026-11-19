@@ -42,6 +42,11 @@ DEFAULT_DEBT_WEIGHT = 0.15
 # A leave-one-out run over 3,365 names: k = 8 was the best of 3/5/8/12 on EV/EBITDA, EV/Revenue and P/E.
 # The peers themselves are the spine universe's (module_financials/peers.py); there is no static list.
 PEER_K = 8
+# A peer is only comparable within this band of the target's market cap (#90): a $2B name next to a $900B one is
+# not a comp, and the industry-then-sector ladder could reach that far for a conglomerate whose industry label
+# does not describe its revenue, or for an industry with two members. Outside the band a name is not a peer at
+# all, so the ladder may come up short — which the board already says in its warning.
+PEER_CAP_RATIO_BAND = (0.1, 10.0)
 
 
 # ── Sektör bazlı default bantlar (WACC / büyüme / marj) ──

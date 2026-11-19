@@ -20,6 +20,7 @@ import RevenueChaser.module_financials.run as fm
 from RevenueChaser.rcdata.tests import universe_store
 from RevenueChaser.core import universe as spine
 from RevenueChaser.module_financials import peers as peer_ladder
+from RevenueChaser.module_financials.engines import _inputs
 from RevenueChaser.module_financials.engines.comps_engine import NM, run_comps
 from RevenueChaser.module_financials.engines.dcf_engine import run_dcf
 from RevenueChaser.module_financials.engines.three_statement_engine import run_three_statement
@@ -163,10 +164,12 @@ def _without_statement_tax(financials):
     return f
 
 
-def test_tax_is_provision_over_pretax_and_the_sector_default_where_the_statements_lack_it(financials):
+def test_tax_is_the_median_in_band_year_and_the_sector_default_where_the_statements_lack_it(financials):
+    """#89: the median of the in-band years, not the latest year alone."""
+    median = sorted((40.0 / 190.0, 45.0 / 215.0, 50.0 / 240.0))[1]
     both = run_three_statement(financials)["assumptions"]
-    assert both["tax_rate"] == pytest.approx(50.0 / 240.0)          # the latest year: 2023
-    assert both["tax_rate_source"] == "statements"
+    assert both["tax_rate"] == pytest.approx(median)
+    assert both["tax_rate_source"] == "statements (median of 3 years)"
 
     without = _without_statement_tax(financials)
     fallback = run_three_statement(without)["assumptions"]
@@ -174,8 +177,19 @@ def test_tax_is_provision_over_pretax_and_the_sector_default_where_the_statement
     assert fallback["tax_rate_source"] == "default"
 
     # The DCF reads the same rule (one helper, two engines).
-    assert run_dcf(financials)["assumptions"]["tax_rate"] == pytest.approx(50.0 / 240.0)
+    assert run_dcf(financials)["assumptions"]["tax_rate"] == pytest.approx(median)
     assert run_dcf(without)["assumptions"]["tax_rate"] == pytest.approx(0.21)
+
+    # Every year implausible is a rate nobody measured, so the labelled default stands (FIN-9 B). This rides the
+    # median test rather than standing alone: it is the one tax case the median rule does not change, so a test
+    # of its own would pass on the merge-base and prove nothing about #89.
+    none_in_band = copy.deepcopy(financials)
+    for rec in none_in_band["annual"]:
+        rec["pretax_income"], rec["tax_provision"] = 100.0, -50.0
+    for engine in (run_dcf, run_three_statement):
+        got = engine(none_in_band)["assumptions"]
+        assert got["tax_rate"] == pytest.approx(0.21)
+        assert got["tax_rate_source"] == "default"
 
 
 # ── a measured rate outside a plausible band is unknown, not a rate (review MUST-1) ───────────────────
@@ -192,27 +206,35 @@ def _with_statement_tax(financials, pretax, provision):
     (240.0, -30.0, "a tax benefit: yfinance reports a negative Tax Provision, so the ratio is negative"),
     (240.0, 300.0, "a one-off or a valuation-allowance release: the ratio is above 1"),
 ])
-def test_a_measured_rate_outside_the_band_falls_back_to_the_default(financials, pretax, provision, what):
-    """Both engines: an implausible ratio is not a rate, and the FIN-9 B label says "default" so it reads honestly.
+def test_a_measured_rate_outside_the_band_is_left_out_of_the_median(financials, pretax, provision, what):
+    """Both engines: an implausible ratio is not a rate, so it is not one of the years the median rests on (#89).
 
     Unbounded, it would flip the DCF's NOPAT sign and drive the after-tax cost of debt negative (lowering WACC
-    and raising the valuation), and make the 3-statement tax line a permanent cash inflow.
+    and raising the valuation), and make the 3-statement tax line a permanent cash inflow. Before #89 the latest
+    year was the whole measurement, so such a year sent the run to the default; now the other years still measure.
     """
     fin = _with_statement_tax(financials, pretax, provision)
+    want = (40.0 / 190.0 + 45.0 / 215.0) / 2        # the two earlier years, the latest one dropped
     for engine in (run_dcf, run_three_statement):
         got = engine(fin)["assumptions"]
-        assert got["tax_rate"] == pytest.approx(0.21), what
-        assert got["tax_rate_source"] == "default", what
+        assert got["tax_rate"] == pytest.approx(want), what
+        assert got["tax_rate_source"] == "statements (median of 2 years)", what
 
 
 @pytest.mark.parametrize("provision, rate", [(0.0, 0.0), (144.0, 0.60)])
 def test_the_band_edges_are_kept_as_measured_rates(financials, provision, rate):
-    """0.0 and 0.60 are inside the band: a zero-tax year is a real rate, not a missing one."""
+    """0.0 and 0.60 are inside the band: a zero-tax year is a real rate, not a missing one — so it is one of the
+    years the median rests on, and a run of that one year alone reads it back."""
+    one = {"pretax_income": 240.0, "tax_provision": provision}
+    assert _inputs.statement_tax_rate(one) == pytest.approx(rate)
+    assert _inputs.median_tax_rate([one]) == (pytest.approx(rate), 1)
+
     fin = _with_statement_tax(financials, 240.0, provision)
+    want = sorted((rate, 40.0 / 190.0, 45.0 / 215.0))[1]
     for engine in (run_dcf, run_three_statement):
         got = engine(fin)["assumptions"]
-        assert got["tax_rate"] == pytest.approx(rate)
-        assert got["tax_rate_source"] == "statements"
+        assert got["tax_rate"] == pytest.approx(want)
+        assert got["tax_rate_source"] == "statements (median of 3 years)"
 
 
 def test_a_rate_the_user_typed_is_never_banded(financials):

@@ -92,12 +92,15 @@ def test_report_shows_default_tax_rate_row(financials):
 def test_report_shows_a_measured_tax_rate_without_default(financials):
     """The common case since FIN-3: the rate came from the statements, so the row carries no "default" word.
 
-    The fixture's latest year reports 50 of 240 pretax, so both panels read that rate (review S2).
+    The fixture's three years report 40/190, 45/215 and 50/240, so both panels read their median and say how
+    many years it rests on (#89; it was the latest year's 20.8% alone).
     """
     html = _html(financials, {"dcf": run_dcf(financials), "three_statement": run_three_statement(financials)})
     # The tax rows only: since review S2 the rate rows (risk-free, premium, cost of debt) say "default" here.
     assert "default 21.0%" not in html and "(no sector rate)" not in html
-    assert html.count("20.8%") == 2                       # the DCF WACC panel and the 3-statement panel
+    # The DCF WACC panel and the 3-statement panel, each naming the years behind the rate.
+    assert html.count("20.9% (median of 3 years)") == 2
+    assert "20.8%" not in html
 
 
 def test_report_shows_an_assumed_tax_rate_without_default(financials):
