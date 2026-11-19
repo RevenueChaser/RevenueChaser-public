@@ -330,7 +330,8 @@ def match_holding(line: dict, by_cusip: dict[str, str], cusip_owners: dict[str, 
     A ticker match is refused when the line's CUSIP is known (``cusip_owners``: Compustat's current and historical
     CUSIPs, by security) to belong to another security than the one the ticker is linked to (``link_of``): a line
     written before the ticker was reused (should-fix 4a). The ticker's own earlier CUSIP, or a CUSIP nobody knows,
-    does not break the match (delta S2)."""
+    does not break the match (delta S2). ``link_of`` is the link **as of the line's day**, not today's: a ticker that
+    changed hands since has no link there, so the guard cannot refuse the old member's own lines (#236)."""
     cusip = line.get("cusip")
     if cusip and cusip in by_cusip:
         return by_cusip[cusip]
@@ -642,11 +643,21 @@ class SpineSecurity:
         on_snap: dict[date, set[str]] = defaultdict(set)
         # Each ticker's (snapshot, CIK) rows, oldest first: who held it as of a snapshot (delta-3 SF-A).
         held_by: dict[str, list[tuple[date, str]]] = defaultdict(list)
+        cik_on: dict[date, dict[str, str]] = defaultdict(dict)
         for t, d, cik in con.execute("SELECT ticker, source_as_of, cik FROM stg_sec_all "
                                      "ORDER BY source_as_of").fetchall():
             on_snap[d].add(t)
-            held_by[t].append((d, cik))
+            held_by[t].append((d, str(cik)))
+            cik_on[d][t] = str(cik)
         squashed = {d: squash(ts) for d, ts in on_snap.items()}
+        # ``link_of`` is today's link, from the newest SEC rows. A ticker whose new owner is linked would otherwise
+        # judge the old member's own lines by that link, and the 4a guard would refuse them all: the old member
+        # loses its past, against fix 4b (#236). So the link holds for a snapshot only while the CIK that held the
+        # ticker then is the one today's row carries; a ticker that changed hands has no link as of that day.
+        cik_now = {r["ticker"]: str(r["cik"]) for r in rows}
+        link_on: dict[date, dict[str, tuple[str, str]]] = {
+            d: {t: gi for t, gi in link_of.items() if t in ts and cik_on[d].get(t) == cik_now.get(t)}
+            for d, ts in on_snap.items()}
         by_cusip_all = {r["cusip"]: r["ticker"] for r in rows if r["cusip"]}
         # Each snapshot's CUSIP map, built once (not once per distinct line).
         by_cusip = {d: {c: t for c, t in by_cusip_all.items() if t in ts} for d, ts in on_snap.items()}
@@ -668,7 +679,8 @@ class SpineSecurity:
                 "JOIN _fund_snap s USING (as_of) WHERE (l.ticker IS NOT NULL OR l.cusip IS NOT NULL) "
                 "AND s.snap IS NOT NULL").fetchall():
             line = {"ticker": tk or None, "cusip": cu or None}
-            hit, msnap = match_holding(line, by_cusip[snap], cusip_owners, link_of, on_snap[snap], squashed[snap]), snap
+            hit = match_holding(line, by_cusip[snap], cusip_owners, link_on[snap], on_snap[snap], squashed[snap])
+            msnap = snap
             # The SEC file is weekly, so a name the files already write under its new ticker (a new joiner, a rename)
             # is looked for in the snapshots up to LOOKAHEAD after the day's, oldest first (delta S1). Only a ticker
             # the SEC file had not held by the day's snapshot, or one it held under the same CIK (it dropped the name
@@ -677,7 +689,7 @@ class SpineSecurity:
                 for d in snaps[snaps.index(snap) + 1:]:
                     if d > snap + LOOKAHEAD:
                         break
-                    ahead = match_holding(line, by_cusip[d], cusip_owners, link_of, on_snap[d], squashed[d])
+                    ahead = match_holding(line, by_cusip[d], cusip_owners, link_on[d], on_snap[d], squashed[d])
                     if ahead and same_holder(ahead, snap, d):
                         hit, msnap = ahead, d
                         break

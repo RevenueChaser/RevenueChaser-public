@@ -270,6 +270,26 @@ def test_a_past_members_cik_is_its_own_not_the_reused_tickers_new_owner(built):
     assert _q("SELECT cik FROM security WHERE ticker = 'NVR'") == [("7777777",)]
 
 
+def test_a_past_member_keeps_its_history_once_the_reused_tickers_new_owner_is_linked(built):
+    """#236: the fund files hold VYLR with VYLR Holdings' own CUSIP (92921V109) from 28 Oct; on 10 Nov the SEC file
+    gives the ticker VYLR to CIK 999999, which Compustat links by tic to gvkey 123456 (CUSIP 92921Q100). The 4a
+    guard is judged by the link as of each line's day, not today's, so the 28 Oct lines still match and VYLR
+    Holdings keeps its period under its own CIK, as fix 4b asks."""
+    _funds_answer(built, sp500=fx.SP500 + [("VYLR", "92921V109", "VYLR HOLDINGS INC")])
+    run_all("2026-10-28", names=(funds.NAME,))
+    assert _q("SELECT cik, valid_from FROM index_membership WHERE source = ? AND index_slug = 'sp500' "
+              "AND ticker = 'VYLR'", funds.NAME) == [("2000001", date(2026, 10, 28))]
+    handed_over = [[999999, "OLD VAYLOR CORP", "VYLR", "NYSE"] if t == "VYLR" else [c, n, t, e]
+                   for c, n, t, e in fx.SEC_FILE["data"]]
+    _sec_answer(built, handed_over)
+    base.run_request({"dataset": sec_tickers.NAME, "params": {"as_of": "2026-11-10"}})
+    run_all("2026-11-03", names=(funds.NAME,))
+    # The precondition: today's link for VYLR is the new owner, whose CUSIP is not the one the lines carry.
+    assert _q("SELECT cik, gvkey, cusip FROM security WHERE ticker = 'VYLR'") == [("999999", "123456", "92921Q100")]
+    assert _q("SELECT cik, valid_from, valid_to FROM index_membership WHERE source = ? AND index_slug = 'sp500' "
+              "AND ticker = 'VYLR'", funds.NAME) == [("2000001", date(2026, 10, 28), None)]
+
+
 def test_a_member_still_held_after_it_left_the_sec_file_is_not_matched_to_the_tickers_next_owner(built):
     """Delta-2 SF1: NVR leaves the SEC file on 3 Nov, the fund files still hold it that day, and on 10 Nov the
     ticker NVR belongs to another CIK. The 3 Nov line is not matched ahead to the new owner: NVR's period keeps NVR
