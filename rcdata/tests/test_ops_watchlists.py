@@ -1,7 +1,10 @@
-"""ops schema 2 and the two watch lists (PR 4): the v1 -> v2 upgrade in place, the toggle and its history, the reads.
+"""The ops schema upgrades and the two watch lists (PR 4): the v1 -> v2 upgrade in place, the toggle and its
+history, the reads.
 
 The v1 file is written here from the v1 statements as PR 1 shipped them, not from ``ops._DDL``, so the test keeps
-describing a real old file after ``_DDL`` moves on.
+describing a real old file after ``_DDL`` moves on. The current version is read from ``ops.OPS_SCHEMA_VERSION``
+rather than written out, so a later step (version 3 added ``job_runs2.job`` and ``counts``, #136) does not have to
+re-edit every assertion here.
 """
 from __future__ import annotations
 
@@ -47,7 +50,7 @@ def _cols(con, table):
 def test_a_new_file_is_version_2_with_the_history_id_and_note(sqlite_ops):
     ops.ensure()
     with ops.connect() as con:
-        assert [r[0] for r in con.execute("SELECT version FROM ops_schema")] == [2]
+        assert [r[0] for r in con.execute("SELECT version FROM ops_schema")] == [ops.OPS_SCHEMA_VERSION]
         for k in ops.WATCH_KINDS:
             assert _cols(con, f"watchlist_{k}_changes") == ["id", "ticker", "action", "at", "by", "note"]
             assert _cols(con, f"watchlist_{k}") == ["ticker", "added_at", "added_by", "note"]
@@ -59,7 +62,8 @@ def test_a_v1_file_is_upgraded_in_place_and_keeps_every_row_in_written_order(sql
     ops.ensure(path)
     ops.ensure(path)                                    # a second ensure changes nothing
     with ops.connect(path) as con:
-        assert [r[0] for r in con.execute("SELECT version FROM ops_schema ORDER BY version")] == [1, 2]
+        assert [r[0] for r in con.execute("SELECT version FROM ops_schema ORDER BY version")] == [
+            1, ops.OPS_SCHEMA_VERSION]
         hist = [tuple(r) for r in con.execute("SELECT id, ticker, action, at, by, note FROM "
                                                "watchlist_option_changes ORDER BY id")]
         assert hist == [(1, "NVDA", "add", 9.0, "leaps", None), (2, "NVDA", "remove", 3.0, "settings", None)]
@@ -91,9 +95,10 @@ def test_a_failed_upgrade_leaves_the_v1_file_as_it_was(sqlite_ops, monkeypatch):
 def test_a_file_stamped_newer_than_2_is_refused_and_not_touched(sqlite_ops):
     path = ops.ops_path()
     ops.ensure(path)
+    ahead = ops.OPS_SCHEMA_VERSION + 1
     with ops.connect(path) as con:
-        con.execute("INSERT INTO ops_schema VALUES (3, 0)")
-    with pytest.raises(ops.OpsSchemaTooNew, match="ops schema 3"):
+        con.execute("INSERT INTO ops_schema VALUES (?, 0)", (ahead,))
+    with pytest.raises(ops.OpsSchemaTooNew, match=f"ops schema {ahead}"):
         ops.ensure(path)
 
 
@@ -165,8 +170,9 @@ def _v1_ensure(path):
 
 
 def _stamp_down(path):
+    """The documented rollback: drop every stamp above 1, so the v1 code runs on the newer tables."""
     with ops.connect(path) as con:
-        con.execute("DELETE FROM ops_schema WHERE version = 2")
+        con.execute("DELETE FROM ops_schema WHERE version > 1")
 
 
 def test_v1_code_refuses_the_v2_file_until_it_is_stamped_down_and_then_runs_on_it(sqlite_ops):
@@ -191,7 +197,8 @@ def test_redeploying_v2_after_a_stamp_down_keeps_the_history_its_ids_and_notes(s
     with ops.connect(path) as con:
         hist = [tuple(r) for r in con.execute("SELECT id, ticker, action, by, note FROM watchlist_stock_changes "
                                                "ORDER BY id")]
-        assert [r[0] for r in con.execute("SELECT version FROM ops_schema ORDER BY version")] == [1, 2]
+        assert [r[0] for r in con.execute("SELECT version FROM ops_schema ORDER BY version")] == [
+            1, ops.OPS_SCHEMA_VERSION]
     assert hist == [(1, "MSFT", "add", "leaps", "pinned"), (2, "MSFT", "remove", "settings", None)]
 
 

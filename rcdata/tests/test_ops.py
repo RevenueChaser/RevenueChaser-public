@@ -30,7 +30,7 @@ def test_ensure_creates_every_table_in_wal_mode_with_the_busy_timeout(sqlite_ops
         assert con.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
         assert con.execute("PRAGMA busy_timeout").fetchone()[0] == ops.BUSY_TIMEOUT_MS == 5000
         tables = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-        assert con.execute("SELECT max(version) FROM ops_schema").fetchone()[0] == ops.OPS_SCHEMA_VERSION == 2
+        assert con.execute("SELECT max(version) FROM ops_schema").fetchone()[0] == ops.OPS_SCHEMA_VERSION == 3
     assert set(ops.TABLES) <= tables
     assert ops.ops_path() == config.MARKET_DIR / "ops.sqlite"
 
@@ -169,14 +169,18 @@ def test_a_second_finish_does_not_blank_the_counts():
 
 
 def test_counts_that_cannot_be_read_come_back_as_none():
+    """A row an older checkout left, or a hand edit broke, costs the counts and does not raise where a reader only
+    wants them. Both backends read the column through ``_loads``."""
     ops.start_run("task1", None, "schedule", job="RC-Thing")
     ops.finish_run("task1", "done")
-    with ops._open() as con:                      # a row an older checkout or a hand edit left unreadable
-        con.execute("UPDATE job_runs2 SET counts = 'not json' WHERE run_id = 'task1'")
-    assert ops.job_runs()[0]["counts"] is None
+    assert ops.job_runs()[0]["counts"] is None             # nothing was recorded
+    assert ops._loads("not json") is None
+    assert ops._loads(None) is None and ops._loads("") is None and ops._loads("[1, 2]") is None
+    assert ops._loads("{}") is None                        # an empty object is no count at all
+    assert ops._loads('{"rows": 3}') == {"rows": 3}
 
 
-def test_an_older_ops_file_gains_the_run_log_columns(tmp_path):
+def test_an_older_ops_file_gains_the_run_log_columns(sqlite_ops, tmp_path):
     """v2 -> v3 (#136) adds ``job`` and ``counts`` by ALTER, so a file already holding builder runs keeps them."""
     path = tmp_path / "old.sqlite"
     with closing(sqlite3.connect(path)) as con:
