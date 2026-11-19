@@ -2008,6 +2008,20 @@ after today (New York), each name's `report_date` on or after today. With no opt
 read, it reads the stored D26 `earnings_calendar` as before (#304), and Yahoo's `earningsTimestampStart` where neither
 has the name.
 
+**The Earnings Radar calendar (E5a, #273).** `app/runners._fetch_calendar_days` reads the same
+`option_screener_daily` session as the calendar it used to ask UW for, through
+`module_earnings_radar/stored_inputs.calendar_items`: one answer per `(report day, report session)` pair the
+newest built session covers, empty pair included, with the calendar's own `expected_move_perc`,
+`street_mean_est`, `full_name`, `marketcap`, `report_time` and closes. The session may lag the board's day by the
+`options.screener` need's one session; the days it covers are `session < day <= session + DAYS_AHEAD` (the
+builder's own 28). UW is still called for every pair outside that — and always for today's and the next trading
+day's pairs, because UW moves the expected move, the estimate and the report time during the day for the names
+about to report. Either path builds the event with `_calendar_event`, so `source` stays `UW` and the run
+downstream cannot tell them apart; `input_sources["calendar"]` counts the stored and the live pairs and names the
+session. The watch-list names the calendar omits (unknown time, estimated date) still take one live
+`screener_batch`: `option_screener_daily` holds calendar names only, so it cannot answer for a name that is not
+on the calendar.
+
 **UW calls a session** (`rcdata/build/options/__init__.py`, the plan's arithmetic: list names x (chain + stats +
 prints) + screener pages + earnings-set names + far-print pages). A list name is 11 calls plus 2 per expiry plus one
 per extra page; an earnings-set name 6 plus its chain (one `expiry-breakdown` and one call per expiry, 12, plus extra pages); the far prints at most 3; the screener one per 100 reporting names; the calendar one per day and report session plus

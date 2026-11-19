@@ -215,26 +215,46 @@ _CALENDAR_SOURCES: dict = {}
 
 
 def _fetch_calendar_days(uw: UWClient, days: list[date]) -> tuple[list, dict]:
-    """Fetch calendar events for the given days (weekends skipped) from UW, premarket first so ``raw_cal``'s
-    "premarket wins" rule holds. The stored D26 calendar went with raw.duckdb (#860), so every pair is live."""
+    """Calendar events for the given days (weekends skipped), premarket first so ``raw_cal``'s "premarket wins"
+    rule holds.
+
+    The served calendar answers first, pair by pair (``stored_inputs.calendar_items``: the newest built session's
+    ``option_screener_daily`` rows, which carry the UW calendar's own expected move since #273's data half). UW is
+    asked only for the pairs the store does not cover — a day outside the built session's window, a session too
+    old to read, and always today and the next trading day, whose numbers UW still moves. Either way the event is
+    built by ``_calendar_event``, so a stored pair and a live pair cannot drift apart, and ``source`` stays "UW".
+    """
+    from RevenueChaser.module_earnings_radar.stored_inputs import calendar_items
+    try:
+        stored, session = calendar_items(days)
+    except Exception as e:  # noqa: BLE001 - a store error is "nothing stored", never a failed Fetch
+        logger.warning(f"Stored calendar read failed, asking UW for every day: {e}")
+        stored, session = {}, None
+
     events = []
     raw_cal = {}
-    n_live = 0
+    n_live = n_stored = 0
     for d in days:
         if d.weekday() >= 5:
             continue
-        for session in ("premarket", "afterhours"):
-            n_live += 1
-            for item in uw.calendar_day_raw(d, session):
-                ev = _calendar_event(item, d, session)
+        for sess in ("premarket", "afterhours"):
+            items = stored.get((d, sess))
+            if items is None:
+                n_live += 1
+                items = uw.calendar_day_raw(d, sess)
+            else:
+                n_stored += 1
+            for item in items:
+                ev = _calendar_event(item, d, sess)
                 if ev is None:
                     continue
                 events.append(ev)
                 t = ev["ticker"]
-                if t not in raw_cal or session == "premarket":
+                if t not in raw_cal or sess == "premarket":
                     raw_cal[t] = ev
     _CALENDAR_SOURCES.clear()
-    _CALENDAR_SOURCES.update({"stored": 0, "live": n_live, "session": None})
+    _CALENDAR_SOURCES.update({"stored": n_stored, "live": n_live,
+                              "session": session.isoformat() if session and n_stored else None})
     return events, raw_cal
 
 
