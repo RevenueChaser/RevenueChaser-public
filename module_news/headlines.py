@@ -110,6 +110,34 @@ def _merge_tickers(rows: list[dict]) -> list[dict]:
     return changed
 
 
+def _stored_ids(ids: list[str]) -> set[str]:
+    """The ids of ``ids`` already in the table."""
+    if not ids:
+        return set()
+    return {str(r["headline_id"]) for r in rawstore.query(
+        f"SELECT headline_id FROM {TABLE} WHERE headline_id IN ({', '.join('?' for _ in ids)})", ids, db="news")}
+
+
+#: The lanes of the News page, in its order, as ``module_news.report.lane`` cuts them.
+LANES = ("market", "stocks", "x")
+
+
+def lane_freshness() -> dict[str, float | None]:
+    """The newest ``fetched_at`` of each lane of ``LANES``; None for a lane with no row at all.
+
+    One freshness over the whole table cannot see a dead lane (review F2, 18 Nov 2026): the hourly X load keeps
+    ``news_headlines.fetched_at`` moving, so the dataset stays "fresh" on Settings and in Grafana while the
+    per-ticker IBKR fetch has been down for a day. One reading a lane, which the board shows and Grafana alerts on.
+    """
+    x = ", ".join(repr(p) for p in x_feed.X_PROVIDERS)
+    rows = rawstore.query(
+        f"SELECT CASE WHEN coalesce(provider, '') IN ({x}) THEN 'x' "
+        f"WHEN coalesce(tickers, '[]') = '[]' THEN 'market' ELSE 'stocks' END AS lane, "
+        f"max(fetched_at) AS newest FROM {TABLE} GROUP BY 1", db="news")
+    got = {str(r["lane"]): r["newest"] for r in rows}
+    return {name: (float(got[name]) if got.get(name) is not None else None) for name in LANES}
+
+
 def _new_lines(folder: Path, key: str, first: str) -> tuple[list[bytes], dict | None, dict | None]:
     """The whole lines appended to ``folder/*.jsonl`` since the ``news_meta`` mark ``key``, and the old and new mark.
 
@@ -184,8 +212,14 @@ def peek_tape(now: float | None = None) -> list[dict]:
 
 def load_x(now: float | None = None, run_id: str | None = None) -> dict:
     """Load the Grok X mails saved since the mark into ``news_headlines``. Returns ``mails``, ``stored``,
-    ``refused`` (rows ``x_feed.parse`` turned down) and ``cut`` (mails that declared more rows than they carried).
-    With no mark, every saved mail is read (the first load is the backfill)."""
+    ``known`` (ids already stored, so Grok repeated them or RC's own reader had them), ``refused`` (rows
+    ``x_feed.parse`` turned down) and ``cut`` (mails that declared more rows than they carried).
+    With no mark, every saved mail is read (the first load is the backfill).
+
+    An id already stored is left alone (review F5, 18 Nov 2026): the table is ``write: upsert``, so writing the
+    parsed row again would set every other column from it and NULL the UW check (``x_check``) of a tweet Grok
+    repeats in a later mail, or of one RC's own reader (``x_reader``, which skips stored ids the same way) stored
+    with its own ``kind`` and ``option``. A tweet does not change; only its check does."""
     now = time.time() if now is None else now
     run_id = run_id or f"news-{int(now)}"
     lines, mark, new_mark = _new_lines(x_feed.x_dir(config.MARKET_RAW_DIR), X_MARK_KEY, "")
@@ -203,10 +237,13 @@ def load_x(now: float | None = None, run_id: str | None = None) -> dict:
         cut += declared is not None and declared > len(rows) + len(bad)
         for r in rows:
             found[r["headline_id"]] = {**r, "tickers": json.dumps(r["tickers"])}
-    if found:
-        rawstore.write_rows(TABLE, list(found.values()))
+    stored = _stored_ids(list(found))                     # one SELECT, as x_reader.run has it
+    fresh = [r for key, r in found.items() if key not in stored]
+    if fresh:
+        rawstore.write_rows(TABLE, fresh)
     _move_mark(X_MARK_KEY, mark, new_mark, now)
-    return {"mails": mails, "stored": len(found), "refused": refused, "cut": int(cut)}
+    return {"mails": mails, "stored": len(fresh), "known": len(found) - len(fresh),
+            "refused": refused, "cut": int(cut)}
 
 
 # Contract ids do not change; kept for the dashboard process's life so a 5-minute pass asks one request a name.

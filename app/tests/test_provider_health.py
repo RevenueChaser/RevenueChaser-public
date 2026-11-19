@@ -196,7 +196,7 @@ class TestEarningsBoard:
         assert "5 of 40" in exc.value.message
         assert seen["provider_health"]["failed"] == 5
         html = path.read_text(encoding="utf-8")
-        assert "rc-provider-health" in html and "5 of 40" in html
+        assert "rc-provider-health" in html and "40 Unusual Whales çağrısının 5 tanesi" in html
 
     def test_clean_run_has_no_banner(self, tmp_path):
         from RevenueChaser.module_earnings_radar.report import export_html
@@ -260,7 +260,7 @@ class TestRotationBoard:
             runners.run_rotation_latest(_FakeUW(_BAD))
         assert seen["provider_health"]["failed"] == 5
         html = out.read_text(encoding="utf-8")
-        assert "rc-provider-health" in html and "5 of 40" in html
+        assert "rc-provider-health" in html and "40 Unusual Whales çağrısının 5 tanesi" in html
 
 
 class TestPayloadBoards:

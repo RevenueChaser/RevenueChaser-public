@@ -96,7 +96,7 @@ def test_the_headlines_job_loads_the_tape_then_renders_without_the_calendar(monk
     order = []
     monkeypatch.setattr(headlines, "load_tape", lambda **kw: order.append("tape") or {"read": 2, "stored": 1})
     monkeypatch.setattr(headlines, "load_x", lambda **kw: order.append("x") or
-                        {"mails": 1, "stored": 2, "refused": 0, "cut": 0})
+                        {"mails": 1, "stored": 2, "known": 0, "refused": 0, "cut": 0})
     monkeypatch.setattr(headlines, "fetch", lambda names, **kw: order.append("fetch") or
                         {"tickers": len(names), "stored": 0, "skipped": [], "error": None})
     assert runners.run_news_headlines().name == "news_latest.html" and order == ["tape", "x", "fetch"]

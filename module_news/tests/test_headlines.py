@@ -228,3 +228,22 @@ def test_the_page_reads_back_the_names_rows_and_the_last_answer(gw):
 def test_a_name_ibkr_does_not_know_is_said_so(gw):
     gw.unknown.add("ZZZZ")
     assert headlines.fetch_ticker("ZZZZ", now=NOW)["error"] == "IBKR does not know ZZZZ"
+
+
+# ── F2: one freshness a lane, read from the store ─────────────────────────────────────────────────────────────────
+
+def _head(hid, provider, tickers, fetched):
+    return {"headline_id": hid, "provider": provider, "published_at": NOW, "headline": hid, "source": None,
+            "tickers": json.dumps(tickers), "url": None, "fetched_at": fetched, "run_id": "t", "run_at": fetched}
+
+
+def test_lane_freshness_reads_each_lane_on_its_own():
+    assert headlines.lane_freshness() == {"market": None, "stocks": None, "x": None}
+    rawstore.write_rows(headlines.TABLE, [
+        _head("ibkr:m", "ibkr", [], NOW - 60), _head("ibkr:m2", "ibkr", [], NOW - 600),
+        _head("ibkr:s", "ibkr", ["AAPL"], NOW - 90_000),
+        _head("x:1", "grok-x", [], NOW - 300), _head("x:2", "x-follow", ["SPY"], NOW - 30),
+    ])
+    # The newest fetch a lane, not the newest of the table: an X row with a cashtag is still the X lane, and the
+    # per-ticker lane stays a day old however busy the others are (review F2, 18 Nov 2026).
+    assert headlines.lane_freshness() == {"market": NOW - 60, "stocks": NOW - 90_000, "x": NOW - 30}

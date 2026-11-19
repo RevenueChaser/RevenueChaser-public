@@ -43,7 +43,8 @@ _FEED_NAME = re.compile(r"[A-Za-z0-9_.-]{1,16}")
 #: A need's name as a label value: the read log is a file, so other text is left out rather than exported.
 _NEED_NAME = re.compile(r"[A-Za-z0-9_.-]{1,64}")
 #: The parts ``collect`` reads one by one; each starts its error counter at 0 so a first failure is an increase.
-PARTS = ("queue", "providers", "needs", "datasets", "builder", "timer", "backups", "switches", "ibkr", "news")
+PARTS = ("queue", "providers", "needs", "datasets", "builder", "timer", "backups", "switches", "ibkr", "news",
+         "news_lanes")
 TIMER_EVERY_S = 60.0
 
 HELP = {
@@ -75,6 +76,9 @@ HELP = {
                            "unknown), by feed, from the news listener's own record."),
     "rc_news_tape_written_timestamp_seconds": ("gauge", "When the news listener last wrote its record, epoch "
                                                "seconds (absent: no record yet)."),
+    "rc_news_lane_fresh_timestamp_seconds": ("gauge", "When the newest headline of a News lane (market, stocks, x) "
+                                             "was fetched, epoch seconds (absent: the lane has no row). One reading "
+                                             "a lane, because the whole table's freshness cannot see a dead lane."),
     "rc_threshold": ("gauge", "The thresholds the Data/Health page alarms at, from module_settings/control.py."),
     "rc_metrics_read_errors_total": ("counter", "Readers that failed since the dashboard started, by part."),
     "rc_metrics_build_seconds": ("gauge", "How long building this answer took."),
@@ -151,6 +155,14 @@ def _iso_epoch(value) -> float | None:
     return (when if when.tzinfo else when.replace(tzinfo=timezone.utc)).timestamp()
 
 
+def _news_lanes() -> dict:
+    """The newest fetch of each News lane. A function-level import, as ``_news_tape`` has it: no module-level
+    dependency on a board package. It reads ``boards/news.duckdb`` (7 MB, the board's own file), never the serving
+    store, so the scrape still takes no serving lock (``app/dashboard._NO_STORE_SESSION``)."""
+    from RevenueChaser.module_news import headlines
+    return headlines.lane_freshness()
+
+
 def _news_tape(now: datetime) -> dict:
     """The IBKR news feeds as the listener's record has them. A function-level import, so Settings gains no
     module-level dependency on a board package."""
@@ -160,7 +172,8 @@ def _news_tape(now: datetime) -> dict:
 
 def collect(now: datetime | None = None, *, datasets: dict | None = None, timer: dict | None = None,
             ibkr: Callable[[], dict | None] | None = None, cgroup=None, alive=None,
-            news: Callable[[], dict | None] | None = None) -> dict[str, list]:
+            news: Callable[[], dict | None] | None = None,
+            lanes: Callable[[], dict | None] | None = None) -> dict[str, list]:
     """``{family: [(labels, value), ...]}``. Each part is read on its own; a part that fails is left empty and
     counted, and a dataset that fails is left out of the dataset families and counted under ``datasets``.
     ``timer`` is the builder timer's reading (default: ``TIMER.get()``)."""
@@ -310,8 +323,18 @@ def collect(now: datetime | None = None, *, datasets: dict | None = None, timer:
         if written is not None:
             out["rc_news_tape_written_timestamp_seconds"].append(({}, written))
 
+    def news_lanes() -> None:
+        # Review F2 (18 Nov 2026): the dataset's one freshness stays "fresh" on the hourly X load while the
+        # per-ticker IBKR fetch is dead, so each lane is read on its own. Its own part: a store read that fails
+        # must not take the listener's feed states with it.
+        got = (lanes() if lanes is not None else _news_lanes()) or {}
+        for name, at in got.items():
+            if at is not None:
+                out["rc_news_lane_fresh_timestamp_seconds"].append(({"lane": str(name)}, float(at)))
+
     parts = {"queue": queue, "providers": providers, "needs": needs, "datasets": dataset_states, "builder": builder,
-             "timer": timer_part, "backups": backups, "switches": switches, "ibkr": gateway, "news": news_feeds}
+             "timer": timer_part, "backups": backups, "switches": switches, "ibkr": gateway, "news": news_feeds,
+             "news_lanes": news_lanes}
     for name in PARTS:
         part(name, parts[name])
     for key, value in (("run_alert_share", control.RUN_ALERT), ("cap_alert_share", control.CAP_ALERT),

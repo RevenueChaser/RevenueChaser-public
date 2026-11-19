@@ -240,15 +240,41 @@ def _x_groups(rows: list[dict]) -> str:
     return "".join(_group_li(k, v) for k, v in order)
 
 
-def _headlines(rows: list[dict]) -> dict[str, str]:
-    """One card a lane: Piyasa (the broad tape), Hisseler (per ticker) and X (the Grok X mails, one group a ticker),
-    each with its row count; the page's poll adds to their lists."""
+def _ago(seconds: float) -> str:
+    """How long ago, in the board's Turkish and coarse: ``az önce``, ``7 dk önce``, ``3 sa önce``, ``2 gün önce``."""
+    s = max(0.0, float(seconds))
+    if s < 60:
+        return "az önce"
+    if s < 3600:
+        return f"{int(s // 60)} dk önce"
+    if s < 86400:
+        return f"{int(s // 3600)} sa önce"
+    return f"{int(s // 86400)} gün önce"
+
+
+def _fresh_html(key: str, fresh: dict, now: float) -> str:
+    """The lane's own freshness line (review F2, 18 Nov 2026).
+
+    The page's header time is the board's newest write of any lane, so a dead per-ticker fetch cannot be seen there
+    while the X load keeps writing. Each lane says when its own newest row was fetched; the page states it and never
+    judges it, because every lane has its own cadence (the tape writes in seconds, the per-ticker pass goes round in
+    about an hour, X is hourly) and the alarm belongs in Grafana, where the threshold can be changed."""
+    at = fresh.get(key)
+    if at is None:
+        return '<p class="fresh">bu kulvarda hiç veri yok</p>'
+    return f'<p class="fresh">son veri {hm(at)} · {_ago(now - at)}</p>'
+
+
+def _headlines(rows: list[dict], fresh: dict, now: float) -> dict[str, str]:
+    """One card a lane: Piyasa (the broad tape), Hisseler (per ticker) and X (the Grok X mails and RC's own reader,
+    one group a ticker), each with its row count and its own freshness; the page's poll adds to their lists."""
     out = {}
     for key, (title, empty) in _LANES.items():
         mine = [r for r in rows if lane(r) == key]
         mine = (_curated(mine) if key == "x" else mine)[:HEADLINE_LIMIT]
         body = _x_groups(mine) if key == "x" else "".join(_head_li(r) for r in mine)
         out[key] = (f'<section class="card"><h2 class="lbl">{title} · son {HEADLINE_HOURS} saat</h2>'
+                    f'{_fresh_html(key, fresh, now)}'
                     f'<p class="empty"{" hidden" if mine else ""}>{empty}</p>'
                     f'<ul class="list" id="heads-{key}">{body}</ul></section>')
         out[key + "_n"] = len(mine)
@@ -316,6 +342,7 @@ h1{margin:2px 0 0;color:var(--bright);font-size:22px}
 .side{display:flex;flex-direction:column;gap:16px}
 .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 16px}
 .lbl{margin:0 0 10px;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.fresh{margin:-6px 0 10px;color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
 .tabs{display:flex;gap:8px;margin-bottom:12px}
 .ptabs{display:flex;gap:4px;margin-bottom:16px;border-bottom:1px solid var(--border);overflow-x:auto}
 .ptabs button{min-height:44px;padding:0 16px;border:0;border-bottom:2px solid transparent;background:transparent;
@@ -611,7 +638,9 @@ HELP = help_html(
     "aranır (rozet: ✓ UW teyitli, ✗ UW'de yok, ◷ bekliyor; opsiyon dışı kayıtlarda ✓ X kimliği) ve kayıtlar hisseye göre gruplanır, her grubun üstünde seansın 5 dakikalık fiyatı ve tweet anları çizilir: tweet saatinin 4 saat öncesinden 15 dakika sonrasına kadar o kontratın $25 bin üstü işlemleri (adet, "
     "kontrat, prim, ask/bid tarafı) ve ertesi gün açık pozisyon (OI) değişimi gösterilir. "
     "Gerçekleşen değer gösterilmez: beklenti ve önceki değer.</p>"
-    "<p>Piyasa başlıkları geldiği anda, birkaç saniye içinde sayfaya düşer; hisse başlıkları 5 dakikada bir gelir.</p>"
+    "<p>Piyasa başlıkları geldiği anda, birkaç saniye içinde sayfaya düşer; hisse başlıkları 5 dakikada bir gelir. "
+    "Her kulvarın başlığının altında o kulvarın <b>kendi</b> son veri zamanı yazar: sayfanın en üstündeki saat "
+    "panonun herhangi bir kulvarına yapılan en son yazmadır, yani tek başına ölü bir kulvarı göstermez.</p>"
     "<p><b>Bir hisse için haber</b>: My Universe'den bir hisse seçip <b>Haberleri getir</b>'e basınca IBKR'dan o hissenin "
     "son 7 günlük Dow Jones ve Briefing başlıkları sorulur (en çok 300) ve saklanır; IBKR yanıt vermezse saklı son "
     "başlıklar gösterilir.</p>"
@@ -630,7 +659,7 @@ def render_html(now: float | None = None, provider_health: dict | None = None) -
     today_html, week_html = _calendar(events, now, hl_key)
     n_today = sum(1 for e in events if local_day(e["event_ts"]) == today)
     updated = f"Veri {hm(stamp)}'de güncellendi" if stamp else "Veri henüz kurulmadı"
-    lanes = _headlines(heads)
+    lanes = _headlines(heads, headlines.lane_freshness(), now)
     return f"""<!doctype html>
 <html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Haberler</title><script>{THEME_JS}</script><style>{THEME_CSS}{_CSS}</style>{FILTERS_CSS}</head>

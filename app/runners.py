@@ -1182,8 +1182,8 @@ def _news_headlines_pass(rid: str) -> dict | None:
         ledger.add_note(f"News tape: {tape['stored']} market headlines from {tape['read']} new lines")
     x = headlines.load_x(run_id=rid)
     if x["mails"]:
-        ledger.add_note(f"News X: {x['stored']} posts from {x['mails']} Grok mails ({x['refused']} rows refused, "
-                        f"{x['cut']} mails cut short)")
+        ledger.add_note(f"News X: {x['stored']} posts from {x['mails']} Grok mails ({x['known']} already stored, "
+                        f"{x['refused']} rows refused, {x['cut']} mails cut short)")
     from RevenueChaser.module_news import x_check
     checked = x_check.run(UWClient)
     if checked["calls"]:
