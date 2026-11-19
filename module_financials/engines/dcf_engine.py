@@ -21,8 +21,9 @@ from ..config import (
 )
 from RevenueChaser.core.providers.validator import validate_annual
 
-from ._inputs import (DNA_ASSUMED_ZERO, assumed, effective_tax_rate as _effective_tax_rate, first_known,
-                      net_debt as _net_debt, not_for_a_bank, pick)
+from ._inputs import (DNA_ASSUMED_ZERO, NO_MINORITY_BRIDGE, assumed,
+                      effective_tax_rate as _effective_tax_rate, first_known, net_debt as _net_debt,
+                      not_for_a_bank, pick, statement_tax_rate)
 
 
 def _nwc(rec: dict) -> float | None:
@@ -43,7 +44,13 @@ def _historical_fcff(annual: list[dict], tax_rate: float) -> list[dict]:
     """Geçmiş yıl FCF hesaplama (kronolojik).
 
     A year whose ΔNWC is unknown (the first year, or a year without working-capital lines) has an unknown FCFF:
-    it was ``dnwc or 0.0``, a silent zero (Financials review N1, the #173 convention)."""
+    it was ``dnwc or 0.0``, a silent zero (Financials review N1, the #173 convention).
+
+    Each year is taxed at **its own** reported rate where its statements give a believable one
+    (``statement_tax_rate``), and at the model's rate (``tax_rate``) only where they do not (#93): restating every
+    past year at today's rate made the history a projection of the present rather than what the company reported.
+    The row carries the rate it used and where it came from, so the table can say which years are the model's.
+    """
     rows = []
     prev_nwc = None
     for rec in annual:
@@ -51,16 +58,21 @@ def _historical_fcff(annual: list[dict], tax_rate: float) -> list[dict]:
         dep = to_float(rec.get("depreciation"))
         capex = first_known(to_float(rec.get("capex")), to_float(rec.get("capital_expenditure")))
         nwc = _nwc(rec)
+        own = statement_tax_rate(rec)
+        year_rate = tax_rate if own is None else own
+        year_source = "model" if own is None else "statements"
         if ebit is None or dep is None or capex is None:
             rows.append({"fiscal_year": rec.get("fiscal_year"), "fcff": None,
-                         "ebit": ebit, "nopat": None, "dna": dep, "capex": capex, "dnwc": None})
+                         "ebit": ebit, "nopat": None, "dna": dep, "capex": capex, "dnwc": None,
+                         "tax_rate": year_rate, "tax_rate_source": year_source})
             prev_nwc = nwc
             continue
-        nopat = ebit * (1 - tax_rate)
+        nopat = ebit * (1 - year_rate)
         dnwc = (nwc - prev_nwc) if (nwc is not None and prev_nwc is not None) else None
         fcff = None if dnwc is None else nopat + dep - capex - dnwc
         rows.append({"fiscal_year": rec.get("fiscal_year"), "fcff": fcff,
-                     "ebit": ebit, "nopat": nopat, "dna": dep, "capex": capex, "dnwc": dnwc})
+                     "ebit": ebit, "nopat": nopat, "dna": dep, "capex": capex, "dnwc": dnwc,
+                     "tax_rate": year_rate, "tax_rate_source": year_source})
         prev_nwc = nwc
     return rows
 
@@ -124,9 +136,9 @@ def run_dcf(financials: dict, assumptions: dict | None = None) -> dict:
     if rev0 is None or rev0 <= 0:
         return {"error": "no revenue in latest year", "warnings": warnings}
 
-    # The user's rate, else the statements' (provision / pretax), else the default (FIN-3; labelled, FIN-9 B).
+    # The user's rate, else the statements' (the median in-band year, #89), else the default (labelled, FIN-9 B).
     # No sector band carries a tax_rate, so that default is DEFAULT_TAX_RATE for every sector (see _inputs).
-    tax_rate, tax_rate_source = _effective_tax_rate(a, latest, financials.get("sector"))
+    tax_rate, tax_rate_source = _effective_tax_rate(a, latest, financials.get("sector"), annual)
 
     # The base-year rows the statements did not give: the model runs on a default, the board labels it (review S1).
     defaults: list[str] = []
@@ -273,6 +285,10 @@ def run_dcf(financials: dict, assumptions: dict | None = None) -> dict:
         warnings.append(f"net debt unknown ({missing} missing in FY {latest.get('fiscal_year')}): "
                         "equity value and per-share value not computed")
     shares = to_float(financials.get("shares_outstanding"))
+    if net_debt is not None and shares:
+        # #92: the bridge is EV - net debt only, and the net debt is a fiscal year old while the shares are the
+        # fetch's. Both facts ride the result so the board can date them, and the gap is a warning, not a silence.
+        warnings.append(NO_MINORITY_BRIDGE)
 
     def _equity(ev):
         if ev is None or net_debt is None:
@@ -330,6 +346,8 @@ def run_dcf(financials: dict, assumptions: dict | None = None) -> dict:
             "per_share_gordon": _per_share(ev_gordon),
             "per_share_exit": _per_share(ev_exit),
             "net_debt": net_debt,
+            # The fiscal year the net debt is as of (#92): the latest year's balance sheet, not today's.
+            "net_debt_fy": latest.get("fiscal_year"),
             "shares_outstanding": shares,
         },
     }

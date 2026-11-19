@@ -8,7 +8,7 @@ from pathlib import Path
 
 from RevenueChaser.core.reporting_common import write_artifact
 
-from .config import OUTPUT_DIR, PEER_K, RISK_FREE_MAX_AGE_DAYS
+from .config import OUTPUT_DIR, PEER_CAP_RATIO_BAND, PEER_K, RISK_FREE_MAX_AGE_DAYS
 from .engines import (
     comps_engine,
     credit_capacity_engine,
@@ -18,7 +18,7 @@ from .engines import (
     three_statement_engine,
 )
 from . import market_inputs
-from .peers import select_peers, target_row
+from .peers import peer_set, target_row
 from .reporting.html_builder import build_report_html
 from RevenueChaser.core.providers import yfinance as yfinance_client
 
@@ -238,6 +238,7 @@ def run(ticker: str, modules: list[str] | tuple[str, ...] = ("dcf",),
         elif m in ("3stmt", "three_statement", "3statement"):
             results["modules"]["three_statement"] = three_statement_engine.run_three_statement(financials, assumptions)
         elif m in ("comps", "comps_engine"):
+            rungs: dict[str, str] = {}
             if peers:
                 used_peers = list(peers)
             else:
@@ -246,15 +247,26 @@ def run(ticker: str, modules: list[str] | tuple[str, ...] = ("dcf",),
                 # does not carry is not a short ladder: it is the reason there is no ladder at all.
                 spine_rows = _spine.classification_universe_rows(
                     operating_only=_spine.BOARD_OPERATING_ONLY["module_financials"])
-                used_peers = select_peers(ticker, spine_rows)
+                picked = peer_set(ticker, spine_rows)
+                used_peers = [p["ticker"] for p in picked]
+                rungs = {p["ticker"]: p["rung"] for p in picked}
                 if target_row(ticker, spine_rows) is None:
                     warnings.append(f"comps: {ticker} is not in the spine universe (below the market-cap "
                                     f"floor, or an excluded security type), so no peers were picked")
                 elif len(used_peers) < PEER_K:
                     warnings.append(f"comps: {len(used_peers)} of {PEER_K} peers — the spine industry and "
-                                    f"sector have no more names")
+                                    f"sector have no name inside the cap band "
+                                    f"({PEER_CAP_RATIO_BAND[0]:g}x to {PEER_CAP_RATIO_BAND[1]:g}x "
+                                    f"the target's market cap)")
+                # #91: part of a full ladder may come from the sector rung, which is a weaker comp than the
+                # target's own industry. No number moves; the board has to say it.
+                from_sector = sum(1 for p in picked if p["rung"] == "sector")
+                if from_sector:
+                    warnings.append(f"comps: {from_sector} of {len(used_peers)} peers come from the sector, "
+                                    f"not {ticker}'s own industry")
             results["modules"]["comps"] = comps_engine.run_comps(financials, used_peers,
-                                                                fetch_info=comps_engine._default_fetch)
+                                                                fetch_info=comps_engine._default_fetch,
+                                                                rungs=rungs)
         elif m in ("credit", "credit_capacity"):
             results["modules"]["credit"] = credit_capacity_engine.run_credit_capacity(financials, assumptions)
         elif m in ("sensitivity", "sensitivity_engine"):

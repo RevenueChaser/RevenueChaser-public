@@ -93,15 +93,21 @@ def _fmt_friendly_day(iso: str | None) -> str:
 
 
 def _fmt_tax_rate(assumptions: dict | None) -> str:
-    """The model's tax rate; ``default 21.0% (no sector rate)`` when no statement or user value set it (FIN-9 B).
+    """The model's tax rate, with where it came from: ``21.0% (median of 3 years)`` for the statements' median
+    (#89), ``default 21.0% (no sector rate)`` when neither a statement nor the user set one (FIN-9 B).
 
-    The parenthetical is true, not decoration: no sector band carries a ``tax_rate``
+    The "no sector rate" parenthetical is true, not decoration: no sector band carries a ``tax_rate``
     (``module_financials/engines/_inputs.default_tax_rate``), so the fallback is the single
     ``DEFAULT_TAX_RATE`` for every sector and the row must not read as a sector-specific one.
     """
     a = assumptions or {}
     rate = _fmt_pct(a.get("tax_rate"))
-    return f"default {rate} (no sector rate)" if a.get("tax_rate_source") == "default" else rate
+    source = str(a.get("tax_rate_source") or "")
+    if source == "default":
+        return f"default {rate} (no sector rate)"
+    if source.startswith("statements (median of "):
+        return f"{rate} ({source[len('statements ('):-1]})"
+    return rate
 
 
 def _or_default(text: str, is_default=False) -> str:
