@@ -5,18 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{ company }} — Fin Research</title>
 <style>
-  :root {
-    --bg: #0b0e14;
-    --panel: #131722;
-    --panel2: #1a1f2e;
-    --border: #232a3b;
-    --text: #d7dce5;
-    --muted: #8a93a6;
-    --accent: #4f9dff;
-    --green: #2ecc71;
-    --red: #e74c3c;
-    --amber: #f1c40f;
-  }
+{{ theme_css }}
+  /* The board's own names, as aliases of the shared theme's (#591, the same shape as Fundamentals' #840):
+     the rules below read as they did, and the page follows the shell into Light instead of staying dark. */
+  :root { --panel: var(--card); --panel2: var(--card-2); --text: var(--fg); --green: var(--pos);
+          --red: var(--neg); --rcf-pop-bg: var(--card); }
   * { box-sizing: border-box; }
   body {
     margin: 0;
@@ -64,16 +57,22 @@
   .kv:last-child { border-bottom: none; }
   .kv .k { color: var(--muted); }
   .badge { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
-  .b-healthy { background: rgba(46, 204, 113, 0.15); color: var(--green); }
-  .b-moderate { background: rgba(241, 196, 15, 0.15); color: var(--amber); }
-  .b-stressed { background: rgba(231, 76, 60, 0.15); color: var(--red); }
-  .b-unknown { background: rgba(138, 147, 166, 0.15); color: var(--muted); }
+  .b-healthy { background: var(--pos-soft); color: var(--green); }
+  .b-moderate { background: var(--amber-soft); color: var(--amber); }
+  .b-stressed { background: var(--neg-soft); color: var(--red); }
+  .b-unknown { background: var(--hover-soft); color: var(--muted); }
   .warn { color: var(--amber); font-size: 12px; }
   .heat { text-align: center; font-variant-numeric: tabular-nums; }
   .heat-hi { color: var(--green); }
   .heat-lo { color: var(--red); }
   footer { color: var(--muted); font-size: 12px; margin-top: 40px; border-top: 1px solid var(--border); padding-top: 16px; }
+  /* The Ticker picker's row (#591). It stays outside the filter bar, as every board's own knobs do. */
+  .pick { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .pick .lbl { color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
+  .pick .count { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  @media (max-width: 640px) { .pick .rcf-combo { min-width: 0; flex: 1 1 100%; max-width: none; } }
 </style>
+{{ filters_css }}
 </head>
 <body>
 <div class="wrap">
@@ -93,6 +92,16 @@
 
 {{ provider_banner }}
 {{ help_block }}
+
+<section class="rcf-boardrow" aria-labelledby="picker-title">
+  <h2 class="rcf-title" id="picker-title">Company <span class="rcf-rule"></span></h2>
+  <div class="pick">
+    <span class="lbl" id="ticker-combo-label">Ticker</span>
+    {{ ticker_combo }}
+    <span class="count" id="picker-count" aria-live="polite"></span>
+  </div>
+</section>
+{{ filters_bar }}
 {{ history_block }}
 
 {% if quick_remarks_section %}
@@ -361,5 +370,41 @@
 
 </div>
 {{ watch_mount }}
+<script>{{ filters_js }}</script>
+<script>{{ theme_js }}</script>
+<script>
+// The shared filter kit (#591). The bar narrows only what the Ticker picker offers: it never slices the
+// statements below, which are always the one company the board fetched.
+var RC_PICKER_ROWS = {{ picker_rows_json }}, RC_PICKER_META = {{ picker_meta_json }},
+    RC_TICKER = {{ ticker_json }}, RCF = null;
+(function () {
+  var count = document.getElementById("picker-count");
+  function render() {
+    if (!count) return;
+    var n = RC_PICKER_ROWS.filter(function (r) { return RCF.pass(r); }).length;
+    count.textContent = RC_PICKER_ROWS.length ? n + " of " + RC_PICKER_ROWS.length + " names match" : "";
+  }
+  function fetchTicker(t) {
+    if (!t || t === RC_TICKER) return;
+    try {
+      // In the dashboard the shell owns Fetch, and it reads this combobox for the ticker (as it does for
+      // Implied Probability), so the board does not start a job of its own.
+      var btn = window.parent && window.parent !== window && window.parent.document.getElementById("btn-fetch");
+      if (btn) { btn.click(); return; }
+    } catch (e) { /* a cross-origin parent: fall through to the store-only rebuild */ }
+    location.search = "?refresh=1&ticker=" + encodeURIComponent(t);
+  }
+  RCF = RCFilters.mount({root: "#rc-filters", rows: RC_PICKER_ROWS, meta: RC_PICKER_META, onChange: render});
+  RCInfo.wire();
+  var input = document.getElementById("ticker-combo");
+  if (input) {
+    if (RC_TICKER) input.value = RC_TICKER;
+    RCCombobox.mount({input: input, list: "#ticker-combo-list", rows: RC_PICKER_ROWS, allowFree: false, clear: true,
+                      filter: function (r) { return RCF.pass(r); },
+                      onPick: function (r) { fetchTicker(r.ticker); }});
+  }
+  render();
+})();
+</script>
 </body>
 </html>

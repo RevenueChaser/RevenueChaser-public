@@ -158,7 +158,7 @@ hash. The pure logic is `RCFilters.core`, unit-tested under node (`core/tests/te
 | Fundamental Analysis | yes (on it, C1c) | Rule toggles (card 3); **Gate** until then. |
 | Earnings Radar | yes (on it, KE, #372) | Index, Market cap, Sector, Theme (no Earnings facet). ANDs with the board's search and five chips. Every row, including watchlist and Excluded by Filters. |
 | SEC 13F | yes (on it, KF, #375) | Index, Market cap, Sector, Theme (no Earnings facet). Replaces the old sector chips. Filter rows ride the payload. ANDs with the board's search. Off-spine tickers are `Unclassified` with no cap. |
-| Financials | yes | Filters only pick the name, they do not slice statements. |
+| Financials | yes (on it, #591) | Filters only pick the name, they do not slice statements. The kit's combobox is the board's ticker picker (outside the bar, `allowFree` off) and the shell's Fetch / Refresh read it from the frame, as they do for Implied Probability; the header's `#quick-ticker` box is left for the empty state, before the first Fetch has written a board. The pool is the board's own universe cut (operating names above the floor) and it is rebuilt by a Fetch, not by a Refresh, because a Refresh serves the last Fetch's file. The board reads the shared theme tokens, so it follows the shell into Light. |
 | Sector Rotation | **no** stock bar | ETF RRG. Reuse the Theme widgets only to focus mapped ETF dots (`relatedness_theme_etfs` at the selected level). |
 | SPX Gamma, UW Interaction | **no** | Date-only / non-equity. |
 | Settings | **no** | Ops inventory, not an equity board; its Ticker lookup uses the kit's combobox (C1b). Plan: [`data_health.md`](data_health.md). |

@@ -6,7 +6,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from RevenueChaser.core.reporting_common import write_artifact
+from RevenueChaser.core.reporting_common import filters_meta, write_artifact
 
 from .config import OUTPUT_DIR, PEER_CAP_RATIO_BAND, PEER_K, RISK_FREE_MAX_AGE_DAYS
 from .engines import (
@@ -162,6 +162,29 @@ class _NoCachedData(Exception):
         self.ticker = ticker
 
 
+def picker_payload(ticker: str) -> dict:
+    """The rows the shared filter bar and the Ticker combobox read, and the bar's meta (#591).
+
+    The pool is this board's own universe cut: the spine's operating names above the market-cap floor, the same
+    set the comps peer ladder ranks over, carrying the universal-filter fields (index, market cap, GICS path,
+    theme ids, earnings date). A store read only, so a Refresh stays network-free.
+
+    The filters narrow only what the picker offers; the statements below are always the one company the board
+    fetched. The ticker on the page stays in the pool even when the cut drops it, so the picker never opens on
+    a name it cannot show.
+    """
+    from RevenueChaser.core import universe as _spine
+
+    names = _spine.classification_universe(operating_only=_spine.BOARD_OPERATING_ONLY["module_financials"])
+    fields = _spine.filter_fields(names) if names else {}
+    rows = [fields[t] for t in names if t in fields]
+    ticker = (ticker or "").strip().upper()
+    if ticker and not any(r.get("ticker") == ticker for r in rows):
+        rows.insert(0, _spine.filter_fields([ticker]).get(ticker) or {"ticker": ticker, "name": ticker})
+    return {"rows": rows,
+            "meta": filters_meta("financials", earnings_mode="filter", themes=_spine.theme_catalog())}
+
+
 def run(ticker: str, modules: list[str] | tuple[str, ...] = ("dcf",),
         output: str = "html", use_cache: bool = True, no_fetch: bool = False,
         assumptions: dict | None = None, peers: list[str] | None = None,
@@ -304,6 +327,9 @@ def _run(ticker: str, modules, output: str, assumptions: dict | None, peers: lis
 
     # The banner the board already renders (#299); zeros render nothing, so a clean run looks unchanged.
     results["provider_health"] = provider_health.health()
+
+    # The shared filter kit's pool (#591): the picker's names, read from the store, never a network call.
+    results["picker"] = picker_payload(ticker)
 
     paths: dict = {}
     if output in ("html", "both"):

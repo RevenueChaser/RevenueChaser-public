@@ -393,7 +393,7 @@ function fitFrameWidth(f){
   } catch(e){}
 }
 function hookFrameFit(f){
-  f.addEventListener('load', function(){ fitFrameWidth(f); themeFrames(THEME_NOW, [f]); });
+  f.addEventListener('load', function(){ fitFrameWidth(f); themeFrames(THEME_NOW, [f]); syncQuickCtl(); });
   setTimeout(function(){ fitFrameWidth(f); }, 300);
 }
 
@@ -442,7 +442,7 @@ function showTab(key){
   document.getElementById('earnings-ctl').style.display = (key==='module_earnings_radar') ? 'flex' : 'none';
   document.getElementById('rotation-ctl').style.display = (key==='module_sector_rotation') ? 'flex' : 'none';
   document.getElementById('spxgamma-ctl').style.display = (key==='module_spx_gamma') ? 'flex' : 'none';
-  document.getElementById('quick-ctl').style.display = (key==='module_financials') ? 'flex' : 'none';
+  syncQuickCtl();
   var rfBtn = document.getElementById('btn-refresh');
   // Logs and Runs are read-only views (the log files, the job_runs rows): both poll by themselves,
   // so there is nothing to refresh.
@@ -1092,11 +1092,12 @@ function startPolling(){
   POLL_TIMER = setInterval(poll, 2000);
 }
 
-// The OIPD ticker picker lives inside the iframe (in-board combobox), not in a
-// parent header box. Read the iframe's selected ticker; fall back to the
-// combobox's visible value (its closed label is "TICKER — full name").
-function oipdTickerFromFrame(){
-  var f = document.querySelector('.frame[data-tab="module_oipd"]');
+// Implied Probability and Financials (#591) both keep their ticker picker inside
+// the iframe (the shared kit's combobox), not in a parent header box. Read the
+// iframe's selected ticker; fall back to the combobox's visible value (its closed
+// label is "TICKER — full name").
+function comboTickerFromFrame(tab){
+  var f = document.querySelector('.frame[data-tab="'+tab+'"]');
   if(!f) return '';
   try{
     var t = f.contentWindow && f.contentWindow.OIPD_TICKER;
@@ -1107,6 +1108,29 @@ function oipdTickerFromFrame(){
     if(c && c.value) return String(c.value).split(' — ')[0].trim().toUpperCase();
   }catch(e){}
   return '';
+}
+function oipdTickerFromFrame(){ return comboTickerFromFrame('module_oipd'); }
+// The header box is the Financials fallback only: it is shown while the board has
+// no picker of its own (the empty state, before the first Fetch), and hidden once
+// the board page carries the kit's combobox.
+var QUICK_CTL_TRIES = 0;
+function syncQuickCtl(tries){
+  var el = document.getElementById('quick-ctl');
+  if(!el) return;
+  var fin = ACTIVE === 'module_financials';
+  var show = fin && !_frameHasCombo('module_financials');
+  el.style.display = show ? 'flex' : 'none';
+  // A tab switch can ask before the frame has loaded its picker: look again a couple of times, then stop
+  // (the board really has no picker in its empty state, and the box is what that state needs).
+  QUICK_CTL_TRIES = (tries || 0);
+  if(show && QUICK_CTL_TRIES < 3){
+    setTimeout(function(){ syncQuickCtl(QUICK_CTL_TRIES + 1); }, 700);
+  }
+}
+function _frameHasCombo(tab){
+  var f = document.querySelector('.frame[data-tab="'+tab+'"]');
+  if(!f) return false;
+  try{ return !!(f.contentDocument && f.contentDocument.getElementById('ticker-combo')); }catch(e){ return false; }
 }
 
 function refreshTab(){
@@ -1119,7 +1143,8 @@ function refreshTab(){
     if(STORE_BACKED.indexOf(ACTIVE) >= 0){
       var url = f.getAttribute('data-src') + '?refresh=1';
       if(ACTIVE==='module_financials'){
-        var box = (document.getElementById('quick-ticker').value||'').trim().toUpperCase() || 'AAPL';
+        var box = comboTickerFromFrame('module_financials')
+                  || (document.getElementById('quick-ticker').value||'').trim().toUpperCase() || 'AAPL';
         url += '&ticker=' + encodeURIComponent(box) + '&t=' + Date.now();
         fetch(url, {cache: 'no-store'}).then(function(){
           f.setAttribute('src', f.getAttribute('data-src') + '?t=' + Date.now());
@@ -1328,7 +1353,8 @@ document.getElementById('btn-fetch').addEventListener('click', function(){
   if(!url) return;
   var body = null;
   if(ACTIVE==='module_financials'){
-    var qt = document.getElementById('quick-ticker').value.trim().toUpperCase() || 'AAPL';
+    var qt = comboTickerFromFrame('module_financials')
+             || document.getElementById('quick-ticker').value.trim().toUpperCase() || 'AAPL';
     body = new URLSearchParams({ticker: qt});
   }
   if(ACTIVE==='module_oipd'){

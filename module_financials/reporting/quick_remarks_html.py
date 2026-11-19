@@ -129,40 +129,40 @@ def render_quick_remarks_section(result: dict) -> str:
     return f"""
 <section class="qr" style="margin-bottom:32px;">
   <style>
-    .qr h2 {{ font-size:18px; border-bottom:1px solid #232a3b; padding-bottom:8px; margin:0 0 12px; }}
+    .qr h2 {{ font-size:18px; border-bottom:1px solid var(--border); padding-bottom:8px; margin:0 0 12px; }}
     .qr .qr-head {{ display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-bottom:12px; }}
     .qr .qr-score {{ text-align:center; }}
-    .qr .qr-score .big {{ font-size:34px; font-weight:800; color:#d7dce5; }}
-    .qr .qr-score .cap {{ font-size:11px; color:#8a93a6; text-transform:uppercase; letter-spacing:1px; }}
-    .qr .qr-bar {{ height:6px; background:#1a1f2e; border-radius:3px; overflow:hidden; width:160px; margin-top:6px; }}
-    .qr .qr-bar i {{ display:block; height:100%; background:#4f9dff; }}
-    .qr .qr-meta {{ display:flex; flex-wrap:wrap; gap:16px; color:#8a93a6; font-size:13px; margin-bottom:14px; }}
-    .qr .panel {{ background:#131722; border:1px solid #232a3b; border-radius:10px; padding:14px 16px; margin-bottom:14px; }}
+    .qr .qr-score .big {{ font-size:34px; font-weight:800; color:var(--fg); }}
+    .qr .qr-score .cap {{ font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; }}
+    .qr .qr-bar {{ height:6px; background:var(--card-2); border-radius:3px; overflow:hidden; width:160px; margin-top:6px; }}
+    .qr .qr-bar i {{ display:block; height:100%; background:var(--accent); }}
+    .qr .qr-meta {{ display:flex; flex-wrap:wrap; gap:16px; color:var(--muted); font-size:13px; margin-bottom:14px; }}
+    .qr .panel {{ background:var(--card); border:1px solid var(--border); border-radius:10px; padding:14px 16px; margin-bottom:14px; }}
     .qr .rule {{ margin-bottom:12px; }}
     .qr .rhead {{ display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }}
-    .qr .rname {{ font-weight:700; font-size:15px; color:#d7dce5; }}
-    .qr .rscore {{ color:#8a93a6; font-weight:600; }}
-    .qr .sub {{ display:flex; align-items:center; gap:10px; padding:6px 0; border-top:1px solid #1a1f2e; }}
+    .qr .rname {{ font-weight:700; font-size:15px; color:var(--fg); }}
+    .qr .rscore {{ color:var(--muted); font-weight:600; }}
+    .qr .sub {{ display:flex; align-items:center; gap:10px; padding:6px 0; border-top:1px solid var(--card-2); }}
     .qr .sub:first-of-type {{ border-top:none; }}
     .qr .mark {{ width:18px; text-align:center; font-weight:700; }}
-    .qr .m-green {{ color:#2ecc71; }}
-    .qr .m-red {{ color:#e74c3c; }}
-    .qr .m-grey {{ color:#8a93a6; }}
-    .qr .slabel {{ flex:1; color:#d7dce5; }}
-    .qr .sval {{ color:#8a93a6; font-size:13px; }}
-    .qr .sval em {{ font-style:normal; color:#5b6472; }}
+    .qr .m-green {{ color:var(--pos); }}
+    .qr .m-red {{ color:var(--neg); }}
+    .qr .m-grey {{ color:var(--muted); }}
+    .qr .slabel {{ flex:1; color:var(--fg); }}
+    .qr .sval {{ color:var(--muted); font-size:13px; }}
+    .qr .sval em {{ font-style:normal; color:var(--muted); }}
     .qr .qr-tags {{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:14px; }}
-    .qr .tag {{ font-size:10.5px; padding:2px 8px; border-radius:20px; background:#1a1f2e; color:#8a93a6; }}
-    .qr .tag.warn {{ background:rgba(231,76,60,.12); color:#e74c3c; }}
-    .qr .tag.tech {{ background:rgba(0,230,168,.12); color:#00e6a8; }}
+    .qr .tag {{ font-size:10.5px; padding:2px 8px; border-radius:20px; background:var(--card-2); color:var(--muted); }}
+    .qr .tag.warn {{ background:var(--neg-soft); color:var(--neg); }}
+    .qr .tag.tech {{ background:var(--pos-soft); color:var(--pos); }}
   </style>
   <h2>Quick Remarks</h2>
   <div class="qr-head">
     <div>
-      <div style="font-size:15px;color:#8a93a6;">Momentum-Growth Screener · {t["company"]}</div>
+      <div style="font-size:15px;color:var(--muted);">Momentum-Growth Screener · {t["company"]}</div>
     </div>
     <div class="qr-score">
-      <div class="big">{score if score is not None else "N/A"}<span style="font-size:18px;color:#8a93a6"> / {mx}</span></div>
+      <div class="big">{score if score is not None else "N/A"}<span style="font-size:18px;color:var(--muted)"> / {mx}</span></div>
       <div class="cap">score</div>
       <div class="qr-bar"><i style="width:{pct:.0f}%"></i></div>
     </div>
