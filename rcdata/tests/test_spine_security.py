@@ -270,6 +270,29 @@ def test_a_past_members_cik_is_its_own_not_the_reused_tickers_new_owner(built):
     assert _q("SELECT cik FROM security WHERE ticker = 'NVR'") == [("7777777",)]
 
 
+def test_a_past_member_keeps_its_history_once_the_reused_tickers_new_owner_is_linked(built, monkeypatch):
+    """#236: NVR leaves on 3 Nov (acquired); on 10 Nov the ticker NVR belongs to CIK 7777777, and Compustat links
+    that CIK to its own gvkey and CUSIP. The 4a guard is judged by the link as of each line's day, so NVR's own
+    lines (CUSIP 62944T105, gvkey 025648) still match and its period survives, as fix 4b asks."""
+    without_nvr = [r for r in fx.SEC_FILE["data"] if r[2] != "NVR"]
+    _sec_answer(built, without_nvr)
+    base.run_request({"dataset": sec_tickers.NAME, "params": {"as_of": "2026-11-03", "allow_shrink": True}})
+    _sec_answer(built, without_nvr + [[7777777, "NEW NVR HOLDER INC", "NVR", "NYSE"]])
+    base.run_request({"dataset": sec_tickers.NAME, "params": {"as_of": "2026-11-10"}})
+    # The new holder is linked in Compustat, with a CUSIP of its own: ``link_of["NVR"]`` is no longer NVR Inc.
+    monkeypatch.setattr(fx, "COMPANY", fx.COMPANY + [
+        {"gvkey": "030001", "conm": "NEW NVR HOLDER INC", "cik": "0007777777"}])
+    monkeypatch.setattr(fx, "SECURITY", fx.SECURITY + [
+        {"gvkey": "030001", "iid": "01", "tic": "NVR", "cusip": "629440109", "exchg": 11, "excntry": "USA",
+         "secstat": "A", "tpci": "0", "dldtei": None}])
+    base.run_request({"dataset": wrds.SEC_IDHIST.name, "params": {"mode": "backfill", "to": "2026-11-10"}})
+    _funds_answer(built, sp500=[h for h in fx.SP500 if h[0] != "NVR"])
+    run_all("2026-11-03", names=(funds.NAME,))
+    assert _q("SELECT cik, valid_from, valid_to FROM index_membership WHERE source = ? AND index_slug = 'sp500' "
+              "AND ticker = 'NVR'", funds.NAME) == [("906163", date(2026, 10, 27), date(2026, 11, 3))]
+    assert _q("SELECT cik, gvkey FROM security WHERE ticker = 'NVR'") == [("7777777", "030001")]
+
+
 def test_a_member_still_held_after_it_left_the_sec_file_is_not_matched_to_the_tickers_next_owner(built):
     """Delta-2 SF1: NVR leaves the SEC file on 3 Nov, the fund files still hold it that day, and on 10 Nov the
     ticker NVR belongs to another CIK. The 3 Nov line is not matched ahead to the new owner: NVR's period keeps NVR
