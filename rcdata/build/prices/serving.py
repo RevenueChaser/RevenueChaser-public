@@ -539,7 +539,11 @@ class PricesServing:
         else:
             counts["price_bar_daily"], moved, basis = chunked.bars(self)
         self._key_check(ctx, con, "price_bar_daily", found)
+        # The carry of a security no source returns a bar for (``_refuse_shrink``) adds rows after the count above,
+        # so the count the swap checks is taken again here: the 19 Nov 2026 whole build carried 12,190 bars and the
+        # swap then refused it over exactly those rows ("has 30905400 rows, expected 30893210").
         _refuse_shrink(ctx, con)
+        counts["price_bar_daily"] = stage.count(con, "price_bar_daily")
         # The dated exchange rule against today's code: what it serves that today's code would not, and the reverse.
         if any(moved):
             ctx.notes.append(f"exchange history: {moved[0]} secd rows of {moved[1]} securities listed that day though "
