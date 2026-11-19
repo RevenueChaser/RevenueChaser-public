@@ -14,6 +14,8 @@ A dataset is due (``is_due``) when nothing holds it and its last run is old enou
 - a pause in ``dataset_schedule`` holds it: its request is not queued; ``base.run_request`` skips a request of a
   paused dataset that was queued anyway (a Fetch, the CLI's), with a ``skipped: paused`` check row (PR #222);
 - so does ``dataset_schedule.next_due`` while it is later than today in New York (a hold until that day);
+- so does ``EARLIEST_NY_HOUR`` before its hour in New York (``wrds/prices``: the Compustat snapshot holds the
+  session's bar only from the early morning there, and the dataset runs once a New York day);
 - never built (no ``dataset_check`` row), or a last check that ``failed`` or was ``skipped`` (the day cap writes one,
   and so does the pause skip): due; except a failure of a ``DAY_CAPPED`` provider's dataset (Alpha Vantage) that
   holds no raw file for the day yet, due again only on the next New York day (with the day's raw file held a rerun
@@ -73,6 +75,13 @@ DAY_CAPPED = frozenset({"alphavantage"})
 CHECK_DATES = {"sec/nport": ((1, 15), (4, 15), (7, 15), (10, 15))}
 #: The New York hours a ``CHECK_DATES`` dataset may start in: 20:00-22:59, 02:00-04:59 in Amsterdam.
 NIGHT_HOURS = range(20, 23)
+#: The earliest New York hour a dataset may be due in, where its source publishes on its own clock. Compustat's
+#: daily security file gets a session's bar in the early morning New York -- WRDS stamps the product
+#: "Data Last Updated: Nov. 19, 2026, 3:40 a.m.", and the snapshots this box holds agree: 01:23 NY was byte for byte
+#: the one before it, while 07:15, 08:17 and 15:20 NY each held the previous session. ``wrds/prices`` runs once a
+#: New York day (as-of today, next check the next session), so a pass at 00:05 would spend that day's run on a
+#: snapshot one session short and leave the boards' Fetch without the bar it freezes on (avo, 19 Nov 2026).
+EARLIEST_NY_HOUR = {"wrds/prices": 5}
 BY_HAND_WHY = "starts by hand: not due until a first run from the CLI or a Fetch has built it"
 #: The stage notes a partial run leaves (``base.skip_note``), by the modes whose run they complete: a raw + Parquet
 #: run also completes a raw-only mode, a raw-only run does not complete a raw + Parquet one.
@@ -121,6 +130,9 @@ def is_due(ds, mode: str = "full") -> tuple[bool, str]:
     hold = schedule.get("next_due")
     if hold and str(hold) > today:
         return False, f"held until {hold}"
+    hour = EARLIEST_NY_HOUR.get(ds.name)
+    if hour is not None and calendar._now().astimezone(calendar.NY).hour < hour:
+        return False, f"waits for {hour:02d}:00 New York (the source publishes a session's bar in the morning)"
     check = ops.latest_check(ds.name)
     if ds.name in CHECK_DATES:
         return _dated(ds, check)
