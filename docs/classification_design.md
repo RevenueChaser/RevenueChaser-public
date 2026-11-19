@@ -71,7 +71,9 @@ N-valued typed children:
   + `relatedness_scores(ticker, peer, score)` + `relatedness_embeddings(ticker, model, dim, vector BLOB)` (v2, #401).
 - `relatedness_themes(theme_id, level, parent_id, label, size)` +
   `relatedness_theme_tags(theme_id, tag, rank)` +
-  `relatedness_theme_members(ticker, theme_id, weight)` + `theme_runs`.
+  `relatedness_theme_members(ticker, theme_id, weight, rank)` + `theme_runs`; the members' `rank` is the
+  name's place in the cap-descending universe, which is the order the naming prompt's example companies
+  are taken in (#298).
 - `fundamentals_gates` / `swing_gates(ticker, gate, rule_id, passed, actual, unit)`.
 - `edgar_financials` (per-ticker JSON: `annual`/`quarterly`/`meta`; not pruned)
   and `edgar_facts` (the fact spine, grain `(cik, concept, period, form)` with
