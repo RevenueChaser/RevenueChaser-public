@@ -362,12 +362,12 @@ def fail_orphans(*, dead_pids_only: bool = False) -> tuple[int, int]:
                         and (r["started_at"] or 0) >= (req["started_at"] or 0)), None)
             if (run is None and dead_pids_only) or (run is not None and alive[run["run_id"]]):
                 continue
-            note = (f"lost: pid {run['pid']} gone" if run is not None else "lost: pid unknown (no run row)")
+            note = (ops._lost(run) if run is not None else "lost: pid unknown (no run row)")
             note += f" ({tail})"
             reqs.append({**req, "status": "failed", "ended_at": now, "note": note})
             checks.append({"id": _new_ids("dataset_check")[0], "dataset": req["dataset"], "checked_on": ops._today(),
                            "result": "failed", "run_id": run["run_id"] if run else None, "note": note})
-        dead = [{**r, "status": "failed", "finished_at": now, "error": f"lost: pid {r['pid']} gone ({tail})"}
+        dead = [{**r, "status": "failed", "finished_at": now, "error": f"{ops._lost(r)} ({tail})"}
                 for r in runs if not alive[r["run_id"]]]
 
         def writes(p):
