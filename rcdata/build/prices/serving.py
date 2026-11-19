@@ -431,7 +431,10 @@ def _refuse_shrink(ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> None
     over = [r for r in short if _loss(r) > PER_ID_SHRINK_BARS]
     before = sum(n for sid, n in live.items() if sid not in moved)
     after = sum(now.values())
-    if lost or after < before:
+    if short and not over:
+        ctx.notes.append(f"{sum(_loss(r) for r in short):,} bars short inside {len(short)} securities still "
+                         f"served, each within the {PER_ID_SHRINK_BARS}-bar tolerance: {_named(short)}")
+    if lost or over or after < before:
         bars = sum(_loss(r) for r in over)
         raise ValueError(f"price_bar_daily would lose {len(lost)} securities, and {bars:,} bars inside "
                          f"{len(over)} securities it still serves over the {PER_ID_SHRINK_BARS}-bar per-security "
