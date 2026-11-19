@@ -312,12 +312,12 @@ def test_the_fingerprints_are_the_shared_one_and_one_per_dataset():
     out = dirty.fingerprints(datasets)
     assert set(out) == {dirty.SHARED} | {d.name for d in datasets}
     assert out[dirty.SHARED] == dirty.shared_fingerprint()
-    # Two datasets share a fingerprint only when they share their code — one class, one module, both restated by
-    # a change to it. Any other pair sharing one would hide a deploy from one of them.
-    by_home: dict[str, set] = {}
-    for d in datasets:
-        by_home.setdefault(out[d.name], set()).add(frozenset(_homes(d)))
-    assert all(len(homes) == 1 for homes in by_home.values()), by_home
+    # Two datasets may share a fingerprint when they share their code: a change to it restates both, which is the
+    # answer. What may never happen is a dataset with no module of its own in the package, because that one falls
+    # back to every build file and is restated by every deploy.
+    for kind in serving.KINDS:
+        for d in base.kind_datasets(kind):
+            assert dirty.home_modules(d), d.name
 
 
 # ── what the plan does with a dataset whose code changed ───────────────────────────────────────────────────────
