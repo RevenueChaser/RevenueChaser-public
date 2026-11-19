@@ -96,6 +96,38 @@ def shared_dashboard(tmp_path_factory, mock_provider, name: str) -> Iterator[Das
         yield dash
 
 
+#: Every column ``sec13f_ticker_period`` carries for the board (G9).
+SEC13F_METRICS = ("shares", "value", "holders", "top10_pct", "hhi", "new_holders", "exited_holders", "buy_flow",
+                  "sell_flow", "breadth", "breadth_chg")
+
+
+def write_13f_totals(dashboard: Dashboard, totals: dict) -> dict:
+    """Write the 13F tables the board reads into ``dashboard``'s ownership serving file (G9).
+
+    Seeding the serving file directly is right: the build is a CLI path the dashboard never runs, and what the
+    board's routes promise is "render whatever the store holds". ``{ticker: {"YYYY-MM-DD": {metric: value}}}``,
+    the board's own shape. A plain function and not only a fixture, because a module-scoped fixture that shares one
+    dashboard across read-only tests (#896) cannot request the function-scoped one.
+    """
+    import duckdb
+
+    market = Path(dashboard.env["RC_MARKET_DIR"])
+    market.mkdir(parents=True, exist_ok=True)
+    conn = duckdb.connect(str(market / "ownership.duckdb"))
+    try:
+        conn.execute("CREATE TABLE IF NOT EXISTS sec13f_ticker_period (ticker TEXT, period DATE, "
+                     + ", ".join(f"{m} DOUBLE" for m in SEC13F_METRICS) + ", filing_deadline DATE)")
+        for ticker, by_period in totals.items():
+            for period, cell in by_period.items():
+                conn.execute("INSERT INTO sec13f_ticker_period (ticker, period, "
+                             + ", ".join(SEC13F_METRICS) + ") VALUES (?, ?, "
+                             + ", ".join("?" * len(SEC13F_METRICS)) + ")",
+                             [ticker, period] + [cell.get(m) for m in SEC13F_METRICS])
+    finally:
+        conn.close()
+    return totals
+
+
 @contextmanager
 def store_of(dashboard: Dashboard) -> Iterator[None]:
     """``rawstore.STORE_DIR`` at ``dashboard``'s store and ``config.MARKET_DIR`` at its market root (the prices
