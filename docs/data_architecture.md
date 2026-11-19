@@ -1084,7 +1084,10 @@ shrink (#293). A dataset that declares no `feeds` relaxes its own tables only;
 least one dataset, and no declaration names a table of another kind.
 A table that serves only its newest sessions (`option_eod`) names its first kept session in the
 build file's `serving_window` table, and is compared on the rows inside that window: a session leaving it is not a
-loss, a session inside it that lost rows is. A table whose row count the source or avo chooses rather than
+loss, a session inside it that lost rows is. That window is read from the Parquet partitions the build found, so the
+window itself is compared as well: a build whose windowed table holds fewer sessions than the live file's own window
+does is refused (#292 N-4; before it, a build that found one session matched the live file row for row inside its own
+one-session window and swapped 20 sessions away). A table whose row count the source or avo chooses rather than
 accumulates is named in `serving.SHRINKS_BY_CHOICE` (`my_universe`; `economic_event` since 14 Nov 2026, because UW's
 calendar is a forward window and a snapshot day's partition is replaced whole by that day's newest fetch): it may
 shrink by any amount and still may not empty. A build also refuses

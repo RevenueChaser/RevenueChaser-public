@@ -412,6 +412,52 @@ def test_a_shrink_under_the_limit_swaps_in_and_leaves_a_build_issue():
     assert ops.open_issues("market")[0] == 1
 
 
+def _build_window(days: list[str], rows_per: int = 10, **swap_kw) -> None:
+    """A windowed table (``option_eod``'s shape) holding ``rows_per`` rows on each of ``days``, its window
+    declared from the days it found, as ``options/tables._windowed`` declares it from the partitions it found."""
+    with serving.build("market") as b:
+        b.con.execute("CREATE TABLE w (session_date DATE, i INTEGER)")
+        for day in days:
+            b.con.execute(f"INSERT INTO w SELECT CAST(? AS DATE), range FROM range({int(rows_per)})", [day])
+        serving.declare_window(b.con, "w", "session_date", min(days))
+        b.swap({"w": len(days) * rows_per}, **swap_kw)
+
+
+def _days(first: int, n: int) -> list[str]:
+    return [f"2026-11-{d:02d}" for d in range(first, first + n)]
+
+
+def test_n4_a_window_read_from_the_partitions_found_cannot_replace_20_sessions_with_1():
+    """#292 N-4: the window comes from the Parquet present, and both files are counted inside the build's window,
+    so a build that found one session matched the live file row for row and swapped 20 sessions away. The window
+    itself is compared now."""
+    _build_window(_days(1, 20))
+    before = _sha(serving.live_path("market"))
+    with pytest.raises(serving.SwapRefused, match="session_date value"):
+        _build_window(_days(20, 1))
+    assert _sha(serving.live_path("market")) == before and _leftovers() == []
+    with serving.open_read("market") as con:
+        assert con.execute("SELECT count(DISTINCT session_date) FROM w").fetchone()[0] == 20
+
+
+def test_n4_a_window_that_rolls_forward_by_a_session_still_swaps_in():
+    """The guard is on the window's length, not its first day: the newest 20 sessions replace the newest 20."""
+    _build_window(_days(1, 20))
+    _build_window(_days(2, 20))
+    with serving.open_read("market") as con:
+        first, n = con.execute("SELECT CAST(min(session_date) AS TEXT), count(DISTINCT session_date) "
+                               "FROM w").fetchone()
+    assert (first, n) == ("2026-11-02", 20)
+
+
+def test_n4_a_shorter_window_goes_in_when_the_request_asks_for_it():
+    """A window the code shortened on purpose is a shrink like any other: ``allow_shrink`` on that table."""
+    _build_window(_days(1, 20))
+    _build_window(_days(20, 1), allow_shrink=("w",))
+    with serving.open_read("market") as con:
+        assert con.execute("SELECT count(DISTINCT session_date) FROM w").fetchone()[0] == 1
+
+
 def test_a_table_that_shrinks_by_choice_may_shrink_without_allow_shrink_but_may_not_empty():
     """``SHRINKS_BY_CHOICE``: the source or avo chooses the row count, so a smaller one is not a partial build.
     A request-wide ``allow_shrink`` is not needed for it (it would relax every other table of the kind with it),
