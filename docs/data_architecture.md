@@ -1128,6 +1128,21 @@ rewrites served rows) or a derivation rebuilt whole — is read from the build c
 together with the two dependencies (the spine's symbol map, the prices universe) that make a table dirty with no
 new source day of its own.
 
+**Whose build code changed** (#814). Build code is a rule: a change to an extraction or a table rule restates rows
+that no Parquet file marks as changed, so the build file carries a fingerprint of the code it was built by and a
+change to it forces a whole build. That fingerprint used to be one per kind — every Python file in the packages
+holding the kind's datasets — which made the first pass after **every** deploy rebuild `ownership/serve` from
+scratch: 2,352 s and a 23.8 GB spill, measured on homesrv on 12 Nov 2026, above the 20 GB cap the build line itself
+printed. The file now carries one fingerprint per dataset plus one shared (`dirty.fingerprints`, table
+`build_rules`). A dataset's own fingerprint covers the files **of its own package that its code reaches**
+(`dirty.code_files`, the import graph inside `rcdata/build`, stopping at the shared files), so `ownership/serve` is
+restated by an edit to `ownership/common` and not by one to `ownership/regsho`; the package stays the boundary it
+always was, so this only ever narrows what a change restates. The shared fingerprint covers `rcdata/serving.py` and
+`rcdata/build`'s `__init__.py`, `base.py` and `dirty.py` — the code every kind's rows depend on — and a change there
+is still a whole build of every kind. A dataset whose own code changed is everything of itself: its tables are
+restated on the live copy and the rest of the kind keeps its dirty set, which the pass's note names
+("restated for new build code: ...").
+
 **Which kinds build on the live copy** (#446). `fundamentals` (#554) reloads its dirty companies. `prices`
 (`rcdata/build/prices/incremental.py`) rebuilds every served row on or after one day — the first day of each changed
 WRDS year partition or Alpaca bar session, and at the latest the day after the live file's newest session — and,
