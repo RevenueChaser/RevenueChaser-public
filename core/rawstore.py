@@ -683,21 +683,21 @@ _NESTED_TYPES = _JSON_TYPES | _STRUCT_TYPES
 #: A retired name inside a comment or a docstring is provenance and stays: several modules say in prose which
 #: table they used to read and which issue took it. The guard reads SQL, not prose.
 RETIRED_TABLES: dict[str, str] = {
-    "cusip_ticker": "identity: CUSIP->ticker rows of raw.duckdb; the spine answers it now (#860)",
-    "identity_source_cache": "identity: one row per source answer, raw.duckdb; the spine holds it (#860)",
-    "leaps_cache": "LEAPS: the board's own chain cache, raw.duckdb; the scan is switched off (#730, #860)",
-    "leaps_flow_prints": "LEAPS: option flow prints, raw.duckdb; went with the scan (#730, #860)",
-    "quote_snapshot": "prices: the intraday quote row of raw.duckdb; the serving bars replaced it (#860)",
+    "cusip_ticker": "identity: CUSIP->ticker rows of the old raw store; the spine answers it now (#860)",
+    "identity_source_cache": "identity: one row per source answer, old raw store; the spine holds it (#860)",
+    "leaps_cache": "LEAPS: the board's own chain cache, old raw store; the scan is switched off (#730, #860)",
+    "leaps_flow_prints": "LEAPS: option flow prints, old raw store; went with the scan (#730, #860)",
+    "quote_snapshot": "prices: the intraday quote row of the old raw store; the serving bars replaced it (#860)",
     "sec13f_enrichment": "13F: the board's own enrichment table; the ownership build serves it (G9, #860)",
-    "sec13f_ticker_names": "13F: UW names per ticker, raw.duckdb; the ownership build serves them (G9, #860)",
-    "sec_company_sic": "SEC: SIC per company, raw.duckdb; the spine carries it (#860)",
-    "sec_company_tickers": "SEC: the CIK file rows of raw.duckdb; sec_edgar fetches, no store read (#860)",
-    "sec_exchange_file": "SEC: the exchange file rows of raw.duckdb; same path as sec_company_tickers (#860)",
-    "sec_mf_file": "SEC: the mutual-fund file rows of raw.duckdb; nothing reads it (#860)",
-    "sec_submissions_cik": "SEC: the CIK index of edgar.duckdb; the sec_submissions view covers it (#860)",
-    "swing_ohlc": "prices: the Swing/Fundamentals bar cache of raw.duckdb; price_bars_daily replaced it (#379, #860)",
-    "ticker_payload_cache": "Financials: the per-ticker payload cache of raw.duckdb (#860)",
-    "vendor_valuation": "Financials: vendor valuation rows of raw.duckdb; the fundamentals build serves them (#860)",
+    "sec13f_ticker_names": "13F: UW names per ticker, old raw store; the ownership build serves them (G9, #860)",
+    "sec_company_sic": "SEC: SIC per company, old raw store; the spine carries it (#860)",
+    "sec_company_tickers": "SEC: the CIK file rows of the old raw store; sec_edgar fetches, no store read (#860)",
+    "sec_exchange_file": "SEC: the exchange file rows of the old raw store; same path as sec_company_tickers (#860)",
+    "sec_mf_file": "SEC: the mutual-fund file rows of the old raw store; nothing reads it (#860)",
+    "sec_submissions_cik": "SEC: the CIK index of the old EDGAR store; the sec_submissions view covers it (#860)",
+    "swing_ohlc": "prices: the Swing/Fundamentals bar cache of the old raw store; price_bars_daily replaced it (#379, #860)",
+    "ticker_payload_cache": "Financials: the per-ticker payload cache of the old raw store (#860)",
+    "vendor_valuation": "Financials: vendor valuation rows of the old raw store; the fundamentals build serves them (#860)",
 }
 
 

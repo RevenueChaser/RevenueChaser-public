@@ -27,9 +27,13 @@ from RevenueChaser.core import rawstore
 
 _REPO = Path(__file__).resolve().parents[2]
 
-#: Folders with no live SQL in them: the bookkeeping notes record the old stores on purpose, and a test may name a
-#: retired table to prove it is refused.
-SKIP = ("/.bookkeeping/", "/.hermes/", "/.git/", "/tests/", "/test_")
+#: What counts as live code, by ``test_no_old_store.py``'s convention, so the two guards agree: no dot folder
+#: (``.bookkeeping`` records the old stores on purpose), no test and no ``module_testing`` — a test or a fixture
+#: may name a retired table to prove it is refused — and no ``conftest.py``.
+def _is_live_code(rel: str) -> bool:
+    parts = rel.split("/")
+    return not (parts[0].startswith(".") or parts[0] == "module_testing"
+                or "tests" in parts or parts[-1] == "conftest.py")
 
 #: A string counts as SQL only with one of these in it. Narrow on purpose: a docstring that merely mentions a
 #: table is not SQL, and a false positive here would be answered by deleting provenance.
@@ -56,8 +60,7 @@ def _sql_strings(tree: ast.AST) -> list[str]:
 
 
 def _files() -> list[Path]:
-    return [p for p in _REPO.rglob("*.py")
-            if not any(part in f"/{p.relative_to(_REPO).as_posix()}" for part in SKIP)]
+    return [p for p in _REPO.rglob("*.py") if _is_live_code(p.relative_to(_REPO).as_posix())]
 
 
 def test_the_retired_list_is_real_and_disjoint_from_the_manifest():
