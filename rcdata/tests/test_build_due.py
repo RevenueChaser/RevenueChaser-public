@@ -265,7 +265,7 @@ def test_a_dataset_with_an_earliest_hour_is_not_due_before_it_in_new_york(clock,
     why = "waits for 05:00 New York (the source publishes a session's bar in the morning)"
     clock(datetime(2026, 10, 28, 5, 0, tzinfo=timezone.utc))        # 01:00 New York
     assert due.is_due(DATASETS[MS]) == (False, why)                 # never built, and still held
-    assert (MS, why, None, False) in due.enqueue_due()
+    assert (MS, f"not due ({why})", None, False) in due.enqueue_due()
     assert [r["dataset"] for r in _queue()] == [UW]
     clock(datetime(2026, 10, 28, 10, 0, tzinfo=timezone.utc))       # 06:00 New York
     assert due.is_due(DATASETS[MS])[0] is True
