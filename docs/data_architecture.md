@@ -1335,7 +1335,11 @@ Fetch/Health tab) is `off` — the default, no row — is not queued (the file-l
 avo 10 Nov 2026; `ops.copy_kind_modes` copied each kind's mode onto its datasets once at that deploy); `raw` and `parquet` queue the same partial run a Fetch's ▾
 asks for, and that run's own `skipped` check then counts as the run for the cadence; `full` queues the whole run. A
 person's Fetch is not touched by the setting. A paused dataset is not queued, and `dataset_schedule.next_due`, while later than today in New
-York, holds a dataset until that day. Otherwise a dataset never built, or whose last check failed or was skipped,
+York, holds a dataset until that day. `due.EARLIEST_NY_HOUR` holds one until its hour in New York: `wrds/prices` not
+before 05:00 there, because the Compustat snapshot holds the session's bar only from the early morning
+(WRDS stamps the product 3:40 a.m.; a 01:23 NY snapshot measured here was byte for byte the one before it)
+and the dataset runs once a New York day, so an earlier pass would spend the day's run on a snapshot one
+session short. Otherwise a dataset never built, or whose last check failed or was skipped,
 is due. With cadence `daily` (the default, and what an unknown cadence reads as) it is due once its own
 `default_as_of()` reaches the last check's `next_check_due`: the SPX slice after the next session is complete, the
 market series (as-of today) on the first pass of each trading day. `weekly` and `monthly` are due 7 and 30 days after

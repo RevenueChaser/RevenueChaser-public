@@ -255,3 +255,17 @@ def test_a_failed_check_date_run_waits_for_the_next_night(clock):
     assert due.is_due(_Dated()) == (False, "failed today: again the next night")
     clock(datetime(2026, 10, 17, 1, 0, tzinfo=timezone.utc))
     assert due.is_due(_Dated())[0] is True
+
+
+def test_a_dataset_with_an_earliest_hour_is_not_due_before_it_in_new_york(clock, monkeypatch):
+    # avo 19 Nov 2026: the prices pull at 00:05 New York spent the day's one run on a Compustat snapshot that was
+    # still a session short, so every board Fetch found no complete SPY bar (#881).
+    assert due.EARLIEST_NY_HOUR == {"wrds/prices": 5}
+    monkeypatch.setitem(due.EARLIEST_NY_HOUR, MS, 5)
+    why = "waits for 05:00 New York (the source publishes a session's bar in the morning)"
+    clock(datetime(2026, 10, 28, 5, 0, tzinfo=timezone.utc))        # 01:00 New York
+    assert due.is_due(DATASETS[MS]) == (False, why)                 # never built, and still held
+    assert (MS, f"not due ({why})", None, False) in due.enqueue_due()
+    assert [r["dataset"] for r in _queue()] == [UW]
+    clock(datetime(2026, 10, 28, 10, 0, tzinfo=timezone.utc))       # 06:00 New York
+    assert due.is_due(DATASETS[MS])[0] is True
