@@ -62,6 +62,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import time
 
 from RevenueChaser.core import offpeak
 from RevenueChaser.core.providers import deepseek, evren
@@ -249,8 +250,7 @@ def main(argv: list[str] | None = None) -> int:
                 "--name-themes / --cutover")
 
     if args.score:
-        import time as _t
-        t0 = _t.monotonic()
+        t0 = time.monotonic()
         try:
             payload = engine.score(only_if_new=not args.force, provider=run_writer, **_model_kw(run_model))
         except engine.AlreadyRunning as exc:
@@ -259,7 +259,7 @@ def main(argv: list[str] | None = None) -> int:
             return 3
         out = {"n": payload.get("n"), "pairs": payload.get("n_pairs"), "scored": payload.get("n_scored"),
                "similarity": payload.get("similarity"), "as_of": payload.get("as_of"),
-               "seconds": round(_t.monotonic() - t0, 1)}
+               "seconds": round(time.monotonic() - t0, 1)}
         if payload.get("skipped"):
             out["skipped"] = payload["skipped"]
         print(json.dumps(out, ensure_ascii=False))

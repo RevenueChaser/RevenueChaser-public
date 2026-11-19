@@ -128,14 +128,24 @@ def test_a_busy_lock_exits_3_and_wrote_nothing(monkeypatch, capsys):
     assert "already in progress" in json.loads(capsys.readouterr().out.strip().splitlines()[-1])["skipped"]
 
 
-@pytest.mark.parametrize("argv", [["--score", "--cap", "10"], ["--score", "--limit", "5"],
-                                  ["--score", "--provider", "evren"], ["--score", "--run"],
-                                  ["--score", "--status"], ["--score", "--tickers", "AAA,BBB"],
-                                  ["--score", "--floor", "300"], ["--force"]])
-def test_the_flags_that_make_no_sense_for_a_scoring_run_are_refused(argv):
+# The reason has to be in the message: on a build without --score at all, argparse refuses every one of these
+# with "unrecognized arguments" and the same exit 2, which would prove nothing (red-on-base of PR #1133).
+@pytest.mark.parametrize("argv, reason", [
+    (["--score", "--cap", "10"], "--score makes no call"),
+    (["--score", "--limit", "5"], "--score makes no call"),
+    (["--score", "--provider", "deepseek"], "--score makes no call"),
+    (["--score", "--run"], "--score runs on its own"),
+    (["--score", "--status"], "--score runs on its own"),
+    (["--score", "--rebuild-themes"], "--score runs on its own"),
+    (["--score", "--tickers", "AAA,BBB"], "--score scores the whole board"),
+    (["--score", "--floor", "300"], "--score scores the whole board"),
+    (["--force"], "--force goes with --score"),
+])
+def test_the_flags_that_make_no_sense_for_a_scoring_run_are_refused(argv, reason, capsys):
     with pytest.raises(SystemExit) as exc:
         cli.main(argv)
     assert exc.value.code == 2
+    assert reason in capsys.readouterr().err
 
 
 def test_the_scoring_run_calls_no_writer(monkeypatch, capsys):
