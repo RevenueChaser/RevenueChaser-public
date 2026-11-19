@@ -66,7 +66,7 @@ _ROOT_CONFTEST_READS = tuple(f"{m}.config" for m in (
 E2E_BY_BOARD: dict[str, tuple[str, ...]] = {
     "module_asymmetric_growth": ("test_board_asymmetric_growth.py",),
     "module_comovement": ("test_board_comovement.py",),
-    "module_earnings_radar": ("test_board_earnings_radar.py",),
+    "module_earnings_radar": ("test_board_earnings_radar.py", "test_earnings_radar_phone.py"),
     "module_financials": ("test_board_financials.py",),
     "module_fundamentals": ("test_board_fundamentals.py",),
     "module_hit_rate": (),
