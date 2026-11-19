@@ -94,14 +94,17 @@ def test_today_and_the_next_trading_day_are_never_served(monkeypatch):
 
 def test_a_session_older_than_the_need_catalog_allows_serves_nothing(monkeypatch):
     """``options.screener``: one session (avo, 29 Oct 2026 — a calendar older than the last session is not read)."""
-    stale = calendar.previous_trading_day(SESSION)
+    # ``previous_trading_day`` answers the latest trading day **on or before** its argument, so the day
+    # before SESSION is what makes a session one older.
+    stale = calendar.previous_trading_day(SESSION - timedelta(days=1))
     _served(monkeypatch, [_row(session_date=stale, day=DAY)])
 
     assert stored_inputs.calendar_items([DAY]) == ({}, None)
 
 
 def test_the_newest_session_is_the_one_read(monkeypatch):
-    _served(monkeypatch, [_row("OLD", session_date=calendar.previous_trading_day(SESSION)), _row("NEW")])
+    older = calendar.previous_trading_day(SESSION - timedelta(days=1))
+    _served(monkeypatch, [_row("OLD", session_date=older), _row("NEW")])
 
     items, session = stored_inputs.calendar_items([DAY])
 
