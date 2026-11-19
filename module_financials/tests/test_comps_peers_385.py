@@ -180,6 +180,17 @@ def test_tax_is_the_median_in_band_year_and_the_sector_default_where_the_stateme
     assert run_dcf(financials)["assumptions"]["tax_rate"] == pytest.approx(median)
     assert run_dcf(without)["assumptions"]["tax_rate"] == pytest.approx(0.21)
 
+    # Every year implausible is a rate nobody measured, so the labelled default stands (FIN-9 B). This rides the
+    # median test rather than standing alone: it is the one tax case the median rule does not change, so a test
+    # of its own would pass on the merge-base and prove nothing about #89.
+    none_in_band = copy.deepcopy(financials)
+    for rec in none_in_band["annual"]:
+        rec["pretax_income"], rec["tax_provision"] = 100.0, -50.0
+    for engine in (run_dcf, run_three_statement):
+        got = engine(none_in_band)["assumptions"]
+        assert got["tax_rate"] == pytest.approx(0.21)
+        assert got["tax_rate_source"] == "default"
+
 
 # ── a measured rate outside a plausible band is unknown, not a rate (review MUST-1) ───────────────────
 def _with_statement_tax(financials, pretax, provision):
@@ -208,17 +219,6 @@ def test_a_measured_rate_outside_the_band_is_left_out_of_the_median(financials, 
         got = engine(fin)["assumptions"]
         assert got["tax_rate"] == pytest.approx(want), what
         assert got["tax_rate_source"] == "statements (median of 2 years)", what
-
-
-def test_no_year_in_band_falls_back_to_the_labelled_default(financials):
-    """Every year implausible is a rate nobody measured: the default, labelled ``default`` (FIN-9 B)."""
-    fin = copy.deepcopy(financials)
-    for rec in fin["annual"]:
-        rec["pretax_income"], rec["tax_provision"] = 100.0, -50.0
-    for engine in (run_dcf, run_three_statement):
-        got = engine(fin)["assumptions"]
-        assert got["tax_rate"] == pytest.approx(0.21)
-        assert got["tax_rate_source"] == "default"
 
 
 @pytest.mark.parametrize("provision, rate", [(0.0, 0.0), (144.0, 0.60)])
