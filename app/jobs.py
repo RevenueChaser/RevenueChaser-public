@@ -14,7 +14,8 @@ none by default); past it, the next checkpoint ends the job ``error`` with a mes
 phase. Nothing is interrupted mid-write, so the lane takes its next job once the runner has stopped.
 
 The in-memory registry is cleared on server restart. The ``job_runs`` row each job left in the old raw.duckdb went
-with that file (#860).
+with that file (#860); since #136 a job's run is a row of ``ops.job_runs2`` instead (``job`` = the job's module,
+``trigger`` = ``dashboard``), with what the run counted in ``counts``.
 """
 import itertools
 import logging
@@ -316,13 +317,43 @@ def _counts_of(result) -> dict | None:
     return None
 
 
+#: The job statuses that end a run (``_run_log``).
+_TERMINAL = ("done", "error", "cancelled")
+
+
+def _run_log(job_id: str, fields: dict, counts: dict | None) -> None:
+    """Keep the ops run log in step with a job's status change (#136).
+
+    ``counts`` is not a job-JSON field — the dashboard poll reads that dict — so what a runner counted used to be
+    dropped here, the ``job_runs`` row that kept it having gone with the old raw.duckdb (#860). It now goes to
+    ``ops.job_runs2``: one row a job, opened when the job starts running and closed with its status and counts.
+
+    Best-effort (#282): the ops store being busy or absent costs the row, never the job. The in-memory registry
+    stays the dashboard's own answer, so a lost row changes nothing a page shows.
+    """
+    status = fields.get("status")
+    if status is None and counts is None:
+        return
+    try:
+        from RevenueChaser.rcdata import ops
+        with _LOCK:
+            job = dict(_JOBS.get(job_id) or {})
+        if status == "running":
+            ops.start_run(job_id, None, "dashboard", params=job.get("params"), job=job.get("module"))
+        elif status in _TERMINAL or counts is not None:
+            ops.finish_run(job_id, status or "done", fields.get("error"), counts)
+    except Exception:  # noqa: BLE001 — bookkeeping, never the reason a job fails
+        logger.debug("could not write the run log row for job %s", job_id, exc_info=True)
+
+
 def _set(job_id: str, **fields) -> None:
-    """Update a job. ``counts`` is not a job-JSON field (the dashboard poll reads that dict): it is dropped here,
-    since the ``job_runs`` row that kept it went with the old raw.duckdb (#860)."""
-    fields.pop("counts", None)
+    """Update a job, and its row in the ops run log (``_run_log``). ``counts`` is not a job-JSON field: it goes to
+    that row (#136), not into the dict the dashboard poll reads."""
+    counts = fields.pop("counts", None)
     with _LOCK:
         if job_id in _JOBS:
             _JOBS[job_id].update(fields)
+    _run_log(job_id, fields, counts)
 
 
 def _gap_fields(uw) -> dict:
