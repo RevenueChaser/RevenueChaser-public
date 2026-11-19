@@ -110,6 +110,8 @@ class AlpacaActions:
     kind = KIND
     providers = (alpaca.PROVIDER,)
     tables = ("corporate_action",)
+    # The factors are made from the actions this dataset stages (``ADJ_SQL`` over ``_act_final``).
+    feeds = ("adj_factor",)
     cadence = "daily"
     starts_by_hand = True
 

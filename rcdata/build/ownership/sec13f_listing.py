@@ -78,6 +78,8 @@ class Sec13fSetsListed:
     kind = KIND
     providers = (sec.PROVIDER,)
     tables = (TABLE,)
+    # The SEC data sets decide a period's ``closed`` and which set it was seen in (#732).
+    feeds = ("sec13f_periods", "sec13f_ticker_period")
     cadence = "daily"
     backfill_needs_from = False
     starts_by_hand = True             # the first run is the server thread's, after a backup

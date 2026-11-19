@@ -125,6 +125,10 @@ class CompanyFacts:
     kind = KIND
     providers = (common.SEC,)
     tables: tuple[str, ...] = ()
+    # The facts and the company rows, and what is built over them: the peers (revenue rank), the customer
+    # shares (the revenue a share is of), and the two earnings tables, which are cut to the companies.
+    feeds = ("fundamental_fact", "fundamental_company", "peer_group", "customer_share", "earnings_event",
+             "earnings_reported")
     cadence = "daily"
     backfill_needs_from = False
     starts_by_hand = True

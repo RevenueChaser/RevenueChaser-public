@@ -412,6 +412,7 @@ class SpineSecurity:
     kind = KIND
     providers: tuple[str, ...] = ()
     tables = TABLES
+    feeds: tuple[str, ...] = ()       # it builds every derived table itself
     # The ETFs' holdings behind ``etf_class``, and the SEC's SIC per company (dirty.read_dirs).
     parquet_reads = (etf_class.NPORT, SEC_FILINGS)
     cadence = "daily"

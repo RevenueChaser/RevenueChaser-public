@@ -590,6 +590,7 @@ class FundamentalsTables:
     kind = KIND
     providers: tuple[str, ...] = ()
     tables = TABLES
+    feeds: tuple[str, ...] = ()       # it builds every served table itself
     cadence = "daily"
     backfill_needs_from = False
     starts_by_hand = True

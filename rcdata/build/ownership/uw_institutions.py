@@ -262,6 +262,8 @@ class UWInstitutions:
     kind = KIND
     providers = (PROVIDER,)
     tables = (TABLE, SUCCESSION_TABLE)
+    # The tags group the type tables, and a succession merges two filers in a ticker's counts (#775, #776).
+    feeds = ("sec13f_ticker_period", "sec13f_type_holdings", "sec13f_type_sector", "sec13f_type_flow")
     cadence = "quarterly"
     backfill_needs_from = False
     starts_by_hand = True             # the first run is the server thread's, after a backup

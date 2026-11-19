@@ -364,6 +364,8 @@ class EtfHoldings:
     kind = KIND
     providers = PROVIDERS
     tables = (TABLE,)
+    # What each ETF holds decides its class and its theme (``etf_class.rows``).
+    feeds = ("etf_class", "etf_class_changes", "etf_theme")
     cadence = "daily"
     backfill_needs_from = False
     starts_by_hand = True             # not due until a first CLI run or Fetch built it

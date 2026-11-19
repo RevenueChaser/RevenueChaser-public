@@ -239,6 +239,7 @@ class SecCoverShares:
     kind = KIND
     providers = (PROVIDER,)
     tables = ("shares_class",)
+    feeds = ("market_cap_daily",)                      # a class count times the close is the cap
     cadence = "daily"
     starts_by_hand = True
 

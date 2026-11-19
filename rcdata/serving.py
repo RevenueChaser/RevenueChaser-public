@@ -67,7 +67,8 @@ RETIRED_TABLES: dict[str, tuple[str, ...]] = {"prices": ("crsp_unadjusted",)}
 META_TABLES = ("build_manifest", "build_rules", "build_identity")
 # A table that serves only its newest sessions (``option_eod``, G8) names the first value it keeps here, in its own
 # build file (``declare_window``), so the shrink check compares the rows both files are meant to hold: a session
-# that left the window is not a loss, a session inside it that lost rows is.
+# that left the window is not a loss, a session inside it that lost rows is. The window is read from the partitions
+# the build found, so its own length is checked against the live file's too (#292 N-4).
 WINDOW_TABLE = "serving_window"
 # The build connection's memory and threads. DuckDB's own default is 80 % of the machine's RAM per connection, and the
 # kernel, not DuckDB, ended the first ``prices/serving`` build on #319's ASOF joins: request #35, 30 Oct 2026, OOM-killed
@@ -465,7 +466,8 @@ class BuildFile:
         named in ``allow_shrink`` (the asking dataset's own, on a request's explicit ``"allow_shrink": true``) may
         shrink or empty; every other table keeps the guard (review S-1 of #220: the flag used to switch the check off
         for the whole file, and another dataset's table could empty under it). A windowed table
-        (``declare_window``) is compared on its rows inside the build's window, in both files.
+        (``declare_window``) is compared on its rows inside the build's window, in both files, and on the length of
+        that window: a build holding fewer sessions than the live file's own window is refused (#292 N-4).
         """
         self.con.execute("CHECKPOINT")
         self.close()
@@ -586,12 +588,38 @@ def _counts(path: Path, windows: dict[str, tuple[str, str]] | None = None) -> di
         con.close()
 
 
+def _window_values(path: Path, windows: dict[str, tuple[str, str]]) -> dict[str, int]:
+    """How many distinct values of its window column each windowed table of ``path`` holds inside ``windows``
+    (sessions, for ``option_eod``). Only the tables ``windows`` names are counted."""
+    out: dict[str, int] = {}
+    if not windows:
+        return out
+    con = connect_read(path)
+    try:
+        have = {r[0] for r in con.execute("SELECT table_name FROM duckdb_tables() WHERE database_name = "
+                                          "current_database()").fetchall()}
+        for table, (column, first) in windows.items():
+            if table not in have:
+                continue
+            out[table] = int(con.execute(f'SELECT count(DISTINCT "{column}") FROM "{table}" '
+                                         f'WHERE CAST("{column}" AS VARCHAR) >= ?', [first]).fetchone()[0])
+        return out
+    finally:
+        con.close()
+
+
 def _verify_against_live(kind: str, path: Path, relax: frozenset[str] = frozenset()) -> list[tuple[str, int, int]]:
     """Refuse a build missing a live table, or (outside ``relax``) emptying or shrinking one by over MAX_SHRINK;
     return the ``(table, before, after)`` of each table that shrank by less, so the swap can say so (#292 N-3).
 
     A table of :data:`SHRINKS_BY_CHOICE` may shrink by any amount; it may still not empty. A table of
     :data:`RETIRED_TABLES` may be missing from the build: the code no longer builds it.
+
+    A **windowed** table (``declare_window``) is compared on the rows inside the build's window, because a session
+    that left the window is not a loss. That hid a short build until #292 N-4: the window is read from the Parquet
+    partitions present, so a build that found one session declared a one-session window, the live file was counted
+    inside it too, and 20 sessions were replaced by 1 with every count matching. So its window is checked as well:
+    a build whose windowed table holds fewer sessions than the live file's own window does is refused.
     """
     live = live_path(kind)
     if not live.exists():
@@ -599,6 +627,7 @@ def _verify_against_live(kind: str, path: Path, relax: frozenset[str] = frozense
     small: list[tuple[str, int, int]] = []
     windows = _windows(path)
     old, new = _counts(live, windows), _counts(path, windows)
+    kept, held = _window_values(path, windows), _window_values(live, _windows(live))
     retired = set(RETIRED_TABLES.get(kind, ()))
     for table, before in sorted(old.items()):
         if table in META_TABLES:
@@ -610,6 +639,10 @@ def _verify_against_live(kind: str, path: Path, relax: frozenset[str] = frozense
         after = new[table]
         if table in relax:
             continue
+        if table in kept and table in held and kept[table] < held[table]:
+            column = windows[table][0]
+            raise ValueError(f"{table} holds {kept[table]} {column} value(s) in its window, {held[table]} live "
+                             f"(the build's window was read from the partitions it found)")
         if before > 0 and after == 0:
             raise ValueError(f"{table} empties: {before} rows live, 0 in the build")
         if table in SHRINKS_BY_CHOICE:

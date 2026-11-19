@@ -106,6 +106,9 @@ class AlpacaBars:
     kind = KIND
     providers = (alpaca.PROVIDER,)
     tables = ("price_bar_daily",)
+    # Alpaca is the tester and its bars are never served; what its rows do reach is ``price_revision``
+    # (``REVISION_SQL`` over ``stg_alpaca_bar_revisions``) and the WRDS comparison report.
+    feeds = ("price_revision", "wrds_price_diff")
     cadence = "daily"
     starts_by_hand = True             # the first run is the deploy's own request (POST /api/build/request/...)
     honours_scope = True              # a request's tiers and names are what it asks (#265)

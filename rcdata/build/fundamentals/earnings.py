@@ -102,6 +102,7 @@ class EarningsCalendar:
     kind = KIND
     providers = (PROVIDER,)
     tables: tuple[str, ...] = ()
+    feeds = ("earnings_event",)       # the calendar dates of the companies the spine holds
     cadence = "daily"
     backfill_needs_from = False
     starts_by_hand = True

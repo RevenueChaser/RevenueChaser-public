@@ -137,6 +137,7 @@ class RegShoThreshold:
     kind = KIND
     providers = ("nasdaqtrader", "nyse")
     tables = (TABLE,)
+    feeds: tuple[str, ...] = ()       # it serves its own table; no 13F table is built from its rows
     cadence = "daily"
     starts_by_hand = True             # the first run is the server thread's, after a backup
 

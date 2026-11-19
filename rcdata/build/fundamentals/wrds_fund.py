@@ -130,6 +130,9 @@ class WrdsFund:
         self.key = key
         self.schema = attrs + [(i, "DOUBLE") for i in items]
         self.since, self.years, self.revisions = since, years, revisions
+        #: The served tables this dataset's rows reach (#326): the first-reported values are the revisions,
+        #: and the segment set is the Compustat half of the segment and customer tables.
+        self.feeds = ("fundamental_revision",) if revisions else ("segment_revenue", "customer_share")
         self.staging = f"stg_wrds_{table}"
         self.revision_staging = f"stg_wrds_{table}_revision"
 

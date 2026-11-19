@@ -107,6 +107,8 @@ class FxRates:
     kind = KIND
     providers = (PROVIDER,)
     tables: tuple[str, ...] = ()
+    # The rates an IFRS filer's facts are put in USD with (#105), so the facts and what is built over them.
+    feeds = ("fundamental_fact", "peer_group", "customer_share")
     cadence = "daily"
     backfill_needs_from = False
     starts_by_hand = True
