@@ -74,7 +74,7 @@ import duckdb
 
 from ....core import calendar
 from ... import caps
-from .. import base
+from .. import base, secd
 from ..fundamentals import wrds_fund
 from ..spine import wrds
 from . import KIND, incremental, stage
@@ -737,7 +737,7 @@ COMP_BARS = f"""
            {COMP_RETURN_BASIS} AS return_basis, 1 AS priority, gvkey || ':' || iid AS series
     -- secd holds rows of events to come (to 2027): a bar is a priced day up to the build's date only (``serving`` sets
     -- ``rc_build_date``; unset, as in a test of this SQL alone, nothing is cut).
-    FROM _secd_listed WHERE listed AND coalesce(upper(curcdd), 'USD') = 'USD' AND prccd > 0
+    FROM _secd_listed WHERE listed AND {secd.PRICED_USD}
       AND datadate <= coalesce(getvariable('rc_build_date'), DATE '9999-12-31')
       AND {_COMP_BAR_ID} IN (SELECT security_id FROM _universe)
     WINDOW w AS (PARTITION BY gvkey, iid ORDER BY datadate)"""
@@ -784,7 +784,7 @@ AJEXDI_SPLITS = f"""
            '{NAME}' AS source, source_as_of, fetched_at, run_id
     FROM (SELECT *, lag(ajexdi) OVER w / ajexdi AS ratio, lag(run_id) OVER w AS prev_run,
                  lag(datadate) OVER w AS prev_day
-          FROM stg_wrds_secd WHERE ajexdi > 0 AND prccd > 0 AND coalesce(upper(curcdd), 'USD') = 'USD'
+          FROM stg_wrds_secd WHERE ajexdi > 0 AND {secd.PRICED_USD}
             -- the window only over the securities whose ajexdi changes at all (a hash aggregate, not a sort)
             AND (gvkey, iid) IN (SELECT (gvkey, iid) FROM stg_wrds_secd WHERE ajexdi > 0 GROUP BY gvkey, iid
                                  HAVING min(ajexdi) <> max(ajexdi))

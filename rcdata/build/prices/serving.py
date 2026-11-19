@@ -62,7 +62,7 @@ from datetime import date
 import duckdb
 
 from ... import ops
-from .. import base
+from .. import base, secd
 from . import KIND, incremental, stage, universe, wrds_history
 from .cover_shares import DEI_SOURCE as DEI
 
@@ -1168,7 +1168,7 @@ def _hist_counts(con: duckdb.DuckDBPyConnection) -> tuple[list[int], dict[str, i
     moved = con.execute("SELECT count(*) FILTER (WHERE listed AND NOT listed_today), count(DISTINCT gvkey || iid) "
                         "FILTER (WHERE listed AND NOT listed_today), count(*) FILTER (WHERE listed_today AND NOT "
                         "listed), count(DISTINCT gvkey || iid) FILTER (WHERE listed_today AND NOT listed) "
-                        "FROM _secd_listed WHERE prccd > 0 AND coalesce(upper(curcdd), 'USD') = 'USD' "
+                        f"FROM _secd_listed WHERE {secd.PRICED_USD} "
                         "AND datadate <= getvariable('rc_build_date')").fetchone()
     basis = con.execute(f"SELECT return_basis, count(*) FROM _hist_all WHERE source = '{wrds_history.COMPUSTAT}' "
                         "AND return_basis IS NOT NULL GROUP BY ALL").fetchall()

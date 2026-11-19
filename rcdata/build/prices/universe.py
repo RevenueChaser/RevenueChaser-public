@@ -35,6 +35,8 @@ the rule with a list he picks himself: then this module is the one file that cha
 """
 from __future__ import annotations
 
+from .. import secd
+
 #: The spine tiers a stock of the universe may be on: A (listed on Nasdaq, NYSE or Cboe) and D (no exchange in the
 #: SEC file). avo's words of 4 Nov 2026, the rule he approved for ``my_universe``.
 STOCK_TIERS = ("A", "D")
@@ -121,13 +123,13 @@ ETF_TIC_RECENT_DAYS = 14
 #: ``universe_etf_ticker_shared`` issue: two stored would give the fund two rows per session in ``price_bars_daily``,
 #: each its own key, and no check would see it (review D1 of #420).
 ETF_TIC_SERIES_SQL = f"""
-    WITH newest AS (SELECT max(datadate) AS day FROM stg_wrds_secd WHERE prccd > 0
+    WITH newest AS (SELECT max(datadate) AS day FROM stg_wrds_secd WHERE {secd.PRICED}
                     AND datadate <= coalesce(getvariable('rc_build_date'), DATE '9999-12-31')),
     routeless AS (SELECT u.tic FROM _universe_etf u WHERE NOT EXISTS (
                       SELECT 1 FROM stg_spine s WHERE {norm('s.ticker')} = u.tic AND nullif(s.gvkey, '') IS NOT NULL)),
     series AS (SELECT gvkey || ':' || iid AS gid, {norm('tic')} AS tic, datadate, prccd * cshtrd AS dollars
                FROM stg_wrds_secd, newest
-               WHERE prccd > 0 AND datadate <= newest.day AND datadate > newest.day - INTERVAL {ETF_TIC_RECENT_DAYS} DAY
+               WHERE {secd.PRICED} AND datadate <= newest.day AND datadate > newest.day - INTERVAL {ETF_TIC_RECENT_DAYS} DAY
                QUALIFY row_number() OVER (PARTITION BY gvkey, iid ORDER BY datadate DESC) = 1)
     SELECT s.tic, s.gid, s.datadate, s.dollars,
            row_number() OVER (PARTITION BY s.tic ORDER BY s.datadate DESC, s.dollars DESC NULLS LAST, s.gid) AS pick
