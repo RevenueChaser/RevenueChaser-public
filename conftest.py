@@ -51,6 +51,9 @@ def _redirect_data_roots() -> None:
     os.environ.setdefault("RC_MARKET_RAW_DIR", str(_root / "market_raw"))
     # A runner's disk is not the server's: the free-space floor of a build is the server's rule, not a test's.
     os.environ["RC_BUILD_MIN_FREE"] = "1KB"
+    # The kernel journal a lost run's note asks about (#815) is the server's, not a runner's: a test may not
+    # depend on what a host logged, so the read is off and ``core/oom.py`` is tested through its own text.
+    os.environ["RC_OOM_JOURNAL"] = "0"
     # The WRDS switch is forced off: a server .env with RC_WRDS_UNATTENDED=1 would make the attended tests fail (#344).
     os.environ["RC_WRDS_UNATTENDED"] = ""
     # The ops store on Redis (master plan Order 3): never the server's named namespace (a .env with

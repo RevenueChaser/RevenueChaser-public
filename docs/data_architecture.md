@@ -1285,7 +1285,9 @@ not pruned by the weekly run (it only looks inside `weekly-v2/`); removing them 
 Each pass first queues what is due (below), then takes the queued
 requests in order: those, Fetch and Backfill from Settings, and the CLI's. It skips a paused dataset (`dataset_schedule.paused_at`, a `skipped: paused` check row,
 no call). At start it fails a request a dead builder left running, with `lost: pid <n> gone` and a `failed` check
-row. A request whose builder is still alive (a live `.rc-proc` marker of its pid in the market dir) is left
+row — or, when the kernel's own log says it killed that pid for memory, with `lost: pid <n> killed by the kernel:
+out of memory` (`core/oom.py`, #815: the journal is read by pid, bounded and never fatal, and `RC_OOM_JOURNAL=0`
+turns the read off, which is what the test suite runs with). A request whose builder is still alive (a live `.rc-proc` marker of its pid in the market dir) is left
 alone. Neither row writes an old `job_runs` row: the builder records its own `job_runs2` rows. The page and the routes only enqueue and read (`docs/data_retrieval.md`, "The
 market-store builder's routes").
 
