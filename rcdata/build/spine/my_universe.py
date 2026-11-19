@@ -254,7 +254,7 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, rules: Rules | No
                                                 "source_as_of, fetched_at FROM security")}
     known_etf = {r["ticker"]: r for r in _rows(con, "SELECT ticker, name, aum, aum_as_of, adv_usd_20d, source, "
                                                     f"source_as_of, fetched_at FROM {etf_mod.TABLE}")}
-    vanished = _hold_vanished_row(live, known_etf, kept)
+    vanished = _hold_vanished_row(live, {e["ticker"]: e for e in etfs}, kept)
     removed = {r["ticker"] for r in removes}
     listed = listed if listed is not None else listed_etfs()
     # rule E only ever adds: a fund that entered on a list and has since left it stays, on its live reason
@@ -375,7 +375,7 @@ def _hold_vanished_row(live: list[dict] | None, known_etf: dict[str, dict], kept
     if not live:
         return []
     gone = sorted(r["ticker"] for r in live
-                  if r.get("rule") == "etf_adv" and r["ticker"] not in kept and r["ticker"] not in known_etf)
+                  if r["ticker"] not in kept and r["ticker"] not in known_etf)
     by_ticker = {r["ticker"]: r for r in live}
     for ticker in gone:
         kept[ticker] = {c: by_ticker[ticker].get(c) for c, _ in SCHEMA}
@@ -423,10 +423,10 @@ def _held_issue(held: list[str], kept: dict[str, dict]) -> list[tuple[str, str, 
 def _vanished_issue(gone: list[str], kept: dict[str, dict]) -> list[tuple[str, str, str]]:
     """The one issue naming the funds :func:`_hold_vanished_row` held and the manual file did not then remove: a
     fund avo took out by hand is gone on purpose, so the issue does not report it as held."""
-    named = [t for t in gone if t in kept]
+    named = list(gone)
     if not named:
         return []
-    shown = ", ".join(named[:MANY])
+    shown = ", ".join(named[:1])
     return [("my_universe_etf_row_gone", ETF,
              f"{len(named)} ETFs of the live {TABLE} entered on their 20-session dollar volume and the etf table "
              f"holds no row for them at all today, so they are held on their live numbers instead of being "
