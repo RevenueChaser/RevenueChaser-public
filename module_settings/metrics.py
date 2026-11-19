@@ -84,6 +84,9 @@ HELP = {
                                           "alert on: it moves on a clean pass that brought no headline, which "
                                           "freshness does not. The market lane's is "
                                           "rc_news_tape_written_timestamp_seconds."),
+    "rc_news_lane_late_after_seconds": ("gauge", "How long a News lane may go without a clean fetch before it is "
+                                        "late, by lane, from the lane's own cadence. The alert rule reads this "
+                                        "instead of a limit of its own."),
     "rc_threshold": ("gauge", "The thresholds the Data/Health page alarms at, from module_settings/control.py."),
     "rc_metrics_read_errors_total": ("counter", "Readers that failed since the dashboard started, by part."),
     "rc_metrics_build_seconds": ("gauge", "How long building this answer took."),
@@ -167,7 +170,8 @@ def _news_lanes() -> dict:
     ``boards/news.duckdb`` (7 MB, the board's own file), never the serving store, so the scrape still takes no
     serving lock (``app/dashboard._NO_STORE_SESSION``)."""
     from RevenueChaser.module_news import headlines
-    return {"fresh": headlines.lane_freshness(), "ok": headlines.lane_ok()}
+    return {"fresh": headlines.lane_freshness(), "ok": headlines.lane_ok(),
+            "late_after": headlines.lane_late_after()}
 
 
 def _news_tape(now: datetime) -> dict:
@@ -336,7 +340,8 @@ def collect(now: datetime | None = None, *, datasets: dict | None = None, timer:
         # must not take the listener's feed states with it.
         got = (lanes() if lanes is not None else _news_lanes()) or {}
         for family, key in (("rc_news_lane_fresh_timestamp_seconds", "fresh"),
-                            ("rc_news_lane_ok_timestamp_seconds", "ok")):
+                            ("rc_news_lane_ok_timestamp_seconds", "ok"),
+                            ("rc_news_lane_late_after_seconds", "late_after")):
             for name, at in (got.get(key) or {}).items():
                 if at is not None:
                     out[family].append(({"lane": str(name)}, float(at)))

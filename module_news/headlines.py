@@ -29,7 +29,7 @@ from pathlib import Path
 
 from RevenueChaser.core import config, ibkr_login, rawstore
 from RevenueChaser.core.providers import ibkr_tws as ibkr
-from RevenueChaser.module_news import tape, x_feed
+from RevenueChaser.module_news import tape, x_feed, x_reader
 from RevenueChaser.module_news.calendar import META
 from RevenueChaser.rcdata import read
 
@@ -127,6 +127,13 @@ OK_PREFIX = "lane_ok"
 OK_LANES = ("stocks", "x")
 
 
+#: How long a lane may go without a clean pass before it is late, each from its own cadence and not retyped: the
+#: per-ticker pass is queued every ``tape.TRIGGER_S``, so six missed passes; RC's X reader thins to
+#: ``x_reader.OFF_EVERY_S`` outside the US session, so one missed pass plus half of it. Exported beside the mark
+#: (``rc_news_lane_late_after_seconds``), so Grafana's rule carries no limit of its own either.
+LATE_AFTER_S = {"stocks": 6 * tape.TRIGGER_S, "x": int(1.5 * x_reader.OFF_EVERY_S)}
+
+
 def mark_lane_ok(lane: str, now: float | None = None) -> None:
     """Record that ``lane``'s own fetch has just come back with nothing refused.
 
@@ -136,6 +143,11 @@ def mark_lane_ok(lane: str, now: float | None = None) -> None:
     worked for an hour" is a question Grafana can ask (review F2, 18 Nov 2026; plan step 6)."""
     now = time.time() if now is None else now
     rawstore.write_rows(META, [{"key": f"{OK_PREFIX}:{lane}", "value": repr(float(now)), "run_at": now}])
+
+
+def lane_late_after() -> dict[str, float]:
+    """How long each lane of ``OK_LANES`` may go without a clean pass, seconds."""
+    return {name: float(LATE_AFTER_S[name]) for name in OK_LANES}
 
 
 def lane_ok() -> dict[str, float | None]:

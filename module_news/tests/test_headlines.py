@@ -258,3 +258,10 @@ def test_a_lane_mark_moves_only_on_a_clean_pass_and_says_nothing_before_one():
     headlines.mark_lane_ok("stocks", NOW + 300)                 # the next clean pass, with or without a headline
     headlines.mark_lane_ok("x", NOW + 60)
     assert headlines.lane_ok() == {"stocks": NOW + 300, "x": NOW + 60}
+
+
+def test_the_lane_cadences_come_from_the_jobs_own_schedules():
+    """The limit the Grafana rule reads is not a number typed twice: it follows the pass that feeds the lane."""
+    from RevenueChaser.module_news import tape, x_reader
+    assert headlines.lane_late_after() == {"stocks": 6 * tape.TRIGGER_S, "x": 1.5 * x_reader.OFF_EVERY_S}
+    assert set(headlines.lane_late_after()) == set(headlines.OK_LANES)
