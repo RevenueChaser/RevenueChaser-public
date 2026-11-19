@@ -64,15 +64,19 @@ def test_s1_a_request_with_allow_shrink_cannot_empty_another_datasets_table(monk
         assert con.execute("SELECT count(*) FROM spx").fetchone()[0] == 391
 
 
-def test_s1_the_scope_is_the_own_tables_plus_the_kinds_derived_ones(monkeypatch):
+def test_s1_the_scope_is_the_own_tables_plus_the_ones_the_dataset_declares_it_feeds(monkeypatch):
+    """Since #326 the scope is declared, not inferred: ``tables`` plus ``feeds``, in that order."""
     series, spx = _Fake("market_series", "market_series", 1), _Fake("uw/spot_expiry_strike", "spx", 1)
     derived = _Fake("market/serve", "derived", 1)
     derived.providers = ()
+    series.feeds = ("derived",)
     feeder = _Fake("feeder", "unused", 1)
-    feeder.tables = ()
+    feeder.tables, feeder.feeds = (), ("derived",)
     monkeypatch.setattr(base, "kind_datasets", lambda kind: [series, spx, derived, feeder])
     assert base.shrink_scope(series) == ("market_series", "derived")
     assert base.shrink_scope(feeder) == ("derived",)
+    # #293: a feeder that declares nothing relaxes its own tables only, never the kind's derived ones.
+    assert base.shrink_scope(spx) == ("spx",)
 
 
 # ── S-2: a session that has not finished is never fetched ────────────────────────────────────────────────────────

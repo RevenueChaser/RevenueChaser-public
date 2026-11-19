@@ -54,7 +54,7 @@ import duckdb
 
 from ....core import calendar
 from .. import base
-from . import KIND, stage
+from . import DERIVED, KIND, stage
 
 PROVIDER = "wrds"
 USER_ENV = "WRDS_USERNAME"
@@ -419,9 +419,11 @@ class WrdsDataset:
     backfill_needs_from = False
     starts_by_hand = True             # not due until a first CLI run or Fetch built it (review should-fix 2)
 
-    def __init__(self, name: str):
+    def __init__(self, name: str, feeds: tuple[str, ...] = ()):
         self.name = name
         self.own = [t for t, spec in TABLES.items() if spec["dataset"] == name]
+        #: The served tables of the spine this dataset's rows reach (#326); ``spine/security`` builds them.
+        self.feeds = feeds
 
     def default_as_of(self) -> date:
         return calendar.today_ny()
@@ -541,6 +543,10 @@ class WrdsDataset:
                 "added": added, "removed": removed}
 
 
-SEC_IDHIST = WrdsDataset("wrds/sec_idhist")
-CO_HGIC = WrdsDataset("wrds/co_hgic")
-IDXCST_HIS = WrdsDataset("wrds/idxcst_his")
+# The Compustat link is what every served table is cut by: the gvkey decides the CUSIP, the type (its SIC), the
+# GICS periods of a linked company and which securities a CUSIP ever named.
+SEC_IDHIST = WrdsDataset("wrds/sec_idhist", feeds=DERIVED)
+# The GICS periods, and through the bridge sector the ETF classes and themes; it adds no name to the universe.
+CO_HGIC = WrdsDataset("wrds/co_hgic", feeds=("security", "gics_history", "etf_class", "etf_class_changes",
+                                             "etf_theme"))
+IDXCST_HIS = WrdsDataset("wrds/idxcst_his", feeds=("index_membership",))

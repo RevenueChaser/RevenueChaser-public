@@ -608,6 +608,7 @@ class OwnershipServe:
     # The spine Parquet it reads (_owners, _figi): dirty.read_dirs packs and tracks it (rc-github-rebuild, 18 Nov 2026).
     parquet_reads = ("wrds/sec_idhist", "openfigi/map")
     tables = TABLES
+    feeds: tuple[str, ...] = ()       # it builds every 13F table itself
     cadence = "daily"
     backfill_needs_from = False
     starts_by_hand = True             # the first run is the server thread's, after a backup

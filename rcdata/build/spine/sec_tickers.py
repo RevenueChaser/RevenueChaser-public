@@ -25,7 +25,7 @@ import duckdb
 from ....core import calendar
 from ....core.identity.sources import norm_ticker
 from .. import base
-from . import KIND, stage
+from . import DERIVED, KIND, stage
 
 NAME = "sec/company_tickers_exchange"
 PROVIDER = "sec"
@@ -90,6 +90,7 @@ class SecTickers:
     kind = KIND
     providers = (PROVIDER,)
     tables: tuple[str, ...] = ()
+    feeds = DERIVED                   # the spine starts here: every served table is built over these tickers
     cadence = "weekly"
     backfill_needs_from = False
     starts_by_hand = True             # not due until a first CLI run or Fetch built it (review should-fix 2)

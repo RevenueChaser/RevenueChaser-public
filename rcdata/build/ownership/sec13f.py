@@ -34,7 +34,7 @@ import duckdb
 from ....core import calendar
 from .. import base
 from ..spine.stage import partitions
-from . import common, edgar, sec13f_sets
+from . import SERVED_13F, common, edgar, sec13f_sets
 
 NAME = "sec/13f"
 TABLE = "sec13f_filings"
@@ -240,6 +240,8 @@ class Sec13f(edgar.Feed):
     forms = FORMS
     sub = "13f"
     tables = (TABLE,)
+    # The holdings themselves: every served 13F table is built from them (``ownership/serve``).
+    feeds = SERVED_13F
     budget_s = BUDGET_S
 
     def backfill(self, ctx: base.RunContext, start: date | None, end: date) -> None:

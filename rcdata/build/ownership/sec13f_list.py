@@ -73,7 +73,9 @@ class Sec13fList:
     name = NAME
     kind = KIND
     providers = (sec.PROVIDER,)
-    tables = ()
+    tables: tuple[str, ...] = ()
+    # The official 13(f) list is read for the ``cusip_not_listed`` build issue only, never for a served row.
+    feeds: tuple[str, ...] = ()
     cadence = "quarterly"
     backfill_needs_from = False
     starts_by_hand = True             # the first run asks 27 files: the server thread's, after a backup

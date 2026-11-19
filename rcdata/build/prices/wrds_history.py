@@ -308,6 +308,8 @@ class WrdsPrices:
     kind = KIND
     providers = (wrds.PROVIDER,)
     tables = ("price_bar_daily", "corporate_action", "price_revision", "wrds_price_diff")
+    # The served history: its bars carry the symbols and the caps, its actions the factors.
+    feeds = ("adj_factor", "security_symbol", "market_cap_daily")
     # Daily since Compustat is the one served source (avo, 3 Nov 2026 ~11:20 Amsterdam, decision 1: "1 evet"): the
     # refresh of the last two years, five queries a day (seven with the snapshots). Attended unless RC_WRDS_UNATTENDED=1.
     cadence = "daily"

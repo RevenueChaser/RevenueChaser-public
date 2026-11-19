@@ -123,6 +123,7 @@ class SecForm4(edgar.Feed):
     forms = FORMS
     sub = "form4"
     tables = (TABLE,)
+    feeds: tuple[str, ...] = ()       # it serves its own table; no 13F table is built from its rows
     budget_s = BUDGET_S
 
     def backfill(self, ctx: base.RunContext, start: date | None, end: date) -> None:

@@ -130,6 +130,7 @@ class Estimates:
     kind = KIND
     providers = (PROVIDER,)
     tables: tuple[str, ...] = ()
+    feeds = ("estimate_latest",)
     cadence = "weekly"
     backfill_needs_from = False
     starts_by_hand = True

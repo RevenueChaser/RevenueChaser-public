@@ -1075,8 +1075,13 @@ checked before it replaces anything: its `serving_schema_version` row, the row c
 one the kind's code retired by name, `serving.RETIRED_TABLES`: `prices`' `crsp_unadjusted` since PR 382, `market`'s
 `news_headline` since market 4), and
 none may empty or lose more than 1% of its rows unless the request says `"allow_shrink": true` (the CLI's
-`--allow-shrink`), which relaxes only the asking dataset's own tables and the tables the kind derives from its sources
-(a dataset with no provider, such as `ownership/serve`), never another source dataset's table (`base.shrink_scope`).
+`--allow-shrink`), which relaxes only the asking dataset's own tables (`tables`) and the served tables of its kind its
+rows reach, which the dataset declares itself (`feeds`, `base.shrink_scope`): never a table its rows never reach, and
+never another source dataset's own table. Until #326 the second half was inferred — every table of a dataset with no
+provider was relaxed for every dataset of the kind — so a run on one feeder could let a table its rows never reach
+shrink (#293). A dataset that declares no `feeds` relaxes its own tables only;
+`rcdata/tests/test_shrink_scope.py` holds the declarations to their kind: every served table is owned or fed by at
+least one dataset, and no declaration names a table of another kind.
 A table that serves only its newest sessions (`option_eod`) names its first kept session in the
 build file's `serving_window` table, and is compared on the rows inside that window: a session leaving it is not a
 loss, a session inside it that lost rows is. A table whose row count the source or avo chooses rather than
@@ -1387,7 +1392,7 @@ steps, and a first attempt that failed is not retried every hour.
 | `etf_class_changes` | which fund's label entered, changed or left, when and why: `ticker`, `change` (`entered` / `changed` / `left`), `was`, `now`, `reason`, `as_of` (the build day), `run_id`. Append-only across builds, like `my_universe_changes`. A fund keeps its live label while it still holds with every cut 10 points lower, so a fund on a cut does not write a row every quarter |
 | `etf_theme` | the ETF theme list (spine 8, avo's G of 18 Nov 2026): one row per fund of the theme section of avo's `map` watch list whose `etf_class` label names no GICS branch (`diversified`, `international`): `ticker`, `theme` (the fund's registered name, the issuer's own words) with `theme_source`, the fund's `primary_class` and `geo`, `as_of` (the report the label was read from), `run_id`. A themed fund that sits in one branch (SMH, KRE, XBI) is described by its `etf_class` row and is not here |
 | `etf_holdings` | every holding of each ETF of `funds/etf_holdings`, per day: `as_of`, `etf`, `provider`, `ticker`, `cusip`, `name`, `weight` (the relatedness peer sets' source) |
-| `fund` | one per share class of the newest SEC fund file: `cik`, `series_id`, `class_id`, the normalised `ticker` and the file's `ticker_raw`, `is_etf` with the `is_etf_source` that decided it, and the file's provenance. `security`'s counterpart: an ETF is a series of a trust, so it has no row of its own in the equity file (the ETF rule, and the two exceptions, below). The kind's only source-owned served table, so `base.shrink_scope` relaxes it for `allow_shrink` on `sec/company_tickers_mf` alone: an empty `fund` refuses the swap for every spine dataset until that one is run |
+| `fund` | one per share class of the newest SEC fund file: `cik`, `series_id`, `class_id`, the normalised `ticker` and the file's `ticker_raw`, `is_etf` with the `is_etf_source` that decided it, and the file's provenance. `security`'s counterpart: an ETF is a series of a trust, so it has no row of its own in the equity file (the ETF rule, and the two exceptions, below). The kind's only source-owned served table, and the one no other spine dataset feeds (`feeds`, #326), so `allow_shrink` relaxes it for `sec/company_tickers_mf` alone: an empty `fund` refuses the swap for every spine dataset until that one is run, which is the ordinary way out |
 
 **The ETF rule** (`rcdata/build/spine/sec_tickers_mf.py`). The fund file carries no "this is an ETF" field, so
 `is_etf` is a rule and says so in `is_etf_source` (`length_rule_v1`): a symbol of five letters ending in X is

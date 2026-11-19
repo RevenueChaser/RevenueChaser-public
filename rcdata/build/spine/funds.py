@@ -268,6 +268,7 @@ class FundHoldings:
     kind = KIND
     providers = PROVIDERS
     tables: tuple[str, ...] = ()
+    feeds = ("index_membership",)     # the fund lines are the membership vote
     cadence = "daily"
     backfill_needs_from = False
     starts_by_hand = True             # not due until a first CLI run or Fetch built it (review should-fix 2)

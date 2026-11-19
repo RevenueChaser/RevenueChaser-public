@@ -117,6 +117,7 @@ class YahooFloat:
     kind = KIND
     providers = ("yfinance",)
     tables = ("shares_class",)
+    feeds = ("market_cap_daily",)                  # a class count times the close is the cap
     cadence = "daily"
     starts_by_hand = True
     honours_scope = True              # the request's names, else the scope's Tier A (``asked``)
@@ -215,6 +216,7 @@ class UWFloat:
     kind = KIND
     providers = ("uw",)
     tables = ("shares_class",)
+    feeds = ("market_cap_daily",)                  # a class count times the close is the cap
     cadence = "daily"
     starts_by_hand = True
     honours_scope = True              # the request's names, else the scope's Tier A (``asked``)

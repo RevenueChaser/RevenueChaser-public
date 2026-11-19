@@ -818,6 +818,11 @@ class Dataset(Protocol):
     #                               carried a scope gets a note saying this dataset ignored it
     #   heavy: bool                 this dataset's own run needs gigabytes of the machine's memory: one heavy
     #                               dataset per builder process, never two in one batch (#812, ``heavy``)
+    #   feeds: tuple[str, ...]      the served tables of this kind this dataset's rows reach without building
+    #                               them (``feeds``, #326): what a request's ``allow_shrink`` may relax beyond
+    #                               ``tables``. Every source of a kind whose file holds a table built from
+    #                               another dataset's rows declares it, empty tuple included
+    #                               (``rcdata/tests/test_shrink_scope.py``).
 
 
 ATTENDED_BY = "cli"
@@ -999,15 +1004,28 @@ def kind_datasets(kind: str) -> list[Dataset]:
     return [d for d in DATASETS.values() if d.kind == kind]
 
 
+def feeds(ds) -> tuple[str, ...]:
+    """The served tables of ``ds``'s kind that ``ds``'s rows reach without ``ds`` building them: the dataset's own
+    declaration (#326). A table another served table of the kind is built from counts, so the declaration is closed
+    over the kind's own chain (``sec/companyfacts`` feeds ``fundamental_fact`` and, through it, ``peer_group``).
+
+    It names tables of **its own kind** only. A source whose rows cross a kind boundary (``market_series/cboe``'s
+    index levels reach ``prices``'s ``price_bar_daily``) is outside this contract and outside ``allow_shrink``'s
+    reach either way, because a request relaxes tables of the kind it builds.
+    """
+    return tuple(getattr(ds, "feeds", ()))
+
+
 def shrink_scope(ds: Dataset) -> tuple[str, ...]:
     """The tables a request's ``allow_shrink`` may let shrink (review S-1 of #220): the dataset's own tables and the
-    tables the kind derives from its sources (a dataset with no provider: ``ownership/serve``, ``prices/serving``,
-    ``spine/security``, ``fundamentals/tables``), never another source dataset's own table. A feeder that serves no
-    table itself (a spine or fundamentals source) relaxes only the derived tables.
-    shortcut: every derived table of the kind is relaxed, not only those the asking source's rows reach; upgrade when
-    the datasets declare which tables each source feeds."""
-    derived = [t for d in kind_datasets(ds.kind) if not tuple(d.providers) for t in d.tables]
-    return tuple(dict.fromkeys([*ds.tables, *derived]))
+    served tables its rows feed (:func:`feeds`), never a table its rows never reach.
+
+    Until #326 this was inferred: every table of the kind that belonged to a dataset with no provider was relaxed
+    for every dataset of the kind, so a request on one feeder could let a table its rows never reach shrink (#293),
+    while a table a *source* owned could be relaxed by that source alone whatever fed it (#326, ``fund``). The
+    datasets declare it now; a dataset that declares nothing relaxes its own tables only.
+    """
+    return tuple(dict.fromkeys([*ds.tables, *feeds(ds)]))
 
 
 def build_kind(ctx: RunContext, ds: Dataset) -> dict:

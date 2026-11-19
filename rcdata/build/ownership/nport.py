@@ -198,6 +198,7 @@ class Nport:
     kind = KIND
     providers = (sec.PROVIDER,)
     tables = (TABLE,)
+    feeds: tuple[str, ...] = ()       # it serves its own table; no 13F table is built from its rows
     cadence = "monthly"
     backfill_needs_from = False
     starts_by_hand = True             # the first run is a 440 MB request: avo's written word first (#354 C3)

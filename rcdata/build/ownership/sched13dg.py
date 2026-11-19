@@ -120,6 +120,7 @@ class Sched13dg(edgar.Feed):
     forms = FORMS
     sub = "13dg"
     tables = (TABLE,)
+    feeds: tuple[str, ...] = ()       # it serves its own table; no 13F table is built from its rows
     budget_s = BUDGET_S
 
     def type_day(self, ctx: base.RunContext, day: date) -> list[Path]:
