@@ -49,6 +49,19 @@ def test_a_failed_run_waits_for_a_person_instead_of_retrying_hourly(monkeypatch,
     assert due.is_due(DATASETS[name])[1] != due.WRDS_FAILED_WHY       # a person's successful run clears it
 
 
+@pytest.mark.parametrize("name", WRDS)
+def test_a_failure_of_an_earlier_day_is_retried_once_that_day(monkeypatch, name):
+    # #1115: a transient serving-swap refusal on 17 Nov 2026 held ``wrds/prices`` for ever, so a daily dataset wrote
+    # no check row at all on 18 and 19 Nov and the served bars stopped at 16 Nov. The hold is the day's, not always.
+    monkeypatch.setenv(base.WRDS_UNATTENDED_ENV, "1")
+    ops.record_check(name, "changed", source_as_of="2026-10-01", checked_on="2026-10-01")
+    ops.record_check(name, "failed", note="SwapRefused: market_cap_daily shrinks", checked_on="2026-10-02")
+    is_due, why = due.is_due(DATASETS[name])
+    assert is_due is True and why != due.WRDS_FAILED_WHY
+    ops.record_check(name, "failed", note="SwapRefused: market_cap_daily shrinks")   # today: held for the rest of it
+    assert due.is_due(DATASETS[name]) == (False, due.WRDS_FAILED_WHY)
+
+
 def test_an_empty_inherited_timeout_still_gets_the_default(monkeypatch):
     monkeypatch.setenv("PGCONNECT_TIMEOUT", "")
     assert wrds.worker_env()["PGCONNECT_TIMEOUT"] == "120"
