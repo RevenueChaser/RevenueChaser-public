@@ -63,9 +63,11 @@ def test_prices_never_takes_the_flag(mod):
     assert "kind" not in mod.seen, "the build must not start"
 
 
-def test_prices_builds_without_the_flag(mod, tmp_path):
+def test_prices_still_builds_without_the_flag(mod, tmp_path):
+    """The refusal is of the flag, not of the kind: prices builds as before, and says it was not relaxed."""
     assert mod.main("prices") == 0
     assert mod.seen["allow_shrink"] == [False]
+    assert _result(tmp_path)["allow_shrink"] is False
 
 
 def test_the_cli_reads_the_flag(mod):
