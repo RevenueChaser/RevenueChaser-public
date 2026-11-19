@@ -160,9 +160,9 @@ def test_every_x_card_has_a_badge_and_each_ticker_a_group_with_its_price_line():
     assert page.count('class="xg"') == 2 and page.index('data-grp="SPY"') < page.index('data-grp="EL"')
     assert page.count('<figure class="xp">') == 1 and page.count('<i class="tw" style=') == 2   # both SPY tweets
     assert "UW confirmed" in page and "not in UW" in page and "X id" in page
-    assert all(f'class="ya" style="top:{t}px">{v}<' in page for t, v in (("8.0", "725,00"), ("48.0", "717,50"),
-                                                                           ("88.0", "710,00")))   # price y axis
-    assert '<span class="ya" style="top:3.0px">$900 bin</span>' in page                         # prints y axis
+    assert all(f'class="ya" style="top:{t}px">{v}<' in page for t, v in (("8.0", "725.00"), ("48.0", "717.50"),
+                                                                           ("88.0", "710.00")))   # price y axis
+    assert '<span class="ya" style="top:3.0px">$900k</span>' in page                         # prints y axis
     assert '<div id="pg-x" role="tabpanel" hidden>' in page and 'aria-controls="pg-x"' in page   # own page tab
     assert page.count('<details class="xd"><summary>') == 2                     # both charts closed until clicked
     assert "1/1 UW confirmed" in page and "price 722.00 → 725.00 (+0.42%)" in page
