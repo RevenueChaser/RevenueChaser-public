@@ -28,7 +28,7 @@ from datetime import date, timedelta
 
 
 from ... import ops, serving
-from .. import base
+from .. import base, secd
 from ..spine import wrds
 from . import wrds_history
 
@@ -52,7 +52,7 @@ def at_risk(as_of: date) -> dict[str, list[str]]:
             rows += con.execute(f"""
                 WITH s AS (SELECT gvkey || ':' || iid AS sid, datadate, prccd, ajexdi, trfd, exchg
                            FROM read_parquet([{', '.join(base.sql_path(p) for p in files)}], union_by_name = true)
-                           WHERE datadate BETWEEN ? AND ? AND prccd > 0)
+                           WHERE datadate BETWEEN ? AND ? AND {secd.PRICED})
                 SELECT sid, 'trfd_empty' FROM s WHERE trfd IS NULL GROUP BY sid
                 UNION ALL SELECT sid, 'split' FROM s GROUP BY sid HAVING count(DISTINCT ajexdi) > 1
                 UNION ALL SELECT sid, 'low_price' FROM s GROUP BY sid HAVING arg_max(prccd, datadate) < {LOW_PRICE}

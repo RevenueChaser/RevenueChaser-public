@@ -34,9 +34,9 @@ from pathlib import Path
 
 import duckdb
 
-from .. import base
+from .. import base, secd
 from .av_listing import STAGING as AV
-from . import ncen, stage
+from . import ncen
 from .ncen import FILERS, STAGING as NCEN
 
 TABLE = "etf"
@@ -107,19 +107,12 @@ TIC_RECENT_DAYS = 14
 #: How many of Compustat's newest year partitions the window is read from. Twenty sessions are a month, so two
 #: years cover a build in early January and a year the fetch has not refreshed yet, without scanning 33 years.
 ADV_YEARS = 2
-#: Compustat's daily security file, as ``wrds/prices`` stores it: ``parquet/wrds/prices/secd/year=<Y>/part-0.parquet``.
-SECD_DATASET = ("wrds", "prices", "secd")
 
 
 def secd_files(as_of: date | None = None) -> list[Path]:
     """The newest :data:`ADV_YEARS` Compustat ``secd`` year partitions that exist, oldest first; a year after
-    ``as_of`` is not read at all, so a build of an earlier day reads that day's Compustat."""
-    root = base.parquet_root()
-    for part in SECD_DATASET:
-        root = root / part
-    years = [(y, f) for y, f in stage.partitions(root, "year")
-             if y.isdigit() and (as_of is None or int(y) <= as_of.year)]
-    return [f for _, f in years[-ADV_YEARS:]]
+    ``as_of`` is not read at all, so a build of an earlier day reads that day's Compustat (``build/secd.py``)."""
+    return secd.files(ADV_YEARS, as_of)
 
 
 def adv_usd_20d(tickers: list[str], as_of: date | None = None) -> dict[str, float]:
@@ -155,8 +148,7 @@ def adv_usd_20d(tickers: list[str], as_of: date | None = None) -> dict[str, floa
                 SELECT gvkey || ':' || iid AS gid, replace(upper(tic), '.', '-') AS ticker, datadate,
                        prccd * cshtrd AS dollars
                 FROM {src}
-                WHERE prccd > 0 AND cshtrd IS NOT NULL AND tic IS NOT NULL
-                  AND coalesce(upper(curcdd), 'USD') = 'USD'{cutoff}),
+                WHERE {secd.PRICED_USD} AND cshtrd IS NOT NULL AND tic IS NOT NULL{cutoff}),
             last_day AS (SELECT gid, ticker, datadate FROM priced
                          QUALIFY row_number() OVER (PARTITION BY gid ORDER BY datadate DESC) = 1),
             claim AS (SELECT gid, ticker FROM last_day
@@ -197,7 +189,7 @@ def shares_x_close(tickers: list[str], as_of: date | None = None) -> dict[str, t
             WITH priced AS (
                 SELECT gvkey || ':' || iid AS gid, replace(upper(tic), '.', '-') AS ticker, datadate, prccd, cshoc
                 FROM {src}
-                WHERE prccd > 0 AND tic IS NOT NULL AND coalesce(upper(curcdd), 'USD') = 'USD'{cutoff}),
+                WHERE {secd.PRICED_USD} AND tic IS NOT NULL{cutoff}),
             recent AS (SELECT * FROM priced WHERE datadate > (SELECT max(datadate) FROM priced)
                                                              - INTERVAL {TIC_RECENT_DAYS} DAY),
             claim AS (SELECT gid, ticker FROM recent

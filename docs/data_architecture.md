@@ -1497,6 +1497,14 @@ only through `rcdata.read`.
 | `wrds/prices` | daily (avo, 3 Nov 2026), attended unless `RC_WRDS_UNATTENDED=1` | Compustat `comp.secd` from 1983 (its earliest priced day, 1983-12-30) on exchg 11, 12, 14, 17, 21 (NYSE, NYSE American, Nasdaq, NYSE Arca, BATS BZX) with the row's dividend columns, and `comp.sec_divid` per year, CRSP `crsp.dsf_v2` per year to 2025 (stocks and ETFs, from 1983), `comp.sec_split` and `crsp_a_stock.stkdelists` whole; no CCM link (`wrds_history.PERMNO_LINK`) | `stg_wrds_secd`, `stg_wrds_dsf`, `stg_wrds_divid`, `stg_wrds_split`, `stg_wrds_revisions` |
 | `prices/serving` | daily | none: builds the served tables from the staging tables; the history is Compustat's (priority 1), CRSP's only on its fallback days, never Alpaca's | the tables below |
 
+**A stored `comp.secd` row is a session only when it carries a price (#423).** Compustat ships its year partition
+with its own forward-dated calendar placeholders: measured read-only on 5 Nov 2026, 1,128 rows over 929 tickers,
+`datadate` from 2026-11-03 to 2026-12-31, `prccd` and `cshtrd` NULL. Nothing but the NULL price marks them apart, so
+`max(datadate)` over the raw partitions answers up to two months past the last real session — and does it again with
+every new year partition. The stored file stays a faithful copy of what WRDS answered; the rule lives in
+`rcdata/build/secd.py` instead: `secd.PRICED` / `secd.PRICED_USD` is the filter every reader uses, and
+`secd.last_session()` is the day a freshness check, a "data as of" label or a window bound must ask for.
+
 **The one primary source (avo, 3 Nov 2026: the whole history and what follows from Compustat).** A served bar is
 Compustat's `comp.secd` bar, a priced day up to today on which the security was on exchg 11, 12, 14, 17 or 21 by
 `comp.sec_idhist`'s dated EXCHG periods (`SECD_LISTED`; `secd.exchg` is today's code; before 1998 the first known
