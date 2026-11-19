@@ -8,7 +8,8 @@ held is never asked again; one held raw but not typed is typed on the next run.
 
 The download is streamed to disk (``_download``): the zip never sits whole in the builder's memory, which a
 ``sec13f_sets.download`` of 440 MB would (twice, the answer and its zip check). Typing runs in a DuckDB file beside
-the raw zip under :data:`MEMORY_LIMIT` and two threads, so the 5.6M holding rows spill to the HDD instead of the RAM.
+the raw zip (``serving.connect_scratch_file``) under :data:`MEMORY_LIMIT` and two threads, so the 5.6M holding rows
+spill to the HDD instead of the RAM.
 
 Read members: ``SUBMISSION``, ``REGISTRANT``, ``FUND_REPORTED_INFO`` (the series, its assets) and
 ``FUND_REPORTED_HOLDING`` with ``IDENTIFIERS`` (the ISIN and ticker of a holding, the first of each when a holding
@@ -233,10 +234,9 @@ class Nport:
         info = base.read_raw_json(meta) if meta.exists() else {}
         with tempfile.TemporaryDirectory(dir=serving.scratch_dir(raw.parent.name, raw.parent),
                                          prefix=sec13f_sets.SCRATCH) as tmp:
-            con = duckdb.connect(str(Path(tmp) / "set.duckdb"))
+            con = serving.connect_scratch_file(Path(tmp) / "set.duckdb", MEMORY_LIMIT)
             try:
-                con.execute(f"SET memory_limit = '{MEMORY_LIMIT}'; SET threads = 2; "
-                            f"SET temp_directory = {base.sql_path(Path(tmp) / 'spill')}")
+                con.execute("SET threads = 2")
                 sec13f_sets._load(con, raw, Path(tmp), raw.name, ctx.notes, MEMBERS, OPTIONAL, LABEL)
                 # The fund file last: it is the "typed" mark (``typed``), so a run killed between the two types again.
                 out = [base.write_parquet(con, _holdings_sql(quarter), folder / "holdings.parquet"),
