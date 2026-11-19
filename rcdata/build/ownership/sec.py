@@ -53,7 +53,9 @@ class Pacer:
 
 
 def get(ctx: base.RunContext, pacer: Pacer, url: str, accept: tuple[int, ...] = (),
-        headers: dict | None = None) -> httpx.Response:
-    """One paced SEC GET through ``base.http_get`` (its retry ladder; its backoff keeps a retry apart too)."""
+        headers: dict | None = None, attempts: int | None = None) -> httpx.Response:
+    """One paced SEC GET through ``base.http_get`` (its retry ladder; its backoff keeps a retry apart too).
+
+    ``attempts`` lengthens that ladder for one request, for a caller that would rather wait than fail (#1123)."""
     pacer.wait()
-    return base.http_get(ctx, PROVIDER, url, headers=headers, accept=accept)
+    return base.http_get(ctx, PROVIDER, url, headers=headers, accept=accept, attempts=attempts)

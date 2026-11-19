@@ -65,7 +65,22 @@ _uw_pause = time.sleep          # patch point for tests
 
 
 class SourceError(RuntimeError):
-    """A provider answer the dataset cannot use (an HTTP failure after retries, an empty or malformed body)."""
+    """A provider answer the dataset cannot use (an HTTP failure after retries, an empty or malformed body).
+
+    ``status`` is the HTTP status of the last attempt when there was one, and ``transport`` says the last attempt
+    never got an answer (a dropped connection, a timeout). ``transient`` is what a caller asks to tell a failure
+    worth asking again later (a 429, a 5xx, a dropped connection) from one that will answer the same way for ever
+    (#1123: a single EDGAR document answering 504 failed the whole ``sec/13dg`` dataset and the build pass with it).
+    """
+
+    def __init__(self, *args, status: int | None = None, transport: bool = False):
+        super().__init__(*args)
+        self.status = status
+        self.transport = transport
+
+    @property
+    def transient(self) -> bool:
+        return self.transport or self.status == 429 or (self.status is not None and self.status >= 500)
 
 
 class NothingInScope(SourceError):
@@ -542,23 +557,25 @@ def _log_http(ctx: RunContext, provider: str, method: str, url: str, result: str
 
 
 def http_get(ctx: RunContext, provider: str, url: str, params: dict | None = None,
-             headers: dict | None = None, keyed: bool = False, accept: tuple[int, ...] = ()) -> httpx.Response:
+             headers: dict | None = None, keyed: bool = False, accept: tuple[int, ...] = (),
+             attempts: int | None = None) -> httpx.Response:
     """GET with the keyless retry ladder; every attempt is counted for ``provider``. Raises ``SourceError``.
 
     ``params`` may hold a key (FRED): neither the query nor the headers are ever logged. ``keyed``: the request
     carries the provider's key (Alpaca's headers), so a 403 points at the key, not at ``RC_HTTP_CONTACT``. A status in
     ``accept`` is answered as it is, neither retried nor raised: a source whose 404 means "not published yet" reads it
-    itself.
+    itself. ``attempts`` lengthens the ladder for one call (``HTTP_ATTEMPTS`` by default): a caller whose host answers
+    a transient 5xx from an edge and clears it in seconds buys more patience, and pays it in counted requests.
     """
-    last = ""
-    for attempt in range(1, HTTP_ATTEMPTS + 1):
+    last, status, transport = "", None, False
+    for attempt in range(1, (attempts or HTTP_ATTEMPTS) + 1):
         ctx.check_cap(provider)
         ctx.count(provider, calls=1, logged=True)   # counted when sent: a request cut off by a kill was still made
         started = time.monotonic()
         try:
             r = ctx.http.get(url, params=params, headers=headers)
         except httpx.HTTPError as e:
-            last = type(e).__name__
+            last, status, transport = type(e).__name__, None, True
             _log_http(ctx, provider, "GET", url, last, started)
         else:
             _log_http(ctx, provider, "GET", url, f"HTTP {r.status_code}", started)
@@ -566,15 +583,15 @@ def http_get(ctx: RunContext, provider: str, url: str, params: dict | None = Non
                 ctx.count(provider, http_429=1)
             if r.status_code < 400 or r.status_code in accept:
                 return r
-            last = f"HTTP {r.status_code}"
+            last, status, transport = f"HTTP {r.status_code}", r.status_code, False
             if r.status_code == 403:
                 last += refusal_note(keyed)
             if not (r.status_code == 429 or r.status_code >= 500):
                 break
-        if attempt < HTTP_ATTEMPTS:
+        if attempt < (attempts or HTTP_ATTEMPTS):
             ctx.sleep(HTTP_BACKOFF_S * 2 ** (attempt - 1))
     ctx.count(provider, failures=1, logged=True)
-    raise SourceError(f"{provider} {url}: {last}")
+    raise SourceError(f"{provider} {url}: {last}", status=status, transport=transport)
 
 
 def http_post(ctx: RunContext, provider: str, url: str, json: Any = None, headers: dict | None = None,
@@ -584,7 +601,7 @@ def http_post(ctx: RunContext, provider: str, url: str, json: Any = None, header
     A 429 is retried after OpenFIGI's ``ratelimit-reset`` seconds when the answer names them, else the ladder's
     backoff. ``headers`` may hold a key: neither they nor the body are ever logged. Raises ``SourceError``.
     """
-    last = ""
+    last, status, transport = "", None, False
     for attempt in range(1, HTTP_ATTEMPTS + 1):
         ctx.check_cap(provider)
         if pacer is not None:
@@ -595,13 +612,13 @@ def http_post(ctx: RunContext, provider: str, url: str, json: Any = None, header
         try:
             r = ctx.http.post(url, json=json, headers=headers)
         except httpx.HTTPError as e:
-            last = type(e).__name__
+            last, status, transport = type(e).__name__, None, True
             _log_http(ctx, provider, "POST", url, last, started)
         else:
             _log_http(ctx, provider, "POST", url, f"HTTP {r.status_code}", started)
             if r.status_code < 400:
                 return r
-            last = f"HTTP {r.status_code}"
+            last, status, transport = f"HTTP {r.status_code}", r.status_code, False
             if r.status_code == 429:
                 ctx.count(provider, http_429=1)
                 reset = str(r.headers.get("ratelimit-reset") or "").strip()
@@ -611,7 +628,7 @@ def http_post(ctx: RunContext, provider: str, url: str, json: Any = None, header
         if attempt < HTTP_ATTEMPTS:
             ctx.sleep(wait)
     ctx.count(provider, failures=1, logged=True)
-    raise SourceError(f"{provider} {url}: {last}")
+    raise SourceError(f"{provider} {url}: {last}", status=status, transport=transport)
 
 
 # ── Raw files ──────────────────────────────────────────────────────────────────────────────────────────────────
