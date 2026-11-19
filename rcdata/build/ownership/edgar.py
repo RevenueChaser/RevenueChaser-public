@@ -20,7 +20,12 @@ A marker that writes a day or a filing off is written only once the archive has 
 period, filed date, and each party's CIK and name under ``FILER``, ``SUBJECT COMPANY``, ``FILED BY``,
 ``REPORTING-OWNER`` or ``ISSUER``) and every document, the XML ones between ``<XML>`` and ``</XML>``. One request a
 filing, through ``sec.Pacer``. A filing the index lists but the archive does not hold (the same 403, or a 404 —
-EDGAR does remove filings it has already disseminated and indexed) is marked (``.none``) and not asked again.
+EDGAR does remove filings it has already disseminated and indexed) is marked (``.none``) and not asked again. A
+filing (or a day's index) the archive **fails** on instead -- a 5xx from its edge, a dropped connection -- is
+deferred after ``FILING_ATTEMPTS`` tries: nothing is written off, the day gets no ``.done``, a ``.defer`` note
+beside it counts the passes it has failed, and the next run asks it again (#1123). The day's other filings are
+typed and served meanwhile, so no count is ever narrowed by one document. ``DEFER_MAX`` of them on one day, or
+``DEFER_MAX`` days whose index fails, is the path and not a document, and stops the run.
 
 **The walk.** A feed walks the days from its first day (``start.json``: the run's as-of less ``FIRST_LOOKBACK`` on the
 first run, moved back by a backfill) to the day before its as-of, newest first, skipping the days it finished
@@ -91,6 +96,17 @@ MISSING_RUN = base.MISSING_RUN   # consecutive missing weekdays EDGAR does not k
 # an operator judge; this only stops the walk writing off a path failure while nobody is watching.
 CLUSTER_MAX = 25
 PROBE_CANDIDATES = 3             # filing URLs ``_known_filing`` looks for; one of them may itself have been removed
+# A filing the archive answers a transient failure for (a 5xx from its edge, a dropped connection) is deferred: no
+# raw file, no ``.none`` marker, a ``.defer`` note beside the day's filings, and the day stays open so the next run
+# asks it again (#1123: one document of cik 102909 answering 504 and 502 failed ``sec/13dg`` and every builder pass
+# with it on 19 Nov 2026, while the 18:05 pass fetched the same document). ``FILING_ATTEMPTS`` is the ladder one
+# filing gets before it defers, longer than ``base.HTTP_ATTEMPTS`` because an edge 504 clears in seconds and a
+# request is cheaper than a day left open.
+DEFER = ".defer"
+FILING_ATTEMPTS = 5
+# Deferrals on one day past which this is the path failing and not a flaky document, so the run stops and says so,
+# as it does for absences (``CLUSTER_MAX``). A chosen ceiling: the incidents measured were one document.
+DEFER_MAX = 10
 SUBMISSION_HEAD = (b"<SEC-DOCUMENT", b"<SEC-HEADER>")   # what a full submission begins with; a 200 that has neither
                                                         # is not a filing (a throttle page has been served as one)
 
@@ -102,6 +118,16 @@ def _shape(absent: list[tuple[str, int]]) -> str:
     agents = {acc.split("-", 1)[0] for acc, _ in absent}
     return (", ".join(f"{n}x{status}" for status, n in sorted(by_status.items()))
             + f"; {len(agents)} accession prefix" + ("es" if len(agents) != 1 else ""))
+
+
+def _said(deferred: list[tuple[str, dict]]) -> str:
+    """What a day's deferred filings got, and how long the oldest has been failing: the line an operator judges a
+    flaky document by (one document for many passes) against the path failing (many documents, this pass)."""
+    by_status = Counter(str(note.get("status") or "no answer") for _, note in deferred)
+    passes = max((note.get("passes") or 1) for _, note in deferred)
+    which = deferred[0][0] + (f" and {len(deferred) - 1} more" if len(deferred) > 1 else "")
+    return (f"{', '.join(f'{n}x{status}' for status, n in sorted(by_status.items()))}; {which}; "
+            f"{passes} pass" + ("es" if passes != 1 else ""))
 
 
 def is_submission(body: bytes) -> bool:
@@ -251,6 +277,15 @@ def integer(value) -> int | None:
 
 # ── The feed ───────────────────────────────────────────────────────────────────────────────────────────────────
 
+class Gone(NamedTuple):
+    """A filing that was not written. ``defer``: the archive failed transiently and the filing is asked again on the
+    next run; otherwise the archive holds no object for it and the caller marks it absent."""
+
+    accession: str
+    payload: dict
+    defer: bool = False
+
+
 class _Held:
     """What a walk has found absent but not written yet: a day with no index, and a filing the archive answered
     nothing for. Nothing is written until the archive has answered something in this run, because a refusal of the
@@ -285,6 +320,8 @@ class _Held:
         filings were all held is finished only here, never by an index answer."""
         for day, acc, payload in self.filings:
             base.write_raw_json(feed.filing_none(day, acc), payload)
+            # It answered after all, with no object: the deferral note has nothing left to count.
+            feed.filing_defer(day, acc).unlink(missing_ok=True)
         done = self.finished
         self.filings, self.finished = [], []
         return done
@@ -346,6 +383,20 @@ class Feed:
     def filing_none(self, day: date, accession: str) -> Path:
         return self.day_dir(day) / f"{accession}.none"
 
+    def filing_defer(self, day: date, accession: str) -> Path:
+        return self.day_dir(day) / f"{accession}{DEFER}"
+
+    def note_defer(self, ctx: base.RunContext, day: date, gone: "Gone") -> dict:
+        """Record one deferred filing and answer the note as it now stands. A ``.defer`` note writes nothing off --
+        the walk asks the filing again on the next run -- it only keeps count, so a document that fails every run
+        shows how long it has been failing instead of looking new each time."""
+        path = self.filing_defer(day, gone.accession)
+        was = base.read_raw_json(path) if path.exists() else {}
+        note = {**was, **gone.payload, "passes": (was.get("passes") or 0) + 1,
+                "first_run": was.get("first_run") or ctx.run_id}
+        base.write_raw_json(path, note)
+        return note
+
     def is_done(self, day: date) -> bool:
         return (self.day_dir(day) / DONE).exists()
 
@@ -375,6 +426,8 @@ class Feed:
         pacer = sec.Pacer(ctx)
         t0 = ctx.clock()
         complete, partial, fetched = [], [], 0
+        open_days = 0                      # days left open by a deferred filing: the run asks to be due again
+        index_deferred: list[tuple[str, dict]] = []     # days whose index failed transiently (#1123)
         day = last
         held, streak = _Held(), self._streak(ctx, pacer)
         last_ok = None                     # a filing this run fetched, to ask the archive with (see ``_holds``)
@@ -383,12 +436,29 @@ class Feed:
         while day >= first:
             next_probe = MISSING_RUN       # doubles after each probe: O(log n) of them on a day of absences
             absent: list[tuple[str, int]] = []      # this day's absences, for CLUSTER_MAX and the messages
+            deferred: list[tuple[str, dict]] = []   # this day's transient failures (#1123), for DEFER_MAX and them
             wrote = 0                               # of them already written off, after a probe answered
             if day.weekday() < 5 and not self.is_done(day):
                 if budget_s is not None and ctx.clock() - t0 >= budget_s:
                     complete += self._release(ctx, pacer, held)
                     return self._stopped(ctx, complete, partial, fetched)
-                index = read_index(ctx, pacer, day)
+                try:
+                    index = read_index(ctx, pacer, day)
+                except base.SourceError as e:
+                    if not e.transient:
+                        raise
+                    # The index itself failed transiently, so nothing is known about the day: it is left unmarked
+                    # and unwalked, and the next run asks for it again. A stretch of them is the path (DEFER_MAX).
+                    open_days += 1
+                    index_deferred.append((f"master.{day:%Y%m%d}.idx", {"status": e.status}))
+                    if len(index_deferred) >= DEFER_MAX:
+                        raise base.SourceError(f"sec: the daily index of {len(index_deferred)} days keeps failing "
+                                               f"({_said(index_deferred)}); more than {DEFER_MAX} is the path and "
+                                               "not one day, so the run stops here", status=e.status) from e
+                    ctx.notes.append(f"{day}: the daily index failed ({e}); the day stays open and the next run "
+                                     "asks for it again")
+                    day -= timedelta(days=1)
+                    continue
                 if index.answered:
                     complete += held.flush_days()
                 if index.rows is None:
@@ -417,9 +487,19 @@ class Feed:
                         last_ok = self.filing_url(r)
                         complete += held.flush_filings(self)
                         continue
-                    held.filings.append((day, *gone))
+                    if gone.defer:
+                        # Nothing is written off and the day is not finished: the filings already in are typed, and
+                        # the next run asks this one again. A run of these is the path, not a document (DEFER_MAX).
+                        deferred.append((gone.accession, self.note_defer(ctx, day, gone)))
+                        if len(deferred) >= DEFER_MAX:
+                            raise base.SourceError(
+                                f"sec: {len(deferred)} filings of {day} the archive keeps failing on "
+                                f"({_said(deferred)}); more than {DEFER_MAX} on one day is the path and not a "
+                                "document, so the run stops here", status=deferred[-1][1].get("status"))
+                        continue
+                    held.filings.append((day, gone.accession, gone.payload))
                     gone_run += 1
-                    absent.append((r["accession"], gone[1]["status"]))
+                    absent.append((r["accession"], gone.payload["status"]))
                     if len(absent) >= CLUSTER_MAX:
                         # Counted over the whole day, not since the last check: an answer about one object cannot
                         # speak for a cluster this size, however many times it came back 200 on the way here.
@@ -449,12 +529,21 @@ class Feed:
                 if probed.get(day):
                     ctx.notes.append(f"{day}: {probed[day]} run(s) of absent filings, and the archive handed over "
                                      f"one it holds each time ({_shape(absent)})")
-                # A day is finished once its markers are written, never before: a ``.done`` would skip it for good.
-                (held.finished if held.filings else complete).append(day)
+                if deferred:
+                    # The day's own filings are typed from what is in; no ``.done`` is written, so the next run
+                    # walks it again and asks only the deferred ones.
+                    open_days += 1
+                    partial.append(day)
+                    ctx.notes.append(f"{day}: {len(deferred)} filing(s) deferred, the day stays open and the next "
+                                     f"run asks them again ({_said(deferred)})")
+                else:
+                    # A day is finished once its markers are written, never before: a ``.done`` would skip it for
+                    # good.
+                    (held.finished if held.filings else complete).append(day)
             day -= timedelta(days=1)
         complete += self._release(ctx, pacer, held)
         ctx.notes.append(f"{fetched} filings fetched")
-        return complete, partial, False
+        return complete, partial, bool(open_days)
 
     def _release(self, ctx: base.RunContext, pacer: sec.Pacer, held: _Held) -> list[date]:
         """Write what is still held at the end of a walk. Nothing the archive answered came after it, so each path
@@ -561,22 +650,29 @@ class Feed:
                 said.append(f"{name}: {r.status_code}{base.refusal_note()}")
         return False, "; ".join(said) or "no filing it is known to hold"
 
-    def _fetch_filing(self, ctx: base.RunContext, pacer: sec.Pacer, day: date,
-                      row: dict) -> tuple[str, dict] | None:
-        """Fetch one filing. None once it is written; ``(accession, payload)`` when the archive has no object for
-        it, for the caller to mark absent."""
+    def _fetch_filing(self, ctx: base.RunContext, pacer: sec.Pacer, day: date, row: dict) -> Gone | None:
+        """Fetch one filing. None once it is written; a ``Gone`` when the archive has no object for it (the caller
+        marks it absent) or failed transiently (``defer``: the caller leaves the day open and the next run asks it
+        again). A refusal -- anything that is neither missing nor transient -- still stops the run."""
         url = self.filing_url(row)
-        r = sec.get(ctx, pacer, url, accept=(403, 404))
         acc = row["accession"]
+        where = {"url": url, "run_id": ctx.run_id, "form": row["form"], "cik": row["cik"]}
+        try:
+            r = sec.get(ctx, pacer, url, accept=(403, 404), attempts=FILING_ATTEMPTS)
+        except base.SourceError as e:
+            if not e.transient:
+                raise
+            return Gone(acc, {**where, "status": e.status, "said": str(e)}, defer=True)
         if base.is_missing(r):
-            return acc, {"status": r.status_code, "url": url, "run_id": ctx.run_id, "form": row["form"],
-                         "cik": row["cik"]}
+            return Gone(acc, {"status": r.status_code, **where})
         if r.status_code >= 400:
-            raise base.SourceError(f"{sec.PROVIDER} {url}: HTTP {r.status_code}{base.refusal_note()}")
+            raise base.SourceError(f"{sec.PROVIDER} {url}: HTTP {r.status_code}{base.refusal_note()}",
+                                   status=r.status_code)
         if not is_submission(r.content):
             raise base.SourceError(f"{sec.PROVIDER} {url}: a 200 that is not a full submission "
                                    f"({len(r.content)} bytes); nothing is written")
         base.write_raw(self.filing_path(day, acc), r.content)
+        self.filing_defer(day, acc).unlink(missing_ok=True)      # it answered; the deferral note has nothing to say
         with open(self.day_dir(day) / MANIFEST, "a", encoding="utf-8") as f:
             f.write(json.dumps({"accession": acc, "form": row["form"], "cik": row["cik"], "filed": str(row["filed"]),
                                 "fetched_at": time.time(), "run_id": ctx.run_id, "url": url}) + "\n")

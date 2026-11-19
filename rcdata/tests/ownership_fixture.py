@@ -16,7 +16,8 @@ import duckdb
 from RevenueChaser.core.calendar import is_federal_holiday
 from RevenueChaser.rcdata import serving
 
-from .sec_answers import MISSING_HEADERS, MISSING_OBJECT, REFUSED_HEADERS, REFUSED_PAGE
+from .sec_answers import (GATEWAY_HEADERS, GATEWAY_PAGE, MISSING_HEADERS, MISSING_OBJECT, REFUSED_HEADERS,
+                          REFUSED_PAGE)
 
 SPINE_TICKERS = ("MSFT", "BF-A", "BF-B", "BRK-B", "AAPL", "GME")
 # The issuers' real SEC CIKs (BF-A and BF-B share one, as do a company's share classes) and CUSIPs.
@@ -478,6 +479,11 @@ class Edgar:
     rows; a day in ``missing``, a weekend and a federal holiday have no index object at all and answer the
     bucket's 403. ``refuse`` makes every answer the SEC's own 403 instead (the undeclared-tool page), which is the
     answer a walk must stop on, and ``refuse_days`` does the same for one day's index alone.
+
+    ``failing`` (``{accession: status}``) and ``index_failing`` (``{YYYYMMDD: status}``) answer a gateway failure,
+    as EDGAR's edge did on 19 Nov 2026 (#1123): 502 and 504 for one document of cik 102909. ``clears_after``
+    (``{accession: n}``) answers that failure for the first ``n`` requests and hands the filing over after them,
+    which is what tells a ladder long enough for an edge failure from one that gives up too early.
     """
 
     def __init__(self):
@@ -486,6 +492,10 @@ class Edgar:
         self.missing: set[str] = set()
         self.not_found: set[str] = set()
         self.refuse_days: set[str] = set()
+        self.failing: dict[str, int] = {}
+        self.index_failing: dict[str, int] = {}
+        self.clears_after: dict[str, int] = {}
+        self.asked: dict[str, int] = {}
         self.refuse = False
 
     def _answer(self, body):
@@ -500,6 +510,8 @@ class Edgar:
         day = date(int(ymd[:4]), int(ymd[4:6]), int(ymd[6:]))
         if ymd in self.refuse_days:
             return 403, REFUSED_PAGE, dict(REFUSED_HEADERS)
+        if ymd in self.index_failing:
+            return self.index_failing[ymd], GATEWAY_PAGE, dict(GATEWAY_HEADERS)
         if ymd in self.missing:
             return self._answer(None)
         body = self.indexes.get(ymd)
@@ -511,6 +523,9 @@ class Edgar:
         acc = str(request.url).rsplit("/", 1)[1][:-len(".txt")]
         if self.refuse:
             return self._answer(None)
+        self.asked[acc] = self.asked.get(acc, 0) + 1
+        if acc in self.failing and self.asked[acc] <= self.clears_after.get(acc, 10 ** 6):
+            return self.failing[acc], GATEWAY_PAGE, dict(GATEWAY_HEADERS)
         if acc in self.not_found:
             # A plain 404: the daily index listed a filing EDGAR does not hold, which it does (#505).
             return 404, b"<?xml version='1.0'?><Error><Code>NoSuchKey</Code></Error>", {}
