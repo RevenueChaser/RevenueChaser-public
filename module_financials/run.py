@@ -184,6 +184,18 @@ def run(ticker: str, modules: list[str] | tuple[str, ...] = ("dcf",),
         # A store-only render read the statements and the payload the last Fetch stored in the old store
         # (``vendor_financials``, ``ticker_payload_cache``); they went with it (#860), so there is nothing to render.
         raise _NoCachedData(ticker)
+    # The board renders ``provider_health_html`` (reporting/html_builder), so this run counts its own Yahoo
+    # reads (#299): a failed statement or peer read raises the amber banner instead of passing for a complete
+    # board. Its own scope, not ``reset_health()``, because the client's counter is shared with every other
+    # board and the dashboard runs two job workers. SEC EDGAR is not in the banner: since G6 the statements
+    # come from the fundamentals serving layer (``_sec_statements``), which makes no request.
+    with yfinance_client.health_scope() as provider_health:
+        return _run(ticker, modules, output, assumptions, peers, report_path, provider_health)
+
+
+def _run(ticker: str, modules, output: str, assumptions: dict | None, peers: list[str] | None,
+         report_path: Path | str | None, provider_health) -> dict:
+    """``run``'s body, inside its provider-health scope."""
     financials = yfinance_client.get_financials(ticker)
     financials.setdefault("_fetched_at_iso", datetime.now(timezone.utc).isoformat(timespec="seconds"))
     financials.setdefault("fetched_at_iso", financials["_fetched_at_iso"])
@@ -226,7 +238,8 @@ def run(ticker: str, modules: list[str] | tuple[str, ...] = ("dcf",),
 
     # Quick Remarks — her zaman üstte (ticker_scores'dan beslenir, yfinance fallback). FIN-5: it is handed the
     # payload this run already has, so it scores from it instead of fetching the same financials a second time.
-    results["quick_remarks"] = quick_remarks_engine.run_quick_remarks(ticker, no_fetch=no_fetch,
+    # ``no_fetch=False``: a store-only render never reaches here (it raised ``_NoCachedData`` above).
+    results["quick_remarks"] = quick_remarks_engine.run_quick_remarks(ticker, no_fetch=False,
                                                                      financials=financials)
 
     financials["sector"] = sector
@@ -276,6 +289,9 @@ def run(ticker: str, modules: list[str] | tuple[str, ...] = ("dcf",),
                 if msg not in seen:
                     seen.add(msg)
                     warnings.append(msg)
+
+    # The banner the board already renders (#299); zeros render nothing, so a clean run looks unchanged.
+    results["provider_health"] = provider_health.health()
 
     paths: dict = {}
     if output in ("html", "both"):
