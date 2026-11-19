@@ -121,3 +121,30 @@ def test_a_reader_leaves_a_run_another_host_started_alone():
     ops.put_rows("job_runs2", [{**run, "host": "some-other-host"}])
     assert ops.fail_dead_requests() == (0, 0)
     assert _request(rid)["status"] == "running"
+
+
+# #815: the same reclaim, worded from the kernel's own log when that is what killed the builder.
+
+def test_a_request_the_kernel_oom_killed_says_so_instead_of_pid_gone(monkeypatch):
+    from RevenueChaser.core import oom
+    dead = _dead_pid()
+    monkeypatch.setenv(oom.ENV, "1")
+    monkeypatch.setattr(oom, "_journal",
+                        lambda since: f"Out of memory: Killed process {dead} (python3) total-vm:41288104kB")
+    rid = _taken_and_started("market_series", "oom-run", dead)
+    assert ops.fail_dead_requests() == (1, 1)
+    req = _request(rid)
+    assert req["note"].startswith(f"lost: pid {dead} {oom.NOTE}"), req["note"]
+    assert ops.latest_check("market_series")["note"].startswith(f"lost: pid {dead} {oom.NOTE}")
+    [run] = [r for r in ops.rows("job_runs2") if r["run_id"] == "oom-run"]
+    assert f"lost: pid {dead} {oom.NOTE}" in run["error"]
+
+
+def test_a_run_the_kernel_did_not_kill_keeps_the_note_it_had(monkeypatch):
+    from RevenueChaser.core import oom
+    dead = _dead_pid()
+    monkeypatch.setenv(oom.ENV, "1")
+    monkeypatch.setattr(oom, "_journal", lambda since: "Out of memory: Killed process 999999 (someone-else)")
+    rid = _taken_and_started("market_series", "sigkill-run", dead)
+    assert ops.fail_dead_requests() == (1, 1)
+    assert _request(rid)["note"].startswith(f"lost: pid {dead} gone")

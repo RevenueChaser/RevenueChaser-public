@@ -463,7 +463,8 @@ def fail_orphans(*, dead_pids_only: bool = False) -> tuple[int, int]:
     ``job_runs2`` row of the same dataset that started first at or after the request was taken). A request or run
     whose builder is still alive is left alone; any other becomes ``failed`` with the note ``lost: pid <n> gone``
     (``lost: pid unknown`` when the builder died before its run row), and each reclaimed request gets a ``failed``
-    ``dataset_check`` row with that note, so the dataset's card shows the lost run.
+    ``dataset_check`` row with that note, so the dataset's card shows the lost run. When the kernel's own log says
+    it killed that pid for memory, the note says so instead (``core/oom.py``, #815).
 
     ``dead_pids_only`` (#602, ``fail_dead_requests``): a caller that is not the builder and holds no build lock.
     Only a run whose own pid names no process counts as dead, and a request with no run row yet is left alone.
@@ -482,7 +483,7 @@ def fail_orphans(*, dead_pids_only: bool = False) -> tuple[int, int]:
                         and (r["started_at"] or 0) >= (req["started_at"] or 0)), None)
             if (run is None and dead_pids_only) or (run is not None and alive[run["run_id"]]):
                 continue
-            note = (f"lost: pid {run['pid']} gone" if run is not None else "lost: pid unknown (no run row)")
+            note = (_lost(run) if run is not None else "lost: pid unknown (no run row)")
             note += f" ({tail})"
             con.execute("UPDATE build_requests SET status = 'failed', ended_at = ?, note = ? WHERE id = ?",
                         (now, note, req["id"]))
@@ -495,9 +496,22 @@ def fail_orphans(*, dead_pids_only: bool = False) -> tuple[int, int]:
             if alive[run["run_id"]]:
                 continue
             con.execute("UPDATE job_runs2 SET status = 'failed', finished_at = ?, error = ? WHERE run_id = ?",
-                        (now, f"lost: pid {run['pid']} gone ({tail})", run["run_id"]))
+                        (now, f"{_lost(run)} ({tail})", run["run_id"]))
             n_runs += 1
     return n_reqs, n_runs
+
+
+def _lost(run: dict) -> str:
+    """How a run whose process is gone is worded: the kernel's own log is asked whether it killed it for memory
+    (#815), because ``lost: pid <n> gone`` reads like a mystery crash and the next pass repeats the same work."""
+    import socket
+
+    from ..core import oom
+    host = run.get("host")
+    same_host = not host or host == socket.gethostname()
+    if same_host and oom.killed(run.get("pid"), since=run.get("started_at")):
+        return f"lost: pid {run['pid']} {oom.NOTE}"
+    return f"lost: pid {run['pid']} gone"
 
 
 def _orphan_tail(me: int, dead_pids_only: bool) -> str:
