@@ -141,7 +141,7 @@ def test_the_board_shows_the_check_and_one_card_for_a_print_two_accounts_tweeted
     monkeypatch.setattr(report.time, "time", lambda: TWEET + 3600)
     polled = {r["headline_id"]: r for r in report.api_rows(0)}
     assert "x:2120251362529410000" not in polled
-    assert polled["x:2120251362529419593"]["option"].startswith("UW teyidi:")
+    assert polled["x:2120251362529419593"]["option"].startswith("UW confirmed:")
     assert polled["x:2120251362529419593"]["tickers"] == ["SPY 759C 20.11"]
 
 

@@ -104,7 +104,7 @@ def test_the_highlight_is_the_most_important_live_event_earliest_on_a_tie():
     hl = rawstore.query("SELECT * FROM news_highlight", db="news")
     assert len(hl) == 1 and hl[0]["session_date"] == date(2026, 11, 10)
     assert hl[0]["event"] == "CPI, M/M%" and hl[0]["text_source"] == "template"
-    assert "beklenti %0,2" in hl[0]["text"]
+    assert "forecast 0.2%" in hl[0]["text"]
 
 
 def test_a_retired_event_is_never_the_highlight():

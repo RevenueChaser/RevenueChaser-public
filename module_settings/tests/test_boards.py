@@ -225,7 +225,7 @@ def test_leaps_and_earnings_name_the_stock_watch_list_in_ops_not_the_store_table
     assert "watchlist" not in leaps["tables"] and "watchlist" not in er["tables"]
     assert leaps["ops_tables"] == ["watchlist_stock"] and er["ops_tables"] == ["watchlist_stock"]
     assert boards._card(leaps)["ops_tables"] == ["watchlist_stock"]
-    assert _entry("module_welcome")["ops_tables"] == ["watchlist_stock"]     # the "listemde" marks on its earnings
+    assert _entry("module_welcome")["ops_tables"] == ["watchlist_stock"]     # the "on my list" marks on its earnings
     assert all(e.get("ops_tables", []) == [] for e in boards.BOARD_INPUTS
                if e["key"] not in ("module_leaps", "module_earnings_radar", "module_welcome"))
 

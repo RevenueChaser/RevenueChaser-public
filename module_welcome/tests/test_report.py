@@ -86,7 +86,7 @@ def test_a_change_that_rounds_to_zero_reads_flat():
         {"series": "US10Y", "session_date": date(2026, 11, 9), "close": 4.05, "prev_close": 4.052, "change": -0.002,
          "change_pct": -0.0005, "spark": "[4.052, 4.05]", "run_id": "t", "run_at": NOW}])
     page = report.render_html(now=NOW, watchlist=set(), labels={})
-    assert "-0,00" not in page and "• 0,00" in page
+    assert "-0.00" not in page and "• 0.00" in page
 
 
 def test_the_headlines_card_shows_the_three_newest_and_polls():

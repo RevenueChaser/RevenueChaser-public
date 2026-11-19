@@ -25,7 +25,7 @@ def test_refresh_renders_from_the_board_file_without_building(monkeypatch, tmp_p
     from RevenueChaser.module_news import calendar
     monkeypatch.setattr(calendar, "build", lambda **kw: built.append(kw))
     r = _client().get("/view/module_news", query_string={"refresh": "1"})
-    assert r.status_code == 200 and "ABD · Ekonomik takvim" in r.get_data(as_text=True)
+    assert r.status_code == 200 and "US · Economic calendar" in r.get_data(as_text=True)
     assert built == []                                   # a Refresh never writes the store
 
 
