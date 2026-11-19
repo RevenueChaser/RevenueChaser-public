@@ -254,7 +254,7 @@ def test_the_board_shows_tweets_in_their_own_x_lane_with_kind_and_option(monkeyp
     x_lane = page.index('id="heads-x"')
     assert "X · son 24 saat" in page and x_lane < page.index("$NN NextNav")
     assert page.index('id="heads-market"') < page.index('id="heads-stocks"') < x_lane
-    assert '<span class="xk">opsiyon</span>' in page and "SPY 759C 11/20exp $1.8M yön belirsiz" in page
+    assert '<span class="xk">option</span>' in page and "SPY 759C 11/20exp $1.8M yön belirsiz" in page
     assert 'href="https://x.com/zohmbastic/status/2120263144924692750"' in page
     monkeypatch.setattr(report.time, "time", lambda: NOW + 60)          # api_rows' 24 h window is the clock's
     polled = {r["headline_id"]: r for r in report.api_rows(0)}

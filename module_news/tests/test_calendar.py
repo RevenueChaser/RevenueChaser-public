@@ -118,10 +118,10 @@ def test_a_retired_event_is_never_the_highlight():
 
 
 @pytest.mark.parametrize("event, kind, prev, fc, want", [
-    ("Core CPI, M/M%", "report", "0.3%", "0.2%", "Gıda ve enerji hariç"),
-    ("Fed Governor Waller speaks", "fed-speaker", None, None, "Fed yetkilisinin"),
-    ("Baker Hughes rig count", "report", None, None, "öne çıkan verisi."),
-    ("PPI, M/M%", "report", "0.1%", None, "beklenti yayımlanmadı"),
+    ("Core CPI, M/M%", "report", "0.3%", "0.2%", "excluding food and energy"),
+    ("Fed Governor Waller speaks", "fed-speaker", None, None, "A speech by a Fed official"),
+    ("Baker Hughes rig count", "report", None, None, "highlight on the US economic calendar."),
+    ("PPI, M/M%", "report", "0.1%", None, "no forecast published"),
 ])
 def test_explain_template(event, kind, prev, fc, want):
     assert want in cal.explain({"event": event, "type": kind, "prev": prev, "forecast": fc})

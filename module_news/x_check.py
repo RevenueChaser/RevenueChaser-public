@@ -226,16 +226,16 @@ def run(make_uw, now: float | None = None) -> dict:
 
 
 def _int(n: float) -> str:
-    return f"{int(round(n)):,}".replace(",", ".")
+    return f"{int(round(n)):,}"
 
 
 def money(v: float) -> str:
-    """``$1,82M`` / ``$450 bin`` / ``$900``, Turkish decimals."""
+    """``$1.82M`` / ``$450k`` / ``$900``."""
     v = float(v or 0)
     if v >= 1e6:
-        return f"${v / 1e6:.2f}M".replace(".", ",")
+        return f"${v / 1e6:.2f}M"
     if v >= 1e3:
-        return f"${v / 1e3:.0f} bin"
+        return f"${v / 1e3:.0f}k"
     return f"${v:.0f}"
 
 
@@ -244,26 +244,27 @@ def _hm(ts: float) -> str:
 
 
 def facts(state: dict | None) -> str:
-    """The one Turkish line the board shows under an option tweet, or "" when there is nothing to say."""
+    """The one line the board shows under an option tweet, or "" when there is nothing to say."""
     s = state or {}
     status = s.get("status")
     if status == "seen":
         side = max(("ask", "bid", "mid"), key=lambda k: s.get(k) or 0)
         share = round(100 * (s.get(side) or 0) / max(1, s.get("contracts") or 0))
-        word = {"ask": "ask (alım)", "bid": "bid (satım)", "mid": "orta"}[side]
+        word = {"ask": "ask (buy)", "bid": "bid (sell)", "mid": "mid"}[side]
         when = _hm(s["first"]) if s["first"] == s["last"] else f"{_hm(s['first'])}–{_hm(s['last'])}"
-        line = (f"UW teyidi: {s['trades']} işlem · {_int(s['contracts'])} kontrat · {money(s['premium'])} · "
-                f"%{share} {word} · {when}")
+        line = (f"UW confirmed: {s['trades']} trades · {_int(s['contracts'])} contracts · "
+                f"{money(s['premium'])} · {share}% {word} · {when}")
         if s.get("oi_change") is not None:
             oi = s["oi_change"]
-            line += f" · ertesi gün OI {'+' if oi >= 0 else '−'}{_int(abs(oi))} ({'açılış' if oi > 0 else 'kapanış'})"
+            line += (f" · next-day OI {'+' if oi >= 0 else '−'}{_int(abs(oi))} "
+                     f"({'opening' if oi > 0 else 'closing'})")
         return line
     if status == "not_seen":
-        return f"UW'de tweet saatinde bu kontratta {money(MIN_PREMIUM)} üstü işlem yok"
+        return f"No trade over {money(MIN_PREMIUM)} in UW on this contract at the time of the tweet"
     if status == "pending":
-        return "UW teyidi bekliyor"
+        return "Waiting for the UW check"
     if status == "failed":
-        return "UW teyidi alınamadı"
+        return "Could not get the UW check"
     return ""
 
 
@@ -303,8 +304,8 @@ def chart_svg(state: dict | None, published_at: float) -> str:
 
     bars = []
     for at, size, prem, side in sorted(pts, key=lambda p: p[2]):          # big prints drawn last, on top
-        tip = f"{_hm(at)} · {_int(size)} kontrat · {money(prem)} · " + {"ask": "ask (alım)", "bid": "bid (satım)",
-                                                                       "mid": "orta"}[side]
+        tip = f"{_hm(at)} · {_int(size)} contracts · {money(prem)} · " + {"ask": "ask (buy)", "bid": "bid (sell)",
+                                                                          "mid": "mid"}[side]
         if side == "mid":
             bars.append(f'<rect class="pm" x="{x(at) - 1.5}" y="{mid - 4}" width="3" height="8" rx="1.5">'
                         f'<title>{tip}</title></rect>')
@@ -316,23 +317,25 @@ def chart_svg(state: dict | None, published_at: float) -> str:
     tx = x(published_at)
     grid, labels = _yaxis([(3.0, money(top)), (mid, "0"), (h - 3, money(top))], w)
     return (f'<figure class="xc"><div class="plot"><svg viewBox="0 0 {w:.0f} {h:.0f}" preserveAspectRatio="none" '
-            f'role="img" aria-label="Kontratın işlemleri: üstte alım, altta satım, kesik çizgi tweet anı">{grid}'
+            f'role="img" aria-label="The contract\'s trades: buys above, sells below, the dashed line the '
+            f'tweet moment">{grid}'
             f'<line class="xb" x1="0" y1="{mid}" x2="{w:.0f}" y2="{mid}"/>'
             f'<line class="xt" x1="{tx}" y1="0" x2="{tx}" y2="{h:.0f}"/>{"".join(bars)}</svg>{labels}</div>'
-            f'<figcaption><span>{_hm(lo)}</span><span class="lg"><i class="pa"></i>alım <i class="pb"></i>satım '
+            f'<figcaption><span>{_hm(lo)}</span><span class="lg"><i class="pa"></i>buy <i class="pb"></i>sell '
             f'<i class="xt"></i>tweet</span><span>{_hm(hi)}</span></figcaption></figure>')
 
 
 #: The row's verification pill: (class, icon, label, hover text). Icon and word carry it, never the color alone.
 _BADGES = {
-    "seen": ("ok", "✓", "UW teyitli", "Unusual Whales'ta tweet saatinde bu kontratta işlem var"),
-    "not_seen": ("no", "✗", "UW'de yok", f"Unusual Whales'ta tweet saatinde bu kontratta {money(MIN_PREMIUM)} üstü "
-                                          "işlem yok"),
-    "pending": ("wait", "◷", "UW bekliyor", "Unusual Whales henüz sorulmadı"),
-    "failed": ("warn", "!", "UW alınamadı", "Unusual Whales üç denemede cevap vermedi"),
-    "no_contract": ("wait", "–", "kontrat okunamadı", "Tweet'te vade ve strike birlikte yok; UW'de aranamadı"),
+    "seen": ("ok", "✓", "UW confirmed", "Unusual Whales has a trade on this contract at the time of the tweet"),
+    "not_seen": ("no", "✗", "not in UW", f"No trade over {money(MIN_PREMIUM)} in Unusual Whales on this contract "
+                                         "at the time of the tweet"),
+    "pending": ("wait", "◷", "UW waiting", "Unusual Whales has not been asked yet"),
+    "failed": ("warn", "!", "UW failed", "Unusual Whales did not answer in three tries"),
+    "no_contract": ("wait", "–", "contract unreadable", "The tweet has no expiry and strike together; it could not "
+                                                        "be looked up in UW"),
 }
-_X_ID = ("id", "✓", "X kimliği", "Tweet'in X kimliğindeki zaman, mailin saatiyle eşleşti")
+_X_ID = ("id", "✓", "X id", "The time in the tweet's X id matched the time of the mail")
 
 
 def badge(state: dict | None) -> tuple[str, str, str, str]:
@@ -341,7 +344,7 @@ def badge(state: dict | None) -> tuple[str, str, str, str]:
 
 
 def _price(v: float) -> str:
-    return f"{v:,.2f}".replace(",", " ").replace(".", ",").replace(" ", ".")
+    return f"{v:,.2f}"
 
 
 def price_at(px: list, at: float) -> float | None:
@@ -355,15 +358,15 @@ def price_at(px: list, at: float) -> float | None:
 
 
 def price_move(state: dict | None, at: float) -> str:
-    """``fiyat 712,40 → 714,10 (+0,24%)``: at the tweet and the session's last bar, or "" without bars."""
+    """``price 712.40 → 714.10 (+0.24%)``: at the tweet and the session's last bar, or "" without bars."""
     px = (state or {}).get("px") or []
     then = price_at(px, at)
     if not px or then is None or px[-1][0] <= at:
-        return f"fiyat {_price(then)}" if then else ""
+        return f"price {_price(then)}" if then else ""
     last = px[-1][1]
     pct = (last / then - 1) * 100
     sign = "+" if pct >= 0 else "−"
-    return (f"fiyat {_price(then)} → {_price(last)} ({sign}" + f"{abs(pct):.2f}".replace(".", ",") + "%)")
+    return f"price {_price(then)} → {_price(last)} ({sign}{abs(pct):.2f}%)"
 
 
 def price_svg(px: list, marks: list[tuple[float, str]]) -> str:
@@ -403,7 +406,7 @@ def price_svg(px: list, marks: list[tuple[float, str]]) -> str:
     trend = "up" if last >= first else "down"
     grid, labels = _yaxis([(y(v), _price(v)) for v in (pmax, (pmax + pmin) / 2, pmin)], w)
     return (f'<figure class="xp"><div class="plot"><svg viewBox="0 0 {w:.0f} {h:.0f}" preserveAspectRatio="none" '
-            f'role="img" aria-label="Seansın 5 dakikalık fiyatı, noktalar tweet anları">{grid}'
+            f'role="img" aria-label="The session\'s 5-minute price, the dots the tweet moments">{grid}'
             f'<polyline class="ln {trend}" points="{line}"/>{hits}</svg>{"".join(dots)}{labels}</div>'
             f'<figcaption><span>{_hm(lo)}</span>'
             f'<span class="lg"><i class="tw"></i>tweet</span><span>{_hm(hi)}</span></figcaption></figure>')

@@ -67,8 +67,8 @@ def test_prints_around_the_tweet_give_size_premium_and_side():
     assert s["premium"] == 5000 * 180 + 1000 * 170 + 200 * 175
     assert (s["first"], s["last"]) == (TWEET - 120, TWEET - 30)
     line = x_check.facts({**s, "status": "seen", "oi_change": 4100})
-    assert line.startswith("UW teyidi: 3 işlem · 6.200 kontrat · $1,10M · %81 ask (alım) · 21:22–21:24")
-    assert line.endswith("ertesi gün OI +4.100 (açılış)")
+    assert line.startswith("UW confirmed: 3 trades · 6,200 contracts · $1.10M · 81% ask (buy) · 21:22–21:24")
+    assert line.endswith("next-day OI +4,100 (opening)")
 
 
 def test_open_interest_change_is_the_next_day_less_the_session():
@@ -123,7 +123,7 @@ def test_a_failing_uw_is_asked_again_then_given_up():
         x_check.run(lambda: uw, now=TWEET + 600)
     assert _state()["status"] == "failed" and sum(c[0] == "flow" for c in uw.calls) == x_check.MAX_TRIES
     assert _state()["px_tries"] == x_check.MAX_TRIES and x_check.run(lambda: pytest_fail(), now=TWEET + 900)["calls"] == 0
-    assert x_check.facts(_state()) == "UW teyidi alınamadı"
+    assert x_check.facts(_state()) == "Could not get the UW check"
 
 
 def test_the_board_shows_the_check_and_one_card_for_a_print_two_accounts_tweeted(monkeypatch):
@@ -135,7 +135,7 @@ def test_the_board_shows_the_check_and_one_card_for_a_print_two_accounts_tweeted
            x_check=json.dumps(seen))
     _store(headline_id="x:2120251362529410000", kind="other", headline="gm everyone", option="")
     page = report.render_html(now=TWEET + 3600)
-    assert page.count('class="xo ok"') == 1 and "UW teyidi: 3 işlem · 6.200 kontrat" in page
+    assert page.count('class="xo ok"') == 1 and "UW confirmed: 3 trades · 6,200 contracts" in page
     assert "@CheddarFlow, @kiantrades" in page and '<span class="tk">SPY 759C 20.11</span>' in page
     assert "gm everyone" not in page
     monkeypatch.setattr(report.time, "time", lambda: TWEET + 3600)
@@ -159,14 +159,14 @@ def test_every_x_card_has_a_badge_and_each_ticker_a_group_with_its_price_line():
     page = report.render_html(now=TWEET + 3600)
     assert page.count('class="xg"') == 2 and page.index('data-grp="SPY"') < page.index('data-grp="EL"')
     assert page.count('<figure class="xp">') == 1 and page.count('<i class="tw" style=') == 2   # both SPY tweets
-    assert "UW teyitli" in page and "UW&#x27;de yok" in page and "X kimliği" in page
+    assert "UW confirmed" in page and "not in UW" in page and "X id" in page
     assert all(f'class="ya" style="top:{t}px">{v}<' in page for t, v in (("8.0", "725,00"), ("48.0", "717,50"),
                                                                            ("88.0", "710,00")))   # price y axis
     assert '<span class="ya" style="top:3.0px">$900 bin</span>' in page                         # prints y axis
     assert '<div id="pg-x" role="tabpanel" hidden>' in page and 'aria-controls="pg-x"' in page   # own page tab
     assert page.count('<details class="xd"><summary>') == 2                     # both charts closed until clicked
-    assert "1/1 UW teyitli" in page and "fiyat 722,00 → 725,00 (+0,42%)" in page
-    assert x_check.badge(None)[2] == "X kimliği" and x_check.badge({"status": "pending"})[1] == "◷"
+    assert "1/1 UW confirmed" in page and "price 722.00 → 725.00 (+0.42%)" in page
+    assert x_check.badge(None)[2] == "X id" and x_check.badge({"status": "pending"})[1] == "◷"
 
 
 def test_a_pass_never_asks_uw_more_than_the_cap():
@@ -182,4 +182,4 @@ def test_a_pass_never_asks_uw_more_than_the_cap():
 
 def test_the_pages_updated_time_is_its_newest_write():
     _store(run_at=TWEET + 1800, kind="news", option="")
-    assert "Veri 21:54'de güncellendi" in report.render_html(now=TWEET + 3600)    # no calendar run: the headline's
+    assert "Data updated at 21:54" in report.render_html(now=TWEET + 3600)    # no calendar run: the headline's

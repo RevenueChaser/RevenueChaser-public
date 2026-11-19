@@ -13,7 +13,7 @@ or two providers is one row whose ``tickers`` lists every name. A gateway that i
 and says why; a name it does not know is skipped.
 
 ``load_tape`` (#673) loads the market-wide headlines the listener (``module_news/tape.py``) appended since the last
-load: same ids, ``tickers`` empty (the page's "Piyasa" lane). A story also met under a name keeps that name.
+load: same ids, ``tickers`` empty (the page's "Market" lane). A story also met under a name keeps that name.
 
 ``load_x`` loads the Grok "X saatlik özet" mails the fetcher (``module_news/x_feed.py``) saved since the last load:
 one row per tweet, ``provider`` ``grok-x`` (the page's "X" lane), with the tweet's ``kind`` and ``option``.

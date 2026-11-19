@@ -9,9 +9,9 @@ the Northstar report makes concrete, using the current snapshot's actual signs
 - Charm  : sign of net charm -> mechanical buy/sell pressure toward expiry.
 - Vomma  : second-order vega-vs-IV sensitivity (always framed as a caveat).
 
-Each greek yields an EN headline (dashboard main language) plus a TR
-explanation block rendered below the dashboard. The engine only reports what
-the data says; unavailable values degrade to "unknown".
+Each greek yields a headline and an explanation, both in English (the board is
+English; avo, 19 Nov 2026). The engine only reports what the data says;
+unavailable values degrade to "unknown".
 """
 from __future__ import annotations
 
@@ -77,11 +77,6 @@ def greek_relations(snapshot: dict) -> list[dict]:
             f"({flip_pct:+.1f}%). Dealers trade AGAINST the move: they sell rallies "
             "and buy dips, which damps volatility."
         )
-        gamma_effect_tr = (
-            f"Fiyat {spot:,.0f}, gamma flip'in ({flip:,.0f}, {flip_pct:+.1f}%) ÜZERİNDE. "
-            "Piyasa yapıcılar hareketin TERSİNE işlem yapar: rallide satar, düşüşte alır; "
-            "bu yüzden hareket söndürülür, gün içi salınım daralır."
-        )
     elif state == "short":
         gamma_head = "Negative gamma — amplifying regime"
         gamma_effect_en = (
@@ -89,27 +84,18 @@ def greek_relations(snapshot: dict) -> list[dict]:
             f"({flip_pct:+.1f}%). Dealers trade WITH the move: they sell into weakness "
             "and buy into strength, which accelerates moves."
         )
-        gamma_effect_tr = (
-            f"Fiyat {spot:,.0f}, gamma flip'in ({flip:,.0f}, {flip_pct:+.1f}%) ALTINDA. "
-            "Piyasa yapıcılar hareketle AYNI YÖNDE işlem yapar: düşerken satar, çıkarken alır; "
-            "bu yüzden hareket hızlanır, kırılımlar uzar."
-        )
     elif state == "at_flip":
         gamma_head = "Gamma — spot is at the flip"
         gamma_effect_en = (f"Spot {spot:,.0f} sits on the gamma flip {flip:,.0f}: dealer hedging "
                            "changes sign here, so neither damping nor amplifying dominates.")
-        gamma_effect_tr = (f"Fiyat {spot:,.0f}, gamma flip'in ({flip:,.0f}) tam üzerinde: "
-                           "piyasa yapıcı hedge'i burada yön değiştirir, ne söndürme ne hızlandırma baskın.")
     else:
         gamma_head = "Gamma — regime unknown"
         gamma_effect_en = "Insufficient data to determine the gamma regime."
-        gamma_effect_tr = "Gamma rejimini belirlemek için yeterli veri yok."
     cards.append({
         "greek": "Gamma",
         "symbol": "Γ",
         "headline": gamma_head,
         "english": gamma_effect_en,
-        "turkish": gamma_effect_tr,
         "row": [("Net dealer Γ", _fmt_usd(snapshot.get("net_gamma_total")),
                  {"long": "Long", "short": "Short"}.get(state, "N/A"))],
     })
@@ -118,17 +104,12 @@ def greek_relations(snapshot: dict) -> list[dict]:
     if net_v is None:
         vanna_head = "Vanna — unknown"
         vanna_en = "No net vanna data available."
-        vanna_tr = "Net vanna verisi yok."
         vanna_row = ("Net Vanna", "N/A", "N/A")
     elif net_v < 0:
         vanna_head = "Short vanna — IV spikes cushion downside"
         vanna_en = (
             f"Net vanna is {_fmt_usd(net_v)}. If IV jumps, dealer delta FALLS, so "
             "dealers BUY stock to re-hedge — an IV spike puts a cushion under the move."
-        )
-        vanna_tr = (
-            f"Net vanna {_fmt_usd(net_v)} (negatif). IV sıçrarsa dealer delta'sı DÜŞER ve "
-            "dealer dengelemek için STOK ALIR — yani vol sıçraması düşüşü YASTIKLAR."
         )
         vanna_row = ("Net Vanna", _fmt_usd(net_v), "Short")
     else:
@@ -137,17 +118,12 @@ def greek_relations(snapshot: dict) -> list[dict]:
             f"Net vanna is {_fmt_usd(net_v)}. If IV jumps, dealer delta RISES, so "
             "dealers SELL stock to re-hedge — an IV spike adds fuel to the downside."
         )
-        vanna_tr = (
-            f"Net vanna {_fmt_usd(net_v)} (pozitif). IV sıçrarsa dealer delta'sı YÜKSELİR ve "
-            "dealer dengelemek için STOK SATAR — vol sıçraması aşağı baskıyı büyütür."
-        )
         vanna_row = ("Net Vanna", _fmt_usd(net_v), "Long")
     cards.append({
         "greek": "Vanna",
         "symbol": "Vanna",
         "headline": vanna_head,
         "english": vanna_en,
-        "turkish": vanna_tr,
         "row": [vanna_row],
     })
 
@@ -155,7 +131,6 @@ def greek_relations(snapshot: dict) -> list[dict]:
     if net_c is None:
         charm_head = "Charm — unknown"
         charm_en = "No net charm data available."
-        charm_tr = "Net charm verisi yok."
         charm_row = ("Net Charm", "N/A", "N/A")
     elif net_c > 0:
         charm_head = "Positive charm — mechanical buying into the close"
@@ -163,25 +138,16 @@ def greek_relations(snapshot: dict) -> list[dict]:
             f"Net charm is {_fmt_usd(net_c)}. As expiry approaches, dealer delta decays; "
             "dealers mechanically BUY back toward the close (pin-side pressure)."
         )
-        charm_tr = (
-            f"Net charm {_fmt_usd(net_c)} (pozitif). Vade yaklaştıkça dealer delta'sı erir; "
-            "dealer kapanışa doğru mekanik ALIŞ yapar (pin yönlü baskı)."
-        )
         charm_row = ("Net Charm", _fmt_usd(net_c), charm_direction(net_c))
     elif net_c == 0:
         charm_head = "Flat charm — no mechanical pressure into the close"
         charm_en = "Net charm sums to zero: time decay leaves dealer delta unchanged, so it forces no hedge either way."
-        charm_tr = "Net charm sıfır: zaman erimesi dealer delta'sını değiştirmiyor, mekanik alış ya da satış yok."
         charm_row = ("Net Charm", _fmt_usd(net_c), charm_direction(net_c))
     else:
         charm_head = "Negative charm — mechanical selling into the close"
         charm_en = (
             f"Net charm is {_fmt_usd(net_c)}. As expiry approaches, dealer delta builds; "
             "dealers mechanically SELL toward the close."
-        )
-        charm_tr = (
-            f"Net charm {_fmt_usd(net_c)} (negatif). Vade yaklaştıkça dealer delta'sı birikir; "
-            "dealer kapanışa doğru mekanik SATIŞ yapar."
         )
         charm_row = ("Net Charm", _fmt_usd(net_c), charm_direction(net_c))
     if net_c is not None:
@@ -192,7 +158,6 @@ def greek_relations(snapshot: dict) -> list[dict]:
         "symbol": "Charm",
         "headline": charm_head,
         "english": charm_en,
-        "turkish": charm_tr,
         "row": [
             charm_row,
             (cq.get("label", "Charm Peak"), f"${cq.get('strike'):,.0f}" if cq.get("strike") else "N/A",
@@ -204,17 +169,14 @@ def greek_relations(snapshot: dict) -> list[dict]:
     if net_delta is None:
         dex_head = "Net Delta — unknown"
         dex_en = "No net delta data available."
-        dex_tr = "Net delta verisi yok."
     else:
         dex_head = "Net delta " + ("bullish lean" if net_delta > 0 else "bearish lean")
         dex_en = f"Net dealer delta is {_fmt_usd(net_delta)} — a {'bullish' if net_delta > 0 else 'bearish'} structural lean."
-        dex_tr = f"Net dealer delta {_fmt_usd(net_delta)} — {'yukarı' if net_delta > 0 else 'aşağı'} yönlü yapısal eğilim."
     cards.append({
         "greek": "Delta",
         "symbol": "Δ",
         "headline": dex_head,
         "english": dex_en,
-        "turkish": dex_tr,
         "row": [("Net DEX", _fmt_usd(net_delta), "All strikes")],
     })
 
@@ -231,7 +193,7 @@ def greek_relations(snapshot: dict) -> list[dict]:
                   if v3m is not None else f"VIX {v_spot:.2f}; term structure {mode or 'n/a'}. ")
         vol_en += ("A rising front-month VIX with negative vanna makes dealers sell into the drop."
                    if stress else "A calm curve leaves vanna a slow tailwind; a jump with backwardation would flip it.")
-    cards.append({"greek": "Vol / VIX", "symbol": "VIX", "headline": vol_head, "english": vol_en, "turkish": "",
+    cards.append({"greek": "Vol / VIX", "symbol": "VIX", "headline": vol_head, "english": vol_en,
                   "row": [("VIX", f"{v_spot:.2f}" if v_spot is not None else "N/A", mode or "")]})
 
     # ── Flow (A9: the reports' sixth relation) ──
@@ -242,7 +204,7 @@ def greek_relations(snapshot: dict) -> list[dict]:
         flow_head = f"Flow — {vf.get('verdict') or 'no vega-flow reading'}"
         flow_en = ("Directional vega flow tells who paid for volatility today; it confirms the vanna reading only "
                    "when the side holds without the largest minute.")
-    cards.append({"greek": "Flow", "symbol": "Flow", "headline": flow_head, "english": flow_en, "turkish": "",
+    cards.append({"greek": "Flow", "symbol": "Flow", "headline": flow_head, "english": flow_en,
                   "row": [("Dir. vega flow", _fmt_usd(vf.get("dir_vega_flow")).replace("$", ""), vf.get("side") or "")]})
 
     # ── Vomma (2nd order) ──
@@ -254,11 +216,6 @@ def greek_relations(snapshot: dict) -> list[dict]:
             "Vomma measures how vega itself changes as IV moves. When vega is large and "
             "Vomma is positive, an IV spike makes the book's vol exposure grow, which can "
             "force accelerated re-hedging. It is a second-order effect on top of Vanna."
-        ),
-        "turkish": (
-            "Vomma, IV değişince vega'nın kendisinin ne kadar değiştiğini ölçer (2. derece). "
-            "Vega büyük ve Vomma pozitifken IV sıçraması vol pozisyonunu büyütür ve dengeleme "
-            "hızlanır. Vanna'nın üstüne binen ikinci derece bir etkidir."
         ),
         "row": [("Order", "2nd", "above Vanna")],
     })
@@ -278,7 +235,6 @@ def causal_chain(snapshot: dict) -> list[dict]:
             "label": "IV rises",
             "icon": "↑IV",
             "english": "Implied volatility spikes (fear event or vol buying flow).",
-            "turkish": "Örtük oynaklık (IV) sıçrar — korku artar veya vol alım akışı gelir.",
         },
         {
             "step": 2,
@@ -286,8 +242,6 @@ def causal_chain(snapshot: dict) -> list[dict]:
             "icon": "Vanna",
             "english": ("Vanna translates the IV shock into dealer delta. With net vanna "
                         "SHORT, delta falls; with LONG vanna, delta rises."),
-            "turkish": ("Vanna, IV şokunu dealer delta'sına çevirir. Net vanna NEGATİFSE "
-                        "delta düşer; POZİTİFSE delta yükselir."),
         },
         {
             "step": 3,
@@ -295,8 +249,6 @@ def causal_chain(snapshot: dict) -> list[dict]:
             "icon": "BUY/SELL",
             "english": ("Dealer buys stock to restore flat delta when delta fell (short vanna), "
                         "or sells when delta rose (long vanna)."),
-            "turkish": ("Dealer delta'sı düştüyse (short vanna) dengelemek için ALIR; "
-                        "delta yükseldiyse (long vanna) SATAR."),
         },
         {
             "step": 4,
@@ -304,51 +256,12 @@ def causal_chain(snapshot: dict) -> list[dict]:
             "icon": "Effect",
             "english": ("Short vanna + positive gamma = the buying cushions the move (double "
                         "buffer on the downside). Long vanna or negative gamma adds fuel."),
-            "turkish": ("Short vanna + pozitif gamma = alış hareketi yastıklar (düşüşte çift "
-                        "tampon). Long vanna ya da negatif gamma hareketi büyütür."),
         },
     ]
 
     if short_vanna:
         steps[2]["english"] = ("Dealer buys stock to restore flat delta — the cushion side. "
                                "Positive gamma reinforces this: both books damp the fall.")
-        steps[2]["turkish"] = ("Dealer delta'sı düştüğü için dengelemek adına STOK ALIR — "
-                               "yastık tarafı. Pozitif gamma da aynı yönde çalışır: iki defter de "
-                               "düşüşü söndürür.")
         steps[3]["english"] = ("Downside cushioned: an IV spike finds a buyer on the other side "
                                "(short vanna) and a dampening dealer book (positive gamma).")
-        steps[3]["turkish"] = ("Düşüş yastıklanır: IV sıçraması karşısında alıcı bulur "
-                               "(short vanna) ve dealer kitabı söndürücüdür (pozitif gamma).")
     return steps
-
-
-# Static educational glossary rendered as the TR block under the dashboard.
-GLOSSARY_TR = [
-    {"greek": "Gamma (Γ)", "def": "Spot fiyat 1 puan oynayınca delta'nın (dealer pozisyonunun) ne kadar değiştiği. "
-        "Pozitif gamma: dealer hareketi söndürür. Negatif gamma: dealer hareketi büyütür."},
-    {"greek": "Vanna", "def": "IV (volatilite) değişince delta'nın ne kadar değiştiği. Negatif net vanna: "
-        "IV yükselirse dealer alıcı olur → düşüş yastıklanır. Pozitif: IV yükselirse dealer satıcı olur → baskı artar."},
-    {"greek": "Charm", "def": "Vade yaklaştıkça delta'nın kendiliğinden erimesi. Pozitif charm: kapanışa doğru "
-        "mekanik alış baskısı (pin etkisi). Negatif charm: mekanik satış baskısı."},
-    {"greek": "Vomma", "def": "IV değişince vega'nın ne kadar değiştiği (2. derece). IV sıçrarsa vol pozisyonunun "
-        "büyüyüp dengelemeyi hızlandırıp hızlandırmayacağını gösterir."},
-    {"greek": "HVL / Gamma Flip", "def": "Kümülatif net GEX'in işaret değiştirdiği fiyat. Üstünde pozitif gamma "
-        "(sakin), altında negatif gamma (hızlı)."},
-    {"greek": "Net GEX", "def": "Tüm strike'lardaki net gamma maruziyeti. + milyon dolar = söndürücü kütle, "
-        "− = hızlandırıcı."},
-    {"greek": "Absorpsiyon bandı", "def": "Kümülatif Net GEX'in pozitif olduğu bölge; dealer harekete karşı "
-        "işlem yapar, fiyat orada zor ilerler."},
-    {"greek": "Hava boşluğu (air gap)", "def": "Kümülatif Net GEX'in negatif olduğu bölge; dealer hareketle aynı "
-        "yönde işlem yapar, fiyat orada hızlı akar."},
-    {"greek": "Max Pain", "def": "En çok opsiyonun değersiz bittiği strike; yapısal 'çekim' seviyesi, yön sinyali "
-        "değildir. Spot'tan uzaklığıyla okunur."},
-    {"greek": "IV Rank", "def": "Bugünkü IV'nin son 1 yıldaki konumu (%). Düşük = opsiyonlar ucuz, yüksek = pahalı."},
-    {"greek": "Variance Risk Premium (VRP)", "def": "Örtük oynaklığın (IV) gerçekleşen oynaklığın (RV) üzerindeki "
-        "payı; kısa vol pozisyonunun ne kadar kazandırdığı. Yüksek = vol satıcısı zengin."},
-    {"greek": "Put/Call oranı (P/C)", "def": "Put hacminin call hacmine oranı. >1 put-ağır akış (koruma veya "
-        "yönlü aşağı bahis); tek başına yön okunmaz, premium ve Net GEX ile birlikte yorumlanır."},
-    {"greek": "Contango / Backwardation", "def": "Vade yapısının yönü. Contango (kısa vade sakin, uzak vade pahalı) "
-        "normaldir; backwardation (yakın vade daha pahalı) yakın stresin erken göstergesidir."},
-    {"greek": "CFTC COT (TFF)", "def": "Haftalık yayınlanan büyük oyuncu pozisyonları (asset manager, leveraged "
-        "funds, dealer). Gecikmeli ama düzenli; yön ölçmek için kullanılır."},
-]

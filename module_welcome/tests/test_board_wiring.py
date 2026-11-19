@@ -32,7 +32,7 @@ def test_refresh_renders_without_building(monkeypatch, tmp_path):
     called = []
     monkeypatch.setattr(build, "build", lambda **kw: called.append(kw))
     r = _client().get("/view/module_welcome", query_string={"refresh": "1"})
-    assert r.status_code == 200 and "RevenueChaser · Bugün" in r.get_data(as_text=True) and called == []
+    assert r.status_code == 200 and "RevenueChaser · Today" in r.get_data(as_text=True) and called == []
 
 
 def test_the_fetch_queues_the_welcome_job(monkeypatch):

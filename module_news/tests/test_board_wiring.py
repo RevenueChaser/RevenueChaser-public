@@ -216,7 +216,7 @@ def test_the_ticker_box_reads_the_names_stored_rows(monkeypatch):
 def test_the_page_carries_the_ticker_box(monkeypatch, tmp_path):
     from RevenueChaser.module_news import report
     page = report.render_html()
-    assert 'id="tq"' in page and "Bir hisse için haber" in page and "/run/news_ticker" in page
+    assert 'id="tq"' in page and "News for one stock" in page and "/run/news_ticker" in page
     assert "TQ_PICK = " in page and "rcWatchInit(" in page
 
 

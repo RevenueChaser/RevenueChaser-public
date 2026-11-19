@@ -1,4 +1,4 @@
-"""The Welcome page (welcome plan §2): calendar summary, earnings, market snapshot, data freshness; Turkish."""
+"""The Welcome page (welcome plan §2): calendar summary, earnings, market snapshot, data freshness; English."""
 from __future__ import annotations
 
 import json
@@ -26,7 +26,7 @@ def _news():
          "run_at": NOW} for t, e, i, f, p in rows])
     rawstore.write_rows("news_highlight", [{
         "session_date": "2026-11-10", "event_ts": _at(14, 30), "event": "CPI, Y/Y%", "type": "report",
-        "importance": 3, "forecast": "3.6%", "prev": "3.7%", "text": "Tüketici fiyatları.", "text_source": "template",
+        "importance": 3, "forecast": "3.6%", "prev": "3.7%", "text": "Consumer prices.", "text_source": "template",
         "run_id": "t", "run_at": NOW}])
 
 
@@ -35,7 +35,7 @@ def _news():
 def test_the_calendar_card_reads_the_news_board_file():
     _news()
     page = report.render_html(now=NOW, watchlist={"CRWV"}, labels={})
-    assert "bugün 5 veri" in page and "CPI, Y/Y%" in page and "%3,6" in page
+    assert "5 releases today" in page and "CPI, Y/Y%" in page and "3.6%" in page
     assert "Fed President Musalem speaks" in page and "Wholesale inventories" in page
     assert "Treasury budget" not in page and "Early release" not in page       # next two after now only
     assert "rc-open-tab" in page and "module_news" in page
@@ -43,7 +43,7 @@ def test_the_calendar_card_reads_the_news_board_file():
 
 def test_without_the_news_board_file_the_card_says_so():
     page = report.render_html(now=NOW, watchlist=set(), labels={})
-    assert "News board henüz kurulmadı" in page
+    assert "The News board is not built yet" in page
 
 
 
@@ -58,8 +58,8 @@ def test_a_run_with_failed_provider_calls_is_flagged_not_ticked():
          "last_failed_at": None, "last_error": "Finished with gaps: 12 of 12 Interactive Brokers calls failed.",
          "run_id": "t", "run_at": NOW}])
     page = report.render_html(now=NOW, watchlist=set(), labels={"module_news": "News"})
-    assert "Hepsi tamam" not in page and "1 işte sorun" in page
-    assert "! eksik veri" in page and "✓ tamam" not in page and "12 of 12 Interactive Brokers" in page
+    assert "All good" not in page and "1 job with a problem" in page
+    assert "! missing data" in page and "✓ ok" not in page and "12 of 12 Interactive Brokers" in page
 
 
 def test_the_session_clock_gets_the_next_sessions():
@@ -95,11 +95,11 @@ def test_the_headlines_card_shows_the_three_newest_and_polls():
          "source": "Dow Jones", "tickers": json.dumps(["AAPL"] if i % 2 else []), "url": None, "fetched_at": NOW,
          "run_id": "t", "run_at": NOW - i} for i in range(1, 6)])
     page = report.render_html(now=NOW, watchlist=set(), labels={})
-    assert "Son başlıklar" in page and "Story 1" in page and "Story 3" in page and "Story 4" not in page
+    assert "Latest headlines" in page and "Story 1" in page and "Story 3" in page and "Story 4" not in page
     assert "HEADS_SINCE = " in page and "/api/news/headlines?since=" in page
 
 
 def test_without_headlines_the_card_says_so():
     _news()
     page = report.render_html(now=NOW, watchlist=set(), labels={})
-    assert "Son 24 saatte başlık yok." in page and '<p class="empty">Son 24 saatte' in page
+    assert "No headline in the last 24 hours." in page and '<p class="empty">No headline in the last 24' in page
