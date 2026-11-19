@@ -1389,7 +1389,11 @@ queue** for that runner — the route answers 202 with `waits_for`, the hourly b
 wrds/co_hgic wrds/idxcst_his openfigi/map` starts one worker for the whole process. Run it in a foreground terminal:
 the worker reads a WRDS prompt from `/dev/tty`, and a background job that reads its terminal is stopped (SIGTTIN).
 A failed login, or no
-interpreter at `RC_WRDS_PYTHON`, fails the run and keeps the last snapshot served. `requested_by` `cli` is the CLI's
+interpreter at `RC_WRDS_PYTHON`, fails the run and keeps the last snapshot served. With `RC_WRDS_UNATTENDED=1` the
+hourly builder runs them on their cadence, and a WRDS dataset whose last check `failed` **today** (New York) is not
+due again before the next day (`due.WRDS_FAILED_WHY`): no hourly login retry, but at most one retry a day, so a
+failure after the WRDS calls — a refused serving swap (#1115) — does not stop a daily dataset writing any check row
+at all until a person notices. A person's run (Fetch or CLI) that does not fail clears it at once. `requested_by` `cli` is the CLI's
 own mark: a panel header that says `cli` is recorded as `panel:cli`.
 
 **Starts by hand.** Every spine dataset is not due until it has built once (a `changed` or `unchanged` check, from
