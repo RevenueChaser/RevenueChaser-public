@@ -61,7 +61,7 @@ def _only(monkeypatch, *entries):
 
 
 
-def test_the_shipped_backup_records_no_table_write():
+def test_the_shipped_backup_records_no_row():
     assert A.entry("RC-Backup-Weekly").tables_written == ()
 
 
@@ -115,16 +115,20 @@ def test_a_switched_off_pass_records_no_row(monkeypatch, tmp_path):
 
 
 def test_an_ops_store_that_refuses_the_row_does_not_stop_the_task(monkeypatch, tmp_path):
-    """Bookkeeping is best-effort (#282): the task runs and exits as it would have."""
+    """Bookkeeping is best-effort (#282): the row is attempted, and a store that refuses it costs the row, not the
+    run. ``asked`` is what the base does not do at all — it records nothing — so this is red there too."""
     from RevenueChaser.rcdata import ops
     e = _entry(code=_PRINTS_RESULT)
     _only(monkeypatch, e)
+    asked = []
 
     def refuse(*a, **k):
+        asked.append(a)
         raise RuntimeError("ops store is busy")
 
     monkeypatch.setattr(ops, "start_run", refuse)
     assert A.run_task(e.name, cwd=tmp_path) == 0
+    assert asked, "the run must try to record its row"
     assert "working" in e.log_path.read_text(encoding="utf-8")
 
 

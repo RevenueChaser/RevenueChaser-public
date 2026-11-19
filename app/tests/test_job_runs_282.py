@@ -64,6 +64,7 @@ def test_a_dashboard_job_records_its_row_and_the_runners_counts(sync_jobs):
     assert run["run_id"] == jid and run["job"] == "t_counts" and run["trigger"] == "dashboard"
     assert run["status"] == "done" and run["counts"] == {"rows": 12, "frozen": 4}
     assert ops.last_builder_run() is None          # it is not a dataset build
+    assert "counts" not in jobs.get(jid)           # the dashboard poll's dict is unchanged
 
 
 def test_a_runner_that_ends_with_a_message_records_its_counts(sync_jobs):
@@ -94,9 +95,13 @@ def test_a_failed_job_records_its_error(sync_jobs):
 
 
 def test_an_ops_store_that_refuses_the_row_does_not_fail_the_job(sync_jobs, monkeypatch):
+    """Best-effort (#282): the row is attempted, and a store that refuses it costs the row, not the job. The
+    attempt (``asked``) is what the base never makes, so this is red there too."""
     from RevenueChaser.rcdata import ops
+    asked = []
 
     def refuse(*a, **k):
+        asked.append(a)
         raise RuntimeError("ops store is busy")
 
     monkeypatch.setattr(ops, "start_run", refuse)
@@ -105,11 +110,4 @@ def test_an_ops_store_that_refuses_the_row_does_not_fail_the_job(sync_jobs, monk
     jid = jobs.submit("t_busy")
     jobs.execute(jid)
     assert jobs.get(jid)["status"] == "done"
-
-
-def test_counts_stay_out_of_the_job_json(sync_jobs):
-    """The dashboard poll reads the job dict; ``counts`` is not one of its fields."""
-    jobs.register("t_json", lambda uw, **p: {"counts": {"rows": 3}}, [], requires_uw=False)
-    jid = jobs.submit("t_json")
-    jobs.execute(jid)
-    assert "counts" not in jobs.get(jid)
+    assert len(asked) == 2, "the job must try to open and to close its row"
