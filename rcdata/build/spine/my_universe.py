@@ -51,6 +51,16 @@ forward and :func:`_held_issue` names the held funds the manual file did not the
 ``etf`` row has a volume at all the source itself is gone, and :func:`_no_volume_source` fails the build rather
 than holding the whole list on yesterday's numbers.
 
+**A fund the ``etf`` table holds no row for at all** is held the same way, per fund, and for the same reason
+(avo's decision A, #432): ``etf`` is the union of three sources (Alpha Vantage's listing, N-CEN's ``IS_ETF``
+series, the spine's ``etp`` rows), and a fund only one of them carries -- GLD, SLV, USO and the bitcoin trusts
+are 1933-Act trusts that file no N-CEN -- is missing from the whole table when that one source comes back short.
+:func:`_hold_vanished_row` carries its live row forward and :func:`_vanished_issue` names the held funds the
+manual file did not then remove in one ``my_universe_etf_row_gone`` issue. The check is against the **whole**
+``etf`` table, so a fund whose row is there and is today flagged an ETN or a CEF is the rule's answer and leaves.
+Only an ``etf_adv`` name is held: an ``etf_aum`` fund that vanished is the AUM source's own story, and holding a
+fund the manual file never named on no number at all is what a ``left`` row is for.
+
 **The changes table** is append-only across builds: the live file's rows are carried forward and today's diff
 against the live ``my_universe`` is appended, so the Data settings board can show what entered and left without
 keeping its own history. ``entered_on`` of a name the live list already held is the live row's, not today.
@@ -90,8 +100,8 @@ ENTERED, LEFT = "entered", "left"
 #: How many tickers an issue's detail names before it says "and N more".
 MANY = 20
 #: The issue kinds this module finds; ``security.ISSUE_KINDS`` holds their wording for ``ops.sqlite``.
-ISSUES = ("my_universe_etf_undecided", "my_universe_etf_volume_lost", "my_universe_manual_unknown",
-          "my_universe_both_kinds", "my_universe_list_unknown")
+ISSUES = ("my_universe_etf_undecided", "my_universe_etf_volume_lost", "my_universe_etf_row_gone",
+          "my_universe_manual_unknown", "my_universe_both_kinds", "my_universe_list_unknown")
 #: The ``rule`` of a fund that entered because it is on a list the jobs read (rule E).
 JOB_LIST = "job_list"
 
@@ -244,6 +254,7 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, rules: Rules | No
                                                 "source_as_of, fetched_at FROM security")}
     known_etf = {r["ticker"]: r for r in _rows(con, "SELECT ticker, name, aum, aum_as_of, adv_usd_20d, source, "
                                                     f"source_as_of, fetched_at FROM {etf_mod.TABLE}")}
+    vanished = _hold_vanished_row(live, known_etf, kept)
     removed = {r["ticker"] for r in removes}
     listed = listed if listed is not None else listed_etfs()
     # rule E only ever adds: a fund that entered on a list and has since left it stays, on its live reason
@@ -287,6 +298,7 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, rules: Rules | No
     by_hand = {r["ticker"]: r["reason"] for r in removes if r["ticker"] in removed}
     issues.extend(_undecided_issue(con, undecided, kept, removed))
     issues.extend(_held_issue(held, kept))
+    issues.extend(_vanished_issue(vanished, kept))
     out = [kept[t] for t in sorted(kept)]
     return out, _changes(out, live, as_of, ctx.run_id, by_hand), issues
 
@@ -327,9 +339,8 @@ def _hold_lost_volume(live: list[dict] | None, etfs: list[dict], kept: dict[str,
     written. A volume that is present and under the floor leaves as before, and so does an ``etf_aum`` name: that is
     the AUM's story, not the volume's.
 
-    A ticker the ``etf`` table does not hold at all today is **not** held here. That is the ETF universe's own
-    source failing, a wider outage than this guard's, and holding a row whose fund the spine no longer knows would
-    keep a name alive on no evidence at all.
+    A ticker the ``etf`` table does not hold at all today is not this guard's case -- there is no row to read a
+    NULL volume from -- and :func:`_hold_vanished_row` holds it instead.
     """
     if not live:
         return []
@@ -343,6 +354,32 @@ def _hold_lost_volume(live: list[dict] | None, etfs: list[dict], kept: dict[str,
         if ticker in undecided:
             undecided.remove(ticker)
     return held
+
+
+def _hold_vanished_row(live: list[dict] | None, known_etf: dict[str, dict], kept: dict[str, dict]) -> list[str]:
+    """Carry forward, in ``kept``, every live ``etf_adv`` fund the ``etf`` table holds no row for at all today, and
+    return their tickers; :func:`_vanished_issue` turns them into the one issue that names them (avo's decision A,
+    #432).
+
+    ``etf`` is the union of Alpha Vantage's listing, N-CEN's ``IS_ETF`` series and the spine's ``etp`` rows, so a
+    fund one source alone carries is missing from the table when that source comes back short. ``my_universe`` is in
+    ``serving.SHRINKS_BY_CHOICE``, so the swap guard accepts the shrink and the fund gets a ``left`` row in the
+    append-only ``my_universe_changes`` that no later build can take back. An input outage is not a change of the
+    rules, so the fund is held on its live row -- its own numbers, its ``entered_on`` and the ``run_id`` of the build
+    that measured them -- and no ``left`` row is written.
+
+    ``known_etf`` is the **whole** ``etf`` table, not the rule's filtered rows: a fund whose row is there and is
+    today flagged an ETN or a CEF is answered by the rule and leaves as it always did. Only an ``etf_adv`` name is
+    held, as in :func:`_hold_lost_volume`.
+    """
+    if not live:
+        return []
+    gone = sorted(r["ticker"] for r in live
+                  if r.get("rule") == "etf_adv" and r["ticker"] not in kept and r["ticker"] not in known_etf)
+    by_ticker = {r["ticker"]: r for r in live}
+    for ticker in gone:
+        kept[ticker] = {c: by_ticker[ticker].get(c) for c, _ in SCHEMA}
+    return gone
 
 
 def _undecided_issue(con: duckdb.DuckDBPyConnection, undecided: list[str], kept: dict[str, dict],
@@ -380,6 +417,20 @@ def _held_issue(held: list[str], kept: dict[str, dict]) -> list[tuple[str, str, 
     return [("my_universe_etf_volume_lost", ETF,
              f"{len(named)} ETFs of the live {TABLE} entered on their 20-session dollar volume and Compustat gives "
              f"them none now, so they are held on their live numbers instead of being dropped: {shown}"
+             + (f" and {len(named) - MANY} more" if len(named) > MANY else ""))]
+
+
+def _vanished_issue(gone: list[str], kept: dict[str, dict]) -> list[tuple[str, str, str]]:
+    """The one issue naming the funds :func:`_hold_vanished_row` held and the manual file did not then remove: a
+    fund avo took out by hand is gone on purpose, so the issue does not report it as held."""
+    named = [t for t in gone if t in kept]
+    if not named:
+        return []
+    shown = ", ".join(named[:MANY])
+    return [("my_universe_etf_row_gone", ETF,
+             f"{len(named)} ETFs of the live {TABLE} entered on their 20-session dollar volume and the etf table "
+             f"holds no row for them at all today, so they are held on their live numbers instead of being "
+             f"dropped: {shown}"
              + (f" and {len(named) - MANY} more" if len(named) > MANY else ""))]
 
 
