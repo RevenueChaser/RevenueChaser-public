@@ -270,27 +270,24 @@ def test_a_past_members_cik_is_its_own_not_the_reused_tickers_new_owner(built):
     assert _q("SELECT cik FROM security WHERE ticker = 'NVR'") == [("7777777",)]
 
 
-def test_a_past_member_keeps_its_history_once_the_reused_tickers_new_owner_is_linked(built, monkeypatch):
-    """#236: NVR leaves on 3 Nov (acquired); on 10 Nov the ticker NVR belongs to CIK 7777777, and Compustat links
-    that CIK to its own gvkey and CUSIP. The 4a guard is judged by the link as of each line's day, so NVR's own
-    lines (CUSIP 62944T105, gvkey 025648) still match and its period survives, as fix 4b asks."""
-    without_nvr = [r for r in fx.SEC_FILE["data"] if r[2] != "NVR"]
-    _sec_answer(built, without_nvr)
-    base.run_request({"dataset": sec_tickers.NAME, "params": {"as_of": "2026-11-03", "allow_shrink": True}})
-    _sec_answer(built, without_nvr + [[7777777, "NEW NVR HOLDER INC", "NVR", "NYSE"]])
+def test_a_past_member_keeps_its_history_once_the_reused_tickers_new_owner_is_linked(built):
+    """#236: the fund files hold VYLR with VYLR Holdings' own CUSIP (92921V109) from 28 Oct; on 10 Nov the SEC file
+    gives the ticker VYLR to CIK 999999, which Compustat links by tic to gvkey 123456 (CUSIP 92921Q100). The 4a
+    guard is judged by the link as of each line's day, not today's, so the 28 Oct lines still match and VYLR
+    Holdings keeps its period under its own CIK, as fix 4b asks."""
+    _funds_answer(built, sp500=fx.SP500 + [("VYLR", "92921V109", "VYLR HOLDINGS INC")])
+    run_all("2026-10-28", names=(funds.NAME,))
+    assert _q("SELECT cik, valid_from FROM index_membership WHERE source = ? AND index_slug = 'sp500' "
+              "AND ticker = 'VYLR'", funds.NAME) == [("2000001", date(2026, 10, 28))]
+    handed_over = [[999999, "OLD VAYLOR CORP", "VYLR", "NYSE"] if t == "VYLR" else [c, n, t, e]
+                   for c, n, t, e in fx.SEC_FILE["data"]]
+    _sec_answer(built, handed_over)
     base.run_request({"dataset": sec_tickers.NAME, "params": {"as_of": "2026-11-10"}})
-    # The new holder is linked in Compustat, with a CUSIP of its own: ``link_of["NVR"]`` is no longer NVR Inc.
-    monkeypatch.setattr(fx, "COMPANY", fx.COMPANY + [
-        {"gvkey": "030001", "conm": "NEW NVR HOLDER INC", "cik": "0007777777"}])
-    monkeypatch.setattr(fx, "SECURITY", fx.SECURITY + [
-        {"gvkey": "030001", "iid": "01", "tic": "NVR", "cusip": "629440109", "exchg": 11, "excntry": "USA",
-         "secstat": "A", "tpci": "0", "dldtei": None}])
-    base.run_request({"dataset": wrds.SEC_IDHIST.name, "params": {"mode": "backfill", "to": "2026-11-10"}})
-    _funds_answer(built, sp500=[h for h in fx.SP500 if h[0] != "NVR"])
     run_all("2026-11-03", names=(funds.NAME,))
+    # The precondition: today's link for VYLR is the new owner, whose CUSIP is not the one the lines carry.
+    assert _q("SELECT cik, gvkey, cusip FROM security WHERE ticker = 'VYLR'") == [("999999", "123456", "92921Q100")]
     assert _q("SELECT cik, valid_from, valid_to FROM index_membership WHERE source = ? AND index_slug = 'sp500' "
-              "AND ticker = 'NVR'", funds.NAME) == [("906163", date(2026, 10, 27), date(2026, 11, 3))]
-    assert _q("SELECT cik, gvkey FROM security WHERE ticker = 'NVR'") == [("7777777", "030001")]
+              "AND ticker = 'VYLR'", funds.NAME) == [("2000001", date(2026, 10, 28), None)]
 
 
 def test_a_member_still_held_after_it_left_the_sec_file_is_not_matched_to_the_tickers_next_owner(built):
