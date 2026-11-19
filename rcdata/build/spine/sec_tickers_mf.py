@@ -34,12 +34,12 @@ still does not parse is dropped and counted in the run's note, never guessed at.
 
 **``fund`` is the kind's first source-owned served table, and its shrink guard is narrower than the others'.** If
 this dataset's Parquet tree goes missing while ``fund`` is live and full, the build makes it empty and
-``serving._verify_against_live`` refuses the swap — which is the guard working, and the live file is untouched. But
-``base.shrink_scope`` relaxes a kind's *derived* tables for every dataset of the kind and a source's own table only
-for that source, so the refusal stands for every spine dataset, the daily ``funds/index_holdings`` included, and
-only a request on this dataset can clear it with ``allow_shrink``. Fetching this dataset again is the ordinary way
-out; widening the hatch means letting the datasets declare which tables each source feeds, which is the upgrade
-``shrink_scope``'s own docstring already anticipates and is not this PR's to make (#326).
+``serving._verify_against_live`` refuses the swap — which is the guard working, and the live file is untouched. The
+refusal stands for every spine dataset, the daily ``funds/index_holdings`` included, and only a request on this
+dataset can clear it with ``allow_shrink``: ``base.shrink_scope`` relaxes the tables a dataset builds and the ones
+it declares it feeds (#326), and no other spine dataset's rows reach ``fund`` — ``stg_sec_mf`` is read here and
+nowhere else. Fetching this dataset again is the ordinary way out, and the one this file's ``feeds = ()`` says
+plainly rather than leaving it to what the guard happens to infer.
 
 Only the newest snapshot is staged (``stg_sec_mf``). Unlike the equity file, whose every snapshot is staged because
 ``security_history`` is built from them, no ``stg_sec_mf_all`` exists: nothing reads these snapshots, and loading
@@ -191,6 +191,9 @@ class SecTickersMf:
     kind = KIND
     providers = (PROVIDER,)
     tables: tuple[str, ...] = (TABLE,)
+    # Nothing but ``fund`` is built from this file: ``stg_sec_mf`` is read here and nowhere else, and the ETF
+    # universe comes from Alpha Vantage, N-CEN and the ``etp`` rows of ``security`` (#346).
+    feeds: tuple[str, ...] = ()
     cadence = "weekly"
     backfill_needs_from = False
     starts_by_hand = True             # as every spine dataset: not due until a CLI run or a Fetch built it
@@ -239,7 +242,7 @@ class SecTickersMf:
             rows = [{**r, "source_as_of": as_of, "last_modified": meta.get("last_modified"),
                      "fetched_at": meta["fetched_at"], "run_id": meta["run_id"]} for r in parsed]
             final = parquet_dir() / f"date={as_of.isoformat()}" / "part-0.parquet"
-            con = duckdb.connect()
+            con = base.scratch_con()
             try:
                 base.rows_table(con, "rows", SCHEMA, rows)
                 out.append(base.write_parquet(con, "SELECT * FROM rows ORDER BY ticker, class_id", final))

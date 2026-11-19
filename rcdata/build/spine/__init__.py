@@ -35,3 +35,10 @@ the bridge views from the staging tables:
 from __future__ import annotations
 
 KIND = "spine"
+
+#: The tables ``spine/security`` builds from the other datasets' staging (``security.TABLES``). Named here so
+#: a source can declare which of them its rows feed (``feeds``, #326) without importing the dataset that is
+#: built after it. ``rcdata/tests/test_shrink_scope.py`` keeps it in step with ``security.TABLES``.
+DERIVED = ("security", "security_history", "gics_history", "index_membership", "etf",
+           "my_universe", "my_universe_changes", "etf_class", "etf_class_changes", "etf_theme")
+

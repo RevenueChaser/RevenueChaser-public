@@ -443,6 +443,10 @@ class Filings:
     kind = KIND
     providers = (common.SEC,)
     tables: tuple[str, ...] = ()
+    # The filing list and the header fields, the segment and customer rows cut from the filings, the
+    # preliminary earnings dates, and through ``fundamental_company`` the tables cut to it.
+    feeds = ("filing_item", "fundamental_company", "earnings_event", "segment_revenue", "customer_share",
+             "earnings_reported", "peer_group")
     cadence = "daily"
     backfill_needs_from = False
     starts_by_hand = True
@@ -516,7 +520,7 @@ class Filings:
                 filing_rows += [{**r, "item": i, **stamps} for i in items]
             segment_rows, customer_rows = self._documents(cik, rows)
             folder = common.parquet_dir(NAME) / f"cik={cik}"
-            con = duckdb.connect()
+            con = base.scratch_con()
             try:
                 base.rows_table(con, "filings", FILING, filing_rows)
                 out.append(base.write_parquet(con, "SELECT * FROM filings ORDER BY filing_date, accession, item",

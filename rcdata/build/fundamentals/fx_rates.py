@@ -78,7 +78,7 @@ def held_rates() -> dict:
     path = common.parquet_dir(NAME) / "part-0.parquet"
     if not path.exists():
         return {}
-    con = duckdb.connect()
+    con = base.scratch_con()
     try:
         return index_rates(con.execute("SELECT currency, strftime(day, '%Y-%m-%d'), usd_per_unit FROM read_parquet(?) "
                                        "ORDER BY currency, day", [str(path)]).fetchall())
@@ -107,6 +107,8 @@ class FxRates:
     kind = KIND
     providers = (PROVIDER,)
     tables: tuple[str, ...] = ()
+    # The rates an IFRS filer's facts are put in USD with (#105), so the facts and what is built over them.
+    feeds = ("fundamental_fact", "peer_group", "customer_share")
     cadence = "daily"
     backfill_needs_from = False
     starts_by_hand = True
@@ -159,7 +161,7 @@ class FxRates:
                       "run_id": doc["run_id"]}
             rows += [{"currency": doc["currency"], "day": date.fromisoformat(d), "usd_per_unit": float(v), **stamps}
                      for d, v in doc["rates"].items()]
-        con = duckdb.connect()
+        con = base.scratch_con()
         try:
             base.rows_table(con, "rows", SCHEMA, rows)
             return [base.write_parquet(con, """

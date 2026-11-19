@@ -138,7 +138,9 @@ def test_the_first_build_is_whole_and_writes_its_manifest():
     with serving.open_read("fundamentals") as con:
         paths = {r[0] for r in con.execute(f"SELECT path FROM {dirty.MANIFEST_TABLE}").fetchall()}
         assert f"sec/companyfacts/cik={MSFT}/part-0.parquet" in paths
-        assert con.execute(f"SELECT count(*) FROM {dirty.RULES_TABLE}").fetchone()[0] == 1
+        held = {r[0] for r in con.execute(f"SELECT dataset FROM {dirty.RULES_TABLE}").fetchall()}
+        # One fingerprint per dataset and one shared (#814), not one for the whole kind.
+        assert held == {dirty.SHARED} | {d.name for d in base.kind_datasets("fundamentals")}
 
 
 def test_nothing_changed_builds_on_the_live_copy_with_no_dirty_company(monkeypatch):
@@ -235,9 +237,9 @@ def test_no_fundamentals_dataset_names_a_rule_from_outside_its_package():
         def rules_state(self):
             return self._state
 
-    first = dirty.rules_fingerprint([Fake("caps=False")])
-    assert first == dirty.rules_fingerprint([Fake("caps=False")])
-    assert first != dirty.rules_fingerprint([Fake("caps=True")])
+    first = dirty.dataset_fingerprint(Fake("caps=False"))
+    assert first == dirty.dataset_fingerprint(Fake("caps=False"))
+    assert first != dirty.dataset_fingerprint(Fake("caps=True"))
 
 
 def test_more_than_half_the_files_changed_builds_whole():

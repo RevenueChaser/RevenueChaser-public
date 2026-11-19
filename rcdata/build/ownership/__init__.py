@@ -22,3 +22,11 @@ its CIK or CUSIP (``common.issuer_tickers``, ``common.cusip_issuer_map``). The s
 from __future__ import annotations
 
 KIND = "ownership"
+
+#: The tables ``ownership/serve`` builds from the 13F filings (``serve.TABLES``). Named here so a source can
+#: declare which of them its rows feed (``feeds``, #326) without importing the dataset built after it;
+#: ``rcdata/tests/test_shrink_scope.py`` keeps it in step with ``serve.TABLES``.
+SERVED_13F = ("sec13f_cusip_map", "sec13f_filer_period", "sec13f_ticker_period", "sec13f_periods",
+              "sec13f_filer_breaks", "sec13f_type_holdings", "sec13f_type_sector", "sec13f_type_flow",
+              "sec13f_filer_style", "sec13f_filer_holdings")
+

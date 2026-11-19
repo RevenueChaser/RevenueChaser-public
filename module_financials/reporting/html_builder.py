@@ -9,7 +9,10 @@ from markupsafe import Markup
 
 from RevenueChaser.core import calendar as market_calendar
 from RevenueChaser.module_financials.config import RISK_FREE_MAX_AGE_DAYS
-from RevenueChaser.core.reporting_common import (help_html, provider_health_html, watch_buttons_html, watchlist_html)
+from RevenueChaser.core.html_safe import script_json
+from RevenueChaser.core.reporting_common import (FILTERS_CSS, FILTERS_JS, THEME_CSS, THEME_JS, combobox_html,
+                                                 filters_bar_html, help_html, provider_health_html,
+                                                 watch_buttons_html, watchlist_html)
 
 _TEMPLATES = Path(__file__).resolve().parent / "templates"
 # Autoescape on: ticker, company, sector, source and warnings come from the
@@ -27,11 +30,15 @@ HELP = help_html(
     "fundamentals layer, re-read on each filing day) once that is built, and Yahoo's before, or when Yahoo's "
     "year is newer or gives an input the SEC's lacks (depreciation, working capital); the "
     "<b>Source</b> line says which, why, and which inputs the SEC's statements lack. <b>Refresh</b> rebuilds the report for the ticker in the "
-    "box from the stored data with no network call; a ticker with nothing stored needs a Fetch first.")
+    "picker from the stored data with no network call; a ticker with nothing stored needs a Fetch first. The "
+    "<b>filters</b> only narrow which names the <b>Ticker</b> picker offers \u2014 they never slice the "
+    "statements below, which are always the one company the board fetched.")
 
 
 def _fmt_usd(v) -> str:
-    if v is None:
+    # Not a number is N/A: None, and a Jinja ``Undefined`` from a payload that has no such key at all (the peer
+    # rows of a hand-built comps result have no market cap, #91). ``abs(Undefined)`` would raise and lose the page.
+    if not isinstance(v, (int, float)) or isinstance(v, bool):
         return "N/A"
     a = abs(v)
     sign = "-" if v < 0 else ""
@@ -47,22 +54,22 @@ def _fmt_usd(v) -> str:
 
 
 def _fmt_num(v, nd=2) -> str:
-    if v is None:
-        return "N/A"
     if isinstance(v, str):
         return v          # a word the engine chose ("NM": a non-positive denominator has no multiple)
+    if not isinstance(v, (int, float)) or isinstance(v, bool):
+        return "N/A"      # None, and a key the payload does not carry at all (Jinja ``Undefined``)
     return f"{v:,.{nd}f}"
 
 
 def _fmt_pct(v, nd=1) -> str:
-    if v is None:
-        return "N/A"
+    if not isinstance(v, (int, float)) or isinstance(v, bool):
+        return "N/A"      # None, and a key the payload does not carry at all (Jinja ``Undefined``)
     return f"{v * 100:,.{nd}f}%"
 
 
 def _fmt_price(v) -> str:
-    if v is None:
-        return "N/A"
+    if not isinstance(v, (int, float)) or isinstance(v, bool):
+        return "N/A"      # None, and a key the payload does not carry at all (Jinja ``Undefined``)
     return f"${v:,.2f}"
 
 
@@ -93,15 +100,21 @@ def _fmt_friendly_day(iso: str | None) -> str:
 
 
 def _fmt_tax_rate(assumptions: dict | None) -> str:
-    """The model's tax rate; ``default 21.0% (no sector rate)`` when no statement or user value set it (FIN-9 B).
+    """The model's tax rate, with where it came from: ``21.0% (median of 3 years)`` for the statements' median
+    (#89), ``default 21.0% (no sector rate)`` when neither a statement nor the user set one (FIN-9 B).
 
-    The parenthetical is true, not decoration: no sector band carries a ``tax_rate``
+    The "no sector rate" parenthetical is true, not decoration: no sector band carries a ``tax_rate``
     (``module_financials/engines/_inputs.default_tax_rate``), so the fallback is the single
     ``DEFAULT_TAX_RATE`` for every sector and the row must not read as a sector-specific one.
     """
     a = assumptions or {}
     rate = _fmt_pct(a.get("tax_rate"))
-    return f"default {rate} (no sector rate)" if a.get("tax_rate_source") == "default" else rate
+    source = str(a.get("tax_rate_source") or "")
+    if source == "default":
+        return f"default {rate} (no sector rate)"
+    if source.startswith("statements (median of "):
+        return f"{rate} ({source[len('statements ('):-1]})"
+    return rate
 
 
 def _or_default(text: str, is_default=False) -> str:
@@ -130,6 +143,7 @@ def build_report_html(results: dict) -> str:
     ticker = results.get("ticker", financials.get("ticker", ""))
 
     info = financials.get("info", {})
+    picker = results.get("picker") or {}
 
     # Quick Remarks bölümü (ticker_scores'dan beslenir; her zaman üstte)
     quick_remarks = results.get("quick_remarks")
@@ -171,5 +185,16 @@ def build_report_html(results: dict) -> str:
         "credit": modules.get("credit"),
         "sensitivity": modules.get("sensitivity"),
         "warnings": results.get("warnings", []),
+        # The shared filter kit (#591). The pool and its meta are built by the runner (a store read), so this
+        # builder stays store-free; without them the bar mounts over no rows and the picker offers none.
+        "theme_css": Markup(THEME_CSS),
+        "theme_js": Markup(THEME_JS),
+        "filters_css": Markup(FILTERS_CSS),
+        "filters_js": Markup(FILTERS_JS),
+        "filters_bar": Markup(filters_bar_html("rc-filters")),
+        "ticker_combo": Markup(combobox_html("ticker-combo", "ticker-combo-label", "Search ticker or name")),
+        "picker_rows_json": Markup(script_json(picker.get("rows") or [])),
+        "picker_meta_json": Markup(script_json(picker.get("meta") or {"board": "financials"})),
+        "ticker_json": Markup(script_json(ticker)),
     }
     return _ENV.get_template("report_base.html.j2").render(**ctx)

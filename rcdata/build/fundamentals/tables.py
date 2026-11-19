@@ -590,6 +590,7 @@ class FundamentalsTables:
     kind = KIND
     providers: tuple[str, ...] = ()
     tables = TABLES
+    feeds: tuple[str, ...] = ()       # it builds every served table itself
     cadence = "daily"
     backfill_needs_from = False
     starts_by_hand = True
@@ -612,8 +613,9 @@ class FundamentalsTables:
     # ``rules_state`` went with the cut (#858). It named the document cap and whether the pinned cut capped at all,
     # because both came from outside this package (``module_value_chain/splitter.py``) and a live copy keeps its
     # old CHECK unless something restates it. No CHECK of this package embeds a value from outside it any more,
-    # and this package's own files are hashed by ``dirty.rules_fingerprint``, so this change builds whole by
-    # itself - which is what drops the ``document`` rows from a live ``filing_item``.
+    # and the files of this package this dataset's code reaches are hashed by ``dirty.dataset_fingerprint``, so
+    # this change restates this dataset by itself - which is what drops the ``document`` rows from a live
+    # ``filing_item``.
 
     def dirty(self, ctx: base.RunContext):
         """No Parquet of its own: what it serves is made from the sources' staging (#446)."""

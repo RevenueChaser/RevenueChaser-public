@@ -74,7 +74,7 @@ import duckdb
 
 from ....core import calendar
 from ... import caps
-from .. import base
+from .. import base, secd
 from ..fundamentals import wrds_fund
 from ..spine import wrds
 from . import KIND, incremental, stage
@@ -281,7 +281,7 @@ def _stale(table: str, year: int) -> bool:
 
 
 def _columns(path: Path) -> set[str]:
-    con = duckdb.connect()
+    con = base.scratch_con()
     try:
         return {r[0] for r in con.execute(f"DESCRIBE SELECT * FROM read_parquet({base.sql_path(path)})").fetchall()}
     finally:
@@ -289,7 +289,7 @@ def _columns(path: Path) -> set[str]:
 
 
 def _rows(path: Path) -> int:
-    con = duckdb.connect()
+    con = base.scratch_con()
     try:
         return con.execute(f"SELECT count(*) FROM read_parquet({base.sql_path(path)})").fetchone()[0]
     finally:
@@ -308,6 +308,8 @@ class WrdsPrices:
     kind = KIND
     providers = (wrds.PROVIDER,)
     tables = ("price_bar_daily", "corporate_action", "price_revision", "wrds_price_diff")
+    # The served history: its bars carry the symbols and the caps, its actions the factors.
+    feeds = ("adj_factor", "security_symbol", "market_cap_daily")
     # Daily since Compustat is the one served source (avo, 3 Nov 2026 ~11:20 Amsterdam, decision 1: "1 evet"): the
     # refresh of the last two years, five queries a day (seven with the snapshots). Attended unless RC_WRDS_UNATTENDED=1.
     cadence = "daily"
@@ -505,7 +507,7 @@ class WrdsPrices:
 
     def _write(self, ctx: base.RunContext, table: str, year: int | None, raw: Path, meta: dict, final: Path) -> Path:
         spec = TABLES[table]
-        con = duckdb.connect()
+        con = base.scratch_con()
         try:
             keys = ", ".join(spec["key"])
             every = ", ".join(f'"{c}" NULLS LAST' for c, _ in spec["schema"])
@@ -737,7 +739,7 @@ COMP_BARS = f"""
            {COMP_RETURN_BASIS} AS return_basis, 1 AS priority, gvkey || ':' || iid AS series
     -- secd holds rows of events to come (to 2027): a bar is a priced day up to the build's date only (``serving`` sets
     -- ``rc_build_date``; unset, as in a test of this SQL alone, nothing is cut).
-    FROM _secd_listed WHERE listed AND coalesce(upper(curcdd), 'USD') = 'USD' AND prccd > 0
+    FROM _secd_listed WHERE listed AND {secd.PRICED_USD}
       AND datadate <= coalesce(getvariable('rc_build_date'), DATE '9999-12-31')
       AND {_COMP_BAR_ID} IN (SELECT security_id FROM _universe)
     WINDOW w AS (PARTITION BY gvkey, iid ORDER BY datadate)"""
@@ -784,7 +786,7 @@ AJEXDI_SPLITS = f"""
            '{NAME}' AS source, source_as_of, fetched_at, run_id
     FROM (SELECT *, lag(ajexdi) OVER w / ajexdi AS ratio, lag(run_id) OVER w AS prev_run,
                  lag(datadate) OVER w AS prev_day
-          FROM stg_wrds_secd WHERE ajexdi > 0 AND prccd > 0 AND coalesce(upper(curcdd), 'USD') = 'USD'
+          FROM stg_wrds_secd WHERE ajexdi > 0 AND {secd.PRICED_USD}
             -- the window only over the securities whose ajexdi changes at all (a hash aggregate, not a sort)
             AND (gvkey, iid) IN (SELECT (gvkey, iid) FROM stg_wrds_secd WHERE ajexdi > 0 GROUP BY gvkey, iid
                                  HAVING min(ajexdi) <> max(ajexdi))

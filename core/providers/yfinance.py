@@ -5,7 +5,9 @@ dönüştürür: ``financials["annual"]`` kronolojik (eskiden yeniye) kayıt lis
 """
 from __future__ import annotations
 
+import contextlib
 import logging
+import threading
 from typing import Any
 
 import pandas as pd
@@ -18,6 +20,11 @@ logger = logging.getLogger(__name__)
 # Every ``.info`` and statement read, and the ones that raised (Common K3): a failed read is counted for the
 # board banner, not only logged. A run reads it with ``health()`` after ``reset_health()``.
 _HEALTH = ProviderHealth("yfinance")
+
+# The runs counting on this thread (#299). This module's counter is one global, and the dashboard runs two job
+# workers, so a board that reset it would zero another board's run in flight; a run opens its own
+# ``health_scope`` instead and reads only its own calls. Thread-local, because a job holds one thread.
+_SCOPES = threading.local()
 
 # The annual window a Fetch serves. A store-only Refresh reads the same window back through
 # ``vendor_data.read_financials``: the store keeps every period it ever saw, so once a seventh fiscal year is
@@ -32,6 +39,32 @@ def health() -> dict:
 
 def reset_health() -> None:
     _HEALTH.reset()
+
+
+def _count(error: str | None = None, endpoint: str = "") -> None:
+    """Count one Yahoo read for the shared global and for every scope open on this thread."""
+    _HEALTH.call(error=error, endpoint=endpoint)
+    for health in getattr(_SCOPES, "stack", ()):
+        health.call(error=error, endpoint=endpoint)
+
+
+@contextlib.contextmanager
+def health_scope(provider: str = "yfinance"):
+    """One run's own Yahoo call accounting, isolated from every other board's (#299).
+
+    Yields a :class:`~RevenueChaser.core.providers.result.ProviderHealth` that counts the reads this thread makes
+    inside the block, and nothing else: the shared global keeps counting everything. The board hands
+    ``health.health()`` to its payload, which ``provider_health_html`` turns into the amber banner.
+    """
+    health = ProviderHealth(provider)
+    stack = getattr(_SCOPES, "stack", None)
+    if stack is None:
+        stack = _SCOPES.stack = []
+    stack.append(health)
+    try:
+        yield health
+    finally:
+        stack.remove(health)
 
 # Kanonik alan -> olası yfinance satır etiketleri (öncelik sırasıyla)
 _INCOME_FIELDS = {
@@ -153,9 +186,9 @@ def get_financials(ticker: str, max_years: int = MAX_YEARS) -> dict:
                 df = getattr(t, attr)
             except Exception as exc:  # noqa: BLE001 - network; counted for the banner, then the next label
                 logger.debug("yfinance %s.%s: %s", ticker, attr, exc)
-                _HEALTH.call(error=str(exc) or type(exc).__name__, endpoint=f"{ticker}.{attr}")
+                _count(error=str(exc) or type(exc).__name__, endpoint=f"{ticker}.{attr}")
                 continue
-            _HEALTH.call()
+            _count()
             if isinstance(df, pd.DataFrame) and not df.empty:
                 return df
         return pd.DataFrame()
@@ -268,10 +301,21 @@ def _read_info(t, ticker: str) -> dict:
         info = t.info or {}
     except Exception as exc:  # noqa: BLE001 - network; counted for the banner
         logger.debug("yfinance info %s: %s", ticker, exc)
-        _HEALTH.call(error=str(exc) or type(exc).__name__, endpoint=f"{ticker}.info")
+        _count(error=str(exc) or type(exc).__name__, endpoint=f"{ticker}.info")
         return {}
-    _HEALTH.call()
+    _count()
     return info
+
+
+def raw_info(ticker: str) -> dict:
+    """Yahoo's own ``.info`` dict for ``ticker``, counted for the board banner (``{}`` when the read raised).
+
+    For a caller that wants the raw fields rather than the normalised ``get_info`` payload (the comps ladder's
+    per-peer read, #299), so its failures reach the banner instead of only the debug log.
+    """
+    import yfinance as yf
+
+    return _read_info(yf.Ticker(ticker), ticker)
 
 
 def get_info(ticker: str) -> dict:
@@ -310,9 +354,9 @@ def get_earnings_trend(ticker: str) -> ProviderResult:
         blocks = {name: getattr(t, f"get_{name}")(as_dict=True) for name in TREND_BLOCKS}
     except Exception as exc:  # noqa: BLE001 - network or a changed library; counted for the banner
         logger.debug("yfinance earningsTrend %s: %s", ticker, exc)
-        _HEALTH.call(error=str(exc)[:200] or type(exc).__name__, endpoint=endpoint)
+        _count(error=str(exc)[:200] or type(exc).__name__, endpoint=endpoint)
         return ProviderResult("failed", {}, {"error": type(exc).__name__, "attempts": 1}, endpoint)
-    _HEALTH.call()
+    _count()
     return ProviderResult("ok", {k: v if isinstance(v, dict) else {} for k, v in blocks.items()}, None, endpoint)
 
 
@@ -330,9 +374,9 @@ def get_fx_history(currency: str, start: str | None = None) -> ProviderResult:
         frame = t.history(start=start, auto_adjust=False) if start else t.history(period="max", auto_adjust=False)
     except Exception as exc:  # noqa: BLE001 - network or a changed library; counted for the banner
         logger.debug("yfinance fx %s: %s", currency, exc)
-        _HEALTH.call(error=str(exc)[:200] or type(exc).__name__, endpoint=endpoint)
+        _count(error=str(exc)[:200] or type(exc).__name__, endpoint=endpoint)
         return ProviderResult("failed", {}, {"error": type(exc).__name__, "attempts": 1}, endpoint)
-    _HEALTH.call()
+    _count()
     closes = {} if frame is None or frame.empty else {
         ts.date().isoformat(): float(v) for ts, v in frame["Close"].items()
         if v is not None and not math.isnan(float(v))}

@@ -134,39 +134,42 @@ def _highlights(days: set[date], now: float, run_id: str) -> int:
 
 # ── the highlight's text (plan decision B: a template, no model call) ────────────────────────────────────────────
 _MEANS = (
-    (("core", "cpi"), "Gıda ve enerji hariç tüketici fiyatlarındaki değişimi ölçer; Fed'in en yakından izlediği enflasyon verilerinden biri."),
-    (("cpi",), "Tüketici fiyatlarındaki değişimi ölçer; faiz beklentilerini en çok oynatan veri."),
-    (("pce",), "Fed'in hedeflediği enflasyon ölçüsü: kişisel tüketim harcamalarının fiyat endeksi."),
-    (("ppi",), "Üretici fiyatlarındaki değişimi ölçer; tüketici enflasyonunun öncü göstergesi sayılır."),
-    (("nonfarm",), "Tarım dışı istihdamdaki aylık değişim; iş piyasasının en önemli göstergesi."),
-    (("employment", "report"), "Aylık istihdam raporu: yeni işler, işsizlik oranı ve ücretler."),
-    (("employment", "situation"), "Aylık istihdam raporu: yeni işler, işsizlik oranı ve ücretler."),
-    (("jobless", "claims"), "Haftalık ilk işsizlik başvuruları; iş piyasasındaki ani değişimleri erken gösterir."),
-    (("jolts",), "Açık iş ilanları; iş gücü talebinin gücünü gösterir."),
-    (("gdp",), "Ekonominin çeyreklik büyüme hızı."),
-    (("retail", "sales"), "Perakende satışlar; tüketici harcamasının aylık nabzı."),
-    (("ism",), "Satın alma yöneticileri anketi; 50'nin üstü genişleme demek."),
-    (("inflation", "expectations"), "Hanehalkının ileriye dönük enflasyon beklentisi; Fed beklentilerin çapadan kaçıp kaçmadığına bakar."),
-    (("consumer", "sentiment"), "Tüketici güveni anketi; harcama eğilimine dair erken sinyal."),
-    (("housing", "starts"), "Yeni konut başlangıçları; faize duyarlı konut piyasasının göstergesi."),
-    (("fomc",), "Fed'in faiz kararı; bütün piyasaların yönünü belirleyebilir."),
-    (("rate", "decision"), "Fed'in faiz kararı; bütün piyasaların yönünü belirleyebilir."),
+    (("core", "cpi"), "Measures the change in consumer prices excluding food and energy; one of the inflation "
+                      "readings the Fed watches most closely."),
+    (("cpi",), "Measures the change in consumer prices; the release that moves rate expectations most."),
+    (("pce",), "The inflation measure the Fed targets: the personal consumption expenditures price index."),
+    (("ppi",), "Measures the change in producer prices; read as a leading indicator of consumer inflation."),
+    (("nonfarm",), "The monthly change in non-farm payrolls; the most important gauge of the labour market."),
+    (("employment", "report"), "The monthly employment report: new jobs, the unemployment rate and wages."),
+    (("employment", "situation"), "The monthly employment report: new jobs, the unemployment rate and wages."),
+    (("jobless", "claims"), "Weekly initial jobless claims; an early read on sudden shifts in the labour market."),
+    (("jolts",), "Job openings; shows how strong demand for labour is."),
+    (("gdp",), "The economy's quarterly growth rate."),
+    (("retail", "sales"), "Retail sales; the monthly pulse of consumer spending."),
+    (("ism",), "The purchasing managers' survey; above 50 means expansion."),
+    (("inflation", "expectations"), "Households' forward-looking inflation expectations; the Fed watches whether "
+                                    "expectations stay anchored."),
+    (("consumer", "sentiment"), "The consumer confidence survey; an early signal on the willingness to spend."),
+    (("housing", "starts"), "New housing starts; a gauge of the rate-sensitive housing market."),
+    (("fomc",), "The Fed's rate decision; it can set the direction of every market."),
+    (("rate", "decision"), "The Fed's rate decision; it can set the direction of every market."),
 )
 
 
 _NUM = re.compile(r"^(-?)(\d+(?:\.\d+)?)(%|[KMBT])?$")
 
 
-def tr_value(value) -> str | None:
-    """A served value in Turkish writing: ``3.9%`` -> ``%3,9``, ``1.25M`` -> ``1,25M``; anything else as served."""
+def served_value(value) -> str | None:
+    """A served value as the board writes it: ``3.9%`` stays ``3.9%``, ``1.25M`` stays ``1.25M`` (avo, 19 Nov 2026:
+    the boards are English, so the Turkish ``%3,9`` writing is gone). Anything else is passed through as served."""
     if value is None:
         return None
     text = str(value).strip()
     m = _NUM.match(text)
     if not m:
         return text
-    sign, num, unit = m.group(1), m.group(2).replace(".", ","), m.group(3) or ""
-    return f"{sign}%{num}" if unit == "%" else f"{sign}{num}{unit}"
+    sign, num, unit = m.group(1), m.group(2), m.group(3) or ""
+    return f"{sign}{num}{unit}"
 
 
 def explain(event: dict) -> str:
@@ -175,15 +178,15 @@ def explain(event: dict) -> str:
     kind = str(event.get("type") or "").lower()
     means = next((text for keys, text in _MEANS if all(f" {k} " in words for k in keys)), None)
     if means is None and kind == "fed-speaker":
-        means = "Bir Fed yetkilisinin konuşması; faiz yoluna dair ipuçları için izlenir."
+        means = "A speech by a Fed official; watched for hints about the path of rates."
     if means is None:
-        means = "ABD ekonomik takviminde bugünün öne çıkan verisi."
-    prev, fc = tr_value(event.get("prev")), tr_value(event.get("forecast"))
+        means = "Today's highlight on the US economic calendar."
+    prev, fc = served_value(event.get("prev")), served_value(event.get("forecast"))
     tail = []
     if prev:
-        tail.append(f"Önceki değer {prev}")
+        tail.append(f"Previous value {prev}")
     if fc:
-        tail.append(f"beklenti {fc}")
+        tail.append(f"forecast {fc}")
     elif prev:
-        tail.append("beklenti yayımlanmadı")
+        tail.append("no forecast published")
     return means + (" " + ", ".join(tail) + "." if tail else "")

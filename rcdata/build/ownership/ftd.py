@@ -166,6 +166,7 @@ class SecFtd:
     kind = KIND
     providers = (sec.PROVIDER,)
     tables = (TABLE,)
+    feeds: tuple[str, ...] = ()       # it serves its own table; no 13F table is built from its rows
     cadence = "daily"
     starts_by_hand = True             # the first run is the server thread's, after a backup
 
@@ -243,7 +244,7 @@ class SecFtd:
                 ctx.notes.append(f"cnsfails{meta['half']}: {len(rows)} rows read, the trailer says {trailer}")
             rows = [{**r, "half": label(meta["half"]), "fetched_at": meta["fetched_at"], "run_id": meta["run_id"]}
                     for r in rows]
-            con = duckdb.connect()
+            con = base.scratch_con()
             try:
                 base.rows_table(con, "rows", SCHEMA, rows)
                 out.append(base.write_parquet(con, "SELECT * FROM rows ORDER BY settlement_date, cusip",

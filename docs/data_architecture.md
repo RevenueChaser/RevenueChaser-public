@@ -1017,8 +1017,16 @@ renders at once with what is stored.
 | `RC_MARKET_RAW_MARKER` | `rcdata.build.base.RAW_MARKER_ENV` | Optional: a file name under `RC_MARKET_RAW_DIR` that only the mounted HDD holds; when set, a run without that file refuses before its fetch (#292 N-2). Unset, nothing is checked |
 
 **Build memory.** The one read-write connection of a build (`serving.build`) is opened with DuckDB's `memory_limit`
-from `RC_DUCKDB_MEMORY_LIMIT` (a DuckDB size such as `5GB`; default `5GB`) and `threads` from `RC_DUCKDB_THREADS`
-(default `3`); an empty or invalid value keeps the default. Over the limit DuckDB spills rather than growing: without
+and `threads` from `RC_DUCKDB_THREADS` (default `3`); an empty or invalid value keeps the default. The memory limit
+**follows the machine at build start** (`serving.auto_memory_limit`): `RC_DUCKDB_MEMORY_SHARE` (default `0.6`) of
+what is still available, held between `RC_DUCKDB_MEMORY_FLOOR` (default `2GB`) and `RC_DUCKDB_MEMORY_CAP`
+(default `12GB`). "Available" is the smaller of the kernel's `MemAvailable` and the headroom of the process's own
+cgroup v2 limits (`memory.max` / `memory.high` minus `memory.current`, at every level up to the root, because a
+limit on a parent slice binds its children): on homesrv the builder runs under a systemd `MemoryMax`, so free host
+RAM alone would be a limit the cgroup kills the build for taking. A fixed 5 GB was both too much and too little —
+the `sec_forms` build of 19 Nov 2026 was OOM-killed at it while about 10 GB was free. `RC_DUCKDB_MEMORY_LIMIT`
+(a DuckDB size such as `5GB`) overrides all of it, and `5GB` stays the fallback for a machine whose free memory
+cannot be read. Each build logs the limit it got, its threads and what was available. Over the limit DuckDB spills rather than growing: without
 it a connection may take 80 % of the machine's RAM, and the kernel OOM-killed the first `prices/serving` build on
 #319's code (request #35, 30 Oct 2026, 7.7 GB peak on a 15 GB server). The spill goes to
 `<MARKET_RAW_DIR>/build_tmp/<build file>.tmp` (`serving.spill_dir`, the HDD), never beside the live files on the SSD
@@ -1026,7 +1034,16 @@ it a connection may take 80 % of the machine's RAM, and the kernel OOM-killed th
 from `RC_DUCKDB_MAX_TEMP` (default `200GB`), held to 90 % of the spill disk's free space when the build opens
 (DuckDB's own default, which a set cap replaces; #379): past it the build fails instead of filling the disk.
 `RC_DUCKDB_TEMP_DIR` moves the
-spill's parent folder (unset: `<MARKET_RAW_DIR>/build_tmp`). Each dataset's build logs one line with its seconds and
+spill's parent folder (unset: `<MARKET_RAW_DIR>/build_tmp`).
+
+A build step's own in-memory query connection (`base.scratch_con`, `serving.connect_scratch`) carries the same
+adaptive limit, overridden on its own by `RC_DUCKDB_SCRATCH_MEMORY_LIMIT`, and spills into a folder of its own
+under `<RC_TMP_HDD_DIR>/duckdb-scratch` (else the raw root), one per connection because two DuckDB instances on one
+spill folder write over each other's blocks. A bare `duckdb.connect()` is not allowed in `rcdata/` any more
+(`core/tests/test_scratch_connections.py`): it has no limit — DuckDB's own default is 80 % of the machine's RAM —
+and no spill folder, so such a step grows until the kernel ends the build. Serving **readers** keep their fixed cap
+(`RC_DUCKDB_READ_MEMORY_LIMIT`, default `1GiB`): many run at once, so a share of free memory each would add up to
+more than the machine has. Each dataset's build logs one line with its seconds and
 its spill peak (`base.spill_peak`, sampled every 2 s), the measure for moving the spill to the SSD or chunking a kind.
 
 **Files.** Serving kinds: `market`, `spine`, `prices`, `ownership`, `fundamentals`, `options`, `sec_forms`, `sec_reads`. Each kind is one
@@ -1058,11 +1075,19 @@ checked before it replaces anything: its `serving_schema_version` row, the row c
 one the kind's code retired by name, `serving.RETIRED_TABLES`: `prices`' `crsp_unadjusted` since PR 382, `market`'s
 `news_headline` since market 4), and
 none may empty or lose more than 1% of its rows unless the request says `"allow_shrink": true` (the CLI's
-`--allow-shrink`), which relaxes only the asking dataset's own tables and the tables the kind derives from its sources
-(a dataset with no provider, such as `ownership/serve`), never another source dataset's table (`base.shrink_scope`).
+`--allow-shrink`), which relaxes only the asking dataset's own tables (`tables`) and the served tables of its kind its
+rows reach, which the dataset declares itself (`feeds`, `base.shrink_scope`): never a table its rows never reach, and
+never another source dataset's own table. Until #326 the second half was inferred — every table of a dataset with no
+provider was relaxed for every dataset of the kind — so a run on one feeder could let a table its rows never reach
+shrink (#293). A dataset that declares no `feeds` relaxes its own tables only;
+`rcdata/tests/test_shrink_scope.py` holds the declarations to their kind: every served table is owned or fed by at
+least one dataset, and no declaration names a table of another kind.
 A table that serves only its newest sessions (`option_eod`) names its first kept session in the
 build file's `serving_window` table, and is compared on the rows inside that window: a session leaving it is not a
-loss, a session inside it that lost rows is. A table whose row count the source or avo chooses rather than
+loss, a session inside it that lost rows is. That window is read from the Parquet partitions the build found, so the
+window itself is compared as well: a build whose windowed table holds fewer sessions than the live file's own window
+does is refused (#292 N-4; before it, a build that found one session matched the live file row for row inside its own
+one-session window and swapped 20 sessions away). A table whose row count the source or avo chooses rather than
 accumulates is named in `serving.SHRINKS_BY_CHOICE` (`my_universe`; `economic_event` since 14 Nov 2026, because UW's
 calendar is a forward window and a snapshot day's partition is replaced whole by that day's newest fetch): it may
 shrink by any amount and still may not empty. A build also refuses
@@ -1102,6 +1127,21 @@ data correctness. Which class each served table falls in — cumulative (a day o
 rewrites served rows) or a derivation rebuilt whole — is read from the build code in `docs/dirty_table_classes.md`,
 together with the two dependencies (the spine's symbol map, the prices universe) that make a table dirty with no
 new source day of its own.
+
+**Whose build code changed** (#814). Build code is a rule: a change to an extraction or a table rule restates rows
+that no Parquet file marks as changed, so the build file carries a fingerprint of the code it was built by and a
+change to it forces a whole build. That fingerprint used to be one per kind — every Python file in the packages
+holding the kind's datasets — which made the first pass after **every** deploy rebuild `ownership/serve` from
+scratch: 2,352 s and a 23.8 GB spill, measured on homesrv on 12 Nov 2026, above the 20 GB cap the build line itself
+printed. The file now carries one fingerprint per dataset plus one shared (`dirty.fingerprints`, table
+`build_rules`). A dataset's own fingerprint covers the files **of its own package that its code reaches**
+(`dirty.code_files`, the import graph inside `rcdata/build`, stopping at the shared files), so `ownership/serve` is
+restated by an edit to `ownership/common` and not by one to `ownership/regsho`; the package stays the boundary it
+always was, so this only ever narrows what a change restates. The shared fingerprint covers `rcdata/serving.py` and
+`rcdata/build`'s `__init__.py`, `base.py` and `dirty.py` — the code every kind's rows depend on — and a change there
+is still a whole build of every kind. A dataset whose own code changed is everything of itself: its tables are
+restated on the live copy and the rest of the kind keeps its dirty set, which the pass's note names
+("restated for new build code: ...").
 
 **Which kinds build on the live copy** (#446). `fundamentals` (#554) reloads its dirty companies. `prices`
 (`rcdata/build/prices/incremental.py`) rebuilds every served row on or after one day — the first day of each changed
@@ -1171,9 +1211,11 @@ With `RC_REDIS_URL` unset the app runs on `ops.sqlite` as below; that is the rol
 written while Redis is on.
 
 **`ops.sqlite`** (SQLite WAL, `busy_timeout` 5000 ms on every open; `rcdata/ops.py` owns every statement;
-ops schema version `2` (Redis keeps the same stamp in `<ns>:ops_schema`); `ensure` upgrades an older file in place, in one transaction, and refuses a file stamped
-newer. Rolling back to version 1 code is `DELETE FROM ops_schema WHERE version = 2` with every ops process stopped:
-version 1 runs on the version 2 tables, and the next upgrade leaves a history table that already has `id` alone):
+ops schema version `3` (Redis keeps the same stamp in `<ns>:ops_schema`); `ensure` upgrades an older file in place, in one transaction, and refuses a file stamped
+newer. Rolling back to an older checkout is `DELETE FROM ops_schema WHERE version = <n>` with every ops process
+stopped: the older code runs on the newer tables, and the next upgrade leaves alone what is already there (a
+history table that has `id`, a `job_runs2` that has `job` and `counts`). Version 3 (#136) added those two columns
+by `ALTER`, so nothing is rewritten and the builder's rows keep their values):
 
 | Table | Holds |
 |---|---|
@@ -1181,7 +1223,7 @@ version 1 runs on the version 2 tables, and the next upgrade leaves a history ta
 | `build_requests` | The FIFO request queue (queued, running, done, failed, skipped) |
 | `dataset_check` | One row per dataset run: changed, unchanged, failed or skipped; rows, added, removed, coverage, calls |
 | `build_issues` | A row the builder could not use, with its key, until resolved |
-| `job_runs2` | One row per builder run |
+| `job_runs2` | One row per run: a builder run (its `dataset`), a scheduled task (`job` = the registry name, `trigger` = `schedule`) or a dashboard job (`job` = its module, `trigger` = `dashboard`), with what the run did in `counts` (#136). `ops.runs_between` and `ops.last_builder_run` read the builder's rows only (`dataset IS NOT NULL`); `ops.job_runs` reads the task and dashboard rows |
 | `read_log` | Reads per day, process and table (counted in memory, written once a minute) |
 | `uw_remaining` | UW's `x-uw-*` rate headers, sampled once a run: `x-uw-daily-req-count` as `daily_req_count`, `daily_remaining_computed` = our cap (`rcdata/caps.py`) minus it, the per-minute window, and `x-uw-token-req-limit` as sent (it is not the daily cap) |
 | `provider_calls_daily` | Calls, failures and 429s per provider and New York day |
@@ -1260,9 +1302,23 @@ not pruned by the weekly run (it only looks inside `weekly-v2/`); removing them 
 Each pass first queues what is due (below), then takes the queued
 requests in order: those, Fetch and Backfill from Settings, and the CLI's. It skips a paused dataset (`dataset_schedule.paused_at`, a `skipped: paused` check row,
 no call). At start it fails a request a dead builder left running, with `lost: pid <n> gone` and a `failed` check
-row. A request whose builder is still alive (a live `.rc-proc` marker of its pid in the market dir) is left
+row — or, when the kernel's own log says it killed that pid for memory, with `lost: pid <n> killed by the kernel:
+out of memory` (`core/oom.py`, #815: the journal is read by pid, bounded and never fatal, and `RC_OOM_JOURNAL=0`
+turns the read off, which is what the test suite runs with). A request whose builder is still alive (a live `.rc-proc` marker of its pid in the market dir) is left
 alone. Neither row writes an old `job_runs` row: the builder records its own `job_runs2` rows. The page and the routes only enqueue and read (`docs/data_retrieval.md`, "The
 market-store builder's routes").
+
+**Why a pass exited 1, and where that is written (#1119).** The hourly unit runs
+`jobrun rc-builder -- python -m RevenueChaser.core.automations run RC-Build`, and `run_task` sends the builder's
+whole stream to `<OUTPUT_DIR>/logs/RC-Build.log`. `jobrun` keeps only what its child printed, the **last line** of
+it as the job's `message`, so a failed pass ends with one summary line on stdout: `pass failed: <reason>;
+<reason>`, which carries every failed dataset with its step and exception, the due step's own failures (the one
+reason that fails a pass with every dataset run ok), a store that stayed busy, and `not started: <holder>` for an
+exit 3. `run_task` echoes a non-zero child as `<entry> exit <rc>: <its last line> (log: <path>)` on its own
+stdout, so the jobrun log, the journal and ops.db all name the reason and the log that holds the rest. A failed
+check row, the `job_runs2` error and the request's note name the step that raised first — `fetch`, `parquet`,
+`backfill`, `build`, `check`, `swap` or `after_swap` (`RunContext.step`) — so an HTTP 504 a fetch got is told from
+the same exception class out of a check read.
 
 **Known limits.** The idle gate is checked when the builder starts, not again before each request: a job that takes
 a lock after that runs beside it (both write different files, so nothing breaks). Since the gate only asks about the
@@ -1347,7 +1403,11 @@ queue** for that runner — the route answers 202 with `waits_for`, the hourly b
 wrds/co_hgic wrds/idxcst_his openfigi/map` starts one worker for the whole process. Run it in a foreground terminal:
 the worker reads a WRDS prompt from `/dev/tty`, and a background job that reads its terminal is stopped (SIGTTIN).
 A failed login, or no
-interpreter at `RC_WRDS_PYTHON`, fails the run and keeps the last snapshot served. `requested_by` `cli` is the CLI's
+interpreter at `RC_WRDS_PYTHON`, fails the run and keeps the last snapshot served. With `RC_WRDS_UNATTENDED=1` the
+hourly builder runs them on their cadence, and a WRDS dataset whose last check `failed` **today** (New York) is not
+due again before the next day (`due.WRDS_FAILED_WHY`): no hourly login retry, but at most one retry a day, so a
+failure after the WRDS calls — a refused serving swap (#1115) — does not stop a daily dataset writing any check row
+at all until a person notices. A person's run (Fetch or CLI) that does not fail clears it at once. `requested_by` `cli` is the CLI's
 own mark: a panel header that says `cli` is recorded as `panel:cli`.
 
 **Starts by hand.** Every spine dataset is not due until it has built once (a `changed` or `unchanged` check, from
@@ -1370,7 +1430,7 @@ steps, and a first attempt that failed is not retried every hour.
 | `etf_class_changes` | which fund's label entered, changed or left, when and why: `ticker`, `change` (`entered` / `changed` / `left`), `was`, `now`, `reason`, `as_of` (the build day), `run_id`. Append-only across builds, like `my_universe_changes`. A fund keeps its live label while it still holds with every cut 10 points lower, so a fund on a cut does not write a row every quarter |
 | `etf_theme` | the ETF theme list (spine 8, avo's G of 18 Nov 2026): one row per fund of the theme section of avo's `map` watch list whose `etf_class` label names no GICS branch (`diversified`, `international`): `ticker`, `theme` (the fund's registered name, the issuer's own words) with `theme_source`, the fund's `primary_class` and `geo`, `as_of` (the report the label was read from), `run_id`. A themed fund that sits in one branch (SMH, KRE, XBI) is described by its `etf_class` row and is not here |
 | `etf_holdings` | every holding of each ETF of `funds/etf_holdings`, per day: `as_of`, `etf`, `provider`, `ticker`, `cusip`, `name`, `weight` (the relatedness peer sets' source) |
-| `fund` | one per share class of the newest SEC fund file: `cik`, `series_id`, `class_id`, the normalised `ticker` and the file's `ticker_raw`, `is_etf` with the `is_etf_source` that decided it, and the file's provenance. `security`'s counterpart: an ETF is a series of a trust, so it has no row of its own in the equity file (the ETF rule, and the two exceptions, below). The kind's only source-owned served table, so `base.shrink_scope` relaxes it for `allow_shrink` on `sec/company_tickers_mf` alone: an empty `fund` refuses the swap for every spine dataset until that one is run |
+| `fund` | one per share class of the newest SEC fund file: `cik`, `series_id`, `class_id`, the normalised `ticker` and the file's `ticker_raw`, `is_etf` with the `is_etf_source` that decided it, and the file's provenance. `security`'s counterpart: an ETF is a series of a trust, so it has no row of its own in the equity file (the ETF rule, and the two exceptions, below). The kind's only source-owned served table, and the one no other spine dataset feeds (`feeds`, #326), so `allow_shrink` relaxes it for `sec/company_tickers_mf` alone: an empty `fund` refuses the swap for every spine dataset until that one is run, which is the ordinary way out |
 
 **The ETF rule** (`rcdata/build/spine/sec_tickers_mf.py`). The fund file carries no "this is an ETF" field, so
 `is_etf` is a rule and says so in `is_etf_source` (`length_rule_v1`): a symbol of five letters ending in X is
@@ -1471,6 +1531,14 @@ only through `rcdata.read`.
 | `uw/total_float` | daily | Unusual Whales `/short_screener` `total_float`, every Tier A name (the client's batching) | `stg_uw_float` |
 | `wrds/prices` | daily (avo, 3 Nov 2026), attended unless `RC_WRDS_UNATTENDED=1` | Compustat `comp.secd` from 1983 (its earliest priced day, 1983-12-30) on exchg 11, 12, 14, 17, 21 (NYSE, NYSE American, Nasdaq, NYSE Arca, BATS BZX) with the row's dividend columns, and `comp.sec_divid` per year, CRSP `crsp.dsf_v2` per year to 2025 (stocks and ETFs, from 1983), `comp.sec_split` and `crsp_a_stock.stkdelists` whole; no CCM link (`wrds_history.PERMNO_LINK`) | `stg_wrds_secd`, `stg_wrds_dsf`, `stg_wrds_divid`, `stg_wrds_split`, `stg_wrds_revisions` |
 | `prices/serving` | daily | none: builds the served tables from the staging tables; the history is Compustat's (priority 1), CRSP's only on its fallback days, never Alpaca's | the tables below |
+
+**A stored `comp.secd` row is a session only when it carries a price (#423).** Compustat ships its year partition
+with its own forward-dated calendar placeholders: measured read-only on 5 Nov 2026, 1,128 rows over 929 tickers,
+`datadate` from 2026-11-03 to 2026-12-31, `prccd` and `cshtrd` NULL. Nothing but the NULL price marks them apart, so
+`max(datadate)` over the raw partitions answers up to two months past the last real session — and does it again with
+every new year partition. The stored file stays a faithful copy of what WRDS answered; the rule lives in
+`rcdata/build/secd.py` instead: `secd.PRICED` / `secd.PRICED_USD` is the filter every reader uses, and
+`secd.last_session()` is the day a freshness check, a "data as of" label or a window bound must ask for.
 
 **The one primary source (avo, 3 Nov 2026: the whole history and what follows from Compustat).** A served bar is
 Compustat's `comp.secd` bar, a priced day up to today on which the security was on exchg 11, 12, 14, 17 or 21 by
@@ -1990,6 +2058,20 @@ their earnings-week filter (and so the Relatedness and Value Chain filters, whic
 after today (New York), each name's `report_date` on or after today. With no options file, a stale session or a failed
 read, it reads the stored D26 `earnings_calendar` as before (#304), and Yahoo's `earningsTimestampStart` where neither
 has the name.
+
+**The Earnings Radar calendar (E5a, #273).** `app/runners._fetch_calendar_days` reads the same
+`option_screener_daily` session as the calendar it used to ask UW for, through
+`module_earnings_radar/stored_inputs.calendar_items`: one answer per `(report day, report session)` pair the
+newest built session covers, empty pair included, with the calendar's own `expected_move_perc`,
+`street_mean_est`, `full_name`, `marketcap`, `report_time` and closes. The session may lag the board's day by the
+`options.screener` need's one session; the days it covers are `session < day <= session + DAYS_AHEAD` (the
+builder's own 28). UW is still called for every pair outside that — and always for today's and the next trading
+day's pairs, because UW moves the expected move, the estimate and the report time during the day for the names
+about to report. Either path builds the event with `_calendar_event`, so `source` stays `UW` and the run
+downstream cannot tell them apart; `input_sources["calendar"]` counts the stored and the live pairs and names the
+session. The watch-list names the calendar omits (unknown time, estimated date) still take one live
+`screener_batch`: `option_screener_daily` holds calendar names only, so it cannot answer for a name that is not
+on the calendar.
 
 **UW calls a session** (`rcdata/build/options/__init__.py`, the plan's arithmetic: list names x (chain + stats +
 prints) + screener pages + earnings-set names + far-print pages). A list name is 11 calls plus 2 per expiry plus one

@@ -78,6 +78,8 @@ class Sec13fSetsListed:
     kind = KIND
     providers = (sec.PROVIDER,)
     tables = (TABLE,)
+    # The SEC data sets decide a period's ``closed`` and which set it was seen in (#732).
+    feeds = ("sec13f_periods", "sec13f_ticker_period")
     cadence = "daily"
     backfill_needs_from = False
     starts_by_hand = True             # the first run is the server thread's, after a backup
@@ -107,7 +109,7 @@ class Sec13fSetsListed:
 
     def to_parquet_all(self, ctx: base.RunContext, raws: list[Path]) -> list[Path]:
         """One file of every set the kept listings name (a handful of rows), written again whole."""
-        con = duckdb.connect()
+        con = base.scratch_con()
         try:
             base.rows_table(con, "rows", SCHEMA, _kept())
             return [base.write_parquet(con, "SELECT * FROM rows ORDER BY first_day, name", parquet_path())]

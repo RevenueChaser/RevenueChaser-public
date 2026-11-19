@@ -12,10 +12,11 @@ def test_relation_cards(snapshot):
 
 
 def test_each_card_has_a_headline_and_english(snapshot):
-    # The board is English (avo, 5 Nov 2026); the Turkish line is optional and the two A9 cards carry none.
+    # The board is English (avo, 5 Nov 2026, again 19 Nov 2026): no card carries a second language.
     for c in relations.greek_relations(snapshot):
         assert c["headline"]
         assert c["english"]
+        assert "turkish" not in c
 
 
 def test_gamma_card_matches_regime(snapshot):
@@ -37,13 +38,7 @@ def test_causal_chain_has_four_steps(snapshot):
     assert chain[0]["label"] == "IV rises"
     assert chain[3]["label"] == "Move damped / amplified"
     for s in chain:
-        assert s["english"] and s["turkish"]
-
-
-def test_glossary_tr_entries():
-    assert len(relations.GLOSSARY_TR) >= 6
-    for g in relations.GLOSSARY_TR:
-        assert g["greek"] and g["def"]
+        assert s["english"] and "turkish" not in s
 
 
 def test_vomma_is_static_second_order():

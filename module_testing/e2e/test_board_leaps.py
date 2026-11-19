@@ -11,8 +11,26 @@ The filter bar's tier behaviour in a real browser went with the board (the kit i
 """
 from __future__ import annotations
 
+import pytest
+
+from .harness.shared import shared_dashboard
+
+SHARED = pytest.mark.xdist_group("e2e-leaps-shared")
 
 
+@pytest.fixture(scope="module")
+def dashboard(tmp_path_factory, mock_provider):
+    """One dashboard per xdist worker for this file, not one per test (#896).
+
+    Nothing here writes to the server: the scan is switched off, so the only POST is refused with 409 before a job
+    starts, and every other test is a GET. Measured on the 19 Nov 2026 e2e run: the six tests took 38.9 s, of which
+    about five dashboard boots (~6.3 s each, the floor an empty-store test shows) were the sharing's whole cost.
+    """
+    with shared_dashboard(tmp_path_factory, mock_provider, "leaps-shared") as dash:
+        yield dash
+
+
+@SHARED
 class TestScanIsSwitchedOff:
     def test_the_dashboard_serves_its_shell(self, dashboard):
         """Sanity: the subprocess really is the app, not a stub."""

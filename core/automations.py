@@ -21,6 +21,8 @@ Registry names are stable: a task that writes tables records them as ``job_runs.
 """
 from __future__ import annotations
 
+import json
+import logging
 import os
 import re
 import shutil
@@ -34,6 +36,8 @@ from pathlib import Path
 from typing import Callable
 
 from RevenueChaser.core import config
+
+logger = logging.getLogger(__name__)
 
 ACTIONS = ("install", "enable", "disable", "remove", "run")
 
@@ -1180,9 +1184,75 @@ def wait_for_chain(e: AutomationEntry, *, clock: Callable[[], datetime] | None =
 
 # --- the command a task runs ----------------------------------------------------
 #
-# A task's command runs as a subprocess, so the dashboard's job registry (app/jobs.py) never sees it. Its record is
-# its log. The ``job_runs`` row it also wrote lived in the old raw.duckdb and went with it (#860). A table writer
-# still gets ``RC_RUN_ID`` and ``RC_RUN_SOURCE`` (``rawstore.task_run``), so the run ids it writes carry the task.
+# A task's command runs as a subprocess, so the dashboard's job registry (app/jobs.py) never sees it. Its records
+# are its log and, since #136, one ``ops.job_runs2`` row per run (``job`` = the registry name, ``trigger`` =
+# ``schedule``) with what the run did in ``counts``. The old ``job_runs`` row lived in the raw.duckdb that went with
+# #860. A table writer still gets ``RC_RUN_ID`` and ``RC_RUN_SOURCE`` (``rawstore.task_run``), so the run ids it
+# writes carry the task.
+#
+# ``counts`` comes from the step's own stdout: every CLI prints one JSON result object as its last line (``--report``
+# is the file form of the same thing). The run reads back only what the subprocess appended to the log, from the
+# offset the log stood at before it started, so a long run's output is never held in memory twice.
+
+#: At most this much of a step's output is read back looking for its result line. A CLI prints the object last, and
+#: a line longer than this is not one we can parse anyway.
+COUNTS_TAIL_BYTES = 64 * 1024
+
+
+def counts_from_output(text: str) -> dict | None:
+    """The last line of ``text`` that is a JSON object, as a dict; None when there is none (#136).
+
+    A step prints its result as one object on its own line. Anything else it logged — a warning, a progress line,
+    a traceback — is not an object and is passed over, and a step that prints nothing parseable records no counts
+    rather than a wrong one. An empty object counts as none: the column is for what a run did.
+    """
+    for line in reversed(text.splitlines()):
+        line = line.strip()
+        if not line.startswith("{") or not line.endswith("}"):
+            continue
+        try:
+            got = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(got, dict) and got:
+            return got
+    return None
+
+
+def _counts_of_run(log: Path, offset: int) -> dict | None:
+    """The result object the step printed, read from ``log`` after ``offset``. Never raises: a log that cannot be
+    read back costs the counts, not the run's row."""
+    try:
+        size = log.stat().st_size
+        with open(log, "rb") as fh:
+            fh.seek(max(offset, size - COUNTS_TAIL_BYTES))
+            tail = fh.read()
+    except OSError:
+        return None
+    return counts_from_output(tail.decode("utf-8", "replace"))
+
+
+def _run_log_start(run_id: str, name: str) -> bool:
+    """Open the run's ``ops.job_runs2`` row; False when the ops records could not take it. Best-effort
+    bookkeeping (#282): a task must run even with the ops store busy or absent."""
+    try:
+        from RevenueChaser.rcdata import ops
+        ops.start_run(run_id, None, "schedule", job=name)
+    except Exception:  # noqa: BLE001 — bookkeeping, never the reason a task does not run
+        logger.debug("could not open the run log row for %s", name, exc_info=True)
+        return False
+    return True
+
+
+def _run_log_finish(run_id: str, rc: int, counts: dict | None) -> None:
+    """Close the run's row with the exit code's status and its counts. Never raises, for the same reason."""
+    try:
+        from RevenueChaser.rcdata import ops
+        ops.finish_run(run_id, "done" if rc == RESULT_OK else "failed",
+                       None if rc == RESULT_OK else f"exit {rc}", counts)
+    except Exception:  # noqa: BLE001
+        logger.debug("could not close the run log row %s", run_id, exc_info=True)
+
 
 #: The registry rows the board's backup switch stops (#527); the fetch switch stops every other row but these and
 #: ``SWITCH_EXEMPT``.
@@ -1212,6 +1282,26 @@ def _switched_off(name: str) -> str | None:
     return f"skipped: {ops.switch_words(switch, off)}" if off is not None else None
 
 
+#: How much of a failed run's reason ``run_task`` echoes. ``homeops/runs.py`` keeps a job's last line as its
+#: ``job_runs.message`` and cuts it at 500 characters.
+REASON_MAX = 500
+
+
+def last_reason(log: Path, start: int, limit: int = REASON_MAX) -> str:
+    """The last line the command wrote to ``log`` from byte ``start`` on, without this runner's own ``=== `` lines.
+
+    "" when the command said nothing, or the log cannot be read: a reason we do not have is never invented.
+    """
+    try:
+        with open(log, "r", encoding="utf-8", errors="replace") as fh:
+            fh.seek(start)
+            said = [ln.strip() for ln in fh.read().splitlines()
+                    if ln.strip() and not ln.startswith("=== ")]
+    except OSError:
+        return ""
+    return said[-1][:limit] if said else ""
+
+
 def run_task(name: str, python: str | None = None, cwd: Path | str | None = None, *,
              clock: Callable[[], datetime] | None = None, sleep: Callable[[float], None] | None = None,
              tz: tzinfo | None = None) -> int:
@@ -1219,6 +1309,16 @@ def run_task(name: str, python: str | None = None, cwd: Path | str | None = None
 
     A chained entry first waits for its predecessor (``wait_for_chain``); blocked, it exits
     ``CHAIN_BLOCKED`` without running its command.
+
+    The run also gets a row in the ops run log (#136): ``job`` is the registry name, and ``counts`` is the result
+    object the step printed last (``counts_from_output``). A row is opened only for a run that reaches its command,
+    so a switched-off or chain-blocked pass leaves none, as it leaves no output.
+
+    The command's own output goes to the log and nowhere else, so a command that failed also has its exit code and
+    its last line echoed on **this** process's stdout (#1119). On the server this runner is itself a child of
+    ``jobrun``, which keeps a job's last line as its ``job_runs.message`` and writes it to its own log and the
+    journal: without the echo a red hourly row says "exit 1" and names no reason in any of the three places a
+    person looks, and only ``<entry>.log`` holds it.
     """
     import os
     import uuid
@@ -1256,6 +1356,9 @@ def run_task(name: str, python: str | None = None, cwd: Path | str | None = None
         if e.tables_written:
             from RevenueChaser.core import rawstore
             env = {**os.environ, rawstore.RUN_ID_ENV: run_id, rawstore.RUN_SOURCE_ENV: e.name}
+        logged = _run_log_start(run_id, e.name)
+        fh.flush()
+        before = fh.tell()                  # where the step's own output starts, for ``_counts_of_run`` and the echo
         try:
             rc = subprocess.run([python or sys.executable, *e.args],
                                 cwd=str(cwd or package_parent()),
@@ -1266,7 +1369,12 @@ def run_task(name: str, python: str | None = None, cwd: Path | str | None = None
             fh.write(f"could not start: {exc}\n")
             rc = 1
         fh.flush()
+        if logged:
+            _run_log_finish(run_id, rc, _counts_of_run(log, before))
         fh.write(f"=== {stamp()} exit {rc}\n")
+    if rc != RESULT_OK:
+        why = last_reason(log, before)
+        print(f"{e.name} exit {rc}" + (f": {why}" if why else "") + f" (log: {log})", flush=True)
     return rc
 
 

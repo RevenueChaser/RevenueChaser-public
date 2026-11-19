@@ -25,7 +25,7 @@ import duckdb
 from ....core import calendar
 from ....core.identity.sources import norm_ticker
 from .. import base
-from . import KIND, stage
+from . import DERIVED, KIND, stage
 
 NAME = "sec/company_tickers_exchange"
 PROVIDER = "sec"
@@ -90,6 +90,7 @@ class SecTickers:
     kind = KIND
     providers = (PROVIDER,)
     tables: tuple[str, ...] = ()
+    feeds = DERIVED                   # the spine starts here: every served table is built over these tickers
     cadence = "weekly"
     backfill_needs_from = False
     starts_by_hand = True             # not due until a first CLI run or Fetch built it (review should-fix 2)
@@ -135,7 +136,7 @@ class SecTickers:
                      "fetched_at": meta["fetched_at"], "run_id": meta["run_id"]}
                     for r in parse(base.read_raw_json(raw))]
             final = parquet_dir() / f"date={as_of.isoformat()}" / "part-0.parquet"
-            con = duckdb.connect()
+            con = base.scratch_con()
             try:
                 base.rows_table(con, "rows", SCHEMA, rows)
                 out.append(base.write_parquet(con, "SELECT * FROM rows ORDER BY ticker", final))

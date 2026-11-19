@@ -104,7 +104,7 @@ def test_the_highlight_is_the_most_important_live_event_earliest_on_a_tie():
     hl = rawstore.query("SELECT * FROM news_highlight", db="news")
     assert len(hl) == 1 and hl[0]["session_date"] == date(2026, 11, 10)
     assert hl[0]["event"] == "CPI, M/M%" and hl[0]["text_source"] == "template"
-    assert "beklenti %0,2" in hl[0]["text"]
+    assert "forecast 0.2%" in hl[0]["text"]
 
 
 def test_a_retired_event_is_never_the_highlight():
@@ -118,10 +118,10 @@ def test_a_retired_event_is_never_the_highlight():
 
 
 @pytest.mark.parametrize("event, kind, prev, fc, want", [
-    ("Core CPI, M/M%", "report", "0.3%", "0.2%", "Gıda ve enerji hariç"),
-    ("Fed Governor Waller speaks", "fed-speaker", None, None, "Fed yetkilisinin"),
-    ("Baker Hughes rig count", "report", None, None, "öne çıkan verisi."),
-    ("PPI, M/M%", "report", "0.1%", None, "beklenti yayımlanmadı"),
+    ("Core CPI, M/M%", "report", "0.3%", "0.2%", "excluding food and energy"),
+    ("Fed Governor Waller speaks", "fed-speaker", None, None, "A speech by a Fed official"),
+    ("Baker Hughes rig count", "report", None, None, "highlight on the US economic calendar."),
+    ("PPI, M/M%", "report", "0.1%", None, "no forecast published"),
 ])
 def test_explain_template(event, kind, prev, fc, want):
     assert want in cal.explain({"event": event, "type": kind, "prev": prev, "forecast": fc})

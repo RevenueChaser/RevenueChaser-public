@@ -5,7 +5,7 @@ import logging
 from typing import Callable
 
 from ..config import to_float
-from ._inputs import PE_ONLY_SECTOR, net_debt as _net_debt
+from ._inputs import NO_MINORITY_BRIDGE, PE_ONLY_SECTOR, net_debt as _net_debt
 from RevenueChaser.core.providers.validator import validate_annual
 
 logger = logging.getLogger(__name__)
@@ -26,12 +26,13 @@ def _pct(vals: list[float]) -> dict[str, float]:
 
 
 def _default_fetch(ticker: str) -> dict:
-    import yfinance as yf
-    try:
-        return yf.Ticker(ticker).info or {}
-    except Exception as exc:  # pragma: no cover - network
-        logger.debug("yfinance info %s: %s", ticker, exc)
-        return {}
+    """One peer's Yahoo ``.info``, through the client so a failed peer read reaches the board banner (#299).
+
+    It used to call ``yf.Ticker(ticker).info`` here and swallow the error into the debug log, which left a
+    half-fetched comps ladder looking like a complete one.
+    """
+    from RevenueChaser.core.providers import yfinance as yfinance_client
+    return yfinance_client.raw_info(ticker) or {}
 
 
 # A multiple whose denominator was reported and is not positive is not meaningful: the cell reads NM and the
@@ -51,8 +52,13 @@ def _measured(value) -> bool:
 
 
 def run_comps(financials: dict, peers: list[str],
-              fetch_info: Callable[[str], dict] | None = None) -> dict:
-    """Rakip çarpan analizi; fetch_info test için enjekte edilebilir."""
+              fetch_info: Callable[[str], dict] | None = None,
+              rungs: dict[str, str] | None = None) -> dict:
+    """Rakip çarpan analizi; fetch_info test için enjekte edilebilir.
+
+    ``rungs`` maps a peer to the ladder rung it came from (``"industry"`` / ``"sector"``, ``peers.peer_set``), so
+    the table can say which peers are not in the target's industry (#91); unknown for a peer list the caller typed.
+    """
     fetch = fetch_info or _default_fetch
     annual, warnings = validate_annual(financials.get("annual", []))
     if not annual:
@@ -91,6 +97,8 @@ def run_comps(financials: dict, peers: list[str],
 
         rows.append({
             "ticker": p,
+            # Which rung of the ladder picked this peer (#91); None for a typed peer list.
+            "rung": (rungs or {}).get(p),
             "market_cap": mc,
             "enterprise_value": ev,
             "ev_ebitda": ev_eb,
@@ -121,6 +129,8 @@ def run_comps(financials: dict, peers: list[str],
     implied_equity_pe = _implied(med_pe, target_ni, "P/E", "net income")
 
     net_debt = _net_debt(target_debt, target_cash)     # None when either is unknown
+    if net_debt is not None and target_shares is not None:
+        warnings.append(NO_MINORITY_BRIDGE)             # #92: the bridge subtracts net debt and nothing else
 
     def _per_share_ev(ev):
         if ev is None or net_debt is None or target_shares is None:
@@ -155,5 +165,7 @@ def run_comps(financials: dict, peers: list[str],
             "per_share_ev_revenue": _per_share_ev(implied_ev_rev),
             "per_share_pe": _per_share_eq(implied_equity_pe),
             "net_debt": net_debt,
+            # The fiscal year the net debt is as of (#92); the shares are the fetch's, see ``basis``.
+            "net_debt_fy": latest.get("fiscal_year"),
         },
     }

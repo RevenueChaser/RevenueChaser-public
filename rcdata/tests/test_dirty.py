@@ -6,10 +6,13 @@ whole. These tests pin the contract the incremental steps (3 onwards) will read.
 from __future__ import annotations
 
 import os
+import sys
 import time
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 
+import duckdb
 import pytest
 
 from RevenueChaser.rcdata import serving
@@ -226,3 +229,176 @@ def test_read_dirs_names_the_sibling_folder_a_build_reads(name, sibling):
     tracked by read_dirs alone lost them (rc-rebuild, 17 Nov 2026: price_revision 17472 -> 1551 rows)."""
     from RevenueChaser.rcdata.build import DATASETS
     assert base.parquet_root().joinpath(*sibling.split("/")) in dirty.read_dirs(DATASETS[name])
+
+
+# ── one fingerprint per dataset, not one per kind (#814) ───────────────────────────────────────────────────────
+
+def _of(kind: str, name: str):
+    return next(d for d in base.kind_datasets(kind) if d.name == name)
+
+
+def _module_path(ds) -> Path:
+    return Path(sys.modules[type(ds).__module__].__file__).resolve()
+
+
+def _homes(ds) -> set[Path]:
+    return {Path(sys.modules[name].__file__).resolve() for name in dirty.home_modules(ds)}
+
+
+def _with_edit(monkeypatch, edited: Path, measure):
+    """``measure()`` as the code is, and again with ``edited``'s bytes changed (a comment: it still parses)."""
+    before = measure()
+    real = Path.read_bytes
+    target = edited.resolve()
+    monkeypatch.setattr(Path, "read_bytes",
+                        lambda self: real(self) + (b"\n# edited\n" if self.resolve() == target else b""))
+    return before, measure()
+
+
+def test_a_dataset_answers_for_the_files_of_its_own_package_its_code_reaches():
+    """The #814 case: an edit to ``ownership/regsho`` restated ``ownership/serve``'s ten 13F tables — 2,352 s and
+    a 23.8 GB spill on homesrv, 12 Nov 2026 — because the fingerprint was one per kind."""
+    serve, regsho = _of("ownership", "ownership/serve"), _of("ownership", "regsho/threshold")
+    served = {p.name for p in dirty.code_files(serve)}
+    assert {"serve.py", "common.py", "sec13f.py"} <= served
+    assert served.isdisjoint({"regsho.py", "finra.py", "ftd.py", "ibkr.py", "form4.py", "nport.py"})
+    reached = {p.name for p in dirty.code_files(regsho)}
+    assert "regsho.py" in reached and "serve.py" not in reached
+
+
+def test_a_dataset_answers_for_no_file_outside_its_own_package():
+    """The package is the boundary a kind's fingerprint had, and this narrows it; it never widens it."""
+    for kind in serving.KINDS:
+        for d in base.kind_datasets(kind):
+            folders = {p.parent for p in _homes(d)}
+            assert {p.parent for p in dirty.code_files(d)} <= folders, d.name
+
+
+def test_every_dataset_answers_for_the_module_it_lives_in_and_the_one_its_class_is_in():
+    """``spine/wrds`` defines one class several datasets are built from, and each lives in a module of its own
+    whose constants are as much its rules as the class is."""
+    for kind in serving.KINDS:
+        for d in base.kind_datasets(kind):
+            files = set(dirty.code_files(d))
+            assert _module_path(d) in files, d.name
+            assert _homes(d) <= files, d.name
+
+
+def test_an_edit_to_a_file_a_dataset_does_not_reach_leaves_its_fingerprint_alone(monkeypatch):
+    serve = _of("ownership", "ownership/serve")
+    unreached = _module_path(_of("ownership", "regsho/threshold"))
+    before, after = _with_edit(monkeypatch, unreached, lambda: dirty.dataset_fingerprint(serve))
+    assert before == after
+
+
+def test_an_edit_to_a_file_a_dataset_does_reach_changes_its_fingerprint(monkeypatch):
+    serve = _of("ownership", "ownership/serve")
+    reached = _module_path(serve).parent / "common.py"
+    before, after = _with_edit(monkeypatch, reached, lambda: dirty.dataset_fingerprint(serve))
+    assert before != after
+
+
+def test_an_edit_to_the_shared_build_code_changes_the_shared_fingerprint(monkeypatch):
+    """What every kind's rows depend on stays one fingerprint, and a change to it is still a whole build."""
+    import RevenueChaser.rcdata.build as build_pkg
+    for module in (serving, base, dirty, build_pkg):
+        before, after = _with_edit(monkeypatch, Path(module.__file__), dirty.shared_fingerprint)
+        monkeypatch.undo()
+        assert before != after, module.__name__
+
+
+def test_the_fingerprints_are_the_shared_one_and_one_per_dataset():
+    datasets = base.kind_datasets("ownership")
+    out = dirty.fingerprints(datasets)
+    assert set(out) == {dirty.SHARED} | {d.name for d in datasets}
+    assert out[dirty.SHARED] == dirty.shared_fingerprint()
+    # Two datasets may share a fingerprint when they share their code: a change to it restates both, which is the
+    # answer. What may never happen is a dataset with no module of its own in the package, because that one falls
+    # back to every build file and is restated by every deploy.
+    for kind in serving.KINDS:
+        for d in base.kind_datasets(kind):
+            assert dirty.home_modules(d), d.name
+
+
+# ── what the plan does with a dataset whose code changed ───────────────────────────────────────────────────────
+
+def _plan_ctx():
+    return SimpleNamespace(changed=None, dataset="test/one", notes=[])
+
+
+def _put_rules(kind: str, rows: dict[str, str]) -> None:
+    con = duckdb.connect(str(serving.live_path(kind)))
+    try:
+        con.execute(f"CREATE OR REPLACE TABLE {dirty.RULES_TABLE} (dataset TEXT, fingerprint TEXT)")
+        for name, value in rows.items():
+            con.execute(f"INSERT INTO {dirty.RULES_TABLE} VALUES (?, ?)", (name, value))
+    finally:
+        con.close()
+
+
+def _two(**extra) -> list:
+    one = _Ds("test/one", dirty=lambda ctx: dirty.Dirty(keys=frozenset({"A"})), **extra)
+    two = _Ds("test/two", dirty=lambda ctx: dirty.Dirty(keys=frozenset({"B"})))
+    return [one, two]
+
+
+def test_a_dataset_whose_own_code_changed_is_restated_and_the_kind_is_not_built_whole():
+    _build()
+    datasets = _two()
+    held = dirty.fingerprints(datasets)
+    _put_rules("market", {**held, "test/one": "the code of a deploy ago"})
+    plan = dirty.plan("market", _plan_ctx(), datasets)
+    assert plan.reason is None, plan.reason
+    assert plan.recoded == ("test/one",)
+    assert plan.dirty["test/one"].all is True
+    assert plan.dirty["test/two"].keys == {"B"}, "the rest of the kind keeps its dirty set"
+    assert "restated for new build code: test/one" in plan.note()
+
+
+def test_a_change_to_the_shared_build_code_is_still_a_whole_build():
+    _build()
+    datasets = _two()
+    _put_rules("market", {**dirty.fingerprints(datasets), dirty.SHARED: "the shared code of a deploy ago"})
+    plan = dirty.plan("market", _plan_ctx(), datasets)
+    assert plan.reason and "shared build code" in plan.reason
+    assert plan.recoded == () and plan.dirty == {}
+
+
+def test_no_build_code_changed_leaves_every_dataset_its_own_dirty_set():
+    _build()
+    datasets = _two()
+    _put_rules("market", dirty.fingerprints(datasets))
+    plan = dirty.plan("market", _plan_ctx(), datasets)
+    assert plan.reason is None and plan.recoded == ()
+    assert plan.dirty["test/one"].keys == {"A"} and plan.dirty["test/two"].keys == {"B"}
+
+
+def test_a_keyed_dataset_is_restated_by_its_own_code_change_but_still_bails_on_an_unknown_one():
+    """``dirty_keyed`` guards against a keyed dataset that cannot say what changed, which is no answer. A code
+    change is an answer — everything of that dataset — and its build reloads its tables from the partitions."""
+    _build()
+    datasets = _two(dirty_keyed=True)
+    _put_rules("market", {**dirty.fingerprints(datasets), "test/one": "the code of a deploy ago"})
+    assert dirty.plan("market", _plan_ctx(), datasets).reason is None
+
+    unknown = [_Ds("test/one", dirty=lambda ctx: dirty.ALL, dirty_keyed=True),
+               _Ds("test/two", dirty=lambda ctx: dirty.Dirty(keys=frozenset({"B"})))]
+    _put_rules("market", dirty.fingerprints(unknown))
+    why = dirty.plan("market", _plan_ctx(), unknown).reason
+    assert why and "no narrower dirty set" in why
+
+
+def test_a_live_file_from_before_the_per_dataset_fingerprints_is_trusted_once():
+    """It carries the one-column table of its day; reading that as a changed dataset would rebuild every kind
+    whole on the deploy that lands this."""
+    _build()
+    datasets = _two()
+    con = duckdb.connect(str(serving.live_path("market")))
+    try:
+        con.execute(f"CREATE OR REPLACE TABLE {dirty.RULES_TABLE} (fingerprint TEXT)")
+        con.execute(f"INSERT INTO {dirty.RULES_TABLE} VALUES ('one hash for the whole kind')")
+    finally:
+        con.close()
+    assert dirty.live_rules("market") is None
+    plan = dirty.plan("market", _plan_ctx(), datasets)
+    assert plan.reason is None and plan.recoded == ()

@@ -4,7 +4,10 @@ A dataset is due (``is_due``) when nothing holds it and its last run is old enou
 
 - an attended dataset (WRDS: a person logs in and confirms Duo) is never due: it runs only from the CLI (PR 5);
   with ``RC_WRDS_UNATTENDED=1`` the WRDS datasets are not attended and follow their cadence, but a WRDS dataset whose
-  last run failed is not due again until a person's run succeeds (#344: no hourly login retries);
+  last run failed **today** (New York) is not due again before the next day (#344: no hourly login retries; #1115:
+  not for ever either, because a failure after the WRDS calls -- a refused serving swap -- would otherwise stop a
+  daily dataset writing any check row at all until a person noticed). So at most one retry a day, and a run by a
+  person (Fetch or CLI) that does not fail clears it at once;
 - a dataset that ``starts_by_hand`` (every spine dataset) is not due until it has built once (a ``changed`` or
   ``unchanged`` check from a CLI run or a Fetch), so the first hourly pass after a deploy does not start it before
   the attended steps, and a first attempt that failed is not retried every hour before a person has seen it work;
@@ -58,13 +61,13 @@ CYCLE_DAYS = {"weekly": 7, "monthly": 30, "quarterly": 91}
 HOURLY_MIN = 55
 REQUESTED_BY = "schedule"
 ATTENDED_WHY = "attended: run from the CLI on the server (a person logs in; WRDS_USERNAME must be set)"
-WRDS_FAILED_WHY = ("the last WRDS run failed: it waits for a person (no hourly retry, the last snapshot stays); "
-                   "a newer run by a person (Fetch or CLI) that does not fail clears it")
+WRDS_FAILED_WHY = ("the last WRDS run failed today: again on the next New York day (no hourly retry, so no hourly "
+                   "login; the last snapshot stays); a run by a person (Fetch or CLI) that does not fail clears it")
 #: Providers whose day is too small to retry a failure every hourly pass (Alpha Vantage: 25 calls a day, shared by
 #: the earnings calendar and the listing status): a failed check is due again on the next New York day (#349 S6).
 DAY_CAPPED = frozenset({"alphavantage"})
-#: Datasets checked on fixed days, not on a cadence. Kept here, not on the dataset: a change to an ownership module is a
-#: rule change and rebuilds the whole kind (``dirty.rules_fingerprint``). N-PORT: the SEC posts a quarter's set on the
+#: Datasets checked on fixed days, not on a cadence. Kept here, not on the dataset: a change to the dataset's own
+#: module is a rule change and restates what that dataset serves (``dirty.dataset_fingerprint``). N-PORT: the SEC posts a quarter's set on the
 #: 3rd-9th of Jan/Apr/Jul/Oct (2024-2026; 2025q3 came 18 Nov, a shutdown), so the night of the 15th (avo, 17 Nov 2026:
 #: "Senede 4 defa baksın").
 CHECK_DATES = {"sec/nport": ((1, 15), (4, 15), (7, 15), (10, 15))}
@@ -123,8 +126,12 @@ def is_due(ds, mode: str = "full") -> tuple[bool, str]:
         return _dated(ds, check)
     if check is None:
         return True, "never built"
-    if "wrds" in getattr(ds, "providers", ()) and check["result"] == "failed":
-        return False, WRDS_FAILED_WHY           # RC_WRDS_UNATTENDED: one failure never becomes an hourly login
+    if "wrds" in getattr(ds, "providers", ()) and check["result"] == "failed" \
+            and str(check.get("checked_on"))[:10] >= today:
+        # RC_WRDS_UNATTENDED: one failure never becomes an hourly login, but it does not hold a daily dataset for
+        # ever either (#1115: a transient serving-swap refusal on 17 Nov 2026 left ``wrds/prices`` writing no check
+        # row at all on 18 and 19 Nov, so the served bars stopped at 16 Nov). One retry a New York day.
+        return False, WRDS_FAILED_WHY
     if check["result"] == "failed" and DAY_CAPPED & set(getattr(ds, "providers", ())) \
             and str(check.get("checked_on"))[:10] >= today and not _day_raw_held(ds):
         return False, "failed today: again on the next New York day (the provider allows 25 calls a day)"

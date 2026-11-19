@@ -661,6 +661,46 @@ HISTORY_MODES = ("event", "session_snapshot", "change_history", "latest_cache", 
 _JSON_TYPES = {"JSON"}
 _STRUCT_TYPES = {"STRUCT", "UNION"}
 _NESTED_TYPES = _JSON_TYPES | _STRUCT_TYPES
+#: Tables of the removed stores that nothing reads any more, and the issue that took each one's last reader.
+#:
+#: ``#860`` (15 Nov 2026) deleted ``raw.duckdb``, ``edgar.duckdb``, ``history.duckdb`` and ``.store/prices.duckdb``
+#: with every code path to them. ``core/tests/test_no_old_store.py`` keeps those *files* and the modules that went
+#: with them from coming back; this list does the same for the table *names*, so a reader of one cannot return
+#: unnoticed (#209 T2).
+#:
+#: Deliberately short. A name belongs here only when it is retired **and** no live thing wears it, which many of
+#: the old store's names fail, in three ways worth knowing before adding one:
+#:
+#: - **a bridge view wears it.** ``rcdata`` serves ``sec_submissions``, ``estimate_snapshots``,
+#:   ``edgar_financials``, ``earnings_calendar``, ``index_levels_daily``, ``index_constituents`` and
+#:   ``security_master`` as views under the old names on purpose (decision D4), so a reader written against the
+#:   old store keeps working. Those names are live SQL.
+#: - **the serving layer maps it.** ``rcdata/needs/screen.py`` keys its old-name-to-serving-table mapping on
+#:   ``macro_series``, ``vol_index_daily``, ``cftc_cot`` and ``estimate_snapshots``.
+#: - **something else wears it.** ``earnings_history`` is a provider method and a keyword argument,
+#:   ``identity_cusip`` and ``ownership_snapshot`` are modules, ``watchlist`` is a live store and a route.
+#:
+#: A retired name inside a comment or a docstring is provenance and stays: several modules say in prose which
+#: table they used to read and which issue took it. The guard reads SQL, not prose.
+RETIRED_TABLES: dict[str, str] = {
+    "cusip_ticker": "identity: CUSIP->ticker rows of the old raw store; the spine answers it now (#860)",
+    "identity_source_cache": "identity: one row per source answer, old raw store; the spine holds it (#860)",
+    "leaps_cache": "LEAPS: the board's own chain cache, old raw store; the scan is switched off (#730, #860)",
+    "leaps_flow_prints": "LEAPS: option flow prints, old raw store; went with the scan (#730, #860)",
+    "quote_snapshot": "prices: the intraday quote row of the old raw store; the serving bars replaced it (#860)",
+    "sec13f_enrichment": "13F: the board's own enrichment table; the ownership build serves it (G9, #860)",
+    "sec13f_ticker_names": "13F: UW names per ticker, old raw store; the ownership build serves them (G9, #860)",
+    "sec_company_sic": "SEC: SIC per company, old raw store; the spine carries it (#860)",
+    "sec_company_tickers": "SEC: the CIK file rows of the old raw store; sec_edgar fetches, no store read (#860)",
+    "sec_exchange_file": "SEC: the exchange file rows of the old raw store; same path as sec_company_tickers (#860)",
+    "sec_mf_file": "SEC: the mutual-fund file rows of the old raw store; nothing reads it (#860)",
+    "sec_submissions_cik": "SEC: the CIK index of the old EDGAR store; the sec_submissions view covers it (#860)",
+    "swing_ohlc": "prices: the Swing/Fundamentals bar cache of the old raw store; price_bars_daily replaced it (#379, #860)",
+    "ticker_payload_cache": "Financials: the per-ticker payload cache of the old raw store (#860)",
+    "vendor_valuation": "Financials: vendor valuation rows of the old raw store; the fundamentals build serves them (#860)",
+}
+
+
 MANIFEST: dict[str, dict] = {
     "swing_info": {
         "db": "swing_potential",

@@ -101,6 +101,8 @@ class Ncen:
     kind = KIND
     providers = (PROVIDER,)
     tables: tuple[str, ...] = ()
+    # One half of the ETF list (#346), so of ``my_universe``'s funds and their classes.
+    feeds = ("etf", "my_universe", "my_universe_changes", "etf_class", "etf_class_changes", "etf_theme")
     cadence = "monthly"
     backfill_needs_from = False
     starts_by_hand = True             # as every spine dataset: not due until a CLI run or a Fetch built it
@@ -162,7 +164,7 @@ class Ncen:
                     zipfile.ZipFile(raw) as z:
                 names = {Path(n).name: n for n in z.namelist()}
                 fund, exch, sub = (Path(z.extract(names[n], tmp)) for n in FILES)
-                con = duckdb.connect()
+                con = base.scratch_con()
                 try:
                     out.append(base.write_parquet(con, self._series(fund, exch, sub, quarter, meta),
                                                   folder / "part-0.parquet"))

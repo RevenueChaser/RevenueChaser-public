@@ -53,6 +53,11 @@ The store takes one writer at a time, so the start waits that long for the job l
 another builder, and for the builder lock itself; it exits 3 only when the wait runs out. It prints one line per
 dataset run: the ``dataset_check`` fields. Exit 0 when every run it made ended ok or skipped, 1 when one failed or
 a dataset's due step failed (its due check raised, or ops.sqlite stayed locked while queueing it).
+
+A non-zero exit prints one last line, ``pass failed: <reason>; <reason>``, naming every reason it has: each failed
+dataset with the step that raised and its exception, the due step's failures, a store that stayed busy, and
+``not started: <holder>`` for an exit 3. It is the last line on purpose (#1119): under the hourly unit this
+process's whole stream goes to ``RC-Build.log``, and the only line a job record keeps is the last one printed.
 """
 from __future__ import annotations
 
@@ -254,7 +259,7 @@ def _build_line(batch: list[dict], rows: list[dict], seconds: float) -> str | No
 
 
 def _run_queue(dataset: str | None, once: bool, *, skip=(), only=None, by=None,
-               attended_ok: bool = False, fetch_only: bool = False) -> int:
+               attended_ok: bool = False, fetch_only: bool = False, reasons: list[str] | None = None) -> int:
     """Drain the queue: one batch per turn, and **one heavy dataset per process** (#812).
 
     After a batch that ran a heavy dataset (``base.heavy``), the rest of this process leaves every heavy request
@@ -263,6 +268,7 @@ def _run_queue(dataset: str | None, once: bool, *, skip=(), only=None, by=None,
     run and keeps its turn, and the attended runner (``only=...``) is untouched: nothing attended is heavy.
     """
     worst = 0
+    said = reasons if reasons is not None else []     # what the pass says it failed on (#1119)
     ran_heavy: list[str] = []                   # the heavy datasets this process has run (#812)
     while True:
         # ``next_request`` takes skip or only, never both; the attended runner is the only caller with ``only``.
@@ -273,6 +279,7 @@ def _run_queue(dataset: str | None, once: bool, *, skip=(), only=None, by=None,
             # ops.sqlite held past busy_timeout (a long backup, a stuck writer), or Redis not answering: wait and ask
             # again, never die.
             print(f"ops store busy: {e}; retrying", file=sys.stderr, flush=True)
+            said.append(f"queue: ops store busy: {e}")
             worst = 1
             time.sleep(POLL_S)
             continue
@@ -296,6 +303,7 @@ def _run_queue(dataset: str | None, once: bool, *, skip=(), only=None, by=None,
             # The run could not write its rows (ops.sqlite locked past busy_timeout, Redis not answering): the
             # requests are failed when the store lets us, and the loop goes on with the next one.
             print(f"{req['dataset']}: ops store busy during the run: {e}", file=sys.stderr, flush=True)
+            said.append(f"{req['dataset']}: ops store busy during the run: {e}")
             worst = 1
             ended = getattr(e, "rc_ended", frozenset())    # what the batch had already ended stays as it is
             for r in batch:
@@ -310,10 +318,29 @@ def _run_queue(dataset: str | None, once: bool, *, skip=(), only=None, by=None,
         for row in rows:
             print(base.format_check(row), flush=True)
             if row["result"] == "failed":
+                said.append(f"{row['dataset']}: {row.get('note') or 'failed'}")
                 worst = 1
         line = _build_line(batch, rows, time.monotonic() - started)
         if line:
             print(line, flush=True)
+
+
+#: How much of the summary line a failed pass prints. ``homeops/runs.py`` keeps a job's last line as its
+#: ``job_runs.message`` and cuts it at 500 characters, so a longer line would only be cut there instead.
+REASON_LINE_MAX = 500
+
+
+def _say_failed(reasons: list[str]) -> None:
+    """One last **stdout** line naming why the pass exits 1 (#1119).
+
+    The hourly unit runs this CLI under ``core.automations run RC-Build``, which sends this process's output to
+    ``RC-Build.log`` and prints nothing of its own, so the one line ``jobrun`` and ops.db keep of a job is the last
+    line printed above it. Every reason this pass collected goes on that line: the failed datasets with their step,
+    the due step's own failures, and a store that stayed busy. Without reasons (a dataset run whose row was
+    printed by another path) the line still says the pass failed, because an exit 1 with nothing said is what
+    sent us looking in three empty places.
+    """
+    print(f"pass failed: {'; '.join(reasons) if reasons else 'no reason recorded'}"[:REASON_LINE_MAX], flush=True)
 
 
 def _terminate(signum, frame) -> None:
@@ -446,6 +473,8 @@ def main(argv: list[str] | None = None) -> int:
             # N2: otherwise it would sit on the writer turn for the whole wait and then exit without a word.
             print("no attended request queued", file=sys.stderr)
             return 0
+    # Every reason this pass has for exiting 1, printed as its last line (``_say_failed``, #1119).
+    reasons: list[str] = []
     wait = default_wait_s(args.cmd, getattr(args, "dataset", None)) if args.wait is None else max(0.0, args.wait)
     fetch_only = bool(getattr(args, "no_duckdb", False))
     with contextlib.ExitStack() as stack:
@@ -454,7 +483,10 @@ def main(argv: list[str] | None = None) -> int:
         else:
             got, problem = _take_the_turn(stack, wait)
         if not got:
+            # Exit 3 is "nothing was done", but it is still a red job row with no reason anywhere, so it says
+            # which holder it waited for on stdout too (#1119).
             print(f"builder not started: {problem}", file=sys.stderr)
+            _say_failed([f"not started: {problem}"])
             return 3
         if not fetch_only:
             # A fetch-only run is not a builder: it must not mark a builder's presence (that would stop the real
@@ -469,7 +501,11 @@ def main(argv: list[str] | None = None) -> int:
                       file=sys.stderr, flush=True)
         if args.cmd == "attended":
             # A person is at this terminal (the WRDS login and Duo), so this runner may run what others queued.
-            return _run_queue(args.dataset, once=True, only=base.attended_names(), attended_ok=True)
+            code = _run_queue(args.dataset, once=True, only=base.attended_names(), attended_ok=True,
+                              reasons=reasons)
+            if code:
+                _say_failed(reasons)
+            return code
         if args.cmd == "backfill":
             params = {"mode": "backfill", **({"from": args.start} if args.start else {}),
                       **({"to": args.end} if args.end else {}),
@@ -487,7 +523,11 @@ def main(argv: list[str] | None = None) -> int:
                     req = ops.next_request(name, by=mine, fetch_only=fetch_only)
                 row = base.run_request(req)
                 print(base.format_check(row), flush=True)
+                if row["result"] == "failed":
+                    reasons.append(f"{row['dataset']}: {row.get('note') or 'failed'}")
                 worst = max(worst, int(row["result"] == "failed"))
+            if worst:
+                _say_failed(reasons)
             return worst
         mine = _own_requests_only(args.dataset) if args.dataset else None
         if args.dataset and (args.as_of or args.allow_shrink or args.reread or args.no_duckdb or scope
@@ -502,6 +542,9 @@ def main(argv: list[str] | None = None) -> int:
         if not args.dataset:
             for name, why, _, error in due.enqueue_due():
                 print(f"{name}: {why}", file=sys.stderr, flush=True)
+                if error:
+                    # The one reason that can fail the pass on its own, with every dataset run ok (#1119).
+                    reasons.append(f"due {name}: {why}")
                 due_failed = due_failed or int(error)
             try:
                 pruned = ops.prune_issues()
@@ -514,7 +557,11 @@ def main(argv: list[str] | None = None) -> int:
         # Without --dataset this is the hourly pass, which leaves the attended requests queued for the terminal
         # that may run them.
         skip = () if args.dataset else base.attended_names()
-        return max(_run_queue(args.dataset, args.once, skip=skip, by=mine, fetch_only=fetch_only), due_failed)
+        code = max(_run_queue(args.dataset, args.once, skip=skip, by=mine, fetch_only=fetch_only, reasons=reasons),
+                   due_failed)
+        if code:
+            _say_failed(reasons)
+        return code
 
 
 if __name__ == "__main__":

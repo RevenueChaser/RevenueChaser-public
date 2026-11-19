@@ -123,6 +123,7 @@ class SecForm4(edgar.Feed):
     forms = FORMS
     sub = "form4"
     tables = (TABLE,)
+    feeds: tuple[str, ...] = ()       # it serves its own table; no 13F table is built from its rows
     budget_s = BUDGET_S
 
     def backfill(self, ctx: base.RunContext, start: date | None, end: date) -> None:
@@ -135,7 +136,7 @@ class SecForm4(edgar.Feed):
         super().backfill(ctx, first, end)
 
     def type_day(self, ctx: base.RunContext, day: date) -> list[Path]:
-        con = duckdb.connect()
+        con = base.scratch_con()
         try:
             rows = edgar.Appender(con, "rows", ROWS)
             for _acc, entry, text in self.filings_of(day):

@@ -262,6 +262,8 @@ class UWInstitutions:
     kind = KIND
     providers = (PROVIDER,)
     tables = (TABLE, SUCCESSION_TABLE)
+    # The tags group the type tables, and a succession merges two filers in a ticker's counts (#775, #776).
+    feeds = ("sec13f_ticker_period", "sec13f_type_holdings", "sec13f_type_sector", "sec13f_type_flow")
     cadence = "quarterly"
     backfill_needs_from = False
     starts_by_hand = True             # the first run is the server thread's, after a backup
@@ -301,7 +303,7 @@ class UWInstitutions:
                       f"{repeated} of {repeated + len(rows)} rows repeated across pages while paging; the first "
                       f"row of a CIK stands")
         out = []
-        con = duckdb.connect()
+        con = base.scratch_con()
         try:
             base.rows_table(con, "rows", SCHEMA, rows)
             out.append(base.write_parquet(con, "SELECT * FROM rows ORDER BY cik",

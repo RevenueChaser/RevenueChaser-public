@@ -73,7 +73,9 @@ class Sec13fList:
     name = NAME
     kind = KIND
     providers = (sec.PROVIDER,)
-    tables = ()
+    tables: tuple[str, ...] = ()
+    # The official 13(f) list is read for the ``cusip_not_listed`` build issue only, never for a served row.
+    feeds: tuple[str, ...] = ()
     cadence = "quarterly"
     backfill_needs_from = False
     starts_by_hand = True             # the first run asks 27 files: the server thread's, after a backup
@@ -113,7 +115,7 @@ class Sec13fList:
         if not held:
             return []
         rows = [r for path in held for r in parse(path.stem, base.read_raw(path))]
-        con = duckdb.connect()
+        con = base.scratch_con()
         try:
             base.rows_table(con, "rows", SCHEMA, rows)
             return [base.write_parquet(con, "SELECT * FROM rows ORDER BY quarter, cusip", parquet_path())]
@@ -129,7 +131,7 @@ class Sec13fList:
     def check(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> dict:
         rows = quarters = 0
         if parquet_path().exists():
-            rows, quarters = duckdb.connect().execute(
+            rows, quarters = base.scratch_con().execute(
                 f"SELECT count(*), count(DISTINCT quarter) FROM read_parquet({base.sql_path(parquet_path())})"
             ).fetchone()
         return {"dataset": NAME, "result": "changed" if ctx.pending.get(NAME) else "unchanged",

@@ -215,26 +215,46 @@ _CALENDAR_SOURCES: dict = {}
 
 
 def _fetch_calendar_days(uw: UWClient, days: list[date]) -> tuple[list, dict]:
-    """Fetch calendar events for the given days (weekends skipped) from UW, premarket first so ``raw_cal``'s
-    "premarket wins" rule holds. The stored D26 calendar went with raw.duckdb (#860), so every pair is live."""
+    """Calendar events for the given days (weekends skipped), premarket first so ``raw_cal``'s "premarket wins"
+    rule holds.
+
+    The served calendar answers first, pair by pair (``stored_inputs.calendar_items``: the newest built session's
+    ``option_screener_daily`` rows, which carry the UW calendar's own expected move since #273's data half). UW is
+    asked only for the pairs the store does not cover — a day outside the built session's window, a session too
+    old to read, and always today and the next trading day, whose numbers UW still moves. Either way the event is
+    built by ``_calendar_event``, so a stored pair and a live pair cannot drift apart, and ``source`` stays "UW".
+    """
+    from RevenueChaser.module_earnings_radar.stored_inputs import calendar_items
+    try:
+        stored, session = calendar_items(days)
+    except Exception as e:  # noqa: BLE001 - a store error is "nothing stored", never a failed Fetch
+        logger.warning(f"Stored calendar read failed, asking UW for every day: {e}")
+        stored, session = {}, None
+
     events = []
     raw_cal = {}
-    n_live = 0
+    n_live = n_stored = 0
     for d in days:
         if d.weekday() >= 5:
             continue
-        for session in ("premarket", "afterhours"):
-            n_live += 1
-            for item in uw.calendar_day_raw(d, session):
-                ev = _calendar_event(item, d, session)
+        for sess in ("premarket", "afterhours"):
+            items = stored.get((d, sess))
+            if items is None:
+                n_live += 1
+                items = uw.calendar_day_raw(d, sess)
+            else:
+                n_stored += 1
+            for item in items:
+                ev = _calendar_event(item, d, sess)
                 if ev is None:
                     continue
                 events.append(ev)
                 t = ev["ticker"]
-                if t not in raw_cal or session == "premarket":
+                if t not in raw_cal or sess == "premarket":
                     raw_cal[t] = ev
     _CALENDAR_SOURCES.clear()
-    _CALENDAR_SOURCES.update({"stored": 0, "live": n_live, "session": None})
+    _CALENDAR_SOURCES.update({"stored": n_stored, "live": n_live,
+                              "session": session.isoformat() if session and n_stored else None})
     return events, raw_cal
 
 
@@ -1182,8 +1202,8 @@ def _news_headlines_pass(rid: str) -> dict | None:
         ledger.add_note(f"News tape: {tape['stored']} market headlines from {tape['read']} new lines")
     x = headlines.load_x(run_id=rid)
     if x["mails"]:
-        ledger.add_note(f"News X: {x['stored']} posts from {x['mails']} Grok mails ({x['refused']} rows refused, "
-                        f"{x['cut']} mails cut short)")
+        ledger.add_note(f"News X: {x['stored']} posts from {x['mails']} Grok mails ({x['known']} already stored, "
+                        f"{x['refused']} rows refused, {x['cut']} mails cut short)")
     from RevenueChaser.module_news import x_check
     checked = x_check.run(UWClient)
     if checked["calls"]:
@@ -1216,6 +1236,9 @@ def _news_headlines_pass(rid: str) -> dict | None:
                         f"(IBKR, Dow Jones; the rest in later passes){skipped}")
         failed = got.get("failed", [])
         problems = failed + unread
+        if not problems:
+            # A clean pass, with or without a new headline: the mark Grafana alerts on (review F2, plan step 6).
+            headlines.mark_lane_ok("stocks")
         if problems:
             # A refused request other than "unknown name" (a lapsed feed, pacing) or an unread list: the board shows
             # it, or the lane would only look quieter (review F1/F6, avo's D5 18 Nov 2026: "Panoda bant").
@@ -1250,7 +1273,7 @@ def run_news_x_follow(uw=None) -> Path | None:
     """The X lane's own reader (plan step 5): the Following timeline of RC's X account into ``boards/news.duckdb``,
     then the page. The timer queues it every 30 minutes; ``x_reader.due`` thins that to every 4 hours outside the US
     session. A refused read is a job note and the page's banner, not a job message (the shell alerts every message)."""
-    from RevenueChaser.module_news import report, x_reader
+    from RevenueChaser.module_news import headlines, report, x_reader
     try:
         got = x_reader.run(run_id=run_id())
     except x_reader.ReadFailed as e:
@@ -1262,6 +1285,7 @@ def run_news_x_follow(uw=None) -> Path | None:
     if got["skipped"]:
         return None
     ledger.add_note(f"News X reader: {got['stored']} new posts stored of {got['read']} read")
+    headlines.mark_lane_ok("x")
     return report.render()
 
 

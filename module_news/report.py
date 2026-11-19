@@ -1,8 +1,9 @@
 """The News board page (plan §6, mock ``News.dc.html``): today's US economic calendar, this week, the day's highlight
-and the market headlines, in Turkish, times in Europe/Amsterdam.
+and the market headlines, times in Europe/Amsterdam.
 
 Store-only: it reads ``boards/news.duckdb`` and never fetches. Event names stay as the provider serves them; the board's
-own words are Turkish. Phone first: one column under 900 px, 44 px touch targets, light and dark from the shell's theme.
+own words are English (avo, 19 Nov 2026: every word the boards show is English). Phone first: one column under 900 px,
+44 px touch targets, light and dark from the shell's theme.
 """
 from __future__ import annotations
 
@@ -17,7 +18,7 @@ from RevenueChaser.core.html_safe import esc
 from RevenueChaser.core.html_safe import script_json
 from RevenueChaser.core.reporting_common import (FILTERS_CSS, FILTERS_JS, THEME_CSS, THEME_JS, combobox_html, help_html,
                                                  provider_health_html, watchlist_html, write_artifact)
-from RevenueChaser.module_news.calendar import AMS, EVENTS, HIGHLIGHT, local_day, tr_value
+from RevenueChaser.module_news.calendar import AMS, EVENTS, HIGHLIGHT, local_day, served_value
 from RevenueChaser.module_news import headlines, x_check
 from RevenueChaser.module_news.x_feed import X_PROVIDERS
 
@@ -27,11 +28,11 @@ WEEK_DAYS = 7
 HEADLINE_HOURS = 24
 HEADLINE_LIMIT = 30
 
-MONTHS = ("Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım",
-           "Aralık")
-WEEKDAYS = ("Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar")
-_KIND = {"report": "Veri", "fed-speaker": "Fed", "fomc": "FOMC"}
-_LEVEL = {3: "yüksek", 2: "orta", 1: "düşük"}
+MONTHS = ("January", "February", "March", "April", "May", "June", "July", "August", "September", "October",
+          "November", "December")
+WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+_KIND = {"report": "Data", "fed-speaker": "Fed", "fomc": "FOMC"}
+_LEVEL = {3: "high", 2: "medium", 1: "low"}
 
 
 def hm(ts: float) -> str:
@@ -68,21 +69,22 @@ def _load(now: float) -> tuple[list[dict], dict | None, list[dict], float | None
 
 def dots_html(level) -> str:
     n = int(level or 1)
-    return (f'<span class="dots" title="{_LEVEL.get(n, "düşük")} önem" aria-label="{_LEVEL.get(n, "düşük")} önem">'
+    return (f'<span class="dots" title="{_LEVEL.get(n, "low")} importance" aria-label="{_LEVEL.get(n, "low")} '
+            f'importance">'
             f'{econ_importance.dots(n)}</span>')
 
 
 def vals_html(e: dict) -> str:
-    fc, prev = tr_value(e.get("forecast")), tr_value(e.get("prev"))
-    return (f'<div class="vals"><span>Beklenti <b>{esc(fc or "–")}</b></span>'
-            f'<span>Önceki <b>{esc(prev or "–")}</b></span></div>')
+    fc, prev = served_value(e.get("forecast")), served_value(e.get("prev"))
+    return (f'<div class="vals"><span>Forecast <b>{esc(fc or "–")}</b></span>'
+            f'<span>Previous <b>{esc(prev or "–")}</b></span></div>')
 
 
 def _row(e: dict, now: float, hl_key) -> str:
     key = (e["event_ts"], e["event"], e["type"])
     cls = "ev hl" if key == hl_key else "ev"
     past = ' data-past="1"' if float(e["event_ts"]) < now else ""
-    kind = _KIND.get(str(e.get("type") or "").lower(), "Veri")
+    kind = _KIND.get(str(e.get("type") or "").lower(), "Data")
     return (f'<li class="{cls}"{past}><span class="t">{hm(e["event_ts"])}</span>'
             f'<div class="nm"><span class="kind">{kind}</span> {dots_html(e.get("importance"))}'
             f'<div class="name">{esc(e["event"])}</div></div>{vals_html(e)}</li>')
@@ -92,9 +94,10 @@ def _calendar(events: list[dict], now: float, hl_key) -> tuple[str, str]:
     today = local_day(now)
     todays = [e for e in events if local_day(e["event_ts"]) == today]
     today_html = ("<ul class=\"list\">" + "".join(_row(e, now, hl_key) for e in todays) + "</ul>") if todays else (
-        '<p class="empty">Bugün takvimde veri yok.</p>')
+        '<p class="empty">Nothing on today\'s calendar.</p>')
     if not events:
-        return today_html, '<p class="empty">Bu hafta takvimde veri yok. Yenile, saklı takvimden yeniden kurar.</p>'
+        return today_html, ('<p class="empty">Nothing on this week\'s calendar. Refresh rebuilds the page from '
+                            'the stored calendar.</p>')
     by_day: dict = {}
     for e in events:
         by_day.setdefault(local_day(e["event_ts"]), []).append(e)
@@ -105,9 +108,9 @@ def _calendar(events: list[dict], now: float, hl_key) -> tuple[str, str]:
 
 def _highlight(hl: dict | None) -> str:
     if not hl:
-        return ('<section class="card feat"><h2 class="lbl">Öne çıkan veri</h2>'
-                '<p class="empty">Bugün öne çıkan bir veri yok.</p></section>')
-    return (f'<section class="card feat"><h2 class="lbl">Öne çıkan veri</h2>'
+        return ('<section class="card feat"><h2 class="lbl">Highlight</h2>'
+                '<p class="empty">No highlight today.</p></section>')
+    return (f'<section class="card feat"><h2 class="lbl">Highlight</h2>'
             f'<div class="feat-name">{esc(hl["event"])}</div>'
             f'<div class="muted">{hm(hl["event_ts"])} Amsterdam · {dots_html(hl.get("importance"))}</div>'
             f'{vals_html(hl)}<p class="why">{esc(hl.get("text"))}</p></section>')
@@ -129,12 +132,12 @@ def lane(row: dict) -> str:
     return "stocks" if _tickers(row.get("tickers")) else "market"
 
 
-_LANES = {"market": ("Piyasa", "Piyasa akışından henüz başlık yok."),
-          "stocks": ("Hisseler", "Henüz başlık yok."),
-          "x": ("X", "X özetlerinden henüz kayıt yok.")}
-#: The tweet kinds of the X lane, in the board's Turkish (the JS keeps the same map).
-X_KINDS = {"news": "haber", "level": "seviye", "option": "opsiyon", "macro": "makro", "position": "pozisyon",
-           "other": "diğer"}
+_LANES = {"market": ("Market", "No headline from the market tape yet."),
+          "stocks": ("Stocks", "No headline yet."),
+          "x": ("X", "No post from the X summaries yet.")}
+#: The tweet kinds of the X lane, in the board's words (the JS keeps the same map).
+X_KINDS = {"news": "news", "level": "level", "option": "option", "macro": "macro", "position": "position",
+           "other": "other"}
 
 
 def _check(r: dict) -> dict:
@@ -197,7 +200,7 @@ def _head_li(r: dict) -> str:
     if x:
         move = x_check.price_move(state, float(r["published_at"]))
         opt += f'<div class="xm">{esc(move)}</div>' if move else ""
-        opt += _fold("İşlem grafiği", x_check.chart_svg(state, float(r["published_at"])))
+        opt += _fold("Trade chart", x_check.chart_svg(state, float(r["published_at"])))
     badge = _badge_html(state) if x else ""
     return (f'<li class="hd" data-hid="{esc(r["headline_id"])}" data-at="{float(r["published_at"])}">'
             f'<div class="muted meta">{hm(r["published_at"])}{src} {kind}{tk}{badge}</div>'
@@ -205,7 +208,7 @@ def _head_li(r: dict) -> str:
 
 
 def x_group(r: dict) -> str:
-    """The X lane's group of a row: its contract's ticker, else its first ticker, else "" (Genel)."""
+    """The X lane's group of a row: its contract's ticker, else its first ticker, else "" (General)."""
     state = _check(r)
     return state.get("ticker") or state.get("px_tk") or (_tickers(r.get("tickers")) or [""])[0].upper()
 
@@ -217,7 +220,7 @@ def _group_li(key: str, rows: list[dict]) -> str:
     seen = sum(1 for r in rows if _check(r).get("status") == "seen")
     opts = sum(1 for r in rows if r.get("kind") == "option")
     conf = (f' · <span class="vb {"ok" if seen else "wait"}"><b aria-hidden="true">{"✓" if seen else "–"}</b>'
-            f'{seen}/{opts} UW teyitli</span>') if opts else ""
+            f'{seen}/{opts} UW confirmed</span>') if opts else ""
     with_px = [r for r in rows if _check(r).get("px")]
     chart = ""
     if with_px:
@@ -225,10 +228,10 @@ def _group_li(key: str, rows: list[dict]) -> str:
         session = x_check.session_day(float(newest["published_at"]))
         marks = [(float(r["published_at"]), f'{hm(r["published_at"])} {r.get("source") or ""}'.strip())
                  for r in rows if x_check.session_day(float(r["published_at"])) == session]
-        chart = _fold("Fiyat grafiği", x_check.price_svg(_check(newest)["px"], marks))
-    name = f'<span class="sym">{esc(key)}</span>' if key else '<span class="sym gen">Genel</span>'
+        chart = _fold("Price chart", x_check.price_svg(_check(newest)["px"], marks))
+    name = f'<span class="sym">{esc(key)}</span>' if key else '<span class="sym gen">General</span>'
     return (f'<li class="xg" data-grp="{esc(key)}" data-at="{float(rows[0]["published_at"])}">'
-            f'<div class="xgh">{name}<span class="muted">{len(rows)} kayıt · {esc(kinds)}{conf}</span></div>'
+            f'<div class="xgh">{name}<span class="muted">{len(rows)} posts · {esc(kinds)}{conf}</span></div>'
             f'{chart}<ul class="list">{"".join(_head_li(r) for r in rows)}</ul></li>')
 
 
@@ -240,15 +243,42 @@ def _x_groups(rows: list[dict]) -> str:
     return "".join(_group_li(k, v) for k, v in order)
 
 
-def _headlines(rows: list[dict]) -> dict[str, str]:
-    """One card a lane: Piyasa (the broad tape), Hisseler (per ticker) and X (the Grok X mails, one group a ticker),
-    each with its row count; the page's poll adds to their lists."""
+def _ago(seconds: float) -> str:
+    """How long ago, coarse: ``just now``, ``7 min ago``, ``3 h ago``, ``2 d ago`` (avo, 19 Nov 2026: every word
+    the boards show is English)."""
+    s = max(0.0, float(seconds))
+    if s < 60:
+        return "just now"
+    if s < 3600:
+        return f"{int(s // 60)} min ago"
+    if s < 86400:
+        return f"{int(s // 3600)} h ago"
+    return f"{int(s // 86400)} d ago"
+
+
+def _fresh_html(key: str, fresh: dict, now: float) -> str:
+    """The lane's own freshness line (review F2, 18 Nov 2026).
+
+    The page's header time is the board's newest write of any lane, so a dead per-ticker fetch cannot be seen there
+    while the X load keeps writing. Each lane says when its own newest row was fetched; the page states it and never
+    judges it, because every lane has its own cadence (the tape writes in seconds, the per-ticker pass goes round in
+    about an hour, X is hourly) and the alarm belongs in Grafana, where the threshold can be changed."""
+    at = fresh.get(key)
+    if at is None:
+        return '<p class="fresh">no data in this lane yet</p>'
+    return f'<p class="fresh">last data {hm(at)} · {_ago(now - at)}</p>'
+
+
+def _headlines(rows: list[dict], fresh: dict, now: float) -> dict[str, str]:
+    """One card a lane: Market (the broad tape), Stocks (per ticker) and X (the Grok X mails and RC's own reader,
+    one group a ticker), each with its row count and its own freshness; the page's poll adds to their lists."""
     out = {}
     for key, (title, empty) in _LANES.items():
         mine = [r for r in rows if lane(r) == key]
         mine = (_curated(mine) if key == "x" else mine)[:HEADLINE_LIMIT]
         body = _x_groups(mine) if key == "x" else "".join(_head_li(r) for r in mine)
-        out[key] = (f'<section class="card"><h2 class="lbl">{title} · son {HEADLINE_HOURS} saat</h2>'
+        out[key] = (f'<section class="card"><h2 class="lbl">{title} · last {HEADLINE_HOURS} h</h2>'
+                    f'{_fresh_html(key, fresh, now)}'
                     f'<p class="empty"{" hidden" if mine else ""}>{empty}</p>'
                     f'<ul class="list" id="heads-{key}">{body}</ul></section>')
         out[key + "_n"] = len(mine)
@@ -294,12 +324,12 @@ def _picker() -> list[dict]:
 
 def _ticker_box() -> str:
     """One name's headlines on demand (plan step 3, mock approved by avo 18 Nov 2026 23:16): pick, ask IBKR, read back."""
-    return (f'<section class="card tbox" aria-labelledby="tq-l"><h2 class="lbl" id="tq-l">Bir hisse için haber</h2>'
-            f'<div class="tq">{combobox_html("tq", "tq-l", "Ticker ya da şirket adı, ör. NVDA")}'
-            f'<button type="button" class="go" id="tq-go" disabled onclick="tqAsk()">Haberleri getir</button></div>'
+    return (f'<section class="card tbox" aria-labelledby="tq-l"><h2 class="lbl" id="tq-l">News for one stock</h2>'
+            f'<div class="tq">{combobox_html("tq", "tq-l", "Ticker or company name, e.g. NVDA")}'
+            f'<button type="button" class="go" id="tq-go" disabled onclick="tqAsk()">Get headlines</button></div>'
             f'<div id="tq-out" hidden><div class="th"><span id="tq-watch"></span><span class="sym" id="tq-sym"></span>'
             f'<span class="muted" id="tq-meta"></span></div>'
-            f'<div class="chips" id="tq-chips" role="group" aria-label="Kaynak"></div>'
+            f'<div class="chips" id="tq-chips" role="group" aria-label="Source"></div>'
             f'<div class="state" id="tq-state" role="status" hidden></div>'
             f'<ul class="list" id="tq-rows"></ul></div></section>')
 
@@ -316,6 +346,7 @@ h1{margin:2px 0 0;color:var(--bright);font-size:22px}
 .side{display:flex;flex-direction:column;gap:16px}
 .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 16px}
 .lbl{margin:0 0 10px;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.fresh{margin:-6px 0 10px;color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
 .tabs{display:flex;gap:8px;margin-bottom:12px}
 .ptabs{display:flex;gap:4px;margin-bottom:16px;border-bottom:1px solid var(--border);overflow-x:auto}
 .ptabs button{min-height:44px;padding:0 16px;border:0;border-bottom:2px solid transparent;background:transparent;
@@ -440,7 +471,7 @@ function _headLi(r){
   if(r.url){ var a = document.createElement('a'); a.href = r.url; a.target = '_blank'; a.rel = 'noopener noreferrer';
     a.textContent = r.headline; h.appendChild(a); } else { h.textContent = r.headline; }
   li.appendChild(m); li.appendChild(h);
-  if(r.option){ var o = document.createElement('div'); o.className = r.option.indexOf('UW teyidi:') === 0 ? 'xo ok' : 'xo';
+  if(r.option){ var o = document.createElement('div'); o.className = r.option.indexOf('UW confirmed:') === 0 ? 'xo ok' : 'xo';
     o.textContent = r.option; li.appendChild(o); }
   if(r.move){ var mv = document.createElement('div'); mv.className = 'xm'; mv.textContent = r.move; li.appendChild(mv); }
   return li;
@@ -461,7 +492,7 @@ function _xGroup(top, r){
   if(!g){
     g = document.createElement('li'); g.className = 'xg'; g.setAttribute('data-grp', r.group);
     var h = document.createElement('div'); h.className = 'xgh'; var n = document.createElement('span');
-    n.className = r.group ? 'sym' : 'sym gen'; n.textContent = r.group || 'Genel'; h.appendChild(n); g.appendChild(h);
+    n.className = r.group ? 'sym' : 'sym gen'; n.textContent = r.group || 'General'; h.appendChild(n); g.appendChild(h);
     var l = document.createElement('ul'); l.className = 'list'; g.appendChild(l);
     top.insertBefore(g, top.firstChild);
   }
@@ -497,7 +528,7 @@ function newsTab(btn){
 
 _TQ_JS = r"""
 var TQ = {t: null, src: '', data: null};
-var TQ_MONTHS = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+var TQ_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 function tqParts(sec){
   var p = {}; new Intl.DateTimeFormat('en-GB', {timeZone: 'Europe/Amsterdam', year: 'numeric', month: '2-digit',
     day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'}).formatToParts(new Date(sec * 1000))
@@ -506,8 +537,8 @@ function tqParts(sec){
 }
 function tqDay(sec){
   var a = tqParts(sec), now = Date.now() / 1000;
-  if(a.day === tqParts(now).day) return 'Bugün';
-  if(a.day === tqParts(now - 86400).day) return 'Dün';
+  if(a.day === tqParts(now).day) return 'Today';
+  if(a.day === tqParts(now - 86400).day) return 'Yesterday';
   return a.d + ' ' + TQ_MONTHS[a.m - 1];
 }
 function tqEl(tag, cls, text){ var e = document.createElement(tag); if(cls) e.className = cls;
@@ -520,10 +551,10 @@ function tqState(kind, text){
   document.getElementById('tq-out').hidden = false;
 }
 function tqWhy(err){
-  if(/historical data farm is down/.test(err)) return "IBKR'ın geçmiş haber sunucusu şu an kapalı, başlık gelmedi.";
-  if(/does not know/.test(err)) return 'IBKR bu sembolü tanımıyor.';
-  if(/gateway|session|connect/i.test(err)) return "IBKR Gateway'e bağlanılamadı.";
-  return 'IBKR yanıtı: ' + err;
+  if(/historical data farm is down/.test(err)) return "IBKR's historical news server is down, so no headline came back.";
+  if(/does not know/.test(err)) return 'IBKR does not know this symbol.';
+  if(/gateway|session|connect/i.test(err)) return 'Could not connect to the IBKR Gateway.';
+  return 'IBKR answered: ' + err;
 }
 function tqPick(t){
   TQ.t = t; TQ.src = ''; TQ.data = null;
@@ -534,22 +565,22 @@ function tqLoad(after){
   var t = TQ.t;
   fetch('/api/news/ticker/' + encodeURIComponent(t), {cache: 'no-store'}).then(function(r){ return r.json(); })
     .then(function(d){ if(d && d.ok && d.ticker === TQ.t){ TQ.data = d; tqDraw(after); } })
-    .catch(function(){ if(TQ.t === t) tqState('err', 'Saklı başlıklar okunamadı.'); });
+    .catch(function(){ if(TQ.t === t) tqState('err', 'Could not read the stored headlines.'); });
 }
 function tqAsk(retry){
   var t = TQ.t; if(!t) return;
   document.getElementById('tq-go').disabled = true;
-  tqState('wait', "IBKR'dan " + t + ' soruluyor, birkaç saniye sürer.');
+  tqState('wait', 'Asking IBKR for ' + t + ', this takes a few seconds.');
   fetch('/run/news_ticker', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-RC-Panel': 'news'},
     body: JSON.stringify({ticker: t})})
     .then(function(r){ return r.json().then(function(d){ return {s: r.status, d: d || {}}; }); })
     .then(function(x){
       if(!x.d.job_id){ document.getElementById('tq-go').disabled = false;
-        tqState('err', x.d.error || 'İstek başlamadı.'); return; }
+        tqState('err', x.d.error || 'The request did not start.'); return; }
       // 409: another name's ask is running; follow it, then ask for this one once.
       tqWait(x.d.job_id, 0, function(){ if(x.s === 409 && !retry) tqAsk(true); else if(TQ.t === t) tqLoad('asked'); });
     })
-    .catch(function(){ document.getElementById('tq-go').disabled = false; tqState('err', 'Panoya ulaşılamadı.'); });
+    .catch(function(){ document.getElementById('tq-go').disabled = false; tqState('err', 'Could not reach the dashboard.'); });
 }
 function tqWait(id, n, then){
   fetch('/api/job/' + encodeURIComponent(id), {cache: 'no-store'}).then(function(r){ return r.json(); })
@@ -565,20 +596,20 @@ function tqDraw(after){
   document.getElementById('tq-out').hidden = false;
   document.getElementById('tq-sym').textContent = t;
   document.getElementById('tq-watch').innerHTML = rcWatchButtons(t);
-  var meta = 'son 7 gün · ' + rows.length + ' başlık · ' +
-    (ask ? tqParts(ask.at).hm + "'de soruldu" : 'henüz sorulmadı');
+  var meta = 'last 7 days · ' + rows.length + ' headlines · ' +
+    (ask ? 'asked at ' + tqParts(ask.at).hm : 'not asked yet');
   document.getElementById('tq-meta').textContent = meta;
   var counts = {}; rows.forEach(function(r){ counts[r.source] = (counts[r.source] || 0) + 1; });
   var chips = document.getElementById('tq-chips'); chips.textContent = '';
-  [['', 'Hepsi ' + rows.length]].concat(Object.keys(counts).sort().map(function(k){ return [k, k + ' ' + counts[k]]; }))
+  [['', 'All ' + rows.length]].concat(Object.keys(counts).sort().map(function(k){ return [k, k + ' ' + counts[k]]; }))
     .forEach(function(c){
       var b = tqEl('button', 'chip', c[1]); b.type = 'button';
       b.setAttribute('aria-pressed', TQ.src === c[0] ? 'true' : 'false');
       b.onclick = function(){ TQ.src = c[0]; tqDraw(null); }; chips.appendChild(b);
     });
-  if(ask && ask.error) tqState('err', tqWhy(ask.error) + (rows.length ? ' Saklı son başlıklar aşağıda.' : ''));
-  else if(!rows.length) tqState('', ask ? t + ' için son 7 günde Dow Jones ya da Briefing başlığı yok.'
-                                        : "Henüz sorulmadı: 'Haberleri getir'e basın.");
+  if(ask && ask.error) tqState('err', tqWhy(ask.error) + (rows.length ? ' The last stored headlines are below.' : ''));
+  else if(!rows.length) tqState('', ask ? 'No Dow Jones or Briefing headline for ' + t + ' in the last 7 days.'
+                                        : "Not asked yet: press 'Get headlines'.");
   else tqState(null);
   if(!(ask && ask.error) && !rows.length) document.getElementById('tq-state').hidden = false;
   var ul = document.getElementById('tq-rows'); ul.textContent = '';
@@ -604,20 +635,24 @@ function tqDraw(after){
 
 
 HELP = help_html(
-    "<p>ABD ekonomik takvimi (bugün ve bu hafta, saatler Amsterdam) ve izleme listesindeki ve en büyük ABD "
-    "şirketlerinin Dow Jones başlıkları (<b>Hisseler</b>), IBKR'nin piyasa geneli haber akışı (<b>Piyasa</b>) ve "
-    "Grok'un saatlik X özet maillerindeki ve RC'nin kendi X hesabının takip akışındaki paylaşımlar (<b>X</b>; her kaydın X kimliği kendi zamanıyla doğrulanır, "
-    "\"diğer\" türü ve aynı kontratın tekrarları düşer). Bir opsiyon paylaşımının kontratı Unusual Whales'ta "
-    "aranır (rozet: ✓ UW teyitli, ✗ UW'de yok, ◷ bekliyor; opsiyon dışı kayıtlarda ✓ X kimliği) ve kayıtlar hisseye göre gruplanır, her grubun üstünde seansın 5 dakikalık fiyatı ve tweet anları çizilir: tweet saatinin 4 saat öncesinden 15 dakika sonrasına kadar o kontratın $25 bin üstü işlemleri (adet, "
-    "kontrat, prim, ask/bid tarafı) ve ertesi gün açık pozisyon (OI) değişimi gösterilir. "
-    "Gerçekleşen değer gösterilmez: beklenti ve önceki değer.</p>"
-    "<p>Piyasa başlıkları geldiği anda, birkaç saniye içinde sayfaya düşer; hisse başlıkları 5 dakikada bir gelir.</p>"
-    "<p><b>Bir hisse için haber</b>: My Universe'den bir hisse seçip <b>Haberleri getir</b>'e basınca IBKR'dan o hissenin "
-    "son 7 günlük Dow Jones ve Briefing başlıkları sorulur (en çok 300) ve saklanır; IBKR yanıt vermezse saklı son "
-    "başlıklar gösterilir.</p>"
-    "<p><b>Fetch</b> saklı takvimi <code>boards/news.duckdb</code> içine artımlı yazar (yeni ve değişen "
-    "olaylar; listeden düşen olay silinmez, emekliye ayrılır) ve IBKR Gateway'den son başlıkları sorar. "
-    "<b>Refresh</b> yalnızca saklı veriden sayfayı yeniden çizer, hiçbir şey indirmez.</p>")
+    "<p>The US economic calendar (today and this week, times in Amsterdam), the Dow Jones headlines of the watch "
+    "list and the largest US companies (<b>Stocks</b>), IBKR's market-wide news tape (<b>Market</b>) and the posts "
+    "in Grok's hourly X summary mails and in RC's own X account feed (<b>X</b>; every post's X id is checked "
+    "against its own time, the \"other\" kind and repeats of the same contract are dropped). An option post's "
+    "contract is looked up in Unusual Whales (badge: \u2713 UW confirmed, \u2717 not in UW, \u25f7 waiting; a "
+    "non-option post carries \u2713 X id) and the posts are grouped by stock, with the session's 5-minute price "
+    "and the tweet moments drawn above each group: from 4 hours before the tweet to 15 minutes after it, that "
+    "contract's trades over $25k (size, contract, premium, ask/bid side) and the next day's open-interest change. "
+    "The actual value is not shown: forecast and previous value.</p>"
+    "<p>Market headlines land on the page within seconds of arriving; stock headlines come every 5 minutes. "
+    "Under each lane's heading stands that lane's <b>own</b> last data time: the clock at the top of the page is "
+    "the newest write to any lane of the board, so on its own it cannot show a lane that has died.</p>"
+    "<p><b>News for one stock</b>: pick a stock from My Universe and press <b>Get headlines</b> to ask IBKR for "
+    "that name's Dow Jones and Briefing headlines of the last 7 days (at most 300) and store them; if IBKR does "
+    "not answer, the last stored headlines are shown.</p>"
+    "<p><b>Fetch</b> writes the stored calendar into <code>boards/news.duckdb</code> incrementally (new and "
+    "changed events; an event that drops off the list is not deleted, it is retired) and asks the IBKR Gateway "
+    "for the latest headlines. <b>Refresh</b> only redraws the page from stored data and downloads nothing.</p>")
 
 
 def render_html(now: float | None = None, provider_health: dict | None = None) -> str:
@@ -629,34 +664,34 @@ def render_html(now: float | None = None, provider_health: dict | None = None) -
     hl_key = (hl["event_ts"], hl["event"], hl["type"]) if hl else None
     today_html, week_html = _calendar(events, now, hl_key)
     n_today = sum(1 for e in events if local_day(e["event_ts"]) == today)
-    updated = f"Veri {hm(stamp)}'de güncellendi" if stamp else "Veri henüz kurulmadı"
-    lanes = _headlines(heads)
+    updated = f"Data updated at {hm(stamp)}" if stamp else "No data built yet"
+    lanes = _headlines(heads, headlines.lane_freshness(), now)
     return f"""<!doctype html>
-<html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Haberler</title><script>{THEME_JS}</script><style>{THEME_CSS}{_CSS}</style>{FILTERS_CSS}</head>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>News</title><script>{THEME_JS}</script><style>{THEME_CSS}{_CSS}</style>{FILTERS_CSS}</head>
 <body><div class="wrap">
-<header class="top"><div><div class="eyebrow">ABD · Ekonomik takvim</div><h1>{long_date(today)}</h1>
-<div class="muted">{WEEKDAYS[today.weekday()]} · bugün {n_today} veri</div></div>
+<header class="top"><div><div class="eyebrow">US · Economic calendar</div><h1>{long_date(today)}</h1>
+<div class="muted">{WEEKDAYS[today.weekday()]} · {n_today} releases today</div></div>
 <div class="muted">{updated}</div></header>
 {provider_health_html(provider_health)}
-<nav class="ptabs" role="tablist" aria-label="Bölümler">
-<button type="button" role="tab" aria-selected="true" aria-controls="pg-cal" onclick="pageTab(this)">Takvim</button>
-<button type="button" role="tab" aria-selected="false" aria-controls="pg-heads" onclick="pageTab(this)">Başlıklar
+<nav class="ptabs" role="tablist" aria-label="Sections">
+<button type="button" role="tab" aria-selected="true" aria-controls="pg-cal" onclick="pageTab(this)">Calendar</button>
+<button type="button" role="tab" aria-selected="false" aria-controls="pg-heads" onclick="pageTab(this)">Headlines
 <span class="n">{lanes["market_n"] + lanes["stocks_n"]}</span></button>
 <button type="button" role="tab" aria-selected="false" aria-controls="pg-x" onclick="pageTab(this)">X
 <span class="n">{lanes["x_n"]}</span></button>
 </nav>
 <div id="pg-cal" role="tabpanel"><div class="grid">
 <section class="card"><div class="tabs" role="tablist">
-<button type="button" role="tab" aria-selected="true" aria-controls="news-today" onclick="newsTab(this)">Bugün</button>
-<button type="button" role="tab" aria-selected="false" aria-controls="news-week" onclick="newsTab(this)">Bu hafta</button>
+<button type="button" role="tab" aria-selected="true" aria-controls="news-today" onclick="newsTab(this)">Today</button>
+<button type="button" role="tab" aria-selected="false" aria-controls="news-week" onclick="newsTab(this)">This week</button>
 </div><div id="news-today" role="tabpanel">{today_html}</div>
 <div id="news-week" role="tabpanel" hidden>{week_html}</div></section>
 <div class="side">{_highlight(hl)}</div>
 </div></div>
 <div id="pg-heads" role="tabpanel" hidden>{_ticker_box()}<div class="cols">{lanes["market"]}{lanes["stocks"]}</div></div>
 <div id="pg-x" role="tabpanel" hidden>{lanes["x"]}</div>
-<p class="foot">Kaynak: takvim Unusual Whales, başlıklar Dow Jones (IBKR), X kayıtları Grok özetleri ve RC'nin X okuyucusu · Saatler Europe/Amsterdam · Önem: ●●● yüksek ●●○ orta ●○○ düşük</p>
+<p class="foot">Source: calendar Unusual Whales, headlines Dow Jones (IBKR), X posts Grok summaries and RC's own X reader · Times Europe/Amsterdam · Importance: ●●● high ●●○ medium ●○○ low</p>
 {HELP}
 </div>{watchlist_html("news")}<script>{FILTERS_JS}</script>
 <script>var NEWS_SINCE = {since!r}, HEAD_LIMIT = {HEADLINE_LIMIT}, TQ_PICK = {script_json(_picker())};{_JS}{_TQ_JS}</script>

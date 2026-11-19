@@ -288,7 +288,7 @@ class UWGreekExpiryStrike:
         if extras:
             ctx.issue("unknown_field", session.isoformat(),
                       "numeric fields without a column: " + ", ".join(sorted(extras)))
-        con = duckdb.connect()
+        con = base.scratch_con()
         try:
             base.rows_table(con, "day", SCHEMA, rows)
             return [base.write_parquet(con, "SELECT * FROM day ORDER BY expiry, strike", partition_path(session))]

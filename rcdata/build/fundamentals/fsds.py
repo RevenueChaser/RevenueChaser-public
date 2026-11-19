@@ -72,6 +72,8 @@ class Fsds:
     kind = KIND
     providers = (common.SEC,)
     tables: tuple[str, ...] = ()
+    # Staged for the coverage note only: no served table is built from ``stg_sec_fsds``.
+    feeds: tuple[str, ...] = ()
     cadence = "monthly"
     backfill_needs_from = False
     starts_by_hand = True
@@ -118,7 +120,7 @@ class Fsds:
                 if missing:
                     raise base.SourceError(f"sec fsds {quarter}: no {', '.join(missing)} in the zip")
                 sub, num = (Path(z.extract(names[n], tmp)) for n in ("sub.txt", "num.txt"))
-                con = duckdb.connect()
+                con = base.scratch_con()
                 try:
                     out.append(base.write_parquet(con, self._select(con, sub, num, quarter, ciks, meta),
                                                   common.parquet_dir(NAME) / f"quarter={quarter}" /

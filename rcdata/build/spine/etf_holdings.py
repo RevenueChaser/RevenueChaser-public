@@ -350,7 +350,7 @@ def _untyped(day: str) -> list[Path]:
     part = parquet_dir() / f"date={day}" / "part-0.parquet"
     typed: set[str] = set()
     if part.exists():
-        con = duckdb.connect()
+        con = base.scratch_con()
         try:
             typed = {t for (t,) in con.execute(f"SELECT DISTINCT etf FROM read_parquet({base.sql_path(part)}, "
                                                "hive_partitioning = false)").fetchall()}
@@ -364,6 +364,8 @@ class EtfHoldings:
     kind = KIND
     providers = PROVIDERS
     tables = (TABLE,)
+    # What each ETF holds decides its class and its theme (``etf_class.rows``).
+    feeds = ("etf_class", "etf_class_changes", "etf_theme")
     cadence = "daily"
     backfill_needs_from = False
     starts_by_hand = True             # not due until a first CLI run or Fetch built it
@@ -605,7 +607,7 @@ class EtfHoldings:
             dropped += sum(1 for rows in by_day.values() for r in rows if r["ticker"] is None)
             for as_of, rows in sorted(by_day.items()):
                 final = parquet_dir() / f"date={as_of.isoformat()}" / "part-0.parquet"
-                con = duckdb.connect()
+                con = base.scratch_con()
                 try:
                     base.rows_table(con, "rows", SCHEMA, rows)
                     select = "SELECT * FROM rows"

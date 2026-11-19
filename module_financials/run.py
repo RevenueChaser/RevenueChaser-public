@@ -6,9 +6,9 @@ import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from RevenueChaser.core.reporting_common import write_artifact
+from RevenueChaser.core.reporting_common import filters_meta, write_artifact
 
-from .config import OUTPUT_DIR, PEER_K, RISK_FREE_MAX_AGE_DAYS
+from .config import OUTPUT_DIR, PEER_CAP_RATIO_BAND, PEER_K, RISK_FREE_MAX_AGE_DAYS
 from .engines import (
     comps_engine,
     credit_capacity_engine,
@@ -18,7 +18,7 @@ from .engines import (
     three_statement_engine,
 )
 from . import market_inputs
-from .peers import select_peers, target_row
+from .peers import peer_set, target_row
 from .reporting.html_builder import build_report_html
 from RevenueChaser.core.providers import yfinance as yfinance_client
 
@@ -162,6 +162,29 @@ class _NoCachedData(Exception):
         self.ticker = ticker
 
 
+def picker_payload(ticker: str) -> dict:
+    """The rows the shared filter bar and the Ticker combobox read, and the bar's meta (#591).
+
+    The pool is this board's own universe cut: the spine's operating names above the market-cap floor, the same
+    set the comps peer ladder ranks over, carrying the universal-filter fields (index, market cap, GICS path,
+    theme ids, earnings date). A store read only, so a Refresh stays network-free.
+
+    The filters narrow only what the picker offers; the statements below are always the one company the board
+    fetched. The ticker on the page stays in the pool even when the cut drops it, so the picker never opens on
+    a name it cannot show.
+    """
+    from RevenueChaser.core import universe as _spine
+
+    names = _spine.classification_universe(operating_only=_spine.BOARD_OPERATING_ONLY["module_financials"])
+    fields = _spine.filter_fields(names) if names else {}
+    rows = [fields[t] for t in names if t in fields]
+    ticker = (ticker or "").strip().upper()
+    if ticker and not any(r.get("ticker") == ticker for r in rows):
+        rows.insert(0, _spine.filter_fields([ticker]).get(ticker) or {"ticker": ticker, "name": ticker})
+    return {"rows": rows,
+            "meta": filters_meta("financials", earnings_mode="filter", themes=_spine.theme_catalog())}
+
+
 def run(ticker: str, modules: list[str] | tuple[str, ...] = ("dcf",),
         output: str = "html", use_cache: bool = True, no_fetch: bool = False,
         assumptions: dict | None = None, peers: list[str] | None = None,
@@ -184,6 +207,18 @@ def run(ticker: str, modules: list[str] | tuple[str, ...] = ("dcf",),
         # A store-only render read the statements and the payload the last Fetch stored in the old store
         # (``vendor_financials``, ``ticker_payload_cache``); they went with it (#860), so there is nothing to render.
         raise _NoCachedData(ticker)
+    # The board renders ``provider_health_html`` (reporting/html_builder), so this run counts its own Yahoo
+    # reads (#299): a failed statement or peer read raises the amber banner instead of passing for a complete
+    # board. Its own scope, not ``reset_health()``, because the client's counter is shared with every other
+    # board and the dashboard runs two job workers. SEC EDGAR is not in the banner: since G6 the statements
+    # come from the fundamentals serving layer (``_sec_statements``), which makes no request.
+    with yfinance_client.health_scope() as provider_health:
+        return _run(ticker, modules, output, assumptions, peers, report_path, provider_health)
+
+
+def _run(ticker: str, modules, output: str, assumptions: dict | None, peers: list[str] | None,
+         report_path: Path | str | None, provider_health) -> dict:
+    """``run``'s body, inside its provider-health scope."""
     financials = yfinance_client.get_financials(ticker)
     financials.setdefault("_fetched_at_iso", datetime.now(timezone.utc).isoformat(timespec="seconds"))
     financials.setdefault("fetched_at_iso", financials["_fetched_at_iso"])
@@ -226,7 +261,8 @@ def run(ticker: str, modules: list[str] | tuple[str, ...] = ("dcf",),
 
     # Quick Remarks — her zaman üstte (ticker_scores'dan beslenir, yfinance fallback). FIN-5: it is handed the
     # payload this run already has, so it scores from it instead of fetching the same financials a second time.
-    results["quick_remarks"] = quick_remarks_engine.run_quick_remarks(ticker, no_fetch=no_fetch,
+    # ``no_fetch=False``: a store-only render never reaches here (it raised ``_NoCachedData`` above).
+    results["quick_remarks"] = quick_remarks_engine.run_quick_remarks(ticker, no_fetch=False,
                                                                      financials=financials)
 
     financials["sector"] = sector
@@ -238,6 +274,7 @@ def run(ticker: str, modules: list[str] | tuple[str, ...] = ("dcf",),
         elif m in ("3stmt", "three_statement", "3statement"):
             results["modules"]["three_statement"] = three_statement_engine.run_three_statement(financials, assumptions)
         elif m in ("comps", "comps_engine"):
+            rungs: dict[str, str] = {}
             if peers:
                 used_peers = list(peers)
             else:
@@ -246,15 +283,26 @@ def run(ticker: str, modules: list[str] | tuple[str, ...] = ("dcf",),
                 # does not carry is not a short ladder: it is the reason there is no ladder at all.
                 spine_rows = _spine.classification_universe_rows(
                     operating_only=_spine.BOARD_OPERATING_ONLY["module_financials"])
-                used_peers = select_peers(ticker, spine_rows)
+                picked = peer_set(ticker, spine_rows)
+                used_peers = [p["ticker"] for p in picked]
+                rungs = {p["ticker"]: p["rung"] for p in picked}
                 if target_row(ticker, spine_rows) is None:
                     warnings.append(f"comps: {ticker} is not in the spine universe (below the market-cap "
                                     f"floor, or an excluded security type), so no peers were picked")
                 elif len(used_peers) < PEER_K:
                     warnings.append(f"comps: {len(used_peers)} of {PEER_K} peers — the spine industry and "
-                                    f"sector have no more names")
+                                    f"sector have no name inside the cap band "
+                                    f"({PEER_CAP_RATIO_BAND[0]:g}x to {PEER_CAP_RATIO_BAND[1]:g}x "
+                                    f"the target's market cap)")
+                # #91: part of a full ladder may come from the sector rung, which is a weaker comp than the
+                # target's own industry. No number moves; the board has to say it.
+                from_sector = sum(1 for p in picked if p["rung"] == "sector")
+                if from_sector:
+                    warnings.append(f"comps: {from_sector} of {len(used_peers)} peers come from the sector, "
+                                    f"not {ticker}'s own industry")
             results["modules"]["comps"] = comps_engine.run_comps(financials, used_peers,
-                                                                fetch_info=comps_engine._default_fetch)
+                                                                fetch_info=comps_engine._default_fetch,
+                                                                rungs=rungs)
         elif m in ("credit", "credit_capacity"):
             results["modules"]["credit"] = credit_capacity_engine.run_credit_capacity(financials, assumptions)
         elif m in ("sensitivity", "sensitivity_engine"):
@@ -276,6 +324,12 @@ def run(ticker: str, modules: list[str] | tuple[str, ...] = ("dcf",),
                 if msg not in seen:
                     seen.add(msg)
                     warnings.append(msg)
+
+    # The banner the board already renders (#299); zeros render nothing, so a clean run looks unchanged.
+    results["provider_health"] = provider_health.health()
+
+    # The shared filter kit's pool (#591): the picker's names, read from the store, never a network call.
+    results["picker"] = picker_payload(ticker)
 
     paths: dict = {}
     if output in ("html", "both"):

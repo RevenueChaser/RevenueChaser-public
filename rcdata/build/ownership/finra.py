@@ -168,6 +168,7 @@ class FinraShortInterest:
     kind = KIND
     providers = (PROVIDER,)
     tables = (TABLE,)
+    feeds: tuple[str, ...] = ()       # it serves its own table; no 13F table is built from its rows
     cadence = "daily"
     backfill_needs_from = False
     starts_by_hand = True             # the first run is the server thread's, after a backup
@@ -204,7 +205,7 @@ class FinraShortInterest:
                 raise base.SourceError(f"finra {raw.name}: no row with a symbol")
             repeats += rep
             final = parquet_dir() / f"date={rows[0]['settlement_date'].isoformat()}" / "part-0.parquet"
-            con = duckdb.connect()
+            con = base.scratch_con()
             try:
                 base.rows_table(con, "rows", SCHEMA, rows)
                 out.append(base.write_parquet(con, "SELECT * FROM rows ORDER BY symbol", final))

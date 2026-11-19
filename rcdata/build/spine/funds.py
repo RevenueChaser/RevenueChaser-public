@@ -268,6 +268,7 @@ class FundHoldings:
     kind = KIND
     providers = PROVIDERS
     tables: tuple[str, ...] = ()
+    feeds = ("index_membership",)     # the fund lines are the membership vote
     cadence = "daily"
     backfill_needs_from = False
     starts_by_hand = True             # not due until a first CLI run or Fetch built it (review should-fix 2)
@@ -324,7 +325,7 @@ class FundHoldings:
         for as_of, rows in sorted(by_day.items()):
             final = parquet_dir() / f"date={as_of.isoformat()}" / "part-0.parquet"
             if final.exists():                       # the day's other files, typed by an earlier run, stay in
-                con = duckdb.connect()
+                con = base.scratch_con()
                 try:
                     keep = [dict(zip([c for c, _ in SCHEMA], r)) for r in con.execute(
                         f"SELECT * FROM read_parquet({base.sql_path(final)})").fetchall()]
@@ -332,7 +333,7 @@ class FundHoldings:
                     con.close()
                 new = {(r["provider"], r["fund"]) for r in rows}
                 rows = [r for r in keep if (r["provider"], r["fund"]) not in new] + rows
-            con = duckdb.connect()
+            con = base.scratch_con()
             try:
                 base.rows_table(con, "rows", SCHEMA, rows)
                 out.append(base.write_parquet(con, "SELECT * FROM rows ORDER BY index_slug, provider, ticker", final))

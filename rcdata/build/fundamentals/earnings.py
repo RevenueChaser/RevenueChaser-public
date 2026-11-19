@@ -102,6 +102,7 @@ class EarningsCalendar:
     kind = KIND
     providers = (PROVIDER,)
     tables: tuple[str, ...] = ()
+    feeds = ("earnings_event",)       # the calendar dates of the companies the spine holds
     cadence = "daily"
     backfill_needs_from = False
     starts_by_hand = True
@@ -140,7 +141,7 @@ class EarningsCalendar:
             as_of = date.fromisoformat(meta["as_of"])
             stamps = {"source_as_of": as_of, "fetched_at": float(meta["fetched_at"]), "run_id": meta["run_id"]}
             rows = [{**r, **stamps} for r in parse(base.read_raw(raw).decode("utf-8", "replace"))]
-            con = duckdb.connect()
+            con = base.scratch_con()
             try:
                 base.rows_table(con, "rows", SCHEMA, rows)
                 out.append(base.write_parquet(con, "SELECT * FROM rows ORDER BY report_date, symbol",

@@ -20,6 +20,7 @@ import duckdb
 import pytest
 
 from . import harness
+from .harness.shared import shared_dashboard
 
 DAY = "2026-08-12"           # an explicit Wednesday: no test reads today's date (AGENTS.md)
 CALENDAR = {"data": [{
@@ -44,14 +45,44 @@ def fetched(dashboard, calendar):
 
 
 
+SHARED = pytest.mark.xdist_group("e2e-earnings-shared-fetch")
+
+
+@pytest.fixture(scope="module")
+def _fetched_once(tmp_path_factory, mock_provider):
+    """One dashboard, with one Fetch of ``DAY``, for the tests that only read what it wrote (#896).
+
+    Measured on the 19 Nov 2026 e2e run: ``TestFetch`` took 21.8 s over three tests, each booting its own
+    dashboard (about 6.3 s, what an empty-store test costs end to end) and running the same Fetch. The calendar
+    route is added here because ``shared_dashboard`` starts from the default routes; the function-scoped
+    ``provider_routes`` of a later test resets them, which is harmless once this Fetch has written the board.
+
+    The provider-call test keeps its own Fetch — it reads the request log — and so do the Refresh, restart,
+    rejected-key and empty-store tests.
+    """
+    with shared_dashboard(tmp_path_factory, mock_provider, "earnings-shared") as dash:
+        mock_provider.route("/api/earnings/premarket", payload=CALENDAR)
+        result = dash.run_job("/run/earnings", start=DAY, end=DAY)
+        dash.wait_until_idle()
+        yield dash, result
+
+
+@pytest.fixture
+def fetched_shared(_fetched_once):
+    dash, result = _fetched_once
+    assert result.ok, f"Earnings fetch failed: {result}\n{dash.logs()}"
+    return dash
+
+
 class TestFetch:
 
+    @SHARED
+    def test_fetch_writes_the_board_artifact(self, fetched_shared):
+        assert fetched_shared.artifact("earnings_radar_latest.html").exists()
 
-    def test_fetch_writes_the_board_artifact(self, dashboard, fetched):
-        assert dashboard.artifact("earnings_radar_latest.html").exists()
-
-    def test_the_board_shows_the_fetched_name(self, dashboard, fetched):
-        r = dashboard.view("module_earnings_radar")
+    @SHARED
+    def test_the_board_shows_the_fetched_name(self, fetched_shared):
+        r = fetched_shared.view("module_earnings_radar")
         assert r.status_code == 200 and "NVDA" in r.text
 
     def test_the_fetch_actually_called_the_provider(self, provider_routes, fetched):

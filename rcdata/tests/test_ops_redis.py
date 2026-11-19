@@ -60,6 +60,15 @@ def _script() -> dict:
                                        keep=lambda kind, key: key in ("T2", "T3"))
     ops.start_run("r1", "market_series", "cli", {"once": True})
     ops.finish_run("r1", "ok")
+    # A scheduled task's and a dashboard job's run share the log with the builder's, told apart by ``job`` (#136).
+    ops.start_run("t1", None, "schedule", job="RC-Forecast-Outcomes")
+    ops.finish_run("t1", "done", None, {"rows": 93714, "written": 93714})
+    ops.start_run("t2", None, "dashboard", job="universe")
+    ops.finish_run("t2", "error", "no")
+    ops.finish_run("t2", "error", "no")              # a second close keeps the counts column as it is
+    out["job_runs"] = ops.job_runs()
+    out["last_builder"] = ops.last_builder_run()
+    out["runs_between"] = ops.runs_between(0, 2 * 10**9)
     ops.start_run("r2", "prices/serving", "hourly")
     ops.sample_uw_headers({"x-uw-daily-req-count": "355", "x-uw-req-per-minute-remaining": "9", "other": "no"}, "r2")
     ops.count_calls("uw", 2)

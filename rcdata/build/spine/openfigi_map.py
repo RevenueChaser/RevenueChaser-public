@@ -120,7 +120,7 @@ def id_type(code: str) -> str:
 
 
 def _query(sql: str) -> list[tuple]:
-    con = duckdb.connect()
+    con = base.scratch_con()
     try:
         return con.execute(sql).fetchall()
     finally:
@@ -268,6 +268,7 @@ class OpenFigiMap:
     kind = KIND
     providers = (PROVIDER,)
     tables: tuple[str, ...] = ()
+    feeds = ("security",)             # the FIGI columns of a row the SEC file already names
     cadence = "weekly"
     backfill_needs_from = False
     starts_by_hand = True             # not due until a first CLI run or Fetch built it (review should-fix 2)

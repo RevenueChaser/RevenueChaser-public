@@ -26,10 +26,9 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-import duckdb
 
 from ... import ops, serving
-from .. import base
+from .. import base, secd
 from ..spine import wrds
 from . import wrds_history
 
@@ -44,7 +43,7 @@ def at_risk(as_of: date) -> dict[str, list[str]]:
     """``{security_id: [reason, ...]}`` of the securities at risk on ``as_of`` (see the module docstring)."""
     lo = as_of - timedelta(days=RISK_DAYS)
     found: dict[str, set[str]] = {}
-    con = duckdb.connect()
+    con = base.scratch_con()
     try:
         files = [p for p in (wrds_history.partition_path("secd", y) for y in range(lo.year, as_of.year + 1))
                  if p.is_file()]
@@ -53,7 +52,7 @@ def at_risk(as_of: date) -> dict[str, list[str]]:
             rows += con.execute(f"""
                 WITH s AS (SELECT gvkey || ':' || iid AS sid, datadate, prccd, ajexdi, trfd, exchg
                            FROM read_parquet([{', '.join(base.sql_path(p) for p in files)}], union_by_name = true)
-                           WHERE datadate BETWEEN ? AND ? AND prccd > 0)
+                           WHERE datadate BETWEEN ? AND ? AND {secd.PRICED})
                 SELECT sid, 'trfd_empty' FROM s WHERE trfd IS NULL GROUP BY sid
                 UNION ALL SELECT sid, 'split' FROM s GROUP BY sid HAVING count(DISTINCT ajexdi) > 1
                 UNION ALL SELECT sid, 'low_price' FROM s GROUP BY sid HAVING arg_max(prccd, datadate) < {LOW_PRICE}

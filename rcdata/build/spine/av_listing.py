@@ -125,7 +125,7 @@ def _previous_etfs(as_of: date) -> int | None:
     parts = [f for d, f in stage.partitions(parquet_dir(), "date") if d < as_of.isoformat()]
     if not parts:
         return None
-    return int(duckdb.connect().execute(
+    return int(base.scratch_con().execute(
         f"SELECT count(*) FROM read_parquet({base.sql_path(parts[-1])}) "
         "WHERE asset_type = 'ETF' AND status = 'Active'").fetchone()[0])
 
@@ -146,6 +146,8 @@ class AvListing:
     kind = KIND
     providers = (PROVIDER,)
     tables: tuple[str, ...] = ()
+    # One half of the ETF list (#346), so of ``my_universe``'s funds and their classes.
+    feeds = ("etf", "my_universe", "my_universe_changes", "etf_class", "etf_class_changes", "etf_theme")
     cadence = "daily"
     backfill_needs_from = False
     starts_by_hand = True             # as every spine dataset: not due until a CLI run or a Fetch built it
@@ -199,7 +201,7 @@ class AvListing:
             if delisted.exists():
                 rows += parse(base.read_raw(delisted).decode("utf-8", "replace"))
             stamps = {"source_as_of": as_of, "fetched_at": float(meta["fetched_at"]), "run_id": meta["run_id"]}
-            con = duckdb.connect()
+            con = base.scratch_con()
             try:
                 base.rows_table(con, "rows", SCHEMA, [{**r, **stamps} for r in rows])
                 out.append(base.write_parquet(con, "SELECT * FROM rows ORDER BY ticker, status",

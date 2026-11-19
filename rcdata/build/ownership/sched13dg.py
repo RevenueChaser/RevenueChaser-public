@@ -120,10 +120,11 @@ class Sched13dg(edgar.Feed):
     forms = FORMS
     sub = "13dg"
     tables = (TABLE,)
+    feeds: tuple[str, ...] = ()       # it serves its own table; no 13F table is built from its rows
     budget_s = BUDGET_S
 
     def type_day(self, ctx: base.RunContext, day: date) -> list[Path]:
-        con = duckdb.connect()
+        con = base.scratch_con()
         try:
             rows = edgar.Appender(con, "rows", ROWS)
             for _acc, entry, text in self.filings_of(day):

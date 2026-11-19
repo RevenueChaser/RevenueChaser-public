@@ -119,7 +119,7 @@ def held(question: str) -> dict[tuple, dict]:
     path = partition_path(question)
     if not path.exists():
         return {}
-    con = duckdb.connect()
+    con = base.scratch_con()
     try:
         cur = con.execute(f"SELECT * FROM read_parquet({base.sql_path(path)})")
         cols = [d[0] for d in cur.description]

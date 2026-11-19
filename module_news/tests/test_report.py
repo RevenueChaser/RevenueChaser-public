@@ -34,7 +34,7 @@ def seeded():
     ])
     rawstore.write_rows("news_highlight", [{
         "session_date": "2026-11-09", "event_ts": _at(9, 17, 0), "event": "NY Fed consumer inflation expectations",
-        "type": "report", "importance": 2, "forecast": None, "prev": "3.9%", "text": "Hanehalkı beklentisi.",
+        "type": "report", "importance": 2, "forecast": None, "prev": "3.9%", "text": "Household expectations.",
         "text_source": "template", "run_id": "t", "run_at": NOW}])
     rawstore.write_rows("news_headlines", [
         {"headline_id": "uw:1", "provider": "uw", "published_at": NOW - 2 * HOUR, "headline": "Stocks <b>rally</b>",
@@ -45,21 +45,22 @@ def seeded():
     ])
 
 
-def test_tr_value_writes_turkish_numbers():
-    assert cal.tr_value("3.9%") == "%3,9" and cal.tr_value("-0.2%") == "-%0,2"
-    assert cal.tr_value("215K") == "215K" and cal.tr_value("1.25M") == "1,25M"
-    assert cal.tr_value(None) is None and cal.tr_value("n/a") == "n/a"
+def test_served_value_keeps_the_english_writing():
+    # avo, 19 Nov 2026 ("Ever herseyi ingilizceye cevir"): the board no longer rewrites a value as %3,9.
+    assert cal.served_value("3.9%") == "3.9%" and cal.served_value("-0.2%") == "-0.2%"
+    assert cal.served_value("215K") == "215K" and cal.served_value("1.25M") == "1.25M"
+    assert cal.served_value(None) is None and cal.served_value("n/a") == "n/a"
 
 
 def test_the_page_shows_today_the_week_and_the_highlight(seeded):
     page = report.render_html(now=NOW)
-    assert "9 Kasım 2026" in page and "Pazartesi" in page
+    assert "9 November 2026" in page and "Monday" in page
     assert "Fed Governor Bowman speaks" in page and "CPI, Y/Y%" in page
-    assert "Salı 10 Kasım" in page                       # the week groups by Amsterdam day
+    assert "Tuesday 10 November" in page                 # the week groups by Amsterdam day
     assert "Retail sales" not in page                    # beyond seven days
     assert "Cancelled release" not in page               # retired events never show
-    assert "Hanehalkı beklentisi." in page and "Öne çıkan veri" in page
-    assert "%3,6" in page and "%3,7" in page              # forecast and previous in Turkish numbers
+    assert "Household expectations." in page and "Highlight" in page
+    assert "3.6%" in page and "3.7%" in page             # forecast and previous as the provider serves them
     assert 'data-past="1"' in page                       # 14:40 has passed at 15:00
 
 
@@ -69,9 +70,9 @@ def test_headlines_are_the_last_24_hours_and_escaped(seeded):
     assert "Old news" not in page and "SPY" in page
 
 
-def test_an_empty_store_says_so_in_turkish():
+def test_an_empty_store_says_so_in_english():
     page = report.render_html(now=NOW)
-    assert "Bu hafta takvimde veri yok" in page and "Henüz başlık yok" in page
+    assert "Nothing on this week's calendar" in page and "No headline yet" in page
 
 
 def test_the_page_is_phone_friendly_and_themed(seeded):
@@ -95,10 +96,38 @@ def test_market_and_stock_headlines_get_their_own_lane_and_the_page_polls():
          "run_at": NOW - 40}])
     page = report.render_html(now=NOW)
     market, stocks = page.index('id="heads-market"'), page.index('id="heads-stocks"')
-    assert "Piyasa · son 24 saat" in page and "Hisseler · son 24 saat" in page
+    assert "Market · last 24 h" in page and "Stocks · last 24 h" in page
     assert market < page.index("Fed holds rates") < stocks < page.index("Apple beats")
     assert f"NEWS_SINCE = {NOW - 40!r}" in page and "/api/news/headlines?since=" in page and "}, 2000);" in page
     # Polled and asked-for text is never parsed as HTML: the board's own scripts build rows with textContent. The one
     # innerHTML there is the shared watch-list helper's escaped button (rcWatchButtons), as on every board.
     own = (report._JS + report._TQ_JS).replace("innerHTML = rcWatchButtons(t)", "")
     assert "textContent" in page and "innerHTML" not in own
+
+
+# ── F2: one freshness a lane ─────────────────────────────────────────────────────────────────────────────────────
+
+def test_each_lane_says_when_its_own_newest_row_was_fetched():
+    """Review F2 (18 Nov 2026): the page's header time is the board's newest write of any lane, so the hourly X
+    load hid a per-ticker fetch that had been dead for a day. Each lane now carries its own reading."""
+    rawstore.write_rows("news_headlines", [
+        {"headline_id": "ibkr:m", "provider": "ibkr", "published_at": NOW - HOUR, "headline": "Fed holds rates",
+         "source": "BRFG", "tickers": "[]", "url": None, "fetched_at": NOW - 120, "run_id": "t", "run_at": NOW - 120},
+        {"headline_id": "ibkr:s", "provider": "ibkr", "published_at": NOW - 2 * HOUR, "headline": "Apple beats",
+         "source": "Dow Jones", "tickers": json.dumps(["AAPL"]), "url": None, "fetched_at": NOW - 26 * HOUR,
+         "run_id": "t", "run_at": NOW - 26 * HOUR},
+        {"headline_id": "x:1", "provider": "grok-x", "published_at": NOW - HOUR, "headline": "SPY bid",
+         "source": "@a", "tickers": "[]", "url": "https://x.com/a/status/1", "fetched_at": NOW - 300,
+         "run_id": "t", "run_at": NOW - 300, "kind": "news", "option": "", "x_check": None},
+    ])
+    page = report.render_html(now=NOW)
+    market, stocks, x = (page.index(f'id="heads-{k}"') for k in ("market", "stocks", "x"))
+    assert page.index("last data 14:58 · 2 min ago") < market                 # the tape lane: 2 minutes old
+    assert market < page.index("last data 13:00 · 1 d ago") < stocks          # the dead per-ticker lane says so
+    assert stocks < page.index("last data 14:55 · 5 min ago") < x             # the X lane
+
+
+def test_a_lane_with_no_row_at_all_says_so(seeded):
+    page = report.render_html(now=NOW)                 # `seeded` has a stocks and a market row, no tweet
+    assert page.count("no data in this lane yet") == 1
+    assert page.index('id="heads-x"') > page.index("no data in this lane yet")

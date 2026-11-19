@@ -158,6 +158,7 @@ class IbkrShortable:
     kind = KIND
     providers = (PROVIDER,)
     tables = (TABLE,)
+    feeds: tuple[str, ...] = ()       # it serves its own table; no 13F table is built from its rows
     cadence = "daily"
     backfill_needs_from = False
     starts_by_hand = True             # the first run is the server thread's, after a backup
@@ -190,7 +191,7 @@ class IbkrShortable:
             day = date.fromisoformat(meta["as_of"])
             rows = [{**r, "snapshot_date": day, "session_date": _session(meta["fetched_at"]), "snapshot_at": stamp,
                      "fetched_at": meta["fetched_at"], "run_id": meta["run_id"]} for r in parsed]
-            con = duckdb.connect()
+            con = base.scratch_con()
             try:
                 base.rows_table(con, "rows", SCHEMA, rows)
                 out.append(base.write_parquet(con, "SELECT * FROM rows ORDER BY symbol",

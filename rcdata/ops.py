@@ -17,7 +17,8 @@ The tables and what writes them:
 - ``build_requests``: the queue. A page or the CLI enqueues; the builder takes the oldest queued row (FIFO).
 - ``dataset_check``: one row per dataset run (changed / unchanged / failed / skipped), the status a read returns.
 - ``build_issues``: a row the builder could not use, with its key, until someone resolves it.
-- ``job_runs2``: one row per builder run.
+- ``job_runs2``: one row per run — a builder run (its ``dataset``), a scheduled task or a dashboard job
+  (its ``job``, #136) — with what it did in ``counts``.
 - ``read_log``: reads per day, process and table; counted in memory and flushed once a minute.
 - ``uw_remaining``: UW's rate headers, sampled once a run: the daily count UW reports, what is left of our own cap
   (computed), the per-minute window, and the token limit as sent (not a daily cap).
@@ -51,7 +52,7 @@ from urllib.parse import urlsplit
 
 from ..core import calendar, config
 
-OPS_SCHEMA_VERSION = 2
+OPS_SCHEMA_VERSION = 3
 BUSY_TIMEOUT_MS = 5000
 #: How long a thread waits for another thread of the same process to finish its write transaction (``_tx``). The
 #: threads queue on ``_WRITE_LOCK`` and are woken when it is released, so this is patience for a stuck transaction,
@@ -111,9 +112,12 @@ _DDL = {
     "build_issues": """CREATE TABLE IF NOT EXISTS build_issues (
         id INTEGER PRIMARY KEY, dataset TEXT NOT NULL, found_on TEXT NOT NULL, kind TEXT NOT NULL, key TEXT,
         detail TEXT, run_id TEXT, resolved_on TEXT)""",
+    # Version 3 (#136): ``job`` and ``counts``. A builder run names its ``dataset``; a scheduled task or a
+    # dashboard job has none, so it names itself in ``job`` (the registry name, or the dashboard module). ``counts``
+    # is the JSON of what the run did, which until #860 was ``job_runs.counts`` in the old raw.duckdb.
     "job_runs2": """CREATE TABLE IF NOT EXISTS job_runs2 (
         run_id TEXT PRIMARY KEY, dataset TEXT, trigger TEXT, pid INTEGER, host TEXT, started_at REAL,
-        finished_at REAL, status TEXT, params TEXT, error TEXT)""",
+        finished_at REAL, status TEXT, params TEXT, error TEXT, job TEXT, counts TEXT)""",
     "read_log": """CREATE TABLE IF NOT EXISTS read_log (
         day TEXT NOT NULL, process TEXT NOT NULL, table_name TEXT NOT NULL, reads INTEGER NOT NULL,
         PRIMARY KEY (day, process, table_name))""",
@@ -269,8 +273,23 @@ def _upgrade_to_2(con: sqlite3.Connection) -> None:
         con.execute(f"DROP TABLE {name}_v1")
 
 
+def _upgrade_to_3(con: sqlite3.Connection) -> None:
+    """v2 -> v3: ``job_runs2`` gains ``job`` and ``counts`` (#136), so a scheduled task's and a dashboard job's run
+    has a row here and can say what it did. Both are added by ``ALTER``: the builder rows already in the file keep
+    their values and read ``job`` and ``counts`` NULL.
+
+    A column that is already there is left alone, as ``_upgrade_to_2`` does, so a v3 file stamped back down to 2
+    (the rollback) can be upgraded again without failing on the ``ALTER``."""
+    if not con.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'job_runs2'").fetchone():
+        return                                   # ``ensure`` makes it from the version 3 DDL below
+    have = {r[1] for r in con.execute("PRAGMA table_info(job_runs2)")}
+    for column in ("job", "counts"):
+        if column not in have:
+            con.execute(f"ALTER TABLE job_runs2 ADD COLUMN {column} TEXT")
+
+
 # The step that brings a file stamped ``n - 1`` to ``n``; ``ensure`` runs every step past the stamp it finds.
-_UPGRADES: dict[int, Callable[[sqlite3.Connection], None]] = {2: _upgrade_to_2}
+_UPGRADES: dict[int, Callable[[sqlite3.Connection], None]] = {2: _upgrade_to_2, 3: _upgrade_to_3}
 
 
 @_routed
@@ -317,6 +336,20 @@ def _today() -> str:
 
 def _json(value: Any) -> str | None:
     return None if value is None else json.dumps(value, sort_keys=True, default=str)
+
+
+def _loads(value: Any) -> dict | None:
+    """A JSON column read back as a dict, or None: a row written by an older checkout, or one a hand edit left
+    unreadable, must not raise where a reader only wants the counts (#136)."""
+    if isinstance(value, dict):
+        return value or None
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        got = json.loads(value)
+    except ValueError:
+        return None
+    return got if isinstance(got, dict) and got else None
 
 
 # ── The request queue ──────────────────────────────────────────────────────────────────────────────────────────
@@ -463,7 +496,8 @@ def fail_orphans(*, dead_pids_only: bool = False) -> tuple[int, int]:
     ``job_runs2`` row of the same dataset that started first at or after the request was taken). A request or run
     whose builder is still alive is left alone; any other becomes ``failed`` with the note ``lost: pid <n> gone``
     (``lost: pid unknown`` when the builder died before its run row), and each reclaimed request gets a ``failed``
-    ``dataset_check`` row with that note, so the dataset's card shows the lost run.
+    ``dataset_check`` row with that note, so the dataset's card shows the lost run. When the kernel's own log says
+    it killed that pid for memory, the note says so instead (``core/oom.py``, #815).
 
     ``dead_pids_only`` (#602, ``fail_dead_requests``): a caller that is not the builder and holds no build lock.
     Only a run whose own pid names no process counts as dead, and a request with no run row yet is left alone.
@@ -482,7 +516,7 @@ def fail_orphans(*, dead_pids_only: bool = False) -> tuple[int, int]:
                         and (r["started_at"] or 0) >= (req["started_at"] or 0)), None)
             if (run is None and dead_pids_only) or (run is not None and alive[run["run_id"]]):
                 continue
-            note = (f"lost: pid {run['pid']} gone" if run is not None else "lost: pid unknown (no run row)")
+            note = (_lost(run) if run is not None else "lost: pid unknown (no run row)")
             note += f" ({tail})"
             con.execute("UPDATE build_requests SET status = 'failed', ended_at = ?, note = ? WHERE id = ?",
                         (now, note, req["id"]))
@@ -495,9 +529,22 @@ def fail_orphans(*, dead_pids_only: bool = False) -> tuple[int, int]:
             if alive[run["run_id"]]:
                 continue
             con.execute("UPDATE job_runs2 SET status = 'failed', finished_at = ?, error = ? WHERE run_id = ?",
-                        (now, f"lost: pid {run['pid']} gone ({tail})", run["run_id"]))
+                        (now, f"{_lost(run)} ({tail})", run["run_id"]))
             n_runs += 1
     return n_reqs, n_runs
+
+
+def _lost(run: dict) -> str:
+    """How a run whose process is gone is worded: the kernel's own log is asked whether it killed it for memory
+    (#815), because ``lost: pid <n> gone`` reads like a mystery crash and the next pass repeats the same work."""
+    import socket
+
+    from ..core import oom
+    host = run.get("host")
+    same_host = not host or host == socket.gethostname()
+    if same_host and oom.killed(run.get("pid"), since=run.get("started_at")):
+        return f"lost: pid {run['pid']} {oom.NOTE}"
+    return f"lost: pid {run['pid']} gone"
 
 
 def _orphan_tail(me: int, dead_pids_only: bool) -> str:
@@ -602,12 +649,15 @@ def sync_issues(dataset: str, kinds, found, run_id: str | None = None, keep=None
 
 
 @_routed
-def start_run(run_id: str, dataset: str, trigger: str, params: dict | None = None) -> None:
+def start_run(run_id: str, dataset: str | None, trigger: str, params: dict | None = None,
+              job: str | None = None) -> None:
+    """One ``job_runs2`` row, ``running``. A builder run passes its ``dataset``; a scheduled task or a dashboard
+    job passes ``job`` instead (its registry name or module) and ``dataset`` None (#136)."""
     import socket
     with _open() as con:
-        con.execute("INSERT INTO job_runs2 (run_id, dataset, trigger, pid, host, started_at, status, params) "
-                    "VALUES (?, ?, ?, ?, ?, ?, 'running', ?)",
-                    (run_id, dataset, trigger, os.getpid(), socket.gethostname(), time.time(), _json(params)))
+        con.execute("INSERT INTO job_runs2 (run_id, dataset, trigger, pid, host, started_at, status, params, job) "
+                    "VALUES (?, ?, ?, ?, ?, ?, 'running', ?, ?)",
+                    (run_id, dataset, trigger, os.getpid(), socket.gethostname(), time.time(), _json(params), job))
 
 
 @_routed
@@ -617,10 +667,16 @@ def running_runs() -> list[dict]:
 
 
 @_routed
-def finish_run(run_id: str, status: str, error: str | None = None) -> None:
+def finish_run(run_id: str, status: str, error: str | None = None, counts: dict | None = None) -> None:
+    """Close the run's row. ``counts`` is what the run did, as JSON (#136); left out, or empty, the column keeps
+    whatever is already there, so a second call cannot blank a count a first one recorded."""
     with _open() as con:
-        con.execute("UPDATE job_runs2 SET status = ?, finished_at = ?, error = ? WHERE run_id = ?",
-                    (status, time.time(), error, run_id))
+        if counts:
+            con.execute("UPDATE job_runs2 SET status = ?, finished_at = ?, error = ?, counts = ? WHERE run_id = ?",
+                        (status, time.time(), error, _json(counts), run_id))
+        else:
+            con.execute("UPDATE job_runs2 SET status = ?, finished_at = ?, error = ? WHERE run_id = ?",
+                        (status, time.time(), error, run_id))
 
 
 # ── Provider accounting ────────────────────────────────────────────────────────────────────────────────────────
@@ -1278,16 +1334,39 @@ def run_started_at(run_id: str) -> float | None:
 @_routed
 def runs_between(start: float, end: float) -> list[dict]:
     """The builder's runs that started in ``[start, end)`` (epoch seconds), oldest first: ``dataset``,
-    ``started_at``, ``status``. The Grafana RC Fetch board's heatmap over its time picker's range (avo, 10 Nov 2026)."""
-    return _select("SELECT dataset, started_at, status FROM job_runs2 WHERE started_at >= ? AND started_at < ? "
-                   "ORDER BY started_at, run_id", (float(start), float(end)))
+    ``started_at``, ``status``. The Grafana RC Fetch board's heatmap over its time picker's range (avo, 10 Nov 2026).
+
+    ``dataset IS NOT NULL`` keeps it the builder's: since #136 a scheduled task's and a dashboard job's run has a
+    row here too, named in ``job``, and the heatmap is per dataset."""
+    return _select("SELECT dataset, started_at, status FROM job_runs2 WHERE dataset IS NOT NULL "
+                   "AND started_at >= ? AND started_at < ? ORDER BY started_at, run_id", (float(start), float(end)))
 
 
 @_routed
 def last_builder_run() -> dict | None:
+    """The newest **builder** run, so Settings and provenance answer with a dataset build and not with whatever ran
+    last (#136: the table also holds task and dashboard runs now, which carry no dataset)."""
     rows = _select("SELECT run_id, dataset, trigger, pid, started_at, finished_at, status, error FROM job_runs2 "
-                   "ORDER BY started_at DESC LIMIT 1")
+                   "WHERE dataset IS NOT NULL ORDER BY started_at DESC LIMIT 1")
     return rows[0] if rows else None
+
+
+@_routed
+def job_runs(limit: int = 200) -> list[dict]:
+    """The newest runs of a scheduled task or a dashboard job (``job`` set), newest first, with their ``counts``
+    read back as a dict (#136).
+
+    The builder's own runs are ``runs_between`` and ``last_builder_run``; this is the log the Runs tab lost when
+    ``job_runs`` went with raw.duckdb (#860).
+    """
+    rows = _select("SELECT run_id, job, trigger, pid, host, started_at, finished_at, status, error, counts "
+                   "FROM job_runs2 WHERE job IS NOT NULL ORDER BY started_at DESC LIMIT ?", (int(limit),))
+    out = []
+    for row in rows:
+        row = dict(row)
+        row["counts"] = _loads(row.get("counts"))
+        out.append(row)
+    return out
 
 
 @_routed

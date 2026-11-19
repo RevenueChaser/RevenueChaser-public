@@ -125,6 +125,10 @@ class CompanyFacts:
     kind = KIND
     providers = (common.SEC,)
     tables: tuple[str, ...] = ()
+    # The facts and the company rows, and what is built over them: the peers (revenue rank), the customer
+    # shares (the revenue a share is of), and the two earnings tables, which are cut to the companies.
+    feeds = ("fundamental_fact", "fundamental_company", "peer_group", "customer_share", "earnings_event",
+             "earnings_reported")
     cadence = "daily"
     backfill_needs_from = False
     starts_by_hand = True
@@ -233,7 +237,7 @@ class CompanyFacts:
         stamps = {"preliminary": False, "source": facts.SOURCE, "source_as_of": date.fromisoformat(meta["as_of"]),
                   "fetched_at": float(meta["fetched_at"]), "run_id": meta["run_id"]}
         folder = common.parquet_dir(NAME) / f"cik={cik}"
-        con = duckdb.connect()
+        con = base.scratch_con()
         try:
             base.rows_table(con, "rows", facts.FACT, [{**r, **stamps} for r in rows])
             written = [base.write_parquet(con, "SELECT * FROM rows ORDER BY field, period_type, period_end",
