@@ -138,8 +138,9 @@ def test_the_builder_registers_the_three_questions_the_locator_first(tmp_path):
     # The writer: EVREN with no call cap, or DeepSeek Flash with one, by the process's environment.
     writers = ("import RevenueChaser.rcdata.build; from RevenueChaser.rcdata.build.sec_reads.questions import "
                "QUESTIONS; print(';'.join(f'{q.provider},{q.writer_model},{q.max_calls}' for q in QUESTIONS.values()))")
-    # debt.note is DeepSeek Flash with its own cap of 200 whatever the environment says (#737).
+    # All three follow the one switch: EVREN uncapped by default (avo, 19 Nov 2026 "Fundamentals icinde evren
+    # deepseek olmali"), DeepSeek Flash with each question's own cap when the process names DeepSeek.
     assert child(writers) == ("evren,evren-deepseek-v4.1-flash,None;evren,evren-deepseek-v4.1-flash,None;"
-                              "deepseek,deepseek-v4-flash,200")
+                              "evren,evren-deepseek-v4.1-flash,None")
     assert (child(writers, RC_SEC_READS_PROVIDER="deepseek")
             == "deepseek,deepseek-v4-flash,150;deepseek,deepseek-v4-flash,800;deepseek,deepseek-v4-flash,200")

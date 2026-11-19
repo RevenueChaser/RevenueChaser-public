@@ -7,6 +7,7 @@ board only reads the answers through ``rcdata.read.sec_reads``. ``rcdata.build``
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 from dataclasses import dataclass, field
 from datetime import date
@@ -18,6 +19,12 @@ PROVIDERS = ("evren", "deepseek")
 #: Each provider's model when a question names none. DeepSeek is always its Flash model, never Pro (avo, 15 Nov
 #: 2026 12:01).
 DEFAULT_MODEL = {"evren": "evren-deepseek-v4.1-flash", "deepseek": "deepseek-v4-flash"}  # config.yaml names
+#: The writer of every question that names none: EVREN, the owner's own gate with no fee (avo, 19 Nov 2026:
+#: "Fundamentals icinde evren deepseek olmali"), or DeepSeek Flash for a process started with
+#: ``RC_SEC_READS_PROVIDER=deepseek`` (avo, 16 Nov 2026). Read once, at import, so one run asks every question
+#: through one writer. A stored ``ok`` answer is current whoever wrote it (``reads._text_key``), so switching the
+#: switch asks nothing again.
+PROVIDER = os.environ.get("RC_SEC_READS_PROVIDER", "").strip().lower() or "evren"
 CHUNK_CHARS = 60_000
 MAX_TOKENS = 8_000
 
@@ -79,7 +86,7 @@ class Question:
     scope: Callable[[], Iterable[str]]
     inputs: Callable[[list[str]], dict[str, Input]]
     parse: Callable[[str], dict | None]
-    provider: str = "evren"
+    provider: str = PROVIDER
     model: str = ""
     user: Callable[[str], str] = field(default=lambda chunk: chunk)
     merge: Callable[[list[tuple[dict, int]]], dict] = field(default=_one)

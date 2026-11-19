@@ -2175,7 +2175,10 @@ board adds one entry and reads the answers through `rcdata.read.sec_reads(ciks, 
 `rcdata/build/__init__.py` registers the questions, and registration order is run order: `business.locate` and
 `company.profile` (`sec_reads/company_profile.py`), then `debt.note` (#737; `sec_reads/debt_note.py`, prompt and parse
 in `rcdata/sec_debt_note.py`), which the Fundamentals board reads through `core/fundamentals_layer.py`. Each further
-question is its own change.
+question is its own change. **All three are written by one switch** (`questions.PROVIDER`): EVREN, the gate with no
+fee, unless the process names DeepSeek (`RC_SEC_READS_PROVIDER=deepseek`), which gives each question its own call cap
+(avo, 19 Nov 2026: `debt.note` moved off the paid writer with the other two). A stored `ok` answer is current
+whoever wrote it, so the switch asks nothing again.
 
 **One asker** (`asker.py`), one pool per provider: EVREN 1 request at a time, DeepSeek 8. The HTTP clients are
 `core/providers`' own, called with `use_cache=False`, so `llm_cache` gets nothing from the tool. On homesrv the
