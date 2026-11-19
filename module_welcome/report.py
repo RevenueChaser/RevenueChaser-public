@@ -1,4 +1,4 @@
-"""The Welcome page, the dashboard's opening screen (welcome plan §2), in Turkish with Amsterdam times.
+"""The Welcome page, the dashboard's opening screen (welcome plan §2), in English with Amsterdam times.
 
 Five cards: today's economic calendar in short and the three newest headlines (#673; both read from
 ``boards/news.duckdb``, nothing copied, the headlines refreshed by a 60 s poll), the earnings of
@@ -33,19 +33,18 @@ FRESH_DAYS = 7
 FRESH_LIMIT = 12
 HEAD_LIMIT = 3
 EARNINGS_PER_DAY = 8
-_SHORT = ("Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara")
+_SHORT = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
 #: series -> (label, up is ..., unit). ``good``/``bad`` colours the change; ``neutral`` leaves it plain.
-TILES = (("SPX", "S&P 500", "good", ""), ("VIX", "VIX", "bad", ""), ("US10Y", "ABD 10 yıllık faiz", "neutral", "%"),
-         ("MOVE", "MOVE (tahvil oynaklığı)", "bad", ""))
-_SESSION_TEXT = {"premarket": "Açılış öncesi", "afterhours": "Kapanış sonrası"}
+TILES = (("SPX", "S&P 500", "good", ""), ("VIX", "VIX", "bad", ""), ("US10Y", "US 10-year yield", "neutral", "%"),
+         ("MOVE", "MOVE (bond volatility)", "bad", ""))
+_SESSION_TEXT = {"premarket": "Pre-market", "afterhours": "After hours"}
 
 
-def tr_num(x: float, decimals: int = 2, sign: bool = False) -> str:
-    """Turkish number writing: ``6012.5`` -> ``6.012,50``; ``sign`` adds ``+`` to a positive value."""
-    text = f"{abs(x):,.{decimals}f}".replace(",", " ").replace(".", ",").replace(" ", ".")
+def num(x: float, decimals: int = 2, sign: bool = False) -> str:
+    """English number writing: ``6012.5`` -> ``6,012.50``; ``sign`` adds ``+`` to a positive value."""
     lead = "-" if x < 0 else ("+" if sign and x > 0 else "")
-    return lead + text
+    return lead + f"{abs(x):,.{decimals}f}"
 
 
 def _short_date(d) -> str:
@@ -55,10 +54,10 @@ def _short_date(d) -> str:
 def _ago(ts: float, now: float) -> str:
     mins = max(0, int((now - float(ts)) // 60))
     if mins < 60:
-        return f"{mins} dk önce"
+        return f"{mins} min ago"
     if mins < 48 * 60:
-        return f"{mins // 60} sa önce"
-    return f"{mins // 1440} gün önce"
+        return f"{mins // 60} h ago"
+    return f"{mins // 1440} d ago"
 
 
 def _open_tab(key: str, text: str) -> str:
@@ -67,9 +66,9 @@ def _open_tab(key: str, text: str) -> str:
 
 # ── the cards ────────────────────────────────────────────────────────────────────────────────────────────────────
 def _calendar_card(now: float) -> str:
-    head = '<section class="card"><h2 class="lbl">Ekonomik takvim · bugün</h2>'
+    head = '<section class="card"><h2 class="lbl">Economic calendar · today</h2>'
     if not rawstore.board_db_path("news").exists():
-        return head + '<p class="empty">News board henüz kurulmadı.</p></section>'
+        return head + '<p class="empty">The News board is not built yet.</p></section>'
     today = local_day(now)
     start = datetime(today.year, today.month, today.day, tzinfo=AMS).timestamp()
     events = rawstore.query(
@@ -78,17 +77,19 @@ def _calendar_card(now: float) -> str:
     events = [e for e in events if local_day(e["event_ts"]) == today]
     hl = rawstore.query(f"SELECT * FROM {HIGHLIGHT} WHERE session_date = ?", [today.isoformat()], db="news")
     if not events:
-        return head + '<p class="empty">Bugün takvimde veri yok.</p>' + _open_tab("module_news", "Haftayı gör") + \
+        return head + '<p class="empty">Nothing on today\'s calendar.</p>' + \
+            _open_tab("module_news", "See the week") + \
             "</section>"
-    body = f'<div class="big">bugün {len(events)} veri</div>'
+    body = f'<div class="big">{len(events)} releases today</div>'
     if hl:
         h = hl[0]
-        body += (f'<div class="hl"><div class="muted">Öne çıkan · {hm(h["event_ts"])} {dots_html(h.get("importance"))}'
+        body += (f'<div class="hl"><div class="muted">Highlight · {hm(h["event_ts"])} '
+                 f'{dots_html(h.get("importance"))}'
                  f'</div><div class="name">{esc(h["event"])}</div>{vals_html(h)}</div>')
     hl_key = (hl[0]["event_ts"], hl[0]["event"]) if hl else None
     nxt = [e for e in events if float(e["event_ts"]) >= now and (e["event_ts"], e["event"]) != hl_key][:2]
     if nxt:
-        body += '<div class="muted sub">Sıradaki</div><ul class="list">' + "".join(
+        body += '<div class="muted sub">Next up</div><ul class="list">' + "".join(
             f'<li class="row"><span class="t">{hm(e["event_ts"])}</span><span>{esc(e["event"])}</span>'
             f'{dots_html(e.get("importance"))}</li>' for e in nxt) + "</ul>"
     return head + body + _open_tab("module_news", "News board") + "</section>"
@@ -96,12 +97,12 @@ def _calendar_card(now: float) -> str:
 
 def _headlines_card(now: float) -> tuple[str, float]:
     """The three newest headlines of the last day, either lane, and the newest ``run_at`` the poll starts from."""
-    head = '<section class="card"><h2 class="lbl">Son başlıklar</h2>'
+    head = '<section class="card"><h2 class="lbl">Latest headlines</h2>'
     rows = rawstore.query(
         f"SELECT * FROM {HEADLINES} WHERE published_at >= ? ORDER BY published_at DESC LIMIT {HEAD_LIMIT}",
         [now - 86400], db="news") if rawstore.board_db_path("news").exists() else []
     since = max((float(r["run_at"]) for r in rows if r.get("run_at") is not None), default=now)
-    return (head + f'<p class="empty"{" hidden" if rows else ""}>Son 24 saatte başlık yok.</p>'
+    return (head + f'<p class="empty"{" hidden" if rows else ""}>No headline in the last 24 hours.</p>'
             f'<ul class="list" id="heads-all">{"".join(_head_li(r) for r in rows)}</ul></section>'), since
 
 
@@ -110,28 +111,28 @@ def _earnings_card(now: float, watchlist: set[str]) -> str:
     rows = rawstore.query(f"SELECT * FROM {EARNINGS} WHERE earnings_date IN (?, ?) AND retired_at IS NULL",
                           [days[0], days[1]], db="welcome")
     today_ny = datetime.fromtimestamp(now, NY).date()
-    out = ['<section class="card"><h2 class="lbl">Bilanço · bugün ve sonraki işlem günü</h2>']
+    out = ['<section class="card"><h2 class="lbl">Earnings · today and the next trading day</h2>']
     if not rows:
-        out.append('<p class="empty">Bu iki gün için saklı bilanço yok.</p>')
+        out.append('<p class="empty">No stored earnings for these two days.</p>')
     for d in days:
         got = [r for r in rows if r["earnings_date"] == d]
         got.sort(key=lambda r: (r["ticker"] not in watchlist, -(r.get("expected_move_perc") or 0), r["ticker"]))
-        name = ("Bugün · " if d == today_ny else "") + day_label(d)
-        out.append(f'<h3 class="day">{esc(name)} · {len(got)} şirket</h3>')
+        name = ("Today · " if d == today_ny else "") + day_label(d)
+        out.append(f'<h3 class="day">{esc(name)} · {len(got)} companies</h3>')
         if not got:
             continue
         out.append('<ul class="list">')
         for r in got[:EARNINGS_PER_DAY]:
-            mine = ' <span class="pill">listemde</span>' if r["ticker"] in watchlist else ""
+            mine = ' <span class="pill">on my list</span>' if r["ticker"] in watchlist else ""
             em = r.get("expected_move_perc")
-            move = f'<span class="em">±{esc("%" + tr_num(em * 100, 1))}</span>' if em is not None else ""
+            move = f'<span class="em">±{esc(num(em * 100, 1) + "%")}</span>' if em is not None else ""
             out.append(f'<li class="row"><span class="tk">{esc(r["ticker"])}</span>{mine}'
                        f'<span class="muted">{_SESSION_TEXT.get(r["report_session"], esc(r["report_session"]))}'
                        f'</span>{move}</li>')
         out.append("</ul>")
         if len(got) > EARNINGS_PER_DAY:
-            out.append(f'<p class="muted">ve {len(got) - EARNINGS_PER_DAY} şirket daha</p>')
-    out.append('<p class="muted note">± = opsiyonların fiyatladığı beklenen hareket</p>')
+            out.append(f'<p class="muted">and {len(got) - EARNINGS_PER_DAY} more companies</p>')
+    out.append('<p class="muted note">± = the move the options price in</p>')
     out.append(_open_tab("module_earnings_radar", "Earnings Radar") + "</section>")
     return "".join(out)
 
@@ -146,7 +147,7 @@ def _spark(values: list[float]) -> str:
            for i, v in enumerate(values)]
     line = " ".join(f"{x:.1f},{y:.1f}" for x, y in pts)
     x, y = pts[-1]
-    label = f"Son {len(values)} kapanış: en düşük {tr_num(lo)}, en yüksek {tr_num(hi)}"
+    label = f"Last {len(values)} closes: lowest {num(lo)}, highest {num(hi)}"
     return (f'<svg class="spark" viewBox="0 0 {w:.0f} {h:.0f}" role="img" aria-label="{esc(label)}">'
             f'<title>{esc(label)}</title><polyline points="{line}" fill="none" stroke="var(--muted)" '
             f'stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>'
@@ -162,28 +163,29 @@ def _snapshot_card() -> str:
         r = latest.get(key)
         if not r:
             continue
-        value = (unit + tr_num(r["close"])) if unit == "%" else tr_num(r["close"])
+        value = (num(r["close"]) + unit) if unit == "%" else num(r["close"])
         change, direction, delta = r.get("change"), "flat", ""
         if change is not None:
-            change = round(change, 2) or 0.0                      # a change that shows as 0,00 is flat
+            change = round(change, 2) or 0.0                      # a change that shows as 0.00 is flat
             rising = change > 0
             direction = "neutral" if up == "neutral" or change == 0 else (
                 ("good" if rising else "bad") if up == "good" else ("bad" if rising else "good"))
-            pct = f' ({"%" + tr_num((r.get("change_pct") or 0) * 100, 2, sign=True).lstrip("+-")})' \
+            pct = f' ({num((r.get("change_pct") or 0) * 100, 2, sign=True).lstrip("+-")}%)' \
                 if r.get("change_pct") is not None and unit != "%" else ""
             sign = "+" if change > 0 else ("-" if change < 0 else "")
             delta = (f'<div class="delta" data-dir="{direction}">{"▲" if rising else ("▼" if change < 0 else "•")} '
-                     f'{sign}{tr_num(abs(change), 2)}{pct}</div>')
+                     f'{sign}{num(abs(change), 2)}{pct}</div>')
         tiles.append(f'<div class="tile"><div class="muted">{esc(label)}</div><div class="val">{esc(value)}</div>'
                      f'{delta}{_spark(json.loads(r.get("spark") or "[]"))}'
-                     f'<div class="muted small">{_short_date(r["session_date"])} kapanışı</div></div>')
+                     f'<div class="muted small">{_short_date(r["session_date"])} close</div></div>')
     # With no row the card used to say only "no stored close", which reads as "no data" when the real cause is a
     # builder file that is not there yet (#642 F3, #643 PR 5): ``read.missing`` is that reason, in one line.
     reason = read.missing("market") if not tiles else None
     body = ('<div class="tiles">' + "".join(tiles) + "</div>") if tiles else (
-        f'<p class="empty">Saklı kapanış yok{f" ({esc(reason)})" if reason else ""}.</p>')
-    return ('<section class="card"><h2 class="lbl">Piyasa · son kapanış</h2>' + body +
-            '<p class="muted note">Canlı fiyat değil: saklı son kapanış ve bir önceki seansa göre değişim.</p></section>')
+        f'<p class="empty">No stored close{f" ({esc(reason)})" if reason else ""}.</p>')
+    return ('<section class="card"><h2 class="lbl">Market · last close</h2>' + body +
+            '<p class="muted note">Not a live price: the last stored close and its change against the session '
+            'before.</p></section>')
 
 
 def _freshness_card(now: float, labels: dict[str, str]) -> str:
@@ -194,18 +196,20 @@ def _freshness_card(now: float, labels: dict[str, str]) -> str:
         return r.get("last_status") in ("error", "gaps") or (r.get("last_failed_at") or 0) >= now - 86400
 
     rows.sort(key=lambda r: (not failing(r), -float(r["last_finished_at"])))
-    head = '<section class="card"><h2 class="lbl">Veri tazeliği · son 7 gün</h2>'
+    head = '<section class="card"><h2 class="lbl">Data freshness · last 7 days</h2>'
     if not rows:
-        return head + '<p class="empty">Son 7 günde biten iş yok.</p>' + _open_tab("module_settings", "Settings") + \
+        return head + '<p class="empty">No job finished in the last 7 days.</p>' + \
+            _open_tab("module_settings", "Settings") + \
             "</section>"
     n_bad = sum(1 for r in rows if failing(r))
-    out = [head, f'<div class="big">{n_bad} işte sorun</div>' if n_bad else '<div class="big">Hepsi tamam</div>',
+    out = [head, f'<div class="big">{n_bad} job{"s" if n_bad != 1 else ""} with a problem</div>' if n_bad else
+           '<div class="big">All good</div>',
            '<ul class="list">']
     for r in rows[:FRESH_LIMIT]:
         bad = failing(r)
-        state = '<span class="st bad">✕ hata</span>' if r.get("last_status") == "error" else (
-            '<span class="st warn">! eksik veri</span>' if r.get("last_status") == "gaps" else (
-                '<span class="st warn">! 24 saatte hata</span>' if bad else '<span class="st ok">✓ tamam</span>'))
+        state = '<span class="st bad">✕ error</span>' if r.get("last_status") == "error" else (
+            '<span class="st warn">! missing data</span>' if r.get("last_status") == "gaps" else (
+                '<span class="st warn">! error in 24 h</span>' if bad else '<span class="st ok">✓ ok</span>'))
         err = f'<div class="muted small err">{esc(r["last_error"])}</div>' if bad and r.get("last_error") else ""
         out.append(f'<li class="row fr"><div><div class="name">{esc(labels.get(r["job"], r["job"]))}</div>{err}</div>'
                    f'{state}<span class="muted small">{_ago(r["last_finished_at"], now)}</span></li>')
@@ -285,25 +289,25 @@ function openTab(key){
   try{ parent.postMessage({type:'rc-open-tab', key:key}, location.origin); }catch(e){}
 }
 function _amsHM(t){
-  return new Date(t * 1000).toLocaleTimeString('tr-TR', {timeZone:'Europe/Amsterdam', hour:'2-digit', minute:'2-digit'});
+  return new Date(t * 1000).toLocaleTimeString('en-GB', {timeZone:'Europe/Amsterdam', hour:'2-digit', minute:'2-digit'});
 }
 function _amsDay(t){
-  return new Date(t * 1000).toLocaleDateString('tr-TR', {timeZone:'Europe/Amsterdam', weekday:'long'});
+  return new Date(t * 1000).toLocaleDateString('en-GB', {timeZone:'Europe/Amsterdam', weekday:'long'});
 }
 function _left(s){
   var m = Math.max(0, Math.round(s / 60)), h = Math.floor(m / 60);
-  return (h ? h + ' sa ' : '') + (m % 60) + ' dk';
+  return (h ? h + ' h ' : '') + (m % 60) + ' min';
 }
 function sessionClock(){
   var el = document.getElementById('clock'); if(!el) return;
-  var now = Date.now() / 1000, text = 'Seans bilgisi yok (sayfayı yenile)', state = 'closed';
+  var now = Date.now() / 1000, text = 'No session data (refresh the page)', state = 'closed';
   for(var i = 0; i < SESSIONS.length; i++){
     var o = SESSIONS[i][0], c = SESSIONS[i][1];
-    if(now >= o && now < c){ state = 'open'; text = 'ABD piyasası açık · kapanışa ' + _left(c - now) + ' (' + _amsHM(c) + ')'; break; }
+    if(now >= o && now < c){ state = 'open'; text = 'US market open · ' + _left(c - now) + ' to the close (' + _amsHM(c) + ')'; break; }
     if(now < o){
       state = (o - now < 5.5 * 3600) ? 'pre' : 'closed';
-      text = (state === 'pre' ? 'Açılış öncesi · açılışa ' + _left(o - now)
-                               : 'ABD piyasası kapalı · açılış ' + _amsDay(o)) + ' ' + _amsHM(o);
+      text = (state === 'pre' ? 'Pre-market · ' + _left(o - now) + ' to the open'
+                               : 'US market closed · opens ' + _amsDay(o)) + ' ' + _amsHM(o);
       break;
     }
   }
@@ -320,7 +324,7 @@ function headsPoll(){
         var li = document.createElement('li'); li.className = 'hd'; li.setAttribute('data-hid', r.headline_id);
         li.setAttribute('data-at', r.published_at);
         var m = document.createElement('div'); m.className = 'muted';
-        m.textContent = r.hm + (r.tickers.length ? ' · ' + r.tickers.slice(0, 4).join(' ') : ' · Piyasa');
+        m.textContent = r.hm + (r.tickers.length ? ' · ' + r.tickers.slice(0, 4).join(' ') : ' · Market');
         var h = document.createElement('div'); h.textContent = r.headline;
         li.appendChild(m); li.appendChild(h);
         var kids = ul.children, i = 0;          // by publish time: a re-stored older story never jumps the newer ones
@@ -336,10 +340,10 @@ setInterval(headsPoll, 60000);
 
 
 HELP = help_html(
-    "<p>Günün özeti: bugünün ekonomik takvimi, bugün ve sonraki işlem günü bilanço açıklayan şirketler, "
-    "SPX, VIX, MOVE ve ABD 10 yıllık faizin son kapanışı ve işlerin son çalışması.</p>"
-    "<p><b>Fetch</b> saklı verilerden <code>boards/welcome.duckdb</code> dosyasını artımlı günceller; ağ "
-    "çağrısı yapmaz. <b>Refresh</b> yalnızca sayfayı yeniden çizer.</p>")
+    "<p>The day in short: today's economic calendar, the companies reporting earnings today and on the next "
+    "trading day, the last close of SPX, VIX, MOVE and the US 10-year yield, and when each job last ran.</p>"
+    "<p><b>Fetch</b> updates <code>boards/welcome.duckdb</code> incrementally from stored data and makes no "
+    "network call. <b>Refresh</b> only redraws the page.</p>")
 
 
 def render_html(now: float | None = None, *, watchlist: set[str], labels: dict[str, str]) -> str:
@@ -349,14 +353,14 @@ def render_html(now: float | None = None, *, watchlist: set[str], labels: dict[s
     left = _calendar_card(now) + heads + _earnings_card(now, watchlist)
     right = _snapshot_card() + _freshness_card(now, labels)
     return f"""<!doctype html>
-<html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Bugün</title><script>{THEME_JS}</script><style>{THEME_CSS}{_CSS}</style></head>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Today</title><script>{THEME_JS}</script><style>{THEME_CSS}{_CSS}</style></head>
 <body><div class="wrap">
-<header class="top"><div><div class="eyebrow">RevenueChaser · Bugün</div><h1>{long_date(today)}</h1>
-<div class="muted">{WEEKDAYS[today.weekday()]} · saatler Amsterdam · sayfa {hm(now)}'de hazırlandı</div></div>
-<div class="clock" id="clock" role="status" data-state="closed">ABD seansı</div></header>
+<header class="top"><div><div class="eyebrow">RevenueChaser · Today</div><h1>{long_date(today)}</h1>
+<div class="muted">{WEEKDAYS[today.weekday()]} · times Amsterdam · page built at {hm(now)}</div></div>
+<div class="clock" id="clock" role="status" data-state="closed">US session</div></header>
 <div class="grid"><div class="col">{left}</div><div class="col">{right}</div></div>
-<p class="foot">Saklı verilerden hazırlanır, ağ çağrısı yapmaz · Kaynak: Unusual Whales, Yahoo, FRED</p>
+<p class="foot">Built from stored data, no network call · Source: Unusual Whales, Yahoo, FRED</p>
 {HELP}
 </div><script>var SESSIONS = {json.dumps(sessions(now))};var HEADS_SINCE = {heads_since!r};{_JS}</script></body></html>"""
 
