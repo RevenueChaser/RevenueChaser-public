@@ -2,8 +2,7 @@
 
 Shape ``{provider, calls, failed, auth_error, failures[], breaker_open, skipped_calls}``; the last two are what
 A3's ``history.uw_problems`` reads beside ``calls``/``failed``/``auth_error``, so every provider carries them. The
-banner names the provider; a health without ``provider`` is UW's, and its text is the same byte for byte
-whichever way it arrives. The words are Turkish since review L5 (18 Nov 2026): every RC board is Turkish.
+banner names the provider; the Unusual Whales text stays byte-identical (a health without ``provider`` is UW's).
 """
 from __future__ import annotations
 
@@ -16,22 +15,21 @@ from RevenueChaser.core.reporting_common import provider_health_html
 
 _STYLE = ('<div class="rc-provider-health" role="alert" style="margin:8px 0 12px;padding:10px 12px;'
           'border:1px solid var(--amber,#f1c40f);border-radius:8px;background:rgba(241,196,15,.08);'
-          'color:var(--amber,#f1c40f);font-size:13px;line-height:1.45"><b>Veri eksik.</b> ')
-_TAIL = " Bu panoda satır eksik olabilir — birazdan Fetch'i yeniden çalıştır.</div>"
+          'color:var(--amber,#f1c40f);font-size:13px;line-height:1.45"><b>Data incomplete.</b> ')
+_TAIL = " This board may be missing rows — run Fetch again later.</div>"
 
 
 # ── the UW banner is unchanged ───────────────────────────────────────────────────────────────────────────────────
-def test_the_uw_banner_is_the_same_whichever_way_it_arrives():
+def test_the_uw_banner_is_byte_identical():
     h = {"calls": 12, "failed": 3, "failures": [{"endpoint": "/api/x", "status": 500}],
          "auth_error": {"status": 401}, "breaker_open": False, "skipped_calls": 0}
-    want = (_STYLE + "Unusual Whales API anahtarını kabul etmedi (HTTP 401) — .env içindeki "
-            "UNUSUAL_WHALES_API_KEY'i kontrol et. "
-            "12 Unusual Whales çağrısının 3 tanesi başarısız (örn. /api/x: 500)." + _TAIL)
+    want = (_STYLE + "Unusual Whales rejected the API key (HTTP 401) — check UNUSUAL_WHALES_API_KEY in .env. "
+            "3 of 12 Unusual Whales calls failed (e.g. /api/x: 500)." + _TAIL)
     assert provider_health_html(h) == want
     assert provider_health_html({**h, "provider": "unusual_whales"}) == want
     h2 = {"calls": 5, "failed": 2, "failures": [{"endpoint": "/api/<y>", "error": "timeout & co"}], "auth_error": None}
-    assert provider_health_html(h2) == (_STYLE + "5 Unusual Whales çağrısının 2 tanesi başarısız "
-                                        "(örn. /api/&lt;y&gt;: timeout &amp; co)." + _TAIL)
+    assert provider_health_html(h2) == (_STYLE + "2 of 5 Unusual Whales calls failed "
+                                        "(e.g. /api/&lt;y&gt;: timeout &amp; co)." + _TAIL)
     assert provider_health_html({"calls": 4, "failed": 0, "auth_error": None}) == ""
 
 
@@ -41,13 +39,13 @@ def test_a_yahoo_health_names_yahoo():
          "failures": [{"endpoint": "AAPL.income_stmt", "error": "HTTP 429"}], "breaker_open": False,
          "skipped_calls": 0}
     out = provider_health_html(h)
-    assert "10 Yahoo Finance çağrısının 3 tanesi başarısız (örn. AAPL.income_stmt: HTTP 429)." in out
+    assert "3 of 10 Yahoo Finance calls failed (e.g. AAPL.income_stmt: HTTP 429)." in out
     assert "Unusual Whales" not in out and "UNUSUAL_WHALES_API_KEY" not in out
 
 
 def test_an_unknown_provider_is_named_as_given_and_escaped():
     out = provider_health_html({"provider": "<acme>", "calls": 1, "failed": 1, "auth_error": {"status": 403}})
-    assert "&lt;acme&gt; isteği reddetti (HTTP 403)." in out and "1 &lt;acme&gt; çağrısının 1 tanesi başarısız." in out
+    assert "&lt;acme&gt; rejected the request (HTTP 403)." in out and "1 of 1 &lt;acme&gt; calls failed." in out
 
 
 def test_provider_health_has_the_shared_shape():

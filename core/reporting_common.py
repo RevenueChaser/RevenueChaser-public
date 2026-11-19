@@ -627,13 +627,10 @@ def provider_health_html(health: dict | None) -> str:
     """Amber "data incomplete" banner for a provider-backed board (MB3 / ADR-1, Common K3).
 
     ``health`` is a provider's health captured by the runner (``UWClient.health()``, ``yfinance.health()``):
-    ``{provider, calls, failed, auth_error, failures[]}``; one without ``provider`` is Unusual Whales'. Empty when
-    the run was clean (or no health was recorded); otherwise an always-visible alert naming the provider, with the
-    failure count and one example, so an outage cannot pass for a quiet market. Self-contained inline style; every
-    provider string escaped.
-
-    The words are Turkish (review L5, 18 Nov 2026): every board of RC is Turkish, and this banner was the one
-    English sentence on them. Provider names, endpoints and the provider's own error text stay as they come.
+    ``{provider, calls, failed, auth_error, failures[]}``; one without ``provider`` is Unusual Whales', whose
+    text is unchanged. Empty when the run was clean (or no health was recorded); otherwise an always-visible
+    alert naming the provider, with the failure count and one example, so an outage cannot pass for a quiet
+    market. Self-contained inline style; every provider string escaped.
     """
     if not health:
         return ""
@@ -645,25 +642,25 @@ def provider_health_html(health: dict | None) -> str:
     name = html.escape(PROVIDER_NAMES.get(provider, str(provider)))
     parts = []
     if auth and provider == "unusual_whales":
-        parts.append("Unusual Whales API anahtarını kabul etmedi (HTTP "
-                     + html.escape(str(auth.get("status", "?"))) + ") — .env içindeki "
-                     "UNUSUAL_WHALES_API_KEY'i kontrol et.")
+        parts.append("Unusual Whales rejected the API key (HTTP "
+                     + html.escape(str(auth.get("status", "?"))) + ") — check "
+                     "UNUSUAL_WHALES_API_KEY in .env.")
     elif auth:
-        parts.append(f"{name} isteği reddetti (HTTP " + html.escape(str(auth.get("status", "?"))) + ").")
+        parts.append(f"{name} rejected the request (HTTP " + html.escape(str(auth.get("status", "?"))) + ").")
     if failed > 0:
         calls = int(health.get("calls") or failed)
-        line = f"{calls} {name} çağrısının {failed} tanesi başarısız"
+        line = f"{failed} of {calls} {name} calls failed"
         first = (health.get("failures") or [None])[0]
         if first:
             why = first.get("status") or first.get("error") or "error"
-            line += " (örn. " + html.escape(f"{first.get('endpoint', '')}: {why}") + ")"
+            line += " (e.g. " + html.escape(f"{first.get('endpoint', '')}: {why}") + ")"
         parts.append(line + ".")
     return (
         '<div class="rc-provider-health" role="alert" style="margin:8px 0 12px;'
         'padding:10px 12px;border:1px solid var(--amber,#f1c40f);border-radius:8px;'
         'background:rgba(241,196,15,.08);color:var(--amber,#f1c40f);font-size:13px;'
-        'line-height:1.45"><b>Veri eksik.</b> ' + " ".join(parts)
-        + " Bu panoda satır eksik olabilir — birazdan Fetch'i yeniden çalıştır.</div>"
+        'line-height:1.45"><b>Data incomplete.</b> ' + " ".join(parts)
+        + " This board may be missing rows — run Fetch again later.</div>"
     )
 
 

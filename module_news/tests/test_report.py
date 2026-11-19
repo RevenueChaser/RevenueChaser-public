@@ -121,12 +121,12 @@ def test_each_lane_says_when_its_own_newest_row_was_fetched():
     ])
     page = report.render_html(now=NOW)
     market, stocks, x = (page.index(f'id="heads-{k}"') for k in ("market", "stocks", "x"))
-    assert page.index("son veri 14:58 · 2 dk önce") < market                  # the tape lane: 2 minutes old
-    assert market < page.index("son veri 13:00 · 1 gün önce") < stocks        # the dead per-ticker lane says so
-    assert stocks < page.index("son veri 14:55 · 5 dk önce") < x              # the X lane
+    assert page.index("last data 14:58 · 2 min ago") < market                 # the tape lane: 2 minutes old
+    assert market < page.index("last data 13:00 · 1 d ago") < stocks          # the dead per-ticker lane says so
+    assert stocks < page.index("last data 14:55 · 5 min ago") < x             # the X lane
 
 
 def test_a_lane_with_no_row_at_all_says_so(seeded):
     page = report.render_html(now=NOW)                 # `seeded` has a stocks and a market row, no tweet
-    assert page.count("bu kulvarda hiç veri yok") == 1
-    assert page.index('id="heads-x"') > page.index("bu kulvarda hiç veri yok")
+    assert page.count("no data in this lane yet") == 1
+    assert page.index('id="heads-x"') > page.index("no data in this lane yet")

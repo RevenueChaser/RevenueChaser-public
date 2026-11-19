@@ -141,12 +141,12 @@ class TestProviderHealthHtml:
     def test_shows_counts_and_example(self):
         out = provider_health_html(_health(failed=3, calls=50))
         assert 'role="alert"' in out
-        assert "50 Unusual Whales çağrısının 3 tanesi başarısız" in out
+        assert "3 of 50" in out
         assert "/stock/XYZ/ohlc" in out and "429" in out
 
     def test_auth_error_alone_shows_the_banner(self):
         out = provider_health_html(_health(failed=0, auth_error={"status": 401, "endpoint": "/a"}))
-        assert "401" in out and "anahtar" in out.lower()
+        assert "401" in out and "key" in out.lower()
 
     def test_escapes_provider_text(self):
         h = _health(failed=1, failures=[
@@ -196,7 +196,7 @@ class TestEarningsBoard:
         assert "5 of 40" in exc.value.message
         assert seen["provider_health"]["failed"] == 5
         html = path.read_text(encoding="utf-8")
-        assert "rc-provider-health" in html and "40 Unusual Whales çağrısının 5 tanesi" in html
+        assert "rc-provider-health" in html and "5 of 40" in html
 
     def test_clean_run_has_no_banner(self, tmp_path):
         from RevenueChaser.module_earnings_radar.report import export_html
@@ -260,7 +260,7 @@ class TestRotationBoard:
             runners.run_rotation_latest(_FakeUW(_BAD))
         assert seen["provider_health"]["failed"] == 5
         html = out.read_text(encoding="utf-8")
-        assert "rc-provider-health" in html and "40 Unusual Whales çağrısının 5 tanesi" in html
+        assert "rc-provider-health" in html and "5 of 40" in html
 
 
 class TestPayloadBoards:

@@ -65,7 +65,7 @@ def test_comovement_rendered_from_a_failed_fetch_shows_the_banner(rawstore_tmp_d
     payload = engine.run(no_fetch=False, tickers=["AAA", "BBB"])
     html = report.render_comovement_dashboard(payload)
     assert _BANNER in html
-    assert "4 daily_bars çağrısının 2 tanesi başarısız" in html
+    assert "2 of 4" in html
 
 
 # ── Relatedness: a provider stop the run already records ────────────────────────────────────────

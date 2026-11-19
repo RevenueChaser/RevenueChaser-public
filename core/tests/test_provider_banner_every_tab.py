@@ -23,4 +23,4 @@ NO_PROVIDER = {"module_welcome", "module_leaps", "module_watchlists", "module_hi
 def test_the_tab_shows_the_provider_banner_once(key, tmp_path, monkeypatch, rawstore_tmp_db):
     html = BOARDS[key].render(tmp_path, monkeypatch)
     assert html.count(BANNER) == 1, "provider_health_html missing (or rendered twice)"
-    assert "Veri eksik." in html
+    assert "Data incomplete." in html

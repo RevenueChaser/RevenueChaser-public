@@ -241,15 +241,16 @@ def _x_groups(rows: list[dict]) -> str:
 
 
 def _ago(seconds: float) -> str:
-    """How long ago, in the board's Turkish and coarse: ``az önce``, ``7 dk önce``, ``3 sa önce``, ``2 gün önce``."""
+    """How long ago, coarse: ``just now``, ``7 min ago``, ``3 h ago``, ``2 d ago`` (avo, 19 Nov 2026: every word
+    the boards show is English)."""
     s = max(0.0, float(seconds))
     if s < 60:
-        return "az önce"
+        return "just now"
     if s < 3600:
-        return f"{int(s // 60)} dk önce"
+        return f"{int(s // 60)} min ago"
     if s < 86400:
-        return f"{int(s // 3600)} sa önce"
-    return f"{int(s // 86400)} gün önce"
+        return f"{int(s // 3600)} h ago"
+    return f"{int(s // 86400)} d ago"
 
 
 def _fresh_html(key: str, fresh: dict, now: float) -> str:
@@ -261,8 +262,8 @@ def _fresh_html(key: str, fresh: dict, now: float) -> str:
     about an hour, X is hourly) and the alarm belongs in Grafana, where the threshold can be changed."""
     at = fresh.get(key)
     if at is None:
-        return '<p class="fresh">bu kulvarda hiç veri yok</p>'
-    return f'<p class="fresh">son veri {hm(at)} · {_ago(now - at)}</p>'
+        return '<p class="fresh">no data in this lane yet</p>'
+    return f'<p class="fresh">last data {hm(at)} · {_ago(now - at)}</p>'
 
 
 def _headlines(rows: list[dict], fresh: dict, now: float) -> dict[str, str]:
@@ -639,8 +640,8 @@ HELP = help_html(
     "kontrat, prim, ask/bid tarafı) ve ertesi gün açık pozisyon (OI) değişimi gösterilir. "
     "Gerçekleşen değer gösterilmez: beklenti ve önceki değer.</p>"
     "<p>Piyasa başlıkları geldiği anda, birkaç saniye içinde sayfaya düşer; hisse başlıkları 5 dakikada bir gelir. "
-    "Her kulvarın başlığının altında o kulvarın <b>kendi</b> son veri zamanı yazar: sayfanın en üstündeki saat "
-    "panonun herhangi bir kulvarına yapılan en son yazmadır, yani tek başına ölü bir kulvarı göstermez.</p>"
+    "Under each lane's heading stands that lane's <b>own</b> last data time: the clock at the top of the page is "
+    "the newest write to any lane of the board, so on its own it cannot show a lane that has died.</p>"
     "<p><b>Bir hisse için haber</b>: My Universe'den bir hisse seçip <b>Haberleri getir</b>'e basınca IBKR'dan o hissenin "
     "son 7 günlük Dow Jones ve Briefing başlıkları sorulur (en çok 300) ve saklanır; IBKR yanıt vermezse saklı son "
     "başlıklar gösterilir.</p>"
