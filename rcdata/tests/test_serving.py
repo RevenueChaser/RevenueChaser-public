@@ -689,7 +689,8 @@ def test_a_scratch_file_connection_takes_a_cap_of_its_own(tmp_path, monkeypatch)
     share on a box that happens to be idle."""
     monkeypatch.setattr(serving, "available_memory", lambda: 10 * 2**30)
     with serving.connect_scratch_file(tmp_path / "set.duckdb", "1GB") as con:
-        assert _limit_bytes(con) == 10**9
+        # DuckDB reports the limit it rounded to its own units (999,922,073 B for 1 GB), not the string as sent.
+        assert abs(_limit_bytes(con) - 10**9) / 10**9 < 0.01
 
 
 def test_a_killed_processes_scratch_folder_is_swept(tmp_path, monkeypatch):
