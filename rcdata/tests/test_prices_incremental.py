@@ -240,6 +240,29 @@ def test_a_security_no_source_returns_keeps_its_stored_bars(live):
         con.close()
 
 
+GONE = "099000:01"
+
+
+def test_a_carried_security_swaps_through_with_its_bars(live, monkeypatch):
+    """The 19 Nov 2026 whole build carried the 4 securities no source returns a bar for, and the swap then refused
+    the file over exactly those rows: ``price_bar_daily has 30905400 rows, expected 30893210``, the 12,190 carried
+    bars, because the expected count was taken before the carry. The build names its own count after the carry."""
+    import duckdb
+    con = duckdb.connect(str(serving.live_path("prices")))
+    try:
+        con.execute(f"INSERT INTO price_bar_daily BY NAME SELECT * REPLACE ('{GONE}' AS security_id) "
+                    "FROM price_bar_daily WHERE security_id = ?", [AAPL])
+        carried = con.execute("SELECT count(*) FROM price_bar_daily WHERE security_id = ?", [GONE]).fetchone()[0]
+    finally:
+        con.close()
+    assert carried
+    monkeypatch.setenv(dirty.WHOLE_ENV, "1")
+    row = _serve()
+    assert "built whole" in _note(row), _note(row)
+    assert "kept with their" in _note(row), _note(row)
+    assert len(_q("SELECT 1 FROM price_bar_daily WHERE security_id = ?", [GONE])) == carried
+
+
 def test_the_build_lets_the_same_or_more_through(live):
     con = _shrunk_build("false")
     try:
