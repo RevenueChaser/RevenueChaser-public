@@ -101,6 +101,8 @@ def test_the_drawer_covers_the_page_instead_of_taking_480_px_beside_it():
     assert re.search(r"\.drawer\{[^}]*display:none", phone), "a closed drawer must not sit past the right edge"
     assert re.search(r"\.drawer\.open\{[^}]*display:block", phone)
     assert re.search(r"\.drawer-in\{[^}]*width:100%", phone)
+    # The board-wide content-fit rule forbids an ``auto`` width in the page (``test_report_table_fills_pane``).
+    assert "width:auto" not in phone
     assert re.search(r"\.dcards\{[^}]*grid-template-columns:minmax\(0,1fr\)", phone)
     assert re.search(r"\.decision-split\{[^}]*grid-template-columns:minmax\(0,1fr\)", phone)
 
