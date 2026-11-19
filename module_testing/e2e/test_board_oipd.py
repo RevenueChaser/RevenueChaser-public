@@ -17,6 +17,8 @@ import duckdb
 
 from RevenueChaser.module_oipd import opd_math
 
+from .harness.shared import shared_dashboard
+
 _SPOT = 100.0
 _R = 0.04
 _TICKER = "TST"
@@ -51,9 +53,12 @@ def _contracts_for(expiry):
     return out
 
 
-@pytest.fixture
-def served(dashboard):
-    """TST's chain and close in the dashboard's options serving file, and TST on the option list."""
+def _seed(dashboard) -> date:
+    """TST's chain and close in ``dashboard``'s options serving file, and TST on the option list.
+
+    A plain function and not only a fixture: a module-scoped fixture that shares one dashboard across the
+    read-only tests (#896) cannot request the function-scoped one.
+    """
     from pathlib import Path
 
     from RevenueChaser.rcdata.build.options import tables
@@ -83,32 +88,73 @@ def served(dashboard):
 
 
 @pytest.fixture
+def served(dashboard):
+    """The seeded chain on this test's own dashboard; returns its session date."""
+    return _seed(dashboard)
+
+
+@pytest.fixture
 def fetched(dashboard, served):
     result = dashboard.run_job("/run/module_oipd", ticker=_TICKER)
     assert result.ok, f"OIPD run failed: {result}\n{dashboard.logs()}"
     return result
 
 
+SHARED = pytest.mark.xdist_group("e2e-oipd-shared-build")
+
+
+@pytest.fixture(scope="module")
+def _built_once(tmp_path_factory, mock_provider):
+    """One dashboard, seeded and run once, for the read-only tests of ``TestFromTheBuild`` (#896).
+
+    Measured on the 19 Nov 2026 e2e run: those five tests took 38.1 s. Each paid a dashboard boot (about 6.3 s,
+    what an empty-store test costs end to end) and four of them also rebuilt the same three-expiry chain and ran
+    the same fit. The Refresh and empty-state tests below keep the function-scoped ``dashboard``: they clear the
+    cache, restart the subprocess, or need a store without this seed.
+    """
+    with shared_dashboard(tmp_path_factory, mock_provider, "oipd-shared") as dash:
+        session = _seed(dash)
+        result = dash.run_job("/run/module_oipd", ticker=_TICKER)
+        yield dash, session, result
+
+
+@pytest.fixture
+def built(_built_once):
+    dash, session, result = _built_once
+    assert result.ok, f"OIPD run failed: {result}\n{dash.logs()}"
+    return dash, session
+
+
 class TestFromTheBuild:
-    def test_the_dashboard_serves_its_shell(self, dashboard):
-        r = dashboard.get("/")
+    @SHARED
+    def test_the_dashboard_serves_its_shell(self, built):
+        dash, _ = built
+        r = dash.get("/")
         assert r.status_code == 200
         assert "Implied Probability" in r.text
 
-    def test_the_run_writes_the_board_artifact(self, dashboard, fetched):
-        assert dashboard.artifact("oipd_latest.html").exists()
+    @SHARED
+    def test_the_run_writes_the_board_artifact(self, built):
+        dash, _ = built
+        assert dash.artifact("oipd_latest.html").exists()
 
-    def test_the_board_shows_the_fitted_ticker(self, dashboard, fetched):
-        html = dashboard.view("module_oipd").text
+    @SHARED
+    def test_the_board_shows_the_fitted_ticker(self, built):
+        dash, _ = built
+        html = dash.view("module_oipd").text
         assert "Implied Probability" in html
         assert _TICKER in html
         assert "Risk-neutral" in html
 
-    def test_provenance_reports_the_chain_s_session(self, dashboard, fetched, served):
-        assert dashboard.data_as_of("module_oipd") == served.isoformat()
+    @SHARED
+    def test_provenance_reports_the_chain_s_session(self, built):
+        dash, session = built
+        assert dash.data_as_of("module_oipd") == session.isoformat()
 
-    def test_the_board_writes_no_chain_of_its_own(self, dashboard, fetched):
-        assert dashboard.table_count("oipd_chain") == 0
+    @SHARED
+    def test_the_board_writes_no_chain_of_its_own(self, built):
+        dash, _ = built
+        assert dash.table_count("oipd_chain") == 0
 
 
 class TestRefreshIsOfflineAndFaithful:
