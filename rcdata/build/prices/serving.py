@@ -379,7 +379,15 @@ def _refuse_shrink(ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> None
     A security the live file serves that this build's sources return no bar for at all (a name gone from Compustat's
     and Alpaca's files: bankrupt, renamed to an ``...Q`` ticker; VBNK, KPTI, KNRXF, PLCE on 19 Nov 2026) keeps the
     bars the live file holds: they are copied over before the counts, so the store is never narrowed by a source
-    that stopped."""
+    that stopped.
+
+    The rows are compared **per security id as well as over the file** (#1096, avo's word on 19 Nov 2026: "Reddet").
+    The file total alone let a served name lose bars whenever the rest of the file grew by more: the 19 Nov 2026
+    whole build (request #800) grew ``price_bar_daily`` 30,140,389 -> 30,906,005 rows and still came out 32 bars
+    short over 10 securities, and it swapped in. The swap's own guard cannot catch it either: it compares a table's
+    row count, and the table grew. A security whose history a source genuinely restates downward is refused with
+    the rest; the only way through is the request's explicit ``allow_shrink`` (avo's word, DECISIONS S18), which
+    turns the whole guard off and is recorded with the request's params."""
     live = stage.live_served(con)
     if not live or ctx.allow_shrink:
         return
@@ -397,12 +405,20 @@ def _refuse_shrink(ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> None
                          f"bars: {', '.join(gone[:20])}{' ...' if len(gone) > 20 else ''}")
         now = served()
     lost = sorted(set(live) - set(now) - moved)
+    short = sorted(((sid, was, now[sid]) for sid, was in live.items()
+                    if sid not in moved and sid in now and now[sid] < was),
+                   key=lambda r: (r[2] - r[1], r[0]))
     before = sum(n for sid, n in live.items() if sid not in moved)
     after = sum(now.values())
-    if lost or after < before:
-        raise ValueError(f"price_bar_daily would lose {len(lost)} securities (rows {before:,} -> {after:,}) against "
-                         f"the live file; lost: {', '.join(lost[:20]) or 'none'}"
-                         f"{' ...' if len(lost) > 20 else ''}. Pass allow_shrink only on avo's word (DECISIONS S18)")
+    if lost or short or after < before:
+        bars = sum(was - has for _, was, has in short)
+        named = ", ".join(f"{sid} {was:,} -> {has:,}" for sid, was, has in short[:20])
+        raise ValueError(f"price_bar_daily would lose {len(lost)} securities, and {bars:,} bars inside "
+                         f"{len(short)} securities it still serves (rows {before:,} -> {after:,}) against the "
+                         f"live file; "
+                         f"lost: {', '.join(lost[:20]) or 'none'}{' ...' if len(lost) > 20 else ''}; "
+                         f"short: {named or 'none'}{' ...' if len(short) > 20 else ''}. "
+                         f"Pass allow_shrink only on avo's word (DECISIONS S18)")
 
 
 def _index_levels(con: duckdb.DuckDBPyConnection) -> str:

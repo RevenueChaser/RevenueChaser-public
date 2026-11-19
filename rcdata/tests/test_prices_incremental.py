@@ -271,6 +271,51 @@ def test_the_build_lets_the_same_or_more_through(live):
         con.close()
 
 
+def test_a_served_security_may_not_lose_bars_although_the_file_grows(live):
+    """#1096, avo's word on 19 Nov 2026 ("Reddet"): the whole build of that day (request #800) grew
+    ``price_bar_daily`` 30,140,389 -> 30,906,005 rows and still came out 32 bars short over 10 securities it went on
+    serving, and it swapped in, because the guard compared the file total and the swap's own guard compares a table's
+    row count. The rows are compared per security id as well: a served id with fewer bars than the live file holds
+    refuses the build, named with its counts, and only ``allow_shrink`` lets it through."""
+    con = _shrunk_build(f"security_id = '{AAPL}' AND session_date = (SELECT min(session_date) "
+                        f"FROM l.price_bar_daily WHERE security_id = '{AAPL}')")
+    try:
+        # OLDCO gains more bars than AAPL lost, so the file total grows, as it did on 19 Nov.
+        con.execute("INSERT INTO price_bar_daily BY NAME SELECT * REPLACE (session_date + INTERVAL 7 DAY "
+                    "AS session_date) FROM price_bar_daily WHERE security_id = ?", [OLDCO])
+        live_rows = stage.live_served(con)
+        assert con.execute("SELECT count(*) FROM price_bar_daily").fetchone()[0] > sum(live_rows.values())
+        ctx = base.RunContext(run_id="t", dataset=prices_serving.NAME)
+        with pytest.raises(ValueError) as caught:
+            prices_serving._refuse_shrink(ctx, con)
+        assert f"{AAPL} {live_rows[AAPL]:,} -> {live_rows[AAPL] - 1:,}" in str(caught.value), str(caught.value)
+        assert "1 bars inside 1 securities it still serves" in str(caught.value), str(caught.value)
+        prices_serving._refuse_shrink(base.RunContext(run_id="t", dataset=prices_serving.NAME, allow_shrink=True),
+                                      con)
+    finally:
+        con.close()
+
+
+def test_a_moved_gvkey_series_is_not_read_as_short(live):
+    """The alias path past the per-id check of #1096: a Compustat series that became a served fund's alias loses its
+    id and its sessions to the fund, and is moved, not short."""
+    import duckdb
+    con = duckdb.connect(str(serving.live_path("prices")))
+    try:
+        con.execute(f"INSERT INTO price_bar_daily BY NAME SELECT * REPLACE ('{GONE}' AS security_id) "
+                    "FROM price_bar_daily WHERE security_id = ?", [AAPL])
+    finally:
+        con.close()
+    con = _shrunk_build(f"security_id = '{GONE}'")
+    try:
+        con.execute("INSERT INTO _gvkey_alias VALUES (?, ?)", [GONE, AAPL])
+        ctx = base.RunContext(run_id="t", dataset=prices_serving.NAME)
+        prices_serving._refuse_shrink(ctx, con)
+        assert not ctx.notes, ctx.notes
+    finally:
+        con.close()
+
+
 def test_a_late_cover_restates_the_caps_from_its_day(live, monkeypatch):
     """A cover whose as-of is long before anything else changed: the caps after it change, and only after it."""
     from RevenueChaser.rcdata.build.prices import cover_shares

@@ -1066,7 +1066,7 @@ loss, a session inside it that lost rows is. A table whose row count the source 
 accumulates is named in `serving.SHRINKS_BY_CHOICE` (`my_universe`; `economic_event` since 14 Nov 2026, because UW's
 calendar is a forward window and a snapshot day's partition is replaced whole by that day's newest fetch): it may
 shrink by any amount and still may not empty. A build also refuses
-a missing Parquet root (the raw disk not mounted). Then the live file is copied to `<kind>.prev.duckdb` under
+a missing Parquet root (the raw disk not mounted). `prices` adds a guard of its own before the swap (`rcdata/build/prices/serving.py` `_refuse_shrink`): `price_bar_daily` is compared with the live file **per security id** as well as over the file, so a name it goes on serving with fewer bars refuses the build even when the table grows (#1096, avo 19 Nov 2026); a name no source returns a bar for at all keeps its stored bars, carried over from the live file (#1088). Then the live file is copied to `<kind>.prev.duckdb` under
 `serving_prev/` of the raw root (the HDD; `RC_SERVING_PREV_DIR` moves it) and
 `os.replace` moves the new file over the live name, so the live name is never missing. A build does not start when the live files' disk has less free space than
 `RC_BUILD_MIN_FREE` (10 GiB) or twice the live file (`serving.check_room`, 15 Nov 2026: a full root SSD froze homesrv). Any failure deletes the new
