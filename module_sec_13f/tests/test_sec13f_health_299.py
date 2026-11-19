@@ -17,7 +17,8 @@ def test_a_failed_13f_fetch_raises_the_banner(monkeypatch):
     health = runners._sec13f_health()
     assert (health["provider"], health["calls"], health["failed"]) == ("SEC EDGAR", 2, 1)
     banner = provider_health_html(health)
-    assert "1 of 2" in banner and "sec/13f: 2026-11-17: HTTP 503" in banner
+    assert "2 SEC EDGAR çağrısının 1 tanesi başarısız" in banner
+    assert "sec/13f: 2026-11-17: HTTP 503" in banner
 
 
 def test_clean_or_unread_checks_raise_nothing(monkeypatch):

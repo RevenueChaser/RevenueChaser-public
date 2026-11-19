@@ -1015,8 +1015,8 @@ code:
 | `rc_news_feed_state` | `feed`, `state` | 1 for an IBKR news feed's state from the listener's record: refused, live, subscribed, waiting, unknown; any other text reads unknown |
 | `rc_news_tape_written_timestamp_seconds` | | when the news listener last wrote its record; absent while there is none |
 | `rc_news_lane_fresh_timestamp_seconds` | `lane` | when the newest headline of a News lane (`market`, `stocks`, `x`) was fetched; absent for a lane with no row |
-| `rc_news_lane_ok_timestamp_seconds` | `lane` | when a News lane's own fetch last came back with nothing refused (`stocks`, `x`); the market lane's is `rc_news_tape_written_timestamp_seconds` |
-| `rc_news_lane_late_after_seconds` | `lane` | how long that lane may go without a clean fetch before it is late, from its own cadence; the Grafana rule reads it instead of a limit of its own |
+| `rc_news_lane_ok_timestamp_seconds` | `lane` | when a News lane last came back with nothing refused; the `market` lane's is the listener's own last write |
+| `rc_news_lane_late_after_seconds` | `lane` | how long that lane may go without one, from its own cadence (`market`: the listener's own staleness); the Grafana rule reads it instead of a limit of its own |
 | `rc_threshold` | `name` | the page's alarm thresholds, from `control.py`, so an alert rule does not retype them |
 | `rc_metrics_read_errors_total` | `part` | readers that failed since the dashboard started |
 | `rc_metrics_build_seconds` | | what the scrape cost |

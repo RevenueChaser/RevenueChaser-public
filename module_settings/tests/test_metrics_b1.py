@@ -151,17 +151,19 @@ def test_each_news_lane_s_newest_fetch_is_its_own_metric():
     IBKR fetch is dead, so Grafana gets one reading a lane and can alert on the lane that stopped."""
     fam = _families(metrics.render(_collect(lanes=lambda: {
         "fresh": {"market": 1794390000.0, "stocks": None, "x": 1794300000.0},
-        "ok": {"stocks": 1794389000.0, "x": None},
-        "late_after": {"stocks": 1800.0, "x": 21600.0}})))
+        "ok": {"market": 1794390000.0, "stocks": 1794389000.0, "x": None},
+        "late_after": {"market": 900.0, "stocks": 1800.0, "x": 21600.0}})))
     assert fam["rc_news_lane_fresh_timestamp_seconds"] == [
         'rc_news_lane_fresh_timestamp_seconds{lane="market"} 1794390000.0',
         'rc_news_lane_fresh_timestamp_seconds{lane="x"} 1794300000.0']   # a lane with no row at all is absent
     # The per-ticker pass came back clean a minute ago although its newest row is older: a quiet lane is not a
     # dead one, which is why the alert reads this family and not freshness.
     assert fam["rc_news_lane_ok_timestamp_seconds"] == [
+        'rc_news_lane_ok_timestamp_seconds{lane="market"} 1794390000.0',
         'rc_news_lane_ok_timestamp_seconds{lane="stocks"} 1794389000.0']
     # The rule compares the two families, so the limit lives in the code and is never retyped in rc.yaml.
     assert fam["rc_news_lane_late_after_seconds"] == [
+        'rc_news_lane_late_after_seconds{lane="market"} 900.0',
         'rc_news_lane_late_after_seconds{lane="stocks"} 1800.0',
         'rc_news_lane_late_after_seconds{lane="x"} 21600.0']
 
@@ -184,7 +186,10 @@ def test_the_lane_metric_reads_the_news_store_when_nothing_is_passed():
     fam = _families(metrics.render(_collect()))            # the real reader, over an empty per-test store
     assert fam["rc_news_lane_fresh_timestamp_seconds"] == [] and fam["rc_news_lane_ok_timestamp_seconds"] == []
     assert [l.split()[0] for l in fam["rc_news_lane_late_after_seconds"]] == [        # the cadences are always there
-        'rc_news_lane_late_after_seconds{lane="stocks"}', 'rc_news_lane_late_after_seconds{lane="x"}']
+        'rc_news_lane_late_after_seconds{lane="market"}', 'rc_news_lane_late_after_seconds{lane="stocks"}',
+        'rc_news_lane_late_after_seconds{lane="x"}']
+    # The market lane's reading is the listener's own record, which the per-test store has none of.
+    assert fam["rc_news_lane_ok_timestamp_seconds"] == []
 
 
 def test_a_news_feed_s_state_is_one_of_a_closed_set_and_every_state_is_always_there():

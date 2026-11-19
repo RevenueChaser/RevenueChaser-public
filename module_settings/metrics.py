@@ -79,11 +79,10 @@ HELP = {
     "rc_news_lane_fresh_timestamp_seconds": ("gauge", "When the newest headline of a News lane (market, stocks, x) "
                                              "was fetched, epoch seconds (absent: the lane has no row). One reading "
                                              "a lane, because the whole table's freshness cannot see a dead lane."),
-    "rc_news_lane_ok_timestamp_seconds": ("gauge", "When a News lane's own fetch last came back with nothing "
-                                          "refused, epoch seconds, by lane (absent: it never has). The signal to "
-                                          "alert on: it moves on a clean pass that brought no headline, which "
-                                          "freshness does not. The market lane's is "
-                                          "rc_news_tape_written_timestamp_seconds."),
+    "rc_news_lane_ok_timestamp_seconds": ("gauge", "When a News lane last came back with nothing refused, epoch "
+                                          "seconds, by lane (absent: it never has). The signal to alert on: it "
+                                          "moves on a clean pass that brought no headline, which freshness does "
+                                          "not. The market lane's is the listener's own last write."),
     "rc_news_lane_late_after_seconds": ("gauge", "How long a News lane may go without a clean fetch before it is "
                                         "late, by lane, from the lane's own cadence. The alert rule reads this "
                                         "instead of a limit of its own."),
@@ -163,15 +162,23 @@ def _iso_epoch(value) -> float | None:
     return (when if when.tzinfo else when.replace(tzinfo=timezone.utc)).timestamp()
 
 
-def _news_lanes() -> dict:
-    """``{"fresh": the newest fetch a lane, "ok": when each lane's fetch last came back clean}``.
+def _news_lanes(now: datetime) -> dict:
+    """``{"fresh": the newest fetch a lane, "ok": when each lane last came back clean, "late_after": how long each
+    may go without that}``, all three lanes of the News page.
+
+    The ``market`` lane fetches nothing itself: its source is the listener, so its "ok" is when the listener last
+    wrote its record and its limit the staleness the listener itself declares (``tape_state.STALE_MINUTES``).
+    That way one Grafana rule covers every lane and holds no limit of its own.
 
     A function-level import, as ``_news_tape`` has it: no module-level dependency on a board package. It reads
     ``boards/news.duckdb`` (7 MB, the board's own file), never the serving store, so the scrape still takes no
     serving lock (``app/dashboard._NO_STORE_SESSION``)."""
-    from RevenueChaser.module_news import headlines
-    return {"fresh": headlines.lane_freshness(), "ok": headlines.lane_ok(),
-            "late_after": headlines.lane_late_after()}
+    from RevenueChaser.module_news import headlines, tape, tape_state
+    ok, late = headlines.lane_ok(), headlines.lane_late_after()
+    rec = tape_state.collect(names=tape.feeds(), now=now) or {}
+    ok["market"] = _iso_epoch(rec.get("written_at"))
+    late["market"] = float(tape_state.STALE_MINUTES * 60)
+    return {"fresh": headlines.lane_freshness(), "ok": ok, "late_after": late}
 
 
 def _news_tape(now: datetime) -> dict:
@@ -338,11 +345,11 @@ def collect(now: datetime | None = None, *, datasets: dict | None = None, timer:
         # Review F2 (18 Nov 2026): the dataset's one freshness stays "fresh" on the hourly X load while the
         # per-ticker IBKR fetch is dead, so each lane is read on its own. Its own part: a store read that fails
         # must not take the listener's feed states with it.
-        got = (lanes() if lanes is not None else _news_lanes()) or {}
+        got = (lanes() if lanes is not None else _news_lanes(now)) or {}
         for family, key in (("rc_news_lane_fresh_timestamp_seconds", "fresh"),
                             ("rc_news_lane_ok_timestamp_seconds", "ok"),
                             ("rc_news_lane_late_after_seconds", "late_after")):
-            for name, at in (got.get(key) or {}).items():
+            for name, at in sorted((got.get(key) or {}).items()):   # a fixed order, whoever filled the dict
                 if at is not None:
                     out[family].append(({"lane": str(name)}, float(at)))
 
