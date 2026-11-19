@@ -1211,9 +1211,11 @@ With `RC_REDIS_URL` unset the app runs on `ops.sqlite` as below; that is the rol
 written while Redis is on.
 
 **`ops.sqlite`** (SQLite WAL, `busy_timeout` 5000 ms on every open; `rcdata/ops.py` owns every statement;
-ops schema version `2` (Redis keeps the same stamp in `<ns>:ops_schema`); `ensure` upgrades an older file in place, in one transaction, and refuses a file stamped
-newer. Rolling back to version 1 code is `DELETE FROM ops_schema WHERE version = 2` with every ops process stopped:
-version 1 runs on the version 2 tables, and the next upgrade leaves a history table that already has `id` alone):
+ops schema version `3` (Redis keeps the same stamp in `<ns>:ops_schema`); `ensure` upgrades an older file in place, in one transaction, and refuses a file stamped
+newer. Rolling back to an older checkout is `DELETE FROM ops_schema WHERE version = <n>` with every ops process
+stopped: the older code runs on the newer tables, and the next upgrade leaves alone what is already there (a
+history table that has `id`, a `job_runs2` that has `job` and `counts`). Version 3 (#136) added those two columns
+by `ALTER`, so nothing is rewritten and the builder's rows keep their values):
 
 | Table | Holds |
 |---|---|
@@ -1221,7 +1223,7 @@ version 1 runs on the version 2 tables, and the next upgrade leaves a history ta
 | `build_requests` | The FIFO request queue (queued, running, done, failed, skipped) |
 | `dataset_check` | One row per dataset run: changed, unchanged, failed or skipped; rows, added, removed, coverage, calls |
 | `build_issues` | A row the builder could not use, with its key, until resolved |
-| `job_runs2` | One row per builder run |
+| `job_runs2` | One row per run: a builder run (its `dataset`), a scheduled task (`job` = the registry name, `trigger` = `schedule`) or a dashboard job (`job` = its module, `trigger` = `dashboard`), with what the run did in `counts` (#136). `ops.runs_between` and `ops.last_builder_run` read the builder's rows only (`dataset IS NOT NULL`); `ops.job_runs` reads the task and dashboard rows |
 | `read_log` | Reads per day, process and table (counted in memory, written once a minute) |
 | `uw_remaining` | UW's `x-uw-*` rate headers, sampled once a run: `x-uw-daily-req-count` as `daily_req_count`, `daily_remaining_computed` = our cap (`rcdata/caps.py`) minus it, the per-minute window, and `x-uw-token-req-limit` as sent (it is not the daily cap) |
 | `provider_calls_daily` | Calls, failures and 429s per provider and New York day |

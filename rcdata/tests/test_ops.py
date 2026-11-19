@@ -8,6 +8,7 @@ import subprocess
 import sys
 import textwrap
 import time
+from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -137,6 +138,64 @@ def test_record_issue_and_job_runs():
     assert tuple(issue[c] for c in ("dataset", "kind", "key", "detail", "run_id", "resolved_on")) == ("market_series", "parse", "fred:DGS2", "bad row", "r1", None)
     assert run["status"] == "ok" and run["pid"] == os.getpid() and json.loads(run["params"]) == {"once": True}
     assert run["finished_at"] is not None
+
+
+def test_a_task_run_and_a_builder_run_stay_apart(monkeypatch):
+    """#136: ``job_runs2`` now holds three kinds of run. A builder run names its ``dataset``; a scheduled task or a
+    dashboard job names itself in ``job``. Each reader answers with its own kind, so the Grafana heatmap and
+    Settings' "last run" cannot start showing a backup task as a dataset build."""
+    monkeypatch.setattr(calendar, "_now", lambda: datetime(2026, 11, 19, 12, 0, tzinfo=timezone.utc))
+    ops.start_run("build1", "market_series", "cli")
+    ops.finish_run("build1", "ok")
+    ops.start_run("task1", None, "schedule", job="RC-Forecast-Outcomes")
+    ops.finish_run("task1", "done", None, {"rows": 93714, "written": 93714})
+
+    assert [r["dataset"] for r in ops.runs_between(0, 2 * 10**9)] == ["market_series"]
+    assert ops.last_builder_run()["run_id"] == "build1"
+    [task] = ops.job_runs()
+    assert task["run_id"] == "task1" and task["job"] == "RC-Forecast-Outcomes" and task["trigger"] == "schedule"
+    assert task["counts"] == {"rows": 93714, "written": 93714}
+    assert task["status"] == "done" and task["finished_at"] is not None
+
+
+def test_a_second_finish_does_not_blank_the_counts():
+    """A caller that closes a run again (a retry, a best-effort writer called twice) passes no counts; the column
+    keeps what the first call recorded."""
+    ops.start_run("task1", None, "dashboard", job="universe")
+    ops.finish_run("task1", "done", None, {"rows": 7})
+    ops.finish_run("task1", "error", "late failure")
+    [run] = ops.job_runs()
+    assert run["counts"] == {"rows": 7} and run["status"] == "error" and run["error"] == "late failure"
+
+
+def test_counts_that_cannot_be_read_come_back_as_none():
+    ops.start_run("task1", None, "schedule", job="RC-Thing")
+    ops.finish_run("task1", "done")
+    with ops._open() as con:                      # a row an older checkout or a hand edit left unreadable
+        con.execute("UPDATE job_runs2 SET counts = 'not json' WHERE run_id = 'task1'")
+    assert ops.job_runs()[0]["counts"] is None
+
+
+def test_an_older_ops_file_gains_the_run_log_columns(tmp_path):
+    """v2 -> v3 (#136) adds ``job`` and ``counts`` by ALTER, so a file already holding builder runs keeps them."""
+    path = tmp_path / "old.sqlite"
+    with closing(sqlite3.connect(path)) as con:
+        con.execute("CREATE TABLE ops_schema (version INTEGER PRIMARY KEY, applied_at REAL)")
+        con.execute("INSERT INTO ops_schema (version, applied_at) VALUES (2, 1.0)")
+        con.execute("CREATE TABLE job_runs2 (run_id TEXT PRIMARY KEY, dataset TEXT, trigger TEXT, pid INTEGER, "
+                    "host TEXT, started_at REAL, finished_at REAL, status TEXT, params TEXT, error TEXT)")
+        con.execute("INSERT INTO job_runs2 (run_id, dataset, status, started_at) VALUES ('old', 'prices', 'ok', 5.0)")
+        con.commit()
+
+    ops.ensure(path)
+
+    with closing(sqlite3.connect(path)) as con:
+        columns = {r[1] for r in con.execute("PRAGMA table_info(job_runs2)")}
+        assert {"job", "counts"} <= columns
+        row = con.execute("SELECT dataset, status, job, counts FROM job_runs2 WHERE run_id = 'old'").fetchone()
+        assert row == ("prices", "ok", None, None)
+        assert con.execute("SELECT max(version) FROM ops_schema").fetchone()[0] == ops.OPS_SCHEMA_VERSION
+    ops.ensure(path)                                       # idempotent: the ALTER is not run again
 
 
 def test_calls_today_sums_per_new_york_day(monkeypatch):
