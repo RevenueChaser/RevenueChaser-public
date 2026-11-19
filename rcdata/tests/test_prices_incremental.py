@@ -272,28 +272,54 @@ def test_the_build_lets_the_same_or_more_through(live):
         con.close()
 
 
-def test_a_served_security_may_not_lose_bars_although_the_file_grows(live):
-    """#1096, avo's word on 19 Nov 2026 ("Reddet"): the whole build of that day (request #800) grew
-    ``price_bar_daily`` 30,140,389 -> 30,906,005 rows and still came out 32 bars short over 10 securities it went on
-    serving, and it swapped in, because the guard compared the file total and the swap's own guard compares a table's
-    row count. The rows are compared per security id as well: a served id with fewer bars than the live file holds
-    refuses the build, named with its counts, and only ``allow_shrink`` lets it through."""
-    con = _shrunk_build(f"security_id = '{AAPL}' AND session_date = (SELECT min(session_date) "
-                        f"FROM l.price_bar_daily WHERE security_id = '{AAPL}')")
+def _grown_build(bars: int):
+    """A build whose ``price_bar_daily`` is ``bars`` AAPL bars short of the live file and whose **total** is larger
+    than the live file's, because a name the live file does not serve joined with a whole AAPL history beside it --
+    the shape of the 19 Nov 2026 build: the file was 765,616 rows up and 10 served securities were still short."""
+    con = _shrunk_build(f"security_id = '{AAPL}' AND session_date IN (SELECT session_date FROM l.price_bar_daily "
+                        f"WHERE security_id = '{AAPL}' ORDER BY session_date LIMIT {bars})")
+    con.execute(f"INSERT INTO price_bar_daily BY NAME SELECT * REPLACE ('{JOINED}' AS security_id) "
+                "FROM price_bar_daily WHERE security_id = ?", [AAPL])
+    live_rows = stage.live_served(con)
+    assert con.execute("SELECT count(*) FROM price_bar_daily").fetchone()[0] > sum(live_rows.values())
+    assert live_rows[AAPL] > bars
+    return con, live_rows
+
+
+def test_a_served_security_may_not_lose_more_bars_than_the_tolerance_although_the_file_grows(live):
+    """#1096: the whole build of 19 Nov 2026 (request #800) grew ``price_bar_daily`` 30,140,389 -> 30,906,005 rows
+    and still came out 32 bars short over 10 securities it went on serving, and it swapped in, because the guard
+    compared the file total and the swap's own guard compares a table's row count. The rows are compared per security
+    id as well: an id more than ``PER_ID_SHRINK_BARS`` bars short of the live file refuses the build, named with its
+    counts, and only ``allow_shrink`` lets it through."""
+    bars = prices_serving.PER_ID_SHRINK_BARS + 1
+    con, live_rows = _grown_build(bars)
     try:
-        # Another name the live file does not serve brings more bars than AAPL lost, so the file total grows, as it
-        # did on 19 Nov: the whole file was 765,616 rows up and 10 served securities were still short.
-        con.execute(f"INSERT INTO price_bar_daily BY NAME SELECT * REPLACE ('{JOINED}' AS security_id) "
-                    "FROM price_bar_daily WHERE security_id = ?", [AAPL])
-        live_rows = stage.live_served(con)
-        assert con.execute("SELECT count(*) FROM price_bar_daily").fetchone()[0] > sum(live_rows.values())
         ctx = base.RunContext(run_id="t", dataset=prices_serving.NAME)
         with pytest.raises(ValueError) as caught:
             prices_serving._refuse_shrink(ctx, con)
-        assert f"{AAPL} {live_rows[AAPL]:,} -> {live_rows[AAPL] - 1:,}" in str(caught.value), str(caught.value)
-        assert "1 bars inside 1 securities it still serves" in str(caught.value), str(caught.value)
+        assert f"{AAPL} {live_rows[AAPL]:,} -> {live_rows[AAPL] - bars:,}" in str(caught.value), str(caught.value)
+        assert f"{bars} bars inside 1 securities it still serves over the " \
+               f"{prices_serving.PER_ID_SHRINK_BARS}-bar" in str(caught.value), str(caught.value)
         prices_serving._refuse_shrink(base.RunContext(run_id="t", dataset=prices_serving.NAME, allow_shrink=True),
                                       con)
+    finally:
+        con.close()
+
+
+def test_a_shortfall_within_the_tolerance_is_named_in_the_note_and_not_refused(live):
+    """avo's word of 19 Nov 2026: a served security may come out up to ``PER_ID_SHRINK_BARS`` bars short -- what a
+    source restating the last days of one name costs -- and the build goes on, with the shortfall and its counts in
+    the build note so it is read and not silent."""
+    bars = prices_serving.PER_ID_SHRINK_BARS
+    con, live_rows = _grown_build(bars)
+    try:
+        ctx = base.RunContext(run_id="t", dataset=prices_serving.NAME)
+        prices_serving._refuse_shrink(ctx, con)
+        note = " ".join(ctx.notes)
+        assert f"{bars} bars short inside 1 securities" in note, ctx.notes
+        assert f"{prices_serving.PER_ID_SHRINK_BARS}-bar tolerance" in note, ctx.notes
+        assert f"{AAPL} {live_rows[AAPL]:,} -> {live_rows[AAPL] - bars:,}" in note, ctx.notes
     finally:
         con.close()
 
