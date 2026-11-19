@@ -241,6 +241,7 @@ def test_a_security_no_source_returns_keeps_its_stored_bars(live):
 
 
 GONE = "099000:01"
+JOINED = "099001:01"
 
 
 def test_a_carried_security_swaps_through_with_its_bars(live, monkeypatch):
@@ -280,9 +281,10 @@ def test_a_served_security_may_not_lose_bars_although_the_file_grows(live):
     con = _shrunk_build(f"security_id = '{AAPL}' AND session_date = (SELECT min(session_date) "
                         f"FROM l.price_bar_daily WHERE security_id = '{AAPL}')")
     try:
-        # OLDCO gains more bars than AAPL lost, so the file total grows, as it did on 19 Nov.
-        con.execute("INSERT INTO price_bar_daily BY NAME SELECT * REPLACE (session_date + INTERVAL 7 DAY "
-                    "AS session_date) FROM price_bar_daily WHERE security_id = ?", [OLDCO])
+        # Another name the live file does not serve brings more bars than AAPL lost, so the file total grows, as it
+        # did on 19 Nov: the whole file was 765,616 rows up and 10 served securities were still short.
+        con.execute(f"INSERT INTO price_bar_daily BY NAME SELECT * REPLACE ('{JOINED}' AS security_id) "
+                    "FROM price_bar_daily WHERE security_id = ?", [AAPL])
         live_rows = stage.live_served(con)
         assert con.execute("SELECT count(*) FROM price_bar_daily").fetchone()[0] > sum(live_rows.values())
         ctx = base.RunContext(run_id="t", dataset=prices_serving.NAME)
