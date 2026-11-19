@@ -99,7 +99,7 @@ CGROUP_ROOT = Path("/sys/fs/cgroup")
 # relatedness run, 8 workers reading business texts from sec_forms.duckdb, grew to 7.3 GB anon and was OOM-killed on
 # 15 Nov 2026 (measured: 400 business texts took one process from 49 MB to 2.6 GB). A reader needs no more than this.
 READ_MEMORY_LIMIT_DEFAULT = "1GiB"
-# A build step's own in-memory connection (``connect_scratch``): the same adaptive limit as the build's, overridden
+# A build step's own scratch connection (``connect_scratch``, ``connect_scratch_file``): the same adaptive limit as the build's, overridden
 # by ``RC_DUCKDB_SCRATCH_MEMORY_LIMIT``. Before #1098 these were opened as a bare ``duckdb.connect()``, with no
 # limit at all, so each could take DuckDB's own default of 80 % of the machine's RAM: that is memory the kernel
 # can kill the build for, not memory DuckDB spills (sec_forms build 808, 19 Nov 2026).
@@ -423,13 +423,41 @@ def connect_scratch() -> duckdb.DuckDBPyConnection:
     limit covers it. Every step opens its scratch connection through here (``base.scratch_con``), so the limit
     follows the machine exactly as the build's does.
     """
-    spill = scratch_spill_dir()
-    con = duckdb.connect(config={"memory_limit": scratch_memory_limit(), "threads": _threads(),
-                                 "temp_directory": str(spill)})
-    # The folder goes when the connection does, whether the step closed it or dropped it.
-    weakref.finalize(con, shutil.rmtree, spill, True)
-    atexit.register(shutil.rmtree, spill, True)
-    return con
+    return _scratch(None, None)
+
+
+def connect_scratch_file(path: Path, memory_limit: str | None = None) -> duckdb.DuckDBPyConnection:
+    """A scratch DuckDB **file** at ``path``, capped and able to spill, for a step that needs its tables on disk.
+
+    The quarterly SEC set readers (``ownership/sec13f_sets``, ``form345_sets``, ``nport``) type a whole zip into a
+    throwaway database under the HDD scratch root, so the connection is file-backed rather than in-memory. A
+    file-backed ``duckdb.connect(path)`` is capped no better than the in-memory one — DuckDB's own 80 % of the
+    machine's RAM, no ``temp_directory`` — and the 13F ``INFOTABLE`` of a quarter is millions of rows, so these were
+    the last unlimited connections in the build after #1098 (#1100).
+
+    ``memory_limit`` names a cap of its own for a reader that wants less than the machine's share (``nport``'s
+    1 GB, so its 5.6M holding rows spill rather than fill a box that happens to be idle); left out, the adaptive
+    scratch limit applies. The spill folder lives beside ``path``, which the caller's temporary directory removes
+    with the database itself.
+    """
+    return _scratch(path, memory_limit)
+
+
+def _scratch(path: Path | None, memory_limit: str | None) -> duckdb.DuckDBPyConnection:
+    """One place where every scratch connection, in memory or on a file, gets its cap and its spill folder."""
+    settings = {"memory_limit": memory_limit or scratch_memory_limit(), "threads": _threads()}
+    if path is None:
+        spill = scratch_spill_dir()
+        con = duckdb.connect(config={**settings, "temp_directory": str(spill)})
+        # The folder goes when the connection does, whether the step closed it or dropped it.
+        weakref.finalize(con, shutil.rmtree, spill, True)
+        atexit.register(shutil.rmtree, spill, True)
+        return con
+    # A file database's spill goes beside the file: the caller's scratch directory takes both away at once, so the
+    # sweep of ``scratch_spill_dir`` (which a killed process needs) would have nothing of its own to find.
+    spill = path.parent / f"{path.name}.spill"
+    spill.mkdir(parents=True, exist_ok=True)
+    return duckdb.connect(str(path), config={**settings, "temp_directory": str(spill)})
 
 
 def _remove(path: Path) -> None:

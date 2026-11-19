@@ -666,6 +666,32 @@ def test_a_scratch_connections_cap_can_be_set_on_its_own(monkeypatch):
     assert serving.scratch_memory_limit() == serving.auto_memory_limit()
 
 
+def test_a_scratch_file_connection_is_capped_and_spills_beside_its_file(tmp_path, monkeypatch):
+    """#1100: the quarterly SEC set readers type a whole zip into a scratch database on a file. A plain
+    ``duckdb.connect(path)`` caps that no better than the in-memory one, so ``connect_scratch_file`` gives it the
+    same adaptive limit and a spill folder of its own, beside the file."""
+    monkeypatch.delenv("RC_DUCKDB_SCRATCH_MEMORY_LIMIT", raising=False)
+    monkeypatch.delenv("RC_DUCKDB_MEMORY_LIMIT", raising=False)
+    monkeypatch.setattr(serving, "available_memory", lambda: 10 * 2**30)
+    path = tmp_path / "set.duckdb"
+    with serving.connect_scratch_file(path) as con:
+        want = int(10 * 2**30 * serving.MEMORY_SHARE_DEFAULT)
+        assert abs(_limit_bytes(con) - want) / want < 0.02
+        spill = Path(con.execute("SELECT current_setting('temp_directory')").fetchone()[0])
+        assert spill == tmp_path / "set.duckdb.spill" and spill.is_dir()
+        # It is a database on that file, not an in-memory one.
+        con.execute("CREATE TABLE t AS SELECT 1 AS n")
+    assert path.exists()
+
+
+def test_a_scratch_file_connection_takes_a_cap_of_its_own(tmp_path, monkeypatch):
+    """``nport`` reads 5.6M holding rows under a deliberate 1 GB, so it spills rather than take the machine's
+    share on a box that happens to be idle."""
+    monkeypatch.setattr(serving, "available_memory", lambda: 10 * 2**30)
+    with serving.connect_scratch_file(tmp_path / "set.duckdb", "1GB") as con:
+        assert _limit_bytes(con) == 10**9
+
+
 def test_a_killed_processes_scratch_folder_is_swept(tmp_path, monkeypatch):
     monkeypatch.setenv("RC_TMP_HDD_DIR", str(tmp_path / "hdd"))
     root = tmp_path / "hdd" / "duckdb-scratch"

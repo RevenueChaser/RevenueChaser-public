@@ -379,7 +379,7 @@ def _fill_one(ctx: base.RunContext, feed: edgar.Feed, zip_path: Path, name: str,
     raw_dir().mkdir(parents=True, exist_ok=True)
     fetched_at = (base.read_raw_json(_meta(zip_path)) if _meta(zip_path).exists() else {}).get("fetched_at")
     with tempfile.TemporaryDirectory(dir=serving.scratch_dir(raw_dir().name, raw_dir()), prefix=SCRATCH) as tmp:
-        con = duckdb.connect(str(Path(tmp) / "set.duckdb"))
+        con = serving.connect_scratch_file(Path(tmp) / "set.duckdb")
         try:
             _load(con, zip_path, Path(tmp), name, ctx.notes)
             newest = con.execute(f"SELECT max({_day('FILING_DATE')}) FROM z_submission").fetchone()[0]
