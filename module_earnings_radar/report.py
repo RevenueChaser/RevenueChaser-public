@@ -426,8 +426,9 @@ tr:not(.sel) td.sticky-name{border-right:1px solid var(--border-subtle)}
   /* The drawer covers the page instead of taking 480 px beside it. */
   /* Closed it is ``display:none``, not translated off-canvas: a fixed box past the right edge is what the
      phone check (no element reaches past the viewport) would see. */
-  /* ``width:100%``, never ``width:auto``: the board's content-fit rule (``test_report_table_fills_pane``)
-     forbids an ``auto`` width anywhere in the page, so that the data table cannot fall back to one. */
+  /* A per-cent width, never an auto one: the board's content-fit rule (``test_report_table_fills_pane``) forbids
+     an auto width anywhere in the page, so that the data table cannot fall back to one. The rule reads the page's
+     text, so this comment must not spell that declaration out either. */
   .drawer{position:fixed;top:0;right:0;bottom:0;left:0;width:100%;border-left:0;z-index:60;
     display:none;overflow:auto;transition:none}
   .drawer.open{display:block;width:100%}
