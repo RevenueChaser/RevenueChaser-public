@@ -428,7 +428,7 @@ def _refuse_shrink(ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> None
     short = sorted(((sid, was, now[sid]) for sid, was in live.items()
                     if sid not in moved and sid in now and now[sid] < was),
                    key=lambda r: (r[2] - r[1], r[0]))
-    over = [r for r in short if _loss(r) > PER_ID_SHRINK_BARS]
+    over = [r for r in short if _loss(r) >= PER_ID_SHRINK_BARS]
     before = sum(n for sid, n in live.items() if sid not in moved)
     after = sum(now.values())
     if short and not over:
