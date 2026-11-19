@@ -31,7 +31,9 @@ HELP = help_html(
 
 
 def _fmt_usd(v) -> str:
-    if v is None:
+    # Not a number is N/A: None, and a Jinja ``Undefined`` from a payload that has no such key at all (the peer
+    # rows of a hand-built comps result have no market cap, #91). ``abs(Undefined)`` would raise and lose the page.
+    if not isinstance(v, (int, float)) or isinstance(v, bool):
         return "N/A"
     a = abs(v)
     sign = "-" if v < 0 else ""

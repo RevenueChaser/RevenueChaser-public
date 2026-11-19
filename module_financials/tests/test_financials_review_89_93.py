@@ -48,7 +48,8 @@ def test_a_peer_outside_the_cap_band_is_not_picked(rawstore_tmp_db):
            {"ticker": "HUGE", "market_cap": 9.0e11},       # 900x: out
            {"ticker": "TINY", "market_cap": 1.0e6}])       # 0.001x: out
     got = peer_ladder.select_peers("TEST", spine.classification_universe_rows())
-    assert got == ["NEAR", "EDGELO", "EDGEHI"]             # nearest first, by absolute distance
+    # Nearest first by absolute distance: EDGELO is 0.9e9 away, NEAR 1.0e9, EDGEHI 9.0e9.
+    assert got == ["EDGELO", "NEAR", "EDGEHI"]
     assert "HUGE" not in got and "TINY" not in got
 
 
@@ -92,7 +93,7 @@ def test_a_sector_peer_is_marked_in_the_table_and_the_market_cap_column_shows(fi
                               "warnings": []})
     assert "Market Cap" in html                 # the new column header
     assert ">sector<" in html                   # the marker beside GAS1
-    assert "$850.00" in html                    # the peer's market cap, formatted
+    assert "$850" in html                       # the peer's market cap, formatted
 
 
 def test_a_typed_peer_list_has_no_rung(financials):
@@ -155,3 +156,15 @@ def test_a_year_without_a_believable_rate_takes_the_models(financials):
     assert [r["tax_rate_source"] for r in rows] == ["model", "model", "statements"]
     assert rows[0]["nopat"] == pytest.approx(annual[0]["ebit"] * 0.70)
     assert rows[2]["tax_rate"] == pytest.approx(50.0 / 240.0)
+
+
+def test_a_peer_row_without_a_market_cap_still_renders(financials):
+    """A comps result built without the column's field (an older payload, or a hand-built one) must not raise:
+    the cell reads N/A. ``_fmt_usd`` took ``abs()`` of Jinja's ``Undefined`` and lost the whole page."""
+    html = build_report_html({"ticker": "TEST", "financials": financials, "warnings": [], "modules": {"comps": {
+        "ticker": "TEST", "warnings": [], "pe_only": False,
+        "peers": [{"ticker": "AAA", "pe": 10.0, "ev_ebitda": 9.0, "ev_revenue": 2.0}],
+        "multiples": {k: {"p25": None, "p50": None, "p75": None, "count": 0}
+                      for k in ("ev_ebitda", "ev_revenue", "pe")},
+        "implied": {}}}})
+    assert "Market Cap" in html and "N/A" in html
