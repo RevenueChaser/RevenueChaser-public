@@ -10,13 +10,17 @@ with ``ast`` and asserts (1) the listed files still share, and (2) no sharing te
 would change what a later sharer sees. A test that needs to write takes the function-scoped ``dashboard`` and
 stays out of the shared group — ``test_board_uw_interaction`` has four such tests, each with its reason beside
 it in the file.
+
+One test function, deliberately, and it checks ``harness.shared.write_13f_totals`` before anything else.
+``scripts/red_on_base.py`` copies a PR's own test files into the merge-base worktree, so a static check that
+only reads ``test_*.py`` passes on the base whatever the PR did, and proves nothing there. ``harness/shared.py``
+is not a test module, so it *is* the base's version: the helper check is this guard's red-first half, and the
+static half rides with it under one id.
 """
 from __future__ import annotations
 
 import ast
 from pathlib import Path
-
-import pytest
 
 E2E = Path(__file__).resolve().parents[2] / "module_testing" / "e2e"
 
@@ -65,32 +69,39 @@ def _tests(tree: ast.Module) -> list[ast.FunctionDef | ast.AsyncFunctionDef]:
             if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name.startswith("test_")]
 
 
-@pytest.mark.parametrize("name", sorted(SHARING))
-def test_the_file_still_shares_one_dashboard(name):
-    """Each listed file defines its shared fixture, has one above function scope, and a test that takes it."""
-    tree = _module(name)
-    shared = SHARING[name]
-    fixtures = _fixtures(tree)
-    assert shared in fixtures, f"{name} no longer defines a {shared!r} fixture: the sharing was undone"
-    wider = {n for n, scope in fixtures.items() if scope in ("module", "class", "package", "session")}
-    assert wider, f"{name} has no fixture above function scope: nothing is shared"
-    assert any(shared in {a.arg for a in t.args.args} for t in _tests(tree)), \
-        f"no test in {name} takes {shared!r}"
+def test_the_read_only_e2e_tests_share_a_dashboard_and_never_write_to_it():
+    """One test, not one per file, and the helper check first — see the note on red-on-base above.
 
+    The helper is read with ``ast`` rather than imported: the e2e harness is not meant to be loaded by the unit
+    tier, and its shape is all this guard needs.
+    """
+    harness = ast.parse((E2E / "harness" / "shared.py").read_text(encoding="utf-8"))
+    seeder = next((n for n in harness.body
+                   if isinstance(n, ast.FunctionDef) and n.name == "write_13f_totals"), None)
+    assert seeder is not None, \
+        "harness.shared.write_13f_totals is gone: the 13F sharing has no seeder a module-scoped fixture can call"
+    params = [a.arg for a in seeder.args.args]
+    assert params[:2] == ["dashboard", "totals"], \
+        f"write_13f_totals must take (dashboard, totals) so either scope can seed; got {params}"
 
-@pytest.mark.parametrize("name", sorted(SHARING))
-def test_a_sharing_test_asks_for_no_mutator(name):
-    """A test on the shared dashboard may not also take a fixture that writes to a dashboard of its own."""
-    tree = _module(name)
-    shared = SHARING[name]
-    fixtures = _fixtures(tree)
-    # In a file that shadows ``dashboard`` at module scope, that name *is* the shared fixture, not a mutator.
-    mutators = MUTATORS - {shared} - {n for n, scope in fixtures.items() if scope != "function"}
-    for test in _tests(tree):
-        args = {a.arg for a in test.args.args}
-        if shared not in args:
+    problems: list[str] = []
+    for name, shared_fixture in sorted(SHARING.items()):
+        tree = _module(name)
+        fixtures = _fixtures(tree)
+        tests = _tests(tree)
+        if shared_fixture not in fixtures:
+            problems.append(f"{name}: no {shared_fixture!r} fixture; the sharing was undone")
             continue
-        clash = args & mutators
-        assert not clash, (
-            f"{name}::{test.name} shares the dashboard but also takes {sorted(clash)}; "
-            "a test that writes needs the function-scoped `dashboard` and must leave the shared group")
+        if not {n for n, scope in fixtures.items() if scope in ("module", "class", "package", "session")}:
+            problems.append(f"{name}: no fixture above function scope, so nothing is shared")
+        if not any(shared_fixture in {a.arg for a in t.args.args} for t in tests):
+            problems.append(f"{name}: no test takes {shared_fixture!r}")
+        # In a file that shadows ``dashboard`` at module scope, that name *is* the shared fixture.
+        mutators = MUTATORS - {shared_fixture} - {n for n, scope in fixtures.items() if scope != "function"}
+        for test in tests:
+            args = {a.arg for a in test.args.args}
+            if shared_fixture in args and (args & mutators):
+                problems.append(
+                    f"{name}::{test.name} shares the dashboard but also takes {sorted(args & mutators)}; "
+                    "a test that writes needs the function-scoped `dashboard` and must leave the shared group")
+    assert not problems, "\n".join(problems)
