@@ -24,6 +24,13 @@ on:
       python:
         description: Python version of homesrv's RevenueChaser venv
         default: "3.13"
+      allow_shrink:
+        # A kind whose own correction drops rows on purpose needs this, or the build runs for hours and then fails at
+        # its swap (#1125: the ownership rebuild of #935 drops the partial first 13F quarter). It relaxes only this
+        # kind's own and derived tables and never lets a table empty. Refused for prices, always.
+        description: "relax the swap's 1% shrink guard for this kind (never for prices; needs avo's word)"
+        type: boolean
+        default: false
 permissions:
   contents: write          # download the input from the release, upload the result to it
 concurrency:
@@ -37,11 +44,17 @@ jobs:
       TAG: ${{ inputs.tag }}
       KIND: ${{ inputs.kind }}
       RC_SHA: ${{ inputs.rc_sha }}
+      ALLOW_SHRINK: ${{ inputs.allow_shrink }}
     steps:
       - name: check inputs
         run: |
           [[ "$TAG" =~ ^rc-github-rebuild-[a-z_]+-[0-9]{8}-[0-9]{4}$ ]] || { echo "bad tag $TAG"; exit 1; }
           [[ "$RC_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "rc_sha must be 40 hex chars"; exit 1; }
+          # Fail in seconds, not after the build: the script refuses this pair too.
+          if [ "$ALLOW_SHRINK" = "true" ] && [ "$KIND" = "prices" ]; then
+            echo "allow_shrink is never passed for prices (its tables are never narrowed)"; exit 1
+          fi
+          echo "allow_shrink=$ALLOW_SHRINK"
       # The code imports itself as `RevenueChaser.*`, so the checkout directory carries that name.
       - uses: actions/checkout@v5
         with:
@@ -96,7 +109,8 @@ jobs:
         run: |
           export RC_DUCKDB_THREADS=$(nproc)
           export RC_DUCKDB_MEMORY_LIMIT="$(( $(awk '/MemTotal/ {print $2}' /proc/meminfo) * 7 / 10 / 1024 ))MB"
-          /usr/bin/time -v python runner/scripts/rc_github_rebuild.py "$KIND" 2> >(tee time.txt >&2)
+          [ "$ALLOW_SHRINK" = "true" ] && SHRINK=--allow-shrink || SHRINK=
+          /usr/bin/time -v python runner/scripts/rc_github_rebuild.py "$KIND" $SHRINK 2> >(tee time.txt >&2)
           grep -E "Maximum resident|Elapsed" time.txt
       - name: upload the result to the release
         run: |
