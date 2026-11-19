@@ -23,6 +23,7 @@ call, never a connection kept across requests. Serving files are never compacted
 from __future__ import annotations
 
 import atexit
+import logging
 import os
 import shutil
 import time
@@ -40,6 +41,8 @@ from ..core import config
 # The serving schema of each kind lives in ``serving_versions.py``, not here: this file is in every kind's rules
 # fingerprint (``build/dirty.py``), so a number kept here made one kind's bump a whole build of all six (#649).
 from .serving_versions import SERVING_SCHEMA_VERSION, SHRINKS_BY_CHOICE
+
+logger = logging.getLogger(__name__)
 
 KINDS = tuple(SERVING_SCHEMA_VERSION)
 VERSION_TABLE = "serving_schema_version"
@@ -68,7 +71,26 @@ WINDOW_TABLE = "serving_window"
 # kernel, not DuckDB, ended the first ``prices/serving`` build on #319's ASOF joins: request #35, 30 Oct 2026, OOM-killed
 # at a 7.7 GB peak on the 15 GB server beside the dashboard. Under a limit DuckDB spills instead (``spill_dir``).
 # A DuckDB size string (``5GB``) and a positive whole number; empty or invalid keeps the default.
+# The limit is chosen at build start from what the machine can still give (``auto_memory_limit``): a fixed 5 GB was
+# both too much and too little — the ``sec_forms`` build of 19 Nov 2026 (build 808) was OOM-killed at it while about
+# 10 GB was free, and a build that starts while the box is busy needs less, not the same. This constant is only the
+# fallback for a machine whose free memory cannot be read; ``RC_DUCKDB_MEMORY_LIMIT`` still overrides everything.
 MEMORY_LIMIT_DEFAULT = "5GB"
+# The share of what is available that the build connection may take (``RC_DUCKDB_MEMORY_SHARE``, 0 < share <= 1).
+# Not all of it: DuckDB's own limit counts only its buffers, and the Python process, Arrow batches and the spill
+# bookkeeping live outside it — the share is what leaves room for them and for the rest of the box.
+MEMORY_SHARE_DEFAULT = 0.6
+# The limit never leaves this range (``RC_DUCKDB_MEMORY_FLOOR`` / ``RC_DUCKDB_MEMORY_CAP``, DuckDB sizes). The floor
+# is below the 2.5 GB peak of an incremental build only because DuckDB spills instead of failing; the cap keeps a
+# quiet box from handing one build everything, which is what DuckDB's own 80 %-of-RAM default did (#319).
+MEMORY_FLOOR_DEFAULT = "2GB"
+MEMORY_CAP_DEFAULT = "12GB"
+# Where "what is available" is read from. Both are consulted and the smaller wins: the kernel's MemAvailable says
+# what the box has, the process's cgroup says what it is allowed (homesrv runs the builder under a systemd
+# ``MemoryMax``, so free host RAM alone would be a limit the cgroup kills the build for taking).
+MEMINFO_PATH = Path("/proc/meminfo")
+PROC_CGROUP_PATH = Path("/proc/self/cgroup")
+CGROUP_ROOT = Path("/sys/fs/cgroup")
 # A read connection's buffer pool (``RC_DUCKDB_READ_MEMORY_LIMIT``). DuckDB's own default is 80 % of RAM (8 GiB on
 # homesrv), and the one database instance a process keeps per path holds what every open connection read: the
 # relatedness run, 8 workers reading business texts from sec_forms.duckdb, grew to 7.3 GB anon and was OOM-killed on
@@ -105,16 +127,102 @@ def _spill_cap(cap: str, spill_parent: Path) -> str:
     return cap if cap_bytes <= room else f"{int(room) // 1000}KB"
 
 
+def _read_int(path: Path) -> int | None:
+    """``path``'s contents as a whole number, or None when it is missing, unreadable or not a number (a cgroup
+    file holding ``max`` reads as None: no limit there)."""
+    try:
+        return int(path.read_text().strip())
+    except (OSError, ValueError):
+        return None
+
+
+def _meminfo_available() -> int | None:
+    """``MemAvailable`` in bytes: the kernel's own estimate of what a new allocation can get without swapping."""
+    try:
+        for line in MEMINFO_PATH.read_text().splitlines():
+            if line.startswith("MemAvailable:"):
+                return int(line.split()[1]) * 2**10          # meminfo is in kB
+    except (OSError, ValueError, IndexError):
+        return None
+    return None
+
+
+def _cgroup_dir() -> Path:
+    """The process's own cgroup v2 folder under ``CGROUP_ROOT``, or the root itself when there is no v2 line."""
+    try:
+        for line in PROC_CGROUP_PATH.read_text().splitlines():
+            fields = line.split(":", 2)
+            if len(fields) == 3 and fields[0] == "0":        # cgroup v2 has this one line
+                return CGROUP_ROOT / fields[2].strip().lstrip("/")
+    except OSError:
+        pass
+    return CGROUP_ROOT
+
+
+def _cgroup_headroom() -> int | None:
+    """How much the process's cgroup still allows, in bytes, or None where no limit is set on it.
+
+    Every level up to the root is read, because a limit set on a parent slice binds its children: on homesrv the
+    builder's ``MemoryMax`` is on its own unit and Claude's sessions have another on theirs. ``memory.high`` counts
+    too — past it the kernel throttles and reclaims, which is where a build goes from slow to killed.
+    """
+    folder = _cgroup_dir()
+    room: int | None = None
+    while True:
+        limits = [v for v in (_read_int(folder / "memory.max"), _read_int(folder / "memory.high")) if v is not None]
+        current = _read_int(folder / "memory.current")
+        if limits and current is not None:
+            level = min(limits) - current
+            room = level if room is None else min(room, level)
+        if folder == CGROUP_ROOT or CGROUP_ROOT not in folder.parents:
+            return room
+        folder = folder.parent
+
+
+def available_memory() -> int | None:
+    """What a build may count on, in bytes: the smaller of the kernel's ``MemAvailable`` and the cgroup's headroom.
+    None when neither can be read (not Linux, or ``/proc`` not mounted), which keeps ``MEMORY_LIMIT_DEFAULT``."""
+    seen = [v for v in (_meminfo_available(), _cgroup_headroom()) if v is not None]
+    return min(seen) if seen else None
+
+
+def _memory_share() -> float:
+    try:
+        share = float(os.getenv("RC_DUCKDB_MEMORY_SHARE", "").strip())
+    except ValueError:
+        return MEMORY_SHARE_DEFAULT
+    return share if 0 < share <= 1 else MEMORY_SHARE_DEFAULT
+
+
+def auto_memory_limit() -> str:
+    """The build connection's ``memory_limit`` for the machine as it is now: a share of what is available
+    (:func:`available_memory`), never below ``RC_DUCKDB_MEMORY_FLOOR`` nor above ``RC_DUCKDB_MEMORY_CAP``.
+
+    More when the box is quiet, less when it is not. A floor below what the build needs is not a failure: DuckDB
+    spills past its limit (``spill_dir``). ``RC_DUCKDB_MEMORY_LIMIT`` set to a size skips all of this.
+    """
+    available = available_memory()
+    if available is None:
+        return MEMORY_LIMIT_DEFAULT
+    floor = _bytes(_size("RC_DUCKDB_MEMORY_FLOOR", MEMORY_FLOOR_DEFAULT))
+    cap = _bytes(_size("RC_DUCKDB_MEMORY_CAP", MEMORY_CAP_DEFAULT))
+    chosen = max(floor, min(cap, int(available * _memory_share())))
+    return f"{chosen // 10**6}MB"
+
+
 def build_config(spill_parent: Path | None = None) -> dict[str, str | int]:
     """``memory_limit``, ``threads`` and ``max_temp_directory_size`` for a build connection, from
     ``RC_DUCKDB_MEMORY_LIMIT`` / ``RC_DUCKDB_THREADS`` / ``RC_DUCKDB_MAX_TEMP``; given the spill folder's parent, the
-    spill cap is held to 90 % of that disk's free space (``_spill_cap``)."""
+    spill cap is held to 90 % of that disk's free space (``_spill_cap``).
+
+    With no ``RC_DUCKDB_MEMORY_LIMIT``, the memory limit follows the machine (``auto_memory_limit``).
+    """
     try:
         threads = int(os.getenv("RC_DUCKDB_THREADS", "").strip())
     except ValueError:
         threads = THREADS_DEFAULT
     max_temp = _size("RC_DUCKDB_MAX_TEMP", MAX_TEMP_DEFAULT)
-    return {"memory_limit": _size("RC_DUCKDB_MEMORY_LIMIT", MEMORY_LIMIT_DEFAULT),
+    return {"memory_limit": _size("RC_DUCKDB_MEMORY_LIMIT", "") or auto_memory_limit(),
             "threads": threads if threads > 0 else THREADS_DEFAULT,
             "max_temp_directory_size": _spill_cap(max_temp, spill_parent) if spill_parent else max_temp}
 
@@ -536,10 +644,15 @@ def build(kind: str, base: str = "fresh") -> Iterator[BuildFile]:
     spill.parent.mkdir(parents=True, exist_ok=True)               # DuckDB makes only the last level
     try:
         mode = _copy_live(kind, path) if base == "live" else "fresh"
-        con = duckdb.connect(str(path), config={**build_config(spill.parent), "temp_directory": str(spill)})
+        settings = build_config(spill.parent)
+        con = duckdb.connect(str(path), config={**settings, "temp_directory": str(spill)})
     except BaseException:
         _remove(path)      # a copy that broke mid-way is as large as the live file, on the live files' own disk
         raise
+    # The limit follows the machine, so which one a build got is the first thing to know after an OOM or a long spill.
+    available = available_memory()
+    logger.info("build %s %s: memory_limit %s, threads %s, available %s", kind, build_id, settings["memory_limit"],
+                settings["threads"], f"{available / 2**30:.1f} GiB" if available is not None else "unknown")
     b = BuildFile(kind, build_id, path, con, mode)
     try:
         _stamp(con, kind, build_id, mode)

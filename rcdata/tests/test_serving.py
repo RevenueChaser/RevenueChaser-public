@@ -166,14 +166,126 @@ def _settings(con) -> tuple[str, int]:
             con.execute("SELECT current_setting('threads')").fetchone()[0])
 
 
+def _limit_bytes(con) -> int:
+    return serving._bytes(con.execute("SELECT current_setting('memory_limit')").fetchone()[0])
+
+
 def test_a_build_connection_is_capped_by_default(monkeypatch):
-    """#319's OOM: the build connection must not take DuckDB's default 80 % of RAM, nor every core."""
+    """#319's OOM: the build connection must not take DuckDB's default 80 % of RAM, nor every core. With no
+    variable set the cap follows the machine (``auto_memory_limit``), here a stand-in 10 GiB available."""
     monkeypatch.delenv("RC_DUCKDB_MEMORY_LIMIT", raising=False)
     monkeypatch.delenv("RC_DUCKDB_THREADS", raising=False)
+    monkeypatch.setattr(serving, "available_memory", lambda: 10 * 2**30)
     with serving.build("market") as b:
-        memory, threads = _settings(b.con)
-    assert memory in ("4.6 GiB", "5.0 GB", "4.6GiB"), memory
+        got, threads = _limit_bytes(b.con), b.con.execute("SELECT current_setting('threads')").fetchone()[0]
+    want = int(10 * 2**30 * serving.MEMORY_SHARE_DEFAULT)
+    assert abs(got - want) / want < 0.02, got
     assert threads == serving.THREADS_DEFAULT
+
+
+def _meminfo(tmp_path, available_kb: int | None) -> None:
+    text = "MemTotal:       16305236 kB\nMemFree:          812344 kB\n"
+    if available_kb is not None:
+        text += f"MemAvailable:   {available_kb} kB\n"
+    (tmp_path / "meminfo").write_text(text + "Buffers:          123456 kB\n")
+
+
+def test_meminfo_available_is_read_in_bytes(tmp_path, monkeypatch):
+    """The machine's own answer to "is there room": MemAvailable, in kB, which the builder needs in bytes."""
+    _meminfo(tmp_path, 10_485_760)
+    monkeypatch.setattr(serving, "MEMINFO_PATH", tmp_path / "meminfo")
+    assert serving._meminfo_available() == 10 * 2**30
+
+
+@pytest.mark.parametrize("broken", ["MemAvailable: lots kB\n", "MemTotal: 1 kB\n", ""])
+def test_meminfo_that_cannot_be_read_is_not_a_number(tmp_path, monkeypatch, broken):
+    (tmp_path / "meminfo").write_text(broken)
+    monkeypatch.setattr(serving, "MEMINFO_PATH", tmp_path / "meminfo")
+    assert serving._meminfo_available() is None
+    monkeypatch.setattr(serving, "MEMINFO_PATH", tmp_path / "gone")        # not even a file
+    assert serving._meminfo_available() is None
+
+
+def _cgroup(tmp_path, levels: dict[str, dict[str, str]]) -> Path:
+    """A cgroup v2 tree under ``tmp_path``: ``levels`` maps a relative folder ("" is the root) to its files."""
+    root = tmp_path / "cgroup"
+    for rel, files in levels.items():
+        folder = root / rel if rel else root
+        folder.mkdir(parents=True, exist_ok=True)
+        for name, value in files.items():
+            (folder / name).write_text(value)
+    return root
+
+
+def test_the_cgroup_headroom_is_the_tightest_limit_above_the_process(tmp_path, monkeypatch):
+    """homesrv runs the builder under a systemd MemoryMax, so free host RAM alone is a limit the cgroup kills the
+    build for taking. A limit on a parent slice binds the child, so every level up to the root is read."""
+    root = _cgroup(tmp_path, {"": {"memory.max": "max", "memory.current": "1000000000"},
+                              "life.slice": {"memory.max": "8000000000", "memory.current": "3000000000"},
+                              "life.slice/rc-builder.service": {"memory.max": "max",
+                                                                "memory.current": "1000000000"}})
+    (tmp_path / "self-cgroup").write_text("0::/life.slice/rc-builder.service\n")
+    monkeypatch.setattr(serving, "CGROUP_ROOT", root)
+    monkeypatch.setattr(serving, "PROC_CGROUP_PATH", tmp_path / "self-cgroup")
+    assert serving._cgroup_dir() == root / "life.slice/rc-builder.service"
+    assert serving._cgroup_headroom() == 5_000_000_000                     # 8 GB - 3 GB on the slice
+
+
+def test_memory_high_counts_as_a_limit_and_no_limit_reads_as_none(tmp_path, monkeypatch):
+    """Past ``memory.high`` the kernel throttles and reclaims: that is where a build goes from slow to killed."""
+    root = _cgroup(tmp_path, {"": {"memory.max": "max", "memory.high": "4000000000",
+                                   "memory.current": "1500000000"}})
+    monkeypatch.setattr(serving, "CGROUP_ROOT", root)
+    monkeypatch.setattr(serving, "PROC_CGROUP_PATH", tmp_path / "no-such-file")
+    assert serving._cgroup_headroom() == 2_500_000_000
+    _cgroup(tmp_path, {"": {"memory.max": "max", "memory.high": "max", "memory.current": "1500000000"}})
+    assert serving._cgroup_headroom() is None
+
+
+def test_available_memory_takes_the_smaller_of_the_two(tmp_path, monkeypatch):
+    monkeypatch.setattr(serving, "_meminfo_available", lambda: 10 * 2**30)
+    monkeypatch.setattr(serving, "_cgroup_headroom", lambda: 3 * 2**30)
+    assert serving.available_memory() == 3 * 2**30
+    monkeypatch.setattr(serving, "_cgroup_headroom", lambda: None)
+    assert serving.available_memory() == 10 * 2**30
+    monkeypatch.setattr(serving, "_meminfo_available", lambda: None)
+    assert serving.available_memory() is None
+
+
+def test_the_limit_follows_the_free_memory_between_a_floor_and_a_cap(monkeypatch):
+    """avo 19 Nov 2026: "Yer varsa artırsa yoksa azaltsa". More when the box is quiet, less when it is not; the
+    floor is safe because DuckDB spills past its limit instead of failing."""
+    for var in ("RC_DUCKDB_MEMORY_SHARE", "RC_DUCKDB_MEMORY_FLOOR", "RC_DUCKDB_MEMORY_CAP"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setattr(serving, "available_memory", lambda: 10 * 2**30)
+    assert serving.auto_memory_limit() == "6442MB"                         # 60 % of 10 GiB
+    monkeypatch.setattr(serving, "available_memory", lambda: 1 * 2**30)    # a busy box: the floor
+    assert serving.auto_memory_limit() == "2000MB"
+    monkeypatch.setattr(serving, "available_memory", lambda: 60 * 2**30)   # a quiet one: the cap
+    assert serving.auto_memory_limit() == "12000MB"
+    monkeypatch.setattr(serving, "available_memory", lambda: None)         # not Linux, or no /proc
+    assert serving.auto_memory_limit() == serving.MEMORY_LIMIT_DEFAULT
+
+
+@pytest.mark.parametrize("share, floor, cap, expected", [("0.25", "", "", "2684MB"),
+                                                         ("", "6GB", "", "6442MB"),
+                                                         ("0.9", "", "4GB", "4000MB"),
+                                                         ("3", "", "", "6442MB"),      # not a share: the default
+                                                         ("much", "nope", "nope", "6442MB"),
+                                                         ("0.1", "5GB", "3GB", "5000MB")])  # floor wins over a cap
+def test_the_share_the_floor_and_the_cap_come_from_the_environment(monkeypatch, share, floor, cap, expected):
+    monkeypatch.setenv("RC_DUCKDB_MEMORY_SHARE", share)
+    monkeypatch.setenv("RC_DUCKDB_MEMORY_FLOOR", floor)
+    monkeypatch.setenv("RC_DUCKDB_MEMORY_CAP", cap)
+    monkeypatch.setattr(serving, "available_memory", lambda: 10 * 2**30)
+    assert serving.auto_memory_limit() == expected
+
+
+def test_a_set_memory_limit_still_wins_over_the_machine(monkeypatch):
+    """``RC_DUCKDB_MEMORY_LIMIT`` is the manual override: a build under it reads no meminfo and no cgroup."""
+    monkeypatch.setenv("RC_DUCKDB_MEMORY_LIMIT", "7GB")
+    monkeypatch.setattr(serving, "available_memory", lambda: pytest.fail("the machine was read anyway"))
+    assert serving.build_config()["memory_limit"] == "7GB"
 
 
 def test_the_cap_comes_from_the_environment(monkeypatch):
@@ -195,6 +307,7 @@ def test_an_empty_or_invalid_cap_keeps_the_default(monkeypatch, memory, threads,
     monkeypatch.setenv("RC_DUCKDB_MEMORY_LIMIT", memory)
     monkeypatch.setenv("RC_DUCKDB_THREADS", threads)
     monkeypatch.setenv("RC_DUCKDB_MAX_TEMP", max_temp)
+    monkeypatch.setattr(serving, "available_memory", lambda: None)      # no machine to follow: the fallback
     assert serving.build_config() == {"memory_limit": serving.MEMORY_LIMIT_DEFAULT,
                                       "threads": serving.THREADS_DEFAULT,
                                       "max_temp_directory_size": serving.MAX_TEMP_DEFAULT}
