@@ -247,3 +247,14 @@ def test_lane_freshness_reads_each_lane_on_its_own():
     # The newest fetch a lane, not the newest of the table: an X row with a cashtag is still the X lane, and the
     # per-ticker lane stays a day old however busy the others are (review F2, 18 Nov 2026).
     assert headlines.lane_freshness() == {"market": NOW - 60, "stocks": NOW - 90_000, "x": NOW - 30}
+
+
+def test_a_lane_mark_moves_only_on_a_clean_pass_and_says_nothing_before_one():
+    """Review F2 / plan step 6: the alarm reads "the fetch last came back clean", not "a row was last written",
+    so a lane with no news to bring does not look dead and a quiet night does not page."""
+    assert headlines.lane_ok() == {"stocks": None, "x": None}
+    headlines.mark_lane_ok("stocks", NOW)
+    assert headlines.lane_ok() == {"stocks": NOW, "x": None}
+    headlines.mark_lane_ok("stocks", NOW + 300)                 # the next clean pass, with or without a headline
+    headlines.mark_lane_ok("x", NOW + 60)
+    assert headlines.lane_ok() == {"stocks": NOW + 300, "x": NOW + 60}

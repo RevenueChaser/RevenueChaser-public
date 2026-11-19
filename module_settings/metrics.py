@@ -79,6 +79,11 @@ HELP = {
     "rc_news_lane_fresh_timestamp_seconds": ("gauge", "When the newest headline of a News lane (market, stocks, x) "
                                              "was fetched, epoch seconds (absent: the lane has no row). One reading "
                                              "a lane, because the whole table's freshness cannot see a dead lane."),
+    "rc_news_lane_ok_timestamp_seconds": ("gauge", "When a News lane's own fetch last came back with nothing "
+                                          "refused, epoch seconds, by lane (absent: it never has). The signal to "
+                                          "alert on: it moves on a clean pass that brought no headline, which "
+                                          "freshness does not. The market lane's is "
+                                          "rc_news_tape_written_timestamp_seconds."),
     "rc_threshold": ("gauge", "The thresholds the Data/Health page alarms at, from module_settings/control.py."),
     "rc_metrics_read_errors_total": ("counter", "Readers that failed since the dashboard started, by part."),
     "rc_metrics_build_seconds": ("gauge", "How long building this answer took."),
@@ -156,11 +161,13 @@ def _iso_epoch(value) -> float | None:
 
 
 def _news_lanes() -> dict:
-    """The newest fetch of each News lane. A function-level import, as ``_news_tape`` has it: no module-level
-    dependency on a board package. It reads ``boards/news.duckdb`` (7 MB, the board's own file), never the serving
-    store, so the scrape still takes no serving lock (``app/dashboard._NO_STORE_SESSION``)."""
+    """``{"fresh": the newest fetch a lane, "ok": when each lane's fetch last came back clean}``.
+
+    A function-level import, as ``_news_tape`` has it: no module-level dependency on a board package. It reads
+    ``boards/news.duckdb`` (7 MB, the board's own file), never the serving store, so the scrape still takes no
+    serving lock (``app/dashboard._NO_STORE_SESSION``)."""
     from RevenueChaser.module_news import headlines
-    return headlines.lane_freshness()
+    return {"fresh": headlines.lane_freshness(), "ok": headlines.lane_ok()}
 
 
 def _news_tape(now: datetime) -> dict:
@@ -328,9 +335,11 @@ def collect(now: datetime | None = None, *, datasets: dict | None = None, timer:
         # per-ticker IBKR fetch is dead, so each lane is read on its own. Its own part: a store read that fails
         # must not take the listener's feed states with it.
         got = (lanes() if lanes is not None else _news_lanes()) or {}
-        for name, at in got.items():
-            if at is not None:
-                out["rc_news_lane_fresh_timestamp_seconds"].append(({"lane": str(name)}, float(at)))
+        for family, key in (("rc_news_lane_fresh_timestamp_seconds", "fresh"),
+                            ("rc_news_lane_ok_timestamp_seconds", "ok")):
+            for name, at in (got.get(key) or {}).items():
+                if at is not None:
+                    out[family].append(({"lane": str(name)}, float(at)))
 
     parts = {"queue": queue, "providers": providers, "needs": needs, "datasets": dataset_states, "builder": builder,
              "timer": timer_part, "backups": backups, "switches": switches, "ibkr": gateway, "news": news_feeds,

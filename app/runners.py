@@ -1216,6 +1216,9 @@ def _news_headlines_pass(rid: str) -> dict | None:
                         f"(IBKR, Dow Jones; the rest in later passes){skipped}")
         failed = got.get("failed", [])
         problems = failed + unread
+        if not problems:
+            # A clean pass, with or without a new headline: the mark Grafana alerts on (review F2, plan step 6).
+            headlines.mark_lane_ok("stocks")
         if problems:
             # A refused request other than "unknown name" (a lapsed feed, pacing) or an unread list: the board shows
             # it, or the lane would only look quieter (review F1/F6, avo's D5 18 Nov 2026: "Panoda bant").
@@ -1250,7 +1253,7 @@ def run_news_x_follow(uw=None) -> Path | None:
     """The X lane's own reader (plan step 5): the Following timeline of RC's X account into ``boards/news.duckdb``,
     then the page. The timer queues it every 30 minutes; ``x_reader.due`` thins that to every 4 hours outside the US
     session. A refused read is a job note and the page's banner, not a job message (the shell alerts every message)."""
-    from RevenueChaser.module_news import report, x_reader
+    from RevenueChaser.module_news import headlines, report, x_reader
     try:
         got = x_reader.run(run_id=run_id())
     except x_reader.ReadFailed as e:
@@ -1262,6 +1265,7 @@ def run_news_x_follow(uw=None) -> Path | None:
     if got["skipped"]:
         return None
     ledger.add_note(f"News X reader: {got['stored']} new posts stored of {got['read']} read")
+    headlines.mark_lane_ok("x")
     return report.render()
 
 

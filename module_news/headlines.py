@@ -120,6 +120,36 @@ def _stored_ids(ids: list[str]) -> set[str]:
 
 #: The lanes of the News page, in its order, as ``module_news.report.lane`` cuts them.
 LANES = ("market", "stocks", "x")
+#: ``news_meta`` key prefix for "this lane's own fetch last came back clean" (``mark_lane_ok``).
+OK_PREFIX = "lane_ok"
+#: The lanes that keep such a mark. The ``market`` lane does not: its source is the listener, whose own record is
+#: already read (``module_news/tape_state.py``, ``rc_news_tape_written_timestamp_seconds``, #727).
+OK_LANES = ("stocks", "x")
+
+
+def mark_lane_ok(lane: str, now: float | None = None) -> None:
+    """Record that ``lane``'s own fetch has just come back with nothing refused.
+
+    Freshness cannot carry the alarm on its own: ``fetched_at`` moves only when a row is written, so a lane with
+    no news to bring looks exactly like a lane whose fetch is dead, and an alert on it would fire every quiet
+    night. This mark moves on a clean pass whether or not it brought a row, so "the per-ticker fetch has not
+    worked for an hour" is a question Grafana can ask (review F2, 18 Nov 2026; plan step 6)."""
+    now = time.time() if now is None else now
+    rawstore.write_rows(META, [{"key": f"{OK_PREFIX}:{lane}", "value": repr(float(now)), "run_at": now}])
+
+
+def lane_ok() -> dict[str, float | None]:
+    """When each lane of ``OK_LANES`` last came back clean; None for one that never has."""
+    rows = rawstore.query(
+        f"SELECT key, value FROM {META} WHERE key IN ({', '.join('?' for _ in OK_LANES)})",
+        [f"{OK_PREFIX}:{name}" for name in OK_LANES], db="news")
+    got = {}
+    for r in rows:
+        try:
+            got[str(r["key"]).split(":", 1)[1]] = float(r["value"])
+        except (TypeError, ValueError, IndexError):
+            continue
+    return {name: got.get(name) for name in OK_LANES}
 
 
 def lane_freshness() -> dict[str, float | None]:
