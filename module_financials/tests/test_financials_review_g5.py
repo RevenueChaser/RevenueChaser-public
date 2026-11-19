@@ -201,9 +201,10 @@ def test_the_section_says_when_it_was_scored(render):
 def test_the_historical_fcff_needs_a_known_change_in_working_capital(financials):
     rows = run_dcf(financials)["historical_fcff"]
     assert rows[0]["dnwc"] is None and rows[0]["fcff"] is None              # no prior year to difference against
-    # 2022: NOPAT 225 x (1 - the model's 50/240 rate) + D&A 45 - capex 45 - ΔNWC (112.5 - 100)
+    # 2022: NOPAT 225 x (1 - that year's own 45/215 rate, #93) + D&A 45 - capex 45 - ΔNWC (112.5 - 100)
     assert rows[1]["dnwc"] == pytest.approx(12.5)
-    assert rows[1]["fcff"] == pytest.approx(225 * (1 - 50 / 240) - 12.5)
+    assert rows[1]["tax_rate_source"] == "statements"
+    assert rows[1]["fcff"] == pytest.approx(225 * (1 - 45 / 215) - 12.5)
     gap = run_dcf(_drop(financials, *NWC_LINES))["historical_fcff"]
     assert gap[2]["dnwc"] is None and gap[2]["fcff"] is None and gap[2]["nopat"] is not None
 

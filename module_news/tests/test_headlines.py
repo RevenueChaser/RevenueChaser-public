@@ -228,3 +228,40 @@ def test_the_page_reads_back_the_names_rows_and_the_last_answer(gw):
 def test_a_name_ibkr_does_not_know_is_said_so(gw):
     gw.unknown.add("ZZZZ")
     assert headlines.fetch_ticker("ZZZZ", now=NOW)["error"] == "IBKR does not know ZZZZ"
+
+
+# ── F2: one freshness a lane, read from the store ─────────────────────────────────────────────────────────────────
+
+def _head(hid, provider, tickers, fetched):
+    return {"headline_id": hid, "provider": provider, "published_at": NOW, "headline": hid, "source": None,
+            "tickers": json.dumps(tickers), "url": None, "fetched_at": fetched, "run_id": "t", "run_at": fetched}
+
+
+def test_lane_freshness_reads_each_lane_on_its_own():
+    assert headlines.lane_freshness() == {"market": None, "stocks": None, "x": None}
+    rawstore.write_rows(headlines.TABLE, [
+        _head("ibkr:m", "ibkr", [], NOW - 60), _head("ibkr:m2", "ibkr", [], NOW - 600),
+        _head("ibkr:s", "ibkr", ["AAPL"], NOW - 90_000),
+        _head("x:1", "grok-x", [], NOW - 300), _head("x:2", "x-follow", ["SPY"], NOW - 30),
+    ])
+    # The newest fetch a lane, not the newest of the table: an X row with a cashtag is still the X lane, and the
+    # per-ticker lane stays a day old however busy the others are (review F2, 18 Nov 2026).
+    assert headlines.lane_freshness() == {"market": NOW - 60, "stocks": NOW - 90_000, "x": NOW - 30}
+
+
+def test_a_lane_mark_moves_only_on_a_clean_pass_and_says_nothing_before_one():
+    """Review F2 / plan step 6: the alarm reads "the fetch last came back clean", not "a row was last written",
+    so a lane with no news to bring does not look dead and a quiet night does not page."""
+    assert headlines.lane_ok() == {"stocks": None, "x": None}
+    headlines.mark_lane_ok("stocks", NOW)
+    assert headlines.lane_ok() == {"stocks": NOW, "x": None}
+    headlines.mark_lane_ok("stocks", NOW + 300)                 # the next clean pass, with or without a headline
+    headlines.mark_lane_ok("x", NOW + 60)
+    assert headlines.lane_ok() == {"stocks": NOW + 300, "x": NOW + 60}
+
+
+def test_the_lane_cadences_come_from_the_jobs_own_schedules():
+    """The limit the Grafana rule reads is not a number typed twice: it follows the pass that feeds the lane."""
+    from RevenueChaser.module_news import tape, x_reader
+    assert headlines.lane_late_after() == {"stocks": 6 * tape.TRIGGER_S, "x": 1.5 * x_reader.OFF_EVERY_S}
+    assert set(headlines.lane_late_after()) == set(headlines.OK_LANES)

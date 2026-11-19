@@ -102,3 +102,31 @@ def test_market_and_stock_headlines_get_their_own_lane_and_the_page_polls():
     # innerHTML there is the shared watch-list helper's escaped button (rcWatchButtons), as on every board.
     own = (report._JS + report._TQ_JS).replace("innerHTML = rcWatchButtons(t)", "")
     assert "textContent" in page and "innerHTML" not in own
+
+
+# ── F2: one freshness a lane ─────────────────────────────────────────────────────────────────────────────────────
+
+def test_each_lane_says_when_its_own_newest_row_was_fetched():
+    """Review F2 (18 Nov 2026): the page's header time is the board's newest write of any lane, so the hourly X
+    load hid a per-ticker fetch that had been dead for a day. Each lane now carries its own reading."""
+    rawstore.write_rows("news_headlines", [
+        {"headline_id": "ibkr:m", "provider": "ibkr", "published_at": NOW - HOUR, "headline": "Fed holds rates",
+         "source": "BRFG", "tickers": "[]", "url": None, "fetched_at": NOW - 120, "run_id": "t", "run_at": NOW - 120},
+        {"headline_id": "ibkr:s", "provider": "ibkr", "published_at": NOW - 2 * HOUR, "headline": "Apple beats",
+         "source": "Dow Jones", "tickers": json.dumps(["AAPL"]), "url": None, "fetched_at": NOW - 26 * HOUR,
+         "run_id": "t", "run_at": NOW - 26 * HOUR},
+        {"headline_id": "x:1", "provider": "grok-x", "published_at": NOW - HOUR, "headline": "SPY bid",
+         "source": "@a", "tickers": "[]", "url": "https://x.com/a/status/1", "fetched_at": NOW - 300,
+         "run_id": "t", "run_at": NOW - 300, "kind": "news", "option": "", "x_check": None},
+    ])
+    page = report.render_html(now=NOW)
+    market, stocks, x = (page.index(f'id="heads-{k}"') for k in ("market", "stocks", "x"))
+    assert page.index("last data 14:58 · 2 min ago") < market                 # the tape lane: 2 minutes old
+    assert market < page.index("last data 13:00 · 1 d ago") < stocks          # the dead per-ticker lane says so
+    assert stocks < page.index("last data 14:55 · 5 min ago") < x             # the X lane
+
+
+def test_a_lane_with_no_row_at_all_says_so(seeded):
+    page = report.render_html(now=NOW)                 # `seeded` has a stocks and a market row, no tweet
+    assert page.count("no data in this lane yet") == 1
+    assert page.index('id="heads-x"') > page.index("no data in this lane yet")

@@ -237,7 +237,7 @@ def _heads():
 def test_load_x_stores_each_tweet_once_and_counts_a_cut_mail():
     _saved(NEW_PROMPT, RUN_TOGETHER)
     got = headlines.load_x(now=NOW, run_id="r1")
-    assert got == {"mails": 2, "stored": 2, "refused": 0, "cut": 1}     # NEW_PROMPT declared 3 and carried 2
+    assert got == {"mails": 2, "stored": 2, "known": 0, "refused": 0, "cut": 1}  # NEW_PROMPT declared 3, carried 2
     row = _heads()["x:2120251362529419593"]
     assert row["provider"] == "grok-x" and row["kind"] == "option" and json.loads(row["tickers"]) == ["SPY"]
     assert row["option"].startswith("SPY 759C") and row["published_at"] == pytest.approx(
@@ -260,3 +260,23 @@ def test_the_board_shows_tweets_in_their_own_x_lane_with_kind_and_option(monkeyp
     polled = {r["headline_id"]: r for r in report.api_rows(0)}
     flow = polled["x:2120251362529419593"]
     assert flow["lane"] == "x" and flow["kind"] == "opsiyon" and flow["url"].startswith("https://x.com/")
+
+
+# ── F5: a tweet loaded twice keeps its UW check ──────────────────────────────────────────────────────────────────
+
+def test_a_tweet_in_a_second_mail_keeps_its_uw_check_kind_and_option():
+    """Review F5 (18 Nov 2026): ``news_headlines`` is ``write: upsert``, so re-writing the parsed row of a tweet
+    Grok repeats in a later mail set ``x_check`` to NULL — up to 3 more UW calls and a badge back to "bekliyor",
+    or, past the 3-day re-check window, a row that never gets checked again."""
+    _saved(NEW_PROMPT)
+    headlines.load_x(now=NOW, run_id="r1")
+    sid = "x:2120251362529419593"
+    rawstore.write_rows("news_headlines", [{**_heads()[sid], "x_check": json.dumps({"state": "ok", "calls": 1})}])
+
+    _saved(NEW_PROMPT, now=NOW + 3600)                                   # the same mail again (x_feed.py:196-197)
+    got = headlines.load_x(now=NOW + 3600, run_id="r2")
+
+    assert got["stored"] == 0 and got["known"] == 2                      # nothing written, both ids already stored
+    row = _heads()[sid]
+    assert json.loads(row["x_check"]) == {"state": "ok", "calls": 1}
+    assert row["kind"] == "option" and row["option"].startswith("SPY 759C") and row["run_id"] == "r1"
