@@ -711,9 +711,19 @@ def with_all(con: duckdb.DuckDBPyConnection, schema: list[tuple[str, str]], src:
     return f"(SELECT *, {', '.join(missing)} FROM {src})" if missing else src
 
 
+def scratch_con() -> duckdb.DuckDBPyConnection:
+    """An in-memory DuckDB connection for a step's own query: :func:`serving.connect_scratch`, which caps it like
+    the build connection and gives it a spill folder. Here because every step module imports ``base``.
+
+    A step never opens a bare ``base.scratch_con()``: that one has no limit and cannot spill
+    (``core/tests/test_scratch_connections.py`` fails any that comes back).
+    """
+    return serving.connect_scratch()
+
+
 def upsert_partition(rows: list[dict], schema: list[tuple[str, str]], key: list[str], final: Path) -> Path:
     """Merge ``rows`` into the Parquet partition ``final`` by ``key``; the newest ``fetched_at`` wins a key."""
-    con = duckdb.connect()
+    con = serving.connect_scratch()
     try:
         rows_table(con, "new_rows", schema, rows)
         cols = ", ".join(f'"{c}"' for c, _ in schema)

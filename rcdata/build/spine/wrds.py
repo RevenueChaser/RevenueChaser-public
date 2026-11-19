@@ -374,7 +374,7 @@ def _sec_ciks() -> list[str]:
     if not parts:
         return []
     listed = ", ".join(f"'{e.upper()}'" for e in tier.LISTED)
-    con = duckdb.connect()
+    con = base.scratch_con()
     try:
         rows = con.execute(f"SELECT DISTINCT cik FROM read_parquet({base.sql_path(parts[-1][1])}) "
                            f"WHERE cik IS NOT NULL AND upper(exchange) IN ({listed})").fetchall()
@@ -387,7 +387,7 @@ def _known(dataset: str, table: str, column: str) -> set[str]:
     files = _parquet_files(dataset, table)
     if not files:
         return set()
-    con = duckdb.connect()
+    con = base.scratch_con()
     try:
         paths = ", ".join(base.sql_path(f) for f in files)
         rows = con.execute(f'SELECT DISTINCT "{column}" FROM read_parquet([{paths}])').fetchall()
@@ -457,7 +457,7 @@ class WrdsDataset:
         raw = _ask(ctx, folder / f"new-company{RAW_SUFFIX}",
                    f"{TABLES['company']['sql']} WHERE cik IN ({_in_list(padded)})", as_of)
         out.append(raw)
-        con = duckdb.connect()
+        con = base.scratch_con()
         try:
             found = con.execute(f"SELECT DISTINCT gvkey FROM ({raw_rows(raw, COMPANY)})").fetchall()
         finally:
@@ -489,7 +489,7 @@ class WrdsDataset:
             as_of = date.fromisoformat(meta["as_of"])
             folder = f"{'delta' if delta else 'snapshot'}={as_of.isoformat()}"
             final = parquet_dir(self.name) / folder / f"{table}.parquet"
-            con = duckdb.connect()
+            con = base.scratch_con()
             try:
                 # Typed in DuckDB straight from the raw file (no Python row per record).
                 rows = int(con.execute(f"SELECT count(*) FROM ({raw_rows(raw, spec['schema'])})").fetchone()[0])

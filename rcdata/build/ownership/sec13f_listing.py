@@ -107,7 +107,7 @@ class Sec13fSetsListed:
 
     def to_parquet_all(self, ctx: base.RunContext, raws: list[Path]) -> list[Path]:
         """One file of every set the kept listings name (a handful of rows), written again whole."""
-        con = duckdb.connect()
+        con = base.scratch_con()
         try:
             base.rows_table(con, "rows", SCHEMA, _kept())
             return [base.write_parquet(con, "SELECT * FROM rows ORDER BY first_day, name", parquet_path())]

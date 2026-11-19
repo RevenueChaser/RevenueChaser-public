@@ -243,7 +243,7 @@ class SecFtd:
                 ctx.notes.append(f"cnsfails{meta['half']}: {len(rows)} rows read, the trailer says {trailer}")
             rows = [{**r, "half": label(meta["half"]), "fetched_at": meta["fetched_at"], "run_id": meta["run_id"]}
                     for r in rows]
-            con = duckdb.connect()
+            con = base.scratch_con()
             try:
                 base.rows_table(con, "rows", SCHEMA, rows)
                 out.append(base.write_parquet(con, "SELECT * FROM rows ORDER BY settlement_date, cusip",

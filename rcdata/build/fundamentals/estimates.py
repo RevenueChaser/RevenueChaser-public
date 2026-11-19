@@ -195,7 +195,7 @@ class Estimates:
                 for r in trend_rows(doc["ticker"], doc.get("blocks") or {}, stamps["source_as_of"], {}):
                     rows.append({**r, "cik": common.norm_cik(doc["cik"]), "payload": json.dumps(r["payload"]),
                                  **stamps})
-            con = duckdb.connect()
+            con = base.scratch_con()
             try:
                 base.rows_table(con, "rows", schema(), rows)
                 out.append(base.write_parquet(con, "SELECT * FROM rows ORDER BY ticker, period",

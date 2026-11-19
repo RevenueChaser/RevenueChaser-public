@@ -217,7 +217,7 @@ def recent_cusips(periods: int = 2) -> set[str]:
     filings = DATASET.filing_files()
     if not filings:
         return set()
-    con = duckdb.connect()
+    con = base.scratch_con()
     try:
         newest = [r[0] for r in con.execute(
             f"SELECT DISTINCT {common.quarter_end('period')} AS q FROM {common.files_sql(filings)} "
@@ -251,7 +251,7 @@ class Sec13f(edgar.Feed):
         super().backfill(ctx, first, end)
 
     def type_day(self, ctx: base.RunContext, day: date) -> list[Path]:
-        con = duckdb.connect()
+        con = base.scratch_con()
         try:
             rows = edgar.Appender(con, "filings", FILINGS)
             held = edgar.Appender(con, "holdings", HOLDINGS)

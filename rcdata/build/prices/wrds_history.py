@@ -281,7 +281,7 @@ def _stale(table: str, year: int) -> bool:
 
 
 def _columns(path: Path) -> set[str]:
-    con = duckdb.connect()
+    con = base.scratch_con()
     try:
         return {r[0] for r in con.execute(f"DESCRIBE SELECT * FROM read_parquet({base.sql_path(path)})").fetchall()}
     finally:
@@ -289,7 +289,7 @@ def _columns(path: Path) -> set[str]:
 
 
 def _rows(path: Path) -> int:
-    con = duckdb.connect()
+    con = base.scratch_con()
     try:
         return con.execute(f"SELECT count(*) FROM read_parquet({base.sql_path(path)})").fetchone()[0]
     finally:
@@ -505,7 +505,7 @@ class WrdsPrices:
 
     def _write(self, ctx: base.RunContext, table: str, year: int | None, raw: Path, meta: dict, final: Path) -> Path:
         spec = TABLES[table]
-        con = duckdb.connect()
+        con = base.scratch_con()
         try:
             keys = ", ".join(spec["key"])
             every = ", ".join(f'"{c}" NULLS LAST' for c, _ in spec["schema"])

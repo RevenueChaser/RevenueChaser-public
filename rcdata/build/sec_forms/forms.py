@@ -204,7 +204,7 @@ def held() -> tuple[dict[str, set[tuple[str, str]]], set[str]]:
     """
     docs: dict[str, set[tuple[str, str]]] = {}
     old: set[str] = set()
-    con = duckdb.connect()
+    con = base.scratch_con()
     try:
         src = _glob(SECTIONS_PARQUET)
         if src:
@@ -367,7 +367,7 @@ class Forms:
                         # so ``filed`` overwrites that one column and adds the form and the filing date.
                         notes.append({**n.row(cik, f["accession"], path.name), **filed, **stamps})
             folder = common.parquet_dir(NAME) / f"cik={cik}"
-            con = duckdb.connect()
+            con = base.scratch_con()
             try:
                 base.rows_table(con, "sections", SECTION, sections)
                 out.append(base.write_parquet(con, "SELECT * FROM sections ORDER BY accession, document, section",

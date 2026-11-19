@@ -206,7 +206,7 @@ class RegShoThreshold:
                 rows += [{**r, "list_date": day, "file_stamp": stamp, "fetched_at": meta["fetched_at"],
                           "run_id": meta["run_id"]} for r in parsed]
             final = parquet_dir() / f"date={day.isoformat()}" / "part-0.parquet"
-            con = duckdb.connect()
+            con = base.scratch_con()
             try:
                 base.rows_table(con, "rows", SCHEMA, rows)
                 out.append(base.write_parquet(con, "SELECT * FROM rows ORDER BY market, symbol", final))

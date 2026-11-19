@@ -159,9 +159,9 @@ def _first_day(path: Path, column: str) -> date | None:
         if part.startswith("date="):
             return date.fromisoformat(part[5:])
     if path.is_file():
-        con = duckdb.connect()
+        from .. import base
+        con = base.scratch_con()
         try:
-            from .. import base
             got = con.execute(f"SELECT min({column}) FROM read_parquet({base.sql_path(path)})").fetchone()[0]
         finally:
             con.close()

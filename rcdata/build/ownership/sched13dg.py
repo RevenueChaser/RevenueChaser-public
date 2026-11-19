@@ -123,7 +123,7 @@ class Sched13dg(edgar.Feed):
     budget_s = BUDGET_S
 
     def type_day(self, ctx: base.RunContext, day: date) -> list[Path]:
-        con = duckdb.connect()
+        con = base.scratch_con()
         try:
             rows = edgar.Appender(con, "rows", ROWS)
             for _acc, entry, text in self.filings_of(day):

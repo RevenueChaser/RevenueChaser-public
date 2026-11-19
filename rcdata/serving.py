@@ -23,11 +23,13 @@ call, never a connection kept across requests. Serving files are never compacted
 from __future__ import annotations
 
 import atexit
+import itertools
 import logging
 import os
 import shutil
 import time
 import uuid
+import weakref
 import zlib
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -96,6 +98,10 @@ CGROUP_ROOT = Path("/sys/fs/cgroup")
 # relatedness run, 8 workers reading business texts from sec_forms.duckdb, grew to 7.3 GB anon and was OOM-killed on
 # 15 Nov 2026 (measured: 400 business texts took one process from 49 MB to 2.6 GB). A reader needs no more than this.
 READ_MEMORY_LIMIT_DEFAULT = "1GiB"
+# A build step's own in-memory connection (``connect_scratch``): the same adaptive limit as the build's, overridden
+# by ``RC_DUCKDB_SCRATCH_MEMORY_LIMIT``. Before #1098 these were opened as a bare ``duckdb.connect()``, with no
+# limit at all, so each could take DuckDB's own default of 80 % of the machine's RAM: that is memory the kernel
+# can kill the build for, not memory DuckDB spills (sec_forms build 808, 19 Nov 2026).
 THREADS_DEFAULT = 3
 # The most a build may spill (``RC_DUCKDB_MAX_TEMP``, a DuckDB size): past it the build fails, it does not fill the disk.
 # DuckDB's own default is 90 % of the free space. 2010-2025 of history spilled 9.5 GB at its largest statement (#372).
@@ -210,6 +216,15 @@ def auto_memory_limit() -> str:
     return f"{chosen // 10**6}MB"
 
 
+def _threads() -> int:
+    """``RC_DUCKDB_THREADS`` when it is a positive whole number, else ``THREADS_DEFAULT``."""
+    try:
+        threads = int(os.getenv("RC_DUCKDB_THREADS", "").strip())
+    except ValueError:
+        return THREADS_DEFAULT
+    return threads if threads > 0 else THREADS_DEFAULT
+
+
 def build_config(spill_parent: Path | None = None) -> dict[str, str | int]:
     """``memory_limit``, ``threads`` and ``max_temp_directory_size`` for a build connection, from
     ``RC_DUCKDB_MEMORY_LIMIT`` / ``RC_DUCKDB_THREADS`` / ``RC_DUCKDB_MAX_TEMP``; given the spill folder's parent, the
@@ -217,13 +232,9 @@ def build_config(spill_parent: Path | None = None) -> dict[str, str | int]:
 
     With no ``RC_DUCKDB_MEMORY_LIMIT``, the memory limit follows the machine (``auto_memory_limit``).
     """
-    try:
-        threads = int(os.getenv("RC_DUCKDB_THREADS", "").strip())
-    except ValueError:
-        threads = THREADS_DEFAULT
     max_temp = _size("RC_DUCKDB_MAX_TEMP", MAX_TEMP_DEFAULT)
     return {"memory_limit": _size("RC_DUCKDB_MEMORY_LIMIT", "") or auto_memory_limit(),
-            "threads": threads if threads > 0 else THREADS_DEFAULT,
+            "threads": _threads(),
             "max_temp_directory_size": _spill_cap(max_temp, spill_parent) if spill_parent else max_temp}
 
 
@@ -376,6 +387,48 @@ def read_memory_limit() -> str:
     """The buffer-pool cap of a read connection: ``RC_DUCKDB_READ_MEMORY_LIMIT`` when it is a DuckDB size, else
     ``READ_MEMORY_LIMIT_DEFAULT``."""
     return _size("RC_DUCKDB_READ_MEMORY_LIMIT", READ_MEMORY_LIMIT_DEFAULT)
+
+
+def scratch_memory_limit() -> str:
+    """The cap of a build step's own in-memory connection: ``RC_DUCKDB_SCRATCH_MEMORY_LIMIT`` when it is a DuckDB
+    size, else the same adaptive limit the build connection gets (:func:`auto_memory_limit`)."""
+    return _size("RC_DUCKDB_SCRATCH_MEMORY_LIMIT", "") or auto_memory_limit()
+
+
+_SCRATCH_SEQ = itertools.count()
+
+
+def scratch_spill_dir() -> Path:
+    """A spill folder of this connection's own: ``<RC_TMP_HDD_DIR>/duckdb-scratch`` (else under the raw root),
+    ``scratch-<n>.tmp-<pid>``.
+
+    One folder per connection, never one shared: two DuckDB instances spilling into one folder write over each
+    other's blocks, which is the 17 Nov 2026 pair of crashes (:func:`read_spill_dir`). A killed process leaves its
+    folder behind, so the stale ones are swept here as well.
+    """
+    parent = scratch_dir("duckdb-scratch", Path(config.MARKET_RAW_DIR) / "build_tmp") or Path(config.MARKET_RAW_DIR)
+    parent.mkdir(parents=True, exist_ok=True)
+    for old in parent.glob("scratch-*.tmp-*"):
+        if stale_spill(old):
+            shutil.rmtree(old, True)
+    return parent / f"scratch-{next(_SCRATCH_SEQ)}.tmp-{os.getpid()}"
+
+
+def connect_scratch() -> duckdb.DuckDBPyConnection:
+    """An in-memory DuckDB connection for a build step's own query, capped and able to spill.
+
+    A bare ``duckdb.connect()`` takes DuckDB's own default of 80 % of the machine's RAM and, having no
+    ``temp_directory``, grows instead of spilling: the kernel ends such a step, and nothing in the build's own
+    limit covers it. Every step opens its scratch connection through here (``base.scratch_con``), so the limit
+    follows the machine exactly as the build's does.
+    """
+    spill = scratch_spill_dir()
+    con = duckdb.connect(config={"memory_limit": scratch_memory_limit(), "threads": _threads(),
+                                 "temp_directory": str(spill)})
+    # The folder goes when the connection does, whether the step closed it or dropped it.
+    weakref.finalize(con, shutil.rmtree, spill, True)
+    atexit.register(shutil.rmtree, spill, True)
+    return con
 
 
 def _remove(path: Path) -> None:

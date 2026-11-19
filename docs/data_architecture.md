@@ -1034,7 +1034,16 @@ it a connection may take 80 % of the machine's RAM, and the kernel OOM-killed th
 from `RC_DUCKDB_MAX_TEMP` (default `200GB`), held to 90 % of the spill disk's free space when the build opens
 (DuckDB's own default, which a set cap replaces; #379): past it the build fails instead of filling the disk.
 `RC_DUCKDB_TEMP_DIR` moves the
-spill's parent folder (unset: `<MARKET_RAW_DIR>/build_tmp`). Each dataset's build logs one line with its seconds and
+spill's parent folder (unset: `<MARKET_RAW_DIR>/build_tmp`).
+
+A build step's own in-memory query connection (`base.scratch_con`, `serving.connect_scratch`) carries the same
+adaptive limit, overridden on its own by `RC_DUCKDB_SCRATCH_MEMORY_LIMIT`, and spills into a folder of its own
+under `<RC_TMP_HDD_DIR>/duckdb-scratch` (else the raw root), one per connection because two DuckDB instances on one
+spill folder write over each other's blocks. A bare `duckdb.connect()` is not allowed in `rcdata/` any more
+(`core/tests/test_scratch_connections.py`): it has no limit — DuckDB's own default is 80 % of the machine's RAM —
+and no spill folder, so such a step grows until the kernel ends the build. Serving **readers** keep their fixed cap
+(`RC_DUCKDB_READ_MEMORY_LIMIT`, default `1GiB`): many run at once, so a share of free memory each would add up to
+more than the machine has. Each dataset's build logs one line with its seconds and
 its spill peak (`base.spill_peak`, sampled every 2 s), the measure for moving the spill to the SSD or chunking a kind.
 
 **Files.** Serving kinds: `market`, `spine`, `prices`, `ownership`, `fundamentals`, `options`, `sec_forms`, `sec_reads`. Each kind is one

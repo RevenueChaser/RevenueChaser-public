@@ -115,14 +115,12 @@ def cover_classes(rows: list[dict]) -> list[dict]:
     count, ``sec/cover_shares``), as names to ask: the spine's row of the symbol, else ``class:<CIK>:<member>``, the
     id ``prices/serving`` keys that class's count under. So the issuer cap counts every listed class, Berkshire's A
     shares too, which the spine does not hold (the server's sample, 29 Oct 2026: BRK-B's cap 0.658 of Yahoo's)."""
-    import duckdb
-
     from .. import base
     from .stage import partitions
     files = [f for _, f in partitions(base.parquet_root() / "sec" / "cover_shares", "year")]
     if not files:
         return []
-    con = duckdb.connect()
+    con = base.scratch_con()
     try:
         found = con.execute("SELECT cik, coalesce(nullif(class_member, ''), 'common'), arg_max(symbol, as_of) "
                             f"FROM read_parquet([{', '.join(base.sql_path(f) for f in files)}], union_by_name = true) "

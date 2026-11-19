@@ -135,7 +135,7 @@ class SecTickers:
                      "fetched_at": meta["fetched_at"], "run_id": meta["run_id"]}
                     for r in parse(base.read_raw_json(raw))]
             final = parquet_dir() / f"date={as_of.isoformat()}" / "part-0.parquet"
-            con = duckdb.connect()
+            con = base.scratch_con()
             try:
                 base.rows_table(con, "rows", SCHEMA, rows)
                 out.append(base.write_parquet(con, "SELECT * FROM rows ORDER BY ticker", final))

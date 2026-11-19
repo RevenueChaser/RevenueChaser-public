@@ -590,3 +590,42 @@ def test_a_build_does_not_start_without_room_for_twice_the_live_file(monkeypatch
     monkeypatch.setattr(serving.shutil, "disk_usage", lambda p: SimpleNamespace(total=0, used=0, free=10**11))
     with pytest.raises(serving.DiskTooFull):
         _build(4)
+
+
+# ── A build step's own in-memory connection (#1098) ──────────────────────────────────────────────────────────────
+
+def test_a_scratch_connection_is_capped_like_the_build_and_spills(tmp_path, monkeypatch):
+    """A bare ``duckdb.connect()`` has no limit and no spill folder, so a step that outgrows the machine is killed
+    by the kernel rather than spilling: ``connect_scratch`` gives it the build's adaptive limit and a folder."""
+    monkeypatch.setenv("RC_TMP_HDD_DIR", str(tmp_path / "hdd"))
+    monkeypatch.delenv("RC_DUCKDB_SCRATCH_MEMORY_LIMIT", raising=False)
+    monkeypatch.delenv("RC_DUCKDB_MEMORY_LIMIT", raising=False)
+    monkeypatch.setattr(serving, "available_memory", lambda: 10 * 2**30)
+    with serving.connect_scratch() as one, serving.connect_scratch() as two:
+        first = one.execute("SELECT current_setting('temp_directory')").fetchone()[0]
+        second = two.execute("SELECT current_setting('temp_directory')").fetchone()[0]
+        want = int(10 * 2**30 * serving.MEMORY_SHARE_DEFAULT)
+        assert abs(_limit_bytes(one) - want) / want < 0.02
+        # Two instances on one spill folder write over each other's blocks (the 17 Nov 2026 crashes).
+        assert first != second
+        assert Path(first).parent == tmp_path / "hdd" / "duckdb-scratch"
+        assert Path(first).name.endswith(f".tmp-{os.getpid()}")
+
+
+def test_a_scratch_connections_cap_can_be_set_on_its_own(monkeypatch):
+    monkeypatch.setenv("RC_DUCKDB_SCRATCH_MEMORY_LIMIT", "512MB")
+    assert serving.scratch_memory_limit() == "512MB"
+    monkeypatch.setenv("RC_DUCKDB_SCRATCH_MEMORY_LIMIT", "plenty")        # not a size: the machine again
+    monkeypatch.setattr(serving, "available_memory", lambda: 10 * 2**30)
+    assert serving.scratch_memory_limit() == serving.auto_memory_limit()
+
+
+def test_a_killed_processes_scratch_folder_is_swept(tmp_path, monkeypatch):
+    monkeypatch.setenv("RC_TMP_HDD_DIR", str(tmp_path / "hdd"))
+    root = tmp_path / "hdd" / "duckdb-scratch"
+    root.mkdir(parents=True)
+    dead, mine = root / "scratch-7.tmp-999999999", root / f"scratch-7.tmp-{os.getpid()}"
+    for folder in (dead, mine):
+        folder.mkdir()
+    assert serving.scratch_spill_dir().parent == root
+    assert not dead.exists() and mine.exists()                           # only a process that is gone
