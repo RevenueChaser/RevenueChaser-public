@@ -656,7 +656,7 @@ class SpineSecurity:
         # ticker then is the one today's row carries; a ticker that changed hands has no link as of that day.
         cik_now = {r["ticker"]: str(r["cik"]) for r in rows}
         link_on: dict[date, dict[str, tuple[str, str]]] = {
-            d: {t: gi for t, gi in link_of.items() if t in ts}      # MUTATION M1: the CIK check is gone
+            d: {}                                                  # MUTATION M2: no link on any snapshot
             for d, ts in on_snap.items()}
         by_cusip_all = {r["cusip"]: r["ticker"] for r in rows if r["cusip"]}
         # Each snapshot's CUSIP map, built once (not once per distinct line).
