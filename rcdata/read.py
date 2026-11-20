@@ -1185,10 +1185,11 @@ def beneficial_ownership(tickers: Iterable[str], start=None, end=None) -> list[d
 DATASET_OF_TABLE.update({"fundamental_company": "fundamentals/tables", "fundamental_fact": None, "earnings_event": None, "estimate_latest": "yfinance/estimates",
                          "filing_item": "sec/filings", "segment_revenue": None, "customer_share": None,
                          "peer_group": "fundamentals/tables", "fundamental_revision": None,
-                         "earnings_reported": "uw/earnings"})
+                         "earnings_reported": "uw/earnings", "earnings_report_history": None})
 KIND_OF_TABLE.update({t: "fundamentals" for t in ("fundamental_company", "fundamental_fact", "earnings_event", "estimate_latest",
                                                   "filing_item", "segment_revenue", "customer_share", "peer_group",
-                                                  "fundamental_revision", "earnings_reported")})
+                                                  "fundamental_revision", "earnings_reported",
+                                                  "earnings_report_history")})
 
 
 def _cik(cik) -> str:
@@ -1265,6 +1266,25 @@ def earnings_reported(cik=None) -> list[dict]:
         sql += " AND cik = ?"
         params.append(str(cik))
     return _rows("earnings_reported", sql + " ORDER BY cik, period_end", params, missing_table_ok=True)
+
+
+def earnings_report_history(cik=None, start=None, end=None) -> list[dict]:
+    """``earnings_report_history`` rows (of ``cik``, or every company) with ``start <= report_date <= end``, by
+    company and quarter: the day each past quarter's results were made public.
+
+    Compustat's ``rdq`` where it has one, UW's report day where it has none; ``source`` on every row says which.
+    A past date only: a coming report is ``earnings_event``. A file built before the table existed answers []."""
+    sql, params = "SELECT * FROM earnings_report_history WHERE true", []
+    if cik is not None:
+        sql += " AND cik = ?"
+        params.append(_cik(cik))
+    if start is not None:
+        sql += " AND report_date >= ?"
+        params.append(_day(start))
+    if end is not None:
+        sql += " AND report_date <= ?"
+        params.append(_day(end))
+    return _rows("earnings_report_history", sql + " ORDER BY cik, period_end", params, missing_table_ok=True)
 
 
 def earnings_events(cik=None, start=None, end=None) -> list[dict]:
