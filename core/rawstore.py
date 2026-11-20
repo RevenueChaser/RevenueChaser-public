@@ -1317,6 +1317,19 @@ MANIFEST: dict[str, dict] = {
         ],
         "kind": "tabular", "write": "upsert", "history_mode": "operational", "db": "news", "sources": [],
     },
+    "news_earnings": {
+        # Next week's earnings days of the names on avo's watch lists (#886, module_news/earnings.py): one row a
+        # name, written by the weekly Sunday 09:00 pass, which drops every other week first — the table is the one
+        # week the board shows. The days come from ``fundamentals.earnings_event`` (the Alpha Vantage calendar),
+        # the names from ``module_news/headlines.LISTS``; no provider is called.
+        "key": ["week_start", "ticker"],
+        "columns": [
+            "week_start DATE", "ticker TEXT", "company TEXT", "report_date DATE", "report_time TEXT",
+            "confirmed BOOLEAN", "source TEXT", "run_id TEXT", "run_at DOUBLE",
+            "PRIMARY KEY (week_start, ticker)",
+        ],
+        "kind": "tabular", "write": "upsert", "history_mode": "operational", "db": "news", "sources": [],
+    },
     "news_meta": {
         "key": ["key"],
         "columns": ["key TEXT PRIMARY KEY", "value TEXT", "run_at DOUBLE"],
