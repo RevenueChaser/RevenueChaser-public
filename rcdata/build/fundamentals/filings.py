@@ -446,7 +446,7 @@ class Filings:
     # The filing list and the header fields, the segment and customer rows cut from the filings, the
     # preliminary earnings dates, and through ``fundamental_company`` the tables cut to it.
     feeds = ("filing_item", "fundamental_company", "earnings_event", "segment_revenue", "customer_share",
-             "earnings_reported", "earnings_report_history", "peer_group")
+             "earnings_reported", "earnings_report_history", "audit_flag", "peer_group")
     cadence = "daily"
     backfill_needs_from = False
     starts_by_hand = True
