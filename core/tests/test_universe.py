@@ -307,7 +307,10 @@ def test_each_board_has_a_type_filter_default_that_keeps_its_old_set():
 def test_every_board_that_reads_the_universe_has_a_decided_type_filter_default():
     """PR 2 review S2: no board reaches its default through the ``.get`` fallback."""
     from RevenueChaser.module_settings import boards
-    readers = {e["key"] for e in boards.BOARD_INPUTS if "equity_universe" in (e.get("tables") or [])}
+    # #642 N1: the universe is a served need, not a store table a board names, so the readers are the boards whose
+    # own record names it (``identity.universe``), which is also what the Settings card draws.
+    readers = {e["key"] for e in boards.BOARD_INPUTS
+               if "identity.universe" in boards._needs_of(e["key"])["needs"]}
     assert readers, "the registry names the universe's readers"
     assert readers <= set(universe.BOARD_OPERATING_ONLY), sorted(readers - set(universe.BOARD_OPERATING_ONLY))
     assert universe.BOARD_OPERATING_ONLY["module_sector_rotation"] is False
