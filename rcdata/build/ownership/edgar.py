@@ -5,7 +5,11 @@ request per filing, and a time budget per run.
 day's filings: a preamble, the header ``CIK|Company Name|Form Type|Date Filed|File Name`` and a rule, then one row per
 filing and filer (a Form 4 or a Schedule 13D/G is listed under each of its parties; one accession is fetched once).
 An answer without that header is refused. The index is kept under ``raw/sec/daily_index/`` and read by every feed:
-one request per day for all three. A day is asked once it has ended (the walk stops at the day before the run's
+one request per day for all three. For the one stretch EDGAR keeps no daily index for although it was open
+(``base.INDEX_GAPS``: 2014 Q2) the day's rows come from the **quarter's** index instead
+(``full-index/<YYYY>/QTR<q>/master.idx``, kept under ``raw/sec/full_index/``, one request per quarter), which
+lists the same filings with their filed dates (``read_quarter``, #561); without it those three months hold no
+filing at all. A day is asked once it has ended (the walk stops at the day before the run's
 as-of). A day with no index object (a weekend is never asked; EDGAR keeps the **federal** holidays, so Columbus Day
 and Veterans Day have no index although the NYSE trades) answers **403**, not 404 — see ``base.is_missing`` — and is
 marked absent (``.none``) once it is more than ``SETTLED`` old; a younger one is asked again on the next run. The
@@ -37,7 +41,8 @@ Checked against sec.gov on 2026-10-28: the index of 2026-10-27 and that day's 13
 stopped at its budget) and Schedule 13D/G (248) filings, every one typed. Checked again on 2026-10-30: every weekday
 index from 2025-01-01 answers 200 except the federal holidays, which answer the 403 below. Checked on 2026-11-08 for every
 weekday 2014-01-01..2026-11-04 (#507): 205 have no index, every one a federal holiday, a closure by executive order
-(``calendar.EXTRA_FEDERAL_CLOSURES``) or the 2014 Q2 gap (``base.INDEX_GAPS``).
+(``calendar.EXTRA_FEDERAL_CLOSURES``) or the 2014 Q2 gap (``base.INDEX_GAPS``). Checked on 2026-11-20 (#561): the
+quarterly index of that gap answers 200 and carries rows for all 64 open days of the quarter.
 """
 from __future__ import annotations
 
@@ -59,10 +64,16 @@ from ..spine.stage import partitions
 from . import KIND, common, sec
 
 INDEX_PATH = "/Archives/edgar/daily-index/{year}/QTR{q}/master.{ymd}.idx"
+# The quarter's own index, which lists the same filings with their filed dates: what a day in a gap in the daily
+# index is read from (``read_quarter``, #561).
+QUARTER_PATH = "/Archives/edgar/full-index/{year}/QTR{q}/master.idx"
 INDEX_HEADER = "CIK|Company Name|Form Type|Date Filed|File Name"
 SETTLED = timedelta(days=3)
 FIRST_LOOKBACK = timedelta(days=3)
 DONE, MANIFEST, START = ".done", "manifest.jsonl", "start.json"
+# Beside a gap day's filings: this day was read from the quarterly index, so its ``.done`` is one that saw the
+# filings (``Feed.walked``, #561).
+QUARTER = ".quarter"
 ROLES = ("FILER", "SUBJECT COMPANY", "FILED BY", "REPORTING-OWNER", "ISSUER")
 
 
@@ -81,7 +92,25 @@ def index_none(day: date) -> Path:
 
 
 def index_url(day: date) -> str:
-    return sec.www_base() + INDEX_PATH.format(year=day.year, q=(day.month - 1) // 3 + 1, ymd=f"{day:%Y%m%d}")
+    return sec.www_base() + INDEX_PATH.format(year=day.year, q=quarter(day), ymd=f"{day:%Y%m%d}")
+
+
+def quarter(day: date) -> int:
+    return (day.month - 1) // 3 + 1
+
+
+def quarter_dir() -> Path:
+    return base.raw_root() / "sec" / "full_index"
+
+
+def quarter_path(day: date) -> Path:
+    """Where ``day``'s quarterly index is kept. Its own folder, not ``daily_index/``, which two feeds glob for the
+    days the archive is known to hold (``kept_index_days``, and the scan in ``fundamentals/sec_index.py``)."""
+    return quarter_dir() / f"master.{day.year}QTR{quarter(day)}.idx.gz"
+
+
+def quarter_url(day: date) -> str:
+    return sec.www_base() + QUARTER_PATH.format(year=day.year, q=quarter(day))
 
 
 # An index day the ``/Archives/`` bucket does not hold answers 403, not 404: ``base.is_missing`` reads the answer's
@@ -148,9 +177,10 @@ def ymd(text) -> date | None:
         return None
 
 
-def parse_index(body: bytes) -> list[dict]:
+def parse_index(body: bytes, filed: date | None = None) -> list[dict]:
     """The index rows as ``{cik, company, form, filed, path, accession}``; ``SourceError`` when the answer is not
-    the index."""
+    the index. ``filed`` keeps only the rows of that day, dropped before a row is built: the quarterly index is
+    22 MB and a quarter of rows (252,374 for 2014 Q2, measured 2026-11-20), and one day's are a few thousand."""
     lines = body.decode("latin-1").splitlines()
     start = next((i for i, ln in enumerate(lines) if ln.strip() == INDEX_HEADER), None)
     if start is None:
@@ -160,8 +190,11 @@ def parse_index(body: bytes) -> list[dict]:
         parts = [p.strip() for p in ln.split("|")]
         if len(parts) != 5 or not parts[0].isdigit():
             continue
-        cik, company, form, filed, path = parts
-        rows.append({"cik": str(int(cik)), "company": company, "form": form.upper(), "filed": ymd(filed),
+        cik, company, form, when, path = parts
+        day = ymd(when)
+        if filed is not None and day != filed:
+            continue
+        rows.append({"cik": str(int(cik)), "company": company, "form": form.upper(), "filed": day,
                      "path": path, "accession": Path(path).stem})
     return rows
 
@@ -175,10 +208,43 @@ class Index(NamedTuple):
     answered: bool = False
 
 
+def read_quarter(ctx: base.RunContext, pacer: sec.Pacer, day: date) -> Index:
+    """``day``'s rows from its quarter's **full** index, for a day in a gap in the daily index
+    (``base.index_gap``). ``Index(None)`` when the archive holds no quarterly index either, so the walk falls back
+    to writing the day off as it did before. One request per quarter, kept like a daily index; the same pacer, so
+    the pacing and the User-Agent are the walk's. A 200 is the index path's own answer (``Index.answered``): it is
+    the same ``/Archives/`` bucket, so it releases the day markers the walk is holding, as a daily 200 does.
+
+    Measured on sec.gov 2026-11-20 (#561) for the one gap there is: ``full-index/2014/QTR2/master.idx`` answers
+    200, 22.5 MB, 252,374 rows with ``Date Filed`` filled in, and carries rows for all 64 open days of the
+    quarter -- 107,395 Form 4, 5,807 Schedule 13D/G, 4,015 13F-HR. Compared with the daily index of an open day
+    outside the gap (2026-07-01), the two agree row for row on every form these feeds read; they differ only in
+    administrative ones (UPLOAD, CORRESP, EFFECT, X-17A-5), which no feed here walks."""
+    path = quarter_path(day)
+    if path.exists():
+        return Index(parse_index(base.read_raw(path), filed=day))
+    url = quarter_url(day)
+    r = sec.get(ctx, pacer, url, accept=(403, 404))
+    if base.is_missing(r):
+        return Index(None)
+    if r.status_code >= 400:
+        raise base.SourceError(f"{sec.PROVIDER} {url}: HTTP {r.status_code}{base.refusal_note()}")
+    rows = parse_index(r.content, filed=day)
+    base.write_raw(path, r.content)
+    return Index(rows, True)
+
+
 def read_index(ctx: base.RunContext, pacer: sec.Pacer, day: date) -> Index:
     """The index of ``day``, from the raw file once fetched. Writes no marker of its own: whether a day with no
     index object is written off is the walk's decision (``_Held``). A 403 that is a refusal and not a missing
-    object raises ``SourceError``."""
+    object raises ``SourceError``.
+
+    A day in a known gap in the daily index (``base.index_gap``) is read from its quarter's full index instead
+    (``read_quarter``), before any marker: the archive keeps no daily object for it at all, so asking again is a
+    request that can only answer 403, and a day an earlier run wrote off for want of a daily index is the very day
+    this reads the filings of."""
+    if base.index_gap(day) is not None:
+        return read_quarter(ctx, pacer, day)
     if index_none(day).exists():
         return Index([])
     if index_path(day).exists():
@@ -400,6 +466,19 @@ class Feed:
     def is_done(self, day: date) -> bool:
         return (self.day_dir(day) / DONE).exists()
 
+    def quarter_read(self, day: date) -> Path:
+        return self.day_dir(day) / QUARTER
+
+    def walked(self, day: date) -> bool:
+        """Whether the walk is finished with ``day``. A day in a gap in EDGAR's daily index (``base.index_gap``) is
+        finished only once its filings were read from the quarterly index (#561): a run before that fix wrote such
+        a day off with no filing read at all, and its ``.done`` would hide the quarter's rows for good. So that day
+        is walked once more, and the marker this writes keeps it from being walked a third time -- which a manifest
+        cannot, because a gap day with none of this feed's forms in the quarter leaves none."""
+        if not self.is_done(day):
+            return False
+        return base.index_gap(day) is None or self.quarter_read(day).exists()
+
     def start_day(self, as_of: date) -> date:
         """The walk's first day: kept in ``start.json``, the as-of less ``FIRST_LOOKBACK`` when there is none."""
         path = self.raw_dir() / START
@@ -438,7 +517,7 @@ class Feed:
             absent: list[tuple[str, int]] = []      # this day's absences, for CLUSTER_MAX and the messages
             deferred: list[tuple[str, dict]] = []   # this day's transient failures (#1123), for DEFER_MAX and them
             wrote = 0                               # of them already written off, after a probe answered
-            if day.weekday() < 5 and not self.is_done(day):
+            if day.weekday() < 5 and not self.walked(day):
                 if budget_s is not None and ctx.clock() - t0 >= budget_s:
                     complete += self._release(ctx, pacer, held)
                     return self._stopped(ctx, complete, partial, fetched)
@@ -468,6 +547,13 @@ class Feed:
                                                 "closed": calendar.is_federal_holiday(day)}))
                     day -= timedelta(days=1)
                     continue
+                if base.index_gap(day) is not None:
+                    # Its rows came from the quarterly index (``read_quarter``): the day has been seen with its
+                    # filings, so a ``.done`` written from here on is one ``walked`` may trust.
+                    base.write_raw_json(self.quarter_read(day), {"rows": len(index.rows), "run_id": ctx.run_id,
+                                                                 "url": quarter_url(day)})
+                    ctx.notes.append(f"{day}: no daily index (a gap in EDGAR's daily index), "
+                                     f"{len(index.rows)} filings read from the quarterly index instead")
                 wanted: dict[str, dict] = {}
                 for r in index.rows:
                     if r["form"] in self.forms:
