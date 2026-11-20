@@ -17,7 +17,7 @@ def locate(ticker: str, name: str, form: str | None, text: str, *, budget=None, 
            model: str | None = None, client=None) -> str | None:
     """The business section of ``text`` (a whole filing) as the writer places it, or None.
 
-    No ``provider`` means the registry's default writer, which has no fee (``profiles.llm``); it was the paid
+    No ``provider`` means ``config.default_writer()``, which has no fee (``profiles.llm``); it was the paid
     DeepSeek until 20 Nov 2026 (avo: "Fetch ve build sirasinda deepseek api kullanilan islem kalmasin").
 
     One call (counted by ``budget``), JSON mode, no thinking, cached like a profile chunk. A reply that names no

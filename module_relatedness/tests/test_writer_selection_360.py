@@ -87,14 +87,21 @@ def test_the_default_writer_is_evren(rawstore_tmp_db):
 # Every one of these defaulted to the paid writer, so a caller that forgot the argument spent money. The scheduled
 # Fetch always passed the board's writer, so nothing scheduled changes; the hazard was the omitted argument.
 
-def test_a_module_call_without_a_writer_runs_on_the_free_one():
+# This folder's ``_deepseek_default`` fixture pins the writer to DeepSeek, because its tests drive that writer;
+# these two are about the default itself, so they put the registry's own back.
+
+def test_a_module_call_without_a_writer_runs_on_the_free_one(monkeypatch):
+    from RevenueChaser.module_relatedness import config as rel_config
     from RevenueChaser.module_relatedness import profiles as profiles_mod
-    assert engine.DEFAULT_WRITER == writers.DEFAULT and not writers.get(engine.DEFAULT_WRITER).paid
+    assert writers.DEFAULT == "evren" and not writers.get(writers.DEFAULT).paid
+    monkeypatch.setattr(rel_config, "default_writer", lambda: writers.DEFAULT)
     assert profiles_mod.llm() is profiles_mod._writers().client("evren")
     assert profiles_mod.llm() is not deepseek
 
 
-def test_a_profile_saved_without_a_writer_names_the_free_one(rawstore_tmp_db):
+def test_a_profile_saved_without_a_writer_names_the_free_one(rawstore_tmp_db, monkeypatch):
+    from RevenueChaser.module_relatedness import config as rel_config
+    monkeypatch.setattr(rel_config, "default_writer", lambda: writers.DEFAULT)
     store.save_profile("ZZZ", "1", {}, "{}", "a-model")
     rows = [r for r in rawstore.get_all("relatedness_profiles") if r["ticker"] == "ZZZ"]
     assert [r.get("provider") for r in rows] == ["evren"]

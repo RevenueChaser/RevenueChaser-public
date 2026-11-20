@@ -58,11 +58,11 @@ def llm(provider: str = ""):
     ``complete`` (same signature) and ``MODEL``; ``complete`` is looked up at call time, so a test that patches
     ``deepseek.complete`` still reaches the profile path.
 
-    No argument means the registry's default writer, which is unpaid (``llm_writers.DEFAULT``, EVREN). It was the
+    No argument means ``config.default_writer()``, the registry's default, which is unpaid (EVREN). It was the
     paid DeepSeek module until 20 Nov 2026 (avo: "Fetch ve build sirasinda deepseek api kullanilan islem kalmasin
     hepsi evren deepseek olmali"): a caller that forgot the argument spent money, which no default should do.
     """
-    provider = provider or _writers().DEFAULT
+    provider = provider or config.default_writer()
     if provider == "deepseek":
         return deepseek
     if provider not in PROVIDERS:

@@ -101,17 +101,15 @@ def save_profile(ticker: str, cik, profile: dict, cache_key_value: str,
                  profile_json=KEEP, label_source=KEEP, accession=KEEP) -> None:
     """Write one ticker's profile row and its attribute rows in one transaction.
 
-    ``provider`` is the writer the row names; left out, the registry's default (it named the paid DeepSeek until
-    20 Nov 2026, so a caller that forgot it stamped a writer that had not been called).
+    ``provider`` is the writer the row names; left out, ``config.default_writer()`` (it named the paid DeepSeek
+    until 20 Nov 2026, so a caller that forgot it stamped a writer that had not been called).
     ``profile_json`` / ``label_source`` (schema 13, #401) are the v3 structured profile and where each field came
     from. Left out (``KEEP``), the stored values are carried: ``relatedness_profiles`` is an upsert that sets every
     column from the row, so a re-save that named neither column used to set both to NULL (#400). Pass ``None`` to
     clear them. ``accession`` (plan v31 step 1(d)) is the filing the profile was written from, carried the same way.
     """
     t = ticker.upper()
-    if not provider:
-        from RevenueChaser.core import llm_writers
-        provider = llm_writers.DEFAULT
+    provider = provider or config.default_writer()
     rows = [{"ticker": t, "field": f,
              "value": json.dumps(profile.get(f) or [], ensure_ascii=False),
              "value_num": None} for f in config.PROFILE_FIELDS]

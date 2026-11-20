@@ -129,7 +129,8 @@ DeepSeek API is reachable only when a caller names it — `--provider deepseek`,
 process, or the Settings page. Since 20 Nov 2026 no function's writer argument *defaults* to the paid writer
 either: `module_relatedness` (`engine.run`, `engine.score`, `engine.build_profiles`, `profiles.llm`,
 `profiles.profile_for`, `locator.locate`, `store.save_profile`) carried `provider="deepseek"` as its default, so a
-caller that forgot the argument spent money. The default is now `core.llm_writers.DEFAULT` and
+caller that forgot the argument spent money. The writer a call names none for is now read at call time, in one
+place (`module_relatedness/config.py` `default_writer()` -> `core.llm_writers.DEFAULT`), and
 `core/tests/test_llm_jobs_404.py` fails any writer argument in the tree that defaults to a paid provider.
 
 ## Tests
