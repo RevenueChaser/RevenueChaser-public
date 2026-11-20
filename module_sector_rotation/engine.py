@@ -345,6 +345,12 @@ def weekly_closes(points, as_of: date) -> list[float]:
     return list(_weekly(points, week_cut(as_of)).values())
 
 
+def weekly_week_keys(points, as_of: date) -> list[tuple]:
+    """The ISO ``(year, week)`` of each close ``weekly_closes`` returns, in the same order, so a caller can name the
+    weeks a series is on."""
+    return list(_weekly(points, week_cut(as_of)))
+
+
 def aligned_weekly_closes(points, benchmark_points, as_of: date, carry_weeks: int = 0) -> list[float]:
     """``weekly_closes`` of one symbol lined up with the benchmark's completed ISO weeks, so the lookbacks (counted
     from the end of both lists) compare the same weeks.

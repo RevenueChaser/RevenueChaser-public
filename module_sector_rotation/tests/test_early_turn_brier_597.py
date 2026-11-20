@@ -16,8 +16,10 @@ from RevenueChaser.module_sector_rotation.early_turn import (
     caption,
     flagged_weeks,
     is_early_turn,
+    points_from_prices,
     weekly_points,
 )
+from RevenueChaser.module_sector_rotation.tests.bars_seed import ny, pin_clock, seed
 
 FRIDAY = date(2026, 8, 7)              # a Friday: the last session of its ISO week
 
@@ -186,3 +188,55 @@ class TestBandScan:
         row = band_scan(rows, bands=(0.25,))[0]
         assert row["mean_weeks_in_quadrant"] == pytest.approx(12.0)
         assert (row["weeks"], row["tickers"]) == (12, 1)
+
+
+class TestTheWeeklyPairCanComeFromAnywhere:
+    """The stored snapshots were three weeks long when this was measured on homesrv (20 Nov 2026), so the band and
+    the score take weekly points from the prices store too."""
+
+    def test_a_weekly_pair_is_scored_instead_of_the_stored_rows(self):
+        rows = history({"A": TestBrier.HIT, "B": TestBrier.MISS})
+        from_rows = brier(rows, horizon_weeks=2)
+        from_pair = brier(horizon_weeks=2, weekly=weekly_points(rows))
+        assert from_pair == from_rows
+
+    def test_the_band_table_takes_a_weekly_pair_too(self):
+        rows = history({"ITA": [(0.1 if i % 2 == 0 else -0.1, 1.0) for i in range(12)]})
+        assert band_scan(bands=(0.25,), weekly=weekly_points(rows)) == band_scan(rows, bands=(0.25,))
+
+
+class TestPointsFromPrices:
+    """Rebuilt from the stored daily bars: no snapshot history needed and nothing written."""
+
+    def test_every_series_lines_up_with_the_benchmark_weeks(self, rawstore_tmp_db, monkeypatch):
+        pin_clock(monkeypatch, ny(2026, 8, 14, 18))
+        base = date(2026, 8, 14)
+        seed("SPY", base, closes=lambda i: 100.0 + i)
+        seed("XLK", base, closes=lambda i: 100.0 + i * 1.01)
+        weeks, points = points_from_prices(base, weeks=40)
+        assert weeks[-1] == "2026-08-16", "the week of Friday 14 Aug is named by the Sunday that ends it"
+        assert len(weeks) == 40
+        assert len(points["XLK"]) == 40 and points["XLK"][-1] is not None
+
+    def test_a_ticker_the_store_has_too_little_history_of_is_left_out(self, rawstore_tmp_db, monkeypatch):
+        pin_clock(monkeypatch, ny(2026, 8, 14, 18))
+        base = date(2026, 8, 14)
+        seed("SPY", base, closes=lambda i: 100.0 + i)
+        seed("XLE", base, start=date(2026, 1, 5), closes=lambda i: 100.0 + i)
+        weeks, points = points_from_prices(base, weeks=40)
+        assert weeks, "the benchmark has its weeks"
+        assert "XLE" not in points
+
+    def test_an_empty_prices_store_measures_nothing(self, rawstore_tmp_db, monkeypatch):
+        pin_clock(monkeypatch, ny(2026, 8, 14, 18))
+        assert points_from_prices(date(2026, 8, 14)) == ([], {})
+
+    def test_the_week_names_follow_the_closes_they_label(self, rawstore_tmp_db, monkeypatch):
+        from RevenueChaser.module_sector_rotation.engine import weekly_closes, weekly_week_keys
+        pin_clock(monkeypatch, ny(2026, 8, 14, 18))
+        base = date(2026, 8, 14)
+        seed("SPY", base, closes=lambda i: 100.0 + i)
+        from RevenueChaser.module_sector_rotation.engine import bar_points
+        pts = bar_points(["SPY"], date(2025, 3, 3), base)["SPY"]
+        assert len(weekly_week_keys(pts, base)) == len(weekly_closes(pts, base))
+        assert weekly_week_keys(pts, base)[-1] == tuple(date(2026, 8, 14).isocalendar())[:2]

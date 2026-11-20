@@ -88,6 +88,36 @@ def weekly_points(by_day: dict) -> tuple[list[str], dict[str, list]]:
     return weeks, points
 
 
+def points_from_prices(as_of: date, weeks: int = 156, benchmark: str = "SPY") -> tuple[list[str], dict[str, list]]:
+    """``(weeks, {ticker: points})`` like ``weekly_points``, rebuilt from the **prices store** instead of the stored
+    snapshots: every RRG ticker's A1 path over the completed weeks up to ``as_of``, through the same
+    ``engine.jdk_series`` the board computes its dot with.
+
+    Reads the prices store once (``engine.bar_points``) and writes nothing, so the band and the score can be
+    measured over years of weeks without waiting for snapshots to accumulate and without a live write. A week is
+    named by the Sunday that ends it, as ``completed_week`` names a stored session's. A ticker whose series starts
+    later than the benchmark's is padded at the front with gaps, so every series lines up with the weeks returned;
+    one with under ``engine.MIN_WEEKS`` weekly closes is left out, as it is left off the map.
+    """
+    from datetime import timedelta
+    pts = engine.bar_points([benchmark, *engine.rrg_tickers()],
+                            as_of - timedelta(weeks=weeks + engine.READ_WEEKS), as_of)
+    bench = pts.get(benchmark) or []
+    benchmark_weekly = engine.weekly_closes(bench, as_of)
+    if len(benchmark_weekly) < engine.MIN_WEEKS:
+        return [], {}
+    labels = [date.fromisocalendar(y, w, 7).isoformat() for y, w in engine.weekly_week_keys(bench, as_of)]
+    out: dict[str, list] = {}
+    for ticker in engine.rrg_tickers():
+        closes = engine.aligned_weekly_closes(pts.get(ticker) or [], bench, as_of)
+        if len(closes) < engine.MIN_WEEKS:
+            continue
+        series = engine.jdk_series(closes, benchmark_weekly)
+        series = [None] * (len(labels) - len(series)) + series       # line the start up with the benchmark's weeks
+        out[ticker] = series[-weeks:]
+    return labels[-weeks:], out
+
+
 def flagged_weeks(series: list, band: float | None = None) -> list[bool]:
     """``is_early_turn`` for every week of one ticker's ``weekly_points`` series. ``band`` is unused by the rule and
     accepted so a caller can pass the one it scores with."""
@@ -111,7 +141,8 @@ def _mean(values) -> float | None:
     return sum(values) / len(values) if values else None
 
 
-def brier(by_day: dict, horizon_weeks: int = HORIZON_WEEKS, band: float | None = None) -> dict:
+def brier(by_day: dict | None = None, horizon_weeks: int = HORIZON_WEEKS, band: float | None = None,
+          *, weekly: tuple | None = None) -> dict:
     """Score the early-turn flag on the stored snapshots: a hit rate and a Brier score.
 
     The pool is every (week, ticker) point whose ratio is below 100 (the half of the map the flag picks from), whose
@@ -124,9 +155,13 @@ def brier(by_day: dict, horizon_weeks: int = HORIZON_WEEKS, band: float | None =
     ``brier_base`` = the Brier score of forecasting that base rate on the same flagged weeks; and ``skill`` = how
     much better than the base rate the flag is (above 0 = better, 0 = no better, below 0 = worse). ``flags_pending``
     counts flags whose horizon has not run out yet — they are left out of the score, never counted as misses.
+
+    ``weekly`` is a ``(weeks, points)`` pair from ``weekly_points`` or ``points_from_prices``, scored instead of
+    ``by_day``: the stored snapshots are three weeks long (measured on homesrv, 20 Nov 2026), far too short for an
+    8-week horizon, while the prices store holds years.
     """
     band = engine.QUADRANT_BAND if band is None else band
-    weeks, points = weekly_points(by_day)
+    weeks, points = weekly if weekly is not None else weekly_points(by_day or {})
     pool: list[tuple[str, str, bool, bool]] = []            # (week, ticker, flagged, outcome)
     pending = 0
     for ticker, series in points.items():
@@ -184,15 +219,16 @@ def caption(result: dict) -> str:
 BAND_CANDIDATES = (0.0, 0.1, 0.15, 0.2, 0.25, 0.3, 0.5, 1.0)
 
 
-def band_scan(by_day: dict, bands=BAND_CANDIDATES) -> list[dict]:
+def band_scan(by_day: dict | None = None, bands=BAND_CANDIDATES, *, weekly: tuple | None = None) -> list[dict]:
     """Per candidate band, read off the stored snapshots: how many weekly quadrant changes the map would have had,
     how many of those are **one-week round trips** (a quadrant left for a single week and taken again — the flip a
     band is there to remove), and the mean number of weeks a ticker stays in one quadrant.
 
     This is the table #597 asks the band to be re-measured on: the band to keep is the smallest one that takes the
-    round trips away without stretching the mean stay much. Pure; the caller passes ``store.load_range`` rows.
+    round trips away without stretching the mean stay much. Pure; the caller passes ``store.load_range`` rows, or a
+    ``weekly`` ``(weeks, points)`` pair (``points_from_prices``) when the stored snapshots are too few to say.
     """
-    weeks, points = weekly_points(by_day)
+    weeks, points = weekly if weekly is not None else weekly_points(by_day or {})
     rows = []
     for band in bands:
         changes = round_trips = runs = run_weeks = 0
