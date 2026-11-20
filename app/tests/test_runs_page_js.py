@@ -66,7 +66,8 @@ def _default_limit(script: str) -> str:
 def _row_cells(client, tmp_path, row: dict) -> list[dict]:
     """The cells ``line(row)`` builds, as ``{cls, text, title, pill}`` in column order."""
     script = _page_js(client)
-    funcs = "\n".join(function_source(script, name) for name in ("stamp", "took", "text", "cell", "line"))
+    funcs = "\n".join(function_source(script, name)
+                      for name in ("stamp", "took", "text", "cell", "stepsCell", "line"))
     clip = next(ln for ln in script.splitlines() if ln.strip().startswith("var CLIP"))
     tail = f"console.log(JSON.stringify(_cells(line({json.dumps(row)}))));"
     return _node(DOM_STUB + RECORDING_DOM + clip + "\n" + funcs + "\n" + tail, tmp_path)
@@ -105,8 +106,23 @@ def test_a_running_row_says_going_rather_than_a_duration(client, tmp_path):
 
 def test_an_error_is_shown_in_the_note_column(client, tmp_path):
     cells = _row_cells(client, tmp_path, dict(ROW, status="error", error="exit 1", duration_s=285.9))
-    assert cells[5]["text"] == "exit 1"
+    assert cells[6]["text"] == "exit 1"
     assert cells[3]["pill"] == "pill s-error"
+
+
+def test_the_steps_of_a_run_are_one_cell_with_the_whole_of_it_in_the_tooltip(client, tmp_path):
+    """#1205: the seconds inside a run. The cell is built from several nodes, so the tooltip is what a string
+    assertion can read back; the phone layout needs them under one wrapper (one grid row, not one per step)."""
+    row = dict(ROW, steps=[{"name": "fetch", "seconds": 71.2}, {"name": "build", "seconds": 1021.5},
+                           {"name": "swap", "seconds": 1.2}])
+    cells = _row_cells(client, tmp_path, row)
+    assert cells[5]["title"] == "fetch 1m 11s · build 17m 2s · swap 1s"
+    assert "steps" in cells[5]["cls"] and "dash" not in cells[5]["cls"]
+
+
+def test_a_run_with_no_steps_shows_a_dash_and_never_a_zero(client, tmp_path):
+    cells = _row_cells(client, tmp_path, dict(ROW, steps=[]))
+    assert cells[5]["text"] == "—" and "dash" in cells[5]["cls"]
 
 
 # ── the meta line ─────────────────────────────────────────────────────────────
@@ -118,21 +134,34 @@ def _meta(client, tmp_path, payload: dict, paused: bool = False) -> str:
     return _node(DOM_STUB + function_source(script, "metaText") + "\n" + tail, tmp_path)
 
 
-def test_the_meta_line_counts_the_matching_runs_not_the_page(client, tmp_path):
-    """SHOULD 3's other half: with the filter in SQL, "0 of 0" is about the table, and a capped read says so."""
-    assert _meta(client, tmp_path, {"shown": 37, "total": 37, "problems": True, "query": ""}) \
-        == "37 of 37 problem runs"
-    # shown < total can only mean the read hit its limit, so the line says which rows were looked at.
-    assert _meta(client, tmp_path, {"shown": 12, "total": 37, "problems": True, "query": ""}) \
-        == "12 of 37 problem runs · the newest 12 are read"
-    assert _meta(client, tmp_path, {"shown": 200, "total": 5000, "problems": False, "query": ""}) \
-        == "200 of 5000 recorded runs · the newest 200 are read"
-    assert _meta(client, tmp_path, {"shown": 0, "total": 0, "problems": True, "query": ""}) \
-        == "0 of 0 problem runs"
-    assert _meta(client, tmp_path, {"shown": 3, "total": 3, "problems": False, "query": "daily"}) \
-        == '3 of 3 recorded runs matching "daily"'
-    assert _meta(client, tmp_path, {"shown": 1, "total": 1, "problems": False, "query": ""}, paused=True) \
-        == "1 of 1 recorded runs · paused"
+def test_the_meta_line_names_the_window_the_rows_were_read_under(client, tmp_path):
+    """SHOULD 3's other half: the filters now run over the page that was read (#1205), so the line says how big
+    that page was — "0 problem runs" can never be read as "nothing ever failed"."""
+    assert _meta(client, tmp_path, {"shown": 37, "read": 37, "problems": True, "query": ""}) \
+        == "37 problem runs of the newest 37 recorded"
+    assert _meta(client, tmp_path, {"shown": 12, "read": 200, "problems": True, "query": ""}) \
+        == "12 problem runs of the newest 200 recorded"
+    assert _meta(client, tmp_path, {"shown": 0, "read": 200, "problems": True, "query": ""}) \
+        == "0 problem runs of the newest 200 recorded"
+    assert _meta(client, tmp_path, {"shown": 3, "read": 3, "problems": False, "query": "daily"}) \
+        == '3 runs matching "daily" of the newest 3 recorded'
+    assert _meta(client, tmp_path, {"shown": 1, "read": 1, "problems": False, "query": ""}, paused=True) \
+        == "1 runs of the newest 1 recorded · paused"
+
+
+def test_the_meta_line_says_when_a_run_left_no_record(client, tmp_path):
+    """The audit's own words (#1205). A store that could not be asked says nothing rather than "0 missing"."""
+    audit = {"checked": True, "missing_root": 2, "no_chain": 1}
+    assert _meta(client, tmp_path, {"shown": 9, "read": 9, "problems": False, "query": "", "audit": audit}) \
+        == "9 runs of the newest 9 recorded · 2 chains whose own run left no row · 1 row with no chain id"
+    quiet = {"checked": False, "missing_root": 0, "no_chain": 0}
+    assert _meta(client, tmp_path, {"shown": 9, "read": 9, "problems": False, "query": "", "audit": quiet}) \
+        == "9 runs of the newest 9 recorded"
+
+
+def test_the_meta_line_says_when_the_log_itself_could_not_be_read(client, tmp_path):
+    assert _meta(client, tmp_path, {"shown": 0, "read": 0, "problems": False, "query": "", "ok": False}) \
+        == "0 runs of the newest 0 recorded · the run log could not be read"
 
 
 def test_the_page_asks_the_server_for_the_filter(client, tmp_path):

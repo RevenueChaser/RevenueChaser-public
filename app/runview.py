@@ -42,6 +42,12 @@ POLL_PATH = "/api/runs"
 BAD = frozenset({"failed", "error", "cancelled", "lost"})
 #: How many offending chains the audit names, so one broken writer cannot fill the payload.
 AUDIT_NAMES = 10
+#: The order a builder run's steps really run in (``rcdata/build/base.py``: ``start`` before the first named one,
+#: then the fetch half, then the build half). The stored dict cannot say it: ``ops._json`` writes the ``counts``
+#: column with ``sort_keys=True``, so a row read back has its steps in alphabetical order, whatever order they
+#: were stamped in (CI on this PR, unit 4/6, on the Redis backend). A step this list does not name is shown after
+#: the ones it does, in the order the row holds, rather than being dropped or guessed at.
+STEP_ORDER = ("start", "fetch", "parquet", "backfill", "build", "check", "swap", "after_swap")
 
 
 def clamp_limit(value) -> int:
@@ -68,7 +74,11 @@ def _seconds(start, end) -> float | None:
 
 
 def _steps(counts) -> list[dict]:
-    """``counts["steps"]`` as ``[{name, seconds}]`` in the order the builder recorded them (#1198), or []."""
+    """``counts["steps"]`` as ``[{name, seconds}]`` in the order the steps run (``STEP_ORDER``), or [].
+
+    #1198 stamps them in order, but the column is written with sorted keys, so the order has to be put back
+    here. A name the builder does not use keeps the row's own order, after the known ones.
+    """
     steps = (counts or {}).get("steps") if isinstance(counts, dict) else None
     if not isinstance(steps, dict):
         return []
@@ -78,7 +88,8 @@ def _steps(counts) -> list[dict]:
             out.append({"name": str(name), "seconds": round(float(secs), 3)})
         except (TypeError, ValueError):
             continue                               # a step whose number is unreadable is left out, never guessed
-    return out
+    known = {name: i for i, name in enumerate(STEP_ORDER)}
+    return sorted(out, key=lambda s: known.get(s["name"], len(known)))
 
 
 def _day(epoch) -> str | None:

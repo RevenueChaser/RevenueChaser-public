@@ -59,6 +59,16 @@ def test_a_run_with_no_end_has_no_duration_and_a_step_that_is_not_a_number_is_le
     assert row["steps"] == [{"name": "fetch", "seconds": 12.0}], "a step is shown as recorded or not at all"
 
 
+def test_the_steps_are_put_back_in_the_order_they_run_not_the_order_the_store_holds():
+    """``ops._json`` writes ``counts`` with sorted keys, so a stored run's steps come back alphabetically:
+    ``build`` before ``fetch`` before ``swap``. The page must still read fetch → build → swap (CI on #1206,
+    unit 4/6, Redis backend). A name the builder does not use goes after the ones it does."""
+    row = runview.view_row(_stored("r9", dataset="d", steps={"build": 3.0, "check": 1.0, "fetch": 2.0,
+                                                             "start": 0.1, "swap": 0.5, "zebra": 9.0}))
+    assert [s["name"] for s in row["steps"]] == ["start", "fetch", "build", "check", "swap", "zebra"]
+    assert runview.STEP_ORDER[:2] == ("start", "fetch")
+
+
 def test_a_run_recorded_before_the_step_record_simply_has_no_steps():
     assert runview.view_row(_stored("r5", dataset="d", steps=None))["steps"] == []
 
