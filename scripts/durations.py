@@ -15,6 +15,10 @@ Each argument is a ``tests`` workflow run that ran the FULL unit tier. The scrip
 that hold each file. Several runs are asked for on purpose: a GitHub runner's speed drifts by a fifth from one
 run to the next (measured on #896, 19 Nov 2026), and one run alone would write that drift into the table.
 
+When a file is split, its successors have no run of their own yet: their entries are the measured means of the
+tests that moved, apportioned by hand in the commit that splits them (#1153 did that for ``test_ownership_serve``
+and ``test_prices_incremental``), and the next rebuild from a FULL run replaces the estimate with a measurement.
+
 The times are the junit ``time`` of each test, which under ``pytest -n auto`` is wall time with the other workers
 of its own shard beside it. That is the number the shard split wants: it is what the file will cost again in CI,
 not what it would cost alone.
