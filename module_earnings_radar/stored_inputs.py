@@ -242,7 +242,7 @@ def screener_rows(tickers, today=None) -> dict[str, dict]:
         if ticker not in wanted or _as_date(row.get("session_date")) != session:
             continue
         day = _as_date(row.get("next_earnings_date"))
-        if day is None or day in live_always:
+        if day is None:                           # MUTANT M2
             continue
         out[ticker] = _screener_item(row)
     return out

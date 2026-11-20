@@ -80,7 +80,7 @@ def augment_calendar(uw, events: list, raw_cal: dict, wl: set, start: date, end:
         logger.warning(f"Watchlist augmentation: the served screener set could not be read: {e}")
         stored = {}
     counts["stored"] = len(stored)
-    live_names = [t for t in missing if t not in stored]
+    live_names = list(missing)                    # MUTANT M3
     counts["live"] = len(live_names)
 
     before = {e["ticker"] for e in events}
