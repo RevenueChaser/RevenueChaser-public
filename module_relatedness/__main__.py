@@ -29,8 +29,8 @@ exits 3.
 
 The run is off-peak gated (``core.offpeak``): at peak it stops cleanly and reports
 the next off-peak time; completed profiles are durable and resume next run. Theme
-naming (``--name-themes``) is off-peak too and stops the same way, keeping the
-names already written. ``--cutover`` is store-only (no LLM) and takes a shadow
+naming (``--name-themes``) stops the same way, keeping the names already written;
+its off-peak gate is its writer's, so EVREN's naming run is not gated at all. ``--cutover`` is store-only (no LLM) and takes a shadow
 run id: the current (live) run is refused, so build a new one with
 ``--rebuild-themes``. ``--rebuild-themes`` refuses the current run id too.
 
@@ -38,7 +38,7 @@ run id: the current (live) run is refused, so build a new one with
 universe ``--rebuild-themes`` fits. Without either, ``--run`` profiles the whole classification universe and the fit
 covers it, as before. They go with ``--run`` and ``--rebuild-themes`` only; ``--status``, ``--name-themes`` and
 ``--cutover`` refuse them. WARNING: ``--run`` with a selection is a full Fetch of exactly those names. It downloads
-their missing filings from SEC, calls DeepSeek for every name without a current profile, and replaces the board:
+their missing filings from SEC, calls the board's writer for every name without a current profile, and replaces the board:
 all peer scores, ``relatedness_latest.json`` and a result-history run then cover only the selection until the next
 default run. Run it only with the user's typed words, never under the standing permission.
 ``--rebuild-themes --build-only`` writes the shadow run and stops: no cutover, no naming; name
@@ -202,16 +202,24 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--provider", choices=tuple(writers.WRITERS), default=None,
                    help="the LLM that writes profiles (--run) or theme names (--name-themes, --rebuild-themes "
                         "--name). Without it --run uses the board's writer (Settings, #360; EVREN by default) and "
-                        "theme naming uses deepseek. deepseek is off-peak gated and capped by --cap USD; evren (no "
+                        "theme naming its own pair (Settings, #404; EVREN by default). deepseek is off-peak gated "
+                        "and capped by --cap USD; evren (no "
                         "fee) has no off-peak gate and no call cap unless --limit N (avo, 2 Nov 2026)")
     args = p.parse_args(argv)
     explicit = args.provider
-    # --run writes with the board's writer unless --provider names one (#360); theme naming keeps DeepSeek's default.
-    # ``--score`` writes no profile, but the payload names the board's writer, so it reads the same setting.
-    if (args.run or args.score) and explicit is None:
+    # --run writes with the board's writer unless --provider names one (#360). ``--score`` and ``--status`` write
+    # no profile, but both name the board's writer (the payload, the banner), so they read the same setting.
+    # Theme naming reads its own pair (``core.llm_jobs``, job ``relatedness.naming``, #404), which this now asks
+    # for: the name here decides what the banner says, and it was the hard-coded paid ``deepseek``, so
+    # ``--name-themes`` printed the off-peak gate of a writer the naming run was not calling (avo, 20 Nov 2026:
+    # "Fetch ve build sirasinda deepseek api kullanilan islem kalmasin hepsi evren deepseek olmali").
+    if (args.run or args.score or args.status) and explicit is None:
         run_writer, run_model = rel_settings.writer()[0], rel_settings.chosen_model()
+    elif explicit is None and (args.name_themes or args.name):
+        from RevenueChaser.core import llm_jobs
+        run_writer, run_model = llm_jobs.pair("relatedness.naming")[0], None
     else:
-        run_writer, run_model = explicit or "deepseek", None
+        run_writer, run_model = explicit or writers.DEFAULT, None
     if explicit == "evren" and not args.run:
         p.error(f"--provider {explicit} goes with --run only")
     if args.run and run_writer != "deepseek":
@@ -390,7 +398,7 @@ def _model_kw(model: str | None) -> dict:
 
 def _deepseek_run(chosen, limit, cap, model: str | None = None) -> int:
     try:
-        payload = engine.run(tickers=chosen, limit=limit, usd_cap=cap, **_model_kw(model))
+        payload = engine.run(tickers=chosen, limit=limit, usd_cap=cap, provider="deepseek", **_model_kw(model))
     except engine.AlreadyRunning as exc:
         # Not green: nothing ran. (An off-peak deferral is different: it exits 0 below.)
         print(json.dumps({"skipped": str(exc)}, ensure_ascii=False))

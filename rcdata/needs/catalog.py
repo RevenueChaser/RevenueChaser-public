@@ -193,6 +193,10 @@ _NEEDS = (
          providers=("sec", "uw")),
     Need("fundamentals.earnings_reported", "earnings_reported", "earnings_reported", "period_end", "cik", 95,
          providers=("uw",)),
+    # The day each past quarter was reported: Compustat's ``rdq`` first, UW's day where Compustat has none (#1181).
+    # 95 days like ``earnings_reported``: the newest row is a quarter end, so it is up to a quarter old by design.
+    Need("fundamentals.report_history", "earnings_report_history", "earnings_report_history", "period_end", "cik",
+         95, providers=("wrds", "uw")),
     Need("fundamentals.filings", "filing_items", "filing_item", "filing_date", "cik", 1,
          ask_param="ciks", providers=("sec",)),
     Need("fundamentals.segments", "segments", "segment_revenue", "period_end", "cik", 65,

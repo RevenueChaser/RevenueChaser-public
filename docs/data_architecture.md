@@ -1058,7 +1058,7 @@ its spill peak (`base.spill_peak`, sampled every 2 s), the measure for moving th
 file, `<MARKET_DIR>/<kind>.duckdb`. The identity spine, `spine` (serving schema version `9`), is described under
 "The identity spine" below; the prices store, `prices` (serving schema version `1`), under "The prices store"
 below; the ownership store, `ownership` (serving schema version `5`), under "The ownership store" below; the
-fundamentals layer, `fundamentals` (serving schema version `4`), under "Fundamentals" after it; and the options
+fundamentals layer, `fundamentals` (serving schema version `5`), under "Fundamentals" after it; and the options
 data, `options` (serving schema version `3`), under "The options data" after it; and the SEC form reader, `sec_forms` (serving schema version `1`), under "The SEC form reader"; and the SEC reader tool, `sec_reads` (serving schema version `3`), under "The SEC reader tool" last. The eight numbers live in `rcdata/serving_versions.py`, outside the builder's rules fingerprint
 (`rcdata/build/dirty.py`), so a bump makes only its own kind's next build whole (#649). The market data,
 `market` (serving schema version `4`): `serving_schema_version` (one row: kind, version, build time, build id, build mode),
@@ -1911,11 +1911,13 @@ cache; since #642 PR 6 the boards never read that cache: no layer reads as no ro
 | `alphavantage/earnings_calendar` | daily | Alpha Vantage `EARNINGS_CALENDAR`, three months ahead, one request a run (`ALPHAVANTAGE_API_KEY`) | `stg_av_calendar` |
 | `uw/earnings` | weekly | UW `/stock/<ticker>/earnings`, one request per company: the quarterly rows' reported EPS, UW's consensus of that quarter and its surprise, as UW serves them | `stg_uw_earnings` |
 | `yfinance/estimates` | weekly | Yahoo's `earningsTrend` per company, its shortest ticker, when its newest answer is 7 days old; 5 failures in a row stop the run | `stg_yf_estimates` |
-| `yfinance/fx` | daily | Yahoo's daily close of `<CUR>USD=X` per currency in `fx_rates.CURRENCIES` (USD per unit), the whole history the first time, then from 7 days before the newest stored day | `stg_yf_fx` |
+| `yfinance/fx` | daily | Yahoo's daily close of `<CUR>USD=X` per currency in `fx_rates.CURRENCIES` (USD per unit), the whole history the first time, then from 7 days before the newest stored day. Since #1181 it fills the days `wrds/exrt` does not hold | `stg_yf_fx` |
 | `sec/fsds` | monthly | The SEC's quarterly Financial Statement Data Sets zip, the newest quarter published | `stg_sec_fsds` |
 | `wrds/fundq` | monthly, attended | `comp.fundq`, the Tier A gvkeys, ten years | `stg_wrds_fundq`, `stg_wrds_fundq_revision` |
 | `wrds/funda` | monthly, attended | `comp.funda`, the Tier A gvkeys, ten years | `stg_wrds_funda`, `stg_wrds_funda_revision` |
 | `wrds/segments` | monthly, attended | `comp_segments_hist_daily.wrds_segmerged` and `seg_customer`, five years, the newest source date per key where the table has one | `stg_wrds_segments`, `stg_wrds_customers` |
+| `wrds/exrt` | monthly, attended | `comp.exrt_dly`, the whole history of `fx_rates.CURRENCIES` and USD. Every row is quoted from GBP, so USD per unit is the cross `exratd(GBP->USD) / exratd(GBP->CUR)` (#1181, step H). **The rate a non-USD filer's values are converted at wherever Compustat has the day** (`fx_rates.held_rates`; DECISIONS F3); `yfinance/fx` fills the days it lacks, which are the newest ones between two monthly snapshots. The check note counts the pairs of the newest year that agree with Yahoo within 1% | `stg_wrds_exrt_raw`, `stg_wrds_exrt` |
+| `wrds/audit` | monthly, attended | Audit Analytics' three event feeds in `audit_audit_comp`, whole: `feed39_financial_restatements`, `feed20_nt` (late-filing notices) and `feed17_director_and_officer_chan`. Only the event's own columns are asked (key, `company_fkey`, filing day and form, what happened); no person's name and no disclosure text. `company_fkey` is the CIK (measured 20 Nov 2026, #1181 step C), and the feeds run about two months behind. The flag columns are kept as text until their coding is measured, and no served table reads the dataset yet: the check note counts each feed's rows, keys and our companies in it | `stg_wrds_restatements`, `stg_wrds_late_filings`, `stg_wrds_officer_changes` |
 | `fundamentals/tables` | daily | none: builds the served tables, the views, the peer groups and the build issues from the staging tables | the tables below |
 
 **A builder that was down still reads what was filed meanwhile.** `sec/companyfacts` and `sec/filings` read the
@@ -1955,7 +1957,7 @@ preliminary row any more.
 
 **WRDS is a check, not a served value.** Attended and monthly on the spine's one WRDS worker (one login, at most one
 Duo push per builder process): `python -m RevenueChaser.rcdata.build backfill wrds/fundq wrds/funda
-wrds/segments` in a foreground terminal on the server. Each monthly `fundq` / `funda` snapshot is compared with the
+wrds/segments wrds/exrt wrds/audit` in a foreground terminal on the server. Each monthly `fundq` / `funda` snapshot is compared with the
 one before: every value that changed for a period both hold is a `fundamental_revision` row (a restatement, or a
 correction at Compustat; a new period is not one). The check notes count revenue, net income and diluted EPS that
 agree with the SEC's facts (Compustat's millions times a million, within 0.5%, EPS within a cent, period ends within
@@ -1982,7 +1984,7 @@ the period.
 **Starts by hand.** Every fundamentals dataset is not due until it has built once, as the spine's are, so the first
 hourly pass after a deploy calls no source before the attended backfill.
 
-**Served tables** (`fundamentals` serving schema version `4`):
+**Served tables** (`fundamentals` serving schema version `5`):
 
 | Table | Rows |
 |---|---|
@@ -1991,6 +1993,7 @@ hourly pass after a deploy calls no source before the attended backfill.
 | `filing_item` | one per filing and 8-K item (`kind` `item`). The document texts went with the cut (#858): this layer cuts nothing, `sec/forms` is the one cutter and serves them as `filing_section`. The `kind` column stays, with `item` its only value |
 | `earnings_event` | one per report: a coming one from the calendar (`confirmed` false) or one that happened (an 8-K with item 2.02, `confirmed` true, its accession kept) |
 | `earnings_reported` | one per company and reported quarter: the EPS the company itself reported as UW serves it, with UW's consensus and surprise. **Not** a `fundamental_fact` row -- it has no filing behind it, and its basis is usually the company's adjusted (non-GAAP) figure, so `source` is on every row (avo, 5 Nov 2026) |
+| `earnings_report_history` | one per company and fiscal quarter (version 5, #1181): the day the quarter's results were made public. Compustat's `rdq` (`wrds/fundq`) where it has one; UW's report day (`uw/earnings`) for a quarter Compustat has no date for within 7 days of the same period end. `source` on every row says which, `gvkey` the Compustat company (NULL on a UW row). Past dates only: a coming report is `earnings_event`. Read with `rcdata.read.earnings_report_history` |
 | `fundamental_revision` | one per Compustat value that changed between two monthly snapshots |
 | `segment_revenue` | revenue by business segment, product or country (`axis`), from the annual report's inline XBRL (its newest year) and from Compustat; `report_tables` (#1048, version 4): the tables of the report, as role ids of the filing's definition linkbase (`<ticker>-<date>_def.xml`, or the schema file `<ticker>-<date>.xsd` when the filing lists no `_def.xml` and embeds its linkbases there, #1066; fetched beside the document, `rcdata/build/fundamentals/linkbase.py`), in which the row's member stands on the row's axis, NULL for a Compustat row and for a filing with no linkbase stored. `rcdata.read.segment_sets(rows, total)` (pure) gives the member sets one table declares together that sum to the revenue within 2% |
 | `customer_share` | a major customer's share of revenue (or of receivables, `benchmark`), from `ConcentrationRiskPercentage1` and from Compustat |

@@ -83,6 +83,39 @@ def test_the_default_writer_is_evren(rawstore_tmp_db):
     assert writers.DEFAULT == "evren" and set(writers.WRITERS) == {"evren", "deepseek"}
 
 
+# avo, 20 Nov 2026: "Fetch ve build sirasinda deepseek api kullanilan islem kalmasin hepsi evren deepseek olmali".
+# Every one of these defaulted to the paid writer, so a caller that forgot the argument spent money. The scheduled
+# Fetch always passed the board's writer, so nothing scheduled changes; the hazard was the omitted argument.
+
+# This folder's ``_deepseek_default`` fixture pins the writer to DeepSeek, because its tests drive that writer;
+# these two are about the default itself, so they put the registry's own back.
+
+def test_a_module_call_without_a_writer_runs_on_the_free_one(monkeypatch):
+    from RevenueChaser.module_relatedness import config as rel_config
+    from RevenueChaser.module_relatedness import profiles as profiles_mod
+    assert writers.DEFAULT == "evren" and not writers.get(writers.DEFAULT).paid
+    monkeypatch.setattr(rel_config, "default_writer", lambda: writers.DEFAULT)
+    assert profiles_mod.llm() is profiles_mod._writers().client("evren")
+    assert profiles_mod.llm() is not deepseek
+
+
+def test_a_profile_saved_without_a_writer_names_the_free_one(rawstore_tmp_db, monkeypatch):
+    from RevenueChaser.module_relatedness import config as rel_config
+    monkeypatch.setattr(rel_config, "default_writer", lambda: writers.DEFAULT)
+    store.save_profile("ZZZ", "1", {}, "{}", "a-model")
+    rows = [r for r in rawstore.get_all("relatedness_profiles") if r["ticker"] == "ZZZ"]
+    assert [r.get("provider") for r in rows] == ["evren"]
+
+
+def test_the_naming_cli_banner_names_the_free_writer(rawstore_tmp_db, monkeypatch, capsys):
+    """``--name-themes`` printed DeepSeek's off-peak gate although naming calls its own pair (#404, EVREN)."""
+    monkeypatch.setenv("LITELLM_RC_KEY", EVREN_KEY)
+    monkeypatch.setattr("RevenueChaser.module_relatedness.naming.name_themes",
+                        lambda run_id=None: {"named": 0, "pending": 0})
+    assert cli.main(["--name-themes"]) == 0
+    out = capsys.readouterr().out
+    assert "EVREN" in out and "no fee, no off-peak gate" in out        # not ``offpeak.describe()``
+    assert "DeepSeek" not in out and "Peak override" not in out
 
 
 

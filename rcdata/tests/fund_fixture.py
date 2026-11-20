@@ -372,7 +372,56 @@ WRDS_CATALOG = {
                                                      "sales"],
     ("comp_segments_hist_daily", "seg_customer"): ["gvkey", "datadate", "cid", "cnms", "ctype", "salecs", "stype",
                                                    "sid"],
+    ("comp", "exrt_dly"): ["fromcurd", "tocurd", "datadate", "exratd"],
+    ("audit_audit_comp", "feed39_financial_restatements"): [
+        "restatement_notification_key", "company_fkey", "file_date", "form_fkey", "res_begin_date", "res_end_date",
+        "date_of_8k_402", "res_accounting", "res_fraud", "res_clerical_errors", "res_other", "res_adverse",
+        "res_improves", "res_sec_investigation", "res_board_approval", "res_auditor_letter",
+        "quarterly_restated_only", "disclosure_text"],
+    ("audit_audit_comp", "feed20_nt"): ["nt_notify_key", "company_fkey", "file_date", "form_fkey", "pe_date_num",
+                                        "nt_reas_keys", "nt_reas_titles", "narrative_text"],
+    ("audit_audit_comp", "feed17_director_and_officer_chan"): [
+        "do_change_key", "do_off_pers_key", "company_fkey", "file_date", "form_fkey", "eff_date", "action",
+        "title_standard", "is_ceo", "is_cfo", "is_coo", "is_president", "is_chair", "is_c_level", "is_bdmem_pers",
+        "interim", "last_name"],
 }
+
+# Audit Analytics' feeds (#1181 step C): ``company_fkey`` is the CIK without leading zeros (789019 is MSFT, 46619
+# HEI; 999999 is no company of ours). Made-up events; the flag values are invented, their real coding is unmeasured.
+AUDIT_ROWS = {
+    "feed39_financial_restatements": [
+        {"restatement_notification_key": "9001", "company_fkey": "789019", "file_date": "2025-08-01",
+         "form_fkey": "8-K", "res_begin_date": "2024-07-01", "res_end_date": "2025-03-31", "res_accounting": "1",
+         "res_fraud": "0", "disclosure_text": "never asked"},
+        {"restatement_notification_key": "9002", "company_fkey": "999999", "file_date": "2026-09-21",
+         "form_fkey": "10-K/A", "res_accounting": "1", "res_fraud": "1"},
+    ],
+    "feed20_nt": [
+        {"nt_notify_key": "7001", "company_fkey": "46619", "file_date": "2026-09-15", "form_fkey": "NT 10-Q",
+         "pe_date_num": "20260731", "nt_reas_titles": "Other", "narrative_text": "never asked"},
+    ],
+    "feed17_director_and_officer_chan": [
+        {"do_change_key": "5001", "do_off_pers_key": "1", "company_fkey": "789019", "file_date": "2026-09-24",
+         "form_fkey": "8-K", "eff_date": "2026-10-01", "action": "Appointed", "title_standard": "CFO",
+         "is_cfo": "1", "is_ceo": "0", "last_name": "never asked"},
+        {"do_change_key": "5001", "do_off_pers_key": "2", "company_fkey": "789019", "file_date": "2026-09-24",
+         "form_fkey": "8-K", "action": "Resigned", "title_standard": "CFO", "is_cfo": "1", "is_ceo": "0"},
+        {"do_change_key": "5002", "do_off_pers_key": "3", "company_fkey": "0000046619", "file_date": "2025-02-03",
+         "form_fkey": "8-K", "action": "Retired", "is_ceo": "1"},
+        {"do_change_key": "5002", "do_off_pers_key": "3", "company_fkey": "0000046619", "file_date": "2025-02-03",
+         "form_fkey": "8-K", "action": "Retired", "is_ceo": "1"},                       # the same row twice
+    ],
+}
+
+# Compustat's daily rates, every one quoted from GBP (measured 20 Nov 2026, #1181): 1.25 USD and 1.75 CAD per GBP.
+EXRT_ROWS = [
+    {"fromcurd": "GBP", "tocurd": "USD", "datadate": "2026-10-26", "exratd": "1.25"},
+    {"fromcurd": "GBP", "tocurd": "CAD", "datadate": "2026-10-26", "exratd": "1.75"},
+    {"fromcurd": "GBP", "tocurd": "GBP", "datadate": "2026-10-26", "exratd": "1"},
+    {"fromcurd": "GBP", "tocurd": "USD", "datadate": "2026-10-23", "exratd": "1.2"},
+    {"fromcurd": "GBP", "tocurd": "CAD", "datadate": "2026-10-23", "exratd": "0"},        # no rate that day
+    {"fromcurd": "GBP", "tocurd": "JPY", "datadate": "2026-10-22", "exratd": "190"},      # no USD row that day
+]
 
 
 class FakeFundWrds:
@@ -407,7 +456,7 @@ class FakeFundWrds:
             if col not in self.catalog[(library, table)]:
                 raise base.SourceError(f'wrds query failed: column "{col}" does not exist')
         rows = {"fundq": fundq_rows(self.month), "funda": FUNDA_ROWS,
-                "wrds_segmerged": SEGMERGED_ROWS, "seg_customer": SEG_CUSTOMER_ROWS}[table]
+                "wrds_segmerged": SEGMERGED_ROWS, "seg_customer": SEG_CUSTOMER_ROWS, "exrt_dly": EXRT_ROWS, **AUDIT_ROWS}[table]
         gvkeys = re.search(r"gvkey IN \(([^)]*)\)", sql)
         if gvkeys:
             want = set(re.findall(r"'(\d+)'", gvkeys.group(1)))

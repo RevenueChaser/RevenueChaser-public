@@ -184,3 +184,50 @@ def test_a_job_module_never_names_the_settings_page_registry():
             if node.module and "board_settings" in node.module:
                 named.append(node.module)
     assert named == []
+
+
+# ── no default spends money (avo, 20 Nov 2026) ──────────────────────────────
+# "Fetch ve build sirasinda deepseek api kullanilan islem kalmasin hepsi evren deepseek olmali": every Fetch job
+# and every builder step calls EVREN. A paid writer is reachable only when a caller names it, so no function may
+# carry one as the default of its writer argument: a caller that forgets the argument would spend money, and that
+# is what ``module_relatedness.engine.run`` and ``profiles.llm`` did until this guard landed.
+
+PAID = {slug for slug, w in llm_writers.WRITERS.items() if w.paid}
+#: Where the repo's own code lives (a test may default to a paid writer: it calls nothing).
+CODE_DIRS = ("app", "core", "rcdata", "scripts", "module_relatedness", "module_value_chain", "module_settings")
+
+
+def _writer_defaults(path: Path) -> list[str]:
+    """``<function>(<arg>=<paid slug>)`` for every argument of ``path`` that defaults to a paid writer."""
+    out = []
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        args = node.args
+        positional = args.posonlyargs + args.args
+        pairs = list(zip(positional[len(positional) - len(args.defaults):], args.defaults))
+        pairs += [(a, d) for a, d in zip(args.kwonlyargs, args.kw_defaults) if d is not None]
+        for arg, default in pairs:
+            if not re.search(r"provider|writer", arg.arg):
+                continue
+            if isinstance(default, ast.Constant) and default.value in PAID:
+                out.append(f"{node.name}({arg.arg}={default.value!r})")
+    return out
+
+
+def test_no_function_in_the_repo_defaults_a_writer_argument_to_a_paid_provider():
+    offenders = {}
+    for folder in CODE_DIRS:
+        for path in sorted((REPO / folder).rglob("*.py")):
+            if "tests" in path.parts or path.name.startswith("test_"):
+                continue
+            found = _writer_defaults(path)
+            if found:
+                offenders[str(path.relative_to(REPO))] = found
+    assert offenders == {}, (
+        "a writer argument defaults to a paid provider; the default is a free writer and a paid run names it: "
+        + json.dumps(offenders, sort_keys=True))
+    # The registry's own half of the rule is
+    # ``test_every_job_defaults_to_evren_and_no_job_defaults_to_a_paid_writer`` above.
+
