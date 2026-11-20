@@ -81,6 +81,10 @@ of the fixture lies beyond 5 MADs in any case's window, the lagged one or the he
 Review v2 (17 Nov 2026) moved two things. N3: the "Missing price bars" label adds "or no bar in the last 3" (4
 values). N10: the h > 1 null is drawn from residualised daily returns, so ``config.METHOD`` is 6 (4 hashes). The null
 runs only when a run persists, and the persisted case is at 1 day, so no number moves. Both edited by hand.
+
+#642 moved the unknown-type note's link: the Settings page's ``identity`` card went with the universe table, so the
+note points at the identity funnel that is still drawn there (``nd-identity``). Exactly the four
+``funnel_steps[6]/link/anchor`` strings move, one per case; edited by hand.
 """
 from __future__ import annotations
 
