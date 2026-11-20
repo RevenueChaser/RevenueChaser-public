@@ -648,16 +648,41 @@ def sync_issues(dataset: str, kinds, found, run_id: str | None = None, keep=None
     return len(new), len(gone)
 
 
+#: The run this process belongs to, set by ``core/automations.run_task`` for the command it starts (review of
+#: 20 Nov 2026, step 1). An hourly ``RC-Build`` task row and the dataset runs it caused shared no key before, so
+#: nothing could be read as one chain.
+CHAIN_ID_ENV = "RC_CHAIN_ID"
+#: Where a run keeps it: ``job_runs2.params``, which is JSON already, so there is no schema bump.
+CHAIN_KEY = "chain"
+
+
+def chain_id() -> str | None:
+    """The outer run's id this process runs under, or None when nothing started it."""
+    return (os.environ.get(CHAIN_ID_ENV) or "").strip() or None
+
+
+def chained_params(params: dict | None, run_id: str) -> dict:
+    """``params`` with the chain id in them: the outer run's (``CHAIN_ID_ENV``), else the run's own id, which makes
+    a run nobody started the root of its own chain — so the key is never missing and a reader can always group by
+    it. A caller that named a chain itself keeps it."""
+    out = dict(params or {})
+    out.setdefault(CHAIN_KEY, chain_id() or run_id)
+    return out
+
+
 @_routed
 def start_run(run_id: str, dataset: str | None, trigger: str, params: dict | None = None,
               job: str | None = None) -> None:
     """One ``job_runs2`` row, ``running``. A builder run passes its ``dataset``; a scheduled task or a dashboard
-    job passes ``job`` instead (its registry name or module) and ``dataset`` None (#136)."""
+    job passes ``job`` instead (its registry name or module) and ``dataset`` None (#136).
+
+    The row's ``params`` also carry the chain id (``chained_params``), whoever the caller is."""
     import socket
     with _open() as con:
         con.execute("INSERT INTO job_runs2 (run_id, dataset, trigger, pid, host, started_at, status, params, job) "
                     "VALUES (?, ?, ?, ?, ?, ?, 'running', ?, ?)",
-                    (run_id, dataset, trigger, os.getpid(), socket.gethostname(), time.time(), _json(params), job))
+                    (run_id, dataset, trigger, os.getpid(), socket.gethostname(), time.time(),
+                     _json(chained_params(params, run_id)), job))
 
 
 @_routed

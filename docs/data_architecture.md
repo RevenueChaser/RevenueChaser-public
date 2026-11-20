@@ -558,7 +558,9 @@ worker thread writes while Flask request threads read. So:
   (`done` on exit 0, else `error` with `exit <code>`; a step its chain blocked ends `error` with
   `chain blocked: <why>` and no `started_at`). The command gets the id in `RC_RUN_ID` and the registry name in
   `RC_RUN_SOURCE` (`rawstore.task_run`), so `ledger.new_run_id`, `app/jobs.py:run_id()` and the store's change
-  capture stamp that id, and the source, on everything the run writes. A task that writes no table (the backup)
+  capture stamp that id, and the source, on everything the run writes. **Every** command, table writer or not, also
+gets the run's id in `RC_CHAIN_ID` (`ops.CHAIN_ID_ENV`), which the runs it starts keep in their own
+`job_runs2.params["chain"]`. A task that writes no table (the backup)
   records no row and gets no id, so it leaves the store as it copied it. A row that cannot be written (the store
   is held past the normal lock wait) is a `job_runs: not recorded` line in the task's log, never a different exit
   code.
@@ -1264,7 +1266,7 @@ by `ALTER`, so nothing is rewritten and the builder's rows keep their values):
 | `build_requests` | The FIFO request queue (queued, running, done, failed, skipped) |
 | `dataset_check` | One row per dataset run: changed, unchanged, failed or skipped; rows, added, removed, coverage, calls |
 | `build_issues` | A row the builder could not use, with its key, until resolved |
-| `job_runs2` | One row per run: a builder run (its `dataset`), a scheduled task (`job` = the registry name, `trigger` = `schedule`) or a dashboard job (`job` = its module, `trigger` = `dashboard`), with what the run did in `counts` (#136). `ops.runs_between` and `ops.last_builder_run` read the builder's rows only (`dataset IS NOT NULL`); `ops.job_runs` reads the task and dashboard rows |
+| `job_runs2` | One row per run: a builder run (its `dataset`), a scheduled task (`job` = the registry name, `trigger` = `schedule`) or a dashboard job (`job` = its module, `trigger` = `dashboard`), with what the run did in `counts` (#136), the seconds per step in `counts["steps"]` and the chain id in `params["chain"]`. `ops.runs_between` and `ops.last_builder_run` read the builder's rows only (`dataset IS NOT NULL`); `ops.job_runs` reads the task and dashboard rows |
 | `read_log` | Reads per day, process and table (counted in memory, written once a minute) |
 | `uw_remaining` | UW's `x-uw-*` rate headers, sampled once a run: `x-uw-daily-req-count` as `daily_req_count`, `daily_remaining_computed` = our cap (`rcdata/caps.py`) minus it, the per-minute window, and `x-uw-token-req-limit` as sent (it is not the daily cap) |
 | `provider_calls_daily` | Calls, failures and 429s per provider and New York day |
@@ -1360,6 +1362,14 @@ stdout, so the jobrun log, the journal and ops.db all name the reason and the lo
 check row, the `job_runs2` error and the request's note name the step that raised first — `fetch`, `parquet`,
 `backfill`, `build`, `check`, `swap` or `after_swap` (`RunContext.step`) — so an HTTP 504 a fetch got is told from
 the same exception class out of a check read.
+
+**Where a run's time went, and whose chain it is.** The same step names also time the run: `RunContext.step` stamps
+its clock as it changes, and the seconds per step go into the run's `job_runs2.counts` as `{"steps": {"fetch": 4.0,
+"build": 8.0, ...}}` (review of 20 Nov 2026, step 1; the builder path left that column empty, so no schema bump).
+`start` is the time before the first named step. Every run row's `params` also carry a `chain`: the id of the run
+that started this process (`RC_CHAIN_ID`, which `core/automations.run_task` sets to its own run id for the command
+it starts), else the run's own id — so a task row and the dataset runs it caused read as one chain, and a run
+nobody started is the root of its own.
 
 **Known limits.** The idle gate is checked when the builder starts, not again before each request: a job that takes
 a lock after that runs beside it (both write different files, so nothing breaks). Since the gate only asks about the
