@@ -570,6 +570,31 @@ def job_runs(limit: int = 200) -> list[dict]:
     return out
 
 
+def recent_runs(limit: int = 200) -> list[dict]:
+    """The newest runs of every writer, newest first, ``counts`` and ``params`` as dicts (#1205).
+
+    The scan is the same ``_RUN_SCAN`` window as ``job_runs``: the sorted set is in start order, so the newest
+    ``limit`` rows are the first ones it walks and nothing past them is read.
+    """
+    out = []
+    for pk in _client().zrevrange(_key("job_runs2"), 0, _RUN_SCAN - 1):
+        [row] = _fetch("job_runs2", [pk]) or [None]
+        if row is None:
+            continue
+        out.append({**{c: row[c] for c in ops.RUN_COLUMNS}, "counts": ops._loads(row.get("counts")),
+                    "params": ops._loads(row.get("params"))})
+        if len(out) >= int(limit):
+            break
+    return out
+
+
+def runs_exist(run_ids) -> set[str]:
+    """Which of ``run_ids`` have a ``job_runs2`` row (#1205). One read per id, which is a handful: the caller asks
+    for the chain roots of one page, not for the log."""
+    ids = [str(r) for r in dict.fromkeys(run_ids or ()) if r]
+    return {run_id for run_id in ids if _one("job_runs2", run_id) is not None}
+
+
 # ── Provider accounting and the read log ───────────────────────────────────────────────────────────────────────
 
 def _add(table: str, pk_values: tuple, fields: dict, adds: dict[str, int]) -> None:
