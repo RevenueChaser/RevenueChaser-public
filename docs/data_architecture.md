@@ -2189,6 +2189,15 @@ one folder, two Parquet files (`sections.parquet`, `notes.parquet`) per `cik=<ci
   two or three blocks; a character count that is not to be tripled sums the top-level rows), `context_ref`,
   `period_end`, `text`, `chars`, `rules_version`, and the same provenance.
 
+**How the build loads it.** One `INSERT` per batch of `sec_forms.forms.LOAD_BATCH` (100) company partitions,
+in `cik` text order and each batch sorted by `cik, accession, document`, so the rows land in the order one global
+sort gave them. Not one statement over the whole tree: that sort carried the corpus' whole text at once — on
+20 Nov 2026 the live file held 14,142 `filing_section` rows with 4.1 GB of text — and DuckDB pins a sort's string
+blocks, so it had nothing to evict and the spill folder did not save it. Three builds in a row failed on
+`failed to pin block of size 612.0 KiB (4.5 GiB/4.5 GiB used)`, the first after 6,590 s, while the day's work was
+62 new sections (#1177). The peak of the batched load is a batch of companies' filings, whatever the corpus grows
+to.
+
 **The staleness rule.** `dirty.py` reloads Parquet into DuckDB; it does not cut. So the rule is `fetch`'s own: a
 company is stale when the `(accession, document)` pairs on disk differ from the ones its `sections.parquet` holds,
 or when any of its rows was written by another cutter version. That covers the three cases nothing else triggers —
