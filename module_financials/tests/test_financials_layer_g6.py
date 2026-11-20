@@ -2,9 +2,9 @@
 ``market_series``.
 
 The DCF, the three-statement model and the credit grades read the annual statements. On the fundamentals layer
-those are the SEC's (``core/fundamentals_layer``), not Yahoo's: a figure the SEC facts do not carry (pre-tax income,
-the tax provision, interest expense, current assets and liabilities) stays empty, so the engines' labelled defaults
-show (review S1). EBITDA is operating income plus depreciation when the year has both. Price, shares and beta come
+those are the SEC's (``core/fundamentals_layer``), not Yahoo's: a figure the SEC facts do not carry (current assets
+and liabilities) stays empty, so the engines' labelled defaults show (review S1). The tax provision, pre-tax income
+and interest expense the layer does serve since #645 G1, and ``test_financials_sec_fields_645.py`` covers them. EBITDA is operating income plus depreciation when the year has both. Price, shares and beta come
 from the prices store since the G6 follow-up (``test_financials_market_prices.py``). The ten-year yield is read from
 ``market_series`` (DGS10, FRED; review S2), the old ``macro_series`` row only while the market file is not there.
 """
@@ -53,7 +53,8 @@ def test_the_statements_are_the_secs_on_the_layer(built):  # noqa: F811
     newest = annual[-1]
     assert newest["revenue"] == 140.0 + 150 + 160 + 170                          # 2025's four quarters
     assert newest["capex"] == newest["capital_expenditure"] and newest["total_debt"] == 320.0
-    # Nothing the SEC facts do not carry is filled: the engines' labelled defaults show (S1).
+    # Nothing the SEC facts do not carry is filled: the engines' labelled defaults show (S1). This fixture's filer
+    # tags no tax, pre-tax or interest line either, so those stay empty here (#645 G1 reads them where it does).
     for missing in ("ebitda", "pretax_income", "tax_provision", "interest_expense", "current_assets"):
         assert newest.get(missing) is None
     assert meta["newest_filed"] == "2026-08-01"
