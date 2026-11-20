@@ -1196,6 +1196,9 @@ def build(nd: dict, *, applied: dict | None = None, ibkr: dict | None = None, no
         # #715 step 2: the weekly backup is read here so the board can draw it natively
         # (avo, 11 Nov 2026: every control on the page itself), instead of the dead New data system section.
         "backups": nd.get("backups") or {},
+        # #446 step 8: how each kind's live file was last built, read from the files themselves by
+        # ``newdata._build_of``, so the board can say which kinds build on the live copy and what they still owe.
+        "builds": [b for b in (nd.get("builds") or {}).values()],
         "fill_enabled": screen.fill_enabled(), "fill_off_why": screen.FILL_OFF_WHY,
         "datasets_total": len(nd.get("datasets") or []),
     }

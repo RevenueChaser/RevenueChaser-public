@@ -705,6 +705,76 @@ def _health_table(f: dict) -> str:
             'under its source box above.</p></details>')
 
 
+def _when(iso) -> str:
+    """``02:04`` of a UTC stamp, so a build time reads as the board's other times do; the date when it is older."""
+    if not iso:
+        return "—"
+    text = str(iso)
+    today = datetime.now(timezone.utc).date().isoformat()
+    return text[11:16] if text[:10] == today else text[:16].replace("T", " ")
+
+
+def _build_row(b: dict) -> str:
+    """One kind's row on the Serving builds card: how it was built, the Parquet tree, the audit's last round."""
+    mode = str(b.get("mode") or "")
+    if mode == "live":
+        pill = '<span class="pill p-ok">on the live file</span>'
+    elif mode:
+        pill = '<span class="pill p-mut">built whole</span>'
+    else:
+        pill = '<span class="pill p-mut">built whole</span><span class="dim"> · no mode on record</span>'
+    files, changed = b.get("files"), b.get("changed")
+    if files is None:
+        parquet = '<span class="dim">no manifest yet</span>'
+    else:
+        seen = "—" if changed is None else f"{control.count(changed)} changed"
+        parquet = f'{control.count(files)} files · {seen}'
+    if b.get("audited_at") is None:
+        audit = '<span class="dim">no round yet</span>'
+    else:
+        differs = b.get("differs") or 0
+        found = (f'<span class="pill p-warn">{control.count(differs)} differ</span>' if differs
+                 else '<span class="pill p-ok">all ok</span>')
+        audit = f'{control.count(b.get("audited"))} keys {found} <span class="dim">· {esc(_when(b.get("audited_at")))}</span>'
+    owed = b.get("owed")
+    owed_html = ('<span class="dim">—</span>' if not owed
+                 else f'<span class="pill p-warn">{control.count(owed)}</span>')
+    return (f'<tr><td data-label="File"><code>{esc(str(b.get("kind") or ""))}.duckdb</code></td>'
+            f'<td data-label="Mode">{pill}</td>'
+            f'<td data-label="Last build">{esc(_when(b.get("built_at")))}</td>'
+            f'<td data-label="Parquet">{parquet}</td>'
+            f'<td data-label="Last audit round">{audit}</td>'
+            f'<td data-label="Keys owed">{owed_html}</td></tr>')
+
+
+def _builds(view: dict) -> str:
+    """The Serving builds card (#446 step 8): per served file, which base its last build got, what has changed in
+    Parquet since, and what the last audit round found.
+
+    Every number is read from the files themselves on each render (``newdata._build_of``), so there is no second
+    copy of it to keep in step. A file built before #446 landed carries none of those tables and reads as a whole
+    build with no manifest.
+    """
+    rows = view.get("builds") or []
+    if not rows:
+        return ""
+    live = sum(1 for b in rows if str(b.get("mode") or "") == "live")
+    owed = sum(int(b.get("owed") or 0) for b in rows)
+    owed_words = ("nothing owed" if not owed else
+                  f'<b class="warn">{control.count(owed)}</b> key(s) owed a rebuild')
+    return ('<details class="blk b-dat" id="ctl-builds" open><summary>🧱 Serving builds '
+            '<span class="dim">which files build on the live copy, and what the audit found</span></summary>'
+            f'<p class="sub">{control.count(live)} of {len(rows)} files built on a copy of the live one · '
+            f'{owed_words} · read from the files themselves when this page was rendered.</p>'
+            '<div class="scroll"><table class="stk"><thead><tr><th>File</th><th>Mode</th><th>Last build</th>'
+            '<th>Parquet</th><th>Last audit round</th><th>Keys owed</th></tr></thead>'
+            f'<tbody>{"".join(_build_row(b) for b in rows)}</tbody></table></div>'
+            '<p class="hint">&ldquo;Changed&rdquo; is the Parquet files that differ from the manifest right now, '
+            'which is what the next build acts on. A key the audit found a difference for is handed to its dataset '
+            'and rebuilt on the next build; it never refuses the file. Each difference is also a build issue on '
+            'the Logs board.</p></details>')
+
+
 # ── Cross-check, queue ────────────────────────────────────────────────────────────────────────────────────────
 
 
@@ -805,7 +875,7 @@ def render_data(view: dict, lookup_html: str = "") -> str:
     view = _ready(view)
     panels = "".join(_panel(f, view, i == 0) for i, f in enumerate(view["files"]))
     return ('<section id="ctl" class="ctl" aria-label="Settings · Data control board"><div class="wrap">'
-            f'{_header(view)}{lookup_html}{_flow(view)}'
+            f'{_header(view)}{lookup_html}{_flow(view)}{_builds(view)}'
             f'<div class="fpanels">{panels}</div>{_board_panels(view.get("board_cards") or [])}</div></section>')
 
 

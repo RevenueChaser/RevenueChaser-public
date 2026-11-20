@@ -1142,6 +1142,15 @@ refusal**: it opens a build issue (`kind = audit`, so the Logs board shows it) a
 own `dirty` to add in its own key space — only the dataset knows what its keys mean), while the file still swaps in —
 refusing it would stop the whole flow on one bad key, and the next pass rebuilds those keys anyway.
 
+**What the Settings board shows of all this** (#446 step 8). The Data tab carries one **Serving builds** card,
+above the per-file sections: a row per served file saying which base its last build got (`serving_schema_version`),
+how many Parquet files its manifest holds and how many differ from the tree right now (`build_manifest`, compared
+exactly as `dirty.changes` does), what the last audit round checked and found (`build_audit`), and how many keys
+it still owes (`build_audit_dirty`). Every number is read out of the files themselves on each render
+(`module_settings/newdata.py`'s `_build_of`, on the connection the page already opens per kind), so there is no
+second copy of it anywhere to keep in step. A file that carries none of those tables was built before #446 landed
+and reads as a whole build with no manifest, never as an error.
+
 **Whose build code changed** (#814). Build code is a rule: a change to an extraction or a table rule restates rows
 that no Parquet file marks as changed, so the build file carries a fingerprint of the code it was built by and a
 change to it forces a whole build. That fingerprint used to be one per kind — every Python file in the packages

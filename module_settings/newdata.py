@@ -121,6 +121,11 @@ MY_UNIVERSE_CHANGES = "my_universe_changes"
 
 # The identity funnel (PR 5, D9): the indexes it counts, and the dataset whose build issues it lists.
 SPINE_INDEXES = ("sp500", "sp400", "sp600", "ndx")
+#: How far back of ``build_audit`` counts as the last round (#446 step 8). One round stamps every key it checked
+#: with the same ``time.time()`` call, but a build that audits several subjects stamps each one as it finishes, so
+#: a window and not an equality: a minute is far longer than a round takes and far shorter than the gap to the
+#: build before it (hourly at most).
+AUDIT_ROUND_S = 60.0
 SPINE_ISSUES = "spine/security"
 # The WRDS difference slot (decision 3): these check datasets' cards show their newest monthly difference report,
 # the note of their newest run that read WRDS (PR 12, decided 27 Oct); every other card says no WRDS run yet.
@@ -546,9 +551,10 @@ def _sample_block(table: str, sample: dict | None) -> dict:
             "columns": [{"name": name, "type": str(kind)} for name, kind in declared]}
 
 
-def _serving_facts(now: datetime | None = None) -> tuple[dict[str, dict], dict[str, str | None], dict | None]:
-    """``({table: {rows, newest, sample}}, {kind: last swap}, the spine's funnel counts or None)``, from one
-    ``open_read`` per kind, closed before return.
+def _serving_facts(now: datetime | None = None
+                   ) -> tuple[dict[str, dict], dict[str, str | None], dict | None, dict[str, dict]]:
+    """``({table: {rows, newest, sample}}, {kind: last swap}, the spine's funnel counts or None,
+    {kind: how it was built})``, from one ``open_read`` per kind, closed before return.
 
     ``sample`` is the table's newest five rows (A16), read through this same connection and cached by the hour, so
     a page render costs one read per table per hour rather than one per render. Without ``now`` no sample is read
@@ -557,6 +563,7 @@ def _serving_facts(now: datetime | None = None) -> tuple[dict[str, dict], dict[s
     tables: dict[str, dict] = {}
     swaps: dict[str, str | None] = {}
     funnel: dict | None = None
+    builds: dict[str, dict] = {}
     for kind in serving.KINDS:
         swaps[kind] = None
         try:
@@ -594,9 +601,56 @@ def _serving_facts(now: datetime | None = None) -> tuple[dict[str, dict], dict[s
                 tables["wrds_price_diff"]["report"] = [
                     {k: (v.isoformat() if isinstance(v, date) else v) for k, v in zip(cols, r)}
                     for r in cur.fetchall()]
+            builds[kind] = _build_of(kind, con, names)
         finally:
             con.close()
-    return tables, swaps, funnel
+    return tables, swaps, funnel, builds
+
+
+def _build_of(kind: str, con, names: set[str]) -> dict:
+    """How ``kind``'s live file was last built, for the Serving builds card (#446 step 8).
+
+    Every number is already carried inside the file by the steps before this one, so this is four queries on the
+    connection the caller already holds and opens nothing of its own: ``serving_schema_version`` says which base
+    the build got (#446 step 1), ``build_manifest`` is the Parquet tree it was built from (step 2), and
+    ``build_audit`` / ``build_audit_dirty`` are the audit's rounds and the keys it still owes (step 5).
+
+    A file that carries none of them is a file built before #446 landed: it reads as a whole build with no
+    manifest, never as an error.
+    """
+    from RevenueChaser.rcdata.build import audit, base, dirty
+    out: dict = {"kind": kind, "mode": None, "built_at": None, "files": None, "changed": None,
+                 "audited_at": None, "audited": None, "differs": None, "owed": None}
+    if serving.VERSION_TABLE in names:
+        row = con.execute(f"SELECT build_mode, built_at FROM {serving.VERSION_TABLE} WHERE kind = ? "
+                          "ORDER BY built_at DESC NULLS LAST LIMIT 1", (kind,)).fetchone()
+        if row is not None:
+            out["mode"] = str(row[0]) if row[0] else None
+            out["built_at"] = _iso_utc(row[1]) if row[1] is not None else None
+    if dirty.MANIFEST_TABLE in names:
+        held = {str(p): (int(size), float(mtime)) for p, size, mtime in
+                con.execute(f"SELECT path, size, mtime FROM {dirty.MANIFEST_TABLE}").fetchall()}
+        out["files"] = len(held)
+        try:
+            # The same comparison ``dirty.changes`` makes, against the manifest just read rather than through a
+            # second open of the live file: a file whose size or mtime differs, a new one and a gone one.
+            now_tree = dirty.scan(base.kind_datasets(kind))
+        except OSError:
+            now_tree = None                     # the Parquet tree is not readable from here: say nothing, not 0
+        if now_tree is not None:
+            out["changed"] = len({p for p, stat in now_tree.items() if held.get(p) != stat}
+                                 | (set(held) - set(now_tree)))
+    if audit.ROUNDS in names:
+        row = con.execute(f"SELECT max(checked_at) FROM {audit.ROUNDS}").fetchone()
+        last = row[0] if row else None
+        if last is not None:
+            out["audited_at"] = _iso_utc(last)
+            counted = con.execute(f"SELECT count(*), count(*) FILTER (WHERE result = 'differs') "
+                                  f"FROM {audit.ROUNDS} WHERE checked_at >= ?", (last - AUDIT_ROUND_S,)).fetchone()
+            out["audited"], out["differs"] = int(counted[0]), int(counted[1])
+    if audit.DIRTY in names:
+        out["owed"] = int(con.execute(f"SELECT count(DISTINCT key) FROM {audit.DIRTY}").fetchone()[0])
+    return out
 
 
 def _spine_counts(con) -> dict:
@@ -1166,7 +1220,7 @@ def _watchlists() -> dict:
 def collect(now: datetime | None = None) -> dict:
     """Everything the section shows, read now. ``now`` is the clock (aware; default ``calendar``'s seam)."""
     now = _now(now)
-    facts, swaps, spine_counts = _serving_facts(now)
+    facts, swaps, spine_counts, builds = _serving_facts(now)
     # Read once, used twice: the Spend card, and each dataset's cost line (M3).
     spend = _spend(now)
     used_today = {str(p["provider"]): int(p["today"] or 0) for p in spend["providers"]}
@@ -1194,6 +1248,8 @@ def collect(now: datetime | None = None) -> dict:
         "universe": (spine_counts or {}).get("universe_sets"),
         "sessions": (facts.get("price_bar_daily") or {}).get("sessions") or {},
         "storage": _storage(),
+        # How each kind's live file was last built, for the Serving builds card (#446 step 8).
+        "builds": builds,
         "tables": {t: {"rows": f["rows"], "newest": f["newest"]} for t, f in facts.items()},
         **_watch_section(),
     }

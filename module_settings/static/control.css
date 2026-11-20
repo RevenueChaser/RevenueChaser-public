@@ -1228,3 +1228,7 @@
 .ctl .fgroup .sb3{margin:4px 0 2px}
 .ctl .fgroup .meter.cov{grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:8px}
 }
+/* The Serving builds card (#446 step 8) reuses .blk, .scroll, table.stk (which stacks on a phone) and the pills,
+   so only these two rules are its own: the muted notes beside a value, and the owed-keys count in its summary. */
+.ctl #ctl-builds .dim{color:var(--mut)}
+.ctl #ctl-builds b.warn{color:var(--warn)}
