@@ -577,6 +577,15 @@ def _backfill_history(primary: dict[str, tuple[float, str]],
     return merged
 
 
+# The forms whose facts are a company's annual statements (#105). An annual fact is normally stamped
+# ``fp: "FY"``, and that is the pick below; but ``fp`` is the fiscal period of the FILING, not of the fact, and
+# some filers' annual facts carry a quarter there instead, which left a tagged year unread (the nine
+# period-matching filers of the 2026-10-23 gap measurement). Such a fact may only ADD a year no ``fp: "FY"``
+# fact of any tag reports -- never replace one -- and only from one of these forms, so a 10-Q's cumulative
+# figure can never enter an annual series.
+_ANNUAL_FORMS = frozenset({"10-K", "10-K/A", "10-KT", "10-KT/A", "20-F", "20-F/A", "40-F", "40-F/A"})
+
+
 class _Fact(tuple):
     """``(value, period_end)`` that also carries ``.info``, the provenance of the chosen fact.
 
@@ -600,15 +609,20 @@ def _annual_facts(facts: dict, concepts: list[str], unit: str,
     from datetime import date as _date
     best: dict[str, tuple[float, str]] = {}
 
-    def _one(concept: str) -> dict[str, tuple[float, str]]:
+    def _one(concept: str, annual_fp: bool = True) -> dict[str, tuple[float, str]]:
+        """The concept's annual series. ``annual_fp`` False reads the facts the ``fp: "FY"`` pass skips:
+        an annual-form fact stamped with a quarter (#105), which only fills a year the pass left empty."""
         tagged = _gaap(facts).get(concept, {}).get("units") or {}
         units = tagged.get(unit, [])
-        if non_usd is not None and unit == "USD" and not units:
+        if non_usd is not None and unit == "USD" and not units and annual_fp:
             # #46: a money concept with no USD fact. A share count cannot reach here: its fields are read at "shares".
             non_usd.update(set(tagged) - {unit})
         by_year: dict[str, tuple[str, float, str, str, str]] = {}
         for f in units:
-            if f.get("fp") != "FY":
+            if annual_fp:
+                if f.get("fp") != "FY":
+                    continue
+            elif f.get("fp") == "FY" or f.get("form") not in _ANNUAL_FORMS:
                 continue
             end = f.get("end") or ""
             start = f.get("start") or ""
@@ -649,6 +663,11 @@ def _annual_facts(facts: dict, concepts: list[str], unit: str,
         if concept not in _ADD_ONLY_CONCEPTS:
             continue
         for year, val_end in _one(concept).items():
+            merged.setdefault(year, val_end)
+    # #105 period matching, last of all: a year no tag reports under ``fp: "FY"``, taken from an annual-form fact
+    # stamped with a quarter, in the field's tag order. It runs after every merge above, so it can only add.
+    for concept in concepts:
+        for year, val_end in _one(concept, annual_fp=False).items():
             merged.setdefault(year, val_end)
     return merged
 
@@ -1030,8 +1049,11 @@ def _is_us_filer(facts: dict) -> bool | None:
 
     None when no annual fact names a form: unknown, never a guessed True (every IFRS filer used to land there).
     """
+    # ``fp: "FY"`` or an annual form: a filer whose annual facts carry a quarter in ``fp`` (#105) is typed from
+    # the form it filed them on, the same evidence, instead of staying unknown.
     forms = {f.get("form") for concepts in (facts.get("facts") or {}).values() for body in concepts.values()
-             for items in (body.get("units") or {}).values() for f in items if f.get("fp") == "FY"}
+             for items in (body.get("units") or {}).values() for f in items
+             if f.get("fp") == "FY" or f.get("form") in _ANNUAL_FORMS}
     if forms & {"10-K", "10-K/A", "10-KT", "10-KT/A"}:
         return True
     if forms & {"20-F", "20-F/A", "40-F", "40-F/A"}:
