@@ -15,10 +15,11 @@ from . import fund_fixture as fx
 FUND = [n for n, d in DATASETS.items() if d.kind == KIND]
 
 
-def test_the_fundamentals_kind_is_served_at_version_5():
+def test_the_fundamentals_kind_is_served_at_version_6():
     """2 since ``earnings_reported`` (``uw/earnings``, avo's decision of 5 Nov 2026); 3 since the freeze of #645;
-    4 since ``report_tables`` (#1048); 5 since ``earnings_report_history`` (#1181)."""
-    assert serving.SERVING_SCHEMA_VERSION["fundamentals"] == 5 and "fundamentals" in serving.KINDS
+    4 since ``report_tables`` (#1048); 5 since ``earnings_report_history`` (#1181);
+    6 since ``audit_flag`` (#1181 step C)."""
+    assert serving.SERVING_SCHEMA_VERSION["fundamentals"] == 6 and "fundamentals" in serving.KINDS
 
 
 def test_every_fundamentals_dataset_starts_by_hand_and_the_served_tables_build_last():
@@ -44,7 +45,7 @@ def test_a_build_with_no_source_yet_serves_the_tier_a_companies():
     rows = fx.q("SELECT ticker, cik, gvkey, gsubind, spine_as_of, source FROM fundamental_company ORDER BY ticker")
     assert [r[0] for r in rows] == fx.TIER_A                                 # WFC-PC is Tier B
     assert rows[0] == ("HEI", "46619", "005567", "20101010", date(2026, 10, 27), "spine/security")
-    assert fx.q("SELECT kind, version FROM serving_schema_version") == [("fundamentals", 5)]
+    assert fx.q("SELECT kind, version FROM serving_schema_version") == [("fundamentals", 6)]
 
 
 def test_no_spine_yet_builds_empty_tables_not_an_error():

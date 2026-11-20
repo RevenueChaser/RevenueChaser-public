@@ -294,6 +294,18 @@ def _share_price(spot) -> str:
         return "—"
 
 
+def _rate_line(payload: dict) -> str:
+    """The banner's rate line: ``r = 4.13% · DGS10 2026-11-18``, or ``r = 4.00% · default`` when no stored yield was
+    held for the session (#644). The rate discounts every fitted expiry, so its day is on the board."""
+    try:
+        rate = f"{float(payload.get('risk_free')):.2%}"
+    except (TypeError, ValueError):
+        return "r = —"
+    if payload.get("risk_free_source") == "dgs10":
+        return f"r = {rate} · DGS10 {payload.get('risk_free_as_of') or '—'}"
+    return f"r = {rate} · default"
+
+
 def _friendly(asof: str | None) -> str:
     """'Wednesday, September 23, 2026 EOD' from an ISO day."""
     if not asof:
@@ -354,7 +366,7 @@ def render_oipd_dashboard(payload: dict) -> str:
     <div class="stat"><div class="v">{len(expiries)}</div><div class="l">Expiries fitted</div>
       <div class="d">of {_html.escape(str(payload.get('n_contracts', 0)))} contracts</div></div>
     <div class="stat"><div class="v">{_html.escape(str(payload.get('horizon_days') or '—'))}</div><div class="l">Horizon (days)</div>
-      <div class="d">r = {_html.escape(str(payload.get('risk_free')))}</div></div>
+      <div class="d">{_html.escape(_rate_line(payload))}</div></div>
   </div>
   <div id="body">
     <div class="panel">
