@@ -251,6 +251,55 @@ def classify_quadrant(rs_ratio: float, rs_momentum: float) -> str:
     return classify_rrg(rs_ratio, rs_momentum)
 
 
+# ── the hysteresis band (#597, item 1) ────────────────────────────────────────────────────────────────────────────
+# A dot sitting on an axis flipped quadrant every week: |z| of 0.02 one week and -0.02 the next is noise, not a
+# rotation. With the band an axis KEEPS the side it is on until the value crosses 100 by more than ``QUADRANT_BAND``,
+# so a flip needs a real move. The band is in A1 units: ``z`` is a deviation over its own 52-week standard deviation
+# (``_scaled``), so 1.0 is a whole standard deviation — the 1.0 of the old proposal was on the retired pooled-z
+# axis and is not this scale.
+# shortcut: 0.25 is a provisional default (about one typical weekly step of z); re-measure it on the stored
+# snapshots with ``early_turn.band_scan`` and set it from that table (#597).
+QUADRANT_BAND = 0.25
+
+_RATIO_HIGH = ("LEADING", "WEAKENING")          # quadrants whose ratio side is "right of 100"
+_MOMENTUM_HIGH = ("LEADING", "IMPROVING")       # quadrants whose momentum side is "above 100"
+
+
+def classify_sticky(ratio_z: float, momentum_z: float, previous: str = "", band: float = QUADRANT_BAND) -> str:
+    """The quadrant of ``(ratio_z, momentum_z)`` given the ``previous`` quadrant, with the hysteresis band (#597).
+
+    Each axis is judged on its own: an axis the ``previous`` quadrant had on the high side stays high until the value
+    falls to ``-band`` or below; one it had on the low side stays low until the value reaches ``+band``. Without a
+    ``previous`` quadrant (the first week of a series) or with ``band <= 0`` this is exactly ``classify_rrg``.
+    """
+    if not previous or band <= 0:
+        return classify_rrg(ratio_z, momentum_z)
+    ratio_high = ratio_z > -band if previous in _RATIO_HIGH else ratio_z >= band
+    momentum_high = momentum_z > -band if previous in _MOMENTUM_HIGH else momentum_z >= band
+    if ratio_high:
+        return "LEADING" if momentum_high else "WEAKENING"
+    return "IMPROVING" if momentum_high else "LAGGING"
+
+
+def quadrant_path(points, band: float = QUADRANT_BAND) -> list[str]:
+    """The quadrant of every week of ``points`` (``jdk_series`` output: ``(ratio, momentum)`` around 100, ``None``
+    where the history is too short), walked oldest to newest through the band.
+
+    Pure, and a function of the closes alone: the live Fetch and the backfill of the same session walk the same path
+    from the same weekly closes and agree on the quadrant (D-M3), which reading the last stored snapshot would not.
+    A gap (``None``) gets ``""`` and keeps the quadrant memory, so one missing week does not reset the band.
+    """
+    out: list[str] = []
+    previous = ""
+    for p in points:
+        if p is None:
+            out.append("")
+            continue
+        previous = classify_sticky(p[0] - 100, p[1] - 100, previous, band)
+        out.append(previous)
+    return out
+
+
 # ── the RRG cross-section from the stored bars (M-ROT-2, #374; model A1, avo 17 Nov 2026) ──────────────────────────
 # A1: every ETF is scored against its OWN history (JdK-style), not against the other ETFs, on completed ISO weeks:
 #   rel   = ln(ETF / SPY)                       dev   = rel - mean(rel over the last TREND_WEEKS)
@@ -390,7 +439,9 @@ def jdk_series(closes: list[float], spy_closes: list[float]) -> list[tuple[float
 def cross_section(closes: dict[str, list[float]], spy_closes: list[float], as_of: date) -> list[ETFRotationSnapshot]:
     """The RRG of ``as_of``: one snapshot per RRG symbol of ``closes`` with at least ``MIN_WEEKS`` completed weekly
     closes. ``rs_ratio`` / ``rs_momentum`` are the A1 values around 100 (``jdk_series``); ``rs_ratio_z`` /
-    ``rs_momentum_z`` are the same values less 100, the map's axes, and the quadrant is their signs. ``rs_1w`` /
+    ``rs_momentum_z`` are the same values less 100, the map's axes, and the quadrant is their signs read through the
+    hysteresis band (``quadrant_path``, #597): a dot on an axis keeps its quadrant until it crosses by more than
+    ``QUADRANT_BAND``. ``rs_1w`` /
     ``rs_1m`` / ``rs_3m`` are the plain excess returns over SPY across ``LOOKBACKS`` weeks.
 
     The one function the live Fetch and the backfill share (D-M3): the same closes give the same rows.
@@ -400,17 +451,19 @@ def cross_section(closes: dict[str, list[float]], spy_closes: list[float], as_of
         series = closes.get(ticker) or []
         if ticker == "SPY" or ticker in MACRO_SERIES or len(series) < MIN_WEEKS:
             continue
-        point = jdk_series(series, spy_closes)[-1]
+        path = jdk_series(series, spy_closes)
+        point = path[-1]
         if point is None:
             continue
         ratio, mom = round(point[0], 3), round(point[1], 3)
         rz, mz = round(ratio - 100, 3), round(mom - 100, 3)
+        quadrant = quadrant_path(path)[-1]
         snaps.append(ETFRotationSnapshot(
             as_of_date=as_of, ticker=ticker, group_name=info.get("group", ""), close_price=series[-1],
             rs_1w=relative_strength_pct(series, spy_closes, LOOKBACKS["rs_1w"]),
             rs_1m=relative_strength_pct(series, spy_closes, LOOKBACKS["rs_1m"]),
             rs_3m=relative_strength_pct(series, spy_closes, LOOKBACKS["rs_3m"]),
-            rs_ratio=ratio, rs_momentum=mom, rs_ratio_z=rz, rs_momentum_z=mz, rrg_quadrant=classify_rrg(rz, mz)))
+            rs_ratio=ratio, rs_momentum=mom, rs_ratio_z=rz, rs_momentum_z=mz, rrg_quadrant=quadrant))
     return snaps
 
 
