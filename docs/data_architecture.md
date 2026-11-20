@@ -1652,6 +1652,25 @@ dataset's coverage: Tier A names with a bar on the asked session over the Tier A
 count; Tier B's own coverage is reported beside it and is not part of the acceptance, because an OTC or fund name
 may have no Alpaca bar.
 
+**Survivorship bias: the store is biased on purpose, and it is reversible (#441).** Because the universe is read
+from the live spine, the store holds no row of a company that delisted in the past. avo was told and accepted it on
+5 Nov 2026 ("Bu senin tercihin ise sorun yok"), so this is a property of the store, not a bug to fix.
+
+- **Harmless for everything the boards show:** the history of today's names, co-movement and relatedness between
+  today's names, the charts. The missing names are not part of the question those answer.
+- **Harmful and silent for anything measuring the past:** a backtest, AG-score validation, a forecast-ledger hit
+  rate. The bad outcomes of companies that died are absent, so a number computed from this store comes out better
+  than reality, with nothing warning about it.
+- **The delisted history is already on disk**, because the filter is applied only in the serving build
+  (`_universe`, `rcdata/build/prices/serving.py`) and **the WRDS fetch has no universe filter at all**:
+  `crsp.dsf_v2` is asked with a date range alone (every share type), `comp.secd` by exchange — today's code or any
+  dated `comp.sec_idhist` EXCHG period, so a name that was once listed is still fetched — and CRSP's delisting
+  table `crsp_a_stock.stkdelists` whole (`rcdata/build/prices/wrds_history.py`, `TABLES`). All of it is under
+  `parquet/wrds/prices/<table>/`.
+- **So, when it matters:** read that Parquet, or build a separate research file from it, and say in the issue or doc
+  that the measurement used it. **Never widen the served universe for a one-off measurement** — no WRDS call and no
+  change to the served store is needed, and a widened store would change what every board reads.
+
 **A request's own scope (#265).** A queued request carries what it asks for, so a fill does not mean editing the
 code: `{"tiers": ["A", "B"], "names": ["KO"], "include": ["anchors"], "mode": "backfill", "from": ..., "to": ...}`.
 A request that names nothing is the daily run: today's universe, the benchmarks and rotation ETFs, the stock watch
