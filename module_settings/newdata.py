@@ -561,6 +561,9 @@ def _serving_facts(now: datetime | None = None
     ``sample`` is the table's newest five rows (A16), read through this same connection and cached by the hour, so
     a page render costs one read per table per hour rather than one per render. Without ``now`` no sample is read
     at all, which is what a caller that only wants the counts asks for.
+
+    A kind whose file cannot be read -- not built yet, or replaced by a swap between the open and a query -- is
+    left out of all four maps rather than raising (#310 N13).
     """
     tables: dict[str, dict] = {}
     swaps: dict[str, str | None] = {}
@@ -570,8 +573,8 @@ def _serving_facts(now: datetime | None = None
         swaps[kind] = None
         try:
             con = serving.open_read(kind)
-        except serving.ServingFileMissing:
-            continue
+        except (serving.ServingFileMissing, duckdb.Error):
+            continue                            # not built yet, or caught mid-swap: see the ``duckdb.Error`` below
         try:
             names = {r[0] for r in con.execute("SELECT table_name FROM duckdb_tables()").fetchall()}
             if serving.VERSION_TABLE in names:
@@ -604,6 +607,13 @@ def _serving_facts(now: datetime | None = None
                     {k: (v.isoformat() if isinstance(v, date) else v) for k, v in zip(cols, r)}
                     for r in cur.fetchall()]
             builds[kind] = _build_of(kind, con, names)
+        except duckdb.Error:
+            # #310 N13: the builder swaps a kind in by replacing its path, so the file this connection holds can
+            # go away between the open above and any of the reads here. A kind caught that way says nothing --
+            # the same as a kind whose file is not built yet -- instead of taking the whole Database tab down to
+            # the one-line error ``report._collect_newdata`` falls back to. What was read before the failure
+            # stands: these are counts of a build that really was live a moment ago.
+            continue
         finally:
             con.close()
     return tables, swaps, funnel, builds
@@ -761,7 +771,8 @@ def _session_counts(con) -> dict[str, dict[str, int]]:
 
     The Backfill calendar and the universe tile sum the sets the universe holds, so a narrowed universe is compared
     with its own names only (review M1). The live spine is attached read-only to the caller's handle for one
-    GROUP BY and detached; without a spine every bar counts as ``-``. Read once an hour with the samples.
+    GROUP BY and detached; without a spine, or with one that cannot be read right now, every bar counts as ``-``.
+    Read once an hour with the samples.
 
     The count is a plain ``count(*)``, not ``count(DISTINCT security_id)``: ``(security_id, session_date)`` is this
     table's key (``build.prices.serving.KEYS``, held by its PRIMARY KEY and, when ``RC_PRICES_NO_PRIMARY_KEY=1``
@@ -773,19 +784,34 @@ def _session_counts(con) -> dict[str, dict[str, int]]:
     from RevenueChaser.rcdata.build import base
     from RevenueChaser.rcdata.build.prices import serving as prices_serving
     spine = serving.live_path("spine")
+    rows = None
     if spine.exists():
         fund = ", ".join(repr(t) for t in api_screen.FUND_TYPES)
-        con.execute(f"ATTACH {base.sql_path(spine)} AS rc_spine (READ_ONLY)")
+        # #310 N13: the spine is a second file, swapped on its own clock, and neither the attach nor the one
+        # ``GROUP BY`` on it can be relied on just because the path is there a line earlier. Either failing drops
+        # to the spineless count below -- every bar under ``-``, which is what the calendar shows when no spine is
+        # built at all -- rather than through ``_serving_facts`` to the tab's one-line error.
         try:
-            rows = con.execute(
-                "WITH sets AS (SELECT DISTINCT " + prices_serving.SPINE_ID + " AS security_id, "
-                f"CASE WHEN tier = 'B' AND security_type IN ({fund}) THEN 'E' WHEN tier = 'B' THEN 'R' ELSE tier END "
-                "AS s FROM rc_spine.security WHERE tier IN ('A', 'B', 'C', 'D')) "
-                "SELECT b.session_date, coalesce(sets.s, '-'), count(*) FROM price_bar_daily b "
-                "LEFT JOIN sets USING (security_id) GROUP BY 1, 2 ORDER BY 1, 2").fetchall()
-        finally:
-            con.execute("DETACH rc_spine")
-    else:
+            con.execute(f"ATTACH {base.sql_path(spine)} AS rc_spine (READ_ONLY)")
+        except duckdb.Error:
+            pass
+        else:
+            try:
+                rows = con.execute(
+                    "WITH sets AS (SELECT DISTINCT " + prices_serving.SPINE_ID + " AS security_id, "
+                    f"CASE WHEN tier = 'B' AND security_type IN ({fund}) THEN 'E' WHEN tier = 'B' THEN 'R' "
+                    "ELSE tier END "
+                    "AS s FROM rc_spine.security WHERE tier IN ('A', 'B', 'C', 'D')) "
+                    "SELECT b.session_date, coalesce(sets.s, '-'), count(*) FROM price_bar_daily b "
+                    "LEFT JOIN sets USING (security_id) GROUP BY 1, 2 ORDER BY 1, 2").fetchall()
+            except duckdb.Error:
+                rows = None
+            finally:
+                try:
+                    con.execute("DETACH rc_spine")
+                except duckdb.Error:            # already gone with the file: the connection is closed per render
+                    pass
+    if rows is None:
         rows = con.execute("SELECT session_date, '-', count(*) FROM price_bar_daily "
                            "GROUP BY 1 ORDER BY 1").fetchall()
     out: dict[str, dict[str, int]] = {}
