@@ -30,7 +30,7 @@ import time
 import uuid
 from collections import deque
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable, Iterable, Protocol
 
@@ -945,6 +945,18 @@ def idle_problem(lock: str = BUILDER_LOCK) -> str | None:
     if peers:
         return "another builder runs: pid " + ", ".join(str(p) for p in peers)
     return None
+
+
+def backup_problem(now: datetime | None = None) -> str | None:
+    """Why no build may start now, or None: avo's rule is a fresh verified backup before every live write, and a
+    build replaces a served file (``serving.Build.swap``).
+
+    The check itself is the backup's own (``rcdata/backup.py`` ``stale_problem``), read from the manifest the
+    weekly run writes, so this gate, the Settings page and the backup card read one record and cannot disagree.
+    Unlike ``idle_problem`` this is not a holder that clears by waiting, so a caller refuses instead of waiting.
+    """
+    from .. import backup
+    return backup.stale_problem(now)
 
 
 def cap_problem(ds: Dataset) -> str | None:
