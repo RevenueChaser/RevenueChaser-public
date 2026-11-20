@@ -452,20 +452,21 @@ def _early_turn_tickers(as_of: date, snapshots: list[ETFRotationSnapshot]) -> se
                              [p.get(s.ticker, (None, None))[1] for p in priors])}
 
 
-# Weeks of stored snapshots the Early Turn card scores itself on (#597): long enough that the horizon has run out
-# on a useful number of flags, short enough to stay one small query.
+# Weeks the Early Turn card scores itself on (#597). Read from the PRICES store, not from the stored snapshots:
+# the live board file held 3 snapshots when this was measured (homesrv, 20 Nov 2026), so an 8-week horizon could
+# judge nothing and the card showed no line at all — the measured score would not have reached the board until
+# late December. 104 weeks is one read of bars the map already reads most of, and enough weeks that the horizon
+# has run out on a useful number of flags.
 SCORE_WEEKS = 104
 
 
 def _early_turn_score(as_of: date) -> dict:
-    """The early-turn flag's score on the stored snapshots (``early_turn.brier``), or ``{}`` when there is no board
-    file or too little history. Read-only; never raises into the page."""
-    from datetime import timedelta
+    """The early-turn flag's score (``early_turn.brier``) on the weeks rebuilt from the prices store, or ``{}``
+    when the store cannot answer. Read-only, writes nothing, and never raises into the page."""
     from . import early_turn as et
-    from .store import load_range
     try:
-        return et.brier(load_range(as_of - timedelta(weeks=SCORE_WEEKS), as_of))
-    except Exception:                                   # noqa: BLE001 - no board file yet: no line on the card
+        return et.brier(weekly=et.points_from_prices(as_of, weeks=SCORE_WEEKS))
+    except Exception:                                   # noqa: BLE001 - no prices store yet: no line on the card
         return {}
 
 
@@ -1112,7 +1113,7 @@ def export_rotation_dashboard(snapshots: list[ETFRotationSnapshot], filename: st
 <svg class="rrg" id="rrg" viewBox="0 0 600 600" role="img" aria-label="Relative rotation graph: each ETF against its own history vs {benchmark}"></svg>
 <div class="note">Each dot is the last completed week; the line is its path over the weeks before (faint = older). Right of 100 = stronger than {benchmark} against its own 14-week trend, above 100 = that strength is rising. ETFs usually turn clockwise. Tap a dot or a row to follow one path.</div>
 <div class="note"><b style="color:#c9d1d9">How it is computed:</b> total-return weekly closes vs {benchmark}, completed weeks only. RS-Ratio = 100 + how far the ETF/{benchmark} line sits above its own 14-week average, in units of its last year's spread; RS-Momentum = 100 + the 4-week change of RS-Ratio, in the same units. Each ETF is measured against its own history, so adding or removing an ETF never moves another's dot.<br>
-<b>RS 1W / 1M / 3M</b> = the ETF's return over 1 / 4 / 12 weeks minus {benchmark}'s (percentage points). <span style="color:#8B5CF6">⚡ Early turn</span> = momentum above 100 on the two prior stored snapshots while ratio is below 100; the card says how often that was followed by Leading on the stored weeks.<br>
+<b>RS 1W / 1M / 3M</b> = the ETF's return over 1 / 4 / 12 weeks minus {benchmark}'s (percentage points). <span style="color:#8B5CF6">⚡ Early turn</span> = momentum above 100 on the two prior stored snapshots while ratio is below 100; the card says how often that was followed by Leading over the last two years of weeks, against how often any ETF left of 100 got there.<br>
 <b>Quadrant</b> = the 100/100 cross with a hysteresis band: a dot keeps its quadrant until it crosses 100 by more than the band, so one sitting on an axis does not flip every week.</div>
 </div>
 

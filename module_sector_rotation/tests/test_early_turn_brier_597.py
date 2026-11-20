@@ -246,3 +246,34 @@ class TestPointsFromPrices:
         pts = bar_points(["SPY"], date(2025, 3, 3), base)["SPY"]
         assert len(weekly_week_keys(pts, base)) == len(weekly_closes(pts, base))
         assert weekly_week_keys(pts, base)[-1] == tuple(date(2026, 8, 14).isocalendar())[:2]
+
+
+class TestTheCardReadsThePricesStore:
+    """The live board file held 3 snapshots, so a card scored off them showed nothing (homesrv, 20 Nov 2026)."""
+
+    def test_the_card_scores_the_weeks_rebuilt_from_the_prices_store(self, monkeypatch):
+        from RevenueChaser.module_sector_rotation import report
+        from RevenueChaser.module_sector_rotation import store as rotation_store
+        pair = weekly_points(history({"A": TestBrier.HIT, "B": TestBrier.MISS}))
+        asked = {}
+
+        def _points(as_of, weeks=0, **kw):
+            asked["as_of"], asked["weeks"] = as_of, weeks
+            return pair
+
+        monkeypatch.setattr(early_turn, "points_from_prices", _points)
+        monkeypatch.setattr(rotation_store, "load_range",
+                            lambda *a, **k: pytest.fail("the card must not score off the stored snapshots"))
+        out = report._early_turn_score(date(2026, 11, 19))
+        assert asked == {"as_of": date(2026, 11, 19), "weeks": report.SCORE_WEEKS}
+        assert out == brier(weekly=pair)
+
+    def test_a_prices_store_that_cannot_answer_leaves_the_card_without_a_line(self, monkeypatch):
+        from RevenueChaser.module_sector_rotation import report
+
+        def _raise(*a, **k):
+            raise RuntimeError("no prices store")
+
+        monkeypatch.setattr(early_turn, "points_from_prices", _raise)
+        assert report._early_turn_score(date(2026, 11, 19)) == {}
+        assert caption(report._early_turn_score(date(2026, 11, 19))) == ""
