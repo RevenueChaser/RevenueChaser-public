@@ -136,7 +136,10 @@ def test_record_issue_and_job_runs():
     [issue] = ops.rows("build_issues")
     [run] = ops.rows("job_runs2")
     assert tuple(issue[c] for c in ("dataset", "kind", "key", "detail", "run_id", "resolved_on")) == ("market_series", "parse", "fred:DGS2", "bad row", "r1", None)
-    assert run["status"] == "ok" and run["pid"] == os.getpid() and json.loads(run["params"]) == {"once": True}
+    # The chain id rides in ``params`` and is the run's own id when nothing started it (step 1 of the 20 Nov
+    # 2026 review; ``ops.chained_params``).
+    assert run["status"] == "ok" and run["pid"] == os.getpid()
+    assert json.loads(run["params"]) == {"once": True, "chain": "r1"}
     assert run["finished_at"] is not None
 
 
