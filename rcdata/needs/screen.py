@@ -93,6 +93,8 @@ DATASETS: dict[str, DatasetCard] = {
                                   cadence='quarterly', step=10, role='only source'),
     'uw/greek_expiry_strike': DatasetCard('SPX greek exposure by expiry and strike, whole chain (Unusual Whales)', coverage_target=0.95, step=11, role='first'),
     'uw/total_float': DatasetCard('Float check (Unusual Whales)', step=8, role='cross-check'),
+    'wrds/audit': DatasetCard('Restatements, late filings and officer changes (WRDS: Audit Analytics)', step=9,
+                               role='only source'),
     'wrds/co_hgic': DatasetCard('Compustat GICS history (WRDS)', step=5, role='fills'),
     'wrds/funda': DatasetCard('Compustat annual fundamentals (WRDS, the revision check)', step=9, role='cross-check'),
     'wrds/exrt': DatasetCard('Daily exchange rates for non-USD filers (WRDS: Compustat)', step=9, role='first'),
