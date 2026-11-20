@@ -78,7 +78,11 @@ def build(now: float | None = None, run_id: str | None = None) -> dict:
     run_id = run_id or f"news-earnings-{int(now)}"
     monday, _friday = week(now)
     found = rows(now)
-    rawstore.execute(f"DELETE FROM {TABLE}", db="news")       # one week at a time, never a second week's leftovers
+    # The board file is made on its first write, so a DELETE on a store nobody has written to yet would
+    # fail on a table that is not there. Ensure it, then empty it: one week at a time, never a second
+    # week's leftovers.
+    rawstore.ensure_table(TABLE)
+    rawstore.execute(f"DELETE FROM {TABLE}", db="news")
     rawstore.write_rows(TABLE, [{
         "week_start": monday.isoformat(), "ticker": r["ticker"], "company": r.get("company"),
         "report_date": str(r["report_date"])[:10], "report_time": r.get("report_time"),
