@@ -375,13 +375,42 @@ function capForChart(links){
   var kept = sup.slice(0, nSup).concat(cus.slice(0, nCus));
   return links.filter(function(l){ return kept.indexOf(l) >= 0; });
 }
+// At 411 px an unresolved counterparty's full legal name ("Hon Hai Precision Industry Co., Ltd.") is wider than
+// the gap between two columns, and Plotly right-aligns the last column's labels across the node to their left,
+// which covered the focal "NVDA" in the real render (#1159). The chart draws a short label with the full name on
+// hover; the evidence row below always carries the name in full.
+var NODE_LABEL_MAX = 18;
+function nodeLabel(name){
+  name = String(name == null ? "" : name);
+  if(name.length <= NODE_LABEL_MAX) return name;
+  return name.slice(0, NODE_LABEL_MAX - 1).replace(/[\s,.]+$/, "") + "…";
+}
+// A pair both companies state ("NVDA's filing names FN", "FN's filing names NVDA at 16.3% of sales") puts one
+// node on both sides of the focal company, and Plotly draws that as a circular link: it leaves the node, runs
+// under the chart and comes back as a rounded box (#1159, NVDA at 411 px). The chart draws such a pair once,
+// keeping whichever the ranking puts first; both statements stay in the evidence list.
+function dropReverseDuplicates(links){
+  var seen = {}, kept = [];
+  (links || []).forEach(function(l){
+    var a = String(l.src), b = String(l.dst);
+    if(seen[b + ">" + a]) return;
+    seen[a + ">" + b] = true;
+    kept.push(l);
+  });
+  return kept;
+}
 function drawSankey(focal, links){
   var note = document.getElementById("sankey-note");
   var total = links.length;
-  if(total > SANKEY_MAX){
-    links = capForChart(links);
-    note.textContent = "Showing the " + links.length + " strongest of " + total +
-      " links: the ones whose filing states a share, largest first, both directions kept. " +
+  links = dropReverseDuplicates(links);
+  var capped = links.length > SANKEY_MAX;
+  if(capped) links = capForChart(links);
+  if(links.length < total){
+    note.textContent = (capped
+      ? "Showing the " + links.length + " strongest of " + total +
+        " links: the ones whose filing states a share, largest first, both directions kept. "
+      : "Showing " + links.length + " of " + total +
+        " links: a pair both companies' filings state is drawn once. ") +
       "Every one is in the evidence below.";
     note.hidden = false;
   } else {
@@ -402,7 +431,9 @@ function drawSankey(focal, links){
     return "#1a1f2b";
   });
   var data = [{ type: "sankey", orientation: "h", arrangement: "snap",
-    node: { label: nodes, pad: 12, thickness: 14, color: nodeColors,
+    node: { label: nodes.map(nodeLabel), customdata: nodes,
+            hovertemplate: "%{customdata}<extra></extra>",
+            pad: 12, thickness: 14, color: nodeColors,
             font: { color: "#d7dce5", size: 11 } },
     link: { source: src, target: dst, value: val, color: colors } }];
   var layout = { paper_bgcolor: "#12161e", plot_bgcolor: "#12161e",

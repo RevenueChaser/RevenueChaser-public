@@ -60,3 +60,26 @@ def test_the_two_link_counts_say_what_they_count():
     bare = report.render_value_chain_dashboard(_payload(precision=None))
     assert "supplier / customer links served</div>" in bare
     assert "distinct pairs" not in bare
+
+
+def test_the_chart_survives_long_names_and_a_pair_stated_both_ways():
+    """The render at `ad7d926` on NVDA, 411 px, real data: two things AMZN's render could not show.
+
+    The right column held unresolved counterparties by their full legal name ("Hon Hai Precision Industry Co.,
+    Ltd.", "Wistron Corporation"), which Plotly right-aligns across the node to their left -- the focal "NVDA"
+    was unreadable under them. And FN, which NVDA's filing names and whose own filing names NVDA at 16.3% of
+    sales, sat on both sides of the focal company, so Plotly drew its link as a circular one that left the node,
+    ran under the chart and came back as a rounded box.
+    """
+    html = report.render_value_chain_dashboard(_payload())
+    # A short label on the node, the full name on hover, and the evidence row keeps the name in full either way.
+    assert "var NODE_LABEL_MAX = 18;" in html
+    assert "function nodeLabel(name){" in html
+    assert "label: nodes.map(nodeLabel), customdata: nodes," in html
+    assert 'hovertemplate: "%{customdata}<extra></extra>",' in html
+    # A pair stated both ways is drawn once, so no link loops under the chart.
+    assert "function dropReverseDuplicates(links){" in html
+    assert "links = dropReverseDuplicates(links);" in html
+    # Either reason for drawing fewer than the company has is said under the chart, not left silent.
+    assert "a pair both companies' filings state is drawn once. " in html
+    assert "if(links.length < total){" in html
