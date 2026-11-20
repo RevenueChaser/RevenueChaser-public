@@ -92,7 +92,7 @@ def picks(cards: list, session: date) -> list[dict]:
     rows = []
     for card in cards:
         day = _report_date(card)
-        if day is None or day < session:          # MUTANT M1
+        if day is None or day <= session:
             continue
         rows.append({
             "subject": getattr(card, "ticker", ""),
