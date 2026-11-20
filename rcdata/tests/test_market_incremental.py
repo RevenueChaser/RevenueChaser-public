@@ -10,8 +10,8 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.rcdata import serving
-from RevenueChaser.rcdata.build import base, dirty, market_series as ms
+from RevenueChaser.rcdata import ops, serving
+from RevenueChaser.rcdata.build import audit, base, dirty, market_series as ms
 from RevenueChaser.rcdata.build import uw_greek_expiry_strike as greek, uw_spot_expiry_strike as spot
 from RevenueChaser.rcdata.build.sources import fred, treasury
 
@@ -103,3 +103,54 @@ def test_market_series_dirty_keys_name_the_source_and_the_year():
     assert greek.DATASET.dirty(ctx) is dirty.CLEAN
     with pytest.raises(ValueError):
         ms._where("nosuch/2026")
+
+
+# ── the audit sample runs on a build on the live copy (#446 step 5) ────────────────────────────────────────────
+
+def _subject(where: str = "true") -> audit.Subject:
+    """A stand-in subject on ``market_series``: ``where`` is what the recompute leaves out, so a test can make it
+    disagree with the file on purpose. No real dataset declares one yet (#446 step 5 is the contract)."""
+    return audit.Subject(dataset=ms.NAME, table=ms.TABLE, key="series_id",
+                         recompute=lambda ctx, con, keys: f"SELECT * FROM {ms.TABLE} WHERE {where}")
+
+
+def _declare(monkeypatch, subject: audit.Subject) -> None:
+    monkeypatch.setattr(type(ms.DATASET), "audit", lambda self, ctx: [subject], raising=False)
+
+
+def _rounds() -> dict[str, str]:
+    with serving.open_read("market") as con:
+        return dict(con.execute(f"SELECT key, result FROM {audit.ROUNDS}").fetchall())
+
+
+def test_a_build_on_the_live_copy_audits_the_subjects_its_datasets_declare(monkeypatch):
+    _seed()
+    _build()                                                   # whole: the live file to build the next one on
+    _declare(monkeypatch, _subject())
+    _, note = _build()
+    assert "built on the live file" in note and "audit:" not in note, note
+    assert _rounds() == {"DGS10": "ok", "DGS10_T": "ok"}, "every key of the served table, and none differs"
+
+
+def test_a_whole_build_is_not_audited(monkeypatch):
+    """A whole build is the recompute; auditing it would compare a file with itself."""
+    _seed()
+    _declare(monkeypatch, _subject())
+    _, note = _build()
+    assert "built whole" in note, note
+    with serving.open_read("market") as con:
+        assert not con.execute("SELECT 1 FROM duckdb_tables() WHERE table_name = ?",
+                               (audit.ROUNDS,)).fetchall()
+
+
+def test_a_key_the_audit_finds_a_difference_for_is_named_marked_and_handed_to_the_next_build(monkeypatch):
+    _seed()
+    _build()
+    _declare(monkeypatch, _subject(where="series_id <> 'DGS10'"))   # the recompute is missing a whole series
+    _, note = _build()
+    assert "audit: key(s) that differ from a recompute" in note and ms.TABLE in note, note
+    assert _rounds() == {"DGS10": "differs", "DGS10_T": "ok"}
+    [issue] = [i for i in ops.rows("build_issues") if i["kind"] == audit.ISSUE]
+    assert issue["dataset"] == ms.NAME and issue["key"] == "DGS10"
+    plan = dirty.plan("market", base.RunContext(run_id="t-plan", dataset=ms.NAME, as_of=D3))
+    assert plan is not None and plan.audited[ms.NAME] == {"DGS10"}, plan.audited

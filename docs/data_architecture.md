@@ -1128,6 +1128,20 @@ rewrites served rows) or a derivation rebuilt whole — is read from the build c
 together with the two dependencies (the spine's symbol map, the prices universe) that make a table dirty with no
 new source day of its own.
 
+**The audit sample** (#446 step 5, `rcdata/build/audit.py`). A build on the live copy never looks at the rows it
+carries over, so a row built wrongly — by a rule that was once wrong, or by a dirty set that missed it — would stay
+served until a whole build, and the whole build is what #446 removes. Instead every incremental build re-reads a
+small, risk-weighted sample of keys from Parquet and compares them with the file. A dataset declares an
+`audit(ctx)` answering with `Subject`s (a served table, its key column, SQL that rebuilds that table's rows for
+given keys from Parquet, and optional SQL weighting the keys); a dataset that declares none is not audited, as a
+dataset that declares no `dirty` is not built incrementally. The draw is A-Res over the declared weight times how
+long ago each key was last audited (`build_audit`, carried in the serving file; a key never audited counts as ten
+years old), and `RC_AUDIT_KEYS` sets how many per pass (default 500, `0` off). A difference is **evidence, not a
+refusal**: it opens a build issue (`kind = audit`, so the Logs board shows it) and marks the key for the next build
+(`build_audit_dirty`, which `dirty.plan` hands to that dataset through `Plan.audited` and `ctx.audited`, for its
+own `dirty` to add in its own key space — only the dataset knows what its keys mean), while the file still swaps in —
+refusing it would stop the whole flow on one bad key, and the next pass rebuilds those keys anyway.
+
 **Whose build code changed** (#814). Build code is a rule: a change to an extraction or a table rule restates rows
 that no Parquet file marks as changed, so the build file carries a fingerprint of the code it was built by and a
 change to it forces a whole build. That fingerprint used to be one per kind — every Python file in the packages

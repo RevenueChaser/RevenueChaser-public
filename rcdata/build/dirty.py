@@ -449,6 +449,9 @@ class Plan:
     #: The live file had no manifest, so ``changed`` came from its ``built_at``: no gone file is in it, and a
     #: keyed dataset adds the keys the live file serves that have no partition any more (``common.dirty_ciks``).
     fallback: bool = False
+    #: Per dataset, the keys an earlier audit found a difference for (``audit.DIRTY``, #446 step 5). A dataset's
+    #: own ``dirty`` adds them to its dirty set, because only it knows what its keys mean.
+    audited: dict[str, frozenset[str]] = field(default_factory=dict)
     memo: dict[str, Any] = field(default_factory=dict)       # what the datasets of one build share (their keys)
 
     def note(self) -> str:
@@ -480,6 +483,10 @@ def plan(kind: str, ctx: Any, datasets: Iterable[Any] | None = None) -> Plan | N
     if reason is None:
         reason = full_rebuild_reason(kind, datasets, ctx)
     held = live_rules(kind)
+    # The keys an earlier audit found a difference for, for a dataset's own ``dirty`` to add to its dirty set in
+    # its own key space (#446 step 5). It is set before the sets are asked for, so ``dirty(ctx)`` can read it.
+    audited = audit_dirty(kind, datasets)
+    ctx.audited = audited
     recoded: tuple[str, ...] = ()
     if reason is None and held is not None:
         # A live file built before the fingerprints existed is trusted once: it was built by the code just before
@@ -505,7 +512,19 @@ def plan(kind: str, ctx: Any, datasets: Iterable[Any] | None = None) -> Plan | N
                 break
     if reason is not None:
         recoded = ()
-    return Plan(reason, sets, current, rules, changed, recoded, fallback)
+    return Plan(reason, sets, current, rules, changed, recoded, fallback, audited)
+
+
+def audit_dirty(kind: str, datasets: Iterable[Any]) -> dict[str, frozenset[str]]:
+    """Per dataset, the keys an earlier audit of one of its tables found a difference for (``audit.DIRTY``).
+
+    Empty for a live file that has no such table, which is every file built before the audit landed."""
+    from . import audit
+    try:
+        with serving.open_read(kind) as con:
+            return {d.name: audit.dirty_keys(con, getattr(d, "tables", ())) for d in datasets}
+    except (serving.ServingFileMissing, duckdb.Error):
+        return {}
 
 
 def write_manifest(con: duckdb.DuckDBPyConnection, p: Plan) -> None:
