@@ -200,6 +200,9 @@ _NEEDS = (
     # 95 days like ``earnings_reported``: the newest row is a quarter end, so it is up to a quarter old by design.
     Need("fundamentals.report_history", "earnings_report_history", "earnings_report_history", "period_end", "cik",
          95, providers=("wrds", "uw")),
+    # Audit Analytics' restatements, late filings and officer changes (#1181 step C). The feeds end about two
+    # months before the monthly pull, so the newest row is up to a quarter old by design: 95, as the two above.
+    Need("fundamentals.audit_flags", "audit_flags", "audit_flag", "file_date", "cik", 95, providers=("wrds",)),
     Need("fundamentals.filings", "filing_items", "filing_item", "filing_date", "cik", 1,
          ask_param="ciks", providers=("sec",)),
     Need("fundamentals.segments", "segments", "segment_revenue", "period_end", "cik", 65,

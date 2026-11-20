@@ -156,3 +156,50 @@ def test_a_dashboard_job_id_still_wins_over_the_task(monkeypatch):
     monkeypatch.setenv(rawstore.RUN_ID_ENV, "abc123def456")
     monkeypatch.setattr(rawstore, "_CHANGE_WRITER", lambda: ("job000000001", "universe"))
     assert rawstore._change_writer() == ("job000000001", "universe")
+
+
+# --- the chain id (review of 20 Nov 2026, step 1) ---------------------------------------------------------------
+#
+# A timer run and the dataset runs it caused shared no key, so nothing could be read as one chain. ``run_task``
+# now hands its own run id to the command it starts, in ``ops.CHAIN_ID_ENV``, whether or not the step writes
+# tables (``RC_RUN_ID`` stays what it was: the writer's stamp, for a table writer alone).
+
+_SHOW_CHAIN = "import os; print('chain', os.environ.get('RC_CHAIN_ID'))"
+
+
+def _chain_of(run_id: str) -> str | None:
+    from RevenueChaser.rcdata import ops
+    [row] = [r for r in ops.rows("job_runs2") if r["run_id"] == run_id]
+    return (ops._loads(row["params"]) or {}).get("chain")
+
+
+def test_a_task_hands_its_run_id_to_its_command_as_the_chain(monkeypatch, tmp_path):
+    from RevenueChaser.rcdata import ops
+    monkeypatch.delenv(ops.CHAIN_ID_ENV, raising=False)
+    e = _entry(code=_SHOW_CHAIN, tables=())
+    _only(monkeypatch, e)
+    assert A.run_task(e.name, cwd=tmp_path) == 0
+    [run] = ops.job_runs()
+    assert f"chain {run['run_id']}" in e.log_path.read_text(encoding="utf-8")
+    # The step writes no table, so the writer's own stamp is not set: the chain id is not that variable.
+    assert "RC_RUN_ID" not in e.log_path.read_text(encoding="utf-8")
+
+
+def test_a_task_s_own_row_is_the_root_of_its_chain(monkeypatch, tmp_path):
+    from RevenueChaser.rcdata import ops
+    monkeypatch.delenv(ops.CHAIN_ID_ENV, raising=False)
+    e = _entry(code=_PRINTS_RESULT)
+    _only(monkeypatch, e)
+    assert A.run_task(e.name, cwd=tmp_path) == 0
+    [run] = ops.job_runs()
+    assert _chain_of(run["run_id"]) == run["run_id"]
+
+
+def test_a_table_writer_gets_both_variables(monkeypatch, tmp_path):
+    from RevenueChaser.rcdata import ops
+    monkeypatch.delenv(ops.CHAIN_ID_ENV, raising=False)
+    e = _entry(code="import os; print('ids', os.environ.get('RC_RUN_ID'), os.environ.get('RC_CHAIN_ID'))")
+    _only(monkeypatch, e)
+    assert A.run_task(e.name, cwd=tmp_path) == 0
+    [run] = ops.job_runs()
+    assert f"ids {run['run_id']} {run['run_id']}" in e.log_path.read_text(encoding="utf-8")

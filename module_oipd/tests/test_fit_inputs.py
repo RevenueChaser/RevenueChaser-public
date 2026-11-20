@@ -62,7 +62,7 @@ class TestOneRoot:
 class TestModelVersion:
     def test_golden(self):
         # A changed fit knob changes the hash: bump SELECTION_VERSION in the same change, then this value.
-        assert config.model_version() == "oipd-1+f586afce"
+        assert config.model_version() == "oipd-2+f0ff07b9"
 
     def test_the_density_grid_is_in_the_version(self, monkeypatch):
         before = config.model_version()

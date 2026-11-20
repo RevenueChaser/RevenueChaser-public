@@ -1,6 +1,6 @@
 """``wrds/audit``: Audit Analytics' restatement, late-filing and officer-change feeds against a fake worker (never
-WRDS), step C of the WRDS plan (#1181). ``company_fkey`` is the CIK; the feeds are staged and counted, and nothing
-served reads them yet."""
+WRDS), step C of the WRDS plan (#1181). ``company_fkey`` is the CIK; this file is the pull, the staging and the
+check note. What is served from them is ``test_fund_audit_flag.py``."""
 from __future__ import annotations
 
 from datetime import date
@@ -66,10 +66,10 @@ def test_no_snapshot_yet_says_so():
     assert AUDIT.note(_con({})) == "WRDS audit feeds: no snapshot yet"
 
 
-def test_the_dataset_is_registered_attended_monthly_and_feeds_no_served_table():
+def test_the_dataset_is_registered_attended_monthly_and_builds_no_table_itself():
     assert DATASETS[AUDIT.name] is AUDIT and AUDIT.name == "wrds/audit"
     assert AUDIT.cadence == "monthly" and AUDIT.starts_by_hand
-    assert AUDIT.feeds == () and AUDIT.tables == ()
+    assert AUDIT.feeds == ("audit_flag",) and AUDIT.tables == ()     # ``fundamentals/tables`` builds it
     assert AUDIT.full_rebuild_reason(None) is None
 
 

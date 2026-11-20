@@ -14,8 +14,13 @@ OIPD_JSON = OUTPUT_DIR / "oipd" / "oipd_latest.json"
 
 # ── Defaults ────────────────────────────────────────────────────────────────
 DEFAULT_TICKER = "SPY"
-# Risk-free proxy carried from the Financials DCF (10y US Treasury stand-in).
+# The rate the discounting uses is the stored FRED 10-year Treasury yield of the chain's session
+# (``macro.dgs10``, through ``core/risk_free.stored_dgs10``; avo's decision of 10 Nov 2026, #644). The constant below
+# is only the fallback when no yield is held inside the window, and the board says when it stands on it.
 RISK_FREE_RATE = 0.04
+# How many calendar days before the chain's session a DGS10 observation may be and still count (FRED publishes the
+# yield one business day late, so the session's own observation is often not held yet).
+RISK_FREE_MAX_AGE_DAYS = 14
 
 # ── Expiry selection ────────────────────────────────────────────────────────
 MIN_DTE = 1          # 0DTE is excluded: intraday time value breaks the T model
@@ -49,13 +54,16 @@ GRID = {"min_half_width": 2.5, "sd_mult": 8.0, "half_cap": 6.0, "grid_n": 801}
 
 # ── Model version ───────────────────────────────────────────────────────────
 # Bump by hand when a fit knob changes; the golden test in tests/test_fit_inputs.py fails until it is.
-SELECTION_VERSION = "oipd-1"
+SELECTION_VERSION = "oipd-2"
+# What the fit's rate IS, hashed instead of the day's value: the rate now moves with the stored yield, and a model
+# version that moved with it would change on every FRED observation.
+RISK_FREE_SOURCE = f"macro.dgs10<={RISK_FREE_MAX_AGE_DAYS}d-else-{RISK_FREE_RATE}"
 
 
 def fit_config() -> dict:
     """Every knob that changes a fitted distribution, hashed into the model version."""
     return {"min_dte": MIN_DTE, "max_dte": MAX_DTE, "max_expiries": MAX_EXPIRIES, "min_contracts": MIN_CONTRACTS,
-            "g_floor": G_FLOOR, "penalty_weight": PENALTY_WEIGHT, "risk_free": RISK_FREE_RATE,
+            "g_floor": G_FLOOR, "penalty_weight": PENALTY_WEIGHT, "risk_free": RISK_FREE_SOURCE,
             "max_rel_spread": MAX_REL_SPREAD, "grid": GRID, "clip_flag_pct": CLIP_FLAG_PCT,
             "tail_flag_ratio": TAIL_FLAG_RATIO, "g_flag_tol": G_FLAG_TOL,
             "inputs": "otm-two-sided-no-vendor-iv", "expiries": "oi-top", "roots": "largest"}

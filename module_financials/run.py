@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 
 from RevenueChaser.core.reporting_common import filters_meta, write_artifact
@@ -37,39 +37,34 @@ def _stored_risk_free() -> dict | None:
 
     The DCF's risk-free rate was the 4% constant although the store holds the real yield (Financials review S2).
     Read-only and zero network, so a Refresh reads it too; without it the DCF takes its default and says so. The
-    yield is ``market_series`` DGS10 (``rcdata``, G6) alone.
+    yield is ``market_series`` DGS10 (``rcdata``, G6) alone, read through ``core/risk_free``, which the Implied
+    Probability fit reads as well (#644).
 
     The window is looser than the Earnings Radar's on purpose (the Opus review's N1): that one pairs daily yields
     with returns for a beta, so a series three sessions behind is already wrong there. Here one level is read, a
     ten-year yield moves a few basis points in two weeks, and the fallback is a flat 4%, which is further off than a
     two-week-old yield; the date is shown.
     """
-    from RevenueChaser.core import calendar as market_calendar
-    from RevenueChaser.rcdata import read, serving
-    today = market_calendar.today_ny()
-    if serving.live_path("market").exists():
-        rows = [r for r in read.market_series(["DGS10"], start=today - timedelta(days=RISK_FREE_MAX_AGE_DAYS))
-                if r.get("source") == "fred" and r.get("value") is not None]
-        if not rows:
-            return None
-        newest = max(rows, key=lambda r: r["obs_date"])
-        return {"value": float(newest["value"]) / 100, "as_of": newest["obs_date"].isoformat()}
-    return None    # no market file yet; the old store's macro_series row went with it (#860)
+    from RevenueChaser.core import risk_free
+    return risk_free.stored_dgs10(max_age_days=RISK_FREE_MAX_AGE_DAYS)
 
 
 # The statement fields the SEC facts carry (``sec_edgar.CONCEPTS``) that the engines read, by the engines' names. A
-# field the facts do not carry (pre-tax income, tax provision, interest expense, current assets and liabilities) is
-# left out, so the engines' labelled defaults show (review S1).
+# field the facts do not carry (current assets and liabilities) is left out, so the engines' labelled defaults show
+# (review S1).
+# The last three are #645 G1 (avo 10 Nov 2026): the layer serves ``IncomeTaxExpenseBenefit``, pre-tax income and
+# interest expense, which only Yahoo used to supply, so the effective tax rate and the interest cover are now the
+# filer's own figures rather than a flat default on every name.
 _SEC_FIELDS = ("revenue", "cost_of_revenue", "gross_profit", "ebit", "net_income", "diluted_shares", "basic_shares",
                "rd_expense", "operating_cash_flow", "capex", "depreciation", "total_assets", "total_equity", "cash",
-               "short_term_investments", "receivables", "inventory", "payables", "total_debt")
+               "short_term_investments", "receivables", "inventory", "payables", "total_debt",
+               "tax_provision", "pretax_income", "interest_expense")
+# The layer's name for a field the engines call something else. The SEC concept is ``IncomeTaxExpenseBenefit``, which
+# the layer serves as ``income_tax_expense``; the engines were written against Yahoo's ``tax_provision`` and read
+# that (``engines/_inputs.statement_tax_rate``).
+_LAYER_NAMES = {"tax_provision": "income_tax_expense"}
 # shortcut: the newest five fiscal years (Yahoo gave four); read more when a model projects from a longer history.
 SEC_YEARS = 5
-# What a run on the SEC's statements always takes a default for, because the facts never carry it (no pre-tax
-# income, tax provision or interest expense): the Source line names it (Opus review M1; avo, 29 Oct 2026: stay on the
-# SEC's statements and say so, rather than letting these send every run to Yahoo's).
-# shortcut: named, not filled; upgrade when the layer serves the tax and interest concepts (#271).
-NOT_IN_FACTS = ("tax rate", "interest expense")
 
 
 def _financials_record(rec: dict) -> dict:
@@ -81,7 +76,7 @@ def _financials_record(rec: dict) -> dict:
     end = fiscal_year.period_end(rec)
     out: dict = {"fiscal_year": rec.get("fiscal_year"), "period_end": end.isoformat() if end else None}
     for f in _SEC_FIELDS:
-        v = to_float(rec.get(f))
+        v = to_float(rec.get(_LAYER_NAMES.get(f, f)))
         if v is not None:
             out[f] = v
     if "capex" in out:
@@ -89,6 +84,31 @@ def _financials_record(rec: dict) -> dict:
     if "ebit" in out and "depreciation" in out:
         out["ebitda"] = out["ebit"] + out["depreciation"]
     return out
+
+
+def _tax_and_interest_gaps(annual: list[dict], bank: bool = False) -> list[str]:
+    """What the SEC's statements leave the engines a labelled default for beside the statement lines: the effective
+    tax rate and the interest expense (#645 G1).
+
+    It used to be both, on every name, because the facts carried neither (the old ``NOT_IN_FACTS``). The layer
+    serves all three concepts now, so this is measured per company: the tax rate is a gap only when no year's
+    ``tax_provision / pretax_income`` is inside the believable band (``_inputs.median_tax_rate``, which is what the
+    DCF actually falls back from), and the interest expense when the newest year with revenue has none. A bank's
+    model reads neither, so it has no gap (the delta review's nit).
+    """
+    from RevenueChaser.core import fiscal_year
+    from RevenueChaser.core.config import to_float
+    from .engines._inputs import median_tax_rate
+    if bank:
+        return []
+    i = fiscal_year.anchor(annual)
+    latest = annual[i] if i is not None else {}
+    gaps = []
+    if median_tax_rate(annual)[0] is None:
+        gaps.append("tax rate")
+    if to_float(latest.get("interest_expense")) is None:
+        gaps.append("interest expense")
+    return gaps
 
 
 def _statement_gaps(annual: list[dict], bank: bool = False) -> list[str]:
@@ -240,14 +260,14 @@ def _run(ticker: str, modules, output: str, assumptions: dict | None, peers: lis
         annual, meta = sec
         used, lacking = _statements_choice(annual, financials.get("annual") or [], bank=sector == PE_ONLY_SECTOR)
         if used == "sec":
-            # Delta review nit: a bank's model (P/E only) reads neither a tax rate nor an interest expense.
-            if sector != PE_ONLY_SECTOR:
-                lacking = lacking + list(NOT_IN_FACTS)
+            # #645 G1: the facts carry the tax and interest concepts now, so what the Source line names is this
+            # filer's own gap, not a constant. A bank's model (P/E only) reads neither (delta review nit).
+            lacking = lacking + _tax_and_interest_gaps(annual, bank=sector == PE_ONLY_SECTOR)
             filed = meta.get("newest_filed")
             financials = {**financials, "annual": annual,
                           "statements_meta": {**meta, "used": "sec", "sec_lacks": lacking},
                           "source": "SEC company facts (statements" + (f", newest filed {filed}" if filed else "")
-                                    + ("; not in the facts, so defaults: " + ", ".join(lacking) if lacking else "")
+                                    + ("; not in this filer's facts, so defaults: " + ", ".join(lacking) if lacking else "")
                                     + ") · " + market}
         else:
             financials = {**financials, "statements_meta": {**meta, "used": "yahoo", "sec_lacks": lacking},
