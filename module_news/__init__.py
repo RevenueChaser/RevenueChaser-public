@@ -9,4 +9,6 @@ Its results live in its own ``boards/news.duckdb`` (DECISIONS S9, S16), written 
 #: and the X lane are the board's own live tape (#673, #674, #681, #686) and are written into its board file, not
 #: served by the builder, so they are not needs: the board keeps its IBKR and Grok calls by design, as the
 #: Settings record says.
-READS = ("market.economic_calendar", "market.fda_calendar")
+#: ``fundamentals.earnings_event`` joined on #886: the Alpha Vantage earnings calendar behind the
+#: Earnings tab, read through ``rcdata.read.earnings_events`` and never fetched by the board.
+READS = ("fundamentals.earnings_event", "market.economic_calendar", "market.fda_calendar")

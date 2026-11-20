@@ -1190,9 +1190,11 @@ def run_news(uw=None) -> Path:
     ``uw/economic_calendar`` and ``uw/fda_calendar``, #807). The headlines are two gateway
     requests a name and no UW call; a gateway that is down is a job note, never a failed Fetch.
     """
-    from RevenueChaser.module_news import calendar, report
+    from RevenueChaser.module_news import calendar, earnings, report
     rid = run_id()
     out = calendar.build(run_id=rid)
+    weeks = earnings.build(run_id=rid)       # next week's watch-list earnings too, so a Fetch is never a week late
+    ledger.add_note(f"News earnings: {weeks['names']} watch-list names report in the week of {weeks['week_start']}")
     ledger.add_note(f"News calendar: {out['read']} raw rows read, {out['upserted']} events upserted, "
                     f"{out['retired']} retired, {out['highlights']} day highlights")
     if out.get("fda_read"):
@@ -1300,6 +1302,19 @@ def run_news_x_follow(uw=None) -> Path | None:
         return None
     ledger.add_note(f"News X reader: {got['stored']} new posts stored of {got['read']} read")
     headlines.mark_lane_ok("x")
+    return report.render()
+
+
+def run_news_earnings(uw=None) -> Path:
+    """The News board's weekly earnings pass (#886): next week's report day of every watch-list name, from the
+    stored Alpha Vantage calendar (``fundamentals.earnings_event``), into ``boards/news.duckdb``, then the page.
+
+    Store-only, no provider call. Queued by ``RC-News-Earnings-Weekly`` every Sunday 09:00 Amsterdam, and by the
+    board's own Fetch, so a Fetch never shows last week's days.
+    """
+    from RevenueChaser.module_news import earnings, report
+    out = earnings.build(run_id=run_id())
+    ledger.add_note(f"News earnings: {out['names']} watch-list names report in the week of {out['week_start']}")
     return report.render()
 
 

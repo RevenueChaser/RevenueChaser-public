@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import time
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from RevenueChaser.core import econ_importance, rawstore
@@ -19,7 +19,7 @@ from RevenueChaser.core.html_safe import script_json
 from RevenueChaser.core.reporting_common import (FILTERS_CSS, FILTERS_JS, THEME_CSS, THEME_JS, combobox_html, help_html,
                                                  provider_health_html, watchlist_html, write_artifact)
 from RevenueChaser.module_news.calendar import AMS, EVENTS, FDA_TYPE, HIGHLIGHT, local_day, served_value
-from RevenueChaser.module_news import headlines, x_check
+from RevenueChaser.module_news import earnings, headlines, x_check
 from RevenueChaser.module_news.x_feed import X_PROVIDERS
 
 FILENAME = "news_latest.html"
@@ -209,6 +209,54 @@ def _strip(events: list[dict], now: float) -> str:
     return '<div class="wk" role="group" aria-label="This week">' + "".join(out) + "</div>"
 
 
+#: How UW's and Alpha Vantage's own words for the time of a report read on the board (#886).
+_WHEN = {"pre-market": ("Before open", "bmo"), "premarket": ("Before open", "bmo"), "bmo": ("Before open", "bmo"),
+         "post-market": ("After close", "amc"), "afterhours": ("After close", "amc"), "amc": ("After close", "amc")}
+
+
+def when_html(value) -> str:
+    """The report's time of day as its chip: before the open, after the close, or that it is not published."""
+    text, cls = _WHEN.get(str(value or "").strip().lower(), ("Time not published", ""))
+    return f'<span class="when {cls}">{text}</span>' if cls else f'<span class="when">{text}</span>'
+
+
+def _earnings_row(r: dict) -> str:
+    return (f'<li class="er"><span class="sym">{esc(str(r["ticker"]).upper())}</span>'
+            f'<div><div class="co">{esc(r.get("company") or r["ticker"])}</div></div>'
+            f'{when_html(r.get("report_time"))}</li>')
+
+
+def _earnings(rows: list[dict], mark: float | None, now: float) -> str:
+    """Next week's reports of the watch-list names, Monday to Friday (#886, the mock avo approved 20 Nov 2026).
+
+    An empty week and an empty watch list are not the same answer, so each says its own thing; the note carries
+    the day the weekly pass last ran, because a tab that is simply stale must not read as a quiet week.
+    """
+    monday, friday = earnings.week(now)
+    span = (f"{monday.day}–{friday.day} {MONTHS[friday.month - 1]}" if monday.month == friday.month
+            else f"{monday.day} {MONTHS[monday.month - 1]} – {friday.day} {MONTHS[friday.month - 1]}")
+    refreshed = (f"last refresh {day_label(local_day(mark))} {hm(mark)}" if mark
+                 else "not built yet; the Sunday pass has not run")
+    head = (f'<div class="erh" style="margin-top:0"><h3>Next week · {span}</h3>'
+            f'<span class="n">{len(rows)} name{"" if len(rows) == 1 else "s"} from your watch lists</span></div>'
+            f'<p class="note">Your watch lists only · refreshed every Sunday · {refreshed}</p>')
+    if not rows:
+        return head + ('<p class="empty">No watch-list name reports next week. If your watch lists are empty, add '
+                       'a name on any board to see its report day here.</p>')
+    by_day: dict = {}
+    for r in rows:
+        by_day.setdefault(earnings.day_of(r), []).append(r)
+    out = []
+    for i in range(earnings.TRADING_DAYS):
+        day = monday + timedelta(days=i)
+        day_rows = by_day.get(day, [])
+        count = f'{len(day_rows)} name{"" if len(day_rows) == 1 else "s"}' if day_rows else "—"
+        out.append(f'<div class="erh"><h3>{day_label(day)}</h3><span class="n">{count}</span></div>'
+                   + (f'<ul class="list">{"".join(_earnings_row(r) for r in day_rows)}</ul>' if day_rows
+                      else '<p class="empty">No watch-list name reports on this day.</p>'))
+    return head + "".join(out)
+
+
 def _cd(label: str, body: str) -> str:
     return f'<p class="cd" id="cd-{label}">{body}</p>'
 
@@ -250,8 +298,10 @@ def _list(rows: list[str], shown: int, empty: str) -> str:
             f'<p class="empty dayempty"{" hidden" if shown else ""}>{empty}</p>')
 
 
-def _calendar(events: list[dict], undated: list[dict], now: float, hl_key) -> str:
-    """The calendar card: the week strip, then the Economic and FDA lists of the pressed day (#808)."""
+def _calendar(events: list[dict], undated: list[dict], weeks: tuple[list[dict], float | None], now: float,
+              hl_key) -> str:
+    """The calendar card: the week strip, then the Economic and FDA lists of the pressed day (#808) and next
+    week's watch-list earnings (#886), which stand by their own week and are not filtered by the strip."""
     today = local_day(now)
     econ = [e for e in events if str(e.get("type") or "") != FDA_TYPE]
     fda = [e for e in events if str(e.get("type") or "") == FDA_TYPE]
@@ -264,11 +314,14 @@ def _calendar(events: list[dict], undated: list[dict], now: float, hl_key) -> st
             f'<button type="button" role="tab" aria-selected="true" aria-controls="cal-econ" '
             f'onclick="newsTab(this)">Economic <span class="n" data-n="econ">{n_econ}</span></button>'
             f'<button type="button" role="tab" aria-selected="false" aria-controls="cal-fda" '
-            f'onclick="newsTab(this)">FDA <span class="n" data-n="fda">{n_fda}</span></button></div>'
+            f'onclick="newsTab(this)">FDA <span class="n" data-n="fda">{n_fda}</span></button>'
+            f'<button type="button" role="tab" aria-selected="false" aria-controls="cal-earn" '
+            f'onclick="newsTab(this)">Earnings <span class="n">{len(weeks[0])}</span></button></div>'
             f'<div id="cal-econ" role="tabpanel">{_econ_cd(events, now)}'
             f'{_list([_row(e, now, hl_key) for e in econ], n_econ, "Nothing on this day’s economic calendar.")}</div>'
             f'<div id="cal-fda" role="tabpanel" hidden>{_fda_cd(fda, now)}'
-            f'{_list([_fda_row(e, now) for e in fda], n_fda, "No FDA catalyst on this day.")}{later}</div>')
+            f'{_list([_fda_row(e, now) for e in fda], n_fda, "No FDA catalyst on this day.")}{later}</div>'
+            f'<div id="cal-earn" role="tabpanel" hidden>{_earnings(weeks[0], weeks[1], now)}</div>')
 
 
 def _highlight(hl: dict | None) -> str:
@@ -462,17 +515,90 @@ def api_rows(since: float, limit: int = 2 * HEADLINE_LIMIT) -> list[dict]:
     cutoff, seen = time.time() - HEADLINE_HOURS * 3600, {r["headline_id"] for r in rows}
     rows += [r for r in headlines.peek_tape() if r["headline_id"] not in seen and r["published_at"] >= cutoff]
     rows = sorted(rows, key=lambda r: -float(r["published_at"]))[:int(limit)]
-    return [{"headline_id": r["headline_id"], "published_at": r["published_at"], "hm": hm(r["published_at"]),
-             "headline": r["headline"], "source": r.get("source") or "",
-             "tickers": [x_lines(r)[0]] if lane(r) == "x" and x_lines(r)[0] else (
-                 [] if lane(r) == "x" else _tickers(r.get("tickers"))),
-             "kind": X_KINDS.get(r.get("kind") or "", r.get("kind") or ""),
-             "option": x_lines(r)[1] if lane(r) == "x" else "",
-             "badge": list(x_check.badge(_check(r))[:3]) if lane(r) == "x" else None,
-             "move": x_check.price_move(_check(r), float(r["published_at"])) if lane(r) == "x" else "",
-             "group": x_group(r) if lane(r) == "x" else "",
-             "url": r["url"] if str(r.get("url") or "").startswith(("https://", "http://")) else "",
-             "lane": lane(r), "run_at": r["run_at"]} for r in rows]
+    return [_api_headline(r) for r in rows]
+
+
+def _api_headline(r: dict) -> dict:
+    """One stored headline as every read-only answer writes it: the page's poll and #809's windowed read alike."""
+    return {"headline_id": r["headline_id"], "published_at": r["published_at"], "hm": hm(r["published_at"]),
+            "headline": r["headline"], "source": r.get("source") or "",
+            "tickers": [x_lines(r)[0]] if lane(r) == "x" and x_lines(r)[0] else (
+                [] if lane(r) == "x" else _tickers(r.get("tickers"))),
+            "kind": X_KINDS.get(r.get("kind") or "", r.get("kind") or ""),
+            "option": x_lines(r)[1] if lane(r) == "x" else "",
+            "badge": list(x_check.badge(_check(r))[:3]) if lane(r) == "x" else None,
+            "move": x_check.price_move(_check(r), float(r["published_at"])) if lane(r) == "x" else "",
+            "group": x_group(r) if lane(r) == "x" else "",
+            "url": r["url"] if str(r.get("url") or "").startswith(("https://", "http://")) else "",
+            "lane": lane(r), "run_at": r["run_at"]}
+
+
+# ── the read-only serving of the board's rows (#809, slice N3 of #783) ───────────────────────────────────────────
+#: The most rows one read-only call answers with, whichever window it asks for: a reader (the MCP server, a script)
+#: asks for a window, not for the table.
+API_LIMIT = 200
+#: The widest window a read-only call may ask for, in days: a month of calendar, and the same cap on a headline
+#: window. The board file keeps more; a caller that wants more asks again with another window.
+API_MAX_DAYS = 31
+
+
+def event_rows(now: float | None = None, days: int = WEEK_DAYS, types: tuple[str, ...] | None = None) -> list[dict]:
+    """The live calendar rows of the next ``days`` days from today (Amsterdam), oldest first: what
+    ``GET /api/news/events`` serves. Read-only, store-only, every type the board holds unless ``types`` names some.
+
+    A retired row is never served: it is an event the source stopped listing (``module_news/calendar.py``)."""
+    now = time.time() if now is None else now
+    today = local_day(now)
+    start = datetime(today.year, today.month, today.day, tzinfo=AMS)
+    end = start + timedelta(days=max(1, min(int(days), API_MAX_DAYS)))
+    sql = (f"SELECT * FROM {EVENTS} WHERE event_ts >= ? AND event_ts < ? AND retired_at IS NULL")
+    params: list = [start.timestamp(), end.timestamp()]
+    if types:
+        wanted = sorted({str(t).strip().lower() for t in types if str(t or "").strip()})
+        if not wanted:
+            return []
+        sql += f" AND lower(type) IN ({', '.join('?' * len(wanted))})"
+        params += wanted
+    rows = rawstore.query(sql + f" ORDER BY event_ts, event LIMIT {API_LIMIT}", params, db="news")
+    return [{"event_ts": float(r["event_ts"]),
+             "event_utc": datetime.fromtimestamp(float(r["event_ts"]), timezone.utc).isoformat(),
+             "event_local": datetime.fromtimestamp(float(r["event_ts"]), AMS).isoformat(),
+             "day": local_day(r["event_ts"]).isoformat(), "hm": hm(r["event_ts"]),
+             "event": r["event"], "type": r["type"], "importance": r.get("importance"),
+             "forecast": served_value(r.get("forecast")), "prev": served_value(r.get("prev")),
+             "reported_period": r.get("reported_period"), **_api_fda(r)} for r in rows]
+
+
+def _api_fda(r: dict) -> dict:
+    """What an FDA row (#807) carries beyond an economic one; empty for an economic row, so one answer holds both.
+
+    ``target_precision`` travels with the day: a reader must be able to tell "4 Dec 2026" from "some time in
+    Q2 2027", which is why ``target_text`` is served as UW wrote it.
+    """
+    if str(r.get("type") or "") != FDA_TYPE:
+        return {}
+    return {"ticker": r.get("ticker"), "drug": r.get("drug"), "catalyst": r.get("catalyst"),
+            "indication": r.get("indication"), "application_status": r.get("status"),
+            "outcome": r.get("outcome"), "url": r.get("url"),
+            "target_text": r.get("target_text"), "target_precision": r.get("target_precision")}
+
+
+def headline_rows(start: float, end: float, ticker: str | None = None,
+                  limit: int = API_LIMIT) -> list[dict]:
+    """Stored headlines published inside ``[start, end]``, newest first, optionally of one ticker: what
+    ``GET /api/news/headlines`` serves when it is asked for a window instead of the page's ``since`` poll.
+
+    The window is what makes the join of #809 possible: the headlines around a release, not the last 24 hours."""
+    rows = rawstore.query(
+        f"SELECT headline_id, provider, published_at, headline, source, tickers, url, kind, option, x_check, run_at "
+        f"FROM {HEADLINES} WHERE published_at >= ? AND published_at <= ? ORDER BY published_at DESC "
+        f"LIMIT {max(1, min(int(limit), API_LIMIT)) * 4}", [float(start), float(end)], db="news")
+    rows = [r for r in rows if not (lane(r) == "x" and r.get("kind") == "other")]
+    if ticker:
+        want = str(ticker).strip().upper()
+        rows = [r for r in rows if want in {t.upper() for t in _tickers(r.get("tickers"))}
+                or want == (x_group(r) or "").upper()]
+    return [_api_headline(r) for r in rows[:max(1, min(int(limit), API_LIMIT))]]
 
 
 def _picker() -> list[dict]:
@@ -640,10 +766,24 @@ h1{margin:2px 0 0;color:var(--bright);font-size:22px}
  font-size:11px;white-space:nowrap}
 .ev .t.na{color:var(--muted);font-weight:400;font-size:12px}
 .sub{color:var(--muted);font-size:12px;margin-top:2px}
+/* ── #886: next week's earnings of the watch-list names (mock approved by avo 20 Nov 2026) ── */
+.er{display:grid;grid-template-columns:76px 1fr auto;gap:8px 12px;align-items:center;padding:10px 8px;
+ border-bottom:1px solid var(--border);min-height:44px}
+.er .sym{font:600 15px/1.3 ui-monospace,"JetBrains Mono","SFMono-Regular",Menlo,monospace;color:var(--bright)}
+.er .co{color:var(--fg)}
+.er .when{display:inline-block;padding:0 8px;border-radius:999px;border:1px solid var(--border);
+ color:var(--muted);font-size:11.5px;line-height:20px;white-space:nowrap}
+.er .when.bmo{color:var(--sky)}
+.er .when.amc{color:var(--amber)}
+.erh{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 12px;align-items:baseline;margin:14px 0 2px}
+.erh h3{margin:0;font-size:13px;color:var(--muted);font-weight:600}
+.erh .n{color:var(--muted);font-size:12px}
+.note{margin:-4px 0 12px;color:var(--muted);font-size:12px}
 [hidden]{display:none!important}
 @media (max-width:900px){.grid,.cols{grid-template-columns:minmax(0,1fr)}.feat{order:-1}}
 @media (max-width:560px){.ev{grid-template-columns:60px 1fr}.vals{grid-column:2}.wrap{padding:12px}
- .wk{gap:4px}.wkd{padding:6px 0}.wkd .cnt{flex-direction:column;gap:0}}
+ .wk{gap:4px}.wkd{padding:6px 0}.wkd .cnt{flex-direction:column;gap:0}
+ .er{grid-template-columns:76px 1fr}.er .when{grid-column:2}}
 """
 
 _JS = """
@@ -872,6 +1012,11 @@ HELP = help_html(
     "day — some are served as a quarter, a half year, \"mid\" or \"late\" in a year. Those carry a <b>no day "
     "yet</b> chip and stand together under <b>Later, no day yet</b>, never snapped onto a day they do not have. "
     "An FDA catalyst has a date and no time of day, so it shows no clock.</p>"
+    "<p><b>Earnings</b> is next week, Monday to Friday: the report day of every name on your watch lists, from "
+    "the Alpha Vantage earnings calendar the market store already holds. It is <b>your watch lists only</b>, and "
+    "it is refreshed <b>once a week, Sunday 09:00</b>, because a calendar of next week does not change by the "
+    "hour; the line under the heading says when that pass last ran. <b>Before open</b> and <b>After close</b> "
+    "are the calendar's own words; a company whose time is not published says so.</p>"
     "<p>Market headlines land on the page within seconds of arriving; stock headlines come every 5 minutes. "
     "Under each lane's heading stands that lane's <b>own</b> last data time: the clock at the top of the page is "
     "the newest write to any lane of the board, so on its own it cannot show a lane that has died.</p>"
@@ -890,7 +1035,7 @@ def render_html(now: float | None = None, provider_health: dict | None = None) -
     since = max((float(h["run_at"]) for h in heads if h.get("run_at") is not None), default=now)
     today = local_day(now)
     hl_key = (hl["event_ts"], hl["event"], hl["type"]) if hl else None
-    cal_html = _calendar(events, undated, now, hl_key)
+    cal_html = _calendar(events, undated, earnings.stored(now), now, hl_key)
     todays = [e for e in events if local_day(e["event_ts"]) == today]
     n_today = sum(1 for e in todays if str(e.get("type") or "") != FDA_TYPE)
     n_fda = len(todays) - n_today
@@ -919,7 +1064,7 @@ def render_html(now: float | None = None, provider_health: dict | None = None) -
 </div></div>
 <div id="pg-heads" role="tabpanel" hidden>{_ticker_box()}<div class="cols">{lanes["market"]}{lanes["stocks"]}</div></div>
 <div id="pg-x" role="tabpanel" hidden>{lanes["x"]}</div>
-<p class="foot">Source: economic and FDA calendar Unusual Whales, headlines Dow Jones (IBKR), X posts Grok summaries and RC's own X reader · Times Europe/Amsterdam · Importance: ●●● high ●●○ medium ●○○ low</p>
+<p class="foot">Source: economic and FDA calendar Unusual Whales, earnings days Alpha Vantage, headlines Dow Jones (IBKR), X posts Grok summaries and RC's own X reader · Times Europe/Amsterdam · Importance: ●●● high ●●○ medium ●○○ low</p>
 {HELP}
 </div>{watchlist_html("news")}<script>{FILTERS_JS}</script>
 <script>var NEWS_SINCE = {since!r}, HEAD_LIMIT = {HEADLINE_LIMIT}, TQ_PICK = {script_json(_picker())};{_JS}{_TQ_JS}</script>
