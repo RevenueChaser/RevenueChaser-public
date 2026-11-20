@@ -200,7 +200,7 @@ def test_every_dynamic_import_outside_tests_names_its_targets_as_string_literals
             continue
         if re.search(r"\bimport_module\(|__import__\(", p.read_text(encoding="utf-8")):
             sites.add(rel)
-    assert sites == {"module_relatedness/writers.py"}
+    assert sites == {"core/llm_writers.py"}
 
 
 def test_the_workflow_names_each_run_full_or_selective():

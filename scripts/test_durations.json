@@ -550,7 +550,7 @@
  "module_settings/tests/test_newdata_spine.py": 11.8,
  "module_settings/tests/test_phone_flow_715.py": 0.4,
  "module_settings/tests/test_queue_backups_715.py": 0.0,
- "module_settings/tests/test_relatedness_writer_card_360.py": 0.0,
+ "module_settings/tests/test_llm_writers_card_404.py": 0.0,
  "module_settings/tests/test_report.py": 2.4,
  "module_settings/tests/test_settings_database_fetch.py": 0.3,
  "module_settings/tests/test_ticker_lookup.py": 1.9,

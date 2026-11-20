@@ -46,11 +46,11 @@ class CallBudget:
 
 
 def _writers():
-    from . import writers
+    from RevenueChaser.core import llm_writers as writers
     return writers
 
 
-PROVIDERS = ("evren", "deepseek")      # module_relatedness.writers.WRITERS (#360)
+PROVIDERS = ("evren", "deepseek")      # core.llm_writers.WRITERS (#360, moved to core by #404)
 
 
 def llm(provider: str = "deepseek"):

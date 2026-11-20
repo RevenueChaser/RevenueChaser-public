@@ -930,6 +930,116 @@ def _settings_form(card: dict) -> str:
         f'overrides went with the old store (#860).</p></div>')
 
 
+# The LLM writers card (#404; mock approved by avo, 20 Nov 2026). One row per LLM job: its provider and model as
+# selects, the fee marked, a writer whose credential is absent greyed by the variable's NAME. A box is a grid of
+# cells (DESIGN.md §4): one grid on the parent, subgrid rows, so every cell of a column has one width. At phone
+# width the rows stack into cards and nothing scrolls sideways.
+LLM_CSS = """
+#llm-writers .llmtbl{display:grid;grid-template-columns:minmax(200px,1.1fr) minmax(210px,1fr) minmax(235px,1fr)
+  minmax(115px,.55fr);border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden}
+#llm-writers .llmhead,#llm-writers .llmrow{display:grid;grid-column:1/-1;grid-template-columns:subgrid}
+#llm-writers .llmhead>span{font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.06em;
+  color:var(--muted);background:var(--card-2);padding:var(--sp-2) var(--sp-3);font-weight:600}
+#llm-writers .llmhead>span:last-child{text-align:right}
+#llm-writers .llmrow{border-top:1px solid var(--border);align-items:center}
+#llm-writers .llmrow>div{padding:var(--sp-3);min-height:var(--touch);display:flex;flex-direction:column;
+  justify-content:center;gap:2px}
+#llm-writers .llmrow>div:last-child{align-items:flex-end;text-align:right}
+#llm-writers .llmjob{color:var(--bright);font-weight:550}
+#llm-writers .llmwhere{color:var(--muted);font-size:var(--fs-xs);font-family:ui-monospace,SFMono-Regular,Menlo,
+  monospace}
+#llm-writers select{width:100%;min-height:var(--touch);background:var(--input-bg);color:var(--fg);
+  border:1px solid var(--input-border);border-radius:var(--r-sm);padding:0 var(--sp-2);font:inherit}
+#llm-writers select option:disabled{color:var(--muted)}
+#llm-writers .llmpill{display:inline-block;border-radius:var(--r-pill);padding:2px var(--sp-2);
+  font-size:var(--fs-xs);font-weight:600;border:1px solid var(--border);white-space:nowrap}
+#llm-writers .llmpill.free{background:var(--pos-soft);color:var(--pos)}
+#llm-writers .llmpill.paid{background:var(--amber-soft);color:var(--amber)}
+#llm-writers .llmwhy{color:var(--muted);font-size:var(--fs-xs);line-height:1.4}
+#llm-writers .llmstrip{border:1px solid var(--border);border-radius:var(--r-md);padding:var(--sp-3) var(--sp-4);
+  margin:0 0 var(--sp-3);font-size:var(--fs-sm);background:var(--pos-soft)}
+#llm-writers .llmstrip.warn{background:var(--amber-soft)}
+#llm-writers .llmstrip b{color:var(--bright)}
+#llm-writers .llmlegend{display:flex;gap:var(--sp-3);flex-wrap:wrap;margin:0 0 var(--sp-3);font-size:var(--fs-xs);
+  color:var(--muted)}
+@media (max-width:640px){
+  #llm-writers .llmtbl{display:block;border:0}
+  #llm-writers .llmhead{display:none}
+  #llm-writers .llmlegend{display:none}
+  #llm-writers .llmrow{display:block;border:1px solid var(--border);border-radius:var(--r-md);
+    background:var(--card);margin-bottom:var(--sp-3);padding:var(--sp-3)}
+  #llm-writers .llmrow>div{padding:var(--sp-1) 0;min-height:0;align-items:stretch;text-align:left}
+  #llm-writers .llmrow>div:last-child{flex-direction:row;align-items:baseline;justify-content:flex-start;
+    gap:var(--sp-2);flex-wrap:wrap;padding-top:var(--sp-2)}
+  #llm-writers .llmrow label{display:block;font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.06em;
+    color:var(--muted);margin-bottom:var(--sp-1);font-weight:600}
+  #llm-writers .llmrow>div:last-child label{display:none}
+}
+@media (min-width:641px){#llm-writers .llmrow label{display:none}}
+"""
+
+
+def _llm_select(key: str, chosen: str, choices: list[tuple[str, str, str]]) -> str:
+    """One select. ``choices`` is ``(value, label, why it cannot be chosen)``; a why greys the option and is a
+    variable NAME, never a value."""
+    opts = "".join(
+        f'<option value="{_html.escape(v, quote=True)}"{" selected" if v == chosen else ""}'
+        f'{" disabled" if why else ""}>{_html.escape(label + (f" ({why})" if why else ""))}</option>'
+        for v, label, why in choices)
+    k = _html.escape(key, quote=True)
+    return f'<select id="in-{k}" data-setting="{k}" data-kind="text">{opts}</select>'
+
+
+def _llm_row(job: dict) -> str:
+    writers = job.get("writers") or []
+    provider = str(job.get("provider") or "")
+    model = str(job.get("model") or "")
+    pchoices = [(str(w["provider"]), str(w["label"]),
+                 f'{w["missing"]} is not set on this box' if w.get("missing") else "") for w in writers]
+    mchoices = [(m, f"{w['provider']} · {m}", "") for w in writers for m in (w.get("models") or [])]
+    fee = ('<span class="llmpill paid">paid · off-peak</span>' if job.get("paid")
+           else '<span class="llmpill free">no fee</span>')
+    return (
+        '<div class="llmrow">'
+        f'<div><span class="llmjob">{_html.escape(str(job.get("label") or ""))}</span>'
+        f'<span class="llmwhere">{_html.escape(str(job.get("where") or ""))}</span></div>'
+        f'<div><label for="in-{_html.escape(str(job.get("writer_key") or ""), quote=True)}">Provider</label>'
+        f'{_llm_select(str(job.get("writer_key") or ""), provider, pchoices)}</div>'
+        f'<div><label for="in-{_html.escape(str(job.get("model_key") or ""), quote=True)}">Model</label>'
+        f'{_llm_select(str(job.get("model_key") or ""), model, mchoices)}</div>'
+        f'<div><label>Fee</label>{fee}</div>'
+        '</div>')
+
+
+def _llm_writers_card(card: dict | None) -> str:
+    """The card itself. Read-only for now, like every settings card: the store that held the overrides, and the
+    Save and Reset that wrote them, went with the old store (#860), so one fieldset is disabled over the lot."""
+    jobs = (card or {}).get("jobs") or []
+    if not jobs:
+        return ""
+    paid = [str(x) for x in ((card or {}).get("paid") or [])]
+    if paid:
+        strip = ('<div class="llmstrip warn"><b>'
+                 f'{len(paid)} job{"s" if len(paid) > 1 else ""} on a paid writer.</b> '
+                 f'{_html.escape(", ".join(paid))} — off-peak and capped. The rest are on EVREN, free.</div>')
+    else:
+        strip = ('<div class="llmstrip"><b>Every LLM job is on EVREN.</b> No fee, no paid call this way.</div>')
+    rows = "".join(_llm_row(j) for j in jobs)
+    return (
+        '<div class="bset" id="llm-writers"><h4>LLM writers</h4>'
+        '<p class="muted">One writer per job (avo, 4 Nov 2026). The next run of a job uses its pair; a running '
+        'job is not affected. EVREN is free; DeepSeek API is paid, off-peak and capped. A provider with no '
+        'credential on this box is greyed, by variable name only.</p>'
+        f'{strip}'
+        '<div class="llmlegend"><span><span class="llmpill free">no fee</span> EVREN</span>'
+        '<span><span class="llmpill paid">paid · off-peak</span> DeepSeek API</span></div>'
+        '<fieldset disabled class="llmtbl">'
+        '<div class="llmhead"><span>Job</span><span>Provider</span><span>Model</span><span>Fee</span></div>'
+        f'{rows}</fieldset>'
+        '<p class="muted">These are the defaults each job runs on. They cannot be changed here yet: the saved '
+        'overrides went with the old store (#860), so Save and Reset wait for a settings store.</p></div>')
+
+
 def _provider_name(source) -> str:
     """The provider in words, from the page's one list of provider names (``SOURCE_WORDS``).
 
@@ -2859,6 +2969,7 @@ def _database_more(payload: dict) -> str:
     return ('<div id="needs"><div class="wrap" id="database-more">'
             f'{errs}{catalog}'
             + _hfold("The routes: the read-only addresses a board asks", routes)
+            + _llm_writers_card(payload.get("llm_writers"))
             + _hfold("Board inputs: what each board reads and its settings",
                      _boards_section(payload.get("boards") or [], payload.get("rows") or []))
             + _hfold("Automations: the scheduled tasks RevenueChaser owns",
@@ -2985,6 +3096,7 @@ def render_settings_dashboard(payload: dict) -> str:
 <style>{control_render.CTL_CSS}</style>
 <style>{needs_tab.NEEDS_CSS}</style>
 <style>{LIVE_CSS}</style>
+<style>{LLM_CSS}</style>
 {FILTERS_CSS}
 <script>{THEME_JS}</script>
 </head>

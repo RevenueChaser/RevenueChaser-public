@@ -115,7 +115,8 @@ def test_a_run_stops_when_the_sections_are_cut_with_another_rule_version(layer, 
 
 def test_the_comparison_job_stops_at_the_same_guard(filings_only, writer):
     """Review of PR #842, finding 6: ``compare.run`` prepared its inputs without the board's guard."""
-    from RevenueChaser.module_relatedness import compare, writers
+    from RevenueChaser.core import llm_writers as writers
+    from RevenueChaser.module_relatedness import compare
     provider = "deepseek"
     out = compare.run(["MSFT"], provider, writers.get(provider).models[0])
     assert out["stopped_reason"] == "forms" and out["usable"] == 0 and writer == []

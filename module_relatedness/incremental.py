@@ -1,8 +1,11 @@
 """Rescore only the pairs a changed profile touches (#1132, the incremental half of #884).
 
-A whole-board Refresh used to rescore every pair: about two hours single-threaded on the dashboard for 5,096
-profiles (measured 15 Nov 2026, #884 A), for scores the run had just written. Filings land spread over weeks, so
-the common case is a handful of changed profiles against an unchanged rest.
+A whole-board Refresh used to rescore every pair, for scores the run had just written. Filings land spread over
+weeks, so the common case is a handful of changed profiles against an unchanged rest. The pair scoring itself is
+cheap on this code -- ~27 s of CPU for 5,111 profiles, with the market stage over the stored peers a further ~16 s
+(measured on the server 20 Nov 2026, #884); the ~2 h that the 15 Nov 2026 run was read as was not the pair scoring,
+and #1163 measures where it went. So what this module saves is that scoring plus the embedding and market work on
+the pairs that cannot have moved, not hours.
 
 The rule this module implements, and the reason it is exact on the embedding path:
 

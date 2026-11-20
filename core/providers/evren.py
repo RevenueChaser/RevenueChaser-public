@@ -3,7 +3,7 @@
 Access order: **cache -> key -> HTTP**. There is no off-peak gate (EVREN does not bill by time of day) and no
 thinking knob. The key is ``LITELLM_RC_KEY``, the LiteLLM gate key (``core.credentials``), read from the environment at call time; the
 dashboard and the relatedness unit get it from ``/etc/life/secrets.env``. Base URL (``RC_EVREN_BASE``) and model
-(``RC_EVREN_MODEL``, or the board's ``WRITER_MODEL``, ``module_relatedness.writers``) are overridable so the
+(``RC_EVREN_MODEL``, or the board's ``WRITER_MODEL``, ``core.llm_writers``) are overridable so the
 end-to-end harness can point them at a mock.
 
 One call may take :data:`DEFAULT_TIMEOUT_S` seconds (``RC_EVREN_TIMEOUT_S``). Retries follow ``core.providers.deepseek`` (D2): one retry, only when the request is known not to have run (HTTP 429

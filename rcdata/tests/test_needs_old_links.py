@@ -23,7 +23,8 @@ UNDECLARED_CEILING = frozenset({
     "module_swing_potential", "module_uw_interaction", "module_value_chain",
 })
 
-#: ``{package: files (relative to it) that import core.providers}`` on 11 Nov 2026 (main 34ac3e55).
+#: ``{package: files (relative to it) that import core.providers}`` on 11 Nov 2026 (main 34ac3e55);
+#: ``module_relatedness/naming.py`` left it on 20 Nov 2026 (#404: its writer comes from ``core.llm_jobs`` now).
 PROVIDER_FILES = {
     "module_asymmetric_growth": {"engine.py"},
     "module_earnings_radar": {"macro_watch.py", "pipeline.py"},
@@ -32,7 +33,7 @@ PROVIDER_FILES = {
     "module_fundamentals": {"pipeline.py"},
     "module_news": {"headlines.py", "tape.py"},
     "module_oipd": {"engine.py"},
-    "module_relatedness": {"__main__.py", "compare.py", "engine.py", "naming.py", "profiles.py", "store.py"},
+    "module_relatedness": {"__main__.py", "compare.py", "engine.py", "profiles.py", "store.py"},
     "module_sector_rotation": {"__main__.py", "engine.py"},
     "module_spx_gamma": {"run.py"},
     "module_swing_potential": {"indicators.py"},

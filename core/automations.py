@@ -150,7 +150,8 @@ REGISTRY: tuple[AutomationEntry, ...] = (
         args=("-m", "RevenueChaser.module_relatedness", "--run", "--cap", "10"), time="07:30", days=("Sunday",),
         fortnightly=True,
         description=("Relatedness profiling with the board's writer (Settings, #360: EVREN by default, no call cap), "
-                     "incremental (only changed filings), then every pair scored (~1 h 45 min CPU, 15 Nov 2026) and the "
+                     "incremental (only changed filings), then every pair scored (~27 s CPU for 5,111 profiles, "
+                     "measured on the server 20 Nov 2026, #884) and the "
                      "board rendered. Every other Sunday 07:30 (avo 15 Nov 2026; the homesrv timer carries the fortnight, "
                      "1st and 3rd Sunday). With DeepSeek it is capped at 10 USD (avo, 2 Nov 2026) and defers itself "
                      "outside off-peak hours."),
