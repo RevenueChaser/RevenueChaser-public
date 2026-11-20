@@ -301,6 +301,19 @@ REGISTRY: tuple[AutomationEntry, ...] = (
     # avo 18 Nov 2026 ("Zamanlayiciyi kur"): Sector Rotation and Earnings Radar had no schedule, only their buttons,
     # so the quadrant snapshot sat at 6 Nov. Same task as the four above, switched ON at install.
     AutomationEntry(
+        name="RC-News-Earnings-Weekly", label="News earnings (weekly)",
+        args=("-m", "RevenueChaser.scripts.board_fetch", "news-earnings"), time="09:00", days=("Sunday",),
+        unit_name="life-rc-news-earnings", tables_written=("news_earnings",),
+        description="The News board's Earnings tab (#886, avo 20 Nov 2026): every Sunday 09:00 it writes next "
+                    "week's report day of every name on the News watch lists into boards/news.duckdb and renders "
+                    "the page. Once a week, because a calendar of next week does not change by the hour. "
+                    "Store-only: the days come from the Alpha Vantage earnings calendar the builder already "
+                    "serves (fundamentals.earnings_event), the names from the watch lists; no provider is called "
+                    "and no session is waited for. The pass runs in the dashboard (POST /run/news_earnings, the "
+                    "one writer): the task only queues it and waits; with the dashboard down it exits 1. The "
+                    "board's own Fetch runs the same pass, so a Fetch is never a week late.",
+        settings=TaskSettings(restart_count=0, time_limit_minutes=30)),
+    AutomationEntry(
         name="RC-Fetch-SectorRotation", label="Sector Rotation Fetch (nightly)",
         args=("-m", "RevenueChaser.scripts.board_fetch", "rotation"), time="05:40", unit_name="life-rc-fetch-rotation",
         description="The Sector Rotation board's Fetch after the nightly prices build (avo 18 Nov 2026), so the "

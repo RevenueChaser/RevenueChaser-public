@@ -300,6 +300,14 @@ REGISTRY: tuple[DatasetSpec, ...] = (
         freshness=("news_events", "run_at"),
     ),
     DatasetSpec(
+        key="news_earnings", label="News: next week's earnings of the watch-list names",
+        tables=("news_earnings",),
+        db="news", source=Source.derived, writer="RC-News-Earnings-Weekly",
+        writer_note=("built from fundamentals.earnings_event (the Alpha Vantage calendar) and the News watch "
+                     "lists by module_news/earnings.py (#886); every Sunday 09:00, and on the board's own Fetch"),
+        freshness=("news_earnings", "run_at"),
+    ),
+    DatasetSpec(
         key="news_headlines", label="News: market headlines",
         tables=("news_headlines",),
         db="news", source=Source.ibkr, writer=None,

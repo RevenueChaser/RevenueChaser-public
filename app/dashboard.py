@@ -297,6 +297,9 @@ jobs.register("module_news", runners.run_news, ["module_news"], requires_uw=Fals
 jobs.register("news_headlines", runners.run_news_headlines, [], requires_uw=False)
 # News ticker box (plan step 3): one name's headlines from IBKR on a click; the page reads them back by GET.
 jobs.register("news_ticker", runners.run_news_ticker, [], requires_uw=False)
+# News earnings (#886): next week's watch-list report days, store-only, queued every Sunday 09:00 by
+# life-rc-news-earnings.timer (RC-News-Earnings-Weekly) and by the board's own Fetch.
+jobs.register("news_earnings", runners.run_news_earnings, ["module_news"], requires_uw=False)
 # News X lane (plan step 5): RC's own X reader, queued every 30 minutes by life-rc-x-follow.timer.
 jobs.register("news_x_follow", runners.run_news_x_follow, [], requires_uw=False)
 # Welcome (decision A): store-only; builds boards/welcome.duckdb from stored inputs, then renders.
