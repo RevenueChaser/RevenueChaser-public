@@ -5,7 +5,9 @@ MOVE, US 10-year), the earnings of today and the next trading day, and the last 
 """
 from __future__ import annotations
 
+import contextlib
 import json
+import time
 from datetime import date, datetime, timedelta
 
 from RevenueChaser.core import rawstore
@@ -165,15 +167,29 @@ def test_without_a_built_screener_session_the_card_keeps_what_it_has():
 
 # ── #643 PR 6: the freshness card is one row per builder file ──────────────────────────────────────────────────
 
+@contextlib.contextmanager
+def _clock_at(moment):
+    """Move the clock the ops ledger stamps with.
+
+    Both ops backends stamp ``time.time()`` and neither takes a time, so a run cannot be written at a chosen
+    moment. Writing the row back with SQL is not an option either: CI routes ops to Redis (``RC_REDIS_URL``),
+    where ``ops.sqlite`` holds no ``job_runs2`` at all.
+    """
+    real = time.time
+    time.time = lambda: float(moment)
+    try:
+        yield
+    finally:
+        time.time = real
+
+
 def _build_run(run_id, dataset, status, finished, error=None):
-    """One finished builder run in the ops ledger, at the time the test wants it (``start_run`` stamps now)."""
+    """One finished builder run in the ops ledger, at the time the test wants it."""
     from RevenueChaser.rcdata import ops
-    ops.start_run(run_id, dataset, "queue")
-    ops.finish_run(run_id, status, error)
-    with ops.connect(ops.ops_path()) as con:
-        con.execute("UPDATE job_runs2 SET started_at = ?, finished_at = ? WHERE run_id = ?",
-                    (finished - 60.0, finished, run_id))
-        con.commit()
+    with _clock_at(finished - 60.0):
+        ops.start_run(run_id, dataset, "queue")
+    with _clock_at(finished):
+        ops.finish_run(run_id, status, error)
 
 
 def test_the_freshness_rows_are_the_builder_files_not_the_dashboard_jobs():
