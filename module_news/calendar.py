@@ -112,8 +112,9 @@ def _fda_pass(now: float, run_id: str) -> dict:
             "ticker": r.get("ticker"), "drug": r.get("drug"), "catalyst": r.get("catalyst"),
             "target_text": r.get("target_text"), "target_precision": r.get("target_precision"),
             "indication": r.get("indication") or r.get("description"),
-            # UW's own status is served as ``application_status`` (``rcdata.read`` keeps ``status`` for the
-            # dataset's freshness); on the board's own row it is simply the application's stage.
+            # ``application_status``, never ``status``: ``rcdata.read`` stamps every row it hands back
+            # with a ``status`` of its own (the dataset's freshness word), so reading that name here
+            # would store "changed" in the column the board shows (#807).
             "status": r.get("application_status"),
             "outcome": r.get("outcome") or r.get("outcome_brief"), "url": r.get("source_link"),
         })
