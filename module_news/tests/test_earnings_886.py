@@ -116,7 +116,9 @@ def test_the_tab_lists_monday_to_friday_with_the_refresh_line(lists, served):
                 "Friday 27 November"):
         assert day in page
     assert "No watch-list name reports on this day." in page, "Thursday has none and says so"
-    assert "NVDA" not in page, "a name on no watch list never reaches the tab"
+    # Not a bare "NVDA": the ticker box's placeholder names it as its example ("a name, e.g. NVDA").
+    assert 'class="sym">NVDA<' not in page and "NVIDIA" not in page, \
+        "a name on no watch list never reaches the tab"
 
 
 def test_the_time_of_day_is_written_in_the_board_s_own_words(lists, served):
