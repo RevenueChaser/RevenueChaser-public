@@ -17,7 +17,7 @@
   --pv-build:#f1f3f5; --pv-sec:#e8f0fb; --pv-rule:#eaf3ea; --pv-wrds:#fdf0e0; --pv-figi:#efe9fb;
   --pv-alpaca:#e9f3fc; --pv-uw:#f3ecfb; --pv-yf:#fdf1f4;
   --f-body:var(--font-sans);
-  --f-mono:ui-monospace,Menlo,Consolas,monospace}
+  --f-mono:ui-monospace,Menlo,Consolas,monospace;}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .ctl{--new:#a89bff; --newb:#1f1a3a;
   --s-who:#1a1d23; --l-who:#aab2c0; --src:#b5c27a; --srcb:#1d2112; --s-src:#201a11; --l-src:#f0a35a;
   --s-dat:#10201a; --l-dat:#56d364; --s-hlt:#241618; --l-hlt:#ff7b72;
@@ -358,8 +358,8 @@
 .ctl .uhd{display:flex;justify-content:space-between;gap:4px 12px;align-items:baseline}
 .ctl .uval{font-size:13px}
 .ctl .useg{
- text-align:left}
-.ctl .useg .uw{line-height:1.3}
+ text-align:left;}
+.ctl .useg .uw{line-height:1.3;}
 .ctl .useg:hover{border-color:var(--c)}
 .ctl .uhand{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;font-size:12.5px}
 .ctl .uhand label{font-weight:600}
@@ -466,7 +466,7 @@
 .ctl .journey table.paths tbody tr:first-child td.cp{border-bottom:1px solid var(--line);padding-bottom:6px}
 .ctl .journey table.paths tbody tr:first-child td.ssdc{order:2;margin-top:10px}
 .ctl .journey table.paths tbody tr:first-child td.bdc{order:3}}
-@media(max-width:620px){.ctl .useg{flex-basis:calc(50% - 2px)}}
+@media(max-width:620px){.ctl .useg{flex-basis:calc(50% - 2px);}}
 .ctl .pc0{display:block;font-size:11px;color:var(--mut);margin-top:3px}
 .ctl [hidden]{display:none!important}
 .ctl details.sec{margin:22px 0 0}
@@ -474,7 +474,7 @@
  }
 .ctl details.sec>summary::-webkit-details-marker{display:none}
 .ctl details.sec>summary h2{margin:0;padding:0;border:0;display:flex;align-items:baseline;gap:6px}
-.ctl details.sec>summary h2::before{content:"\25B8";font-size:11px}
+.ctl details.sec>summary h2::before{content:"\25B8";font-size:11px;}
 .ctl details.sec[open]>summary h2::before{content:"\25BE"}
 .ctl details.sec>summary:hover h2{color:var(--fg)}
 .ctl details.sec>summary .secs{font-size:12.5px;color:var(--mut)}
