@@ -955,10 +955,54 @@ def _attach_peer_market(peers: dict) -> None:
                 p["cluster"] = same
 
 
-def _peers(profiles: dict[str, dict], companies: list[dict], write: bool):
-    """``(peers, scores, method, pjs)``: similarity v2 on the local embeddings when any profile has a vector (#669),
-    else the tag cosine. A failing embedder (no model file, no network for its first download) falls back to the
-    tag cosine with a warning, so the board still renders."""
+def _changed_since(as_of, profiles: dict[str, dict], stored: set[str]) -> tuple[set[str], set[str]] | None:
+    """``(changed, gone)`` against a saved payload's ``as_of``: the profiles stored since it (plus the names new to
+    the board) and the names the payload scored that are no longer profiled. ``None`` when ``as_of`` is unreadable."""
+    try:
+        cutoff = datetime.fromisoformat(str(as_of)).timestamp()
+    except (TypeError, ValueError):
+        return None
+    changed = {r["ticker"] for r in rawstore.get_all("relatedness_profiles")
+               if r["ticker"] in profiles and float(r.get("fetched_at") or 0) > cutoff}
+    return changed | (set(profiles) - stored), stored - set(profiles)
+
+
+def _incremental_peers(profiles: dict[str, dict], pjs: dict[str, dict], vectors: dict, sectors: dict,
+                       reuse: dict):
+    """``(peers, fresh, counts)`` from the saved payload plus the rows a changed profile touches (#1132), or
+    ``None`` when the full matrix has to be scored after all: an unreadable payload date, or more of the board
+    changed than ``config.INCREMENTAL_MAX_SHARE``."""
+    from . import incremental
+    stored_peers = reuse.get("peers") or {}
+    stored = {c.get("ticker") for c in (reuse.get("companies") or []) if c.get("ticker")} | set(stored_peers)
+    moved = _changed_since(reuse.get("as_of"), profiles, stored)
+    if moved is None:
+        return None
+    changed, gone = moved
+    tickers = sorted(profiles)
+    rows = incremental.rows_to_rescore(stored_peers, tickers, changed, gone)
+    share = len(rows) / len(tickers) if tickers else 1.0
+    if share > config.INCREMENTAL_MAX_SHARE:
+        logger.info("relatedness: %d of %d profiles changed, %d rows to score (%.0f%% of the board); "
+                    "scoring the whole matrix", len(changed), len(tickers), len(rows), 100 * share)
+        return None
+    logger.info("relatedness: %d changed profiles, %d of %d rows scored, %d lists carried",
+                len(changed), len(rows), len(tickers), len(tickers) - len(rows))
+    blend = similarity.Blend(profiles, pjs, vectors, sectors)
+    peers, fresh = incremental.peer_lists(blend, stored_peers, rows, changed, config.TOP_PEERS)
+    return peers, fresh, {"changed": len(changed), "rows": len(rows), "carried": len(tickers) - len(rows)}
+
+
+def _peers(profiles: dict[str, dict], companies: list[dict], write: bool, reuse: dict | None = None):
+    """``(peers, scores, method, pjs, incremental)``: similarity v2 on the local embeddings when any profile has a
+    vector (#669), else the tag cosine. A failing embedder (no model file, no network for its first download) falls
+    back to the tag cosine with a warning, so the board still renders.
+
+    ``reuse`` is a saved payload a whole-board Refresh may score incrementally against (#1132). Taken, ``scores``
+    is ``None`` (no upper triangle was built) and the fifth value carries ``(fresh, counts)``: the entries this run
+    made, and what it scored. The tag cosine never takes it -- its idf is run-wide, so no pair's score survives a
+    changed profile.
+    """
     from . import embeddings, store
     pjs = store.load_profile_json(list(profiles))
     try:
@@ -970,16 +1014,36 @@ def _peers(profiles: dict[str, dict], companies: list[dict], write: bool):
         # "Unclassified" is no sector two companies share (review of #680).
         sectors = {c["ticker"]: c["sector"] for c in companies if c["sector"] != "Unclassified"}
         try:
+            if reuse is not None and len(profiles) > 1:
+                try:
+                    out = _incremental_peers(profiles, pjs, vectors, sectors, reuse)
+                except Exception as exc:  # noqa: BLE001 - a saved payload this run cannot use costs time, not
+                    # the board: the full matrix below scores it, and the tag cosine is not reached.
+                    logger.warning("relatedness incremental scoring failed, scoring every pair: %s", exc)
+                    out = None
+                if out is not None:
+                    peers, fresh, counts = out
+                    return peers, None, "embedding", pjs, (fresh, counts)
             peers, scores = similarity.blended_peer_lists(profiles, pjs, vectors, sectors, config.TOP_PEERS)
-            return peers, scores, "embedding", pjs
+            return peers, scores, "embedding", pjs, None
         except Exception as exc:  # noqa: BLE001 - a bad cached vector must not empty the board
             logger.warning("relatedness similarity v2 failed, scoring on tags: %s", exc)
     peers, scores = similarity.peer_lists(profiles, config.TOP_PEERS)
-    return peers, scores, "tags", pjs
+    return peers, scores, "tags", pjs, None
+
+
+def _score_grid(arr) -> list[float]:
+    """``config.SCORE_QUANTILES`` points of a run's sorted pair scores, saved in the payload so the next
+    incremental run can rank a new peer without the upper triangle (#1132)."""
+    import numpy as np
+    if not len(arr):
+        return []
+    idx = np.linspace(0, len(arr) - 1, min(config.SCORE_QUANTILES, len(arr))).astype("int64")
+    return [round(float(x), 6) for x in np.asarray(arr)[idx]]
 
 
 def _payload(profiles: dict[str, dict], stale: set[str] | None = None, model: str | None = None,
-             write: bool = False) -> dict:
+             write: bool = False, reuse: dict | None = None) -> dict:
     from RevenueChaser.core.gics_map import canonical_sector, sector_path
     from RevenueChaser.core.universe import (BOARD_OPERATING_ONLY, classification_universe, filter_fields,
                                              theme_catalog)
@@ -1029,26 +1093,40 @@ def _payload(profiles: dict[str, dict], stale: set[str] | None = None, model: st
 
     names = {c["ticker"]: c["name"] for c in companies}
     import numpy as np
-    peers, raw_scores, method, pjs = _peers(profiles, companies, write)
-    # float32 for the v2 path: every pair is kept (~12.5M at 5,000 names), so no float64 copy (review of #680).
-    arr = (np.sort(np.asarray(raw_scores, dtype="float32" if method == "embedding" else "float64"))
-           if len(raw_scores) else np.zeros(0))
+    peers, raw_scores, method, pjs, incr = _peers(profiles, companies, write, reuse=reuse)
     # ``n_pairs`` is every unordered pair of profiled tickers; the tag path ranks a peer among the scored
     # (non-zero) pairs only (#395, review RL-3): with two thirds of the pairs at zero, a 0.06 peer read as p90.
     # The embedding path (#669) scores every pair, so there it ranks among all of them.
     n_pairs = len(profiles) * (len(profiles) - 1) // 2
-    n_scored = len(arr)
-    for a in peers:
-        for p in peers[a]:
+    if incr is None:
+        # float32 for the v2 path: every pair is kept (~12.5M at 5,000 names), so no float64 copy (review of #680).
+        arr = (np.sort(np.asarray(raw_scores, dtype="float32" if method == "embedding" else "float64"))
+               if len(raw_scores) else np.zeros(0))
+        grid = _score_grid(arr)
+        n_scored = len(arr)
+        rank_over, scored = arr, peers
+    else:
+        # Incremental Refresh (#1132): only this run's own entries are ranked and priced; a carried entry keeps the
+        # name, percentile and market stats the run that scored it gave it. The percentile is read off the saved
+        # grid, because the upper triangle was never built -- a handful of changed profiles out of thousands moves
+        # the distribution by less than the grid's 0.1-percentile resolution.
+        fresh, counts = incr
+        grid = [float(x) for x in (reuse or {}).get("score_quantiles") or []]
+        rank_over = np.asarray(grid, dtype="float64")
+        n_scored = int((reuse or {}).get("n_scored") or 0)
+        scored = fresh
+    for a in scored:
+        for p in scored[a]:
             p["name"] = names.get(p["peer"]) or p["peer"]
             raw = p.pop("score_raw", p["score"])    # compare the unrounded score
-            p["percentile"] = (round(100.0 * float(np.searchsorted(arr, raw, side="left")) / n_scored, 1)
-                               if n_scored else 0.0)
+            p["percentile"] = (round(100.0 * float(np.searchsorted(rank_over, raw, side="left")) / len(rank_over), 1)
+                               if len(rank_over) else 0.0)
 
-    # Market stats for every focal's peers, computed pair-only (never N x N).
-    _attach_peer_market(peers)
+    # Market stats for every focal's peers, computed pair-only (never N x N); incrementally, for this run's own
+    # pairs only.
+    _attach_peer_market(scored)
 
-    return {
+    payload = {
         "as_of": _now(),
         "model": model or deepseek.MODEL,
         "n": len(companies),
@@ -1064,7 +1142,13 @@ def _payload(profiles: dict[str, dict], stale: set[str] | None = None, model: st
                              if not any((pjs.get(t) or {}).get(k) for k in aliases.PROFILE_PARTIES)),
         "universe_total": len(classification_universe(operating_only=BOARD_OPERATING_ONLY["module_relatedness"])),
         "theme_catalog": theme_catalog(),
+        # The score grid the next incremental Refresh ranks against (#1132); an incremental run carries the grid of
+        # the full run that built it.
+        "score_quantiles": grid,
     }
+    if incr is not None:
+        payload["incremental"] = dict(counts)
+    return payload
 
 
 def _stop_health(provider: str, reason: str | None, message: str | None) -> dict | None:
@@ -1101,6 +1185,8 @@ def run(no_fetch: bool = False, tickers: list[str] | None = None,
             cached = _reusable_payload(provider, model)
             if cached is not None:
                 return cached
+            # Something is newer than the saved payload. Score the pairs it touches, not the matrix (#1132).
+            return _run(True, tickers, limit, usd_cap, provider=provider, model=model, reuse=_incremental_base())
         return _run(True, tickers, limit, usd_cap, provider=provider, model=model)
     # Scheduled (CLI) and dashboard Fetch runs must not overlap. Refresh writes
     # nothing, so it never needs the lock.
@@ -1151,7 +1237,8 @@ def score(only_if_new: bool = True, provider: str = "deepseek", model: str | Non
 
 def _run(no_fetch: bool, tickers: list[str] | None, limit: int | None,
          usd_cap: float | None, run_id: str | None = None, provider: str = "deepseek",
-         max_calls: int | None = None, model: str | None = None, write: bool | None = None) -> dict:
+         max_calls: int | None = None, model: str | None = None, write: bool | None = None,
+         reuse: dict | None = None) -> dict:
     # ``write`` overrides the default "a Fetch writes, a Refresh does not" (``not no_fetch``): the weekly scoring
     # step fetches nothing and still writes its vectors (``score``).
     from . import store
@@ -1192,7 +1279,7 @@ def _run(no_fetch: bool, tickers: list[str] | None, limit: int | None,
     other = store.other_writer_tickers(list(profiles), writer)
     profiles = {t: p for t, p in profiles.items() if any(p.values())}
     payload = _payload(profiles, stale=store.stale_tickers(list(profiles), writer=writer), model=writer[1],
-                       write=(not no_fetch) if write is None else write)
+                       write=(not no_fetch) if write is None else write, reuse=reuse)
     by_writer = store.profile_writers(list(profiles))
     for c in payload.get("companies") or []:
         c["writer"] = by_writer.get(c["ticker"])
@@ -1245,6 +1332,18 @@ def _reusable_payload(provider: str, model: str | None) -> dict | None:
         return None
     newest = max((float(r.get("fetched_at") or 0) for r in rawstore.get_all("relatedness_profiles")), default=None)
     if newest is None or newest > cutoff:
+        return None
+    return payload
+
+
+def _incremental_base() -> dict | None:
+    """The saved payload a whole-board Refresh can score incrementally against (#1132), or ``None`` when it cannot:
+    no payload, no score grid (one written before #1132), or a payload the tag cosine scored -- its idf is run-wide,
+    so a changed profile moves every pair."""
+    payload = load_payload()
+    if not payload.get("as_of") or not payload.get("companies") or not payload.get("peers"):
+        return None
+    if payload.get("similarity") != "embedding" or not payload.get("score_quantiles"):
         return None
     return payload
 

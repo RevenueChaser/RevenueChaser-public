@@ -91,3 +91,12 @@ TOP_PEERS = 25
 # hides true peers because the idf lowers the cosine scale.
 PEER_MIN_SCORE = 0.0
 PEER_MIN_SHARED = 2
+
+# Incremental scoring of a whole-board Refresh (#1132, the code half of #884). The rows a Refresh actually scores
+# are the changed profiles plus every profile whose stored top list named one (``incremental.rows_to_rescore``).
+# Above this share of the board the bookkeeping buys nothing and the full matrix is scored instead.
+INCREMENTAL_MAX_SHARE = 0.2
+# The size of the score grid a full run saves in the payload (``score_quantiles``), so an incremental run can rank a
+# new peer's percentile without the whole upper triangle: 1,001 points = 0.1-percentile resolution. A saved payload
+# without the grid (one written before #1132) sends a Refresh through the full matrix once.
+SCORE_QUANTILES = 1001
