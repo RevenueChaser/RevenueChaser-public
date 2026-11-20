@@ -127,7 +127,7 @@ def held_rates() -> dict:
         return index_rates(con.execute(f"""
             SELECT currency, strftime(day, '%Y-%m-%d'), usd_per_unit FROM ({' UNION ALL '.join(parts)})
             WHERE usd_per_unit IS NOT NULL AND day IS NOT NULL
-            QUALIFY row_number() OVER (PARTITION BY currency, day ORDER BY pick) = 1
+            QUALIFY row_number() OVER (PARTITION BY currency, day ORDER BY pick DESC) = 1
             ORDER BY currency, day""").fetchall())
     finally:
         con.close()
