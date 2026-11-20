@@ -44,6 +44,20 @@ def test_the_writers_are_one_registry_in_core():
     assert llm_writers.DEFAULT == "evren" and set(llm_writers.WRITERS) == {"evren", "deepseek"}
 
 
+def test_no_module_still_imports_the_writers_registry_from_module_relatedness():
+    """The move left two relative imports behind (``from . import engine, writers``), which CI caught as an
+    ImportError on every test that loads the Relatedness CLI. One grep keeps the move complete."""
+    bad = []
+    for path in REPO.rglob("*.py"):
+        if {".git", ".store", ".cache"} & set(path.parts):
+            continue
+        for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if re.search(r"^\s*from\s+\.*\s*import\s.*\bwriters\b", line) or \
+               re.search(r"module_relatedness\s+import\s.*\bwriters\b", line):
+                bad.append(f"{path.relative_to(REPO)}:{n}: {line.strip()}")
+    assert bad == []
+
+
 def test_an_unknown_job_is_named_not_guessed():
     with pytest.raises(ValueError, match="unknown LLM job"):
         llm_jobs.get("relatedness.nope")
