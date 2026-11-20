@@ -523,6 +523,15 @@ cluster  ● Coarse  ● Medium  ● Fine               at (n, benchmark)
 - **Settings → Board inputs → Co-movement** shows the default window, `MIN_OBS` and the OOS holdout, with
   `WINSOR_K`, `MIN_PERIODS` and benchmark lag under a collapsed "Fine tuning", read-only at their config
   defaults: the saved overrides, Save and Reset went with the old store (#860).
+- **Settings → Database → Serving builds** (#446 step 8B) is one folded part, one row per served DuckDB file:
+  how its **last** build was made (`live copy` or `whole`, with the time and build id), how many Parquet files it
+  was built from, its last audit round (keys checked, how many differed) and the keys waiting for the next build.
+  A `whole every run` chip marks a kind that declares no dirty set; a `by hand` chip marks one whose whole build
+  the hourly pass does not start (`prices`, #446 step 8), so a reader does not wait for a pass that will not come.
+  It starts nothing: no press, no provider call, no write. The part is read-only on purpose — it reports what the
+  files record, not what the next build would do, because computing the second answer stats every Parquet file of
+  the kind. An empty cell means the file does not carry that table yet; it never stands for zero. The rows are
+  ordered by what is worth a look: built whole, unreadable, then carried over.
 
 ### Not this design
 

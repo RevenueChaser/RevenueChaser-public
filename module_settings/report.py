@@ -19,7 +19,7 @@ from urllib.parse import urlsplit
 
 from RevenueChaser.core import automations, datasets, rawstore
 from RevenueChaser.rcdata.needs import screen as api_screen
-from RevenueChaser.module_settings import control as control_model, control_render, needs_tab
+from RevenueChaser.module_settings import build_tab, control as control_model, control_render, needs_tab
 from RevenueChaser.core.html_safe import esc, script_json
 from RevenueChaser.core.reporting_common import (
     FILTERS_CSS,
@@ -2801,6 +2801,17 @@ TABS_JS = """
 """
 
 
+def _build_state(payload: dict) -> dict:
+    """The Serving builds model (#446 step 8B): the payload's own rows when a caller read them (tests, fixtures),
+    else read now. A failure of the whole read is one line in the part, never a blank Settings page."""
+    if "build_state" in payload:
+        return payload["build_state"]
+    try:
+        return build_tab.collect()
+    except Exception as exc:  # noqa: BLE001 - the part must never take the Settings page down
+        return {"error": f"{type(exc).__name__}: {exc}"[:300]}
+
+
 def _needs_model(payload: dict) -> dict:
     """The Needs model (#331); a failure anywhere in it is one line in the panel, never a blank Settings page."""
     try:
@@ -2823,7 +2834,9 @@ DATA_HELP = help_html(
     "what for one name, and since when), the Data flow from each source through the six SSD "
     "DuckDB files to the boards and the file each board writes, then for one served file the Build stage from HDD "
     "raw and Parquet to the SSD file, the boards that read it, and example rows. Nothing there starts a job. "
-    "Under it sit, each folded, the need catalog by file, the routes, the board inputs and the automations. "
+    "Under it sit, each folded, <b>Serving builds</b> (how each served file's last build was made: on a live "
+    "copy or whole, with its last audit round), the need catalog by file, the routes, the board inputs and "
+    "the automations. "
     "<b>Fetch/Health</b> is the Grafana board: the alerts, the switches, each dataset with its <b>Fetch</b>, "
     "<b>Pause</b>, mode, cadence and hold, the queue, RevenueChaser's timers, the IBKR gateway, the providers' "
     "limits, the cross-check, board freshness and the backups. A press there needs the Grafana login; a press puts "
@@ -2857,7 +2870,10 @@ def _database_more(payload: dict) -> str:
     catalog = catalog if model.get("error") else _hfold(
         "The need catalog: what a board can ask the store for, and how fresh it is", catalog)
     return ('<div id="needs"><div class="wrap" id="database-more">'
-            f'{errs}{catalog}'
+            f'{errs}'
+            + _hfold("Serving builds: how each served file's last build was made",
+                     build_tab.section(_build_state(payload)))
+            + catalog
             + _hfold("The routes: the read-only addresses a board asks", routes)
             + _hfold("Board inputs: what each board reads and its settings",
                      _boards_section(payload.get("boards") or [], payload.get("rows") or []))
@@ -2983,7 +2999,7 @@ def render_settings_dashboard(payload: dict) -> str:
 <style>{ND_CSS}</style>
 <style>{_UCARDS_CSS}</style>
 <style>{control_render.CTL_CSS}</style>
-<style>{needs_tab.NEEDS_CSS}</style>
+<style>{needs_tab.NEEDS_CSS}{build_tab.BUILD_CSS}</style>
 <style>{LIVE_CSS}</style>
 {FILTERS_CSS}
 <script>{THEME_JS}</script>

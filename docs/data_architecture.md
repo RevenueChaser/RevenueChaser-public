@@ -1179,6 +1179,18 @@ and kept as they are otherwise (whole build of 6 Nov 2026: 91 min).
 `spx_gamma_expiry_strike` or `spx_greek_expiry_strike`, a source and year of `market_series`; a gone partition only
 deletes its rows. `options` is still built whole; `spine` stays whole by design (seconds).
 
+**What each kind's last build did, on the board** (#446 step 8B). Nothing outside the build could see whether a
+build had rebuilt its rows or carried them over: the Settings board showed a build's rows and its time and no more.
+`rcdata/build/state.py` answers it from the live files — `serving_schema_version.build_mode` (`live` or `fresh`,
+with `built_at` and `build_id`), the row count of `build_manifest`, and the last round of `build_audit` with the
+keys `build_audit_dirty` holds for the next build — and the Settings / Database part **Serving builds**
+(`module_settings/build_tab.py`) draws one row per kind. It reports the **last** build, not the next one: asking
+`dirty.plan` would answer the second question but calls `dirty.scan`, which stats every Parquet file of the kind,
+so a page render would cost minutes of disk on every load. The part says so in words, since a kind whose build code
+changed since its last build is built whole next time and the file cannot know it yet. Every read is
+`serving.open_read` (read-only), a kind that cannot be read is that row's error rather than a blank page, and a
+table the file does not carry leaves its cell empty instead of reading as zero.
+
 CFTC COT rows are futures-only: the TFF dataset's `Combined` rows (futures and options) are filtered out; taking
 them instead is a later choice.
 
