@@ -168,6 +168,25 @@ def test_the_writer_modules_take_the_model_per_call(rawstore_tmp_db, monkeypatch
     assert not hasattr(writers, "use")                      # no module-level swap left
 
 
+def test_an_evren_call_waits_longer_than_two_minutes_and_the_wait_is_a_process_setting(monkeypatch):
+    """A profile over a whole document took longer than the old 120 s and the read timeout killed the night's SEC
+    read (20 Nov 2026, 01:10); a cold full-size call was then measured at 235 s. The wait is twice that over, and
+    ``RC_EVREN_TIMEOUT_S`` sets it."""
+    from RevenueChaser.core.providers import evren as ev
+    monkeypatch.delenv("RC_EVREN_TIMEOUT_S", raising=False)
+    assert ev.DEFAULT_TIMEOUT_S == 600.0 and ev.timeout_s() == ev.DEFAULT_TIMEOUT_S
+    client = ev._new_client()
+    try:
+        assert client.timeout.read == ev.DEFAULT_TIMEOUT_S
+    finally:
+        client.close()
+    monkeypatch.setenv("RC_EVREN_TIMEOUT_S", "45")
+    assert ev.timeout_s() == 45.0
+    for bad in ("", "soon", "0", "-1"):                     # unreadable or useless: the default stands
+        monkeypatch.setenv("RC_EVREN_TIMEOUT_S", bad)
+        assert ev.timeout_s() == ev.DEFAULT_TIMEOUT_S
+
+
 # ── review S2 + nit4 (PR 362): a partial reset and a shared model name never leave an invalid pair ──────────
 
 

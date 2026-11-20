@@ -23,6 +23,10 @@ replaced by an ``empty`` one. A run whose first replies are all unusable stops a
 **Nothing is asked when the Parquet tree is behind the live table** (:func:`tree_behind`): a lost partition must
 not read as "nothing answered".
 
+**A writer that is down does not fail the run** (:func:`outage`): its questions are skipped, every company stays
+stale for the next pass, and the note says which writer and how it failed. A rejected key, a wrong endpoint (the
+five-unusable stop), a pause and the owner's cap still fail it.
+
 **The raw replies** are kept with the answer (``raw``) and in one raw file per run and question, written before the run
 can stop, so an answer that was paid for is stored even when the run ends on a pause or a provider error. The
 Parquet tree is the durable copy of the answers (plan risk R4: it must be in the backup set before the first real
@@ -44,6 +48,7 @@ import duckdb
 
 from ... import serving
 from ....core import job_lock
+from ....core.providers import deepseek
 from .. import base
 from ..fundamentals import common
 from . import KIND, asker
@@ -87,6 +92,19 @@ SCHEMA = [("question", "TEXT"), ("prompt_version", "TEXT"), ("cik", "TEXT"), ("a
           ("report_date", "DATE")]
 SCHEMAS = {TABLE: SCHEMA}
 STATUSES = (asker.OK, asker.PARTIAL, asker.EMPTY, asker.NO_TEXT)
+
+
+def outage(e: BaseException) -> bool:
+    """Whether ``e`` is the writer being down and nothing else: a 429 after the client's own retries, a 5xx, a
+    capacity refusal waited out, a network failure (``DeepSeekTransientError``, and EVREN's subclass of it).
+
+    Such a run leaves every company stale and the next pass asks it again, so it is not the step's failure: the
+    questions of the writer that is down are skipped, the note says so, and the run ends green. It is why one
+    writer's outage no longer fails the whole night: a failed ``sec/reads`` exits 1 and the chain behind it (Value
+    Chain) does not run (Fable report F6, 19 Nov 2026). Everything else still fails the run: a rejected key
+    (``DeepSeekAuthError``), the five-unusable stop (a wrong endpoint or model), a pause and the owner's cap.
+    """
+    return isinstance(e, deepseek.DeepSeekTransientError) and not isinstance(e, deepseek.DeepSeekAuthError)
 
 
 def partition_path(question: str) -> Path:
@@ -300,6 +318,9 @@ class Reads:
         run returns no raw file, so the builder's own conversion after ``fetch`` (outside the lock) cannot write a
         partition another asker is writing.
 
+        **A writer that is down skips its questions, and the run does not fail** (:func:`outage`): with every
+        question on one writer, a transient outage would otherwise end the whole step as failed.
+
         **A question is finished before the next is planned**: its answers are in Parquet when the next question
         builds its inputs, so a question that reads another's answer (the business section the locator found,
         for the profile) never runs on the text it would have had without it. Registration order is run order.
@@ -319,7 +340,11 @@ class Reads:
         asked = left_all = 0
         by_status: dict[str, int] = {}
         stop: BaseException | None = None
+        down: dict[str, str] = {}               # a writer that is down in this run, and how it failed
         for q in QUESTIONS.values():
+            if q.provider in down:
+                ctx.notes.append(f"{q.id}: not asked, {q.provider} is down in this run ({down[q.provider]})")
+                continue
             ctx.check_pause()
             jobs, prior, rows = _plan(q, ctx)
             replies, stop, left = asker.ask(ctx, jobs, started)
@@ -333,6 +358,12 @@ class Reads:
                 raw = base.write_raw_json(raw_path(f"{ctx.run_id}.{q.id}"), {"run_id": ctx.run_id, "rows": rows})
                 self.to_parquet_all(ctx, [raw])
                 raws.append(raw)
+            if stop is not None and outage(stop):
+                down[q.provider] = f"{type(stop).__name__}: {stop}"[:200]
+                ctx.notes.append(f"{q.id}: {q.provider} is down ({down[q.provider]}); {left} companies stay "
+                                 f"stale for the next run and the run does not fail on it")
+                stop = None
+                continue
             if stop is not None:
                 break
         ctx.notes.append(f"{asked} to ask over {len(QUESTIONS)} question(s); "

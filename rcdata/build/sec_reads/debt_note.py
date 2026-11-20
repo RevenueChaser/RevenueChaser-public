@@ -9,8 +9,13 @@ note, and when it does, the note is the better answer (``module_fundamentals.deb
 
 **Registered by ``rcdata.build``** (:func:`register_all`, after ``company_profile``'s two, so it runs last), so the
 board's reader knows the current prompt version. Nothing is asked by that alone: the dataset ``starts_by_hand``, its automation is off, and a question's first pass waits for a
-request that says ``reread`` (``reads._plan``, ``NEW_COMPANY_LIMIT``). DeepSeek Flash, at most :data:`MAX_CALLS` a run
-(avo's standing permission for DeepSeek Flash; the day cap of ``reads.DAY_CAP`` applies on top).
+request that says ``reread`` (``reads._plan``, ``NEW_COMPANY_LIMIT``).
+
+**The writer is the tool's one switch** (``questions.PROVIDER``), like ``company.profile``: EVREN, the gate with no
+fee (avo, 19 Nov 2026: "Fundamentals icinde evren deepseek olmali"), unless the process names DeepSeek
+(``RC_SEC_READS_PROVIDER=deepseek``), which is then capped at :data:`MAX_CALLS` calls a run with the day cap of
+``reads.DAY_CAP`` on top. EVREN has neither cap (it has no quota, ``reads.UNCAPPED``). The stored answers do not
+change hands: an ``ok`` answer is current whoever wrote it (``reads._text_key``), so nothing is asked again.
 """
 from __future__ import annotations
 
@@ -20,7 +25,7 @@ from ... import read, sec_debt_note as note
 from .. import base
 from ..fundamentals import common
 from . import company_profile
-from .questions import Input, Question, register
+from .questions import PROVIDER, Input, Question, register
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +34,8 @@ OWNER = "module_fundamentals"
 #: ``module_fundamentals.config.EXCLUDED_SECTORS``: the board drops them before EDGAR is read, and a bank's
 #: "debt" note is not this number. Copied, not imported: ``rcdata`` imports no board module.
 EXCLUDED_SECTORS = ("Financial Services", "Real Estate")
-#: The most calls one run sends; the rest wait for the next run.
+#: The most calls one DeepSeek run sends; the rest wait for the next run. EVREN is uncapped, like the other two
+#: questions, because it has no quota (avo, 16 Nov 2026).
 MAX_CALLS = 200
 #: Companies whose note rows one read holds at once.
 BATCH = 200
@@ -107,8 +113,8 @@ def inputs(ciks: list[str]) -> dict[str, Input]:
 
 DEBT_NOTE = Question(
     id=ID, owner=OWNER, system=note.system_prompt(), prompt_version=note.PROMPT_VERSION, scope=scope,
-    inputs=inputs, parse=note.parse, provider="deepseek", max_calls=MAX_CALLS, chunk_chars=note.MAX_CHARS,
-    max_tokens=1_000)
+    inputs=inputs, parse=note.parse, provider=PROVIDER,
+    max_calls=MAX_CALLS if PROVIDER == "deepseek" else None, chunk_chars=note.MAX_CHARS, max_tokens=1_000)
 
 
 def register_all() -> None:

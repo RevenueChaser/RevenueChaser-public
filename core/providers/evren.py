@@ -6,7 +6,7 @@ dashboard and the relatedness unit get it from ``/etc/life/secrets.env``. Base U
 (``RC_EVREN_MODEL``, or the board's ``WRITER_MODEL``, ``module_relatedness.writers``) are overridable so the
 end-to-end harness can point them at a mock.
 
-Retries follow ``core.providers.deepseek`` (D2): one retry, only when the request is known not to have run (HTTP 429
+One call may take :data:`DEFAULT_TIMEOUT_S` seconds (``RC_EVREN_TIMEOUT_S``). Retries follow ``core.providers.deepseek`` (D2): one retry, only when the request is known not to have run (HTTP 429
 and the errors raised before it left the machine); a 5xx is final. The error classes are DeepSeek's subclasses, so
 ``module_relatedness.engine`` stops a run on them exactly as it does for DeepSeek (``auth`` / ``transient``).
 """
@@ -66,8 +66,24 @@ def _sleep(seconds: float) -> None:
     time.sleep(seconds)
 
 
+#: How long one EVREN call may take, in seconds. 120 s was not enough for a profile over a whole document: the
+#: 01:10 run of 20 Nov 2026 died on a read timeout and the night's Value Chain with it. A cold full-size profile
+#: call was measured at 235 s (20 Nov 2026), so the wait is 600 s: a slow call costs the run time, a timed-out one
+#: costs the answer. ``RC_EVREN_TIMEOUT_S`` raises or lowers it per process.
+DEFAULT_TIMEOUT_S = 600.0
+
+
+def timeout_s() -> float:
+    """The call timeout, read from the environment at call time; the default for a missing or unreadable value."""
+    try:
+        got = float(os.getenv("RC_EVREN_TIMEOUT_S") or DEFAULT_TIMEOUT_S)
+    except ValueError:
+        return DEFAULT_TIMEOUT_S
+    return got if got > 0 else DEFAULT_TIMEOUT_S
+
+
 def _new_client() -> httpx.Client:
-    return httpx.Client(timeout=120)
+    return httpx.Client(timeout=timeout_s())
 
 
 def calls() -> int:

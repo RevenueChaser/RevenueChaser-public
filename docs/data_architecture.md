@@ -2182,7 +2182,10 @@ board adds one entry and reads the answers through `rcdata.read.sec_reads(ciks, 
 `rcdata/build/__init__.py` registers the questions, and registration order is run order: `business.locate` and
 `company.profile` (`sec_reads/company_profile.py`), then `debt.note` (#737; `sec_reads/debt_note.py`, prompt and parse
 in `rcdata/sec_debt_note.py`), which the Fundamentals board reads through `core/fundamentals_layer.py`. Each further
-question is its own change.
+question is its own change. **All three are written by one switch** (`questions.PROVIDER`): EVREN, the gate with no
+fee, unless the process names DeepSeek (`RC_SEC_READS_PROVIDER=deepseek`), which gives each question its own call cap
+(avo, 19 Nov 2026: `debt.note` moved off the paid writer with the other two). A stored `ok` answer is current
+whoever wrote it, so the switch asks nothing again.
 
 **One asker** (`asker.py`), one pool per provider: EVREN 1 request at a time, DeepSeek 8. The HTTP clients are
 `core/providers`' own, called with `use_cache=False`, so `llm_cache` gets nothing from the tool. On homesrv the
@@ -2203,7 +2206,10 @@ not pay for the answer again. An `ok` answer on (question, prompt version, compa
 an answer under the question's current prompt version first, then the newest filing. Every call writes one row to the request log (the
 question, the company, the chunk, and `ok`, `unusable reply` or the error with its words). One asker at a time,
 whoever started the run (the lock `sec_reads_ask`); a question is finished and in Parquet before the next one is
-planned, so registration order is run order. A run whose first five replies are all unusable stops as failed and
+planned, so registration order is run order. A writer that is down (a 429 after the client's own retries, a 5xx, a capacity
+refusal waited out) skips that writer's questions and does **not** fail the run (`reads.outage`): every company stays
+stale for the next pass and the note names the writer, because a failed run exits 1 and the chain behind it does not
+run that night. A rejected key still fails it, and a run whose first five replies are all unusable stops as failed and
 stores none of them; a key at three attempts is tried once more after 30 days; and nothing is asked while the
 live table holds more `ok` answers than the Parquet tree (a lost tree must not start a full re-read). **No mass
 re-read without the owner's word:** a run asks by itself only a company's new filing and a retry; a DeepSeek question at most

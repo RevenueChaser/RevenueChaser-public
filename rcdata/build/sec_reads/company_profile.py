@@ -27,7 +27,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from dataclasses import replace
 
 from ... import read, sec_locator, sec_profile
@@ -35,7 +34,7 @@ from ...sec_profile_input import MAX_XBRL_CUSTOMERS, clean_input, filing_sentenc
 from .. import base
 from ..fundamentals import common
 from . import asker, reads
-from .questions import Input, Question, register
+from .questions import PROVIDER, Input, Question, register
 
 logger = logging.getLogger(__name__)
 
@@ -383,10 +382,10 @@ def _merge_profile(parts: list[tuple[dict, int]]) -> dict:
 
 _PROFILE = _Profile()
 
-#: The writer of both questions: EVREN (the owner's K3), or DeepSeek Flash for a process started with
-#: ``RC_SEC_READS_PROVIDER=deepseek`` (the owner, 16 Nov 2026: the companies the import leaves are asked through
-#: DeepSeek). A stored answer of either writer is current, so switching asks nothing again.
-PROVIDER = os.environ.get("RC_SEC_READS_PROVIDER", "").strip().lower() or "evren"
+# The writer of both questions is the tool's one switch, ``questions.PROVIDER``: EVREN (the owner's K3), or
+# DeepSeek Flash for a process started with ``RC_SEC_READS_PROVIDER=deepseek`` (the owner, 16 Nov 2026: the
+# companies the import leaves are asked through DeepSeek). A stored answer of either writer is current, so
+# switching asks nothing again.
 #: The most calls one DeepSeek run sends per question (a paid call is capped in its own code): the import left 69
 #: companies, a profile is a few calls each.
 DEEPSEEK_MAX_CALLS = {LOCATE_ID: 150, PROFILE_ID: 800}

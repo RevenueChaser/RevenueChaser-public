@@ -197,6 +197,45 @@ def test_a_provider_stop_keeps_the_answers_already_paid_for(http_mock):
     assert [r["status"] for r in held.values()].count("ok") == 1
 
 
+def test_a_writer_that_is_down_skips_its_questions_and_does_not_fail_the_run(http_mock, monkeypatch):
+    """avo's night: every question is on EVREN now (19 Nov 2026), so an EVREN outage would end the whole step as
+    failed and the chain behind it (Value Chain) would not run that night (Fable report F6). A transient outage
+    skips that writer's questions, leaves every company stale for the next pass, and the run ends green; the other
+    writer is still asked."""
+    monkeypatch.setattr(asker, "TRANSIENT_STOP", 1)
+    http_mock.add("evren.test", lambda req: (503, "{}", {}))        # the gate is down: a 5xx, final
+    http_mock.add("deepseek.test", chat('{"products": ["Azure"]}'))
+    question(ciks=("789019", "320193"))                             # EVREN, asked first
+    question(id="test.second", ciks=("789019",))                    # EVREN too: not asked at all
+    question(id="test.deepseek", ciks=("789019",), provider="deepseek")
+
+    check = run()
+    assert check["result"] != "failed"
+    assert "evren is down" in check["note"] and "test.second: not asked" in check["note"]
+    assert len(http_mock.calls("evren.test")) == 1                  # one company, then the writer is down
+    assert len(http_mock.calls("deepseek.test")) == 1
+    assert rows("SELECT question, cik, status FROM read_answer ORDER BY question, cik") == [
+        ("test.deepseek", "789019", "ok")]                          # nothing stored for the writer that is down
+
+    http_mock.routes.clear()                                        # the gate is back: the next run asks them
+    http_mock.add("/chat/completions", chat('{"products": ["x"]}'))
+    run()
+    assert rows("SELECT count(*) FROM read_answer WHERE status = 'ok'") == [(4,)]
+
+
+def test_a_rejected_key_and_a_wrong_endpoint_still_fail_the_run(http_mock):
+    """Only the writer being down is tolerated: a key the gate rejects and a run whose replies are all unusable are
+    the run's own failure, and a green run must not hide either."""
+    assert reads.outage(evren.EvrenTransientError("HTTP 503")) is True
+    assert reads.outage(evren.EvrenAuthError("rejected")) is False
+    assert reads.outage(deepseek.DeepSeekTransientError("timeout")) is True
+    assert reads.outage(deepseek.DeepSeekAuthError("401")) is False
+
+    http_mock.add("/chat/completions", lambda req: (401, "{}", {}))
+    question(ciks=("789019",))
+    assert run()["result"] == "failed"
+
+
 def test_the_registry_refuses_a_pro_model_an_unknown_provider_and_a_second_owner():
     with pytest.raises(ValueError, match="never Pro"):
         question(provider="deepseek", model="deepseek-pro")
@@ -453,11 +492,14 @@ def test_a_transient_error_gives_up_on_one_company_and_the_run_goes_on(http_mock
 
 
 def test_the_fifth_company_with_a_transient_error_stops_the_run(http_mock):
+    """The fifth transient company still stops the asking and stores nothing; since 19 Nov 2026 the run itself does
+    not fail on it, because the writer being down is not the step's failure (``reads.outage``, and the test above:
+    a failed step keeps Value Chain from running that night)."""
     many = {str(1000 + i): f"company {i}" for i in range(8)}
     http_mock.add("/chat/completions", lambda req: (500, "busy", {}))
     question(ciks=tuple(many), text=many)
     check = run()
-    assert check["result"] == "failed"
+    assert check["result"] != "failed" and "evren is down" in check["note"]
     assert len(http_mock.requests) == asker.TRANSIENT_STOP and reads.held("test.products") == {}
 
 
