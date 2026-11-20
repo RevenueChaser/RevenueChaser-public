@@ -72,6 +72,19 @@ EARNINGS_REPORT_HISTORY = [("cik", "TEXT NOT NULL"), ("period_end", "DATE NOT NU
                            ("report_date", "DATE NOT NULL"), ("gvkey", "TEXT"), ("source", "TEXT NOT NULL"),
                            ("source_as_of", "DATE"), ("fetched_at", "DOUBLE"), ("run_id", "TEXT")]
 
+# One row per event Audit Analytics recorded for a company of ours (``wrds/audit``, #1181 step C): a financial
+# restatement, a late-filing notice (the NT forms) or a director's or officer's change. ``kind`` says which,
+# ``event_key`` is the feed's own key (an officer change names one person per row: ``person_key``, an opaque number,
+# never a name). ``flags`` holds the labels of the feed's 0/1 columns that are 1 (``wrds_fund.AUDIT.SERVED``; empty
+# for a late filing), ``action`` the officer feed's own word (Appointed, Resigned, ...). ``period_start`` and
+# ``period_end`` are the restated span, or the period a late filing is late for. **A history, not a fresh flag:**
+# the feeds ended about two months before the day they were read (measured 20 Nov 2026), so the newest events of a
+# company are in ``filing_item`` (the 8-K's own item) first.
+AUDIT_FLAG = [("cik", "TEXT NOT NULL"), ("kind", "TEXT NOT NULL"), ("event_key", "TEXT NOT NULL"),
+              ("person_key", "TEXT"), ("file_date", "DATE NOT NULL"), ("form", "TEXT"), ("effective_date", "DATE"),
+              ("period_start", "DATE"), ("period_end", "DATE"), ("action", "TEXT"), ("flags", "VARCHAR[]"),
+              ("source", "TEXT NOT NULL"), ("source_as_of", "DATE"), ("fetched_at", "DOUBLE"), ("run_id", "TEXT")]
+
 # One row per Compustat value that changed between two monthly snapshots, for a period both held (``wrds_fund``);
 # ``cik`` NULL when the gvkey is no longer a Tier A company's.
 REVISION = [("cik", "TEXT"), ("gvkey", "TEXT NOT NULL"), ("source", "TEXT NOT NULL"), ("datadate", "DATE NOT NULL"),
@@ -114,6 +127,7 @@ SCHEMAS: dict[str, list[tuple[str, str]]] = {
     "earnings_event": EARNINGS_EVENT,
     "earnings_reported": EARNINGS_REPORTED,
     "earnings_report_history": EARNINGS_REPORT_HISTORY,
+    "audit_flag": AUDIT_FLAG,
     "fundamental_revision": REVISION,
     "segment_revenue": SEGMENT_REVENUE,
     "customer_share": CUSTOMER_SHARE,
@@ -129,6 +143,7 @@ TABLE_CHECKS: dict[str, list[str]] = {
     # readers filter on it and a served table keeps its shape. The text is ``filing_section`` (``sec/forms``).
     "filing_item": ["CHECK (kind = 'item')"],
     "segment_revenue": ["CHECK (axis IN ('business', 'product', 'geographic'))"],
+    "audit_flag": [f"CHECK (kind IN {wrds_fund.AUDIT.KINDS})"],
     "customer_share": ["CHECK (share IS NULL OR (share >= 0 AND share <= 1))"],
 }
 TABLES = tuple(SCHEMAS)
@@ -150,6 +165,8 @@ STAGED: dict[str, list[tuple[str, str]]] = {
     filings.STAGING["header"]: filings.HEADER,
     **{wrds_fund.SEGMENTS.STAGING[p]: schema + wrds_fund.PROVENANCE
        for p, (schema, _, _, _) in wrds_fund.SEGMENTS.PARTS.items()},
+    **{wrds_fund.AUDIT.STAGING[p]: schema + wrds_fund.PROVENANCE
+       for p, (_, schema, _) in wrds_fund.AUDIT.PARTS.items()},
 }
 
 # The named problems, one kind each; ``key`` is the CIK unless the kind says otherwise.
@@ -366,6 +383,15 @@ def _report_history(con: duckdb.DuckDBPyConnection, ciks=None) -> int:
           AND NOT EXISTS (SELECT 1 FROM w WHERE w.cik = u.cik AND abs(date_diff('day', w.period_end, u.period_end))
                           <= {wrds_fund.PERIOD_DAYS})""")
     return common.count(con, "earnings_report_history")
+
+
+def _audit_flags(con: duckdb.DuckDBPyConnection, ciks=None) -> int:
+    """``audit_flag``: the three Audit Analytics feeds' rows of our companies, one row per event. The newest
+    snapshot is reloaded whole by every build, so the table is made again whole too."""
+    _clear(con, "audit_flag", ciks, "true")
+    con.execute("INSERT INTO audit_flag " + " UNION ALL ".join(
+        wrds_fund.AUDIT.served_sql(part) for part in wrds_fund.AUDIT.SERVED))
+    return common.count(con, "audit_flag")
 
 
 def _revisions(con: duckdb.DuckDBPyConnection, ciks=None) -> int:
@@ -672,6 +698,7 @@ class FundamentalsTables:
         counts["earnings_event"] = _earnings(con, ciks)
         counts["earnings_reported"] = _earnings_reported(con, ciks)
         counts["earnings_report_history"] = _report_history(con, ciks)
+        counts["audit_flag"] = _audit_flags(con, ciks)
         counts["fundamental_revision"] = _revisions(con, ciks)
         counts["segment_revenue"] = _segments(con, ciks)
         counts["customer_share"] = _customers(con, ciks)

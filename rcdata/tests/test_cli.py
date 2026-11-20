@@ -18,7 +18,7 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from RevenueChaser.rcdata import ops
+from RevenueChaser.rcdata import ops, serving
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 REPO = Path(__file__).resolve().parents[2]
@@ -109,7 +109,8 @@ def test_the_builder_cli_builds_market_series_and_a_second_run_calls_nothing(cli
     market = tmp_path / "market" / "market.duckdb"
     con = duckdb.connect(str(market), read_only=True)
     try:
-        assert con.execute("SELECT kind, version FROM serving_schema_version").fetchall() == [("market", 4)]
+        assert con.execute("SELECT kind, version FROM serving_schema_version").fetchall() == [
+            ("market", serving.SERVING_SCHEMA_VERSION["market"])]
         assert con.execute("SELECT count(DISTINCT source) FROM market_series").fetchone()[0] == 8
     finally:
         con.close()

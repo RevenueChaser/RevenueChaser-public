@@ -1286,7 +1286,15 @@ MANIFEST: dict[str, dict] = {
         "columns": [
             "event_ts DOUBLE", "event TEXT", "type TEXT", "importance INTEGER", "forecast TEXT", "prev TEXT",
             "reported_period TEXT", "first_seen DOUBLE", "last_seen DOUBLE", "retired_at DOUBLE",
-            "run_id TEXT", "run_at DOUBLE", "PRIMARY KEY (event_ts, event, type)",
+            "run_id TEXT", "run_at DOUBLE",
+            # The FDA lane (#807, type ``fda``, from ``market.fda_event``): the company and the drug the catalyst is
+            # about, what kind of catalyst it is, and UW's own target-date text with the precision that text really
+            # carries (``day``, ``quarter``, ``half``, ``mid``, ``late``) — ``event_ts`` is the resolved day at
+            # midnight Amsterdam, so a quarter must never be read off it as a time. NULL on every economic row.
+            # Additive, no ``_SCHEMA_VERSION`` bump (the ``news_headlines`` X columns are the precedent).
+            "ticker TEXT", "drug TEXT", "catalyst TEXT", "target_text TEXT", "target_precision TEXT",
+            "indication TEXT", "status TEXT", "outcome TEXT", "url TEXT",
+            "PRIMARY KEY (event_ts, event, type)",
         ],
         "kind": "tabular", "write": "upsert", "history_mode": "operational", "db": "news", "sources": [],
     },
@@ -1306,6 +1314,19 @@ MANIFEST: dict[str, dict] = {
             # The X lane (module_news/x_feed.py): the tweet's kind and option code, and for an option tweet its check
             # against UW's prints (module_news/x_check.py, JSON text); NULL for every other provider.
             "kind TEXT", "option TEXT", "x_check TEXT",
+        ],
+        "kind": "tabular", "write": "upsert", "history_mode": "operational", "db": "news", "sources": [],
+    },
+    "news_earnings": {
+        # Next week's earnings days of the names on avo's watch lists (#886, module_news/earnings.py): one row a
+        # name, written by the weekly Sunday 09:00 pass, which drops every other week first — the table is the one
+        # week the board shows. The days come from ``fundamentals.earnings_event`` (the Alpha Vantage calendar),
+        # the names from ``module_news/headlines.LISTS``; no provider is called.
+        "key": ["week_start", "ticker"],
+        "columns": [
+            "week_start DATE", "ticker TEXT", "company TEXT", "report_date DATE", "report_time TEXT",
+            "confirmed BOOLEAN", "source TEXT", "run_id TEXT", "run_at DOUBLE",
+            "PRIMARY KEY (week_start, ticker)",
         ],
         "kind": "tabular", "write": "upsert", "history_mode": "operational", "db": "news", "sources": [],
     },

@@ -21,6 +21,7 @@ import signal as _signal
 import subprocess
 import sys
 import threading
+import time
 import webbrowser
 from datetime import date, timedelta
 from pathlib import Path
@@ -297,6 +298,9 @@ jobs.register("module_news", runners.run_news, ["module_news"], requires_uw=Fals
 jobs.register("news_headlines", runners.run_news_headlines, [], requires_uw=False)
 # News ticker box (plan step 3): one name's headlines from IBKR on a click; the page reads them back by GET.
 jobs.register("news_ticker", runners.run_news_ticker, [], requires_uw=False)
+# News earnings (#886): next week's watch-list report days, store-only, queued every Sunday 09:00 by
+# life-rc-fetch-news-earnings.timer (RC-News-Earnings-Weekly) and by the board's own Fetch.
+jobs.register("news_earnings", runners.run_news_earnings, ["module_news"], requires_uw=False)
 # News X lane (plan step 5): RC's own X reader, queued every 30 minutes by life-rc-x-follow.timer.
 jobs.register("news_x_follow", runners.run_news_x_follow, [], requires_uw=False)
 # Welcome (decision A): store-only; builds boards/welcome.duckdb from stored inputs, then renders.
@@ -971,13 +975,51 @@ def api_news_ticker(ticker):
 
 @app.route("/api/news/headlines")
 def api_news_headlines():
-    """The News page's 2 s poll and the Welcome page's (#673): headlines newer than ``since`` (epoch seconds). Read-only."""
+    """The News page's 2 s poll and the Welcome page's (#673): headlines newer than ``since`` (epoch seconds).
+
+    With ``from`` and ``to`` (epoch seconds) it answers a window instead of the poll, newest first, optionally of
+    one ``ticker`` and at most ``limit`` rows (#809): the headlines around an event, which is what makes the MCP
+    server's third tool possible. Read-only either way: it reads ``boards/news.duckdb`` and fetches nothing.
+    """
     from RevenueChaser.module_news import report as news_report
+    args = request.args
+    if args.get("from") or args.get("to"):
+        try:
+            start = float(args.get("from") or 0)
+            end = float(args.get("to") or time.time())
+            limit = int(args.get("limit") or news_report.API_LIMIT)
+        except ValueError:
+            return jsonify({"ok": False, "error": "from, to and limit must be numbers"}), 400
+        if end < start:
+            return jsonify({"ok": False, "error": "to must not be before from"}), 400
+        if end - start > news_report.API_MAX_DAYS * 86400:
+            return jsonify({"ok": False, "error": f"the window may span at most "
+                                                  f"{news_report.API_MAX_DAYS} days"}), 400
+        ticker = (args.get("ticker") or "").strip().upper() or None
+        if ticker and not _valid_ticker(ticker):
+            return jsonify({"ok": False, "error": "ticker must be a symbol such as NVDA"}), 400
+        return jsonify({"ok": True, "rows": news_report.headline_rows(start, end, ticker, limit)})
     try:
-        since = float(request.args.get("since") or 0)
+        since = float(args.get("since") or 0)
     except ValueError:
         return jsonify({"ok": False, "error": "since must be epoch seconds"}), 400
     return jsonify({"ok": True, "rows": news_report.api_rows(since)})
+
+
+@app.route("/api/news/events")
+def api_news_events():
+    """The calendar rows still to come (#809): ``days`` ahead from today Amsterdam, oldest first, and ``types``
+    (comma separated, e.g. ``fda``) to ask for one lane. Read-only, no ``X-RC-Panel`` header: it writes nothing."""
+    from RevenueChaser.module_news import report as news_report
+    try:
+        days = int(request.args.get("days") or news_report.WEEK_DAYS)
+    except ValueError:
+        return jsonify({"ok": False, "error": "days must be a whole number"}), 400
+    if days < 1:
+        return jsonify({"ok": False, "error": "days must be 1 or more"}), 400
+    types = tuple(t for t in (request.args.get("types") or "").split(",") if t.strip()) or None
+    return jsonify({"ok": True, "days": min(days, news_report.API_MAX_DAYS),
+                    "rows": news_report.event_rows(days=days, types=types)})
 
 
 @app.route("/run/module_welcome", methods=["POST"])

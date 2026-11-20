@@ -192,6 +192,7 @@ POPULATION: dict[str, str] = {
     "forecast_outcomes": "core/tests/test_outcomes.py::test_mfe_and_mae_are_high_and_low_over_exactly_the_window_from_the_next_open",
     "forecast_baselines": "core/tests/test_baselines_numbers_25.py::test_a_baselines_run_populates_forecast_baselines",
     "news_events": "module_news/tests/test_calendar.py::test_first_build_upserts_every_event_into_the_board_file",
+    "news_earnings": "module_news/tests/test_earnings_886.py::test_the_pass_writes_one_row_a_watch_list_name_reporting_next_week",
     "news_highlight": "module_news/tests/test_calendar.py::test_the_highlight_is_the_most_important_live_event_earliest_on_a_tie",
     "news_meta": "module_news/tests/test_calendar.py::test_a_second_build_reads_only_new_rows_and_keeps_first_seen",
     "news_headlines": "module_news/tests/test_headlines.py::test_fetch_stores_clean_headlines_with_their_tickers_once",

@@ -62,6 +62,28 @@ def serve_economic(sweeps: dict, *, fetched_at: float = 1.0, check: str | None =
         ops.record_check(econ.NAME, check, run_id=RUN_ID, source_as_of=max(raws).parent.name)
 
 
+def serve_fda(sweeps: dict, *, fetched_at: float = 1.0, check: str | None = "changed") -> None:
+    """Build ``market.fda_event`` from ``sweeps`` (snapshot day -> UW FDA calendar items) the way the builder does:
+    one raw fetch per day written at ``fetched_at``, typed by ``uw/fda_calendar``'s own ``to_parquet_all``, then the
+    kind built and swapped in. An item carries UW's own fields (``ticker``, ``drug``, ``start_date``, ``catalyst``,
+    ...); a later call adds its days and replaces a day it names again (#807)."""
+    from RevenueChaser.rcdata.build import uw_fda_calendar as fda
+
+    ctx = base.RunContext(run_id=RUN_ID, dataset=fda.NAME, trigger="test", allow_shrink=True)
+    raws = []
+    for day, items in sorted(sweeps.items()):
+        day = day if isinstance(day, date) else date.fromisoformat(str(day))
+        raw = fda.day_dir(day) / f"{int(fetched_at * 1000):015d}.json.gz"
+        raws.append(base.write_raw_json(raw, {"request": {"endpoint": fda.ENDPOINT}, "snapshot_date": day.isoformat(),
+                                              "fetched_at": fetched_at, "run_id": RUN_ID,
+                                              "body": {"data": list(items)}}))
+    fda.DATASET.to_parquet_all(ctx, raws)
+    base.parquet_root().mkdir(parents=True, exist_ok=True)
+    base.build_kind(ctx, fda.DATASET)
+    if check:
+        ops.record_check(fda.NAME, check, run_id=RUN_ID, source_as_of=max(raws).parent.name)
+
+
 def serve_estimates(rows: list[dict], *, as_of: date | None = None, check: str | None = "changed") -> None:
     """Build and swap in a ``fundamentals`` serving file whose ``estimate_latest`` holds ``rows``.
 

@@ -239,6 +239,14 @@ def honours_scope(ds) -> bool:
     return bool(getattr(ds, "honours_scope", False))
 
 
+def _step_now() -> float:
+    """The clock the step stamps read. Not ``RunContext.clock``: that one is the run's **pacing** clock, which a
+    caller may inject as a fixed sequence (a run budget's reads in ``rcdata/tests/test_options_list.py``), and
+    bookkeeping must not consume a read of it.
+    """
+    return time.monotonic()
+
+
 # ── The run context ────────────────────────────────────────────────────────────────────────────────────────────
 
 @dataclass
@@ -260,6 +268,16 @@ class RunContext:
     #: (:class:`WholeBuildByHand`); everything else -- a Fetch press, the CLI, a build called directly -- does.
     scheduled: bool = False
     scope: Scope = field(default_factory=Scope)                     # a request's "tiers" / "names" (empty: daily)
+    # The seconds each step took, in the order the steps ran: ``step`` stamps the clock as it changes
+    # (``__setattr__``), and ``step_times`` is what the run's ``job_runs2.counts["steps"]`` holds (review of
+    # 20 Nov 2026, step 1). Before this the whole run's time was one pair of timestamps and the inside of it was
+    # a log line, so "where did the hour go" had no answer in any record.
+    #
+    # **Declared before ``step``**, because a dataclass assigns its fields in declaration order: after ``step``
+    # these two defaults would overwrite the stamp ``step``'s own assignment just made, and the time before the
+    # first named step would be lost (CI on this PR, unit 2/6).
+    _steps: dict[str, float] = field(default_factory=dict)
+    _step_at: float | None = None
     # Which of the run's steps is in hand, so a failed check row says where the exception came from and not only
     # its class (#1119): "start" before the first one, then "fetch", "parquet" or "backfill", then "build",
     # "check" and "swap". A step sets it before it runs, never after, because what names it is the failure.
@@ -277,6 +295,35 @@ class RunContext:
     _uw: Any = None
     _pause_read_at: float | None = None                             # the clock when the pause was last read
     _paused: str | None = None                                      # once seen, every later call stops too
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        """Keep the clock of ``step``, so a run records where its time went and not only where it failed.
+
+        A step is set before it runs and never after, so the stamp belongs to the step being left. Setting a step
+        to what it already is (``build_kind_many`` sets it on every member of a pass, the lead included) goes on
+        counting the same step rather than restarting it, and a step entered twice adds up.
+        """
+        if name == "step":
+            at, seen = getattr(self, "_step_at", None), getattr(self, "step", None)
+            if at is not None and seen is not None:
+                spent = max(0.0, _step_now() - at)
+                self._steps[seen] = round(self._steps.get(seen, 0.0) + spent, 3)
+            object.__setattr__(self, name, value)
+            object.__setattr__(self, "_step_at", _step_now())
+            return
+        object.__setattr__(self, name, value)
+
+    def step_times(self) -> dict[str, float]:
+        """The seconds per step, in the order they ran, with the step in hand counted up to now.
+
+        Reading it never ends a step, so a caller may read it twice (a failed run's row and its check note) and
+        get the same numbers plus whatever time passed. ``start`` is the time before the first named step: the
+        claim, the pause and cap reads, the scope.
+        """
+        out = dict(self._steps)
+        if self._step_at is not None and self.step:
+            out[self.step] = round(out.get(self.step, 0.0) + max(0.0, _step_now() - self._step_at), 3)
+        return out
 
     def count(self, provider: str, calls: int = 0, failures: int = 0, http_429: int = 0, *,
               logged: bool = False) -> None:
@@ -1472,7 +1519,9 @@ def _finish(ctx: RunContext, req: dict, check: dict, status: str, error: str | N
         row["next_check_due"] = next_due(ctx.as_of)
     result = row.pop("result")
     ops.record_check(ctx.dataset, result, run_id=ctx.run_id, note=notes, **row)
-    ops.finish_run(ctx.run_id, status, error)
+    # The inside of the run: seconds per step, into the ``counts`` column the builder path left empty (ops schema
+    # v3, #136), so no schema bump. A run that ended without reaching a step records only the steps it reached.
+    ops.finish_run(ctx.run_id, status, error, {"steps": ctx.step_times()})
     if req.get("id") is not None:
         ops.finish_request(req["id"], {"ok": "done", "skipped": "skipped"}.get(status, "failed"), note=notes)
     notify.build_end(ctx.dataset, status, error or notes, requested=_pressed(req))

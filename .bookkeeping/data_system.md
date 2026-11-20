@@ -177,7 +177,10 @@ What that means for history today (details and cites per table in [data_flow.md]
   `done`/`error`; a chain-blocked step ends `error` "chain blocked: ...") and passes the row's id to its command as
   `RC_RUN_ID` (`RC_RUN_SOURCE` = registry name). There `ledger.new_run_id`, `app/jobs.run_id()` and the change
   capture stamp that id and source, so the rows the run writes join its row. The backup records none. A row that
-  cannot be written is a `job_runs: not recorded` log line, never a different exit code.
+  cannot be written is a `job_runs: not recorded` log line, never a different exit code. Every command, table writer
+  or not, also gets the run's id in `RC_CHAIN_ID`, and every `job_runs2` row keeps that chain id in its `params`
+  (`ops.chained_params`; a run nobody started is its own chain's root), with the seconds per step in
+  `counts["steps"]` (review of 20 Nov 2026, step 1).
 - **Everything else is manual:** each board's Fetch, the universe job and the identity job. The dashboard starts a
   job with `POST /run/<job>` and the header `X-RC-Panel` (CLAUDE.md, Data safety).
 - **One universe writer at a time (#146):** the universe job and the cap backfill take the file lock `universe` in the

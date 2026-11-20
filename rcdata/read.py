@@ -31,7 +31,7 @@ NEVER_CHECKED = "never_checked"
 STATUS_UNKNOWN = "status_unknown"
 DATASET_OF_TABLE = {"market_series": "market_series", "spx_gamma_expiry_strike": "uw/spot_expiry_strike",
                     "spx_greek_expiry_strike": "uw/greek_expiry_strike",
-                    "economic_event": "uw/economic_calendar",
+                    "economic_event": "uw/economic_calendar", "fda_event": "uw/fda_calendar",
                     "security": "spine/security", "security_history": "spine/security",
                     "gics_history": "spine/security", "index_membership": "funds/index_holdings",
                     "fund": "sec/company_tickers_mf", "etf_holdings": "funds/etf_holdings", "etf": "spine/security",
@@ -40,6 +40,7 @@ DATASET_OF_TABLE = {"market_series": "market_series", "spx_gamma_expiry_strike":
                     "etf_theme": "spine/security"}
 KIND_OF_TABLE = {"market_series": "market", "spx_gamma_expiry_strike": "market",
                  "spx_greek_expiry_strike": "market", "economic_event": "market",
+                 "fda_event": "market",
                  "security": "spine", "security_history": "spine", "gics_history": "spine",
                  "index_membership": "spine", "fund": "spine", "etf_holdings": "spine", "etf": "spine",
                  "my_universe": "spine", "my_universe_changes": "spine",
@@ -186,6 +187,32 @@ def economic_events(fetched_after: float | None = None) -> list[dict]:
     if fetched_after is not None:
         sql, params = sql + " WHERE fetched_at > ?", [float(fetched_after)]
     return _rows("economic_event", sql + " ORDER BY fetched_at, event_ts, event, type", params, missing_table_ok=True)
+
+
+def fda_calendar(snapshot_date=None) -> list[dict]:
+    """UW's FDA calendar as of one snapshot day (default: the newest held), by target date.
+
+    A row's ``target_date`` is the day its ``target_text`` resolves to, and ``target_precision`` says what the text
+    said (``day``, ``quarter``, ``half``, ``mid``, ``late``), so a quarter is never read as a day.
+
+    A file built before market 5 has no ``fda_event``: that reads as no rows, not an error."""
+    where, params = "snapshot_date = (SELECT max(snapshot_date) FROM fda_event)", []
+    if snapshot_date is not None:
+        where, params = "snapshot_date = ?", [_day(snapshot_date)]
+    return _rows("fda_event", f"SELECT * FROM fda_event WHERE {where} ORDER BY target_date, ticker, drug",
+                 params, missing_table_ok=True)
+
+
+def fda_events(fetched_after: float | None = None) -> list[dict]:
+    """Every held snapshot day of the FDA calendar, oldest fetch first; ``fetched_after`` (epoch seconds) keeps only
+    the rows of newer fetches. Each snapshot day holds that day's newest fetch (``uw/fda_calendar``).
+
+    A file built before market 5 has no ``fda_event``: that reads as no rows, not an error."""
+    sql, params = "SELECT * FROM fda_event", []
+    if fetched_after is not None:
+        sql, params = sql + " WHERE fetched_at > ?", [float(fetched_after)]
+    return _rows("fda_event", sql + " ORDER BY fetched_at, target_date, ticker, drug", params,
+                 missing_table_ok=True)
 
 
 def spx_expiry_strike(session_date, min_dte: int = 0, max_dte: int = 1) -> list[dict]:
@@ -1185,11 +1212,12 @@ def beneficial_ownership(tickers: Iterable[str], start=None, end=None) -> list[d
 DATASET_OF_TABLE.update({"fundamental_company": "fundamentals/tables", "fundamental_fact": None, "earnings_event": None, "estimate_latest": "yfinance/estimates",
                          "filing_item": "sec/filings", "segment_revenue": None, "customer_share": None,
                          "peer_group": "fundamentals/tables", "fundamental_revision": None,
-                         "earnings_reported": "uw/earnings", "earnings_report_history": None})
+                         "earnings_reported": "uw/earnings", "earnings_report_history": None,
+                         "audit_flag": "wrds/audit"})
 KIND_OF_TABLE.update({t: "fundamentals" for t in ("fundamental_company", "fundamental_fact", "earnings_event", "estimate_latest",
                                                   "filing_item", "segment_revenue", "customer_share", "peer_group",
                                                   "fundamental_revision", "earnings_reported",
-                                                  "earnings_report_history")})
+                                                  "earnings_report_history", "audit_flag")})
 
 
 def _cik(cik) -> str:
@@ -1285,6 +1313,31 @@ def earnings_report_history(cik=None, start=None, end=None) -> list[dict]:
         sql += " AND report_date <= ?"
         params.append(_day(end))
     return _rows("earnings_report_history", sql + " ORDER BY cik, period_end", params, missing_table_ok=True)
+
+
+def audit_flags(cik=None, kind=None, start=None, end=None) -> list[dict]:
+    """``audit_flag`` rows (of ``cik``, or every company; of one ``kind``, or all three) with
+    ``start <= file_date <= end``, newest first within a company: the restatements (``restatement``), late-filing
+    notices (``late_filing``) and director and officer changes (``officer_change``) Audit Analytics recorded.
+
+    ``flags`` is the list of what the feed marked (``fraud``, ``adverse``, ``ceo``, ``interim``, ...). A history:
+    the feeds run about two months behind, so a company's newest events are ``filing_items`` first. A file built
+    before the table existed answers []."""
+    sql, params = "SELECT * FROM audit_flag WHERE true", []
+    if cik is not None:
+        sql += " AND cik = ?"
+        params.append(_cik(cik))
+    if kind is not None:
+        sql += " AND kind = ?"
+        params.append(str(kind))
+    if start is not None:
+        sql += " AND file_date >= ?"
+        params.append(_day(start))
+    if end is not None:
+        sql += " AND file_date <= ?"
+        params.append(_day(end))
+    return _rows("audit_flag", sql + " ORDER BY cik, file_date DESC, kind, event_key, person_key", params,
+                 missing_table_ok=True)
 
 
 def earnings_events(cik=None, start=None, end=None) -> list[dict]:

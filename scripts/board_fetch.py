@@ -37,7 +37,14 @@ ROUTES = {
     # the timer's hour is the coming New York session.
     "rotation": "rotation",
     "earnings": "earnings",
+    # News earnings (#886): next week's report day of every watch-list name, store-only, every Sunday 09:00.
+    "news-earnings": "news_earnings",
 }
+
+#: The boards whose Fetch scores against a session and so waits for its SPY bar. A board that only reads a
+#: calendar of days still to come has no session to wait for (#886), and on a Sunday there is none to wait for
+#: either: it runs as soon as the store is idle.
+NEEDS_SESSION = frozenset(ROUTES) - {"news-earnings"}
 
 
 def _wait_idle(deadline: float) -> list[str]:
@@ -63,7 +70,7 @@ def run(board: str) -> int:
         print(json.dumps({"board": board, "status": "not_ready", "reason": "store busy: " + "; ".join(busy)}))
         return EXIT_NOT_READY
     session = calendar.latest_complete_session()
-    if not ledger.d01_has_session(session, "SPY"):
+    if board in NEEDS_SESSION and not ledger.d01_has_session(session, "SPY"):
         print(json.dumps({"status": "not_ready", "reason": f"the prices store has no complete SPY bar for {session}"}))
         return EXIT_NOT_READY
     route = ROUTES[board]

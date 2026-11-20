@@ -264,7 +264,7 @@ BOARD_INPUTS: list[dict] = [
     _board("module_watchlists", "Watch lists",
            ["wl_list", "wl_section", "wl_item", "wl_change"], _watchlists_latest,
            price_basis="last stored closes through rcdata, not live quotes"),
-    _board("module_news", "News", [], lambda: _html("news")),      # reads market.economic_event
+    _board("module_news", "News", [], lambda: _html("news")),      # reads market.economic_event, market.fda_event
     _board("module_earnings_radar", "Earnings Radar",
            ["earnings_calendar", "estimate_snapshots", "short_interest",
             "price_bars_daily"],

@@ -45,6 +45,7 @@ Both are why `dirty.full_rebuild_reason` exists and why a dataset may declare on
 | `spx_gamma_expiry_strike` | cumulative | `session_date` range | `uw_spot_expiry_strike.py`: one raw file per session, the file is the resume marker, a stored session is never re-asked |
 | `spx_greek_expiry_strike` | cumulative | `session_date` range | `uw_greek_expiry_strike.py`, same shape |
 | `economic_event` | snapshot per day, **chosen list** | `snapshot_date` | `uw_economic_calendar.py`: one partition per snapshot day, replaced whole by that day's newest fetch. UW serves a forward window ("this week and next"), so a day's newest fetch holds fewer events than its first one once some have rolled out: the count is the source's choice, and the table is in `serving.SHRINKS_BY_CHOICE` (14 Nov 2026) |
+| `fda_event` | snapshot per day, **chosen list** | `snapshot_date` | `uw_fda_calendar.py` (#807): the same rule as the economic calendar. One partition per snapshot day, replaced whole by that day's newest fetch; UW's answer is the calendar as it stands, so a catalyst it drops leaves the day it was fetched on and the table is in `serving.SHRINKS_BY_CHOICE` |
 
 ## spine
 
@@ -97,6 +98,7 @@ The four source tables are rebuilt from all their `date=` partitions on every bu
 | `filing_item` | cumulative | `filing_date` range | one row per `(cik, accession, item)`, documents and items |
 | `earnings_event`, `earnings_reported` | cumulative + restated | `report_date` range; key `cik` | a calendar revision moves a future report date |
 | `earnings_report_history` | derivation (whole) | — | Compustat's newest monthly snapshot and UW's newest answer are each reloaded whole, so the table is rebuilt whole by every build |
+| `audit_flag` | derivation (whole) | — | the newest monthly `wrds/audit` snapshot is reloaded whole, so the table is rebuilt whole by every build |
 | `fundamental_revision` | cumulative | `new_as_of` range | a log of what changed between two monthly Compustat snapshots |
 | `segment_revenue`, `customer_share` | restated | key `cik` | built from the newest annual report's inline XBRL and Compustat's segments; a new report rewrites the company's rows |
 | `estimate_latest` | derivation (whole) | — | "the newest estimates per company, ticker and period"; the snapshots stay in Parquet |

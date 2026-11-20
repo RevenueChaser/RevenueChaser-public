@@ -301,6 +301,19 @@ REGISTRY: tuple[AutomationEntry, ...] = (
     # avo 18 Nov 2026 ("Zamanlayiciyi kur"): Sector Rotation and Earnings Radar had no schedule, only their buttons,
     # so the quadrant snapshot sat at 6 Nov. Same task as the four above, switched ON at install.
     AutomationEntry(
+        name="RC-News-Earnings-Weekly", label="News earnings (weekly)",
+        args=("-m", "RevenueChaser.scripts.board_fetch", "news-earnings"), time="09:00", days=("Sunday",),
+        unit_name="life-rc-fetch-news-earnings", tables_written=("news_earnings",),
+        description="The News board's Earnings tab (#886, avo 20 Nov 2026): every Sunday 09:00 it writes next "
+                    "week's report day of every name on the News watch lists into boards/news.duckdb and renders "
+                    "the page. Once a week, because a calendar of next week does not change by the hour. "
+                    "Store-only: the days come from the Alpha Vantage earnings calendar the builder already "
+                    "serves (fundamentals.earnings_event), the names from the watch lists; no provider is called "
+                    "and no session is waited for. The pass runs in the dashboard (POST /run/news_earnings, the "
+                    "one writer): the task only queues it and waits; with the dashboard down it exits 1. The "
+                    "board's own Fetch runs the same pass, so a Fetch is never a week late.",
+        settings=TaskSettings(restart_count=0, time_limit_minutes=30)),
+    AutomationEntry(
         name="RC-Fetch-SectorRotation", label="Sector Rotation Fetch (nightly)",
         args=("-m", "RevenueChaser.scripts.board_fetch", "rotation"), time="05:40", unit_name="life-rc-fetch-rotation",
         description="The Sector Rotation board's Fetch after the nightly prices build (avo 18 Nov 2026), so the "
@@ -1370,10 +1383,18 @@ def run_task(name: str, python: str | None = None, cwd: Path | str | None = None
                 return CHAIN_BLOCKED
             fh.write(f"chain: {line}\n")
             fh.flush()
-        env = None
+        # Every command gets the chain id, whether or not it writes tables: it is what ties this run's row to the
+        # rows of the runs it causes (a builder pass's dataset runs), and the step that writes no table has
+        # children too (review of 20 Nov 2026, step 1). ``RC_RUN_ID`` stays what it was: the writer's stamp.
+        env = {**os.environ}
+        try:
+            from RevenueChaser.rcdata import ops as _ops
+            env[_ops.CHAIN_ID_ENV] = run_id
+        except Exception:  # noqa: BLE001 — bookkeeping, never the reason a task does not run
+            logger.debug("could not read the chain variable's name for %s", e.name, exc_info=True)
         if e.tables_written:
             from RevenueChaser.core import rawstore
-            env = {**os.environ, rawstore.RUN_ID_ENV: run_id, rawstore.RUN_SOURCE_ENV: e.name}
+            env.update({rawstore.RUN_ID_ENV: run_id, rawstore.RUN_SOURCE_ENV: e.name})
         logged = _run_log_start(run_id, e.name)
         fh.flush()
         before = fh.tell()                  # where the step's own output starts, for ``_counts_of_run`` and the echo
