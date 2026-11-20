@@ -32,7 +32,7 @@ is quoted it was read on the project's own page on 20 Nov 2026.
 | 8 | Blocking checks: a need refuses to serve on a failed upstream | [Dagster asset checks](https://docs.dagster.io/guides/test/data-freshness-testing) | S | low |
 | 9 | More than one snapshot back: a catalog with time travel | [DuckLake](https://ducklake.select/) | L | med–high |
 | 10 | One standard field name per concept across providers | [OpenBB](https://github.com/OpenBB-finance/OpenBB) (AGPL-3, ideas only) | L | med |
-| 11 | Delisted names: a decision, not a fix | our own universe rule | — | avo's call |
+| 11 | A separate `delisted` layer (**decided**, avo 20 Nov 2026) | our own `#441` survivorship note | M–L | low |
 | 12 | Vector index for Relatedness: **do not** take it yet | [DuckDB `vss`](https://duckdb.org/docs/current/core_extensions/vss) | — | rejected |
 
 ---
@@ -213,19 +213,72 @@ and the doc, would make them one source of truth. Low value against items 1–8.
 
 **Effort** L if taken as a layer, S as the rules table. **Risk** med as a layer; S version is low.
 
-### 11. Delisted names: a decision, not a fix
+### 11. Delisted names: decided — a separate `delisted` layer
 
-`[OKUNDU]` `data_architecture.md` → prices: what the store keeps is **today's universe** (avo, 4 Nov 2026), and
-with it "CRSP serves no bar at all" because "no delisted name is in it".
+**avo, 20 Nov 2026: "Delistedler icin ayri katman."** A separate layer it is. What follows is the design sketch
+only; no code was written and nothing was built.
 
-`[ÇIKARIM]` Every open-source backtest stack treats this as the first bias to remove (it is why qlib's PIT exists
-and why academic sets keep delisted securities). Today's universe is a standing decision and this document does
-not argue with it; the consequence is simply that no board built on this store can measure a strategy over names
-that stopped trading.
+`[OKUNDU]` The store's bias is already written down and already called reversible:
+`data_architecture.md` → "**Survivorship bias: the store is biased on purpose, and it is reversible (#441)**".
+It says the three things this design rests on:
 
-**The decision only avo can make:** does any board ever need delisted names (a `delisted` tier the daily fetches
-skip, filled once from Compustat/CRSP history), or is the answer "no backtests over dead names, by design"? If
-the answer is no, item 1's value drops to live boards only, which is still real.
+- the served universe is today's universe (avo, 4 Nov 2026), and avo accepted the bias on 5 Nov 2026;
+- it is "harmful and silent for anything measuring the past" — a backtest, AG-score validation, a forecast-ledger
+  hit rate — because the companies that died are missing and every such number comes out better than reality;
+- **the delisted history is already on disk.** The universe filter is applied only in the serving build
+  (`_universe`, `rcdata/build/prices/serving.py`), while the WRDS fetch has no universe filter at all:
+  `crsp.dsf_v2` by date range, `comp.secd` by exchange over any dated `comp.sec_idhist` EXCHG period, and CRSP's
+  delisting table `crsp_a_stock.stkdelists` whole — the last of which "is still fetched and nothing in the serving
+  build reads it". All of it sits under `parquet/wrds/prices/<table>/`.
+
+So this layer costs **no new provider call and no new WRDS login**: it is a second reader of Parquet we already
+hold.
+
+`[ÇIKARIM]` **Shape.** Its own serving kind, `delisted.duckdb`, not new columns on `prices`:
+
+| Table | Key | Holds |
+|---|---|---|
+| `delisted_security` | the security (permno, with gvkey and CIK where the link exists) | its tickers with the date range each was in use, first and last priced session, delisting date, CRSP's delisting code and its delisting return |
+| `delisted_price_bar_daily` | (security, session date) | the same columns as `price_bar_daily`, so a reader can union the two deliberately |
+| `delisted_corporate_action` | (security, ex-date, kind) | the splits and distributions needed to make its returns right |
+
+`[ÇIKARIM]` **The rules it keeps.**
+
+- **Nothing is merged into `price_bar_daily`.** The doc's own line stands: "Never widen the served universe for a
+  one-off measurement ... a widened store would change what every board reads." A board that wants dead names
+  unions the two tables itself and says so.
+- **Its own kind means its own everything:** serving schema version, shrink scope, backup step and `prev` file, so
+  a bad `delisted` build cannot touch live prices. It is append-only history, so any shrink refuses the swap — it
+  is never in `SHRINKS_BY_CHOICE`.
+- **Identity stays out of `my_universe`**, which is avo's own list of live names. Delisted securities get their own
+  table keyed on permno, because the trap here is **ticker reuse**: a ticker that a dead company had and a live one
+  now has is two securities, which is why every ticker carries a date range and no reader joins on ticker alone.
+- **Cadence:** one attended backfill from the Parquet already on disk, then monthly with the other WRDS datasets.
+  No daily run, no scope widening of the daily fetches.
+- **Served through the needs layer** like everything else (`fill="never"`), under names of its own
+  (`market.delisted_price_bar`, `market.delisted_security`), so a board that reads it is visible in the registry
+  and on the Settings board rather than reading a file by hand.
+
+`[ÇIKARIM]` **Who reads it.** No live board, by default and on purpose: Welcome, Rotation, Relatedness and the
+screeners answer questions about today's names. The readers are the measuring ones — the forecast ledger's hit
+rate, AG-score validation, and any later backtest — plus a survivorship note on a historical statistic
+("computed over today's universe; N delisted names existed in the window"). Together with item 1
+(`known_as_of=D`) it gives the two properties a backtest needs: no survivorship bias and no restatement leak.
+
+`[ÇIKARIM]` **Defaults taken, so nothing waits on an answer** (each is avo's to change): from 1983-12-30,
+Compustat's earliest priced day, which is already the fetch's own start; **stocks first, funds later**, because a
+dead ETF asks the same questions with none of the delisting-return machinery; **prices, actions and delisting
+returns first, fundamentals for dead names later**, since `sec/companyfacts` is keyed on the live Tier A CIK list
+and widening it is its own lane.
+
+`[ÇIKARIM]` **Risks.** The CRSP licence: the data stays on the server, is never committed (this repository is code
+only) and no number from it is published — unchanged from how `prices` already treats it. Disk: `crsp.dsf_v2`'s
+whole history for every share type is the unmeasured number here, so step one of the lane is measuring the Parquet
+already on disk, read-only, before any build. And the unlink risk: a permno with no gvkey or CIK link cannot be
+joined to our fundamentals at all, which is a reason the bars come first and the facts later.
+
+**Effort** M–L, one lane of its own. **Risk** low for every live board, since no served table of another kind is
+touched.
 
 ### 12. Vector index for Relatedness: do not take it yet
 
@@ -253,5 +306,9 @@ corrupt index is a worse board than a slower one. Revisit when DuckDB drops the 
 
 ## Suggested order, if avo wants any of it
 
-4 and 5 first (both small, both close an open hole: #146 and the hand-typed calendar), then 8, then 3, then 1,
-then 2. 6, 7 and 9 are each their own lane and should not be opened while the F-band lanes are running.
+11 is decided, so it is a lane of its own whenever avo wants it opened; its first step is a read-only measurement
+of the Parquet already on disk.
+
+Of the rest: 4 and 5 first (both small, both close an open hole: #146 and the hand-typed calendar), then 8, then 3,
+then 1, then 2 — and 1 is worth more once 11 exists, because a backtest needs both. 6, 7 and 9 are each their own
+lane and should not be opened while the F-band lanes are running.
