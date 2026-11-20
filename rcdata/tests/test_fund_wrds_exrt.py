@@ -139,11 +139,13 @@ def test_yahoo_alone_is_read_as_before_and_compustat_alone_is_enough(market_root
 
 
 def test_a_day_compustat_cannot_cross_is_yahoos(market_roots):
-    """No USD row that day, or a zero rate: Compustat has no rate, so the day is Yahoo's and not missing."""
+    """No USD row that day, or a zero rate: Compustat has no rate, so the day is Yahoo's and not missing. The third
+    day it can cross is Compustat's, in the same file."""
     _compustat_file([("CAD", "2026-10-22", 1.75),                                      # no USD row
-                     ("USD", "2026-10-23", 1.25), ("CAD", "2026-10-23", 0.0)])         # a zero is no rate
-    _yahoo_file([("CAD", "2026-10-22", 0.71), ("CAD", "2026-10-23", 0.72)])
-    assert _rates("CAD") == [("2026-10-22", 0.71), ("2026-10-23", 0.72)]
+                     ("USD", "2026-10-23", 1.25), ("CAD", "2026-10-23", 0.0),          # a zero is no rate
+                     ("USD", "2026-10-26", 1.25), ("CAD", "2026-10-26", 2.5)])
+    _yahoo_file([("CAD", "2026-10-22", 0.71), ("CAD", "2026-10-23", 0.72), ("CAD", "2026-10-26", 0.73)])
+    assert _rates("CAD") == [("2026-10-22", 0.71), ("2026-10-23", 0.72), ("2026-10-26", 0.5)]
 
 
 def test_the_newest_snapshot_is_the_one_read(market_roots):
