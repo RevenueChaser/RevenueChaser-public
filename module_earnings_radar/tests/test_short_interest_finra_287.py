@@ -6,7 +6,7 @@ series' own terms, not trading sessions; nothing is asked of UW.
 """
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
@@ -27,7 +27,13 @@ def _finra(ticker, day, short, dtc, symbol=None):
 
 @pytest.fixture
 def store(monkeypatch):
-    """Fakes for the four ``rcdata.read`` calls; each fake honours the bounds it is asked for."""
+    """Fakes for the four ``rcdata.read`` calls; each fake honours the bounds it is asked for.
+
+    The clock is pinned to ``TODAY`` through the one clock seam (``core.calendar._now``), because the age limit is
+    counted from New York's today: ``SETTLED`` is 25 days before ``TODAY``, but 36 before 20 Nov 2026, so the one
+    test that does not pass ``today=`` (the board's warm step) started failing on ``main`` that day by the calendar
+    alone.
+    """
     s = {"finra": [], "ids": {}, "floats": [], "fees": [], "asked": {}}
 
     def finra(tickers, start=None, end=None):
@@ -43,6 +49,8 @@ def store(monkeypatch):
                         [r for r in s["fees"] if r["ticker"] in set(tickers)])
     monkeypatch.setattr(read, "dataset_status", lambda dataset: "ok")
     monkeypatch.setattr(calendar, "latest_complete_session", lambda *a, **k: FEE_SESSION)
+    monkeypatch.setattr(calendar, "_now", lambda: datetime(TODAY.year, TODAY.month, TODAY.day, 17, 0,
+                                                           tzinfo=timezone.utc))      # 12:00 New York on TODAY
     return s
 
 
