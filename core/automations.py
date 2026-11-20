@@ -146,14 +146,14 @@ SEC_READ_UNIT = "life-rc-sec-read"
 
 REGISTRY: tuple[AutomationEntry, ...] = (
     AutomationEntry(
-        name="RC-Relatedness-OffPeak", label="Relatedness (every other Sunday)",
-        args=("-m", "RevenueChaser.module_relatedness", "--run", "--cap", "10"), time="07:30", days=("Sunday",),
-        fortnightly=True,
+        name="RC-Relatedness-OffPeak", label="Relatedness profiling (weekly, Sunday)",
+        args=("-m", "RevenueChaser.module_relatedness", "--run", "--cap", "10"), time="22:15", days=("Sunday",),
         description=("Relatedness profiling with the board's writer (Settings, #360: EVREN by default, no call cap), "
                      "incremental (only changed filings), then every pair scored (~27 s CPU for 5,111 profiles, "
                      "measured on the server 20 Nov 2026, #884) and the "
-                     "board rendered. Every other Sunday 07:30 (avo 15 Nov 2026; the homesrv timer carries the fortnight, "
-                     "1st and 3rd Sunday). With DeepSeek it is capped at 10 USD (avo, 2 Nov 2026) and defers itself "
+                     "board rendered. Weekly, Sunday 22:15 (avo 20 Nov 2026: \"Tamam haftalik\"; that is also what "
+                     "the installed homesrv timer has had since 16 Nov, while these words still said every other "
+                     "Sunday 07:30). With DeepSeek it is capped at 10 USD (avo, 2 Nov 2026) and defers itself "
                      "outside off-peak hours."),
         tables_written=("relatedness_profiles", "relatedness_attributes", "relatedness_scores",
                         "llm_cache", "chain_filings", "chain_meta"),
@@ -227,16 +227,18 @@ REGISTRY: tuple[AutomationEntry, ...] = (
         chain_wait_minutes=20,
         settings=TaskSettings(restart_count=0, time_limit_minutes=90)),
     AutomationEntry(
-        name="RC-Relatedness-Score", label="Relatedness scoring (daily, when the SEC reads brought something new)",
-        args=("-m", "RevenueChaser.module_relatedness", "--score"), time="05:20", after="RC-SEC-Read",
+        name="RC-Relatedness-Score", label="Relatedness scoring (weekly, when the SEC reads brought something new)",
+        args=("-m", "RevenueChaser.module_relatedness", "--score"), time="07:30", days=("Saturday",),
+        after="RC-SEC-Read",
         description=("Copies the SEC reading service's new company.profile answers into the board's profiles, then "
-                     "rescores every pair, caches the new company vectors and writes the payload the board renders "
-                     "(avo, 20 Nov 2026: a change in the SEC report is scored, daily). No model call, no download "
-                     "and no cost, whatever the board's writer is. A day whose profiles are all older than the "
-                     "saved payload is skipped and nothing is written. Scoring every pair is ~27 s of CPU for "
-                     "5,111 profiles (measured on the server 20 Nov 2026, #884). 05:20 waits for tonight's SEC "
-                     "reads to exit 0 (their timer starts at 02:35 with a 90-minute limit) and is clear of the "
-                     "06:10 server jobs; a night the reads did not finish has nothing new to score anyway."),
+                     "rescores every pair, caches the new company vectors and writes the payload the board renders. "
+                     "No model call, no download and no cost, whatever the board's writer is. A run whose profiles "
+                     "are all older than the saved payload is skipped and nothing is written, so a week the service "
+                     "read nothing costs nothing. Scoring every pair is ~27 s of CPU for 5,111 profiles (measured "
+                     "on the server 20 Nov 2026, #884). Weekly, Saturday 07:30 (avo, 20 Nov 2026: \"Tamam "
+                     "haftalik, uygun zamana koy\"): the week's filings are all read by then, the Sunday backups "
+                     "and the weekday server jobs are elsewhere, and it still waits for that night's SEC reads to "
+                     "exit 0 (their timer starts at 02:35 with a 90-minute limit)."),
         tables_written=("relatedness_profiles", "relatedness_attributes", "relatedness_embeddings",
                         "relatedness_scores"),
         chain_wait_minutes=60,

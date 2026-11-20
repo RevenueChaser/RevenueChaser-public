@@ -1,9 +1,10 @@
-"""#884, the cadence half: the scoring step runs **daily** and only when the SEC reads brought something new.
+"""#884, the cadence half: the scoring step runs **weekly** and only when the SEC reads brought something new.
 
-avo, 20 Nov 2026: "Sec raporunda degisiklik var ise yapilacak sekilde ayarla, gunluk olsun" -- a change in the SEC
-report is scored, every day. It replaces his 16 Nov weekly Sunday word, and it is affordable because scoring every
-pair of the 5,111-name universe is ~27 s of CPU on the server (measured 20 Nov 2026, #884), not the ~2 h the
-cadence options were sized against.
+avo, 20 Nov 2026: a change in the SEC report is what gets scored ("Sec raporunda degisiklik var ise yapilacak
+sekilde ayarla"), and the cadence is his word of the same day: "Tamam haftalik, uygun zamana koy" -- weekly, in a
+free slot. Saturday 07:30: the week's filings are read by then, and the Sunday backups and the weekday server jobs
+are elsewhere. Cheap either way, because scoring every pair of the 5,111-name universe is ~27 s of CPU on the
+server (measured 20 Nov 2026, #884), not the ~2 h the cadence options were sized against.
 
 What that needs of ``engine.score`` (``--score``), on top of what ``test_weekly_scoring_884.py`` already pins:
 
@@ -11,12 +12,15 @@ What that needs of ``engine.score`` (``--score``), on top of what ``test_weekly_
   Without the mirror its "is anything newer than the saved payload" gate would never see a new profile -- a
   ``--score`` run reads the stored profiles only (``build_profiles(use_llm=False)``), so the board would stay on
   the payload of the last Fetch for ever;
-- the mirror is free: no model call and no SEC request, and an answer already stored is left alone, so a day the
-  service read nothing really is a day with nothing to do;
-- the gate then still decides, so an unchanged day writes nothing;
+- the mirror is free: no model call and no SEC request, and an answer already stored is left alone, so a week the
+  service read nothing really is a week with nothing to do;
+- the gate then still decides, so an unchanged week writes nothing;
 - on the own-writer path (``PROFILES_FROM == "own"``) there is nothing to mirror.
 
-And the daily row itself (``RC-Relatedness-Score``): daily, chained on the SEC reads, no cap and no writer.
+And the row itself (``RC-Relatedness-Score``): weekly Saturday 07:30, chained on the SEC reads, no cap and
+no writer. Its sibling ``RC-Relatedness-OffPeak`` (the writer run) is weekly too, Sunday 22:15 -- what the
+installed homesrv timer has had since 16 Nov, where these words said every other Sunday 07:30 until avo's
+"Tamam haftalik".
 """
 from __future__ import annotations
 
@@ -64,7 +68,7 @@ def _fake_run(monkeypatch, calls: list):
 
 # ── the mirror, and that it decides nothing by itself ───────────────────────
 
-def test_the_daily_step_mirrors_the_services_answers_before_it_looks_for_work(saved_payload, monkeypatch):
+def test_the_step_mirrors_the_services_answers_before_it_looks_for_work(saved_payload, monkeypatch):
     """The whole board goes to the mirror, and what it wrote is what the gate then sees."""
     seen, calls = [], []
     monkeypatch.setattr(engine.config, "PROFILES_FROM", "service")
@@ -77,7 +81,7 @@ def test_the_daily_step_mirrors_the_services_answers_before_it_looks_for_work(sa
     assert calls[0]["no_fetch"] is True and calls[0]["write"] is True   # no call, and the vectors are cached
 
 
-def test_a_day_the_service_answered_nothing_is_skipped_after_the_mirror(saved_payload, monkeypatch):
+def test_a_week_the_service_answered_nothing_is_skipped_after_the_mirror(saved_payload, monkeypatch):
     """The mirror still runs -- it is how we learn there is nothing -- and then nothing is scored or written."""
     seen = []
     monkeypatch.setattr(engine.config, "PROFILES_FROM", "service")
@@ -102,7 +106,7 @@ def test_force_scores_even_when_the_service_answered_nothing(saved_payload, monk
 
 
 def test_the_mirror_waits_for_the_lock_like_the_scoring_does(saved_payload, monkeypatch):
-    """A Fetch holds the board: the daily step writes no profile either, not even the mirror's."""
+    """A Fetch holds the board: the scoring step writes no profile either, not even the mirror's."""
     seen = []
     monkeypatch.setattr(engine.config, "PROFILES_FROM", "service")
     _mirror(monkeypatch, seen)
@@ -127,16 +131,16 @@ def test_the_own_writer_path_mirrors_nothing(saved_payload, monkeypatch):
 
 # ── the row the server installs ─────────────────────────────────────────────
 
-def test_the_daily_scoring_row_is_daily_and_chained_on_the_sec_reads():
+def test_the_scoring_row_is_weekly_in_a_free_slot_and_chained_on_the_sec_reads():
     e = A.entry("RC-Relatedness-Score")
     assert e.args == ("-m", "RevenueChaser.module_relatedness", "--score")
-    assert e.days == () and not e.fortnightly and not e.hourly      # daily (avo, 20 Nov 2026)
-    assert e.schedule == "daily 05:20 (local), after RC-SEC-Read"
-    assert e.after == "RC-SEC-Read"                                 # tonight's answers, or nothing new to score
+    assert e.days == ("Saturday",) and not e.fortnightly and not e.hourly    # weekly (avo, 20 Nov 2026)
+    assert e.schedule == "weekly Saturday 07:30 (local), after RC-SEC-Read"
+    assert e.after == "RC-SEC-Read"                                 # that night's answers, or nothing new to score
     assert A.system_unit(e) == "life-rc-relatedness-score"          # the home-server unit pair's name
 
 
-def test_the_daily_scoring_row_costs_nothing_and_is_not_off_peak_gated():
+def test_the_scoring_row_costs_nothing_and_is_not_off_peak_gated():
     e = A.entry("RC-Relatedness-Score")
     assert "--cap" not in e.args and "--provider" not in e.args     # --score refuses both: it calls no writer
     assert e.offpeak_gated is False                                 # no paid call to defer
@@ -145,7 +149,10 @@ def test_the_daily_scoring_row_costs_nothing_and_is_not_off_peak_gated():
     assert "llm_cache" not in e.tables_written
 
 
-def test_the_fortnightly_profiling_row_is_still_its_own_job():
-    """The daily row scores; the profiling row with the board's writer is untouched (avo's 15 Nov word)."""
-    assert A.entry("RC-Relatedness-OffPeak").args[:3] == ("-m", "RevenueChaser.module_relatedness", "--run")
-    assert A.entry("RC-Relatedness-OffPeak").days == ("Sunday",)
+def test_the_profiling_row_is_still_its_own_job_and_weekly_too():
+    """This row scores; the writer run stays its own job, and weekly since avo's word of 20 Nov 2026 -- the
+    schedule the installed homesrv timer has had since 16 Nov."""
+    e = A.entry("RC-Relatedness-OffPeak")
+    assert e.args[:3] == ("-m", "RevenueChaser.module_relatedness", "--run")
+    assert e.schedule == "weekly Sunday 22:15 (local)"
+    assert not e.fortnightly
