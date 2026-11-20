@@ -1294,7 +1294,7 @@ writer of this store: no second writer and no new timer. It is best effort, so a
 hour prunes. Never deleted, whatever its age: a run that has not finished (`finished_at` NULL) and a request still
 queued or running — the sweep closes those, not the clock — and, per dataset, the three check rows a board reads as
 that dataset's state (the newest, the newest that is not `skipped`, the newest that built), so a dataset that last
-built two years ago still reads true. `ops.oldest_run_rows` says how far the kept history reaches.
+built two years ago still reads true. `ops.oldest_run_rows` says how far the kept history reaches, and `RC_PRUNE_RUNS=0` stops the prune deleting anything without a revert (as `RC_REQUEST_LOG=0` stops the request log).
 
 **Day caps** (`rcdata/caps.py`, master plan Order 5, rule 3: only the quotas a provider publishes per day, each with
 its source): alphavantage 25 (its free tier, shared by the earnings calendar and the spine's

@@ -83,6 +83,11 @@ RESOLVED_ISSUE_DAYS = 7
 #: new timer. ``prune_runs`` never takes a row that is still running, and never a check row a board reads as a
 #: dataset's state.
 RUN_ROWS_DAYS = 365
+#: The tables ``prune_runs`` keeps to that year.
+RUN_ROW_TABLES = ("job_runs2", "build_requests", "dataset_check")
+#: ``RC_PRUNE_RUNS=0`` stops the prune without a revert, as ``RC_REQUEST_LOG=0`` stops the request log: the
+#: rollback for a deleter is a switch the running builder reads, not a deploy.
+PRUNE_RUNS_ENV = "RC_PRUNE_RUNS"
 # The UW response headers sampled into uw_remaining: only UW's own, never a cookie or anything else the answer had.
 UW_HEADER_PREFIX = "x-uw-"
 # What a live answer carries (27 Oct 2026): x-uw-daily-req-count is today's count; the per-minute pair is a rate
@@ -1263,6 +1268,12 @@ _KEEP_CHECKS = """SELECT MAX(id) FROM dataset_check GROUP BY dataset
     UNION SELECT MAX(id) FROM dataset_check WHERE result IN ('changed', 'unchanged') GROUP BY dataset"""
 
 
+def prune_runs_off() -> bool:
+    """True while ``RC_PRUNE_RUNS=0``: the prune deletes nothing and says so. Read on every call, like
+    ``backend()``, so turning it on or off is one environment line and a restart of the builder's unit."""
+    return os.getenv(PRUNE_RUNS_ENV, "1").strip() == "0"
+
+
 @_routed
 def prune_runs(days: int = RUN_ROWS_DAYS) -> dict[str, int]:
     """Delete the finished run rows older than ``days``: ``{table: rows deleted}``.
@@ -1274,7 +1285,11 @@ def prune_runs(days: int = RUN_ROWS_DAYS) -> dict[str, int]:
     - the newest ``dataset_check`` row of a dataset, and the newest that is not ``skipped`` and the newest that
       built, because the boards read them as the dataset's state (``latest_check``, ``latest_unskipped_check``,
       ``latest_good_check``). A dataset that last built two years ago keeps that row and still reads true.
+
+    ``RC_PRUNE_RUNS=0`` stops it deleting anything at all (``prune_runs_off``).
     """
+    if prune_runs_off():
+        return {t: 0 for t in RUN_ROW_TABLES}
     cutoff = time.time() - max(0, int(days)) * 86400.0
     day = _prune_cutoff(days)
     with _open() as con, _tx(con):

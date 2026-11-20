@@ -501,9 +501,11 @@ def prune_issues(days: int = ops.RESOLVED_ISSUE_DAYS) -> int:
 
 def prune_runs(days: int = ops.RUN_ROWS_DAYS) -> dict[str, int]:
     """``ops.prune_runs`` on Redis: the same three tables, the same two things that are never deleted."""
+    if ops.prune_runs_off():
+        return {t: 0 for t in ops.RUN_ROW_TABLES}
     cutoff = time.time() - max(0, int(days)) * 86400.0
     day = ops._prune_cutoff(days)
-    tables = ("job_runs2", "build_requests", "dataset_check")
+    tables = ops.RUN_ROW_TABLES
 
     def work():
         old: list[tuple[str, dict]] = []

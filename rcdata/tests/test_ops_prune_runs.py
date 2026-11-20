@@ -80,6 +80,17 @@ def test_the_check_rows_a_board_reads_as_a_datasets_state_are_kept_whatever_thei
     assert ops.latest_good_check("market_series")["result"] == "changed"
 
 
+def test_the_switch_stops_it_deleting_anything(monkeypatch):
+    """The rollback for a deleter is a switch the running builder reads, not a deploy (as RC_REQUEST_LOG=0)."""
+    now = time.time()
+    _run("old", started=now - 400 * DAY)
+    monkeypatch.setenv(ops.PRUNE_RUNS_ENV, "0")
+    assert ops.prune_runs() == {t: 0 for t in ops.RUN_ROW_TABLES}
+    assert [r["run_id"] for r in ops.rows("job_runs2")] == ["old"]
+    monkeypatch.setenv(ops.PRUNE_RUNS_ENV, "1")
+    assert ops.prune_runs()["job_runs2"] == 1
+
+
 def test_a_prune_of_an_empty_store_deletes_nothing_and_says_so():
     assert ops.prune_runs() == {"job_runs2": 0, "build_requests": 0, "dataset_check": 0}
 
