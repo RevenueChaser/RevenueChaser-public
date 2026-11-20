@@ -85,13 +85,70 @@ def load_registry() -> dict | None:
     return out or None
 
 
-def filter_labels() -> list[str]:
+def offered_slugs() -> list[str]:
+    """The slugs the shared filter offers, in ``LABELS`` display order: those some stored name carries."""
+    have = set(_spine_members())
+    return [slug for slug in LABELS if slug in have]
+
+
+def filter_labels(slugs: list[str] | None = None) -> list[str]:
     """The index labels the shared filter offers, in display order (K1, #214).
 
     A label is listed only while some name carries it, so the filter never offers an index no card can carry (the Dow
-    Jones, which the spine has no source for)."""
-    have = set(_spine_members())
-    return [lbl for slug, lbl in LABELS.items() if slug in have]
+    Jones, which the spine has no source for). ``slugs`` is for a caller that has already read
+    ``offered_slugs()`` and must not read the spine twice."""
+    return [LABELS[slug] for slug in (offered_slugs() if slugs is None else slugs) if slug in LABELS]
+
+
+# --- the filter's "Index" explanation (#266) ----------------------------------
+#
+# The text lived in ``core/static/rc_filters.js``'s ``explain()`` defaults, and the spine cutover (#245) made it
+# wrong in three places at once: it named the Dow Jones, credited Unusual Whales, and said the lists were cached in
+# ``index_constituents``. A hard-coded sentence cannot follow the registry, so the text is built here from the slugs
+# the filter actually offers and passed to the component as ``meta.explain.index``
+# (``reporting_common.filters_meta``). A label the filter does not offer therefore cannot be described, which
+# ``core/tests/test_index_explain.py`` pins.
+
+#: Slugs whose membership the spine votes from the index funds' own daily holdings files (``funds/index_holdings``).
+FUND_FILE_SLUGS = ("sp500", "sp400", "sp600", "ndx")
+#: The sentence after the labels: where the membership comes from, and why an index may be absent.
+EXPLAIN_SOURCE = ("Source: the identity spine; an index shows here once some name carries it.")
+#: The note the component styles as its "now" line, about what the per-label counts mean.
+EXPLAIN_COUNTS = ("Counts are names <b>on this board</b> that pass your other filters, not the size of the index.")
+
+
+def _esc(text: str) -> str:
+    """The display labels are our own constants, but they carry ``&`` (S&P): escape as the page needs."""
+    return str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _bold_list(labels: list[str]) -> str:
+    """``<b>a</b>``, ``<b>a</b> and <b>b</b>``, ``<b>a</b>, <b>b</b> and <b>c</b>``."""
+    bold = [f"<b>{_esc(l)}</b>" for l in labels]
+    if len(bold) <= 1:
+        return "".join(bold)
+    return ", ".join(bold[:-1]) + " and " + bold[-1]
+
+
+def index_explain(slugs: list[str] | None = None) -> str:
+    """The shared filter's "Index" explanation, as HTML, for the slugs the filter offers.
+
+    Each offered slug is described once: a fund-file index as a constituent list, ``nasdaq`` as the exchange it
+    means (its short label reads "Nasdaq-listed", because "Nasdaq Composite" would read as the index). A slug the
+    filter does not offer is named nowhere, so the Dow Jones leaves the text on its own as soon as it leaves the
+    filter. Empty of labels when the spine holds no membership at all — the counts note still stands.
+    """
+    offered = list(offered_slugs() if slugs is None else slugs)
+    display = {slug: SHORT_LABELS.get(LABELS[slug], LABELS[slug]) for slug in offered if slug in LABELS}
+    parts: list[str] = []
+    funds = [display[slug] for slug in offered if slug in FUND_FILE_SLUGS and slug in display]
+    if funds:
+        parts.append(_bold_list(funds) + (" are index constituents" if len(funds) > 1 else " is an index constituent")
+                     + ", read from the index funds' daily holdings files")
+    if NASDAQ in display:
+        parts.append(f"{_bold_list([display[NASDAQ]])} means listed on the Nasdaq exchange (not the Nasdaq-100)")
+    head = ("; ".join(parts) + ". ") if parts else ""
+    return f"{head}{EXPLAIN_SOURCE}<div class='rcf-now'>{EXPLAIN_COUNTS}</div>"
 
 
 def index_for(ticker: str, registry: dict | None = None) -> list[str]:

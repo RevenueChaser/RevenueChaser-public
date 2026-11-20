@@ -540,11 +540,18 @@ def filters_meta(board: str, **fields) -> dict:
     ``board`` and the board's own fields (``floor_mc``, ``earnings_mode``, ``themes``, ``facets``, ``explain``,
     ``now``) are passed through; the index list comes from the registry (``index_registry.filter_labels``), so
     the component carries no literal list and a stored S&P SmallCap 600 shows up without a code change.
-    """
-    from .index_registry import SHORT_LABELS, filter_labels
 
-    labels = filter_labels()
-    return {"board": board, **fields, "indexes": labels,
+    The Index facet's explanation comes from the registry too (``index_registry.index_explain``, #266): the
+    component's own default named the Dow Jones and Unusual Whales after the spine cutover, which a client-side
+    literal cannot help doing. A board that passes its own ``explain["index"]`` still wins — the board's map is
+    merged over this one, not replaced by it.
+    """
+    from .index_registry import SHORT_LABELS, filter_labels, index_explain, offered_slugs
+
+    slugs = offered_slugs()
+    labels = filter_labels(slugs)
+    explain = {"index": index_explain(slugs), **(fields.pop("explain", None) or {})}
+    return {"board": board, **fields, "explain": explain, "indexes": labels,
             "index_labels": {k: v for k, v in SHORT_LABELS.items() if k in labels}}
 
 

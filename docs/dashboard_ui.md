@@ -131,6 +131,12 @@ Composite (shown as "Nasdaq-listed"), in that order. A label is listed only whil
 identity spine (the only source since #642 PR 6): the spine's current fund-file members, `nasdaq` from the listed names
 on Nasdaq. No source the spine reads has the Dow Jones, so it is not offered.
 
+**The Index facet's help text is built from that same list** (`index_registry.index_explain`, passed as
+`meta.explain.index` by `filters_meta`; #266). It names an index only while the filter offers it, so the text cannot
+describe one no card can carry — which is what went wrong after the spine cutover, when the component's own literal
+still named the Dow Jones and credited Unusual Whales. `rc_filters.js` keeps a default that names no index at all,
+because a page served from a payload written before #266 falls back to it.
+
 State lives in localStorage (`rc.filters.v1`, shared by every board unless the user unlinks it) and in the URL
 hash. The pure logic is `RCFilters.core`, unit-tested under node (`core/tests/test_rc_filters.py`).
 

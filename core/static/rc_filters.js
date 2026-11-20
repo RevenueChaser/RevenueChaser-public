@@ -267,7 +267,10 @@
   function explain(meta) {
     var floor = meta.floor_mc || 0;
     var d = {
-      index: "<b>S&amp;P 500</b> and <b>S&amp;P SmallCap 600</b> are index constituents, read from the index funds' daily holdings files; <b>Nasdaq-listed</b> means listed on the Nasdaq exchange (not the Nasdaq-100). Source: the identity spine; an index shows here once some name carries it. The Dow Jones is not offered: no source the spine reads has it." +
+      /* The server sends this one (core.index_registry.index_explain, via reporting_common.filters_meta, #266):
+         it is built from the indexes the filter actually offers. This default names no index on purpose, so a page
+         rendered from a payload written before #266 cannot name one the spine no longer has. */
+      index: "Index membership is read from the index funds' daily holdings files; <b>Nasdaq-listed</b> means listed on the Nasdaq exchange (not the Nasdaq-100). Source: the identity spine; an index shows here once some name carries it." +
         "<div class='rcf-now'>Counts are names <b>on this board</b> that pass your other filters, not the size of the index.</div>",
       mc: "Latest market value from the prices store's daily market cap (a company's whole-issuer value, a fund's own). Pick one or more size buckets, or type a custom range in $ millions (min ≤ cap &lt; max)." +
         (floor ? "<div class='rcf-now'>This board only covers names <b>≥ " + rcEsc(fmtCap(floor)) + "</b>, so smaller buckets are empty here.</div>" : ""),
