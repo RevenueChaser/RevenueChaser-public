@@ -336,6 +336,10 @@ def run_earnings_range(uw: UWClient, start: date | None = None, end: date | None
     export_html(cards, events, nrc, filename=str(EARNINGS_LATEST.relative_to(OUTPUT_DIR)),
                 filter_stats=pipeline._filter_stats, provider_health=_uw_health(uw),
                 notice=screener_problem(screener), run_at=run_at)
+    # Last step of the Fetch, after the board file is written (#580). The Earnings Radar has no Refresh, so every
+    # run is a Fetch. A refused freeze is a note, never a JobMessage; a freeze *error* propagates, so the job shows it.
+    from RevenueChaser.module_earnings_radar import freeze as earnings_freeze
+    earnings_freeze.freeze_cards(cards, run_id=_freeze_run_id())
     if not cards:
         # E23: an empty table with a "done" job reads as a broken Fetch. Say why.
         raise JobMessage(_no_cards_text(len(tickers), pipeline._filter_stats, _provider_gap_text(uw)))

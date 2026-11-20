@@ -322,8 +322,9 @@ date; no table or board does its own `date.today()` or UTC-date cut.
 
 **The forecast-ledger writer (#128).** `core/ledger.py` is the only code that writes `forecast_ledger`,
 through `rawstore.write_rows` alone. A board freezes its shown picks at the end of a **Fetch** (`no_fetch=False`;
-a Refresh never freezes), from `app/runners.py` (`run_swing`, `run_fundamentals`, `run_asymmetric_growth`) into
-the module's own `freeze.py`, which maps the board to ledger rows. The rule, applied by `ledger.freeze_board`:
+a Refresh never freezes), from `app/runners.py` (`run_swing`, `run_fundamentals`, `run_asymmetric_growth`,
+`run_earnings_range`) into the module's own `freeze.py`, which maps the board to ledger rows. The rule, applied by
+`ledger.freeze_board`:
 - the data is one complete New York session D, and D is the latest complete session (`core/calendar.py`:
   30 minutes after the 16:00 ET close; early-close days use 16:00, which is conservative);
 - a run inside the US session window (09:30–16:30 ET) freezes the session before it (the prices store holds
@@ -344,6 +345,13 @@ the module's own `freeze.py`, which maps the board to ledger rows. The rule, app
   session's write time and cannot tell the two apart (#434 review S2).
   AG: SPY's D01 bar for that session, written after its close + 30 min (`ledger.d01_has_session`, #380 S4); not the
   universe snapshot behind the quote prices, and not `ohlc_gaps` (one name's gap must not refuse the board);
+  Earnings Radar (#580): SPY's D01 bar for that session, the same anchor as AG and for the same reason — a card is
+  scored from the option chain, the flow and the estimates, so one name without its own bar must not refuse the
+  board. One rule is the Earnings Radar's own: **only a report still to come is frozen.** A card whose earnings date
+  is on or before D is a report the market has already heard, so it is left out and the rest keep the board's order
+  (`module_earnings_radar/freeze.picks`); a Fetch of past days therefore freezes nothing. The Earnings Radar has no
+  Refresh, so every run of it is a Fetch. Its `score` is the number the board ranks by (confidence plus the preselect
+  score) and its `bucket` is `"<final_action>|<conviction>"`, so the action carries the direction;
 - first write wins per (source, day), not just per row: the key includes `subject`, so the writer checks the whole
   (source, day) under one lock before writing, and a second Fetch the same day writes nothing.
 

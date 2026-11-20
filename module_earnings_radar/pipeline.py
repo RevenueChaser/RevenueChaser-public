@@ -916,9 +916,11 @@ class EarningsPipeline:
         stk_vol = _fmt_int(scr.get("stock_volume") or ohlc[-1].get("volume", 0) if ohlc else 0)
         mcap_raw = scr.get("marketcap") or cal_raw.get("marketcap") or ""
         mcap = ""
+        mcap_value = None                       # the unrounded market cap, for the ledger freeze (#580)
         if mcap_raw:
             try:
                 val = float(mcap_raw)
+                mcap_value = val
                 if val >= 1e12:
                     mcap = f"${val/1e12:.1f}T"
                 elif val >= 1e9:
@@ -943,6 +945,7 @@ class EarningsPipeline:
             if mcap_raw2:
                 try:
                     val = float(mcap_raw2)
+                    mcap_value = val
                     mcap = f"${val/1e9:.1f}B" if val >= 1e9 else f"${val/1e6:.1f}M"
                 except:
                     pass
@@ -1000,7 +1003,8 @@ class EarningsPipeline:
             return_4w=price_changes.get("4w", ""),
             last_beat=earn_reactions.get("m1", ""),
             stock_volume=stk_vol, option_volume=opt_vol,
-            market_cap=mcap, total_open_interest=oi,
+            market_cap=mcap, market_cap_value=mcap_value, shown_price=spot,
+            total_open_interest=oi,
             rotation_quadrant=rotation_quadrant,
             rotation_basis=rotation_basis,
             current_price=current_price,
