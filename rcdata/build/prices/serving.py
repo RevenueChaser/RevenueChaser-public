@@ -492,7 +492,11 @@ class PricesServing:
     feeds: tuple[str, ...] = ()       # it builds every served table itself
     cadence = "daily"
     backfill_needs_from = False
-    starts_by_hand = True
+    # In the scheduled flow since #446 step 8: a build on a copy of the live file fits the builder's window, so this
+    # dataset is due on its cadence with no hand start. Its **whole** build does not fit (86 min for the 2010+
+    # volume, 6 h 12 min for the first one with the WRDS history), so the hourly pass leaves that one to a person:
+    # ``base.WholeBuildByHand``, a skipped check row naming the reason.
+    whole_build_by_hand = True
 
     def default_as_of(self) -> date:
         from ....core import calendar

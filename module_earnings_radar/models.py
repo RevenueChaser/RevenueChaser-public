@@ -209,6 +209,10 @@ class TradeCard:
     stock_volume: str = ""
     option_volume: str = ""
     market_cap: str = ""
+    # The two numbers behind the strings above, for the forecast-ledger freeze (#580): the ledger keeps
+    # ``market_cap`` and ``shown_price`` as DOUBLEs, and "$1.2B" / "$12.34" would be a rounded copy of them.
+    market_cap_value: Optional[float] = None
+    shown_price: Optional[float] = None
     total_open_interest: str = ""
     rotation_quadrant: str = ""
     rotation_score: float = 0.0

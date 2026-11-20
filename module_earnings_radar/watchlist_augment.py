@@ -4,11 +4,17 @@ A watchlist ticker whose earnings time is "unknown" or whose date is only an est
 missing from the ``/earnings/{premarket,afterhours}`` session calendar. The screener row
 carries its ``next_earnings_date``; those names are added to the run so a watchlist name
 never silently drops off the board (#198 E15).
+
+The screener row is read from the served screener set first (``stored_inputs.screener_rows``, #1138) and asked of UW
+live only for the names the store does not cover. Until that switch this helper spent the Earnings Fetch's last live
+UW calendar call; with it, a Fetch whose watchlist names are all covered makes none.
 """
 from __future__ import annotations
 
 import logging
 from datetime import date
+
+from RevenueChaser.module_earnings_radar import stored_inputs
 
 logger = logging.getLogger(__name__)
 
@@ -56,22 +62,38 @@ def _augment_watchlist(events: list, raw_cal: dict, wl: set, screener: dict, sta
         raw_cal[t] = ev
 
 
-def augment_calendar(uw, events: list, raw_cal: dict, wl: set, start: date, end: date, days=None) -> None:
+def augment_calendar(uw, events: list, raw_cal: dict, wl: set, start: date, end: date, days=None) -> dict:
     """Add the watchlist names reporting in ``[start, end]`` that the calendar lacks.
 
-    ``days`` (optional) narrows that to a discrete day list. One screener batch for the
-    missing names; a failure is logged and the run goes on without the extra names.
+    ``days`` (optional) narrows that to a discrete day list. The served screener set answers every name it covers
+    (#1138); one screener batch is spent on the rest, and a failure there is logged and the run goes on without those
+    extra names. Returns ``{"stored": n, "live": n}``: the watchlist names answered by the store and the names asked
+    of UW, for the run's ``input_sources``.
     """
     missing = [t for t in sorted(wl or ()) if t not in raw_cal]
+    counts = {"stored": 0, "live": 0}
     if not missing:
-        return
+        return counts
     try:
-        before = {e["ticker"] for e in events}
-        _augment_watchlist(events, raw_cal, wl, uw.screener_batch(missing), start, end)
-        if days is not None:
-            allowed = set(days)
-            for ev in [e for e in events if e["ticker"] not in before and e["earnings_date"] not in allowed]:
-                events.remove(ev)
-                raw_cal.pop(ev["ticker"], None)
-    except Exception as e:  # noqa: BLE001 - the calendar run must not die on the extras
-        logger.warning(f"Watchlist augmentation failed: {e}")
+        stored = stored_inputs.screener_rows(missing)
+    except Exception as e:  # noqa: BLE001 - the store must never stop the calendar run
+        logger.warning(f"Watchlist augmentation: the served screener set could not be read: {e}")
+        stored = {}
+    counts["stored"] = len(stored)
+    live_names = [t for t in missing if t not in stored]
+    counts["live"] = len(live_names)
+
+    before = {e["ticker"] for e in events}
+    if stored:
+        _augment_watchlist(events, raw_cal, wl, stored, start, end)
+    if live_names:
+        try:
+            _augment_watchlist(events, raw_cal, wl, uw.screener_batch(live_names), start, end)
+        except Exception as e:  # noqa: BLE001 - the calendar run must not die on the extras
+            logger.warning(f"Watchlist augmentation failed: {e}")
+    if days is not None:
+        allowed = set(days)
+        for ev in [e for e in events if e["ticker"] not in before and e["earnings_date"] not in allowed]:
+            events.remove(ev)
+            raw_cal.pop(ev["ticker"], None)
+    return counts

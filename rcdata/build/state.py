@@ -94,7 +94,7 @@ def of(kind: str, datasets: Any = None) -> dict:
     members = list(base.kind_datasets(kind) if datasets is None else datasets)
     row: dict = {"kind": kind, "datasets": [d.name for d in members],
                  "incremental": dirty.incremental(members),
-                 "by_hand": list(base.whole_build_by_hand(kind)) if hasattr(base, "whole_build_by_hand") else []}
+                 "by_hand": list(base.whole_build_by_hand(kind))}
     try:
         con = serving.open_read(kind)
     except serving.ServingFileMissing:

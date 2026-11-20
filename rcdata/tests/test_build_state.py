@@ -141,8 +141,7 @@ def test_an_unreadable_file_is_that_kinds_error_and_the_other_kinds_still_answer
 
 
 def test_prices_holds_its_whole_build_for_a_person():
-    """#446 step 8's declaration is what the board's ``by hand`` chip reads; until that lands the list is empty
-    for every kind, which is what ``getattr`` in the reader is for."""
-    row = state.of("prices")
-    held = list(base.whole_build_by_hand("prices")) if hasattr(base, "whole_build_by_hand") else []
-    assert row["by_hand"] == held
+    """#446 step 8's declaration is what the board's ``by hand`` chip reads, and ``prices`` is the one kind that
+    carries it: a reader who sees ``whole`` as its last build must not wait for an hourly pass that will not come."""
+    assert state.of("prices")["by_hand"] == ["prices/serving"]
+    assert state.of("market")["by_hand"] == []

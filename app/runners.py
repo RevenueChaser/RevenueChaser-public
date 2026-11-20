@@ -292,12 +292,14 @@ def run_earnings_range(uw: UWClient, start: date | None = None, end: date | None
         events, raw_cal = _fetch_calendar_range(uw, start, end if end is not None else start)
         empty_msg = _no_events_text(start, end if end is not None else start)
         span = (start, end if end is not None else start)
+    watchlist_sources = None
     if span:
         # The CLI adds the watchlist names the session calendar omits (unknown time, estimated
         # date); the dashboard Fetch did not, so they dropped off the board (#198 E15).
         from RevenueChaser.module_earnings_radar.watchlist_augment import augment_calendar
-        augment_calendar(uw, events, raw_cal, _load_watchlist(), span[0], span[1],
-                         days=days if dates else None)
+        # Served first, UW only for the names the store does not cover (#1138).
+        watchlist_sources = augment_calendar(uw, events, raw_cal, _load_watchlist(), span[0], span[1],
+                                             days=days if dates else None)
     calendar_sources = dict(_CALENDAR_SOURCES) or {"stored": 0, "live": 0, "session": None}
     if not events:
         gap = _provider_gap_text(uw)
@@ -326,6 +328,10 @@ def run_earnings_range(uw: UWClient, start: date | None = None, end: date | None
     sources = getattr(pipeline, "input_sources", None)
     if isinstance(sources, dict):
         sources["calendar"] = calendar_sources
+        if isinstance(watchlist_sources, dict):
+            # The watchlist augmentation's own coverage (#1138): names answered by the served screener set vs asked
+            # of UW. ``None`` (a run with no span) leaves the slot out rather than claiming a zero.
+            sources["watchlist"] = watchlist_sources
     cards = pipeline.run(use_preselect=True)
 
     from RevenueChaser.module_earnings_radar.report import export_html, screener_problem
@@ -336,6 +342,10 @@ def run_earnings_range(uw: UWClient, start: date | None = None, end: date | None
     export_html(cards, events, nrc, filename=str(EARNINGS_LATEST.relative_to(OUTPUT_DIR)),
                 filter_stats=pipeline._filter_stats, provider_health=_uw_health(uw),
                 notice=screener_problem(screener), run_at=run_at)
+    # Last step of the Fetch, after the board file is written (#580). The Earnings Radar has no Refresh, so every
+    # run is a Fetch. A refused freeze is a note, never a JobMessage; a freeze *error* propagates, so the job shows it.
+    from RevenueChaser.module_earnings_radar import freeze as earnings_freeze
+    earnings_freeze.freeze_cards(cards, run_id=_freeze_run_id())
     if not cards:
         # E23: an empty table with a "done" job reads as a broken Fetch. Say why.
         raise JobMessage(_no_cards_text(len(tickers), pipeline._filter_stats, _provider_gap_text(uw)))
