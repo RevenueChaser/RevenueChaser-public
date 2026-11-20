@@ -487,7 +487,6 @@ def plan(kind: str, ctx: Any, datasets: Iterable[Any] | None = None) -> Plan | N
     # its own key space (#446 step 5). It is set before the sets are asked for, so ``dirty(ctx)`` can read it.
     audited = audit_dirty(kind, datasets)
     ctx.audited = audited
-    audited, ctx.audited = {d.name: frozenset() for d in datasets}, {}   # MUTATION #446 step 5, reverted
     recoded: tuple[str, ...] = ()
     if reason is None and held is not None:
         # A live file built before the fingerprints existed is trusted once: it was built by the code just before
