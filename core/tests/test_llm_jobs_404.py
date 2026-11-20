@@ -228,12 +228,6 @@ def test_no_function_in_the_repo_defaults_a_writer_argument_to_a_paid_provider()
     assert offenders == {}, (
         "a writer argument defaults to a paid provider; the default is a free writer and a paid run names it: "
         + json.dumps(offenders, sort_keys=True))
+    # The registry's own half of the rule is
+    # ``test_every_job_defaults_to_evren_and_no_job_defaults_to_a_paid_writer`` above.
 
-
-def test_every_job_in_the_registry_defaults_to_a_writer_with_no_fee(monkeypatch):
-    for job in llm_jobs.JOBS.values():     # the box's own switch aside: this is the registry's rule
-        if job.env:
-            monkeypatch.delenv(job.env, raising=False)
-    for job_id in llm_jobs.JOBS:
-        slug = llm_jobs.default_provider(job_id)
-        assert not llm_writers.get(slug).paid, f"{job_id} defaults to the paid writer {slug}"
