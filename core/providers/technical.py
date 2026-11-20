@@ -18,14 +18,21 @@ def fetch_technical(ticker: str) -> dict:
         "sma50": None, "above_sma50": None,
         "vol_10d": None, "vol_90d": None, "vol_ratio": None,
     }
+    # Both reads go through the provider helper, so they are counted for the board banner (#299) and a refused
+    # session gets its one reset and retry instead of poisoning the rest of the run (#402, #100). Before this
+    # they called yfinance directly and swallowed the failure into the debug log.
+    from . import yfinance as yfinance_client
     try:
         import yfinance as yf
         t = yf.Ticker(ticker)
-        info = t.info or {}
-        hist = t.history(period="1y")
-    except Exception as exc:  # pragma: no cover - network
+    except Exception as exc:  # pragma: no cover - the import itself
         logger.debug("technical %s: %s", ticker, exc)
         return out
+    info = yfinance_client.read(lambda: t.info or {}, endpoint=f"{ticker}.info", default={}) or {}
+    hist = yfinance_client.read(
+        lambda: t.history(period="1y"), endpoint=f"{ticker}.history",
+        empty=lambda df: df is None or getattr(df, "empty", True),
+    )
 
     price = to_float(info.get("currentPrice")) or to_float(info.get("regularMarketPrice"))
     high_52w = to_float(info.get("fiftyTwoWeekHigh"))

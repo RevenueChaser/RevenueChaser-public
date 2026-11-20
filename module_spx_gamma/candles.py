@@ -67,15 +67,30 @@ def live_spot(ticker: str = "^GSPC", now: datetime | None = None) -> tuple[float
     except (ValueError, ImportError) as exc:
         # past the holiday table (2029+) or a broken import: that is not "the market is closed", so say so
         return None, f"session window unknown ({type(exc).__name__}: {exc})"[:200]
+    # Through the provider helper: the read is counted for the board banner (#299) and a refused session gets
+    # its one reset and retry (#402, #100). An empty frame is how yfinance hands back a 401 it only logged, so
+    # ``empty`` lets that one consult the reset too; an honestly empty minute bar is not retried, because only a
+    # pending 401 makes ``recover`` say yes.
+    from RevenueChaser.core.providers import yfinance as yfinance_client
     try:
         import yfinance as yf
-        frame = yf.Ticker(ticker).history(period="1d", interval="1m", auto_adjust=False)
-        closes = [float(v) for v in frame["Close"].tolist() if v == v] if frame is not None else []
-        if not closes:
-            return None, "no live bar returned"
-        return closes[-1], None
-    except Exception as exc:  # noqa: BLE001 - the caller falls back to the stored close
+        t = yf.Ticker(ticker)
+    except Exception as exc:  # noqa: BLE001 - the import itself; the caller falls back to the stored close
         return None, f"{type(exc).__name__}: {exc}"[:200]
+    frame, error = yfinance_client.attempt(
+        lambda: t.history(period="1d", interval="1m", auto_adjust=False),
+        endpoint=f"{ticker}.history",
+        empty=lambda df: df is None or getattr(df, "empty", True),
+    )
+    if error is not None:
+        return None, error[:200]
+    try:
+        closes = [float(v) for v in frame["Close"].tolist() if v == v] if frame is not None else []
+    except Exception as exc:  # noqa: BLE001 - a frame without the column the caller expects
+        return None, f"{type(exc).__name__}: {exc}"[:200]
+    if not closes:
+        return None, "no live bar returned"
+    return closes[-1], None
 
 
 def price_window_sessions(rows: list[dict], asof: date | str) -> list[dict]:
