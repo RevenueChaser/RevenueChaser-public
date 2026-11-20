@@ -55,7 +55,8 @@ lacks, is skipped as above.
 
 **Served** by ``prices/serving``: the bars (``COMP_BARS`` only -- a ``CRSP_BARS`` row is staged for the cross-check
 and never served, avo 4 Nov 2026), the actions (``ACTIONS_SQL``; an Alpaca action of the same kind and day
-winning), the revisions, and the difference report ``wrds_price_diff`` (``COMPARISONS``). Compustat's own adjusted
+winning, and one of the same kind within ``SPLIT_SAME_DAYS`` days for a split, #268), the revisions, and the
+difference report ``wrds_price_diff`` (``COMPARISONS``). Compustat's own adjusted
 return is ``COMP_RETURN``: ``prccd / ajexdi * trfd`` over the previous session's; its splits are ``comp.sec_split``'s
 and, where that has none, a change of ``ajexdi`` (``AJEXDI_SPLITS``).
 

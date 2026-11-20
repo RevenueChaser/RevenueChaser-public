@@ -643,9 +643,12 @@ def test_a_stock_dividend_alpaca_knows_and_compustats_ajexdi_step_the_same_day_a
     """Review SHOULD 3 of #382: an ajexdi step is written as a split, an Alpaca stock dividend that day as a
     stock_dividend; as two kinds both were applied, the day's shares adjusted twice."""
     data = _data()
+    # Compustat's step on the 22nd: a 2-for-1, written on the rows from the 22nd on, so the series steps once.
+    # Raising the 21st's ajexdi alone stepped against the June rows as well and AJEXDI_SPLITS derived a second,
+    # invented split on the 21st, which #268's SPLIT_SAME_DAYS tolerance now reads as this same event.
     for r in data["comp.secd"]:
-        if r["gvkey"] == "001690" and r["datadate"] == "2026-10-21":
-            r["ajexdi"] = 2.0                                  # Compustat's step on the 22nd: a 2-for-1
+        if r["gvkey"] == "001690" and r["datadate"] >= "2026-10-22":
+            r["ajexdi"] = 0.5
     http_mock.routes.insert(0, ("/v1/corporate-actions", {"corporate_actions": {
         "cash_dividends": [{"id": "cd-1", "symbol": "AAPL", "rate": 0.26, "special": False, "foreign": False,
                             "process_date": "2026-10-24", "ex_date": "2026-10-23", "currency": "USD"}],
