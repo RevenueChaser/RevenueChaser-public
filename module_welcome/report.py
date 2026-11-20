@@ -21,8 +21,9 @@ from RevenueChaser.core import calendar as mcal
 from RevenueChaser.core import rawstore
 from RevenueChaser.core.config import OUTPUT_DIR
 from RevenueChaser.core.reporting_common import THEME_CSS, THEME_JS, help_html, write_artifact
-from RevenueChaser.module_news.calendar import AMS, EVENTS, HIGHLIGHT, local_day
-from RevenueChaser.module_news.report import (HEADLINES, WEEKDAYS, _head_li, day_label, dots_html, esc, hm, long_date,
+from RevenueChaser.module_news import store_reads as news_reads
+from RevenueChaser.module_news.calendar import AMS, local_day
+from RevenueChaser.module_news.report import (WEEKDAYS, _head_li, day_label, dots_html, esc, hm, long_date,
                                               vals_html)
 from RevenueChaser.module_welcome.build import EARNINGS, FRESHNESS, NY, SNAPSHOT, earnings_days
 from RevenueChaser.rcdata import read
@@ -71,22 +72,20 @@ def _calendar_card(now: float) -> str:
         return head + '<p class="empty">The News board is not built yet.</p></section>'
     today = local_day(now)
     start = datetime(today.year, today.month, today.day, tzinfo=AMS).timestamp()
-    events = rawstore.query(
-        f"SELECT * FROM {EVENTS} WHERE event_ts >= ? AND event_ts < ? AND retired_at IS NULL ORDER BY event_ts",
-        [start, start + 86400 + 3600], db="news")
+    # The News board's own reader, not SQL of this card's own (#217): a rename of a news table is one file.
+    events = news_reads.live_events_in_window(start, start + 86400 + 3600)
     events = [e for e in events if local_day(e["event_ts"]) == today]
-    hl = rawstore.query(f"SELECT * FROM {HIGHLIGHT} WHERE session_date = ?", [today.isoformat()], db="news")
+    hl = news_reads.highlight(today.isoformat())
     if not events:
         return head + '<p class="empty">Nothing on today\'s calendar.</p>' + \
             _open_tab("module_news", "See the week") + \
             "</section>"
     body = f'<div class="big">{len(events)} releases today</div>'
     if hl:
-        h = hl[0]
-        body += (f'<div class="hl"><div class="muted">Highlight · {hm(h["event_ts"])} '
-                 f'{dots_html(h.get("importance"))}'
-                 f'</div><div class="name">{esc(h["event"])}</div>{vals_html(h)}</div>')
-    hl_key = (hl[0]["event_ts"], hl[0]["event"]) if hl else None
+        body += (f'<div class="hl"><div class="muted">Highlight · {hm(hl["event_ts"])} '
+                 f'{dots_html(hl.get("importance"))}'
+                 f'</div><div class="name">{esc(hl["event"])}</div>{vals_html(hl)}</div>')
+    hl_key = (hl["event_ts"], hl["event"]) if hl else None
     nxt = [e for e in events if float(e["event_ts"]) >= now and (e["event_ts"], e["event"]) != hl_key][:2]
     if nxt:
         body += '<div class="muted sub">Next up</div><ul class="list">' + "".join(
@@ -98,9 +97,8 @@ def _calendar_card(now: float) -> str:
 def _headlines_card(now: float) -> tuple[str, float]:
     """The three newest headlines of the last day, either lane, and the newest ``run_at`` the poll starts from."""
     head = '<section class="card"><h2 class="lbl">Latest headlines</h2>'
-    rows = rawstore.query(
-        f"SELECT * FROM {HEADLINES} WHERE published_at >= ? ORDER BY published_at DESC LIMIT {HEAD_LIMIT}",
-        [now - 86400], db="news") if rawstore.board_db_path("news").exists() else []
+    rows = (news_reads.headlines_newest(now - 86400, HEAD_LIMIT)
+            if rawstore.board_db_path("news").exists() else [])
     since = max((float(r["run_at"]) for r in rows if r.get("run_at") is not None), default=now)
     return (head + f'<p class="empty"{" hidden" if rows else ""}>No headline in the last 24 hours.</p>'
             f'<ul class="list" id="heads-all">{"".join(_head_li(r) for r in rows)}</ul></section>'), since

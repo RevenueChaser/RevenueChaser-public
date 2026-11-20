@@ -994,6 +994,18 @@ The new data system (#206 F1/D1, #217 F12/D4), built beside the `.store/` files 
 PR 1 lays the skeleton and proves it on the SPX expiry-strike slice and the market-wide series; the views under the
 old table names, the routes and the Settings cards come in later PRs.
 
+**Where a board's SQL lives (#217, F12).** A board reads through one reader module of its own, `store_reads.py`,
+and carries no `SELECT` and no table name anywhere else. A board on the serving layer reads `rcdata.read` through it
+(`module_spx_gamma/store_reads.py`, `module_earnings_radar/store_reads.py`); a board with a file of its own reads that
+file through it (`module_news/store_reads.py`, which owns the four `news_*` table names, every read of
+`boards/news.duckdb` from any package, and the SQL that cuts the page's three headline lanes). The writes stay with
+the code that produces the rows, but they take their table names from the reader, so a rename or a new column is a
+change to one file. `module_news/tests/test_store_reads_217.py` pins it: no file but the reader queries that store,
+no module of the board spells one of its table names, and every table the manifest files under `db="news"` is named
+in the reader. The strangler is board by board — on `main` at `d349458` there were 83 non-test `rawstore.query`
+calls, the News board holding 20 of them and the Welcome card 3 more of the same store; after it, 60, the largest
+remaining being `module_relatedness` (13) and `module_comovement` (10).
+
 **The first board on it: SPX Gamma (PR 3, D7).** `module_spx_gamma/store_reads.py` is the board's one reader (D4:
 no SQL of its own, no kept connection; a missing day is a "not stored" marker, never an exception or a provider call).
 Since #330 it reads through the needs layer, `needs.ask(need, as_of=day)` over `market.spx_expiry_strike`,

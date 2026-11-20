@@ -25,6 +25,7 @@ from RevenueChaser.core.universe import DEFAULT_MC_MIN
 from RevenueChaser.module_comovement import config as comov_config
 from RevenueChaser.module_comovement import settings as comov_settings
 from RevenueChaser.module_fundamentals import settings as fund_settings
+from RevenueChaser.module_news import store_reads as _news
 from RevenueChaser.module_swing_potential import config as swing_config
 from RevenueChaser.module_swing_potential import settings as swing_settings
 
@@ -254,8 +255,11 @@ BOARD_INPUTS: list[dict] = [
     # #643 PR 5: the four market tiles read market.duckdb's ``market_series`` through their needs, so the three
     # old series tables are gone from this record; the earnings and freshness cards read the old files and went
     # with them (#860).
+    # The three News tables by the News board's own names (#217), and ``news_headlines`` among them: the Welcome
+    # card has always read the headlines too (``module_welcome/report.py`` ``_headlines_card``), and this record
+    # left it out.
     _board("module_welcome", "Welcome",
-           ["news_events", "news_highlight"],
+           [_news.EVENTS, _news.HIGHLIGHT, _news.HEADLINES],
            lambda: _html("welcome"), price_basis="last stored closes, not live quotes",
            ops_tables=["watchlist_stock"]),
     # Watch lists (#786) is avo's own typed data, not a board result: nothing recomputes it, there is no artifact

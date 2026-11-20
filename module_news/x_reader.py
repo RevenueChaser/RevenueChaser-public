@@ -31,12 +31,13 @@ from datetime import datetime, time as dtime
 from zoneinfo import ZoneInfo
 
 from RevenueChaser.core import rawstore
-from RevenueChaser.module_news import x_check, x_feed
-from RevenueChaser.module_news.calendar import META
+from RevenueChaser.module_news import store_reads, x_check, x_feed
 
 PROVIDER = x_feed.FOLLOW_PROVIDER
 COOKIES = ("RC_X_AUTH_TOKEN", "RC_X_CT0")
-TABLE = "news_headlines"
+# The board's reader owns the table names (#217); the writes below still happen here.
+TABLE = store_reads.HEADLINES
+META = store_reads.META
 STATE_KEY = "x_follow_state"
 PAGE_SIZE = 40             # a hint; X often serves more and twifork buffers the rest for next()
 MAX_PAGES = 5              # a first pass (or one after a long gap) reads the newest ~200 posts, not the history
@@ -68,9 +69,9 @@ def due(now: float, last: float | None) -> bool:
 
 
 def _state() -> dict:
-    got = rawstore.query(f"SELECT value FROM {META} WHERE key = ?", [STATE_KEY], db="news")
+    got = store_reads.meta_value(STATE_KEY)
     try:
-        return json.loads(got[0]["value"]) if got else {}
+        return json.loads(got) if got is not None else {}
     except (TypeError, ValueError):
         return {}
 
@@ -164,9 +165,7 @@ def run(now: float | None = None, fetch=None, run_id: str | None = None, pause=N
     newest = int(state.get("newest") or 0)
     posts = read(fetch, newest, pause)
     rows = [row(p, now, run_id) for p in posts]
-    stored = {r["headline_id"] for r in rawstore.query(
-        f"SELECT headline_id FROM {TABLE} WHERE headline_id IN ({', '.join('?' for _ in rows)})",
-        [r["headline_id"] for r in rows], db="news")} if rows else set()
+    stored = store_reads.stored_headline_ids(r["headline_id"] for r in rows)
     fresh = [r for r in rows if r["headline_id"] not in stored]
     if fresh:
         rawstore.write_rows(TABLE, fresh)

@@ -23,10 +23,10 @@ from datetime import date, datetime, timezone
 from zoneinfo import ZoneInfo
 
 from RevenueChaser.core import rawstore
-from RevenueChaser.module_news import x_feed
+from RevenueChaser.module_news import store_reads, x_feed
 
 NY = ZoneInfo("America/New_York")
-TABLE = "news_headlines"
+TABLE = store_reads.HEADLINES
 MIN_PREMIUM = 25_000          # a tweet is about a block print; this keeps UW's 50 newest prints to the large ones
 BEFORE_S, AFTER_S = 4 * 3600, 15 * 60
 MAX_CALLS = 20
@@ -188,9 +188,7 @@ def check(uw, row: dict, now: float, px_cache: dict | None = None) -> tuple[dict
 
 
 def _waiting(now: float) -> list[dict]:
-    rows = rawstore.query(
-        f"SELECT * FROM {TABLE} WHERE provider IN (?, ?) AND kind <> 'other' AND published_at >= ? "
-        f"ORDER BY published_at DESC", [*x_feed.X_PROVIDERS, now - RECHECK_DAYS * 86400], db="news")
+    rows = store_reads.x_headlines_since(now - RECHECK_DAYS * 86400)
     out = []
     for r in rows:
         state = json.loads(r["x_check"]) if r.get("x_check") else {}
