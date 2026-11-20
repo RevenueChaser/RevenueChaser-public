@@ -131,7 +131,7 @@ AUDIT_ROUND_S = 60.0
 SPINE_ISSUES = "spine/security"
 # The WRDS difference slot (decision 3): these check datasets' cards show their newest monthly difference report,
 # the note of their newest run that read WRDS (PR 12, decided 27 Oct); every other card says no WRDS run yet.
-WRDS_DIFFERENCE = ("wrds/fundq", "wrds/funda", "wrds/segments", "wrds/exrt")
+WRDS_DIFFERENCE = ("wrds/fundq", "wrds/funda", "wrds/segments", "wrds/exrt", "wrds/audit")
 # S8: a report that has not run shows a dash and says so, rather than a sentence that reads like a result.
 NO_WRDS = {"text": "no WRDS run yet", "produced": False}
 # Old .store tables a new dataset replaces: their reads in read_log are the retirement count (read for 14 days).

@@ -1917,6 +1917,7 @@ cache; since #642 PR 6 the boards never read that cache: no layer reads as no ro
 | `wrds/funda` | monthly, attended | `comp.funda`, the Tier A gvkeys, ten years | `stg_wrds_funda`, `stg_wrds_funda_revision` |
 | `wrds/segments` | monthly, attended | `comp_segments_hist_daily.wrds_segmerged` and `seg_customer`, five years, the newest source date per key where the table has one | `stg_wrds_segments`, `stg_wrds_customers` |
 | `wrds/exrt` | monthly, attended | `comp.exrt_dly`, the whole history of `fx_rates.CURRENCIES` and USD. Every row is quoted from GBP, so USD per unit is the cross `exratd(GBP->USD) / exratd(GBP->CUR)` (#1181, step H). **The rate a non-USD filer's values are converted at wherever Compustat has the day** (`fx_rates.held_rates`; DECISIONS F3); `yfinance/fx` fills the days it lacks, which are the newest ones between two monthly snapshots. The check note counts the pairs of the newest year that agree with Yahoo within 1% | `stg_wrds_exrt_raw`, `stg_wrds_exrt` |
+| `wrds/audit` | monthly, attended | Audit Analytics' three event feeds in `audit_audit_comp`, whole: `feed39_financial_restatements`, `feed20_nt` (late-filing notices) and `feed17_director_and_officer_chan`. Only the event's own columns are asked (key, `company_fkey`, filing day and form, what happened); no person's name and no disclosure text. `company_fkey` is the CIK (measured 20 Nov 2026, #1181 step C), and the feeds run about two months behind. The flag columns are kept as text until their coding is measured, and no served table reads the dataset yet: the check note counts each feed's rows, keys and our companies in it | `stg_wrds_restatements`, `stg_wrds_late_filings`, `stg_wrds_officer_changes` |
 | `fundamentals/tables` | daily | none: builds the served tables, the views, the peer groups and the build issues from the staging tables | the tables below |
 
 **A builder that was down still reads what was filed meanwhile.** `sec/companyfacts` and `sec/filings` read the
@@ -1956,7 +1957,7 @@ preliminary row any more.
 
 **WRDS is a check, not a served value.** Attended and monthly on the spine's one WRDS worker (one login, at most one
 Duo push per builder process): `python -m RevenueChaser.rcdata.build backfill wrds/fundq wrds/funda
-wrds/segments wrds/exrt` in a foreground terminal on the server. Each monthly `fundq` / `funda` snapshot is compared with the
+wrds/segments wrds/exrt wrds/audit` in a foreground terminal on the server. Each monthly `fundq` / `funda` snapshot is compared with the
 one before: every value that changed for a period both hold is a `fundamental_revision` row (a restatement, or a
 correction at Compustat; a new period is not one). The check notes count revenue, net income and diluted EPS that
 agree with the SEC's facts (Compustat's millions times a million, within 0.5%, EPS within a cent, period ends within

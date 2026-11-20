@@ -563,6 +563,137 @@ class WrdsExrt(WrdsFund):
                 f"1%" + (f"; not at Compustat: {', '.join(missing)}" if missing else ""))
 
 
+class WrdsAudit(WrdsFund):
+    """``wrds/audit``: Audit Analytics' three event feeds, whole, one snapshot a month: financial restatements
+    (``feed39_financial_restatements``), late-filing notices (``feed20_nt``, the NT 10-K / NT 10-Q forms) and
+    director and officer changes (``feed17_director_and_officer_chan``).
+
+    **Measured on homesrv, 20 Nov 2026 (#1181, step C of the WRDS plan):** ``company_fkey`` is the SEC's CIK (all
+    digits, largest 2,108,359; 5,078 of our 5,292 CIKs are in the officer feed, 2,833 in the restatements, 2,166 in
+    the late filings, against 35 to 53 expected by chance), so the rows need no link table. All three ended in the
+    second half of September 2026, about two months behind the day they were read: a flag built from them is a
+    history, and the fresh signal stays the 8-K's own item (``filing_item``).
+
+    Of each feed's 219 to 249 columns only the event's own are asked: its key, the company, the filing day and
+    form, and the columns that say what happened. No person's name and no disclosure text is asked. **What the
+    flag columns hold is not measured yet** (``res_fraud``, ``is_ceo``, ... may be 0/1, Y/N or text), so they are
+    kept as text exactly as WRDS answers and nothing is served from this dataset: the check note counts each feed
+    and our companies in it. Whether a feed's key is unique is not measured either, so a snapshot keeps every
+    distinct row and the note says how many keys they are."""
+
+    LIBRARY = "audit_audit_comp"
+    COMPANY = "company_fkey"
+    # part -> (label of the note, the columns asked, the feed's own key)
+    PARTS = {
+        "feed39_financial_restatements": ("restatements", [
+            ("restatement_notification_key", "TEXT"), ("company_fkey", "TEXT"), ("file_date", "DATE"),
+            ("form_fkey", "TEXT"), ("res_begin_date", "DATE"), ("res_end_date", "DATE"),
+            ("date_of_8k_402", "DATE"), ("res_accounting", "TEXT"), ("res_fraud", "TEXT"),
+            ("res_clerical_errors", "TEXT"), ("res_other", "TEXT"), ("res_adverse", "TEXT"),
+            ("res_improves", "TEXT"), ("res_sec_investigation", "TEXT"), ("res_board_approval", "TEXT"),
+            ("res_auditor_letter", "TEXT"), ("quarterly_restated_only", "TEXT")],
+            "restatement_notification_key"),
+        "feed20_nt": ("late filings", [
+            ("nt_notify_key", "TEXT"), ("company_fkey", "TEXT"), ("file_date", "DATE"), ("form_fkey", "TEXT"),
+            ("pe_date_num", "TEXT"), ("nt_reas_keys", "TEXT"), ("nt_reas_titles", "TEXT")],
+            "nt_notify_key"),
+        "feed17_director_and_officer_chan": ("officer changes", [
+            ("do_change_key", "TEXT"), ("do_off_pers_key", "TEXT"), ("company_fkey", "TEXT"),
+            ("file_date", "DATE"), ("form_fkey", "TEXT"), ("eff_date", "DATE"), ("action", "TEXT"),
+            ("title_standard", "TEXT"), ("is_ceo", "TEXT"), ("is_cfo", "TEXT"), ("is_coo", "TEXT"),
+            ("is_president", "TEXT"), ("is_chair", "TEXT"), ("is_c_level", "TEXT"), ("is_bdmem_pers", "TEXT"),
+            ("interim", "TEXT")],
+            "do_change_key"),
+    }
+    STAGING = {"feed39_financial_restatements": "stg_wrds_restatements", "feed20_nt": "stg_wrds_late_filings",
+               "feed17_director_and_officer_chan": "stg_wrds_officer_changes"}
+    FIRST = "feed39_financial_restatements"
+
+    def __init__(self):
+        super().__init__(self.FIRST, self.LIBRARY, [], [], [], "file_date", 0, revisions=False)
+        self.name = "wrds/audit"
+        self.feeds = ()                                  # staged and counted; no served table reads it yet
+        self.schema = self.PARTS[self.FIRST][1]
+        self.staging = self.STAGING[self.FIRST]
+
+    def raw_path(self, as_of: date, part: str = FIRST) -> Path:
+        return common.raw_dir(self.name) / as_of.isoformat() / f"{part}{wrds_session.RAW_SUFFIX}"
+
+    def snapshot_file(self, as_of: str, part: str = FIRST) -> Path:
+        return common.parquet_dir(self.name) / f"snapshot={as_of}" / f"{part}.parquet"
+
+    def _parts(self) -> list[tuple]:
+        return [(p,) for p in self.PARTS]
+
+    def snapshots(self) -> list[str]:
+        folder = common.parquet_dir(self.name)
+        if not folder.is_dir():
+            return []
+        return sorted(d.name.split("=", 1)[1] for d in folder.iterdir()
+                      if d.name.startswith("snapshot=") and all((d / f"{p}.parquet").is_file() for p in self.PARTS))
+
+    def sql(self, part: str = FIRST, as_of=None, library: str | None = None) -> str:
+        cols = ", ".join(c for c, _ in self.PARTS[part][1])
+        return f"SELECT {cols} FROM {library or self.library}.{part}"
+
+    def _full(self, ctx: base.RunContext, as_of: date) -> list[Path]:
+        return [wrds_session._ask(ctx, self.raw_path(as_of, part), self.sql(part), as_of) for part in self.PARTS]
+
+    def full_rebuild_reason(self, ctx: base.RunContext) -> str | None:
+        """A new snapshot is no reason to build the kind whole: no served table reads these feeds yet."""
+        return None
+
+    def to_parquet_all(self, ctx: base.RunContext, raws: list[Path]) -> list[Path]:
+        out = []
+        for raw in raws:
+            part = raw.name[: -len(wrds_session.RAW_SUFFIX)]
+            _, schema, _ = self.PARTS[part]
+            meta = base.read_raw_json(common.meta_path(raw))
+            as_of = meta["as_of"]
+            con = base.scratch_con()
+            try:
+                rows = f"SELECT DISTINCT * FROM ({wrds_session.raw_rows(raw, schema)})"
+                if not con.execute(f"SELECT count(*) FROM ({rows})").fetchone()[0]:
+                    raise base.SourceError(f"wrds {part}: the snapshot came back empty")
+                for col, n in wrds_session.untyped(con, raw, schema).items():
+                    ctx.issue("value_untyped", f"{part}.{col}", f"{n} row(s) nulled")
+                every = ", ".join(f'"{c}" NULLS LAST' for c, _ in schema)
+                select = (f"SELECT *, DATE '{as_of}' AS source_as_of, CAST({float(meta['fetched_at'])} AS DOUBLE) "
+                          f"AS fetched_at, '{meta['run_id']}' AS run_id FROM ({rows}) "
+                          f"ORDER BY {self.COMPANY} NULLS LAST, file_date NULLS LAST, {every}")
+                out.append(base.write_parquet(con, select, self.snapshot_file(as_of, part)))
+            finally:
+                con.close()
+            ctx.pending.setdefault(self.name, []).append(as_of)
+        return out
+
+    def build(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> dict[str, int]:
+        snaps = self.snapshots()
+        for part, (_, schema, _) in self.PARTS.items():
+            common.stage_glob(con, self.STAGING[part], schema + PROVENANCE, common.parquet_dir(self.name),
+                              f"snapshot={snaps[-1]}/{part}.parquet" if snaps else "snapshot=none/none")
+        return {}
+
+    def note(self, con: duckdb.DuckDBPyConnection) -> str:
+        """Per feed: its rows, its keys, how many of our companies it holds (``company_fkey`` against the CIK, both
+        without leading zeros) and its newest filing day."""
+        ours = con.execute("SELECT count(DISTINCT ltrim(cik, '0')) FROM fundamental_company").fetchone()[0]
+        parts = []
+        for part, (label, _, key) in self.PARTS.items():
+            stg = self.STAGING[part]
+            rows, keys, newest = con.execute(
+                f'SELECT count(*), count(DISTINCT "{key}"), max(file_date) FROM {stg}').fetchone()
+            if not rows:
+                continue
+            held = con.execute(f"""
+                SELECT count(*) FROM (SELECT DISTINCT ltrim(cik, '0') AS cik FROM fundamental_company) c
+                WHERE c.cik IN (SELECT ltrim({self.COMPANY}, '0') FROM {stg})""").fetchone()[0]
+            parts.append(f"{label} {rows} rows ({keys} keys), {held} of {ours} Tier A companies, newest {newest}")
+        if not parts:
+            return "WRDS audit feeds: no snapshot yet"
+        return "WRDS audit feeds (company_fkey is the CIK): " + "; ".join(parts)
+
+
 FUNDQ = WrdsFund("fundq", "comp",
                  [("gvkey", "TEXT"), ("datadate", "DATE"), ("fyearq", "INTEGER"), ("fqtr", "INTEGER"),
                   ("fyr", "INTEGER"), ("rdq", "DATE")],
@@ -574,4 +705,5 @@ FUNDA = WrdsFund("funda", "comp",
                  ["gvkey", "datadate"], "datadate", YEARS, revisions=True)
 SEGMENTS = WrdsSegments()
 EXRT = WrdsExrt()
-DATASETS = (FUNDQ, FUNDA, SEGMENTS, EXRT)
+AUDIT = WrdsAudit()
+DATASETS = (FUNDQ, FUNDA, SEGMENTS, EXRT, AUDIT)
