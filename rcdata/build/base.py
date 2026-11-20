@@ -91,6 +91,22 @@ class NothingInScope(SourceError):
     """
 
 
+class WholeBuildByHand(SourceError):
+    """A build of this kind would be whole, and no person asked for it: a ``skipped`` check row, not a failure.
+
+    A kind whose dataset declares ``whole_build_by_hand`` (``prices/serving``, #446 step 8) is built by the hourly
+    pass -- a pass of nothing but the schedule's own requests (``_scheduled``) -- only on a copy of the live file.
+    Anything else builds it whole as before: a Fetch press, the CLI, a build called directly. Its whole build reads
+    the Parquet tree from the start: 86 min measured on
+    homesrv for the 2010+ volume, and 6 h 12 min with 92 GB of spill for the first one carrying the WRDS history
+    (``prices/incremental.py``). That does not fit the builder's window, so an unattended pass leaves it alone and
+    says why; a Fetch press or a CLI run is a person asking for it and runs it.
+
+    A skip, not a failure: the serving file was not touched, so nothing is wrong with it, and the dataset stays due
+    (``due.py``) for the next pass, which costs nothing while the live file is still the answer.
+    """
+
+
 class CapReached(SourceError):
     """A provider reached its day cap during the run: nothing more is sent to it today."""
 
@@ -239,6 +255,10 @@ class RunContext:
     uw_sampled: bool = False
     allow_shrink: bool = False                                      # a request's explicit "allow_shrink": true
     reread: bool = False                                            # a request's explicit "reread": true (sec/reads)
+    #: Whether this run is the hourly pass's own request (``_scheduled``: ``requested_by`` ``due.REQUESTED_BY``).
+    #: A pass of nothing but these does not start a whole build of a kind that holds one
+    #: (:class:`WholeBuildByHand`); everything else -- a Fetch press, the CLI, a build called directly -- does.
+    scheduled: bool = False
     scope: Scope = field(default_factory=Scope)                     # a request's "tiers" / "names" (empty: daily)
     # Which of the run's steps is in hand, so a failed check row says where the exception came from and not only
     # its class (#1119): "start" before the first one, then "fetch", "parquet" or "backfill", then "build",
@@ -894,6 +914,12 @@ def heavy_names() -> frozenset[str]:
     return frozenset(name for name, ds in DATASETS.items() if heavy(ds))
 
 
+def whole_build_by_hand(kind: str) -> tuple[str, ...]:
+    """The datasets of ``kind`` that hold its whole build back for a person (``whole_build_by_hand = True``, #446
+    step 8). Empty for every other kind, which is built whole by the hourly pass exactly as before."""
+    return tuple(d.name for d in kind_datasets(kind) if getattr(d, "whole_build_by_hand", False))
+
+
 def live_columns(con: duckdb.DuckDBPyConnection, table: str, columns: list[str]) -> list[str]:
     """``columns`` that ``table`` of the attached live file holds: a live file built before a column was added is
     compared on the columns both files have."""
@@ -1119,7 +1145,17 @@ def build_kind_many(kind: str, members: list[tuple[Dataset, RunContext]], *, lea
     every = [lead, *ctxs.values()]
     for c in every:
         c.changed = lead.changed
-    with serving.build(kind, base="live" if plan is not None and plan.reason is None else "fresh") as b:
+    on_the_live_copy = plan is not None and plan.reason is None
+    if not on_the_live_copy:
+        held = whole_build_by_hand(kind)
+        # Only a pass of the schedule's own requests is held: one Fetch press among them is a person asking for it.
+        if held and all(c.scheduled for c in every):
+            # Before ``serving.build``: nothing is copied, staged or swapped, so the live file is untouched.
+            why = plan.reason if plan is not None else f"{kind} does not build on a copy of the live file"
+            raise WholeBuildByHand(
+                f"a whole {kind} build is not started by the hourly pass ({', '.join(held)}): {why}; "
+                f"press Fetch on the Settings board, or run it from the CLI on the server")
+    with serving.build(kind, base="live" if on_the_live_copy else "fresh") as b:
         on_live = b.mode == "live"
         for c in every:
             c.incremental = plan if on_live else None
@@ -1190,7 +1226,7 @@ def run_request(req: dict, *, trigger: str = "queue", attended_ok: bool = False,
     run_id = new_run_id()
     ctx = RunContext(run_id=run_id, dataset=req["dataset"], trigger=trigger, sleep=sleep, clock=clock,
                      allow_shrink=params.get("allow_shrink") is True,
-                     reread=params.get("reread") is True)
+                     reread=params.get("reread") is True, scheduled=_scheduled(req))
     ops.start_run(run_id, req["dataset"], trigger, params)
     try:
         return _run(ctx, ds, req, params, attended_ok)
@@ -1200,6 +1236,16 @@ def run_request(req: dict, *, trigger: str = "queue", attended_ok: bool = False,
     finally:
         ctx.close()
         ctx.flush_counts()
+
+
+def _scheduled(req: dict) -> bool:
+    """A request the hourly pass queued itself (``due.REQUESTED_BY``, not imported: ``due`` imports this module).
+
+    Not the negation of :func:`_pressed`: a request with no id is nobody's press and is also not the pass's, and a
+    build called directly (a test, a one-off) is neither. Only this one holds a whole build back, so anything this
+    cannot name goes ahead and builds, which is what every caller did before #446 step 8.
+    """
+    return req.get("requested_by") == "schedule"
 
 
 def _pressed(req: dict) -> bool:
@@ -1245,7 +1291,7 @@ def _run(ctx: RunContext, ds, req: dict, params: dict, attended_ok: bool = False
         return _finish(ctx, req, {"result": "skipped", "note": stage_note}, "skipped", None)
     try:
         return _finish(ctx, req, build_kind(ctx, ds), "ok", None)
-    except (Paused, NothingInScope) as e:
+    except (Paused, NothingInScope, WholeBuildByHand) as e:
         return _finish(ctx, req, {"result": "skipped", "note": f"skipped: {e}"}, "skipped", None)
     except Exception as e:  # noqa: BLE001 - every failure becomes a failed check row, never a half-swapped file
         return _failed(ctx, req, e)
@@ -1364,7 +1410,7 @@ def run_batch(reqs: list[dict], *, trigger: str = "queue", attended_ok: bool = F
             params = req.get("params") or {}
             ctx = RunContext(run_id=new_run_id(), dataset=req["dataset"], trigger=trigger,
                              allow_shrink=params.get("allow_shrink") is True,
-                     reread=params.get("reread") is True)
+                             reread=params.get("reread") is True, scheduled=_scheduled(req))
             ops.start_run(ctx.run_id, req["dataset"], trigger, params)
             started.append((req, ctx))
             done, note = _stage(ctx, ds, req, params, attended_ok)
@@ -1381,6 +1427,11 @@ def run_batch(reqs: list[dict], *, trigger: str = "queue", attended_ok: bool = F
         kind = wanted[0][1].kind
         try:
             checks = build_kind_many(kind, [(ds, ctx) for req, ds, ctx, note in ready], lead=wanted[0][2])
+        except WholeBuildByHand as e:
+            # Nothing was built and nothing is wrong with the file: every member of the pass is a skip (#446 step 8).
+            for req, ds, ctx, note in ready:
+                end(ctx, _finish(ctx, req, {"result": "skipped", "note": note or f"skipped: {e}"}, "skipped", None))
+            return rows
         except Exception as e:  # noqa: BLE001 - every failure becomes a failed check row, never a half-swapped file
             for req, ds, ctx, note in ready:
                 end(ctx, _failed(ctx, req, e) if note is None else

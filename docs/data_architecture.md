@@ -1179,6 +1179,16 @@ and kept as they are otherwise (whole build of 6 Nov 2026: 91 min).
 `spx_gamma_expiry_strike` or `spx_greek_expiry_strike`, a source and year of `market_series`; a gone partition only
 deletes its rows. `options` is still built whole; `spine` stays whole by design (seconds).
 
+**A whole build the hourly pass does not start** (#446 step 8). A dataset may declare `whole_build_by_hand = True`;
+`prices/serving` does. When the plan for such a kind says the build would be whole and **every** member of the pass
+is the schedule's own request (`RunContext.scheduled`, `requested_by` `schedule`; one Fetch press among them is a
+person asking for it, and a build called any other way is not held at all), `base.build_kind_many` raises
+`base.WholeBuildByHand` before the build file is opened, and the request ends `skipped` with the reason on its check
+row. Nothing is copied, staged or swapped, so the live file is untouched and the dataset stays due for the next
+pass. The reason it holds: a whole `prices` build is 86 min for the 2010+ volume and 6 h 12 min with the WRDS
+history, against a builder window of under an hour, while a build on the live copy fits it — so `prices/serving` is
+in the scheduled flow (it no longer `starts_by_hand`) and only its whole build waits for a person.
+
 CFTC COT rows are futures-only: the TFF dataset's `Combined` rows (futures and options) are filtered out; taking
 them instead is a later choice.
 
