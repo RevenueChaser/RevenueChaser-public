@@ -10,6 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
+from RevenueChaser.core import settings_store
+
 
 
 class SettingsError(ValueError):
@@ -224,6 +226,19 @@ def _universe_rules(v: dict) -> list[str]:
     return []
 
 
+def _llm_specs() -> dict[str, Setting]:
+    """The LLM jobs' pairs (#404). ``llm_jobs`` hands them over as plain data and never imports this module:
+    every LLM job calls it, and this one reaches every board, which would cost CI a full run per board change."""
+    from RevenueChaser.core import llm_jobs
+    return {f["key"]: Setting(f["key"], f["kind"], f["default"], choices=f["choices"], label=f["label"])
+            for f in llm_jobs.setting_fields()}
+
+
+def _llm_rules(v: dict) -> list[str]:
+    from RevenueChaser.core import llm_jobs
+    return llm_jobs.rules(v)
+
+
 def _rel_specs() -> dict[str, Setting]:
     from RevenueChaser.module_relatedness import settings
     return settings.specs()
@@ -241,6 +256,8 @@ SPEC: dict[str, tuple[Callable[[], dict[str, Setting]], Callable[[dict], list[st
     "module_settings": (_universe_specs, _universe_rules),
     # The profile writer (#360): two text settings, the pair and the credential checked by the rules.
     "module_relatedness": (_rel_specs, _rel_rules),
+    # One pair per LLM job (#404, decision (b)): two text settings each, the rules as #360's.
+    "llm_writers": (_llm_specs, _llm_rules),
 }
 
 
@@ -281,9 +298,15 @@ def defaults(board: str) -> dict:
 
 
 def values(board: str) -> dict:
-    """``{"values": effective, "defaults": config defaults, "overridden": [keys]}``."""
+    """``{"values": effective, "defaults": config defaults, "overridden": [keys]}``.
+
+    The overrides come from :mod:`core.settings_store`, the one reader of a saved value; it has none to give
+    until a settings store exists (#860), so today every board reports its config defaults and nothing
+    overridden.
+    """
     eff = defaults(board)
-    return {"values": eff, "defaults": dict(eff), "overridden": []}
+    saved = {k: v for k, v in settings_store.overrides(board).items() if k in eff}
+    return {"values": {**eff, **saved}, "defaults": dict(eff), "overridden": sorted(saved)}
 
 
 def describe(board: str) -> list[dict]:

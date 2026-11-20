@@ -64,10 +64,10 @@ import argparse
 import json
 import time
 
-from RevenueChaser.core import offpeak
+from RevenueChaser.core import llm_writers as writers, offpeak
 from RevenueChaser.core.providers import deepseek, evren
 
-from . import engine, writers
+from . import engine
 from . import settings as rel_settings
 
 
