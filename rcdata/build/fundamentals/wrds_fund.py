@@ -705,7 +705,7 @@ class WrdsAudit(WrdsFund):
         ``fundamental_company`` (``company_fkey`` against the CIK, both without leading zeros). A row with no
         filing day or no key says nothing a board could place, so it is left out."""
         spec, key = self.SERVED[part], self.PARTS[part][2]
-        labels = ", ".join(f"CASE WHEN TRY_CAST(s.\"{c}\" AS DOUBLE) = 1 THEN '{label}' END"
+        labels = ", ".join(f"CASE WHEN TRY_CAST(s.\"{c}\" AS DOUBLE) IS NOT NULL THEN '{label}' END"
                            for c, label in spec["flags"].items())
         flags = f"[x for x in [{labels}] if x IS NOT NULL]" if labels else "CAST([] AS VARCHAR[])"
         return f"""
