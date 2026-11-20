@@ -155,3 +155,45 @@ def test_the_lookup_names_come_from_their_own_route(client, monkeypatch):
     monkeypatch.setattr(inventory, "_universe_tickers", lambda: ([], "IOException: locked"))
     r = client.get("/api/settings/tickers")
     assert r.status_code == 503 and r.get_json()["ok"] is False
+
+
+# --- #338: every served table the board draws the button for answers it, none is "unknown table" ---------------
+
+from RevenueChaser.rcdata.build import DATASETS as _DATASETS  # noqa: E402
+from RevenueChaser.rcdata.build.fundamentals import tables as fundamentals_tables  # noqa: E402
+
+SERVED_TABLES = sorted({t for ds in _DATASETS.values() for t in ds.tables})
+
+
+@pytest.mark.parametrize("table", SERVED_TABLES)
+def test_every_served_table_answers_the_refresh_and_is_never_unknown(client, market_roots, reads, table):
+    """The board draws "Refresh the example rows" for every table a dataset serves, so pressing it must never
+    answer 404 "unknown table" (#338: seven tables did). With no serving file built the honest answer is 409."""
+    r = _get(client, table)
+    assert r.status_code == 409, f"{table}: {r.status_code} {r.get_json()}"
+    assert r.get_json()["ok"] is False
+
+
+def _peers(rows):
+    path = serving.live_path("fundamentals")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    con = duckdb.connect(str(path))
+    try:
+        cols = ", ".join(f'"{c}" {t}' for c, t in fundamentals_tables.SCHEMAS["peer_group"])
+        con.execute(f"CREATE TABLE peer_group ({cols})")
+        for cik, ticker in rows:
+            con.execute("INSERT INTO peer_group (cik, ticker, peer_cik, peer_ticker, rank, level) VALUES "
+                        "(?, ?, '99', 'ZZZ', 1, 'gsubind')", [cik, ticker])
+    finally:
+        con.close()
+
+
+def test_a_served_table_no_column_dates_is_read_unordered_and_not_refused(client, market_roots, reads):
+    """``peer_group`` is rebuilt whole and carries no day: the press reads it with no ORDER BY, rather than 404."""
+    _peers([("1", "AAA"), ("2", "BBB")])
+    r = _get(client, "peer_group")
+    assert r.status_code == 200, r.get_json()
+    body = r.get_json()
+    assert body["ok"] is True and len(body["rows"]) == 2
+    assert [c["name"] for c in body["columns"]] == [c for c, _ in fundamentals_tables.SCHEMAS["peer_group"]]
+    assert reads == ["fundamentals"]
