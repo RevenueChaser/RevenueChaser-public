@@ -64,8 +64,10 @@ def test_the_banner_names_the_yields_day():
 
 def test_the_build_discounts_at_the_sessions_yield(monkeypatch, market_roots):  # noqa: F811
     _serve_dgs10([("2026-11-18", 4.13)])
+    # One contract, not an empty list: ``build`` returns the empty payload before it ever fits a chain of none.
+    chain = [{"expiry": "2026-12-18", "option_type": "C", "strike": 100.0, "open_interest": 10.0}]
     monkeypatch.setattr(engine, "list_names", lambda: ["TST"])
-    monkeypatch.setattr(engine, "stored_chain", lambda t, s=None: ("2026-11-18", [], 100.0, None))
+    monkeypatch.setattr(engine, "stored_chain", lambda t, s=None: ("2026-11-18", chain, 100.0, None))
     seen = {}
 
     def spy(ticker, contracts, meta, warnings, svi=None):
