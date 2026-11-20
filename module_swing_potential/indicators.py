@@ -11,7 +11,7 @@ import logging
 import pandas as pd
 
 from RevenueChaser.core.info_fallback import has_fields, refetch_or_keep
-from RevenueChaser.core.providers import yf_session  # noqa: F401 - at import: its 401 watcher sees the first .info read (#402)
+from RevenueChaser.core.providers import yf_session  # noqa: F401 - at import: its 401 watcher sees the first .info read (#402); core.providers.yfinance imports it too since #100, so the watcher is on wherever a Yahoo read is
 from RevenueChaser.module_swing_potential import config
 
 logger = logging.getLogger(__name__)
@@ -252,14 +252,29 @@ def load_ticker_info(ticker: str, no_fetch: bool = False) -> dict:
     if no_fetch:
         return {}
     import yfinance as yf
-    # #259: a failed or empty refetch keeps the expired info, marked stale (never mutating the store).
-    info, status = refetch_or_keep(stale, lambda: yf.Ticker(ticker).info or {}, has_fields, label=ticker)
+
+    from RevenueChaser.core.providers import yfinance as yfinance_client
+
+    # #259: a failed or empty refetch keeps the expired info, marked stale (never mutating the store). The read
+    # itself goes through the provider helper for the one thing this call site never had: a 401 "Invalid Crumb"
+    # drops the process's cookie and crumb once and the read is tried again, instead of every later name of the
+    # sweep failing the same way (#402, #100). ``count=False`` because the accounting below is this caller's:
+    # an answer that came back empty is a failed Yahoo read here, which the helper cannot see.
+    info, status = refetch_or_keep(
+        stale,
+        lambda: yfinance_client.read(lambda: yf.Ticker(ticker).info or {},
+                                     endpoint=f"{ticker}.info", default={}, count=False) or {},
+        has_fields, label=ticker,
+    )
     # A refetch that did not answer is a failed Yahoo read (#80). The value returned below is unchanged.
-    from RevenueChaser.core.providers.yfinance import _HEALTH
+    # Counted through ``_count``, not ``_HEALTH`` directly: the module global is only half of it since #299, and
+    # a board that counts on the global alone is invisible to the ``health_scope`` its own run opened — so the
+    # Swing banner read zero while the sweep made one ``.info`` request per name.
     if status == "fresh":
-        _HEALTH.call(endpoint=f"{ticker}.info")
+        yfinance_client._count(endpoint=f"{ticker}.info")
     else:
-        _HEALTH.call(error="refetch failed" if status == "stale" else "empty", endpoint=f"{ticker}.info")
+        yfinance_client._count(error="refetch failed" if status == "stale" else "empty",
+                               endpoint=f"{ticker}.info")
     if status == "fresh":
         try:
             now = time.time()
