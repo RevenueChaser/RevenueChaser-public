@@ -118,17 +118,17 @@ def test_filters_meta_carries_the_index_explanation(monkeypatch):
 
 def test_a_boards_own_explain_still_wins_and_keeps_the_index_text(monkeypatch):
     """13F overrides the market-cap text (``module_sec_13f/report.py``); that must not drop the index text, and the
-    board's own key must not be overwritten by this change."""
+    board's own key must not be overwritten by this change.
+
+    A board overriding ``index`` itself already worked before this change, because ``filters_meta`` passed the
+    board's ``explain`` straight through — so it is asserted here rather than in a test of its own, which would
+    pass on the merge-base and prove nothing (``red-on-base``).
+    """
     _spine(monkeypatch, {"sp500": {"S0001"}})
     meta = rc.filters_meta("sec13f", explain={"mc": "the board's own words"})
     assert meta["explain"]["mc"] == "the board's own words"
     assert "identity spine" in meta["explain"]["index"]
-
-
-def test_a_board_may_still_override_the_index_text_itself(monkeypatch):
-    _spine(monkeypatch, {"sp500": {"S0001"}})
-    meta = rc.filters_meta("b", explain={"index": "mine"})
-    assert meta["explain"]["index"] == "mine"
+    assert rc.filters_meta("b", explain={"index": "mine"})["explain"]["index"] == "mine"
 
 
 def test_the_meta_is_json_serialisable(monkeypatch):
