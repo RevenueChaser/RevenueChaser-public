@@ -5,8 +5,8 @@ Two things were measured on ``main`` c2b2c88 (20 Nov 2026) and are fixed here:
 * ``yf_session.recover`` — the 401 cure built for #402 — had **no non-test caller**. Its one caller,
   ``load_ohlc``, went with the old bar path, so the cure was dead code: a 401 mid-sweep poisoned every later
   read of the process, which is exactly the 14 Oct night #402 was opened for.
-* three call sites counted nothing or counted on the module global alone, so the ``health_scope`` a board
-  opens for its own run (#299) saw fewer calls than the run made — zero, for Swing's whole ``.info`` sweep.
+* call sites counted nothing or counted on the module global alone, so the ``health_scope`` a board opens for
+  its own run (#299) saw fewer calls than the run made — zero, for Swing's whole ``.info`` sweep.
 
 Offline: no yfinance import answers anything real here, the session reset is faked, and
 ``conftest.isolate_yf_session`` keeps one test's pending 401 out of the next.
