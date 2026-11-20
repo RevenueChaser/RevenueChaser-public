@@ -14,6 +14,16 @@ _FORMS = re.compile(
     r"\b(incorporated|inc|corporation|corp|company|co|limited|ltd|plc|llc|"
     r"nv|sa|ag|gmbh|kk|oyj|pty)\b", re.I)
 
+# Words neither side of the comparison owns: a leading "The", which Compustat moves into brackets at the end
+# ("Home Depot Inc. (The)"), and "and", which a filer writes for the registrant's "&" ("Eli Lilly and Co" is
+# "ELI LILLY & Co"). ``&`` itself is punctuation now, so both spellings leave the same gap (#1145).
+_NOISE = re.compile(r"\b(the|and)\b", re.I)
+
+# "Cos" is Compustat's spelling of "Companies" ("Lowe's Cos Inc" is "Lowe's Companies, Inc."). The word is
+# **not** dropped: it is part of the name for "Capstone Companies" and "Comstock Holding Companies", which
+# dropping it merged into two other issuers (#1145). It is only spelled one way.
+_COS = re.compile(r"\bCOS\b")
+
 # Words that are part of the name itself, however generic they look: two companies that differ in one of them are
 # two companies ("Orion Corporation" is not "Orion Group Holdings", "Rafael Technologies" is not "Rafael
 # Holdings"). ``normalize`` still drops them, so every alias key keeps its spelling; ``strict`` keeps them, and
@@ -27,17 +37,19 @@ _SUFFIXES = re.compile(
     r"international|nv|sa|ag|gmbh|kk|oyj|pty)\b", re.I)
 
 
+def _clean(name: str) -> str:
+    """The name upper-cased, with punctuation and the words of ``_NOISE`` gone: what both comparisons start from."""
+    s = re.sub(r"[^A-Z0-9 ]+", " ", (name or "").upper())
+    return " ".join(_COS.sub("COMPANIES", _NOISE.sub(" ", s)).split())
+
+
 def normalize(name: str) -> str:
-    s = (name or "").upper()
-    s = re.sub(r"[^A-Z0-9& ]+", " ", s)
-    s = _SUFFIXES.sub(" ", s)
-    return " ".join(s.split())
+    return " ".join(_SUFFIXES.sub(" ", _clean(name)).split())
 
 
 def strict(name: str) -> str:
     """``normalize`` without dropping the name's own words: "Rafael Technologies" -> ``RAFAEL TECHNOLOGIES``."""
-    s = re.sub(r"[^A-Z0-9& ]+", " ", (name or "").upper())
-    return " ".join(_FORMS.sub(" ", s).split())
+    return " ".join(_FORMS.sub(" ", _clean(name)).split())
 
 
 # Canonical alias -> ticker. Keys are matched after ``normalize``.
@@ -171,12 +183,22 @@ def spine_names(rows) -> dict[str, str | None]:
 
     Each row is keyed twice: under ``_key`` (the normalised name, which drops the generic words of
     ``_NAME_WORDS``) and under ``"=" + _strict_key`` (which keeps them). ``resolve`` reads the second one to
-    check a one-word name against the registrant's full name (#1142)."""
-    out: dict[str, str | None] = {}
-    for r in rows or []:
-        name, t = r.get("name") or "", str(r.get("ticker") or "").upper()
-        if not t:
-            continue
+    check a one-word name against the registrant's full name (#1142).
+
+    A name several rows carry is not ambiguous when the rows are one company (#1145; 117 of the live store's 119
+    ambiguous customer labels were). ``_one_ticker`` decides, over the rows' share lines only:
+
+    * **one CIK** (or one ``SAME_ISSUER`` group) is one company, and the name takes its first share line by
+      ``_rank`` -- "FORD MOTOR CO" is F and three preferred lines, "JPMORGAN CHASE & CO" is JPM, six preferred
+      lines and two ETNs;
+    * **two issuers** keep the name only when exactly one of them is a Tier A share line, so a tiny OTC namesake
+      loses ("Target Corp" is TGT, not Target Group Inc.) and two real namesakes stay ambiguous.
+    """
+    rows = [r for r in (rows or []) if str(r.get("ticker") or "").strip()]
+    lines = {str(r["ticker"]).upper(): r for r in rows}
+    by_key: dict[str, set[str]] = {}
+    for r in rows:
+        name, t = r.get("name") or "", str(r["ticker"]).upper()
         keys = [_key(name), "=" + _strict_key(name)]
         # A registrant whose name needs two of ``_NAME_WORDS`` dropped is reachable by its full name only: the
         # normalised key of "Orion Group Holdings, Inc." is ORION, which a filer's "Orion Corporation" (a Finnish
@@ -184,13 +206,54 @@ def spine_names(rows) -> dict[str, str | None]:
         if len(strict(name).split()) - len(normalize(name).split()) >= 2:
             keys = keys[1:]
         for k in keys:
-            if len(k.lstrip("=")) < 3:
-                continue
-            if k in out and (out[k] is None or issuer(out[k]) != issuer(t)):
-                out[k] = None
-            else:
-                out.setdefault(k, t)
-    return out
+            if len(k.lstrip("=")) >= 3:
+                by_key.setdefault(k, set()).add(t)
+    return {k: _one_ticker(ts, lines) for k, ts in by_key.items()}
+
+
+# How much a listed line looks like the company itself, for a registrant name several of its lines carry. Tier A
+# comes first, so a preferred line, an ETN and an OTC line never beat the operating share; among a company's Tier
+# A lines the common share beats the ADR (none of today's spine rows has both), and an untyped line comes last --
+# "COMCAST CORP" is CCZ (exchangeable notes, untyped) and CMCSA under one CIK, and the board wants CMCSA (#1145).
+_LINE_RANK = {"common": 0, "adr": 1, "reit": 2, "mlp": 3}
+
+
+def _rank(t: str, lines: dict[str, dict]) -> tuple:
+    r = lines.get(t) or {}
+    return (str(r.get("tier") or "") != "A", _LINE_RANK.get(str(r.get("security_type") or ""), 9),
+            issuer(t) != t, t)
+
+
+def _shares(t: str, lines: dict[str, dict]) -> bool:
+    """True for a line typed as the company's own shares (#1145).
+
+    A preferred line, an exchangeable note, an ETN, a unit, a warrant and an untyped line are not the company for
+    an edge's purpose, and no board shows one: "COMCAST CORP" is CCZ (notes) as well as CMCSA, and Triton
+    International has nothing listed but seven preferred lines. A name with no share line left is ambiguous.
+    """
+    return str((lines.get(t) or {}).get("security_type") or "") in _LINE_RANK
+
+
+def _cik(t: str, lines: dict[str, dict]) -> str:
+    """The CIK of ticker ``t``, or a value of its own when the spine row carries none (two such rows are two
+    issuers, because nothing says they are one)."""
+    return str((lines.get(t) or {}).get("cik") or "").lstrip("0") or f"?{t}"
+
+
+def _one_ticker(tickers: set[str], lines: dict[str, dict]) -> str | None:
+    """The one ticker a shared registrant name means, or None (#1145). See ``spine_names`` for the two rules."""
+    if len(tickers) == 1:
+        return next(iter(tickers))
+    shares = {t for t in tickers if _shares(t, lines)}
+    if not shares:
+        return None
+    if len({_cik(t, lines) for t in shares}) == 1 or len({issuer(t) for t in shares}) == 1:
+        return min(shares, key=lambda t: _rank(t, lines))
+    # Different issuers: only one of them may be a listed operating company, or the name stays ambiguous.
+    real = {t for t in shares if not _rank(t, lines)[0]}
+    if real and len({_cik(t, lines) for t in real}) == 1:
+        return min(real, key=lambda t: _rank(t, lines))
+    return None
 
 
 def spine_ticker(name: str, names: dict | None) -> str | None:
