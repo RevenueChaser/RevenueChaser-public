@@ -1343,6 +1343,20 @@ def runs_between(start: float, end: float) -> list[dict]:
 
 
 @_routed
+def builder_runs_since(since: float) -> list[dict]:
+    """The builder's **finished** runs that started at or after ``since``, oldest first: ``dataset``,
+    ``started_at``, ``finished_at``, ``status``, ``error``.
+
+    ``dataset IS NOT NULL`` keeps it the builder's, as ``runs_between`` does: since #136 a scheduled task's and a
+    dashboard job's run has a row here too, named in ``job``. The Welcome board's freshness card rolls these up to
+    one row per serving file (#643 PR 6), which is why the error is served with them and a run still going is not.
+    """
+    return _select("SELECT dataset, started_at, finished_at, status, error FROM job_runs2 "
+                   "WHERE dataset IS NOT NULL AND finished_at IS NOT NULL AND started_at >= ? "
+                   "ORDER BY started_at, run_id", (float(since),))
+
+
+@_routed
 def last_builder_run() -> dict | None:
     """The newest **builder** run, so Settings and provenance answer with a dataset build and not with whatever ran
     last (#136: the table also holds task and dashboard runs now, which carry no dataset)."""

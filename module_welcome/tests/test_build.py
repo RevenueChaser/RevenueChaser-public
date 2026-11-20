@@ -95,3 +95,114 @@ def test_a_series_the_builder_does_not_hold_writes_no_row_and_stops_no_other():
     _prices(SESSIONS)                                           # SPX only; VIX, MOVE and DGS10 have no rows
     assert wb.build(now=NOW)["snapshot"] == 1
     assert set(_snap()) == {"SPX"}
+
+
+# ── #643 PR 5b: the earnings card reads the options screener ───────────────────────────────────────────────────
+
+SCREENER_SESSION = date(2026, 11, 9)          # Monday's sweep; NOW is Tuesday 10 Nov before the open
+
+
+def _screener(rows):
+    from RevenueChaser.rcdata.tests import screener_fixture
+    screener_fixture.write(rows)
+
+
+def _screener_row(ticker, day, **over):
+    from RevenueChaser.rcdata.tests import screener_fixture
+    session = over.pop("session_date", SCREENER_SESSION)
+    return screener_fixture.row(ticker, session_date=session, report_date=day, **over)
+
+
+def _fresh():
+    return {r["job"]: r for r in rawstore.query("SELECT * FROM welcome_freshness", db="welcome")}
+
+
+def test_the_earnings_card_is_written_from_the_screeners_newest_session():
+    _screener([_screener_row("AAA", TUE), _screener_row("BBB", WED, report_session="afterhours"),
+               _screener_row("CCC", date(2026, 11, 20))])          # outside the two days
+    out = wb.build(now=NOW)
+    rows = _earnings()
+    assert out["earnings"] == 2 and set(rows) == {"AAA", "BBB"}
+    assert rows["AAA"]["earnings_date"] == TUE and rows["AAA"]["report_session"] == "premarket"
+    assert rows["BBB"]["earnings_date"] == WED and rows["BBB"]["report_session"] == "afterhours"
+    assert rows["AAA"]["expected_move_perc"] == 0.05 and rows["AAA"]["full_name"] == "AAA Inc"
+    assert rows["AAA"]["source_session"] == SCREENER_SESSION and rows["AAA"]["retired_at"] is None
+
+
+def test_the_implied_move_stands_in_where_the_calendar_has_no_expected_move():
+    _screener([_screener_row("AAA", TUE, expected_move_perc=None, implied_move_perc=0.031)])
+    wb.build(now=NOW)
+    assert _earnings()["AAA"]["expected_move_perc"] == 0.031
+
+
+def test_a_name_the_screener_row_does_not_name_takes_the_spines_name():
+    from RevenueChaser.rcdata.tests import universe_store
+    universe_store.put([{"ticker": "AAA", "name": "Alpha Industries"}])
+    _screener([_screener_row("AAA", TUE, full_name=None)])
+    wb.build(now=NOW)
+    assert _earnings()["AAA"]["full_name"] == "Alpha Industries"
+
+
+def test_a_name_the_newest_session_no_longer_lists_is_retired_not_deleted():
+    _screener([_screener_row("AAA", TUE), _screener_row("BBB", TUE)])
+    wb.build(now=NOW)
+    _screener([_screener_row("AAA", TUE, session_date=date(2026, 11, 10))])     # a newer sweep, without BBB
+    wb.build(now=NOW + 60)
+    rows = _earnings()
+    assert rows["AAA"]["retired_at"] is None
+    assert rows["BBB"]["retired_at"] == NOW + 60, "the row stays, marked retired"
+
+
+def test_without_a_built_screener_session_the_card_keeps_what_it_has():
+    """A missing options file is no rows the way an empty old table was: nothing is written, nothing retired."""
+    _screener([_screener_row("AAA", TUE)])
+    wb.build(now=NOW)
+    from RevenueChaser.rcdata import serving
+    serving.live_path("options").unlink()
+    assert wb.build(now=NOW + 60)["earnings"] == 0
+    assert _earnings()["AAA"]["retired_at"] is None
+
+
+# ── #643 PR 6: the freshness card is one row per builder file ──────────────────────────────────────────────────
+
+def _build_run(run_id, dataset, status, finished, error=None):
+    """One finished builder run in the ops ledger, at the time the test wants it (``start_run`` stamps now)."""
+    from RevenueChaser.rcdata import ops
+    ops.start_run(run_id, dataset, "queue")
+    ops.finish_run(run_id, status, error)
+    with ops.connect(ops.ops_path()) as con:
+        con.execute("UPDATE job_runs2 SET started_at = ?, finished_at = ? WHERE run_id = ?",
+                    (finished - 60.0, finished, run_id))
+        con.commit()
+
+
+def test_the_freshness_rows_are_the_builder_files_not_the_dashboard_jobs():
+    _build_run("r1", "sec/company_tickers_exchange", "ok", NOW - 3600)
+    _build_run("r2", "uw/option_screener", "failed", NOW - 1800, error="HTTP 503")
+    out = wb.build(now=NOW)
+    rows = _fresh()
+    assert out["freshness"] == 2 and set(rows) == {"spine", "options"}
+    assert rows["spine"]["last_status"] == "ok" and rows["spine"]["last_ok_at"] == NOW - 3600
+    assert rows["options"]["last_status"] == "error" and rows["options"]["last_error"] == "HTTP 503"
+    assert rows["options"]["last_failed_at"] == NOW - 1800 and rows["options"]["last_ok_at"] is None
+
+
+def test_a_later_good_run_of_the_same_file_clears_its_error_and_keeps_the_failure_time():
+    _build_run("r1", "uw/option_screener", "failed", NOW - 3600, error="HTTP 503")
+    _build_run("r2", "uw/option_screener", "ok", NOW - 60)
+    wb.build(now=NOW)
+    row = _fresh()["options"]
+    assert row["last_status"] == "ok" and row["last_error"] is None
+    assert row["last_ok_at"] == NOW - 60 and row["last_failed_at"] == NOW - 3600
+
+
+def test_a_skipped_run_is_a_file_that_built_nothing_due_not_an_error():
+    _build_run("r1", "sec/company_tickers_exchange", "skipped", NOW - 120)
+    wb.build(now=NOW)
+    assert _fresh()["spine"]["last_status"] == "ok"
+
+
+def test_every_serving_file_has_a_name_on_the_card():
+    """A new builder file cannot reach the card unnamed: the labels cover ``serving.KINDS`` exactly."""
+    from RevenueChaser.rcdata import serving
+    assert set(wb.FILE_LABELS) == set(serving.KINDS)

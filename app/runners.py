@@ -6,7 +6,6 @@ Each runner returns the Path to the generated file (or None if nothing was produ
 import json
 import logging
 import time
-from collections import Counter
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -1305,31 +1304,23 @@ def run_news_cached(uw=None) -> Path:
     return report.render()
 
 
-def welcome_job_labels() -> dict[str, str]:
-    """Job name -> the label of the first board it feeds (``jobs.register`` ``produces`` and the dashboard tabs)."""
-    from RevenueChaser.app import dashboard
-    from . import jobs
-    tab_label = {t["key"]: t["label"] for t in dashboard.TABS if t["type"] == "tab"}
-    first = {job: boards[0] for job, boards in jobs._PRODUCES.items() if boards and boards[0] in tab_label}
-    feeders = Counter(first.values())
-    # Several jobs feed one board (the universe run and AG's own Fetch): only the board's own job keeps the bare
-    # label, or the freshness card lists "Asymmetric Growth" twice.
-    return {job: tab_label[b] if feeders[b] == 1 or job == b else f"{tab_label[b]} · {job}"
-            for job, b in first.items()}
+# ``welcome_job_labels`` went with #643 PR 6: the freshness card is one row per **builder file** now (avo's D2 of
+# 10 Nov 2026), named by ``module_welcome.build.FILE_LABELS``, so the page needs no map of dashboard job labels.
 
 
 def run_welcome(uw=None) -> Path:
     """The Welcome board's Fetch: the incremental build into ``boards/welcome.duckdb``, then the page. No network."""
     from RevenueChaser.module_welcome import build
     out = build.build(run_id=run_id())
-    ledger.add_note(f"Welcome: {out['snapshot']} closes")
+    ledger.add_note(f"Welcome: {out['snapshot']} closes, {out['earnings']} earnings rows, "
+                    f"{out['freshness']} builder files")
     return run_welcome_cached()
 
 
 def run_welcome_cached(uw=None) -> Path:
     """Store-only Welcome render (Refresh, first load): reads the board files, writes nothing to the store."""
     from RevenueChaser.module_welcome import report
-    return report.render(watchlist=_load_watchlist(), labels=welcome_job_labels())
+    return report.render(watchlist=_load_watchlist())
 
 
 def run_oipd_cached(uw=None, ticker: str | None = None) -> Path:
