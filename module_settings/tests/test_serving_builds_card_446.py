@@ -58,6 +58,21 @@ def test_a_file_from_before_446_reads_as_a_whole_build_with_no_manifest():
     assert got["built_at"] is not None, "the swap stamps every file, old or new"
 
 
+def test_a_version_table_without_build_mode_reads_as_no_mode_and_does_not_raise():
+    """Every fixture that writes ``serving_schema_version`` by hand writes the pre-step-1 shape, and so does any
+    file built before step 1 landed. The card asks the file for its columns, so such a file reads as a build with
+    no mode on record and the Database tab still answers."""
+    _built()
+    con = duckdb.connect(str(serving.live_path("market")))
+    try:
+        con.execute(f"ALTER TABLE {serving.VERSION_TABLE} DROP COLUMN build_mode")
+    finally:
+        con.close()
+    got = _read()
+    assert got["mode"] is None, "a column that is not there is not a mode"
+    assert got["built_at"] is not None, "the rest of the row still reads"
+
+
 def test_the_mode_is_the_base_the_build_really_got():
     _built(mode="live")
     assert _read()["mode"] == "live"

@@ -25,6 +25,8 @@ from pathlib import Path
 
 from collections.abc import Mapping
 
+import duckdb
+
 from RevenueChaser.core import calendar, config
 from RevenueChaser.rcdata import caps, ops, retention, serving
 from RevenueChaser.rcdata.needs import screen as api_screen
@@ -607,6 +609,14 @@ def _serving_facts(now: datetime | None = None
     return tables, swaps, funnel, builds
 
 
+def _columns(con, table: str) -> set[str]:
+    """The column names ``table`` has in the file this connection holds, lowercased."""
+    try:
+        return {str(r[0]).lower() for r in con.execute(f'PRAGMA table_info("{table}")').fetchall()}
+    except duckdb.Error:
+        return set()
+
+
 def _build_of(kind: str, con, names: set[str]) -> dict:
     """How ``kind``'s live file was last built, for the Serving builds card (#446 step 8).
 
@@ -622,11 +632,17 @@ def _build_of(kind: str, con, names: set[str]) -> dict:
     out: dict = {"kind": kind, "mode": None, "built_at": None, "files": None, "changed": None,
                  "audited_at": None, "audited": None, "differs": None, "owed": None}
     if serving.VERSION_TABLE in names:
-        row = con.execute(f"SELECT build_mode, built_at FROM {serving.VERSION_TABLE} WHERE kind = ? "
-                          "ORDER BY built_at DESC NULLS LAST LIMIT 1", (kind,)).fetchone()
-        if row is not None:
-            out["mode"] = str(row[0]) if row[0] else None
-            out["built_at"] = _iso_utc(row[1]) if row[1] is not None else None
+        # A file older than #446 step 1 has a version table without ``build_mode``, and so does every test fixture
+        # that writes the table by hand. The card asks the file which columns it has rather than assuming: a build
+        # it cannot name the base of reads as no mode on record, never as an error on the whole Database tab.
+        cols = _columns(con, serving.VERSION_TABLE)
+        if "built_at" in cols:
+            picked = "build_mode, built_at" if "build_mode" in cols else "NULL, built_at"
+            row = con.execute(f"SELECT {picked} FROM {serving.VERSION_TABLE} WHERE kind = ? "
+                              "ORDER BY built_at DESC NULLS LAST LIMIT 1", (kind,)).fetchone()
+            if row is not None:
+                out["mode"] = str(row[0]) if row[0] else None
+                out["built_at"] = _iso_utc(row[1]) if row[1] is not None else None
     if dirty.MANIFEST_TABLE in names:
         held = {str(p): (int(size), float(mtime)) for p, size, mtime in
                 con.execute(f"SELECT path, size, mtime FROM {dirty.MANIFEST_TABLE}").fetchall()}
