@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import time
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from RevenueChaser.core import econ_importance, rawstore
@@ -515,17 +515,90 @@ def api_rows(since: float, limit: int = 2 * HEADLINE_LIMIT) -> list[dict]:
     cutoff, seen = time.time() - HEADLINE_HOURS * 3600, {r["headline_id"] for r in rows}
     rows += [r for r in headlines.peek_tape() if r["headline_id"] not in seen and r["published_at"] >= cutoff]
     rows = sorted(rows, key=lambda r: -float(r["published_at"]))[:int(limit)]
-    return [{"headline_id": r["headline_id"], "published_at": r["published_at"], "hm": hm(r["published_at"]),
-             "headline": r["headline"], "source": r.get("source") or "",
-             "tickers": [x_lines(r)[0]] if lane(r) == "x" and x_lines(r)[0] else (
-                 [] if lane(r) == "x" else _tickers(r.get("tickers"))),
-             "kind": X_KINDS.get(r.get("kind") or "", r.get("kind") or ""),
-             "option": x_lines(r)[1] if lane(r) == "x" else "",
-             "badge": list(x_check.badge(_check(r))[:3]) if lane(r) == "x" else None,
-             "move": x_check.price_move(_check(r), float(r["published_at"])) if lane(r) == "x" else "",
-             "group": x_group(r) if lane(r) == "x" else "",
-             "url": r["url"] if str(r.get("url") or "").startswith(("https://", "http://")) else "",
-             "lane": lane(r), "run_at": r["run_at"]} for r in rows]
+    return [_api_headline(r) for r in rows]
+
+
+def _api_headline(r: dict) -> dict:
+    """One stored headline as every read-only answer writes it: the page's poll and #809's windowed read alike."""
+    return {"headline_id": r["headline_id"], "published_at": r["published_at"], "hm": hm(r["published_at"]),
+            "headline": r["headline"], "source": r.get("source") or "",
+            "tickers": [x_lines(r)[0]] if lane(r) == "x" and x_lines(r)[0] else (
+                [] if lane(r) == "x" else _tickers(r.get("tickers"))),
+            "kind": X_KINDS.get(r.get("kind") or "", r.get("kind") or ""),
+            "option": x_lines(r)[1] if lane(r) == "x" else "",
+            "badge": list(x_check.badge(_check(r))[:3]) if lane(r) == "x" else None,
+            "move": x_check.price_move(_check(r), float(r["published_at"])) if lane(r) == "x" else "",
+            "group": x_group(r) if lane(r) == "x" else "",
+            "url": r["url"] if str(r.get("url") or "").startswith(("https://", "http://")) else "",
+            "lane": lane(r), "run_at": r["run_at"]}
+
+
+# ── the read-only serving of the board's rows (#809, slice N3 of #783) ───────────────────────────────────────────
+#: The most rows one read-only call answers with, whichever window it asks for: a reader (the MCP server, a script)
+#: asks for a window, not for the table.
+API_LIMIT = 200
+#: The widest window a read-only call may ask for, in days: a month of calendar, and the same cap on a headline
+#: window. The board file keeps more; a caller that wants more asks again with another window.
+API_MAX_DAYS = 31
+
+
+def event_rows(now: float | None = None, days: int = WEEK_DAYS, types: tuple[str, ...] | None = None) -> list[dict]:
+    """The live calendar rows of the next ``days`` days from today (Amsterdam), oldest first: what
+    ``GET /api/news/events`` serves. Read-only, store-only, every type the board holds unless ``types`` names some.
+
+    A retired row is never served: it is an event the source stopped listing (``module_news/calendar.py``)."""
+    now = time.time() if now is None else now
+    today = local_day(now)
+    start = datetime(today.year, today.month, today.day, tzinfo=AMS)
+    end = start + timedelta(days=max(1, min(int(days), API_MAX_DAYS)))
+    sql = (f"SELECT * FROM {EVENTS} WHERE event_ts >= ? AND event_ts < ? AND retired_at IS NULL")
+    params: list = [start.timestamp(), end.timestamp()]
+    if types:
+        wanted = sorted({str(t).strip().lower() for t in types if str(t or "").strip()})
+        if not wanted:
+            return []
+        sql += f" AND lower(type) IN ({', '.join('?' * len(wanted))})"
+        params += wanted
+    rows = rawstore.query(sql + f" ORDER BY event_ts, event LIMIT {API_LIMIT}", params, db="news")
+    return [{"event_ts": float(r["event_ts"]),
+             "event_utc": datetime.fromtimestamp(float(r["event_ts"]), timezone.utc).isoformat(),
+             "event_local": datetime.fromtimestamp(float(r["event_ts"]), AMS).isoformat(),
+             "day": local_day(r["event_ts"]).isoformat(), "hm": hm(r["event_ts"]),
+             "event": r["event"], "type": r["type"], "importance": r.get("importance"),
+             "forecast": served_value(r.get("forecast")), "prev": served_value(r.get("prev")),
+             "reported_period": r.get("reported_period"), **_api_fda(r)} for r in rows]
+
+
+def _api_fda(r: dict) -> dict:
+    """What an FDA row (#807) carries beyond an economic one; empty for an economic row, so one answer holds both.
+
+    ``target_precision`` travels with the day: a reader must be able to tell "4 Dec 2026" from "some time in
+    Q2 2027", which is why ``target_text`` is served as UW wrote it.
+    """
+    if str(r.get("type") or "") != FDA_TYPE:
+        return {}
+    return {"ticker": r.get("ticker"), "drug": r.get("drug"), "catalyst": r.get("catalyst"),
+            "indication": r.get("indication"), "application_status": r.get("status"),
+            "outcome": r.get("outcome"), "url": r.get("url"),
+            "target_text": r.get("target_text"), "target_precision": r.get("target_precision")}
+
+
+def headline_rows(start: float, end: float, ticker: str | None = None,
+                  limit: int = API_LIMIT) -> list[dict]:
+    """Stored headlines published inside ``[start, end]``, newest first, optionally of one ticker: what
+    ``GET /api/news/headlines`` serves when it is asked for a window instead of the page's ``since`` poll.
+
+    The window is what makes the join of #809 possible: the headlines around a release, not the last 24 hours."""
+    rows = rawstore.query(
+        f"SELECT headline_id, provider, published_at, headline, source, tickers, url, kind, option, x_check, run_at "
+        f"FROM {HEADLINES} WHERE published_at >= ? AND published_at <= ? ORDER BY published_at DESC "
+        f"LIMIT {max(1, min(int(limit), API_LIMIT)) * 4}", [float(start), float(end)], db="news")
+    rows = [r for r in rows if not (lane(r) == "x" and r.get("kind") == "other")]
+    if ticker:
+        want = str(ticker).strip().upper()
+        rows = [r for r in rows if want in {t.upper() for t in _tickers(r.get("tickers"))}
+                or want == (x_group(r) or "").upper()]
+    return [_api_headline(r) for r in rows[:max(1, min(int(limit), API_LIMIT))]]
 
 
 def _picker() -> list[dict]:
