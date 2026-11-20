@@ -45,10 +45,25 @@ def test_gate_flags_over_max_edges(tmp_path):
     assert rep["over_max_edges"] == {"HOT": 41}
 
 
-def test_the_committed_fixture_is_empty():
-    """Plan v31 step 1(g): the 80 labels judged the keyword scan #748 deleted; the census fills the file again."""
-    assert prec.load_labels() == []
+def test_the_committed_fixture_is_the_census_that_cleared_the_gate():
+    """#1159: the second census sample, drawn fresh after the wrong-edge filter of #1142 and marked under avo's
+    lenient rule. It is what ``SERVE_PROFILE_EDGES`` rests on, so the numbers are asserted, not just the shape."""
+    labels = prec.load_labels()
+    assert len(labels) == 200
+    rep = prec.precision(labels)
+    assert (rep["n"], rep["tp"], rep["fp"]) == (194, 166, 28)       # 6 rows unmarkable, so not judged
+    assert rep["precision"] == pytest.approx(0.8557, abs=1e-4)
+    assert rep["lower_bound"] == pytest.approx(0.7993, abs=1e-4)   # above the section 6 rule of 0.70
+    assert rep["passes"] is True
+    # Every row carries the keys ``served_labels`` matches an edge on, and an unmarkable row says why.
+    for l in labels:
+        assert l["src"] and l["dst_ticker"] and l["relation"] in ("customer", "supplier")
+        assert l["label"] in (True, False, None)
+        assert (l["label"] is not None) or l["unmarkable"]
+        assert (l["label"] is not False) or l["wrong_because"]
+    # A label whose edge the extractor no longer emits says nothing about what the board shows.
     assert prec.gate(served=[])["status"] == "not measured"
+    assert prec.gate(served=[])["links"] == 0
 
 
 def test_load_labels_missing_is_empty():

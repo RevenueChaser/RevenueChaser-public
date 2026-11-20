@@ -1,8 +1,8 @@
 """Plan v31 step 1(e), 1(f) and G-F: what the board serves.
 
-(e) customer and supplier rows only; (f) a profile edge only once the census clears ``SERVE_PROFILE_EDGES``, which
-is off by default and read where the board is served, so the store keeps every edge; G-F (#284) the payload says
-when a sync found no edge and kept the stored ones.
+(e) customer and supplier rows only; (f) a profile edge once the census clears ``SERVE_PROFILE_EDGES``, which the
+fresh sample did (#1159), so it is on by default; it is still read where the board is served, so the store keeps
+every edge whichever way it is set; G-F (#284) the payload says when a sync found no edge and kept the stored ones.
 """
 from __future__ import annotations
 
@@ -19,23 +19,30 @@ EDGES = [_edge("AAPL", "customer", "xbrl"), _edge("TSM", "supplier", "profile"),
          _edge("MSFT", "other", "regex")]
 
 
-def test_the_board_serves_customer_and_supplier_rows_and_no_profile_edge_by_default(rawstore_tmp_db):
-    assert config.SERVE_PROFILE_EDGES is False
+def test_the_board_serves_the_profile_edges_the_census_cleared(rawstore_tmp_db):
+    # On since #1159: the fresh census sample cleared the plan v31 section 6 gate (166/194, Wilson low 79.9%).
+    assert config.SERVE_PROFILE_EDGES is True
+    payload = engine._board_payload([], EDGES, "x", None)
+    assert {(e["dst_ticker"], e["source"]) for e in payload["edges"]} == {("AAPL", "xbrl"), ("TSM", "profile")}
+    # Nothing is held back, so the board shows no "not yet verified" note.
+    assert payload["profile_hidden"] == 0
+    assert "not yet verified" not in report._status_notes(payload)
+    # A competitor is a Relatedness question and an ``other`` row is no chain link: neither is served.
+    assert {e["relation"] for e in payload["edges"]} == {"customer", "supplier"}
+
+
+def test_the_switch_holds_the_profile_edges_back_again_without_a_resync(rawstore_tmp_db, monkeypatch):
+    monkeypatch.setattr(config, "SERVE_PROFILE_EDGES", False)
     payload = engine._board_payload([], EDGES, "x", None)
     assert [(e["dst_ticker"], e["source"]) for e in payload["edges"]] == [("AAPL", "xbrl")]
     assert payload["profile_hidden"] == 1
 
 
-def test_the_switch_serves_profile_edges_without_a_resync(rawstore_tmp_db, monkeypatch):
-    monkeypatch.setattr(config, "SERVE_PROFILE_EDGES", True)
-    payload = engine._board_payload([], EDGES, "x", None)
-    assert {(e["dst_ticker"], e["source"]) for e in payload["edges"]} == {("AAPL", "xbrl"), ("TSM", "profile")}
-    assert payload["profile_hidden"] == 0
-
-
-def test_the_store_keeps_what_the_board_holds_back(rawstore_tmp_db):
+def test_the_store_keeps_every_edge_whichever_way_the_switch_is_set(rawstore_tmp_db, monkeypatch):
     rawstore.ensure_table("chain_mentions")
     rawstore.write_rows("chain_mentions", EDGES)
+    assert {e["dst_ticker"] for e in engine.load_payload()["edges"]} == {"AAPL", "TSM"}
+    monkeypatch.setattr(config, "SERVE_PROFILE_EDGES", False)
     assert {e["dst_ticker"] for e in engine.load_payload()["edges"]} == {"AAPL"}
     assert len(rawstore.get_all("chain_mentions")) == 4
 
