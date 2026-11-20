@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import time
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from RevenueChaser.core import econ_importance, rawstore
@@ -27,6 +27,21 @@ HEADLINES = "news_headlines"
 WEEK_DAYS = 7
 HEADLINE_HOURS = 24
 HEADLINE_LIMIT = 30
+
+#: ``target_precision`` of an FDA catalyst UW gives a real day for; anything else is a window (#807).
+DAY_PRECISION = "day"
+#: At most this many FDA catalysts with no day of their own stand in the "Later, no day yet" group (#808).
+UNDATED_LIMIT = 40
+#: How far back the undated group is read: a window that is still open can have begun up to a year ago (a
+#: ``2026-Q4`` catalyst resolves to 1 October), so the rows are read wide and ``window_open`` cuts them.
+UNDATED_LOOKBACK_DAYS = 370
+#: How long an FDA window lasts from its first day, by precision: a quarter three months, a half year and "mid"
+#: six, "late" the last quarter of the year.
+_WINDOW_MONTHS = {"quarter": 3, "half": 6, "mid": 6, "late": 3}
+#: How the tail of UW's target text reads on the board: ``2027-MID`` -> ``Mid 2027``, ``2027-Q2`` -> ``Q2 2027``.
+_WINDOW_WORD = {"MID": "Mid", "LATE": "Late"}
+#: An indication or a description is UW's free text; the row shows this much of it.
+INDICATION_CHARS = 72
 
 MONTHS = ("January", "February", "March", "April", "May", "June", "July", "August", "September", "October",
           "November", "December")
@@ -47,15 +62,52 @@ def day_label(d) -> str:
     return f"{WEEKDAYS[d.weekday()]} {d.day} {MONTHS[d.month - 1]}"
 
 
-def _load(now: float) -> tuple[list[dict], dict | None, list[dict], float | None]:
+def week_days(now: float) -> list[date]:
+    """The seven days of the Amsterdam week today falls in, Monday first (#808's week strip)."""
     today = local_day(now)
-    start = datetime(today.year, today.month, today.day, tzinfo=AMS)
+    monday = today - timedelta(days=today.weekday())
+    return [monday + timedelta(days=i) for i in range(WEEK_DAYS)]
+
+
+def dated(e: dict) -> bool:
+    """True when UW gave this catalyst a real day; false for a quarter, a half year, "mid" or "late" (#807)."""
+    return str(e.get("target_precision") or DAY_PRECISION).lower() == DAY_PRECISION
+
+
+def window_open(e: dict, today: date) -> bool:
+    """True while an undated catalyst's window has not ended: its first day plus the precision's length."""
+    months = _WINDOW_MONTHS.get(str(e.get("target_precision") or "").lower(), 0)
+    d = local_day(e["event_ts"])
+    m = d.month - 1 + months
+    return date(d.year + m // 12, m % 12 + 1, 1) > today
+
+
+def window_label(text) -> str:
+    """UW's own target text as the board writes it: ``2027-Q2`` -> ``Q2 2027``, ``2027-LATE`` -> ``Late 2027``."""
+    raw = str(text or "").strip()
+    year, _, part = raw.partition("-")
+    if not part or not year.isdigit():
+        return raw or "No date"
+    part = part.upper()
+    return f"{_WINDOW_WORD.get(part, part)} {year}"
+
+
+def _load(now: float) -> tuple[list[dict], list[dict], dict | None, list[dict], float | None]:
+    days = week_days(now)
+    start = datetime(days[0].year, days[0].month, days[0].day, tzinfo=AMS)
     end = start + timedelta(days=WEEK_DAYS)
-    # The FDA lane is stored (#807) but not shown yet: its tab and week strip are #808, and no UI is written before
-    # avo has approved that mock. Until then the page is the economic calendar it was.
+    today = local_day(now)
     events = rawstore.query(
-        f"SELECT * FROM {EVENTS} WHERE event_ts >= ? AND event_ts < ? AND retired_at IS NULL AND type <> ? "
-        f"ORDER BY event_ts, event", [start.timestamp(), end.timestamp(), FDA_TYPE], db="news")
+        f"SELECT * FROM {EVENTS} WHERE event_ts >= ? AND event_ts < ? AND retired_at IS NULL "
+        f"ORDER BY event_ts, event", [start.timestamp(), end.timestamp()], db="news")
+    # The FDA catalysts UW gives no day for (a quarter, a half year, "late"): they belong to no day of the strip,
+    # so they stand in their own group under the FDA tab and are read outside the week's window (#808).
+    undated = [e for e in rawstore.query(
+        f"SELECT * FROM {EVENTS} WHERE type = ? AND retired_at IS NULL AND coalesce(target_precision, ?) <> ? "
+        f"AND event_ts >= ? ORDER BY event_ts, event LIMIT {UNDATED_LIMIT}",
+        [FDA_TYPE, DAY_PRECISION, DAY_PRECISION,
+         (start - timedelta(days=UNDATED_LOOKBACK_DAYS)).timestamp()], db="news")
+        if window_open(e, today)]
     hl = rawstore.query(f"SELECT * FROM {HIGHLIGHT} WHERE session_date = ?", [today.isoformat()], db="news")
     x = f"coalesce(provider, '') IN ({', '.join(repr(p) for p in X_PROVIDERS)})"
     lanes = (f"NOT {x} AND coalesce(tickers, '[]') = '[]'", f"NOT {x} AND coalesce(tickers, '[]') <> '[]'",
@@ -66,7 +118,7 @@ def _load(now: float) -> tuple[list[dict], dict | None, list[dict], float | None
     # The page's "updated" time is its newest write: the calendar's, or the 5-minute headline pass's.
     got = rawstore.query(f"SELECT max(run_at) AS t FROM {EVENTS}", db="news")
     stamps = [float(t) for t in [got[0]["t"] if got else None] + [h.get("run_at") for h in heads] if t is not None]
-    return events, (hl[0] if hl else None), heads, (max(stamps) if stamps else None)
+    return events, undated, (hl[0] if hl else None), heads, (max(stamps) if stamps else None)
 
 
 def dots_html(level) -> str:
@@ -82,30 +134,141 @@ def vals_html(e: dict) -> str:
             f'<span>Previous <b>{esc(prev or "–")}</b></span></div>')
 
 
+def _day_attrs(e: dict, today: date) -> str:
+    """What the week strip filters a row by: its own Amsterdam day, hidden unless that day is the pressed one."""
+    d = local_day(e["event_ts"])
+    return f' data-day="{d.isoformat()}"' + ("" if d == today else " hidden")
+
+
 def _row(e: dict, now: float, hl_key) -> str:
     key = (e["event_ts"], e["event"], e["type"])
     cls = "ev hl" if key == hl_key else "ev"
     past = ' data-past="1"' if float(e["event_ts"]) < now else ""
     kind = _KIND.get(str(e.get("type") or "").lower(), "Data")
-    return (f'<li class="{cls}"{past}><span class="t">{hm(e["event_ts"])}</span>'
+    return (f'<li class="{cls}"{past}{_day_attrs(e, local_day(now))}>'
+            f'<span class="t">{hm(e["event_ts"])}</span>'
             f'<div class="nm"><span class="kind">{kind}</span> {dots_html(e.get("importance"))}'
             f'<div class="name">{esc(e["event"])}</div></div>{vals_html(e)}</li>')
 
 
-def _calendar(events: list[dict], now: float, hl_key) -> tuple[str, str]:
-    today = local_day(now)
-    todays = [e for e in events if local_day(e["event_ts"]) == today]
-    today_html = ("<ul class=\"list\">" + "".join(_row(e, now, hl_key) for e in todays) + "</ul>") if todays else (
-        '<p class="empty">Nothing on today\'s calendar.</p>')
-    if not events:
-        return today_html, ('<p class="empty">Nothing on this week\'s calendar. Refresh rebuilds the page from '
-                            'the stored calendar.</p>')
-    by_day: dict = {}
+def _clip(value, chars: int = INDICATION_CHARS) -> str:
+    text = " ".join(str(value or "").split())
+    return text if len(text) <= chars else text[:chars - 1].rstrip() + "…"
+
+
+def fda_vals_html(e: dict) -> str:
+    """An FDA row's two columns: what the drug is for, and where the application stands (#808's approved mock)."""
+    return (f'<div class="vals"><span>Indication <b>{esc(_clip(e.get("indication")) or "–")}</b></span>'
+            f'<span>Status <b>{esc(e.get("status") or "–")}</b></span></div>')
+
+
+def _fda_sub(e: dict) -> str:
+    """The small line under the name: UW's own target text when it is not a day, and the outcome once there is one."""
+    parts = []
+    if not dated(e) and e.get("target_text"):
+        parts.append(f'Unusual Whales serves this one as {e["target_text"]}, not a day')
+    if e.get("outcome"):
+        parts.append(f'Outcome: {_clip(e["outcome"])}')
+    return f'<div class="sub">{esc(" · ".join(parts))}</div>' if parts else ""
+
+
+def _fda_row(e: dict, now: float, strip: bool = True) -> str:
+    """One FDA catalyst. A day it really has stands as ``20 Nov``; a window stands as its own words with a
+    "no day yet" chip, so a quarter is never read as a day (#807, #808)."""
+    today, d = local_day(now), local_day(e["event_ts"])
+    if dated(e):
+        t = f'<span class="t">{d.day} {MONTHS[d.month - 1][:3]}</span>'
+        chip = ""
+    else:
+        t = f'<span class="t na">{esc(window_label(e.get("target_text")))}</span>'
+        chip = ' <span class="pchip">no day yet</span>'
+    past = ' data-past="1"' if d < today else ""
+    return (f'<li class="ev"{past}{_day_attrs(e, today) if strip else ""}>{t}'
+            f'<div class="nm"><span class="kind">FDA</span> {dots_html(e.get("importance"))}{chip}'
+            f'<div class="name">{esc(e["event"])}</div>{_fda_sub(e)}</div>{fda_vals_html(e)}</li>')
+
+
+def _strip(events: list[dict], now: float) -> str:
+    """The week's seven days, Monday first: each with its own count of releases and FDA catalysts, today marked.
+    Pressing a day filters both lists to it; without JavaScript the page stands on today (#808)."""
+    today, out = local_day(now), []
+    counts = {d: [0, 0] for d in week_days(now)}
     for e in events:
-        by_day.setdefault(local_day(e["event_ts"]), []).append(e)
-    week = "".join(f'<h3 class="day">{day_label(d)}</h3><ul class="list">'
-                   + "".join(_row(e, now, hl_key) for e in rows) + "</ul>" for d, rows in by_day.items())
-    return today_html, week
+        row = counts.get(local_day(e["event_ts"]))
+        if row is not None:
+            row[1 if str(e.get("type") or "") == FDA_TYPE else 0] += 1
+    for d, (n_econ, n_fda) in counts.items():
+        cls = "wkd" + (" today" if d == today else "") + ("" if n_econ or n_fda else " empty")
+        body = ((f'<i class="e">{n_econ}</i>' if n_econ else "") + (f'<i class="f">{n_fda}</i>' if n_fda else "")
+                ) or "<i>&middot;</i>"
+        out.append(f'<button type="button" class="{cls}" data-day="{d.isoformat()}" onclick="newsDay(this)" '
+                   f'aria-pressed="{"true" if d == today else "false"}" '
+                   f'aria-label="{day_label(d)}: {n_econ} releases, {n_fda} FDA catalysts">'
+                   f'<span class="wd">{WEEKDAYS[d.weekday()][:3]}</span><span class="dn">{d.day}</span>'
+                   f'<span class="cnt">{body}</span></button>')
+    return '<div class="wk" role="group" aria-label="This week">' + "".join(out) + "</div>"
+
+
+def _cd(label: str, body: str) -> str:
+    return f'<p class="cd" id="cd-{label}">{body}</p>'
+
+
+def _econ_cd(events: list[dict], now: float) -> str:
+    """The next release still to come this week, with a clock the page counts down (#808's approved mock)."""
+    nxt = next((e for e in events if str(e.get("type") or "") != FDA_TYPE and float(e["event_ts"]) > now), None)
+    if not nxt:
+        return _cd("econ", "No release left this week.")
+    left = float(nxt["event_ts"]) - now
+    return _cd("econ", f'Coming in <b data-ts="{float(nxt["event_ts"]):.0f}">{_hms(left)}</b> · '
+                       f'<span class="nm2">{esc(nxt["event"])}</span> {hm(nxt["event_ts"])}')
+
+
+def _fda_cd(rows: list[dict], now: float) -> str:
+    """The next FDA catalyst with a day of its own. A catalyst has a date and no time, so there is no clock: today
+    says so, a later day says how many days away it is."""
+    today = local_day(now)
+    nxt = next((e for e in rows if dated(e) and local_day(e["event_ts"]) >= today), None)
+    if not nxt:
+        return _cd("fda", "No FDA catalyst with a day of its own left this week.")
+    d = local_day(nxt["event_ts"])
+    days = (d - today).days
+    when = "today, no time published" if days == 0 else day_label(d)
+    clock = "—" if days == 0 else f"{days} day{'s' if days != 1 else ''}"
+    return _cd("fda", f'Coming in <b>{clock}</b> · <span class="nm2">{esc(nxt["event"])}</span> {when}')
+
+
+def _hms(seconds: float) -> str:
+    s = max(0, int(seconds))
+    h, m, x = s // 3600, (s % 3600) // 60, s % 60
+    return f"{h}:{m:02d}:{x:02d}" if h else f"{m}:{x:02d}"
+
+
+def _list(rows: list[str], shown: int, empty: str) -> str:
+    """One list and its own "nothing on this day" line. ``shown`` is how many of the rows the pressed day leaves
+    visible: with none, the list goes and the line stands. The strip swaps the two as the day changes."""
+    return (f'<ul class="list" data-day-list{"" if shown else " hidden"}>{"".join(rows)}</ul>'
+            f'<p class="empty dayempty"{" hidden" if shown else ""}>{empty}</p>')
+
+
+def _calendar(events: list[dict], undated: list[dict], now: float, hl_key) -> str:
+    """The calendar card: the week strip, then the Economic and FDA lists of the pressed day (#808)."""
+    today = local_day(now)
+    econ = [e for e in events if str(e.get("type") or "") != FDA_TYPE]
+    fda = [e for e in events if str(e.get("type") or "") == FDA_TYPE]
+    n_econ = sum(1 for e in econ if local_day(e["event_ts"]) == today)
+    n_fda = sum(1 for e in fda if local_day(e["event_ts"]) == today)
+    later = ('<h3 class="day">Later, no day yet</h3><ul class="list">'
+             + "".join(_fda_row(e, now, strip=False) for e in undated) + "</ul>") if undated else ""
+    return (f'{_strip(events, now)}'
+            f'<div class="tabs" role="tablist" aria-label="Calendar">'
+            f'<button type="button" role="tab" aria-selected="true" aria-controls="cal-econ" '
+            f'onclick="newsTab(this)">Economic <span class="n" data-n="econ">{n_econ}</span></button>'
+            f'<button type="button" role="tab" aria-selected="false" aria-controls="cal-fda" '
+            f'onclick="newsTab(this)">FDA <span class="n" data-n="fda">{n_fda}</span></button></div>'
+            f'<div id="cal-econ" role="tabpanel">{_econ_cd(events, now)}'
+            f'{_list([_row(e, now, hl_key) for e in econ], n_econ, "Nothing on this day’s economic calendar.")}</div>'
+            f'<div id="cal-fda" role="tabpanel" hidden>{_fda_cd(fda, now)}'
+            f'{_list([_fda_row(e, now) for e in fda], n_fda, "No FDA catalyst on this day.")}{later}</div>')
 
 
 def _highlight(hl: dict | None) -> str:
@@ -452,9 +615,35 @@ h1{margin:2px 0 0;color:var(--bright);font-size:22px}
 @keyframes tqspin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){.spin{animation:none}}
 .foot{margin-top:16px;color:var(--muted);font-size:12px}
+/* ── #808: the week strip, the category tabs' counts and the countdown (mock approved by avo 20 Nov 2026) ── */
+.wk{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;margin:0 0 14px}
+.wkd{min-height:var(--touch);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+ padding:8px 2px;border:1px solid var(--border);border-radius:10px;background:transparent;color:var(--fg);
+ font:inherit;cursor:pointer;text-align:center}
+.wkd .wd{font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.wkd .dn{font-size:16px;font-weight:600;color:var(--bright);font-variant-numeric:tabular-nums;line-height:1.1}
+.wkd .cnt{display:flex;gap:6px;font-size:11px;font-variant-numeric:tabular-nums;color:var(--muted)}
+.wkd .cnt i{font-style:normal}
+.wkd .cnt .e::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;
+ background:var(--accent);margin-right:3px;vertical-align:1px}
+.wkd .cnt .f::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;
+ background:var(--amber);margin-right:3px;vertical-align:1px}
+.wkd[aria-pressed="true"]{border-color:var(--accent);background:var(--input-bg)}
+.wkd.today .dn{color:var(--accent)}
+.wkd.today{box-shadow:inset 0 -2px 0 var(--accent)}
+.wkd.empty .dn{color:var(--muted)}
+.cd{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:0 0 10px;padding:8px 12px;
+ border:1px dashed var(--border);border-radius:10px;color:var(--muted);font-size:12.5px}
+.cd b{color:var(--bright);font-variant-numeric:tabular-nums}
+.cd .nm2{color:var(--fg)}
+.pchip{display:inline-block;padding:0 6px;border-radius:6px;background:var(--input-bg);color:var(--muted);
+ font-size:11px;white-space:nowrap}
+.ev .t.na{color:var(--muted);font-weight:400;font-size:12px}
+.sub{color:var(--muted);font-size:12px;margin-top:2px}
 [hidden]{display:none!important}
 @media (max-width:900px){.grid,.cols{grid-template-columns:minmax(0,1fr)}.feat{order:-1}}
-@media (max-width:560px){.ev{grid-template-columns:60px 1fr}.vals{grid-column:2}.wrap{padding:12px}}
+@media (max-width:560px){.ev{grid-template-columns:60px 1fr}.vals{grid-column:2}.wrap{padding:12px}
+ .wk{gap:4px}.wkd{padding:6px 0}.wkd .cnt{flex-direction:column;gap:0}}
 """
 
 _JS = """
@@ -523,6 +712,35 @@ function newsTab(btn){
     var on = tabs[i] === btn;
     tabs[i].setAttribute('aria-selected', on ? 'true' : 'false');
     document.getElementById(tabs[i].getAttribute('aria-controls')).hidden = !on;
+  }
+}
+function _hms(s){                                     // the countdown's clock: m:ss, h:mm:ss past the hour
+  s = Math.max(0, Math.round(s));
+  var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60;
+  var p = function(n){ return (n < 10 ? '0' : '') + n; };
+  return h ? h + ':' + p(m) + ':' + p(x) : m + ':' + p(x);
+}
+function newsTick(){
+  var b = document.querySelector('#cd-econ b[data-ts]'); if(!b) return;
+  var left = parseFloat(b.getAttribute('data-ts')) - Date.now() / 1000;
+  b.textContent = left > 30 ? _hms(left) : 'now';
+}
+setInterval(newsTick, 1000); newsTick();
+function newsDay(btn){                                // the week strip: one day's releases and catalysts at a time
+  var day = btn.getAttribute('data-day'), s = document.querySelectorAll('.wkd'), i = 0;
+  for(i = 0; i < s.length; i++) s[i].setAttribute('aria-pressed', s[i] === btn ? 'true' : 'false');
+  var lists = document.querySelectorAll('[data-day-list]');
+  for(i = 0; i < lists.length; i++){
+    var ul = lists[i], rows = ul.children, n = 0;
+    for(var j = 0; j < rows.length; j++){
+      var mine = rows[j].getAttribute('data-day') === day;
+      rows[j].hidden = !mine; if(mine) n++;
+    }
+    ul.hidden = n === 0;
+    var empty = ul.parentNode.querySelector('.empty.dayempty'); if(empty) empty.hidden = n > 0;
+    var panel = ul.parentNode.getAttribute('id') || '';
+    var cnt = document.querySelector('.tabs .n[data-n="' + panel.replace('cal-', '') + '"]');
+    if(cnt) cnt.textContent = n;
   }
 }
 """
@@ -646,6 +864,14 @@ HELP = help_html(
     "and the tweet moments drawn above each group: from 4 hours before the tweet to 15 minutes after it, that "
     "contract's trades over $25k (size, contract, premium, ask/bid side) and the next day's open-interest change. "
     "The actual value is not shown: forecast and previous value.</p>"
+    "<p><b>The week strip</b> stands above the calendar: one button a day, Monday to Sunday, with that day's "
+    "number of economic releases and of FDA catalysts, and today marked. Pressing a day shows that day under "
+    "both the <b>Economic</b> and the <b>FDA</b> tab; the line above each list is the next one still to come.</p>"
+    "<p><b>FDA</b> is Unusual Whales' FDA calendar: a PDUFA date, an advisory committee meeting or a decision, "
+    "with what the drug is for and where its application stands. Unusual Whales does not give every catalyst a "
+    "day — some are served as a quarter, a half year, \"mid\" or \"late\" in a year. Those carry a <b>no day "
+    "yet</b> chip and stand together under <b>Later, no day yet</b>, never snapped onto a day they do not have. "
+    "An FDA catalyst has a date and no time of day, so it shows no clock.</p>"
     "<p>Market headlines land on the page within seconds of arriving; stock headlines come every 5 minutes. "
     "Under each lane's heading stands that lane's <b>own</b> last data time: the clock at the top of the page is "
     "the newest write to any lane of the board, so on its own it cannot show a lane that has died.</p>"
@@ -660,20 +886,24 @@ HELP = help_html(
 def render_html(now: float | None = None, provider_health: dict | None = None) -> str:
     """The page; ``provider_health`` (a Fetch whose gateway did not answer) adds the "Data incomplete" banner."""
     now = time.time() if now is None else now
-    events, hl, heads, stamp = _load(now)
+    events, undated, hl, heads, stamp = _load(now)
     since = max((float(h["run_at"]) for h in heads if h.get("run_at") is not None), default=now)
     today = local_day(now)
     hl_key = (hl["event_ts"], hl["event"], hl["type"]) if hl else None
-    today_html, week_html = _calendar(events, now, hl_key)
-    n_today = sum(1 for e in events if local_day(e["event_ts"]) == today)
+    cal_html = _calendar(events, undated, now, hl_key)
+    todays = [e for e in events if local_day(e["event_ts"]) == today]
+    n_today = sum(1 for e in todays if str(e.get("type") or "") != FDA_TYPE)
+    n_fda = len(todays) - n_today
+    counted = (f"{n_today} release{'' if n_today == 1 else 's'} and {n_fda} FDA "
+               f"catalyst{'' if n_fda == 1 else 's'} today")
     updated = f"Data updated at {hm(stamp)}" if stamp else "No data built yet"
     lanes = _headlines(heads, headlines.lane_freshness(), now)
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>News</title><script>{THEME_JS}</script><style>{THEME_CSS}{_CSS}</style>{FILTERS_CSS}</head>
 <body><div class="wrap">
-<header class="top"><div><div class="eyebrow">US · Economic calendar</div><h1>{long_date(today)}</h1>
-<div class="muted">{WEEKDAYS[today.weekday()]} · {n_today} releases today</div></div>
+<header class="top"><div><div class="eyebrow">US · Calendar</div><h1>{long_date(today)}</h1>
+<div class="muted">{WEEKDAYS[today.weekday()]} · {counted}</div></div>
 <div class="muted">{updated}</div></header>
 {provider_health_html(provider_health)}
 <nav class="ptabs" role="tablist" aria-label="Sections">
@@ -684,16 +914,12 @@ def render_html(now: float | None = None, provider_health: dict | None = None) -
 <span class="n">{lanes["x_n"]}</span></button>
 </nav>
 <div id="pg-cal" role="tabpanel"><div class="grid">
-<section class="card"><div class="tabs" role="tablist">
-<button type="button" role="tab" aria-selected="true" aria-controls="news-today" onclick="newsTab(this)">Today</button>
-<button type="button" role="tab" aria-selected="false" aria-controls="news-week" onclick="newsTab(this)">This week</button>
-</div><div id="news-today" role="tabpanel">{today_html}</div>
-<div id="news-week" role="tabpanel" hidden>{week_html}</div></section>
+<section class="card">{cal_html}</section>
 <div class="side">{_highlight(hl)}</div>
 </div></div>
 <div id="pg-heads" role="tabpanel" hidden>{_ticker_box()}<div class="cols">{lanes["market"]}{lanes["stocks"]}</div></div>
 <div id="pg-x" role="tabpanel" hidden>{lanes["x"]}</div>
-<p class="foot">Source: calendar Unusual Whales, headlines Dow Jones (IBKR), X posts Grok summaries and RC's own X reader · Times Europe/Amsterdam · Importance: ●●● high ●●○ medium ●○○ low</p>
+<p class="foot">Source: economic and FDA calendar Unusual Whales, headlines Dow Jones (IBKR), X posts Grok summaries and RC's own X reader · Times Europe/Amsterdam · Importance: ●●● high ●●○ medium ●○○ low</p>
 {HELP}
 </div>{watchlist_html("news")}<script>{FILTERS_JS}</script>
 <script>var NEWS_SINCE = {since!r}, HEAD_LIMIT = {HEADLINE_LIMIT}, TQ_PICK = {script_json(_picker())};{_JS}{_TQ_JS}</script>
