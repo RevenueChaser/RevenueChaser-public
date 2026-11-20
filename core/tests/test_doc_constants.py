@@ -19,6 +19,33 @@ def test_data_architecture_names_the_current_schema_version():
     assert m.group(1) == rawstore._SCHEMA_VERSION
 
 
+def test_data_architecture_lists_exactly_the_board_files():
+    """The store's contents are a value the code owns: ``rawstore.BOARD_DBS`` (#1167).
+
+    The doc described ``raw.duckdb``, ``edgar.duckdb``, ``history.duckdb`` and ``.store/prices.duckdb`` as the
+    store for five days after #860 deleted them, which is how #166 came to be written around a table that no
+    longer exists.
+    """
+    text = (_REPO / "docs" / "data_architecture.md").read_text(encoding="utf-8")
+    m = re.search(r"The board files today \(`rawstore\.BOARD_DBS`\): ([^.]+)\.", text)
+    assert m, "docs/data_architecture.md no longer lists the board files"
+    listed = tuple(re.findall(r"`([a-z0-9_]+)`", m.group(1)))
+    assert listed == rawstore.BOARD_DBS
+
+
+def test_data_architecture_gives_no_retired_table_a_row_of_its_own():
+    """A table row reads as the current contract, whatever a banner above it says (#1167).
+
+    ``rawstore.RETIRED_TABLES`` is the code's own list of the removed stores' table names that nothing reads any
+    more; ``core/tests/test_no_old_store.py`` keeps them out of the code. Prose about one is provenance and stays
+    — only a row of a table is checked, because that is what a reader takes for the layout as it is.
+    """
+    text = (_REPO / "docs" / "data_architecture.md").read_text(encoding="utf-8")
+    rows = {m.group(1) for m in re.finditer(r"^\| `([a-z0-9_]+)` \|", text, re.M)}
+    named = sorted(rows & set(rawstore.RETIRED_TABLES))
+    assert not named, f"docs/data_architecture.md has a table row for retired tables: {named}"
+
+
 def test_data_architecture_names_how_long_a_runs_rows_are_kept():
     """The one year of ops.prune_runs is a value the code owns (step 9, 20 Nov 2026)."""
     from RevenueChaser.rcdata import ops
