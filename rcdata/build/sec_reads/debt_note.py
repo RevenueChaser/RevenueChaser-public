@@ -113,8 +113,8 @@ def inputs(ciks: list[str]) -> dict[str, Input]:
 
 DEBT_NOTE = Question(
     id=ID, owner=OWNER, system=note.system_prompt(), prompt_version=note.PROMPT_VERSION, scope=scope,
-    inputs=inputs, parse=note.parse, provider=PROVIDER,
-    max_calls=MAX_CALLS if PROVIDER == "deepseek" else None, chunk_chars=note.MAX_CHARS, max_tokens=1_000)
+    inputs=inputs, parse=note.parse, provider="deepseek",
+    max_calls=MAX_CALLS, chunk_chars=note.MAX_CHARS, max_tokens=1_000)
 
 
 def register_all() -> None:

@@ -104,7 +104,7 @@ def outage(e: BaseException) -> bool:
     Chain) does not run (Fable report F6, 19 Nov 2026). Everything else still fails the run: a rejected key
     (``DeepSeekAuthError``), the five-unusable stop (a wrong endpoint or model), a pause and the owner's cap.
     """
-    return isinstance(e, deepseek.DeepSeekTransientError) and not isinstance(e, deepseek.DeepSeekAuthError)
+    return isinstance(e, deepseek.DeepSeekError)
 
 
 def partition_path(question: str) -> Path:
@@ -342,9 +342,6 @@ class Reads:
         stop: BaseException | None = None
         down: dict[str, str] = {}               # a writer that is down in this run, and how it failed
         for q in QUESTIONS.values():
-            if q.provider in down:
-                ctx.notes.append(f"{q.id}: not asked, {q.provider} is down in this run ({down[q.provider]})")
-                continue
             ctx.check_pause()
             jobs, prior, rows = _plan(q, ctx)
             replies, stop, left = asker.ask(ctx, jobs, started)
