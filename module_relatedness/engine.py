@@ -13,7 +13,7 @@ import math
 import threading
 from datetime import datetime, timezone
 
-from RevenueChaser.core import job_lock, rawstore
+from RevenueChaser.core import job_lock, llm_writers, rawstore
 from RevenueChaser.core.reporting_common import write_artifact
 from RevenueChaser.core.providers import deepseek, evren
 from RevenueChaser.module_value_chain import engine as vc_engine
@@ -31,6 +31,11 @@ logger = logging.getLogger(__name__)
 
 MAX_ATTEMPTS = 3        # an empty LLM answer is retried in at most 3 runs
 MAX_TRANSIENT_FAILURES = 5   # stop a run after this many non-auth LLM failures
+#: The writer a call without one runs on: the registry's default, which is unpaid (EVREN). Every function here
+#: defaulted to the paid ``deepseek`` until 20 Nov 2026 (avo: "Fetch ve build sirasinda deepseek api kullanilan
+#: islem kalmasin hepsi evren deepseek olmali"); a Fetch always passed the board's writer, so nothing scheduled
+#: changes, but a caller that forgets the argument no longer spends money. A paid run names ``deepseek`` itself.
+DEFAULT_WRITER = llm_writers.DEFAULT
 
 class RunStopped(RuntimeError):
     """The profile run stopped early: ``peak`` (DeepSeek), ``auth``, ``transient`` (repeated), ``unusable`` (a free
@@ -483,7 +488,7 @@ def _writer(provider: str) -> tuple[str, bool, str]:
 def build_profiles(tickers: list[str], use_llm: bool = True,
                    workers: int | None = None,
                    usd_cap: float | None = None,
-                   provider: str = "deepseek",
+                   provider: str = DEFAULT_WRITER,
                    max_calls: int | None = None,
                    model: str | None = None) -> dict[str, dict]:
     """Ensure a durable profile per ticker (cache-first, CIK-grained).
@@ -496,8 +501,9 @@ def build_profiles(tickers: list[str], use_llm: bool = True,
     never calls the LLM. ``usd_cap`` caps the number of LLM calls this run (the rest
     stay pending for the next run).
 
-    ``provider`` is the writer (#360): ``deepseek`` (default; off-peak gated, ``usd_cap``) or ``evren`` (no fee, no
-    off-peak gate; ``max_calls`` caps its calls, ``usd_cap`` is not read, ``None`` is no cap).
+    ``provider`` is the writer (#360): ``evren`` (``DEFAULT_WRITER``; no fee, no
+    off-peak gate; ``max_calls`` caps its calls, ``usd_cap`` is not read, ``None`` is no cap) or ``deepseek``
+    (paid, named by the caller only; off-peak gated, ``usd_cap``).
     Which profiles need the LLM is the same for both: a current-prompt profile of either writer is current
     (``store.is_stale``). An EVREN run stops (``unusable``) when its first ``config.UNUSABLE_STOP`` replies are all
     unusable, and saves none of the unusable replies it got before its first usable one, so a wrong endpoint shape
@@ -1171,12 +1177,12 @@ class AlreadyRunning(RuntimeError):
 
 def run(no_fetch: bool = False, tickers: list[str] | None = None,
         limit: int | None = None, usd_cap: float | None = None, run_id: str | None = None,
-        provider: str = "deepseek", max_calls: int | None = None, model: str | None = None) -> dict:
+        provider: str = DEFAULT_WRITER, max_calls: int | None = None, model: str | None = None) -> dict:
     """A Fetch of the profiles and scores. ``run_id`` is kept for the callers; the result history it keyed went with
     history.duckdb (#860).
 
     ``provider`` is the profile writer (``writers.WRITERS``, #360): the CLI and the dashboard pass the board's
-    (``settings.writer``); ``deepseek`` stays this function's default for its callers and tests. A free writer
+    (``settings.writer``); a call without one runs on ``DEFAULT_WRITER``, the unpaid EVREN. A free writer
     (``evren``) writes the missing and stale profiles with no call cap unless ``max_calls`` is given (``limit``
     slices the names). ``model`` is the board's model (``None``: the chat module's ``MODEL``). Mixed writers (avo,
     11 Nov 2026): every writer's current profile is shown and scored; each company names its writer."""
@@ -1194,7 +1200,7 @@ def run(no_fetch: bool = False, tickers: list[str] | None = None,
         if not got:
             raise AlreadyRunning("Another Relatedness run is already in progress.")
         if provider == "deepseek" and model is None:
-            payload = _run(False, tickers, limit, usd_cap, run_id)
+            payload = _run(False, tickers, limit, usd_cap, run_id, provider=provider)
         else:
             payload = _run(False, tickers, limit, usd_cap, run_id, provider=provider, max_calls=max_calls,
                            model=model)
@@ -1206,7 +1212,7 @@ def run(no_fetch: bool = False, tickers: list[str] | None = None,
         return payload
 
 
-def score(only_if_new: bool = True, provider: str = "deepseek", model: str | None = None) -> dict:
+def score(only_if_new: bool = True, provider: str = DEFAULT_WRITER, model: str | None = None) -> dict:
     """Rescore every pair from the stored profiles, persist the scores and the payload. No call, no download.
 
     The weekly scoring step of #884 (avo, 16 Nov 2026: "A) Haftada bir, Pazar gecesi"). It is the Fetch's second
@@ -1236,7 +1242,7 @@ def score(only_if_new: bool = True, provider: str = "deepseek", model: str | Non
 
 
 def _run(no_fetch: bool, tickers: list[str] | None, limit: int | None,
-         usd_cap: float | None, run_id: str | None = None, provider: str = "deepseek",
+         usd_cap: float | None, run_id: str | None = None, provider: str = DEFAULT_WRITER,
          max_calls: int | None = None, model: str | None = None, write: bool | None = None,
          reuse: dict | None = None) -> dict:
     # ``write`` overrides the default "a Fetch writes, a Refresh does not" (``not no_fetch``): the weekly scoring
@@ -1256,7 +1262,7 @@ def _run(no_fetch: bool, tickers: list[str] | None, limit: int | None,
     stopped_message = None
     try:
         if provider == "deepseek" and model is None:
-            profiles = build_profiles(tickers, use_llm=not no_fetch, usd_cap=usd_cap)
+            profiles = build_profiles(tickers, use_llm=not no_fetch, usd_cap=usd_cap, provider=provider)
         elif provider == "deepseek":
             profiles = build_profiles(tickers, use_llm=not no_fetch, usd_cap=usd_cap, provider=provider, model=model)
         else:

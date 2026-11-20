@@ -53,10 +53,16 @@ def _writers():
 PROVIDERS = ("evren", "deepseek")      # core.llm_writers.WRITERS (#360, moved to core by #404)
 
 
-def llm(provider: str = "deepseek"):
+def llm(provider: str = ""):
     """The chat client module of a profile writer (``writers.WRITERS``: evren, deepseek). Each exposes
     ``complete`` (same signature) and ``MODEL``; ``complete`` is looked up at call time, so a test that patches
-    ``deepseek.complete`` still reaches the profile path."""
+    ``deepseek.complete`` still reaches the profile path.
+
+    No argument means the registry's default writer, which is unpaid (``llm_writers.DEFAULT``, EVREN). It was the
+    paid DeepSeek module until 20 Nov 2026 (avo: "Fetch ve build sirasinda deepseek api kullanilan islem kalmasin
+    hepsi evren deepseek olmali"): a caller that forgot the argument spent money, which no default should do.
+    """
+    provider = provider or _writers().DEFAULT
     if provider == "deepseek":
         return deepseek
     if provider not in PROVIDERS:
@@ -133,11 +139,12 @@ def token_budget(thinking: bool = False) -> int:
 def profile_for(ticker: str, name: str, item_text: str, thinking: bool = False,
                 effort: str | None = None, max_tokens: int | None = None,
                 client=None, budget: "CallBudget | None" = None,
-                provider: str = "deepseek", model: str | None = None,
+                provider: str = "", model: str | None = None,
                 context: dict | None = None) -> Profile:
     """Call the writer once per chunk and return the merged profile (empty fields when unusable).
 
-    ``provider`` picks the writer (``llm``); the prompt, the token budget and the parse are the same for every writer,
+    ``provider`` picks the writer (``llm``; left out, the registry's default, which has no fee). The prompt, the
+    token budget and the parse are the same for every writer,
     so profiles made from the same filing by two writers hash to the same ``input_hash``. JSON mode, no thinking
     (#400): ``thinking`` / ``effort`` are accepted for old callers and not sent.
 

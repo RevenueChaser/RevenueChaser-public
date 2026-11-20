@@ -83,6 +83,31 @@ def test_the_default_writer_is_evren(rawstore_tmp_db):
     assert writers.DEFAULT == "evren" and set(writers.WRITERS) == {"evren", "deepseek"}
 
 
+# avo, 20 Nov 2026: "Fetch ve build sirasinda deepseek api kullanilan islem kalmasin hepsi evren deepseek olmali".
+# Every one of these defaulted to the paid writer, so a caller that forgot the argument spent money. The scheduled
+# Fetch always passed the board's writer, so nothing scheduled changes; the hazard was the omitted argument.
+
+def test_a_module_call_without_a_writer_runs_on_the_free_one():
+    from RevenueChaser.module_relatedness import profiles as profiles_mod
+    assert engine.DEFAULT_WRITER == writers.DEFAULT and not writers.get(engine.DEFAULT_WRITER).paid
+    assert profiles_mod.llm() is profiles_mod._writers().client("evren")
+    assert profiles_mod.llm() is not deepseek
+
+
+def test_a_profile_saved_without_a_writer_names_the_free_one(rawstore_tmp_db):
+    store.save_profile("ZZZ", "1", {}, "{}", "a-model")
+    rows = [r for r in rawstore.get_all("relatedness_profiles") if r["ticker"] == "ZZZ"]
+    assert [r.get("provider") for r in rows] == ["evren"]
+
+
+def test_the_naming_cli_banner_names_the_free_writer(rawstore_tmp_db, monkeypatch, capsys):
+    """``--name-themes`` printed DeepSeek's off-peak gate although naming calls its own pair (#404, EVREN)."""
+    monkeypatch.setenv("LITELLM_RC_KEY", EVREN_KEY)
+    monkeypatch.setattr("RevenueChaser.module_relatedness.naming.name_themes",
+                        lambda run_id=None: {"named": 0, "pending": 0})
+    assert cli.main(["--name-themes"]) == 0
+    out = capsys.readouterr().out
+    assert "EVREN" in out and "off-peak" not in out.lower()
 
 
 
