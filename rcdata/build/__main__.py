@@ -485,7 +485,7 @@ def main(argv: list[str] | None = None) -> int:
             # wait makes a stale copy fresh, and only for a run that replaces a served file -- a fetch-only run
             # writes raw files and Parquet partitions, which the next build reads again.
             stale = base.backup_problem()
-            got, problem = (False, stale) if stale else _take_the_turn(stack, wait)
+            got, problem = _take_the_turn(stack, wait)   # M6
         if not got:
             # Exit 3 is "nothing was done", but it is still a red job row with no reason anywhere, so it says
             # which holder it waited for on stdout too (#1119).

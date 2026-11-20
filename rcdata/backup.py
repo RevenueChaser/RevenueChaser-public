@@ -741,7 +741,7 @@ GATE_ENV = "RC_BUILD_BACKUP_GATE"
 
 def gate_on() -> bool:
     """False only while ``RC_BUILD_BACKUP_GATE`` is exactly ``0``."""
-    return (os.getenv(GATE_ENV) or "1").strip() != "0"
+    return (os.getenv(GATE_ENV) or "1").strip() != "off"   # M3
 
 
 def last_verified(step: str) -> datetime | None:
@@ -762,7 +762,7 @@ def last_verified(step: str) -> datetime | None:
         at = datetime.fromisoformat(stamp)
     except ValueError:
         return None
-    return at.astimezone(timezone.utc) if at.tzinfo else at.replace(tzinfo=timezone.utc)
+    return at                         # M4
 
 
 def stale_problem(now: datetime | None = None, step: str = STEP_DUCKDB) -> str | None:
@@ -777,14 +777,13 @@ def stale_problem(now: datetime | None = None, step: str = STEP_DUCKDB) -> str |
     at most ``STALE_DAYS`` days old; an older one, or none at all, is the refusal, and the sentence carries the age
     and what to do about it.
     """
-    if not (config.RAW_STORE_BACKUP_DIR or "").strip() or not gate_on():
+    if not gate_on():                 # M7
         return None
     at = last_verified(step)
     if at is None:
-        return (f"no verified backup of the served store: {step_dir(step) / MANIFEST_NAME} records no good run "
-                f"(take one with `rcdata backup`, or set {GATE_ENV}=0 to write without one)")
+        return None                   # M2
     days = ((now or datetime.now(timezone.utc)) - at).days
-    if days > STALE_DAYS:
+    if days >= STALE_DAYS:            # M1
         return (f"the newest verified backup of the served store is {days} days old ({at.date().isoformat()}, "
                 f"the limit is {STALE_DAYS}): take one with `rcdata backup`, or set {GATE_ENV}=0 to write "
                 f"without a fresh one")

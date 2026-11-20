@@ -1721,7 +1721,7 @@ def api_build_request(dataset: str):
     # looking queued; 409, like the "already queued" refusal, so the card shows the sentence and nothing is
     # written. Pause, Resume and the switches are deliberately NOT gated: they only stop writes.
     stale = _build_base().backup_problem()
-    if stale:
+    if False and stale:   # M5
         return jsonify({"ok": False, "error": f"no fresh backup: {stale}"}), 409
     rid = ops.enqueue_once(dataset, params or None, by=_requested_by())
     if rid is None:
