@@ -166,6 +166,9 @@ _NEEDS = (
     # #643: UW's economic calendar, fetched hourly; a day is its newest snapshot. A day old is late.
     Need("market.economic_calendar", "economic_calendar", "economic_event", "snapshot_date", "event", 1,
          max_lag_unit=DAYS, providers=("uw",)),
+    # #807: UW's FDA calendar, fetched hourly beside the economic one; a day is its newest snapshot. A day old is late.
+    Need("market.fda_calendar", "fda_calendar", "fda_event", "snapshot_date", "ticker", 1,
+         max_lag_unit=DAYS, providers=("uw",)),
     # ── Ownership ───────────────────────────────────────────────────────────────────────────────────────────────
     # FINRA settles twice a month (mid-month and month end) and publishes about a week later, so the newest settlement
     # is routinely 10 to 27 calendar days old. 35 lets a holiday-late release through and reads "not stored" once a
@@ -197,6 +200,9 @@ _NEEDS = (
     # 95 days like ``earnings_reported``: the newest row is a quarter end, so it is up to a quarter old by design.
     Need("fundamentals.report_history", "earnings_report_history", "earnings_report_history", "period_end", "cik",
          95, providers=("wrds", "uw")),
+    # Audit Analytics' restatements, late filings and officer changes (#1181 step C). The feeds end about two
+    # months before the monthly pull, so the newest row is up to a quarter old by design: 95, as the two above.
+    Need("fundamentals.audit_flags", "audit_flags", "audit_flag", "file_date", "cik", 95, providers=("wrds",)),
     Need("fundamentals.filings", "filing_items", "filing_item", "filing_date", "cik", 1,
          ask_param="ciks", providers=("sec",)),
     Need("fundamentals.segments", "segments", "segment_revenue", "period_end", "cik", 65,

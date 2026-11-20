@@ -136,7 +136,10 @@ def test_record_issue_and_job_runs():
     [issue] = ops.rows("build_issues")
     [run] = ops.rows("job_runs2")
     assert tuple(issue[c] for c in ("dataset", "kind", "key", "detail", "run_id", "resolved_on")) == ("market_series", "parse", "fred:DGS2", "bad row", "r1", None)
-    assert run["status"] == "ok" and run["pid"] == os.getpid() and json.loads(run["params"]) == {"once": True}
+    # The chain id rides in ``params`` and is the run's own id when nothing started it (step 1 of the 20 Nov
+    # 2026 review; ``ops.chained_params``).
+    assert run["status"] == "ok" and run["pid"] == os.getpid()
+    assert json.loads(run["params"]) == {"once": True, "chain": "r1"}
     assert run["finished_at"] is not None
 
 
@@ -423,3 +426,30 @@ def test_pause_cancels_the_queued_request_and_leaves_running_and_done_rows():
     assert rows[q1]["ended_at"] is not None
     assert ops.schedule_get("market_series")["paused_by"] == "avo"
     assert ops.cancel_queued("market_series", by="avo") == 0, "nothing left to cancel"
+
+
+# ── every run, for the Runs tab (#1205) ────────────────────────────────────────
+
+def test_recent_runs_gives_every_writers_runs_newest_first_with_counts_and_params():
+    ops.start_run("build1", "market/series", "schedule", {"tiers": ["t1"]})
+    ops.finish_run("build1", "ok", None, {"rows": 4, "steps": {"fetch": 2.0, "build": 9.0}})
+    ops.start_run("task1", None, "schedule", job="RC-Build")
+    ops.finish_run("task1", "done", None, {"queued": 1})
+    got = ops.recent_runs()
+    assert [r["run_id"] for r in got] == ["task1", "build1"], "newest first, whoever wrote them"
+    build = got[1]
+    assert build["dataset"] == "market/series" and build["job"] is None
+    assert build["counts"]["steps"] == {"fetch": 2.0, "build": 9.0}, "counts come back as a dict, not JSON text"
+    assert build["params"]["tiers"] == ["t1"] and build["params"]["chain"] == "build1"
+
+
+def test_recent_runs_reads_at_most_the_limit_asked_for():
+    for i in range(4):
+        ops.start_run(f"r{i}", "d", "cli")
+    assert len(ops.recent_runs(2)) == 2
+
+
+def test_runs_exist_answers_which_ids_have_a_row():
+    ops.start_run("here", "d", "cli")
+    assert ops.runs_exist(["here", "gone"]) == {"here"}
+    assert ops.runs_exist([]) == set() and ops.runs_exist(None) == set()

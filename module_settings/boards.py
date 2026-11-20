@@ -270,7 +270,7 @@ BOARD_INPUTS: list[dict] = [
     _board("module_watchlists", "Watch lists",
            ["wl_list", "wl_section", "wl_item", "wl_change"], _watchlists_latest,
            price_basis="last stored closes through rcdata, not live quotes"),
-    _board("module_news", "News", [], lambda: _html("news")),      # reads market.economic_event
+    _board("module_news", "News", [], lambda: _html("news")),      # reads market.economic_event, market.fda_event
     # #860: ``earnings_calendar``, ``estimate_snapshots``, ``short_interest`` and ``price_bars_daily`` went with
     # the old store; what the board reads is served (its needs) and its own rows are the render's.
     _board("module_earnings_radar", "Earnings Radar", [],

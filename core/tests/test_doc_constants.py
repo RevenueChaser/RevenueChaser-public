@@ -19,6 +19,22 @@ def test_data_architecture_names_the_current_schema_version():
     assert m.group(1) == rawstore._SCHEMA_VERSION
 
 
+def test_data_architecture_names_how_long_a_runs_rows_are_kept():
+    """The one year of ops.prune_runs is a value the code owns (step 9, 20 Nov 2026)."""
+    from RevenueChaser.rcdata import ops
+    text = (_REPO / "docs" / "data_architecture.md").read_text(encoding="utf-8")
+    assert f"**{ops.RUN_ROWS_DAYS} days** (`ops.RUN_ROWS_DAYS`)" in text
+
+
+def test_data_architecture_names_the_current_per_id_shrink_tolerance():
+    """The prices swap guard's per-security tolerance is a value the code owns (#1096)."""
+    from RevenueChaser.rcdata.build.prices import serving as prices_serving
+    text = (_REPO / "docs" / "data_architecture.md").read_text(encoding="utf-8")
+    m = re.search(r"tolerance of `(\d+)` bars \(`PER_ID_SHRINK_BARS`\)", text)
+    assert m, "docs/data_architecture.md no longer states the per-id shrink tolerance"
+    assert int(m.group(1)) == prices_serving.PER_ID_SHRINK_BARS
+
+
 # ``.env.example`` is the one place a new user learns which variables exist. It listed 3 of the 8
 # provider variables (#169a); these tests compare it with the code that owns the names.
 _ENV_EXTRAS = ("RC_SEC_USER_AGENT",

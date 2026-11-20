@@ -7,11 +7,14 @@ compare in ``dirty.full_rebuild_reason`` and ``serving._copy_live``. ``serving.S
 from __future__ import annotations
 
 # The serving schema of each kind. A change to a kind's tables bumps its number in its own PR (box rule).
-SERVING_SCHEMA_VERSION = {"market": 4, "spine": 9, "ownership": 5}
+SERVING_SCHEMA_VERSION = {"market": 5, "spine": 9, "ownership": 5}
 # market 3: ``economic_event``, UW's economic calendar by snapshot day (``build/uw_economic_calendar.py``), and
 #           ``news_headline``, IBKR's Dow Jones headlines (``build/ibkr_news.py``); #643, avo's D4 of 10 Nov 2026.
 # market 4: ``news_headline`` leaves; headlines live only in the News board's ``boards/news.duckdb`` (avo's option A,
 #           10 Nov 2026), and the builder's ``ibkr/news`` is gone. ``build/__init__.py`` retires the table.
+# market 5: ``fda_event``, UW's FDA calendar by snapshot day (``build/uw_fda_calendar.py``); #807, slice N2 of the
+#           News chain (#783), avo 12 Nov 2026 "FDA kesin eklensin". A day is that day's newest fetch, so the table
+#           shrinks by the source's choice like ``economic_event`` and is in ``SHRINKS_BY_CHOICE`` with it.
 # ownership 2: ``sec13f_ticker_period`` gains ``started_filers``, ``started_shares`` and ``stopped_shares``, its flows
 #              and new/exited holders count only the filers that reported both quarters, and ``sec13f_filer_breaks``
 #              lists the filers that started or stopped reporting; ``sec13f_data_sets`` (the SEC's 13F data sets
@@ -47,7 +50,7 @@ SERVING_SCHEMA_VERSION = {"market": 4, "spine": 9, "ownership": 5}
 # PR 7 (G2): ``prices.duckdb``, the daily bars, corporate actions, shares and market cap (``build/prices/``).
 SERVING_SCHEMA_VERSION["prices"] = 1
 # PR 12 (G5): ``fundamentals.duckdb``, the facts, filings, earnings, estimates and checks (``build/fundamentals/``).
-SERVING_SCHEMA_VERSION["fundamentals"] = 5
+SERVING_SCHEMA_VERSION["fundamentals"] = 6
 # fundamentals 2: ``earnings_reported``, the EPS a company reported as UW serves it, in a table of its own
 #                 (``build/fundamentals/uw_earnings.py``, avo's decision of 5 Nov 2026). Bumped before the kind's
 #                 first build, so no live file had to be checkpointed for it.
@@ -61,6 +64,9 @@ SERVING_SCHEMA_VERSION["fundamentals"] = 5
 # fundamentals 5: ``earnings_report_history``, the day each past quarter was reported: Compustat's ``rdq``
 #                 (``wrds/fundq``) where it has one, UW's report day where it has none (#1181, step A of the WRDS
 #                 plan; avo, 20 Nov 2026). Every other table is built as before.
+# fundamentals 6: ``audit_flag``, one row per restatement, late-filing notice and director or officer change Audit
+#                 Analytics recorded for a company of ours (``wrds/audit``, #1181 step C). A history about two
+#                 months behind; every other table is built as before.
 # PR 18 (G8): ``options.duckdb``, the option chains, exposures, prints and IV (``build/options/``).
 SERVING_SCHEMA_VERSION["options"] = 2
 # options 2: the calendar item's fields on ``option_screener_daily`` (and the screener's ``realized_volatility``,
@@ -93,7 +99,11 @@ SERVING_SCHEMA_VERSION["sec_reads"] = 3
 #     source's choice, not ours. Read from ``RC-Build.log`` on homesrv, 14 Nov 2026: a build served 114 rows
 #     against 126 live (-9.5 %), and that one refused swap failed the whole ``market`` build every hour from
 #     00:05 UTC on (one serving file per kind, one swap: ``build/base.py`` ``build_kind_many``).
+#   ``fda_event``: UW's FDA calendar, fetched hourly and kept the same way (``build/uw_fda_calendar.py``): a
+#     snapshot day's partition is replaced whole by that day's newest fetch, so a catalyst UW dropped or that has
+#     passed out of its answer is gone from the day it was fetched on. Same reason as ``economic_event``, listed
+#     with it when the table was added (#807).
 #   ``etf_class``: one row per ETF of ``my_universe`` (``build/spine/etf_class.py``, #1031), so it shrinks with it.
 # Kept here and not in ``serving.py`` since #1031: that file is in every kind's rules fingerprint, so a table added
 # to this list there was a whole build of all six kinds (the second reviewer's finding, 17 Nov 2026).
-SHRINKS_BY_CHOICE = ("my_universe", "economic_event", "etf_class")
+SHRINKS_BY_CHOICE = ("my_universe", "economic_event", "fda_event", "etf_class")

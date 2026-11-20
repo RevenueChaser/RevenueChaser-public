@@ -557,6 +557,17 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 if pruned:
                     print(f"build_issues: {pruned} resolved row(s) pruned", file=sys.stderr, flush=True)
+            # The run rows keep a year (avo, 20 Nov 2026), and this pass is their deleter: it is the writer of this
+            # store, so there is no second writer and no new timer. Best effort, like the issues above.
+            try:
+                gone = ops.prune_runs()
+            except ops.BUSY_ERRORS as e:
+                print(f"run rows: prune skipped, ops store busy: {e}", file=sys.stderr, flush=True)
+            else:
+                if any(gone.values()):
+                    print("run rows pruned past " + f"{ops.RUN_ROWS_DAYS} days: "
+                          + ", ".join(f"{t} {n}" for t, n in sorted(gone.items()) if n),
+                          file=sys.stderr, flush=True)
         # A due step that failed still drains the queue, then fails the pass, so an hourly error is not an exit 0.
         # Without --dataset this is the hourly pass, which leaves the attended requests queued for the terminal
         # that may run them.
