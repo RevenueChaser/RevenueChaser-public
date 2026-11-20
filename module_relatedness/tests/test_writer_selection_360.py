@@ -114,7 +114,8 @@ def test_the_naming_cli_banner_names_the_free_writer(rawstore_tmp_db, monkeypatc
                         lambda run_id=None: {"named": 0, "pending": 0})
     assert cli.main(["--name-themes"]) == 0
     out = capsys.readouterr().out
-    assert "EVREN" in out and "off-peak" not in out.lower()
+    assert "EVREN" in out and "no fee, no off-peak gate" in out        # not ``offpeak.describe()``
+    assert "DeepSeek" not in out and "Peak override" not in out
 
 
 

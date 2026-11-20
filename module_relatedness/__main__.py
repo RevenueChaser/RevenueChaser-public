@@ -207,14 +207,17 @@ def main(argv: list[str] | None = None) -> int:
                         "fee) has no off-peak gate and no call cap unless --limit N (avo, 2 Nov 2026)")
     args = p.parse_args(argv)
     explicit = args.provider
-    # --run writes with the board's writer unless --provider names one (#360).
-    # ``--score`` writes no profile, but the payload names the board's writer, so it reads the same setting.
-    # Theme naming reads its own pair (``core.llm_jobs``, job ``relatedness.naming``, #404); this name only
-    # decides what the banner says, and it is the registry's unpaid default since 20 Nov 2026 (avo: "Fetch ve
-    # build sirasinda deepseek api kullanilan islem kalmasin hepsi evren deepseek olmali"). It said DeepSeek,
-    # and printed the off-peak gate of a writer the naming run was not calling.
-    if (args.run or args.score) and explicit is None:
+    # --run writes with the board's writer unless --provider names one (#360). ``--score`` and ``--status`` write
+    # no profile, but both name the board's writer (the payload, the banner), so they read the same setting.
+    # Theme naming reads its own pair (``core.llm_jobs``, job ``relatedness.naming``, #404), which this now asks
+    # for: the name here decides what the banner says, and it was the hard-coded paid ``deepseek``, so
+    # ``--name-themes`` printed the off-peak gate of a writer the naming run was not calling (avo, 20 Nov 2026:
+    # "Fetch ve build sirasinda deepseek api kullanilan islem kalmasin hepsi evren deepseek olmali").
+    if (args.run or args.score or args.status) and explicit is None:
         run_writer, run_model = rel_settings.writer()[0], rel_settings.chosen_model()
+    elif explicit is None and (args.name_themes or args.name):
+        from RevenueChaser.core import llm_jobs
+        run_writer, run_model = llm_jobs.pair("relatedness.naming")[0], None
     else:
         run_writer, run_model = explicit or writers.DEFAULT, None
     if explicit == "evren" and not args.run:
