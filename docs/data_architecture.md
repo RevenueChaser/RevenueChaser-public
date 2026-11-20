@@ -322,8 +322,9 @@ date; no table or board does its own `date.today()` or UTC-date cut.
 
 **The forecast-ledger writer (#128).** `core/ledger.py` is the only code that writes `forecast_ledger`,
 through `rawstore.write_rows` alone. A board freezes its shown picks at the end of a **Fetch** (`no_fetch=False`;
-a Refresh never freezes), from `app/runners.py` (`run_swing`, `run_fundamentals`, `run_asymmetric_growth`) into
-the module's own `freeze.py`, which maps the board to ledger rows. The rule, applied by `ledger.freeze_board`:
+a Refresh never freezes), from `app/runners.py` (`run_swing`, `run_fundamentals`, `run_asymmetric_growth`,
+`run_earnings_range`) into the module's own `freeze.py`, which maps the board to ledger rows. The rule, applied by
+`ledger.freeze_board`:
 - the data is one complete New York session D, and D is the latest complete session (`core/calendar.py`:
   30 minutes after the 16:00 ET close; early-close days use 16:00, which is conservative);
 - a run inside the US session window (09:30–16:30 ET) freezes the session before it (the prices store holds
@@ -344,6 +345,13 @@ the module's own `freeze.py`, which maps the board to ledger rows. The rule, app
   session's write time and cannot tell the two apart (#434 review S2).
   AG: SPY's D01 bar for that session, written after its close + 30 min (`ledger.d01_has_session`, #380 S4); not the
   universe snapshot behind the quote prices, and not `ohlc_gaps` (one name's gap must not refuse the board);
+  Earnings Radar (#580): SPY's D01 bar for that session, the same anchor as AG and for the same reason — a card is
+  scored from the option chain, the flow and the estimates, so one name without its own bar must not refuse the
+  board. One rule is the Earnings Radar's own: **only a report still to come is frozen.** A card whose earnings date
+  is on or before D is a report the market has already heard, so it is left out and the rest keep the board's order
+  (`module_earnings_radar/freeze.picks`); a Fetch of past days therefore freezes nothing. The Earnings Radar has no
+  Refresh, so every run of it is a Fetch. Its `score` is the number the board ranks by (confidence plus the preselect
+  score) and its `bucket` is `"<final_action>|<conviction>"`, so the action carries the direction;
 - first write wins per (source, day), not just per row: the key includes `subject`, so the writer checks the whole
   (source, day) under one lock before writing, and a second Fetch the same day writes nothing.
 
@@ -2104,9 +2112,19 @@ builder's own 28). UW is still called for every pair outside that — and always
 day's pairs, because UW moves the expected move, the estimate and the report time during the day for the names
 about to report. Either path builds the event with `_calendar_event`, so `source` stays `UW` and the run
 downstream cannot tell them apart; `input_sources["calendar"]` counts the stored and the live pairs and names the
-session. The watch-list names the calendar omits (unknown time, estimated date) still take one live
-`screener_batch`: `option_screener_daily` holds calendar names only, so it cannot answer for a name that is not
-on the calendar.
+session.
+
+**The watch-list augmentation (#1138).** A watch-list name whose earnings time is "unknown" or whose date is only
+an estimate is missing from the `/earnings/{premarket,afterhours}` calendar, so
+`module_earnings_radar/watchlist_augment.augment_calendar` adds it from its screener row (#198 E15). That row came
+from one live UW `screener_batch` until #1138 — the last UW calendar call the Earnings Fetch made. It now comes
+from the served screener set first (`stored_inputs.screener_rows`: `next_earnings_date`, `er_time`,
+`implied_move_perc`, `sector`, `full_name` and `marketcap` off the same `option_screener_daily` session, under the
+same freshness gate), and the `screener_batch` is spent only on the names the store does not cover: a name absent
+from the set, a row with no `next_earnings_date`, or a name reporting today or the next trading day (live for the
+same reason the calendar pairs are). `input_sources["watchlist"]` counts the names each path answered, and a Fetch
+whose watch-list names are all covered makes no UW calendar call at all. A store read that fails leaves every name
+to UW; a `screener_batch` that fails keeps the names the store answered and the run goes on.
 
 **UW calls a session** (`rcdata/build/options/__init__.py`, the plan's arithmetic: list names x (chain + stats +
 prints) + screener pages + earnings-set names + far-print pages). A list name is 11 calls plus 2 per expiry plus one

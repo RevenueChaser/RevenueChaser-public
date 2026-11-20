@@ -236,6 +236,8 @@ TRADE_CARD = [
     ("stock_volume", ""),
     ("option_volume", ""),
     ("market_cap", ""),
+    ("market_cap_value", None),      # #580: the unrounded numbers the ledger freeze keeps
+    ("shown_price", None),
     ("total_open_interest", ""),
     ("rotation_quadrant", ""),
     ("rotation_score", 0.0),

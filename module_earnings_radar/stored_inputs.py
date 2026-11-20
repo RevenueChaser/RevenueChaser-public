@@ -1,7 +1,8 @@
 """The Earnings board's stored reads that are not in ``store_reads``: the calendar, the rate events and the bars.
 
 ``calendar_items`` reads the served UW earnings calendar (``option_screener_daily``, the options builder's G8 read),
-``rate_events`` reads ``market.economic_event`` (R6) and ``ohlc_bars`` the prices store's daily bars. The old D26
+``screener_rows`` the same table's screener fields for the watchlist augmentation (#1138), ``rate_events`` reads
+``market.economic_event`` (R6) and ``ohlc_bars`` the prices store's daily bars. The old D26
 calendar sweep lived in raw.duckdb and went with it (#860), so every calendar day was asked of UW live again until
 ``option_screener_daily`` began carrying the calendar's own expected move (#273's data half, 18 Nov 2026).
 
@@ -169,6 +170,82 @@ def calendar_items(days, today=None) -> tuple[dict, date | None]:
             continue
         out[(day, rs)].append(_calendar_item(row))
     return out, session
+
+
+# ── #1138: the screener rows behind the watchlist augmentation ───────────────────────────────────────────────────
+
+# The fields ``watchlist_augment._augment_watchlist`` reads off a screener row, under UW's own names, so a stored row
+# and a live one cannot drift apart (the same discipline as ``_calendar_item``).
+_SCREENER_TEXTS = ("er_time", "sector", "full_name")
+_SCREENER_NUMS = ("marketcap", "implied_move_perc")
+
+
+def _screener_item(row: dict) -> dict:
+    """One served ``option_screener_daily`` row as the screener answer ``uw.screener_batch`` gives per ticker."""
+    out = {"next_earnings_date": None}
+    day = _as_date(row.get("next_earnings_date"))
+    if day is not None:
+        out["next_earnings_date"] = day.isoformat()
+    for name in _SCREENER_TEXTS:
+        out[name] = row.get(name) or ""
+    for name in _SCREENER_NUMS:
+        out[name] = _num(row.get(name))
+    return out
+
+
+def screener_rows(tickers, today=None) -> dict[str, dict]:
+    """``{ticker: screener answer}`` from the served screener set, for the names the store covers (#1138).
+
+    The set is ``uw/option_screener``: one row per name reporting in the 28 days after the built session, carrying its
+    ``next_earnings_date``, ``er_time``, ``implied_move_perc``, sector, name and market cap — every field the watchlist
+    augmentation reads. A name that is absent here is the caller's to ask UW for.
+
+    A name is **not** covered when
+
+    * the table is empty or unreadable, or its newest session lags ``calendar_max_lag()`` sessions behind ``today``
+      (the same freshness gate :func:`calendar_items` applies);
+    * its row carries no ``next_earnings_date`` — then the store cannot say when it reports;
+    * that date is today or the next trading day — UW still moves the report time and the implied move of a name
+      about to report, so those names stay live, exactly as the calendar pairs do.
+
+    Read only: never a provider call, and a store error is "nothing stored".
+    """
+    wanted = {str(t).strip().upper() for t in (tickers or ()) if str(t or "").strip()}
+    if not wanted:
+        return {}
+    try:
+        today = _as_date(today) or calendar.today_ny()
+    except ValueError:
+        today = calendar.today_ny()
+    live_always = {today}
+    try:
+        live_always.add(calendar.next_trading_day(today))
+    except ValueError:
+        pass
+    try:
+        rows = market_read.option_screener()
+    except Exception as exc:  # noqa: BLE001 - a Fetch must never fail on the store
+        _note_once("option_screener_daily", exc)
+        return {}
+    sessions = [s for s in (_as_date(r.get("session_date")) for r in rows or ()) if s is not None]
+    if not sessions:
+        _note_once("option_screener_daily")
+        return {}
+    session = max(sessions)
+    lag = _sessions_after(session, today)
+    if lag is None or lag > calendar_max_lag():
+        _note_once("option_screener_daily")
+        return {}
+    out: dict[str, dict] = {}
+    for row in rows:
+        ticker = str(row.get("ticker") or "").strip().upper()
+        if ticker not in wanted or _as_date(row.get("session_date")) != session:
+            continue
+        day = _as_date(row.get("next_earnings_date"))
+        if day is None or day in live_always:
+            continue
+        out[ticker] = _screener_item(row)
+    return out
 
 
 def _sessions_after(obs: date, day: date) -> int | None:
