@@ -1207,29 +1207,41 @@ def run(no_fetch: bool = False, tickers: list[str] | None = None,
 
 
 def score(only_if_new: bool = True, provider: str = "deepseek", model: str | None = None) -> dict:
-    """Rescore every pair from the stored profiles, persist the scores and the payload. No call, no download.
+    """Mirror the SEC service's new answers, rescore every pair, persist the scores and the payload. No call.
 
-    The weekly scoring step of #884 (avo, 16 Nov 2026: "A) Haftada bir, Pazar gecesi"). It is the Fetch's second
-    half without its first: the profiles are whatever the SEC reading service has mirrored
-    (``config.PROFILES_FROM``), so this function calls no writer, downloads nothing and spends nothing. What it
-    does that a Refresh does not: it writes. The new company vectors are cached
-    (``relatedness_embeddings``) and the peers go to ``relatedness_scores``, so the next render reads them
-    instead of making them again.
+    The scoring step of #884, **daily and only when the SEC reading service answered something new** (avo, 20 Nov
+    2026: "Sec raporunda degisiklik var ise yapilacak sekilde ayarla, gunluk olsun"; his 16 Nov weekly Sunday word
+    was what the cadence was before). It is the Fetch's second half plus the one free part of its first:
 
-    ``only_if_new`` skips the week whose profiles are all older than the saved payload (the same comparison
-    ``_reusable_payload`` makes), which is the "a Sunday with nothing marked is skipped" rule of the timer plan;
-    the answer then carries ``skipped``. It holds the board's job lock, as a Fetch does, because it writes.
+    * on the service path (``config.PROFILES_FROM == "service"``, the deployed setting) it first copies the
+      service's ``company.profile`` answers into the board's own tables (``mirror_service``) -- no model call and
+      no SEC request, and a company whose answer is already stored is left alone, so a day on which the service
+      read nothing changes nothing. Without this step the gate below would never see a new profile and the board
+      would stay on the payload of the last Fetch (#884);
+    * then it rescores from the stored profiles. What it does that a Refresh does not: it writes. The new company
+      vectors are cached (``relatedness_embeddings``) and the peers go to ``relatedness_scores``, so the next
+      render reads them instead of making them again.
+
+    It calls no writer and spends nothing either way: on the own-writer path (``own``) it rescores what is stored
+    and mirrors nothing.
+
+    ``only_if_new`` skips the day whose profiles are all older than the saved payload, the mirror included (the
+    same comparison ``_reusable_payload`` makes); the answer then carries ``skipped`` and nothing is written.
+    ``--force`` rescores anyway. It holds the board's job lock, as a Fetch does, because it writes -- and it takes
+    the lock before the mirror, so a run beside a Fetch writes no profile either.
     """
     from . import store
-    if only_if_new:
-        cached = _reusable_payload(provider, model)
-        if cached is not None:
-            logger.info("relatedness score: no profile is newer than the saved payload (%s); nothing rescored",
-                        cached.get("as_of"))
-            return {**cached, "skipped": "no profile is newer than the saved payload"}
     with job_lock.acquire("relatedness", wait=0) as got:
         if not got:
             raise AlreadyRunning("Another Relatedness run is already in progress.")
+        if config.PROFILES_FROM == "service":
+            mirror_service(select_pilot())
+        if only_if_new:
+            cached = _reusable_payload(provider, model)
+            if cached is not None:
+                logger.info("relatedness score: no profile is newer than the saved payload (%s); nothing rescored",
+                            cached.get("as_of"))
+                return {**cached, "skipped": "no profile is newer than the saved payload"}
         payload = _run(True, None, None, None, provider=provider, model=model, write=True)
         store.save_scores(payload.get("peers") or {})
         return payload

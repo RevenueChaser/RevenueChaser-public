@@ -226,6 +226,21 @@ REGISTRY: tuple[AutomationEntry, ...] = (
         chain_wait_minutes=20,
         settings=TaskSettings(restart_count=0, time_limit_minutes=90)),
     AutomationEntry(
+        name="RC-Relatedness-Score", label="Relatedness scoring (daily, when the SEC reads brought something new)",
+        args=("-m", "RevenueChaser.module_relatedness", "--score"), time="05:20", after="RC-SEC-Read",
+        description=("Copies the SEC reading service's new company.profile answers into the board's profiles, then "
+                     "rescores every pair, caches the new company vectors and writes the payload the board renders "
+                     "(avo, 20 Nov 2026: a change in the SEC report is scored, daily). No model call, no download "
+                     "and no cost, whatever the board's writer is. A day whose profiles are all older than the "
+                     "saved payload is skipped and nothing is written. Scoring every pair is ~27 s of CPU for "
+                     "5,111 profiles (measured on the server 20 Nov 2026, #884). 05:20 waits for tonight's SEC "
+                     "reads to exit 0 (their timer starts at 02:35 with a 90-minute limit) and is clear of the "
+                     "06:10 server jobs; a night the reads did not finish has nothing new to score anyway."),
+        tables_written=("relatedness_profiles", "relatedness_attributes", "relatedness_embeddings",
+                        "relatedness_scores"),
+        chain_wait_minutes=60,
+        settings=TaskSettings(restart_count=0, time_limit_minutes=90)),
+    AutomationEntry(
         name="RC-Backup-Weekly", label="Weekly backup",
         args=("-m", "RevenueChaser.rcdata", "backup"),
         time="03:30", days=("Sunday",), unit_name=BACKUP_WEEKLY_UNIT,
