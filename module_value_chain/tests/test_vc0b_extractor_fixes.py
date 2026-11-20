@@ -73,13 +73,13 @@ def test_gate_without_served_has_no_coverage(tmp_path):
 def test_tile_shows_label_coverage():
     html = report._precision_tile({"n": 2, "tp": 2, "precision": 1.0, "passes": True,
                                    "links": 147, "covered": 2})
-    assert "labels cover 2 of 147 links" in html
+    assert "labels cover 2 of 147 distinct pairs" in html
     assert "hand-checked n=2" in html
 
 
 def test_unmeasured_tile_shows_coverage_when_links_known():
     html = report._precision_tile({"n": 0, "precision": None, "links": 147, "covered": 0})
-    assert "not measured" in html and "labels cover 0 of 147 links" in html
+    assert "not measured" in html and "labels cover 0 of 147 distinct pairs" in html
 
 
 def test_tile_without_links_has_no_coverage_text():
