@@ -361,13 +361,28 @@ function rankLinks(links){
       (order[focalRelation(a)]-order[focalRelation(b)]);
   });
 }
+// A hub's links are nearly all one direction -- AMZN's 261 are suppliers almost to the last -- so taking the
+// strongest 40 flat would draw one colour and could hide the other side of a mixed company altogether. Each
+// direction gets half the budget and whatever the other does not use, so a company with 200 suppliers and 5
+// customers still draws all 5. The ranked order is kept, so the chart and the evidence list agree.
+function capForChart(links){
+  if(links.length <= SANKEY_MAX) return links;
+  var sup = [], cus = [];
+  links.forEach(function(l){ (focalRelation(l) === "supplier" ? sup : cus).push(l); });
+  var half = Math.floor(SANKEY_MAX / 2);
+  var nSup = Math.min(sup.length, SANKEY_MAX - Math.min(cus.length, half));
+  var nCus = Math.min(cus.length, SANKEY_MAX - nSup);
+  var kept = sup.slice(0, nSup).concat(cus.slice(0, nCus));
+  return links.filter(function(l){ return kept.indexOf(l) >= 0; });
+}
 function drawSankey(focal, links){
   var note = document.getElementById("sankey-note");
   var total = links.length;
   if(total > SANKEY_MAX){
-    links = links.slice(0, SANKEY_MAX);
-    note.textContent = "Showing the " + SANKEY_MAX + " strongest of " + total +
-      " links: the ones whose filing states a share, largest first. Every one is in the evidence below.";
+    links = capForChart(links);
+    note.textContent = "Showing the " + links.length + " strongest of " + total +
+      " links: the ones whose filing states a share, largest first, both directions kept. " +
+      "Every one is in the evidence below.";
     note.hidden = false;
   } else {
     note.textContent = ""; note.hidden = true;

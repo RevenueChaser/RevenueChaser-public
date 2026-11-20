@@ -27,6 +27,14 @@ def test_the_chart_and_the_evidence_list_cap_a_hub():
     assert "var SANKEY_MAX = 40;" in html
     assert 'id="sankey-note"' in html
     assert "Showing the " in html and "Every one is in the evidence below." in html
+    # A hub is nearly all one direction, so a flat cap would draw one colour and could hide the other side of a
+    # mixed company: the real render of AMZN drew 40 suppliers and no customer. Each direction gets half the
+    # budget and whatever the other leaves, so 200 suppliers and 5 customers still draw all 5.
+    assert "function capForChart(links){" in html
+    assert "var nSup = Math.min(sup.length, SANKEY_MAX - Math.min(cus.length, half));" in html
+    assert "var nCus = Math.min(cus.length, SANKEY_MAX - nSup);" in html
+    assert "links = capForChart(links);" in html
+    assert "both directions kept" in html
     # The evidence list puts one page in the DOM and keeps the rest behind a button, which is what brought the
     # page height down; the rows are built by the same renderer either way.
     assert "var EVIDENCE_PAGE = 25;" in html
