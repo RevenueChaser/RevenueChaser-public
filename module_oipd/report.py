@@ -301,7 +301,7 @@ def _rate_line(payload: dict) -> str:
         rate = f"{float(payload.get('risk_free')):.2%}"
     except (TypeError, ValueError):
         return "r = —"
-    if payload.get("risk_free_source") == "macro.dgs10":
+    if payload.get("risk_free_source") == "dgs10":
         return f"r = {rate} · DGS10 {payload.get('risk_free_as_of') or '—'}"
     return f"r = {rate} · default"
 

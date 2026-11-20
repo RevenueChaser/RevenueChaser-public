@@ -366,7 +366,9 @@ def _fit_payload(ticker: str, contracts: list[dict], meta: dict,
         "asof": asof,
         "spot": spot,
         "risk_free": r,
-        # Where that rate came from: "macro.dgs10" with the observation's date, or "default" (#644).
+        # Where that rate came from: "dgs10" with the observation's date, or "default" (#644). The token is the
+        # series and not the need name on purpose: a board that has not declared its reads may not name a catalog
+        # need in its source (``rcdata/needs/boards.undeclared_uses``), and this board's migration is its own PR.
         "risk_free_source": meta.get("risk_free_source") or "default",
         "risk_free_as_of": meta.get("risk_free_as_of"),
         "source": "Unusual Whales",
@@ -482,7 +484,7 @@ def session_risk_free(session: str | None) -> tuple[float, str, str | None, str 
         return (config.RISK_FREE_RATE, "default", None,
                 f"No stored 10-year Treasury yield within {config.RISK_FREE_MAX_AGE_DAYS} days of "
                 f"{session or 'this session'}; the fit discounts at the {config.RISK_FREE_RATE:.0%} default.")
-    return held["value"], "macro.dgs10", held["as_of"], None
+    return held["value"], "dgs10", held["as_of"], None
 
 
 def build(ticker: str | None = None, session: str | None = None) -> dict:
