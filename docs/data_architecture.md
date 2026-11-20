@@ -1652,6 +1652,20 @@ dataset's coverage: Tier A names with a bar on the asked session over the Tier A
 count; Tier B's own coverage is reported beside it and is not part of the acceptance, because an OTC or fund name
 may have no Alpaca bar.
 
+**That makes the store survivorship-biased by design, and the bias is silent** (#441; avo, 5 Nov 2026: told and
+accepted). Because the universe is read from the live spine, a company that delisted in the past has no row
+anywhere in `prices.duckdb`. For everything the boards show — the history of today's names, co-movement,
+relatedness, charts — the missing names are not part of the question, so the bias is harmless. It is **harmful for
+anything that measures what a rule would have returned in the past**: a backtest, an AG-score validation, a
+forecast-ledger hit rate. The bad outcomes of companies that died are absent, so such a result comes out better
+than reality with nothing warning about it. The fix is never to widen the served universe for a one-off
+measurement: the delisted names' full history is already on disk, because the filter is applied only in the
+serving build (`_universe`, `rcdata/build/prices/serving.py`) and **not in the WRDS fetch** — `crsp.dsf_v2` is
+asked with a date range and no filter, `comp.secd` only by exchange, and CRSP's delisting table
+`crsp_a_stock.stkdelists` is fetched too (`rcdata/build/prices/wrds_history.py`, `TABLES`). A study that needs the
+dead names reads that Parquet directly, or builds a separate research file from it, and states in its issue or doc
+that it did; no WRDS call and no change to the served store.
+
 **A request's own scope (#265).** A queued request carries what it asks for, so a fill does not mean editing the
 code: `{"tiers": ["A", "B"], "names": ["KO"], "include": ["anchors"], "mode": "backfill", "from": ..., "to": ...}`.
 A request that names nothing is the daily run: today's universe, the benchmarks and rotation ETFs, the stock watch
