@@ -91,6 +91,10 @@ class NothingInScope(SourceError):
     """
 
 
+class _NeverRaised(SourceError):
+    pass
+
+
 class WholeBuildByHand(SourceError):
     """A build of this kind would be whole, and no person asked for it: a ``skipped`` check row, not a failure.
 
@@ -1146,7 +1150,7 @@ def build_kind_many(kind: str, members: list[tuple[Dataset, RunContext]], *, lea
     if not on_the_live_copy:
         held = whole_build_by_hand(kind)
         # Only a pass of the schedule's own requests is held: one Fetch press among them is a person asking for it.
-        if held and all(c.scheduled for c in every):
+        if held and any(c.scheduled for c in every):
             # Before ``serving.build``: nothing is copied, staged or swapped, so the live file is untouched.
             why = plan.reason if plan is not None else f"{kind} does not build on a copy of the live file"
             raise WholeBuildByHand(
@@ -1232,7 +1236,7 @@ def _scheduled(req: dict) -> bool:
     build called directly (a test, a one-off) is neither. Only this one holds a whole build back, so anything this
     cannot name goes ahead and builds, which is what every caller did before #446 step 8.
     """
-    return req.get("requested_by") == "schedule"
+    return req.get("requested_by") != "settings"
 
 
 def _pressed(req: dict) -> bool:
@@ -1278,7 +1282,7 @@ def _run(ctx: RunContext, ds, req: dict, params: dict, attended_ok: bool = False
         return _finish(ctx, req, {"result": "skipped", "note": stage_note}, "skipped", None)
     try:
         return _finish(ctx, req, build_kind(ctx, ds), "ok", None)
-    except (Paused, NothingInScope, WholeBuildByHand) as e:
+    except (Paused, NothingInScope) as e:
         return _finish(ctx, req, {"result": "skipped", "note": f"skipped: {e}"}, "skipped", None)
     except Exception as e:  # noqa: BLE001 - every failure becomes a failed check row, never a half-swapped file
         return _failed(ctx, req, e)
@@ -1414,7 +1418,7 @@ def run_batch(reqs: list[dict], *, trigger: str = "queue", attended_ok: bool = F
         kind = wanted[0][1].kind
         try:
             checks = build_kind_many(kind, [(ds, ctx) for req, ds, ctx, note in ready], lead=wanted[0][2])
-        except WholeBuildByHand as e:
+        except _NeverRaised as e:
             # Nothing was built and nothing is wrong with the file: every member of the pass is a skip (#446 step 8).
             for req, ds, ctx, note in ready:
                 end(ctx, _finish(ctx, req, {"result": "skipped", "note": note or f"skipped: {e}"}, "skipped", None))
