@@ -59,6 +59,12 @@ def live_spot(ticker: str = "^GSPC", now: datetime | None = None) -> tuple[float
     ``current_level``, so during an open session the last COMPLETE close can be a full day stale — measured at
     103 points, 1.33%, on 22 Oct. **One** yfinance request, only while the session is open. A failure returns
     its reason so the caller can fall back to the stored close with a visible warning, never silently.
+
+    The read goes through :func:`RevenueChaser.core.providers.yfinance.attempt` (#1213), so it is counted for
+    the board banner (#299) and consults the 401 "Invalid Crumb" session cure (#402) like every other Yahoo read.
+    An empty frame consults that cure too, because a refused ``history`` raises nothing: it logs the 401 and
+    hands back an empty frame. That is why this file is declared in ``PROVIDER_FILES`` -- it is a provider read,
+    and was one before it was routed.
     """
     from RevenueChaser.core import calendar as nyse_calendar
     try:
@@ -67,15 +73,31 @@ def live_spot(ticker: str = "^GSPC", now: datetime | None = None) -> tuple[float
     except (ValueError, ImportError) as exc:
         # past the holiday table (2029+) or a broken import: that is not "the market is closed", so say so
         return None, f"session window unknown ({type(exc).__name__}: {exc})"[:200]
+    import yfinance as yf
+
+    from RevenueChaser.core.providers import yfinance as yf_provider
+
+    frame, error = yf_provider.attempt(
+        lambda: yf.Ticker(ticker).history(period="1d", interval="1m", auto_adjust=False),
+        endpoint="spx_gamma/live_spot",
+        empty=lambda f: not _closes(f),
+    )
+    if error is not None:
+        return None, error
+    closes = _closes(frame)
+    if not closes:
+        return None, "no live bar returned"
+    return closes[-1], None
+
+
+def _closes(frame) -> list[float]:
+    """The finite closes of a 1-minute frame; an answer with no usable bar reads as empty, never as a crash."""
+    if frame is None:
+        return []
     try:
-        import yfinance as yf
-        frame = yf.Ticker(ticker).history(period="1d", interval="1m", auto_adjust=False)
-        closes = [float(v) for v in frame["Close"].tolist() if v == v] if frame is not None else []
-        if not closes:
-            return None, "no live bar returned"
-        return closes[-1], None
-    except Exception as exc:  # noqa: BLE001 - the caller falls back to the stored close
-        return None, f"{type(exc).__name__}: {exc}"[:200]
+        return [float(v) for v in frame["Close"].tolist() if v == v]
+    except (KeyError, TypeError, ValueError):
+        return []
 
 
 def price_window_sessions(rows: list[dict], asof: date | str) -> list[dict]:
