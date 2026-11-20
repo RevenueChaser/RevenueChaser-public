@@ -1,7 +1,7 @@
 """Financials' reader of the peer side of the comps ladder (#286): no provider call, one shape per peer.
 
 ``peer_multiples`` is the board's ``fundamentals.peer_multiples`` need: a thin mapping over the fundamentals
-serving layer and the prices serving layer, with no SQL of its own, in the shape of
+serving layer and the prices serving layer (through ``core/spine_reads``), with no SQL of its own, in the shape of
 ``module_spx_gamma/store_reads.py`` and ``module_earnings_radar/stored_inputs.py``. A peer the store holds no row
 for comes back as a ``stored: False`` marker, never as a live read: there is no provider fallback here.
 
@@ -124,11 +124,20 @@ def _records(tickers) -> dict[str, list[dict]]:
 
 
 def _market(tickers) -> dict[str, dict]:
-    """``{ticker: newest market row}`` from the prices serving layer (``read.latest_market``): one read for the
-    whole list. An empty answer means no peer has a cap, so no peer has an enterprise value."""
-    from RevenueChaser.rcdata import read
+    """``{ticker: newest market row}`` through ``core/spine_reads.latest_market``: one read for the whole list.
+
+    The wrapper, not ``rcdata.read.latest_market`` straight, for two reasons. It is the path the target's own
+    card already takes (``market_inputs.from_store``), so a peer's cap and the target's come from the same
+    memoised read of the same session — they have to be comparable, since one divides by the other. And it
+    answers ``{}`` with no read at all before the first prices build, so a render on a fresh checkout opens
+    nothing. Reading ``rcdata.read`` from a board package directly would also need a line in
+    ``needs/boards.PLANNED_READS``, which the wrapper is there to avoid.
+
+    An empty answer means no peer has a cap, so no peer has an enterprise value.
+    """
+    from RevenueChaser.core import spine_reads
     try:
-        return read.latest_market(tickers)
+        return spine_reads.latest_market(tickers)
     except Exception as exc:  # noqa: BLE001 - a Fetch must never fail on the store
         logger.warning("comps peers: the market caps could not be read (%s); no peer gets an enterprise value",
                        exc)

@@ -191,13 +191,24 @@ def test_a_fundamentals_layer_error_is_nothing_stored_not_an_exception(monkeypat
 
 
 def test_a_prices_store_error_leaves_every_peer_without_an_enterprise_value(monkeypatch):
-    from RevenueChaser.rcdata import read
+    from RevenueChaser.core import spine_reads
 
     def boom(*a, **k):
         raise RuntimeError("the serving file is being swapped")
 
-    monkeypatch.setattr(read, "latest_market", boom)
+    monkeypatch.setattr(spine_reads, "latest_market", boom)
     assert store_reads._market(["AAA"]) == {}
+
+
+def test_the_peer_caps_come_through_the_same_wrapper_as_the_targets(monkeypatch):
+    """The two caps divide into each other, so they must be one read of one session, not two opens."""
+    from RevenueChaser.core import spine_reads
+
+    asked: list[tuple] = []
+    monkeypatch.setattr(spine_reads, "latest_market",
+                        lambda tickers: (asked.append(tuple(tickers)), {})[1])
+    store_reads._market(["AAA", "BBB"])
+    assert asked == [("AAA", "BBB")], "one call for the whole peer list, through core/spine_reads"
 
 
 def test_an_empty_peer_list_reads_nothing(monkeypatch):
