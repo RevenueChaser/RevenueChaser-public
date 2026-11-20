@@ -2088,9 +2088,19 @@ builder's own 28). UW is still called for every pair outside that — and always
 day's pairs, because UW moves the expected move, the estimate and the report time during the day for the names
 about to report. Either path builds the event with `_calendar_event`, so `source` stays `UW` and the run
 downstream cannot tell them apart; `input_sources["calendar"]` counts the stored and the live pairs and names the
-session. The watch-list names the calendar omits (unknown time, estimated date) still take one live
-`screener_batch`: `option_screener_daily` holds calendar names only, so it cannot answer for a name that is not
-on the calendar.
+session.
+
+**The watch-list augmentation (#1138).** A watch-list name whose earnings time is "unknown" or whose date is only
+an estimate is missing from the `/earnings/{premarket,afterhours}` calendar, so
+`module_earnings_radar/watchlist_augment.augment_calendar` adds it from its screener row (#198 E15). That row came
+from one live UW `screener_batch` until #1138 — the last UW calendar call the Earnings Fetch made. It now comes
+from the served screener set first (`stored_inputs.screener_rows`: `next_earnings_date`, `er_time`,
+`implied_move_perc`, `sector`, `full_name` and `marketcap` off the same `option_screener_daily` session, under the
+same freshness gate), and the `screener_batch` is spent only on the names the store does not cover: a name absent
+from the set, a row with no `next_earnings_date`, or a name reporting today or the next trading day (live for the
+same reason the calendar pairs are). `input_sources["watchlist"]` counts the names each path answered, and a Fetch
+whose watch-list names are all covered makes no UW calendar call at all. A store read that fails leaves every name
+to UW; a `screener_batch` that fails keeps the names the store answered and the run goes on.
 
 **UW calls a session** (`rcdata/build/options/__init__.py`, the plan's arithmetic: list names x (chain + stats +
 prints) + screener pages + earnings-set names + far-print pages). A list name is 11 calls plus 2 per expiry plus one

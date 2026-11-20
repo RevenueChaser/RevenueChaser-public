@@ -292,12 +292,14 @@ def run_earnings_range(uw: UWClient, start: date | None = None, end: date | None
         events, raw_cal = _fetch_calendar_range(uw, start, end if end is not None else start)
         empty_msg = _no_events_text(start, end if end is not None else start)
         span = (start, end if end is not None else start)
+    watchlist_sources = None
     if span:
         # The CLI adds the watchlist names the session calendar omits (unknown time, estimated
         # date); the dashboard Fetch did not, so they dropped off the board (#198 E15).
         from RevenueChaser.module_earnings_radar.watchlist_augment import augment_calendar
-        augment_calendar(uw, events, raw_cal, _load_watchlist(), span[0], span[1],
-                         days=days if dates else None)
+        # Served first, UW only for the names the store does not cover (#1138).
+        watchlist_sources = augment_calendar(uw, events, raw_cal, _load_watchlist(), span[0], span[1],
+                                             days=days if dates else None)
     calendar_sources = dict(_CALENDAR_SOURCES) or {"stored": 0, "live": 0, "session": None}
     if not events:
         gap = _provider_gap_text(uw)
@@ -326,6 +328,10 @@ def run_earnings_range(uw: UWClient, start: date | None = None, end: date | None
     sources = getattr(pipeline, "input_sources", None)
     if isinstance(sources, dict):
         sources["calendar"] = calendar_sources
+        if isinstance(watchlist_sources, dict):
+            # The watchlist augmentation's own coverage (#1138): names answered by the served screener set vs asked
+            # of UW. ``None`` (a run with no span) leaves the slot out rather than claiming a zero.
+            sources["watchlist"] = watchlist_sources
     cards = pipeline.run(use_preselect=True)
 
     from RevenueChaser.module_earnings_radar.report import export_html, screener_problem
