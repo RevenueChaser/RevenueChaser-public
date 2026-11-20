@@ -612,7 +612,8 @@ def _serving_facts(now: datetime | None = None
 def _columns(con, table: str) -> set[str]:
     """The column names ``table`` has in the file this connection holds, lowercased."""
     try:
-        return {str(r[0]).lower() for r in con.execute(f'PRAGMA table_info("{table}")').fetchall()}
+        return {str(r[0]).lower() for r in con.execute(
+            "SELECT column_name FROM duckdb_columns() WHERE table_name = ?", (table,)).fetchall()}
     except duckdb.Error:
         return set()
 
