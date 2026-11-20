@@ -291,11 +291,12 @@ REGISTRY: tuple[DatasetSpec, ...] = (
         freshness=("llm_cache", "fetched_at"),
     ),
     DatasetSpec(
-        key="news_calendar", label="News: economic calendar and the day's highlight",
+        key="news_calendar", label="News: economic and FDA calendar and the day's highlight",
         tables=("news_events", "news_highlight", "news_meta"),
         db="news", source=Source.derived, writer=None,
-        writer_note=("built incrementally from market.economic_event by module_news/calendar.py on the News board's "
-                     "Refresh; the hourly job comes in its own pull request"),
+        writer_note=("built incrementally from market.economic_event and market.fda_event (#807) by "
+                     "module_news/calendar.py on the News board's Refresh; the hourly job comes in its own "
+                     "pull request"),
         freshness=("news_events", "run_at"),
     ),
     DatasetSpec(

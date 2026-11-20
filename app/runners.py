@@ -1186,7 +1186,8 @@ def run_news(uw=None) -> Path:
     """The News board's Fetch: the incremental calendar build into ``boards/news.duckdb``, the Dow Jones headlines from
     the IBKR Gateway (every name of avo's own, the stock and the News watch lists), then the page.
 
-    The calendar reads ``market.economic_event`` (the builder's hourly ``uw/economic_calendar``). The headlines are two gateway
+    The calendar reads ``market.economic_event`` and ``market.fda_event`` (the builder's hourly
+    ``uw/economic_calendar`` and ``uw/fda_calendar``, #807). The headlines are two gateway
     requests a name and no UW call; a gateway that is down is a job note, never a failed Fetch.
     """
     from RevenueChaser.module_news import calendar, report
@@ -1194,6 +1195,9 @@ def run_news(uw=None) -> Path:
     out = calendar.build(run_id=rid)
     ledger.add_note(f"News calendar: {out['read']} raw rows read, {out['upserted']} events upserted, "
                     f"{out['retired']} retired, {out['highlights']} day highlights")
+    if out.get("fda_read"):
+        ledger.add_note(f"News FDA calendar: {out['fda_read']} raw rows read, {out['fda_upserted']} catalysts "
+                        f"upserted, {out['fda_retired']} retired")
     health = _news_headlines_pass(rid)
     path = report.render(provider_health=health)
     if health:

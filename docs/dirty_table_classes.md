@@ -45,6 +45,7 @@ Both are why `dirty.full_rebuild_reason` exists and why a dataset may declare on
 | `spx_gamma_expiry_strike` | cumulative | `session_date` range | `uw_spot_expiry_strike.py`: one raw file per session, the file is the resume marker, a stored session is never re-asked |
 | `spx_greek_expiry_strike` | cumulative | `session_date` range | `uw_greek_expiry_strike.py`, same shape |
 | `economic_event` | snapshot per day, **chosen list** | `snapshot_date` | `uw_economic_calendar.py`: one partition per snapshot day, replaced whole by that day's newest fetch. UW serves a forward window ("this week and next"), so a day's newest fetch holds fewer events than its first one once some have rolled out: the count is the source's choice, and the table is in `serving.SHRINKS_BY_CHOICE` (14 Nov 2026) |
+| `fda_event` | snapshot per day, **chosen list** | `snapshot_date` | `uw_fda_calendar.py` (#807): the same rule as the economic calendar. One partition per snapshot day, replaced whole by that day's newest fetch; UW's answer is the calendar as it stands, so a catalyst it drops leaves the day it was fetched on and the table is in `serving.SHRINKS_BY_CHOICE` |
 
 ## spine
 

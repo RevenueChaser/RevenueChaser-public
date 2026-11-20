@@ -18,7 +18,7 @@ from RevenueChaser.core.html_safe import esc
 from RevenueChaser.core.html_safe import script_json
 from RevenueChaser.core.reporting_common import (FILTERS_CSS, FILTERS_JS, THEME_CSS, THEME_JS, combobox_html, help_html,
                                                  provider_health_html, watchlist_html, write_artifact)
-from RevenueChaser.module_news.calendar import AMS, EVENTS, HIGHLIGHT, local_day, served_value
+from RevenueChaser.module_news.calendar import AMS, EVENTS, FDA_TYPE, HIGHLIGHT, local_day, served_value
 from RevenueChaser.module_news import headlines, x_check
 from RevenueChaser.module_news.x_feed import X_PROVIDERS
 
@@ -51,9 +51,11 @@ def _load(now: float) -> tuple[list[dict], dict | None, list[dict], float | None
     today = local_day(now)
     start = datetime(today.year, today.month, today.day, tzinfo=AMS)
     end = start + timedelta(days=WEEK_DAYS)
+    # The FDA lane is stored (#807) but not shown yet: its tab and week strip are #808, and no UI is written before
+    # avo has approved that mock. Until then the page is the economic calendar it was.
     events = rawstore.query(
-        f"SELECT * FROM {EVENTS} WHERE event_ts >= ? AND event_ts < ? AND retired_at IS NULL ORDER BY event_ts, event",
-        [start.timestamp(), end.timestamp()], db="news")
+        f"SELECT * FROM {EVENTS} WHERE event_ts >= ? AND event_ts < ? AND retired_at IS NULL AND type <> ? "
+        f"ORDER BY event_ts, event", [start.timestamp(), end.timestamp(), FDA_TYPE], db="news")
     hl = rawstore.query(f"SELECT * FROM {HIGHLIGHT} WHERE session_date = ?", [today.isoformat()], db="news")
     x = f"coalesce(provider, '') IN ({', '.join(repr(p) for p in X_PROVIDERS)})"
     lanes = (f"NOT {x} AND coalesce(tickers, '[]') = '[]'", f"NOT {x} AND coalesce(tickers, '[]') <> '[]'",
