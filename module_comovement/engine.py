@@ -343,7 +343,9 @@ def _short_history_steps(f: dict, prices_fix: dict | None) -> list[dict]:
     ]
 
 
-_UNKNOWN_TYPE_LINK = {"tab": "module_settings", "anchor": "identity",
+# The anchor is the spine's identity funnel card (``_nd_identity``, #642 N1); the old ``#identity`` card left the
+# Settings page with PR 5 and the link pointed at nothing.
+_UNKNOWN_TYPE_LINK = {"tab": "module_settings", "anchor": "nd-identity",
                       "label": "Settings → Identity"}
 
 

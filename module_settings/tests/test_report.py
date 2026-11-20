@@ -192,9 +192,8 @@ def test_the_note_row_has_its_own_style():
     assert ".frow2.note" in report.CSS
 
 
-# ── Identity health card (issue #89) ─────────────────────────────────────────
-IDENTITY_IDS = ("identity-health", "identity-run", "identity-spdr", "identity-types",
-                "identity-sources", "identity-conflicts", "identity-stale")
+# ── Identity health card (issue #89): the card and its renderers left the module with #642 N1; the spine's
+# identity funnel (``_nd_identity``, id ``nd-identity``) is what the page draws.
 
 
 
