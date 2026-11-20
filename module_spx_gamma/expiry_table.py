@@ -23,14 +23,17 @@ def normalize_expiry_rows(payload: dict | None) -> list[dict]:
     return rows
 
 
-def front_expiry_share(expiry_rows: list[dict], asof_date: str | None) -> dict | None:
+def front_expiry_share(expiry_rows: list[dict], asof_date: str | None, settled: bool = False) -> dict | None:
     """The front expiry's share of the total Net GEX (30 Oct report p.9: 17.18 %), F7.
 
-    The front expiry is the earliest on or after ``asof_date``; expired series count in neither part. None when
-    there is no front row or the total is zero.
+    The front expiry is the earliest on or after ``asof_date``; expired series count in neither part. ``settled``
+    says the as-of day's own expiry had already settled when the day was fetched (#452): it has expired too, so
+    the front expiry is the next one and the settled series counts in neither part. None when there is no front
+    row or the total is zero.
     """
+    first = (lambda e: e > asof_date) if settled else (lambda e: e >= asof_date)
     live = [r for r in expiry_rows or [] if r.get("expiry") and r.get("net_gex") is not None
-            and (asof_date is None or str(r["expiry"]) >= asof_date)]
+            and (asof_date is None or first(str(r["expiry"])))]
     if not live:
         return None
     front = min(live, key=lambda r: str(r["expiry"]))
@@ -41,11 +44,16 @@ def front_expiry_share(expiry_rows: list[dict], asof_date: str | None) -> dict |
             "share_pct": front["net_gex"] / total * 100.0}
 
 
-def session_hedge_flow(expiry_rows: list[dict], asof_date: str | None, spot: float | None) -> list[dict]:
+def session_hedge_flow(expiry_rows: list[dict], asof_date: str | None, spot: float | None,
+                       settled: bool = False) -> list[dict]:
     """A6: each session's expiring book from the board's day through the target Friday.
 
     Net gamma, the hedge for a 50-point move (|Net GEX per 1 %| x 50 / spot x 100 %, the reports' formula), net charm
     and net vanna, and the effect in words. Expiring open interest needs OI per expiry (phase 2).
+
+    The panel reads forward: what each session still to come has to hedge. ``settled`` says the as-of day's own
+    expiry had already settled when the day was fetched (#452), so that session has nothing left to hedge and the
+    window starts at the next one.
     """
     if not asof_date:
         return []
@@ -55,7 +63,7 @@ def session_hedge_flow(expiry_rows: list[dict], asof_date: str | None, spot: flo
     out = []
     for r in expiry_rows or []:
         e = r.get("expiry")
-        if not e or not (asof_date <= str(e) <= end):
+        if not e or not (asof_date <= str(e) <= end) or (settled and str(e) == asof_date):
             continue
         g, ch = r.get("net_gex"), r.get("net_charm")
         parts = []

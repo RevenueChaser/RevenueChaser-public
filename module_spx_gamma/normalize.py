@@ -8,6 +8,7 @@ from RevenueChaser.core import gex_profile
 from .charm_pin import (
     MODE_DIRECTIONALIZED_VOLUME,
     MODE_OPEN_INTEREST,
+    _expired_by,
     normalize_spot_exposure_rows,
     report_charm_pin,
     qualify_charm,
@@ -467,6 +468,17 @@ def _sum_or_none(values) -> float | None:
     return sum(vals) if vals else None
 
 
+def _drop_settled(rows: list[dict], settled_expiry: str | None) -> list[dict]:
+    """``rows`` without the expiry that had already settled when the day was fetched (#452).
+
+    ``settled_expiry`` is None whenever nothing settled (an intraday Fetch, or a raw day written before ``_meta``
+    carried a fetch time), and the rows are then returned as they are.
+    """
+    if not settled_expiry:
+        return rows
+    return [r for r in rows if str(r.get("expiry") or "") != settled_expiry]
+
+
 def _fetched_at(stamp):
     """The fetch time as an aware datetime (bars ending after it are still forming); None when absent."""
     from datetime import datetime
@@ -482,6 +494,16 @@ def _fetched_at(stamp):
 def normalize_snapshot(raw: dict, asof_date: str, ticker: str = TICKER, mode: str = MODE_OPEN_INTEREST) -> dict:
     asof_str = asof_date.isoformat() if isinstance(asof_date, date) else asof_date
 
+    # The as-of day's own expiry has settled whenever the rows were fetched after its 16:00 New York close, which
+    # the scheduled Fetch always is. Its greeks are then a series that no longer exists, and a panel reading them
+    # describes a market that has gone (#452; real UW check 5 Nov 2026: Iron Butterfly IVs of 182-558 %). The
+    # decision is made once here and every panel below reads this one flag; the raw day keeps the full record
+    # either way, so a settled series is dropped on the way into the board and never on the way into the store.
+    _asof_day = asof_str[:10] if asof_str else None
+    _fetched = _fetched_at((raw.get("_meta") or {}).get("api_snapshot_time"))
+    settled_expiry = _asof_day if (_asof_day and _expired_by(_asof_day, _fetched)) else None
+    settled = settled_expiry is not None
+
     levels = map_core_levels((raw.get("gex_levels") or {}).get("data", {}))
     flips = map_flip_levels((raw.get("gex_levels") or {}).get("data", {}),
                             (raw.get("gex_levels_vol") or {}).get("data", {}))
@@ -496,14 +518,15 @@ def normalize_snapshot(raw: dict, asof_date: str, ticker: str = TICKER, mode: st
     # concatenating counted every 0DTE strike twice (G5).
     zero_payloads = list((raw.get("strike_expiry") or {}).values())
     all_payloads = list((raw.get("strike_expiry_all") or {}).values())
-    strike_expiry_rows = normalize_strike_expiry_rows(zero_payloads + all_payloads, asof_str)
+    strike_expiry_rows = _drop_settled(
+        normalize_strike_expiry_rows(zero_payloads + all_payloads, asof_str), settled_expiry)
     # The DTE-band walls' grid (#291). The store holds the same endpoint's answer for the whole chain
     # (``uw/greek_expiry_strike``, #384) and is the one source when it has the day; the day's own per-expiry files
     # are the fallback, so a backfill gap never empties the bands. Measured on 2026-11-03 and 2026-11-04: the two
     # give the same wall on every band, 24 values over two sessions.
     grid = raw.get("greek_grid") if isinstance(raw.get("greek_grid"), dict) else None
     if grid and grid.get("stored") and grid.get("rows"):
-        all_se_rows = normalize_stored_greek_grid(grid["rows"])
+        all_se_rows = _drop_settled(normalize_stored_greek_grid(grid["rows"]), settled_expiry)
         band_source = grid.get("source")
     else:
         all_se_rows = [r for r in strike_expiry_rows if r.get("expiry") in (raw.get("strike_expiry_all") or {})]
@@ -533,8 +556,9 @@ def normalize_snapshot(raw: dict, asof_date: str, ticker: str = TICKER, mode: st
     net_gamma_total = _sum_or_none(r.get("net_gamma") for r in strike_rows)
     gex_envelope = cumulative_gex_envelope(strike_rows, spot)
     # Matrix GEX = active-trading gamma (DTE<=45), dropping far-dated/LEAPS noise. A 0DTE row
-    # (dte 0) is active trading and stays in; only an unknown dte is left out (G6).
-    matrix_gex = _sum_or_none(r.get("net_gex") for r in expiry_rows
+    # (dte 0) is active trading and stays in; only an unknown dte is left out (G6). A settled as-of expiry is
+    # not active trading and leaves with the rest of it (#452).
+    matrix_gex = _sum_or_none(r.get("net_gex") for r in _drop_settled(expiry_rows, settled_expiry)
                               if r.get("dte") is not None and r["dte"] <= 45)
     flow_rows = normalize_flow_strikes(raw.get("flow_per_strike"), spot)
     # The one regime: spot against the OI gamma flip. The OI/volume flips and the local cumulative
@@ -572,10 +596,7 @@ def normalize_snapshot(raw: dict, asof_date: str, ticker: str = TICKER, mode: st
     vol_term = normalize_vol_term(raw.get("vol_term_structure"))
     vrp = normalize_vrp(raw.get("variance_risk_premium"))
     realized_vol = normalize_realized_vol(raw.get("realized_vol"))
-    from .charm_pin import _expired_by
-    _asof_early = str(asof_date)[:10] if asof_date else None
-    skew = chain_skew(raw, _asof_early if _asof_early and _expired_by(
-        _asof_early, _fetched_at((raw.get("_meta") or {}).get("api_snapshot_time"))) else None)
+    skew = chain_skew(raw, settled_expiry)
     vix = normalize_vix(raw.get("vix"))
     cftc = normalize_cftc(raw.get("cftc"))
     vega_flow = normalize_vega_flow(raw.get("greek_flow"))
@@ -601,8 +622,6 @@ def normalize_snapshot(raw: dict, asof_date: str, ticker: str = TICKER, mode: st
                                                (raw.get("_meta") or {}).get("api_snapshot_time"))
     # The front chain is the as-of day's 0DTE. Fetched after that day's close it is a settled series: its IVs are
     # meaningless (real UW check 5 Nov: 558 %), so neither the pin harvest nor the dealer book may read it.
-    from .charm_pin import _expired_by
-    settled = bool(asof_str) and _expired_by(asof_str, _fetched_at((raw.get("_meta") or {}).get("api_snapshot_time")))
     iron_butterfly_na = None
     if settled:
         live_rows = [r for r in option_chain_rows if (r.get("expiry") or "") > asof_str]
@@ -643,13 +662,16 @@ def normalize_snapshot(raw: dict, asof_date: str, ticker: str = TICKER, mode: st
         "charm_qualification": charm_qualification,
         "charm_pin_report": charm_pin_report,
         "iron_butterfly_na": iron_butterfly_na,
+        # The one line the banner turns into "the as-of 0DTE had settled" (#452): with it every panel below that
+        # would have read the as-of expiry reads n/a instead of a number from a series that no longer exists.
+        "zero_dte_settled": settled,
         "vanna_peaks": vanna,
         "spot_exposures": spot_exposure_rows,
         "strike_exposures": strike_rows,
         "strike_exposures_prev": strike_rows_prev,
         "expiry_distribution": expiry_rows,
-        "front_expiry_share": front_expiry_share(expiry_rows, asof_str),
-        "session_flow": session_hedge_flow(expiry_rows, asof_str, spot),
+        "front_expiry_share": front_expiry_share(expiry_rows, asof_str, settled=settled),
+        "session_flow": session_hedge_flow(expiry_rows, asof_str, spot, settled=settled),
         # A4: Black-Scholes book greeks over the front and target-Friday chains, under assumptions (a) and (b)
         "dealer_book": dealer_book([r for r in normalize_option_chain(raw.get("option_chain"))
                                     if not settled or (r.get("expiry") or "") > asof_str]

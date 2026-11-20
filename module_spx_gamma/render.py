@@ -279,6 +279,11 @@ def data_quality_notice(snapshot: dict, data_root=None) -> str | None:
     not_stored = list(store_notes(snapshot).values())
     if not_stored:
         parts.append("Not stored (no live fallback): " + "; ".join(not_stored) + ".")
+    if snapshot.get("zero_dte_settled"):
+        # #452: the Fetch ran after the as-of day's 16:00 New York close, so its 0DTE had settled. Every panel that
+        # would have read that expiry reads n/a instead, and this line says why rather than leaving blanks.
+        parts.append(f"The {snapshot.get('asof_date')} 0DTE had settled when the Fetch ran, so every panel "
+                     f"reads the live expiries only: a 0DTE cell is n/a rather than a settled series' number.")
     zero_one = (snapshot.get("store_inputs") or {}).get("zero_one_dte") or {}
     if zero_one.get("stored") and zero_one.get("fallback"):
         # review SF2: the previous session's snapshot holds the day's 0 DTE expiry only
