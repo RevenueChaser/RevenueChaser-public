@@ -107,7 +107,7 @@ def test_candidates_sort_by_quality_then_momentum_then_ticker():
     ]
     p = build_payload(rows, top_n=10)
     assert [c["ticker"] for c in p["candidates"]] == ["AAA", "CCC", "BBB"]
-    assert [c["quality"] for c in p["candidates"]] == [95, 90, 90]         # the RS rule counts (AAA 7/8)
+    assert [c["quality"] for c in p["candidates"]] == [94, 89, 89]         # the RS rule counts (AAA 6/7 counted)
     assert p["candidates"][1]["momentum"] > p["candidates"][2]["momentum"]
 
 
