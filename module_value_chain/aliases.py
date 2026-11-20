@@ -155,6 +155,108 @@ PRODUCT_FOLLOWERS: dict[str, frozenset[str]] = {
     "MICROSOFT": frozenset({"Teams", "365", "Office", "Windows", "Xbox"}),
 }
 
+# Subsidiary, operating-company and former names of a listed parent, read from the parent's own SEC Exhibit 21
+# ("Subsidiaries of the Registrant") or from the filing that recorded the acquisition: "Harris Teeter Supermarkets
+# Inc" is Kroger, "LinkedIn Corp" is Microsoft, "Seagen Inc" is Pfizer. A filing names the subsidiary it actually
+# sells to, and a Compustat customer line carries the same name, so without this table the name reaches no
+# registrant and the edge has no ticker (#1156; the headroom measurement found 92 such customer labels, of which
+# these are the ones a by-hand check of every pair kept).
+#
+# Keys are ``_key``: ``normalize`` with the spaces gone, so the legal form and the generic name words are already
+# off, and the whole name must match -- this is never a substring hit. ``resolve`` reads the table **last**, after
+# the aliases and the spine, so it only fills a gap and cannot change a name that resolves today.
+SUBSIDIARIES: dict[str, str] = {
+    "ACADEMY": "ASO",                        # Academy LTD
+    "ACCELERONPHARMA": "MRK",                # Acceleron Pharma Inc
+    "ACCENTUREFEDERALSERVICES": "ACN",       # Accenture Federal Services LLC
+    "ACCENTURELLP": "ACN",                   # Accenture LLP
+    "ADMSARL": "ADM",                        # ADM International SARL
+    "ADVANCESTORES": "AAP",                  # Advance Stores Co Inc
+    "AEROJETROCKETDYNE": "LHX",              # Aerojet Rocketdyne Holdings Inc
+    "ALASKAAIRLINES": "ALK",                 # Alaska Airlines Inc
+    "ANTARESPHARMA": "HALO",                 # Antares Pharma Inc
+    "ASDSPECIALTYHEALTHCARE": "COR",         # ASD Specialty Healthcare LLC
+    "ATMELECTRONIC": "ARW",                  # ATM Electronic Corp
+    "BURLINGTONCOATFACTORYINVESTMENTS": "BURL",# Burlington Coat Factory Investments Holdings Inc
+    "CAREMARK": "CVS",                       # Caremark LLC
+    "CARRIER": "CARR",                       # Carrier Corp
+    "CELGENESWITZERLAND": "BMY",             # Celgene Switzerland LLC
+    "CHENIEREMARKETINGLLP": "LNG",           # Cheniere Marketing International LLP
+    "CHEVRONUSA": "CVX",                     # Chevron U.S.A. Inc
+    "CONOCOPHILLIPSSKANDINAVIAAS": "COP",    # Conocophillips Skandinavia AS
+    "DKTRADINGSUPPLY": "DK",                 # DK Trading & Supply LLC
+    "DOLLARTREESTORES": "DLTR",              # DOLLAR TREE STORES INC
+    "ENTERPRISECRUDEOIL": "EPD",             # Enterprise Crude Oil LLC
+    "EQUITABLEFINANCIALLIFEINSURANCE": "EQH",# Equitable Financial Life Insurance Co
+    "ETCTEXASPIPELINE": "ET",                # ETC Texas Pipeline LTD
+    "EXPRESSSCRIPTS": "CI",                  # EXPRESS SCRIPTS INC
+    "FEDERALEXPRESS": "FDX",                 # Federal Express Corp
+    "FLORIDAPOWERLIGHT": "NEE",              # Florida Power & Light Co
+    "FRANKLINTEMPLETONCOMPANIES": "BEN",     # Franklin Templeton Companies LLC
+    "FRONTIERAIRLINES": "ULCC",              # Frontier Airlines Holdings Inc
+    "GOODEARTHOILS": "COOT",                 # Good Earth Oils Pty Ltd
+    "GOODYEAR": "GT",                        # Goodyear
+    "GPMINVESTMENTS": "ARKO",                # GPM Investments LLC
+    "HARRISTEETERSUPERMARKETS": "KR",        # Harris Teeter Supermarkets Inc
+    "HDSUPPLY": "HD",                        # HD Supply Holdings Inc
+    "IDAHOPOWER": "IDA",                     # Idaho Power Co
+    "JANSSENPHARMACEUTICA": "JNJ",           # Janssen Pharmaceutica NV
+    "JANSSENPHARMACEUTICALS": "JNJ",         # Janssen Pharmaceuticals Inc
+    "JUNOTHERAPEUTICS": "BMY",               # Juno Therapeutics Inc
+    "L3": "LHX",                             # L3 Technologies Inc
+    "LIFETIME": "LTH",                       # Life Time Inc
+    "LINKEDIN": "MSFT",                      # LinkedIn Corp
+    "LUMENTUMOPERATIONS": "LITE",            # Lumentum Operations LLC
+    "MAGELLANHEALTH": "CNC",                 # Magellan Health Inc
+    "MARATHONPETROLEUMSUPPLYTRADING": "MPC", # Marathon Petroleum Supply & Trading LLC
+    "MARRIOTT": "MAR",                       # Marriott International Inc
+    "MCKESSONSPECIALTYCAREDISTRIBUTION": "MCK",# McKesson Specialty Care Distribution LLC
+    "MERCKSHARPDOHME": "MRK",                # Merck Sharp & Dohme LLC
+    "MERCKSHARPDOHMERESEARCH": "MRK",        # Merck Sharp & Dohme Research GmbH
+    "MOTIONINDUSTRIES": "GPC",               # Motion Industries Inc
+    "MPCPARTNERSHIP": "RMR",                 # MPC Partnership Holdings LLC
+    "MSGNETWORKS": "SPHR",                   # MSG Networks Inc
+    "MYOKARDIA": "BMY",                      # MyoKardia Inc
+    "NBCUNIVERSALMEDIA": "CMCSA",            # NBCUniversal Media LLC
+    "NEVADAPOWER": "BRK-B",                  # Nevada Power Co
+    "NORFOLKSOUTHERNRAILWAY": "NSC",         # Norfolk Southern Railway Co
+    "NORTHROPGRUMMANSYSTEMS": "NOC",         # Northrop Grumman Systems Corp
+    "NRGBUSINESSMARKETING": "NRG",           # NRG Business Marketing LLC
+    "OCCIDENTALPETROLEUM": "OXY",            # Occidental Petroleum Corp
+    "ORGANON": "OGN",                        # Organon International GmbH
+    "OUTBACKSTEAKHOUSEOFFLORIDA": "BLMN",    # Outback Steakhouse of Florida LLC
+    "OVINTIVUSA": "OVV",                     # Ovintiv USA Inc
+    "PILOTTRAVELCENTERS": "BRK-B",           # Pilot Travel Centers LLC
+    "PJTPARTNERSLP": "PJT",                  # PJT Partners Holdings LP
+    "PREVAILTHERAPEUTICS": "LLY",            # Prevail Therapeutics Inc
+    "PRIMORISRENEWABLEENERGY": "PRIM",       # Primoris Renewable Energy Inc
+    "PROMETHEUSBIOSCIENCES": "MRK",          # Prometheus Biosciences Inc
+    "RAYTHEON": "RTX",                       # RAYTHEON CO / Raytheon Technologies Corp
+    "ROHR": "RTX",                           # Rohr Inc
+    "SAFEWAY": "ACI",                        # Safeway Inc
+    "SAIAMOTORFREIGHTLINE": "SAIA",          # Saia Motor Freight Line LLC
+    "SEAGEN": "PFE",                         # Seagen Inc
+    "SHAWINDUSTRIES": "BRK-B",               # Shaw Industries Inc
+    "SIERRAPACIFICPOWER": "BRK-B",           # Sierra Pacific Power Co
+    "SPLUNK": "CSCO",                        # Splunk Inc
+    "STARMARKETS": "ACI",                    # Star Markets Co Inc
+    "SUPERVALU": "UNFI",                     # SUPERVALU INC
+    "TECHDATA": "SNX",                       # Tech Data Corp
+    "VONSCOMPANIES": "ACI",                  # Vons Companies Inc
+    "WESTERNREFINING": "MPC",                # Western Refining Inc
+}
+
+
+# A legal form that makes the name a **different** company from the subsidiary its key stands for. "Safeway plc"
+# was the British supermarket Morrisons bought in 2004, not the US "Safeway Inc" that Albertsons owns, and
+# ``normalize`` drops both forms, so the two names share the one key ``SAFEWAY`` (#1156; measured read-only on the
+# live store, 8 ``customer_share`` rows carry the British spelling). The form is read off ``_clean``, which keeps
+# it.
+SUBSIDIARY_REFUSED_FORMS: dict[str, frozenset[str]] = {
+    "SAFEWAY": frozenset({"PLC"}),
+}
+
+
 # Tickers of one issuer: a filing naming its own other share class is not an edge.
 SAME_ISSUER: dict[str, str] = {"GOOG": "GOOGL", "BRK-B": "BRK-A", "BRK.B": "BRK.A",
                                "FOX": "FOXA", "NWS": "NWSA"}
@@ -266,7 +368,8 @@ def resolve(name: str, names: dict | None = None) -> dict | None:
     member's label), or None (#410 G1).
 
     The hand-kept alias list and its rules come first (a product mention such as "Apple Pay" names no company);
-    then the spine's names (``spine_names``). A name that holds two companies ("Apple and Dell"), an anonymised one
+    then the spine's names (``spine_names``); last ``SUBSIDIARIES``, the listed parent of a name that is no
+    registrant itself (#1156). A name that holds two companies ("Apple and Dell"), an anonymised one
     ("Customer A") and a name two issuers share resolve to nothing; the caller keeps it as text.
     """
     hits = {h["ticker"]: h for h in find_aliases(name or "") if not h["context_only"]}
@@ -283,7 +386,13 @@ def resolve(name: str, names: dict | None = None) -> dict | None:
     # "Rafael Technologies" is not Rafael Holdings (RFL) and "STEMCELL Technologies" is not International Stem
     # Cell (ISCO), although ``normalize`` leaves all three as the same key (#1142, census rows 19 and 40).
     if ticker and strict(name) != normalize(name) and (names or {}).get("=" + _strict_key(name)) != ticker:
-        return None
+        ticker = None
+    # Last: a name that is a listed parent's subsidiary and no registrant of its own (#1156), unless its legal
+    # form says it is a different company that shares the key.
+    if ticker is None:
+        key = _key(name or "")
+        if not (SUBSIDIARY_REFUSED_FORMS.get(key) or frozenset()) & set(_clean(name or "").split()):
+            ticker = SUBSIDIARIES.get(key)
     return {"name": name, "ticker": ticker} if ticker else None
 
 
