@@ -168,23 +168,17 @@ def _fundamentals_settings() -> dict:
     }
 
 
-def _relatedness_settings() -> dict:
-    """The Relatedness writer (#360): the provider and its model as selects. A provider whose credential is absent
-    is offered greyed with the variable's NAME (``writers.missing_text``), never a value."""
-    from RevenueChaser.module_relatedness import settings as rel_settings
-    from RevenueChaser.module_relatedness import writers
-    rows = {f["key"]: f for f in board_settings.describe(rel_settings.BOARD)}
-    w = rows["WRITER"]
-    w["choices"] = [[slug, writers.WRITERS[slug].label, writers.missing_text(slug)] for slug in w["choices"]]
-    w["range"] = "EVREN has no fee; DeepSeek is paid (off-peak, $10 a night)"
-    m = rows["WRITER_MODEL"]
-    m["choices"] = [[model, f"{slug} · {model}", None] for slug, wr in writers.WRITERS.items() for model in wr.models]
-    m["range"] = "a model of the chosen writer"
+def llm_writers_card() -> dict:
+    """The LLM writers card (#404): one row per LLM job, its chosen provider and model, and the writers it could
+    run on. A writer whose credential is absent is offered greyed with the variable's NAME
+    (``llm_writers.missing_text``), never a value; a paid writer is marked as paid.
+    """
+    from RevenueChaser.core import llm_jobs
+    jobs = llm_jobs.options()
     return {
-        "board": rel_settings.BOARD,
-        "custom": any(f["overridden"] for f in rows.values()),
-        "inputs": [w, m],
-        "fine": [],
+        "board": llm_jobs.BOARD,
+        "jobs": jobs,
+        "paid": [j["label"] for j in jobs if j["paid"]],
     }
 
 
@@ -300,7 +294,9 @@ BOARD_INPUTS: list[dict] = [
     _board("module_relatedness", "Relatedness",
            ["relatedness_profiles", "relatedness_scores", "chain_filings",
             "equity_universe", "ticker_themes"],
-           lambda: _json("relatedness", "relatedness_latest.json"), settings=_relatedness_settings),
+           # The writer pair is no longer a knob of this board: every LLM job's pair is on the
+           # LLM writers card (#404, ``llm_writers_card``).
+           lambda: _json("relatedness", "relatedness_latest.json")),
     _board("module_sector_rotation", "Sector Rotation",
            ["rotation_snapshots", "etf_holdings", "equity_universe"],
            lambda: _html("sector_rotation"),

@@ -1,11 +1,13 @@
 """LLM naming for the NMF themes (Phase 8a) — off-peak, thinking-low.
 
 ``build_shadow`` writes unlabeled themes; this module gives them human names with
-one DeepSeek call per theme, bottom-up (fine -> medium -> coarse) so a parent can
-see its children's labels. Calls go through ``core.providers.deepseek.complete``,
-which owns the cache and the off-peak gate: at peak the run stops cleanly and
-returns the next off-peak time instead of billing peak. The offline tag fallback
-stays in ``themes.relabel_from_tags``.
+one model call per theme, bottom-up (fine -> medium -> coarse) so a parent can
+see its children's labels. The writer is this job's own choice on the Settings
+page (``core.llm_jobs``, job ``relatedness.naming``, #404); the default is EVREN
+and has no fee. Until #404 the provider was a fixed DeepSeek import here.
+The chosen chat module owns the cache and, for the paid writer, the off-peak gate:
+at peak the run stops cleanly and returns the next off-peak time instead of
+billing peak. The offline tag fallback stays in ``themes.relabel_from_tags``.
 
 See docs/classification_design.md Phase 8a.
 """
@@ -16,8 +18,7 @@ import logging
 import re
 from collections import Counter
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.core.providers import deepseek
+from RevenueChaser.core import llm_jobs, rawstore
 
 from . import themes as themes_mod
 
@@ -27,6 +28,8 @@ MAX_TOKENS = 3000
 MAX_TAGS = 8
 MAX_TICKERS = 8
 LEVEL_ORDER = {"fine": 0, "medium": 1, "coarse": 2}
+#: This module's job in the LLM-job registry (#404).
+JOB = "relatedness.naming"
 
 SYSTEM = (
     "You name clusters of companies that share a business. Given a cluster's "
@@ -173,7 +176,7 @@ def name_themes(run_id: str | None = None, *, complete=None,
                 max_tokens: int = MAX_TOKENS, force: bool = False) -> dict:
     """Name every still-unlabeled theme in a run, bottom-up (fine->medium->coarse).
 
-    ``complete`` is injectable (defaults to ``deepseek.complete``). At peak the
+    ``complete`` is injectable (defaults to the chosen writer's ``complete``). At peak the
     first call raises ``PeakHoursError``; already-written names are kept and the
     result reports the pending count and the next off-peak time. Idempotent:
     themes whose label already looks human (no comma) are skipped unless
@@ -184,7 +187,7 @@ def name_themes(run_id: str | None = None, *, complete=None,
     run_id = run_id or themes_mod.current_run_id()
     if not run_id:
         return {"run_id": None, "named": 0, "copied": 0, "pending": 0, "next_off_peak": None}
-    caller = complete or deepseek.complete
+    caller = complete or llm_jobs.client(JOB).complete
 
     rows = _run_themes(run_id)
     if not rows:
@@ -232,29 +235,29 @@ def name_themes(run_id: str | None = None, *, complete=None,
         try:
             raw = caller(SYSTEM, user, thinking=True, reasoning_effort="low",
                          json_mode=True, max_tokens=max_tokens)
-        except deepseek.PeakHoursError as exc:
+        except llm_jobs.PeakHours as exc:
             next_off_peak = exc.next_off_peak.strftime("%Y-%m-%d %H:%M")
             break
-        except deepseek.DeepSeekTransientError as exc:
+        except llm_jobs.TransientError as exc:
             error = str(exc)              # the service is down: stop, keep what we have
             break
-        except deepseek.DeepSeekAuthError:
+        except llm_jobs.AuthError:
             raise                         # a bad key fails every call: write nothing
-        except deepseek.DeepSeekError:
+        except llm_jobs.Error:
             # thinking-low sometimes spends the whole budget on reasoning and
             # returns empty content. Retry once without thinking.
             try:
                 raw = caller(SYSTEM, user, thinking=False, json_mode=True,
                              max_tokens=min(1500, max_tokens))
-            except deepseek.PeakHoursError as exc:
+            except llm_jobs.PeakHours as exc:
                 next_off_peak = exc.next_off_peak.strftime("%Y-%m-%d %H:%M")
                 break
-            except deepseek.DeepSeekTransientError as exc:
+            except llm_jobs.TransientError as exc:
                 error = str(exc)
                 break
-            except deepseek.DeepSeekAuthError:
+            except llm_jobs.AuthError:
                 raise
-            except deepseek.DeepSeekError:
+            except llm_jobs.Error:
                 raw = ""
         base = _parse_name(raw)
         if not base:

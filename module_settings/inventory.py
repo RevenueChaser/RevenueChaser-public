@@ -53,6 +53,8 @@ def collect(now: datetime | None = None) -> dict:
         "tickers": tickers,
         "tickers_error": tickers_error,
         "boards": boards.board_cards(),
+        # One row per LLM job and its writer pair (#404).
+        "llm_writers": boards.llm_writers_card(),
         # Fixed registry fields only: the live state is polled from /api/automations.
         "automations": automations.static_rows(),
         "ibkr_login_state": ibkr,

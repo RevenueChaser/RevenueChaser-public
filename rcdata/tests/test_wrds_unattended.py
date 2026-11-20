@@ -2,13 +2,29 @@
 ``life`` connects with no Duo push), and the worker's login can never outwait ``PGCONNECT_TIMEOUT``."""
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 import pytest
 
+from RevenueChaser.core import calendar
 from RevenueChaser.rcdata import ops
 from RevenueChaser.rcdata.build import DATASETS, base, due
 from RevenueChaser.rcdata.build.spine import wrds
 
 WRDS = sorted(n for n in DATASETS if n.startswith("wrds/"))
+
+
+@pytest.fixture
+def midday_ny(monkeypatch):
+    """The clock pinned to 12:00 New York, through the one clock seam (``core.calendar._now``).
+
+    ``due.EARLIEST_NY_HOUR`` holds ``wrds/prices`` until 05:00 New York, before the failed-run rules are even
+    read, so a test of those rules that runs on the machine's own clock passes or fails by the hour CI started:
+    run 44696572824 began at 02:48 New York and the two tests below failed on ``main`` too.
+    """
+    fixed = datetime(2026, 11, 19, 17, 0, tzinfo=timezone.utc)      # 12:00 New York, a Thursday
+    monkeypatch.setattr(calendar, "_now", lambda: fixed)
+    return fixed
 
 
 def test_the_wrds_datasets_are_attended_by_default(monkeypatch):
@@ -38,7 +54,7 @@ def test_worker_login_has_a_connect_timeout(monkeypatch):
 
 
 @pytest.mark.parametrize("name", WRDS)
-def test_a_failed_run_waits_for_a_person_instead_of_retrying_hourly(monkeypatch, name):
+def test_a_failed_run_waits_for_a_person_instead_of_retrying_hourly(monkeypatch, midday_ny, name):
     # Review must-fix 1: after one success, a failed WRDS run must not be due again every hour (one login each).
     monkeypatch.setenv(base.WRDS_UNATTENDED_ENV, "1")
     ops.record_check(name, "changed", source_as_of="2026-10-01", checked_on="2026-10-01")
@@ -50,7 +66,7 @@ def test_a_failed_run_waits_for_a_person_instead_of_retrying_hourly(monkeypatch,
 
 
 @pytest.mark.parametrize("name", WRDS)
-def test_a_failure_of_an_earlier_day_is_retried_once_that_day(monkeypatch, name):
+def test_a_failure_of_an_earlier_day_is_retried_once_that_day(monkeypatch, midday_ny, name):
     # #1115: a transient serving-swap refusal on 17 Nov 2026 held ``wrds/prices`` for ever, so a daily dataset wrote
     # no check row at all on 18 and 19 Nov and the served bars stopped at 16 Nov. The hold is the day's, not always.
     monkeypatch.setenv(base.WRDS_UNATTENDED_ENV, "1")

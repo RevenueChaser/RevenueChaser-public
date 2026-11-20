@@ -224,6 +224,28 @@ def held() -> tuple[dict[str, set[tuple[str, str]]], set[str]]:
     return docs, old
 
 
+#: How many company partitions one ``INSERT`` of :meth:`Forms.build` loads (#1177). A whole build loaded every
+#: partition in one statement, so one sort carried the whole corpus' texts: a ``filing_section`` row holds the
+#: document's own text, the business section cut out of it, or a proxy, none of them capped since ``ours-2``, and
+#: the stored annual reports alone are ~2.7 GB of text. DuckDB pins a sort's string blocks, so there is nothing
+#: for it to evict and the spill folder does not save it -- the build of 20 Nov 2026 07:05 CET ended on
+#: ``failed to pin block of size 612.0 KiB (4.5 GiB/4.5 GiB used)`` after 6,590 s. In runs of this many the peak
+#: is a batch of companies' filings, whatever the corpus grows to, and the rows land in the same order.
+LOAD_BATCH = 100
+
+
+def _batches(files: list[Path]) -> list[list[Path]]:
+    """``files`` in ``cik`` order, in runs of at most :data:`LOAD_BATCH`.
+
+    The order is the ``cik`` column's own -- it is TEXT, so ``'100'`` comes before ``'99'`` -- and each batch is
+    then sorted by the same three columns, so the rows reach the table in exactly the order the one global
+    ``ORDER BY cik, accession, document`` gave them. ``_partitions``' own order is not that one (it sorts the
+    named CIKs by number), which is why the key is read from the partition folder here.
+    """
+    ordered = sorted(files, key=lambda p: p.parent.name.split("=", 1)[-1])
+    return [ordered[i:i + LOAD_BATCH] for i in range(0, len(ordered), LOAD_BATCH)]
+
+
 def _partitions(name: str, ciks: frozenset[str] | None) -> list[Path]:
     folder = common.parquet_dir(NAME)
     if ciks is None:
@@ -397,8 +419,8 @@ class Forms:
             elif ciks:
                 con.execute(f"DELETE FROM {table} WHERE cik IN "
                             f"({', '.join(repr(c) for c in sorted(ciks, key=int))})")
-            files = _partitions(partition, ciks)
-            if files:
+            # One statement per batch of companies, not one over the whole tree: see :data:`LOAD_BATCH`.
+            for files in _batches(_partitions(partition, ciks)):
                 src = f"read_parquet([{', '.join(base.sql_path(f) for f in files)}], union_by_name = true)"
                 con.execute(f"INSERT INTO {table} SELECT {cols} FROM {base.with_all(con, schema, src)} "
                             "ORDER BY cik, accession, document")

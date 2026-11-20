@@ -882,7 +882,7 @@ schema, reachable with path expressions like `payload.market_cap::DOUBLE`).
 | `identity_conflicts` | `ticker`, `kind`, `field`, `side_a`, `side_b`, `note`, `first_seen`, `last_seen` (key `(ticker, kind, field)`) | — |
 | `identity_source_cache` | `source`, `ticker`, `fetched_at`, `status`, `security_type`, `security_type2`, `sector`, `industry`, `sub_industry`, `cik`, `sic`, `is_etf BOOLEAN`, `forms` (comma-joined), `shell_closed BOOLEAN` (key `(source, ticker)`; last GOOD answer per source — a failed or skipped source never overwrites it, `core/identity/cache.py`) | `payload` (rest of the source row) |
 | `identity_runs` | `run_id`, `started_at`, `finished_at`, `status` | `sources` (per-source status/counts/error), `counts` |
-| `board_settings` | `board`, `key`, `value DOUBLE`, `updated_at`, `value_text TEXT` (a text setting, #360: Relatedness' `WRITER` / `WRITER_MODEL`; a row fills `value` or `value_text`; nullable, added by `ALTER TABLE ADD COLUMN`, no schema bump) (key `(board, key)`; only user overrides — defaults are read from the board's config, and a Save is one transaction and a Reset deletes the board's rows in one statement, serialized by a lock; every save, drop and Reset is kept in `board_settings_changes`, a Reset as one change (#306); `core/board_settings.py`, issue #40; read by Co-movement (`module_comovement/settings.py`) and by Swing for its screen/score thresholds (`module_swing_potential/settings.py`, #384 SW-S4), whose stored overrides also feed the forecast ledger's model version) | — |
+| `board_settings` | `board`, `key`, `value DOUBLE`, `updated_at`, `value_text TEXT` (a text setting, #360: each LLM job's `<JOB>_WRITER` / `<JOB>_MODEL` on the `llm_writers` board, `core/llm_jobs.py`, #404; a row fills `value` or `value_text`; nullable, added by `ALTER TABLE ADD COLUMN`, no schema bump) (key `(board, key)`; only user overrides — defaults are read from the board's config, and a Save is one transaction and a Reset deletes the board's rows in one statement, serialized by a lock; every save, drop and Reset is kept in `board_settings_changes`, a Reset as one change (#306); `core/board_settings.py`, issue #40; read by Co-movement (`module_comovement/settings.py`) and by Swing for its screen/score thresholds (`module_swing_potential/settings.py`, #384 SW-S4), whose stored overrides also feed the forecast ledger's model version) | — |
 | `watchlist` | `ticker` (one row per pinned ticker until PR 4; unwritten since, the stock watch list in `ops.sqlite` replaced it) | — |
 | `migration_manifest` | `dataset`, `migrated_at`, `schema_version`, `source_count`, `source_bytes`, `source_hash`, `verify` | — |
 | `store_meta` | `key`, `value` | — |
@@ -1149,6 +1149,15 @@ refusal**: it opens a build issue (`kind = audit`, so the Logs board shows it) a
 (`build_audit_dirty`, which `dirty.plan` hands to that dataset through `Plan.audited` and `ctx.audited`, for its
 own `dirty` to add in its own key space — only the dataset knows what its keys mean), while the file still swaps in —
 refusing it would stop the whole flow on one bad key, and the next pass rebuilds those keys anyway.
+
+**What the Settings board shows of all this** (#446 step 8). The Data tab carries one **Serving builds** card,
+above the per-file sections: a row per served file saying which base its last build got (`serving_schema_version`),
+how many Parquet files its manifest holds and how many differ from the tree right now (`build_manifest`, compared
+exactly as `dirty.changes` does), what the last audit round checked and found (`build_audit`), and how many keys
+it still owes (`build_audit_dirty`). Every number is read out of the files themselves on each render
+(`module_settings/newdata.py`'s `_build_of`, on the connection the page already opens per kind), so there is no
+second copy of it anywhere to keep in step. A file that carries none of those tables was built before #446 landed
+and reads as a whole build with no manifest, never as an error.
 
 **Whose build code changed** (#814). Build code is a rule: a change to an extraction or a table rule restates rows
 that no Parquet file marks as changed, so the build file carries a fingerprint of the code it was built by and a
@@ -2180,6 +2189,15 @@ one folder, two Parquet files (`sections.parquet`, `notes.parquet`) per `cik=<ci
   two or three blocks; a character count that is not to be tripled sums the top-level rows), `context_ref`,
   `period_end`, `text`, `chars`, `rules_version`, and the same provenance.
 
+**How the build loads it.** One `INSERT` per batch of `sec_forms.forms.LOAD_BATCH` (100) company partitions,
+in `cik` text order and each batch sorted by `cik, accession, document`, so the rows land in the order one global
+sort gave them. Not one statement over the whole tree: that sort carried the corpus' whole text at once — on
+20 Nov 2026 the live file held 14,142 `filing_section` rows with 4.1 GB of text — and DuckDB pins a sort's string
+blocks, so it had nothing to evict and the spill folder did not save it. Three builds in a row failed on
+`failed to pin block of size 612.0 KiB (4.5 GiB/4.5 GiB used)`, the first after 6,590 s, while the day's work was
+62 new sections (#1177). The peak of the batched load is a batch of companies' filings, whatever the corpus grows
+to.
+
 **The staleness rule.** `dirty.py` reloads Parquet into DuckDB; it does not cut. So the rule is `fetch`'s own: a
 company is stale when the `(accession, document)` pairs on disk differ from the ones its `sections.parquet` holds,
 or when any of its rows was written by another cutter version. That covers the three cases nothing else triggers —
@@ -2224,10 +2242,11 @@ board adds one entry and reads the answers through `rcdata.read.sec_reads(ciks, 
 `rcdata/build/__init__.py` registers the questions, and registration order is run order: `business.locate` and
 `company.profile` (`sec_reads/company_profile.py`), then `debt.note` (#737; `sec_reads/debt_note.py`, prompt and parse
 in `rcdata/sec_debt_note.py`), which the Fundamentals board reads through `core/fundamentals_layer.py`. Each further
-question is its own change. **All three are written by one switch** (`questions.PROVIDER`): EVREN, the gate with no
-fee, unless the process names DeepSeek (`RC_SEC_READS_PROVIDER=deepseek`), which gives each question its own call cap
-(avo, 19 Nov 2026: `debt.note` moved off the paid writer with the other two). A stored `ok` answer is current
-whoever wrote it, so the switch asks nothing again.
+question is its own change. **Each is written by its own chosen writer** (`core/llm_jobs.py`, jobs `sec_reads.*`, #404), read once per
+process so one run asks every question through one writer. The default is still the switch (`questions.PROVIDER`):
+EVREN, the gate with no fee, unless the process names DeepSeek (`RC_SEC_READS_PROVIDER=deepseek`), which gives each
+question its own call cap (avo, 19 Nov 2026: `debt.note` moved off the paid writer with the other two). A stored
+`ok` answer is current whoever wrote it, so changing the pair asks nothing again.
 
 **One asker** (`asker.py`), one pool per provider: EVREN 1 request at a time, DeepSeek 8. The HTTP clients are
 `core/providers`' own, called with `use_cache=False`, so `llm_cache` gets nothing from the tool. On homesrv the

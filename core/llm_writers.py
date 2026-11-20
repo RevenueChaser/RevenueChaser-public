@@ -1,8 +1,10 @@
-"""The Relatedness profile writers (#360, framework D9, avo 1-2 Nov 2026): which provider and model write profiles.
+"""The LLM writers (#360, framework D9, avo 1-2 Nov 2026): which provider and model an LLM job can run on.
 
 One row per writer: its chat module, a short model list (the first is its default) and the one credential it needs.
-The board's choice is a setting (``module_relatedness.settings``, ``WRITER`` / ``WRITER_MODEL``); EVREN is the
-default and has no fee, DeepSeek is paid (off-peak gated, USD cap).
+This is the single registry; which writer a given job runs on is :mod:`core.llm_jobs` (#404). EVREN is the default
+and has no fee, DeepSeek is paid (off-peak gated, USD cap).
+
+It lives in ``core`` since #404: every LLM job reads it, not the Relatedness board alone.
 
 An option is available when its credential is present. Only the variable NAME is ever reported (``missing``),
 never a value: the check is presence only, like ``core.credentials.problem``.
