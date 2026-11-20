@@ -26,14 +26,12 @@ def test_the_layers_income_tax_expense_is_read_as_the_engines_tax_provision():
     row = fm._financials_record(_year("2025"))
     assert row["tax_provision"] == 50.0                     # the engines' name, the layer's ``income_tax_expense``
     assert row["pretax_income"] == 200.0 and row["interest_expense"] == 15.0
-    assert "income_tax_expense" not in row
-
-
-def test_a_filer_that_tags_none_of_them_keeps_an_empty_record():
-    row = fm._financials_record({"fiscal_year": "2025", "revenue": 1_000.0,
-                                 "period_ends": {"revenue": "2025-12-31"}})
+    assert "income_tax_expense" not in row                  # the layer's own name never reaches an engine
+    # A filer that tags none of them still gets an empty record, so the engines' labelled defaults show (review S1).
+    bare = fm._financials_record({"fiscal_year": "2025", "revenue": 1_000.0,
+                                  "period_ends": {"revenue": "2025-12-31"}})
     for field in ("tax_provision", "pretax_income", "interest_expense"):
-        assert field not in row
+        assert field not in bare
 
 
 def test_the_tax_rate_is_now_the_filers_own_and_not_the_flat_default():
