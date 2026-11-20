@@ -137,7 +137,7 @@ be an options candidate.
 
 ## Intended vs live
 
-The **intended** action ladder (`docs/rules/00_overview.md`) was stricter and
+The **intended** action ladder (`docs/earnings-radar/00_overview.md`) was stricter and
 signed: `|direction| ≥ 45` and vol-edge `≥ 60` → `BULLISH_OPTIONS_SETUP` /
 `BEARISH_OPTIONS_SETUP`, and `|direction| ≥ 45` → shares. The **live** ladder
 above uses 25 / 50 thresholds and the shorter `OPTIONS_*` / `SHARES_*` names —

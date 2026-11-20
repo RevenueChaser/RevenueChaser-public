@@ -162,8 +162,8 @@ _MARKDOWN_READ_BY_TESTS = (
     "docs/data_architecture.md",        # test_doc_constants.py, test_store_schema_refuse.py:36, test_rawstore_history.py:595
     "docs/data_health.md",             # test_doc_constants.py:179, test_automation_chain.py:125
     "docs/data_retrieval.md",          # test_doc_constants.py:56
-    "docs/rules/00_overview.md",       # module_earnings_radar/tests/test_confidence_wording_df06.py:62
-    "docs/rules/redesign.md",          # module_earnings_radar/tests/test_cleanup_199.py:13-15
+    "docs/earnings-radar/00_overview.md",       # module_earnings_radar/tests/test_confidence_wording_df06.py:62
+    "docs/earnings-radar/redesign.md",          # module_earnings_radar/tests/test_cleanup_199.py:13-15
     "module_spx_gamma/tests/golden/position_map.base.md",   # module_spx_gamma/tests/test_autoescape_175.py:106
 )
 

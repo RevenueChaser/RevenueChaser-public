@@ -41,8 +41,8 @@ on:
       - "docs/data_architecture.md"
       - "docs/data_health.md"
       - "docs/data_retrieval.md"
-      - "docs/rules/00_overview.md"
-      - "docs/rules/redesign.md"
+      - "docs/earnings-radar/00_overview.md"
+      - "docs/earnings-radar/redesign.md"
       - "module_spx_gamma/tests/golden/position_map.base.md"
       - ".github/**"
   push:
@@ -55,8 +55,8 @@ on:
       - "docs/data_architecture.md"
       - "docs/data_health.md"
       - "docs/data_retrieval.md"
-      - "docs/rules/00_overview.md"
-      - "docs/rules/redesign.md"
+      - "docs/earnings-radar/00_overview.md"
+      - "docs/earnings-radar/redesign.md"
       - "module_spx_gamma/tests/golden/position_map.base.md"
       - ".github/**"
   workflow_dispatch:

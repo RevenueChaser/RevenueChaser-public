@@ -4,7 +4,7 @@ S1: the C6 (energy, utilities, materials) scorer counted four or five signals ov
 read 1.33 and lifted composite confidence. The operating-margin branch now counts, the denominator is five, and
 score() clamps coverage at 1.0 as the guard.
 
-S2: the universal +15 operating-margin floor fired on OM +2 pts YoY alone. docs/rules/redesign.md R3 step 3 also
+S2: the universal +15 operating-margin floor fired on OM +2 pts YoY alone. docs/earnings-radar/redesign.md R3 step 3 also
 needs the last-4 median above the prior-4 median, which _universal_om already tests for its vote; the floor now
 follows that vote.
 """

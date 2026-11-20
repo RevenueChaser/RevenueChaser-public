@@ -1,7 +1,7 @@
 """Fable review Part B (Earnings Radar, R5; #256). Offline.
 
 ``_parse_short_row`` made up a "utilization", short interest / (short interest + shares available), and R5 Z-scored
-it at weight 0.2. UW's short screener serves no utilization field, and docs/rules/redesign.md R5 says "there is no
+it at weight 0.2. UW's short screener serves no utilization field, and docs/earnings-radar/redesign.md R5 says "there is no
 utilization field, never invent one". The squeeze is now 0.4 SI, 0.3 borrow fee, 0.1 days to cover, renormalized
 over what is present. Default chosen, change if avo prefers: the alternative is a utilization field UW really serves,
 should one appear.
