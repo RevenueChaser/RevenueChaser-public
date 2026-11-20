@@ -38,7 +38,7 @@ def yield_beta_tstat(stock_by_date: dict[str, float], yield_by_date: dict[str, f
                      beta: float | None, exclude: frozenset | set = frozenset()) -> float | None:
     """The OLS t-stat of R6's yield beta, over the same return pairs as ``rule6_macro.yield_beta``.
 
-    ``rule6_macro.score`` skips the NO_TRADE veto when ``|t| < 2`` (the noise gate, ``docs/rules/redesign.md``): a
+    ``rule6_macro.score`` skips the NO_TRADE veto when ``|t| < 2`` (the noise gate, ``docs/earnings-radar/redesign.md``): a
     60-return beta of a volatile name can pass 4 from noise alone. None when there is no beta or the t-stat
     cannot be formed (fewer than three pairs, no yield variance, a perfect fit) — since #635 a missing t keeps
     the extreme reading a badge and never a veto.
@@ -88,7 +88,7 @@ def r6_beta(bars: list, yield_by_date: dict[str, float],
 
 def _gap_sessions(hist: list, bars: list) -> set[str]:
     """The reaction session (core/reaction_anchor) of every reported print in ``hist`` that falls in ``bars``:
-    the earnings-gap days R6's beta drops (docs/rules/redesign.md R6, review N1)."""
+    the earnings-gap days R6's beta drops (docs/earnings-radar/redesign.md R6, review N1)."""
     out = set()
     for h in hist or []:
         if h.get("actual_eps") is None or not h.get("report_date"):
@@ -1368,7 +1368,7 @@ def _flow_window(prints: list) -> tuple[int, float | None]:
 
 def _trade_flow_part(flow: dict, trade_read: str):
     """The trade reason's flow part: the institutional lean, only when the read is already on its side (R5 is a
-    tag, "tape on the same side", never a vote; docs/rules/redesign.md R5). None otherwise."""
+    tag, "tape on the same side", never a vote; docs/earnings-radar/redesign.md R5). None otherwise."""
     _, _, tone = _institutional_flow_comment(flow)
     if (tone, trade_read) == ("bull", "BULLISH"):
         return "institutional bullish lean"
@@ -1380,7 +1380,7 @@ def _trade_flow_part(flow: dict, trade_read: str):
 def _institutional_flow_comment(flow: dict, failed: bool = False):
     """Deterministic institutional lean read. Returns (label, net, tone).
 
-    The lean is read from the print side (``aggregate_flow``; docs/rules/redesign.md R5, review S4): net = bullish
+    The lean is read from the print side (``aggregate_flow``; docs/earnings-radar/redesign.md R5, review S4): net = bullish
     side premium (ask-side calls + bid-side puts) minus bearish (bid-side calls + ask-side puts), mid dropped. No
     print side served is no lean, never a call-minus-put guess. A package at or above ``INST_FLOW_MIN_NET`` is left
     out of the net and marked "(package risk)". ``failed`` says the flow request itself failed: "no flow" would be a

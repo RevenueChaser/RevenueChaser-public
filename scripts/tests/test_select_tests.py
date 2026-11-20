@@ -66,8 +66,8 @@ def test_a_narrow_change_runs_fewer_tests_than_the_full_suite():
 
 @pytest.mark.parametrize("doc, reader", [
     ("docs/data_retrieval.md", "core/tests/test_doc_constants.py"),
-    ("docs/rules/00_overview.md", "module_earnings_radar/tests/test_confidence_wording_df06.py"),
-    ("docs/rules/redesign.md", "module_earnings_radar/tests/test_cleanup_199.py"),
+    ("docs/earnings-radar/00_overview.md", "module_earnings_radar/tests/test_confidence_wording_df06.py"),
+    ("docs/earnings-radar/redesign.md", "module_earnings_radar/tests/test_cleanup_199.py"),
     ("docs/data_architecture.md", "core/tests/test_store_schema_refuse.py"),
 ])
 def test_a_doc_a_test_reads_selects_that_test(doc, reader):
