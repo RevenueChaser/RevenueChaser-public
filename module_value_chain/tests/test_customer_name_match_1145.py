@@ -95,6 +95,28 @@ def test_cos_is_companies_and_and_is_an_ampersand():
         assert (aliases.resolve(label, names) or {}).get("ticker") == ticker, label
 
 
+def test_a_market_or_a_geography_is_no_customer():
+    """Compustat's own ``customer_type`` keeps a segment name out, however well it matches a listed issuer.
+
+    The three the live measurement found: "Financial Institutions" is a market and also Financial Institutions,
+    Inc. (FISI); "Travel and leisure" is a market and also Travel & Leisure Co. (TNL); "Orange" is a geography
+    (the county) and also Orange S.A. (ORANY).
+    """
+    names = aliases.spine_names([_sec("FISI", "FINANCIAL INSTITUTIONS INC", cik="862831"),
+                                 _sec("TNL", "Travel & Leisure Co.", cik="1361658"),
+                                 _sec("ORANY", "ORANGE", cik="1038143", security_type="adr")])
+    rows = [{"customer": "Financial Institutions", "customer_type": "MARKET", "share": 0.3,
+             "period_end": "2025-12-31", "source": "wrds/segments"},
+            {"customer": "Travel and leisure", "customer_type": "MARKET", "share": 0.2,
+             "period_end": "2025-12-31", "source": "wrds/segments"},
+            {"customer": "Orange", "customer_type": "GEOREG", "share": 0.1, "period_end": "2025-12-31",
+             "source": "wrds/segments"}]
+    assert engine._xbrl_customer_edges("RAIL", rows, names) == []
+    # The same names typed COMPANY are companies, and a row with no type is an annual report's XBRL member.
+    typed = [{**rows[0], "customer_type": "COMPANY"}, {**rows[1], "customer_type": None}]
+    assert {e["dst_ticker"] for e in engine._xbrl_customer_edges("RAIL", typed, names)} == {"FISI", "TNL"}
+
+
 def test_the_customer_edge_takes_the_newly_resolved_name():
     rows = [{"customer": "Home Depot Inc. (The)", "share": 0.11, "period_end": "2025-12-31", "form": "10-K",
              "accession": "0000875320-26-000010", "document_date": "2026-02-12"},
