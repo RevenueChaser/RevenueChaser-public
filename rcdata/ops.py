@@ -76,6 +76,13 @@ FILE_KINDS = ("market", "spine", "ownership", "prices", "fundamentals", "options
 FILE_SWITCHES = tuple(f"file-{k}" for k in FILE_KINDS)
 # avo, 8 Nov 2026 ("B", #387): a resolved build issue is kept seven days; an open one until it is resolved.
 RESOLVED_ISSUE_DAYS = 7
+#: How long a finished run's rows are kept (avo, 20 Nov 2026: "Bir yil yeterli ama her seyi tuttugundan emin ol,
+#: hangi service yapacak bunu?"). ``job_runs2``, ``build_requests`` and ``dataset_check`` are the inside view of the
+#: runs ``ops.db job_runs`` holds on homesrv, which `life-server-health` keeps for the same 365 days. The deleter is
+#: the hourly builder pass (``rcdata.build.__main__``), because it is the writer of this store: no second writer, no
+#: new timer. ``prune_runs`` never takes a row that is still running, and never a check row a board reads as a
+#: dataset's state.
+RUN_ROWS_DAYS = 365
 # The UW response headers sampled into uw_remaining: only UW's own, never a cookie or anything else the answer had.
 UW_HEADER_PREFIX = "x-uw-"
 # What a live answer carries (27 Oct 2026): x-uw-daily-req-count is today's count; the per-minute pair is a rate
@@ -1247,6 +1254,52 @@ def prune_issues(days: int = RESOLVED_ISSUE_DAYS) -> int:
     how many went."""
     with _open() as con, _tx(con):
         return con.execute("DELETE FROM build_issues WHERE resolved_on < ?", (_prune_cutoff(days),)).rowcount
+
+
+#: Per dataset, the check rows a board reads as that dataset's state, whatever their age: the newest row, the
+#: newest that is not ``skipped`` (``latest_unskipped_check``) and the newest that built (``latest_good_check``).
+_KEEP_CHECKS = """SELECT MAX(id) FROM dataset_check GROUP BY dataset
+    UNION SELECT MAX(id) FROM dataset_check WHERE result != 'skipped' GROUP BY dataset
+    UNION SELECT MAX(id) FROM dataset_check WHERE result IN ('changed', 'unchanged') GROUP BY dataset"""
+
+
+@_routed
+def prune_runs(days: int = RUN_ROWS_DAYS) -> dict[str, int]:
+    """Delete the finished run rows older than ``days``: ``{table: rows deleted}``.
+
+    What is never deleted, whatever its age:
+
+    - a run that has not finished (``job_runs2.finished_at`` NULL) and a request still queued or running — the
+      sweep (``sweep_lost_runs``) is what closes those, not the clock;
+    - the newest ``dataset_check`` row of a dataset, and the newest that is not ``skipped`` and the newest that
+      built, because the boards read them as the dataset's state (``latest_check``, ``latest_unskipped_check``,
+      ``latest_good_check``). A dataset that last built two years ago keeps that row and still reads true.
+    """
+    cutoff = time.time() - max(0, int(days)) * 86400.0
+    day = _prune_cutoff(days)
+    with _open() as con, _tx(con):
+        return {
+            "job_runs2": con.execute("DELETE FROM job_runs2 WHERE started_at < ? AND finished_at IS NOT NULL",
+                                     (cutoff,)).rowcount,
+            "build_requests": con.execute(
+                "DELETE FROM build_requests WHERE requested_at < ? AND status NOT IN ('queued', 'running')",
+                (cutoff,)).rowcount,
+            "dataset_check": con.execute(
+                f"DELETE FROM dataset_check WHERE checked_on < ? AND id NOT IN ({_KEEP_CHECKS})", (day,)).rowcount,
+        }
+
+
+@_routed
+def oldest_run_rows() -> dict[str, float | str | None]:
+    """The oldest row kept per pruned table, and how many rows each holds: what shows that the one-year rule is
+    being applied and nothing was taken too early."""
+    out: dict[str, float | str | None] = {}
+    for table, column in (("job_runs2", "started_at"), ("build_requests", "requested_at"),
+                          ("dataset_check", "checked_on")):
+        rows = _select(f"SELECT MIN({column}) AS oldest, count(*) AS rows FROM {table}")
+        out[table] = rows[0]["oldest"] if rows else None
+        out[f"{table}_rows"] = rows[0]["rows"] if rows else 0
+    return out
 
 
 @_routed

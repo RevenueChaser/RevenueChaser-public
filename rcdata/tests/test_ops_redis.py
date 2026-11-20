@@ -110,6 +110,12 @@ def _script() -> dict:
         "running": sorted(ops.running_runs(), key=lambda r: r["run_id"]),
     }
     out["tables"] = {t: ops.rows(t) for t in ops.TABLES if t != "ops_schema"}
+    out["oldest"] = ops.oldest_run_rows()
+    # last, because it deletes: both backends must take the same rows and leave the same ones (step 9, 20 Nov 2026)
+    out["pruned"] = ops.prune_runs(days=0)
+    out["after_prune"] = {t: ops.rows(t) for t in ("job_runs2", "build_requests", "dataset_check")}
+    out["reads_after_prune"] = [ops.latest_check("market_series"), ops.latest_good_check("market_series"),
+                                ops.read_queue(5), ops.open_issues("prices/serving", 3)]
     return out
 
 

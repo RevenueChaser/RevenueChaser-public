@@ -175,9 +175,21 @@ def _put(p, table: str, row: dict) -> None:
 
 
 def _delete(p, table: str, row: dict) -> None:
+    """Queue the removal of one whole row: its hash, the table's set and every lookup that could still name it,
+    so a deleted row cannot be left behind in a lookup (the reads skip a missing hash, but the set would grow)."""
     pk = _pk(table, row)
     p.delete(_key(table, "row", pk))
     p.zrem(_key(table), pk)
+    if table == "build_requests":
+        for which in ("active", "finished"):
+            p.zrem(_key(table, which), pk)
+    elif table == "dataset_check":
+        p.zrem(_key(table, "ds", row.get("dataset")), pk)
+    elif table == "build_issues":
+        p.zrem(_key(table, "open", row.get("dataset")), pk)
+        p.zrem(_key(table, "open", row.get("dataset"), "kind", row.get("kind")), pk)
+    elif table == "job_runs2":
+        p.srem(_key(table, "running"), pk)
     p.incr(_key(table, "v"))
 
 
@@ -485,6 +497,52 @@ def prune_issues(days: int = ops.RESOLVED_ISSUE_DAYS) -> int:
                 _delete(p, "build_issues", row)
         return len(old), (writes if old else None)
     return _transaction(["build_issues"], work)
+
+
+def prune_runs(days: int = ops.RUN_ROWS_DAYS) -> dict[str, int]:
+    """``ops.prune_runs`` on Redis: the same three tables, the same two things that are never deleted."""
+    cutoff = time.time() - max(0, int(days)) * 86400.0
+    day = ops._prune_cutoff(days)
+    tables = ("job_runs2", "build_requests", "dataset_check")
+
+    def work():
+        old: list[tuple[str, dict]] = []
+        for r in _all("job_runs2"):
+            if (r["started_at"] or 0.0) < cutoff and r["finished_at"] is not None:
+                old.append(("job_runs2", r))
+        for r in _all("build_requests"):
+            if (r["requested_at"] or 0.0) < cutoff and r["status"] not in _ACTIVE:
+                old.append(("build_requests", r))
+        checks = _all("dataset_check")
+        keep = set()
+        for rows in (checks, [r for r in checks if r["result"] != "skipped"],
+                     [r for r in checks if r["result"] in ("changed", "unchanged")]):
+            newest: dict[str, int] = {}
+            for r in rows:                                  # the three rows a board reads as the dataset's state
+                if r["id"] > newest.get(r["dataset"], -1):
+                    newest[r["dataset"]] = r["id"]
+            keep.update(newest.values())
+        for r in checks:
+            if (r["checked_on"] or "") < day and r["id"] not in keep:
+                old.append(("dataset_check", r))
+
+        def writes(p):
+            for table, row in old:
+                _delete(p, table, row)
+        done = {t: sum(1 for table, _ in old if table == t) for t in tables}
+        return done, (writes if old else None)
+    return _transaction(tables, work)
+
+
+def oldest_run_rows() -> dict[str, float | str | None]:
+    out: dict[str, float | str | None] = {}
+    for table, column in (("job_runs2", "started_at"), ("build_requests", "requested_at"),
+                          ("dataset_check", "checked_on")):
+        rows = _all(table)
+        values = [r[column] for r in rows if r[column] is not None]
+        out[table] = min(values) if values else None
+        out[f"{table}_rows"] = len(rows)
+    return out
 
 
 def open_issues(dataset: str, limit: int = 20) -> tuple[int, list[dict]]:
