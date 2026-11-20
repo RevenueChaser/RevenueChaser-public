@@ -14,13 +14,14 @@ Offline: no module is called, only the registry is read.
 """
 from __future__ import annotations
 
+import ast
 import json
 import re
 from pathlib import Path
 
 import pytest
 
-from RevenueChaser.core import board_settings, llm_jobs, llm_writers
+from RevenueChaser.core import board_settings, llm_jobs, llm_writers, settings_store
 
 REPO = Path(__file__).resolve().parents[2]
 KEY = "LITELLM_RC_KEY"
@@ -125,9 +126,8 @@ def test_a_writer_without_its_credential_cannot_be_chosen_and_no_value_is_ever_p
 
 def test_a_stored_pair_that_does_not_fit_reads_the_jobs_own_default(monkeypatch):
     """A model saved for another provider, or an unknown provider, never produces an invalid pair (#360 S2)."""
-    monkeypatch.setattr(board_settings, "values", lambda board: {
-        "values": {"RELATEDNESS_NAMING_WRITER": "grok", "RELATEDNESS_NAMING_MODEL": "grok-9"},
-        "defaults": {}, "overridden": []})
+    monkeypatch.setattr(settings_store, "overrides", lambda board: {
+        "RELATEDNESS_NAMING_WRITER": "grok", "RELATEDNESS_NAMING_MODEL": "grok-9"})
     assert llm_jobs.pair("relatedness.naming") == ("evren", "evren-deepseek-v4.1-flash")
 
 
@@ -167,3 +167,20 @@ def test_the_shared_exception_names_cover_both_writers():
     assert issubclass(evren.EvrenError, llm_jobs.Error)
     assert issubclass(evren.EvrenAuthError, llm_jobs.AuthError)
     assert issubclass(evren.EvrenTransientError, llm_jobs.TransientError)
+
+
+def test_a_job_module_never_names_the_settings_page_registry():
+    """``core.board_settings`` reaches every board module to collect that board's specs. An LLM job's module that
+    imported it would put every board on the path of the root conftest (which imports the SEC reading service),
+    and CI would run the whole suite for any board change (``scripts/select_tests.py`` reads the import graph with
+    ast, so a call-local import counts too). The saved pairs come from ``core.settings_store`` instead."""
+    tree = ast.parse((REPO / "core" / "llm_jobs.py").read_text(encoding="utf-8"))
+    named = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            named += [a.name for a in node.names if "board_settings" in a.name]
+        elif isinstance(node, ast.ImportFrom):
+            named += [a.name for a in node.names if "board_settings" in a.name]
+            if node.module and "board_settings" in node.module:
+                named.append(node.module)
+    assert named == []

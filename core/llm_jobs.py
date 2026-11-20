@@ -21,7 +21,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-from RevenueChaser.core import board_settings, llm_writers
+from RevenueChaser.core import llm_writers, settings_store
 
 #: The shared exception surface of a writer call. EVREN's classes subclass these, so a job catches these names
 #: and names no provider. ``PeakHours`` is raised by the paid writer's off-peak gate only. They are resolved on
@@ -101,25 +101,31 @@ def default_model(job_id: str) -> str:
     return llm_writers.get(default_provider(job_id)).models[0]
 
 
-def specs() -> dict[str, board_settings.Setting]:
-    """Two text settings per job: its provider and that provider's model."""
-    out: dict[str, board_settings.Setting] = {}
+def setting_fields() -> list[dict]:
+    """The two settings each job needs, as plain data: ``key``, ``kind``, ``default``, ``choices``, ``label``.
+
+    The Settings page (:mod:`core.board_settings`) turns these into its own ``Setting`` objects. This module
+    names that one not at all, not even inside a call: it reaches every board module to collect that board's
+    specs, and a job module on that path would make CI run the whole suite for any board change, because the
+    root conftest imports the SEC reading service (``scripts/select_tests.py``).
+    """
+    out: list[dict] = []
     for job in JOBS.values():
-        out[job.writer_key] = board_settings.Setting(
-            job.writer_key, "text",
-            (lambda j=job.id: default_provider(j)),
-            choices=lambda: tuple(llm_writers.WRITERS), label=f"{job.label} — provider")
-        out[job.model_key] = board_settings.Setting(
-            job.model_key, "text",
-            (lambda j=job.id: default_model(j)),
-            choices=llm_writers.all_models, label=f"{job.label} — model")
+        out.append({"key": job.writer_key, "kind": "text",
+                    "default": (lambda j=job.id: default_provider(j)),
+                    "choices": (lambda: tuple(llm_writers.WRITERS)),
+                    "label": f"{job.label} — provider"})
+        out.append({"key": job.model_key, "kind": "text",
+                    "default": (lambda j=job.id: default_model(j)),
+                    "choices": llm_writers.all_models,
+                    "label": f"{job.label} — model"})
     return out
 
 
 def rules(v: dict) -> list[str]:
     """Per job: the model belongs to the chosen provider, and a provider with no credential cannot be chosen.
 
-    The rules run over the merged values of every job (``board_settings.validate``), so the credential check is
+    The rules run over the merged values of every job (the Settings page's own ``validate``), so the credential check is
     on a provider a job was **moved to**, not on the default it was left at: a box without the key would
     otherwise refuse a save that does not touch that job at all.
     """
@@ -141,10 +147,11 @@ def pair(job_id: str) -> tuple[str, str]:
     """``(provider, model)`` the job runs with.
 
     A stored pair that does not fit — an unknown provider, or a model saved for another provider — reads the
-    job's own default rather than an invalid pair (#360 review S2).
+    job's own default rather than an invalid pair (#360 review S2). The saved values come from
+    :mod:`core.settings_store`, the same place the Settings page reads them from.
     """
     job = get(job_id)
-    values = board_settings.values(BOARD)["values"]
+    values = settings_store.overrides(BOARD)
     slug = values.get(job.writer_key)
     if slug not in llm_writers.WRITERS:
         slug = default_provider(job_id)

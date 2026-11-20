@@ -34,7 +34,8 @@ def test_every_row_renders_both_selects_and_marks_the_fee(rawstore_tmp_db, monke
         assert f'data-setting="{job.writer_key}"' in html
         assert f'data-setting="{job.model_key}"' in html
         assert job.label in html and job.where in html
-    assert html.count('class="llmpill free">no fee') == len(llm_jobs.JOBS)
+    # one pill per job, plus the legend's own
+    assert html.count('class="llmpill free">no fee') == len(llm_jobs.JOBS) + 1
     assert "paid · off-peak" in html              # the legend names the paid writer
     assert "Every LLM job is on EVREN" in html
     assert DS_KEY not in html

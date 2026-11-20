@@ -994,7 +994,8 @@ def _llm_row(job: dict) -> str:
     writers = job.get("writers") or []
     provider = str(job.get("provider") or "")
     model = str(job.get("model") or "")
-    pchoices = [(str(w["provider"]), str(w["label"]), str(w.get("missing") or "")) for w in writers]
+    pchoices = [(str(w["provider"]), str(w["label"]),
+                 f'{w["missing"]} is not set on this box' if w.get("missing") else "") for w in writers]
     mchoices = [(m, f"{w['provider']} · {m}", "") for w in writers for m in (w.get("models") or [])]
     fee = ('<span class="llmpill paid">paid · off-peak</span>' if job.get("paid")
            else '<span class="llmpill free">no fee</span>')
