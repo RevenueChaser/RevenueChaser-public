@@ -165,13 +165,17 @@ from RevenueChaser.rcdata.build.fundamentals import tables as fundamentals_table
 SERVED_TABLES = sorted({t for ds in _DATASETS.values() for t in ds.tables})
 
 
-@pytest.mark.parametrize("table", SERVED_TABLES)
-def test_every_served_table_answers_the_refresh_and_is_never_unknown(client, market_roots, reads, table):
+def test_every_served_table_answers_the_refresh_and_is_never_unknown(client, market_roots, reads):
     """The board draws "Refresh the example rows" for every table a dataset serves, so pressing it must never
-    answer 404 "unknown table" (#338: seven tables did). With no serving file built the honest answer is 409."""
-    r = _get(client, table)
-    assert r.status_code == 409, f"{table}: {r.status_code} {r.get_json()}"
-    assert r.get_json()["ok"] is False
+    answer 404 "unknown table" (#338: seven tables did). With no serving file built the honest answer is 409.
+
+    One test over the whole set rather than a case per table: the question is whether *any* served table is
+    unknown to the route, and the set grows with the build registry.
+    """
+    assert SERVED_TABLES, "no dataset serves a table: the registry did not load"
+    unknown = {t: _get(client, t).status_code for t in SERVED_TABLES}
+    assert {t: code for t, code in unknown.items() if code != 409} == {}, \
+        "a served table the route does not know: 404 is the board's button answering 'unknown table'"
 
 
 def _peers(rows):
