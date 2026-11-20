@@ -19,8 +19,9 @@ from RevenueChaser.rcdata.build.prices import incremental, stage, wrds_history
 
 from .prices_incremental_world import (
     GOOGL, OCT, SPINE, SPYX, _aapl_day, _build, _clock, _note, _q, _respine, _same_as_whole, _secd_rows, _serve,
-    _snapshot, _spy, _spy_spine, _write_secd, alphabet, fake, live
-)  # noqa: F401 (the shared world: its helpers and the fixtures a test asks for by name)
+    _snapshot, _spy, _spy_spine, _write_secd, alphabet, env, fake, live
+)  # noqa: F401 (the shared world: its helpers, and every fixture a test's own fixtures ask for -- `env` is
+#  autouse and runs only where it is in the namespace, `fake` is what `live` is built on)
 
 
 def _alpaca_split(template: dict, rate: float) -> dict:

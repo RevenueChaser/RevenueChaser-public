@@ -24,8 +24,9 @@ from RevenueChaser.rcdata.build.prices import serving as prices_serving
 
 from .prices_incremental_world import (
     AAPL, OLDCO, SPINE, _aapl_day, _clock, _note, _q, _report, _respine, _same_as_whole, _secd_rows, _serve,
-    _snapshot, _write_secd, live
-)  # noqa: F401 (the shared world: its helpers and the fixtures a test asks for by name)
+    _snapshot, _write_secd, env, fake, live
+)  # noqa: F401 (the shared world: its helpers, and every fixture a test's own fixtures ask for -- `env` is
+#  autouse and runs only where it is in the namespace, `fake` is what `live` is built on)
 
 
 def _shrunk_build(where: str):
