@@ -144,7 +144,7 @@ class UWEarnings:
     kind = KIND
     providers = (PROVIDER,)
     tables: tuple[str, ...] = ()
-    feeds = ("earnings_reported",)    # what was reported against what was expected
+    feeds = ("earnings_reported", "earnings_report_history")    # what was reported against what was expected
     cadence = "weekly"
     backfill_needs_from = False
     starts_by_hand = True

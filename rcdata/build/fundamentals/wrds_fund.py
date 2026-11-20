@@ -133,6 +133,8 @@ class WrdsFund:
         #: The served tables this dataset's rows reach (#326): the first-reported values are the revisions,
         #: and the segment set is the Compustat half of the segment and customer tables.
         self.feeds = ("fundamental_revision",) if revisions else ("segment_revenue", "customer_share")
+        if table == "fundq":      # its ``rdq`` is the report day of ``earnings_report_history`` (#1181)
+            self.feeds += ("earnings_report_history",)
         self.staging = f"stg_wrds_{table}"
         self.revision_staging = f"stg_wrds_{table}_revision"
 

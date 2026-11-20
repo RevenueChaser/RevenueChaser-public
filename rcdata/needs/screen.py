@@ -112,6 +112,7 @@ WRITTEN_COLUMN: dict[str, str] = {
     'corporate_action': 'ex_date',
     'customer_share': 'document_date',
     'earnings_event': 'source_as_of',
+    'earnings_report_history': 'source_as_of',
     'earnings_reported': 'source_as_of',
     'earnings_tape': 'session_date',
     'economic_event': 'snapshot_date',
