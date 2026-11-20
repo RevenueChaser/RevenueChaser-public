@@ -111,7 +111,10 @@ def _fda_pass(now: float, run_id: str) -> dict:
             "last_seen": float(r["fetched_at"]), "retired_at": None, "run_id": run_id, "run_at": now,
             "ticker": r.get("ticker"), "drug": r.get("drug"), "catalyst": r.get("catalyst"),
             "target_text": r.get("target_text"), "target_precision": r.get("target_precision"),
-            "indication": r.get("indication") or r.get("description"), "status": r.get("status"),
+            "indication": r.get("indication") or r.get("description"),
+            # UW's own status is served as ``application_status`` (``rcdata.read`` keeps ``status`` for the
+            # dataset's freshness); on the board's own row it is simply the application's stage.
+            "status": r.get("application_status"),
             "outcome": r.get("outcome") or r.get("outcome_brief"), "url": r.get("source_link"),
         })
     lo, hi = min(k[0] for k in newest_keys), max(k[0] for k in newest_keys)
