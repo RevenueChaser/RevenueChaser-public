@@ -369,9 +369,18 @@ def _xbrl_customer_edges(ticker: str, customers: list[dict], names: dict | None 
 
     A customer the hand-kept alias list does not know is named by the spine (``names``, ``aliases.spine_names``;
     #400 WP5): VRTX's McKesson.
+
+    A Compustat row says what kind of counterparty it names (``customer_type``, its ``ctype``), and only a
+    ``COMPANY`` row is a company: a ``MARKET`` row is a market segment ("Financial Institutions", "Travel and
+    leisure") and a ``GEOREG`` row a geography ("Orange", meaning the county), each of which is also the name of
+    a listed issuer, and a ``GOVDOM`` row a government. A row with no type is an annual report's own XBRL member
+    (``source = 'sec/filings'``), which names a company by construction (#1145).
     """
     me, out = aliases.issuer(ticker), {}
     for c in customers:
+        kind = str(c.get("customer_type") or "").strip().upper()
+        if kind and kind != "COMPANY":
+            continue
         hit = aliases.resolve(c.get("customer") or "", names)
         if hit is None or aliases.issuer(hit["ticker"]) == me or hit["ticker"] in out:
             continue
