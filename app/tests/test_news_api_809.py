@@ -113,8 +113,15 @@ def test_the_headlines_route_keeps_its_poll_and_refuses_a_bad_window(client, see
     assert client.get(f"/api/news/headlines?from={NOW - HOUR}&to={NOW}&ticker=NOT%20A%20TICKER").status_code == 400
 
 
+def _count(table: str) -> int:
+    return rawstore.query(f"SELECT count(*) AS n FROM {table}", db="news")[0]["n"]
+
+
 def test_neither_route_writes_anything(client, seeded):
-    before = rawstore.query("SELECT count(*) AS n FROM news_headlines", db="news")[0]["n"]
-    client.get("/api/news/events")
-    client.get(f"/api/news/headlines?from={NOW - HOUR}&to={NOW}")
-    assert rawstore.query("SELECT count(*) AS n FROM news_headlines", db="news")[0]["n"] == before
+    before = (_count("news_events"), _count("news_headlines"))
+    events = client.get("/api/news/events")
+    heads = client.get(f"/api/news/headlines?from={NOW - HOUR}&to={NOW}")
+    # Both answered, so the counts below are about two routes that ran and not about a 404.
+    assert events.status_code == 200 and events.get_json()["ok"] is True
+    assert heads.status_code == 200 and heads.get_json()["ok"] is True
+    assert (_count("news_events"), _count("news_headlines")) == before
