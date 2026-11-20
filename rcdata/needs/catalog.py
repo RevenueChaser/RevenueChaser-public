@@ -166,6 +166,9 @@ _NEEDS = (
     # #643: UW's economic calendar, fetched hourly; a day is its newest snapshot. A day old is late.
     Need("market.economic_calendar", "economic_calendar", "economic_event", "snapshot_date", "event", 1,
          max_lag_unit=DAYS, providers=("uw",)),
+    # #807: UW's FDA calendar, fetched hourly beside the economic one; a day is its newest snapshot. A day old is late.
+    Need("market.fda_calendar", "fda_calendar", "fda_event", "snapshot_date", "ticker", 1,
+         max_lag_unit=DAYS, providers=("uw",)),
     # ── Ownership ───────────────────────────────────────────────────────────────────────────────────────────────
     # FINRA settles twice a month (mid-month and month end) and publishes about a week later, so the newest settlement
     # is routinely 10 to 27 calendar days old. 35 lets a holiday-late release through and reads "not stored" once a

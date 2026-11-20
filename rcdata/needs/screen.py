@@ -89,6 +89,8 @@ DATASETS: dict[str, DatasetCard] = {
     # shortcut: the hourly dataset's card (#643) says daily, so the screen reads it late after a day without a run,
     # not an hour; an "hourly" card cadence needs newdata's CYCLE_DAYS to learn it first.
     'uw/economic_calendar': DatasetCard('Economic calendar, this week and next (Unusual Whales)', step=11, role='only source'),
+    'uw/fda_calendar': DatasetCard('FDA calendar: PDUFA dates, advisory meetings and decisions (Unusual Whales)',
+                                   step=11, role='only source'),
     'uw/institutions': DatasetCard('Every 13F institution, its tags and its successions (Unusual Whales)',
                                   cadence='quarterly', step=10, role='only source'),
     'uw/greek_expiry_strike': DatasetCard('SPX greek exposure by expiry and strike, whole chain (Unusual Whales)', coverage_target=0.95, step=11, role='first'),
@@ -264,6 +266,7 @@ NO_TIER_DATASET_WORDS: dict[str, str] = {
     "alphavantage/earnings_calendar": "one call brings the whole calendar, every name at once.",
     "sec/fsds": "one file a quarter holds every filer at once.",
     "uw/economic_calendar": "one call brings the whole calendar, no names.",
+    "uw/fda_calendar": "one call brings the whole calendar, no names.",
     "sec/ncen": "one file a quarter holds every fund at once.",
 }
 #: A hand-run (attended) dataset is never filled by tier.
