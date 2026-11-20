@@ -62,7 +62,7 @@ def _enterprise_value(cap, record) -> float | None:
     debt, cash = _num(record.get("total_debt")), _num(record.get("cash"))
     if cap is None or debt is None or cash is None:
         return None
-    return cap + debt + cash  # MUTATION: #286 mutation check, reverted in the next commit
+    return cap + debt - cash
 
 
 def peer_multiples(peers) -> dict[str, dict]:
