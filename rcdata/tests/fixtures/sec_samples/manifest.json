@@ -63,6 +63,15 @@
   "url": "https://www.sec.gov/files/data/fails-deliver-data/cnsfails202610b.zip"
  },
  {
+  "dataset": "ncen",
+  "raw_bytes": 7571694,
+  "raw_file": "ncen/2025q4.zip",
+  "sample": "ncen/2025q4.zip",
+  "sample_bytes": 60499,
+  "trim": "zip: all 46 members, each cut to its header and 50 rows (re-cut 20 Nov: the first cut kept only 40)",
+  "url": "https://www.sec.gov/files/dera/data/form-n-cen-data-sets/2025q4_ncen.zip"
+ },
+ {
   "dataset": "nport",
   "raw_bytes": 462371568,
   "raw_file": "nport/2026q3_nport.zip",

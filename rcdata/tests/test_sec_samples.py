@@ -4,8 +4,8 @@ Every other test of these parsers feeds them bytes written in Python (``ownershi
 ``sec_sections_cases``). That catches a mistake in our code and nothing at all in the source: a header the SEC
 renames, a member it drops, a column it moves is invisible to CI until a live run fails. The samples under
 ``fixtures/sec_samples/`` are cut from the newest raw file of each data set the store holds -- every member kept,
-each one cut to its header line and 50 rows, which is exactly the part a parser reads for its columns. 147 KB for
-eight data sets; ``manifest.json`` names each one's raw file, its bytes, the trim and the SEC URL. No request goes
+each one cut to its header line and 50 rows, which is exactly the part a parser reads for its columns. 208 KB for
+nine data sets; ``manifest.json`` names each one's raw file, its bytes, the trim and the SEC URL. No request goes
 to sec.gov from here: the samples are files in the tree.
 
 What each kind of test can and cannot say:
@@ -18,20 +18,22 @@ What each kind of test can and cannot say:
 - A **parse** test runs the real parser over the real bytes. It proves the shape the parser asserts is the shape
   the file has.
 
-A column list written out in this file (N-CEN has none: its columns live inside its SQL) guards the source, not our
-code: if the parser stops reading a column and this list keeps it, the test still passes. The drift that matters
-here is the SEC's.
+A column list written out in this file -- N-CEN's, because its columns live inside its SQL rather than in a
+constant -- guards the source, not our code: if the parser stops reading a column and this list keeps it, the test
+still passes. The drift that matters here is the SEC's.
 
-N-CEN is left out of this PR on purpose. Its sample holds 40 members where its own trim counted 46, so nothing in
-it can tell a member the trim dropped from one the SEC dropped -- and ``spine/ncen.py:51`` names
-``SECURITY_EXCHANGE.tsv``, which is not among the 40. Whether the SEC still ships it is an open question on #1161,
-not a claim this file makes; the sample comes back once it is cut whole.
+``test_a_trimmed_zip_keeps_every_member_of_the_set_it_was_cut_from`` is why the rest can be trusted, and it has
+already earned its place: the first N-CEN sample held 40 members where its own trim counted 46, and one of the six
+it had quietly dropped was ``SECURITY_EXCHANGE.tsv``, which ``spine/ncen.py:51`` reads. Nothing was wrong with the
+data -- the sampler capped a zip at 40 members -- but an incomplete sample reads exactly like the SEC dropping a
+member, so the count is checked before any member test is believed.
 """
 from __future__ import annotations
 
 import gzip
 import io
 import json
+import re
 import zipfile
 from pathlib import Path
 
@@ -39,7 +41,7 @@ import pytest
 
 from ..build.fundamentals import sec_index
 from ..build.ownership import form345_sets, ftd, nport, sec13f_sets
-from ..build.spine import sec_tickers, sec_tickers_mf
+from ..build.spine import ncen, sec_tickers, sec_tickers_mf
 from . import ownership_fixture
 
 SAMPLES = Path(__file__).parent / "fixtures" / "sec_samples"
@@ -48,12 +50,14 @@ ZIPS = {
     "form345_sets": "form345_sets/2026q3_form345.zip",
     "fsds": "fsds/2026q3.zip",
     "ftd": "ftd/cnsfails202610b.zip",
+    "ncen": "ncen/2025q4.zip",
     "nport": "nport/2026q3_nport.zip",
 }
 # The members each parser names, from its own constant where it has one.
 PARSER_MEMBERS = {
     "13f_sets": tuple(f"{m}.tsv" for m in sec13f_sets.MEMBERS),
     "form345_sets": tuple(f"{m}.tsv" for m in form345_sets.MEMBERS),
+    "ncen": ncen.FILES,
     "nport": tuple(f"{m}.tsv" for m in nport.MEMBERS),
     "fsds": ("sub.txt", "num.txt"),
     "ftd": ("cnsfails202610b.txt",),
@@ -61,6 +65,15 @@ PARSER_MEMBERS = {
 # ``fsds._select`` refuses a set without one of these (rcdata/build/fundamentals/fsds.py:142).
 FSDS_NUM = ("adsh", "tag", "ddate", "qtrs", "uom", "value")
 FSDS_SUB = ("adsh", "cik", "form", "filed")
+# N-CEN names its columns inside ``Ncen._series`` and ``Ncen._filers`` (rcdata/build/spine/ncen.py:183-211), not in
+# a constant this test could read, so they are written out here.
+NCEN_COLUMNS = {
+    "SUBMISSION.tsv": ("ACCESSION_NUMBER", "CIK", "FILING_DATE", "REPORT_ENDING_PERIOD"),
+    "FUND_REPORTED_INFO.tsv": ("ACCESSION_NUMBER", "FUND_ID", "SERIES_ID", "FUND_NAME", "IS_ETF", "IS_INDEX",
+                               "IS_MULTI_INVERSE_INDEX", "IS_MONEY_MARKET", "IS_FUND_OF_FUND",
+                               "DAILY_AVG_NET_ASSETS", "MONTHLY_AVG_NET_ASSETS"),
+    "SECURITY_EXCHANGE.tsv": ("FUND_ID", "FUND_TICKER_SYMBOL", "FUND_EXCHANGE"),
+}
 
 
 def _manifest() -> list[dict]:
@@ -98,9 +111,11 @@ def test_a_trimmed_zip_keeps_every_member_of_the_set_it_was_cut_from():
     for e in _manifest():
         if not e["trim"].startswith("zip: "):
             continue
-        counted = int(e["trim"].split()[1])
+        counted = re.search(r"\d+", e["trim"])
+        assert counted, f"{e['dataset']}: the trim states no member count ({e['trim']!r})"
         with zipfile.ZipFile(SAMPLES / e["sample"]) as z:
-            assert len(z.namelist()) == counted, f"{e['dataset']}: trim counted {counted}"
+            held = len(z.namelist())
+        assert held == int(counted[0]), f"{e['dataset']}: trim counted {counted[0]}, sample holds {held}"
 
 
 @pytest.mark.parametrize("name", sorted(PARSER_MEMBERS))
@@ -114,6 +129,13 @@ def test_the_columns_the_nport_loader_reads_are_in_the_real_set(member):
     header = _header("nport", f"{member}.tsv")
     missing = [c for c in nport.OPTIONAL[member] if c not in header]
     assert not missing, f"N-PORT {member}: {', '.join(missing)}"
+
+
+@pytest.mark.parametrize("member", sorted(NCEN_COLUMNS))
+def test_the_columns_the_ncen_sql_reads_are_in_the_real_set(member):
+    header = _header("ncen", member)
+    missing = [c for c in NCEN_COLUMNS[member] if c not in header]
+    assert not missing, f"N-CEN {member}: {', '.join(missing)}"
 
 
 def test_the_columns_the_fails_to_deliver_loader_needs_are_in_the_real_file():
