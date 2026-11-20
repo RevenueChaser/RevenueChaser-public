@@ -95,6 +95,7 @@ DATASETS: dict[str, DatasetCard] = {
     'uw/total_float': DatasetCard('Float check (Unusual Whales)', step=8, role='cross-check'),
     'wrds/co_hgic': DatasetCard('Compustat GICS history (WRDS)', step=5, role='fills'),
     'wrds/funda': DatasetCard('Compustat annual fundamentals (WRDS, the revision check)', step=9, role='cross-check'),
+    'wrds/exrt': DatasetCard('Compustat daily exchange rates (WRDS, compared with Yahoo)', step=9, role='cross-check'),
     'wrds/fundq': DatasetCard('Compustat quarterly fundamentals (WRDS, the revision check)', step=9, role='cross-check'),
     'wrds/idxcst_his': DatasetCard('Compustat index constituents (WRDS, the membership check)', step=6, role='cross-check'),
     'wrds/prices': DatasetCard('Price history and actions (WRDS: Compustat, CRSP)', step=8, role='first'),

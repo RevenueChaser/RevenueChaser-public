@@ -1916,6 +1916,7 @@ cache; since #642 PR 6 the boards never read that cache: no layer reads as no ro
 | `wrds/fundq` | monthly, attended | `comp.fundq`, the Tier A gvkeys, ten years | `stg_wrds_fundq`, `stg_wrds_fundq_revision` |
 | `wrds/funda` | monthly, attended | `comp.funda`, the Tier A gvkeys, ten years | `stg_wrds_funda`, `stg_wrds_funda_revision` |
 | `wrds/segments` | monthly, attended | `comp_segments_hist_daily.wrds_segmerged` and `seg_customer`, five years, the newest source date per key where the table has one | `stg_wrds_segments`, `stg_wrds_customers` |
+| `wrds/exrt` | monthly, attended | `comp.exrt_dly`, the whole history of `fx_rates.CURRENCIES` and USD. Every row is quoted from GBP, so USD per unit is the cross `exratd(GBP->USD) / exratd(GBP->CUR)` (#1181, step H). Staged and compared with `yfinance/fx` (the check note: pairs of the newest year within 1%); the non-USD filers' values are still converted at Yahoo's rates | `stg_wrds_exrt_raw`, `stg_wrds_exrt` |
 | `fundamentals/tables` | daily | none: builds the served tables, the views, the peer groups and the build issues from the staging tables | the tables below |
 
 **A builder that was down still reads what was filed meanwhile.** `sec/companyfacts` and `sec/filings` read the
@@ -1955,7 +1956,7 @@ preliminary row any more.
 
 **WRDS is a check, not a served value.** Attended and monthly on the spine's one WRDS worker (one login, at most one
 Duo push per builder process): `python -m RevenueChaser.rcdata.build backfill wrds/fundq wrds/funda
-wrds/segments` in a foreground terminal on the server. Each monthly `fundq` / `funda` snapshot is compared with the
+wrds/segments wrds/exrt` in a foreground terminal on the server. Each monthly `fundq` / `funda` snapshot is compared with the
 one before: every value that changed for a period both hold is a `fundamental_revision` row (a restatement, or a
 correction at Compustat; a new period is not one). The check notes count revenue, net income and diluted EPS that
 agree with the SEC's facts (Compustat's millions times a million, within 0.5%, EPS within a cent, period ends within

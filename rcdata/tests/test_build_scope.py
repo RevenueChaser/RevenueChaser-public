@@ -146,6 +146,7 @@ def test_every_dataset_either_honours_the_scope_or_is_named_here():
         "uw/greek_expiry_strike": "SPX only",
         "uw/spot_expiry_strike": "SPX only",
         "wrds/co_hgic": "attended, a whole-history pull",
+        "wrds/exrt": "attended, a whole-history pull of the currencies, not of companies",
         "wrds/funda": "attended, a whole-history pull",
         "wrds/fundq": "attended, a whole-history pull",
         "wrds/idxcst_his": "attended, a whole-history pull",

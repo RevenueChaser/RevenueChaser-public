@@ -1,4 +1,5 @@
-"""``wrds/fundq``, ``wrds/funda``, ``wrds/segments``: Compustat's statements and segments, a check of the SEC.
+"""``wrds/fundq``, ``wrds/funda``, ``wrds/segments``: Compustat's statements and segments, a check of the SEC; and
+``wrds/exrt``, Compustat's daily exchange rates, staged beside Yahoo's (``WrdsExrt``).
 
 **Run against the real source once** (the server run of 2026-10-29, PR 249: ``comp.fundq`` and ``comp.funda``
 answered; ``seg_customer`` had no ``srcdate``). So the dataset whose columns were a guess, ``wrds/segments``, reads
@@ -43,7 +44,7 @@ from ....core import calendar
 from .. import base
 from .. import dirty as dirty_set
 from ..spine import wrds as wrds_session
-from . import KIND, common, facts
+from . import KIND, common, facts, fx_rates
 
 PROVIDER = wrds_session.PROVIDER
 SNAPSHOT_DAYS = 30
@@ -486,6 +487,88 @@ class WrdsSegments(WrdsFund):
                 f"customer rows, {shared} with a share of the SEC's revenue")
 
 
+class WrdsExrt(WrdsFund):
+    """``wrds/exrt``: Compustat's daily exchange rates (``comp.exrt_dly``), the whole history of the currencies the
+    fundamentals layer converts (``fx_rates.CURRENCIES``), one snapshot a month.
+
+    **Measured on homesrv, 20 Nov 2026 (#1181, step H of the WRDS plan):** every row's ``fromcurd`` is ``GBP``, so
+    a rate in USD per unit is the cross ``exratd(GBP->USD) / exratd(GBP->CUR)``; the table runs from 1982-02-01,
+    holds all 38 currencies we use, and its cross agrees with ``yfinance/fx`` within 1% on 91.4% of 9,947
+    (currency, day) pairs of a year (weakest: KZT, SAR, PEN; fixing-time differences, medians within about 1%).
+
+    **Staged and compared, not served yet.** ``stg_wrds_exrt`` has the shape of ``stg_yf_fx`` (currency, day,
+    USD per unit) and the check note says how the two agree over the newest year. The statement values of the
+    non-USD filers are still converted at Yahoo's rates (``fx_rates.held_rates``); moving that to Compustat's rate
+    wherever it has one changes served values and is its own pull request."""
+
+    BASE = "GBP"
+    USD = "USD"
+    TOLERANCE = 0.01
+    YEAR_DAYS = 365
+
+    def __init__(self):
+        super().__init__("exrt_dly", "comp", [("fromcurd", "TEXT"), ("tocurd", "TEXT"), ("datadate", "DATE"),
+                                              ("exratd", "DOUBLE")], [], ["tocurd", "datadate"], "datadate", 0,
+                         revisions=False)
+        self.name = "wrds/exrt"
+        self.feeds = ()                                   # staged and compared only; no served table reads it yet
+        self.raw_staging = "stg_wrds_exrt_raw"
+        self.staging = "stg_wrds_exrt"
+
+    def sql(self, gvkeys=None, as_of=None, library: str | None = None) -> str:
+        cols = ", ".join(c for c, _ in self.schema)
+        wanted = ", ".join(repr(c) for c in sorted({*fx_rates.CURRENCIES, self.USD}))
+        return (f"SELECT {cols} FROM {library or self.library}.{self.table} "
+                f"WHERE fromcurd = '{self.BASE}' AND tocurd IN ({wanted})")
+
+    def _full(self, ctx: base.RunContext, as_of: date) -> list[Path]:
+        return [wrds_session._ask(ctx, self.raw_path(as_of), self.sql(), as_of)]
+
+    def full_rebuild_reason(self, ctx: base.RunContext) -> str | None:
+        """No served table is made from it, so a new snapshot is no reason to build the kind whole."""
+        return None
+
+    def cross(self, con: duckdb.DuckDBPyConnection) -> int:
+        """``stg_wrds_exrt`` from the staged snapshot: USD per unit of each currency, by day. The base currency has
+        no row of its own against itself that we rely on: its rate is the USD row's."""
+        con.execute(f"""
+            CREATE OR REPLACE TEMP TABLE {self.staging} AS
+            WITH usd AS (SELECT datadate, exratd, source_as_of, fetched_at, run_id FROM {self.raw_staging}
+                         WHERE fromcurd = '{self.BASE}' AND tocurd = '{self.USD}' AND exratd > 0)
+            SELECT c.tocurd AS currency, c.datadate AS day, u.exratd / c.exratd AS usd_per_unit,
+                   c.source_as_of, c.fetched_at, c.run_id
+            FROM {self.raw_staging} c JOIN usd u ON u.datadate = c.datadate
+            WHERE c.fromcurd = '{self.BASE}' AND c.tocurd NOT IN ('{self.USD}', '{self.BASE}') AND c.exratd > 0
+            UNION ALL
+            SELECT '{self.BASE}', datadate, exratd, source_as_of, fetched_at, run_id FROM usd""")
+        return common.count(con, self.staging)
+
+    def build(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> dict[str, int]:
+        snaps = self.snapshots()
+        common.stage_glob(con, self.raw_staging, self.schema + PROVENANCE, common.parquet_dir(self.name),
+                          f"snapshot={snaps[-1]}/{self.table}.parquet" if snaps else "snapshot=none/none")
+        self.cross(con)
+        return {}
+
+    def note(self, con: duckdb.DuckDBPyConnection) -> str:
+        cols = ", ".join(f'"{c}" {t}' for c, t in fx_rates.SCHEMA)
+        con.execute(f"CREATE TEMP TABLE IF NOT EXISTS {fx_rates.STAGING} ({cols})")     # a registry without Yahoo's
+        currencies, first, newest = con.execute(
+            f"SELECT count(DISTINCT currency), min(day), max(day) FROM {self.staging}").fetchone()
+        if not currencies:
+            return "WRDS exrt_dly: no snapshot yet"
+        n, ok = con.execute(f"""
+            SELECT count(*), count(*) FILTER (WHERE abs(w.usd_per_unit - y.usd_per_unit)
+                                                    <= {self.TOLERANCE} * greatest(w.usd_per_unit, y.usd_per_unit))
+            FROM {self.staging} w JOIN {fx_rates.STAGING} y ON y.currency = w.currency AND y.day = w.day
+            WHERE w.day > DATE '{newest}' - INTERVAL {self.YEAR_DAYS} DAY AND y.usd_per_unit > 0""").fetchone()
+        missing = sorted(set(fx_rates.CURRENCIES) - {r[0] for r in con.execute(
+            f"SELECT DISTINCT currency FROM {self.staging}").fetchall()})
+        return (f"WRDS exrt_dly ({self.BASE}-based, crossed to USD): {currencies} currencies, {first} to {newest}; "
+                f"{int(ok or 0)} of {int(n or 0)} (currency, day) pairs of the newest year agree with Yahoo within "
+                f"1%" + (f"; not at Compustat: {', '.join(missing)}" if missing else ""))
+
+
 FUNDQ = WrdsFund("fundq", "comp",
                  [("gvkey", "TEXT"), ("datadate", "DATE"), ("fyearq", "INTEGER"), ("fqtr", "INTEGER"),
                   ("fyr", "INTEGER"), ("rdq", "DATE")],
@@ -496,4 +579,5 @@ FUNDA = WrdsFund("funda", "comp",
                  ["revt", "cogs", "oiadp", "ni", "epspx", "epsfx", "at", "dltt", "dlc", "che", "ceq", "oancf", "capx"],
                  ["gvkey", "datadate"], "datadate", YEARS, revisions=True)
 SEGMENTS = WrdsSegments()
-DATASETS = (FUNDQ, FUNDA, SEGMENTS)
+EXRT = WrdsExrt()
+DATASETS = (FUNDQ, FUNDA, SEGMENTS, EXRT)
