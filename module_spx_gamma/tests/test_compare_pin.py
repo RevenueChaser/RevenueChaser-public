@@ -40,6 +40,11 @@ def _handler(path, params):
 @pytest.fixture
 def stored_day(tmp_path, monkeypatch):
     monkeypatch.setattr(calendar, "_now", lambda: datetime(2026, 10, 27, 12, 0, tzinfo=timezone.utc))
+    # The manifest stamps the real clock, and the day's own 0DTE is the only grid file this handler serves. Run
+    # live, that stamp is years after the 26 Oct close, so the day reads as settled and #452's gate takes those
+    # rows out of the pin and squeeze geometry: the tool's two bases would both be empty for a reason that has
+    # nothing to do with what this test measures. Pin the Fetch inside the 26 Oct session instead.
+    monkeypatch.setattr(snap, "_utc_now", lambda: "2026-10-26T15:30:00Z")
     s, nxt = fx.LAST, calendar.next_trading_day(fx.LAST)
     # 0-1 DTE: $4B at the magnet (no pin on the new basis), -$300M at 6760 (a squeeze trigger on the new basis)
     fx.serve(spx={s: [fx.uw_row(s, s, MAGNET, 3e9, 0), fx.uw_row(s, nxt, MAGNET, 1e9, 0),
