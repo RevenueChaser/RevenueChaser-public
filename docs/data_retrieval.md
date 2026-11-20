@@ -261,6 +261,30 @@ provider, write nothing and open no second DuckDB writer, so a page may ask them
   need's state without naming a ticker; `limit=N` bounds the rows, never above 5,000. 404 for an unknown need,
   400 for an unknown parameter or for a need that must be asked for something (`market.series`).
 
+### The News board's read-only routes, and its MCP server (#809)
+
+Two routes out of `boards/news.duckdb`. Both are store-only: they fetch nothing, call no model and write
+nothing, so neither needs the `X-RC-Panel` header.
+
+- **`GET /api/news/events`**: the calendar rows still to come, economic and FDA, from `news_events` through
+  `module_news/report.event_rows`. `days` (1 to `report.API_MAX_DAYS`, default `report.WEEK_DAYS`) and `types`
+  (a comma-separated list of `news_events.type` values) narrow it. Each row carries `event_ts`, `event`, `type`,
+  `importance`, `forecast`, `prev`, `day` and `hm`; an FDA row also carries `ticker`, `drug`, `catalyst`,
+  `indication`, `application_status`, `outcome`, `url`, `target_text` and `target_precision`. A retired event is
+  never served. 400 for a bad or out-of-range `days`.
+- **`GET /api/news/headlines`**: the `since=<epoch>` poll the board itself uses, and a window —
+  `from`/`to` (epoch seconds, at most `report.API_MAX_DAYS` days apart), with one optional `ticker` and a
+  `limit` up to `report.API_LIMIT`. Newest first. 400 for a bad number, for `to` before `from`, for a wider
+  window, or for a ticker that is not one.
+
+**`python -m RevenueChaser.scripts.news_mcp`** is a JSON-RPC 2.0 server over stdio (one message a line) that
+reads those two routes and nothing else, so it holds no DuckDB handle of its own and needs the dashboard
+running. Three tools: `recent_headlines` (a window back from now, optionally one ticker), `coming_events` (the
+days and the types) and `headlines_around_event` — the headlines inside a window around one `event_ts`, each
+with its `minutes_from_event`. Every window is capped in the server as well as in the route, a bad ask comes
+back as the tool's own error rather than a crash, and a dashboard that is not running answers with the command
+that starts it. No model is called here: which model reads this, and what it costs, is avo's own later decision.
+
 ### The watch-list routes (PR 4)
 
 The two watch lists (D2) are lists of `boards/watchlists.duckdb` marked for the jobs (`wl_list.feeds` `option` /
