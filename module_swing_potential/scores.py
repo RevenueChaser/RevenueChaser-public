@@ -11,7 +11,7 @@ from __future__ import annotations
 from RevenueChaser.core import rawstore
 
 from . import settings as swing_settings
-from .ranking import execution_levels, ma_alignment, percentile_ranks, quality_403030
+from .ranking import counted_passes, execution_levels, ma_alignment, percentile_ranks, quality_403030
 from .screeners import evaluate_direction, evaluate_minervini, evaluate_qullamaggie, evaluate_weinstein
 
 
@@ -21,10 +21,6 @@ def _f(v):
         return f if f == f else None
     except (TypeError, ValueError):
         return None
-
-
-def _known(gate: dict) -> int:
-    return sum(1 for r in gate.get("rules", []) if r.get("passed") is True)
 
 
 def _evaluated(results: list[dict], eff=None) -> tuple[list[dict], list[dict]]:
@@ -45,7 +41,9 @@ def _evaluated(results: list[dict], eff=None) -> tuple[list[dict], list[dict]]:
         lv = execution_levels(ind, eff=e)
         scores.append({
             "ticker": t, "multiplier": sum(1 for k, x in g.items() if k != "direction" and x["passed"]),
-            "quality": quality_403030(_known(g["minervini"]), _known(g["weinstein"]), _known(g["qullamaggie"])),
+            "quality": quality_403030(counted_passes("minervini", g["minervini"]),
+                                      counted_passes("weinstein", g["weinstein"]),
+                                      counted_passes("qullamaggie", g["qullamaggie"])),
             "direction_ok": int(bool(g["direction"]["passed"])),
             "m_pass": int(bool(g["minervini"]["passed"])),
             "w_pass": int(bool(g["weinstein"]["passed"])),

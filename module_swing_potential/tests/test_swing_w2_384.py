@@ -13,7 +13,7 @@ import json
 from RevenueChaser.core import rawstore
 from RevenueChaser.module_swing_potential import config, freeze, scores
 from RevenueChaser.module_swing_potential.pipeline import build_payload
-from RevenueChaser.module_swing_potential.ranking import quality_403030
+from RevenueChaser.module_swing_potential.ranking import counted_passes, quality_403030
 from RevenueChaser.module_swing_potential.report import render_swing_dashboard
 from RevenueChaser.module_swing_potential.screeners import (
     evaluate_direction,
@@ -48,10 +48,12 @@ def _row(ticker: str, ind: dict, **over) -> dict:
 # ── a) the 40/30/30 quality ──────────────────────────────────────────────────
 
 def test_quality_403030_known_cases():
-    assert quality_403030(8, 5, 7) == 100          # Qullamaggie has 7 rules since the Swing review's B2
-    assert quality_403030(4, 0, 3) == 33           # round(20 + 0 + 12.86)
+    # The counts are ``counted_passes``: 7 Minervini, 4 Weinstein, 7 Qullamaggie rules once the shared twins
+    # are out (#246 finding 7).
+    assert quality_403030(7, 4, 7) == 100
+    assert quality_403030(4, 0, 3) == 36           # round(22.86 + 0 + 12.86)
     assert quality_403030(0, 0, 0) == 0
-    assert quality_403030(1, 1, 1) == 15          # round(5 + 6 + 4.29)
+    assert quality_403030(1, 1, 1) == 18           # round(5.71 + 7.5 + 4.29)
 
 
 # ── b) RS ranks only: Minervini passes on the 7 price rules ──────────────────
@@ -62,7 +64,10 @@ def test_minervini_passes_without_the_rs_rating_but_still_counts_it():
     rs = next(r for r in g["rules"] if r["id"] == "rs_ge_70")
     assert rs["passed"] is False
     assert g["score"] == "7/8"                    # RS is shown and counted, it does not gate
-    assert quality_403030(7, 0, 0) == 35
+    # Seven known passes, but ``within_52w_high`` is Weinstein's breakout said loosely, so quality counts six
+    # of the seven counted rules (#246 finding 7).
+    assert counted_passes("minervini", g) == 6
+    assert quality_403030(6, 0, 0) == 34
 
 
 # ── c) the direction condition is required ───────────────────────────────────

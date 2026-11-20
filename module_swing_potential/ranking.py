@@ -48,11 +48,24 @@ def composite(mom_pct: float | None, prox_pct: float | None, cons_pct: float | N
     return round(sum(parts) / sum(weights), 2)
 
 
-def quality_403030(m_count: int, w_count: int, q_count: int) -> int:
-    """#65's 40/30/30 quality: ``round(40·M/8 + 30·W/5 + 30·Q/6)`` (#384 SW-S1).
+def counted_passes(gate_key: str, gate: dict) -> int:
+    """The KNOWN-passed rules of a gate that quality counts (#384 SW-S1, #246 finding 7).
 
-    ``M``/``W``/``Q`` are the numbers of KNOWN-passed rules in the Minervini (8), Weinstein (5) and
-    Qullamaggie (6) gates. The weights and rule totals live in ``config``.
+    An unknown rule is never a pass, and a rule named in ``config.Q_SHARED_RULES`` is the weaker twin of a rule
+    in another gate — the same fact — so it is left out here and the fact scores once. The gate's own
+    ``passed`` / ``score`` are not affected; this is only the quality count.
+    """
+    shared = config.Q_SHARED_RULES.get(gate_key, ())
+    return sum(1 for r in gate.get("rules", [])
+               if r.get("passed") is True and r.get("id") not in shared)
+
+
+def quality_403030(m_count: int, w_count: int, q_count: int) -> int:
+    """#65's 40/30/30 quality: ``round(40·M/7 + 30·W/4 + 30·Q/7)`` (#384 SW-S1, #246 finding 7).
+
+    ``M``/``W``/``Q`` are the ``counted_passes`` of the Minervini, Weinstein and Qullamaggie gates: the
+    KNOWN-passed rules each gate counts once the shared twins are out (7, 4 and 7 rules). The weights, the
+    shared rules and the rule totals live in ``config``.
     """
     score = sum(config.Q_WEIGHTS[key] * count / config.Q_RULE_TOTALS[key]
                 for key, count in (("minervini", m_count), ("weinstein", w_count), ("qullamaggie", q_count)))

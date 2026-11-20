@@ -169,9 +169,9 @@ def test_cross_rule_the_weights_leave_momentum_the_largest_tilt(rawstore_tmp_db)
 
 # ── the model version ───────────────────────────────────────────────────────
 def test_model_version_is_unchanged_at_defaults(rawstore_tmp_db):
-    """The literal from before this slice: an unconfigured board versions exactly what it did (the version, 6
-    since the Swing review's B2/C2/D1 rules, moved with the model; the settings slice still moves nothing)."""
-    assert freeze.model_version() == "6+de083dc2"
+    """The literal from before this slice: an unconfigured board versions exactly what it did (the version, 7
+    since the #246 shared-rule dedupe, moved with the model; the settings slice still moves nothing)."""
+    assert freeze.model_version() == "7+f407285a"
 
 
 

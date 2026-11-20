@@ -67,10 +67,11 @@ GOLDEN_CONFIG = {
     "VOL_WINDOW": 5, "VOL_AVG_DAYS": 20, "BREAKOUT_HIGH_PCT": 0.98, "MOVE_MIN": 0.25, "TIGHT_RECENT": 10, "TIGHT_BEFORE": 20, "ADR_MIN": 0.03, "W_12_1": 0.5, "W_PROX": 0.25,
     "W_CONS": 0.25, "CONSISTENCY_LOOKBACK": 126, "STOP_ATR": 2.0, "TARGET_R": 2.0, "ATR_PERIOD": 14,
     "Q_WEIGHTS": {"minervini": 40, "weinstein": 30, "qullamaggie": 30},
-    "Q_RULE_TOTALS": {"minervini": 8, "weinstein": 5, "qullamaggie": 7},
+    "Q_SHARED_RULES": {"minervini": ("within_52w_high",), "weinstein": ("price_above_30w",)},
+    "Q_RULE_TOTALS": {"minervini": 7, "weinstein": 4, "qullamaggie": 7},
 }
-GOLDEN_VERSION = "6"                # 6: Swing review B2/C2/D1 (avo 17 Nov 2026)
-GOLDEN_MODEL_VERSION = "6+de083dc2"
+GOLDEN_VERSION = "7"                # 7: a shared rule counts once (#246 finding 7)
+GOLDEN_MODEL_VERSION = "7+f407285a"
 
 
 def test_the_effective_config_is_the_golden_config():

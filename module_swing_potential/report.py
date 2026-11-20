@@ -580,7 +580,12 @@ function start(){
           <td>Preceding move ≥{_pct(run.move_min)} (1–3 mo) · price above 10 &amp; 20-day EMA · 10&gt;20-day EMA · EMAs rising · ADR ≥{_pct(run.adr_min)} · last {config.TIGHT_RECENT} days tighter than the {config.TIGHT_BEFORE} before</td>
           <td>6 of 7; the prior move and the tightening required</td></tr>
         <tr><td><b>Quality</b></td>
-          <td>Quality = 40 × Minervini rules passed/8 + 30 × Weinstein/5 + 30 × Qullamaggie/7; momentum ({_weights(run)}) breaks ties</td>
+          <td>Quality = 40 × Minervini rules passed/7 + 30 × Weinstein/4 + 30 × Qullamaggie/7; momentum
+              ({_weights(run)}) breaks ties. Two rules say the same thing twice, so the weaker twin of each pair
+              is counted once instead of scoring in both: Weinstein's “price above the 30-week MA” (Minervini's
+              “above the 150 &amp; 200-day MA” already says it) and Minervini's “within 25% of the 52-week high”
+              (Weinstein's overhead breakout is the stricter form). Both still show, and both still gate their
+              own screener.</td>
           <td>0–100; ranks the board</td></tr>
         <tr><td><b>Direction</b></td>
           <td>Direction (required): 50-day MA ≥ 200-day MA and 3-month return ≥ 0; for a Minervini pass the first half is already implied (50 &gt; 150 &gt; 200-day MA), so there only the 3-month return adds a test</td>

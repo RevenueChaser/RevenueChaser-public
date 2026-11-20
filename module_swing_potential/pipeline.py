@@ -29,7 +29,7 @@ from . import flow as flow_mod
 from . import settings as swing_settings
 from RevenueChaser.core.scan_quality import ohlc_drop_reason
 from .indicators import compute_indicators
-from .ranking import composite, execution_levels, ma_alignment, percentile_ranks, quality_403030
+from .ranking import composite, counted_passes, execution_levels, ma_alignment, percentile_ranks, quality_403030
 from .screeners import evaluate_direction, evaluate_minervini, evaluate_qullamaggie, evaluate_weinstein
 
 _METHOD_KEYS = ("minervini", "weinstein", "qullamaggie")
@@ -113,11 +113,6 @@ def _compute_row(row: dict, spy_df, no_fetch: bool = False, spine: dict | None =
     }
 
 
-def _known_passes(gate: dict) -> int:
-    """The number of KNOWN-passed rules in a gate (#384 SW-S1): an unknown rule never counts."""
-    return sum(1 for r in gate.get("rules", []) if r.get("passed") is True)
-
-
 def _slim_gate(gate: dict) -> dict:
     """A candidate's gate without the static text: the card renders it from ``GATE_SPEC`` (#384 SW-S2).
 
@@ -171,8 +166,9 @@ def build_payload(results: list[dict], top_n: int | None = None, run_stats: dict
         if not direction_ok or not methods:
             continue                                    # direction required, at least one method (#384 SW-S1)
 
-        quality = quality_403030(_known_passes(gates["minervini"]), _known_passes(gates["weinstein"]),
-                                 _known_passes(gates["qullamaggie"]))
+        quality = quality_403030(counted_passes("minervini", gates["minervini"]),
+                                 counted_passes("weinstein", gates["weinstein"]),
+                                 counted_passes("qullamaggie", gates["qullamaggie"]))
         momentum = composite(mom_pct.get(t), prox_pct.get(t), cons_pct.get(t), eff=e)
         levels = execution_levels(ind, eff=e)
         flow = {"status": "not_scanned"} if config.MANUAL_FLOW_ONLY else flow_mod.poll_flow(None, t)
