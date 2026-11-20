@@ -55,6 +55,8 @@ def test_no_session_means_today_in_new_york(monkeypatch, market_roots):  # noqa:
     assert risk_free.stored_dgs10() == {"value": 0.0425, "as_of": "2026-11-19"}
 
 
-def test_without_a_market_file_there_is_no_rate(monkeypatch):
+def test_without_a_market_file_there_is_no_rate(monkeypatch, market_roots):  # noqa: F811
+    """``market_roots`` points the market dir at an empty temp root, so nothing is served."""
     _clock(monkeypatch)
+    assert not (market_roots[0] / "market.duckdb").exists()
     assert risk_free.stored_dgs10() is None
