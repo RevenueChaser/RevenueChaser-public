@@ -37,10 +37,16 @@ def test_a_kind_built_whole_is_listed_first_and_says_so():
     assert "whole" in _text(html)
 
 
+def _rows(html: str) -> str:
+    """The table body alone. The part's help text names the chips too, so a test of a chip reads the rows."""
+    return html.split("<tbody>", 1)[1] if "<tbody>" in html else ""
+
+
 def test_the_by_hand_chip_stands_on_the_kind_that_holds_its_whole_build():
-    html = build_tab.section({"kinds": [WHOLE]})
-    assert "by hand" in html
-    assert "by hand" not in build_tab.section({"kinds": [LIVE]})
+    assert "by hand" in _rows(build_tab.section({"kinds": [WHOLE]}))
+    assert "by hand" not in _rows(build_tab.section({"kinds": [LIVE]}))
+    # It is explained once in the help text, whichever kinds are listed.
+    assert "by hand" in build_tab.section({"kinds": [LIVE]})
 
 
 def test_a_table_the_file_does_not_carry_is_an_empty_cell_and_not_a_zero():
@@ -83,10 +89,14 @@ def test_every_value_is_escaped():
 
 
 def test_the_part_names_no_turkish_and_carries_no_hex_colour():
-    """A board shows English only (avo, 19 Nov 2026), and a component uses token names, never a hex value."""
+    """A board shows English only (avo, 19 Nov 2026), and a component uses token names, never a hex value.
+
+    The hex check reads declarations, not comments: an issue number (``#446``) is three hex digits and would
+    otherwise fail a comment that names it."""
     html = build_tab.section({"kinds": [LIVE, WHOLE]})
     assert not re.search(r"[çğıöşüÇĞİÖŞÜ]", html)
-    assert not re.search(r"#[0-9a-fA-F]{3,8}\b", build_tab.BUILD_CSS)
+    css = re.sub(r"/\*.*?\*/", "", build_tab.BUILD_CSS, flags=re.S)
+    assert not re.search(r":[^;{}]*#[0-9a-fA-F]{3,8}\b", css)
 
 
 def test_the_css_sizes_the_columns_not_the_rows_and_stacks_on_a_phone():
