@@ -83,10 +83,73 @@ def test_no_snapshot_yet_says_so():
     assert EXRT.note(con) == "WRDS exrt_dly: no snapshot yet"
 
 
-def test_the_dataset_is_registered_attended_monthly_and_feeds_no_served_table():
+def test_the_dataset_is_registered_attended_monthly_and_feeds_what_the_rates_reach():
     assert DATASETS[EXRT.name] is EXRT and EXRT.cadence == "monthly" and EXRT.starts_by_hand
-    assert EXRT.feeds == () and EXRT.tables == ()
+    assert EXRT.feeds == fx_rates.DATASET.feeds and EXRT.tables == ()        # the same tables Yahoo's rates reach
     assert EXRT.full_rebuild_reason(None) is None
+
+
+# ── The rate a non-USD filer's values are converted at (``fx_rates.held_rates``) ───────────────────────────────
+
+def _yahoo_file(rows: list[tuple]) -> None:
+    """Yahoo's Parquet file as ``yfinance/fx`` writes it, from ``(currency, day, usd_per_unit)`` rows."""
+    from RevenueChaser.rcdata.build import base
+    fx.parquet_root()
+    con = duckdb.connect()
+    base.rows_table(con, "rows", fx_rates.SCHEMA, [
+        {"currency": c, "day": date.fromisoformat(d), "usd_per_unit": v, "source_as_of": AS_OF, "fetched_at": 2.0,
+         "run_id": "y1"} for c, d, v in rows])
+    base.write_parquet(con, "SELECT * FROM rows", common.parquet_dir(fx_rates.NAME) / "part-0.parquet")
+    con.close()
+
+
+def _compustat_file(rows: list[tuple], snapshot: str = "2026-10-27") -> None:
+    """A typed ``wrds/exrt`` snapshot, from ``(tocurd, datadate, exratd)`` rows quoted from GBP."""
+    from RevenueChaser.rcdata.build import base
+    fx.parquet_root()
+    con = duckdb.connect()
+    base.rows_table(con, "rows", EXRT.schema + wrds_fund.PROVENANCE, [
+        {"fromcurd": "GBP", "tocurd": c, "datadate": date.fromisoformat(d), "exratd": v, "source_as_of": AS_OF,
+         "fetched_at": 1.0, "run_id": "w1"} for c, d, v in rows])
+    base.write_parquet(con, "SELECT * FROM rows", EXRT.snapshot_file(snapshot))
+    con.close()
+
+
+def _rates(currency: str) -> list[tuple[str, float]]:
+    days, rates, _ = fx_rates.held_rates()[currency]
+    return [(d, round(r, 6)) for d, r in zip(days, rates)]
+
+
+def test_compustats_rate_is_used_where_it_has_the_day_and_yahoos_where_it_has_not(market_roots):
+    """F3 and avo's "WRDS'e gecelim tamamen": 1.25 / 1.75 from Compustat on the day both hold, Yahoo's own rate on
+    the newer day Compustat's monthly snapshot does not reach yet."""
+    _compustat_file([("USD", "2026-10-26", 1.25), ("CAD", "2026-10-26", 1.75)])
+    _yahoo_file([("CAD", "2026-10-26", 0.72), ("CAD", "2026-10-28", 0.73)])
+    assert _rates("CAD") == [("2026-10-26", round(1.25 / 1.75, 6)), ("2026-10-28", 0.73)]
+    assert _rates("GBP") == [("2026-10-26", 1.25)]                  # the base currency, from the USD row
+
+
+def test_yahoo_alone_is_read_as_before_and_compustat_alone_is_enough(market_roots):
+    _yahoo_file([("CAD", "2026-10-26", 0.72)])
+    assert _rates("CAD") == [("2026-10-26", 0.72)] and "GBP" not in fx_rates.held_rates()
+    (common.parquet_dir(fx_rates.NAME) / "part-0.parquet").unlink()
+    assert fx_rates.held_rates() == {}
+    _compustat_file([("USD", "2026-10-26", 1.25), ("CAD", "2026-10-26", 1.75)])
+    assert _rates("CAD") == [("2026-10-26", round(1.25 / 1.75, 6))]
+
+
+def test_a_day_compustat_cannot_cross_is_yahoos(market_roots):
+    """No USD row that day, or a zero rate: Compustat has no rate, so the day is Yahoo's and not missing."""
+    _compustat_file([("CAD", "2026-10-22", 1.75),                                      # no USD row
+                     ("USD", "2026-10-23", 1.25), ("CAD", "2026-10-23", 0.0)])         # a zero is no rate
+    _yahoo_file([("CAD", "2026-10-22", 0.71), ("CAD", "2026-10-23", 0.72)])
+    assert _rates("CAD") == [("2026-10-22", 0.71), ("2026-10-23", 0.72)]
+
+
+def test_the_newest_snapshot_is_the_one_read(market_roots):
+    _compustat_file([("USD", "2026-10-26", 1.25), ("CAD", "2026-10-26", 1.75)], snapshot="2026-10-27")
+    _compustat_file([("USD", "2026-10-26", 1.25), ("CAD", "2026-10-26", 2.5)], snapshot="2026-11-27")
+    assert _rates("CAD") == [("2026-10-26", 0.5)]
 
 
 @pytest.fixture

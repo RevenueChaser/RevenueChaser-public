@@ -496,22 +496,23 @@ class WrdsExrt(WrdsFund):
     holds all 38 currencies we use, and its cross agrees with ``yfinance/fx`` within 1% on 91.4% of 9,947
     (currency, day) pairs of a year (weakest: KZT, SAR, PEN; fixing-time differences, medians within about 1%).
 
-    **Staged and compared, not served yet.** ``stg_wrds_exrt`` has the shape of ``stg_yf_fx`` (currency, day,
-    USD per unit) and the check note says how the two agree over the newest year. The statement values of the
-    non-USD filers are still converted at Yahoo's rates (``fx_rates.held_rates``); moving that to Compustat's rate
-    wherever it has one changes served values and is its own pull request."""
+    **Compustat's rate is the one used wherever it has one** (DECISIONS F3; avo, 20 Nov 2026):
+    ``fx_rates.held_rates`` reads the newest snapshot of this dataset first and Yahoo's file for the days it lacks.
+    ``stg_wrds_exrt`` has the shape of ``stg_yf_fx`` (currency, day, USD per unit) and the check note says how the
+    two agree over the newest year."""
 
-    BASE = "GBP"
-    USD = "USD"
+    BASE = fx_rates.EXRT_BASE
+    USD = fx_rates.USD
     TOLERANCE = 0.01
     YEAR_DAYS = 365
 
     def __init__(self):
-        super().__init__("exrt_dly", "comp", [("fromcurd", "TEXT"), ("tocurd", "TEXT"), ("datadate", "DATE"),
-                                              ("exratd", "DOUBLE")], [], ["tocurd", "datadate"], "datadate", 0,
+        attrs = [("fromcurd", "TEXT"), ("tocurd", "TEXT"), ("datadate", "DATE"), ("exratd", "DOUBLE")]
+        super().__init__(fx_rates.EXRT_TABLE, "comp", attrs, [], ["tocurd", "datadate"], "datadate", 0,
                          revisions=False)
-        self.name = "wrds/exrt"
-        self.feeds = ()                                   # staged and compared only; no served table reads it yet
+        self.name = fx_rates.EXRT_NAME
+        # The rates a non-USD filer's facts are put in USD with, like ``yfinance/fx``'s (``fx_rates.held_rates``).
+        self.feeds = ("fundamental_fact", "peer_group", "customer_share")
         self.raw_staging = "stg_wrds_exrt_raw"
         self.staging = "stg_wrds_exrt"
 
@@ -525,22 +526,15 @@ class WrdsExrt(WrdsFund):
         return [wrds_session._ask(ctx, self.raw_path(as_of), self.sql(), as_of)]
 
     def full_rebuild_reason(self, ctx: base.RunContext) -> str | None:
-        """No served table is made from it, so a new snapshot is no reason to build the kind whole."""
+        """A new snapshot is no reason to build the kind whole: the rates reach the facts when a company is typed
+        again, not through this dataset's staging."""
         return None
 
     def cross(self, con: duckdb.DuckDBPyConnection) -> int:
         """``stg_wrds_exrt`` from the staged snapshot: USD per unit of each currency, by day. The base currency has
         no row of its own against itself that we rely on: its rate is the USD row's."""
-        con.execute(f"""
-            CREATE OR REPLACE TEMP TABLE {self.staging} AS
-            WITH usd AS (SELECT datadate, exratd, source_as_of, fetched_at, run_id FROM {self.raw_staging}
-                         WHERE fromcurd = '{self.BASE}' AND tocurd = '{self.USD}' AND exratd > 0)
-            SELECT c.tocurd AS currency, c.datadate AS day, u.exratd / c.exratd AS usd_per_unit,
-                   c.source_as_of, c.fetched_at, c.run_id
-            FROM {self.raw_staging} c JOIN usd u ON u.datadate = c.datadate
-            WHERE c.fromcurd = '{self.BASE}' AND c.tocurd NOT IN ('{self.USD}', '{self.BASE}') AND c.exratd > 0
-            UNION ALL
-            SELECT '{self.BASE}', datadate, exratd, source_as_of, fetched_at, run_id FROM usd""")
+        con.execute(f"CREATE OR REPLACE TEMP TABLE {self.staging} AS "
+                    + fx_rates.cross_sql(self.raw_staging, stamps=True))
         return common.count(con, self.staging)
 
     def build(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> dict[str, int]:
