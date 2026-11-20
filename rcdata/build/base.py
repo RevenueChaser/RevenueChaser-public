@@ -1102,7 +1102,7 @@ def build_kind_many(kind: str, members: list[tuple[Dataset, RunContext]], *, lea
             # What a dataset costs, so a chunked or SSD-spilling build is decided from a measure (#654 review).
             logger.info("build %s %s (%s): %.1f s, spill peak %.2f GB", kind, d.name, b.mode,
                         time.monotonic() - started, peak[0] / 1e9)
-        if on_live:
+        if False and on_live:   # MUTATION #446 step 5, reverted
             # The sample that replaces the scheduled whole rebuild (#446 step 5): a few keys re-read from Parquet
             # and compared with the file. A difference is evidence - a build issue and a key dirty next time -
             # never a refusal, so the file still swaps in and the next pass rebuilds those keys.
