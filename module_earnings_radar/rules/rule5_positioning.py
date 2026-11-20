@@ -9,92 +9,44 @@ the rule is unavailable (never a zero fill):
    = size >= 10 AND premium >= $10k (``aggregate_flow``). The net is scaled by the sided premium (a one-sided
    but small imbalance scores less than a clean sweep); a net under ``INST_FLOW_MIN_NET`` is Thin (present, no
    lean); no side served is no lean; a material multi-leg package is left out and tagged ``package-risk``.
-2. **Squeeze potential** — short interest / borrow / days-to-cover (no utilization: UW serves none, review #256)
-   as peer-relative Z-scores *within the ticker's sector* (the Morningstar name the spine stores; borrow
-   fees are never compared across sectors). The name itself is left out of its own peer group (review N4).
-   When fewer than two other in-sector peers exist for short interest, an absolute short-interest fallback
-   applies instead.
+   The prints the lean reads are sliced first (``module_earnings_radar/lean.py``, #256): the last
+   ``R5_LEAN_SESSIONS`` sessions of the tape, strikes inside the R4 expected-move band, expiries from the report
+   day out to ``R5_LEAN_EXPIRY_DAYS`` days after it.
+2. **Squeeze potential** — a ``none`` / ``fuel`` **tag** from the short interest or the borrow fee, never a score
+   (``docs/earnings-radar/redesign.md`` R5: "``none`` / ``fuel`` from ``si_float`` or ``fee_rate``. No Z ladder.
+   Low SI != bearish", #256). ``fuel`` when the short interest is at or above ``R5_FUEL_SI_PCT`` percent or the
+   borrow fee at or above ``R5_FUEL_FEE_PCT`` percent a year; ``none`` below both. There is no utilization figure:
+   UW serves none and the parser never derives one (#250). Days to cover is shown in the drawer's metrics and is
+   not part of the tag, because FINRA's twice-monthly figure is the only basis for it.
+
+The peer Z ladder this rule used to score (+40 / +25 / +15 above peer Z 3 / 2 / 1, and -10 below -1) is gone with
+#256: it made a low short interest bearish, which the design rules out, and it compared borrow fees across names
+whose float and listing age differ.
 
 Honest inputs:
 - missing fields are ``None``, never 0, so a missing borrow fee cannot silently
   read as "cheap to borrow";
-- an empty / sub-2-peer peer group does NOT mark the rule available and does NOT
-  set a neutral score;
-- Z weights renormalize over whatever metrics are actually present;
+- a name with neither a short interest nor a borrow fee has no squeeze component (it is missing, not ``none``);
 - retail-call euphoria is NOT scored here — that fade lives in R8 (sentiment).
   Scoring the same 65%+ retail-call share in both R5 and R8 double-faded it.
 """
-import numpy as np
 from typing import Optional
 
 from datetime import date
 
-from RevenueChaser.core.config import INST_FLOW_MIN_NET, SCORE_RANGE
+from RevenueChaser.core.config import (
+    INST_FLOW_MIN_NET, R5_FUEL_FEE_PCT, R5_FUEL_SI_PCT, SCORE_RANGE,
+)
 from RevenueChaser.module_earnings_radar.models import RuleResult
-
-PEER_STATS = {}
-# The ticker of each value in PEER_STATS, in the same order, so a name's Z leaves its own value out (review N4).
-PEER_OWNERS = {}
-
-# Squeeze metric weights (renormalized over whatever is present). No utilization: UW's short screener serves no such
-# field and redesign.md R5 says never invent one (review Part B, #256). Default chosen, change if avo prefers: the
-# alternative is a utilization field UW really serves, should one appear.
-_SQ_WEIGHTS = {"si": 0.4, "borrow": 0.3, "dtc": 0.1}
-
-
-def reset_peer_stats() -> None:
-    PEER_STATS.clear()
-    PEER_OWNERS.clear()
-
-
-def register_peer_stats(ticker: str, sector: str, stats: dict) -> None:
-    """Record a peer's squeeze metrics for its sector (used for Z-scoring).
-
-    ``stats`` uses the same keys as the scorer's squeeze arguments:
-    ``si_pct`` / ``borrow_fee`` / ``days_to_cover``.
-    """
-    if sector not in PEER_STATS:
-        PEER_STATS[sector] = {"si": [], "borrow": [], "dtc": []}
-        PEER_OWNERS[sector] = {"si": [], "borrow": [], "dtc": []}
-    mapping = {
-        "si_pct": "si",
-        "borrow_fee": "borrow",
-        "days_to_cover": "dtc",
-    }
-    for src, dst in mapping.items():
-        if stats.get(src) is not None:
-            PEER_STATS[sector][dst].append(stats[src])
-            PEER_OWNERS[sector][dst].append(ticker)
-
-
-def _peers(sector: str, metric: str, ticker: str) -> list[float]:
-    """The sector's values of ``metric`` without the name's own (review N4: self + one peer is always +/-0.707)."""
-    owners = PEER_OWNERS.get(sector, {}).get(metric, [])
-    return [v for v, owner in zip(PEER_STATS[sector][metric], owners) if not ticker or owner != ticker]
-
-
-def _z_peer(value: Optional[float], values: list[float]) -> Optional[float]:
-    if value is None or len(values) < 2:
-        return None
-    clean = [v for v in values if v is not None]
-    if len(clean) < 2:
-        return None
-    mu = np.mean(clean)
-    std = np.std(clean, ddof=1) if len(clean) > 1 else 1
-    if std == 0:
-        return 0.0
-    return (value - mu) / std
 
 
 def score(
     short_interest_pct_float: Optional[float] = None,
     days_to_cover: Optional[float] = None,
     borrow_fee: Optional[float] = None,
-    sector: str = "",
     institutional_net_delta: Optional[float] = None,
     institutional_call_premium: Optional[float] = None,
     institutional_put_premium: Optional[float] = None,
-    ticker: str = "",
     institutional_side_served: Optional[bool] = None,
     institutional_package_premium: Optional[float] = None,
     short_as_of: Optional[str] = None,
@@ -102,8 +54,7 @@ def score(
 ) -> RuleResult:
     """``institutional_net_delta`` is the lean net (bullish minus bearish side premium) and the call/put premiums
     the bullish and bearish side premium. ``institutional_side_served`` False says the tape carried no print side,
-    so there is no lean (the flow component is absent, never neutral). ``ticker`` leaves the name out of its own
-    peer group. ``short_as_of`` is the FINRA settlement day the short figures are as of (#287): the squeeze reason
+    so there is no lean (the flow component is absent, never neutral). ``short_as_of`` is the FINRA settlement day the short figures are as of (#287): the squeeze reason
     names it, because a twice-monthly figure can be weeks old. ``si_basis`` "outstanding" says the short interest is
     a percent of the shares outstanding, not of the float (no float stored); the absolute read then says so."""
     available = False
@@ -150,57 +101,42 @@ def score(
         reasons.append("package-risk: multi-leg premium left out of the lean")
         raw_metrics["inst_package"] = round(float(institutional_package_premium), 2)
 
-    # ── Component 2: squeeze potential (peer Z within the sector) ──
+    # ── Component 2: squeeze tag (none / fuel; no Z ladder, no points — #256) ──
+    # A field present makes the component present with score 0 (redesign.md R5 Coverage), so a quiet short book
+    # lowers no score and lifts none.
     squeeze_signal = False
-    z_by_metric = {}
-    if sector and sector in PEER_STATS:
-        z_by_metric["si"] = _z_peer(short_interest_pct_float, _peers(sector, "si", ticker))
-        z_by_metric["borrow"] = _z_peer(borrow_fee, _peers(sector, "borrow", ticker))
-        z_by_metric["dtc"] = _z_peer(days_to_cover, _peers(sector, "dtc", ticker))
-        for metric, z in z_by_metric.items():
-            if z is not None:
-                raw_metrics[f"z_{metric}"] = round(z, 2)
-
-        present = {m: z for m, z in z_by_metric.items() if z is not None}
-        if present:
-            squeeze_signal = True
-            signals_present += 1
-            denom = sum(_SQ_WEIGHTS[m] for m in present)
-            squeeze_z = sum(z * _SQ_WEIGHTS[m] for m, z in present.items()) / denom
-            raw_metrics["squeeze_z_score"] = round(squeeze_z, 2)
-            if squeeze_z > 3:
-                score_val += 40
-                reasons.append(f"extreme squeeze potential (peer Z={squeeze_z:.1f})")
-            elif squeeze_z > 2:
-                score_val += 25
-                reasons.append(f"elevated squeeze potential (peer Z={squeeze_z:.1f})")
-            elif squeeze_z > 1:
-                score_val += 15
-                reasons.append(f"mild squeeze risk (peer Z={squeeze_z:.1f})")
-            elif squeeze_z < -1:
-                score_val -= 10
-                reasons.append("no squeeze pressure")
-
-    # Absolute short-interest fallback when no in-sector peer Z could be built.
     of_base = " of shares outstanding" if si_basis == "outstanding" else ""
-    if not squeeze_signal and short_interest_pct_float is not None:
-        raw_metrics["si_pct"] = round(short_interest_pct_float, 2)
-        if short_interest_pct_float > 20:
-            squeeze_signal = True
-            signals_present += 1
-            score_val += 15
-            reasons.append(f"high short interest ({short_interest_pct_float:.1f}%{of_base})")
-        elif short_interest_pct_float > 10:
-            squeeze_signal = True
-            signals_present += 1
-            score_val += 5
-            reasons.append(f"moderate short interest ({short_interest_pct_float:.1f}%{of_base})")
+    if short_interest_pct_float is not None:
+        raw_metrics["si_pct"] = round(float(short_interest_pct_float), 2)
+    if borrow_fee is not None:
+        raw_metrics["borrow_fee"] = round(float(borrow_fee), 2)
+    if days_to_cover is not None:
+        # Shown, never part of the tag: the days-to-cover figure rests on the same twice-monthly FINRA count.
+        raw_metrics["days_to_cover"] = round(float(days_to_cover), 2)
+    if short_interest_pct_float is not None or borrow_fee is not None:
+        squeeze_signal = True
+        signals_present += 1
+        si_fuel = short_interest_pct_float is not None and short_interest_pct_float >= R5_FUEL_SI_PCT
+        fee_fuel = borrow_fee is not None and borrow_fee >= R5_FUEL_FEE_PCT
+        raw_metrics["squeeze_tag"] = "fuel" if (si_fuel or fee_fuel) else "none"
+        if si_fuel or fee_fuel:
+            parts = []
+            if si_fuel:
+                parts.append(f"short interest {short_interest_pct_float:.1f}%{of_base}")
+            if fee_fuel:
+                parts.append(f"borrow fee {borrow_fee:.1f}%")
+            reasons.append("squeeze fuel: " + " and ".join(parts))
+        else:
+            shown = (f"short interest {short_interest_pct_float:.1f}%{of_base}"
+                     if short_interest_pct_float is not None else f"borrow fee {borrow_fee:.1f}%")
+            reasons.append(f"squeeze none ({shown})")
 
-    if squeeze_signal and short_as_of:
+    if squeeze_signal and short_as_of and short_interest_pct_float is not None:
+        # Only a reason that shows the short interest carries the settlement day; a fee-only read is IBKR's own,
+        # of today, and must not borrow FINRA's date.
         raw_metrics["si_as_of"] = short_as_of
-        squeeze_words = ("squeeze", "short interest")
         for i in range(len(reasons) - 1, -1, -1):
-            if any(w in reasons[i] for w in squeeze_words):
+            if "short interest" in reasons[i]:
                 # day and month only: the age limit is 35 days, so the year is never in doubt, and the short form
                 # does not wrap mid-date in the drawer's narrow reason column
                 settled = date.fromisoformat(short_as_of[:10])

@@ -172,7 +172,8 @@ class TestR5ShortInterestWiring:
             "ticker": t, "cik": "", "name": t, "market_cap": 1e9, "price": 10.0, "sector": sec, "industry": "x",
             "industry_group": None, "sub_industry": None, "quote": {"symbol": t}} for t, sec in sectors.items()])
 
-    def test_warm_short_interest_registers_peer_stats(self, monkeypatch):
+    def test_warm_short_interest_serves_the_squeeze_figures(self, monkeypatch):
+        """The warmer reads FINRA's percent and IBKR's fee per name; since #256 no peer group is built from them."""
         fake = _FakeUW()
         _serve_shorts(monkeypatch, {
             "AAPL": {"si_float": "0.35", "fee_rate": "10", "short_interest": "1000000",
@@ -180,12 +181,12 @@ class TestR5ShortInterestWiring:
             "MSFT": {"si_float": "0.03", "fee_rate": "1", "short_interest": "100000",
                      "short_shares_available": "5000000", "days_to_cover": "1"},
         })
-        rule5_positioning.reset_peer_stats()
         self._seed_spine({"AAPL": "Technology", "MSFT": "Technology"})
         p = self._pipeline(fake)
         p._warm_short_interest()
-        assert sorted(rule5_positioning.PEER_STATS["Technology"]["si"]) == pytest.approx([3.0, 35.0])
-        assert sorted(rule5_positioning.PEER_STATS["Technology"]["borrow"]) == pytest.approx([1.0, 10.0])
+        assert p._shorts_cache["AAPL"]["si_pct"] == pytest.approx(35.0)
+        assert p._shorts_cache["MSFT"]["borrow_fee"] == pytest.approx(1.0)
+        assert not hasattr(rule5_positioning, "PEER_STATS")
 
     def test_score_uses_shorts_for_squeeze_signal(self, monkeypatch):
         """AAPL has flow {} (no inst signal) but a short-interest row -> R5 must
@@ -198,7 +199,6 @@ class TestR5ShortInterestWiring:
             "MSFT": {"si_float": "0.03", "fee_rate": "1", "short_interest": "100000",
                      "short_shares_available": "5000000", "days_to_cover": "1"},
         })
-        rule5_positioning.reset_peer_stats()
         p = self._pipeline(fake)
         p._warm_short_interest()
         card = p._score("AAPL")
@@ -208,7 +208,6 @@ class TestR5ShortInterestWiring:
     def test_no_stored_short_interest_falls_back_to_flow_only(self, monkeypatch):
         """No ownership store: R5 reads flow only, and nothing is asked of a provider."""
         _serve_shorts(monkeypatch, {})
-        rule5_positioning.reset_peer_stats()
         fake = _FakeUW()
         p = self._pipeline(fake)
         p._warm_short_interest()
@@ -608,8 +607,8 @@ class TestSectorIsTheSpine:
         assert self._card().cluster == self._label("Unclassified", "Unclassified")
 
 
-class TestR5PeersAreTheTickersSector:
-    """#266: rule 5 builds the peer Z-scores from the ticker's sector (the spine's Morningstar name)."""
+class TestR5SqueezeTagWiring:
+    """#256: the card's R5 read carries a ``none`` / ``fuel`` tag, never a peer Z, whatever the sector is."""
 
     _ROWS = {
         # (si_float, fee_rate, days_to_cover): one squeezed name and three quiet peers
@@ -634,42 +633,70 @@ class TestR5PeersAreTheTickersSector:
                    "expected_move_perc": 0.05} for t in self._ROWS}
         p = EarningsPipeline(list(self._ROWS), uw=fake, cal_meta=cal)
         p._screener_cache = {}
-        rule5_positioning.reset_peer_stats()
         p._warm_short_interest()
         return p
-
-    def teardown_method(self):
-        rule5_positioning.reset_peer_stats()
 
     @staticmethod
     def _reasons(card):
         return " ".join((card.rule_audit or {}).get("rule5_positioning", {}).get("reasons") or [])
 
-    def test_the_peer_z_is_taken_inside_the_spine_sector(self):
+    def test_a_squeezed_name_reads_fuel(self):
         p = self._pipeline({t: "Technology" for t in self._ROWS})
-        assert "peer Z=" in self._reasons(p._score("AAAA"))
-
-    def test_the_peers_are_registered_under_the_spine_sector_not_the_calendars(self):
-        """The UW calendar says Technology for all four; the spine puts three of them in Energy (the S&P 1500 list or
-        the SIC table can place a name differently from UW, #272). They are each other's peers, not Technology's."""
-        self._pipeline({"AAAA": "Energy", "BBBB": "Energy", "CCCC": "Energy", "DDDD": "Technology"})
-        assert {k: len(v["si"]) for k, v in rule5_positioning.PEER_STATS.items()} == {"Energy": 3, "Technology": 1}
-
-    def test_the_peer_z_is_taken_inside_the_spine_sector_when_the_calendar_names_another(self):
-        p = self._pipeline({t: "Energy" for t in self._ROWS})        # the calendar still says Technology for all
-        assert "peer Z=" in self._reasons(p._score("AAAA"))
-
-    def test_a_name_the_spine_cannot_place_is_nobodys_peer(self):
-        """Unclassified names are not a sector: three of them must not be Z-scored against each other."""
-        p = self._pipeline({"AAAA": "Unclassified", "BBBB": "Unclassified", "DDDD": "Technology"})     # CCCC: no row
-        assert list(rule5_positioning.PEER_STATS) == ["Technology"]
-        assert "peer Z=" not in self._reasons(p._score("AAAA"))
-
-    def test_a_sector_the_peers_are_not_registered_under_has_no_peer_z(self):
-        """The spine puts AAAA in Energy: nobody was registered there, so the absolute short-interest read applies."""
-        p = self._pipeline({"AAAA": "Energy", "BBBB": "Technology", "CCCC": "Technology", "DDDD": "Technology"})
         reasons = self._reasons(p._score("AAAA"))
-        assert "peer Z=" not in reasons and "high short interest" in reasons
+        assert "squeeze fuel" in reasons and "peer Z=" not in reasons
+
+    def test_a_quiet_short_book_reads_none_and_is_not_bearish(self):
+        p = self._pipeline({t: "Technology" for t in self._ROWS})
+        card = p._score("BBBB")
+        assert "squeeze none" in self._reasons(card)
+        assert (card.rule_audit or {}).get("rule5_positioning", {}).get("score") == 0.0
+
+    def test_the_sector_no_longer_changes_the_read(self):
+        """The old Z ladder read a name differently depending on who its in-sector peers were (#272). The tag does
+        not: the same figures give the same tag in any sector."""
+        tech = self._pipeline({t: "Technology" for t in self._ROWS})
+        energy = self._pipeline({"AAAA": "Energy", "BBBB": "Technology", "CCCC": "Technology",
+                                 "DDDD": "Technology"})
+        assert "squeeze fuel" in self._reasons(tech._score("AAAA"))
+        assert "squeeze fuel" in self._reasons(energy._score("AAAA"))
+
+    def test_a_name_the_spine_cannot_place_still_gets_its_tag(self):
+        p = self._pipeline({"AAAA": "Unclassified", "BBBB": "Unclassified", "DDDD": "Technology"})
+        assert "squeeze fuel" in self._reasons(p._score("AAAA"))
+
+    def test_the_lean_reads_the_slice_while_the_tape_is_read_whole(self):
+        """#256: R5's lean gets the sliced prints (window, strike band, expiry); R8's retail share and the card's
+        tape buckets keep reading every print of the same answer, and no second request is made."""
+        prints = [
+            {"executed_at": "2026-08-13T16:00:00Z", "expiry": "2026-08-21", "strike": 10.0,
+             "premium": 50_000.0, "size": 50, "option_type": "call"},
+            {"executed_at": "2026-08-13T16:00:00Z", "expiry": "2027-06-18", "strike": 10.0,
+             "premium": 50_000.0, "size": 50, "option_type": "call"},      # a LEAP: no earnings bet
+        ]
+        seen = []
+
+        class _Recording(_FakeUW):
+            def flow_recent(self, ticker):
+                return prints
+
+            def aggregate_flow(self, ticker, flow):
+                seen.append(list(flow or []))
+                return {}
+
+        universe_store.replace([{
+            "ticker": "AAAA", "cik": "", "name": "AAAA", "market_cap": 1e9, "price": 10.0,
+            "sector": "Technology", "industry": "x", "industry_group": None, "sub_industry": None,
+            "quote": {"symbol": "AAAA"}}])
+        p = EarningsPipeline(["AAAA"], uw=_Recording(),
+                             cal_meta={"AAAA": {"earnings_date": "2026-08-14", "full_name": "AAAA",
+                                                "expected_move_perc": 0.05}})
+        p._screener_cache = {}
+        p._warm_short_interest()
+        p._score("AAAA")
+
+        assert len(seen) == 2, "one call for the tape, one for the lean — never a second request"
+        assert seen[0] == prints
+        assert [row["expiry"] for row in seen[1]] == ["2026-08-21"]
 
 
 def test_e18_edge_counts_a_zero_eps_print():

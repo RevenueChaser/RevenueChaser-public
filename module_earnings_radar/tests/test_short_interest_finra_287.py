@@ -155,13 +155,12 @@ def test_the_run_warms_r5_from_the_ownership_store_and_asks_uw_nothing(store):
 def test_the_squeeze_reason_names_the_settlement_day():
     from RevenueChaser.module_earnings_radar.rules import rule5_positioning
 
-    rule5_positioning.reset_peer_stats()
     r = rule5_positioning.score(short_interest_pct_float=25.0, short_as_of="2026-10-15")
-    assert r.reasons == ["high short interest (25.0%) · FINRA settled 15 Oct"]
+    assert r.reasons == ["squeeze fuel: short interest 25.0% · FINRA settled 15 Oct"]
     assert r.raw_metrics["si_as_of"] == "2026-10-15"
 
     r = rule5_positioning.score(short_interest_pct_float=25.0)
-    assert r.reasons == ["high short interest (25.0%)"]
+    assert r.reasons == ["squeeze fuel: short interest 25.0%"]
     assert "si_as_of" not in r.raw_metrics
 
 
@@ -205,6 +204,5 @@ def test_a_float_wins_over_the_shares_outstanding(store):
 def test_the_reason_names_shares_outstanding_when_that_was_the_base():
     from RevenueChaser.module_earnings_radar.rules import rule5_positioning
 
-    rule5_positioning.reset_peer_stats()
     r = rule5_positioning.score(short_interest_pct_float=25.0, short_as_of="2026-10-15", si_basis="outstanding")
-    assert r.reasons == ["high short interest (25.0% of shares outstanding) · FINRA settled 15 Oct"]
+    assert r.reasons == ["squeeze fuel: short interest 25.0% of shares outstanding · FINRA settled 15 Oct"]

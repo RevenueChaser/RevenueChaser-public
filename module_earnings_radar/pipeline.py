@@ -10,11 +10,10 @@ from RevenueChaser.module_earnings_radar.rules import (
     rule5_positioning, rule6_macro, rule7_accounting, rule8_sentiment,
 )
 from RevenueChaser.module_earnings_radar.composite import compute_composite_scores, select_action, classify_bias, classify_conviction, recommend_options_structure
-from RevenueChaser.module_earnings_radar import store_reads, stored_inputs
+from RevenueChaser.module_earnings_radar import lean as lean_slice, store_reads, stored_inputs
 from RevenueChaser.core import calendar
 from RevenueChaser.rcdata import read
 from RevenueChaser.core import universe as _spine
-from RevenueChaser.core.gics_map import is_unclassified
 from RevenueChaser.core.config import (
     RULE_WEIGHTS, INST_FLOW_MIN_NET, MAX_DEEP_CHECKS_PER_DAY,
     EARNINGS_SCORE_WORKERS as SCORE_WORKERS,
@@ -182,7 +181,6 @@ class EarningsPipeline:
         self._shorts_cache = None
         self._dgs10_cache = None
         self._rate_events = None        # the stored economic calendar, read once per run (E5d, #372)
-        self._peers_registered = False
         self._preselected_tickers = None
         # The stored D01 bars for the tickers that will be scored, read once before the workers start (E5e, #372).
         self._ohlc_bars = None
@@ -237,12 +235,11 @@ class EarningsPipeline:
 
         FINRA's twice-monthly settlement short interest (``store_reads.short_interest``, the need
         ``ownership.short_interest``; the owner's B on #287): shares short over the float, days to cover, and IBKR's
-        borrow fee. No provider call: a name the store does not cover has no squeeze read and R5 scores flow only.
-        UW's daily figure is not mixed in, because the peer Z-scores below must compare one series.
+        borrow fee. No provider call: a name the store does not cover has no squeeze read and R5 reads the lean only.
+        UW's daily figure is not mixed in, because the two series measure different things.
 
-        Every ticker's squeeze metrics are then registered under its spine sector (the sector the card is scored
-        against, #272) so the in-sector peer Z-scores can be built before scoring. A name the spine
-        cannot place is nobody's peer.
+        Since #256 the squeeze is a ``none`` / ``fuel`` tag off these two figures, so nothing is compared across
+        names and no peer group is built.
         """
         if self._shorts_cache is None:
             rows, note = store_reads.short_interest(self.tickers)
@@ -251,19 +248,6 @@ class EarningsPipeline:
                 "stored": len(rows), "missing": len(set(self.tickers) - set(rows)),
                 "source_as_of": note.get("source_as_of")}
             self.input_sources["short_interest_note"] = note.get("label")
-        if not self._peers_registered:
-            # the peer group is the spine's sector, the one _score reads: for a name the S&P 1500 list or the SIC
-            # table places differently from the UW calendar the two differ (#272)
-            if getattr(self, "_spine_gics", None) is None:
-                self._spine_gics = _spine.spine_gics()
-            for t in self.tickers:
-                stats = self._shorts_cache.get(t)
-                if not stats:
-                    continue
-                sector = _spine.gics_of(t, self._spine_gics).sector
-                if sector and not is_unclassified(sector):
-                    rule5_positioning.register_peer_stats(t, sector, stats)
-            self._peers_registered = True
         return self._shorts_cache
 
     def _warm_dgs10(self) -> dict[str, float]:
@@ -430,8 +414,6 @@ class EarningsPipeline:
 
     def run(self, use_preselect: bool = True, watchlist: set = None) -> list[TradeCard]:
         logger.info(f"Fetching screener batch for {len(self.tickers)} tickers...")
-        rule5_positioning.reset_peer_stats()
-        self._peers_registered = False
         _ = self.screener_cache  # warm cache
 
         wl = watchlist or read.picked()           # avo's own lists and the stock list, as the runner reads them
@@ -721,17 +703,21 @@ class EarningsPipeline:
         r3 = _score_financials(ticker, cluster, fin_records)
         r4 = rule4_volatility.score(opt) if em_pct else rule4_volatility.score(None)
         shorts = (self._shorts_cache or {}).get(ticker, {})
+        # The lean reads a slice of the same answer, never a second request (#256, redesign.md R5): the last few
+        # sessions, strikes inside R4's expected-move band, expiries from the report day out. ``flow`` keeps the
+        # whole tape, because R8's retail share and the card's buckets are measured over all of it.
+        lean_prints = lean_slice.select(flow_recent_raw, spot=spot_num, expected_move_pct=em_pct,
+                                        earnings_date=ed if report_date else None)
+        lean_flow = (self.uw.aggregate_flow(ticker, lean_prints) or {}) if lean_prints else {}
         r5 = rule5_positioning.score(
             short_interest_pct_float=shorts.get("si_pct"),
             days_to_cover=shorts.get("days_to_cover"),
             borrow_fee=shorts.get("borrow_fee"),
-            sector=sector,
-            institutional_net_delta=flow.get("inst_lean_net"),
-            institutional_call_premium=flow.get("inst_bull_side"),
-            institutional_put_premium=flow.get("inst_bear_side"),
-            ticker=ticker,
-            institutional_side_served=flow.get("side_served"),
-            institutional_package_premium=flow.get("inst_package"),
+            institutional_net_delta=lean_flow.get("inst_lean_net"),
+            institutional_call_premium=lean_flow.get("inst_bull_side"),
+            institutional_put_premium=lean_flow.get("inst_bear_side"),
+            institutional_side_served=lean_flow.get("side_served"),
+            institutional_package_premium=lean_flow.get("inst_package"),
             short_as_of=shorts.get("settlement_date"),
             si_basis=shorts.get("si_basis"),
         )

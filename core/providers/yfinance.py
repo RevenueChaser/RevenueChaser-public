@@ -13,6 +13,7 @@ from typing import Any
 import pandas as pd
 
 from ..config import to_float
+from . import yf_session
 from .result import ProviderHealth, ProviderResult
 
 logger = logging.getLogger(__name__)
@@ -46,6 +47,74 @@ def _count(error: str | None = None, endpoint: str = "") -> None:
     _HEALTH.call(error=error, endpoint=endpoint)
     for health in getattr(_SCOPES, "stack", ()):
         health.call(error=error, endpoint=endpoint)
+
+
+def attempt(call, endpoint: str = "", empty=None, count: bool = True) -> tuple[Any, str | None]:
+    """One Yahoo read, as ``(value, error text or None)``: counted for the banner and retried once after a 401.
+
+    **Every** yfinance read in the tree belongs here, for two reasons.
+
+    * It is counted through :func:`_count`, so the read lands in the module global **and** in every
+      ``health_scope`` open on this thread (#299). A caller that counts on ``_HEALTH`` itself is invisible to
+      the scope its own board opened.
+    * Yahoo's HTTP 401 "Invalid Crumb" is cured by one session reset, and until it is, every later read of the
+      process fails the same way (#402). ``yf_session.recover`` decides and resets; this is what calls it.
+      #402 built that cure for ``load_ohlc``, which went with the old bar path, so ``recover`` was left with no
+      caller at all and the cure was inert (measured on ``main`` c2b2c88, 20 Nov 2026).
+
+    yfinance does not always raise a refusal: a refused ``history`` comes back as an empty frame with the 401 on
+    the ``yfinance`` logger. Pass ``empty`` — a predicate over the value — to have such an answer consult
+    ``recover`` too, so an empty-because-refused read is retried and an empty-because-no-data read is not (only
+    a pending 401 makes ``recover`` say yes).
+
+    The error text is the caller's to render; a failed read is counted with it either way.
+
+    ``count=False`` buys the session reset and the retry **without** the counting, for the one caller that
+    decides for itself what the read was worth: Swing's ``.info`` refetch keeps an expired payload and counts
+    that as a failed read (#80, #259), which this cannot see, because the answer came back fine.
+    """
+    started = yf_session.clock()
+    try:
+        value = call()
+    except Exception as exc:  # noqa: BLE001 - every yfinance read is network
+        if not yf_session.recover(started, exc):
+            return _failed(exc, endpoint, count)
+        try:
+            value = call()
+        except Exception as exc:  # noqa: BLE001 - the retry after the reset is the last one
+            return _failed(exc, endpoint, count)
+    else:
+        if empty is not None and _is_empty(empty, value) and yf_session.recover(started):
+            try:
+                value = call()
+            except Exception as exc:  # noqa: BLE001
+                return _failed(exc, endpoint, count)
+    if count:
+        _count(endpoint=endpoint)
+    return value, None
+
+
+def read(call, endpoint: str = "", default=None, empty=None, count: bool = True):
+    """:func:`attempt` without the error text: the value, or ``default`` when the read failed."""
+    value, error = attempt(call, endpoint=endpoint, empty=empty, count=count)
+    return default if error is not None else value
+
+
+def _failed(exc: BaseException, endpoint: str, count: bool = True) -> tuple[None, str]:
+    """Count one failed Yahoo read and give its text back to the caller."""
+    text = str(exc)[:200] or type(exc).__name__
+    logger.debug("yfinance %s: %s", endpoint or "read", text)
+    if count:
+        _count(error=text, endpoint=endpoint)
+    return None, text
+
+
+def _is_empty(empty, value) -> bool:
+    """``empty(value)``; a predicate that itself raises means "not empty", never a crash in a read path."""
+    try:
+        return bool(empty(value))
+    except Exception:  # noqa: BLE001 - a broken predicate must not fail the read
+        return False
 
 
 @contextlib.contextmanager
@@ -182,13 +251,9 @@ def get_financials(ticker: str, max_years: int = MAX_YEARS) -> dict:
 
     def _stmt(attrs: tuple[str, ...]) -> pd.DataFrame:
         for attr in attrs:
-            try:
-                df = getattr(t, attr)
-            except Exception as exc:  # noqa: BLE001 - network; counted for the banner, then the next label
-                logger.debug("yfinance %s.%s: %s", ticker, attr, exc)
-                _count(error=str(exc) or type(exc).__name__, endpoint=f"{ticker}.{attr}")
-                continue
-            _count()
+            # ``attempt`` counts the read and gives a refused session one reset and one retry (#402, #100);
+            # a statement this version does not carry is the next label's turn, as before.
+            df = read(lambda attr=attr: getattr(t, attr), endpoint=f"{ticker}.{attr}")
             if isinstance(df, pd.DataFrame) and not df.empty:
                 return df
         return pd.DataFrame()
@@ -297,14 +362,8 @@ def _payload(ticker: str, info: dict, annual: list[dict]) -> dict:
 
 
 def _read_info(t, ticker: str) -> dict:
-    try:
-        info = t.info or {}
-    except Exception as exc:  # noqa: BLE001 - network; counted for the banner
-        logger.debug("yfinance info %s: %s", ticker, exc)
-        _count(error=str(exc) or type(exc).__name__, endpoint=f"{ticker}.info")
-        return {}
-    _count()
-    return info
+    """One ticker's ``.info``, counted for the banner and retried once after a 401 session reset (#402, #100)."""
+    return read(lambda: t.info or {}, endpoint=f"{ticker}.info", default={})
 
 
 def raw_info(ticker: str) -> dict:

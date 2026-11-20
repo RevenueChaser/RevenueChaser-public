@@ -1,79 +1,81 @@
 # R5 — Positioning & Short Squeeze
 
-**Weight:** 20% of composite direction score
-**Sources:** Unusual Whales `/stock/{ticker}/flow-recent` (options flow) and `/short_screener` (batch short interest / borrow / float)
-**File:** `module_earnings_radar/rules/rule5_positioning.py`
+**Weight:** 0 — R5 is a **tag**, never a direction vote (`docs/earnings-radar/redesign.md` R5: "R5 vote: NONE").
+It never opens R4's OPTIONS gate and the drawer shows no signed score for it.
+**Sources:** Unusual Whales `/stock/{ticker}/flow-recent` (option prints) · FINRA settlement short interest and
+days to cover · IBKR borrow fee, both from the ownership store (`module_earnings_radar/store_reads.short_interest`).
+**Files:** `module_earnings_radar/rules/rule5_positioning.py` · the print slice `module_earnings_radar/lean.py`
 
-## What It Measures
+## What it measures
 
-Who is positioned how, and what does that imply for the stock's reaction to earnings? Two independent components, **at least one of which must be present** or the rule is `unavailable` (score `None`, never a 0 fill):
+Who is positioned how. Two independent components, **at least one of which must be present** or the rule is
+`unavailable` (score `None`, never a 0 fill):
 
-1. **Institutional flow asymmetry** — are institutions net buyers or sellers of options?
-2. **Squeeze potential** — is there elevated short interest / borrow cost / days to cover creating squeeze risk, measured **within the ticker's own sector**? There is no utilization: UW's short screener serves none and redesign.md R5 says never invent one (the old `short_interest / (short_interest + short_shares_available)` proxy is gone, #256).
+1. **Institutional lean** — which side of the quote the big prints went off on.
+2. **Squeeze tag** — is there fuel for a squeeze in the short book: `none` or `fuel`, no number.
 
-> Retail-call euphoria is **not** scored here. The same `retail_call / (retail_call + inst_call) > 65%` fade is R8's job; scoring it in both R5 and R8 double-faded retail and effectively gave one signal ~30% weight.
+> Retail-call euphoria is **not** read here. The same `retail_call / (retail_call + inst_call) > 65%` share is R8's
+> job; reading it in both doubled one signal.
 
-## Data Input
+## The lean
 
-`aggregate_flow()` buckets per-print option premium by size (≥ 10 contracts → institutional, else retail). Short data comes from the UW **short screener** batch endpoint (same row shape as V2 `/shorts/{ticker}/interest-float/v2`), fetched once per ~100 deep-scored tickers. R5 uses:
-
-| Metric | Field | Notes |
-|--------|-------|-------|
-| SI % | `si_float` | decimal → ×100 when `< 1` |
-| Borrow | `fee_rate` | hard-to-borrow cost |
-| Days to cover | `days_to_cover` | |
-
-Missing fields are `None`, never a 0 fill — an absent borrow fee must not read as "cheap to borrow".
-
-## Scoring Logic
-
-### Institutional Flow
+**Side, not buckets** (`core/option_prints.py`, `aggregate_flow`): bullish = ask-side calls + bid-side puts,
+bearish = bid-side calls + ask-side puts, **mid dropped**. Institutional = size ≥ 10 **and** premium ≥ `$10k`
+(`INST_PRINT_MIN_PREMIUM`). A multi-leg or stock-tied package is left out of the lean math and, when material,
+tagged `package-risk`. No print carried a side → no lean (absent, never neutral).
 
 ```
-score += 20 × inst_net / (inst_call + inst_put)     # needs premium > 0
-fallback: +20 / −20 when a non-zero inst_net has no premium breakdown
+score += 20 × inst_lean_net / (inst_bull_side + inst_bear_side)
+|inst_lean_net| < $25k (INST_FLOW_MIN_NET) → Thin: present, no lean
 ```
 
-A one-sided but small imbalance scores less than a clean sweep. Zero / empty institutional flow is not a signal.
+### The prints the lean reads (#256)
 
-### Squeeze (peer Z within sector)
+`flow-recent` cannot slice itself, so the slice is local (`module_earnings_radar/lean.py`, no extra request —
+the same answer the card's tape buckets and R8 read whole):
 
-```
-squeeze_z = (0.4·Z(si) + 0.3·Z(borrow) + 0.1·Z(dtc))
-            / (sum of weights actually present)
-```
+| Filter | Cut | Missing figure |
+|---|---|---|
+| Window | the newest `R5_LEAN_SESSIONS` = **3** sessions the tape served | a print with no timestamp is kept |
+| Strike band | `spot × (1 ± expected_move × R5_LEAN_BAND_SLACK)`, slack **1.5** | no spot or no expected move keeps every strike |
+| Expiry | from the report day out to `R5_LEAN_EXPIRY_DAYS` = **45** days after it | no earnings date, or no expiry on the print, keeps it |
 
-Z-scores are computed against the ticker's **own sector** peers (never cross-sector borrow comparisons). Weights renormalize over whatever metrics are present.
+The newest print sets the window, not the clock, so a Fetch of a past day slices the same way as tonight's.
 
-| Squeeze Z | Score | Signal |
-|:---------:|:-----:|--------|
-| > 3 | **+40** | Extreme squeeze potential |
-| > 2 | +25 | Elevated squeeze potential |
-| > 1 | +15 | Mild squeeze risk |
-| < −1 | −10 | No squeeze pressure |
+## The squeeze tag
 
-**Peer gate:** a Z requires ≥ 2 in-sector peers. With fewer than 2 (or no sector), an **absolute short-interest fallback** applies instead — `> 20% → +15`, `> 10% → +5`. Low short interest is *not* a signal, and an empty peer group never marks the rule available.
+`none` / `fuel` from the short interest or the borrow fee (`redesign.md` R5: "`none` / `fuel` from `si_float` or
+`fee_rate`. **No Z ladder. Low SI ≠ bearish**"):
 
-## Minimum Signal Gate
+| Condition | Tag |
+|---|---|
+| SI ≥ `R5_FUEL_SI_PCT` = **20%** of float, or borrow fee ≥ `R5_FUEL_FEE_PCT` = **10%** a year | `fuel` |
+| both below | `none` |
+| neither figure stored | the component is **missing**, not `none` |
 
-R5 needs at least one of {institutional flow, squeeze}. No flow data and no short data → `unavailable` (never a neutral 0).
+**Neither tag scores a point.** There is no utilization figure: UW serves none and the parser never derives one
+(#250). Days to cover is shown in the drawer's metrics and is not part of the tag, because it rests on the same
+twice-monthly FINRA count. The short interest reason names FINRA's settlement day, since the figure can be weeks
+old (#287); a fee-only read does not, because the fee is IBKR's own, of today. Where no float is stored the
+percent is of the shares outstanding and the reason says so.
+
+The peer Z ladder that scored +40 / +25 / +15 above peer Z 3 / 2 / 1 and **−10** below −1 is gone with #256: the
+−10 made a quiet short book bearish, which the design rules out, and the Z compared borrow fees across names whose
+float and listing age differ.
+
+## Minimum signal gate
+
+R5 needs at least one of {lean, squeeze}. Neither → `unavailable`, never a neutral 0.
 
 ## Coverage
 
-`coverage = present / 2` over {flow, squeeze} — 0.5 or 1.0. It feeds composite confidence; the score is not scaled by coverage.
+`coverage = present / 2` over {lean, squeeze} — 0.5 or 1.0. A field present makes its component present with score
+0, not missing (`redesign.md` R5 Coverage). Coverage feeds composite confidence; since R5's weight is 0 it moves no
+direction score.
 
 ## Interpretation
 
-| Component | Bullish | Bearish |
-|-----------|:---:|:---:|
-| Inst flow | Net institutional call premium | Net institutional put premium |
-| Squeeze | High in-sector Z → squeeze fuel | Low Z → no squeeze catalyst |
-
-## Example: SE (Sea Limited) — flow only
-
-```
-inst_net = +77,434 (bullish — institutions buying calls)
-imbalance vs total inst premium small → modest positive contribution
-```
-
-Retail euphoria that used to be read here is now scored by R8 — read SE's retail-call share there.
+| Component | Reads |
+|---|---|
+| Lean | ask-side call / bid-side put premium against the other side, over the slice above |
+| Squeeze | `fuel` = room for a short-driven move; `none` = no fuel, and **not** a bearish read |
