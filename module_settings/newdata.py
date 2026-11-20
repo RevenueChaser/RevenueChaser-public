@@ -398,6 +398,23 @@ def _wrds_slot(dataset: str, facts: dict) -> dict:
 #: How many example rows a card shows (A16). Five: enough to see what a row looks like, few enough to read on a
 #: phone and to cost nothing to fetch.
 SAMPLE_ROWS = 5
+
+
+def sampled_columns() -> dict[str, str | None]:
+    """Every table the control board draws an example block for, with the column that orders its rows or None.
+
+    The board's blocks come from the datasets' own ``tables`` (``_board``: ``samples`` is ``ds.tables``), so the set
+    is every served table plus the tables only this screen dates. A served table with no date column at all
+    (``peer_group``: a rebuilt-whole peer list, no column dates a row) is here with None and is read unordered,
+    rather than refused with "unknown table" (#338). ``DATE_COLUMN`` stays the dating map and is not widened: a
+    table with no column here must not be given one, because a card would then date it by a column it does not have.
+    """
+    from RevenueChaser.rcdata.build import DATASETS
+    out: dict[str, str | None] = dict(DATE_COLUMN)
+    for ds in DATASETS.values():
+        for table in ds.tables:
+            out.setdefault(table, None)
+    return out
 #: The cases in the data that look like a bug and are not (K13). One line each, shown beside that table's rows.
 SAMPLE_NOTES: dict[str, tuple[str, ...]] = {
     "security_symbol": ("HEI and HEI-A are two share classes of one issuer: the symbol is not the key, the "
@@ -487,12 +504,13 @@ class SampleUnavailable(LookupError):
 def read_sample_now(table: str, now: datetime | None = None, cached: bool = False) -> dict:
     """The control board's **Refresh the example rows**: one table's newest rows, read again past the hourly cache.
 
-    Only a table the cards sample (``DATE_COLUMN``) is read, through one ``open_read`` handle on its own file; the
-    answer replaces the cached sample, so the next render shows the same rows. ``KeyError`` for any other name,
+    Only a table the cards sample (``sampled_columns``) is read, through one ``open_read`` handle on its own file;
+    the answer replaces the cached sample, so the next render shows the same rows. ``KeyError`` for any other name,
     :class:`SampleUnavailable` when the file or the table is not there. No provider, no job, no write.
     """
     from RevenueChaser.rcdata import read
-    if table not in DATE_COLUMN or table not in read.KIND_OF_TABLE:
+    columns = sampled_columns()
+    if table not in columns or table not in read.KIND_OF_TABLE:
         raise KeyError(table)
     if cached:      # the page's first look at a block: this hour's sample when there is one (the rows left the page)
         hit = _SAMPLE_CACHE.get(table)
@@ -507,7 +525,7 @@ def read_sample_now(table: str, now: datetime | None = None, cached: bool = Fals
         names = {r[0] for r in con.execute("SELECT table_name FROM duckdb_tables()").fetchall()}
         if table not in names:
             raise SampleUnavailable(f"the {kind} file has no {table} table yet")
-        sample = _read_sample(con, table, DATE_COLUMN[table])
+        sample = _read_sample(con, table, columns[table])
     finally:
         con.close()
     _SAMPLE_CACHE[table] = (_sample_key(table, now or datetime.now(timezone.utc)), sample)
@@ -550,10 +568,13 @@ def _serving_facts(now: datetime | None = None) -> tuple[dict[str, dict], dict[s
             if serving.VERSION_TABLE in names:
                 row = con.execute(f"SELECT max(built_at) FROM {serving.VERSION_TABLE}").fetchone()
                 swaps[kind] = _iso_utc(row[0]) if row and row[0] is not None else None
-            for table, col in DATE_COLUMN.items():
+            for table, col in sampled_columns().items():
                 if table not in names:
                     continue
-                rows, newest = con.execute(f'SELECT count(*), max("{col}") FROM "{table}"').fetchone()
+                if col is None:         # a served table no column dates: counted and sampled, never dated (#338)
+                    rows, newest = con.execute(f'SELECT count(*) FROM "{table}"').fetchone()[0], None
+                else:
+                    rows, newest = con.execute(f'SELECT count(*), max("{col}") FROM "{table}"').fetchone()
                 tables[table] = {"rows": int(rows), "newest": newest.isoformat() if newest else None}
                 if now is not None:
                     tables[table]["sample"] = _cached_sample(
