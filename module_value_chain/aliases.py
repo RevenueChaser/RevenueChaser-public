@@ -9,7 +9,18 @@ from __future__ import annotations
 
 import re
 
-# Legal suffixes/forms stripped before lookup.
+# The legal form of a company, which a filer writes or leaves out at will ("Pfizer", "Pfizer Inc.").
+_FORMS = re.compile(
+    r"\b(incorporated|inc|corporation|corp|company|co|limited|ltd|plc|llc|"
+    r"nv|sa|ag|gmbh|kk|oyj|pty)\b", re.I)
+
+# Words that are part of the name itself, however generic they look: two companies that differ in one of them are
+# two companies ("Orion Corporation" is not "Orion Group Holdings", "Rafael Technologies" is not "Rafael
+# Holdings"). ``normalize`` still drops them, so every alias key keeps its spelling; ``strict`` keeps them, and
+# that is what a one-word name is matched on (#1142).
+_NAME_WORDS = re.compile(
+    r"\b(holdings?|group|technologies|technology|semiconductor|manufacturing|international)\b", re.I)
+
 _SUFFIXES = re.compile(
     r"\b(incorporated|inc|corporation|corp|company|co|limited|ltd|plc|llc|"
     r"holdings?|group|technologies|technology|semiconductor|manufacturing|"
@@ -21,6 +32,12 @@ def normalize(name: str) -> str:
     s = re.sub(r"[^A-Z0-9& ]+", " ", s)
     s = _SUFFIXES.sub(" ", s)
     return " ".join(s.split())
+
+
+def strict(name: str) -> str:
+    """``normalize`` without dropping the name's own words: "Rafael Technologies" -> ``RAFAEL TECHNOLOGIES``."""
+    s = re.sub(r"[^A-Z0-9& ]+", " ", (name or "").upper())
+    return " ".join(_FORMS.sub(" ", s).split())
 
 
 # Canonical alias -> ticker. Keys are matched after ``normalize``.
@@ -100,6 +117,17 @@ DROP_FOLLOWERS: dict[str, frozenset[str]] = {
     "EATON": frozenset({"vance"}),
 }
 
+# The next word is a capitalised word of the *same* company's name, so the hit stands ("Amazon Web Services",
+# "Samsung Electronics", "Super Micro Computer", "KLA Tencor"). Any other capitalised word that is not the legal
+# form makes the name a different, listed company -- "Samsung SDI" is not Samsung (#1142, census row 12) -- and
+# the hit is dropped, so the name is left to the spine or to no ticker at all.
+NAME_CONTINUATION: frozenset[str] = frozenset({
+    "WEB", "CLOUD", "AZURE", "ELECTRONICS", "COMPUTER", "COMPUTERS", "DESIGN", "TENCOR", "FOUNDRY", "SERVICES",
+    "SOLUTIONS", "NETWORKS", "PLATFORMS", "DIGITAL", "SYSTEMS", "MATERIALS", "DEVICES", "INSTRUMENTS",
+    "RESEARCH", "LABS", "LABORATORIES", "STORAGE", "AMERICA", "AMERICAS", "USA", "EUROPE", "ASIA", "JAPAN",
+    "KOREA", "CHINA", "INDIA", "GLOBAL", "WORLDWIDE",
+})
+
 # A capitalised word straight before the name makes it part of another proper
 # noun ("Avo Intel", "Private Capital Intel", "Our Intel Graph").
 DROP_AFTER_CAPITALISED: frozenset[str] = frozenset({"INTEL"})
@@ -120,21 +148,48 @@ SAME_ISSUER: dict[str, str] = {"GOOG": "GOOGL", "BRK-B": "BRK-A", "BRK.B": "BRK.
                                "FOX": "FOXA", "NWS": "NWSA"}
 
 
+# A word that names a kind of counterparty and no company, however a listed issuer is called ("Employers
+# Holdings Inc" is on the spine, so "we provide solutions to employers" resolved to EIG, #1142 census row 96).
+GENERIC_PARTIES: frozenset[str] = frozenset({
+    "EMPLOYERS", "CONSUMERS", "CUSTOMERS", "CLIENTS", "RETAILERS", "DISTRIBUTORS", "SUPPLIERS", "HOSPITALS",
+    "GOVERNMENTS", "UNIVERSITIES", "PARTNERS", "BANKS", "INSURERS", "CARRIERS", "PHARMACIES", "MANUFACTURERS",
+    "CONTRACTORS", "OPERATORS", "AIRLINES", "UTILITIES", "AGENCIES", "PROVIDERS", "PAYERS", "VENDORS", "BROKERS",
+    "DEALERS", "RESELLERS", "MEMBERS", "PATIENTS", "STUDENTS", "SCHOOLS", "ENTERPRISES", "CORPORATIONS",
+})
+
+
 def _key(name: str) -> str:
     return normalize(name).replace(" ", "")
 
 
+def _strict_key(name: str) -> str:
+    return strict(name).replace(" ", "")
+
+
 def spine_names(rows) -> dict[str, str | None]:
-    """``{name key: ticker}`` of the spine's ``security`` rows; None for a name two issuers share (#400 WP5)."""
+    """``{name key: ticker}`` of the spine's ``security`` rows; None for a name two issuers share (#400 WP5).
+
+    Each row is keyed twice: under ``_key`` (the normalised name, which drops the generic words of
+    ``_NAME_WORDS``) and under ``"=" + _strict_key`` (which keeps them). ``resolve`` reads the second one to
+    check a one-word name against the registrant's full name (#1142)."""
     out: dict[str, str | None] = {}
     for r in rows or []:
-        k, t = _key(r.get("name") or ""), str(r.get("ticker") or "").upper()
-        if len(k) < 3 or not t:
+        name, t = r.get("name") or "", str(r.get("ticker") or "").upper()
+        if not t:
             continue
-        if k in out and (out[k] is None or issuer(out[k]) != issuer(t)):
-            out[k] = None
-        else:
-            out.setdefault(k, t)
+        keys = [_key(name), "=" + _strict_key(name)]
+        # A registrant whose name needs two of ``_NAME_WORDS`` dropped is reachable by its full name only: the
+        # normalised key of "Orion Group Holdings, Inc." is ORION, which a filer's "Orion Corporation" (a Finnish
+        # pharmaceutical company, not this one) matched (#1142, census row 140).
+        if len(strict(name).split()) - len(normalize(name).split()) >= 2:
+            keys = keys[1:]
+        for k in keys:
+            if len(k.lstrip("=")) < 3:
+                continue
+            if k in out and (out[k] is None or issuer(out[k]) != issuer(t)):
+                out[k] = None
+            else:
+                out.setdefault(k, t)
     return out
 
 
@@ -154,8 +209,33 @@ def resolve(name: str, names: dict | None = None) -> dict | None:
     hits = {h["ticker"]: h for h in find_aliases(name or "") if not h["context_only"]}
     if hits:
         return next(iter(hits.values())) if len(hits) == 1 else None
+    if not spine_candidate(name or ""):
+        return None
+    # The strict key is read when the normalised one is not on the spine at all -- it is the only key of a
+    # registrant ``spine_names`` keeps whole. A normalised key two issuers share stays ambiguous (#400 WP5).
     ticker = spine_ticker(name or "", names)
+    if ticker is None and _key(name or "") not in (names or {}):
+        ticker = (names or {}).get("=" + _strict_key(name or ""))
+    # A name that carries one of ``_NAME_WORDS`` itself must match the registrant's name with those words kept:
+    # "Rafael Technologies" is not Rafael Holdings (RFL) and "STEMCELL Technologies" is not International Stem
+    # Cell (ISCO), although ``normalize`` leaves all three as the same key (#1142, census rows 19 and 40).
+    if ticker and strict(name) != normalize(name) and (names or {}).get("=" + _strict_key(name)) != ticker:
+        return None
     return {"name": name, "ticker": ticker} if ticker else None
+
+
+def spine_candidate(name: str) -> bool:
+    """False for a free-text name that identifies no company and must never reach the spine (#1142).
+
+    Two shapes made four of the census's five wrong tickers: a kind of counterparty rather than a company
+    ("employers" -> EIG, because "Employers Holdings Inc" is listed), and a name written with no capital letter at
+    all, which a filer does not do for a company it names.
+    """
+    if not (name or "").strip():
+        return False
+    if not any(w[:1].isupper() for w in re.findall(r"[A-Za-z][A-Za-z0-9&.]*", name)):
+        return False
+    return not all(w in GENERIC_PARTIES for w in normalize(name).split())
 
 
 # A customer a filing withholds the name of: "Customer A", "Customer 1", "One customer", "big customer" (D, owner
@@ -244,6 +324,9 @@ def find_aliases(text: str) -> list[dict]:
         if word.lower() in DROP_FOLLOWERS.get(key, ()):
             continue
         if key in DROP_AFTER_CAPITALISED and _PREV_CAPITALISED.search(text, max(0, m.start() - 30), m.start()):
+            continue
+        if (word[:1].isupper() and word.upper() not in NAME_CONTINUATION
+                and not _SUFFIXES.fullmatch(word) and word not in PRODUCT_FOLLOWERS.get(key, ())):
             continue
         hits.append({"name": key.title(), "ticker": ALIASES[key], "start": m.start(),
                      "end": m.end(), "context_only": word in PRODUCT_FOLLOWERS.get(key, ())})
