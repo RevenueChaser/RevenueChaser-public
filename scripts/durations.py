@@ -15,6 +15,11 @@ Each argument is a ``tests`` workflow run that ran the FULL unit tier. The scrip
 that hold each file. Several runs are asked for on purpose: a GitHub runner's speed drifts by a fifth from one
 run to the next (measured on #896, 19 Nov 2026), and one run alone would write that drift into the table.
 
+**Every run given must have the same test tree.** A file a commit splits, renames or rewrites is not the same
+file in an older run, and averaging the two writes a time nothing will ever cost: rebuilding over the three runs
+before #1153's split and the one after it put ``test_ownership_serve.py`` at 424 s, the mean of its 500 s with 48
+tests and its 195 s with 13. Rebuild from runs on one tree, newest first.
+
 When a file is split, its successors have no run of their own yet: their entries are the measured means of the
 tests that moved, apportioned by hand in the commit that splits them (#1153 did that for ``test_ownership_serve``
 and ``test_prices_incremental``), and the next rebuild from a FULL run replaces the estimate with a measurement.
