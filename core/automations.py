@@ -303,7 +303,7 @@ REGISTRY: tuple[AutomationEntry, ...] = (
     AutomationEntry(
         name="RC-News-Earnings-Weekly", label="News earnings (weekly)",
         args=("-m", "RevenueChaser.scripts.board_fetch", "news-earnings"), time="09:00", days=("Sunday",),
-        unit_name="life-rc-news-earnings", tables_written=("news_earnings",),
+        unit_name="life-rc-fetch-news-earnings", tables_written=("news_earnings",),
         description="The News board's Earnings tab (#886, avo 20 Nov 2026): every Sunday 09:00 it writes next "
                     "week's report day of every name on the News watch lists into boards/news.duckdb and renders "
                     "the page. Once a week, because a calendar of next week does not change by the hour. "

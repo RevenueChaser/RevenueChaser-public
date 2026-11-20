@@ -140,6 +140,7 @@ def test_the_weekly_pass_is_a_sunday_nine_o_clock_registry_row():
     assert entry.days == ("Sunday",) and entry.time == "09:00"
     assert entry.tables_written == ("news_earnings",)
     assert entry.args == ("-m", "RevenueChaser.scripts.board_fetch", "news-earnings")
+    assert entry.unit == "life-rc-fetch-news-earnings", "one unit a board_fetch route (scripts/tests)"
     assert "weekly Sunday 09:00 (local)" == entry.schedule
 
 
