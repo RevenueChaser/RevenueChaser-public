@@ -2,13 +2,28 @@
 ``life`` connects with no Duo push), and the worker's login can never outwait ``PGCONNECT_TIMEOUT``."""
 from __future__ import annotations
 
+from datetime import datetime
+
 import pytest
 
+from RevenueChaser.core import calendar
 from RevenueChaser.rcdata import ops
 from RevenueChaser.rcdata.build import DATASETS, base, due
 from RevenueChaser.rcdata.build.spine import wrds
 
 WRDS = sorted(n for n in DATASETS if n.startswith("wrds/"))
+
+
+@pytest.fixture(autouse=True)
+def after_the_publish_hour(monkeypatch):
+    """Pin the hour, not the day: ``due.EARLIEST_NY_HOUR`` holds ``wrds/prices`` until 05:00 in New York, so
+    whether these tests see that dataset as due depended on what time of day the suite ran. CI ran at 02:42 New
+    York on 20 Nov 2026 and the two retry tests read "waits for 05:00 New York" instead. Today's real date is
+    kept, because the rows these tests write are dated against it.
+    """
+    def ten_am_ny() -> datetime:
+        return datetime.now(calendar.NY).replace(hour=10, minute=0, second=0, microsecond=0)
+    monkeypatch.setattr(calendar, "_now", ten_am_ny)
 
 
 def test_the_wrds_datasets_are_attended_by_default(monkeypatch):
