@@ -17,6 +17,8 @@ spine file reads as no membership. This module only reads.
 """
 from __future__ import annotations
 
+from .html_safe import esc
+
 # slug -> display label for every stored slug (#214). Display order matters: the badge shows the first match,
 # and the filter lists the labels in this order. A SmallCap 600 member listed on Nasdaq reads "S&P SmallCap 600".
 LABELS: dict[str, str] = {
@@ -117,14 +119,14 @@ EXPLAIN_SOURCE = ("Source: the identity spine; an index shows here once some nam
 EXPLAIN_COUNTS = ("Counts are names <b>on this board</b> that pass your other filters, not the size of the index.")
 
 
-def _esc(text: str) -> str:
-    """The display labels are our own constants, but they carry ``&`` (S&P): escape as the page needs."""
-    return str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-
-
 def _bold_list(labels: list[str]) -> str:
-    """``<b>a</b>``, ``<b>a</b> and <b>b</b>``, ``<b>a</b>, <b>b</b> and <b>c</b>``."""
-    bold = [f"<b>{_esc(l)}</b>" for l in labels]
+    """``<b>a</b>``, ``<b>a</b> and <b>b</b>``, ``<b>a</b>, <b>b</b> and <b>c</b>``.
+
+    The labels are our own constants, but they carry ``&`` (S&P), so they go through the one escaper the
+    repository has (``html_safe.esc``, ADR-X1 / #175 — a second one of our own would be the thing that test
+    forbids).
+    """
+    bold = [f"<b>{esc(l)}</b>" for l in labels]
     if len(bold) <= 1:
         return "".join(bold)
     return ", ".join(bold[:-1]) + " and " + bold[-1]
