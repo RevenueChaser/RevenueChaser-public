@@ -19,6 +19,13 @@ def test_data_architecture_names_the_current_schema_version():
     assert m.group(1) == rawstore._SCHEMA_VERSION
 
 
+def test_data_architecture_names_how_long_a_runs_rows_are_kept():
+    """The one year of ops.prune_runs is a value the code owns (step 9, 20 Nov 2026)."""
+    from RevenueChaser.rcdata import ops
+    text = (_REPO / "docs" / "data_architecture.md").read_text(encoding="utf-8")
+    assert f"**{ops.RUN_ROWS_DAYS} days** (`ops.RUN_ROWS_DAYS`)" in text
+
+
 def test_data_architecture_names_the_current_per_id_shrink_tolerance():
     """The prices swap guard's per-security tolerance is a value the code owns (#1096)."""
     from RevenueChaser.rcdata.build.prices import serving as prices_serving

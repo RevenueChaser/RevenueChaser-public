@@ -1287,6 +1287,17 @@ by `ALTER`, so nothing is rewritten and the builder's rows keep their values):
 | `dataset_automation` | One source's own automation (#527): `off`, `raw`, `parquet` or `full`; no row is `off`. The only mode the hourly pass reads (avo, 10 Nov 2026) |
 | `request_log` | The per-request log (#715): one row a read (`kind` `read`), a need ask (`need`) and a provider call (`call`), with the time, the process, what was asked (a table, a need, or the provider and for an HTTP call the method and `host/path`, never the query, a header or a body), the dataset of a build, the answer (an HTTP status, an error's name, `sent`, `failed`) and the milliseconds of an HTTP call. Collected in memory and written with the read log's flush (once a minute and at exit); every write keeps only the newest 100,000 rows (`ops.REQUEST_LOG_KEEP`, about seven days). Not in any backup. `RC_REQUEST_LOG=0` turns it off. Read by `GET /api/settings/requests` |
 
+**How long a run's rows are kept** (avo, 20 Nov 2026: "Bir yil yeterli ama her seyi tuttugundan emin ol, hangi
+service yapacak bunu?"; review of 20 Nov 2026, finding R5): `job_runs2`, `build_requests` and `dataset_check` keep
+**365 days** (`ops.RUN_ROWS_DAYS`), the same year homesrv keeps its own `ops.db job_runs` rows in
+(home-server `docs/job-records.md`), which are the outer record of the same runs. The deleter is **the hourly
+builder pass** (`ops.prune_runs`, called beside `ops.prune_issues` at the end of the due step), because it is the
+writer of this store: no second writer and no new timer. It is best effort, so a busy store only means the next
+hour prunes. Never deleted, whatever its age: a run that has not finished (`finished_at` NULL) and a request still
+queued or running — the sweep closes those, not the clock — and, per dataset, the three check rows a board reads as
+that dataset's state (the newest, the newest that is not `skipped`, the newest that built), so a dataset that last
+built two years ago still reads true. `ops.oldest_run_rows` says how far the kept history reaches, and `RC_PRUNE_RUNS=0` stops the prune deleting anything without a revert (as `RC_REQUEST_LOG=0` stops the request log).
+
 **Day caps** (`rcdata/caps.py`, master plan Order 5, rule 3: only the quotas a provider publishes per day, each with
 its source): alphavantage 25 (its free tier, shared by the earnings calendar and the spine's
 `alphavantage/listing_status`, #346); UW has none (owner-removed avo 2026-11-10). **Request windows**
