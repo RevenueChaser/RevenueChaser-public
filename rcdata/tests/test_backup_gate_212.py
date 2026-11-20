@@ -37,8 +37,15 @@ def _verified(days_ago: float) -> None:
 
 
 def test_no_backup_folder_configured_holds_nothing(monkeypatch):
-    """CI and a developer's machine have no backup folder: the gate must not stop every build there."""
+    """CI and a developer's machine have no backup folder: the gate must not stop every build there.
+
+    The switch is deleted first, so "not configured" is the only reason the answer can be None. Without that it
+    was the suite's own ``RC_BUILD_BACKUP_GATE=0`` that passed this test, and a mutant that drops the
+    "not configured" escape survived it (mutation round 2).
+    """
+    monkeypatch.delenv(backup.GATE_ENV, raising=False)
     monkeypatch.setattr(config, "RAW_STORE_BACKUP_DIR", "")
+    assert backup.gate_on() is True                      # the switch is not what makes this None
     assert backup.stale_problem(NOW) is None
 
 
