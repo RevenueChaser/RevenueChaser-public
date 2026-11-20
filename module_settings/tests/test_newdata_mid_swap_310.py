@@ -17,7 +17,7 @@ import duckdb
 import pytest
 
 from RevenueChaser.core import calendar
-from RevenueChaser.module_settings import newdata, report
+from RevenueChaser.module_settings import newdata
 from RevenueChaser.rcdata import serving
 from RevenueChaser.rcdata.tests.conftest import market_roots  # noqa: F401 - market roots per test
 
@@ -74,12 +74,19 @@ def test_one_kinds_file_failing_leaves_every_other_kind_on_the_board(market_root
     assert got["builds"].get("prices") is None, "a kind that could not be read says nothing about its build"
 
 
-def test_the_tab_still_renders_when_every_served_file_is_unreadable(market_roots):
-    """The end of the chain: ``_collect_newdata`` answers with the section, not with its one-line error."""
+def test_every_served_file_unreadable_reads_as_nothing_built_rather_than_raising(market_roots):
+    """The far end of the guard: no kind answers, and that is four empty maps, not an exception.
+
+    It stops at ``_serving_facts`` on purpose. ``collect`` also reaches the store through ``read._rows``
+    (``cross_check`` -> ``read.price_source_diff``), which carries the same ``open_read`` / ``close`` shape for
+    every board in the repository; widening it there is a change to the shared reader, not to this card, and it is
+    written up on #310 rather than smuggled in here.
+    """
     for kind in serving.KINDS:
         path = serving.live_path(kind)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"not a duckdb file")
-    got = report._collect_newdata()
-    assert "error" not in got, got.get("error")
-    assert got["tables"] == {} and got["sessions"] == {}
+    tables, swaps, funnel, builds = newdata._serving_facts(NOW)
+    assert tables == {} and builds == {} and funnel is None
+    assert set(swaps) == set(serving.KINDS) and not any(swaps.values()), \
+        "a kind that cannot be read has no last swap, and is not left out of the map"
