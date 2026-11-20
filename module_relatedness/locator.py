@@ -13,9 +13,12 @@ from ..rcdata.sec_locator import (ASK_ON, MAX_HEADINGS, PROMPT_VERSION, SYSTEM, 
                                   headings, parse, system_prompt)
 
 
-def locate(ticker: str, name: str, form: str | None, text: str, *, budget=None, provider: str = "deepseek",
+def locate(ticker: str, name: str, form: str | None, text: str, *, budget=None, provider: str = "",
            model: str | None = None, client=None) -> str | None:
     """The business section of ``text`` (a whole filing) as the writer places it, or None.
+
+    No ``provider`` means ``config.default_writer()``, which has no fee (``profiles.llm``); it was the paid
+    DeepSeek until 20 Nov 2026 (avo: "Fetch ve build sirasinda deepseek api kullanilan islem kalmasin").
 
     One call (counted by ``budget``), JSON mode, no thinking, cached like a profile chunk. A reply that names no
     usable pair of headings, or a section under the profile floor, is None: the caller keeps the rule cut."""

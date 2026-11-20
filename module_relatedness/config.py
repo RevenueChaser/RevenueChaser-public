@@ -21,6 +21,18 @@ RELATEDNESS_JSON = OUTPUT_DIR / "relatedness" / "relatedness_latest.json"
 # this floor, AAP's being 1 character).
 MIN_INPUT_CHARS = vc_config.MIN_ITEM_CHARS
 
+
+def default_writer() -> str:
+    """The writer a board call that names none runs on: the registry's default, which has no fee (EVREN).
+
+    avo, 20 Nov 2026: "Fetch ve build sirasinda deepseek api kullanilan islem kalmasin hepsi evren deepseek
+    olmali". Every function of this board carried the paid ``deepseek`` as its own default until then, so a caller
+    that forgot the argument spent money. It is read at call time and in one place, so the tests of the DeepSeek
+    path pin it here instead of naming the writer at 81 call sites (``tests/conftest.py``).
+    """
+    from RevenueChaser.core import llm_writers
+    return llm_writers.DEFAULT
+
 # v3 (#400, Relatedness v2 Step 1): one structured JSON profile from the whole Item 1 / Item 4 (no input cut), read
 # in chunks above 60k characters, JSON mode and no thinking (``profile_v3``). Every v2 profile reads stale and is
 # redone by the next run of the board's writer. v2 (#388 D5) named the company instead of the ticker.

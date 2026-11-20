@@ -29,3 +29,18 @@ def _own_writer(monkeypatch):
     the clean-up. A test of the mirror sets ``service`` itself."""
     from RevenueChaser.module_relatedness import config
     monkeypatch.setattr(config, "PROFILES_FROM", "own")
+
+
+@pytest.fixture(autouse=True)
+def _deepseek_default(monkeypatch):
+    """The tests of this folder drive the **DeepSeek** writer: most of them patch ``profiles.deepseek.complete``
+    and read the calls it recorded, and that was the board's default until 20 Nov 2026.
+
+    Since then the default is the registry's, which has no fee (``config.default_writer``, avo: "Fetch ve build
+    sirasinda deepseek api kullanilan islem kalmasin hepsi evren deepseek olmali"), so a call here that names no
+    writer would reach EVREN's HTTP client instead of the patched module. The writer is read at call time and in
+    one place, so this folder's intent is one fixture rather than ``provider="deepseek"`` at 81 call sites. A test
+    of the real default (``test_writer_selection_360.py``) undoes it.
+    """
+    from RevenueChaser.module_relatedness import config
+    monkeypatch.setattr(config, "default_writer", lambda: "deepseek")
