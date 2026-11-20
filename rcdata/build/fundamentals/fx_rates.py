@@ -9,9 +9,16 @@ again by the next run; a run where every request failed is a failed run.
 
 Raw: ``raw/yfinance/fx/<as-of>/<CUR>.json.gz`` (``{day: rate}``, the resume marker). Parquet:
 ``parquet/yfinance/fx/part-0.parquet``, every raw day typed into one file, the newest answer per (currency, day).
-Staging: ``stg_yf_fx``. The companyfacts typing reads the Parquet file (``held_rates``) to convert an IFRS filer's
+Staging: ``stg_yf_fx``. The companyfacts typing reads the held rates (``held_rates``) to convert an IFRS filer's
 statement values to USD (#105); a company typed before its currency's rates were held is converted at its next
 re-type.
+
+**Compustat's rate first, Yahoo's where Compustat has none** (#1181 step H; DECISIONS F3; avo, 20 Nov 2026: "WRDS'e
+gecelim tamamen"). ``held_rates`` reads the newest ``wrds/exrt`` snapshot (``comp.exrt_dly``, quoted from GBP, so a
+rate is the cross of ``cross_sql``) and this dataset's file: a (currency, day) Compustat holds is Compustat's, every
+other day is Yahoo's. Compustat's snapshot is monthly, so the newest days are Yahoo's until the next one. Measured
+on homesrv, 20 Nov 2026: the two agree within 1% on 91.4% of 9,947 pairs of a year. A company's values move to
+the new rates when its facts are typed again, like any other change of the rates.
 """
 from __future__ import annotations
 
@@ -45,6 +52,36 @@ SPIKE_RATIO = 1.5
 SPIKE_WINDOW = 3
 SCHEMA = [("currency", "TEXT"), ("day", "DATE"), ("usd_per_unit", "DOUBLE"), ("source_as_of", "DATE"),
           ("fetched_at", "DOUBLE"), ("run_id", "TEXT")]
+#: Compustat's daily rates (``wrds_fund.WrdsExrt``): the dataset, its table, and the currency every row is quoted
+#: from (measured 20 Nov 2026, #1181). Named here, not there, because that module imports this one.
+EXRT_NAME = "wrds/exrt"
+EXRT_TABLE = "exrt_dly"
+EXRT_BASE = "GBP"
+USD = "USD"
+
+
+def cross_sql(src: str, stamps: bool = False) -> str:
+    """A SELECT of ``currency, day, usd_per_unit`` (and the three provenance columns when ``stamps``) from ``src``,
+    a relation of ``comp.exrt_dly`` rows (``fromcurd``, ``tocurd``, ``datadate``, ``exratd``): USD per unit is
+    ``exratd(base->USD) / exratd(base->currency)``, and the base currency's own rate is the USD row's. A day with no
+    USD row, and a rate that is not above zero, give no rate."""
+    c_more, u_more = (", c.source_as_of, c.fetched_at, c.run_id", ", source_as_of, fetched_at, run_id") \
+        if stamps else ("", "")
+    return f"""
+        WITH rates AS (SELECT * FROM {src} WHERE fromcurd = '{EXRT_BASE}' AND exratd > 0),
+             usd AS (SELECT * FROM rates WHERE tocurd = '{USD}')
+        SELECT c.tocurd AS currency, c.datadate AS day, u.exratd / c.exratd AS usd_per_unit{c_more}
+        FROM rates c JOIN usd u ON u.datadate = c.datadate
+        WHERE c.tocurd NOT IN ('{USD}', '{EXRT_BASE}')
+        UNION ALL
+        SELECT '{EXRT_BASE}', datadate, exratd{u_more} FROM usd"""
+
+
+def exrt_snapshot() -> Path | None:
+    """The newest typed snapshot of ``wrds/exrt``, or None before its first run."""
+    folder = common.parquet_dir(EXRT_NAME)
+    found = sorted(p for p in folder.glob(f"snapshot=*/{EXRT_TABLE}.parquet")) if folder.is_dir() else []
+    return found[-1] if found else None
 
 
 def index_rates(rows) -> dict[str, tuple[list[str], list[float], list[float]]]:
@@ -74,14 +111,24 @@ def _spike(rates: list[float], i: int) -> bool:
 
 
 def held_rates() -> dict:
-    """The rates of the Parquet file, indexed (``index_rates``); empty before the first fetch."""
-    path = common.parquet_dir(NAME) / "part-0.parquet"
-    if not path.exists():
+    """The held rates, indexed (``index_rates``): Compustat's for every (currency, day) its newest snapshot holds,
+    Yahoo's for every other day; empty before the first fetch of either."""
+    yahoo, compustat = common.parquet_dir(NAME) / "part-0.parquet", exrt_snapshot()
+    parts = []
+    if compustat is not None:
+        src = f"read_parquet({base.sql_path(compustat)})"
+        parts.append(f"SELECT currency, day, usd_per_unit, 0 AS pick FROM ({cross_sql(src)})")
+    if yahoo.exists():
+        parts.append(f"SELECT currency, day, usd_per_unit, 1 AS pick FROM read_parquet({base.sql_path(yahoo)})")
+    if not parts:
         return {}
     con = base.scratch_con()
     try:
-        return index_rates(con.execute("SELECT currency, strftime(day, '%Y-%m-%d'), usd_per_unit FROM read_parquet(?) "
-                                       "ORDER BY currency, day", [str(path)]).fetchall())
+        return index_rates(con.execute(f"""
+            SELECT currency, strftime(day, '%Y-%m-%d'), usd_per_unit FROM ({' UNION ALL '.join(parts)})
+            WHERE usd_per_unit IS NOT NULL AND day IS NOT NULL
+            QUALIFY row_number() OVER (PARTITION BY currency, day ORDER BY pick) = 1
+            ORDER BY currency, day""").fetchall())
     finally:
         con.close()
 
