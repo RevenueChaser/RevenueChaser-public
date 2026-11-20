@@ -23,7 +23,7 @@ on homesrv first (`duckdb.connect(path, read_only=True)` with `RC_STORE_AUTO_ENS
 | Delisting days (`wrds_price_diff` `crsp_delisting_returns`) | CRSP's priceless last row dropped | the comparison is gone with the delisted names: there is no delisting day in the store to check `delret` against (`crsp_a_stock.stkdelists` is still fetched, nothing reads it) | `wrds_price_diff` holds five comparisons, not six |
 | `alpaca_close_differs` (new), `adjustment_differs` | the latter on Alpaca-served bars | both on the tester's names only | the first build's counts |
 | `alpaca/bars` coverage (the 99 % Tier A acceptance) | over 7,670 names | over the at-risk names the tester picked | the run note `Alpaca tester: N of M names at risk (...)` |
-| Alpaca's own corporate actions | resolved for every name with an Alpaca bar | resolved only for the tester's names, where they still win a Compustat action of the same kind and day (on purpose: Alpaca's reach 90 days ahead of Compustat's refresh); Compustat's cover the rest | — |
+| Alpaca's own corporate actions | resolved for every name with an Alpaca bar | resolved only for the tester's names, where they still win a Compustat action of the same kind and day, and a split of the same kind within `SPLIT_SAME_DAYS` days (#268) (on purpose: Alpaca's reach 90 days ahead of Compustat's refresh); Compustat's cover the rest | — |
 
 ## Server steps, in order
 
