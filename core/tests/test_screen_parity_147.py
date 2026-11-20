@@ -62,6 +62,13 @@ the scenario's filings moved to millions of dollars (``screen_parity._M``); re-c
 40 is known again, six candidates, and the funnel has no momentum-only step because UP1 and UP3 now pass the Rule of
 40. avo K1 added the additive ``summary.ifrs_quality_unjudged`` (0 here: no scenario filer reads ifrs-full), edited in by
 hand. avo L1 added ``summary.spy_behind`` (None here: the scenario's SPY has the session), edited in the same way.
+#246 finding 7 (quality counts a rule two methods share once) moved Swing's ``selection_version`` to 7 and lowered
+every Swing ``quality``: each candidate's score was recomputed from the golden's own per-rule ``passed`` values
+under the deduped formula (the candidates' ``gates`` rules; the ``swing_scores`` rows from the ``swing_gates`` rows),
+so the edit is arithmetic on the golden rather than a fresh capture. UP3/UP1/NOEDGAR 81 -> 80, UP2 76 -> 74,
+``avg_quality`` 79.75 -> 78.5, and the four other scored names FLAT1 29 -> 26, BELOW50 and FAR 69 -> 65. The CI run
+that failed on the old golden reported exactly this ``avg_quality`` of 78.5, which is what confirms the recomputation
+matches the code. Nothing else in the snapshot moved (13 changed lines).
 """
 from __future__ import annotations
 
