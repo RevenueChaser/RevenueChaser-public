@@ -11,4 +11,4 @@ Its results live in its own ``boards/news.duckdb`` (DECISIONS S9, S16), written 
 #: Settings record says.
 #: ``fundamentals.earnings_event`` joined on #886: the Alpha Vantage earnings calendar behind the
 #: Earnings tab, read through ``rcdata.read.earnings_events`` and never fetched by the board.
-READS = ("market.economic_calendar", "market.fda_calendar", "fundamentals.earnings_event")
+READS = ("fundamentals.earnings_event", "market.economic_calendar", "market.fda_calendar")
