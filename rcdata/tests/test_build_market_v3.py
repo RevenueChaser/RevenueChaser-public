@@ -94,7 +94,7 @@ def test_market_4_builds_no_headlines_and_retires_the_live_table():
     """avo's option A (10 Nov 2026): ``boards/news.duckdb`` is the only home of the headlines, so the builder's
     ``ibkr/news`` is gone and a live market 3 file's ``news_headline`` may leave the build."""
     from RevenueChaser.rcdata import scaffold
-    assert serving.SERVING_SCHEMA_VERSION["market"] == 4
+    assert serving.SERVING_SCHEMA_VERSION["market"] >= 4      # 5 since #807; the rule below holds at every one
     assert "ibkr/news" not in DATASETS and not hasattr(read, "news_headlines")
     assert "news_headline" in serving.RETIRED_TABLES["market"]
     assert "news_headline" not in scaffold.SCHEMA_OF_KIND["market"], "a retired table is still built"

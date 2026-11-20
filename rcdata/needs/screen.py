@@ -121,6 +121,7 @@ WRITTEN_COLUMN: dict[str, str] = {
     'earnings_reported': 'source_as_of',
     'earnings_tape': 'session_date',
     'economic_event': 'snapshot_date',
+    'fda_event': 'snapshot_date',
     'er_options': 'session_date',
     'estimate_latest': 'source_as_of',
     'etf': 'source_as_of',

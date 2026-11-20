@@ -1075,7 +1075,8 @@ source; `value`, OHLC for the index files, `frequency`, `session_date`, provenan
 calendar, hourly: key snapshot day, event time as epoch seconds, event, type; `forecast`, `prev` and
 `reported_period` as text; each day is the newest fetch of that New York day, so a same-day revision is kept) and
 `fda_event` (UW's FDA calendar, hourly, market 5 / #807: key snapshot day, target date, ticker, drug; `catalyst`
-(PDUFA Date, Advisory Committee Meeting, ...), `status`, `indication`, `description`, `notes`, `outcome`,
+(PDUFA Date, Advisory Committee Meeting, ...), `application_status` (UW's own `status`, renamed because
+`rcdata.read` stamps a `status` of its own on every row), `indication`, `description`, `notes`, `outcome`,
 `outcome_brief`, `source_link`, `has_options`, `marketcap`, and the target date twice — `target_text` as UW served
 it and `target_date` the day it resolves to, with `target_precision` (`day`, `quarter`, `half`, `mid`, `late`)
 saying what the text really said, because UW writes `2027-Q2` and `2027-LATE` as well as a day and a quarter is
