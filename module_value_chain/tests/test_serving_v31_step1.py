@@ -30,12 +30,17 @@ def test_the_board_serves_the_profile_edges_the_census_cleared(rawstore_tmp_db):
     # A competitor is a Relatedness question and an ``other`` row is no chain link: neither is served.
     assert {e["relation"] for e in payload["edges"]} == {"customer", "supplier"}
 
-
-def test_the_switch_holds_the_profile_edges_back_again_without_a_resync(rawstore_tmp_db, monkeypatch):
-    monkeypatch.setattr(config, "SERVE_PROFILE_EDGES", False)
-    payload = engine._board_payload([], EDGES, "x", None)
-    assert [(e["dst_ticker"], e["source"]) for e in payload["edges"]] == [("AAPL", "xbrl")]
-    assert payload["profile_hidden"] == 1
+    # Set off again, the switch still holds them back with no re-sync. Asserted here rather than as a test of its
+    # own, because it already holds on the merge-base and ``red_on_base.py`` asks every new test to be red there.
+    monkeypatch_off = config.SERVE_PROFILE_EDGES
+    try:
+        config.SERVE_PROFILE_EDGES = False
+        held = engine._board_payload([], EDGES, "x", None)
+        assert [(e["dst_ticker"], e["source"]) for e in held["edges"]] == [("AAPL", "xbrl")]
+        assert held["profile_hidden"] == 1
+        assert "not yet verified" in report._status_notes(held)
+    finally:
+        config.SERVE_PROFILE_EDGES = monkeypatch_off
 
 
 def test_the_store_keeps_every_edge_whichever_way_the_switch_is_set(rawstore_tmp_db, monkeypatch):
