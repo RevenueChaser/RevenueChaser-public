@@ -6,7 +6,7 @@ series' own terms, not trading sessions; nothing is asked of UW.
 """
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
@@ -17,6 +17,9 @@ from RevenueChaser.rcdata.needs import catalog
 
 TODAY = date(2026, 11, 9)
 SETTLED = date(2026, 10, 15)
+#: ``TODAY`` at 13:00 New York, for the one test that reaches the age limit through the pipeline instead of
+#: passing ``today=``: without it the stored settlement ages out of ``MAX_AGE_DAYS`` as the calendar moves (#1175).
+TODAY_NY_AFTERNOON = datetime(2026, 11, 9, 18, 0, tzinfo=timezone.utc)
 FEE_SESSION = date(2026, 11, 6)        # the Friday before Monday 9 Nov: the latest complete session at the open
 
 
@@ -128,9 +131,10 @@ class _NoShortsUW:
         raise AssertionError("the board must not ask UW for short interest (#287 B)")
 
 
-def test_the_run_warms_r5_from_the_ownership_store_and_asks_uw_nothing(store):
+def test_the_run_warms_r5_from_the_ownership_store_and_asks_uw_nothing(store, monkeypatch):
     from RevenueChaser.module_earnings_radar.pipeline import EarningsPipeline
 
+    monkeypatch.setattr(calendar, "_now", lambda: TODAY_NY_AFTERNOON)   # the pipeline reads New York's own today
     store["finra"] = [_finra("AAPL", SETTLED, 3_000_000, 4.5)]
     p = EarningsPipeline(["AAPL", "MSFT"], uw=_NoShortsUW(), cal_meta={})
     p._spine_gics = {}

@@ -2,11 +2,25 @@
 ``life`` connects with no Duo push), and the worker's login can never outwait ``PGCONNECT_TIMEOUT``."""
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 import pytest
 
+from RevenueChaser.core import calendar
 from RevenueChaser.rcdata import ops
 from RevenueChaser.rcdata.build import DATASETS, base, due
 from RevenueChaser.rcdata.build.spine import wrds
+
+#: 13:00 New York, after every ``due.EARLIEST_NY_HOUR``. A test that asserts *which* reason holds a WRDS dataset
+#: has to say which hour it means: before 05:00 there (05:00-10:00 UTC) ``wrds/prices`` is held by its source's
+#: publishing hour instead, and that gate comes first in ``due.is_due`` on purpose (#1175).
+NY_AFTERNOON = datetime(2026, 11, 20, 18, 0, tzinfo=timezone.utc)
+
+
+@pytest.fixture
+def ny_afternoon(monkeypatch):
+    monkeypatch.setattr(calendar, "_now", lambda: NY_AFTERNOON)
+
 
 WRDS = sorted(n for n in DATASETS if n.startswith("wrds/"))
 
@@ -38,7 +52,7 @@ def test_worker_login_has_a_connect_timeout(monkeypatch):
 
 
 @pytest.mark.parametrize("name", WRDS)
-def test_a_failed_run_waits_for_a_person_instead_of_retrying_hourly(monkeypatch, name):
+def test_a_failed_run_waits_for_a_person_instead_of_retrying_hourly(monkeypatch, name, ny_afternoon):
     # Review must-fix 1: after one success, a failed WRDS run must not be due again every hour (one login each).
     monkeypatch.setenv(base.WRDS_UNATTENDED_ENV, "1")
     ops.record_check(name, "changed", source_as_of="2026-10-01", checked_on="2026-10-01")
@@ -50,7 +64,7 @@ def test_a_failed_run_waits_for_a_person_instead_of_retrying_hourly(monkeypatch,
 
 
 @pytest.mark.parametrize("name", WRDS)
-def test_a_failure_of_an_earlier_day_is_retried_once_that_day(monkeypatch, name):
+def test_a_failure_of_an_earlier_day_is_retried_once_that_day(monkeypatch, name, ny_afternoon):
     # #1115: a transient serving-swap refusal on 17 Nov 2026 held ``wrds/prices`` for ever, so a daily dataset wrote
     # no check row at all on 18 and 19 Nov and the served bars stopped at 16 Nov. The hold is the day's, not always.
     monkeypatch.setenv(base.WRDS_UNATTENDED_ENV, "1")
