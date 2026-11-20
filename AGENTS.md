@@ -132,6 +132,12 @@ Two tiers, both required for a change to be done.
   The merge gate is a green `merge-gate` check on the current head, which only a FULL
   run gives (`CLAUDE.md` → Tests).
 - No test touches the network, today's date, or real `.store`/`.cache`.
+- **A parser of a public SEC file is also tested against real bytes.** Hand-written fixtures prove our code
+  and say nothing about the source, so `rcdata/tests/fixtures/sec_samples/` holds a trimmed sample of each
+  data set — every member, each cut to its header and 50 rows — and `rcdata/tests/test_sec_samples.py`
+  compares the members and columns each parser names against those headers (#1161). A column the SEC renames,
+  moves or drops fails there instead of in a live run. The samples are cut from the raw store, never fetched
+  from sec.gov, and `manifest.json` names each one's raw file, bytes, trim and URL.
 
 ### End-to-end — before you claim a board works
 
