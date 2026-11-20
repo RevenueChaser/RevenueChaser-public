@@ -104,12 +104,25 @@ changes" is read before a run, never maintained by hand.
 
 `[OKUNDU]` We keep a hand-drawn data-flow diagram on the Settings board (`data_health.md` §3.7) and
 `data_health.md` §8 says the Stage 2/3 dataset tables in `data_architecture.md` are "still written by hand rather
-than generated from `core/datasets.py`" — issue #146 is open for exactly that.
+than generated from `core/datasets.py`".
 
-`[ÇIKARIM]` **What we would change.** The pieces of a true graph already exist in declarations: `DatasetSpec`
-(tables, file, source, writer), each dataset's `tables` and `feeds` (`base.shrink_scope`), and each board's
-`READS` over needs. One generator turns those into the diagram and into the doc tables, and a test fails when the
-checked-in copy drifts. This closes #146 instead of adding a feature.
+**Corrected 20 Nov 2026, after this document was written:** issue #146 was **closed as done on 5 Nov 2026**, so
+"#146 is open for exactly that", as the first version of this section said, was wrong — and `data_health.md` §8
+carried the same stale claim, now fixed. Reading the Stage 2/3 rows against the registry also showed the
+generator is the wrong shape: those rows carry writer rules, keys, column lists and reader histories the registry
+does not hold, so generating them would replace documentation richer than its source. What the registry *can*
+own is the part of a row that restates a code value, and that part had gone stale exactly as the
+`data_architecture.md` banner says (#1209).
+
+`[ÇIKARIM]` **What we would change** (narrowed, and the narrow half is built): a test, not a generator, for the
+part the code owns — `core/tests/test_doc_dataset_tables.py` holds every Stage 2 row's `DB` cell against
+`rawstore.MANIFEST`'s own `"db"`, and carries the measured list of rows that still name a file #860 deleted, so
+that list can only shrink. #1209 is the cleanup lane behind it.
+
+What is left of the original idea is the graph: the pieces exist in declarations — `DatasetSpec` (tables, file,
+source, writer), each dataset's `tables` and `feeds` (`base.shrink_scope`), and each board's `READS` over needs —
+and one generator could draw the Settings data-flow diagram from them instead of by hand. That half touches what
+a board shows, so it needs a design mock and avo's look, and it is not in this lane.
 
 **Effort** S. **Risk** very low — generated docs, no runtime path.
 
