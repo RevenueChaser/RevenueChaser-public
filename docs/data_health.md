@@ -973,8 +973,16 @@ Checked 2026-09-24. None of these replaces our own SEC client and filing picker.
 ## 8. Still hand-written
 
 The Stage 2 and Stage 3 dataset tables in [`data_architecture.md`](data_architecture.md) are still
-written by hand rather than generated from `core/datasets.py`. That generator is code, not
-documentation, so it is not part of this change and issue #146 stays open for it.
+written by hand rather than generated from `core/datasets.py`. **Issue #146 is closed** (5 Nov 2026,
+as done on its other three asks); the generator was never built, and this sentence used to say the
+issue stayed open for it.
+
+It should stay hand-written. Those rows carry writer rules, keys, column lists and reader histories
+that `core/datasets.py` does not hold — a generator would replace documentation richer than the
+registry. What the registry can own is the part of a row that restates a code value, and the one that
+had gone stale is the `DB` column: `core/tests/test_doc_dataset_tables.py` holds every Stage 2 row
+against `rawstore.MANIFEST`'s own `"db"` from now on, and carries the measured list of the rows that
+still name a file #860 deleted. That list is #1209's work and the test makes it shrink, never grow.
 
 ---
 
