@@ -55,11 +55,12 @@ def test_it_only_fills_a_year_no_fy_fact_reports():
 
 def test_it_never_takes_a_year_from_another_tag():
     """A year the merge already filled from a second tag is not replaced either (#246, #435)."""
-    facts = _facts({REV: [_flow("2024-12-31", 1_100.0)],
-                    RFC: [_flow("2023-12-31", 1_000.0)]})
-    before = _revenue(facts)
-    facts[REV][0:0] = [_flow("2023-12-31", 9_999.0, fp="Q2"), _flow("2024-12-31", 9_999.0, fp="Q2")]
-    assert _revenue(facts) == before == {"2023": 1_000.0, "2024": 1_100.0}
+    rev = [_flow("2024-12-31", 1_100.0)]
+    rfc = [_flow("2023-12-31", 1_000.0)]
+    before = _revenue(_facts({REV: list(rev), RFC: list(rfc)}))
+    quarter_stamped = [_flow("2023-12-31", 9_999.0, fp="Q2"), _flow("2024-12-31", 9_999.0, fp="Q2")]
+    after = _revenue(_facts({REV: quarter_stamped + rev, RFC: list(rfc)}))
+    assert after == before == {"2023": 1_000.0, "2024": 1_100.0}
 
 
 def test_a_quarterly_form_is_never_read_as_an_annual_fact():
