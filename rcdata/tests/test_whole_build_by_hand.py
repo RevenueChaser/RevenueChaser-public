@@ -97,6 +97,15 @@ def test_anything_but_the_pass_gets_the_whole_build(seeded):
         assert con.execute(f"SELECT count(*) FROM {ms.TABLE}").fetchone()[0] > 0
 
 
+def test_one_press_among_the_passs_requests_builds_it(seeded):
+    """A pass that also holds a person's Fetch of the kind is a person asking for the build: ``all``, not ``any``."""
+    ctxs = [(d, base.RunContext(run_id=f"t-{d.name}", dataset=d.name, as_of=D3, allow_shrink=True,
+                                scheduled=d is not ms.DATASET))
+            for d in MEMBERS]
+    checks = base.build_kind_many("market", ctxs, lead=ctxs[0][1])
+    assert "built whole" in " ".join(ctxs[0][1].notes) and checks[ms.NAME]["result"] != "failed"
+
+
 def test_the_build_on_the_live_copy_runs_in_the_pass(seeded):
     _build(scheduled=False)
     _series(fred, 2026, 9.9)                        # one source's year restated: a dirty set, not a whole build
