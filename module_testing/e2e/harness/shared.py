@@ -64,6 +64,9 @@ def running_dashboard(root: Path, store: Path, cache: Path, base_env: dict[str, 
     # RUN, which all xdist workers share (and the backup dir would be the host's real platform default).
     env["RC_EDGAR_DOCS_DIR"] = str(root / "edgar_docs")
     env["RAW_STORE_BACKUP_DIR"] = str(root / "backups")
+    # #212: the backup start gate off, because that folder holds no copy and every Fetch press in this tier would
+    # be refused. The gate's own refusals are unit-tested (``app/tests/test_build_request_backup_gate_212.py``).
+    env["RC_BUILD_BACKUP_GATE"] = "0"
     # The market roots hold ops.sqlite, and with it the watch lists (PR 4): one per run, a pin one test made would
     # be every later dashboard's. A test that passes its own market roots keeps them.
     env.setdefault("RC_MARKET_DIR", str(root / "market"))

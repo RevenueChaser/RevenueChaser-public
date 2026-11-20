@@ -1105,7 +1105,11 @@ MANIFEST: dict[str, dict] = {
         "history_mode": "event",
         "key": ["ticker", "theme_id"],
         "columns": [
-            "ticker TEXT", "theme_id TEXT", "weight DOUBLE",
+            # rank (#298): the member's place in the cap-descending universe, which is the order the
+            # naming prompt takes its example companies in (module_relatedness/themes.py member_ranks,
+            # ROW_ORDER). Additive, so a run written before it reads NULL and sorts last; added to an
+            # existing store by ``_reconcile_table`` (ALTER TABLE ADD COLUMN), no schema bump.
+            "ticker TEXT", "theme_id TEXT", "weight DOUBLE", "rank INTEGER",
             "PRIMARY KEY (ticker, theme_id)",
         ],
         "kind": "tabular",

@@ -32,7 +32,7 @@ def test_tile_shows_the_lower_bound_and_the_gate():
                                    "status": "fail", "links": 147, "covered": 2})
     assert 'class="stat warn"' in html
     assert "lower bound 34% · gate 70%" in html
-    assert "hand-checked n=2" in html and "labels cover 2 of 147 links" in html
+    assert "hand-checked n=2" in html and "labels cover 2 of 147 distinct pairs" in html
 
 
 # ── C19 ────────────────────────────────────────────────────────────────────

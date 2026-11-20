@@ -739,6 +739,76 @@ def test_wrds_actions_feed_the_factors_and_alpaca_wins_an_action_both_know(built
     assert view["2025-06-03"]["adj_close"] == pytest.approx(202.0 / 2 * tr)
 
 
+def test_the_split_twin_rule_drops_compustats_row_only_and_only_near_an_alpaca_split():
+    """``SPLIT_TWIN_SQL`` (#268) over a hand-made ``_act``: which row of a pair goes, and which pair is no pair.
+    Compustat's ``datadate`` is the first session on the new basis and Alpaca's ``ex_date`` is not always that day."""
+    alpaca, wrds_name = prices_serving.ALPACA_ACTIONS, wrds_history.NAME
+    rows = [("A", alpaca, "forward_split", "2026-10-26"),         # Alpaca's own row is never the one dropped
+            ("A", wrds_name, "forward_split", "2026-10-27"),      # a session off: the same split, dropped
+            ("B", alpaca, "stock_dividend", "2026-10-26"),        # a stock dividend is one kind with a split
+            ("B", wrds_name, "forward_split", "2026-10-23"),      # SPLIT_SAME_DAYS off: dropped
+            ("C", alpaca, "forward_split", "2026-10-26"),
+            ("C", wrds_name, "forward_split", "2026-10-30"),      # further off: a split of its own, kept
+            ("D", alpaca, "cash_dividend", "2026-10-26"),         # no Alpaca split near it
+            ("D", wrds_name, "forward_split", "2026-10-27"),      # kept
+            ("E", wrds_name, "forward_split", "2026-10-26"),      # two Compustat rows and no Alpaca one:
+            ("E", wrds_name, "forward_split", "2026-10-27"),      # neither stands in for the other, both kept
+            ("F", alpaca, "forward_split", "2026-10-26"),
+            ("F", wrds_name, "cash_dividend", "2026-10-27"),      # a dividend is matched by amount, not by this rule
+            ("G", alpaca, "forward_split", "2026-10-26"),         # a Compustat split long before Alpaca's is its
+            ("G", wrds_name, "forward_split", "2025-06-04")]      # own: the distance counts either way round
+    con = duckdb.connect()
+    con.execute("CREATE TABLE _act (security_id TEXT, source TEXT, action_type TEXT, ex_date DATE)")
+    con.executemany("INSERT INTO _act VALUES (?, ?, ?, ?)", rows)
+    assert con.execute(prices_serving.SPLIT_TWIN_SQL.format(mine="")).fetchone()[0] == 2
+    left = [(r[0], r[1], str(r[2])) for r in
+            con.execute("SELECT security_id, source, ex_date FROM _act ORDER BY security_id, ex_date").fetchall()]
+    assert left == [("A", alpaca, "2026-10-26"), ("B", alpaca, "2026-10-26"),
+                    ("C", alpaca, "2026-10-26"), ("C", wrds_name, "2026-10-30"),
+                    ("D", alpaca, "2026-10-26"), ("D", wrds_name, "2026-10-27"),
+                    ("E", wrds_name, "2026-10-26"), ("E", wrds_name, "2026-10-27"),
+                    ("F", alpaca, "2026-10-26"), ("F", wrds_name, "2026-10-27"),
+                    ("G", wrds_name, "2025-06-04"), ("G", alpaca, "2026-10-26")]
+    assert con.execute(prices_serving.SPLIT_TWIN_SQL.format(mine="")).fetchone()[0] == 0        # nothing left to drop
+    # A chunked build touches the rows of its own securities only (``_bucket``).
+    con.execute("DELETE FROM _act")
+    con.executemany("INSERT INTO _act VALUES (?, ?, ?, ?)", rows[:4])
+    con.execute("CREATE TABLE _bucket AS SELECT 'B' AS security_id")
+    mine = " AND w.security_id IN (SELECT security_id FROM _bucket)"
+    assert con.execute(prices_serving.SPLIT_TWIN_SQL.format(mine=mine)).fetchone()[0] == 1
+    assert con.execute("SELECT count(*) FROM _act WHERE security_id = 'A' AND source = ?",
+                       [wrds_name]).fetchone()[0] == 1
+
+
+def test_a_compustat_split_alpaca_has_a_day_off_is_not_applied_a_second_time(fake, http_mock):
+    """#268: Compustat's ``datadate`` is the first session on the new basis and Alpaca's ``ex_date`` is not always
+    that day, so a same-day check alone let both sources' rows in and the share basis stepped twice. Alpaca goes ex a
+    2-for-1 on 26 Oct 2026 and Compustat records it on the 27th: one split is served, Alpaca's, and the June bars
+    carry one factor of 2 for it, not two."""
+    conn, _ = fake
+    conn.data["comp.sec_split"].append({"gvkey": "001690", "iid": "01", "datadate": "2026-10-27", "split": 2.0})
+    http_mock.routes[:] = [r for r in http_mock.routes if "/v1/corporate-actions" not in r[0]]
+    http_mock.add("/v1/corporate-actions", {"corporate_actions": {
+        "cash_dividends": [{"id": "cd-1", "symbol": "AAPL", "rate": 0.26, "special": False, "foreign": False,
+                            "process_date": "2026-10-24", "ex_date": "2026-10-23", "currency": "USD"}],
+        "forward_splits": [{"id": "fs-1", "symbol": "AAPL", "old_rate": 1, "new_rate": 2,
+                            "process_date": "2026-10-26", "ex_date": "2026-10-26"}]}, "next_page_token": None})
+    assert _backfill()["result"] == "changed"
+    assert base.run_request({"dataset": actions.NAME, "params": {"as_of": "2026-10-27"}})["result"] != "failed"
+    row = base.run_request({"dataset": bars.NAME, "params": {"as_of": "2026-10-27"}})
+    assert row["result"] != "failed", row
+    splits = _q("SELECT ex_date, ratio, source, applied FROM corporate_action WHERE security_id = ? "
+                "AND action = 'split' AND ex_date > '2026-01-01' ORDER BY ex_date", [AAPL])
+    assert [(str(a["ex_date"]), a["ratio"], a["source"]) for a in splits] == [("2026-10-26", 2.0, actions.NAME)]
+    assert splits[0]["applied"]
+    assert "1 Compustat split(s) left out" in (row["note"] or "")
+    # The share basis steps twice over the whole history (June's 2-for-1 and October's), never four times.
+    view = {str(r["session_date"]): r for r in _q(
+        "SELECT session_date, close FROM price_bars_daily WHERE ticker = 'AAPL'")}
+    assert view["2025-06-03"]["close"] == pytest.approx(202.0 / 4)
+    assert view["2026-10-23"]["close"] == pytest.approx(199.9 / 2)
+
+
 def test_the_difference_report_counts_close_and_return_differences(whole_builds, built):
     report = {r["comparison"]: r for r in _q("SELECT * FROM wrds_price_diff")}
     assert set(report) == set(wrds_history.COMPARISONS)

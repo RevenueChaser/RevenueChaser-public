@@ -7,6 +7,7 @@ board only reads the answers through ``rcdata.read.sec_reads``. ``rcdata.build``
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 from dataclasses import dataclass, field
 from datetime import date
@@ -18,6 +19,26 @@ PROVIDERS = ("evren", "deepseek")
 #: Each provider's model when a question names none. DeepSeek is always its Flash model, never Pro (avo, 15 Nov
 #: 2026 12:01).
 DEFAULT_MODEL = {"evren": "evren-deepseek-v4.1-flash", "deepseek": "deepseek-v4-flash"}  # config.yaml names
+#: The environment switch's writer: EVREN, the owner's own gate with no fee (avo, 19 Nov 2026: "Fundamentals
+#: icinde evren deepseek olmali"), or DeepSeek Flash for a process started with ``RC_SEC_READS_PROVIDER=deepseek``
+#: (avo, 16 Nov 2026). Since #404 it is only the **default**: each question's writer is its own choice on the
+#: Settings page (``core.llm_jobs``, jobs ``sec_reads.*``), read once per process so one run asks every question
+#: through one writer. A stored ``ok`` answer is current whoever wrote it (``reads._text_key``), so changing the
+#: pair asks nothing again.
+PROVIDER = os.environ.get("RC_SEC_READS_PROVIDER", "").strip().lower() or "evren"
+
+
+def job_id(question_id: str) -> str:
+    """The LLM-job id of a question: ``company.profile`` -> ``sec_reads.company.profile`` (#404)."""
+    return f"sec_reads.{question_id}"
+
+
+def writer_for(question_id: str) -> tuple[str, str]:
+    """``(provider, model)`` chosen for this question, from the one LLM-job registry (#404)."""
+    from ....core import llm_jobs
+    return llm_jobs.pair(job_id(question_id))
+
+
 CHUNK_CHARS = 60_000
 MAX_TOKENS = 8_000
 
@@ -79,7 +100,7 @@ class Question:
     scope: Callable[[], Iterable[str]]
     inputs: Callable[[list[str]], dict[str, Input]]
     parse: Callable[[str], dict | None]
-    provider: str = "evren"
+    provider: str = PROVIDER
     model: str = ""
     user: Callable[[str], str] = field(default=lambda chunk: chunk)
     merge: Callable[[list[tuple[dict, int]]], dict] = field(default=_one)

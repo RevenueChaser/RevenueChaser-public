@@ -97,16 +97,19 @@ def _stored_json(tx, ticker: str) -> dict:
 
 def save_profile(ticker: str, cik, profile: dict, cache_key_value: str,
                  model: str, prompt_version: str = PROMPT_VERSION,
-                 status: str = "ok", attempts: int = 0, provider: str = "deepseek",
+                 status: str = "ok", attempts: int = 0, provider: str = "",
                  profile_json=KEEP, label_source=KEEP, accession=KEEP) -> None:
     """Write one ticker's profile row and its attribute rows in one transaction.
 
+    ``provider`` is the writer the row names; left out, ``config.default_writer()`` (it named the paid DeepSeek
+    until 20 Nov 2026, so a caller that forgot it stamped a writer that had not been called).
     ``profile_json`` / ``label_source`` (schema 13, #401) are the v3 structured profile and where each field came
     from. Left out (``KEEP``), the stored values are carried: ``relatedness_profiles`` is an upsert that sets every
     column from the row, so a re-save that named neither column used to set both to NULL (#400). Pass ``None`` to
     clear them. ``accession`` (plan v31 step 1(d)) is the filing the profile was written from, carried the same way.
     """
     t = ticker.upper()
+    provider = provider or config.default_writer()
     rows = [{"ticker": t, "field": f,
              "value": json.dumps(profile.get(f) or [], ensure_ascii=False),
              "value_num": None} for f in config.PROFILE_FIELDS]
@@ -277,7 +280,14 @@ def score_rows(peers: dict[str, list[dict]]) -> list[dict]:
 
 
 def save_scores(peers: dict[str, list[dict]]) -> int:
-    """Persist ``{ticker: [{peer, score}, ...]}`` to ``relatedness_scores``."""
+    """Persist ``{ticker: [{peer, score}, ...]}`` to ``relatedness_scores``.
+
+    The table is the **record** of what was scored, not a read path (#594, avo's "tut" of 19 Nov 2026):
+    the board's neighbours come from the run's own payload, so no board reads these rows back. It is
+    kept because it is the only durable record of which pair scored what -- ``relatedness_scores_history``
+    mirrors it, the guard below stops a run that scored nothing from wiping it, and the incremental
+    scoring of #884 would read it as the previous score.
+    """
     rows = score_rows(peers)
     if not rows:
         # A run that scored nothing (cold cache, peak-hours stop) must not wipe the last good

@@ -286,9 +286,9 @@ the four WRDS checks of the fundamentals layer below.
 **The fundamentals layer (PR 12).** Eleven more dataset cards, one per fundamentals dataset
 (`docs/data_architecture.md`, "Fundamentals"), each with its own cadence (the SEC facts and filings, the Alpha Vantage
 calendar, UW's preliminary quarters and `fundamentals/tables` daily, the yfinance estimates weekly, the SEC's FSDS and
-the three WRDS checks monthly). The WRDS cards `wrds/fundq`, `wrds/funda` and `wrds/segments` are
+the WRDS checks monthly). The WRDS cards `wrds/fundq`, `wrds/funda`, `wrds/segments`, `wrds/exrt` and `wrds/audit` are
 attended, with their own command (`python -m RevenueChaser.rcdata.build backfill wrds/fundq wrds/funda
-wrds/segments`), and their WRDS difference slot is the monthly difference report: the note of the
+wrds/segments wrds/exrt wrds/audit`), and their WRDS difference slot is the monthly difference report: the note of the
 newest run that read WRDS (a skipped or failed run is not one), so the agreement counts against the SEC and the
 number of revisions since the snapshot before are on the card (decided 27 Oct). No coverage target is set for these
 cards yet: the coverage is shown, and the alarm limits wait for two weeks of real data, as decision 1 did.
@@ -651,7 +651,7 @@ it, so without that line its old archives would never be listed. The newest copy
 ### 3.4 Automations panel
 
 `core/automations.py` is the one registry of the scheduled tasks RevenueChaser owns, and the one
-installer. Rows: `RC-Relatedness-OffPeak` (12:30, `--run --cap 10`, the board's writer, #360), `RC-ValueChain-Sync` (daily 04:20, after `RC-SEC-Read`, `module_value_chain --nightly`: the links rebuilt from the SEC layer through the dashboard),
+installer. Rows: `RC-Relatedness-OffPeak` (weekly Sunday 22:15, `--run --cap 10`, the board's writer, #360), `RC-Relatedness-Score` (weekly Saturday 07:30, after `RC-SEC-Read`, `module_relatedness --score`: the service's new profile answers mirrored and every pair rescored, skipped when nothing is newer — both weekly on avo's word of 20 Nov 2026), `RC-ValueChain-Sync` (daily 04:20, after `RC-SEC-Read`, `module_value_chain --nightly`: the links rebuilt from the SEC layer through the dashboard),
 `RC-Daily-Bars` (23:00, `scripts.daily_bars --nightly --sec-files`), `RC-Screeners-Daily` (weekdays
 23:30, after `RC-Daily-Bars`, `app.universe_cli`), `RC-Forecast-Outcomes` (daily 23:35, after
 `RC-Daily-Bars`, `scripts.forecast_outcomes --nightly`), `RC-Forecast-Baselines` (daily 23:50, after

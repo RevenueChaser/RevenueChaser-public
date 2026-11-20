@@ -29,6 +29,7 @@ body{background:#0d1117;color:#c9d1d9;font-family:'Segoe UI',Consolas,monospace;
 .chip.bd{background:rgba(248,113,113,.15);color:#f87171;border:1px solid #f87171}
 .chip.more{background:transparent;color:#8b949e;border:1px solid #30363d;cursor:pointer}
 .chip.more:hover{color:#c9d1d9;border-color:#58a6ff}
+.sum-card .sc-note{margin-top:8px;font-size:11px;color:#8b949e;line-height:1.5}
 .sum-card .sc-drawer{display:none;margin-top:6px}
 .sum-card .sc-drawer.open{display:flex;flex-wrap:wrap;gap:6px}
 .grid{display:flex;gap:24px;flex-wrap:wrap}
@@ -436,20 +437,37 @@ def _previous_momentum(as_of: date, n: int = 2) -> list[dict[str, tuple]]:
 
 
 def _early_turn_tickers(as_of: date, snapshots: list[ETFRotationSnapshot]) -> set:
-    """Tickers where momentum_z > 0 on 2 consecutive prior snapshots and ratio_z < 0."""
-    priors = _previous_momentum(as_of, n=2)
-    if len(priors) < 2:
+    """Tickers the early-turn rule flags: momentum above 100 on the two prior stored snapshots and now, while the
+    ratio is still below 100.
+
+    The rule itself is ``early_turn.is_early_turn`` — the one copy, which the score (#597) reads too, so the ``⚡``
+    chip and the Brier line can never be two different rules.
+    """
+    from .early_turn import PRIOR_WEEKS, is_early_turn
+    priors = _previous_momentum(as_of, n=PRIOR_WEEKS)
+    if len(priors) < PRIOR_WEEKS:
         return set()
-    result = set()
-    for s in snapshots:
-        rz = s.rs_ratio_z
-        mz = s.rs_momentum_z
-        if rz is None or mz is None:
-            continue
-        if mz > 0 and rz < 0 and all(p.get(s.ticker, (None, None))[1] is not None
-                                    and p.get(s.ticker, (None, None))[1] > 0 for p in priors):
-            result.add(s.ticker)
-    return result
+    return {s.ticker for s in snapshots
+            if is_early_turn(s.rs_ratio_z, s.rs_momentum_z,
+                             [p.get(s.ticker, (None, None))[1] for p in priors])}
+
+
+# Weeks the Early Turn card scores itself on (#597). Read from the PRICES store, not from the stored snapshots:
+# the live board file held 3 snapshots when this was measured (homesrv, 20 Nov 2026), so an 8-week horizon could
+# judge nothing and the card showed no line at all — the measured score would not have reached the board until
+# late December. 104 weeks is one read of bars the map already reads most of, and enough weeks that the horizon
+# has run out on a useful number of flags.
+SCORE_WEEKS = 104
+
+
+def _early_turn_score(as_of: date) -> dict:
+    """The early-turn flag's score (``early_turn.brier``) on the weeks rebuilt from the prices store, or ``{}``
+    when the store cannot answer. Read-only, writes nothing, and never raises into the page."""
+    from . import early_turn as et
+    try:
+        return et.brier(weekly=et.points_from_prices(as_of, weeks=SCORE_WEEKS))
+    except Exception:                                   # noqa: BLE001 - no prices store yet: no line on the card
+        return {}
 
 
 def _rs_heat_style(val: float) -> str:
@@ -695,7 +713,7 @@ def _rrg_payload(snapshots: list[ETFRotationSnapshot], as_of: date) -> dict:
     pooled z there, so a trail through an old week stays on the same axes until the backfill rewrites it).
     ``weeks_in_quadrant`` counts the newest points in the same quadrant."""
     from datetime import timedelta
-    from .engine import classify_rrg, week_cut
+    from .engine import quadrant_path, week_cut
     from .store import load_range
     try:
         stored = load_range(as_of - timedelta(weeks=TRAIL_WEEKS + 2), as_of)
@@ -717,7 +735,8 @@ def _rrg_payload(snapshots: list[ETFRotationSnapshot], as_of: date) -> dict:
             r = by_week[wk].get(s.ticker) or {}
             rz, mz = r.get("rs_ratio_z"), r.get("rs_momentum_z")
             pts.append(None if rz is None or mz is None else [round(100 + rz, 3), round(100 + mz, 3), wk])
-        quads = [classify_rrg(p[0] - 100, p[1] - 100) if p else None for p in pts]
+        # the hysteresis band (#597), walked oldest to newest, so the trail's count agrees with the table's quadrant
+        quads = [q or None for q in quadrant_path([None if p is None else (p[0], p[1]) for p in pts])]
         held = 0
         for q in reversed(quads):
             if q != quads[-1]:
@@ -961,6 +980,10 @@ def export_rotation_dashboard(snapshots: list[ETFRotationSnapshot], filename: st
                   and s.ticker in transitions]
     early_turn = {t for t in _early_turn_tickers(as_of, snapshots)
                   if group_of.get(t, "") in core_groups}
+    # How the rule has actually done on the stored weeks (#597): shown on the card, so the chip is never read as a
+    # claim nobody checked.
+    from .early_turn import caption as _et_caption
+    early_turn_caption = _et_caption(_early_turn_score(as_of))
 
     # Filters (no "All" — default to sector; groups only)
     filters = ''
@@ -1019,7 +1042,7 @@ def export_rotation_dashboard(snapshots: list[ETFRotationSnapshot], filename: st
         for k, v in quad_counts.items()
     )
 
-    def _chips_card(title, items, cls):
+    def _chips_card(title, items, cls, note: str = ""):
         items = list(items)
         top = items[:3]
         rest = items[3:]
@@ -1033,12 +1056,14 @@ def export_rotation_dashboard(snapshots: list[ETFRotationSnapshot], filename: st
         body = f'<div class="sc-body">{chips}{more}</div>{drawer}'
         if not top:
             body = '<div class="sc-body" style="color:#8b949e">None</div>'
+        if note:
+            body += f'<div class="sc-note">{esc(note)}</div>'
         return f'<div class="sum-card"><div class="sc-title">{title}</div>{body}</div>'
 
     summary_cards = (
         f'<div class="summary-cards">'
         f'<div class="sum-card"><div class="sc-title">Sector Counts</div><div class="sc-body">{counts_chips}</div></div>'
-        f'{_chips_card("⚡ Early Turn", sorted(early_turn), "et")}'
+        f'{_chips_card("⚡ Early Turn", sorted(early_turn), "et", note=early_turn_caption)}'
         f'{_chips_card("⚠️ Breakdown", breakdowns, "bd")}'
         f'</div>'
     )
@@ -1088,7 +1113,8 @@ def export_rotation_dashboard(snapshots: list[ETFRotationSnapshot], filename: st
 <svg class="rrg" id="rrg" viewBox="0 0 600 600" role="img" aria-label="Relative rotation graph: each ETF against its own history vs {benchmark}"></svg>
 <div class="note">Each dot is the last completed week; the line is its path over the weeks before (faint = older). Right of 100 = stronger than {benchmark} against its own 14-week trend, above 100 = that strength is rising. ETFs usually turn clockwise. Tap a dot or a row to follow one path.</div>
 <div class="note"><b style="color:#c9d1d9">How it is computed:</b> total-return weekly closes vs {benchmark}, completed weeks only. RS-Ratio = 100 + how far the ETF/{benchmark} line sits above its own 14-week average, in units of its last year's spread; RS-Momentum = 100 + the 4-week change of RS-Ratio, in the same units. Each ETF is measured against its own history, so adding or removing an ETF never moves another's dot.<br>
-<b>RS 1W / 1M / 3M</b> = the ETF's return over 1 / 4 / 12 weeks minus {benchmark}'s (percentage points). <span style="color:#8B5CF6">⚡ Early turn</span> = momentum above 100 on the two prior stored snapshots while ratio is below 100.</div>
+<b>RS 1W / 1M / 3M</b> = the ETF's return over 1 / 4 / 12 weeks minus {benchmark}'s (percentage points). <span style="color:#8B5CF6">⚡ Early turn</span> = momentum above 100 on the two prior stored snapshots while ratio is below 100; the card says how often that was followed by Leading over the last two years of weeks, against how often any ETF left of 100 got there.<br>
+<b>Quadrant</b> = the 100/100 cross with a hysteresis band: a dot keeps its quadrant until it crosses 100 by more than the band, so one sitting on an axis does not flip every week.</div>
 </div>
 
 <div class="table-panel">

@@ -20,7 +20,8 @@ from RevenueChaser.core import board_settings, rawstore
 from RevenueChaser.module_relatedness.tests.test_relatedness import v3_reply
 from RevenueChaser.core.providers import deepseek, evren
 from RevenueChaser.module_relatedness import __main__ as cli
-from RevenueChaser.module_relatedness import engine, settings, store, writers
+from RevenueChaser.core import llm_writers as writers
+from RevenueChaser.module_relatedness import engine, settings, store
 from RevenueChaser.module_relatedness.tests.test_relatedness import long_body
 
 TICKERS = ["AAA", "BBB", "CCC"]
@@ -82,6 +83,39 @@ def test_the_default_writer_is_evren(rawstore_tmp_db):
     assert writers.DEFAULT == "evren" and set(writers.WRITERS) == {"evren", "deepseek"}
 
 
+# avo, 20 Nov 2026: "Fetch ve build sirasinda deepseek api kullanilan islem kalmasin hepsi evren deepseek olmali".
+# Every one of these defaulted to the paid writer, so a caller that forgot the argument spent money. The scheduled
+# Fetch always passed the board's writer, so nothing scheduled changes; the hazard was the omitted argument.
+
+# This folder's ``_deepseek_default`` fixture pins the writer to DeepSeek, because its tests drive that writer;
+# these two are about the default itself, so they put the registry's own back.
+
+def test_a_module_call_without_a_writer_runs_on_the_free_one(monkeypatch):
+    from RevenueChaser.module_relatedness import config as rel_config
+    from RevenueChaser.module_relatedness import profiles as profiles_mod
+    assert writers.DEFAULT == "evren" and not writers.get(writers.DEFAULT).paid
+    monkeypatch.setattr(rel_config, "default_writer", lambda: writers.DEFAULT)
+    assert profiles_mod.llm() is profiles_mod._writers().client("evren")
+    assert profiles_mod.llm() is not deepseek
+
+
+def test_a_profile_saved_without_a_writer_names_the_free_one(rawstore_tmp_db, monkeypatch):
+    from RevenueChaser.module_relatedness import config as rel_config
+    monkeypatch.setattr(rel_config, "default_writer", lambda: writers.DEFAULT)
+    store.save_profile("ZZZ", "1", {}, "{}", "a-model")
+    rows = [r for r in rawstore.get_all("relatedness_profiles") if r["ticker"] == "ZZZ"]
+    assert [r.get("provider") for r in rows] == ["evren"]
+
+
+def test_the_naming_cli_banner_names_the_free_writer(rawstore_tmp_db, monkeypatch, capsys):
+    """``--name-themes`` printed DeepSeek's off-peak gate although naming calls its own pair (#404, EVREN)."""
+    monkeypatch.setenv("LITELLM_RC_KEY", EVREN_KEY)
+    monkeypatch.setattr("RevenueChaser.module_relatedness.naming.name_themes",
+                        lambda run_id=None: {"named": 0, "pending": 0})
+    assert cli.main(["--name-themes"]) == 0
+    out = capsys.readouterr().out
+    assert "EVREN" in out and "no fee, no off-peak gate" in out        # not ``offpeak.describe()``
+    assert "DeepSeek" not in out and "Peak override" not in out
 
 
 
@@ -135,7 +169,7 @@ def test_the_scheduled_job_carries_the_10_usd_deepseek_cap():
     from RevenueChaser.core import automations
     e = automations.entry("RC-Relatedness-OffPeak")
     assert e.args == ("-m", "RevenueChaser.module_relatedness", "--run", "--cap", "10")
-    assert e.time == "07:30" and e.days == ("Sunday",)          # every other Sunday (avo 15 Nov 2026); the timer carries the fortnight
+    assert e.time == "22:15" and e.days == ("Sunday",)          # weekly Sunday (avo 20 Nov 2026: "Tamam haftalik")
 
 
 
@@ -166,6 +200,25 @@ def test_the_writer_modules_take_the_model_per_call(rawstore_tmp_db, monkeypatch
     ev.complete("s", "u", client=_C(), use_cache=False, model="evren-glm-5.3")
     assert posts == ["evren-glm-5.3"] and ev.MODEL != "evren-glm-5.3"
     assert not hasattr(writers, "use")                      # no module-level swap left
+
+
+def test_an_evren_call_waits_longer_than_two_minutes_and_the_wait_is_a_process_setting(monkeypatch):
+    """A profile over a whole document took longer than the old 120 s and the read timeout killed the night's SEC
+    read (20 Nov 2026, 01:10); a cold full-size call was then measured at 235 s. The wait is twice that over, and
+    ``RC_EVREN_TIMEOUT_S`` sets it."""
+    from RevenueChaser.core.providers import evren as ev
+    monkeypatch.delenv("RC_EVREN_TIMEOUT_S", raising=False)
+    assert ev.DEFAULT_TIMEOUT_S == 600.0 and ev.timeout_s() == ev.DEFAULT_TIMEOUT_S
+    client = ev._new_client()
+    try:
+        assert client.timeout.read == ev.DEFAULT_TIMEOUT_S
+    finally:
+        client.close()
+    monkeypatch.setenv("RC_EVREN_TIMEOUT_S", "45")
+    assert ev.timeout_s() == 45.0
+    for bad in ("", "soon", "0", "-1"):                     # unreadable or useless: the default stands
+        monkeypatch.setenv("RC_EVREN_TIMEOUT_S", bad)
+        assert ev.timeout_s() == ev.DEFAULT_TIMEOUT_S
 
 
 # ── review S2 + nit4 (PR 362): a partial reset and a shared model name never leave an invalid pair ──────────

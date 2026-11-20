@@ -41,10 +41,19 @@ _spaced = spaced
 
 MAX_HOP2 = 40                 # cap edges followed on the second hop
 
-# The board serves edges read from a Relatedness profile only once the census of plan v31 section 6 clears them
-# (step 3); until then it serves the filings' XBRL customer lines. Read where the board is served
-# (``engine._board_payload``), so the stored ``chain_mentions`` keep every edge and the switch needs no re-sync.
-SERVE_PROFILE_EDGES = False
+# The board serves edges read from a Relatedness profile as well as the filings' XBRL customer lines. Read where
+# the board is served (``engine._board_payload``), so the stored ``chain_mentions`` keep every edge and the switch
+# needs no re-sync; off, the board falls back to the XBRL lines alone.
+#
+# On since 20 Nov 2026 (#1159). The census of plan v31 section 6 cleared the gate on a **fresh** sample of 200
+# served-candidate edges drawn after the wrong-edge filter of #1142: 166 right of 194 markable, 85.6%, Wilson 95%
+# lower bound 79.9%, against the section's rule of 0.70. avo's counting rule is the lenient one, in his own words
+# "Anladim. Yani gevsek okuma bizim icin daha mantikli." (20 Nov 2026 01:26 Amsterdam): a sales channel,
+# distributor, broker, royalty payer or receiver, a research or technology collaboration and a technical
+# dependency are each a right link; only an outright wrong relation counts against the gate. He asked for the
+# switch on at 02:56 Amsterdam ("Edges ve 92 yan kurulus eslesmesini alalim"). The labels are in
+# ``fixtures/labeled_80.json`` and the board shows the rate on its Precision card.
+SERVE_PROFILE_EDGES = True
 #: The relations the board serves (plan v31 step 1(e)); a competitor is a Relatedness question, not a chain link.
 SERVED_RELATIONS = ("customer", "supplier")
 

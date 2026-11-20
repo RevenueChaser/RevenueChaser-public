@@ -887,7 +887,8 @@ def run_earnings():
 @app.route("/run/relatedness-compare", methods=["POST"])
 def run_relatedness_compare():
     """Queue the writer comparison (#370): JSON ``{provider, model, tickers}``, checked before anything is queued."""
-    from RevenueChaser.module_relatedness import compare, writers
+    from RevenueChaser.core import llm_writers as writers
+    from RevenueChaser.module_relatedness import compare
 
     body = request.get_json(silent=True) or {}
     provider, model, raw = body.get("provider"), body.get("model"), body.get("tickers")
@@ -1591,6 +1592,12 @@ def _build_dataset(name: str):
     return DATASETS.get(name)
 
 
+def _build_base():
+    """``rcdata.build.base``, imported on use like every other builder import in this module."""
+    from RevenueChaser.rcdata.build import base
+    return base
+
+
 def _requested_by() -> str:
     """The panel header's value, or "panel". "cli" is the builder CLI's own mark (an attended dataset runs only for
     it), so a header that says it is recorded as "panel:cli"."""
@@ -1710,6 +1717,13 @@ def api_build_request(dataset: str):
     if attended:
         waits_for = ("a person at a terminal on the server: python -m RevenueChaser.rcdata.build attended "
                      "(the WRDS login and Duo)")
+    # avo's rule (#212): no live write without a fresh verified backup. The press is refused here, and not left
+    # to the builder's own gate, because a request the builder will refuse would otherwise sit in the queue
+    # looking queued; 409, like the "already queued" refusal, so the card shows the sentence and nothing is
+    # written. Pause, Resume and the switches are deliberately NOT gated: they only stop writes.
+    stale = _build_base().backup_problem()
+    if stale:
+        return jsonify({"ok": False, "error": f"no fresh backup: {stale}"}), 409
     rid = ops.enqueue_once(dataset, params or None, by=_requested_by())
     if rid is None:
         return jsonify({"ok": False, "error": f"{dataset} is already queued or running"}), 409

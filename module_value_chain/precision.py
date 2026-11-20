@@ -3,9 +3,19 @@
 Labels live in ``module_value_chain/fixtures/labeled_80.json``: a list of
 ``{id, src, dst_ticker, relation, label, borderline, snippet}`` where ``label``
 is ``true``/``false`` (a labeller's judgement, with the filing open, that the edge
-is right: marks 1-4 of section 6). The file is empty since plan v31 step 1(g): its
-80 labels judged the keyword scan that #748 deleted, so they spoke for edges the
-board no longer draws. The census of the profile source fills it again.
+is right: marks 1-4 of section 6), ``null`` for a row that could not be marked at
+all, which ``precision`` leaves out of n.
+
+The file holds the profile source's second census (#1159, 20 Nov 2026): 200 served
+candidate edges drawn fresh after the wrong-edge filter of #1142, 194 markable,
+166 right -- 85.6%, Wilson 95% lower bound 79.9%. The 80 labels that stood here
+before judged the keyword scan #748 deleted and went with plan v31 step 1(g); the
+file keeps its name.
+
+The counting rule is avo's lenient one (20 Nov 2026): a sales channel, distributor,
+broker, royalty payer or receiver, a research or technology collaboration and a
+technical dependency are each a right link; only an outright wrong relation counts
+against the gate.
 
 The rule (section 6): the Wilson 95% lower bound of the right rate is at or above
 0.70. At 175 labels that is 135 right; a writer whose true precision is 0.80 clears

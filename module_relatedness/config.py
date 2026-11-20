@@ -21,6 +21,18 @@ RELATEDNESS_JSON = OUTPUT_DIR / "relatedness" / "relatedness_latest.json"
 # this floor, AAP's being 1 character).
 MIN_INPUT_CHARS = vc_config.MIN_ITEM_CHARS
 
+
+def default_writer() -> str:
+    """The writer a board call that names none runs on: the registry's default, which has no fee (EVREN).
+
+    avo, 20 Nov 2026: "Fetch ve build sirasinda deepseek api kullanilan islem kalmasin hepsi evren deepseek
+    olmali". Every function of this board carried the paid ``deepseek`` as its own default until then, so a caller
+    that forgot the argument spent money. It is read at call time and in one place, so the tests of the DeepSeek
+    path pin it here instead of naming the writer at 81 call sites (``tests/conftest.py``).
+    """
+    from RevenueChaser.core import llm_writers
+    return llm_writers.DEFAULT
+
 # v3 (#400, Relatedness v2 Step 1): one structured JSON profile from the whole Item 1 / Item 4 (no input cut), read
 # in chunks above 60k characters, JSON mode and no thinking (``profile_v3``). Every v2 profile reads stale and is
 # redone by the next run of the board's writer. v2 (#388 D5) named the company instead of the ticker.
@@ -91,3 +103,12 @@ TOP_PEERS = 25
 # hides true peers because the idf lowers the cosine scale.
 PEER_MIN_SCORE = 0.0
 PEER_MIN_SHARED = 2
+
+# Incremental scoring of a whole-board Refresh (#1132, the code half of #884). The rows a Refresh actually scores
+# are the changed profiles plus every profile whose stored top list named one (``incremental.rows_to_rescore``).
+# Above this share of the board the bookkeeping buys nothing and the full matrix is scored instead.
+INCREMENTAL_MAX_SHARE = 0.2
+# The size of the score grid a full run saves in the payload (``score_quantiles``), so an incremental run can rank a
+# new peer's percentile without the whole upper triangle: 1,001 points = 0.1-percentile resolution. A saved payload
+# without the grid (one written before #1132) sends a Refresh through the full matrix once.
+SCORE_QUANTILES = 1001

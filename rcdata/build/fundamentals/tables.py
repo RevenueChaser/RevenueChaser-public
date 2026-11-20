@@ -62,6 +62,16 @@ EARNINGS_REPORTED = [("cik", "TEXT NOT NULL"), ("ticker", "TEXT"), ("period_end"
                      ("surprise_pct", "DOUBLE"), ("source", "TEXT NOT NULL"), ("source_as_of", "DATE"),
                      ("fetched_at", "DOUBLE"), ("run_id", "TEXT")]
 
+# One row per company and fiscal quarter: the day the quarter's results were first made public. Compustat's ``rdq``
+# (``wrds/fundq``) wherever it has one (F3, and avo's "WRDS'e gecelim tamamen" of 20 Nov 2026); UW's report day
+# (``uw/earnings``) for a quarter Compustat has no date for within ``wrds_fund.PERIOD_DAYS`` of the same period end.
+# ``source`` says which on every row, and ``gvkey`` is the Compustat company the date came from (NULL on a UW row).
+# Measured on homesrv, 20 Nov 2026 (#1181): the two agree to the day on 92.5% of 128,710 matched quarters, and
+# ``rdq`` is empty on 9.12% of the linked companies' quarters.
+EARNINGS_REPORT_HISTORY = [("cik", "TEXT NOT NULL"), ("period_end", "DATE NOT NULL"),
+                           ("report_date", "DATE NOT NULL"), ("gvkey", "TEXT"), ("source", "TEXT NOT NULL"),
+                           ("source_as_of", "DATE"), ("fetched_at", "DOUBLE"), ("run_id", "TEXT")]
+
 # One row per Compustat value that changed between two monthly snapshots, for a period both held (``wrds_fund``);
 # ``cik`` NULL when the gvkey is no longer a Tier A company's.
 REVISION = [("cik", "TEXT"), ("gvkey", "TEXT NOT NULL"), ("source", "TEXT NOT NULL"), ("datadate", "DATE NOT NULL"),
@@ -103,6 +113,7 @@ SCHEMAS: dict[str, list[tuple[str, str]]] = {
     "filing_item": FILING_ITEM,
     "earnings_event": EARNINGS_EVENT,
     "earnings_reported": EARNINGS_REPORTED,
+    "earnings_report_history": EARNINGS_REPORT_HISTORY,
     "fundamental_revision": REVISION,
     "segment_revenue": SEGMENT_REVENUE,
     "customer_share": CUSTOMER_SHARE,
@@ -130,6 +141,8 @@ STAGED: dict[str, list[tuple[str, str]]] = {
     filings.STAGING["filings"]: filings.FILING,
     earnings.STAGING: earnings.SCHEMA,
     **{d.revision_staging: wrds_fund.REVISION for d in wrds_fund.DATASETS if d.revisions},
+    wrds_fund.FUNDQ.staging: wrds_fund.FUNDQ.schema + wrds_fund.PROVENANCE,
+    uw_earnings.STAGING: uw_earnings.SCHEMA,
     estimates.STAGING: estimates.schema(),
     fsds.STAGING: fsds.SCHEMA,
     filings.STAGING["segments"]: filings.SEGMENT,
@@ -326,6 +339,33 @@ def _earnings_reported(con: duckdb.DuckDBPyConnection, ciks=None) -> int:
         FROM {uw_earnings.STAGING} u
         WHERE u.cik IN (SELECT cik FROM fundamental_company) AND u.eps_reported IS NOT NULL""")
     return common.count(con, "earnings_reported")
+
+
+def _report_history(con: duckdb.DuckDBPyConnection, ciks=None) -> int:
+    """``earnings_report_history``: Compustat's ``rdq`` per company and quarter, and UW's report day for a quarter
+    Compustat has no date for. Both sources are reloaded whole by every build, so the table is too.
+
+    Two Compustat companies of one CIK that hold the same quarter: the earlier ``rdq`` is kept (the day the
+    results were first public), then the lower gvkey. A UW quarter is a fill only when no Compustat row of that
+    company ends within ``wrds_fund.PERIOD_DAYS`` of it, because the two write a 52/53-week year's end differently."""
+    _clear(con, "earnings_report_history", ciks, "true")
+    con.execute(f"""
+        INSERT INTO earnings_report_history
+        WITH w AS (
+            SELECT c.cik, s.datadate AS period_end, s.rdq AS report_date, s.gvkey,
+                   '{wrds_fund.FUNDQ.name}' AS source, s.source_as_of, s.fetched_at, s.run_id
+            FROM {wrds_fund.FUNDQ.staging} s JOIN {wrds_fund._links()} c ON c.gvkey = s.gvkey
+            WHERE s.rdq IS NOT NULL AND s.datadate IS NOT NULL
+            QUALIFY row_number() OVER (PARTITION BY c.cik, s.datadate ORDER BY s.rdq, s.gvkey) = 1)
+        SELECT * FROM w
+        UNION ALL
+        SELECT u.cik, u.period_end, u.report_date, NULL, u.source, u.source_as_of, u.fetched_at, u.run_id
+        FROM {uw_earnings.STAGING} u
+        WHERE u.cik IN (SELECT cik FROM fundamental_company) AND u.report_date IS NOT NULL
+          AND u.period_end IS NOT NULL
+          AND NOT EXISTS (SELECT 1 FROM w WHERE w.cik = u.cik AND abs(date_diff('day', w.period_end, u.period_end))
+                          <= {wrds_fund.PERIOD_DAYS})""")
+    return common.count(con, "earnings_report_history")
 
 
 def _revisions(con: duckdb.DuckDBPyConnection, ciks=None) -> int:
@@ -631,6 +671,7 @@ class FundamentalsTables:
         counts["fundamental_company"] = _companies(ctx, con, common.universe(), ciks)
         counts["earnings_event"] = _earnings(con, ciks)
         counts["earnings_reported"] = _earnings_reported(con, ciks)
+        counts["earnings_report_history"] = _report_history(con, ciks)
         counts["fundamental_revision"] = _revisions(con, ciks)
         counts["segment_revenue"] = _segments(con, ciks)
         counts["customer_share"] = _customers(con, ciks)

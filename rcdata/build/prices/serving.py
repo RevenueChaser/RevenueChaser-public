@@ -506,6 +506,20 @@ ACTION_RATIO = ("CASE WHEN {a}.action_type IN ('forward_split', 'reverse_split')
                 "AND {a}.new_rate > 0 THEN {a}.new_rate / {a}.old_rate "
                 "WHEN {a}.action_type = 'stock_dividend' AND {a}.rate > 0 THEN 1 + {a}.rate END")
 ACTION_AMOUNT = "CASE WHEN {a}.action_type IN ('cash_dividend', 'capital_gains_distribution') THEN {a}.rate END"
+# Compustat's split that Alpaca has a day or few off is the same split (#268): Compustat's ``datadate`` is the first
+# session on the new basis and Alpaca's ``ex_date`` is not always that day, so the same-day rule in
+# ``_wrds_actions`` let both rows in and the share basis stepped twice -- a doubled split factor over every bar
+# before it. Alpaca's is kept, as on the same day. A split, a reverse split and a stock dividend are one kind here
+# (``ACTION_KIND``), so Alpaca's stock dividend stands in for Compustat's split too. Only Compustat's row is dropped,
+# and only against an Alpaca row, so a second Compustat split of its own is untouched; a cash dividend is matched by
+# amount instead (the twins in ``_wrds_actions``).
+# Side effect: a real second split within SPLIT_SAME_DAYS of Alpaca's would be dropped too. On the live copy a pair
+# across the rebuilt window's start stays until the next whole build. ``{mine}`` is a chunk's own securities.
+SPLIT_TWIN_SQL = f"""DELETE FROM _act w WHERE w.source = '{wrds_history.NAME}'
+    AND {ACTION_KIND.format(a='w')} = 'split'{{mine}}
+    AND EXISTS (SELECT 1 FROM _act p WHERE p.security_id = w.security_id AND p.source = '{ALPACA_ACTIONS}'
+                AND {ACTION_KIND.format(a='p')} = 'split'
+                AND abs(date_diff('day', p.ex_date, w.ex_date)) <= {SPLIT_SAME_DAYS})"""
 
 
 class PricesServing:
@@ -517,7 +531,11 @@ class PricesServing:
     feeds: tuple[str, ...] = ()       # it builds every served table itself
     cadence = "daily"
     backfill_needs_from = False
-    starts_by_hand = True
+    # In the scheduled flow since #446 step 8: a build on a copy of the live file fits the builder's window, so this
+    # dataset is due on its cadence with no hand start. Its **whole** build does not fit (86 min for the 2010+
+    # volume, 6 h 12 min for the first one with the WRDS history), so the hourly pass leaves that one to a person:
+    # ``base.WholeBuildByHand``, a skipped check row naming the reason.
+    whole_build_by_hand = True
 
     def default_as_of(self) -> date:
         from ....core import calendar
@@ -679,6 +697,11 @@ class PricesServing:
             WHERE w.security_id IN (SELECT DISTINCT security_id FROM price_bar_daily){mine}
               AND NOT EXISTS (SELECT 1 FROM _act p WHERE p.security_id = w.security_id AND p.ex_date = w.ex_date
                               AND {ACTION_KIND.format(a='p')} = {ACTION_KIND.format(a='w')})""")
+        # The split Alpaca and Compustat both know, its day a session or two apart (``SPLIT_TWIN_SQL``, #268); the
+        # dropped ones are counted for the build note.
+        splits = con.execute(SPLIT_TWIN_SQL.format(mine=mine)).fetchone()[0]
+        con.execute("CREATE TEMP TABLE IF NOT EXISTS _split_twin (n BIGINT)")
+        con.execute("INSERT INTO _split_twin VALUES (?)", [splits])
         # Compustat's cash dividend that Alpaca has with the same amount a day or few off (Compustat's day is not
         # always Alpaca's ex-date) is the same dividend: Alpaca's is kept, as on the same day, and the dropped ones
         # are counted for the build note (prices plan 16 Nov 2026, P5: 041545:03 0.0516 on 21, 22 and 23 Oct).
@@ -716,6 +739,11 @@ class PricesServing:
         twins = con.execute("SELECT coalesce(sum(n), 0) FROM _div_twin").fetchone()[0]
         if twins:
             ctx.notes.append(f"{twins} Compustat cash dividend(s) left out: Alpaca has the same amount within "
+                             f"{SPLIT_SAME_DAYS} days")
+        con.execute("CREATE TEMP TABLE IF NOT EXISTS _split_twin (n BIGINT)")
+        split_twins = con.execute("SELECT coalesce(sum(n), 0) FROM _split_twin").fetchone()[0]
+        if split_twins:
+            ctx.notes.append(f"{split_twins} Compustat split(s) left out: Alpaca has a split within "
                              f"{SPLIT_SAME_DAYS} days")
         # Alpaca's own repeats (041545:03 on 22 and 23 Oct 2026) are counted, not dropped: avo decides (prices plan P5).
         alpaca_twins = con.execute(f"""SELECT count(*) FROM _act a JOIN _act b ON b.security_id = a.security_id

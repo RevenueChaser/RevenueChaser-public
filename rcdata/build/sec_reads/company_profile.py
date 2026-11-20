@@ -27,7 +27,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from dataclasses import replace
 
 from ... import read, sec_locator, sec_profile
@@ -35,7 +34,7 @@ from ...sec_profile_input import MAX_XBRL_CUSTOMERS, clean_input, filing_sentenc
 from .. import base
 from ..fundamentals import common
 from . import asker, reads
-from .questions import Input, Question, register
+from .questions import Input, Question, register, writer_for
 
 logger = logging.getLogger(__name__)
 
@@ -383,28 +382,30 @@ def _merge_profile(parts: list[tuple[dict, int]]) -> dict:
 
 _PROFILE = _Profile()
 
-#: The writer of both questions: EVREN (the owner's K3), or DeepSeek Flash for a process started with
-#: ``RC_SEC_READS_PROVIDER=deepseek`` (the owner, 16 Nov 2026: the companies the import leaves are asked through
-#: DeepSeek). A stored answer of either writer is current, so switching asks nothing again.
-PROVIDER = os.environ.get("RC_SEC_READS_PROVIDER", "").strip().lower() or "evren"
+# The writer of each question is its own choice on the Settings page (``core.llm_jobs``, #404); the default is
+# the tool's switch, ``questions.PROVIDER``: EVREN (the owner's K3), or
+# DeepSeek Flash for a process started with ``RC_SEC_READS_PROVIDER=deepseek`` (the owner, 16 Nov 2026: the
+# companies the import leaves are asked through DeepSeek). A stored answer of either writer is current, so
+# switching asks nothing again.
 #: The most calls one DeepSeek run sends per question (a paid call is capped in its own code): the import left 69
 #: companies, a profile is a few calls each.
 DEEPSEEK_MAX_CALLS = {LOCATE_ID: 150, PROFILE_ID: 800}
 
 
 def _cap(question: str) -> int | None:
-    return DEEPSEEK_MAX_CALLS[question] if PROVIDER == "deepseek" else None
+    return DEEPSEEK_MAX_CALLS[question] if writer_for(question)[0] == "deepseek" else None
 
 
 LOCATE = Question(
     id=LOCATE_ID, owner=OWNER, system=sec_locator.system_prompt(), prompt_version=sec_locator.PROMPT_VERSION,
     scope=_locate_scope, inputs=_locate_inputs, parse=parse_locate, max_tokens=200,
-    provider=PROVIDER, max_calls=_cap(LOCATE_ID))
+    provider=writer_for(LOCATE_ID)[0], model=writer_for(LOCATE_ID)[1], max_calls=_cap(LOCATE_ID))
 
 PROFILE = Question(
     id=PROFILE_ID, owner=OWNER, system=sec_profile.system_prompt(), prompt_version=sec_profile.PROMPT_VERSION,
     scope=_PROFILE.scope, inputs=_PROFILE.inputs, fill=_PROFILE.fill, parse=sec_profile.parse,
-    merge=_merge_profile, max_tokens=8000, provider=PROVIDER, max_calls=_cap(PROFILE_ID))
+    merge=_merge_profile, max_tokens=8000, provider=writer_for(PROFILE_ID)[0],
+    model=writer_for(PROFILE_ID)[1], max_calls=_cap(PROFILE_ID))
 
 #: Run order: the locator's answers are in Parquet before the profile builds its inputs.
 IN_ORDER = (LOCATE, PROFILE)

@@ -15,8 +15,8 @@ import pytest
 from RevenueChaser.rcdata.build import dirty
 from RevenueChaser.rcdata.build.prices import stage
 
-from .test_prices_incremental import (FIGI, SPY_DAYS, SPYX, _note, _report, _serve, _snapshot, _spy,  # noqa: F401
-                                      _spy_spine, alphabet, live)
+from .prices_incremental_world import (FIGI, SPY_DAYS, SPYX, _note, _report, _serve, _snapshot,  # noqa: F401
+                                       _spy, _spy_spine, alphabet, live)
 from .test_prices_wrds import _q, env, fake  # noqa: F401
 
 

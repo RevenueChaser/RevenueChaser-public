@@ -96,6 +96,7 @@ The four source tables are rebuilt from all their `date=` partitions on every bu
 | `fundamental_fact` | cumulative + restated | `filed` range; key `(cik, period_end)` | `fundamentals/tables.py` `FACT`: a 10-K/A rewrites a period's facts; `preliminary` rows are replaced by the filed ones |
 | `filing_item` | cumulative | `filing_date` range | one row per `(cik, accession, item)`, documents and items |
 | `earnings_event`, `earnings_reported` | cumulative + restated | `report_date` range; key `cik` | a calendar revision moves a future report date |
+| `earnings_report_history` | derivation (whole) | — | Compustat's newest monthly snapshot and UW's newest answer are each reloaded whole, so the table is rebuilt whole by every build |
 | `fundamental_revision` | cumulative | `new_as_of` range | a log of what changed between two monthly Compustat snapshots |
 | `segment_revenue`, `customer_share` | restated | key `cik` | built from the newest annual report's inline XBRL and Compustat's segments; a new report rewrites the company's rows |
 | `estimate_latest` | derivation (whole) | — | "the newest estimates per company, ticker and period"; the snapshots stay in Parquet |

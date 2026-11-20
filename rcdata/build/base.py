@@ -30,7 +30,7 @@ import time
 import uuid
 from collections import deque
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable, Iterable, Protocol
 
@@ -65,7 +65,22 @@ _uw_pause = time.sleep          # patch point for tests
 
 
 class SourceError(RuntimeError):
-    """A provider answer the dataset cannot use (an HTTP failure after retries, an empty or malformed body)."""
+    """A provider answer the dataset cannot use (an HTTP failure after retries, an empty or malformed body).
+
+    ``status`` is the HTTP status of the last attempt when there was one, and ``transport`` says the last attempt
+    never got an answer (a dropped connection, a timeout). ``transient`` is what a caller asks to tell a failure
+    worth asking again later (a 429, a 5xx, a dropped connection) from one that will answer the same way for ever
+    (#1123: a single EDGAR document answering 504 failed the whole ``sec/13dg`` dataset and the build pass with it).
+    """
+
+    def __init__(self, *args, status: int | None = None, transport: bool = False):
+        super().__init__(*args)
+        self.status = status
+        self.transport = transport
+
+    @property
+    def transient(self) -> bool:
+        return self.transport or self.status == 429 or (self.status is not None and self.status >= 500)
 
 
 class NothingInScope(SourceError):
@@ -73,6 +88,22 @@ class NothingInScope(SourceError):
 
     ``tiers=["B"]`` on a float dataset is a legitimate request whose true answer is "a fund has no float", and a
     failed row blaming the spine reads on the Data screen as a broken build (review F4 of #294).
+    """
+
+
+class WholeBuildByHand(SourceError):
+    """A build of this kind would be whole, and no person asked for it: a ``skipped`` check row, not a failure.
+
+    A kind whose dataset declares ``whole_build_by_hand`` (``prices/serving``, #446 step 8) is built by the hourly
+    pass -- a pass of nothing but the schedule's own requests (``_scheduled``) -- only on a copy of the live file.
+    Anything else builds it whole as before: a Fetch press, the CLI, a build called directly. Its whole build reads
+    the Parquet tree from the start: 86 min measured on
+    homesrv for the 2010+ volume, and 6 h 12 min with 92 GB of spill for the first one carrying the WRDS history
+    (``prices/incremental.py``). That does not fit the builder's window, so an unattended pass leaves it alone and
+    says why; a Fetch press or a CLI run is a person asking for it and runs it.
+
+    A skip, not a failure: the serving file was not touched, so nothing is wrong with it, and the dataset stays due
+    (``due.py``) for the next pass, which costs nothing while the live file is still the answer.
     """
 
 
@@ -224,6 +255,10 @@ class RunContext:
     uw_sampled: bool = False
     allow_shrink: bool = False                                      # a request's explicit "allow_shrink": true
     reread: bool = False                                            # a request's explicit "reread": true (sec/reads)
+    #: Whether this run is the hourly pass's own request (``_scheduled``: ``requested_by`` ``due.REQUESTED_BY``).
+    #: A pass of nothing but these does not start a whole build of a kind that holds one
+    #: (:class:`WholeBuildByHand`); everything else -- a Fetch press, the CLI, a build called directly -- does.
+    scheduled: bool = False
     scope: Scope = field(default_factory=Scope)                     # a request's "tiers" / "names" (empty: daily)
     # Which of the run's steps is in hand, so a failed check row says where the exception came from and not only
     # its class (#1119): "start" before the first one, then "fetch", "parquet" or "backfill", then "build",
@@ -234,6 +269,9 @@ class RunContext:
     # of a build made on the live copy (None: a whole build, every table made from the whole Parquet tree).
     changed: Any = None
     incremental: Any = None
+    # #446 step 5: per dataset, the keys an earlier audit found a difference for. ``dirty.plan`` sets it before it
+    # asks the datasets for their dirty sets, so a dataset's own ``dirty`` can add its own keys to its set.
+    audited: dict[str, Any] = field(default_factory=dict)
     _pending: dict[str, list[int]] = field(default_factory=dict)    # counted, not yet written to ops.sqlite
     _http: httpx.Client | None = None
     _uw: Any = None
@@ -542,23 +580,25 @@ def _log_http(ctx: RunContext, provider: str, method: str, url: str, result: str
 
 
 def http_get(ctx: RunContext, provider: str, url: str, params: dict | None = None,
-             headers: dict | None = None, keyed: bool = False, accept: tuple[int, ...] = ()) -> httpx.Response:
+             headers: dict | None = None, keyed: bool = False, accept: tuple[int, ...] = (),
+             attempts: int | None = None) -> httpx.Response:
     """GET with the keyless retry ladder; every attempt is counted for ``provider``. Raises ``SourceError``.
 
     ``params`` may hold a key (FRED): neither the query nor the headers are ever logged. ``keyed``: the request
     carries the provider's key (Alpaca's headers), so a 403 points at the key, not at ``RC_HTTP_CONTACT``. A status in
     ``accept`` is answered as it is, neither retried nor raised: a source whose 404 means "not published yet" reads it
-    itself.
+    itself. ``attempts`` lengthens the ladder for one call (``HTTP_ATTEMPTS`` by default): a caller whose host answers
+    a transient 5xx from an edge and clears it in seconds buys more patience, and pays it in counted requests.
     """
-    last = ""
-    for attempt in range(1, HTTP_ATTEMPTS + 1):
+    last, status, transport = "", None, False
+    for attempt in range(1, (attempts or HTTP_ATTEMPTS) + 1):
         ctx.check_cap(provider)
         ctx.count(provider, calls=1, logged=True)   # counted when sent: a request cut off by a kill was still made
         started = time.monotonic()
         try:
             r = ctx.http.get(url, params=params, headers=headers)
         except httpx.HTTPError as e:
-            last = type(e).__name__
+            last, status, transport = type(e).__name__, None, True
             _log_http(ctx, provider, "GET", url, last, started)
         else:
             _log_http(ctx, provider, "GET", url, f"HTTP {r.status_code}", started)
@@ -566,15 +606,15 @@ def http_get(ctx: RunContext, provider: str, url: str, params: dict | None = Non
                 ctx.count(provider, http_429=1)
             if r.status_code < 400 or r.status_code in accept:
                 return r
-            last = f"HTTP {r.status_code}"
+            last, status, transport = f"HTTP {r.status_code}", r.status_code, False
             if r.status_code == 403:
                 last += refusal_note(keyed)
             if not (r.status_code == 429 or r.status_code >= 500):
                 break
-        if attempt < HTTP_ATTEMPTS:
+        if attempt < (attempts or HTTP_ATTEMPTS):
             ctx.sleep(HTTP_BACKOFF_S * 2 ** (attempt - 1))
     ctx.count(provider, failures=1, logged=True)
-    raise SourceError(f"{provider} {url}: {last}")
+    raise SourceError(f"{provider} {url}: {last}", status=status, transport=transport)
 
 
 def http_post(ctx: RunContext, provider: str, url: str, json: Any = None, headers: dict | None = None,
@@ -584,7 +624,7 @@ def http_post(ctx: RunContext, provider: str, url: str, json: Any = None, header
     A 429 is retried after OpenFIGI's ``ratelimit-reset`` seconds when the answer names them, else the ladder's
     backoff. ``headers`` may hold a key: neither they nor the body are ever logged. Raises ``SourceError``.
     """
-    last = ""
+    last, status, transport = "", None, False
     for attempt in range(1, HTTP_ATTEMPTS + 1):
         ctx.check_cap(provider)
         if pacer is not None:
@@ -595,13 +635,13 @@ def http_post(ctx: RunContext, provider: str, url: str, json: Any = None, header
         try:
             r = ctx.http.post(url, json=json, headers=headers)
         except httpx.HTTPError as e:
-            last = type(e).__name__
+            last, status, transport = type(e).__name__, None, True
             _log_http(ctx, provider, "POST", url, last, started)
         else:
             _log_http(ctx, provider, "POST", url, f"HTTP {r.status_code}", started)
             if r.status_code < 400:
                 return r
-            last = f"HTTP {r.status_code}"
+            last, status, transport = f"HTTP {r.status_code}", r.status_code, False
             if r.status_code == 429:
                 ctx.count(provider, http_429=1)
                 reset = str(r.headers.get("ratelimit-reset") or "").strip()
@@ -611,7 +651,7 @@ def http_post(ctx: RunContext, provider: str, url: str, json: Any = None, header
         if attempt < HTTP_ATTEMPTS:
             ctx.sleep(wait)
     ctx.count(provider, failures=1, logged=True)
-    raise SourceError(f"{provider} {url}: {last}")
+    raise SourceError(f"{provider} {url}: {last}", status=status, transport=transport)
 
 
 # ── Raw files ──────────────────────────────────────────────────────────────────────────────────────────────────
@@ -874,6 +914,12 @@ def heavy_names() -> frozenset[str]:
     return frozenset(name for name, ds in DATASETS.items() if heavy(ds))
 
 
+def whole_build_by_hand(kind: str) -> tuple[str, ...]:
+    """The datasets of ``kind`` that hold its whole build back for a person (``whole_build_by_hand = True``, #446
+    step 8). Empty for every other kind, which is built whole by the hourly pass exactly as before."""
+    return tuple(d.name for d in kind_datasets(kind) if getattr(d, "whole_build_by_hand", False))
+
+
 def live_columns(con: duckdb.DuckDBPyConnection, table: str, columns: list[str]) -> list[str]:
     """``columns`` that ``table`` of the attached live file holds: a live file built before a column was added is
     compared on the columns both files have."""
@@ -928,6 +974,18 @@ def idle_problem(lock: str = BUILDER_LOCK) -> str | None:
     if peers:
         return "another builder runs: pid " + ", ".join(str(p) for p in peers)
     return None
+
+
+def backup_problem(now: datetime | None = None) -> str | None:
+    """Why no build may start now, or None: avo's rule is a fresh verified backup before every live write, and a
+    build replaces a served file (``serving.Build.swap``).
+
+    The check itself is the backup's own (``rcdata/backup.py`` ``stale_problem``), read from the manifest the
+    weekly run writes, so this gate, the Settings page and the backup card read one record and cannot disagree.
+    Unlike ``idle_problem`` this is not a holder that clears by waiting, so a caller refuses instead of waiting.
+    """
+    from .. import backup
+    return backup.stale_problem(now)
 
 
 def cap_problem(ds: Dataset) -> str | None:
@@ -1087,7 +1145,17 @@ def build_kind_many(kind: str, members: list[tuple[Dataset, RunContext]], *, lea
     every = [lead, *ctxs.values()]
     for c in every:
         c.changed = lead.changed
-    with serving.build(kind, base="live" if plan is not None and plan.reason is None else "fresh") as b:
+    on_the_live_copy = plan is not None and plan.reason is None
+    if not on_the_live_copy:
+        held = whole_build_by_hand(kind)
+        # Only a pass of the schedule's own requests is held: one Fetch press among them is a person asking for it.
+        if held and all(c.scheduled for c in every):
+            # Before ``serving.build``: nothing is copied, staged or swapped, so the live file is untouched.
+            why = plan.reason if plan is not None else f"{kind} does not build on a copy of the live file"
+            raise WholeBuildByHand(
+                f"a whole {kind} build is not started by the hourly pass ({', '.join(held)}): {why}; "
+                f"press Fetch on the Settings board, or run it from the CLI on the server")
+    with serving.build(kind, base="live" if on_the_live_copy else "fresh") as b:
         on_live = b.mode == "live"
         for c in every:
             c.incremental = plan if on_live else None
@@ -1105,6 +1173,16 @@ def build_kind_many(kind: str, members: list[tuple[Dataset, RunContext]], *, lea
             # What a dataset costs, so a chunked or SSD-spilling build is decided from a measure (#654 review).
             logger.info("build %s %s (%s): %.1f s, spill peak %.2f GB", kind, d.name, b.mode,
                         time.monotonic() - started, peak[0] / 1e9)
+        if on_live:
+            # The sample that replaces the scheduled whole rebuild (#446 step 5): a few keys re-read from Parquet
+            # and compared with the file. A difference is evidence - a build issue and a key dirty next time -
+            # never a refusal, so the file still swaps in and the next pass rebuilds those keys.
+            from . import audit
+            differ = audit.run(lead, b.con, audit.subjects(kind_datasets(kind), lead), os.environ,
+                               getattr(lead, "run_id", None))
+            if differ:
+                named = ", ".join(f"{t}: {len(k)}" for t, k in sorted(differ.items()))
+                lead.notes.append(f"audit: key(s) that differ from a recompute, dirty next build ({named})")
         if plan is not None:
             dirty.write_manifest(b.con, plan)
             if not on_live and plan.reason is None:
@@ -1148,7 +1226,7 @@ def run_request(req: dict, *, trigger: str = "queue", attended_ok: bool = False,
     run_id = new_run_id()
     ctx = RunContext(run_id=run_id, dataset=req["dataset"], trigger=trigger, sleep=sleep, clock=clock,
                      allow_shrink=params.get("allow_shrink") is True,
-                     reread=params.get("reread") is True)
+                     reread=params.get("reread") is True, scheduled=_scheduled(req))
     ops.start_run(run_id, req["dataset"], trigger, params)
     try:
         return _run(ctx, ds, req, params, attended_ok)
@@ -1158,6 +1236,16 @@ def run_request(req: dict, *, trigger: str = "queue", attended_ok: bool = False,
     finally:
         ctx.close()
         ctx.flush_counts()
+
+
+def _scheduled(req: dict) -> bool:
+    """A request the hourly pass queued itself (``due.REQUESTED_BY``, not imported: ``due`` imports this module).
+
+    Not the negation of :func:`_pressed`: a request with no id is nobody's press and is also not the pass's, and a
+    build called directly (a test, a one-off) is neither. Only this one holds a whole build back, so anything this
+    cannot name goes ahead and builds, which is what every caller did before #446 step 8.
+    """
+    return req.get("requested_by") == "schedule"
 
 
 def _pressed(req: dict) -> bool:
@@ -1203,7 +1291,7 @@ def _run(ctx: RunContext, ds, req: dict, params: dict, attended_ok: bool = False
         return _finish(ctx, req, {"result": "skipped", "note": stage_note}, "skipped", None)
     try:
         return _finish(ctx, req, build_kind(ctx, ds), "ok", None)
-    except (Paused, NothingInScope) as e:
+    except (Paused, NothingInScope, WholeBuildByHand) as e:
         return _finish(ctx, req, {"result": "skipped", "note": f"skipped: {e}"}, "skipped", None)
     except Exception as e:  # noqa: BLE001 - every failure becomes a failed check row, never a half-swapped file
         return _failed(ctx, req, e)
@@ -1322,7 +1410,7 @@ def run_batch(reqs: list[dict], *, trigger: str = "queue", attended_ok: bool = F
             params = req.get("params") or {}
             ctx = RunContext(run_id=new_run_id(), dataset=req["dataset"], trigger=trigger,
                              allow_shrink=params.get("allow_shrink") is True,
-                     reread=params.get("reread") is True)
+                             reread=params.get("reread") is True, scheduled=_scheduled(req))
             ops.start_run(ctx.run_id, req["dataset"], trigger, params)
             started.append((req, ctx))
             done, note = _stage(ctx, ds, req, params, attended_ok)
@@ -1339,6 +1427,11 @@ def run_batch(reqs: list[dict], *, trigger: str = "queue", attended_ok: bool = F
         kind = wanted[0][1].kind
         try:
             checks = build_kind_many(kind, [(ds, ctx) for req, ds, ctx, note in ready], lead=wanted[0][2])
+        except WholeBuildByHand as e:
+            # Nothing was built and nothing is wrong with the file: every member of the pass is a skip (#446 step 8).
+            for req, ds, ctx, note in ready:
+                end(ctx, _finish(ctx, req, {"result": "skipped", "note": note or f"skipped: {e}"}, "skipped", None))
+            return rows
         except Exception as e:  # noqa: BLE001 - every failure becomes a failed check row, never a half-swapped file
             for req, ds, ctx, note in ready:
                 end(ctx, _failed(ctx, req, e) if note is None else

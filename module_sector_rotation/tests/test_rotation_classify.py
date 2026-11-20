@@ -66,11 +66,14 @@ class TestJdkSeries:
         assert alone[0].rs_ratio == [s for s in both if s.ticker == "XLK"][0].rs_ratio
 
     def test_the_axes_are_the_values_less_100(self):
+        """The quadrant is the end of the ETF's own banded path (#597), not the signs of the last point alone."""
+        from RevenueChaser.module_sector_rotation.engine import jdk_series, quadrant_path
         spy = self._series(120, 0.001, 5)
-        s = cross_section({"XLK": self._series(120, 0.002, 3)}, spy, date(2026, 8, 14))[0]
+        etf = self._series(120, 0.002, 3)
+        s = cross_section({"XLK": etf}, spy, date(2026, 8, 14))[0]
         assert s.rs_ratio_z == pytest.approx(s.rs_ratio - 100, abs=1e-6)
         assert s.rs_momentum_z == pytest.approx(s.rs_momentum - 100, abs=1e-6)
-        assert s.rrg_quadrant == classify_rrg(s.rs_ratio_z, s.rs_momentum_z)
+        assert s.rrg_quadrant == quadrant_path(jdk_series(etf, spy))[-1]
 
     def test_a_macro_series_is_not_on_the_map(self):
         spy = self._series(120, 0.001, 5)

@@ -66,7 +66,7 @@ _ROOT_CONFTEST_READS = tuple(f"{m}.config" for m in (
 E2E_BY_BOARD: dict[str, tuple[str, ...]] = {
     "module_asymmetric_growth": ("test_board_asymmetric_growth.py",),
     "module_comovement": ("test_board_comovement.py",),
-    "module_earnings_radar": ("test_board_earnings_radar.py",),
+    "module_earnings_radar": ("test_board_earnings_radar.py", "test_earnings_radar_phone.py"),
     "module_financials": ("test_board_financials.py",),
     "module_fundamentals": ("test_board_fundamentals.py",),
     "module_hit_rate": (),
@@ -317,8 +317,13 @@ DURATIONS = Path(__file__).with_name("test_durations.json")
 def _measured_homes(n: int) -> dict[str, int]:
     """The measured files' shards: heaviest first, each to the lightest shard so far (ties to the lowest index).
 
-    ``test_durations.json`` holds each file's summed test time from one FULL run's junit artifacts (files under 1 s
-    are left out). It depends only on that file, never on what was collected, so every shard computes the same split.
+    ``test_durations.json`` holds each file's summed test time, the mean over several FULL runs' junit artifacts
+    (``scripts/durations.py`` writes it; every file, no floor). It depends only on that file, never on what was
+    collected, so every shard computes the same split.
+
+    The split balances the shards; it cannot shorten a shard below its longest single file, because ``--dist
+    loadfile`` gives a whole file to one worker. ``durations.heaviest_share`` is that bound and
+    ``scripts/tests/test_durations_table.py`` fails a file that crosses it (#1153).
     """
     try:
         seconds = json.loads(DURATIONS.read_text(encoding="utf-8"))
@@ -337,7 +342,8 @@ def in_shard(nodeid: str, shard: str) -> bool:
 
     A whole file stays in one shard (``--dist loadfile`` relies on that). A file with a measured time is placed by
     ``_measured_homes`` (#896: by hash the six shards held 437 to 827 s of tests on 15 Nov 2026; by time, 594 to
-    600 s). Any other file hashes there, so adding a new file moves no other file.
+    600 s of the measured files, and 959 s each once every file was measured -- #1153). Any other file hashes
+    there, so adding a new file moves no other file.
     """
     i, n = (int(x) for x in shard.split("/"))
     if not 0 <= i < n:

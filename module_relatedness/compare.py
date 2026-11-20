@@ -23,9 +23,10 @@ import time
 from RevenueChaser.core import rawstore
 from RevenueChaser.core.config import OUTPUT_DIR
 from RevenueChaser.core import fundamentals_layer
+from RevenueChaser.core import llm_writers as writers
 from RevenueChaser.core.providers import deepseek
 
-from . import config, embeddings, engine, locator, profile_v3, profiles, similarity, writers
+from . import config, embeddings, engine, locator, profile_v3, profiles, similarity
 
 MAX_NAMES = 100
 OUT_DIR = OUTPUT_DIR / "research" / "360"

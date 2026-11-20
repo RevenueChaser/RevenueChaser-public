@@ -1,6 +1,7 @@
 """Off-peak CLI for the Relatedness board.
 
     python -m RevenueChaser.module_relatedness --run [--limit N] [--cap USD] [--floor M | --tickers A,B]
+    python -m RevenueChaser.module_relatedness --score [--force]
     python -m RevenueChaser.module_relatedness --status
     python -m RevenueChaser.module_relatedness --name-themes [--run-id ID]
     python -m RevenueChaser.module_relatedness --rebuild-themes [--run-id ID] [--name | --build-only]
@@ -19,10 +20,17 @@ cut over; the live run stays.
 ``--coarse sector`` (#108) builds the coarse level from the 11 Morningstar sectors instead of the agglomerative cut;
 once the live run is a sector run, every later --rebuild-themes / --cutover must pass it too (the default is nmf).
 
+``--score`` is the weekly scoring step (#884; avo, 16 Nov 2026: "A) Haftada bir, Pazar gecesi"). It scores every
+pair of the **stored** profiles, so it calls no writer, downloads nothing and costs nothing, and it takes no
+selection, no ``--cap`` and no ``--limit``. Unlike a Refresh it writes: the company vectors it embeds are cached
+and the peers go to ``relatedness_scores``. A week whose profiles are all older than the saved payload is skipped
+and says so; ``--force`` scores anyway. It holds the board's job lock, so beside a Fetch it writes nothing and
+exits 3.
+
 The run is off-peak gated (``core.offpeak``): at peak it stops cleanly and reports
 the next off-peak time; completed profiles are durable and resume next run. Theme
-naming (``--name-themes``) is off-peak too and stops the same way, keeping the
-names already written. ``--cutover`` is store-only (no LLM) and takes a shadow
+naming (``--name-themes``) stops the same way, keeping the names already written;
+its off-peak gate is its writer's, so EVREN's naming run is not gated at all. ``--cutover`` is store-only (no LLM) and takes a shadow
 run id: the current (live) run is refused, so build a new one with
 ``--rebuild-themes``. ``--rebuild-themes`` refuses the current run id too.
 
@@ -30,7 +38,7 @@ run id: the current (live) run is refused, so build a new one with
 universe ``--rebuild-themes`` fits. Without either, ``--run`` profiles the whole classification universe and the fit
 covers it, as before. They go with ``--run`` and ``--rebuild-themes`` only; ``--status``, ``--name-themes`` and
 ``--cutover`` refuse them. WARNING: ``--run`` with a selection is a full Fetch of exactly those names. It downloads
-their missing filings from SEC, calls DeepSeek for every name without a current profile, and replaces the board:
+their missing filings from SEC, calls the board's writer for every name without a current profile, and replaces the board:
 all peer scores, ``relatedness_latest.json`` and a result-history run then cover only the selection until the next
 default run. Run it only with the user's typed words, never under the standing permission.
 ``--rebuild-themes --build-only`` writes the shadow run and stops: no cutover, no naming; name
@@ -54,11 +62,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import time
 
-from RevenueChaser.core import offpeak
+from RevenueChaser.core import llm_writers as writers, offpeak
 from RevenueChaser.core.providers import deepseek, evren
 
-from . import engine, writers
+from . import engine
 from . import settings as rel_settings
 
 
@@ -147,6 +156,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--run", action="store_true", help="run the profile job")
     p.add_argument("--limit", type=int, default=None, help="cap tickers")
     p.add_argument("--cap", type=float, default=None, help="USD hard-stop for this run")
+    p.add_argument("--score", action="store_true",
+                   help="rescore every pair from the stored profiles and persist the scores, the vectors and the "
+                        "payload: no LLM call, no download, no cost (the weekly step of #884)")
+    p.add_argument("--force", action="store_true",
+                   help="with --score: rescore although no profile is newer than the saved payload")
     p.add_argument("--status", action="store_true", help="show last run + off-peak state")
     p.add_argument("--name-themes", action="store_true",
                    help="LLM-name the current (or --run-id) theme run only")
@@ -188,15 +202,24 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--provider", choices=tuple(writers.WRITERS), default=None,
                    help="the LLM that writes profiles (--run) or theme names (--name-themes, --rebuild-themes "
                         "--name). Without it --run uses the board's writer (Settings, #360; EVREN by default) and "
-                        "theme naming uses deepseek. deepseek is off-peak gated and capped by --cap USD; evren (no "
+                        "theme naming its own pair (Settings, #404; EVREN by default). deepseek is off-peak gated "
+                        "and capped by --cap USD; evren (no "
                         "fee) has no off-peak gate and no call cap unless --limit N (avo, 2 Nov 2026)")
     args = p.parse_args(argv)
     explicit = args.provider
-    # --run writes with the board's writer unless --provider names one (#360); theme naming keeps DeepSeek's default.
-    if args.run and explicit is None:
+    # --run writes with the board's writer unless --provider names one (#360). ``--score`` and ``--status`` write
+    # no profile, but both name the board's writer (the payload, the banner), so they read the same setting.
+    # Theme naming reads its own pair (``core.llm_jobs``, job ``relatedness.naming``, #404), which this now asks
+    # for: the name here decides what the banner says, and it was the hard-coded paid ``deepseek``, so
+    # ``--name-themes`` printed the off-peak gate of a writer the naming run was not calling (avo, 20 Nov 2026:
+    # "Fetch ve build sirasinda deepseek api kullanilan islem kalmasin hepsi evren deepseek olmali").
+    if (args.run or args.score or args.status) and explicit is None:
         run_writer, run_model = rel_settings.writer()[0], rel_settings.chosen_model()
+    elif explicit is None and (args.name_themes or args.name):
+        from RevenueChaser.core import llm_jobs
+        run_writer, run_model = llm_jobs.pair("relatedness.naming")[0], None
     else:
-        run_writer, run_model = explicit or "deepseek", None
+        run_writer, run_model = explicit or writers.DEFAULT, None
     if explicit == "evren" and not args.run:
         p.error(f"--provider {explicit} goes with --run only")
     if args.run and run_writer != "deepseek":
@@ -204,6 +227,17 @@ def main(argv: list[str] | None = None) -> int:
             p.error(f"--cap is USD and DeepSeek's only; with --provider {explicit}, --limit N caps the calls")
         if args.limit is not None and args.limit < 1:
             p.error("--limit N needs N >= 1: the most calls this run makes")
+    # ``--score`` is the Fetch's scoring half alone: it writes, so it takes no selection and no cap, and it
+    # never runs beside the profile job.
+    if args.score and (args.run or args.rebuild_themes or args.cutover or args.name_themes or args.status
+                       or args.compare_themes):
+        p.error("--score runs on its own: it writes the scores of the stored profiles and calls no writer")
+    if args.score and (args.cap is not None or args.limit is not None or args.provider):
+        p.error("--score makes no call: --cap, --limit and --provider do not go with it")
+    if args.score and (args.floor is not None or args.tickers):
+        p.error("--score scores the whole board: --floor / --tickers do not go with it")
+    if args.force and not args.score:
+        p.error("--force goes with --score")
     chosen = _selection(args)
     if chosen == []:      # an empty list must never fall back to a default selection downstream
         p.error("--floor / --tickers selected no names")
@@ -222,6 +256,22 @@ def main(argv: list[str] | None = None) -> int:
     if args.build_only and (args.name or args.adopt_medium_from):
         p.error("--build-only writes the shadow run only: --name and --adopt-medium-from belong to "
                 "--name-themes / --cutover")
+
+    if args.score:
+        t0 = time.monotonic()
+        try:
+            payload = engine.score(only_if_new=not args.force, provider=run_writer, **_model_kw(run_model))
+        except engine.AlreadyRunning as exc:
+            # A Fetch or another scoring run holds the board's lock: nothing was written (as RC-Forecast-Outcomes).
+            print(json.dumps({"skipped": str(exc)}, ensure_ascii=False))
+            return 3
+        out = {"n": payload.get("n"), "pairs": payload.get("n_pairs"), "scored": payload.get("n_scored"),
+               "similarity": payload.get("similarity"), "as_of": payload.get("as_of"),
+               "seconds": round(time.monotonic() - t0, 1)}
+        if payload.get("skipped"):
+            out["skipped"] = payload["skipped"]
+        print(json.dumps(out, ensure_ascii=False))
+        return 0
 
     if run_writer == "evren":
         print(f"EVREN (model {run_model or evren.MODEL}): no fee, no off-peak gate, no call cap"
@@ -348,7 +398,7 @@ def _model_kw(model: str | None) -> dict:
 
 def _deepseek_run(chosen, limit, cap, model: str | None = None) -> int:
     try:
-        payload = engine.run(tickers=chosen, limit=limit, usd_cap=cap, **_model_kw(model))
+        payload = engine.run(tickers=chosen, limit=limit, usd_cap=cap, provider="deepseek", **_model_kw(model))
     except engine.AlreadyRunning as exc:
         # Not green: nothing ran. (An off-peak deferral is different: it exits 0 below.)
         print(json.dumps({"skipped": str(exc)}, ensure_ascii=False))

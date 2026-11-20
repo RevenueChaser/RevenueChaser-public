@@ -10,7 +10,7 @@ from datetime import date
 import pytest
 
 from RevenueChaser.rcdata import read, sec_debt_note as note
-from RevenueChaser.rcdata.build.sec_reads import company_profile, debt_note
+from RevenueChaser.rcdata.build.sec_reads import company_profile, debt_note, questions
 
 END = date(2025, 12, 31)
 
@@ -111,11 +111,15 @@ def test_the_message_names_the_balance_date_and_holds_each_block_once():
 
 # ── the question ───────────────────────────────────────────────────────────────────────────────────────────────
 
-def test_debt_note_is_deepseek_flash_with_a_call_cap():
-    """Its registration, and its place in the run order, are checked in a fresh interpreter
+def test_debt_note_is_written_by_the_tools_switch_evren_by_default_with_no_cap():
+    """avo, 19 Nov 2026: "Fundamentals icinde evren deepseek olmali". The writer follows the tool's one switch, like
+    ``company.profile``, so EVREN by default and uncapped (it has no quota); the DeepSeek cap is kept for a process
+    that names DeepSeek. The registration and the run order are checked in a fresh interpreter
     (``module_relatedness/tests/test_service_profile_bytes.py``): this process's registry is emptied by fixtures."""
     q = debt_note.DEBT_NOTE
-    assert (q.provider, q.max_calls, q.prompt_version) == ("deepseek", 200, note.PROMPT_VERSION)
+    assert (q.provider, q.max_calls, q.prompt_version) == ("evren", None, note.PROMPT_VERSION)
+    assert q.provider == questions.PROVIDER == "evren" and q.writer_model == "evren-deepseek-v4.1-flash"
+    assert debt_note.MAX_CALLS == 200           # the cap a DeepSeek run still gets
     assert "pro" not in q.writer_model.lower()
     assert note.PROMPT_VERSION in q.system
 

@@ -728,6 +728,69 @@ def _record(manifest: _Manifest, failed_before: int, failed: list[str]) -> None:
     manifest.save()
 
 
+# -- The start gate (#212) ------------------------------------------------------------------------------------------
+
+#: A served file may be replaced while its step's newest verified copy is at most this many days old; past that the
+#: builder refuses to start (``rcdata/build/base.py`` ``backup_problem``). The same red line the Settings backup card
+#: draws (``module_settings/newdata.py`` ``BACKUP_ALERT_DAYS``).
+STALE_DAYS = 15
+#: ``RC_BUILD_BACKUP_GATE=0`` turns the gate off, for the one run that has to go ahead without a fresh copy (avo's
+#: word): the rollback without a revert. Anything else, and an unset variable, keeps it on.
+GATE_ENV = "RC_BUILD_BACKUP_GATE"
+
+
+def gate_on() -> bool:
+    """False only while ``RC_BUILD_BACKUP_GATE`` is exactly ``0``."""
+    return (os.getenv(GATE_ENV) or "1").strip() != "0"
+
+
+def last_verified(step: str) -> datetime | None:
+    """When ``step``'s last run verified every part it copied (its manifest's ``last_ok``), or None.
+
+    A read, and only a read: a missing, unreadable or half-written manifest answers None, which the gate reads as
+    "no verified backup" rather than as a fresh one. ``_record`` writes ``last_ok`` only when no part of the step
+    failed, so a run that could not verify a copy never moves this stamp.
+    """
+    try:
+        found = json.loads((step_dir(step) / MANIFEST_NAME).read_text(encoding="utf-8"))
+    except (BackupRefused, OSError, ValueError):
+        return None
+    stamp = found.get("last_ok") if isinstance(found, dict) else None
+    if not isinstance(stamp, str):
+        return None
+    try:
+        at = datetime.fromisoformat(stamp)
+    except ValueError:
+        return None
+    return at.astimezone(timezone.utc) if at.tzinfo else at.replace(tzinfo=timezone.utc)
+
+
+def stale_problem(now: datetime | None = None, step: str = STEP_DUCKDB) -> str | None:
+    """Why a write that replaces a served file must not start now, or None.
+
+    avo's rule is a fresh verified backup before every live write, and ``<step>``'s manifest is the one record of
+    when the last one verified -- the same record the Settings backup card reads, so the page, the builder and the
+    card cannot disagree about whether there is a copy.
+
+    None, so that nothing is ever held for a copy nobody asked for, when no backup folder is configured (a
+    developer's machine and CI have none) or the gate is switched off. Otherwise the newest verified copy has to be
+    at most ``STALE_DAYS`` days old; an older one, or none at all, is the refusal, and the sentence carries the age
+    and what to do about it.
+    """
+    if not (config.RAW_STORE_BACKUP_DIR or "").strip() or not gate_on():
+        return None
+    at = last_verified(step)
+    if at is None:
+        return (f"no verified backup of the served store: {step_dir(step) / MANIFEST_NAME} records no good run "
+                f"(take one with `rcdata backup`, or set {GATE_ENV}=0 to write without one)")
+    days = ((now or datetime.now(timezone.utc)) - at).days
+    if days > STALE_DAYS:
+        return (f"the newest verified backup of the served store is {days} days old ({at.date().isoformat()}, "
+                f"the limit is {STALE_DAYS}): take one with `rcdata backup`, or set {GATE_ENV}=0 to write "
+                f"without a fresh one")
+    return None
+
+
 def run_backup(only=None) -> dict:
     """Run the named steps (every one of them by default); a summary of what was written.
 

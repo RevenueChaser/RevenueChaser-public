@@ -4,6 +4,38 @@ from typing import Optional
 from RevenueChaser.core.config import RULE_WEIGHTS, DIRECTION_RANGE, VOLATILITY_EDGE_RANGE
 from RevenueChaser.module_earnings_radar.models import RuleResult
 
+# ── The cuts the board turns a score into a call with (#580) ──
+# They were literals inside the three functions below until the forecast-ledger freeze landed: the ledger stamps
+# every frozen card with "<SELECTION_VERSION>+<hash of RULE_WEIGHTS, the ranges, the gates and these cuts>", so a cut
+# that moves which call a card carries has to be part of that hash. The values are the ones the functions used.
+# ``classify_bias``: |direction| at or above this is a lean, below it NEUTRAL.
+BIAS_LEAN = 12
+# ``classify_conviction``: (|direction|, confidence, aligned rule votes) for HIGH and for MEDIUM.
+CONVICTION_HIGH = (25, 65, 3)
+CONVICTION_MEDIUM = (12, 45, 2)
+# ``select_action``: below WATCH_DIRECTION there is no direction to trade; below WATCH_CONFIDENCE the coverage is too
+# thin; at or above OPTIONS_DIRECTION with a volatility edge at or above OPTIONS_VOL_EDGE the vehicle is options; at
+# or above SHARES_DIRECTION it is shares; in between it is a directional watch.
+WATCH_DIRECTION = 12
+WATCH_CONFIDENCE = 50
+OPTIONS_DIRECTION, OPTIONS_VOL_EDGE = 25, 50
+SHARES_DIRECTION = 18
+
+# ── Forecast ledger (#580) ──
+# Bump by hand when the scoring logic changes in a way the hashed config does not show. The ledger stamps every
+# frozen card with "<SELECTION_VERSION>+<hash of RULE_WEIGHTS, the two ranges, the gates and SCORING_CUTS>", and a
+# golden test (tests/test_earnings_freeze_580.py) fails when one of those changes without this bump.
+# 1: the first frozen Earnings Radar board (#580).
+SELECTION_VERSION = "1"
+
+# What ``module_earnings_radar.freeze`` hashes for the ledger's model version: every cut above, by name.
+SCORING_CUTS = {
+    "BIAS_LEAN": BIAS_LEAN, "CONVICTION_HIGH": list(CONVICTION_HIGH), "CONVICTION_MEDIUM": list(CONVICTION_MEDIUM),
+    "WATCH_DIRECTION": WATCH_DIRECTION, "WATCH_CONFIDENCE": WATCH_CONFIDENCE,
+    "OPTIONS_DIRECTION": OPTIONS_DIRECTION, "OPTIONS_VOL_EDGE": OPTIONS_VOL_EDGE,
+    "SHARES_DIRECTION": SHARES_DIRECTION,
+}
+
 
 def compute_direction_score(rule_results: dict[str, RuleResult]) -> float:
     raw = 0.0
@@ -78,9 +110,9 @@ def compute_composite_scores(
 
 
 def classify_bias(direction_score: float) -> str:
-    if direction_score >= 12:
+    if direction_score >= BIAS_LEAN:
         return "BULLISH_LEAN"
-    if direction_score <= -12:
+    if direction_score <= -BIAS_LEAN:
         return "BEARISH_LEAN"
     return "NEUTRAL"
 
@@ -92,9 +124,11 @@ def classify_conviction(direction_score: float, confidence_score: float, rule_re
     nonzero = [s for s in scores if s != 0]
     aligned = sum((s > 0) == (direction_score > 0) for s in nonzero)
 
-    if abs(direction_score) >= 25 and confidence_score >= 65 and aligned >= 3:
+    hi_dir, hi_conf, hi_aligned = CONVICTION_HIGH
+    if abs(direction_score) >= hi_dir and confidence_score >= hi_conf and aligned >= hi_aligned:
         return "HIGH"
-    if abs(direction_score) >= 12 and confidence_score >= 45 and aligned >= 2:
+    md_dir, md_conf, md_aligned = CONVICTION_MEDIUM
+    if abs(direction_score) >= md_dir and confidence_score >= md_conf and aligned >= md_aligned:
         return "MEDIUM"
     return "LOW"
 
@@ -116,14 +150,14 @@ def select_action(
     """
     if veto_flag:
         return "NO_TRADE"
-    if abs(direction_score) < 12:
+    if abs(direction_score) < WATCH_DIRECTION:
         return "WATCH"
-    if confidence_score < 50:
+    if confidence_score < WATCH_CONFIDENCE:
         return "WATCH_LOW_COVERAGE"
     bullish = direction_score > 0
-    if abs(direction_score) >= 25 and volatility_edge_score >= 50:
+    if abs(direction_score) >= OPTIONS_DIRECTION and volatility_edge_score >= OPTIONS_VOL_EDGE:
         return "OPTIONS_BULL" if bullish else "OPTIONS_BEAR"
-    if abs(direction_score) >= 18:
+    if abs(direction_score) >= SHARES_DIRECTION:
         return "SHARES_BULL" if bullish else "SHARES_BEAR"
     return "DIRECTIONAL_WATCH"
 
@@ -164,8 +198,8 @@ def recommend_options_structure(direction_score: float, spot, gex: dict,
     if short_gamma is None:
         return ""
 
-    bullish = direction_score >= 12
-    bearish = direction_score <= -12
+    bullish = direction_score >= BIAS_LEAN
+    bearish = direction_score <= -BIAS_LEAN
 
     if short_gamma:
         if bullish:

@@ -1,4 +1,5 @@
-"""``wrds/fundq``, ``wrds/funda``, ``wrds/segments``: Compustat's statements and segments, a check of the SEC.
+"""``wrds/fundq``, ``wrds/funda``, ``wrds/segments``: Compustat's statements and segments, a check of the SEC; and
+``wrds/exrt``, Compustat's daily exchange rates, staged beside Yahoo's (``WrdsExrt``).
 
 **Run against the real source once** (the server run of 2026-10-29, PR 249: ``comp.fundq`` and ``comp.funda``
 answered; ``seg_customer`` had no ``srcdate``). So the dataset whose columns were a guess, ``wrds/segments``, reads
@@ -43,7 +44,7 @@ from ....core import calendar
 from .. import base
 from .. import dirty as dirty_set
 from ..spine import wrds as wrds_session
-from . import KIND, common, facts
+from . import KIND, common, facts, fx_rates
 
 PROVIDER = wrds_session.PROVIDER
 SNAPSHOT_DAYS = 30
@@ -133,6 +134,8 @@ class WrdsFund:
         #: The served tables this dataset's rows reach (#326): the first-reported values are the revisions,
         #: and the segment set is the Compustat half of the segment and customer tables.
         self.feeds = ("fundamental_revision",) if revisions else ("segment_revenue", "customer_share")
+        if table == "fundq":      # its ``rdq`` is the report day of ``earnings_report_history`` (#1181)
+            self.feeds += ("earnings_report_history",)
         self.staging = f"stg_wrds_{table}"
         self.revision_staging = f"stg_wrds_{table}_revision"
 
@@ -484,6 +487,213 @@ class WrdsSegments(WrdsFund):
                 f"customer rows, {shared} with a share of the SEC's revenue")
 
 
+class WrdsExrt(WrdsFund):
+    """``wrds/exrt``: Compustat's daily exchange rates (``comp.exrt_dly``), the whole history of the currencies the
+    fundamentals layer converts (``fx_rates.CURRENCIES``), one snapshot a month.
+
+    **Measured on homesrv, 20 Nov 2026 (#1181, step H of the WRDS plan):** every row's ``fromcurd`` is ``GBP``, so
+    a rate in USD per unit is the cross ``exratd(GBP->USD) / exratd(GBP->CUR)``; the table runs from 1982-02-01,
+    holds all 38 currencies we use, and its cross agrees with ``yfinance/fx`` within 1% on 91.4% of 9,947
+    (currency, day) pairs of a year (weakest: KZT, SAR, PEN; fixing-time differences, medians within about 1%).
+
+    **Compustat's rate is the one used wherever it has one** (DECISIONS F3; avo, 20 Nov 2026):
+    ``fx_rates.held_rates`` reads the newest snapshot of this dataset first and Yahoo's file for the days it lacks.
+    ``stg_wrds_exrt`` has the shape of ``stg_yf_fx`` (currency, day, USD per unit) and the check note says how the
+    two agree over the newest year."""
+
+    BASE = fx_rates.EXRT_BASE
+    USD = fx_rates.USD
+    TOLERANCE = 0.01
+    YEAR_DAYS = 365
+
+    def __init__(self):
+        attrs = [("fromcurd", "TEXT"), ("tocurd", "TEXT"), ("datadate", "DATE"), ("exratd", "DOUBLE")]
+        super().__init__(fx_rates.EXRT_TABLE, "comp", attrs, [], ["tocurd", "datadate"], "datadate", 0,
+                         revisions=False)
+        self.name = fx_rates.EXRT_NAME
+        # The rates a non-USD filer's facts are put in USD with, like ``yfinance/fx``'s (``fx_rates.held_rates``).
+        self.feeds = ("fundamental_fact", "peer_group", "customer_share")
+        self.raw_staging = "stg_wrds_exrt_raw"
+        self.staging = "stg_wrds_exrt"
+
+    def sql(self, gvkeys=None, as_of=None, library: str | None = None) -> str:
+        cols = ", ".join(c for c, _ in self.schema)
+        wanted = ", ".join(repr(c) for c in sorted({*fx_rates.CURRENCIES, self.USD}))
+        return (f"SELECT {cols} FROM {library or self.library}.{self.table} "
+                f"WHERE fromcurd = '{self.BASE}' AND tocurd IN ({wanted})")
+
+    def _full(self, ctx: base.RunContext, as_of: date) -> list[Path]:
+        return [wrds_session._ask(ctx, self.raw_path(as_of), self.sql(), as_of)]
+
+    def full_rebuild_reason(self, ctx: base.RunContext) -> str | None:
+        """A new snapshot is no reason to build the kind whole: the rates reach the facts when a company is typed
+        again, not through this dataset's staging."""
+        return None
+
+    def cross(self, con: duckdb.DuckDBPyConnection) -> int:
+        """``stg_wrds_exrt`` from the staged snapshot: USD per unit of each currency, by day. The base currency has
+        no row of its own against itself that we rely on: its rate is the USD row's."""
+        con.execute(f"CREATE OR REPLACE TEMP TABLE {self.staging} AS "
+                    + fx_rates.cross_sql(self.raw_staging, stamps=True))
+        return common.count(con, self.staging)
+
+    def build(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> dict[str, int]:
+        snaps = self.snapshots()
+        common.stage_glob(con, self.raw_staging, self.schema + PROVENANCE, common.parquet_dir(self.name),
+                          f"snapshot={snaps[-1]}/{self.table}.parquet" if snaps else "snapshot=none/none")
+        self.cross(con)
+        return {}
+
+    def note(self, con: duckdb.DuckDBPyConnection) -> str:
+        cols = ", ".join(f'"{c}" {t}' for c, t in fx_rates.SCHEMA)
+        con.execute(f"CREATE TEMP TABLE IF NOT EXISTS {fx_rates.STAGING} ({cols})")     # a registry without Yahoo's
+        currencies, first, newest = con.execute(
+            f"SELECT count(DISTINCT currency), min(day), max(day) FROM {self.staging}").fetchone()
+        if not currencies:
+            return "WRDS exrt_dly: no snapshot yet"
+        n, ok = con.execute(f"""
+            SELECT count(*), count(*) FILTER (WHERE abs(w.usd_per_unit - y.usd_per_unit)
+                                                    <= {self.TOLERANCE} * greatest(w.usd_per_unit, y.usd_per_unit))
+            FROM {self.staging} w JOIN {fx_rates.STAGING} y ON y.currency = w.currency AND y.day = w.day
+            WHERE w.day > DATE '{newest}' - INTERVAL {self.YEAR_DAYS} DAY AND y.usd_per_unit > 0""").fetchone()
+        missing = sorted(set(fx_rates.CURRENCIES) - {r[0] for r in con.execute(
+            f"SELECT DISTINCT currency FROM {self.staging}").fetchall()})
+        return (f"WRDS exrt_dly ({self.BASE}-based, crossed to USD): {currencies} currencies, {first} to {newest}; "
+                f"{int(ok or 0)} of {int(n or 0)} (currency, day) pairs of the newest year agree with Yahoo within "
+                f"1%" + (f"; not at Compustat: {', '.join(missing)}" if missing else ""))
+
+
+class WrdsAudit(WrdsFund):
+    """``wrds/audit``: Audit Analytics' three event feeds, whole, one snapshot a month: financial restatements
+    (``feed39_financial_restatements``), late-filing notices (``feed20_nt``, the NT 10-K / NT 10-Q forms) and
+    director and officer changes (``feed17_director_and_officer_chan``).
+
+    **Measured on homesrv, 20 Nov 2026 (#1181, step C of the WRDS plan):** ``company_fkey`` is the SEC's CIK (all
+    digits, largest 2,108,359; 5,078 of our 5,292 CIKs are in the officer feed, 2,833 in the restatements, 2,166 in
+    the late filings, against 35 to 53 expected by chance), so the rows need no link table. All three ended in the
+    second half of September 2026, about two months behind the day they were read: a flag built from them is a
+    history, and the fresh signal stays the 8-K's own item (``filing_item``).
+
+    Of each feed's 219 to 249 columns only the event's own are asked: its key, the company, the filing day and
+    form, and the columns that say what happened. No person's name and no disclosure text is asked. **What the
+    flag columns hold is not measured yet** (``res_fraud``, ``is_ceo``, ... may be 0/1, Y/N or text), so they are
+    kept as text exactly as WRDS answers and nothing is served from this dataset: the check note counts each feed
+    and our companies in it. Whether a feed's key is unique is not measured either, so a snapshot keeps every
+    distinct row and the note says how many keys they are."""
+
+    LIBRARY = "audit_audit_comp"
+    COMPANY = "company_fkey"
+    # part -> (label of the note, the columns asked, the feed's own key)
+    PARTS = {
+        "feed39_financial_restatements": ("restatements", [
+            ("restatement_notification_key", "TEXT"), ("company_fkey", "TEXT"), ("file_date", "DATE"),
+            ("form_fkey", "TEXT"), ("res_begin_date", "DATE"), ("res_end_date", "DATE"),
+            ("date_of_8k_402", "DATE"), ("res_accounting", "TEXT"), ("res_fraud", "TEXT"),
+            ("res_clerical_errors", "TEXT"), ("res_other", "TEXT"), ("res_adverse", "TEXT"),
+            ("res_improves", "TEXT"), ("res_sec_investigation", "TEXT"), ("res_board_approval", "TEXT"),
+            ("res_auditor_letter", "TEXT"), ("quarterly_restated_only", "TEXT")],
+            "restatement_notification_key"),
+        "feed20_nt": ("late filings", [
+            ("nt_notify_key", "TEXT"), ("company_fkey", "TEXT"), ("file_date", "DATE"), ("form_fkey", "TEXT"),
+            ("pe_date_num", "TEXT"), ("nt_reas_keys", "TEXT"), ("nt_reas_titles", "TEXT")],
+            "nt_notify_key"),
+        "feed17_director_and_officer_chan": ("officer changes", [
+            ("do_change_key", "TEXT"), ("do_off_pers_key", "TEXT"), ("company_fkey", "TEXT"),
+            ("file_date", "DATE"), ("form_fkey", "TEXT"), ("eff_date", "DATE"), ("action", "TEXT"),
+            ("title_standard", "TEXT"), ("is_ceo", "TEXT"), ("is_cfo", "TEXT"), ("is_coo", "TEXT"),
+            ("is_president", "TEXT"), ("is_chair", "TEXT"), ("is_c_level", "TEXT"), ("is_bdmem_pers", "TEXT"),
+            ("interim", "TEXT")],
+            "do_change_key"),
+    }
+    STAGING = {"feed39_financial_restatements": "stg_wrds_restatements", "feed20_nt": "stg_wrds_late_filings",
+               "feed17_director_and_officer_chan": "stg_wrds_officer_changes"}
+    FIRST = "feed39_financial_restatements"
+
+    def __init__(self):
+        super().__init__(self.FIRST, self.LIBRARY, [], [], [], "file_date", 0, revisions=False)
+        self.name = "wrds/audit"
+        self.feeds = ()                                  # staged and counted; no served table reads it yet
+        self.schema = self.PARTS[self.FIRST][1]
+        self.staging = self.STAGING[self.FIRST]
+
+    def raw_path(self, as_of: date, part: str = FIRST) -> Path:
+        return common.raw_dir(self.name) / as_of.isoformat() / f"{part}{wrds_session.RAW_SUFFIX}"
+
+    def snapshot_file(self, as_of: str, part: str = FIRST) -> Path:
+        return common.parquet_dir(self.name) / f"snapshot={as_of}" / f"{part}.parquet"
+
+    def _parts(self) -> list[tuple]:
+        return [(p,) for p in self.PARTS]
+
+    def snapshots(self) -> list[str]:
+        folder = common.parquet_dir(self.name)
+        if not folder.is_dir():
+            return []
+        return sorted(d.name.split("=", 1)[1] for d in folder.iterdir()
+                      if d.name.startswith("snapshot=") and all((d / f"{p}.parquet").is_file() for p in self.PARTS))
+
+    def sql(self, part: str = FIRST, as_of=None, library: str | None = None) -> str:
+        cols = ", ".join(c for c, _ in self.PARTS[part][1])
+        return f"SELECT {cols} FROM {library or self.library}.{part}"
+
+    def _full(self, ctx: base.RunContext, as_of: date) -> list[Path]:
+        return [wrds_session._ask(ctx, self.raw_path(as_of, part), self.sql(part), as_of) for part in self.PARTS]
+
+    def full_rebuild_reason(self, ctx: base.RunContext) -> str | None:
+        """A new snapshot is no reason to build the kind whole: no served table reads these feeds yet."""
+        return None
+
+    def to_parquet_all(self, ctx: base.RunContext, raws: list[Path]) -> list[Path]:
+        out = []
+        for raw in raws:
+            part = raw.name[: -len(wrds_session.RAW_SUFFIX)]
+            _, schema, _ = self.PARTS[part]
+            meta = base.read_raw_json(common.meta_path(raw))
+            as_of = meta["as_of"]
+            con = base.scratch_con()
+            try:
+                rows = f"SELECT DISTINCT * FROM ({wrds_session.raw_rows(raw, schema)})"
+                if not con.execute(f"SELECT count(*) FROM ({rows})").fetchone()[0]:
+                    raise base.SourceError(f"wrds {part}: the snapshot came back empty")
+                for col, n in wrds_session.untyped(con, raw, schema).items():
+                    ctx.issue("value_untyped", f"{part}.{col}", f"{n} row(s) nulled")
+                every = ", ".join(f'"{c}" NULLS LAST' for c, _ in schema)
+                select = (f"SELECT *, DATE '{as_of}' AS source_as_of, CAST({float(meta['fetched_at'])} AS DOUBLE) "
+                          f"AS fetched_at, '{meta['run_id']}' AS run_id FROM ({rows}) "
+                          f"ORDER BY {self.COMPANY} NULLS LAST, file_date NULLS LAST, {every}")
+                out.append(base.write_parquet(con, select, self.snapshot_file(as_of, part)))
+            finally:
+                con.close()
+            ctx.pending.setdefault(self.name, []).append(as_of)
+        return out
+
+    def build(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> dict[str, int]:
+        snaps = self.snapshots()
+        for part, (_, schema, _) in self.PARTS.items():
+            common.stage_glob(con, self.STAGING[part], schema + PROVENANCE, common.parquet_dir(self.name),
+                              f"snapshot={snaps[-1]}/{part}.parquet" if snaps else "snapshot=none/none")
+        return {}
+
+    def note(self, con: duckdb.DuckDBPyConnection) -> str:
+        """Per feed: its rows, its keys, how many of our companies it holds (``company_fkey`` against the CIK, both
+        without leading zeros) and its newest filing day."""
+        ours = con.execute("SELECT count(DISTINCT ltrim(cik, '0')) FROM fundamental_company").fetchone()[0]
+        parts = []
+        for part, (label, _, key) in self.PARTS.items():
+            stg = self.STAGING[part]
+            rows, keys, newest = con.execute(
+                f'SELECT count(*), count(DISTINCT "{key}"), max(file_date) FROM {stg}').fetchone()
+            if not rows:
+                continue
+            held = con.execute(f"""
+                SELECT count(*) FROM (SELECT DISTINCT ltrim(cik, '0') AS cik FROM fundamental_company) c
+                WHERE c.cik IN (SELECT ltrim({self.COMPANY}, '0') FROM {stg})""").fetchone()[0]
+            parts.append(f"{label} {rows} rows ({keys} keys), {held} of {ours} Tier A companies, newest {newest}")
+        if not parts:
+            return "WRDS audit feeds: no snapshot yet"
+        return "WRDS audit feeds (company_fkey is the CIK): " + "; ".join(parts)
+
+
 FUNDQ = WrdsFund("fundq", "comp",
                  [("gvkey", "TEXT"), ("datadate", "DATE"), ("fyearq", "INTEGER"), ("fqtr", "INTEGER"),
                   ("fyr", "INTEGER"), ("rdq", "DATE")],
@@ -494,4 +704,6 @@ FUNDA = WrdsFund("funda", "comp",
                  ["revt", "cogs", "oiadp", "ni", "epspx", "epsfx", "at", "dltt", "dlc", "che", "ceq", "oancf", "capx"],
                  ["gvkey", "datadate"], "datadate", YEARS, revisions=True)
 SEGMENTS = WrdsSegments()
-DATASETS = (FUNDQ, FUNDA, SEGMENTS)
+EXRT = WrdsExrt()
+AUDIT = WrdsAudit()
+DATASETS = (FUNDQ, FUNDA, SEGMENTS, EXRT, AUDIT)

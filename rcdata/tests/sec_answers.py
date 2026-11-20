@@ -15,3 +15,8 @@ REFUSED_PAGE = (b"<!DOCTYPE html><html><head><title>SEC.gov | Your Request Origi
                 b"Automated Tool</title></head><body>Your Request Originates from an Undeclared Automated Tool"
                 b"</body></html>")
 REFUSED_HEADERS = {"content-type": "text/html", "server": "AkamaiGHost"}
+
+# EDGAR's edge under load: an HTML error page with a 5xx, which says nothing about whether the object is there.
+# Measured in RC-Build.log on 19 Nov 2026 (#1123): 504 at 17:06 and 20:08, 502 at 19:07, all for one document.
+GATEWAY_PAGE = b"<html><head><title>502 Bad Gateway</title></head><body>Bad Gateway</body></html>"
+GATEWAY_HEADERS = {"content-type": "text/html", "server": "AkamaiGHost"}

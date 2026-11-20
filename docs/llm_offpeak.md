@@ -121,6 +121,18 @@ on the board, not with `RC_EVREN_MODEL` / `RC_DEEPSEEK_MODEL`: the board's model
 call. The Grok and Claude subscription writers were one-off and are removed (avo, 15 Nov 2026); their stored
 profiles stay current at the current `prompt_version` (`store.is_stale`).
 
+## No Fetch and no build calls the paid API (avo, 20 Nov 2026)
+
+avo: "Fetch ve build sirasinda deepseek api kullanilan islem kalmasin hepsi evren deepseek olmali". Every LLM job's
+writer comes from one registry (`core/llm_jobs.py`, #404) and its default is EVREN, which has no fee; the paid
+DeepSeek API is reachable only when a caller names it — `--provider deepseek`, a `RC_SEC_READS_PROVIDER=deepseek`
+process, or the Settings page. Since 20 Nov 2026 no function's writer argument *defaults* to the paid writer
+either: `module_relatedness` (`engine.run`, `engine.score`, `engine.build_profiles`, `profiles.llm`,
+`profiles.profile_for`, `locator.locate`, `store.save_profile`) carried `provider="deepseek"` as its default, so a
+caller that forgot the argument spent money. The writer a call names none for is now read at call time, in one
+place (`module_relatedness/config.py` `default_writer()` -> `core.llm_writers.DEFAULT`), and
+`core/tests/test_llm_jobs_404.py` fails any writer argument in the tree that defaults to a paid provider.
+
 ## Tests
 
 - Peak start → 0 HTTP, immediate stop.

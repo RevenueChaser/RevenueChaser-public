@@ -32,14 +32,15 @@ STATUS_UNKNOWN = "status_unknown"
 DATASET_OF_TABLE = {"market_series": "market_series", "spx_gamma_expiry_strike": "uw/spot_expiry_strike",
                     "spx_greek_expiry_strike": "uw/greek_expiry_strike",
                     "economic_event": "uw/economic_calendar",
-                    "security": "spine/security", "index_membership": "funds/index_holdings",
+                    "security": "spine/security", "security_history": "spine/security",
+                    "gics_history": "spine/security", "index_membership": "funds/index_holdings",
                     "fund": "sec/company_tickers_mf", "etf_holdings": "funds/etf_holdings", "etf": "spine/security",
                     "my_universe": "spine/security", "my_universe_changes": "spine/security",
                     "etf_class": "spine/security", "etf_class_changes": "spine/security",
                     "etf_theme": "spine/security"}
 KIND_OF_TABLE = {"market_series": "market", "spx_gamma_expiry_strike": "market",
                  "spx_greek_expiry_strike": "market", "economic_event": "market",
-                 "security": "spine",
+                 "security": "spine", "security_history": "spine", "gics_history": "spine",
                  "index_membership": "spine", "fund": "spine", "etf_holdings": "spine", "etf": "spine",
                  "my_universe": "spine", "my_universe_changes": "spine",
                  "etf_class": "spine", "etf_class_changes": "spine", "etf_theme": "spine"}
@@ -49,6 +50,8 @@ DATASET_OF_TABLE.update({"sec13f_ticker_period": "ownership/serve", "sec13f_peri
                          "sec13f_type_holdings": "ownership/serve", "sec13f_type_sector": "ownership/serve",
                          "sec13f_type_flow": "ownership/serve", "sec13f_filer_style": "ownership/serve",
                          "sec13f_filer_holdings": "ownership/serve",
+                         "sec13f_filer_period": "ownership/serve",
+                         "sec13f_filings": "sec/13f", "sec13f_data_sets": "sec/13f_sets_listed",
                          "finra_short_interest": "finra/short_interest", "ibkr_shortable": "ibkr/shortable",
                          "regsho_threshold": "regsho/threshold", "sec_ftd": "sec/ftd",
                          "insider_transactions": "sec/form4", "beneficial_ownership": "sec/13dg",
@@ -57,7 +60,8 @@ DATASET_OF_TABLE.update({"sec13f_ticker_period": "ownership/serve", "sec13f_peri
 KIND_OF_TABLE.update({t: "ownership" for t in ("sec13f_ticker_period", "sec13f_periods", "sec13f_cusip_map",
                                                "sec13f_filer_breaks", "sec13f_type_holdings",
                                                "sec13f_type_sector", "sec13f_type_flow", "sec13f_filer_style",
-                                               "sec13f_filer_holdings",
+                                               "sec13f_filer_holdings", "sec13f_filer_period",
+                                               "sec13f_filings", "sec13f_data_sets",
                                                "finra_short_interest",
                                                "ibkr_shortable", "regsho_threshold", "sec_ftd",
                                                "insider_transactions", "beneficial_ownership",
@@ -1181,10 +1185,11 @@ def beneficial_ownership(tickers: Iterable[str], start=None, end=None) -> list[d
 DATASET_OF_TABLE.update({"fundamental_company": "fundamentals/tables", "fundamental_fact": None, "earnings_event": None, "estimate_latest": "yfinance/estimates",
                          "filing_item": "sec/filings", "segment_revenue": None, "customer_share": None,
                          "peer_group": "fundamentals/tables", "fundamental_revision": None,
-                         "earnings_reported": "uw/earnings"})
+                         "earnings_reported": "uw/earnings", "earnings_report_history": None})
 KIND_OF_TABLE.update({t: "fundamentals" for t in ("fundamental_company", "fundamental_fact", "earnings_event", "estimate_latest",
                                                   "filing_item", "segment_revenue", "customer_share", "peer_group",
-                                                  "fundamental_revision", "earnings_reported")})
+                                                  "fundamental_revision", "earnings_reported",
+                                                  "earnings_report_history")})
 
 
 def _cik(cik) -> str:
@@ -1261,6 +1266,25 @@ def earnings_reported(cik=None) -> list[dict]:
         sql += " AND cik = ?"
         params.append(str(cik))
     return _rows("earnings_reported", sql + " ORDER BY cik, period_end", params, missing_table_ok=True)
+
+
+def earnings_report_history(cik=None, start=None, end=None) -> list[dict]:
+    """``earnings_report_history`` rows (of ``cik``, or every company) with ``start <= report_date <= end``, by
+    company and quarter: the day each past quarter's results were made public.
+
+    Compustat's ``rdq`` where it has one, UW's report day where it has none; ``source`` on every row says which.
+    A past date only: a coming report is ``earnings_event``. A file built before the table existed answers []."""
+    sql, params = "SELECT * FROM earnings_report_history WHERE true", []
+    if cik is not None:
+        sql += " AND cik = ?"
+        params.append(_cik(cik))
+    if start is not None:
+        sql += " AND report_date >= ?"
+        params.append(_day(start))
+    if end is not None:
+        sql += " AND report_date <= ?"
+        params.append(_day(end))
+    return _rows("earnings_report_history", sql + " ORDER BY cik, period_end", params, missing_table_ok=True)
 
 
 def earnings_events(cik=None, start=None, end=None) -> list[dict]:

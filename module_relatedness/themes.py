@@ -70,6 +70,31 @@ def tag_docs(profiles: dict[str, dict]) -> tuple[list[str], list[list[str]]]:
     return tickers, docs
 
 
+def member_ranks(tickers, caps: dict | None = None) -> dict[str, int]:
+    """``{ticker: 1-based rank}`` in **cap-descending** order, the order the naming prompt's example
+    companies are taken in (#298, avo's B of 19 Nov 2026: show the theme's largest names, not its
+    alphabetically first ones).
+
+    The fit's ticker list is alphabetical (:func:`tag_docs`), so the rank cannot come from it: the caps
+    come from the classification universe (``core.universe.classification_universe_rows``), the same
+    rows and the same floor the fit is scoped to, and the key is the universe's own
+    (``market_cap DESC``, NULLs last, ``ticker`` to break a tie — ``core.universe._by_cap``). A name
+    the universe has no cap for therefore ranks after every name that has one, alphabetically among its
+    kind, which is today's order; so is every rank when the caps cannot be read at all. ``caps`` is for
+    a test that wants its own.
+    """
+    if caps is None:
+        try:
+            from RevenueChaser.core.universe import BOARD_OPERATING_ONLY, classification_universe_rows
+            caps = {r["ticker"]: r.get("market_cap") for r in classification_universe_rows(
+                operating_only=BOARD_OPERATING_ONLY["module_relatedness"])}
+        except Exception as exc:  # noqa: BLE001 - a rank is the prompt's order, never the run's success
+            logger.warning("theme member ranks fall back to the ticker order: %s", exc)
+            caps = {}
+    order = sorted(tickers, key=lambda t: (caps.get(t) is None, -(caps.get(t) or 0), t))
+    return {t: i for i, t in enumerate(order, 1)}
+
+
 def tag_matrix(profiles: dict[str, dict]):
     """TF-IDF matrix (tickers x tags) with ``max_df=0.5``. Returns (X, terms, tickers).
 
@@ -305,9 +330,10 @@ def build_shadow(candidates=(60, 90, 120, 150), k_medium: int | None = None,
     for c in sorted(coarse_size):
         theme_rows.append({"theme_id": f"{run_id}:c{c}", "level": "coarse",
                            "parent_id": "", "label": "", "size": coarse_size[c]})
+    ranks = member_ranks(tickers)
     for t, label in zip(tickers, fine):
         member_rows.append({"ticker": t, "theme_id": f"{run_id}:f{int(label)}",
-                            "weight": 1.0})
+                            "weight": 1.0, "rank": ranks.get(t)})
 
     run_row = {
         "id": run_id, "created_at": _now(), "k_fine": k_fine,
@@ -360,7 +386,7 @@ def current_run_id() -> str | None:
 # The deterministic read order of a run's theme tables (#20). ``relatedness_themes`` is deliberately
 # absent -- see :func:`run_rows`.
 ROW_ORDER = {"relatedness_theme_tags": "theme_id, rank, tag",
-             "relatedness_theme_members": "theme_id, ticker"}
+             "relatedness_theme_members": "theme_id, rank NULLS LAST, ticker"}
 
 
 def run_rows(table: str, run_id: str, level: str | None = None) -> list[dict]:
@@ -381,14 +407,18 @@ def run_rows(table: str, run_id: str, level: str | None = None) -> list[dict]:
     the scan-order dependency, which is a real one for any run whose rows were not written in that
     order; it does not and cannot fix the fine numbering.
 
-    ``relatedness_theme_members`` is ordered ``theme_id, ticker``, which reproduces the order
-    ``build_shadow`` writes today: the members come from ``tag_docs``' ``sorted(profiles)``
-    (:func:`tag_docs`), so within a theme they are already alphabetical, and ``naming._aggregate``
-    keeps the first ``MAX_TICKERS`` of a theme as the prompt's example companies. The entry makes
-    that order a contract instead of the planner's choice. Whether those examples *should* instead be
-    the theme's largest names is a separate question -- it needs a ``rank`` column written from the
-    fit's ticker position, and it changes what the model is asked, so it changes the names a board
-    shows. Parked.
+    ``relatedness_theme_members`` is ordered ``theme_id, rank NULLS LAST, ticker``, and
+    ``naming._aggregate`` keeps the first ``MAX_TICKERS`` of a theme as the prompt's example
+    companies -- so the order decides which companies the model is shown. ``rank`` is the member's
+    place in the cap-descending universe (:func:`member_ranks`), which makes those examples the
+    theme's **largest** names: #298, avo's B of 19 Nov 2026. It was the alphabetically first names
+    before (``AAPL, ADBE, AMAT, ...`` for a semiconductor theme), because the members came from
+    ``tag_docs``' ``sorted(profiles)`` and the order read ``theme_id, ticker``.
+
+    ``NULLS LAST`` is for the stored runs: ``rank`` is an additive column, so a run written before it
+    carries NULL for every member and falls back to the ``ticker`` order it was read in until it is
+    rebuilt. The stored **names** do not move either way: a label changes only when naming runs again
+    (``naming.name_themes``), which is a paid step of its own.
 
     ``relatedness_themes`` is deliberately **not** ordered. #20 does not need it (the two callers
     above sort the ids they walk themselves), and an ``ORDER BY theme_id`` would change

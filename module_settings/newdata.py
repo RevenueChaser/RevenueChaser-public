@@ -25,6 +25,8 @@ from pathlib import Path
 
 from collections.abc import Mapping
 
+import duckdb
+
 from RevenueChaser.core import calendar, config
 from RevenueChaser.rcdata import caps, ops, retention, serving
 from RevenueChaser.rcdata.needs import screen as api_screen
@@ -121,10 +123,15 @@ MY_UNIVERSE_CHANGES = "my_universe_changes"
 
 # The identity funnel (PR 5, D9): the indexes it counts, and the dataset whose build issues it lists.
 SPINE_INDEXES = ("sp500", "sp400", "sp600", "ndx")
+#: How far back of ``build_audit`` counts as the last round (#446 step 8). One round stamps every key it checked
+#: with the same ``time.time()`` call, but a build that audits several subjects stamps each one as it finishes, so
+#: a window and not an equality: a minute is far longer than a round takes and far shorter than the gap to the
+#: build before it (hourly at most).
+AUDIT_ROUND_S = 60.0
 SPINE_ISSUES = "spine/security"
 # The WRDS difference slot (decision 3): these check datasets' cards show their newest monthly difference report,
 # the note of their newest run that read WRDS (PR 12, decided 27 Oct); every other card says no WRDS run yet.
-WRDS_DIFFERENCE = ("wrds/fundq", "wrds/funda", "wrds/segments")
+WRDS_DIFFERENCE = ("wrds/fundq", "wrds/funda", "wrds/segments", "wrds/exrt", "wrds/audit")
 # S8: a report that has not run shows a dash and says so, rather than a sentence that reads like a result.
 NO_WRDS = {"text": "no WRDS run yet", "produced": False}
 # Old .store tables a new dataset replaces: their reads in read_log are the retirement count (read for 14 days).
@@ -398,6 +405,23 @@ def _wrds_slot(dataset: str, facts: dict) -> dict:
 #: How many example rows a card shows (A16). Five: enough to see what a row looks like, few enough to read on a
 #: phone and to cost nothing to fetch.
 SAMPLE_ROWS = 5
+
+
+def sampled_columns() -> dict[str, str | None]:
+    """Every table the control board draws an example block for, with the column that orders its rows or None.
+
+    The board's blocks come from the datasets' own ``tables`` (``_board``: ``samples`` is ``ds.tables``), so the set
+    is every served table plus the tables only this screen dates. A served table with no date column at all
+    (``peer_group``: a rebuilt-whole peer list, no column dates a row) is here with None and is read unordered,
+    rather than refused with "unknown table" (#338). ``DATE_COLUMN`` stays the dating map and is not widened: a
+    table with no column here must not be given one, because a card would then date it by a column it does not have.
+    """
+    from RevenueChaser.rcdata.build import DATASETS
+    out: dict[str, str | None] = dict(DATE_COLUMN)
+    for ds in DATASETS.values():
+        for table in ds.tables:
+            out.setdefault(table, None)
+    return out
 #: The cases in the data that look like a bug and are not (K13). One line each, shown beside that table's rows.
 SAMPLE_NOTES: dict[str, tuple[str, ...]] = {
     "security_symbol": ("HEI and HEI-A are two share classes of one issuer: the symbol is not the key, the "
@@ -487,12 +511,13 @@ class SampleUnavailable(LookupError):
 def read_sample_now(table: str, now: datetime | None = None, cached: bool = False) -> dict:
     """The control board's **Refresh the example rows**: one table's newest rows, read again past the hourly cache.
 
-    Only a table the cards sample (``DATE_COLUMN``) is read, through one ``open_read`` handle on its own file; the
-    answer replaces the cached sample, so the next render shows the same rows. ``KeyError`` for any other name,
+    Only a table the cards sample (``sampled_columns``) is read, through one ``open_read`` handle on its own file;
+    the answer replaces the cached sample, so the next render shows the same rows. ``KeyError`` for any other name,
     :class:`SampleUnavailable` when the file or the table is not there. No provider, no job, no write.
     """
     from RevenueChaser.rcdata import read
-    if table not in DATE_COLUMN or table not in read.KIND_OF_TABLE:
+    columns = sampled_columns()
+    if table not in columns or table not in read.KIND_OF_TABLE:
         raise KeyError(table)
     if cached:      # the page's first look at a block: this hour's sample when there is one (the rows left the page)
         hit = _SAMPLE_CACHE.get(table)
@@ -507,7 +532,7 @@ def read_sample_now(table: str, now: datetime | None = None, cached: bool = Fals
         names = {r[0] for r in con.execute("SELECT table_name FROM duckdb_tables()").fetchall()}
         if table not in names:
             raise SampleUnavailable(f"the {kind} file has no {table} table yet")
-        sample = _read_sample(con, table, DATE_COLUMN[table])
+        sample = _read_sample(con, table, columns[table])
     finally:
         con.close()
     _SAMPLE_CACHE[table] = (_sample_key(table, now or datetime.now(timezone.utc)), sample)
@@ -528,32 +553,40 @@ def _sample_block(table: str, sample: dict | None) -> dict:
             "columns": [{"name": name, "type": str(kind)} for name, kind in declared]}
 
 
-def _serving_facts(now: datetime | None = None) -> tuple[dict[str, dict], dict[str, str | None], dict | None]:
-    """``({table: {rows, newest, sample}}, {kind: last swap}, the spine's funnel counts or None)``, from one
-    ``open_read`` per kind, closed before return.
+def _serving_facts(now: datetime | None = None
+                   ) -> tuple[dict[str, dict], dict[str, str | None], dict | None, dict[str, dict]]:
+    """``({table: {rows, newest, sample}}, {kind: last swap}, the spine's funnel counts or None,
+    {kind: how it was built})``, from one ``open_read`` per kind, closed before return.
 
     ``sample`` is the table's newest five rows (A16), read through this same connection and cached by the hour, so
     a page render costs one read per table per hour rather than one per render. Without ``now`` no sample is read
     at all, which is what a caller that only wants the counts asks for.
+
+    A kind whose file cannot be read -- not built yet, or replaced by a swap between the open and a query -- is
+    left out of all four maps rather than raising (#310 N13).
     """
     tables: dict[str, dict] = {}
     swaps: dict[str, str | None] = {}
     funnel: dict | None = None
+    builds: dict[str, dict] = {}
     for kind in serving.KINDS:
         swaps[kind] = None
         try:
             con = serving.open_read(kind)
-        except serving.ServingFileMissing:
-            continue
+        except (serving.ServingFileMissing, duckdb.Error):
+            continue                            # not built yet, or caught mid-swap: see the ``duckdb.Error`` below
         try:
             names = {r[0] for r in con.execute("SELECT table_name FROM duckdb_tables()").fetchall()}
             if serving.VERSION_TABLE in names:
                 row = con.execute(f"SELECT max(built_at) FROM {serving.VERSION_TABLE}").fetchone()
                 swaps[kind] = _iso_utc(row[0]) if row and row[0] is not None else None
-            for table, col in DATE_COLUMN.items():
+            for table, col in sampled_columns().items():
                 if table not in names:
                     continue
-                rows, newest = con.execute(f'SELECT count(*), max("{col}") FROM "{table}"').fetchone()
+                if col is None:         # a served table no column dates: counted and sampled, never dated (#338)
+                    rows, newest = con.execute(f'SELECT count(*) FROM "{table}"').fetchone()[0], None
+                else:
+                    rows, newest = con.execute(f'SELECT count(*), max("{col}") FROM "{table}"').fetchone()
                 tables[table] = {"rows": int(rows), "newest": newest.isoformat() if newest else None}
                 if now is not None:
                     tables[table]["sample"] = _cached_sample(
@@ -573,9 +606,78 @@ def _serving_facts(now: datetime | None = None) -> tuple[dict[str, dict], dict[s
                 tables["wrds_price_diff"]["report"] = [
                     {k: (v.isoformat() if isinstance(v, date) else v) for k, v in zip(cols, r)}
                     for r in cur.fetchall()]
+            builds[kind] = _build_of(kind, con, names)
+        except duckdb.Error:
+            # #310 N13: the builder swaps a kind in by replacing its path, so the file this connection holds can
+            # go away between the open above and any of the reads here. A kind caught that way says nothing --
+            # the same as a kind whose file is not built yet -- instead of taking the whole Database tab down to
+            # the one-line error ``report._collect_newdata`` falls back to. What was read before the failure
+            # stands: these are counts of a build that really was live a moment ago.
+            continue
         finally:
             con.close()
-    return tables, swaps, funnel
+    return tables, swaps, funnel, builds
+
+
+def _columns(con, table: str) -> set[str]:
+    """The column names ``table`` has in the file this connection holds, lowercased."""
+    try:
+        return {str(r[0]).lower() for r in con.execute(
+            "SELECT column_name FROM duckdb_columns() WHERE table_name = ?", (table,)).fetchall()}
+    except duckdb.Error:
+        return set()
+
+
+def _build_of(kind: str, con, names: set[str]) -> dict:
+    """How ``kind``'s live file was last built, for the Serving builds card (#446 step 8).
+
+    Every number is already carried inside the file by the steps before this one, so this is four queries on the
+    connection the caller already holds and opens nothing of its own: ``serving_schema_version`` says which base
+    the build got (#446 step 1), ``build_manifest`` is the Parquet tree it was built from (step 2), and
+    ``build_audit`` / ``build_audit_dirty`` are the audit's rounds and the keys it still owes (step 5).
+
+    A file that carries none of them is a file built before #446 landed: it reads as a whole build with no
+    manifest, never as an error.
+    """
+    from RevenueChaser.rcdata.build import audit, base, dirty
+    out: dict = {"kind": kind, "mode": None, "built_at": None, "files": None, "changed": None,
+                 "audited_at": None, "audited": None, "differs": None, "owed": None}
+    if serving.VERSION_TABLE in names:
+        # A file older than #446 step 1 has a version table without ``build_mode``, and so does every test fixture
+        # that writes the table by hand. The card asks the file which columns it has rather than assuming: a build
+        # it cannot name the base of reads as no mode on record, never as an error on the whole Database tab.
+        cols = _columns(con, serving.VERSION_TABLE)
+        if "built_at" in cols:
+            picked = "build_mode, built_at" if "build_mode" in cols else "NULL, built_at"
+            row = con.execute(f"SELECT {picked} FROM {serving.VERSION_TABLE} WHERE kind = ? "
+                              "ORDER BY built_at DESC NULLS LAST LIMIT 1", (kind,)).fetchone()
+            if row is not None:
+                out["mode"] = str(row[0]) if row[0] else None
+                out["built_at"] = _iso_utc(row[1]) if row[1] is not None else None
+    if dirty.MANIFEST_TABLE in names:
+        held = {str(p): (int(size), float(mtime)) for p, size, mtime in
+                con.execute(f"SELECT path, size, mtime FROM {dirty.MANIFEST_TABLE}").fetchall()}
+        out["files"] = len(held)
+        try:
+            # The same comparison ``dirty.changes`` makes, against the manifest just read rather than through a
+            # second open of the live file: a file whose size or mtime differs, a new one and a gone one.
+            now_tree = dirty.scan(base.kind_datasets(kind))
+        except OSError:
+            now_tree = None                     # the Parquet tree is not readable from here: say nothing, not 0
+        if now_tree is not None:
+            out["changed"] = len({p for p, stat in now_tree.items() if held.get(p) != stat}
+                                 | (set(held) - set(now_tree)))
+    if audit.ROUNDS in names:
+        row = con.execute(f"SELECT max(checked_at) FROM {audit.ROUNDS}").fetchone()
+        last = row[0] if row else None
+        if last is not None:
+            out["audited_at"] = _iso_utc(last)
+            counted = con.execute(f"SELECT count(*), count(*) FILTER (WHERE result = 'differs') "
+                                  f"FROM {audit.ROUNDS} WHERE checked_at >= ?", (last - AUDIT_ROUND_S,)).fetchone()
+            out["audited"], out["differs"] = int(counted[0]), int(counted[1])
+    if audit.DIRTY in names:
+        out["owed"] = int(con.execute(f"SELECT count(DISTINCT key) FROM {audit.DIRTY}").fetchone()[0])
+    return out
 
 
 def _spine_counts(con) -> dict:
@@ -669,7 +771,8 @@ def _session_counts(con) -> dict[str, dict[str, int]]:
 
     The Backfill calendar and the universe tile sum the sets the universe holds, so a narrowed universe is compared
     with its own names only (review M1). The live spine is attached read-only to the caller's handle for one
-    GROUP BY and detached; without a spine every bar counts as ``-``. Read once an hour with the samples.
+    GROUP BY and detached; without a spine, or with one that cannot be read right now, every bar counts as ``-``.
+    Read once an hour with the samples.
 
     The count is a plain ``count(*)``, not ``count(DISTINCT security_id)``: ``(security_id, session_date)`` is this
     table's key (``build.prices.serving.KEYS``, held by its PRIMARY KEY and, when ``RC_PRICES_NO_PRIMARY_KEY=1``
@@ -681,19 +784,34 @@ def _session_counts(con) -> dict[str, dict[str, int]]:
     from RevenueChaser.rcdata.build import base
     from RevenueChaser.rcdata.build.prices import serving as prices_serving
     spine = serving.live_path("spine")
+    rows = None
     if spine.exists():
         fund = ", ".join(repr(t) for t in api_screen.FUND_TYPES)
-        con.execute(f"ATTACH {base.sql_path(spine)} AS rc_spine (READ_ONLY)")
+        # #310 N13: the spine is a second file, swapped on its own clock, and neither the attach nor the one
+        # ``GROUP BY`` on it can be relied on just because the path is there a line earlier. Either failing drops
+        # to the spineless count below -- every bar under ``-``, which is what the calendar shows when no spine is
+        # built at all -- rather than through ``_serving_facts`` to the tab's one-line error.
         try:
-            rows = con.execute(
-                "WITH sets AS (SELECT DISTINCT " + prices_serving.SPINE_ID + " AS security_id, "
-                f"CASE WHEN tier = 'B' AND security_type IN ({fund}) THEN 'E' WHEN tier = 'B' THEN 'R' ELSE tier END "
-                "AS s FROM rc_spine.security WHERE tier IN ('A', 'B', 'C', 'D')) "
-                "SELECT b.session_date, coalesce(sets.s, '-'), count(*) FROM price_bar_daily b "
-                "LEFT JOIN sets USING (security_id) GROUP BY 1, 2 ORDER BY 1, 2").fetchall()
-        finally:
-            con.execute("DETACH rc_spine")
-    else:
+            con.execute(f"ATTACH {base.sql_path(spine)} AS rc_spine (READ_ONLY)")
+        except duckdb.Error:
+            pass
+        else:
+            try:
+                rows = con.execute(
+                    "WITH sets AS (SELECT DISTINCT " + prices_serving.SPINE_ID + " AS security_id, "
+                    f"CASE WHEN tier = 'B' AND security_type IN ({fund}) THEN 'E' WHEN tier = 'B' THEN 'R' "
+                    "ELSE tier END "
+                    "AS s FROM rc_spine.security WHERE tier IN ('A', 'B', 'C', 'D')) "
+                    "SELECT b.session_date, coalesce(sets.s, '-'), count(*) FROM price_bar_daily b "
+                    "LEFT JOIN sets USING (security_id) GROUP BY 1, 2 ORDER BY 1, 2").fetchall()
+            except duckdb.Error:
+                rows = None
+            finally:
+                try:
+                    con.execute("DETACH rc_spine")
+                except duckdb.Error:            # already gone with the file: the connection is closed per render
+                    pass
+    if rows is None:
         rows = con.execute("SELECT session_date, '-', count(*) FROM price_bar_daily "
                            "GROUP BY 1 ORDER BY 1").fetchall()
     out: dict[str, dict[str, int]] = {}
@@ -1145,7 +1263,7 @@ def _watchlists() -> dict:
 def collect(now: datetime | None = None) -> dict:
     """Everything the section shows, read now. ``now`` is the clock (aware; default ``calendar``'s seam)."""
     now = _now(now)
-    facts, swaps, spine_counts = _serving_facts(now)
+    facts, swaps, spine_counts, builds = _serving_facts(now)
     # Read once, used twice: the Spend card, and each dataset's cost line (M3).
     spend = _spend(now)
     used_today = {str(p["provider"]): int(p["today"] or 0) for p in spend["providers"]}
@@ -1173,6 +1291,8 @@ def collect(now: datetime | None = None) -> dict:
         "universe": (spine_counts or {}).get("universe_sets"),
         "sessions": (facts.get("price_bar_daily") or {}).get("sessions") or {},
         "storage": _storage(),
+        # How each kind's live file was last built, for the Serving builds card (#446 step 8).
+        "builds": builds,
         "tables": {t: {"rows": f["rows"], "newest": f["newest"]} for t, f in facts.items()},
         **_watch_section(),
     }

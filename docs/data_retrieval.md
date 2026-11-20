@@ -447,7 +447,7 @@ whole app at a local server:
 | `RC_YAHOO_BASE` | Unset in production: Yahoo is read through yfinance, which has no base URL. When set, the MOVE and wheat history is read as `<base>/<quoted symbol>.json` instead (the CLI test's loopback mock; `rcdata/build/sources/yahoo.py`) |
 | `RC_FDA_OOPD_BASE` | FDA Office of Orphan Products Development (OOPD) search |
 | `RC_DEEPSEEK_BASE` | DeepSeek chat API (`core/providers/deepseek.py`; read at call time; default the LiteLLM gate `http://127.0.0.1:9720/v1`) |
-| `RC_EVREN_BASE` | EVREN chat API, the default Relatedness writer (`core/providers/evren.py`, #360; read at call time). Default the LiteLLM gate `http://127.0.0.1:9720/v1`, which names the models `evren-<model>`; the model is `RC_EVREN_MODEL` or the board's `WRITER_MODEL` |
+| `RC_EVREN_BASE` | EVREN chat API, the default Relatedness writer (`core/providers/evren.py`, #360; read at call time). Default the LiteLLM gate `http://127.0.0.1:9720/v1`, which names the models `evren-<model>`; the model is `RC_EVREN_MODEL` or the job's chosen model (`core/llm_jobs.py`, #404) |
 | `RC_OPENFIGI_BASE` | OpenFIGI mapping API (identity refresh; the 13F CUSIP map, `core/providers/openfigi.py`, read at call time; the spine's `openfigi/map`, both its `ID_CUSIP`/`ID_CINS` and its `TICKER` jobs) |
 | `RC_NASDAQTRADER_BASE` | Nasdaq Trader symbol directory (identity refresh) |
 | `RC_FDIC_BASE` | FDIC institution list (identity refresh) |

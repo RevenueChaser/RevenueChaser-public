@@ -481,7 +481,11 @@ def main(argv: list[str] | None = None) -> int:
         if fetch_only:
             got, problem = _take_fetch_locks(stack, _fetch_lock_names(args), wait)
         else:
-            got, problem = _take_the_turn(stack, wait)
+            # avo's rule (#212): a live write needs a fresh verified backup. Checked before the turn, because no
+            # wait makes a stale copy fresh, and only for a run that replaces a served file -- a fetch-only run
+            # writes raw files and Parquet partitions, which the next build reads again.
+            stale = base.backup_problem()
+            got, problem = (False, stale) if stale else _take_the_turn(stack, wait)
         if not got:
             # Exit 3 is "nothing was done", but it is still a red job row with no reason anywhere, so it says
             # which holder it waited for on stdout too (#1119).

@@ -30,8 +30,8 @@ all, the most in 2025, 11,397 PERMNOs); a year of ``comp.secd`` (2024: 38 MB gzi
 30 Oct, and WRDS's ``statement_timeout`` is two days, so a year is the chunk. (The 30 Oct "Query interrupted", 31.5
 minutes in, came after the run's last raw file: DuckDB's interrupt in the serving build, which the ASOF factor join
 fixed, not WRDS.) A backfill from 1993 to 2025 is 33 years of three tables, 99 calls, plus the columns query once a
-run and the split snapshot when due: two to three days of the 50-call ``wrds`` cap, each day going on from the first
-missing partition.
+run and the split snapshot when due. WRDS publishes no call limit, so ``caps.py`` gives it none and a backfill is
+not spread over days; a run that is interrupted goes on from the first missing partition.
 
 **Raw**: ``raw/wrds/prices/<table>/year=<Y>/<as_of>.jsonl.gz`` (a snapshot: ``raw/wrds/prices/<table>/
 <as_of>.jsonl.gz``), each with the worker's ``.meta.json`` sidecar. **Parquet**: ``parquet/wrds/prices/<table>/
@@ -55,7 +55,8 @@ lacks, is skipped as above.
 
 **Served** by ``prices/serving``: the bars (``COMP_BARS`` only -- a ``CRSP_BARS`` row is staged for the cross-check
 and never served, avo 4 Nov 2026), the actions (``ACTIONS_SQL``; an Alpaca action of the same kind and day
-winning), the revisions, and the difference report ``wrds_price_diff`` (``COMPARISONS``). Compustat's own adjusted
+winning, and one of the same kind within ``SPLIT_SAME_DAYS`` days for a split, #268), the revisions, and the
+difference report ``wrds_price_diff`` (``COMPARISONS``). Compustat's own adjusted
 return is ``COMP_RETURN``: ``prccd / ajexdi * trfd`` over the previous session's; its splits are ``comp.sec_split``'s
 and, where that has none, a change of ``ajexdi`` (``AJEXDI_SPLITS``).
 

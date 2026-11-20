@@ -9,18 +9,47 @@ from __future__ import annotations
 
 import re
 
-# Legal suffixes/forms stripped before lookup.
+# The legal form of a company, which a filer writes or leaves out at will ("Pfizer", "Pfizer Inc.").
+_FORMS = re.compile(
+    r"\b(incorporated|inc|corporation|corp|company|co|limited|ltd|plc|llc|"
+    r"nv|sa|ag|gmbh|kk|oyj|pty)\b", re.I)
+
+# Words neither side of the comparison owns: a leading "The", which Compustat moves into brackets at the end
+# ("Home Depot Inc. (The)"), and "and", which a filer writes for the registrant's "&" ("Eli Lilly and Co" is
+# "ELI LILLY & Co"). ``&`` itself is punctuation now, so both spellings leave the same gap (#1145).
+_NOISE = re.compile(r"\b(the|and)\b", re.I)
+
+# "Cos" is Compustat's spelling of "Companies" ("Lowe's Cos Inc" is "Lowe's Companies, Inc."). The word is
+# **not** dropped: it is part of the name for "Capstone Companies" and "Comstock Holding Companies", which
+# dropping it merged into two other issuers (#1145). It is only spelled one way.
+_COS = re.compile(r"\bCOS\b")
+
+# Words that are part of the name itself, however generic they look: two companies that differ in one of them are
+# two companies ("Orion Corporation" is not "Orion Group Holdings", "Rafael Technologies" is not "Rafael
+# Holdings"). ``normalize`` still drops them, so every alias key keeps its spelling; ``strict`` keeps them, and
+# that is what a one-word name is matched on (#1142).
+_NAME_WORDS = re.compile(
+    r"\b(holdings?|group|technologies|technology|semiconductor|manufacturing|international)\b", re.I)
+
 _SUFFIXES = re.compile(
     r"\b(incorporated|inc|corporation|corp|company|co|limited|ltd|plc|llc|"
     r"holdings?|group|technologies|technology|semiconductor|manufacturing|"
     r"international|nv|sa|ag|gmbh|kk|oyj|pty)\b", re.I)
 
 
+def _clean(name: str) -> str:
+    """The name upper-cased, with punctuation and the words of ``_NOISE`` gone: what both comparisons start from."""
+    s = re.sub(r"[^A-Z0-9 ]+", " ", (name or "").upper())
+    return " ".join(_COS.sub("COMPANIES", _NOISE.sub(" ", s)).split())
+
+
 def normalize(name: str) -> str:
-    s = (name or "").upper()
-    s = re.sub(r"[^A-Z0-9& ]+", " ", s)
-    s = _SUFFIXES.sub(" ", s)
-    return " ".join(s.split())
+    return " ".join(_SUFFIXES.sub(" ", _clean(name)).split())
+
+
+def strict(name: str) -> str:
+    """``normalize`` without dropping the name's own words: "Rafael Technologies" -> ``RAFAEL TECHNOLOGIES``."""
+    return " ".join(_FORMS.sub(" ", _clean(name)).split())
 
 
 # Canonical alias -> ticker. Keys are matched after ``normalize``.
@@ -100,6 +129,17 @@ DROP_FOLLOWERS: dict[str, frozenset[str]] = {
     "EATON": frozenset({"vance"}),
 }
 
+# The next word is a capitalised word of the *same* company's name, so the hit stands ("Amazon Web Services",
+# "Samsung Electronics", "Super Micro Computer", "KLA Tencor"). Any other capitalised word that is not the legal
+# form makes the name a different, listed company -- "Samsung SDI" is not Samsung (#1142, census row 12) -- and
+# the hit is dropped, so the name is left to the spine or to no ticker at all.
+NAME_CONTINUATION: frozenset[str] = frozenset({
+    "WEB", "CLOUD", "AZURE", "ELECTRONICS", "COMPUTER", "COMPUTERS", "DESIGN", "TENCOR", "FOUNDRY", "SERVICES",
+    "SOLUTIONS", "NETWORKS", "PLATFORMS", "DIGITAL", "SYSTEMS", "MATERIALS", "DEVICES", "INSTRUMENTS",
+    "RESEARCH", "LABS", "LABORATORIES", "STORAGE", "AMERICA", "AMERICAS", "USA", "EUROPE", "ASIA", "JAPAN",
+    "KOREA", "CHINA", "INDIA", "GLOBAL", "WORLDWIDE",
+})
+
 # A capitalised word straight before the name makes it part of another proper
 # noun ("Avo Intel", "Private Capital Intel", "Our Intel Graph").
 DROP_AFTER_CAPITALISED: frozenset[str] = frozenset({"INTEL"})
@@ -115,27 +155,207 @@ PRODUCT_FOLLOWERS: dict[str, frozenset[str]] = {
     "MICROSOFT": frozenset({"Teams", "365", "Office", "Windows", "Xbox"}),
 }
 
+# Subsidiary, operating-company and former names of a listed parent, read from the parent's own SEC Exhibit 21
+# ("Subsidiaries of the Registrant") or from the filing that recorded the acquisition: "Harris Teeter Supermarkets
+# Inc" is Kroger, "LinkedIn Corp" is Microsoft, "Seagen Inc" is Pfizer. A filing names the subsidiary it actually
+# sells to, and a Compustat customer line carries the same name, so without this table the name reaches no
+# registrant and the edge has no ticker (#1156; the headroom measurement found 92 such customer labels, of which
+# these are the ones a by-hand check of every pair kept).
+#
+# Keys are ``_key``: ``normalize`` with the spaces gone, so the legal form and the generic name words are already
+# off, and the whole name must match -- this is never a substring hit. ``resolve`` reads the table **last**, after
+# the aliases and the spine, so it only fills a gap and cannot change a name that resolves today.
+SUBSIDIARIES: dict[str, str] = {
+    "ACADEMY": "ASO",                        # Academy LTD
+    "ACCELERONPHARMA": "MRK",                # Acceleron Pharma Inc
+    "ACCENTUREFEDERALSERVICES": "ACN",       # Accenture Federal Services LLC
+    "ACCENTURELLP": "ACN",                   # Accenture LLP
+    "ADMSARL": "ADM",                        # ADM International SARL
+    "ADVANCESTORES": "AAP",                  # Advance Stores Co Inc
+    "AEROJETROCKETDYNE": "LHX",              # Aerojet Rocketdyne Holdings Inc
+    "ALASKAAIRLINES": "ALK",                 # Alaska Airlines Inc
+    "ANTARESPHARMA": "HALO",                 # Antares Pharma Inc
+    "ASDSPECIALTYHEALTHCARE": "COR",         # ASD Specialty Healthcare LLC
+    "ATMELECTRONIC": "ARW",                  # ATM Electronic Corp
+    "BURLINGTONCOATFACTORYINVESTMENTS": "BURL",# Burlington Coat Factory Investments Holdings Inc
+    "CAREMARK": "CVS",                       # Caremark LLC
+    "CARRIER": "CARR",                       # Carrier Corp
+    "CELGENESWITZERLAND": "BMY",             # Celgene Switzerland LLC
+    "CHENIEREMARKETINGLLP": "LNG",           # Cheniere Marketing International LLP
+    "CHEVRONUSA": "CVX",                     # Chevron U.S.A. Inc
+    "CONOCOPHILLIPSSKANDINAVIAAS": "COP",    # Conocophillips Skandinavia AS
+    "DKTRADINGSUPPLY": "DK",                 # DK Trading & Supply LLC
+    "DOLLARTREESTORES": "DLTR",              # DOLLAR TREE STORES INC
+    "ENTERPRISECRUDEOIL": "EPD",             # Enterprise Crude Oil LLC
+    "EQUITABLEFINANCIALLIFEINSURANCE": "EQH",# Equitable Financial Life Insurance Co
+    "ETCTEXASPIPELINE": "ET",                # ETC Texas Pipeline LTD
+    "EXPRESSSCRIPTS": "CI",                  # EXPRESS SCRIPTS INC
+    "FEDERALEXPRESS": "FDX",                 # Federal Express Corp
+    "FLORIDAPOWERLIGHT": "NEE",              # Florida Power & Light Co
+    "FRANKLINTEMPLETONCOMPANIES": "BEN",     # Franklin Templeton Companies LLC
+    "FRONTIERAIRLINES": "ULCC",              # Frontier Airlines Holdings Inc
+    "GOODEARTHOILS": "COOT",                 # Good Earth Oils Pty Ltd
+    "GOODYEAR": "GT",                        # Goodyear
+    "GPMINVESTMENTS": "ARKO",                # GPM Investments LLC
+    "HARRISTEETERSUPERMARKETS": "KR",        # Harris Teeter Supermarkets Inc
+    "HDSUPPLY": "HD",                        # HD Supply Holdings Inc
+    "IDAHOPOWER": "IDA",                     # Idaho Power Co
+    "JANSSENPHARMACEUTICA": "JNJ",           # Janssen Pharmaceutica NV
+    "JANSSENPHARMACEUTICALS": "JNJ",         # Janssen Pharmaceuticals Inc
+    "JUNOTHERAPEUTICS": "BMY",               # Juno Therapeutics Inc
+    "L3": "LHX",                             # L3 Technologies Inc
+    "LIFETIME": "LTH",                       # Life Time Inc
+    "LINKEDIN": "MSFT",                      # LinkedIn Corp
+    "LUMENTUMOPERATIONS": "LITE",            # Lumentum Operations LLC
+    "MAGELLANHEALTH": "CNC",                 # Magellan Health Inc
+    "MARATHONPETROLEUMSUPPLYTRADING": "MPC", # Marathon Petroleum Supply & Trading LLC
+    "MARRIOTT": "MAR",                       # Marriott International Inc
+    "MCKESSONSPECIALTYCAREDISTRIBUTION": "MCK",# McKesson Specialty Care Distribution LLC
+    "MERCKSHARPDOHME": "MRK",                # Merck Sharp & Dohme LLC
+    "MERCKSHARPDOHMERESEARCH": "MRK",        # Merck Sharp & Dohme Research GmbH
+    "MOTIONINDUSTRIES": "GPC",               # Motion Industries Inc
+    "MPCPARTNERSHIP": "RMR",                 # MPC Partnership Holdings LLC
+    "MSGNETWORKS": "SPHR",                   # MSG Networks Inc
+    "MYOKARDIA": "BMY",                      # MyoKardia Inc
+    "NBCUNIVERSALMEDIA": "CMCSA",            # NBCUniversal Media LLC
+    "NEVADAPOWER": "BRK-B",                  # Nevada Power Co
+    "NORFOLKSOUTHERNRAILWAY": "NSC",         # Norfolk Southern Railway Co
+    "NORTHROPGRUMMANSYSTEMS": "NOC",         # Northrop Grumman Systems Corp
+    "NRGBUSINESSMARKETING": "NRG",           # NRG Business Marketing LLC
+    "OCCIDENTALPETROLEUM": "OXY",            # Occidental Petroleum Corp
+    "ORGANON": "OGN",                        # Organon International GmbH
+    "OUTBACKSTEAKHOUSEOFFLORIDA": "BLMN",    # Outback Steakhouse of Florida LLC
+    "OVINTIVUSA": "OVV",                     # Ovintiv USA Inc
+    "PILOTTRAVELCENTERS": "BRK-B",           # Pilot Travel Centers LLC
+    "PJTPARTNERSLP": "PJT",                  # PJT Partners Holdings LP
+    "PREVAILTHERAPEUTICS": "LLY",            # Prevail Therapeutics Inc
+    "PRIMORISRENEWABLEENERGY": "PRIM",       # Primoris Renewable Energy Inc
+    "PROMETHEUSBIOSCIENCES": "MRK",          # Prometheus Biosciences Inc
+    "RAYTHEON": "RTX",                       # RAYTHEON CO / Raytheon Technologies Corp
+    "ROHR": "RTX",                           # Rohr Inc
+    "SAFEWAY": "ACI",                        # Safeway Inc
+    "SAIAMOTORFREIGHTLINE": "SAIA",          # Saia Motor Freight Line LLC
+    "SEAGEN": "PFE",                         # Seagen Inc
+    "SHAWINDUSTRIES": "BRK-B",               # Shaw Industries Inc
+    "SIERRAPACIFICPOWER": "BRK-B",           # Sierra Pacific Power Co
+    "SPLUNK": "CSCO",                        # Splunk Inc
+    "STARMARKETS": "ACI",                    # Star Markets Co Inc
+    "SUPERVALU": "UNFI",                     # SUPERVALU INC
+    "TECHDATA": "SNX",                       # Tech Data Corp
+    "VONSCOMPANIES": "ACI",                  # Vons Companies Inc
+    "WESTERNREFINING": "MPC",                # Western Refining Inc
+}
+
+
+# A legal form that makes the name a **different** company from the subsidiary its key stands for. "Safeway plc"
+# was the British supermarket Morrisons bought in 2004, not the US "Safeway Inc" that Albertsons owns, and
+# ``normalize`` drops both forms, so the two names share the one key ``SAFEWAY`` (#1156; measured read-only on the
+# live store, 8 ``customer_share`` rows carry the British spelling). The form is read off ``_clean``, which keeps
+# it.
+SUBSIDIARY_REFUSED_FORMS: dict[str, frozenset[str]] = {
+    "SAFEWAY": frozenset({"PLC"}),
+}
+
+
 # Tickers of one issuer: a filing naming its own other share class is not an edge.
 SAME_ISSUER: dict[str, str] = {"GOOG": "GOOGL", "BRK-B": "BRK-A", "BRK.B": "BRK.A",
                                "FOX": "FOXA", "NWS": "NWSA"}
+
+
+# A word that names a kind of counterparty and no company, however a listed issuer is called ("Employers
+# Holdings Inc" is on the spine, so "we provide solutions to employers" resolved to EIG, #1142 census row 96).
+GENERIC_PARTIES: frozenset[str] = frozenset({
+    "EMPLOYERS", "CONSUMERS", "CUSTOMERS", "CLIENTS", "RETAILERS", "DISTRIBUTORS", "SUPPLIERS", "HOSPITALS",
+    "GOVERNMENTS", "UNIVERSITIES", "PARTNERS", "BANKS", "INSURERS", "CARRIERS", "PHARMACIES", "MANUFACTURERS",
+    "CONTRACTORS", "OPERATORS", "AIRLINES", "UTILITIES", "AGENCIES", "PROVIDERS", "PAYERS", "VENDORS", "BROKERS",
+    "DEALERS", "RESELLERS", "MEMBERS", "PATIENTS", "STUDENTS", "SCHOOLS", "ENTERPRISES", "CORPORATIONS",
+})
 
 
 def _key(name: str) -> str:
     return normalize(name).replace(" ", "")
 
 
+def _strict_key(name: str) -> str:
+    return strict(name).replace(" ", "")
+
+
 def spine_names(rows) -> dict[str, str | None]:
-    """``{name key: ticker}`` of the spine's ``security`` rows; None for a name two issuers share (#400 WP5)."""
-    out: dict[str, str | None] = {}
-    for r in rows or []:
-        k, t = _key(r.get("name") or ""), str(r.get("ticker") or "").upper()
-        if len(k) < 3 or not t:
-            continue
-        if k in out and (out[k] is None or issuer(out[k]) != issuer(t)):
-            out[k] = None
-        else:
-            out.setdefault(k, t)
-    return out
+    """``{name key: ticker}`` of the spine's ``security`` rows; None for a name two issuers share (#400 WP5).
+
+    Each row is keyed twice: under ``_key`` (the normalised name, which drops the generic words of
+    ``_NAME_WORDS``) and under ``"=" + _strict_key`` (which keeps them). ``resolve`` reads the second one to
+    check a one-word name against the registrant's full name (#1142).
+
+    A name several rows carry is not ambiguous when the rows are one company (#1145; 117 of the live store's 119
+    ambiguous customer labels were). ``_one_ticker`` decides, over the rows' share lines only:
+
+    * **one CIK** (or one ``SAME_ISSUER`` group) is one company, and the name takes its first share line by
+      ``_rank`` -- "FORD MOTOR CO" is F and three preferred lines, "JPMORGAN CHASE & CO" is JPM, six preferred
+      lines and two ETNs;
+    * **two issuers** keep the name only when exactly one of them is a Tier A share line, so a tiny OTC namesake
+      loses ("Target Corp" is TGT, not Target Group Inc.) and two real namesakes stay ambiguous.
+    """
+    rows = [r for r in (rows or []) if str(r.get("ticker") or "").strip()]
+    lines = {str(r["ticker"]).upper(): r for r in rows}
+    by_key: dict[str, set[str]] = {}
+    for r in rows:
+        name, t = r.get("name") or "", str(r["ticker"]).upper()
+        keys = [_key(name), "=" + _strict_key(name)]
+        # A registrant whose name needs two of ``_NAME_WORDS`` dropped is reachable by its full name only: the
+        # normalised key of "Orion Group Holdings, Inc." is ORION, which a filer's "Orion Corporation" (a Finnish
+        # pharmaceutical company, not this one) matched (#1142, census row 140).
+        if len(strict(name).split()) - len(normalize(name).split()) >= 2:
+            keys = keys[1:]
+        for k in keys:
+            if len(k.lstrip("=")) >= 3:
+                by_key.setdefault(k, set()).add(t)
+    return {k: _one_ticker(ts, lines) for k, ts in by_key.items()}
+
+
+# How much a listed line looks like the company itself, for a registrant name several of its lines carry. Tier A
+# comes first, so a preferred line, an ETN and an OTC line never beat the operating share; among a company's Tier
+# A lines the common share beats the ADR (none of today's spine rows has both), and an untyped line comes last --
+# "COMCAST CORP" is CCZ (exchangeable notes, untyped) and CMCSA under one CIK, and the board wants CMCSA (#1145).
+_LINE_RANK = {"common": 0, "adr": 1, "reit": 2, "mlp": 3}
+
+
+def _rank(t: str, lines: dict[str, dict]) -> tuple:
+    r = lines.get(t) or {}
+    return (str(r.get("tier") or "") != "A", _LINE_RANK.get(str(r.get("security_type") or ""), 9),
+            issuer(t) != t, t)
+
+
+def _shares(t: str, lines: dict[str, dict]) -> bool:
+    """True for a line typed as the company's own shares (#1145).
+
+    A preferred line, an exchangeable note, an ETN, a unit, a warrant and an untyped line are not the company for
+    an edge's purpose, and no board shows one: "COMCAST CORP" is CCZ (notes) as well as CMCSA, and Triton
+    International has nothing listed but seven preferred lines. A name with no share line left is ambiguous.
+    """
+    return str((lines.get(t) or {}).get("security_type") or "") in _LINE_RANK
+
+
+def _cik(t: str, lines: dict[str, dict]) -> str:
+    """The CIK of ticker ``t``, or a value of its own when the spine row carries none (two such rows are two
+    issuers, because nothing says they are one)."""
+    return str((lines.get(t) or {}).get("cik") or "").lstrip("0") or f"?{t}"
+
+
+def _one_ticker(tickers: set[str], lines: dict[str, dict]) -> str | None:
+    """The one ticker a shared registrant name means, or None (#1145). See ``spine_names`` for the two rules."""
+    if len(tickers) == 1:
+        return next(iter(tickers))
+    shares = {t for t in tickers if _shares(t, lines)}
+    if not shares:
+        return None
+    if len({_cik(t, lines) for t in shares}) == 1 or len({issuer(t) for t in shares}) == 1:
+        return min(shares, key=lambda t: _rank(t, lines))
+    # Different issuers: only one of them may be a listed operating company, or the name stays ambiguous.
+    real = {t for t in shares if not _rank(t, lines)[0]}
+    if real and len({_cik(t, lines) for t in real}) == 1:
+        return min(real, key=lambda t: _rank(t, lines))
+    return None
 
 
 def spine_ticker(name: str, names: dict | None) -> str | None:
@@ -148,14 +368,46 @@ def resolve(name: str, names: dict | None = None) -> dict | None:
     member's label), or None (#410 G1).
 
     The hand-kept alias list and its rules come first (a product mention such as "Apple Pay" names no company);
-    then the spine's names (``spine_names``). A name that holds two companies ("Apple and Dell"), an anonymised one
+    then the spine's names (``spine_names``); last ``SUBSIDIARIES``, the listed parent of a name that is no
+    registrant itself (#1156). A name that holds two companies ("Apple and Dell"), an anonymised one
     ("Customer A") and a name two issuers share resolve to nothing; the caller keeps it as text.
     """
     hits = {h["ticker"]: h for h in find_aliases(name or "") if not h["context_only"]}
     if hits:
         return next(iter(hits.values())) if len(hits) == 1 else None
+    if not spine_candidate(name or ""):
+        return None
+    # The strict key is read when the normalised one is not on the spine at all -- it is the only key of a
+    # registrant ``spine_names`` keeps whole. A normalised key two issuers share stays ambiguous (#400 WP5).
     ticker = spine_ticker(name or "", names)
+    if ticker is None and _key(name or "") not in (names or {}):
+        ticker = (names or {}).get("=" + _strict_key(name or ""))
+    # A name that carries one of ``_NAME_WORDS`` itself must match the registrant's name with those words kept:
+    # "Rafael Technologies" is not Rafael Holdings (RFL) and "STEMCELL Technologies" is not International Stem
+    # Cell (ISCO), although ``normalize`` leaves all three as the same key (#1142, census rows 19 and 40).
+    if ticker and strict(name) != normalize(name) and (names or {}).get("=" + _strict_key(name)) != ticker:
+        ticker = None
+    # Last: a name that is a listed parent's subsidiary and no registrant of its own (#1156), unless its legal
+    # form says it is a different company that shares the key.
+    if ticker is None:
+        key = _key(name or "")
+        if not (SUBSIDIARY_REFUSED_FORMS.get(key) or frozenset()) & set(_clean(name or "").split()):
+            ticker = SUBSIDIARIES.get(key)
     return {"name": name, "ticker": ticker} if ticker else None
+
+
+def spine_candidate(name: str) -> bool:
+    """False for a free-text name that identifies no company and must never reach the spine (#1142).
+
+    Two shapes made four of the census's five wrong tickers: a kind of counterparty rather than a company
+    ("employers" -> EIG, because "Employers Holdings Inc" is listed), and a name written with no capital letter at
+    all, which a filer does not do for a company it names.
+    """
+    if not (name or "").strip():
+        return False
+    if not any(w[:1].isupper() for w in re.findall(r"[A-Za-z][A-Za-z0-9&.]*", name)):
+        return False
+    return not all(w in GENERIC_PARTIES for w in normalize(name).split())
 
 
 # A customer a filing withholds the name of: "Customer A", "Customer 1", "One customer", "big customer" (D, owner
@@ -244,6 +496,9 @@ def find_aliases(text: str) -> list[dict]:
         if word.lower() in DROP_FOLLOWERS.get(key, ()):
             continue
         if key in DROP_AFTER_CAPITALISED and _PREV_CAPITALISED.search(text, max(0, m.start() - 30), m.start()):
+            continue
+        if (word[:1].isupper() and word.upper() not in NAME_CONTINUATION
+                and not _SUFFIXES.fullmatch(word) and word not in PRODUCT_FOLLOWERS.get(key, ())):
             continue
         hits.append({"name": key.title(), "ticker": ALIASES[key], "start": m.start(),
                      "end": m.end(), "context_only": word in PRODUCT_FOLLOWERS.get(key, ())})

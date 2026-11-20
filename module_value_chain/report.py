@@ -73,6 +73,11 @@ input[type=text]{flex:1;min-width:200px}
 .meta{color:var(--muted);font-size:11px;margin-top:3px}
 .empty{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:24px;color:var(--muted);text-align:center}
 .note{color:var(--muted);font-size:12px;margin-top:12px;line-height:1.6}
+/* "Show the other N links" (#1159): a full-width 44 px target, so it works on a phone. */
+.more{display:block;width:100%;min-height:44px;margin-top:12px;background:var(--panel2);border:1px solid var(--border);
+border-radius:8px;color:var(--text);font:600 13px/1 inherit;cursor:pointer}
+.more:hover{border-color:var(--accent);color:var(--accent)}
+.more:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 """
 
 
@@ -92,7 +97,10 @@ def _precision_tile(rep: dict | None) -> str:
     p = rep.get("precision")
     cover = ""
     if rep.get("links") is not None:
-        cover = f' · labels cover {rep.get("covered") or 0} of {rep["links"]} links'
+        # "Links drawn" counts the served rows; this counts the distinct (filer, counterparty, relation) pairs
+        # they make, which is what a label can speak for. The words differ so the two tiles cannot be read as
+        # one number (#1159).
+        cover = f' · labels cover {rep.get("covered") or 0} of {rep["links"]:,} distinct pairs'
     if p is None:
         return ('<div class="stat"><div class="v">—</div><div class="l">Precision</div>'
                 f'<div class="d">not measured{cover}</div></div>')
@@ -128,6 +136,10 @@ def _summary_html(payload: dict, n_filings: int, n_drawn: int) -> str:
         pending = fetch.get("pending") or 0
     # Tickers left out of Pending (#116 C26): a recorded miss or no CIK.
     pending_d = "not in the SEC layer yet" if payload.get("corpus") == "layer" else "not yet fetched"
+    # One filer can state the same counterparty in several filings or fields, so the served rows are more than
+    # the pairs they make. The tile says both, because the Precision tile counts the pairs (#1159).
+    n_pairs = (payload.get("precision") or {}).get("links")
+    pairs_d = f' · {n_pairs:,} distinct pairs' if n_pairs else ""
     misses, no_cik = int(payload.get("misses") or 0), int(payload.get("no_cik") or 0)
     if misses:
         pending_d += f" · {misses} with no 10-K / 20-F"
@@ -136,8 +148,9 @@ def _summary_html(payload: dict, n_filings: int, n_drawn: int) -> str:
     return "".join([
         f'<div class="stat"><div class="v">{n_filings}</div>'
         f'<div class="l">Filings</div><div class="d">latest annual report</div></div>',
-        f'<div class="stat"><div class="v">{n_drawn}</div>'
-        f'<div class="l">Links drawn</div><div class="d">supplier / customer links served</div></div>',
+        f'<div class="stat"><div class="v">{n_drawn:,}</div>'
+        f'<div class="l">Links drawn</div><div class="d">supplier / customer links served'
+        f'{pairs_d}</div></div>',
         f'<div class="stat"><div class="v">{payload.get("universe_total") or 0}</div>'
         f'<div class="l">Universe</div><div class="d">operating companies, no market-cap floor</div></div>',
         f'<div class="stat"><div class="v">{pending}</div>'
@@ -227,7 +240,8 @@ def render_value_chain_dashboard(payload: dict) -> str:
     <div class="frow"><span class="chip" id="fmeta"></span></div>
   </div>
   <div class="grid">
-    <div class="panel"><h2>Supply chain</h2><div id="sankey" style="height:520px"></div></div>
+    <div class="panel"><h2>Supply chain</h2><div id="sankey" style="height:520px"></div>
+      <div class="note" id="sankey-note" hidden></div></div>
     <div class="panel"><h2>Evidence</h2><div id="edges"></div></div>
   </div>"""
 
@@ -323,6 +337,7 @@ function render(){
   document.getElementById("fmeta").innerHTML = rcWatchRow(FOCAL) +     // the focal company's pair (PR 4)
     (fm.form ? rcEsc(fm.form) + " · filed " + rcEsc(fm.filed) + " · " : "") +
     (q.split(";")[0] === "ok" ? "text: ok" : (q ? '<span class="chip warn">text: ' + rcEsc(q) + ' — item not fully extracted</span>' : ""));
+  links = rankLinks(links);
   drawSankey(FOCAL, links);
   drawEdges(links);
   // D: customers the filing does not name are no nodes; the row says how many there are.
@@ -330,7 +345,77 @@ function render(){
   if(nu) document.getElementById("edges").insertAdjacentHTML("beforeend", '<div class="note">Also ' + nu +
     (nu === 1 ? " unnamed customer: the filing does not name it." : " unnamed customers: the filing does not name them.") + "</div>");
 }
+// A hub such as AMZN is named by hundreds of filers, and the chart drew every one: the labels overlapped into a
+// solid block at every width and the evidence list made the page 40,000 px tall on a phone (#1159, measured on
+// real data 20 Nov 2026). Both halves now show the strongest links first and keep the rest one tap away.
+var SANKEY_MAX = 40;        // links the chart draws: past this it is a wall of labels, not a graph
+var EVIDENCE_PAGE = 25;     // evidence rows rendered before "show the rest"
+
+// The order both halves read: hop 1 first, then the edges whose filing states a share, largest share first
+// (#387 D7), then supplier before customer. Returns a new array; the caller's is left alone.
+function rankLinks(links){
+  var order = { supplier: 0, customer: 1 };
+  return (links || []).slice().sort(function(a,b){
+    return (a.hop - b.hop) || (hasShare(b) - hasShare(a)) ||
+      (hasShare(a) && hasShare(b) ? b.share_pct - a.share_pct : 0) ||
+      (order[focalRelation(a)]-order[focalRelation(b)]);
+  });
+}
+// A hub's links are nearly all one direction -- AMZN's 261 are suppliers almost to the last -- so taking the
+// strongest 40 flat would draw one colour and could hide the other side of a mixed company altogether. Each
+// direction gets half the budget and whatever the other does not use, so a company with 200 suppliers and 5
+// customers still draws all 5. The ranked order is kept, so the chart and the evidence list agree.
+function capForChart(links){
+  if(links.length <= SANKEY_MAX) return links;
+  var sup = [], cus = [];
+  links.forEach(function(l){ (focalRelation(l) === "supplier" ? sup : cus).push(l); });
+  var half = Math.floor(SANKEY_MAX / 2);
+  var nSup = Math.min(sup.length, SANKEY_MAX - Math.min(cus.length, half));
+  var nCus = Math.min(cus.length, SANKEY_MAX - nSup);
+  var kept = sup.slice(0, nSup).concat(cus.slice(0, nCus));
+  return links.filter(function(l){ return kept.indexOf(l) >= 0; });
+}
+// At 411 px an unresolved counterparty's full legal name ("Hon Hai Precision Industry Co., Ltd.") is wider than
+// the gap between two columns, and Plotly right-aligns the last column's labels across the node to their left,
+// which covered the focal "NVDA" in the real render (#1159). The chart draws a short label with the full name on
+// hover; the evidence row below always carries the name in full.
+var NODE_LABEL_MAX = 18;
+function nodeLabel(name){
+  name = String(name == null ? "" : name);
+  if(name.length <= NODE_LABEL_MAX) return name;
+  return name.slice(0, NODE_LABEL_MAX - 1).replace(/[\s,.]+$/, "") + "…";
+}
+// A pair both companies state ("NVDA's filing names FN", "FN's filing names NVDA at 16.3% of sales") puts one
+// node on both sides of the focal company, and Plotly draws that as a circular link: it leaves the node, runs
+// under the chart and comes back as a rounded box (#1159, NVDA at 411 px). The chart draws such a pair once,
+// keeping whichever the ranking puts first; both statements stay in the evidence list.
+function dropReverseDuplicates(links){
+  var seen = {}, kept = [];
+  (links || []).forEach(function(l){
+    var a = String(l.src), b = String(l.dst);
+    if(seen[b + ">" + a]) return;
+    seen[a + ">" + b] = true;
+    kept.push(l);
+  });
+  return kept;
+}
 function drawSankey(focal, links){
+  var note = document.getElementById("sankey-note");
+  var total = links.length;
+  links = dropReverseDuplicates(links);
+  var capped = links.length > SANKEY_MAX;
+  if(capped) links = capForChart(links);
+  if(links.length < total){
+    note.textContent = (capped
+      ? "Showing the " + links.length + " strongest of " + total +
+        " links: the ones whose filing states a share, largest first, both directions kept. "
+      : "Showing " + links.length + " of " + total +
+        " links: a pair both companies' filings state is drawn once. ") +
+      "Every one is in the evidence below.";
+    note.hidden = false;
+  } else {
+    note.textContent = ""; note.hidden = true;
+  }
   var nodes = [focal], idx = {}; idx[focal] = 0;
   links.forEach(function(l){
     [l.src, l.dst].forEach(function(n){ if(!(n in idx)){ idx[n] = nodes.length; nodes.push(n); } });
@@ -346,7 +431,9 @@ function drawSankey(focal, links){
     return "#1a1f2b";
   });
   var data = [{ type: "sankey", orientation: "h", arrangement: "snap",
-    node: { label: nodes, pad: 12, thickness: 14, color: nodeColors,
+    node: { label: nodes.map(nodeLabel), customdata: nodes,
+            hovertemplate: "%{customdata}<extra></extra>",
+            pad: 12, thickness: 14, color: nodeColors,
             font: { color: "#d7dce5", size: 11 } },
     link: { source: src, target: dst, value: val, color: colors } }];
   var layout = { paper_bgcolor: "#12161e", plot_bgcolor: "#12161e",
@@ -356,14 +443,23 @@ function drawSankey(focal, links){
 function drawEdges(links){
   var el = document.getElementById("edges");
   if(!links.length){ el.innerHTML = '<div class="empty">No supplier / customer edges found for this company.</div>'; return; }
-  var order = { supplier: 0, customer: 1 };
-  // Within a hop, the edges whose filing states a share come first, largest share first (#387 D7).
-  links.sort(function(a,b){
-    return (a.hop - b.hop) || (hasShare(b) - hasShare(a)) ||
-      (hasShare(a) && hasShare(b) ? b.share_pct - a.share_pct : 0) ||
-      (order[focalRelation(a)]-order[focalRelation(b)]);
-  });
-  el.innerHTML = links.map(function(l){
+  // ``links`` is already ranked by ``rankLinks``. Only the first page is put in the DOM: a hub with hundreds of
+  // links made the page unscrollable on a phone (#1159).
+  el.innerHTML = edgeRows(links.slice(0, EVIDENCE_PAGE));
+  if(links.length > EVIDENCE_PAGE){
+    var rest = links.slice(EVIDENCE_PAGE);
+    var btn = document.createElement("button");
+    btn.type = "button"; btn.className = "more"; btn.id = "edges-more";
+    btn.textContent = "Show the other " + rest.length + " links";
+    btn.addEventListener("click", function(){
+      btn.insertAdjacentHTML("beforebegin", edgeRows(rest));
+      btn.remove();
+    });
+    el.appendChild(btn);
+  }
+}
+function edgeRows(links){
+  return links.map(function(l){
     var why = suspicious(l);
     var flag = why ? ' <span class="chip warn">⚠ ' + why + '</span>' : '';
     var share = hasShare(l) ? ' <span class="chip share">' + rcEsc(shareText(l)) + '</span>' : '';

@@ -13,6 +13,11 @@ single work order.
   BLOB. `.cache/` is regenerable; `edgar_bulk/*.zip` are downloaded, ingested,
   then deleted.
 - Boards: Fetch = network + store update; Refresh = store only, **zero network**
+- Relatedness scoring is incremental (#1132): a whole-board Refresh whose profiles are all older than the
+  saved payload renders it as it is (#884); one whose are not scores the rows a changed profile touches -- the
+  changed profiles plus every profile whose saved top list named one -- and carries the rest of the lists.
+  Exact on the embedding path, where a pair's score is built from the two profiles alone; the tag cosine's idf
+  is run-wide, so it always scores the whole matrix. A Fetch and the weekly `--score` step score everything.
   (e2e-asserted). Single writer per table; hot-path fields are typed columns.
 - Sector SSoT = `core/gics_map.py`. Theme SSoT after Phase 8 = `ticker_themes`
   (runtime) over a pinned `theme_run_id`; `core/taxonomy.py` is a thin loader.
@@ -71,7 +76,9 @@ N-valued typed children:
   + `relatedness_scores(ticker, peer, score)` + `relatedness_embeddings(ticker, model, dim, vector BLOB)` (v2, #401).
 - `relatedness_themes(theme_id, level, parent_id, label, size)` +
   `relatedness_theme_tags(theme_id, tag, rank)` +
-  `relatedness_theme_members(ticker, theme_id, weight)` + `theme_runs`.
+  `relatedness_theme_members(ticker, theme_id, weight, rank)` + `theme_runs`; the members' `rank` is the
+  name's place in the cap-descending universe, which is the order the naming prompt's example companies
+  are taken in (#298).
 - `fundamentals_gates` / `swing_gates(ticker, gate, rule_id, passed, actual, unit)`.
 - `edgar_financials` (per-ticker JSON: `annual`/`quarterly`/`meta`; not pruned)
   and `edgar_facts` (the fact spine, grain `(cik, concept, period, form)` with

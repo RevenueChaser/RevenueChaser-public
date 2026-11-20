@@ -179,6 +179,87 @@ def _binary(sets: list[set[str]]):
     return csr_matrix(([1.0] * len(rows), (rows, cols)), shape=(len(sets), max(1, len(vocab))), dtype="float32")
 
 
+class Blend:
+    """The blended score matrix of one run, available row by row (#1132).
+
+    Built once from the run's profiles, it holds the company vectors, the chain sets, the structure codes and the
+    tag weights; ``block`` scores a band of rows against every ticker and ``top`` cuts one row to its peers. Both
+    ``blended_peer_lists`` (every row) and the incremental Refresh (only the rows a changed profile touches) read
+    the same matrix through it, so the two paths cannot drift apart.
+    """
+
+    def __init__(self, profiles: dict[str, dict], pjs: dict[str, dict], vectors: dict,
+                 sectors: dict | None = None):
+        import numpy as np
+
+        self.tickers = sorted(profiles)
+        self.index = {t: i for i, t in enumerate(self.tickers)}
+        n = len(self.tickers)
+        dim = len(next(iter(vectors.values()))) if vectors else 1
+        self._E = np.zeros((n, dim), dtype="float32")
+        for i, t in enumerate(self.tickers):
+            if t in vectors:
+                self._E[i] = vectors[t]
+        chains = [chain_sets(pjs.get(t)) for t in self.tickers]
+        self._T, self._N = _binary([c[0] for c in chains]), _binary([c[1] for c in chains])
+        self._t_size = np.asarray(self._T.sum(axis=1)).ravel()
+        self._codes = []
+        for f in STRUCT_FIELDS:
+            vals = [str((sectors or {}).get(t) if f == "sector" else (pjs.get(t) or {}).get(f) or "").strip().lower()
+                    for t in self.tickers]
+            index = {v: k for k, v in enumerate(sorted({v for v in vals if v}))}
+            self._codes.append(np.asarray([index.get(v, -1) for v in vals]))
+        scale = idf(profiles)
+        self.weights = {t: term_weights(profiles[t], scale) for t in self.tickers}
+
+    def __len__(self) -> int:
+        return len(self.tickers)
+
+    def block(self, rows):
+        """The scores of ``rows`` (ticker indices) against every ticker, as one ``len(rows) x n`` float32 array."""
+        import numpy as np
+
+        r = np.asarray(list(rows), dtype="int64")
+        s_do = self._E[r] @ self._E.T
+        inter = (self._T[r] @ self._T.T).toarray()
+        union = self._t_size[r, None] + self._t_size[None, :] - inter
+        jac = np.divide(inter, union, out=np.zeros_like(inter), where=union > 0)
+        named = ((self._N[r] @ self._N.T).toarray() > 0).astype("float32")
+        s_struct = sum(((c[r, None] == c[None, :]) & (c[r, None] >= 0)).astype("float32") for c in self._codes)
+        return (config.W_DO * s_do + config.W_CHAIN * (config.W_CHAIN_TYPES * jac + config.W_CHAIN_NAMES * named)
+                + config.W_STRUCT * s_struct / len(STRUCT_FIELDS)).astype("float32")
+
+    def row(self, ticker: str):
+        """One ticker's scores against every ticker (its own entry included)."""
+        return self.block([self.index[ticker]])[0]
+
+    def entry(self, focal: str, peer: str, score: float) -> dict:
+        """One peer entry: the score and the tags the two profiles share as its evidence."""
+        wa, wb = self.weights[focal], self.weights[peer]
+        return {"peer": peer, "score": round(float(score), 4), "score_raw": float(score),
+                "shared": shared_terms(wa, wb), "n_shared": len(set(wa) & set(wb))}
+
+    def top(self, focal: str, row, top: int) -> list[dict]:
+        """The top-``top`` peers of ``focal`` from its score ``row`` (its own and the zero scores left out)."""
+        import numpy as np
+
+        i = self.index[focal]
+        n = len(self.tickers)
+        if n < 2:
+            return []
+        row = np.asarray(row).copy()
+        row[i] = -np.inf
+        k = min(top, n - 1)
+        sel = np.argpartition(-row, k - 1)[:k]
+        sel = sel[np.argsort(-row[sel])]
+        out = []
+        for j in sel:
+            if row[j] <= 0:
+                continue
+            out.append(self.entry(focal, self.tickers[int(j)], row[j]))
+        return out
+
+
 def blended_peer_lists(profiles: dict[str, dict], pjs: dict[str, dict], vectors: dict, sectors: dict | None = None,
                        top: int = 25, chunk: int = 256):
     """Top-``top`` peers per ticker on ``W_DO s_do + W_CHAIN s_chain + W_STRUCT s_struct`` -> ``(peers, scores)``.
@@ -197,50 +278,14 @@ def blended_peer_lists(profiles: dict[str, dict], pjs: dict[str, dict], vectors:
     n = len(tickers)
     if n < 2:
         return {t: [] for t in tickers}, np.zeros(0, dtype="float32")
-    dim = len(next(iter(vectors.values()))) if vectors else 1
-    E = np.zeros((n, dim), dtype="float32")
-    for i, t in enumerate(tickers):
-        if t in vectors:
-            E[i] = vectors[t]
-    chains = [chain_sets(pjs.get(t)) for t in tickers]
-    T, N = _binary([c[0] for c in chains]), _binary([c[1] for c in chains])
-    t_size = np.asarray(T.sum(axis=1)).ravel()
-    codes = []
-    for f in STRUCT_FIELDS:
-        vals = [str((sectors or {}).get(t) if f == "sector" else (pjs.get(t) or {}).get(f) or "").strip().lower()
-                for t in tickers]
-        index = {v: k for k, v in enumerate(sorted({v for v in vals if v}))}
-        codes.append(np.asarray([index.get(v, -1) for v in vals]))
-    scale = idf(profiles)
-    weights = {t: term_weights(profiles[t], scale) for t in tickers}
-
+    blend = Blend(profiles, pjs, vectors, sectors)
     peers: dict[str, list] = {}
     upper = []
     for a in range(0, n, chunk):
         b = min(n, a + chunk)
-        s_do = E[a:b] @ E.T
-        inter = (T[a:b] @ T.T).toarray()
-        union = t_size[a:b, None] + t_size[None, :] - inter
-        jac = np.divide(inter, union, out=np.zeros_like(inter), where=union > 0)
-        named = ((N[a:b] @ N.T).toarray() > 0).astype("float32")
-        s_struct = sum(((c[a:b, None] == c[None, :]) & (c[a:b, None] >= 0)).astype("float32") for c in codes)
-        s = (config.W_DO * s_do + config.W_CHAIN * (config.W_CHAIN_TYPES * jac + config.W_CHAIN_NAMES * named)
-             + config.W_STRUCT * s_struct / len(STRUCT_FIELDS)).astype("float32")
+        s = blend.block(range(a, b))
         for r in range(b - a):
             i = a + r
             upper.append(s[r, i + 1:])
-            row = s[r].copy()
-            row[i] = -np.inf
-            k = min(top, n - 1)
-            sel = np.argpartition(-row, k - 1)[:k]
-            sel = sel[np.argsort(-row[sel])]
-            focal = tickers[i]
-            peers[focal] = []
-            for j in sel:
-                if row[j] <= 0:
-                    continue
-                peer = tickers[int(j)]
-                peers[focal].append({"peer": peer, "score": round(float(row[j]), 4), "score_raw": float(row[j]),
-                                     "shared": shared_terms(weights[focal], weights[peer]),
-                                     "n_shared": len(set(weights[focal]) & set(weights[peer]))})
+            peers[tickers[i]] = blend.top(tickers[i], s[r], top)
     return peers, np.concatenate(upper)

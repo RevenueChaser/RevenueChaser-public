@@ -322,8 +322,9 @@ date; no table or board does its own `date.today()` or UTC-date cut.
 
 **The forecast-ledger writer (#128).** `core/ledger.py` is the only code that writes `forecast_ledger`,
 through `rawstore.write_rows` alone. A board freezes its shown picks at the end of a **Fetch** (`no_fetch=False`;
-a Refresh never freezes), from `app/runners.py` (`run_swing`, `run_fundamentals`, `run_asymmetric_growth`) into
-the module's own `freeze.py`, which maps the board to ledger rows. The rule, applied by `ledger.freeze_board`:
+a Refresh never freezes), from `app/runners.py` (`run_swing`, `run_fundamentals`, `run_asymmetric_growth`,
+`run_earnings_range`) into the module's own `freeze.py`, which maps the board to ledger rows. The rule, applied by
+`ledger.freeze_board`:
 - the data is one complete New York session D, and D is the latest complete session (`core/calendar.py`:
   30 minutes after the 16:00 ET close; early-close days use 16:00, which is conservative);
 - a run inside the US session window (09:30–16:30 ET) freezes the session before it (the prices store holds
@@ -344,6 +345,13 @@ the module's own `freeze.py`, which maps the board to ledger rows. The rule, app
   session's write time and cannot tell the two apart (#434 review S2).
   AG: SPY's D01 bar for that session, written after its close + 30 min (`ledger.d01_has_session`, #380 S4); not the
   universe snapshot behind the quote prices, and not `ohlc_gaps` (one name's gap must not refuse the board);
+  Earnings Radar (#580): SPY's D01 bar for that session, the same anchor as AG and for the same reason — a card is
+  scored from the option chain, the flow and the estimates, so one name without its own bar must not refuse the
+  board. One rule is the Earnings Radar's own: **only a report still to come is frozen.** A card whose earnings date
+  is on or before D is a report the market has already heard, so it is left out and the rest keep the board's order
+  (`module_earnings_radar/freeze.picks`); a Fetch of past days therefore freezes nothing. The Earnings Radar has no
+  Refresh, so every run of it is a Fetch. Its `score` is the number the board ranks by (confidence plus the preselect
+  score) and its `bucket` is `"<final_action>|<conviction>"`, so the action carries the direction;
 - first write wins per (source, day), not just per row: the key includes `subject`, so the writer checks the whole
   (source, day) under one lock before writing, and a second Fetch the same day writes nothing.
 
@@ -813,8 +821,8 @@ schema, reachable with path expressions like `payload.market_cap::DOUBLE`).
 | `relatedness_profiles` | `ticker`, `cik`, `model`, `prompt_version`, `fetched_at`, `cache_key`, `status`, `attempts`, `provider` (the writer, #360: `evren` / `deepseek`, older rows also `grok` / `claude`; nullable, added by `ALTER TABLE ADD COLUMN`, no schema bump) | `profile_json` (the v3 structured profile, #401, schema 13; NULL on a v2 row), `label_source` (which chunk or table each v3 field came from, #401) |
 | `relatedness_embeddings` | `ticker`, `model`, `dim INTEGER`, `vector BLOB` (a 16-byte hash of the embedded text, then the float32 bytes of `dim` values; raw, not zlib-compressed); `PRIMARY KEY (ticker, model)` (#401, schema 13; writer: `module_relatedness/embeddings.py`, #669) | — |
 | `relatedness_attributes` | `ticker`, `field`, `value` (TEXT holding a JSON list), `value_num` | — |
-| `relatedness_scores` | `ticker`, `peer`, `score` | — |
-| `relatedness_themes` / `relatedness_theme_tags` / `relatedness_theme_members` / `relatedness_theme_etfs` | `theme_id` (run id is its prefix), `level`, `parent_id`, `label`, `size` / `tag`, `rank` / `ticker`, `weight` / `etf`, `overlap`, `rank` | — |
+| `relatedness_scores` | `ticker`, `peer`, `score`: each name's top `config.TOP_PEERS` peers. **The record of what was scored, not a read path** (#594, avo's "tut" of 19 Nov 2026): the board's neighbours come from the run's own `payload["peers"]`, so nothing reads these rows back — it was v1's read path and v2 (#400) recomputes the peers each Fetch. Kept because it is the only durable record of which pair scored what: `relatedness_scores_history` mirrors it, #284 stops a run that scored nothing from wiping it, and the incremental scoring of #884 would read it as the previous score. One writer, `module_relatedness/store.save_scores`, from a whole-board Fetch only (avo's decision F of 16 Nov 2026 — a sliced run would retire every pair it did not score) | — |
+| `relatedness_themes` / `relatedness_theme_tags` / `relatedness_theme_members` / `relatedness_theme_etfs` | `theme_id` (run id is its prefix), `level`, `parent_id`, `label`, `size` / `tag`, `rank` / `ticker`, `weight`, `rank` / `etf`, `overlap`, `rank`. The members' `rank` (#298) is the place the name holds in the cap-descending classification universe, and `run_rows` reads that table `theme_id, rank NULLS LAST, ticker`: it is the order the naming prompt takes its example companies in, so they are the theme's largest names (avo's B, 19 Nov 2026); additive, added by `ALTER TABLE ADD COLUMN`, no schema bump, and a run written before it reads NULL and sorts last | — |
 | `theme_runs` | `id`, `created_at`, `k_fine`, `k_medium`, `k_coarse`, `jaccard`, `is_current`, `session_date DATE`, `run_at DOUBLE` (schema 11); the five nullable validation numbers `val_peer_recall_25`, `val_hand_precision_10`, `val_gics_purity`, `val_etf_recall_medium`, `val_seed_ari` (all `DOUBLE`, #341, `module_relatedness/validation/`; added by `ALTER TABLE ADD COLUMN`, no schema bump; `val_peer_recall_25` = ETF-set mean, denominator `min(25, n-1)`) | — |
 | `llm_cache` | `cache_key`, `ticker`, `cik`, `model`, `thinking`, `effort`, `prompt_version`, `input_hash`, `fetched_at`, `status` | `response` |
 | `job_runs` | `run_id`, `job_id`, `module`, `lane`, `trigger`, `source`, `pid`, `registry_name`, `queued_at DOUBLE`, `started_at DOUBLE`, `finished_at DOUBLE`, `status` (`queued`/`running`/`done`/`error`/`cancelled`/`lost`, the `app/jobs.py` vocabulary), `error`, `message` | `params`, `counts` |
@@ -874,7 +882,7 @@ schema, reachable with path expressions like `payload.market_cap::DOUBLE`).
 | `identity_conflicts` | `ticker`, `kind`, `field`, `side_a`, `side_b`, `note`, `first_seen`, `last_seen` (key `(ticker, kind, field)`) | — |
 | `identity_source_cache` | `source`, `ticker`, `fetched_at`, `status`, `security_type`, `security_type2`, `sector`, `industry`, `sub_industry`, `cik`, `sic`, `is_etf BOOLEAN`, `forms` (comma-joined), `shell_closed BOOLEAN` (key `(source, ticker)`; last GOOD answer per source — a failed or skipped source never overwrites it, `core/identity/cache.py`) | `payload` (rest of the source row) |
 | `identity_runs` | `run_id`, `started_at`, `finished_at`, `status` | `sources` (per-source status/counts/error), `counts` |
-| `board_settings` | `board`, `key`, `value DOUBLE`, `updated_at`, `value_text TEXT` (a text setting, #360: Relatedness' `WRITER` / `WRITER_MODEL`; a row fills `value` or `value_text`; nullable, added by `ALTER TABLE ADD COLUMN`, no schema bump) (key `(board, key)`; only user overrides — defaults are read from the board's config, and a Save is one transaction and a Reset deletes the board's rows in one statement, serialized by a lock; every save, drop and Reset is kept in `board_settings_changes`, a Reset as one change (#306); `core/board_settings.py`, issue #40; read by Co-movement (`module_comovement/settings.py`) and by Swing for its screen/score thresholds (`module_swing_potential/settings.py`, #384 SW-S4), whose stored overrides also feed the forecast ledger's model version) | — |
+| `board_settings` | `board`, `key`, `value DOUBLE`, `updated_at`, `value_text TEXT` (a text setting, #360: each LLM job's `<JOB>_WRITER` / `<JOB>_MODEL` on the `llm_writers` board, `core/llm_jobs.py`, #404; a row fills `value` or `value_text`; nullable, added by `ALTER TABLE ADD COLUMN`, no schema bump) (key `(board, key)`; only user overrides — defaults are read from the board's config, and a Save is one transaction and a Reset deletes the board's rows in one statement, serialized by a lock; every save, drop and Reset is kept in `board_settings_changes`, a Reset as one change (#306); `core/board_settings.py`, issue #40; read by Co-movement (`module_comovement/settings.py`) and by Swing for its screen/score thresholds (`module_swing_potential/settings.py`, #384 SW-S4), whose stored overrides also feed the forecast ledger's model version) | — |
 | `watchlist` | `ticker` (one row per pinned ticker until PR 4; unwritten since, the stock watch list in `ops.sqlite` replaced it) | — |
 | `migration_manifest` | `dataset`, `migrated_at`, `schema_version`, `source_count`, `source_bytes`, `source_hash`, `verify` | — |
 | `store_meta` | `key`, `value` | — |
@@ -1050,7 +1058,7 @@ its spill peak (`base.spill_peak`, sampled every 2 s), the measure for moving th
 file, `<MARKET_DIR>/<kind>.duckdb`. The identity spine, `spine` (serving schema version `9`), is described under
 "The identity spine" below; the prices store, `prices` (serving schema version `1`), under "The prices store"
 below; the ownership store, `ownership` (serving schema version `5`), under "The ownership store" below; the
-fundamentals layer, `fundamentals` (serving schema version `4`), under "Fundamentals" after it; and the options
+fundamentals layer, `fundamentals` (serving schema version `5`), under "Fundamentals" after it; and the options
 data, `options` (serving schema version `3`), under "The options data" after it; and the SEC form reader, `sec_forms` (serving schema version `1`), under "The SEC form reader"; and the SEC reader tool, `sec_reads` (serving schema version `3`), under "The SEC reader tool" last. The eight numbers live in `rcdata/serving_versions.py`, outside the builder's rules fingerprint
 (`rcdata/build/dirty.py`), so a bump makes only its own kind's next build whole (#649). The market data,
 `market` (serving schema version `4`): `serving_schema_version` (one row: kind, version, build time, build id, build mode),
@@ -1128,6 +1136,29 @@ rewrites served rows) or a derivation rebuilt whole — is read from the build c
 together with the two dependencies (the spine's symbol map, the prices universe) that make a table dirty with no
 new source day of its own.
 
+**The audit sample** (#446 step 5, `rcdata/build/audit.py`). A build on the live copy never looks at the rows it
+carries over, so a row built wrongly — by a rule that was once wrong, or by a dirty set that missed it — would stay
+served until a whole build, and the whole build is what #446 removes. Instead every incremental build re-reads a
+small, risk-weighted sample of keys from Parquet and compares them with the file. A dataset declares an
+`audit(ctx)` answering with `Subject`s (a served table, its key column, SQL that rebuilds that table's rows for
+given keys from Parquet, and optional SQL weighting the keys); a dataset that declares none is not audited, as a
+dataset that declares no `dirty` is not built incrementally. The draw is A-Res over the declared weight times how
+long ago each key was last audited (`build_audit`, carried in the serving file; a key never audited counts as ten
+years old), and `RC_AUDIT_KEYS` sets how many per pass (default 500, `0` off). A difference is **evidence, not a
+refusal**: it opens a build issue (`kind = audit`, so the Logs board shows it) and marks the key for the next build
+(`build_audit_dirty`, which `dirty.plan` hands to that dataset through `Plan.audited` and `ctx.audited`, for its
+own `dirty` to add in its own key space — only the dataset knows what its keys mean), while the file still swaps in —
+refusing it would stop the whole flow on one bad key, and the next pass rebuilds those keys anyway.
+
+**What the Settings board shows of all this** (#446 step 8). The Data tab carries one **Serving builds** card,
+above the per-file sections: a row per served file saying which base its last build got (`serving_schema_version`),
+how many Parquet files its manifest holds and how many differ from the tree right now (`build_manifest`, compared
+exactly as `dirty.changes` does), what the last audit round checked and found (`build_audit`), and how many keys
+it still owes (`build_audit_dirty`). Every number is read out of the files themselves on each render
+(`module_settings/newdata.py`'s `_build_of`, on the connection the page already opens per kind), so there is no
+second copy of it anywhere to keep in step. A file that carries none of those tables was built before #446 landed
+and reads as a whole build with no manifest, never as an error.
+
 **Whose build code changed** (#814). Build code is a rule: a change to an extraction or a table rule restates rows
 that no Parquet file marks as changed, so the build file carries a fingerprint of the code it was built by and a
 change to it forces a whole build. That fingerprint used to be one per kind — every Python file in the packages
@@ -1164,6 +1195,16 @@ and kept as they are otherwise (whole build of 6 Nov 2026: 91 min).
 `market` (`rcdata/build/partitions.py`) reloads each changed Parquet partition: a UW session (`date=`) of
 `spx_gamma_expiry_strike` or `spx_greek_expiry_strike`, a source and year of `market_series`; a gone partition only
 deletes its rows. `options` is still built whole; `spine` stays whole by design (seconds).
+
+**A whole build the hourly pass does not start** (#446 step 8). A dataset may declare `whole_build_by_hand = True`;
+`prices/serving` does. When the plan for such a kind says the build would be whole and **every** member of the pass
+is the schedule's own request (`RunContext.scheduled`, `requested_by` `schedule`; one Fetch press among them is a
+person asking for it, and a build called any other way is not held at all), `base.build_kind_many` raises
+`base.WholeBuildByHand` before the build file is opened, and the request ends `skipped` with the reason on its check
+row. Nothing is copied, staged or swapped, so the live file is untouched and the dataset stays due for the next
+pass. The reason it holds: a whole `prices` build is 86 min for the 2010+ volume and 6 h 12 min with the WRDS
+history, against a builder window of under an hour, while a build on the live copy fits it — so `prices/serving` is
+in the scheduled flow (it no longer `starts_by_hand`) and only its whole build waits for a person.
 
 CFTC COT rows are futures-only: the TFF dataset's `Combined` rows (futures and options) are filtered out; taking
 them instead is a later choice.
@@ -1335,7 +1376,11 @@ Fetch/Health tab) is `off` — the default, no row — is not queued (the file-l
 avo 10 Nov 2026; `ops.copy_kind_modes` copied each kind's mode onto its datasets once at that deploy); `raw` and `parquet` queue the same partial run a Fetch's ▾
 asks for, and that run's own `skipped` check then counts as the run for the cadence; `full` queues the whole run. A
 person's Fetch is not touched by the setting. A paused dataset is not queued, and `dataset_schedule.next_due`, while later than today in New
-York, holds a dataset until that day. Otherwise a dataset never built, or whose last check failed or was skipped,
+York, holds a dataset until that day. `due.EARLIEST_NY_HOUR` holds one until its hour in New York: `wrds/prices` not
+before 05:00 there, because the Compustat snapshot holds the session's bar only from the early morning
+(WRDS stamps the product 3:40 a.m.; a 01:23 NY snapshot measured here was byte for byte the one before it)
+and the dataset runs once a New York day, so an earlier pass would spend the day's run on a snapshot one
+session short. Otherwise a dataset never built, or whose last check failed or was skipped,
 is due. With cadence `daily` (the default, and what an unknown cadence reads as) it is due once its own
 `default_as_of()` reaches the last check's `next_check_due`: the SPX slice after the next session is complete, the
 market series (as-of today) on the first pass of each trading day. `weekly` and `monthly` are due 7 and 30 days after
@@ -1463,6 +1508,13 @@ rule's answer and that fund leaves as before. When no `etf` row has a volume at 
 the build is refused outright: a missing or unreadable Compustat `secd` Parquet is an input outage, not a change of
 the rules. The check is per fund because a table-wide one masked the loss: IBIT is on Nasdaq and GLD, SLV, SPY and
 DIA are not, so IBIT's volume alone passed it while the Arca funds were dropped.
+A live `etf_adv` fund the `etf` table holds **no row for at all** today is held the same way, per fund, and every
+such fund the manual file did not then remove is one `my_universe_etf_row_gone` issue (avo's decision A, #432):
+`etf` is the union of three sources (Alpha Vantage's listing, N-CEN's `IS_ETF` series, the spine's `etp` rows), so a
+fund one of them alone carries — GLD, SLV, USO and the bitcoin trusts file no N-CEN — is missing from the whole
+table when that source comes back short, and the `left` row that followed was irreversible. The check asks the whole
+`etf` table, so a fund whose row is there and is today flagged an ETN or a CEF is the rule's answer and leaves; an
+`etf_aum` fund that vanished leaves too, because that is the AUM source's own story.
 
 **Tier rule v3** (`rcdata/build/spine/tier.py`): A = listed on Nasdaq, NYSE or Cboe and not an excluded type
 (`core.identity.types.EXCLUDED_TYPES`; an untyped name stays); B = listed, excluded type; C = OTC, in the SEC file or
@@ -1497,7 +1549,7 @@ lane opens exactly one of these two, so `issues_open` never counts it twice: the
 from a `TICKER` job, because OpenFIGI did not answer for that CUSIP; nothing checks the two name the same
 security, so the row is named rather than trusted silently), `tier_a_no_gics`, `figi_ticker_differs`,
 `cusip_shared`, `cik_many_gvkeys`,
-`index_key_empty`, `fund_file_short`, `member_not_in_sec`, `member_not_tier_a`, `membership_files_disagree`, `membership_wrds_differs`, `etf_class_manual_unknown` (a line of `etf_class_manual.json` naming a ticker that is no ETF of `my_universe`), `my_universe_etf_undecided` (the funds with no AUM and no 20-session dollar volume yet **that the manual file says nothing about** — it is built after the manual adds and removes, #444 — one issue naming them, keyed `etf`; nothing is reported before N-CEN has answered at all), `my_universe_etf_volume_lost` (the live list's `etf_adv` funds Compustat gives no volume for today, held on their live numbers instead of dropped, one issue naming them, keyed `etf`), `my_universe_manual_unknown` (a manual line naming a ticker the spine does not hold), `my_universe_both_kinds` (the stock rule and the ETF rule both claim a ticker; kept as the stock), `my_universe_list_unknown` (the funds on the map list or the industry-group list that the `etf` table does not hold, one issue naming them, keyed `etf`).
+`index_key_empty`, `fund_file_short`, `member_not_in_sec`, `member_not_tier_a`, `membership_files_disagree`, `membership_wrds_differs`, `etf_class_manual_unknown` (a line of `etf_class_manual.json` naming a ticker that is no ETF of `my_universe`), `my_universe_etf_undecided` (the funds with no AUM and no 20-session dollar volume yet **that the manual file says nothing about** — it is built after the manual adds and removes, #444 — one issue naming them, keyed `etf`; nothing is reported before N-CEN has answered at all), `my_universe_etf_volume_lost` (the live list's `etf_adv` funds Compustat gives no volume for today, held on their live numbers instead of dropped, one issue naming them, keyed `etf`), `my_universe_etf_row_gone` (the live list's `etf_adv` funds the `etf` table holds no row for at all today, held on their live numbers instead of dropped, one issue naming them, keyed `etf`), `my_universe_manual_unknown` (a manual line naming a ticker the spine does not hold), `my_universe_both_kinds` (the stock rule and the ETF rule both claim a ticker; kept as the stock), `my_universe_list_unknown` (the funds on the map list or the industry-group list that the `etf` table does not hold, one issue naming them, keyed `etf`).
 A rule needing a source that has never run is not applied; that source is one `source_never_run` row.
 `index_key_empty`: an index key with no `comp.idxcst_his` rows in a run that answered rows for another.
 A WRDS raw value its schema cannot type (a DATE or INTEGER column) is typed to null and recorded as a `value_untyped` issue of that WRDS dataset, keyed `<table>.<column>`, with the row count; it is a one-off row of its run, not synced.
@@ -1859,11 +1911,13 @@ cache; since #642 PR 6 the boards never read that cache: no layer reads as no ro
 | `alphavantage/earnings_calendar` | daily | Alpha Vantage `EARNINGS_CALENDAR`, three months ahead, one request a run (`ALPHAVANTAGE_API_KEY`) | `stg_av_calendar` |
 | `uw/earnings` | weekly | UW `/stock/<ticker>/earnings`, one request per company: the quarterly rows' reported EPS, UW's consensus of that quarter and its surprise, as UW serves them | `stg_uw_earnings` |
 | `yfinance/estimates` | weekly | Yahoo's `earningsTrend` per company, its shortest ticker, when its newest answer is 7 days old; 5 failures in a row stop the run | `stg_yf_estimates` |
-| `yfinance/fx` | daily | Yahoo's daily close of `<CUR>USD=X` per currency in `fx_rates.CURRENCIES` (USD per unit), the whole history the first time, then from 7 days before the newest stored day | `stg_yf_fx` |
+| `yfinance/fx` | daily | Yahoo's daily close of `<CUR>USD=X` per currency in `fx_rates.CURRENCIES` (USD per unit), the whole history the first time, then from 7 days before the newest stored day. Since #1181 it fills the days `wrds/exrt` does not hold | `stg_yf_fx` |
 | `sec/fsds` | monthly | The SEC's quarterly Financial Statement Data Sets zip, the newest quarter published | `stg_sec_fsds` |
 | `wrds/fundq` | monthly, attended | `comp.fundq`, the Tier A gvkeys, ten years | `stg_wrds_fundq`, `stg_wrds_fundq_revision` |
 | `wrds/funda` | monthly, attended | `comp.funda`, the Tier A gvkeys, ten years | `stg_wrds_funda`, `stg_wrds_funda_revision` |
 | `wrds/segments` | monthly, attended | `comp_segments_hist_daily.wrds_segmerged` and `seg_customer`, five years, the newest source date per key where the table has one | `stg_wrds_segments`, `stg_wrds_customers` |
+| `wrds/exrt` | monthly, attended | `comp.exrt_dly`, the whole history of `fx_rates.CURRENCIES` and USD. Every row is quoted from GBP, so USD per unit is the cross `exratd(GBP->USD) / exratd(GBP->CUR)` (#1181, step H). **The rate a non-USD filer's values are converted at wherever Compustat has the day** (`fx_rates.held_rates`; DECISIONS F3); `yfinance/fx` fills the days it lacks, which are the newest ones between two monthly snapshots. The check note counts the pairs of the newest year that agree with Yahoo within 1% | `stg_wrds_exrt_raw`, `stg_wrds_exrt` |
+| `wrds/audit` | monthly, attended | Audit Analytics' three event feeds in `audit_audit_comp`, whole: `feed39_financial_restatements`, `feed20_nt` (late-filing notices) and `feed17_director_and_officer_chan`. Only the event's own columns are asked (key, `company_fkey`, filing day and form, what happened); no person's name and no disclosure text. `company_fkey` is the CIK (measured 20 Nov 2026, #1181 step C), and the feeds run about two months behind. The flag columns are kept as text until their coding is measured, and no served table reads the dataset yet: the check note counts each feed's rows, keys and our companies in it | `stg_wrds_restatements`, `stg_wrds_late_filings`, `stg_wrds_officer_changes` |
 | `fundamentals/tables` | daily | none: builds the served tables, the views, the peer groups and the build issues from the staging tables | the tables below |
 
 **A builder that was down still reads what was filed meanwhile.** `sec/companyfacts` and `sec/filings` read the
@@ -1903,7 +1957,7 @@ preliminary row any more.
 
 **WRDS is a check, not a served value.** Attended and monthly on the spine's one WRDS worker (one login, at most one
 Duo push per builder process): `python -m RevenueChaser.rcdata.build backfill wrds/fundq wrds/funda
-wrds/segments` in a foreground terminal on the server. Each monthly `fundq` / `funda` snapshot is compared with the
+wrds/segments wrds/exrt wrds/audit` in a foreground terminal on the server. Each monthly `fundq` / `funda` snapshot is compared with the
 one before: every value that changed for a period both hold is a `fundamental_revision` row (a restatement, or a
 correction at Compustat; a new period is not one). The check notes count revenue, net income and diluted EPS that
 agree with the SEC's facts (Compustat's millions times a million, within 0.5%, EPS within a cent, period ends within
@@ -1930,7 +1984,7 @@ the period.
 **Starts by hand.** Every fundamentals dataset is not due until it has built once, as the spine's are, so the first
 hourly pass after a deploy calls no source before the attended backfill.
 
-**Served tables** (`fundamentals` serving schema version `4`):
+**Served tables** (`fundamentals` serving schema version `5`):
 
 | Table | Rows |
 |---|---|
@@ -1939,6 +1993,7 @@ hourly pass after a deploy calls no source before the attended backfill.
 | `filing_item` | one per filing and 8-K item (`kind` `item`). The document texts went with the cut (#858): this layer cuts nothing, `sec/forms` is the one cutter and serves them as `filing_section`. The `kind` column stays, with `item` its only value |
 | `earnings_event` | one per report: a coming one from the calendar (`confirmed` false) or one that happened (an 8-K with item 2.02, `confirmed` true, its accession kept) |
 | `earnings_reported` | one per company and reported quarter: the EPS the company itself reported as UW serves it, with UW's consensus and surprise. **Not** a `fundamental_fact` row -- it has no filing behind it, and its basis is usually the company's adjusted (non-GAAP) figure, so `source` is on every row (avo, 5 Nov 2026) |
+| `earnings_report_history` | one per company and fiscal quarter (version 5, #1181): the day the quarter's results were made public. Compustat's `rdq` (`wrds/fundq`) where it has one; UW's report day (`uw/earnings`) for a quarter Compustat has no date for within 7 days of the same period end. `source` on every row says which, `gvkey` the Compustat company (NULL on a UW row). Past dates only: a coming report is `earnings_event`. Read with `rcdata.read.earnings_report_history` |
 | `fundamental_revision` | one per Compustat value that changed between two monthly snapshots |
 | `segment_revenue` | revenue by business segment, product or country (`axis`), from the annual report's inline XBRL (its newest year) and from Compustat; `report_tables` (#1048, version 4): the tables of the report, as role ids of the filing's definition linkbase (`<ticker>-<date>_def.xml`, or the schema file `<ticker>-<date>.xsd` when the filing lists no `_def.xml` and embeds its linkbases there, #1066; fetched beside the document, `rcdata/build/fundamentals/linkbase.py`), in which the row's member stands on the row's axis, NULL for a Compustat row and for a filing with no linkbase stored. `rcdata.read.segment_sets(rows, total)` (pure) gives the member sets one table declares together that sum to the revenue within 2% |
 | `customer_share` | a major customer's share of revenue (or of receivables, `benchmark`), from `ConcentrationRiskPercentage1` and from Compustat |
@@ -2069,9 +2124,19 @@ builder's own 28). UW is still called for every pair outside that — and always
 day's pairs, because UW moves the expected move, the estimate and the report time during the day for the names
 about to report. Either path builds the event with `_calendar_event`, so `source` stays `UW` and the run
 downstream cannot tell them apart; `input_sources["calendar"]` counts the stored and the live pairs and names the
-session. The watch-list names the calendar omits (unknown time, estimated date) still take one live
-`screener_batch`: `option_screener_daily` holds calendar names only, so it cannot answer for a name that is not
-on the calendar.
+session.
+
+**The watch-list augmentation (#1138).** A watch-list name whose earnings time is "unknown" or whose date is only
+an estimate is missing from the `/earnings/{premarket,afterhours}` calendar, so
+`module_earnings_radar/watchlist_augment.augment_calendar` adds it from its screener row (#198 E15). That row came
+from one live UW `screener_batch` until #1138 — the last UW calendar call the Earnings Fetch made. It now comes
+from the served screener set first (`stored_inputs.screener_rows`: `next_earnings_date`, `er_time`,
+`implied_move_perc`, `sector`, `full_name` and `marketcap` off the same `option_screener_daily` session, under the
+same freshness gate), and the `screener_batch` is spent only on the names the store does not cover: a name absent
+from the set, a row with no `next_earnings_date`, or a name reporting today or the next trading day (live for the
+same reason the calendar pairs are). `input_sources["watchlist"]` counts the names each path answered, and a Fetch
+whose watch-list names are all covered makes no UW calendar call at all. A store read that fails leaves every name
+to UW; a `screener_batch` that fails keeps the names the store answered and the run goes on.
 
 **UW calls a session** (`rcdata/build/options/__init__.py`, the plan's arithmetic: list names x (chain + stats +
 prints) + screener pages + earnings-set names + far-print pages). A list name is 11 calls plus 2 per expiry plus one
@@ -2127,6 +2192,15 @@ one folder, two Parquet files (`sections.parquet`, `notes.parquet`) per `cik=<ci
   two or three blocks; a character count that is not to be tripled sums the top-level rows), `context_ref`,
   `period_end`, `text`, `chars`, `rules_version`, and the same provenance.
 
+**How the build loads it.** One `INSERT` per batch of `sec_forms.forms.LOAD_BATCH` (100) company partitions,
+in `cik` text order and each batch sorted by `cik, accession, document`, so the rows land in the order one global
+sort gave them. Not one statement over the whole tree: that sort carried the corpus' whole text at once — on
+20 Nov 2026 the live file held 14,142 `filing_section` rows with 4.1 GB of text — and DuckDB pins a sort's string
+blocks, so it had nothing to evict and the spill folder did not save it. Three builds in a row failed on
+`failed to pin block of size 612.0 KiB (4.5 GiB/4.5 GiB used)`, the first after 6,590 s, while the day's work was
+62 new sections (#1177). The peak of the batched load is a batch of companies' filings, whatever the corpus grows
+to.
+
 **The staleness rule.** `dirty.py` reloads Parquet into DuckDB; it does not cut. So the rule is `fetch`'s own: a
 company is stale when the `(accession, document)` pairs on disk differ from the ones its `sections.parquet` holds,
 or when any of its rows was written by another cutter version. That covers the three cases nothing else triggers —
@@ -2171,7 +2245,11 @@ board adds one entry and reads the answers through `rcdata.read.sec_reads(ciks, 
 `rcdata/build/__init__.py` registers the questions, and registration order is run order: `business.locate` and
 `company.profile` (`sec_reads/company_profile.py`), then `debt.note` (#737; `sec_reads/debt_note.py`, prompt and parse
 in `rcdata/sec_debt_note.py`), which the Fundamentals board reads through `core/fundamentals_layer.py`. Each further
-question is its own change.
+question is its own change. **Each is written by its own chosen writer** (`core/llm_jobs.py`, jobs `sec_reads.*`, #404), read once per
+process so one run asks every question through one writer. The default is still the switch (`questions.PROVIDER`):
+EVREN, the gate with no fee, unless the process names DeepSeek (`RC_SEC_READS_PROVIDER=deepseek`), which gives each
+question its own call cap (avo, 19 Nov 2026: `debt.note` moved off the paid writer with the other two). A stored
+`ok` answer is current whoever wrote it, so changing the pair asks nothing again.
 
 **One asker** (`asker.py`), one pool per provider: EVREN 1 request at a time, DeepSeek 8. The HTTP clients are
 `core/providers`' own, called with `use_cache=False`, so `llm_cache` gets nothing from the tool. On homesrv the
@@ -2192,7 +2270,10 @@ not pay for the answer again. An `ok` answer on (question, prompt version, compa
 an answer under the question's current prompt version first, then the newest filing. Every call writes one row to the request log (the
 question, the company, the chunk, and `ok`, `unusable reply` or the error with its words). One asker at a time,
 whoever started the run (the lock `sec_reads_ask`); a question is finished and in Parquet before the next one is
-planned, so registration order is run order. A run whose first five replies are all unusable stops as failed and
+planned, so registration order is run order. A writer that is down (a 429 after the client's own retries, a 5xx, a capacity
+refusal waited out) skips that writer's questions and does **not** fail the run (`reads.outage`): every company stays
+stale for the next pass and the note names the writer, because a failed run exits 1 and the chain behind it does not
+run that night. A rejected key still fails it, and a run whose first five replies are all unusable stops as failed and
 stores none of them; a key at three attempts is tried once more after 30 days; and nothing is asked while the
 live table holds more `ok` answers than the Parquet tree (a lost tree must not start a full re-read). **No mass
 re-read without the owner's word:** a run asks by itself only a company's new filing and a retry; a DeepSeek question at most
@@ -2309,6 +2390,15 @@ Two separate things, deliberately not conflated:
   Once a quarter, by hand (about 30 minutes): restore the newest `boards` and `duckdb` copies `--into` a scratch
   folder, start a dashboard on it (`RC_STORE_DIR` and `RC_MARKET_DIR` pointed there, another port) and open the
   Relatedness and Settings boards.
+- **The start gate (#212)** — no live write without a fresh verified backup. `rcdata/backup.py`
+  `stale_problem()` reads `weekly-v2/duckdb/.manifest.json`'s `last_ok` (stamped only by a run in which every copy
+  verified) and answers one sentence when the newest verified copy is older than `backup.STALE_DAYS`, or when
+  there is none. `rcdata/build/base.py` `backup_problem()` is the builder's name for it: the CLI reads it once
+  before the writer turn and exits 3 without touching the store (a stale copy never becomes fresh by waiting), and
+  `POST /api/build/request/<dataset>` refuses a Settings Fetch or Backfill press with 409 so nothing sits in the
+  queue that the builder would refuse. A fetch-only run (`--no-duckdb`) is not gated: it opens no serving file.
+  Pause, Resume, the switches and the timer are not gated either — they only stop writes. Silent where no backup
+  folder is configured (a developer's machine, CI) and where `RC_BUILD_BACKUP_GATE=0` turns it off.
 - **What is not pruned** — the old `market/`, `market-heavy/`, `weekly/`, `spx_gamma_mirror/` and snapshot files
   the retired nightly jobs left in `RAW_STORE_BACKUP_DIR` (about 55 GB on 8 Nov 2026) are not touched by the weekly
   job, which only looks inside `weekly-v2/`. Removing them is a deliberate step on avo's word.

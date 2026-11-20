@@ -488,16 +488,82 @@ def test_a_ticker_the_stock_rule_already_kept_is_not_overwritten_by_the_held_row
     assert [k for k, _, _ in issues] == []
 
 
-def test_a_fund_the_etf_table_no_longer_holds_at_all_is_not_held_by_this_guard(live_my_universe):
-    """A vanished ``etf`` row is the ETF universe's own source failing, wider than this guard: holding the row would
-    keep a name alive on no evidence. It leaves, and the swap guard's "may not empty" rule is what is left."""
-    live_my_universe(rows=[{"ticker": "SPY", "kind": "etf", "rule": "etf_adv", "adv_usd_20d": 4e10,
-                            "entered_on": date(2026, 10, 1)}])
-    con = _con(etfs=[_etf("GLD", adv=50_000_000.0)])
+def test_a_fund_the_etf_table_no_longer_holds_at_all_is_held_too(live_my_universe):
+    """``etf`` is the union of three sources, so a fund one of them alone carries is missing from the whole table
+    when that source comes back short. That is an input outage, not a rule change, so the fund keeps its live row
+    and writes no irreversible ``left`` row (avo's decision A, #432)."""
+    live_my_universe(rows=[{"ticker": "GLD", "kind": "etf", "security_type": "etf", "rule": "etf_adv",
+                            "reason": "no AUM; 20-session dollar volume 1,200.0M USD",
+                            "adv_usd_20d": 1_200_000_000.0, "entered_on": date(2026, 10, 1)}])
+    con = _con(etfs=[_etf("SLV", adv=50_000_000.0)])
     rows, changes, issues = _rows(con)
-    assert sorted(rows) == ["GLD"]
-    assert ("SPY", "left") in [(c["ticker"], c["change"]) for c in changes]
+    assert sorted(rows) == ["GLD", "SLV"]
+    assert rows["GLD"]["rule"] == "etf_adv" and rows["GLD"]["adv_usd_20d"] == 1_200_000_000.0
+    assert rows["GLD"]["entered_on"] == date(2026, 10, 1)
+    assert [(c["ticker"], c["change"]) for c in changes] == [("SLV", "entered")]
+    assert [(k, key) for k, key, _ in issues] == [("my_universe_etf_row_gone", "etf")]
+    assert "GLD" in issues[0][2]
+
+
+def test_a_vanished_fund_a_manual_remove_takes_out_is_not_named_as_held(live_my_universe):
+    """Two funds vanish from ``etf`` and avo removes one by hand: the removed one is gone on purpose, so the issue
+    names and counts the other alone."""
+    live_my_universe(rows=[{"ticker": t, "kind": "etf", "rule": "etf_adv", "adv_usd_20d": 4e10,
+                            "entered_on": date(2026, 10, 1)} for t in ("GLD", "USO")])
+    con = _con(etfs=[_etf("SLV", adv=50_000_000.0)])
+    rows, _, issues = _rows(con, manual=([], [{"ticker": "GLD", "reason": "avo took it out"}]))
+    assert sorted(rows) == ["SLV", "USO"]
+    kind, key, detail = issues[0]
+    assert (kind, key) == ("my_universe_etf_row_gone", my_universe.ETF)
+    assert detail.startswith("1 ETFs") and "USO" in detail and "GLD" not in detail
+
+
+def test_a_fund_whose_etf_row_is_flagged_an_etn_today_still_leaves(live_my_universe):
+    """The guard asks the whole ``etf`` table, not the rule's filtered rows: a row that is there and is today an ETN
+    or a CEF is the rule's own answer, and that fund leaves as it always did."""
+    live_my_universe(rows=[{"ticker": "OIL", "kind": "etf", "rule": "etf_adv", "adv_usd_20d": 4e10,
+                            "entered_on": date(2026, 10, 1)}])
+    con = _con(etfs=[_etf("OIL", adv=4e10, is_etn=True), _etf("SLV", adv=50_000_000.0)])
+    rows, changes, issues = _rows(con)
+    assert sorted(rows) == ["SLV"]
+    assert ("OIL", "left") in [(c["ticker"], c["change"]) for c in changes]
     assert issues == []
+
+
+def test_a_vanished_fund_that_entered_on_its_aum_still_leaves(live_my_universe):
+    """Only an ``etf_adv`` name is held: an ``etf_aum`` fund that vanished is the AUM source's own story."""
+    live_my_universe(rows=[{"ticker": "CCOI", "kind": "etf", "rule": "etf_aum", "entered_on": date(2026, 10, 1)}])
+    con = _con(etfs=[_etf("SLV", adv=50_000_000.0)])
+    rows, changes, issues = _rows(con)
+    assert sorted(rows) == ["SLV"]
+    assert ("CCOI", "left") in [(c["ticker"], c["change"]) for c in changes]
+    assert issues == []
+
+
+def test_a_lost_volume_and_a_vanished_row_are_two_issues_of_their_own(live_my_universe):
+    """The two outages are told apart: the fund whose row is there with no volume, and the fund with no row."""
+    live_my_universe(rows=[{"ticker": t, "kind": "etf", "rule": "etf_adv", "adv_usd_20d": 4e10,
+                            "entered_on": date(2026, 10, 1)} for t in ("GLD", "SPY")])
+    con = _con(etfs=[_etf("SPY"), _etf("SLV", adv=50_000_000.0)])
+    rows, changes, issues = _rows(con)
+    assert sorted(rows) == ["GLD", "SLV", "SPY"]
+    assert [(c["ticker"], c["change"]) for c in changes] == [("SLV", "entered")]
+    assert sorted(k for k, _, _ in issues) == ["my_universe_etf_row_gone", "my_universe_etf_volume_lost"]
+    assert "SPY" in dict((k, d) for k, _, d in issues)["my_universe_etf_volume_lost"]
+    assert "GLD" in dict((k, d) for k, _, d in issues)["my_universe_etf_row_gone"]
+
+
+def test_the_vanished_issue_names_the_first_twenty_funds_and_counts_the_rest(live_my_universe):
+    """One issue, not thousands of rows: it names :data:`my_universe.MANY` tickers and says how many more."""
+    many = [f"V{i:03d}" for i in range(my_universe.MANY + 2)]
+    live_my_universe(rows=[{"ticker": t, "kind": "etf", "rule": "etf_adv", "adv_usd_20d": 4e10,
+                            "entered_on": date(2026, 10, 1)} for t in many])
+    con = _con(etfs=[_etf("SLV", adv=50_000_000.0)])
+    rows, _, issues = _rows(con)
+    assert sorted(rows) == sorted(many + ["SLV"])
+    detail = issues[0][2]
+    assert detail.endswith("and 2 more") and many[my_universe.MANY - 1] in detail
+    assert many[my_universe.MANY] not in detail
 
 
 def test_every_held_fund_is_one_issue_between_them_naming_them_all(live_my_universe):
