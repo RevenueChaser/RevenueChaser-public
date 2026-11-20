@@ -77,8 +77,13 @@ class Fake:
 
 
 @pytest.fixture
-def clock() -> Clock:
-    return Clock()
+def clock(monkeypatch) -> Clock:
+    """The clock the step stamps read (``base._step_now``). Deliberately not ``RunContext.clock``: that is the
+    run's pacing clock, which a caller may inject as a fixed sequence (the run budget of
+    ``test_options_list.py``), and the bookkeeping must not consume a read of it."""
+    clk = Clock()
+    monkeypatch.setattr(base, "_step_now", clk)
+    return clk
 
 
 @pytest.fixture
@@ -104,7 +109,7 @@ def _params(run_id: str) -> dict:
 
 
 def test_the_context_counts_the_seconds_of_every_step_it_passes_through(clock):
-    ctx = base.RunContext(run_id="r1", dataset="m/one", clock=clock)
+    ctx = base.RunContext(run_id="r1", dataset="m/one")
     clock.tick(3.0)                      # before the first step: the claim, the pause and cap reads
     ctx.step = "fetch"
     clock.tick(4.0)
@@ -120,7 +125,7 @@ def test_the_context_counts_the_seconds_of_every_step_it_passes_through(clock):
 
 def test_a_step_set_to_what_it_already_is_goes_on_counting(clock):
     """``build_kind_many`` sets the step on every member of a pass, so the lead sees the same value twice."""
-    ctx = base.RunContext(run_id="r1", dataset="m/one", clock=clock)
+    ctx = base.RunContext(run_id="r1", dataset="m/one")
     ctx.step = "build"
     clock.tick(5.0)
     ctx.step = "build"
@@ -129,7 +134,7 @@ def test_a_step_set_to_what_it_already_is_goes_on_counting(clock):
 
 
 def test_a_step_entered_twice_adds_up(clock):
-    ctx = base.RunContext(run_id="r1", dataset="m/one", clock=clock)
+    ctx = base.RunContext(run_id="r1", dataset="m/one")
     ctx.step = "fetch"
     clock.tick(2.0)
     ctx.step = "build"
@@ -140,7 +145,7 @@ def test_a_step_entered_twice_adds_up(clock):
 
 
 def test_the_step_in_hand_is_counted_up_to_now_without_ending_it(clock):
-    ctx = base.RunContext(run_id="r1", dataset="m/one", clock=clock)
+    ctx = base.RunContext(run_id="r1", dataset="m/one")
     ctx.step = "fetch"
     clock.tick(2.0)
     assert ctx.step_times()["fetch"] == 2.0
@@ -149,7 +154,7 @@ def test_the_step_in_hand_is_counted_up_to_now_without_ending_it(clock):
 
 
 def test_a_run_writes_its_step_times_into_its_run_row(fakes, clock):
-    row = base.run_request({"dataset": "m/one", "params": {}}, trigger="test", clock=clock)
+    row = base.run_request({"dataset": "m/one", "params": {}}, trigger="test")
     assert row["result"] == "changed"
     steps = _steps(row["run_id"])
     assert steps["fetch"] == 4.0 and steps["parquet"] == 2.0 and steps["build"] == 8.0 and steps["check"] == 1.0
@@ -159,7 +164,7 @@ def test_a_run_writes_its_step_times_into_its_run_row(fakes, clock):
 
 def test_a_failed_run_keeps_the_time_of_the_steps_it_reached(fakes, clock):
     fakes["m/one"].fails = "build"
-    row = base.run_request({"dataset": "m/one", "params": {}}, trigger="test", clock=clock)
+    row = base.run_request({"dataset": "m/one", "params": {}}, trigger="test")
     assert row["result"] == "failed"
     steps = _steps(row["run_id"])
     assert steps["fetch"] == 4.0 and steps["parquet"] == 2.0 and steps["build"] == 8.0
@@ -215,5 +220,18 @@ def test_a_blank_chain_variable_is_no_chain(monkeypatch):
 def test_a_dataset_run_of_a_pass_joins_the_task_s_chain(fakes, clock, monkeypatch):
     """What the Runs tab will group by (step 2): the task's row and the runs it caused under one key."""
     monkeypatch.setenv(ops.CHAIN_ID_ENV, "task42")
-    row = base.run_request({"dataset": "m/one", "params": {"mode": "daily"}}, trigger="schedule", clock=clock)
+    row = base.run_request({"dataset": "m/one", "params": {"mode": "daily"}}, trigger="schedule")
     assert _params(row["run_id"]) == {"mode": "daily", "chain": "task42"}
+
+
+def test_the_step_stamps_do_not_read_the_run_s_own_clock(monkeypatch):
+    """CI on this PR (unit 0/6, 20 Nov 2026): the first version stamped with ``ctx.clock``, so
+    ``test_options_list.test_the_run_budget_stops_starting_names_and_the_next_run_resumes`` lost both of the zero
+    reads its budget sequence hands out and the run stopped at the first name (coverage 1.0, not 1/3).
+    """
+    reads = []
+    ctx = base.RunContext(run_id="r1", dataset="m/one", clock=lambda: reads.append(1) or 0.0)
+    ctx.step = "fetch"
+    ctx.step = "build"
+    ctx.step_times()
+    assert reads == [], "a step stamp must not read the run's pacing clock"

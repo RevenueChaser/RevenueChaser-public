@@ -239,6 +239,14 @@ def honours_scope(ds) -> bool:
     return bool(getattr(ds, "honours_scope", False))
 
 
+def _step_now() -> float:
+    """The clock the step stamps read. Not ``RunContext.clock``: that one is the run's **pacing** clock, which a
+    caller may inject as a fixed sequence (a run budget's reads in ``rcdata/tests/test_options_list.py``), and
+    bookkeeping must not consume a read of it.
+    """
+    return time.monotonic()
+
+
 # ── The run context ────────────────────────────────────────────────────────────────────────────────────────────
 
 @dataclass
@@ -294,10 +302,10 @@ class RunContext:
         if name == "step":
             at, seen = getattr(self, "_step_at", None), getattr(self, "step", None)
             if at is not None and seen is not None:
-                spent = max(0.0, self.clock() - at)
+                spent = max(0.0, _step_now() - at)
                 self._steps[seen] = round(self._steps.get(seen, 0.0) + spent, 3)
             object.__setattr__(self, name, value)
-            object.__setattr__(self, "_step_at", self.clock())
+            object.__setattr__(self, "_step_at", _step_now())
             return
         object.__setattr__(self, name, value)
 
@@ -310,7 +318,7 @@ class RunContext:
         """
         out = dict(self._steps)
         if self._step_at is not None and self.step:
-            out[self.step] = round(out.get(self.step, 0.0) + max(0.0, self.clock() - self._step_at), 3)
+            out[self.step] = round(out.get(self.step, 0.0) + max(0.0, _step_now() - self._step_at), 3)
         return out
 
     def count(self, provider: str, calls: int = 0, failures: int = 0, http_429: int = 0, *,
