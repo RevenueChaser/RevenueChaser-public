@@ -78,7 +78,7 @@ def fda_event_name(row: dict) -> str:
     """The ``event`` text of an FDA row: ``IOVA Lifileucel: PDUFA Date``. The company and the drug stay in their own
     columns too; this is the name the board shows and the key it is upserted by."""
     head = " ".join(str(x) for x in (row.get("ticker"), row.get("drug")) if x)
-    tail = row.get("catalyst") or row.get("status")
+    tail = row.get("catalyst") or row.get("application_status")
     return f"{head}: {tail}" if tail else head
 
 
@@ -105,7 +105,7 @@ def _fda_pass(now: float, run_id: str) -> dict:
         old = stored.get(key) or {}
         rows.append({
             "event_ts": key[0], "event": key[1], "type": FDA_TYPE,
-            "importance": econ_importance.fda_importance(r.get("catalyst"), r.get("status")),
+            "importance": econ_importance.fda_importance(r.get("catalyst"), r.get("application_status")),
             "forecast": None, "prev": None, "reported_period": None,
             "first_seen": old.get("first_seen") or float(r["fetched_at"]),
             "last_seen": float(r["fetched_at"]), "retired_at": None, "run_id": run_id, "run_at": now,

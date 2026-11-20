@@ -49,7 +49,10 @@ def test_the_calendar_lands_typed_and_reads_back(http_mock):
     r = got[0]
     assert (r["snapshot_date"], r["target_date"], r["ticker"], r["drug"]) == (
         date(2026, 11, 20), date(2026, 12, 4), "IOVA", "Lifileucel")
-    assert r["catalyst"] == "PDUFA Date" and r["status"] == "NDA" and r["indication"] == "Advanced Melanoma"
+    assert r["catalyst"] == "PDUFA Date" and r["indication"] == "Advanced Melanoma"
+    # UW's own ``status`` is served as ``application_status``: ``read`` keeps ``status`` for the dataset's
+    # freshness and stamps it on every row it hands back.
+    assert r["application_status"] == "NDA" and r["status"] == "changed"
     assert r["target_text"] == "2026-12-04" and r["target_precision"] == fda.DAY
     assert r["has_options"] is True and r["marketcap"] == 1_000_000_000.0
     assert r["outcome"] is None and r["source_link"].startswith("https://www.fda.gov/")
@@ -138,8 +141,11 @@ def test_the_dataset_is_an_hourly_market_source_and_the_kind_is_market_5(http_mo
 def test_an_hourly_dataset_is_due_again_an_hour_after_its_run(http_mock, monkeypatch):
     http_mock.add("/market/fda-calendar", {"data": [PDUFA]}, headers=UW_HEADERS)
     _run()
-    assert due.is_due(DATASETS[fda.NAME])[0] is False
+    # The fixture's ``_now`` is a fixed day, the run's own start is the wall clock, so both ends of the hour are
+    # read from the run that just happened.
     started = ops.run_started_at(ops.latest_check(fda.NAME)["run_id"])
+    monkeypatch.setattr(calendar, "_now", lambda: datetime.fromtimestamp(started + 60, timezone.utc))
+    assert due.is_due(DATASETS[fda.NAME])[0] is False
     monkeypatch.setattr(calendar, "_now", lambda: datetime.fromtimestamp(started + 3600, timezone.utc))
     assert due.is_due(DATASETS[fda.NAME])[0] is True
 
