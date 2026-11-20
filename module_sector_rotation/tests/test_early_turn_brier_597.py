@@ -163,7 +163,13 @@ class TestCaption:
     def test_the_line_names_the_hits_the_horizon_and_the_score(self):
         line = caption(brier(history({"A": TestBrier.HIT, "B": TestBrier.MISS}), horizon_weeks=2))
         assert "1/2 reached Leading within 2w" in line
-        assert "Brier 0.50" in line and "base 0.33" in line
+        assert "hit 50% vs base 33%" in line
+
+    def test_each_number_stands_against_the_one_it_is_fair_to_read_it_against(self):
+        """A Brier beside the base *rate* read as if the flag beat it; a Brier belongs beside a Brier."""
+        line = caption(brier(history({"A": TestBrier.HIT, "B": TestBrier.MISS}), horizon_weeks=2))
+        assert "Brier 0.50 vs 0.28" in line
+        assert "base 0.33" not in line, "the base rate is not the thing a Brier is compared with"
 
 
 class TestBandScan:

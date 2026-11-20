@@ -257,9 +257,22 @@ def classify_quadrant(rs_ratio: float, rs_momentum: float) -> str:
 # so a flip needs a real move. The band is in A1 units: ``z`` is a deviation over its own 52-week standard deviation
 # (``_scaled``), so 1.0 is a whole standard deviation — the 1.0 of the old proposal was on the retired pooled-z
 # axis and is not this scale.
-# shortcut: 0.25 is a provisional default (about one typical weekly step of z); re-measure it on the stored
-# snapshots with ``early_turn.band_scan`` and set it from that table (#597).
-QUADRANT_BAND = 0.25
+#
+# 0.5 is measured, not guessed: ``early_turn.band_scan`` over 156 weeks (2023-11-26 to 2026-11-15) and 97 tickers
+# rebuilt from the prices store (homesrv, 20 Nov 2026, read-only) gives, per band, the one-week round trips a dot
+# makes and the mean weeks it stays in a quadrant:
+#
+#     band   round trips   mean weeks in quadrant
+#     0.0        1,135            3.03
+#     0.25         318            4.31
+#     0.5           77            5.37
+#     1.0           10            7.69
+#
+# No band takes the round trips to zero, so "the smallest band that zeroes them" has no answer. 0.5 removes 93% of
+# them and leaves the mean stay at about a calendar month, which is the scale an RRG is read on; 0.25 leaves a round
+# trip per ticker per year, which is the flip this issue is about, and 1.0 more than doubles the stay and starts
+# hiding real rotations (#597).
+QUADRANT_BAND = 0.5
 
 _RATIO_HIGH = ("LEADING", "WEAKENING")          # quadrants whose ratio side is "right of 100"
 _MOMENTUM_HIGH = ("LEADING", "IMPROVING")       # quadrants whose momentum side is "above 100"

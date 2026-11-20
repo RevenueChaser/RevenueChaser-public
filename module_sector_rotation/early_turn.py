@@ -205,13 +205,22 @@ def brier(by_day: dict | None = None, horizon_weeks: int = HORIZON_WEEKS, band: 
 
 
 def caption(result: dict) -> str:
-    """One line for the board's Early Turn card, or ``""`` when the stored history scores nothing yet."""
+    """One line for the board's Early Turn card, or ``""`` when nothing scores yet.
+
+    Each number stands next to the one it is fair to read it against: the hit rate against the pool's base rate,
+    and the flag's Brier against the Brier of forecasting that base rate. Printing the Brier (0.36 as measured)
+    beside the base *rate* (0.48) read as though the flag beat it, which is backwards — a lower Brier is better and
+    those two are not the same quantity (review on PR #1151, 20 Nov 2026).
+    """
     if not result or not result.get("flags"):
         return ""
     bits = [f"{result['hits']}/{result['flags']} reached {result['predicted'].title()} "
-            f"within {result['horizon_weeks']}w", f"Brier {result['brier']:.2f}"]
-    if result.get("base_rate") is not None:
-        bits.append(f"base {result['base_rate']:.2f}")
+            f"within {result['horizon_weeks']}w"]
+    if result.get("hit_rate") is not None and result.get("base_rate") is not None:
+        bits.append(f"hit {result['hit_rate']:.0%} vs base {result['base_rate']:.0%}")
+    if result.get("brier") is not None:
+        against = result.get("brier_base")
+        bits.append(f"Brier {result['brier']:.2f}" + (f" vs {against:.2f}" if against is not None else ""))
     return " · ".join(bits)
 
 
