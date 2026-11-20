@@ -1,0 +1,83 @@
+[
+ {
+  "dataset": "13f_sets",
+  "raw_bytes": 81665193,
+  "raw_file": "13f_sets/01sep2024-30nov2024_form13f.zip",
+  "sample": "13f_sets/01sep2024-30nov2024_form13f.zip",
+  "sample_bytes": 10689,
+  "trim": "zip: 9 members, each cut to its header and 50 rows",
+  "url": "https://www.sec.gov/files/structureddata/data/form-13f-data-sets/01sep2024-30nov2024_form13f.zip"
+ },
+ {
+  "dataset": "company_tickers_exchange",
+  "raw_bytes": 180874,
+  "raw_file": "company_tickers_exchange/2026-11-19.json.gz",
+  "sample": "company_tickers_exchange/2026-11-19.json.gz",
+  "sample_bytes": 545,
+  "trim": "json: every list cut to 20 items (563378 -> 993 bytes unpacked)",
+  "url": "https://www.sec.gov/files/company_tickers_exchange.json"
+ },
+ {
+  "dataset": "company_tickers_mf",
+  "raw_bytes": 234351,
+  "raw_file": "company_tickers_mf/2026-11-16.json.gz",
+  "sample": "company_tickers_mf/2026-11-16.json.gz",
+  "sample_bytes": 289,
+  "trim": "json: every list cut to 20 items (1351476 -> 962 bytes unpacked)",
+  "url": "https://www.sec.gov/files/company_tickers_mf.json"
+ },
+ {
+  "dataset": "daily_index",
+  "raw_bytes": 94649,
+  "raw_file": "daily_index/master.20210201.idx.gz",
+  "sample": "daily_index/master.20210201.idx.gz",
+  "sample_bytes": 885,
+  "trim": "first 60 lines of 6323",
+  "url": null
+ },
+ {
+  "dataset": "form345_sets",
+  "raw_bytes": 8660776,
+  "raw_file": "form345_sets/2026q3_form345.zip",
+  "sample": "form345_sets/2026q3_form345.zip",
+  "sample_bytes": 17068,
+  "trim": "zip: 10 members, each cut to its header and 50 rows",
+  "url": "https://www.sec.gov/files/datastandardsinnovation/data/insider-transactions-data-sets/2026q3_form345.zip"
+ },
+ {
+  "dataset": "fsds",
+  "raw_bytes": 65148008,
+  "raw_file": "fsds/2026q3.zip",
+  "sample": "fsds/2026q3.zip",
+  "sample_bytes": 11947,
+  "trim": "zip: 5 members, each cut to its header and 50 rows",
+  "url": "https://www.sec.gov/files/dera/data/financial-statement-data-sets/2026q3.zip"
+ },
+ {
+  "dataset": "ftd",
+  "raw_bytes": 1435614,
+  "raw_file": "ftd/cnsfails202610b.zip",
+  "sample": "ftd/cnsfails202610b.zip",
+  "sample_bytes": 1655,
+  "trim": "zip: 1 members, each cut to its header and 50 rows",
+  "url": "https://www.sec.gov/files/data/fails-deliver-data/cnsfails202610b.zip"
+ },
+ {
+  "dataset": "ncen",
+  "raw_bytes": 7571694,
+  "raw_file": "ncen/2025q4.zip",
+  "sample": "ncen/2025q4.zip",
+  "sample_bytes": 60499,
+  "trim": "zip: all 46 members, each cut to its header and 50 rows (re-cut 20 Nov: the first cut kept only 40)",
+  "url": "https://www.sec.gov/files/dera/data/form-n-cen-data-sets/2025q4_ncen.zip"
+ },
+ {
+  "dataset": "nport",
+  "raw_bytes": 462371568,
+  "raw_file": "nport/2026q3_nport.zip",
+  "sample": "nport/2026q3_nport.zip",
+  "sample_bytes": 50206,
+  "trim": "zip: 32 members, each cut to its header and 50 rows",
+  "url": "https://www.sec.gov/files/dera/data/form-n-port-data-sets/2026q3_nport.zip"
+ }
+]
