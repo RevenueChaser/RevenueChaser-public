@@ -622,7 +622,7 @@ def _annual_facts(facts: dict, concepts: list[str], unit: str,
             if annual_fp:
                 if f.get("fp") != "FY":
                     continue
-            elif f.get("fp") == "FY":  # MUTANT M1: the annual-form gate is gone
+            elif f.get("fp") == "FY" or f.get("form") not in _ANNUAL_FORMS:
                 continue
             end = f.get("end") or ""
             start = f.get("start") or ""
@@ -630,7 +630,7 @@ def _annual_facts(facts: dict, concepts: list[str], unit: str,
             if not end or val is None:
                 continue
             # Yıllık gerçek = ~1 yıllık dönem (fp restated filing'lerde güvenilir değil)
-            if start and annual_fp:  # MUTANT M2: the >330-day filter no longer covers the new pass
+            if start:
                 try:
                     if (_date.fromisoformat(end) - _date.fromisoformat(start)).days <= 330:
                         continue
@@ -668,7 +668,7 @@ def _annual_facts(facts: dict, concepts: list[str], unit: str,
     # stamped with a quarter, in the field's tag order. It runs after every merge above, so it can only add.
     for concept in concepts:
         for year, val_end in _one(concept, annual_fp=False).items():
-            merged[year] = val_end  # MUTANT M3: the fill replaces a year instead of only adding one
+            merged.setdefault(year, val_end)
     return merged
 
 
