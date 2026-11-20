@@ -179,7 +179,7 @@ def test_a_session_without_a_spy_d01_bar_freezes_nothing(store):
     out = freeze.freeze_cards([_card("AAA")], run_id="x", now=POST_CLOSE)
     assert out.frozen == 0 and rawstore.count("forecast_ledger") == 0
     (note,) = ledger.take_notes()
-    assert "complete SPY bar" in note and "2026-10-02" in note
+    assert "SPY has no complete" in note and "2026-10-02" in note
 
 
 def test_a_spy_bar_written_before_the_close_plus_margin_freezes_nothing(store):
