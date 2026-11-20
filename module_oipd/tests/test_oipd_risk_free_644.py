@@ -28,7 +28,8 @@ def _serve_dgs10(points):
 
 def test_the_sessions_stored_yield_is_the_rate(market_roots):  # noqa: F811
     _serve_dgs10([("2026-11-17", 4.11), ("2026-11-18", 4.13)])
-    assert engine.session_risk_free("2026-11-18") == (0.0413, "macro.dgs10", "2026-11-18", None)
+    rate, source, as_of, warning = engine.session_risk_free("2026-11-18")
+    assert rate == pytest.approx(4.13 / 100) and (source, as_of, warning) == ("macro.dgs10", "2026-11-18", None)
 
 
 def test_a_session_whose_yield_is_not_held_falls_back_and_says_so(market_roots):  # noqa: F811
@@ -72,7 +73,7 @@ def test_the_build_discounts_at_the_sessions_yield(monkeypatch, market_roots):  
         return {"ticker": ticker, "warnings": warnings}
     monkeypatch.setattr(engine, "_fit_payload", spy)
     engine.build("TST")
-    assert seen["risk_free"] == 0.0413 and seen["risk_free_source"] == "macro.dgs10"
+    assert seen["risk_free"] == pytest.approx(4.13 / 100) and seen["risk_free_source"] == "macro.dgs10"
     assert seen["risk_free_as_of"] == "2026-11-18"
 
 
