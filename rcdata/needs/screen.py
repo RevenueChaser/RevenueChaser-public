@@ -153,6 +153,9 @@ WRITTEN_COLUMN: dict[str, str] = {
     'regsho_threshold': 'list_date',
     'etf_holdings_nport': 'report_date',
     'sec13f_cusip_map': 'period',
+    # The day the SEC's data-set page first listed the set, which is when this row was written; ``last_day`` is the
+    # end of the set's own filing window, not a write.
+    'sec13f_data_sets': 'first_seen',
     'sec13f_filer_breaks': 'period',
     'sec13f_filer_holdings': 'period',
     'sec13f_filer_period': 'period',
