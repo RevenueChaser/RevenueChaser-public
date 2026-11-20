@@ -52,8 +52,10 @@ def seeded(monkeypatch):
     return None
 
 
-def _build(pressed: bool) -> tuple[dict, str]:
-    ctxs = [(d, base.RunContext(run_id=f"t-{d.name}", dataset=d.name, as_of=D3, pressed=pressed, allow_shrink=True))
+def _build(scheduled: bool) -> tuple[dict, str]:
+    """One build of ``market`` with every dataset a member; ``scheduled``: the hourly pass's own requests."""
+    ctxs = [(d, base.RunContext(run_id=f"t-{d.name}", dataset=d.name, as_of=D3, scheduled=scheduled,
+                                allow_shrink=True))
             for d in MEMBERS]
     checks = base.build_kind_many("market", ctxs, lead=ctxs[0][1])
     return checks[ms.NAME], " ".join(ctxs[0][1].notes)
@@ -74,9 +76,9 @@ def test_only_a_declaring_kind_holds_its_whole_build(seeded):
 
 # ── the gate ──────────────────────────────────────────────────────────────────────────────────────────────────
 
-def test_an_unattended_whole_build_is_refused_and_leaves_no_file(seeded):
+def test_a_whole_build_in_the_pass_is_refused_and_leaves_no_file(seeded):
     with pytest.raises(base.WholeBuildByHand, match="a whole market build is not started by the hourly pass"):
-        _build(pressed=False)
+        _build(scheduled=True)
     with pytest.raises(serving.ServingFileMissing):
         with serving.open_read("market"):
             pass
@@ -84,37 +86,37 @@ def test_an_unattended_whole_build_is_refused_and_leaves_no_file(seeded):
 
 def test_the_refusal_names_the_dataset_that_holds_it_and_why_the_build_is_whole(seeded):
     with pytest.raises(base.WholeBuildByHand) as e:
-        _build(pressed=False)
+        _build(scheduled=True)
     assert ms.NAME in str(e.value) and "live market file" in str(e.value), str(e.value)
 
 
-def test_a_person_gets_the_whole_build(seeded):
-    check, note = _build(pressed=True)
+def test_anything_but_the_pass_gets_the_whole_build(seeded):
+    check, note = _build(scheduled=False)
     assert check["result"] != "failed" and "built whole" in note, note
     with serving.open_read("market") as con:
         assert con.execute(f"SELECT count(*) FROM {ms.TABLE}").fetchone()[0] > 0
 
 
-def test_the_build_on_the_live_copy_runs_unattended(seeded):
-    _build(pressed=True)
+def test_the_build_on_the_live_copy_runs_in_the_pass(seeded):
+    _build(scheduled=False)
     _series(fred, 2026, 9.9)                        # one source's year restated: a dirty set, not a whole build
-    check, note = _build(pressed=False)
+    check, note = _build(scheduled=True)
     assert "built on the live file" in note, note
     assert check["result"] != "failed", check
 
 
-def test_a_kind_that_declares_nothing_is_built_whole_unattended(seeded, monkeypatch):
+def test_a_kind_that_declares_nothing_is_built_whole_in_the_pass(seeded, monkeypatch):
     monkeypatch.delattr(ms.DATASET, "whole_build_by_hand")
-    check, note = _build(pressed=False)
+    check, note = _build(scheduled=True)
     assert "built whole" in note and check["result"] != "failed", note
 
 
 def test_the_lever_by_hand_does_not_let_the_pass_in(seeded, monkeypatch):
     """``RC_BUILD_WHOLE=1`` asks for a whole build; it is still not one the hourly pass starts."""
-    _build(pressed=True)
+    _build(scheduled=False)
     monkeypatch.setenv(dirty.WHOLE_ENV, "1")
     with pytest.raises(base.WholeBuildByHand):
-        _build(pressed=False)
+        _build(scheduled=True)
 
 
 # ── what a refused pass writes ────────────────────────────────────────────────────────────────────────────────
@@ -166,6 +168,16 @@ def _schedule(name: str) -> dict:
     return ops.next_request(name)
 
 
+def test_a_fetch_press_of_the_same_dataset_is_not_refused(refusing, monkeypatch):
+    """The gate is in ``build_kind_many``; what reaches it from a press is a context that is not the schedule's."""
+    seen: list[bool] = []
+    monkeypatch.setattr(base, "build_kind", lambda ctx, ds: seen.append(ctx.scheduled) or
+                        {"dataset": ds.name, "result": "changed"})
+    ops.enqueue(refusing[0].name, None, by="settings")
+    row = base.run_request(ops.next_request(refusing[0].name))
+    assert seen == [False] and row["result"] == "changed", (seen, row)
+
+
 def test_a_refused_pass_is_a_skipped_check_row_not_a_failure(refusing):
     row = base.run_request(_schedule(refusing[0].name))
     assert row["result"] == "skipped", row
@@ -178,6 +190,8 @@ def test_a_refused_pass_of_several_requests_skips_every_one(refusing):
     assert all("not started by the hourly pass" in r["note"] for r in rows), rows
 
 
-def test_a_fetch_press_is_a_person_and_the_pass_is_not():
-    assert base._pressed({"id": 1, "requested_by": "settings"}) is True
-    assert base._pressed({"id": 1, "requested_by": "schedule"}) is False
+def test_only_the_schedules_own_request_is_the_pass():
+    """Not the negation of ``_pressed``: a request with neither an id nor a ``requested_by`` is held by nothing."""
+    assert base._scheduled({"id": 1, "requested_by": "schedule"}) is True
+    assert base._scheduled({"id": 1, "requested_by": "settings"}) is False
+    assert base._scheduled({}) is False and base._pressed({}) is False

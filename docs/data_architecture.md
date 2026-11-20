@@ -1166,8 +1166,9 @@ and kept as they are otherwise (whole build of 6 Nov 2026: 91 min).
 deletes its rows. `options` is still built whole; `spine` stays whole by design (seconds).
 
 **A whole build the hourly pass does not start** (#446 step 8). A dataset may declare `whole_build_by_hand = True`;
-`prices/serving` does. When the plan for such a kind says the build would be whole and no member of the pass is a
-person's request (`RunContext.pressed`: a Fetch press or the CLI, not `due.py`'s own), `base.build_kind_many` raises
+`prices/serving` does. When the plan for such a kind says the build would be whole and **every** member of the pass
+is the schedule's own request (`RunContext.scheduled`, `requested_by` `schedule`; one Fetch press among them is a
+person asking for it, and a build called any other way is not held at all), `base.build_kind_many` raises
 `base.WholeBuildByHand` before the build file is opened, and the request ends `skipped` with the reason on its check
 row. Nothing is copied, staged or swapped, so the live file is untouched and the dataset stays due for the next
 pass. The reason it holds: a whole `prices` build is 86 min for the 2010+ volume and 6 h 12 min with the WRDS
