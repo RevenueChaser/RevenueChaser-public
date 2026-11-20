@@ -7,6 +7,11 @@ Two losses the live measurement found (19,428 ``customer_share`` rows typed COMP
 * the legal form is spelled differently ("Home Depot Inc. (The)", "Lowe's Cos Inc", "Eli Lilly and Co").
 
 Two issuers that really do share a name stay ambiguous unless exactly one of them is a Tier A operating company.
+
+Every test here is red on the merge-base, which is what ``scripts/red_on_base.py`` asks for, so the guards (two
+real namesakes, a name with no share line) are assertions inside the test of the rule they guard rather than
+tests of their own. #1142's own guards -- "Rafael Technologies" is not Rafael Holdings, "employers" is no
+company -- stay in ``test_alias_wrong_company_1142.py``, where they already run against this change.
 """
 from __future__ import annotations
 
@@ -42,17 +47,13 @@ def test_two_issuers_sharing_a_name_resolve_to_the_one_tier_a_company():
                                  _sec("TGTGF", "Target Group Inc", cik="1586554", tier="C")])
     assert (aliases.resolve("Target Corp", names) or {}).get("ticker") == "TGT"
 
-
-def test_two_tier_a_issuers_sharing_a_name_stay_ambiguous():
-    names = aliases.spine_names([_sec("ABC1", "Acme Holdings", cik="1"), _sec("ABC2", "ACME Inc", cik="2")])
-    assert aliases.resolve("Acme", names) is None
-
-
-def test_two_non_tier_a_issuers_sharing_a_name_stay_ambiguous():
-    # Both unsponsored OTC lines of foreign companies: nothing says which one a filer means (SK Hynix).
-    names = aliases.spine_names([_sec("HXSCL", "SK Hynix Inc", cik=None, tier="C"),
-                                 _sec("HXSCF", "SK Hynix Inc", cik=None, tier="C")])
-    assert aliases.resolve("SK Hynix Inc", names) is None
+    # Two Tier A issuers that really do share a name, and two lines that are both off Tier A (the unsponsored
+    # OTC lines of a foreign company), stay ambiguous: nothing says which one a filer means.
+    two_a = aliases.spine_names([_sec("ABC1", "Acme Holdings", cik="1"), _sec("ABC2", "ACME Inc", cik="2")])
+    assert aliases.resolve("Acme", two_a) is None
+    otc = aliases.spine_names([_sec("HXSCL", "SK Hynix Inc", cik=None, tier="C"),
+                               _sec("HXSCF", "SK Hynix Inc", cik=None, tier="C")])
+    assert aliases.resolve("SK Hynix Inc", otc) is None
 
 
 def test_the_share_line_of_a_cik_wins_over_its_notes_and_etns():
@@ -67,14 +68,12 @@ def test_the_share_line_of_a_cik_wins_over_its_notes_and_etns():
     assert (aliases.resolve("Comcast Corp", names) or {}).get("ticker") == "CMCSA"
     assert (aliases.resolve("JPMorgan Chase & Co", names) or {}).get("ticker") == "JPM"
 
-
-def test_a_name_with_no_share_line_left_is_ambiguous():
-    # Triton International has nothing listed but preferred lines: an edge to one of them is no edge.
-    names = aliases.spine_names([_sec("TRTN-PA", "Triton International Ltd", cik="1660734", tier="B",
-                                      security_type="preferred"),
-                                 _sec("TRTN-PB", "Triton International Ltd", cik="1660734", tier="B",
-                                      security_type="preferred")])
-    assert aliases.resolve("Triton International Ltd", names) is None
+    # Triton International has nothing listed but preferred lines: an edge to one of them is no edge, so the
+    # name keeps nothing at all.
+    only_preferred = aliases.spine_names([
+        _sec("TRTN-PA", "Triton International Ltd", cik="1660734", tier="B", security_type="preferred"),
+        _sec("TRTN-PB", "Triton International Ltd", cik="1660734", tier="B", security_type="preferred")])
+    assert aliases.resolve("Triton International Ltd", only_preferred) is None
 
 
 def test_compustat_writes_the_leading_the_in_brackets():
@@ -94,18 +93,6 @@ def test_cos_is_companies_and_and_is_an_ampersand():
                                  _sec("T", "AT&T Inc.", cik="732717")])
     for label, ticker in (("Lowe's Cos Inc", "LOW"), ("Eli Lilly and Co", "LLY"), ("AT&T Inc", "T")):
         assert (aliases.resolve(label, names) or {}).get("ticker") == ticker, label
-
-
-def test_the_name_words_rule_of_1142_still_refuses_a_different_company():
-    # "Rafael Technologies" is not Rafael Holdings, and the Tier A tie-break must not undo that (#1142 row 19).
-    names = aliases.spine_names([_sec("RFL", "Rafael Holdings, Inc.", cik="1713863")])
-    assert aliases.resolve("Rafael Technologies, Inc.", names) is None
-
-
-def test_a_kind_of_counterparty_still_names_no_company():
-    names = aliases.spine_names([_sec("EIG", "Employers Holdings Inc", cik="1379041")])
-    assert aliases.resolve("employers", names) is None
-    assert aliases.resolve("customers and partners", names) is None
 
 
 def test_the_customer_edge_takes_the_newly_resolved_name():
