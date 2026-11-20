@@ -1293,7 +1293,7 @@ MANIFEST: dict[str, dict] = {
             # midnight Amsterdam, so a quarter must never be read off it as a time. NULL on every economic row.
             # Additive, no ``_SCHEMA_VERSION`` bump (the ``news_headlines`` X columns are the precedent).
             "ticker TEXT", "drug TEXT", "catalyst TEXT", "target_text TEXT", "target_precision TEXT",
-            "indication TEXT", "outcome TEXT", "url TEXT",
+            "indication TEXT", "status TEXT", "outcome TEXT", "url TEXT",
             "PRIMARY KEY (event_ts, event, type)",
         ],
         "kind": "tabular", "write": "upsert", "history_mode": "operational", "db": "news", "sources": [],

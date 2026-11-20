@@ -37,8 +37,8 @@ FDA_TYPE = "fda"
 EVENTS, HIGHLIGHT, META = "news_events", "news_highlight", "news_meta"
 _EVENT_COLS = ("event_ts", "event", "type", "importance", "forecast", "prev", "reported_period", "first_seen",
                "last_seen", "retired_at", "run_id", "run_at")
-_FDA_COLS = _EVENT_COLS + ("ticker", "drug", "catalyst", "target_text", "target_precision", "indication", "outcome",
-                           "url")
+_FDA_COLS = _EVENT_COLS + ("ticker", "drug", "catalyst", "target_text", "target_precision", "indication", "status",
+                           "outcome", "url")
 
 
 def local_day(ts: float) -> date:
@@ -112,6 +112,10 @@ def _fda_pass(now: float, run_id: str) -> dict:
             "ticker": r.get("ticker"), "drug": r.get("drug"), "catalyst": r.get("catalyst"),
             "target_text": r.get("target_text"), "target_precision": r.get("target_precision"),
             "indication": r.get("indication") or r.get("description"),
+            # ``application_status``, never ``status``: ``rcdata.read`` stamps every row it hands back
+            # with a ``status`` of its own (the dataset's freshness word), so reading that name here
+            # would store "changed" in the column the board shows (#807).
+            "status": r.get("application_status"),
             "outcome": r.get("outcome") or r.get("outcome_brief"), "url": r.get("source_link"),
         })
     lo, hi = min(k[0] for k in newest_keys), max(k[0] for k in newest_keys)

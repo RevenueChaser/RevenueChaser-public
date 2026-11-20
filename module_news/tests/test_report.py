@@ -56,7 +56,7 @@ def test_the_page_shows_today_the_week_and_the_highlight(seeded):
     page = report.render_html(now=NOW)
     assert "9 November 2026" in page and "Monday" in page
     assert "Fed Governor Bowman speaks" in page and "CPI, Y/Y%" in page
-    assert "Tuesday 10 November" in page                 # the week groups by Amsterdam day
+    assert "Tuesday 10 November: 1 releases" in page     # the week strip counts by Amsterdam day (#808)
     assert "Retail sales" not in page                    # beyond seven days
     assert "Cancelled release" not in page               # retired events never show
     assert "Household expectations." in page and "Highlight" in page
@@ -72,7 +72,7 @@ def test_headlines_are_the_last_24_hours_and_escaped(seeded):
 
 def test_an_empty_store_says_so_in_english():
     page = report.render_html(now=NOW)
-    assert "Nothing on this week's calendar" in page and "No headline yet" in page
+    assert "Nothing on this day" in page and "No headline yet" in page       # the day's own line (#808)
 
 
 def test_the_page_is_phone_friendly_and_themed(seeded):
