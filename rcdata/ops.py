@@ -1462,6 +1462,46 @@ def job_runs(limit: int = 200) -> list[dict]:
     return out
 
 
+#: Which columns a run row comes back with, whatever the backend: a builder run names its ``dataset``, a scheduled
+#: task or a dashboard job its ``job`` (#136).
+RUN_COLUMNS = ("run_id", "dataset", "job", "trigger", "pid", "host", "started_at", "finished_at", "status", "error",
+               "counts", "params")
+
+
+@_routed
+def recent_runs(limit: int = 200) -> list[dict]:
+    """The newest runs of **every** writer, newest first: builder dataset runs, scheduled tasks and dashboard jobs,
+    with ``counts`` and ``params`` read back as dicts.
+
+    ``job_runs`` above is the task-and-dashboard half of the same table, kept for the readers that want only those;
+    this is what the Runs tab reads, because a chain is a task's row **and** the dataset runs it caused (#1205).
+    """
+    rows = _select(f"SELECT {', '.join(RUN_COLUMNS)} FROM job_runs2 ORDER BY started_at DESC, run_id DESC LIMIT ?",
+                   (int(limit),))
+    out = []
+    for row in rows:
+        row = dict(row)
+        row["counts"] = _loads(row.get("counts"))
+        row["params"] = _loads(row.get("params"))
+        out.append(row)
+    return out
+
+
+@_routed
+def runs_exist(run_ids) -> set[str]:
+    """Which of ``run_ids`` have a ``job_runs2`` row. The chain audit asks the store rather than the page it read,
+    so a chain whose root run started before the page's window is not reported as a run with no record (#1205)."""
+    ids = [str(r) for r in dict.fromkeys(run_ids or ()) if r]
+    if not ids:
+        return set()
+    found: set[str] = set()
+    for start in range(0, len(ids), 500):          # a bounded IN list, whatever the page size
+        chunk = ids[start:start + 500]
+        rows = _select(f"SELECT run_id FROM job_runs2 WHERE run_id IN ({', '.join('?' * len(chunk))})", tuple(chunk))
+        found.update(r["run_id"] for r in rows)
+    return found
+
+
 @_routed
 def watch_count(kind: str) -> int:
     rows = _select(f"SELECT count(*) AS n FROM watchlist_{_watch_kind(kind)}")

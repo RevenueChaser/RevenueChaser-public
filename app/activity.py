@@ -73,16 +73,29 @@ def job_boards() -> dict:
     return {"boards": boards, "jobs": jobs}
 
 
+#: A run that did not end well, in the three vocabularies that meet in ``job_runs2``: the builder's ``failed``, a
+#: dashboard job's ``error`` or ``cancelled``, and ``lost`` for a run whose end write never came (#82). Before
+#: #1205 nothing but ``failed`` and ``lost`` could reach here, because the dashboard's own words never arrived.
+BAD_STATUS = frozenset({"failed", "error", "cancelled", "lost"})
+
+
 def pressed_by_board(rows: list[dict]) -> dict[str, dict]:
     """The dashboard's own job runs (``runview.read``'s rows), per board key: how many, the newest start and how
-    many failed or were lost. A run whose module is not a board is ``System``."""
+    many failed or were lost. A run whose module is not a board is ``System``.
+
+    Only a dashboard run counts: since #1205 the Runs tab also reads the builder's dataset runs and the scheduled
+    tasks, and neither was ever "pressed" on a board. A row with no ``kind`` is a dashboard run, which is what this
+    function was given before that field existed.
+    """
     from RevenueChaser.app import dashboard
     keys = {t["key"] for t in dashboard.TABS if t.get("type") == "tab"}
     out: dict[str, dict] = {}
     for r in rows:
+        if r.get("kind") not in (None, "dashboard"):
+            continue
         key = r.get("module") if r.get("module") in keys else SYSTEM
         s = out.setdefault(key, {"runs": 0, "last": None, "bad": 0})
         s["runs"] += 1
         s["last"] = max(filter(None, (s["last"], r.get("started_at"))), default=None)
-        s["bad"] += r.get("status") in ("failed", "lost")
+        s["bad"] += r.get("status") in BAD_STATUS
     return out

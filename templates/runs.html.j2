@@ -8,7 +8,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Runs</title>
 <link rel="icon" href="/static/icons/icon-192.png">
-{%- set columns = ["Started", "Job", "Trigger", "Status", "Took", "Note", "Counts", "Params"] %}
+{%- set columns = ["Started", "Job", "Trigger", "Status", "Took", "Steps", "Note", "Counts", "Params"] %}
 <style>
 /* Dark is the dashboard's own look and the default on every device: no data-theme is dark. The shell copies
    its choice onto this document; data-theme="light" is light, and "auto" follows the device (mirrors
@@ -57,6 +57,22 @@ td.dash{color:var(--muted)}
 .s-running,.s-queued{color:var(--amber)}
 .empty{padding:16px 12px;color:var(--muted)}
 .clip-full{display:none}
+/* The day strip: what today cost, and whether every run left a record (#1205). */
+.tiles{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 0}
+.tile{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:8px 12px;flex:1 1 150px;min-width:0}
+.tile .n{font-size:20px;font-weight:700;letter-spacing:-.4px;font-variant-numeric:tabular-nums}
+.tile .l{color:var(--muted);font-size:12.5px;margin-top:1px;overflow-wrap:anywhere}
+.tile.bad{border-color:var(--red)}
+.tile.bad .n{color:var(--red)}
+.tile.ok .n{color:var(--green)}
+/* A chain is one block: its header row, then its runs. The header says what the whole chain cost. */
+tbody tr.chain td{background:var(--panel2);border-bottom:1px solid var(--border)}
+td.chain-cell{font-weight:600;overflow-wrap:anywhere}
+td.chain-cell .c-meta{color:var(--muted);font-weight:400;margin-left:8px;font-size:12.5px}
+td.chain-cell .c-bad{color:var(--red);font-weight:600}
+tbody tr.member td.when{padding-left:22px}
+td.steps{color:var(--muted);font-size:12.5px;max-width:34ch;overflow-wrap:anywhere}
+td.steps b{color:var(--text);font-weight:600}
 /* A finger, not a mouse: every control is at least 44 px tall (the owner's phone rule, CLAUDE.md). */
 @media (max-width: 640px), (pointer: coarse){
   .chk{min-height:44px}
@@ -88,6 +104,12 @@ td.dash{color:var(--muted)}
   {%- endfor %}
   tbody td.empty{display:block}
   tbody td.empty::before{content:none}
+  tbody tr.chain{background:var(--panel2)}
+  tbody tr.chain td{display:block;background:none}
+  tbody td.chain-cell::before{content:none}
+  tbody td.chain-cell .c-meta{display:block;margin:2px 0 0}
+  tbody tr.member td.when{padding-left:0}
+  tbody td.steps{max-width:none}
 }
 </style>
 </head>
@@ -95,11 +117,14 @@ td.dash{color:var(--muted)}
 <div class="wrap">
   <div class="topbar">
     <h1>Runs</h1>
-    <div class="sub">Every job this store recorded, newest first: the dashboard's own runs and the scheduled
-      tasks, as the <code>job_runs</code> table holds them. Read-only.</div>
+    <div class="sub">Every run this store recorded, newest first: a builder dataset run, a scheduled task or a
+      dashboard job, with the seconds each step took and the chain it belongs to
+      (<code>job_runs2</code>). Read-only.</div>
   </div>
+  <div class="tiles" id="runs-tiles"></div>
   <div class="controls">
     <label class="chk" for="runs-problems"><input type="checkbox" id="runs-problems"> Problems only</label>
+    <label class="chk" for="runs-chains"><input type="checkbox" id="runs-chains" checked> Group by chain</label>
     <span class="fld"><label for="runs-filter">Job</label><input type="text" id="runs-filter" placeholder="name contains…"></span>
     <span class="fld"><label for="runs-limit">Show</label><select id="runs-limit" autocomplete="off">
       {%- for n in limits %}<option value="{{ n }}"{% if loop.first %} selected{% endif %}>newest {{ n }}</option>{% endfor -%}
@@ -115,10 +140,14 @@ td.dash{color:var(--muted)}
     </table>
   </div>
   <p class="meta" id="runs-meta" aria-live="polite"></p>
-  <p class="note">A dash under Trigger means an older row that recorded none: dashboard runs now write
-    <em>manual</em>, scheduled tasks <em>scheduled</em>. A run left on <em>running</em> may still be
-    going, or its end write was skipped; a row older than its bound whose process is gone is closed as <em>lost</em>
-    (outcome unknown, no end time recorded).</p>
+  <p class="note">A dash under Trigger means an older row that recorded none: a dashboard job writes
+    <em>dashboard</em>, a scheduled task <em>schedule</em>, a builder run what asked for it. A run left on
+    <em>running</em> may still be going, or its end write was skipped; a row older than its bound whose process is
+    gone is closed as <em>lost</em> (outcome unknown, no end time recorded). <b>Steps</b> are the seconds inside one
+    run, recorded since the run record of 20 Nov 2026; a run older than that has none, and a dash is not a zero.
+    A <b>chain</b> is a scheduled task's own run and the runs it caused: its header line is the whole chain's span,
+    and <em>busy</em> is the sum of its runs. <b>Records</b> counts the chains whose own outer run left no row and
+    the rows with no chain id at all; the matching count for the server's timers is on the Grafana Jobs board.</p>
 </div>
 <script>
 var INITIAL = {{ initial_json }};
@@ -127,6 +156,7 @@ var POLL = "/api/runs";   // app/runview.POLL_PATH
   var body = document.getElementById("runs-body"), meta = document.getElementById("runs-meta");
   var problems = document.getElementById("runs-problems"), filter = document.getElementById("runs-filter");
   var pause = document.getElementById("runs-pause"), limit = document.getElementById("runs-limit");
+  var chains = document.getElementById("runs-chains"), tiles = document.getElementById("runs-tiles");
   var DEFAULT_LIMIT = "{{ limits[0] }}";   // app/runview.DEFAULT_LIMIT: the page the URL omits
   var COLUMNS = {{ columns | length }};      // the header's own column count
   var paused = false, busy = false, pending = false, shown = null, last = null;
@@ -183,6 +213,80 @@ var POLL = "/api/runs";   // app/runview.POLL_PATH
     return td;
   }
 
+  // The seconds inside a run, in the order they ran: "fetch 12s · build 4m 2s · swap 3s". The longest step is
+  // the one a reader is looking for, so it is the one in bold. A run recorded before the step record has none,
+  // and the cell shows a dash rather than a zero.
+  function stepsCell(row, steps) {
+    var td = document.createElement("td");
+    td.className = "steps";
+    if (!steps || !steps.length) { td.className = "steps dash"; td.textContent = "—"; row.appendChild(td); return; }
+    var top = steps.reduce(function (a, b) { return (b.seconds || 0) > (a.seconds || 0) ? b : a; }, steps[0]);
+    td.title = steps.map(function (s) { return s.name + " " + took(s.seconds); }).join(" · ");
+    // One wrapper, not a run of text nodes: on a phone the cell itself is a two-column grid (label, value),
+    // and every child of it would otherwise be laid out as its own row, one step per line with a stray dot.
+    var box = document.createElement("span");
+    steps.forEach(function (s, i) {
+      if (i) box.appendChild(document.createTextNode(" · "));
+      var el = document.createElement(s === top && steps.length > 1 ? "b" : "span");
+      el.textContent = s.name + " " + took(s.seconds);     // a stored step name is text: never markup
+      box.appendChild(el);
+    });
+    td.appendChild(box);
+    row.appendChild(td);
+  }
+
+  // A chain's own line: the task that ran, what the whole chain spanned, how many runs it holds. It carries no
+  // status pill of its own — the runs under it do — but a chain with a failed run says so in red.
+  function chainLine(c) {
+    var tr = document.createElement("tr");
+    tr.className = "chain";
+    var td = document.createElement("td");
+    td.className = "chain-cell";
+    td.colSpan = COLUMNS;
+    td.textContent = text(c.name) || "(no name)";
+    var m = document.createElement("span");
+    m.className = "c-meta";
+    var parts = [stamp(c.started_at)];
+    parts.push(c.running ? "going" : "span " + took(c.seconds));
+    parts.push("busy " + took(c.busy_s));
+    parts.push(c.runs + (c.runs === 1 ? " run" : " runs"));
+    m.textContent = parts.join(" · ");
+    td.appendChild(m);
+    if (c.bad) {
+      var b = document.createElement("span");
+      b.className = "c-meta c-bad";
+      b.textContent = c.bad + " failed";
+      td.appendChild(b);
+    }
+    tr.appendChild(td);
+    return tr;
+  }
+
+  // The day strip: the newest day the page read, and the record audit beside it. "Records" is red only when a
+  // run really left no row; when the store could not be asked it says "not checked", never "0 missing".
+  function drawTiles(d) {
+    var day = (d.days || [])[0], a = d.audit || {};
+    var gaps = (a.missing_root || 0) + (a.no_chain || 0);
+    var items = [
+      {n: day ? String(day.runs) : "0", l: day ? "runs on " + day.day : "no run read", cls: ""},
+      {n: day ? took(day.seconds) : "—", l: "time recorded" + (day && day.running ? " · " + day.running + " going" : ""), cls: ""},
+      {n: day ? String(day.failed) : "0", l: "failed", cls: day && day.failed ? "bad" : "ok"},
+      {n: a.checked ? String(gaps) : "—", l: a.checked ? "runs with no record" : "records not checked",
+       cls: a.checked ? (gaps ? "bad" : "ok") : ""}
+    ];
+    var frag = document.createDocumentFragment();
+    items.forEach(function (it) {
+      var box = document.createElement("div");
+      box.className = "tile " + it.cls;
+      var n = document.createElement("div"), l = document.createElement("div");
+      n.className = "n"; n.textContent = it.n;
+      l.className = "l"; l.textContent = it.l;
+      box.appendChild(n); box.appendChild(l);
+      frag.appendChild(box);
+    });
+    tiles.replaceChildren(frag);
+  }
+
   function line(r) {
     var tr = document.createElement("tr");
     cell(tr, "when", stamp(r.started_at === null || r.started_at === undefined ? r.queued_at : r.started_at));
@@ -195,6 +299,7 @@ var POLL = "/api/runs";   // app/runview.POLL_PATH
     st.appendChild(pill);
     tr.appendChild(st);
     cell(tr, "took", r.status === "running" ? "going" : took(r.duration_s));
+    stepsCell(tr, r.steps);
     cell(tr, "note-cell", r.error || r.message, true);
     // #136: what the run did. A run that reported no number has none: the cell shows a dash, never a zero.
     cell(tr, "params counts", r.counts && Object.keys(r.counts).length ? r.counts : "", true);
@@ -204,18 +309,27 @@ var POLL = "/api/runs";   // app/runview.POLL_PATH
 
   // What the meta line says. It names the filter the rows were read under, so "0 of 0 problem runs" can
   // never be read as "no run ever failed" when only the newest page was looked at.
+  // What the meta line says. It names the window the rows were read under, so "0 problem runs" can never be
+  // read as "no run ever failed" when only the newest page was looked at.
   function metaText(d, paused) {
-    var kind = d.problems ? " problem runs" : " recorded runs";
+    var kind = d.problems ? " problem runs" : " runs";
     if (d.query) kind += ' matching "' + d.query + '"';
-    return d.shown + " of " + (d.total || 0) + kind
-      + (d.shown < d.total ? " · the newest " + d.shown + " are read" : "")
-      + (paused ? " · paused" : "");
+    var line = d.shown + kind + " of the newest " + (d.read || 0) + " recorded";
+    if (d.audit && d.audit.checked && d.audit.missing_root) {
+      line += " · " + d.audit.missing_root + " chain" + (d.audit.missing_root === 1 ? "" : "s")
+            + " whose own run left no row";
+    }
+    if (d.audit && d.audit.checked && d.audit.no_chain) {
+      line += " · " + d.audit.no_chain + " row" + (d.audit.no_chain === 1 ? "" : "s") + " with no chain id";
+    }
+    if (d.ok === false) line += " · the run log could not be read";
+    return line + (paused ? " · paused" : "");
   }
 
   function draw() {
     if (!last) return;
-    var rows = last.rows || [];
-    var key = JSON.stringify(rows.map(function (r) { return [r.run_id, r.status, r.finished_at]; }));
+    var rows = last.rows || [], grouped = chains.checked;
+    var key = JSON.stringify([grouped, rows.map(function (r) { return [r.run_id, r.status, r.finished_at]; })]);
     if (key !== shown) {                  // unchanged: keep the reader's scroll and selection
       shown = key;
       var frag = document.createDocumentFragment();
@@ -227,10 +341,27 @@ var POLL = "/api/runs";   // app/runview.POLL_PATH
                                                        : "No run has been recorded yet.";
         tr.appendChild(td);
         frag.appendChild(tr);
+      } else if (grouped) {
+        // The chains the server grouped, each with its runs under it. A chain of one run gets no header line:
+        // the run is the whole story, and a header would double every line of a day of single runs.
+        var byId = {};
+        rows.forEach(function (r) { byId[r.run_id] = r; });
+        (last.chains || []).forEach(function (c) {
+          if (c.runs > 1) frag.appendChild(chainLine(c));
+          (c.run_ids || []).forEach(function (id) {
+            var r = byId[id];
+            if (!r) return;
+            var tr = line(r);
+            if (c.runs > 1) tr.className = "member";
+            frag.appendChild(tr);
+          });
+        });
+      } else {
+        rows.forEach(function (r) { frag.appendChild(line(r)); });
       }
-      rows.forEach(function (r) { frag.appendChild(line(r)); });
       body.replaceChildren(frag);
     }
+    drawTiles(last);
     meta.textContent = metaText(last, paused);
   }
 
@@ -267,6 +398,8 @@ var POLL = "/api/runs";   // app/runview.POLL_PATH
   }
 
   problems.addEventListener("change", function () { shown = null; load(); });
+  // Grouping is a view of the rows already in hand: it redraws, it does not read again.
+  chains.addEventListener("change", function () { shown = null; draw(); });
   limit.addEventListener("change", function () { shown = null; load(); });
   var typing = null;
   filter.addEventListener("input", function () {

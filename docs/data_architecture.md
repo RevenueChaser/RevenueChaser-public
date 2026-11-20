@@ -549,7 +549,12 @@ worker thread writes while Flask request threads read. So:
   (the module's `deadline_s`, else the scheduled task's time limit, else 6 h) and the pid is gone or reused;
   it runs at dashboard start and at the start of a scheduled writer. The reader is the **Runs** tab
   (`app/runview.py`, `/view/runs`, `GET /api/runs`, #26 PL5-b); it derives nothing from `pid`, and a row
-  from before #83 shows no `trigger`.
+  from before #83 shows no `trigger`. Since #1205 that tab reads **`job_runs2`** in the new store (the table
+  above went with raw.duckdb, #860): every run of every writer, the seconds of each step inside it
+  (`counts["steps"]`, #1198), the runs of one pass grouped by their chain id (`params["chain"]`), a total per
+  day, and the audit of the records themselves — a chain whose own outer run left no row, and a row with no
+  chain id. That audit is the RevenueChaser half of home-server's daily count of starts against records: the
+  two stores never read each other, so each answers for its own rows.
   Every job now opens the store twice, including jobs that never used it (Money flow, queued after each
   Rotation Fetch).
 - **A scheduled task that writes tables leaves a `job_runs` row too (#129 A1).** `core/automations.run_task` runs
