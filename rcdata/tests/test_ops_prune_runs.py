@@ -65,16 +65,21 @@ def test_a_queued_or_running_request_is_never_deleted_however_old():
 
 def test_the_check_rows_a_board_reads_as_a_datasets_state_are_kept_whatever_their_age(monkeypatch):
     """The boards read the newest check row, the newest that is not ``skipped`` and the newest that built. A dataset
-    that last built two years ago must still read true, so those three rows are kept however old they are."""
+    that last built two years ago must still read true, so those three rows are kept however old they are.
+
+    "Newest" is the one with the highest id, as every one of those readers orders (``ORDER BY id DESC``), not the
+    latest ``checked_on``: a row written later with an earlier date is still the later row.
+    """
     monkeypatch.setattr(ops, "_today", lambda: "2020-01-01")
+    ops.record_check("market_series", "changed", rows=1, checked_on="2019-01-01")   # superseded below: goes
     ops.record_check("market_series", "changed", rows=10)          # the newest that built
     ops.record_check("market_series", "failed", note="boom")       # the newest that is not skipped
     ops.record_check("market_series", "skipped", note="paused")    # the newest of all
-    ops.record_check("market_series", "changed", rows=1, checked_on="2019-01-01")   # older, superseded: goes
     monkeypatch.setattr(ops, "_today", lambda: "2026-11-20")
     assert ops.prune_runs()["dataset_check"] == 1
-    kept = [(r["result"], r["checked_on"]) for r in ops.rows("dataset_check")]
-    assert kept == [("changed", "2020-01-01"), ("failed", "2020-01-01"), ("skipped", "2020-01-01")]
+    kept = [(r["result"], r["checked_on"], r["rows"]) for r in ops.rows("dataset_check")]
+    assert kept == [("changed", "2020-01-01", 10), ("failed", "2020-01-01", None),
+                    ("skipped", "2020-01-01", None)]
     assert ops.latest_check("market_series")["result"] == "skipped"
     assert ops.latest_unskipped_check("market_series")["result"] == "failed"
     assert ops.latest_good_check("market_series")["result"] == "changed"
