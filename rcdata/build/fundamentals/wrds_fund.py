@@ -575,11 +575,16 @@ class WrdsAudit(WrdsFund):
     history, and the fresh signal stays the 8-K's own item (``filing_item``).
 
     Of each feed's 219 to 249 columns only the event's own are asked: its key, the company, the filing day and
-    form, and the columns that say what happened. No person's name and no disclosure text is asked. **What the
-    flag columns hold is not measured yet** (``res_fraud``, ``is_ceo``, ... may be 0/1, Y/N or text), so they are
-    kept as text exactly as WRDS answers and nothing is served from this dataset: the check note counts each feed
-    and our companies in it. Whether a feed's key is unique is not measured either, so a snapshot keeps every
-    distinct row and the note says how many keys they are."""
+    form, and the columns that say what happened. No person's name and no disclosure text is asked. The flag
+    columns stay text in the snapshot, exactly as WRDS answers. Whether a feed's key is unique is not measured, so
+    a snapshot keeps every distinct row and the note says how many keys they are.
+
+    **The coding, measured on the first snapshot (20 Nov 2026, #1181):** every ``res_*`` flag of ``SERVED`` and
+    every ``is_*`` / ``interim`` flag holds 0 or 1 and nothing else, on 29,198 and 579,845 rows; ``action`` holds
+    17 words (Appointed, Resigned, Retired, ...). ``res_board_approval`` and ``res_auditor_letter`` are Y / N / ND
+    with 2,410 empty rows and mostly ND, so they are staged and not served. ``audit_flag`` (``tables.py``) serves
+    what ``SERVED`` names. Not measured: how ``pe_date_num`` is written (served as a day only when it starts with
+    eight digits that are one) and what ``nt_reas_keys`` holds (not served)."""
 
     LIBRARY = "audit_audit_comp"
     COMPANY = "company_fkey"
@@ -608,11 +613,31 @@ class WrdsAudit(WrdsFund):
     STAGING = {"feed39_financial_restatements": "stg_wrds_restatements", "feed20_nt": "stg_wrds_late_filings",
                "feed17_director_and_officer_chan": "stg_wrds_officer_changes"}
     FIRST = "feed39_financial_restatements"
+    #: What ``audit_flag`` serves of each feed: its ``kind``, the 0/1 columns that become a label in ``flags``
+    #: (column -> label, the labels in alphabetical order), and the SQL of the columns only some feeds have.
+    SERVED = {
+        "feed39_financial_restatements": {
+            "kind": "restatement", "period_start": "res_begin_date", "period_end": "res_end_date",
+            "flags": {"res_accounting": "accounting", "res_adverse": "adverse",
+                      "res_clerical_errors": "clerical_error", "res_fraud": "fraud", "res_improves": "improves",
+                      "res_other": "other", "quarterly_restated_only": "quarterly_only",
+                      "res_sec_investigation": "sec_investigation"}},
+        "feed20_nt": {
+            "kind": "late_filing",
+            "period_end": "CAST(try_strptime(regexp_extract(pe_date_num, '^[0-9]{8}'), '%Y%m%d') AS DATE)",
+            "flags": {}},
+        "feed17_director_and_officer_chan": {
+            "kind": "officer_change", "person_key": "do_off_pers_key", "effective_date": "eff_date",
+            "action": "action",
+            "flags": {"is_bdmem_pers": "board_member", "is_c_level": "c_level", "is_ceo": "ceo", "is_cfo": "cfo",
+                      "is_chair": "chair", "is_coo": "coo", "interim": "interim", "is_president": "president"}},
+    }
+    KINDS = tuple(spec["kind"] for spec in SERVED.values())
 
     def __init__(self):
         super().__init__(self.FIRST, self.LIBRARY, [], [], [], "file_date", 0, revisions=False)
         self.name = "wrds/audit"
-        self.feeds = ()                                  # staged and counted; no served table reads it yet
+        self.feeds = ("audit_flag",)                     # our companies' events, one row each (``tables.py``)
         self.schema = self.PARTS[self.FIRST][1]
         self.staging = self.STAGING[self.FIRST]
 
@@ -640,7 +665,8 @@ class WrdsAudit(WrdsFund):
         return [wrds_session._ask(ctx, self.raw_path(as_of, part), self.sql(part), as_of) for part in self.PARTS]
 
     def full_rebuild_reason(self, ctx: base.RunContext) -> str | None:
-        """A new snapshot is no reason to build the kind whole: no served table reads these feeds yet."""
+        """A new snapshot is no reason to build the kind whole: ``audit_flag`` is the one table that reads these
+        feeds, and every build makes it again from the newest snapshot."""
         return None
 
     def to_parquet_all(self, ctx: base.RunContext, raws: list[Path]) -> list[Path]:
@@ -673,6 +699,25 @@ class WrdsAudit(WrdsFund):
             common.stage_glob(con, self.STAGING[part], schema + PROVENANCE, common.parquet_dir(self.name),
                               f"snapshot={snaps[-1]}/{part}.parquet" if snaps else "snapshot=none/none")
         return {}
+
+    def served_sql(self, part: str) -> str:
+        """The rows of one staged feed in ``audit_flag``'s column order, for the companies of
+        ``fundamental_company`` (``company_fkey`` against the CIK, both without leading zeros). A row with no
+        filing day or no key says nothing a board could place, so it is left out."""
+        spec, key = self.SERVED[part], self.PARTS[part][2]
+        labels = ", ".join(f"CASE WHEN TRY_CAST(s.\"{c}\" AS DOUBLE) = 1 THEN '{label}' END"
+                           for c, label in spec["flags"].items())
+        flags = f"[x for x in [{labels}] if x IS NOT NULL]" if labels else "CAST([] AS VARCHAR[])"
+        return f"""
+            SELECT o.cik, '{spec["kind"]}' AS kind, s."{key}" AS event_key, {spec.get("person_key", "NULL")} AS
+                   person_key, s.file_date, s.form_fkey AS form, {spec.get("effective_date", "NULL")} AS
+                   effective_date, {spec.get("period_start", "NULL")} AS period_start,
+                   {spec.get("period_end", "NULL")} AS period_end, {spec.get("action", "NULL")} AS action,
+                   {flags} AS flags, '{self.name}' AS source, s.source_as_of, s.fetched_at, s.run_id
+            FROM {self.STAGING[part]} s
+            JOIN (SELECT DISTINCT cik, ltrim(cik, '0') AS k FROM fundamental_company) o
+              ON o.k = ltrim(s.{self.COMPANY}, '0')
+            WHERE s.file_date IS NOT NULL AND s."{key}" IS NOT NULL"""
 
     def note(self, con: duckdb.DuckDBPyConnection) -> str:
         """Per feed: its rows, its keys, how many of our companies it holds (``company_fkey`` against the CIK, both

@@ -112,6 +112,7 @@ DATASETS: dict[str, DatasetCard] = {
 WRITTEN_COLUMN: dict[str, str] = {
     'adj_factor': 'valid_to',
     'beneficial_ownership': 'filed',
+    'audit_flag': 'source_as_of',
     'corporate_action': 'ex_date',
     'customer_share': 'document_date',
     'earnings_event': 'source_as_of',

@@ -1185,11 +1185,12 @@ def beneficial_ownership(tickers: Iterable[str], start=None, end=None) -> list[d
 DATASET_OF_TABLE.update({"fundamental_company": "fundamentals/tables", "fundamental_fact": None, "earnings_event": None, "estimate_latest": "yfinance/estimates",
                          "filing_item": "sec/filings", "segment_revenue": None, "customer_share": None,
                          "peer_group": "fundamentals/tables", "fundamental_revision": None,
-                         "earnings_reported": "uw/earnings", "earnings_report_history": None})
+                         "earnings_reported": "uw/earnings", "earnings_report_history": None,
+                         "audit_flag": "wrds/audit"})
 KIND_OF_TABLE.update({t: "fundamentals" for t in ("fundamental_company", "fundamental_fact", "earnings_event", "estimate_latest",
                                                   "filing_item", "segment_revenue", "customer_share", "peer_group",
                                                   "fundamental_revision", "earnings_reported",
-                                                  "earnings_report_history")})
+                                                  "earnings_report_history", "audit_flag")})
 
 
 def _cik(cik) -> str:
@@ -1285,6 +1286,31 @@ def earnings_report_history(cik=None, start=None, end=None) -> list[dict]:
         sql += " AND report_date <= ?"
         params.append(_day(end))
     return _rows("earnings_report_history", sql + " ORDER BY cik, period_end", params, missing_table_ok=True)
+
+
+def audit_flags(cik=None, kind=None, start=None, end=None) -> list[dict]:
+    """``audit_flag`` rows (of ``cik``, or every company; of one ``kind``, or all three) with
+    ``start <= file_date <= end``, newest first within a company: the restatements (``restatement``), late-filing
+    notices (``late_filing``) and director and officer changes (``officer_change``) Audit Analytics recorded.
+
+    ``flags`` is the list of what the feed marked (``fraud``, ``adverse``, ``ceo``, ``interim``, ...). A history:
+    the feeds run about two months behind, so a company's newest events are ``filing_items`` first. A file built
+    before the table existed answers []."""
+    sql, params = "SELECT * FROM audit_flag WHERE true", []
+    if cik is not None:
+        sql += " AND cik = ?"
+        params.append(_cik(cik))
+    if kind is not None:
+        sql += " AND kind = ?"
+        params.append(str(kind))
+    if start is not None:
+        sql += " AND file_date >= ?"
+        params.append(_day(start))
+    if end is not None:
+        sql += " AND file_date <= ?"
+        params.append(_day(end))
+    return _rows("audit_flag", sql + " ORDER BY cik, file_date DESC, kind, event_key, person_key", params,
+                 missing_table_ok=True)
 
 
 def earnings_events(cik=None, start=None, end=None) -> list[dict]:
