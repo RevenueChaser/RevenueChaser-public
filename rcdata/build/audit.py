@@ -24,8 +24,11 @@ Three rules the driver keeps:
   never audited is the oldest there is. The draw itself is A-Res (``random() ** (1 / weight)``, largest first),
   which is a weighted sample without replacement in one pass.
 - **A difference is evidence, not a refusal.** It opens a build issue (``ops.record_issue``, so the Logs board
-  shows it) and marks the key dirty for the **next** build (:data:`DIRTY`, read by ``dirty.plan``). The file still
-  swaps in: refusing it would stop the whole flow on one bad key, and the next pass rebuilds those keys anyway.
+  shows it) and marks the key for the **next** build (:data:`DIRTY`). ``dirty.plan`` reads those keys and hands
+  them to the dataset (``Plan.audited``, ``ctx.audited``) for its own ``dirty`` to add to its dirty set, because
+  only the dataset knows what its keys mean — ``market_series``' dirty keys are ``<source>/<year>``, not the
+  ``series_id`` its audit subject would use. The file still swaps in: refusing it would stop the whole flow on one
+  bad key, and the next pass rebuilds those keys anyway.
 - **The cost is the sample, not the file.** Only the chosen keys are recomputed, and :data:`KEYS_ENV` (``0`` off)
   sets how many without a deploy.
 """

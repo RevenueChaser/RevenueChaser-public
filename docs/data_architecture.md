@@ -1137,8 +1137,9 @@ given keys from Parquet, and optional SQL weighting the keys); a dataset that de
 dataset that declares no `dirty` is not built incrementally. The draw is A-Res over the declared weight times how
 long ago each key was last audited (`build_audit`, carried in the serving file; a key never audited counts as ten
 years old), and `RC_AUDIT_KEYS` sets how many per pass (default 500, `0` off). A difference is **evidence, not a
-refusal**: it opens a build issue (`kind = audit`, so the Logs board shows it) and marks the key dirty for the next
-build (`build_audit_dirty`, which `dirty.plan` adds to that dataset's keys), while the file still swaps in —
+refusal**: it opens a build issue (`kind = audit`, so the Logs board shows it) and marks the key for the next build
+(`build_audit_dirty`, which `dirty.plan` hands to that dataset through `Plan.audited` and `ctx.audited`, for its
+own `dirty` to add in its own key space — only the dataset knows what its keys mean), while the file still swaps in —
 refusing it would stop the whole flow on one bad key, and the next pass rebuilds those keys anyway.
 
 **Whose build code changed** (#814). Build code is a rule: a change to an extraction or a table rule restates rows

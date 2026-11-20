@@ -16,7 +16,7 @@ import duckdb
 import pytest
 
 from RevenueChaser.rcdata import serving
-from RevenueChaser.rcdata.build import base, dirty
+from RevenueChaser.rcdata.build import audit, base, dirty
 
 
 class _Ds:
@@ -402,3 +402,55 @@ def test_a_live_file_from_before_the_per_dataset_fingerprints_is_trusted_once():
     assert dirty.live_rules("market") is None
     plan = dirty.plan("market", _plan_ctx(), datasets)
     assert plan.reason is None and plan.recoded == ()
+
+
+# ── the keys an audit found a difference for (#446 step 5) ─────────────────────────────────────────────────────
+
+def _put_audit_dirty(kind: str, table: str, keys: list[str]) -> None:
+    con = duckdb.connect(str(serving.live_path(kind)))
+    try:
+        audit.ensure_tables(con)
+        con.execute(f'INSERT INTO {audit.DIRTY} SELECT ?, unnest(?::TEXT[]), 1.0', (table, keys))
+    finally:
+        con.close()
+
+
+def test_the_plan_hands_a_dataset_the_keys_an_audit_found_a_difference_for():
+    """The dataset adds them in its own key space: ``market_series``' dirty keys are ``<source>/<year>``, not the
+    ``series_id`` its audit subject reads, so the plan hands them over instead of merging them itself."""
+    _build()
+    seen: dict[str, dict] = {}
+
+    def reads_them(ctx):
+        seen["audited"] = ctx.audited
+        return dirty.CLEAN
+
+    datasets = [_Ds("test/one", tables=("t",), dirty=reads_them),
+                _Ds("test/two", tables=("other",), dirty=lambda ctx: dirty.CLEAN)]
+    _put_audit_dirty("market", "t", ["AAPL", "MSFT"])
+    _put_rules("market", dirty.fingerprints(datasets))
+    plan = dirty.plan("market", _plan_ctx(), datasets)
+    assert plan.reason is None
+    assert plan.audited["test/one"] == {"AAPL", "MSFT"}
+    assert plan.audited["test/two"] == frozenset(), "another dataset's table is not its business"
+    assert seen["audited"]["test/one"] == {"AAPL", "MSFT"}, "a dataset's own dirty can read them"
+    assert plan.dirty["test/one"] is dirty.CLEAN, "the plan hands the keys over, it does not widen the set itself"
+
+
+def test_a_live_file_with_no_audit_behind_it_hands_over_nothing():
+    _build()
+    datasets = [_Ds("test/one", tables=("t",), dirty=lambda ctx: dirty.CLEAN)]
+    _put_rules("market", dirty.fingerprints(datasets))
+    plan = dirty.plan("market", _plan_ctx(), datasets)
+    assert plan.audited == {"test/one": frozenset()}
+
+
+def test_a_wholly_dirty_dataset_still_gets_the_keys_and_its_set_stays_all():
+    """Handing the keys over costs nothing when the dataset is rebuilt whole anyway, and the set is untouched."""
+    _build()
+    datasets = [_Ds("test/one", tables=("t",), dirty=lambda ctx: dirty.ALL)]
+    _put_audit_dirty("market", "t", ["AAPL"])
+    _put_rules("market", dirty.fingerprints(datasets))
+    plan = dirty.plan("market", _plan_ctx(), datasets)
+    assert plan.audited["test/one"] == {"AAPL"}
+    assert plan.dirty["test/one"].all is True and plan.dirty["test/one"].keys == frozenset()

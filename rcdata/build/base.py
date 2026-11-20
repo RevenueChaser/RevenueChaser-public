@@ -230,6 +230,9 @@ class RunContext:
     # of a build made on the live copy (None: a whole build, every table made from the whole Parquet tree).
     changed: Any = None
     incremental: Any = None
+    # #446 step 5: per dataset, the keys an earlier audit found a difference for. ``dirty.plan`` sets it before it
+    # asks the datasets for their dirty sets, so a dataset's own ``dirty`` can add its own keys to its set.
+    audited: dict[str, Any] = field(default_factory=dict)
     _pending: dict[str, list[int]] = field(default_factory=dict)    # counted, not yet written to ops.sqlite
     _http: httpx.Client | None = None
     _uw: Any = None
