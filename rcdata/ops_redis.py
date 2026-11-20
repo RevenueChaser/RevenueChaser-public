@@ -507,7 +507,7 @@ def start_run(run_id: str, dataset: str | None, trigger: str, params: dict | Non
     _ready()
     _write("job_runs2", {"run_id": run_id, "dataset": dataset, "trigger": trigger, "pid": os.getpid(),
                          "host": socket.gethostname(), "started_at": time.time(), "status": "running",
-                         "params": ops._json(params), "job": job})
+                         "params": ops._json(ops.chained_params(params, run_id)), "job": job})
 
 
 def running_runs() -> list[dict]:

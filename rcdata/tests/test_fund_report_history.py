@@ -143,7 +143,7 @@ def test_the_real_build_serves_the_snapshots_report_days_and_the_reader_returns_
         (HEI, date(2025, 4, 30), date(2025, 5, 28), "005567", wrds_fund.FUNDQ.name),
         (MSFT, date(2025, 6, 30), date(2025, 7, 30), "012141", wrds_fund.FUNDQ.name),
         (MSFT, date(2025, 9, 30), date(2025, 10, 29), "012141", wrds_fund.FUNDQ.name)]
-    assert fx.q("SELECT kind, version FROM serving_schema_version") == [("fundamentals", 5)]
+    assert fx.q("SELECT kind, version FROM serving_schema_version") == [("fundamentals", serving.SERVING_SCHEMA_VERSION["fundamentals"])]
     rows = read.earnings_report_history(MSFT, start="2025-10-01")
     assert [(r["period_end"], r["report_date"], r["source"]) for r in rows] == [
         (date(2025, 9, 30), date(2025, 10, 29), wrds_fund.FUNDQ.name)]

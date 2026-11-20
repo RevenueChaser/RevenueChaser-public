@@ -387,7 +387,7 @@ WRDS_CATALOG = {
 }
 
 # Audit Analytics' feeds (#1181 step C): ``company_fkey`` is the CIK without leading zeros (789019 is MSFT, 46619
-# HEI; 999999 is no company of ours). Made-up events; the flag values are invented, their real coding is unmeasured.
+# HEI; 999999 is no company of ours). Made-up events, in the measured coding: a flag column is 0 or 1.
 AUDIT_ROWS = {
     "feed39_financial_restatements": [
         {"restatement_notification_key": "9001", "company_fkey": "789019", "file_date": "2025-08-01",

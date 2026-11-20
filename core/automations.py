@@ -1383,10 +1383,18 @@ def run_task(name: str, python: str | None = None, cwd: Path | str | None = None
                 return CHAIN_BLOCKED
             fh.write(f"chain: {line}\n")
             fh.flush()
-        env = None
+        # Every command gets the chain id, whether or not it writes tables: it is what ties this run's row to the
+        # rows of the runs it causes (a builder pass's dataset runs), and the step that writes no table has
+        # children too (review of 20 Nov 2026, step 1). ``RC_RUN_ID`` stays what it was: the writer's stamp.
+        env = {**os.environ}
+        try:
+            from RevenueChaser.rcdata import ops as _ops
+            env[_ops.CHAIN_ID_ENV] = run_id
+        except Exception:  # noqa: BLE001 — bookkeeping, never the reason a task does not run
+            logger.debug("could not read the chain variable's name for %s", e.name, exc_info=True)
         if e.tables_written:
             from RevenueChaser.core import rawstore
-            env = {**os.environ, rawstore.RUN_ID_ENV: run_id, rawstore.RUN_SOURCE_ENV: e.name}
+            env.update({rawstore.RUN_ID_ENV: run_id, rawstore.RUN_SOURCE_ENV: e.name})
         logged = _run_log_start(run_id, e.name)
         fh.flush()
         before = fh.tell()                  # where the step's own output starts, for ``_counts_of_run`` and the echo
