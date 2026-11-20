@@ -78,7 +78,10 @@ Code, comments, commit messages, issues and docs are written in **English**.
   or a migration itself is marked `@pytest.mark.rawstore_schema_from_scratch` and gets the apply on its own file.
 - CI (`.github/workflows/tests.yml`) runs both tiers on every pull request into `main` and on `main`. The unit tier
   runs as 6 parallel jobs (`unit (FULL) 0/6` ... `5/6`; `RC_SHARD` splits by test file, the measured ones by time from `scripts/test_durations.json`), each under
-  `pytest -n auto --dist loadfile`, because a single pytest process is single-core bound.
+  `pytest -n auto --dist loadfile`, because a single pytest process is single-core bound. That table is rebuilt from
+  several FULL runs' junit artifacts by `python scripts/durations.py <run id> ...`, never by hand, and because
+  `loadfile` gives a whole file to one worker, **no test file may cost more than a shard's per-worker share**
+  (`scripts/tests/test_durations_table.py` fails one that does; split it along its own sections instead).
   A push to a PR runs only the test files that import a changed file (`scripts/select_tests.py`; check names
   `unit (SELECTIVE)` / `e2e (SELECTIVE)`), and falls back to FULL when that is not safe to say. A change that stays
   inside board folders runs only those boards' e2e files and the shell's (`select_tests.E2E_BY_BOARD`). **The merge
