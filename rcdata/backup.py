@@ -777,7 +777,7 @@ def stale_problem(now: datetime | None = None, step: str = STEP_DUCKDB) -> str |
     at most ``STALE_DAYS`` days old; an older one, or none at all, is the refusal, and the sentence carries the age
     and what to do about it.
     """
-    if not (config.RAW_STORE_BACKUP_DIR or "").strip() or not gate_on():
+    if not gate_on():                 # M7, round 2
         return None
     at = last_verified(step)
     if at is None:
