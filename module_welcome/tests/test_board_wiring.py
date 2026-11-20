@@ -43,17 +43,12 @@ def test_the_fetch_queues_the_welcome_job(monkeypatch):
     assert captured == {"module": "module_welcome", "params": {}}
 
 
-def test_job_labels_name_the_board_a_job_feeds():
-    labels = runners.welcome_job_labels()
-    assert labels["spxgamma"] == "SPX Gamma · spxgamma"                   # SPX Gamma has two jobs, neither its own key
-    assert labels["module_news"] == "News"
-
-
-def test_no_two_jobs_share_a_label():
-    # Joker-1's shot, 9 Nov: the freshness card listed "Asymmetric Growth" twice. The universe job went with #860.
-    labels = runners.welcome_job_labels()
-    assert labels["module_asymmetric_growth"] == "Asymmetric Growth"
-    assert len(set(labels.values())) == len(labels)
+def test_the_page_needs_no_map_of_dashboard_job_labels():
+    """#643 PR 6: the freshness card is one row per builder file (avo's D2 of 10 Nov 2026), named by
+    ``module_welcome.build.FILE_LABELS``, so ``welcome_job_labels`` and its "two jobs, one board" rule are gone."""
+    from RevenueChaser.module_welcome import build as wb
+    assert not hasattr(runners, "welcome_job_labels")
+    assert wb.FILE_LABELS["market"] == "Market-wide series"
 
 
 def test_the_job_builds_then_renders(monkeypatch, tmp_path):

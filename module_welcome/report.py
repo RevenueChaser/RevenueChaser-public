@@ -24,7 +24,8 @@ from RevenueChaser.core.reporting_common import THEME_CSS, THEME_JS, help_html, 
 from RevenueChaser.module_news.calendar import AMS, EVENTS, HIGHLIGHT, local_day
 from RevenueChaser.module_news.report import (HEADLINES, WEEKDAYS, _head_li, day_label, dots_html, esc, hm, long_date,
                                               vals_html)
-from RevenueChaser.module_welcome.build import EARNINGS, FRESHNESS, NY, SNAPSHOT, earnings_days
+from RevenueChaser.module_welcome.build import (EARNINGS, FILE_LABELS, FRESHNESS, NY, SNAPSHOT,
+                                                UNKNOWN_SESSION, earnings_days)
 from RevenueChaser.rcdata import read
 
 FILENAME = "welcome_latest.html"
@@ -38,7 +39,8 @@ _SHORT = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", 
 #: series -> (label, up is ..., unit). ``good``/``bad`` colours the change; ``neutral`` leaves it plain.
 TILES = (("SPX", "S&P 500", "good", ""), ("VIX", "VIX", "bad", ""), ("US10Y", "US 10-year yield", "neutral", "%"),
          ("MOVE", "MOVE (bond volatility)", "bad", ""))
-_SESSION_TEXT = {"premarket": "Pre-market", "afterhours": "After hours"}
+_SESSION_TEXT = {"premarket": "Pre-market", "afterhours": "After hours",
+                 UNKNOWN_SESSION: "Time not confirmed"}
 
 
 def num(x: float, decimals: int = 2, sign: bool = False) -> str:
@@ -126,13 +128,19 @@ def _earnings_card(now: float, watchlist: set[str]) -> str:
             mine = ' <span class="pill">on my list</span>' if r["ticker"] in watchlist else ""
             em = r.get("expected_move_perc")
             move = f'<span class="em">±{esc(num(em * 100, 1) + "%")}</span>' if em is not None else ""
-            out.append(f'<li class="row"><span class="tk">{esc(r["ticker"])}</span>{mine}'
+            # The company name the screener row carries, else the spine's (#643 PR 5b); a name neither holds is
+            # the ticker on its own, as before.
+            name = str(r.get("full_name") or "").strip()
+            name_html = f'<span class="muted nm">{esc(name)}</span>' if name else ""
+            out.append(f'<li class="row"><span class="tk">{esc(r["ticker"])}</span>{mine}{name_html}'
                        f'<span class="muted">{_SESSION_TEXT.get(r["report_session"], esc(r["report_session"]))}'
                        f'</span>{move}</li>')
         out.append("</ul>")
         if len(got) > EARNINGS_PER_DAY:
             out.append(f'<p class="muted">and {len(got) - EARNINGS_PER_DAY} more companies</p>')
-    out.append('<p class="muted note">± = the move the options price in</p>')
+    src = {str(r.get("source_session")) for r in rows if r.get("source_session")}
+    stored = f' · as stored on {esc(sorted(src)[-1])}' if src else ""
+    out.append(f'<p class="muted note">± = the move the options price in{stored}</p>')
     out.append(_open_tab("module_earnings_radar", "Earnings Radar") + "</section>")
     return "".join(out)
 
@@ -188,30 +196,43 @@ def _snapshot_card() -> str:
             'before.</p></section>')
 
 
-def _freshness_card(now: float, labels: dict[str, str]) -> str:
-    rows = rawstore.query(f"SELECT * FROM {FRESHNESS} WHERE last_finished_at >= ?",
-                          [now - FRESH_DAYS * 86400], db="welcome")
+def _freshness_card(now: float) -> str:
+    """One row per builder file (avo's D2 of 10 Nov 2026): what it last did, and how long ago.
+
+    Every file the build wrote a row for is listed, problems first, including one whose last finished run is older
+    than the card's window: a file that has stopped building is the thing this card exists to show, so it reads
+    "no run in 7 days" instead of leaving the row out.
+    """
+    rows = rawstore.query(f"SELECT * FROM {FRESHNESS}", db="welcome")
+    rows = [r for r in rows if r.get("last_finished_at") is not None and r["job"] in FILE_LABELS]
+    cutoff = now - FRESH_DAYS * 86400
+
+    def quiet(r):
+        return float(r["last_finished_at"]) < cutoff
 
     def failing(r):
-        return r.get("last_status") in ("error", "gaps") or (r.get("last_failed_at") or 0) >= now - 86400
+        return (r.get("last_status") in ("error", "gaps") or quiet(r)
+                or (r.get("last_failed_at") or 0) >= now - 86400)
 
-    rows.sort(key=lambda r: (not failing(r), -float(r["last_finished_at"])))
-    head = '<section class="card"><h2 class="lbl">Data freshness · last 7 days</h2>'
+    order = list(FILE_LABELS)
+    rows.sort(key=lambda r: (not failing(r), order.index(r["job"])))
+    head = '<section class="card"><h2 class="lbl">Data freshness · the builder\'s files</h2>'
     if not rows:
-        return head + '<p class="empty">No job finished in the last 7 days.</p>' + \
+        return head + '<p class="empty">No builder run is recorded yet.</p>' + \
             _open_tab("module_settings", "Settings") + \
             "</section>"
     n_bad = sum(1 for r in rows if failing(r))
-    out = [head, f'<div class="big">{n_bad} job{"s" if n_bad != 1 else ""} with a problem</div>' if n_bad else
+    out = [head, f'<div class="big">{n_bad} file{"s" if n_bad != 1 else ""} with a problem</div>' if n_bad else
            '<div class="big">All good</div>',
            '<ul class="list">']
     for r in rows[:FRESH_LIMIT]:
         bad = failing(r)
         state = '<span class="st bad">✕ error</span>' if r.get("last_status") == "error" else (
             '<span class="st warn">! missing data</span>' if r.get("last_status") == "gaps" else (
-                '<span class="st warn">! error in 24 h</span>' if bad else '<span class="st ok">✓ ok</span>'))
+                f'<span class="st warn">! no run in {FRESH_DAYS} days</span>' if quiet(r) else (
+                    '<span class="st warn">! error in 24 h</span>' if bad else '<span class="st ok">✓ ok</span>')))
         err = f'<div class="muted small err">{esc(r["last_error"])}</div>' if bad and r.get("last_error") else ""
-        out.append(f'<li class="row fr"><div><div class="name">{esc(labels.get(r["job"], r["job"]))}</div>{err}</div>'
+        out.append(f'<li class="row fr"><div><div class="name">{esc(FILE_LABELS[r["job"]])}</div>{err}</div>'
                    f'{state}<span class="muted small">{_ago(r["last_finished_at"], now)}</span></li>')
     out.append("</ul>" + _open_tab("module_settings", "Settings") + "</section>")
     return "".join(out)
@@ -259,6 +280,9 @@ h1{margin:2px 0 0;color:var(--bright);font-size:22px}
 .t{font-variant-numeric:tabular-nums;color:var(--bright);font-weight:600;min-width:44px}
 .tk{color:var(--bright);font-weight:600;min-width:52px}
 .pill{font-size:11px;padding:1px 8px;border-radius:999px;border:1px solid var(--amber);color:var(--amber)}
+/* The company name beside the ticker (#643 PR 5b): it gives way first, so the session and the move keep their
+   place on a phone. */
+.nm{flex:1 1 40%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .em{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--fg)}
 .day{margin:12px 0 2px;font-size:13px;color:var(--muted);font-weight:600}
 .note{margin:10px 0 0}
@@ -346,12 +370,12 @@ HELP = help_html(
     "network call. <b>Refresh</b> only redraws the page.</p>")
 
 
-def render_html(now: float | None = None, *, watchlist: set[str], labels: dict[str, str]) -> str:
+def render_html(now: float | None = None, *, watchlist: set[str]) -> str:
     now = time.time() if now is None else now
     today = local_day(now)
     heads, heads_since = _headlines_card(now)
     left = _calendar_card(now) + heads + _earnings_card(now, watchlist)
-    right = _snapshot_card() + _freshness_card(now, labels)
+    right = _snapshot_card() + _freshness_card(now)
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Today</title><script>{THEME_JS}</script><style>{THEME_CSS}{_CSS}</style></head>
@@ -365,6 +389,6 @@ def render_html(now: float | None = None, *, watchlist: set[str], labels: dict[s
 </div><script>var SESSIONS = {json.dumps(sessions(now))};var HEADS_SINCE = {heads_since!r};{_JS}</script></body></html>"""
 
 
-def render(now: float | None = None, *, watchlist: set[str], labels: dict[str, str]) -> Path:
+def render(now: float | None = None, *, watchlist: set[str]) -> Path:
     """Write the board file ``.cache/welcome_latest.html`` and return its path."""
-    return write_artifact(Path(OUTPUT_DIR) / FILENAME, render_html(now, watchlist=watchlist, labels=labels))
+    return write_artifact(Path(OUTPUT_DIR) / FILENAME, render_html(now, watchlist=watchlist))

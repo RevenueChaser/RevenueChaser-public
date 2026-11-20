@@ -316,11 +316,12 @@ REGISTRY: tuple[DatasetSpec, ...] = (
         freshness=("news_headlines", "fetched_at"),
     ),
     DatasetSpec(
-        key="welcome", label="Welcome: market closes, earnings and job freshness",
+        key="welcome", label="Welcome: market closes, earnings and builder-file freshness",
         tables=("welcome_snapshot", "welcome_earnings", "welcome_freshness", "welcome_meta"),
         db="welcome", source=Source.derived, writer=None,
-        writer_note=("built incrementally from stored prices, earnings_calendar and job_runs by "
-                     "module_welcome/build.py on the Welcome board's Fetch; the hourly job comes in its own pull request"),
+        writer_note=("built incrementally by module_welcome/build.py on the Welcome board's Fetch, from the "
+                     "builder's market series, its options screener and its run ledger in ops (#643 PR 5b, PR 6); "
+                     "the hourly job comes in its own pull request"),
         freshness=("welcome_snapshot", "session_date"),
     ),
     DatasetSpec(

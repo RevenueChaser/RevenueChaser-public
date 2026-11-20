@@ -96,7 +96,7 @@ def test_the_flow_chart_rows_come_from_the_record_and_carry_what_it_draws():
     rows = boards.flow_rows()
     row = next(r for r in rows if r["need"] == "earnings.next")
     need = needs.NEEDS["earnings.next"]
-    assert row["boards"] == ("module_earnings_radar",)
+    assert row["boards"] == ("module_earnings_radar", "module_welcome")   # Welcome reads it too (#643)
     assert row["dataset"] == need.dataset and row["kind"] == need.kind
     assert row["max_lag"] == need.max_lag and row["max_lag_unit"] == need.max_lag_unit
     assert {r["need"] for r in rows} == set(needs.NEEDS)

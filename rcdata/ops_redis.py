@@ -600,6 +600,14 @@ def runs_between(start: float, end: float) -> list[dict]:
     return [{c: r[c] for c in ("dataset", "started_at", "status")} for r in rows]
 
 
+def builder_runs_since(since: float) -> list[dict]:
+    cols = ("dataset", "started_at", "finished_at", "status", "error")
+    rows = [r for r in _fetch("job_runs2", _client().zrangebyscore(_key("job_runs2"), float(since), "+inf"))
+            if r.get("dataset") is not None and r.get("finished_at") is not None]
+    rows.sort(key=lambda r: (r["started_at"] or 0.0, r["run_id"]))
+    return [{c: r[c] for c in cols} for r in rows]
+
+
 def last_builder_run() -> dict | None:
     cols = ("run_id", "dataset", "trigger", "pid", "started_at", "finished_at", "status", "error")
     # The newest row with a dataset: a task or dashboard run has none and is not a build (#136). The scan walks
