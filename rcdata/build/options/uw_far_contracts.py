@@ -11,7 +11,8 @@ observed window (``uw.observed``). The row carries no session date, so the sessi
 symbol's expiry at least ``SWEEP_MIN_DTE`` days after D, the premium at least ``MIN_PREMIUM``, the symbol's right the
 side asked. UW drops a parameter it does not honour without an error (``page`` on ``/option-trades``, ``min_dte`` on
 ``/market/oi-change``), so **one row that breaks a filter fails the run** and no sweep file is written for D. A
-symbol on two pages fails the side too (the answer moved while paging). Raw:
+symbol on two pages keeps nothing either -- the answer moved while paging and the sweep may be short -- but it does
+not fail the run: no sweep file means the next pass asks D again. Raw:
 ``raw/uw/far_contracts/<D>/sweep.json.gz``, written once both sides are whole.
 
 **Read 2, the next session's open interest.** ``/stock/{ticker}/option-contracts?min_dte=175&limit=500``, paged, for
@@ -313,8 +314,18 @@ class UWFarContracts:
         for side in SIDES:
             errors: dict[str, str] = {}
             params = {"min_dte": SWEEP_MIN_DTE, "min_premium": MIN_PREMIUM, "type": side}
-            answer = uw.paged(ctx, "/screener/option-contracts", params, side, errors,
-                              key=lambda r: str(r["option_symbol"]).upper(), limit=SWEEP_LIMIT)
+            try:
+                answer = uw.paged(ctx, "/screener/option-contracts", params, side, errors,
+                                  key=lambda r: str(r["option_symbol"]).upper(), limit=SWEEP_LIMIT)
+            except uw.NameFailed as e:
+                # The screener is sorted by volume, so a contract can move between two page requests and arrive
+                # twice (measured 20 Nov 2026, 23:25: one repeated symbol failed the dataset and the whole hourly
+                # pass with it). Nothing of the sweep is kept, exactly as before, but the run is not failed: the
+                # sweep file is still absent, so the next pass asks the day again -- the same treatment a chain's
+                # NameFailed already gets below.
+                state["stopped"] = f"the {side} sweep of {session} was not stored: {e}"
+                ctx.issue("fetch_failed", f"{session} sweep {side}", str(e)[:300])
+                return
             if answer is None:
                 raise base.SourceError(f"UW refused the {side} sweep of {session}: {errors.get(side)}")
             for item in answer["data"]:
@@ -396,7 +407,8 @@ class UWFarContracts:
                                               "pages": {}, "written": set()})
         try:
             # The sweep first: it can be made only this evening, a chain can be read again by the next run.
-            # A sweep that fails still lets this run read the chains left over, then fails the run.
+            # A sweep that fails still lets this run read the chains left over, then fails the run; a sweep whose
+            # answer moved while paging is not a failure and says so in the note (``_sweep``).
             failed: base.SourceError | None = None
             if sweep_open(as_of):
                 try:
