@@ -44,7 +44,9 @@ ENDPOINT = "/market/fda-calendar"
 PAGE_LIMIT = 500
 SCHEMA = [("snapshot_date", "DATE"), ("target_date", "DATE"), ("ticker", "TEXT"), ("drug", "TEXT"),
           ("target_text", "TEXT"), ("target_precision", "TEXT"), ("end_date", "DATE"), ("end_text", "TEXT"),
-          ("catalyst", "TEXT"), ("status", "TEXT"), ("indication", "TEXT"), ("description", "TEXT"),
+          # ``application_status``, not ``status``: ``rcdata.read`` stamps every row it hands back with a ``status``
+          # of its own (the dataset's freshness), so a served column of that name never reaches a reader.
+          ("catalyst", "TEXT"), ("application_status", "TEXT"), ("indication", "TEXT"), ("description", "TEXT"),
           ("notes", "TEXT"), ("outcome", "TEXT"), ("outcome_brief", "TEXT"), ("source_link", "TEXT"),
           ("has_options", "BOOLEAN"), ("marketcap", "DOUBLE"),
           ("source", "TEXT"), ("source_as_of", "DATE"), ("fetched_at", "DOUBLE"), ("run_id", "TEXT")]
@@ -187,7 +189,8 @@ class UWFdaCalendar:
             rows.append({"snapshot_date": day, "target_date": target, "ticker": ticker, "drug": drug,
                          "target_text": _text(item.get("start_date")), "target_precision": precision,
                          "end_date": end, "end_text": _text(item.get("end_date")),
-                         "catalyst": _text(item.get("catalyst")), "status": _text(item.get("status")),
+                         "catalyst": _text(item.get("catalyst")),
+                         "application_status": _text(item.get("status")),
                          "indication": _text(item.get("indication")),
                          "description": _text(item.get("description")), "notes": _text(item.get("notes")),
                          "outcome": _text(item.get("outcome")), "outcome_brief": _text(item.get("outcome_brief")),
