@@ -247,6 +247,16 @@ SUBSIDIARIES: dict[str, str] = {
 }
 
 
+# A legal form that makes the name a **different** company from the subsidiary its key stands for. "Safeway plc"
+# was the British supermarket Morrisons bought in 2004, not the US "Safeway Inc" that Albertsons owns, and
+# ``normalize`` drops both forms, so the two names share the one key ``SAFEWAY`` (#1156; measured read-only on the
+# live store, 8 ``customer_share`` rows carry the British spelling). The form is read off ``_clean``, which keeps
+# it.
+SUBSIDIARY_REFUSED_FORMS: dict[str, frozenset[str]] = {
+    "SAFEWAY": frozenset({"PLC"}),
+}
+
+
 # Tickers of one issuer: a filing naming its own other share class is not an edge.
 SAME_ISSUER: dict[str, str] = {"GOOG": "GOOGL", "BRK-B": "BRK-A", "BRK.B": "BRK.A",
                                "FOX": "FOXA", "NWS": "NWSA"}
@@ -377,9 +387,12 @@ def resolve(name: str, names: dict | None = None) -> dict | None:
     # Cell (ISCO), although ``normalize`` leaves all three as the same key (#1142, census rows 19 and 40).
     if ticker and strict(name) != normalize(name) and (names or {}).get("=" + _strict_key(name)) != ticker:
         ticker = None
-    # Last: a name that is a listed parent's subsidiary and no registrant of its own (#1156).
+    # Last: a name that is a listed parent's subsidiary and no registrant of its own (#1156), unless its legal
+    # form says it is a different company that shares the key.
     if ticker is None:
-        ticker = SUBSIDIARIES.get(_key(name or ""))
+        key = _key(name or "")
+        if not (SUBSIDIARY_REFUSED_FORMS.get(key) or frozenset()) & set(_clean(name or "").split()):
+            ticker = SUBSIDIARIES.get(key)
     return {"name": name, "ticker": ticker} if ticker else None
 
 

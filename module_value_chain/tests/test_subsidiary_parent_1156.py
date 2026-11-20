@@ -36,6 +36,11 @@ def test_a_subsidiary_name_resolves_to_its_listed_parent():
     assert aliases.resolve("employers", {}) is None             # a kind of counterparty (#1142)
     assert aliases.resolve("Apple and Dell", {}) is None        # two companies in one name
     assert aliases.resolve("Some Private Supplier GmbH", {}) is None
+    # A legal form that makes the name another company sharing the key: "Safeway plc" is the British supermarket
+    # Morrisons bought, not the US Safeway Inc that Albertsons owns (8 rows on the live store).
+    assert aliases.resolve("Safeway PLC", {}) is None
+    assert aliases.resolve("Safeway plc", {}) is None
+    assert (aliases.resolve("Safeway Inc", {}) or {}).get("ticker") == "ACI"
 
 
 def test_the_table_is_read_last_and_changes_no_name_the_spine_resolves():
@@ -57,6 +62,9 @@ def test_every_key_is_a_whole_normalised_name_and_no_generic_word():
         assert ticker and ticker == ticker.upper(), f"{key} -> {ticker!r} is no ticker"
         # The table never re-states an alias: ``find_aliases`` runs first and would win anyway.
         assert key not in {a.replace(" ", "") for a in aliases.ALIASES}, f"{key} is already an alias"
+    # Every refused form guards a key the table actually holds.
+    for key in aliases.SUBSIDIARY_REFUSED_FORMS:
+        assert key in aliases.SUBSIDIARIES, f"{key} guards nothing"
 
 
 def test_a_parent_takes_every_one_of_its_subsidiary_names():
