@@ -66,7 +66,8 @@ hand. avo L1 added ``summary.spy_behind`` (None here: the scenario's SPY has the
 every Swing ``quality``: each candidate's score was recomputed from the golden's own per-rule ``passed`` values
 under the deduped formula (the candidates' ``gates`` rules; the ``swing_scores`` rows from the ``swing_gates`` rows),
 so the edit is arithmetic on the golden rather than a fresh capture. UP3/UP1/NOEDGAR 81 -> 80, UP2 76 -> 74,
-``avg_quality`` 79.75 -> 78.5, and the four other scored names FLAT1 29 -> 26, BELOW50 and FAR 69 -> 65. The CI run
+``avg_quality`` 79.75 -> 78.5 (the payload's and ``summary``'s, which carry the same number), and the four
+other scored names FLAT1 29 -> 26, BELOW50 and FAR 69 -> 65. The CI run
 that failed on the old golden reported exactly this ``avg_quality`` of 78.5, which is what confirms the recomputation
 matches the code. Nothing else in the snapshot moved (13 changed lines).
 """
