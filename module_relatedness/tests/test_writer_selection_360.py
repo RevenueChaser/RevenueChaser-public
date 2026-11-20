@@ -169,7 +169,7 @@ def test_the_scheduled_job_carries_the_10_usd_deepseek_cap():
     from RevenueChaser.core import automations
     e = automations.entry("RC-Relatedness-OffPeak")
     assert e.args == ("-m", "RevenueChaser.module_relatedness", "--run", "--cap", "10")
-    assert e.time == "07:30" and e.days == ("Sunday",)          # every other Sunday (avo 15 Nov 2026); the timer carries the fortnight
+    assert e.time == "22:15" and e.days == ("Sunday",)          # weekly Sunday (avo 20 Nov 2026: "Tamam haftalik")
 
 
 
