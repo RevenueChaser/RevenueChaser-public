@@ -43,12 +43,6 @@ def store(monkeypatch):
                         [r for r in s["fees"] if r["ticker"] in set(tickers)])
     monkeypatch.setattr(read, "dataset_status", lambda dataset: "ok")
     monkeypatch.setattr(calendar, "latest_complete_session", lambda *a, **k: FEE_SESSION)
-    # Every test below that calls ``store_reads.short_interest`` itself hands it ``TODAY``, but the one that goes
-    # through ``EarningsPipeline._warm_short_interest`` cannot: that call takes no day and falls back to New York's
-    # real today. The fixture's settlement is then older than ``MAX_AGE_DAYS["short_interest"]`` once enough
-    # calendar days have passed and the row drops out -- which is what happened, 36 days after 15 Oct 2026, on
-    # 20 Nov 2026. The clock is pinned here so the suite reads the same on every date.
-    monkeypatch.setattr(calendar, "today_ny", lambda *a, **k: TODAY)
     return s
 
 
