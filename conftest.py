@@ -51,6 +51,10 @@ def _redirect_data_roots() -> None:
     os.environ.setdefault("RC_MARKET_RAW_DIR", str(_root / "market_raw"))
     # A runner's disk is not the server's: the free-space floor of a build is the server's rule, not a test's.
     os.environ["RC_BUILD_MIN_FREE"] = "1KB"
+    # The backup start gate (#212) is the server's rule too: a runner has no backup folder at all, and a
+    # developer's .env may name a real one, so leaving it on would make every Fetch test depend on the host.
+    # Off for the suite; the tests of the gate itself delete this and set what they mean to test.
+    os.environ["RC_BUILD_BACKUP_GATE"] = "0"
     # The kernel journal a lost run's note asks about (#815) is the server's, not a runner's: a test may not
     # depend on what a host logged, so the read is off and ``core/oom.py`` is tested through its own text.
     os.environ["RC_OOM_JOURNAL"] = "0"

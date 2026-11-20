@@ -2320,6 +2320,15 @@ Two separate things, deliberately not conflated:
   Once a quarter, by hand (about 30 minutes): restore the newest `boards` and `duckdb` copies `--into` a scratch
   folder, start a dashboard on it (`RC_STORE_DIR` and `RC_MARKET_DIR` pointed there, another port) and open the
   Relatedness and Settings boards.
+- **The start gate (#212)** — no live write without a fresh verified backup. `rcdata/backup.py`
+  `stale_problem()` reads `weekly-v2/duckdb/.manifest.json`'s `last_ok` (stamped only by a run in which every copy
+  verified) and answers one sentence when the newest verified copy is older than `backup.STALE_DAYS`, or when
+  there is none. `rcdata/build/base.py` `backup_problem()` is the builder's name for it: the CLI reads it once
+  before the writer turn and exits 3 without touching the store (a stale copy never becomes fresh by waiting), and
+  `POST /api/build/request/<dataset>` refuses a Settings Fetch or Backfill press with 409 so nothing sits in the
+  queue that the builder would refuse. A fetch-only run (`--no-duckdb`) is not gated: it opens no serving file.
+  Pause, Resume, the switches and the timer are not gated either — they only stop writes. Silent where no backup
+  folder is configured (a developer's machine, CI) and where `RC_BUILD_BACKUP_GATE=0` turns it off.
 - **What is not pruned** — the old `market/`, `market-heavy/`, `weekly/`, `spx_gamma_mirror/` and snapshot files
   the retired nightly jobs left in `RAW_STORE_BACKUP_DIR` (about 55 GB on 8 Nov 2026) are not touched by the weekly
   job, which only looks inside `weekly-v2/`. Removing them is a deliberate step on avo's word.
