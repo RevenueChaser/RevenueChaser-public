@@ -29,6 +29,15 @@ document.createElement = function(tag){
                   remove: function(){}, toggle: function(){}, contains: function(){ return false; }};
   return el;
 };
+// The steps cell joins its parts with text nodes (#1205), which the shared stub has no factory for.
+document.createTextNode = function(t){
+  var el = _el("");
+  el.tag = "#text";
+  el.kids = [];
+  el.textContent = t;
+  el.appendChild = function(c){ el.kids.push(c); return c; };
+  return el;
+};
 function _cells(tr){
   return tr.kids.map(function(td){
     var inner = td.kids && td.kids.length ? td.kids[0] : null;
