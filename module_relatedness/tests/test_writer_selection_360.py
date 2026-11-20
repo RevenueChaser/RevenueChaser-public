@@ -20,7 +20,8 @@ from RevenueChaser.core import board_settings, rawstore
 from RevenueChaser.module_relatedness.tests.test_relatedness import v3_reply
 from RevenueChaser.core.providers import deepseek, evren
 from RevenueChaser.module_relatedness import __main__ as cli
-from RevenueChaser.module_relatedness import engine, settings, store, writers
+from RevenueChaser.core import llm_writers as writers
+from RevenueChaser.module_relatedness import engine, settings, store
 from RevenueChaser.module_relatedness.tests.test_relatedness import long_body
 
 TICKERS = ["AAA", "BBB", "CCC"]

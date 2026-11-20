@@ -887,7 +887,8 @@ def run_earnings():
 @app.route("/run/relatedness-compare", methods=["POST"])
 def run_relatedness_compare():
     """Queue the writer comparison (#370): JSON ``{provider, model, tickers}``, checked before anything is queued."""
-    from RevenueChaser.module_relatedness import compare, writers
+    from RevenueChaser.core import llm_writers as writers
+    from RevenueChaser.module_relatedness import compare
 
     body = request.get_json(silent=True) or {}
     provider, model, raw = body.get("provider"), body.get("model"), body.get("tickers")

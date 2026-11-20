@@ -882,7 +882,7 @@ schema, reachable with path expressions like `payload.market_cap::DOUBLE`).
 | `identity_conflicts` | `ticker`, `kind`, `field`, `side_a`, `side_b`, `note`, `first_seen`, `last_seen` (key `(ticker, kind, field)`) | — |
 | `identity_source_cache` | `source`, `ticker`, `fetched_at`, `status`, `security_type`, `security_type2`, `sector`, `industry`, `sub_industry`, `cik`, `sic`, `is_etf BOOLEAN`, `forms` (comma-joined), `shell_closed BOOLEAN` (key `(source, ticker)`; last GOOD answer per source — a failed or skipped source never overwrites it, `core/identity/cache.py`) | `payload` (rest of the source row) |
 | `identity_runs` | `run_id`, `started_at`, `finished_at`, `status` | `sources` (per-source status/counts/error), `counts` |
-| `board_settings` | `board`, `key`, `value DOUBLE`, `updated_at`, `value_text TEXT` (a text setting, #360: Relatedness' `WRITER` / `WRITER_MODEL`; a row fills `value` or `value_text`; nullable, added by `ALTER TABLE ADD COLUMN`, no schema bump) (key `(board, key)`; only user overrides — defaults are read from the board's config, and a Save is one transaction and a Reset deletes the board's rows in one statement, serialized by a lock; every save, drop and Reset is kept in `board_settings_changes`, a Reset as one change (#306); `core/board_settings.py`, issue #40; read by Co-movement (`module_comovement/settings.py`) and by Swing for its screen/score thresholds (`module_swing_potential/settings.py`, #384 SW-S4), whose stored overrides also feed the forecast ledger's model version) | — |
+| `board_settings` | `board`, `key`, `value DOUBLE`, `updated_at`, `value_text TEXT` (a text setting, #360: each LLM job's `<JOB>_WRITER` / `<JOB>_MODEL` on the `llm_writers` board, `core/llm_jobs.py`, #404; a row fills `value` or `value_text`; nullable, added by `ALTER TABLE ADD COLUMN`, no schema bump) (key `(board, key)`; only user overrides — defaults are read from the board's config, and a Save is one transaction and a Reset deletes the board's rows in one statement, serialized by a lock; every save, drop and Reset is kept in `board_settings_changes`, a Reset as one change (#306); `core/board_settings.py`, issue #40; read by Co-movement (`module_comovement/settings.py`) and by Swing for its screen/score thresholds (`module_swing_potential/settings.py`, #384 SW-S4), whose stored overrides also feed the forecast ledger's model version) | — |
 | `watchlist` | `ticker` (one row per pinned ticker until PR 4; unwritten since, the stock watch list in `ops.sqlite` replaced it) | — |
 | `migration_manifest` | `dataset`, `migrated_at`, `schema_version`, `source_count`, `source_bytes`, `source_hash`, `verify` | — |
 | `store_meta` | `key`, `value` | — |
@@ -2224,10 +2224,11 @@ board adds one entry and reads the answers through `rcdata.read.sec_reads(ciks, 
 `rcdata/build/__init__.py` registers the questions, and registration order is run order: `business.locate` and
 `company.profile` (`sec_reads/company_profile.py`), then `debt.note` (#737; `sec_reads/debt_note.py`, prompt and parse
 in `rcdata/sec_debt_note.py`), which the Fundamentals board reads through `core/fundamentals_layer.py`. Each further
-question is its own change. **All three are written by one switch** (`questions.PROVIDER`): EVREN, the gate with no
-fee, unless the process names DeepSeek (`RC_SEC_READS_PROVIDER=deepseek`), which gives each question its own call cap
-(avo, 19 Nov 2026: `debt.note` moved off the paid writer with the other two). A stored `ok` answer is current
-whoever wrote it, so the switch asks nothing again.
+question is its own change. **Each is written by its own chosen writer** (`core/llm_jobs.py`, jobs `sec_reads.*`, #404), read once per
+process so one run asks every question through one writer. The default is still the switch (`questions.PROVIDER`):
+EVREN, the gate with no fee, unless the process names DeepSeek (`RC_SEC_READS_PROVIDER=deepseek`), which gives each
+question its own call cap (avo, 19 Nov 2026: `debt.note` moved off the paid writer with the other two). A stored
+`ok` answer is current whoever wrote it, so changing the pair asks nothing again.
 
 **One asker** (`asker.py`), one pool per provider: EVREN 1 request at a time, DeepSeek 8. The HTTP clients are
 `core/providers`' own, called with `use_cache=False`, so `llm_cache` gets nothing from the tool. On homesrv the

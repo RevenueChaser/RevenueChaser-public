@@ -1,0 +1,155 @@
+"""#404 One writer per LLM job (decision (b), avo 4 Nov 2026 19:45), chosen on the Settings page.
+
+- Every LLM job is in one registry (``core.llm_jobs.JOBS``), and the writers stay in one registry
+  (``core.llm_writers.WRITERS``) that now lives in ``core`` because every job reads it.
+- A job's default writer is EVREN, which has no fee; nothing here moves a job to a paid writer.
+- The SEC reading service's own switch still sets its three jobs' default, so a box that exports it is unchanged.
+- The pair is two text settings per job on the ``llm_writers`` board, with #360's rules: a model outside the
+  chosen provider's list is refused, and a provider whose credential is absent cannot be saved (named by
+  variable NAME, never a value).
+- A job module names no provider: ``naming.py``'s fixed DeepSeek import is gone and the exceptions it catches
+  come from the registry.
+
+Offline: no module is called, only the registry is read.
+"""
+from __future__ import annotations
+
+import json
+import re
+from pathlib import Path
+
+import pytest
+
+from RevenueChaser.core import board_settings, llm_jobs, llm_writers
+
+REPO = Path(__file__).resolve().parents[2]
+KEY = "LITELLM_RC_KEY"
+
+
+# ── the registry ────────────────────────────────────────────────────────────
+
+def test_every_llm_job_the_repo_runs_is_in_the_registry():
+    assert set(llm_jobs.JOBS) == {
+        "relatedness.profiles", "relatedness.naming",
+        "sec_reads.business.locate", "sec_reads.company.profile", "sec_reads.debt.note",
+    }
+    for job in llm_jobs.JOBS.values():
+        assert (REPO / job.where).exists(), f"{job.id} names a module that is not here: {job.where}"
+        assert job.label and job.writer_key.endswith("_WRITER") and job.model_key.endswith("_MODEL")
+
+
+def test_the_writers_are_one_registry_in_core():
+    assert (REPO / "core" / "llm_writers.py").exists()
+    assert not (REPO / "module_relatedness" / "writers.py").exists()   # no second copy
+    assert llm_writers.DEFAULT == "evren" and set(llm_writers.WRITERS) == {"evren", "deepseek"}
+
+
+def test_an_unknown_job_is_named_not_guessed():
+    with pytest.raises(ValueError, match="unknown LLM job"):
+        llm_jobs.get("relatedness.nope")
+
+
+# ── the defaults ────────────────────────────────────────────────────────────
+
+def test_every_job_defaults_to_evren_and_no_job_defaults_to_a_paid_writer(monkeypatch):
+    monkeypatch.delenv("RC_SEC_READS_PROVIDER", raising=False)
+    for job_id in llm_jobs.JOBS:
+        provider, model = llm_jobs.pair(job_id)
+        assert provider == "evren", job_id
+        assert model == "evren-deepseek-v4.1-flash", job_id
+        assert llm_writers.get(provider).paid is False, job_id
+
+
+def test_the_sec_switch_still_sets_its_three_jobs_default(monkeypatch):
+    monkeypatch.setenv("RC_SEC_READS_PROVIDER", "deepseek")
+    assert llm_jobs.pair("sec_reads.debt.note") == ("deepseek", "deepseek-v4-flash")
+    assert llm_jobs.pair("sec_reads.company.profile")[0] == "deepseek"
+    # It is the SEC jobs' switch only: the Relatedness jobs are untouched by it.
+    assert llm_jobs.pair("relatedness.naming")[0] == "evren"
+    assert llm_jobs.pair("relatedness.profiles")[0] == "evren"
+
+
+def test_an_unreadable_switch_value_leaves_the_job_on_evren(monkeypatch):
+    for bad in ("", "  ", "grok", "deepseek-v4-flash"):
+        monkeypatch.setenv("RC_SEC_READS_PROVIDER", bad)
+        assert llm_jobs.pair("sec_reads.debt.note")[0] == "evren", bad
+
+
+# ── the settings ────────────────────────────────────────────────────────────
+
+def test_the_board_holds_two_text_settings_for_every_job():
+    assert llm_jobs.BOARD in board_settings.boards()
+    specs = {f["key"]: f for f in board_settings.describe(llm_jobs.BOARD)}
+    for job in llm_jobs.JOBS.values():
+        assert specs[job.writer_key]["kind"] == "text"
+        assert set(specs[job.writer_key]["choices"]) == set(llm_writers.WRITERS)
+        assert specs[job.model_key]["kind"] == "text"
+        assert "evren-deepseek-v4.1-flash" in specs[job.model_key]["choices"]
+
+
+def test_a_model_of_another_provider_is_refused(monkeypatch):
+    monkeypatch.setenv(KEY, "sentinel-404-key")
+    job = llm_jobs.JOBS["relatedness.naming"]
+    msgs = board_settings.validate(llm_jobs.BOARD,
+                                   {job.writer_key: "evren", job.model_key: "deepseek-v4-flash"})
+    assert any(job.model_key in m and "evren's models" in m for m in msgs)
+    assert board_settings.validate(llm_jobs.BOARD,
+                                   {job.writer_key: "evren",
+                                    job.model_key: "evren-deepseek-v4.1-flash"}) == []
+
+
+def test_a_writer_without_its_credential_cannot_be_chosen_and_no_value_is_ever_printed(monkeypatch):
+    monkeypatch.delenv(KEY, raising=False)
+    job = llm_jobs.JOBS["relatedness.profiles"]
+    msgs = board_settings.validate(llm_jobs.BOARD,
+                                   {job.writer_key: "deepseek", job.model_key: "deepseek-v4-flash"})
+    assert any(KEY in m for m in msgs)
+    secret = "sentinel-404-secret"
+    monkeypatch.setenv(KEY, secret)
+    assert secret not in json.dumps(llm_jobs.options())
+
+
+def test_a_stored_pair_that_does_not_fit_reads_the_jobs_own_default(monkeypatch):
+    """A model saved for another provider, or an unknown provider, never produces an invalid pair (#360 S2)."""
+    monkeypatch.setattr(board_settings, "values", lambda board: {
+        "values": {"RELATEDNESS_NAMING_WRITER": "grok", "RELATEDNESS_NAMING_MODEL": "grok-9"},
+        "defaults": {}, "overridden": []})
+    assert llm_jobs.pair("relatedness.naming") == ("evren", "evren-deepseek-v4.1-flash")
+
+
+# ── the card's rows ─────────────────────────────────────────────────────────
+
+def test_the_card_offers_every_writer_per_job_and_marks_the_paid_one(monkeypatch):
+    monkeypatch.setenv(KEY, "sentinel-404-key")
+    rows = {r["job"]: r for r in llm_jobs.options()}
+    assert set(rows) == set(llm_jobs.JOBS)
+    row = rows["sec_reads.company.profile"]
+    assert row["paid"] is False and row["provider"] == "evren"
+    writers = {w["provider"]: w for w in row["writers"]}
+    assert writers["deepseek"]["paid"] is True and writers["evren"]["paid"] is False
+    assert writers["deepseek"]["available"] is True
+
+
+def test_the_card_greys_a_writer_whose_credential_is_absent_by_variable_name(monkeypatch):
+    monkeypatch.delenv(KEY, raising=False)
+    row = llm_jobs.options()[0]
+    writers = {w["provider"]: w for w in row["writers"]}
+    assert writers["deepseek"]["available"] is False and writers["deepseek"]["missing"] == KEY
+
+
+# ── no job module names a provider ──────────────────────────────────────────
+
+def test_theme_naming_has_no_fixed_provider_import():
+    """It imported ``core.providers.deepseek`` — the paid writer — directly until #404."""
+    src = (REPO / "module_relatedness" / "naming.py").read_text(encoding="utf-8")
+    assert not re.search(r"^from .*providers import|^\s*from .*providers\b", src, re.M)
+    assert "deepseek" not in src.replace("evren-deepseek-v4.1-flash", "")
+    assert 'JOB = "relatedness.naming"' in src
+    assert "llm_jobs.client(JOB)" in src
+
+
+def test_the_shared_exception_names_cover_both_writers():
+    from RevenueChaser.core.providers import evren
+    assert issubclass(evren.EvrenError, llm_jobs.Error)
+    assert issubclass(evren.EvrenAuthError, llm_jobs.AuthError)
+    assert issubclass(evren.EvrenTransientError, llm_jobs.TransientError)

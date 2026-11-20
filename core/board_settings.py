@@ -224,6 +224,16 @@ def _universe_rules(v: dict) -> list[str]:
     return []
 
 
+def _llm_specs() -> dict[str, Setting]:
+    from RevenueChaser.core import llm_jobs
+    return llm_jobs.specs()
+
+
+def _llm_rules(v: dict) -> list[str]:
+    from RevenueChaser.core import llm_jobs
+    return llm_jobs.rules(v)
+
+
 def _rel_specs() -> dict[str, Setting]:
     from RevenueChaser.module_relatedness import settings
     return settings.specs()
@@ -241,6 +251,8 @@ SPEC: dict[str, tuple[Callable[[], dict[str, Setting]], Callable[[dict], list[st
     "module_settings": (_universe_specs, _universe_rules),
     # The profile writer (#360): two text settings, the pair and the credential checked by the rules.
     "module_relatedness": (_rel_specs, _rel_rules),
+    # One pair per LLM job (#404, decision (b)): two text settings each, the rules as #360's.
+    "llm_writers": (_llm_specs, _llm_rules),
 }
 
 
