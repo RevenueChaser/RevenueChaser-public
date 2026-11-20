@@ -77,6 +77,10 @@ def cli_env(tmp_path, mock_server):
         "RC_EDGAR_DOCS_DIR": str(tmp_path / "edgar_docs"), "RC_STORE_AUTO_ENSURE": "0",
         "RC_MARKET_DIR": str(tmp_path / "market"), "RC_MARKET_RAW_DIR": str(tmp_path / "market_raw"),
         "RAW_STORE_BACKUP_DIR": str(tmp_path / "backups"),
+        # #212: that folder holds no copy, and the ``RC_`` filter above drops the root conftest's switch from the
+        # child's environment, so the builder's backup gate would refuse every run here. Off by name, like the
+        # suite's own (``conftest.py``); the gate's refusals are tested in ``test_backup_gate_builder_212.py``.
+        "RC_BUILD_BACKUP_GATE": "0",
         "RC_TREASURY_BASE": f"{base}/treasury", "RC_CBOE_BASE": f"{base}/cboe", "RC_FRED_BASE": f"{base}/fred",
         "RC_CFTC_BASE": f"{base}/cftc/udgc-27he.json", "RC_FED_BASE": f"{base}/fed", "RC_BLS_BASE": f"{base}/bls",
         "RC_CFTC_SCHEDULE_BASE": f"{base}/cftcschedule", "RC_YAHOO_BASE": f"{base}/yahoo",
