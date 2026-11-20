@@ -268,16 +268,20 @@ class RunContext:
     #: (:class:`WholeBuildByHand`); everything else -- a Fetch press, the CLI, a build called directly -- does.
     scheduled: bool = False
     scope: Scope = field(default_factory=Scope)                     # a request's "tiers" / "names" (empty: daily)
+    # The seconds each step took, in the order the steps ran: ``step`` stamps the clock as it changes
+    # (``__setattr__``), and ``step_times`` is what the run's ``job_runs2.counts["steps"]`` holds (review of
+    # 20 Nov 2026, step 1). Before this the whole run's time was one pair of timestamps and the inside of it was
+    # a log line, so "where did the hour go" had no answer in any record.
+    #
+    # **Declared before ``step``**, because a dataclass assigns its fields in declaration order: after ``step``
+    # these two defaults would overwrite the stamp ``step``'s own assignment just made, and the time before the
+    # first named step would be lost (CI on this PR, unit 2/6).
+    _steps: dict[str, float] = field(default_factory=dict)
+    _step_at: float | None = None
     # Which of the run's steps is in hand, so a failed check row says where the exception came from and not only
     # its class (#1119): "start" before the first one, then "fetch", "parquet" or "backfill", then "build",
     # "check" and "swap". A step sets it before it runs, never after, because what names it is the failure.
     step: str = "start"
-    # The seconds each step took, in the order the steps ran: ``step`` stamps the clock as it changes
-    # (``__setattr__``), and ``step_times`` is what the run's ``job_runs2.counts["steps"]`` holds (review of
-    # 20 Nov 2026, step 1). Before #1166 the whole run's time was one pair of timestamps and the inside of it was
-    # a log line, so "where did the hour go" had no answer in any record.
-    _steps: dict[str, float] = field(default_factory=dict)
-    _step_at: float | None = None
     pending: dict[str, Any] = field(default_factory=dict)          # a build's results for its after_swap step
     # #446: the Parquet files changed since the live file was built (``dirty.plan``; None: not known), and the plan
     # of a build made on the live copy (None: a whole build, every table made from the whole Parquet tree).

@@ -154,12 +154,18 @@ def test_the_step_in_hand_is_counted_up_to_now_without_ending_it(clock):
 
 
 def test_a_run_writes_its_step_times_into_its_run_row(fakes, clock):
+    """The run's own numbers: its fetch and its Parquet write, then the build of its whole kind.
+
+    ``build`` is 16 s, not 8: one build serves the kind, and the kind here holds both fakes
+    (``base.kind_datasets``), so the step covers what the pass actually spent. ``check`` is the run's own
+    dataset's.
+    """
     row = base.run_request({"dataset": "m/one", "params": {}}, trigger="test")
     assert row["result"] == "changed"
     steps = _steps(row["run_id"])
-    assert steps["fetch"] == 4.0 and steps["parquet"] == 2.0 and steps["build"] == 8.0 and steps["check"] == 1.0
+    assert steps["fetch"] == 4.0 and steps["parquet"] == 2.0 and steps["build"] == 16.0 and steps["check"] == 1.0
     assert steps["swap"] >= 0.0
-    assert sum(steps.values()) >= 15.0
+    assert "start" in steps, "the time before the first named step is kept too"
 
 
 def test_a_failed_run_keeps_the_time_of_the_steps_it_reached(fakes, clock):
