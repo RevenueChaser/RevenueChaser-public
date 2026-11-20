@@ -77,16 +77,25 @@ class TestTheRule:
 
 
 class TestWeeklyPoints:
-    def test_two_stored_sessions_of_one_week_are_one_point_the_later_one(self):
+    def test_two_sessions_standing_for_one_week_are_one_point_the_later_one(self):
+        # Friday 7 Aug closes its week; Wednesday 12 Aug stands for that same completed week.
+        rows = {"2026-08-07": [{"ticker": "ITA", "rs_ratio_z": -0.9, "rs_momentum_z": 0.1}],
+                "2026-08-12": [{"ticker": "ITA", "rs_ratio_z": -0.5, "rs_momentum_z": 0.4}]}
+        wks, points = weekly_points(rows)
+        assert wks == ["2026-08-09"], "the week is named by the Sunday that ends it"
+        assert points["ITA"] == [(99.5, 100.4)]
+
+    def test_a_midweek_session_stands_for_the_week_before_its_own(self):
+        """Wednesday 5 Aug's snapshot was computed from the week ending Sunday 2 Aug, not from its own week."""
         rows = {"2026-08-05": [{"ticker": "ITA", "rs_ratio_z": -0.9, "rs_momentum_z": 0.1}],
                 "2026-08-07": [{"ticker": "ITA", "rs_ratio_z": -0.5, "rs_momentum_z": 0.4}]}
         wks, points = weekly_points(rows)
-        assert len(wks) == 1
-        assert points["ITA"] == [(99.5, 100.4)]
+        assert wks == ["2026-08-02", "2026-08-09"]
+        assert points["ITA"] == [(99.1, 100.1), (99.5, 100.4)]
 
     def test_a_week_without_a_row_is_a_gap(self):
         rows = history({"ITA": [(-0.5, 0.4), None, (-0.3, 0.5)]})
-        wks, points = weekly_points(rows)
+        wks, _ = weekly_points(rows)
         assert len(wks) == 2, "a week nothing is stored of is not a week"
         rows["2026-08-14"] = [{"ticker": "XLE", "rs_ratio_z": -0.1, "rs_momentum_z": -0.1}]
         wks, points = weekly_points(rows)
@@ -120,7 +129,7 @@ class TestBrier:
         r = self.result()
         assert r["horizon_weeks"] == 2 and r["predicted"] == "LEADING"
         assert r["band"] == early_turn.engine.QUADRANT_BAND
-        assert (r["weeks"], r["first_week"], r["last_week"]) == (6, "2026-08-07", "2026-09-11")
+        assert (r["weeks"], r["first_week"], r["last_week"]) == (6, "2026-08-09", "2026-09-13")
 
     def test_a_flag_whose_horizon_has_not_run_out_is_pending_never_a_miss(self):
         # C is flagged in the last week: nothing can have followed it yet.

@@ -49,16 +49,29 @@ def is_early_turn(ratio_z, momentum_z, prior_momentum_z) -> bool:
             and all(p is not None and p > 0 for p in priors[-PRIOR_WEEKS:]))
 
 
+def completed_week(day: date) -> str:
+    """The completed ISO week a stored session stands for, as the Sunday that ends it.
+
+    A session is dated by the last week complete at it (``engine.week_cut``), so a Wednesday's snapshot carries the
+    week before its own — exactly what ``cross_section`` computed it from. Two sessions that stand for one week
+    (a Friday and the Wednesday after it) give the same Sunday, while a Wednesday and the Friday of its own week
+    give different ones, because they are different completed weeks.
+    """
+    year, week = tuple(engine.week_cut(day).isocalendar())[:2]
+    return date.fromisocalendar(year, week, 7).isoformat()
+
+
 def weekly_points(by_day: dict) -> tuple[list[str], dict[str, list]]:
     """``(weeks, {ticker: points})`` from ``store.load_range`` rows.
 
-    ``weeks`` are the week-ending days (``engine.week_cut``) of the stored sessions, oldest first; ``points[ticker]``
-    has one entry per week: ``(ratio, momentum)`` around 100 (the stored axes plus 100) or ``None`` for a week the
-    ticker has no stored row of. The last stored session of a week wins (they carry the same completed-week point).
+    ``weeks`` are the completed weeks the stored sessions stand for (``completed_week``: the Sunday ending each),
+    oldest first; ``points[ticker]`` has one entry per week: ``(ratio, momentum)`` around 100 (the stored axes plus
+    100) or ``None`` for a week the ticker has no stored row of. The last stored session of a week wins — they carry
+    the same completed-week point, and the later one is the one a re-Fetch rewrote.
     """
     weekly: dict[str, dict[str, dict]] = {}
     for day in sorted(by_day):
-        wk = engine.week_cut(date.fromisoformat(day)).isoformat()
+        wk = completed_week(date.fromisoformat(day))
         for row in by_day[day]:
             if row.get("ticker"):
                 weekly.setdefault(wk, {})[row["ticker"]] = row
