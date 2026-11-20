@@ -126,6 +126,33 @@ The two real levers are outside this login: Supply Chain with IDs and the full R
 | `totalq_all.total_q` | 486 k rows, to 2025-05-31 | Intangible capital and total q per firm-year. |
 | `comp_execucomp.anncomp` | 383 k rows, to 2026-10-26 | Executive pay; no board uses it. |
 
+### The other boards and the stores
+
+Read against the code on 20 Nov 2026: every dataset under `rcdata/build/` and every board module, matched to the
+readable tables. Coverage of our own universe was not measured for any row below; the match is by table, columns,
+size and dates.
+
+| what the code does today | WRDS table | size, dates | what it would add |
+|---|---|---|---|
+| Short interest: `finra/short_interest`, back to 2017-12-29 (Earnings Radar's positioning rule, SEC 13F) | `comp.sec_shortint`, `sec_shortint_legacy` | 5.4 m and 4.8 m rows; 2006-07-14 to 2026-11-13, legacy 1973 to 2024 | Eleven more years of history, split-adjusted (`shortintadj`), and a check of FINRA's number. |
+| Float: Yahoo's and UW's value of today (`yfinance/float`, `uw/total_float`); 13F totals from the SEC's filings | `comp_na_daily_all.io_qaggregate`, `io_qholders`, `io_qbuysell`, `io_qfloatadj` | 157 k, 962 k, 1.5 m, 36 k rows; 2004-03-31 to 2026-06-30 | Institutional ownership per security and quarter (holders, shares, buyers and sellers, top holders) and a float adjustment (insider and 5% holder shares). A float with a history, and a check of our 13F totals. One quarter behind. |
+| Report dates: UW's reported EPS and Alpha Vantage's coming dates; `rdq` is fetched by `wrds/fundq` and used only in the check | `comp.fundq` (`rdq`), `comp_na_daily_all.co_idesind`, `co_filedate` | 2.15 m rows from 2002; 2.67 m rows, 1966 to 2026-10-31 | Every past report date and filing date per company: the history Earnings Radar and Hit Rate need to measure reactions. Already in our raw files. |
+| Screener history: Hit Rate freezes picks from today on; the screeners read restated facts | `comp_snapshot.wrds_csq_pit`, `wrds_csa_pit` | 10.2 m and 4.2 m rows; 1986-12-14 to 2026-11-04 | Statements as they were known on each day: the Fundamentals, Asymmetric Growth and Swing rules could be replayed over past years without look-ahead. |
+| FX: `yfinance/fx` | `comp.exrt_dly` | 2.24 m rows; 1982-02-01 to 2026-11-18 | Daily rates from a licensed source instead of Yahoo, or a check of it. |
+| Corporate-event flag: 8-K items of `sec/filings` | `audit_audit_comp.f39_restatement_filings`, `f20_nt_*`, `f17_dno_change` | 83.5 k, 179 k, 258 k rows; to 2026-09-23 / 24 | Restatements with their size, late-filing notices with a reason, director and officer changes: quality flags the 8-K item code alone does not give. About two months behind. |
+| CIK history: the spine's own snapshots and a hand-seeded `successor_ciks.csv` | `comp_na_daily_all.co_acthist`, `sec_history` | 56.8 k and 336 k rows; 1988 to 2026-11-18 | Name, ticker, CUSIP and exchange changes with the acquiring `gvkey`: successors from a source instead of a typed seed. |
+| Sector Rotation: sector ETFs against SPY; SPX Gamma: SPX from UW | `comp_na_daily_all.idx_daily`, `idx_index` | 8.8 m rows, 2,257 indexes | Daily levels of the S&P index family, the sector indexes themselves instead of an ETF proxy. Date range not asked (over 5 m rows). |
+| Bank filers are left out of the Compustat check (`BANK_SIC`) | `comp_bank_daily.bank_fundq` | 274 k rows; to 2026-09-30 | Bank lines for Financials and Fundamentals. |
+| Financials' comps and ratios are computed from the SEC facts | `comp_na_daily_all.wrds_ratios` | 4.17 m rows, 95 columns; to 2026-08-31 | A check of our ratios and a ready peer table. |
+| Returns are adjusted from our own split and dividend rows | `comp_na_daily_all.sec_dtrt` | 1.2 m rows; 1984 to 2026-11-18 | Compustat's own total-return factor: a check of the adjustment. |
+
+Nothing readable for: options (OptionMetrics; so SPX Gamma, Implied Probability, LEAPS and UW Interaction gain nothing),
+analyst estimates and guidance (IBES; a sample ends 2013), insider transactions and 13F holdings in detail (Thomson
+Reuters, WRDS SEC), ETF and fund holdings (CRSP Mutual Funds), news (RavenPack is a trial frozen at 2020-09-30; Capital
+IQ Key Developments is a sample), short volume (a sample to 2020). Readable but stale: `frb_all.rates_daily` ends
+2025-02-13, `comp.adsprate` (S&P credit ratings) 2017-02-28, `contrib_general.better_beta` 2019-12-31,
+`cboe_all.cboe` (VIX) 2026-10-30, three weeks behind the Cboe file we already read.
+
 ## Every readable schema
 
 241 schemas. Several are the same product under two names (`comp_snapshot` / `compsnap`, `bank` / `bank_all`,
