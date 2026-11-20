@@ -23,6 +23,7 @@ from RevenueChaser.rcdata import opens  # #566: pooled reads count for this run
 from . import aliases
 from . import config
 from . import edgar_text
+from . import edge_quotes
 from . import health as health_mod
 from . import precision as precision_mod
 from . import splitter
@@ -430,11 +431,15 @@ def _counterparty(edge: dict) -> str:
 
 
 def profile_edges(ticker: str, profile: dict, filed: str = "", names: dict | None = None,
-                  accession: str | None = None) -> list[dict]:
+                  accession: str | None = None, refused: dict[str, int] | None = None) -> list[dict]:
     """``chain_mentions`` rows of one Relatedness profile (#410): each named customer, supplier and competitor, with
     its quote and stated share, resolved to a ticker through ``aliases.resolve``; a name it cannot resolve stays as
     text with an empty ``dst_ticker``. The filer itself is no edge. ``accession`` is the filing the profile was
-    written from (plan v31 step 1(d)), carried onto every edge."""
+    written from (plan v31 step 1(d)), carried onto every edge.
+
+    A customer or supplier edge whose own quote states another relation is dropped (``edge_quotes.refuse``, #1142):
+    the census of 20 Nov 2026 found 23 such edges in 195. ``refused`` is an optional counter the caller passes to
+    collect ``{reason: n}``; a competitor edge is not checked, because the board does not serve one."""
     me, out = aliases.issuer(ticker), []
     for field, relation in _PROFILE_RELATIONS:
         for p in profile.get(field) or []:
@@ -444,10 +449,16 @@ def profile_edges(ticker: str, profile: dict, filed: str = "", names: dict | Non
             if not name or (hit and aliases.issuer(hit["ticker"]) == me):
                 continue
             share = p.get("share")
-            out.append({"src": ticker, "dst_name": name, "dst_ticker": hit["ticker"] if hit else "",
-                        "relation": relation, "snippet": p.get("quote") or "", "filed": filed,
-                        "share_pct": round(float(share) * 100, 2) if isinstance(share, (int, float)) else None,
-                        "source": "profile", "accession": accession or None})
+            edge = {"src": ticker, "dst_name": name, "dst_ticker": hit["ticker"] if hit else "",
+                    "relation": relation, "snippet": p.get("quote") or "", "filed": filed,
+                    "share_pct": round(float(share) * 100, 2) if isinstance(share, (int, float)) else None,
+                    "source": "profile", "accession": accession or None}
+            reason = edge_quotes.refuse(edge) if relation in config.SERVED_RELATIONS else None
+            if reason:
+                if refused is not None:
+                    refused[reason] = refused.get(reason, 0) + 1
+                continue
+            out.append(edge)
     return out
 
 
@@ -511,6 +522,7 @@ def build_edges(info: dict | None = None) -> list[dict]:
     profiles = _stored_profiles()
     accessions = _profile_accessions() if profiles else {}
     n_filings, names = 0, (_spine_names() if profiles else None)
+    refused: dict[str, int] = {}          # #1142: quotes that state another relation, by reason
     unnamed: dict[str, list[str]] = {}   # D: the customers each filing tags without a name ("Customer A")
     for rows in _corpus_batches():
         n_filings += len(rows)
@@ -533,7 +545,8 @@ def build_edges(info: dict | None = None) -> list[dict]:
             if anon:
                 unnamed[t] = anon
             found = filing_edges(t, text, filed, customers.get(t), names)
-            edges.extend(merge_profile(found, profile_edges(t, profiles[t], filed, names, accessions.get(t)))
+            edges.extend(merge_profile(found, profile_edges(t, profiles[t], filed, names, accessions.get(t),
+                                                            refused))
                          if t in profiles else found)
     rawstore.ensure_table("chain_mentions")
     if info is not None:
@@ -549,7 +562,9 @@ def build_edges(info: dict | None = None) -> list[dict]:
     retired = _sync_mentions(edges, covered)
     if info is not None:
         info["retired"] = retired
-    logger.info("value_chain: %d chain_mentions written, %d retired", len(edges), retired)
+        info["quote_refused"] = dict(sorted(refused.items()))
+    logger.info("value_chain: %d chain_mentions written, %d retired, %d profile edges refused by their quote (%s)",
+                len(edges), retired, sum(refused.values()), dict(sorted(refused.items())) or "-")
     # A ticker this run did not scan keeps its stored edges, and they stay on the board.
     return edges + [r for r in rawstore.get_all("chain_mentions") if r["src"] not in covered]
 
