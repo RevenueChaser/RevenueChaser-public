@@ -112,13 +112,18 @@ def test_one_row_that_breaks_a_filter_fails_the_run_and_keeps_nothing(uw_opts, b
     assert not far.sweep_path(SESSION).exists()
 
 
-def test_a_symbol_on_two_pages_fails_the_sweep(uw_opts):
+def test_a_symbol_on_two_pages_keeps_nothing_and_leaves_the_day_to_the_next_run(uw_opts):
+    """The screener is sorted by volume, so a contract can move between two page requests and arrive twice. The
+    sweep is not stored -- it may be short -- but the run is not failed: the day has no sweep file, so the next
+    pass asks it again (measured 20 Nov 2026 23:25, where one repeated symbol failed the whole hourly pass)."""
     rows = [contract(f"C{i:03d}", "C", 100) for i in range(250)]
     uw_opts.contract_screener["call"] = rows + [rows[3]]
     uw_opts.contract_screener["put"] = [contract("GOOD", "P", 100)]
     row = run()
-    assert row["result"] == "failed" and "repeated across pages" in row["note"]
+    assert row["result"] != "failed"
+    assert "repeated across pages" in row["note"]
     assert not far.sweep_path(SESSION).exists()
+    assert [(i["kind"], i["key"]) for i in ops.open_issues(far.NAME)[1]] == [("fetch_failed", f"{SESSION} sweep call")]
 
 
 def test_outside_the_observed_window_no_sweep_is_asked(uw_opts, monkeypatch):
