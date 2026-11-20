@@ -3,6 +3,8 @@
 **The board's path is** :func:`build`: it reads one session's chain from the nightly options build
 (``options.duckdb`` ``option_eod``, through ``rcdata.read``) for a name the build stores a quoted chain for (the option
 watch list, the evening's earnings set) and makes no provider call (avo's decision B, 10 Nov 2026; F2, 18 Nov 2026).
+Its spot is the session's close and its discount rate the stored FRED 10-year yield of that session
+(``macro.dgs10``, ``session_risk_free``; avo's decision of 10 Nov 2026, #644), the 4% constant only as a fallback.
 
 The older UW path below (``run``, ``fetch_result``, ``oipd_chain`` / ``oipd_meta``) is no longer called by the
 dashboard; it goes with the board's own store in a later step:
@@ -364,6 +366,9 @@ def _fit_payload(ticker: str, contracts: list[dict], meta: dict,
         "asof": asof,
         "spot": spot,
         "risk_free": r,
+        # Where that rate came from: "macro.dgs10" with the observation's date, or "default" (#644).
+        "risk_free_source": meta.get("risk_free_source") or "default",
+        "risk_free_as_of": meta.get("risk_free_as_of"),
         "source": "Unusual Whales",
         "generated_at": _now(),
         "fetched_at": meta.get("fetched_at"),
@@ -406,7 +411,8 @@ def _fit_payload(ticker: str, contracts: list[dict], meta: dict,
 def _empty_payload(ticker: str, message: str) -> dict:
     return {
         "ticker": ticker, "asof": _today(), "spot": None,
-        "risk_free": config.RISK_FREE_RATE, "source": "Unusual Whales",
+        "risk_free": config.RISK_FREE_RATE, "risk_free_source": "default", "risk_free_as_of": None,
+        "source": "Unusual Whales",
         "generated_at": _now(), "fetched_at": None, "horizon_days": None,
         "n_contracts": 0, "expiries": [], "fan": None,
         "warnings": [], "error": message,
@@ -463,6 +469,22 @@ def pick_expiries(contracts: list[dict], asof: str) -> list[dict]:
     return [c for c in contracts if c["expiry"] in keep]
 
 
+def session_risk_free(session: str | None) -> tuple[float, str, str | None, str | None]:
+    """``(rate, source, as_of, warning)`` for a chain's session: the stored FRED 10-year yield of that session
+    (``macro.dgs10``, avo's decision of 10 Nov 2026, #644), else the constant with a warning the board shows.
+
+    The yield discounts every fitted expiry (``opd_math.black76_price``, the forward and the greeks), so the board
+    says which day's yield it stood on rather than implying a rate it did not use.
+    """
+    from RevenueChaser.core import risk_free
+    held = risk_free.stored_dgs10(session, config.RISK_FREE_MAX_AGE_DAYS)
+    if held is None:
+        return (config.RISK_FREE_RATE, "default", None,
+                f"No stored 10-year Treasury yield within {config.RISK_FREE_MAX_AGE_DAYS} days of "
+                f"{session or 'this session'}; the fit discounts at the {config.RISK_FREE_RATE:.0%} default.")
+    return held["value"], "macro.dgs10", held["as_of"], None
+
+
 def build(ticker: str | None = None, session: str | None = None) -> dict:
     """The board's payload for ``ticker`` from the stored chain: no provider call, no write."""
     from RevenueChaser.rcdata import read
@@ -484,9 +506,12 @@ def build(ticker: str | None = None, session: str | None = None) -> dict:
                                    "the close.")
         p["names"] = names
         return p
-    meta = {"as_of": asof, "spot": spot, "risk_free": config.RISK_FREE_RATE, "horizon_days": config.MAX_DTE,
-            "fetched_at": fetched}
+    rate, rate_source, rate_as_of, rate_warning = session_risk_free(asof)
+    meta = {"as_of": asof, "spot": spot, "risk_free": rate, "risk_free_source": rate_source,
+            "risk_free_as_of": rate_as_of, "horizon_days": config.MAX_DTE, "fetched_at": fetched}
     warnings = [] if spot is not None else ["No close stored for this session; the forward stands on the chain."]
+    if rate_warning:
+        warnings.append(rate_warning)
     payload = _fit_payload(ticker, pick_expiries(contracts, asof), meta, warnings)
     payload.update(source="Unusual Whales, nightly options build", names=names)
     return payload

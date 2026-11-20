@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 
 from RevenueChaser.core.reporting_common import filters_meta, write_artifact
@@ -37,24 +37,16 @@ def _stored_risk_free() -> dict | None:
 
     The DCF's risk-free rate was the 4% constant although the store holds the real yield (Financials review S2).
     Read-only and zero network, so a Refresh reads it too; without it the DCF takes its default and says so. The
-    yield is ``market_series`` DGS10 (``rcdata``, G6) alone.
+    yield is ``market_series`` DGS10 (``rcdata``, G6) alone, read through ``core/risk_free``, which the Implied
+    Probability fit reads as well (#644).
 
     The window is looser than the Earnings Radar's on purpose (the Opus review's N1): that one pairs daily yields
     with returns for a beta, so a series three sessions behind is already wrong there. Here one level is read, a
     ten-year yield moves a few basis points in two weeks, and the fallback is a flat 4%, which is further off than a
     two-week-old yield; the date is shown.
     """
-    from RevenueChaser.core import calendar as market_calendar
-    from RevenueChaser.rcdata import read, serving
-    today = market_calendar.today_ny()
-    if serving.live_path("market").exists():
-        rows = [r for r in read.market_series(["DGS10"], start=today - timedelta(days=RISK_FREE_MAX_AGE_DAYS))
-                if r.get("source") == "fred" and r.get("value") is not None]
-        if not rows:
-            return None
-        newest = max(rows, key=lambda r: r["obs_date"])
-        return {"value": float(newest["value"]) / 100, "as_of": newest["obs_date"].isoformat()}
-    return None    # no market file yet; the old store's macro_series row went with it (#860)
+    from RevenueChaser.core import risk_free
+    return risk_free.stored_dgs10(max_age_days=RISK_FREE_MAX_AGE_DAYS)
 
 
 # The statement fields the SEC facts carry (``sec_edgar.CONCEPTS``) that the engines read, by the engines' names. A
