@@ -208,14 +208,99 @@ def test_more_unexplained_days_than_a_closure_can_explain_stop_the_run_although_
 
 def test_the_archives_2014_q2_gap_does_not_stop_a_backfill(feed):
     """#507: EDGAR has no daily index for any weekday of 2014 Q2 (measured 2026-11-08); without that known gap a
-    newest-first 2014 backfill would stop at 2014-06-30 on every run, with no kept index old enough to matter."""
+    newest-first 2014 backfill would stop at 2014-06-30 on every run, with no kept index old enough to matter.
+    With no quarterly index to read either (#561), the days are still written off as a closed day's are."""
     assert _run()["result"] == "changed"                       # a store that keeps an index, as the live one does
     feed.missing |= {f"201405{d:02d}" for d in range(12, 17)}
+    feed.missing_quarters.add("2014/QTR2")
     row = _backfill("2014-05-12", "2014-05-16")
     assert "handed over one it holds" not in row["note"]        # explained by the gap, not let through by the probe
     assert row["result"] != "failed", row["note"]
     for d in range(12, 17):
         assert edgar.index_none(date(2014, 5, d)).exists(), d
+
+
+# ── The 2014 Q2 gap read from the quarter's own index (#561) ───────────────────────────────────────────────────
+
+GAP_DAY = date(2014, 5, 14)
+GAP_13F = "0001000001-14-000001"
+QUARTER_URL = "https://sec.test/Archives/edgar/full-index/2014/QTR2/master.idx"
+
+
+def _gap_day(feed, day: str = "2014-05-14") -> None:
+    """``day`` as EDGAR holds it inside the gap: no daily index, its rows in the quarter's index. One 13F-HR and
+    one Form 4, so the walk is shown reading its own forms out of a quarter that holds every filer's."""
+    acc = f"000100000{int(day[-2:]) % 9 + 1}-14-00000{int(day[-2:]) % 7 + 1}" if day != "2014-05-14" else GAP_13F
+    feed.add_gap_day(day, [
+        (ox.idx_row(1000001, "ALPHA CAPITAL", "13F-HR", day, acc),
+         ox.f13_filing(acc, 1000001, day, [MSFT], period="03-31-2014")),
+        (ox.idx_row(789019, "MICROSOFT CORP", "4", day, f"0001062993-14-0001{int(day[-2:]):02d}"), None)])
+
+
+def test_a_gap_days_filings_are_read_from_the_quarterly_index(feed, http_mock):
+    """#561: the 2014 Q2 days have no daily index at all, so a backfill that only wrote them off left ``sec/13f``,
+    ``sec/form4`` and ``sec/13dg`` a three-month hole. Measured 2026-11-20: the quarter's own index answers 200 and
+    lists the same filings with their filed dates, so the day's rows come from there instead."""
+    assert _run()["result"] == "changed"                        # a store that keeps an index, as the live one does
+    _gap_day(feed)
+    http_mock.requests.clear()
+    row = _backfill("2014-05-14", "2014-05-14")
+    assert row["result"] == "changed", row["note"]
+    assert [str(c.url) for c in http_mock.calls("full-index")] == [QUARTER_URL]
+    assert not edgar.index_none(GAP_DAY).exists()               # not written off: the filings are in
+    assert sec13f.DATASET.filing_path(GAP_DAY, GAP_13F).exists()
+    # Only this feed's forms are fetched out of the quarter, as out of a daily index.
+    assert sorted(str(c.url).rsplit("/", 1)[1] for c in http_mock.calls("/Archives/edgar/data/")) == [
+        f"{GAP_13F}.txt"]
+    assert _parquet("filings", "SELECT DISTINCT filed FROM {src} WHERE accession = '%s'" % GAP_13F) == [(GAP_DAY,)]
+
+
+def test_the_quarterly_index_is_asked_once_for_the_whole_quarter(feed, http_mock):
+    """It is 22 MB and 252,374 rows (2014 Q2, measured 2026-11-20): one request for the quarter, kept like a daily
+    index, and every later gap day read off the file."""
+    assert _run()["result"] == "changed"
+    for day in ("2014-05-13", "2014-05-14", "2014-05-15"):
+        _gap_day(feed, day)
+    http_mock.requests.clear()
+    row = _backfill("2014-05-13", "2014-05-15")
+    assert row["result"] == "changed", row["note"]
+    assert len(http_mock.calls("full-index")) == 1
+    assert edgar.quarter_path(GAP_DAY).exists()
+    for day in (date(2014, 5, 13), GAP_DAY, date(2014, 5, 15)):
+        assert sec13f.DATASET.quarter_read(day).exists(), day
+
+
+def test_a_gap_day_written_off_before_is_walked_once_more_and_then_left_alone(feed, http_mock):
+    """A run before this fix wrote the day off with no filing read, and its ``.done`` would hide the quarter's rows
+    for good. So a gap day counts as walked only once it was read from the quarterly index -- once more, not every
+    run, which a manifest could not say for a day holding none of this feed's forms."""
+    assert _run()["result"] == "changed"
+    feed.missing.add("20140514")
+    feed.missing_quarters.add("2014/QTR2")
+    assert _backfill("2014-05-14", "2014-05-14")["result"] != "failed"
+    assert edgar.index_none(GAP_DAY).exists() and sec13f.DATASET.is_done(GAP_DAY)
+    assert not sec13f.DATASET.walked(GAP_DAY)                   # done, but its filings were never read
+
+    feed.missing_quarters.clear()
+    _gap_day(feed)
+    assert _backfill("2014-05-14", "2014-05-14")["result"] == "changed"
+    assert sec13f.DATASET.filing_path(GAP_DAY, GAP_13F).exists()
+    assert sec13f.DATASET.walked(GAP_DAY)
+
+    http_mock.requests.clear()
+    _backfill("2014-05-14", "2014-05-14")
+    assert http_mock.calls("full-index") == [] and http_mock.calls("/Archives/edgar/data/") == []
+
+
+def test_a_refusal_on_the_quarterly_index_stops_the_run(feed):
+    """The SEC's own 403 (the undeclared-tool page) is not an absent object: it stops the run and writes nothing
+    off, as it does for a daily index."""
+    assert _run()["result"] == "changed"
+    _gap_day(feed)
+    feed.refuse = True
+    row = _backfill("2014-05-14", "2014-05-14")
+    assert row["result"] == "failed" and "403" in row["note"], row["note"]
+    assert not edgar.index_none(GAP_DAY).exists() and not edgar.quarter_path(GAP_DAY).exists()
 
 
 def test_a_filing_the_archive_does_not_hold_is_marked_absent(feed, http_mock):
@@ -521,6 +606,16 @@ def test_the_index_parse_refuses_an_answer_that_is_not_the_index():
     rows = edgar.parse_index(ox.daily_index([ox.idx_row(5, "X", "13F-HR/A", "2026-10-27", "0000000005-26-000001")]))
     assert rows == [{"cik": "5", "company": "X", "form": "13F-HR/A", "filed": date(2026, 10, 27),
                      "path": "edgar/data/5/0000000005-26-000001.txt", "accession": "0000000005-26-000001"}]
+
+
+def test_the_index_parser_keeps_only_one_days_rows_when_asked():
+    """What keeps a quarter of rows out of memory: the day is matched on the line, before a row is built. The
+    quarterly index writes ``Date Filed`` as ``YYYY-MM-DD`` and the daily one as ``YYYYMMDD``; both are read."""
+    body = ox.quarter_index([ox.idx_row(5, "X", "13F-HR", "2014-05-14", "0000000005-14-000001"),
+                             ox.idx_row(6, "Y", "13F-HR", "2014-05-15", "0000000006-14-000001")])
+    assert [r["accession"] for r in edgar.parse_index(body, filed=date(2014, 5, 14))] == ["0000000005-14-000001"]
+    assert [r["filed"] for r in edgar.parse_index(body)] == [date(2014, 5, 14), date(2014, 5, 15)]
+    assert edgar.parse_index(body, filed=date(2014, 5, 16)) == []
 
 
 def test_a_days_filings_are_read_one_at_a_time_not_held_at_once(feed, monkeypatch):

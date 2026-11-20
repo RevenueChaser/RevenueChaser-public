@@ -474,8 +474,10 @@ UNEXPLAINED_MAX = 10
 
 # Stretches EDGAR keeps no daily index for although it was open, so no calendar explains them: (first, last, name).
 # Measured 2026-11-08 (#507) by asking for every weekday index 2014-01-01..2026-11-04: all 65 weekdays of 2014 Q2 are
-# absent, the only such stretch. A walk writes these days off as it does a closed one; their filings are not in the
-# daily index at all.
+# absent, the only such stretch. Their filings are not in the daily index at all, but they are in the **quarter's**
+# index, which lists the same filings with their filed dates (measured 2026-11-20, #561: all 64 open days of 2014 Q2,
+# row for row the daily index's own forms). So a walk that can read that index reads these days from it
+# (``ownership/edgar.read_quarter``) and only a walk that cannot writes them off as it does a closed day.
 INDEX_GAPS: tuple[tuple[date, date, str], ...] = (
     (date(2014, 4, 1), date(2014, 6, 30), "2014 Q2"),
 )

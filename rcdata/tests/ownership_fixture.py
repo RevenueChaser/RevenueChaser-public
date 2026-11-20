@@ -220,6 +220,17 @@ def daily_index(rows) -> bytes:
     return ("\n".join(head + ["|".join(str(c) for c in r) for r in rows]) + "\n").encode("latin-1")
 
 
+def quarter_index(rows) -> bytes:
+    """``full-index/<YYYY>/QTR<q>/master.idx``: the quarter's own index. The same header and columns as the daily
+    one, its own preamble, and ``Date Filed`` written ``YYYY-MM-DD`` as the real file writes it."""
+    head = ["Description:           Master Index of EDGAR Dissemination Feed by Company Name",
+            "Last Data Received:    June 30, 2014", "Comments:              webmaster@sec.gov",
+            "Anonymous FTP:         ftp://ftp.sec.gov/edgar/", "", "", "", "", INDEX_HEADER, "-" * 80]
+    dashed = [(cik, name, form, f"{d[:4]}-{d[4:6]}-{d[6:]}" if "-" not in str(d) else d, path)
+              for cik, name, form, d, path in rows]
+    return ("\n".join(head + ["|".join(str(c) for c in r) for r in dashed]) + "\n").encode("latin-1")
+
+
 def idx_row(cik: int, name: str, form: str, day: str, accession: str) -> tuple:
     return (cik, name, form, day.replace("-", ""), f"edgar/data/{cik}/{accession}.txt")
 
@@ -480,6 +491,10 @@ class Edgar:
     bucket's 403. ``refuse`` makes every answer the SEC's own 403 instead (the undeclared-tool page), which is the
     answer a walk must stop on, and ``refuse_days`` does the same for one day's index alone.
 
+    ``quarters`` (``{"<YYYY>/QTR<q>": rows}``) is the quarter's own ``full-index`` object, which a day inside a gap
+    in the daily index is read from (``add_gap_day``, #561); a quarter no test gave rows for, and one in
+    ``missing_quarters``, answers the bucket's 403 as an absent object.
+
     ``failing`` (``{accession: status}``) and ``index_failing`` (``{YYYYMMDD: status}``) answer a gateway failure,
     as EDGAR's edge did on 19 Nov 2026 (#1123): 502 and 504 for one document of cik 102909. ``clears_after``
     (``{accession: n}``) answers that failure for the first ``n`` requests and hands the filing over after them,
@@ -488,6 +503,8 @@ class Edgar:
 
     def __init__(self):
         self.indexes: dict[str, bytes] = {}
+        self.quarters: dict[str, list[tuple]] = {}      # "<YYYY>/QTR<q>" -> the quarter index's rows
+        self.missing_quarters: set[str] = set()
         self.filings: dict[str, bytes] = {}
         self.missing: set[str] = set()
         self.not_found: set[str] = set()
@@ -519,6 +536,15 @@ class Edgar:
             body = daily_index([])
         return self._answer(body)
 
+    def quarter(self, request):
+        """``full-index/<YYYY>/QTR<q>/master.idx``: the quarter's rows, or the bucket's 403 for a quarter in
+        ``missing_quarters``."""
+        which = "/".join(str(request.url).rsplit("/", 3)[1:3])
+        if which in self.missing_quarters:
+            return self._answer(None)
+        rows = self.quarters.get(which)
+        return self._answer(quarter_index(rows) if rows is not None else None)
+
     def filing(self, request):
         acc = str(request.url).rsplit("/", 1)[1][:-len(".txt")]
         if self.refuse:
@@ -533,6 +559,7 @@ class Edgar:
 
     def install(self, http_mock) -> None:
         http_mock.add("/Archives/edgar/daily-index/", self.index)
+        http_mock.add("/Archives/edgar/full-index/", self.quarter)
         http_mock.add("/Archives/edgar/data/", self.filing)
         # The 13F data-set page, linking one old set that covers no day a test asks (a test of the sets routes its
         # own page first).
@@ -541,6 +568,18 @@ class Edgar:
     def add_day(self, day: str, entries: list[tuple]) -> None:
         """``entries``: ``(index row, submission bytes or None)``; the same accession may be listed twice."""
         self.indexes[day.replace("-", "")] = daily_index([r for r, _ in entries])
+        for r, body in entries:
+            if body is not None:
+                self.filings[r[4].rsplit("/", 1)[1][:-4]] = body
+
+    def add_gap_day(self, day: str, entries: list[tuple]) -> None:
+        """A day as EDGAR holds it inside the 2014 Q2 gap: no daily index object at all, its rows only in the
+        quarter's own index (#561). ``entries`` are ``add_day``'s."""
+        ymd = day.replace("-", "")
+        self.missing.add(ymd)
+        when = date(int(ymd[:4]), int(ymd[4:6]), int(ymd[6:]))
+        which = f"{when.year}/QTR{(when.month - 1) // 3 + 1}"
+        self.quarters.setdefault(which, []).extend(r for r, _ in entries)
         for r, body in entries:
             if body is not None:
                 self.filings[r[4].rsplit("/", 1)[1][:-4]] = body
