@@ -24,7 +24,7 @@ from RevenueChaser.rcdata.build.prices import incremental, stage, wrds_history
 from RevenueChaser.rcdata.build.prices import serving as prices_serving
 
 from .prices_fixture import SPINE, write_spine
-from .test_prices_wrds import _build, _q, fake
+from .test_prices_wrds import AAPL, OLDCO, _build, _q, env, fake  # noqa: F401 (re-exported to the test files)
 
 
 SCHEMA = wrds_history.SECD + wrds_history.PROVENANCE
