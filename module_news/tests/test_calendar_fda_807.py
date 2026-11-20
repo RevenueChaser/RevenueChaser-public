@@ -37,6 +37,9 @@ def test_the_first_pass_writes_one_row_a_catalyst_with_its_own_type():
     r = rows["IOVA Lifileucel: PDUFA Date"]
     assert r["type"] == cal.FDA_TYPE and r["ticker"] == "IOVA" and r["drug"] == "Lifileucel"
     assert r["catalyst"] == "PDUFA Date" and r["indication"] == "Advanced Melanoma"
+    # The board's ``status`` comes from the served ``application_status``: ``rcdata.read`` stamps every row it
+    # hands back with a ``status`` of its own, so the served name had to change (#807) and this pins the join.
+    assert r["status"] == "NDA"
     assert r["url"].startswith("https://www.fda.gov/") and r["first_seen"] == 100.0 and r["retired_at"] is None
     assert r["forecast"] is None and r["prev"] is None
     assert r["event_ts"] == cal.day_start(date(2026, 12, 4)) and cal.local_day(r["event_ts"]) == date(2026, 12, 4)
@@ -107,13 +110,16 @@ def test_the_economic_lane_does_not_retire_an_fda_row_and_the_two_marks_are_thei
     assert float(marks[cal.MARK_KEY]) == 300.0 and float(marks[cal.FDA_MARK_KEY]) == 100.0
 
 
-def test_the_board_page_does_not_show_the_fda_lane_yet():
-    """#808 is the FDA tab and it needs avo's mock first, so the stored lane stays off the page until then."""
+def test_the_board_page_shows_the_stored_fda_lane():
+    """#807 stored the lane and kept it off the page until avo had approved a mock; #808 is that tab (avo,
+    19 Nov 2026: "News olur"), so a stored catalyst now stands on the board with its own two columns."""
     from RevenueChaser.module_news import report
     _sweep([{**PDUFA, "start_date": "2026-11-21", "end_date": "2026-11-21"}], fetched_at=100.0)
     cal.build(now=T0)
     html = report.render_html(now=T0)
-    assert "Lifileucel" not in html
+    assert "IOVA Lifileucel: PDUFA Date" in html
+    assert "Advanced Melanoma" in html and ">NDA<" in html      # the indication and where the application stands
+    assert "21 Nov" in html and 'pchip">no day yet' not in html   # a real day is a day, not a window
 
 
 @pytest.mark.parametrize("catalyst, level", [("PDUFA Date", econ_importance.HIGH),
