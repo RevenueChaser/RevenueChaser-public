@@ -1317,15 +1317,17 @@ def _run(no_fetch: bool, tickers: list[str] | None, limit: int | None,
 
 def _reusable_payload(provider: str, model: str | None) -> dict | None:
     """The saved payload (``RELATEDNESS_JSON``) when a Refresh of the whole board can render it as it is: no stored
-    profile is newer than its ``as_of``, whichever writer wrote it. Rescoring every pair of 5,096 profiles took the
-    dashboard about two hours single-threaded on 15 Nov 2026 (#884 A) for the scores the run had just written."""
+    profile is newer than its ``as_of``, whichever writer wrote it, for the scores the run had just written.
+    Scoring every pair is not what makes that worth avoiding: it is ~27 s of CPU for 5,111 profiles on the server
+    (measured 20 Nov 2026, #884), and the ~2 h read off the 15 Nov 2026 run was somewhere else in the run -- #1163
+    measures where. What the saved payload still skips is the market stage (~16 s) and assembling the 41 MB JSON."""
     payload = load_payload()
     as_of = payload.get("as_of")
     if not as_of or not payload.get("companies"):
         return None
     # The writer is not compared: another writer's profiles stay current and in the matrix (avo, 11 Nov 2026), so
     # a payload the DeepSeek batch wrote serves a board whose writer is EVREN (measured 15 Nov 2026 19:27: the
-    # writer check sent the Refresh back into the two-hour rescoring).
+    # writer check sent the Refresh back into a full rescoring).
     try:
         cutoff = datetime.fromisoformat(str(as_of)).timestamp()
     except ValueError:
