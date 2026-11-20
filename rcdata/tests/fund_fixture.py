@@ -372,7 +372,18 @@ WRDS_CATALOG = {
                                                      "sales"],
     ("comp_segments_hist_daily", "seg_customer"): ["gvkey", "datadate", "cid", "cnms", "ctype", "salecs", "stype",
                                                    "sid"],
+    ("comp", "exrt_dly"): ["fromcurd", "tocurd", "datadate", "exratd"],
 }
+
+# Compustat's daily rates, every one quoted from GBP (measured 20 Nov 2026, #1181): 1.25 USD and 1.75 CAD per GBP.
+EXRT_ROWS = [
+    {"fromcurd": "GBP", "tocurd": "USD", "datadate": "2026-10-26", "exratd": "1.25"},
+    {"fromcurd": "GBP", "tocurd": "CAD", "datadate": "2026-10-26", "exratd": "1.75"},
+    {"fromcurd": "GBP", "tocurd": "GBP", "datadate": "2026-10-26", "exratd": "1"},
+    {"fromcurd": "GBP", "tocurd": "USD", "datadate": "2026-10-23", "exratd": "1.2"},
+    {"fromcurd": "GBP", "tocurd": "CAD", "datadate": "2026-10-23", "exratd": "0"},        # no rate that day
+    {"fromcurd": "GBP", "tocurd": "JPY", "datadate": "2026-10-22", "exratd": "190"},      # no USD row that day
+]
 
 
 class FakeFundWrds:
@@ -407,7 +418,7 @@ class FakeFundWrds:
             if col not in self.catalog[(library, table)]:
                 raise base.SourceError(f'wrds query failed: column "{col}" does not exist')
         rows = {"fundq": fundq_rows(self.month), "funda": FUNDA_ROWS,
-                "wrds_segmerged": SEGMERGED_ROWS, "seg_customer": SEG_CUSTOMER_ROWS}[table]
+                "wrds_segmerged": SEGMERGED_ROWS, "seg_customer": SEG_CUSTOMER_ROWS, "exrt_dly": EXRT_ROWS}[table]
         gvkeys = re.search(r"gvkey IN \(([^)]*)\)", sql)
         if gvkeys:
             want = set(re.findall(r"'(\d+)'", gvkeys.group(1)))

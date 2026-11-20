@@ -16,8 +16,8 @@ NOW = datetime(2026, 10, 28, 3, 0, tzinfo=timezone.utc)
 FUNDAMENTALS = {"sec/companyfacts": "daily", "sec/filings": "daily", "alphavantage/earnings_calendar": "daily",
                 "yfinance/estimates": "weekly", "sec/fsds": "monthly",
                 "wrds/fundq": "monthly", "wrds/funda": "monthly",
-                "wrds/segments": "monthly", "fundamentals/tables": "daily"}
-WRDS = ["wrds/fundq", "wrds/funda", "wrds/segments"]
+                "wrds/segments": "monthly", "wrds/exrt": "monthly", "fundamentals/tables": "daily"}
+WRDS = ["wrds/fundq", "wrds/funda", "wrds/segments", "wrds/exrt"]
 
 
 @pytest.fixture(autouse=True)
@@ -39,7 +39,7 @@ def test_a_card_per_fundamentals_dataset_with_its_cadence_and_a_label():
 def test_an_attended_card_shows_its_own_kinds_command():
     data = newdata.collect(NOW)
     assert _card(data, "wrds/fundq")["attended_command"] == (
-        "python -m RevenueChaser.rcdata.build backfill wrds/fundq wrds/funda wrds/segments")
+        "python -m RevenueChaser.rcdata.build backfill wrds/fundq wrds/funda wrds/segments wrds/exrt")
     assert _card(data, "wrds/co_hgic")["attended_command"] == (
         "python -m RevenueChaser.rcdata.build backfill wrds/sec_idhist wrds/co_hgic wrds/idxcst_his")
     assert _card(data, "sec/companyfacts")["attended_command"] is None
