@@ -11,7 +11,9 @@ skill ships); it stops after 2028 because that is as far as the NYSE publishes.
 1993-2024 (#348) follows each year's observance rules plus the special closures, and its
 sessions equal CRSP's trading dates (``crsp_a_stock.dsi``) exactly, every year. Outside
 1993-2028 these helpers RAISE rather than guess, because a guessed holiday would move a
-deadline onto a closed day.
+deadline onto a closed day. CI holds the whole table against a second opinion,
+``exchange_calendars``' ``XNYS``, in ``core/tests/test_calendar_vs_exchange_calendars.py``:
+that package is user-contributed, so a disagreement means check nyse.com, never copy.
 
 The second half of the module is the New York clock the forecast ledger (#128) and the
 post-close Fetch (#129) share: when a session closed, which session is the latest

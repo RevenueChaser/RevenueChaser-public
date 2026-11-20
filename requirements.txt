@@ -43,3 +43,6 @@ redis==7.0.1
 # News X lane (module_news/x_reader.py): twifork, the maintained fork of twikit (import name twikit). Pinned: the
 # timeline shape x_reader.tweet() parses is this version's.
 twifork==2.4.0
+# Second opinion on core/calendar.py's hand-typed NYSE closure table (core/tests/test_calendar_vs_exchange_calendars.py).
+# Test-only: no module imports it, and it is never a source of truth -- its calendars are user-contributed.
+exchange_calendars>=4.13.0
