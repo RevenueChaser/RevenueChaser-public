@@ -119,6 +119,7 @@ def test_a_symbol_on_two_pages_keeps_nothing_and_leaves_the_day_to_the_next_run(
     rows = [contract(f"C{i:03d}", "C", 100) for i in range(250)]
     uw_opts.contract_screener["call"] = rows + [rows[3]]
     uw_opts.contract_screener["put"] = [contract("GOOD", "P", 100)]
+    base.parquet_root().mkdir(parents=True)     # the run now reaches its build, as the no-sweep test does
     row = run()
     assert row["result"] != "failed"
     assert "repeated across pages" in row["note"]
