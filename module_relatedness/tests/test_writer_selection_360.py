@@ -170,10 +170,11 @@ def test_the_writer_modules_take_the_model_per_call(rawstore_tmp_db, monkeypatch
 
 def test_an_evren_call_waits_longer_than_two_minutes_and_the_wait_is_a_process_setting(monkeypatch):
     """A profile over a whole document took longer than the old 120 s and the read timeout killed the night's SEC
-    read (20 Nov 2026, 01:10). The wait is now ``DEFAULT_TIMEOUT_S`` and ``RC_EVREN_TIMEOUT_S`` sets it."""
+    read (20 Nov 2026, 01:10); a cold full-size call was then measured at 235 s. The wait is twice that over, and
+    ``RC_EVREN_TIMEOUT_S`` sets it."""
     from RevenueChaser.core.providers import evren as ev
     monkeypatch.delenv("RC_EVREN_TIMEOUT_S", raising=False)
-    assert ev.DEFAULT_TIMEOUT_S >= 300.0 and ev.timeout_s() == ev.DEFAULT_TIMEOUT_S
+    assert ev.DEFAULT_TIMEOUT_S == 600.0 and ev.timeout_s() == ev.DEFAULT_TIMEOUT_S
     client = ev._new_client()
     try:
         assert client.timeout.read == ev.DEFAULT_TIMEOUT_S

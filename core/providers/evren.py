@@ -67,9 +67,10 @@ def _sleep(seconds: float) -> None:
 
 
 #: How long one EVREN call may take, in seconds. 120 s was not enough for a profile over a whole document: the
-#: 01:10 run of 20 Nov 2026 died on a read timeout and the night's Value Chain with it. ``RC_EVREN_TIMEOUT_S``
-#: raises or lowers it per process (the measured profile time is the reader lane's to bring).
-DEFAULT_TIMEOUT_S = 300.0
+#: 01:10 run of 20 Nov 2026 died on a read timeout and the night's Value Chain with it. A cold full-size profile
+#: call was measured at 235 s (20 Nov 2026), so the wait is 600 s: a slow call costs the run time, a timed-out one
+#: costs the answer. ``RC_EVREN_TIMEOUT_S`` raises or lowers it per process.
+DEFAULT_TIMEOUT_S = 600.0
 
 
 def timeout_s() -> float:
