@@ -15,6 +15,12 @@ DOOR_REQS = REPO / "v2" / "door" / "requirements.txt"
 REPO_REQS = REPO / "requirements.txt"
 COMPOSE = (REPO / "docker-compose.yml").read_text(encoding="utf-8")
 DOCKERFILE = (REPO / "v2" / "door" / "Dockerfile").read_text(encoding="utf-8")
+# The instruction lines alone, with every ``#`` comment dropped: a rule about what the image *runs* must not be
+# satisfied or broken by prose. The comment above ``CMD`` names ``0.0.0.0`` precisely to say why it is not used,
+# and a check over the whole file would read that explanation as the offence.
+DOCKERFILE_STEPS = "\n".join(
+    line for line in DOCKERFILE.splitlines() if not line.lstrip().startswith("#")
+)
 DOC = (REPO / "docs" / "v2" / "door.md").read_text(encoding="utf-8")
 
 _PIN = re.compile(r"^([A-Za-z0-9._-]+)\s*(==|>=)\s*([0-9][^\s;#]*)", re.M)
@@ -63,8 +69,8 @@ def test_every_package_the_door_imports_is_in_the_images_list():
 
 def test_the_container_binds_loopback_and_not_every_interface():
     """On the host network ``0.0.0.0`` would open 8100 to the home network, which the ports check calls unknown."""
-    assert '"--host", "127.0.0.1"' in DOCKERFILE
-    assert "0.0.0.0" not in DOCKERFILE
+    assert '"--host", "127.0.0.1"' in DOCKERFILE_STEPS
+    assert "0.0.0.0" not in DOCKERFILE_STEPS
 
 
 def test_the_image_installs_the_doors_list_and_not_the_repositorys():
