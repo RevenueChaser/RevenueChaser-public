@@ -141,6 +141,21 @@ def test_a_quarter_already_on_disk_is_never_fetched_again(av):
     assert len(av.requests) == first          # nothing left that is missing
 
 
+def test_a_request_that_names_tickers_asks_those_and_no_others(av):
+    """The day cap is 25 requests for every Alpha Vantage dataset together, so "fill this one name now" has to be
+    a thing a request can say rather than a wait for the backfill to reach it (#265, ``honours_scope``)."""
+    av.add("av.test/query", MEASURED)
+    fx.run(transcripts.NAME, "2026-10-28", names=["MSFT"])
+    asked = {r.url.params.get("symbol") for r in av.requests}
+    assert asked == {"MSFT"}                  # HEI is in the universe and has a reported quarter too
+
+
+def test_a_named_ticker_with_no_reported_quarter_asks_nothing_and_says_so(av):
+    check = fx.run(transcripts.NAME, "2026-10-28", names=["ZZZZ"])
+    assert not av.requests
+    assert "no reported quarter for" in (check["note"] or ""), check["note"]
+
+
 def test_the_run_stops_at_the_day_cap_and_says_what_is_left_for_the_next_one(av, monkeypatch):
     from RevenueChaser.rcdata import caps
     monkeypatch.setitem(caps.DAY_CAPS, "alphavantage", 1)
