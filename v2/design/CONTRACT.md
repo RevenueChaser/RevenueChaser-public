@@ -170,10 +170,13 @@ stored (`v2/web/src/theme/theme.ts`). Android follows the same three values and 
   left to the reader, and a single unlabelled "change" column is not allowed on a price row.
 - **The two horizons sit under the price, in the price's own cell**, not in two columns of their own (avo,
   21 Nov 2026 16:28: *"1D ve 1W current pricein altinda olmali, eskisi gibi"*). They are **not labelled on the
-  row**: the column header carries `Price · 1D / 1W` once, and the two values are separated by a thin muted `|`
-  (avo, 21 Nov 2026 16:37-16:38: *"1D 1W yazmana gerek yok"*, *"% degerlerini | ile ayirsan yeterli"*). Inside
-  that cell the three parts run on fixed tracks, so both percentages line up down every row — §11's cell rule
-  holds inside a cell as well as between cells.
+  row**: the header carries the names once, on two lines — `Price` above `1D | 1W` — and in the row the two
+  values are separated by a thin muted `|` (avo, 21 Nov 2026 16:37-16:38: *"1D 1W yazmana gerek yok"*,
+  *"% degerlerini | ile ayirsan yeterli"*). **That separator is the cell's centre line, and it stands exactly
+  there** (avo, 21 Nov 2026 16:42: *"orta cizgisini tam orasina koy, biraz logic"*): the column is sized to the
+  widest price, the `|` sits at its midpoint, `1D` is right-aligned against it and `1W` left-aligned, so the
+  divider runs straight down the price's own middle and both percentages line up down every row — §11's cell
+  rule holds inside a cell as well as between cells.
 - **A currency is its symbol, not its code:** `$`, `€`, `£`, `¥`, `₺`. Said **once** — in the column header or
   before the figure (`$1.2B`) — never after every value. A code only where two currencies share one symbol in the
   same view (`US$` / `C$`).
@@ -306,6 +309,7 @@ counterpart names **what it becomes** — that is a stated difference, not a gap
 | `segmented` | `SegmentedControl` | `RcSegmented` | exclusive; never a dropdown at ≤ 5 choices |
 | `table` | `DataTable` | `RcRowList` | stacked row cards on the phone; never a sideways scroll |
 | `row-card` | `RowCard` | `RcRowCard` | the phone's unit of a table row; 36 dp rows |
+| `column-sort` | `SortableHeader` | `RcSortableHeader` | a tappable column header that sorts the table and shows the direction (§11); its hit area is **44 px** tall even where the label is one line |
 | `tile` | `Tile` | `RcTile` | caps label · big value · delta chip · comparison line · optional sparkline |
 | `sparkline` | `Sparkline` | `RcSparkline` | native Canvas on the phone |
 | `range-bar` | `RangeBar` | `RcRangeBar` | in-row graphic |
@@ -338,18 +342,26 @@ Every row that names an instrument carries a **symbol tile** before the ticker, 
 size follows the row height.
 
 **The company's own mark where we have it, a generated monogram where we do not** (avo, 21 Nov 2026 16:28:
-*"sirketin kendi simgesini kullanacaksin burada, daha kucuk olsun"*). The tile is small — 20 px at a 32 dp row,
-22 px at 36 dp, 26 px at 44 px — and the two cases are one component with one fallback, never two layouts.
+*"sirketin kendi simgesini kullanacaksin burada, daha kucuk olsun"*). The tile is **26 px on every row height**
+(avo, 21 Nov 2026 16:52: *"26 px olsun"*), not a fraction of the row: a mark smaller than that stopped being
+readable in the mock, and one size keeps the ticker column aligned whatever the row height is. The two cases are
+one component with one fallback, never two layouts.
 
 - **The mark is served by us, never hot-linked and never taken from another product's icon set.** TradingView's
   and Unusual Whales' sets are their assets: no file, sprite or URL of theirs is copied into this repository or
   fetched by a screen. A mark enters the cache only from the company's own site, through a job that maps a ticker
   to its domain, and the door serves it from our own store, so a screen makes no outbound request.
-- **The monogram is the fallback and it is not rare.** Measured 21 Nov 2026 while drawing this: of 14 names taken
-  from a screener, **5** served a usable icon at the standard paths of their own sites. So the fallback is the
-  common case until the ticker→domain map exists, and a row must look finished with it: the letters come from the
-  ticker and the tint is a deterministic hash over the palette's data colours, so every instrument — an ETF, an
-  index, a name no logo set covers — gets one, offline, with no request.
+- **The source is a ticker-keyed logo service, cached by us.** Measured 21 Nov 2026 against two of them:
+  `financialmodelingprep.com/image-stock/<TICKER>.png` answered **17 of 17** symbols tried, ETFs included
+  (SPY, XLK, QQQ, IWM); `eodhd.com/img/logos/US/<TICKER>.png` answered 11 of 17. So FMP is the source the
+  ticker→domain job replaces, and the licence of whichever one ships is checked and named in `docs/v2/` before
+  the first cached file. Reaching a company's own site stays the fallback path.
+- **A wordmark is not a tile.** Three of those 17 (ISRG, CDNS, SPY) are served as a horizontal wordmark — 96 × 19 px
+  after trimming — which is unreadable in a 26 px square. **A mark whose trimmed aspect ratio is wider than 2.2 : 1
+  is rejected by the cache job and the row falls back to its monogram**, rather than printing a smear.
+- **The monogram is the fallback and it must look finished.** The letters come from the ticker and the tint is a
+  deterministic hash over the palette's data colours, so every instrument — an ETF, an index, a name no logo set
+  covers — gets one, offline, with no request.
 - **Square for a share, a pill for an ETF**, in both cases.
 - **The tile is also the watch-list control** (avo, 21 Nov 2026 16:38: *"ticker simgesine basinca watchlist e
   ekleme secenegi olacak sekilde yap, diger watchlist ekleme kutusunu kaldir"*). **The separate watch-list box is
@@ -410,6 +422,15 @@ These are the rules a dense board breaks first. They hold on both surfaces.
   most 15 characters per part), the detail on a small muted second line that wraps. Short columns (time, result,
   counts) never wrap and are sized to their widest value plus padding.
 - **Row actions before the label.** The watch-list control stands **left of the ticker**, as the rule has always said — in v2 it *is* the symbol tile (§9.1), not a box beside it.
+- **Every column a reader would rank by is sortable** (avo, 21 Nov 2026 16:52: *"ayrica stunlari siralama
+  ozelligi de istiyorum"*). The header cell is the control: the first tap sorts descending, the second reverses,
+  and **only the active column carries a caret**, pointing the way the values run. The sorted column and its
+  direction are part of the board's URL, so a sorted view can be sent to someone and comes back the same. Two
+  rules follow from §11's own grid: a row whose value in the sorted column is missing **sinks to the bottom
+  whichever way the column points**, never to the top as a zero would; and sorting reorders rows only, so every
+  cell keeps its column, width and alignment. Where a cell stacks two figures — the price with `1D` and `1W`
+  under it — **each figure is its own sort target in the header**, because the cell is one column but three
+  questions.
 - **One table, one period.** A table that sorts rows from different report periods together answers "who bought
   most" wrongly by construction. Pin the period, or do not show the row.
 - **Problems first.** A status strip answers "do I need to act now?". Only problem cards show; everything fine

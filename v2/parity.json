@@ -117,6 +117,14 @@
       "android_status": "planned"
     },
     {
+      "id": "column-sort",
+      "web": "SortableHeader",
+      "android": "RcSortableHeader",
+      "note": "a tappable column header that sorts the table and shows the direction (§11); its hit area is **44 px** tall even where the label is one line",
+      "web_status": "planned",
+      "android_status": "planned"
+    },
+    {
       "id": "tile",
       "web": "Tile",
       "android": "RcTile",
