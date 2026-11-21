@@ -141,14 +141,27 @@ def test_b_a_short_start_is_still_passed_over_for_a_later_long_one_in_every_vers
 
 
 def test_b_the_distinguisher_case_b_would_need_does_not_exist_in_the_rule_today():
-    """Both inputs below are "a start whose body is under ``_BODY_MIN``, with a longer one after it". One is an
-    index block (case (b)'s measured counter-example) and one is a genuinely short real section (case (b)'s
-    complaint). The rule answers them identically, which is the whole of why (b) is still open."""
-    index_block = ("Item 1. Business\n" + "Business 3. Properties 7. " * 60 + "\nItem 2. Properties\nland\n\n"
-                   + "Item 1. Business\n" + BODY + "\nItem 1A. Risk Factors\n" + RISK)
-    real_short = ("Item 1. Business\n" + "We make one product and sell it. " * 70 + "\nItem 2. Properties\nland\n\n"
-                  + "Item 1. Business\n" + BODY + "\nItem 1A. Risk Factors\n" + RISK)
-    assert _cut(index_block, OURS_3, form="10-K")[1] == _cut(real_short, OURS_3, form="10-K")[1]
+    """Both inputs below are "a start whose body is under ``_BODY_MIN``, with a longer one after it". One reads as
+    an index block (case (b)'s measured counter-example) and one as a genuinely short real section (case (b)'s
+    complaint). The rule answers them identically, which is the whole of why (b) is still open.
+
+    **The first version of this test failed, and the failure was the fixture's and not the rule's.** It gave the
+    index block the filler ``"Business 3. Properties 7. "``, which names Item 2 inside the slice, so
+    :func:`_holds_another_item` labelled it ``overrun`` while the other input was ``ok`` -- a difference my own
+    text put there, about item words in the filler, not about the thing under test. Neither filler names an item
+    now, and the test asserts that, so it cannot drift back into measuring my prose.
+    """
+    index_filler = "Segment overview, page 3, and the fuller description follows. " * 60
+    real_filler = "We make one product and sell it. " * 70
+    for filler in (index_filler, real_filler):
+        assert not sec_sections._LINE_END_2.search(filler), "the filler must not name an item of its own"
+    def _built(filler):
+        return ("Item 1. Business\n" + filler + "\nItem 2. Properties\nland\n\n"
+                + "Item 1. Business\n" + BODY + "\nItem 1A. Risk Factors\n" + RISK)
+    index_block, real_short = _built(index_filler), _built(real_filler)
+    got = [_cut(index_block, OURS_3, form="10-K"), _cut(real_short, OURS_3, form="10-K")]
+    assert got[0][1] == got[1][1], "the label cannot tell them apart"
+    assert all(item.startswith(BODY[:40]) for item, _ in got), "and neither can the cut: both take the later start"
 
 
 # ── the version is declared and reachable, and the boards have not moved onto it ────────────────────────────────
