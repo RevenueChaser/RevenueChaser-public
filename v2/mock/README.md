@@ -11,7 +11,7 @@ Twenty screens, each drawn in the v2 frame:
 | # | Screen | # | Screen |
 |---|---|---|---|
 | 01 | The frame and the panel, named | 11 | Ticker page — Analysis, judgement cards |
-| 02 | Welcome — the widget grid | 12 | News |
+| 02 | Dashboard — widget grid and pulse rail | 12 | News |
 | 03 | Add widget — the catalogue | 13 | Portfolio — read-only |
 | 04 | Settings — Shell, with the live preview | 14 | Prediction markets |
 | 05 | Settings — Data sources, three columns | 15 | AI chat |
@@ -33,9 +33,13 @@ meets and what it deliberately does not.
 - **Our theme, not Fincept's.** Every colour is a token from claude-coordinator `ref/design-system/tokens.css`
   (Mürekkep light, Gece dark); the type scale, spacing scale, radius and elevations are the shared ones. No
   component carries a hex value.
-- **Fincept is AGPL-3.0.** Its visual *structure* was measured on a read-only walk (`docs/fincept/v2-visual-spec.md`)
-  and written again from scratch here. No code, string, image, icon or asset of Fincept is in this folder, and the
-  walk's screenshots stay off GitHub.
+- **Same structure, our colours.** avo's instruction of 21 Nov 2026: the layout is to be the reference terminal's
+  one to one, and only the colours are ours. The shared frame (app bar, document tabs, board tabs, screen toolbar,
+  panel header) and screens 02, 09 and 10 were drawn with the reference screens open beside them; the rest follow
+  the same frame and the measured walk (`docs/fincept/v2-visual-spec.md`) until the remaining reference screens
+  can be read.
+- **Fincept is AGPL-3.0.** No code, string, image, icon or asset of Fincept is in this folder; every line here was
+  written from scratch, and the walk's screenshots stay off GitHub.
 - **Desktop only.** avo decided on 21 Nov 2026 00:41 that the phone view is the native Android app, so no v2 web
   screen is drawn at 412 or 720 px. Those checks belong to the APK mock.
 - **English, every string** a screen shows.
