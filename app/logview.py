@@ -1,10 +1,10 @@
 """Read-only tails of the dashboard's own log files, for the Logs tab (``/view/logs``, ``GET /api/logs``).
 
-start.ps1 starts the dashboard hidden, with stdout in ``dashboard.log`` and stderr in ``dashboard.err.log``
-(``logging`` and werkzeug's request lines go to stderr, and so do the stacks ``PYTHONFAULTHANDLER`` prints on a
-fatal crash), and writes its own messages to ``launcher.log``. All three live in ``config.LOG_DIR``
-(``.cache/logs/``), and each start keeps the previous run as ``*.prev.log``. Only these files can be read: the
-browser names a source key, never a path.
+Whatever starts the dashboard redirects its stdout to ``dashboard.log`` and its stderr to
+``dashboard.err.log`` (``logging`` and werkzeug's request lines go to stderr, and so do the stacks
+``PYTHONFAULTHANDLER`` prints on a fatal crash). Both live in ``config.LOG_DIR`` (``.cache/logs/``), and a
+start that keeps the previous run leaves it as ``*.prev.log``. Only these files can be read: the browser
+names a source key, never a path.
 
 A log line is untrusted text: any web page can make the browser request ``http://127.0.0.1:8000/<markup>``, and
 werkzeug logs the path. The page puts lines in with ``textContent`` and its first payload through
@@ -27,12 +27,10 @@ from RevenueChaser.core.html_safe import script_json
 SOURCES = {
     "server": ("Server", "dashboard.err.log"),
     "output": ("Output", "dashboard.log"),
-    "launcher": ("Launcher", "launcher.log"),
 }
 HINTS = {
     "server": "Requests, warnings and errors (the dashboard's stderr).",
     "output": "What the dashboard printed (stdout).",
-    "launcher": "What start.ps1 said while starting the dashboard.",
 }
 RUNS = ("current", "prev")
 DEFAULT_TAIL = 400
@@ -56,7 +54,7 @@ _ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 
 
 def prev_name(name: str) -> str:
-    """``dashboard.err.log`` -> ``dashboard.err.prev.log`` (what start.ps1's Keep-PreviousRun renames it to)."""
+    """``dashboard.err.log`` -> ``dashboard.err.prev.log``: the name the previous run is kept under."""
     return name[:-len(".log")] + ".prev.log"
 
 
@@ -82,7 +80,7 @@ def read_tail(path, lines: int, nbytes: int | None = None) -> list[str]:
     except OSError:
         return []
     if start == 0 and data.startswith(codecs.BOM_UTF8):
-        data = data[len(codecs.BOM_UTF8):]  # PowerShell 5.1's Add-Content -Encoding UTF8 writes one
+        data = data[len(codecs.BOM_UTF8):]  # a log file can start with a UTF-8 BOM, whatever wrote it
     out = _ANSI.sub("", data.decode("utf-8", errors="replace")).splitlines()
     if start > 0 and out:
         out = out[1:]  # the first line was cut by the seek

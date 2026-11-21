@@ -45,7 +45,7 @@ off-peak).
 
 | Topic | Decision |
 |---|---|
-| Scheduling | **(1a)** gate + manual; Task Scheduler is a **visible, installable row** on the Settings Automations panel (`RC-Relatedness-OffPeak`), **not installed by default**; no self-deferring job |
+| Scheduling | **(1a)** gate + manual; the scheduled task is a **visible, installable row** on the Settings Automations panel (`RC-Relatedness-OffPeak`), **not installed by default**; no self-deferring job |
 | Peak | LLM **must not run** |
 | Cache | DuckDB `llm_cache` (model + prompt hash → response) |
 | Peak behaviour | A **cache hit is served at peak** (it costs nothing); only a cache **miss** stops. The gate sits after the cache in `deepseek.complete` |
@@ -149,5 +149,5 @@ place (`module_relatedness/config.py` `default_writer()` -> `core.llm_writers.DE
 
 ## Not in scope
 
-Installing a Task Scheduler task automatically, an in-app cron/timer, retries beyond the single
+Installing a scheduled task automatically, an in-app cron/timer, retries beyond the single
 429 / pre-send retry above, and streaming.

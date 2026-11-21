@@ -1,7 +1,7 @@
 """#158: the Automations panel on Linux, through systemd user timers.
 
 Every call goes through a fake ``systemctl`` runner and a temp unit folder, so the tests stay offline and run the
-same on any platform, the way ``WindowsScheduler``'s tests go through a fake PowerShell.
+same on any platform.
 """
 from __future__ import annotations
 
@@ -302,11 +302,6 @@ def test_systemctl_finds_the_user_bus_when_xdg_runtime_dir_is_missing(monkeypatc
     monkeypatch.setenv("XDG_RUNTIME_DIR", "/run/user/77")
     A._systemctl(["daemon-reload"])
     assert seen["env"]["XDG_RUNTIME_DIR"] == "/run/user/77"
-
-
-def test_windows_is_unchanged(monkeypatch):
-    monkeypatch.setattr(A.sys, "platform", "win32")
-    assert isinstance(A.get_scheduler(), A.WindowsScheduler)
 
 
 def test_the_default_unit_folder_follows_xdg_config_home(monkeypatch, tmp_path):

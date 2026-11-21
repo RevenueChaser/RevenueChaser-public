@@ -1,6 +1,6 @@
 """Logs tab: read-only tails of the dashboard's own log files (app/logview.py, /view/logs, /api/logs).
 
-start.ps1 starts the dashboard hidden, so what the console window used to show now goes to files under
+The dashboard's own stdout and stderr are redirected to files under
 ``.cache/logs/``. This tab is where the user reads them. The browser names a source key, never a path.
 """
 from __future__ import annotations
@@ -66,9 +66,10 @@ def test_the_page_renders_its_controls(client, log_dir):
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
     assert len(re.findall(r"<h1\b", html)) == 1
-    for src in ("server", "output", "launcher"):
+    for src in ("server", "output"):
         assert f'data-src="{src}"' in html
-    for label in ("Server", "Output", "Launcher", "Previous run", "Problems only", "Follow", "Pause"):
+    assert 'data-src="launcher"' not in html, "the Windows launcher source is gone"
+    for label in ("Server", "Output", "Previous run", "Problems only", "Follow", "Pause"):
         assert label in html
     assert str(log_dir) in html, "the page says where the files are"
     low = html.lower()
@@ -118,9 +119,9 @@ def test_api_returns_the_last_lines_of_the_server_log(client, log_dir):
 
 def test_each_source_maps_to_its_own_file(client, log_dir):
     (log_dir / "dashboard.log").write_text("printed\n", encoding="utf-8")
-    (log_dir / "launcher.log").write_text("09:00:01 Starting the Revenue Chaser dashboard\n", encoding="utf-8")
+    (log_dir / "dashboard.err.log").write_text("logged\n", encoding="utf-8")
     assert _api(client, "?src=output").get_json()["lines"] == ["printed"]
-    assert _api(client, "?src=launcher").get_json()["lines"] == ["09:00:01 Starting the Revenue Chaser dashboard"]
+    assert _api(client, "?src=server").get_json()["lines"] == ["logged"]
 
 
 def test_previous_run_reads_the_prev_file(client, log_dir):
@@ -131,14 +132,13 @@ def test_previous_run_reads_the_prev_file(client, log_dir):
     assert data["lines"] == ["before"]
 
 
-def test_prev_name_matches_what_start_ps1_renames_to():
-    # [IO.Path]::ChangeExtension("dashboard.err.log", ".prev.log")
+def test_prev_name_keeps_the_previous_run_beside_the_current_one():
     assert logview.prev_name("dashboard.err.log") == "dashboard.err.prev.log"
-    assert logview.prev_name("launcher.log") == "launcher.prev.log"
+    assert logview.prev_name("dashboard.log") == "dashboard.prev.log"
 
 
 def test_missing_file_is_empty_not_an_error(client, log_dir):
-    resp = _api(client, "?src=launcher")
+    resp = _api(client, "?src=output")
     assert resp.status_code == 200
     data = resp.get_json()
     assert data["exists"] is False
@@ -152,9 +152,9 @@ def test_unknown_source_or_run_is_refused(client, log_dir, query):
 
 
 def test_the_answer_names_the_file_not_its_folder(client, log_dir):
-    (log_dir / "launcher.log").write_text("x\n", encoding="utf-8")
-    data = _api(client, "?src=launcher").get_json()
-    assert data["file"] == "launcher.log"
+    (log_dir / "dashboard.log").write_text("x\n", encoding="utf-8")
+    data = _api(client, "?src=output").get_json()
+    assert data["file"] == "dashboard.log"
     assert str(log_dir) not in json.dumps(data)
 
 
@@ -175,9 +175,9 @@ def test_only_the_end_of_a_large_file_is_read(client, log_dir, monkeypatch):
 
 
 def test_utf8_bom_and_bad_bytes_are_harmless(client, log_dir):
-    # PowerShell 5.1's Add-Content -Encoding UTF8 starts launcher.log with a BOM.
-    (log_dir / "launcher.log").write_bytes("\ufeffstart\n".encode() + b"bad \xff byte\n")
-    lines = _api(client, "?src=launcher").get_json()["lines"]
+    # A log file can still start with a UTF-8 BOM, whatever wrote it.
+    (log_dir / "dashboard.log").write_bytes("\ufeffstart\n".encode() + b"bad \xff byte\n")
+    lines = _api(client, "?src=output").get_json()["lines"]
     assert lines[0] == "start"
     assert lines[1].startswith("bad ")
 
