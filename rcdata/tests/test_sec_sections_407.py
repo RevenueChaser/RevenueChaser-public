@@ -124,6 +124,62 @@ def test_a_run_in_heading_named_again_in_its_own_first_sentence_is_not_a_second_
     assert item.startswith("Item 4. Information on the Company is set out below.")
 
 
+# ── (a) the shape the first fix still missed: the real heading nearer than MIN_ITEM_CHARS ─────────────────────
+
+NEAR_FILLER = "Our operations are subject to extensive regulation where we trade. " * 200
+
+
+def _twenty_f_near(crossref_line: str, gap: int = 900) -> str:
+    """The same 20-F, with only ``gap`` characters of risk factors between the cross-reference and the real
+    heading. A cross-reference stands where the filer is pointing forward, which can be the tail of Item 3."""
+    assert gap < sec_sections.MIN_ITEM_CHARS, "the point of this input is that the real heading is nearer"
+    return ("Item 3. Key Information\n" + RISK + "\n" + crossref_line + "\n" + NEAR_FILLER[:gap]
+            + "\nItem 4. Information on the Company\n" + ITEM_4_BODY
+            + "\nItem 5. Operating and Financial Review and Prospects\n" + BODY)
+
+
+def test_ours_2_cuts_from_the_cross_reference_when_the_real_heading_is_near_as_well():
+    """Characterisation: ``ours-2`` has no guard at all here, so the distance changes nothing for it."""
+    item, quality = _cut(_twenty_f_near(BARE), OURS_2)
+    assert sec_sections.base(quality) == "ok", quality
+    assert "Our business faces many risks" in item
+    assert "Item 4. Information on the Company" in item
+
+
+def test_ours_3_passes_the_cross_reference_over_however_near_the_real_heading_stands():
+    """The first form of :func:`_own_heading_after` looked for the real heading only beyond ``MIN_ITEM_CHARS``,
+    to leave a run-in heading repeated in its own first sentence alone. That distance also hid this input: a
+    cross-reference in the tail of Item 3 with the real heading 900 characters below it passed every guard, was
+    cut from the cross-reference and labelled ``ok`` (probe, 21 Nov 2026).
+    """
+    item, quality = _cut(_twenty_f_near(BARE), OURS_3)
+    assert quality == "ok", quality
+    assert item.startswith(ITEM_4_BODY[:40])
+    assert "Our business faces many risks" not in item
+    assert "Item 4. Information on the Company" not in item
+
+
+def test_the_window_is_the_candidate_s_own_line_and_not_a_distance():
+    """What tells the two inputs apart is the candidate's line, not how far the next heading stands: a heading
+    ends its line at the title, a cross-reference goes on in words."""
+    text = _twenty_f_near(BARE)
+    crossref = next(m for m in sec_sections._LINE_START_2["20-F"].finditer(text))
+    assert sec_sections._line_runs_on(text, crossref) is True
+    assert sec_sections._own_heading_after(text, crossref, "20-F") is True
+
+    real = [m for m in sec_sections._LINE_START_2["20-F"].finditer(text)][-1]
+    assert sec_sections._line_runs_on(text, real) is False, "the real heading's line ends at its title"
+    assert sec_sections._own_heading_after(text, real, "20-F") is False
+
+
+def test_a_page_number_after_the_title_is_not_a_line_that_runs_on():
+    """A heading printed with its page number after it is still a heading; :data:`_PAGE_NO` is what reads that
+    case, and :func:`_line_runs_on` must not take the digits for prose."""
+    text = "Item 4. Information on the Company    23\n" + ITEM_4_BODY
+    m = next(sec_sections._LINE_START_2["20-F"].finditer(text))
+    assert sec_sections._line_runs_on(text, m) is False
+
+
 # ── (b) not fixed: pinned as it is, so a later round knows what it is changing ──────────────────────────────────
 
 def test_b_a_short_start_is_still_passed_over_for_a_later_long_one_in_every_version():
