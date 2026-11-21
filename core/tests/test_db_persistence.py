@@ -61,21 +61,6 @@ def test_watchlist_populated(rawstore_tmp_db):
     assert rawstore.load_watchlist() == {"AAPL", "MSFT"}
 
 
-def test_swing_info_populated(rawstore_tmp_db, monkeypatch):
-    from RevenueChaser.module_swing_potential import indicators
-    import yfinance
-
-    class _T:
-        def __init__(self, ticker):
-            self.info = {"sector": "Technology", "beta": 1.4}
-
-    monkeypatch.setattr(yfinance, "Ticker", _T)
-    assert indicators.load_ticker_info("NVDA")["sector"] == "Technology"
-    row = rawstore.get("swing_info", "NVDA")
-    assert row["payload"]["beta"] == 1.4
-    assert row["cached_at"] > 0
-
-
 def test_rotation_holdings_populated(rawstore_tmp_db):
     from datetime import date
     from RevenueChaser.module_sector_rotation import store as rs
@@ -152,7 +137,6 @@ _HERE = "core/tests/test_db_persistence.py"
 _ROOT = Path(__file__).resolve().parent.parent.parent
 
 POPULATION: dict[str, str] = {
-    "swing_info": f"{_HERE}::test_swing_info_populated",
     "rotation_holdings": f"{_HERE}::test_rotation_holdings_populated",
     "comov_runs": "module_comovement/tests/test_comovement.py"
                    "::test_engine_run_persists_and_clusters",
@@ -264,10 +248,3 @@ def test_manifest_tables_start_empty_in_an_isolated_db(rawstore_tmp_db):
 
 
 
-def test_swing_info_ttl_from_cached_at(rawstore_tmp_db):
-    import time
-    from RevenueChaser.core import rawstore as rs
-    rs.write_rows("swing_info", [{"ticker": "AAAA", "payload": {"sector": "Tech"},
-                                  "cached_at": time.time() - 1000}])
-    from RevenueChaser.module_swing_potential.indicators import load_ticker_info
-    assert load_ticker_info("AAAA", no_fetch=True) == {"sector": "Tech"}

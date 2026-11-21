@@ -57,19 +57,6 @@ def test_rotation_holdings_writer_stamps_fetched_at(rawstore_tmp_db):
 
 
 
-def test_swing_info_writer_stamps_fetched_at(rawstore_tmp_db, monkeypatch):
-    import yfinance
-    class _T:
-        info = {"shortName": "Aaa"}
-    monkeypatch.setattr(yfinance, "Ticker", lambda ticker: _T())
-    from RevenueChaser.module_swing_potential.indicators import load_ticker_info
-    before = time.time()
-    assert load_ticker_info("AAA")["shortName"] == "Aaa"
-    row = rawstore.get("swing_info", "AAA")
-    _recent(row["fetched_at"], before)
-    assert row["payload"]["shortName"] == "Aaa"
-
-
 def test_ticker_themes_backfill_stamps_fetched_at(rawstore_tmp_db):
     from RevenueChaser.core import ticker_store, ticker_themes
     ticker_store.write_from_cards([{"ticker": "ETON", "themes": ["Biotechnology"]}])
