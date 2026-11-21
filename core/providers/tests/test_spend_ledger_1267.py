@@ -60,9 +60,13 @@ def _row(provider: str) -> dict:
 
 
 def test_the_ledger_a_write_lands_in_is_named_by_the_market_root(roots):
+    """Both backends name it from the market root: the ops file's path, or the Redis namespace, which
+    ``ops_redis.namespace()`` hashes from that root. CI runs the suite on Redis and a workstation on the file."""
     a, b, point_at = roots
     first = ops.ledger_id()
-    assert str(ops.ops_path()) in first
+    assert first.startswith(f"{ops.backend()}:")
+    if ops.backend() == "sqlite":
+        assert str(ops.ops_path()) in first
     point_at(b)
     assert ops.ledger_id() != first, "a moved root is another ledger, and a held count belongs to the old one"
 
