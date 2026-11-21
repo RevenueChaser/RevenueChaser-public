@@ -280,6 +280,13 @@ _NEEDS = (
          providers=("uw",)),
     Need("earnings.options", "earnings_options", "er_options", "session_date", "ticker", 1,
          ask_param="tickers", normalize=TICKER, providers=("uw",)),
+    # #644: the ``/earnings/{ticker}`` tape the earnings set's evening fetch stores — the print history and the
+    # upcoming event the Earnings Radar board scored from a live request per name until now. Its day column is
+    # ``session_date``, the evening it was fetched, and the lag is one session like the rest of the set: a name is
+    # only in the set on the two evenings before its report, so a name whose newest row is older than that is one
+    # the board asks live.
+    Need("earnings.tape", "earnings_tape", "earnings_tape", "session_date", "ticker", 1,
+         ask_param="tickers", normalize=TICKER, providers=("uw",)),
     # ── The prices store's remaining reads ──────────────────────────────────────────────────────────────────────
     Need("prices.actions", "actions", "corporate_action", "ex_date", "security_id", 1,
          ask_param="security_ids", providers=("alpaca",)),
