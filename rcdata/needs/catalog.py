@@ -169,6 +169,18 @@ _NEEDS = (
     # #807: UW's FDA calendar, fetched hourly beside the economic one; a day is its newest snapshot. A day old is late.
     Need("market.fda_calendar", "fda_calendar", "fda_event", "snapshot_date", "ticker", 1,
          max_lag_unit=DAYS, providers=("uw",)),
+    # ── The delisted history (serving kind ``delisted``, #1219) ─────────────────────────────────────────────────
+    # Served through the needs layer so its readers are visible in the registry and on Settings (avo's shape of
+    # 20 Nov 2026). **No live board reads them**: the measuring paths only (forecast-ledger hit rate, AG-score
+    # validation, a later backtest) and a survivorship note on a historical statistic.
+    # ``day_column`` is None on purpose, for both. This layer is a **history**, and deliberately behind: the CRSP
+    # subscription ends at ``wrds_history.CRSP_LAST_YEAR`` and the build runs monthly, so the newest row is a year
+    # or more old by design and any ``max_lag`` in sessions or days would read ``stale`` with nothing wrong. A need
+    # with no day of its own is present or absent, never stale — which is the true question here.
+    Need("market.delisted_price_bar", "delisted_bars", "delisted_price_bar_daily", None, "security_id", 0,
+         ask_param="security_ids", ask_required=True, providers=("wrds",)),
+    Need("market.delisted_security", "delisted_securities", "delisted_security", None, "security_id", 0,
+         ask_param="security_ids", providers=("wrds",)),
     # ── Ownership ───────────────────────────────────────────────────────────────────────────────────────────────
     # FINRA settles twice a month (mid-month and month end) and publishes about a week later, so the newest settlement
     # is routinely 10 to 27 calendar days old. 35 lets a holiday-late release through and reads "not stored" once a

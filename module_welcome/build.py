@@ -69,6 +69,7 @@ UNKNOWN_SESSION = "unknown"
 FILE_LABELS = {
     "spine": "Identity and the universe",
     "prices": "Prices and shares",
+    "delisted": "Delisted history (survivorship)",
     "fundamentals": "Statements, filings and earnings",
     "ownership": "Who owns it, who is short",
     "options": "Options",

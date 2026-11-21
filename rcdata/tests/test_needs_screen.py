@@ -164,7 +164,8 @@ def test_a_kinds_steps_sit_inside_its_files_steps():
 def test_the_files_are_every_serving_kind_in_build_order():
     from RevenueChaser.rcdata import serving
     assert set(screen.FILES) == set(serving.KINDS)
-    assert list(screen.FILES) == ["spine", "prices", "fundamentals", "sec_forms", "sec_reads", "ownership", "options", "market"]
+    assert list(screen.FILES) == ["spine", "prices", "delisted", "fundamentals", "sec_forms", "sec_reads",
+                                  "ownership", "options", "market"]
 
 
 def test_a_dataset_that_does_not_fill_by_tier_has_words_for_why():
