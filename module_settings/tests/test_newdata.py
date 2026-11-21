@@ -14,7 +14,7 @@ from datetime import date, datetime, timedelta, timezone
 import duckdb
 import pytest
 
-from RevenueChaser.core import calendar, config
+from RevenueChaser.core import calendar, config, llm_prices, llm_spend
 from RevenueChaser.module_settings import newdata
 from RevenueChaser.rcdata import caps, ops, serving
 from RevenueChaser.rcdata.build import uw_spot_expiry_strike as spx
@@ -176,6 +176,44 @@ def test_spend_is_today_and_this_week_per_provider_against_the_caps(monkeypatch)
     assert (uw_sample["daily_req_count"], uw_sample["daily_cap"]) == (1300, caps.DAY_CAPS["uw"])
     assert uw_sample["daily_remaining_computed"] == caps.DAY_CAPS["uw"] - 1300
     assert uw_sample["per_minute_remaining"] == 118
+
+
+def test_money_is_the_paid_writers_spend_today_and_this_week_with_its_unit(monkeypatch):
+    """#166 item 3: the data half of the money picture, for the v2 board to draw (the Spend card is unchanged)."""
+    monkeypatch.delenv(llm_spend.ENV, raising=False)
+    monkeypatch.delenv(llm_spend.CAP_ENV, raising=False)
+    monkeypatch.delenv(llm_prices.PRICES_ENV, raising=False)
+    ops.put_rows("provider_spend_daily", [
+        {"provider": "deepseek", "model": "deepseek-v4-flash", "ny_day": "2026-10-28", "calls": 300,
+         "tokens_in": 9000, "tokens_out": 3000, "usd_micros": 540_000},
+        {"provider": "deepseek", "model": "deepseek-v4-flash", "ny_day": "2026-10-26", "calls": 100,
+         "tokens_in": 1000, "tokens_out": 500, "usd_micros": 180_000},
+        {"provider": "deepseek", "model": "deepseek-v4-flash", "ny_day": "2026-10-25", "calls": 999,
+         "tokens_in": 0, "tokens_out": 0, "usd_micros": 9_000_000},        # the Sunday before: another week
+    ])
+    money = newdata.collect(NOW)["money"]
+    assert (money["day"], money["week_from"]) == ("2026-10-28", "2026-10-26")
+    row = money["writers"][0]
+    assert (row["provider"], row["model"], row["unit"]) == ("deepseek", "deepseek-v4-flash",
+                                                            "measured cost a call")
+    assert (row["calls_today"], row["calls_week"]) == (300, 400)
+    assert (row["usd_today"], row["usd_week"]) == (0.54, 0.72)
+    assert (row["tokens_in_week"], row["tokens_out_week"]) == (10_000, 3_500)
+    assert money["usd_today"] == 0.54                      # the day's own figure, summed from the day's rows
+    assert money["day_cap_usd"] == llm_spend.DEFAULT_DAY_CAP_USD and money["recording"] is True
+    # The page never has to work the rule out itself: it is told whether a paid call would be refused.
+    assert money["over_cap"] is False
+
+
+def test_money_says_so_when_the_day_cap_is_spent(monkeypatch):
+    monkeypatch.delenv(llm_spend.ENV, raising=False)
+    monkeypatch.setenv(llm_spend.CAP_ENV, "1")
+    ops.put_rows("provider_spend_daily", [
+        {"provider": "deepseek", "model": "deepseek-v4-flash", "ny_day": "2026-10-28", "calls": 600,
+         "tokens_in": 0, "tokens_out": 0, "usd_micros": 1_080_000}])
+    money = newdata.collect(NOW)["money"]
+    assert money["usd_today"] == 1.08 and money["day_cap_usd"] == 1.0
+    assert money["over_cap"] is True
 
 
 def _manifest(roots, step: str, files: dict, **top):

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 
+from RevenueChaser.core import llm_prices, llm_writers
 from RevenueChaser.core.config import OUTPUT_DIR
 from RevenueChaser.module_value_chain import config as vc_config
 
@@ -68,7 +69,10 @@ FORMS_RULES_VERSION = "ours-2"
 # The cap's cost per call, measured on DeepSeek Flash: the 10 Nov 2026 pilot wrote 400 names in 668 calls for about
 # 1 USD. It replaces the 0.006 the cap carried before, which was "about 4x" of the v2 figure, guessed until the pilot
 # could measure it (review of PR #557). A chunked filing is several calls, each counted.
-EST_USD_PER_CALL = 0.0018
+# The number itself lives in ``core.llm_prices`` since #166, because the day ledger costs an answer with it too: two
+# copies would let this run's ceiling and the day's recorded spend drift apart. A model with no measured figure
+# there leaves this at the pilot's number rather than at zero, which would make the cap refuse every call.
+EST_USD_PER_CALL = llm_prices.measured_usd_per_call(llm_writers.get("deepseek").models[0]) or 0.0018
 # A full round is every company with usable text: about 4,750 names at 1.67 calls each, so ~7,900 calls, ~14 USD
 # (#712). The cap sits above that so one run covers the round instead of stopping six times and looking finished.
 USD_CAP = float(os.getenv("RC_RELATEDNESS_USD_CAP", "25.0"))

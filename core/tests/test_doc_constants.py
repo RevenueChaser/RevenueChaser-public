@@ -489,3 +489,18 @@ def test_r6_doc_states_the_calibrated_rate_thresholds_and_the_measurement():
     assert float(high.group(1)) == config.R6_RATE_HIGH
     for figure in ("median 14.1", "p75 22.0", "p90 26.7"):
         assert figure in text, f"r6_macro.md no longer states the measured {figure}"
+
+
+def test_llm_spend_doc_states_the_day_cap_and_the_measured_price_the_code_owns():
+    """#166: the default day cap and the measured cost a call are money, so a stale doc misleads about money.
+
+    The measured figure names its pilot in the doc as well: ``rcdata/caps.py``'s rule is that a number states
+    where it came from, and a price with no measurement behind it cannot be judged or re-taken.
+    """
+    from RevenueChaser.core import llm_prices, llm_spend
+    text = (_REPO / "docs" / "llm_spend.md").read_text(encoding="utf-8")
+    assert f"**{llm_spend.DEFAULT_DAY_CAP_USD} USD a New York day**" in text
+    assert f"`{llm_spend.CAP_ENV}`" in text and f"`{llm_spend.ENV}=0`" in text
+    per_call = llm_prices.MEASURED_USD_PER_CALL["deepseek-v4-flash"]
+    assert f"`{per_call}` USD for `deepseek-v4-flash`" in text
+    assert "400 names, 668 calls" in text, "the measured figure no longer names what measured it"

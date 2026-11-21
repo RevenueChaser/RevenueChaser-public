@@ -613,6 +613,9 @@ def build_profiles(tickers: list[str], use_llm: bool = True,
             elif kind == "peak":
                 reason["why"] = "peak"
                 reason["next"] = getattr(exc, "next_off_peak", None)
+            elif kind == "budget":
+                # A boundary like peak, not a failed call: it frees at the turn of the New York day (#166).
+                reason["why"], reason["message"] = "budget", str(exc)
             elif kind == "unusable":
                 reason["why"], reason["message"] = kind, str(exc)
             else:
@@ -648,7 +651,8 @@ def build_profiles(tickers: list[str], use_llm: bool = True,
         try:
             got = locator.locate(rep, name, (inp.get("source") or {}).get("form"), inp["locate"]["text"],
                                  budget=budget, provider=provider, model=model)
-        except (deepseek.PeakHoursError, deepseek.DeepSeekAuthError, deepseek.DeepSeekTransientError):
+        except (deepseek.PeakHoursError, deepseek.BudgetSpentError, deepseek.DeepSeekAuthError,
+                deepseek.DeepSeekTransientError):
             raise
         except deepseek.DeepSeekError as exc:
             logger.warning("relatedness locator %s unusable: %s", rep, exc)
@@ -713,6 +717,9 @@ def build_profiles(tickers: list[str], use_llm: bool = True,
             return                     # out of LLM budget: this group stays pending
         except deepseek.PeakHoursError as exc:
             _fail("peak", exc)
+            raise
+        except deepseek.BudgetSpentError as exc:      # the money gate (#166): nothing was sent
+            _fail("budget", exc)
             raise
         except deepseek.DeepSeekAuthError as exc:
             _fail("auth", exc)
@@ -786,7 +793,8 @@ def build_profiles(tickers: list[str], use_llm: bool = True,
             for f in as_completed(futs):
                 try:
                     f.result()
-                except (deepseek.PeakHoursError, deepseek.DeepSeekAuthError, deepseek.DeepSeekTransientError):
+                except (deepseek.PeakHoursError, deepseek.BudgetSpentError, deepseek.DeepSeekAuthError,
+                        deepseek.DeepSeekTransientError):
                     pass               # the worker recorded why; stop below
                 except Exception as exc:  # noqa: BLE001 - per-group LLM failure
                     logger.warning("profile group failed: %s", exc)
@@ -1286,6 +1294,10 @@ def _run(no_fetch: bool, tickers: list[str] | None, limit: int | None,
     except deepseek.PeakHoursError as exc:
         stopped_reason = "peak"
         next_off_peak = getattr(exc, "next_off_peak", None)
+        profiles = store.load_profiles(tickers)
+    except deepseek.BudgetSpentError as exc:
+        # The paid-call day cap (#166): render what is written, the rest is pending for the next day's run.
+        stopped_reason, stopped_message = "budget", str(exc)
         profiles = store.load_profiles(tickers)
 
     # "Profiled" counts usable profiles only: empty / no_text / short_text rows are not done. Mixed writers (avo,

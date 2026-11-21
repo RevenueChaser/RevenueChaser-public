@@ -25,6 +25,10 @@ off-peak).
 - `module_relatedness/engine.run`: catches `PeakHoursError` at the boundary, renders
   from the durable profiles already written, and returns `pending` + `next_off_peak`;
   records a `relatedness_run` marker in `run_registry`.
+- **The day cap** (#166, 21 Nov 2026): a second, wider gate stands beside this one — what the paid writer spent
+  over the whole New York day, against the box's USD day cap, recorded in `provider_spend_daily`. Order in
+  `deepseek.complete` is now **cache → off-peak gate → money gate → HTTP**. See
+  [`llm_spend.md`](llm_spend.md).
 - **$ hard-stop**: `config.USD_CAP` (env `RC_RELATEDNESS_USD_CAP`, default 25.0) caps
   LLM calls per run at `USD_CAP / EST_USD_PER_CALL`; the rest stay pending. `--cap 0`
   means no LLM call at all. The budget counts calls, the thinking retry included
