@@ -17,7 +17,6 @@ file.
 """
 from __future__ import annotations
 
-import json
 import re
 from datetime import date
 from pathlib import Path
@@ -90,7 +89,10 @@ def _snap(day: date, ticker: str, *, group: str = "sector", quadrant: str = "lea
 
 
 def _holdings(ticker: str, rows: list | None, day: str = "2026-11-20") -> dict:
-    return {"ticker": ticker, "date": day, "rows": json.dumps(rows) if rows is not None else None}
+    """``rows`` is a JSON column, so the payload goes in as the list itself: ``rawstore`` serialises it, exactly as
+    ``store.save_holdings_cache`` hands it over. Dumping it here first would store a JSON *string*, whose
+    ``json_array_length`` is not the number of lines."""
+    return {"ticker": ticker, "date": day, "rows": rows}
 
 
 def test_an_empty_store_reads_as_no_rows_everywhere(rawstore_tmp_db):
