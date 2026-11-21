@@ -284,8 +284,8 @@ _PEER_LOCK_DELAYS = _READ_DELAYS
 # gone). That is how a lock holder is recognised as a peer — on Windows DuckDB's
 # lock error does not even name the holder PID. A marker records the holder's
 # process start time too, so a reused PID does not read as a live peer (#355);
-# and registering sweeps the directory's stale markers, because ``stop.ps1``
-# kills the dashboard and ``atexit`` never runs, so leftovers pile up (#368).
+# and registering sweeps the directory's stale markers, because a killed
+# dashboard never runs ``atexit``, so leftovers pile up (#368).
 _PRESENCE_PREFIX = ".rc-proc-"
 _PRESENT_IN: set[str] = set()
 _PRESENCE_LOCK = threading.Lock()

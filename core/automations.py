@@ -1488,7 +1488,7 @@ def run_task(name: str, python: str | None = None, cwd: Path | str | None = None
 
 def main(argv: list[str] | None = None) -> int:
     """``run <name>`` is what a task executes; ``install|remove <name>`` and ``list`` are
-    the thin-caller entry points of the ``.ps1`` files (they act only on registry names).
+    entry points that act only on registry names (the Windows ``.ps1`` callers were removed, #1225).
     ``names`` prints the registry names one per line and never asks the scheduler, so a script that
     freezes or lists the tasks reads them from here instead of keeping its own copy (#164)."""
     args = list(sys.argv[1:] if argv is None else argv)

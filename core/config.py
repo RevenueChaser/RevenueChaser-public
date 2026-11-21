@@ -63,7 +63,7 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 # Regenerable dashboard artifacts (HTML + JSON). Clearable any time; re-running
 # a module regenerates them. Distinct from CACHE_DIR (per-ticker raw cache).
 CACHE_ROOT = OUTPUT_DIR
-# The dashboard's own logs (start.ps1 writes launcher.log, dashboard.log and dashboard.err.log here; the
+# The dashboard's own logs (the Windows start script wrote launcher.log, dashboard.log and dashboard.err.log here; the
 # Logs tab reads them) sit next to the scheduled tasks' logs (core/automations.py). Not created at import.
 LOG_DIR = OUTPUT_DIR / "logs"
 RAW_STORE_BACKUP_DIR = os.getenv("RAW_STORE_BACKUP_DIR", "")

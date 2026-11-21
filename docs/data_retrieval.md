@@ -245,8 +245,8 @@ each, never the builder lock — so two datasets fetch side by side and beside a
   `/api/build/automation/<kind>` is gone (avo, 10 Nov 2026).
 - **`GET /api/idle`** (loopback, no header): `{idle, reasons}` from `app/jobs.py` `idle()`. It is false while a
   dashboard job is queued or running, while any `core/job_lock` name is held by any process, or while another
-  process's live `.rc-proc-<pid>` marker sits in the store dir or the market dir (F8 A). `stop.ps1` reads it, and
-  so does the deploy gate.
+  process's live `.rc-proc-<pid>` marker sits in the store dir or the market dir (F8 A). The deploy gate reads
+  it.
 
 ### The needs routes (#290, renamed in #329)
 

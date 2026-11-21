@@ -500,7 +500,7 @@ WAL mode, a second process cannot even read it meanwhile — DuckDB's own `.wal`
 file is a crash journal, not a concurrency mechanism), but any number of
 connections **within** one process — as long as they all use the same
 configuration. The scheduled tasks (the nightly backup, Relatedness off-peak and the Value Chain
-filing sync, listed in `core/automations.py`; `register_tasks.ps1` installs only the backup) and
+filing sync, listed in `core/automations.py`; on homesrv each is a systemd timer) and
 the dashboard both touch the store files, and inside the dashboard the `app/jobs.py`
 worker thread writes while Flask request threads read. So:
 

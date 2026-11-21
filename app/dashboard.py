@@ -1934,7 +1934,7 @@ def api_build_switch(name: str):
 @app.route("/api/idle")
 def api_idle():
     """``{"idle": bool, "reasons": [...]}`` from ``jobs.idle()``: no dashboard job, no job lock held by anyone, no
-    other process's live marker in either store dir. ``stop.ps1`` and the deploy gate read this (F8 A)."""
+    other process's live marker in either store dir. The deploy gate reads this (F8 A)."""
     ok, reasons = jobs.idle()
     return jsonify({"idle": ok, "reasons": reasons})
 
