@@ -4,9 +4,11 @@ Each gate is pure: it takes a name's D01 frames (``screen_common.load_bars`` sha
 date-indexed) and returns a reason or None. ``evaluate`` runs them in ``REASONS`` order and returns the first, so a
 name is counted once, under its most specific reason. No store read, no provider call.
 
-**Flag only, for now** (plan 2026-11-15_1645, step 4): ``run_screen`` records the reasons in its run stats and on
-the scored rows, and drops nothing. Dropping is turned on after a week of flags has been looked at, and then only
-while the flagged names stay under ``DROP_MAX_SHARE`` of a scan (``screen_common.STALE_DROP_MAX_SHARE``'s rule).
+**The gates drop** (#116 step C, after the flag week): ``decide`` turns a scan's flags into drops per reason, and
+every drop is a funnel step the board shows. It drops only while the flagged names stay under ``DROP_MAX_SHARE`` of
+the scan (``screen_common.STALE_DROP_MAX_SHARE``'s rule): more than that is a data failure, not a universe of broken
+series, so nothing drops, every flagged name is still scored and the board carries a ``note`` step saying the cap
+tripped. The reasons also stay in the run stats and on the scored rows, as they did while the gates only flagged.
 
 Of the issue's six gates, ``spac_shell`` is not here: blank-cheque names already leave the universe as an excluded
 security type before any bar is read (``screen_common.funnel_steps``, "Excluded security types"). The 8-K half of
@@ -14,6 +16,8 @@ security type before any bar is read (``screen_common.funnel_steps``, "Excluded 
 split-adjusted series does not repeat.
 """
 from __future__ import annotations
+
+from dataclasses import dataclass, field
 
 import pandas as pd
 
@@ -34,7 +38,7 @@ WICK = 1.5                # high / max(open, close), or min(open, close) / low
 RECENT = 60               # sessions every gate but ``broken_series`` looks at (#891): a year-old move is no defect
 REVERT = 0.8              # share of a spike taken back for it to be a bad print, not a move (#891)
 REVERT_SESSIONS = 2       # ... within this many sessions after it
-DROP_MAX_SHARE = 0.05     # when dropping is turned on: more flagged than this is a data failure, nothing drops
+DROP_MAX_SHARE = 0.05     # more of a scan flagged than this is a data failure, and then nothing drops
 
 
 def locked(nominal: pd.DataFrame) -> str | None:
@@ -102,3 +106,36 @@ def evaluate(nominal: pd.DataFrame, adjusted: pd.DataFrame | None = None) -> str
         if reason:
             return reason
     return None
+
+
+@dataclass(frozen=True)
+class Decision:
+    """What a scan does with its flags: ``dropped`` is reason -> the names that leave the board, sorted.
+
+    ``flagged`` is every flag the scan saw (ticker -> reason), ``scanned`` the names it scored over. ``capped`` says
+    the cap tripped, and then ``dropped`` is empty: the flagged names keep their cards and the board shows a note
+    instead of drops.
+    """
+    dropped: dict[str, list[str]] = field(default_factory=dict)
+    flagged: dict[str, str] = field(default_factory=dict)
+    scanned: int = 0
+    capped: bool = False
+
+    @property
+    def share(self) -> float:
+        """The flagged share of the scan; 0.0 when nothing was scanned."""
+        return len(self.flagged) / self.scanned if self.scanned else 0.0
+
+
+def decide(flagged: dict[str, str], scanned: int) -> Decision:
+    """The drops a scan's ``flagged`` names earn (#116 step C), under ``DROP_MAX_SHARE``.
+
+    More than ``DROP_MAX_SHARE`` of ``scanned`` flagged (or any flag at all with nothing scanned, where the share
+    cannot be tested) drops nothing: a gate whose threshold is wrong must not be able to empty a board overnight.
+    Exactly the share still drops, as ``screen_common.stale_names`` reads its own cap. Pure: no store, no network.
+    """
+    by_reason: dict[str, list[str]] = {}
+    for ticker, reason in sorted(flagged.items()):
+        by_reason.setdefault(reason, []).append(ticker)
+    capped = len(flagged) > DROP_MAX_SHARE * scanned if scanned else bool(flagged)
+    return Decision({} if capped else by_reason, dict(flagged), scanned, capped)

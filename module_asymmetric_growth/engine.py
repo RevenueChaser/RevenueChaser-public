@@ -25,6 +25,7 @@ from RevenueChaser.core import earnings_dates, fiscal_year, trailing_year
 from RevenueChaser.core import funnel as funnel_mod
 from RevenueChaser.core import job_control
 from RevenueChaser.core import ownership
+from RevenueChaser.core import price_hygiene
 from RevenueChaser.core import tristate as tri
 from RevenueChaser.core.config import to_float
 from RevenueChaser.core.liquidity import liquid_assets
@@ -500,18 +501,22 @@ def _price_session() -> date | None:
     return read.last_sessions(["SPY"]).get("SPY")
 
 
-def _bars_by_ticker(tickers, session: date | None) -> dict[str, list[dict]]:
+def _bars_by_ticker(tickers, session: date | None, basis: str = "split") -> dict[str, list[dict]]:
     """One windowed prices-store read for ``tickers`` up to ``session``: ``{ticker: rows}``.
 
     ``rcdata.read.ticker_bars``'s split basis (window: ``session - BARS_WINDOW_DAYS``), so a split is applied and a
     dividend is not, as D01's "nominal" was: the momentum inputs are the price levels of the scored session. No
     store reads as ``{}``.
+
+    ``basis="total_return"`` is the same window on the returns basis — D01's "adjusted", every cash dividend taken
+    out too. The price-hygiene gates need both bases of a name (#116, ``price_hygiene.unexplained_jump`` tells a bad
+    print from an action the adjustment explains), which is one more read per batch and not one per name.
     """
     from RevenueChaser.rcdata import read
     if not tickers or session is None:
         return {}
     frame = read.ticker_bars(list(tickers), start=session - timedelta(days=BARS_WINDOW_DAYS), end=session,
-                             basis="split")
+                             basis=basis)
     if frame is None or frame.empty:
         return {}
     return {str(ticker): rows.to_dict("records") for ticker, rows in frame.groupby("ticker", sort=False)}
@@ -543,8 +548,47 @@ def _preload(tickers: list[str], no_fetch: bool, session: date | None = None) ->
         "quarterly": {t: quarterly for t, (_a, quarterly, _m) in stored.items()},     # review SF-4 (G6)
         "themes": themes_for_many(tickers),
         "bars": _bars_by_ticker(tickers, session),
+        # #116: the returns basis of the same window, read only for the gates (the momentum inputs stay on the
+        # split basis). One extra read per batch, so the board keeps its fixed number of queries per batch.
+        "bars_adjusted": _bars_by_ticker(tickers, session, basis="total_return"),
         "session": session,
     }
+
+
+def _hygiene_frame(rows: list[dict] | None):
+    """Bar rows of ONE ticker as the date-indexed Open/High/Low/Close/Volume frame the gates read
+    (``core.price_hygiene``, the ``screen_common.load_bars`` shape). No rows is an empty frame."""
+    import pandas as pd
+    if not rows:
+        return pd.DataFrame()
+    days, cols = [], {k: [] for k in ("Open", "High", "Low", "Close", "Volume")}
+    for row in rows:
+        day = _bar_day(row)
+        if day is None:
+            continue
+        days.append(day)
+        for key, field in (("Open", "open"), ("High", "high"), ("Low", "low"), ("Close", "close"),
+                           ("Volume", "volume")):
+            cols[key].append(to_float(row.get(field)))
+    if not days:
+        return pd.DataFrame()
+    frame = pd.DataFrame(cols, index=pd.DatetimeIndex(days)).sort_index()
+    return frame.dropna(subset=["Close"])
+
+
+def _price_flags(preload: dict) -> dict[str, str]:
+    """``{ticker: reason}`` of the batch's names the price-hygiene gates flag (#116).
+
+    Pure: the gates read the two frames the batch already loaded (``bars`` as the nominal levels, ``bars_adjusted``
+    as the returns basis) and nothing else. A name with no bars has no flag.
+    """
+    bars, adjusted = preload.get("bars") or {}, preload.get("bars_adjusted") or {}
+    flags: dict[str, str] = {}
+    for ticker, rows in bars.items():
+        reason = price_hygiene.evaluate(_hygiene_frame(rows), _hygiene_frame(adjusted.get(ticker)))
+        if reason:
+            flags[str(ticker)] = reason
+    return flags
 
 
 class _Drops:
@@ -666,12 +710,16 @@ _DROP_STEPS = (
     ("no_annual", "No stored SEC EDGAR annual financials", False),
     ("no_price", "No price in any source (the stored close, the financials, the stored quote)", False),
     ("fetch_failed", "Provider error while reading the financials", False),
+    # #116: one step per price-hygiene reason, after the board's own reasons. A broken or untradeable series is a
+    # data gap, never a board rule, so ``by_design`` is False.
+    *((key, f"Price hygiene: {price_hygiene.LABELS[key]}", False) for key in price_hygiene.REASONS),
 )
 
 
 def _funnel_steps(universe_total: int, excluded_types: int, drops: _Drops, score_errors: dict[str, list[str]],
                   scored: int, low_liquidity: int | None = 0, unreadable_sec: int = 0,
-                  momentum_unknown: list[str] | None = None) -> list[dict]:
+                  momentum_unknown: list[str] | None = None,
+                  hygiene: price_hygiene.Decision | None = None) -> list[dict]:
     """The shared-format funnel (``core.funnel``): universe, then every reason a name has no card, then scored.
 
     The drops sum to ``universe_total - scored`` by construction: whatever no reason accounts for is shown as
@@ -681,7 +729,9 @@ def _funnel_steps(universe_total: int, excluded_types: int, drops: _Drops, score
     counting them as drops would break the arithmetic above and misstate the board. They overlap each other by
     design, and ``low_liquidity`` is ``None`` where no liquidity basis was read — an unknown note is left out
     rather than shown as 0. ``momentum_unknown`` (AG review N-2) names the cards whose momentum signal is not fully
-    known (no or too few stored bars): a note too, since they have a card.
+    known (no or too few stored bars): a note too, since they have a card. ``hygiene``
+    (``price_hygiene.decide``, #116) adds the note for a tripped cap: those names were flagged and KEPT, so they
+    are outside the drop arithmetic as well.
     """
     step = funnel_mod.step
     steps = [step("universe", "Universe, all market caps", universe_total, "start")]
@@ -712,6 +762,13 @@ def _funnel_steps(universe_total: int, excluded_types: int, drops: _Drops, score
     if momentum_unknown:
         names = sorted(momentum_unknown)
         steps.append(step("momentum_unknown", "Scored, but momentum unknown (no or too few stored price bars)",
+                          len(names), "note", tickers=names[:funnel_mod.MAX_TICKERS]))
+    if hygiene is not None and hygiene.capped and hygiene.flagged:
+        # #116: above ``DROP_MAX_SHARE`` nothing drops, so the cards stay and the board says why.
+        names = sorted(hygiene.flagged)
+        steps.append(step("price_hygiene_capped",
+                          f"Flagged by the price-hygiene gates and kept: {hygiene.share:.1%} of the scan is over "
+                          f"the {price_hygiene.DROP_MAX_SHARE:.0%} cap, so nothing was dropped for it",
                           len(names), "note", tickers=names[:funnel_mod.MAX_TICKERS]))
     steps.append(step("scored", "Scored (a card on the board)", scored, "result"))
     return steps
@@ -958,13 +1015,14 @@ def run_asymmetric_growth_hunter(uw=None, max_workers: int = 10,
     to_score = [r for r in universe if r["ticker"] not in excluded]
     spine = _spine.spine_gics()
     cards = []
-    data_as_of: date | None = None           # the newest stored session of a card's bars (#380 S4)
+    card_days: dict[str, date] = {}          # ticker -> the session its bars end on, for ``data_as_of`` (#380 S4)
     score_errors: dict[str, int] = {}  # exception type -> tickers dropped by it (#202)
     error_tickers: dict[str, list[str]] = {}  # the same, by name (the funnel lists them)
     drops = _Drops()
     run_day = _run_day()                    # anchor age is judged against the day the scan runs (card O-2)
     scan_session = _price_session()         # one price cutoff for the whole Fetch, so no batch reads a newer SPY bar
     stored_earnings = earnings_dates.stored_next_dates()      # #304: one read per run, not per batch
+    flagged: dict[str, str] = {}            # ticker -> price-hygiene reason (#116), decided once the scan is in
     with ThreadPoolExecutor(max_workers=max_workers, **opens.pool_kwargs()) as ex:
         # The store is read in bulk per batch (a fixed number of queries each), not once per ticker (#150 U13);
         # a batch bounds how many EDGAR and payload rows are in memory at once.
@@ -976,6 +1034,7 @@ def run_asymmetric_growth_hunter(uw=None, max_workers: int = 10,
             preload["drops"] = drops
             preload["as_of"] = run_day
             bar_sessions = _newest_bar_sessions(preload.get("bars") or {})   # where each card's price date comes from
+            flagged.update(_price_flags(preload))      # #116: pure, on the bars this batch already read
             futs = {ex.submit(enrich_and_score, r["ticker"], r, no_fetch, spine, preload): r["ticker"]
                     for r in batch}
             for fut in as_completed(futs):
@@ -991,8 +1050,28 @@ def run_asymmetric_growth_hunter(uw=None, max_workers: int = 10,
                 if card:
                     cards.append(card)
                     day = bar_sessions.get(card["ticker"])
-                    if day is not None and (data_as_of is None or day > data_as_of):
-                        data_as_of = day
+                    if day is not None:
+                        card_days[card["ticker"]] = day
+    # #116 C: the gates drop, under ``price_hygiene.DROP_MAX_SHARE`` of the scanned names. Only a name WITH a card
+    # can be dropped here, so a name that already left for another reason is never counted twice.
+    carded = {c["ticker"] for c in cards}
+    hygiene = price_hygiene.decide({t: v for t, v in flagged.items() if t in carded}, len(to_score))
+    if hygiene.capped and hygiene.flagged:
+        logger.warning("AG: %d of %d scanned names (%.1f%%) are flagged by the price-hygiene gates, over the %.0f%% "
+                       "cap: nothing dropped for it", len(hygiene.flagged), len(to_score), 100 * hygiene.share,
+                       100 * price_hygiene.DROP_MAX_SHARE)
+    if hygiene.dropped:
+        out = {t for names in hygiene.dropped.values() for t in names}
+        for reason, names in hygiene.dropped.items():
+            for ticker in names:
+                drops.add(reason, ticker)
+        cards = [c for c in cards if c["ticker"] not in out]
+        logger.info("AG: %d names dropped by the price-hygiene gates (%s)", len(out),
+                    ", ".join(f"{k} {len(v)}" for k, v in sorted(hygiene.dropped.items())))
+    # #380 S4: the newest session among the cards the board SHOWS, so a dropped name never dates the board.
+    days = [d for t, d in card_days.items() if t in {c["ticker"] for c in cards}]
+    data_as_of: date | None = max(days) if days else None
+
     totals = ownership.sec13f_totals()      # #16: the stored rows, not the 13F board's engine
     shares_out = ownership.shares_outstanding(c["ticker"] for c in cards)   # the 13F board's reader (#646)
     latest_13f = {}
@@ -1032,7 +1111,8 @@ def run_asymmetric_growth_hunter(uw=None, max_workers: int = 10,
         "universe_refreshed_by": u_stats.get("universe_refreshed_by"),
         "universe_partial": bool(u_stats.get("partial")),
         "funnel_steps": _funnel_steps(len(universe), summary["excluded_types"], drops, error_tickers, len(cards),
-                                      summary["low_liquidity"], summary["unreadable_sec"], _momentum_unknown(cards)),
+                                      summary["low_liquidity"], summary["unreadable_sec"], _momentum_unknown(cards),
+                                      hygiene),
         "summary": summary,
         "cards": cards,
         "thresholds": THRESHOLDS,

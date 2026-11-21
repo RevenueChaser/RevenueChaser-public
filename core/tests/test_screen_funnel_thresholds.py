@@ -22,12 +22,13 @@ def test_the_funnel_labels_say_the_floors_the_prefilter_used():
     assert pre.drops == {"low_price": ["CHEAP"], "low_dollar_volume": ["THIN"]}
     steps = {s["key"]: s for s in sc.funnel_steps(universe=3, excluded_types=0, prefiltered=pre, dropped={},
                                                    scored=1, passed=1, shown=1, cfg=DEFAULTS)}
-    assert steps["low_price"]["label"] == "Price under $10.00"
-    assert steps["low_dollar_volume"]["label"] == "Average daily dollar volume under $1,000,000"
+    assert steps["low_price"]["label"] == "Liquidity prefilter: price under $10.00"   # #116 D
+    assert steps["low_dollar_volume"]["label"] == ("Liquidity prefilter: average daily dollar volume under "
+                                                   "$1,000,000")
 
 
 def test_a_prefilter_result_without_thresholds_keeps_the_boards_config():
     pre = sc.Prefiltered([], {"low_price": ["A"]})
     steps = {s["key"]: s for s in sc.funnel_steps(universe=1, excluded_types=0, prefiltered=pre, dropped={},
                                                    scored=0, passed=0, shown=0, cfg=DEFAULTS)}
-    assert steps["low_price"]["label"] == "Price under $5.00"
+    assert steps["low_price"]["label"] == "Liquidity prefilter: price under $5.00"   # #116 D

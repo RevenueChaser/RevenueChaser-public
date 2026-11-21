@@ -325,9 +325,16 @@ def _drop_steps(cfg: Any, floors: Any = None) -> tuple[tuple[str, str, bool], ..
     sectors = ", ".join(getattr(cfg, "EXCLUDED_SECTORS", None) or ())
     barrier = getattr(cfg, "RO40_BARRIER", None)
     return (
-        ("no_quote", "No stored daily price (D01) to prefilter on", False),
-        ("low_price", f"Price under ${floors.MIN_PRICE:,.2f}", True),
-        ("low_dollar_volume", f"Average daily dollar volume under ${floors.MIN_DOLLAR_VOLUME:,.0f}", True),
+        # #116 D: the three are a LIQUIDITY prefilter and the printed text says so, distinct from the hygiene
+        # drops under them. The keys are stored in payloads and never change.
+        ("no_quote", "Liquidity prefilter: no stored daily price (D01) to prefilter on", False),
+        ("low_price", f"Liquidity prefilter: price under ${floors.MIN_PRICE:,.2f}", True),
+        ("low_dollar_volume",
+         f"Liquidity prefilter: average daily dollar volume under ${floors.MIN_DOLLAR_VOLUME:,.0f}", True),
+        # #116 C: one step per price-hygiene reason, in ``price_hygiene.REASONS`` order, right after the
+        # prefilter and before the scoring drops, so the panel reads in the order names were lost. A broken
+        # series is a data gap, never a board rule: ``by_design`` is False.
+        *((key, f"Price hygiene: {price_hygiene.LABELS[key]}", False) for key in price_hygiene.REASONS),
         ("no_bars", "No stored daily price bars (D01)", False),
         ("stale_bars", "No D01 bar of the latest stored session (a halt or a Daily Bars gap)", False),
         ("short_bars", "Fewer than 252 stored daily bars", True),
@@ -344,7 +351,8 @@ def _drop_steps(cfg: Any, floors: Any = None) -> tuple[tuple[str, str, bool], ..
 
 def funnel_steps(*, universe: int, excluded_types: int, prefiltered: Prefiltered, dropped: dict[str, list[str]],
                  scored: int, passed: int, shown: int, cfg: Any,
-                 screen_drops: list[tuple[str, str, list[str]]] | None = None) -> list[dict]:
+                 screen_drops: list[tuple[str, str, list[str]]] | None = None,
+                 hygiene: price_hygiene.Decision | None = None) -> list[dict]:
     """The board's funnel (``core.funnel`` format; C16, #383 R3): the stored universe, every typed reason a name has
     no card, then the candidates shown.
 
@@ -354,7 +362,8 @@ def funnel_steps(*, universe: int, excluded_types: int, prefiltered: Prefiltered
     Whatever no reason accounts for is an ``unrecorded`` drop, so the steps add up; a reason with no names has no
     step. ``screen_drops`` (``(key, label, tickers)``, from the board's ``run_stats``) names scored names that a board
     rule other than its three screens kept off the board (Swing's direction rule, #384): each is its own by-design
-    step, taken out of "passed none of the board's three screens".
+    step, taken out of "passed none of the board's three screens". ``hygiene`` (``price_hygiene.decide``) adds the
+    ``note`` step for a tripped cap: those names were flagged and KEPT, so they are outside the drop arithmetic.
     """
     step = funnel.step
     steps = [step("universe", "Universe, all stored names", universe, "start")]
@@ -386,6 +395,14 @@ def funnel_steps(*, universe: int, excluded_types: int, prefiltered: Prefiltered
                           "drop", by_design=True))
     if passed > shown:
         steps.append(step("beyond_top_n", "Beyond the requested top N", passed - shown, "drop", by_design=True))
+    if hygiene is not None and hygiene.capped and hygiene.flagged:
+        # #116 C: above the cap nothing drops. The names are on the board and the board says why (a note is never
+        # counted in the arithmetic), so a gate with a wrong threshold is visible instead of silently emptying it.
+        names = sorted(hygiene.flagged)
+        steps.append(step("price_hygiene_capped",
+                          f"Flagged by the price-hygiene gates and kept: {hygiene.share:.1%} of the scan is over "
+                          f"the {price_hygiene.DROP_MAX_SHARE:.0%} cap, so nothing was dropped for it",
+                          len(names), "note", tickers=names[:funnel.MAX_TICKERS]))
     steps.append(step("candidates", "Candidates (a card on the board)", shown, "result"))
     return steps
 
@@ -500,6 +517,22 @@ def run_screen(*, board: str, refreshed_by: str, cfg: Any,
 
     no_edgar = drops.count("no_edgar_annual")  # a name EDGAR has nothing on is not a short price history (#148 U19)
     data_short -= no_edgar
+    # #116 C: the gates drop, under ``price_hygiene.DROP_MAX_SHARE``. Only a SCORED row can be dropped here: a
+    # flagged name the scorer already dropped keeps its own reason, so the funnel never counts one name twice.
+    scored_names = {str(r.get("ticker") or "").strip().upper() for r in results}
+    hygiene = price_hygiene.decide({t: v for t, v in flagged.items() if t in scored_names}, len(filtered))
+    if hygiene.capped and hygiene.flagged:
+        logger.warning("%s: %d of %d scored names (%.1f%%) are flagged by the price-hygiene gates, over the %.0f%% "
+                       "cap: nothing dropped for it", board, len(hygiene.flagged), len(filtered),
+                       100 * hygiene.share, 100 * price_hygiene.DROP_MAX_SHARE)
+    for reason, names in hygiene.dropped.items():
+        dropped.setdefault(reason, []).extend(names)
+        drops.extend([reason] * len(names))
+    if hygiene.dropped:
+        out = {t for names in hygiene.dropped.values() for t in names}
+        results = [r for r in results if str(r.get("ticker") or "").strip().upper() not in out]
+        logger.info("%s: %d names dropped by the price-hygiene gates (%s)", board, len(out),
+                    ", ".join(f"{k} {len(v)}" for k, v in sorted(hygiene.dropped.items())))
     run_stats = {
         "regime": spy["regime"],
         "spy_price": spy["spy_price"],
@@ -525,8 +558,11 @@ def run_screen(*, board: str, refreshed_by: str, cfg: Any,
         # Only the SPY fallback (``load_ohlc``) can refuse a short refetch now; D01 bars never do (Swing review 8).
         "spy_short_refetch_refused": bool(getattr(spy_df, "attrs", {}).get("short_refetch_refused")),
         "dropped": count_drops(drops),
-        # #116, flag only: reason -> the flagged names, scored or not (nothing is dropped for it yet).
+        # #116: reason -> every flagged name, scored or not.
         "price_flags": {k: sorted(t for t, v in flagged.items() if v == k) for k in sorted(set(flagged.values()))},
+        # #116 C: the flagged names that actually left the board, and whether the cap kept them all instead.
+        "price_dropped": {k: list(v) for k, v in hygiene.dropped.items()},
+        "price_flags_capped": hygiene.capped,
         "universe_generated_at": u_stats.get("universe_generated_at"),
         "universe_refreshed_by": u_stats.get("universe_refreshed_by"),
         "universe_partial": bool(u_stats.get("partial")),
@@ -546,7 +582,7 @@ def run_screen(*, board: str, refreshed_by: str, cfg: Any,
     payload["funnel_steps"] = funnel_steps(
         universe=len(all_rows), excluded_types=n_excluded, prefiltered=pf, dropped=dropped, scored=len(results),
         passed=max(int(run_stats.get("passed_screens") or 0), shown), shown=shown, cfg=cfg,
-        screen_drops=run_stats.get("screen_drops"))
+        screen_drops=run_stats.get("screen_drops"), hygiene=hygiene)
     if not results:
         # Never the demo fixture for a real run (#205): say why nothing scored.
         logger.warning("%s: no ticker could be scored (%s)", board, run_stats["dropped"])

@@ -148,7 +148,8 @@ def build_payload(results: list[dict], top_n: int | None = None, run_stats: dict
     passing = {"minervini": 0, "weinstein": 0, "qullamaggie": 0, "direction": 0}
     candidates = []
     direction_failed: list[str] = []          # passed a method, failed the direction rule: the funnel names them
-    # #116 flags (flag only, the name is scored): shown on the card (Swing review F6).
+    # #116 flags: a flagged name is dropped by ``run_screen`` under the cap, so a flag that reaches a card is one
+    # the cap kept (above ``price_hygiene.DROP_MAX_SHARE`` nothing drops). The card says so (Swing review F6).
     price_flag = {t: k for k, names in (run_stats.get("price_flags") or {}).items() for t in names}
     for r in results:
         t = r["ticker"]
