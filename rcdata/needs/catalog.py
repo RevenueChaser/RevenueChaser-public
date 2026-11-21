@@ -177,8 +177,11 @@ _NEEDS = (
     # subscription ends at ``wrds_history.CRSP_LAST_YEAR`` and the build runs monthly, so the newest row is a year
     # or more old by design and any ``max_lag`` in sessions or days would read ``stale`` with nothing wrong. A need
     # with no day of its own is present or absent, never stale — which is the true question here.
+    # No ``ask_required``, like ``prices.bars``: ``read.delisted_bars`` takes ``security_ids`` with **no default**,
+    # so there is no "asked for nothing" case to declare. ``market.delisted_security``'s reader defaults it to
+    # ``None``, which in ``rcdata.read`` means every row, so it has none either.
     Need("market.delisted_price_bar", "delisted_bars", "delisted_price_bar_daily", None, "security_id", 0,
-         ask_param="security_ids", ask_required=True, providers=("wrds",)),
+         ask_param="security_ids", providers=("wrds",)),
     Need("market.delisted_security", "delisted_securities", "delisted_security", None, "security_id", 0,
          ask_param="security_ids", providers=("wrds",)),
     # ── Ownership ───────────────────────────────────────────────────────────────────────────────────────────────

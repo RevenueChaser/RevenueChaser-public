@@ -2250,12 +2250,17 @@ KIND_OF_TABLE.update({t: "delisted" for t in ("delisted_security", "delisted_sec
                                               "delisted_price_bar_daily", "delisted_corporate_action")})
 
 
-def delisted_securities(security_ids: Iterable[str] = (), delisted_from=None, delisted_to=None) -> list[dict]:
+def delisted_securities(security_ids: Iterable[str] | None = None, delisted_from=None, delisted_to=None) -> list[dict]:
     """The delisted securities (``delisted_security``): their delisting day, price and return, their Compustat
     ``gvkey``/``iid`` and CIK where the link exists, and what their bars span. ``security_ids`` are
     ``permno:<PERMNO>`` ids; with none, every delisted security in the window
-    ``delisted_from <= delisting_date <= delisted_to`` (either bound optional)."""
-    ids = _ids(security_ids)
+    ``delisted_from <= delisting_date <= delisted_to`` (either bound optional).
+
+    The default is ``None``, not ``()``: in this module an empty collection means "nothing was asked for" and
+    ``None`` means every row, and the needs layer reads the difference off this signature
+    (``test_a_need_whose_reader_answers_nothing_by_default_declares_that_it_must_be_asked``).
+    """
+    ids = _ids(security_ids or ())
     params: list = []
     sql = "SELECT * FROM delisted_security WHERE 1 = 1"
     if ids:
@@ -2265,11 +2270,12 @@ def delisted_securities(security_ids: Iterable[str] = (), delisted_from=None, de
     return _rows("delisted_security", sql + " ORDER BY security_id", params)
 
 
-def delisted_symbols(security_ids: Iterable[str] = (), symbols: Iterable[str] = ()) -> list[dict]:
+def delisted_symbols(security_ids: Iterable[str] | None = None, symbols: Iterable[str] | None = None) -> list[dict]:
     """The tickers delisted securities traded under, each with the session range it was in use (``valid_from`` and
     ``valid_to``, both inclusive; a dead security has no open-ended range). Narrowed by ``security_ids``, by
     ``symbols``, or by neither. A ticker several dead companies used is several rows: the caller picks by date."""
-    ids, wanted = _ids(security_ids), sorted({str(s).strip().upper() for s in symbols if str(s or "").strip()})
+    ids = _ids(security_ids or ())
+    wanted = sorted({str(s).strip().upper() for s in (symbols or ()) if str(s or "").strip()})
     params: list = []
     sql = "SELECT * FROM delisted_security_symbol WHERE 1 = 1"
     if ids:
