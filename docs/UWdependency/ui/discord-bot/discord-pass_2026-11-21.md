@@ -27,8 +27,8 @@ Server: Traders' Pub, guild `1353449857569787934`, category "Unusual Whales".
   dump does not carry; the last seven are the likely premium set (guess, by order and by the image paths below).
 - Evidence that Traders' Pub runs the **Premium** bot: image cards are served from
   `storage.googleapis.com/uw-discord-bot-images/notifications/premium/<topic>/<uuid>.jpg`, and links carry
-  `utm_content=custom_alert` in two channels. Whether that is a server subscription billed separately from avo's
-  UW web plan was not visible from Discord. **Open question for avo.**
+  `utm_content=custom_alert` in two channels. avo answered on 21 Nov 18:17: the bot is paid from a separate
+  account and stays when the UW web plan is dropped (see the end of this file).
 - Every outbound link carries `utm_source=discord&utm_campaign=<guild id>&utm_medium=foreign_discord_server` and
   `utm_content=notification` or `utm_content=custom_alert`. So there are two delivery mechanisms:
   **notification** (a fixed topic) and **custom_alert** (a UW custom alert routed to a channel).
@@ -137,3 +137,10 @@ What the commands add to the picture:
   "No wait time between commands" as a premium feature).
 - Not tested: the buttons under the answers (pressing one rewrites the public message), AI Insights, `/configure`,
   `/server_subscription`, the free bot's version of the same commands.
+
+## avo's answer on billing (21 Nov 2026 18:17 Amsterdam)
+
+"Botu ayri bir hesaptan oduyorum, UW yi birakinca o gitmez": the bot is paid from a separate account, so it stays
+when the UW web plan is dropped. For the migration this means the Discord feeds are a fallback that survives a UW
+exit, at the bot's own cost (UW's page lists the server subscription at $124.99/month; what avo actually pays was
+not asked). Still unknown: whose UW web account the custom alerts in `live-option-flow` are linked to.

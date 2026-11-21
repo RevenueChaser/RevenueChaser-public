@@ -78,7 +78,7 @@ page shows, which buttons were pressed and what they did, and the nearest API pa
 
 ## Open
 
-- Discord bot: done (`discord-bot/discord-pass_2026-11-21.md`). Still open: whether the server pays a Premium Server
-  Subscription separate from avo's UW plan, and whose UW account the custom alerts are linked to.
+- Discord bot: done (`discord-bot/discord-pass_2026-11-21.md`). avo (21 Nov 18:17): the bot is paid from a separate
+  account and stays when UW is dropped. Still open: whose UW account the custom alerts are linked to.
 - "No path" in `UI-only-features.md` is a name match against the spec, not a tested call.
 - Ticker > Volatility has no screenshot (the capture timed out twice); the Volatility Hub shots cover the same component.
