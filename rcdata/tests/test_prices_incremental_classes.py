@@ -22,6 +22,7 @@ from .prices_incremental_world import (
     _snapshot, _spy, _spy_spine, _write_secd, alphabet, env, fake, live
 )  # noqa: F401 (the shared world: its helpers, and every fixture a test's own fixtures ask for -- `env` is
 #  autouse and runs only where it is in the namespace, `fake` is what `live` is built on)
+from .test_prices_wrds import JUNE
 
 
 def _alpaca_split(template: dict, rate: float) -> dict:
@@ -31,12 +32,22 @@ def _alpaca_split(template: dict, rate: float) -> dict:
             "currency": None, "payload": "{}"}
 
 
+def _no_jump(row):
+    """Compustat's closes run on across 4 Jun 2025 instead of halving, so CRSP's factor step is one the served
+    bars do not show. Without this the served close jumps and #661 **applies** the split, which is the subject of
+    ``test_prices_compustat_primary``, not of these fixtures (they are about the issue's own bookkeeping)."""
+    if row["gvkey"] != "001690" or not (JUNE[2] <= str(row["datadate"]) <= JUNE[-1]):
+        return row
+    return {**row, **{k: row[k] * 2 for k in ("prccd", "prcod", "prchd", "prcld") if row.get(k) is not None}}
+
+
 @pytest.fixture
 def no_split(fake, monkeypatch):
-    """No Compustat split anywhere, so CRSP's split of AAPL is the cross-check's only one."""
+    """No Compustat split anywhere, so CRSP's split of AAPL is the cross-check's only one, and the served closes run
+    on across it (``_no_jump``), so it is named and not applied."""
     conn = fake[0]
     conn.data["comp.sec_split"] = []
-    conn.data["comp.secd"] = [{**r, "ajexdi": 1.0} for r in conn.data["comp.secd"]]
+    conn.data["comp.secd"] = [_no_jump({**r, "ajexdi": 1.0}) for r in conn.data["comp.secd"]]
     _build()
     monkeypatch.setenv(dirty.WHOLE_ENV, "1")
     _serve()
@@ -47,25 +58,25 @@ def no_split(fake, monkeypatch):
 
 @pytest.fixture
 def december_split(fake, monkeypatch):
-    """A CRSP-only 2:1 step of AAPL on 23 Dec 2024, with served bars on both sides."""
+    """A CRSP-only 2:1 step of AAPL on 23 Dec 2024, with served bars on both sides whose closes run on across it
+    (so it is named, not applied: see ``_no_jump``)."""
     from .test_prices_wrds import _secd
     conn = fake[0]
     conn.data["comp.sec_split"] = []
     conn.data["comp.secd"] = [{**r, "ajexdi": 1.0} for r in conn.data["comp.secd"]] + [
         _secd("001690", "01", d, "AAPL", c) for d, c in (("2024-12-19", 101.0), ("2024-12-20", 100.0),
-                                                          ("2024-12-23", 50.0), ("2024-12-24", 50.5))]
+                                                          ("2024-12-23", 99.0), ("2024-12-24", 99.5))]
     row = conn.data["crsp.dsf_v2"][0]
     conn.data["crsp.dsf_v2"] = conn.data["crsp.dsf_v2"] + [
         {**row, "dlycaldt": d, "dlyprc": c, "dlyret": 0.0, "dlycumfacpr": f}
-        for d, c, f in (("2024-12-19", 101.0, 4.0), ("2024-12-20", 100.0, 4.0), ("2024-12-23", 50.0, 2.0),
-                        ("2024-12-24", 50.5, 2.0))]
+        for d, c, f in (("2024-12-19", 101.0, 4.0), ("2024-12-20", 100.0, 4.0), ("2024-12-23", 99.0, 2.0),
+                        ("2024-12-24", 99.5, 2.0))]
     _build()
     monkeypatch.setenv(dirty.WHOLE_ENV, "1")
     _serve()
     monkeypatch.delenv(dirty.WHOLE_ENV)
     assert "built on the live file" in _note(_serve())
-    # The served closes jump across it (100.0 -> 50.0), so it is applied from CRSP and named as such (#661).
-    assert ("split_applied_crsp", "001690:01:2024-12-23") in _snapshot()["open issues"]
+    assert ("split_only_crsp", "001690:01:2024-12-23") in _snapshot()["open issues"]
     return fake
 
 
@@ -232,7 +243,7 @@ def test_an_alpaca_split_days_after_a_crsp_one_resolves_its_issue(no_split, monk
     """Review S6: CRSP's split of AAPL is the cross-check's only one until Alpaca's split two days later; that
     rebuilds AAPL from its own ex-date, but the CRSP split it explains lies before it."""
     from RevenueChaser.rcdata.build.prices import actions
-    crsp = [k for kind, k in _snapshot()["open issues"] if kind in ("split_only_crsp", "split_applied_crsp")]
+    crsp = [k for kind, k in _snapshot()["open issues"] if kind == "split_only_crsp"]
     assert crsp, "the fixture has a CRSP-only split"
     day = date.fromisoformat(crsp[0].rsplit(":", 1)[1])
     template = stage.read_rows(actions.partition_path(2026))[0]
