@@ -14,7 +14,7 @@ exists rather than the test importing the app directly:
    yfinance at all: it reads the stored levels since D03.)
 2. ``RC_STORE_DIR`` / ``RC_CACHE_DIR`` are already in the environment (set by the
    harness), so ``core/config.py`` resolves the throwaway roots on first import.
-3. The Task Scheduler is replaced by a fake, so no e2e run can reach the real one (#130).
+3. The scheduler is replaced by a fake, so no e2e run can reach the real one (#130).
 4. ``RC_E2E_NOW`` (an ISO time with a UTC offset), when set, replaces the session clock
    ``core.calendar._now``. The dashboard is a subprocess, so a monkeypatch in the test process
    cannot reach it; the forecast-ledger freeze (#128) decides on "the latest complete NY session".
@@ -43,7 +43,7 @@ def main() -> None:
                 f"the real .store/.cache. The harness must set both."
             )
 
-    # 3. never reach the real Task Scheduler, even on a Windows developer machine (#130)
+    # 3. never reach the host's real scheduler (#130)
     from RevenueChaser.core import automations
     automations.set_scheduler(automations.FakeScheduler())
 

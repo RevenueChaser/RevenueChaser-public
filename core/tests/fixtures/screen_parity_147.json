@@ -773,7 +773,7 @@
      "fix": null,
      "key": "no_quote",
      "kind": "drop",
-     "label": "No stored daily price (D01) to prefilter on",
+     "label": "Liquidity prefilter: no stored daily price (D01) to prefilter on",
      "tickers": [
       "NOBARS1"
      ]
@@ -784,7 +784,7 @@
      "fix": null,
      "key": "low_price",
      "kind": "drop",
-     "label": "Price under $5.00",
+     "label": "Liquidity prefilter: price under $5.00",
      "tickers": [
       "LOWPX"
      ]
@@ -795,7 +795,7 @@
      "fix": null,
      "key": "low_dollar_volume",
      "kind": "drop",
-     "label": "Average daily dollar volume under $250,000",
+     "label": "Liquidity prefilter: average daily dollar volume under $250,000",
      "tickers": [
       "LOWVOL"
      ]
@@ -2236,7 +2236,7 @@
      "fix": null,
      "key": "no_quote",
      "kind": "drop",
-     "label": "No stored daily price (D01) to prefilter on",
+     "label": "Liquidity prefilter: no stored daily price (D01) to prefilter on",
      "tickers": [
       "NOBARS1"
      ]
@@ -2247,7 +2247,7 @@
      "fix": null,
      "key": "low_price",
      "kind": "drop",
-     "label": "Price under $5.00",
+     "label": "Liquidity prefilter: price under $5.00",
      "tickers": [
       "LOWPX"
      ]
@@ -2258,7 +2258,7 @@
      "fix": null,
      "key": "low_dollar_volume",
      "kind": "drop",
-     "label": "Average daily dollar volume under $250,000",
+     "label": "Liquidity prefilter: average daily dollar volume under $250,000",
      "tickers": [
       "LOWVOL"
      ]

@@ -275,7 +275,8 @@ def test_a_zero_short_volume_is_a_zero_ratio_not_unknown():
 
 def test_one_price_session_cutoff_serves_every_preload_batch(rawstore_tmp_db, monkeypatch):
     seen = []
-    monkeypatch.setattr(engine, "_bars_by_ticker", lambda tickers, session: seen.append(session) or {})
+    monkeypatch.setattr(engine, "_bars_by_ticker",
+                        lambda tickers, session, basis="split": seen.append(session) or {})   # #116: both bases
     monkeypatch.setattr(engine, "_price_session", lambda: date(2026, 10, 1))
     first = engine._preload([], True, session=date(2026, 9, 30))
     assert first["session"] == date(2026, 9, 30)                       # a given cutoff is used, not re-read

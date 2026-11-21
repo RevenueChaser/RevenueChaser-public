@@ -57,8 +57,7 @@ class TestLocalOnly:
 # ── S2: B2 — never kill a program that isn't our dashboard ──────────────────
 class TestStaleServerKill:
     def _listener(self, monkeypatch, pid=4242):
-        out = f"  TCP    127.0.0.1:8000    0.0.0.0:0    LISTENING    {pid}\n"
-        monkeypatch.setattr(dashboard.sys, "platform", "win32")
+        out = f"{pid}\n"  # ``lsof -ti`` prints one PID per line
         monkeypatch.setattr(dashboard.subprocess, "check_output", lambda *a, **k: out)
         killed = []
         monkeypatch.setattr(dashboard.os, "kill", lambda p, s: killed.append(p))

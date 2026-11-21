@@ -49,9 +49,10 @@ def test_the_excluded_types_and_the_prefilter_reasons_are_typed_steps(scenario, 
     steps = _steps(mod.run_scan())
     assert steps["excluded_types"]["count"] == 1 and steps["excluded_types"]["by_design"] is True
     assert steps["low_price"]["tickers"] == ["LOWPX"] and steps["low_price"]["by_design"] is True
-    assert steps["low_price"]["label"] == "Price under $5.00"
+    assert steps["low_price"]["label"] == "Liquidity prefilter: price under $5.00"   # #116 D
     assert steps["low_dollar_volume"]["tickers"] == ["LOWVOL"] and steps["low_dollar_volume"]["by_design"] is True
-    assert steps["low_dollar_volume"]["label"] == "Average daily dollar volume under $250,000"
+    assert steps["low_dollar_volume"]["label"] == ("Liquidity prefilter: average daily dollar volume under "
+                                                   "$250,000")
     assert steps["no_quote"]["tickers"] == ["NOBARS1"]   # no D01 rows, so no price to prefilter on (#860)
 
 

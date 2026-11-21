@@ -54,6 +54,7 @@ td.dash{color:var(--muted)}
 .pill{display:inline-block;border:1px solid var(--border);border-radius:999px;padding:1px 8px;font-size:12px;font-weight:600}
 .s-done{color:var(--green)}
 .s-error,.s-cancelled{color:var(--red)}
+.s-interrupted{color:var(--muted)}
 .s-running,.s-queued{color:var(--amber)}
 .empty{padding:16px 12px;color:var(--muted)}
 .clip-full{display:none}
@@ -143,7 +144,9 @@ td.steps b{color:var(--text);font-weight:600}
   <p class="note">A dash under Trigger means an older row that recorded none: a dashboard job writes
     <em>dashboard</em>, a scheduled task <em>schedule</em>, a builder run what asked for it. A run left on
     <em>running</em> may still be going, or its end write was skipped; a row older than its bound whose process is
-    gone is closed as <em>lost</em> (outcome unknown, no end time recorded). <b>Steps</b> are the seconds inside one
+    gone is closed as <em>lost</em> (outcome unknown, no end time recorded). A job the dashboard ran whose dashboard
+    was restarted under it reads <em>interrupted</em>: no outcome, no duration, and no failure counted, because the
+    job's next run does the work. <b>Steps</b> are the seconds inside one
     run, recorded since the run record of 20 Nov 2026; a run older than that has none, and a dash is not a zero.
     A <b>chain</b> is a scheduled task's own run and the runs it caused: its header line is the whole chain's span,
     and <em>busy</em> is the sum of its runs. <b>Records</b> counts the chains whose own outer run left no row and

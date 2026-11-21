@@ -86,7 +86,12 @@ def _script() -> dict:
     ops.schedule_pause("market_series", by="avo")
     ops.schedule_pause("prices/serving", by="avo")
     ops.schedule_resume("prices/serving")
+    # A job the dashboard ran whose dashboard went away: both backends must close it the same way (#1239).
+    ops.start_run("t3", None, "dashboard", job="news_headlines")
+    ops.put_rows("job_runs2", [{**next(r for r in ops.rows("job_runs2") if r["run_id"] == "t3"), "pid": 999_999}])
     out["fail_orphans"] = ops.fail_orphans()
+    out["interrupted"] = [(r["run_id"], r["status"], r["error"], r["finished_at"] is None)
+                          for r in ops.rows("job_runs2") if r["run_id"] == "t3"]
     today = ops._today()
     out["reads"] = {
         "latest_check": ops.latest_check("market_series"), "none": ops.latest_check("nothing"),
