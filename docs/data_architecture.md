@@ -2276,7 +2276,9 @@ companies (`scope`), their text (`inputs`), the system prompt and its `prompt_ve
 board adds one entry and reads the answers through `rcdata.read.sec_reads(ciks, question)` or the need `sec.read`.
 `rcdata/build/__init__.py` registers the questions, and registration order is run order: `business.locate` and
 `company.profile` (`sec_reads/company_profile.py`), then `debt.note` (#737; `sec_reads/debt_note.py`, prompt and parse
-in `rcdata/sec_debt_note.py`), which the Fundamentals board reads through `core/fundamentals_layer.py`. Each further
+in `rcdata/sec_debt_note.py`), which the Fundamentals board reads through `core/fundamentals_layer.py`. The Value
+Chain board reads `company.profile` the same way (#894 step 4, `module_value_chain/engine._service_profiles`),
+keyed by the CIK its own corpus row states, so both share classes of one issuer see one answer. Each further
 question is its own change. **Each is written by its own chosen writer** (`core/llm_jobs.py`, jobs `sec_reads.*`, #404), read once per
 process so one run asks every question through one writer. The default is still the switch (`questions.PROVIDER`):
 EVREN, the gate with no fee, unless the process names DeepSeek (`RC_SEC_READS_PROVIDER=deepseek`), which gives each
