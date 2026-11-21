@@ -71,3 +71,51 @@ avo, 14:06: the insider-trades posts link straight to the SEC filing index, e.g.
 (not fetched from this thread). So the bot's insider feed is a pointer to EDGAR Form 4; the primary
 source is EDGAR itself, which moves insider-trades from "hard" to "replaceable without UW".
 avo, 14:06: "bunu bizde yapabiliriz" — insider-trades moves to the build-ourselves group (EDGAR Form 4).
+
+## `-stock-updates`, second message type: "Unusual Stock Volume" (app "UW Stock Updates")
+
+Screenshot `stock-updates_unusual-volume_2026-11-21.png` (from avo, 2026-11-21 14:08 Amsterdam).
+Fields: ticker + name (link), "Trading at Nx average stock volume", current volume, 30-day average,
+price with day change %, market cap. Seen: BIPC 3x, BSP 3x, PCAP 4x, 20 Nov 2026 21:57-21:58.
+Rule as shown: current day volume / 30-day average volume, posted at whole multiples (3x, 4x).
+avo: "bunu da yapabiliriz gibi duruyor" — inputs are daily volume history plus the running day volume;
+an end-of-day version needs only daily bars, an intraday one needs a live or delayed quote source.
+The same goes for the 52-week high/low type (daily high/low history plus the current price).
+
+avo, 14:08, on `-highest-volume-contracts`: "iste bu zor". Why it is hard: it is a ranking over every
+option contract in the market (volume, OI, Vol/OI, OI change, previous volume), plus a bull/bear premium
+split that needs per-trade side. A per-ticker chain source covers the first five columns for a fixed
+ticker list only; the split needs the tape. Nearest UW API path: `/api/screener/option-contracts`.
+
+## `-unusual-command-line`: the bot's command interface
+
+Screenshot `unusual-command-line_help_2026-11-21.png` (from avo, 2026-11-21 14:10 Amsterdam; avo ran
+`/help` at 14:09). Read from it:
+- The app is **Premium_UnusualWhalesBot** (verified app). Header: "All data is LIVE, unless otherwise specified".
+- "There are currently **103 commands** available", browsed by topic dropdown + Prev/Next page; some topics
+  carry examples or a video.
+- `/troubleshooting` is "for the owner and the administrators of a server with a premium subscription",
+  so the bot runs on a **paid premium subscription held for this server** (whose, not known).
+- The `/help` answer is **ephemeral** ("Only you can see this").
+- Above it, a chart command's controls are visible: Put & Call Premium / Net Premium toggles, day paging
+  (7d <<, 1d <, Curr day, > 1d, >> 7d) and a "how many market days" dropdown.
+
+avo, 14:10: this is what we must work on. Plan A = IBKR + Cboe, our own build. Plan B = use this Discord
+bot interface.
+
+Limits of plan B as an automated feed (from how Discord works, not tested):
+- A slash command is started by a person. A program cannot start one except by automating a user account,
+  which Discord's terms forbid. Another bot cannot invoke this bot's commands.
+- An ephemeral answer is visible only to the person who ran the command; no reader bot sees it.
+- What a reader can collect is the **automatic channel posts** (stock-updates, live-option-flow and so on),
+  and some of those are images.
+So plan B fits avo using the bot by hand, and reading the auto-post channels; it is not a query API.
+
+Still open: the full list of the 103 commands (walk `/help` topic by topic) — that list is the spec for
+what "our own command line" would have to cover.
+
+## avo's explanation (21 Nov 2026 17:02 Amsterdam)
+- "Traders' Pub" is the server avo set up with friends. A UW bot is attached to it; the bot runs on the UW API.
+- Aim: see how the bot works and whether it can be tied into avo's own system.
+- If we can do what the bot does ourselves, the bot is not needed; a record of it is kept either way.
+- The Discord pass comes after the UW web survey, in a web window avo opened, by a method avo will explain.
