@@ -29,8 +29,17 @@ def _row(client, name: str) -> dict:
     return next(r for r in rows if r["name"] == name)
 
 
-def test_each_row_says_whether_it_has_a_stop_and_no_stop_action_was_added(client, fake):
+def test_each_row_says_whether_it_has_a_stop_and_the_get_itself_changes_nothing(client, fake, monkeypatch):
+    """One test, because the halves are only evidence together: a GET that starts nothing is as true on the
+    merge-base, so it proves nothing on its own (``scripts/red_on_base.py``); tied to the field this change
+    adds, it says that the field is served without the route starting or cancelling a job."""
+    touched: list = []
+    monkeypatch.setattr(jobs, "submit", lambda *a, **k: touched.append(("submit", a)))
+    monkeypatch.setattr(jobs, "cancel", lambda *a, **k: touched.append(("cancel", a)))
     rows = client.get("/api/automations").get_json()["rows"]
+    assert touched == [] and fake.mutations == []
+    # Reading each task's state is the one thing a GET may do; nothing else was asked of the scheduler.
+    assert {c[0] for c in fake.calls} == {"status"}
     assert all("stop" in r for r in rows)
     assert _row(client, "RC-Build")["stop"]["reason"] == A.STOP_NOT_DASHBOARD
     assert _row(client, "RC-ValueChain-Sync")["stop"]["reason"] == A.STOP_NOT_RUNNING
@@ -72,13 +81,3 @@ def test_a_running_job_without_checkpoints_offers_no_stop(client, fake, monkeypa
         assert client.post(f"/api/job/{job_id}/cancel", headers={"X-RC-Panel": "cli"}).status_code == 409
     finally:
         jobs._set(job_id, status="cancelled")
-
-
-def test_a_get_of_the_rows_starts_and_cancels_nothing(client, fake, monkeypatch):
-    started: list = []
-    monkeypatch.setattr(jobs, "submit", lambda *a, **k: started.append(a))
-    monkeypatch.setattr(jobs, "cancel", lambda *a, **k: started.append(a))
-    client.get("/api/automations")
-    assert started == [] and fake.mutations == []
-    # Reading each row's state is the one thing a GET may do; nothing else was asked of the scheduler.
-    assert {c[0] for c in fake.calls} == {"status"}
