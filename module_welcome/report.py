@@ -25,8 +25,8 @@ from RevenueChaser.module_news import store_reads as news_reads
 from RevenueChaser.module_news.calendar import AMS, local_day
 from RevenueChaser.module_news.report import (WEEKDAYS, _head_li, day_label, dots_html, esc, hm, long_date,
                                               vals_html)
-from RevenueChaser.module_welcome.build import (EARNINGS, FILE_LABELS, FRESHNESS, NY, SNAPSHOT,
-                                                UNKNOWN_SESSION, earnings_days)
+from RevenueChaser.module_welcome import store_reads
+from RevenueChaser.module_welcome.build import FILE_LABELS, NY, UNKNOWN_SESSION, earnings_days
 from RevenueChaser.rcdata import read
 
 FILENAME = "welcome_latest.html"
@@ -108,8 +108,7 @@ def _headlines_card(now: float) -> tuple[str, float]:
 
 def _earnings_card(now: float, watchlist: set[str]) -> str:
     days = earnings_days(now)
-    rows = rawstore.query(f"SELECT * FROM {EARNINGS} WHERE earnings_date IN (?, ?) AND retired_at IS NULL",
-                          [days[0], days[1]], db="welcome")
+    rows = store_reads.listed_earnings_rows(days)
     today_ny = datetime.fromtimestamp(now, NY).date()
     out = ['<section class="card"><h2 class="lbl">Earnings · today and the next trading day</h2>']
     if not rows:
@@ -161,9 +160,7 @@ def _spark(values: list[float]) -> str:
 
 
 def _snapshot_card() -> str:
-    latest = {r["series"]: r for r in rawstore.query(
-        f"SELECT * FROM {SNAPSHOT} QUALIFY row_number() OVER (PARTITION BY series ORDER BY session_date DESC) = 1",
-        db="welcome")}
+    latest = store_reads.latest_snapshot_by_series()
     tiles = []
     for key, label, up, unit in TILES:
         r = latest.get(key)
@@ -201,7 +198,7 @@ def _freshness_card(now: float) -> str:
     than the card's window: a file that has stopped building is the thing this card exists to show, so it reads
     "no run in 7 days" instead of leaving the row out.
     """
-    rows = rawstore.query(f"SELECT * FROM {FRESHNESS}", db="welcome")
+    rows = store_reads.freshness_rows()
     rows = [r for r in rows if r.get("last_finished_at") is not None and r["job"] in FILE_LABELS]
     cutoff = now - FRESH_DAYS * 86400
 

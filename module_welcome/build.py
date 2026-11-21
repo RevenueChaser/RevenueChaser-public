@@ -39,13 +39,16 @@ from RevenueChaser.core import rawstore
 from RevenueChaser.core import reaction_anchor
 from RevenueChaser.rcdata import needs, ops
 
+from . import store_reads as sr
+
 logger = logging.getLogger(__name__)
 
 NY = ZoneInfo("America/New_York")
-SNAPSHOT, EARNINGS, FRESHNESS = "welcome_snapshot", "welcome_earnings", "welcome_freshness"
-#: The table the plan designed for the incremental marks. Nothing writes it; see this module's docstring. It is
-#: named here so a reader of the manifest finds the explanation, and so a test can hold that no build writes it.
-META = "welcome_meta"
+#: The board's table names and every read of its file are the reader's (#217). They are re-exported here because
+#: this module has been their home since S16 and ``report.py``, the tests and ``app/runners.py`` reach them
+#: through it. ``META`` is the table the plan designed for the incremental marks and nothing writes; see this
+#: module's docstring and the reader's.
+SNAPSHOT, EARNINGS, FRESHNESS, META = sr.SNAPSHOT, sr.EARNINGS, sr.FRESHNESS, sr.META
 SPARK_DAYS = 20
 
 #: series -> (need, its id in ``market_series``). The four share one table in ``market.duckdb``, so each is asked
@@ -126,9 +129,7 @@ def earnings_days(now: float) -> tuple:
 
 
 def _snapshot(now: float, run_id: str) -> int:
-    stored = {r["series"]: (r["session_date"], r["close"]) for r in rawstore.query(
-        f"SELECT series, session_date, close FROM {SNAPSHOT} "
-        "QUALIFY row_number() OVER (PARTITION BY series ORDER BY session_date DESC) = 1", db="welcome")}
+    stored = sr.stored_snapshot_closes()
     day = ny_day(now)
     rows = []
     for series, (need, series_id) in SERIES.items():
@@ -205,8 +206,7 @@ def _earnings(now: float, run_id: str) -> int:
     rows, session = _screener(ny_day(now))
     if session is None:
         return 0
-    held = {(r["earnings_date"], r["ticker"], r["report_session"]): r for r in rawstore.query(
-        f"SELECT * FROM {EARNINGS} WHERE earnings_date IN (?, ?)", [days[0], days[1]], db="welcome")}
+    held = sr.earnings_held(days)
     out, seen = [], set()
     listed = [r for r in rows if _as_day(r.get("report_date")) in days and r.get("ticker")]
     missing_name = {str(r["ticker"]) for r in listed if not str(r.get("full_name") or "").strip()}
