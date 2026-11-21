@@ -2922,8 +2922,11 @@ def _tab_strip() -> str:
 # #715 (avo, 12 Nov 2026): three tabs, no tab holds another tab. Fetch/Health is one board (rc-health: the controls
 # beside the DuckDB health, RevenueChaser's timers, IBKR, provider limits, backups); Logs is its own tab (rc-logs).
 # The board picker that sat above the frame is gone with the boards it chose between.
-LIVE_BOARDS = (("panel-health", "rc-health", "live-frame", "Fetch controls and data health (Grafana)"),
-               ("panel-logs", "rc-logs", "logs-frame", "Job run logs (Grafana)"))
+# avo, 21 Nov 2026 ("RC Fetch/Health u jobs icine koy ... RC Logs da ayni sekilde, Logs diye bir sekme ac"; "iste direk
+# jobs icindeki RC kismini alsin"): those boards are now the RC rows of Grafana's Jobs and Logs, framed with
+# ?part=rc so only the RC rows show (home-server make_dashboards.RC_PART_JS).
+LIVE_BOARDS = (("panel-health", "jobs", "live-frame", "Fetch controls and data health (Grafana)"),
+               ("panel-logs", "logs", "logs-frame", "Job run logs (Grafana)"))
 LIVE_CSS = """
 /* avo, 12 Nov 2026: "Open in Grafana ... cok yer kapliyor". The link had a row above the frame, then one under it,
    and on 13 Nov it moved inside the board itself: each RC board carries it as a Grafana dashboard link, which
@@ -2954,7 +2957,7 @@ LIVE_JS = """
     if (!panel || !frame) return;
     function address() {
       return location.protocol + '//' + location.hostname + ':3000/d/' + board + '/' + board + '?theme=' + theme()
-        + '&kiosk';
+        + '&part=rc&kiosk';
     }
     function load() {
       if (panel.hidden) return;
@@ -2996,8 +2999,8 @@ def _ticker_drill(payload: dict) -> str:
 
 def render_settings_dashboard(payload: dict) -> str:
     """The Settings page (#715): three tabs. Database is the control board
-    (``control_render.render_data``) above ``_database_more``; Fetch/Health is the framed ``rc-health`` board above
-    the few presses Grafana does not carry (``control_render.render_fetch``); Logs is the framed ``rc-logs`` board.
+    (``control_render.render_data``) above ``_database_more``; Fetch/Health is the framed RC part of Grafana's Jobs above
+    the few presses Grafana does not carry (``control_render.render_fetch``); Logs is the framed RC part of Grafana's Logs.
     The Ticker lookup heads Database (#715); the old Settings sections fold is gone."""
     payload = payload or {}
     data_json = "[]"       # the Ticker lookup's names come from /api/settings/tickers on first focus
