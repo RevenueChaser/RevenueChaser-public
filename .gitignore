@@ -45,3 +45,11 @@ rawData/*
 
 # v2 Fincept walkthrough screenshots: local only, AGPL source (docs/v2/README.md).
 docs/v2/fincept_walk/
+
+# v2 web app: installed and built artefacts (ADR v2/README.md, decision 6). The tree carries the
+# lockfile and the source only; `dist/` is built in CI or in the door's image build, never on homesrv.
+v2/web/node_modules/
+v2/web/dist/
+v2/web/shots/
+v2/web/test-results/
+v2/web/playwright-report/
