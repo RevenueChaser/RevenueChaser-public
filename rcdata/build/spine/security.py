@@ -36,6 +36,13 @@ plan-v4 review). Anything else stays ``Unclassified`` with no source. ``gsector`
 ``ggroup`` are the codes the names came from, whatever the source; ``gind``, ``gsubind`` and ``gics_from`` are
 Compustat's only, so they are NULL on a ``manual`` or ``sic`` row.
 
+**The country.** ``country`` is where the company's business is, ISO 3166-1 alpha-2, with ``country_source``
+beside it: Compustat's own ``loc`` (``comp.company``, alpha-3, read through ``iso3166``) where the row links to a
+company, else the ISO country of the SEC submissions header's business address (``sec/filings``'s
+``header.parquet``, coded by ``build/fundamentals/edgar_codes``). Compustat is first for the same reason it owns
+the served ``sic``: it is maintained, where the SEC header changes only when the filer asks (avo, 21 Nov 2026).
+A name neither places has no country, and a board reads that as unknown, never as "not US".
+
 **Build issues** (``ISSUE_KINDS``) are computed here and written to ``ops.sqlite`` once the new file is live
 (``after_swap``, ``ops.sync_issues``): an issue found again stays open, one no longer found is resolved. A rule that
 needs a source that has never run is not applied; that source is one ``source_never_run`` issue instead.
@@ -55,7 +62,7 @@ from ....core.gics_map import SHELL_SPAC, UNCLASSIFIED, canonical_sector
 from ....core.identity import isin as isin_mod
 from ... import ops
 from .. import base
-from . import KIND, etf, etf_class, my_universe, stage, tier as tier_rule, views
+from . import KIND, etf, etf_class, iso3166, my_universe, stage, tier as tier_rule, views
 from .funds import INDEXES, NAME as FUNDS
 from .openfigi_map import FIGI_BY_CUSIP, FIGI_BY_TICKER, NAME as OPENFIGI, PRESENT
 from .sec_tickers import NAME as SEC
@@ -82,6 +89,7 @@ SECURITY = [
     ("figi_ticker", "TEXT"), ("security_description", "TEXT"), ("figi_source", "TEXT"),
     ("gsector", "TEXT"), ("ggroup", "TEXT"), ("gind", "TEXT"), ("gsubind", "TEXT"), ("gics_from", "DATE"),
     ("gics_source", "TEXT"), ("sector", "TEXT"), ("industry", "TEXT"), ("sic", "TEXT"),
+    ("country", "TEXT"), ("country_source", "TEXT"),
     ("source", "TEXT"), ("source_as_of", "DATE"), ("fetched_at", "DOUBLE"), ("run_id", "TEXT"),
 ]
 HISTORY = [("ticker", "TEXT"), ("cik", "TEXT"), ("gvkey", "TEXT"), ("iid", "TEXT"), ("field", "TEXT"),
@@ -190,7 +198,11 @@ def sector_names(gsector, ggroup) -> tuple[str, str]:
 SHELL_SICS = frozenset({6770, 9995})
 SIC_SOURCE = "sic"
 SEC_SIC_SOURCE = "sec_sic"
-SEC_FILINGS = "sec/filings"      # its ``cik=<cik>/header.parquet`` carries the SIC the SEC assigns the company
+#: Where a row's ``country`` came from: Compustat's ``comp.company.loc`` (the company's own country, alpha-3, read
+#: alpha-2 here), else the business address of the SEC submissions header.
+LOC_SOURCE = "loc"
+SEC_COUNTRY_SOURCE = "sec_business_country"
+SEC_FILINGS = "sec/filings"      # its ``cik=<cik>/header.parquet`` carries the SEC's SIC and business address
 # The SEC's code describes the ISSUER. For an exchange-traded note or a closed-end fund that is the bank or the
 # trust, not what the product holds (measured 18 Nov 2026: Deutsche Bank's gold notes DGP, DGZ and DZZ read "Banks").
 ISSUER_IS_NOT_THE_PRODUCT = frozenset({"etp", "cef"})
@@ -232,15 +244,50 @@ def gics_manual(path: Path | None = None) -> dict[str, dict]:
     return rows
 
 
-def sec_sic_by_cik(con: duckdb.DuckDBPyConnection) -> dict[str, str]:
-    """``cik -> SIC`` as the SEC assigns it, from every ``header.parquet`` :data:`SEC_FILINGS` wrote; empty when
-    that dataset has not run on this machine."""
+def _sec_header_column(con: duckdb.DuckDBPyConnection, column: str) -> dict[str, str]:
+    """``cik -> <column>`` from every ``header.parquet`` :data:`SEC_FILINGS` wrote, NULLs left out.
+
+    Empty when that dataset has not run on this machine, and empty when the files hold no such column: a store
+    whose filing lists were written before the column reads as "not known", never as a build error.
+    """
     root = base.parquet_root().joinpath(*SEC_FILINGS.split("/"))
     if not next(root.glob("cik=*/header.parquet"), None):
         return {}
-    cur = con.execute(f"SELECT cik, sic FROM read_parquet({base.sql_path(root / 'cik=*' / 'header.parquet')}, "
-                      "union_by_name = true, hive_partitioning = false) WHERE sic IS NOT NULL")
-    return {cik: sic for cik, sic in ((norm_cik(c), s) for c, s in cur.fetchall()) if cik}
+    files = base.sql_path(root / "cik=*" / "header.parquet")
+    read = f"read_parquet({files}, union_by_name = true, hive_partitioning = false)"
+    held = {r[0] for r in con.execute(f"DESCRIBE SELECT * FROM {read}").fetchall()}
+    if column not in held:
+        return {}
+    cur = con.execute(f'SELECT cik, "{column}" FROM {read} WHERE "{column}" IS NOT NULL')
+    return {cik: v for cik, v in ((norm_cik(c), v) for c, v in cur.fetchall()) if cik}
+
+
+def sec_sic_by_cik(con: duckdb.DuckDBPyConnection) -> dict[str, str]:
+    """``cik -> SIC`` as the SEC assigns it (:func:`_sec_header_column`)."""
+    return _sec_header_column(con, "sic")
+
+
+def sec_country_by_cik(con: duckdb.DuckDBPyConnection) -> dict[str, str]:
+    """``cik -> the ISO alpha-2 country of the SEC business address`` (:func:`_sec_header_column`)."""
+    return {cik: str(v).strip().upper() for cik, v in _sec_header_column(con, "business_country").items()
+            if str(v or "").strip()}
+
+
+def bridge_country(loc, sec_country=None) -> tuple[str | None, str | None]:
+    """``(country, country_source)``: Compustat's own country of the company first, then the SEC business address.
+
+    Compustat is the source for the same reason it is the source of the served ``sic`` -- it is maintained, where
+    the SEC header changes only when the filer asks -- so the SEC's address is the fallback for a name Compustat
+    does not link or does not place (avo, 21 Nov 2026: "Wrds de ulke bilgisini de al"). A code neither of them
+    knows is no country, not a guess.
+    """
+    a2 = iso3166.alpha2(loc)
+    if a2:
+        return a2, LOC_SOURCE
+    code = (sec_country or "").strip().upper()
+    if code:
+        return code, SEC_COUNTRY_SOURCE
+    return None, None
 
 
 def bridge_sector(ticker: str, gics: dict | None, sic, manual: dict[str, dict], sec_sic=None) -> tuple:
@@ -451,13 +498,16 @@ class SpineSecurity:
         wrds_on, figi_on = bool(have[SEC_IDHIST.name]), bool(have[OPENFIGI])
 
         sec = _rows(con, "SELECT * FROM stg_sec ORDER BY ticker")
-        company = _rows(con, "SELECT gvkey, conm, cik, sic FROM stg_wrds_company")
+        company = _rows(con, "SELECT gvkey, conm, cik, sic, loc FROM stg_wrds_company")
         gvkeys_of_cik: dict[str, list[str]] = defaultdict(list)
         cik_of_gvkey: dict[str, str] = {}
         sic_of_gvkey: dict[str, str] = {}
+        loc_of_gvkey: dict[str, str] = {}
         for c in company:
             if c.get("sic"):
                 sic_of_gvkey[c["gvkey"]] = c["sic"]
+            if c.get("loc"):
+                loc_of_gvkey[c["gvkey"]] = c["loc"]
             cik = norm_cik(c["cik"])
             if cik:
                 gvkeys_of_cik[cik].append(c["gvkey"])
@@ -479,6 +529,7 @@ class SpineSecurity:
 
         manual = gics_manual()
         sec_sic = sec_sic_by_cik(con)
+        sec_country = sec_country_by_cik(con)
         rows, linked = [], {}
         for r in sec:
             sec_row, how, problem = link(r["ticker"], r["cik"], gvkeys_of_cik, securities, tickers_of_cik)
@@ -504,6 +555,9 @@ class SpineSecurity:
             # The SEC's SIC goes to the sector only; ``security_type`` above and ``sic`` below keep Compustat's.
             its_sec_sic = None if typ in ISSUER_IS_NOT_THE_PRODUCT else sec_sic.get(norm_cik(r["cik"]))
             sector, industry, gics_src, gsector, ggroup = bridge_sector(r["ticker"], g, sic, manual, its_sec_sic)
+            # The country of the business, Compustat's first (``bridge_country``); the SEC address is the fallback.
+            country, country_src = bridge_country(loc_of_gvkey.get((sec_row or {}).get("gvkey")),
+                                                  sec_country.get(norm_cik(r["cik"])))
             from_co = gics_src == CO_HGIC.name     # a manual row's codes must not sit beside Compustat's finer ones
             isin = isin_mod.from_cusip(cusip)
             row = {
@@ -523,6 +577,7 @@ class SpineSecurity:
                 "gics_from": (g or {}).get("indfrom") if from_co else None,
                 "gics_source": gics_src, "sector": sector, "industry": industry,
                 "sic": _sic_text(sic),
+                "country": country, "country_source": country_src,
                 "source": SEC, "source_as_of": r["source_as_of"], "fetched_at": r["fetched_at"], "run_id": r["run_id"],
             }
             rows.append(row)

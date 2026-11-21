@@ -135,7 +135,9 @@ def test_a_second_build_keeps_the_entered_day_and_appends_what_changed(built, mo
 
 def test_the_served_schema_version_names_the_two_new_tables(built):
     built()
-    assert serving.SERVING_SCHEMA_VERSION["spine"] == 9
+    # 9 is the bump that carried these two tables; 10 since #645 (``security.country``). The rule below
+    # -- that both are served and the volume window is 20 sessions -- holds at every later number.
+    assert serving.SERVING_SCHEMA_VERSION["spine"] >= 9
     assert my_universe.TABLE in security.TABLES and my_universe.CHANGES in security.TABLES
     assert etf.ADV_SESSIONS == 20
 

@@ -236,6 +236,9 @@ def name_themes(run_id: str | None = None, *, complete=None,
         except llm_jobs.PeakHours as exc:
             next_off_peak = exc.next_off_peak.strftime("%Y-%m-%d %H:%M")
             break
+        except llm_jobs.BudgetSpent as exc:
+            error = str(exc)              # the paid-call day cap (#166): nothing was sent, keep what we have
+            break
         except llm_jobs.TransientError as exc:
             error = str(exc)              # the service is down: stop, keep what we have
             break
@@ -249,6 +252,9 @@ def name_themes(run_id: str | None = None, *, complete=None,
                              max_tokens=min(1500, max_tokens))
             except llm_jobs.PeakHours as exc:
                 next_off_peak = exc.next_off_peak.strftime("%Y-%m-%d %H:%M")
+                break
+            except llm_jobs.BudgetSpent as exc:
+                error = str(exc)
                 break
             except llm_jobs.TransientError as exc:
                 error = str(exc)

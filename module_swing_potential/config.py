@@ -12,8 +12,6 @@ from RevenueChaser.core.config import OUTPUT_DIR
 
 SWING_LATEST = OUTPUT_DIR / "swing_potential_latest.html"
 SWING_JSON = OUTPUT_DIR / "swing_potential" / "swing_potential_latest.json"
-OHLC_TTL_DAYS = 1.0                    # reuse cached OHLC within a day (yfinance rate-limit relief)
-
 # ── Phase-1 pre-filter (7-A: price and dollar volume on D04's quotes) ──
 # Not a market-cap filter — that is applied client-side like the Growth Hunter. Every name that passes is scored
 # and every LONG setup reaches the page (no cap, no top-N; #383 R3 C12, card C).

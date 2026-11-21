@@ -33,14 +33,6 @@ def _df(periods=300) -> pd.DataFrame:
 
 
 
-def test_load_ticker_info_no_fetch(rawstore_tmp_db, monkeypatch):
-    assert indicators.load_ticker_info("ZZZZ", no_fetch=True) == {}
-    rawstore.write_rows("swing_info", [{
-        "ticker": "AAAA", "payload": {"sector": "Technology"}, "cached_at": 0.0,
-    }])
-    assert indicators.load_ticker_info("AAAA", no_fetch=True) == {"sector": "Technology"}
-
-
 class TestScanProvenance:
     """``generated_at`` is when the scan RAN; the data date lives in
     core/provenance.py and is asserted in core/tests/test_provenance.py."""

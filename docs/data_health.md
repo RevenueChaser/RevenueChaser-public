@@ -312,7 +312,8 @@ its own book in that row says so — the builder installs `UWClient`'s observers
 Yahoo through `core/providers/yfinance` asks inside `spend_owned_by_caller`, so the provider module counts nothing
 there. Until #1277 `yfinance/fx` and `yfinance/estimates` were counted twice and their day caps tripped at half
 the reads they allow. It is a record and not a gate — nothing refuses a Fetch
-that would cross a cap, and UW's newest `x-uw-*` sample from `uw_remaining`: its daily count, what is left of our own cap
+that would cross a cap (the paid writers are the one exception since #166: their money has a day cap of its own,
+`docs/llm_spend.md`, and it is a different counter), and UW's newest `x-uw-*` sample from `uw_remaining`: its daily count, what is left of our own cap
 (computed) and the per-minute window), weekly backups (the weekly job's manifests under
 `RAW_STORE_BACKUP_DIR/weekly-v2/<step>/`: each step's last good run and the error of a failed one, then the newest
 weekly copy of every file and how many are kept; amber past 8 days, red past 15 days or when there is none), the raw option retention warning (on until `RC_RAW_RETENTION_DAYS` or a `dataset_schedule` row
@@ -678,6 +679,14 @@ ones a systemd timer and service honour, #579).
   `GET /api/automations` on load, after an action and while a row runs.
   `POST /api/automations/<name>/<action>` takes a registry name and no other argument, and needs the
   header `X-RC-Panel: automations` exactly. Refresh of this board never calls the scheduler.
+- **Stop (#165).** Each row carries a `stop` object: `can_stop`, `job_id`, `cancel_url`, `reason`. The only
+  stop is the cooperative cancel that already exists (`POST /api/job/<id>/cancel`, #243): where the task queues
+  its run in the dashboard (`scripts/board_fetch.py`, the Value Chain and SPX Gamma nights), the row names that
+  job's id while it is queued or running, and `cancel_url` is that route. A queued job stops at once, a started
+  one at its next checkpoint, never mid-write; a started job whose runner has no checkpoint is left to finish and
+  the row says so, because the cancel route would refuse it anyway. A job the server's timer runs in a process of
+  its own has **no** stop and the row says why (avo's decision, 20 Nov 2026): there is no `stop` action, no
+  `Scheduler.stop` and no privileged verb, so nothing here can land in the middle of a DuckDB write.
 - **Row state.** Not installed, disabled, enabled or running; the last result mapped (nought is ok,
   "not run yet" is neutral, running is running, anything else is red); next run, missed runs, and the
   age of the last success read from the task's log.

@@ -703,15 +703,37 @@ def _own_heading_after(text: str, m: re.Match, key: str) -> bool:
 
     The test is the mirror image: a *later* line-start heading of the same number, which is not a reference and
     not a contents entry, means the earlier candidate was the reference. Two real headings of one item do not
-    occur in a filing; a reference to one and the heading itself do, in that order. Looked for beyond
-    :data:`MIN_ITEM_CHARS` so that a run-in heading repeated in its own first sentence is not read as a second one.
+    occur in a filing; a reference to one and the heading itself do, in that order.
+
+    **How far down it looks is decided by the candidate's own line, not by a distance.** A heading stands alone
+    on its line; a cross-reference is a sentence and goes on in words after the title
+    (:func:`_line_runs_on`, which reads :data:`_A_LETTER` exactly as :func:`_cites_its_title` does). So a
+    candidate whose line ends at its title is trusted and only a heading beyond :data:`MIN_ITEM_CHARS` can pass
+    it over -- which is what keeps a run-in heading repeated in the section's first sentence from being read as a
+    second heading -- while a candidate whose line runs on is checked from its own end. A distance alone cannot
+    hold both: a cross-reference inside the tail of Item 3, with the real heading fewer than
+    :data:`MIN_ITEM_CHARS` further down, passed every guard and was cut from the cross-reference and labelled
+    ``ok`` (probe, 21 Nov 2026, built input; the gap of the real shape is a corpus question and is #407's
+    remaining dry run).
     """
     pattern = _LINE_START_2[key]
     own = _item_no(m)
+    at = m.end() if _line_runs_on(text, m) else m.end() + MIN_ITEM_CHARS
     return any(_item_no(later) == own
                and not (_toc_next_ours_2(text, later, key) or _PAGE_NO.match(text, later.end())
                         or _ref_ours_2(text, later, key))
-               for later in pattern.finditer(text, m.end() + MIN_ITEM_CHARS))
+               for later in pattern.finditer(text, at))
+
+
+def _line_runs_on(text: str, m: re.Match) -> bool:
+    """True when the line ``m`` matched goes on **in words** after the item's title.
+
+    A heading's line ends at its title, or carries a page number after it (:data:`_PAGE_NO` reads that case);
+    a sentence that names the item goes on in letters. :data:`_A_LETTER` is the same test
+    :func:`_cites_its_title` applies to the tail of a quoted citation, asked here of the rest of the line.
+    """
+    end = text.find("\n", m.end())
+    return bool(_A_LETTER.search(text[m.end():end if end != -1 else len(text)]))
 
 
 def _holds_another_item(item: str, own: str) -> bool:
@@ -837,6 +859,14 @@ def _slice_item_ours_3(text: str, form: str = "10-K") -> tuple[str | None, str]:
     **Only the line path.** The pattern path is untouched: its 20-F start requires "information on the
     company|group" after the number and its mentions are already filtered, so this shape does not reach it. A
     version that changed both would be two changes measured as one.
+
+    **The guard reads the candidate's line and not a distance** (#407 again, 21 Nov 2026). Its first form looked
+    for the real heading only beyond :data:`MIN_ITEM_CHARS`, which left the same defect standing whenever the
+    filer's cross-reference sits in the *tail* of Item 3: with the real heading 900 characters below it, every
+    guard passed, the slice was cut from the cross-reference and the label was ``ok`` again. A heading ends its
+    line at its title and a cross-reference goes on in words, so the distance is only asked of a candidate whose
+    line ends there -- which is what still keeps a run-in heading repeated in its own first sentence from being
+    read as a second heading. See :func:`_own_heading_after` and :func:`_line_runs_on`.
 
     **#407 case (b) is deliberately not in here.** A start whose body is under :data:`_BODY_MIN` is passed over
     for a later one, which the issue reads as a tiny real Item 1 losing to a later prose mention -- and which was

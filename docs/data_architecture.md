@@ -185,7 +185,7 @@ manifest only, no writers yet; #164; v9 added the four SIC columns of `security_
 column additions, compressed-column rebuilds) is applied on each process's
 first store call — see "Schema on first use" below. `equity_universe.next_earnings_date TEXT` (Phase 1,
 #265) is such a column, and so are the six FIGI columns of `security_master` (#267, no bump), its four SIC
-columns (#272, the v9 bump), its four identifier columns (`cusip`, `cusip_source`, `isin`, `isin_source`, #127, no bump) and `fetched_at DOUBLE` on `chain_meta`, `leaps_cache`, `rotation_holdings`, `sec13f_security_meta`, `swing_info` and `ticker_themes` (#127, no bump; NULL on rows written before the column reads as unknown, never as age 0): they are added by that `ALTER TABLE` on the first store call; the version is a label
+columns (#272, the v9 bump), its four identifier columns (`cusip`, `cusip_source`, `isin`, `isin_source`, #127, no bump) and `fetched_at DOUBLE` on `chain_meta`, `leaps_cache`, `rotation_holdings`, `sec13f_security_meta` and `ticker_themes` (#127, no bump; NULL on rows written before the column reads as unknown, never as age 0): they are added by that `ALTER TABLE` on the first store call; the version is a label
 written to `migration_manifest`, and the bump is what makes the change a gated one (manual `.store` checkpoint, see
 below).
 
@@ -248,7 +248,6 @@ them it reads from rcdata's serving layer instead (see The market store).
 | *(retired with the old files)* | The Stage 2 rows #1209 dropped, with what holds the data now. **Gone with no live home:** `catalyst_events`, `orphan_designations` / `orphan_lookups` (the Biotech board was never built, so nothing ever wrote them), `tradewhisperer_*`, `sec13f_edgar_backfill`, `sec13f_filers` (manifest only, never written; the ownership store's `sec13f_filings` is the live record), `source_checks` and `price_checks` (the builder keeps its own per-dataset state in ops, `dataset_check`). **Served elsewhere now:** `edgar_documents` → the gzipped filings under `EDGAR_DOCS_DIR` (`core/edgar_docs.py`) with `filing_item` / `filing_section` for their metadata; `sec13f_security_meta` and `identity_cusip` → the spine's `security` (and `sec13f_cusip_map` for the 13F CUSIP map); `etf_holdings` → the spine's `etf_holdings` and `etf_holdings_nport`, the whole list per fund rather than a top 10; `watchlist` → `wl_list` / `wl_item` in `watchlists.duckdb` and the stock watch list in ops (D5); `earnings_history` → `earnings_reported` / `earnings_report_history`; `macro_series`, `vol_index_daily` and `cftc_cot` → the market store's `market_series` (mapped by name in `rcdata/needs/screen.RETIRING`); `economic_calendar` → the market store's `economic_event` (`uw/economic_calendar`, hourly; retired 11 Nov 2026); `ownership_snapshot` → the prices store's `shares_class` for shares outstanding, while the ownership store keeps the filings themselves (`sec13f_ticker_period`, `beneficial_ownership`, `insider_transactions`) instead of Yahoo's two percentages; `vendor_financials` → nothing: the Financials board reads the SEC's own facts (`fundamental_fact`), so a vendor-only card has nothing to render (#860) | — | — |
 | `edgar_financials` (VIEW) | **A bridge view (D4), not a cache.** The old companyfacts row per ticker, served by `fundamentals.duckdb` over `fundamental_fact` and `fundamental_company` (`rcdata/build/fundamentals/tables._financial_view`): `annual` and `quarterly` as JSON record lists in the shape `sec_edgar.extract_*` wrote, with `period_ends` / `filed` / `accn` maps, plus `meta`; a field with no value has no key, and a preliminary row (no accession) is left out. The board's own reads go through `core/fundamentals_layer.py`, not this view | fundamentals | — |
 | `price_bars_daily` (VIEW) | **A bridge view (D4).** Daily bars per `(ticker, session_date)` in the old column shape, served by `prices.duckdb` over `price_bar_daily` joined to `security_symbol_now`, with the split factor applied to OHLC and volume and the total-return factor to `adj_close` (`adj_source` `prices/adj_factor`); index rows are left out, and `split_ratio` is NULL. `fetched_at` and `run_at` are the serving file's `built_at`, so they age with the build, not with a fetch. Readers (windowed by SQL, K8a): Swing and Fundamentals (#383 R3), Asymmetric Growth's momentum (#380 S4), the forecast outcomes, Co-movement and the Relatedness peer market (`module_comovement/ohlc.py` `price_frame`, #379 D01), and the Earnings Fetch's reaction window (`module_earnings_radar/stored_inputs.ohlc_bars`, #372 E5e) | prices | — |
-| `swing_info` | yfinance `.info` per ticker. `fetched_at DOUBLE` (#127) is the fetch time; a row from before the column is NULL (unknown, never 0) | swing_potential | `OHLC_TTL_DAYS` |
 | `rotation_holdings` | Per-ETF holdings + RS rows for today. `fetched_at DOUBLE` (#127); NULL on older rows is unknown, never 0 | sector_rotation | same-day |
 | `equity_universe` (VIEW) | **A bridge view (D4).** The shared US universe in the old column shape, served by `spine.duckdb` over `security` (tiers A and B) with the old membership rule (#264); market cap, price and the quote are NULL of their old type, because they are market data and not identity, and the type filter stays with the reader. The boards' universe is `core/universe.py` over the spine — `RC_UNIVERSE_SOURCE` and the old table's path are gone (#642 PR 6) | spine | — |
 | `comov_runs` / `comov_nodes` / `comov_members` / `comov_lag` | Co-movement board: dated return-cluster runs, clusters, members; groups formed a quarter earlier with their held-out-quarter test | comovement | per Fetch run (latest as_of wins); each stored run deletes runs older than 14 days (`config.KEEP_DAYS`), keeping each config hash's newest (review v2 N2) |
@@ -707,7 +706,7 @@ that mirror a complete snapshot use `replace_all` (an empty batch needs
 payload is **removed**, not left behind: `ticker_scores`,
 `fundamentals_scores`/`_gates`,
 `swing_scores`/`_gates`. `watchlist` is no longer one of them: the dashboard
-adds or removes one ticker per click, on the stock watch list in `ops.sqlite` since PR 4 (`rawstore.toggle_watchlist`). Per-ticker caches (`swing_info`) stay incremental upserts, and
+adds or removes one ticker per click, on the stock watch list in `ops.sqlite` since PR 4 (`rawstore.toggle_watchlist`). Per-ticker caches (`rotation_holdings`) stay incremental upserts, and
 `rotation_snapshots` / `oipd_chain` /
 `relatedness_theme_etfs` / `comov_nodes` / `comov_members` (per `as_of` run) /
 `relatedness_attributes` (per ticker) replace one group at a time (`group_by` in
@@ -814,7 +813,6 @@ schema, reachable with path expressions like `payload.market_cap::DOUBLE`).
 | `chain_filings` (value_chain DB) | `ticker`, `cik`, `form`, `filed`, `accession`, `primary_doc`, `quality`, `fetched_at` | `item_text` is **zlib-compressed text** (`BLOB`) |
 | `chain_mentions` / `chain_meta` (value_chain DB) | `src`, `dst_name`, `dst_ticker`, `relation`, `snippet`, `filed`, `share_pct DOUBLE` (the share of the filer's sales or purchases a concentration sentence states; NULL on a keyword edge; #387 D7, added by ALTER at the first call), `source` (`profile` / `xbrl` / `regex`, #410; NULL on older rows; added by ALTER, no bump) / `key`, `value`, `fetched_at DOUBLE` (#127; NULL on older rows is unknown, never 0; added by ALTER, no bump) | — |
 | `comov_runs` / `comov_nodes` / `comov_members` / `comov_lag` | `as_of` + run config (`n_factors`, `null_json`, `oos_json`) + the Fetch's `run_id`, `session_date DATE` (rule B on `as_of`) and `dropped_json` (the run's drop lists; #379 D2, additive, older runs read NULL) / `(as_of, cut, cluster_id)` metrics incl. `baseline_r`, `persist_*`, `oos_*` / `(as_of, cut, ticker)`, `core` (was in the matching group a quarter ago; `stability` legacy, no longer written) / `(as_of, cut, ticker)` lagged group + `oos_r`, `oos_base`, `held` | — |
-| `swing_info` | `ticker`, `cached_at DOUBLE` (hoisted out of the payload), `fetched_at DOUBLE` (#127; NULL on older rows is unknown, never 0) | `payload` (`.info` dict) |
 | `rotation_holdings` | `ticker`, `date` (hoisted out of the payload), `fetched_at DOUBLE` (#127; NULL on older rows is unknown, never 0) | `rows` (holdings + RS list) |
 | `index_constituents` | `slug`, `ticker` | — |
 | `index_tickers` (VIEW) | `slug`, `ticker`, `name`, `sector` | — |
@@ -933,8 +931,8 @@ columns).
 Notes:
 - Several caches are **partially flattened**: the scalar field a query filters
   on was hoisted out of the JSON into a real column
-  (`ticker_payload_cache.fetched_at`, `swing_info.cached_at`,
-  `rotation_holdings.date`), while the heterogeneous remainder of the record
+  (`ticker_payload_cache.fetched_at`, `rotation_holdings.date`), while the
+  heterogeneous remainder of the record
   stays in the `payload`/`rows` JSON column.
 - `ticker_scores.themes` / `signals` (and, since #380 W1, `flags` / `period_ends`) are `TEXT` columns that
   *contain* JSON text (SQLite legacy) — typed columns, JSON values. The runtime theme SSoT is the
@@ -1063,7 +1061,7 @@ more than the machine has. Each dataset's build logs one line with its seconds a
 its spill peak (`base.spill_peak`, sampled every 2 s), the measure for moving the spill to the SSD or chunking a kind.
 
 **Files.** Serving kinds: `market`, `spine`, `prices`, `ownership`, `fundamentals`, `options`, `sec_forms`, `sec_reads`. Each kind is one
-file, `<MARKET_DIR>/<kind>.duckdb`. The identity spine, `spine` (serving schema version `9`), is described under
+file, `<MARKET_DIR>/<kind>.duckdb`. The identity spine, `spine` (serving schema version `10`), is described under
 "The identity spine" below; the prices store, `prices` (serving schema version `1`), under "The prices store"
 below; the ownership store, `ownership` (serving schema version `5`), under "The ownership store" below; the
 fundamentals layer, `fundamentals` (serving schema version `6`), under "Fundamentals" after it; and the options
@@ -1296,6 +1294,7 @@ by `ALTER`, so nothing is rewritten and the builder's rows keep their values):
 | `read_log` | Reads per day, process and table (counted in memory, written once a minute) |
 | `uw_remaining` | UW's `x-uw-*` rate headers, sampled once a run: `x-uw-daily-req-count` as `daily_req_count`, `daily_remaining_computed` = our cap (`rcdata/caps.py`) minus it, the per-minute window, and `x-uw-token-req-limit` as sent (it is not the daily cap) |
 | `provider_calls_daily` | Calls, failures and 429s per provider and New York day, written by the builder (every HTTP request it sends, retries included) **and**, since #166, by the dashboard's own provider clients through `core/providers/spend.py`. One row per provider and day, with no column for which of the two spent it: the quota is the account's. Its unit is the provider's unit in both halves — a request for `uw` and `sec`, a Yahoo read for `yfinance`. One call reaches the row once: the caller that keeps its own book owns it (`UWClient`'s observers, `yfinance.spend_owned_by_caller`; #1277). `RC_APP_SPEND=0` stops the app half |
+| `provider_spend_daily` | What the **paid** writers cost, per provider, model and New York day (#166 item 3): `calls`, `tokens_in`, `tokens_out` and `usd_micros` (millionths of a USD, an integer so a day is a sum of exact numbers). Written by `core/llm_spend.py` after a paid answer, and read by its day cap, which refuses a paid call once the New York day's USD is spent. The money is a measured estimate until a per-token price is set in `core/llm_prices.py`, never the provider's invoice; tokens are recorded either way, so a day can be re-costed. `RC_LLM_SPEND=0` stops the writes and the gate. A counter, so it is not in the ops backup — see `docs/llm_spend.md` |
 | `watchlist_option`, `watchlist_stock`, `watchlist_option_changes`, `watchlist_stock_changes` | The two watch lists (D2): ticker, added at, added by (the board), note; and their history, one row per add or remove with an `id` that keeps its order (version 2 added `id` and `note` to the history). No longer read or written since plan v5 step 7g (18 Nov 2026): the two lists are rows of `boards/watchlists.duckdb`; the tables stay until avo retires them |
 | `dataset_schedule` | Cadence and pause state per dataset (Pause / Resume on Settings, PR 2) |
 | `kind_automation` | The old file-level mode (Settings, 6 Nov 2026): kept, no longer read; `ops.copy_kind_modes` moved it onto each dataset (10 Nov 2026) |
@@ -1509,12 +1508,12 @@ own mark: a panel header that says `cli` is recorded as `panel:cli`.
 the CLI or a Fetch), so the first hourly builder pass after a deploy calls no spine source before the attended
 steps, and a first attempt that failed is not retried every hour.
 
-**Served tables** (`spine` serving schema version `9`). Periods are `valid_from` inclusive, `valid_to` exclusive
+**Served tables** (`spine` serving schema version `10`). Periods are `valid_from` inclusive, `valid_to` exclusive
 (Compustat's inclusive ends are moved one day on), `valid_to` NULL while current.
 
 | Table | Rows |
 |---|---|
-| `security` | one per ticker of the newest SEC file: CIK, name, exchange, `tier` and `tier_rule`, `security_type` and its source, the Compustat link (`gvkey`, `iid`, `link_source`), `cusip`, `isin` (derived), the FIGI fields, the current GICS codes, the bridge `sector` / `industry`, Compustat's company `sic` (spine 6), each with its source, and the SEC file's provenance |
+| `security` | one per ticker of the newest SEC file: CIK, name, exchange, `tier` and `tier_rule`, `security_type` and its source, the Compustat link (`gvkey`, `iid`, `link_source`), `cusip`, `isin` (derived), the FIGI fields, the current GICS codes, the bridge `sector` / `industry`, Compustat's company `sic` (spine 6), `country` and `country_source` (spine 10: where the business is, ISO 3166-1 alpha-2 — Compustat's own `comp.company.loc` where the row links to a company, else the SEC submissions header's business address; NULL is unknown, never "not US"), each with its source, and the SEC file's provenance |
 | `security_history` | the SEC file's `cik`, `name`, `exchange` per ticker over the stored snapshots; Compustat's identifier history of the linked securities |
 | `gics_history` | Compustat's GICS periods of the linked companies |
 | `index_membership` | the fund-file members (source `funds/index_holdings`) and Compustat's constituents (source `wrds/idxcst_his`, the check) |

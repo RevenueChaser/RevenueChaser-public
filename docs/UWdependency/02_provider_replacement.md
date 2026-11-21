@@ -68,3 +68,32 @@ plan (`/mnt/project-files/gui_redesign/revenuechaser_v2_run_plan.md`, 21 Nov 202
 provider**: its only source steps are step 15 (Kalshi and Polymarket, free) and step 9's Settings "source
 catalogue with state and TEST", which *renders* the same registry. So this migration is **not blocked on V2**;
 see [`05_migration_plan.md`](05_migration_plan.md) §4 for the three real sync points.
+
+## 5. What we actually spend at UW — read from the API dashboard, 21 November 2026 14:56 Amsterdam
+
+Read off `unusualwhales.com/dashboard/api` by the UI thread (screenshots in
+`/mnt/project-files/UWdependency/api/`; the key was not revealed).
+
+- Plan **"Whale Bundle Basic"**, active. **Unlimited requests a day** (the page prints 100M included, 1,312 used
+  that day), **2-year lookback**, and **websockets are NOT in this plan** ("Upgrade to bundle Pro").
+- **Usage, past 30 days: 148K requests in total, 5K a day on average, 35K on the peak day**, 0 days over 80%.
+- Request health, past 24 h: **no 429, no 404, no 403**, 9 other errors.
+
+**Busiest endpoints, past 30 days** — and what each one costs us to replace:
+
+| Endpoint | Requests | Share | Replacement |
+|---|---|---|---|
+| `/stock/:ticker/greek-exposure/strike-expiry` | 36,893 | 22.9% | **layer 3** — compute from a chain (`uw/greek_expiry_strike`, one call per expiry) |
+| `/shorts/:ticker/interest-float/v2` | 35,806 | 22.2% | FINRA short interest is already a need of its own (`ownership.short_interest`); the float half has Yahoo beside it |
+| `/stock/:ticker/option-contracts` | 19,423 | 12.0% | **layer 3** — Cboe or another chain source |
+| `/stock/:ticker/ohlc/:candle_size` | 17,870 | 11.1% | Alpaca already serves the prices store's bars |
+| `/stock/:ticker/earnings` | 11,229 | 7.0% | SEC + WRDS (`fundamentals.report_history` already names `wrds` first) |
+
+**So roughly 75% of what we spend at UW is not the tape at all** — it is chain arithmetic, short interest,
+bars and earnings, each of which has a source we either hold or can reach free. That sharpens the whole plan:
+the expensive thing we buy UW for is used least.
+
+**One consequence for option B.** A note of 5 November put UW's Options Starter tier at 99 USD with
+**25,000 requests per billing month** (unverified, from a screenshot of UW's API pricing page). Against the
+measured **148K requests in 30 days**, Starter would not fit without first moving the four non-tape endpoints
+above off UW. So "just downgrade" is not a one-step option; it is lane A + lane B first, then a downgrade.

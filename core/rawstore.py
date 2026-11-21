@@ -661,7 +661,8 @@ HISTORY_MODES = ("event", "session_snapshot", "change_history", "latest_cache", 
 _JSON_TYPES = {"JSON"}
 _STRUCT_TYPES = {"STRUCT", "UNION"}
 _NESTED_TYPES = _JSON_TYPES | _STRUCT_TYPES
-#: Tables of the removed stores that nothing reads any more, and the issue that took each one's last reader.
+#: Retired tables that nothing reads any more, and the issue that took each one's last reader. Most came with a
+#: removed store; a board file's own table is retired the same way once its last reader goes (``swing_info``).
 #:
 #: ``#860`` (15 Nov 2026) deleted ``raw.duckdb``, ``edgar.duckdb``, ``history.duckdb`` and ``.store/prices.duckdb``
 #: with every code path to them. ``core/tests/test_no_old_store.py`` keeps those *files* and the modules that went
@@ -695,6 +696,7 @@ RETIRED_TABLES: dict[str, str] = {
     "sec_exchange_file": "SEC: the exchange file rows of the old raw store; same path as sec_company_tickers (#860)",
     "sec_mf_file": "SEC: the mutual-fund file rows of the old raw store; nothing reads it (#860)",
     "sec_submissions_cik": "SEC: the CIK index of the old EDGAR store; the sec_submissions view covers it (#860)",
+    "swing_info": "Swing: the Yahoo ``.info`` cache of boards/swing_potential.duckdb; the spine row carries the name and no board reads ``.info`` any more (#645, #996)",
     "swing_ohlc": "prices: the Swing/Fundamentals bar cache of the old raw store; price_bars_daily replaced it (#379, #860)",
     "ticker_payload_cache": "Financials: the per-ticker payload cache of the old raw store (#860)",
     "vendor_valuation": "Financials: vendor valuation rows of the old raw store; the fundamentals build serves them (#860)",
@@ -702,18 +704,6 @@ RETIRED_TABLES: dict[str, str] = {
 
 
 MANIFEST: dict[str, dict] = {
-    "swing_info": {
-        "db": "swing_potential",
-        "history_mode": "session_snapshot",
-        "key": ["ticker"],
-        "columns": ["ticker TEXT PRIMARY KEY", "payload JSON", "cached_at DOUBLE",
-                    # #127: epoch seconds at fetch. NULL on rows written before the column (unknown, never 0).
-                    # Added by ALTER, no schema bump.
-                    "fetched_at DOUBLE"],
-        "kind": "json_payload",
-        "write": "upsert",
-        "sources": ["swing_potential/info/{TICKER}.json"],
-    },
     "rotation_holdings": {
         "db": "sector_rotation",
         "history_mode": "latest_cache",
