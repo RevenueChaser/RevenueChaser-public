@@ -22,7 +22,7 @@ Nothing below commits to one. **Measurements M1-M4 decide it**, and all four fit
 | **M1** | Is the Cboe delayed chain reachable and complete? | from **homesrv** (not the cloud container, which got HTTP 403 Cloudflare on 21 Nov): one `_SPX` and one AAPL fetch, count contracts and expiries, compare against the same session's `option_eod` rows | the 5.7× contract gap against UW is unexplained; layer 3 rests on this |
 | **M2** | Does IBKR give real-time **tick-by-tick option trades**, and at what pacing? | one bounded request on the Gateway that already runs, on an SPX 0DTE strike: count ticks, the span covered, whether bid/ask accompany each tick | decides whether IBKR alone carries layer 1, i.e. whether the whole migration costs USD 1.50 or USD 80 a month |
 | **M3** | How close is our own side/sweep call to UW's? | on the **stored** `option_print` rows of a past session (no new UW call), score `core/option_prints.py` against UW's own tag, then add a draft sweep rule and score it | the acceptance test avo asked for, while UW is still live |
-| **M4** | Massive and Databento option prices | read both pricing pages in a browser (they are JavaScript) | the two candidate prices nobody has verified |
+| ~~**M4**~~ | ~~Massive and Databento option prices~~ | **done 21 Nov 2026**: both pages rendered in Chromium | Massive Options Developer **USD 79/month** (OPRA trades + flat files, 4 years, 15-minute delayed), Advanced **USD 199** real-time; Databento Standard **USD 199/month**, no licence fees, 1 year of L1. Table in `02_provider_replacement.md` §candidates, comparison in `03_options_track.md` |
 
 M1-M3 need no new subscription and no paid call. M4 is a browser read.
 
@@ -47,6 +47,7 @@ Each lane is one issue and one PR, in this order.
 | **G1. Congress trades (optional, new)** | House Clerk bulk ZIP (verified 21 Nov: 1,867 rows for 2026) + Senate eFD; the cost is parsing the PTR **PDFs** and matching tickers | 1 week, mostly parsing | avo's word |
 | **G. Analyst ratings** | the one item with no source here at all; new work, not a migration | unscoped | avo's word |
 | **H. Delete the dead surface** | the 21 uncalled client methods and the lab endpoints we never use | half a day | — |
+| **J. Keep the UW tape while we still pay for it** | `GET /api/option-trades/full-tape/{date}` gives one trading day's **complete** option tape as a zip, back to 2022-01-01 within the plan's lookback (UW's own spec, line 28490) — not the 8 days `/data/download` shows. Download a reference set now; add a daily job that takes each new day until UW is dropped in v2, then **switch the job off**. The four other daily files (Options Screener, Stock Screener, OI Changes, Dark Pool) have no download path, but their live endpoints do, so they are a snapshot job rather than a zip | 1 day for the job; the download is bandwidth and disk | avo said yes, 21 Nov 2026 17:14 Amsterdam |
 | **I. Preserve avo's own UW-only data** | six stock watchlists (already exported), four custom alert rules and the Console habits (already recorded) — then decide where they live in RC: the watchlists in `watchlists.duckdb`, the alert rules as RC alert definitions | 1 day for the import; the capture is done | before 8 Dec |
 
 Lane **I** is the only one with no fallback: it is configuration avo typed into UW, not data a provider
@@ -107,10 +108,15 @@ arrived at.
 ## 5. The questions only avo can answer (one card at a time)
 
 1. **Which option, A, B or C?** — asked once M1-M4 are in, so it is a decision on numbers.
-2. **Do we take a few Data Downloads reference days before the 8-trading-day window closes?** (Personal-use
-   terms; nothing downloaded so far. It is the cheapest input to M1 and M3.)
+2. **How many reference days, and where do they live?** — answered in principle (avo, 21 Nov 17:14: take them and
+   automate the rest until UW is dropped); the remaining part is scope, and that is a disk measurement, not a
+   question. Files land under `/mnt/data/apps/revenuechaser/uw-reference/`, personal use, out of this repository.
 3. **Does the UW bot feed stop when the plan renews on 9 December?**
 4. **Analyst ratings** — do we want them at all, and is a paid source acceptable?
+
+**Lane J's end condition is written down on purpose:** the daily download exists only while UW is paid for. The
+day a v2 board stops reading UW, the job is switched off in the same PR that removes the need. It is not a
+permanent dependency wearing a different hat.
 
 Answered since: **"Traders' Pub" is avo's own server**, run with friends, and the UW bot in it runs on the UW API
 (avo, 21 Nov 2026 17:02 Amsterdam). The aim is to see how that bot works and whether it can be tied into RC, and
