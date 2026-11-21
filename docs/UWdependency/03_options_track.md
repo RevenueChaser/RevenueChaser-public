@@ -23,7 +23,7 @@ board's `gex-levels`, `greek-exposure/{strike,expiry,strike-expiry}`, `spot-expo
 
 | Source | Delay | Greeks | OI | Cost | State |
 |---|---|---|---|---|---|
-| Cboe `cdn.cboe.com/api/global/delayed_quotes/options/<SYM>.json` | ~15 min | yes (δ γ θ ν ρ) | yes | free, no key | worked 5 Nov (SPX 29,576 contracts); **403 Cloudflare from the cloud container on 21 Nov** — re-measure from homesrv |
+| ~~Cboe `cdn.cboe.com/api/global/delayed_quotes/options/<SYM>.json`~~ | ~~15 min~~ | yes (δ γ θ ν ρ) | yes | free, no key | **ruled out (M1, 21 Nov 2026): HTTP 403 from homesrv too**, on both hosts and both symbols. It worked on 5 Nov from a cloud box; it does not work from where RC runs |
 | IBKR Gateway (OPRA L1 + model Greeks) | real time | yes (IBKR's model) | yes | **USD 1.50/mo** non-pro, waived over USD 20 commissions | the Gateway already runs on homesrv |
 | ThetaData Options Standard | real time | chain snapshots | yes | USD 80/mo | individual use, no redistribution |
 
@@ -49,8 +49,8 @@ Measured from the UI survey, 21 Nov 2026 (`ui/README.md`, `07_ui_survey.md` §3)
 | Bullish / bearish premium | Implied move per expiry |
 | Bid/ask volume bars | "Highest volume contracts" (one table, four UW pages) |
 
-So the tape decision below is the whole cost decision: everything in the right column is layer 3 arithmetic over a
-chain we can get for USD 1.50 a month or for free.
+So the tape decision below is the whole cost decision — but the right column is no longer free either: **M1 found
+Cboe answering 403 from homesrv as well** (21 Nov 2026), so a chain costs at least the IBKR line's USD 1.50.
 
 **UW is retiring DEX** (banner on its own Delta tab, seen 21 Nov 2026). It stays in the layer-3 list above as
 arithmetic, but it is not worth a lane.
@@ -82,6 +82,32 @@ the flow columns of the earnings set.
 tick-by-tick, with 5 concurrent subscriptions and 1,000 ticks per historical request. The IBKR documentation
 page is JavaScript-rendered and could not be read from here. **This is measurement V2 in the plan** and it is the
 single fact that decides whether IBKR alone can carry layer 1.
+
+### What a tape costs, measured (M4 done, 21 Nov 2026)
+
+| Source | Tape | History | Price | Delay |
+|---|---|---|---|---|
+| ~~IBKR OPRA L1~~ | **ruled out for the tape (M2, 21 Nov 2026):** IBKR's own doc says *"Real time tick-by-tick data is not available for options"* — twice on the page | — | USD 1.50/month | n/a. It stays the chain, IV and snapshot source, not the tape |
+| **Massive Options Developer** | OPRA trades + flat files | 4 years | **USD 79/month** | **15 minutes** |
+| **ThetaData Standard** | tick-level OPRA, every NBBO quote | 10 years | **USD 80/month** | real-time |
+| **Massive Options Advanced** | OPRA trades + flat files | 5+ years | **USD 199/month** | real-time |
+| **Databento Standard** | live, no licence fees | 1 year of L1 | **USD 199/month** | real-time |
+| UW Whale Bundle Basic, today | the tape we have now, plus everything else | 2 years | **USD 160/month** | real-time |
+
+Two things follow. First, **a 15-minute delay is free of charge in practice**: everything the code actually reads
+from the tape (the SPX ask-side ratio, the stored prints, a sweep rule scored overnight) is not a live alert, so
+Massive Developer at USD 79 is half of UW. A live flow alert is the only thing that needs USD 199 or IBKR.
+Second, none of these carries a chain's Greeks and the calendars and the 13F tags and the earnings tape; UW's
+USD 160 is one bill for several things, which is why `05_migration_plan.md` option C is not simply "buy a tape".
+
+### The historical tape is already ours to keep, while the plan is alive
+
+`GET /api/option-trades/full-tape/{date}` returns **every option transaction of one trading day** as a zip
+(UW's own spec, `api/uw_public_api_openapi.yaml` line 28490; the spec's own example uses `wget` with the bearer
+key). Its reach is **the plan's historical lookback window, back to 2022-01-01** — not the 8 trading days the
+`/data/download` page offers. So reference days can be taken by API, in bulk, for as long as the subscription
+lasts, and they are the exact answer M3 scores our own side and sweep rules against. See lane J in
+`05_migration_plan.md`.
 
 ## Layer 2 — sweep / block / side / multi-leg
 

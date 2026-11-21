@@ -1,6 +1,6 @@
-# UWdependency — Unusual Whales web UI survey (Task 2.1)
+# Unusual Whales web UI survey (Task 2.1)
 
-Done 21 Nov 2026 in avo's logged-in Chrome (account plan shown in the UI: "Whale Bundle Basic - Monthly").
+Done 21 Nov 2026 in avo's logged-in Chrome.
 UW plan ends 8 Dec 2026. This folder is the record of what the web UI shows, for the thread
 "Plan migration away from Unusual Whales".
 
@@ -13,28 +13,21 @@ UW plan ends 8 Dec 2026. This folder is the record of what the web UI shows, for
   favourite toggles, Mr. Whale prompts (they spend credit), the chat widget.
 - **Left behind:** one "STM" bookmark row in Options Watchlist (UW's auto-bookmark; removal was not possible for me).
   Crypto "Show All (52)" left expanded (view state only). Nothing else was created or changed.
-- 681 screenshots from the second pass, 62 older ones from the first pass in `_ilk-tur/` (kept, superseded).
-
-## Where the screenshots are
-
-**Not in this repository.** This tree is code only, and the survey's 681 screenshots, avo's exported stock
-watchlists and his alert rules are data and personal configuration. They live beside the thread at
-`/mnt/project-files/UWdependency/`, in the folders listed below, each with its own `notlar.md`
-(file, full URL, capture time). What this folder carries is the index, the UI-only feature list, the navigation
-map and the public API path list. The part that changes the migration plan is `../07_ui_survey.md`.
+- 681 screenshots from the second pass sit next to each `notes.md`; 62 older ones from the first pass are in
+  `first-pass/` (kept, superseded). avo approved putting them in this repository on 21 Nov 2026.
 
 ## Files at the top level
 
 | File | What |
 |---|---|
-| `README.md` (this file) | the survey index, as written by the survey thread |
+| `README.md` | this file |
 | `UI-only-features.md` | features seen in the UI with no matching public API path, and earlier guesses that were wrong |
-| `manifest.tsv` | every second-pass screenshot: folder, file, full URL, capture time (UTC) — **in the project folder, not here** |
+| `manifest.tsv` | every second-pass screenshot: folder, file, full URL, capture time (UTC) |
 | `nav-links.md` | the left navigation as read from the page, with paths |
 | `public_api_paths.txt` | the 241 paths of the public API |
-| `api/uw_public_api_openapi.yaml` | the full public OpenAPI spec (fetched 21 Nov 2026) — **in the project folder** |
+| `api/uw_public_api_openapi.yaml` | the full public OpenAPI spec (fetched 21 Nov 2026) |
 
-Each folder has a `notlar.md`: a table of its screenshots (file, full URL, time in Amsterdam time), then what the
+Each folder has a `notes.md`: a table of its screenshots (file, full URL, time in Amsterdam time), then what the
 page shows, which buttons were pressed and what they did, and the nearest API path.
 
 ## Folders
@@ -90,13 +83,3 @@ page shows, which buttons were pressed and what they did, and the nearest API pa
   works and whether it can be tied into his system, and to keep a record of it either way.
 - "No path" in `UI-only-features.md` is a name match against the spec, not a tested call.
 - Ticker > Volatility has no screenshot (the capture timed out twice); the Volatility Hub shots cover the same component.
-
-## Public API surface, by prefix (for the UI-only comparison)
-
-stock 63, market 13, crypto 13, predictions 10, private-markets 9, portfolio 8,
-option-trades 8, futures 8, congress 8, watchlists 6, shorts 6, politics 6,
-institution 6, companies 6, politician-portfolios 5, etfs 5, volatility 4,
-seasonality 4, screener 4, option-contract 4, insider 4, flex-options 4, alerts 4,
-options-pulse 3, forex 3, earnings 3, darkpool 3, potus 2, lit-flow 2, institutions 2,
-group-flow 2, digital-currencies 2, analytics 2, and one each for stock-directory,
-short_screener, sec-filings, option-activity, news, net-flow, economy, commodities, calendar.
