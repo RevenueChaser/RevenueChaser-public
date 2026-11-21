@@ -1,0 +1,1521 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RevenueChaser v2 Mock</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ---------- shared theme tokens: D structure, Murekkep light, Gece dark (avo, 12 Nov 2026) ---------- */
+:root{--font-sans:Inter,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;--font-mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+--fs-xs:11px;--fs-sm:12.5px;--fs-base:14px;--fs-md:16px;--fs-lg:20px;--fs-xl:26px;
+--sp-1:4px;--sp-2:8px;--sp-3:12px;--sp-4:16px;--sp-5:24px;--sp-6:32px;--sp-7:48px;
+--r-sm:6px;--r-md:10px;--r-lg:14px;--r-pill:999px;--elev-1:0 1px 2px var(--shadow);--elev-2:0 12px 32px var(--shadow);--touch:44px;
+--bg:#11161D;--fg:#D5DBE3;--bright:#F1F4F8;--card:#192029;--card-2:#1F2731;--border:rgba(213,219,227,.10);--sidebar:#141A22;
+--pos:#6CC497;--neg:#E98A7F;--amber:#E0B060;--sky:#8DB8DA;--muted:#98A2AF;--accent:#8DB8DA;--accent-soft:rgba(141,184,218,.14);
+--pos-soft:rgba(108,196,151,.12);--neg-soft:rgba(233,138,127,.12);--amber-soft:rgba(224,176,96,.12);--focus:#8DB8DA;
+--input-bg:#1E2631;--input-border:#323C49;--hover:#212A35;--topbar:rgba(17,22,29,.85);--nav-fg:rgba(241,244,248,.72);--nav-on:#26303C;
+--hover-faint:rgba(255,255,255,.03);--frame-bg:#11161D;--overlay:rgba(17,22,29,.72);--primary-bg:#E6EBF1;--primary-fg:#11161D;
+--scrim:rgba(0,0,0,.5);--shadow:rgba(0,0,0,.35);--badge-blue:#8DB8DA;--badge-gray:#A3ACB8;--hover-soft:rgba(255,255,255,.05);
+--data-1:#4F93D2;--data-2:#D9773F;--data-3:#6FAE8C;--data-4:#A98BC9;--data-5:#C9A227;--grid:rgba(213,219,227,.07);color-scheme:dark}
+:root[data-theme="light"]{--bg:#F6F5F1;--fg:#2E2C28;--bright:#1A1916;--card:#FFFFFF;--card-2:#F3F1EC;--border:rgba(40,36,30,.12);--sidebar:#EFEDE7;
+--pos:#2E7652;--neg:#B0443A;--amber:#9A6212;--sky:#2F6690;--muted:#67635B;--accent:#2F6690;--accent-soft:rgba(47,102,144,.10);
+--pos-soft:rgba(47,122,85,.10);--neg-soft:rgba(176,68,58,.09);--amber-soft:rgba(154,98,18,.10);--focus:#2F6690;
+--input-bg:#FFFFFF;--input-border:#D6D2C8;--hover:#EFECE5;--topbar:rgba(246,245,241,.85);--nav-fg:#4A4741;--nav-on:#E9E5DC;
+--hover-faint:rgba(40,36,30,.04);--frame-bg:#F6F5F1;--overlay:rgba(246,245,241,.75);--primary-bg:#2E2C28;--primary-fg:#FAF9F6;
+--scrim:rgba(30,28,24,.32);--shadow:rgba(30,28,24,.10);--badge-blue:#2F6690;--badge-gray:#67635B;--hover-soft:rgba(40,36,30,.06);
+--data-1:#2A6FB0;--data-2:#C0602E;--data-3:#3F7F63;--data-4:#7A5A9B;--data-5:#8A6D10;--grid:rgba(40,36,30,.08);color-scheme:light}
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--bg);color:var(--fg);font-family:var(--font-sans);font-size:var(--fs-base);font-variant-numeric:tabular-nums;-webkit-text-size-adjust:100%}
+
+/* ---------- mock book chrome (not part of the design) ---------- */
+.book{max-width:1960px;margin:0 auto;padding:0 16px 64px}
+.bookbar{position:sticky;top:0;z-index:50;background:var(--topbar);backdrop-filter:blur(8px);border-bottom:1px solid var(--border);
+ padding:10px 16px;margin:0 -16px 20px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.bookbar .bt{font:500 var(--fs-sm)/1 var(--font-sans);color:var(--fg);background:var(--input-bg);border:1px solid var(--input-border);
+ border-radius:var(--r-pill);padding:0 14px;height:36px;min-width:44px;display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+.bookbar .bt[aria-pressed="true"]{background:var(--accent);color:var(--primary-fg);border-color:var(--accent)}
+.bookbar .grp{display:flex;gap:6px;align-items:center}
+.bookbar .lbl{font-size:var(--fs-xs);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.bookhead h1{font-size:var(--fs-xl);margin:16px 0 4px;color:var(--bright);letter-spacing:-.01em}
+.bookhead p{margin:0 0 8px;color:var(--muted);font-size:var(--fs-sm);max-width:72ch;line-height:1.55}
+.note{background:var(--amber-soft);border:1px solid var(--border);border-left:3px solid var(--amber);border-radius:var(--r-sm);
+ padding:10px 12px;font-size:var(--fs-sm);color:var(--fg);margin:12px 0;line-height:1.5}
+.cap{margin:28px 0 8px;padding-top:12px;border-top:1px solid var(--border)}
+.cap h2{font-size:var(--fs-md);margin:0 0 2px;color:var(--bright)}
+.cap h2 span{color:var(--accent);font-family:var(--font-mono);font-size:var(--fs-sm);margin-right:8px}
+.cap p{margin:0;color:var(--muted);font-size:var(--fs-sm);line-height:1.5;max-width:90ch}
+.stage{overflow:hidden;border:1px solid var(--border);border-radius:var(--r-md);background:var(--frame-bg);box-shadow:var(--elev-1)}
+.stage>.scaler{transform-origin:top left}
+.shots{display:grid;gap:14px}
+details.list{border:1px solid var(--border);border-radius:var(--r-md);background:var(--card);padding:12px 14px;margin:14px 0}
+details.list summary{cursor:pointer;font-weight:600;color:var(--bright)}
+details.list ul{margin:10px 0 0;padding-left:20px;font-size:var(--fs-sm);line-height:1.6;color:var(--fg)}
+details.list li{margin-bottom:4px}
+.ok::before{content:"✓ ";color:var(--pos);font-weight:700}
+.no::before{content:"— ";color:var(--muted)}
+
+/* ---------- v2 frame ---------- */
+.app{width:var(--sw,1187px);background:var(--bg);color:var(--fg);font-size:var(--fs-base);display:grid;
+ grid-template-rows:40px 40px 31px 32px 1fr 24px 22px;height:var(--sh,742px)}
+.app.strip{grid-template-rows:40px 40px 31px 32px 26px 1fr 24px 22px}
+.appbar{height:40px;display:flex;align-items:center;gap:var(--sp-3);padding:0 var(--sp-3);background:var(--sidebar);border-bottom:1px solid var(--border);overflow:hidden;min-width:0}
+.narrow .appbar{gap:var(--sp-2)}
+.narrow .tagline,.narrow .pinhint{display:none}
+.appbar>*{flex:none}
+.mark{font-weight:700;font-size:var(--fs-sm);letter-spacing:.06em;color:var(--bright);white-space:nowrap}
+.mark em{color:var(--accent);font-style:normal}
+.cmd{flex:1 1 120px;min-width:0;max-width:520px;height:26px;background:var(--input-bg);border:1px solid var(--input-border);border-radius:var(--r-sm);
+ display:flex;align-items:center;gap:8px;padding:0 10px;font-size:var(--fs-sm);color:var(--muted)}
+.cmd kbd{font-family:var(--font-mono);font-size:var(--fs-xs);border:1px solid var(--input-border);border-radius:4px;padding:1px 5px;color:var(--muted);margin-left:auto}
+.spacer{flex:1}
+.thint{font-size:var(--fs-xs);color:var(--muted);font-style:italic;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.narrow .thint{display:none}
+.chw{display:flex;flex-direction:column;height:100%;min-height:0}
+.chw>svg{flex:1;min-height:0}
+.xax{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);padding-top:2px;flex:none}
+.lgd{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:var(--fs-xs);color:var(--muted);margin-bottom:5px}
+.lgd i.ln{display:inline-block;width:14px;height:2px;vertical-align:middle;margin-right:5px}
+.lgd i.bx{display:inline-block;width:8px;height:8px;border-radius:2px;vertical-align:middle;margin-right:5px}
+.wf{display:grid;grid-auto-rows:minmax(0,1fr);gap:1px;height:100%;overflow:hidden}
+.wr{min-height:0;overflow:hidden;display:grid;grid-template-columns:108px 1fr 74px;align-items:center;gap:6px;font-size:10px;color:var(--muted);line-height:1.05}
+.wr .nm{padding-left:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wr.tot .nm{padding-left:0;color:var(--fg);font-weight:600}
+.wr .tr{height:8px;display:block;align-self:center}
+.wr .tr i{display:block;height:8px;border-radius:2px}
+.wr .fg{font-family:var(--font-mono);text-align:right;white-space:nowrap}
+.tile.mt{padding:4px 6px;display:flex;flex-direction:column;gap:1px;min-width:0}
+.tile.mt .v.sm{font-size:var(--fs-sm)}
+.tile.mt .cmp{font-size:10px}
+.mtv{display:flex;align-items:baseline;gap:4px;flex-wrap:wrap;min-width:0}
+.dlt{font-family:var(--font-mono);font-size:var(--fs-xs);white-space:nowrap}
+.dlt.up{color:var(--pos)}.dlt.dn{color:var(--neg)}
+.psent{flex:none;font-size:var(--fs-xs);color:var(--fg);line-height:1.5;margin-top:6px;border-top:1px solid var(--border);padding-top:5px}
+.pins{display:flex;gap:4px;min-width:0;overflow:hidden;flex:0 1 auto}
+.pin{font-family:var(--font-mono);font-size:var(--fs-xs);padding:2px 7px;border-radius:var(--r-sm);background:var(--card-2);color:var(--fg);border:1px solid var(--border)}
+.pin b{font-weight:500}
+.freshdot{display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-xs);color:var(--muted);white-space:nowrap}
+.freshdot i{width:7px;height:7px;border-radius:50%;background:var(--pos);display:inline-block}
+.freshdot.warn i{background:var(--amber)}
+.freshdot.bad i{background:var(--neg)}
+.clock{font-family:var(--font-mono);font-size:var(--fs-xs);color:var(--fg);white-space:nowrap}
+.acct{width:24px;height:24px;border-radius:50%;background:var(--accent-soft);color:var(--accent);font-size:var(--fs-xs);
+ display:grid;place-items:center;font-weight:700;border:1px solid var(--border)}
+
+.btabs{height:40px;display:flex;align-items:stretch;gap:2px;padding:0 var(--sp-2);background:var(--card);border-bottom:1px solid var(--border);overflow:hidden}
+.btabs a{display:flex;align-items:center;padding:0 10px;font-size:var(--fs-xs);letter-spacing:.06em;text-transform:uppercase;
+ color:var(--nav-fg);text-decoration:none;white-space:nowrap;border-bottom:2px solid transparent}
+.btabs a.on{background:var(--accent);color:var(--primary-fg);font-weight:700;border-bottom-color:var(--accent)}
+.menus{display:flex;gap:12px;font-size:var(--fs-sm);color:var(--fg);white-space:nowrap}
+.vrule{width:1px;height:16px;background:var(--border);flex:none}
+.tagline{font-size:var(--fs-xs);letter-spacing:.05em;color:var(--muted);white-space:nowrap}
+.pinhint{font-size:var(--fs-xs);color:var(--muted);font-style:italic;white-space:nowrap}
+.dbadge{width:14px;height:14px;border-radius:3px;background:var(--accent);color:var(--primary-fg);font-style:normal;
+ font-size:9px;font-weight:700;display:grid;place-items:center;flex:none}
+.winbtns{font-size:var(--fs-xs);color:var(--muted);letter-spacing:.2em;padding-right:4px}
+.stamp{font-family:var(--font-mono);font-size:var(--fs-xs);color:var(--accent);white-space:nowrap}
+.cnt{font-size:var(--fs-xs);letter-spacing:.06em;text-transform:uppercase;color:var(--fg);white-space:nowrap}
+.drop{font-size:var(--fs-xs);color:var(--fg);background:var(--input-bg);border:1px solid var(--input-border);
+ border-radius:var(--r-sm);padding:2px 10px;white-space:nowrap}
+.pbadge{width:13px;height:13px;border-radius:2px;background:var(--accent-soft);color:var(--accent);font-style:normal;
+ font-size:9px;font-weight:700;display:grid;place-items:center;flex:none;margin-left:5px}
+.dtabs{height:31px;display:flex;align-items:stretch;background:var(--bg);border-bottom:1px solid var(--border);padding:0 var(--sp-2);gap:1px}
+.dtabs .dt{display:flex;align-items:center;gap:6px;padding:0 10px;font-size:var(--fs-xs);color:var(--muted);border:1px solid transparent;
+ border-bottom:none;white-space:nowrap}
+.dtabs .dt.on{background:var(--card);color:var(--bright);border-color:var(--border);border-radius:var(--r-sm) var(--r-sm) 0 0}
+.dtabs .dt b{font-weight:600}
+.dtabs .x{color:var(--muted);font-size:var(--fs-xs)}
+.stoolbar{height:32px;display:flex;align-items:center;gap:var(--sp-2);padding:0 var(--sp-3);background:var(--card-2);border-bottom:1px solid var(--border);overflow:hidden}
+.stoolbar .nm{font-size:var(--fs-xs);letter-spacing:.08em;text-transform:uppercase;font-weight:700;color:var(--bright);white-space:nowrap}
+.sep{width:1px;height:16px;background:var(--border)}
+.btn{font-size:var(--fs-xs);letter-spacing:.05em;text-transform:uppercase;color:var(--fg);background:transparent;border:1px solid var(--border);
+ border-radius:var(--r-sm);padding:3px 8px;white-space:nowrap;display:inline-flex;align-items:center;gap:5px}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:var(--primary-fg)}
+.btn.gho{border-color:transparent;color:var(--muted)}
+.btn.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+.badge{font-family:var(--font-mono);font-size:var(--fs-xs);background:var(--accent-soft);color:var(--accent);border-radius:var(--r-pill);padding:1px 7px;white-space:nowrap;flex:none}
+.badge.g{background:var(--pos-soft);color:var(--pos)}
+.badge.a{background:var(--amber-soft);color:var(--amber)}
+.badge.r{background:var(--neg-soft);color:var(--neg)}
+.badge.n{background:var(--card-2);color:var(--muted)}
+.tstrip{height:26px;display:flex;align-items:center;gap:var(--sp-4);padding:0 var(--sp-3);background:var(--sidebar);border-bottom:1px solid var(--border);
+ font-family:var(--font-mono);font-size:var(--fs-xs);overflow:hidden}
+.tstrip span b{color:var(--fg);font-weight:500}
+.work{overflow:hidden;padding:var(--sp-3);display:grid;gap:var(--sp-3);background:var(--bg)}
+.sstatus{height:24px;display:flex;align-items:center;gap:var(--sp-3);padding:0 var(--sp-3);background:var(--card);border-top:1px solid var(--border);
+ font-size:var(--fs-xs);color:var(--muted);overflow:hidden;white-space:nowrap}
+.sstatus b{color:var(--fg);font-weight:500}
+.astatus{height:22px;display:flex;align-items:center;gap:var(--sp-3);padding:0 var(--sp-3);background:var(--sidebar);border-top:1px solid var(--border);
+ font-size:var(--fs-xs);color:var(--muted);overflow:hidden;white-space:nowrap}
+
+/* ---------- panel ---------- */
+.panel{background:var(--card);border:1px solid var(--border);border-radius:var(--r-sm);display:flex;flex-direction:column;overflow:hidden;min-width:0;min-height:0}
+.ph{height:25px;display:flex;align-items:center;gap:var(--sp-2);padding:0 var(--sp-2) 0 0;border-bottom:1px solid var(--border);background:var(--card-2);flex:none}
+.ph .tick{width:3px;align-self:stretch;background:var(--accent)}
+.ph .tick.g{background:var(--pos)}.ph .tick.a{background:var(--amber)}.ph .tick.r{background:var(--neg)}.ph .tick.d2{background:var(--data-2)}
+.ph .t{font-size:var(--fs-xs);letter-spacing:.07em;text-transform:uppercase;font-weight:700;color:var(--bright);white-space:nowrap;
+ flex:none;padding-left:var(--sp-2)}
+.ph .sc{font-size:var(--fs-xs);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+.ph .ic{color:var(--muted);font-size:var(--fs-sm);line-height:1;padding:0 2px}
+.pb{flex:1;min-height:0;overflow:hidden;padding:var(--sp-2)}
+.pb.flush{padding:0}
+.pf{flex:none;border-top:1px solid var(--border);padding:4px var(--sp-2);font-size:var(--fs-xs);color:var(--muted);
+ white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.seg{display:flex;gap:2px;padding:4px var(--sp-2);border-bottom:1px solid var(--border);flex:none}
+.seg button{font-size:var(--fs-xs);letter-spacing:.05em;text-transform:uppercase;border:1px solid transparent;background:transparent;
+ color:var(--muted);border-radius:var(--r-sm);padding:2px 8px}
+.seg button.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:600}
+.scope{font-size:var(--fs-xs);color:var(--muted);padding:4px var(--sp-2) 0;line-height:1.4}
+
+/* ---------- table ---------- */
+table.t{width:100%;border-collapse:collapse;font-size:var(--fs-sm)}
+table.t th{height:27px;text-align:left;font-size:var(--fs-xs);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);
+ font-weight:600;padding:0 var(--sp-2);border-bottom:1px solid var(--border);white-space:nowrap;background:var(--card-2)}
+table.t td{height:27px;padding:0 var(--sp-2);border-bottom:1px solid var(--hover-faint);white-space:nowrap;color:var(--fg);vertical-align:middle}
+table.t td.n,table.t th.n{text-align:right;font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+table.t tr:hover td{background:var(--hover-faint)}
+table.t tr.sel td{background:var(--accent-soft)}
+.tk{font-family:var(--font-mono);font-weight:500;color:var(--bright)}
+.sub{display:block;font-size:var(--fs-xs);color:var(--muted);line-height:1.1}
+.cell2{line-height:1.15;padding:3px 0}
+.up{color:var(--pos)}.dn{color:var(--neg)}
+.heat{border-radius:3px;padding:1px 5px;font-family:var(--font-mono)}
+.bm{display:inline-flex;border:1px solid var(--border);border-radius:var(--r-sm);overflow:hidden;vertical-align:middle;margin-right:6px}
+.bm i{width:18px;height:18px;display:grid;place-items:center;font-size:10px;color:var(--muted);font-style:normal}
+.bm i.on{color:var(--accent);background:var(--accent-soft)}
+.bm i+i{border-left:1px solid var(--border)}
+.rb{position:relative;height:6px;border-radius:3px;background:var(--card-2);width:72px;display:inline-block;vertical-align:middle}
+.rb span{position:absolute;top:-2px;width:2px;height:10px;background:var(--accent);border-radius:1px}
+.spark{display:inline-block;vertical-align:middle}
+.vol{height:6px;border-radius:3px;background:var(--data-1);display:inline-block;vertical-align:middle}
+
+/* ---------- tiles ---------- */
+.tiles{display:grid;gap:var(--sp-2)}
+.tile{background:var(--card);border:1px solid var(--border);border-radius:var(--r-sm);padding:var(--sp-2) var(--sp-3);min-width:0}
+.tile .lb{font-size:var(--fs-xs);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile .v{font-size:var(--fs-lg);font-weight:600;color:var(--bright);font-variant-numeric:tabular-nums;line-height:1.2}
+.tile .v.sm{font-size:var(--fs-md)}
+.tile .cmp{font-size:var(--fs-xs);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chip{display:inline-flex;align-items:center;gap:3px;font-size:var(--fs-xs);font-family:var(--font-mono);border-radius:var(--r-pill);padding:1px 7px}
+.chip.p{background:var(--pos-soft);color:var(--pos)}.chip.n{background:var(--neg-soft);color:var(--neg)}
+.chip.a{background:var(--amber-soft);color:var(--amber)}.chip.q{background:var(--card-2);color:var(--muted)}
+
+/* ---------- judgement card ---------- */
+.jc{background:var(--card);border:1px solid var(--border);border-top:3px solid var(--accent);border-radius:var(--r-sm);padding:var(--sp-2) var(--sp-3)}
+.jc.g{border-top-color:var(--pos)}.jc.a{border-top-color:var(--amber)}.jc.r{border-top-color:var(--neg)}
+.jc .t{font-size:var(--fs-xs);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.jc .verdict{font-size:var(--fs-lg);font-weight:700;letter-spacing:.02em;line-height:1.3}
+.jc.g .verdict{color:var(--pos)}.jc.a .verdict{color:var(--amber)}.jc.r .verdict{color:var(--neg)}.jc .verdict{color:var(--accent)}
+.jc ul{margin:4px 0 6px;padding:0;list-style:none;font-size:var(--fs-sm);font-family:var(--font-mono)}
+.jc li{display:flex;justify-content:space-between;gap:10px;line-height:1.5}
+.jc li span:first-child{font-family:var(--font-sans);color:var(--muted);font-size:var(--fs-xs);letter-spacing:.04em;text-transform:uppercase}
+.jc .why{font-size:var(--fs-xs);color:var(--muted);line-height:1.45;border-top:1px solid var(--border);padding-top:5px}
+
+/* ---------- misc blocks ---------- */
+.rail{display:grid;gap:var(--sp-2);align-content:start;min-width:0;min-height:0;overflow:hidden}
+.railsec{font-size:var(--fs-xs);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);height:32px;display:flex;align-items:center;
+ border-bottom:1px solid var(--border);font-weight:700}
+.kv{display:grid;grid-template-columns:1fr auto;gap:2px 10px;font-size:var(--fs-sm)}
+.kv dt{color:var(--muted);font-size:var(--fs-xs);letter-spacing:.03em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kv dd{margin:0;font-family:var(--font-mono);color:var(--fg);text-align:right}
+.bar2{height:8px;border-radius:4px;overflow:hidden;display:flex;background:var(--card-2)}
+.bar2 i{display:block;height:100%}
+.empty{text-align:left;padding:var(--sp-4);border:1px dashed var(--border);border-radius:var(--r-sm);background:var(--hover-faint)}
+.empty h4{margin:0 0 4px;font-size:var(--fs-sm);color:var(--bright)}
+.empty p{margin:0 0 10px;font-size:var(--fs-xs);color:var(--muted);line-height:1.5;max-width:60ch}
+.skel{height:11px;border-radius:3px;background:linear-gradient(90deg,var(--card-2),var(--hover),var(--card-2));margin:8px 0}
+.banner{display:block;font-size:var(--fs-xs);padding:5px var(--sp-2);border-radius:var(--r-sm);
+ background:var(--amber-soft);color:var(--fg);border:1px solid var(--border);border-left:3px solid var(--amber);line-height:1.4}
+.banner.r{background:var(--neg-soft);border-left-color:var(--neg)}
+.banner.b{background:var(--accent-soft);border-left-color:var(--accent)}
+.ann{position:relative}
+.ann .tag{position:absolute;font-family:var(--font-mono);font-size:10px;background:var(--accent);color:var(--primary-fg);border-radius:3px;padding:0 4px;z-index:5;white-space:nowrap}
+.bubble{position:absolute;right:14px;bottom:60px;width:40px;height:40px;border-radius:50%;background:var(--accent);color:var(--primary-fg);
+ display:grid;place-items:center;font-weight:700;font-size:var(--fs-sm);box-shadow:var(--elev-2);z-index:6}
+.sidebar{background:var(--sidebar);border-right:1px solid var(--border);overflow:hidden;min-width:0}
+.srow{display:flex;align-items:center;gap:8px;min-height:30px;padding:3px 10px;font-size:var(--fs-sm);color:var(--fg);border-left:2px solid transparent}
+.srow.on{background:var(--nav-on);border-left-color:var(--accent);color:var(--bright);font-weight:600}
+.srow .sm{font-size:var(--fs-xs);color:var(--muted)}
+.sgrp{font-size:var(--fs-xs);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);padding:10px 10px 4px;font-weight:700}
+.field{display:grid;grid-template-columns:200px 1fr;gap:var(--sp-3);align-items:start;padding:7px 0;border-bottom:1px solid var(--hover-faint)}
+.field .lab{text-align:right;font-size:var(--fs-sm);color:var(--fg)}
+.field .lab em{display:block;font-style:normal;font-size:var(--fs-xs);color:var(--muted);line-height:1.4}
+.inp{height:26px;background:var(--input-bg);border:1px solid var(--input-border);border-radius:var(--r-sm);padding:0 8px;
+ font-size:var(--fs-sm);color:var(--fg);display:flex;align-items:center;gap:6px;min-width:0;white-space:nowrap;overflow:hidden}
+.inp>span,.inp{text-overflow:ellipsis}
+.inp.ph{color:var(--muted)}
+.sw{width:34px;height:18px;border-radius:9px;background:var(--accent);position:relative;flex:none}
+.sw i{position:absolute;top:2px;right:2px;width:14px;height:14px;border-radius:50%;background:var(--primary-fg)}
+.sw.off{background:var(--input-border)}.sw.off i{left:2px;right:auto}
+.frame{border:1px solid var(--border);border-radius:var(--r-sm);background:var(--card-2);position:relative;overflow:hidden}
+.frame .fl{position:absolute;top:6px;left:8px;font-size:var(--fs-xs);color:var(--muted);font-family:var(--font-mono)}
+.chart{position:relative;background:var(--card);border-radius:var(--r-sm);overflow:hidden}
+.msg{display:flex;gap:10px;padding:8px 0}
+.msg .av{width:22px;height:22px;border-radius:var(--r-sm);background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;
+ font-size:var(--fs-xs);font-weight:700;flex:none}
+.msg .bd{font-size:var(--fs-sm);line-height:1.55;min-width:0}
+.msg .bd .cite{font-size:var(--fs-xs);color:var(--muted);font-family:var(--font-mono);border-left:2px solid var(--accent);padding-left:6px;margin-top:5px}
+.wcard{background:var(--card);border:1px solid var(--border);border-radius:var(--r-sm);padding:var(--sp-2);display:flex;gap:var(--sp-2);min-width:0}
+.wcard .ico{width:26px;height:26px;border-radius:var(--r-sm);background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;flex:none;font-size:var(--fs-sm)}
+.wcard h5{margin:0;font-size:var(--fs-sm);color:var(--bright)}
+.wcard p{margin:2px 0 0;font-size:var(--fs-xs);color:var(--muted);line-height:1.4}
+.dlg{position:absolute;inset:0;background:var(--scrim);display:grid;place-items:center;z-index:8}
+.dlgbox{width:720px;max-width:92%;max-height:86%;background:var(--card);border:1px solid var(--border);border-radius:var(--r-md);
+ box-shadow:var(--elev-2);display:flex;flex-direction:column;overflow:hidden}
+.dlgbox header{padding:var(--sp-3);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:var(--sp-2)}
+.dlgbox header h4{margin:0;font-size:var(--fs-md);color:var(--bright)}
+.dlgbox footer{padding:var(--sp-2) var(--sp-3);border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:var(--sp-2)}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.cg{display:grid;gap:var(--sp-2)}
+</style>
+</head>
+<body>
+<div class="book">
+<div class="bookbar">
+  <span class="lbl">Theme</span>
+  <div class="grp"><button class="bt" data-theme-set="light">Light</button><button class="bt" data-theme-set="dark" aria-pressed="true">Dark</button></div>
+  <span class="lbl">Width</span>
+  <div class="grp"><button class="bt" data-w="1187" aria-pressed="true">1187</button><button class="bt" data-w="1884">1884</button></div>
+  <span class="spacer"></span>
+  <span class="lbl" id="kinfo"></span>
+</div>
+<div class="bookhead">
+<h1>RevenueChaser v2 — design mock</h1>
+<p>Step 2 of the v2 run plan. Fincept Terminal's <b>visual structure</b> (frame rows, panel anatomy, freshness
+contract, tile and judgement-card patterns) on <b>our own theme</b>: Mürekkep light, Gece dark, Inter with tabular
+numbers, the 4&nbsp;px spacing scale and our token names. No Fincept code, string, image or asset is used; the
+structure was measured on a read-only walk and written again from scratch.</p>
+<div class="note"><b>Every figure on these screens is illustrative.</b> Nothing here is read from the live store,
+and the Portfolio screen in particular carries no real position, balance or account id. Numbers are shaped like
+ours so the layout can be judged; they are not ours.</div>
+<div class="note">Web is drawn for the desktop only — 1187&nbsp;px (laptop) and 1884&nbsp;px (extra screen), light and
+dark, as avo decided on 21 Nov 00:41 ("A. Hayır, telefon APK'da"). The phone view is the native Android app, so no
+412&nbsp;px web layout is drawn. This page itself scales to fit any screen, so the mock reads on a phone.</div>
+</div>
+<div id="shots" class="shots"></div>
+
+<details class="list" open>
+<summary>Not in the mock</summary>
+<ul id="notin"></ul>
+</details>
+<details class="list">
+<summary>rules/ui-design.md checklist</summary>
+<ul id="chk"></ul>
+</details>
+</div>
+
+<script>
+/* ---------- mock book: theme, width, fit-to-screen scaling ---------- */
+const WIDTHS={1187:742,1884:980};
+let W=1187;
+function fit(){
+  const h=WIDTHS[W];
+  document.querySelectorAll('.stage').forEach(st=>{
+    const sc=st.querySelector('.scaler'), app=sc.querySelector('.app');
+    app.classList.toggle('narrow', W<1400);
+    app.style.setProperty('--sw',W+'px'); app.style.setProperty('--sh',(app.dataset.h||h)+'px');
+    const k=Math.min(1, st.clientWidth/W);
+    sc.style.transform='scale('+k+')';
+    st.style.height=Math.round((app.dataset.h||h)*k)+'px';
+  });
+  document.getElementById('kinfo').textContent=W+' × '+h+' px';
+}
+document.querySelectorAll('[data-theme-set]').forEach(b=>b.onclick=()=>{
+  document.documentElement.dataset.theme=b.dataset.themeSet;
+  document.querySelectorAll('[data-theme-set]').forEach(o=>o.setAttribute('aria-pressed',o===b));
+});
+document.querySelectorAll('[data-w]').forEach(b=>b.onclick=()=>{
+  W=+b.dataset.w; document.querySelectorAll('[data-w]').forEach(o=>o.setAttribute('aria-pressed',o===b)); fit();
+});
+addEventListener('resize',fit);
+
+/* ---------- frame builder ---------- */
+const BOARDS=['Welcome','Markets','Screeners','Ticker','News','Earnings','13F','Relatedness','Value chain','SPX gamma','Hit rate','Portfolio','Predictions','Backtest','Chat','Settings'];
+function btabs(on){const vis=BOARDS.slice(0,12),rest=BOARDS.slice(12);
+  const head=vis.includes(on)?vis:vis.slice(0,11).concat([on]);
+  return '<nav class="btabs">'+head.map(b=>`<a href="#" class="${b===on?'on':''}">${b}</a>`).join('')
+   +`<a href="#" style="color:var(--muted)">More ▾ <span class="badge n" style="margin-left:5px">${rest.length}</span></a></nav>`;}
+function appbar(fresh){
+  const f=fresh||{cls:'',txt:'END OF DAY'};
+  return `<div class="appbar">
+  <span class="menus">${['File','Navigate','View','Help'].map(m=>`<span>${m}</span>`).join('')}</span>
+  <div class="cmd">⌕ <span>Search symbols…</span><kbd>Ctrl K</kbd></div>
+  <span class="vrule"></span><div class="mark">REVENUE<em>CHASER</em></div>
+  <span class="vrule"></span><span class="tagline">PRIVATE RESEARCH DESK</span>
+  <span class="freshdot ${f.cls}"><i></i>${f.txt}</span>
+  <span class="pinhint">Drag any symbol here to pin</span>
+  <div class="pins"><span class="pin"><b>NVDA</b></span><span class="pin"><b>ASML</b></span><span class="pin"><b>MU</b></span></div>
+  <span class="spacer"></span><span class="clock">21 NOV 26 09:32:14</span>
+  <span class="vrule"></span><button class="btn gho">⌁ CHAT</button><span class="acct">A</span></div>`;
+}
+function dtabs(tabs){return '<div class="dtabs">'+tabs.map(t=>`<div class="dt ${t.on?'on':''}"><i class="dbadge">A</i><b>${t.n}</b><span class="x">✕</span></div>`).join('')
+ +'<span class="spacer"></span><span class="winbtns">▭ ✕</span></div>';}
+function toolbar(o){
+  return `<div class="stoolbar"><span class="nm">${o.name}</span><span class="sep"></span>
+  <span class="badge ${o.stateCls||'g'}">${o.state}</span><span class="sep"></span>
+  <span class="stamp">${o.stamp||'2026-11-21 08:40:00 CET'}</span><span class="sep"></span>
+  <span class="cnt">${o.count}</span>
+  <span class="spacer"></span>
+  ${o.hint?`<span class="thint">${o.hint}</span>`:''}
+  ${o.scope?`<span class="drop">${o.scope}</span>`:''}
+  ${(o.btns||['Layouts','Compact','Pulse','Refresh','+ Add','Save','Reset']).map(b=>
+    `<button class="btn${b==='+ Add'?' pri':''}${b==='Compact'?' on':''}">${b}</button>`).join('')}</div>`;
+}
+function frame(o){
+  const strip=o.strip?`<div class="tstrip">${o.strip}</div>`:'';
+  return `<div class="app${o.strip?' strip':''}" ${o.h?`data-h="${o.h}"`:''}>
+  ${appbar(o.fresh)}${btabs(o.board)}${dtabs(o.docs)}${toolbar(o.tb)}${strip}
+  <div class="work" style="${o.workStyle||''}">${o.work}</div>
+  <div class="sstatus">${o.sstatus}</div>
+  <div class="astatus">${o.astatus||'door /api/v1 ok · dashboard ok · Grafana ok · payload folder ok &nbsp;·&nbsp; tailnet only &nbsp;·&nbsp; v2 mock'}</div>
+  ${o.bubble===false?'':'<div class="bubble">AI</div>'}</div>`;
+}
+const SHOTS=[];
+function shot(n,title,desc,html){SHOTS.push({n,title,desc,html});}
+</script>
+<script>
+/* ---------- component helpers ---------- */
+function panel(o){
+  const seg=o.seg?`<div class="seg">${o.seg.map((s,i)=>`<button class="${i===(o.segOn||0)?'on':''}">${s}</button>`).join('')}</div>`:'';
+  return `<section class="panel" style="${o.style||''}">
+  <div class="ph"><i class="tick ${o.tick||''}"></i><i class="pbadge">A</i><span class="t">${o.title}</span>${o.scope?`<span class="sc">· ${o.scope}</span>`:''}
+  <span class="spacer"></span>${o.count!==undefined?`<span class="badge n">${o.count}</span>`:''}<span class="ic">⚙</span><span class="ic">⟳</span><span class="ic">✕</span></div>
+  ${seg}${o.scopeLine?`<div class="scope">${o.scopeLine}</div>`:''}
+  <div class="pb ${o.flush?'flush':''}" style="${o.bodyStyle||''}">${o.body}</div>
+  ${o.footer?`<div class="pf">${o.footer}</div>`:''}</section>`;
+}
+function tile(lb,v,chip,cmp,small){
+  return `<div class="tile"><div class="lb">${lb}</div><div class="v ${small?'sm':''}">${v}</div>
+  <div class="cmp">${chip||''} ${cmp||''}</div></div>`;
+}
+function spark(seed,up,w,h){
+  w=w||56;h=h||14;let pts=[],v=50;
+  for(let i=0;i<14;i++){seed=(seed*9301+49297)%233280;v+=((seed/233280)-0.45)*14;pts.push(Math.max(6,Math.min(h-2,v*h/100)))}
+  const last=pts[pts.length-1];const d=pts.map((p,i)=>`${(i*(w/13)).toFixed(1)},${(h-p).toFixed(1)}`).join(' ');
+  return `<svg class="spark" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><polyline points="${d}" fill="none"
+   stroke="var(--${up?'pos':'neg'})" stroke-width="1.2"/></svg>`;
+}
+function rangebar(pos){return `<span class="rb"><span style="left:${pos}%"></span></span>`;}
+function heat(v,pct){const c=pct>=0?'pos':'neg';const a=Math.min(1,Math.abs(pct)/3);
+  return `<span class="heat" style="background:color-mix(in srgb, var(--${c}) ${Math.round(a*22)}%, transparent);color:var(--${c})">${v}</span>`;}
+function bookmark(){return '<span class="bm"><i class="on">★</i><i>◈</i></span>';}
+function lineChart(w,h,opts){
+  opts=opts||{};let seed=opts.seed||7,pts=[],v=40;
+  for(let i=0;i<60;i++){seed=(seed*9301+49297)%233280;v+=((seed/233280)-0.44)*5;pts.push(Math.max(8,Math.min(h-10,v*h/100)))}
+  const d=pts.map((p,i)=>`${(i*(w/59)).toFixed(1)},${(h-p).toFixed(1)}`).join(' ');
+  const area=`0,${h} ${d} ${w},${h}`;
+  let grid='';for(let i=1;i<4;i++){grid+=`<line x1="0" y1="${i*h/4}" x2="${w}" y2="${i*h/4}" stroke="var(--grid)" stroke-width="1"/>`}
+  const band=opts.band?`<rect x="${w*.82}" y="0" width="${w*.18}" height="${h}" fill="var(--accent-soft)"/>`:'';
+  return `<svg width="100%" height="${opts.fill?'100%':h+'px'}" style="display:block" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">${band}${grid}
+  <polygon points="${area}" fill="var(--accent-soft)"/><polyline points="${d}" fill="none" stroke="var(--data-1)" stroke-width="1.6"/>
+  ${opts.second?`<polyline points="${pts.map((p,i)=>`${(i*(w/59)).toFixed(1)},${(h-p*0.72-6).toFixed(1)}`).join(' ')}" fill="none" stroke="var(--data-2)" stroke-width="1.2" stroke-dasharray="3 2"/>`:''}</svg>`;
+}
+function bars(n,h,fill){let seed=13,o='';const bw=Math.max(.5,100/n*.72),gap=(100/n-bw)/2;
+  for(let i=0;i<n;i++){seed=(seed*9301+49297)%233280;const v=10+(seed/233280)*(h-10);
+  o+=`<rect x="${(i*(100/n)+gap).toFixed(3)}%" y="${(h-v).toFixed(2)}" width="${bw.toFixed(3)}%" height="${v.toFixed(2)}" fill="var(--data-1)" opacity="${(.45+i/n*.55).toFixed(2)}"/>`}
+  return `<svg width="100%" height="${fill?'100%':h+'px'}" style="display:block" viewBox="0 0 100 ${h}" preserveAspectRatio="none">${o}</svg>`;}
+function donut(parts){
+  let a=0,o='';const C=2*Math.PI*30;
+  parts.forEach(p=>{o+=`<circle r="30" cx="40" cy="40" fill="none" stroke="${p.c}" stroke-width="14"
+   stroke-dasharray="${C*p.v/100} ${C}" stroke-dashoffset="${-C*a/100}" transform="rotate(-90 40 40)"/>`;a+=p.v});
+  return `<svg width="80" height="80" viewBox="0 0 80 80">${o}</svg>`;
+}
+/* legend row above a chart: every series named, no colour left to guess */
+function lgd(items){return `<div class="lgd">`+items.map(i=>{
+  const m=i[2]==='dash'?`<i class="ln" style="background:none;border-top:2px dashed ${i[0]}"></i>`
+    :i[2]==='box'?`<i class="bx" style="background:${i[0]}"></i>`
+    :`<i class="ln" style="background:${i[0]}"></i>`;
+  return `<span>${m}${i[1]}</span>`;}).join('')+`</div>`;}
+/* grouped bars with a line over them, years on the x axis */
+function gbars(groups,series,h){
+  const n=groups.length,gw=100/n,bw=gw*0.74/series.length;
+  let o='';
+  groups.forEach((g,gi)=>{series.forEach((se,si)=>{
+    const v=se.v[gi],y=h-2-v*(h-8)/100;
+    o+=`<rect x="${(gi*gw+gw*0.13+si*bw).toFixed(3)}%" y="${y.toFixed(1)}" width="${(bw*0.86).toFixed(3)}%" height="${(h-2-y).toFixed(1)}" fill="${se.c}"/>`;});});
+  const line=series.find(x=>x.line);
+  if(line){const pts=groups.map((g,gi)=>`${(gi*gw+gw/2).toFixed(2)},${(h-2-line.l[gi]*(h-8)/100).toFixed(1)}`);
+    o+=`<polyline points="${pts.join(' ')}" fill="none" stroke="${line.lc}" stroke-width="1.6" vector-effect="non-scaling-stroke"/>`;
+    o+=pts.map(q=>`<circle cx="${q.split(',')[0]}" cy="${q.split(',')[1]}" r="2" fill="var(--card)" stroke="${line.lc}" stroke-width="1.4"/>`).join('');}
+  return `<div class="chw"><svg width="100%" height="100%" style="display:block" viewBox="0 0 100 ${h}" preserveAspectRatio="none">${o}</svg><div class="xax">${groups.map(g=>`<span>${g}</span>`).join('')}</div></div>`;}
+/* waterfall: every line named on the left, its own figure on the right */
+function wfall(rows){
+  const mx=Math.max(...rows.map(r=>Math.abs(r.v)));
+  return `<div class="wf">`+rows.map(r=>{
+    const w=Math.abs(r.v)/mx*100, c=r.k==='t'?'var(--data-1)':r.v>0?'var(--pos)':'var(--neg)';
+    return `<div class="wr ${r.k==='t'?'tot':''}"><span class="nm">${r.n}</span>
+    <span class="tr"><i style="width:${w.toFixed(1)}%;background:${c}"></i></span>
+    <span class="fg" style="color:${r.k==='t'?'var(--fg)':c}">${r.f}</span></div>`;}).join('')+`</div>`;}
+/* 100% stacked bars, the share printed inside the two segments that matter */
+function stack(groups,parts,h){
+  const n=groups.length,gw=100/n,bw=gw*0.62;let o='';
+  groups.forEach((g,gi)=>{let acc=0;
+    parts.forEach(pt=>{const v=pt.v[gi],y=h-2-(acc+v)*(h-8)/100,hh=v*(h-8)/100;
+      o+=`<rect x="${(gi*gw+(gw-bw)/2).toFixed(3)}%" y="${y.toFixed(1)}" width="${bw.toFixed(3)}%" height="${hh.toFixed(1)}" fill="${pt.c}"/>`;
+      if(pt.lab&&hh>12)o+=`<text x="${(gi*gw+gw/2).toFixed(2)}" y="${(y+hh/2+2.5).toFixed(1)}" fill="var(--primary-fg)" font-size="7" text-anchor="middle">${v}%</text>`;
+      acc+=v;});});
+  return `<div class="chw"><svg width="100%" height="100%" style="display:block" viewBox="0 0 100 ${h}" preserveAspectRatio="none">${o}</svg><div class="xax">${groups.map(g=>`<span>${g}</span>`).join('')}</div></div>`;}
+/* several named lines on one axis */
+function mlines(groups,series,h){
+  const n=groups.length,st=100/(n-1);let o='';
+  for(let i=1;i<4;i++)o+=`<line x1="0" y1="${(i*(h-2)/4).toFixed(1)}" x2="100" y2="${(i*(h-2)/4).toFixed(1)}" stroke="var(--grid)" stroke-width="1" vector-effect="non-scaling-stroke"/>`;
+  series.forEach(se=>{const pts=se.v.map((v,i)=>`${(i*st).toFixed(2)},${(h-2-v*(h-8)/100).toFixed(1)}`);
+    o+=`<polyline points="${pts.join(' ')}" fill="none" stroke="${se.c}" stroke-width="1.5" ${se.dash?'stroke-dasharray="3 2"':''} vector-effect="non-scaling-stroke"/>`;
+    o+=pts.map(q=>`<circle cx="${q.split(',')[0]}" cy="${q.split(',')[1]}" r="1.8" fill="${se.c}"/>`).join('');});
+  return `<div class="chw"><svg width="100%" height="100%" style="display:block" viewBox="0 0 100 ${h}" preserveAspectRatio="none">${o}</svg><div class="xax">${groups.map(g=>`<span>${g}</span>`).join('')}</div></div>`;}
+/* the financials metric tile: caps label, value, signed delta, the pair compared, its own line */
+function mtile(o){const up=o.d>0;
+  return `<div class="tile mt"><div class="lb">${o.lb}</div>
+  <div class="mtv"><span class="v sm">${o.v}</span><span class="dlt ${up?'up':'dn'}">${up?'▲▲':'▼▼'} ${o.dt}</span></div>
+  <div class="cmp">${o.cmp||'FY2026 vs FY2025'}</div>${spark(o.lb.length*7+3,up,70,12)}</div>`;}
+const FOOT=(s,t,d)=>`${s} · as of ${t} Amsterdam · ${d}`;
+</script>
+<script>
+/* ===== 01 frame + panel anatomy ===== */
+shot('01','The frame and the panel, named',
+ 'Eight rows, as measured on the walk, minus the two we drop. Row heights: app bar 40, board tabs 40, document tabs 31, board toolbar 32, work area, board status 24, app status 22. The ticker tape is off by default: our data is hourly and a moving tape would lie. Every panel is the same four parts — header tick, title, count badge; optional segmented control; body; footer that states source, as-of and age.',
+ `<div class="ann">${frame({board:'Welcome',docs:[{n:'Welcome',on:1}],
+  tb:{name:'Welcome',state:'ready',count:'6 widgets',scope:'my layout · desk'},
+  work:`<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+  ${panel({tick:'',title:'Panel anatomy',scope:'one renderer, every board',count:4,seg:['1D','1W','1M','YTD'],
+   body:`<table class="t"><tr><th>Part</th><th>Height</th><th>Carries</th></tr>
+   <tr><td>Header</td><td class="n">25 px</td><td>3 px tick · caps title · scope · count · ＋ · ⋯</td></tr>
+   <tr><td>Segmented</td><td class="n">24 px</td><td>exclusive, never a dropdown under six choices</td></tr>
+   <tr><td>Body</td><td class="n">—</td><td>table 27 px rows · chart · treemap · tiles</td></tr>
+   <tr><td>Footer</td><td class="n">20 px</td><td>source · as of · age · delay or build id</td></tr></table>`,
+   footer:FOOT('v2 mock','02:12','written by hand, no data')})}
+  ${panel({tick:'g',title:'The freshness contract',scope:'every panel, in words',
+   body:`<div class="kv" style="margin-bottom:8px">
+   <dt>Panel footer</dt><dd>source · as of · age</dd>
+   <dt>Board status bar</dt><dd>rows · job · as of</dd>
+   <dt>Subset shown</dt><dd>a sentence above it</dd>
+   <dt>Sample or stale</dt><dd>a banner, never silence</dd></div>
+   <div class="banner b">A number never appears without where it came from and when. A derived verdict never appears without the rule that decided it.</div>`,
+   footer:'this rule is ours, taken from the walk as a pattern'})}</div>`,
+  sstatus:'<b>6/6</b> widgets · built by <b>rc-welcome</b> run 2026-11-21T00:40 · as of <b>00:40</b> · <span class="spacer"></span>',
+  })}
+  <span class="tag" style="top:12px;left:300px">① app bar 40 · command box is the one entry</span>
+  <span class="tag" style="top:52px;left:520px">② board tabs 40</span>
+  <span class="tag" style="top:92px;left:300px">③ document tabs 31 · sub-screens dock beside</span>
+  <span class="tag" style="top:124px;left:560px">④ board toolbar 32 · same button order everywhere</span>
+  <span class="tag" style="bottom:44px;left:420px">⑤ board status 24 · rows, job, as-of</span>
+  <span class="tag" style="bottom:2px;left:420px">⑥ app status 22 · each upstream, probed with a 2 s timeout</span>
+  <span class="tag" style="right:62px;bottom:104px">⑦ ask-Claude bubble</span>
+ </div>`);
+
+/* ===== 02 Dashboard ===== */
+function gauge(v){
+  const a=Math.PI*(v/100), cx=90, cy=86, r=66;
+  const x=cx-r*Math.cos(a), y=cy-r*Math.sin(a);
+  return `<svg width="180" height="100" viewBox="0 0 180 100">
+   <defs><linearGradient id="gg" x1="0" x2="1"><stop offset="0" stop-color="var(--neg)"/>
+    <stop offset=".5" stop-color="var(--amber)"/><stop offset="1" stop-color="var(--pos)"/></linearGradient></defs>
+   <path d="M24,86 A66,66 0 0 1 156,86" fill="none" stroke="url(#gg)" stroke-width="13" stroke-linecap="butt"/>
+   <line x1="${x.toFixed(1)}" y1="${y.toFixed(1)}" x2="${(cx-(r-16)*Math.cos(a)).toFixed(1)}" y2="${(cy-(r-16)*Math.sin(a)).toFixed(1)}"
+    stroke="var(--bright)" stroke-width="3"/>
+   <text x="90" y="74" text-anchor="middle" font-size="22" font-weight="700" fill="var(--bright)" font-family="monospace">${v}</text>
+   <text x="90" y="88" text-anchor="middle" font-size="9" fill="var(--amber)" letter-spacing="1">MIXED</text>
+   <text x="22" y="99" font-size="9" fill="var(--muted)">0</text><text x="150" y="99" font-size="9" fill="var(--muted)">100</text></svg>`;
+}
+function treemap(){
+  const cell=(n,pct,w,h,fs)=>`<div style="flex:${w};min-width:0;display:flex;flex-direction:column;justify-content:center;
+   align-items:center;text-align:center;background:color-mix(in srgb, var(--${pct>0?'pos':'neg'}) ${Math.round(Math.min(1,Math.abs(pct)/2)*34)}%, var(--card-2));
+   border:1px solid var(--bg);padding:2px;overflow:hidden">
+   <div style="font-size:${fs}px;color:var(--bright);line-height:1.1">${n}</div>
+   <div style="font-size:${Math.max(9,fs-3)}px;font-family:var(--font-mono);color:var(--${pct>0?'pos':'neg'})">${pct>0?'+':''}${pct.toFixed(2)}%</div></div>`;
+  return `<div style="display:flex;height:100%;gap:0">
+   <div style="flex:34;display:flex;flex-direction:column">${cell('Technology',0.34,1,1,15)}${cell('Cons. Discr.',1.79,1,1,13)}</div>
+   <div style="flex:22;display:flex;flex-direction:column">${cell('Financials',-1.14,1,1,13)}${cell('Industrials',-0.05,1,1,10)}</div>
+   <div style="flex:22;display:flex;flex-direction:column">${cell('Comm. Svcs',0.30,1,1,12)}
+    <div style="flex:1;display:flex">${cell('Staples',-0.31,2,1,10)}${cell('Energy',-3.27,1,1,9)}</div></div>
+   <div style="flex:22;display:flex;flex-direction:column">${cell('Health Care',-2.20,1,1,12)}
+    <div style="flex:1;display:flex">${cell('Util.',0.12,1,1,9)}${cell('R. Est.',-0.4,1,1,9)}${cell('Mater.',0.2,1,1,9)}</div></div></div>`;
+}
+const PULSE=`<div class="rail" style="grid-column:4;grid-row:1/4;overflow:hidden">
+ ${panel({tick:'',title:'Market pulse',flush:1,style:'height:100%',body:`<div style="padding:7px 8px;overflow:hidden">
+  <div class="railsec" style="height:22px;border:none">Risk-on / risk-off</div>
+  <div class="bar2" style="height:7px;margin:2px 0 4px"><i style="width:100%;background:linear-gradient(90deg,var(--neg),var(--amber),var(--pos))"></i></div>
+  <div style="display:flex;align-items:baseline;gap:6px"><span style="font-size:var(--fs-xl);font-weight:700;color:var(--amber);font-family:var(--font-mono)">58</span>
+   <span style="font-size:var(--fs-xs);color:var(--muted)">/100</span><span class="spacer"></span><span class="badge a">MIXED</span></div>
+  <div class="railsec" style="height:24px;margin-top:6px">Basket breadth</div>
+  ${[['Our universe · large caps',62,'412 / 664'],['Sectors',55,'6 / 11'],['World indices',41,'9 / 22']].map(b=>`
+   <div style="margin:4px 0"><div style="display:flex;font-size:var(--fs-xs);color:var(--muted)"><span>${b[0]}</span><span class="spacer"></span><span style="font-family:var(--font-mono)">${b[2]}</span></div>
+   <div class="bar2" style="height:5px;margin-top:2px"><i style="width:${b[1]}%;background:var(--pos)"></i><i style="width:${100-b[1]}%;background:var(--neg)"></i></div></div>`).join('')}
+  <div class="railsec" style="height:24px;margin-top:6px">↑ Top gainers</div>
+  ${[['SMCI','+8.41%','34.1M'],['ALAB','+6.02%','12.4M'],['CRDO','+5.17%','9.8M']].map(r=>`
+   <div style="display:flex;font-size:var(--fs-xs);font-family:var(--font-mono);line-height:1.6"><span class="tk">${r[0]}</span>
+   <span class="spacer"></span><span class="up">▲ ${r[1]}</span><span style="color:var(--muted);margin-left:6px">${r[2]}</span></div>`).join('')}
+  <div class="railsec" style="height:24px;margin-top:6px">↓ Top losers</div>
+  ${[['MU','-2.11%','28.4M'],['AMAT','-0.38%','11.2M'],['NBIS','-1.84%','6.1M']].map(r=>`
+   <div style="display:flex;font-size:var(--fs-xs);font-family:var(--font-mono);line-height:1.6"><span class="tk">${r[0]}</span>
+   <span class="spacer"></span><span class="dn">▼ ${r[1]}</span><span style="color:var(--muted);margin-left:6px">${r[2]}</span></div>`).join('')}
+  <div class="railsec" style="height:24px;margin-top:6px">Global snapshot</div>
+  <div class="kv" style="font-size:var(--fs-xs)">${[['VIX','16.82','-3.5%'],['US 10Y','4.16','-3.7bp'],['DXY','103.86','-0.01%'],['Gold','3,738','-0.10%'],['Oil WTI','82.43','+0.15%']]
+   .map(r=>`<dt>${r[0]}</dt><dd>${r[1]} <span class="${r[2][0]==='-'?'dn':'up'}">${r[2]}</span></dd>`).join('')}</div>
+  <div class="railsec" style="height:24px;margin-top:6px">Market hours</div>
+  ${[['NYSE','Closed','13h 18m'],['NASDAQ','Closed','13h 18m'],['Euronext','Open','6h 02m'],['LSE','Open','6h 32m']].map(r=>`
+   <div style="display:flex;font-size:var(--fs-xs);line-height:1.6"><span>${r[0]}</span><span class="spacer"></span>
+   <span style="color:var(--${r[1]==='Open'?'pos':'muted'})">● ${r[1]}</span><span style="color:var(--muted);margin-left:8px;font-family:var(--font-mono)">${r[2]}</span></div>`).join('')}
+  </div>`})}</div>`;
+shot('02','Dashboard — the widget grid and the pulse rail',
+ 'Drawn against the Dashboard screenshot. Three columns of panels and one fixed pulse rail; the frame above them carries the menu row, the symbol search, the mark, the state dot, the pin strip and the clock, then the screen tabs with the active one as a filled block, the document tab, the screen toolbar (name · state · build stamp · count on the left, the region dropdown and LAYOUTS / COMPACT / PULSE / REFRESH / + ADD / SAVE / RESET on the right) and the index strip. Each panel header is a tick, a badge, the caps title, the scope after a dot, then gear, refresh and close; each panel ends in its source and as-of line.',
+ frame({board:'Welcome',docs:[{n:'Dashboard',on:1}],
+  tb:{name:'Dashboard',state:'end of day',count:'9 WIDGETS',scope:'United States',stamp:'2026-11-21 00:40:12 CET'},
+  strip:`${[['^SPX','7,323.63','-0.23'],['^DJI','50,198.17','-1.11'],['^IXIC','24,429.88','+0.42'],['^RUT','2,714.31','+0.46'],['^FTSE','10,551.17','-1.30'],['^GDAXI','25,736.24','-1.19'],['^N225','59,444.21','+0.71']]
+   .map(t=>`<span>${t[0]} <b>${t[1]}</b> <span class="${t[2][0]==='-'?'dn':'up'}">${t[2]}%</span></span>`).join('')}`,
+  workStyle:'grid-template-columns:1fr 1.15fr 1.15fr 240px;grid-template-rows:minmax(0,1.15fr) minmax(0,1fr) minmax(0,.85fr)',
+  work:`${panel({tick:'',title:'Market indices',scope:'United States',flush:1,
+   body:`<table class="t"><tr><th>Name</th><th class="n">Last</th><th class="n">Chg</th><th class="n">Chg%</th><th>Day range</th></tr>
+   ${[['S&P 500','7,323.63','-16.90',-0.23,44],['Dow Jones','50,198.17','-561.23',-1.11,18],['Nasdaq Comp.','24,429.88','+101.50',0.42,61],
+     ['Nasdaq 100','27,116.26','+114.47',0.42,63],['Russell 2000','2,714.31','+12.44',0.46,52],['S&P MidCap 400','3,590.70','+10.54',0.29,49],
+     ['NYSE Composite','23,559.61','-253.49',-1.06,22]]
+   .map(r=>`<tr><td><span style="color:var(--muted);font-size:9px">●</span> ${r[0]}</td><td class="n">${r[1]}</td>
+    <td class="n ${r[3]>0?'up':'dn'}">${r[2]}</td><td class="n ${r[3]>0?'up':'dn'}">${(r[3]>0?'+':'')+r[3].toFixed(2)}%</td>
+    <td>${rangebar(r[4])}</td></tr>`).join('')}</table>`,
+   footer:'United States defaults · as of 00:40 (8h ago) · end of day, no intraday'})}
+  ${panel({tick:'d2',title:'Sector map',scope:'United States',flush:1,seg:['1D','1W','1M','YTD'],
+   body:`<div style="height:calc(100% - 22px);padding:4px">${treemap()}</div>
+    <div style="display:flex;align-items:center;gap:6px;padding:0 6px"><span style="font-size:9px;color:var(--muted)">-2.00%</span>
+    <span style="flex:1;height:6px;border-radius:3px;background:linear-gradient(90deg,var(--neg),var(--card-2),var(--pos))"></span>
+    <span style="font-size:9px;color:var(--muted)">+2.00%</span></div>`,
+   footer:'our GICS sectors · area ≈ index weight · colour = 1D return, ±2% = full colour'})}
+  ${panel({tick:'a',title:'Risk-on / risk-off',flush:1,
+   body:`<div style="display:flex;gap:8px;padding:6px 8px;height:100%;overflow:hidden">
+    <div style="flex:none;text-align:center">${gauge(58)}
+     <div style="font-size:var(--fs-xs);color:var(--muted);margin-top:2px">Mixed · score 58 of 100</div></div>
+    <table class="t" style="flex:1"><tr><th>Signal</th><th>Reading</th><th class="n">Z (±2)</th></tr>
+    ${[['Equity trend','+4.1% vs 50-day avg',0.92],['Volatility','VIX 16.8',0.74],['Credit','-0.7% relative, 20d',-0.31],
+      ['Risk FX','-3.9%, 20d',-1.20],['Copper / gold','+1.2% relative, 20d',0.44]]
+    .map(r=>`<tr><td>${r[0]}</td><td style="font-size:var(--fs-xs);color:var(--muted)">${r[1]}</td>
+     <td class="n"><span style="display:inline-block;width:${Math.abs(r[2])*22}px;height:7px;border-radius:2px;
+      background:var(--${r[2]>0?'pos':'neg'});opacity:.5;vertical-align:middle"></span> ${r[2].toFixed(2)}</td></tr>`).join('')}</table></div>`,
+   footer:'daily closes to 20 Nov 2026 · the method is one click away'})}
+  ${PULSE}
+  ${panel({tick:'',title:'Top movers',scope:'our universe',flush:1,seg:['Gainers','Losers','Most active'],
+   body:`<table class="t"><tr><th>Symbol</th><th class="n">Last</th><th class="n">Chg%</th><th class="n">Vol</th><th class="n">Rel vol</th><th class="n">Mcap</th></tr>
+   ${[['SMCI','47.18',8.41,'34.1M','3.2x','$27.4B'],['ALAB','162.55',6.02,'12.4M','2.4x','$26.1B'],['CRDO','88.41',5.17,'9.8M','1.9x','$14.8B'],
+     ['VRT','142.60',4.88,'8.1M','1.6x','$54.2B'],['NBIS','71.02',4.11,'6.1M','2.8x','$16.9B'],['LRCX','104.92',2.26,'11.0M','1.6x','$131B']]
+   .map(r=>`<tr><td><span class="tk">${r[0]}</span></td><td class="n">${r[1]}</td>
+    <td class="n up">+${r[2].toFixed(2)}%</td><td class="n">${r[3]}</td><td class="n">${r[4]}</td><td class="n">${r[5]}</td></tr>`).join('')}</table>`,
+   footer:'our universe · 10,612 names after the ETF and tier cut · as of 00:40 (8h ago)'})}
+  ${panel({tick:'',title:'Market news',flush:1,
+   body:`<div style="display:grid;grid-template-columns:1fr 1fr auto;gap:5px;padding:5px 6px;border-bottom:1px solid var(--border)">
+    <div class="inp">All regions</div><div class="inp">Any impact</div><button class="btn on">My symbols</button></div>
+   <div style="padding:2px 6px">${[['3m','Memory contract pricing resets higher into Q1','SEMIANALYSIS · SEMIS',1],
+    ['11m','ASML books two High-NA systems for a US fab','REUTERS · EUROPE',1],
+    ['24m','NVIDIA files 10-Q: data-centre revenue $141.2B','SEC EDGAR · FILINGS',1],
+    ['41m','Power constraints push two hyperscaler builds into 2028','BLOOMBERG · US',0],
+    ['1h','Export rule consultation opens on accelerators','FT · POLICY',0],
+    ['2h','Foundry utilisation at 94%, lead times stretch','WSJ · ASIA',0]]
+   .map(n=>`<div style="display:flex;gap:7px;padding:3px 0;border-bottom:1px solid var(--hover-faint)">
+    <span style="font-size:var(--fs-xs);font-family:var(--font-mono);color:var(--${n[3]?'pos':'neg'});white-space:nowrap">${n[3]?'▲':'▼'} ${n[0]} ago</span>
+    <div style="min-width:0"><div style="font-size:var(--fs-sm);line-height:1.25">${n[1]}</div>
+    <div style="font-size:9px;letter-spacing:.06em;color:var(--muted)">${n[2]}</div></div></div>`).join('')}</div>`,
+   footer:'14 feeds · 412 clusters in 24h · as of 00:52 (7h ago)'})}
+  ${panel({tick:'',title:'Economic calendar',flush:1,
+   body:`<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;padding:5px 6px;border-bottom:1px solid var(--border)">
+    <div class="inp">United States (US)</div><div class="inp">Medium + high</div></div>
+   <table class="t"><tr><th>Event</th><th>Cty</th><th>Date</th><th class="n">Act</th><th class="n">Fcst</th><th class="n">Prev</th><th>Imp</th></tr></table>
+   <div style="padding:22px 10px;text-align:center;font-size:var(--fs-sm);color:var(--muted)">No events match the filters (46 events in the feed)</div>`,
+   footer:'FRED release calendar + our earnings dates · free sources only · as of 00:40'})}
+  ${panel({tick:'',title:'FX',scope:'United States',flush:1,
+   body:`<table class="t"><tr><th>Name</th><th class="n">Last</th><th class="n">Chg</th><th class="n">Chg%</th><th>Day range</th></tr>
+   ${[['US Dollar Index','103.86','-0.01',-0.01,38],['EUR/USD','1.0971','-0.0007',-0.07,34],['USD/JPY','154.12','+0.21',0.14,66]]
+   .map(r=>`<tr><td>${r[0]}</td><td class="n">${r[1]}</td><td class="n ${r[3]>0?'up':'dn'}">${r[2]}</td>
+    <td class="n ${r[3]>0?'up':'dn'}">${(r[3]>0?'+':'')+r[3].toFixed(2)}%</td><td>${rangebar(r[4])}</td></tr>`).join('')}</table>`,
+   footer:'FRED daily rates · as of 19:00 (14h ago)'})}
+  ${panel({tick:'',title:'Commodities',scope:'United States',flush:1,
+   body:`<table class="t"><tr><th>Name</th><th class="n">Last</th><th class="n">Chg</th><th class="n">Chg%</th><th>Day range</th></tr>
+   ${[['Gold','3,738.30','-3.60',-0.10,41],['Silver','44.12','+0.18',0.41,58],['Oil WTI','82.43','+0.12',0.15,52]]
+   .map(r=>`<tr><td>${r[0]}</td><td class="n">${r[1]}</td><td class="n ${r[3]>0?'up':'dn'}">${r[2]}</td>
+    <td class="n ${r[3]>0?'up':'dn'}">${(r[3]>0?'+':'')+r[3].toFixed(2)}%</td><td>${rangebar(r[4])}</td></tr>`).join('')}</table>`,
+   footer:'served prices · as of 00:40 (8h ago)'})}
+  ${panel({tick:'a',title:'Desk note',scope:'market overview',flush:1,
+   body:`<div style="padding:7px 9px;font-size:var(--fs-sm);line-height:1.5">
+    <b style="color:var(--bright)">What this desk watches</b>
+    <div style="color:var(--muted);margin:3px 0 6px">Do indices, the sector map and cross-asset risk tell the same story, and what on the calendar could change it?</div>
+    <b style="color:var(--bright)">Read together</b>
+    <ul style="margin:3px 0 0;padding-left:16px;color:var(--fg)">
+     <li>Indices and the sector map — is a move broad or one sector?</li>
+     <li>Risk-on / risk-off against breadth — does the score have the market behind it?</li>
+     <li>The calendar — what lands before the next build?</li></ul></div>`,
+   footer:'my own text · nothing fetches it, nothing overwrites it'})}`,
+  sstatus:'<b>9/9</b> widgets · layout <b>desk</b> · ▲ 71 ▼ 47 = 2 · built by <b>rc-welcome</b> run <b>2026-11-21T00:40</b> · as of 00:40 (8h ago) · end of day',
+  astatus:'v2 mock &nbsp;·&nbsp; EQ FX CM FI &nbsp;·&nbsp; LAYOUT: <b>desk</b> &nbsp;·&nbsp; DOOR: <b>online</b> &nbsp;·&nbsp; dashboard ok · Grafana ok · payload folder ok <span class="spacer"></span> MEM 367 MB &nbsp;·&nbsp; tailnet only &nbsp;·&nbsp; ● READY'}));
+
+/* ===== 03 widget catalogue ===== */
+const WIDGETS=[['★','Watch list','One of my lists with day range, 5-day spark and rel vol.','Markets'],
+['↗','Top movers','Biggest moves inside our own universe, not the whole market.','Markets'],
+['▦','Sector rotation','Quadrant on 1M and 3M momentum z-scores, by GICS sector.','Markets'],
+['⌁','Market breadth','Advancers, decliners, % above 50-day, near 52-week high.','Markets'],
+['◎','Risk on / risk off','0–100 score; shown only when every input is in.','Macro'],
+['∿','Macro series','A FRED series with its release date and revision mark.','Macro'],
+['⌇','Yield curve','2s10s and 3m10y with the curve itself.','Macro'],
+['◬','Volatility family','VIX 9D / 30D / 3M / 6M and the futures curve.','Macro'],
+['▣','Earnings calendar','FOMC, CPI and earnings for names on my lists.','Research'],
+['⬢','SPX gamma levels','Flip, call wall, put wall, net GEX for 0DTE.','Derivatives'],
+['≡','News headlines','One dense line per item with impact and tone bars.','Research'],
+['⊞','Screener hits','Latest hits of one saved screen.','Research'],
+['◰','13F changes','Holder changes for one name, last filed quarter.','Ownership'],
+['⊛','Value-chain neighbours','Customers, suppliers and peers of one name.','Research'],
+['◍','Hit rate summary','How a screen\'s frozen picks did against the same-day universe.','Research'],
+['⟡','Prediction markets','Yes price, 24 h change and volume per event.','Macro'],
+['✎','Desk note','My own text. Nothing fetches it, nothing overwrites it.','Tools'],
+['⬒','Portfolio summary','Read-only from the IBKR import: value, day P&L, weights.','Portfolio']];
+shot('03','Add widget — the catalogue','Search, category chips and a two-column card grid. Every card states in one sentence what the widget is for and, where it matters, its honest scope or its precondition. Crypto, prediction-market trading, live TV, web scraper and anything that sends an order are not in the catalogue.',
+ frame({board:'Welcome',docs:[{n:'Welcome',on:1}],
+  tb:{name:'Welcome',state:'ready',count:'6 widgets',scope:'layout "desk"'},
+  workStyle:'position:relative',
+  work:`<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;opacity:.5">
+  ${panel({title:'Watch list',body:'<div class="skel"></div><div class="skel"></div><div class="skel"></div>'})}
+  ${panel({title:'Top movers',body:'<div class="skel"></div><div class="skel"></div><div class="skel"></div>'})}
+  ${panel({title:'Earnings radar',body:'<div class="skel"></div><div class="skel"></div><div class="skel"></div>'})}</div>
+  <div class="dlg"><div class="dlgbox" style="height:470px">
+   <header><h4>Add widget</h4><span class="badge n">18 available</span><span class="spacer"></span><span class="ic">✕</span></header>
+   <div style="padding:12px;border-bottom:1px solid var(--border);display:grid;gap:8px">
+    <div class="inp ph">⌕ search widgets…</div>
+    <div class="chips">${['All','Markets','Macro','Research','Derivatives','Ownership','Portfolio','Tools'].map((c,i)=>`<button class="btn ${i===0?'on':''}">${c}</button>`).join('')}</div>
+   </div>
+   <div style="padding:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px;overflow:hidden">
+   ${WIDGETS.slice(0,8).map(w=>`<div class="wcard"><span class="ico">${w[0]}</span><div><h5>${w[1]} <span class="badge n">${w[3]}</span></h5><p>${w[2]}</p></div></div>`).join('')}
+   </div>
+   <footer><button class="btn gho">Cancel</button><button class="btn pri">Add widget</button></footer>
+  </div></div>`,
+  sstatus:'catalogue · 18 widgets · each reads a payload the door already serves · no widget fetches on its own'}));
+</script>
+<script>
+const SETRAIL=(on)=>`<div class="sidebar"><div style="padding:8px 10px"><div class="inp ph">⌕ search settings…</div></div>
+ <div class="sgrp">Shell</div>
+ ${['Appearance','Density','Numbers & currency','Notifications','Keyboard'].map(r=>`<div class="srow ${r===on?'on':''}">${r}</div>`).join('')}
+ <div class="sgrp">Data</div>
+ ${['Database','Data sources','Credentials','Jobs & timers','Storage','Grafana','Logs','Security'].map(r=>`<div class="srow ${r===on?'on':''}">${r}</div>`).join('')}</div>`;
+
+/* ===== 04 Settings — Shell / numbers ===== */
+shot('04','Settings — Shell, with the live preview','Left rail with a search box and two groups, exactly the shape of the walk. Each row is a label with a dim explanation and the control right-aligned. Number formatting gets its own live preview, because a format rule is only judgeable against a real string: prices stay in the instrument\'s own currency, totals convert and show the rate with its as-of, a rate goes stale after an age we set.',
+ frame({board:'Settings',docs:[{n:'Settings',on:1}],
+  tb:{name:'Settings · appearance',state:'saved',count:'—',scope:'this browser',btns:['Reset','Save']},
+  workStyle:'grid-template-columns:200px 1fr;padding:0;gap:0',
+  work:`${SETRAIL('Numbers & currency')}
+  <div style="overflow:hidden;padding:12px;display:grid;grid-template-rows:auto 1fr;gap:10px">
+   ${panel({tick:'',title:'Appearance',scope:'shell',body:`
+    <div class="field"><div class="lab">Theme<em>Mürekkep light, Gece dark, or follow the system.</em></div>
+     <div class="chips"><button class="btn">Light</button><button class="btn on">Dark</button><button class="btn">System</button></div></div>
+    <div class="field"><div class="lab">Density<em>One switch, board-wide. Compact drops row height to 23 px.</em></div>
+     <div class="chips"><button class="btn on">Default</button><button class="btn">Compact</button></div></div>
+    <div class="field"><div class="lab">Ticker tape<em>Off by default: our data is hourly, so a moving tape would lie.</em></div>
+     <div><span class="sw off"><i></i></span></div></div>
+    <div class="field"><div class="lab">Board language<em>English, every string. Fixed by rule, not changeable here.</em></div>
+     <div class="inp" style="max-width:180px;opacity:.6">English</div></div>`})}
+   ${panel({tick:'d2',title:'Numbers & currency',scope:'live preview',flush:1,body:`
+    <div style="display:grid;grid-template-columns:260px 1fr;gap:12px;padding:10px;height:100%;overflow:hidden">
+     <div>
+      <div class="field" style="grid-template-columns:110px 1fr"><div class="lab">Base</div><div class="inp">EUR</div></div>
+      <div class="field" style="grid-template-columns:110px 1fr"><div class="lab">Grouping</div><div class="inp">1,234.56</div></div>
+      <div class="field" style="grid-template-columns:110px 1fr"><div class="lab">Large</div><div class="inp">K / M / B / T</div></div>
+      <div class="field" style="grid-template-columns:110px 1fr"><div class="lab">Rate stale after</div><div class="inp">24 h</div></div>
+     </div>
+     <div class="tiles" style="grid-template-columns:1fr 1fr 1fr;align-content:start">
+      ${tile('Price, own currency','$184.22','<span class="chip q">USD</span>','as quoted',1)}
+      ${tile('Total, converted','€1.42 M','<span class="chip q">EUR</span>','rate 0.921 · as of 00:40',1)}
+      ${tile('A loss','−€12,480','<span class="chip n">−3.1%</span>','red is a loss, never a decoration',1)}
+      ${tile('London pence','4,210p','<span class="chip q">GBX</span>','pence quoted, not pounds',1)}
+      ${tile('Mixed column','1,204 USD','<span class="chip q">ISO on every cell</span>','',1)}
+      ${tile('Stale rate','€0.00','<span class="chip a">rate 31 h old</span>','shown, not hidden',1)}
+     </div></div>`,
+    footer:'formatting is one page with one preview; a conversion always shows its rate and the rate\'s as-of'})}
+  </div>`,
+  sstatus:'settings · nothing on this page starts a job · changes apply on <b>Save</b>'}));
+
+/* ===== 05 Settings — Data sources ===== */
+const SRC=[['WRDS','Fundamentals','works here','g'],['Compustat','Fundamentals','works here','g'],['SEC EDGAR','Filings','no key needed','g'],
+['FINRA','Short interest','no key needed','g'],['Unusual Whales','Options flow','works here','g'],['IBKR gateway','Market data','works here','g'],
+['IBKR FTP borrow','Borrow file','works here','g'],['OpenFIGI','Identifiers','optional key','a'],['FRED','Macro','no key needed','g'],
+['Wikipedia index lists','Index membership','no key needed','g'],['Kalshi','Prediction markets','no key needed','g'],
+['Polymarket','Prediction markets','no key needed','g'],['Cboe delayed','Option chains','key missing','a'],
+['Alpaca','Prices','key missing','a'],['Nasdaq Data Link','Macro','not available','n'],
+['Finnhub','News','upstream broken','r']];
+shot('05','Settings — Data sources, three columns','The catalogue lists every source we <i>could</i> use, not only the ones we use, and the HERE column is the whole point: one coloured state word, never an icon. A key is added here, TEST sends one real request, SAVE keeps it — stored through the credential path on homesrv, never echoed back, never in this repository. The screen shows only <i>set / not set</i> and what the test returned.',
+ frame({board:'Settings',docs:[{n:'Settings',on:1},{n:'Data sources',on:0}],
+  tb:{name:'Settings · data sources',state:'15 shown',count:'15 of 15',scope:'catalogue',btns:['Only what works here','Refresh','+ New']},
+  workStyle:'grid-template-columns:200px 1.25fr .8fr 1.05fr;padding:0;gap:0',
+  work:`${SETRAIL('Data sources')}
+  <div style="padding:10px;overflow:hidden;display:grid">${panel({tick:'',title:'Sources',scope:'catalogue',count:'15 shown',flush:1,
+   body:`<div style="padding:8px;display:grid;gap:6px;border-bottom:1px solid var(--border)">
+    <div class="inp ph">⌕ search within category…</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px"><div class="inp">Kind · all</div><div class="inp">Category · all</div></div>
+    <label style="font-size:var(--fs-xs);color:var(--muted);display:flex;gap:6px;align-items:center"><span class="sw off" style="width:28px;height:16px"><i style="width:12px;height:12px"></i></span> Only what works here</label></div>
+   <table class="t"><tr><th>Source</th><th>Category</th><th>Here</th></tr>
+   ${SRC.map((s,i)=>`<tr class="${i===12?'sel':''}"><td>${s[0]}</td><td style="font-size:var(--fs-xs);color:var(--muted)">${s[1]}</td>
+    <td><span class="badge ${s[3]}">${s[2]}</span></td></tr>`).join('')}</table>`,
+   footer:'6 states: works here · no key needed · optional key · key missing · upstream broken · not available'})}</div>
+  <div style="padding:10px 0;overflow:hidden;display:grid">${panel({tick:'',title:'Saved connections',count:9,flush:1,
+   body:`<div style="padding:8px;border-bottom:1px solid var(--border);display:grid;gap:6px"><div class="inp ph">⌕ filter…</div>
+    <label style="font-size:var(--fs-xs);color:var(--muted);display:flex;gap:6px;align-items:center"><span class="sw off" style="width:28px;height:16px"><i style="width:12px;height:12px"></i></span> Only Cboe delayed</label></div>
+   <table class="t"><tr><th>Name</th><th>State</th></tr>
+   ${[['wrds-main','set','g'],['uw-prod','set','g'],['ibkr-gw-paper','set','g'],['openfigi','not set','a'],['fred-public','no key','g'],['kalshi-public','no key','g'],['polymarket-public','no key','g'],['finnhub-news','set','r'],['alpaca','not set','a']]
+   .map(r=>`<tr><td style="font-size:var(--fs-sm)">${r[0]}</td><td><span class="badge ${r[2]}">${r[1]}</span></td></tr>`).join('')}</table>`,
+   footer:'a key is never displayed back; only set / not set'})}</div>
+  <div style="padding:10px;overflow:hidden;display:grid">${panel({tick:'a',title:'New · Cboe delayed',scope:'option chains',flush:1,seg:['Settings','Browse','Data'],
+   body:`<div style="padding:10px;display:grid;gap:8px">
+    <div class="chips"><button class="btn">Test</button><button class="btn pri">Save</button><button class="btn gho">Duplicate</button><button class="btn gho">Delete</button></div>
+    <div class="field" style="grid-template-columns:96px 1fr"><div class="lab">Name *</div><div class="inp">cboe-delayed</div></div>
+    <div class="field" style="grid-template-columns:96px 1fr"><div class="lab">API key *<em>write-only</em></div><div class="inp ph">••••••••  (enter to replace)</div></div>
+    <div class="field" style="grid-template-columns:96px 1fr"><div class="lab">Tags</div><div class="inp ph">options, delayed</div></div>
+    <div class="field" style="grid-template-columns:96px 1fr"><div class="lab">Enabled</div><div style="display:flex"><span class="sw"><i></i></span></div></div>
+    <div class="banner">Test result · <b>401 invalid_key</b> from the provider. The value is not shown back, here or in any log.</div>
+    <div class="kv"><dt>Works here</dt><dd>after a key</dd><dt>Reached through</dt><dd>builder only</dd>
+     <dt>Browse</dt><dd>chains, greeks</dd><dt>Saved connections</dt><dd>0</dd></div>
+    <div class="banner b">Secrets are stored encrypted on homesrv, never in the connection table and never in the repository. An export leaves them out unless you choose to include them under a passphrase.</div></div>`,
+   footer:'TEST sends exactly one real request · SAVE writes through the credential path'})}</div>`,
+  sstatus:'<b>15/15</b> sources · 9 saved connections · 1 upstream broken (Finnhub) · catalogue as of <b>02:10</b>'}));
+
+/* ===== 06 Settings — Fetch / Health with Grafana framed ===== */
+shot('06','Settings — Fetch & Health, Grafana framed','Decision B2 stands: live health, fetch control and data-health monitoring stay in Grafana and v2 does not redraw them. v2 frames the <code>rc-health</code> board inside our panel structure and keeps beside it only the presses Grafana does not carry. The health route probes each upstream with a 2 s timeout, so a dead upstream shows as a plain sentence instead of a 500.',
+ frame({board:'Settings',docs:[{n:'Settings',on:1},{n:'Fetch & health',on:0}],
+  tb:{name:'Settings · fetch & health',state:'grafana ok',count:'12 datasets',scope:'homesrv',btns:['Open in Grafana','Refresh']},
+  workStyle:'grid-template-columns:1fr 260px;padding:0;gap:0',
+  work:`<div style="padding:10px;overflow:hidden;display:grid;grid-template-rows:auto 1fr;gap:8px">
+   <div class="banner b">Live health, fetch switches, queue, timers, provider limits and board freshness are Grafana's board <code>rc-health</code>, framed here. v2 adds no second copy of them.</div>
+   ${panel({tick:'g',title:'Grafana · rc-health',scope:'framed',flush:1,body:`<div class="frame" style="height:100%;min-height:300px">
+    <span class="fl">iframe · http://homesrv:3000/d/rc-health · allowed frame origin: v2 (:8100)</span>
+    <div style="padding:26px 10px 10px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+     ${['Fetch queue','Dataset freshness','Provider limits','Timers','IBKR gateway','Backups'].map((t,i)=>`<div class="panel"><div class="ph"><i class="tick ${i%3==1?'a':'g'}"></i><span class="t">${t}</span></div>
+     <div class="pb" style="height:86px">${i%2?bars(10,64):lineChart(220,64,{seed:i+2})}</div></div>`).join('')}
+    </div></div>`,
+    footer:'Grafana panels keep Grafana\'s own look; only the frame around them is ours'})}
+  </div>
+  <div style="padding:10px;overflow:hidden;display:grid">${panel({tick:'',title:'Presses Grafana has not got',count:6,
+   body:`<div style="display:grid;gap:7px">
+   ${[['Universe rebuild','builds the equity universe','Read'],['Fill gaps','fills missing price days','Read'],
+     ['Backfill folder','one dataset, one date range','Read'],['Recount folders','row counts per board file','Read'],
+     ['IBKR login','opens the gateway login page','Read'],['Build timer','turns the hourly builder on','Guarded']]
+   .map(r=>`<div style="display:flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:var(--r-sm);padding:6px 8px">
+    <div style="min-width:0"><div style="font-size:var(--fs-sm);color:var(--bright)">${r[0]}</div>
+    <div style="font-size:var(--fs-xs);color:var(--muted)">${r[1]}</div></div><span class="spacer"></span>
+    <span class="badge ${r[2]==='Guarded'?'r':'n'}">${r[2]}</span>
+    <button class="btn ${r[2]==='Guarded'?'gho':''}" ${r[2]==='Guarded'?'disabled':''}>${r[2]==='Guarded'?'blocked':'Run'}</button></div>`).join('')}
+   <div class="banner r">A <b>Guarded</b> press is never proxied. The build timer, the Value Chain sync and a watch-list delete are pressed on the old dashboard by hand, with avo's word.</div>
+   <div class="banner">A press that spends shows its estimate and asks to confirm before anything is sent.</div></div>`,
+   footer:'every press goes through the door\'s proxy to the one writer; v2 adds no second writer'})}</div>`,
+  fresh:{cls:'warn',txt:'1 dataset late'},
+  sstatus:'upstreams · dashboard <b>ok</b> 41 ms · Grafana <b>ok</b> 88 ms · payload folder <b>ok</b> · each probed with a 2 s timeout',
+}));
+</script>
+<script>
+/* ===== 07 Screener ===== */
+const SCRROWS=[['NVDA','Semis','184.22',1.42,62,'3.2',41.2,'strong','g'],['ASML','Semi equip','742.10',0.61,78,'1.1',18.4,'strong','g'],
+['MU','Memory','231.84',-2.11,24,'2.4',63.9,'watch','a'],['TSM','Foundry','287.40',0.94,55,'0.9',44.1,'strong','g'],
+['AMAT','Semi equip','198.07',-0.38,41,'0.8',12.0,'neutral','n'],['LRCX','Semi equip','104.92',2.26,88,'1.6',31.7,'strong','g'],
+['ALAB','Connectivity','162.55',6.02,94,'2.4',122.8,'watch','a'],['CRDO','Connectivity','88.41',5.17,91,'1.9',88.1,'watch','a'],
+['SMCI','Servers','47.18',8.41,86,'3.2',-4.2,'risky','r'],['VRT','Power','142.60',4.88,80,'1.6',27.4,'strong','g'],
+['NBIS','Cloud','71.02',4.11,58,'2.8',-12.6,'risky','r'],['MRVL','Semis','96.33',1.08,49,'1.0',9.8,'neutral','n']];
+shot('07','Screeners — saved screens, builder, results','Left rail of saved screens grouped LIVE / MOVERS / STRATEGIES; a builder of three blocks (universe, criteria, sort) where a criterion row is field · operator · value · unit · remove; then the result table with in-row graphics and paging. Our filter rules do not change — only their shape does. The verdict column is the same judgement pattern as everywhere: one word, and the rule behind it one click away.',
+ frame({board:'Screeners',docs:[{n:'Screeners',on:1},{n:'Asymmetric growth',on:0}],
+  tb:{name:'Asymmetric growth',state:'ready',count:'444 hits',scope:'US · mid+ cap · ex-ETF',btns:['Detail','Layouts','Compact','Refresh','Save','Reset']},
+  workStyle:'grid-template-columns:168px 236px 1fr;padding:0;gap:0',
+  work:`<div class="sidebar">
+   <div class="sgrp">Live</div>${['Asymmetric growth','Swing potential','Fundamentals'].map((r,i)=>`<div class="srow ${i===0?'on':''}">${r}<span class="spacer"></span><span class="sm">${[444,112,2031][i]}</span></div>`).join('')}
+   <div class="sgrp">Movers</div>${['Gap up','Rel vol &gt; 2×','52w high'].map((r,i)=>`<div class="srow">${r}<span class="spacer"></span><span class="sm">${[38,91,164][i]}</span></div>`).join('')}
+   <div class="sgrp">Strategies</div>${['LEAPS candidates','Value chain neighbours'].map(r=>`<div class="srow">${r}</div>`).join('')}</div>
+  <div style="padding:10px;overflow:hidden;display:grid">${panel({tick:'',title:'Screen builder',flush:1,
+   body:`<div style="padding:8px;display:grid;gap:8px">
+    <div><div class="lb" style="font-size:var(--fs-xs);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Universe</div>
+     <div class="inp">US equities · ex-ETF</div><div class="inp" style="margin-top:4px">Mid cap and up</div></div>
+    <div><div style="font-size:var(--fs-xs);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Criteria</div>
+     ${[['Rev growth 3y','≥','18','%'],['FCF margin','≥','8','%'],['Net debt/EBITDA','≤','2.0','×'],['Market cap','≥','5','B']]
+     .map(c=>`<div style="display:grid;grid-template-columns:1fr 24px 40px 22px 14px;gap:3px;margin-bottom:4px;font-size:var(--fs-xs)">
+      <div class="inp" style="height:24px">${c[0]}</div><div class="inp" style="height:24px;justify-content:center">${c[1]}</div>
+      <div class="inp" style="height:24px;justify-content:flex-end;font-family:var(--font-mono)">${c[2]}</div>
+      <div class="inp" style="height:24px;justify-content:center;color:var(--muted)">${c[3]}</div>
+      <span style="color:var(--muted);display:grid;place-items:center">✕</span></div>`).join('')}
+     <button class="btn" style="width:100%">+ Add criterion</button>
+     <div style="font-size:var(--fs-xs);color:var(--muted);line-height:1.4;margin-top:5px">K / M / B / T are thousands to trillions. A percent field takes points, so 18 means 18%, and a change in a percent is written pp.</div></div>
+    <div><div style="font-size:var(--fs-xs);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Sort</div>
+     <div class="inp">Rev growth 3y · desc</div></div></div>`,
+   footer:'the rules themselves are unchanged; only the shape is new'})}</div>
+  <div style="padding:10px;overflow:hidden;display:grid">${panel({tick:'',title:'Hits',scope:'asymmetric growth',count:'444',flush:1,seg:['Panels','Heatmap','Movers'],
+   body:`<div class="scope">444 of 10,612 names pass. The universe is ours, after the ETF and tier cut — not the whole market.</div>
+   <table class="t"><tr><th>Name</th><th>Sector</th><th class="n">Last · 1D</th><th>Day range</th><th class="n">Rel vol</th><th class="n">YTD</th><th class="n">5D</th><th>Verdict</th></tr>
+   ${SCRROWS.map((r,i)=>`<tr class="${i===0?'sel':''}"><td>${bookmark()}<span class="tk">${r[0]}</span></td>
+    <td style="font-size:var(--fs-xs);color:var(--muted)">${r[1]}</td>
+    <td class="n"><span class="cell2">${r[2]}<span class="sub ${r[3]>0?'up':'dn'}">${(r[3]>0?'+':'')+r[3].toFixed(2)}%</span></span></td>
+    <td>${rangebar(r[4])}</td><td class="n"><span class="vol" style="width:${r[5]*12}px"></span> ${r[5]}×</td>
+    <td class="n">${heat((r[6]>0?'+':'')+r[6].toFixed(1)+'%',r[6]/12)}</td><td class="n">${spark(r[4],r[3]>0)}</td>
+    <td><span class="badge ${r[8]}">${r[7]}</span></td></tr>`).join('')}</table>
+   <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-top:1px solid var(--border);font-size:var(--fs-xs);color:var(--muted)">
+    Rows <span class="inp" style="height:22px;width:50px">12</span> ◀ 1–12 / 444 ▶ <span class="spacer"></span>
+    <span>a row click opens the ticker page beside this one</span></div>`,
+   footer:FOOT('served prices + fundamentals','00:40','40m ago · screen frozen at run 2026-11-21T00:40')})}</div>`,
+  sstatus:'<b>444</b> hits of 10,612 · screen <b>asymmetric growth</b> v7 · built by <b>rc-screens</b> run 2026-11-21T00:40 · as of 00:40'}));
+
+/* ===== 08 Markets: heatmap + movers + detail rail ===== */
+shot('08','Markets — the three views on one toolbar','PANELS, HEATMAP and MOVERS are the same data in three shapes, and the heatmap prints its own colour rule on the screen instead of leaving it to a legend nobody reads. The movers view carries a PANEL column saying which list a row came from, and a scope sentence so a subset is never mistaken for the market. The detail rail opens from a row and closes again.',
+ frame({board:'Markets',docs:[{n:'Markets',on:1}],
+  tb:{name:'Markets',state:'ready',count:'120 names',scope:'my panels',btns:['Detail','Layouts','Compact','Refresh','Add','Save']},
+  workStyle:'grid-template-columns:1fr 268px',
+  work:`${panel({tick:'',title:'Heatmap',scope:'my panels',count:120,flush:1,seg:['Panels','Heatmap','Movers'],segOn:1,
+   body:`<div class="scope">Colour = today's change. ±3% is full colour. Each block header shows its group average.</div>
+   <div style="padding:8px;display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+   ${[['Semis',2.1],['Semi equip',0.8],['Software',-0.6],['Power & cooling',3.4]].map(g=>`
+    <div style="border:1px solid var(--border);border-radius:var(--r-sm);overflow:hidden">
+     <div style="display:flex;justify-content:space-between;padding:3px 6px;background:var(--card-2);font-size:var(--fs-xs)">
+      <b style="letter-spacing:.06em;text-transform:uppercase;color:var(--bright)">${g[0]}</b><span class="${g[1]>0?'up':'dn'}">${(g[1]>0?'+':'')+g[1].toFixed(1)}%</span></div>
+     <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px;padding:2px">
+     ${[0,1,2,3,4,5].map(i=>{const v=(g[1]+(i%3-1)*1.6);return `<div style="padding:5px 4px;border-radius:3px;background:color-mix(in srgb, var(--${v>0?'pos':'neg'}) ${Math.round(Math.min(1,Math.abs(v)/3)*26)}%, var(--card));">
+      <div class="tk" style="font-size:var(--fs-xs)">${['NVDA','AMD','MU','TSM','ASML','AMAT'][i]}</div>
+      <div style="font-family:var(--font-mono);font-size:var(--fs-xs)" class="${v>0?'up':'dn'}">${(v>0?'+':'')+v.toFixed(2)}%</div></div>`}).join('')}
+     </div></div>`).join('')}</div>
+   <div style="padding:0 8px"><div style="font-size:var(--fs-xs);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:6px 0 4px">Movers · panel column</div>
+   <table class="t"><tr><th>Name</th><th>Panel</th><th class="n">1D</th><th class="n">Rel vol</th><th class="n">From 52w high</th></tr>
+   ${[['SMCI','Power & cooling',8.41,3.2,-38.4],['ALAB','Connectivity',6.02,2.4,-4.1],['CRDO','Connectivity',5.17,1.9,-9.8],['VRT','Power & cooling',4.88,1.6,-2.2]]
+   .map(r=>`<tr><td><span class="tk">${r[0]}</span></td><td style="font-size:var(--fs-xs);color:var(--muted)">${r[1]}</td>
+    <td class="n">${heat('+'+r[2].toFixed(2)+'%',r[2])}</td><td class="n">${r[3].toFixed(1)}×</td>
+    <td class="n dn">${r[4].toFixed(1)}%</td></tr>`).join('')}</table></div>`,
+   footer:FOOT('served prices','00:40','40m ago · end-of-day, no intraday')})}
+  <div class="rail">
+   <div class="railsec">Detail · NVDA <span class="spacer"></span><span class="ic">✕</span></div>
+   ${panel({tick:'',title:'NVDA',scope:'NVIDIA Corp',flush:1,body:`<div style="padding:8px">
+    <div style="display:flex;align-items:baseline;gap:8px"><span style="font-size:var(--fs-xl);font-weight:600;color:var(--bright);font-family:var(--font-mono)">184.22</span>
+     <span class="chip p">+1.42%</span></div>
+    <div class="chips" style="margin:8px 0">${['1D','1W','1M','YTD','1Y','5Y'].map((r,i)=>`<button class="btn ${i===3?'on':''}">${r}</button>`).join('')}</div>
+    ${lineChart(240,90,{seed:9,band:1})}
+    <div class="kv" style="margin-top:8px"><dt>Day range</dt><dd>181.0 – 185.9</dd><dt>52-week</dt><dd>86.6 – 212.2</dd>
+     <dt>Market cap</dt><dd>4.49 T</dd><dt>Rel vol</dt><dd>3.2×</dd><dt>Our verdict</dt><dd><span class="badge g">strong</span></dd></div>
+    <div class="chips" style="margin-top:8px"><button class="btn">Ticker page</button><button class="btn">News</button><button class="btn">+ Watch list</button></div></div>`,
+   footer:FOOT('served prices','00:40','40m ago')})}
+  </div>`,
+  sstatus:'<b>120/120</b> names · ▲ 71 ▼ 47 = 2 · built by <b>rc-markets</b> run 2026-11-21T00:40 · as of 00:40 · end-of-day'}));
+</script>
+<script>
+const SUBJ=['Overview','Financials','Fundamentals','SEC 13F','Ownership','Relatedness','Value chain','News','Earnings','Options','Hit rate','Predictions'];
+function subjRow(on){return `<div class="seg" style="overflow:hidden">${SUBJ.map(s=>`<button class="${s===on?'on':''}">${s}</button>`).join('')}</div>`;}
+const QUOTE=`<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+ <span class="tk" style="font-size:var(--fs-lg)">NVDA</span><span style="color:var(--muted);font-size:var(--fs-sm)">NVIDIA Corp · Semiconductors · NASDAQ · USD</span>
+ <span style="font-family:var(--font-mono);font-size:var(--fs-lg);color:var(--bright)">184.22</span><span class="chip p">+2.58 (+1.42%)</span>
+ <span style="font-size:var(--fs-xs);color:var(--muted)">vol 214 M · 181.0–185.9 · cap 4.49 T</span>
+ <span class="spacer"></span><span class="badge g">our verdict · strong</span></div>`;
+
+/* ===== 09 Ticker page — Overview ===== */
+shot('09','Ticker page — Overview','One page per name gathering every board\'s facts (decision D4). Toolbar with the ticker search and the actions; the quote line with our own verdict chip; two tab rows, subject then the subject\'s own; a strip of eight return tiles coloured by sign; the chart block with its legend naming every series and volume in its own sub-pane; and a right rail of stacked cards.',
+ frame({board:'Ticker',docs:[{n:'Screeners',on:0},{n:'NVDA',sub:'',on:1}],
+  tb:{name:'Ticker · NVDA',state:'ready',count:'11 subjects',scope:'our boards',btns:['Backtest','CSV','+ Watch list','Open in ▾'],
+      hint:'Use /stock, /fund, /index… in the command bar to search'},
+  workStyle:'grid-template-rows:auto auto auto 1fr;grid-template-columns:1fr 252px;padding:10px;gap:8px',
+  work:`<div style="grid-column:1/-1">${QUOTE}</div>
+  <div style="grid-column:1/-1">${subjRow('Overview')}</div>
+  <div style="grid-column:1/-1;font-size:var(--fs-xs);color:var(--muted);display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+   <b style="color:var(--fg)">NVIDIA Corporation</b><span class="sep"></span>USD<span class="sep"></span>NASDAQ<span class="sep"></span>
+   served prices, split and dividend adjusted<span class="sep"></span>as of 21 Nov 00:40<span class="sep"></span>end of day, no intraday
+   <span class="spacer"></span><button class="btn pri">Export ▾</button></div>
+  <div style="display:grid;grid-template-rows:auto minmax(0,1fr);gap:8px;overflow:hidden;min-height:0">
+   <div class="tiles" style="grid-template-columns:repeat(8,1fr)">
+   ${[['1W',2.1],['1M',-3.4],['3M',11.8],['6M',24.2],['YTD',41.2],['1Y',63.9],['3Y',412.0],['5Y',1184.0]]
+    .map(t=>`<div class="tile" style="padding:4px 8px"><div class="lb">${t[0]}</div>
+     <div class="v sm ${t[1]>0?'up':'dn'}" style="font-family:var(--font-mono)">${(t[1]>0?'+':'')+t[1].toFixed(1)}%</div></div>`).join('')}</div>
+   ${panel({tick:'',title:'Price',scope:'daily, adjusted',flush:1,bodyStyle:'display:flex;flex-direction:column',
+    body:`<div style="display:flex;align-items:center;gap:6px;padding:5px 8px;border-bottom:1px solid var(--border);flex-wrap:wrap">
+     <button class="btn on">Line</button><button class="btn">Candles</button><button class="btn">Indicators ▾</button>
+     <button class="btn">Compare ▾</button><button class="btn">Events</button><span class="spacer"></span>
+     <button class="btn">Log</button><button class="btn">% = 100</button>
+     ${['1M','3M','6M','YTD','1Y','5Y','Max'].map((r,i)=>`<button class="btn ${i===4?'on':''}">${r}</button>`).join('')}</div>
+     <div style="padding:6px 8px;display:flex;flex-direction:column;flex:1;min-height:0">
+      <div style="font-size:var(--fs-xs);color:var(--muted);display:flex;gap:12px;margin-bottom:4px">
+       <span><i style="display:inline-block;width:10px;height:2px;background:var(--data-1);vertical-align:middle"></i> NVDA close, adjusted</span>
+       <span><i style="display:inline-block;width:10px;height:2px;background:var(--data-2);vertical-align:middle"></i> SPY, rebased to 100</span>
+       <span class="spacer"></span><span>▮ the most recent period is banded</span></div>
+      <div style="flex:1;min-height:0">${lineChart(760,150,{seed:11,second:1,band:1,fill:1})}</div>
+      <div style="margin-top:4px;height:30px;flex:none">${bars(60,34,1)}</div>
+      <div style="font-size:var(--fs-xs);color:var(--muted);margin-top:4px;line-height:1.45">Closes are split and dividend adjusted from our served prices. The comparison line is SPY rebased to 100 at the left edge of the window shown, not at the listing date.</div></div>`,
+    footer:FOOT('served prices (1984→)','00:40','40m ago · end-of-day, no intraday')})}
+  </div>
+  <div class="rail">
+   ${panel({tick:'',title:'52-week range',body:`<div style="font-size:var(--fs-xs);color:var(--muted);display:flex;justify-content:space-between"><span>86.62</span><span>212.19</span></div>
+    <div class="bar2" style="margin:5px 0 3px;height:10px;position:relative"><i style="width:62%;background:var(--accent-soft)"></i><i style="width:2px;background:var(--accent)"></i></div>
+    <div style="font-size:var(--fs-xs);color:var(--muted)">Last 184.22 — 62% of the way up the year's range, 13.2% below the high.</div>`,
+    footer:'served prices'})}
+   ${panel({tick:'',title:'Valuation',body:`<div class="kv"><dt>P/E trailing</dt><dd>38.1</dd><dt>P/E forward</dt><dd>26.4</dd>
+    <dt>EV / sales</dt><dd>17.8</dd><dt>FCF yield</dt><dd>2.1%</dd></div>
+    <div style="font-size:var(--fs-xs);color:var(--muted);margin-top:5px;line-height:1.4">P/E 38.1 against a usual 18–35 for Semiconductors, so the top of its band.</div>`,
+    footer:FOOT('WRDS fundamentals','FY2026 Q3','filed 19 Nov')})}
+   ${panel({tick:'d2',title:'Shares & holders',body:`<div class="kv"><dt>Shares out</dt><dd>24.4 B</dd><dt>Float</dt><dd>96.1%</dd>
+    <dt>13F holders</dt><dd>3,118</dd><dt>Δ held last Q</dt><dd class="up">+0.8 pp</dd></div>`,
+    footer:FOOT('SEC 13F','2026 Q3','filed by 14 Nov')})}
+  </div>`,
+  sstatus:'<b>NVDA</b> · 11 of 11 subjects have data · built by <b>rc-ticker</b> run 2026-11-21T00:40 · as of 00:40 · prices end-of-day'}));
+
+/* ===== 10 Ticker — Financials ===== */
+shot('10','Ticker page — Financials','Drawn against the reference screen one to one, in our colours. A context line states the units, the period basis, the fiscal year end and the source before a single number is read; then the statement sub-tabs and the period chip; then twelve metric tiles, each with its own delta, the pair it compares and its own line; then two rows of three panels in which <b>every panel ends in a plain sentence that states its own numbers</b>, so a chart cannot be read one way and the text another.',
+ frame({board:'Ticker',docs:[{n:'Screeners',on:0},{n:'NVDA',on:1}],
+  tb:{name:'Ticker · NVDA · financials',state:'FY2026',count:'12 metrics',scope:'annual',btns:['Backtest','CSV','+ Watch list','Export ▾'],
+      hint:'Use /stock, /fund, /index… in the command bar to search'},
+  workStyle:'grid-template-rows:auto auto auto auto auto 1fr;padding:10px;gap:7px',
+  work:`${QUOTE}${subjRow('Financials')}
+  <div style="display:flex;align-items:center;gap:8px">
+   <div class="seg" style="flex:none">${['Overview','Income statement','Balance sheet','Cash flow','Ratios & quality','Peers']
+     .map((t,i)=>`<button class="${i===0?'on':''}">${t}</button>`).join('')}</div>
+   <span class="badge n">PERIOD FY2026</span><span class="spacer"></span>
+   <span class="badge">USD · BILLIONS</span>
+   <button class="btn on">Annual</button><button class="btn">Quarterly</button><button class="btn">TTM</button>
+   <button class="btn pri">Export ▾</button></div>
+  <div style="font-size:var(--fs-xs);color:var(--muted);display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+   <b style="color:var(--fg)">NVIDIA Corporation</b><span class="sep"></span>FY ends January<span class="sep"></span>semiconductor layout
+   <span class="sep"></span>WRDS / Compustat<span class="sep"></span>as of 21 Nov 00:40<span class="sep"></span>restatements: none</div>
+  <div class="tiles" style="grid-template-columns:repeat(12,1fr);gap:5px">
+   ${[['REVENUE','478.8','+15.1%',1],['GROSS PROFIT','355.3','+16.0%',1],['GROSS MARGIN','74.2%','+0.6 pp',1],
+     ['OPERATING MARGIN','33.0%','+1.0 pp',1],['NET MARGIN','27.6%','+0.4 pp',1],['EPS (DILUTED)','5.41','+18.2%',1],
+     ['FREE CASH FLOW','108.4','+9.8%',1],['CAPEX','31.2','+22.4%',-1],['ROIC','41.8%','+2.1 pp',1],
+     ['INVENTORY DAYS','118','+9 d',-1],['SBC / REVENUE','4.1%','−0.2 pp',1],['BUYBACK','24.0','−18.0%',-1]]
+    .map(t=>mtile({lb:t[0],v:t[1],dt:t[2],d:t[3]})).join('')}</div>
+  <div style="display:grid;grid-template-rows:1fr 1fr;gap:7px;overflow:hidden">
+   <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px;overflow:hidden">
+    ${panel({title:'Revenue & earnings',scope:'FY2026',flush:1,bodyStyle:'display:flex;flex-direction:column',body:`<div style="padding:7px 8px;display:flex;flex-direction:column;flex:1;min-height:0">
+      ${lgd([['var(--data-1)','Revenue','box'],['var(--data-2)','Gross profit','box'],['var(--data-3)','Net income','box'],['var(--data-4)','Net margin (R)','line']])}
+      <div style="flex:1;min-height:0">${gbars(['FY2023','FY2024','FY2025','FY2026'],
+        [{c:'var(--data-1)',v:[31,62,85,97]},{c:'var(--data-2)',v:[18,44,63,72]},
+         {c:'var(--data-3)',v:[8,24,37,44],line:1,l:[26,55,70,74],lc:'var(--data-4)'}],118)}</div>
+      <div class="psent">Revenue $478.8 B, +15.1% YoY · gross 74.2% · net 27.6%.</div></div>`,
+     footer:FOOT('WRDS / Compustat','00:40','filed 19 Nov · annual basis')})}
+    ${panel({title:'Income waterfall',scope:'FY2026',flush:1,bodyStyle:'display:flex;flex-direction:column',body:`<div style="padding:7px 8px;display:flex;flex-direction:column;flex:1;min-height:0">
+      ${lgd([['var(--data-1)','Total','box'],['var(--pos)','Increase','box'],['var(--neg)','Decrease','box']])}
+      <div style="flex:1;min-height:0;overflow:hidden">${wfall([
+        {n:'Revenue',v:478.8,k:'t',f:'$478.8 B'},{n:'Cost of revenue',v:-123.5,f:'−$123.5 B'},
+        {n:'R&D, SG&A',v:-197.3,f:'−$197.3 B'},{n:'Tax & other',v:-25.9,f:'−$25.9 B'},
+        {n:'Net income',v:132.1,k:'t',f:'$132.1 B'}])}</div>
+      <div class="psent">Net income $132.1 B = 27.6% of revenue · tax 20.6%.</div></div>`,
+     footer:FOOT('WRDS / Compustat','00:40','filed 19 Nov · annual basis')})}
+    ${panel({title:'Margins & efficiency',scope:'FY2026',flush:1,bodyStyle:'display:flex;flex-direction:column',body:`<div style="padding:7px 8px;display:flex;flex-direction:column;flex:1;min-height:0">
+      ${lgd([['var(--data-1)','Gross','line'],['var(--data-2)','Operating','line'],['var(--data-4)','Net','line'],['var(--data-3)','R&D %','dash']])}
+      <div style="flex:1;min-height:0">${mlines(['FY2023','FY2024','FY2025','FY2026'],
+        [{c:'var(--data-1)',v:[57,72,74,74]},{c:'var(--data-2)',v:[16,54,61,62]},
+         {c:'var(--data-4)',v:[14,48,55,56]},{c:'var(--data-3)',v:[36,28,31,32],dash:1}],118)}</div>
+      <div class="psent">Gross 74.2% · operating 33.0% · net 27.6% · R&D 31.8%.</div></div>`,
+     footer:FOOT('WRDS / Compustat','00:40','filed 19 Nov · annual basis')})}
+   </div>
+   <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px;overflow:hidden">
+    ${panel({title:'Balance sheet structure',scope:'FY2026',flush:1,bodyStyle:'display:flex;flex-direction:column',body:`<div style="padding:7px 8px;display:flex;flex-direction:column;flex:1;min-height:0">
+      ${lgd([['var(--data-1)','Cash','box'],['var(--data-2)','Receivables & inventory','box'],['var(--data-3)','Other','box'],['var(--data-4)','Liabilities','box']])}
+      <div style="flex:1;min-height:0">${stack(['FY2023','FY2024','FY2025','FY2026'],
+        [{c:'var(--data-1)',v:[38,41,44,46],lab:1},{c:'var(--data-2)',v:[22,21,20,19]},
+         {c:'var(--data-3)',v:[18,17,16,15]},{c:'var(--data-4)',v:[22,21,20,20],lab:1}],118)}</div>
+      <div class="psent">Net cash $42.1 B · inventory days 118, nine days longer.</div></div>`,
+     footer:FOOT('WRDS / Compustat','00:40','filed 19 Nov · annual basis')})}
+    ${panel({title:'Capital strength',scope:'FY2026',flush:1,bodyStyle:'display:flex;flex-direction:column',body:`<div style="padding:7px 8px;display:flex;flex-direction:column;flex:1;min-height:0">
+      ${lgd([['var(--data-2)','Debt ÷ assets','line'],['var(--data-1)','Equity ÷ assets','line']])}
+      <div style="flex:1;min-height:0">${mlines(['FY2023','FY2024','FY2025','FY2026'],
+        [{c:'var(--data-2)',v:[31,24,18,14]},{c:'var(--data-1)',v:[58,64,72,78]}],118)}</div>
+      <div class="psent">Debt 14% of assets, was 31% · interest cover 84×, test passes.</div></div>`,
+     footer:FOOT('WRDS / Compustat','00:40','filed 19 Nov · annual basis')})}
+    ${panel({title:'Returns · DuPont · ROIC vs WACC',scope:'FY2026',flush:1,bodyStyle:'display:flex;flex-direction:column',body:`<div style="padding:7px 8px;display:flex;flex-direction:column;flex:1;min-height:0;gap:4px">
+      <div class="tile" style="flex:none;padding:4px 8px;display:flex;align-items:baseline;gap:8px">
+       <span class="lb">RETURN ON EQUITY</span><span class="v sm">58.4%</span><span class="dlt up">▲▲ +6.1 pp YoY</span>
+       <span class="spacer"></span>${spark(29,1,90,14)}</div>
+      <div style="font-size:10px;color:var(--muted);text-align:center">= net margin <b style="color:var(--fg)">27.6%</b> × asset turnover <b style="color:var(--fg)">1.42×</b> × equity multiplier <b style="color:var(--fg)">1.49×</b></div>
+      <div class="psent" style="margin-top:auto">ROIC 41.8% against our own 9.1% WACC — spread +32.7 pp.</div></div>`,
+     footer:FOOT('WRDS / Compustat + our WACC','00:40','filed 19 Nov · annual basis')})}
+   </div>
+  </div>`,
+  sstatus:'<b>NVDA</b> financials · 12 metrics · 6 of 6 panels have data · source <b>WRDS / Compustat</b> · period FY2026 · filed 19 Nov'}));
+/* ===== 11 Ticker — Analysis, judgement cards ===== */
+const JC=[['Growth quality','g','STRONG',[['Rev growth 3y','+28.4%'],['FCF margin','22.6%'],['Accruals','low']],
+  'Revenue grew 28.4% a year over three years while free-cash-flow margin stayed above 20%, which our asymmetric-growth rule asks for (≥18% growth and ≥8% FCF margin).'],
+ ['Valuation','a','RICH',[['P/E trailing','38.1'],['Sector band','18–35'],['EV / sales','17.8']],
+  'P/E 38.1 against a usual 18–35 for Semiconductors, so above the band. The rule flags above-band, it does not sell.'],
+ ['Balance sheet','g','SOLID',[['Net debt / EBITDA','−0.3×'],['Interest cover','84×'],['Current ratio','4.1']],
+  'Net cash, so the leverage test passes without a reading. Our rule asks net debt / EBITDA ≤ 2.0×.'],
+ ['Earnings reaction','a','WATCH',[['Surprise mean 8q','+4.2%'],['Reaction mean','+2.1%'],['Next print','25 Nov']],
+  'Eight-quarter surprise mean +4.2% with a +2.1% mean next-day move. The Earnings Radar rule calls that a watch, not a signal, because the anchor window is wide.'],
+ ['Options stance','','NEUTRAL',[['25Δ skew','−1.8'],['OI change 5d','+4.1%'],['Net GEX','−1.84 bn']],
+  'Skew is inside its own 90-day band and net gamma is mildly negative, so the stance rule returns neutral rather than a direction.'],
+ ['Data health','r','INCOMPLETE',[['Boards with data','10 of 11'],['Missing','Relatedness'],['Oldest input','13F 2026 Q3']],
+  'Relatedness has not been built since 18 Nov, so one of eleven subjects is empty. Every other input is inside its freshness policy.']];
+shot('11','Ticker page — Analysis, the judgement pattern','Every score, flag and rule we own is drawn as the same card: a coloured top rule, a caps title, <b>one big verdict word</b>, three metric lines and a rationale that names the yardstick. No score ever appears without the rule that decided it. This is the pattern for Earnings Radar, both screens, and the data-health verdicts.',
+ frame({board:'Ticker',docs:[{n:'NVDA',on:1}],
+  tb:{name:'Ticker · NVDA · analysis',state:'6 rules',count:'6 of 6',scope:'rules we own',btns:['Method','CSV','Refresh']},
+  workStyle:'grid-template-rows:auto auto 1fr;padding:10px;gap:8px',
+  work:`${QUOTE}${subjRow('Fundamentals')}
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;grid-template-rows:minmax(0,1fr) minmax(0,1fr);gap:8px;overflow:hidden">
+  ${JC.map(c=>`<div class="jc ${c[1]}"><div class="t">${c[0]}</div><div class="verdict">${c[2]}</div>
+   <ul>${c[3].map(m=>`<li><span>${m[0]}</span><span>${m[1]}</span></li>`).join('')}</ul>
+   <div class="why">${c[4]}</div></div>`).join('')}</div>`,
+  fresh:{cls:'warn',txt:'1 board stale'},
+  sstatus:'<b>6/6</b> rules returned · 10 of 11 subjects have data · rule set <b>v7</b> · as of 00:40 · Relatedness last built 18 Nov'}));
+</script>
+<script>
+/* ===== 12 News ===== */
+const NEWS=[['3m','SEMIANALYSIS','Memory contract pricing resets higher into Q1, buyers lock supply early',['MU','SK','WDC'],82,0.6,1],
+['11m','REUTERS','ASML books two High-NA systems for a US fab, delivery 2028',['ASML','INTC'],74,0.4,1],
+['24m','SEC EDGAR','NVIDIA files 10-Q: data-centre revenue $141.2B in the quarter',['NVDA'],91,0.2,1],
+['41m','BLOOMBERG','Power constraints push two hyperscaler builds into 2028',['VRT','ETN','NVDA'],68,-0.3,0],
+['1h','FT','Export rule consultation opens on advanced accelerators',['NVDA','AMD'],77,-0.5,0],
+['1h','WSJ','Foundry utilisation at 94%, lead times stretch again',['TSM','UMC'],61,0.3,0],
+['2h','PRESS RELEASE','Credo guides above consensus on AEC ramp',['CRDO'],55,0.7,0],
+['2h','FINRA','Short interest in two memory names falls 14%',['MU','WDC'],44,0.2,0],
+['3h','REUTERS','Dutch government extends licensing regime by a year',['ASML'],70,-0.2,0],
+['4h','SEC EDGAR','13F: a top-20 holder adds 2.1 pp to its semis book',['NVDA','AVGO'],58,0.1,0]];
+shot('12','News — our board on the dense pattern','Filter chips, an age row and a sort row; a feed-health line that says how many feeds are current and how many are paused with a tone bar beside it; then one dense line per item — age, unread dot, caps source, headline, right-aligned ticker chips, and two tiny bars for impact and tone. A context strip says in words whether a filter is on.',
+ frame({board:'News',docs:[{n:'News',on:1}],
+  tb:{name:'News',state:'ready',count:'412 items',scope:'last 24h · my lists',btns:['Detail','Compact','Refresh','Save']},
+  workStyle:'grid-template-columns:1fr 250px',
+  work:`${panel({tick:'',title:'Feed',scope:'last 24h',count:412,flush:1,
+   body:`<div style="padding:6px 8px;border-bottom:1px solid var(--border);display:grid;gap:5px">
+    <div class="chips">${['All','Semis','Macro','Filings','Energy','Health'].map((c,i)=>`<button class="btn ${i===1?'on':''}">${c}</button>`).join('')}</div>
+    <div class="chips" style="font-size:var(--fs-xs)">${['1H','6H','24H','48H','7D','30D'].map((c,i)=>`<button class="btn ${i===2?'on':''}">${c}</button>`).join('')}
+     <span class="sep"></span>${['Rel','New','Wire'].map((c,i)=>`<button class="btn ${i===0?'on':''}">${c}</button>`).join('')}</div>
+   </div>
+   <div class="scope">Filtered to <b>Semis</b> and the last 24 hours — 412 of 1,908 items. Clear the chips to see the whole feed.</div>
+   <table class="t">${NEWS.map(n=>`<tr>
+    <td style="width:38px;font-size:var(--fs-xs);color:var(--muted);font-family:var(--font-mono)">${n[0]}</td>
+    <td style="width:12px">${n[6]?'<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent)"></span>':''}</td>
+    <td style="width:104px;font-size:var(--fs-xs);letter-spacing:.05em;color:var(--muted);font-weight:600">${n[1]}</td>
+    <td style="white-space:normal;line-height:1.3;font-size:var(--fs-sm)">${n[2]}</td>
+    <td style="width:110px">${n[3].map(t=>`<span class="pin"><b>${t}</b></span>`).join(' ')}</td>
+    <td style="width:52px"><span class="vol" style="width:${n[4]/2.2}px;background:var(--data-1)"></span></td>
+    <td style="width:46px"><span class="vol" style="width:${Math.abs(n[5])*40}px;background:var(--${n[5]>0?'pos':'neg'})"></span></td></tr>`).join('')}</table>`,
+   footer:FOOT('14 feeds · our News board','00:52','1h 20m ago · impact and tone are our own scores')})}
+  <div class="rail">
+   ${panel({tick:'g',title:'Feed health',count:'14 feeds',body:`<div class="kv"><dt>Feeds current</dt><dd>12</dd><dt>Paused</dt><dd>2</dd>
+    <dt>Articles 24h</dt><dd>1,908</dd><dt>Clusters</dt><dd>412</dd><dt>Sources</dt><dd>61</dd></div>
+    <div style="font-size:var(--fs-xs);color:var(--muted);margin:7px 0 3px">Tone across the 412 clusters</div>
+    <div class="bar2"><i style="width:54%;background:var(--pos)"></i><i style="width:18%;background:var(--muted)"></i><i style="width:28%;background:var(--neg)"></i></div>
+    <div style="font-size:var(--fs-xs);color:var(--muted);margin-top:3px">222 positive · 74 neutral · 116 negative</div>`,
+    footer:'2 feeds paused by us, not broken'})}
+   ${panel({tick:'a',title:'Impact & tone, how',body:`<div style="font-size:var(--fs-xs);color:var(--fg);line-height:1.5">
+    Impact is our own score from source weight, cluster size and how many names on my lists it touches. Tone is the
+    headline only, never the body. Both are ours; no vendor sentiment is bought.</div>`,
+    footer:'method, one click away on every score'})}
+  </div>`,
+  sstatus:'<b>412</b> clusters of 1,908 articles · 12 of 14 feeds current, 2 paused · built by <b>rc-news</b> run 2026-11-21T00:52 · as of 00:52'}));
+
+/* ===== 13 Portfolio ===== */
+shot('13','Portfolio — read-only, and visibly so','First version imports from IBKR and never writes: no order, modify or cancel call is wired anywhere and a test fails if one appears. Account id, balances and positions are private data — their own board file, shown on the tailnet only, never in a log, a PR body, an issue or the AI chat. <b>The figures below are invented for the mock; no position, balance or account of avo\'s was read to draw this screen.</b>',
+ frame({board:'Portfolio',docs:[{n:'Portfolio',on:1}],
+  tb:{name:'Portfolio',state:'read-only',stateCls:'a',count:'9 positions',scope:'IBKR import',btns:['Import','CSV','Refresh']},
+  workStyle:'grid-template-rows:auto 1fr;grid-template-columns:1fr 262px;padding:10px;gap:8px',
+  work:`<div style="grid-column:1/-1" class="banner">Mock figures. This screen is drawn from invented rows so the layout can be judged; nothing was read from a real account.</div>
+  ${panel({tick:'',title:'Positions',scope:'read-only',count:9,flush:1,
+   body:`<table class="t"><tr><th>Name</th><th>Opened</th><th>Side</th><th class="n">Qty</th><th class="n">Avg · Last</th><th class="n">P&amp;L</th><th class="n">P&amp;L %</th><th class="n">Weight</th><th>Day range</th></tr>
+   ${[['NVDA','14 Mar 2026','long',420,'112.40','184.22',30164,63.9,24.1,62],
+     ['ASML','02 Jun 2026','long',60,'620.00','742.10',7326,19.7,13.4,78],
+     ['MU','19 Sep 2026','long',300,'248.10','231.84',-4878,-6.6,10.5,24],
+     ['TSM','11 Jan 2026','long',240,'182.00','287.40',25296,57.9,10.4,55],
+     ['LRCX','03 Oct 2026','long',500,'88.20','104.92',8360,19.0,7.9,88],
+     ['VRT','22 Aug 2026','long',400,'118.40','142.60',9680,20.4,8.6,80],
+     ['AMAT','30 Apr 2026','long',260,'176.50','198.07',5608,12.2,7.8,41],
+     ['MRVL','15 Jul 2026','long',700,'84.10','96.33',8554,14.5,10.2,49],
+     ['Cash','—','—','—','—','—',0,0,7.1,0]]
+   .map(r=>`<tr><td>${r[0]==='Cash'?'<span style="color:var(--muted)">Cash (EUR)</span>':bookmark()+`<span class="tk">${r[0]}</span>`}</td>
+    <td style="font-size:var(--fs-xs);color:var(--muted)">${r[1]}</td><td style="font-size:var(--fs-xs)">${r[2]}</td>
+    <td class="n">${r[3]}</td><td class="n"><span class="cell2">${r[5]}<span class="sub">avg ${r[4]}</span></span></td>
+    <td class="n ${r[6]>=0?'up':'dn'}">${r[6]===0?'—':(r[6]>0?'+':'')+r[6].toLocaleString()}</td>
+    <td class="n">${r[7]===0?'—':heat((r[7]>0?'+':'')+r[7].toFixed(1)+'%',r[7]/12)}</td>
+    <td class="n">${r[8].toFixed(1)}%</td><td>${r[9]?rangebar(r[9]):''}</td></tr>`).join('')}</table>`,
+   footer:FOOT('IBKR import (read-only)','00:05','mock rows · a real import states its own as-of')})}
+  <div class="rail">
+   ${panel({tick:'g',title:'Value & day',body:`<div class="tiles" style="grid-template-columns:1fr 1fr">
+    ${tile('Value','—','<span class="chip q">tailnet only</span>','',1)}
+    ${tile('Day P&L','+1.12%','','weighted, ex-cash',1)}</div>
+    <div style="font-size:var(--fs-xs);color:var(--muted);margin-top:6px;line-height:1.45">A money total is a value avo may not want on a shared screen, so the mock shows the shape and not a number.</div>`,
+    footer:FOOT('IBKR import','00:05','read-only')})}
+   ${panel({tick:'r',title:'What is wired',body:`<div style="font-size:var(--fs-xs);line-height:1.6">
+    <div class="ok">positions, quantity, average cost, cash</div><div class="ok">read-only calls, tailnet only</div>
+    <div class="no">place, modify or cancel an order</div><div class="no">any write to the broker</div>
+    <div class="no">account id or balance in a log, PR, issue or the chat</div></div>`,
+    footer:'a test fails if an order call appears anywhere'})}
+   ${panel({tick:'',title:'Allocation',body:`<div style="display:flex;gap:10px;align-items:center">
+    ${donut([{v:46,c:'var(--data-1)'},{v:22,c:'var(--data-2)'},{v:17,c:'var(--accent)'},{v:8,c:'var(--pos)'},{v:7,c:'var(--muted)'}])}
+    <div class="kv" style="flex:1"><dt>Semis</dt><dd>46%</dd><dt>Semi equip</dt><dd>22%</dd><dt>Power</dt><dd>17%</dd>
+     <dt>Connectivity</dt><dd>8%</dd><dt>Cash</dt><dd>7%</dd></div></div>`,
+    footer:'by GICS sector, from our own classification'})}
+   ${panel({tick:'a',title:'Ex-ante risk',body:`<div class="kv"><dt>Volatility 1y</dt><dd>34.2%</dd><dt>Beta to SPY</dt><dd>1.62</dd>
+    <dt>Top-3 weight</dt><dd>47.9%</dd><dt>Largest contributor</dt><dd>NVDA 31%</dd></div>
+`,
+    footer:FOOT('served prices','00:40','1y window')})}
+  </div>`,
+  sstatus:'<b>9</b> positions · import as of <b>00:05</b> · read-only · private payload, never served to the chat layer'}));
+</script>
+<script>
+/* ===== 14 Prediction markets ===== */
+shot('14','Prediction markets — Kalshi and Polymarket','A free hourly dataset built by the builder, never fetched by a screen, with its own switch and its own row in Grafana like every other fetch. Macro and market events first; events tied to names on avo\'s lists sit on the ticker page. The board puts the options-implied view and the betting-market view side by side, because that comparison is the reason to have it.',
+ frame({board:'Predictions',docs:[{n:'Predictions',on:1}],
+  tb:{name:'Prediction markets',state:'ready',count:'86 markets',scope:'macro + my names',btns:['Compact','Refresh','Save']},
+  workStyle:'grid-template-columns:1.35fr 1fr;grid-template-rows:auto 1fr;padding:10px;gap:8px',
+  work:`${panel({tick:'',title:'Macro events',scope:'Kalshi · Polymarket',count:24,flush:1,seg:['Rates','Inflation','Growth','Index'],style:'grid-row:1/3',
+   body:`<table class="t"><tr><th>Event</th><th>Venue</th><th class="n">Yes</th><th class="n">24h</th><th class="n">7d</th><th class="n">Volume</th><th>30-day</th></tr>
+   ${[['Fed cuts in December','Kalshi','41¢',-9,-14,'2.1 M',0],['No change in December','Kalshi','57¢',8,13,'2.1 M',1],
+     ['CPI YoY below 2.8% (Dec print)','Kalshi','63¢',4,-2,'840 K',1],['Core PCE below 2.5% in Q1','Polymarket','38¢',-2,5,'410 K',0],
+     ['US recession declared in 2027','Polymarket','22¢',-1,-4,'1.4 M',0],['SPX above 7,000 by 31 Dec','Kalshi','29¢',-6,-11,'960 K',0],
+     ['Unemployment above 4.6% (Dec)','Kalshi','44¢',3,7,'320 K',1],['10y above 4.5% at year end','Polymarket','31¢',-4,-8,'280 K',0]]
+   .map(r=>`<tr><td style="white-space:normal;line-height:1.3;font-size:var(--fs-sm)">${r[0]}</td>
+    <td style="font-size:var(--fs-xs);color:var(--muted)">${r[1]}</td><td class="n" style="font-weight:600">${r[2]}</td>
+    <td class="n">${heat((r[3]>0?'+':'')+r[3]+' pts',r[3]/3)}</td><td class="n">${heat((r[4]>0?'+':'')+r[4]+' pts',r[4]/4)}</td>
+    <td class="n">${r[5]}</td><td class="n">${spark(r[3]+40,r[6])}</td></tr>`).join('')}</table>
+   <div class="scope">Prices are the market's own, in cents of a dollar payoff. A cent is not a probability we computed; it is what someone paid.</div>`,
+   footer:FOOT('Kalshi public read · Polymarket public read','02:00','hourly build · free, no key')})}
+  ${panel({tick:'d2',title:'Beside our own implied probability',scope:'NVDA, 25 Nov print',flush:1,
+   body:`<div style="padding:8px">
+    <div class="tiles" style="grid-template-columns:1fr 1fr">
+    ${tile('Market says beat','71¢','<span class="chip p">+3 pts 24h</span>','Kalshi · 2.4 K contracts',1)}
+    ${tile('Our options-implied','64%','<span class="chip q">straddle</span>','Implied Probability board',1)}</div>
+    <div style="font-size:var(--fs-xs);color:var(--fg);line-height:1.5;margin-top:8px">
+    The betting market is 7 points above our own options-implied figure. Our number comes from the at-the-money
+    straddle on the chain we serve; theirs is a traded price on a different question with a different payoff.
+    They are put side by side, never averaged.</div>
+    <div style="margin-top:8px">${lineChart(300,96,{seed:5,second:1})}</div>
+    <div style="font-size:var(--fs-xs);color:var(--muted);margin-top:4px">
+     <i style="display:inline-block;width:10px;height:2px;background:var(--data-1);vertical-align:middle"></i> Kalshi yes price
+     &nbsp; <i style="display:inline-block;width:10px;height:2px;background:var(--data-2);vertical-align:middle"></i> our implied probability</div></div>`,
+   footer:FOOT('Kalshi · our chain','02:00','hourly · chain delayed up to 15 min')})}
+  ${panel({tick:'a',title:'Alert rules on a probability',count:2,
+   body:`<div style="display:grid;gap:6px;font-size:var(--fs-sm)">
+   <div style="border:1px solid var(--border);border-radius:var(--r-sm);padding:6px 8px">Fed cut, December — <b>crosses below 35¢</b>
+    <div style="font-size:var(--fs-xs);color:var(--muted)">ntfy · armed · last fired 20 Nov 18:02</div></div>
+   <div style="border:1px solid var(--border);border-radius:var(--r-sm);padding:6px 8px">Any macro event — <b>moves 10 points in a day</b>
+    <div style="font-size:var(--fs-xs);color:var(--muted)">ntfy · armed · fired 3× in 7 days</div></div></div>`,
+   footer:'rules live in the alert lane; nothing here places a bet or sends an order'})}`,
+  sstatus:'<b>86</b> markets · 24 macro shown · Kalshi 61 · Polymarket 25 · built by <b>rc-prediction</b> run 2026-11-21T02:00 · as of 02:00'}));
+
+/* ===== 15 AI chat ===== */
+shot('15','AI chat — read-only, and it cites rows','Sessions on the left; the empty state offers real prompt text in five columns rather than a blank box; a right rail shows the context it has attached, the tools by group and the budget. Answers come from <b>our</b> payloads and cite the rows they used. The model that would answer and what the call would cost are shown before anything is sent, and nothing is sent until Send is pressed. A private payload — the portfolio — is refused to this layer by a test, not by a convention.',
+ frame({board:'Chat',docs:[{n:'Chat',on:1}],
+  tb:{name:'AI chat',state:'read-only',stateCls:'a',count:'session 4',scope:'our data only',btns:['New session','Context ▾','Clear']},
+  workStyle:'grid-template-columns:168px 1fr 232px;padding:0;gap:0',
+  work:`<div class="sidebar"><div class="sgrp">Sessions</div>
+   ${['Semis margin thread','13F holder changes','Why MU fell 6%','Screen tuning'].map((s,i)=>`<div class="srow ${i===3?'on':''}" style="display:block">
+    <div style="font-size:var(--fs-sm);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s}</div>
+    <div class="sm">${['19 Nov','20 Nov','20 Nov','02:11'][i]} · ${[14,6,9,3][i]} messages</div></div>`).join('')}</div>
+  <div style="padding:10px;overflow:hidden;display:grid;grid-template-rows:1fr auto;gap:8px">
+   ${panel({tick:'',title:'Session · screen tuning',flush:1,body:`<div style="padding:10px;overflow:hidden;display:grid">
+    <div class="msg"><span class="av" style="background:var(--card-2);color:var(--muted)">A</span><div class="bd">
+     Which names passed asymmetric growth this week but failed it last week, and what changed?</div></div>
+    <div class="msg"><span class="av">AI</span><div class="bd">
+     Four names entered the screen between the 14 Nov and the 21 Nov run: <b>CRDO</b>, <b>ALAB</b>, <b>VRT</b> and
+     <b>LRCX</b>. In every case the criterion that flipped was FCF margin, which crossed the 8% floor after the
+     Q3 filings landed on 19 Nov. No threshold of the screen itself changed; the screen is still v7.
+     <div class="cite">forecast_ledger · run 2026-11-14T00:40 (438 rows) and run 2026-11-21T00:40 (444 rows) · WRDS fundamentals filed 19 Nov</div></div></div>
+    <div class="msg"><span class="av" style="background:var(--card-2);color:var(--muted)">A</span><div class="bd">
+     And how are my positions placed against that?</div></div>
+    <div class="msg"><span class="av">AI</span><div class="bd">
+     I cannot answer that one. Portfolio rows are a <b>private</b> payload and the chat layer is refused them, so I
+     have no view of positions. The screen question above I can keep answering.
+     <div class="cite">door: payload "portfolio" marked private · refused to the chat layer</div></div></div>
+   </div>`,
+    footer:'every answer cites the payload, the run and the row count it used'})}
+   ${panel({tick:'a',title:'Composer',flush:1,body:`<div style="padding:8px">
+    <div class="inp ph" style="height:54px;align-items:flex-start;padding-top:6px">Ask about a board, a name or a rule…</div>
+    <div style="display:flex;align-items:center;gap:8px;margin-top:6px;font-size:var(--fs-xs);color:var(--muted);flex-wrap:wrap">
+     <span>Enter sends · Shift+Enter is a new line</span><span class="spacer"></span>
+     <span class="badge n">model: not chosen</span><span class="badge a">cost shown before send</span>
+     <button class="btn" disabled>Send</button></div>
+    <div class="banner" style="margin-top:7px">Nothing is sent until Send is pressed. A paid model stays off until avo turns it on in writing, and the screen names the model and the cost of the call first.</div></div>`})}
+  </div>
+  <div class="rail" style="padding:10px">
+   ${panel({tick:'',title:'Attached context',count:3,body:`<div class="kv"><dt>Screeners</dt><dd>2 runs</dd>
+    <dt>Fundamentals</dt><dd>FY2026 Q3</dd><dt>Hit rate</dt><dd>v7</dd></div>
+    <div style="font-size:var(--fs-xs);color:var(--muted);margin-top:5px">Only payloads I attached. Nothing is read that is not listed here.</div>`})}
+   ${panel({tick:'g',title:'Tools',count:'9 read',body:`<div class="kv"><dt>Read a payload</dt><dd>6</dd><dt>Read a schema</dt><dd>3</dd>
+    <dt>Start a job</dt><dd>0</dd><dt>Write anything</dt><dd>0</dd></div>`,footer:'read-only by design, not by setting'})}
+   ${panel({tick:'r',title:'Refused here',body:`<div style="font-size:var(--fs-xs);line-height:1.6">
+    <div class="no">portfolio rows (private)</div><div class="no">credentials, in any form</div>
+    <div class="no">starting or cancelling a job</div><div class="no">a paid call before avo's word</div></div>`,
+    footer:'a test fails if a private payload reaches this layer'})}
+  </div>`,
+  bubble:false,
+  sstatus:'read-only chat · 3 payloads attached · 0 write tools · model not chosen · nothing sent yet'}));
+</script>
+<script>
+/* ===== 16 Backtest ===== */
+shot('16','Backtest — and the comparison that keeps it honest','The deeper of the two shapes: a setup line with a DONE badge, an as-of and a note count; ten metric tiles whose sub-line names the comparison; a left rail of collapsible blocks with the fill rule written out in words; content tabs where ASSUMPTIONS carries a count so the notes cannot be missed. Our own rule on top: a backtest result is shown <b>beside the forward Hit Rate of the same rule</b>, never alone, so a rule that only worked in the past is visible as such.',
+ frame({board:'Backtest',docs:[{n:'Backtest',on:1}],
+  tb:{name:'Backtest · asymmetric growth v7',state:'done',count:'1,284 trades',scope:'1996–2026 · daily',btns:['Run','CSV','Compare ▾','Reset']},
+  workStyle:'grid-template-columns:200px 1fr;padding:0;gap:0',
+  work:`<div class="sidebar" style="overflow:hidden">
+   ${[['Strategy parameters','rule v7 · 4 criteria'],['Sizing & risk','equal weight · 25 names'],
+     ['Costs & execution','5 bp + 1 bp slippage'],['Data & adjustment','split and dividend adjusted'],
+     ['Universe & membership','point-in-time spine'],['Held-out period','2022–2026, never tuned on']]
+   .map((b,i)=>`<div class="srow ${i===2?'on':''}" style="display:block;padding:7px 10px">
+    <div style="font-size:var(--fs-sm);display:flex;gap:6px"><span>${i===2?'▾':'▸'}</span>${b[0]}</div>
+    <div class="sm" style="padding-left:16px">${b[1]}</div></div>`).join('')}
+   <div style="padding:8px 10px;border-top:1px solid var(--border);font-size:var(--fs-xs);color:var(--fg);line-height:1.5">
+    <b style="color:var(--bright)">Fill rule</b><br>Signal on the close of bar t, filled at the next bar's open. No look-ahead.
+    Fundamentals are read by filing date, never by period end. A delisted name stays in the universe for its own dates.</div>
+   <div style="padding:8px 10px;font-size:var(--fs-xs);color:var(--muted)">Variants tried in this session: <b style="color:var(--amber)">3</b>. Shown on the screen so a sweep cannot hide.</div></div>
+  <div style="padding:10px;overflow:hidden;display:grid;grid-template-rows:auto auto auto 1fr;gap:8px">
+   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:var(--fs-xs);color:var(--muted);
+    border:1px solid var(--border);border-radius:var(--r-sm);padding:5px 8px;background:var(--card)">
+    <span class="badge g">done</span>25 names · 1996-01-02 → 2026-11-20 · daily bars · benchmark SPY · equal weight
+    <span class="spacer"></span><span class="badge a">⚠ 4 notes</span><span>as of 02:04</span></div>
+   <div class="seg">${['Overview','Performance','Risk','Trades','Exposure','Costs','Monte Carlo','Compare','Assumptions · 4','Runs'].map((t,i)=>`<button class="${i===0?'on':''}">${t}</button>`).join('')}</div>
+   <div class="tiles" style="grid-template-columns:repeat(5,1fr)">
+   ${[['CAGR','14.2%','vs SPY 9.8%'],['Total return','+1,204%','SPY +512%'],['Sharpe','0.71','rf ^IRX 3.80%'],
+     ['Max drawdown','−42.1%','Oct 2008, 19 months'],['Hit rate','54.2%','1,284 trades'],
+     ['Avg win / loss','1.74','win 9.1% · loss −5.2%'],['Turnover','182%','a year'],
+     ['Beta','0.94','to SPY'],['Alpha','+3.1%','a year, after costs'],['Costs paid','−2.9%','a year, 5 bp + 1 bp']]
+    .map(t=>`<div class="tile" style="padding:4px 8px"><div class="lb">${t[0]}</div><div class="v sm">${t[1]}</div>
+     <div class="cmp">${t[2]}</div></div>`).join('')}</div>
+   <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:8px;overflow:hidden">
+    ${panel({tick:'',title:'Equity vs benchmark',scope:'log scale',flush:1,
+     body:`<div style="padding:8px">${lineChart(430,120,{seed:21,second:1})}
+      <div style="font-size:var(--fs-xs);color:var(--muted);margin:4px 0 2px">Drawdown</div>
+      <svg width="100%" height="40" viewBox="0 0 100 40" preserveAspectRatio="none"><polygon points="0,0 12,0 18,34 26,8 44,4 52,28 68,6 84,2 92,18 100,5 100,0" fill="var(--neg-soft)" stroke="var(--neg)" stroke-width=".6"/></svg>
+      <div style="font-size:var(--fs-xs);color:var(--fg);line-height:1.5;margin-top:5px">The strategy returned 14.2% a year against SPY's 9.8% over the same window, with a worst drawdown of 42.1% that took 19 months to recover. The last four years are the held-out period and were never tuned on.</div></div>`,
+     footer:FOOT('served prices 1984→ · point-in-time spine','02:04','5 bp commission + 1 bp slippage')})}
+    ${panel({tick:'d2',title:'Beside the forward Hit Rate',scope:'same rule, live picks',flush:1,
+     body:`<div style="padding:8px"><table class="t">
+      <tr><th>Horizon</th><th class="n">Backtest</th><th class="n">Live Hit Rate</th><th class="n">Gap</th></tr>
+      ${[['20 d','54.2%','51.8%',-2.4],['60 d','57.1%','55.9%',-1.2],['120 d','59.8%','52.1%',-7.7]]
+      .map(r=>`<tr><td>${r[0]}</td><td class="n">${r[1]}</td><td class="n">${r[2]}</td>
+       <td class="n dn">${r[3].toFixed(1)} pp</td></tr>`).join('')}</table>
+      <div style="font-size:var(--fs-xs);color:var(--fg);line-height:1.5;margin-top:6px">
+      The live figure is the Hit Rate board's score of this rule's frozen picks since 12 Jun 2026 (214 picks). The
+      120-day gap of 7.7 pp is the number worth arguing about, and it is why the two are never shown apart.</div></div>`,
+     footer:FOOT('Hit Rate board · forecast_ledger','00:40','214 live picks since 12 Jun')})}
+   </div></div>`,
+  sstatus:'<b>1,284</b> trades · 1996-01-02 → 2026-11-20 · 4 assumptions to read · variants tried 3 · run <b>bt-2026-11-21T02:04</b>'}));
+
+/* ===== 17 Value chain / relatedness ===== */
+shot('17','Value chain & Relatedness — three toolbars and a dock','The map screen is three toolbars deep: subject and analyse; layout, edge weight and depth; then SHOW chips with counts that switch each relation class on and off. A ten-tile strip, the canvas with a legend card and a centre-node card carrying its stacked share bar, and a bottom dock whose tabs <b>are</b> the relation classes — each with a donut, a one-sentence summary, a method note and a ranked table. A class with no data says so in a sentence; a section still building is a grey card, not an empty space.',
+ frame({board:'Value chain',docs:[{n:'Value chain',on:1}],
+  tb:{name:'Value chain · NVDA',state:'7 of 11 sections',stateCls:'a',count:'184 edges',scope:'2 hops',btns:['Fit','Legend','Tables','Export','Refresh']},
+  workStyle:'grid-template-rows:auto auto 1fr auto;padding:10px;gap:8px',
+  work:`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:var(--fs-xs)">
+   <div class="inp" style="width:150px"><span class="tk">NVDA</span></div><button class="btn pri">Analyse</button>
+   <span style="color:var(--muted)">◀ ▶ history</span><span class="sep"></span>
+   <span style="color:var(--amber)">Loading NVDA · 7 of 11 sections</span><span class="spacer"></span>
+   <span style="color:var(--muted)">Layout</span>${['Tiered','Hierarchy','Radial','Force','Sankey','Matrix'].map((l,i)=>`<button class="btn ${i===0?'on':''}">${l}</button>`).join('')}
+   <span class="sep"></span><span style="color:var(--muted)">Weight</span>${['% held','Value','Change','ρ corr'].map((l,i)=>`<button class="btn ${i===0?'on':''}">${l}</button>`).join('')}
+   <span class="sep"></span>${['1 hop','2 hops'].map((l,i)=>`<button class="btn ${i===1?'on':''}">${l}</button>`).join('')}</div>
+  <div class="chips">${[['Customers',14,'g'],['Suppliers',23,'g'],['Peers',18,''],['Co-movement',96,''],['Holders',33,'a'],['Competitors',0,'n']]
+   .map(c=>`<button class="btn ${c[2]==='n'?'gho':'on'}">${c[0]} <span class="badge ${c[2]||'n'}">${c[1]}</span></button>`).join('')}</div>
+  <div style="display:grid;grid-template-columns:1fr 230px;gap:8px;overflow:hidden">
+   ${panel({tick:'',title:'Map',scope:'tiered · % held · 2 hops',count:'184 edges',flush:1,
+    body:`<div style="position:relative;height:100%;background:var(--card);overflow:hidden">
+     <svg width="100%" height="100%" viewBox="0 0 560 230" preserveAspectRatio="none">
+      ${[[90,40],[90,90],[90,140],[90,190],[470,50],[470,110],[470,170]].map(p=>`<line x1="${p[0]}" y1="${p[1]}" x2="280" y2="115" stroke="var(--grid)" stroke-width="1.4"/>`).join('')}
+      ${[[90,40,'TSM'],[90,90,'ASML'],[90,140,'AMAT'],[90,190,'LRCX']].map(p=>`<g><circle cx="${p[0]}" cy="${p[1]}" r="16" fill="var(--data-2)" opacity=".75"/><text x="${p[0]}" y="${p[1]+4}" text-anchor="middle" font-size="9" fill="var(--bright)" font-family="monospace">${p[2]}</text></g>`).join('')}
+      ${[[470,50,'MSFT'],[470,110,'META'],[470,170,'ORCL']].map(p=>`<g><circle cx="${p[0]}" cy="${p[1]}" r="16" fill="var(--data-1)" opacity=".75"/><text x="${p[0]}" y="${p[1]+4}" text-anchor="middle" font-size="9" fill="var(--bright)" font-family="monospace">${p[2]}</text></g>`).join('')}
+      <circle cx="280" cy="115" r="26" fill="var(--accent)" opacity=".9"/><text x="280" y="119" text-anchor="middle" font-size="11" fill="var(--primary-fg)" font-family="monospace">NVDA</text>
+      <text x="90" y="216" text-anchor="middle" font-size="9" fill="var(--muted)">suppliers</text>
+      <text x="470" y="200" text-anchor="middle" font-size="9" fill="var(--muted)">customers</text>
+     </svg>
+     <div style="position:absolute;right:8px;top:8px;background:var(--card-2);border:1px solid var(--border);border-radius:var(--r-sm);padding:6px 8px;font-size:var(--fs-xs);line-height:1.6">
+      <div><i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--data-2)"></i> supplier</div>
+      <div><i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--data-1)"></i> customer</div>
+      <div><i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent)"></i> subject</div>
+      <div style="color:var(--muted);margin-top:3px">edge width = share of revenue</div></div></div>`,
+    footer:FOOT('Value Chain board · EDGAR text + our mapping','18 Nov 21:40','2 d ago · sync is avo-gated')})}
+   <div class="rail">
+    ${panel({tick:'',title:'NVDA',body:`<div class="kv"><dt>Customers</dt><dd>14</dd><dt>Suppliers</dt><dd>23</dd>
+     <dt>Revenue concentration</dt><dd>top 4 = 58%</dd></div>
+     <div style="font-size:var(--fs-xs);color:var(--muted);margin:6px 0 3px">Revenue by named customer</div>
+     <div class="bar2"><i style="width:22%;background:var(--data-1)"></i><i style="width:16%;background:var(--accent)"></i><i style="width:12%;background:var(--data-2)"></i><i style="width:8%;background:var(--pos)"></i><i style="width:42%;background:var(--muted)"></i></div>
+     <div style="font-size:var(--fs-xs);color:var(--muted);margin-top:3px">MSFT 22% · META 16% · ORCL 12% · AMZN 8% · rest 42%</div>`,
+     footer:'named in filings only; unnamed revenue stays "rest"'})}
+    ${panel({tick:'a',title:'Still building',body:`<div style="display:grid;gap:5px">
+     ${['Relatedness scores','Co-movement matrix','Peer ranks','Holder overlap'].map(s=>`<div style="background:var(--card-2);border:1px solid var(--border);border-radius:var(--r-sm);padding:6px 8px;font-size:var(--fs-xs);color:var(--muted)">${s} · Loading…</div>`).join('')}</div>`,
+     footer:'4 of 11 sections have not arrived'})}
+   </div></div>
+  ${panel({tick:'',title:'Relation classes',flush:1,style:'max-height:150px',
+   body:`<div class="seg">${['Customers · 14','Suppliers · 23','Peers · 18','Co-movement · 96','Holders · 33','Competitors · 0'].map((t,i)=>`<button class="${i===0?'on':''}">${t}</button>`).join('')}</div>
+   <div style="display:grid;grid-template-columns:96px 1fr 1.3fr;gap:10px;padding:8px">
+    <div>${donut([{v:22,c:'var(--data-1)'},{v:16,c:'var(--accent)'},{v:12,c:'var(--data-2)'},{v:8,c:'var(--pos)'},{v:42,c:'var(--muted)'}])}</div>
+    <div style="font-size:var(--fs-xs);color:var(--fg);line-height:1.5">Four named customers account for 58% of revenue, and the largest alone for 22%. 
+     <div style="color:var(--muted);margin-top:5px">Method: customers named in the last four 10-K and 10-Q filings, with the share as the filing states it. Where a filing gives a range we take the low end.</div></div>
+    <table class="t"><tr><th>Customer</th><th class="n">% of revenue</th><th>Share</th><th class="n">Δ vs prior year</th></tr>
+     ${[['MSFT',22,'+3.1'],['META',16,'+1.8'],['ORCL',12,'+4.2'],['AMZN',8,'−0.6']].map(r=>`<tr>
+      <td><span class="tk">${r[0]}</span></td><td class="n">${r[1]}%</td>
+      <td><span class="vol" style="width:${r[1]*3}px"></span></td>
+      <td class="n ${r[2][0]==='+'?'up':'dn'}">${r[2]} pp</td></tr>`).join('')}</table></div>`})}`,
+  fresh:{cls:'warn',txt:'value chain 2 d old'},
+  sstatus:'<b>184</b> edges · 7 of 11 sections · 1 class empty (competitors) · built by <b>rc-value-chain</b> 18 Nov 21:40 · sync needs avo\'s word'}));
+</script>
+<script>
+/* ===== 18 extra widgets ===== */
+shot('18','The widgets on data we already serve','Breadth, the risk score, macro series, the yield curve, the volatility family and the calendar — six widgets that add no new source, built from our served prices and FRED. Two rules show on the screen rather than in a doc: a composite score appears <b>only when every input is in</b>, and a widget that is gated by cost shows its description and a LOAD button instead of fetching on its own.',
+ frame({board:'Welcome',docs:[{n:'Welcome',on:1},{n:'Macro',on:0}],
+  tb:{name:'Welcome · macro layout',state:'ready',count:'6 widgets',scope:'layout "macro"'},
+  workStyle:'grid-template-columns:repeat(3,1fr);grid-template-rows:minmax(0,1fr) minmax(0,1fr)',
+  work:`${panel({tick:'',title:'Market breadth',scope:'our universe',count:'10,612',flush:1,
+   body:`<div style="padding:8px"><div class="kv" style="font-size:var(--fs-sm)">
+    <dt>Advancers</dt><dd class="up">6,118</dd><dt>Decliners</dt><dd class="dn">4,204</dd><dt>Unchanged</dt><dd>290</dd></div>
+    <div class="bar2" style="margin:7px 0"><i style="width:58%;background:var(--pos)"></i><i style="width:3%;background:var(--muted)"></i><i style="width:39%;background:var(--neg)"></i></div>
+    <div class="kv"><dt>Above 50-day</dt><dd>54.1%</dd><dt>Near 52w high</dt><dd>8.4%</dd><dt>Near 52w low</dt><dd>3.1%</dd></div>
+    <div style="margin-top:6px">${bars(22,44)}</div></div>`,
+   footer:FOOT('our served prices','00:40','40m ago · universe after the ETF and tier cut')})}
+  ${panel({tick:'a',title:'Risk on / risk off',scope:'0–100',flush:1,
+   body:`<div style="padding:8px"><div style="display:flex;align-items:baseline;gap:8px">
+    <span style="font-size:var(--fs-xl);font-weight:700;color:var(--amber);font-variant-numeric:tabular-nums">58</span>
+    <span class="badge a">mixed</span></div>
+    <div class="bar2" style="margin:7px 0;height:10px"><i style="width:58%;background:linear-gradient(90deg,var(--neg),var(--amber),var(--pos))"></i></div>
+    <table class="t" style="margin-top:4px"><tr><th>Input</th><th class="n">Reading</th><th>State</th></tr>
+    ${[['Trend (SPX vs 200d)','+4.1%','on','g'],['VIX 30D','16.8','on','g'],['Credit spread (HY OAS)','3.12%','neutral','n'],['AUD/JPY','96.4','off','r'],['Copper / gold','0.00182','neutral','n']]
+    .map(r=>`<tr><td style="font-size:var(--fs-xs)">${r[0]}</td><td class="n">${r[1]}</td><td><span class="badge ${r[3]}">${r[2]}</span></td></tr>`).join('')}</table>
+    <div style="font-size:var(--fs-xs);color:var(--muted);margin-top:5px;line-height:1.4">All five inputs are in, so the score is shown. If one were missing the widget would say which, and show no score.</div></div>`,
+   footer:'method: equal-weight z-scores over 1 year, one click away'})}
+  ${panel({tick:'',title:'Yield curve',scope:'US Treasury',flush:1,
+   body:`<div style="padding:8px"><div class="tiles" style="grid-template-columns:1fr 1fr">
+    ${tile('2s10s','+42 bp','<span class="chip p">+6 bp 1w</span>','',1)}${tile('3m10y','−18 bp','<span class="chip n">−3 bp 1w</span>','inverted',1)}</div>
+    <div style="margin-top:8px">${lineChart(300,86,{seed:31})}</div>
+    <div style="font-size:var(--fs-xs);color:var(--muted);margin-top:4px">3m 4.02 · 2y 3.74 · 5y 3.81 · 10y 4.16 · 30y 4.52</div></div>`,
+   footer:FOOT('FRED (free, no key)','19:00','daily release · 7h ago')})}
+  ${panel({tick:'d2',title:'Volatility family',scope:'Cboe delayed',flush:1,
+   body:`<div style="padding:8px"><table class="t"><tr><th>Series</th><th class="n">Level</th><th class="n">1d</th><th class="n">Percentile 1y</th></tr>
+   ${[['VIX 9D','14.2',-0.8,22],['VIX 30D','16.8',-0.4,31],['VIX 3M','18.9',0.1,38],['VIX 6M','20.1',0.2,41],['VVIX','88.4',-1.2,27]]
+   .map(r=>`<tr><td>${r[0]}</td><td class="n">${r[1]}</td><td class="n ${r[2]>0?'up':'dn'}">${(r[2]>0?'+':'')+r[2].toFixed(1)}</td>
+    <td class="n"><span class="vol" style="width:${r[3]/2}px"></span> ${r[3]}%</td></tr>`).join('')}</table>
+   <div class="banner" style="margin-top:7px">The futures curve needs the Cboe key, which is missing. Nothing is fetched on its own — press Load after the key is set.</div>
+   <button class="btn" style="margin-top:6px;width:100%" disabled>Load futures curve · 1 request</button></div>`,
+   footer:FOOT('Cboe delayed','00:30','delayed up to 15 min · curve not loaded')})}
+  ${panel({tick:'',title:'Macro series',scope:'FRED',count:6,flush:1,
+   body:`<div style="padding:8px"><div class="chips" style="margin-bottom:6px">${['CPI','Core PCE','Unemployment','Fed funds','Industrial prod.','Retail sales'].map((c,i)=>`<button class="btn ${i===0?'on':''}">${c}</button>`).join('')}</div>
+    ${lineChart(300,86,{seed:41})}
+    <div style="font-size:var(--fs-xs);color:var(--fg);margin-top:5px;line-height:1.45">CPI YoY 2.94% for October, released 13 Nov. The September figure was revised down 0.04 pp, and a revised point is marked on the line.</div></div>`,
+   footer:FOOT('FRED (free, no key)','13 Nov 14:30','release date, not fetch time')})}
+  ${panel({tick:'a',title:'Calendar',scope:'FOMC + CPI + my names',count:11,flush:1,
+   body:`<table class="t"><tr><th>When</th><th>Event</th><th>Kind</th></tr>
+   ${[['21 Nov','ADI earnings, pre','earnings','n'],['25 Nov','NVDA earnings, post','earnings','g'],
+     ['26 Nov','Core PCE, October','macro','a'],['09 Dec','FOMC decision','macro','a'],
+     ['11 Dec','CPI, November','macro','a'],['18 Dec','Quad witching','market','n']]
+   .map(r=>`<tr><td style="font-size:var(--fs-xs);font-family:var(--font-mono)">${r[0]}</td>
+    <td style="font-size:var(--fs-sm)">${r[1]}</td><td><span class="badge ${r[3]}">${r[2]}</span></td></tr>`).join('')}</table>`,
+   footer:FOOT('Earnings Radar · FRED release calendar','00:40','free sources only')})}`,
+  sstatus:'<b>6/6</b> widgets · layout <b>macro</b> · 1 widget waiting on a key (Cboe) · no widget fetches on its own'}));
+
+/* ===== 19 states ===== */
+shot('19','Loading, empty, stale and refused — the discipline','The states are the design, not an afterthought. A loading table is skeleton bars <b>in its real column layout</b> with a strip naming what is running; nothing configured is a card that states the next step as a button; a class with no data is a sentence; sample or stale data admits itself in a banner instead of looking live; an upstream that is down is a plain sentence with its probe, never a 500; a press that spends shows its estimate and waits.',
+ frame({board:'Hit rate',docs:[{n:'Hit rate',on:1}],
+  tb:{name:'States',state:'illustration',stateCls:'a',count:'6 states',scope:'every board'},
+  workStyle:'grid-template-columns:1fr 1fr 1fr;grid-template-rows:minmax(0,1fr) minmax(0,1fr)',
+  work:`${panel({tick:'',title:'Loading a table',flush:1,
+   body:`<div style="padding:5px 8px;border-bottom:1px solid var(--border);font-size:var(--fs-xs);color:var(--amber)">
+    Running <b>rc-hit-rate</b> · step 3 of 5 · reading forecast_outcomes</div>
+    <table class="t"><tr><th>Name</th><th class="n">20 d</th><th class="n">60 d</th><th class="n">120 d</th><th>Verdict</th></tr>
+    ${[0,1,2,3,4,5].map(()=>`<tr><td><div class="skel" style="width:54px"></div></td>
+     <td class="n"><div class="skel" style="width:38px;margin-left:auto"></div></td>
+     <td class="n"><div class="skel" style="width:38px;margin-left:auto"></div></td>
+     <td class="n"><div class="skel" style="width:38px;margin-left:auto"></div></td>
+     <td><div class="skel" style="width:48px"></div></td></tr>`).join('')}</table>`,
+   footer:'the skeleton keeps the real columns, so nothing jumps when the rows land'})}
+  ${panel({tick:'',title:'Nothing configured',flush:1,
+   body:`<div style="padding:10px"><div class="empty"><h4>No saved screen yet</h4>
+    <p>A saved screen freezes its criteria and its universe so the Hit Rate board can score the same picks later.
+    Build one from the screener, then save it under a name.</p>
+    <button class="btn pri">Open the screen builder</button></div></div>`,
+   footer:'an empty state names the next step and makes it a button'})}
+  ${panel({tick:'a',title:'A class with no data',flush:1,
+   body:`<div style="padding:10px;display:grid;gap:8px">
+    <div style="font-size:var(--fs-sm);line-height:1.5;color:var(--fg)">Customers and suppliers are not available for this
+    name: no filing in the last four quarters names a counterparty, so the class is empty rather than zero.</div>
+    <div class="banner b">An empty class is written as a sentence. A zero would read as a measurement we made.</div></div>`,
+   footer:'Value Chain · EDGAR text · as of 18 Nov 21:40'})}
+  ${panel({tick:'a',title:'Sample or stale',flush:1,
+   body:`<div style="padding:10px;display:grid;gap:8px">
+    <div class="banner">This surface is the <b>sample</b> one and stays until the real build arrives. It is shaped
+    like ours and is not ours.</div>
+    <div class="banner">Relatedness was last built <b>18 Nov 21:40</b>, 2 days ago, past its 24-hour freshness policy.
+    The rows below are the old ones; they are shown, not hidden.</div>
+    <div style="font-size:var(--fs-xs);color:var(--muted);line-height:1.45">A screen that shows sample or stale data says
+    so where the data is, not in a tooltip.</div></div>`,
+   footer:'freshness policy per dataset: ttl, minimum interval, timeout'})}
+  ${panel({tick:'r',title:'An upstream is down',flush:1,
+   body:`<div style="padding:10px;display:grid;gap:8px">
+    <div class="banner r"><b>upstream down: Grafana</b> — the health frame cannot load.</div>
+    <div class="kv"><dt>Dashboard</dt><dd class="up">ok · 41 ms</dd><dt>Grafana</dt><dd class="dn">timeout · 2.0 s</dd>
+     <dt>Payload folder</dt><dd class="up">ok</dd><dt>Door</dt><dd class="up">ok</dd></div>
+    <div style="font-size:var(--fs-xs);color:var(--fg);line-height:1.45">Each upstream is probed with a 2-second timeout and
+    named. The page keeps working; only the part that needs Grafana says it cannot.</div>
+    <button class="btn" style="width:100%">Retry the probe</button></div>`,
+   footer:'this replaces the 500 the old Settings page could show'})}
+  ${panel({tick:'r',title:'A press that spends, and one that is refused',flush:1,
+   body:`<div style="padding:10px;display:grid;gap:8px">
+    <div style="border:1px solid var(--border);border-radius:var(--r-sm);padding:7px 8px">
+     <div style="font-size:var(--fs-sm);color:var(--bright)">Backfill · OpenFIGI identifiers</div>
+     <div style="font-size:var(--fs-xs);color:var(--muted);line-height:1.45">Estimated <b>1,840 requests</b> over about 31 minutes, inside the free tier. Nothing is sent until you confirm.</div>
+     <div class="chips" style="margin-top:5px"><button class="btn gho">Cancel</button><button class="btn pri">Confirm and run</button></div></div>
+    <div style="border:1px solid var(--border);border-left:3px solid var(--neg);border-radius:var(--r-sm);padding:7px 8px">
+     <div style="font-size:var(--fs-sm);color:var(--bright)">Build timer · on</div>
+     <div style="font-size:var(--fs-xs);color:var(--muted);line-height:1.45"><b>Guarded.</b> This route is never proxied by the door. It is pressed on the old dashboard, by hand, on avo's word.</div></div></div>`,
+   footer:'estimate and confirm for anything that spends; Guarded routes answer 403 at the door'})}`,
+  fresh:{cls:'bad',txt:'1 upstream down'},
+  astatus:'door /api/v1 ok · dashboard ok · <b style="color:var(--neg)">Grafana timeout</b> · payload folder ok &nbsp;·&nbsp; tailnet only &nbsp;·&nbsp; v2 mock',
+  sstatus:'states illustration · <b>no</b> board data on this screen · the six states every board implements'}));
+
+/* ===== 20 split view ===== */
+shot('20','Two screens side by side — the desk','Clicking a board replaces the view; opening a ticker from a board <b>splits</b> the view and gives the second pane its own document tab, its own toolbar and its own status line. That is the one behaviour that makes it feel like a desk rather than a website, and it is why the document tab row stays. At 1884&nbsp;px the split is the normal way to work; at 1187&nbsp;px it is a 60/40 and the rails fold.',
+ frame({board:'Screeners',docs:[{n:'Asymmetric growth',on:1},{n:'NVDA',on:0}],
+  tb:{name:'Asymmetric growth',state:'ready',count:'444 hits',scope:'split · 60 / 40',btns:['Detail','Compact','Refresh','Save']},
+  workStyle:'grid-template-columns:1.5fr 1fr;padding:10px;gap:10px',
+  work:`${panel({tick:'',title:'Hits',scope:'asymmetric growth',count:444,flush:1,
+   body:`<table class="t"><tr><th>Name</th><th class="n">Last · 1D</th><th class="n">YTD</th><th>Verdict</th></tr>
+   ${SCRROWS.slice(0,10).map((r,i)=>`<tr class="${i===0?'sel':''}"><td>${bookmark()}<span class="tk">${r[0]}</span></td>
+    <td class="n"><span class="cell2">${r[2]}<span class="sub ${r[3]>0?'up':'dn'}">${(r[3]>0?'+':'')+r[3].toFixed(2)}%</span></span></td>
+    <td class="n">${heat((r[6]>0?'+':'')+r[6].toFixed(1)+'%',r[6]/12)}</td>
+    <td><span class="badge ${r[8]}">${r[7]}</span></td></tr>`).join('')}</table>`,
+   footer:FOOT('served prices + fundamentals','00:40','screen frozen at run 00:40')})}
+  <div style="display:grid;grid-template-rows:auto auto 1fr;gap:6px;overflow:hidden;border-left:1px solid var(--border);padding-left:10px">
+   <div class="stoolbar" style="height:28px;background:transparent;border:none;padding:0">
+    <span class="nm">Ticker · NVDA</span><span class="badge g">ready</span><span class="spacer"></span>
+    <button class="btn">+ Watch list</button><button class="btn gho">✕</button></div>
+   ${QUOTE}
+   <div style="display:grid;grid-template-rows:auto auto 1fr;gap:6px;overflow:hidden">
+    <div class="tiles" style="grid-template-columns:repeat(4,1fr)">
+    ${[['1M',-3.4],['YTD',41.2],['1Y',63.9],['5Y',1184.0]].map(t=>`<div class="tile" style="padding:5px 7px">
+     <div class="lb">${t[0]}</div><div class="v sm ${t[1]>0?'up':'dn'}" style="font-family:var(--font-mono)">${(t[1]>0?'+':'')+t[1].toFixed(1)}%</div></div>`).join('')}</div>
+    ${panel({tick:'',title:'Price',scope:'YTD',flush:1,body:`<div style="padding:7px">${lineChart(320,110,{seed:11,band:1})}</div>`,
+     footer:FOOT('served prices','00:40','end-of-day')})}
+    ${panel({tick:'g',title:'Growth quality',flush:1,body:`<div style="padding:8px">
+     <div class="verdict" style="font-size:var(--fs-lg);font-weight:700;color:var(--pos)">STRONG</div>
+     <div style="font-size:var(--fs-xs);color:var(--muted);line-height:1.45;margin-top:3px">Revenue grew 28.4% a year over three years with FCF margin above 20% — what the rule asks for.</div></div>`,
+     footer:'rule v7 · asymmetric growth'})}
+   </div>
+   <div class="sstatus" style="background:transparent;border-top:1px solid var(--border)">
+    <b>NVDA</b> · own pane, own status line · as of 00:40</div>
+  </div>`,
+  sstatus:'<b>444</b> hits · pane 2: <b>NVDA</b> · split 60 / 40 · each pane keeps its own toolbar, status and refresh'}));
+</script>
+<script>
+/* ---------- render ---------- */
+document.getElementById('shots').innerHTML = SHOTS.map(s=>`
+ <div class="cap"><h2><span>${s.n}</span>${s.title}</h2><p>${s.desc}</p></div>
+ <div class="stage"><div class="scaler">${s.html}</div></div>`).join('');
+
+const NOTIN=[
+ 'A phone layout for the web. avo decided on 21 Nov 00:41 that the phone view is the native app, so nothing here is drawn at 412 or 720 px. The APK screens are their own mock, at step 18.',
+ 'The Android app itself — screens, navigation, the vertical widget list that replaces the free grid.',
+ 'Crypto, in any form, and Live TV. Both are out of v2 by decision.',
+ 'Trading: an order ticket, working orders, today\'s P&L, algo deployment, broker accounts. Out of v2.',
+ 'Drag, resize and the saved-layout dialog as behaviour. The buttons are drawn; the interaction was never seen on the walk, so it is specified from the buttons and not mocked.',
+ 'The real Database tab of today\'s Settings: ticker lookup, the data-flow diagram, example rows, the need catalogue, routes, board inputs, automations. Screen 05 mocks the Data Sources column only. The lookup and the sample stay per-request reads that the door proxies, and they are drawn at step 9, not here.',
+ 'Grafana\'s own panels. Screens 06 shows the frame around them; what is inside stays Grafana\'s look.',
+ 'The remaining data boards: 13F, Earnings Radar, SPX Gamma as a board, Sector Rotation, Relatedness as its own board, LEAPS, Implied Probability, Ownership, Logs, Runs. They are the same generic parts as screens 07, 08 and 12 and are drawn when they are built (steps 12 and 13).',
+ 'The command box open, with its result list. The closed box is on every screen; the palette itself is step 8.',
+ 'The volatility surface (item 7 of the extra features) and the rule builder (item 8). Both ride with the backtest slice.',
+ 'The alert lane\'s own screen: rule list, rule editor, the hit log. Screen 14 shows two rules in a widget; the lane is step 17.',
+ 'Real numbers. Nothing on these screens is read from the store, and the Portfolio screen carries no real position, balance or account id.',
+ 'Fincept\'s colours, fonts, icons, strings and code. The structure was measured; everything drawn here is written from scratch on our own tokens.'];
+document.getElementById('notin').innerHTML = NOTIN.map(t=>`<li>${t}</li>`).join('');
+
+const CHK=[
+ ['ok','<b>One shared theme.</b> Every colour on these screens is a token from <code>ref/design-system/tokens.css</code> — Mürekkep light, Gece dark. No component carries a hex value.'],
+ ['ok','<b>Type scale and face.</b> Inter at 11 / 12.5 / 14 / 16 / 20 / 26 px with tabular numbers; a mono face for figures, tickers and times only.'],
+ ['ok','<b>Spacing, radius, elevation.</b> The 4 px scale (4–48), radius 6 / 10 / 14, three elevations. No other value is used.'],
+ ['ok','<b>Light and dark.</b> Both are on this page, switched at the top. Text keeps AA contrast on bg, card and card-2 in both.'],
+ ['ok','<b>1187 and 1884 px.</b> Both widths are switched at the top. Every board fits its pane with no sideways scroll at 1187.'],
+ ['ok','<b>English, every string.</b> Every word a board shows here is English, including times, badges, empty states and help text.'],
+ ['ok','<b>Watch-list bookmark left of the ticker</b>, in one small box split in two halves, 36 px with a 12 px icon — avo\'s exception to the 44 px rule for this button.'],
+ ['ok','<b>Value and change stacked in one cell</b> (last · 1D, avg · last), so there is no second Δ% column group.'],
+ ['ok','<b>Cells never overlap.</b> Figure on line 1, detail on a small muted second line; short columns never wrap and are sized to their widest value.'],
+ ['ok','<b>One accent only</b>, for selection, sort, focus and links. Green and red are muted and mean direction; amber means a warning. Charts use data-1 and data-2.'],
+ ['ok','<b>Charts scale to their container</b> — every chart here is an SVG with <code>preserveAspectRatio="none"</code> and no fixed pixel width.'],
+ ['ok','<b>A row click opens detail</b> rather than widening the table: the detail rail on screen 08, the split pane on screen 20.'],
+ ['no','<b>412 and 720 px are not checked</b>, by decision: the phone view is the APK. Those checks move to the Android mock at step 18.'],
+ ['no','<b>Real-data render on homesrv</b> is not done. These screens are drawn from invented rows; the run plan\'s step-2 proof asked for pictures, and the same-numbers proof lives in steps 10 and 12 where a board is built against the old one.']];
+document.getElementById('chk').innerHTML = CHK.map(c=>`<li class="${c[0]}">${c[1]}</li>`).join('');
+
+fit();
+</script>
+</body>
+</html>
