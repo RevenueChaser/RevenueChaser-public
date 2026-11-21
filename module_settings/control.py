@@ -858,7 +858,9 @@ def files(nd: dict, datasets: dict, universe_view: dict, reads: dict, now: datet
         out.append({"kind": kind, "name": f"{kind}.duckdb", "steps": fc.steps, "words": fc.words,
                     "runs_on_universe": fc.runs_on_universe, "color": color, "datasets": rows, "automation": auto,
                     "health": _health_of(rows), "tables": tables, "path": live.get("path"),
-                    "bytes": live.get("bytes"), "storage": storage.get("datasets") or {},
+                    # No ``storage`` key: the whole ``storage["datasets"]`` map was copied into each of the six
+                    # files and nothing read it -- the journey table reads the map itself (#310 N8).
+                    "bytes": live.get("bytes"),
                     "roots": storage.get("roots") or {}, "walked_at": storage.get("walked_at"),
                     "state": file_state(live.get("path"), tables, rows)})
     return out
@@ -866,13 +868,14 @@ def files(nd: dict, datasets: dict, universe_view: dict, reads: dict, now: datet
 
 # ── The Backfill calendars ────────────────────────────────────────────────────────────────────────────────────
 
-def _cal_bars(nd: dict, universe_view: dict, providers: dict) -> dict:
+def _cal_bars(nd: dict, providers: dict) -> dict:
     from RevenueChaser.rcdata.build.prices import bars
     sessions = nd.get("sessions") or {}
-    size = universe_view["size"] or 0
     p = providers.get("alpaca") or {}
     return {"dataset": "alpaca/bars", "provider": "Alpaca", "from": screen.CALENDAR_FIRST["alpaca/bars"],
-            "groups": True, "names_per_session": sessions, "universe": size,
+            # No ``universe``: nothing has read it since the M1 fix coloured the cells from ``onSets()`` /
+            # ``uniN()`` instead (#310 N11).
+            "groups": True, "names_per_session": sessions,
             "page": bars.LIMIT, "cap": p.get("cap"), "used": p.get("used", 0), "unit": "sessions",
             "first": ("the days are the served price_bar_daily sessions (Compustat, wrds/prices), from "
                       f"{sessions and min(sessions) or 'no day yet'}; Alpaca has daily bars from 2016 and is compared "
@@ -894,9 +897,11 @@ def _cal_spx(nd: dict, providers: dict) -> dict | None:
 CALENDARS = ("alpaca/bars", "uw/spot_expiry_strike")
 
 
-def calendars(nd: dict, universe_view: dict, provider_rows: list[dict]) -> dict:
+def calendars(nd: dict, provider_rows: list[dict]) -> dict:
+    """The backfill calendars, keyed by dataset. No universe: the cells are coloured in the page from the applied
+    sets (``onSets()`` / ``uniN()``), so neither calendar has read a server-side universe size since M1 (#310 N11)."""
     providers = {p["id"]: p for p in provider_rows}
-    out = {"alpaca/bars": _cal_bars(nd, universe_view, providers)}
+    out = {"alpaca/bars": _cal_bars(nd, providers)}
     spx = _cal_spx(nd, providers)
     if spx:
         out["uw/spot_expiry_strike"] = spx
@@ -1189,7 +1194,7 @@ def build(nd: dict, *, applied: dict | None = None, ibkr: dict | None = None, no
         "timer": timer_view, "longest_build": longest,
         "switches": switches_view(switch_rows), "gateway": dict(zip(("cls", "n", "label"), _gateway(ibkr))),
         "universe": uni, "identity": nd.get("identity"), "my_universe": nd.get("my_universe"), "scope": scope(uni), "files": file_views, "providers": provider_rows,
-        "flow": flow(file_views, datasets, reads, uni), "calendars": calendars(nd, uni, provider_rows),
+        "flow": flow(file_views, datasets, reads, uni), "calendars": calendars(nd, provider_rows),
         "board_cards": board_file_cards(),
         "cross_check": (nd.get("cross_check") or {}).get("fields") or [],
         "queue": nd.get("queue") or {"active": [], "finished": []},

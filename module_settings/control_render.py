@@ -493,6 +493,10 @@ def _jrows(f: dict) -> tuple[str, list[str]]:
                 meta = "not walked yet"
             elif fo.get("files") is None:
                 meta = "no folder yet"
+            elif not fo["files"] and fo.get("capped"):
+                # The walk's budget ran out at or before this folder, so nothing in it was counted. "0+ files"
+                # read like an empty folder, which is the one thing it does not mean (#310 N12).
+                meta = "not counted"
             else:
                 meta = (f'{fo["files"]:,}{"+" if fo.get("capped") else ""} files · {_size(fo.get("bytes"))}')
             where.append(f'<span class="hl"><span class="hi">{icon}</span><span class="hk">{label}</span>'
