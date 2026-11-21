@@ -321,7 +321,9 @@ REGISTRY: tuple[DatasetSpec, ...] = (
         db="welcome", source=Source.derived, writer=None,
         writer_note=("built incrementally by module_welcome/build.py on the Welcome board's Fetch, from the "
                      "builder's market series, its options screener and its run ledger in ops (#643 PR 5b, PR 6); "
-                     "the hourly job comes in its own pull request"),
+                     "each part compares the rows it already holds, so welcome_meta -- the table the plan designed "
+                     "for an incremental mark -- has no writer (#643); the hourly job comes in its own pull "
+                     "request"),
         freshness=("welcome_snapshot", "session_date"),
     ),
     DatasetSpec(
