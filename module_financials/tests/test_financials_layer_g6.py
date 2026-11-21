@@ -7,6 +7,10 @@ and liabilities) stays empty, so the engines' labelled defaults show (review S1)
 and interest expense the layer does serve since #645 G1, and ``test_financials_sec_fields_645.py`` covers them. EBITDA is operating income plus depreciation when the year has both. Price, shares and beta come
 from the prices store since the G6 follow-up (``test_financials_market_prices.py``). The ten-year yield is read from
 ``market_series`` (DGS10, FRED; review S2), the old ``macro_series`` row only while the market file is not there.
+
+Since #645 the layer is the **only** statement source: Yahoo was dropped (avo 10 Nov 2026, option B), so the
+whole-source choice this file used to cover is gone and ``test_financials_no_yahoo_645.py`` covers what a name
+without an annual year gets instead.
 """
 from __future__ import annotations
 
@@ -70,12 +74,14 @@ def test_ebitda_is_operating_income_plus_depreciation():
 
 def test_off_the_layer_there_are_no_sec_statements(monkeypatch):
     import RevenueChaser.module_financials.run as fm
-    assert fm._sec_statements(TICKER) is None                                  # no fundamentals.duckdb
+    # No fundamentals.duckdb: no years, and the meta still comes back so the header has a name to try (#645).
+    annual, meta = fm._sec_statements(TICKER)
+    assert annual is None and meta.get("available") is False
 
 
 
 
-# ── which statements a run models: the SEC's unless Yahoo's same year gives an input the SEC's lacks ──
+# ── the layer's own years ─────────────────────────────────────────────────────────────────────────────────────
 
 _FULL = {"revenue": 100.0, "ebitda": 30.0, "ebit": 25.0, "depreciation": 5.0, "capex": 4.0,
          "receivables": 10.0, "inventory": 5.0, "payables": 8.0}
@@ -83,27 +89,6 @@ _FULL = {"revenue": 100.0, "ebitda": 30.0, "ebit": 25.0, "depreciation": 5.0, "c
 
 def _year(fy, drop=(), **extra):
     return {"fiscal_year": str(fy), **{k: v for k, v in _FULL.items() if k not in drop}, **extra}
-
-
-@pytest.mark.parametrize("sec, yahoo, used, missing", [
-    ([_year(2025)], [_year(2025)], "sec", []),                                                  # both whole
-    ([_year(2025, drop=("ebitda", "depreciation"))], [_year(2025)], "yahoo", ["depreciation", "ebitda"]),  # MSFT
-    ([_year(2025, drop=("inventory",))], [_year(2025, drop=("receivables", "inventory", "payables"),
-                                                current_assets=50.0, current_liabilities=30.0)], "yahoo",
-     ["working capital"]),                                                                      # a software filer
-    ([_year(2013)], [_year(2026)], "yahoo", ["the fiscal year 2026"]),                          # TM: SEC years stale
-    # The SEC's year is newer: its statements are modelled, and what they lack is named (Opus review S1).
-    ([_year(2026, drop=("depreciation",))], [_year(2025)], "sec", ["depreciation"]),
-    ([_year(2025, drop=("depreciation",))], [_year(2025, drop=("depreciation",))], "sec", ["depreciation"]),
-    # The years compare on revenue (Opus review S2): a newer year with only a balance sheet is no newer year.
-    ([_year(2025, drop=("depreciation",)), {"fiscal_year": "2026", "cash": 1.0}], [_year(2025)], "yahoo",
-     ["depreciation"]),
-    ([_year(2024)], [_year(2025), {"fiscal_year": "2026", "cash": 1.0}], "yahoo", ["the fiscal year 2025"]),
-    ([_year(2025)], [], "sec", []),                                                             # no Yahoo payload
-])
-def test_the_statements_a_run_models(sec, yahoo, used, missing):
-    import RevenueChaser.module_financials.run as fm
-    assert fm._statements_choice(sec, yahoo) == (used, missing)
 
 
 def test_the_sec_statements_end_on_the_newest_year_with_revenue(monkeypatch):
@@ -118,27 +103,10 @@ def test_the_sec_statements_end_on_the_newest_year_with_revenue(monkeypatch):
     assert [r["fiscal_year"] for r in annual] == ["2024", "2025"]
 
 
-
-
-
-
-
-
 def test_a_bank_names_no_working_capital_gap():
-    # Opus review N4: no model of a Financial Services target reads working capital (P/E only), so the choice
-    # neither counts it nor names it there.
+    # Opus review N4: no model of a Financial Services target reads working capital (P/E only), so the gaps
+    # neither count it nor name it there.
     import RevenueChaser.module_financials.run as fm
-    sec = [_year(2025, drop=("receivables", "inventory", "payables"))]
-    yahoo = [_year(2025)]
-    assert fm._statements_choice(sec, yahoo) == ("yahoo", ["working capital"])
-    assert fm._statements_choice(sec, yahoo, bank=True) == ("sec", [])
-
-
-
-
-
-
-def test_on_yahoos_statements_the_tax_rate_is_not_named():
-    import RevenueChaser.module_financials.run as fm
-    used, lacking = fm._statements_choice([_year(2025, drop=("depreciation",))], [_year(2025)])
-    assert used == "yahoo" and "tax rate" not in lacking
+    bare = [_year(2025, drop=("receivables", "inventory", "payables"))]
+    assert fm._statement_gaps(bare) == ["working capital"]
+    assert fm._statement_gaps(bare, bank=True) == []

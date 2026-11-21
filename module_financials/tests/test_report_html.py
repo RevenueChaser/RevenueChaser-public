@@ -1,8 +1,7 @@
 """The Financials report must always carry the date the data refers to.
 
-Whether the page came from a live Fetch or a store-only Refresh, the header
-shows when the underlying yfinance payload was fetched into .store — so the
-viewer can never mistake a cached re-render for fresh data.
+Whether the page came from a Fetch or a store-only Refresh, the header shows when the underlying payload was
+written into .store — so the viewer can never mistake a cached re-render for fresh data.
 """
 from __future__ import annotations
 
@@ -37,7 +36,7 @@ _EVIL = "\"'><img src=x onerror=alert(1)>"
 
 def test_provider_strings_and_the_ticker_are_escaped(financials):
     """M8 / FN-1: the base template rendered with autoescape off (ADR-X1, #144)."""
-    financials["info"] = {"longName": _EVIL + "name"}
+    financials["name"] = _EVIL + "name"          # the SEC entity name since #645, Yahoo's longName before
     financials.update(sector=_EVIL + "sector", source=_EVIL + "source")
     res = _results(financials)
     res.update(ticker=_EVIL + "ticker", warnings=[_EVIL + "warning"])
@@ -57,10 +56,10 @@ def test_quick_remarks_fragment_is_not_double_escaped(financials):
 
 
 def test_footer_names_only_the_source_the_job_reads(financials):
-    """DF46: the job reads yfinance only; the footer must not cite EDGAR or Unusual Whales."""
-    financials["source"] = "yfinance"
+    """DF46: the footer says what the payload's own Source line says and cites nothing else. Since #645 that
+    line is the SEC company facts plus the prices store; it was yfinance when DF46 was written."""
+    financials["source"] = "SEC company facts (statements)"
     html = build_report_html(_results(financials))
     footer = html[html.index("<footer"):]
-    assert "Source: yfinance." in footer
-    assert "EDGAR" not in footer
-    assert "Unusual Whales" not in footer
+    assert "Source: SEC company facts (statements)." in footer
+    assert "Unusual Whales" not in footer and "Yahoo" not in footer

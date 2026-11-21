@@ -23,13 +23,13 @@ _ENV = Environment(loader=FileSystemLoader(str(_TEMPLATES)), autoescape=True)
 HELP = help_html(
     "One company at a time: <b>Quick Remarks</b> (the stored scores for the ticker) on top, then the "
     "<b>financial model</b>: DCF, three-statement view, comparables, credit and sensitivity. "
-    "<b>Fetch</b> downloads the ticker's price, shares, beta and statements from <b>Yahoo</b> into the store and "
-    "rebuilds the report. The price, market cap, shares and beta are the <b>prices store</b>'s (its newest close, "
-    f"at most {RISK_FREE_MAX_AGE_DAYS} days old) where it has them, Yahoo's otherwise. The models read the annual "
-    "statements the company filed with the <b>SEC</b> (the "
-    "fundamentals layer, re-read on each filing day) once that is built, and Yahoo's before, or when Yahoo's "
-    "year is newer or gives an input the SEC's lacks (depreciation, working capital); the "
-    "<b>Source</b> line says which, why, and which inputs the SEC's statements lack. <b>Refresh</b> rebuilds the report for the ticker in the "
+    "<b>Fetch</b> rebuilds the report from what is already stored and makes <b>no provider call at all</b> "
+    "(#645). The price, market cap, shares and beta are the <b>prices store</b>'s (its newest close, "
+    f"at most {RISK_FREE_MAX_AGE_DAYS} days old); nothing stands in for one it does not hold, and the "
+    "<b>Source</b> line names it as not stored. The models read the annual statements the company filed with "
+    "the <b>SEC</b> (the fundamentals layer, re-read on each filing day) and nothing else, so a name whose "
+    "company facts hold no annual year gets no model and the Source line says so; a line the facts do not "
+    "carry shows the engines' labelled default, which the Source line also names. <b>Refresh</b> rebuilds the report for the ticker in the "
     "picker from the stored data with no network call; a ticker with nothing stored needs a Fetch first. The "
     "<b>filters</b> only narrow which names the <b>Ticker</b> picker offers \u2014 they never slice the "
     "statements below, which are always the one company the board fetched.")
@@ -142,7 +142,6 @@ def build_report_html(results: dict) -> str:
     modules = results.get("modules", {})
     ticker = results.get("ticker", financials.get("ticker", ""))
 
-    info = financials.get("info", {})
     picker = results.get("picker") or {}
 
     # Quick Remarks bölümü (ticker_scores'dan beslenir; her zaman üstte)
@@ -156,20 +155,20 @@ def build_report_html(results: dict) -> str:
 
     ctx = {
         "ticker": ticker,
-        "company": info.get("longName") or info.get("shortName") or ticker,
+        # The SEC entity name, else the spine's (``run._company_name``); Yahoo's ``longName`` went with #645.
+        "company": financials.get("name") or ticker,
         "sector": financials.get("sector"),
         "price": financials.get("current_price"),
-        # The prices store's session of that price (G6 follow-up); None when the price is Yahoo's.
+        # The prices store's session of that price (G6 follow-up); None when the store held none.
         "price_session": (financials.get("market_meta") or {}).get("price_session"),
         "currency": financials.get("currency", "USD"),
         "shares_outstanding": financials.get("shares_outstanding"),
         "market_cap": financials.get("market_cap"),
+        # Since #645 the EV is the store's bridge (cap + total debt - cash of the newest stored fiscal year,
+        # ``run._enterprise_value``), the same one the peer side uses, so the target and its comps are on one
+        # basis. It was Yahoo's ``enterpriseValue`` — its own newest quarter — until Yahoo was dropped.
         "enterprise_value": financials.get("enterprise_value"),
-        # shortcut: the EV stays Yahoo's (its newest quarter's debt and cash) next to the prices store's cap, and the
-        # header says so (review should 2 on #284); the statements' net debt is up to a year old, so the store's cap
-        # plus it would be no better. Upgrade when the fundamentals layer serves the newest quarter's debt and cash.
-        "ev_is_yahoos": (financials.get("market_meta") or {}).get("shares_source", "Yahoo") != "Yahoo",
-        "source": financials.get("source", "yfinance"),
+        "source": financials.get("source", "SEC company facts"),
         "data_date": financials.get("_fetched_at_iso") or financials.get("fetched_at_iso"),
         "quick_remarks": quick_remarks,
         "quick_remarks_section": quick_remarks_section,

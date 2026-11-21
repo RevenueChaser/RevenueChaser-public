@@ -25,7 +25,6 @@ import pytest
 import RevenueChaser.module_financials.run as fm
 from RevenueChaser.core import rawstore
 from RevenueChaser.module_asymmetric_growth import engine as agh
-from RevenueChaser.module_financials.engines import quick_remarks_engine as qr
 
 # 2026-10-08 is a Thursday. 15:00 UTC = 11:00 ET: an intraday run, inside the session, before the close.
 INTRADAY = datetime(2026, 10, 8, 15, 0, tzinfo=timezone.utc).timestamp()
@@ -78,11 +77,9 @@ def _failing(*_a, **_kw):
 def _refresh(monkeypatch, tmp_path) -> dict:
     """The store-only Refresh, with every provider patched to raise."""
     monkeypatch.setattr(fm, "OUTPUT_DIR", tmp_path)
-    monkeypatch.setattr(fm.yfinance_client, "get_financials", _failing)
-    # #286: the comps peer read is no longer a provider call, so there is no provider seam left to guard here.
-    # What a store-only Refresh must still not do is reach a provider through any other peer path.
+    # #286: the comps peer read is no longer a provider call, and #645 took the last one off this board. What a
+    # store-only Refresh must still not do is reach a provider through any other peer path.
     monkeypatch.setattr(fm.comps_engine, "_default_fetch_many", _failing)
-    monkeypatch.setattr(qr, "fetch_technical", _failing)
     monkeypatch.setattr(agh, "score_ticker", _failing)
     return fm.run("TEST", modules=["dcf"], output="none", no_fetch=True)
 

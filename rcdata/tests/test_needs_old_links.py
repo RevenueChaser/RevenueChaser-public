@@ -33,8 +33,11 @@ UNDECLARED_CEILING = frozenset({
 PROVIDER_FILES = {
     "module_asymmetric_growth": {"engine.py"},
     "module_earnings_radar": {"macro_watch.py", "pipeline.py"},
+    # ``run.py`` and ``engines/quick_remarks_engine.py`` left it on 21 Nov 2026 (#645: Yahoo is dropped, so the
+    # board makes no provider call at all). The four that stay import ``core.providers.validator``, which is pure
+    # arithmetic over a statement record and reads nothing.
     "module_financials": {"engines/comps_engine.py", "engines/credit_capacity_engine.py", "engines/dcf_engine.py",
-                          "engines/quick_remarks_engine.py", "engines/three_statement_engine.py", "run.py"},
+                          "engines/three_statement_engine.py"},
     "module_fundamentals": {"pipeline.py"},
     "module_news": {"headlines.py", "tape.py"},
     "module_oipd": {"engine.py"},

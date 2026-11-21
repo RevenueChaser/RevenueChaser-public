@@ -171,12 +171,13 @@ def test_a_scan_card_carries_the_scans_session(monkeypatch):
     assert (res["score"], res["as_of"], res["as_of_note"]) == (6, "2026-10-06", "the last Asymmetric Growth Fetch")
 
 
-def test_a_score_this_fetch_built_carries_the_payloads_session(monkeypatch):
+def test_without_a_card_the_section_is_undated_and_says_why(monkeypatch):
+    """#645: there is no second scoring path, so a Fetch with no stored card carries no date and no score; the
+    note says the name has not been scored instead of naming a vendor."""
     monkeypatch.setattr(ts, "get", lambda t: None)
-    monkeypatch.setattr(qr, "fetch_technical", lambda t: {})
-    monkeypatch.setattr(agh, "score_ticker", lambda t, f, tech, meta=None: {"total_points": 5, "signals": []})
     res = qr.run_quick_remarks("TEST", financials={"_fetched_at_iso": "2026-10-07T02:00:00+00:00"})
-    assert (res["score"], res["as_of"], res["as_of_note"]) == (5, "2026-10-06", "this Fetch")
+    assert (res["score"], res["as_of"]) == (None, None)
+    assert "not scored" in res["as_of_note"]
 
 
 
@@ -228,10 +229,12 @@ def test_the_percentile_rows_carry_their_peer_count(financials):
 
 
 # ── N5: the help box names only the source a Fetch reads ───────────────────────
-def test_the_help_box_does_not_claim_sec_edgar(financials):
-    """Nothing on the Financials Fetch path reads EDGAR (module_financials, app/runners.run_quick): Yahoo only."""
+def test_the_help_box_names_no_vendor_and_no_sec_edgar(financials):
+    """Nothing on the Financials path reads a provider since #645, so the box must not promise one: not EDGAR,
+    which the board never read, and no longer Yahoo, which it read until avo's option B."""
     html = _html(financials, {})
-    assert "EDGAR" not in html and "from <b>Yahoo</b> into the store" in html
+    assert "EDGAR" not in html and "Yahoo" not in html
+    assert "no provider call at all" in html
 
 
 # ── N6: the stored comps are dated by the run that fetched the peers ────────────
@@ -279,7 +282,7 @@ def test_a_non_positive_ebitda_or_ev_has_no_ratio(financials):
 def test_without_a_stored_yield_the_rates_are_labelled_defaults(financials):
     w = run_dcf(financials)["wacc"]
     assert (w["risk_free"], w["risk_free_source"]) == (0.04, "default")
-    assert (w["equity_risk_premium"], w["cost_of_debt"], w["beta_source"]) == (0.05, 0.05, "Yahoo")
+    assert (w["equity_risk_premium"], w["cost_of_debt"], w["beta_source"]) == (0.05, 0.05, "the payload")
     html = _html(financials, {"dcf": run_dcf(financials)})
     for row in ("Risk-free rate</span><span>default 4.00%", "Equity Risk Premium</span><span>default 5.0%",
                 "Cost of Debt (Kd, before tax)</span><span>default 5.0%"):

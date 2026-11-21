@@ -84,7 +84,7 @@
     <span>Sector: {{ sector or "N/A" }}</span>
     <span>Price: {{ price|price }}{% if price_session %} (close {{ price_session }}){% endif %}</span>
     <span>Market Cap: {{ market_cap|usd }}</span>
-    <span>EV: {{ enterprise_value|usd }}{% if ev_is_yahoos and enterprise_value is not none %} (Yahoo){% endif %}</span>
+    <span>EV: {{ enterprise_value|usd }}{% if enterprise_value is not none %} (cap + debt − cash, newest FY){% endif %}</span>
     <span>Source: {{ source }}</span>
     <span>Last sync: {{ data_date|friendly_day }}</span>
   </div>
@@ -253,7 +253,7 @@
   <p style="color:var(--muted); font-size:12px; margin:-6px 0 12px;">as of {{ comps.as_of }} — the last stored Fetch; the Refresh fetched nothing.</p>
   {% endif %}
   {% if comps.basis %}
-  <p style="color:var(--muted); font-size:12px; margin:-6px 0 12px;">Basis: peer multiples are {{ comps.basis.peers }} ({{ comps.basis.peers_source or "Yahoo" }}); the target's EBITDA, revenue and net income are from fiscal year {{ comps.basis.target_fiscal_year or "unknown" }}; per share divides by the target's shares from {{ "the " if comps.basis.target_shares and comps.basis.target_shares != "Yahoo" }}{{ comps.basis.target_shares or "Yahoo" }}.{% if comps.implied.net_debt_fy %} Net debt is as of FY{{ comps.implied.net_debt_fy }}; minority interest and preferred stock are not subtracted.{% endif %}</p>
+  <p style="color:var(--muted); font-size:12px; margin:-6px 0 12px;">Basis: peer multiples are {{ comps.basis.peers }} ({{ comps.basis.peers_source or "the store" }}); the target's EBITDA, revenue and net income are from fiscal year {{ comps.basis.target_fiscal_year or "unknown" }}; per share divides by the target's shares from {{ "the " if comps.basis.target_shares and comps.basis.target_shares != "not stored" }}{{ comps.basis.target_shares or "not stored" }}.{% if comps.implied.net_debt_fy %} Net debt is as of FY{{ comps.implied.net_debt_fy }}; minority interest and preferred stock are not subtracted.{% endif %}</p>
   {% endif %}
   {% if comps.pe_only %}
   <p style="color:var(--muted);">A Financial Services target is valued on P/E only: EV/EBITDA and EV/Revenue do not describe a bank.</p>
