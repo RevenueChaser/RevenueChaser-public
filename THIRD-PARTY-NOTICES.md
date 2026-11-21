@@ -11,6 +11,24 @@
 Everything else in this repository is the project's own code, under the MIT
 licence in [`LICENSE`](LICENSE).
 
+## Node dependencies (the v2 web app)
+
+`v2/web/` is built from npm packages, pinned exactly in `v2/web/package.json` with
+`package-lock.json` committed; none is vendored here. The rule is `v2/README.md`
+decision 1: **MIT, Apache-2.0, BSD-2/3-Clause, ISC or 0BSD only, nothing AGPL,
+GPL or commercial**, and `v2/web/tools/check-licences.mjs` fails the `web` CI job
+on a production dependency outside that allowlist.
+
+| Package | Licence | Shipped to the browser? |
+|---|---|---|
+| [react](https://github.com/facebook/react), [react-dom](https://github.com/facebook/react), scheduler | MIT | yes |
+| [vite](https://github.com/vitejs/vite), [vitest](https://github.com/vitest-dev/vitest) | MIT | no (build and test only) |
+| [typescript](https://github.com/microsoft/TypeScript), [@playwright/test](https://github.com/microsoft/playwright) | Apache-2.0 | no (build and test only) |
+
+Fonts are the one other licence family: Inter is SIL OFL-1.1, which allows
+embedding, and is served from the app itself — never from a font host, because
+v2 runs on a tailnet with no guaranteed outbound internet.
+
 ## Python dependencies
 
 The packages in `requirements.txt` are installed from PyPI, not vendored here.

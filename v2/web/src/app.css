@@ -1,0 +1,57 @@
+/* Token names only, never a hex value (ADR decision 5; src/theme/tokens.test.ts fails an undefined name). */
+* { box-sizing: border-box; }
+
+html, body { margin: 0; height: 100%; }
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: var(--fs-base);
+  font-variant-numeric: tabular-nums;
+}
+
+.rc-frame { display: flex; flex-direction: column; min-height: 100vh; }
+
+.rc-topbar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: var(--touch);
+  padding: 0 var(--sp-4);
+  background: var(--topbar);
+  border-bottom: 1px solid var(--border);
+}
+
+.rc-mark { color: var(--bright); font-size: var(--fs-md); }
+.rc-version { color: var(--muted); font-size: var(--fs-xs); }
+
+.rc-body { flex: 1; padding: var(--sp-4); }
+
+.rc-empty {
+  margin: 0;
+  padding: var(--sp-4);
+  max-width: 60ch;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  color: var(--muted);
+}
+
+.rc-statusbar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: var(--touch);
+  padding: 0 var(--sp-4);
+  background: var(--card-2);
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+/* Phone first, as every v2 screen must be: one column, full-width cards, 44 px targets. */
+@media (max-width: 640px) {
+  .rc-body { padding: var(--sp-3); }
+  .rc-empty { max-width: none; }
+}
