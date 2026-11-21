@@ -208,7 +208,9 @@ def test_the_bars_calendar_reads_the_sessions_and_the_page_size():
     from RevenueChaser.rcdata.build.prices import bars
     cal = _build()["calendars"]["alpaca/bars"]
     assert cal["names_per_session"] == control_nd()["sessions"], "by set: the page sums the sets the universe holds"
-    assert cal["page"] == bars.LIMIT and cal["universe"] == 5655 + 558 + 1457 and cal["groups"] is True
+    # No ``universe``: the cells are coloured in the page from the applied sets, so the size never travelled
+    # (#310 N11); ``test_control_nits_310.py`` holds that.
+    assert cal["page"] == bars.LIMIT and cal["groups"] is True
 
 
 def test_the_fetch_line_names_its_provider_in_words():
@@ -239,6 +241,14 @@ def test_the_providers_card_names_alpha_vantage_with_its_cap_and_the_sec_with_n_
     providers = {p["id"]: p for p in _build()["providers"]}
     assert providers["alphavantage"]["cap"] == 25 and "listing status" in providers["alphavantage"]["what"]
     assert providers["alphavantage"]["icon"] and "N-CEN" in providers["sec"]["what"]
+
+
+def test_the_listing_status_card_reads_the_weekly_cadence_so_a_weekly_run_is_not_late():
+    """Weekly since 21 Nov 2026 (avo): the card has to read the dataset's own cadence, or a list fetched once a
+    week would show "late" after one day and "stale" after two (``newdata._missed``)."""
+    from RevenueChaser.module_settings import newdata as nd_mod
+    assert nd_mod._cadence("alphavantage/listing_status", None) == "weekly"
+    assert nd_mod.CYCLE_DAYS["weekly"] == 8
 
 
 def test_ncens_monthly_cadence_is_the_datasets_own_not_a_second_copy_on_its_card():

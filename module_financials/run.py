@@ -320,9 +320,10 @@ def _run(ticker: str, modules, output: str, assumptions: dict | None, peers: lis
                 if from_sector:
                     warnings.append(f"comps: {from_sector} of {len(used_peers)} peers come from the sector, "
                                     f"not {ticker}'s own industry")
-            results["modules"]["comps"] = comps_engine.run_comps(financials, used_peers,
-                                                                fetch_info=comps_engine._default_fetch,
-                                                                rungs=rungs)
+            # #286: the peer figures are the store's, read in one call; this used to be one live Yahoo
+            # ``.info`` request per peer.
+            results["modules"]["comps"] = comps_engine.run_comps(
+                financials, used_peers, fetch_many=comps_engine._default_fetch_many, rungs=rungs)
         elif m in ("credit", "credit_capacity"):
             results["modules"]["credit"] = credit_capacity_engine.run_credit_capacity(financials, assumptions)
         elif m in ("sensitivity", "sensitivity_engine"):

@@ -29,11 +29,12 @@ from pathlib import Path
 
 from RevenueChaser.core import config, ibkr_login, rawstore
 from RevenueChaser.core.providers import ibkr_tws as ibkr
-from RevenueChaser.module_news import tape, x_feed, x_reader
-from RevenueChaser.module_news.calendar import META
+from RevenueChaser.module_news import store_reads, tape, x_feed, x_reader
 from RevenueChaser.rcdata import read
 
-TABLE = "news_headlines"
+# The board's reader owns the table names (#217); the writes below still happen here.
+TABLE = store_reads.HEADLINES
+META = store_reads.META
 CURSOR_KEY = "headlines_cursor"
 TAPE_MARK_KEY = "tape_mark"
 X_MARK_KEY = "x_mark"
@@ -82,8 +83,8 @@ def _epoch(text: str) -> float | None:
 def batch(names: list[str]) -> list[str]:
     """The next ``PER_PASS`` of ``names`` (alphabetical) after the cursor, wrapping round; every name once at most."""
     order = sorted(set(names))
-    rows = rawstore.query(f"SELECT value FROM {META} WHERE key = ?", [CURSOR_KEY], db="news")
-    after = str(rows[0]["value"]) if rows else ""
+    stored = store_reads.meta_value(CURSOR_KEY)
+    after = "" if stored is None else str(stored)
     start = next((i for i, t in enumerate(order) if t > after), 0)
     return (order[start:] + order[:start])[:PER_PASS]
 
@@ -97,12 +98,10 @@ def story_id(text: str) -> str:
 def _merge_tickers(rows: list[dict]) -> list[dict]:
     """Each row's ``tickers`` (a list) joined with what is stored under its id, as the JSON text the table keeps.
     Returns the rows that are new or gained a name: the others are already stored as they are."""
-    stored = {r["headline_id"]: r for r in rawstore.query(
-        f"SELECT headline_id, tickers FROM {TABLE} WHERE headline_id IN ({', '.join('?' for _ in rows)})",
-        [r["headline_id"] for r in rows], db="news")} if rows else {}
+    stored = store_reads.stored_tickers(r["headline_id"] for r in rows)
     changed = []
     for r in rows:
-        old = json.loads(stored[r["headline_id"]]["tickers"] or "[]") if r["headline_id"] in stored else []
+        old = json.loads(stored[r["headline_id"]] or "[]") if r["headline_id"] in stored else []
         merged = sorted(set(old) | set(r["tickers"]))
         if r["headline_id"] not in stored or merged != sorted(old):
             changed.append(r)
@@ -112,14 +111,11 @@ def _merge_tickers(rows: list[dict]) -> list[dict]:
 
 def _stored_ids(ids: list[str]) -> set[str]:
     """The ids of ``ids`` already in the table."""
-    if not ids:
-        return set()
-    return {str(r["headline_id"]) for r in rawstore.query(
-        f"SELECT headline_id FROM {TABLE} WHERE headline_id IN ({', '.join('?' for _ in ids)})", ids, db="news")}
+    return store_reads.stored_headline_ids(ids)
 
 
 #: The lanes of the News page, in its order, as ``module_news.report.lane`` cuts them.
-LANES = ("market", "stocks", "x")
+LANES = store_reads.LANES
 #: ``news_meta`` key prefix for "this lane's own fetch last came back clean" (``mark_lane_ok``).
 OK_PREFIX = "lane_ok"
 #: The lanes that keep such a mark. The ``market`` lane does not: its source is the listener, whose own record is
@@ -152,13 +148,11 @@ def lane_late_after() -> dict[str, float]:
 
 def lane_ok() -> dict[str, float | None]:
     """When each lane of ``OK_LANES`` last came back clean; None for one that never has."""
-    rows = rawstore.query(
-        f"SELECT key, value FROM {META} WHERE key IN ({', '.join('?' for _ in OK_LANES)})",
-        [f"{OK_PREFIX}:{name}" for name in OK_LANES], db="news")
+    stored = store_reads.meta_values(f"{OK_PREFIX}:{name}" for name in OK_LANES)
     got = {}
-    for r in rows:
+    for key, value in stored.items():
         try:
-            got[str(r["key"]).split(":", 1)[1]] = float(r["value"])
+            got[key.split(":", 1)[1]] = float(value)
         except (TypeError, ValueError, IndexError):
             continue
     return {name: got.get(name) for name in OK_LANES}
@@ -171,13 +165,7 @@ def lane_freshness() -> dict[str, float | None]:
     ``news_headlines.fetched_at`` moving, so the dataset stays "fresh" on Settings and in Grafana while the
     per-ticker IBKR fetch has been down for a day. One reading a lane, which the board shows and Grafana alerts on.
     """
-    x = ", ".join(repr(p) for p in x_feed.X_PROVIDERS)
-    rows = rawstore.query(
-        f"SELECT CASE WHEN coalesce(provider, '') IN ({x}) THEN 'x' "
-        f"WHEN coalesce(tickers, '[]') = '[]' THEN 'market' ELSE 'stocks' END AS lane, "
-        f"max(fetched_at) AS newest FROM {TABLE} GROUP BY 1", db="news")
-    got = {str(r["lane"]): r["newest"] for r in rows}
-    return {name: (float(got[name]) if got.get(name) is not None else None) for name in LANES}
+    return store_reads.lane_freshness()
 
 
 def _new_lines(folder: Path, key: str, first: str) -> tuple[list[bytes], dict | None, dict | None]:
@@ -185,9 +173,9 @@ def _new_lines(folder: Path, key: str, first: str) -> tuple[list[bytes], dict | 
 
     The mark is ``{"file", "offset"}`` of the first byte not loaded; a line still being written (no newline yet)
     waits for the next load. With no mark, files from ``first`` (a file name) on are read."""
-    rows_m = rawstore.query(f"SELECT value FROM {META} WHERE key = ?", [key], db="news")
+    stored = store_reads.meta_value(key)
     try:
-        mark = json.loads(rows_m[0]["value"]) if rows_m else None
+        mark = json.loads(stored) if stored is not None else None
     except (TypeError, ValueError):
         mark = None
     files = sorted(folder.glob("*.jsonl")) if folder.exists() else []
@@ -398,14 +386,10 @@ def ticker_rows(name: str, now: float | None = None) -> dict:
     last ask's answer (``None`` before the first ask)."""
     now = time.time() if now is None else now
     name = str(name).strip().upper()
-    rows = rawstore.query(
-        f"SELECT headline_id, published_at, headline, source, tickers, url FROM {TABLE} "
-        f"WHERE provider = 'ibkr' AND tickers LIKE ? AND published_at >= ? "
-        f"ORDER BY published_at DESC LIMIT {ON_DEMAND_TOTAL}",
-        [f'%"{name}"%', now - ON_DEMAND_DAYS * 86400], db="news")
-    got = rawstore.query(f"SELECT value FROM {META} WHERE key = ?", [ASK_KEY + name], db="news")
+    rows = store_reads.headlines_for_ticker(name, now - ON_DEMAND_DAYS * 86400, ON_DEMAND_TOTAL)
+    got = store_reads.meta_value(ASK_KEY + name)
     try:
-        ask = json.loads(got[0]["value"]) if got else None
+        ask = json.loads(got) if got is not None else None
     except (TypeError, ValueError):
         ask = None
     return {"ticker": name, "rows": rows, "ask": ask}

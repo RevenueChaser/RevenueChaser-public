@@ -1,0 +1,20 @@
+# The v2 door's Python dependencies, and the only ones its image installs (v2/README.md left them to run plan
+# step 6). The repository's own requirements.txt is deliberately not installed in the container: pandas, duckdb,
+# scipy, scikit-learn, fastembed, plotly, matplotlib and kaleido have no part in serving JSON files, and a door
+# image carrying them would be hundreds of megabytes and would inherit their security updates.
+#
+# Pinned exactly, with no `>=`, because `v2/README.md` decision 6 asks for a build reproducible from the merged
+# SHA. The repository's requirements.txt names the same packages so the CI venv can import the door;
+# `v2/tests/test_door_requirements.py` fails the two files naming one package at versions that disagree.
+#
+# Licences, all inside the `v2/README.md` decision 1 allowlist and recorded in THIRD-PARTY-NOTICES.md:
+#   fastapi MIT, pydantic MIT (fastapi's own dependency), starlette BSD-3-Clause, uvicorn BSD-3-Clause,
+#   python-dotenv BSD-3-Clause, redis MIT.
+fastapi==0.165.0
+uvicorn==0.54.0
+# core/config.py reads .env through it at import, and the door imports core.config for RC_CACHE_DIR (the one place
+# that variable is read). Pinned at the version requirements.txt's floor allows.
+python-dotenv==1.2.4
+# The ops state's client: the health probe here, step 7's write side later. The same version requirements.txt
+# pins for `rcdata/ops_redis.py`, so the container and the dashboard speak to Redis with one client.
+redis==7.0.1

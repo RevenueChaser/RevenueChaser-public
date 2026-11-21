@@ -107,6 +107,22 @@ class WholeBuildByHand(SourceError):
     """
 
 
+class ProviderEmpty(SourceError):
+    """The provider answered 200 with no rows where this dataset's window is never empty: a ``skipped`` check row
+    and an open ``source_empty`` issue, not a failure.
+
+    Measured on 21 Nov 2026: UW answered ``/market/economic-calendar`` with ``{"data": []}`` while every stored
+    snapshot of the two-week window held 18 events, weekends included. Refusing to store that is right -- an empty
+    list must never replace a served calendar -- but failing the check row failed the whole hourly pass with it
+    (``rcdata/build/__main__.py``: any ``failed`` row makes the pass exit 1), so one provider gap cost every other
+    dataset's work. That is the shape #1123 fixed for a single EDGAR 504.
+
+    A skip, not a failure: nothing was written, the dataset stays due for the next pass, and the issue says the
+    emptiness is still there. A gap that lasts is then visible as an issue that does not close, rather than as an
+    hourly red pass.
+    """
+
+
 class CapReached(SourceError):
     """A provider reached its day cap during the run: nothing more is sent to it today."""
 
@@ -1340,7 +1356,7 @@ def _run(ctx: RunContext, ds, req: dict, params: dict, attended_ok: bool = False
         return _finish(ctx, req, {"result": "skipped", "note": stage_note}, "skipped", None)
     try:
         return _finish(ctx, req, build_kind(ctx, ds), "ok", None)
-    except (Paused, NothingInScope, WholeBuildByHand) as e:
+    except (Paused, NothingInScope, WholeBuildByHand, ProviderEmpty) as e:
         return _finish(ctx, req, {"result": "skipped", "note": f"skipped: {e}"}, "skipped", None)
     except Exception as e:  # noqa: BLE001 - every failure becomes a failed check row, never a half-swapped file
         return _failed(ctx, req, e)
@@ -1418,7 +1434,9 @@ def _stage(ctx: RunContext, ds, req: dict, params: dict, attended_ok: bool = Fal
     except Paused as e:
         # the files fetched so far stay; the serving file was not touched
         return _finish(ctx, req, {"result": "skipped", "note": f"skipped: {e}"}, "skipped", None), None
-    except NothingInScope as e:
+    except (NothingInScope, ProviderEmpty) as e:
+        # ProviderEmpty: the provider answered with no rows where this window is never empty (#1251). Nothing was
+        # written and the dataset stays due, so the row is a skip and the pass is not failed by it.
         return _finish(ctx, req, {"result": "skipped", "note": f"skipped: {e}"}, "skipped", None), None
     except Exception as e:  # noqa: BLE001 - a failed fetch is its own failed check row, never a half-swapped file
         return _failed(ctx, req, e), None

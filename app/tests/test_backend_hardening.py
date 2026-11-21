@@ -346,10 +346,16 @@ class TestHoldingsView:
 
 # ── S10: decisions D1–D4 ────────────────────────────────────────────────────
 class TestDecisions:
-    def test_relatedness_fetch_route_is_gone(self, client):
-        assert "module_relatedness" not in jobs._RUNNERS
-        # panel_test_client sends the header: without it the guard answers 403 before routing.
-        assert client.post("/run/module_relatedness").status_code == 404
+    def test_the_board_cannot_start_the_relatedness_fetch(self, client):
+        """D1: no Fetch button for Relatedness, because the pass writes with a writer that may be paid.
+
+        Since #1255 the route exists for the weekly task, which is the only way to reach the single writer. The
+        decision is kept by the header: a page sends ``X-RC-Panel: dashboard`` (panel_test_client sends ``test``)
+        and is refused, so no click starts the writer run.
+        """
+        assert client.post("/run/module_relatedness").status_code == 403
+        assert client.post("/run/module_relatedness",
+                           headers={"X-RC-Panel": "dashboard"}).status_code == 403
 
     def test_sec13f_fetch_is_the_ingest_job(self):
         from RevenueChaser.app import runners
@@ -369,7 +375,7 @@ class TestDecisions:
     def test_template_wiring(self, client):
         html = client.get("/").get_data(as_text=True)
         assert "key==='module_comovement'" in html          # D1 Fetch button
-        assert "module_relatedness: '/run/module_relatedness'" not in html  # D2
+        assert "module_relatedness: '/run/module_relatedness'" not in html  # D2: still no Fetch button (#1255)
         assert "btn-rot-holdings" not in html                # D3's button went with the holdings job (#642 PR 5)
         assert "rc-job-submitted" in html and "/cancel" in html  # B7, B8
         assert "t && !t.textContent ||" not in html          # B15

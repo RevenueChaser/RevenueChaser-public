@@ -215,18 +215,26 @@ def test_the_merge_gate_check_is_green_only_for_a_full_run_that_passed():
     """Review of #383: without it every check of an unlabelled PR is green and reads like the gate."""
     wf = (_REPO / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
     gate = wf.split("\n  merge-gate:\n", 1)[1]
-    assert "needs: [plan, unit, e2e, earlier-gate]" in gate
+    assert "needs: [plan, unit, e2e, web, earlier-gate]" in gate
     # Delta review of #383: a skipped check counts as passed, so the gate runs (and fails) when plan did not succeed.
     # Only a label run with no earlier gate on the head skips it (review 9 Nov 2026, F7).
     assert "\n    if: always() && (needs.earlier-gate.result == 'skipped' || needs.earlier-gate.outputs.last != '')\n" in gate
     script = "\n".join(line[10:] for line in gate.split("run: |\n", 1)[1].splitlines() if line.startswith(" " * 10))
-    for (plan, mode, unit, e2e), code in {
-        ("success", "FULL", "success", "success"): 0, ("success", "SELECTIVE", "success", "success"): 1,
-        ("success", "FULL", "success", "failure"): 1, ("success", "FULL", "cancelled", "success"): 1,
-        ("skipped", "", "skipped", "skipped"): 1, ("failure", "", "skipped", "skipped"): 1,
-        ("success", "SKIP", "skipped", "skipped"): 0,
+    for (plan, mode, unit, e2e, web), code in {
+        ("success", "FULL", "success", "success", "success"): 0,
+        ("success", "SELECTIVE", "success", "success", "success"): 1,
+        ("success", "FULL", "success", "failure", "success"): 1,
+        ("success", "FULL", "cancelled", "success", "success"): 1,
+        # The v2 web tier is part of the gate (#1242): a red or cancelled web job is not merge-ready, and a
+        # skipped one is the selector saying no v2/web file changed.
+        ("success", "FULL", "success", "success", "failure"): 1,
+        ("success", "FULL", "success", "success", "cancelled"): 1,
+        ("success", "FULL", "success", "success", "skipped"): 0,
+        ("skipped", "", "skipped", "skipped", "skipped"): 1,
+        ("failure", "", "skipped", "skipped", "skipped"): 1,
+        ("success", "SKIP", "skipped", "skipped", "skipped"): 0,
     }.items():
-        env = {**os.environ, "PLAN": plan, "MODE": mode, "UNIT": unit, "E2E": e2e}
+        env = {**os.environ, "PLAN": plan, "MODE": mode, "UNIT": unit, "E2E": e2e, "WEB": web}
         assert subprocess.run(["bash", "-e", "-c", script], env=env, capture_output=True).returncode == code, plan
 
 
@@ -249,7 +257,7 @@ def test_a_label_other_than_full_ci_keeps_the_heads_earlier_gate_result(earlier,
     assert "checks: read" in lookup and "check_name=merge-gate" in lookup and '.conclusion != "skipped"' in lookup
     assert "if: github.event.action == 'labeled' && github.event.label.name != 'full-ci'" in lookup
     env = {**os.environ, "OTHER_LABEL": "true", "last": earlier,
-           "PLAN": "skipped", "MODE": "", "UNIT": "skipped", "E2E": "skipped"}
+           "PLAN": "skipped", "MODE": "", "UNIT": "skipped", "E2E": "skipped", "WEB": "skipped"}
     assert subprocess.run(["bash", "-e", "-c", _gate_script()], env=env, capture_output=True).returncode == code
 
 
@@ -364,7 +372,8 @@ def test_every_board_folder_and_every_e2e_file_has_its_place_in_the_board_table(
     boards = {p.name for p in _REPO.glob("module_*") if p.is_dir()} - {"module_testing", "module_settings"}
     assert boards == set(mod.E2E_BY_BOARD), "a board folder needs a row in select_tests.E2E_BY_BOARD"
     e2e = {Path(t).name for t in mod.all_tests(_REPO) if t.startswith(mod.E2E_DIR)}
-    placed = set(mod.E2E_ALWAYS) | set(mod.E2E_HARNESS) | {n for row in mod.E2E_BY_BOARD.values() for n in row}
+    placed = (set(mod.E2E_ALWAYS) | set(mod.E2E_HARNESS) | set(mod.E2E_V2)
+              | {n for row in mod.E2E_BY_BOARD.values() for n in row})
     assert e2e == placed, f"missing: {sorted(e2e - placed)}; gone: {sorted(placed - e2e)}"
 
 
@@ -388,3 +397,86 @@ def test_a_push_to_main_skips_only_on_a_green_note_for_its_own_tree():
     for job in ("unit", "e2e"):
         body = wf.split(f"\n  {job}:\n", 1)[1]
         assert body.split("\n", 2)[1] == "    if: needs.plan.outputs.mode != 'SKIP'", job
+
+
+# --- the v2 web tier (#1242, review F14): v2/web is Node, not pytest ---------------------------------------
+
+def test_a_change_in_the_v2_web_app_runs_the_web_job_and_no_python_test():
+    """F14: before this, a file no Python file names fell back to FULL, so a web-only push ran 11k Python tests."""
+    sel = mod.select(["v2/web/src/App.tsx", "v2/web/package.json"])
+    assert sel.web is True
+    assert sel.mode == "SELECTIVE" and sel.unit == [] and sel.e2e == []
+
+
+def test_a_python_change_does_not_run_the_web_job(tmp_path):
+    root = _mini_repo(tmp_path, {"pkg/a.py": "", "pkg/tests/test_a.py": "import pkg.a"})
+    sel = mod.select(["pkg/a.py"], root)
+    assert sel.mode == "SELECTIVE" and sel.web is False
+
+
+def test_a_full_run_runs_the_web_job_too():
+    """Every tier runs on a FULL run, and the merge gate then needs all three green."""
+    assert mod.select(["conftest.py"]).web is True
+    assert mod.Selection("FULL", "the PR is labelled full-ci", web=True).web is True
+
+
+def test_the_v2_web_files_are_outside_the_python_selector_entirely(tmp_path):
+    """A name of its own in v2/web must never become the twin that sends an unrelated change to FULL."""
+    root = _mini_repo(tmp_path, {
+        "pkg/a.py": "# reads data.json",
+        "pkg/tests/test_a.py": "import pkg.a",
+        "data.json": "{}",
+        "v2/web/src/data.json": "{}",
+    })
+    assert mod.select(["data.json"], root).mode == "SELECTIVE"
+    assert "v2/web/src/data.json" not in set(mod._files(root))
+
+
+def test_the_selector_reports_the_web_job_to_the_workflow(tmp_path, monkeypatch):
+    out = tmp_path / "out"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(out))
+    monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
+    mod._github(mod.Selection("SELECTIVE", "r", web=True), ["v2/web/src/App.tsx"])
+    mod._github(mod.Selection("SELECTIVE", "r", web=False), ["core/offpeak.py"])
+    lines = out.read_text(encoding="utf-8").splitlines()
+    assert "web=true" in lines and "web=false" in lines
+
+
+def test_the_workflow_has_the_web_job_and_gates_on_it():
+    wf = (_REPO / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
+    plan = wf.split("\n  plan:\n", 1)[1].split("\n  unit:\n", 1)[0]
+    assert "web: ${{ steps.select.outputs.web }}" in plan
+    web = wf.split("\n  web:\n", 1)[1].split("\n  red-on-base:\n", 1)[0]
+    assert "name: web (${{ needs.plan.outputs.mode }})" in web
+    assert "if: needs.plan.outputs.web == 'true'" in web
+    assert "working-directory: RevenueChaser/v2/web" in web
+    # The job is the ADR's gates, in order: licences, types, unit, build, browser.
+    for step in ("node tools/check-licences.mjs", "npm ci --ignore-scripts", "npm run typecheck",
+                 "npm test", "npm run build", "npm run test:browser"):
+        assert step in web, step
+    assert "playwright install --with-deps chromium" in web
+
+
+def test_the_web_app_pins_every_dependency_and_ships_no_copyleft_library():
+    """ADR v2/README.md decision 1 and 6: exact versions, a committed lockfile, allowlisted licences only."""
+    import json
+    web = _REPO / "v2" / "web"
+    pkg = json.loads((web / "package.json").read_text(encoding="utf-8"))
+    pinned = {**pkg["dependencies"], **pkg["devDependencies"]}
+    assert pinned, "no dependency at all"
+    loose = [f"{n}@{v}" for n, v in pinned.items() if not re.fullmatch(r"\d+\.\d+\.\d+", v)]
+    assert not loose, f"not pinned exactly: {loose}"
+    lock = json.loads((web / "package-lock.json").read_text(encoding="utf-8"))
+    assert lock["lockfileVersion"] >= 3
+    allowed = {"0BSD", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC", "MIT", "MIT-0"}
+    shipped = {path.rsplit("node_modules/", 1)[-1]: entry.get("license", "")
+               for path, entry in lock["packages"].items()
+               if path.startswith("node_modules/") and not entry.get("dev") and not entry.get("optional")}
+    assert shipped, "the lockfile lists no production dependency"
+    assert {n: lic for n, lic in shipped.items() if lic not in allowed} == {}
+
+
+def test_the_v2_stack_adr_names_the_rules_the_code_follows():
+    adr = (_REPO / "v2" / "README.md").read_text(encoding="utf-8")
+    for claim in ("AGPL", "No CDN", "TypeScript", "1187", "1884", "select_tests"):
+        assert claim in adr, claim

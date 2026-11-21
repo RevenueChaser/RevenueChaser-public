@@ -17,10 +17,13 @@ import time
 from datetime import date, datetime, timedelta
 
 from RevenueChaser.core import rawstore
+from RevenueChaser.module_news import store_reads
 from RevenueChaser.module_news.calendar import META, local_day
 from RevenueChaser.rcdata import read
 
-TABLE = "news_earnings"
+# The table name is the board's reader's (``module_news/store_reads.py``, #217); the write below stays here,
+# with the code that produces the rows.
+TABLE = store_reads.EARNINGS
 #: ``news_meta`` key holding the epoch second of the last pass (the page's "last refresh" line).
 MARK_KEY = "earnings_refresh"
 #: The days the tab shows: Monday to Friday. US companies do not report at the weekend, and avo's mock has five
@@ -97,11 +100,10 @@ def stored(now: float | None = None) -> tuple[list[dict], float | None]:
     week (the pass has not run since the week turned) answers no rows, so the tab says the week is not built
     rather than showing last week's days."""
     monday, _friday = week(now)
-    got = rawstore.query(f"SELECT * FROM {TABLE} WHERE week_start = ? ORDER BY report_date, ticker",
-                         [monday.isoformat()], db="news")
-    mark = rawstore.query(f"SELECT value FROM {META} WHERE key = ?", [MARK_KEY], db="news")
+    got = store_reads.earnings_week(monday.isoformat())
+    mark = store_reads.meta_value(MARK_KEY)
     try:
-        at = float(mark[0]["value"]) if mark else None
+        at = None if mark is None else float(mark)
     except (TypeError, ValueError):
         at = None
     return got, at

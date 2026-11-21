@@ -20,6 +20,10 @@ FULL (the whole unit and e2e suite) when:
   - a change reaches the root conftest (its fixtures run in every test);
   - a changed non-Markdown file reaches no test (checked per file, so a tested file beside it cannot hide it).
 
+The v2 web app is not Python: a change under ``v2/web/`` selects the ``web`` job of the workflow (``web: true``)
+and no Python test, instead of falling back to FULL as "named by no Python file" (review F14, #1242; the rules are
+``v2/README.md`` decision 8). A FULL run runs the web job too. ``v2/door/`` is Python and follows the graph.
+
 A change that reaches any other conftest selects every test below that conftest's folder: its fixtures run there
 whatever the test imports. The e2e conftest starts the dashboard, so most changes reach every e2e test; a change that
 stays inside board folders is narrowed to those boards' e2e files by ``E2E_BY_BOARD``.
@@ -44,6 +48,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 PKG = "RevenueChaser"
 E2E_DIR = "module_testing/e2e/"
+WEB_DIR = "v2/web/"  # the v2 web app: the `web` job tests it, never pytest
 _SKIP_DIRS = {".git", ".store", ".cache", "__pycache__", "node_modules", ".pytest_cache"}
 _FULL_NAMES = {"conftest.py", "pytest.ini", "setup.py", "setup.cfg", "pyproject.toml", "docker-compose.yml"}
 _FULL_PREFIXES = (".github/", "scripts/select_tests.py")
@@ -86,6 +91,10 @@ E2E_BY_BOARD: dict[str, tuple[str, ...]] = {
 # The shell every board sits in (phone layout, panel header, Settings' row per board, screenshots).
 E2E_ALWAYS = ("test_phone_shell.py", "test_panel_header_231.py",
               "test_board_settings.py", "test_screenshots.py")
+# The v2 door's own e2e file (run plan step 6). It belongs to no board and to no part of the old shell: it starts
+# the door itself and reads envelope files, so what selects it is the import graph (a change under ``v2/door/``
+# reaches it), not this table. It is named here only so the "every e2e file has a place" check stays true.
+E2E_V2 = ("test_v2_door.py",)
 # The harness's own tests: a harness change is under module_testing/, which runs every e2e test anyway.
 E2E_HARNESS = ("test_cdp_browser.py", "test_chrome_timeout.py", "test_harness_env.py", "test_harness_parallel.py",
                "test_harness_yfinance.py", "test_settings_control.py", "test_settings_newdata.py")
@@ -97,12 +106,17 @@ class Selection:
     reason: str
     unit: list[str] = field(default_factory=list)
     e2e: list[str] = field(default_factory=list)
+    web: bool = False  # the `web` job (v2/web): on for a change there and for every FULL run
 
 
 def _files(root: Path):
+    """Every file the Python selector may look at. ``v2/web/`` is left out: it holds no Python and no pytest
+    test, the ``web`` job owns it, and a file name of its own (``index.html``, ``package.json``) must never
+    become the twin that makes an unrelated change fall back to FULL (``_named_by``)."""
     for p in root.rglob("*"):
-        if p.is_file() and not _SKIP_DIRS & set(p.relative_to(root).parts):
-            yield p.relative_to(root).as_posix()
+        rel = p.relative_to(root)
+        if p.is_file() and not _SKIP_DIRS & set(rel.parts) and not rel.as_posix().startswith(WEB_DIR):
+            yield rel.as_posix()
 
 
 def _module(rel: str) -> str:
@@ -209,7 +223,15 @@ def _texts(root: Path) -> dict[str, str]:
 
 
 def select(changed: list[str], root: Path = REPO) -> Selection:
+    """The selection for ``changed``: the Python tiers, plus whether the ``web`` job runs."""
     changed = [c for c in changed if not c.startswith(_IGNORED_PREFIXES)]
+    web = any(c.startswith(WEB_DIR) for c in changed)
+    sel = _select_python([c for c in changed if not c.startswith(WEB_DIR)], root)
+    sel.web = web or sel.mode == "FULL"
+    return sel
+
+
+def _select_python(changed: list[str], root: Path) -> Selection:
     for rel in changed:
         name = rel.rsplit("/", 1)[-1]
         if name in _FULL_NAMES or name.startswith("requirements") or rel.startswith(_FULL_PREFIXES):
@@ -299,9 +321,11 @@ def changed_files(base: str, root: Path = REPO) -> list[str]:
 def _github(sel: Selection, changed: list[str]) -> None:
     if out := os.environ.get("GITHUB_OUTPUT"):
         with open(out, "a", encoding="utf-8") as f:
-            f.write(f"mode={sel.mode}\nunit={' '.join(sel.unit)}\ne2e={' '.join(sel.e2e)}\n")
+            f.write(f"mode={sel.mode}\nunit={' '.join(sel.unit)}\ne2e={' '.join(sel.e2e)}\n"
+                    f"web={'true' if sel.web else 'false'}\n")
     if summary := os.environ.get("GITHUB_STEP_SUMMARY"):
-        lines = [f"## Test selection: {sel.mode}", "", f"Reason: {sel.reason}", ""]
+        lines = [f"## Test selection: {sel.mode}", "", f"Reason: {sel.reason}", "",
+                 f"Web job (v2/web): {'runs' if sel.web else 'skipped'}.", ""]
         if sel.mode == "SELECTIVE":
             lines += [f"Changed files: {len(changed)}. Unit files: {len(sel.unit)}. E2E files: {len(sel.e2e)}.", "",
                       "Not a merge gate: label the PR `full-ci` for a FULL run on this head.", "", "<details><summary>Selected test files</summary>", ""]
@@ -358,7 +382,7 @@ def main(argv: list[str]) -> int:
     full = argv[argv.index("--full") + 1] if "--full" in argv else ""
     changed: list[str] = []
     if full:
-        sel = Selection("FULL", full)
+        sel = Selection("FULL", full, web=True)
     else:
         try:
             changed = changed_files(base)

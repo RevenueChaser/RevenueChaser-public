@@ -186,7 +186,8 @@ def test_the_card_names_the_session_of_the_stores_price():
 
 
 def test_the_comps_basis_names_where_the_targets_shares_came_from(market_roots):  # noqa: F811
-    # The peer multiples stay Yahoo's (their .info); the target's per-share values divide by the store's shares.
+    # #286: the peer side is the store's newest annual record; the target's per-share values divide by the
+    # store's shares. This test is about the second half, so the peers are injected.
     from RevenueChaser.module_financials.engines import comps_engine
     from RevenueChaser.module_financials.reporting.html_builder import build_report_html
     _store()
@@ -197,7 +198,7 @@ def test_the_comps_basis_names_where_the_targets_shares_came_from(market_roots):
     comps = comps_engine.run_comps(fin, ["PEER"], fetch_info=lambda p: peer)
     assert comps["basis"]["target_shares"] == "prices store, 2026-10-27 close"
     html = build_report_html({"ticker": TICKER, "financials": fin, "modules": {"comps": comps}, "warnings": []})
-    assert "peer multiples are trailing twelve months (Yahoo)" in html
+    assert "peer multiples are newest stored fiscal year" in html
     assert "per share divides by the target's shares from the prices store, 2026-10-27 close." in html
     yahoo = comps_engine.run_comps({**YAHOO, "annual": fin["annual"]}, ["PEER"], fetch_info=lambda p: peer)
     assert yahoo["basis"]["target_shares"] == "Yahoo"

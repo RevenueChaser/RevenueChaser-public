@@ -13,7 +13,7 @@ from typing import Any
 import pandas as pd
 
 from ..config import to_float
-from . import yf_session
+from . import spend, yf_session
 from .result import ProviderHealth, ProviderResult
 
 logger = logging.getLogger(__name__)
@@ -43,10 +43,17 @@ def reset_health() -> None:
 
 
 def _count(error: str | None = None, endpoint: str = "") -> None:
-    """Count one Yahoo read for the shared global and for every scope open on this thread."""
+    """Count one Yahoo read for the shared global, for every scope open on this thread, and for the day's spend.
+
+    The day's counter (``providers/spend.py``, #166) is the one ``rcdata.caps`` reads and the Spend card renders,
+    and its unit for Yahoo is one **read**, not one HTTP request -- the same unit the builder's Yahoo source
+    counts in (``rcdata/build/sources/yahoo.py``), because the library fetches its own cookie and crumb and a
+    read may be several requests. Both halves of the app and the builder therefore add up in one row.
+    """
     _HEALTH.call(error=error, endpoint=endpoint)
     for health in getattr(_SCOPES, "stack", ()):
         health.call(error=error, endpoint=endpoint)
+    spend.count("yfinance", calls=1, failures=1 if error is not None else 0)
 
 
 def attempt(call, endpoint: str = "", empty=None, count: bool = True) -> tuple[Any, str | None]:
@@ -364,17 +371,6 @@ def _payload(ticker: str, info: dict, annual: list[dict]) -> dict:
 def _read_info(t, ticker: str) -> dict:
     """One ticker's ``.info``, counted for the banner and retried once after a 401 session reset (#402, #100)."""
     return read(lambda: t.info or {}, endpoint=f"{ticker}.info", default={})
-
-
-def raw_info(ticker: str) -> dict:
-    """Yahoo's own ``.info`` dict for ``ticker``, counted for the board banner (``{}`` when the read raised).
-
-    For a caller that wants the raw fields rather than the normalised ``get_info`` payload (the comps ladder's
-    per-peer read, #299), so its failures reach the banner instead of only the debug log.
-    """
-    import yfinance as yf
-
-    return _read_info(yf.Ticker(ticker), ticker)
 
 
 def get_info(ticker: str) -> dict:

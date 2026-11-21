@@ -30,6 +30,7 @@ def seams(monkeypatch):
 
     def fake_post(url, data=None, headers=None, timeout=None):
         seen["posts"].append((url, headers))
+        seen["form"] = data
         return _Resp(202, {"ok": True, "job_id": "j1"})
 
     def fake_get(url, timeout=None):
@@ -66,9 +67,13 @@ def test_a_failed_job_exits_1(seams, capsys):
 
 
 def test_one_registry_row_and_unit_per_board_each_running_its_own_route():
+    """One row per board, each naming the dashboard route it posts, and none of them chained."""
     for board, route in cli.ROUTES.items():
         (e,) = [e for e in automations.REGISTRY if e.args == ("-m", "RevenueChaser.scripts.board_fetch", board)]
-        assert e.unit == f"life-rc-fetch-{board}" and route in e.description and not e.after
+        assert f"/run/{route}" in e.description and not e.after
+        # Relatedness profiling kept the unit its installed timer already had (#1255); the rest are life-rc-fetch-*.
+        assert automations.system_unit(e) == ("life-rc-relatedness" if board == "relatedness"
+                                             else f"life-rc-fetch-{board}")
 
 
 def test_the_fetch_waits_while_the_builder_holds_its_lock(seams, capsys):
@@ -97,3 +102,45 @@ def test_earnings_radar_runs_on_weekdays_only_after_sector_rotation():
     by = {e.name: e for e in automations.REGISTRY}
     rot, er = by["RC-Fetch-SectorRotation"], by["RC-Fetch-EarningsRadar"]
     assert er.days == automations._WEEKDAYS and not rot.days and rot.time < er.time
+
+
+# ── #1255: the weekly Relatedness profiling run ──────────────────────────────
+
+def test_the_relatedness_run_waits_for_the_store_rather_than_opening_it(seams, capsys):
+    """The run that died on StoreLockedError now waits on /api/idle and then asks the dashboard, the one writer."""
+    seams["idle"] = [{"idle": False, "reasons": ["another store process: pid 834460"]}, {"idle": True, "reasons": []}]
+    assert cli.main(["relatedness"]) == 0
+    assert seams["posts"] == [("http://127.0.0.1:8000/run/module_relatedness", {"X-RC-Panel": "cli"})]
+
+
+def test_it_sends_the_cap_its_registry_row_used_to_pass_on_the_command_line(seams):
+    """avo's 10 USD (2 Nov 2026), which counts only when the board's writer is DeepSeek."""
+    assert cli.main(["relatedness"]) == 0
+    assert seams["form"] == {"usd_cap": "10"}
+
+
+@pytest.mark.parametrize("board", ["swing", "relatedness"])
+def test_each_board_posts_exactly_the_form_fields_its_route_takes(seams, board):
+    """The cap belongs to the one row that had it; every other route takes its arguments from the board."""
+    assert cli.main([board]) == 0
+    assert seams["form"] == cli.FORM.get(board)
+    assert set(cli.FORM) == {"relatedness"}, "a second board with a field needs its own words here"
+
+
+def test_it_waits_for_no_session_bar(seams, monkeypatch):
+    """Profiles are scored against each other, so there is no SPY bar to wait for -- and Sunday 22:15 has none."""
+    monkeypatch.setattr(cli.ledger, "d01_has_session", lambda session, ticker: False)
+    assert cli.main(["relatedness"]) == 0 and len(seams["posts"]) == 1
+
+
+def test_a_store_busy_all_window_postpones_the_run_instead_of_failing_it(seams, monkeypatch, capsys):
+    """Exit 3 is "nothing was written", which the Jobs board reads as neutral; exit 1 was a red weekly row."""
+    monkeypatch.setitem(cli._BOARD_WAIT_S, "relatedness", -1)
+    seams["idle"] = [{"idle": False, "reasons": ["another store process: pid 834460"]}]
+    assert cli.main(["relatedness"]) == cli.EXIT_NOT_READY
+    assert seams["posts"] == [] and "834460" in _line(capsys)["reason"]
+
+
+def test_its_window_fits_inside_the_unit_s_four_hour_limit(seams):
+    """life-rc-relatedness.service has TimeoutStartSec=4h: a longer wait would be killed mid-poll."""
+    assert cli._WAIT_S < cli._BOARD_WAIT_S["relatedness"] < 4 * 3600

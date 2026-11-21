@@ -253,7 +253,7 @@
   <p style="color:var(--muted); font-size:12px; margin:-6px 0 12px;">as of {{ comps.as_of }} — the last stored Fetch; the Refresh fetched nothing.</p>
   {% endif %}
   {% if comps.basis %}
-  <p style="color:var(--muted); font-size:12px; margin:-6px 0 12px;">Basis: peer multiples are {{ comps.basis.peers }} (Yahoo); the target's EBITDA, revenue and net income are from fiscal year {{ comps.basis.target_fiscal_year or "unknown" }}; per share divides by the target's shares from {{ "the " if comps.basis.target_shares and comps.basis.target_shares != "Yahoo" }}{{ comps.basis.target_shares or "Yahoo" }}.{% if comps.implied.net_debt_fy %} Net debt is as of FY{{ comps.implied.net_debt_fy }}; minority interest and preferred stock are not subtracted.{% endif %}</p>
+  <p style="color:var(--muted); font-size:12px; margin:-6px 0 12px;">Basis: peer multiples are {{ comps.basis.peers }} ({{ comps.basis.peers_source or "Yahoo" }}); the target's EBITDA, revenue and net income are from fiscal year {{ comps.basis.target_fiscal_year or "unknown" }}; per share divides by the target's shares from {{ "the " if comps.basis.target_shares and comps.basis.target_shares != "Yahoo" }}{{ comps.basis.target_shares or "Yahoo" }}.{% if comps.implied.net_debt_fy %} Net debt is as of FY{{ comps.implied.net_debt_fy }}; minority interest and preferred stock are not subtracted.{% endif %}</p>
   {% endif %}
   {% if comps.pe_only %}
   <p style="color:var(--muted);">A Financial Services target is valued on P/E only: EV/EBITDA and EV/Revenue do not describe a bank.</p>
@@ -267,7 +267,8 @@
       {% for p in comps.peers %}
         <tr>
           {# #91: the rung says whether this peer shares the target's industry or only its sector. #}
-          <td>{{ watch_pair(p.ticker) }}{{ p.ticker }}{% if p.rung == "sector" %} <span class="warn" title="picked from the sector, not the target's industry">sector</span>{% endif %}</td>
+          {# #286: a peer the store holds no annual record for says so; its blank cells are not missing figures. #}
+          <td>{{ watch_pair(p.ticker) }}{{ p.ticker }}{% if p.rung == "sector" %} <span class="warn" title="picked from the sector, not the target's industry">sector</span>{% endif %}{% if p.stored is defined and not p.stored %} <span class="warn" title="nothing stored for this company, so it is in no percentile">not stored</span>{% endif %}</td>
           <td>{{ p.market_cap|usd }}</td>
           {% if not comps.pe_only %}<td>{{ p.ev_ebitda|num }}</td>
           <td>{{ p.ev_revenue|num }}</td>{% endif %}

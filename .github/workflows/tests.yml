@@ -14,6 +14,11 @@ name: tests
 # overrides an earlier one. Any other file, code or data, runs CI. A skipped run leaves no check
 # on the PR: that is expected for a docs-only PR, not a missing CI.
 #
+# Three tiers: `unit` and `e2e` are pytest, `web` is the v2 web app (Node: licences, typecheck, Vitest, build,
+# Playwright). The web job runs for a change under `v2/web/` and for every FULL run; `scripts/select_tests.py`
+# decides (output `web`), and the rules it follows are `v2/README.md` (the v2 stack ADR, decision 8). This
+# repository is public, so these minutes are free.
+#
 # SELECTIVE or FULL (the check names say which: `unit (SELECTIVE)`, `e2e (FULL)`, ...):
 #   - a push to a PR runs only the test files that import a changed file, directly or transitively
 #     (scripts/select_tests.py, job `plan`); it falls back to FULL whenever that is not safe to say;
@@ -43,6 +48,7 @@ on:
       - "docs/data_retrieval.md"
       - "docs/earnings-radar/00_overview.md"
       - "docs/earnings-radar/redesign.md"
+      - "docs/v2/door.md"
       - "module_spx_gamma/tests/golden/position_map.base.md"
       - ".github/**"
   push:
@@ -57,6 +63,7 @@ on:
       - "docs/data_retrieval.md"
       - "docs/earnings-radar/00_overview.md"
       - "docs/earnings-radar/redesign.md"
+      - "docs/v2/door.md"
       - "module_spx_gamma/tests/golden/position_map.base.md"
       - ".github/**"
   workflow_dispatch:
@@ -84,6 +91,7 @@ jobs:
       tree: ${{ steps.select.outputs.tree }}
       unit: ${{ steps.select.outputs.unit }}
       e2e: ${{ steps.select.outputs.e2e }}
+      web: ${{ steps.select.outputs.web }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -254,6 +262,56 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
 
+  web:
+    # The v2 web app (v2/web): not Python, so pytest never sees it. The ADR is v2/README.md: MIT/Apache/BSD/ISC
+    # licences only, no CDN, built in CI or in the door's image build, never by a Node toolchain on homesrv.
+    needs: plan
+    if: needs.plan.outputs.web == 'true'
+    name: web (${{ needs.plan.outputs.mode }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: RevenueChaser/v2/web
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          path: RevenueChaser
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: RevenueChaser/v2/web/package-lock.json
+      - name: licences (ADR decision 1)
+        # Reads package-lock.json, so it runs before the install and fails the job on a production dependency
+        # outside the allowlist.
+        run: node tools/check-licences.mjs
+      - name: npm ci
+        # --ignore-scripts: no dependency's install hook runs in CI (ADR decision 6).
+        run: npm ci --ignore-scripts
+      - name: typecheck
+        run: npm run typecheck
+      - name: vitest (unit)
+        run: npm test
+      - name: build
+        run: npm run build
+      - name: playwright (browser)
+        # `vite preview` serves the build the browser tier tests, and the shots are the frame at 1187 and
+        # 1884 px, light and dark (ADR decision 7).
+        env:
+          RC_SHOTS_DIR: ${{ runner.temp }}/web-shots
+        run: |
+          npx playwright install --with-deps chromium
+          npm run test:browser
+      - name: upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots-v2-web
+          path: ${{ runner.temp }}/web-shots/
+          retention-days: 14
+          if-no-files-found: ignore
+
   red-on-base:
     # A test the PR adds that already passes on the merge-base proves nothing about the change
     # (scripts/red_on_base.py; plan home-server/2026-11-08_review-llm-coder-llm-plan.md step 3). It reports, it does
@@ -302,11 +360,12 @@ jobs:
     # so the next push of a fix round runs SELECTIVE. Sampled before: 20 of 37 runs were FULL only because the label
     # stayed, 2.0 FULL runs per PR, 12 on one. A cancelled run (a newer push) keeps it. Removing it starts no run
     # (`unlabeled` is not a trigger above).
-    needs: [plan, unit, e2e]
+    needs: [plan, unit, e2e, web]
     if: >-
       always() && github.event_name == 'pull_request' && needs.plan.outputs.mode == 'FULL'
       && contains(github.event.pull_request.labels.*.name, 'full-ci')
       && needs.unit.result != 'cancelled' && needs.e2e.result != 'cancelled'
+      && needs.web.result != 'cancelled'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -326,7 +385,7 @@ jobs:
     # A label other than full-ci starts a run that tests nothing: its gate repeats the latest completed merge-gate
     # on the same head (job earlier-gate), so a triage label after a green FULL run does not turn the head red;
     # with no earlier gate it is skipped.
-    needs: [plan, unit, e2e, earlier-gate]
+    needs: [plan, unit, e2e, web, earlier-gate]
     if: always() && (needs.earlier-gate.result == 'skipped' || needs.earlier-gate.outputs.last != '')
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -339,6 +398,7 @@ jobs:
           MODE: ${{ needs.plan.outputs.mode }}
           UNIT: ${{ needs.unit.result }}
           E2E: ${{ needs.e2e.result }}
+          WEB: ${{ needs.web.result }}
           TREE: ${{ needs.plan.outputs.tree }}
           OTHER_LABEL: ${{ github.event.action == 'labeled' && github.event.label.name != 'full-ci' }}
           last: ${{ needs.earlier-gate.outputs.last }}
@@ -350,6 +410,8 @@ jobs:
           if [ "$PLAN" != success ]; then echo "::error::plan $PLAN: this run tested nothing (plan failed)."; exit 1; fi
           if [ "$MODE" = SKIP ]; then echo "A PR's FULL run already tested this tree green; nothing new to test."; exit 0; fi
           if [ "$MODE" != FULL ]; then echo "::error::SELECTIVE run: not a merge gate. Label the PR full-ci for a FULL run on this head."; exit 1; fi
+          # The web job is skipped only when the selector said so; a FULL run always runs it.
           [ "$UNIT" = success ] && [ "$E2E" = success ] || { echo "::error::FULL run: unit=$UNIT, e2e=$E2E"; exit 1; }
+          [ "$WEB" = success ] || [ "$WEB" = skipped ] || { echo "::error::FULL run: web=$WEB"; exit 1; }
           # Read by job plan on the push to main that merges this tree (mode SKIP). Keep the text as it is.
           echo "::notice title=tested-tree::tested-tree $TREE"

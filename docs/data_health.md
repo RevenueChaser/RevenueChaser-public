@@ -304,7 +304,11 @@ so instead of drawing zeros. Its first row, "Boards read", says the boards read 
 **Page-level cards** (the queue and the weekly backups are drawn by `control_render` on the Fetch tab since
 #715 step 2; the rest are the older cards): the queue (queued and running requests, then the last 20 finished), spend (F6: calls per
 provider for the New York day and the week from Monday, from `provider_calls_daily`, against the day caps of
-`rcdata/caps.py`, and UW's newest `x-uw-*` sample from `uw_remaining`: its daily count, what is left of our own cap
+`rcdata/caps.py`. Since #166 that counter holds the dashboard's own Fetches as well as the builder's runs
+(`core/providers/spend.py` writes it from the UW, EDGAR and Yahoo clients; `RC_APP_SPEND=0` stops those writes),
+so the figures are what this machine spent and not half of it. The unit is the provider's: a request for `uw` and
+`sec`, a Yahoo read for `yfinance`, both halves alike. It is a record and not a gate — nothing refuses a Fetch
+that would cross a cap, and UW's newest `x-uw-*` sample from `uw_remaining`: its daily count, what is left of our own cap
 (computed) and the per-minute window), weekly backups (the weekly job's manifests under
 `RAW_STORE_BACKUP_DIR/weekly-v2/<step>/`: each step's last good run and the error of a failed one, then the newest
 weekly copy of every file and how many are kept; amber past 8 days, red past 15 days or when there is none), the raw option retention warning (on until `RC_RAW_RETENTION_DAYS` or a `dataset_schedule` row
@@ -651,7 +655,7 @@ it, so without that line its old archives would never be listed. The newest copy
 ### 3.4 Automations panel
 
 `core/automations.py` is the one registry of the scheduled tasks RevenueChaser owns, and the one
-installer. Rows: `RC-Relatedness-OffPeak` (weekly Sunday 22:15, `--run --cap 10`, the board's writer, #360), `RC-Relatedness-Score` (weekly Saturday 07:30, after `RC-SEC-Read`, `module_relatedness --score`: the service's new profile answers mirrored and every pair rescored, skipped when nothing is newer — both weekly on avo's word of 20 Nov 2026), `RC-ValueChain-Sync` (daily 04:20, after `RC-SEC-Read`, `module_value_chain --nightly`: the links rebuilt from the SEC layer through the dashboard),
+installer. Rows: `RC-Relatedness-OffPeak` (weekly Sunday 22:15, `scripts.board_fetch relatedness`: the board's whole-board Fetch queued on the dashboard with the 10 USD cap, #360, #1255), `RC-Relatedness-Score` (weekly Saturday 07:30, after `RC-SEC-Read`, `module_relatedness --score`: the service's new profile answers mirrored and every pair rescored, skipped when nothing is newer — both weekly on avo's word of 20 Nov 2026), `RC-ValueChain-Sync` (daily 04:20, after `RC-SEC-Read`, `module_value_chain --nightly`: the links rebuilt from the SEC layer through the dashboard),
 `RC-Daily-Bars` (23:00, `scripts.daily_bars --nightly --sec-files`), `RC-Screeners-Daily` (weekdays
 23:30, after `RC-Daily-Bars`, `app.universe_cli`), `RC-Forecast-Outcomes` (daily 23:35, after
 `RC-Daily-Bars`, `scripts.forecast_outcomes --nightly`), `RC-Forecast-Baselines` (daily 23:50, after

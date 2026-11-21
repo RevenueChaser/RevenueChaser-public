@@ -115,11 +115,16 @@ Reference (informational; DST shifts these):
 
 ## Profile writers (#360)
 
-Since #360 the dashboard Fetch and the scheduled `RC-Relatedness-OffPeak` (`--run --cap 10`) write with the
+Since #360 the dashboard Fetch and the scheduled `RC-Relatedness-OffPeak` write with the
 board's writer (Settings: EVREN by default, no fee; DeepSeek capped at 10 USD and off-peak gated). Pick the model
 on the board, not with `RC_EVREN_MODEL` / `RC_DEEPSEEK_MODEL`: the board's model goes to every caller with each
 call. The Grok and Claude subscription writers were one-off and are removed (avo, 15 Nov 2026); their stored
 profiles stay current at the current `prompt_version` (`store.is_stale`).
+
+Since #1255 the scheduled row no longer runs the module itself: it waits for the store to be idle and posts
+`/run/module_relatedness` with `usd_cap=10`, so the writer runs in the dashboard, the one process that holds the
+board file. The 10 USD is the same ceiling the row's `--run --cap 10` carried; it counts only when the board's
+writer is DeepSeek.
 
 ## No Fetch and no build calls the paid API (avo, 20 Nov 2026)
 

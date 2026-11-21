@@ -36,6 +36,16 @@ a rebuilt board never serves old rows. Asymmetric Growth is the first board on i
 in R3. The PC guard
 `scripts/research/383_page_weight.py` checks that no board's HTML plus payload grows past its baseline.
 
+**The v2 envelope beside the payload (#1241, v2 epic #1238).** The same `write_board` call writes a second file,
+`<stem>.v2.json.gz`, for the v2 door: `{schema_version, board, run_id, data_asof, built_at, private, renderer,
+layout, data}` (`core/v2_envelope.py`). `data` is the payload itself, serialised with the payload file's own
+options, so the two files hold the same bytes; `run_id` is the dashboard job that wrote them
+(`rawstore.writer_run_id`), which is how the door refuses an envelope whose build is not the served one. The old
+page is untouched: it still fetches `/view/<module>/payload.json`, and nothing serves the envelope yet. A Refresh
+drops both files together (`reporting_common.drop_board_data`). One JSON Schema per board lives in `v2/schemas/`,
+checked by `v2/tests/test_v2_schemas.py` with the small checker in `v2/validate.py` (the repository carries no
+`jsonschema` dependency).
+
 **A Refresh shows the last Fetch's notes (#383 C24).** LEAPS and SEC 13F put their Fetch notes on the board (the
 scan's notes; names not refreshed and the CUSIPs left out). Their Refresh reads them back from the last run's
 result-history header (`runners.last_fetch_notice`, K2 `history.last_run`) and shows them as "Last Fetch (time):
@@ -81,7 +91,7 @@ no downloaded state worth re-deriving, so they keep a "click Fetch" empty state.
 | UW Interaction (lab) | `/run/uw` | `tool` (required) + tool params | **live-only** — board renders from its stored `.cache/uw_interaction/` payload |
 | Co-movement | `/run/module_comovement` | `no_fetch` | model-only; writes .cache only (runs persist on Fetch) |
 | Value Chain | `/run/module_value_chain` | `no_fetch` | model-only (reads `boards/value_chain.duckdb`, #860 stage 1; on the fundamentals layer the 10-K business sections and the XBRL major customers in `fundamentals.duckdb` instead, and a Fetch downloads nothing) |
-| Relatedness | `/run/module_relatedness` | `no_fetch` | model-only (reads the filings in `edgar.duckdb`, or on the fundamentals layer the annual report text in `fundamentals.duckdb`, and the `relatedness_*` profiles in `raw.duckdb`). Fetch also downloads missing filings from SEC and calls DeepSeek off-peak for new profiles; only Fetch writes `relatedness_scores` and `run_registry` (`module_relatedness/engine.py:81-92`, `:449-466`) |
+| Relatedness | `/run/module_relatedness` (the weekly task's only, `X-RC-Panel: cli`; the board has no Fetch button, D2) | `no_fetch` | model-only (reads the filings in `edgar.duckdb`, or on the fundamentals layer the annual report text in `fundamentals.duckdb`, and the `relatedness_*` profiles in `raw.duckdb`). Fetch also downloads missing filings from SEC and calls DeepSeek off-peak for new profiles; only Fetch writes `relatedness_scores` and `run_registry` (`module_relatedness/engine.py:81-92`, `:449-466`) |
 | Sector Rotation | `/run/rotation` | `start`, `end` (optional) | store |
 | Asymmetric Growth | `/run/module_asymmetric_growth` | `refresh_universe`, `no_fetch` | model-only |
 | Swing Potential | `/run/swing` | `refresh_universe`, `no_fetch` | model-only |

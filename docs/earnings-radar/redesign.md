@@ -532,6 +532,11 @@ Earnings-gap days are dropped from β.
 
 ### Badge ≠ veto_flag
 
+The two cuts written as 4 and 2 below are `R6_RATE_VETO` / `R6_RATE_HIGH`,
+recalibrated to **26 / 22** on 21 Nov 2026 (#635): measured over a run's cards,
+4 and 2 marked 82% and 100% of the names. The shape of the rule is unchanged —
+see `r6_macro.md` for the distribution and the current numbers.
+
 - |β| > 4 → reason + badge.
 - **NO_TRADE only when |β| > 4 AND a rate event (FOMC/CPI) overlaps earnings
   ±1 trading day.** Otherwise a hard |β|>4 → NO_TRADE becomes a sector ban

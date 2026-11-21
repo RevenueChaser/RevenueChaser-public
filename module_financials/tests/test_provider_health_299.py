@@ -90,18 +90,27 @@ def test_another_threads_calls_stay_out_of_this_scope():
     assert (health.health()["calls"], health.health()["failed"]) == (1, 0)
 
 
-def test_a_comps_peer_info_read_is_counted(monkeypatch):
-    """The comps ladder fetched ``.info`` per peer straight from ``yf``, so a failed peer read was uncounted."""
+def test_the_comps_peer_read_is_no_longer_a_provider_read_at_all(monkeypatch):
+    """#286 closed this half of #299 by removing the read rather than counting it.
+
+    The ladder used to fetch ``.info`` per peer straight from ``yf``, so a failed peer read was uncounted and a
+    half-fetched comps table looked complete; #1101 routed it through the client so it reached the banner. Since
+    20 Nov 2026 the peer figures come from the store (``module_financials/store_reads.peer_multiples``), so there
+    is no peer call to count — and the strongest form of the old assertion is that a provider is never touched.
+    """
     import sys
     fake = type(sys)("yfinance")
     fake.Ticker = lambda ticker: _Boom(ticker)
     monkeypatch.setitem(sys.modules, "yfinance", fake)
 
+    from RevenueChaser.module_financials import store_reads
+    monkeypatch.setattr(store_reads, "_records", lambda tickers: {t: [] for t in tickers})
+    monkeypatch.setattr(store_reads, "_market", lambda tickers: {})
+
     with yfinance_client.health_scope() as health:
-        assert comps_engine._default_fetch("MSFT") == {}
-    got = health.health()
-    assert (got["calls"], got["failed"]) == (1, 1)
-    assert got["failures"][0]["endpoint"] == "MSFT.info"
+        got = comps_engine._default_fetch_many(["MSFT"])
+    assert got["MSFT"]["stored"] is False
+    assert health.health()["calls"] == 0, "the comps peer side must cost no provider call"
 
 
 def test_the_run_hands_the_banner_to_the_report(monkeypatch, tmp_path):

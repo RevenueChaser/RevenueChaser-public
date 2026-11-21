@@ -14,8 +14,9 @@ def _file(v):
 
 
 def test_the_journey_meta_columns_are_as_wide_as_their_widest_value():
-    f = _file(_view())
-    html = control_render._journey(f)
+    v = _view()
+    f = _file(v)
+    html = control_render._journey(f, v["storage"])
     roles = max(len(d["role"]) for d in f["datasets"])
     cads = max(len("⏱ " + (d["cadence"] or "")) for d in f["datasets"])
     assert f"--jw2:{roles + control_render.COL_PAD}ch" in html
