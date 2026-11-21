@@ -41,6 +41,11 @@ def test_with_no_spy_in_the_cache_at_all_d01_still_anchors_the_board(rawstore_tm
 
 
 def test_a_d01_bar_later_than_the_session_is_not_the_session(rawstore_tmp_db):
+    """A later bar never stands in for D's own: here the seed holds 09-30, 10-01 and 10-05, and D (10-02) is a gap.
+
+    Since #881 the read is bounded by D, so this is about D's bar being absent, not about a newer bar being present
+    (``test_ledger_past_session_881.py`` pins the other half).
+    """
     _seed_d01("SPY", "2026-10-05", _close_plus(40, date(2026, 10, 5)))
     assert ledger.d01_has_session(D, "SPY") is False
 
