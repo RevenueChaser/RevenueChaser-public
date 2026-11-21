@@ -213,24 +213,20 @@ class TestTheThresholdsSitInTheTail:
     """#635 item 1: the badge has to land on a tail of the beta's own scale, not on the body.
 
     The old pair (2.0 / 4.0) was on another scale: it marked 100% and 82% of a run's names, and that is how
-    one Fetch went from 0 to 8 ``NO_TRADE``. These are over source constants, so they are red on the base.
+    one Fetch went from 0 to 8 ``NO_TRADE``. Both cases read the source constants, so both are red on the base.
     """
 
     def test_the_veto_cut_marks_a_tail_not_the_body(self):
         share = _share_above(R6_RATE_VETO)
         assert share <= 0.15, f"R6_RATE_VETO={R6_RATE_VETO} vetoes {share:.0%} of the measured run"
+        median = sorted(MEASURED_ABS_BETA)[len(MEASURED_ABS_BETA) // 2]
+        assert R6_RATE_VETO > median
 
     def test_the_high_cut_marks_at_most_the_upper_quartile(self):
         share = _share_above(R6_RATE_HIGH)
         assert share <= 0.30, f"R6_RATE_HIGH={R6_RATE_HIGH} badges {share:.0%} of the measured run"
-
-    def test_the_high_cut_still_separates_something(self):
-        """A cut above every measured name says nothing either: the badge must be reachable."""
-        assert _share_above(R6_RATE_HIGH) > 0.0
-
-    def test_high_is_below_the_veto(self):
+        # A cut above every measured name would say nothing either: the badge stays reachable, below the veto.
+        assert share > 0.0
         assert R6_RATE_HIGH < R6_RATE_VETO
-
-    def test_both_cuts_are_above_the_measured_median(self):
         median = sorted(MEASURED_ABS_BETA)[len(MEASURED_ABS_BETA) // 2]
-        assert R6_RATE_HIGH > median and R6_RATE_VETO > median
+        assert R6_RATE_HIGH > median
