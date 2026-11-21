@@ -11,7 +11,9 @@ a counter of 0, so nothing had leaked into their namespace; what reached the row
 flushed inside a test that happened to make the call that reached the flush point. The counter is the one
 ``rcdata.caps`` reads for the day caps, and about twenty assertions across ``rcdata/tests/`` read it absolutely.
 
-A live process never moves its root, so nothing is dropped there; the suite and the e2e dashboards do.
+A live process never moves its root, so nothing is dropped there; the suite and the e2e dashboards do. That the
+buffer still writes everything a root counted while the root stays put is pinned where it always was, by
+``core/providers/tests/test_app_spend_166.py``: a test of it here would be green on the base and prove nothing.
 """
 from __future__ import annotations
 
@@ -93,17 +95,3 @@ def test_a_flush_after_the_root_moved_writes_nothing_and_says_what_it_dropped(ro
     assert (row["calls"], row["failures"]) == (0, 0)
     assert spend.pending() == {}
     assert spend.dropped() == {"sec": [4, 1, 0]}
-
-
-def test_a_root_that_stays_put_writes_every_count(roots, clean_spend):
-    """The live shape: one root for the life of the process, so the buffer behaves exactly as it did."""
-    a, b, point_at = roots
-    for _ in range(spend.FLUSH_EVERY):
-        spend.count("uw", calls=1)
-    assert spend.pending() == {}
-    assert _row("uw")["calls"] == spend.FLUSH_EVERY
-    spend.count("uw", calls=2, http_429=1)
-    clean_spend[0] += spend.FLUSH_AFTER_S
-    spend.count("uw", calls=1)
-    row = _row("uw")
-    assert (row["calls"], row["http_429"]) == (spend.FLUSH_EVERY + 3, 1)
