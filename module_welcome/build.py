@@ -1,6 +1,13 @@
 """The Welcome board's incremental build: stored inputs -> ``boards/welcome.duckdb`` (welcome plan §4, S16).
 
-Three parts, upserted only from what changed since their mark in ``welcome_meta``; nothing is deleted:
+Three parts, each upserted from what changed since the **rows it already holds**; nothing is deleted.
+
+There is no incremental mark, and the ``welcome_meta`` table the plan designed for one has **no writer** (#643,
+found while building PR 5b/PR 6 in #1200). Comparing the stored rows is not a shortcut around a mark, it is the
+stronger rule: a mark that drifts from the rows — a failed write after the mark moved, a row edited by hand, a
+store restored from a backup — re-reads nothing and the drift is permanent, while a comparison converges on the
+next pass. The table is left in place rather than dropped here, because dropping a board table is a store change
+that carries its own backup and rollback.
 
 - **Snapshot**: the last stored close of SPX, VIX, MOVE and the US 10-year yield, with the change on the session
   before and a 20-session line. A row is written only for a session newer than the series' stored one, or when the
@@ -35,7 +42,10 @@ from RevenueChaser.rcdata import needs, ops
 logger = logging.getLogger(__name__)
 
 NY = ZoneInfo("America/New_York")
-SNAPSHOT, EARNINGS, FRESHNESS, META = "welcome_snapshot", "welcome_earnings", "welcome_freshness", "welcome_meta"
+SNAPSHOT, EARNINGS, FRESHNESS = "welcome_snapshot", "welcome_earnings", "welcome_freshness"
+#: The table the plan designed for the incremental marks. Nothing writes it; see this module's docstring. It is
+#: named here so a reader of the manifest finds the explanation, and so a test can hold that no build writes it.
+META = "welcome_meta"
 SPARK_DAYS = 20
 
 #: series -> (need, its id in ``market_series``). The four share one table in ``market.duckdb``, so each is asked
@@ -113,15 +123,6 @@ def earnings_days(now: float) -> tuple:
     d = ny_day(now)
     first = d if mcal.is_trading_day(d) else mcal.next_trading_day(d)
     return first, mcal.next_trading_day(first)
-
-
-def _meta(key: str) -> str | None:
-    rows = rawstore.query(f"SELECT value FROM {META} WHERE key = ?", [key], db="welcome")
-    return rows[0]["value"] if rows else None
-
-
-def _set_meta(key: str, value: str, now: float) -> None:
-    rawstore.write_rows(META, [{"key": key, "value": value, "run_at": now}])
 
 
 def _snapshot(now: float, run_id: str) -> int:

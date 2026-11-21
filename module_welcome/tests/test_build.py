@@ -1,7 +1,9 @@
 """The Welcome board's incremental build into ``boards/welcome.duckdb`` (welcome plan §4, DECISIONS S16).
 
-Three parts, each upserted from what changed since its own mark, nothing deleted: the market snapshot (SPX, VIX,
-MOVE, US 10-year), the earnings of today and the next trading day, and the last run of every job.
+Three parts, each upserted from what changed since the **rows it already holds**, nothing deleted: the market
+snapshot (SPX, VIX, MOVE, US 10-year), the earnings of today and the next trading day, and the last run of every
+builder file. There is no incremental mark and ``welcome_meta`` has no writer (#643); the last tests here hold
+that, because the docstrings and ``docs/data_architecture.md`` said the opposite for as long as nothing checked it.
 """
 from __future__ import annotations
 
@@ -222,3 +224,34 @@ def test_every_serving_file_has_a_name_on_the_card():
     """A new builder file cannot reach the card unnamed: the labels cover ``serving.KINDS`` exactly."""
     from RevenueChaser.rcdata import serving
     assert set(wb.FILE_LABELS) == set(serving.KINDS)
+
+
+# ── #643: there is no incremental mark ────────────────────────────────────────────────────────────────────────
+
+def test_a_build_writes_no_mark_row():
+    """``welcome_meta`` is the table the plan designed for ``earnings_mark`` / ``freshness_mark``. Nothing writes
+    it, which is what ``core/tests/test_db_persistence.UNWRITTEN`` and the two docs now say; a mark added without
+    the record following would land here."""
+    _prices(SESSIONS)
+    _screener([_screener_row("AAA", TUE)])
+    wb.build(now=NOW)
+    assert rawstore.count(wb.META) == 0
+
+
+def test_the_build_module_holds_no_mark_reader_or_writer():
+    """The dead ``_meta`` / ``_set_meta`` pair went with #643: the parts compare their stored rows, so a helper
+    that reads or moves a mark is either unused again or an undocumented second rule."""
+    assert not hasattr(wb, "_meta") and not hasattr(wb, "_set_meta")
+
+
+def test_each_part_re_derives_from_its_own_stored_rows():
+    """The comparison is what makes a drifted store converge, so a second pass over the same inputs must settle
+    rather than pile rows up — the property a mark cannot give (a mark moved past a failed write never looks
+    again)."""
+    _prices(SESSIONS)
+    _screener([_screener_row("AAA", TUE)])
+    first = wb.build(now=NOW)
+    counts = {t: rawstore.count(t) for t in (wb.SNAPSHOT, wb.EARNINGS, wb.FRESHNESS)}
+    second = wb.build(now=NOW + 60)
+    assert second["earnings"] == first["earnings"]
+    assert {t: rawstore.count(t) for t in (wb.SNAPSHOT, wb.EARNINGS, wb.FRESHNESS)} == counts
