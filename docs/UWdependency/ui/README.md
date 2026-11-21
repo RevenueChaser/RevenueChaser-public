@@ -57,7 +57,7 @@ page shows, which buttons were pressed and what they did, and the nearest API pa
 | `tools/` | Options Calculator, News Feed, Paper Trading, Portfolio Backtesting | 21 | None |
 | `api/` | API dashboard page, public spec | 9 | Reference. No key is shown in any screenshot |
 | `shell/` | Header settings, account menu, alert and watchlist sidebars, Saved Flows | 5 | Low: avo's alert sidebar shows his live Insider Trade alerts |
-| `discord-bot/` | UW bot in avo's server "Traders' Pub" | 5 | Plan B. From avo's screenshots only; the browser pass is still to do, after avo explains how |
+| `discord-bot/` | UW bot in avo's server "Traders' Pub" | 25 | Plan B. All nine channels read on 21 Nov 2026 and five commands run: `discord-bot/discord-pass_2026-11-21.md`, command list in `discord-bot/bot-help_2026-11-21.md` |
 
 ## What the plan thread should take from this
 
@@ -78,8 +78,7 @@ page shows, which buttons were pressed and what they did, and the nearest API pa
 
 ## Open
 
-- Discord bot: browser pass in avo's Discord window, method to come from avo. avo (21 Nov 17:02 Amsterdam):
-  Traders' Pub is his and his friends' server, the UW bot there runs on the UW API; the aim is to see how the bot
-  works and whether it can be tied into his system, and to keep a record of it either way.
+- Discord bot: done (`discord-bot/discord-pass_2026-11-21.md`). avo (21 Nov 18:17): the bot is paid from a separate
+  account and stays when UW is dropped. Still open: whose UW account the custom alerts are linked to.
 - "No path" in `UI-only-features.md` is a name match against the spec, not a tested call.
 - Ticker > Volatility has no screenshot (the capture timed out twice); the Volatility Hub shots cover the same component.
