@@ -30,6 +30,9 @@ def _clean_spend(monkeypatch):
     monkeypatch.delenv(spend.ENV, raising=False)
     monkeypatch.setattr(spend, "_pending", {})
     monkeypatch.setattr(spend, "_since", {})
+    # #1267: the ledger these counts are made against, and what an earlier file's move dropped.
+    monkeypatch.setattr(spend, "_ledger", None, raising=False)
+    monkeypatch.setattr(spend, "_dropped", {}, raising=False)
     now = [0.0]
     monkeypatch.setattr(spend, "_clock", lambda: now[0])
     yield now

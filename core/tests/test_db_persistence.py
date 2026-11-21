@@ -196,8 +196,9 @@ POPULATION: dict[str, str] = {
     "news_highlight": "module_news/tests/test_calendar.py::test_the_highlight_is_the_most_important_live_event_earliest_on_a_tie",
     "news_meta": "module_news/tests/test_calendar.py::test_a_second_build_reads_only_new_rows_and_keeps_first_seen",
     "news_headlines": "module_news/tests/test_headlines.py::test_fetch_stores_clean_headlines_with_their_tickers_once",
+    "news_reading": "module_news/tests/test_reading_1234.py"
+                     "::test_a_pass_stores_one_row_a_field_each_with_the_sentence_it_came_from",
     "welcome_snapshot": "module_welcome/tests/test_build.py::test_the_snapshot_keeps_the_last_close_its_change_and_a_20_day_line",
-    "welcome_meta": "module_welcome/tests/test_build.py::test_the_snapshot_keeps_the_last_close_its_change_and_a_20_day_line",
     "spx_raw_days": "module_spx_gamma/tests/test_store.py::test_a_raw_day_round_trips_byte_exact",
     "spx_raw_files": "module_spx_gamma/tests/test_store.py::test_a_replaced_day_keeps_no_old_file",
     "spx_brier": "module_spx_gamma/tests/test_store.py::test_a_scored_brier_record_is_never_changed",
@@ -217,10 +218,15 @@ POPULATION: dict[str, str] = {
 }
 
 
-#: Board tables nothing writes any more. Empty since #643 PR 5b and PR 6 gave Welcome's earnings and freshness
-#: cards their new writers (the options screener, and the builder's run ledger in ops); a table that loses its
-#: writer goes in here with the issue that will give it one.
-UNWRITTEN: frozenset[str] = frozenset()
+#: Board tables nothing writes. #643 PR 5b and PR 6 gave Welcome's earnings and freshness cards their new writers
+#: (the options screener, and the builder's run ledger in ops), and emptied this set; a table that loses its writer
+#: goes in here with the issue that will give it one.
+#:
+#: ``welcome_meta`` was in ``POPULATION`` instead, pointed at Welcome's **snapshot** test, which does not touch it:
+#: nothing has ever written the table (``module_welcome/build``'s own docstring says why, and its dead ``_meta`` /
+#: ``_set_meta`` helpers went with #643). The gate was therefore satisfied by an entry that could not be true, so
+#: the table is named here, where the claim is the honest one.
+UNWRITTEN: frozenset[str] = frozenset({"welcome_meta"})
 
 
 def test_every_manifest_table_has_a_population_test():

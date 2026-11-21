@@ -304,14 +304,61 @@ def linkbase_routes(http_mock, xml: str | None = MSFT_DEF, name: str = MSFT_DEF_
         http_mock.add(f"/{MSFT_XSD_NAME}", xsd)
 
 
-def filing_routes(http_mock, lists: dict, documents: dict | None = None) -> None:
+def filing_routes(http_mock, lists: dict, documents: dict | None = None, release: bool = True,
+                  release_html: str | None = None) -> None:
     """Answer the submissions URLs (``lists`` {cik: body}) and the archive documents (``documents`` {file: html}).
-    A daily index no test named answers an index with no rows, as EDGAR does for an open day."""
+    A daily index no test named answers an index with no rows, as EDGAR does for an open day.
+
+    ``release``: every 8-K carrying item 2.02 in ``lists`` also answers its header file and the press-release
+    exhibit that file types (#1214), because the fetch step asks for them on any list that holds such a filing.
+    A test of the miss passes ``release=False`` and the two URLs 404 as an unnamed URL does.
+
+    ``release_html`` replaces that exhibit's body. It cannot be passed through ``documents`` instead: ``HttpMock``
+    serves the first route whose substring matches, and the release route is added here, before those.
+    """
     for cik, body in lists.items():
         http_mock.add(f"submissions/CIK{int(cik):010d}.json", body)
+        if release:
+            recent = (body.get("filings") or {}).get("recent", {}) or {}
+            for i, acc in enumerate(recent.get("accessionNumber") or []):
+                items = (recent.get("items") or [])[i] if i < len(recent.get("items") or []) else ""
+                form = (recent.get("form") or [])[i] if i < len(recent.get("form") or []) else ""
+                if str(form) == "8-K" and "2.02" in str(items or ""):
+                    http_mock.add(f"{acc}-index-headers.html", index_headers(RELEASE_EXHIBIT))
+                    http_mock.add(f"/{RELEASE_EXHIBIT}", release_html or press_release())
     for name, html in (documents or {}).items():
         http_mock.add(f"/{name}", html)
     http_mock.fallback("master.", daily_index([]))
+
+
+#: The name the header file below types as the press-release exhibit. Deliberately **not** an ``ex99`` name: the
+#: fetch step reads the type and never the name (#1214), and a fixture named ``ex99-1.htm`` would pass either way.
+RELEASE_EXHIBIT = "msft-q1-results.htm"
+
+
+def index_headers(exhibit: str = RELEASE_EXHIBIT, kind: str = "EX-99.1") -> str:
+    """A filing's ``-index-headers.html`` as EDGAR serves it: the SGML header with its tags **HTML-escaped**,
+    which is the whole reason the reader unescapes before it looks for a type (#1214)."""
+    return ("<html><body><pre>&lt;SEC-DOCUMENT&gt;\n&lt;DOCUMENT&gt;\n&lt;TYPE&gt;8-K\n"
+            "&lt;SEQUENCE&gt;1\n&lt;FILENAME&gt;msft-8k.htm\n&lt;/DOCUMENT&gt;\n"
+            f"&lt;DOCUMENT&gt;\n&lt;TYPE&gt;{kind}\n&lt;SEQUENCE&gt;2\n&lt;FILENAME&gt;{exhibit}\n"
+            "&lt;/DOCUMENT&gt;\n&lt;/SEC-DOCUMENT&gt;</pre></body></html>")
+
+
+def index_headers_exhibits(pairs: list[tuple[str, str]]) -> str:
+    """``-index-headers.html`` for a filing carrying several exhibits, as ``(type, filename)`` pairs in the order
+    EDGAR lists them (#1240 review: ``release_exhibit`` ranks by type, not by listing order, and one filing can
+    carry both an ``EX-99.1`` and a bare ``EX-99``)."""
+    docs = "".join(f"&lt;DOCUMENT&gt;\n&lt;TYPE&gt;{kind}\n&lt;SEQUENCE&gt;{i + 2}\n&lt;FILENAME&gt;{name}\n"
+                   "&lt;/DOCUMENT&gt;\n" for i, (kind, name) in enumerate(pairs))
+    return ("<html><body><pre>&lt;SEC-DOCUMENT&gt;\n&lt;DOCUMENT&gt;\n&lt;TYPE&gt;8-K\n"
+            "&lt;SEQUENCE&gt;1\n&lt;FILENAME&gt;msft-8k.htm\n&lt;/DOCUMENT&gt;\n"
+            f"{docs}&lt;/SEC-DOCUMENT&gt;</pre></body></html>")
+
+
+def press_release(body: str = "Revenue grew 18%. We remain confident in the year ahead.") -> str:
+    """An earnings press release as an EX-99.1 exhibit."""
+    return f"<html><body><p>Microsoft Cloud Strength Drives First Quarter Results</p><p>{body}</p></body></html>"
 
 
 # ── WRDS: Compustat's statements and WRDS's ratios (a fake worker, never WRDS) ────────────────────────────────
