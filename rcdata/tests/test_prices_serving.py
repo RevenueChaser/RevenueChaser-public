@@ -313,6 +313,25 @@ def test_the_issuer_cap_counts_each_class_at_its_newest_cap_within_the_window(ht
         cap[("160329:01", DAYS[-2])]["market_cap"] + goog_26)
 
 
+@pytest.mark.parametrize("session, counts", [(DAYS[-2], True), (DAYS[-1], False)])
+def test_the_issuer_cap_window_is_measured_from_the_classs_last_cap_day(http_mock, monkeypatch, session, counts):
+    # #1144: ``MARKET_CAP_SQL``'s ``k`` is narrowed to the sessions a class's newest cap can still be in the window,
+    # so the window's far edge has to stay exactly that class's last cap day plus ``ISSUER_WITHIN_DAYS``. GOOG's last
+    # cap here is 23 Oct; with a 3-day window it counts on the 26th (3 days) and not on the 27th (4 days). A
+    # narrowing that forgot the window would lose the 26th, which the old code counted.
+    monkeypatch.setattr(prices_serving, "ISSUER_WITHIN_DAYS", 3)
+    skip = {("GOOG", DAYS[-2]), ("GOOG", DAYS[-1])}
+    _bars_answer(http_mock, RAW, ALL, skip=skip)
+    _shares_and_floats(skip=skip)
+    base.run_request({"dataset": actions.NAME, "params": {"as_of": "2026-10-27"}})
+    base.run_request({"dataset": bars.NAME, "params": {"as_of": "2026-10-27"}})
+    cap = {(r["security_id"], r["session_date"]): r for r in _q("SELECT * FROM market_cap_daily")}
+    assert ("160329:03", DAYS[-2]) not in cap and ("160329:03", DAYS[-1]) not in cap
+    goog_23 = cap[("160329:03", DAYS[-3])]["market_cap"]
+    googl = cap[("160329:01", session)]
+    assert googl["issuer_market_cap"] == pytest.approx(googl["market_cap"] + (goog_23 if counts else 0))
+
+
 def test_a_listed_class_the_spine_lacks_gets_bars_and_counts_in_the_issuer_cap(http_mock):
     # The server's sample: BRK-B's cap was 0.658 of Yahoo's, because the spine has no BRK-A (cover_class_unmapped
     # 1067983:BRK.A), so the A class had no bar and no cap. Compustat holds the A class (072726:01, its own shares),
