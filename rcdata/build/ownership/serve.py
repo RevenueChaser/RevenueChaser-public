@@ -98,6 +98,12 @@
   add up to 100. ``sec13f_type_flow`` is the type's split-adjusted buys and sells in dollars: per filer and ticker the
   change in shares against the quarter before, at the quarter's 13F price (value over shares; for a name every holder
   left, the quarter before's on the same basis), over the filers that reported both quarters, as the ticker flows are.
+- *A filer family counts once* (#925; avo, 16 Nov 2026 Q17 A / Q18 A, and 21 Nov 2026): ``sec13f_ticker_period``'s
+  ``top10_pct`` and ``hhi``, and the ``holders``, ``type_filers`` and ``filers`` counts of ``sec13f_type_holdings``
+  and ``sec13f_type_sector``, count one firm once. A family is built from the 13F's List of Other Included Managers
+  (guarded by the firm word) and from the firm words of ``FAMILY_FIRMS``, which is what joins two *sibling* filers
+  that name each other nowhere. ``sec13f_ticker_period``'s own ``holders``, the breadth, the filer breaks and
+  ``sec13f_type_flow`` stay per filer.
 
 **Views** under the old ``raw.duckdb`` names, with the old columns (D4): ``sec13f_totals`` (ticker, ``entry`` JSON
 ``{period: {shares, value, holders, ...}}``) and ``short_interest``: one row per ticker and session (an IBKR snapshot
@@ -200,6 +206,15 @@ FILER_HOLDINGS = [("cik", "TEXT"), ("period", "DATE"), ("ticker", "TEXT"), ("sha
 FILER_TOP = 25
 FAMILY_STOP = {"THE"}                    # a leading word that names no firm
 FAMILY_HOPS = 5                          # parent links followed to a family's root (a cycle stops sooner)
+# #925 (avo, 21 Nov 2026): firm words whose filers are one family even where no filing names the other. The SEC's
+# List of Other Included Managers only links a filer to a manager it names itself, so two *sibling* filers of one
+# firm stay apart: measured on the live store 20 Nov 2026, Vanguard moved its 13F to two new CIKs in 2026 Q1
+# (VANGUARD CAPITAL MANAGEMENT LLC 2100119 and VANGUARD PORTFOLIO MANAGEMENT LLC 2100121), neither of which
+# appears in any of the managers Parquet's 6,540 edges, and AAPL's HHI came out ~70.7 points low because one
+# 14.7% holder was counted as 10.1% + 3.5%. The word is curated, not derived, because a first word is not proof
+# of one firm on its own (AMERICAN CENTURY and AMERICAN FUNDS are two firms); an entry is added when a split has
+# been measured on the live store and written into the issue.
+FAMILY_FIRMS = frozenset({"VANGUARD"})
 STARTED, STOPPED = "started", "stopped"
 SCHEMAS = {"sec13f_cusip_map": MAP, "sec13f_filer_period": FILER, "sec13f_ticker_period": TICKER,
            "sec13f_periods": PERIODS, "sec13f_filer_breaks": BREAKS, "sec13f_type_holdings": TYPES,
@@ -366,13 +381,23 @@ def _root_word(name: str | None) -> str | None:
     return words[0] if words else None
 
 
-def family_roots(edges, books: dict[str, float]) -> dict[str, str]:
-    """``{cik: family root cik}`` from the 13F's included managers (#925; avo, 16 Nov 2026, Q17 A): ``edges`` are
-    ``(manager cik, filer cik, manager name, filer name)``, a filer naming the manager in its List of Other Included
-    Managers. A pair counts only when both names start with the same firm word, because a filer also lists sub-advisers
-    of other firms. A manager named by several filers joins the largest (``books``, its largest quarter's value); the
-    links are followed to the top (at most ``FAMILY_HOPS``), and a link that would close a cycle is not taken. Only
-    ciks with a parent are returned."""
+def family_roots(edges, books: dict[str, float], names: dict[str, str] | None = None) -> dict[str, str]:
+    """``{cik: family root cik}`` for every filer of a family of two or more (#925; avo, 16 Nov 2026, Q17 A, and
+    21 Nov 2026), from two sources:
+
+    - The 13F's included managers. ``edges`` are ``(manager cik, filer cik, manager name, filer name)``, a filer
+      naming the manager in its List of Other Included Managers. A pair counts only when both names start with the
+      same firm word, because a filer also lists sub-advisers of other firms. A manager named by several filers joins
+      the largest (``books``, its largest quarter's value); the links are followed to the top (at most
+      ``FAMILY_HOPS``), and a link that would close a cycle is not taken.
+    - ``names`` (``{cik: filer name}``, every filer the store holds): filers whose firm word is one of
+      ``FAMILY_FIRMS`` are one family, whether a filing names the other or not, and any family the included managers
+      already built around one of them joins it. This is what the first source cannot see: two *sibling* filers of
+      one firm name each other nowhere (Vanguard's two 2026 CIKs, #925).
+
+    A family's root is its largest filer by ``books`` (ties by cik), so the holder the metrics key on is the firm's
+    own largest filer and not whichever small entity a filing happened to name.
+    """
     parent: dict[str, str] = {}
 
     def top(cik: str) -> str:
@@ -386,26 +411,45 @@ def family_roots(edges, books: dict[str, float]) -> dict[str, str]:
             word = _root_word(child_name)
             if word and word == _root_word(par_name):
                 parent[child] = par
-    return {cik: top(cik) for cik in parent}
+    by_root: dict[str, set[str]] = {}
+    for cik in parent:
+        by_root.setdefault(top(cik), set()).add(cik)
+    families: list[set[str]] = [members | {root} for root, members in by_root.items()]
+    by_firm: dict[str, set[str]] = {}
+    for cik, name in sorted((names or {}).items()):
+        word = _root_word(name)
+        if word in FAMILY_FIRMS:
+            by_firm.setdefault(word, set()).add(cik)
+    for firm in sorted(by_firm):
+        joined = set(by_firm[firm])
+        touching = [f for f in families if f & joined]
+        families = [f for f in families if not f & joined] + [joined.union(*touching)]
+    out: dict[str, str] = {}
+    for family in families:
+        if len(family) > 1:
+            root = min(family, key=lambda c: (-books.get(c, 0.0), c))
+            out.update({cik: root for cik in family})
+    return out
 
 
 def _families(con: duckdb.DuckDBPyConnection) -> int:
     """``_family(cik, family_cik)`` (TEMP) from the managers Parquet (``sec/13f``'s ``managers``, the ``included``
-    list), named by ``family_roots``; empty without that Parquet. The number of filers put in a family."""
+    list) and the filer names (``FAMILY_FIRMS``), named by ``family_roots``. The number of filers in a family.
+
+    Without the managers Parquet only the firm words are left, so a family of sibling filers is still built."""
     files = [f for _, f in sec13f.partitions(sec13f.DATASET.parquet_dir() / "managers", "day")]
+    names = {c: n for c, n in con.execute(
+        f"SELECT ltrim(cik, '0'), arg_max(filer_name, filed) FROM {sec13f.TABLE} "
+        f"WHERE cik IS NOT NULL AND filer_name IS NOT NULL GROUP BY 1").fetchall()}
     edges = []
     if files:
-        edges = con.execute(f"""
-            WITH m AS (SELECT DISTINCT ltrim(manager_cik, '0') AS child, ltrim(cik, '0') AS par, name
-                       FROM {common.files_sql(files)} WHERE kind = 'included' AND manager_cik IS NOT NULL
-                         AND cik IS NOT NULL),
-                 n AS (SELECT ltrim(cik, '0') AS cik, arg_max(filer_name, filed) AS name FROM {sec13f.TABLE}
-                       WHERE cik IS NOT NULL GROUP BY 1)
-            SELECT m.child, m.par, coalesce(nc.name, m.name), np.name
-            FROM m LEFT JOIN n nc ON nc.cik = m.child LEFT JOIN n np ON np.cik = m.par""").fetchall()
+        # The filer's own name where the store holds one, else the name the manager list writes.
+        edges = [(child, par, names.get(child, name), names.get(par)) for child, par, name in con.execute(
+            f"""SELECT DISTINCT ltrim(manager_cik, '0'), ltrim(cik, '0'), name FROM {common.files_sql(files)}
+                WHERE kind = 'included' AND manager_cik IS NOT NULL AND cik IS NOT NULL""").fetchall()]
     books = {c: v for c, v in con.execute(
         "SELECT ltrim(cik, '0'), max(value) FROM sec13f_filer_period GROUP BY 1").fetchall()}
-    roots = family_roots(edges, books)
+    roots = family_roots(edges, books, names)
     common.temp_rows(con, "_family", [("cik", "TEXT"), ("family_cik", "TEXT")],
                      [{"cik": c, "family_cik": r} for c, r in roots.items()])
     return len(roots)
@@ -436,10 +480,13 @@ def _consensus_guard(con: duckdb.DuckDBPyConnection) -> None:
     con.execute("UPDATE _px SET px = f.px FROM _pxfix f WHERE _px.cusip = f.cusip AND _px.period = f.period")
 
 
-# A quarter's (``?``) mapped long-equity value per ticker and filer, and each filer's investor types (``_tag``) plus
-# ``all``: the portfolio ``sec13f_type_holdings`` and ``sec13f_type_sector`` split (#760, #788).
-_TYPE_POS = f"""pos AS MATERIALIZED (SELECT m.ticker, h.period, h.cik, sum(h.value) AS value
+# A quarter's (``?``) mapped long-equity value per ticker and filer, its ``family`` (``_family``, its own cik where
+# it is in none) and each filer's investor types (``_tag``) plus ``all``: the portfolio ``sec13f_type_holdings`` and
+# ``sec13f_type_sector`` split (#760, #788). The two views count families, not filers (#925, avo 21 Nov 2026).
+_TYPE_POS = f"""pos AS MATERIALIZED (SELECT m.ticker, h.period, h.cik,
+                        coalesce(fm.family_cik, ltrim(h.cik, '0')) AS family, sum(h.value) AS value
                  FROM _held h JOIN sec13f_cusip_map m ON m.cusip = h.cusip AND m.period = h.period
+                 LEFT JOIN _family fm ON fm.cik = ltrim(h.cik, '0')
                  WHERE h.period = ? AND m.ticker IS NOT NULL GROUP BY ALL HAVING sum(h.value) > 0),
          tg AS (SELECT cik, tag FROM _tag UNION ALL SELECT DISTINCT cik, '{ALL_TYPE}' FROM pos)"""
 # Each ``_pairs`` row with whether the filer has a holdings report in the quarter (``reported``, ``omitted``) and in
@@ -897,8 +944,9 @@ class OwnershipServe:
             WHERE h.period = ? AND m.ticker IS NOT NULL GROUP BY m.ticker, h.period""",
                    [("ticker", "TEXT"), ("period", "DATE"), ("shares", "DOUBLE"), ("value", "DOUBLE"),
                     ("holders", "BIGINT"), ("cusips", "BIGINT"), ("prev_period", "DATE")])
-        # Top 10 and HHI count a filer family as one holder (#925; avo, 16 Nov 2026, Q18 A): two Vanguard filers are
-        # one Vanguard there. Holders, breadth and the flows stay per filer.
+        # Top 10 and HHI count a filer family as one holder (#925; avo, 16 Nov 2026, Q18 A, and 21 Nov 2026): two
+        # Vanguard filers are one Vanguard there, and in the type views' holder counts. The ticker's own ``holders``,
+        # breadth and the flows stay per filer.
         _families(con)
         _by_period(con, held, "_shape", """
             SELECT p.ticker, p.period, sum(p.shares) FILTER (WHERE p.rn <= 10),
@@ -1011,9 +1059,9 @@ class OwnershipServe:
         _by_period(con, _periods_of(con, "_held"), "sec13f_type_holdings", f"""
             WITH {_TYPE_POS},
                  v AS (SELECT tg.tag, pos.period, pos.ticker, sum(pos.value) AS value,
-                              count(DISTINCT pos.cik) AS holders
+                              count(DISTINCT pos.family) AS holders
                        FROM pos JOIN tg ON tg.cik = pos.cik GROUP BY ALL),
-                 t AS (SELECT tg.tag, sum(pos.value) AS type_value, count(DISTINCT pos.cik) AS type_filers
+                 t AS (SELECT tg.tag, sum(pos.value) AS type_value, count(DISTINCT pos.family) AS type_filers
                        FROM pos JOIN tg ON tg.cik = pos.cik GROUP BY ALL),
                  r AS (SELECT *, row_number() OVER (PARTITION BY tag ORDER BY value DESC, ticker) AS rn FROM v),
                  o AS (SELECT tag, period, ticker, rn, value, holders FROM r WHERE rn <= {TYPE_TOP}
@@ -1035,7 +1083,7 @@ class OwnershipServe:
             WITH {_TYPE_POS},
                  v AS (SELECT tg.tag, pos.period, coalesce(s.sector, '{UNCLASSIFIED}') AS sector,
                               sum(pos.value) AS value, count(DISTINCT pos.ticker) AS tickers,
-                              count(DISTINCT pos.cik) AS filers
+                              count(DISTINCT pos.family) AS filers
                        FROM pos JOIN tg ON tg.cik = pos.cik LEFT JOIN _sp_sector s ON s.ticker = pos.ticker
                        GROUP BY ALL)
             SELECT tag, period, sector, value, round(value / sum(value) OVER (PARTITION BY tag) * 100, 4), tickers,

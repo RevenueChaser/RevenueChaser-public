@@ -596,15 +596,41 @@ def test_a_filer_family_is_one_holder_for_the_top_10_and_hhi_but_not_for_the_hol
     """#925 (avo, 16 Nov 2026, Q17 A, Q18 A): two filers of one family hold one name: HHI 10,000 (not 5,000), holders still 2."""
     monkeypatch.setattr(sec, "_shared_pace", lambda: True)
     monkeypatch.setenv("RC_HTTP_CONTACT", "ops@example.org")
-    monkeypatch.setattr(serve, "family_roots", lambda edges, books: {"2000002": "2000001"})
+    monkeypatch.setattr(serve, "family_roots", lambda edges, books, names=None: {"2000002": "2000001"})
     _book_day(http_mock, {"2026-10-27": [(1.0, "09-30-2026")] * 2})
     _serve()
     assert _served("SELECT holders, round(hhi, 6), round(top10_pct, 6) FROM sec13f_ticker_period "
                    "WHERE ticker = 'MSFT'") == [(2, 10000.0, 100.0)]      # HHI in points: 5,000 per filer
 
 
+def test_two_sibling_filers_of_one_firm_are_one_holder_in_the_metrics_and_the_type_views(monkeypatch, http_mock):
+    """#925 (avo, 21 Nov 2026): the live case. Two Vanguard filers, no included-manager link between them, each
+    holding the same book: as one holder the name's HHI is 10,000 (not 5,000) and the type views count one filer.
+
+    The ticker's own ``holders`` stays 2, per Q18 A, and a third filer of another firm is its own holder.
+    """
+    monkeypatch.setattr(sec, "_shared_pace", lambda: True)
+    monkeypatch.setenv("RC_HTTP_CONTACT", "ops@example.org")
+    ox.make_spine()
+    e = ox.Edgar()
+    e.add_day("2026-10-27", [
+        _f("0002100119-26-000001", 2100119, "2026-10-27", _book(), name="VANGUARD CAPITAL MANAGEMENT LLC"),
+        _f("0002100121-26-000002", 2100121, "2026-10-27", _book(), name="VANGUARD PORTFOLIO MANAGEMENT LLC")])
+    e.install(http_mock)
+    _thirteen_f(as_of="2026-10-28")
+    _serve()
+    assert _served("SELECT holders, round(hhi, 6), round(top10_pct, 6) FROM sec13f_ticker_period "
+                   "WHERE ticker = 'MSFT'") == [(2, 10000.0, 100.0)]
+    assert _served("SELECT holders, type_filers FROM sec13f_type_holdings WHERE ticker = 'MSFT'") == [(1, 1)]
+    assert _served("SELECT DISTINCT filers FROM sec13f_type_sector") == [(1,)]
+
+
 def test_a_family_needs_the_included_manager_link_and_the_same_firm_word():
-    """Q17 A: the SEC's List of Other Included Managers, guarded by the firm word (a filer also lists sub-advisers)."""
+    """Q17 A: the SEC's List of Other Included Managers, guarded by the firm word (a filer also lists sub-advisers).
+
+    Every member of a family is returned, keyed on the family's largest filer by book (#925, 21 Nov 2026), so the
+    holder the metrics count is the firm's own largest filer and not whichever small entity a filing named.
+    """
     edges = [("11", "1", "VANGUARD ADVISERS INC", "VANGUARD GROUP INC"),
              ("12", "1", "WELLINGTON MANAGEMENT CO", "VANGUARD GROUP INC"),          # a sub-adviser: not a family
              ("13", "11", "Vanguard Fiduciary Trust", "VANGUARD ADVISERS INC"),     # two hops to the top
@@ -612,4 +638,25 @@ def test_a_family_needs_the_included_manager_link_and_the_same_firm_word():
              ("21", "2", "The BlackRock Japan Co", "BlackRock, Inc."),              # "The" names no firm
              ("21", "3", "BLACKROCK SMALL LTD", "BLACKROCK ADVISORS")]              # the larger parent wins
     roots = serve.family_roots(edges, {"1": 9.0, "2": 8.0, "3": 1.0})
-    assert roots == {"11": "1", "13": "1", "21": "2"}
+    assert roots == {"1": "1", "11": "1", "13": "1", "2": "2", "21": "2"}
+    # The link points at a small entity (``11``, no book), but ``1`` holds the family's largest book: it is the root.
+    assert serve.family_roots([("1", "11", "VANGUARD GROUP INC", "VANGUARD ADVISERS INC")],
+                              {"1": 9.0}) == {"1": "1", "11": "1"}
+
+
+def test_sibling_filers_of_a_curated_firm_are_one_family_with_no_included_manager_link():
+    """#925 (avo, 21 Nov 2026): Vanguard's two 2026 CIKs name each other nowhere, so no edge joins them; the firm
+    word does, and any family the included managers built around one of them joins the same family.
+
+    A firm that is not curated keeps needing the link, and a curated firm with one filer is no family.
+    """
+    names = {"2100119": "VANGUARD CAPITAL MANAGEMENT LLC", "2100121": "VANGUARD PORTFOLIO MANAGEMENT LLC",
+             "102909": "VANGUARD GROUP INC", "1767306": "Vanguard Personalized Indexing Management",
+             "9": "WELLINGTON MANAGEMENT CO", "10": "WELLINGTON TRUST CO"}
+    books = {"102909": 9.0, "2100119": 8.0, "1767306": 0.02}
+    edges = [("1767306", "102909", "Vanguard Personalized Indexing Management", "VANGUARD GROUP INC")]
+    assert serve.family_roots(edges, books, names) == {c: "102909" for c in
+                                                      ("102909", "1767306", "2100119", "2100121")}
+    assert "9" not in serve.family_roots([], books, names)                  # WELLINGTON is not a curated firm
+    assert serve.family_roots([], books, {"2100119": "VANGUARD CAPITAL MANAGEMENT LLC"}) == {}
+    assert "VANGUARD" in serve.FAMILY_FIRMS
