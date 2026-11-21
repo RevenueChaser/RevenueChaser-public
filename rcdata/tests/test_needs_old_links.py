@@ -126,30 +126,33 @@ def test_no_board_file_gains_a_provider_import_and_a_removed_one_leaves_the_list
     assert not gone, f"no longer importing providers, remove from PROVIDER_FILES: {gone}"
 
 
-def test_no_board_file_reads_a_provider_library_behind_the_guard():
-    """A board file may not import a provider client library unless it is declared a provider file (#1213).
+def test_a_board_file_that_touches_a_client_library_goes_through_core_providers():
+    """A board file may not read a provider library directly (#1213), in one check with its own exemptions.
 
-    The check above matches ``core.providers``, so a file that calls ``yfinance`` (or an HTTP client) directly is
-    a provider read the ceiling never saw. ``module_spx_gamma/candles.py`` was exactly that for a month. The
-    three command-line triggers that post to our own dashboard are named in ``LOCAL_DASHBOARD_CLIENTS``, with
-    the host in their own source: they talk to ``127.0.0.1``, not to a provider.
+    The check above matches ``core.providers``, so a file that calls ``yfinance`` (or an HTTP client) itself is a
+    provider read the ceiling never saw: that was ``module_spx_gamma/candles.py`` for a month, and it is why the
+    rule here is **both** -- a file that imports a client library must also go through the provider, where the
+    counting (#299) and the 401 cure (#402) live, and be declared in ``PROVIDER_FILES``.
+
+    ``LOCAL_DASHBOARD_CLIENTS`` is the one exemption, and it is checked rather than trusted: each named file must
+    still exist, still import a client, and still carry a 127.0.0.1 base with a ``/run/`` route. Everything is
+    one test on purpose -- an exemption's own hygiene is not evidence about a change, so it does not get an id of
+    its own that ``red_on_base`` would have to call green.
     """
-    undeclared: dict[str, list[str]] = {}
+    raw_reads: dict[str, list[str]] = {}
     for package in _packages():
-        allowed = PROVIDER_FILES.get(package, set()) | LOCAL_DASHBOARD_CLIENTS.get(package, set())
+        exempt = LOCAL_DASHBOARD_CLIENTS.get(package, set())
         for _path, rel, tree in _sources(package):
-            if rel in allowed:
+            if not any(_imports_raw_library(node) for node in ast.walk(tree)):
                 continue
-            if any(_imports_raw_library(node) for node in ast.walk(tree)):
-                undeclared.setdefault(package, []).append(rel)
-    found = {p: sorted(f) for p, f in undeclared.items()}
-    assert not found, (f"provider library imported outside core.providers: {found}; route the read through "
-                       "core.providers and declare the file in PROVIDER_FILES")
+            if rel in exempt:
+                continue
+            if not any(_imports_providers(node) for node in ast.walk(tree)):
+                raw_reads.setdefault(package, []).append(rel)
+    found = {p: sorted(f) for p, f in raw_reads.items()}
+    assert not found, (f"client library read outside core.providers: {found}; route the read through "
+                       "core.providers (counted, 401-cured) and declare the file in PROVIDER_FILES")
 
-
-def test_every_local_dashboard_client_really_talks_to_the_dashboard():
-    """``LOCAL_DASHBOARD_CLIENTS`` is an exemption, so it is checked rather than trusted: each file must name a
-    dashboard route, and a file that stops existing or stops importing a client leaves the list."""
     for package, files in LOCAL_DASHBOARD_CLIENTS.items():
         sources = {rel: tree for _path, rel, tree in _sources(package)}
         for rel in files:
