@@ -31,4 +31,4 @@ def test_a_prefilter_result_without_thresholds_keeps_the_boards_config():
     pre = sc.Prefiltered([], {"low_price": ["A"]})
     steps = {s["key"]: s for s in sc.funnel_steps(universe=1, excluded_types=0, prefiltered=pre, dropped={},
                                                    scored=0, passed=0, shown=0, cfg=DEFAULTS)}
-    assert steps["low_price"]["label"] == "Price under $5.00"
+    assert steps["low_price"]["label"] == "Liquidity prefilter: price under $5.00"   # #116 D

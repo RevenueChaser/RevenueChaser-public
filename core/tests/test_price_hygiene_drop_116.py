@@ -166,15 +166,30 @@ def test_a_name_that_could_not_be_scored_is_not_dropped_twice(monkeypatch):
     assert funnel.validate(payload["funnel_steps"]) == []
 
 
-def test_the_gates_reach_no_provider_and_no_store_in_a_run(monkeypatch):
-    """The gates are pure: the scan hands them the bars it already loaded. Any socket use would raise
-    ``NetworkAccessAttempted`` (the root conftest), and nothing here opens the store either."""
+def test_the_gates_add_no_store_read_and_no_provider_call(monkeypatch):
+    """The gates are pure: the scan hands them the bars it already loaded. So a run with a gate firing makes
+    exactly the store reads a run with nothing flagged makes — the two runs are counted and compared, because the
+    scan reads the store for SPY's reference session and the payload's data date whatever the gates do. A provider
+    call would raise ``NetworkAccessAttempted`` (the root conftest) in either run.
+    """
     names = [f"T{i:02d}" for i in range(40)]
-    b = Board(monkeypatch, rows=[{"ticker": t, "quote": {}} for t in names])
-    reads = []
-    _preloaded(monkeypatch, {t: (_locked() if t == "T07" else _clean()) for t in names})
-    monkeypatch.setattr(sc.ledger, "d01_last_bars", lambda n: reads.append(n) or {})
-    payload = b.run()
-    assert b.stats["price_dropped"] == {"locked": ["T07"]}, "the gates still did their work"
-    assert "T07" not in payload["results"]
-    assert reads == [], "and no store read of their own (``stale_names`` is stubbed out of the way)"
+    frames = {t: (_locked() if t == "T07" else _clean()) for t in names}
+
+    def run(gates_on: bool):
+        reads: list[int] = []
+        with monkeypatch.context() as m:
+            b = Board(m, rows=[{"ticker": t, "quote": {}} for t in names])
+            m.setattr(sc, "stale_names", lambda tickers, ref: set())
+            m.setattr(sc, "load_bars_many",
+                      lambda tickers, now=None: {t: (frames[t], frames[t]) for t in tickers})
+            m.setattr(sc.ledger, "d01_last_bars", lambda n: reads.append(1) or {})
+            if not gates_on:
+                m.setattr(sc.price_hygiene, "evaluate", lambda *a, **k: None)
+            payload = b.run()
+        return len(reads), b.stats, payload
+
+    gated, stats, payload = run(True)
+    plain, plain_stats, plain_payload = run(False)
+    assert stats["price_dropped"] == {"locked": ["T07"]} and "T07" not in payload["results"]
+    assert plain_stats["price_dropped"] == {} and "T07" in plain_payload["results"]
+    assert gated == plain, "the gates read nothing of their own"
