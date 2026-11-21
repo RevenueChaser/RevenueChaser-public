@@ -60,7 +60,9 @@ def test_each_boards_schema_pins_its_own_board_key_and_its_payload_shape(board):
 
 def test_a_written_envelope_validates_against_its_boards_schema(tmp_path):
     html = tmp_path / "relatedness_latest.html"
-    payload = {"as_of": "2026-11-20T10:00:00Z", "n": 1, "companies": ["AAA"], "peers": {}}
+    # One entry per company, as ``module_relatedness/report._embed_companies`` builds them: a record, not a name.
+    payload = {"as_of": "2026-11-20T10:00:00Z", "n": 1,
+               "companies": [{"ticker": "AAA", "name": "Aaa Inc"}], "peers": {}}
     rc.write_board(html, "", payload, run_id="r1")
     written = json.loads(gzip.decompress(env.envelope_path(html).read_bytes()).decode("utf-8"))
     assert validate.errors(written, _schema("module_relatedness")) == []
