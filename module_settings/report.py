@@ -406,7 +406,7 @@ function autoWhen(r){
   return text.replace(/^weekly\s+.*?\s(\d{1,2}:\d{2}\s+\(local\))$/, 'weekly $1');
 }
 function autoNext(r){
-  // Task Scheduler answers with an ISO stamp ("2026-10-24T04:00:00.0000000+02:00"); show date and time.
+  // The scheduler answers with an ISO stamp ("2026-10-24T04:00:00.0000000+02:00"); show date and time.
   var text = String(r.next_run == null ? '' : r.next_run);
   return text.indexOf('T') > 0 ? text.replace('T', ' ').slice(0, 16) : text;
 }

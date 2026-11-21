@@ -1,11 +1,10 @@
-"""Automations registry, scheduler interface and the Windows installer (#130).
+"""Automations registry and the scheduler interface (#130).
 
-Windows-only code is tested through a fake PowerShell runner: nothing here touches a
-real Task Scheduler.
+Nothing here touches a real scheduler: the tests go through ``FakeScheduler`` and a fake
+``systemctl``.
 """
 from __future__ import annotations
 
-import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -31,18 +30,7 @@ def _cache(tmp_path, monkeypatch):
 # The Earnings inputs entries, one per schedule (#620).
 
 
-
-
-
 _WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday")
-
-
-
-
-
-
-
-
 
 
 def test_the_forecast_baselines_row_is_chained_on_the_outcomes_run():
@@ -59,37 +47,9 @@ def test_the_forecast_baselines_row_is_chained_on_the_outcomes_run():
     assert names.index("RC-Forecast-Outcomes") + 1 == names.index("RC-Forecast-Baselines")    # after it, never before
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 def test_no_row_is_marked_default_install():
     """RC-Store-Backup was the one default install; it retired with the weekly backup (avo, 8 Nov 2026)."""
     assert [e.name for e in A.REGISTRY if e.default_install] == []
-
-
 
 
 def test_unknown_name_is_rejected():
@@ -108,20 +68,6 @@ def test_result_mapping(code, kind):
     assert A.map_result(code)[0] == kind
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 def test_static_rows_never_touch_the_scheduler():
     f = A.FakeScheduler()
     A.set_scheduler(f)
@@ -131,7 +77,7 @@ def test_static_rows_never_touch_the_scheduler():
     assert "state" not in rows[0]
 
 
-def test_get_scheduler_is_unavailable_without_task_scheduler_or_systemd(monkeypatch):
+def test_get_scheduler_is_unavailable_without_systemd(monkeypatch):
     monkeypatch.setattr(A.sys, "platform", "linux")
     monkeypatch.setattr(A.shutil, "which", lambda name: None)
     assert A.get_scheduler().available is False
@@ -140,77 +86,12 @@ def test_get_scheduler_is_unavailable_without_task_scheduler_or_systemd(monkeypa
 # --- actions --------------------------------------------------------------------
 
 
-
-
-
-
-
-# --- Windows scheduler through a fake PowerShell ----------------------------------
-
-class FakePS:
-    def __init__(self, out="", rc=0, err=""):
-        self.scripts: list[str] = []
-        self.out, self.rc, self.err = out, rc, err
-
-    def __call__(self, script):
-        self.scripts.append(script)
-        return self.rc, self.out, self.err
-
-
-def _win(ps, python=r"C:\Program Files\Python 3\python.exe", workdir=r"C:\my projects"):
-    return A.WindowsScheduler(runner=ps, python=python, workdir=workdir)
-
-
-@pytest.mark.parametrize("op", ["status", "install", "enable", "disable", "remove", "run"])
-def test_each_call_names_exactly_one_registry_task(op):
-    ps = FakePS('{"installed":false}')
-    w = _win(ps)
-    e = A.entry("RC-Relatedness-OffPeak")
-    {"status": lambda: w.status(e.name), "install": lambda: w.install(e),
-     "enable": lambda: w.set_enabled(e.name, True), "disable": lambda: w.set_enabled(e.name, False),
-     "remove": lambda: w.remove(e.name), "run": lambda: w.run(e.name)}[op]()
-    assert len(ps.scripts) == 1
-    named = set(re.findall(r"'(RC-[^']*)'", ps.scripts[0]))
-    assert named == {"RC-Relatedness-OffPeak"}
-    assert "-TaskName *" not in ps.scripts[0] and "Get-ScheduledTask\n" not in ps.scripts[0]
-
-
-def test_windows_refuses_a_name_outside_the_registry():
-    ps = FakePS()
-    w = _win(ps)
-    for call in (lambda: w.status("Other"), lambda: w.remove("Other"),
-                 lambda: w.run("x'; Remove-Item *"), lambda: w.set_enabled("Other", False)):
-        with pytest.raises(A.UnknownTask):
-            call()
-    assert ps.scripts == []
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 # --- the command a task runs ------------------------------------------------------
 
 
-
-
-
-
-
-
-def test_registry_names_are_task_scheduler_safe():
+def test_registry_names_are_unit_name_safe():
     for e in A.REGISTRY:
         assert re.fullmatch(r"RC-[A-Za-z0-9-]+", e.name), e.name
-
-
 
 
 def test_every_registry_tables_written_is_a_manifest_table():
@@ -220,23 +101,7 @@ def test_every_registry_tables_written_is_a_manifest_table():
             assert table in rawstore.MANIFEST, f"{e.name} names {table}, not in MANIFEST"
 
 
-# --- B1: PowerShell output, encoding and failures (coordinator review) --------------
-
-_CLIXML = ('#< CLIXML\r\n<Objs Version="1.1.0.1" xmlns="http://schemas.microsoft.com/powershell/2004/04">'
-           '<Obj S="progress" RefId="0"><TN RefId="0"><T>System.Management.Automation.PSCustomObject'
-           '</T></TN><MS><I64 N="SourceId">1</I64><PR N="Record"><AV>Preparing modules for first use.'
-           '</AV></PR></MS></Obj></Objs>')
-
-
-
-
-
-
-
-
-
-
-
+# --- one bad row does not take the panel down (coordinator review) -----------------
 
 def test_one_failing_row_does_not_fail_the_others():
     class Mixed(A.FakeScheduler):
@@ -248,68 +113,6 @@ def test_one_failing_row_does_not_fail_the_others():
     rows = A.live_state(Mixed(), NOW)["rows"]
     assert [r["state"] for r in rows] == ["error"] + ["not_installed"] * (len(A.REGISTRY) - 1)
     assert "boom" in rows[0]["result_text"]
-
-
-@pytest.mark.parametrize("exc", [
-    __import__("subprocess").TimeoutExpired("powershell.exe", 60),
-    FileNotFoundError("powershell.exe"),
-    OSError("no such file"),
-])
-def test_powershell_failures_become_automation_errors(monkeypatch, exc):
-    def boom(*a, **k):
-        raise exc
-    monkeypatch.setattr(A.subprocess, "run", boom)
-    with pytest.raises(A.AutomationError):
-        A._powershell("Get-Date")
-
-
-def test_powershell_decodes_utf8_with_replacement(monkeypatch):
-    seen = {}
-
-    class P:
-        returncode, stdout, stderr = 0, "{}", ""
-
-    def run(*a, **k):
-        seen.update(k)
-        return P()
-    monkeypatch.setattr(A.subprocess, "run", run)
-    assert A._powershell("x") == (0, "{}", "")
-    assert seen["encoding"] == "utf-8-sig" and seen["errors"] == "replace"
-    assert "text" not in seen or seen["text"] is not True or seen["encoding"]
-
-
-
-
-# --- N6: no console window per run ----------------------------------------------------
-
-def test_installer_prefers_pythonw_next_to_python(tmp_path):
-    py = tmp_path / "python.exe"
-    pyw = tmp_path / "pythonw.exe"
-    py.write_text("")
-    pyw.write_text("")
-    assert A.windowless_python(str(py)) == str(pyw)
-    pyw.unlink()
-    assert A.windowless_python(str(py)) == str(py)
-    assert A.windowless_python("/usr/bin/python3") == "/usr/bin/python3"
-
-
-
-
-# --- F1: BOM, and no console window (coordinator re-review) -----------------------------
-
-
-
-def test_powershell_decodes_with_utf8_sig(monkeypatch):
-    seen = {}
-
-    class P:
-        returncode, stdout, stderr = 0, "{}", ""
-
-    monkeypatch.setattr(A.subprocess, "run", lambda *a, **k: seen.update(k) or P())
-    A._powershell("x")
-    assert seen["encoding"] == "utf-8-sig"
-
-
 
 
 # ── #162: the IBKR Gateway login check ──────────────────────────────────────────────────────────
@@ -415,15 +218,6 @@ def test_linux_renders_the_builder_rows_as_life_rc_builder_units(tmp_path):
                                                                    "life-rc-backup-weekly.timer"]
 
 
-def test_windows_installs_the_builder_as_an_hourly_trigger_with_no_limit():
-    """#527: a zero ExecutionTimeLimit is Task Scheduler's "no limit"; the backup keeps its minutes."""
-    ps = FakePS()
-    _win(ps).install(A.entry("RC-Build"))
-    s = ps.scripts[0]
-    assert "-Once -At '00:05' -RepetitionInterval (New-TimeSpan -Hours 1)" in s
-    assert "-ExecutionTimeLimit (New-TimeSpan -Minutes 120)" in s
-
-
 def test_a_chain_step_cannot_wait_on_an_hourly_row():
     step = A.AutomationEntry(name="RC-X", label="x", args=("-c", "pass"), time="00:30", description="d",
                              after="RC-Build")
@@ -465,13 +259,13 @@ def test_the_daily_watchlists_backup_runs_every_day_0310_under_the_backup_switch
 
 
 def test_a_task_with_no_time_limit_says_so_and_installs_none():
-    """#527: ``no_time_limit`` reads "no time limit", installs ``TimeoutStartSec=infinity`` and a zero (unlimited)
-    Task Scheduler limit, and a chained task after it is not held to a limit it does not have."""
+    """#527: ``no_time_limit`` reads "no time limit", installs ``TimeoutStartSec=infinity``, and a chained task
+    after it is not held to a limit it does not have."""
     s = A.TaskSettings(no_time_limit=True)
     assert s.limit_minutes is None
     assert "no time limit" in s.summary() and "h limit" not in s.summary()
-    assert A.TaskSettings(wake_to_run=True, start_when_available=False).summary() == "skips a missed run, 4 h limit"
-    # #579: the jobs run as systemd units, so no Task Scheduler words reach the Settings page
+    assert A.TaskSettings(start_when_available=False).summary() == "skips a missed run, 4 h limit"
+    # #579: the jobs run as systemd units, so no Windows run-condition words reach the Settings page
     assert not any(w in e.settings.summary() for e in A.REGISTRY for w in ("battery", "AC power", "PC", "logged on"))
     assert A.TaskSettings(time_limit_minutes=50).limit_minutes == 50
     assert A.TaskSettings(time_limit_hours=2).limit_minutes == 120
@@ -481,8 +275,6 @@ def test_the_ibkr_login_check_limit_is_the_installed_unit_s_five_minutes():
     """#527: the registry said 1 h while homesrv runs ``TimeoutStartSec=5min`` (home-server
     units/life-rc-ibkr-login-check.service); the board shows the registry, so it follows the unit."""
     assert A.entry("RC-IBKR-Login-Check").settings.limit_minutes == 5
-
-
 
 
 def test_the_sec_reads_nightly_check_is_a_job_of_its_own():

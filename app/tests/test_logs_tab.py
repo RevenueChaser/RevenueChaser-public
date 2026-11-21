@@ -1,6 +1,6 @@
 """Logs tab: read-only tails of the dashboard's own log files (app/logview.py, /view/logs, /api/logs).
 
-start.ps1 starts the dashboard hidden, so what the console window used to show now goes to files under
+The dashboard's own stdout and stderr are redirected to files under
 ``.cache/logs/``. This tab is where the user reads them. The browser names a source key, never a path.
 """
 from __future__ import annotations

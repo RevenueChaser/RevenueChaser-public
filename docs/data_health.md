@@ -664,13 +664,12 @@ installer. Rows: `RC-Relatedness-OffPeak` (weekly Sunday 22:15, `scripts.board_f
 schedule (#620, none chained): `RC-Earnings-Calendar` (Monday and Thursday 23:40), `RC-Short-Interest`
 (weekdays 23:40), `RC-Earnings-Daytime` (Tuesday and Thursday 13:00), `RC-Macro-Weekly` (Thursday 23:40) and
 `RC-CFTC-Weekly` (Friday 23:40), each with `--max-uw-calls unlimited`. Each entry carries its schedule, the tables it
-writes, whether it is off-peak gated, a log path under `.cache/logs/` and its task settings (named
-for Task Scheduler; the Linux backend maps the ones systemd has).
+writes, whether it is off-peak gated, a log path under `.cache/logs/` and its run conditions (only the
+ones a systemd timer and service honour, #579).
 
 - **Nothing installs itself.** `default_install` only marks a row. Install, Enable, Disable, Remove
-  and Run now are buttons on the panel, and Install, Remove and Run now ask for confirmation. The two
-  PowerShell files are thin callers of the same installer. Nothing installs on import, on dashboard
-  start, on Refresh, on a GET or in a test.
+  and Run now are buttons on the panel, and Install, Remove and Run now ask for confirmation. Nothing
+  installs on import, on dashboard start, on Refresh, on a GET or in a test.
 - **Live state is polled, not baked in.** The board is a cached artifact, so the panel reads
   `GET /api/automations` on load, after an action and while a row runs.
   `POST /api/automations/<name>/<action>` takes a registry name and no other argument, and needs the
@@ -706,8 +705,8 @@ for Task Scheduler; the Linux backend maps the ones systemd has).
   command runs and `done` or `error` after it; what the command writes carries that row's run id. The
   backup records none. The **Runs** tab (`/view/runs`) is the reader of that table, dashboard runs and
   scheduled ones together.
-- **Two scheduler backends.** On Windows the panel drives Task Scheduler through PowerShell. On Linux
-  it drives **systemd user timers** (#158), and only when `RC_SCHEDULER=systemd-user` is set: by
+- **One scheduler backend.** The panel drives **systemd user timers** (#158), and only when
+  `RC_SCHEDULER=systemd-user` is set: by
   default Linux reads every row as unavailable, as before, so a server whose jobs already run as
   system timers is never offered a second schedule. Whether a server opts in is the owner's decision.
   A value that is neither empty nor `systemd-user`, and `systemd-user` on a host with no `systemctl`,
@@ -739,8 +738,7 @@ for Task Scheduler; the Linux backend maps the ones systemd has).
   names one per line and never asks the scheduler, so a script that freezes or lists the tasks reads
   them from the registry instead of keeping its own list (#164).
 - **Tests** use a fake scheduler; the end-to-end harness installs it, so no test reaches the real
-  Windows Task Scheduler or systemd. The Linux backend is tested through a fake `systemctl` and a
-  temporary unit folder.
+  systemd. The Linux backend is tested through a fake `systemctl` and a temporary unit folder.
 
 ### 3.5 Board inputs
 
@@ -972,7 +970,7 @@ Checked 2026-09-24. None of these replaces our own SEC client and filing picker.
 
 - Merging with Implied Probability, Relatedness or Value Chain.
 - Market-cap, sector or theme filters here. This tab's filters are the ones in 2.2.
-- Scheduling inside the application. Scheduled tasks are Task Scheduler tasks or systemd user timers, listed on the
+- Scheduling inside the application. Scheduled tasks are systemd user timers, listed on the
   Automations panel.
 - Downloading 10-Q or 8-K filings into the corpus.
 - A one-click "refresh every dataset" button.

@@ -8,11 +8,11 @@ the scheduler; e2e installs ``FakeScheduler``).
 
 Two sides:
 
-- ``Scheduler``: the interface to the OS scheduler. ``WindowsScheduler`` drives the
-  PowerShell ``ScheduledTasks`` cmdlets, one registry task per call; ``LinuxScheduler``
-  drives systemd user timers, one ``.service`` and ``.timer`` pair per registry task (#158);
-  ``FakeScheduler`` backs the tests and the e2e dashboard; ``UnavailableScheduler`` is the
-  answer on a host with neither (a state, not an error).
+- ``Scheduler``: the interface to the OS scheduler. ``LinuxScheduler`` drives systemd user
+  timers, one ``.service`` and ``.timer`` pair per registry task (#158); ``FakeScheduler``
+  backs the tests and the e2e dashboard; ``UnavailableScheduler`` is the answer on a host
+  without one (a state, not an error). The Windows Task Scheduler backend was removed with
+  the rest of the Windows-era code (#1225).
 - ``run_task``: the command every task actually runs
   (``python -m RevenueChaser.core.automations run <name>``). It appends the job's
   output and exit code to the entry's ``log_path`` so a red row has a reason.
@@ -41,7 +41,8 @@ logger = logging.getLogger(__name__)
 
 ACTIONS = ("install", "enable", "disable", "remove", "run")
 
-# Documented Task Scheduler last-result codes.
+# The last-result codes a row reports. The two non-zero ones come from the Task Scheduler era and are
+# still the values ``FakeScheduler`` and the systemd status mapping use.
 RESULT_OK = 0
 RESULT_RUNNING = 0x41301      # SCHED_S_TASK_RUNNING
 RESULT_NOT_YET_RUN = 0x41303  # SCHED_S_TASK_HAS_NOT_RUN
@@ -58,14 +59,9 @@ CHAIN_BLOCKED = 5
 
 @dataclass(frozen=True)
 class TaskSettings:
-    """The Windows task settings a row installs with (the defaults silently skip a laptop)."""
+    """The run conditions a row installs with: only what the systemd timer and service honour (#579)."""
     start_when_available: bool = True
-    allow_on_battery: bool = True
-    wake_to_run: bool = False
-    run_only_when_logged_on: bool = True
     time_limit_hours: int = 4
-    restart_count: int = 2
-    restart_minutes: int = 5
     time_limit_minutes: int | None = None  # set: the limit in minutes instead of ``time_limit_hours``
     no_time_limit: bool = False    # set: no limit at all (#527); both fields above are then ignored
 
@@ -87,7 +83,7 @@ class TaskSettings:
 
 @dataclass(frozen=True)
 class AutomationEntry:
-    name: str                      # the Task Scheduler name, always ``RC-...``
+    name: str                      # the registry name, always ``RC-...``
     label: str
     args: tuple[str, ...]          # ``python <args>``
     time: str                      # local HH:MM
@@ -96,7 +92,7 @@ class AutomationEntry:
     offpeak_gated: bool = False
     default_install: bool = False  # a marker only: nothing installs on its own
     settings: TaskSettings = field(default_factory=TaskSettings)
-    days: tuple[str, ...] = ()     # weekly on these days (Task Scheduler names, e.g. "Saturday"); empty = daily
+    days: tuple[str, ...] = ()     # weekly on these days (English day names, e.g. "Saturday"); empty = daily
     after: str | None = None       # the nightly chain (#129): run only once this registry task's run of tonight exited 0
     chain_wait_minutes: int = 120  # how long a chained task waits for that run before it gives up
     hourly: bool = False           # every hour at ``time``'s minute (its hour is ignored); never chained, no ``days``
@@ -191,7 +187,7 @@ REGISTRY: tuple[AutomationEntry, ...] = (
                     "a failed job. Off until RC_IBKR_LOGIN_CHECK is set, and then it contacts nothing but "
                     "RC_IBKR_HOST:RC_IBKR_PORT (127.0.0.1:4001 by default).",
         # #527: the installed unit's limit (home-server units/life-rc-ibkr-login-check.service: 5min), not 1 h.
-        settings=TaskSettings(restart_count=0, time_limit_minutes=5)),
+        settings=TaskSettings(time_limit_minutes=5)),
     AutomationEntry(
         name="RC-Build", label="Market-store builder (hourly)",
         args=("-m", "RevenueChaser.rcdata.build", "run", "--once"), time="00:05", hourly=True,
@@ -202,7 +198,7 @@ REGISTRY: tuple[AutomationEntry, ...] = (
                     "builder runs (exit 3); a request a dead builder left running is failed at start. Writes only "
                     "the market store and ops.sqlite, with its own job_runs2 row per run.",
         # 2 h (avo 6 Nov 2026, #527): 166 runs since 20 Oct peaked at 107 min; at 50 min one was killed (2 Nov)
-        settings=TaskSettings(restart_count=0, time_limit_minutes=120)),
+        settings=TaskSettings(time_limit_minutes=120)),
     AutomationEntry(
         name="RC-SEC-Read", label="SEC reads (nightly check)",
         args=("-m", "RevenueChaser.rcdata.build", "run", "--once", "--dataset", "sec/reads"), time="01:10",
@@ -216,7 +212,7 @@ REGISTRY: tuple[AutomationEntry, ...] = (
                     "minutes for the store's writer turn. Writes sec_reads.duckdb and its Parquet tree through the "
                     "builder, with its own job_runs2 row.",
         # 30 min waiting for the turn at most, then one 15-minute slice of asking (asker.SLICE_S) and the build
-        settings=TaskSettings(restart_count=0, time_limit_minutes=90)),
+        settings=TaskSettings(time_limit_minutes=90)),
     AutomationEntry(
         name="RC-ValueChain-Sync", label="Value Chain links (nightly, after the SEC reads)",
         args=("-m", "RevenueChaser.module_value_chain", "--nightly"), time="04:20", after="RC-SEC-Read",
@@ -229,7 +225,7 @@ REGISTRY: tuple[AutomationEntry, ...] = (
                     "(the server's timer starts them at 02:35) and clear of the hourly builder pass. Writes boards/value_chain.duckdb (chain_mentions, chain_meta).",
         tables_written=("chain_mentions", "chain_meta"),
         chain_wait_minutes=20,
-        settings=TaskSettings(restart_count=0, time_limit_minutes=90)),
+        settings=TaskSettings(time_limit_minutes=90)),
     AutomationEntry(
         name="RC-Relatedness-Score", label="Relatedness scoring (weekly, when the SEC reads brought something new)",
         args=("-m", "RevenueChaser.module_relatedness", "--score"), time="07:30", days=("Saturday",),
@@ -246,7 +242,7 @@ REGISTRY: tuple[AutomationEntry, ...] = (
         tables_written=("relatedness_profiles", "relatedness_attributes", "relatedness_embeddings",
                         "relatedness_scores"),
         chain_wait_minutes=60,
-        settings=TaskSettings(restart_count=0, time_limit_minutes=90)),
+        settings=TaskSettings(time_limit_minutes=90)),
     AutomationEntry(
         name="RC-Backup-Weekly", label="Weekly backup",
         args=("-m", "RevenueChaser.rcdata", "backup"),
@@ -262,7 +258,7 @@ REGISTRY: tuple[AutomationEntry, ...] = (
                     "machine. A step that fails is logged and the others still run. Before a deploy, "
                     "`rcdata backup --only <kind>` takes a copy by hand that is kept apart from the weekly ones. "
                     "Writes no table.",
-        settings=TaskSettings(restart_count=0, time_limit_minutes=60)),
+        settings=TaskSettings(time_limit_minutes=60)),
     AutomationEntry(
         name="RC-Backup-Watchlists-Daily", label="Watch lists daily backup",
         args=("-m", "RevenueChaser.rcdata", "backup", "--only", "watchlists-daily"),
@@ -272,7 +268,7 @@ REGISTRY: tuple[AutomationEntry, ...] = (
                     "RAW_STORE_BACKUP_DIR/weekly-v2/watchlists-daily/ on the HDD, only when the file changed since "
                     "the newest daily copy, verified, the newest 7 kept. An unchanged day writes nothing and is a "
                     "good run. The weekly copy of the same file goes on. Held by the Backup switch. Writes no table.",
-        settings=TaskSettings(restart_count=0, time_limit_minutes=15)),
+        settings=TaskSettings(time_limit_minutes=15)),
     AutomationEntry(
         name="RC-SPX-Gamma-Fetch", label="SPX Gamma Fetch (nightly)",
         args=("-m", "RevenueChaser.module_spx_gamma", "--nightly"), time="06:30", days=_WEEKDAYS,
@@ -286,7 +282,7 @@ REGISTRY: tuple[AutomationEntry, ...] = (
                     "the one writer): the task only queues it and waits; with the dashboard down it exits 1 and "
                     "nothing is fetched. The job writes the board file boards/spx_gamma.duckdb (raw day, Brier "
                     "record, GEX record, latest pointer; module_spx_gamma/store.py).",
-        settings=TaskSettings(start_when_available=False, restart_count=0, time_limit_minutes=30)),
+        settings=TaskSettings(start_when_available=False, time_limit_minutes=30)),
     *(AutomationEntry(
         name=f"RC-Fetch-{label.replace(' ', '')}", label=f"{label} Fetch (nightly)",
         args=("-m", "RevenueChaser.scripts.board_fetch", board), time=at, unit_name=f"life-rc-fetch-{board}",
@@ -296,7 +292,7 @@ REGISTRY: tuple[AutomationEntry, ...] = (
                      f"(POST /run/{route}, the one writer): the task only queues it and waits; with the dashboard "
                      "down it exits 1. The server's timer is installed switched off and is switched on per board once "
                      "that board's review and rule decisions are done."),
-        settings=TaskSettings(restart_count=0, time_limit_minutes=120))
+        settings=TaskSettings(time_limit_minutes=120))
       for board, label, route, at in (
           ("ag", "Asymmetric Growth", "module_asymmetric_growth", "05:00"),
           ("swing", "Swing", "swing", "05:10"),
@@ -316,7 +312,7 @@ REGISTRY: tuple[AutomationEntry, ...] = (
                     "and no session is waited for. The pass runs in the dashboard (POST /run/news_earnings, the "
                     "one writer): the task only queues it and waits; with the dashboard down it exits 1. The "
                     "board's own Fetch runs the same pass, so a Fetch is never a week late.",
-        settings=TaskSettings(restart_count=0, time_limit_minutes=30)),
+        settings=TaskSettings(time_limit_minutes=30)),
     # The News board's hourly reading (#1234, avo 21 Nov 2026 decision A): the EVREN model reads the hour's
     # stored headlines and the reading is stored as fixed-schema fields, each carrying its source sentence.
     AutomationEntry(
@@ -334,7 +330,7 @@ REGISTRY: tuple[AutomationEntry, ...] = (
                     "own 5-minute passes and no provider is fetched. The pass runs in the dashboard "
                     "(POST /run/news_reading, the one writer): the task only queues it and waits; with the "
                     "dashboard down it exits 1.",
-        settings=TaskSettings(restart_count=0, time_limit_minutes=30)),
+        settings=TaskSettings(time_limit_minutes=30)),
     AutomationEntry(
         name="RC-Fetch-SectorRotation", label="Sector Rotation Fetch (nightly)",
         args=("-m", "RevenueChaser.scripts.board_fetch", "rotation"), time="05:40", unit_name="life-rc-fetch-rotation",
@@ -344,7 +340,7 @@ REGISTRY: tuple[AutomationEntry, ...] = (
                     "dashboard (POST /run/rotation, the one writer; it also queues the Money flow refresh): the task "
                     "only queues it and waits; with the dashboard down it exits 1. Stored closes only, no Unusual "
                     "Whales call.",
-        settings=TaskSettings(restart_count=0, time_limit_minutes=120)),
+        settings=TaskSettings(time_limit_minutes=120)),
     AutomationEntry(
         name="RC-Fetch-EarningsRadar", label="Earnings Radar Fetch (nightly)",
         args=("-m", "RevenueChaser.scripts.board_fetch", "earnings"), time="05:50", days=_WEEKDAYS,
@@ -355,7 +351,7 @@ REGISTRY: tuple[AutomationEntry, ...] = (
                     "runs in the dashboard (POST /run/earnings with no dates: the server's today, which at 05:50 "
                     "Amsterdam is the coming session): the task only queues it and waits; with the dashboard down it "
                     "exits 1. The same Unusual Whales calls as one press of the board's Fetch button.",
-        settings=TaskSettings(restart_count=0, time_limit_minutes=120)),
+        settings=TaskSettings(time_limit_minutes=120)),
 )
 _BY_NAME = {e.name: e for e in REGISTRY}
 
@@ -503,145 +499,9 @@ class FakeScheduler(Scheduler):
             self.tasks[name].state = "running"
 
 
-def _ps_quote(value: str) -> str:
-    """A PowerShell single-quoted literal (an embedded ``'`` is doubled)."""
-    return "'" + str(value).replace("'", "''") + "'"
-
-
 def package_parent() -> Path:
     """The dir whose child is ``RevenueChaser``: the tasks' working directory."""
     return Path(__file__).resolve().parents[2]
-
-
-# Every script starts with this. PowerShell 5.1 writes a CLIXML progress record to stderr
-# when it loads the ScheduledTasks module, and its default output encoding is the OEM code
-# page (a Turkish "ı" is 0x8D there), so: no progress records, UTF-8 out.
-_PS_PRELUDE = ("$ProgressPreference = 'SilentlyContinue'; "
-               "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8")
-
-
-def _powershell(script: str) -> tuple[int, str, str]:
-    """``(returncode, stdout, stderr)``. Any failure to run becomes an ``AutomationError``."""
-    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-    try:
-        proc = subprocess.run(
-            ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
-             "-Command", script], capture_output=True, encoding="utf-8-sig", errors="replace",
-            timeout=60, creationflags=flags)
-    except (OSError, subprocess.SubprocessError) as exc:
-        raise AutomationError(f"could not run PowerShell: {exc}") from None
-    return proc.returncode, proc.stdout or "", proc.stderr or ""
-
-
-def windowless_python(python: str) -> str:
-    """``pythonw.exe`` next to ``python.exe`` when it exists, so a run opens no console."""
-    p = Path(python)
-    if p.name.lower() == "python.exe":
-        w = p.with_name("pythonw.exe")
-        if w.exists():
-            return str(w)
-    return python
-
-
-class WindowsScheduler(Scheduler):
-    """PowerShell ``ScheduledTasks`` cmdlets, exact registry names only, one task per call."""
-
-    def __init__(self, runner: Callable[[str], tuple[int, str, str]] = _powershell,
-                 python: str | None = None, workdir: Path | str | None = None):
-        self._run = runner
-        self._python = windowless_python(python or sys.executable)
-        self._workdir = str(workdir or package_parent())
-
-    def _exec(self, script: str) -> str:
-        """Run one script; return its stdout. A non-zero exit raises with stderr's tail."""
-        rc, out, err = self._run(_PS_PRELUDE + "\n" + script)
-        if rc != 0:
-            raise AutomationError(((err or out or "").strip() or "scheduler call failed")[-400:])
-        return out
-
-    def status(self, name):
-        n = _ps_quote(entry(name).name)
-        script = (
-            f"$t = Get-ScheduledTask -TaskName {n} -ErrorAction SilentlyContinue\n"
-            "if (-not $t) { '{\"installed\":false}'; exit 0 }\n"
-            f"$i = Get-ScheduledTaskInfo -TaskName {n}\n"
-            "[pscustomobject]@{installed=$true; state=[string]$t.State;"
-            " last_run=$(if ($i.LastRunTime) { $i.LastRunTime.ToString('o') });"
-            " next_run=$(if ($i.NextRunTime) { $i.NextRunTime.ToString('o') });"
-            " last_result=[int64]$i.LastTaskResult; missed=[int]$i.NumberOfMissedRuns}"
-            " | ConvertTo-Json -Compress")
-        return parse_status(self._exec(script))
-
-    def install(self, e):
-        e = entry(e.name)
-        s = e.settings
-        flags = []
-        if s.start_when_available:
-            flags.append("-StartWhenAvailable")
-        if s.allow_on_battery:
-            flags += ["-AllowStartIfOnBatteries", "-DontStopIfGoingOnBatteries"]
-        if s.wake_to_run:
-            flags.append("-WakeToRun")
-        logon = "Interactive" if s.run_only_when_logged_on else "S4U"
-        script = "\n".join([
-            "$ErrorActionPreference = 'Stop'",
-            f"$a = New-ScheduledTaskAction -Execute {_ps_quote(self._python)}"
-            f" -Argument {_ps_quote(' '.join(('-m', 'RevenueChaser.core.automations', 'run', e.name)))}"
-            f" -WorkingDirectory {_ps_quote(self._workdir)}",
-            (f"$tr = New-ScheduledTaskTrigger -Once -At {_ps_quote(e.time)}"
-             " -RepetitionInterval (New-TimeSpan -Hours 1)" if e.hourly else
-             f"$tr = New-ScheduledTaskTrigger -Weekly -DaysOfWeek {','.join(e.days)} -At {_ps_quote(e.time)}"
-             if e.days else f"$tr = New-ScheduledTaskTrigger -Daily -At {_ps_quote(e.time)}"),
-            f"$s = New-ScheduledTaskSettingsSet {' '.join(flags)}"
-            + (" -ExecutionTimeLimit (New-TimeSpan -Seconds 0)" if s.no_time_limit else
-               f" -ExecutionTimeLimit (New-TimeSpan -Minutes {int(s.time_limit_minutes)})"
-               if s.time_limit_minutes is not None else
-               f" -ExecutionTimeLimit (New-TimeSpan -Hours {int(s.time_limit_hours)})")
-            + (f" -RestartCount {int(s.restart_count)}"
-               f" -RestartInterval (New-TimeSpan -Minutes {int(s.restart_minutes)})" if s.restart_count else ""),
-            "$p = New-ScheduledTaskPrincipal"
-            " -UserId ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)"
-            f" -LogonType {logon}",
-            f"Register-ScheduledTask -TaskName {_ps_quote(e.name)} -Action $a -Trigger $tr"
-            f" -Settings $s -Principal $p -Description {_ps_quote(e.description)} -Force | Out-Null",
-        ])
-        self._exec(script)
-
-    def set_enabled(self, name, enabled):
-        verb = "Enable" if enabled else "Disable"
-        self._exec(f"{verb}-ScheduledTask -TaskName {_ps_quote(entry(name).name)} | Out-Null")
-
-    def remove(self, name):
-        self._exec("Unregister-ScheduledTask -TaskName "
-                   f"{_ps_quote(entry(name).name)} -Confirm:$false")
-
-    def run(self, name):
-        self._exec(f"Start-ScheduledTask -TaskName {_ps_quote(entry(name).name)}")
-
-
-def parse_status(text: str) -> TaskStatus | None:
-    import json
-    # A BOM can still sit at the start of stdout (utf-8-sig only strips the first one).
-    lines = [ln.strip().lstrip("\ufeff") for ln in (text or "").splitlines()
-             if ln.strip().lstrip("\ufeff").startswith("{")]
-    try:
-        d = json.loads(lines[-1])
-        if not isinstance(d, dict):
-            raise ValueError
-    except (ValueError, IndexError):
-        raise AutomationError("unreadable scheduler answer") from None
-    if not d.get("installed"):
-        return None
-
-    def when(v):
-        # Task Scheduler reports 1999-11-30 / 0001-01-01 for "never".
-        return None if not v or str(v)[:4] in ("1999", "0001", "1601") else str(v)
-
-    state = str(d.get("state") or "").lower()
-    return TaskStatus(
-        state=state if state in ("disabled", "running") else "ready",
-        last_run=when(d.get("last_run")), next_run=when(d.get("next_run")),
-        last_result=d.get("last_result"), missed_runs=int(d.get("missed") or 0))
 
 
 # --- Linux: systemd user timers (#158) ----------------------------------------------
@@ -725,7 +585,7 @@ def _user_unit_dir() -> Path:
 
 
 def on_calendar(e: AutomationEntry) -> str:
-    """The entry's ``time`` and ``days`` as a systemd ``OnCalendar=`` spec, in local time like Task Scheduler's."""
+    """The entry's ``time`` and ``days`` as a systemd ``OnCalendar=`` spec, in the machine's local time."""
     if e.hourly:
         return f"*-*-* *:{e.time[-2:]}:00"
     days = ",".join(_SYSTEMD_DAYS[d] for d in e.days)
@@ -941,7 +801,7 @@ class LinuxScheduler(Scheduler):
             f"Unit={e.unit}.service",
             f"Persistent={'true' if s.start_when_available else 'false'}",
             # No WakeSystem=: a user timer cannot arm a wake alarm (CAP_WAKE_ALARM), and asking for one leaves the
-            # timer failed and never run. ``wake_to_run`` is a Task Scheduler setting only.
+            # timer failed and never run, so no row asks the machine to wake up for it.
             "",
             "[Install]",
             "WantedBy=timers.target",
@@ -1035,8 +895,6 @@ SCHEDULER_SYSTEMD_USER = "systemd-user"
 
 
 def _default_scheduler() -> Scheduler:
-    if sys.platform == "win32":
-        return WindowsScheduler()
     choice = os.environ.get(SCHEDULER_ENV, "").strip()
     if sys.platform.startswith("linux"):
         if choice == SCHEDULER_SYSTEMD_USER:
@@ -1219,7 +1077,7 @@ def apply(name: str, action: str, sched: Scheduler | None = None) -> dict:
 
 # --- the nightly chain (#129 slice E) ----------------------------------------------
 #
-# A chained entry stays its own Task Scheduler task with its own daily trigger, which is its
+# A chained entry stays its own scheduled task with its own daily trigger, which is its
 # not-before time. When it starts, it waits for its predecessor's run of tonight, read from the
 # predecessor's log: the newest run that started at or after the predecessor's last scheduled
 # time. That run exiting 0 releases the step; any other exit (a failure, or a step blocked in
@@ -1242,7 +1100,7 @@ class RunRecord:
 def chain_cutoff(hhmm: str, now: datetime, tz: tzinfo | None = None) -> datetime:
     """The last time at or before ``now`` that a daily ``hhmm`` task (local time) was due.
 
-    ``tz`` None means the machine's local zone, which is what Task Scheduler triggers on.
+    ``tz`` None means the machine's local zone, which is what the timers trigger on.
     """
     h, m = (int(x) for x in hhmm.split(":"))
     if tz is None:

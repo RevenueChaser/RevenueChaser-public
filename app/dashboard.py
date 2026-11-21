@@ -1345,10 +1345,10 @@ def _comovement_windows() -> tuple[int, ...]:
 
 @app.route("/api/automations")
 def api_automations():
-    """Live Task Scheduler state of the registry's tasks (#130).
+    """Live scheduler state of the registry's tasks (#130).
 
     The Settings board is a cached artifact, so the panel polls this instead of
-    baking scheduler state into the page. Each call starts PowerShell on Windows.
+    baking scheduler state into the page.
     """
     from RevenueChaser.core import automations
 

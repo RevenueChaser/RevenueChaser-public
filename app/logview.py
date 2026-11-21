@@ -80,7 +80,7 @@ def read_tail(path, lines: int, nbytes: int | None = None) -> list[str]:
     except OSError:
         return []
     if start == 0 and data.startswith(codecs.BOM_UTF8):
-        data = data[len(codecs.BOM_UTF8):]  # PowerShell 5.1's Add-Content -Encoding UTF8 writes one
+        data = data[len(codecs.BOM_UTF8):]  # a log file can start with a UTF-8 BOM, whatever wrote it
     out = _ANSI.sub("", data.decode("utf-8", errors="replace")).splitlines()
     if start > 0 and out:
         out = out[1:]  # the first line was cut by the seek

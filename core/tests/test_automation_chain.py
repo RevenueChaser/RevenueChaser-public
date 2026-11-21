@@ -1,10 +1,10 @@
 """The nightly chain rule of the automations registry (#129 slice E).
 
-A chained entry (``after=<registry name>``) is still its own Task Scheduler task with its own
+A chained entry (``after=<registry name>``) is still its own scheduled task with its own
 not-before time. When it starts, ``run_task`` first waits for the predecessor's run of this night
 (the run that started at or after the predecessor's last scheduled time) to exit 0; a failed,
 missing or overdue predecessor run makes the step exit ``CHAIN_BLOCKED`` without running its
-command. Nothing here touches a real Task Scheduler or sleeps.
+command. Nothing here touches a real scheduler or sleeps.
 """
 from __future__ import annotations
 
