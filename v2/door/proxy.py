@@ -249,8 +249,9 @@ def decide(method: str, path: str, headers) -> Decision:
     route = classify(path)
     if route is None:
         return Decision(False, 404, None, "not proxied: this path is not in the door's route table")
-    # MUTATION (#1317, to be reverted): the Guarded class stops being refused and falls through to the write
-    # checks, so a guarded press with a login would be forwarded. This commit exists to be read red in CI.
+    if route.klass is RouteClass.GUARDED:
+        return Decision(False, 403, RouteClass.GUARDED,
+                        "guarded: this press is never made through the door")
     if method.upper() not in route.methods:
         return Decision(False, 405, route.klass,
                         f"{method.upper()} is not how {route.klass.value} routes are pressed")
