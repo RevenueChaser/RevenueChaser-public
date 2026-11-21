@@ -197,18 +197,18 @@
       "android_status": "planned"
     },
     {
-      "id": "bookmark",
-      "web": "BookmarkToggle",
-      "android": "RcBookmarkToggle",
-      "note": "**left of the ticker, never after it**; 36 px button, 12 px icon; two halves (stock, options), each its own target",
+      "id": "symbol-tile",
+      "web": "SymbolTile",
+      "android": "RcSymbolTile",
+      "note": "the company's own mark or a generated monogram, square for a share and a pill for an ETF; **it is the watch-list control** and carries the on-a-list mark (§9.1)",
       "web_status": "planned",
       "android_status": "planned"
     },
     {
-      "id": "symbol-tile",
-      "web": "SymbolTile",
-      "android": "RcSymbolTile",
-      "note": "a generated monogram, square for a share and a pill for an ETF; never a borrowed logo (§9.1)",
+      "id": "watchlist-sheet",
+      "web": "WatchListMenu",
+      "android": "RcWatchListSheet",
+      "note": "the lists the tile opens, with ticks and a `+ New list` row",
       "web_status": "planned",
       "android_status": "planned"
     },

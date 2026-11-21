@@ -168,10 +168,12 @@ stored (`v2/web/src/theme/theme.ts`). Android follows the same three values and 
 - **A price change is shown over two horizons, `1D` and `1W`** (avo, 21 Nov 2026 16:20). `1D` is the previous
   close against the last price; `1W` is five trading days. Both definitions are written in the panel footer, not
   left to the reader, and a single unlabelled "change" column is not allowed on a price row.
-- **The two horizons sit under the price, in the price's own cell**, each behind its small `1D` / `1W` label, not
-  in two columns of their own (avo, 21 Nov 2026 16:28: *"1D ve 1W current pricein altinda olmali, eskisi gibi"*).
-  Inside that cell the four parts run on fixed tracks, so `1D` and `1W` line up down every row of the table —
-  §11's cell rule holds inside a cell as well as between cells.
+- **The two horizons sit under the price, in the price's own cell**, not in two columns of their own (avo,
+  21 Nov 2026 16:28: *"1D ve 1W current pricein altinda olmali, eskisi gibi"*). They are **not labelled on the
+  row**: the column header carries `Price · 1D / 1W` once, and the two values are separated by a thin muted `|`
+  (avo, 21 Nov 2026 16:37-16:38: *"1D 1W yazmana gerek yok"*, *"% degerlerini | ile ayirsan yeterli"*). Inside
+  that cell the three parts run on fixed tracks, so both percentages line up down every row — §11's cell rule
+  holds inside a cell as well as between cells.
 - **A currency is its symbol, not its code:** `$`, `€`, `£`, `¥`, `₺`. Said **once** — in the column header or
   before the figure (`$1.2B`) — never after every value. A code only where two currencies share one symbol in the
   same view (`US$` / `C$`).
@@ -202,7 +204,7 @@ The surfaces are **not** two renderings of one layout. Each has its own shape, s
 | Target widths | **1187 px** (laptop; 64 px icon rail, board gets ~1123 px) and **1884 px** (extra screen; 240 px sidebar, board gets ~1644 px). avo's real `window.innerWidth`, measured 12 Nov 2026. |
 | Shell | below 1440 px a 64 px icon rail, each item a 44 px icon with its name as a tooltip; from 1440 px a 240 px sidebar. |
 | Screenshots | 1187 and 1884, light and dark, from CI's `screenshots-v2-web` artifact. |
-| Touch target | 44 px (`--touch`) for every control. **One exception, avo's:** the bookmark button is 36 px with a 12 px icon (18 Nov 2026 20:47). |
+| Touch target | 44 px (`--touch`) for every control. **One exception, avo's:** the symbol tile is drawn small (§9.1), and its hit area, not its drawing, carries the target — at least the row's height. The separate 36 px bookmark button of the old dashboard does not exist in v2 (§9.1). |
 | No sideways scroll | a board fits its pane at 1187 px: fewer columns, value and change stacked, detail behind a row click. |
 
 **v2 web is not given a phone layout.** avo decided on 21 Nov 2026 00:41 that the phone view **is** the native
@@ -314,8 +316,8 @@ counterpart names **what it becomes** — that is a stated difference, not a gap
 | `chip` | `Chip` | `RcChip` | pill radius; each chip its own fixed column in a row |
 | `badge` | `Badge` | `RcBadge` | count badge, state badge |
 | `judgement-card` | `JudgementCard` | `RcJudgementCard` | coloured top rule · caps title · **one big verdict word** · three metric lines · a rationale naming the yardstick. No score without its rule |
-| `bookmark` | `BookmarkToggle` | `RcBookmarkToggle` | **left of the ticker, never after it**; 36 px button, 12 px icon; two halves (stock, options), each its own target |
-| `symbol-tile` | `SymbolTile` | `RcSymbolTile` | a generated monogram, square for a share and a pill for an ETF; never a borrowed logo (§9.1) |
+| `symbol-tile` | `SymbolTile` | `RcSymbolTile` | the company's own mark or a generated monogram, square for a share and a pill for an ETF; **it is the watch-list control** and carries the on-a-list mark (§9.1) |
+| `watchlist-sheet` | `WatchListMenu` | `RcWatchListSheet` | the lists the tile opens, with ticks and a `+ New list` row |
 | `skeleton` | `SkeletonRows` | `RcSkeletonRows` | §8 |
 | `next-step-card` | `NextStepCard` | `RcNextStepCard` | §8 |
 | `notice` | `Notice` | `RcNotice` | §8: no data, upstream down, refused |
@@ -349,6 +351,13 @@ size follows the row height.
   ticker and the tint is a deterministic hash over the palette's data colours, so every instrument — an ETF, an
   index, a name no logo set covers — gets one, offline, with no request.
 - **Square for a share, a pill for an ETF**, in both cases.
+- **The tile is also the watch-list control** (avo, 21 Nov 2026 16:38: *"ticker simgesine basinca watchlist e
+  ekleme secenegi olacak sekilde yap, diger watchlist ekleme kutusunu kaldir"*). **The separate watch-list box is
+  removed**, which supersedes the 18 Nov 2026 rule of a 36 px bookmark button split in two halves — for v2 only;
+  the old dashboard is not touched. A name already on a list wears a small mark on the corner of its tile, so the
+  state is readable without opening anything. Tapping the tile opens `watchlist-sheet`: the lists avo owns, each
+  with a tick where the name is already on it, the options watch list among them, and a `+ New list` row. Its hit
+  area is at least the row's height even though the tile is drawn smaller.
 
 ## 10. The chart contract — shared inputs, per-surface renderer
 
@@ -400,7 +409,7 @@ These are the rules a dense board breaks first. They hold on both surfaces.
 - **Cells never overlap the next column.** A long value is written `figure · detail` — the figure on line 1 (at
   most 15 characters per part), the detail on a small muted second line that wraps. Short columns (time, result,
   counts) never wrap and are sized to their widest value plus padding.
-- **Row actions before the label.** The watch-list box sits **left of the ticker**, split in two halves.
+- **Row actions before the label.** The watch-list control stands **left of the ticker**, as the rule has always said — in v2 it *is* the symbol tile (§9.1), not a box beside it.
 - **One table, one period.** A table that sorts rows from different report periods together answers "who bought
   most" wrongly by construction. Pin the period, or do not show the row.
 - **Problems first.** A status strip answers "do I need to act now?". Only problem cards show; everything fine
