@@ -180,6 +180,7 @@ class EarningsPipeline:
         self.screener_result = None
         self._shorts_cache = None
         self._dgs10_cache = None
+        self._transcripts_cache = None
         self._rate_events = None        # the stored economic calendar, read once per run (E5d, #372)
         self._preselected_tickers = None
         # The stored D01 bars for the tickers that will be scored, read once before the workers start (E5e, #372).
@@ -253,6 +254,26 @@ class EarningsPipeline:
                 "source_as_of": note.get("source_as_of")}
             self.input_sources["short_interest_note"] = note.get("label")
         return self._shorts_cache
+
+    def _warm_transcripts(self) -> dict[str, dict]:
+        """R8's text half for the names that will be deep-scored, read once per run from the fundamentals store.
+
+        Each name's last **reported** earnings call, split at the first analyst turn into prepared remarks and
+        Q&A (``store_reads.transcript_halves``, the need ``earnings.transcript``; #1214). No provider call: the
+        builder fetches the calls under the provider's day cap, so a run never asks Alpha Vantage itself.
+
+        Partial coverage is the normal state: the free tier buys about 22 new transcripts a day, so a name with no
+        stored call is simply absent and R8 scores the retail-call-share slot it has always had. Tests that pre-set
+        ``_transcripts_cache`` skip the store.
+        """
+        if self._transcripts_cache is not None:
+            return self._transcripts_cache
+        rows, note = store_reads.transcript_halves(self.tickers)
+        self._transcripts_cache = rows
+        self.input_sources["transcripts"] = {
+            "stored": len(rows), "missing": len(set(self.tickers) - set(rows))}
+        self.input_sources["transcripts_note"] = note.get("label")
+        return self._transcripts_cache
 
     def _warm_dgs10(self) -> dict[str, float]:
         """The 10-year yield observations R6 pairs its reaction returns with, read once per run from the market store
@@ -758,7 +779,7 @@ class EarningsPipeline:
             self.input_sources["rate_events"] = "stored"
         r6 = rule6_macro.score(rate_sensitivity=beta, rate_event_overlap=overlap, beta_tstat=beta_t)
         r7 = _score_accounting(fin_records)
-        r8 = _score_sentiment(flow)
+        r8 = _score_sentiment(flow, self._warm_transcripts().get(ticker))
 
         r1 = rule1_drivers.score((self._estimates or {}).get(ticker))
         composite = compute_composite_scores(r1=r1, r2=r2, r3=r3, r4=r4, r5=r5, r6=r6, r7=r7, r8=r8)
@@ -1801,12 +1822,19 @@ def _score_accounting(records: list) -> RuleResult:
         return RuleResult(score=None, available=False, coverage=0, reasons=["accounting data unavailable"])
 
 
-def _score_sentiment(flow: dict) -> RuleResult:
-    """R8: retail call share from flow-recent. No call premium → unavailable."""
+def _score_sentiment(flow: dict, halves: dict | None = None) -> RuleResult:
+    """R8: the last reported call's tone, and retail call share from flow-recent.
+
+    ``halves`` is one name's entry from ``store_reads.transcript_halves``: the prepared remarks and the Q&A of
+    its last reported earnings call, already split at the first analyst turn (#1214). Passing both halves is what
+    lets R8 vote **negative** at all -- on retail share alone it can only score +20 or 0 (review finding G2).
+    A name with no stored call passes None and scores exactly as before, so coverage climbing over the days
+    changes no other name's card.
+    """
     retail_call = float(flow.get("retail_call", 0) or 0)
     inst_call = float(flow.get("inst_call", 0) or 0)
     total_call = retail_call + inst_call
-    if total_call > 0:
-        retail_share = retail_call / total_call
-        return rule8_sentiment.score(retail_call_share=retail_share)
-    return rule8_sentiment.score()
+    share = retail_call / total_call if total_call > 0 else None
+    prepared = (halves or {}).get("prepared")
+    qa = (halves or {}).get("qa")
+    return rule8_sentiment.score(prepared_remarks=prepared, qa_section=qa, retail_call_share=share)

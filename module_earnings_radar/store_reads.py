@@ -36,6 +36,8 @@ from RevenueChaser.core.rotation_reference import MACRO_SERIES
 from RevenueChaser.rcdata import read
 from RevenueChaser.rcdata.needs.catalog import FromCatalog
 
+from .rules import transcript_split
+
 logger = logging.getLogger(__name__)
 
 SERIES_SOURCE = "rcdata:market_series"
@@ -471,4 +473,64 @@ def release_texts(tickers, report_dates: dict | None = None,
                           + (f"; {left_out}" if left_out else ""),
                  "source": RELEASE_SOURCE,
                  "source_as_of": max(r["filing_date"] for r in out.values()).isoformat(),
+                 "status": status}
+
+
+TRANSCRIPT_SOURCE = "rcdata:earnings_transcript"
+TRANSCRIPT_DATASET = "alphavantage/earnings_transcripts"
+
+
+def transcript_halves(tickers) -> tuple[dict[str, dict], dict]:
+    """``({ticker: {prepared, qa, quarter, turns}}, note)``: each name's last reported earnings call, split into
+    prepared remarks and Q&A (R8's text half, #1214).
+
+    The provider sends a flat list of turns with no prepared-remarks / Q&A field, so the split is the **first
+    analyst turn** (``rules/transcript_split.py``, measured 21 Nov 2026). A call with no analyst turn has no Q&A
+    half and ``qa`` is None: R8 then scores its single-argument branch instead of a ``tone_delta`` whose "Q&A" is
+    really more prepared remarks.
+
+    **The stored call is a reported quarter's, by construction.** The fetch picks its quarters from
+    ``earnings_report_history``, which holds only quarters that have been reported and dated, so the words can
+    never be the coming print's — which is the whole timing constraint on R8 (#1214). No date filter is applied
+    here, because the table carries the fiscal quarter label and no call date; the guard lives in what is fetched.
+
+    A name with no stored call is absent and R8 falls back to the retail-call-share slot it has always had: the
+    free tier buys ~22 new transcripts a day, so partial coverage is the normal state of this map and not a fault.
+    A store error is "not stored", never an exception and never a live read.
+    """
+    names = sorted({str(t).strip().upper() for t in (tickers or []) if str(t or "").strip()})
+    status = _status(TRANSCRIPT_DATASET)
+    if not names:
+        return {}, _missing("the earnings call transcripts", None, "no ticker asked", source=TRANSCRIPT_SOURCE,
+                            status=status)
+    try:
+        rows = read.earnings_transcript(names)
+    except Exception as exc:                                  # noqa: BLE001 - a store error is "not stored"
+        logger.warning("earnings transcript read failed: %s", exc)
+        return {}, _missing("the earnings call transcripts", None, f"read failed: {type(exc).__name__}",
+                            source=TRANSCRIPT_SOURCE, status=status)
+    turns: dict[str, list[dict]] = {}
+    quarters: dict[str, str] = {}
+    for r in rows:
+        ticker = str(r.get("ticker") or "").strip().upper()
+        if not ticker:
+            continue
+        turns.setdefault(ticker, []).append(r)
+        quarters.setdefault(ticker, str(r.get("quarter") or ""))
+    out: dict[str, dict] = {}
+    no_analyst = 0
+    for ticker, rows_of in turns.items():
+        ordered = sorted(rows_of, key=lambda r: int(r.get("seq") or 0))
+        prepared, qa = transcript_split.split_at_first_analyst(ordered)
+        if prepared is None and qa is None:
+            continue
+        if qa is None:
+            no_analyst += 1
+        out[ticker] = {"prepared": prepared, "qa": qa, "quarter": quarters.get(ticker, ""), "turns": len(ordered)}
+    if not out:
+        return {}, _missing("the earnings call transcripts", None, None, source=TRANSCRIPT_SOURCE, status=status)
+    return out, {"stored": True,
+                 "label": f"{len(out)} of {len(names)} names have their last call"
+                          + (f"; {no_analyst} with no Q&A half" if no_analyst else ""),
+                 "source": TRANSCRIPT_SOURCE,
                  "status": status}
