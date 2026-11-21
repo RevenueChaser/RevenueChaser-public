@@ -129,8 +129,10 @@ def test_it_is_a_weekly_spine_dataset_that_starts_by_hand_inside_the_alpha_vanta
     assert caps.DAY_CAPS["alphavantage"] == 25
 
 
-def test_the_weekly_cycle_is_what_the_due_check_counts(env, monkeypatch):
-    """Not due 6 days after the run that built it, due on the 7th: the cadence the dataset declares."""
+def test_the_weekly_cycle_is_what_the_due_check_counts_and_a_failure_still_retries_the_next_day(env, monkeypatch):
+    """Not due 6 days after the run that built it, due on the 7th: the cadence the dataset declares. The day cap's
+    failure rule is unchanged by the weekly cadence -- a failed run waits for the next New York day, no more
+    (``due.DAY_CAPPED``), which is why it is asserted here and not in a test of its own."""
     from RevenueChaser.core import calendar
     from RevenueChaser.rcdata.build import DATASETS, due
     _answer(env)
@@ -141,23 +143,15 @@ def test_the_weekly_cycle_is_what_the_due_check_counts(env, monkeypatch):
     assert due.is_due(ds, "full")[0] is False
     monkeypatch.setattr(calendar, "today_ny", lambda: checked + timedelta(days=7))
     assert due.is_due(ds, "full")[0] is True
-
-
-def test_a_failed_run_is_still_due_again_on_the_next_new_york_day_not_a_week_later(env, monkeypatch):
-    """The day cap's rule is unchanged by the weekly cadence: a failure waits for the next New York day, no more."""
-    from RevenueChaser.core import calendar
-    from RevenueChaser.rcdata.build import DATASETS, due
-    _answer(env)
-    _run()                                            # starts_by_hand: due needs one build behind it
     env.routes.clear()
-    _answer(env, active="{}")
+    _answer(env, active="{}")                         # a JSON answer to the active call: a failed run
     row = _run("2026-11-03")
     assert row["result"] == "failed", row["note"]
-    checked = date.fromisoformat(str(ops.latest_check(av.NAME)["checked_on"])[:10])
-    monkeypatch.setattr(calendar, "today_ny", lambda: checked)
-    assert due.is_due(DATASETS[av.NAME], "full")[0] is False
-    monkeypatch.setattr(calendar, "today_ny", lambda: checked + timedelta(days=1))
-    assert due.is_due(DATASETS[av.NAME], "full")[0] is True
+    failed_on = date.fromisoformat(str(ops.latest_check(av.NAME)["checked_on"])[:10])
+    monkeypatch.setattr(calendar, "today_ny", lambda: failed_on)
+    assert due.is_due(ds, "full")[0] is False
+    monkeypatch.setattr(calendar, "today_ny", lambda: failed_on + timedelta(days=1))
+    assert due.is_due(ds, "full")[0] is True
 
 
 # ── Review round 1 of PR 349 ──────────────────────────────────────────────────────────────────────────────────
