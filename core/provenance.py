@@ -98,7 +98,13 @@ def _scored_prices_day(scores: str):
 
 
 def _rotation_day() -> str | None:
-    return _max("SELECT max(as_of_date) AS v FROM rotation_snapshots", db="sector_rotation")
+    """The newest stored session of the Rotation board, through the board's own reader (#217).
+
+    The SQL used to be here, three directories from the tables it named -- the shape of the News bug this
+    strangler found (``news_calendar`` never existed and the board's date had been blank for ever, silently).
+    """
+    from RevenueChaser.module_sector_rotation.store_reads import newest_snapshot_date
+    return _day(newest_snapshot_date())
 
 
 def _sec13f_day() -> str | None:
