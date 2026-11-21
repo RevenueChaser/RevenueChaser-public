@@ -304,13 +304,17 @@ def linkbase_routes(http_mock, xml: str | None = MSFT_DEF, name: str = MSFT_DEF_
         http_mock.add(f"/{MSFT_XSD_NAME}", xsd)
 
 
-def filing_routes(http_mock, lists: dict, documents: dict | None = None, release: bool = True) -> None:
+def filing_routes(http_mock, lists: dict, documents: dict | None = None, release: bool = True,
+                  release_html: str | None = None) -> None:
     """Answer the submissions URLs (``lists`` {cik: body}) and the archive documents (``documents`` {file: html}).
     A daily index no test named answers an index with no rows, as EDGAR does for an open day.
 
     ``release``: every 8-K carrying item 2.02 in ``lists`` also answers its header file and the press-release
     exhibit that file types (#1214), because the fetch step asks for them on any list that holds such a filing.
     A test of the miss passes ``release=False`` and the two URLs 404 as an unnamed URL does.
+
+    ``release_html`` replaces that exhibit's body. It cannot be passed through ``documents`` instead: ``HttpMock``
+    serves the first route whose substring matches, and the release route is added here, before those.
     """
     for cik, body in lists.items():
         http_mock.add(f"submissions/CIK{int(cik):010d}.json", body)
@@ -321,7 +325,7 @@ def filing_routes(http_mock, lists: dict, documents: dict | None = None, release
                 form = (recent.get("form") or [])[i] if i < len(recent.get("form") or []) else ""
                 if str(form) == "8-K" and "2.02" in str(items or ""):
                     http_mock.add(f"{acc}-index-headers.html", index_headers(RELEASE_EXHIBIT))
-                    http_mock.add(f"/{RELEASE_EXHIBIT}", press_release())
+                    http_mock.add(f"/{RELEASE_EXHIBIT}", release_html or press_release())
     for name, html in (documents or {}).items():
         http_mock.add(f"/{name}", html)
     http_mock.fallback("master.", daily_index([]))
