@@ -133,7 +133,11 @@ arrived at.
 2. **How many reference days, and where do they live?** — answered in principle (avo, 21 Nov 17:14: take them and
    automate the rest until UW is dropped); the remaining part is scope, and that is a disk measurement, not a
    question. Files land under `/mnt/data/apps/revenuechaser/uw-reference/`, personal use, out of this repository.
-3. **Does the UW bot feed stop when the plan renews on 9 December — and is Traders' Pub's bot a second bill?**
+3. **Whose UW account is linked to the Traders' Pub bot, and who pays the server subscription?** The bot's own
+   help says custom alerts into a channel are the alerts of **one linked UW web account**, delivered by webhook,
+   and need a premium server subscription — so if the linked account is avo's, `live-option-flow` **stops when
+   his plan ends**. `/configure` shows which account; nobody has opened it. Until that is answered, plan B is
+   not a fallback for leaving UW, only a fallback for someone else still paying for it.
    The channels show Premium markers (`notifications/premium/` image paths, `utm_content=custom_alert`), and UW
    prices a **Premium Server Subscription at USD 124.99/month** for custom alerts to Discord. Whether that is paid
    separately from avo's own web plan is not visible from Discord, and it decides whether "plan B" is free or
