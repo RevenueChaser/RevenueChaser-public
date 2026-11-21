@@ -308,6 +308,16 @@ REGISTRY: tuple[DatasetSpec, ...] = (
         freshness=("news_earnings", "run_at"),
     ),
     DatasetSpec(
+        key="news_reading", label="News: the hourly reading of the headline flow",
+        tables=("news_reading",),
+        db="news", source=Source.derived, writer="RC-News-Reading-Hourly",
+        writer_note=("the EVREN model's reading of the hour's stored headlines, written by module_news/reading.py "
+                     "(#1234, avo 21 Nov 2026): one row per (window_end, field), each field carrying the "
+                     "sentence it came from; no fee, one call an hour, and no call at all in an hour with no "
+                     "headline"),
+        freshness=("news_reading", "window_end"),
+    ),
+    DatasetSpec(
         key="news_headlines", label="News: market headlines",
         tables=("news_headlines",),
         db="news", source=Source.ibkr, writer=None,
@@ -321,7 +331,9 @@ REGISTRY: tuple[DatasetSpec, ...] = (
         db="welcome", source=Source.derived, writer=None,
         writer_note=("built incrementally by module_welcome/build.py on the Welcome board's Fetch, from the "
                      "builder's market series, its options screener and its run ledger in ops (#643 PR 5b, PR 6); "
-                     "the hourly job comes in its own pull request"),
+                     "each part compares the rows it already holds, so welcome_meta -- the table the plan designed "
+                     "for an incremental mark -- has no writer (#643); the hourly job comes in its own pull "
+                     "request"),
         freshness=("welcome_snapshot", "session_date"),
     ),
     DatasetSpec(

@@ -33,6 +33,7 @@ def test_every_llm_job_the_repo_runs_is_in_the_registry():
     assert set(llm_jobs.JOBS) == {
         "relatedness.profiles", "relatedness.naming",
         "sec_reads.business.locate", "sec_reads.company.profile", "sec_reads.debt.note",
+        "news.reading",                                   # the hourly reading of the headline flow (#1234)
     }
     for job in llm_jobs.JOBS.values():
         assert (REPO / job.where).exists(), f"{job.id} names a module that is not here: {job.where}"

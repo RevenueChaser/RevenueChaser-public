@@ -53,10 +53,11 @@ def annual(body_chars: int = 5_000) -> str:
     return nf.CONTINUED.replace("\n</body></html>", fx.ten_k(body_chars).split("<body>", 1)[1])
 
 
-def _stored(sec, rows=None, documents=None) -> None:
+def _stored(sec, rows=None, documents=None, release_html=None) -> None:
     """The documents on disk, fetched by ``sec/filings`` as in production."""
     fx.filing_routes(sec, {MSFT: fx.submissions(789019, rows or fx.MSFT_FILINGS, "MICROSOFT CORP")},
-                     {"msft-10k.htm": annual(), "msft-def14a.htm": fx.proxy(), **(documents or {})})
+                     {"msft-10k.htm": annual(), "msft-def14a.htm": fx.proxy(), **(documents or {})},
+                     release_html=release_html)
     fx.run(filings.NAME, mode="backfill", to=AS_OF)
 
 
@@ -92,10 +93,38 @@ def test_a_fresh_build_serves_the_sections_with_the_method_that_found_each(sec):
     check = _cut()
     assert check["result"] != "failed", check.get("note")
     assert dict(q("SELECT section, method FROM filing_section WHERE cik = ? ORDER BY section", MSFT)) == {
-        "business": forms.HEADER, "proxy": forms.UNCUT, "whole": forms.UNCUT}
+        "business": forms.HEADER, "proxy": forms.UNCUT, "whole": forms.UNCUT,
+        # The earnings press release of the stored 8-K item 2.02 filing, cut whole (#1214).
+        "release": forms.UNCUT}
     # Every row says which rule wrote it, so a half-finished migration to ``ours-2`` is visible, not inferred.
     assert q("SELECT DISTINCT rules_version FROM filing_section") == [(forms.SECTIONS_VERSION,)]
     assert f"sections {forms.SECTIONS_VERSION} {check['rows']}" in check["note"], check["note"]
+
+
+def test_the_press_release_is_one_uncut_row_and_the_item_cutter_never_sees_it(sec):
+    """The release short-circuits the cut, so an exhibit that *looks* like an annual report is still one row.
+
+    A press release is prose the filer wrote, not a form with items, and ``sec/forms`` cuts it whole
+    (``sections_of(..., release=True)``). The trap this pins: the 8-K's own accession must not gain a ``business``
+    or ``whole`` row, which is what would happen if the kind were ignored and the item cutter ran over the
+    exhibit. The fixture's release therefore carries the very headings the item rule looks for -- and the 10-K's
+    own rows, under its own accession, are untouched beside it.
+    """
+    _stored(sec, release_html="<html><body><p>Item 1. Business</p><p>PART I</p><p>Item 1. Business</p>"
+                              "<p>Revenue grew 18%. " + "We remain confident in the year ahead. " * 200
+                              + "</p><p>Item 1A. Risk Factors</p></body></html>")
+    assert _cut()["result"] != "failed"
+    # ``document`` is the stored file's name, as every row of this table carries it: ``<accession>.<name>.gz`` for
+    # an exhibit, ``<accession>.html.gz`` for a filing's primary document. So the name itself is the evidence that
+    # the row was cut from the typed exhibit and not from the 8-K's own document.
+    rows = q("SELECT section, document, method, chars > 0 FROM filing_section "
+             "WHERE cik = ? AND accession = ? ORDER BY section", MSFT, fx.EIGHT_K)
+    assert rows == [("release", f"{fx.EIGHT_K}.{fx.RELEASE_EXHIBIT}.gz", forms.UNCUT, True)], rows
+    (text,), = q("SELECT text FROM filing_section WHERE cik = ? AND accession = ?", MSFT, fx.EIGHT_K)
+    assert "Revenue grew 18%" in text and "Item 1. Business" in text, "the exhibit is served whole"
+    # The annual report's accession still gets both rows the cut gives it.
+    assert sorted(r[0] for r in q("SELECT section FROM filing_section WHERE cik = ? AND accession = ?",
+                                  MSFT, fx.K25)) == ["business", "whole"]
 
 
 def test_the_business_row_is_the_item_and_its_span_in_the_whole_document(sec):
@@ -248,12 +277,13 @@ def test_the_business_need_answers_and_each_section_need_counts_only_its_own_row
     answer = serve.ask("sec.business", ciks=[MSFT])
     assert len(answer.rows) == 1 and answer.rows[0]["section"] == "business"
 
-    # Without the need's ``where`` each of the three would count the whole table and read its state off another
+    # Without the need's ``where`` each of the four would count the whole table and read its state off another
     # section's rows.
     assert serve.summary("sec.proxy")["row_count"] == 1
     assert serve.summary("sec.whole")["row_count"] == 1
     assert serve.summary("sec.business")["row_count"] == 1
-    assert q("SELECT count(*) FROM filing_section")[0][0] == 3
+    assert serve.summary("sec.release")["row_count"] == 1
+    assert q("SELECT count(*) FROM filing_section")[0][0] == 4
 
 
 def test_the_note_need_answers_by_local_name_across_taxonomies(sec):

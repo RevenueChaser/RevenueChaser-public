@@ -217,6 +217,20 @@ def ops_path() -> Path:
     return Path(config.MARKET_DIR) / FILE_NAME
 
 
+def ledger_id() -> str:
+    """Which store a write made **now** would land in: the Redis namespace, or the ops file's path.
+
+    Both are resolved at call time from the market root, so a process pointed at another root writes into another
+    ledger from that moment on. A caller that holds counts in memory and writes them later -- the spend ledger
+    (``core/providers/spend.py``) -- reads this when it counts and again when it flushes: counts made against one
+    ledger may never be added to another one's row (#1267).
+    """
+    if backend() == "redis":
+        from . import ops_redis
+        return f"redis:{ops_redis.namespace()}"
+    return f"sqlite:{ops_path()}"
+
+
 @contextmanager
 def connect(path: Path | None = None) -> Iterator[sqlite3.Connection]:
     """The one connection factory: WAL, ``busy_timeout``, autocommit (statements commit alone; ``_tx`` groups).

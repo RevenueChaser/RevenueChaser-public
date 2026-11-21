@@ -33,6 +33,8 @@ The tables (``core/rawstore.py`` owns their columns, ``docs/data_architecture.md
 - ``news_highlight`` one row per Amsterdam day: that day's most important live **economic** event.
 - ``news_headlines`` one row per story, the three lanes of the page in one table (see ``LANES``).
 - ``news_meta`` the board's marks and cursors, ``key`` -> ``value`` as text.
+- ``news_reading`` the hourly reading of the tape (#1234): one row per ``(window_end, field)``, each
+  carrying the sentence it came from, written by ``module_news/reading.py``.
 """
 from __future__ import annotations
 
@@ -40,13 +42,15 @@ from RevenueChaser.core import rawstore
 
 #: The board's DuckDB file, as ``rawstore`` names it.
 DB = "news"
-#: The five table names. Every reader here and every writer in the board takes them from this module, so a rename
+#: The table names. Every reader here and every writer in the board takes them from this module, so a rename
 #: is a change to one file (the point of #217).
 EVENTS = "news_events"
 EARNINGS = "news_earnings"
 HIGHLIGHT = "news_highlight"
 HEADLINES = "news_headlines"
 META = "news_meta"
+#: The hourly reading of the headline flow (#1234): one row per ``(window_end, field)``.
+READING = "news_reading"
 
 #: The ``type`` of an FDA catalyst row in :data:`EVENTS` (#807). It is a value in a column rather than a table
 #: name, but it cuts the table in two for every read below and for the writes in ``calendar.py``, so it is owned
@@ -302,6 +306,29 @@ def headlines_in_window(start: float, end: float, limit: int) -> list[dict]:
                   [float(start), float(end)])
 
 
+# ── news_reading: the hourly reading (#1234) ──────────────────────────────────────────────────────────────────────
+def readings_since(window_from: float) -> list[dict]:
+    """Every stored reading field whose window ends at or after ``window_from``, newest hour first.
+
+    One row is one field of one hour and carries the sentence it came from (``quote``, ``headline_id``); the
+    caller groups them by ``window_end`` (``module_news.reading.api_rows``).
+    """
+    return _query(f"SELECT * FROM {READING} WHERE window_end >= ? ORDER BY window_end DESC, field",
+                  [float(window_from)])
+
+
+def reading_window(window_end: float) -> list[dict]:
+    """The stored fields of the hour ending at ``window_end``, by field name; no rows when it was never read."""
+    return _query(f"SELECT * FROM {READING} WHERE window_end = ? ORDER BY field", [float(window_end)])
+
+
+def newest_reading_window() -> float | None:
+    """The newest hour the reading pass stored anything for, or None when it never has."""
+    rows = _query(f"SELECT max(window_end) AS t FROM {READING}")
+    value = rows[0]["t"] if rows else None
+    return None if value is None else float(value)
+
+
 def x_headlines_since(since: float) -> list[dict]:
     """Every X-lane row published at or after ``since`` except what Grok filed as ``other``, newest first: the set
     the option check walks to find the rows still waiting for an answer."""
@@ -325,10 +352,11 @@ def lane_freshness() -> dict[str, float | None]:
     return {name: (float(got[name]) if got.get(name) is not None else None) for name in LANES}
 
 
-__all__ = ["DB", "EVENTS", "EARNINGS", "HIGHLIGHT", "HEADLINES", "META", "FDA_TYPE", "LANES", "API_COLUMNS",
+__all__ = ["DB", "EVENTS", "EARNINGS", "HIGHLIGHT", "HEADLINES", "META", "READING", "FDA_TYPE", "LANES", "API_COLUMNS",
            "TICKER_COLUMNS", "meta_value", "meta_values",
            "events_between", "live_economic_between", "live_fda_between", "live_economic_from",
            "live_events_in_window", "live_fda_outside_a_day", "live_events_of_types",
            "newest_event_fetch_at", "newest_event_run_at", "earnings_week", "highlight",
            "stored_headline_ids", "stored_tickers", "headlines_by_lane", "headlines_newest", "headlines_since",
-           "headlines_for_ticker", "headlines_in_window", "x_headlines_since", "lane_freshness"]
+           "headlines_for_ticker", "headlines_in_window", "x_headlines_since", "lane_freshness",
+           "readings_since", "reading_window", "newest_reading_window"]
