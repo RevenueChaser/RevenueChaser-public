@@ -1434,7 +1434,9 @@ def _stage(ctx: RunContext, ds, req: dict, params: dict, attended_ok: bool = Fal
     except Paused as e:
         # the files fetched so far stay; the serving file was not touched
         return _finish(ctx, req, {"result": "skipped", "note": f"skipped: {e}"}, "skipped", None), None
-    except NothingInScope as e:
+    except (NothingInScope, ProviderEmpty) as e:
+        # ProviderEmpty: the provider answered with no rows where this window is never empty (#1251). Nothing was
+        # written and the dataset stays due, so the row is a skip and the pass is not failed by it.
         return _finish(ctx, req, {"result": "skipped", "note": f"skipped: {e}"}, "skipped", None), None
     except Exception as e:  # noqa: BLE001 - a failed fetch is its own failed check row, never a half-swapped file
         return _failed(ctx, req, e), None
