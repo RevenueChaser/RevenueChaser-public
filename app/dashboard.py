@@ -16,7 +16,6 @@ import json
 import logging
 import os
 import re
-import shutil
 import signal as _signal
 import subprocess
 import sys
@@ -2729,22 +2728,6 @@ def manifest():
     })
 
 
-def _find_chrome() -> str | None:
-    """Locate a Chromium browser binary (Chrome). Returns path or None."""
-    if sys.platform != "win32":
-        return None
-    candidates = [
-        Path(os.environ.get("PROGRAMFILES", "")) / "Google" / "Chrome" / "Application" / "chrome.exe",
-        Path(os.environ.get("PROGRAMFILES(X86)", "")) / "Google" / "Chrome" / "Application" / "chrome.exe",
-        Path(os.environ.get("LOCALAPPDATA", "")) / "Google" / "Chrome" / "Application" / "chrome.exe",
-    ]
-    for c in candidates:
-        if c.exists():
-            return str(c)
-    exe = shutil.which("chrome") or shutil.which("chromium") or shutil.which("chrome.exe")
-    return exe
-
-
 def _is_revenuechaser(port: int) -> bool:
     """True when the program listening on ``port`` is a RevenueChaser dashboard.
 
@@ -2770,24 +2753,13 @@ def _kill_stale_server(port: int) -> None:
     A stale server keeps serving cached templates (``debug=False``), so every
     restart must clear it first. It only ever kills a process that answers as a
     RevenueChaser dashboard (``_is_revenuechaser``); if some other program owns
-    the port it raises ``PortInUseError`` instead of killing it. Works on Windows
-    (``netstat -ano``) and macOS/Linux (``lsof -ti``) — no psutil dependency.
+    the port it raises ``PortInUseError`` instead of killing it. Reads the
+    listener from ``lsof -ti`` — no psutil dependency.
     """
     try:
-        if sys.platform == "win32":
-            out = subprocess.check_output(
-                ["netstat", "-ano", "-p", "TCP"], text=True, errors="ignore")
-            pids: set[int] = set()
-            for line in out.splitlines():
-                parts = line.split()
-                if (len(parts) >= 5 and parts[0] == "TCP"
-                        and parts[1].endswith(f":{port}")
-                        and parts[3] == "LISTENING" and parts[4].isdigit()):
-                    pids.add(int(parts[4]))
-        else:  # macOS / Linux
-            out = subprocess.check_output(
-                ["lsof", "-ti", f"tcp:{port}"], text=True, errors="ignore")
-            pids = {int(pid) for pid in out.split() if pid.isdigit()}
+        out = subprocess.check_output(
+            ["lsof", "-ti", f"tcp:{port}"], text=True, errors="ignore")
+        pids = {int(pid) for pid in out.split() if pid.isdigit()}
     except (subprocess.CalledProcessError, OSError):
         return  # no listener found (or tool missing) — nothing to do
 
@@ -2804,10 +2776,7 @@ def _kill_stale_server(port: int) -> None:
         if pid == os.getpid():
             continue  # never kill ourselves
         try:
-            if sys.platform == "win32":
-                os.kill(pid, 9)  # TerminateProcess (SIGKILL is not defined on Windows)
-            else:
-                os.kill(pid, _signal.SIGKILL)
+            os.kill(pid, _signal.SIGKILL)
             logger.info("Killed stale dashboard server PID %s (port %s)", pid, port)
         except OSError:
             pass
@@ -2823,58 +2792,8 @@ def main(port: int = 8000, open_browser: bool = True):
         print(f"\n  {exc}\n", file=sys.stderr)
         raise SystemExit(2) from exc
     if open_browser:
-        chrome = _find_chrome()
-        if chrome:
-            # Chrome --app: standalone app window (no tabs), sized to fit the
-            # DPI-aware work area so the dashboard's bottom scrollbar never
-            # lands under the taskbar. OverlayScrollbar off => horizontal
-            # scrollbars stay visible instead of auto-hiding until hover.
-            win_w, win_h = _app_window_size()
-            subprocess.Popen([chrome, f"--app=http://localhost:{port}",
-                              f"--window-size={win_w},{win_h}", "--window-position=0,0",
-                              "--disable-features=OverlayScrollbar"],
-                             stdout=subprocess.DEVNULL,
-                             stderr=subprocess.DEVNULL)
-        else:
-            webbrowser.open(f"http://localhost:{port}")
+        webbrowser.open(f"http://localhost:{port}")
     app.run(host="127.0.0.1", port=port, debug=False)
-
-
-def _app_window_size() -> tuple[int, int]:
-    """Preferred app-window size (logical px) that fits on the primary monitor.
-
-    Chrome interprets ``--window-size`` in logical (DPI-aware) pixels, so on a
-    high-DPI display (e.g. 200% = 3840x2160 physical) a hardcoded 1600x950 can
-    overflow the visible area and push the page's bottom scrollbar under the
-    taskbar. Query the DPI-aware work area (SPI_GETWORKAREA) and cap the window
-    height to stay above the taskbar. Width stays 1600 on common monitors.
-    """
-    try:
-        if sys.platform == "win32":
-            import ctypes
-            from ctypes import wintypes
-            try:
-                ctypes.windll.shcore.SetProcessDpiAwareness(1)  # system DPI aware
-            except Exception:  # pragma: no cover - older Windows
-                ctypes.windll.user32.SetProcessDPIAware()
-            rect = wintypes.RECT()
-            if ctypes.windll.user32.SystemParametersInfoW(
-                    0x0030, 0, ctypes.byref(rect), 0):  # SPI_GETWORKAREA
-                wa_w = rect.right - rect.left
-                wa_h = rect.bottom - rect.top
-                dpi = max(96, ctypes.windll.user32.GetDpiForSystem() or 96)
-                scale = dpi / 96.0
-                # work area from SystemParametersInfoW is in physical pixels for
-                # a DPI-aware process; convert to logical for --window-size.
-                log_w = int(wa_w / scale)
-                log_h = int(wa_h / scale)
-                win_w = min(1600, log_w)
-                win_h = min(950, log_h - 40)  # leave room for the title bar
-                if win_w >= 800 and win_h >= 500:
-                    return win_w, win_h
-    except Exception:  # pragma: no cover - measurement is best-effort
-        pass
-    return 1600, 950
 
 
 if __name__ == "__main__":
