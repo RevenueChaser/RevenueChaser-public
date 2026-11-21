@@ -65,7 +65,8 @@ def _count(error: str | None = None, endpoint: str = "") -> None:
     _HEALTH.call(error=error, endpoint=endpoint)
     for health in getattr(_SCOPES, "stack", ()):
         health.call(error=error, endpoint=endpoint)
-    spend.count("yfinance", calls=1, failures=1 if error is not None else 0)  # MUTANT M1 (#1277)
+    if not getattr(_OWNED, "depth", 0):
+        spend.count("yfinance", calls=1, failures=1 if error is not None else 0)
 
 
 def attempt(call, endpoint: str = "", empty=None, count: bool = True) -> tuple[Any, str | None]:
