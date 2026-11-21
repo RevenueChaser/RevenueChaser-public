@@ -127,10 +127,10 @@ def _statement_gaps(annual: list[dict], bank: bool = False) -> list[str]:
     return gaps
 
 
-#: What the Source line and the warning say for a name the fundamentals layer holds no annual year with revenue
+#: What the Source line and the warning say for a name the fundamentals layer holds no annual year for
 #: for. Yahoo used to supply those statements; since avo's decision of 10 Nov 2026 (option B) it is dropped, so
 #: such a name is stated rather than modelled on a vendor's numbers.
-NO_SEC_DATA = "No SEC data (the company facts hold no annual year with revenue), so no model was run"
+NO_SEC_DATA = "No SEC data (the company facts hold no annual year at all), so no model was run"
 
 
 def _sec_statements(ticker: str) -> tuple[list[dict] | None, dict]:
@@ -230,7 +230,7 @@ def run(ticker: str, modules: list[str] | tuple[str, ...] = ("dcf",),
 
     A Fetch makes no provider call at all since #645 (avo 10 Nov 2026, option B: Yahoo is dropped). Every figure
     is a store read: the statements from the fundamentals serving layer, the market inputs from the prices store,
-    the peers' multiples from both. A name the layer holds no annual year with revenue for gets no model and the
+    the peers' multiples from both. A name the layer holds no annual year for gets no model and the
     board says :data:`NO_SEC_DATA`.
     """
     ticker = ticker.upper()
@@ -270,7 +270,7 @@ def _run(ticker: str, modules, output: str, assumptions: dict | None, peers: lis
     warnings: list[str] = []
     if annual is None:
         # avo, 10 Nov 2026 (option B): Yahoo is dropped, so there is no second source of statements. A name the
-        # company facts hold no annual year with revenue for is stated, not modelled.
+        # company facts hold no annual year for is stated, not modelled.
         financials["statements_meta"] = {**meta, "used": "none", "sec_lacks": []}
         financials["source"] = NO_SEC_DATA + " · " + market
         warnings.append(f"{ticker}: " + NO_SEC_DATA[0].lower() + NO_SEC_DATA[1:])

@@ -104,20 +104,25 @@ def test_a_name_without_sec_statements_gets_no_model_and_says_so(no_yahoo, monke
     results = out["results"]
     assert results["modules"] == {}, "a name with no SEC annual year must get no model"
     assert results["financials"]["source"].startswith(fm.NO_SEC_DATA)
-    assert any(w.startswith("TEST: ") and "no SEC data" in w.lower() for w in results["warnings"])
+    assert any(w.startswith("TEST: ") and "no sec data" in w.lower() for w in results["warnings"])
     assert results["financials"]["statements_meta"]["used"] == "none"
     html = (tmp_path / "TEST_report.html").read_text(encoding="utf-8")
     assert fm.NO_SEC_DATA in html
 
 
-def test_a_year_without_revenue_is_not_a_base_year(no_yahoo, monkeypatch, tmp_path):
+def test_a_year_without_revenue_is_the_filers_own_year_not_a_vendors(no_yahoo, monkeypatch, tmp_path):
     """A newest year the layer serves with only balance-sheet fields was the one case where Yahoo's statements
-    took over (``_statements_choice``). It is now the no-data state, not a vendor's year."""
+    took over (``_statements_choice``). The year is the filer's own now: it is SEC data, so the board keeps it
+    and the model says what the year itself lacks, rather than a vendor filling the gap or the board claiming
+    there is no SEC data at all (``fiscal_year.anchor`` stands the newest record in when no year carries
+    revenue, so the cash and balance-sheet rules still see a year)."""
     _offline(monkeypatch, tmp_path)
     _layer(monkeypatch, [{"fiscal_year": "2025", "cash": 5.0}])
     out = fm.run("TEST", modules=["dcf"], output="none")
-    assert out["results"]["modules"] == {}
-    assert out["results"]["financials"]["source"].startswith(fm.NO_SEC_DATA)
+    results = out["results"]
+    assert not results["financials"]["source"].startswith(fm.NO_SEC_DATA), "a stored year is SEC data"
+    assert results["financials"]["source"].startswith("SEC company facts")
+    assert "no revenue" in (results["modules"]["dcf"].get("error") or ""), results["modules"]["dcf"]
 
 
 # ── the company name ──────────────────────────────────────────────────────────────────────────────────────────

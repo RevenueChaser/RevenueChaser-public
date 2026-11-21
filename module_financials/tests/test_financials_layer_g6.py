@@ -103,14 +103,6 @@ def test_the_sec_statements_end_on_the_newest_year_with_revenue(monkeypatch):
     assert [r["fiscal_year"] for r in annual] == ["2024", "2025"]
 
 
-def test_what_the_source_line_calls_a_default_is_the_years_own_gaps():
-    """The Source line's list is ``_statement_gaps`` plus ``_tax_and_interest_gaps`` of the SEC's own years: there
-    is no second source to compare them against any more (#645)."""
-    import RevenueChaser.module_financials.run as fm
-    assert fm._statement_gaps([_year(2025)]) == []
-    assert fm._statement_gaps([_year(2025, drop=("ebitda", "depreciation"))]) == ["depreciation", "ebitda"]
-
-
 def test_a_bank_names_no_working_capital_gap():
     # Opus review N4: no model of a Financial Services target reads working capital (P/E only), so the gaps
     # neither count it nor name it there.

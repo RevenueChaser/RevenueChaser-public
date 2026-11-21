@@ -229,10 +229,12 @@ def test_the_percentile_rows_carry_their_peer_count(financials):
 
 
 # ── N5: the help box names only the source a Fetch reads ───────────────────────
-def test_the_help_box_does_not_claim_sec_edgar(financials):
-    """Nothing on the Financials Fetch path reads EDGAR (module_financials, app/runners.run_quick): Yahoo only."""
+def test_the_help_box_names_no_vendor_and_no_sec_edgar(financials):
+    """Nothing on the Financials path reads a provider since #645, so the box must not promise one: not EDGAR,
+    which the board never read, and no longer Yahoo, which it read until avo's option B."""
     html = _html(financials, {})
-    assert "EDGAR" not in html and "from <b>Yahoo</b> into the store" in html
+    assert "EDGAR" not in html and "Yahoo" not in html
+    assert "no provider call at all" in html
 
 
 # ── N6: the stored comps are dated by the run that fetched the peers ────────────
@@ -280,7 +282,7 @@ def test_a_non_positive_ebitda_or_ev_has_no_ratio(financials):
 def test_without_a_stored_yield_the_rates_are_labelled_defaults(financials):
     w = run_dcf(financials)["wacc"]
     assert (w["risk_free"], w["risk_free_source"]) == (0.04, "default")
-    assert (w["equity_risk_premium"], w["cost_of_debt"], w["beta_source"]) == (0.05, 0.05, "Yahoo")
+    assert (w["equity_risk_premium"], w["cost_of_debt"], w["beta_source"]) == (0.05, 0.05, "the payload")
     html = _html(financials, {"dcf": run_dcf(financials)})
     for row in ("Risk-free rate</span><span>default 4.00%", "Equity Risk Premium</span><span>default 5.0%",
                 "Cost of Debt (Kd, before tax)</span><span>default 5.0%"):

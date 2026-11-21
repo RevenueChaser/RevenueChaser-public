@@ -107,7 +107,7 @@ def _text(result: dict) -> dict:
         "company": _esc(str(result.get("company", result.get("ticker")))),
         "ticker": _esc(str(result.get("ticker"))),
         "sector": _esc(str(result.get("sector") or "N/A")),
-        "source": _esc(str(result.get("source", "ticker_scores / yfinance"))),
+        "source": _esc(str(result.get("source", "ticker_scores"))),
     }
 
 
