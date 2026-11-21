@@ -130,20 +130,26 @@ NEAR_FILLER = "Our operations are subject to extensive regulation where we trade
 
 
 def _twenty_f_near(crossref_line: str, gap: int = 900) -> str:
-    """The same 20-F, with only ``gap`` characters of risk factors between the cross-reference and the real
-    heading. A cross-reference stands where the filer is pointing forward, which can be the tail of Item 3."""
+    """The same 20-F, with only ``gap`` characters between the cross-reference and the real heading: the filer is
+    pointing forward from the **tail** of Item 3, so what follows the cross-reference is the last of the risk
+    factors (:data:`NEAR_FILLER`, which names no item of its own) and then the real heading."""
     assert gap < sec_sections.MIN_ITEM_CHARS, "the point of this input is that the real heading is nearer"
+    assert not sec_sections._LINE_END_2.search(NEAR_FILLER[:gap]), "the filler must not name an item of its own"
     return ("Item 3. Key Information\n" + RISK + "\n" + crossref_line + "\n" + NEAR_FILLER[:gap]
             + "\nItem 4. Information on the Company\n" + ITEM_4_BODY
             + "\nItem 5. Operating and Financial Review and Prospects\n" + BODY)
 
 
 def test_ours_2_cuts_from_the_cross_reference_when_the_real_heading_is_near_as_well():
-    """Characterisation: ``ours-2`` has no guard at all here, so the distance changes nothing for it."""
+    """Characterisation: ``ours-2`` has no guard at all here, so the distance changes nothing for it. The slice
+    begins in the middle of the cross-reference's own sentence, carries the tail of Item 3 with it and swallows
+    the real heading.
+    """
     item, quality = _cut(_twenty_f_near(BARE), OURS_2)
     assert sec_sections.base(quality) == "ok", quality
-    assert "Our business faces many risks" in item
-    assert "Item 4. Information on the Company" in item
+    assert item.startswith("contains a fuller description"), "the cut began inside the cross-reference sentence"
+    assert NEAR_FILLER[:200] in item, "and carried the tail of Item 3 with it"
+    assert "Item 4. Information on the Company" in item, "and swallowed the real heading"
 
 
 def test_ours_3_passes_the_cross_reference_over_however_near_the_real_heading_stands():
@@ -155,7 +161,8 @@ def test_ours_3_passes_the_cross_reference_over_however_near_the_real_heading_st
     item, quality = _cut(_twenty_f_near(BARE), OURS_3)
     assert quality == "ok", quality
     assert item.startswith(ITEM_4_BODY[:40])
-    assert "Our business faces many risks" not in item
+    assert "contains a fuller description" not in item, "the cross-reference is not the start"
+    assert NEAR_FILLER[:200] not in item, "and the tail of Item 3 is not in the slice"
     assert "Item 4. Information on the Company" not in item
 
 
