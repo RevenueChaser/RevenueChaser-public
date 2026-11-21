@@ -48,8 +48,12 @@ OURS_1 = "ours-1"
 #: The ``sec_forms`` layer's rule (#755): the five defects of ``ours-1`` fixed, and **nothing capped**. No board
 #: reads it; moving one onto it is its own change, with the owner's before/after look at what the board shows.
 OURS_2 = "ours-2"
+#: ``ours-2`` with one start guard added (#407 case (a)): a line-start candidate is passed over when the **same**
+#: item's own heading begins a line further down, because the first one was a cross-reference. No board and no
+#: layer reads it; moving one onto it is its own change, with a re-slice and the owner's before/after look.
+OURS_3 = "ours-3"
 #: Every version this module can cut with. A new rule is a new entry, never an edit of an old one.
-VERSIONS: tuple[str, ...] = (OURS_1, OURS_2)
+VERSIONS: tuple[str, ...] = (OURS_1, OURS_2, OURS_3)
 #: What a caller gets when it names none. The boards pin this explicitly anyway, so that a later default change
 #: cannot move their text without the change being visible in their own code.
 DEFAULT_VERSION = OURS_1
@@ -629,7 +633,7 @@ def _toc_next_ours_2(text: str, m: re.Match, key: str = "10-K") -> bool:
                for n in _TOC_NEXT_2.finditer(text, m.end(), m.end() + 400))
 
 
-def _line_item_ours_2(text: str, key: str) -> tuple[int, int, bool] | None:
+def _line_item_ours_2(text: str, key: str, *, own_heading_later: bool = False) -> tuple[int, int, bool] | None:
     """``(body start, body end, a heading closed it)`` of the line-start rule, or None when it finds no body.
 
     The difference from ``ours-1``'s :func:`_line_item`: a start with no closing heading is **not** given up on.
@@ -648,6 +652,10 @@ def _line_item_ours_2(text: str, key: str) -> tuple[int, int, bool] | None:
     is genuinely short, closed the slice on the next stop instead, and called the result ``ok`` with Item 1A
     inside it. ``ours-1`` answered ``short`` on that filing. Position cannot tell a mention from a heading; the
     words around it can.
+
+    ``own_heading_later`` is :data:`OURS_3`'s one addition and is **off** for :data:`OURS_2`, whose answer may not
+    move. On, a candidate is passed over when the same item's own heading begins a line further down the document
+    (:func:`_own_heading_after`). See :func:`_slice_item_ours_3` for the filing shape that needs it.
     """
     stop_re = re.compile(STOP_PATTERNS_2[key], re.I)
     starts = list(_LINE_START_2[key].finditer(text))
@@ -657,6 +665,8 @@ def _line_item_ours_2(text: str, key: str) -> tuple[int, int, bool] | None:
         starts += list(_PART_I_ITEM_1.finditer(text))
     for m in starts:
         if _toc_next_ours_2(text, m, key) or _PAGE_NO.match(text, m.end()) or _ref_ours_2(text, m, key):
+            continue
+        if own_heading_later and _own_heading_after(text, m, key):
             continue
         own = m.group(1).lower()
         end = next((e.start() for e in _LINE_END_2.finditer(text, m.end() + MIN_ITEM_CHARS)
@@ -672,6 +682,36 @@ def _line_item_ours_2(text: str, key: str) -> tuple[int, int, bool] | None:
             end = _before_regulation(text, m.end(), end)
         return m.end(), end, closed
     return None
+
+
+def _own_heading_after(text: str, m: re.Match, key: str) -> bool:
+    """True when the item ``m`` claims to start has its **own** heading beginning a line further down ``text``.
+
+    :data:`OURS_3`'s one addition, and the narrowest statement of #407 case (a) that is still true.
+
+    The shape it answers. A 20-F's Item 3 (risk factors) carries a line that begins "Item 4. Information on the
+    Company" and goes on to point at it -- a cross-reference written as its own line, with no "see" or quote in
+    front of it, so neither :func:`_ref_ours_2` nor :func:`_words_before_ref` can see it. Every other guard passes
+    too: it is not a contents entry, no page number follows it, and the body behind it -- the rest of Item 3 plus
+    the whole of Item 4 -- is far over :data:`_BODY_MIN`. So the slice starts inside the risk factors and runs
+    through them into the real section.
+
+    **And it was labelled ``ok``**, which is the part that made it invisible. :func:`_holds_another_item` would
+    have caught any other item's heading inside the slice, but this slice holds the heading of the item it claims
+    to be -- ``_item_no(m) != own`` is false for it -- so the one check that could have said "this is the wrong
+    section" is the one check that skips it.
+
+    The test is the mirror image: a *later* line-start heading of the same number, which is not a reference and
+    not a contents entry, means the earlier candidate was the reference. Two real headings of one item do not
+    occur in a filing; a reference to one and the heading itself do, in that order. Looked for beyond
+    :data:`MIN_ITEM_CHARS` so that a run-in heading repeated in its own first sentence is not read as a second one.
+    """
+    pattern = _LINE_START_2[key]
+    own = _item_no(m)
+    return any(_item_no(later) == own
+               and not (_toc_next_ours_2(text, later, key) or _PAGE_NO.match(text, later.end())
+                        or _ref_ours_2(text, later, key))
+               for later in pattern.finditer(text, m.end() + MIN_ITEM_CHARS))
 
 
 def _holds_another_item(item: str, own: str) -> bool:
@@ -711,8 +751,10 @@ def _quality_ours_2(item: str, own: str, closed: bool, text: str = "") -> str:
     return "ok"
 
 
-def _slice_item_ours_2(text: str, form: str = "10-K") -> tuple[str | None, str]:
+def _slice_item_ours_2(text: str, form: str = "10-K", *, own_heading_later: bool = False) -> tuple[str | None, str]:
     """``(item_text, quality)``: ok / short / overrun / pointer / crossref / missing. **Never ``capped``**.
+
+    ``own_heading_later`` is :data:`OURS_3`'s, off here: see :func:`_slice_item_ours_3`.
 
     The five fixes of #755, each named after the filing it was measured on:
 
@@ -741,7 +783,7 @@ def _slice_item_ours_2(text: str, form: str = "10-K") -> tuple[str | None, str]:
     key = "20-F" if str(form).upper().startswith("20") else "10-K"
     own = "1" if key == "10-K" else "4"
 
-    line = _line_item_ours_2(text, key)
+    line = _line_item_ours_2(text, key, own_heading_later=own_heading_later)
     if line is not None:
         start, end, closed = line
         return text[start:end].strip(), _quality_ours_2(text[start:end].strip(), own, closed, text)
@@ -777,6 +819,36 @@ def _slice_item_ours_2(text: str, form: str = "10-K") -> tuple[str | None, str]:
     if best is None:
         return None, ("crossref" if _INDEXED.search(text) else "missing")
     return best, _quality_ours_2(best, own, closed, text)
+
+
+def _slice_item_ours_3(text: str, form: str = "10-K") -> tuple[str | None, str]:
+    """:data:`OURS_3`: ``ours-2`` with one start guard added, and nothing else.
+
+    **The defect, #407 case (a).** A 20-F whose Item 3 carries a line beginning "Item 4. Information on the
+    Company" -- a cross-reference written as its own line -- had that line accepted as the start of Item 4. The
+    slice then held the rest of the risk factors and the whole real Item 4, and said ``ok``. The issue of 4 Nov
+    2026 reads this as the 20-F start pattern lacking the title guard the 10-K stop has; by ``ours-2`` that part
+    of the premise is **stale**, because :data:`START_PATTERNS_2`'s 20-F branch requires the title and
+    :func:`_words_before_ref` and :func:`_ref_ours_2` throw out a reference introduced by "see", "under" or a
+    quote on either path. What is left is the shape with no such word in front of it, which no guard sees, and
+    which :func:`_holds_another_item` cannot label either because the heading inside the slice is the slice's
+    **own** item number. :func:`_own_heading_after` is that one case and is the whole of this version.
+
+    **Only the line path.** The pattern path is untouched: its 20-F start requires "information on the
+    company|group" after the number and its mentions are already filtered, so this shape does not reach it. A
+    version that changed both would be two changes measured as one.
+
+    **#407 case (b) is deliberately not in here.** A start whose body is under :data:`_BODY_MIN` is passed over
+    for a later one, which the issue reads as a tiny real Item 1 losing to a later prose mention -- and which was
+    measured on TIGO and EC as the right answer for an index block the contents check missed. Length cannot tell
+    the two apart, so (b) needs a distinguisher nobody has yet; ``rcdata/tests/test_sec_sections_407.py`` pins
+    which way it currently goes rather than guessing at one.
+
+    **No board reads this version.** Moving a pin onto it re-cuts ``chain_filings`` and restales every Relatedness
+    profile, which is a paid model run: that is its own change, with the re-slice dry run on the stored corpus and
+    the owner's before/after look (see ``module_value_chain/splitter``'s module docstring).
+    """
+    return _slice_item_ours_2(text, form, own_heading_later=True)
 
 
 # ── suspect flags (#400 10-K package WP2) ───────────────────────────────────────────────────────────────────
@@ -1764,6 +1836,12 @@ RULES: dict[str, Rule] = {
     # ``ours-2``'s AIF block is its own since #756: six start titles and ten stop titles adapted from
     # edgartools (the provenance block above it), our own section end, and a label.
     OURS_2: Rule(version=OURS_2, slice_item=_slice_item_ours_2, aif_business=_aif_business_ours_2,
+                 caps=False, aif_business_q=_aif_business_ours_2_q,
+                 item_signals=SIGNALS_OURS_2, aif_signals=AIF_SIGNALS_OURS_2),
+    # ``ours-3`` differs from ``ours-2`` in the item cutter alone, so it shares the AIF cutter, the cap answer and
+    # both signal sets rather than restating them: a version's entry says what that version does, and copying
+    # four fields that did not change would invite one of them to drift from the rule it names.
+    OURS_3: Rule(version=OURS_3, slice_item=_slice_item_ours_3, aif_business=_aif_business_ours_2,
                  caps=False, aif_business_q=_aif_business_ours_2_q,
                  item_signals=SIGNALS_OURS_2, aif_signals=AIF_SIGNALS_OURS_2),
 }
