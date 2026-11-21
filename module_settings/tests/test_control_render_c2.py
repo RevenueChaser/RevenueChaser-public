@@ -11,7 +11,8 @@ def _file(samples=None, **kw) -> dict:
           "attended": False, "checked_on": "2026-10-29", "source_as_of": "2026-10-29", "role": "first", "step": 1,
           "cadence": "daily", "providers": ("alphavantage",), "samples": samples or [], "recent": [],
           "issues_open": 0}
-    f = {"kind": "fund", "name": "fund.duckdb", "datasets": [ds], "tables": [], "storage": {}, "walked_at": None,
+    # No ``storage``: the map is the view's now, handed to ``_journey`` as its second argument (#310 N8)
+    f = {"kind": "fund", "name": "fund.duckdb", "datasets": [ds], "tables": [], "walked_at": None,
          "roots": {"raw": "/hdd/raw", "parquet": "/hdd/parquet", "ssd": "/ssd/live"}, "path": "/ssd/live/fund.duckdb",
          "bytes": 1000, "color": "#123456"}
     f.update(kw)
@@ -77,7 +78,7 @@ def _two_steps() -> dict:
 
 def test_the_journey_has_four_columns_the_last_the_boards_and_their_files():
     # avo, 10 Nov 2026: the board column is back, each board with the file it writes
-    html = control_render._journey(_two_steps())
+    html = control_render._journey(_two_steps(), {})
     assert len(re.findall(r"<col\b", html)) == 4
     assert len(re.findall(r"<th\b", re.search(r"<thead>.*?</thead>", html).group(0))) == 4
     assert 'class="bdh"' in html and '<td class="bdc"' in html and 'class="btree"' in html
@@ -85,7 +86,7 @@ def test_the_journey_has_four_columns_the_last_the_boards_and_their_files():
 
 
 def test_a_step_row_has_its_parts_in_order_with_the_cadence_last():
-    html = control_render._journey(_two_steps())
+    html = control_render._journey(_two_steps(), {})
     row = re.search(r'<tr class="jr"[^>]*data-ds="alphavantage/listing_status"[^>]*>(.*?)</tr>', html).group(1)
     cell = re.search(r'<td class="js">(.*?)</td>', row).group(1)
     order = [cell.index(x) for x in ('class="jcar"', 'class="stn"', "Listing status of every US name, active and "
@@ -96,7 +97,7 @@ def test_a_step_row_has_its_parts_in_order_with_the_cadence_last():
 
 
 def test_a_build_row_has_from_chips_with_full_names():
-    html = control_render._journey(_two_steps())
+    html = control_render._journey(_two_steps(), {})
     row = re.search(r'<tr class="jr"[^>]*data-ds="spine/security"[^>]*>(.*?)</tr>', html).group(1)
     assert ('<span class="chip" data-card="alphavantage/listing_status"><span class="cn">1</span>'
             '<span class="t">alphavantage/listing_status</span></span>') in row
@@ -105,7 +106,7 @@ def test_a_build_row_has_from_chips_with_full_names():
 
 
 def test_the_heads_carry_the_roots_and_the_rootline_is_gone():
-    html = control_render._journey(_two_steps())
+    html = control_render._journey(_two_steps(), {})
     head = re.search(r"<thead>.*?</thead>", html).group(0)
     # avo, 10 Nov 2026: each root folds to a folder mark that opens sideways
     assert re.search(r'📄 HDD raw <details class="pf">.*<code class="p">/hdd/raw</code></details> · 📦 Parquet '
@@ -117,7 +118,7 @@ def test_the_heads_carry_the_roots_and_the_rootline_is_gone():
 
 
 def test_the_removed_sentences_are_gone():
-    html = control_render._journey(_two_steps())
+    html = control_render._journey(_two_steps(), {})
     assert "the file is one piece" not in html
     assert "press a name to pick the table" not in html
 
