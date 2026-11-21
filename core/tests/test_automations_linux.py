@@ -96,9 +96,13 @@ def test_a_failed_reinstall_puts_the_working_pair_back(tmp_path):
     assert not any((tmp_path / "units").glob(f"{name}.*"))
     _linux(tmp_path, FakeSystemctl()).install(A.entry(name))
     service, timer = _unit(tmp_path, name, "service"), _unit(tmp_path, name, "timer")
+    sc = FailOn("enable")
     with pytest.raises(A.AutomationError):
-        _linux(tmp_path, FailOn("enable")).install(A.entry(name))
+        _linux(tmp_path, sc).install(A.entry(name))
     assert _unit(tmp_path, name, "service") == service and _unit(tmp_path, name, "timer") == timer
+    # The other half of #191 item 2: the wants symlink of a pair this call did not create is not this call's to
+    # take away -- only an install that made the pair disables it again.
+    assert not any(c[0] == "disable" for c in sc.calls)
 
 
 def test_a_rolled_back_first_install_leaves_no_enabled_timer(tmp_path):
@@ -116,16 +120,6 @@ def test_a_rolled_back_first_install_leaves_no_enabled_timer(tmp_path):
     assert not any((tmp_path / "units").glob("RC-Relatedness-OffPeak.*"))
 
 
-def test_a_rolled_back_reinstall_does_not_disable_the_working_timer(tmp_path):
-    """The other half of item 2: the symlink of a pair this call did not create is not this call's to take away."""
-    name = "RC-Relatedness-OffPeak"
-    _linux(tmp_path, FakeSystemctl()).install(A.entry(name))
-    sc = FailOn("enable")
-    with pytest.raises(A.AutomationError):
-        _linux(tmp_path, sc).install(A.entry(name))
-    assert not any(c[0] == "disable" for c in sc.calls)
-
-
 def test_the_timer_carries_the_zone_the_service_carries(tmp_path, monkeypatch):
     """#191 item 4: ``TZ`` goes into the service, but a bare ``OnCalendar=`` fires in the user manager's zone."""
     monkeypatch.setenv("TZ", "Europe/Amsterdam")
@@ -135,11 +129,8 @@ def test_the_timer_carries_the_zone_the_service_carries(tmp_path, monkeypatch):
     assert f"OnCalendar={A.on_calendar(e)} Europe/Amsterdam" in timer
     # The Control board reads the minute out of ``on_calendar``, so that one stays zone-free.
     assert A.on_calendar(e).split()[-1].count(":") == 2
-
-
-def test_a_zone_that_is_not_one_word_is_left_off(tmp_path, monkeypatch):
+    # A value that is not one zone word is left off rather than written into the unit file.
     monkeypatch.setenv("TZ", "Europe/Amsterdam extra")
-    e = A.entry("RC-Relatedness-OffPeak")
     _linux(tmp_path, FakeSystemctl()).install(e)
     assert f"OnCalendar={A.on_calendar(e)}\n" in _unit(tmp_path, e.unit, "timer")
 
@@ -263,9 +254,11 @@ def linux_host(monkeypatch):
     monkeypatch.delenv("RC_SCHEDULER", raising=False)
 
 
-def test_linux_gets_the_systemd_backend_only_when_asked_for(linux_host, monkeypatch):
+def test_linux_gets_the_systemd_backend_only_when_asked_for(linux_host, monkeypatch, caplog):
     """Opt-in: a server that already runs these jobs as system timers must not be offered a second schedule."""
-    assert isinstance(A.get_scheduler(), A.UnavailableScheduler)
+    with caplog.at_level("WARNING", logger=A.logger.name):
+        assert isinstance(A.get_scheduler(), A.UnavailableScheduler)
+    assert caplog.text == ""              # asking for nothing is the default, not a mistake to warn about
     A.set_scheduler(None)
     monkeypatch.setenv("RC_SCHEDULER", "systemd-user")
     assert isinstance(A.get_scheduler(), A.LinuxScheduler)
@@ -283,12 +276,6 @@ def test_an_unknown_scheduler_choice_says_so(linux_host, monkeypatch, caplog, va
     with caplog.at_level("WARNING", logger=A.logger.name):
         assert isinstance(A.get_scheduler(), A.UnavailableScheduler)
     assert value in caplog.text and "systemd-user" in caplog.text
-
-
-def test_no_warning_when_no_scheduler_was_asked_for(linux_host, caplog):
-    with caplog.at_level("WARNING", logger=A.logger.name):
-        assert isinstance(A.get_scheduler(), A.UnavailableScheduler)
-    assert caplog.text == ""
 
 
 def test_asking_for_systemd_without_systemctl_says_so(linux_host, monkeypatch, caplog):
