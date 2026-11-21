@@ -1085,6 +1085,62 @@ def static_rows() -> list[dict]:
     return [static_row(e) for e in REGISTRY]
 
 
+# --- the Stop a row offers (#165, avo's decision (a), 20 Nov 2026) --------------------
+#
+# The only stop is the **cooperative** cancel that already exists: ``POST /api/job/<id>/cancel`` over
+# ``app.jobs.cancel`` and ``core.job_control.StopToken`` (#243, PL4). A queued job ends ``cancelled`` at once, a
+# running one at its runner's next checkpoint, never mid-write; a running job whose runner has no checkpoint
+# refuses. So nothing is added to ``ACTIONS``, ``Scheduler`` gains no ``stop``, and no privileged verb exists:
+# option (c), a real kill of an OS-started run, was declined and is not a follow-up. What is served here is the
+# answer to one question per row -- is there something to stop, and which job id stops it, or why is there none.
+
+#: Which dashboard job each task that does **not** name its board posts. The board rows are read off their own
+#: ``args`` (``scripts.board_fetch <board>`` -> ``board_fetch.ROUTES``), so a new board row needs no entry here.
+_QUEUED_JOB_MODULES: dict[str, tuple[str, ...]] = {
+    # Both say so in their own description: the task posts the run to the dashboard, the one writer, and waits.
+    "RC-ValueChain-Sync": ("module_value_chain",),
+    "RC-SPX-Gamma-Fetch": ("spxgamma",),
+}
+
+STOP_NOT_DASHBOARD = ("This job runs in a process of its own, started by the server's timer, so the dashboard "
+                      "has nothing to stop. It ends at its unit's time limit.")
+STOP_NOT_RUNNING = "No run of this job is queued or running in the dashboard now."
+STOP_NO_CHECKPOINT = ("The run has started and this job has no checkpoint to stop at, so it is left to finish: "
+                      "stopping it would leave a half-written store.")
+
+
+def dashboard_job_modules(e: AutomationEntry) -> tuple[str, ...]:
+    """The dashboard job a task queues, read off the task's own command, or ``()`` when it writes by itself.
+
+    A ``scripts.board_fetch <board>`` task posts ``/run/<route>`` and polls the job (board_fetch's module
+    docstring), and a dashboard job route carries its module's own name, so the route **is** the module.
+    """
+    if len(e.args) == 3 and e.args[1] == "RevenueChaser.scripts.board_fetch":
+        from RevenueChaser.scripts.board_fetch import ROUTES    # lazy: core must not import scripts on import
+        route = ROUTES.get(e.args[2])
+        return (route,) if route else ()
+    return _QUEUED_JOB_MODULES.get(e.name, ())
+
+
+def stop_state(e: AutomationEntry, job: dict | None) -> dict:
+    """Whether this row has a Stop, and what it stops. ``job`` is the queued/running dashboard job, if any.
+
+    Pure, so ``core`` keeps knowing nothing about ``app.jobs``: the caller looks the job up and passes its view
+    (``app.jobs.active_job``). The answer mirrors ``app.jobs.cancel`` exactly, so the panel never offers a button
+    that the cancel route would answer 409 to.
+    """
+    none = {"can_stop": False, "job_id": None, "cancel_url": None, "reason": STOP_NOT_DASHBOARD}
+    if not dashboard_job_modules(e):
+        return none
+    if job is None or job.get("status") not in ("queued", "running"):
+        return {**none, "reason": STOP_NOT_RUNNING}
+    if job["status"] == "running" and not job.get("cancellable"):
+        return {**none, "job_id": job["id"], "reason": STOP_NO_CHECKPOINT}
+    return {"can_stop": True, "job_id": job["id"], "cancel_url": f"/api/job/{job['id']}/cancel",
+            "reason": ("Stops the run the dashboard is doing for this task: a queued one at once, a started one "
+                       "at its next checkpoint. Nothing is interrupted mid-write.")}
+
+
 def map_result(code: int | None) -> tuple[str, str]:
     """``(kind, text)``: ok | neutral | running | red | none."""
     if code is None:
@@ -1141,11 +1197,19 @@ def _age(iso: str | None, now: datetime) -> str:
     return f"{secs // 86400} d ago"
 
 
-def live_row(e: AutomationEntry, sched: Scheduler, now: datetime | None = None, system=None) -> dict:
+def live_row(e: AutomationEntry, sched: Scheduler, now: datetime | None = None, system=None,
+             active_job: Callable[[tuple[str, ...]], dict | None] | None = None) -> dict:
     """``system`` reads the server's own timer when no scheduler is connected (default ``system_status``); a row
-    it answers is ``managed: "system"``: its state, last and next run are real, and the panel offers no button."""
+    it answers is ``managed: "system"``: its state, last and next run are real, and the panel offers no button.
+
+    ``active_job`` looks a queued or running dashboard job up by the modules the task queues (#165); without it
+    every row's ``stop`` is the reason it has none, which is what a caller with no job queue should see.
+    """
     now = now or datetime.now(timezone.utc)
     row = static_row(e)
+    modules = dashboard_job_modules(e)
+    job = active_job(modules) if (active_job and modules) else None
+    row["stop"] = stop_state(e, job)
     managed = None
     try:
         st = sched.status(e.name) if sched.available else (system or system_status)(e)
@@ -1184,10 +1248,11 @@ def live_row(e: AutomationEntry, sched: Scheduler, now: datetime | None = None, 
     return row
 
 
-def live_state(sched: Scheduler | None = None, now: datetime | None = None, system=None) -> dict:
+def live_state(sched: Scheduler | None = None, now: datetime | None = None, system=None,
+               active_job: Callable[[tuple[str, ...]], dict | None] | None = None) -> dict:
     """``available`` is False only when nothing could be read: no scheduler and no server timer for any row."""
     sched = sched or get_scheduler()
-    rows = [live_row(e, sched, now, system) for e in REGISTRY]
+    rows = [live_row(e, sched, now, system, active_job) for e in REGISTRY]
     served = any(r.get("managed") for r in rows)
     for r in rows:
         if served and r["state"] == "unavailable":

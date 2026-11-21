@@ -1354,7 +1354,9 @@ def api_automations():
     from RevenueChaser.core import automations
 
     try:
-        return jsonify({"ok": True, **automations.live_state()})
+        # ``active_job`` is what gives a row its Stop (#165): the dashboard job this task queues, if one is queued
+        # or running. The Stop itself is the cancel route that already exists, so no action is added here.
+        return jsonify({"ok": True, **automations.live_state(active_job=jobs.active_job)})
     except automations.AutomationError as exc:
         return jsonify({"ok": False, "error": str(exc)}), exc.http_status
 

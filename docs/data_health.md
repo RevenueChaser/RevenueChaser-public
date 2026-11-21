@@ -675,6 +675,14 @@ for Task Scheduler; the Linux backend maps the ones systemd has).
   `GET /api/automations` on load, after an action and while a row runs.
   `POST /api/automations/<name>/<action>` takes a registry name and no other argument, and needs the
   header `X-RC-Panel: automations` exactly. Refresh of this board never calls the scheduler.
+- **Stop (#165).** Each row carries a `stop` object: `can_stop`, `job_id`, `cancel_url`, `reason`. The only
+  stop is the cooperative cancel that already exists (`POST /api/job/<id>/cancel`, #243): where the task queues
+  its run in the dashboard (`scripts/board_fetch.py`, the Value Chain and SPX Gamma nights), the row names that
+  job's id while it is queued or running, and `cancel_url` is that route. A queued job stops at once, a started
+  one at its next checkpoint, never mid-write; a started job whose runner has no checkpoint is left to finish and
+  the row says so, because the cancel route would refuse it anyway. A job the server's timer runs in a process of
+  its own has **no** stop and the row says why (avo's decision, 20 Nov 2026): there is no `stop` action, no
+  `Scheduler.stop` and no privileged verb, so nothing here can land in the middle of a DuckDB write.
 - **Row state.** Not installed, disabled, enabled or running; the last result mapped (nought is ok,
   "not run yet" is neutral, running is running, anything else is red); next run, missed runs, and the
   age of the last success read from the task's log.
