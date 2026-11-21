@@ -53,8 +53,8 @@ import duckdb
 #: The served tables a build on the live copy keeps as they are.
 KEPT = ("wrds_price_diff",)
 #: The issue kinds found only among the rebuilt rows (each needs the WRDS history staged).
-WINDOWED_ISSUES = ("alpaca_close_differs", "split_only_crsp", "split_applied_crsp", "price_gap_no_action",
-                   "price_gap_warrant")
+WINDOWED_ISSUES = ("alpaca_close_differs", "split_only_crsp", "split_applied_crsp", "split_crsp_restated",
+                   "price_gap_no_action", "price_gap_warrant")
 #: The suffix of the whole-history view of a WRDS staging table on a build on the live copy.
 WHOLE = "_whole"
 #: The day that means "the whole history" in ``_dirty_sec``.
@@ -315,6 +315,7 @@ def scope(ctx: Any, con: duckdb.DuckDBPyConnection, rebuild_shares) -> Scope:
         words.append(f"{later} more from their own day (covers, Alpaca actions)")
     result = Scope(since=since, by_security=dict(by), words=words, margin={"split_only_crsp": s.NEAR_SPLIT_DAYS,
                                                                      "split_applied_crsp": s.NEAR_SPLIT_DAYS,
+                                                                     "split_crsp_restated": s.NEAR_SPLIT_DAYS,
                                                                      "price_gap_no_action": s.SPLIT_SAME_DAYS,
                                                                      "price_gap_warrant": s.SPLIT_SAME_DAYS})
     restrict(con, result)
