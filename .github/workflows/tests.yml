@@ -48,6 +48,7 @@ on:
       - "docs/data_retrieval.md"
       - "docs/earnings-radar/00_overview.md"
       - "docs/earnings-radar/redesign.md"
+      - "docs/v2/door.md"
       - "module_spx_gamma/tests/golden/position_map.base.md"
       - ".github/**"
   push:
@@ -62,6 +63,7 @@ on:
       - "docs/data_retrieval.md"
       - "docs/earnings-radar/00_overview.md"
       - "docs/earnings-radar/redesign.md"
+      - "docs/v2/door.md"
       - "module_spx_gamma/tests/golden/position_map.base.md"
       - ".github/**"
   workflow_dispatch:

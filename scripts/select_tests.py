@@ -91,6 +91,10 @@ E2E_BY_BOARD: dict[str, tuple[str, ...]] = {
 # The shell every board sits in (phone layout, panel header, Settings' row per board, screenshots).
 E2E_ALWAYS = ("test_phone_shell.py", "test_panel_header_231.py",
               "test_board_settings.py", "test_screenshots.py")
+# The v2 door's own e2e file (run plan step 6). It belongs to no board and to no part of the old shell: it starts
+# the door itself and reads envelope files, so what selects it is the import graph (a change under ``v2/door/``
+# reaches it), not this table. It is named here only so the "every e2e file has a place" check stays true.
+E2E_V2 = ("test_v2_door.py",)
 # The harness's own tests: a harness change is under module_testing/, which runs every e2e test anyway.
 E2E_HARNESS = ("test_cdp_browser.py", "test_chrome_timeout.py", "test_harness_env.py", "test_harness_parallel.py",
                "test_harness_yfinance.py", "test_settings_control.py", "test_settings_newdata.py")

@@ -372,7 +372,8 @@ def test_every_board_folder_and_every_e2e_file_has_its_place_in_the_board_table(
     boards = {p.name for p in _REPO.glob("module_*") if p.is_dir()} - {"module_testing", "module_settings"}
     assert boards == set(mod.E2E_BY_BOARD), "a board folder needs a row in select_tests.E2E_BY_BOARD"
     e2e = {Path(t).name for t in mod.all_tests(_REPO) if t.startswith(mod.E2E_DIR)}
-    placed = set(mod.E2E_ALWAYS) | set(mod.E2E_HARNESS) | {n for row in mod.E2E_BY_BOARD.values() for n in row}
+    placed = (set(mod.E2E_ALWAYS) | set(mod.E2E_HARNESS) | set(mod.E2E_V2)
+              | {n for row in mod.E2E_BY_BOARD.values() for n in row})
     assert e2e == placed, f"missing: {sorted(e2e - placed)}; gone: {sorted(placed - e2e)}"
 
 

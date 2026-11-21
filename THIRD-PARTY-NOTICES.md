@@ -34,6 +34,19 @@ v2 runs on a tailnet with no guaranteed outbound internet.
 The packages in `requirements.txt` are installed from PyPI, not vendored here.
 Each keeps its own licence; none is redistributed by this repository.
 
+The **v2 door** has a second, smaller list, `v2/door/requirements.txt`, and it is
+the only one its container image installs (`v2/door/Dockerfile`). Every package
+on it is inside the `v2/README.md` decision 1 allowlist:
+
+| Package | Licence | In the image because |
+|---|---|---|
+| [fastapi](https://github.com/fastapi/fastapi) | MIT | the door's `/api/v1` |
+| [pydantic](https://github.com/pydantic/pydantic) | MIT | FastAPI's own dependency |
+| [starlette](https://github.com/encode/starlette) | BSD-3-Clause | FastAPI's own dependency; the Host allowlist and the static mount |
+| [uvicorn](https://github.com/encode/uvicorn) | BSD-3-Clause | the server that runs it |
+| [python-dotenv](https://github.com/theskumar/python-dotenv) | BSD-3-Clause | `core/config.py` reads `.env` through it |
+| [redis](https://github.com/redis/redis-py) | MIT | the health probe, and the write side of step 7 |
+
 ## Data sources
 
 This repository contains **code only**. It ships no market data, and the

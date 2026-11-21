@@ -191,6 +191,7 @@ _MARKDOWN_READ_BY_TESTS = (
     "docs/data_retrieval.md",          # test_doc_constants.py:56
     "docs/earnings-radar/00_overview.md",       # module_earnings_radar/tests/test_confidence_wording_df06.py:62
     "docs/earnings-radar/redesign.md",          # module_earnings_radar/tests/test_cleanup_199.py:13-15
+    "docs/v2/door.md",                          # v2/tests/test_door_deployment.py (the port and the probe budget)
     "module_spx_gamma/tests/golden/position_map.base.md",   # module_spx_gamma/tests/test_autoescape_175.py:106
 )
 
