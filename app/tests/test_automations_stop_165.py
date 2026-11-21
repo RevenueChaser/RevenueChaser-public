@@ -37,7 +37,7 @@ def test_each_row_says_whether_it_has_a_stop_and_no_stop_action_was_added(client
     # The stop is the cancel route, so the action route gained nothing. Asserted here rather than on its own:
     # alone it would pass on the merge-base and prove nothing (``scripts/red_on_base.py``).
     r = client.post("/api/automations/RC-ValueChain-Sync/stop", headers={"X-RC-Panel": "automations"})
-    assert r.status_code == 400 and fake.calls == []
+    assert r.status_code == 400 and fake.mutations == []
 
 
 def test_a_queued_job_shows_on_its_row_and_that_id_is_the_one_the_cancel_route_stops(client, fake, monkeypatch):
@@ -79,4 +79,6 @@ def test_a_get_of_the_rows_starts_and_cancels_nothing(client, fake, monkeypatch)
     monkeypatch.setattr(jobs, "submit", lambda *a, **k: started.append(a))
     monkeypatch.setattr(jobs, "cancel", lambda *a, **k: started.append(a))
     client.get("/api/automations")
-    assert started == [] and fake.mutations == [] and fake.calls == []
+    assert started == [] and fake.mutations == []
+    # Reading each row's state is the one thing a GET may do; nothing else was asked of the scheduler.
+    assert {c[0] for c in fake.calls} == {"status"}
