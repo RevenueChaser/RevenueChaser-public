@@ -1658,11 +1658,16 @@ universe, so no delisted name is in it and the earlier narrow fallback — a del
 its `stkdelists` delisting bar, and the whole history of a security Compustat never priced — has no name left to
 serve. `crsp_a_stock.stkdelists` is still fetched and nothing in the serving build reads it, and
 `wrds_price_diff`'s `crsp_delisting_returns` row is gone with it. CRSP is the cross-check: of every Compustat close (`crsp_vs_compustat`) and
-of the splits (`CRSP_SPLITS`, `dlycumfacpr` steps): one no Compustat or Alpaca split is within 3 days of is applied
-nowhere and is a `split_only_crsp` issue, and the gap it explains is no `price_gap_no_action` (Order 4: 1,167 such
+of the splits (`CRSP_SPLITS`, `dlycumfacpr` steps): one no Compustat or Alpaca split is within 3 days of is a
+`split_only_crsp` issue, and the gap it explains is no `price_gap_no_action` (Order 4: 1,167 such
 issues on homesrv, 22 Tier A; Compustat's `ajexdi` now carries most of those splits). Because it stands in for the gap,
-the issue names the served close's move across its ex-date, and a jump of 1.9 times or more says *Compustat lacks
-this split* (the served history is wrong there); the build note `split_only_crsp: ...` counts those first. A CRSP
+the issue is decided by the served close's move across its ex-date: a jump of 1.9 times or more says *Compustat lacks
+this split* and the served history is wrong there, so **that split alone is applied, from CRSP, as source
+`wrds/crsp`** — the one exception to "CRSP serves nothing" (avo, 21 Nov 2026 on #661; measured on the live file that
+day: 80 of 691, e.g. TNXP's 27 Nov 2018 close served as 0.4156 where its 1:10 reverse split makes it 4.1560). One the
+served close does not jump across is a CRSP factor step the served bars do not show (611 of the 691): named only,
+never applied, because applying it would move a history that is already right. The build note
+`split_only_crsp: N applied as wrds/crsp ..., M named with no jump ...` carries both counts. A CRSP
 split with no served bar of the security on both sides within 7 days touches no served bar: counted in the note, not
 named (review M6 of #382: build 4 named 1,056 with no way to tell the two apart). **Alpaca is the tester**: its
 bars write `alpaca_close_differs` and `adjustment_differs` issues, compared in every serving build, so a session is
@@ -1760,7 +1765,7 @@ applied on read.
 | Table | Rows |
 |---|---|
 | `price_bar_daily` | one nominal bar per security and session (key `security_id`, `session_date`): Compustat's (only USD rows), never CRSP's and never Alpaca's, and the S&P 500 level from the market store's Cboe Parquet (`index:SPX`); `shares_outstanding` is a WRDS bar's own (`cshoc`) |
-| `corporate_action` | Alpaca's actions of the store's securities (resolved to the security that traded under the action's symbol nearest its date, else the spine's ticker) and Compustat's splits (`comp.sec_split`, else an `ajexdi` change) and dividends (the `comp.secd` row's, else `comp.sec_divid`'s) where Alpaca has none of that kind that day; CRSP's `dlycumfacpr` splits are a cross-check, never applied; `ratio` new over old shares, `amount` per share, `applied` and `not_applied_why` |
+| `corporate_action` | Alpaca's actions of the store's securities (resolved to the security that traded under the action's symbol nearest its date, else the spine's ticker) and Compustat's splits (`comp.sec_split`, else an `ajexdi` change) and dividends (the `comp.secd` row's, else `comp.sec_divid`'s) where Alpaca has none of that kind that day; CRSP's `dlycumfacpr` splits are a cross-check and are applied, as source `wrds/crsp`, only where neither source has the split and the served close jumps 1.9 times or more across it (#661); `ratio` new over old shares, `amount` per share, `applied` and `not_applied_why` |
 | `adj_factor` | per security, the periods between two ex-dates and their `split_factor` (the product of `1 / ratio` of every later split and stock dividend) and `tr_factor` (that, times `1 - amount / close before the ex-date` of every later cash dividend, the close at most 7 days before) |
 | `shares_class` | `outstanding` per class from the SEC covers (an unlisted class keyed `class:<CIK>:<member>`, and so is an ADR issuer's count of ordinary shares) and, for a single-class issuer, every past cover's count from its company facts (source `sec/companyfacts`), `float` from Yahoo and from UW |
 | `security_symbol` | the symbols a security traded under and when |
@@ -1802,8 +1807,11 @@ key: the ticker), `universe_etf_ticker_shared` (more than one recent Compustat s
 fund's ticker: one is stored, the one priced most recently, then the larger dollar volume; key: the ticker),
 `price_gap_no_action` (the split-adjusted close moved by 1.9 times or more, either way, within 7
 days, with no split; `price_gap_warrant` when the spine types the security a warrant or a unit), `split_only_crsp` (a split CRSP's `dlycumfacpr` records and no Compustat or Alpaca split is
-within 3 days of, between two served bars at most 7 days apart: not applied; the detail names the served close's
-move across it; key security:session), `adjustment_differs` (the store's total-return day return more than 1 bp from Alpaca's own, or
+within 3 days of, between two served bars at most 7 days apart, **and the served close does not jump across it**: a
+CRSP factor step the served bars do not show, named and never applied; key security:session), `split_applied_crsp`
+(the same candidate where the served close **does** jump 1.9 times or more across it: Compustat lacks the split and
+the served history was wrong there, so it is applied from CRSP as source `wrds/crsp` -- the one CRSP row that is
+served -- and stays named so the exception is visible; key security:session; #661, avo 21 Nov 2026), `adjustment_differs` (the store's total-return day return more than 1 bp from Alpaca's own, or
 more than half a cent on each of Alpaca's cent-rounded adjusted closes, the exact bound, where that is larger: about
 1.5 bp at $70, 5 bp at $20, 50 bp at $2, so below a few dollars of adjusted close a dividend-sized gap hides in it;
 checked on every served bar Alpaca, the tester, has a bar for), `alpaca_close_differs` (the tester: a Compustat or CRSP

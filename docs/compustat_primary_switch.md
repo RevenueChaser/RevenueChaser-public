@@ -108,7 +108,8 @@ ver" (the "4" is decision 7 below).
 7. **The CRSP-only securities: CRSP serves nothing** (avo, 4 Nov 2026, replacing his earlier "4 CRSP ver"). No
    CRSP row is a served bar, whatever Compustat has: CRSP stays the cross-check of Compustat's closes
    (`crsp_vs_compustat`), of its own day returns (`crsp_returns`) and of its splits (`CRSP_SPLITS`, the
-   `split_only_crsp` issue), and no CRSP split is ever applied. A security Compustat never priced therefore has no
+   `split_only_crsp` issue). A CRSP split is applied only where the served close jumps 1.9 times or more across it,
+   as source `wrds/crsp` (avo, 21 Nov 2026 on #661); every other CRSP split is named, never applied. A security Compustat never priced therefore has no
    bar; where it is also outside today's universe it is in no table at all. The `crsp_unadjusted` helper table and
    the adjusted view's rule that hung on it are gone with the served CRSP bars.
 8. **The funds N-CEN gives no AUM (GLD, SLV, IBIT): decided, their volume from raw Compustat** (avo, 5 Nov 2026

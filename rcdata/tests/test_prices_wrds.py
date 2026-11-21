@@ -489,7 +489,8 @@ def test_crsp_serves_no_bar_even_for_a_security_compustat_never_priced(monkeypat
     """avo, 4 Nov 2026 (replacing decision 7 of the 3 Nov switch plan): **CRSP serves no bar at all**; it is the
     cross-check only. FLG (spine: FIGI, no gvkey, no CUSIP) and BRK-B (a gvkey:iid Compustat does not price here)
     are CRSP's alone, so they have no bar in the store; GAPX keeps its one Compustat bar. CRSP's own dlycumfacpr
-    split is never applied, and the CRSP rows are still staged, so the difference report and the ticker-link issues
+    split is no row of its own (Compustat has it too; #661 serves only a CRSP split no other source has and
+    the served close jumps across), and the CRSP rows are still staged, so the difference report and the ticker-link issues
     are as before."""
     data = _data()
     data["crsp.dsf_v2"] += [{**r, "permno": "66666", "hdrcusip": "45454545", "cusip": "45454545", "ticker": "GAPX"}
@@ -515,8 +516,8 @@ def test_crsp_serves_no_bar_even_for_a_security_compustat_never_priced(monkeypat
     assert counts.get("FLG", 0) == 0 and counts.get("BRK-B", 0) == 0, "CRSP's alone: no bar in the store"
     assert counts["GAPX"] == 1 and counts["AAPL"] == len(JUNE)
     assert not _q("SELECT 1 FROM corporate_action WHERE source = ? AND applied", [wrds_history.NAME + ""]) or True
-    assert not _q("SELECT 1 FROM corporate_action WHERE source_id LIKE 'wrds:crspsplit:%' AND applied"), \
-        "no CRSP split is ever applied"
+    assert not _q("SELECT 1 FROM corporate_action WHERE source_id LIKE 'wrds:crspsplit:%'"), \
+        "a CRSP split Compustat also has is no row of its own (#661 serves only the ones Compustat lacks)"
     links = {i["key"]: i["detail"] for i in ops.open_issues(prices_serving.NAME, limit=500)[1]
              if i["kind"] == "crsp_ticker_link"}
     assert set(links) == {flg, "cik:4000001:GAPX", "072726:02"}, links      # BRK-B: the spine holds no CUSIP

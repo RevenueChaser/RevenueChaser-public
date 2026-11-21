@@ -64,7 +64,8 @@ def december_split(fake, monkeypatch):
     _serve()
     monkeypatch.delenv(dirty.WHOLE_ENV)
     assert "built on the live file" in _note(_serve())
-    assert ("split_only_crsp", "001690:01:2024-12-23") in _snapshot()["open issues"]
+    # The served closes jump across it (100.0 -> 50.0), so it is applied from CRSP and named as such (#661).
+    assert ("split_applied_crsp", "001690:01:2024-12-23") in _snapshot()["open issues"]
     return fake
 
 
@@ -231,7 +232,7 @@ def test_an_alpaca_split_days_after_a_crsp_one_resolves_its_issue(no_split, monk
     """Review S6: CRSP's split of AAPL is the cross-check's only one until Alpaca's split two days later; that
     rebuilds AAPL from its own ex-date, but the CRSP split it explains lies before it."""
     from RevenueChaser.rcdata.build.prices import actions
-    crsp = [k for kind, k in _snapshot()["open issues"] if kind == "split_only_crsp"]
+    crsp = [k for kind, k in _snapshot()["open issues"] if kind in ("split_only_crsp", "split_applied_crsp")]
     assert crsp, "the fixture has a CRSP-only split"
     day = date.fromisoformat(crsp[0].rsplit(":", 1)[1])
     template = stage.read_rows(actions.partition_path(2026))[0]

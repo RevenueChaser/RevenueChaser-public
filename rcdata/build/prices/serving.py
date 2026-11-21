@@ -153,9 +153,15 @@ ISSUE_KINDS = {
                           "gaps of shares stand alone; nothing is dropped (key: security:session; prices plan 16 Nov "
                           "2026 decision C)"),
     "split_only_crsp": ("CRSP's dlycumfacpr records a split no Compustat or Alpaca split is within SPLIT_SAME_DAYS of, "
-                        "between two served bars at most GAP_DAYS apart; not applied, the cross-check of Compustat's "
-                        "splits. The detail names the served close's move across it: a jump of GAP_FACTOR or more is "
-                        "a split Compustat lacks (key: security:session; review M6 of #382)"),
+                        "between two served bars at most GAP_DAYS apart, **and the served close does not jump across "
+                        "it**: a CRSP factor step the served bars do not show, named as the cross-check of "
+                        "Compustat's splits and never applied. One the served close jumps GAP_FACTOR or more across "
+                        "is a split Compustat lacks and is applied instead of named, as source wrds/crsp "
+                        "(key: security:session; review M6 of #382, avo 21 Nov 2026 on #661)"),
+    "split_applied_crsp": ("a ``split_only_crsp`` candidate the served close jumps GAP_FACTOR or more across, so "
+                           "Compustat lacks the split and the served history was wrong there: it is **applied** "
+                           "from CRSP as source wrds/crsp, the one CRSP row that is served, and stays named so the "
+                           "exception is visible (key: security:session; #661, avo 21 Nov 2026)"),
     "adjustment_differs": ("a served bar's total-return day return is more than 1 bp from Alpaca's adjusted one, or "
                            "more than the rounding of its cent-rounded closes where that is larger (the tester, "
                            "key: security:session)"),
@@ -719,7 +725,8 @@ class PricesServing:
         con.execute("INSERT INTO _div_twin VALUES (?)", [twins])
         # CRSP's splits are the cross-check only (Order 4; the WRDS access inventory of 3 Nov 2026 prefers
         # Compustat's daily splits, and avo's rule of 4 Nov 2026 leaves CRSP no served bar): one no Alpaca or
-        # Compustat split of the security is near is kept aside and named, never applied.
+        # Compustat split of the security is near is kept aside; the one the served close jumps across is applied
+        # from CRSP (#661, avo 21 Nov 2026), the rest are named only.
         into = "INSERT INTO _crsp_split_near" if chunk else "CREATE OR REPLACE TEMP TABLE _crsp_split_near AS"
         con.execute(f"""{into}
             SELECT w.* FROM ({wrds_history.CRSP_SPLITS}) w
@@ -774,21 +781,38 @@ class PricesServing:
             SELECT *, close_after_split / close_before_split AS served_move FROM _crsp_split_span
             WHERE date_diff('day', day_before, day_after) <= {GAP_DAYS}""")
         jump = f"abs(ln(served_move)) >= ln({GAP_FACTOR})"
-        for sid, day, aid, ratio, move, before, after, jumps in con.execute(
-                f"SELECT security_id, ex_date, action_id, new_rate, served_move, day_before, day_after, {jump} "
-                "FROM _crsp_only_split ORDER BY 1, 2").fetchall():
-            served = (f"the served close jumps x{move:.3f} from {before} to {after}: Compustat lacks this split"
-                      if jumps else f"the served close moves x{move:.3f} from {before} to {after}, no jump in the "
-                      "served bars")
+        # avo's decision of 21 Nov 2026 (#661): a CRSP-only split the served close jumps GAP_FACTOR or more across
+        # is a split Compustat lacks, and the served history is wrong there, so that row **is served** -- the one
+        # exception to "no CRSP row is served" (avo, 4 Nov 2026). Measured on the live file that day: 80 such days,
+        # e.g. TNXP's 27 Nov 2018 close served as 0.4156 where its 1:10 reverse split makes it 4.1560. The row
+        # carries CRSP's own source, so a reader can tell it apart from Compustat's splits. One whose served bars do
+        # not jump is a CRSP factor step the bars do not show (611 of the 691 that day): named only, never applied,
+        # because applying it would move a history that is already right.
+        applied = con.execute(f"""INSERT INTO _act BY NAME
+            SELECT security_id, action_id, action_type, ex_date, eff, old_rate, new_rate, rate, special, currency,
+                   record_date, payable_date, '{wrds_history.CRSP}' AS source, source_as_of, fetched_at, run_id
+            FROM _crsp_only_split WHERE {jump}""").fetchone()[0]
+        # An applied one keeps a row of its own kind: a served CRSP row is the exception, so it stays visible.
+        for sid, day, aid, ratio, move, before, after in con.execute(
+                "SELECT security_id, ex_date, action_id, new_rate, served_move, day_before, day_after "
+                f"FROM _crsp_only_split WHERE {jump} ORDER BY 1, 2").fetchall():
+            found.append(("split_applied_crsp", f"{sid}:{day}", f"PERMNO {aid.split(':')[2]}: applied from CRSP, "
+                          f"ratio {ratio:.4f}, no Compustat or Alpaca split within {SPLIT_SAME_DAYS} days; the "
+                          f"served close jumped x{move:.3f} from {before} to {after}, so Compustat lacks this "
+                          "split (#661)"))
+        for sid, day, aid, ratio, move, before, after in con.execute(
+                "SELECT security_id, ex_date, action_id, new_rate, served_move, day_before, day_after "
+                f"FROM _crsp_only_split WHERE NOT ({jump}) ORDER BY 1, 2").fetchall():
             found.append(("split_only_crsp", f"{sid}:{day}", f"PERMNO {aid.split(':')[2]}: CRSP's dlycumfacpr has a "
                           f"split of ratio {ratio:.4f}, no Compustat or Alpaca split within {SPLIT_SAME_DAYS} days; "
-                          f"{served}"))
-        named, jumped = con.execute(f"SELECT count(*), count(*) FILTER (WHERE {jump}) FROM _crsp_only_split").fetchone()
-        outside = con.execute("SELECT count(*) FROM _crsp_split_span").fetchone()[0] - named
-        if named or outside:
-            ctx.notes.append(f"split_only_crsp: {named} within the served bars ({jumped} with a served close jump of "
-                             f"{GAP_FACTOR} times or more, either way: Compustat lacks the split, check these first), "
-                             f"{outside} with no served bar on both sides within {GAP_DAYS} days, not named")
+                          f"the served close moves x{move:.3f} from {before} to {after}, no jump in the served bars"))
+        named = con.execute(f"SELECT count(*) FROM _crsp_only_split WHERE NOT ({jump})").fetchone()[0]
+        outside = con.execute("SELECT count(*) FROM _crsp_split_span").fetchone()[0] - named - applied
+        if named or applied or outside:
+            ctx.notes.append(f"split_only_crsp: {applied} applied as {wrds_history.CRSP} (the served close jumps "
+                             f"{GAP_FACTOR} times or more: Compustat lacks the split, #661), {named} named with no "
+                             f"jump in the served bars, {outside} with no served bar on both sides within "
+                             f"{GAP_DAYS} days, not named")
         con.execute(f"""CREATE OR REPLACE TEMP TABLE _act_typed AS
             SELECT a.*, CASE WHEN action_type IN ('forward_split', 'reverse_split') THEN 'split'
                              WHEN action_type IN ('cash_dividend', 'capital_gains_distribution') THEN 'cash_dividend'
@@ -1032,7 +1056,8 @@ class PricesServing:
                   AND NOT EXISTS (SELECT 1 FROM corporate_action c WHERE c.security_id = r.security_id
                                   AND c.action IN ('split', 'stock_dividend') AND c.ex_date > r.prev_day
                                   AND c.ex_date <= r.session_date)
-                  -- a split only CRSP records explains the gap: it is the split_only_crsp issue instead
+                  -- a split only CRSP records explains the gap: it is the split_only_crsp (or, applied,
+                  -- split_applied_crsp) issue instead
                   AND NOT EXISTS (SELECT 1 FROM _crsp_only_split c WHERE c.security_id = r.security_id
                                   AND c.ex_date > r.prev_day AND c.ex_date <= r.session_date)
                   {f"AND {incremental.where(f'r.session_date + INTERVAL {SPLIT_SAME_DAYS} DAY', 'r.security_id')}"

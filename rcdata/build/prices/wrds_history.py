@@ -669,7 +669,8 @@ PERMNO_LINK = """
 # days, its ``stkdelists`` delisting bar, and the whole history of a security Compustat never priced -- has no name
 # left to serve. CRSP stays what the switch plan calls the cross-check: every CRSP bar is in ``_hist_all`` for
 # ``wrds_price_diff`` (``COMPARISONS``), and ``CRSP_SPLITS`` is the cross-check of Compustat's splits
-# (``serving``'s ``split_only_crsp`` issue). Compustat is the one source of a served bar.
+# (``serving``'s ``split_only_crsp`` issue), and the one CRSP row that is served is a split of that cross-check the
+# served close jumps ``serving.GAP_FACTOR`` or more across (avo, 21 Nov 2026 on #661). Compustat is the one source of a served bar.
 # A PERMNO linked by ticker alone is still named as an issue (``serving._link_note``), because a ticker link decides
 # which security a difference is reported against.
 LINKED_BY_ID = "l.how <> 'ticker'"
@@ -679,13 +680,14 @@ LINKED_BY_ID = "l.how <> 'ticker'"
 # Tier A). A day whose ``dlycumfacpr`` differs from the previous row's of the same answer is a split of ratio previous
 # / today's (new over old shares; the fixture's convention, the factor of the older days the larger, as ``ajexdi``),
 # keyed on the PERMNO's security when an identifier links it. The cross-check only (the WRDS access inventory of
-# 3 Nov 2026 prefers Compustat's daily splits, ``comp.sec_split`` and ``ajexdi``): ``prices/serving`` applies none; one
+# 3 Nov 2026 prefers Compustat's daily splits, ``comp.sec_split`` and ``ajexdi``): one
 # no Compustat or Alpaca split is within ``serving.SPLIT_SAME_DAYS`` of is a ``split_only_crsp`` issue, and the gap
-# it explains is not a ``price_gap_no_action``. In ``_act``'s shape (``serving`` reads it after ``_permno_link``).
+# it explains is not a ``price_gap_no_action``; ``prices/serving`` applies such a split only where the served close
+# jumps ``serving.GAP_FACTOR`` or more across it (#661, avo 21 Nov 2026), as source ``CRSP``. In ``_act``'s shape (``serving`` reads it after ``_permno_link``).
 # The direction is checked on WRDS (homesrv, 3 Nov 2026): AAPL's dlycumfacpr is 4.0 on 2020-08-28 and 1.0 on
 # 2020-08-31, as its ajexdi.
 # Every CRSP split, keyed on its PERMNO's security (``permno:<PERMNO>`` unlinked); ``CRSP_SPLITS``, the
-# identifier-linked ones, is the cross-check, and no CRSP split is ever applied.
+# identifier-linked ones, is the cross-check; only one with a served close jump is applied (#661).
 _CRSP_SPLIT_ROWS = f"""
     SELECT coalesce(l.security_id, 'permno:' || x.permno) AS security_id, 'wrds:crspsplit:' || x.permno || ':' || CAST(x.dlycaldt AS TEXT) AS action_id,
            CASE WHEN ratio < 1 THEN 'reverse_split' ELSE 'forward_split' END AS action_type, x.dlycaldt AS ex_date,
