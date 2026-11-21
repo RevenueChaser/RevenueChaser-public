@@ -1,5 +1,6 @@
 /* The generic renderers of design contract §9. Token names only — `src/theme/tokens.test.ts` fails a var()
- * the token file does not define, which is how `var(--panel, #12161e)` stopped being possible (DESIGN.md §1).
+ * the token file does not define — including one written inside a comment, which is why this note names no
+ * undefined token of its own. That guard is why a token name with a hex fallback stopped being possible (DESIGN.md §1).
  *
  * Radius: --r-sm controls, --r-md cards/panels/tables, --r-lg dialogs, --r-pill chips (contract §4).
  * Elevation: border only, --elev-1 card, --elev-2 dialog or popover. No fourth level.

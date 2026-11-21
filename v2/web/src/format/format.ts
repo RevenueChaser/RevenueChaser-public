@@ -11,6 +11,13 @@ export const CURRENCY_SYMBOLS: Record<string, string> = {
   GBP: '£',
   JPY: '¥',
   TRY: '₺',
+  // The other dollars carry the same glyph. They are here so that `currencyLabel` can see the clash at all:
+  // without them a CAD column would print the bare code and the `US$` / `C$` rule would never fire.
+  CAD: '$',
+  AUD: '$',
+  NZD: '$',
+  HKD: '$',
+  SGD: '$',
 };
 
 /** Two currencies sharing one symbol in one view need their code (contract §3): `US$` / `C$`. */
