@@ -93,6 +93,11 @@ SERVING_SCHEMA_VERSION["sec_reads"] = 2
 #             board can say which fiscal year an answer is about. No live rows to checkpoint: no question is registered.
 SERVING_SCHEMA_VERSION["sec_reads"] = 3
 
+# #1219 (avo, 20 Nov 2026: "Delistedler icin ayri katman."): ``delisted.duckdb``, the delisted history from the CRSP
+# Parquet already on disk (``build/delisted/``). Its first number, not a bump: there is no live file to checkpoint.
+# Nothing of it is in ``SHRINKS_BY_CHOICE``: the history only grows, so any shrink is a partial build.
+SERVING_SCHEMA_VERSION["delisted"] = 1
+
 # A table whose row count is a **chosen** list and not an accumulation, so a smaller count is the intended outcome
 # of the choice changing and not a sign of a partial build; it must not need a request-wide ``allow_shrink`` (which
 # would relax every other table of the kind with it). The "empties" guard still applies to all of them.

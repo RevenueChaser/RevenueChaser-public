@@ -34,7 +34,17 @@ def _derived(kind: str) -> set[str]:
     return {t for d in _of(kind) if not tuple(d.providers) for t in d.tables}
 
 
-DERIVING_KINDS = sorted(k for k in _kinds() if _derived(k))
+def _sources(kind: str) -> list:
+    """The datasets of ``kind`` that fetch: the ones whose rows another dataset of the kind derives from."""
+    return [d for d in _of(kind) if tuple(d.providers)]
+
+
+#: A kind with both halves: a source that fetches and a dataset that builds served tables from what it left behind.
+#: A kind with no source at all (``delisted``, #1219: one dataset, reading another kind's Parquet off the disk) has
+#: nothing to declare, because no rows of the kind cross from one dataset to another; the test below holds it to
+#: that instead.
+DERIVING_KINDS = sorted(k for k in _kinds() if _derived(k) and _sources(k))
+SOURCELESS_KINDS = sorted(k for k in _kinds() if not _sources(k))
 
 
 @pytest.mark.parametrize("kind", DERIVING_KINDS)
@@ -62,6 +72,15 @@ def test_every_derived_table_is_fed_by_at_least_one_source(kind):
     fed = {t for d in _of(kind) if tuple(d.providers) for t in (*d.tables, *base.feeds(d))}
     orphans = sorted(_derived(kind) - fed)
     assert orphans == [], f"{kind}: no dataset says it feeds {orphans}"
+
+
+@pytest.mark.parametrize("kind", SOURCELESS_KINDS)
+def test_a_kind_with_no_source_relaxes_a_table_only_through_the_dataset_that_builds_it(kind):
+    """``delisted`` (#1219): every dataset of the kind builds its own tables from Parquet, so ``allow_shrink`` on a
+    request reaches those tables and no others. Nothing is derived from a sibling's rows here, so a ``feeds``
+    declaration would have nothing to name."""
+    for d in _of(kind):
+        assert base.shrink_scope(d) == tuple(d.tables), d.name
 
 
 def test_the_named_derived_sets_are_the_ones_their_dataset_builds():

@@ -137,6 +137,7 @@ def test_every_dataset_either_honours_the_scope_or_is_named_here():
         "sec/form4": "the SEC daily index's Form 4 filers",
         "sec/fsds": "the SEC's quarterly financial-statement data sets",
         "sec/forms": "cuts the documents already on disk, for every company of the universe at once",
+        "delisted/serving": "the whole delisted history, from wrds/prices' Parquet; no scope (#1219)",
         "sec/reads": "each registered question names its own companies",
         "sec/ftd": "one fails-to-deliver file for the whole market",
         "spine/security": "builds the spine, and its tiers, itself",

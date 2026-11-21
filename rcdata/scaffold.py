@@ -46,6 +46,7 @@ def _schema_of_kind() -> dict[str, dict[str, list[tuple[str, str]]]]:
     """``{kind: {table: [(column, type), ...]}}``, each kind's from the module that builds it."""
     from .build.fundamentals import tables as fundamentals_tables
     from .build.market_series import SCHEMA as MARKET_SERIES_SCHEMA, TABLE as MARKET_SERIES_TABLE
+    from .build.delisted import serving as delisted_serving
     from .build.prices import serving as prices_serving
     from .build.spine import etf_holdings as spine_etf_holdings, security as spine_security
     from .build.spine import sec_tickers_mf as spine_fund
@@ -66,6 +67,7 @@ def _schema_of_kind() -> dict[str, dict[str, list[tuple[str, str]]]]:
                   spine_fund.TABLE: list(spine_fund.FUND),
                   spine_etf_holdings.TABLE: list(spine_etf_holdings.SERVED)},
         "prices": {t: list(s) for t, s in prices_serving.SCHEMAS.items()},
+        "delisted": {t: list(s) for t, s in delisted_serving.SCHEMAS.items()},
         "fundamentals": {t: list(s) for t, s in fundamentals_tables.SCHEMAS.items()},
         "ownership": _ownership_schemas(),
         "options": _options_schemas(),
