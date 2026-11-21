@@ -23,7 +23,7 @@ board's `gex-levels`, `greek-exposure/{strike,expiry,strike-expiry}`, `spot-expo
 
 | Source | Delay | Greeks | OI | Cost | State |
 |---|---|---|---|---|---|
-| ~~Cboe `cdn.cboe.com/api/global/delayed_quotes/options/<SYM>.json`~~ | ~~15 min~~ | yes (δ γ θ ν ρ) | yes | free, no key | **ruled out (M1, 21 Nov 2026): HTTP 403 from homesrv too**, on both hosts and both symbols. It worked on 5 Nov from a cloud box; it does not work from where RC runs |
+| ~~Cboe `cdn.cboe.com/api/global/delayed_quotes/options/<SYM>.json`~~ | ~~15 min~~ | yes (δ γ θ ν ρ) | yes | free, no key | **ruled out (M1, 21 Nov 2026): HTTP 403 from homesrv too**, on both hosts and both symbols. It worked on 5 Nov from a cloud box; it does not work from where RC runs, nor from avo's own browser at home |
 | IBKR Gateway (OPRA L1 + model Greeks) | real time | yes (IBKR's model) | yes | **USD 1.50/mo** non-pro, waived over USD 20 commissions | the Gateway already runs on homesrv |
 | ThetaData Options Standard | real time | chain snapshots | yes | USD 80/mo | individual use, no redistribution |
 
