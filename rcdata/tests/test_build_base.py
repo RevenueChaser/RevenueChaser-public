@@ -32,6 +32,11 @@ def test_http_get_retries_5xx_counts_every_attempt_and_raises(http_mock):
         base.http_get(ctx, "cboe", "https://flaky.test/x.csv")
     assert ctx.calls["cboe"] == [base.HTTP_ATTEMPTS, 1, 0]
     assert len(http_mock.calls("flaky.test")) == base.HTTP_ATTEMPTS
+    # A 429 with the ladder spent is the same kind of answer: the provider did not answer the request (#1304).
+    http_mock.add("busy.test", b"slow down", status=429)
+    with pytest.raises(base.SourceError, match="HTTP 429"):
+        base.http_get(ctx, "cboe", "https://busy.test/x.csv")
+    assert ctx.calls["cboe"] == [2 * base.HTTP_ATTEMPTS, 2, base.HTTP_ATTEMPTS]
 
 
 def test_http_get_does_not_retry_a_404_and_counts_no_failure(http_mock):
@@ -41,16 +46,6 @@ def test_http_get_does_not_retry_a_404_and_counts_no_failure(http_mock):
     with pytest.raises(base.SourceError):
         base.http_get(ctx, "fed", "https://nothing.test/")
     assert ctx.calls["fed"] == [1, 0, 0]
-
-
-def test_http_get_counts_a_failure_for_a_403_a_429_and_a_5xx(http_mock):
-    """#1304's other side: a refusal and a provider that could not answer are failures. The 403 case is
-    ``test_a_403_says_what_to_set``; here the ladder's two ends."""
-    ctx = base.RunContext(run_id="r", dataset="d", sleep=lambda s: None)
-    http_mock.add("busy.test", b"slow down", status=429)
-    with pytest.raises(base.SourceError):
-        base.http_get(ctx, "fed", "https://busy.test/x")
-    assert ctx.calls["fed"] == [base.HTTP_ATTEMPTS, 1, base.HTTP_ATTEMPTS]
 
 
 def test_counts_as_failure_reads_the_statuses_the_way_the_app_client_does():
