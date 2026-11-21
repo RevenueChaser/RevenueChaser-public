@@ -208,7 +208,9 @@ def test_the_bars_calendar_reads_the_sessions_and_the_page_size():
     from RevenueChaser.rcdata.build.prices import bars
     cal = _build()["calendars"]["alpaca/bars"]
     assert cal["names_per_session"] == control_nd()["sessions"], "by set: the page sums the sets the universe holds"
-    assert cal["page"] == bars.LIMIT and cal["universe"] == 5655 + 558 + 1457 and cal["groups"] is True
+    # No ``universe``: the cells are coloured in the page from the applied sets, so the size never travelled
+    # (#310 N11); ``test_control_nits_310.py`` holds that.
+    assert cal["page"] == bars.LIMIT and cal["groups"] is True
 
 
 def test_the_fetch_line_names_its_provider_in_words():

@@ -858,8 +858,9 @@ def files(nd: dict, datasets: dict, universe_view: dict, reads: dict, now: datet
         out.append({"kind": kind, "name": f"{kind}.duckdb", "steps": fc.steps, "words": fc.words,
                     "runs_on_universe": fc.runs_on_universe, "color": color, "datasets": rows, "automation": auto,
                     "health": _health_of(rows), "tables": tables, "path": live.get("path"),
-                    # No ``storage`` key: the whole ``storage["datasets"]`` map was copied into each of the six
-                    # files and nothing read it -- the journey table reads the map itself (#310 N8).
+                    # No ``storage`` key: the whole ``storage["datasets"]`` map used to be copied into each of
+                    # the six file views, six references to one map. The view carries it once, at the top level,
+                    # and ``control_render._journey`` is handed it (#310 N8).
                     "bytes": live.get("bytes"),
                     "roots": storage.get("roots") or {}, "walked_at": storage.get("walked_at"),
                     "state": file_state(live.get("path"), tables, rows)})
@@ -1194,6 +1195,9 @@ def build(nd: dict, *, applied: dict | None = None, ibkr: dict | None = None, no
         "timer": timer_view, "longest_build": longest,
         "switches": switches_view(switch_rows), "gateway": dict(zip(("cls", "n", "label"), _gateway(ibkr))),
         "universe": uni, "identity": nd.get("identity"), "my_universe": nd.get("my_universe"), "scope": scope(uni), "files": file_views, "providers": provider_rows,
+        # The storage picture's per-dataset folders, once for the page: the journey table of every file reads this
+        # one map (#310 N8).
+        "storage": (nd.get("storage") or {}).get("datasets") or {},
         "flow": flow(file_views, datasets, reads, uni), "calendars": calendars(nd, provider_rows),
         "board_cards": board_file_cards(),
         "cross_check": (nd.get("cross_check") or {}).get("fields") or [],

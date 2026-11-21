@@ -470,9 +470,10 @@ def _walked(at, now=None) -> str:
     return f"walked {control._clock(at)}" + (f", {hours:.0f} h ago" if hours >= PICTURE_STALE_HOURS else "")
 
 
-def _jrows(f: dict) -> tuple[str, list[str]]:
+def _jrows(f: dict, store: dict) -> tuple[str, list[str]]:
+    """``store`` is the storage picture's ``datasets`` map, passed in from the view: one reference for the whole
+    page, where each of the six file views used to carry a copy of it (#310 N8)."""
     rows, srcs = [], []
-    store = f["storage"]
     # #434: the folder counts come from the storage-picture job, not from this render. Until it has run here there
     # is no picture at all, which is not the same thing as a dataset having no folder.
     walked = f.get("walked_at")
@@ -615,8 +616,8 @@ def _meta_widths(f: dict) -> str:
             f"--jw0:{max(1, icons) * ICON_COL}px")
 
 
-def _journey(f: dict) -> str:
-    rows, _ = _jrows(f)
+def _journey(f: dict, store: dict) -> str:
+    rows, _ = _jrows(f, store)
     n = max(1, 2 * len(f["datasets"]))
     roots = f["roots"]
     ssd = (f'<code class="p jfile" title="{esc(f["path"] or f["name"])}">🦆 {esc(f["name"])}</code>{_tchs(f)}'
@@ -831,7 +832,7 @@ def _panel(f: dict, view: dict, first: bool) -> str:
     return (f'<details class="sec fpanel" data-file="{esc(f["name"])}" id="fp-{esc(f["kind"])}" '
             f'style="--fh:{esc(f["color"])}"{" open" if first else ""}>'
             f'<summary><h2>🦆 {esc(f["name"])}</h2><span class="secs">{esc(_file_words(f))}</span></summary>'
-            f'<div class="fpbody">{_journey(f)}{_samples(f)}</div></details>')
+            f'<div class="fpbody">{_journey(f, view.get("storage") or {})}{_samples(f)}</div></details>')
 
 
 def _board_panel(c: dict) -> str:

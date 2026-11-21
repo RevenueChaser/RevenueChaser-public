@@ -14,19 +14,20 @@ from RevenueChaser.module_settings.tests.test_control_view import control_nd
 NOW = datetime(2026, 10, 30, 17, 31, tzinfo=timezone.utc)
 
 
-def test_a_file_view_does_not_carry_the_whole_storage_map():
-    """N8: every one of the six file views copied ``storage["datasets"]`` whole and nothing read it.
+def test_the_storage_map_is_on_the_view_once_and_not_on_every_file():
+    """N8: each of the six file views carried the whole ``storage["datasets"]`` map -- six references to one map,
+    and a view that looks like it holds its own file's folders while holding every dataset's.
 
-    The journey table reads the map it was given, not the file's copy of it, so the copies were five redundant
-    references to the same dict -- and a reader of a file view would have found a map of every dataset on it,
-    not of that file's own.
+    It sits on the view once now, and the journey table of each file is handed it.
     """
     view = control.build(control_nd(), now=NOW)
     files = view["files"]
     assert files, "the fixture has file views"
     for f in files:
         assert "storage" not in f, f'{f["kind"]} still carries a copy of the whole datasets map'
-    assert all("roots" in f and "walked_at" in f for f in files), "what the journey table does read stays"
+        assert "roots" in f and "walked_at" in f, "what the journey table reads off the file itself stays"
+    assert view["storage"] == (control_nd()["storage"]["datasets"]), "the one copy is the view's"
+    assert "52 files" in control_render.render_data(view), "and the journey table still reads it"
 
 
 def test_the_bars_calendar_states_no_universe_size():
@@ -40,9 +41,12 @@ def test_the_bars_calendar_states_no_universe_size():
 
 def test_a_folder_the_walk_never_reached_says_so_rather_than_zero():
     """N12: the walk's budget runs out and a folder reports ``files: 0, capped: True``, which the journey table
-    printed as "0+ files" -- the one thing it does not mean is an empty folder."""
-    nd = control_nd()
-    walked = control_render.render_data(control.build(nd, now=NOW))
+    printed as "0+ files" -- the one thing it does not mean is an empty folder.
+
+    The ``N+`` floor of a folder the walk *did* count part of is asserted here too, in the same test: on its own it
+    passes on the base and would prove nothing (``red-on-base``).
+    """
+    walked = control_render.render_data(control.build(control_nd(), now=NOW))
     assert "52 files" in walked and "not counted" not in walked
 
     nd = copy.deepcopy(control_nd())
@@ -52,11 +56,8 @@ def test_a_folder_the_walk_never_reached_says_so_rather_than_zero():
     assert "not counted" in out, "a capped folder with nothing counted says so"
     assert "0+ files" not in out
 
-
-def test_a_capped_folder_that_did_count_something_keeps_its_floor():
-    """The ``N+`` floor is still the right word when the walk counted some of the folder before it ran out."""
     nd = copy.deepcopy(control_nd())
     nd["storage"]["datasets"]["alpaca/bars"]["raw"] = {"path": "/r/alpaca/bars", "files": 7, "bytes": 1_000,
                                                        "capped": True}
-    out = control_render.render_data(control.build(nd, now=NOW))
-    assert "7+ files" in out and "not counted" not in out
+    floor = control_render.render_data(control.build(nd, now=NOW))
+    assert "7+ files" in floor and "not counted" not in floor, "a part-counted folder keeps its floor"
