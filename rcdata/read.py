@@ -1808,6 +1808,32 @@ def earnings_options(start=None, end=None, tickers: Iterable[str] | None = None)
     return _option_rows("er_options", sql + " ORDER BY session_date, ticker", params)
 
 
+def earnings_tape(tickers: Iterable[str] | None = None, *, session_date=None) -> list[dict]:
+    """``earnings_tape``: one row per report of the ``/earnings/{ticker}`` answer, as the earnings set's evening
+    fetch stored it (#644).
+
+    The whole tape of a name — the completed prints with their EPS, the straddle and the move columns, and the
+    upcoming event — so the Earnings Radar board reads its history instead of asking ``/earnings/{t}`` per name.
+    ``session_date`` picks one evening; without it every stored session comes back and the caller takes the newest
+    it wants (a name is only in the set on the two evenings before its report, so the newest session differs per
+    name and a single ``max(session_date)`` over the table would drop most names).
+
+    By ticker, then **report date descending**: the order UW's own answer has, which the board's readers rely on
+    (``rows[0]`` is the upcoming event, and the edge and straddle medians take the newest completed prints).
+    """
+    sql, params = "SELECT * FROM earnings_tape WHERE true", []
+    if tickers is not None:
+        names = _ticker_list(tickers)
+        if not names:
+            return []
+        sql += f" AND ticker IN ({', '.join('?' * len(names))})"
+        params += names
+    if session_date is not None:
+        sql += " AND session_date = ?"
+        params.append(_day(session_date))
+    return _option_rows("earnings_tape", sql + " ORDER BY ticker, report_date DESC", params)
+
+
 # ── Insider %, reported from Form 4 (#646 PR 4) ──────────────────────────────────────────────────────────────
 # What the 13F board's Insider % column reads once Yahoo's ``heldPercentInsiders`` goes with the old store. The
 # rule was settled over four cross-reviews (Grok and Claude, 11 Nov 2026; ``claude-coordinator``

@@ -190,6 +190,10 @@ class EarningsPipeline:
         self._ohlc_stored: set = set()
         # The evening's option set of the scored names (avo's O1 = A): R4's GEX levels, strikes and term structure.
         self._er_options = None
+        # The stored ``/earnings/{ticker}`` tape of the names that will be scored (#644), read once per run.
+        self._earnings_tape = None
+        self._tape_stored: set = set()
+        self._tape_live: set = set()
         self._options_stored: set = set()
         self._options_live: set = set()
         self._ohlc_live: set = set()
@@ -326,6 +330,33 @@ class EarningsPipeline:
             self.input_sources["options_note"] = note.get("label")
         return self._er_options
 
+    def _warm_earnings_tape(self, tickers) -> dict[str, list[dict]]:
+        """The stored ``/earnings/{ticker}`` tape of the scored names (``stored_inputs.earnings_tape``, the need
+        ``earnings.tape``; #644). One read for the lot, before the workers start; a name it lacks is asked live in
+        :meth:`_earnings_rows`, exactly as every other stored input on this board works."""
+        if self._earnings_tape is None:
+            self._earnings_tape = stored_inputs.earnings_tape(tickers)
+        return self._earnings_tape
+
+    def _earnings_rows(self, ticker: str) -> tuple[dict, list[dict]]:
+        """``(the upcoming event, the print history)`` of ``ticker``: the stored tape when the earnings set holds
+        a fresh one for this name (#644), else the live request the board used to make for every name.
+
+        The stored rows carry UW's own field names and come newest report first, the order the live answer has, so
+        the scoring below reads one shape either way and ``rows[0]`` is the upcoming event in both.
+        """
+        stored = (self._earnings_tape or {}).get(ticker)
+        if stored:
+            self._tape_stored.add(ticker)
+            return stored[0], stored
+        self._tape_live.add(ticker)
+        rows_fn = getattr(self.uw, "earnings_rows", None)
+        if rows_fn is not None:
+            rows = rows_fn(ticker) or []        # one /earnings/{t} request for both reads
+            return (rows[0] if rows else {}), rows
+        # A fake without the one-request method: the two legacy calls, each as before.
+        return (self.uw.earnings_data(ticker) or {}), (self.uw.earnings_history(ticker) or [])
+
     def _stored_options(self, ticker: str, report_date: str) -> dict:
         """The stored evening of ``ticker`` when it was fetched for this ``report_date``, else ``{}``."""
         row = (self._er_options or {}).get(ticker) or {}
@@ -432,6 +463,7 @@ class EarningsPipeline:
         self._warm_rate_events()
         # One D01 read for the names that will be scored, before the scoring workers start (E5e, #372).
         self._ohlc_bars = stored_inputs.ohlc_bars(scoring)
+        self._warm_earnings_tape(scoring)
         self._warm_estimates()
         self._warm_er_options(scoring)
         if getattr(self, "_spine_gics", None) is None:
@@ -462,6 +494,7 @@ class EarningsPipeline:
         # The workers are done: the OHLC source counts are settled (E5e, #372).
         self.input_sources["ohlc"] = {"stored": len(self._ohlc_stored), "live": len(self._ohlc_live)}
         self.input_sources["options"] = {"stored": len(self._options_stored), "live": len(self._options_live)}
+        self.input_sources["earnings_tape"] = {"stored": len(self._tape_stored), "live": len(self._tape_live)}
         cards.sort(key=lambda c: (-(c.confidence_score + c.pre_score), -c.expected_move_pct))
         return cards
 
@@ -574,13 +607,8 @@ class EarningsPipeline:
 
     def _score(self, ticker: str) -> TradeCard:
         captured: dict = {}      # UW answers behind R4 that only a derived value keeps (the history row's inputs)
-        rows_fn = getattr(self.uw, "earnings_rows", None)
-        if rows_fn is not None:
-            hist = rows_fn(ticker) or []        # one /earnings/{t} request for both reads
-            earn = hist[0] if hist else {}
-        else:
-            earn = self.uw.earnings_data(ticker) or {}
-            hist = self.uw.earnings_history(ticker) or []
+        # #644: the stored earnings set's tape when it holds this name's, else the live request.
+        earn, hist = self._earnings_rows(ticker)
         # R2 reads the raw EPS print series (/stock/{t}/earnings), not the
         # calendar/straddle tape that feeds R4. Fakes without the method fall
         # back to the calendar history so R2 stays available in tests.
