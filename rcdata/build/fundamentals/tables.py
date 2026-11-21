@@ -404,14 +404,18 @@ def _report_history(con: duckdb.DuckDBPyConnection, ciks=None) -> int:
     return common.count(con, "earnings_report_history")
 
 
-def _transcripts(con: duckdb.DuckDBPyConnection) -> int:
+def _transcripts(con: duckdb.DuckDBPyConnection, ciks=None) -> int:
     """``earnings_transcript``: every stored earnings-call turn, in the order spoken.
 
-    Keyed by ticker and quarter rather than by company, so this one is not cleared per dirty CIK: the staging
-    holds every call on disk and the table is made again whole from it. One (ticker, quarter) answered twice --
-    a re-fetch of a call the provider revised -- keeps the newer fetch, turn by turn.
+    Keyed by ticker and quarter rather than by company, so this one is not cleared per dirty CIK: ``"true"``
+    empties it on the live copy and the staging, which holds every call on disk, fills it again whole. One
+    (ticker, quarter) answered twice -- a re-fetch of a call the provider revised -- keeps the newer fetch, turn
+    by turn.
+
+    ``_clear`` and not a bare ``DELETE``: on a whole build (``ciks`` None) the build file is **fresh and has no
+    tables at all**, so the table is created here, as every other served table of this kind is.
     """
-    con.execute("DELETE FROM earnings_transcript")
+    _clear(con, "earnings_transcript", ciks, "true")
     con.execute(f"""
         INSERT INTO earnings_transcript
         SELECT ticker, quarter, seq, speaker, title, content, provider_sentiment,
@@ -735,7 +739,7 @@ class FundamentalsTables:
         counts["earnings_event"] = _earnings(con, ciks)
         counts["earnings_reported"] = _earnings_reported(con, ciks)
         counts["earnings_report_history"] = _report_history(con, ciks)
-        counts["earnings_transcript"] = _transcripts(con)
+        counts["earnings_transcript"] = _transcripts(con, ciks)
         counts["audit_flag"] = _audit_flags(con, ciks)
         counts["fundamental_revision"] = _revisions(con, ciks)
         counts["segment_revenue"] = _segments(con, ciks)

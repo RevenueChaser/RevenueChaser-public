@@ -148,3 +148,26 @@ def test_the_run_stops_at_the_day_cap_and_says_what_is_left_for_the_next_one(av,
     check = fx.run(transcripts.NAME, "2026-10-28")
     assert "left for the next run" in (check["note"] or ""), check["note"]
     assert len(av.requests) == 1              # one of the two companies, then the cap
+
+
+# ── The served table ─────────────────────────────────────────────────────────────────────────────────────────────
+
+def test_a_whole_build_creates_the_table_rather_than_assuming_the_live_file_has_it():
+    """A whole build's file is **fresh and holds no tables at all**, so a served table that only ever ran
+    ``DELETE`` broke the whole fundamentals build -- and with it every board that reads the file (11 tests, CI run
+    44919820644). Every served table of this kind goes through ``_clear``, which creates it when ``ciks`` is None.
+    """
+    import duckdb
+
+    from RevenueChaser.rcdata.build.fundamentals import tables
+
+    assert "earnings_transcript" in tables.TABLES
+    con = duckdb.connect(":memory:")
+    try:
+        tables._ensure_staging(con)                         # the sources' empty staging, as a build starts it
+        tables._transcripts(con, None)                      # as a whole build calls it: no table yet
+        assert con.execute("SELECT count(*) FROM earnings_transcript").fetchone()[0] == 0
+        tables._transcripts(con, frozenset({"789019"}))     # as an incremental build calls it: table kept
+        assert con.execute("SELECT count(*) FROM earnings_transcript").fetchone()[0] == 0
+    finally:
+        con.close()
