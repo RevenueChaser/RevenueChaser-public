@@ -347,6 +347,93 @@ def test_a_split_only_crsp_records_and_the_served_close_jumps_across_is_applied_
     assert "PERMNO 14593" in issues["split_applied_crsp"] and "applied from CRSP" in issues["split_applied_crsp"]
 
 
+def _split_compustat_dates_apart(data, day: str, ratio: float = 2.0):
+    """Compustat records AAPL's 2-for-1, but on ``day`` instead of CRSP's 4 Jun ex-date, and ``ajexdi`` is flat so
+    that one row is its only split. The served closes still halve across 4 Jun, as NVDA's do across 17 Sep 2001."""
+    for r in data["comp.secd"]:
+        if r["gvkey"] == "001690" and r["datadate"] < "2026":
+            r["ajexdi"] = 1.0
+    data["comp.sec_split"] = [{"gvkey": "001690", "iid": "01", "datadate": day, "split": ratio}]
+    return data
+
+
+def _aapl_splits():
+    return [(str(s["ex_date"]), s["ratio"], s["source"]) for s in
+            _q("SELECT ex_date, ratio, source FROM corporate_action WHERE security_id = ? AND action = 'split' "
+               "AND applied ORDER BY ex_date", [AAPL])]
+
+
+def _aapl_oldest_split_factor():
+    """The factor that turns AAPL's oldest nominal close into today's basis: the product of 1/ratio over every
+    applied split. Two rows for one split make it the square of what it should be."""
+    return _q("SELECT split_factor FROM adj_factor WHERE security_id = ? ORDER BY valid_to", [AAPL])[0][
+        "split_factor"]
+
+
+def test_a_crsp_split_another_source_dates_apart_at_the_same_ratio_is_applied_once(monkeypatch):
+    """#661, measured on the live file 21 Nov 2026: NVDA's 2-for-1 is Compustat's 12 Sep 2001 (the first planned
+    date, the week the exchanges were closed) and CRSP's 17 Sep 2001 (the real ex-date). Five days apart, so
+    ``SPLIT_SAME_DAYS`` did not pair them, and the same ratio, so applying CRSP's row stepped the share basis a
+    second time: NVDA's oldest ``split_factor`` came out 1/960 where 1/480 is right, every adjusted close before
+    12 Sep 2001 half of it. One split the two sources date apart is applied **once**, from the other source."""
+    from RevenueChaser.rcdata import ops
+    from RevenueChaser.rcdata.build.prices import serving as prices_serving
+    _serve(monkeypatch, _split_compustat_dates_apart(_data(), "2025-05-30"))
+    assert _aapl_splits() == [("2025-05-30", 2.0, wrds_history.NAME)], "CRSP's row is not applied a second time"
+    assert _aapl_oldest_split_factor() == pytest.approx(1 / 2), "the share basis steps once, not twice"
+    issues = {i["kind"]: i["detail"] for i in ops.open_issues(prices_serving.NAME, limit=500)[1]
+              if i["key"] == f"{AAPL}:{JUNE[2]}" and i["kind"].startswith("split_")}
+    assert set(issues) == {"split_crsp_restated"}, issues
+    assert "wrds/prices has the same split at ratio 2.0000 on 2025-05-30, 5 day(s) away" \
+        in issues["split_crsp_restated"]
+    assert f"{AAPL}:{JUNE[2]}" not in _gap_issues(), "the other source's split explains the gap"
+
+
+def test_the_restated_split_detail_says_where_the_other_source_dates_it_early(monkeypatch):
+    """The two days are not interchangeable: the served close jumps across CRSP's, so the other source's earlier
+    day puts the factor step before the bars that are still on the old basis. Not fixed here -- named, so avo can
+    decide whose date wins (#661)."""
+    _serve(monkeypatch, _split_compustat_dates_apart(_data(), "2025-05-30"))
+    detail = _crsp_only_details("split_crsp_restated")[f"{AAPL}:{JUNE[2]}"]
+    assert ("the served close jumps between 2025-06-03 and 2025-06-04, not across 2025-05-30, so wrds/prices dates "
+            "this split early and the bars in between are on the wrong basis") in detail
+
+
+def test_a_same_ratio_split_further_away_than_the_window_is_still_applied(monkeypatch):
+    """The window is the belt (``SPLIT_SAME_RATIO_DAYS``): of the 80 applied CRSP splits measured, a Compustat
+    split of the security sits within 7 days of exactly one, and the five pairs further out all have ratios of
+    their own. A pair further apart than the window stays two events here, so nothing is silently merged."""
+    _serve(monkeypatch, _split_compustat_dates_apart(_data(), "2025-05-26"))     # 9 days from CRSP's 4 Jun
+    assert _aapl_splits() == [("2025-05-26", 2.0, wrds_history.NAME), (JUNE[2], 2.0, wrds_history.CRSP)]
+    assert _aapl_oldest_split_factor() == pytest.approx(1 / 4)
+    assert not _crsp_only_details("split_crsp_restated")
+
+
+def test_a_split_of_another_ratio_inside_the_window_is_still_applied(monkeypatch):
+    """The ratio is the rule. The five measured pairs that are two events are 2.5 times apart or more (ATI,
+    2.02008 against 5.0), far outside ``SPLIT_RATIO_TOLERANCE``: a different ratio a few days off is a second
+    event, applied beside CRSP's."""
+    _serve(monkeypatch, _split_compustat_dates_apart(_data(), "2025-05-30", ratio=5.0))
+    assert _aapl_splits() == [("2025-05-30", 5.0, wrds_history.NAME), (JUNE[2], 2.0, wrds_history.CRSP)]
+    assert not _crsp_only_details("split_crsp_restated")
+
+
+def test_a_ratio_apart_only_by_the_factors_rounding_is_one_split(monkeypatch):
+    """``dlycumfacpr`` and ``ajexdi`` are rounded, so the same split's two quotients differ a little:
+    ``SPLIT_RATIO_TOLERANCE`` of each other is one ratio."""
+    _serve(monkeypatch, _split_compustat_dates_apart(_data(), "2025-05-30", ratio=2.004))
+    assert _aapl_splits() == [("2025-05-30", 2.004, wrds_history.NAME)]
+    assert set(_crsp_only_details("split_crsp_restated")) == {f"{AAPL}:{JUNE[2]}"}
+
+
+def test_the_restated_count_is_in_the_build_note(whole_builds, monkeypatch):
+    note = _serve_note(monkeypatch, _split_compustat_dates_apart(_data(), "2025-05-30"))
+    assert ("split_only_crsp: 0 applied as wrds/crsp (the served close jumps 1.9 times or more: Compustat lacks "
+            "the split, #661), 1 not applied with the same split at the same ratio within 7 days from another "
+            "source, 0 named with no jump in the served bars, 0 with no served bar on both sides within 7 days, "
+            "not named") in note
+
+
 def test_the_same_gap_with_no_source_of_the_split_is_still_an_issue(monkeypatch):
     data = _split_unknown_to_compustat(_data())
     for r in data["crsp.dsf_v2"]:
@@ -392,7 +479,8 @@ def test_a_split_only_crsp_names_the_served_jump_and_one_outside_the_served_bars
     assert "the served close jumped x0.502 from 2025-06-03 to 2025-06-04, so Compustat lacks this split" \
         in applied[f"{AAPL}:{JUNE[2]}"]
     assert ("split_only_crsp: 1 applied as wrds/crsp (the served close jumps 1.9 times or more: Compustat lacks the "
-            "split, #661), 0 named with no jump in the served bars, 1 with no served bar on both sides within "
+            "split, #661), 0 not applied with the same split at the same ratio within 7 days from another source, "
+            "0 named with no jump in the served bars, 1 with no served bar on both sides within "
             "7 days, not named") in note
 
 
