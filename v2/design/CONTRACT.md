@@ -156,10 +156,22 @@ stored (`v2/web/src/theme/theme.ts`). Android follows the same three values and 
 
 - **Inter**, self-hosted (SIL OFL-1.1), never a font host. The web's `@font-face` arrives with step 8 and
   `tokens.test.ts` fails a font rule pointing at a file that is not there. Android ships the same family.
+- **Icons of one row sit on one line and in one size.** A font glyph (★, ◈, ☰) carries its own metrics and
+  shifts against its neighbour, which is visible the moment two sit side by side (avo, 21 Nov 2026 16:15:
+  *"simgeler ayni hizada olsun"*). Every icon is therefore an **SVG in a fixed box** — 12 px inside the watch-list
+  control, 16 px in the bottom bar and the app bar — centred in that box, so a change of row height never moves it.
 - **Every number is `font-variant-numeric: tabular-nums`** (Android: the equivalent `fontFeatureSettings("tnum")`).
 - **Body text is `--fs-base` (14 px).** The scale is the only source of a text size; a component never names a px.
 - **Value and change in one cell:** the value on line 1, its Δ% under it, small and coloured. There is **no**
-  separate Δ%-column group. (avo, 12 Nov 2026: *"daha az yer kaplar ve okumasi kolay olur"*.)
+  separate Δ%-column group. (avo, 12 Nov 2026: *"daha az yer kaplar ve okumasi kolay olur"*.) This is the rule for
+  a **per-period** figure, such as a quarter's shares and its change against the quarter before.
+- **A price change is shown over two horizons, `1D` and `1W`** (avo, 21 Nov 2026 16:20). `1D` is the previous
+  close against the last price; `1W` is five trading days. Both definitions are written in the panel footer, not
+  left to the reader, and a single unlabelled "change" column is not allowed on a price row.
+- **The two horizons sit under the price, in the price's own cell**, each behind its small `1D` / `1W` label, not
+  in two columns of their own (avo, 21 Nov 2026 16:28: *"1D ve 1W current pricein altinda olmali, eskisi gibi"*).
+  Inside that cell the four parts run on fixed tracks, so `1D` and `1W` line up down every row of the table —
+  §11's cell rule holds inside a cell as well as between cells.
 - **A currency is its symbol, not its code:** `$`, `€`, `£`, `¥`, `₺`. Said **once** — in the column header or
   before the figure (`$1.2B`) — never after every value. A code only where two currencies share one symbol in the
   same view (`US$` / `C$`).
@@ -209,7 +221,7 @@ scroll — but that is a floor, not a design round.
 | Explanations | behind a click: a screen's explanatory sentences live in one closed "About these figures" fold at the bottom. **Warnings stay in view** (missing prices, stale reads, sample data). |
 | Grouping | rows that belong together are **one card with a thin line between them**, not separate boxes with gaps. Headers are more prominent than body rows. |
 | Figures | as tiles, two per row; a line under a figure is **data**, never a description. |
-| Navigation | swipe moves between the bottom bar's pages; back from a tab goes Home; back from Home closes the app. |
+| Navigation | five bottom-bar destinations, **grouped as the dashboard's own headers are** (avo, 21 Nov 2026 16:18): **Welcome · Watch lists · Research ▴ · Screeners ▴ · More ▴**. The first two open a board directly; the three marked ▴ open a small menu **upward** from the bar, listing that group's boards — Research: News, Earnings Radar, SPX Gamma, Implied Probability, Financials; Screeners: Sector Rotation, Asymmetric Growth, Swing Potential, Fundamentals, Hit Rate; More: Classification, Ownership and Ops. Swipe moves between the bar's destinations; back from a destination goes to Welcome; back from Welcome closes the app. |
 | Charts | **native** (run plan decision 5), drawn from the same door payloads and schemas as the web. §10 is what they share. |
 | Screenshots | emulator, at his width, light and dark, onto the review canvas — **before** any APK, and an APK only on avo's word. |
 
@@ -282,6 +294,7 @@ counterpart names **what it becomes** — that is a stated difference, not a gap
 | `app-bar` | `AppBar` | `RcTopBar` | 48 dp on the phone |
 | `command-box` | `CommandBox` | `RcCommandSheet` | one entry point: a ticker **or** a board name |
 | `board-tabs` | `BoardTabs` | `RcBoardDestinations` | bottom bar + overflow sheet on the phone |
+| `nav-group-sheet` | `BoardMenu` | `RcNavGroupSheet` | the menu a grouped bottom-bar destination opens **upward** (§5.2); the web's overflow menu is its counterpart |
 | `document-tabs` | `DocumentTabs` | `RcOpenPagesSheet` | the phone has no split view; the back stack carries it |
 | `screen-toolbar` | `ScreenToolbar` | `RcScreenToolbar` | same action order, tail in an overflow menu |
 | `status-bar` | `StatusLine` | `RcStatusLine` | rows · build/job · as-of |
@@ -302,6 +315,7 @@ counterpart names **what it becomes** — that is a stated difference, not a gap
 | `badge` | `Badge` | `RcBadge` | count badge, state badge |
 | `judgement-card` | `JudgementCard` | `RcJudgementCard` | coloured top rule · caps title · **one big verdict word** · three metric lines · a rationale naming the yardstick. No score without its rule |
 | `bookmark` | `BookmarkToggle` | `RcBookmarkToggle` | **left of the ticker, never after it**; 36 px button, 12 px icon; two halves (stock, options), each its own target |
+| `symbol-tile` | `SymbolTile` | `RcSymbolTile` | a generated monogram, square for a share and a pill for an ETF; never a borrowed logo (§9.1) |
 | `skeleton` | `SkeletonRows` | `RcSkeletonRows` | §8 |
 | `next-step-card` | `NextStepCard` | `RcNextStepCard` | §8 |
 | `notice` | `Notice` | `RcNotice` | §8: no data, upstream down, refused |
@@ -314,6 +328,27 @@ counterpart names **what it becomes** — that is a stated difference, not a gap
 | `ask-bubble` | `AskBubble` | `RcAskFab` | bottom right on every screen |
 | `format-preview` | `FormatPreview` | `RcFormatPreview` | the live preview of §3's formatting rules |
 | `settings-rail` | `SettingsRail` | `RcSettingsList` | search box above two groups: Shell and Data |
+
+### 9.1 The symbol tile
+
+Every row that names an instrument carries a **symbol tile** before the ticker, after the watch-list box (avo,
+21 Nov 2026 16:19). It is square for a share and a pill for an ETF, so the two read apart at a glance, and its
+size follows the row height.
+
+**The company's own mark where we have it, a generated monogram where we do not** (avo, 21 Nov 2026 16:28:
+*"sirketin kendi simgesini kullanacaksin burada, daha kucuk olsun"*). The tile is small — 20 px at a 32 dp row,
+22 px at 36 dp, 26 px at 44 px — and the two cases are one component with one fallback, never two layouts.
+
+- **The mark is served by us, never hot-linked and never taken from another product's icon set.** TradingView's
+  and Unusual Whales' sets are their assets: no file, sprite or URL of theirs is copied into this repository or
+  fetched by a screen. A mark enters the cache only from the company's own site, through a job that maps a ticker
+  to its domain, and the door serves it from our own store, so a screen makes no outbound request.
+- **The monogram is the fallback and it is not rare.** Measured 21 Nov 2026 while drawing this: of 14 names taken
+  from a screener, **5** served a usable icon at the standard paths of their own sites. So the fallback is the
+  common case until the ticker→domain map exists, and a row must look finished with it: the letters come from the
+  ticker and the tint is a deterministic hash over the palette's data colours, so every instrument — an ETF, an
+  index, a name no logo set covers — gets one, offline, with no request.
+- **Square for a share, a pill for an ETF**, in both cases.
 
 ## 10. The chart contract — shared inputs, per-surface renderer
 

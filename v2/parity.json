@@ -37,6 +37,14 @@
       "android_status": "planned"
     },
     {
+      "id": "nav-group-sheet",
+      "web": "BoardMenu",
+      "android": "RcNavGroupSheet",
+      "note": "the menu a grouped bottom-bar destination opens **upward** (§5.2); the web's overflow menu is its counterpart",
+      "web_status": "planned",
+      "android_status": "planned"
+    },
+    {
       "id": "document-tabs",
       "web": "DocumentTabs",
       "android": "RcOpenPagesSheet",
@@ -193,6 +201,14 @@
       "web": "BookmarkToggle",
       "android": "RcBookmarkToggle",
       "note": "**left of the ticker, never after it**; 36 px button, 12 px icon; two halves (stock, options), each its own target",
+      "web_status": "planned",
+      "android_status": "planned"
+    },
+    {
+      "id": "symbol-tile",
+      "web": "SymbolTile",
+      "android": "RcSymbolTile",
+      "note": "a generated monogram, square for a share and a pill for an ETF; never a borrowed logo (§9.1)",
       "web_status": "planned",
       "android_status": "planned"
     },
