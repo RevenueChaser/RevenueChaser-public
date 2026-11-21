@@ -20,6 +20,11 @@ Rules (decisions D1 / 4-A):
   partial board would be a different, silently thinner forecast than the one the user saw.
 - SPY anchors the Swing and Fundamentals boards: its complete D bar comes from D01 when D01 has it (U1, #402),
   else from the OHLC cache (``spy_anchor_problem``).
+- Every session check reads **D's own bar**, not the ticker's newest one (#881): D01 keeps one row per session, so
+  a question about a past D would otherwise be answered with a later session's bar and always refuse. Under the
+  serving layer the ``fetched_at`` of the view is the file's build time, one value for every session
+  (``rcdata/build/prices/serving.py``), so for a past D the close + 30 min half of the check no longer carries
+  information and the presence of D's own bar is what decides.
 - Bars cached before D's close + 30 min are refetched, not skipped (option A, avo 2026-10-03). The refetch
   happens when the board loads its bars (``load_ohlc``, Fetch only), so the board and its frozen picks
   come from the same complete bars; a pick that is still partial here (a failed refetch) refuses the day.
@@ -206,7 +211,7 @@ def ohlc_gaps(session: date, tickers) -> dict[str, str]:
     ``NO_SESSION_BAR`` (S2, #434 review).
     """
     wanted = sorted({_norm(t) for t in tickers if _norm(t)})
-    bars = d01_last_bars([*wanted, "SPY"])
+    bars = d01_last_bars([*wanted, "SPY"], upto=session)       # the session's own bars, not a later day's (#881)
     # D01 is append-only: a pick's newest bar carries its own session's ``fetched_at``, never a later one, so the bar
     # alone cannot say whether a later Fetch helps (S2, #434 review). SPY's does: once Daily Bars has written SPY's
     # complete ``session`` bar, a pick without its own will not get one from another Fetch.
@@ -233,8 +238,12 @@ def ohlc_complete(session: date, tickers) -> set[str]:
 _D01 = "price_bars_daily"
 
 
-def d01_last_bars(tickers) -> dict[str, tuple[str, float | None]]:
+def d01_last_bars(tickers, upto: date | None = None) -> dict[str, tuple[str, float | None]]:
     """``{ticker: (last session 'YYYY-MM-DD', fetched_at of that bar)}`` from D01.
+
+    With ``upto`` the newest bar **of that session or before** is returned, so a question about a past session
+    is answered with that session's own bar instead of a later one (#881). Without it the ticker's newest bar
+    comes back, which is what the staleness readers want (``screen_common.bars_reference_session``).
 
     A store without the price file or the table reads as no bars, and so does a failed read (logged): ``ohlc_gaps``
     then refuses every pick, and ``spy_anchor_problem`` refuses the board.
@@ -242,11 +251,14 @@ def d01_last_bars(tickers) -> dict[str, tuple[str, float | None]]:
     tickers = sorted({_norm(t) for t in tickers if _norm(t)})
     if not tickers:
         return {}
+    where, params = "ticker IN (SELECT unnest(?))", [tickers]
+    if upto is not None:
+        where, params = where + " AND session_date <= ?", [tickers, upto]
     try:
         from RevenueChaser.core import prices   # the read API picks the file (``prices.source_state``)
         rows = prices._read(
             "SELECT ticker, max(session_date) AS last_day, arg_max(fetched_at, session_date) AS fetched_at "
-            f"FROM {_D01} WHERE ticker IN (SELECT unnest(?)) GROUP BY ticker", [tickers], layer=True)
+            f"FROM {_D01} WHERE {where} GROUP BY ticker", params, layer=True)
     except Exception as exc:  # noqa: BLE001 - no D01 means the old check, never a failed freeze
         logger.warning("forecast ledger: the D01 bars could not be read (%s)", exc)
         return {}
@@ -254,8 +266,12 @@ def d01_last_bars(tickers) -> dict[str, tuple[str, float | None]]:
 
 
 def d01_has_session(session: date, ticker: str) -> bool:
-    """True when D01's last bar of ``ticker`` is ``session`` and was written after its close + 30 min."""
-    return _bar_cause(session, d01_last_bars([ticker]).get(_norm(ticker))) is None
+    """True when D01 holds ``ticker``'s own ``session`` bar, written after that session's close + 30 min.
+
+    The read is bounded by ``session`` (#881): the ticker's newest bar is a later session's once the store has
+    moved on, and the old unbounded read therefore answered False for every past session.
+    """
+    return _bar_cause(session, d01_last_bars([ticker], upto=session).get(_norm(ticker))) is None
 
 
 def spy_anchor_problem(session: date) -> str | None:
