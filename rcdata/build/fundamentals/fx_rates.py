@@ -1,7 +1,9 @@
 """``yfinance/fx``: daily exchange rates for the companies that report in no USD (#535; avo, 6 Nov 2026).
 
-The fundamentals layer serves a statement value only when it is tagged in USD (``facts.py``); measured on the
-companyfacts raw of 6 Nov 2026, 222 IFRS filers in the universe report in none. One request per currency in
+The fundamentals layer serves a statement value in USD (``facts.py``): one tagged in another currency is converted
+at these rates, and dropped only where they do not reach its period. Measured on the companyfacts raw of 6 Nov 2026,
+222 IFRS filers in the universe report in no USD; the gap scan of 21 Nov 2026 added the 20-F/40-F filers whose
+US-GAAP statements are in CAD or JPY (#105). One request per currency in
 ``CURRENCIES`` (``core/providers/yfinance.get_fx_history``: Yahoo's daily close of ``<CUR>USD=X``, USD per unit): the
 whole history the first time, else from ``OVERLAP_DAYS`` before the newest stored day, so a late correction by
 Yahoo is read again. Counted under ``yfinance`` and paced at its window. A failed currency is an issue and is asked
@@ -9,9 +11,9 @@ again by the next run; a run where every request failed is a failed run.
 
 Raw: ``raw/yfinance/fx/<as-of>/<CUR>.json.gz`` (``{day: rate}``, the resume marker). Parquet:
 ``parquet/yfinance/fx/part-0.parquet``, every raw day typed into one file, the newest answer per (currency, day).
-Staging: ``stg_yf_fx``. The companyfacts typing reads the held rates (``held_rates``) to convert an IFRS filer's
-statement values to USD (#105); a company typed before its currency's rates were held is converted at its next
-re-type.
+Staging: ``stg_yf_fx``. The companyfacts typing reads the held rates (``held_rates``) to convert a filer's
+statement values to USD where they are tagged in another currency (#105, IFRS filers and 20-F/40-F US-GAAP ones);
+a company typed before its currency's rates were held is converted at its next re-type.
 
 **Compustat's rate first, Yahoo's where Compustat has none** (#1181 step H; DECISIONS F3; avo, 20 Nov 2026: "WRDS'e
 gecelim tamamen"). ``held_rates`` reads the newest ``wrds/exrt`` snapshot (``comp.exrt_dly``, quoted from GBP, so a
