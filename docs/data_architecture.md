@@ -1566,10 +1566,13 @@ table when that source comes back short, and the `left` row that followed was ir
 `etf` table, so a fund whose row is there and is today flagged an ETN or a CEF is the rule's answer and leaves; an
 `etf_aum` fund that vanished leaves too, because that is the AUM source's own story.
 
-**Tier rule v3** (`rcdata/build/spine/tier.py`): A = listed on Nasdaq, NYSE or Cboe and not an excluded type
+**Tier rule v4** (`rcdata/build/spine/tier.py`): A = listed on Nasdaq, NYSE or Cboe and not an excluded type
 (`core.identity.types.EXCLUDED_TYPES`; an untyped name stays); B = listed, excluded type; C = OTC, in the SEC file or
 (v3, #962) by the linked Compustat security's current `exchg` 19 while the SEC file still names an exchange; D = no
-exchange.
+exchange, in the SEC file **and** by the linked Compustat security. Where the SEC file's exchange is empty, that
+security's `exchg` stands in for it (v4, #1334 draft K-D: 11 NYSE, 14 Nasdaq, 21 Cboe BZX only, the codes whose SEC
+name the rule reads as listed; CFR, IBOC and TXCP are S&P 400 members and were Tier D on a blank SEC exchange
+alone).
 So Tier A is not every listed name: listed is A and B. The type comes from `core.identity.types.classify_type` over
 OpenFIGI's types and the name (no SEC submissions); a name those leave untyped takes, in order, its ticker's type (a
 warrant, unit or right: `-WT`, `-UN`, `-RI`, or a Nasdaq fifth letter W, U, R; a right is typed warrant), Compustat's
