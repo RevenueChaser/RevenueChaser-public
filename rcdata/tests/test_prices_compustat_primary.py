@@ -323,18 +323,28 @@ def _split_unknown_to_compustat(data):
     return data
 
 
-def test_a_split_only_crsps_factor_records_is_a_cross_check_issue_not_a_gap(monkeypatch):
-    """The WRDS access inventory (3 Nov 2026): Compustat's daily splits (``sec_split``, ``ajexdi``) are the source and
-    CRSP's only the cross-check. A split only ``dlycumfacpr`` records is not applied; the gap it explains is no
-    ``price_gap_no_action`` but a ``split_only_crsp`` issue, which names what Compustat lacks."""
+def test_a_split_only_crsp_records_and_the_served_close_jumps_across_is_applied_from_crsp(monkeypatch):
+    """avo, 21 Nov 2026 on #661: a split only ``dlycumfacpr`` records, that no Compustat or Alpaca split is within
+    ``SPLIT_SAME_DAYS`` of and the served close jumps ``GAP_FACTOR`` or more across, is a split Compustat lacks and
+    the served history is wrong there, so it **is applied**, from CRSP, as source ``wrds/crsp`` -- the one CRSP row
+    that is served. It stays named, as ``split_applied_crsp``, so the exception is visible, and the day is no
+    ``price_gap_no_action``."""
     from RevenueChaser.rcdata import ops
     from RevenueChaser.rcdata.build.prices import serving as prices_serving
     _serve(monkeypatch, _split_unknown_to_compustat(_data()))      # CRSP's dlycumfacpr: 2.0 -> 1.0 on 4 Jun
     assert f"{AAPL}:{JUNE[2]}" not in _gap_issues()
-    assert not _q("SELECT 1 FROM corporate_action WHERE security_id = ? AND action = 'split'", [AAPL])
-    crsp_only = {i["key"]: i["detail"] for i in ops.open_issues(prices_serving.NAME, limit=500)[1]
-                 if i["kind"] == "split_only_crsp"}
-    assert set(crsp_only) == {f"{AAPL}:{JUNE[2]}"} and "PERMNO 14593" in crsp_only[f"{AAPL}:{JUNE[2]}"]
+    splits = _q("SELECT ex_date, ratio, applied, source, source_id FROM corporate_action WHERE security_id = ? "
+                "AND action = 'split'", [AAPL])
+    assert [(str(s["ex_date"]), s["ratio"], s["applied"], s["source"]) for s in splits] \
+        == [(JUNE[2], 2.0, True, wrds_history.CRSP)], splits
+    assert splits[0]["source_id"].startswith("wrds:crspsplit:")
+    view = {str(r["session_date"]): r["close"] for r in _q(
+        "SELECT session_date, close FROM price_bars_daily WHERE ticker = 'AAPL'")}
+    assert view[JUNE[1]] == pytest.approx(202.0 / 2), "the served history before the split is adjusted by it"
+    issues = {i["kind"]: i["detail"] for i in ops.open_issues(prices_serving.NAME, limit=500)[1]
+              if i["key"] == f"{AAPL}:{JUNE[2]}" and i["kind"].startswith("split_")}
+    assert set(issues) == {"split_applied_crsp"}, issues
+    assert "PERMNO 14593" in issues["split_applied_crsp"] and "applied from CRSP" in issues["split_applied_crsp"]
 
 
 def test_the_same_gap_with_no_source_of_the_split_is_still_an_issue(monkeypatch):
@@ -358,11 +368,11 @@ def _serve_note(monkeypatch, data) -> str:
     return row["note"]
 
 
-def _crsp_only_details():
+def _crsp_only_details(kind: str = "split_only_crsp"):
     from RevenueChaser.rcdata import ops
     from RevenueChaser.rcdata.build.prices import serving as prices_serving
     return {i["key"]: i["detail"] for i in ops.open_issues(prices_serving.NAME, limit=500)[1]
-            if i["kind"] == "split_only_crsp"}
+            if i["kind"] == kind}
 
 
 def test_a_split_only_crsp_names_the_served_jump_and_one_outside_the_served_bars_is_only_counted(
@@ -376,13 +386,14 @@ def test_a_split_only_crsp_names_the_served_jump_and_one_outside_the_served_bars
     data["crsp.dsf_v2"] = [{**data["crsp.dsf_v2"][0], "dlycaldt": d, "dlycumfacpr": f, "dlyret": None}
                            for d, f in (("2024-05-01", 4.0), ("2024-05-02", 2.0))] + data["crsp.dsf_v2"]
     note = _serve_note(monkeypatch, data)
-    crsp_only = _crsp_only_details()
-    assert set(crsp_only) == {f"{AAPL}:{JUNE[2]}"}, crsp_only
-    assert "the served close jumps x0.502 from 2025-06-03 to 2025-06-04: Compustat lacks this split" \
-        in crsp_only[f"{AAPL}:{JUNE[2]}"]
-    assert ("split_only_crsp: 1 within the served bars (1 with a served close jump of 1.9 times or more, either way: "
-            "Compustat lacks the split, check these first), 1 with no served bar on both sides within 7 days, "
-            "not named") in note
+    assert not _crsp_only_details(), "the jumping one is applied, so no split_only_crsp is left"
+    applied = _crsp_only_details("split_applied_crsp")
+    assert set(applied) == {f"{AAPL}:{JUNE[2]}"}, applied
+    assert "the served close jumped x0.502 from 2025-06-03 to 2025-06-04, so Compustat lacks this split" \
+        in applied[f"{AAPL}:{JUNE[2]}"]
+    assert ("split_only_crsp: 1 applied as wrds/crsp (the served close jumps 1.9 times or more: Compustat lacks the "
+            "split, #661), 0 named with no jump in the served bars, 1 with no served bar on both sides within "
+            "7 days, not named") in note
 
 
 def test_a_split_only_crsp_the_served_close_does_not_jump_across_is_named_as_no_jump(
@@ -395,7 +406,9 @@ def test_a_split_only_crsp_the_served_close_does_not_jump_across_is_named_as_no_
     detail = _crsp_only_details()[f"{AAPL}:{JUNE[2]}"]
     assert "the served close moves x1.005 from 2025-06-03 to 2025-06-04, no jump in the served bars" in detail
     assert "Compustat lacks" not in detail
-    assert "split_only_crsp: 1 within the served bars (0 with a served close jump" in note
+    assert "split_only_crsp: 0 applied as wrds/crsp" in note and "1 named with no jump in the served bars" in note
+    assert not _q("SELECT 1 FROM corporate_action WHERE source = ?", [wrds_history.CRSP]), \
+        "a CRSP factor step the served bars do not show is never applied"
 
 
 def test_a_dividend_before_the_first_served_bar_is_counted_and_one_inside_the_history_is_named(monkeypatch):
@@ -702,7 +715,8 @@ def test_a_crsp_split_within_split_same_days_of_compustats_is_the_same_split(mon
     data = _split_unknown_to_compustat(_data())
     data["comp.sec_split"] = [{"gvkey": "001690", "iid": "01", "datadate": comp_day, "split": 2.0}]
     _serve(monkeypatch, data)
-    kinds = {i["key"] for i in ops.open_issues(prices_serving.NAME, limit=500)[1] if i["kind"] == "split_only_crsp"}
+    kinds = {i["key"] for i in ops.open_issues(prices_serving.NAME, limit=500)[1]
+             if i["kind"] in ("split_only_crsp", "split_applied_crsp")}
     assert (f"{AAPL}:{JUNE[2]}" in kinds) is crsp_only
 
 
