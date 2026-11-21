@@ -45,6 +45,8 @@ and the others still answer, so a monitor learns *which* dependency is at fault.
 | Probe | Red when | Required |
 |---|---|---|
 | `artifacts` | `RC_CACHE_DIR` is not a readable directory | yes — `503` |
+
+The second word of that row is the one that bit on the first deploy: the root can be *there* and still not be *readable*. The image runs as its own `door` user, whose uid exists only inside the image, and the artifacts root belongs to the user the dashboard's jobs run as with mode `2770`. The container joins that gid as a supplementary group (`group_add` in `docker-compose.yml`, `RC_ARTIFACTS_GID`); without it the probe is red, `/api/v1/health` answers 503 and `/api/v1/boards` fails, while `/api/v1/version` still answers, because that route reads no file.
 | `redis` | `RC_REDIS_URL` is set and `PING` does not come back | no |
 
 `redis` with no URL set is `null`, not red: the read side reads files and is complete without a queue. Step 7's
@@ -76,6 +78,7 @@ A Docker container built from the merged SHA (`v2/door/Dockerfile`, compose serv
 | `RC_DOOR_HOSTS` | the Host allowlist; default `127.0.0.1,localhost,homesrv.rhinoceros-dominant.ts.net` |
 | `RC_DOOR_GRAFANA_ORIGIN` | the one origin the door's CSP lets its pages frame; empty means frame nothing |
 | `RC_REDIS_URL` | the ops state, for the health probe now and the write side later |
+| `RC_ARTIFACTS_GID` | the gid that owns `RC_CACHE_DIR` on the host, joined as a supplementary group; default `1001` (homesrv's `life`) |
 
 The CSP names no CDN, ever: v2 runs on a tailnet with no guaranteed outbound internet (`v2/README.md`
 decision 2). `frame-ancestors 'none'` is the other direction — nothing frames the door — so it is Grafana's own
