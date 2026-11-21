@@ -250,7 +250,7 @@ def reporting_currency(facts: dict) -> str | None:
     if not counts:
         return None
     cur, n = max(counts.items(), key=lambda kv: (kv[1], kv[0] == "USD"))
-    return cur if cur != "USD" else None        # MUTANT M2
+    return cur if cur != "USD" and n * 2 > sum(counts.values()) else None
 
 
 def gaap_in_usd(facts: dict, fx: dict | None = None) -> dict:
