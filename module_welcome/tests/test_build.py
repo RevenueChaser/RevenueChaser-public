@@ -1,7 +1,9 @@
 """The Welcome board's incremental build into ``boards/welcome.duckdb`` (welcome plan §4, DECISIONS S16).
 
-Three parts, each upserted from what changed since its own mark, nothing deleted: the market snapshot (SPX, VIX,
-MOVE, US 10-year), the earnings of today and the next trading day, and the last run of every job.
+Three parts, each upserted from what changed since the **rows it already holds**, nothing deleted: the market
+snapshot (SPX, VIX, MOVE, US 10-year), the earnings of today and the next trading day, and the last run of every
+builder file. There is no incremental mark and ``welcome_meta`` has no writer (#643); the last tests here hold
+that, because the docstrings and ``docs/data_architecture.md`` said the opposite for as long as nothing checked it.
 """
 from __future__ import annotations
 
@@ -222,3 +224,22 @@ def test_every_serving_file_has_a_name_on_the_card():
     """A new builder file cannot reach the card unnamed: the labels cover ``serving.KINDS`` exactly."""
     from RevenueChaser.rcdata import serving
     assert set(wb.FILE_LABELS) == set(serving.KINDS)
+
+
+# ── #643: there is no incremental mark ────────────────────────────────────────────────────────────────────────
+
+def test_the_build_module_holds_no_mark_reader_or_writer_and_writes_no_mark_row():
+    """The dead ``_meta`` / ``_set_meta`` pair went with #643: the parts compare their stored rows, so a helper
+    that reads or moves a mark is either unused again or an undocumented second rule.
+
+    The row count is asserted here rather than in a test of its own because a build has never written
+    ``welcome_meta`` — the table the plan designed for ``earnings_mark`` / ``freshness_mark`` — so that
+    assertion alone is green on the merge base and `red-on-base` is right that it proves nothing about this
+    change. Beside the missing helpers it does: a mark added back without the ``UNWRITTEN`` record and the two
+    docs following would land here.
+    """
+    assert not hasattr(wb, "_meta") and not hasattr(wb, "_set_meta")
+    _prices(SESSIONS)
+    _screener([_screener_row("AAA", TUE)])
+    wb.build(now=NOW)
+    assert rawstore.count(wb.META) == 0

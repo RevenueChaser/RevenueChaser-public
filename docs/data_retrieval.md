@@ -288,12 +288,22 @@ nothing, so neither needs the `X-RC-Panel` header.
   window, or for a ticker that is not one.
 
 **`python -m RevenueChaser.scripts.news_mcp`** is a JSON-RPC 2.0 server over stdio (one message a line) that
-reads those two routes and nothing else, so it holds no DuckDB handle of its own and needs the dashboard
-running. Three tools: `recent_headlines` (a window back from now, optionally one ticker), `coming_events` (the
-days and the types) and `headlines_around_event` — the headlines inside a window around one `event_ts`, each
-with its `minutes_from_event`. Every window is capped in the server as well as in the route, a bad ask comes
-back as the tool's own error rather than a crash, and a dashboard that is not running answers with the command
-that starts it. No model is called here: which model reads this, and what it costs, is avo's own later decision.
+reads those read-only routes and nothing else, so it holds no DuckDB handle of its own and needs the dashboard
+running. Four tools: `recent_headlines` (a window back from now, optionally one ticker), `coming_events` (the
+days and the types), `headlines_around_event` — the headlines inside a window around one `event_ts`, each
+with its `minutes_from_event` — and `stored_reading` (#1234), the hours the hourly EVREN reading has already
+written, each window carrying the same fixed fields and each field the sentence it came from. Every window is
+capped in the server as well as in the route, a bad ask comes back as the tool's own error rather than a crash,
+and a dashboard that is not running answers with the command that starts it. No model is called **here**: the
+hourly reading is written by the dashboard job `news_reading` (`module_news/reading.py`), the one writer, and
+this server only reads what it stored.
+
+**`GET /api/news/reading`** (#1234) serves that reading: `hours` back from now (1 to 744, default 24), newest
+hour first, one object a window with `window_start`, `window_end`, `provider`, `model`, `headlines` and
+`fields`. A field is `{value, quote, headline_id, source, published_at}`: `quote` is the headline's own words,
+and a field the model could not source is absent rather than unsourced. Read-only, no `X-RC-Panel` header. The
+pass that writes it is `POST /run/news_reading` (queued hourly at :20 by `RC-News-Reading-Hourly`); `paid=1` on
+that request is the only way a paid writer is ever asked, and it is avo's own word, never a default.
 
 ### The watch-list routes (PR 4)
 

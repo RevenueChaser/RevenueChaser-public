@@ -62,10 +62,14 @@ SECTIONS_PARQUET = "sections.parquet"
 NOTES_PARQUET = "notes.parquet"
 
 WHOLE, PROXY, BUSINESS = "whole", "proxy", "business"
+#: The earnings press release: the EX-99.1 exhibit of an 8-K item 2.02 filing, stored whole as its own
+#: section (#1214). It is management's own words about the quarter, which is what the Earnings board's R8
+#: reads; nothing is cut out of it, so its ``method`` is ``uncut`` and its span is the whole document.
+RELEASE = "release"
 #: How a section was found, so a weak method can be withdrawn on its own: the document uncut, the line-start item
 #: header, or a 40-F's Annual Information Form.
 UNCUT, HEADER, AIF = "uncut", "header", "aif"
-SECTIONS = (WHOLE, PROXY, BUSINESS)
+SECTIONS = (WHOLE, PROXY, BUSINESS, RELEASE)
 
 #: The cutter version this layer stores sections with, and the note reader's own version. Both ride on every row.
 SECTIONS_VERSION = sec_sections.OURS_2
@@ -89,11 +93,19 @@ SCHEMAS = {SECTION_TABLE: SECTION, NOTE_TABLE: NOTE}
 
 # ── the documents on disk ───────────────────────────────────────────────────────────────────────────────────────
 
-def targets(cik: str) -> list[tuple[dict, Path, bool]]:
-    """``(filing, document, is_exhibit)`` for every stored document of ``cik`` this layer cuts.
+#: What a stored document is, for :func:`sections_of`: the filing's own document, a 40-F's Annual Information
+#: Form exhibit, or an earnings press release. Falsy for the primary document, so "is this an exhibit" still reads
+#: as a truth test.
+PRIMARY, AIF_DOC, RELEASE_DOC = "", "aif", "release"
 
-    The same choice ``sec/filings`` fetched them with (its ``pick``: the newest annual report and the newest proxy,
-    an amendment never counting), read from the newest stored submissions list. The dates come from that list and
+
+def targets(cik: str) -> list[tuple[dict, Path, str]]:
+    """``(filing, document, kind)`` for every stored document of ``cik`` this layer cuts (:data:`PRIMARY`,
+    :data:`AIF_DOC`, :data:`RELEASE_DOC`).
+
+    The same choice ``sec/filings`` fetched them with (its ``pick`` and ``pick_release``: the newest annual
+    report, the newest proxy and the newest 8-K item 2.02 press release, an amendment never counting), read from
+    the newest stored submissions list. The dates come from that list and
     not from a document's ``.meta.json``, which carries only ``cik``, ``accession``, ``form``, ``as_of``, ``url``
     and the run stamps -- no ``filing_date`` and no ``report_date``.
     """
@@ -101,16 +113,22 @@ def targets(cik: str) -> list[tuple[dict, Path, bool]]:
     if not raws:
         return []
     rows = filings.parse(cik, base.read_raw_json(raws[-1]))
-    out: list[tuple[dict, Path, bool]] = []
+    out: list[tuple[dict, Path, str]] = []
     for forms in (filings.ANNUAL_FORMS, filings.PROXY_FORMS):
         f = filings.pick(rows, forms)
         if f is None:
             continue
         primary = filings._doc_path(cik, f["accession"])
         if primary.exists():
-            out.append((f, primary, False))
+            out.append((f, primary, PRIMARY))
         if f["form"] == "40-F":
-            out += [(f, p, True) for p in filings.stored_exhibits(cik, f["accession"], f.get("primary_document"))]
+            out += [(f, p, AIF_DOC)
+                    for p in filings.stored_exhibits(cik, f["accession"], f.get("primary_document"))]
+    release = filings.pick_release(rows)
+    if release is not None:
+        path = filings.stored_release(cik, release["accession"])
+        if path is not None:
+            out.append((release, path, RELEASE_DOC))
     return out
 
 
@@ -150,15 +168,20 @@ def _flag(quality: str, text: str, item: str | None, form: str, *, aif: bool = F
     return sec_sections.cut_flag(quality, text, item, form, version=SECTIONS_VERSION, aif=aif)
 
 
-def sections_of(html: str, form: str, *, exhibit: bool = False, by_name: object = None) -> list[tuple]:
+def sections_of(html: str, form: str, *, exhibit: bool = False, by_name: object = None,
+                release: bool = False) -> list[tuple]:
     """``(section, text, quality, method, start_char, end_char)`` per section of one document.
 
     An exhibit is the business description on its own, so its whole text is the section and the 10-K item cuts do
-    not apply to it (as ``sec/filings`` reads it today). A proxy is one uncut ``proxy`` row; every other form gives
+    not apply to it (as ``sec/filings`` reads it today). A press release is likewise one uncut row, of its own
+    section (#1214): it is not a periodic report, so neither the item cuts nor the note reader have anything to
+    say about it. A proxy is one uncut ``proxy`` row; every other form gives
     the uncut ``whole`` row plus the business row its own rule cuts -- empty text and the cutter's label when the
     rule found no section (#843), so ``method`` names the cutter that ran and not a cut that was made.
     """
     text = sec_sections.strip_html(html)
+    if release:
+        return [(RELEASE, text, _quality(text), UNCUT, None, None)]
     if exhibit:
         # Chosen by its number alone, which is one filer's layout: say so on the row rather than letting a guess
         # read like a real Annual Information Form (``sec/filings`` carries the same flag).
@@ -370,7 +393,7 @@ class Forms:
         for cik in sorted({Path(r).parent.name for r in raws}, key=int):
             ctx.check_pause()
             sections, notes = [], []
-            for f, path, exhibit in targets(cik):
+            for f, path, kind in targets(cik):
                 meta = base.read_raw_json(common.meta_path(path))
                 stamps = {"source_as_of": date.fromisoformat(meta["as_of"]),
                           "fetched_at": float(meta["fetched_at"]), "run_id": meta["run_id"]}
@@ -378,12 +401,13 @@ class Forms:
                          "filing_date": f["filing_date"]}
                 html = base.read_raw(path).decode("utf-8", "replace")
                 for section, text, quality, method, start, end in sections_of(
-                        html, f["form"], exhibit=exhibit, by_name=meta.get("by_name")):
+                        html, f["form"], exhibit=kind == AIF_DOC, by_name=meta.get("by_name"),
+                        release=kind == RELEASE_DOC):
                     sections.append({**filed, "report_date": f.get("report_date"), "section": section,
                                      "text": text, "chars": len(text), "quality": quality, "start_char": start,
                                      "end_char": end, "method": method, "rules_version": SECTIONS_VERSION,
                                      **stamps})
-                if not exhibit and f["form"] in filings.ANNUAL_FORMS:
+                if kind == PRIMARY and f["form"] in filings.ANNUAL_FORMS:
                     for n in sec_notes.parse(html, counts)[0]:
                         # ``Note.row`` keys its row by an int CIK; this layer stores TEXT, as ``filing_item`` does,
                         # so ``filed`` overwrites that one column and adds the form and the filing date.

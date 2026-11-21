@@ -317,6 +317,24 @@ REGISTRY: tuple[AutomationEntry, ...] = (
                     "one writer): the task only queues it and waits; with the dashboard down it exits 1. The "
                     "board's own Fetch runs the same pass, so a Fetch is never a week late.",
         settings=TaskSettings(restart_count=0, time_limit_minutes=30)),
+    # The News board's hourly reading (#1234, avo 21 Nov 2026 decision A): the EVREN model reads the hour's
+    # stored headlines and the reading is stored as fixed-schema fields, each carrying its source sentence.
+    AutomationEntry(
+        name="RC-News-Reading-Hourly", label="News reading (hourly)",
+        args=("-m", "RevenueChaser.scripts.board_fetch", "news-reading"), time="00:20", hourly=True,
+        unit_name="life-rc-fetch-news-reading", tables_written=("news_reading",),
+        description="The News board's reading of the headline flow (#1234): every hour at :20 the EVREN model "
+                    "reads the clock hour that has just finished and its reading is written to "
+                    "boards/news.duckdb as fixed-schema fields (module_news/reading.FIELDS), each field carrying "
+                    "the sentence it came from and the headline id it was copied from; a field the model cannot "
+                    "source is dropped, not stored. One call an hour and no fee: the writer is EVREN "
+                    "(core/llm_jobs job news.reading), and the pass refuses to run at all on a paid writer "
+                    "unless it is started with paid=1, because an hourly pass is a standing cost. An hour with "
+                    "no stored headline asks nothing. Store-only otherwise: the headlines come from the board's "
+                    "own 5-minute passes and no provider is fetched. The pass runs in the dashboard "
+                    "(POST /run/news_reading, the one writer): the task only queues it and waits; with the "
+                    "dashboard down it exits 1.",
+        settings=TaskSettings(restart_count=0, time_limit_minutes=30)),
     AutomationEntry(
         name="RC-Fetch-SectorRotation", label="Sector Rotation Fetch (nightly)",
         args=("-m", "RevenueChaser.scripts.board_fetch", "rotation"), time="05:40", unit_name="life-rc-fetch-rotation",

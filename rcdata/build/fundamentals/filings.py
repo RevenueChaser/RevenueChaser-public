@@ -8,8 +8,10 @@ run. The day each list was read is served (``fundamental_company.submissions_as_
 from "not read lately" (the Fundamentals review's F2).
 
 **The documents.** The primary document of the newest annual report (10-K, else 20-F, else 40-F) and of the newest
-proxy (DEF 14A), plus a 40-F's Annual Information Form exhibits, fetched once each (the raw file is the resume
-marker) and stored on disk. Beside the annual report, its definition linkbase (``<ticker>-<date>_def.xml``, or the
+proxy (DEF 14A), plus a 40-F's Annual Information Form exhibits and the newest earnings press release (the
+EX-99.1 exhibit of the newest 8-K carrying item 2.02, #1214), fetched once each (the raw file is the resume
+marker) and stored on disk. The press release is typed from the filing's ``-index-headers.html`` and never from
+its file name (:func:`release_exhibit`). Beside the annual report, its definition linkbase (``<ticker>-<date>_def.xml``, or the
 schema file ``<ticker>-<date>.xsd`` of a filing that lists no ``_def.xml`` and embeds its linkbases there; found
 through the filing's ``index.json``; ``linkbase.py``), which says in which table of the report a segment member
 stands; a filing that has none is counted in the run's note, not an issue.
@@ -28,7 +30,8 @@ filing list yet, and its two documents, resumable.
 
 Raw: ``raw/sec/filings/submissions/<cik>/<as-of>.json.gz`` (with a ``.meta.json``: the accessions it holds) and
 ``raw/sec/filings/documents/<cik>/<accession>.html.gz`` (and ``<accession>.index.json.gz``,
-``<accession>.<name>_def.xml.gz`` or ``<accession>.<name>.xsd.gz`` beside it). Parquet:
+``<accession>.index-headers.html.gz``, ``<accession>.<name>_def.xml.gz`` or ``<accession>.<name>.xsd.gz``
+beside it). Parquet:
 ``parquet/sec/filings/cik=<cik>/filings.parquet``
 (one row per filing and 8-K item), ``.../segments.parquet`` / ``.../customers.parquet`` (the annual report's inline
 XBRL, ``ixbrl.py``: revenue by segment, product and country, and major customers' shares), each replaced whole from
@@ -40,6 +43,7 @@ Staging: ``stg_sec_filings``, ``stg_sec_segments``, ``stg_sec_customers``, ``stg
 """
 from __future__ import annotations
 
+import html as html_mod
 import re
 import time
 from datetime import date, timedelta
@@ -59,6 +63,24 @@ PROXY_FORMS = ("DEF 14A",)
 #: How many AIF exhibits of one 40-F are kept. shortcut: one filing has never been seen with more than one, so the
 #: largest is taken; upgrade the number if a filer splits its Annual Information Form across exhibits.
 _AIF_PER_FILING = 1
+#: The 8-K item that reports results ("Results of Operations and Financial Condition"). ``earnings_event``
+#: already dates a confirmed report by it; the earnings press release itself rides on that filing as an EX-99.1
+#: exhibit, and is what the Earnings board's R8 reads as management's own words (#1214).
+EARNINGS_ITEM = "2.02"
+RELEASE_FORMS = ("8-K",)
+#: The item list of a submissions row is the SEC's own text ("2.02,9.01"), so the item is matched and not parsed.
+_ITEM_2_02 = re.compile(r"(?<![\d.])2\.02(?![\d])")
+#: The filing's header file, where an exhibit's **type** is stated; stored beside the exhibits it names.
+_HEADERS_NAME = "index-headers.html"
+_DOCUMENT_BLOCK = re.compile(r"<DOCUMENT>(.*?)(?=<DOCUMENT>|</SEC-DOCUMENT>|\Z)", re.S | re.I)
+_TYPE_TAG = re.compile(r"<TYPE>\s*([^\s<]+)", re.I)
+_FILENAME_TAG = re.compile(r"<FILENAME>\s*([^\s<]+)", re.I)
+#: The exhibit types that carry an earnings press release, in the order they are taken. 99.1 is the release on
+#: every filing measured; the bare ``EX-99`` and the zero-padded spelling are the two other shapes EDGAR holds.
+_RELEASE_TYPES = ("EX-99.1", "EX-99.01", "EX-99")
+#: Only a document this layer can turn into text. A release filed as a PDF is a named miss, not a stored binary.
+_RELEASE_SUFFIXES = (".htm", ".html", ".txt")
+
 #: This dataset cuts nothing since #858: the one cutter is ``sec/forms``, which reads the very documents fetched
 #: here and serves ``filing_section``. What went with it: ``document_sections`` (``whole``, ``proxy``,
 #: ``business``, ``aif``), the ``kind = 'document'`` rows of ``filing_item``, the ``capped`` label, and the cap
@@ -311,6 +333,9 @@ def read_documents(ctx: base.RunContext, cik: str, raw: Path, as_of: date) -> in
             fetched += read_exhibits(ctx, cik, f, as_of)
         if forms is ANNUAL_FORMS and path.exists():
             read_linkbase(ctx, cik, f, as_of)
+    # The newest earnings press release (8-K item 2.02, EX-99.1), which ``sec/forms`` cuts as a ``release``
+    # section and the Earnings board's R8 scores (#1214).
+    fetched += read_release(ctx, cik, rows, as_of)
     return fetched
 
 
@@ -436,6 +461,106 @@ def read_exhibits(ctx: base.RunContext, cik: str, f: dict, as_of: date) -> int:
         base.write_raw(path, r.content)
         fetched += 1
     return fetched
+
+
+def headers_url(cik: str, accession: str) -> str:
+    """The filing's header file: the one place an exhibit's type is stated."""
+    return (f"{common.sec_www()}/Archives/edgar/data/{int(cik)}/{accession.replace('-', '')}/"
+            f"{accession}-{_HEADERS_NAME}")
+
+
+def release_exhibit(headers_html: str) -> str | None:
+    """The name of the earnings press-release exhibit in a filing's header file; None when it types none.
+
+    **The type, never the name.** The type exists in this file alone, as ``<TYPE>EX-99.1``, and its tags are
+    HTML-escaped here, so a raw search over them finds nothing: measured on the 22 filings of #1214, a raw regex
+    matched 0 of 22 and ``html.unescape`` matched 21. ``index.json`` carries each file's name and size but no
+    type at all, and matching ``ex99`` in the file *name* found only 14 of those same 22.
+    """
+    text = html_mod.unescape(headers_html or "")
+    found: dict[str, str] = {}
+    for block in _DOCUMENT_BLOCK.findall(text):
+        kind, name = _TYPE_TAG.search(block), _FILENAME_TAG.search(block)
+        if kind is None or name is None:
+            continue
+        key = kind.group(1).strip().upper()
+        if key in _RELEASE_TYPES and key not in found:
+            found[key] = name.group(1).strip()
+    for key in _RELEASE_TYPES:
+        name = found.get(key)
+        if name and name.lower().endswith(_RELEASE_SUFFIXES):
+            return name
+    return None
+
+
+def pick_release(rows: list[dict]) -> dict | None:
+    """The newest 8-K carrying item 2.02 by filing date; None when the list holds none.
+
+    An amendment never counts, as :func:`pick`: ``8-K/A`` is not in :data:`RELEASE_FORMS`.
+    """
+    best, best_rank = None, None
+    for r in rows:
+        if r.get("form") not in RELEASE_FORMS or not _ITEM_2_02.search(str(r.get("items") or "")):
+            continue
+        rank = (str(r.get("filing_date")), str(r.get("accession")))
+        if best is None or rank > best_rank:
+            best, best_rank = r, rank
+    return best
+
+
+def stored_release(cik: str, accession: str) -> Path | None:
+    """The press-release exhibit stored for one filing, named by its stored header file; None when there is none.
+
+    Named from the header file for the same reason :func:`stored_exhibits` reads ``index.json``: the file name
+    alone cannot find the exhibit again, because it is not what chose it.
+    """
+    headers = _exhibit_path(cik, accession, _HEADERS_NAME)
+    if not headers.exists():
+        return None
+    name = release_exhibit(base.read_raw(headers).decode("utf-8", "replace"))
+    path = _exhibit_path(cik, accession, name) if name else None
+    return path if path is not None and path.exists() else None
+
+
+def read_release(ctx: base.RunContext, cik: str, rows: list[dict], as_of: date) -> int:
+    """Fetch the newest 8-K item 2.02 filing's press-release exhibit when it is not stored yet; how many fetched.
+
+    Two requests per filing at most -- the header file, then the exhibit -- and the stored file is the resume
+    marker, as it is for the annual report. A company whose newest report is already stored costs nothing, so the
+    steady cost is one report per company per quarter.
+    """
+    f = pick_release(rows)
+    if f is None:
+        return 0
+    headers = _exhibit_path(cik, f["accession"], _HEADERS_NAME)
+    if headers.exists():
+        body = base.read_raw(headers).decode("utf-8", "replace")
+    else:
+        r = common.sec_get(ctx, headers_url(cik, f["accession"]), missing_object=True)
+        if r is None:
+            ctx.issue("headers_missing", f"{cik}:{f['accession']}", "the archive holds no header file")
+            return 0
+        body = r.content.decode("utf-8", "replace")
+        base.write_raw(headers, r.content)
+    name = release_exhibit(body)
+    if not name:
+        ctx.issue("release_not_typed", f"{cik}:{f['accession']}",
+                  "the item 2.02 filing types no press-release exhibit this layer can read")
+        return 0
+    path = _exhibit_path(cik, f["accession"], name)
+    if path.exists():
+        return 0
+    url = document_url(cik, f["accession"], name)
+    r = common.sec_get(ctx, url, missing_object=True)
+    if r is None:
+        ctx.issue("document_missing", f"{cik}:{f['accession']}:{name}", f"the archive holds no {name}")
+        return 0
+    base.write_raw_json(common.meta_path(path), {"cik": cik, "accession": f["accession"], "form": f["form"],
+                                                 "exhibit": name, "release": True, "item": EARNINGS_ITEM,
+                                                 "as_of": as_of.isoformat(), "url": url,
+                                                 "fetched_at": time.time(), "run_id": ctx.run_id})
+    base.write_raw(path, r.content)
+    return 1
 
 
 class Filings:

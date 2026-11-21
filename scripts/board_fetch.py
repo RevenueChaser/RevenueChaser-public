@@ -10,7 +10,8 @@ The Fetch runs in the dashboard, the one writer: the task posts ``/run/<route>``
 polls ``/api/job/<id>``, as the Value Chain and SPX Gamma night tasks do. It prints one JSON line with the job's notes
 (the freeze outcome, ``core.ledger``) and exits 0 only when the job is done.
 
-Two boards are not nightly and have no session to wait for: ``news-earnings`` (weekly, #886) and ``relatedness``
+Three boards are not nightly and have no session to wait for: ``news-earnings`` (weekly, #886),
+``news-reading`` (hourly, #1234) and ``relatedness``
 (the weekly Sunday profiling pass, #1255, whose timer keeps its own ``life-rc-relatedness`` name). They run as
 soon as the store is idle. The idle wait is what #1255 is about: the profiling run used to open the board file in
 a writer process of its own and exit 1 on ``StoreLockedError`` ~29 s later, losing the week's run; here a busy
@@ -50,6 +51,8 @@ ROUTES = {
     "earnings": "earnings",
     # News earnings (#886): next week's report day of every watch-list name, store-only, every Sunday 09:00.
     "news-earnings": "news_earnings",
+    # News reading (#1234): the EVREN reading of the finished hour's stored headlines, hourly at :20.
+    "news-reading": "news_reading",
     # Relatedness profiling, weekly Sunday 22:15 (#1255). Its own unit pair is life-rc-relatedness, not
     # life-rc-fetch-relatedness: the timer predates this task and keeps its name.
     "relatedness": "module_relatedness",
@@ -62,9 +65,10 @@ FORM: dict[str, dict[str, str]] = {"relatedness": {"usd_cap": "10"}}
 
 #: The boards whose Fetch scores against a session and so waits for its SPY bar. The others run as soon as the
 #: store is idle, whatever day it is: the News earnings
-#: list carries a calendar of days still to come (#886), and the Relatedness profiling pass scores profiles
-#: against each other, not against a session (#1255).
-NEEDS_SESSION = frozenset(ROUTES) - {"news-earnings", "relatedness"}
+#: list carries a calendar of days still to come (#886), the hourly reading reads the hour that has just
+#: finished (#1234), and the Relatedness profiling pass scores profiles against each other, not against a
+#: session (#1255).
+NEEDS_SESSION = frozenset(ROUTES) - {"news-earnings", "news-reading", "relatedness"}
 
 
 def _wait_idle(deadline: float) -> list[str]:
