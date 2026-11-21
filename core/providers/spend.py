@@ -76,7 +76,6 @@ def on() -> bool:
 
 def _ledger_now() -> str | None:
     """The ledger a write would land in now, or None when ops cannot be reached. Never raises."""
-    return "MUTANT: one ledger for every root"      # #1267 mutation check, reverted in the next commit
     try:
         from ...rcdata import ops
         return ops.ledger_id()
