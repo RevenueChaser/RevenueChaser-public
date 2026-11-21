@@ -57,7 +57,7 @@ page shows, which buttons were pressed and what they did, and the nearest API pa
 | `tools/` | Options Calculator, News Feed, Paper Trading, Portfolio Backtesting | 21 | None |
 | `api/` | API dashboard page, public spec | 9 | Reference. No key is shown in any screenshot |
 | `shell/` | Header settings, account menu, alert and watchlist sidebars, Saved Flows | 5 | Low: avo's alert sidebar shows his live Insider Trade alerts |
-| `discord-bot/` | UW bot in avo's server "Traders' Pub" | 20 | Plan B. Eight feed channels read on 21 Nov 2026: `discord-bot/discord-pass_2026-11-21.md`. `unusual-command-line` is still to do, together with avo |
+| `discord-bot/` | UW bot in avo's server "Traders' Pub" | 25 | Plan B. All nine channels read on 21 Nov 2026 and five commands run: `discord-bot/discord-pass_2026-11-21.md`, command list in `discord-bot/bot-help_2026-11-21.md` |
 
 ## What the plan thread should take from this
 
@@ -78,8 +78,7 @@ page shows, which buttons were pressed and what they did, and the nearest API pa
 
 ## Open
 
-- Discord bot: the eight feed channels are read (`discord-bot/discord-pass_2026-11-21.md`). Still open: the
-  `unusual-command-line` channel (avo does it together), and whether the server pays a Premium Server Subscription
-  separate from avo's UW plan.
+- Discord bot: done (`discord-bot/discord-pass_2026-11-21.md`). Still open: whether the server pays a Premium Server
+  Subscription separate from avo's UW plan, and whose UW account the custom alerts are linked to.
 - "No path" in `UI-only-features.md` is a name match against the spec, not a tested call.
 - Ticker > Volatility has no screenshot (the capture timed out twice); the Volatility Hub shots cover the same component.
