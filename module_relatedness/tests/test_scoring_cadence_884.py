@@ -153,6 +153,7 @@ def test_the_profiling_row_is_still_its_own_job_and_weekly_too():
     """This row scores; the writer run stays its own job, and weekly since avo's word of 20 Nov 2026 -- the
     schedule the installed homesrv timer has had since 16 Nov."""
     e = A.entry("RC-Relatedness-OffPeak")
-    assert e.args[:3] == ("-m", "RevenueChaser.module_relatedness", "--run")
+    # Since #1255 that run asks the dashboard for the board's whole-board Fetch instead of writing itself.
+    assert e.args == ("-m", "RevenueChaser.scripts.board_fetch", "relatedness")
     assert e.schedule == "weekly Sunday 22:15 (local)"
     assert not e.fortnightly

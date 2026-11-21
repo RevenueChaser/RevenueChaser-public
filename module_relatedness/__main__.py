@@ -55,8 +55,15 @@ runs, which make no provider call and no cutover.
 the board covers); without it there is no call cap (avo, 2 Nov 2026). ``--cap`` is USD and DeepSeek's only.
 
 Without ``--provider``, ``--run`` writes with the board's writer (#360, ``module_relatedness/settings.py``: EVREN by
-default, the ``--provider evren`` path; a missing ``LITELLM_RC_KEY`` stops before any request). RC-Relatedness-OffPeak
-runs ``--run --cap 10``: the cap counts only when the board's writer is DeepSeek.
+default, the ``--provider evren`` path; a missing ``LITELLM_RC_KEY`` stops before any request). The cap counts only
+when the board's writer is DeepSeek.
+
+``--run`` here is a writer process of its own, so it opens the board file: beside another RevenueChaser process it
+waits ~29 s (``core.rawstore.brief_wait``) and then raises ``StoreLockedError``. That is what ended the weekly
+run of 21 Nov 2026 (#1255), so RC-Relatedness-OffPeak no longer uses this path: it runs
+``scripts.board_fetch relatedness``, which waits for the store to be idle and asks the dashboard -- the one
+writer -- for the same whole-board Fetch, with the 10 USD cap. Use ``--run`` by hand only when the dashboard is
+not running.
 """
 from __future__ import annotations
 

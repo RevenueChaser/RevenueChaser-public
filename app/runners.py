@@ -1137,12 +1137,17 @@ def _write_relatedness_peers(peers: dict) -> None:
     shutil.rmtree(old, ignore_errors=True)
 
 
-def run_relatedness(uw=None, no_fetch: bool = False) -> Path:
+def run_relatedness(uw=None, no_fetch: bool = False, usd_cap: float | None = None) -> Path:
     """Run the Relatedness board (LLM business-profile similarity).
 
     Fetch builds profiles for the pilot universe with the board's writer (Settings, #360: EVREN by default, DeepSeek
     off-peak gated); the ``no_fetch`` (model-only) path re-renders from that writer's stored profiles with zero
     network.
+
+    ``usd_cap`` is the run's spend ceiling in USD and counts only when that writer is DeepSeek; ``None`` leaves the
+    module's own default (``module_relatedness.config.USD_CAP``). The weekly task passes it, because its cap is
+    avo's 10 USD (2 Nov 2026) and not that default: since #1255 the task runs here rather than in a second writer
+    process of its own.
     """
     from RevenueChaser.module_relatedness import engine, report
     from RevenueChaser.module_relatedness import settings as rel_settings
@@ -1152,7 +1157,7 @@ def run_relatedness(uw=None, no_fetch: bool = False) -> Path:
     try:
         # One id per Fetch (jobs.py:97): its result history header (#388). A Refresh records nothing.
         payload = engine.run(no_fetch=no_fetch, run_id=None if no_fetch else _freeze_run_id(),
-                             provider=provider, model=model)
+                             provider=provider, model=model, usd_cap=usd_cap)
     except engine.AlreadyRunning as exc:
         raise JobMessage(str(exc)) from exc
     _write_to(RELATEDNESS_JSON, json.dumps(payload, ensure_ascii=False, default=str))
