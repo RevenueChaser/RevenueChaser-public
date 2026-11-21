@@ -33,7 +33,7 @@ from RevenueChaser.core import rawstore, reporting_common, templating
 from RevenueChaser.core.calendar import today_ny
 from RevenueChaser.core.providers.unusual_whales import UWClient
 from RevenueChaser.core.rawstore import StoreLockedError
-from RevenueChaser.core.reporting_common import payload_path
+from RevenueChaser.core.reporting_common import drop_board_data, payload_path
 from RevenueChaser.rcdata import caps
 from . import runners
 from . import jobs
@@ -488,7 +488,7 @@ def view(mod: str):
         ticker = (request.args.get("ticker") or "").strip().upper() or None
         if ticker is not None and not _valid_ticker(ticker):
             return "bad ticker", 400, {"Content-Type": "text/plain; charset=utf-8"}
-        payload_path(f).unlink(missing_ok=True)      # K10: the rebuild writes a new payload or none
+        drop_board_data(f)                           # K10 + v2 envelope: the rebuild writes new ones or none
         path = runners.run_quick_cached(ticker=ticker)
         if path is not None and path.exists():
             return send_from_directory(path.parent, path.name)
@@ -499,7 +499,7 @@ def view(mod: str):
         ticker = (request.args.get("ticker") or "").strip().upper() or None
         if ticker is not None and not _valid_ticker(ticker):
             return "bad ticker", 400, {"Content-Type": "text/plain; charset=utf-8"}
-        payload_path(f).unlink(missing_ok=True)      # K10: the rebuild writes a new payload or none
+        drop_board_data(f)                           # K10 + v2 envelope: the rebuild writes new ones or none
         path = runners.run_oipd_cached(ticker=ticker)
         if path is not None and path.exists():
             return send_from_directory(path.parent, path.name)
@@ -514,7 +514,7 @@ def view(mod: str):
         window = request.args.get("window", type=int)
         if request.args.get("window") not in (None, "") and window not in _comovement_windows():
             return "bad window", 400, {"Content-Type": "text/plain; charset=utf-8"}
-        payload_path(f).unlink(missing_ok=True)      # K10: the rebuild writes a new payload or none
+        drop_board_data(f)                           # K10 + v2 envelope: the rebuild writes new ones or none
         path = runners.run_comovement(None, no_fetch=True, horizon=horizon,
                                       benchmark=benchmark, window=window)
         if path is not None and path.exists():
@@ -525,9 +525,9 @@ def view(mod: str):
     if is_refresh and mod in _STORE_REFRESHABLE:
         # Drop the cache, then fall through to the same self-heal path the board
         # already uses when its artifact is missing (recompute from raw.duckdb).
-        # The payload file (K10) goes with it: the rebuild writes a new one or none.
+        # The payload file (K10) and the v2 envelope go with it: the rebuild writes new ones or none.
         f.unlink(missing_ok=True)
-        payload_path(f).unlink(missing_ok=True)
+        drop_board_data(f)
     if mod == "module_sec_13f" and f.exists() and _sec13f_stale():
         # A build or a new day the board file has not taken (#732): the older page is served now and the new one is
         # rendered beside it, because rendering it inside this request took ~70 s on each day's first open.

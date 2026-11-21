@@ -15,6 +15,7 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 
+from RevenueChaser.core import v2_envelope
 from RevenueChaser.core.html_safe import ESC_JS
 
 # ── Job poller, shared by the Settings board and its control panel ──
@@ -727,17 +728,49 @@ def payload_path(html_path) -> Path:
     return p.with_name(p.stem + PAYLOAD_SUFFIX)
 
 
-def write_board(html_path, html_text: str, payload=None) -> Path:
-    """Write a board's HTML and, with ``payload``, its payload file (K10); without one, drop a stale payload.
+def write_board(html_path, html_text: str, payload=None, *, board: str | None = None,
+                run_id: str | None = None, renderer: str = v2_envelope.GENERIC, private: bool = False,
+                layout=None, asof: str | None = None) -> Path:
+    """Write a board's HTML and, with ``payload``, its payload file (K10) and its v2 envelope; without one, drop both.
 
     The payload goes first, so a page loaded from the new HTML never fetches the old rows. ``mtime=0`` keeps the
     gzip bytes the same for the same data.
+
+    The v2 envelope (``core/v2_envelope``, #1241) is a second file for the v2 door; the old page reads the payload
+    file as before, with the same name and the same bytes. ``data`` inside the envelope is serialised with the
+    payload's own options, so the two files hold the same data byte for byte. The keyword arguments are the
+    envelope's metadata: ``board`` defaults to the board the artifact path names, ``run_id`` to the store writer's
+    run (the dashboard job), and ``renderer`` / ``private`` / ``layout`` / ``asof`` to the contract's defaults.
     """
-    pp = payload_path(html_path)
+    pp, ep = payload_path(html_path), v2_envelope.envelope_path(html_path)
     if payload is not None:
-        data = json.dumps(payload, ensure_ascii=False, default=str, separators=(",", ":")).encode("utf-8")
+        data = json.dumps(payload, **v2_envelope.JSON_ARGS).encode("utf-8")
         _write_atomic(pp, gzip.compress(data, compresslevel=6, mtime=0))
+        envelope = v2_envelope.build(board or v2_envelope.board_of(html_path), payload,
+                                     run_id=run_id or _writer_run_id(), renderer=renderer,
+                                     private=private, layout=layout, asof=asof)
+        _write_atomic(ep, gzip.compress(json.dumps(envelope, **v2_envelope.JSON_ARGS).encode("utf-8"),
+                                       compresslevel=6, mtime=0))
     path = write_artifact(html_path, html_text)
     if payload is None:
-        pp.unlink(missing_ok=True)
+        drop_board_data(html_path)
     return path
+
+
+def _writer_run_id() -> str:
+    """The running dashboard job's id (``rawstore.writer_run_id``), else a fresh one; never fails a render."""
+    try:
+        from RevenueChaser.core import rawstore
+        return rawstore.writer_run_id()
+    except Exception:  # noqa: BLE001 - an id is metadata; a board render never fails for the want of one
+        return ""
+
+
+def drop_board_data(html_path) -> None:
+    """Drop a board's payload file and its v2 envelope, so a rebuild never serves data from the previous build.
+
+    Called wherever the dashboard drops a board's HTML to rebuild it (``app/dashboard``'s Refresh branches): the
+    two data files go together, because the door reads the envelope and the page reads the payload.
+    """
+    payload_path(html_path).unlink(missing_ok=True)
+    v2_envelope.envelope_path(html_path).unlink(missing_ok=True)

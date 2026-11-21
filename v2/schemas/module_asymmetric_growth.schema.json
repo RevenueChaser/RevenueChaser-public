@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://revenuechaser.local/v2/schemas/module_asymmetric_growth.schema.json",
+  "title": "Asymmetric Growth (v2 envelope)",
+  "description": "The board's cards outside its HTML (module_asymmetric_growth/report.board_payload).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "board",
+    "run_id",
+    "data_asof",
+    "built_at",
+    "private",
+    "renderer",
+    "layout",
+    "data"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "description": "the envelope's own version, not the store's _SCHEMA_VERSION"
+    },
+    "board": {
+      "const": "module_asymmetric_growth",
+      "description": "the dashboard's module key for this board"
+    },
+    "run_id": {
+      "type": "string",
+      "description": "the dashboard job that wrote it (rawstore.writer_run_id)"
+    },
+    "data_asof": {
+      "type": "string",
+      "description": "this board carries an as-of; the door refuses an envelope without one"
+    },
+    "built_at": {
+      "type": "string",
+      "description": "when this file was written, UTC ISO"
+    },
+    "private": {
+      "type": "boolean",
+      "description": "true: never to the AI chat, a mock, a fixture or a log"
+    },
+    "renderer": {
+      "enum": [
+        "generic",
+        "bespoke"
+      ]
+    },
+    "layout": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "the generic renderers' description; null until step 8"
+    },
+    "data": {
+      "type": "object",
+      "description": "the board's payload, exactly as /view/<board>/payload.json serves it",
+      "required": [
+        "asof",
+        "cards"
+      ],
+      "properties": {
+        "asof": {
+          "type": "string"
+        },
+        "cards": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      }
+    }
+  }
+}
