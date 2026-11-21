@@ -90,6 +90,30 @@ Two things that change the Discord route's feasibility:
    avo's own plan ending on 9 December may not stop these channels — **still to be confirmed with the server
    owner**, but the earlier worry is weaker than it looked.
 
+### 3.5 The channels themselves, read 21 November 2026 (supersedes §3.3's screenshot reading)
+
+A read-only pass over the eight UW bot channels in Traders' Pub, 17:49-17:56 Amsterdam; nothing was written, no
+command was sent. The record is `ui/discord-bot/` here and
+`/mnt/project-files/UWdependency/discord-bot/discord-pass_2026-11-21.md` beside the thread. What it settles:
+
+- **Nothing in those channels is avo's own data.** They are UW push-notification topics delivered into the server.
+  If the bot goes, no data of ours goes with it — only the feed stops. That removes the Discord route from the
+  "preserve before 8 December" list entirely (lane I is unaffected).
+- **Already ours or nearly so:** `insider-trades` (one post per Form 4 transaction, and the post itself links
+  sec.gov — only codes S and P seen, so the Form 4 build covers it), `stock-updates` (**two rules over daily
+  bars**: a new 52-week extreme, and volume at 3× or more of the 30-day average), `highest-volume-contracts`
+  (a 15-row table every 15 minutes — one chain snapshot with volume), congress filings (public reports).
+- **Needs a trade tape with side:** `live-option-flow`, as everything else does. Read off 30 posts in the last
+  20 minutes before the close, the alert floors look like Hot Contract volume ≥ 2,500, Interval (5 min) volume
+  ≥ 1,000, premium ≥ about USD 84K — **read off the sample, not from the alert's own settings**.
+- **No source on our side:** `analyst-ratings`, as §3.1 already said.
+- **A second bill may be hiding here.** The image cards come from a bucket path `notifications/premium/`, and two
+  channels carry `utm_content=custom_alert`; UW's own Discord-bot page says custom alerts to Discord need the
+  **Premium Server Subscription, USD 124.99/month** (user tier USD 6.99). Whether Traders' Pub pays that
+  separately from avo's UW web plan is not visible from Discord. **Question for avo** — see
+  `05_migration_plan.md` §5 and risk R19.
+- The ninth channel, `unusual-command-line`, was left alone: avo walks that one himself.
+
 ### 3.4 Market-wide contract ranking (`highest-volume-contracts`, and our own `options.far_contracts`)
 
 avo, 21 November 2026: "bu bizim üzerinde çalışmamız gereken bir şey. Tamam IBKR ve CBOE dedik. veya B planı
