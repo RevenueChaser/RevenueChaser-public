@@ -142,7 +142,6 @@ def build_report_html(results: dict) -> str:
     modules = results.get("modules", {})
     ticker = results.get("ticker", financials.get("ticker", ""))
 
-    info = financials.get("info", {})
     picker = results.get("picker") or {}
 
     # Quick Remarks bölümü (ticker_scores'dan beslenir; her zaman üstte)
@@ -156,20 +155,20 @@ def build_report_html(results: dict) -> str:
 
     ctx = {
         "ticker": ticker,
-        "company": info.get("longName") or info.get("shortName") or ticker,
+        # The SEC entity name, else the spine's (``run._company_name``); Yahoo's ``longName`` went with #645.
+        "company": financials.get("name") or ticker,
         "sector": financials.get("sector"),
         "price": financials.get("current_price"),
-        # The prices store's session of that price (G6 follow-up); None when the price is Yahoo's.
+        # The prices store's session of that price (G6 follow-up); None when the store held none.
         "price_session": (financials.get("market_meta") or {}).get("price_session"),
         "currency": financials.get("currency", "USD"),
         "shares_outstanding": financials.get("shares_outstanding"),
         "market_cap": financials.get("market_cap"),
+        # Since #645 the EV is the store's bridge (cap + total debt - cash of the newest stored fiscal year,
+        # ``run._enterprise_value``), the same one the peer side uses, so the target and its comps are on one
+        # basis. It was Yahoo's ``enterpriseValue`` — its own newest quarter — until Yahoo was dropped.
         "enterprise_value": financials.get("enterprise_value"),
-        # shortcut: the EV stays Yahoo's (its newest quarter's debt and cash) next to the prices store's cap, and the
-        # header says so (review should 2 on #284); the statements' net debt is up to a year old, so the store's cap
-        # plus it would be no better. Upgrade when the fundamentals layer serves the newest quarter's debt and cash.
-        "ev_is_yahoos": (financials.get("market_meta") or {}).get("shares_source", "Yahoo") != "Yahoo",
-        "source": financials.get("source", "yfinance"),
+        "source": financials.get("source", "SEC company facts"),
         "data_date": financials.get("_fetched_at_iso") or financials.get("fetched_at_iso"),
         "quick_remarks": quick_remarks,
         "quick_remarks_section": quick_remarks_section,

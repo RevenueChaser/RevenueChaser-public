@@ -20,7 +20,6 @@ from .engines import (
 from . import market_inputs
 from .peers import peer_set, target_row
 from .reporting.html_builder import build_report_html
-from RevenueChaser.core.providers import yfinance as yfinance_client
 
 
 # An upper-cased symbol such as BRK.B. The ticker becomes a file name (CLI report), so a path piece
@@ -128,50 +127,61 @@ def _statement_gaps(annual: list[dict], bank: bool = False) -> list[str]:
     return gaps
 
 
-def _statements_choice(sec: list[dict], yahoo: list[dict], bank: bool = False) -> tuple[str, list[str]]:
-    """``(used, what the SEC's statements lack)``: which annual statements a run models, ``"sec"`` or ``"yahoo"``.
-
-    The SEC's, unless Yahoo's newest year is newer, or is the same year and gives an input the SEC's lacks (the
-    real-data check of 29 Oct 2026: the SEC facts carry no depreciation for MSFT, ORCL, AMD and AVGO, no working
-    capital for a filer without an inventory line, and no year after 2020 for an IFRS filer such as TM, so their DCF
-    ran on defaults Yahoo did not need). Default chosen, change if avo prefers the SEC's statements always.
-
-    A year is the newest one with revenue (``fiscal_year.anchor``), so a newer year with only a balance sheet is no
-    newer year (Opus review S2). With ``"sec"`` the list is every input the SEC's year lacks, which then runs on a
-    default and is named on the Source line (Opus review S1); with ``"yahoo"`` it is what Yahoo's gives that the
-    SEC's lacks.
-
-    shortcut: a whole-source choice per run, never a field-by-field mix; upgrade when the layer serves depreciation's
-    other tags and current assets and liabilities (#271; then the SEC's statements stand alone)."""
-    from RevenueChaser.core import fiscal_year
-    sec_gaps = _statement_gaps(sec, bank)
-    if not yahoo:
-        return "sec", sec_gaps
-
-    def year(rows):
-        i = fiscal_year.anchor(rows)
-        text = str(rows[i].get("fiscal_year") or "")[:4] if i is not None else ""
-        return int(text) if text.isdigit() else None
-
-    s, y = year(sec), year(yahoo)
-    if s is not None and y is not None and s != y:
-        return ("sec", sec_gaps) if s > y else ("yahoo", [f"the fiscal year {y}"])
-    lacking = [g for g in sec_gaps if g not in _statement_gaps(yahoo, bank)]
-    return ("yahoo", lacking) if lacking else ("sec", sec_gaps)
+#: What the Source line and the warning say for a name the fundamentals layer holds no annual year with revenue
+#: for. Yahoo used to supply those statements; since avo's decision of 10 Nov 2026 (option B) it is dropped, so
+#: such a name is stated rather than modelled on a vendor's numbers.
+NO_SEC_DATA = "No SEC data (the company facts hold no annual year with revenue), so no model was run"
 
 
-def _sec_statements(ticker: str) -> tuple[list[dict], dict] | None:
-    """``(annual, meta)``: the newest ``SEC_YEARS`` fiscal years from the fundamentals layer (G6, build plan PR 15:
-    "statement inputs from the store"), or None when it holds no year for ``ticker``. They end on
-    the newest year with revenue: a later year the layer serves with only balance-sheet fields is not a base year
-    (Opus review S2)."""
+def _sec_statements(ticker: str) -> tuple[list[dict] | None, dict]:
+    """``(annual, meta)`` from the fundamentals layer (G6, build plan PR 15: "statement inputs from the store").
+
+    ``annual`` is the newest ``SEC_YEARS`` fiscal years, ending on the newest year with revenue: a later year the
+    layer serves with only balance-sheet fields is not a base year (Opus review S2). It is **None** when the layer
+    holds no such year — the board's no-data state since Yahoo was dropped (#645, avo 10 Nov 2026), where it used
+    to be the moment Yahoo's statements took over.
+
+    ``meta`` comes back either way: it carries the SEC entity name the header shows and the layer's own stamps,
+    which a name without a single annual year still has.
+    """
     from RevenueChaser.core import fiscal_year, fundamentals_layer
     annual, _quarterly, meta = fundamentals_layer.records(ticker)
     i = fiscal_year.anchor(annual)
     if i is None:
-        return None
+        return None, meta
     annual = annual[:i + 1]
     return [_financials_record(r) for r in annual[-SEC_YEARS:]], meta
+
+
+def _company_name(ticker: str, meta: dict) -> str:
+    """The name the report header shows: the SEC's own entity name, else the spine's, else the ticker.
+
+    It was Yahoo's ``longName`` until #645. A store read only, and a failed one is no name rather than an error.
+    """
+    name = str(meta.get("entity_name") or "").strip()
+    if name:
+        return name
+    try:
+        from RevenueChaser.core import universe as _spine
+        row = _spine.filter_fields([ticker]).get(ticker) or {}
+    except Exception as exc:  # noqa: BLE001 - a header name is never worth failing a run
+        logger.debug("financials: no spine name for %s (%s)", ticker, exc)
+        row = {}
+    return str(row.get("name") or "").strip() or ticker
+
+
+def _enterprise_value(market_cap, annual: list[dict]) -> float | None:
+    """``market cap + total debt - cash`` of the newest annual year, the same bridge the peer side uses
+    (``store_reads._enterprise_value``, avo 20 Nov 2026 "Store'dan türet").
+
+    The EV was Yahoo's ``enterpriseValue`` — its own newest quarter's debt and cash — so the target's figure and
+    the peers' were on two bases. Both are the newest stored fiscal year now, which is the basis the comps card
+    already states. None when the cap or either balance-sheet line is unknown: half a bridge is not an EV.
+    """
+    from RevenueChaser.core import fiscal_year
+    from .store_reads import _enterprise_value as bridge
+    i = fiscal_year.anchor(annual or [])
+    return bridge(market_cap, annual[i]) if i is not None else None
 
 
 class _NoCachedData(Exception):
@@ -218,7 +228,10 @@ def run(ticker: str, modules: list[str] | tuple[str, ...] = ("dcf",),
     Without it, ``output="html"`` writes the per-ticker file ``<OUTPUT_DIR>/<TICKER>_report.html``:
     that is the CLI's behaviour and nothing else writes per-ticker files (#173 D5/M18).
 
-    A Fetch asks Yahoo afresh each time and stores nothing (the payload cache went with the old store, #860).
+    A Fetch makes no provider call at all since #645 (avo 10 Nov 2026, option B: Yahoo is dropped). Every figure
+    is a store read: the statements from the fundamentals serving layer, the market inputs from the prices store,
+    the peers' multiples from both. A name the layer holds no annual year with revenue for gets no model and the
+    board says :data:`NO_SEC_DATA`.
     """
     ticker = ticker.upper()
     if not _TICKER_RE.fullmatch(ticker):
@@ -227,67 +240,60 @@ def run(ticker: str, modules: list[str] | tuple[str, ...] = ("dcf",),
         # A store-only render read the statements and the payload the last Fetch stored in the old store
         # (``vendor_financials``, ``ticker_payload_cache``); they went with it (#860), so there is nothing to render.
         raise _NoCachedData(ticker)
-    # The board renders ``provider_health_html`` (reporting/html_builder), so this run counts its own Yahoo
-    # reads (#299): a failed statement or peer read raises the amber banner instead of passing for a complete
-    # board. Its own scope, not ``reset_health()``, because the client's counter is shared with every other
-    # board and the dashboard runs two job workers. SEC EDGAR is not in the banner: since G6 the statements
-    # come from the fundamentals serving layer (``_sec_statements``), which makes no request.
-    with yfinance_client.health_scope() as provider_health:
-        return _run(ticker, modules, output, assumptions, peers, report_path, provider_health)
+    return _run(ticker, modules, output, assumptions, peers, report_path)
 
 
 def _run(ticker: str, modules, output: str, assumptions: dict | None, peers: list[str] | None,
-         report_path: Path | str | None, provider_health) -> dict:
-    """``run``'s body, inside its provider-health scope."""
-    financials = yfinance_client.get_financials(ticker)
-    financials.setdefault("_fetched_at_iso", datetime.now(timezone.utc).isoformat(timespec="seconds"))
-    financials.setdefault("fetched_at_iso", financials["_fetched_at_iso"])
+         report_path: Path | str | None) -> dict:
+    """``run``'s body."""
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
-    # R5 (#88): the sector is the spine's (DCF bands, comps peers and the report header all read it);
-    # the yfinance sector no longer feeds GICS. A name the spine lacks is Unclassified.
+    # R5 (#88): the sector is the spine's (DCF bands, comps peers and the report header all read it).
+    # A name the spine lacks is Unclassified.
     from RevenueChaser.core import universe as _spine
     from .engines._inputs import PE_ONLY_SECTOR
     sector = _spine.gics_of(ticker, _spine.spine_gics([ticker])).sector
+    bank = sector == PE_ONLY_SECTOR
 
-    # G6 follow-up: the price, the market cap, the shares and the beta are the prices store's (G2), each Yahoo's only
-    # where the store has none; ``market`` is the Source line's part that says which.
+    # The statements the models read are the SEC's, and since #645 the only ones: Yahoo's payload is gone, so the
+    # name is the SEC entity's (or the spine's) and the currency is USD, the unit the layer's facts are tagged in
+    # (a filer that tagged another is listed in the layer's ``non_usd_units``).
+    annual, meta = _sec_statements(ticker)
+    financials: dict = {"ticker": ticker, "name": _company_name(ticker, meta), "currency": "USD",
+                        "annual": annual or [], "_fetched_at_iso": now, "fetched_at_iso": now}
+
+    # G6 follow-up: the price, the market cap, the shares and the beta are the prices store's (G2); ``market`` is
+    # the Source line's part that names the ones it gave and the ones nothing did.
     financials, market = market_inputs.overlay(ticker, financials)
-
-    # G6 (build plan PR 15): on the fundamentals layer the statements the models read are the SEC's; Yahoo's
-    # payload keeps the name (and whatever market input the prices store does not give).
-    sec = _sec_statements(ticker)
-    if sec is not None:
-        annual, meta = sec
-        used, lacking = _statements_choice(annual, financials.get("annual") or [], bank=sector == PE_ONLY_SECTOR)
-        if used == "sec":
-            # #645 G1: the facts carry the tax and interest concepts now, so what the Source line names is this
-            # filer's own gap, not a constant. A bank's model (P/E only) reads neither (delta review nit).
-            lacking = lacking + _tax_and_interest_gaps(annual, bank=sector == PE_ONLY_SECTOR)
-            filed = meta.get("newest_filed")
-            financials = {**financials, "annual": annual,
-                          "statements_meta": {**meta, "used": "sec", "sec_lacks": lacking},
-                          "source": "SEC company facts (statements" + (f", newest filed {filed}" if filed else "")
-                                    + ("; not in this filer's facts, so defaults: " + ", ".join(lacking) if lacking else "")
-                                    + ") · " + market}
-        else:
-            financials = {**financials, "statements_meta": {**meta, "used": "yahoo", "sec_lacks": lacking},
-                          "source": "Yahoo (statements: the SEC company facts lack " + ", ".join(lacking)
-                                    + ") · " + market}
-    else:
-        financials = {**financials, "source": "Yahoo (statements) · " + market}
+    financials["enterprise_value"] = _enterprise_value(financials.get("market_cap"), annual or [])
 
     warnings: list[str] = []
+    if annual is None:
+        # avo, 10 Nov 2026 (option B): Yahoo is dropped, so there is no second source of statements. A name the
+        # company facts hold no annual year with revenue for is stated, not modelled.
+        financials["statements_meta"] = {**meta, "used": "none", "sec_lacks": []}
+        financials["source"] = NO_SEC_DATA + " · " + market
+        warnings.append(f"{ticker}: " + NO_SEC_DATA[0].lower() + NO_SEC_DATA[1:])
+    else:
+        # #645 G1: the facts carry the tax and interest concepts, so what the Source line names is this filer's
+        # own gap, not a constant. A bank's model (P/E only) reads neither (delta review nit).
+        lacking = _statement_gaps(annual, bank) + _tax_and_interest_gaps(annual, bank=bank)
+        filed = meta.get("newest_filed")
+        financials["statements_meta"] = {**meta, "used": "sec", "sec_lacks": lacking}
+        financials["source"] = ("SEC company facts (statements" + (f", newest filed {filed}" if filed else "")
+                                + ("; not in this filer's facts, so defaults: " + ", ".join(lacking)
+                                   if lacking else "")
+                                + ") · " + market)
+
     results: dict = {"ticker": ticker, "financials": financials, "modules": {}, "warnings": warnings}
 
-    # Quick Remarks — her zaman üstte (ticker_scores'dan beslenir, yfinance fallback). FIN-5: it is handed the
-    # payload this run already has, so it scores from it instead of fetching the same financials a second time.
-    # ``no_fetch=False``: a store-only render never reaches here (it raised ``_NoCachedData`` above).
-    results["quick_remarks"] = quick_remarks_engine.run_quick_remarks(ticker, no_fetch=False,
-                                                                     financials=financials)
+    # Quick Remarks — her zaman üstte, the shared ``ticker_scores`` card and nothing else: its Yahoo fallback went
+    # with #645, and Asymmetric Growth scores that card from the same SEC statements.
+    results["quick_remarks"] = quick_remarks_engine.run_quick_remarks(ticker)
 
     financials["sector"] = sector
     financials["risk_free_rate"] = _stored_risk_free()
-    for m in modules:
+    for m in (() if annual is None else modules):
         m = m.strip().lower()
         if m in ("dcf", "dcf_engine"):
             results["modules"]["dcf"] = dcf_engine.run_dcf(financials, assumptions)
@@ -346,8 +352,8 @@ def _run(ticker: str, modules, output: str, assumptions: dict | None, peers: lis
                     seen.add(msg)
                     warnings.append(msg)
 
-    # The banner the board already renders (#299); zeros render nothing, so a clean run looks unchanged.
-    results["provider_health"] = provider_health.health()
+    # No provider banner (#299): since #645 this board makes no provider call, so there is nothing to report.
+    # ``provider_health_html`` renders nothing for an absent health, which is what a clean run looked like anyway.
 
     # The shared filter kit's pool (#591): the picker's names, read from the store, never a network call.
     results["picker"] = picker_payload(ticker)

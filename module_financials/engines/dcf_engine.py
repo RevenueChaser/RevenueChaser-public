@@ -83,7 +83,9 @@ def _wacc(financials: dict, beta: float | None, rf: float, erp: float,
     if beta is not None:
         b, beta_source = beta, "assumption"
     elif stated is not None:
-        b, beta_source = stated, financials.get("beta_source") or "Yahoo"   # the prices store's names itself
+        # The prices store's beta names itself (``market_inputs``); a stated beta with no source is the caller's
+        # own figure, never a vendor's since #645.
+        b, beta_source = stated, financials.get("beta_source") or "the payload"
     else:
         b, beta_source = DEFAULT_BETA, "default"
     ke = rf + b * erp

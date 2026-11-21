@@ -172,7 +172,9 @@ def run_comps(financials: dict, peers: list[str],
         # stored result from before this change still render with its own label.
         "basis": {"peers": "newest stored fiscal year", "peers_source": PEERS_SOURCE,
                   "target_fiscal_year": latest.get("fiscal_year"),
-                  "target_shares": (financials.get("market_meta") or {}).get("shares_source") or "Yahoo"},
+                  # #645: nothing else supplies a share count, so an absent one is named as such, not as a
+                  # vendor's. The per-share lines then say which count they divided by, or that there was none.
+                  "target_shares": (financials.get("market_meta") or {}).get("shares_source") or "not stored"},
         "peers": rows,
         "multiples": {
             "ev_ebitda": _pct(ev_ebitda),

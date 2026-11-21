@@ -171,12 +171,13 @@ def test_a_scan_card_carries_the_scans_session(monkeypatch):
     assert (res["score"], res["as_of"], res["as_of_note"]) == (6, "2026-10-06", "the last Asymmetric Growth Fetch")
 
 
-def test_a_score_this_fetch_built_carries_the_payloads_session(monkeypatch):
+def test_without_a_card_the_section_is_undated_and_says_why(monkeypatch):
+    """#645: there is no second scoring path, so a Fetch with no stored card carries no date and no score; the
+    note says the name has not been scored instead of naming a vendor."""
     monkeypatch.setattr(ts, "get", lambda t: None)
-    monkeypatch.setattr(qr, "fetch_technical", lambda t: {})
-    monkeypatch.setattr(agh, "score_ticker", lambda t, f, tech, meta=None: {"total_points": 5, "signals": []})
     res = qr.run_quick_remarks("TEST", financials={"_fetched_at_iso": "2026-10-07T02:00:00+00:00"})
-    assert (res["score"], res["as_of"], res["as_of_note"]) == (5, "2026-10-06", "this Fetch")
+    assert (res["score"], res["as_of"]) == (None, None)
+    assert "not scored" in res["as_of_note"]
 
 
 

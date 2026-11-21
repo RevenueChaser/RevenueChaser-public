@@ -1,5 +1,6 @@
-"""Financials' price, market cap, shares and beta from the prices store (G6 follow-up), Yahoo's only where the
-store has none. Offline: a served ``prices.duckdb`` written from rows (``rcdata/tests/prices_store``)."""
+"""Financials' price, market cap, shares and beta from the prices store (G6 follow-up) — the only source since
+#645, so a value it does not give is absent rather than a vendor's. Offline: a served ``prices.duckdb`` written
+from rows (``rcdata/tests/prices_store``)."""
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
@@ -14,7 +15,9 @@ from RevenueChaser.rcdata.tests import prices_store
 from RevenueChaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401  (fixtures)
 
 NEWEST = date(2026, 10, 27)
-YAHOO = {"shares_outstanding": 50.0, "market_cap": 5000.0, "beta": 1.1, "current_price": 100.0}
+#: A payload that already carries market figures. Before #645 these were Yahoo's and the overlay kept them where
+#: the store had none; now nothing supplies them, so this stands for a caller's own numbers in a unit test.
+GIVEN = {"shares_outstanding": 50.0, "market_cap": 5000.0, "beta": 1.1, "current_price": 100.0}
 
 
 @pytest.fixture(autouse=True)
@@ -137,7 +140,7 @@ def test_a_close_older_than_the_rates_limit_gives_nothing(market_roots, monkeypa
 
 
 def test_a_cap_from_another_session_than_the_price_is_not_divided_by_it(market_roots):  # noqa: F811
-    # The cap of 2026-10-23 over the close of 2026-10-27 is no share count: Yahoo's cap and shares stay.
+    # The cap of 2026-10-23 over the close of 2026-10-27 is no share count, so the card gets neither.
     _store(cap_session=date(2026, 10, 23))
     got = mi.from_store(TICKER)
     assert got["current_price"] == 120.0 and "market_cap" not in got and "shares_outstanding" not in got
@@ -147,25 +150,28 @@ def test_no_prices_file_gives_nothing(market_roots):  # noqa: F811
     assert mi.from_store(TICKER) == {}
 
 
-def test_the_overlay_keeps_yahoos_value_where_the_store_has_none(market_roots):  # noqa: F811
+def test_the_overlay_names_what_the_store_did_not_give(market_roots):  # noqa: F811
+    """#645: a beta the store cannot compute is named as not stored, not as Yahoo's. The payload's own number is
+    not overwritten (the engines read it), but the Source line no longer claims a vendor supplied it."""
     _store(months=12)                                        # too short for a beta
-    out, part = mi.overlay(TICKER, {**YAHOO, "annual": []})
-    assert out["current_price"] == 120.0 and out["market_cap"] == 6000.0 and out["beta"] == 1.1
-    assert part == "prices store, 2026-10-27 close (price, market cap, shares) · Yahoo (beta)"
+    out, part = mi.overlay(TICKER, {**GIVEN, "annual": []})
+    assert out["current_price"] == 120.0 and out["market_cap"] == 6000.0
+    assert part == "prices store, 2026-10-27 close (price, market cap, shares) · not stored (beta)"
     assert out["market_meta"]["price_session"] == "2026-10-27"
     assert "beta_source" not in out
 
 
-def test_the_overlay_names_yahoos_cap_where_the_store_has_a_price_alone(market_roots):  # noqa: F811
+def test_the_overlay_names_a_cap_the_store_did_not_give(market_roots):  # noqa: F811
     _store(own_cap=None, months=12)
-    out, part = mi.overlay(TICKER, dict(YAHOO))
-    assert out["current_price"] == 120.0 and out["market_cap"] == 5000.0 and out["shares_outstanding"] == 50.0
-    assert part == "prices store, 2026-10-27 close (price) · Yahoo (market cap, shares, beta)"
+    _out, part = mi.overlay(TICKER, dict(GIVEN))
+    assert part == "prices store, 2026-10-27 close (price) · not stored (market cap, shares, beta)"
 
 
-def test_the_overlay_with_nothing_in_the_store_names_yahoo(market_roots):  # noqa: F811
-    out, part = mi.overlay(TICKER, dict(YAHOO))
-    assert {k: out[k] for k in YAHOO} == YAHOO and part == "Yahoo (price, market cap, shares, beta)"
+def test_the_overlay_with_nothing_in_the_store_names_no_source(market_roots):  # noqa: F811
+    out, part = mi.overlay(TICKER, dict(GIVEN))
+    assert part == "not stored (price, market cap, shares, beta)"
+    # Nothing supplies a share count, so the comps basis says so rather than naming a vendor.
+    assert out["market_meta"]["shares_source"] is None
 
 
 
@@ -178,11 +184,11 @@ def test_the_overlay_with_nothing_in_the_store_names_yahoo(market_roots):  # noq
 
 def test_the_card_names_the_session_of_the_stores_price():
     from RevenueChaser.module_financials.reporting.html_builder import build_report_html
-    fin = {**YAHOO, "market_meta": {"from_store": ["price"], "price_session": "2026-10-27"}}
+    fin = {**GIVEN, "market_meta": {"from_store": ["price"], "price_session": "2026-10-27"}}
     html = build_report_html({"ticker": TICKER, "financials": fin, "modules": {}, "warnings": []})
     assert "Price: $100.00 (close 2026-10-27)<" in html
-    yahoo = build_report_html({"ticker": TICKER, "financials": dict(YAHOO), "modules": {}, "warnings": []})
-    assert "Price: $100.00<" in yahoo
+    no_session = build_report_html({"ticker": TICKER, "financials": dict(GIVEN), "modules": {}, "warnings": []})
+    assert "Price: $100.00<" in no_session
 
 
 def test_the_comps_basis_names_where_the_targets_shares_came_from(market_roots):  # noqa: F811
@@ -191,7 +197,7 @@ def test_the_comps_basis_names_where_the_targets_shares_came_from(market_roots):
     from RevenueChaser.module_financials.engines import comps_engine
     from RevenueChaser.module_financials.reporting.html_builder import build_report_html
     _store()
-    fin, _part = mi.overlay(TICKER, {**YAHOO, "annual": [{"fiscal_year": "2025", "revenue": 100.0, "ebitda": 30.0,
+    fin, _part = mi.overlay(TICKER, {**GIVEN, "annual": [{"fiscal_year": "2025", "revenue": 100.0, "ebitda": 30.0,
                                                           "net_income": 10.0, "total_debt": 5.0, "cash": 5.0}]})
     peer = {"enterpriseValue": 900.0, "ebitda": 90.0, "totalRevenue": 300.0, "marketCap": 800.0,
             "netIncomeToCommon": 40.0}
@@ -200,19 +206,19 @@ def test_the_comps_basis_names_where_the_targets_shares_came_from(market_roots):
     html = build_report_html({"ticker": TICKER, "financials": fin, "modules": {"comps": comps}, "warnings": []})
     assert "peer multiples are newest stored fiscal year" in html
     assert "per share divides by the target's shares from the prices store, 2026-10-27 close." in html
-    yahoo = comps_engine.run_comps({**YAHOO, "annual": fin["annual"]}, ["PEER"], fetch_info=lambda p: peer)
-    assert yahoo["basis"]["target_shares"] == "Yahoo"
+    unstored = comps_engine.run_comps({**GIVEN, "annual": fin["annual"]}, ["PEER"], fetch_info=lambda p: peer)
+    assert unstored["basis"]["target_shares"] == "not stored"
 
 
-def test_the_cards_ev_says_it_is_yahoos_next_to_the_stores_cap():
-    # Shortcut kept on purpose (review should 2): the EV stays Yahoo's (its newest quarter's debt and cash); the
-    # statements' net debt is up to a year old, so a store cap plus it would be no better. The card says so.
+def test_the_cards_ev_names_the_bridge_it_is_built_from():
+    """#645: the EV is no longer Yahoo's own figure but the store's bridge (cap + total debt - cash of the newest
+    stored fiscal year), the same one the peer side uses, so the header names the bridge instead of a vendor."""
     from RevenueChaser.module_financials.reporting.html_builder import build_report_html
-    fin = {**YAHOO, "enterprise_value": 5200.0,
+    fin = {**GIVEN, "enterprise_value": 5200.0,
            "market_meta": {"from_store": ["price", "market cap, shares"], "price_session": "2026-10-27",
                            "shares_source": "prices store, 2026-10-27 close"}}
     html = build_report_html({"ticker": TICKER, "financials": fin, "modules": {}, "warnings": []})
-    assert "EV: $5.2K (Yahoo)<" in html
-    yahoo = build_report_html({"ticker": TICKER, "financials": {**YAHOO, "enterprise_value": 5200.0},
-                               "modules": {}, "warnings": []})
-    assert "EV: $5.2K<" in yahoo
+    assert "EV: $5.2K (cap + debt − cash, newest FY)<" in html
+    # No EV at all (a year without a debt or cash line) renders the empty value and no bridge note.
+    none = build_report_html({"ticker": TICKER, "financials": dict(GIVEN), "modules": {}, "warnings": []})
+    assert "(cap + debt" not in none

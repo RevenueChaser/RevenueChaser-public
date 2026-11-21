@@ -51,26 +51,35 @@ def test_store_path(monkeypatch):
     assert res["dilution_warning"] is False
 
 
-def test_store_fallback_to_yfinance(monkeypatch):
+def test_without_a_stored_card_the_section_says_the_name_is_not_scored(monkeypatch):
+    """#645: the Yahoo fallback that scored the name a second time is gone, so no card is an empty section that
+    names why — never a vendor's score and never a provider call."""
     monkeypatch.setattr(ts, "get", lambda t: None)
-    monkeypatch.setattr(qr.yfinance_client, "get_financials", lambda t: {})
-    monkeypatch.setattr(qr, "fetch_technical", lambda t: {})
-    monkeypatch.setattr(agh, "score_ticker", lambda t, f, tech, meta=None: _card(5))
+
+    def _never(*_a, **_kw):
+        raise AssertionError("Quick Remarks scored a name a second time")
+
+    monkeypatch.setattr(agh, "score_ticker", _never)
     res = qr.run_quick_remarks("TEST")
-    assert res["source"] == "yfinance"
-    assert res["score"] == 5
-    assert res["max"] == 9
+    assert res["source"] == "ticker_scores"
+    assert res["score"] is None and res["signals"] == []
+    assert res["as_of"] is None and "not scored" in res["as_of_note"]
 
 
-def test_store_unavailable_and_no_data(monkeypatch):
-    monkeypatch.setattr(ts, "get", lambda t: None)
-    monkeypatch.setattr(qr.yfinance_client, "get_financials", lambda t: {})
-    monkeypatch.setattr(qr, "fetch_technical", lambda t: {})
-    monkeypatch.setattr(agh, "score_ticker", lambda t, f, tech, meta=None: None)
+def test_a_store_error_is_no_card_not_a_failed_run(monkeypatch):
+    def _boom(_t):
+        raise RuntimeError("the store is locked")
+
+    monkeypatch.setattr(ts, "get", _boom)
     res = qr.run_quick_remarks("TEST")
-    assert res["source"] == "yfinance"
-    assert res["score"] is None
-    assert res["signals"] == []
+    assert res["score"] is None and res["signals"] == []
+
+
+def test_the_engine_imports_no_provider(monkeypatch):
+    """The module itself holds no provider import any more (#645), so there is no path left to patch away."""
+    import inspect
+    src = inspect.getsource(qr)
+    assert "yfinance" not in src and "fetch_technical" not in src
 
 
 _EVIL = '"><img src=x onerror=alert(1)></script><script>alert(1)</script>'

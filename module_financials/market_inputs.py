@@ -1,22 +1,23 @@
-"""Financials' market inputs from the prices store (``prices.duckdb``, G2): the price, the market cap, the shares and
-the beta the models read, Yahoo's values only where the store has none.
+"""Financials' market inputs from the prices store (``prices.duckdb``, G2): the price, the market cap, the shares
+and the beta the models read. Since #645 it is the only source — a value it does not give is absent.
 
 - **Price:** the newest close (``rcdata.read.latest_market``), at most ``MAX_AGE_DAYS`` before today: the
   risk-free rate's limit on the same card (``config.RISK_FREE_MAX_AGE_DAYS``). An older close, and the store gives
   nothing, so a store the nightly stopped filling never prices a report with a month-old close. The session is named
   on the card and in the Source line.
-- **Market cap:** the issuer's (every listed class), as the universe reads it and as Yahoo's was; a fund's or a
+- **Market cap:** the issuer's (every listed class), as the universe reads it; a fund's or a
   trust's its own (one trust's CIK files many funds), and the class's own when the store has no issuer sum. It is
   the WACC's equity weight.
 - **Shares:** the market cap over the price, the class-equivalent count, only when both are of one session (a
-  cap of an earlier session over today's close is no count; Yahoo's cap and shares stay). For one class it is the shares outstanding;
+  cap of an earlier session over today's close is no count, so the card has neither). For one class it is the shares outstanding;
   for an issuer with two classes it is the count that makes the per-share value comparable with this class's price.
 - **Beta:** the slope of ``BETA_MONTHS`` monthly returns of the split-adjusted close on the S&P 500 level
-  (``index:SPX``): five years of monthly price returns on both sides, the window Yahoo states for its own. Neither
-  side carries dividends (the close is split-adjusted only, the index level is a price index), so a high-yield
-  name's beta is not Yahoo's to the decimal. Fewer than ``BETA_MIN_MONTHS`` returns, and Yahoo's beta stays.
+  (``index:SPX``): five years of monthly price returns on both sides. Neither side carries dividends (the close is
+  split-adjusted only, the index level is a price index). Fewer than ``BETA_MIN_MONTHS`` returns, and there is no
+  beta, so the DCF takes its labelled default.
 
-Each value the store does not give keeps Yahoo's, and the Source line names which came from where.
+Since #645 (avo 10 Nov 2026, option B) there is no second source: Yahoo is dropped, so a value the store does not
+give is **absent**, not a vendor's, and the Source line names what the store gave and what nothing did.
 """
 from __future__ import annotations
 
@@ -81,9 +82,9 @@ def from_store(ticker: str) -> dict:
     t = str(ticker).strip().upper()
     try:
         latest = spine_reads.latest_market([t]).get(t) or {}
-    except Exception as exc:  # noqa: BLE001 - Yahoo's values stay, as before the prices store
-        logger.warning("financials: the prices store could not be read for %s (%s); Yahoo's price, shares and "
-                       "beta stay", t, exc)
+    except Exception as exc:  # noqa: BLE001 - a read error is "the store gave nothing", never a failed Fetch
+        logger.warning("financials: the prices store could not be read for %s (%s); the card has no price, "
+                       "market cap, shares or beta", t, exc)
         return {}
     price, session = latest.get("price"), latest.get("price_session")
     if price is None or session is None or not price > 0:
@@ -92,7 +93,7 @@ def from_store(ticker: str) -> dict:
     age = (calendar.today_ny() - session).days
     if age > MAX_AGE_DAYS:
         logger.warning("financials: the prices store's newest close of %s is %s (%d days old, more than %d); "
-                       "Yahoo's price, shares and beta stay", t, session, age, MAX_AGE_DAYS)
+                       "the card has no price, market cap, shares or beta", t, session, age, MAX_AGE_DAYS)
         return {}
     out = {"current_price": float(price), "price_session": session}
     cap = latest.get("market_cap") if _is_fund(t) else latest.get("issuer_market_cap")
@@ -106,8 +107,8 @@ def from_store(ticker: str) -> dict:
         bars = read.ticker_bars([t], start=start, end=session, basis="split")
         stock = [(ts.date(), float(c)) for ts, c in zip(bars["session_date"], bars["close"])]
         index = [(r["session_date"], r["close"]) for r in read.bars([INDEX_ID], start=start, end=session)]
-    except Exception as exc:  # noqa: BLE001 - Yahoo's beta stays
-        logger.warning("financials: the bars for %s's beta could not be read (%s); Yahoo's beta stays", t, exc)
+    except Exception as exc:  # noqa: BLE001 - no beta, so the DCF takes its labelled default
+        logger.warning("financials: the bars for %s's beta could not be read (%s); the card has no beta", t, exc)
         return out
     beta = monthly_beta(stock, index, session)
     if beta is not None:
@@ -117,20 +118,21 @@ def from_store(ticker: str) -> dict:
 
 def overlay(ticker: str, financials: dict) -> tuple[dict, str]:
     """``(financials with the store's market inputs, the Source line's market part)``. A value the store does not
-    give keeps Yahoo's; the part names each side and the store's session, e.g.
-    ``prices store, 2026-10-27 close (price, market cap, shares) · Yahoo (beta)``. The cap is named: it is the
-    WACC's equity weight, and a price of one source with a cap of the other is visible."""
+    give is absent since #645 — Yahoo is dropped — and the part names both sides and the store's session, e.g.
+    ``prices store, 2026-10-27 close (price, market cap, shares) · not stored (beta)``. The cap is named: it is
+    the WACC's equity weight, and a card priced without one is visible."""
     store = from_store(ticker)
     got = {"price": "current_price" in store, "market cap, shares": "shares_outstanding" in store,
            "beta": "beta" in store}
     fields = {k: store[k] for k in ("current_price", "market_cap", "shares_outstanding", "beta") if k in store}
     session = store["price_session"].isoformat() if "price_session" in store else None
     meta = {"from_store": [k for k, v in got.items() if v], "price_session": session,
-            "shares_source": f"{STORE}, {session} close" if got["market cap, shares"] else "Yahoo"}
+            "shares_source": f"{STORE}, {session} close" if got["market cap, shares"] else None}
     if got["beta"]:
         fields["beta_source"] = f"{STORE} ({BETA_MONTHS // 12}y monthly split-adjusted price returns vs S&P 500)"
     out = {**financials, **fields, "market_meta": meta}
     ours = [k for k, v in got.items() if v]
     theirs = [k for k, v in got.items() if not v]
-    parts = ([f"{STORE}, {session} close ({', '.join(ours)})"] if ours else []) + ([f"Yahoo ({', '.join(theirs)})"] if theirs else [])
+    parts = ([f"{STORE}, {session} close ({', '.join(ours)})"] if ours else []) + \
+            ([f"not stored ({', '.join(theirs)})"] if theirs else [])
     return out, " · ".join(parts)

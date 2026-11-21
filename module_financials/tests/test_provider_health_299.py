@@ -2,7 +2,8 @@
 
 ``reporting/html_builder`` renders ``provider_health_html(results.get("provider_health"))`` while nothing
 ever built one, so a failed Yahoo read was invisible on the board. A run now takes its own scope of the
-yfinance client's call accounting (``yfinance.health_scope``) and hands it to the payload.
+yfinance client's call accounting (``yfinance.health_scope``). The Financials board itself no longer has a
+banner: since #645 it makes no provider call, so a run records no health at all (the last test here).
 
 The scope matters: the client's counter is a module global shared by every board, and the dashboard runs two
 job workers, so a plain ``reset()`` here would zero another board's run in flight.
@@ -113,25 +114,35 @@ def test_the_comps_peer_read_is_no_longer_a_provider_read_at_all(monkeypatch):
     assert health.health()["calls"] == 0, "the comps peer side must cost no provider call"
 
 
-def test_the_run_hands_the_banner_to_the_report(monkeypatch, tmp_path):
-    """End to end: a run whose Yahoo reads failed renders the amber banner instead of a clean board."""
+def test_the_run_reports_no_provider_health_at_all(monkeypatch, tmp_path):
+    """#645: the board makes no provider call, so a run records no health and the board renders no banner.
+
+    This replaces the end-to-end banner test: there is no Yahoo read left to fail. The guard that matters now is
+    that the whole run never reaches the library — a fake ``yfinance`` whose ``Ticker`` raises would be hit by any
+    read that came back.
+    """
+    import sys
     import RevenueChaser.module_financials.run as fin_run
     from RevenueChaser.core import universe as spine
 
+    fake = type(sys)("yfinance")
+    fake.Ticker = lambda ticker: _Boom(ticker)
+    monkeypatch.setitem(sys.modules, "yfinance", fake)
+
     monkeypatch.setattr(fin_run, "OUTPUT_DIR", tmp_path)
-    monkeypatch.setattr(fin_run.yfinance_client, "get_financials",
-                        lambda ticker, **kw: (fin_run.yfinance_client._count(error="503 Service Unavailable",
-                                                                            endpoint=f"{ticker}.info"),
-                                              {"ticker": ticker, "annual": []})[1])
-    monkeypatch.setattr(fin_run.market_inputs, "overlay", lambda ticker, fin: (fin, "Yahoo"))
-    monkeypatch.setattr(fin_run, "_sec_statements", lambda ticker: None)
+    monkeypatch.setattr(fin_run.market_inputs, "overlay", lambda ticker, fin: (fin, "not stored (price)"))
+    monkeypatch.setattr(fin_run, "_sec_statements", lambda ticker: (None, {"entity_name": "Apple Inc."}))
     monkeypatch.setattr(fin_run, "_stored_risk_free", lambda: None)
     monkeypatch.setattr(spine, "spine_gics", lambda tickers: {})
-    monkeypatch.setattr(fin_run.quick_remarks_engine, "run_quick_remarks",
-                        lambda ticker, no_fetch=False, financials=None: {})
+    monkeypatch.setattr(fin_run, "picker_payload", lambda ticker: {})
 
-    out = fin_run.run("AAPL", modules=["dcf"], output="html")
+    with yfinance_client.health_scope() as health:
+        out = fin_run.run("AAPL", modules=["dcf"], output="html")
 
-    health = out["results"]["provider_health"]
-    assert (health["provider"], health["calls"], health["failed"]) == ("yfinance", 1, 1)
-    assert "Yahoo Finance" in (tmp_path / "AAPL_report.html").read_text(encoding="utf-8")
+    assert health.health()["calls"] == 0, "the Financials board must cost no provider call"
+    assert "provider_health" not in out["results"]
+    html = (tmp_path / "AAPL_report.html").read_text(encoding="utf-8")
+    assert "Yahoo Finance" not in html
+    # And the no-data state is what the board shows instead of a model (avo's option B of 10 Nov 2026).
+    assert out["results"]["modules"] == {}
+    assert fin_run.NO_SEC_DATA in html and "Apple Inc." in html
