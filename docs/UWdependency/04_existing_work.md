@@ -131,9 +131,17 @@ The follow-up pass on the ninth channel read the bot's own help text, and it cha
   `/netflow`; 103 commands in 23 topics). So the command surface is not harvestable even in principle, on top of
   the earlier finding that slash-command replies are ephemeral.
 
-**So plan B is not a fallback for leaving UW.** At best it is a fallback for *someone else* still paying for UW.
-It survives only in the narrow case where the linked account is not avo's and the server subscription is someone
-else's — which is a question for avo, not an assumption to plan on.
+**avo answered the same evening:** *"Botu ayrı bir hesaptan ödüyorum, UW'yi bırakınca o gitmez."* The premium
+server subscription is paid from a separate account, so **the bot stays when his own plan ends** and plan B
+survives as a route, at no cost to this decision. Two different questions come out of that:
+
+- **The bot: answered.** It does not depend on avo's UW plan, and its USD 124.99/month is not part of the bill
+  we are weighing.
+- **The custom-alert feeds: still open.** `live-option-flow` is a `custom_alert`, which the bot's help ties to
+  **one linked UW web account**. If that linkage is avo's own account rather than the one paying for the bot,
+  that feed alone goes quiet when his plan lapses, while the rest of the bot keeps posting. `/configure` names
+  the account; it has not been opened. The notification topics — insider, congress, stock updates,
+  highest-volume contracts — are unaffected either way.
 
 ### 3.4 Market-wide contract ranking (`highest-volume-contracts`, and our own `options.far_contracts`)
 
