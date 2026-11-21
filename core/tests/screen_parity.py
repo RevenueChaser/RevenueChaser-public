@@ -141,12 +141,6 @@ def seed() -> None:
         seed_d01(t, _bars(kind, drift, LONG_BARS, level=BAR_LEVEL.get(t, 40.0),
                           volume=BAR_VOLUME.get(t, 1_500_000.0)))
     seed_d01("SHORT1", _bars("up", 0.004, SHORT_BARS))
-    rawstore.write_rows("swing_info", [
-        {"ticker": t, "payload": {"longName": f"{t} Holdings", "industry": "Software - Infrastructure",
-                                  "longBusinessSummary": "Cloud software and data platform.",
-                                  "marketCap": cap},
-         "cached_at": time.time()}
-        for t, (cap, _q) in UNIVERSE.items() if t in ("UP1", "UP3", "FLAT1")])
 
 
 def patch(monkeypatch) -> None:

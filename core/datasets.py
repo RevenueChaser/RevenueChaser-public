@@ -224,13 +224,6 @@ REGISTRY: tuple[DatasetSpec, ...] = (
         db="value_chain", source=Source.sec, writer="RC-ValueChain-Sync",
         freshness=("chain_mentions", "filed"),
     ),
-    DatasetSpec(
-        key="swing_info", label="Swing info cache",
-        tables=("swing_info",),
-        db="swing_potential", source=Source.yfinance, writer=None,
-        writer_note="the board's own Fetch on the dashboard; not an automations.REGISTRY entry",
-        freshness=("swing_info", "cached_at"),
-    ),
     _runlog(
         "ag_scores", "Asymmetric Growth scores", ("ticker_scores",),
         "asymmetric_growth", Source.derived, None,

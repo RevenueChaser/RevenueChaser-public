@@ -10,8 +10,6 @@ import logging
 
 import pandas as pd
 
-from RevenueChaser.core.info_fallback import has_fields, refetch_or_keep
-from RevenueChaser.core.providers import yf_session  # noqa: F401 - at import: its 401 watcher sees the first .info read (#402); core.providers.yfinance imports it too since #100, so the watcher is on wherever a Yahoo read is
 from RevenueChaser.module_swing_potential import config
 
 logger = logging.getLogger(__name__)
@@ -224,66 +222,3 @@ def compute_indicators(df: pd.DataFrame, spy_df: pd.DataFrame | None = None,
 
     ind["atr14"] = _atr(df, 14)
     return ind
-
-
-def load_ticker_info(ticker: str, no_fetch: bool = False) -> dict:
-    """yfinance ticker ``.info``, cached in ``boards/swing_potential.duckdb`` (swing_info).
-
-    ``no_fetch=True`` reads the cache regardless of age (model-only refresh);
-    returns {} when there is no cache.
-    """
-    import time
-
-    from RevenueChaser.core import rawstore
-    from RevenueChaser.module_swing_potential import config
-
-    ticker = (ticker or "").strip().upper()
-    if not ticker:
-        return {}
-    row = rawstore.get("swing_info", ticker)
-    stale = None
-    if row:
-        info = row.get("payload")
-        if isinstance(info, dict):
-            cached_at = row.get("cached_at") or 0
-            if no_fetch or (time.time() - cached_at) < config.OHLC_TTL_DAYS * 86400:
-                return info
-            stale = info
-    if no_fetch:
-        return {}
-    import yfinance as yf
-
-    from RevenueChaser.core.providers import yfinance as yfinance_client
-
-    # #259: a failed or empty refetch keeps the expired info, marked stale (never mutating the store). The read
-    # itself goes through the provider helper for the one thing this call site never had: a 401 "Invalid Crumb"
-    # drops the process's cookie and crumb once and the read is tried again, instead of every later name of the
-    # sweep failing the same way (#402, #100). ``count=False`` because the accounting below is this caller's:
-    # an answer that came back empty is a failed Yahoo read here, which the helper cannot see.
-    info, status = refetch_or_keep(
-        stale,
-        lambda: yfinance_client.read(lambda: yf.Ticker(ticker).info or {},
-                                     endpoint=f"{ticker}.info", default={}, count=False) or {},
-        has_fields, label=ticker,
-    )
-    # A refetch that did not answer is a failed Yahoo read (#80). The value returned below is unchanged.
-    # Counted through ``_count``, not ``_HEALTH`` directly: the module global is only half of it since #299, and
-    # a board that counts on the global alone is invisible to the ``health_scope`` its own run opened — so the
-    # Swing banner read zero while the sweep made one ``.info`` request per name.
-    if status == "fresh":
-        yfinance_client._count(endpoint=f"{ticker}.info")
-    else:
-        yfinance_client._count(error="refetch failed" if status == "stale" else "empty",
-                               endpoint=f"{ticker}.info")
-    if status == "fresh":
-        try:
-            now = time.time()
-            rawstore.write_rows("swing_info", [{
-                "ticker": ticker, "payload": info, "cached_at": now, "fetched_at": now,
-            }])
-        except Exception:  # noqa: BLE001
-            logger.warning("info cache write failed for %s", ticker)
-        return info
-    if status == "stale":
-        return info
-    return {}
