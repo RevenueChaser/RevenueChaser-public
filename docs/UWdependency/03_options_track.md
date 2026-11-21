@@ -83,6 +83,38 @@ tick-by-tick, with 5 concurrent subscriptions and 1,000 ticks per historical req
 page is JavaScript-rendered and could not be read from here. **This is measurement V2 in the plan** and it is the
 single fact that decides whether IBKR alone can carry layer 1.
 
+### "Why not take OPRA directly?" — read from OPRA's own fee schedule, 21 November 2026
+
+Because **every option below is already OPRA**, and OPRA is not something a person subscribes to. It is the
+consolidated last-sale and quotation feed of the US option exchanges, published as a **binary multicast feed, not
+an API**; the only entry on OPRA's own site is "BECOME A VENDOR". Taking it directly means becoming a vendor.
+
+Read from `cdn.opraplan.com/documents/OPRA_Fee_Schedule.pdf`:
+
+| Fee | Monthly |
+|---|---|
+| **Direct Access Fee** — to receive data directly from OPRA's processor | **USD 1,000** |
+| **Connectivity**, 10 Gb IP + NMS Network port | **USD 12,000** (+ USD 10,000 initial) |
+| Connectivity, LCN + NMS Network | USD 24,000 (+ USD 15,000 initial) |
+| Redistribution Fee, if the data goes on to anyone else | USD 1,500 |
+| Non-Display Use, per category | USD 2,000 |
+| **Nonprofessional Subscriber Fee — payable by the vendor, per nonpro** | **USD 1.25** |
+
+Direct access is also physically bounded: it is a port on the NMS Network, which "exists only within the Mahwah
+Data Center" in New Jersey. So the floor for taking OPRA directly is about **USD 13,000 a month plus hardware in
+New Jersey**.
+
+The last row is the useful one. **USD 1.25 per non-professional subscriber, paid by the vendor, is what sits
+underneath IBKR's USD 1.50 line.** We are already paying OPRA's retail rate, through the only route a
+non-professional has. The choice between IBKR, ThetaData, Massive and Databento is not a choice about OPRA — it
+is a choice about how completely each vendor delivers it.
+
+**One flag, and it is an inference, not a vendor's answer:** the schedule prices "Non-Display Use" at USD 2,000
+per category, and feeding a store rather than drawing a screen is what that term describes. For an individual
+non-professional, vendors handle this under the nonpro agreement — but that is a reading of the tariff, not
+something a vendor has confirmed in writing for our case. It goes in the same question to ThetaData as the
+individual-use terms, before any subscription.
+
 ### What a tape costs, measured (M4 done, 21 Nov 2026)
 
 | Source | Tape | History | Price | Delay |

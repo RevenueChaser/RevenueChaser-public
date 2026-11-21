@@ -21,6 +21,11 @@ Databento Standard at USD 199 all give a fuller live tape — but at USD 160 the
 loses the calendars, the 13F tags and the earnings tape, none of which a tape vendor sells. So above about USD 80
 the only remaining argument for leaving is ownership of the data, not cost.
 
+**Taking OPRA directly is not an option, and not a saving.** Every row above is OPRA data; OPRA is a binary
+multicast feed, not an API, and its own fee schedule puts direct access at USD 1,000/month plus USD 12,000/month
+of connectivity into one data centre in New Jersey. Its **nonprofessional rate is USD 1.25 per subscriber, paid by
+the vendor** — which is what IBKR's USD 1.50 is made of. See `03_options_track.md`.
+
 **Paying IBKR more does not buy the tape** (M2): the limit is the API, not the subscription tier. USD 32.75 for a
 professional OPRA line gives the same absence of tick-by-tick option data as USD 1.50 does.
 
