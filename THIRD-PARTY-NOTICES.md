@@ -22,12 +22,19 @@ on a production dependency outside that allowlist.
 | Package | Licence | Shipped to the browser? |
 |---|---|---|
 | [react](https://github.com/facebook/react), [react-dom](https://github.com/facebook/react), scheduler | MIT | yes |
+| [uplot](https://github.com/leeoniya/uPlot) | MIT | yes — the chart renderer of design contract §10, ~50 kB against the 4.56 MB plotly.js the old pages carry |
+| [@fontsource-variable/inter](https://github.com/fontsource/font-files) | OFL-1.1 (the font files); the package's own wrapper is MIT | yes — two woff2 subsets, latin and latin-ext |
 | [vite](https://github.com/vitejs/vite), [vitest](https://github.com/vitest-dev/vitest) | MIT | no (build and test only) |
 | [typescript](https://github.com/microsoft/TypeScript), [@playwright/test](https://github.com/microsoft/playwright) | Apache-2.0 | no (build and test only) |
+| [jsdom](https://github.com/jsdom/jsdom), [@testing-library/react](https://github.com/testing-library/react-testing-library), [@testing-library/dom](https://github.com/testing-library/dom-testing-library) | MIT | no (the unit tier's component tests) |
 
 Fonts are the one other licence family: Inter is SIL OFL-1.1, which allows
 embedding, and is served from the app itself — never from a font host, because
-v2 runs on a tailnet with no guaranteed outbound internet.
+v2 runs on a tailnet with no guaranteed outbound internet. The rule is enforced,
+not only stated: `v2/web/src/theme/fonts.css` is the only `@font-face` in the
+tree, `v2/web/src/theme/fonts.test.ts` fails a rule whose file is not on disk or
+whose `url()` names a host, and the `web` tier's browser test fails any request
+the page makes off its own origin.
 
 ## Python dependencies
 

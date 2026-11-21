@@ -1,6 +1,6 @@
 # RevenueChaser v2 — design contract (web and the Android app)
 
-    contract_version: 1
+    contract_version: 2
 
 **What this is.** One versioned description of the v2 design, written **once for both surfaces**: the web app in
 `v2/web/` and the Android app of run plan step 18. It is a file, not a picture. A token, a scale, a state or a
@@ -32,6 +32,10 @@ asked for. What avo approves here is the contract, not another picture — which
 **amends this file in the same PR**, and bumps `contract_version` when it changes something already built. A new
 *colour* is not amendable here: it is a new token in `ref/design-system/tokens.css` first (DESIGN.md §1, "Names,
 not hex"), then quoted here.
+
+**Amendments so far.** `contract_version 2` (21 Nov 2026, step 8 / #1316): §5.1 gained a second, **named**
+touch-target exception, and §9's `column-sort` row and §11's stacked-cell rule now say the same thing as it.
+Nothing else changed: no token, state or component was added or removed, and §9 still holds the same 39 rows.
 
 ## 1. Where every value in this file comes from
 
@@ -207,7 +211,7 @@ The surfaces are **not** two renderings of one layout. Each has its own shape, s
 | Target widths | **1187 px** (laptop; 64 px icon rail, board gets ~1123 px) and **1884 px** (extra screen; 240 px sidebar, board gets ~1644 px). avo's real `window.innerWidth`, measured 12 Nov 2026. |
 | Shell | below 1440 px a 64 px icon rail, each item a 44 px icon with its name as a tooltip; from 1440 px a 240 px sidebar. |
 | Screenshots | 1187 and 1884, light and dark, from CI's `screenshots-v2-web` artifact. |
-| Touch target | 44 px (`--touch`) for every control. **One exception, avo's:** the symbol tile is drawn small (§9.1), and its hit area, not its drawing, carries the target — at least the row's height. The separate 36 px bookmark button of the old dashboard does not exist in v2 (§9.1). |
+| Touch target | 44 px (`--touch`) for every control. **Two exceptions, both named:** (1) avo's — the symbol tile is drawn small (§9.1), and its hit area, not its drawing, carries the target, at least the row's height; the separate 36 px bookmark button of the old dashboard does not exist in v2 (§9.1). (2) **the secondary sort targets inside one header cell** — where a cell stacks two figures under a value, §11 makes each figure its own sort target, so one column's header holds three. Three stacked 44 px targets would be a 132 px header row above 44 px data rows, so the header cell carries 44 px for the column's own target and the two secondary targets are `--sp-4` tall inside it (web `.rc-th-sub`). Added by step 8 (#1316), which is where the two rules first met. |
 | No sideways scroll | a board fits its pane at 1187 px: fewer columns, value and change stacked, detail behind a row click. |
 
 **v2 web is not given a phone layout.** avo decided on 21 Nov 2026 00:41 that the phone view **is** the native
@@ -309,7 +313,7 @@ counterpart names **what it becomes** — that is a stated difference, not a gap
 | `segmented` | `SegmentedControl` | `RcSegmented` | exclusive; never a dropdown at ≤ 5 choices |
 | `table` | `DataTable` | `RcRowList` | stacked row cards on the phone; never a sideways scroll |
 | `row-card` | `RowCard` | `RcRowCard` | the phone's unit of a table row; 36 dp rows |
-| `column-sort` | `SortableHeader` | `RcSortableHeader` | a tappable column header that sorts the table and shows the direction (§11); its hit area is **44 px** tall even where the label is one line |
+| `column-sort` | `SortableHeader` | `RcSortableHeader` | a tappable column header that sorts the table and shows the direction (§11); the column's own target is **44 px** tall even where the label is one line, and a secondary target inside the same cell is `--sp-4` (§5.1's second exception) |
 | `tile` | `Tile` | `RcTile` | caps label · big value · delta chip · comparison line · optional sparkline |
 | `sparkline` | `Sparkline` | `RcSparkline` | native Canvas on the phone |
 | `range-bar` | `RangeBar` | `RcRangeBar` | in-row graphic |
@@ -430,7 +434,7 @@ These are the rules a dense board breaks first. They hold on both surfaces.
   whichever way the column points**, never to the top as a zero would; and sorting reorders rows only, so every
   cell keeps its column, width and alignment. Where a cell stacks two figures — the price with `1D` and `1W`
   under it — **each figure is its own sort target in the header**, because the cell is one column but three
-  questions.
+  questions. Those secondary targets are the one place a web control is under 44 px, for the reason §5.1 gives.
 - **One table, one period.** A table that sorts rows from different report periods together answers "who bought
   most" wrongly by construction. Pin the period, or do not show the row.
 - **Problems first.** A status strip answers "do I need to act now?". Only problem cards show; everything fine
