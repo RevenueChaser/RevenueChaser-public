@@ -1385,7 +1385,10 @@ no call). At start it fails a request a dead builder left running, with `lost: p
 row — or, when the kernel's own log says it killed that pid for memory, with `lost: pid <n> killed by the kernel:
 out of memory` (`core/oom.py`, #815: the journal is read by pid, bounded and never fatal, and `RC_OOM_JOURNAL=0`
 turns the read off, which is what the test suite runs with). A request whose builder is still alive (a live `.rc-proc` marker of its pid in the market dir) is left
-alone. Neither row writes an old `job_runs` row: the builder records its own `job_runs2` rows. The page and the routes only enqueue and read (`docs/data_retrieval.md`, "The
+alone. A **dashboard job's** row (no dataset, trigger `dashboard`) is the one the sweep words differently
+(#1239): its pid is the dashboard's, so it is closed `interrupted` with **no end time** rather than `failed` with
+`builder died` — the end time the sweep could write is only its own clock, which turned four interrupted
+`news_headlines` runs into 45-minute ones. A kernel OOM kill stays a failure, whoever ran it. Neither row writes an old `job_runs` row: the builder records its own `job_runs2` rows. The page and the routes only enqueue and read (`docs/data_retrieval.md`, "The
 market-store builder's routes").
 
 **Why a pass exited 1, and where that is written (#1119).** The hourly unit runs
