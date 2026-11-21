@@ -102,12 +102,14 @@ MF_TICKERS = ("AAAX", "ACRNX", "DUPCLS", "ELFNX", "LACAX", "QINSQ", "QQQ", "SOXX
 
 # ── Compustat ────────────────────────────────────────────────────────────────────────────────────────────────
 
+#: ``loc`` is the company's own country as Compustat spells it (alpha-3); the spine serves it as
+#: ``security.country`` (spine 10). A row without one is a company Compustat does not place.
 COMPANY = [
-    {"gvkey": "012141", "conm": "MICROSOFT CORP", "cik": "0000789019"},
-    {"gvkey": "005567", "conm": "HEICO CORP", "cik": "0000046619"},
-    {"gvkey": "016478", "conm": "EATON CORP PLC", "cik": "0001551182"},
-    {"gvkey": "010581", "conm": "TOYOTA MOTOR CORP", "cik": "0001094517"},
-    {"gvkey": "002968", "conm": "CNA FINANCIAL CORP", "cik": "0000021175"},
+    {"gvkey": "012141", "conm": "MICROSOFT CORP", "cik": "0000789019", "loc": "USA"},
+    {"gvkey": "005567", "conm": "HEICO CORP", "cik": "0000046619", "loc": "USA"},
+    {"gvkey": "016478", "conm": "EATON CORP PLC", "cik": "0001551182", "loc": "IRL"},
+    {"gvkey": "010581", "conm": "TOYOTA MOTOR CORP", "cik": "0001094517", "loc": "JPN"},
+    {"gvkey": "002968", "conm": "CNA FINANCIAL CORP", "cik": "0000021175", "loc": "USA"},
     {"gvkey": "099999", "conm": "CNA SURETY CORP (OLD)", "cik": "0000021175"},
     {"gvkey": "004598", "conm": "FEDEX CORP", "cik": "0001048911"},
     {"gvkey": "025648", "conm": "NVR INC", "cik": "0000906163"},
