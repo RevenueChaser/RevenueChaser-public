@@ -94,7 +94,7 @@ Store numbers, form `8-K%` with item `2.02` in `items`, `filing_date >= current_
   Most are foreign private issuers, which file **6-K** (238 892 rows in the view) and carry no 8-K
   item numbers — so any R8 rule keyed on 8-K item 2.02 structurally skips them, it is not a gap in the data.
 
-SEC free filing index sample (plain GET, no key, UA `RevenueChaser research (contact: alsanvolkan@gmail.com)`,
+SEC free filing index sample (plain GET, no key, UA = the repo's own SEC contact string (`core/providers/sec_edgar.py`, the contact from the environment),
 0.35 s between requests): the newest item-2.02 accession of each of those 22 tickers, **22 sampled,
 0 failures**.
 
