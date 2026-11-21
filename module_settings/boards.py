@@ -24,6 +24,7 @@ from RevenueChaser.core.config import OUTPUT_DIR
 from RevenueChaser.core.universe import DEFAULT_MC_MIN
 from RevenueChaser.module_comovement import config as comov_config
 from RevenueChaser.module_comovement import settings as comov_settings
+from RevenueChaser.module_comovement import store_reads as _comov
 from RevenueChaser.module_fundamentals import settings as fund_settings
 from RevenueChaser.module_news import store_reads as _news
 from RevenueChaser.module_relatedness import store_reads as _rel
@@ -295,8 +296,11 @@ BOARD_INPUTS: list[dict] = [
            lambda: _json("financials", "financials_latest.json")),
     _board("module_comovement", "Co-movement",
            # The engine reads the daily price bars since #379 (module_comovement/ohlc.py) and the universe from
-           # the spine (#642 PR 6), both served: it holds no board-file table of its own that it reads back.
-           [],
+           # the spine (#642 PR 6), both served. It does read its *own* dated runs back, which this record used
+           # to deny: a Refresh re-renders from them with zero network, a store-only run serves one, and the
+           # persistence verdicts come from the newest run with the same config hash. The names come from the
+           # board's one reader (#217), so a rename is a change to one file.
+           [_comov.RUNS, _comov.NODES, _comov.MEMBERS, _comov.LAG],
            lambda: comov_config.COMOVEMENT_JSON,
            funnel="funnel_steps",
            price_basis="daily price bars, split- and dividend-adjusted closes; correct for returns",
