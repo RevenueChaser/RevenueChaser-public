@@ -14,6 +14,7 @@ these summaries exist to tell you *which*, not to replace it.
 | Dashboard UI (filters + ticker pickers) | [`docs/dashboard_ui.md`](docs/dashboard_ui.md) |
 | Data health / settings board (universe refetch, 10-K sync) | [`docs/data_health.md`](docs/data_health.md) |
 | Areas & data flow (system map) | [`docs/system_map.md`](docs/system_map.md) |
+| Board measurements (what a board was decided on) | [`docs/relatedness/`](docs/relatedness/README.md), [`docs/value-chain/`](docs/value-chain/README.md) |
 | Agent orchestration (who plans, who codes) | §5 below |
 
 **Plans are not docs.** A plan — a dated work order with a status — does not belong
