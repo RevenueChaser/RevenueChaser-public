@@ -166,9 +166,12 @@ def test_a_writer_without_its_key_stops_before_any_call(rawstore_tmp_db, monkeyp
 
 
 def test_the_scheduled_job_carries_the_10_usd_deepseek_cap():
+    """Since #1255 the run happens in the dashboard, so the cap travels in the request, not on a command line."""
     from RevenueChaser.core import automations
+    from RevenueChaser.scripts import board_fetch
     e = automations.entry("RC-Relatedness-OffPeak")
-    assert e.args == ("-m", "RevenueChaser.module_relatedness", "--run", "--cap", "10")
+    assert e.args == ("-m", "RevenueChaser.scripts.board_fetch", "relatedness")
+    assert board_fetch.FORM["relatedness"] == {"usd_cap": "10"}
     assert e.time == "22:15" and e.days == ("Sunday",)          # weekly Sunday (avo 20 Nov 2026: "Tamam haftalik")
 
 

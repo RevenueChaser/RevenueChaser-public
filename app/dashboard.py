@@ -287,6 +287,11 @@ jobs.register("settings_refresh", runners.run_settings, ["module_settings"], req
 jobs.register("storage_picture", runners.run_storage_picture, ["module_settings"],
               requires_uw=False, lane="long")
 jobs.register("module_value_chain", runners.run_value_chain, ["module_value_chain"], requires_uw=False)
+# The Relatedness board's whole-board Fetch: the profiling pass the weekly task used to run in a writer process of
+# its own, which is how it met a held relatedness.duckdb and exited on StoreLockedError (#1255). It is the long
+# profiling run, so the long lane; its own ``job_lock("relatedness")`` is inside ``engine.run``, and it reaches no
+# ``job_control`` checkpoint, so it is not cancellable.
+jobs.register("module_relatedness", runners.run_relatedness, ["module_relatedness"], requires_uw=False, lane="long")
 # The Relatedness writer comparison (#370): one provider + model on at most 100 names, no board table written.
 jobs.register("relatedness_compare", runners.run_relatedness_compare, [], requires_uw=False, lane="long")
 # Implied Probability (decision B): store-only, reads the nightly options build.
@@ -1265,6 +1270,40 @@ def _busy(modules: tuple[str, ...], label: str):
 @app.route("/run/module_value_chain", methods=["POST"])
 def run_module_value_chain():
     return _submit("module_value_chain", {})
+
+
+@app.route("/run/module_relatedness", methods=["POST"])
+def run_module_relatedness():
+    """The Relatedness board's whole-board Fetch, for the weekly task alone (#1255).
+
+    The board has no Fetch button and must not get one (decision D2): this pass writes with the board's writer,
+    which the Settings page may set to the paid DeepSeek, and it runs for many minutes over the whole universe. So
+    the route takes **only** the scheduled caller's ``X-RC-Panel: cli``, as ``/api/automations/<name>/<action>``
+    takes only its own value; a page sends ``dashboard`` and is refused. What it buys is the single writer: until
+    #1255 the weekly task opened ``boards/relatedness.duckdb`` in a process of its own and a peer holding it ended
+    the run on ``StoreLockedError``.
+
+    ``usd_cap`` is optional and counts only when that writer is DeepSeek: the task sends avo's 10 USD
+    (2 Nov 2026); without it the module's own default stands. Repeated starts are refused with the running job's
+    id rather than queued (PL6-a).
+    """
+    # _local_only wants any panel header on every write; this route wants the scheduled caller's own value.
+    if request.headers.get(_PANEL_HEADER) != "cli":
+        return jsonify({"ok": False, "error": "this run is the scheduled task's; the board has no Fetch"}), 403
+    refused = _busy(("module_relatedness",), "A Relatedness job is already queued or running.")
+    if refused:
+        return refused
+    params = {}
+    raw = (request.form.get("usd_cap") or "").strip()
+    if raw:
+        try:
+            cap = float(raw)
+        except ValueError:
+            return jsonify({"ok": False, "error": "usd_cap must be a number"}), 400
+        if cap < 0:
+            return jsonify({"ok": False, "error": "usd_cap must not be negative"}), 400
+        params["usd_cap"] = cap
+    return _submit("module_relatedness", params)
 
 
 def _comovement_windows() -> tuple[int, ...]:

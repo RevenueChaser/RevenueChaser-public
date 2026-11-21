@@ -9,6 +9,13 @@ anchor), so the Fetch scores on the same session the forecast ledger freezes; ot
 The Fetch runs in the dashboard, the one writer: the task posts ``/run/<route>`` with the ``X-RC-Panel`` header and
 polls ``/api/job/<id>``, as the Value Chain and SPX Gamma night tasks do. It prints one JSON line with the job's notes
 (the freeze outcome, ``core.ledger``) and exits 0 only when the job is done.
+
+Two boards are not nightly and have no session to wait for: ``news-earnings`` (weekly, #886) and ``relatedness``
+(the weekly Sunday profiling pass, #1255, whose timer keeps its own ``life-rc-relatedness`` name). They run as
+soon as the store is idle. The idle wait is what #1255 is about: the profiling run used to open the board file in
+a writer process of its own and exit 1 on ``StoreLockedError`` ~29 s later, losing the week's run; here a busy
+store postpones it inside the window, and only a store still busy at the deadline ends the run -- with
+``EXIT_NOT_READY``, which the Jobs board reads as "nothing written", not as a failure.
 """
 from __future__ import annotations
 
@@ -25,6 +32,10 @@ DASHBOARD = "http://127.0.0.1:8000"     # app.dashboard.main's port
 _HEADERS = {"X-RC-Panel": "cli"}        # every non-GET request needs it (CLAUDE.md)
 _POLL_S = 20.0
 _WAIT_S = 100 * 60                      # under the units' 2 h limit; the job itself keeps running past it
+#: Boards whose unit allows a longer wait than ``_WAIT_S``. The weekly Relatedness run has a 4 h unit limit
+#: (``life-rc-relatedness.service``), and waiting is the whole point of #1255: a busy store must postpone the run,
+#: not end the week's one chance at it.
+_BOARD_WAIT_S = {"relatedness": 230 * 60}
 
 # board -> the dashboard's job route (app/dashboard.py ``jobs.register``)
 ROUTES = {
@@ -39,12 +50,21 @@ ROUTES = {
     "earnings": "earnings",
     # News earnings (#886): next week's report day of every watch-list name, store-only, every Sunday 09:00.
     "news-earnings": "news_earnings",
+    # Relatedness profiling, weekly Sunday 22:15 (#1255). Its own unit pair is life-rc-relatedness, not
+    # life-rc-fetch-relatedness: the timer predates this task and keeps its name.
+    "relatedness": "module_relatedness",
 }
 
-#: The boards whose Fetch scores against a session and so waits for its SPY bar. A board that only reads a
-#: calendar of days still to come has no session to wait for (#886), and on a Sunday there is none to wait for
-#: either: it runs as soon as the store is idle.
-NEEDS_SESSION = frozenset(ROUTES) - {"news-earnings"}
+#: Extra form fields one board's route takes. The weekly Relatedness run's spend ceiling is avo's 10 USD
+#: (2 Nov 2026) and counts only when the board's writer is DeepSeek; the module's own default is 25, so the task
+#: has to say it, exactly as the ``--cap 10`` of the registry row it replaces did.
+FORM: dict[str, dict[str, str]] = {"relatedness": {"usd_cap": "10"}}
+
+#: The boards whose Fetch scores against a session and so waits for its SPY bar. The others run as soon as the
+#: store is idle, whatever day it is: the News earnings
+#: list carries a calendar of days still to come (#886), and the Relatedness profiling pass scores profiles
+#: against each other, not against a session (#1255).
+NEEDS_SESSION = frozenset(ROUTES) - {"news-earnings", "relatedness"}
 
 
 def _wait_idle(deadline: float) -> list[str]:
@@ -60,7 +80,7 @@ def _wait_idle(deadline: float) -> list[str]:
 
 
 def run(board: str) -> int:
-    deadline = time.monotonic() + _WAIT_S
+    deadline = time.monotonic() + _BOARD_WAIT_S.get(board, _WAIT_S)
     try:
         busy = _wait_idle(deadline)
     except httpx.HTTPError as exc:
@@ -75,7 +95,7 @@ def run(board: str) -> int:
         return EXIT_NOT_READY
     route = ROUTES[board]
     try:
-        r = httpx.post(f"{DASHBOARD}/run/{route}", headers=_HEADERS, timeout=60)
+        r = httpx.post(f"{DASHBOARD}/run/{route}", headers=_HEADERS, data=FORM.get(board), timeout=60)
         body = r.json()
         if r.status_code != 202:
             out = {"status": "refused", "http": r.status_code, "error": body.get("error")}

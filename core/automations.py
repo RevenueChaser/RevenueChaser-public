@@ -147,14 +147,18 @@ SEC_READ_UNIT = "life-rc-sec-read"
 REGISTRY: tuple[AutomationEntry, ...] = (
     AutomationEntry(
         name="RC-Relatedness-OffPeak", label="Relatedness profiling (weekly, Sunday)",
-        args=("-m", "RevenueChaser.module_relatedness", "--run", "--cap", "10"), time="22:15", days=("Sunday",),
+        args=("-m", "RevenueChaser.scripts.board_fetch", "relatedness"), time="22:15", days=("Sunday",),
         description=("Relatedness profiling with the board's writer (Settings, #360: EVREN by default, no call cap), "
                      "incremental (only changed filings), then every pair scored (~27 s CPU for 5,111 profiles, "
                      "measured on the server 20 Nov 2026, #884) and the "
                      "board rendered. Weekly, Sunday 22:15 (avo 20 Nov 2026: \"Tamam haftalik\"; that is also what "
                      "the installed homesrv timer has had since 16 Nov, while these words still said every other "
                      "Sunday 07:30). With DeepSeek it is capped at 10 USD (avo, 2 Nov 2026) and defers itself "
-                     "outside off-peak hours."),
+                     "outside off-peak hours. The run happens in the dashboard (POST /run/module_relatedness, the "
+                     "one writer, with that cap): the task waits for the store to be idle, then queues it and "
+                     "waits. Until #1255 it opened the board file itself and a peer holding it ended the week's "
+                     "run on StoreLockedError after ~29 s; now a busy store exits 3 and nothing is written, and "
+                     "with the dashboard down it exits 1."),
         tables_written=("relatedness_profiles", "relatedness_attributes", "relatedness_scores",
                         "llm_cache", "chain_filings", "chain_meta"),
         offpeak_gated=True),

@@ -655,7 +655,7 @@ it, so without that line its old archives would never be listed. The newest copy
 ### 3.4 Automations panel
 
 `core/automations.py` is the one registry of the scheduled tasks RevenueChaser owns, and the one
-installer. Rows: `RC-Relatedness-OffPeak` (weekly Sunday 22:15, `--run --cap 10`, the board's writer, #360), `RC-Relatedness-Score` (weekly Saturday 07:30, after `RC-SEC-Read`, `module_relatedness --score`: the service's new profile answers mirrored and every pair rescored, skipped when nothing is newer — both weekly on avo's word of 20 Nov 2026), `RC-ValueChain-Sync` (daily 04:20, after `RC-SEC-Read`, `module_value_chain --nightly`: the links rebuilt from the SEC layer through the dashboard),
+installer. Rows: `RC-Relatedness-OffPeak` (weekly Sunday 22:15, `scripts.board_fetch relatedness`: the board's whole-board Fetch queued on the dashboard with the 10 USD cap, #360, #1255), `RC-Relatedness-Score` (weekly Saturday 07:30, after `RC-SEC-Read`, `module_relatedness --score`: the service's new profile answers mirrored and every pair rescored, skipped when nothing is newer — both weekly on avo's word of 20 Nov 2026), `RC-ValueChain-Sync` (daily 04:20, after `RC-SEC-Read`, `module_value_chain --nightly`: the links rebuilt from the SEC layer through the dashboard),
 `RC-Daily-Bars` (23:00, `scripts.daily_bars --nightly --sec-files`), `RC-Screeners-Daily` (weekdays
 23:30, after `RC-Daily-Bars`, `app.universe_cli`), `RC-Forecast-Outcomes` (daily 23:35, after
 `RC-Daily-Bars`, `scripts.forecast_outcomes --nightly`), `RC-Forecast-Baselines` (daily 23:50, after
