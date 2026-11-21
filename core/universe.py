@@ -62,9 +62,10 @@ UNIVERSE_META_KEY = "__meta__"
 
 # Each board's type filter default (PR 2, the plan's table): True screens operating companies only (the set the
 # board read before PR 2), False the whole A+B universe. A board with an editable setting (``OPERATING_ONLY`` in
-# ``core.board_settings``) reads this as its default; the others pass it as they call. Every board whose inputs include
-# ``equity_universe`` (``module_settings.boards.BOARD_INPUTS``) has an entry, so a default is a decision, never the
-# ``.get`` fallback (a test pins it).
+# ``core.board_settings``) reads this as its default; the others pass it as they call. Every board whose own record
+# names ``identity.universe`` (its ``READS``, or its planned reads) has an entry, so a default is a decision, never
+# the ``.get`` fallback (a test pins it). It used to be read off the Settings inventory's ``equity_universe`` rows,
+# a table #860 removed (#642 N1).
 BOARD_OPERATING_ONLY = {
     "module_fundamentals": True,
     "module_swing_potential": True,

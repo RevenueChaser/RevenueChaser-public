@@ -25,6 +25,11 @@ UNDECLARED_CEILING = frozenset({
 
 #: ``{package: files (relative to it) that import core.providers}`` on 11 Nov 2026 (main 34ac3e55);
 #: ``module_relatedness/naming.py`` left it on 20 Nov 2026 (#404: its writer comes from ``core.llm_jobs`` now).
+#: ``module_spx_gamma/candles.py`` joined it on 20 Nov 2026 (#1213) -- the **one** line this ceiling has ever
+#: gained, and it records no new link: ``live_spot`` has read Yahoo directly since 2026-10-22 (the owner's spot
+#: exception), behind this guard's back, because it called the library instead of the provider. Routing it
+#: through ``yfinance.attempt`` made the existing read visible, counted and 401-cured. The companion test below
+#: now matches the raw libraries too, so a read cannot hide that way again.
 PROVIDER_FILES = {
     "module_asymmetric_growth": {"engine.py"},
     "module_earnings_radar": {"macro_watch.py", "pipeline.py"},
@@ -35,10 +40,30 @@ PROVIDER_FILES = {
     "module_oipd": {"engine.py"},
     "module_relatedness": {"__main__.py", "compare.py", "engine.py", "profiles.py", "store.py"},
     "module_sector_rotation": {"__main__.py", "engine.py"},
-    "module_spx_gamma": {"run.py"},
+    "module_spx_gamma": {"candles.py", "run.py"},
     "module_swing_potential": {"indicators.py"},
     "module_uw_interaction": {"engine.py"},
     "module_value_chain": {"edgar_text.py", "engine.py", "health.py"},
+}
+
+
+#: Provider client libraries. A board package importing one of these reads a provider without going through
+#: ``core.providers``, which the import check above cannot see (#1213).
+#: A name is matched as a prefix of the dotted module path, so ``urllib.request`` is a client and
+#: ``urllib.parse`` (pure string work, used by two boards for ``quote`` / ``urlsplit``) is not.
+RAW_PROVIDER_LIBRARIES = (
+    "yfinance", "httpx", "requests", "aiohttp", "pandas_datareader", "fredapi", "alpaca", "ib_insync", "ibapi",
+    "websocket", "websockets", "feedparser", "ftplib", "urllib.request", "urllib.error",
+)
+
+#: Files that import an HTTP client to talk to **our own dashboard** on ``127.0.0.1`` -- a command-line trigger
+#: (``POST /run/<job>`` then poll ``/api/job/<id>``), not a provider read. Measured on 20 Nov 2026 (#1213): these
+#: three are every such file in a board package, and nothing else in a board package reaches a provider library
+#: outside ``core.providers``.
+LOCAL_DASHBOARD_CLIENTS = {
+    "module_news": {"x_feed.py"},
+    "module_spx_gamma": {"__main__.py"},
+    "module_value_chain": {"__main__.py"},
 }
 
 
@@ -58,6 +83,19 @@ def _imports_providers(node) -> bool:
         return "providers" in parts or (parts[-1] == "core" and any(a.name == "providers" for a in node.names))
     if isinstance(node, ast.Import):
         return any("providers" in a.name.split(".") for a in node.names)
+    return False
+
+
+def _is_raw_library(module: str) -> bool:
+    """``module`` is one of the client libraries, or a submodule of one."""
+    return any(module == name or module.startswith(name + ".") for name in RAW_PROVIDER_LIBRARIES)
+
+
+def _imports_raw_library(node) -> bool:
+    if isinstance(node, ast.Import):
+        return any(_is_raw_library(a.name) for a in node.names)
+    if isinstance(node, ast.ImportFrom) and node.module:
+        return _is_raw_library(node.module)
     return False
 
 
@@ -88,3 +126,40 @@ def test_no_board_file_gains_a_provider_import_and_a_removed_one_leaves_the_list
     assert not gone, f"no longer importing providers, remove from PROVIDER_FILES: {gone}"
 
 
+def test_a_board_file_that_touches_a_client_library_goes_through_core_providers():
+    """A board file may not read a provider library directly (#1213), in one check with its own exemptions.
+
+    The check above matches ``core.providers``, so a file that calls ``yfinance`` (or an HTTP client) itself is a
+    provider read the ceiling never saw: that was ``module_spx_gamma/candles.py`` for a month, and it is why the
+    rule here is **both** -- a file that imports a client library must also go through the provider, where the
+    counting (#299) and the 401 cure (#402) live, and be declared in ``PROVIDER_FILES``.
+
+    ``LOCAL_DASHBOARD_CLIENTS`` is the one exemption, and it is checked rather than trusted: each named file must
+    still exist, still import a client, and still carry a 127.0.0.1 base with a ``/run/`` route. Everything is
+    one test on purpose -- an exemption's own hygiene is not evidence about a change, so it does not get an id of
+    its own that ``red_on_base`` would have to call green.
+    """
+    raw_reads: dict[str, list[str]] = {}
+    for package in _packages():
+        exempt = LOCAL_DASHBOARD_CLIENTS.get(package, set())
+        for _path, rel, tree in _sources(package):
+            if not any(_imports_raw_library(node) for node in ast.walk(tree)):
+                continue
+            if rel in exempt:
+                continue
+            if not any(_imports_providers(node) for node in ast.walk(tree)):
+                raw_reads.setdefault(package, []).append(rel)
+    found = {p: sorted(f) for p, f in raw_reads.items()}
+    assert not found, (f"client library read outside core.providers: {found}; route the read through "
+                       "core.providers (counted, 401-cured) and declare the file in PROVIDER_FILES")
+
+    for package, files in LOCAL_DASHBOARD_CLIENTS.items():
+        sources = {rel: tree for _path, rel, tree in _sources(package)}
+        for rel in files:
+            assert rel in sources, f"{package}/{rel} is gone; remove it from LOCAL_DASHBOARD_CLIENTS"
+            assert any(_imports_raw_library(node) for node in ast.walk(sources[rel])), (
+                f"{package}/{rel} imports no client library any more; remove it from LOCAL_DASHBOARD_CLIENTS")
+            text = (boards.root() / package / rel).read_text(encoding="utf-8")
+            assert 'DASHBOARD = "http://127.0.0.1' in text and "/run/" in text, (
+                f"{package}/{rel} does not look like a dashboard trigger (a 127.0.0.1 base and a /run/ route); "
+                "it may be a provider read")

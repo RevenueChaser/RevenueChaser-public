@@ -107,6 +107,22 @@ class WholeBuildByHand(SourceError):
     """
 
 
+class ProviderEmpty(SourceError):
+    """The provider answered 200 with no rows where this dataset's window is never empty: a ``skipped`` check row
+    and an open ``source_empty`` issue, not a failure.
+
+    Measured on 21 Nov 2026: UW answered ``/market/economic-calendar`` with ``{"data": []}`` while every stored
+    snapshot of the two-week window held 18 events, weekends included. Refusing to store that is right -- an empty
+    list must never replace a served calendar -- but failing the check row failed the whole hourly pass with it
+    (``rcdata/build/__main__.py``: any ``failed`` row makes the pass exit 1), so one provider gap cost every other
+    dataset's work. That is the shape #1123 fixed for a single EDGAR 504.
+
+    A skip, not a failure: nothing was written, the dataset stays due for the next pass, and the issue says the
+    emptiness is still there. A gap that lasts is then visible as an issue that does not close, rather than as an
+    hourly red pass.
+    """
+
+
 class CapReached(SourceError):
     """A provider reached its day cap during the run: nothing more is sent to it today."""
 
@@ -239,6 +255,14 @@ def honours_scope(ds) -> bool:
     return bool(getattr(ds, "honours_scope", False))
 
 
+def _step_now() -> float:
+    """The clock the step stamps read. Not ``RunContext.clock``: that one is the run's **pacing** clock, which a
+    caller may inject as a fixed sequence (a run budget's reads in ``rcdata/tests/test_options_list.py``), and
+    bookkeeping must not consume a read of it.
+    """
+    return time.monotonic()
+
+
 # ── The run context ────────────────────────────────────────────────────────────────────────────────────────────
 
 @dataclass
@@ -260,6 +284,16 @@ class RunContext:
     #: (:class:`WholeBuildByHand`); everything else -- a Fetch press, the CLI, a build called directly -- does.
     scheduled: bool = False
     scope: Scope = field(default_factory=Scope)                     # a request's "tiers" / "names" (empty: daily)
+    # The seconds each step took, in the order the steps ran: ``step`` stamps the clock as it changes
+    # (``__setattr__``), and ``step_times`` is what the run's ``job_runs2.counts["steps"]`` holds (review of
+    # 20 Nov 2026, step 1). Before this the whole run's time was one pair of timestamps and the inside of it was
+    # a log line, so "where did the hour go" had no answer in any record.
+    #
+    # **Declared before ``step``**, because a dataclass assigns its fields in declaration order: after ``step``
+    # these two defaults would overwrite the stamp ``step``'s own assignment just made, and the time before the
+    # first named step would be lost (CI on this PR, unit 2/6).
+    _steps: dict[str, float] = field(default_factory=dict)
+    _step_at: float | None = None
     # Which of the run's steps is in hand, so a failed check row says where the exception came from and not only
     # its class (#1119): "start" before the first one, then "fetch", "parquet" or "backfill", then "build",
     # "check" and "swap". A step sets it before it runs, never after, because what names it is the failure.
@@ -277,6 +311,35 @@ class RunContext:
     _uw: Any = None
     _pause_read_at: float | None = None                             # the clock when the pause was last read
     _paused: str | None = None                                      # once seen, every later call stops too
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        """Keep the clock of ``step``, so a run records where its time went and not only where it failed.
+
+        A step is set before it runs and never after, so the stamp belongs to the step being left. Setting a step
+        to what it already is (``build_kind_many`` sets it on every member of a pass, the lead included) goes on
+        counting the same step rather than restarting it, and a step entered twice adds up.
+        """
+        if name == "step":
+            at, seen = getattr(self, "_step_at", None), getattr(self, "step", None)
+            if at is not None and seen is not None:
+                spent = max(0.0, _step_now() - at)
+                self._steps[seen] = round(self._steps.get(seen, 0.0) + spent, 3)
+            object.__setattr__(self, name, value)
+            object.__setattr__(self, "_step_at", _step_now())
+            return
+        object.__setattr__(self, name, value)
+
+    def step_times(self) -> dict[str, float]:
+        """The seconds per step, in the order they ran, with the step in hand counted up to now.
+
+        Reading it never ends a step, so a caller may read it twice (a failed run's row and its check note) and
+        get the same numbers plus whatever time passed. ``start`` is the time before the first named step: the
+        claim, the pause and cap reads, the scope.
+        """
+        out = dict(self._steps)
+        if self._step_at is not None and self.step:
+            out[self.step] = round(out.get(self.step, 0.0) + max(0.0, _step_now() - self._step_at), 3)
+        return out
 
     def count(self, provider: str, calls: int = 0, failures: int = 0, http_429: int = 0, *,
               logged: bool = False) -> None:
@@ -427,8 +490,10 @@ UNEXPLAINED_MAX = 10
 
 # Stretches EDGAR keeps no daily index for although it was open, so no calendar explains them: (first, last, name).
 # Measured 2026-11-08 (#507) by asking for every weekday index 2014-01-01..2026-11-04: all 65 weekdays of 2014 Q2 are
-# absent, the only such stretch. A walk writes these days off as it does a closed one; their filings are not in the
-# daily index at all.
+# absent, the only such stretch. Their filings are not in the daily index at all, but they are in the **quarter's**
+# index, which lists the same filings with their filed dates (measured 2026-11-20, #561: all 64 open days of 2014 Q2,
+# row for row the daily index's own forms). So a walk that can read that index reads these days from it
+# (``ownership/edgar.read_quarter``) and only a walk that cannot writes them off as it does a closed day.
 INDEX_GAPS: tuple[tuple[date, date, str], ...] = (
     (date(2014, 4, 1), date(2014, 6, 30), "2014 Q2"),
 )
@@ -1291,7 +1356,7 @@ def _run(ctx: RunContext, ds, req: dict, params: dict, attended_ok: bool = False
         return _finish(ctx, req, {"result": "skipped", "note": stage_note}, "skipped", None)
     try:
         return _finish(ctx, req, build_kind(ctx, ds), "ok", None)
-    except (Paused, NothingInScope, WholeBuildByHand) as e:
+    except (Paused, NothingInScope, WholeBuildByHand, ProviderEmpty) as e:
         return _finish(ctx, req, {"result": "skipped", "note": f"skipped: {e}"}, "skipped", None)
     except Exception as e:  # noqa: BLE001 - every failure becomes a failed check row, never a half-swapped file
         return _failed(ctx, req, e)
@@ -1369,7 +1434,9 @@ def _stage(ctx: RunContext, ds, req: dict, params: dict, attended_ok: bool = Fal
     except Paused as e:
         # the files fetched so far stay; the serving file was not touched
         return _finish(ctx, req, {"result": "skipped", "note": f"skipped: {e}"}, "skipped", None), None
-    except NothingInScope as e:
+    except (NothingInScope, ProviderEmpty) as e:
+        # ProviderEmpty: the provider answered with no rows where this window is never empty (#1251). Nothing was
+        # written and the dataset stays due, so the row is a skip and the pass is not failed by it.
         return _finish(ctx, req, {"result": "skipped", "note": f"skipped: {e}"}, "skipped", None), None
     except Exception as e:  # noqa: BLE001 - a failed fetch is its own failed check row, never a half-swapped file
         return _failed(ctx, req, e), None
@@ -1472,7 +1539,9 @@ def _finish(ctx: RunContext, req: dict, check: dict, status: str, error: str | N
         row["next_check_due"] = next_due(ctx.as_of)
     result = row.pop("result")
     ops.record_check(ctx.dataset, result, run_id=ctx.run_id, note=notes, **row)
-    ops.finish_run(ctx.run_id, status, error)
+    # The inside of the run: seconds per step, into the ``counts`` column the builder path left empty (ops schema
+    # v3, #136), so no schema bump. A run that ended without reaching a step records only the steps it reached.
+    ops.finish_run(ctx.run_id, status, error, {"steps": ctx.step_times()})
     if req.get("id") is not None:
         ops.finish_request(req["id"], {"ok": "done", "skipped": "skipped"}.get(status, "failed"), note=notes)
     notify.build_end(ctx.dataset, status, error or notes, requested=_pressed(req))

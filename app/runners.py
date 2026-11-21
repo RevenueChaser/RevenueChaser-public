@@ -6,7 +6,6 @@ Each runner returns the Path to the generated file (or None if nothing was produ
 import json
 import logging
 import time
-from collections import Counter
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -46,10 +45,24 @@ def _write_to(path: Path, content: str) -> Path:
     return write_artifact(path, content)
 
 
-def _write_board(path: Path, html: str, data) -> Path:
-    """Write a board's HTML and its K10 payload file (``reporting_common.write_board``); ``data=None`` drops one."""
+def _run_asof(payload) -> str | None:
+    """The board's own as-of word for its v2 envelope (#1241), read from the run payload.
+
+    The K10 payload file carries the rows alone (``{"rows": ...}``, ``{"companies": ...}``), so the date the data
+    speaks for is here, in the payload the renderer was given: ``v2_envelope.ASOF_KEYS`` in order.
+    """
+    from RevenueChaser.core import v2_envelope
+    return v2_envelope.data_asof(payload)
+
+
+def _write_board(path: Path, html: str, data, asof=None) -> Path:
+    """Write a board's HTML, its K10 payload file and its v2 envelope (``reporting_common.write_board``).
+
+    ``data=None`` drops both files. ``asof`` is the board's own as-of word for the envelope (#1241): the K10
+    payload holds the rows only, so the date lives in the run payload the caller still has in hand.
+    """
     from RevenueChaser.core.reporting_common import write_board
-    return write_board(path, html, data)
+    return write_board(path, html, data, asof=asof)
 
 
 def _write_empty_board(path: Path, title: str, message: str, hint: str = "") -> Path:
@@ -589,8 +602,9 @@ def run_sec_13f_latest(uw: UWClient | None = None, notice: str | None = None,
         _write_empty_board(
             SEC_13F_LATEST, "SEC 13F", "No 13F ownership totals are stored yet.",
             "Press Fetch to download and ingest the newest SEC Form 13F data set.")
-        from RevenueChaser.core.reporting_common import payload_path
-        payload_path(SEC_13F_LATEST).unlink(missing_ok=True)     # K10: the rows go with the rows' file (#429)
+        from RevenueChaser.core.reporting_common import drop_board_data
+        # K10 + the v2 envelope: the rows go with the rows' file (#429), and so does the door's copy of them.
+        drop_board_data(SEC_13F_LATEST)
         raise JobMessage("No 13F totals stored yet — press Fetch to ingest the SEC data set.")
     meta, enrichment = sec_13f.load_sec13f_meta(), load_inputs(totals)
     if capture is not None:
@@ -905,7 +919,8 @@ def run_asymmetric_growth(uw, refresh_universe: bool = False, no_fetch: bool = F
         result = run_asymmetric_growth_hunter(uw, refresh_universe=refresh_universe, no_fetch=False, run_id=run)
     _write_output("asymmetric_growth", json.dumps(result, ensure_ascii=False, default=str), "latest", ext="json")
     # The page and its cards (S7, K10 #383 C6a): the cards go to the gzip payload file next to the page.
-    write_board(ASYMMETRIC_GROWTH_LATEST, render_asymmetric_growth_hunter_html(result), board_payload(result))
+    write_board(ASYMMETRIC_GROWTH_LATEST, render_asymmetric_growth_hunter_html(result),
+                board_payload(result), asof=_run_asof(result))
     if not no_fetch:
         # Only a Fetch rewrites the durable per-ticker table; a Refresh renders and leaves it alone (#145 D5).
         ticker_store.write_from_cards(result["cards"], result.get("asof"))
@@ -944,7 +959,7 @@ def run_swing(uw, refresh_universe: bool = False, no_fetch: bool = False) -> Pat
 
     payload = run_scan(uw, refresh_universe=refresh_universe, no_fetch=no_fetch)
     save_payload(payload)
-    _write_board(SWING_LATEST, *render_swing_board(payload))
+    _write_board(SWING_LATEST, *render_swing_board(payload), asof=_run_asof(payload))
     if not no_fetch:                      # last step of a Fetch; a Refresh never freezes (see AG above)
         from RevenueChaser.module_swing_potential import freeze as swing_freeze
         swing_freeze.freeze_payload(payload, run_id=_freeze_run_id())
@@ -965,7 +980,7 @@ def run_fundamentals(uw, refresh_universe: bool = False, no_fetch: bool = False)
 
     payload = run_scan(uw, refresh_universe=refresh_universe, no_fetch=no_fetch)
     save_payload(payload)
-    _write_board(FUNDAMENTALS_LATEST, *render_fundamental_board(payload))
+    _write_board(FUNDAMENTALS_LATEST, *render_fundamental_board(payload), asof=_run_asof(payload))
     if not no_fetch:                      # last step of a Fetch; a Refresh never freezes (see AG above)
         from RevenueChaser.module_fundamentals import freeze as fundamentals_freeze
         fundamentals_freeze.freeze_payload(payload, run_id=_freeze_run_id())
@@ -1000,7 +1015,7 @@ def run_comovement(uw=None, no_fetch: bool = False,
     payload = engine.run(no_fetch=no_fetch, horizon=horizon, benchmark=benchmark,
                          window=window, **({} if no_fetch else {"run_id": run}))
     _write_to(COMOVEMENT_JSON, json.dumps(payload, ensure_ascii=False, default=str))
-    _write_board(COMOVEMENT_LATEST, *report.render_comovement_board(payload))
+    _write_board(COMOVEMENT_LATEST, *report.render_comovement_board(payload), asof=_run_asof(payload))
     if no_fetch:
         return COMOVEMENT_LATEST
     if not payload.get("clusters"):
@@ -1143,7 +1158,7 @@ def run_relatedness(uw=None, no_fetch: bool = False) -> Path:
     _write_to(RELATEDNESS_JSON, json.dumps(payload, ensure_ascii=False, default=str))
     # Peers first, so a page loaded from the new HTML never asks for a list that is not written yet.
     _write_relatedness_peers(payload.get("peers") or {})
-    _write_board(RELATEDNESS_LATEST, *report.render_relatedness_board(payload))
+    _write_board(RELATEDNESS_LATEST, *report.render_relatedness_board(payload), asof=_run_asof(payload))
     # A Fetch that stopped early (peak, missing key, auth, the worker-pool stop)
     # or left work pending is not a silent success: say what is done and what waits.
     # A Refresh is a GET that writes nothing and must never raise (C-F6), so the
@@ -1186,14 +1201,20 @@ def run_news(uw=None) -> Path:
     """The News board's Fetch: the incremental calendar build into ``boards/news.duckdb``, the Dow Jones headlines from
     the IBKR Gateway (every name of avo's own, the stock and the News watch lists), then the page.
 
-    The calendar reads ``market.economic_event`` (the builder's hourly ``uw/economic_calendar``). The headlines are two gateway
+    The calendar reads ``market.economic_event`` and ``market.fda_event`` (the builder's hourly
+    ``uw/economic_calendar`` and ``uw/fda_calendar``, #807). The headlines are two gateway
     requests a name and no UW call; a gateway that is down is a job note, never a failed Fetch.
     """
-    from RevenueChaser.module_news import calendar, report
+    from RevenueChaser.module_news import calendar, earnings, report
     rid = run_id()
     out = calendar.build(run_id=rid)
+    weeks = earnings.build(run_id=rid)       # next week's watch-list earnings too, so a Fetch is never a week late
+    ledger.add_note(f"News earnings: {weeks['names']} watch-list names report in the week of {weeks['week_start']}")
     ledger.add_note(f"News calendar: {out['read']} raw rows read, {out['upserted']} events upserted, "
                     f"{out['retired']} retired, {out['highlights']} day highlights")
+    if out.get("fda_read"):
+        ledger.add_note(f"News FDA calendar: {out['fda_read']} raw rows read, {out['fda_upserted']} catalysts "
+                        f"upserted, {out['fda_retired']} retired")
     health = _news_headlines_pass(rid)
     path = report.render(provider_health=health)
     if health:
@@ -1299,37 +1320,42 @@ def run_news_x_follow(uw=None) -> Path | None:
     return report.render()
 
 
+def run_news_earnings(uw=None) -> Path:
+    """The News board's weekly earnings pass (#886): next week's report day of every watch-list name, from the
+    stored Alpha Vantage calendar (``fundamentals.earnings_event``), into ``boards/news.duckdb``, then the page.
+
+    Store-only, no provider call. Queued by ``RC-News-Earnings-Weekly`` every Sunday 09:00 Amsterdam, and by the
+    board's own Fetch, so a Fetch never shows last week's days.
+    """
+    from RevenueChaser.module_news import earnings, report
+    out = earnings.build(run_id=run_id())
+    ledger.add_note(f"News earnings: {out['names']} watch-list names report in the week of {out['week_start']}")
+    return report.render()
+
+
 def run_news_cached(uw=None) -> Path:
     """Store-only News render (Refresh, first load): reads ``boards/news.duckdb``, writes nothing to the store."""
     from RevenueChaser.module_news import report
     return report.render()
 
 
-def welcome_job_labels() -> dict[str, str]:
-    """Job name -> the label of the first board it feeds (``jobs.register`` ``produces`` and the dashboard tabs)."""
-    from RevenueChaser.app import dashboard
-    from . import jobs
-    tab_label = {t["key"]: t["label"] for t in dashboard.TABS if t["type"] == "tab"}
-    first = {job: boards[0] for job, boards in jobs._PRODUCES.items() if boards and boards[0] in tab_label}
-    feeders = Counter(first.values())
-    # Several jobs feed one board (the universe run and AG's own Fetch): only the board's own job keeps the bare
-    # label, or the freshness card lists "Asymmetric Growth" twice.
-    return {job: tab_label[b] if feeders[b] == 1 or job == b else f"{tab_label[b]} · {job}"
-            for job, b in first.items()}
+# ``welcome_job_labels`` went with #643 PR 6: the freshness card is one row per **builder file** now (avo's D2 of
+# 10 Nov 2026), named by ``module_welcome.build.FILE_LABELS``, so the page needs no map of dashboard job labels.
 
 
 def run_welcome(uw=None) -> Path:
     """The Welcome board's Fetch: the incremental build into ``boards/welcome.duckdb``, then the page. No network."""
     from RevenueChaser.module_welcome import build
     out = build.build(run_id=run_id())
-    ledger.add_note(f"Welcome: {out['snapshot']} closes")
+    ledger.add_note(f"Welcome: {out['snapshot']} closes, {out['earnings']} earnings rows, "
+                    f"{out['freshness']} builder files")
     return run_welcome_cached()
 
 
 def run_welcome_cached(uw=None) -> Path:
     """Store-only Welcome render (Refresh, first load): reads the board files, writes nothing to the store."""
     from RevenueChaser.module_welcome import report
-    return report.render(watchlist=_load_watchlist(), labels=welcome_job_labels())
+    return report.render(watchlist=_load_watchlist())
 
 
 def run_oipd_cached(uw=None, ticker: str | None = None) -> Path:

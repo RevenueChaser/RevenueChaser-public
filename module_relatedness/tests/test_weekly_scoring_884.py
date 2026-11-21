@@ -1,12 +1,13 @@
-"""#884 part 1: the weekly scoring step — ``--score`` / ``engine.score``.
+"""#884 part 1: the scoring step — ``--score`` / ``engine.score``.
 
-avo, 16 Nov 2026 20:01: "A) Haftada bir, Pazar gecesi". The step is the Fetch's second half alone: the profiles
-are whatever the SEC reading service mirrored, so it calls no writer and downloads nothing, and unlike a Refresh
-it **writes** — the new company vectors and the peer scores.
+The step is the Fetch's second half alone: the profiles are whatever the SEC reading service mirrored, so it
+calls no writer and downloads nothing, and unlike a Refresh it **writes** — the new company vectors and the peer
+scores. The cadence it runs on is daily since avo's word of 20 Nov 2026, and the mirror it does first is pinned by
+``test_daily_scoring_884.py``; these tests patch that step out and pin the scoring alone.
 
 - it rescores from the stored profiles, persists them with ``store.save_scores`` and keeps the payload;
 - it asks ``_run`` for a writing run (``write=True``), so a vector embedded this week is cached for the next;
-- a week whose profiles are all older than the saved payload is skipped (the timer plan's "nothing marked"),
+- a run whose profiles are all older than the saved payload is skipped (the timer plan's "nothing marked"),
   and ``--force`` rescores anyway;
 - it holds the board's job lock, so it never runs beside a Fetch (exit 3 for the CLI);
 - no ``--cap`` / ``--limit`` / ``--provider`` and no selection: it makes no call.
@@ -35,6 +36,13 @@ def saved_payload(tmp_path, monkeypatch):
     path.write_text(json.dumps(PAYLOAD), encoding="utf-8")
     monkeypatch.setattr(engine.config, "RELATEDNESS_JSON", path)
     return PAYLOAD
+
+
+@pytest.fixture(autouse=True)
+def no_mirror(monkeypatch):
+    """The service mirror is ``test_daily_scoring_884.py``'s subject; here it must write nothing."""
+    monkeypatch.setattr(engine, "mirror_service", lambda tickers: {})
+    monkeypatch.setattr(engine, "select_pilot", lambda: [])
 
 
 def _profiles(monkeypatch, fetched_at):

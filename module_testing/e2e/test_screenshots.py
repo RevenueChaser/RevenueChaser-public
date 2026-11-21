@@ -1,8 +1,11 @@
-"""Screenshots of the Data/Health and Runs tabs at the widths the owner uses, for a reviewer to look at.
+"""Screenshots of the Settings and Welcome tabs at the widths the owner uses, for a reviewer to look at.
 
 Runs only when ``RC_SHOTS_DIR`` names a folder (the e2e job on CI sets it and uploads the folder as the
 ``screenshots`` artifact, kept 14 days). The dashboard is the e2e throwaway one on mock providers, so the
 pictures show the layout, not live data. 2 tabs x 5 widths x 2 schemes = 20 PNGs.
+
+Welcome joined the list for #643: its earnings and freshness cards change what the board shows, and avo approves
+that from a picture, which only CI can render.
 """
 from __future__ import annotations
 
@@ -21,7 +24,7 @@ SHOTS_DIR = os.environ.get("RC_SHOTS_DIR", "")
 
 # 390 the generic phone, the realme upright, 969 the owner's laptop pane beside the sidebar, two desktops.
 SIZES = [(390, 844), REALME_GT2_PRO, (969, 900), (1280, 800), (1920, 1080)]
-TABS = ["module_settings"]
+TABS = ["module_settings", "module_welcome"]
 
 pytestmark = pytest.mark.skipif(not SHOTS_DIR, reason="RC_SHOTS_DIR is not set: no screenshots asked for")
 

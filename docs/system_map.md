@@ -28,13 +28,13 @@ stored fact.
 | `area:*` key | What it holds | Directories and main modules | Epic |
 |---|---|---|---|
 | `platform-store` | The durable store, its writers, migrations and backups | `.store/boards/` (one DuckDB file per board; the old four files went with #860), `edgar_docs/`, `core/rawstore.py`, `core/config.py`, `core/prices.py`, `core/automations.py`, `rcdata/backup.py`, `rcdata/restore.py` | #49 |
-| `platform-app` | The dashboard process: tabs, routes, the job queue, Fetch vs Refresh, logs, the launcher | `app/` (`dashboard.py`, `jobs.py`, `runners.py`, `logview.py`, `launcher.py`), `templates/` (the shell, the logs page, and the empty / error / locked pages), `app/static/`, `core/job_control.py`, `core/job_lock.py`, `launch.pyw`, `run_dashboard.bat`, `start.ps1`, `stop.ps1`, `app.sh` | #50 |
+| `platform-app` | The dashboard process: tabs, routes, the job queue, Fetch vs Refresh, logs | `app/` (`dashboard.py`, `jobs.py`, `runners.py`, `logview.py`), `templates/` (the shell, the logs page, and the empty / error / locked pages), `app/static/`, `core/job_control.py`, `core/job_lock.py`, `app.sh` | #50 |
 | `providers` | Network clients, and the credential and cost gates in front of them | `core/providers/`, `core/credentials.py`, `core/offpeak.py`, `scripts/cloud_llm_call.py`, `.env.example`, `docs/openapi.yaml` (the UW endpoint contract) | #51 |
 | `classification` | Which sector, industry, theme and index a ticker carries, and the three boards built on that cut | `module_comovement/`, `module_relatedness/`, `module_value_chain/`, `core/universe.py`, `core/gics_map.py`, `core/taxonomy.py`, `core/index_registry.py` | #55 |
 | `market` | Index-greeks, options-probability, sector-rotation and UW-tool boards | `module_spx_gamma/`, `module_oipd/`, `module_sector_rotation/`, `module_uw_interaction/`, `module_financials/` *(unclear — see below)* | #57 |
 | `screeners` | Per-ticker scans over the universe | `module_asymmetric_growth/`, `module_swing_potential/`, `module_fundamentals/`, `core/screen_common.py`, `core/scan_quality.py`, `core/tristate.py`, `core/info_fallback.py`, `module_asymmetric_growth/sector_rules.py`, `module_swing_potential/ohlc_cache.py` | #56 |
 | `ownership` | 13F holders, and the LEAPS watchlist that reads their meta | `module_sec_13f/`, `module_leaps/`, `core/ownership.py` | #59 |
-| `earnings` | The Earnings Radar rules and the stored inputs they read | `module_earnings_radar/`, `core/nightly_inputs.py`, `core/reaction_anchor.py`, `core/vol_metrics.py`, `scripts/nightly_inputs.py`, `docs/rules/` | #58 |
+| `earnings` | The Earnings Radar rules and the stored inputs they read | `module_earnings_radar/`, `core/nightly_inputs.py`, `core/reaction_anchor.py`, `core/vol_metrics.py`, `scripts/nightly_inputs.py`, `docs/earnings-radar/` | #58 |
 | `data-health` | The Settings board: coverage, refetch, 10-K freshness, per-board settings | `module_settings/`, `core/board_settings.py`, `docs/data_health.md` | #53 |
 | `shared-ui` | The filter kit and the HTML trust boundary every board renders through | `core/reporting_common.py`, `core/html_safe.py`, `core/templating.py`, `core/provenance.py`, `core/funnel.py`, `core/static/`, `docs/dashboard_ui.md` | #54 |
 | `quality` | The unit and e2e tiers, their harnesses, and the guards CI runs | `module_testing/` (`e2e/`, `e2e/harness/`), the `tests/` directory beside each package, `core/tests/`, `conftest.py`, `pytest.ini`, `.github/workflows/tests.yml`, `scripts/private_check.py` | #60 |
@@ -194,7 +194,7 @@ no `plans/` tree and no `.hermes/` here (work orders live in the private reposit
 | [`classification_design.md`](classification_design.md) | `classification` | The classification data-model work order (see the note below) |
 | [`glossary.md`](glossary.md) | `platform-store`, `classification` | Old → new dataset and field names, kept in step with `rawstore._RENAMES` |
 | [`llm_offpeak.md`](llm_offpeak.md) | `providers`, `classification` | The DeepSeek off-peak gate and its USD cap; Relatedness is its only caller |
-| [`rules/00_overview.md`](rules/00_overview.md), [`rules/r2`–`r8`](rules/r2_guidance.md), [`rules/redesign.md`](rules/redesign.md) | `earnings` | The intended rule design (explicitly not a description of what runs) and the rule change log |
+| [`earnings-radar/00_overview.md`](earnings-radar/00_overview.md), [`earnings-radar/r2`–`r8`](earnings-radar/r2_guidance.md), [`earnings-radar/redesign.md`](earnings-radar/redesign.md) | `earnings` | The intended rule design (explicitly not a description of what runs) and the rule change log |
 | [`openapi.yaml`](openapi.yaml) (not Markdown) | `providers` | The Unusual Whales endpoint contract |
 | `system_map.md` | all | This file |
 

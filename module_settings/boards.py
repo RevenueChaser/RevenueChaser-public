@@ -247,9 +247,15 @@ def _board(key: str, label: str, tables: list[str], payload_path, *,
     return row
 
 
-# Nav order (``app/dashboard.py`` TABS), minus Settings and Logs. Tables are the
-# store tables each board's engine or pipeline actually reads, not the tables it
-# writes; ``ops_tables`` the ops.sqlite tables it reads (the stock watch list, PR 4). ``funnel_steps`` only where the rendered payload emits that list.
+# Nav order (``app/dashboard.py`` TABS), minus Settings and Logs. ``tables`` are the
+# **board-file** tables each board's engine or pipeline reads, not the tables it writes; ``ops_tables`` the
+# ops.sqlite tables it reads (the stock watch list, PR 4). ``funnel_steps`` only where the rendered payload emits
+# that list.
+#
+# What a board reads from the builder's serving files is **not** typed here (#642 N1): the card takes it from the
+# board's own ``READS`` through ``rcdata.needs.boards.reads_of``, so the card, the flow diagram and the board
+# cannot disagree, and a retired table cannot stay on this screen as a second copy of the record. Every name below
+# is a table of a board file (``core.rawstore.MANIFEST``), and a test holds that.
 BOARD_INPUTS: list[dict] = [
     # Welcome (decision A) and News (S9, S16) write their own board files; these are the stored tables they read.
     # #643 PR 5: the four market tiles read market.duckdb's ``market_series`` through their needs, so the three
@@ -268,56 +274,59 @@ BOARD_INPUTS: list[dict] = [
     _board("module_watchlists", "Watch lists",
            ["wl_list", "wl_section", "wl_item", "wl_change"], _watchlists_latest,
            price_basis="last stored closes through rcdata, not live quotes"),
-    _board("module_news", "News", [], lambda: _html("news")),      # reads market.economic_event
-    _board("module_earnings_radar", "Earnings Radar",
-           ["earnings_calendar", "estimate_snapshots", "short_interest",
-            "price_bars_daily"],
+    _board("module_news", "News", [], lambda: _html("news")),      # reads market.economic_event, market.fda_event
+    # #860: ``earnings_calendar``, ``estimate_snapshots``, ``short_interest`` and ``price_bars_daily`` went with
+    # the old store; what the board reads is served (its needs) and its own rows are the render's.
+    _board("module_earnings_radar", "Earnings Radar", [],
            lambda: _html("earnings_radar"),
            price_basis="daily price bars, nominal closes for reactions", ops_tables=["watchlist_stock"]),
+    # #860: the old ``index_levels_daily`` went with the price file; the board's own ``spx_*`` rows are its file's.
     _board("module_spx_gamma", "SPX Gamma",
-           ["index_levels_daily"], _spx_latest,
-           price_basis="index_levels_daily closes"),
+           [], _spx_latest,
+           price_basis="the index closes of its own stored snapshots"),
     # #1059: the board fits ``option_eod`` of the nightly options build through ``rcdata.read``; its own
     # ``oipd_chain`` / ``oipd_meta`` are no longer written, so they are not its inputs.
     _board("module_oipd", "Implied Probability",
            [], lambda: _json("oipd", "oipd_latest.json"),
            price_basis="option chain marks, not equity closes"),
     _board("module_financials", "Financials",
-           ["equity_universe"],
+           [],
            lambda: _json("financials", "financials_latest.json")),
     _board("module_comovement", "Co-movement",
-           # The engine reads the daily price bars since #379 (module_comovement/ohlc.py), not swing_ohlc.
-           ["equity_universe", "price_bars_daily"],
+           # The engine reads the daily price bars since #379 (module_comovement/ohlc.py) and the universe from
+           # the spine (#642 PR 6), both served: it holds no board-file table of its own that it reads back.
+           [],
            lambda: comov_config.COMOVEMENT_JSON,
            funnel="funnel_steps",
            price_basis="daily price bars, split- and dividend-adjusted closes; correct for returns",
            params=_comovement_params, settings=_comovement_settings),
     _board("module_value_chain", "Value Chain",
-           ["chain_filings", "chain_mentions", "chain_meta", "equity_universe"],
+           ["chain_filings", "chain_mentions", "chain_meta"],
            lambda: _json("value_chain", "value_chain_latest.json")),
     _board("module_relatedness", "Relatedness",
-           ["relatedness_profiles", "relatedness_scores", "chain_filings",
-            "equity_universe", "ticker_themes"],
+           ["relatedness_profiles", "relatedness_scores", "chain_filings", "ticker_themes"],
            # The writer pair is no longer a knob of this board: every LLM job's pair is on the
            # LLM writers card (#404, ``llm_writers_card``).
            lambda: _json("relatedness", "relatedness_latest.json")),
     _board("module_sector_rotation", "Sector Rotation",
-           ["rotation_snapshots", "etf_holdings", "equity_universe"],
+           # #642 PR 5: the board fetches no holdings itself any more, so the spine's ``etf_holdings`` is a
+           # served need and not a table of its own; the universe went with #860.
+           ["rotation_snapshots"],
            lambda: _html("sector_rotation"),
            price_basis="ETF levels stored in rotation snapshots"),
     _board("module_asymmetric_growth", "Asymmetric Growth",
-           ["equity_universe", "price_bars_daily"],
+           [],
            lambda: _json("asymmetric_growth", "asymmetric_growth_latest.json"),
            funnel="funnel_steps",
            price_basis="daily price bars, nominal closes for momentum"),
     _board("module_swing_potential", "Swing",
-           ["equity_universe", "price_bars_daily"],
+           [],
            lambda: swing_config.SWING_JSON,
            funnel="funnel_steps",
            price_basis="daily price bars: levels nominal, returns adjusted",
            params=_swing_params, settings=_swing_settings),
     _board("module_fundamentals", "Fundamentals",
-           ["equity_universe", "price_bars_daily"],
+           [],
            lambda: _json("fundamentals", "fundamentals_latest.json"),
            funnel="funnel_steps",
            price_basis="daily price bars: levels nominal, returns adjusted",
@@ -327,7 +336,7 @@ BOARD_INPUTS: list[dict] = [
            _hit_rate_latest),
     # #732: the board reads its own file (``boards/sec_13f.duckdb``); the served reads are ``rcdata/needs/boards.py``'s.
     _board("module_sec_13f", "SEC 13F",
-           ["sec13f_board_cells", "sec13f_board_breaks", "equity_universe"],
+           ["sec13f_board_cells", "sec13f_board_breaks"],
            lambda: _html("sec_13f")),
     # #746: the board reads only ``option_far_contract`` through its need (``options.far_contracts``), rendered in
     # memory on every load, so its as-of is the newest stored session, not a file.
@@ -342,9 +351,26 @@ def _path_of(entry: dict):
     return p() if callable(p) else p
 
 
+def _needs_of(key: str) -> dict:
+    """The served needs this board reads, from the board's own record (#642 N1).
+
+    ``declared`` is False for a board that has not migrated to the API yet: its needs are then the planned ones
+    (``rcdata.needs.boards.PLANNED_READS``), which the card marks as planned exactly as the flow diagram does. A
+    record that cannot be read is no needs, never a raise: this is a card on a status screen.
+    """
+    try:
+        from RevenueChaser.rcdata.needs import boards as api_boards
+        reads = api_boards.reads_of(key)
+        return {"needs": list(reads["needs"]), "declared": bool(reads["declared"])}
+    except Exception:  # noqa: BLE001 - an unreadable record is "none recorded", not a broken page
+        return {"needs": [], "declared": False}
+
+
 def _card(entry: dict) -> dict:
+    reads = _needs_of(entry["key"])
     card = {
         "key": entry["key"], "label": entry["label"], "tables": list(entry["tables"]),
+        "needs": reads["needs"], "needs_declared": reads["declared"],
         "ops_tables": list(entry.get("ops_tables") or []),
         "price_basis": entry["price_basis"], "params": entry["params"](),
         "as_of": None, "window": {}, "funnel_steps": [], "state": "ok", "error": None,
@@ -394,7 +420,8 @@ def board_cards() -> list[dict]:
             cards.append(_card(entry))
         except Exception as exc:  # noqa: BLE001
             cards.append({"key": entry.get("key"), "label": entry.get("label"),
-                          "tables": [], "price_basis": "", "params": [], "as_of": None,
+                          "tables": [], "needs": [], "needs_declared": False,
+                          "price_basis": "", "params": [], "as_of": None,
                           "window": {}, "funnel_steps": [], "state": "error",
                           "error": f"{type(exc).__name__}: {exc}"})
     return cards

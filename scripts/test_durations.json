@@ -21,7 +21,6 @@
  "app/tests/test_job_runs_282.py": 0.0,
  "app/tests/test_job_runs_lost_82.py": 0.0,
  "app/tests/test_jobs.py": 0.4,
- "app/tests/test_launcher.py": 0.1,
  "app/tests/test_logs_tab.py": 0.2,
  "app/tests/test_money_flow_runner_166.py": 0.0,
  "app/tests/test_needs_routes.py": 0.1,

@@ -95,6 +95,11 @@ Code, comments, commit messages, issues and docs are written in **English**.
   merge-base), quoted in the PR report. It does not cover e2e tests: say "e2e: not checked". A mutation check is a
   commit: push the mutation, read the red run, push the revert; required only for money, store, identity and
   migration logic. Report honestly — "not done" is an acceptable answer, an implied "done" is not.
+- **`red-on-base` copies the PR's test files onto the base source**, so a ceiling or guard test whose allowlist
+  lives inside the test file can never be red on the base: the base's offender is already named by the PR's own
+  list and the check passes there, proving nothing. Write such a rule over **source behaviour** instead of over
+  allowlist membership — "a board file that imports a client library must also import `core.providers`" is red on
+  the base, "a board file not in `PROVIDER_FILES` must not import a client library" is not (#1213, PR #1226).
 - **A CI failure the diff cannot explain** is a flaky test. Fix it, or remove its host assumption, in the same
   branch; do not re-run until it passes.
 - **Docs that state a value the code owns** (schema version, suite tiers, ports) are compared against the code by

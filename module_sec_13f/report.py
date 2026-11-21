@@ -1749,4 +1749,7 @@ def export_sec13f_dashboard(totals: dict, meta: dict, enrichment: dict = None, f
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = _payload(quarters, entries, fields) if entries else None
     return write_board(path, _render_page(quarters, entries, fields, kit_notice, provider_health, notice,
-                                         arriving(totals, quarters), quarter_status(totals, quarters)), payload)
+                                         arriving(totals, quarters), quarter_status(totals, quarters)), payload,
+                       # The v2 envelope's as-of (#1241): the newest quarter on the board. The payload itself is
+                       # ``{cols, rows, fields}`` and carries no date.
+                       asof=(quarters[-1] if quarters else None))

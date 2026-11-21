@@ -13,6 +13,8 @@ Read in this order:
 | [`dropped.md`](dropped.md) | what was tried and dropped, with the number that dropped it |
 | [`open.md`](open.md) | what is decided, what waits on a decision, what to build next, known limits |
 | [`reproduce.md`](reproduce.md) | scripts, inputs, outputs, run times, model calls, and where the files are |
+| [`similarity_v2.md`](similarity_v2.md) | the method the board serves today, scored on the same test (20 Nov 2026) |
+| [`competition_coverage.md`](competition_coverage.md) | who has no Competition passage, by size band (20 Nov 2026) |
 
 ## The short version
 

@@ -2003,7 +2003,7 @@ console.log(JSON.stringify({search: location.search}));
 
 
 # ── security-type filter rows and the unknown-type note (#87, Identity R4) ───
-_NOTE_LINK = {"tab": "module_settings", "anchor": "identity", "label": "Settings → Identity"}
+_NOTE_LINK = {"tab": "module_settings", "anchor": "nd-identity", "label": "Settings → Identity"}
 
 
 def _typed_funnel(**over):
@@ -2106,7 +2106,7 @@ def test_the_funnel_renders_a_note_row_with_a_settings_link_and_a_positive_count
     row = re.search(r'<div class="row note">.*?</div>', body, re.S).group(0)
     assert "⚠" in row and "Unknown security type — kept" in row
     assert ('<span class="meta">— see <a href="/#module_settings" target="_top" '
-            "onclick=\"return rcOpenTab('module_settings', 'identity')\">"
+            "onclick=\"return rcOpenTab('module_settings', 'nd-identity')\">"
             'Settings → Identity</a></span>') in row
     assert row.endswith('<span class="num">7</span></div>')     # positive, not "−7"
     assert "−7" not in body

@@ -146,14 +146,14 @@ SEC_READ_UNIT = "life-rc-sec-read"
 
 REGISTRY: tuple[AutomationEntry, ...] = (
     AutomationEntry(
-        name="RC-Relatedness-OffPeak", label="Relatedness (every other Sunday)",
-        args=("-m", "RevenueChaser.module_relatedness", "--run", "--cap", "10"), time="07:30", days=("Sunday",),
-        fortnightly=True,
+        name="RC-Relatedness-OffPeak", label="Relatedness profiling (weekly, Sunday)",
+        args=("-m", "RevenueChaser.module_relatedness", "--run", "--cap", "10"), time="22:15", days=("Sunday",),
         description=("Relatedness profiling with the board's writer (Settings, #360: EVREN by default, no call cap), "
                      "incremental (only changed filings), then every pair scored (~27 s CPU for 5,111 profiles, "
                      "measured on the server 20 Nov 2026, #884) and the "
-                     "board rendered. Every other Sunday 07:30 (avo 15 Nov 2026; the homesrv timer carries the fortnight, "
-                     "1st and 3rd Sunday). With DeepSeek it is capped at 10 USD (avo, 2 Nov 2026) and defers itself "
+                     "board rendered. Weekly, Sunday 22:15 (avo 20 Nov 2026: \"Tamam haftalik\"; that is also what "
+                     "the installed homesrv timer has had since 16 Nov, while these words still said every other "
+                     "Sunday 07:30). With DeepSeek it is capped at 10 USD (avo, 2 Nov 2026) and defers itself "
                      "outside off-peak hours."),
         tables_written=("relatedness_profiles", "relatedness_attributes", "relatedness_scores",
                         "llm_cache", "chain_filings", "chain_meta"),
@@ -227,6 +227,23 @@ REGISTRY: tuple[AutomationEntry, ...] = (
         chain_wait_minutes=20,
         settings=TaskSettings(restart_count=0, time_limit_minutes=90)),
     AutomationEntry(
+        name="RC-Relatedness-Score", label="Relatedness scoring (weekly, when the SEC reads brought something new)",
+        args=("-m", "RevenueChaser.module_relatedness", "--score"), time="07:30", days=("Saturday",),
+        after="RC-SEC-Read",
+        description=("Copies the SEC reading service's new company.profile answers into the board's profiles, then "
+                     "rescores every pair, caches the new company vectors and writes the payload the board renders. "
+                     "No model call, no download and no cost, whatever the board's writer is. A run whose profiles "
+                     "are all older than the saved payload is skipped and nothing is written, so a week the service "
+                     "read nothing costs nothing. Scoring every pair is ~27 s of CPU for 5,111 profiles (measured "
+                     "on the server 20 Nov 2026, #884). Weekly, Saturday 07:30 (avo, 20 Nov 2026: \"Tamam "
+                     "haftalik, uygun zamana koy\"): the week's filings are all read by then, the Sunday backups "
+                     "and the weekday server jobs are elsewhere, and it still waits for that night's SEC reads to "
+                     "exit 0 (their timer starts at 02:35 with a 90-minute limit)."),
+        tables_written=("relatedness_profiles", "relatedness_attributes", "relatedness_embeddings",
+                        "relatedness_scores"),
+        chain_wait_minutes=60,
+        settings=TaskSettings(restart_count=0, time_limit_minutes=90)),
+    AutomationEntry(
         name="RC-Backup-Weekly", label="Weekly backup",
         args=("-m", "RevenueChaser.rcdata", "backup"),
         time="03:30", days=("Sunday",), unit_name=BACKUP_WEEKLY_UNIT,
@@ -283,6 +300,19 @@ REGISTRY: tuple[AutomationEntry, ...] = (
           ("comovement", "Co-movement", "module_comovement", "05:30"))),
     # avo 18 Nov 2026 ("Zamanlayiciyi kur"): Sector Rotation and Earnings Radar had no schedule, only their buttons,
     # so the quadrant snapshot sat at 6 Nov. Same task as the four above, switched ON at install.
+    AutomationEntry(
+        name="RC-News-Earnings-Weekly", label="News earnings (weekly)",
+        args=("-m", "RevenueChaser.scripts.board_fetch", "news-earnings"), time="09:00", days=("Sunday",),
+        unit_name="life-rc-fetch-news-earnings", tables_written=("news_earnings",),
+        description="The News board's Earnings tab (#886, avo 20 Nov 2026): every Sunday 09:00 it writes next "
+                    "week's report day of every name on the News watch lists into boards/news.duckdb and renders "
+                    "the page. Once a week, because a calendar of next week does not change by the hour. "
+                    "Store-only: the days come from the Alpha Vantage earnings calendar the builder already "
+                    "serves (fundamentals.earnings_event), the names from the watch lists; no provider is called "
+                    "and no session is waited for. The pass runs in the dashboard (POST /run/news_earnings, the "
+                    "one writer): the task only queues it and waits; with the dashboard down it exits 1. The "
+                    "board's own Fetch runs the same pass, so a Fetch is never a week late.",
+        settings=TaskSettings(restart_count=0, time_limit_minutes=30)),
     AutomationEntry(
         name="RC-Fetch-SectorRotation", label="Sector Rotation Fetch (nightly)",
         args=("-m", "RevenueChaser.scripts.board_fetch", "rotation"), time="05:40", unit_name="life-rc-fetch-rotation",
@@ -612,6 +642,27 @@ _SHOW_SERVICE = ("ActiveState", "Result", "ExecMainStatus", "ExecMainStartTimest
 UNIT_ENVIRONMENT = ("RC_STORE_DIR", "RC_CACHE_DIR", "RC_EDGAR_DOCS_DIR", "SPX_GAMMA_DATA_ROOT", "RAW_STORE_BACKUP_DIR",
                     "TZ")
 
+# #191 item 6: the provider keys. A job systemd starts gets the allowlist above and nothing else, so on a host that
+# keeps its keys in a file outside the checkout (homesrv: the dashboard service's own environment file) a provider job
+# would run without them. ``RC_UNIT_ENV_FILE`` names that file and the unit carries the PATH only, never a value:
+# unit files are world-readable, and systemd reads the file itself, as root, when the service starts. The ``-`` prefix
+# makes a missing file a no-op rather than a failed start.
+UNIT_ENV_FILE_ENV = "RC_UNIT_ENV_FILE"
+
+
+def unit_env_file() -> str | None:
+    """The absolute path an installed unit reads its remaining variables from, or None.
+
+    A relative value is refused rather than resolved: systemd would read it against ``/``, not the dashboard's cwd,
+    and a file that is silently not there is the failure this line exists to prevent."""
+    value = (os.environ.get(UNIT_ENV_FILE_ENV) or "").strip()
+    if not value:
+        return None
+    if not Path(value).is_absolute():
+        logger.warning("%s=%r is not an absolute path; no EnvironmentFile= line is written", UNIT_ENV_FILE_ENV, value)
+        return None
+    return value
+
 
 def _unit_environment() -> list[tuple[str, str]]:
     resolved = config.resolved_roots()
@@ -659,6 +710,27 @@ def on_calendar(e: AutomationEntry) -> str:
     return f"{days + ' ' if days else ''}*-*-* {e.time}:00"
 
 
+#: A zone name a unit file may carry after ``OnCalendar=``: one word, no space and no ``%``.
+_ZONE_RE = re.compile(r"^[A-Za-z0-9+_./-]+$")
+
+
+def unit_timezone(env: list[tuple[str, str]] | None = None) -> str | None:
+    """The zone an installed unit's ``OnCalendar=`` is read in, or None to leave it to the user manager's own zone."""
+    pairs = _unit_environment() if env is None else env
+    tz = next((v for k, v in pairs if k == "TZ"), "").strip()
+    return tz if tz and _ZONE_RE.match(tz) else None
+
+
+def on_calendar_line(e: AutomationEntry, tz: str | None = None) -> str:
+    """The ``OnCalendar=`` value an install writes: the spec plus the zone the service carries (#191 item 4).
+
+    ``TZ`` goes into the service, but a bare spec fires in the **user manager's** zone, while the chain cutoff and the
+    job itself read ``TZ``: on a host whose two zones differ the timer fired at the wrong hour. Keep ``on_calendar``
+    itself zone-free -- the Control board reads its minute field."""
+    spec = on_calendar(e)
+    return f"{spec} {tz}" if tz else spec
+
+
 def _unit_value(value: str) -> str:
     """A value for a unit file line: one line, with ``%`` doubled so systemd expands no specifier in it."""
     value = str(value)
@@ -686,7 +758,11 @@ def _show_value(v: str | None) -> str | None:
         return None
     if ts > 1e11:                    # a raw microsecond count, not seconds
         ts /= 1e6
-    return datetime.fromtimestamp(ts, timezone.utc).astimezone().isoformat()
+    try:
+        return datetime.fromtimestamp(ts, timezone.utc).astimezone().isoformat()
+    except (OverflowError, OSError, ValueError):
+        # A stamp outside the range a date can hold (``infinity`` in a harness) is a time we do not have, not a crash.
+        return None
 
 
 def parse_show(text: str) -> tuple[dict[str, str], dict[str, str]]:
@@ -706,9 +782,16 @@ def parse_show(text: str) -> tuple[dict[str, str], dict[str, str]]:
     return blocks[0], blocks[1]
 
 
+def _reset_hint(unit: str, user: bool) -> str:
+    """The command that clears a failed timer (#191 item 3). The panel offers an error row no button, so the row's own
+    message has to name the way out; ``status`` only prints the failure again."""
+    scope = "--user " if user else ""
+    return f"clear it with: systemctl {scope}reset-failed {unit}"
+
+
 def _task_status(t: dict[str, str], sv: dict[str, str], hint: str) -> TaskStatus:
-    """A timer's and its service's ``systemctl show`` properties as a ``TaskStatus``; ``hint`` is the command that
-    shows a failed timer."""
+    """A timer's and its service's ``systemctl show`` properties as a ``TaskStatus``; ``hint`` is what to do about a
+    failed timer."""
     if t.get("ActiveState") == "failed" or t.get("Result", "success") != "success":
         # A failed timer never fires again until it is reset: an error row, never "disabled" (which it is not).
         raise AutomationError(f"the timer failed ({t.get('Result') or t.get('ActiveState')}); {hint}")
@@ -770,7 +853,7 @@ def system_status(e: AutomationEntry, run: Callable[[list[str]], tuple[int, str,
         return None
     if t.get("LoadState") != "loaded":
         return None
-    return _task_status(t, sv, f"systemctl status {unit}.timer")
+    return _task_status(t, sv, _reset_hint(f"{unit}.timer", user=False))
 
 
 class LinuxScheduler(Scheduler):
@@ -804,11 +887,13 @@ class LinuxScheduler(Scheduler):
         out = self._exec("show", "--timestamp=unix",
                          "--property=" + ",".join(sorted(set(_SHOW_TIMER + _SHOW_SERVICE))),
                          timer.name, service.name)
-        return _task_status(*parse_show(out), f"systemctl --user status {timer.name}")
+        return _task_status(*parse_show(out), _reset_hint(timer.name, user=True))
 
     def install(self, e):
         e = entry(e.name)
         s = e.settings
+        env = _unit_environment()
+        env_file = unit_env_file()
         service_text = "\n".join([
             "[Unit]",
             f"Description={_unit_value(e.label)} (RevenueChaser {e.name})",
@@ -816,7 +901,8 @@ class LinuxScheduler(Scheduler):
             "[Service]",
             "Type=oneshot",
             f"WorkingDirectory={_unit_value(self._workdir)}",
-            *(_env_line(k, v) for k, v in _unit_environment()),
+            *(_env_line(k, v) for k, v in env),
+            *([f"EnvironmentFile=-{_unit_value(env_file)}"] if env_file else []),
             "ExecStart=" + " ".join(_exec_arg(a) for a in
                                     (self._python, "-m", "RevenueChaser.core.automations", "run", e.name)),
             ("TimeoutStartSec=infinity" if s.no_time_limit else
@@ -829,7 +915,7 @@ class LinuxScheduler(Scheduler):
             f"Description={_unit_value(e.schedule)} (RevenueChaser {e.name})",
             "",
             "[Timer]",
-            f"OnCalendar={on_calendar(e)}",
+            f"OnCalendar={_unit_value(on_calendar_line(e, unit_timezone(env)))}",
             f"Unit={e.unit}.service",
             f"Persistent={'true' if s.start_when_available else 'false'}",
             # No WakeSystem=: a user timer cannot arm a wake alarm (CAP_WAKE_ALARM), and asking for one leaves the
@@ -862,6 +948,11 @@ class LinuxScheduler(Scheduler):
             self._exec("enable", "--now", timer.name)
         except AutomationError:
             # Roll back: a half-installed task reads as an error row, which the panel offers no button for.
+            # #191 item 2: ``enable --now`` writes timers.target.wants/<name>.timer before the start can fail, so an
+            # install that created the pair also takes that symlink away. A reinstall over an older pair does not: the
+            # files go back to their old text and the symlink the first install made is still theirs.
+            if not before:
+                self._try("disable", timer.name)
             self._roll_back(e.name, before)
             self._try("daemon-reload")
             raise
@@ -924,9 +1015,17 @@ SCHEDULER_SYSTEMD_USER = "systemd-user"
 def _default_scheduler() -> Scheduler:
     if sys.platform == "win32":
         return WindowsScheduler()
-    if (sys.platform.startswith("linux") and os.environ.get(SCHEDULER_ENV, "").strip() == SCHEDULER_SYSTEMD_USER
-            and shutil.which("systemctl")):
-        return LinuxScheduler()
+    choice = os.environ.get(SCHEDULER_ENV, "").strip()
+    if sys.platform.startswith("linux"):
+        if choice == SCHEDULER_SYSTEMD_USER:
+            if shutil.which("systemctl"):
+                return LinuxScheduler()
+            logger.warning("%s=%s, but systemctl is not on PATH: the Automations panel stays unavailable",
+                           SCHEDULER_ENV, SCHEDULER_SYSTEMD_USER)
+        elif choice:
+            # #191 item 5: "systemd" and "Systemd-User" used to read as "no scheduler", with nothing said anywhere.
+            logger.warning("%s=%r is not a scheduler name; the only value this host accepts is %r, so the "
+                           "Automations panel stays unavailable", SCHEDULER_ENV, choice, SCHEDULER_SYSTEMD_USER)
     return UnavailableScheduler()
 
 
@@ -1353,10 +1452,18 @@ def run_task(name: str, python: str | None = None, cwd: Path | str | None = None
                 return CHAIN_BLOCKED
             fh.write(f"chain: {line}\n")
             fh.flush()
-        env = None
+        # Every command gets the chain id, whether or not it writes tables: it is what ties this run's row to the
+        # rows of the runs it causes (a builder pass's dataset runs), and the step that writes no table has
+        # children too (review of 20 Nov 2026, step 1). ``RC_RUN_ID`` stays what it was: the writer's stamp.
+        env = {**os.environ}
+        try:
+            from RevenueChaser.rcdata import ops as _ops
+            env[_ops.CHAIN_ID_ENV] = run_id
+        except Exception:  # noqa: BLE001 — bookkeeping, never the reason a task does not run
+            logger.debug("could not read the chain variable's name for %s", e.name, exc_info=True)
         if e.tables_written:
             from RevenueChaser.core import rawstore
-            env = {**os.environ, rawstore.RUN_ID_ENV: run_id, rawstore.RUN_SOURCE_ENV: e.name}
+            env.update({rawstore.RUN_ID_ENV: run_id, rawstore.RUN_SOURCE_ENV: e.name})
         logged = _run_log_start(run_id, e.name)
         fh.flush()
         before = fh.tell()                  # where the step's own output starts, for ``_counts_of_run`` and the echo
@@ -1381,7 +1488,7 @@ def run_task(name: str, python: str | None = None, cwd: Path | str | None = None
 
 def main(argv: list[str] | None = None) -> int:
     """``run <name>`` is what a task executes; ``install|remove <name>`` and ``list`` are
-    the thin-caller entry points of the ``.ps1`` files (they act only on registry names).
+    entry points that act only on registry names (the Windows ``.ps1`` callers were removed, #1225).
     ``names`` prints the registry names one per line and never asks the scheduler, so a script that
     freezes or lists the tasks reads them from here instead of keeping its own copy (#164)."""
     args = list(sys.argv[1:] if argv is None else argv)

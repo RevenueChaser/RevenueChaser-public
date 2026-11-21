@@ -15,6 +15,7 @@ from __future__ import annotations
 import html as _html
 import os
 from datetime import datetime
+from functools import lru_cache as _lru_cache
 from urllib.parse import urlsplit
 
 from RevenueChaser.core import automations, datasets, rawstore
@@ -1106,6 +1107,40 @@ def _flow_row(flow: dict) -> str:
             f'<span class="tail"><span class="nowrap">{store}</span>{cov}</span></li>')
 
 
+@_lru_cache(maxsize=1)
+def _served_file_of_table() -> dict[str, str]:
+    """``{served table: its builder file}``, read once per process from the build scaffold (as the flow diagram's
+    ``control._table_kind`` does), so a need line never names a file by hand."""
+    from RevenueChaser.rcdata import scaffold
+    return {t: kind for kind, tables in scaffold.SCHEMA_OF_KIND.items() for t in tables}
+
+
+# A need a board reads, in words: the serving file it is answered from, and the providers behind it. Built from the
+# catalog, never typed here, so a renamed table or a moved file cannot leave a wrong line (#642 N1).
+def _need_flow_row(need: str, declared: bool) -> str:
+    """One ``provider → need (table) · served file`` line for a need the board reads.
+
+    A need the catalog does not know is said in words rather than drawn with a table it cannot have. ``declared``
+    False marks the line as planned, the same claim the flow diagram makes for a board that has not migrated yet.
+    """
+    from RevenueChaser.rcdata.needs import catalog as needs_catalog
+    name = _html.escape(str(need))
+    plan = '' if declared else '<span class="muted">(planned)</span>'
+    spec = needs_catalog.NEEDS.get(str(need))
+    if spec is None:
+        return (f'<li class="bflow-row"><span class="muted">need</span><span class="ds">{name}</span>'
+                f'<span class="arrow" aria-hidden="true">→</span>'
+                f'<span class="notclaimed">not in the need catalog</span>{plan}</li>')
+    kind = _served_file_of_table().get(spec.table)
+    file_txt = (f'<span class="muted">served file</span> <span class="pill">{_html.escape(kind)}.duckdb</span>'
+                if kind else '<span class="muted">no served file named</span>')
+    prov = ", ".join(_provider_name(p) for p in (spec.providers or ())) or "Provider not recorded"
+    return (f'<li class="bflow-row"><span class="prov">{_html.escape(prov)}</span>'
+            f'<span class="arrow" aria-hidden="true">→</span>'
+            f'<span class="ds">{name}</span><span class="tbl">({_html.escape(spec.table)})</span>'
+            f'<span class="tail"><span class="nowrap">{file_txt}</span>{plan}</span></li>')
+
+
 # The ops.sqlite tables a board reads (PR 4): not store tables, so no dataset claims them.
 OPS_TABLE_LABELS = {"watchlist_stock": "Stock watch list", "watchlist_option": "Option watch list"}
 
@@ -1124,8 +1159,12 @@ def _board_card(card: dict, rows_by_key: dict | None = None) -> str:
     state = card.get("state")
     flows = _board_flows(card, rows_by_key or {})
     ops_rows = "".join(_ops_flow_row(t) for t in card.get("ops_tables") or [])
+    # #642 N1: the served needs first (what the builder answers), then the board's own file tables, then ops.
+    need_rows = "".join(_need_flow_row(n, bool(card.get("needs_declared")))
+                        for n in card.get("needs") or [])
     reads = ('<h4 class="bflow-cap">What this board reads</h4><ul class="bflow">'
-             + "".join(_flow_row(f) for f in flows) + ops_rows + "</ul>") if flows or ops_rows else ""
+             + need_rows + "".join(_flow_row(f) for f in flows) + ops_rows + "</ul>") \
+        if need_rows or flows or ops_rows else ""
     params = "".join(f"<li>{_html.escape(str(p))}</li>" for p in (card.get("params") or []))
     win = card.get("window") or {}
     win_txt = " · ".join(f"{_html.escape(k.replace('_', ' '))} {_html.escape(str(v))}"
@@ -1258,6 +1297,21 @@ SOURCE_WORDS = {
     "manual": "entered by hand",
     "store": "the store's own bookkeeping",
     "unknown": "more than one provider, or not known",
+    # The need catalog's own provider keys (#642 N1): a need line is drawn with the same list, so a provider
+    # cannot be called one thing on the dataset table and another on a board card.
+    "alpaca": "Alpaca (market data)",
+    "cftc": "Commodity Futures Trading Commission",
+    "deepseek": "DeepSeek (paid writer)",
+    "evren": "EVREN (paid writer)",
+    "finra": "FINRA",
+    "invesco": "Invesco (fund files)",
+    "ishares": "iShares (fund files)",
+    "nasdaq": "Nasdaq",
+    "nasdaqtrader": "Nasdaq Trader (symbol files)",
+    "nyse": "NYSE",
+    "ssga": "State Street (SPDR fund files)",
+    "vanguard": "Vanguard (fund files)",
+    "wrds": "WRDS / Compustat",
 }
 
 
@@ -1836,140 +1890,14 @@ def _when(ts) -> str:
         return str(ts)
 
 
-def _st(status) -> str:
-    """A status word coloured by its meaning (ok green, partial/skipped amber, anything else red)."""
-    text = str(status or "—")
-    cls = "st-ok" if text == "ok" else "st-warn" if text in ("partial", "skipped", "gated") else "st-bad"
-    return f'<span class="{cls}">{_html.escape(text)}</span>'
-
-
-def _agree(agree, checked) -> str:
-    return f"{_fmt_rows(agree)}/{_fmt_rows(checked)}"
-
-
-def _identity_run(last: dict | None) -> str:
-    if not last:
-        return '<div class="kv" id="identity-run"><b>Last run</b> none recorded</div>'
-    counts = last.get("counts") or {}
-    bits = [f"started {_html.escape(_when(last.get('started_at')))}",
-            f"finished {_html.escape(_when(last.get('finished_at')))}"]
-    if counts.get("tickers") is not None:
-        bits.append(f"{_fmt_rows(counts.get('tickers'))} tickers")
-    if counts.get("conflicts") is not None:
-        bits.append(f"{_fmt_rows(counts.get('conflicts'))} conflicts")
-    items = []
-    for name, s in (last.get("sources") or {}).items():
-        if not s.get("selected"):
-            continue
-        err = f' · <span class="st-bad">{_html.escape(str(s["error"]))}</span>' if s.get("error") else ""
-        items.append(f"<li>{_html.escape(str(name))}: {_st(s.get('status'))} · {_fmt_rows(s.get('fetched'))} fetched / "
-                     f"{_fmt_rows(s.get('rows'))} rows{err}</li>")
-    return (f'<div id="identity-run"><div class="kv"><b>Last run</b> {_st(last.get("status"))} · '
-            f'{" · ".join(bits)}</div><ul class="srcs">{"".join(items)}</ul></div>')
-
-
-def _identity_spdr(spdr: dict | None) -> str:
-    spdr = spdr or {}
-    state = spdr.get("state")
-    if state == "ok":
-        text = (f'SPDR check: {_agree(spdr.get("agree"), spdr.get("checked"))} agree '
-                f'({_html.escape(_day(spdr.get("date")))})')
-    elif state == "error":
-        good = spdr.get("last_good")
-        tail = (f'last good: {_html.escape(_day(good.get("date")))}, '
-                f'{_agree(good.get("agree"), good.get("checked"))} agree' if good else "no good run yet")
-        text = (f'<span class="st-bad">SPDR check failed: {_html.escape(str(spdr.get("error") or ""))} '
-                f'({tail})</span>')
-    else:
-        text = "SPDR check: not run yet"
-    return f'<div class="kv" id="identity-spdr">{text}</div>'
+# The S7 identity card's own renderers left with it (#642 N1): the card had no caller since PR 5 replaced
+# it with ``_nd_identity``, and its help text still told the reader that a Fetch writes into
+# the universe table #860 removed. ``_mini_table`` stays: four other cards draw with it.
 
 
 def _mini_table(heads: list[str], body: list[str]) -> str:
     ths = "".join(f"<th>{_html.escape(h)}</th>" for h in heads)
     return f'<table class="inv mini"><thead><tr>{ths}</tr></thead><tbody>{"".join(body)}</tbody></table>'
-
-
-# The page's words for a stored bucket name that is one of our short forms (#155); the payload keeps the key.
-_BUCKET_WORDS = {"SIC": "SEC industry code"}
-
-
-def _identity_mix(section_id: str, title: str, head: str, key: str, rows: list[dict], floor_label: str) -> str:
-    """A small ``<head> / All / >=floor`` table; a row flagged ``excluded`` carries a muted tag."""
-    body = []
-    for r in rows:
-        tag = '<span class="tag">(excluded)</span>' if r.get("excluded") else ""
-        name = str(r.get(key) or "—")
-        body.append(f'<tr><td>{_html.escape(_BUCKET_WORDS.get(name, name))}{tag}</td>'
-                    f'<td class="num">{_fmt_rows(r.get("all"))}</td><td class="num">{_fmt_rows(r.get("floor"))}</td></tr>')
-    return (f'<div id="{section_id}"><h4>{_html.escape(title)}</h4>'
-            f'{_mini_table([head, "All", floor_label], body)}</div>')
-
-
-def _identity_conflicts(c: dict | None) -> str:
-    c = c or {}
-    kinds = " · ".join(f'{_html.escape(str(k.get("kind")))} {_fmt_rows(k.get("count"))}'
-                       for k in c.get("by_kind") or [])
-    if c.get("as_of") is None:
-        head = "no completed run yet"
-    else:
-        head = f'as of {_html.escape(_day(c.get("as_of")))}: ' + (kinds or "no current conflicts")
-    older = c.get("older") or {}
-    older_line = (f'<div class="kv">{_fmt_rows(older.get("count"))} older, not seen since '
-                  f'{_html.escape(_day(older.get("since")))}</div>' if (older.get("count") or 0) > 0 else "")
-    top = c.get("top") or []
-    details = ""
-    if top:
-        body = "".join(
-            f'<tr><td>{_html.escape(str(t.get("ticker")))}</td><td>{_html.escape(str(t.get("kind")))}</td>'
-            f'<td>{_html.escape(str(t.get("field")))}</td><td class="note">{_html.escape(str(t.get("side_a") or ""))}</td>'
-            f'<td class="note">{_html.escape(str(t.get("side_b") or ""))}</td>'
-            f'<td class="note">{_html.escape(str(t.get("note") or ""))}</td>'
-            f'<td>{_html.escape(_day(t.get("last_seen")))}</td></tr>' for t in top)
-        table = _mini_table(["Ticker", "Kind", "Field", "Side A", "Side B", "Note", "Last seen"], [body])
-        details = (f'<details class="fine"><summary>Top {len(top)} by market cap</summary>'
-                   f'<div class="panel">{table}</div></details>')
-    return (f'<div id="identity-conflicts"><h4>Conflicts</h4><div class="kv">{head}</div>'
-            f'{older_line}{details}</div>')
-
-
-def _identity_stale(stale: list[dict] | None) -> str:
-    body = []
-    for s in stale or []:
-        past = s.get("past_window")
-        if past is None:
-            cell = "every run"
-        else:
-            cell = f'<span class="warnv">{_fmt_rows(past)}</span>' if past else _fmt_rows(past)
-        body.append(f'<tr><td>{_html.escape(str(s.get("source")))}</td>'
-                    f'<td>{_html.escape(_day(s.get("newest")))}</td><td class="num">{_fmt_rows(s.get("rows"))}</td>'
-                    f'<td class="num">{cell}</td><td>{_html.escape(str(s.get("window") or "—"))}</td></tr>')
-    return (f'<div id="identity-stale"><h4>Cached source freshness</h4>'
-            f'{_mini_table(["Source", "Newest", "Rows", "Past window", "Window"], body)}</div>')
-
-
-def _identity_card(identity: dict | None) -> str:
-    """The Identity health card (issue #89): last run, SPDR check, type and sector-source mix, conflicts and
-    freshness of the cached sources. Store-only: ``payload["identity"]`` comes from ``inventory``. Without
-    that key (an older payload) there is no card; with no run and no master it is just the empty state.
-    The card sits in ``<section id="identity">`` so other boards can link to ``#identity``."""
-    if not identity:
-        return ""
-    # Since R3 (#86) the job is a live universe writer: say so where the button's effect is read.
-    head = ('<section id="identity"><div class="bcard" id="identity-health"><h3>Identity health</h3>'
-            '<div class="asof" id="identity-writes">A successful Fetch identity also writes the master\'s sector and '
-            "industry, and Unusual Whales\' next earnings date, into <b>equity_universe</b>, which every board reads.</div>")
-    if not identity.get("last_run") and not identity.get("type_mix"):
-        return (head + '<div class="bnote" id="identity-empty">No identity run yet. '
-                "Use Fetch identity in the table above.</div></div></section>")
-    floor = identity.get("floor") or 0
-    floor_label = f"≥${floor / 1e6:,.0f}M"
-    return (head + _identity_run(identity.get("last_run")) + _identity_spdr(identity.get("spdr"))
-            + _identity_mix("identity-types", "Security types", "Type", "type", identity.get("type_mix") or [],
-                          floor_label)
-            + _identity_mix("identity-sources", "Sector source mix", "Bucket", "bucket", identity.get("source_mix") or [],
-                          floor_label)
-            + _identity_conflicts(identity.get("conflicts")) + _identity_stale(identity.get("stale")) + "</div></section>")
 
 
 # ── #162: the IBKR Gateway login STATE card ─────────────────────────────────────────────────────

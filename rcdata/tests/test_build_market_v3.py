@@ -78,9 +78,21 @@ def test_a_later_fetch_that_dropped_an_event_is_served_and_not_refused_by_the_sh
     assert [r["event"] for r in read.economic_calendar()] == ["CPI"], "the swap did not go through"
 
 
-def test_an_empty_or_failed_answer_is_a_failed_check_and_keeps_what_is_served(http_mock):
+def test_an_empty_answer_is_skipped_not_failed_and_keeps_what_is_served(http_mock):
+    """21 Nov 2026: UW answered 200 with no rows and the whole hourly pass exited 1 with it. An empty answer must
+    still not be stored -- the window is never empty -- but it is this dataset's skip, not the pass's failure, and
+    the gap is an open ``source_empty`` issue while it lasts."""
     http_mock.add("/market/economic-calendar", {"data": []}, headers=UW_HEADERS)
-    assert _run(econ.NAME)["result"] == "failed"
+    row = _run(econ.NAME)
+    assert row["result"] == "skipped"
+    assert "no rows" in row["note"]
+    assert read.economic_calendar() == []
+    assert [(i["kind"], i["key"]) for i in ops.open_issues(econ.NAME)[1]] == [("source_empty", "2026-11-09")]
+
+
+def test_an_answer_that_is_not_a_list_is_skipped_the_same_way(http_mock):
+    http_mock.add("/market/economic-calendar", {"data": {"event": "CPI"}}, headers=UW_HEADERS)
+    assert _run(econ.NAME)["result"] == "skipped"
     assert read.economic_calendar() == []
 
 
@@ -94,7 +106,7 @@ def test_market_4_builds_no_headlines_and_retires_the_live_table():
     """avo's option A (10 Nov 2026): ``boards/news.duckdb`` is the only home of the headlines, so the builder's
     ``ibkr/news`` is gone and a live market 3 file's ``news_headline`` may leave the build."""
     from RevenueChaser.rcdata import scaffold
-    assert serving.SERVING_SCHEMA_VERSION["market"] == 4
+    assert serving.SERVING_SCHEMA_VERSION["market"] >= 4      # 5 since #807; the rule below holds at every one
     assert "ibkr/news" not in DATASETS and not hasattr(read, "news_headlines")
     assert "news_headline" in serving.RETIRED_TABLES["market"]
     assert "news_headline" not in scaffold.SCHEMA_OF_KIND["market"], "a retired table is still built"

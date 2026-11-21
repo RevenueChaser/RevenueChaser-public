@@ -2,7 +2,7 @@
 logged) and the SEC's 8-K item 2.02 reports, with the old ``earnings_calendar`` view."""
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 
@@ -32,6 +32,23 @@ def av(monkeypatch, http_mock):
 
 def _raw_bytes() -> bytes:
     return b"".join(p.read_bytes() for p in base.raw_root().rglob("*") if p.is_file())
+
+
+def test_the_calendar_runs_weekly_and_a_failure_still_retries_the_next_new_york_day(av, monkeypatch):
+    """Weekly since 21 Nov 2026 (avo, "Haftalik cek"): the horizon is three months ahead, so a day's calendar
+    differs from the one before it only at the edges. The day cap's failure rule is unchanged: not due again the
+    same New York day, due on the next one."""
+    from RevenueChaser.core import calendar
+    from RevenueChaser.rcdata.build import DATASETS, due
+    ds = DATASETS[earnings.NAME]
+    assert ds.cadence == "weekly" and ds.providers == ("alphavantage",)
+    av.add("av.test/query", CSV_DAY1)
+    fx.run(earnings.NAME, "2026-10-28")
+    checked = date.fromisoformat(str(ops.latest_check(earnings.NAME)["checked_on"])[:10])
+    monkeypatch.setattr(calendar, "today_ny", lambda: checked + timedelta(days=6))
+    assert due.is_due(ds, "full")[0] is False
+    monkeypatch.setattr(calendar, "today_ny", lambda: checked + timedelta(days=7))
+    assert due.is_due(ds, "full")[0] is True
 
 
 def test_no_key_asks_nothing_and_says_so(av, monkeypatch):

@@ -63,7 +63,7 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 # Regenerable dashboard artifacts (HTML + JSON). Clearable any time; re-running
 # a module regenerates them. Distinct from CACHE_DIR (per-ticker raw cache).
 CACHE_ROOT = OUTPUT_DIR
-# The dashboard's own logs (start.ps1 writes launcher.log, dashboard.log and dashboard.err.log here; the
+# The dashboard's own logs (the Windows start script wrote launcher.log, dashboard.log and dashboard.err.log here; the
 # Logs tab reads them) sit next to the scheduled tasks' logs (core/automations.py). Not created at import.
 LOG_DIR = OUTPUT_DIR / "logs"
 RAW_STORE_BACKUP_DIR = os.getenv("RAW_STORE_BACKUP_DIR", "")
@@ -139,7 +139,7 @@ MAX_EXPECTED_MOVE_PCT = 25.0
 WATCHLIST_BYPASS = True
 FLOW_SWEEP_BLOCK_MIN = 25_000
 # Inst. Flow column: below this |net| lean premium the lean is Thin, and a package at or above it is material
-# (package-risk). docs/rules/redesign.md R5.
+# (package-risk). docs/earnings-radar/redesign.md R5.
 INST_FLOW_MIN_NET = 25_000
 # R5 institutional print: size >= 10 AND premium at or above this (redesign.md R5 "Institutional gate"; review S4).
 INST_PRINT_MIN_PREMIUM = 10_000
@@ -221,6 +221,19 @@ R3_SGA_Z_SPIKE = 3.0
 R3_MIN_OM_QUARTERS = 4
 # Below this summed revenue of the last four OM quarters (USD) the name is pre-revenue: no OM vote (review E6).
 R3_OM_MIN_REVENUE_4Q = 25_000_000.0
+# R5 — positioning (squeeze tag, lean window and strike slice; docs/earnings-radar/redesign.md R5, #256)
+# The squeeze is a ``none`` / ``fuel`` tag, never a Z ladder: ``fuel`` when the short interest or the borrow fee is
+# at or above its cut, ``none`` below it. Low short interest is not bearish, so neither tag scores a point.
+R5_FUEL_SI_PCT = 20.0
+R5_FUEL_FEE_PCT = 10.0
+# The lean reads the prints of the last ``R5_LEAN_SESSIONS`` sessions the tape served, and only the contracts an
+# earnings bet would use: a strike inside the R4 expected-move band and an expiry from the report day out to
+# ``R5_LEAN_EXPIRY_DAYS`` days after it. Default chosen, change if avo prefers.
+R5_LEAN_SESSIONS = 3
+R5_LEAN_EXPIRY_DAYS = 45
+# The expected-move band is widened by this factor, so a bet one strike outside the implied move still counts; a
+# name without an expected move keeps every strike (the band is unknown, never empty).
+R5_LEAN_BAND_SLACK = 1.5
 # R6 — macro (rate sensitivity)
 R6_MIN_OBS = 20
 R6_RATE_HIGH = 2.0
@@ -260,6 +273,11 @@ TUNABLES = {
     "R4_TS_SLOPE_MILD_POINTS": TS_SLOPE_MILD_POINTS,
     "R4_TS_SLOPE_CONTANGO_POINTS": TS_SLOPE_CONTANGO_POINTS,
     "R4_TS_SLOPE_EVENT_CONTANGO": TS_SLOPE_EVENT_CONTANGO,
+    "R5_FUEL_SI_PCT": R5_FUEL_SI_PCT,
+    "R5_FUEL_FEE_PCT": R5_FUEL_FEE_PCT,
+    "R5_LEAN_SESSIONS": R5_LEAN_SESSIONS,
+    "R5_LEAN_EXPIRY_DAYS": R5_LEAN_EXPIRY_DAYS,
+    "R5_LEAN_BAND_SLACK": R5_LEAN_BAND_SLACK,
     "R6_MIN_OBS": R6_MIN_OBS,
     "R6_RATE_HIGH": R6_RATE_HIGH,
     "R6_RATE_VETO": R6_RATE_VETO,

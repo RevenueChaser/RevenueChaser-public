@@ -217,7 +217,7 @@ def score(ticker: str, cluster: str, fundamentals_history: list[dict],
         return RuleResult(score=None, available=False, coverage=0, reasons=["no fundamental data"])
     # redesign.md R3: usable quarters >= 4 (a row with revenue), the last 8 read; fewer is unavailable, so one
     # quarter's levels never vote (review S5). Default chosen, change if avo prefers: the alternative is
-    # docs/rules/r3_financial.md's older "two features" rule alone.
+    # docs/earnings-radar/r3_financial.md's older "two features" rule alone.
     usable = sum(1 for r in fundamentals_history[:8] if _get(r, "revenue") is not None)
     if usable < _MIN_OM_QUARTERS:
         return RuleResult(score=None, available=False, coverage=0,

@@ -8,7 +8,9 @@ later bar refetch of that process failed (#402).
 yfinance does not raise that 401: its quote scraper logs it on the ``yfinance`` logger, and a ``history`` read turns a
 refused request into an empty frame with a generic message. So this module puts a filter on that logger that notes
 when a 401 was logged (it lets every record through), and ``recover(started)`` is what a reader runs after a failed
-read that began at ``started``. When a 401 was seen since the last reset, or the read's own exception is one, it drops
+read that began at ``started``. Its one caller is ``yfinance.attempt``, which every Yahoo read in the tree goes
+through (#100): #402 wired it into ``load_ohlc`` alone, and when that went with the old bar path the cure was left
+with no caller at all. When a 401 was seen since the last reset, or the read's own exception is one, it drops
 the cookie and the crumb, at most once per ``COOLDOWN_S`` for the whole process, and says whether a retry is worth it.
 A failure with no 401 (a rate limit, a missing name) resets nothing.
 """

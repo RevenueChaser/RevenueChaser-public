@@ -192,6 +192,7 @@ POPULATION: dict[str, str] = {
     "forecast_outcomes": "core/tests/test_outcomes.py::test_mfe_and_mae_are_high_and_low_over_exactly_the_window_from_the_next_open",
     "forecast_baselines": "core/tests/test_baselines_numbers_25.py::test_a_baselines_run_populates_forecast_baselines",
     "news_events": "module_news/tests/test_calendar.py::test_first_build_upserts_every_event_into_the_board_file",
+    "news_earnings": "module_news/tests/test_earnings_886.py::test_the_pass_writes_one_row_a_watch_list_name_reporting_next_week",
     "news_highlight": "module_news/tests/test_calendar.py::test_the_highlight_is_the_most_important_live_event_earliest_on_a_tie",
     "news_meta": "module_news/tests/test_calendar.py::test_a_second_build_reads_only_new_rows_and_keeps_first_seen",
     "news_headlines": "module_news/tests/test_headlines.py::test_fetch_stores_clean_headlines_with_their_tickers_once",
@@ -209,12 +210,17 @@ POPULATION: dict[str, str] = {
     "wl_section": "module_watchlists/tests/test_watchlist_store_786.py::test_sections_keep_avos_order_not_the_alphabet",
     "wl_item": "module_watchlists/tests/test_watchlist_store_786.py::test_a_symbol_is_stored_as_avo_wrote_it_split_into_its_parts",
     "wl_change": "module_watchlists/tests/test_watchlist_store_786.py::test_every_add_and_remove_leaves_a_change_row",
+    "welcome_earnings":
+        "module_welcome/tests/test_build.py::test_the_earnings_card_is_written_from_the_screeners_newest_session",
+    "welcome_freshness":
+        "module_welcome/tests/test_build.py::test_the_freshness_rows_are_the_builder_files_not_the_dashboard_jobs",
 }
 
 
-#: Board tables nothing writes any more: Welcome's earnings and freshness cards read the old files (#860). The rows
-#: they last had stay in ``boards/welcome.duckdb``; a new writer takes its table out of this set.
-UNWRITTEN = frozenset({"welcome_earnings", "welcome_freshness"})
+#: Board tables nothing writes any more. Empty since #643 PR 5b and PR 6 gave Welcome's earnings and freshness
+#: cards their new writers (the options screener, and the builder's run ledger in ops); a table that loses its
+#: writer goes in here with the issue that will give it one.
+UNWRITTEN: frozenset[str] = frozenset()
 
 
 def test_every_manifest_table_has_a_population_test():

@@ -53,8 +53,10 @@ PLANNED_READS: dict[str, tuple[str, ...]] = {
     # #400 WP5: the XBRL customers are named by the spine's ``security`` names (``identity.security``).
     # #841: the corpus is the SEC form reader's business section (``sec.business``), no longer ``filing_item``
     # (``fundamentals.filings``); the ticker -> CIK map is still the fundamentals layer's.
+    # ``sec.read`` (#894 step 4): the company profiles an edge can come from are the SEC reading service's
+    # ``company.profile`` answers, not the Relatedness board's own table any more.
     "module_value_chain": ("identity.universe", "identity.security", "fundamentals.companies",
-                           "sec.business", "fundamentals.segments", "fundamentals.customers"),
+                           "sec.business", "fundamentals.segments", "fundamentals.customers", "sec.read"),
     # #642 PR 4: the industry tree reads the shared universe (spine names/sectors, prices-store caps) and the theme
     # rows the spine's whole ETF holdings.
     "module_sector_rotation": ("identity.membership", "identity.universe", "identity.etf_holdings", "prices.bars",

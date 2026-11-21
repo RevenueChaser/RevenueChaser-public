@@ -651,7 +651,7 @@ it, so without that line its old archives would never be listed. The newest copy
 ### 3.4 Automations panel
 
 `core/automations.py` is the one registry of the scheduled tasks RevenueChaser owns, and the one
-installer. Rows: `RC-Relatedness-OffPeak` (12:30, `--run --cap 10`, the board's writer, #360), `RC-ValueChain-Sync` (daily 04:20, after `RC-SEC-Read`, `module_value_chain --nightly`: the links rebuilt from the SEC layer through the dashboard),
+installer. Rows: `RC-Relatedness-OffPeak` (weekly Sunday 22:15, `--run --cap 10`, the board's writer, #360), `RC-Relatedness-Score` (weekly Saturday 07:30, after `RC-SEC-Read`, `module_relatedness --score`: the service's new profile answers mirrored and every pair rescored, skipped when nothing is newer — both weekly on avo's word of 20 Nov 2026), `RC-ValueChain-Sync` (daily 04:20, after `RC-SEC-Read`, `module_value_chain --nightly`: the links rebuilt from the SEC layer through the dashboard),
 `RC-Daily-Bars` (23:00, `scripts.daily_bars --nightly --sec-files`), `RC-Screeners-Daily` (weekdays
 23:30, after `RC-Daily-Bars`, `app.universe_cli`), `RC-Forecast-Outcomes` (daily 23:35, after
 `RC-Daily-Bars`, `scripts.forecast_outcomes --nightly`), `RC-Forecast-Baselines` (daily 23:50, after
@@ -706,21 +706,30 @@ for Task Scheduler; the Linux backend maps the ones systemd has).
   it drives **systemd user timers** (#158), and only when `RC_SCHEDULER=systemd-user` is set: by
   default Linux reads every row as unavailable, as before, so a server whose jobs already run as
   system timers is never offered a second schedule. Whether a server opts in is the owner's decision.
+  A value that is neither empty nor `systemd-user`, and `systemd-user` on a host with no `systemctl`,
+  reads as unavailable too, but says so in one warning line instead of looking like a host with no
+  scheduler (#191).
   Install writes `<name>.service` (`Type=oneshot`, the same `automations run <name>` command,
   `TimeoutStartSec` from the time limit) and `<name>.timer` (`OnCalendar=` from the entry's time and
-  days in local time, `Persistent=` from "catches up a missed run") under
-  `~/.config/systemd/user/`, then enables the timer; a systemctl failure deletes both files again.
+  days, with the service's own `TZ` appended as the zone so the timer and the job read the same clock,
+  `Persistent=` from "catches up a missed run") under
+  `~/.config/systemd/user/`, then enables the timer; a systemctl failure puts back what it found —
+  the files it overwrote get their old text, the files it created go, and a pair it created is
+  disabled again so no `timers.target.wants` symlink is left behind.
   The service carries an allowlist of variables, never a copy of the environment (unit files are
   world-readable and `.env` puts the keys there): the three data roots as the dashboard resolved them,
   so a job writes the store and logs the panel reads, and `SPX_GAMMA_DATA_ROOT`, `RAW_STORE_BACKUP_*`
-  and `TZ` when set. Not mapped: "wakes the PC" (a user timer cannot arm a wake alarm, and asking for
+  and `TZ` when set. A host whose provider keys live in a file outside the checkout names that file in
+  `RC_UNIT_ENV_FILE` (absolute path): the unit gets one `EnvironmentFile=-<path>` line, so systemd
+  reads the values itself and none of them is written into a world-readable unit file. Not mapped: "wakes the PC" (a user timer cannot arm a wake alarm, and asking for
   one leaves it failed) and the restart counts (`Restart=on-failure` would re-run a chained step's
   exit 5 and a busy lock's exit 3, and could repeat provider calls). Enable and Disable switch the
   timer, Run now starts the service without waiting, Remove disables the timer and deletes both files
   even when systemctl cannot be reached. The row reads the timer's next run and the service's last
   exit code from one `systemctl show`; a failed timer is an error row; after the user's systemd
   instance restarted the exit code is gone and the result reads "—", while the last success still
-  comes from the log. A user timer runs only while that user's systemd instance runs, so a server
+  comes from the log, and its message names the `systemctl --user reset-failed` that clears it, since
+  an error row carries no button. A user timer runs only while that user's systemd instance runs, so a server
   that runs logged off needs `loginctl enable-linger <user>` once, by hand.
 - **Task names for scripts.** `python -m RevenueChaser.core.automations names` prints the registry
   names one per line and never asks the scheduler, so a script that freezes or lists the tasks reads
@@ -973,8 +982,16 @@ Checked 2026-09-24. None of these replaces our own SEC client and filing picker.
 ## 8. Still hand-written
 
 The Stage 2 and Stage 3 dataset tables in [`data_architecture.md`](data_architecture.md) are still
-written by hand rather than generated from `core/datasets.py`. That generator is code, not
-documentation, so it is not part of this change and issue #146 stays open for it.
+written by hand rather than generated from `core/datasets.py`. **Issue #146 is closed** (5 Nov 2026,
+as done on its other three asks); the generator was never built, and this sentence used to say the
+issue stayed open for it.
+
+It should stay hand-written. Those rows carry writer rules, keys, column lists and reader histories
+that `core/datasets.py` does not hold — a generator would replace documentation richer than the
+registry. What the registry can own is the part of a row that restates a code value, and the one that
+had gone stale is the `DB` column: `core/tests/test_doc_dataset_tables.py` holds every Stage 2 row
+against `rawstore.MANIFEST`'s own `"db"` from now on, and carries the measured list of the rows that
+still name a file #860 deleted. That list is #1209's work and the test makes it shrink, never grow.
 
 ---
 

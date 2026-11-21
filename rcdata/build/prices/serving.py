@@ -109,6 +109,11 @@ CLOSE_BEFORE_DAYS = 7
 # The issuer cap of a session counts each listed class at its newest cap at most this many days old (a thin class
 # that did not trade that day still counts): the window ``rcdata.read.latest_market`` reads the newest cap in.
 ISSUER_WITHIN_DAYS = 14
+# How many bars a security the build goes on serving may come out short of the live file before the build is
+# refused (``_refuse_shrink``, #1096, avo's word of 19 Nov 2026). A source that restates the last days of one name
+# -- a late cover, a corrected session -- costs a bar or two there; a name whose history is genuinely cut is far
+# worse than that. Within the tolerance the shortfall is named in the build note instead of refused.
+PER_ID_SHRINK_BARS = 5
 APPLIED = ("split", "stock_dividend", "cash_dividend")
 NOT_APPLIED = ("spin_off", "unit_split", "rights_distribution")
 # The actions the factors did not apply (an action announced for a later day aside), and whether each is only
@@ -367,6 +372,16 @@ def _universe(ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> int:
     return n
 
 
+def _loss(row: tuple[str, int, int]) -> int:
+    """The bars a ``(security_id, was, has)`` row of ``_refuse_shrink`` lost."""
+    return row[1] - row[2]
+
+
+def _named(rows: list[tuple[str, int, int]]) -> str:
+    """The worst 20 of the rows, each as ``id was -> has``."""
+    return ", ".join(f"{sid} {was:,} -> {has:,}" for sid, was, has in rows[:20]) + (" ..." if len(rows) > 20 else "")
+
+
 def _refuse_shrink(ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> None:
     """Refuse a build whose ``price_bar_daily`` serves fewer securities or fewer rows than the live file, unless the
     request asked for it (``allow_shrink``). The serving swap's own guard allows a 1 % row shrink per table, and
@@ -379,7 +394,19 @@ def _refuse_shrink(ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> None
     A security the live file serves that this build's sources return no bar for at all (a name gone from Compustat's
     and Alpaca's files: bankrupt, renamed to an ``...Q`` ticker; VBNK, KPTI, KNRXF, PLCE on 19 Nov 2026) keeps the
     bars the live file holds: they are copied over before the counts, so the store is never narrowed by a source
-    that stopped."""
+    that stopped.
+
+    The rows are compared **per security id as well as over the file** (#1096). The file total alone let a served
+    name lose bars whenever the rest of the file grew by more: the 19 Nov 2026 whole build (request #800) grew
+    ``price_bar_daily`` 30,140,389 -> 30,906,005 rows and still came out 32 bars short over 10 securities, and it
+    swapped in. The swap's own guard cannot catch it either: it compares a table's row count, and the table grew.
+
+    The per-id check has a tolerance of ``PER_ID_SHRINK_BARS`` bars (avo's word of 19 Nov 2026): a security that
+    comes out **more** than that many bars short of the live file refuses the build, and a shortfall within the
+    tolerance -- what a source restating the last days of one name costs -- is named in the build note instead, so
+    it is read and not silent. The file total still may not shrink at all, whatever the per-id counts are. The only
+    way past the guard is the request's explicit ``allow_shrink`` (avo's word, DECISIONS S18), which turns the whole
+    guard off and is recorded with the request's params."""
     live = stage.live_served(con)
     if not live or ctx.allow_shrink:
         return
@@ -397,12 +424,24 @@ def _refuse_shrink(ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> None
                          f"bars: {', '.join(gone[:20])}{' ...' if len(gone) > 20 else ''}")
         now = served()
     lost = sorted(set(live) - set(now) - moved)
+    # Worst first, so the 20 the message names are the 20 deepest shortfalls.
+    short = sorted(((sid, was, now[sid]) for sid, was in live.items()
+                    if sid not in moved and sid in now and now[sid] < was),
+                   key=lambda r: (r[2] - r[1], r[0]))
+    over = [r for r in short if _loss(r) > PER_ID_SHRINK_BARS]
     before = sum(n for sid, n in live.items() if sid not in moved)
     after = sum(now.values())
-    if lost or after < before:
-        raise ValueError(f"price_bar_daily would lose {len(lost)} securities (rows {before:,} -> {after:,}) against "
-                         f"the live file; lost: {', '.join(lost[:20]) or 'none'}"
-                         f"{' ...' if len(lost) > 20 else ''}. Pass allow_shrink only on avo's word (DECISIONS S18)")
+    if short and not over:
+        ctx.notes.append(f"{sum(_loss(r) for r in short):,} bars short inside {len(short)} securities still "
+                         f"served, each within the {PER_ID_SHRINK_BARS}-bar tolerance: {_named(short)}")
+    if lost or over or after < before:
+        bars = sum(_loss(r) for r in over)
+        raise ValueError(f"price_bar_daily would lose {len(lost)} securities, and {bars:,} bars inside "
+                         f"{len(over)} securities it still serves over the {PER_ID_SHRINK_BARS}-bar per-security "
+                         f"tolerance (rows {before:,} -> {after:,}) against the live file; "
+                         f"lost: {', '.join(lost[:20]) or 'none'}{' ...' if len(lost) > 20 else ''}; "
+                         f"short: {_named(over) if over else 'none'}. "
+                         f"Pass allow_shrink only on avo's word (DECISIONS S18)")
 
 
 def _index_levels(con: duckdb.DuckDBPyConnection) -> str:
@@ -1169,8 +1208,16 @@ MARKET_CAP_SQL = f"""
                FROM a),
          -- Each class of the issuer at its newest cap on or before the session, if at most ISSUER_WITHIN_DAYS old:
          -- a class with no bar that day (GOOG on a day GOOGL traded) still counts; a row with no cap is none.
-         k AS (SELECT DISTINCT iss, security_id AS cls FROM c),
-         g AS (SELECT c.security_id, c.session_date, k.cls FROM c JOIN k USING (iss)),
+         -- ``k`` carries the first and last session each class has a cap for, so a class is joined only to the
+         -- sessions where its newest cap can still be in the window (#1144): a class that last priced in 2015 was
+         -- otherwise joined to every 2026 session of its siblings, carried through the ASOF join and only then
+         -- dropped by ``i``'s filter. Dropping it before the join is the same answer by construction, because the
+         -- ASOF join finds nothing before ``lo`` and ``i`` keeps nothing after ``hi`` + the window.
+         k AS (SELECT iss, security_id AS cls, min(session_date) AS lo, max(session_date) AS hi
+               FROM c WHERE market_cap IS NOT NULL GROUP BY ALL),
+         g AS (SELECT c.security_id, c.session_date, k.cls FROM c JOIN k USING (iss)
+               WHERE c.session_date >= k.lo
+                 AND c.session_date <= k.hi + INTERVAL {{within}} DAY),
          p AS (SELECT g.security_id, g.session_date, x.market_cap, x.session_date AS cap_day
                FROM g ASOF LEFT JOIN (SELECT * FROM c WHERE market_cap IS NOT NULL) x
                     ON x.security_id = g.cls AND g.session_date >= x.session_date),
@@ -1178,7 +1225,11 @@ MARKET_CAP_SQL = f"""
                       sum(market_cap) FILTER (WHERE date_diff('day', cap_day, session_date) <= {{within}})
                           AS issuer_market_cap
                FROM p GROUP BY ALL)
-    SELECT c.*, i.issuer_market_cap FROM c JOIN i USING (security_id, session_date)"""
+    -- LEFT JOIN, not JOIN: ``k`` now holds only the classes with a cap, so an issuer with none has no ``i`` row.
+    -- On the old ``k`` every row's own class was in it, so the inner join dropped nothing; this keeps that true
+    -- (the store narrows nothing, S18) and leaves ``issuer_market_cap`` NULL, which is what the filter's empty
+    -- sum gave before.
+    SELECT c.*, i.issuer_market_cap FROM c LEFT JOIN i USING (security_id, session_date)"""
 
 REVISION_SQL = f"""
     SELECT coalesce(s.security_id, r.security_id) AS security_id, r.session_date, r.ticker AS symbol, r.open, r.high,

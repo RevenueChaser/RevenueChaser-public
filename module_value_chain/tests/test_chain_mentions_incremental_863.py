@@ -9,6 +9,7 @@ from RevenueChaser.core import rawstore
 from RevenueChaser.module_value_chain import engine
 from RevenueChaser.module_value_chain.tests.test_value_chain import _TEN_K
 from RevenueChaser.module_value_chain.tests.test_value_chain_profile_edges_410 import _profile
+from RevenueChaser.rcdata.tests.conftest import market_roots  # noqa: F401  (fixture)
 
 _NVDA_FILING = {"ticker": "NVDA", "cik": "1", "form": "10-K", "filed": "2026-02-01", "accession": "acc",
                 "primary_doc": "http://x", "item_text": _TEN_K, "quality": "ok"}
@@ -23,7 +24,7 @@ def _keys():
     return {(r["src"], r["dst_name"], r["relation"]) for r in rawstore.get_all("chain_mentions")}
 
 
-def test_a_scanned_ticker_retires_only_the_keys_it_no_longer_produces(rawstore_tmp_db):
+def test_a_scanned_ticker_retires_only_the_keys_it_no_longer_produces(rawstore_tmp_db, market_roots):  # noqa: F811
     rawstore.ensure_table("chain_mentions")
     rawstore.write_rows("chain_mentions", [_edge("NVDA", "GONE CORP")])
     rawstore.write_rows("chain_filings", [_NVDA_FILING])

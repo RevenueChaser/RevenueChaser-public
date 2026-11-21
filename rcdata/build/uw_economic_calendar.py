@@ -88,7 +88,11 @@ class UWEconomicCalendar:
         body = res.data
         items = body.get("data", []) if isinstance(body, dict) else body
         if not isinstance(items, list) or not items:
-            raise base.SourceError(f"UW {ENDPOINT}: no rows")     # two weeks of calendar are never empty
+            # Two weeks of calendar are never empty, so an empty answer is not stored. It is also not this pass's
+            # failure (21 Nov 2026: UW answered 200 with no rows and the whole hourly pass exited 1): the dataset
+            # is skipped, the issue stays open while the gap lasts, and the next pass asks again.
+            ctx.issue("source_empty", as_of.isoformat(), f"UW {ENDPOINT} answered 200 with no rows")
+            raise base.ProviderEmpty(f"UW {ENDPOINT}: no rows")
         now = time.time()
         raw = day_dir(as_of) / f"{datetime.fromtimestamp(now, timezone.utc):%H%M%S}.json.gz"
         return [base.write_raw_json(raw, {"request": {"endpoint": ENDPOINT}, "snapshot_date": as_of.isoformat(),

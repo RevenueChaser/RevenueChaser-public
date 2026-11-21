@@ -96,7 +96,7 @@ def test_the_flow_chart_rows_come_from_the_record_and_carry_what_it_draws():
     rows = boards.flow_rows()
     row = next(r for r in rows if r["need"] == "earnings.next")
     need = needs.NEEDS["earnings.next"]
-    assert row["boards"] == ("module_earnings_radar",)
+    assert row["boards"] == ("module_earnings_radar", "module_welcome")   # Welcome reads it too (#643)
     assert row["dataset"] == need.dataset and row["kind"] == need.kind
     assert row["max_lag"] == need.max_lag and row["max_lag_unit"] == need.max_lag_unit
     assert {r["need"] for r in rows} == set(needs.NEEDS)
@@ -183,13 +183,15 @@ def test_relatedness_plans_the_universe_and_the_fundamentals_needs_it_reads():
 def test_value_chain_plans_the_form_readers_business_section():
     """#841: the board's corpus is ``read.form_business`` (``sec.business``), not ``read.filing_texts``
     (``fundamentals.filings``) - one independent SEC cut, read by the boards, instead of a second cut per board.
-    ``fundamentals.companies`` stays: the ticker -> CIK map is the fundamentals layer's."""
+    ``fundamentals.companies`` stays: the ticker -> CIK map is the fundamentals layer's. #894 step 4: the company
+    profiles are the SEC reading service's answers (``sec.read``), so the board plans that need too."""
     want = ("identity.universe", "identity.security", "fundamentals.companies",
-            "sec.business", "fundamentals.segments", "fundamentals.customers")
+            "sec.business", "fundamentals.segments", "fundamentals.customers", "sec.read")
     assert boards.PLANNED_READS["module_value_chain"] == want
     assert boards.reads_of("module_value_chain") == {"declared": False, "needs": want}
     calls = set(boards.read_calls("module_value_chain"))
     assert "form_business" in calls and "filing_texts" not in calls
+    assert "sec_reads" in calls           # the service's reader, which is what the new need is for
 
 
 # ── #491: a board's planned reads are compared with the rcdata.read calls of its own code ─────────────────────────

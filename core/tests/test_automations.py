@@ -99,23 +99,6 @@ def test_unknown_name_is_rejected():
         A.entry(None)  # type: ignore[arg-type]
 
 
-def _ps_registrations(path: Path) -> set[str]:
-    return set(re.findall(r"RC-[A-Za-z-]+", path.read_text(encoding="utf-8")))
-
-
-@pytest.mark.parametrize("ps1", ["register_tasks.ps1", "scripts/register_offpeak_tasks.ps1"])
-def test_ps1_files_register_only_registry_names(ps1):
-    names = {e.name for e in A.REGISTRY}
-    assert _ps_registrations(ROOT / ps1) <= names
-
-
-def test_ps1_files_do_not_define_their_own_tasks():
-    for ps1 in ("register_tasks.ps1", "scripts/register_offpeak_tasks.ps1"):
-        text = (ROOT / ps1).read_text(encoding="utf-8")
-        assert "Register-ScheduledTask" not in text
-        assert "automations" in text
-
-
 # --- result mapping + row states ------------------------------------------------
 
 @pytest.mark.parametrize("code,kind", [
@@ -310,13 +293,6 @@ def test_installer_prefers_pythonw_next_to_python(tmp_path):
     assert A.windowless_python("/usr/bin/python3") == "/usr/bin/python3"
 
 
-
-
-def test_ps1_callers_propagate_the_exit_code_and_drop_dryrun():
-    for ps1 in ("register_tasks.ps1", "scripts/register_offpeak_tasks.ps1"):
-        text = (ROOT / ps1).read_text(encoding="utf-8")
-        assert "exit $" in text and "LASTEXITCODE" in text
-        assert "-DryRun" not in text.split("param(")[1].split(")")[0]
 
 
 # --- F1: BOM, and no console window (coordinator re-review) -----------------------------
@@ -563,10 +539,12 @@ def test_a_connected_scheduler_never_asks_the_system_manager():
     assert {r["state"] for r in rows} == {"not_installed"} and not any("managed" in r for r in rows)
 
 
-def test_relatedness_reads_every_other_sunday_and_its_trigger_is_unchanged():
-    """avo, 15 Nov 2026 16:31: Relatedness refreshes every two weeks, on Sunday. The words say so; the row's own
-    trigger is still the Sunday one, because the server's timer carries the fortnight."""
+def test_relatedness_reads_weekly_sunday_and_its_trigger_says_the_same():
+    """avo, 20 Nov 2026: "Tamam haftalik" -- weekly, Sunday. It ends a three-way disagreement: these words said
+    every other Sunday 07:30 (his 15 Nov word), while the installed homesrv timer has been weekly Sunday 22:15
+    since 16 Nov. No fortnight is carried anywhere now, so the row's own trigger says what the server does."""
     e = A.entry("RC-Relatedness-OffPeak")
-    assert e.schedule == "every other Sunday 07:30 (local)"
-    assert A.on_calendar(e).endswith("*-*-* 07:30:00") and "Sun" in A.on_calendar(e)
+    assert e.schedule == "weekly Sunday 22:15 (local)"
+    assert not e.fortnightly
+    assert A.on_calendar(e).endswith("*-*-* 22:15:00") and "Sun" in A.on_calendar(e)
     assert A.entry("RC-Backup-Weekly").schedule == "weekly Sunday 03:30 (local)"

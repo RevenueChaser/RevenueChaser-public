@@ -584,10 +584,12 @@ def _welcome(tmp_path, monkeypatch):
         "earnings_date": day, "ticker": H("ticker"), "report_session": "premarket", "full_name": H("full_name"),
         "expected_move_perc": 0.05, "report_time": H("report_time"), "source_session": day, "first_seen": now,
         "last_seen": now, "retired_at": None, "run_id": "r1", "run_at": now}])
+    # #643 PR 6: a freshness row is a builder file, so its ``job`` is a serving kind and the card names it from
+    # ``build.FILE_LABELS``; the hostile strings ride the fields a run actually brings (the error text).
     rawstore.write_rows("welcome_freshness", [{
-        "job": H("job"), "last_status": "error", "last_finished_at": now - 60, "last_ok_at": now - 7200,
+        "job": "market", "last_status": "error", "last_finished_at": now - 60, "last_ok_at": now - 7200,
         "last_failed_at": now - 60, "last_error": H("last_error"), "run_id": "r1", "run_at": now}])
-    return report.render_html(now, watchlist=[H("watch")], labels={H("job"): H("job_label")})
+    return report.render_html(now, watchlist=[H("watch")])
 
 
 BOARDS: dict[str, Board] = {

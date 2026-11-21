@@ -36,6 +36,16 @@ a rebuilt board never serves old rows. Asymmetric Growth is the first board on i
 in R3. The PC guard
 `scripts/research/383_page_weight.py` checks that no board's HTML plus payload grows past its baseline.
 
+**The v2 envelope beside the payload (#1241, v2 epic #1238).** The same `write_board` call writes a second file,
+`<stem>.v2.json.gz`, for the v2 door: `{schema_version, board, run_id, data_asof, built_at, private, renderer,
+layout, data}` (`core/v2_envelope.py`). `data` is the payload itself, serialised with the payload file's own
+options, so the two files hold the same bytes; `run_id` is the dashboard job that wrote them
+(`rawstore.writer_run_id`), which is how the door refuses an envelope whose build is not the served one. The old
+page is untouched: it still fetches `/view/<module>/payload.json`, and nothing serves the envelope yet. A Refresh
+drops both files together (`reporting_common.drop_board_data`). One JSON Schema per board lives in `v2/schemas/`,
+checked by `v2/tests/test_v2_schemas.py` with the small checker in `v2/validate.py` (the repository carries no
+`jsonschema` dependency).
+
 **A Refresh shows the last Fetch's notes (#383 C24).** LEAPS and SEC 13F put their Fetch notes on the board (the
 scan's notes; names not refreshed and the CUSIPs left out). Their Refresh reads them back from the last run's
 result-history header (`runners.last_fetch_notice`, K2 `history.last_run`) and shows them as "Last Fetch (time):
@@ -245,8 +255,8 @@ each, never the builder lock — so two datasets fetch side by side and beside a
   `/api/build/automation/<kind>` is gone (avo, 10 Nov 2026).
 - **`GET /api/idle`** (loopback, no header): `{idle, reasons}` from `app/jobs.py` `idle()`. It is false while a
   dashboard job is queued or running, while any `core/job_lock` name is held by any process, or while another
-  process's live `.rc-proc-<pid>` marker sits in the store dir or the market dir (F8 A). `stop.ps1` reads it, and
-  so does the deploy gate.
+  process's live `.rc-proc-<pid>` marker sits in the store dir or the market dir (F8 A). The deploy gate reads
+  it.
 
 ### The needs routes (#290, renamed in #329)
 
@@ -260,6 +270,30 @@ provider, write nothing and open no second DuckDB writer, so a page may ask them
   in the query string is ignored (a GET never fills). `?summary=1` (with `sample=N`, at most 50) answers the
   need's state without naming a ticker; `limit=N` bounds the rows, never above 5,000. 404 for an unknown need,
   400 for an unknown parameter or for a need that must be asked for something (`market.series`).
+
+### The News board's read-only routes, and its MCP server (#809)
+
+Two routes out of `boards/news.duckdb`. Both are store-only: they fetch nothing, call no model and write
+nothing, so neither needs the `X-RC-Panel` header.
+
+- **`GET /api/news/events`**: the calendar rows still to come, economic and FDA, from `news_events` through
+  `module_news/report.event_rows`. `days` (1 to `report.API_MAX_DAYS`, default `report.WEEK_DAYS`) and `types`
+  (a comma-separated list of `news_events.type` values) narrow it. Each row carries `event_ts`, `event`, `type`,
+  `importance`, `forecast`, `prev`, `day` and `hm`; an FDA row also carries `ticker`, `drug`, `catalyst`,
+  `indication`, `application_status`, `outcome`, `url`, `target_text` and `target_precision`. A retired event is
+  never served. 400 for a bad or out-of-range `days`.
+- **`GET /api/news/headlines`**: the `since=<epoch>` poll the board itself uses, and a window —
+  `from`/`to` (epoch seconds, at most `report.API_MAX_DAYS` days apart), with one optional `ticker` and a
+  `limit` up to `report.API_LIMIT`. Newest first. 400 for a bad number, for `to` before `from`, for a wider
+  window, or for a ticker that is not one.
+
+**`python -m RevenueChaser.scripts.news_mcp`** is a JSON-RPC 2.0 server over stdio (one message a line) that
+reads those two routes and nothing else, so it holds no DuckDB handle of its own and needs the dashboard
+running. Three tools: `recent_headlines` (a window back from now, optionally one ticker), `coming_events` (the
+days and the types) and `headlines_around_event` — the headlines inside a window around one `event_ts`, each
+with its `minutes_from_event`. Every window is capped in the server as well as in the route, a bad ask comes
+back as the tool's own error rather than a crash, and a dashboard that is not running answers with the command
+that starts it. No model is called here: which model reads this, and what it costs, is avo's own later decision.
 
 ### The watch-list routes (PR 4)
 

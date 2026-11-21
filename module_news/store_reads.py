@@ -23,10 +23,14 @@ Nothing here fetches, and nothing here raises on an empty store: a table with no
 
 The tables (``core/rawstore.py`` owns their columns, ``docs/data_architecture.md`` the contract):
 
-- ``news_events`` the economic calendar, one row per ``(event_ts, event, type)``, built incrementally by
-  ``calendar.build``; a row the newest fetch no longer lists carries ``retired_at`` and is never deleted, so every
-  read of "what is on the calendar" filters it out (``live_`` below).
-- ``news_highlight`` one row per Amsterdam day: that day's most important live event.
+- ``news_events`` the calendar, one row per ``(event_ts, event, type)``, built incrementally by ``calendar.build``;
+  a row the newest fetch no longer lists carries ``retired_at`` and is never deleted, so every read of "what is on
+  the calendar" filters it out (``live_`` below). Two kinds of row share the table: the economic releases, which
+  keep UW's own ``type`` (report, fomc, fed-speaker), and the FDA catalysts of #807, whose ``type`` is
+  :data:`FDA_TYPE` and which carry nine columns of their own. A read is almost never about both, so the economic
+  reads exclude the FDA rows by name rather than by the caller remembering to.
+- ``news_earnings`` next week's report day of every name on the board's watch lists (#886): one week at a time.
+- ``news_highlight`` one row per Amsterdam day: that day's most important live **economic** event.
 - ``news_headlines`` one row per story, the three lanes of the page in one table (see ``LANES``).
 - ``news_meta`` the board's marks and cursors, ``key`` -> ``value`` as text.
 """
@@ -36,12 +40,18 @@ from RevenueChaser.core import rawstore
 
 #: The board's DuckDB file, as ``rawstore`` names it.
 DB = "news"
-#: The four table names. Every reader here and every writer in the board takes them from this module, so a rename
+#: The five table names. Every reader here and every writer in the board takes them from this module, so a rename
 #: is a change to one file (the point of #217).
 EVENTS = "news_events"
+EARNINGS = "news_earnings"
 HIGHLIGHT = "news_highlight"
 HEADLINES = "news_headlines"
 META = "news_meta"
+
+#: The ``type`` of an FDA catalyst row in :data:`EVENTS` (#807). It is a value in a column rather than a table
+#: name, but it cuts the table in two for every read below and for the writes in ``calendar.py``, so it is owned
+#: here with them: the economic reads and the FDA reads cannot drift apart over the spelling of one word.
+FDA_TYPE = "fda"
 
 #: The lanes of the News page, in its order. ``market`` is the broad tape (no ticker), ``stocks`` a headline carrying
 #: one, ``x`` a post from the X summaries or RC's own X reader. The SQL that cuts them is ``_LANE_CASE``; the Python
@@ -94,14 +104,25 @@ def events_between(lo: float, hi: float) -> list[dict]:
     return _query(f"SELECT * FROM {EVENTS} WHERE event_ts BETWEEN ? AND ?", [lo, hi])
 
 
-def live_events_between(lo: float, hi: float) -> list[dict]:
-    """The live (not retired) rows whose ``event_ts`` is in ``[lo, hi]``."""
-    return _query(f"SELECT * FROM {EVENTS} WHERE event_ts BETWEEN ? AND ? AND retired_at IS NULL", [lo, hi])
+def live_economic_between(lo: float, hi: float) -> list[dict]:
+    """The live (not retired) **economic** rows whose ``event_ts`` is in ``[lo, hi]``: the FDA rows of #807 are
+    left out, because the economic pass retires what the economic source stopped listing and must not touch them."""
+    return _query(f"SELECT * FROM {EVENTS} WHERE event_ts BETWEEN ? AND ? AND retired_at IS NULL AND type <> ?",
+                  [lo, hi, FDA_TYPE])
 
 
-def live_events_from(start: float) -> list[dict]:
-    """The live rows at or after ``start``, in time order (the highlight pass reads the days forward from one day)."""
-    return _query(f"SELECT * FROM {EVENTS} WHERE event_ts >= ? AND retired_at IS NULL ORDER BY event_ts", [start])
+def live_fda_between(lo: float, hi: float) -> list[dict]:
+    """The live FDA rows whose ``event_ts`` is in ``[lo, hi]``: the mirror of
+    :func:`live_economic_between` for the FDA pass, so neither pass can retire the other's rows."""
+    return _query(f"SELECT * FROM {EVENTS} WHERE event_ts BETWEEN ? AND ? AND retired_at IS NULL AND type = ?",
+                  [lo, hi, FDA_TYPE])
+
+
+def live_economic_from(start: float) -> list[dict]:
+    """The live economic rows at or after ``start``, in time order: the highlight pass reads the days forward from
+    one day, and a day's highlight is an economic release (#807), never an FDA catalyst."""
+    return _query(f"SELECT * FROM {EVENTS} WHERE event_ts >= ? AND retired_at IS NULL AND type <> ? "
+                  f"ORDER BY event_ts", [start, FDA_TYPE])
 
 
 def live_events_in_window(start: float, end: float) -> list[dict]:
@@ -112,6 +133,50 @@ def live_events_in_window(start: float, end: float) -> list[dict]:
     """
     return _query(f"SELECT * FROM {EVENTS} WHERE event_ts >= ? AND event_ts < ? AND retired_at IS NULL "
                   f"ORDER BY event_ts, event", [start, end])
+
+
+def live_fda_outside_a_day(precision: str, since: float, limit: int) -> list[dict]:
+    """The live FDA rows whose ``target_precision`` is not ``precision`` — a quarter, a half year, "late" — from
+    ``since`` on, in time order, at most ``limit``.
+
+    They belong to no day of the week strip, so the page stands them in their own group under the FDA tab and
+    reads them outside the week's window (#808). A row with no precision at all counts as dated, which is why the
+    SQL coalesces to ``precision`` before comparing.
+    """
+    return _query(f"SELECT * FROM {EVENTS} WHERE type = ? AND retired_at IS NULL "
+                  f"AND coalesce(target_precision, ?) <> ? AND event_ts >= ? "
+                  f"ORDER BY event_ts, event LIMIT {int(limit)}",
+                  [FDA_TYPE, str(precision), str(precision), float(since)])
+
+
+def live_events_of_types(start: float, end: float, types, limit: int) -> list[dict]:
+    """The live rows in ``[start, end)`` of the types ``types`` names (every type when it names none), in time
+    order, at most ``limit``: what ``GET /api/news/events`` serves.
+
+    The type names are compared in lower case, as the route receives them. An ask whose names are all blank is no
+    types at all, not every type, and answers no rows — the caller's own guard, kept here so the route cannot get
+    it wrong twice.
+    """
+    sql = f"SELECT * FROM {EVENTS} WHERE event_ts >= ? AND event_ts < ? AND retired_at IS NULL"
+    params: list = [float(start), float(end)]
+    if types is not None:
+        wanted = sorted({str(t).strip().lower() for t in types if str(t or "").strip()})
+        if not wanted:
+            return []
+        sql += f" AND lower(type) IN ({', '.join('?' * len(wanted))})"
+        params += wanted
+    return _query(sql + f" ORDER BY event_ts, event LIMIT {int(limit)}", params)
+
+
+# ── news_earnings ─────────────────────────────────────────────────────────────────────────────────────────────────
+def earnings_week(week_start: str) -> list[dict]:
+    """The stored report days of the week beginning ``week_start`` (``YYYY-MM-DD``), by day then ticker.
+
+    The weekly pass empties the table before it writes, so a table holding another week (the pass has not run
+    since the week turned) answers no rows here and the tab says the week is not built, rather than showing last
+    week's days.
+    """
+    return _query(f"SELECT * FROM {EARNINGS} WHERE week_start = ? ORDER BY report_date, ticker", [str(week_start)])
 
 
 def newest_event_fetch_at() -> float | None:
@@ -224,6 +289,19 @@ def headlines_newest(published_from: float, limit: int) -> list[dict]:
                   [float(published_from)])
 
 
+def headlines_in_window(start: float, end: float, limit: int) -> list[dict]:
+    """The stored headlines published inside ``[start, end]``, newest first, at most ``limit``: what
+    ``GET /api/news/headlines`` serves when it is asked for a window instead of the page's ``since`` poll.
+
+    The window is what makes the join of #809 possible — the headlines around a release, not the last 24 hours.
+    The lane and ticker cuts stay with the route, which already owns them in Python (``report.lane``,
+    ``report.x_group``), because they read a row rather than the table.
+    """
+    return _query(f"SELECT {', '.join(API_COLUMNS)} FROM {HEADLINES} "
+                  f"WHERE published_at >= ? AND published_at <= ? ORDER BY published_at DESC LIMIT {int(limit)}",
+                  [float(start), float(end)])
+
+
 def x_headlines_since(since: float) -> list[dict]:
     """Every X-lane row published at or after ``since`` except what Grok filed as ``other``, newest first: the set
     the option check walks to find the rows still waiting for an answer."""
@@ -247,9 +325,10 @@ def lane_freshness() -> dict[str, float | None]:
     return {name: (float(got[name]) if got.get(name) is not None else None) for name in LANES}
 
 
-__all__ = ["DB", "EVENTS", "HIGHLIGHT", "HEADLINES", "META", "LANES", "API_COLUMNS", "TICKER_COLUMNS",
-           "meta_value", "meta_values",
-           "events_between", "live_events_between", "live_events_from", "live_events_in_window",
-           "newest_event_fetch_at", "newest_event_run_at", "highlight",
+__all__ = ["DB", "EVENTS", "EARNINGS", "HIGHLIGHT", "HEADLINES", "META", "FDA_TYPE", "LANES", "API_COLUMNS",
+           "TICKER_COLUMNS", "meta_value", "meta_values",
+           "events_between", "live_economic_between", "live_fda_between", "live_economic_from",
+           "live_events_in_window", "live_fda_outside_a_day", "live_events_of_types",
+           "newest_event_fetch_at", "newest_event_run_at", "earnings_week", "highlight",
            "stored_headline_ids", "stored_tickers", "headlines_by_lane", "headlines_newest", "headlines_since",
-           "headlines_for_ticker", "x_headlines_since", "lane_freshness"]
+           "headlines_for_ticker", "headlines_in_window", "x_headlines_since", "lane_freshness"]

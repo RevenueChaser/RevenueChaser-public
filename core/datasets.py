@@ -291,12 +291,21 @@ REGISTRY: tuple[DatasetSpec, ...] = (
         freshness=("llm_cache", "fetched_at"),
     ),
     DatasetSpec(
-        key="news_calendar", label="News: economic calendar and the day's highlight",
+        key="news_calendar", label="News: economic and FDA calendar and the day's highlight",
         tables=("news_events", "news_highlight", "news_meta"),
         db="news", source=Source.derived, writer=None,
-        writer_note=("built incrementally from market.economic_event by module_news/calendar.py on the News board's "
-                     "Refresh; the hourly job comes in its own pull request"),
+        writer_note=("built incrementally from market.economic_event and market.fda_event (#807) by "
+                     "module_news/calendar.py on the News board's Refresh; the hourly job comes in its own "
+                     "pull request"),
         freshness=("news_events", "run_at"),
+    ),
+    DatasetSpec(
+        key="news_earnings", label="News: next week's earnings of the watch-list names",
+        tables=("news_earnings",),
+        db="news", source=Source.derived, writer="RC-News-Earnings-Weekly",
+        writer_note=("built from fundamentals.earnings_event (the Alpha Vantage calendar) and the News watch "
+                     "lists by module_news/earnings.py (#886); every Sunday 09:00, and on the board's own Fetch"),
+        freshness=("news_earnings", "run_at"),
     ),
     DatasetSpec(
         key="news_headlines", label="News: market headlines",
@@ -307,11 +316,12 @@ REGISTRY: tuple[DatasetSpec, ...] = (
         freshness=("news_headlines", "fetched_at"),
     ),
     DatasetSpec(
-        key="welcome", label="Welcome: market closes, earnings and job freshness",
+        key="welcome", label="Welcome: market closes, earnings and builder-file freshness",
         tables=("welcome_snapshot", "welcome_earnings", "welcome_freshness", "welcome_meta"),
         db="welcome", source=Source.derived, writer=None,
-        writer_note=("built incrementally from stored prices, earnings_calendar and job_runs by "
-                     "module_welcome/build.py on the Welcome board's Fetch; the hourly job comes in its own pull request"),
+        writer_note=("built incrementally by module_welcome/build.py on the Welcome board's Fetch, from the "
+                     "builder's market series, its options screener and its run ledger in ops (#643 PR 5b, PR 6); "
+                     "the hourly job comes in its own pull request"),
         freshness=("welcome_snapshot", "session_date"),
     ),
     DatasetSpec(

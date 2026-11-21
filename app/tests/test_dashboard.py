@@ -857,7 +857,7 @@ class TestSettingsDataHealthBoard:
         assert r.status_code == 200
         body = r.get_data(as_text=True)
         assert "Settings" in body
-        assert "equity_universe" in body
+        assert "prices.bars" in body        # a served need, not the retired table (#642)
 
     def test_refresh_rerenders_from_store_without_network(
             self, rawstore_tmp_db, monkeypatch):
@@ -876,7 +876,7 @@ class TestSettingsDataHealthBoard:
         assert r.status_code == 200
         body = r.get_data(as_text=True)
         assert "Settings" in body
-        assert "equity_universe" in body
+        assert "prices.bars" in body        # a served need, not the retired table (#642)
         assert runners.SETTINGS_LATEST.exists()
 
 

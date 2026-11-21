@@ -47,8 +47,8 @@ def test_ok_card(payload_file):
     c = _card()
     assert c["state"] == "ok" and c["error"] is None
     assert c["key"] == "module_comovement" and c["label"] == "Co-movement"
-    # #126: the engine reads the daily price bars since #379, not the legacy swing_ohlc cache.
-    assert c["tables"] == ["equity_universe", "price_bars_daily"]
+    # #126/#642 N1: the bars and the universe are served needs, so the card names no board-file table here.
+    assert c["tables"] == [] and "prices.bars" in c["needs"]
     assert "dividend-adjusted" in c["price_basis"] and "yfinance" not in c["price_basis"]
     assert c["as_of"] == "2026-09-25T20:00:00+00:00"
     assert c["window"]["window_start"] == "2025-09-25"
@@ -242,7 +242,49 @@ def test_ag_and_fundamentals_are_registered_with_a_funnel_reference():
     """Their funnels already exist; the card must name the payload key and the tables the scan reads."""
     ag = _entry("module_asymmetric_growth")
     assert ag["funnel"] == "funnel_steps" and ag["label"] == "Asymmetric Growth"
-    assert ag["tables"] == ["equity_universe", "price_bars_daily"]
+    assert ag["tables"] == []                                                 # the old-store tables went (#860)
     fund = _entry("module_fundamentals")
     assert fund["funnel"] == "funnel_steps" and fund["label"] == "Fundamentals"
-    assert fund["tables"] == ["equity_universe", "price_bars_daily"]          # the old-store tables went (#860)
+    assert fund["tables"] == []
+    assert "prices.bars" in boards._card(fund)["needs"]
+
+
+# ── #642 N1: the card names what the boards read today ──────────────────────
+
+def test_no_card_names_a_store_table_the_store_no_longer_holds():
+    """Every retirement took its Settings row with it: a card may name only a table of a board file (#860)."""
+    from RevenueChaser.core import rawstore
+    named = {t for e in boards.BOARD_INPUTS for t in e["tables"]}
+    assert named, "the cards name no table at all"
+    assert sorted(named - set(rawstore.MANIFEST)) == []
+
+
+def test_each_card_carries_the_needs_its_board_declares_or_plans():
+    """The served reads are not typed a second time here: the card reads the board's own ``READS`` (or its planned
+    reads), so the card and the flow diagram cannot disagree."""
+    from RevenueChaser.rcdata.needs import boards as api_boards
+    for entry in boards.BOARD_INPUTS:
+        reads = api_boards.reads_of(entry["key"])
+        card = boards._card(entry)
+        assert card["needs"] == list(reads["needs"]), entry["key"]
+        assert card["needs_declared"] is reads["declared"], entry["key"]
+    fin = boards._card(_entry("module_financials"))
+    assert fin["tables"] == [] and "identity.universe" in fin["needs"]
+
+
+def test_the_card_names_a_served_need_with_its_provider_table_and_file():
+    from RevenueChaser.module_settings import report
+    html = report._board_card(boards._card(_entry("module_fundamentals")))
+    assert '<span class="ds">prices.bars</span><span class="tbl">(price_bar_daily)</span>' in html
+    assert "SEC EDGAR filings" in html and "fundamentals.duckdb" in html
+    # A board with no declaration of its own says so, instead of claiming a measured read.
+    assert "planned" in html
+
+
+def test_the_old_identity_health_card_is_gone_with_its_equity_universe_text():
+    """#642 N1: the S7 card left the page in PR 5 (``_nd_identity`` replaced it), but its help text stayed in the
+    module and still told the reader that a job writes into ``equity_universe``, a table #860 removed."""
+    from pathlib import Path
+    from RevenueChaser.module_settings import report
+    assert not hasattr(report, "_identity_card")
+    assert "equity_universe" not in Path(report.__file__).read_text(encoding="utf-8")

@@ -185,6 +185,32 @@ def test_the_hourly_pass_prunes_the_resolved_build_issues_and_a_dataset_run_does
     assert calls == [1]
 
 
+def test_the_hourly_pass_prunes_the_run_rows_past_a_year_and_a_dataset_run_does_not(monkeypatch):
+    """Step 9 (20 Nov 2026): the run rows keep a year, and this pass is their deleter - it is the writer of the
+    ops store, so no second writer and no new timer."""
+    calls: list = []
+    monkeypatch.setattr(cli.base, "run_request", _fake_run([]))
+    monkeypatch.setattr(ops, "prune_runs", lambda: calls.append(1) or {"job_runs2": 0})
+    _nothing_due()
+    assert cli.main(["run", "--once"]) == 0
+    assert calls == [1]
+    assert cli.main(["run", "--dataset", "market_series", "--once"]) == 0
+    assert calls == [1]
+
+
+def test_a_busy_store_skips_the_run_row_prune_and_the_pass_still_drains_the_queue(monkeypatch):
+    ran: list = []
+    monkeypatch.setattr(cli.base, "run_request", _fake_run(ran))
+
+    def busy(*_a, **_kw):
+        raise sqlite3.OperationalError("database is locked")
+    monkeypatch.setattr(ops, "prune_runs", busy)
+    _nothing_due()
+    ops.enqueue("market_series", None, by="settings")
+    assert cli.main(["run", "--once"]) == 0
+    assert [r[0] for r in ran] == ["market_series"]
+
+
 def test_a_busy_store_skips_the_prune_and_the_hourly_pass_still_drains_the_queue(monkeypatch):
     ran: list = []
     monkeypatch.setattr(cli.base, "run_request", _fake_run(ran))

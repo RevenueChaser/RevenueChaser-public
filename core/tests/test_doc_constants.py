@@ -19,13 +19,56 @@ def test_data_architecture_names_the_current_schema_version():
     assert m.group(1) == rawstore._SCHEMA_VERSION
 
 
+def test_data_architecture_lists_exactly_the_board_files():
+    """The store's contents are a value the code owns: ``rawstore.BOARD_DBS`` (#1167).
+
+    The doc described ``raw.duckdb``, ``edgar.duckdb``, ``history.duckdb`` and ``.store/prices.duckdb`` as the
+    store for five days after #860 deleted them, which is how #166 came to be written around a table that no
+    longer exists.
+    """
+    text = (_REPO / "docs" / "data_architecture.md").read_text(encoding="utf-8")
+    m = re.search(r"The board files today \(`rawstore\.BOARD_DBS`\): ([^.]+)\.", text)
+    assert m, "docs/data_architecture.md no longer lists the board files"
+    listed = tuple(re.findall(r"`([a-z0-9_]+)`", m.group(1)))
+    assert listed == rawstore.BOARD_DBS
+
+
+def test_data_architecture_gives_no_retired_table_a_row_of_its_own():
+    """A table row reads as the current contract, whatever a banner above it says (#1167).
+
+    ``rawstore.RETIRED_TABLES`` is the code's own list of the removed stores' table names that nothing reads any
+    more; ``core/tests/test_no_old_store.py`` keeps them out of the code. Prose about one is provenance and stays
+    — only a row of a table is checked, because that is what a reader takes for the layout as it is.
+    """
+    text = (_REPO / "docs" / "data_architecture.md").read_text(encoding="utf-8")
+    rows = {m.group(1) for m in re.finditer(r"^\| `([a-z0-9_]+)` \|", text, re.M)}
+    named = sorted(rows & set(rawstore.RETIRED_TABLES))
+    assert not named, f"docs/data_architecture.md has a table row for retired tables: {named}"
+
+
+def test_data_architecture_names_how_long_a_runs_rows_are_kept():
+    """The one year of ops.prune_runs is a value the code owns (step 9, 20 Nov 2026)."""
+    from RevenueChaser.rcdata import ops
+    text = (_REPO / "docs" / "data_architecture.md").read_text(encoding="utf-8")
+    assert f"**{ops.RUN_ROWS_DAYS} days** (`ops.RUN_ROWS_DAYS`)" in text
+
+
+def test_data_architecture_names_the_current_per_id_shrink_tolerance():
+    """The prices swap guard's per-security tolerance is a value the code owns (#1096)."""
+    from RevenueChaser.rcdata.build.prices import serving as prices_serving
+    text = (_REPO / "docs" / "data_architecture.md").read_text(encoding="utf-8")
+    m = re.search(r"tolerance of `(\d+)` bars \(`PER_ID_SHRINK_BARS`\)", text)
+    assert m, "docs/data_architecture.md no longer states the per-id shrink tolerance"
+    assert int(m.group(1)) == prices_serving.PER_ID_SHRINK_BARS
+
+
 # ``.env.example`` is the one place a new user learns which variables exist. It listed 3 of the 8
 # provider variables (#169a); these tests compare it with the code that owns the names.
 _ENV_EXTRAS = ("RC_SEC_USER_AGENT",
                "RC_ALLOWED_HOSTS", "RC_IBKR_LOGIN_URL",                         # #159 / the gateway shortcut
                "RC_BUILDER_TIMER_URL",                                          # #527: the builder timer button
                "RC_IBKR_LOGIN_CHECK", "RC_IBKR_HOST", "RC_IBKR_PORT",           # #162
-               "RC_SCHEDULER",                                                  # #158
+               "RC_SCHEDULER", "RC_UNIT_ENV_FILE",                              # #158 / #191 item 6
                "RC_HTTP_CONTACT",                                               # #206, the builder's User-Agent
                "WRDS_USERNAME", "RC_WRDS_PYTHON",                               # PR 5, the spine
                "RC_WRDS_UNATTENDED",                                            # #344, WRDS from the builder
@@ -146,8 +189,8 @@ _MARKDOWN_READ_BY_TESTS = (
     "docs/data_architecture.md",        # test_doc_constants.py, test_store_schema_refuse.py:36, test_rawstore_history.py:595
     "docs/data_health.md",             # test_doc_constants.py:179, test_automation_chain.py:125
     "docs/data_retrieval.md",          # test_doc_constants.py:56
-    "docs/rules/00_overview.md",       # module_earnings_radar/tests/test_confidence_wording_df06.py:62
-    "docs/rules/redesign.md",          # module_earnings_radar/tests/test_cleanup_199.py:13-15
+    "docs/earnings-radar/00_overview.md",       # module_earnings_radar/tests/test_confidence_wording_df06.py:62
+    "docs/earnings-radar/redesign.md",          # module_earnings_radar/tests/test_cleanup_199.py:13-15
     "module_spx_gamma/tests/golden/position_map.base.md",   # module_spx_gamma/tests/test_autoescape_175.py:106
 )
 

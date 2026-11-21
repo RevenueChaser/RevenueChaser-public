@@ -21,8 +21,8 @@ from RevenueChaser.core import provenance, rawstore
 from RevenueChaser.module_news import store_reads as sr
 
 REPO = Path(__file__).resolve().parents[2]
-#: The four tables of the board's file, as the names a stray ``SELECT`` would spell.
-TABLE_NAMES = (sr.EVENTS, sr.HIGHLIGHT, sr.HEADLINES, sr.META)
+#: The five tables of the board's file, as the names a stray ``SELECT`` would spell.
+TABLE_NAMES = (sr.EVENTS, sr.EARNINGS, sr.HIGHLIGHT, sr.HEADLINES, sr.META)
 NOW = 1_763_000_000.0
 
 
@@ -60,7 +60,11 @@ def test_no_module_of_the_board_spells_a_news_table_name_itself():
 
 
 def test_every_news_table_in_the_schema_has_a_name_here():
-    """A table added to the News store without a reader seam would reopen the hole this PR closes."""
+    """A table added to the News store without a reader seam would reopen the hole this PR closes.
+
+    ``news_earnings`` (#886) is the first table this guard caught: it was added to the board while this step was
+    in draft, with its own ``TABLE = "news_earnings"`` and its own two queries.
+    """
     schema = {name for name, spec in rawstore.MANIFEST.items() if spec.get("db") == "news"}
     assert schema, "the schema should file some table under the news store"
     assert schema == set(TABLE_NAMES), f"the reader names {sorted(TABLE_NAMES)}, the schema has {sorted(schema)}"
@@ -105,8 +109,8 @@ def test_the_build_sees_a_retired_row_and_the_page_does_not(rawstore_tmp_db):
     build read must not: it carries ``first_seen`` forward from exactly that row."""
     rawstore.write_rows(sr.EVENTS, [_event(NOW, "CPI"), _event(NOW + 60, "Gone", retired=NOW)])
     assert {r["event"] for r in sr.events_between(NOW - 1, NOW + 100)} == {"CPI", "Gone"}
-    assert {r["event"] for r in sr.live_events_between(NOW - 1, NOW + 100)} == {"CPI"}
-    assert {r["event"] for r in sr.live_events_from(NOW - 1)} == {"CPI"}
+    assert {r["event"] for r in sr.live_economic_between(NOW - 1, NOW + 100)} == {"CPI"}
+    assert {r["event"] for r in sr.live_economic_from(NOW - 1)} == {"CPI"}
     assert {r["event"] for r in sr.live_events_in_window(NOW - 1, NOW + 100)} == {"CPI"}
 
 
@@ -114,18 +118,18 @@ def test_the_event_windows_are_inclusive_and_half_open_as_their_callers_expect(r
     rawstore.write_rows(sr.EVENTS, [_event(100.0, "At the start"), _event(200.0, "At the end")])
     # ``BETWEEN`` for the build's key span: both ends in.
     assert len(sr.events_between(100.0, 200.0)) == 2
-    assert len(sr.live_events_between(100.0, 200.0)) == 2
+    assert len(sr.live_economic_between(100.0, 200.0)) == 2
     # ``[start, end)`` for the page's week: the day after the window is the next page's first row.
     assert [r["event"] for r in sr.live_events_in_window(100.0, 200.0)] == ["At the start"]
     assert len(sr.live_events_in_window(100.0, 201.0)) == 2
-    assert [r["event"] for r in sr.live_events_from(200.0)] == ["At the end"]
+    assert [r["event"] for r in sr.live_economic_from(200.0)] == ["At the end"]
 
 
 def test_the_window_breaks_a_tie_by_name_so_two_pages_cannot_disagree(rawstore_tmp_db):
     """The Welcome card read this window ordered by ``event_ts`` alone; both read this one now."""
     rawstore.write_rows(sr.EVENTS, [_event(100.0, "Zeta"), _event(100.0, "Alpha"), _event(90.0, "Earlier")])
     assert [r["event"] for r in sr.live_events_in_window(0.0, 200.0)] == ["Earlier", "Alpha", "Zeta"]
-    assert [r["event"] for r in sr.live_events_from(0.0)][0] == "Earlier"
+    assert [r["event"] for r in sr.live_economic_from(0.0)][0] == "Earlier"
 
 
 def test_the_two_event_stamps_answer_different_questions(rawstore_tmp_db):
@@ -146,6 +150,76 @@ def test_the_news_boards_data_date_is_the_newest_calendar_fetch(rawstore_tmp_db)
     rawstore.write_rows(sr.EVENTS, [_event(100.0, "CPI", last_seen=NOW)])
     assert provenance._news_day() == provenance.session_of(NOW)
     assert provenance._news_day() is not None
+
+
+# ── news_events: the FDA lane shares the table (#807) ─────────────────────────────────────────────────────────────
+def _fda(ts, name, precision="day", retired=None) -> dict:
+    return {**_event(ts, name, kind=sr.FDA_TYPE, retired=retired), "ticker": "ABC", "drug": "d",
+            "catalyst": "PDUFA", "target_text": name, "target_precision": precision, "indication": None,
+            "status": None, "outcome": None, "url": None}
+
+
+def test_neither_pass_can_retire_the_other_lanes_rows(rawstore_tmp_db):
+    """The two passes write the same table and each retires what its own source stopped listing, so the economic
+    reads must not see an FDA row and the FDA read must see nothing else. Before #217 that was four ``type``
+    filters in two files, each spelling the word ``fda`` itself."""
+    rawstore.write_rows(sr.EVENTS, [_event(100.0, "CPI"), _fda(200.0, "PDUFA ABC")])
+    assert [r["event"] for r in sr.live_economic_between(0.0, 500.0)] == ["CPI"]
+    assert [r["event"] for r in sr.live_economic_from(0.0)] == ["CPI"]
+    assert [r["event"] for r in sr.live_fda_between(0.0, 500.0)] == ["PDUFA ABC"]
+    # The week strip is the one read that shows both, because the page draws them on the same days (#808).
+    assert {r["event"] for r in sr.live_events_in_window(0.0, 500.0)} == {"CPI", "PDUFA ABC"}
+
+
+def test_a_retired_row_is_invisible_to_both_lane_reads(rawstore_tmp_db):
+    rawstore.write_rows(sr.EVENTS, [_fda(100.0, "Gone", retired=NOW), _fda(200.0, "Here")])
+    assert [r["event"] for r in sr.live_fda_between(0.0, 500.0)] == ["Here"]
+
+
+def test_the_undated_catalysts_are_the_ones_with_no_day_of_their_own(rawstore_tmp_db):
+    """A quarter or a half year belongs to no day of the week strip, so the page reads those rows on their own
+    (#808). A row with no precision at all counts as dated, which is the coalesce in the SQL."""
+    rawstore.write_rows(sr.EVENTS, [
+        _fda(100.0, "On a day", precision="day"),
+        _fda(200.0, "In Q2 2027", precision="quarter"),
+        _fda(300.0, "Late 2027", precision="half"),
+        {**_fda(400.0, "No precision"), "target_precision": None},
+        _event(500.0, "CPI"),                                      # an economic row is never undated
+        _fda(50.0, "Before the window", precision="quarter"),
+    ])
+    got = [r["event"] for r in sr.live_fda_outside_a_day("day", 60.0, 10)]
+    assert got == ["In Q2 2027", "Late 2027"]
+    assert [r["event"] for r in sr.live_fda_outside_a_day("day", 60.0, 1)] == ["In Q2 2027"]   # the page's cap
+
+
+def test_the_api_read_answers_for_the_types_it_was_asked_for(rawstore_tmp_db):
+    rawstore.write_rows(sr.EVENTS, [_event(100.0, "CPI", kind="report"), _event(200.0, "Powell", kind="fed-speaker"),
+                                    _fda(300.0, "PDUFA ABC"), _event(400.0, "Later", kind="report")])
+    assert [r["event"] for r in sr.live_events_of_types(0.0, 500.0, None, 10)] == ["CPI", "Powell", "PDUFA ABC",
+                                                                                   "Later"]
+    assert [r["event"] for r in sr.live_events_of_types(0.0, 500.0, ("REPORT",), 10)] == ["CPI", "Later"]
+    assert [r["event"] for r in sr.live_events_of_types(0.0, 500.0, ("fda",), 10)] == ["PDUFA ABC"]
+    assert len(sr.live_events_of_types(0.0, 500.0, None, 2)) == 2            # the route's own cap
+    assert sr.live_events_of_types(0.0, 500.0, ("", "  "), 10) == [], "an ask of blanks is no types, not every type"
+    assert [r["event"] for r in sr.live_events_of_types(0.0, 400.0, None, 10)] == ["CPI", "Powell", "PDUFA ABC"]
+
+
+# ── news_earnings (#886) ──────────────────────────────────────────────────────────────────────────────────────────
+def test_the_earnings_tab_reads_one_week_and_in_the_pages_order(rawstore_tmp_db):
+    """The weekly pass empties the table first, so a table holding another week answers no rows here and the tab
+    says the week is not built rather than showing last week's days."""
+    def row(week_start, ticker, day):
+        return {"week_start": week_start, "ticker": ticker, "company": ticker, "report_date": day,
+                "report_time": "post-market", "confirmed": True, "source": "alphavantage", "run_id": "t",
+                "run_at": NOW}
+    assert sr.earnings_week("2026-11-23") == []
+    rawstore.write_rows(sr.EARNINGS, [row("2026-11-23", "NVDA", "2026-11-25"),
+                                      row("2026-11-23", "AAPL", "2026-11-24"),
+                                      row("2026-11-23", "AA", "2026-11-24"),
+                                      row("2026-11-16", "MSFT", "2026-11-17")])
+    assert [r["ticker"] for r in sr.earnings_week("2026-11-23")] == ["AA", "AAPL", "NVDA"]
+    assert [r["ticker"] for r in sr.earnings_week("2026-11-16")] == ["MSFT"]
+    assert sr.earnings_week("2026-11-30") == []
 
 
 # ── news_highlight ────────────────────────────────────────────────────────────────────────────────────────────────
@@ -225,6 +299,16 @@ def test_a_ticker_matches_as_a_whole_name_and_not_as_a_prefix(rawstore_tmp_db):
     assert [r["headline_id"] for r in sr.headlines_for_ticker("AA", 0.0, 10)] == ["ibkr:2"]
     assert [r["headline_id"] for r in sr.headlines_for_ticker("aapl", 0.0, 10)] == ["ibkr:1"]
     assert set(sr.headlines_for_ticker("AA", 0.0, 10)[0]) == set(sr.TICKER_COLUMNS)
+
+
+def test_the_window_read_is_bounded_at_both_ends(rawstore_tmp_db):
+    """``GET /api/news/headlines`` asked for a window is what makes the join of #809 possible: the headlines
+    around a release, not the last 24 hours. The lane and ticker cuts stay with the route, in Python."""
+    rawstore.write_rows(sr.HEADLINES, [_head("ibkr:before", published=100.0), _head("ibkr:in", published=200.0),
+                                       _head("ibkr:also", published=300.0), _head("ibkr:after", published=400.0)])
+    assert [r["headline_id"] for r in sr.headlines_in_window(200.0, 300.0, 10)] == ["ibkr:also", "ibkr:in"]
+    assert [r["headline_id"] for r in sr.headlines_in_window(200.0, 300.0, 1)] == ["ibkr:also"]
+    assert set(sr.headlines_in_window(0.0, 500.0, 10)[0]) == set(sr.API_COLUMNS)
 
 
 def test_the_option_check_walks_the_x_lane_only(rawstore_tmp_db):

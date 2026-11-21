@@ -1,4 +1,4 @@
-"""How important a US economic-calendar event is: 3 high, 2 medium, 1 low (News board plan §4).
+"""How important a calendar event is: 3 high, 2 medium, 1 low (News board plan §4; FDA rows since #807).
 
 One tested table, shared by every board that shows the calendar. Unusual Whales' calendar has no importance field
 (`core/providers/unusual_whales.py` ``economic_calendar_result``: ``event``, ``type``, ``time``, ``forecast``,
@@ -46,6 +46,34 @@ def importance(event, kind) -> int:
         is_chair = " chair " in words and " vice chair " not in words
         return HIGH if is_chair else MEDIUM
     if _has(words, MEDIUM_PHRASES):
+        return MEDIUM
+    return LOW
+
+
+#: An FDA catalyst's words (whole words, lower case) that make the row high importance: the dates a decision or a
+#: public vote actually lands on. The owner reviews and edits these two lists like the economic ones above.
+FDA_HIGH_PHRASES = (
+    "pdufa", "decision", "approval", "adcom", "advisory committee", "advisory comm", "complete response letter",
+)
+#: FDA catalysts that are medium when no high phrase matched: a read-out or a filing, not a decision day.
+FDA_MEDIUM_PHRASES = (
+    "data", "results", "readout", "read out", "topline", "phase 3", "phase 2", "nda", "bla", "submission",
+    "filing", "interim",
+)
+
+
+def fda_importance(catalyst, status=None) -> int:
+    """The level of one FDA calendar row (#807) from its ``catalyst`` text and, failing that, its ``status``.
+
+    UW's FDA calendar has no importance field either (``rcdata/build/uw_fda_calendar.py``), so the level comes from
+    the words of the catalyst: a PDUFA date or an advisory-committee meeting is a date the market trades, a trial
+    read-out or an application is medium, anything else low. First cut of #807; the lists above are the owner's to
+    edit, like ``HIGH_PHRASES``.
+    """
+    words = _words(catalyst) if _words(catalyst).strip() else _words(status)
+    if _has(words, FDA_HIGH_PHRASES):
+        return HIGH
+    if _has(words, FDA_MEDIUM_PHRASES):
         return MEDIUM
     return LOW
 
