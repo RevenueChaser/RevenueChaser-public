@@ -211,7 +211,7 @@ def ohlc_gaps(session: date, tickers) -> dict[str, str]:
     ``NO_SESSION_BAR`` (S2, #434 review).
     """
     wanted = sorted({_norm(t) for t in tickers if _norm(t)})
-    bars = d01_last_bars([*wanted, "SPY"])       # MUTANT M2: the bound dropped
+    bars = d01_last_bars([*wanted, "SPY"], upto=session)       # the session's own bars, not a later day's (#881)
     # D01 is append-only: a pick's newest bar carries its own session's ``fetched_at``, never a later one, so the bar
     # alone cannot say whether a later Fetch helps (S2, #434 review). SPY's does: once Daily Bars has written SPY's
     # complete ``session`` bar, a pick without its own will not get one from another Fetch.
@@ -253,7 +253,7 @@ def d01_last_bars(tickers, upto: date | None = None) -> dict[str, tuple[str, flo
         return {}
     where, params = "ticker IN (SELECT unnest(?))", [tickers]
     if upto is not None:
-        where, params = where + " AND session_date < ?", [tickers, upto]          # MUTANT M1
+        where, params = where + " AND session_date <= ?", [tickers, upto]
     try:
         from RevenueChaser.core import prices   # the read API picks the file (``prices.source_state``)
         rows = prices._read(
