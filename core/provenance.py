@@ -142,9 +142,16 @@ def _oipd_day() -> str | None:
 
 
 def _news_day() -> str | None:
-    """NY day of the newest economic-calendar fetch in ``boards/news.duckdb`` (the headlines carry their own times)."""
-    rows = rawstore.query("SELECT max(fetched_at) AS v FROM news_calendar", db="news")
-    return session_of(rows[0]["v"]) if rows and rows[0]["v"] is not None else None
+    """NY day of the newest economic-calendar fetch in ``boards/news.duckdb`` (the headlines carry their own times).
+
+    Through the News board's own reader (#217). It used to be ``max(fetched_at) FROM news_calendar`` here, and
+    there is no ``news_calendar`` table in that file — the name is the *dataset* key of ``core/datasets.py``,
+    whose tables are ``news_events``, ``news_highlight`` and ``news_meta``. A read of a missing table answers no
+    rows, so this resolver returned None whatever the board held, and the News board showed no data date.
+    """
+    from RevenueChaser.module_news import store_reads
+    newest = store_reads.newest_event_fetch_at()
+    return None if newest is None else session_of(newest)
 
 
 # module key (as used by app/dashboard.py's tabs) -> resolver.

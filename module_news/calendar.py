@@ -27,14 +27,17 @@ from datetime import date, datetime, timezone
 from zoneinfo import ZoneInfo
 
 from RevenueChaser.core import econ_importance, rawstore
+from RevenueChaser.module_news import store_reads
 from RevenueChaser.rcdata import read as market_read
 
 AMS = ZoneInfo("Europe/Amsterdam")
 MARK_KEY = "calendar_mark"
 FDA_MARK_KEY = "fda_mark"
-#: The ``type`` of an FDA row in ``news_events`` (#807); the economic rows keep UW's own report/fomc/fed-speaker.
-FDA_TYPE = "fda"
-EVENTS, HIGHLIGHT, META = "news_events", "news_highlight", "news_meta"
+# The table names and the FDA row type are the board's reader's (``module_news/store_reads.py``, #217); the writes
+# below still happen here, because a write belongs with the code that produces the rows, but they name no table of
+# their own. ``FDA_TYPE`` is re-exported because the page and the API read it from this module (#807).
+EVENTS, HIGHLIGHT, META = store_reads.EVENTS, store_reads.HIGHLIGHT, store_reads.META
+FDA_TYPE = store_reads.FDA_TYPE
 _EVENT_COLS = ("event_ts", "event", "type", "importance", "forecast", "prev", "reported_period", "first_seen",
                "last_seen", "retired_at", "run_id", "run_at")
 _FDA_COLS = _EVENT_COLS + ("ticker", "drug", "catalyst", "target_text", "target_precision", "indication", "status",
@@ -46,9 +49,9 @@ def local_day(ts: float) -> date:
 
 
 def _mark(key: str = MARK_KEY) -> float:
-    rows = rawstore.query(f"SELECT value FROM {META} WHERE key = ?", [key], db="news")
+    value = store_reads.meta_value(key)
     try:
-        return float(rows[0]["value"]) if rows else 0.0
+        return 0.0 if value is None else float(value)
     except (TypeError, ValueError):
         return 0.0
 
@@ -61,7 +64,7 @@ def _stored(keys: list[tuple]) -> dict[tuple, dict]:
     if not keys:
         return {}
     lo, hi = min(k[0] for k in keys), max(k[0] for k in keys)
-    rows = rawstore.query(f"SELECT * FROM {EVENTS} WHERE event_ts BETWEEN ? AND ?", [lo, hi], db="news")
+    rows = store_reads.events_between(lo, hi)
     return {(r["event_ts"], r["event"], r["type"]): r for r in rows}
 
 
@@ -124,8 +127,7 @@ def _fda_pass(now: float, run_id: str) -> dict:
         if lo <= row["event_ts"] <= hi and (row["event_ts"], row["event"], FDA_TYPE) not in newest_keys:
             row["retired_at"] = now
             retired += 1
-    live = rawstore.query(f"SELECT * FROM {EVENTS} WHERE event_ts BETWEEN ? AND ? AND retired_at IS NULL "
-                          f"AND type = ?", [lo, hi, FDA_TYPE], db="news")
+    live = store_reads.live_fda_between(lo, hi)
     for r in live:
         key = (r["event_ts"], r["event"], r["type"])
         if key not in seen:
@@ -175,8 +177,7 @@ def build(now: float | None = None, run_id: str | None = None) -> dict:
         if lo <= row["event_ts"] <= hi and (row["event_ts"], row["event"], row["type"]) not in newest_keys:
             row["retired_at"] = now
             retired += 1
-    live = rawstore.query(f"SELECT * FROM {EVENTS} WHERE event_ts BETWEEN ? AND ? AND retired_at IS NULL "
-                          f"AND type <> ?", [lo, hi, FDA_TYPE], db="news")
+    live = store_reads.live_economic_between(lo, hi)
     for r in live:
         key = (r["event_ts"], r["event"], r["type"])
         if key not in seen:
@@ -198,8 +199,7 @@ def _highlights(days: set[date], now: float, run_id: str) -> int:
         return 0
     lo = min(days)
     start = datetime(lo.year, lo.month, lo.day, tzinfo=AMS).timestamp()
-    live = rawstore.query(f"SELECT * FROM {EVENTS} WHERE event_ts >= ? AND retired_at IS NULL AND type <> ? "
-                          f"ORDER BY event_ts", [start, FDA_TYPE], db="news")   # the highlight is economic (#807)
+    live = store_reads.live_economic_from(start)   # the highlight is economic (#807)
     by_day: dict[date, list[dict]] = {}
     for r in live:
         d = local_day(r["event_ts"])

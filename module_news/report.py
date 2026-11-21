@@ -12,18 +12,17 @@ import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-from RevenueChaser.core import econ_importance, rawstore
+from RevenueChaser.core import econ_importance
 from RevenueChaser.core.config import OUTPUT_DIR
 from RevenueChaser.core.html_safe import esc
 from RevenueChaser.core.html_safe import script_json
 from RevenueChaser.core.reporting_common import (FILTERS_CSS, FILTERS_JS, THEME_CSS, THEME_JS, combobox_html, help_html,
                                                  provider_health_html, watchlist_html, write_artifact)
-from RevenueChaser.module_news.calendar import AMS, EVENTS, FDA_TYPE, HIGHLIGHT, local_day, served_value
-from RevenueChaser.module_news import earnings, headlines, x_check
+from RevenueChaser.module_news.calendar import AMS, FDA_TYPE, local_day, served_value
+from RevenueChaser.module_news import earnings, headlines, store_reads, x_check
 from RevenueChaser.module_news.x_feed import X_PROVIDERS
 
 FILENAME = "news_latest.html"
-HEADLINES = "news_headlines"
 WEEK_DAYS = 7
 HEADLINE_HOURS = 24
 HEADLINE_LIMIT = 30
@@ -97,28 +96,18 @@ def _load(now: float) -> tuple[list[dict], list[dict], dict | None, list[dict], 
     start = datetime(days[0].year, days[0].month, days[0].day, tzinfo=AMS)
     end = start + timedelta(days=WEEK_DAYS)
     today = local_day(now)
-    events = rawstore.query(
-        f"SELECT * FROM {EVENTS} WHERE event_ts >= ? AND event_ts < ? AND retired_at IS NULL "
-        f"ORDER BY event_ts, event", [start.timestamp(), end.timestamp()], db="news")
+    events = store_reads.live_events_in_window(start.timestamp(), end.timestamp())
     # The FDA catalysts UW gives no day for (a quarter, a half year, "late"): they belong to no day of the strip,
     # so they stand in their own group under the FDA tab and are read outside the week's window (#808).
-    undated = [e for e in rawstore.query(
-        f"SELECT * FROM {EVENTS} WHERE type = ? AND retired_at IS NULL AND coalesce(target_precision, ?) <> ? "
-        f"AND event_ts >= ? ORDER BY event_ts, event LIMIT {UNDATED_LIMIT}",
-        [FDA_TYPE, DAY_PRECISION, DAY_PRECISION,
-         (start - timedelta(days=UNDATED_LOOKBACK_DAYS)).timestamp()], db="news")
+    undated = [e for e in store_reads.live_fda_outside_a_day(
+        DAY_PRECISION, (start - timedelta(days=UNDATED_LOOKBACK_DAYS)).timestamp(), UNDATED_LIMIT)
         if window_open(e, today)]
-    hl = rawstore.query(f"SELECT * FROM {HIGHLIGHT} WHERE session_date = ?", [today.isoformat()], db="news")
-    x = f"coalesce(provider, '') IN ({', '.join(repr(p) for p in X_PROVIDERS)})"
-    lanes = (f"NOT {x} AND coalesce(tickers, '[]') = '[]'", f"NOT {x} AND coalesce(tickers, '[]') <> '[]'",
-             f"{x} AND coalesce(kind, '') <> 'other'")        # the X lane leaves out what Grok filed as "other"
-    heads = [r for cond in lanes for r in rawstore.query(      # each lane its own newest LIMIT
-        f"SELECT * FROM {HEADLINES} WHERE published_at >= ? AND {cond} "
-        f"ORDER BY published_at DESC LIMIT {HEADLINE_LIMIT}", [now - HEADLINE_HOURS * 3600], db="news")]
+    hl = store_reads.highlight(today.isoformat())
+    heads = store_reads.headlines_by_lane(now - HEADLINE_HOURS * 3600, HEADLINE_LIMIT)
     # The page's "updated" time is its newest write: the calendar's, or the 5-minute headline pass's.
-    got = rawstore.query(f"SELECT max(run_at) AS t FROM {EVENTS}", db="news")
-    stamps = [float(t) for t in [got[0]["t"] if got else None] + [h.get("run_at") for h in heads] if t is not None]
-    return events, undated, (hl[0] if hl else None), heads, (max(stamps) if stamps else None)
+    stamps = [float(t) for t in [store_reads.newest_event_run_at()] + [h.get("run_at") for h in heads]
+              if t is not None]
+    return events, undated, hl, heads, (max(stamps) if stamps else None)
 
 
 def dots_html(level) -> str:
@@ -506,11 +495,7 @@ def _headlines(rows: list[dict], fresh: dict, now: float) -> dict[str, str]:
 def api_rows(since: float, limit: int = 2 * HEADLINE_LIMIT) -> list[dict]:
     """Headlines stored after ``since`` (their ``run_at``), plus the tape lines not stored yet (``peek_tape``), newest
     first, as the poll draws them."""
-    rows = rawstore.query(
-        f"SELECT headline_id, provider, published_at, headline, source, tickers, url, kind, option, x_check, run_at "
-        f"FROM {HEADLINES} "
-        f"WHERE run_at > ? AND published_at >= ? ORDER BY published_at DESC LIMIT {int(limit)}",
-        [float(since), time.time() - HEADLINE_HOURS * 3600], db="news")
+    rows = store_reads.headlines_since(since, time.time() - HEADLINE_HOURS * 3600, limit)
     rows = [r for r in rows if not (lane(r) == "x" and r.get("kind") == "other")]
     cutoff, seen = time.time() - HEADLINE_HOURS * 3600, {r["headline_id"] for r in rows}
     rows += [r for r in headlines.peek_tape() if r["headline_id"] not in seen and r["published_at"] >= cutoff]
@@ -551,15 +536,7 @@ def event_rows(now: float | None = None, days: int = WEEK_DAYS, types: tuple[str
     today = local_day(now)
     start = datetime(today.year, today.month, today.day, tzinfo=AMS)
     end = start + timedelta(days=max(1, min(int(days), API_MAX_DAYS)))
-    sql = (f"SELECT * FROM {EVENTS} WHERE event_ts >= ? AND event_ts < ? AND retired_at IS NULL")
-    params: list = [start.timestamp(), end.timestamp()]
-    if types:
-        wanted = sorted({str(t).strip().lower() for t in types if str(t or "").strip()})
-        if not wanted:
-            return []
-        sql += f" AND lower(type) IN ({', '.join('?' * len(wanted))})"
-        params += wanted
-    rows = rawstore.query(sql + f" ORDER BY event_ts, event LIMIT {API_LIMIT}", params, db="news")
+    rows = store_reads.live_events_of_types(start.timestamp(), end.timestamp(), types or None, API_LIMIT)
     return [{"event_ts": float(r["event_ts"]),
              "event_utc": datetime.fromtimestamp(float(r["event_ts"]), timezone.utc).isoformat(),
              "event_local": datetime.fromtimestamp(float(r["event_ts"]), AMS).isoformat(),
@@ -589,10 +566,7 @@ def headline_rows(start: float, end: float, ticker: str | None = None,
     ``GET /api/news/headlines`` serves when it is asked for a window instead of the page's ``since`` poll.
 
     The window is what makes the join of #809 possible: the headlines around a release, not the last 24 hours."""
-    rows = rawstore.query(
-        f"SELECT headline_id, provider, published_at, headline, source, tickers, url, kind, option, x_check, run_at "
-        f"FROM {HEADLINES} WHERE published_at >= ? AND published_at <= ? ORDER BY published_at DESC "
-        f"LIMIT {max(1, min(int(limit), API_LIMIT)) * 4}", [float(start), float(end)], db="news")
+    rows = store_reads.headlines_in_window(start, end, max(1, min(int(limit), API_LIMIT)) * 4)
     rows = [r for r in rows if not (lane(r) == "x" and r.get("kind") == "other")]
     if ticker:
         want = str(ticker).strip().upper()
