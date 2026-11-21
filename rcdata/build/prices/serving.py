@@ -180,10 +180,14 @@ ISSUE_KINDS = {
                            "exception is visible (key: security:session; #661, avo 21 Nov 2026)"),
     "split_crsp_restated": ("a ``split_applied_crsp`` candidate Compustat or Alpaca already records at the same ratio "
                             "(within SPLIT_RATIO_TOLERANCE) up to SPLIT_SAME_RATIO_DAYS days away: one split the two "
-                            "sources date apart, not two. It is **not** applied -- the other source's row carries it "
-                            "-- so the share basis steps once. The detail names the other row's day and ratio, and "
-                            "whether that day is the one the served close jumps across: where it is not, the other "
-                            "source dates the split early and the bars between the two days are on the wrong basis "
+                            "sources date apart, not two, so it is applied **once**. Which of the two days carries "
+                            "it is the served bars' answer (avo, 22 Nov 2026: the real ex-date wins): the basis "
+                            "changed between the two bars the jump is measured across, so where the other source's "
+                            "day is outside that gap it is not the real ex-date and CRSP's row is the applied one, "
+                            "the other source's left in the table unapplied (``action_not_applied``, reason "
+                            "'restated by CRSP'). Where both days fall in the same gap the bars cannot tell them "
+                            "apart and no bar's basis moves either way, so the other source's row stays the applied "
+                            "one. The detail names the other row's day and ratio and which way it went "
                             "(key: security:session; #661, NVDA's 2-for-1 of Sep 2001)"),
     "adjustment_differs": ("a served bar's total-return day return is more than 1 bp from Alpaca's adjusted one, or "
                            "more than the rounding of its cent-rounded closes where that is larger (the tester, "
@@ -817,15 +821,27 @@ class PricesServing:
             GROUP BY 1, 2""")
         con.execute(f"""CREATE OR REPLACE TEMP TABLE _crsp_only_split AS
             SELECT s.*, s.close_after_split / s.close_before_split AS served_move,
-                   d.dup_ex_date, d.dup_source, d.dup_ratio
+                   d.dup_ex_date, d.dup_source, d.dup_ratio,
+                   d.dup_ex_date > s.day_before AND d.dup_ex_date <= s.day_after AS dup_in_gap
             FROM _crsp_split_span s
             LEFT JOIN _crsp_split_dup d ON d.security_id = s.security_id AND d.ex_date = s.ex_date
             WHERE date_diff('day', s.day_before, s.day_after) <= {GAP_DAYS}""")
         jump = f"abs(ln(served_move)) >= ln({GAP_FACTOR})"
-        # One split, two dates: the other source's row carries it, so this one is not applied (#661). Without this,
-        # both step the share basis and every adjusted close before the earlier date is off by the ratio -- NVDA's
-        # oldest split_factor came out 1/960 where 1/480 is right.
+        # One split, two dates: only one of them is the day the share basis changed, so only one row is applied
+        # (#661). Without this, both step the basis and every adjusted close before the earlier date is off by the
+        # ratio -- NVDA's oldest split_factor came out 1/960 where 1/480 is right.
         dup = "dup_ex_date IS NOT NULL"
+        # **Which** of the two dates is applied is avo's decision of 22 Nov 2026 ("Gercek değeri tabiki"): the real
+        # ex-date wins. The served bars say which that is -- the basis changed between ``day_before`` and
+        # ``day_after``, the two bars the jump is measured across, and CRSP's ex-date is inside that gap by
+        # construction. Where the other source's date is **outside** it, that date is not the day the basis changed
+        # (NVDA: Compustat's 12 Sep 2001 is the planned date, postponed because the exchanges were closed; CRSP's
+        # 17 Sep 2001 is the real one, and the served closes halve across it), so **CRSP's row is the applied one**
+        # and the other source's stays in ``corporate_action`` unapplied, naming the reason. Where the other
+        # source's date is inside the same gap, the served bars cannot tell the two apart and no bar's basis moves
+        # either way: nothing is gained by moving the split, so the other source's row stands.
+        moved = f"{jump} AND {dup} AND NOT dup_in_gap"
+        kept = f"{jump} AND {dup} AND dup_in_gap"
         # avo's decision of 21 Nov 2026 (#661): a CRSP-only split the served close jumps GAP_FACTOR or more across
         # is a split Compustat lacks, and the served history is wrong there, so that row **is served** -- the one
         # exception to "no CRSP row is served" (avo, 4 Nov 2026). Measured on the live file that day: 80 such days,
@@ -837,6 +853,16 @@ class PricesServing:
             SELECT security_id, action_id, action_type, ex_date, eff, old_rate, new_rate, rate, special, currency,
                    record_date, payable_date, '{wrds_history.CRSP}' AS source, source_as_of, fetched_at, run_id
             FROM _crsp_only_split WHERE {jump} AND NOT {dup}""").fetchone()[0]
+        # The real ex-date of a restated pair: CRSP's row is applied, as the one the served bars agree with.
+        moved_n = con.execute(f"""INSERT INTO _act BY NAME
+            SELECT security_id, action_id, action_type, ex_date, eff, old_rate, new_rate, rate, special, currency,
+                   record_date, payable_date, '{wrds_history.CRSP}' AS source, source_as_of, fetched_at, run_id
+            FROM _crsp_only_split WHERE {moved}""").fetchone()[0]
+        # ... and the other source's row is held back, keyed on **its** day, with the reason ``_act_final`` writes.
+        con.execute(f"""CREATE OR REPLACE TEMP TABLE _split_restated_by_crsp AS
+            SELECT security_id, dup_ex_date, min(ex_date) AS crsp_ex_date, min(day_before) AS day_before,
+                   min(day_after) AS day_after
+            FROM _crsp_only_split WHERE {moved} GROUP BY 1, 2""")
         # An applied one keeps a row of its own kind: a served CRSP row is the exception, so it stays visible.
         for sid, day, aid, ratio, move, before, after in con.execute(
                 "SELECT security_id, ex_date, action_id, new_rate, served_move, day_before, day_after "
@@ -851,19 +877,24 @@ class PricesServing:
             found.append(("split_only_crsp", f"{sid}:{day}", f"PERMNO {aid.split(':')[2]}: CRSP's dlycumfacpr has a "
                           f"split of ratio {ratio:.4f}, no Compustat or Alpaca split within {SPLIT_SAME_DAYS} days; "
                           f"the served close moves x{move:.3f} from {before} to {after}, no jump in the served bars"))
-        # A candidate the other source already carries: named, never applied. The detail says where the other
-        # source dates it, because a day the served close does not jump across is a split dated early there.
-        for sid, day, aid, ratio, dup_day, dup_source, dup_ratio, before, after in con.execute(
-                "SELECT security_id, ex_date, action_id, new_rate, dup_ex_date, dup_source, dup_ratio, day_before, "
-                f"day_after FROM _crsp_only_split WHERE {jump} AND {dup} ORDER BY 1, 2").fetchall():
-            early = (f"; the served close jumps between {before} and {after}, not across {dup_day}, so "
-                     f"{dup_source} dates this split early and the bars in between are on the wrong basis"
-                     if dup_day <= before else "")
-            found.append(("split_crsp_restated", f"{sid}:{day}", f"PERMNO {aid.split(':')[2]}: not applied, "
-                          f"{dup_source} has the same split at ratio {dup_ratio:.4f} on {dup_day}, "
-                          f"{abs((dup_day - day).days)} day(s) away and within {SPLIT_RATIO_TOLERANCE:.0%} of "
-                          f"CRSP's {ratio:.4f}: one split the two sources date apart, applied once (#661)"
-                          f"{early}"))
+        # One split the two sources date apart: the detail says which of the two days is applied and why. The
+        # served bars decide -- the basis changed inside (day_before, day_after], and a date outside that gap is
+        # not the day it changed (avo, 22 Nov 2026: the real ex-date wins).
+        for sid, day, aid, ratio, dup_day, dup_source, dup_ratio, move, before, after, in_gap in con.execute(
+                "SELECT security_id, ex_date, action_id, new_rate, dup_ex_date, dup_source, dup_ratio, served_move, "
+                f"day_before, day_after, dup_in_gap FROM _crsp_only_split WHERE {jump} AND {dup} "
+                "ORDER BY 1, 2").fetchall():
+            which = (f"the served close jumps x{move:.3f} between {before} and {after} and not across "
+                     f"{dup_day}, so {day} is the real ex-date and **CRSP's row is the applied one**; "
+                     f"{dup_source}'s row stands unapplied, and the bars between the two days are now on the "
+                     "right basis"
+                     if not in_gap else
+                     f"both days fall between the served bars {before} and {after}, so the bars cannot tell them "
+                     f"apart and no bar's basis moves either way: {dup_source}'s row stays the applied one")
+            found.append(("split_crsp_restated", f"{sid}:{day}", f"PERMNO {aid.split(':')[2]}: {dup_source} has the "
+                          f"same split at ratio {dup_ratio:.4f} on {dup_day}, {abs((dup_day - day).days)} day(s) "
+                          f"away and within {SPLIT_RATIO_TOLERANCE:.0%} of CRSP's {ratio:.4f}, so this is one split "
+                          f"the two sources date apart and it is applied once (#661). {which}"))
         named, restated = con.execute(
             f"SELECT count(*) FILTER (WHERE NOT ({jump})), count(*) FILTER (WHERE {jump} AND {dup}) "
             "FROM _crsp_only_split").fetchone()
@@ -871,10 +902,11 @@ class PricesServing:
                    - named - restated - applied)
         if named or applied or restated or outside:
             ctx.notes.append(f"split_only_crsp: {applied} applied as {wrds_history.CRSP} (the served close jumps "
-                             f"{GAP_FACTOR} times or more: Compustat lacks the split, #661), {restated} not applied "
-                             f"with the same split at the same ratio within {SPLIT_SAME_RATIO_DAYS} days from "
-                             f"another source, {named} named with no jump in the served bars, {outside} with no "
-                             f"served bar on both sides within {GAP_DAYS} days, not named")
+                             f"{GAP_FACTOR} times or more: Compustat lacks the split, #661), {restated} the same "
+                             f"split another source dates within {SPLIT_SAME_RATIO_DAYS} days at the same ratio "
+                             f"({moved_n} of them applied from {wrds_history.CRSP} as the real ex-date, the other "
+                             f"source's row held back), {named} named with no jump in the served bars, {outside} "
+                             f"with no served bar on both sides within {GAP_DAYS} days, not named")
         con.execute(f"""CREATE OR REPLACE TEMP TABLE _act_typed AS
             SELECT a.*, CASE WHEN action_type IN ('forward_split', 'reverse_split') THEN 'split'
                              WHEN action_type IN ('cash_dividend', 'capital_gains_distribution') THEN 'cash_dividend'
@@ -890,7 +922,15 @@ class PricesServing:
         # the action itself (no ratio, no amount) is named at once, so a malformed one gets the window's notice;
         # only what needs the close before the ex-date, and a kind the factors never apply, waits.
         newest = "(SELECT max(session_date) FROM price_bar_daily WHERE security_id NOT LIKE 'index:%')"
+        # The row CRSP's real ex-date stands in for (above): it records the same split, so applying it too would
+        # step the basis twice, and its own day is not the day the basis changed. It stays in the table, unapplied,
+        # and ``action_not_applied`` names it with this reason (avo, 22 Nov 2026).
+        restated_by = ("(SELECT max(r.crsp_ex_date) FROM _split_restated_by_crsp r "
+                       "WHERE r.security_id = a.security_id AND r.dup_ex_date = a.ex_date)")
         why = f"""CASE
+            WHEN action IN ('split', 'stock_dividend') AND {restated_by} IS NOT NULL
+                THEN 'restated by CRSP: the same split, and the served close changes basis across '
+                     || CAST({restated_by} AS TEXT) || ', the real ex-date, which CRSP''s row carries'
             WHEN action IN ('split', 'stock_dividend') AND ex_date IS NULL THEN 'no ex-date'
             WHEN action IN ('split', 'stock_dividend') AND ratio IS NULL THEN 'no ratio'
             WHEN action = 'cash_dividend' AND ex_date IS NULL THEN 'no ex-date'
@@ -908,7 +948,7 @@ class PricesServing:
                    {why} AS not_applied_why, symbol, new_symbol, record_date, payable_date, process_date,
                    source, action_id AS source_id, source_as_of, fetched_at, run_id,
                    close_before
-            FROM _act_close""")
+            FROM _act_close a""")
         # On the live copy: every Alpaca action again (they are few, and which security one lands on can move),
         # and the WRDS actions of the rebuilt days and securities.
         rebuilt = (f"(source = '{ALPACA_ACTIONS}' OR {incremental.where('ex_date')})" if live else None)

@@ -1668,12 +1668,16 @@ day: 80 of 691, e.g. TNXP's 27 Nov 2018 close served as 0.4156 where its 1:10 re
 served close does not jump across is a CRSP factor step the served bars do not show (611 of the 691): named only,
 never applied, because applying it would move a history that is already right. One Compustat or Alpaca **already
 records at the same ratio** (within 1 %) up to 7 days away is one split the two sources date apart, not two:
-`split_crsp_restated`, named and never applied, so the share basis steps once (#661; NVDA's 2-for-1 is Compustat's
-12 Sep 2001, the first planned date, and CRSP's 17 Sep 2001, the real ex-date, and applying both made its oldest
-`split_factor` 1/960 where 1/480 is right). Where that other day is not the one the served close jumps across, the
-other source dates the split early and the bars in between are on the wrong basis: the issue's detail says so. The
-build note `split_only_crsp: N applied as wrds/crsp ..., R not applied with the same split ..., M named with no
-jump ...` carries every count. A CRSP
+`split_crsp_restated`, applied **once** (#661; NVDA's 2-for-1 is Compustat's 12 Sep 2001, the first planned date,
+and CRSP's 17 Sep 2001, the real ex-date, and applying both made its oldest `split_factor` 1/960 where 1/480 is
+right). **Which of the two days carries it is the served bars' answer** (avo, 22 Nov 2026: the real ex-date wins).
+The basis changed between the two bars the jump is measured across, so a day outside that gap is not the day it
+changed: there CRSP's row is the applied one and the other source's is left in `corporate_action` unapplied, named
+`action_not_applied` with the reason `restated by CRSP`, and the bars between the two days come onto the right
+basis. Where both days fall in the same gap the bars cannot tell them apart and no bar's basis moves either way,
+so the other source's row stays the applied one. The build note `split_only_crsp: N applied as wrds/crsp ..., R the
+same split another source dates within 7 days at the same ratio (M of them applied from wrds/crsp as the real
+ex-date ...), ... ` carries every count. A CRSP
 split with no served bar of the security on both sides within 7 days touches no served bar: counted in the note, not
 named (review M6 of #382: build 4 named 1,056 with no way to tell the two apart). **Alpaca is the tester**: its
 bars write `alpaca_close_differs` and `adjustment_differs` issues, compared in every serving build, so a session is
@@ -1819,10 +1823,10 @@ CRSP factor step the served bars do not show, named and never applied; key secur
 the served history was wrong there, so it is applied from CRSP as source `wrds/crsp` -- the one CRSP row that is
 served -- and stays named so the exception is visible; key security:session; #661, avo 21 Nov 2026),
 `split_crsp_restated` (that candidate where Compustat or Alpaca already records the same split at the same ratio,
-within 1 %, up to 7 days away: one split the two sources date apart, so CRSP's row is **not** applied and the share
-basis steps once; the detail names the other row's day and ratio, and says where that day is not the one the served
-close jumps across -- there the other source dates the split early; key security:session; #661, NVDA's 2-for-1 of
-Sep 2001), `adjustment_differs` (the store's total-return day return more than 1 bp from Alpaca's own, or
+within 1 %, up to 7 days away: one split the two sources date apart, applied once, on the day the served bars
+change basis -- CRSP's, where the other source's day is outside the gap the jump is measured across, and then that
+row is held back unapplied; the other source's, where both days fall in the same gap; key security:session; #661,
+NVDA's 2-for-1 of Sep 2001, avo 22 Nov 2026), `adjustment_differs` (the store's total-return day return more than 1 bp from Alpaca's own, or
 more than half a cent on each of Alpaca's cent-rounded adjusted closes, the exact bound, where that is larger: about
 1.5 bp at $70, 5 bp at $20, 50 bp at $2, so below a few dollars of adjusted close a dividend-sized gap hides in it;
 checked on every served bar Alpaca, the tester, has a bar for), `alpaca_close_differs` (the tester: a Compustat or CRSP
