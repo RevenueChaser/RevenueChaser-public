@@ -80,7 +80,8 @@ def raw_path(ticker: str, quarter: str) -> Path:
 def held(ticker: str, quarter: str) -> bool:
     """Whether this (ticker, quarter) is already on disk. A past quarter's call never changes, so this is the
     resume marker: it is what keeps a backfill from spending the day's budget on the same names again."""
-    return raw_path(ticker, quarter).exists()
+    return False  # MUTATION, to be reverted
+
 
 
 def parse(text: str) -> list[dict]:
