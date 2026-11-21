@@ -113,7 +113,11 @@ arrived at.
 2. **How many reference days, and where do they live?** — answered in principle (avo, 21 Nov 17:14: take them and
    automate the rest until UW is dropped); the remaining part is scope, and that is a disk measurement, not a
    question. Files land under `/mnt/data/apps/revenuechaser/uw-reference/`, personal use, out of this repository.
-3. **Does the UW bot feed stop when the plan renews on 9 December?**
+3. **Does the UW bot feed stop when the plan renews on 9 December — and is Traders' Pub's bot a second bill?**
+   The channels show Premium markers (`notifications/premium/` image paths, `utm_content=custom_alert`), and UW
+   prices a **Premium Server Subscription at USD 124.99/month** for custom alerts to Discord. Whether that is paid
+   separately from avo's own web plan is not visible from Discord, and it decides whether "plan B" is free or
+   nearly as expensive as staying.
 4. **Analyst ratings** — do we want them at all, and is a paid source acceptable?
 
 **Lane J's end condition is written down on purpose:** the daily download exists only while UW is paid for. The
