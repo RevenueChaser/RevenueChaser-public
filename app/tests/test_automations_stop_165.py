@@ -29,16 +29,15 @@ def _row(client, name: str) -> dict:
     return next(r for r in rows if r["name"] == name)
 
 
-def test_no_stop_action_was_added_to_the_action_route(client, fake):
-    r = client.post("/api/automations/RC-ValueChain-Sync/stop", headers={"X-RC-Panel": "automations"})
-    assert r.status_code == 400 and fake.calls == []
-
-
-def test_each_row_says_whether_it_has_a_stop(client, fake):
+def test_each_row_says_whether_it_has_a_stop_and_no_stop_action_was_added(client, fake):
     rows = client.get("/api/automations").get_json()["rows"]
     assert all("stop" in r for r in rows)
     assert _row(client, "RC-Build")["stop"]["reason"] == A.STOP_NOT_DASHBOARD
     assert _row(client, "RC-ValueChain-Sync")["stop"]["reason"] == A.STOP_NOT_RUNNING
+    # The stop is the cancel route, so the action route gained nothing. Asserted here rather than on its own:
+    # alone it would pass on the merge-base and prove nothing (``scripts/red_on_base.py``).
+    r = client.post("/api/automations/RC-ValueChain-Sync/stop", headers={"X-RC-Panel": "automations"})
+    assert r.status_code == 400 and fake.calls == []
 
 
 def test_a_queued_job_shows_on_its_row_and_that_id_is_the_one_the_cancel_route_stops(client, fake, monkeypatch):

@@ -103,19 +103,20 @@ def test_no_reason_names_a_kill_or_a_privileged_verb():
 # --- the stop is serving only ------------------------------------------------------
 
 
-def test_stop_is_not_an_action_and_the_scheduler_has_no_stop():
-    assert "stop" not in A.ACTIONS
-    assert not hasattr(A.Scheduler, "stop")
-    for name in ("install", "enable", "disable", "remove", "run"):
-        assert name in A.ACTIONS
+def test_every_live_row_carries_a_stop_and_nothing_was_added_to_the_scheduler():
+    """The row's ``stop`` is the whole of it: no ``stop`` action and no ``Scheduler.stop`` beside it.
 
-
-def test_every_live_row_carries_a_stop():
+    The two halves are one test on purpose: a guard that only says "nothing was added" passes on the merge-base
+    too, so it is no evidence (``scripts/red_on_base.py``); tied to the field this change adds, it is.
+    """
     rows = A.live_state(A.FakeScheduler(), NOW)["rows"]
     assert len(rows) == len(A.REGISTRY)
     for r in rows:
         assert set(r["stop"]) == {"can_stop", "job_id", "cancel_url", "reason"}
         assert r["stop"]["can_stop"] is False          # no lookup was given, so nothing is running
+    assert "stop" not in A.ACTIONS
+    assert not hasattr(A.Scheduler, "stop")
+    assert A.ACTIONS == ("install", "enable", "disable", "remove", "run")
 
 
 def test_live_state_asks_the_lookup_only_for_the_rows_that_have_a_dashboard_job():
