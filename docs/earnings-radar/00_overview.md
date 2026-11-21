@@ -10,6 +10,9 @@
 > (`RULE_WEIGHTS`). **Code wins** for current behaviour; treat this folder as
 > backlog/aspiration. R1 is reserved at 0% in code (see README); building it is
 > board issue "improve RevenueChaser" (#15).
+>
+> **What actually ran, measured:** [`2026-11-21_rules-measured.md`](2026-11-21_rules-measured.md)
+> — one board file, 35 cards, per-rule availability and the reason lines that fired (read-only, 21 Nov 2026).
 
 ## Architecture
 
