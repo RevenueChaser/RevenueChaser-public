@@ -4,7 +4,10 @@
 expected report: ``symbol, name, reportDate, fiscalDateEnding, estimate, currency`` (and ``timeOfTheDay`` where Alpha
 Vantage sends it). **Not verified against the real source** (the column names follow its documentation; read by
 header name, an unknown column ignored, a missing required one a failed run). The free tier allows 25 requests a day
-(``caps.DAY_CAPS``); this is one request a run. Its rate-limit and error answers are JSON (``Note``, ``Information``,
+(``caps.DAY_CAPS``); this is one request a run. It runs **weekly** (avo, 21 Nov 2026: "Haftalik cek"): the horizon is
+three months ahead, so a day's calendar differs from the one before it only at the edges, and the Radar reads the
+served ``earnings_event`` rows rather than the run. A failed run is still due again on the next New York day
+(``due.DAY_CAPPED``), not a week later. Its rate-limit and error answers are JSON (``Note``, ``Information``,
 ``Error Message``) with HTTP 200: a failed run that names the key, never the body (it could echo the request). No
 ``ALPHAVANTAGE_API_KEY``: nothing is asked, a ``missing_key`` build issue. The key travels in the query string,
 which is never logged or stored.
@@ -103,7 +106,7 @@ class EarningsCalendar:
     providers = (PROVIDER,)
     tables: tuple[str, ...] = ()
     feeds = ("earnings_event",)       # the calendar dates of the companies the spine holds
-    cadence = "daily"
+    cadence = "weekly"
     backfill_needs_from = False
     starts_by_hand = True
 

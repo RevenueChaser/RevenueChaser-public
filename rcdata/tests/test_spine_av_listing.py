@@ -5,7 +5,7 @@ The key travels in the query string, so it is asserted absent from everything ke
 """
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 import duckdb
 import pytest
@@ -119,12 +119,45 @@ def test_the_build_stages_the_newest_snapshot_only(env):
     assert "2 ETF, 1 Stock active" in row["note"]
 
 
-def test_it_is_a_daily_spine_dataset_that_starts_by_hand_inside_the_alpha_vantage_cap():
+def test_it_is_a_weekly_spine_dataset_that_starts_by_hand_inside_the_alpha_vantage_cap():
+    """Weekly since 21 Nov 2026 (avo, "Evet onlarda cok sik olmasina gerek yok"): the list of every US listing
+    changes by a handful of rows a week, and two of the 25 calls a day went on it every day."""
     from RevenueChaser.rcdata import caps
     from RevenueChaser.rcdata.build import DATASETS
     ds = DATASETS[av.NAME]
-    assert ds.kind == "spine" and ds.cadence == "daily" and ds.starts_by_hand and ds.providers == ("alphavantage",)
+    assert ds.kind == "spine" and ds.cadence == "weekly" and ds.starts_by_hand and ds.providers == ("alphavantage",)
     assert caps.DAY_CAPS["alphavantage"] == 25
+
+
+def test_the_weekly_cycle_is_what_the_due_check_counts(env, monkeypatch):
+    """Not due 6 days after the run that built it, due on the 7th: the cadence the dataset declares."""
+    from RevenueChaser.core import calendar
+    from RevenueChaser.rcdata.build import DATASETS, due
+    _answer(env)
+    _run()
+    ds = DATASETS[av.NAME]
+    checked = date.fromisoformat(str(ops.latest_check(av.NAME)["checked_on"])[:10])
+    monkeypatch.setattr(calendar, "today_ny", lambda: checked + timedelta(days=6))
+    assert due.is_due(ds, "full")[0] is False
+    monkeypatch.setattr(calendar, "today_ny", lambda: checked + timedelta(days=7))
+    assert due.is_due(ds, "full")[0] is True
+
+
+def test_a_failed_run_is_still_due_again_on_the_next_new_york_day_not_a_week_later(env, monkeypatch):
+    """The day cap's rule is unchanged by the weekly cadence: a failure waits for the next New York day, no more."""
+    from RevenueChaser.core import calendar
+    from RevenueChaser.rcdata.build import DATASETS, due
+    _answer(env)
+    _run()                                            # starts_by_hand: due needs one build behind it
+    env.routes.clear()
+    _answer(env, active="{}")
+    row = _run("2026-11-03")
+    assert row["result"] == "failed", row["note"]
+    checked = date.fromisoformat(str(ops.latest_check(av.NAME)["checked_on"])[:10])
+    monkeypatch.setattr(calendar, "today_ny", lambda: checked)
+    assert due.is_due(DATASETS[av.NAME], "full")[0] is False
+    monkeypatch.setattr(calendar, "today_ny", lambda: checked + timedelta(days=1))
+    assert due.is_due(DATASETS[av.NAME], "full")[0] is True
 
 
 # ── Review round 1 of PR 349 ──────────────────────────────────────────────────────────────────────────────────
