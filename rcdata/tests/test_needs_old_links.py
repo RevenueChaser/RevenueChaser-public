@@ -44,7 +44,8 @@ PROVIDER_FILES = {
     "module_relatedness": {"__main__.py", "compare.py", "engine.py", "profiles.py", "store.py"},
     "module_sector_rotation": {"__main__.py", "engine.py"},
     "module_spx_gamma": {"candles.py", "run.py"},
-    "module_swing_potential": {"indicators.py"},
+    # ``indicators.py`` left it on 21 Nov 2026 (#645): ``load_ticker_info`` was the board's last Yahoo read and
+    # had no caller since #996, so nothing in the package imports ``core.providers`` any more.
     "module_uw_interaction": {"engine.py"},
     "module_value_chain": {"edgar_text.py", "engine.py", "health.py"},
 }
