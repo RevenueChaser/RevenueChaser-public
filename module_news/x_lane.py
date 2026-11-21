@@ -1,10 +1,12 @@
 """What the News board's X lane shares: who its providers are, the status-id clock and the text cap.
 
-The lane had two sources until 21 Nov 2026: avo's Grok "X saatlik özet" mails (provider ``grok-x``, fetched by
-``module_news/x_feed.py``) and RC's own reader (``x_reader.py``, provider ``x-follow``). avo asked for everything
-Grok to go (21 Nov 2026 10:05 Amsterdam, "Evet hakkındaki alakali herseyi sil", scope "only the Grok mails"), so the
-mail half and its rows were removed and RC's own reader is the lane's one source. These few values stayed shared
-because ``x_reader``, ``x_check``, ``store_reads`` and ``report`` all read them and must not disagree.
+The lane had two sources until 21 Nov 2026: avo's Grok "X saatlik özet" mails, fetched by their own module and
+stored under their own provider name, and RC's own reader (``x_reader.py``, provider ``x-follow``). avo asked for
+everything Grok to go (21 Nov 2026 10:05 Amsterdam, "Evet hakkındaki alakali herseyi sil", scope "only the Grok
+mails"), so the mail half and its rows were removed and RC's own reader is the lane's one source. These few values
+stayed shared because ``x_reader``, ``x_check``, ``store_reads`` and ``report`` all read them and must not disagree.
+The mail lane's own names are deliberately not written here: ``tests/test_x_lane.py`` fails any source file that
+still carries them, which is how the removal stays done.
 """
 from __future__ import annotations
 
