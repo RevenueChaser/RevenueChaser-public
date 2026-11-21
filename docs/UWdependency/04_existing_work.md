@@ -74,3 +74,36 @@ avo: "bunu da yapabiliriz". Checked, rather than assumed:
 Classification: **ours, with PDF/OCR parsing as the hard part.** Nothing in production depends on congress
 data today (no need in `rcdata/needs/catalog.py`), so this is new work, not a migration — it only matters if
 avo wants the board.
+
+### 3.3 The bot itself, read from avo's screenshot (21 November 2026 14:09 Amsterdam)
+
+Channel `-unusual-command-line`, server **"Traders' Pub"**, app **`Premium_UnusualWhalesBot`**, banner
+"Unusual Whales Options Bot - All data is LIVE, unless otherwise specified", **103 commands**.
+
+Two things that change the Discord route's feasibility:
+
+1. The `/help` answer is marked **"Only you can see this"** — a slash-command reply is **ephemeral**, visible to
+   the person who typed it. Another bot cannot read it. So the command surface (`/highest_volume_contracts` and
+   the other 102) is **not harvestable by a reader bot**; only what the bot *posts publicly* into a channel is.
+2. `/troubleshooting` is described as being "for the owner and the administrators of a server with a **premium
+   subscription**", which says the feed hangs on the **server's** UW subscription, not necessarily on avo's. So
+   avo's own plan ending on 9 December may not stop these channels — **still to be confirmed with the server
+   owner**, but the earlier worry is weaker than it looked.
+
+### 3.4 Market-wide contract ranking (`highest-volume-contracts`, and our own `options.far_contracts`)
+
+avo, 21 November 2026: "bu bizim üzerinde çalışmamız gereken bir şey. Tamam IBKR ve CBOE dedik. veya B planı
+… Discord'daki bot arayüzü." Written as two routes:
+
+| | **A — IBKR + Cboe (chosen direction)** | **B — the Discord bot feed** |
+|---|---|---|
+| Where the ranking comes from | our own scan over a chain we hold | UW's own ranking, already computed |
+| Coverage | Cboe serves a whole chain per symbol with no line limit, so a market-wide scan means **one request per symbol**; IBKR's 100 market-data lines against 19,774 contracts in one chain (`rcdata/build/options/tables.py:37-39`) means IBKR cannot carry breadth — it carries SPX and the watch list live, Cboe carries the width |
+| Latency | Cboe ~15 min delayed; IBKR real time on the narrow set | the bot's own cadence |
+| Effort | the scan is ordinary code once lane B (the Cboe chain provider) exists | reading a **rendered PNG**: `highest-volume-contracts` posts its table as an image, so the numbers need OCR |
+| Permission | none | needs our bot in that server (only its admin can add one); a user token is against Discord's terms |
+| Honesty of the number | ours, reproducible, with its own as-of | UW's, and we cannot see the rule behind it |
+
+**Direction: A.** B stays written down as the fallback, and it is worth nothing until the server-owner question
+is answered. The universe cut for A (how many symbols a nightly market-wide scan fetches from Cboe) is decided
+with measurement M1's contract counts, not guessed here.
