@@ -102,6 +102,11 @@ def _door_service() -> str:
     return "\n".join(out)
 
 
+def _door_steps() -> str:
+    """The ``door:`` block with every ``#`` comment line dropped: what the service declares, without the prose."""
+    return "\n".join(line for line in _door_service().splitlines() if not line.lstrip().startswith("#"))
+
+
 def test_the_door_joins_the_slice_that_caps_its_memory():
     """A unit calling ``docker compose up`` does not cap the container; the cgroup parent is what binds the slice."""
     assert "cgroup_parent: life-rc-v2.slice" in _door_service()
@@ -133,8 +138,12 @@ def test_the_door_can_read_the_artifacts_root_it_is_given():
     service = _door_service()
     assert "group_add:" in service, "the door cannot read a 2770 artifacts root without its group"
     assert "RC_ARTIFACTS_GID" in service, "the gid is a per-host value, not a constant in the image"
-    assert "user: root" not in service and 'user: "0' not in service
-    assert "privileged" not in service
+    # The instruction lines alone. A rule about what the service *is granted* must not be broken by prose: the
+    # comment above ``group_add`` says the container runs as an "unprivileged" user, and a check over the whole
+    # block reads that explanation as the offence. (It did, on the first push of this test.)
+    steps = _door_steps()
+    assert "user: root" not in steps and 'user: "0' not in steps
+    assert "privileged" not in steps
 
 
 def test_the_real_store_is_never_reachable_from_the_container():
