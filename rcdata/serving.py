@@ -345,15 +345,17 @@ def read_live(kind: str, work):
     this connection", and the ``duckdb.Error`` reached the caller as a 500 on a board render or a job's
     traceback (#310 N13 fixed the one Settings card; this is the reader every board uses).
 
-    A ``duckdb.Error`` is retried **once**, and only when the live file is not the one this read opened any more
-    (``_file_mark``): the swap takes a moment and the next open gets the new build, so one reopen is the whole
+    A ``duckdb.Error`` is retried **once**, and only when the live file is not the one this read began on
+    (``_file_mark``, taken before the open): the swap takes a moment and the next open gets the new build, so one reopen is the whole
     cure. An error with the same file still in place is the caller's own — a missing table, a bad query — and is
     raised, because turning it into a retry or into an empty answer would hide it. An empty answer is not a
     substitute either: for a board row ``[]`` is read as data (#1182), not as an absence.
     """
     for attempt in range(SWAP_REOPENS + 1):
-        con = open_read(kind)
+        # Taken **before** the open: the window is from the path's resolve to the last read, and a swap that lands
+        # inside ``open_read`` itself (between the ``exists()`` and the handle) has to be seen too.
         mark = _file_mark(live_path(kind))
+        con = open_read(kind)
         try:
             return work(con)
         except duckdb.Error:

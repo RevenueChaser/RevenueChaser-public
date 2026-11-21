@@ -83,7 +83,11 @@ def test_no_file_at_all_is_still_an_absence_the_caller_answers():
 
 
 def test_a_board_read_caught_by_a_swap_answers_the_new_builds_rows(monkeypatch):
-    """The reader every board uses, end to end: ``read._rows`` through a swap, no exception and no empty answer."""
+    """The reader every board uses, end to end: ``read._rows`` through a swap, no exception and no empty answer.
+
+    The swap lands inside the open here, which is the narrower of the two windows: ``open_read`` resolves the path
+    and checks that it exists before it connects. ``read_live`` marks the file before the open for that reason.
+    """
     _serve_market("first")
     real_open, opens = serving.open_read, []
 
