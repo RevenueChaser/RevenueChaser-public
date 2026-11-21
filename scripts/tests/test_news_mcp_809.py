@@ -66,12 +66,13 @@ def _call(name: str, arguments: dict | None = None) -> dict:
     return json.loads(out["content"][0]["text"])
 
 
-def test_the_handshake_names_the_server_and_its_three_tools():
+def test_the_handshake_names_the_server_and_its_four_tools():
     got = news_mcp.handle({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
     assert got["result"]["serverInfo"]["name"] == "revenuechaser-news"
     assert got["result"]["capabilities"] == {"tools": {}}
     listed = news_mcp.handle({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})["result"]["tools"]
-    assert [t["name"] for t in listed] == ["recent_headlines", "coming_events", "headlines_around_event"]
+    assert [t["name"] for t in listed] == ["recent_headlines", "coming_events", "headlines_around_event",
+                                           "stored_reading"]
     assert all(t["description"] and t["inputSchema"]["type"] == "object" for t in listed)
 
 
@@ -162,7 +163,3 @@ def test_the_stored_reading_tool_clamps_its_window_and_needs_no_argument(served)
     assert _call("stored_reading", {"hours": 10_000})["hours"] == news_mcp.MAX_READ_HOURS
     assert _call("stored_reading", {"hours": 0})["hours"] == 1
 
-
-def test_the_tool_list_names_the_reading_tool():
-    names = [t["name"] for t in news_mcp.TOOLS]
-    assert names == ["recent_headlines", "coming_events", "headlines_around_event", "stored_reading"]

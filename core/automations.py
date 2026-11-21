@@ -322,7 +322,7 @@ REGISTRY: tuple[AutomationEntry, ...] = (
     AutomationEntry(
         name="RC-News-Reading-Hourly", label="News reading (hourly)",
         args=("-m", "RevenueChaser.scripts.board_fetch", "news-reading"), time="00:20", hourly=True,
-        unit_name="life-rc-news-reading", tables_written=("news_reading",),
+        unit_name="life-rc-fetch-news-reading", tables_written=("news_reading",),
         description="The News board's reading of the headline flow (#1234): every hour at :20 the EVREN model "
                     "reads the clock hour that has just finished and its reading is written to "
                     "boards/news.duckdb as fixed-schema fields (module_news/reading.FIELDS), each field carrying "

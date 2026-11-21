@@ -23,7 +23,7 @@ import pytest
 from RevenueChaser.core import automations, llm_jobs, rawstore
 from RevenueChaser.module_news import reading, store_reads
 
-HOUR = 1_795_000_800.0                      # an exact hour boundary; the window is the hour before it
+HOUR = 1_794_999_600.0                      # an exact hour boundary (498_611 * 3600); the window is the hour before
 NOW = HOUR + 1200.0                         # :20, the timer's own minute
 
 HEADLINES = [
@@ -42,6 +42,13 @@ def _store_headlines(rows=HEADLINES) -> None:
 
 def _reply(fields: dict) -> str:
     return json.dumps(fields)
+
+
+def _stored_fields() -> list[str]:
+    """The fields in the store, by name. A ``SELECT`` and not a ``count(*)``: a table nothing has written yet
+    reads as no rows at all (``rawstore.query`` swallows DuckDB's ``CatalogException`` on a read), so a count
+    would answer with an empty list and not with a zero."""
+    return [r["field"] for r in rawstore.query(f"SELECT field FROM {store_reads.READING}", db="news")]
 
 
 def _writer(monkeypatch, reply, *, calls=None):
@@ -113,8 +120,7 @@ def test_a_field_that_cannot_be_traced_to_a_headline_is_not_stored(monkeypatch, 
     out = reading.run(now=NOW)
 
     assert out["stored"] == 1 and len(out["unsourced"]) == 1 and "tone" in out["unsourced"][0], why
-    stored = rawstore.query(f"SELECT field FROM {store_reads.READING}", db="news")
-    assert [r["field"] for r in stored] == ["rates"], f"{why} was stored anyway"
+    assert _stored_fields() == ["rates"], f"{why} was stored anyway"
 
 
 def test_the_store_itself_refuses_a_field_without_its_sentence():
@@ -123,7 +129,7 @@ def test_the_store_itself_refuses_a_field_without_its_sentence():
                 {"field": "tone", "value": "risk_on", "quote": "a sentence", "headline_id": ""}):
         with pytest.raises(ValueError, match="sentence it came from"):
             reading.store([bad], start=HOUR - 3600, end=HOUR, provider="evren", model="m", headlines=1)
-    assert rawstore.query(f"SELECT count(*) AS n FROM {store_reads.READING}", db="news")[0]["n"] == 0
+    assert _stored_fields() == []
 
 
 def test_a_reply_that_is_not_json_or_not_an_object_stores_nothing(monkeypatch):
@@ -132,7 +138,7 @@ def test_a_reply_that_is_not_json_or_not_an_object_stores_nothing(monkeypatch):
         _writer(monkeypatch, reply)
         out = reading.run(now=NOW)
         assert out["stored"] == 0 and out["unsourced"]
-    assert rawstore.query(f"SELECT count(*) AS n FROM {store_reads.READING}", db="news")[0]["n"] == 0
+    assert _stored_fields() == []
 
 
 def test_an_unknown_field_name_is_never_stored(monkeypatch):
@@ -142,7 +148,7 @@ def test_an_unknown_field_name_is_never_stored(monkeypatch):
                                  "tone": {"value": "quiet", "headline_id": "h3",
                                           "quote": "OPEC+ signals no change to output"}}))
     assert reading.run(now=NOW)["stored"] == 1
-    assert [r["field"] for r in rawstore.query(f"SELECT field FROM {store_reads.READING}", db="news")] == ["tone"]
+    assert _stored_fields() == ["tone"]
 
 
 # ── the window ───────────────────────────────────────────────────────────────────────────────────────────────────
@@ -250,7 +256,7 @@ def test_the_registry_row_runs_hourly_through_the_dashboard():
     assert e.hourly and e.time.endswith(":20") and e.days == () and e.after is None
     assert e.schedule == "hourly at :20 (local)"
     assert e.args == ("-m", "RevenueChaser.scripts.board_fetch", "news-reading")
-    assert e.tables_written == ("news_reading",) and e.unit == "life-rc-news-reading"
+    assert e.tables_written == ("news_reading",) and e.unit == "life-rc-fetch-news-reading"
     assert not e.default_install and not e.offpeak_gated
 
 
