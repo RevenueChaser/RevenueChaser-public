@@ -1,12 +1,14 @@
 """DeepSeek chat client with an off-peak gate and a local result cache.
 
-Access order is deliberate: **cache -> off-peak gate -> HTTP**. A cached answer
+Access order is deliberate: **cache -> off-peak gate -> money gate -> HTTP**. A cached answer
 is served even at peak (it costs nothing); a cache miss at peak raises
 ``PeakHoursError`` without making a request, so the caller stops and resumes on
 the next off-peak run instead of paying the peak rate.
 
-The gate is ``core.offpeak``; it never sleeps. The Hermes usage card can lift
-it for the current peak window only (``peak_override_active``). The key is ``LITELLM_RC_KEY`` (the LiteLLM gate)
+The money gate is ``core.llm_spend``: the day's recorded spend against the box's
+USD day cap, so a paid answer is also recorded here (#166). The off-peak gate is
+``core.offpeak``; neither sleeps. The Hermes usage card can lift the off-peak one
+for the current peak window only (``peak_override_active``). The key is ``LITELLM_RC_KEY`` (the LiteLLM gate)
 (see ``core.credentials``); base URL and model are env-overridable so the
 end-to-end harness can point them at a mock. The base URL is read when a call
 is made (``base_url()``), so a test or a restarted job sees a changed value.
@@ -32,7 +34,7 @@ from typing import Callable
 
 import httpx
 
-from .. import offpeak, rawstore
+from .. import llm_spend, offpeak, rawstore
 from ..credentials import key_for
 
 logger = logging.getLogger(__name__)
@@ -61,6 +63,19 @@ class DeepSeekAuthError(DeepSeekError):
 
 class DeepSeekTransientError(DeepSeekError):
     """429 / 5xx / timeout / connection failure: the service, not the request."""
+
+
+class BudgetSpentError(DeepSeekError):
+    """The paid-call day cap is spent (or cannot be checked): raised instead of calling the API (#166).
+
+    A ``DeepSeekError`` so that a caller which already stops on one stops on this, and its own class so a run can
+    say *budget* and not *peak*: the two boundaries free at different times. Nothing was sent, so the call costs
+    nothing and is not counted anywhere.
+    """
+
+    def __init__(self, reason: str):
+        self.reason = reason
+        super().__init__(f"DeepSeek call skipped: {reason}.")
 
 
 class PeakHoursError(RuntimeError):
@@ -209,7 +224,7 @@ def complete(system: str, user: str, *, thinking: bool = False,
              prompt_version: str | None = None,
              validate: Callable[[str], bool] | None = None,
              model: str | None = None, usage: dict | None = None) -> str:
-    """One chat completion. Cache first, then the off-peak gate, then HTTP.
+    """One chat completion. Cache first, then the off-peak gate, then the money gate, then HTTP.
 
     In thinking mode ``temperature`` is omitted (the API ignores it) and
     ``reasoning_effort`` (``low`` / ``high`` / ``max``) is forwarded; reasoning
@@ -230,6 +245,12 @@ def complete(system: str, user: str, *, thinking: bool = False,
 
     if peak_blocked(now):
         raise PeakHoursError(offpeak.next_off_peak(now))
+
+    # The money gate, after the cache (a cached answer costs nothing) and the off-peak gate (#166). It reads the
+    # day's recorded spend, so it holds across runs and across jobs, which a per-run ceiling cannot.
+    spent = llm_spend.refusal(model)
+    if spent is not None:
+        raise BudgetSpentError(spent)
 
     api_key = key_for("deepseek")
     if not api_key:
@@ -312,6 +333,11 @@ def _finish(r, key: str, use_cache: bool, validate, effort, thinking: bool, tick
         raise DeepSeekError(f"DeepSeek returned no content: {_scrub(str(data)[:300])}")
     if usage is not None and isinstance(data.get("usage"), dict):
         usage.update(data["usage"])      # the caller's own count (the SEC reader tool stores tokens per answer)
+    # The money record (#166): one write per paid answer, with the tokens the gate reported. After the content
+    # check above, so an answer that is not an answer is not billed to the ledger -- it is billed by the provider,
+    # but a row the day cap reads should hold what was actually bought.
+    tokens_in, tokens_out = llm_spend.tokens_of(data.get("usage"))
+    llm_spend.record("deepseek", model or MODEL, calls=1, tokens_in=tokens_in, tokens_out=tokens_out)
     cacheable = use_cache
     if cacheable and validate is not None:
         try:
@@ -328,6 +354,6 @@ def _finish(r, key: str, use_cache: bool, validate, effort, thinking: bool, tick
     return content
 
 
-__all__ = ["complete", "PeakHoursError", "DeepSeekError", "DeepSeekAuthError",
+__all__ = ["complete", "PeakHoursError", "BudgetSpentError", "DeepSeekError", "DeepSeekAuthError",
            "DeepSeekTransientError", "off_peak_only", "peak_override_active", "peak_blocked", "gate_file",
            "MODEL", "MAX_ATTEMPTS", "base_url"]

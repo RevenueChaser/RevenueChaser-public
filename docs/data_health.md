@@ -308,7 +308,8 @@ provider for the New York day and the week from Monday, from `provider_calls_dai
 (`core/providers/spend.py` writes it from the UW, EDGAR and Yahoo clients; `RC_APP_SPEND=0` stops those writes),
 so the figures are what this machine spent and not half of it. The unit is the provider's: a request for `uw` and
 `sec`, a Yahoo read for `yfinance`, both halves alike. It is a record and not a gate — nothing refuses a Fetch
-that would cross a cap, and UW's newest `x-uw-*` sample from `uw_remaining`: its daily count, what is left of our own cap
+that would cross a cap (the paid writers are the one exception since #166: their money has a day cap of its own,
+`docs/llm_spend.md`, and it is a different counter), and UW's newest `x-uw-*` sample from `uw_remaining`: its daily count, what is left of our own cap
 (computed) and the per-minute window), weekly backups (the weekly job's manifests under
 `RAW_STORE_BACKUP_DIR/weekly-v2/<step>/`: each step's last good run and the error of a failed one, then the newest
 weekly copy of every file and how many are kept; amber past 8 days, red past 15 days or when there is none), the raw option retention warning (on until `RC_RAW_RETENTION_DAYS` or a `dataset_schedule` row
