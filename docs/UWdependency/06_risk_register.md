@@ -1,0 +1,17 @@
+# Task 5 — risk register
+
+| # | Risk | Evidence | Severity | What removes it |
+|---|---|---|---|---|
+| R1 | **Cboe's free endpoint is not reachable from every host.** `cdn.cboe.com/.../delayed_quotes` answered HTTP 403 (Cloudflare) from this cloud container on 21 Nov 2026 13:01 UTC, having worked from the cloud box on 5 Nov | measured both times | **high** — layer 3 rests on it | M1 from homesrv; if homesrv is blocked too, the chain source becomes IBKR or ThetaData and the cost rises |
+| R2 | **Cboe's coverage gap is unexplained**: AAPL 3,440 contracts against UW's 19,774 on its own first run (`rcdata/build/options/tables.py:37-39`) | measured 5 Nov | **high** | a one-session coverage comparison before any board moves |
+| R3 | **No per-trade side anywhere free.** Cboe gives aggregate volume only; the SPX squeeze/fakeout verdict turns on an ask-side ratio against 0.55 (`module_spx_gamma/flow_signals.py:25`, `:40-43`) | read in code | **high** | a paid tape (IBKR OPRA, ThetaData) plus our own rule, scored by M3 |
+| R4 | **A re-tuned threshold is a board-behaviour change.** A different side definition means 0.55 may no longer mean what it meant | — | medium | avo sees a before/after on the same sessions before anything ships |
+| R5 | **IBKR market-data-line limit.** 100 lines by default against 19,774 contracts in one chain | `rcdata/build/options/tables.py:37-39` | medium | keep IBKR to a bounded scope (SPX + watch list); Cboe or ThetaData for breadth |
+| R6 | **IBKR options tick-by-tick may be historical-only**, which would make a live flow alert impossible on the cheap path | internal note 5 Nov; IBKR's own doc page is JavaScript and was not read | medium | M2 |
+| R7 | **Licence and redistribution.** ThetaData's retail tiers are "individual use, no redistribution"; the Cboe delayed endpoint's terms were never read; UW's full-tape has its own terms | vendor pages, 21 Nov | medium | read each licence before a subscription; RC is private and self-hosted, which helps but is not a defence on its own |
+| R8 | **History depth drops.** UW Basic carries 2 years; Cboe carries none (snapshots); ThetaData Standard 10 years. Backtesting (v2 step 20) needs depth | vendor pages | medium | decide depth with v2 step 20's scope, or buy the year once |
+| R9 | **Discord route is unverified on three points**: server ownership, whether the bot feed depends on the plan ending 9 December, and channels that post numbers as images | `/mnt/project-files/UWdependency/discord-bot/notlar.md` | medium | avo answers; a user token is against Discord's terms and is not an option |
+| R10 | **The calendars have no identified replacement** (`/market/economic-calendar`, `/market/fda-calendar`, hourly, feeding the News and Earnings Radar boards) | `01_dependency_inventory.md` §3 | medium | lane F, or accept the loss |
+| R11 | **Deadline risk.** If nothing is decided by 8 December the plan renews at USD 160 for another month | avo's own date | low (it costs one month, not the data) | M1-M4 this week |
+| R12 | **The validation reference disappears with the subscription.** After 9 December there may be no UW answer to score our own detection against | — | medium | run M3 on stored rows **before** the renewal date |
+| R13 | **Analyst ratings have no source here at all** | no need in `rcdata/needs/catalog.py` | low | lane G, on avo's word |
