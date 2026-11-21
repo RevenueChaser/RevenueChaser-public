@@ -304,7 +304,11 @@ so instead of drawing zeros. Its first row, "Boards read", says the boards read 
 **Page-level cards** (the queue and the weekly backups are drawn by `control_render` on the Fetch tab since
 #715 step 2; the rest are the older cards): the queue (queued and running requests, then the last 20 finished), spend (F6: calls per
 provider for the New York day and the week from Monday, from `provider_calls_daily`, against the day caps of
-`rcdata/caps.py`, and UW's newest `x-uw-*` sample from `uw_remaining`: its daily count, what is left of our own cap
+`rcdata/caps.py`. Since #166 that counter holds the dashboard's own Fetches as well as the builder's runs
+(`core/providers/spend.py` writes it from the UW, EDGAR and Yahoo clients; `RC_APP_SPEND=0` stops those writes),
+so the figures are what this machine spent and not half of it. The unit is the provider's: a request for `uw` and
+`sec`, a Yahoo read for `yfinance`, both halves alike. It is a record and not a gate — nothing refuses a Fetch
+that would cross a cap, and UW's newest `x-uw-*` sample from `uw_remaining`: its daily count, what is left of our own cap
 (computed) and the per-minute window), weekly backups (the weekly job's manifests under
 `RAW_STORE_BACKUP_DIR/weekly-v2/<step>/`: each step's last good run and the error of a failed one, then the newest
 weekly copy of every file and how many are kept; amber past 8 days, red past 15 days or when there is none), the raw option retention warning (on until `RC_RAW_RETENTION_DAYS` or a `dataset_schedule` row

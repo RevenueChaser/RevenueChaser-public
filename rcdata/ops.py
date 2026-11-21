@@ -22,7 +22,8 @@ The tables and what writes them:
 - ``read_log``: reads per day, process and table; counted in memory and flushed once a minute.
 - ``uw_remaining``: UW's rate headers, sampled once a run: the daily count UW reports, what is left of our own cap
   (computed), the per-minute window, and the token limit as sent (not a daily cap).
-- ``provider_calls_daily``: calls per provider and New York day; the day cap (``caps``) reads it.
+- ``provider_calls_daily``: calls per provider and New York day, the builder's and the dashboard's
+  (``core/providers/spend.py``, #166) in one row; the day cap (``caps``) reads it.
 - ``watchlist_option`` / ``watchlist_stock``: the two watch lists (D2), one row per ticker with when, by which board
   and an optional note; ``watchlist_*_changes`` is their history, one row per add or remove. The dashboard's toggle
   routes write them (PR 4); the option list is what the options build will cover besides SPX.

@@ -18,6 +18,7 @@ from .. import credentials
 from .. import config as _config  # noqa: F401
 from ..option_prints import is_package, print_side
 from .ohlc import regular_session_bars
+from . import spend
 from .result import ProviderResult
 
 logger = logging.getLogger(__name__)
@@ -154,6 +155,10 @@ class UWClient:
         self.on_response: Optional[Callable[[str, Any], None]] = None
         # Optional observer of every request about to be sent (``on_request(ep)``), once per attempt, so a caller
         # can count a request that ends in a transport error too (#519 finding 3). Same contract as above.
+        #
+        # **Installing them takes the counting over.** With no observer the client writes its own requests to the
+        # day's ledger (``providers/spend.py``, #166); a caller that sets them keeps its own book instead and must
+        # set both, or the two would share one row (the builder does: ``rcdata/build/base.py``).
         self.on_request: Optional[Callable[[str], None]] = None
 
     @property
@@ -240,6 +245,11 @@ class UWClient:
                     self.on_request(ep)
                 except Exception:  # noqa: BLE001 - an observer must never change the call's outcome
                     logger.warning("UW on_request observer failed", exc_info=True)
+            else:
+                # No observer: this client's spend is nobody else's book, so it goes on the ledger itself (#166).
+                # Counted on send, as the observer path is: a request cut off by a timeout was still made and UW
+                # counted it, and it is about to be retried (#519 finding 3).
+                spend.count("uw", calls=1)
             try:
                 r = self._client.get(f"{BASE}{ep}", params=params)
             except _RETRY_EXC as e:
@@ -258,6 +268,8 @@ class UWClient:
                     self.on_response(ep, r)
                 except Exception:  # noqa: BLE001 - an observer must never change the call's outcome
                     logger.warning("UW on_response observer failed", exc_info=True)
+            elif r.status_code == 429:
+                spend.count("uw", http_429=1)
             status = r.status_code
             if status < 400:
                 try:
@@ -299,6 +311,10 @@ class UWClient:
             # Any other 4xx is the request's own fault (unknown ticker, bad
             # param): a failed result for the caller, but not a provider outage,
             # so it does not count against ``health()``.
+            if self.on_response is None:
+                # Never in ``health()`` (not an outage) and final, so the observer path's ``close()`` does not see
+                # it either: counted here, once, the way ``build/base._on_uw_response`` counts it (#519 finding 2).
+                spend.count("uw", failures=1)
             return ProviderResult("failed", {}, {"status": status, "error": f"HTTP {status}",
                                                  "attempts": attempts}, ep)
 
@@ -327,6 +343,10 @@ class UWClient:
         if opened:
             logger.warning(f"UW: {BREAKER_THRESHOLD} consecutive requests failed (last: {ep}); "
                            "no further requests from this client")
+        if attempts and self.on_response is None:
+            # ``attempts == 0`` is the breaker refusing the call: no request was sent, so it is spend nowhere
+            # (the observer path leaves these to ``build/base.close``, which subtracts ``skipped_calls``).
+            spend.count("uw", failures=1)
         return ProviderResult("failed", {}, dict(rec), ep)
 
     def health(self) -> dict:

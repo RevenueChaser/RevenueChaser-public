@@ -1,8 +1,11 @@
 """Provider limits, as the providers publish them (master plan Order 5, rule 3). Each number names its source.
 
 ``DAY_CAPS``: the quotas published per day. The builder refuses to start a dataset whose provider has reached its cap
-for the New York day; the counter is ``ops.provider_calls_daily`` (every HTTP request the builder sends, retries
-included).
+for the New York day; the counter is ``ops.provider_calls_daily``, which holds **both** halves of what this machine
+spends: every HTTP request the builder sends, retries included, and since #166 the dashboard's own Fetches, through
+``core/providers/spend.py``. Its unit per provider is that provider's unit in both halves -- requests for ``uw`` and
+``sec``, Yahoo reads for ``yfinance`` -- and no row says which half it came from: the cap is the account's, so what
+the cap wants to know is the total. A gate on the app side is a separate decision and does not exist (#166 item 5).
 
 ``WINDOWS``: the published request windows, ``(requests, seconds)``, enforced by ``base.Pacer`` (``base.run_pacer``).
 A provider with no published limit (FRED, WRDS, the fund-file hosts, Nasdaq Trader, the NYSE threshold file, IBKR's
