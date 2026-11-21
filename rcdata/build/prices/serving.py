@@ -1208,8 +1208,16 @@ MARKET_CAP_SQL = f"""
                FROM a),
          -- Each class of the issuer at its newest cap on or before the session, if at most ISSUER_WITHIN_DAYS old:
          -- a class with no bar that day (GOOG on a day GOOGL traded) still counts; a row with no cap is none.
-         k AS (SELECT DISTINCT iss, security_id AS cls FROM c),
-         g AS (SELECT c.security_id, c.session_date, k.cls FROM c JOIN k USING (iss)),
+         -- ``k`` carries the first and last session each class has a cap for, so a class is joined only to the
+         -- sessions where its newest cap can still be in the window (#1144): a class that last priced in 2015 was
+         -- otherwise joined to every 2026 session of its siblings, carried through the ASOF join and only then
+         -- dropped by ``i``'s filter. Dropping it before the join is the same answer by construction, because the
+         -- ASOF join finds nothing before ``lo`` and ``i`` keeps nothing after ``hi`` + the window.
+         k AS (SELECT iss, security_id AS cls, min(session_date) AS lo, max(session_date) AS hi
+               FROM c WHERE market_cap IS NOT NULL GROUP BY ALL),
+         g AS (SELECT c.security_id, c.session_date, k.cls FROM c JOIN k USING (iss)
+               WHERE c.session_date >= k.lo
+                 AND c.session_date <= k.hi + INTERVAL {{within}} DAY),
          p AS (SELECT g.security_id, g.session_date, x.market_cap, x.session_date AS cap_day
                FROM g ASOF LEFT JOIN (SELECT * FROM c WHERE market_cap IS NOT NULL) x
                     ON x.security_id = g.cls AND g.session_date >= x.session_date),
@@ -1217,7 +1225,11 @@ MARKET_CAP_SQL = f"""
                       sum(market_cap) FILTER (WHERE date_diff('day', cap_day, session_date) <= {{within}})
                           AS issuer_market_cap
                FROM p GROUP BY ALL)
-    SELECT c.*, i.issuer_market_cap FROM c JOIN i USING (security_id, session_date)"""
+    -- LEFT JOIN, not JOIN: ``k`` now holds only the classes with a cap, so an issuer with none has no ``i`` row.
+    -- On the old ``k`` every row's own class was in it, so the inner join dropped nothing; this keeps that true
+    -- (the store narrows nothing, S18) and leaves ``issuer_market_cap`` NULL, which is what the filter's empty
+    -- sum gave before.
+    SELECT c.*, i.issuer_market_cap FROM c LEFT JOIN i USING (security_id, session_date)"""
 
 REVISION_SQL = f"""
     SELECT coalesce(s.security_id, r.security_id) AS security_id, r.session_date, r.ticker AS symbol, r.open, r.high,
