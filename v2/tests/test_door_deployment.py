@@ -59,7 +59,8 @@ def _parts(version: str) -> tuple[int, ...]:
 def test_every_package_the_door_imports_is_in_the_images_list():
     """A door that imports a package the image does not install starts in CI and dies on the box."""
     source = "\n".join((REPO / "v2" / "door" / f).read_text(encoding="utf-8")
-                       for f in ("app.py", "boards.py", "health.py", "config.py"))
+                       for f in ("app.py", "boards.py", "health.py", "config.py", "proxy.py",
+                                 "writelog.py"))
     installed = set(_pins(DOOR_REQS))
     for third_party in ("fastapi", "starlette", "redis", "uvicorn"):
         if re.search(rf"^\s*(import|from)\s+{third_party}\b", source, re.M):

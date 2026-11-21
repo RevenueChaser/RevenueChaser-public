@@ -18,16 +18,21 @@ import os
 import socket
 import subprocess
 import sys
+import threading
 import time
 import types
 import urllib.error
 import urllib.request
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
 
 from RevenueChaser.core import reporting_common as rc
 from RevenueChaser.core import v2_envelope as env
+from RevenueChaser.v2.door import app as door_app
+from RevenueChaser.v2.door import proxy as door_proxy
+from RevenueChaser.v2.door import writelog as door_writelog
 
 REPO = Path(__file__).resolve().parents[2]
 HOST = "127.0.0.1"
@@ -179,7 +184,7 @@ def test_a_board_with_no_envelope_is_404_over_the_wire(door):
 
 
 def test_a_write_is_refused_by_the_real_server(door):
-    """Step 7 adds the proxy. Until then a real POST to a real socket gets 405 and changes nothing."""
+    """Outside the proxy prefix a real POST to a real socket gets 405 and changes nothing."""
     request = urllib.request.Request(f"{door.base}/api/v1/boards", data=b"{}", method="POST")
     try:
         with urllib.request.urlopen(request, timeout=10) as r:
@@ -201,3 +206,175 @@ def test_every_answer_carries_the_csp_and_names_no_cdn(door):
         assert "default-src 'self'" in policy, path
         assert "cdn" not in policy and "unpkg" not in policy, path
         assert headers.get("x-content-type-options") == "nosniff", path
+
+
+# ── the proxy, over real sockets (step 7, #1317) ─────────────────────────────────────────────────────────────────
+#
+# What the run plan's row 7 asks to be proven end to end: a write with no login answers 403, and each Guarded
+# route answers 403. Both are proven here against a **real** door process, a real socket and a stub dashboard that
+# records what reached it — because the thing worth knowing is not only the status the caller sees but that a
+# refused press never arrived upstream at all.
+#
+# The stub stands in for the dashboard on purpose. The door's rules are the door's; starting the real dashboard
+# here would test Flask's `_local_only` a second time and would put the DuckDB writer into the e2e tier.
+
+PROXY_LOGIN = "tester@tailnet.invalid"
+
+
+class _StubDashboard(BaseHTTPRequestHandler):
+    """Answers 200 with the headers it was given, and appends every request to ``server.seen``."""
+
+    protocol_version = "HTTP/1.1"
+
+    def _answer(self):
+        length = int(self.headers.get("Content-Length") or 0)
+        body = self.rfile.read(length) if length else b""
+        self.server.seen.append({"method": self.command, "path": self.path, "body": body,
+                                 "panel": self.headers.get("X-RC-Panel"),
+                                 "login": self.headers.get("Tailscale-User-Login")})
+        out = json.dumps({"ok": True, "pressed": self.path}).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(out)))
+        self.end_headers()
+        self.wfile.write(out)
+
+    do_GET = do_POST = _answer
+
+    def log_message(self, *args):                       # the test's own output is the assertions
+        pass
+
+
+@pytest.fixture(scope="module")
+def upstream():
+    """A stub dashboard on loopback, with every request it received."""
+    server = ThreadingHTTPServer((HOST, 0), _StubDashboard)
+    server.seen = []
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield types.SimpleNamespace(base=f"http://{HOST}:{server.server_port}", seen=server.seen)
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+@pytest.fixture(scope="module")
+def proxy_door(tmp_path_factory, upstream):
+    """A second real door process, this one pointed at the stub dashboard, with its write log on disk."""
+    root = tmp_path_factory.mktemp("v2-door-proxy")
+    cache = root / ".cache"
+    cache.mkdir()
+    write_log = root / "writes.log"
+    port = _free_port()
+    env_vars = dict(os.environ)
+    env_vars.update(RC_CACHE_DIR=str(cache), RC_STORE_DIR=str(root / ".store"),
+                    RC_EDGAR_DOCS_DIR=str(root / "edgar_docs"), RC_DOOR_HOSTS=HOST,
+                    RC_BUILD_SHA="f" * 40, RC_DOOR_UPSTREAM=upstream.base,
+                    RC_DOOR_WRITE_LOG=str(write_log),
+                    PYTHONPATH=os.pathsep.join(p for p in (str(REPO.parent),
+                                                           os.environ.get("PYTHONPATH", "")) if p))
+    env_vars.pop("RC_REDIS_URL", None)
+    log = (root / "door.log").open("w", encoding="utf-8")
+    proc = subprocess.Popen([sys.executable, "-m", "uvicorn", "RevenueChaser.v2.door.app:app",
+                             "--host", HOST, "--port", str(port), "--workers", "1"],
+                            cwd=REPO.parent, env=env_vars, stdout=log, stderr=subprocess.STDOUT)
+    base = f"http://{HOST}:{port}"
+    try:
+        _wait_for(proc, base, root / "door.log")
+        yield types.SimpleNamespace(base=base, write_log=write_log, upstream=upstream)
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+        log.close()
+
+
+def _press(door, path: str, method: str = "POST", headers: dict | None = None, body: bytes = b"{}"):
+    url = f"{door.base}{door_app.PROXY_PREFIX}{path}"
+    request = urllib.request.Request(url, data=body if method == "POST" else None,
+                                     headers=headers or {}, method=method)
+    try:
+        with urllib.request.urlopen(request, timeout=10) as r:
+            return r.status, json.loads(r.read() or b"{}")
+    except urllib.error.HTTPError as e:
+        return e.code, json.loads(e.read() or b"{}")
+
+
+def _write_log_rows(door):
+    if not door.write_log.exists():
+        return []
+    return [json.loads(line) for line in door.write_log.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def test_a_write_with_no_login_is_403_over_the_wire_and_never_reaches_the_dashboard(proxy_door):
+    """Row 7's first done-state, end to end."""
+    before = len(proxy_door.upstream.seen)
+    status, body = _press(proxy_door, "/api/build/request/spine/security", headers={"X-RC-Panel": "v2"})
+    assert status == 403
+    assert "login" in body["detail"]
+    assert len(proxy_door.upstream.seen) == before, "a press with no login reached the dashboard"
+
+
+@pytest.mark.parametrize("path", sorted(r.pattern for r in door_proxy.ROUTES
+                                        if r.klass is door_proxy.RouteClass.GUARDED))
+def test_every_guarded_route_is_403_over_the_wire_and_never_reaches_the_dashboard(proxy_door, path):
+    """Row 7's second done-state: **each** Guarded route, taken from the table itself rather than a list here."""
+    concrete = "/".join("x7" if part.startswith("{") else part for part in path.split("/"))
+    before = len(proxy_door.upstream.seen)
+    for method in ("POST", "GET"):
+        status, body = _press(proxy_door, concrete, method=method,
+                              headers={"Tailscale-User-Login": PROXY_LOGIN, "X-RC-Panel": "v2"})
+        assert status == 403, f"{method} {concrete} answered {status}"
+        assert body["klass"] == "guarded"
+    assert len(proxy_door.upstream.seen) == before, f"{concrete} reached the dashboard"
+
+
+def test_a_write_with_a_login_reaches_the_dashboard_with_the_callers_own_headers(proxy_door):
+    """The Grok round-1 blocker: the dashboard must see the caller's ``X-RC-Panel``, not one the door minted."""
+    status, body = _press(proxy_door, "/api/build/switch/offpeak",
+                          headers={"Tailscale-User-Login": PROXY_LOGIN, "X-RC-Panel": "settings",
+                                   "Content-Type": "application/json"})
+    assert status == 200 and body["ok"] is True
+    arrived = proxy_door.upstream.seen[-1]
+    assert arrived["path"] == "/api/build/switch/offpeak"
+    assert arrived["panel"] == "settings"
+    assert arrived["login"] == PROXY_LOGIN
+    assert arrived["body"] == b"{}"
+
+
+def test_a_read_is_proxied_without_a_login_and_keeps_its_query(proxy_door):
+    status, body = _press(proxy_door, "/api/settings/lookup/AAPL?force=1", method="GET")
+    assert status == 200
+    assert proxy_door.upstream.seen[-1]["path"] == "/api/settings/lookup/AAPL?force=1"
+    assert body["ok"] is True
+
+
+def test_the_write_log_on_disk_holds_the_presses_and_not_the_reads(proxy_door):
+    """Three presses of its own, so the file's contents are this test's and not the file order's."""
+    before = len(_write_log_rows(proxy_door))
+    headers = {"Tailscale-User-Login": PROXY_LOGIN, "X-RC-Panel": "v2"}
+    _press(proxy_door, "/api/build/switch/offpeak", headers=headers)            # an allowed write
+    _press(proxy_door, "/api/build/timer", headers=headers)                     # a guarded press
+    _press(proxy_door, "/api/settings/status", method="GET")                    # a read, which is not logged
+    rows = _write_log_rows(proxy_door)[before:]
+    assert len(rows) == 2, rows
+    assert [row["klass"] for row in rows] == ["write", "guarded"]
+    assert [row["outcome"] for row in rows] == ["allowed", "refused"]
+    assert [row["login"] for row in rows] == [PROXY_LOGIN, PROXY_LOGIN]
+    assert not any("/api/settings/" in row["path"] for row in rows), "a read was logged"
+    for row in rows:
+        assert set(row) == set(door_writelog.FIELDS)
+        assert isinstance(row["duration_ms"], int)
+
+
+def test_the_read_routes_of_step_six_are_still_read_only_on_the_real_server(proxy_door):
+    request = urllib.request.Request(f"{proxy_door.base}/api/v1/boards", data=b"{}", method="POST")
+    try:
+        with urllib.request.urlopen(request, timeout=10) as r:
+            pytest.fail(f"a POST outside the proxy prefix answered {r.status}")
+    except urllib.error.HTTPError as e:
+        assert e.code == 405

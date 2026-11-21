@@ -8,6 +8,18 @@ would make the door untestable. The artifacts root itself is **not** re-spelled 
 from __future__ import annotations
 
 import os
+from pathlib import Path
+
+# The dashboard the proxy presses (run plan row 7, #1317). It holds the DuckDB writer and the job queue, and v2
+# adds no second writer, so every v2 press is one of its routes. Loopback by default and loopback only:
+# `proxy.upstream_base()` refuses anything else, because a door that would forward to any host an environment
+# variable named is a relay for whatever can reach the tailnet.
+DEFAULT_UPSTREAM = "http://127.0.0.1:8000"
+
+# How long a proxied press may take. The dashboard's own presses answer at once (a Fetch returns a job id and the
+# job runs behind it), so a press that is still open after this is a wedged dashboard and not a slow one; the
+# caller is told 504 rather than being left holding the connection.
+UPSTREAM_TIMEOUT_S = 15.0
 
 # The door's own version, bumped by hand when a route's shape changes. Not the envelope's ``schema_version`` and
 # not the store's ``_SCHEMA_VERSION``: this number says what ``/api/v1`` answers, nothing about data on disk.
@@ -45,6 +57,28 @@ def grafana_origin() -> str:
     """The one origin the CSP lets the door's pages frame (``RC_DOOR_GRAFANA_ORIGIN``); empty disables framing."""
     value = os.getenv("RC_DOOR_GRAFANA_ORIGIN")
     return DEFAULT_GRAFANA_ORIGIN if value is None else value.strip()
+
+
+def upstream() -> str:
+    """The dashboard's base URL (``RC_DOOR_UPSTREAM``), else :data:`DEFAULT_UPSTREAM`.
+
+    Checked rather than trusted: ``proxy.upstream_base()`` is what reads this, and it refuses a scheme that is not
+    ``http``, a host that is not loopback, userinfo, and a path.
+    """
+    value = (os.getenv("RC_DOOR_UPSTREAM") or "").strip()
+    return value or DEFAULT_UPSTREAM
+
+
+def write_log_path() -> Path | None:
+    """Where the write log is appended on disk (``RC_DOOR_WRITE_LOG``), or ``None`` for nowhere.
+
+    ``None`` is the default and is correct in the container: the image is ``read_only: true`` with one ``:ro``
+    mount, so the line goes to the process log and journald keeps it (``v2/door/writelog.py``). A box that wants a
+    file gives the variable a path on a writable mount; the write side must never need the artifacts root to
+    become writable (#1317).
+    """
+    value = (os.getenv("RC_DOOR_WRITE_LOG") or "").strip()
+    return Path(value) if value else None
 
 
 def build_sha() -> str:

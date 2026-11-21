@@ -1,9 +1,10 @@
 """v2 step 6 (#1264): the door's HTTP surface — its four read routes and the guards in front of them.
 
-The guards are what these tests exist for. The door is read-only in this step **by construction**, not by the
-accident of no write route being declared yet: the method guard sits in front of every route the app will ever
-have, so step 7's proxy cannot open a write by being added. A Host allowlist and a CSP that names no CDN are the
-other two, and the CSP's single external origin is Grafana's, because v2 runs on a tailnet.
+The guards are what these tests exist for. The door is read-only **by construction** outside the one prefix step 7
+(#1317) opened: the method guard sits in front of every route the app has, so the proxy opened ``/api/v1/proxy``
+and nothing else — these tests are what holds that, and the proxy's own are ``v2/tests/test_door_proxy.py``. A Host
+allowlist and a CSP that names no CDN are the other two guards, and the CSP's single external origin is Grafana's,
+because v2 runs on a tailnet.
 """
 from __future__ import annotations
 
@@ -46,7 +47,7 @@ def _write(root, board="module_relatedness", payload=None):
 @pytest.mark.parametrize("method", ["POST", "PUT", "PATCH", "DELETE"])
 @pytest.mark.parametrize("path", ["/api/v1/health", "/api/v1/boards", "/api/v1/boards/module_relatedness", "/"])
 def test_the_door_refuses_every_write_method_on_every_path(client, method, path):
-    """Step 7 adds the proxy; until then nothing can get through the door to a write."""
+    """Only ``/api/v1/proxy`` takes a write (step 7); no other path of the door does."""
     r = client.request(method, path)
     assert r.status_code == 405, f"{method} {path} answered {r.status_code}"
     assert "GET" in r.headers["Allow"]
