@@ -66,7 +66,7 @@ def test_a_failed_job_exits_1(seams, capsys):
     assert cli.main(["fundamentals"]) == 1 and _line(capsys)["message"] == "boom"
 
 
-def test_one_registry_row_per_board_each_running_its_own_route():
+def test_one_registry_row_and_unit_per_board_each_running_its_own_route():
     """One row per board, each naming the dashboard route it posts, and none of them chained."""
     for board, route in cli.ROUTES.items():
         (e,) = [e for e in automations.REGISTRY if e.args == ("-m", "RevenueChaser.scripts.board_fetch", board)]
@@ -119,9 +119,12 @@ def test_it_sends_the_cap_its_registry_row_used_to_pass_on_the_command_line(seam
     assert seams["form"] == {"usd_cap": "10"}
 
 
-def test_a_nightly_board_fetch_sends_no_form_field(seams):
+@pytest.mark.parametrize("board", ["swing", "relatedness"])
+def test_each_board_posts_exactly_the_form_fields_its_route_takes(seams, board):
     """The cap belongs to the one row that had it; every other route takes its arguments from the board."""
-    assert cli.main(["swing"]) == 0 and seams["form"] is None
+    assert cli.main([board]) == 0
+    assert seams["form"] == cli.FORM.get(board)
+    assert set(cli.FORM) == {"relatedness"}, "a second board with a field needs its own words here"
 
 
 def test_it_waits_for_no_session_bar(seams, monkeypatch):
