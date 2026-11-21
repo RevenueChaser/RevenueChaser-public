@@ -44,6 +44,11 @@ from .prices import incremental as prices_incremental  # noqa: E402
 
 prices_incremental.enable([d for d in DATASETS.values() if d.kind == prices_bars.KIND])
 
+# The delisted serving layer (#1219, serving kind ``delisted``): one dataset, built from ``wrds/prices``' Parquet.
+from .delisted import serving as delisted_serving  # noqa: E402
+
+DATASETS[delisted_serving.DATASET.name] = delisted_serving.DATASET
+
 # ── Fundamentals (build plan PR 12): the sources stage their Parquet, ``fundamentals/tables`` builds the served
 # file last (``base.build_kind`` builds a kind's datasets in this order).
 from .fundamentals import companyfacts as fundamentals_companyfacts  # noqa: E402

@@ -55,8 +55,8 @@ BOARD_MENU: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
 )
 
 #: One hue per serving file (the design's colour key); a file's tables are darker shades of it.
-FILE_COLORS = {"spine": "#26a34a", "prices": "#d07a09", "fundamentals": "#765ed4", "ownership": "#d65c8d",
-               "options": "#14a195", "market": "#2c94ea", "sec_forms": "#8a6d3b",
+FILE_COLORS = {"spine": "#26a34a", "prices": "#d07a09", "delisted": "#8d6e63", "fundamentals": "#765ed4",
+               "ownership": "#d65c8d", "options": "#14a195", "market": "#2c94ea", "sec_forms": "#8a6d3b",
                "sec_reads": "#a0522d"}
 SOURCE_COLORS = ("#6f7b32", "#646e2d", "#586228", "#4d5523", "#41481e")
 BOARD_COLOR = "#6d7585"

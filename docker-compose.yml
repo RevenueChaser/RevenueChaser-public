@@ -55,6 +55,15 @@ services:
     read_only: true
     tmpfs:
       - /tmp
+    # The one group the container needs, and nothing else. The image runs as its own unprivileged ``door`` user
+    # (``v2/door/Dockerfile``), whose uid exists only inside the image, while the artifacts root on the host belongs
+    # to the user the dashboard's jobs run as, mode ``2770`` -- so ``door`` could not even list it and the
+    # ``artifacts`` probe answered 503 (measured on homesrv 21 Nov 2026: ``uid=100(door)`` against ``1001:1001``).
+    # Joining that gid as a supplementary group is the smallest fix that works: the mount is still ``:ro``, so the
+    # group's write bit cannot be used, and the container still runs as neither root nor the dashboard's user.
+    # 1001 is homesrv's ``life``; another host sets RC_ARTIFACTS_GID to its own ``stat -c %g <RC_CACHE_DIR>``.
+    group_add:
+      - "${RC_ARTIFACTS_GID:-1001}"
     volumes:
       # The boards' artifacts (.cache): the v2 envelope files the dashboard's jobs write. Read-only.
       - "${RC_CACHE_DIR:?set RC_CACHE_DIR to the dashboard's .cache folder, the one RC_CACHE_DIR the jobs write}:/data/cache:ro"

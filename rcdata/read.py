@@ -2273,3 +2273,80 @@ def sec_reads(ciks: Iterable = (), question: str | None = None, *, provider: str
     for r in rows:
         r["answer"] = json.loads(r["answer"]) if r.get("answer") else None
     return rows
+
+
+# ── The delisted serving layer: ``delisted.duckdb`` (#1219) ─────────────────────────────────────────────────────
+# A file of its own, never merged into ``prices.duckdb``: the served universe there is today's (avo, 4 Nov 2026), so
+# a reader that is measuring the past unions the two **deliberately**. Keyed on ``permno:<PERMNO>``, and every ticker
+# carries the session range it was in use (``delisted_symbols``), because a dead company's ticker and a live one's
+# are two securities: nothing here may be joined on ticker alone.
+DATASET_OF_TABLE.update({t: "delisted/serving" for t in ("delisted_security", "delisted_security_symbol",
+                                                         "delisted_price_bar_daily", "delisted_corporate_action")})
+KIND_OF_TABLE.update({t: "delisted" for t in ("delisted_security", "delisted_security_symbol",
+                                              "delisted_price_bar_daily", "delisted_corporate_action")})
+
+
+def delisted_securities(security_ids: Iterable[str] | None = None, delisted_from=None, delisted_to=None) -> list[dict]:
+    """The delisted securities (``delisted_security``): their delisting day, price and return, their Compustat
+    ``gvkey``/``iid`` and CIK where the link exists, and what their bars span. ``security_ids`` are
+    ``permno:<PERMNO>`` ids; with none, every delisted security in the window
+    ``delisted_from <= delisting_date <= delisted_to`` (either bound optional).
+
+    The default is ``None``, not ``()``: in this module an empty collection means "nothing was asked for" and
+    ``None`` means every row, and the needs layer reads the difference off this signature
+    (``test_a_need_whose_reader_answers_nothing_by_default_declares_that_it_must_be_asked``).
+    """
+    ids = _ids(security_ids or ())
+    params: list = []
+    sql = "SELECT * FROM delisted_security WHERE 1 = 1"
+    if ids:
+        sql += f" AND security_id IN ({', '.join('?' * len(ids))})"
+        params.extend(ids)
+    sql = _bounded(sql, params, "delisting_date", delisted_from, delisted_to)
+    return _rows("delisted_security", sql + " ORDER BY security_id", params)
+
+
+def delisted_symbols(security_ids: Iterable[str] | None = None, symbols: Iterable[str] | None = None) -> list[dict]:
+    """The tickers delisted securities traded under, each with the session range it was in use (``valid_from`` and
+    ``valid_to``, both inclusive; a dead security has no open-ended range). Narrowed by ``security_ids``, by
+    ``symbols``, or by neither. A ticker several dead companies used is several rows: the caller picks by date."""
+    ids = _ids(security_ids or ())
+    wanted = sorted({str(s).strip().upper() for s in (symbols or ()) if str(s or "").strip()})
+    params: list = []
+    sql = "SELECT * FROM delisted_security_symbol WHERE 1 = 1"
+    if ids:
+        sql += f" AND security_id IN ({', '.join('?' * len(ids))})"
+        params.extend(ids)
+    if wanted:
+        sql += f" AND symbol IN ({', '.join('?' * len(wanted))})"
+        params.extend(wanted)
+    return _rows("delisted_security_symbol", sql + " ORDER BY security_id, valid_from, symbol", params)
+
+
+def delisted_bars(security_ids: Iterable[str], start=None, end=None) -> list[dict]:
+    """Daily bars of delisted ``security_ids`` with ``start <= session_date <= end``, by security and session, in
+    ``price_bar_daily``'s own columns and **nominal** (as traded).
+
+    No basis argument and no factor join: this layer serves no ``adj_factor``, so a caller that wants one basis
+    applies ``delisted_actions`` itself. Nothing here is ever unioned into ``prices.bars`` by this module: a study
+    that wants the full past does it in its own query and says so.
+    """
+    ids = _ids(security_ids)
+    if not ids:
+        return []
+    params: list = list(ids)
+    sql = _bounded(f"SELECT * FROM delisted_price_bar_daily WHERE security_id IN ({', '.join('?' * len(ids))})",
+                   params, "session_date", start, end)
+    return _rows("delisted_price_bar_daily", sql + " ORDER BY security_id, session_date", params)
+
+
+def delisted_actions(security_ids: Iterable[str], start=None, end=None) -> list[dict]:
+    """``delisted_corporate_action`` rows of ``security_ids`` with ``start <= ex_date <= end``: the splits CRSP's
+    cumulative price factor records and the ordinary cash dividends, in ``corporate_action``'s own columns."""
+    ids = _ids(security_ids)
+    if not ids:
+        return []
+    params: list = list(ids)
+    sql = _bounded(f"SELECT * FROM delisted_corporate_action WHERE security_id IN ({', '.join('?' * len(ids))})",
+                   params, "ex_date", start, end)
+    return _rows("delisted_corporate_action", sql + " ORDER BY security_id, ex_date, action, source_id", params)
