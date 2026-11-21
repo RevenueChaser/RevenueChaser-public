@@ -25,19 +25,27 @@ def _pct(vals: list[float]) -> dict[str, float]:
     return {"p25": q(0.25), "p50": q(0.50), "p75": q(0.75), "count": n}
 
 
-def _default_fetch(ticker: str) -> dict:
-    """One peer's Yahoo ``.info``, through the client so a failed peer read reaches the board banner (#299).
+def _default_fetch_many(peers: list[str]) -> dict[str, dict]:
+    """Every peer's figures from the store, in one call (#286): ``store_reads.peer_multiples``.
 
-    It used to call ``yf.Ticker(ticker).info`` here and swallow the error into the debug log, which left a
-    half-fetched comps ladder looking like a complete one.
+    Until 20 Nov 2026 this was one Yahoo ``.info`` request **per peer**, taking ``enterpriseValue`` and
+    ``ebitda`` straight off the payload. The store carries neither, so both are derived there (EBITDA =
+    EBIT + D&A, EV = market cap + total debt − cash) and the multiples moved with it — avo's decision,
+    "Store'dan türet". ``basis`` says which window the peer side is on, and a peer with nothing stored is
+    marked rather than guessed at.
     """
-    from RevenueChaser.core.providers import yfinance as yfinance_client
-    return yfinance_client.raw_info(ticker) or {}
+    from .. import store_reads
+    return store_reads.peer_multiples(peers)
 
 
 # A multiple whose denominator was reported and is not positive is not meaningful: the cell reads NM and the
 # value stays out of the percentile. 0 would read as a real multiple, and None as "not reported".
 NM = "NM"
+
+#: What the peer side's figures are, for the card's Basis line (#286). It names the two derived figures, because
+#: neither is a number any provider published: a reader comparing this card with a vendor screen must see why
+#: the multiples differ.
+PEERS_SOURCE = "fundamentals store; EBITDA = EBIT + D&A, EV = market cap + total debt − cash"
 
 
 def _multiple(numerator, denominator) -> float | str | None:
@@ -53,13 +61,19 @@ def _measured(value) -> bool:
 
 def run_comps(financials: dict, peers: list[str],
               fetch_info: Callable[[str], dict] | None = None,
-              rungs: dict[str, str] | None = None) -> dict:
+              rungs: dict[str, str] | None = None,
+              fetch_many: Callable[[list[str]], dict] | None = None) -> dict:
     """Rakip çarpan analizi; fetch_info test için enjekte edilebilir.
 
     ``rungs`` maps a peer to the ladder rung it came from (``"industry"`` / ``"sector"``, ``peers.peer_set``), so
     the table can say which peers are not in the target's industry (#91); unknown for a peer list the caller typed.
+
+    The peer figures come from the store in one call (#286, :func:`_default_fetch_many`). ``fetch_many`` replaces
+    that call; ``fetch_info`` is the older per-peer seam and still answers one peer at a time where a test injects
+    it.
     """
-    fetch = fetch_info or _default_fetch
+    infos = ({p: fetch_info(p) for p in peers} if fetch_info is not None
+             else (fetch_many or _default_fetch_many)(peers))
     annual, warnings = validate_annual(financials.get("annual", []))
     if not annual:
         return {"error": "target financial data missing", "warnings": warnings}
@@ -77,7 +91,7 @@ def run_comps(financials: dict, peers: list[str],
     rows = []
     ev_ebitda, ev_rev, pe = [], [], []
     for p in peers:
-        info = fetch(p)
+        info = infos.get(p) or {"stored": False}
         ev = to_float(info.get("enterpriseValue"))
         ebitda = to_float(info.get("ebitda"))
         revenue = to_float(info.get("totalRevenue"))
@@ -99,6 +113,11 @@ def run_comps(financials: dict, peers: list[str],
             "ticker": p,
             # Which rung of the ladder picked this peer (#91); None for a typed peer list.
             "rung": (rungs or {}).get(p),
+            # #286: a peer the store holds no annual record for is marked, not blank — a blank row reads as
+            # "the figures are missing", and this one is "we have never stored this company". Every multiple of
+            # such a peer is None already, so it is out of each percentile by the same rule as any unknown.
+            "stored": info.get("stored", True),
+            "fiscal_year": info.get("fiscal_year"),
             "market_cap": mc,
             "enterprise_value": ev,
             "ev_ebitda": ev_eb,
@@ -148,8 +167,11 @@ def run_comps(financials: dict, peers: list[str],
         # A Financial Services target is P/E only: the EV multiples are absent by design, not missing data.
         "pe_only": pe_only,
         # DF45: the two sides are on different bases, and the board says so (a label, no number moves).
-        # The peers' multiples are Yahoo's .info; the target's shares may be the prices store's (G6 follow-up).
-        "basis": {"peers": "trailing twelve months", "target_fiscal_year": latest.get("fiscal_year"),
+        # #286: the peer side is the store's newest annual record, not Yahoo's trailing twelve months, and its
+        # EBITDA and enterprise value are derived (``store_reads.peer_multiples``). ``peers_source`` lets a
+        # stored result from before this change still render with its own label.
+        "basis": {"peers": "newest stored fiscal year", "peers_source": PEERS_SOURCE,
+                  "target_fiscal_year": latest.get("fiscal_year"),
                   "target_shares": (financials.get("market_meta") or {}).get("shares_source") or "Yahoo"},
         "peers": rows,
         "multiples": {

@@ -366,17 +366,6 @@ def _read_info(t, ticker: str) -> dict:
     return read(lambda: t.info or {}, endpoint=f"{ticker}.info", default={})
 
 
-def raw_info(ticker: str) -> dict:
-    """Yahoo's own ``.info`` dict for ``ticker``, counted for the board banner (``{}`` when the read raised).
-
-    For a caller that wants the raw fields rather than the normalised ``get_info`` payload (the comps ladder's
-    per-peer read, #299), so its failures reach the banner instead of only the debug log.
-    """
-    import yfinance as yf
-
-    return _read_info(yf.Ticker(ticker), ticker)
-
-
 def get_info(ticker: str) -> dict:
     """The ``get_financials`` payload from ONE Yahoo request (``.info``), with no statements (#150 U13).
 
