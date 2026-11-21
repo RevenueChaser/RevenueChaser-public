@@ -15,7 +15,8 @@ import pytest
 from RevenueChaser.core import funnel, price_hygiene as ph
 from RevenueChaser.core import screen_common as sc
 
-from .test_screen_common_147 import Board, board  # noqa: F401 - the fake board of #147 and its fixture
+from RevenueChaser.core.tests.test_screen_common_147 import Board, board  # noqa: F401 - #147's fake board
+                                                                         # and its fixture
 
 
 # ── decide: the cap ───────────────────────────────────────────────────────────
@@ -173,5 +174,7 @@ def test_the_gates_reach_no_provider_and_no_store_in_a_run(monkeypatch):
     reads = []
     _preloaded(monkeypatch, {t: (_locked() if t == "T07" else _clean()) for t in names})
     monkeypatch.setattr(sc.ledger, "d01_last_bars", lambda n: reads.append(n) or {})
-    b.run()
-    assert reads == [], "no extra store read for the gates (``stale_names`` is stubbed out of the way)"
+    payload = b.run()
+    assert b.stats["price_dropped"] == {"locked": ["T07"]}, "the gates still did their work"
+    assert "T07" not in payload["results"]
+    assert reads == [], "and no store read of their own (``stale_names`` is stubbed out of the way)"

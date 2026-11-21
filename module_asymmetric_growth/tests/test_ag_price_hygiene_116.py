@@ -196,9 +196,18 @@ def test_a_dropped_name_never_dates_the_board(scan):
     assert result["data_as_of"] == max(engine._bar_day(r) for r in bars["T00"]).isoformat()
 
 
-def test_a_clean_scan_has_no_hygiene_step_at_all(scan):
+def test_a_clean_scan_runs_the_gates_over_both_bases_and_adds_no_step(scan, monkeypatch):
+    """Nothing is flagged, so the funnel gains no hygiene row at all — and every name still reached the gates with
+    BOTH of its frames, which is what makes a clean board evidence rather than a gate that never ran."""
     names, bars = _universe(locked=())
-    result = scan(names, bars)
+    adjusted = {t: _rows(_walk(75)) for t in names}        # a different length, so the two frames cannot be one
+    seen: list[tuple[int, int]] = []
+    real = engine.price_hygiene.evaluate
+    monkeypatch.setattr(engine.price_hygiene, "evaluate",
+                        lambda nominal, adj=None: seen.append((len(nominal), 0 if adj is None else len(adj)))
+                        or real(nominal, adj))
+    result = scan(names, bars, adjusted=adjusted)
+    assert len(seen) == 40 and set(seen) == {(70, 75)}, "every name is gated on the nominal AND the returns basis"
     keys = {s["key"] for s in result["funnel_steps"]}
     assert not (keys & (set(ph.REASONS) | {"price_hygiene_capped"}))
     assert len(result["cards"]) == 40 and funnel.validate(result["funnel_steps"]) == []
