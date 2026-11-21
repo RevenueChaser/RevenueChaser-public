@@ -7,9 +7,11 @@ sets a veto flag. The score is audit-only (like R4's vol-edge).
 
 Live input (wired):
 - OLS beta of ticker daily returns vs Δ 10Y yield (FRED DGS10 in decimal,
-  so beta ≈ equity duration). ``|beta| > 2`` is a reason; ``|beta| > 4``
-  is a veto. Fewer than 20 paired observations, or zero yield variance,
-  is unavailable — never a 0 fill.
+  so beta ≈ equity duration). ``|beta| > R6_RATE_HIGH`` is a reason;
+  ``|beta| > R6_RATE_VETO`` is a veto. Both are calibrated to the measured
+  scale of this beta (config, #635): the upper quartile and the top decile
+  of a run's names, not 100% and 82% of them. Fewer than 20 paired
+  observations, or zero yield variance, is unavailable — never a 0 fill.
 
 Not wired (optional kwargs, pipeline does not pass them):
 - FX tailwind / FX exposure, regulatory / geopolitical text, consensus
@@ -94,9 +96,10 @@ def score(
         live = True
         raw_metrics["rate_sensitivity"] = round(float(rate_sensitivity), 3)
         mag = abs(rate_sensitivity)
-        # Badge (reason) on |beta| > 4; NO_TRADE only when a rate event
+        # Badge (reason) above RATE_VETO; NO_TRADE only when a rate event
         # (FOMC/CPI) overlaps the earnings window ±1 trading day. A bare high
-        # duration is a sector trait, not an earnings veto (design doc).
+        # duration is a sector trait, not an earnings veto (design doc). The
+        # two cuts are the measured p75 / p90 of the beta (#635, config).
         if mag > RATE_VETO:
             reasons.append(f"extreme rate sensitivity ({rate_sensitivity:.1f}x)")
             raw_metrics["rate_badge"] = True

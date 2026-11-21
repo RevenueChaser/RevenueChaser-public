@@ -14,11 +14,13 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from RevenueChaser.core.config import R6_RATE_VETO
 from RevenueChaser.module_earnings_radar import stored_inputs
 from RevenueChaser.module_earnings_radar.pipeline import EarningsPipeline
 from RevenueChaser.module_earnings_radar.tests.market_store_fixture import serve as serve_market
 from RevenueChaser.module_earnings_radar.tests.market_store_fixture import serve_economic
-from RevenueChaser.module_earnings_radar.tests.test_pipeline_score import _FakeUW, _duration_ohlc_and_yields
+from RevenueChaser.module_earnings_radar.tests.test_pipeline_score import (EXTREME_DURATION, _FakeUW,
+                                                                          _duration_ohlc_and_yields)
 
 NY = ZoneInfo("America/New_York")
 REPORT = date(2026, 1, 20)                 # a Tuesday (Mon Jan 19 is Martin Luther King Day)
@@ -227,7 +229,7 @@ def _pipeline(ohlc, report=REPORT):
 
 
 def test_stored_dgs10_and_a_rate_event_veto_an_extreme_duration():
-    ohlc, yields = _duration_ohlc_and_yields(duration=10.0)
+    ohlc, yields = _duration_ohlc_and_yields(duration=EXTREME_DURATION)
     _seed_dgs10(yields)
     _serve(_rate_event_in_span())
     p = _pipeline(ohlc)
@@ -243,13 +245,13 @@ def test_stored_dgs10_and_a_rate_event_veto_an_extreme_duration():
     assert p._dgs10_cache == yields
     # #635: the veto's inputs ride the card, so a NO_TRADE can be audited from the stored row.
     m = (card.rule_audit or {}).get("rule6_macro", {}).get("metrics") or {}
-    assert m.get("rate_sensitivity") == pytest.approx(-10.0, abs=0.01)
+    assert m.get("rate_sensitivity") == pytest.approx(-EXTREME_DURATION, abs=0.01)
     assert m.get("noisy_beta") is False
     assert m.get("beta_tstat") is not None and abs(m["beta_tstat"]) >= 2.0
 
 
 def test_a_report_outside_the_stored_span_keeps_the_badge_only():
-    ohlc, yields = _duration_ohlc_and_yields(duration=10.0)
+    ohlc, yields = _duration_ohlc_and_yields(duration=EXTREME_DURATION)
     _seed_dgs10(yields)
     _serve(_rate_event_in_span())
     p = _pipeline(ohlc, report=date(2026, 6, 16))
@@ -272,7 +274,7 @@ def test_without_a_market_store_r6_has_no_yield_series_and_no_provider_is_asked(
 
 def test_the_raw_packet_carries_the_overlap():
     import json
-    ohlc, yields = _duration_ohlc_and_yields(duration=10.0)
+    ohlc, yields = _duration_ohlc_and_yields(duration=EXTREME_DURATION)
     _seed_dgs10(yields)
     _serve(_rate_event_in_span())
     p = _pipeline(ohlc)
@@ -287,8 +289,11 @@ def test_the_raw_packet_carries_the_overlap():
 
 # ── the noise gate: |t| < 2 is no veto (docs/earnings-radar/redesign.md, "Noisy gate") ───────────────────────────────────
 
-def _noisy_ohlc_and_yields(true_beta=-8.0, n=60, seed=4):
-    """A volatile name: a real but small yield dependence buried in 2% daily noise, so |beta| > 4 and |t| < 2."""
+def _noisy_ohlc_and_yields(true_beta=-(EXTREME_DURATION), n=60, seed=4, noise=0.02 * EXTREME_DURATION / 8.0):
+    """A volatile name: a real yield dependence buried in daily noise, so |beta| > R6_RATE_VETO and |t| < 2.
+
+    Beta and noise are scaled together off the veto cut (#635), which leaves the t statistic where it was
+    (~1.4): scaling every return by k scales the slope and the residual sigma by the same k."""
     import random
     rng = random.Random(seed)
     ohlc, yields = [], {}
@@ -299,7 +304,7 @@ def _noisy_ohlc_and_yields(true_beta=-8.0, n=60, seed=4):
         ohlc.append({"date": d, "close": price})
         yields[d] = y
         dy = rng.choice((-1, 1)) * rng.uniform(0.02, 0.08)            # percent points, as FRED serves DGS10
-        price *= 1.0 + true_beta * dy / 100.0 + rng.gauss(0.0, 0.02)
+        price *= 1.0 + true_beta * dy / 100.0 + rng.gauss(0.0, noise)
         y += dy
     return ohlc, yields
 
@@ -336,7 +341,7 @@ def test_yield_beta_tstat_without_a_beta_is_none():
 def test_a_noisy_extreme_beta_with_a_rate_event_is_a_badge_not_a_veto():
     ohlc, yields = _noisy_ohlc_and_yields()
     beta, t = _ols_t(ohlc, yields)
-    assert abs(beta) > 4 and abs(t) < 2                                 # the fixture is what its name says
+    assert abs(beta) > R6_RATE_VETO and abs(t) < 2      # the fixture is what its name says
     _seed_dgs10(yields)
     _serve(_rate_event_in_span())
     p = _pipeline(ohlc)
@@ -357,7 +362,7 @@ def test_the_economic_calendar_is_read_once_per_run(monkeypatch):
     reads = []
     real = stored_inputs.rate_events
     monkeypatch.setattr(stored_inputs, "rate_events", lambda: reads.append(1) or real())
-    ohlc, yields = _duration_ohlc_and_yields(duration=10.0)
+    ohlc, yields = _duration_ohlc_and_yields(duration=EXTREME_DURATION)
     p = _pipeline(ohlc)
     p._dgs10_cache = yields
 

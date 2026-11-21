@@ -1,22 +1,22 @@
-"""The Stage 2 and Stage 3 tables of ``docs/data_architecture.md`` against ``rawstore.MANIFEST`` (#1209).
+"""The Stage 2 and Stage 3 tables of ``docs/data_architecture.md`` against the code that owns them (#1209).
 
-The doc's own banner says it: "the `DB` column of the Stage 2 and Stage 3 tables is stale for the rows that
-name no `rawstore.MANIFEST` table (#1209)". #860 deleted ``raw.duckdb``, ``edgar.duckdb``, ``history.duckdb``
-and ``.store/prices.duckdb``; #1167 rewrote the passages around them and left these rows on purpose, because
-each one needs its own answer — #1209 sorts them into the three cases it names (served under the old name
-through a bridge view, moved into a serving store that has its own section here, or gone with its writer).
+#860 deleted ``raw.duckdb``, ``edgar.duckdb``, ``history.duckdb`` and ``.store/prices.duckdb``; #1167 rewrote the
+passages around them, and #1209 walked these two tables row by row: a row whose table is still served under its old
+name became a bridge-view row naming the serving kind, a row whose data moved kept the name the serving layer uses,
+and a row with no live home was dropped into the ``*(retired with the old files)*`` row, which says where its data
+went. The first guard (#1224) carried the leftovers as two closed ``STALE_*`` lists; both are empty now, so the lists
+are gone and the rule is absolute instead:
 
-This is the guard #1209 asks for, not the cleanup it asks for first. It does three things:
+- a row may name a ``rawstore.MANIFEST`` table, a serving table (``rcdata/read.DATASET_OF_TABLE``) or a bridge view
+  — nothing else, so a row cannot describe a table that does not exist;
+- a row whose table the manifest holds names the manifest's own ``"db"``, so that column cannot go stale one row at
+  a time;
+- a bridge view is marked ``(VIEW)`` and its Stage 2 ``DB`` cell names the serving kind that creates it, and a row
+  **not** so marked names no bridge view, so the bridge cannot be re-described as a cache of a board's own.
 
-- a row whose table the manifest holds must name the manifest's own ``"db"`` in its ``DB`` cell, so that column
-  cannot go stale again one row at a time;
-- a row whose table the manifest does not hold must be in ``STALE_STAGE2`` / ``STALE_STAGE3`` below. Those are
-  the measured size of #1209 in code rather than in prose, and they are closed lists, so a new such row fails
-  instead of passing quietly;
-- a name that leaves those lists cannot come back, and a name that reaches the manifest has to leave them in the
-  same commit (``test_no_stale_name_is_in_the_manifest_after_all``), so the lists can only shrink.
-
-#1209 is finished when both lists are empty. A VIEW row is not checked: a view is not a manifest table.
+A VIEW row used to be skipped here, which is how two dead ones survived: ``core/rawstore.py`` creates no view any
+more, so the Stage 3 ``index_tickers`` row belonged to the spine and the ``company_profile`` row to nothing at all.
+Views are parsed now.
 """
 
 from __future__ import annotations
@@ -25,31 +25,30 @@ import re
 from pathlib import Path
 
 from RevenueChaser.core import rawstore
+from RevenueChaser.rcdata import read
+from RevenueChaser.rcdata.build.fundamentals import tables as fundamentals_tables
+from RevenueChaser.rcdata.build.ownership import serve as ownership_serve
+from RevenueChaser.rcdata.build.prices import serving as prices_serving
+from RevenueChaser.rcdata.build.spine import views as spine_views
 
 _REPO = Path(__file__).resolve().parents[2]
 
-# Stage 2 rows whose DB cell names a file #860 deleted. Measured 20 Nov 2026 on main 7bfbec1: 29 names, which is
-# 28 tables plus the `tradewhisperer_*` prefix row (the parser reads it as `tradewhisperer_`). Each is #1209's
-# work, not a decision — some keep their row with a serving file named, some go. Nothing may be added here.
-STALE_STAGE2: frozenset[str] = frozenset({
-    "catalyst_events", "cftc_cot", "earnings_calendar", "earnings_history", "economic_calendar",
-    "edgar_documents", "edgar_financials", "equity_universe", "estimate_snapshots", "etf_holdings",
-    "identity_cusip", "index_levels_daily", "macro_series", "orphan_designations", "orphan_lookups",
-    "ownership_snapshot", "price_actions", "price_bars_daily", "price_checks", "sec13f_edgar_backfill",
-    "sec13f_filers", "sec13f_security_meta", "sec_submissions", "short_interest", "source_checks",
-    "tradewhisperer_", "vendor_financials", "vol_index_daily", "watchlist",
-})
-
-# The same for Stage 3, measured the same day: 7 names. The `sec13f_*` four and `sec13f_totals` are the tables
-# G9 left without a writer (the ownership store serves them); G10 (#274) retires them.
-STALE_STAGE3: frozenset[str] = frozenset({
-    "index_constituents", "run_registry", "sec13f_cusip_names", "sec13f_holdings", "sec13f_ingested_zips",
-    "sec13f_submissions", "sec13f_totals",
-})
+#: Serving kind -> the views that kind's build creates under the old store's names (decision D4). Taken from the
+#: build modules themselves, so a view added or dropped there moves this set with it.
+BRIDGE_VIEWS: dict[str, frozenset[str]] = {
+    "spine": frozenset(spine_views.VIEWS),
+    "prices": frozenset(prices_serving.VIEWS),
+    "fundamentals": frozenset(fundamentals_tables.VIEWS),
+    "ownership": frozenset(ownership_serve.VIEWS),
+}
+#: Every bridge view, whichever kind serves it.
+BRIDGES: frozenset[str] = frozenset().union(*BRIDGE_VIEWS.values())
+#: A name a row may carry: a board's own store table, a served table, or a bridge view.
+LIVE: frozenset[str] = frozenset(rawstore.MANIFEST) | frozenset(read.DATASET_OF_TABLE) | BRIDGES
 
 
 def _rows(heading: str, until: str, cells_wanted: int) -> list[tuple[list[str], list[str]]]:
-    """``([table names], cells)`` per row of one stage's table; VIEW rows carry no names."""
+    """``([table names], cells)`` per row of one stage's table."""
     text = (_REPO / "docs" / "data_architecture.md").read_text(encoding="utf-8")
     section = text.split(heading, 1)[1].split(until, 1)[0]
     rows: list[tuple[list[str], list[str]]] = []
@@ -59,7 +58,7 @@ def _rows(heading: str, until: str, cells_wanted: int) -> list[tuple[list[str], 
         cells = [c.strip() for c in line.strip().strip("|").split("|")]
         if len(cells) != cells_wanted:
             continue
-        names = [] if "(VIEW)" in cells[0] else re.findall(r"`([a-z0-9_]+)\*?`", cells[0])
+        names = re.findall(r"`([a-z0-9_]+)\*?`", cells[0])
         if names:
             rows.append((names, cells))
     return rows
@@ -92,28 +91,51 @@ def test_every_stage_2_row_names_the_db_the_manifest_names() -> None:
     assert not wrong, "the Stage 2 DB column disagrees with rawstore.MANIFEST:\n  " + "\n  ".join(wrong)
 
 
-def test_a_row_outside_the_manifest_is_one_of_the_known_stale_ones() -> None:
-    unexpected = {
-        "Stage 2": sorted({n for names, _ in _stage2() for n in names
-                           if n not in rawstore.MANIFEST and n not in STALE_STAGE2}),
-        "Stage 3": sorted({n for names, _ in _stage3() for n in names
-                           if n not in rawstore.MANIFEST and n not in STALE_STAGE3}),
+def test_every_row_names_a_table_or_a_view_that_exists() -> None:
+    """#1209's rule, and the end of its two STALE lists: a row describes a table that is really there."""
+    dead = {
+        "Stage 2": sorted({n for names, _ in _stage2() for n in names if n not in LIVE}),
+        "Stage 3": sorted({n for names, _ in _stage3() for n in names if n not in LIVE}),
     }
-    named = {k: v for k, v in unexpected.items() if v}
+    named = {k: v for k, v in dead.items() if v}
     assert not named, (
-        f"rows for tables the manifest does not hold: {named}. A row describes a table that exists: if one of "
-        "these is #1209's leftover, give the row its serving file or drop it — do not grow the STALE lists.")
+        f"rows for tables neither the manifest, the serving layer nor a bridge view holds: {named}. #860 deleted "
+        "raw.duckdb, edgar.duckdb, history.duckdb and .store/prices.duckdb: give the row the name its data is "
+        "served under now, or move it into the '(retired with the old files)' row, which says where the data went.")
 
 
-def test_no_stale_name_is_in_the_manifest_after_all() -> None:
-    """Keeps the #1209 lists shrinking: a name that reaches the manifest leaves the list in the same commit."""
-    fixed = sorted(n for n in STALE_STAGE2 | STALE_STAGE3 if n in rawstore.MANIFEST)
-    assert not fixed, f"these are manifest tables now and must leave the STALE lists: {fixed}"
+def test_a_bridge_view_row_is_marked_and_names_the_kind_that_serves_it() -> None:
+    """The Stage 2 DB cell of a bridge view is the serving kind whose build creates it, not `raw` and not a board."""
+    wrong = []
+    for names, cells in _stage2():
+        for name in names:
+            if name not in BRIDGES or name in rawstore.MANIFEST:
+                continue
+            kind = next(k for k, views in BRIDGE_VIEWS.items() if name in views)
+            if "(VIEW)" not in cells[0]:
+                wrong.append(f"{name}: a bridge view, so its row is marked (VIEW)")
+            if cells[2].strip("` ") != kind:
+                wrong.append(f"{name}: doc says DB {cells[2].strip('` ')!r}, {kind}'s build creates the view")
+    assert not wrong, "bridge-view rows of Stage 2:\n  " + "\n  ".join(wrong)
 
 
-def test_the_stale_lists_only_name_rows_that_are_really_there() -> None:
-    """A row that was fixed or dropped must leave its list, so the lists never outlive the work."""
-    stage2 = {n for names, _ in _stage2() for n in names}
-    stage3 = {n for names, _ in _stage3() for n in names}
-    assert not sorted(STALE_STAGE2 - stage2), f"no Stage 2 row any more: {sorted(STALE_STAGE2 - stage2)}"
-    assert not sorted(STALE_STAGE3 - stage3), f"no Stage 3 row any more: {sorted(STALE_STAGE3 - stage3)}"
+def test_a_row_that_is_not_marked_a_view_names_no_bridge_view() -> None:
+    """So a view rcdata serves cannot be described again as a cache a board writes itself."""
+    wrong = []
+    for stage, rows in (("Stage 2", _stage2()), ("Stage 3", _stage3())):
+        for names, cells in rows:
+            if "(VIEW)" in cells[0]:
+                continue
+            for name in names:
+                if name in BRIDGES and name not in rawstore.MANIFEST:
+                    wrong.append(f"{stage}: {name} is a bridge view; mark its row (VIEW)")
+    assert not wrong, "\n  ".join(wrong)
+
+
+def test_no_row_names_a_file_number_eight_six_zero_deleted() -> None:
+    """The reason the DB column was stale at all: a row may not point at a deleted file."""
+    gone = ("raw", "edgar", "history", "prices.duckdb")
+    wrong = [f"{names[0]}: DB {cells[2]!r}" for names, cells in _stage2()
+             if cells[2].strip("` ") in gone]
+    assert not wrong, ("these Stage 2 rows still name a file #860 deleted:\n  " + "\n  ".join(wrong)
+                       + "\n(the prices store in RC_MARKET_DIR is the kind `prices`, not the old .store file)")

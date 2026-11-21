@@ -235,9 +235,18 @@ R5_LEAN_EXPIRY_DAYS = 45
 # name without an expected move keeps every strike (the band is unknown, never empty).
 R5_LEAN_BAND_SLACK = 1.5
 # R6 — macro (rate sensitivity)
+# The thresholds are on the scale of the beta the board actually computes: ``r6_beta`` is an OLS beta of daily
+# returns on Δ DGS10 in decimal, so it reads as equity duration. Measured over the one stored run there is
+# (``earnings_radar_latest.html``, 10 Nov 2026, 35 cards, 33 with a printed beta; #635, 20 Nov 2026):
+# min 2.5 · p25 6.4 · median 14.1 · p75 22.0 · p90 26.7 · max 47.4. The old 2.0 / 4.0 pair came from a different
+# scale and marked 100% / 82% of that day's names, so it separated nothing. HIGH is the measured p75 and VETO the
+# p90: "high" is the upper quartile, "extreme" the top decile (~3 names of 33, not 27). The beta itself is left
+# alone, because it is a real quantity (duration) and the card prints it.
+# One day is all the distribution there is — the card history went with #860 — so this is a calibration to be
+# re-taken once several runs' cards are stored again (#1250).
 R6_MIN_OBS = 20
-R6_RATE_HIGH = 2.0
-R6_RATE_VETO = 4.0
+R6_RATE_HIGH = 22.0
+R6_RATE_VETO = 26.0
 # R7 — accounting (Sloan)
 R7_NI_MISMATCH_TOL = 0.01
 # R8 — sentiment (retail call share). SIGN = +1 treats crowded retail call
