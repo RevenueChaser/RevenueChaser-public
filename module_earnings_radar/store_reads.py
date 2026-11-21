@@ -368,3 +368,83 @@ def earnings_options(tickers, latest: date | None = None) -> tuple[dict[str, dic
     as_of = max(r["session_date"] for r in newest.values()).isoformat()
     return newest, {"stored": True, "label": f"{len(newest)} of {len(names)} names have the evening's option set",
                     "source": OPTIONS_SOURCE, "source_as_of": as_of, "status": status}
+
+
+RELEASE_SOURCE = "rcdata:filing_section"
+RELEASE_DATASET = "sec/forms"
+#: How old an earnings press release may be and still be the **last** quarter's. A company reports every ~91 days,
+#: so a release older than this means the board is looking at a name that has skipped a report (or whose 8-K the
+#: filing list has not caught), and its words are no longer about the quarter that is about to be reported.
+RELEASE_MAX_AGE_DAYS = 200
+
+
+def release_texts(tickers, report_dates: dict | None = None,
+                  today: date | None = None) -> tuple[dict[str, dict], dict]:
+    """``({ticker: {text, filing_date, accession, document, chars}}, note)``: the newest earnings press release
+    each name filed **before** the report the board is scoring (R8's text half, #1214).
+
+    The text is the EX-99.1 exhibit of the newest 8-K carrying item 2.02, cut whole by ``sec/forms`` and served as
+    ``filing_section``'s ``release`` row. The ticker is mapped to its filer through ``fundamental_company``, which
+    is the same CIK the statements are filed under.
+
+    **Strictly before the report date.** The board scores a card before its print, so the usable words are the
+    previous quarter's. On the morning of a report the newest release *is* that print's, and reading it would hand
+    the rule the answer it is meant to anticipate — so a release filed on or after the card's report date is
+    dropped, and a name whose only release is that one is simply absent from the map. ``report_dates`` is
+    ``{ticker: date}``; a name it does not name keeps its newest release.
+
+    A name with no release is absent and R8 falls back to the retail-call-share slot it has always had. A store
+    error is "not stored", never an exception and never a live read.
+    """
+    names = sorted({str(t).strip().upper() for t in (tickers or []) if str(t or "").strip()})
+    status = _status(RELEASE_DATASET)
+    if not names:
+        return {}, _missing("the earnings press releases", None, "no ticker asked", source=RELEASE_SOURCE,
+                            status=status)
+    try:
+        today = _day(today) or calendar.today_ny()
+    except ValueError:
+        today = calendar.today_ny()
+    oldest = today - timedelta(days=RELEASE_MAX_AGE_DAYS)
+    wanted = {str(k).strip().upper(): _day(v) for k, v in (report_dates or {}).items()}
+    try:
+        of_cik: dict[str, list[str]] = {}
+        for row in read.fundamental_companies(names):
+            cik = str(row.get("cik") or "").strip()
+            ticker = str(row.get("ticker") or "").strip().upper()
+            if cik and ticker:
+                of_cik.setdefault(cik, []).append(ticker)
+        rows = read.form_release(sorted(of_cik)) if of_cik else []
+    except Exception as exc:                                  # noqa: BLE001 - a store error is "not stored"
+        logger.warning("earnings release-text read failed: %s", exc)
+        return {}, _missing("the earnings press releases", None, f"read failed: {type(exc).__name__}",
+                            source=RELEASE_SOURCE, status=status)
+    out: dict[str, dict] = {}
+    after, stale = 0, 0
+    for r in rows:
+        filed = _day(r.get("filing_date"))
+        text = str(r.get("text") or "")
+        if filed is None or not text:
+            continue
+        if filed < oldest:
+            stale += 1
+            continue
+        for ticker in of_cik.get(str(r.get("cik") or "").strip(), []):
+            report = wanted.get(ticker)
+            if report is not None and filed >= report:
+                after += 1
+                continue
+            out[ticker] = {"text": text, "filing_date": filed, "accession": str(r.get("accession") or ""),
+                           "document": str(r.get("document") or ""), "chars": int(r.get("chars") or len(text))}
+    left_out = ", ".join(part for part in (f"{after} not before the report" if after else "",
+                                           f"{stale} older than {RELEASE_MAX_AGE_DAYS} days" if stale else "")
+                         if part)
+    if not out:
+        return {}, _missing("the earnings press releases", None, left_out or None, source=RELEASE_SOURCE,
+                            status=status)
+    return out, {"stored": True,
+                 "label": f"{len(out)} of {len(names)} names have last quarter's press release"
+                          + (f"; {left_out}" if left_out else ""),
+                 "source": RELEASE_SOURCE,
+                 "source_as_of": max(r["filing_date"] for r in out.values()).isoformat(),
+                 "status": status}

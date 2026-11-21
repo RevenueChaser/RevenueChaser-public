@@ -2095,7 +2095,10 @@ KIND_OF_TABLE.update({t: "sec_forms" for t in ("filing_section", "filing_note")}
 
 #: What ``filing_section.section`` can hold. ``risk_factors`` and ``mdna`` are in the plan's schema and have no
 #: rule yet, so no row carries them: a reader that asks for one gets no rows, not an error.
-FORM_SECTIONS = ("whole", "proxy", "business")
+#: ``release`` is the earnings press release of an 8-K item 2.02 filing (#1214), not a section of a periodic
+#: report: one uncut row per filing, which is why it is the only one here that is not an annual report's or a
+#: proxy's.
+FORM_SECTIONS = ("whole", "proxy", "business", "release")
 
 
 def form_sections(ciks: Iterable = (), *, section: str, text: bool = True) -> list[dict]:
@@ -2110,6 +2113,17 @@ def form_sections(ciks: Iterable = (), *, section: str, text: bool = True) -> li
         return []
     cols = "*" if text else "* EXCLUDE (text)"
     return _rows("filing_section", _newest_section_sql(cols, len(wanted)), [str(section), *wanted] * 2)
+
+
+def form_release(ciks: Iterable = (), text: bool = True) -> list[dict]:
+    """Each company's newest earnings press release (``sec.release``): the EX-99.1 exhibit of its newest 8-K
+    carrying item 2.02, stored whole.
+
+    The newest filing wins, as everywhere in this reader -- so a caller that scores a report **before** it is
+    published must check ``filing_date`` against the report it is scoring, because on the day of a report the
+    newest release is that morning's.
+    """
+    return form_sections(ciks, section="release", text=text)
 
 
 def form_whole(ciks: Iterable = (), text: bool = True) -> list[dict]:
