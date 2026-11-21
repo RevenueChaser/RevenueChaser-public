@@ -20,12 +20,12 @@ ratio and one print table, and layer 2 is **already half-written here** (`core/o
 
 | Dependency | Layer | Verdict | With what |
 |---|---|---|---|
-| `options.chain` (`option_eod`: NBBO, IV, 4 Greeks, OI, volume) | 3 | **fully replaceable** | Cboe delayed chain (free) or IBKR/ThetaData chain |
+| `options.chain` (`option_eod`: NBBO, IV, 4 Greeks, OI, volume) | 3 | **replaceable, but no longer free** | IBKR (USD 1.50/month) or ThetaData/Massive. **Not Cboe** — M1 ruled it out |
 | `options.strikes`, `options.expiries`, `options.daily` | 3 | **fully replaceable** | derived from the same chain |
 | `market.spx_expiry_strike`, `market.spx_greek_expiry_strike` | 3 | **fully replaceable (compute)** | chain OI × Greeks; UW serves the sum, we would sum it ourselves |
 | SPX Gamma's `gex-levels`, `greek-exposure/*`, `spot-exposures/*`, `max-pain` | 3 | **fully replaceable (compute)** | same input; the formulas are standard and open |
 | `options.iv`, `volatility/term-structure`, `interpolated-iv`, `iv-rank` | 3 | **partly today, fully with work** | IBKR is already a second provider for `iv_daily` (`rcdata/build/options/ibkr_iv.py`); rank and term structure are computed from a stored IV history |
-| `options.prints` (`option_print`) | 1 | **not replaceable free** | needs a tape: IBKR OPRA, ThetaData, Massive or Databento |
+| `options.prints` (`option_print`) | 1 | **not replaceable free** | needs a paid tape: ThetaData (USD 80), Massive Developer (USD 79, 15-min delayed) or Advanced/Databento (USD 199, real-time). **Not IBKR** — M2 ruled it out, see below |
 | SPX Gamma's ask-side ratio, `greek-flow`, `flow-per-strike`, `flow-per-expiry` | 1 + 2 | **not replaceable free** | same tape, then our own side/aggregation rules |
 | `options.screener` / `earnings.next` (the earnings calendar + screener row) | — | **partly** | the calendar has an existing fallback (`d26_calendar`); the screener's option-volume/premium columns need a chain source |
 | `options.far_contracts` (LEAPS board) | 3 | **partly** | a market-wide `min_dte` sweep is a UW screener feature; from a chain source it becomes our own scan over all contracts, i.e. more data pulled |
@@ -47,7 +47,7 @@ Prices read from the vendor's own page on **21 November 2026 ~13:01 UTC** unless
 
 | Source | What it gives | Price | State |
 |---|---|---|---|
-| **Cboe delayed quotes** `cdn.cboe.com/api/global/delayed_quotes/options/<SYM>.json` | full chain: bid/ask/sizes, IV, OI, volume, **delta, gamma, theta, vega, rho**, `iv30`; ~15 min delayed, no key | free | **measured working 5 Nov 2026** (SPX 29,576 contracts, AAPL 3,440). **Re-check 21 Nov from this cloud container: HTTP 403, Cloudflare** — must be re-measured from homesrv before anything is planned on it |
+| ~~**Cboe delayed quotes**~~ `cdn.cboe.com/api/global/delayed_quotes/options/<SYM>.json` | full chain: bid/ask/sizes, IV, OI, volume, the 4 Greeks + rho, `iv30`; ~15 min delayed, no key | free | **ruled out, M1 21 Nov 2026: HTTP 403 (Cloudflare) from homesrv**, on `cdn.cboe.com` and `cdn-api.cboe.com`, for `_SPX` and `AAPL`, in under a second each. It worked from a cloud box on 5 Nov (SPX 29,576 contracts, AAPL 3,440); it does not work from the machine RC runs on, which is the only host that matters |
 | **IBKR OPRA (L1)** | top-of-book quotes + trade stream for US option exchanges, through the Gateway we already run | **USD 1.50/month non-professional**, USD 32.75 professional; **waived** when monthly commissions exceed USD 20 | verified on interactivebrokers.com market-data pricing page |
 | IBKR "US Equity and Options Add-On Streaming Bundle" | streaming NBBO incl. OPRA | USD 4.50 non-pro (needs the USD 10.00 Snapshot bundle); USD 125.00 pro | same page |
 | **ThetaData Options Standard** | tick-level OPRA, **every NBBO quote**, 15K trade streams, option-chain snapshots, 10 years of history | **USD 80/month** (Value 40, Pro 160 — Pro streams *every* option trade, 14 years) | verified on thetadata.net/pricing; **individual use, no redistribution** |

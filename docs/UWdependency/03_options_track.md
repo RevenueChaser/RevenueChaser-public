@@ -23,7 +23,7 @@ board's `gex-levels`, `greek-exposure/{strike,expiry,strike-expiry}`, `spot-expo
 
 | Source | Delay | Greeks | OI | Cost | State |
 |---|---|---|---|---|---|
-| Cboe `cdn.cboe.com/api/global/delayed_quotes/options/<SYM>.json` | ~15 min | yes (δ γ θ ν ρ) | yes | free, no key | worked 5 Nov (SPX 29,576 contracts); **403 Cloudflare from the cloud container on 21 Nov** — re-measure from homesrv |
+| ~~Cboe `cdn.cboe.com/api/global/delayed_quotes/options/<SYM>.json`~~ | ~~15 min~~ | yes (δ γ θ ν ρ) | yes | free, no key | **ruled out (M1, 21 Nov 2026): HTTP 403 from homesrv too**, on both hosts and both symbols. It worked on 5 Nov from a cloud box; it does not work from where RC runs |
 | IBKR Gateway (OPRA L1 + model Greeks) | real time | yes (IBKR's model) | yes | **USD 1.50/mo** non-pro, waived over USD 20 commissions | the Gateway already runs on homesrv |
 | ThetaData Options Standard | real time | chain snapshots | yes | USD 80/mo | individual use, no redistribution |
 
@@ -49,8 +49,8 @@ Measured from the UI survey, 21 Nov 2026 (`ui/README.md`, `07_ui_survey.md` §3)
 | Bullish / bearish premium | Implied move per expiry |
 | Bid/ask volume bars | "Highest volume contracts" (one table, four UW pages) |
 
-So the tape decision below is the whole cost decision: everything in the right column is layer 3 arithmetic over a
-chain we can get for USD 1.50 a month or for free.
+So the tape decision below is the whole cost decision — but the right column is no longer free either: **M1 found
+Cboe answering 403 from homesrv as well** (21 Nov 2026), so a chain costs at least the IBKR line's USD 1.50.
 
 **UW is retiring DEX** (banner on its own Delta tab, seen 21 Nov 2026). It stays in the layer-3 list above as
 arithmetic, but it is not worth a lane.
@@ -87,7 +87,7 @@ single fact that decides whether IBKR alone can carry layer 1.
 
 | Source | Tape | History | Price | Delay |
 |---|---|---|---|---|
-| **IBKR OPRA L1** | trades, if M2 confirms tick-by-tick | — | **USD 1.50/month** non-pro | real-time, but a 100-line default limit |
+| ~~IBKR OPRA L1~~ | **ruled out for the tape (M2, 21 Nov 2026):** IBKR's own doc says *"Real time tick-by-tick data is not available for options"* — twice on the page | — | USD 1.50/month | n/a. It stays the chain, IV and snapshot source, not the tape |
 | **Massive Options Developer** | OPRA trades + flat files | 4 years | **USD 79/month** | **15 minutes** |
 | **ThetaData Standard** | tick-level OPRA, every NBBO quote | 10 years | **USD 80/month** | real-time |
 | **Massive Options Advanced** | OPRA trades + flat files | 5+ years | **USD 199/month** | real-time |
