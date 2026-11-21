@@ -642,6 +642,27 @@ _SHOW_SERVICE = ("ActiveState", "Result", "ExecMainStatus", "ExecMainStartTimest
 UNIT_ENVIRONMENT = ("RC_STORE_DIR", "RC_CACHE_DIR", "RC_EDGAR_DOCS_DIR", "SPX_GAMMA_DATA_ROOT", "RAW_STORE_BACKUP_DIR",
                     "TZ")
 
+# #191 item 6: the provider keys. A job systemd starts gets the allowlist above and nothing else, so on a host that
+# keeps its keys in a file outside the checkout (homesrv: the dashboard service's own environment file) a provider job
+# would run without them. ``RC_UNIT_ENV_FILE`` names that file and the unit carries the PATH only, never a value:
+# unit files are world-readable, and systemd reads the file itself, as root, when the service starts. The ``-`` prefix
+# makes a missing file a no-op rather than a failed start.
+UNIT_ENV_FILE_ENV = "RC_UNIT_ENV_FILE"
+
+
+def unit_env_file() -> str | None:
+    """The absolute path an installed unit reads its remaining variables from, or None.
+
+    A relative value is refused rather than resolved: systemd would read it against ``/``, not the dashboard's cwd,
+    and a file that is silently not there is the failure this line exists to prevent."""
+    value = (os.environ.get(UNIT_ENV_FILE_ENV) or "").strip()
+    if not value:
+        return None
+    if not Path(value).is_absolute():
+        logger.warning("%s=%r is not an absolute path; no EnvironmentFile= line is written", UNIT_ENV_FILE_ENV, value)
+        return None
+    return value
+
 
 def _unit_environment() -> list[tuple[str, str]]:
     resolved = config.resolved_roots()
@@ -689,6 +710,27 @@ def on_calendar(e: AutomationEntry) -> str:
     return f"{days + ' ' if days else ''}*-*-* {e.time}:00"
 
 
+#: A zone name a unit file may carry after ``OnCalendar=``: one word, no space and no ``%``.
+_ZONE_RE = re.compile(r"^[A-Za-z0-9+_./-]+$")
+
+
+def unit_timezone(env: list[tuple[str, str]] | None = None) -> str | None:
+    """The zone an installed unit's ``OnCalendar=`` is read in, or None to leave it to the user manager's own zone."""
+    pairs = _unit_environment() if env is None else env
+    tz = next((v for k, v in pairs if k == "TZ"), "").strip()
+    return tz if tz and _ZONE_RE.match(tz) else None
+
+
+def on_calendar_line(e: AutomationEntry, tz: str | None = None) -> str:
+    """The ``OnCalendar=`` value an install writes: the spec plus the zone the service carries (#191 item 4).
+
+    ``TZ`` goes into the service, but a bare spec fires in the **user manager's** zone, while the chain cutoff and the
+    job itself read ``TZ``: on a host whose two zones differ the timer fired at the wrong hour. Keep ``on_calendar``
+    itself zone-free -- the Control board reads its minute field."""
+    spec = on_calendar(e)
+    return f"{spec} {tz}" if tz else spec
+
+
 def _unit_value(value: str) -> str:
     """A value for a unit file line: one line, with ``%`` doubled so systemd expands no specifier in it."""
     value = str(value)
@@ -716,7 +758,11 @@ def _show_value(v: str | None) -> str | None:
         return None
     if ts > 1e11:                    # a raw microsecond count, not seconds
         ts /= 1e6
-    return datetime.fromtimestamp(ts, timezone.utc).astimezone().isoformat()
+    try:
+        return datetime.fromtimestamp(ts, timezone.utc).astimezone().isoformat()
+    except (OverflowError, OSError, ValueError):
+        # A stamp outside the range a date can hold (``infinity`` in a harness) is a time we do not have, not a crash.
+        return None
 
 
 def parse_show(text: str) -> tuple[dict[str, str], dict[str, str]]:
@@ -736,9 +782,16 @@ def parse_show(text: str) -> tuple[dict[str, str], dict[str, str]]:
     return blocks[0], blocks[1]
 
 
+def _reset_hint(unit: str, user: bool) -> str:
+    """The command that clears a failed timer (#191 item 3). The panel offers an error row no button, so the row's own
+    message has to name the way out; ``status`` only prints the failure again."""
+    scope = "--user " if user else ""
+    return f"clear it with: systemctl {scope}reset-failed {unit}"
+
+
 def _task_status(t: dict[str, str], sv: dict[str, str], hint: str) -> TaskStatus:
-    """A timer's and its service's ``systemctl show`` properties as a ``TaskStatus``; ``hint`` is the command that
-    shows a failed timer."""
+    """A timer's and its service's ``systemctl show`` properties as a ``TaskStatus``; ``hint`` is what to do about a
+    failed timer."""
     if t.get("ActiveState") == "failed" or t.get("Result", "success") != "success":
         # A failed timer never fires again until it is reset: an error row, never "disabled" (which it is not).
         raise AutomationError(f"the timer failed ({t.get('Result') or t.get('ActiveState')}); {hint}")
@@ -800,7 +853,7 @@ def system_status(e: AutomationEntry, run: Callable[[list[str]], tuple[int, str,
         return None
     if t.get("LoadState") != "loaded":
         return None
-    return _task_status(t, sv, f"systemctl status {unit}.timer")
+    return _task_status(t, sv, _reset_hint(f"{unit}.timer", user=False))
 
 
 class LinuxScheduler(Scheduler):
@@ -834,11 +887,13 @@ class LinuxScheduler(Scheduler):
         out = self._exec("show", "--timestamp=unix",
                          "--property=" + ",".join(sorted(set(_SHOW_TIMER + _SHOW_SERVICE))),
                          timer.name, service.name)
-        return _task_status(*parse_show(out), f"systemctl --user status {timer.name}")
+        return _task_status(*parse_show(out), _reset_hint(timer.name, user=True))
 
     def install(self, e):
         e = entry(e.name)
         s = e.settings
+        env = _unit_environment()
+        env_file = unit_env_file()
         service_text = "\n".join([
             "[Unit]",
             f"Description={_unit_value(e.label)} (RevenueChaser {e.name})",
@@ -846,7 +901,8 @@ class LinuxScheduler(Scheduler):
             "[Service]",
             "Type=oneshot",
             f"WorkingDirectory={_unit_value(self._workdir)}",
-            *(_env_line(k, v) for k, v in _unit_environment()),
+            *(_env_line(k, v) for k, v in env),
+            *([f"EnvironmentFile=-{_unit_value(env_file)}"] if env_file else []),
             "ExecStart=" + " ".join(_exec_arg(a) for a in
                                     (self._python, "-m", "RevenueChaser.core.automations", "run", e.name)),
             ("TimeoutStartSec=infinity" if s.no_time_limit else
@@ -859,7 +915,7 @@ class LinuxScheduler(Scheduler):
             f"Description={_unit_value(e.schedule)} (RevenueChaser {e.name})",
             "",
             "[Timer]",
-            f"OnCalendar={on_calendar(e)}",
+            f"OnCalendar={_unit_value(on_calendar_line(e, unit_timezone(env)))}",
             f"Unit={e.unit}.service",
             f"Persistent={'true' if s.start_when_available else 'false'}",
             # No WakeSystem=: a user timer cannot arm a wake alarm (CAP_WAKE_ALARM), and asking for one leaves the
@@ -892,6 +948,11 @@ class LinuxScheduler(Scheduler):
             self._exec("enable", "--now", timer.name)
         except AutomationError:
             # Roll back: a half-installed task reads as an error row, which the panel offers no button for.
+            # #191 item 2: ``enable --now`` writes timers.target.wants/<name>.timer before the start can fail, so an
+            # install that created the pair also takes that symlink away. A reinstall over an older pair does not: the
+            # files go back to their old text and the symlink the first install made is still theirs.
+            if not before:
+                self._try("disable", timer.name)
             self._roll_back(e.name, before)
             self._try("daemon-reload")
             raise
@@ -954,9 +1015,17 @@ SCHEDULER_SYSTEMD_USER = "systemd-user"
 def _default_scheduler() -> Scheduler:
     if sys.platform == "win32":
         return WindowsScheduler()
-    if (sys.platform.startswith("linux") and os.environ.get(SCHEDULER_ENV, "").strip() == SCHEDULER_SYSTEMD_USER
-            and shutil.which("systemctl")):
-        return LinuxScheduler()
+    choice = os.environ.get(SCHEDULER_ENV, "").strip()
+    if sys.platform.startswith("linux"):
+        if choice == SCHEDULER_SYSTEMD_USER:
+            if shutil.which("systemctl"):
+                return LinuxScheduler()
+            logger.warning("%s=%s, but systemctl is not on PATH: the Automations panel stays unavailable",
+                           SCHEDULER_ENV, SCHEDULER_SYSTEMD_USER)
+        elif choice:
+            # #191 item 5: "systemd" and "Systemd-User" used to read as "no scheduler", with nothing said anywhere.
+            logger.warning("%s=%r is not a scheduler name; the only value this host accepts is %r, so the "
+                           "Automations panel stays unavailable", SCHEDULER_ENV, choice, SCHEDULER_SYSTEMD_USER)
     return UnavailableScheduler()
 
 

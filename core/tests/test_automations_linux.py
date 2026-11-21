@@ -101,6 +101,102 @@ def test_a_failed_reinstall_puts_the_working_pair_back(tmp_path):
     assert _unit(tmp_path, name, "service") == service and _unit(tmp_path, name, "timer") == timer
 
 
+def test_a_rolled_back_first_install_leaves_no_enabled_timer(tmp_path):
+    """#191 item 2: ``enable --now`` writes timers.target.wants/<name>.timer before the start can fail, and the
+    rollback never disabled it, so the manager kept a symlink to a unit file that was gone."""
+    calls: list[list[str]] = []
+
+    def run(args):                                   # the symlink is written, then the start of the unit fails
+        calls.append(list(args))
+        return (1, "", "Job failed") if args[0] == "enable" else (0, "", "")
+
+    with pytest.raises(A.AutomationError):
+        _linux(tmp_path, run).install(A.entry("RC-Relatedness-OffPeak"))
+    assert ["disable", "RC-Relatedness-OffPeak.timer"] in calls
+    assert not any((tmp_path / "units").glob("RC-Relatedness-OffPeak.*"))
+
+
+def test_a_rolled_back_reinstall_does_not_disable_the_working_timer(tmp_path):
+    """The other half of item 2: the symlink of a pair this call did not create is not this call's to take away."""
+    name = "RC-Relatedness-OffPeak"
+    _linux(tmp_path, FakeSystemctl()).install(A.entry(name))
+    sc = FailOn("enable")
+    with pytest.raises(A.AutomationError):
+        _linux(tmp_path, sc).install(A.entry(name))
+    assert not any(c[0] == "disable" for c in sc.calls)
+
+
+def test_the_timer_carries_the_zone_the_service_carries(tmp_path, monkeypatch):
+    """#191 item 4: ``TZ`` goes into the service, but a bare ``OnCalendar=`` fires in the user manager's zone."""
+    monkeypatch.setenv("TZ", "Europe/Amsterdam")
+    e = A.entry("RC-Relatedness-OffPeak")
+    _linux(tmp_path, FakeSystemctl()).install(e)
+    timer = _unit(tmp_path, e.unit, "timer")
+    assert f"OnCalendar={A.on_calendar(e)} Europe/Amsterdam" in timer
+    # The Control board reads the minute out of ``on_calendar``, so that one stays zone-free.
+    assert A.on_calendar(e).split()[-1].count(":") == 2
+
+
+def test_a_zone_that_is_not_one_word_is_left_off(tmp_path, monkeypatch):
+    monkeypatch.setenv("TZ", "Europe/Amsterdam extra")
+    e = A.entry("RC-Relatedness-OffPeak")
+    _linux(tmp_path, FakeSystemctl()).install(e)
+    assert f"OnCalendar={A.on_calendar(e)}\n" in _unit(tmp_path, e.unit, "timer")
+
+
+def test_a_failed_timer_names_the_command_that_clears_it(tmp_path):
+    """#191 item 3: the panel offers an error row no button, so the message has to say how to get out of it.
+    ``systemctl status`` only prints the failure again."""
+    sc = FakeSystemctl(out=_show({**_TIMER_ON, "ActiveState": "failed", "Result": "exit-code"}, _SERVICE_OK))
+    s = _linux(tmp_path, sc)
+    s.install(A.entry("RC-Relatedness-OffPeak"))
+    with pytest.raises(A.AutomationError) as err:
+        s.status("RC-Relatedness-OffPeak")
+    assert "reset-failed RC-Relatedness-OffPeak.timer" in str(err.value) and "--user" in str(err.value)
+
+
+def test_a_failed_system_timer_names_the_system_command(monkeypatch):
+    e = A.entry("RC-Relatedness-OffPeak")
+    out = _show({**_TIMER_ON, "LoadState": "loaded", "ActiveState": "failed", "Result": "exit-code"}, _SERVICE_OK)
+    with pytest.raises(A.AutomationError) as err:
+        A.system_status(e, run=lambda args: (0, out, ""))
+    assert f"reset-failed {A.system_unit(e)}.timer" in str(err.value) and "--user" not in str(err.value)
+
+
+def test_the_unit_carries_the_path_of_the_key_file_and_no_value(tmp_path, monkeypatch):
+    """#191 item 6: a job systemd starts gets the allowlist and nothing else, so provider jobs ran without keys.
+    systemd reads the file itself; the unit file (world-readable) holds the path only."""
+    monkeypatch.setenv(A.UNIT_ENV_FILE_ENV, "/etc/example/secrets.env")
+    e = A.entry("RC-Relatedness-OffPeak")
+    _linux(tmp_path, FakeSystemctl()).install(e)
+    service = _unit(tmp_path, e.unit, "service")
+    assert "EnvironmentFile=-/etc/example/secrets.env" in service
+    assert sum(1 for ln in service.splitlines() if ln.startswith("EnvironmentFile=")) == 1
+
+
+def test_no_key_file_line_without_the_variable(tmp_path, monkeypatch):
+    monkeypatch.delenv(A.UNIT_ENV_FILE_ENV, raising=False)
+    e = A.entry("RC-Relatedness-OffPeak")
+    _linux(tmp_path, FakeSystemctl()).install(e)
+    assert "EnvironmentFile" not in _unit(tmp_path, e.unit, "service")
+
+
+def test_a_relative_key_file_is_refused(tmp_path, monkeypatch):
+    """systemd would read it against ``/``, not the dashboard's cwd: a file that is silently not there is the very
+    failure this line exists to prevent."""
+    monkeypatch.setenv(A.UNIT_ENV_FILE_ENV, "secrets.env")
+    e = A.entry("RC-Relatedness-OffPeak")
+    _linux(tmp_path, FakeSystemctl()).install(e)
+    assert "EnvironmentFile" not in _unit(tmp_path, e.unit, "service")
+    assert A.unit_env_file() is None
+
+
+def test_an_absurd_timestamp_is_a_time_we_do_not_have(tmp_path):
+    """The reviewer's nit on #191: ``infinity`` in a harness made ``_show_value`` raise OverflowError."""
+    assert A._show_value("@1e308") is None
+    assert A._show_value("@1792900800") is not None
+
+
 # --- the other four buttons ---------------------------------------------------------
 
 def test_enable_disable_run_and_remove_name_exactly_one_registry_unit(tmp_path):
@@ -178,6 +274,29 @@ def test_linux_gets_the_systemd_backend_only_when_asked_for(linux_host, monkeypa
 def test_an_unknown_scheduler_choice_stays_unavailable(linux_host, monkeypatch):
     monkeypatch.setenv("RC_SCHEDULER", "systemd")
     assert isinstance(A.get_scheduler(), A.UnavailableScheduler)
+
+
+@pytest.mark.parametrize("value", ["systemd", "Systemd-User"])
+def test_an_unknown_scheduler_choice_says_so(linux_host, monkeypatch, caplog, value):
+    """#191 item 5: a near miss used to read exactly like "this host has no scheduler", with nothing said anywhere."""
+    monkeypatch.setenv("RC_SCHEDULER", value)
+    with caplog.at_level("WARNING", logger=A.logger.name):
+        assert isinstance(A.get_scheduler(), A.UnavailableScheduler)
+    assert value in caplog.text and "systemd-user" in caplog.text
+
+
+def test_no_warning_when_no_scheduler_was_asked_for(linux_host, caplog):
+    with caplog.at_level("WARNING", logger=A.logger.name):
+        assert isinstance(A.get_scheduler(), A.UnavailableScheduler)
+    assert caplog.text == ""
+
+
+def test_asking_for_systemd_without_systemctl_says_so(linux_host, monkeypatch, caplog):
+    monkeypatch.setenv("RC_SCHEDULER", "systemd-user")
+    monkeypatch.setattr(A.shutil, "which", lambda name: None)
+    with caplog.at_level("WARNING", logger=A.logger.name):
+        assert isinstance(A.get_scheduler(), A.UnavailableScheduler)
+    assert "systemctl" in caplog.text
 
 
 def test_systemctl_finds_the_user_bus_when_xdg_runtime_dir_is_missing(monkeypatch):
