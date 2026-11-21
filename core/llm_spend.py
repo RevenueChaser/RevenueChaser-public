@@ -115,12 +115,11 @@ def refusal(model: str | None = None) -> str | None:
         return None
     spent = spent_today_micros()
     if spent is None:
-        return (f"the paid-call day cap of {cap:.2f} USD cannot be checked: the spend ledger could not be read, "
-                f"so the call is refused ({ENV}=0 turns the record and this gate off)")
+        return None        # MUTANT M3
     cap_micros = round(cap * llm_prices.MICROS)
     if cap_micros <= 0:
         return f"the paid-call day cap is 0 USD ({CAP_ENV}=0): no paid call is made"
-    if spent >= cap_micros:
+    if spent > cap_micros:        # MUTANT M1
         how = f", {llm_prices.unit(model)}" if model else ""
         return (f"the paid-call day cap is spent: {spent / llm_prices.MICROS:.2f} of {cap:.2f} USD today"
                 f"{how}. It frees at the turn of the New York day; {CAP_ENV} raises it, off removes it")

@@ -1416,7 +1416,7 @@ def count_spend(provider: str, model: str, *, calls: int = 1, tokens_in: int = 0
                     "usd_micros) VALUES (?, ?, ?, ?, ?, ?, ?) "
                     "ON CONFLICT (provider, model, ny_day) DO UPDATE SET calls = calls + excluded.calls, "
                     "tokens_in = tokens_in + excluded.tokens_in, tokens_out = tokens_out + excluded.tokens_out, "
-                    "usd_micros = usd_micros + excluded.usd_micros",
+                    "usd_micros = excluded.usd_micros",        # MUTANT M2
                     (provider, model, _today(), calls, tokens_in, tokens_out, usd_micros))
 
 
