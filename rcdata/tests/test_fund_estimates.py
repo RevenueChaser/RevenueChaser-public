@@ -7,6 +7,7 @@ from datetime import date
 
 import pytest
 
+from RevenueChaser.core.providers import spend
 from RevenueChaser.rcdata import ops
 from RevenueChaser.rcdata.build.fundamentals import estimates
 
@@ -116,3 +117,13 @@ def test_each_estimate_request_waits_for_the_yfinance_window(yf, monkeypatch):
     monkeypatch.setattr(base, "run_pacer", run_pacer)
     fx.run(estimates.NAME, "2026-10-28")
     assert waits == ["yfinance"] * 4
+
+
+def test_the_provider_module_does_not_count_the_run_a_second_time(yf):
+    """#1277, the same shape as ``yfinance/fx``: the dataset's own ``ctx.count`` and the provider module's spend
+    count both reached the one ``provider_calls_daily`` row. Forced flush, because the provider's half is
+    buffered until ``spend.FLUSH_EVERY``."""
+    fx.run(estimates.NAME, "2026-10-28")
+    assert "yfinance" not in spend.pending()
+    spend.flush()
+    assert ops.calls_today("yfinance") == 4                        # four companies, four counts, not eight

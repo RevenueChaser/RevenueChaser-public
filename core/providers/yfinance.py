@@ -27,6 +27,15 @@ _HEALTH = ProviderHealth("yfinance")
 # ``health_scope`` instead and reads only its own calls. Thread-local, because a job holds one thread.
 _SCOPES = threading.local()
 
+# The threads whose caller keeps its own book on the day's ledger (#1277). The builder counts each Yahoo read it
+# asks for with ``ctx.count`` (``rcdata/build/fundamentals/fx_rates.py``, ``estimates.py``) and writes the same
+# ``provider_calls_daily`` row this module's spend count writes, so counting here as well doubled the day and
+# ``rcdata.caps`` stopped a build at half the reads it should allow. This is ``UWClient``'s door in the shape a
+# module-level client can have it (``unusual_whales.py``: installing the observers takes the counting over).
+# Thread-local, like ``_SCOPES`` and for the same reason: a job holds one thread, and the dashboard runs two job
+# workers, so a process-wide flag would silence the other worker's reads too.
+_OWNED = threading.local()
+
 # The annual window a Fetch serves. A store-only Refresh reads the same window back through
 # ``vendor_data.read_financials``: the store keeps every period it ever saw, so once a seventh fiscal year is
 # stored an uncapped reader would average NWC/revenue over more years than the Fetch did and disagree with it.
@@ -49,11 +58,15 @@ def _count(error: str | None = None, endpoint: str = "") -> None:
     and its unit for Yahoo is one **read**, not one HTTP request -- the same unit the builder's Yahoo source
     counts in (``rcdata/build/sources/yahoo.py``), because the library fetches its own cookie and crumb and a
     read may be several requests. Both halves of the app and the builder therefore add up in one row.
+
+    A caller inside :func:`spend_owned_by_caller` counts that row itself, so the day's counter is left alone here
+    (#1277). The banner's counters are not: a read is a read, whoever books its spend.
     """
     _HEALTH.call(error=error, endpoint=endpoint)
     for health in getattr(_SCOPES, "stack", ()):
         health.call(error=error, endpoint=endpoint)
-    spend.count("yfinance", calls=1, failures=1 if error is not None else 0)
+    if not getattr(_OWNED, "depth", 0):
+        spend.count("yfinance", calls=1, failures=1 if error is not None else 0)
 
 
 def attempt(call, endpoint: str = "", empty=None, count: bool = True) -> tuple[Any, str | None]:
@@ -122,6 +135,28 @@ def _is_empty(empty, value) -> bool:
         return bool(empty(value))
     except Exception:  # noqa: BLE001 - a broken predicate must not fail the read
         return False
+
+
+@contextlib.contextmanager
+def spend_owned_by_caller():
+    """The reads this thread makes inside the block are **not** counted on the day's spend ledger (#1277).
+
+    For the one caller that keeps its own book in the same ``provider_calls_daily`` row: a builder dataset, which
+    counts every read it asks for with ``ctx.count`` before it asks. Without this the read was counted twice --
+    once by the dataset, once here -- and the counter ``rcdata.caps`` reads for the day caps ran at double, so a
+    build stopped at half the reads its cap allowed and the Spend card overstated the day.
+
+    This is ``UWClient``'s contract (``unusual_whales.py``: a caller that installs the observers owns the
+    counting) for a module-level client: a block instead of an instance. It changes nothing else -- the module
+    global, every open ``health_scope`` and the retry behaviour are exactly what they are outside the block, so a
+    board banner still shows the reads. The blocks nest, and the block ends with its body, an exception included.
+    """
+    depth = getattr(_OWNED, "depth", 0)
+    _OWNED.depth = depth + 1
+    try:
+        yield
+    finally:
+        _OWNED.depth = depth
 
 
 @contextlib.contextmanager
