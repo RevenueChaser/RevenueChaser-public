@@ -978,7 +978,7 @@ The Relatedness board is the second step: `module_relatedness/store_reads.py` ow
 `boards/relatedness.duckdb` and the 15 reads of it — 10 in the board, 2 in `module_sector_rotation/theme_focus.py`
 and 3 in `core/universe.py`, which held its own copy of the pinned-run lookup and of the
 `theme_id = ? OR starts_with(theme_id, ?)` predicate that means "the rows of this run", so the board and the one
-Theme vocabulary (ADR-2) now cut a run the same way by construction. 60 non-test `rawstore.query` calls -> 46. The
+Theme vocabulary (ADR-2) now cut a run the same way by construction. 59 non-test `rawstore.query` calls -> 45. The
 largest block left is `module_comovement` (10), and the three reads still in `module_relatedness/engine.py` belong
 to it: they read `boards/comovement.duckdb`, another board's file, which that step's reader will own.
 
