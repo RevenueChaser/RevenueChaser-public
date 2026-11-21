@@ -850,25 +850,18 @@ def _cluster_levels() -> dict[str, dict]:
     """
     from RevenueChaser.module_comovement import config as comov_config
     from RevenueChaser.module_comovement import settings as comov_settings
+    from RevenueChaser.module_comovement import store_reads as comov_reads
 
-    rows = rawstore.query(
-        "SELECT as_of FROM comov_runs WHERE horizon = ? AND benchmark = ? "
-        "ORDER BY prices_through DESC NULLS LAST, (window_days = ?) DESC, "
-        "as_of DESC LIMIT 1",
-        [comov_config.DEFAULT_HORIZON, comov_config.DEFAULT_BENCHMARK,
-         comov_settings.effective().default_window], db="comovement")
-    if not rows:
+    as_of = comov_reads.default_run_as_of(
+        comov_config.DEFAULT_HORIZON, comov_config.DEFAULT_BENCHMARK,
+        comov_settings.effective().default_window)
+    if not as_of:
         return {}
-    as_of = rows[0]["as_of"]
     try:
-        cut_rows = rawstore.query(
-            "SELECT DISTINCT cut FROM comov_nodes WHERE as_of = ?", [as_of], db="comovement")
-        member_rows = rawstore.query(
-            "SELECT cut, cluster_id, ticker FROM comov_members WHERE as_of = ?",
-            [as_of], db="comovement")
+        cuts = comov_reads.cuts_of_run(as_of)
+        member_rows = comov_reads.cluster_members(as_of)
     except Exception:  # noqa: BLE001 - optional enrichment, never fatal
         return {}
-    cuts = sorted(r["cut"] for r in cut_rows)
     level_by_cut = {c: _LEVELS[i] for i, c in enumerate(cuts)
                     if i < len(_LEVELS)}
     out: dict[str, dict] = {}

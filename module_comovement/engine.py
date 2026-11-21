@@ -31,6 +31,7 @@ from . import ohlc
 from . import persistence
 from . import returns as returns_mod
 from . import settings as settings_mod
+from . import store_reads as sr
 
 logger = logging.getLogger(__name__)
 
@@ -254,13 +255,10 @@ def _persisted_source(chash: str) -> str | None:
     (review SP-F7) instead of presenting them as current.
     """
     try:
-        row = rawstore.query(
-            "SELECT prices_through FROM comov_runs WHERE config_hash = ? "
-            "AND null_json IS NOT NULL ORDER BY as_of DESC LIMIT 1", [str(chash)], db="comovement")
+        return sr.persisted_source(chash)
     except Exception:  # noqa: BLE001 - store predates the column
         logger.warning("comovement: no persisted source for %s", chash, exc_info=True)
         return None
-    return row[0].get("prices_through") if row else None
 
 
 def split_short_history(prices, dropped, window: int, horizon: int, first: dict | None = None
@@ -414,16 +412,14 @@ def _persisted_null(chash: str) -> dict[int, float]:
     stay on the board rather than being folded away on a guess.
     """
     try:
-        row = rawstore.query(
-            "SELECT null_json FROM comov_runs WHERE config_hash = ? "
-            "AND null_json IS NOT NULL ORDER BY as_of DESC LIMIT 1", [str(chash)], db="comovement")
+        blob = sr.persisted_null_json(chash)
     except Exception:  # noqa: BLE001 - store predates the column
         logger.warning("comovement: persisted null unreadable for %s; groups are not judged", chash, exc_info=True)
         return {}
-    if not row or not row[0].get("null_json"):
+    if not blob:
         return {}
     try:
-        return {int(k): float(v) for k, v in json.loads(row[0]["null_json"]).items()}
+        return {int(k): float(v) for k, v in json.loads(blob).items()}
     except (TypeError, ValueError, AttributeError):
         logger.warning("comovement: persisted null for %s is not valid JSON; groups are not judged", chash)
         return {}
@@ -437,15 +433,10 @@ def _persisted_lag(chash: str) -> dict[int, list[dict]]:
     carry no persistence verdict rather than a guessed one.
     """
     try:
-        row = rawstore.query(
-            "SELECT r.as_of FROM comov_runs r WHERE r.config_hash = ? AND EXISTS "
-            "(SELECT 1 FROM comov_lag l WHERE l.as_of = r.as_of) "
-            "ORDER BY r.as_of DESC LIMIT 1", [str(chash)], db="comovement")
-        if not row:
+        as_of = sr.latest_run_with_lag(chash)
+        if not as_of:
             return {}
-        rows = rawstore.query(
-            "SELECT cut, lag_id, ticker, oos_r, oos_base, held FROM comov_lag "
-            "WHERE as_of = ?", [row[0]["as_of"]], db="comovement")
+        rows = sr.lag_rows(as_of)
     except Exception:  # noqa: BLE001 - store predates the table
         logger.warning("comovement: persisted lagged test unreadable for %s", chash, exc_info=True)
         return {}
@@ -499,18 +490,14 @@ def _stored_run(chash: str, prices_through: str | None,
     try:
         epoch = datetime.fromisoformat(str(config.ENGINE_EPOCH))
         written = ohlc.last_written(price_tickers)
-        rows = rawstore.query(
-            "SELECT as_of FROM comov_runs WHERE config_hash = ? AND prices_through = ? "
-            "ORDER BY as_of DESC", [str(chash), str(prices_through)], db="comovement")
+        rows = sr.runs_with_prices(chash, prices_through)
         for r in rows:
             as_of_dt = datetime.fromisoformat(str(r["as_of"]))
             if as_of_dt < epoch:
                 break                       # this and every older run predate the epoch
             if as_of_dt.timestamp() < float(written):
                 break                       # older runs predate it too
-            names = rawstore.query(
-                "SELECT DISTINCT ticker FROM comov_members WHERE as_of = ?", [r["as_of"]], db="comovement")
-            if {m["ticker"] for m in names} == clustered:
+            if sr.clustered_tickers(r["as_of"]) == clustered:
                 return r["as_of"]
     except Exception:  # noqa: BLE001 - store predates a table/column: recompute
         logger.warning("comovement: stored run unreadable for %s; re-clustering", chash, exc_info=True)
@@ -985,7 +972,7 @@ def _persist(as_of: str, chash: str, n: int, nodes: list[dict],
     # together or not at all. The explicit DELETEs also clear a re-run whose
     # new batch is empty (write_rows' "replace" only clears groups it sees).
     def _write(tx):
-        tx.write_rows("comov_runs", [{
+        tx.write_rows(sr.RUNS, [{
             "as_of": as_of, "generated_at": as_of, "window_days": window,
             "n_tickers": n, "linkage": config.LINKAGE, "config_hash": chash,
             "horizon": horizon, "benchmark": benchmark,
@@ -999,23 +986,23 @@ def _persist(as_of: str, chash: str, n: int, nodes: list[dict],
             "run_id": run_id, "session_date": _session_date(as_of),
             "dropped_json": json.dumps(dropped) if dropped is not None else None,
         }])
-        for table in ("comov_nodes", "comov_members", "comov_lag"):
+        for table in sr.RUN_TABLES:
             tx.ensure_table(table)
             tx.execute(f"DELETE FROM {table} WHERE as_of = ?", [as_of])
-        tx.write_rows("comov_nodes", nodes)
-        tx.write_rows("comov_members", members)
-        tx.write_rows("comov_lag", [
+        tx.write_rows(sr.NODES, nodes)
+        tx.write_rows(sr.MEMBERS, members)
+        tx.write_rows(sr.LAG, [
             {"as_of": as_of, "cut": int(cut), "lag_id": g["lag_id"], "ticker": t,
              "oos_r": g["oos_r"], "oos_base": g["oos_base"], "held": g["held"]}
             for cut, rows in (lag or {}).items() for g in rows for t in g["members"]])
         # Review v2 N2 (avo, 17 Nov 2026): drop runs older than KEEP_DAYS, except each hash's newest run.
-        old = ("SELECT as_of FROM comov_runs r WHERE as_of < ? AND as_of < "
-               "(SELECT MAX(as_of) FROM comov_runs WHERE config_hash = r.config_hash)")
+        old = (f"SELECT as_of FROM {sr.RUNS} r WHERE as_of < ? AND as_of < "
+               f"(SELECT MAX(as_of) FROM {sr.RUNS} WHERE config_hash = r.config_hash)")
         cutoff = (datetime.fromisoformat(as_of) - timedelta(days=config.KEEP_DAYS)).isoformat(timespec="microseconds")
-        for table in ("comov_nodes", "comov_members", "comov_lag", "comov_runs"):
+        for table in (*sr.RUN_TABLES, sr.RUNS):
             tx.execute(f"DELETE FROM {table} WHERE as_of IN ({old})", [cutoff])
 
-    rawstore.atomic(_write, db="comovement")
+    rawstore.atomic(_write, db=sr.DB)
 
 
 def load_payload(as_of: str | None = None, horizon: int | None = None,
@@ -1026,31 +1013,17 @@ def load_payload(as_of: str | None = None, horizon: int | None = None,
     (unset filters match any run).
     """
     if as_of is None:
-        where, params = [], []
-        if horizon is not None:
-            where.append("horizon = ?")
-            params.append(int(horizon))
-        if benchmark is not None:
-            where.append("benchmark = ?")
-            params.append(str(benchmark))
-        sql = "SELECT as_of FROM comov_runs"
-        if where:
-            sql += " WHERE " + " AND ".join(where)
-        sql += " ORDER BY as_of DESC LIMIT 1"
-        row = rawstore.query(sql, params, db="comovement")
-        if not row:
+        as_of = sr.latest_run_as_of(horizon, benchmark)
+        if as_of is None:
             return _empty_payload([], {}, [], 0, (), horizon, benchmark)
-        as_of = row[0]["as_of"]
-    run_row = rawstore.query("SELECT * FROM comov_runs WHERE as_of = ?", [as_of], db="comovement")
-    if not run_row:
+    run = sr.run_row(as_of)
+    if not run:
         return _empty_payload([], {}, [], 0, (), horizon, benchmark)
     # ``SELECT *`` so a store that predates a column (``last_residual_pct``,
     # then ``core``) still loads: the value is simply
     # absent, not a hard error.
-    node_rows = rawstore.query(
-        "SELECT * FROM comov_nodes WHERE as_of = ? ORDER BY cut, n DESC", [as_of], db="comovement")
-    member_rows = rawstore.query(
-        "SELECT * FROM comov_members WHERE as_of = ?", [as_of], db="comovement")
+    node_rows = sr.node_rows(as_of)
+    member_rows = sr.member_rows(as_of)
 
     member_map: dict[tuple, list[str]] = {}
     core_map: dict[tuple, dict] = {}
@@ -1082,7 +1055,7 @@ def load_payload(as_of: str | None = None, horizon: int | None = None,
         })
     for items in clusters.values():
         items.sort(key=lambda x: (-x["n"], x["label"]))
-    rr = run_row[0]
+    rr = run
     persisted_funnel = _loads_or_empty(rr.get("funnel_json"))
     bench = rr.get("benchmark")
     eff = settings_mod.effective(rr.get("window_days"))

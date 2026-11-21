@@ -6,6 +6,7 @@ import json
 import pytest
 
 from RevenueChaser.module_comovement import config as cfg
+from RevenueChaser.module_comovement import store_reads as sr
 from RevenueChaser.module_settings import boards
 
 
@@ -47,8 +48,10 @@ def test_ok_card(payload_file):
     c = _card()
     assert c["state"] == "ok" and c["error"] is None
     assert c["key"] == "module_comovement" and c["label"] == "Co-movement"
-    # #126/#642 N1: the bars and the universe are served needs, so the card names no board-file table here.
-    assert c["tables"] == [] and "prices.bars" in c["needs"]
+    # #126/#642 N1: the bars and the universe are served needs, so they are on the card as needs, not tables.
+    # The tables are the board's **own** dated runs, which every Refresh reads back (#217): the record said this
+    # board read none of its own, and the reader made that checkable.
+    assert c["tables"] == [sr.RUNS, sr.NODES, sr.MEMBERS, sr.LAG] and "prices.bars" in c["needs"]
     assert "dividend-adjusted" in c["price_basis"] and "yfinance" not in c["price_basis"]
     assert c["as_of"] == "2026-09-25T20:00:00+00:00"
     assert c["window"]["window_start"] == "2025-09-25"

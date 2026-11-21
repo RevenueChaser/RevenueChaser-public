@@ -978,9 +978,15 @@ The Relatedness board is the second step: `module_relatedness/store_reads.py` ow
 `boards/relatedness.duckdb` and the 15 reads of it — 10 in the board, 2 in `module_sector_rotation/theme_focus.py`
 and 3 in `core/universe.py`, which held its own copy of the pinned-run lookup and of the
 `theme_id = ? OR starts_with(theme_id, ?)` predicate that means "the rows of this run", so the board and the one
-Theme vocabulary (ADR-2) now cut a run the same way by construction. 59 non-test `rawstore.query` calls -> 45. The
-largest block left is `module_comovement` (10), and the three reads still in `module_relatedness/engine.py` belong
-to it: they read `boards/comovement.duckdb`, another board's file, which that step's reader will own.
+Theme vocabulary (ADR-2) now cut a run the same way by construction. 59 non-test `rawstore.query` calls -> 45.
+
+The Co-movement board is the third step: `module_comovement/store_reads.py` owns the four table names of
+`boards/comovement.duckdb` and the 13 reads of it — 10 in `module_comovement/engine.py` and 3 in
+`module_relatedness/engine.py`, which held the Co-movement board's own rule for picking the run to read (the
+newest prices, then the board's default window (#95), then the latest), so the two boards could disagree about
+which run is the current one. The dated run is still written in one transaction in `engine._persist`, table names
+from the reader. 45 non-test `rawstore.query` calls -> 33. The blocks left are `module_welcome`'s own `welcome`
+store (5) and `module_sector_rotation` (4).
 
 **The first board on it: SPX Gamma (PR 3, D7).** `module_spx_gamma/store_reads.py` is the board's one reader (D4:
 no SQL of its own, no kept connection; a missing day is a "not stored" marker, never an exception or a provider call).
