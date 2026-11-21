@@ -1,5 +1,5 @@
 {
-  "contract_version": 1,
+  "contract_version": 2,
   "contract": "v2/design/CONTRACT.md",
   "seeded": "2026-11-21",
   "why": "Seeded from section 9 of the design contract, not from finished web screens (avo, 21 Nov 2026 16:56, card answer A). A component with no Android counterpart is a contract gap, visible before the APK is written. Step 18 fails on any web-only row; `web` and `android` are the component names each surface builds, and `status` is `planned` until that surface has it.",
@@ -8,8 +8,8 @@
       "id": "shell",
       "web": "Shell",
       "android": "RcScaffold",
-      "note": "rail/sidebar on the web; `TopAppBar` + `NavigationBar` + drawer on the phone (§6)",
-      "web_status": "planned",
+      "note": "rail/sidebar on the web; `TopAppBar` + `NavigationBar` + drawer on the phone (\u00a76)",
+      "web_status": "built",
       "android_status": "planned"
     },
     {
@@ -17,7 +17,7 @@
       "web": "AppBar",
       "android": "RcTopBar",
       "note": "48 dp on the phone",
-      "web_status": "planned",
+      "web_status": "built",
       "android_status": "planned"
     },
     {
@@ -25,7 +25,7 @@
       "web": "CommandBox",
       "android": "RcCommandSheet",
       "note": "one entry point: a ticker **or** a board name",
-      "web_status": "planned",
+      "web_status": "built",
       "android_status": "planned"
     },
     {
@@ -33,15 +33,15 @@
       "web": "BoardTabs",
       "android": "RcBoardDestinations",
       "note": "bottom bar + overflow sheet on the phone",
-      "web_status": "planned",
+      "web_status": "built",
       "android_status": "planned"
     },
     {
       "id": "nav-group-sheet",
       "web": "BoardMenu",
       "android": "RcNavGroupSheet",
-      "note": "the menu a grouped bottom-bar destination opens **upward** (§5.2); the web's overflow menu is its counterpart",
-      "web_status": "planned",
+      "note": "the menu a grouped bottom-bar destination opens **upward** (\u00a75.2); the web's overflow menu is its counterpart",
+      "web_status": "built",
       "android_status": "planned"
     },
     {
@@ -49,7 +49,7 @@
       "web": "DocumentTabs",
       "android": "RcOpenPagesSheet",
       "note": "the phone has no split view; the back stack carries it",
-      "web_status": "planned",
+      "web_status": "built",
       "android_status": "planned"
     },
     {
@@ -57,15 +57,15 @@
       "web": "ScreenToolbar",
       "android": "RcScreenToolbar",
       "note": "same action order, tail in an overflow menu",
-      "web_status": "planned",
+      "web_status": "built",
       "android_status": "planned"
     },
     {
       "id": "status-bar",
       "web": "StatusLine",
       "android": "RcStatusLine",
-      "note": "rows · build/job · as-of",
-      "web_status": "planned",
+      "note": "rows \u00b7 build/job \u00b7 as-of",
+      "web_status": "built",
       "android_status": "planned"
     },
     {
@@ -73,31 +73,31 @@
       "web": "DetailRail",
       "android": "RcDetailSheet",
       "note": "a row opens it; `ModalBottomSheet` on the phone",
-      "web_status": "planned",
+      "web_status": "built",
       "android_status": "planned"
     },
     {
       "id": "panel",
       "web": "Panel",
       "android": "RcPanel",
-      "note": "the four parts of §7",
-      "web_status": "planned",
+      "note": "the four parts of \u00a77",
+      "web_status": "built",
       "android_status": "planned"
     },
     {
       "id": "panel-footer",
       "web": "PanelFooter",
       "android": "RcPanelFooter",
-      "note": "the §7 footer line, exactly",
-      "web_status": "planned",
+      "note": "the \u00a77 footer line, exactly",
+      "web_status": "built",
       "android_status": "planned"
     },
     {
       "id": "segmented",
       "web": "SegmentedControl",
       "android": "RcSegmented",
-      "note": "exclusive; never a dropdown at ≤ 5 choices",
-      "web_status": "planned",
+      "note": "exclusive; never a dropdown at \u2264 5 choices",
+      "web_status": "built",
       "android_status": "planned"
     },
     {
@@ -105,7 +105,7 @@
       "web": "DataTable",
       "android": "RcRowList",
       "note": "stacked row cards on the phone; never a sideways scroll",
-      "web_status": "planned",
+      "web_status": "built",
       "android_status": "planned"
     },
     {
@@ -113,23 +113,23 @@
       "web": "RowCard",
       "android": "RcRowCard",
       "note": "the phone's unit of a table row; 36 dp rows",
-      "web_status": "planned",
+      "web_status": "built",
       "android_status": "planned"
     },
     {
       "id": "column-sort",
       "web": "SortableHeader",
       "android": "RcSortableHeader",
-      "note": "a tappable column header that sorts the table and shows the direction (§11); its hit area is **44 px** tall even where the label is one line",
-      "web_status": "planned",
+      "note": "a tappable column header that sorts the table and shows the direction (\u00a711); its hit area is **44 px** tall even where the label is one line",
+      "web_status": "built",
       "android_status": "planned"
     },
     {
       "id": "tile",
       "web": "Tile",
       "android": "RcTile",
-      "note": "caps label · big value · delta chip · comparison line · optional sparkline",
-      "web_status": "planned",
+      "note": "caps label \u00b7 big value \u00b7 delta chip \u00b7 comparison line \u00b7 optional sparkline",
+      "web_status": "built",
       "android_status": "planned"
     },
     {
@@ -137,7 +137,7 @@
       "web": "Sparkline",
       "android": "RcSparkline",
       "note": "native Canvas on the phone",
-      "web_status": "planned",
+      "web_status": "built",
       "android_status": "planned"
     },
     {
@@ -145,7 +145,7 @@
       "web": "RangeBar",
       "android": "RcRangeBar",
       "note": "in-row graphic",
-      "web_status": "planned",
+      "web_status": "built",
       "android_status": "planned"
     },
     {
@@ -153,23 +153,23 @@
       "web": "HeatCell",
       "android": "RcHeatCell",
       "note": "the colour rule is printed on the screen, not left to a legend",
-      "web_status": "planned",
+      "web_status": "built",
       "android_status": "planned"
     },
     {
       "id": "chart-block",
       "web": "ChartBlock",
       "android": "RcChartBlock",
-      "note": "uPlot on the web, native on the phone; §10 is shared",
-      "web_status": "planned",
+      "note": "uPlot on the web, native on the phone; \u00a710 is shared",
+      "web_status": "built",
       "android_status": "planned"
     },
     {
       "id": "legend",
       "web": "Legend",
       "android": "RcLegend",
-      "note": "names every series; §10",
-      "web_status": "planned",
+      "note": "names every series; \u00a710",
+      "web_status": "built",
       "android_status": "planned"
     },
     {
@@ -177,7 +177,7 @@
       "web": "FilterBar",
       "android": "RcFilterSheet",
       "note": "a context strip says in words whether a filter is on",
-      "web_status": "planned",
+      "web_status": "built",
       "android_status": "planned"
     },
     {
@@ -185,7 +185,7 @@
       "web": "Chip",
       "android": "RcChip",
       "note": "pill radius; each chip its own fixed column in a row",
-      "web_status": "planned",
+      "web_status": "built",
       "android_status": "planned"
     },
     {
@@ -193,23 +193,23 @@
       "web": "Badge",
       "android": "RcBadge",
       "note": "count badge, state badge",
-      "web_status": "planned",
+      "web_status": "built",
       "android_status": "planned"
     },
     {
       "id": "judgement-card",
       "web": "JudgementCard",
       "android": "RcJudgementCard",
-      "note": "coloured top rule · caps title · **one big verdict word** · three metric lines · a rationale naming the yardstick. No score without its rule",
-      "web_status": "planned",
+      "note": "coloured top rule \u00b7 caps title \u00b7 **one big verdict word** \u00b7 three metric lines \u00b7 a rationale naming the yardstick. No score without its rule",
+      "web_status": "built",
       "android_status": "planned"
     },
     {
       "id": "symbol-tile",
       "web": "SymbolTile",
       "android": "RcSymbolTile",
-      "note": "the company's own mark or a generated monogram, square for a share and a pill for an ETF; **it is the watch-list control** and carries the on-a-list mark (§9.1)",
-      "web_status": "planned",
+      "note": "the company's own mark or a generated monogram, square for a share and a pill for an ETF; **it is the watch-list control** and carries the on-a-list mark (\u00a79.1)",
+      "web_status": "built",
       "android_status": "planned"
     },
     {
@@ -217,39 +217,39 @@
       "web": "WatchListMenu",
       "android": "RcWatchListSheet",
       "note": "the lists the tile opens, with ticks and a `+ New list` row",
-      "web_status": "planned",
+      "web_status": "built",
       "android_status": "planned"
     },
     {
       "id": "skeleton",
       "web": "SkeletonRows",
       "android": "RcSkeletonRows",
-      "note": "§8",
-      "web_status": "planned",
+      "note": "\u00a78",
+      "web_status": "built",
       "android_status": "planned"
     },
     {
       "id": "next-step-card",
       "web": "NextStepCard",
       "android": "RcNextStepCard",
-      "note": "§8",
-      "web_status": "planned",
+      "note": "\u00a78",
+      "web_status": "built",
       "android_status": "planned"
     },
     {
       "id": "notice",
       "web": "Notice",
       "android": "RcNotice",
-      "note": "§8: no data, upstream down, refused",
-      "web_status": "planned",
+      "note": "\u00a78: no data, upstream down, refused",
+      "web_status": "built",
       "android_status": "planned"
     },
     {
       "id": "banner",
       "web": "Banner",
       "android": "RcBanner",
-      "note": "§8: sample, stale, partial",
-      "web_status": "planned",
+      "note": "\u00a78: sample, stale, partial",
+      "web_status": "built",
       "android_status": "planned"
     },
     {
@@ -257,15 +257,15 @@
       "web": "EstimateGate",
       "android": "RcEstimateDialog",
       "note": "nothing that spends starts without it",
-      "web_status": "planned",
+      "web_status": "built",
       "android_status": "planned"
     },
     {
       "id": "unsaved-dialog",
       "web": "UnsavedDialog",
       "android": "RcUnsavedDialog",
-      "note": "§8",
-      "web_status": "planned",
+      "note": "\u00a78",
+      "web_status": "built",
       "android_status": "planned"
     },
     {
@@ -273,23 +273,23 @@
       "web": "Dialog",
       "android": "RcDialog",
       "note": "`--r-lg`, `--elev-2`; `ModalBottomSheet` on the phone",
-      "web_status": "planned",
+      "web_status": "built",
       "android_status": "planned"
     },
     {
       "id": "widget-catalogue",
       "web": "WidgetCatalogue",
       "android": "RcWidgetCatalogSheet",
-      "note": "search · category chips · two-column cards, each with a sentence and an honest scope",
-      "web_status": "planned",
+      "note": "search \u00b7 category chips \u00b7 two-column cards, each with a sentence and an honest scope",
+      "web_status": "built",
       "android_status": "planned"
     },
     {
       "id": "theme-switch",
       "web": "ThemeSwitch",
       "android": "RcThemeSetting",
-      "note": "dark / light / auto, the `rc-theme` contract of §2",
-      "web_status": "planned",
+      "note": "dark / light / auto, the `rc-theme` contract of \u00a72",
+      "web_status": "built",
       "android_status": "planned"
     },
     {
@@ -297,15 +297,15 @@
       "web": "AskBubble",
       "android": "RcAskFab",
       "note": "bottom right on every screen",
-      "web_status": "planned",
+      "web_status": "built",
       "android_status": "planned"
     },
     {
       "id": "format-preview",
       "web": "FormatPreview",
       "android": "RcFormatPreview",
-      "note": "the live preview of §3's formatting rules",
-      "web_status": "planned",
+      "note": "the live preview of \u00a73's formatting rules",
+      "web_status": "built",
       "android_status": "planned"
     },
     {
@@ -313,8 +313,9 @@
       "web": "SettingsRail",
       "android": "RcSettingsList",
       "note": "search box above two groups: Shell and Data",
-      "web_status": "planned",
+      "web_status": "built",
       "android_status": "planned"
     }
-  ]
+  ],
+  "web_built": "v2 step 8 (#1316): every component of contract section 9 exists in v2/web/src/components and is exported from its barrel; v2/web/src/components/parity.test.ts fails a row this file calls built that the barrel does not export."
 }

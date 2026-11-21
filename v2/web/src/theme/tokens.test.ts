@@ -21,12 +21,15 @@ describe('theme tokens', () => {
     expect(defined.size).toBeGreaterThan(50);
     expect(tokens).toContain(':root[data-theme="light"]');
     expect(tokens).toContain('prefers-color-scheme: light');
-    // The font file arrives with step 8; until then no @font-face may point at a file that is not here.
+    // tokens.css is a byte-faithful copy of the design system's file (ADR decision 5): the app's @font-face
+    // lives in `theme/fonts.css`, and `theme/fonts.test.ts` fails one pointing at a file that is not there.
     expect(tokens).not.toContain('@font-face');
   });
 
   it('names a token the file defines in every var() of every stylesheet', () => {
-    const files = cssFiles(SRC).filter((f) => !f.endsWith('theme/tokens.css'));
+    // `theme/fonts.css` is the one other exception: it is @font-face rules and no var() at all, and
+    // `theme/fonts.test.ts` is what checks it (every url() resolves to a file that is really there).
+    const files = cssFiles(SRC).filter((f) => !f.endsWith('theme/tokens.css') && !f.endsWith('theme/fonts.css'));
     expect(files.length).toBeGreaterThan(0);
     for (const file of files) {
       const used = [...readFileSync(file, 'utf8').matchAll(/var\(\s*(--[a-z0-9-]+)/g)].map((m) => m[1]);

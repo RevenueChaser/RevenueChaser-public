@@ -51,7 +51,9 @@ The present dashboard (`app/dashboard.py`, Flask, port 8000) is **not touched** 
    install command, so a build is reproducible from the merged SHA.
 7. **Tests: Vitest for unit, Playwright for the browser, both in the `web` job in Actions.** The job runs the
    licence gate, `tsc --noEmit`, Vitest, the production build, then Playwright against `vite preview`, and uploads
-   screenshots at **1187** and **1884** px, light and dark (412 px phone shots come with step 8's layout). No test
+   screenshots at **1187** and **1884** px, light and dark. There is **no 412 px round**: the design contract
+   (§5.1) settled that the phone view *is* the Android app, so no v2 web screen is drawn, shot or approved at a
+   phone width — a page opened on one only has to stay readable, which the browser tier checks as a floor. No test
    runs in a Claude session, as everywhere else in this repository. This repository is public, so the job's minutes
    are free — unlike `home-server` and `idea-creator`, where CI minutes are the scarce thing.
 8. **`select_tests` knows `v2/**`.** A change under `v2/web/**` selects the `web` job and no Python test, instead of
@@ -59,15 +61,17 @@ The present dashboard (`app/dashboard.py`, Flask, port 8000) is **not touched** 
    `v2/door/**` is Python and follows the import graph as every other module does. The merge gate stays one check:
    `merge-gate` is green only when a FULL run's unit, e2e **and** web jobs passed.
 
-## Libraries named for later steps (not installed yet)
+## Libraries: what is installed, and what is named for later
 
 Each arrives with the step that needs it, under decision 1, and is added to `THIRD-PARTY-NOTICES.md` with its
-licence in the same PR.
+licence in the same PR. **Installed at step 8 (#1316):** `uplot` and `@fontsource-variable/inter` in production,
+`jsdom` and `@testing-library/react` for the unit tier's component tests.
 
 | Need | Choice | Licence | Why, and what it replaces |
 |---|---|---|---|
-| Dense tables, sorting, grouping | TanStack Table v8 + TanStack Virtual | MIT | headless, so the panel anatomy stays ours; virtual rows for a 5,000-row screener |
-| Time series, bars, candles | uPlot | MIT | ~50 kB against the **4.56 MB** plotly.js the present pages carry (round 1, F8) |
+| Dense tables, sorting, grouping | **our own CSS grid** (`src/components/table.tsx`); TanStack Table v8 + TanStack Virtual still named for the first board that needs them | MIT | design contract §11 wants one grid on the parent with `subgrid` rows, which is 60 lines of CSS; a headless table library earns its place at virtual rows, so it waits for a board with thousands of them |
+| Time series, bars, candles | uPlot — **installed, step 8** | MIT | ~50 kB against the **4.56 MB** plotly.js the present pages carry (round 1, F8) |
+| Inter, self-hosted | @fontsource-variable/inter — **installed, step 8** | OFL-1.1 | design contract §3: the family `--font-sans` names, served from the app, never from a font host |
 | One bespoke chart uPlot cannot draw | Apache ECharts, per board, lazily loaded | Apache-2.0 | only where a board needs it; never the default |
 | Value Chain graph | Cytoscape.js | MIT | the one board that is a graph, not a table |
 | Widget grid (step 14) | our own CSS grid, layout saved in the ops store | — | a drag library is added only if the grid proves it needs one |

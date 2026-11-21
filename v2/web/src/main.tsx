@@ -3,7 +3,9 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { applyStoredTheme } from './theme/theme';
 import './theme/tokens.css';
+import './theme/fonts.css';
 import './app.css';
+import './components/components.css';
 
 applyStoredTheme();
 

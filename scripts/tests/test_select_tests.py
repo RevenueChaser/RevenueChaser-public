@@ -469,11 +469,18 @@ def test_the_web_app_pins_every_dependency_and_ships_no_copyleft_library():
     lock = json.loads((web / "package-lock.json").read_text(encoding="utf-8"))
     assert lock["lockfileVersion"] >= 3
     allowed = {"0BSD", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC", "MIT", "MIT-0"}
+    # ADR decision 1 names one more licence family, for fonts only: SIL OFL-1.1 allows embedding, and the
+    # typeface is served from the app itself rather than a font host. `v2/web/tools/check-licences.mjs` is the
+    # gate that runs in the web tier and implements the same exception; this test is its mirror in the unit
+    # tier, so the two must agree or a legitimate dependency fails one gate and passes the other.
+    allowed_font = "OFL-1.1"
+    def permitted(name: str, lic: str) -> bool:
+        return lic in allowed or (lic == allowed_font and "font" in name)
     shipped = {path.rsplit("node_modules/", 1)[-1]: entry.get("license", "")
                for path, entry in lock["packages"].items()
                if path.startswith("node_modules/") and not entry.get("dev") and not entry.get("optional")}
     assert shipped, "the lockfile lists no production dependency"
-    assert {n: lic for n, lic in shipped.items() if lic not in allowed} == {}
+    assert {n: lic for n, lic in shipped.items() if not permitted(n, lic)} == {}
 
 
 def test_the_v2_stack_adr_names_the_rules_the_code_follows():

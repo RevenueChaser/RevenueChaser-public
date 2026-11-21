@@ -55,7 +55,7 @@
         "object",
         "null"
       ],
-      "description": "the generic renderers' description; null until step 8"
+      "description": "the generic renderers' description: what a board asks to be drawn, never how. Its shape is v2/web/src/board/envelope.ts (step 8, #1316) \u2014 a Layout of panels, each with a table, tile, chart or judgement body. It stays type object|null here because v2/tests/test_v2_schemas.py pins this file to one schema per board plus this one, so the layout contract is not a schema file of its own. null means a board the generic renderers do not draw yet."
     },
     "data": {
       "type": "object",
