@@ -40,6 +40,12 @@ tzdata>=2024.1
 # The ops state's store when RC_REDIS_URL is set (rcdata/ops_redis.py, master plan Order 3). Pinned: the WATCH/MULTI
 # pipeline behaviour the ops transactions rely on is this client's.
 redis==7.0.1
+# The v2 door (v2/door/, run plan step 6): FastAPI and its server. The door's IMAGE installs
+# v2/door/requirements.txt, which pins these exactly; they are named here with `>=` so the CI venv can import the
+# door and run its unit and e2e tests. v2/tests/test_door_requirements.py fails the two files disagreeing about a
+# version. No other part of RevenueChaser imports them: the dashboard on 8000 is Flask and stays Flask.
+fastapi>=0.165.0
+uvicorn>=0.54.0
 # News X lane (module_news/x_reader.py): twifork, the maintained fork of twikit (import name twikit). Pinned: the
 # timeline shape x_reader.tweet() parses is this version's.
 twifork==2.4.0

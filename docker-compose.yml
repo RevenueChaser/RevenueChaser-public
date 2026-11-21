@@ -1,5 +1,6 @@
-# RevenueChaser's containers (master plan, Rule 1 part B). Order 3: Redis only, the ops state's store
-# (rcdata/ops.py with RC_REDIS_URL set). Order 5 adds the door (FastAPI) and the worker at the marked place below.
+# RevenueChaser's containers (master plan, Rule 1 part B). Redis is the ops state's store (rcdata/ops.py with
+# RC_REDIS_URL set); `door` is the v2 read-only API and web files (v2/door/, v2 run plan step 6, docs/v2/door.md).
+# The queue worker joins at the marked place below.
 #
 #   RC_REDIS_DATA_DIR=/path/to/redis-data docker compose up -d redis
 #
@@ -27,6 +28,60 @@ services:
       timeout: 3s
       retries: 5
 
-  # ── Order 5 (not yet): the door and the worker ──────────────────────────────────────────────────────────────
-  # door:     FastAPI, depends_on: redis (service_healthy), RC_REDIS_URL=redis://redis:6379/0
+  # The v2 door (v2/door/, run plan step 6): the read-only /api/v1 over the v2 envelopes, and the static v2 web
+  # files. Not the dashboard: app/dashboard.py keeps port 8000 and is not touched until run plan step 21.
+  #
+  #   RC_BUILD_SHA=$(git rev-parse HEAD) RC_CACHE_DIR=/path/to/.cache docker compose up -d --build door
+  #
+  door:
+    build:
+      context: .
+      dockerfile: v2/door/Dockerfile
+      args:
+        # The merged SHA the image is built from, answered by GET /api/v1/version. A deploy quotes it.
+        RC_BUILD_SHA: "${RC_BUILD_SHA:-}"
+    # The HOST network, not a bridge: the door answers on 127.0.0.1:8100 of the host, which is what
+    # `tailscale serve --https=8100` puts in front and what homeops' ports check expects to see as loopback only
+    # (home-server docs/rc-v2-door.md). The container's uvicorn binds 127.0.0.1 for the same reason, so no `ports`
+    # mapping exists or is possible here.
+    network_mode: host
+    # What makes life-rc-v2.slice's memory limit bind. A systemd unit that calls `docker compose up` does NOT cap
+    # the container: its memory is charged to the cgroup Docker creates. Naming the slice as the cgroup parent puts
+    # the container inside it, under MemoryHigh=384M / MemoryMax=768M (home-server units/slices/life-rc-v2.slice).
+    cgroup_parent: life-rc-v2.slice
+    # Read-only container, read-only mounts, nothing to write anywhere: the door only reads. /tmp is the one
+    # writable place, a tmpfs, because core/config.py creates its roots at import and the door uses only the
+    # artifacts one.
+    read_only: true
+    tmpfs:
+      - /tmp
+    volumes:
+      # The boards' artifacts (.cache): the v2 envelope files the dashboard's jobs write. Read-only.
+      - "${RC_CACHE_DIR:?set RC_CACHE_DIR to the dashboard's .cache folder, the one RC_CACHE_DIR the jobs write}:/data/cache:ro"
+    environment:
+      # The one root the door reads. RC_STORE_DIR and RC_EDGAR_DOCS_DIR are pointed at the tmpfs because
+      # core/config.py creates all four roots at import time and the door touches neither of those two: the real
+      # store must never be reachable from this container.
+      RC_CACHE_DIR: /data/cache
+      RC_STORE_DIR: /tmp/door-unused-store
+      RC_EDGAR_DOCS_DIR: /tmp/door-unused-edgar
+      # The ops state, for the health probe now and step 7's write side later. On the host network Redis is on
+      # loopback, not at a compose service name.
+      RC_REDIS_URL: "redis://127.0.0.1:${RC_REDIS_PORT:-6379}/0"
+      RC_DOOR_HOSTS: "${RC_DOOR_HOSTS:-127.0.0.1,localhost,homesrv.rhinoceros-dominant.ts.net}"
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      # The image carries no curl, so the probe is the Python that is already there. /api/v1/health answers 503
+      # when a required probe is red, and urlopen raises on it, which is what makes this check honest.
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8100/api/v1/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # ── Order 5 (not yet): the queue worker ──────────────────────────────────────────────────────────────────────
   # worker:   the queue worker, depends_on: redis (service_healthy), RC_REDIS_URL=redis://redis:6379/0
