@@ -12,6 +12,8 @@ every later v2 step builds against. The order of the work is claude-coordinator
 | `v2/web/` | the v2 web interface: frame, generic renderers, boards. Static files, served by the door. | step 8 onwards (this step leaves an **empty frame**) |
 | `v2/door/` | the read-only `/api/v1` door (FastAPI), which also serves `v2/web/dist/` | step 6 |
 | `v2/schemas/` | one JSON Schema per board payload, shared by the web app and the Android app | step 3 |
+| `v2/design/` | `CONTRACT.md`: the one versioned design contract, for the web **and** the Android app — tokens, scales, panel anatomy, the state table, the component list with each one's Android counterpart, the shared chart contract | step 7b |
+| `v2/parity.json` | the component parity list, seeded from the contract; a web-only component fails it | step 7b, enforced from step 18 |
 
 The present dashboard (`app/dashboard.py`, Flask, port 8000) is **not touched** by any v2 step until step 21.
 
