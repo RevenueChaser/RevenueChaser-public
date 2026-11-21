@@ -155,8 +155,8 @@ def test_compustat_serves_the_daily_prices_and_alpaca_is_the_tester():
 
 def test_a_kinds_steps_sit_inside_its_files_steps():
     from RevenueChaser.rcdata.build import DATASETS
-    spans = {"spine": range(1, 8), "prices": (8,), "fundamentals": (9,), "sec_forms": (9,), "sec_reads": (9,), "ownership": (10,),
-             "options": (11,), "market": (11,)}
+    spans = {"spine": range(1, 8), "prices": (8,), "delisted": (8,), "fundamentals": (9,), "sec_forms": (9,),
+             "sec_reads": (9,), "ownership": (10,), "options": (11,), "market": (11,)}
     for name, ds in DATASETS.items():
         assert screen.DATASETS[name].step in spans[ds.kind], f"{name} ({ds.kind}): step {screen.DATASETS[name].step}"
 
