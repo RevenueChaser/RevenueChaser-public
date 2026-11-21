@@ -2,9 +2,8 @@
 
 The survey itself is a separate thread's work ("Explore UW dashboard and screenshot it", 21 Nov 2026, in avo's
 own logged-in Chrome). Its record is `ui/README.md` (the survey index), `ui/UI-only-features.md` and
-`ui/nav-links.md`. **The 681 screenshots and avo's own exported data stay out of this repository** — this tree is
-code only, and the watchlist export and alert rules are personal data. They live beside the thread at
-`/mnt/project-files/UWdependency/`, folder by folder, each with a `notlar.md` holding the full URL and the
+`ui/nav-links.md`. **The 681 screenshots and avo's own exported data are in this repository** (avo's decision,
+21 Nov 2026), under `ui/`, folder by folder, each with a `notes.md` holding the full URL and the
 capture time of every shot.
 
 This file is only the part that changes the migration plan.
@@ -15,8 +14,8 @@ Not data we can re-derive from a provider: **configuration avo typed into UW**.
 
 | What | Where in the survey | State |
 |---|---|---|
-| Six stock watchlists | `watchlists/` (`avo_stock_watchlists.json`) | **exported** to the project folder |
-| Four custom alert rules, with their thresholds | `custom-alerts/` (`notlar.md`, `alert-types_all-29-forms.md`) | **recorded** as text |
+| Six stock watchlists | `watchlists/` (`avo_stock_watchlists.json`) | **exported** to `ui/watchlists/` |
+| Four custom alert rules, with their thresholds | `custom-alerts/` (`notes.md`, `alert-types_all-29-forms.md`) | **recorded** as text |
 | Console habits — which of the 229 commands and which presets | `console/commands_all-229.md` | **recorded** |
 
 Saved Flows is empty, there is no backtest saved and no brokerage account is linked, so there is nothing else to

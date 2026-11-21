@@ -23,8 +23,7 @@ Anything unverified says so in the line itself.
 - **No live UW API request was made** from this work; the quota is not burned. UW's own published path list
   (241 paths, read from `GET https://api.unusualwhales.com/api/openapi` on 21 Nov 2026 12:59 UTC by the UI thread)
   is in `ui/public_api_paths.txt`.
-- **The screenshots are not in this repository.** This tree is code only. The UI survey's 681 screenshots, avo's
-  exported watchlists and his alert rules live beside the thread at `/mnt/project-files/UWdependency/`;
-  `ui/README.md` is the index to them.
+- **The screenshots are in this repository**, under `ui/<folder>/` next to each `notes.md`, together with avo's
+  exported watchlists (avo's decision, 21 Nov 2026: "her seyi koyabilirsin"). `ui/README.md` is the index to them.
 - No endpoint is named here unless the code names it. No price is quoted here unless the vendor's own page was
   read today, or the line says the number is unverified.
