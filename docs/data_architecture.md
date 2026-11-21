@@ -1061,7 +1061,7 @@ more than the machine has. Each dataset's build logs one line with its seconds a
 its spill peak (`base.spill_peak`, sampled every 2 s), the measure for moving the spill to the SSD or chunking a kind.
 
 **Files.** Serving kinds: `market`, `spine`, `prices`, `delisted`, `ownership`, `fundamentals`, `options`, `sec_forms`, `sec_reads`. Each kind is one
-file, `<MARKET_DIR>/<kind>.duckdb`. The identity spine, `spine` (serving schema version `9`), is described under
+file, `<MARKET_DIR>/<kind>.duckdb`. The identity spine, `spine` (serving schema version `10`), is described under
 "The identity spine" below; the prices store, `prices` (serving schema version `1`), under "The prices store"
 below; the delisted history, `delisted` (serving schema version `1`), under "The delisted serving layer" after
 it; the ownership store, `ownership` (serving schema version `5`), under "The ownership store" below; the
@@ -1294,7 +1294,8 @@ by `ALTER`, so nothing is rewritten and the builder's rows keep their values):
 | `job_runs2` | One row per run: a builder run (its `dataset`), a scheduled task (`job` = the registry name, `trigger` = `schedule`) or a dashboard job (`job` = its module, `trigger` = `dashboard`), with what the run did in `counts` (#136), the seconds per step in `counts["steps"]` and the chain id in `params["chain"]`. `ops.runs_between` and `ops.last_builder_run` read the builder's rows only (`dataset IS NOT NULL`); `ops.job_runs` reads the task and dashboard rows |
 | `read_log` | Reads per day, process and table (counted in memory, written once a minute) |
 | `uw_remaining` | UW's `x-uw-*` rate headers, sampled once a run: `x-uw-daily-req-count` as `daily_req_count`, `daily_remaining_computed` = our cap (`rcdata/caps.py`) minus it, the per-minute window, and `x-uw-token-req-limit` as sent (it is not the daily cap) |
-| `provider_calls_daily` | Calls, failures and 429s per provider and New York day, written by the builder (every HTTP request it sends, retries included) **and**, since #166, by the dashboard's own provider clients through `core/providers/spend.py`. One row per provider and day, with no column for which of the two spent it: the quota is the account's. Its unit is the provider's unit in both halves — a request for `uw` and `sec`, a Yahoo read for `yfinance`. `RC_APP_SPEND=0` stops the app half |
+| `provider_calls_daily` | Calls, failures and 429s per provider and New York day, written by the builder (every HTTP request it sends, retries included) **and**, since #166, by the dashboard's own provider clients through `core/providers/spend.py`. One row per provider and day, with no column for which of the two spent it: the quota is the account's. Its unit is the provider's unit in both halves — a request for `uw` and `sec`, a Yahoo read for `yfinance`. One call reaches the row once: the caller that keeps its own book owns it (`UWClient`'s observers, `yfinance.spend_owned_by_caller`; #1277). `RC_APP_SPEND=0` stops the app half |
+| `provider_spend_daily` | What the **paid** writers cost, per provider, model and New York day (#166 item 3): `calls`, `tokens_in`, `tokens_out` and `usd_micros` (millionths of a USD, an integer so a day is a sum of exact numbers). Written by `core/llm_spend.py` after a paid answer, and read by its day cap, which refuses a paid call once the New York day's USD is spent. The money is a measured estimate until a per-token price is set in `core/llm_prices.py`, never the provider's invoice; tokens are recorded either way, so a day can be re-costed. `RC_LLM_SPEND=0` stops the writes and the gate. A counter, so it is not in the ops backup — see `docs/llm_spend.md` |
 | `watchlist_option`, `watchlist_stock`, `watchlist_option_changes`, `watchlist_stock_changes` | The two watch lists (D2): ticker, added at, added by (the board), note; and their history, one row per add or remove with an `id` that keeps its order (version 2 added `id` and `note` to the history). No longer read or written since plan v5 step 7g (18 Nov 2026): the two lists are rows of `boards/watchlists.duckdb`; the tables stay until avo retires them |
 | `dataset_schedule` | Cadence and pause state per dataset (Pause / Resume on Settings, PR 2) |
 | `kind_automation` | The old file-level mode (Settings, 6 Nov 2026): kept, no longer read; `ops.copy_kind_modes` moved it onto each dataset (10 Nov 2026) |
@@ -1508,12 +1509,12 @@ own mark: a panel header that says `cli` is recorded as `panel:cli`.
 the CLI or a Fetch), so the first hourly builder pass after a deploy calls no spine source before the attended
 steps, and a first attempt that failed is not retried every hour.
 
-**Served tables** (`spine` serving schema version `9`). Periods are `valid_from` inclusive, `valid_to` exclusive
+**Served tables** (`spine` serving schema version `10`). Periods are `valid_from` inclusive, `valid_to` exclusive
 (Compustat's inclusive ends are moved one day on), `valid_to` NULL while current.
 
 | Table | Rows |
 |---|---|
-| `security` | one per ticker of the newest SEC file: CIK, name, exchange, `tier` and `tier_rule`, `security_type` and its source, the Compustat link (`gvkey`, `iid`, `link_source`), `cusip`, `isin` (derived), the FIGI fields, the current GICS codes, the bridge `sector` / `industry`, Compustat's company `sic` (spine 6), each with its source, and the SEC file's provenance |
+| `security` | one per ticker of the newest SEC file: CIK, name, exchange, `tier` and `tier_rule`, `security_type` and its source, the Compustat link (`gvkey`, `iid`, `link_source`), `cusip`, `isin` (derived), the FIGI fields, the current GICS codes, the bridge `sector` / `industry`, Compustat's company `sic` (spine 6), `country` and `country_source` (spine 10: where the business is, ISO 3166-1 alpha-2 — Compustat's own `comp.company.loc` where the row links to a company, else the SEC submissions header's business address; NULL is unknown, never "not US"), each with its source, and the SEC file's provenance |
 | `security_history` | the SEC file's `cik`, `name`, `exchange` per ticker over the stored snapshots; Compustat's identifier history of the linked securities |
 | `gics_history` | Compustat's GICS periods of the linked companies |
 | `index_membership` | the fund-file members (source `funds/index_holdings`) and Compustat's constituents (source `wrds/idxcst_his`, the check) |

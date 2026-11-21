@@ -8,6 +8,7 @@ from datetime import date
 import pandas as pd
 import pytest
 
+from RevenueChaser.core.providers import spend
 from RevenueChaser.rcdata import ops
 from RevenueChaser.rcdata.build.fundamentals import common, fx_rates
 
@@ -108,3 +109,28 @@ def test_a_one_day_spike_is_left_out_of_the_index_but_a_lasting_move_stays():
     step = [0.03] * 4 + [0.015] * 5                                  # a devaluation: the neighbours move too
     moved = fx_rates.index_rates([("TRY", d, r) for d, r in zip(days, step)])
     assert moved["TRY"][1] == step
+
+
+@pytest.fixture
+def clean_spend(monkeypatch):
+    """This test measures only its own run's spend counts.
+
+    ``core/providers/spend.py``'s buffer is a module global shared by every test in the xdist worker, so counts an
+    earlier test left pending would make ``pending()`` non-empty on their own and the assertion would depend on
+    the order the shard happened to run -- #1267's shape exactly, and what mutation round 2 of #1277 surfaced.
+    """
+    monkeypatch.setattr(spend, "_pending", {})
+    monkeypatch.setattr(spend, "_since", {})
+    monkeypatch.setattr(spend, "_ledger", None)
+    monkeypatch.setattr(spend, "_dropped", {})
+
+
+def test_the_provider_module_does_not_count_the_run_a_second_time(yf, clean_spend):
+    """#1277: the dataset counts each currency with ``ctx.count``, and ``core/providers/yfinance`` used to count
+    the same read again on the spend ledger. Both land in the one ``provider_calls_daily`` row the day caps read,
+    so a cap tripped at half the reads it should allow. The provider's half is buffered
+    (``spend.FLUSH_EVERY``), which is why the assertion above misses it: this one forces the write."""
+    fx.run(fx_rates.NAME, "2026-11-06")
+    assert "yfinance" not in spend.pending()
+    spend.flush()
+    assert ops.calls_today("yfinance") == 2                        # two currencies, two counts, not four

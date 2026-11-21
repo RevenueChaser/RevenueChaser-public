@@ -694,6 +694,25 @@ def calls_by_day(first_day: str, last_day: str) -> list[dict]:
                   key=lambda r: (r["provider"], r["ny_day"]))
 
 
+def count_spend(provider: str, model: str, *, calls: int = 1, tokens_in: int = 0, tokens_out: int = 0,
+                usd_micros: int = 0) -> None:
+    day = ops._today()
+    _add("provider_spend_daily", (provider, model, day),
+         {"provider": provider, "model": model, "ny_day": day},
+         {"calls": calls, "tokens_in": tokens_in, "tokens_out": tokens_out, "usd_micros": usd_micros})
+
+
+def spend_micros_today(provider: str | None = None) -> int:
+    day = ops._today()
+    return sum(int(r["usd_micros"] or 0) for r in _all("provider_spend_daily")
+               if r["ny_day"] == day and (provider is None or r["provider"] == provider))
+
+
+def spend_by_day(first_day: str, last_day: str) -> list[dict]:
+    return sorted((r for r in _all("provider_spend_daily") if first_day <= r["ny_day"] <= last_day),
+                  key=lambda r: (r["provider"], r["model"], r["ny_day"]))
+
+
 def latest_uw_sample() -> dict | None:
     newest = _fetch("uw_remaining", _client().zrevrange(_key("uw_remaining"), 0, 0))
     cols = ("sampled_at", "run_id", "daily_req_count", "daily_cap", "daily_remaining_computed",

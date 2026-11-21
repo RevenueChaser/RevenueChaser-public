@@ -24,6 +24,9 @@ The tables and what writes them:
   (computed), the per-minute window, and the token limit as sent (not a daily cap).
 - ``provider_calls_daily``: calls per provider and New York day, the builder's and the dashboard's
   (``core/providers/spend.py``, #166) in one row; the day cap (``caps``) reads it.
+- ``provider_spend_daily``: what the paid providers cost, per provider, model and New York day: calls, tokens
+  and ``usd_micros`` (#166 item 3). ``core/llm_spend.py`` writes it after a paid answer and reads it for
+  the day cap.
 - ``watchlist_option`` / ``watchlist_stock``: the two watch lists (D2), one row per ticker with when, by which board
   and an optional note; ``watchlist_*_changes`` is their history, one row per add or remove. The dashboard's toggle
   routes write them (PR 4); the option list is what the options build will cover besides SPX.
@@ -146,6 +149,15 @@ _DDL = {
     "provider_calls_daily": """CREATE TABLE IF NOT EXISTS provider_calls_daily (
         provider TEXT NOT NULL, ny_day TEXT NOT NULL, calls INTEGER NOT NULL DEFAULT 0,
         failures INTEGER NOT NULL DEFAULT 0, http_429 INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (provider, ny_day))""",
+    # #166 item 3, the money half: what a paid provider's calls cost, per model and New York day. A new table,
+    # no upgrade step (``kind_automation`` was the first of these). Separate from ``provider_calls_daily`` because
+    # its unit is money and its key carries the model, which is what prices a call: one table cannot hold both
+    # without a column saying which rows mean what. ``usd_micros`` is millionths of a USD, an integer, so a day's
+    # figure is a sum of exact numbers and not of floats; ``core/llm_prices.py`` turns an answer into it.
+    "provider_spend_daily": """CREATE TABLE IF NOT EXISTS provider_spend_daily (
+        provider TEXT NOT NULL, model TEXT NOT NULL, ny_day TEXT NOT NULL, calls INTEGER NOT NULL DEFAULT 0,
+        tokens_in INTEGER NOT NULL DEFAULT 0, tokens_out INTEGER NOT NULL DEFAULT 0,
+        usd_micros INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (provider, model, ny_day))""",
     **{f"watchlist_{k}": f"""CREATE TABLE IF NOT EXISTS watchlist_{k} (
         ticker TEXT PRIMARY KEY, added_at REAL NOT NULL, added_by TEXT, note TEXT)""" for k in WATCH_KINDS},
     # Version 2: an ``id`` that keeps the history's order (a bare rowid may be renumbered by VACUUM), and the note.
@@ -1436,6 +1448,41 @@ def calls_by_day(first_day: str, last_day: str) -> list[dict]:
     """``provider_calls_daily`` rows with ``first_day <= ny_day <= last_day``."""
     return _select("SELECT * FROM provider_calls_daily WHERE ny_day BETWEEN ? AND ? ORDER BY provider, ny_day",
                    (first_day, last_day))
+
+
+@_routed
+def count_spend(provider: str, model: str, *, calls: int = 1, tokens_in: int = 0, tokens_out: int = 0,
+                usd_micros: int = 0) -> None:
+    """Add a paid answer's calls, tokens and cost to ``(provider, model)``'s row for today (New York day)."""
+    with _open() as con:
+        con.execute("INSERT INTO provider_spend_daily (provider, model, ny_day, calls, tokens_in, tokens_out, "
+                    "usd_micros) VALUES (?, ?, ?, ?, ?, ?, ?) "
+                    "ON CONFLICT (provider, model, ny_day) DO UPDATE SET calls = calls + excluded.calls, "
+                    "tokens_in = tokens_in + excluded.tokens_in, tokens_out = tokens_out + excluded.tokens_out, "
+                    "usd_micros = usd_micros + excluded.usd_micros",
+                    (provider, model, _today(), calls, tokens_in, tokens_out, usd_micros))
+
+
+@_routed
+def spend_micros_today(provider: str | None = None) -> int:
+    """Today's cost in millionths of a USD: of ``provider``, or of every paid provider when it is None.
+
+    The cap is the box's money, not one job's, so the gate asks for the total (``core/llm_spend.py``).
+    """
+    sql = "SELECT COALESCE(SUM(usd_micros), 0) FROM provider_spend_daily WHERE ny_day = ?"
+    args: tuple = (_today(),)
+    if provider is not None:
+        sql, args = sql + " AND provider = ?", (*args, provider)
+    with _open() as con:
+        row = con.execute(sql, args).fetchone()
+    return int(row[0] or 0) if row else 0
+
+
+@_routed
+def spend_by_day(first_day: str, last_day: str) -> list[dict]:
+    """``provider_spend_daily`` rows with ``first_day <= ny_day <= last_day``."""
+    return _select("SELECT * FROM provider_spend_daily WHERE ny_day BETWEEN ? AND ? "
+                   "ORDER BY provider, model, ny_day", (first_day, last_day))
 
 
 @_routed

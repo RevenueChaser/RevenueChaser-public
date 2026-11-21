@@ -268,3 +268,59 @@ def test_a_failed_yahoo_read_is_a_failure_on_the_ledger():
     spend.flush()
     row = _row("yfinance")
     assert row["calls"] >= 1 and row["failures"] >= 1
+
+
+# ── The caller's own book (#1277) ──────────────────────────────────────────────────────────────────────────────
+
+def test_yahoo_counts_nothing_while_the_caller_owns_the_ledger():
+    """The builder counts its own Yahoo reads (``ctx.count``), so counting here would double its day (#1277)."""
+    yfmod.reset_health()
+    with yfmod.spend_owned_by_caller():
+        assert yfmod.attempt(lambda: 7, endpoint="info")[0] == 7
+    spend.flush()
+    assert _row("yfinance")["calls"] == 0
+    assert yfmod.health()["calls"] == 1          # the banner still sees the read
+
+
+def test_a_failed_read_inside_the_callers_block_is_not_on_the_ledger_either():
+    yfmod.reset_health()
+
+    def _raise():
+        raise ValueError("Yahoo said no")
+
+    with yfmod.spend_owned_by_caller():
+        value, error = yfmod.attempt(_raise, endpoint="info")
+    assert value is None and error
+    spend.flush()
+    row = _row("yfinance")
+    assert (row["calls"], row["failures"]) == (0, 0)
+    assert yfmod.health()["failed"] == 1
+
+
+def test_the_block_ends_with_its_body_so_a_later_read_is_counted_again():
+    yfmod.reset_health()
+    with yfmod.spend_owned_by_caller():
+        yfmod.attempt(lambda: 1, endpoint="info")
+    yfmod.attempt(lambda: 2, endpoint="info")
+    spend.flush()
+    assert _row("yfinance")["calls"] == 1
+
+
+def test_the_block_ends_on_an_exception_too():
+    yfmod.reset_health()
+    with pytest.raises(RuntimeError):
+        with yfmod.spend_owned_by_caller():
+            raise RuntimeError("the fetch gave up")
+    yfmod.attempt(lambda: 1, endpoint="info")
+    spend.flush()
+    assert _row("yfinance")["calls"] == 1
+
+
+def test_the_blocks_nest_so_an_inner_one_does_not_reopen_the_ledger():
+    yfmod.reset_health()
+    with yfmod.spend_owned_by_caller():
+        with yfmod.spend_owned_by_caller():
+            yfmod.attempt(lambda: 1, endpoint="info")
+        yfmod.attempt(lambda: 2, endpoint="info")
+    spend.flush()
+    assert _row("yfinance")["calls"] == 0

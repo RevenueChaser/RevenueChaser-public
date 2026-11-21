@@ -27,7 +27,7 @@ from collections.abc import Mapping
 
 import duckdb
 
-from RevenueChaser.core import calendar, config
+from RevenueChaser.core import calendar, config, llm_prices, llm_spend
 from RevenueChaser.rcdata import caps, ops, retention, serving
 from RevenueChaser.rcdata.needs import screen as api_screen
 
@@ -983,6 +983,39 @@ def _spend(now: datetime) -> dict:
     return {"day": today.isoformat(), "week_from": monday.isoformat(), "providers": out, "uw_remaining": sample}
 
 
+def _money(now: datetime) -> dict:
+    """What the paid providers cost, today and the week from Monday (#166 item 3).
+
+    The data half only: the Spend card renders the metered counters as it did, and this key is here for the v2
+    board to read (new screens are v2's, avo 21 Nov 2026). The figures come from ``provider_spend_daily``, which
+    ``core/llm_spend.py`` writes after every paid answer, and the unit per model is ``llm_prices.unit`` -- a
+    measured estimate until a per-token price is set, never the provider's invoice, which is why ``unit`` travels
+    with the number and is not dropped on the way to the page.
+    """
+    today = calendar._as_ny(now).date()
+    monday = today - timedelta(days=today.weekday())
+    rows = ops.spend_by_day(monday.isoformat(), today.isoformat())
+    out = []
+    for key in sorted({(r["provider"], r["model"]) for r in rows}):
+        mine = [r for r in rows if (r["provider"], r["model"]) == key]
+        day = [r for r in mine if r["ny_day"] == today.isoformat()]
+        out.append({"provider": key[0], "model": key[1], "unit": llm_prices.unit(key[1]),
+                    "calls_today": sum(int(r["calls"] or 0) for r in day),
+                    "calls_week": sum(int(r["calls"] or 0) for r in mine),
+                    "usd_today": sum(int(r["usd_micros"] or 0) for r in day) / llm_prices.MICROS,
+                    "usd_week": sum(int(r["usd_micros"] or 0) for r in mine) / llm_prices.MICROS,
+                    "tokens_in_week": sum(int(r["tokens_in"] or 0) for r in mine),
+                    "tokens_out_week": sum(int(r["tokens_out"] or 0) for r in mine)})
+    cap = llm_spend.day_cap_usd()
+    # Summed from the rows above, not asked of ``llm_spend``, so every figure on the card belongs to the same day
+    # -- the one this call was given, which is the live day on the page and a fixed one in a test.
+    spent = sum(w["usd_today"] for w in out)
+    return {"day": today.isoformat(), "week_from": monday.isoformat(), "writers": out,
+            "day_cap_usd": cap, "usd_today": spent, "recording": llm_spend.on(),
+            # So the page never has to work the rule out itself: whether a paid call would be refused now.
+            "over_cap": bool(cap is not None and llm_spend.on() and spent >= cap)}
+
+
 def _age_days(when: datetime | None, now: datetime) -> int | None:
     return None if when is None else max(0, (now - when).days)
 
@@ -1282,6 +1315,9 @@ def collect(now: datetime | None = None) -> dict:
         "my_universe": _my_universe_card((spine_counts or {}).get("my_universe")),
         "queue": ops.read_queue(finished=20),
         "spend": spend,
+        # The paid providers' money (#166 item 3). Data only: the Spend card renders the metered counters as it
+        # did, and the v2 board is where a money card is drawn (avo 21 Nov 2026).
+        "money": _money(now),
         "backups": _backups(now),
         "retention": _retention(),
         "retirement": _retirement(now),

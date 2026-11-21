@@ -172,7 +172,10 @@ class FxRates:
             ctx.check_cap(PROVIDER)
             base.run_pacer(ctx, PROVIDER).wait()
             ctx.count(PROVIDER, calls=1)
-            res = yf_provider.get_fx_history(cur, start)
+            # This dataset's own book is the one that reaches the day's ledger: the provider module would count
+            # the same read a second time into the same row (#1277).
+            with yf_provider.spend_owned_by_caller():
+                res = yf_provider.get_fx_history(cur, start)
             if res.status != "ok":
                 ctx.count(PROVIDER, failures=1)
                 failed.append(cur)

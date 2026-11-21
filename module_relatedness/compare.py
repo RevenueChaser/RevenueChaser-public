@@ -106,7 +106,8 @@ def run(tickers: list[str], provider: str, model: str) -> dict:
                 try:
                     located = locator.locate(t, inp["name"], (inp.get("source") or {}).get("form"),
                                              inp["locate"]["text"], budget=budget, provider=provider, model=model)
-                except (deepseek.PeakHoursError, deepseek.DeepSeekAuthError, deepseek.DeepSeekTransientError):
+                except (deepseek.PeakHoursError, deepseek.BudgetSpentError, deepseek.DeepSeekAuthError,
+                        deepseek.DeepSeekTransientError):
                     raise
                 except deepseek.DeepSeekError:
                     located = None
@@ -122,6 +123,8 @@ def run(tickers: list[str], provider: str, model: str) -> dict:
             return stop("cap")
         except deepseek.PeakHoursError:
             return stop("peak")
+        except deepseek.BudgetSpentError:
+            return stop("budget")                     # the paid-call day cap (#166)
         except deepseek.DeepSeekAuthError:
             return stop("auth")
         except deepseek.DeepSeekTransientError:

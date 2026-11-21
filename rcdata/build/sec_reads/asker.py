@@ -53,7 +53,10 @@ ASK_LOCK = "sec_reads_ask"
 RELATEDNESS_LOCK = "relatedness"
 OK, PARTIAL, EMPTY, NO_TEXT = "ok", "partial", "empty", "no_text"
 #: The errors that stop the whole run: the next call cannot do better.
-_STOP = (deepseek.PeakHoursError, deepseek.DeepSeekAuthError, deepseek.DeepSeekTransientError)
+#: ``BudgetSpentError`` is the paid writer's money gate (#166): nothing was sent and the next call cannot
+#: do better until the New York day turns.
+_STOP = (deepseek.PeakHoursError, deepseek.BudgetSpentError, deepseek.DeepSeekAuthError,
+         deepseek.DeepSeekTransientError)
 
 
 @dataclass
@@ -194,7 +197,8 @@ def _ask_chunks(ctx: base.RunContext, job: Job, lock: threading.Lock) -> Reply:
             reply = client.complete(q.system, chunk, model=q.writer_model, max_tokens=q.max_tokens,
                                     use_cache=False, cik=job.cik, prompt_version=q.prompt_version, usage=usage)
         except (base.Paused, base.CapReached, *_STOP) as e:
-            if not isinstance(e, (base.Paused, base.CapReached, deepseek.PeakHoursError)):   # these sent nothing
+            if not isinstance(e, (base.Paused, base.CapReached, deepseek.PeakHoursError,
+                                  deepseek.BudgetSpentError)):                              # these sent nothing
                 with lock:
                     ctx.count(q.provider, calls=1, failures=1, logged=True)
                     log(i, _why(e), t0)

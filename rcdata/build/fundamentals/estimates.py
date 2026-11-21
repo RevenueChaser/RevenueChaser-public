@@ -155,7 +155,9 @@ class Estimates:
             ctx.check_cap(PROVIDER)
             base.run_pacer(ctx, PROVIDER).wait()
             ctx.count(PROVIDER, calls=1)
-            res = yf_provider.get_earnings_trend(ticker)
+            # As in ``fx_rates``: counted once, here, not again inside the provider module (#1277).
+            with yf_provider.spend_owned_by_caller():
+                res = yf_provider.get_earnings_trend(ticker)
             if res.status != "ok":
                 ctx.count(PROVIDER, failures=1)
                 failed.append(ticker)

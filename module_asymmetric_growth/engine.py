@@ -1,6 +1,7 @@
 """Asymmetric Growth Hunter — ABD hisseleri, 3 sinyal taraması.
 
-Universe: the spine's (``core.universe``); market cap and price from the prices store. Financials: the stored SEC
+Universe: the spine's (``core.universe``), the country of the non-US test among its columns; market cap and price
+from the prices store. Financials: the stored SEC
 EDGAR figures only (no Yahoo, #645). Momentum: the prices store's daily bars.
 Üç sinyal (her biri 3 alt kriter, X/3):
   1. Accelerated Growth — rev >= 20%, hızlanan YoY, gross margin >= 40%
@@ -460,7 +461,8 @@ def score_ticker(ticker: str, financials: dict, technical: dict, meta: dict | No
     }
 
 
-def _cached_financials(ticker: str, no_fetch: bool = False, preload: dict | None = None) -> dict | None:
+def _cached_financials(ticker: str, no_fetch: bool = False, preload: dict | None = None,
+                       spine_country: str | None = None) -> dict | None:
     """The stored SEC EDGAR annual and quarterly figures of ``ticker``, or None when there are none.
 
     Yahoo is not asked (owner, 10 Nov 2026, #645 option A): a name with no SEC annual data gets no card, and the
@@ -478,10 +480,12 @@ def _cached_financials(ticker: str, no_fetch: bool = False, preload: dict | None
     if not edgar_annual:
         return None
     info: dict = {}
-    # G4 K1: non-US = a 20-F / 40-F filer (``is_us`` False) or an SEC business address outside the US; a name whose
-    # address is unread is US, as the spine universe is US-listed by construction.
-    business_country = (edgar_meta.get("business_country") or "").strip().upper()
-    if edgar_meta.get("is_us") is False or (business_country and business_country != "US"):
+    # G4 K1: non-US = a 20-F / 40-F filer (``is_us`` False) or a business outside the US. The country is the
+    # spine's (``security.country``, spine 10): Compustat's own country of the company where it links one, which is
+    # the maintained source, and the SEC submissions address only where it does not (avo, 21 Nov 2026). A name
+    # neither places is US, as the spine universe is US-listed by construction.
+    country = (spine_country or "").strip().upper() or (edgar_meta.get("business_country") or "").strip().upper()
+    if edgar_meta.get("is_us") is False or (country and country != "US"):
         info["country"] = "Foreign"
     else:
         info["country"] = US_COUNTRY
@@ -674,7 +678,8 @@ def enrich_and_score(ticker: str, meta: dict, no_fetch: bool = False,
         return None
 
     try:
-        financials = _cached_financials(ticker, no_fetch=no_fetch, preload=preload)
+        financials = _cached_financials(ticker, no_fetch=no_fetch, preload=preload,
+                                        spine_country=(meta or {}).get("country"))
     except (OSError, ValueError, KeyError) as exc:  # pragma: no cover - network / bad payload
         # Anything else (AttributeError, TypeError, ...) is a programming error: it
         # propagates so the runner counts it in ``score_errors`` (#202).
