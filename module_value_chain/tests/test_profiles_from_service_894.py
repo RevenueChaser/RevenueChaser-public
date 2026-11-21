@@ -57,8 +57,14 @@ def test_a_partial_answer_is_a_profile(rawstore_tmp_db, market_roots):  # noqa: 
 
 
 def test_an_answer_with_no_json_is_no_profile(rawstore_tmp_db, market_roots):  # noqa: F811
+    """A row the service holds with no parsed answer is not a profile, and carries no accession to an edge.
+
+    Asserted on the map and not on the edges: with no profile at all the board draws no profile edge either way,
+    so an edge assertion here would pass on the merge-base and prove nothing (``red-on-base`` on the first push).
+    """
     _filing()
     _profile(profile=None)
+    assert engine._service_profiles([{"ticker": "AMKR", "cik": "1"}]) == ({}, {})
     assert _apple(engine.build_edges()) == []
 
 
