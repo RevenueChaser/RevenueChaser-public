@@ -38,6 +38,7 @@ Each lane is one issue and one PR, in this order.
 | **D. Sweep and block rules** | the two missing rules beside the side and package rules already in `core/option_prints.py` | 2-3 days | C, M3 |
 | **E. The 13F tag snapshot** | freeze UW's institution tags into our own table so the SEC-based slices survive without UW | 1 day | — |
 | **F. Calendars** | find and verify a replacement for `/market/economic-calendar` and `/market/fda-calendar`, or accept losing them | 2 days | — |
+| **G1. Congress trades (optional, new)** | House Clerk bulk ZIP (verified 21 Nov: 1,867 rows for 2026) + Senate eFD; the cost is parsing the PTR **PDFs** and matching tickers | 1 week, mostly parsing | avo's word |
 | **G. Analyst ratings** | the one item with no source here at all; new work, not a migration | unscoped | avo's word |
 | **H. Delete the dead surface** | the 21 uncalled client methods and the lab endpoints we never use | half a day | — |
 

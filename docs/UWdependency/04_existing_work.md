@@ -55,3 +55,22 @@ Three things must be answered before any of that can be planned (all unverified,
 | **news-feed** | the News board is on **IBKR headlines** already (`core/providers/ibkr_tws.py`, avo's choice 9 Nov 2026) |
 | **stock-updates (52-week high/low)** | computable from the prices store (`price_bar_daily`); no provider needed |
 | **highest-volume-contracts** | a scan over the chain; needs the chain source of layer 3, not UW |
+
+### 3.2 Congress trades — measured 21 November 2026
+
+avo: "bunu da yapabiliriz". Checked, rather than assumed:
+
+- **House**: the Clerk publishes a bulk file per year.
+  `GET https://disclosures-clerk.house.gov/public_disc/financial-pdfs/2026FD.zip` answered **HTTP 200, 66,320
+  bytes** on 21 Nov 2026 13:09 UTC; it holds `2026FD.txt` (**1,867 rows**) and `2026FD.xml`, columns
+  `Prefix, Last, First, Suffix, FilingType, StateDst, Year, FilingDate, DocID`. `FilingType` `P` is a periodic
+  transaction report; the `DocID` names the PDF of that filing. No key, no robots.txt (404 on
+  `/robots.txt`), no sign-in.
+- **Senate**: `efdsearch.senate.gov` is reachable, but its search sits behind an agreement page, so machine
+  access needs a session and its terms must be read before anything is written. **Unverified.**
+- **The work UW sells here is not the filings, it is the processing**: the transaction lines live inside the
+  **PDF**, many of them scanned, and each has to be parsed and matched to a ticker. That is the whole cost.
+
+Classification: **ours, with PDF/OCR parsing as the hard part.** Nothing in production depends on congress
+data today (no need in `rcdata/needs/catalog.py`), so this is new work, not a migration — it only matters if
+avo wants the board.
