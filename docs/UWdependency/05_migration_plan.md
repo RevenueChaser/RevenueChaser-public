@@ -24,7 +24,7 @@ Nothing below commits to one. **Measurements M1-M4 decide it**, and all four fit
 | **M3** | How close is our own side/sweep call to UW's? | on the **stored** `option_print` rows of a past session (no new UW call), score `core/option_prints.py` against UW's own tag, then add a draft sweep rule and score it | the acceptance test avo asked for, while UW is still live |
 | ~~**M4**~~ | ~~Massive and Databento option prices~~ | **done 21 Nov 2026**: both pages rendered in Chromium | Massive Options Developer **USD 79/month** (OPRA trades + flat files, 4 years, 15-minute delayed), Advanced **USD 199** real-time; Databento Standard **USD 199/month**, no licence fees, 1 year of L1. Table in `02_provider_replacement.md` §candidates, comparison in `03_options_track.md` |
 
-**M1, M2 and M4 are done; M3 remains.** None of them needed a new subscription or a paid call. What they changed:
+**M1, M2 and M4 are done; M3 remains, and M1 left a successor question — is Yahoo's chain reachable and complete?** None of them needed a new subscription or a paid call. What they changed:
 the free chain is gone (M1), IBKR cannot carry the tape (M2), and a real tape costs USD 79-199 (M4). So option B
 "downgrade and fill the gaps for free" no longer exists in the form it was written: every option now has a bill.
 
@@ -41,7 +41,7 @@ Each lane is one issue and one PR, in this order.
 | Lane | Work | Effort | Depends on |
 |---|---|---|---|
 | **A. Compute GEX ourselves** | a `core/gex.py` that takes a chain (strike, expiry, right, OI, gamma, spot) and returns the exposure profile, call/put wall and flip; tested against a stored UW `gex-levels` answer of the same session, so "same numbers" is a test, not a hope | 2-3 days | M1 |
-| **B. A Cboe chain provider** | `core/providers/cboe_chain.py` + `rcdata/build/options/cboe_chain.py`, writing the same `option_eod` columns; `providers=("uw", "cboe")` on the chain needs, UW still first | 3-4 days | M1 |
+| **B. A free chain provider — Yahoo, not Cboe** | Cboe is gone (M1), so lane B is rewritten: a chain dataset on the `yfinance` client we already have, writing the same `option_eod` columns minus the Greeks, with `providers=("uw", "yfinance")` while UW still answers first. Greeks come from lane A's own arithmetic rather than from the vendor. **Measure first**: does Yahoo's chain answer from homesrv, and how many contracts does it carry against UW's 19,774 for one chain? | 3-4 days after the measurement | the Yahoo reachability measurement, and risk R18 |
 | **C. An IBKR options tape lane** | a new message type on `core/providers/ibkr_tws.py` for OPRA L1 / trades, bounded to SPX and the watch list; the prints land in `option_print` with source `ibkr` | 1 week | M2 |
 | **D. Sweep and block rules** | the two missing rules beside the side and package rules already in `core/option_prints.py` | 2-3 days | C, M3 |
 | **E. The 13F tag snapshot** | freeze UW's institution tags into our own table so the SEC-based slices survive without UW | 1 day | — |
