@@ -378,6 +378,21 @@ RELEASE_DATASET = "sec/forms"
 RELEASE_MAX_AGE_DAYS = 200
 
 
+def _day_or_none(value):
+    """``_day`` for a value that came from a caller or from a store row: an unreadable one is ``None``.
+
+    ``_day`` is ``date.fromisoformat(str(value)[:10])``, so it raises ``ValueError`` on ``""``, ``"N/A"`` or any
+    other text that is not a date. This reader promises a store error is "not stored" and never an exception
+    (#1240 review), and both a card's own report date and a stored ``filing_date`` reach it from outside, so
+    neither may turn a board render into a traceback. A date that cannot be read is treated as no date: the row
+    is skipped, or the name keeps its newest release, which is the same answer as a missing value.
+    """
+    try:
+        return _day(value)
+    except ValueError:
+        return None
+
+
 def release_texts(tickers, report_dates: dict | None = None,
                   today: date | None = None) -> tuple[dict[str, dict], dict]:
     """``({ticker: {text, filing_date, accession, document, chars}}, note)``: the newest earnings press release
@@ -393,6 +408,15 @@ def release_texts(tickers, report_dates: dict | None = None,
     dropped, and a name whose only release is that one is simply absent from the map. ``report_dates`` is
     ``{ticker: date}``; a name it does not name keeps its newest release.
 
+    **One row per filer, so there is no release history.** ``read.form_release`` serves the newest ``release`` row
+    for a CIK, and the cut rewrites a company's partition whole, so last quarter's release is gone from
+    ``filing_section`` the moment a new 8-K item 2.02 arrives. Two things follow, and both are deliberate (#1240
+    review, owner's call 21 Nov 2026 that R8's own source will be a provider transcript rather than an SEC
+    document, so keeping SEC release history is out of scope): on the morning a company prints, the only stored
+    row *is* that print's, it is dropped by the rule above, and the name is absent — R8 falls back rather than
+    reading the answer; and a backtest over past quarters cannot be run from this table (#1250). The raw exhibits
+    on disk do accumulate, so the history is recoverable if it is ever wanted; only the serving layer keeps one.
+
     A name with no release is absent and R8 falls back to the retail-call-share slot it has always had. A store
     error is "not stored", never an exception and never a live read.
     """
@@ -406,7 +430,7 @@ def release_texts(tickers, report_dates: dict | None = None,
     except ValueError:
         today = calendar.today_ny()
     oldest = today - timedelta(days=RELEASE_MAX_AGE_DAYS)
-    wanted = {str(k).strip().upper(): _day(v) for k, v in (report_dates or {}).items()}
+    wanted = {str(k).strip().upper(): _day_or_none(v) for k, v in (report_dates or {}).items()}
     try:
         of_cik: dict[str, list[str]] = {}
         for row in read.fundamental_companies(names):
@@ -422,7 +446,7 @@ def release_texts(tickers, report_dates: dict | None = None,
     out: dict[str, dict] = {}
     after, stale = 0, 0
     for r in rows:
-        filed = _day(r.get("filing_date"))
+        filed = _day_or_none(r.get("filing_date"))
         text = str(r.get("text") or "")
         if filed is None or not text:
             continue

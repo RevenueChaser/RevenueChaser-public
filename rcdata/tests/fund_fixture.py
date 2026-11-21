@@ -345,6 +345,17 @@ def index_headers(exhibit: str = RELEASE_EXHIBIT, kind: str = "EX-99.1") -> str:
             "&lt;/DOCUMENT&gt;\n&lt;/SEC-DOCUMENT&gt;</pre></body></html>")
 
 
+def index_headers_exhibits(pairs: list[tuple[str, str]]) -> str:
+    """``-index-headers.html`` for a filing carrying several exhibits, as ``(type, filename)`` pairs in the order
+    EDGAR lists them (#1240 review: ``release_exhibit`` ranks by type, not by listing order, and one filing can
+    carry both an ``EX-99.1`` and a bare ``EX-99``)."""
+    docs = "".join(f"&lt;DOCUMENT&gt;\n&lt;TYPE&gt;{kind}\n&lt;SEQUENCE&gt;{i + 2}\n&lt;FILENAME&gt;{name}\n"
+                   "&lt;/DOCUMENT&gt;\n" for i, (kind, name) in enumerate(pairs))
+    return ("<html><body><pre>&lt;SEC-DOCUMENT&gt;\n&lt;DOCUMENT&gt;\n&lt;TYPE&gt;8-K\n"
+            "&lt;SEQUENCE&gt;1\n&lt;FILENAME&gt;msft-8k.htm\n&lt;/DOCUMENT&gt;\n"
+            f"{docs}&lt;/SEC-DOCUMENT&gt;</pre></body></html>")
+
+
 def press_release(body: str = "Revenue grew 18%. We remain confident in the year ahead.") -> str:
     """An earnings press release as an EX-99.1 exhibit."""
     return f"<html><body><p>Microsoft Cloud Strength Drives First Quarter Results</p><p>{body}</p></body></html>"

@@ -49,6 +49,26 @@ def test_no_header_file_text_is_no_exhibit():
     assert filings.release_exhibit("") is None
 
 
+def test_between_two_release_types_the_order_of_the_tuple_decides_not_the_filing_order():
+    """A filing carrying both an ``EX-99.1`` and a bare ``EX-99`` gives the ``EX-99.1``, whichever EDGAR lists
+    first. ``_RELEASE_TYPES`` is a preference order, and this is the only test that can tell it from a dict of
+    equals (#1240 review)."""
+    both = [("EX-99", "the-other-one.htm"), ("EX-99.1", "the-earnings-release.htm")]
+    assert filings.release_exhibit(fx.index_headers_exhibits(both)) == "the-earnings-release.htm"
+    assert filings.release_exhibit(fx.index_headers_exhibits(both[::-1])) == "the-earnings-release.htm"
+
+
+def test_an_unreadable_preferred_type_falls_through_to_the_next_one():
+    """``EX-99.1`` filed as a PDF while the bare ``EX-99`` is HTML: the fallback is the whole point of walking
+    ``_RELEASE_TYPES`` after collecting, rather than returning on the first type found. Without this test the
+    walk could be cut to an early ``return None`` and nothing would go red (#1240 review) --
+    ``test_a_release_filed_as_a_pdf_is_a_miss_and_not_a_stored_binary`` types only the one exhibit, so it passes
+    either way."""
+    pairs = [("EX-99.1", "q1-results.pdf"), ("EX-99", "q1-results.htm")]
+    assert filings.release_exhibit(fx.index_headers_exhibits(pairs)) == "q1-results.htm"
+    assert filings.release_exhibit(fx.index_headers_exhibits(pairs[:1])) is None, "no readable exhibit is a miss"
+
+
 # ── which filing the release belongs to ─────────────────────────────────────────────────────────────────────────
 
 def _row(accession: str, form: str, filed: str, items: str) -> dict:
@@ -173,3 +193,23 @@ def test_a_store_error_is_not_stored_and_never_raises(monkeypatch):
     monkeypatch.setattr(store_reads.read, "fundamental_companies", boom)
     out, note = store_reads.release_texts(["MSFT"])
     assert out == {} and note["stored"] is False and "RuntimeError" in note["label"]
+
+
+@pytest.mark.parametrize("bad", ["", "N/A", "unknown", "0000-00-00"])
+def test_a_report_date_that_is_not_a_date_never_reaches_the_board_as_a_traceback(monkeypatch, bad):
+    """A card's report date comes from the caller, and ``date.fromisoformat`` raises on text like this. The name
+    keeps its newest release, which is the answer a missing report date already gets (#1240 review)."""
+    _reader(monkeypatch, [_release()])
+    out, _ = store_reads.release_texts(["MSFT"], report_dates={"MSFT": bad}, today=date(2026, 1, 20))
+    assert out["MSFT"]["text"] == "Revenue grew 18%.", "an unreadable report date is no report date"
+
+
+@pytest.mark.parametrize("bad", ["", "N/A", "unknown"])
+def test_a_stored_filing_date_that_is_not_a_date_skips_its_row_rather_than_raising(monkeypatch, bad):
+    """The other call that sat outside the ``try``. A row whose date cannot be read is skipped exactly as a row
+    with no date is, so one bad row cannot take the board's render down with it."""
+    _reader(monkeypatch, [_release(filed=bad), _release(cik="789019", filed=date(2025, 10, 29))])
+    out, note = store_reads.release_texts(["MSFT"], report_dates={"MSFT": date(2026, 1, 27)},
+                                          today=date(2026, 1, 20))
+    assert out["MSFT"]["filing_date"] == date(2025, 10, 29), "the good row is still served"
+    assert note["stored"] is True
