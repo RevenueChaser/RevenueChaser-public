@@ -174,8 +174,7 @@ class FxRates:
             ctx.count(PROVIDER, calls=1)
             # This dataset's own book is the one that reaches the day's ledger: the provider module would count
             # the same read a second time into the same row (#1277).
-            with yf_provider.spend_owned_by_caller():
-                res = yf_provider.get_fx_history(cur, start)
+            res = yf_provider.get_fx_history(cur, start)   # MUTANT M3 (#1277)
             if res.status != "ok":
                 ctx.count(PROVIDER, failures=1)
                 failed.append(cur)
