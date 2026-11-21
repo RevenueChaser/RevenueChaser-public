@@ -307,7 +307,11 @@ provider for the New York day and the week from Monday, from `provider_calls_dai
 `rcdata/caps.py`. Since #166 that counter holds the dashboard's own Fetches as well as the builder's runs
 (`core/providers/spend.py` writes it from the UW, EDGAR and Yahoo clients; `RC_APP_SPEND=0` stops those writes),
 so the figures are what this machine spent and not half of it. The unit is the provider's: a request for `uw` and
-`sec`, a Yahoo read for `yfinance`, both halves alike. It is a record and not a gate — nothing refuses a Fetch
+`sec`, a Yahoo read for `yfinance`, both halves alike. **One call is counted by one side only:** a caller that keeps
+its own book in that row says so — the builder installs `UWClient`'s observers, and a builder dataset that reads
+Yahoo through `core/providers/yfinance` asks inside `spend_owned_by_caller`, so the provider module counts nothing
+there. Until #1277 `yfinance/fx` and `yfinance/estimates` were counted twice and their day caps tripped at half
+the reads they allow. It is a record and not a gate — nothing refuses a Fetch
 that would cross a cap (the paid writers are the one exception since #166: their money has a day cap of its own,
 `docs/llm_spend.md`, and it is a different counter), and UW's newest `x-uw-*` sample from `uw_remaining`: its daily count, what is left of our own cap
 (computed) and the per-minute window), weekly backups (the weekly job's manifests under
