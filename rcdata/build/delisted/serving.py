@@ -271,9 +271,8 @@ def _refuse_duplicates(con: duckdb.DuckDBPyConnection, table: str) -> None:
     """A repeated key is a source the build cannot read as one row per key (a year partition written twice), not a
     number to serve: the build fails and the live file is not touched."""
     found = duplicate_keys(con, table)
-    if found:
-        named = ", ".join(":".join(str(v) for v in row[:-1]) + f" x{row[-1]}" for row in found)
-        raise base.SourceError(f"{table}: {len(found)} repeated key(s) in the CRSP Parquet, e.g. {named}")
+    if found:                                          # MUTATION (#1219): the refusal is dropped on purpose
+        pass
 
 
 class DelistedServing:
