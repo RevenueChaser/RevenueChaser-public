@@ -188,22 +188,33 @@ def _in_usd(body: dict, fx: dict, only: str | None = None) -> dict:
 _ANNUAL_FORMS = frozenset({"10-K", "10-K/A", "10-KT", "10-KT/A", "20-F", "20-F/A", "40-F", "40-F/A"})
 
 
-def _newest_annual(branch: dict) -> str:
-    """The newest period end of an annual-report fact in one taxonomy branch, or ``""``."""
-    return max((str(f.get("end")) for body in branch.values() for items in (body.get("units") or {}).values()
+def _newest_annual(branch: dict, concepts=None) -> str:
+    """The newest period end of an annual-report fact in one taxonomy branch, or ``""``.
+
+    ``concepts``, when given, counts only those concepts: for the ifrs-full branch the ones ``as_gaap`` would
+    actually serve (see ``reads_ifrs``)."""
+    return max((str(f.get("end")) for concept, body in branch.items()
+                if concepts is None or concept in concepts
+                for items in (body.get("units") or {}).values()
                 for f in items or [] if f.get("form") in _ANNUAL_FORMS and f.get("end")), default="")
 
 
 def reads_ifrs(facts: dict) -> bool:
     """True when the statements are read from ifrs-full: no us-gaap facts, or (#105, the movers: AEM, NAAS, TM, FMS,
     FRO) an ifrs-full annual report newer than the newest us-gaap one. A filer that moved to IFRS keeps its old
-    us-gaap years in companyfacts, and reading only those left its newer years blank."""
+    us-gaap years in companyfacts, and reading only those left its newer years blank.
+
+    The ifrs-full side counts only the concepts of ``IFRS_AS_GAAP`` -- the statements ``as_gaap`` keeps. Any
+    ifrs-full fact used to win that comparison, including one of a concept the mapping does not name, and
+    ``as_gaap`` then replaced the filer's whole us-gaap branch with the mapped concepts of an ifrs-full branch
+    that has none: every field of a filer whose us-gaap statements are complete was dropped for a tag no reader
+    ever looks at (#105, 22 Nov 2026)."""
     branches = facts.get("facts") or {}
     ifrs = branches.get("ifrs-full") or {}
     if not ifrs:
         return False
     gaap = branches.get("us-gaap") or {}
-    return not gaap or _newest_annual(ifrs) > _newest_annual(gaap)
+    return not gaap or _newest_annual(ifrs, IFRS_AS_GAAP) > _newest_annual(gaap)
 
 
 def as_gaap(facts: dict, fx: dict | None = None) -> dict:
