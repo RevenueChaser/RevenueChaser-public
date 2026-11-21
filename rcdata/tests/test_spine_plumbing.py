@@ -140,13 +140,13 @@ def test_http_post_counts_every_attempt_and_retries_a_429_after_its_reset(http_m
     assert http_mock.calls("figi.test")[0].headers["X-K"] == "k"
 
 
-def test_http_post_does_not_retry_a_401(http_mock):
+def test_http_post_does_not_retry_a_401_and_counts_no_failure(http_mock):
     http_mock.add("figi.test", b"bad key", status=401)
     slept = []
     ctx = base.RunContext(run_id="r", dataset="d", sleep=slept.append)
     with pytest.raises(base.SourceError, match="HTTP 401"):
         base.http_post(ctx, "openfigi", "https://figi.test/v3/mapping", json=[])
-    assert ctx.calls["openfigi"] == [1, 1, 0] and slept == []
+    assert ctx.calls["openfigi"] == [1, 0, 0] and slept == []   # a bad key is an answer, not a failure (#1304)
 
 
 def test_the_cli_backfills_several_datasets_in_one_process(fake, monkeypatch):

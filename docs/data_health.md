@@ -311,7 +311,9 @@ so the figures are what this machine spent and not half of it. The unit is the p
 its own book in that row says so — the builder installs `UWClient`'s observers, and a builder dataset that reads
 Yahoo through `core/providers/yfinance` asks inside `spend_owned_by_caller`, so the provider module counts nothing
 there. Until #1277 `yfinance/fx` and `yfinance/estimates` were counted twice and their day caps tripped at half
-the reads they allow. It is a record and not a gate — nothing refuses a Fetch
+the reads they allow. The `failures` figure beside the calls is the provider being the trouble (a transport error,
+a 429 or a 5xx with the retries spent, or a 403 refusal) on both sides; a 404 and the other 4xx answers raise
+without spending one, so a dataset probing absent quarters no longer reads as SEC trouble (#1304). It is a record and not a gate — nothing refuses a Fetch
 that would cross a cap (the paid writers are the one exception since #166: their money has a day cap of its own,
 `docs/llm_spend.md`, and it is a different counter), and UW's newest `x-uw-*` sample from `uw_remaining`: its daily count, what is left of our own cap
 (computed) and the per-minute window), weekly backups (the weekly job's manifests under

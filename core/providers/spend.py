@@ -18,8 +18,12 @@ write the same row:
 * ``yfinance``: one count per **Yahoo read** (``yfinance.attempt``), as ``rcdata/build/sources/yahoo.py`` counts
   it -- the library fetches its own cookie and crumb, so a read is one or more requests.
 
-``failures`` is a final failure (the retries are spent), never one attempt of a retry ladder; ``http_429`` is one
-per 429 answer. A call the circuit breaker refused sent nothing and is counted nowhere.
+``failures`` is a final failure (the retries are spent), never one attempt of a retry ladder, and only where the
+**provider** is the trouble: a transport error, a 429 or a 5xx with the ladder spent, or a 403 refusal. Any other
+4xx is an answer -- the host holds no such object (404), or the request was wrong -- so it raises and counts no
+failure, in the builder (``rcdata/build/base.counts_as_failure``) as in these clients (#1304). Without that rule a
+dataset walking dates or quarters until one is absent filled the column with SEC "trouble" that never happened.
+``http_429`` is one per 429 answer. A call the circuit breaker refused sent nothing and is counted nowhere.
 
 **What this is not.** It is a record, not a gate: nothing here refuses a Fetch that would cross a cap (#166
 item 5). It makes no request of its own to find out what was spent (design question 6) -- every number comes from

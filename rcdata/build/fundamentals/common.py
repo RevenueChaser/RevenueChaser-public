@@ -98,10 +98,11 @@ def get(ctx: base.RunContext, provider: str, url: str, *, params: dict | None = 
     answers a missing object with a 403 and a plain 403 is a refusal that has to raise.
 
     ``params`` and ``headers`` may hold a key: neither is ever logged. ``keyed``: the request carries the provider's
-    key (Alpha Vantage's ``apikey``), so a 403 points at the key and not at ``RC_HTTP_CONTACT``.
+    key (Alpha Vantage's ``apikey``), so a 403 points at the key and not at ``RC_HTTP_CONTACT``. A raise spends a
+    ``failures`` count only for what ``base.counts_as_failure`` calls provider trouble (#1304).
     """
     missing = set(missing)
-    last = ""
+    last, status = "", None
     for attempt in range(1, base.HTTP_ATTEMPTS + 1):
         ctx.check_cap(provider)
         if spacing is not None:
@@ -110,7 +111,7 @@ def get(ctx: base.RunContext, provider: str, url: str, *, params: dict | None = 
         try:
             r = ctx.http.get(url, params=params, headers=headers)
         except httpx.HTTPError as e:
-            last = type(e).__name__
+            last, status = type(e).__name__, None
         else:
             if r.status_code in missing or (missing_object and base.is_missing(r)):
                 return None
@@ -119,11 +120,13 @@ def get(ctx: base.RunContext, provider: str, url: str, *, params: dict | None = 
             if r.status_code < 400:
                 return r
             last = f"HTTP {r.status_code}" + (base.refusal_note(keyed) if r.status_code == 403 else "")
+            status = r.status_code
             if not (r.status_code == 429 or r.status_code >= 500):
                 break
         if attempt < base.HTTP_ATTEMPTS:
             ctx.sleep(base.HTTP_BACKOFF_S * 2 ** (attempt - 1))
-    ctx.count(provider, failures=1)
+    if base.counts_as_failure(status):
+        ctx.count(provider, failures=1)
     raise base.SourceError(f"{provider} {url}: {last}")
 
 
