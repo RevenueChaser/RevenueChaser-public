@@ -321,6 +321,50 @@ def open_read(kind: str) -> duckdb.DuckDBPyConnection:
     return con
 
 
+#: How many times a read reopens the live file when the file was swapped away under it (#1182). One is enough:
+#: the swap is a rename, so the next open gets the new build; a second failure is not the swap's doing.
+SWAP_REOPENS = 1
+
+
+def _file_mark(path: Path) -> tuple | None:
+    """What identifies the file at ``path`` right now, or None when there is none: the inode, its size and its
+    mtime. A swap is an ``os.replace``, so the path keeps its name and the mark changes."""
+    try:
+        st = path.stat()
+    except OSError:
+        return None
+    return (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns)
+
+
+def read_live(kind: str, work):
+    """Run ``work(con)`` on a read-only handle of ``kind``'s live file and answer what it answers (#1182).
+
+    The builder swaps a kind in by moving a new file over the live name, so the file a connection holds can go
+    away between the open and any of the reads the caller then makes. Every caller already has an answer for "no
+    file yet" (``ServingFileMissing``, which passes straight through); none had one for "the file went away under
+    this connection", and the ``duckdb.Error`` reached the caller as a 500 on a board render or a job's
+    traceback (#310 N13 fixed the one Settings card; this is the reader every board uses).
+
+    A ``duckdb.Error`` is retried **once**, and only when the live file is not the one this read opened any more
+    (``_file_mark``): the swap takes a moment and the next open gets the new build, so one reopen is the whole
+    cure. An error with the same file still in place is the caller's own — a missing table, a bad query — and is
+    raised, because turning it into a retry or into an empty answer would hide it. An empty answer is not a
+    substitute either: for a board row ``[]`` is read as data (#1182), not as an absence.
+    """
+    for attempt in range(SWAP_REOPENS + 1):
+        con = open_read(kind)
+        mark = _file_mark(live_path(kind))
+        try:
+            return work(con)
+        except duckdb.Error:
+            if attempt >= SWAP_REOPENS or _file_mark(live_path(kind)) == mark:
+                raise
+            logger.warning("the %s serving file was swapped while a read was in hand; reading the new build", kind)
+        finally:
+            con.close()
+    raise RuntimeError(f"read_live({kind!r}) left its loop without an answer")   # unreachable
+
+
 def connect_read(path: Path) -> duckdb.DuckDBPyConnection:
     """A read-only connection to ``path`` that spills into this process's own directory (``read_spill_dir``).
 

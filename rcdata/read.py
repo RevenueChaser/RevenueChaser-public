@@ -10,8 +10,10 @@ Five serving kinds: ``market`` (``market_series``, ``spx_expiry_strike``), since
 Every row comes back with its provenance (``session_date``, ``source``, ``fetched_at``, ``source_as_of``, ``run_id``)
 and ``status``, the newest ``dataset_check`` result of its dataset (``never_checked`` before the first,
 ``status_unknown`` when ``ops.sqlite`` cannot be read, #228). Each call
-opens the live serving file read-only and closes it again (``serving.open_read``), and counts one read of its table
-in the read log. No serving file yet means no rows, not an error: the status says why.
+opens the live serving file read-only and closes it again (``serving.read_live`` over ``serving.open_read``), and
+counts one read of its table in the read log. No serving file yet means no rows, not an error: the status says
+why; a file the builder swapped away while the read was in hand is read again on the new build (#1182), because
+for a board row an empty answer is read as data and not as an absence.
 """
 from __future__ import annotations
 
@@ -107,11 +109,8 @@ def _rows(table: str, sql: str, params: list, *, missing_table_ok: bool = False)
     and the catalog's column guard exists to make that loud rather than silent.
     """
     ops.read_log.bump(table)
-    try:
-        con = serving.open_read(KIND_OF_TABLE[table])
-    except serving.ServingFileMissing:
-        return []
-    try:
+
+    def query(con):
         # A table this module also names as a reader (``etf_holdings``) would otherwise resolve to the Python
         # function through DuckDB's replacement scan, not to "does not exist", when the file lacks the table.
         con.execute("SET python_enable_replacements = false")
@@ -119,12 +118,18 @@ def _rows(table: str, sql: str, params: list, *, missing_table_ok: bool = False)
             cur = con.execute(sql, params)
         except Exception as exc:  # noqa: BLE001 - duckdb's catalog error is not a public class here
             if missing_table_ok and "does not exist" in str(exc) and table in str(exc):
-                return []
+                return None
             raise
         cols = [d[0] for d in cur.description]
-        rows = [dict(zip(cols, r)) for r in cur.fetchall()]
-    finally:
-        con.close()
+        return [dict(zip(cols, r)) for r in cur.fetchall()]
+
+    try:
+        # #1182: a read the builder's swap caught mid-flight is read again on the new build, not a 500.
+        rows = serving.read_live(KIND_OF_TABLE[table], query)
+    except serving.ServingFileMissing:
+        return []
+    if rows is None:                       # the table is not in this file (``missing_table_ok``)
+        return []
     dataset = DATASET_OF_TABLE[table]
     if dataset is None:
         # A table several datasets write: each row's status is its own source's newest check.
@@ -405,19 +410,19 @@ def my_universe_tickers(kinds: Iterable[str] = ()) -> set[str] | None:
     """
     wanted = [str(k).strip().lower() for k in kinds if str(k or "").strip()]
     ops.read_log.bump("my_universe")
-    try:
-        con = serving.open_read("spine")
-    except serving.ServingFileMissing:
-        return None
-    try:
+
+    def query(con):
         if not con.execute("SELECT count(*) FROM duckdb_tables() WHERE table_name = 'my_universe'").fetchone()[0]:
             return None
         sql = "SELECT ticker FROM my_universe WHERE ticker IS NOT NULL"
         if wanted:
             sql += f" AND kind IN ({', '.join('?' * len(wanted))})"
         return {r[0] for r in con.execute(sql, wanted).fetchall()}
-    finally:
-        con.close()
+
+    try:
+        return serving.read_live("spine", query)               # #1182
+    except serving.ServingFileMissing:
+        return None
 
 
 def my_universe_changes(limit: int = 200) -> list[dict]:
@@ -758,13 +763,9 @@ def _frame(table: str, sql: str, params: list, columns: list[str]):
     import pandas as pd
     ops.read_log.bump(table)
     try:
-        con = serving.open_read(KIND_OF_TABLE[table])
+        frame = serving.read_live(KIND_OF_TABLE[table], lambda con: con.execute(sql, params).df())   # #1182
     except serving.ServingFileMissing:
         return pd.DataFrame(columns=[*columns, "status"])
-    try:
-        frame = con.execute(sql, params).df()
-    finally:
-        con.close()
     frame["status"] = dataset_status(DATASET_OF_TABLE[table])
     return frame
 
@@ -1576,10 +1577,6 @@ def table_summary(table: str, day_column: str | None = None, key_column: str | N
     ops.read_log.bump(table)
     empty = {"table": table, "dataset": dataset, "row_count": 0, "key_count": 0, "newest_day": None,
              "status": dataset_status(dataset) if dataset else NEVER_CHECKED, "sample_rows": []}
-    try:
-        con = serving.open_read(kind)
-    except serving.ServingFileMissing:
-        return empty
     parts = ["count(*) AS row_count"]
     parts.append(f"count(DISTINCT {key_column}) AS key_count" if key_column else "0 AS key_count")
     parts.append(f"max({day_column}) AS newest_day" if day_column else "NULL AS newest_day")
@@ -1591,8 +1588,9 @@ def table_summary(table: str, day_column: str | None = None, key_column: str | N
     if where:
         clause = f"{clause} AND ({where})" if clause else f" WHERE {where}"
     where = clause
-    rows: list[dict] = []
-    try:
+
+    def query(con):
+        rows: list[dict] = []
         try:
             row = con.execute(f"SELECT {', '.join(parts)} FROM {table}{where}", where_params).fetchone()
             if sample > 0:
@@ -1605,10 +1603,17 @@ def table_summary(table: str, day_column: str | None = None, key_column: str | N
             # summarises every table on every render, so raising here is a 500 (the review's m1). The same guard
             # ``_rows`` carries, and as narrow: the message must name this very table.
             if "does not exist" in str(exc) and table in str(exc):
-                return empty
+                return None
             raise
-    finally:
-        con.close()
+        return row, rows
+
+    try:
+        answer = serving.read_live(kind, query)                # #1182
+    except serving.ServingFileMissing:
+        return empty
+    if answer is None:                                         # the table is not in this file
+        return empty
+    row, rows = answer
     if row is None:
         return empty
     return {**empty, "row_count": int(row[0] or 0), "key_count": int(row[1] or 0), "newest_day": _day(row[2]),
