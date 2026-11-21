@@ -1,0 +1,14 @@
+# RevenueChaser v2
+
+One folder for the v2 redesign notes, so the plan, the Fincept reference reading and the
+measurements that feed them sit together instead of in a session handoff folder.
+
+| What | Where |
+|---|---|
+| Fincept Terminal reference reading (GUI, data layer, sources, live walk) | `fincept/` |
+| Earnings Radar 8 rules, measured read-only on homesrv 21 Nov 2026 | `earnings_rules_measure_2026-11-21.md` |
+| Fincept walkthrough screenshots | `fincept_walk/` — **local only, never committed** (gitignored): the source is AGPL |
+| v2 plan (`revenuechaser_v2_plan.md`, `plan_*`, `gui_redesign/`) | still on avo's Dell; it lands here when that thread copies it over |
+
+Moved here on 21 Nov 2026: `docs/fincept/` → `docs/v2/fincept/`, and the measurement note from
+`/srv/life/handoff/` (the handoff copy is left in place as a pointer, nothing deleted).

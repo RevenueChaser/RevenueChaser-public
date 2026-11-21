@@ -42,3 +42,6 @@ rawData/*
 # The market store (#206): repo-local default roots of RC_MARKET_DIR / RC_MARKET_RAW_DIR.
 .market/
 .market_raw/
+
+# v2 Fincept walkthrough screenshots: local only, AGPL source (docs/v2/README.md).
+docs/v2/fincept_walk/
