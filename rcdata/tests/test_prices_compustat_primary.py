@@ -807,14 +807,16 @@ def test_a_sec_split_on_the_previous_session_is_its_own_split_not_the_ajexdi_ste
 @pytest.mark.parametrize("comp_day, crsp_only", [("2025-06-07", False), ("2025-06-08", True)])
 def test_a_crsp_split_within_split_same_days_of_compustats_is_the_same_split(monkeypatch, comp_day, crsp_only):
     """Review of #382 (a surviving mutant, SPLIT_SAME_DAYS 3 -> 0): Compustat dates the split 3 days after CRSP's
-    step (the same split) or 4 days (another one: CRSP's is then a split_only_crsp issue)."""
+    step, and the day rule pairs them, so CRSP's row raises no issue at all; 4 days is outside that rule and CRSP's
+    row becomes a candidate, so an issue names it. Which issue is the ratio rule's answer -- at the same ratio it is
+    ``split_crsp_restated``, still one split (#661) -- and this test only asks whether the day rule paired them."""
     from RevenueChaser.rcdata import ops
     from RevenueChaser.rcdata.build.prices import serving as prices_serving
     data = _split_unknown_to_compustat(_data())
     data["comp.sec_split"] = [{"gvkey": "001690", "iid": "01", "datadate": comp_day, "split": 2.0}]
     _serve(monkeypatch, data)
     kinds = {i["key"] for i in ops.open_issues(prices_serving.NAME, limit=500)[1]
-             if i["kind"] in ("split_only_crsp", "split_applied_crsp")}
+             if i["kind"] in ("split_only_crsp", "split_applied_crsp", "split_crsp_restated")}
     assert (f"{AAPL}:{JUNE[2]}" in kinds) is crsp_only
 
 
