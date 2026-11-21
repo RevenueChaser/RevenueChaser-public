@@ -10,7 +10,7 @@ opinion:
 | Option | Monthly | What it costs us |
 |---|---|---|
 | **A — stay on UW** | USD 160 | nothing to build; the deadline just passes |
-| **B — downgrade UW, add a free/cheap chain** | UW Options Starter USD 99 (unverified today) + Cboe free | keeps the tape, drops GEX, which we then compute |
+| **B — downgrade UW, add a free/cheap chain** | UW Options Starter USD 99 (unverified) + Cboe free | keeps the tape, drops GEX, which we then compute. **Not a one-step option**: measured usage is 148K requests in 30 days against Starter's reported 25,000 a month, so lanes A and B have to land first (`02_provider_replacement.md` §5) |
 | **C — leave UW** | IBKR OPRA USD 1.50 (often waived) or ThetaData USD 80, + Cboe free | layers 1 and 2 become ours; ~5 needs have to be rebuilt |
 
 Nothing below commits to one. **Measurements M1-M4 decide it**, and all four fit before 8 December.
