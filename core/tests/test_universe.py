@@ -401,7 +401,9 @@ def test_load_cached_universe_returns_normalised_rows(rawstore_tmp_db):
     assert rows[0]["sector"] == "Energy"
     assert rows[0]["quote"] is None                       # the stored quote went with raw.duckdb (#860)
     assert set(rows[0]) == {"ticker", "market_cap", "sector", "price", "name", "industry",
-                            "industry_group", "sub_industry", "quote", "security_type"}
+                            "industry_group", "sub_industry", "quote", "security_type",
+                            # spine 10 (#645): where the business is, for Asymmetric Growth's non-US test
+                            "country"}
 
 
 

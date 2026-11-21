@@ -65,7 +65,7 @@ import duckdb
 
 from ....core import rotation_reference
 from .. import base
-from . import etf as etf_mod, my_universe, stage
+from . import etf as etf_mod, iso3166, my_universe, stage
 
 TABLE = "etf_class"
 CHANGES = "etf_class_changes"
@@ -80,7 +80,8 @@ G_SECURITY, G_COMPANY, GICCD = "stg_wrds_g_security", "stg_wrds_g_company", "stg
 #: Compustat North America's company rows, staged: ``loc`` is the company's own country (alpha-3).
 COMPANY = "stg_wrds_company"
 #: ISO 3166-1 alpha-3 to alpha-2, from a published list (the file names its source); never edited by hand.
-ISO_FILE = Path(__file__).with_name("iso3166.json")
+#: Read through :mod:`iso3166`, the one loader: ``security`` reads the same map a code at a time.
+ISO_FILE = iso3166.FILE
 #: Corrections by hand. Owned by avo; changed only by a pull request.
 MANUAL_FILE = Path(__file__).with_name("etf_class_manual.json")
 ISSUES = ("etf_class_manual_unknown",)
@@ -365,7 +366,7 @@ def profiles(con: duckdb.DuckDBPyConnection, funds: list[dict], folder: Path | N
     # A company listed in the US has a US line whatever country its business is in (ARGT read US 87 %, measured
     # 18 Nov 2026): such a line takes the company's own country, where its CUSIP finds one Compustat company.
     base.rows_table(con, "_ec_iso", [("a3", "TEXT"), ("a2", "TEXT")],
-                    [{"a3": k, "a2": v} for k, v in json.loads(ISO_FILE.read_text(encoding="utf-8"))["codes"].items()])
+                    [{"a3": k, "a2": v} for k, v in iso3166.codes().items()])
     home = (f"SELECT s.cusip, min(i.a2) AS a2 FROM security s JOIN {COMPANY} c USING (gvkey) "
             "JOIN _ec_iso i ON i.a3 = c.loc WHERE s.cusip IS NOT NULL GROUP BY 1 HAVING count(DISTINCT i.a2) = 1"
             if _staged(con, COMPANY) else "SELECT NULL::VARCHAR AS cusip, NULL::VARCHAR AS a2 WHERE false")

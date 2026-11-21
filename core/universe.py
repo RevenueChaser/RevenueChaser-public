@@ -178,7 +178,10 @@ def _spine_universe() -> list[dict]:
                     "name": r.get("name") or "", "sector": r.get("sector") or "",
                     "industry": r.get("industry") or "", "industry_group": None, "sub_industry": None,
                     "ggroup": r.get("ggroup") or None, "gind": r.get("gind") or None,
-                    "gsubind": r.get("gsubind") or None, "security_type": r.get("security_type")})
+                    "gsubind": r.get("gsubind") or None, "security_type": r.get("security_type"),
+                    # Where the business is (ISO alpha-2, spine 10): Compustat's own country, else the SEC
+                    # business address. None is unknown, never "not US" (``build/spine/security.bridge_country``).
+                    "country": r.get("country") or None})
     return out
 
 
@@ -326,6 +329,9 @@ def load_cached_universe() -> list[dict]:
             "sub_industry": r.get("sub_industry") or "",
             "quote": r.get("quote"),
             "security_type": r.get("security_type"),
+            # The spine's country of the business (spine 10), the non-US test's input on Asymmetric Growth:
+            # None where neither Compustat nor the SEC header places the name, which is unknown, not "not US".
+            "country": r.get("country"),
         }
         if isinstance(rec["quote"], str):
             try:
