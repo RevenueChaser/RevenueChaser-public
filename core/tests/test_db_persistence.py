@@ -196,6 +196,8 @@ POPULATION: dict[str, str] = {
     "news_highlight": "module_news/tests/test_calendar.py::test_the_highlight_is_the_most_important_live_event_earliest_on_a_tie",
     "news_meta": "module_news/tests/test_calendar.py::test_a_second_build_reads_only_new_rows_and_keeps_first_seen",
     "news_headlines": "module_news/tests/test_headlines.py::test_fetch_stores_clean_headlines_with_their_tickers_once",
+    "news_reading": "module_news/tests/test_reading_1234.py"
+                     "::test_a_pass_stores_one_row_a_field_each_with_the_sentence_it_came_from",
     "welcome_snapshot": "module_welcome/tests/test_build.py::test_the_snapshot_keeps_the_last_close_its_change_and_a_20_day_line",
     "welcome_meta": "module_welcome/tests/test_build.py::test_the_snapshot_keeps_the_last_close_its_change_and_a_20_day_line",
     "spx_raw_days": "module_spx_gamma/tests/test_store.py::test_a_raw_day_round_trips_byte_exact",

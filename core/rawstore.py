@@ -1335,6 +1335,24 @@ MANIFEST: dict[str, dict] = {
         "columns": ["key TEXT PRIMARY KEY", "value TEXT", "run_at DOUBLE"],
         "kind": "tabular", "write": "upsert", "history_mode": "operational", "db": "news", "sources": [],
     },
+    # The hourly reading of the headline flow (#1234, avo 21 Nov 2026: EVREN reads the tape, its reading is
+    # stored as fixed-schema fields, each carrying the sentence it came from). One row per
+    # ``(window_end, field)``: a field is a row rather than a column, so the sentence cannot be optional — the
+    # writer (``module_news/reading.py``) refuses a row whose ``quote`` is empty or does not occur in the
+    # headline ``headline_id`` names, and a model answer that cites nothing stores nothing. ``field`` is one of
+    # ``module_news.reading.FIELDS``; the window is one clock hour, so a second pass of the same hour upserts
+    # its own rows instead of writing a second reading. Additive, no ``_SCHEMA_VERSION`` bump (the
+    # ``news_headlines`` X columns are the precedent).
+    "news_reading": {
+        "key": ["window_end", "field"],
+        "columns": [
+            "window_end DOUBLE", "field TEXT", "window_start DOUBLE", "value TEXT", "quote TEXT",
+            "headline_id TEXT", "source TEXT", "published_at DOUBLE", "provider TEXT", "model TEXT",
+            "prompt_version TEXT", "headlines INTEGER", "run_id TEXT", "run_at DOUBLE",
+            "PRIMARY KEY (window_end, field)",
+        ],
+        "kind": "tabular", "write": "upsert", "history_mode": "operational", "db": "news", "sources": [],
+    },
     # Welcome board (S9, S16): its own file boards/welcome.duckdb, written only by module_welcome/build.py.
     "welcome_snapshot": {
         "key": ["series", "session_date"],

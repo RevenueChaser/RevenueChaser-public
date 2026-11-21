@@ -1338,6 +1338,31 @@ def run_news_earnings(uw=None) -> Path:
     return report.render()
 
 
+def run_news_reading(uw=None, allow_paid: bool = False) -> None:
+    """The News board's hourly reading pass (#1234): EVREN reads the hour's stored headlines and the reading is
+    stored as fixed-schema fields, each carrying the sentence it came from (``news_reading``).
+
+    Store-only apart from the one model call: the headlines are already in ``boards/news.duckdb`` and no provider
+    is fetched. Queued by ``RC-News-Reading-Hourly`` every hour at :20, past the 5-minute headline pass of the
+    hour's turn. Nothing here is a failed job — an hour with no headline, a paid writer and a gate that did not
+    answer are each a note, because the pass runs 24 times a day and the shell alerts every job message.
+    """
+    from RevenueChaser.module_news import reading
+    out = reading.run(run_id=run_id(), allow_paid=bool(allow_paid))
+    if out["skipped"]:
+        ledger.add_note(f"News reading: nothing stored ({out['skipped']})")
+        return None
+    if out["error"]:
+        ledger.add_note(f"News reading: the writer did not answer ({out['error']})")
+        return None
+    note = (f"News reading: {out['stored']} of {len(reading.FIELDS)} fields stored from {out['headlines']} "
+            f"headlines, written by {out['provider']} {out['model']}")
+    if out["unsourced"]:
+        note += f"; {len(out['unsourced'])} dropped for want of a source sentence: " + "; ".join(out["unsourced"])
+    ledger.add_note(note)
+    return None
+
+
 def run_news_cached(uw=None) -> Path:
     """Store-only News render (Refresh, first load): reads ``boards/news.duckdb``, writes nothing to the store."""
     from RevenueChaser.module_news import report
