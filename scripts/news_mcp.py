@@ -1,16 +1,19 @@
 """The News board's read-only MCP server (#809, slice N3 of #783): ``python -m RevenueChaser.scripts.news_mcp``.
 
 avo, 12 Nov 2026: the news flow is not a screen, it is handed to an AI to interpret. This server is the handle.
-It speaks MCP over stdio (JSON-RPC 2.0, one message a line) and offers three tools:
+It speaks MCP over stdio (JSON-RPC 2.0, one message a line) and offers four tools:
 
 - ``recent_headlines`` — the stored headlines of the last hours, optionally of one name;
 - ``coming_events`` — the calendar rows still to come, economic and FDA (#807);
 - ``headlines_around_event`` — the join, and the point of the slice: the headlines published in a window around
-  one event. A headline read next to the release it reacts to is worth more than two unrelated lists.
+  one event. A headline read next to the release it reacts to is worth more than two unrelated lists;
+- ``stored_reading`` — what the hourly EVREN reading already wrote for the last hours (#1234): fixed-schema
+  fields, each carrying the sentence it came from, so "what did it say this morning" has an answer.
 
 It reads the dashboard's own read-only routes (``/api/news/headlines``, ``/api/news/events``), which read
-``boards/news.duckdb`` and fetch nothing. **Nothing is written back and no model is called here**: which model
-reads this, what it costs and whether its answer is stored are avo's later decisions.
+``boards/news.duckdb`` and fetch nothing. **Nothing is written back and no model is called here**: the hourly
+reading of #1234 is written by the dashboard job ``news_reading`` (``module_news/reading.py``), the one writer,
+and this server only reads what it stored.
 
 Stdlib and ``httpx`` only: no MCP SDK is installed in this tree, and the protocol here is three methods wide.
 """
@@ -32,6 +35,7 @@ WINDOW_MIN, MAX_WINDOW_MIN = 120, 24 * 60
 DEFAULT_HOURS, MAX_HOURS = 24, 31 * 24
 DEFAULT_DAYS, MAX_DAYS = 7, 31
 DEFAULT_LIMIT, MAX_LIMIT = 50, 200
+DEFAULT_READ_HOURS, MAX_READ_HOURS = 24, 31 * 24
 
 TOOLS = [
     {"name": "recent_headlines",
@@ -66,6 +70,15 @@ TOOLS = [
          "limit": {"type": "integer", "description": f"At most this many headlines, 1 to {MAX_LIMIT}. "
                                                      f"Default {DEFAULT_LIMIT}."}},
          "required": ["event_ts"]}},
+    {"name": "stored_reading",
+     "description": "What the hourly reading of the headline flow already wrote (#1234): one window an hour, "
+                    "newest first, each with the same fixed fields (tone, driver, macro, rates, most_named, "
+                    "surprise, watch). Every field carries the value, the sentence it came from and that "
+                    "headline's id, so a reading can be checked against the tape. A field no headline supported "
+                    "is absent. Reads stored rows only; it calls no model.",
+     "inputSchema": {"type": "object", "properties": {
+         "hours": {"type": "integer", "description": f"How far back to read, 1 to {MAX_READ_HOURS}. "
+                                                     f"Default {DEFAULT_READ_HOURS}."}}}},
 ]
 
 
@@ -139,8 +152,15 @@ def headlines_around_event(event_ts=None, window_minutes=None, ticker=None, limi
             "window_minutes": window, "ticker": params.get("ticker"), "count": len(rows), "headlines": rows}
 
 
+def stored_reading(hours=None) -> dict:
+    hours = _clamp(hours, 1, MAX_READ_HOURS, DEFAULT_READ_HOURS)
+    body = _get("/api/news/reading", {"hours": hours})
+    windows = body["windows"]
+    return {"hours": hours, "fields": body.get("fields") or [], "count": len(windows), "windows": windows}
+
+
 HANDLERS = {"recent_headlines": recent_headlines, "coming_events": coming_events,
-            "headlines_around_event": headlines_around_event}
+            "headlines_around_event": headlines_around_event, "stored_reading": stored_reading}
 
 
 def call_tool(name: str, arguments: dict) -> dict:

@@ -308,6 +308,10 @@ jobs.register("news_ticker", runners.run_news_ticker, [], requires_uw=False)
 jobs.register("news_earnings", runners.run_news_earnings, ["module_news"], requires_uw=False)
 # News X lane (plan step 5): RC's own X reader, queued every 30 minutes by life-rc-x-follow.timer.
 jobs.register("news_x_follow", runners.run_news_x_follow, [], requires_uw=False)
+# News reading (#1234): EVREN reads the finished hour's stored headlines and the reading is stored as
+# fixed-schema fields, each carrying its source sentence. Queued hourly by RC-News-Reading-Hourly. Produces
+# nothing: it writes no page, and the reading is read back by GET /api/news/reading.
+jobs.register("news_reading", runners.run_news_reading, [], requires_uw=False)
 # Welcome (decision A): store-only; builds boards/welcome.duckdb from stored inputs, then renders.
 jobs.register("module_welcome", runners.run_welcome, ["module_welcome"], requires_uw=False)
 
@@ -957,6 +961,35 @@ def run_news_ticker():
     if refused:
         return refused
     return _submit("news_ticker", {"ticker": ticker})
+
+
+@app.route("/run/news_reading", methods=["POST"])
+def run_news_reading():
+    """Queue the hourly reading pass (#1234). ``paid=1`` is the one way a paid writer is ever asked, and it is
+    avo's own word on the request, never a default: without it a Settings pair naming a paid writer stores
+    nothing and says so."""
+    refused = _busy(("news_reading",), "A News reading pass is already queued or running.")
+    if refused:
+        return refused
+    said = request.get_json(silent=True) or request.form
+    paid = str(said.get("paid") or "").strip().lower() in ("1", "true", "yes")
+    return _submit("news_reading", {"allow_paid": paid})
+
+
+@app.route("/api/news/reading")
+def api_news_reading():
+    """The stored readings of the last ``hours`` hours (#1234), newest hour first: one object a window, its
+    fixed-schema fields inside it, each with the sentence it came from. Read-only, no ``X-RC-Panel`` header."""
+    from RevenueChaser.module_news import reading as news_reading
+    try:
+        hours = int(request.args.get("hours") or 24)
+    except ValueError:
+        return jsonify({"ok": False, "error": "hours must be a whole number"}), 400
+    if hours < 1:
+        return jsonify({"ok": False, "error": "hours must be 1 or more"}), 400
+    rows = news_reading.api_rows(min(hours, 31 * 24))
+    return jsonify({"ok": True, "hours": min(hours, 31 * 24), "fields": list(news_reading.FIELDS),
+                    "windows": rows})
 
 
 @app.route("/run/news_x_follow", methods=["POST"])

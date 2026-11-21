@@ -308,6 +308,16 @@ REGISTRY: tuple[DatasetSpec, ...] = (
         freshness=("news_earnings", "run_at"),
     ),
     DatasetSpec(
+        key="news_reading", label="News: the hourly reading of the headline flow",
+        tables=("news_reading",),
+        db="news", source=Source.derived, writer="RC-News-Reading-Hourly",
+        writer_note=("the EVREN model's reading of the hour's stored headlines, written by module_news/reading.py "
+                     "(#1234, avo 21 Nov 2026): one row per (window_end, field), each field carrying the "
+                     "sentence it came from; no fee, one call an hour, and no call at all in an hour with no "
+                     "headline"),
+        freshness=("news_reading", "window_end"),
+    ),
+    DatasetSpec(
         key="news_headlines", label="News: market headlines",
         tables=("news_headlines",),
         db="news", source=Source.ibkr, writer=None,

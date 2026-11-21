@@ -21,8 +21,8 @@ from RevenueChaser.core import provenance, rawstore
 from RevenueChaser.module_news import store_reads as sr
 
 REPO = Path(__file__).resolve().parents[2]
-#: The five tables of the board's file, as the names a stray ``SELECT`` would spell.
-TABLE_NAMES = (sr.EVENTS, sr.EARNINGS, sr.HIGHLIGHT, sr.HEADLINES, sr.META)
+#: The six tables of the board's file, as the names a stray ``SELECT`` would spell.
+TABLE_NAMES = (sr.EVENTS, sr.EARNINGS, sr.HIGHLIGHT, sr.HEADLINES, sr.META, sr.READING)
 NOW = 1_763_000_000.0
 
 
