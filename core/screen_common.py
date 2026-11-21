@@ -80,9 +80,9 @@ def prefilter(rows: list[dict], cfg: Any, quotes: dict[str, dict] | None = None)
     The inputs are the prices store's (``rcdata.read.latest_volume``: each name's newest close and its average daily
     volume; the old D04 quote table went with the old store, #860), not the universe row's screener quote; ``quotes`` stands in for that read in tests. A name drops as ``no_quote`` with no
     D04 price, ``low_price`` under ``cfg.MIN_PRICE``, ``low_dollar_volume`` when price times the average daily volume
-    is under ``cfg.MIN_DOLLAR_VOLUME``. The volume is the newest Yahoo average D04 holds (``prefilter_quotes``); a name
-    with none anywhere is kept, since its price passed, and listed in ``no_volume`` so the board counts it (S4, #434
-    review). The trend rules (52-week distance, above the 50-day average) are gone: the gates test them on fresh bars.
+    is under ``cfg.MIN_DOLLAR_VOLUME``. The volume is the average over the name's last ``read.VOLUME_SESSIONS`` bars
+    that have one, on today's share basis; a name with none anywhere is kept, since its price passed, and listed in
+    ``no_volume`` so the board counts it (S4, #434 review). The trend rules (52-week distance, above the 50-day average) are gone: the gates test them on fresh bars.
     """
     if quotes is None:
         from RevenueChaser.rcdata import read as _read

@@ -26,6 +26,12 @@ Nothing below commits to one. **Measurements M1-M4 decide it**, and all four fit
 
 M1-M3 need no new subscription and no paid call. M4 is a browser read.
 
+**One input to M1 and M3 expires sooner than the plan does.** UW's `Other > Data Downloads` offers five daily
+files for the **last 8 trading days only** (UI survey, `ui/README.md`). Real UW chain and print files for a few
+reference days would be the cheapest and cleanest thing to score our own build against, with no API call. The
+terms are personal use and nothing has been downloaded; taking reference days is avo's call, and the window, not
+the renewal date, is the deadline — a file from 1 December stops being offered around 11 December.
+
 ## 2. The lanes, if we go to B or C
 
 Each lane is one issue and one PR, in this order.
@@ -41,6 +47,11 @@ Each lane is one issue and one PR, in this order.
 | **G1. Congress trades (optional, new)** | House Clerk bulk ZIP (verified 21 Nov: 1,867 rows for 2026) + Senate eFD; the cost is parsing the PTR **PDFs** and matching tickers | 1 week, mostly parsing | avo's word |
 | **G. Analyst ratings** | the one item with no source here at all; new work, not a migration | unscoped | avo's word |
 | **H. Delete the dead surface** | the 21 uncalled client methods and the lab endpoints we never use | half a day | — |
+| **I. Preserve avo's own UW-only data** | six stock watchlists (already exported), four custom alert rules and the Console habits (already recorded) — then decide where they live in RC: the watchlists in `watchlists.duckdb`, the alert rules as RC alert definitions | 1 day for the import; the capture is done | before 8 Dec |
+
+Lane **I** is the only one with no fallback: it is configuration avo typed into UW, not data a provider
+can return, and it is unrecoverable once the plan lapses. The capture itself is done (UI survey); what remains is
+where it lands in RC.
 
 Lanes A, E, F and H are worth doing **whatever is decided** — A because it removes a UW dependency for free,
 E because it makes a board independent, H because it shrinks what must ever be ported.
@@ -96,10 +107,15 @@ arrived at.
 ## 5. The questions only avo can answer (one card at a time)
 
 1. **Which option, A, B or C?** — asked once M1-M4 are in, so it is a decision on numbers.
-2. **Whose Discord server is "Traders' Pub"**, and may a reader bot be added? (Decides whether the Discord route
-   exists at all.)
+2. **Do we take a few Data Downloads reference days before the 8-trading-day window closes?** (Personal-use
+   terms; nothing downloaded so far. It is the cheapest input to M1 and M3.)
 3. **Does the UW bot feed stop when the plan renews on 9 December?**
 4. **Analyst ratings** — do we want them at all, and is a paid source acceptable?
+
+Answered since: **"Traders' Pub" is avo's own server**, run with friends, and the UW bot in it runs on the UW API
+(avo, 21 Nov 2026 17:02 Amsterdam). The aim is to see how that bot works and whether it can be tied into RC, and
+to keep a record either way. The method for walking the Discord window comes from avo; nothing there is touched
+before that.
 
 ## 6. What is explicitly left alone
 

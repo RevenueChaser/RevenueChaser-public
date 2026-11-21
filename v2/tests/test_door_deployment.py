@@ -102,6 +102,11 @@ def _door_service() -> str:
     return "\n".join(out)
 
 
+def _door_steps() -> str:
+    """The ``door:`` block with every ``#`` comment line dropped: what the service declares, without the prose."""
+    return "\n".join(line for line in _door_service().splitlines() if not line.lstrip().startswith("#"))
+
+
 def test_the_door_joins_the_slice_that_caps_its_memory():
     """A unit calling ``docker compose up`` does not cap the container; the cgroup parent is what binds the slice."""
     assert "cgroup_parent: life-rc-v2.slice" in _door_service()
@@ -119,6 +124,26 @@ def test_the_doors_only_mount_is_the_artifacts_folder_and_it_is_read_only():
     assert all(m.endswith(":ro") for m in mounts), mounts
     assert "RC_CACHE_DIR" in service
     assert "read_only: true" in service
+
+
+def test_the_door_can_read_the_artifacts_root_it_is_given():
+    """The image's own uid does not exist on the host, so reading the mount takes the owning group.
+
+    Measured on homesrv 21 Nov 2026: the container runs as ``uid=100(door)`` and the artifacts root is
+    ``1001:1001`` mode ``2770``, so ``ls /data/cache`` was "Permission denied", the ``artifacts`` probe was red and
+    ``/api/v1/health`` answered 503 while ``/api/v1/version`` was fine. The service therefore joins that gid as a
+    supplementary group. It must not get there by running as root or as the dashboard's own user instead: the
+    mount stays ``:ro``, so the group's write bit is unusable, and that is the whole point of the narrow fix.
+    """
+    service = _door_service()
+    assert "group_add:" in service, "the door cannot read a 2770 artifacts root without its group"
+    assert "RC_ARTIFACTS_GID" in service, "the gid is a per-host value, not a constant in the image"
+    # The instruction lines alone. A rule about what the service *is granted* must not be broken by prose: the
+    # comment above ``group_add`` says the container runs as an "unprivileged" user, and a check over the whole
+    # block reads that explanation as the offence. (It did, on the first push of this test.)
+    steps = _door_steps()
+    assert "user: root" not in steps and 'user: "0' not in steps
+    assert "privileged" not in steps
 
 
 def test_the_real_store_is_never_reachable_from_the_container():

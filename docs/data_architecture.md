@@ -1060,12 +1060,13 @@ and no spill folder, so such a step grows until the kernel ends the build. Servi
 more than the machine has. Each dataset's build logs one line with its seconds and
 its spill peak (`base.spill_peak`, sampled every 2 s), the measure for moving the spill to the SSD or chunking a kind.
 
-**Files.** Serving kinds: `market`, `spine`, `prices`, `ownership`, `fundamentals`, `options`, `sec_forms`, `sec_reads`. Each kind is one
+**Files.** Serving kinds: `market`, `spine`, `prices`, `delisted`, `ownership`, `fundamentals`, `options`, `sec_forms`, `sec_reads`. Each kind is one
 file, `<MARKET_DIR>/<kind>.duckdb`. The identity spine, `spine` (serving schema version `10`), is described under
 "The identity spine" below; the prices store, `prices` (serving schema version `1`), under "The prices store"
-below; the ownership store, `ownership` (serving schema version `5`), under "The ownership store" below; the
+below; the delisted history, `delisted` (serving schema version `1`), under "The delisted serving layer" after
+it; the ownership store, `ownership` (serving schema version `5`), under "The ownership store" below; the
 fundamentals layer, `fundamentals` (serving schema version `7`), under "Fundamentals" after it; and the options
-data, `options` (serving schema version `3`), under "The options data" after it; and the SEC form reader, `sec_forms` (serving schema version `1`), under "The SEC form reader"; and the SEC reader tool, `sec_reads` (serving schema version `3`), under "The SEC reader tool" last. The eight numbers live in `rcdata/serving_versions.py`, outside the builder's rules fingerprint
+data, `options` (serving schema version `3`), under "The options data" after it; and the SEC form reader, `sec_forms` (serving schema version `1`), under "The SEC form reader"; and the SEC reader tool, `sec_reads` (serving schema version `3`), under "The SEC reader tool" last. The nine numbers live in `rcdata/serving_versions.py`, outside the builder's rules fingerprint
 (`rcdata/build/dirty.py`), so a bump makes only its own kind's next build whole (#649). The market data,
 `market` (serving schema version `5`): `serving_schema_version` (one row: kind, version, build time, build id, build mode),
 `spx_gamma_expiry_strike` (key session date, expiry, strike; every numeric field UW serves, typed DOUBLE; provenance
@@ -1716,9 +1717,12 @@ from the live spine, the store holds no row of a company that delisted in the pa
   dated `comp.sec_idhist` EXCHG period, so a name that was once listed is still fetched — and CRSP's delisting
   table `crsp_a_stock.stkdelists` whole (`rcdata/build/prices/wrds_history.py`, `TABLES`). All of it is under
   `parquet/wrds/prices/<table>/`.
-- **So, when it matters:** read that Parquet, or build a separate research file from it, and say in the issue or doc
-  that the measurement used it. **Never widen the served universe for a one-off measurement** — no WRDS call and no
-  change to the served store is needed, and a widened store would change what every board reads.
+- **Since #1219 there is a served layer for it:** `delisted.duckdb`, its own serving kind, built from that same
+  Parquet (avo, 20 Nov 2026: "Delistedler icin ayri katman."). See "The delisted serving layer" below. It is the
+  answer to "when it matters": read it, union it with `price_bar_daily` **deliberately** in the study's own query,
+  and say in the issue or doc that the measurement used it.
+- **Never widen the served universe for a one-off measurement** — no WRDS call and no change to the served store is
+  needed, and a widened store would change what every board reads.
 
 **A request's own scope (#265).** A queued request carries what it asks for, so a fill does not mean editing the
 code: `{"tiers": ["A", "B"], "names": ["KO"], "include": ["anchors"], "mode": "backfill", "from": ..., "to": ...}`.
@@ -1851,6 +1855,64 @@ range backfill stays ETF-only. **Asymmetric Growth** scores its momentum from `s
 (`SELECTION_VERSION` 8, after G6's 7); its freeze anchor still asks D01 until the ledger moves (G4). Until the history run (Run H)
 the store holds only the bars from the prices layer's deploy day on, so a two-year window or a 52-week high is short
 and the boards say so (too few sessions, momentum unknown) rather than reading the empty old D01.
+
+### The delisted serving layer (`delisted.duckdb`, #1219)
+
+avo, 20 Nov 2026: **"Delistedler icin ayri katman."** The prices store holds today's universe and nothing else, so
+anything measuring the past reads a survivorship-biased history (the note above, #441). This kind is the layer that
+answers it, in a **file of its own**: nothing is merged into `price_bar_daily`, because a widened served universe
+would change what every board reads. A study unions the two deliberately, in its own query.
+
+**One dataset, `delisted/serving`** (`rcdata/build/delisted/serving.py`). It **fetches nothing**: it reads the
+Parquet the `wrds/prices` fetch already wrote — `crsp.dsf_v2` (every share type, asked by date range alone),
+`crsp_a_stock.stkdelists` (whole) and `comp.secd` (the CUSIP link only), all under `parquet/wrds/prices/<table>/`.
+No new provider call and no new WRDS login. **Attended**, like the WRDS datasets: never due on its own, one backfill
+from the Parquet on disk and then with their monthly run
+(`python -m RevenueChaser.rcdata.build backfill delisted/serving`).
+
+**Keyed on PERMNO.** Every row's `security_id` is `permno:<PERMNO>` — never a ticker, and never a live security id.
+A dead company's ticker and a live one's are **two securities** (ticker reuse), so no reader may join on ticker
+alone: `delisted_security_symbol` carries each ticker with the session range it was in use, and
+`delisted_security` carries the Compustat `gvkey`/`iid` (its newest header CUSIP against a `comp.secd` CUSIP) and
+the CIK where the live spine holds that `gvkey:iid`. Identity stays out of `my_universe`.
+
+**Served tables** (`delisted` serving schema version `1`). The history starts at `HISTORY_FROM`, the fetch's own
+start (1983-12-30), which is avo's default to change.
+
+| Table | Rows |
+|---|---|
+| `delisted_security` | one row per delisted PERMNO (key `security_id`): its newest CRSP delisting (date, price, return), its `gvkey`/`iid`, CIK and header CUSIP where the link exists, its last ticker, and the first and last priced session and session count its bars span |
+| `delisted_security_symbol` | the tickers it traded under, each with the contiguous session range it was in use (`valid_from`..`valid_to`, **both inclusive**; a dead security has no open-ended range, unlike `security_symbol`). A ticker it held, lost and held again is two rows |
+| `delisted_price_bar_daily` | **the columns of `price_bar_daily`**, nominal, from `crsp.dsf_v2`: a negative `dlyprc` read `abs` (CRSP's bid/ask midpoint), `shares_outstanding` from `shrout` in thousands, `cik` always NULL |
+| `delisted_corporate_action` | **the columns of `corporate_action`**: the splits CRSP's cumulative price factor records (`dlycumfacpr`, ratio new over old shares, compared only within one answer) and the ordinary cash dividends (`dlyorddivamt`) |
+
+**Append-only**, so the ordinary shrink guard (`serving.MAX_SHRINK`) is the whole rule and **no table of this kind is
+ever in `SHRINKS_BY_CHOICE`**: a shrink is a build from a partial Parquet tree and refuses the swap. Its own serving
+version, its own `prev` file and its own backup step, so a bad `delisted` build cannot touch live prices. No
+`PRIMARY KEY` is written (the bars are a row per security and session, and DuckDB holds a key's index in memory for
+the whole insert); a repeated key fails the build instead.
+
+**Read** through `rcdata.read.delisted_securities` / `delisted_symbols` / `delisted_bars` / `delisted_actions`, and
+through the needs layer as `market.delisted_security` and `market.delisted_price_bar` (`fill="never"`), so its
+readers are visible in the registry and on Settings. **No live board reads it**: the measuring paths only — the
+forecast-ledger hit rate, AG-score validation, a later backtest, and a survivorship note on a historical statistic.
+Both needs have **no day column**: this is a history and deliberately behind (the CRSP subscription ends at
+`wrds_history.CRSP_LAST_YEAR` and the build is monthly), so it is present or absent, never stale.
+
+**Adding a serving kind touches nine registries**, found the hard way while adding this one, every one of them
+held to `serving.KINDS` by a test: `rcdata/serving_versions.py` (the version), `rcdata/build/__init__.py`
+(`DATASETS`), `rcdata/scaffold.py` (`SCHEMA_OF_KIND`, so an empty file can be created), `rcdata/ops.py`
+(`FILE_KINDS`, the file's own switch), `rcdata/needs/screen.py` (the dataset card, `FILES`, `NO_TIER_WORDS` and a
+`WRITTEN_COLUMN` per served table), `module_settings/needs_tab.py` (`SERVED_FILES`),
+`module_settings/control.py` (`FILE_COLORS`, indexed for every key of `screen.FILES`),
+`module_welcome/build.py` (`FILE_LABELS`), and this document. Backup, restore and the build-state route read
+`serving.KINDS` themselves and need nothing.
+
+**Not here yet.** CRSP's delisting *code* (the reason) is not on disk: the fetch asks `stkdelists` without the
+type-code columns, and adding them is a change to the `prices` fetch and its own PR. CRSP's own day return
+(`dlyret`) is on disk but not served, because the bar table is exactly `price_bar_daily`'s columns. Share type is
+not fetched, so this layer cannot yet tell a dead stock from a dead fund (avo's default was "stocks first, funds
+later"); every delisted PERMNO is served and the reader cuts on its own. Fundamentals for dead names are later too.
 
 ### The ownership store (`ownership.duckdb`, PR 16)
 

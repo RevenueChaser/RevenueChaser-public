@@ -39,8 +39,9 @@ def test_fetch_health_keeps_the_universe_once_and_only_the_presses_grafana_does_
     assert sorted(set(re.findall(r'data-job="([^"]+)"', fh))) == ["fetch", "picture"]
     assert html.count('id="universe"') == 1 and 'id="universe"' in fh
     assert 'id="sec-providers"' not in fh and 'id="needs"' not in fh
-    groups = re.findall(r'<details class="sec fgrp" data-file="([a-z]+\.duckdb)"', fh)
-    assert len(groups) == 6 and len(set(groups)) == 6, "one group a file: its fills, coverage, problems, last runs"
+    groups = re.findall(r'<details class="sec fgrp" data-file="([a-z_]+\.duckdb)"', fh)
+    want = {f"{kind}.duckdb" for kind in control.FILE_COLORS}
+    assert set(groups) == want and len(groups) == len(want), "one group a file: its fills, coverage, problems, last runs"
     assert "data-automation" not in fh, "the file-level Automated row is gone"
 
 
