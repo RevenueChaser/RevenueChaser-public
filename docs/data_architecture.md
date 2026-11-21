@@ -966,11 +966,19 @@ and carries no `SELECT` and no table name anywhere else. A board on the serving 
 file through it (`module_news/store_reads.py`, which owns the four `news_*` table names, every read of
 `boards/news.duckdb` from any package, and the SQL that cuts the page's three headline lanes). The writes stay with
 the code that produces the rows, but they take their table names from the reader, so a rename or a new column is a
-change to one file. `module_news/tests/test_store_reads_217.py` pins it: no file but the reader queries that store,
-no module of the board spells one of its table names, and every table the manifest files under `db="news"` is named
-in the reader. The strangler is board by board — on `main` at `d349458` there were 83 non-test `rawstore.query`
-calls, the News board holding 20 of them and the Welcome card 3 more of the same store; after it, 60, the largest
-remaining being `module_relatedness` (13) and `module_comovement` (10).
+change to one file. Each step's `tests/test_store_reads_217.py` pins it: no file but the reader
+queries that store, no module of the board spells one of its table names, and every table the manifest files under
+that `db` is named in the reader. The strangler is board by board — on `main` at `d349458` there were 83 non-test
+`rawstore.query` calls; the News board (PR #1195) took 20 of them plus 3 Welcome-card reads of the same store,
+leaving 60.
+
+The Relatedness board is the second step: `module_relatedness/store_reads.py` owns the eleven table names of
+`boards/relatedness.duckdb` and the 15 reads of it — 10 in the board, 2 in `module_sector_rotation/theme_focus.py`
+and 3 in `core/universe.py`, which held its own copy of the pinned-run lookup and of the
+`theme_id = ? OR starts_with(theme_id, ?)` predicate that means "the rows of this run", so the board and the one
+Theme vocabulary (ADR-2) now cut a run the same way by construction. 60 non-test `rawstore.query` calls -> 46. The
+largest block left is `module_comovement` (10), and the three reads still in `module_relatedness/engine.py` belong
+to it: they read `boards/comovement.duckdb`, another board's file, which that step's reader will own.
 
 **The first board on it: SPX Gamma (PR 3, D7).** `module_spx_gamma/store_reads.py` is the board's one reader (D4:
 no SQL of its own, no kept connection; a missing day is a "not stored" marker, never an exception or a provider call).

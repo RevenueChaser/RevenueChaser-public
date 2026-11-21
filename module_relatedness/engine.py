@@ -26,6 +26,7 @@ from . import config
 from . import locator, profile_v3
 from . import profiles as profiles_mod
 from . import similarity
+from . import store_reads as sr
 
 logger = logging.getLogger(__name__)
 
@@ -760,7 +761,7 @@ def build_profiles(tickers: list[str], use_llm: bool = True,
             tries = 1 if m is None or store.is_stale(m, mode) and m["status"] != "ok" \
                 else m["attempts"] + 1
             if any((have.get(t) or {}).values()):
-                row = rawstore.get("relatedness_profiles", t) or {}
+                row = rawstore.get(sr.PROFILES, t) or {}
                 old_ck = row.get("cache_key") or ""
                 if isinstance(old_ck, dict):
                     old_ck = json.dumps(old_ck, sort_keys=True, separators=(",", ":"))
@@ -820,9 +821,7 @@ def _theme_levels() -> dict[str, dict]:
         run_id = rel_themes.current_run_id()
         if not run_id:
             return {}
-        rows = rawstore.query(
-            "SELECT ticker, level, theme_id, theme FROM ticker_themes "
-            "WHERE theme_run_id = ?", [run_id], db="relatedness")
+        rows = sr.ticker_theme_levels(run_id)
         catalog = theme_catalog()
     except Exception:  # noqa: BLE001 - optional enrichment, never fatal
         return {}
@@ -970,7 +969,7 @@ def _changed_since(as_of, profiles: dict[str, dict], stored: set[str]) -> tuple[
         cutoff = datetime.fromisoformat(str(as_of)).timestamp()
     except (TypeError, ValueError):
         return None
-    changed = {r["ticker"] for r in rawstore.get_all("relatedness_profiles")
+    changed = {r["ticker"] for r in rawstore.get_all(sr.PROFILES)
                if r["ticker"] in profiles and float(r.get("fetched_at") or 0) > cutoff}
     return changed | (set(profiles) - stored), stored - set(profiles)
 
@@ -1320,7 +1319,7 @@ def _run(no_fetch: bool, tickers: list[str] | None, limit: int | None,
     payload["shell"] = len(shell)
     # Which companies' Item the writer located from the headings (avo, 8 Nov 2026: logged per company).
     payload["llm_located"] = sorted(
-        r["ticker"] for r in rawstore.get_all("relatedness_profiles")
+        r["ticker"] for r in rawstore.get_all(sr.PROFILES)
         if r["ticker"] in set(tickers) and isinstance(r.get("label_source"), dict)
         and r["label_source"].get("input") == "llm_locator")
     payload["pending"] = max(0, len(tickers) - len(profiles) - len(no_text) - len(short_text) - len(shell))
@@ -1355,7 +1354,7 @@ def _reusable_payload(provider: str, model: str | None) -> dict | None:
         cutoff = datetime.fromisoformat(str(as_of)).timestamp()
     except ValueError:
         return None
-    newest = max((float(r.get("fetched_at") or 0) for r in rawstore.get_all("relatedness_profiles")), default=None)
+    newest = max((float(r.get("fetched_at") or 0) for r in rawstore.get_all(sr.PROFILES)), default=None)
     if newest is None or newest > cutoff:
         return None
     return payload

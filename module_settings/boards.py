@@ -26,6 +26,7 @@ from RevenueChaser.module_comovement import config as comov_config
 from RevenueChaser.module_comovement import settings as comov_settings
 from RevenueChaser.module_fundamentals import settings as fund_settings
 from RevenueChaser.module_news import store_reads as _news
+from RevenueChaser.module_relatedness import store_reads as _rel
 from RevenueChaser.module_swing_potential import config as swing_config
 from RevenueChaser.module_swing_potential import settings as swing_settings
 
@@ -304,7 +305,12 @@ BOARD_INPUTS: list[dict] = [
            ["chain_filings", "chain_mentions", "chain_meta"],
            lambda: _json("value_chain", "value_chain_latest.json")),
     _board("module_relatedness", "Relatedness",
-           ["relatedness_profiles", "relatedness_scores", "chain_filings", "ticker_themes"],
+           # The names come from the board's one reader (#217), so a rename is a change to one file. The record
+           # left out the seven theme tables the board has always read — the run pointer, the themes at the three
+           # levels, their tags, their members and their ETF overlaps — and the attributes and embeddings the
+           # profile step reads back; the reader makes that checkable.
+           [_rel.PROFILES, _rel.ATTRIBUTES, _rel.EMBEDDINGS, _rel.SCORES, _rel.THEME_RUNS, _rel.THEMES,
+            _rel.THEME_TAGS, _rel.THEME_MEMBERS, _rel.THEME_ETFS, "chain_filings", _rel.TICKER_THEMES],
            # The writer pair is no longer a knob of this board: every LLM job's pair is on the
            # LLM writers card (#404, ``llm_writers_card``).
            lambda: _json("relatedness", "relatedness_latest.json")),

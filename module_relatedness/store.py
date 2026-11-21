@@ -16,6 +16,7 @@ import time
 from RevenueChaser.core import rawstore
 
 from . import config
+from . import store_reads as sr
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +81,7 @@ def _stored_json(tx, ticker: str) -> dict:
     ``tx``."""
     cols = (*JSON_COLUMNS, "accession")
     try:
-        row = tx.execute(f"SELECT {', '.join(cols)} FROM relatedness_profiles WHERE ticker = ?",
+        row = tx.execute(f"SELECT {', '.join(cols)} FROM {sr.PROFILES} WHERE ticker = ?",
                          [ticker]).fetchone()
     except Exception:  # noqa: BLE001 - no table yet: nothing to carry
         return {c: None for c in cols}
@@ -120,17 +121,17 @@ def save_profile(ticker: str, cik, profile: dict, cache_key_value: str,
     def _write(tx):
         # A store that predates the ``accession`` column gains it first: otherwise ``_stored_json``'s SELECT fails,
         # reads every kept column as None and the upsert wipes the stored JSON (#400 again).
-        tx.ensure_table("relatedness_profiles")
+        tx.ensure_table(sr.PROFILES)
         given = {"profile_json": profile_json, "label_source": label_source, "accession": accession}
         if any(v is KEEP for v in given.values()):
             kept = _stored_json(tx, t)
             given = {c: (kept[c] if v is KEEP else v) for c, v in given.items()}
-        tx.write_rows("relatedness_profiles", [{
+        tx.write_rows(sr.PROFILES, [{
             "ticker": t, "cik": str(cik or ""), "model": model,
             "prompt_version": prompt_version, "fetched_at": time.time(),
             "cache_key": cache_key_value, "status": status,
             "attempts": attempts, "provider": provider, **given}])
-        tx.write_rows("relatedness_attributes", rows)
+        tx.write_rows(sr.ATTRIBUTES, rows)
 
     rawstore.atomic(_write, db="relatedness")
 
@@ -142,7 +143,7 @@ def load_profiles(tickers: list[str] | None = None) -> dict[str, dict]:
         return {}
     want = {t.upper() for t in tickers} if tickers is not None else None
     attr: dict[str, dict] = {}
-    for r in rawstore.get_all("relatedness_attributes"):
+    for r in rawstore.get_all(sr.ATTRIBUTES):
         t = r["ticker"]
         if want is not None and t not in want:
             continue
@@ -158,7 +159,7 @@ def load_profiles(tickers: list[str] | None = None) -> dict[str, dict]:
             vals = []
         attr.setdefault(t, {})[r["field"]] = vals
     out: dict[str, dict] = {}
-    for r in rawstore.get_all("relatedness_profiles"):
+    for r in rawstore.get_all(sr.PROFILES):
         t = r["ticker"]
         if want is not None and t not in want:
             continue
@@ -170,7 +171,7 @@ def load_profile_json(tickers: list[str] | None = None) -> dict[str, dict]:
     """``{ticker: v3 profile}`` for the stored rows that carry one (#669; a v2 row has none)."""
     want = {t.upper() for t in tickers} if tickers else None
     out = {}
-    for r in rawstore.get_all("relatedness_profiles", ["ticker", "profile_json"]):
+    for r in rawstore.get_all(sr.PROFILES, ["ticker", "profile_json"]):
         pj = r.get("profile_json")
         if isinstance(pj, str):
             try:
@@ -185,14 +186,14 @@ def load_profile_json(tickers: list[str] | None = None) -> dict[str, dict]:
 def load_vectors(model: str, tickers: list[str]) -> dict[str, bytes]:
     """``{ticker: vector blob}`` stored for ``model`` (``embeddings`` reads the blob's layout)."""
     want = set(tickers)
-    return {r["ticker"]: bytes(r["vector"]) for r in rawstore.get_all("relatedness_embeddings")
+    return {r["ticker"]: bytes(r["vector"]) for r in rawstore.get_all(sr.EMBEDDINGS)
             if r["model"] == model and r["ticker"] in want and r.get("vector") is not None}
 
 
 def save_vectors(model: str, blobs: dict[str, bytes], dim: int) -> None:
     """Upsert one vector row per ticker (key ``(ticker, model)``): a re-embedded company replaces its row."""
     if blobs:
-        rawstore.write_rows("relatedness_embeddings",
+        rawstore.write_rows(sr.EMBEDDINGS,
                             [{"ticker": t, "model": model, "dim": dim, "vector": b} for t, b in blobs.items()])
 
 
@@ -203,7 +204,7 @@ def profile_meta(tickers: list[str] | None = None) -> dict[str, dict]:
                           "attempts": int(r.get("attempts") or 0),
                           "cache_key": r.get("cache_key") or "",
                           "cik": r.get("cik") or ""}
-            for r in rawstore.get_all("relatedness_profiles")
+            for r in rawstore.get_all(sr.PROFILES)
             if want is None or r["ticker"] in want}
 
 
@@ -293,8 +294,8 @@ def save_scores(peers: dict[str, list[dict]]) -> int:
         # A run that scored nothing (cold cache, peak-hours stop) must not wipe the last good
         # Fetch: retiring every pair it did not score would delete every stored score (#284).
         logger.warning("relatedness_scores: the run produced no peer scores; kept the %d stored rows",
-                       rawstore.count("relatedness_scores"))
+                       rawstore.count(sr.SCORES))
         return 0
-    retired = rawstore.sync_rows("relatedness_scores", rows)   # incremental, plan §10
+    retired = rawstore.sync_rows(sr.SCORES, rows)   # incremental, plan §10
     logger.info("relatedness_scores: %d pairs written, %d retired", len(rows), retired)
     return len(rows)
