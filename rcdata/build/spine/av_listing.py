@@ -9,7 +9,10 @@ rows, or under :data:`MIN_SHARE` of the previous snapshot's, fails the run and i
 again on the next New York day, not on the next hourly pass (``due.py``), so the 25 a day are not spent on it
 (unless the day's raw file is held: a rerun then costs no call). A JSON answer to the active call (a rate limit or
 an error, HTTP 200) fails the run and keeps nothing; its body is never echoed (it can repeat the key). Two requests
-a run, inside the ``alphavantage`` day cap it shares with the earnings calendar.
+a run, inside the ``alphavantage`` day cap it shares with the earnings calendar. It runs **weekly** (avo, 21 Nov 2026:
+"Evet onlarda cok sik olmasina gerek yok"): a list of every US listing changes by a handful of rows a week, and a
+truncated or missing answer is caught by the floor rather than by how often the list is asked for. A failed run is
+still due again on the next New York day (``due.DAY_CAPPED``), not a week later.
 
 The key (``ALPHAVANTAGE_API_KEY``, through ``core.credentials``) travels in the query string, which is never stored
 or logged: the meta keeps the URL without its query, and the builder silences httpx's request log
@@ -148,7 +151,7 @@ class AvListing:
     tables: tuple[str, ...] = ()
     # One half of the ETF list (#346), so of ``my_universe``'s funds and their classes.
     feeds = ("etf", "my_universe", "my_universe_changes", "etf_class", "etf_class_changes", "etf_theme")
-    cadence = "daily"
+    cadence = "weekly"
     backfill_needs_from = False
     starts_by_hand = True             # as every spine dataset: not due until a CLI run or a Fetch built it
 

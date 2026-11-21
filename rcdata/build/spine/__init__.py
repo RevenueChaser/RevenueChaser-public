@@ -20,7 +20,7 @@ the bridge views from the staging tables:
   index membership;
 - ``funds/etf_holdings`` (daily): the rotation board's ETFs read whole, from the SPDR and iShares files and UW's
   holdings answer for the themes whose issuer has no keyless file; it serves ``etf_holdings`` itself (no vote);
-- ``alphavantage/listing_status`` (daily, keyed) and ``sec/ncen`` (monthly): Alpha Vantage's list of every US
+- ``alphavantage/listing_status`` (weekly, keyed) and ``sec/ncen`` (monthly): Alpha Vantage's list of every US
   listing and the SEC's Form N-CEN data sets, the two halves of the ETF list (#346);
 - ``spine/security``: no fetch; tier rule v1 (``tier.py``), the served tables ``security``, ``security_history``,
   ``gics_history``, ``index_membership``, ``etf`` (the ETF universe, ``etf.py``) and ``my_universe`` with

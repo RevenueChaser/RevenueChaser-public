@@ -13,7 +13,7 @@ from RevenueChaser.rcdata import ops
 from RevenueChaser.rcdata.tests.conftest import market_roots  # noqa: F401 - market roots per test
 
 NOW = datetime(2026, 10, 28, 3, 0, tzinfo=timezone.utc)
-FUNDAMENTALS = {"sec/companyfacts": "daily", "sec/filings": "daily", "alphavantage/earnings_calendar": "daily",
+FUNDAMENTALS = {"sec/companyfacts": "daily", "sec/filings": "daily", "alphavantage/earnings_calendar": "weekly",
                 "yfinance/estimates": "weekly", "sec/fsds": "monthly",
                 "wrds/fundq": "monthly", "wrds/funda": "monthly",
                 "wrds/segments": "monthly", "wrds/exrt": "monthly", "wrds/audit": "monthly",
