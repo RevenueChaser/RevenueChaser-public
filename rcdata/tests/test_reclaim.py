@@ -204,34 +204,43 @@ def test_the_queue_read_interrupts_a_dashboard_job_the_same_way():
     assert "builder died" not in run["error"]
 
 
-def test_a_builder_run_asked_for_from_a_board_is_still_a_failure():
-    """A build run carries the trigger ``dashboard`` too, but it ran in the builder: the dataset tells them apart."""
-    dead = _dead_pid()
-    rid = _taken_and_started("market_series", "board-build", dead)
+def test_a_board_build_is_failed_in_the_same_sweep_that_interrupts_a_dashboard_job():
+    """A build run asked for from a board carries the trigger ``dashboard`` too, but it ran in the builder: the
+    dataset is what tells them apart, so one sweep words the two rows differently."""
+    build_pid, job_pid = _dead_pid(), _dead_pid()
+    rid = _taken_and_started("market_series", "board-build", build_pid)
     ops.put_rows("job_runs2", [{**_run_row("board-build"), "trigger": "dashboard"}])
-    assert ops.fail_orphans() == (1, 1)
-    run = _run_row("board-build")
-    assert run["status"] == "failed" and run["finished_at"] is not None
-    assert run["error"].startswith(f"lost: pid {dead} gone")
+    _dashboard_run("news-beside-build", job_pid)
+    assert ops.fail_orphans() == (1, 2)
+    build = _run_row("board-build")
+    assert build["status"] == "failed" and build["finished_at"] is not None
+    assert build["error"].startswith(f"lost: pid {build_pid} gone")
     assert _request(rid)["status"] == "failed"
+    job = _run_row("news-beside-build")
+    assert job["status"] == ops.INTERRUPTED and job["finished_at"] is None
 
 
-def test_a_scheduled_task_whose_process_died_is_still_a_failure():
-    """Only the dashboard's own lane is interrupted: a task runner that died is a real failure (#1239)."""
+def test_a_scheduled_task_is_failed_in_the_same_sweep_that_interrupts_a_dashboard_job():
+    """Only the dashboard's own lane is interrupted: a task runner whose process died is a real failure (#1239)."""
     _dashboard_run("task-dead", _dead_pid(), job="RC-Forecast-Outcomes", trigger="schedule")
-    assert ops.fail_orphans() == (0, 1)
-    run = _run_row("task-dead")
-    assert run["status"] == "failed" and run["finished_at"] is not None
+    _dashboard_run("news-beside-task", _dead_pid())
+    assert ops.fail_orphans() == (0, 2)
+    task = _run_row("task-dead")
+    assert task["status"] == "failed" and task["finished_at"] is not None
+    job = _run_row("news-beside-task")
+    assert job["status"] == ops.INTERRUPTED and job["finished_at"] is None
 
 
-def test_a_dashboard_job_the_kernel_oom_killed_is_still_a_failure_that_says_so(monkeypatch):
-    """#815's wording wins: an OOM kill is a fault, not a restart, whoever ran the job."""
+def test_a_dashboard_job_the_kernel_oom_killed_stays_a_failure_that_says_so(monkeypatch):
+    """#815's wording wins over the restart wording: an OOM kill is a fault, and only that pid's row gets it."""
     from RevenueChaser.core import oom
-    dead = _dead_pid()
+    killed, restarted = _dead_pid(), _dead_pid()
     monkeypatch.setenv(oom.ENV, "1")
-    monkeypatch.setattr(oom, "_journal", lambda since: f"Out of memory: Killed process {dead} (python3)")
-    _dashboard_run("news-oom", dead)
-    assert ops.fail_orphans() == (0, 1)
-    run = _run_row("news-oom")
-    assert run["status"] == "failed" and run["finished_at"] is not None
-    assert f"lost: pid {dead} {oom.NOTE}" in run["error"]
+    monkeypatch.setattr(oom, "_journal", lambda since: f"Out of memory: Killed process {killed} (python3)")
+    _dashboard_run("news-oom", killed)
+    _dashboard_run("news-restart", restarted)
+    assert ops.fail_orphans() == (0, 2)
+    oom_row = _run_row("news-oom")
+    assert oom_row["status"] == "failed" and oom_row["finished_at"] is not None
+    assert f"lost: pid {killed} {oom.NOTE}" in oom_row["error"]
+    assert _run_row("news-restart")["status"] == ops.INTERRUPTED
