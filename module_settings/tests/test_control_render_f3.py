@@ -11,7 +11,7 @@ def test_a_cross_check_step_is_not_a_from_chip():
     v = _view()
     f = _file(v, "prices.duckdb")
     roles = {d["dataset"]: d["role"] for d in f["datasets"]}
-    html = control_render._journey(f)
+    html = control_render._journey(f, v["storage"])
     builds = re.findall(r'<tr class="jr"[^>]*data-ds="([^"]+)"[^>]*>(.*?)</tr>', html)
     chips = "".join(row for ds, row in builds if roles.get(ds) == "build")
     for ds, role in roles.items():

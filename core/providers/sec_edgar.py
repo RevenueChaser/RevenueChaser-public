@@ -20,6 +20,8 @@ import httpx
 
 from .. import sec_throttle
 from ..config import to_float
+from . import spend
+from .result import ProviderHealth
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +75,29 @@ _BREAKER_COOLDOWN = 900.0
 _clock = time.monotonic
 _breaker_lock = threading.Lock()
 _breaker = {"fails": 0, "open_until": 0.0}
+
+
+# EDGAR's call accounting (#166 item 2). Until this, EDGAR was the one provider that counted nothing: it throttles
+# itself and breaks its circuit, but no board banner and no total could say how many requests a Fetch had sent --
+# and the SEC's fair-access limit is the easiest of them all to trip. One ``call`` a ``_request`` (the logical
+# request, retries folded in), failed when it ended in a provider failure; the HTTP requests themselves, retries
+# counted one by one, go on the spend ledger (``providers/spend.py``) under the builder's own ``sec`` name.
+_HEALTH = ProviderHealth("sec")
+
+
+def health() -> dict:
+    """The EDGAR requests since the last ``reset_health()``, in the shape every board banner reads."""
+    return _HEALTH.health()
+
+
+def reset_health() -> None:
+    _HEALTH.reset()
+
+
+def _failed(url: str, error: str) -> None:
+    """One EDGAR request that failed for good: the banner's counter and the day's spend."""
+    _HEALTH.call(error=error, endpoint=url)
+    spend.count("sec", failures=1)
 
 
 class SECUnavailable(RuntimeError):
@@ -146,27 +171,36 @@ def _request(url: str, client=None, attempts: int | None = None, headers_out: di
     attempts = _MAX_RETRIES if attempts is None else max(1, int(attempts))
     for attempt in range(attempts):
         _throttle()
+        spend.count("sec", calls=1)         # sent, not answered: a request the SEC counted is spend (#166)
         try:
             if client is None:
                 r = httpx.get(url, headers=_headers(), timeout=60, follow_redirects=True)
             else:
                 r = client.get(url)
-        except httpx.TransportError:
+        except httpx.TransportError as e:
             if attempt < attempts - 1:
                 time.sleep(_RETRY_BASE ** attempt)
                 continue
             _breaker_fail()
+            _failed(url, type(e).__name__)
             raise
+        if r.status_code == 429:
+            spend.count("sec", http_429=1)
         if r.status_code == 429 or 500 <= r.status_code < 600:
             if attempt < attempts - 1:
                 time.sleep(_retry_delay(r, attempt))
                 continue
             _breaker_fail()
+            _failed(url, f"HTTP {r.status_code}")
             r.raise_for_status()
         if r.status_code == 403:
             _breaker_fail(immediate=True)
+            _failed(url, "HTTP 403")
         else:
+            # Counted as answered, 404 included: the object is absent, which is an answer and not a failure of
+            # the provider. ``raise_for_status`` below is what the caller catches to read it as "absent".
             _breaker_ok()
+            _HEALTH.call(endpoint=url)
         r.raise_for_status()
         if headers_out is not None:
             headers_out.update(dict(r.headers))

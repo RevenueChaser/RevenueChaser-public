@@ -1253,7 +1253,7 @@ by `ALTER`, so nothing is rewritten and the builder's rows keep their values):
 | `job_runs2` | One row per run: a builder run (its `dataset`), a scheduled task (`job` = the registry name, `trigger` = `schedule`) or a dashboard job (`job` = its module, `trigger` = `dashboard`), with what the run did in `counts` (#136), the seconds per step in `counts["steps"]` and the chain id in `params["chain"]`. `ops.runs_between` and `ops.last_builder_run` read the builder's rows only (`dataset IS NOT NULL`); `ops.job_runs` reads the task and dashboard rows |
 | `read_log` | Reads per day, process and table (counted in memory, written once a minute) |
 | `uw_remaining` | UW's `x-uw-*` rate headers, sampled once a run: `x-uw-daily-req-count` as `daily_req_count`, `daily_remaining_computed` = our cap (`rcdata/caps.py`) minus it, the per-minute window, and `x-uw-token-req-limit` as sent (it is not the daily cap) |
-| `provider_calls_daily` | Calls, failures and 429s per provider and New York day |
+| `provider_calls_daily` | Calls, failures and 429s per provider and New York day, written by the builder (every HTTP request it sends, retries included) **and**, since #166, by the dashboard's own provider clients through `core/providers/spend.py`. One row per provider and day, with no column for which of the two spent it: the quota is the account's. Its unit is the provider's unit in both halves — a request for `uw` and `sec`, a Yahoo read for `yfinance`. `RC_APP_SPEND=0` stops the app half |
 | `watchlist_option`, `watchlist_stock`, `watchlist_option_changes`, `watchlist_stock_changes` | The two watch lists (D2): ticker, added at, added by (the board), note; and their history, one row per add or remove with an `id` that keeps its order (version 2 added `id` and `note` to the history). No longer read or written since plan v5 step 7g (18 Nov 2026): the two lists are rows of `boards/watchlists.duckdb`; the tables stay until avo retires them |
 | `dataset_schedule` | Cadence and pause state per dataset (Pause / Resume on Settings, PR 2) |
 | `kind_automation` | The old file-level mode (Settings, 6 Nov 2026): kept, no longer read; `ops.copy_kind_modes` moved it onto each dataset (10 Nov 2026) |
@@ -2169,7 +2169,7 @@ per extra page; an earnings-set name 6 plus its chain (one `expiry-breakdown` an
 one per extra 100 names. With the planning numbers (25 expiries and 5 extra pages a name, SPX 400, 2,500 reporting
 names, 150 in the earnings set: assumptions until the first week's real counts replace them) that is 3,343 calls
 with SPX alone, 9,943 with 100 list names and 36,343 with 500, and UW has no day cap since avo removed it on
-2026-11-10 (`rcdata/caps.py`); the other UW datasets spend the same UW day. The real count is the builder's, per request, in `provider_calls_daily`.
+2026-11-10 (`rcdata/caps.py`); the other UW datasets spend the same UW day. The real count is per request, in `provider_calls_daily`, the builder's and the dashboard's together (#166).
 
 **Raw retention.** A hook after each `options` swap (`rcdata/build/options/raw_retention.py`) removes the
 per-session raw folders of `raw/uw/option_list/` and `raw/uw/er_options/` older than the retention, once one is
