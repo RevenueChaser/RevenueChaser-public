@@ -4,16 +4,31 @@ Deadline: every decision made **before 8 December 2026**; the UW plan renews **9
 
 ## 0. The shape of the answer
 
-Three options, and the work below is written so the choice can be made **late**, on measurements rather than on
-opinion:
+Three live options, priced from measurements rather than opinion. avo's own direction, 21 November 2026
+18:08 Amsterdam: build on the IBKR Gateway, and **pay for live data if IBKR or OPRA can carry it**. M2 says it
+cannot — the limit is the API, not the price — so "paying for live" means paying a tape vendor beside IBKR,
+which is option B.
 
-| Option | Monthly | What it costs us |
+| Option | Monthly | What it buys, what it costs |
 |---|---|---|
-| **A — stay on UW** | USD 160 | nothing to build; the deadline just passes |
-| **B — downgrade UW, add a free/cheap chain** | UW Options Starter USD 99 (unverified) + Cboe free | keeps the tape, drops GEX, which we then compute. **Not a one-step option**: measured usage is 148K requests in 30 days against Starter's reported 25,000 a month, so lanes A and B have to land first (`02_provider_replacement.md` §5) |
-| **C — leave UW** | IBKR OPRA USD 1.50 (often waived) or ThetaData USD 80, + Cboe free | layers 1 and 2 become ours; ~5 needs have to be rebuilt |
+| **A — stay on UW** | **USD 160** | everything in one bill: chain, tape, the economic and FDA calendars, the 13F institution tags, the earnings tape. Nothing to build |
+| **B — leave, and pay for live flow** | **≈ USD 82** — IBKR OPRA USD 1.50 (chain, IV, snapshots) **+ ThetaData Standard USD 80** (real-time tick-level OPRA, every NBBO quote, 15,000 trade streams) | half of UW's price, and the data becomes ours. **Open question before anyone subscribes:** does 15,000 streams cover our universe (SPX, the watch list, the screened contracts)? Ask ThetaData; do not guess. Lanes E and F still have to answer for the 13F tags and the calendars |
+| **C — leave, and accept a delay** | **≈ USD 1.50**, or **0** if IBKR's free 15-minute delayed mode serves option chains (unmeasured, `marketDataType=3`) | the chain family — GEX, max pain, OI changes, the options grid, the most-active table. **No live flow at all.** Everything the code reads from the tape today is the SPX ask-side ratio and the stored prints, neither of which is live, so this is less of a loss than it sounds |
+| ~~D — downgrade UW~~ | — | **ruled out**: measured usage is 148K requests in 30 days against Starter's reported 25,000 a month, and with Cboe gone the free half of the plan no longer exists (`02_provider_replacement.md` §5) |
 
-Nothing below commits to one. **Measurements M1-M4 decide it**, and all four fit before 8 December.
+**The price ceiling is the thing to hold on to.** ThetaData Pro at USD 160, Massive Advanced at USD 199 and
+Databento Standard at USD 199 all give a fuller live tape — but at USD 160 the bill equals staying on UW *and*
+loses the calendars, the 13F tags and the earnings tape, none of which a tape vendor sells. So above about USD 80
+the only remaining argument for leaving is ownership of the data, not cost.
+
+**Paying IBKR more does not buy the tape** (M2): the limit is the API, not the subscription tier. USD 32.75 for a
+professional OPRA line gives the same absence of tick-by-tick option data as USD 1.50 does.
+
+Nothing below commits to one. **M1, M2 and M4 are in; M3 is the last**, and it fits well before 8 December.
+
+Two open questions sit on option B before anyone subscribes: ThetaData's 15,000 trade streams against our own
+universe, and its individual-use / no-redistribution terms in writing. Self-hosted single-user use should be
+within them, but "should be" is not a licence read.
 
 ## 1. Measurements first (this week)
 
