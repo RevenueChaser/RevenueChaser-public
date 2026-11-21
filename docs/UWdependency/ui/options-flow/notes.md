@@ -1,6 +1,6 @@
 # Options Flow (Live, Contract Look-Up, Net Flow, OI Explorer, Flow Alerts, Interval, 0DTE, Multi-leg)
 
-Unusual Whales web UI survey, 21 November 2026. Times are Amsterdam time (UTC+1). Screenshots: 85 (kept outside the repository, see ../README.md).
+Unusual Whales web UI survey, 21 November 2026. Times are Amsterdam time (UTC+1). Screenshots: 85.
 
 ## Screenshots
 

@@ -1,6 +1,6 @@
 # Custom Alerts
 
-Unusual Whales web UI survey, 21 November 2026. Times are Amsterdam time (UTC+1). Screenshots: 19 (kept outside the repository, see ../README.md).
+Unusual Whales web UI survey, 21 November 2026. Times are Amsterdam time (UTC+1). Screenshots: 19.
 
 ## Screenshots
 

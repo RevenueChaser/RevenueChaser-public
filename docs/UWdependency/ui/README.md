@@ -13,9 +13,8 @@ UW plan ends 8 Dec 2026. This folder is the record of what the web UI shows, for
   favourite toggles, Mr. Whale prompts (they spend credit), the chat widget.
 - **Left behind:** one "STM" bookmark row in Options Watchlist (UW's auto-bookmark; removal was not possible for me).
   Crypto "Show All (52)" left expanded (view state only). Nothing else was created or changed.
-- 681 screenshots from the second pass. **They are not in this repository yet**: they sit in the project file
-  store under `UWdependency/<folder>/` with the file names each `notes.md` lists, until avo decides whether they
-  may enter the repository (it is public today, and the images show his own lists and a paid service's interface).
+- 681 screenshots from the second pass sit next to each `notes.md`; 62 older ones from the first pass are in
+  `first-pass/` (kept, superseded). avo approved putting them in this repository on 21 Nov 2026.
 
 ## Files at the top level
 
@@ -39,7 +38,7 @@ page shows, which buttons were pressed and what they did, and the nearest API pa
 | `options-flow/` | Live Options Flow, Contract Look-Up, Net Flow, OI Explorer, Flow Alerts, Interval Flow, 0DTE, Multi-leg | 85 | **High**: this is "live-option-flow". Flow-alert rule thresholds are recorded |
 | `console/` | Console command line, settings, templates | 10 | **High**: "unusual-command-line". All 229 commands in `commands_all-229.md`, preset thresholds in the notes |
 | `custom-alerts/` | Custom Alerts, all 29 alert types, formula fields | 19 | **High**: avo's four alert rules, `alert-types_all-29-forms.md`, `formula-fields_option-trades.md` |
-| `watchlists/` | Option and Stock Watchlists, Investor Lists | 19 | **High**: avo's six stock lists exist only in UW; exported to `avo_stock_watchlists.json`, kept with the screenshots |
+| `watchlists/` | Option and Stock Watchlists, Investor Lists | 19 | **High**: avo's six stock lists exist only in UW; exported to `avo_stock_watchlists.json` |
 | `data-downloads/` | Daily bulk files, last 8 trading days | 2 | **High, one-off**: reference days for testing an own build; nothing was downloaded |
 | `ticker-page/` | One ticker (NVDA), all 23 sub-pages | 71 | **High** for Insiders (Form 4 build), Net Premium, NOPE (most active chains), Options Chain, OI Changes; low for the rest |
 | `screeners/` | Options Screener, Stock Screener (224 fields), presets | 41 | Medium: preset parameters recorded; "highest-volume-contracts" is a screener sort |

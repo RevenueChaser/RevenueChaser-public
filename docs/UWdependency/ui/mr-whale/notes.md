@@ -1,6 +1,6 @@
 # Mr. Whale (Chat, Trade Finder, Automations)
 
-Unusual Whales web UI survey, 21 November 2026. Times are Amsterdam time (UTC+1). Screenshots: 47 (kept outside the repository, see ../README.md).
+Unusual Whales web UI survey, 21 November 2026. Times are Amsterdam time (UTC+1). Screenshots: 47.
 
 ## Screenshots
 

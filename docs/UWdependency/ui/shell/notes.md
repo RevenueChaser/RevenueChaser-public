@@ -1,6 +1,6 @@
 # Shell: header, account menu, sidebars, Saved Flows
 
-Unusual Whales web UI survey, 21 November 2026. Times are Amsterdam time (UTC+1). Screenshots: 5 (kept outside the repository, see ../README.md).
+Unusual Whales web UI survey, 21 November 2026. Times are Amsterdam time (UTC+1). Screenshots: 5.
 
 ## Screenshots
 
