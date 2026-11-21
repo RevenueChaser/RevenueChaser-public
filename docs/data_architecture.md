@@ -2250,6 +2250,10 @@ the pin is no longer what the Value Chain board reads its text through: its corp
 carries `rules_version` on every row, so the pin is what a row is compared against, and a row cut with another
 version is read and logged rather than dropped.
 
+`ours-3` exists in `VERSIONS` and **nothing reads it**: it is `ours-2` with one start guard added (#407 case (a),
+a 20-F cross-reference written as its own line being taken for the start of Item 4), and moving a pin onto it is
+its own change with a re-slice and the owner's before/after look, exactly as moving onto `ours-2` was.
+
 **Needs.** `sec.whole`, `sec.business`, `sec.proxy` and `sec.note`, each with its own reader and `ask_required`
 (the text is gigabytes: nothing is answered unless a company is named). The three section needs share one table
 keyed by `cik`, so each carries a `where` on its own `section`; without it a summary would read its state off
