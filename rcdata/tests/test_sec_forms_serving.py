@@ -114,9 +114,12 @@ def test_the_press_release_is_one_uncut_row_and_the_item_cutter_never_sees_it(se
                               "<p>Revenue grew 18%. " + "We remain confident in the year ahead. " * 200
                               + "</p><p>Item 1A. Risk Factors</p></body></html>")
     assert _cut()["result"] != "failed"
+    # ``document`` is the stored file's name, as every row of this table carries it: ``<accession>.<name>.gz`` for
+    # an exhibit, ``<accession>.html.gz`` for a filing's primary document. So the name itself is the evidence that
+    # the row was cut from the typed exhibit and not from the 8-K's own document.
     rows = q("SELECT section, document, method, chars > 0 FROM filing_section "
              "WHERE cik = ? AND accession = ? ORDER BY section", MSFT, fx.EIGHT_K)
-    assert rows == [("release", fx.RELEASE_EXHIBIT, forms.UNCUT, True)], rows
+    assert rows == [("release", f"{fx.EIGHT_K}.{fx.RELEASE_EXHIBIT}.gz", forms.UNCUT, True)], rows
     (text,), = q("SELECT text FROM filing_section WHERE cik = ? AND accession = ?", MSFT, fx.EIGHT_K)
     assert "Revenue grew 18%" in text and "Item 1. Business" in text, "the exhibit is served whole"
     # The annual report's accession still gets both rows the cut gives it.
