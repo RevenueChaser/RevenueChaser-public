@@ -1230,17 +1230,15 @@ def run_news(uw=None) -> Path:
 
 
 def _news_headlines_pass(rid: str) -> dict | None:
-    """The tape lines the listener appended (#673), the Grok X mails the fetcher saved, then the per-ticker Dow Jones
-    headlines. ``None``, or the provider health of a gateway that did not answer (with the job message in
-    ``message``)."""
+    """The tape lines the listener appended (#673), then the per-ticker Dow Jones headlines. ``None``, or the
+    provider health of a gateway that did not answer (with the job message in ``message``).
+
+    The Grok mail load stood between the two until 21 Nov 2026, when avo had the Grok lane removed; the X lane's
+    posts now come only from RC's own reader (job ``news_x_follow``)."""
     from RevenueChaser.module_news import headlines
     tape = headlines.load_tape(run_id=rid)
     if tape["read"]:
         ledger.add_note(f"News tape: {tape['stored']} market headlines from {tape['read']} new lines")
-    x = headlines.load_x(run_id=rid)
-    if x["mails"]:
-        ledger.add_note(f"News X: {x['stored']} posts from {x['mails']} Grok mails ({x['known']} already stored, "
-                        f"{x['refused']} rows refused, {x['cut']} mails cut short)")
     from RevenueChaser.module_news import x_check
     checked = x_check.run(UWClient)
     if checked["calls"]:

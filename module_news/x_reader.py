@@ -14,8 +14,8 @@ every 30 minutes by a timer; ``due`` lets a pass through every 30 minutes while 
 or when X has no more, with a pause of ``PAUSE_S`` between pages. **Fails closed:** a refused login, an error from X
 or a page without a posts list ends the pass with nothing written and the mark unmoved.
 
-Each post is one ``news_headlines`` row, provider ``x-follow``, ``headline_id`` ``x:<status id>`` (the same id as a
-Grok row of the same tweet, which is kept as it is: a stored id is never written again, so its UW check survives),
+Each post is one ``news_headlines`` row, provider ``x-follow``, ``headline_id`` ``x:<status id>`` (a stored id is
+never written again, so the UW check of a post an earlier pass already stored survives),
 ``published_at`` the id's own time, ``tickers`` its cashtags, ``kind`` ``option`` when it names a contract
 (``x_check.contract``), else ``news``.
 """
@@ -31,9 +31,9 @@ from datetime import datetime, time as dtime
 from zoneinfo import ZoneInfo
 
 from RevenueChaser.core import rawstore
-from RevenueChaser.module_news import store_reads, x_check, x_feed
+from RevenueChaser.module_news import store_reads, x_check, x_lane
 
-PROVIDER = x_feed.FOLLOW_PROVIDER
+PROVIDER = x_lane.PROVIDER
 COOKIES = ("RC_X_AUTH_TOKEN", "RC_X_CT0")
 # The board's reader owns the table names (#217); the writes below still happen here.
 TABLE = store_reads.HEADLINES
@@ -94,14 +94,14 @@ def tweet(raw) -> dict | None:
 
 def row(post: dict, now: float, run_id: str) -> dict:
     """One post as a ``news_headlines`` row of the X lane."""
-    at = x_feed.status_time(int(post["id"]))
+    at = x_lane.status_time(int(post["id"]))
     text = post["text"]
     found = x_check._CONTRACT.search(text)
     option = found.group(0) if found and x_check.contract(text, at) else ""
     tickers = list(dict.fromkeys(_CASHTAG.findall(text)))[:4]
     account = post["account"] or "i"
     return {"headline_id": f"x:{post['id']}", "provider": PROVIDER, "published_at": at,
-            "headline": text[:x_feed.TEXT_MAX], "source": f"@{account}", "tickers": json.dumps(tickers),
+            "headline": text[:x_lane.TEXT_MAX], "source": f"@{account}", "tickers": json.dumps(tickers),
             "url": f"https://x.com/{account}/status/{post['id']}", "kind": "option" if option else "news",
             "option": option, "fetched_at": now, "run_id": run_id, "run_at": now}
 

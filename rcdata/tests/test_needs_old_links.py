@@ -61,10 +61,11 @@ RAW_PROVIDER_LIBRARIES = (
 
 #: Files that import an HTTP client to talk to **our own dashboard** on ``127.0.0.1`` -- a command-line trigger
 #: (``POST /run/<job>`` then poll ``/api/job/<id>``), not a provider read. Measured on 20 Nov 2026 (#1213): these
-#: three are every such file in a board package, and nothing else in a board package reaches a provider library
-#: outside ``core.providers``.
+#: were every such file in a board package, and nothing else in a board package reaches a provider library
+#: outside ``core.providers``. ``module_news/x_feed.py`` was the third until the Grok lane was removed
+#: (21 Nov 2026); the package keeps an empty entry, so a new local trigger there is still a deliberate line.
 LOCAL_DASHBOARD_CLIENTS = {
-    "module_news": {"x_feed.py"},
+    "module_news": set(),
     "module_spx_gamma": {"__main__.py"},
     "module_value_chain": {"__main__.py"},
 }

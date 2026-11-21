@@ -20,7 +20,7 @@ from RevenueChaser.core.reporting_common import (FILTERS_CSS, FILTERS_JS, THEME_
                                                  provider_health_html, watchlist_html, write_artifact)
 from RevenueChaser.module_news.calendar import AMS, FDA_TYPE, local_day, served_value
 from RevenueChaser.module_news import earnings, headlines, store_reads, x_check
-from RevenueChaser.module_news.x_feed import X_PROVIDERS
+from RevenueChaser.module_news.x_lane import X_PROVIDERS
 
 FILENAME = "news_latest.html"
 WEEK_DAYS = 7
@@ -332,7 +332,7 @@ def _tickers(value) -> list[str]:
 
 
 def lane(row: dict) -> str:
-    """``x`` for a tweet (the Grok X mails or RC's own X reader), ``market`` for a broad-tape headline (no ticker, #673), else
+    """``x`` for a tweet (RC's own X reader), ``market`` for a broad-tape headline (no ticker, #673), else
     ``stocks``."""
     if row.get("provider") in X_PROVIDERS:
         return "x"
@@ -355,7 +355,7 @@ def _check(r: dict) -> dict:
 
 
 def x_lines(r: dict) -> tuple[str, str]:
-    """An X row's contract chip and its fact line: the UW check for an option tweet, else Grok's option field."""
+    """An X row's contract chip and its fact line: the UW check for an option tweet, else the row's option field."""
     state = _check(r)
     return x_check.chip(state), (x_check.facts(state) or (r.get("option") or ""))
 
@@ -477,7 +477,7 @@ def _fresh_html(key: str, fresh: dict, now: float) -> str:
 
 
 def _headlines(rows: list[dict], fresh: dict, now: float) -> dict[str, str]:
-    """One card a lane: Market (the broad tape), Stocks (per ticker) and X (the Grok X mails and RC's own reader,
+    """One card a lane: Market (the broad tape), Stocks (per ticker) and X (RC's own reader,
     one group a ticker), each with its row count and its own freshness; the page's poll adds to their lists."""
     out = {}
     for key, (title, empty) in _LANES.items():
@@ -971,7 +971,7 @@ function tqDraw(after){
 HELP = help_html(
     "<p>The US economic calendar (today and this week, times in Amsterdam), the Dow Jones headlines of the watch "
     "list and the largest US companies (<b>Stocks</b>), IBKR's market-wide news tape (<b>Market</b>) and the posts "
-    "in Grok's hourly X summary mails and in RC's own X account feed (<b>X</b>; every post's X id is checked "
+    "in RC's own X account feed (<b>X</b>; every post's X id is checked "
     "against its own time, the \"other\" kind and repeats of the same contract are dropped). An option post's "
     "contract is looked up in Unusual Whales (badge: \u2713 UW confirmed, \u2717 not in UW, \u25f7 waiting; a "
     "non-option post carries \u2713 X id) and the posts are grouped by stock, with the session's 5-minute price "
@@ -1038,7 +1038,7 @@ def render_html(now: float | None = None, provider_health: dict | None = None) -
 </div></div>
 <div id="pg-heads" role="tabpanel" hidden>{_ticker_box()}<div class="cols">{lanes["market"]}{lanes["stocks"]}</div></div>
 <div id="pg-x" role="tabpanel" hidden>{lanes["x"]}</div>
-<p class="foot">Source: economic and FDA calendar Unusual Whales, earnings days Alpha Vantage, headlines Dow Jones (IBKR), X posts Grok summaries and RC's own X reader · Times Europe/Amsterdam · Importance: ●●● high ●●○ medium ●○○ low</p>
+<p class="foot">Source: economic and FDA calendar Unusual Whales, earnings days Alpha Vantage, headlines Dow Jones (IBKR), X posts RC's own X reader · Times Europe/Amsterdam · Importance: ●●● high ●●○ medium ●○○ low</p>
 {HELP}
 </div>{watchlist_html("news")}<script>{FILTERS_JS}</script>
 <script>var NEWS_SINCE = {since!r}, HEAD_LIMIT = {HEADLINE_LIMIT}, TQ_PICK = {script_json(_picker())};{_JS}{_TQ_JS}</script>

@@ -7,9 +7,9 @@ from datetime import datetime, timezone
 
 from RevenueChaser.core import rawstore
 from RevenueChaser.core.providers.result import ProviderResult
-from RevenueChaser.module_news import report, x_check, x_feed
+from RevenueChaser.module_news import report, x_check, x_lane
 
-TWEET = x_feed.status_time(2120251362529419593)          # @kiantrades, 10 Nov 2026 21:24 Amsterdam (15:24 New York)
+TWEET = x_lane.status_time(2120251362529419593)          # @kiantrades, 10 Nov 2026 21:24 Amsterdam (15:24 New York)
 
 
 def _iso(ts: float) -> str:
@@ -79,7 +79,7 @@ def test_open_interest_change_is_the_next_day_less_the_session():
 
 
 def _store(**over):
-    row = {"headline_id": "x:2120251362529419593", "provider": "grok-x", "published_at": TWEET,
+    row = {"headline_id": "x:2120251362529419593", "provider": "x-follow", "published_at": TWEET,
            "headline": "$SPY 759C 11/20exp $1.8M premium", "source": "@kiantrades", "tickers": '["SPY"]',
            "url": "https://x.com/kiantrades/status/2120251362529419593", "kind": "option",
            "option": "SPY 759C 11/20exp $1.8M premium yön belirsiz", "fetched_at": TWEET, "run_id": "r",

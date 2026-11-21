@@ -58,13 +58,13 @@ READING = "news_reading"
 FDA_TYPE = "fda"
 
 #: The lanes of the News page, in its order. ``market`` is the broad tape (no ticker), ``stocks`` a headline carrying
-#: one, ``x`` a post from the X summaries or RC's own X reader. The SQL that cuts them is ``_LANE_CASE``; the Python
-#: that cuts one row is ``report.lane``. Both read ``x_feed.X_PROVIDERS``, so they cannot disagree.
+#: one, ``x`` a post from RC's own X reader. The SQL that cuts them is ``_LANE_CASE``; the Python
+#: that cuts one row is ``report.lane``. Both read ``x_lane.X_PROVIDERS``, so they cannot disagree.
 LANES = ("market", "stocks", "x")
 
 
 def _x_providers() -> tuple[str, ...]:
-    from RevenueChaser.module_news.x_feed import X_PROVIDERS
+    from RevenueChaser.module_news.x_lane import X_PROVIDERS
     return tuple(X_PROVIDERS)
 
 
@@ -249,7 +249,7 @@ def headlines_by_lane(since: float, limit: int) -> list[dict]:
     """The newest ``limit`` headlines **of each lane** published at or after ``since``, newest first within a lane.
 
     One ``LIMIT`` over the table would let a busy lane crowd the others off the page, so each lane gets its own
-    (the page then renders the three groups). The X lane leaves out what Grok filed as ``other``.
+    (the page then renders the three groups). The X lane leaves out a row filed as ``other`` (the kind the Grok mails could carry; kept as a guard).
     """
     providers = _x_providers()
     x = _x_clause(providers)
@@ -330,7 +330,7 @@ def newest_reading_window() -> float | None:
 
 
 def x_headlines_since(since: float) -> list[dict]:
-    """Every X-lane row published at or after ``since`` except what Grok filed as ``other``, newest first: the set
+    """Every X-lane row published at or after ``since`` except one filed as ``other``, newest first: the set
     the option check walks to find the rows still waiting for an answer."""
     providers = _x_providers()
     return _query(f"SELECT * FROM {HEADLINES} WHERE {_x_clause(providers)} AND kind <> 'other' "

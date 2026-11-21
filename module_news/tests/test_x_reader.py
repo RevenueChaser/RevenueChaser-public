@@ -8,11 +8,11 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from RevenueChaser.core import rawstore
-from RevenueChaser.module_news import x_check, x_feed, x_reader
+from RevenueChaser.module_news import x_check, x_lane, x_reader
 
 NY = ZoneInfo("America/New_York")
 ID = 2120251362529419593                                 # @kiantrades, 10 Nov 2026 15:24 New York
-AT = x_feed.status_time(ID)
+AT = x_lane.status_time(ID)
 
 
 def _ny(*args) -> float:
@@ -83,9 +83,9 @@ def test_read_fails_closed():
         x_reader.read(_pages({"errors": []}), 0, pause=lambda: None)
 
 
-def _grok_row():
+def _checked_row():
     rawstore.write_rows("news_headlines", [{
-        "headline_id": f"x:{ID}", "provider": "grok-x", "published_at": AT, "headline": "Grok's line",
+        "headline_id": f"x:{ID}", "provider": "x-follow", "published_at": AT, "headline": "an earlier pass's line",
         "source": "@kiantrades", "tickers": '["SPY"]', "url": "u", "kind": "option", "option": "SPY 759C 11/20",
         "x_check": json.dumps({"status": "seen"}), "fetched_at": AT, "run_id": "g", "run_at": AT}])
 
@@ -100,15 +100,15 @@ def _mark():
                                      db="news")[0]["value"])
 
 
-def test_run_stores_new_posts_keeps_a_grok_row_and_moves_the_mark():
-    _grok_row()
+def test_run_stores_new_posts_keeps_a_stored_row_and_moves_the_mark():
+    _checked_row()
     now = AT + 600
     out = x_reader.run(now=now, fetch=_pages([_raw(ID + 9, "$NVDA earnings beat"), _raw(ID, "same tweet")]),
                        pause=lambda: None)
     assert out == {"skipped": False, "read": 2, "stored": 1}
     rows = _stored()
     assert rows[f"x:{ID + 9}"]["provider"] == "x-follow"
-    assert rows[f"x:{ID}"]["provider"] == "grok-x" and json.loads(rows[f"x:{ID}"]["x_check"]) == {"status": "seen"}
+    assert rows[f"x:{ID}"]["provider"] == "x-follow" and json.loads(rows[f"x:{ID}"]["x_check"]) == {"status": "seen"}
     assert _mark() == {"newest": ID + 9, "last_run": now}
     assert x_reader.run(now=now + 60, fetch=_pages())["skipped"]                      # not due yet
 

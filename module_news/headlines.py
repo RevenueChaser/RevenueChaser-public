@@ -14,9 +14,6 @@ and says why; a name it does not know is skipped.
 
 ``load_tape`` (#673) loads the market-wide headlines the listener (``module_news/tape.py``) appended since the last
 load: same ids, ``tickers`` empty (the page's "Market" lane). A story also met under a name keeps that name.
-
-``load_x`` loads the Grok "X saatlik özet" mails the fetcher (``module_news/x_feed.py``) saved since the last load:
-one row per tweet, ``provider`` ``grok-x`` (the page's "X" lane), with the tweet's ``kind`` and ``option``.
 """
 from __future__ import annotations
 
@@ -29,7 +26,7 @@ from pathlib import Path
 
 from RevenueChaser.core import config, ibkr_login, rawstore
 from RevenueChaser.core.providers import ibkr_tws as ibkr
-from RevenueChaser.module_news import store_reads, tape, x_feed, x_reader
+from RevenueChaser.module_news import store_reads, tape, x_reader
 from RevenueChaser.rcdata import read
 
 # The board's reader owns the table names (#217); the writes below still happen here.
@@ -37,7 +34,6 @@ TABLE = store_reads.HEADLINES
 META = store_reads.META
 CURSOR_KEY = "headlines_cursor"
 TAPE_MARK_KEY = "tape_mark"
-X_MARK_KEY = "x_mark"
 # A client id of its own: the IV history client is 73, and a second client with the same id is refused (326).
 CLIENT_ID = 74
 PROVIDERS = "DJ-N+DJ-RT"
@@ -238,42 +234,6 @@ def peek_tape(now: float | None = None) -> list[dict]:
     now = time.time() if now is None else now
     lines, _, _ = _new_lines(tape.tape_dir(), TAPE_MARK_KEY, tape.day_file(now - WINDOW_S).name)
     return [{**r, "tickers": "[]", "run_at": None} for r in _tape_rows(lines, now, "peek")]
-
-
-def load_x(now: float | None = None, run_id: str | None = None) -> dict:
-    """Load the Grok X mails saved since the mark into ``news_headlines``. Returns ``mails``, ``stored``,
-    ``known`` (ids already stored, so Grok repeated them or RC's own reader had them), ``refused`` (rows
-    ``x_feed.parse`` turned down) and ``cut`` (mails that declared more rows than they carried).
-    With no mark, every saved mail is read (the first load is the backfill).
-
-    An id already stored is left alone (review F5, 18 Nov 2026): the table is ``write: upsert``, so writing the
-    parsed row again would set every other column from it and NULL the UW check (``x_check``) of a tweet Grok
-    repeats in a later mail, or of one RC's own reader (``x_reader``, which skips stored ids the same way) stored
-    with its own ``kind`` and ``option``. A tweet does not change; only its check does."""
-    now = time.time() if now is None else now
-    run_id = run_id or f"news-{int(now)}"
-    lines, mark, new_mark = _new_lines(x_feed.x_dir(config.MARKET_RAW_DIR), X_MARK_KEY, "")
-    found: dict[str, dict] = {}
-    mails = refused = cut = 0
-    for line in lines:
-        try:
-            text = str(json.loads(line)["text"])
-        except (ValueError, TypeError, KeyError):
-            continue
-        mails += 1
-        rows, bad = x_feed.parse(text, now, run_id)
-        refused += len(bad)
-        declared = x_feed.declared(text)
-        cut += declared is not None and declared > len(rows) + len(bad)
-        for r in rows:
-            found[r["headline_id"]] = {**r, "tickers": json.dumps(r["tickers"])}
-    stored = _stored_ids(list(found))                     # one SELECT, as x_reader.run has it
-    fresh = [r for key, r in found.items() if key not in stored]
-    if fresh:
-        rawstore.write_rows(TABLE, fresh)
-    _move_mark(X_MARK_KEY, mark, new_mark, now)
-    return {"mails": mails, "stored": len(fresh), "known": len(found) - len(fresh),
-            "refused": refused, "cut": int(cut)}
 
 
 # Contract ids do not change; kept for the dashboard process's life so a 5-minute pass asks one request a name.

@@ -95,11 +95,9 @@ def test_the_headlines_job_loads_the_tape_then_renders_without_the_calendar(monk
     monkeypatch.setattr(calendar, "build", lambda **kw: pytest.fail("the 5-minute pass builds no calendar"))
     order = []
     monkeypatch.setattr(headlines, "load_tape", lambda **kw: order.append("tape") or {"read": 2, "stored": 1})
-    monkeypatch.setattr(headlines, "load_x", lambda **kw: order.append("x") or
-                        {"mails": 1, "stored": 2, "known": 0, "refused": 0, "cut": 0})
     monkeypatch.setattr(headlines, "fetch", lambda names, **kw: order.append("fetch") or
                         {"tickers": len(names), "stored": 0, "skipped": [], "error": None})
-    assert runners.run_news_headlines().name == "news_latest.html" and order == ["tape", "x", "fetch"]
+    assert runners.run_news_headlines().name == "news_latest.html" and order == ["tape", "fetch"]
 
 
 def test_the_api_returns_headlines_stored_after_since_with_their_lane():
@@ -256,8 +254,6 @@ def test_only_a_clean_per_ticker_pass_marks_the_stocks_lane_ok(monkeypatch, tmp_
     monkeypatch.setattr(report, "OUTPUT_DIR", tmp_path)
     monkeypatch.setattr(read, "job_list", lambda kind: ["AAPL"] if kind == "news" else [])
     monkeypatch.setattr(headlines, "load_tape", lambda **kw: {"read": 0, "stored": 0})
-    monkeypatch.setattr(headlines, "load_x", lambda **kw: {"mails": 0, "stored": 0, "known": 0, "refused": 0,
-                                                           "cut": 0})
     clean = {"tickers": 1, "of": 1, "stored": 0, "skipped": [], "failed": [], "error": None}
 
     monkeypatch.setattr(headlines, "fetch", lambda names, **kw: dict(clean, error="no API session"))

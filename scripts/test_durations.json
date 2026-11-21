@@ -402,7 +402,6 @@
  "module_news/tests/test_tape.py": 0.9,
  "module_news/tests/test_tape_state.py": 0.1,
  "module_news/tests/test_x_check.py": 2.0,
- "module_news/tests/test_x_feed.py": 1.0,
  "module_news/tests/test_x_reader.py": 0.3,
  "module_oipd/tests/test_engine.py": 3.8,
  "module_oipd/tests/test_fit_inputs.py": 0.2,
@@ -873,5 +872,6 @@
  "scripts/tests/test_rc_github_rebuild.py": 0.0,
  "scripts/tests/test_red_on_base.py": 13.6,
  "scripts/tests/test_select_tests.py": 9.9,
- "scripts/tests/test_writer_locks_pl6a.py": 0.0
+ "scripts/tests/test_writer_locks_pl6a.py": 0.0,
+ "module_news/tests/test_x_lane.py": 1.0
 }

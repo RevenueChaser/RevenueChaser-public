@@ -242,7 +242,7 @@ def test_lane_freshness_reads_each_lane_on_its_own():
     rawstore.write_rows(headlines.TABLE, [
         _head("ibkr:m", "ibkr", [], NOW - 60), _head("ibkr:m2", "ibkr", [], NOW - 600),
         _head("ibkr:s", "ibkr", ["AAPL"], NOW - 90_000),
-        _head("x:1", "grok-x", [], NOW - 300), _head("x:2", "x-follow", ["SPY"], NOW - 30),
+        _head("x:1", "x-follow", [], NOW - 300), _head("x:2", "x-follow", ["SPY"], NOW - 30),
     ])
     # The newest fetch a lane, not the newest of the table: an X row with a cashtag is still the X lane, and the
     # per-ticker lane stays a day old however busy the others are (review F2, 18 Nov 2026).
