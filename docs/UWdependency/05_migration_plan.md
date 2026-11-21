@@ -71,6 +71,14 @@ the v2 run plan adds no market-data provider (only Kalshi/Polymarket at step 15)
    10 years, UW Basic 2, Cboe none (snapshots only). If backtesting matters, that argues for ThetaData over
    IBKR. Marked **blocked on v2 step 20's scope**.
 
+4. **A re-evaluation point when v2's providers screen lands** (avo, 21 November 2026: "RC v2 geldiginde,
+   providers kisminda daha fazla secenegimiz olacak, oradan da bakabiliriz"). Said plainly, so nobody waits for
+   the wrong thing: **step 9's source catalogue renders the registry we already have; it does not add a
+   provider by itself.** What it does give is one screen where every source, its state and its TEST result sit
+   together, which is the right moment to look again at the two items with no home today —
+   `highest-volume-contracts` (market-wide ranking) and analyst ratings. **If v2's screen is not up before
+   8 December, the decision is made on M1-M4 and nothing waits for it.**
+
 ## 5. The questions only avo can answer (one card at a time)
 
 1. **Which option, A, B or C?** — asked once M1-M4 are in, so it is a decision on numbers.
