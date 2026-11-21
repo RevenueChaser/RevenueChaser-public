@@ -379,8 +379,12 @@ def fail_orphans(*, dead_pids_only: bool = False) -> tuple[int, int]:
             reqs.append({**req, "status": "failed", "ended_at": now, "note": note})
             checks.append({"id": _new_ids("dataset_check")[0], "dataset": req["dataset"], "checked_on": ops._today(),
                            "result": "failed", "run_id": run["run_id"] if run else None, "note": note})
-        dead = [{**r, "status": "failed", "finished_at": now, "error": f"{ops._lost(r)} ({tail})"}
-                for r in runs if not alive[r["run_id"]]]
+        dead = []
+        for r in runs:
+            if alive[r["run_id"]]:
+                continue
+            status, error, ended = ops.orphan_close(r, me, dead_pids_only, now)
+            dead.append({**r, "status": status, "finished_at": ended, "error": error})
 
         def writes(p):
             for row in reqs:
@@ -510,7 +514,7 @@ def prune_runs(days: int = ops.RUN_ROWS_DAYS) -> dict[str, int]:
     def work():
         old: list[tuple[str, dict]] = []
         for r in _all("job_runs2"):
-            if (r["started_at"] or 0.0) < cutoff and r["finished_at"] is not None:
+            if (r["started_at"] or 0.0) < cutoff and r["status"] != "running":
                 old.append(("job_runs2", r))
         for r in _all("build_requests"):
             if (r["requested_at"] or 0.0) < cutoff and r["status"] not in _ACTIVE:

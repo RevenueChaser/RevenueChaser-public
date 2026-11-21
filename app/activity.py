@@ -76,6 +76,8 @@ def job_boards() -> dict:
 #: A run that did not end well, in the three vocabularies that meet in ``job_runs2``: the builder's ``failed``, a
 #: dashboard job's ``error`` or ``cancelled``, and ``lost`` for a run whose end write never came (#82). Before
 #: #1205 nothing but ``failed`` and ``lost`` could reach here, because the dashboard's own words never arrived.
+#: ``interrupted`` is not one of them (#1239): the dashboard went away under the job, which is not a fault of the
+#: board that pressed it.
 BAD_STATUS = frozenset({"failed", "error", "cancelled", "lost"})
 
 

@@ -52,6 +52,17 @@ def test_a_run_that_has_not_finished_is_never_deleted_however_old():
     assert [r["run_id"] for r in ops.rows("job_runs2")] == ["running"]
 
 
+def test_a_run_interrupted_without_an_end_time_is_pruned_like_any_other_closed_run():
+    """#1239: an ``interrupted`` row keeps no end time on purpose, so the rule reads the status, not that column --
+    otherwise the year's retention would quietly keep every interrupted run forever."""
+    now = time.time()
+    _run("cut", started=now - 400 * DAY, finish=None)
+    row = next(r for r in ops.rows("job_runs2") if r["run_id"] == "cut")
+    ops.put_rows("job_runs2", [{**row, "status": ops.INTERRUPTED, "finished_at": None}])
+    assert ops.prune_runs(days=0)["job_runs2"] == 1
+    assert ops.rows("job_runs2") == []
+
+
 def test_a_queued_or_running_request_is_never_deleted_however_old():
     queued = ops.enqueue("market_series", None, by="cli")
     taken = ops.enqueue("prices/serving", None, by="cli")

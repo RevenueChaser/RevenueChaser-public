@@ -39,6 +39,8 @@ POLL_PATH = "/api/runs"
 #: A run whose status is one of these is a problem: the "Problems only" switch keeps these and nothing else.
 #: Three vocabularies meet in one table -- the builder writes ``failed``, a dashboard job ``error`` or
 #: ``cancelled``, a task ``failed``, and ``lost`` is a run whose end write never came (#82).
+#: ``interrupted`` is deliberately **not** here (#1239): the dashboard was restarted under the job, nothing broke
+#: and nothing was half-written, so it is not a problem to count -- it is a run with no outcome and no duration.
 BAD = frozenset({"failed", "error", "cancelled", "lost"})
 #: How many offending chains the audit names, so one broken writer cannot fill the payload.
 AUDIT_NAMES = 10

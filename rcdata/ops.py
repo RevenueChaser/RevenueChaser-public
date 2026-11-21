@@ -63,6 +63,10 @@ FILE_NAME = "ops.sqlite"
 
 REQUEST_STATUSES = ("queued", "running", "done", "failed", "skipped")
 CHECK_RESULTS = ("changed", "unchanged", "failed", "skipped")
+#: What a dashboard job's run is closed as when the dashboard's own process went away under it, usually a restart
+#: (#1239): not ``failed``, because nothing broke and the next run of that job does the work, and **with no end
+#: time**, because the only end time the sweeper knows is its own clock -- which read as a 47-minute news run.
+INTERRUPTED = "interrupted"
 WATCH_KINDS = ("option", "stock")
 #: What the hourly pass queues for a kind's due datasets (avo, 6 Nov 2026): nothing, a raw-only fetch, raw + Parquet,
 #: or the whole run up to the served DuckDB file. A kind with no ``kind_automation`` row is off.
@@ -526,13 +530,16 @@ def fail_orphans(*, dead_pids_only: bool = False) -> tuple[int, int]:
     ``dataset_check`` row with that note, so the dataset's card shows the lost run. When the kernel's own log says
     it killed that pid for memory, the note says so instead (``core/oom.py``, #815).
 
+    A run the **dashboard** ran (no dataset, trigger ``dashboard``) is the one exception: it is closed
+    ``interrupted`` with no end time instead (``orphan_close``, #1239), because its pid was the dashboard's.
+
     ``dead_pids_only`` (#602, ``fail_dead_requests``): a caller that is not the builder and holds no build lock.
     Only a run whose own pid names no process counts as dead, and a request with no run row yet is left alone.
     """
     me = os.getpid()
     now, tail = time.time(), _orphan_tail(me, dead_pids_only)
     with _open() as con, _tx(con):
-        runs = [dict(r) for r in con.execute("SELECT run_id, dataset, pid, host, started_at FROM job_runs2 "
+        runs = [dict(r) for r in con.execute("SELECT run_id, dataset, trigger, pid, host, started_at FROM job_runs2 "
                                              "WHERE status = 'running' AND pid IS NOT ? ORDER BY started_at",
                                              (me,))]
         alive = {r["run_id"]: _run_alive(r["pid"], dead_pids_only, r["host"]) for r in runs}
@@ -555,15 +562,37 @@ def fail_orphans(*, dead_pids_only: bool = False) -> tuple[int, int]:
         for run in runs:
             if alive[run["run_id"]]:
                 continue
-            con.execute("UPDATE job_runs2 SET status = 'failed', finished_at = ?, error = ? WHERE run_id = ?",
-                        (now, f"{_lost(run)} ({tail})", run["run_id"]))
+            status, error, ended = orphan_close(run, me, dead_pids_only, now)
+            con.execute("UPDATE job_runs2 SET status = ?, finished_at = ?, error = ? WHERE run_id = ?",
+                        (status, ended, error, run["run_id"]))
             n_runs += 1
     return n_reqs, n_runs
 
 
-def _lost(run: dict) -> str:
-    """How a run whose process is gone is worded: the kernel's own log is asked whether it killed it for memory
-    (#815), because ``lost: pid <n> gone`` reads like a mystery crash and the next pass repeats the same work."""
+def ran_in_the_dashboard(run: dict) -> bool:
+    """Whether this row is a job the dashboard ran in its own process (``app/jobs.py``): no dataset and the trigger
+    ``dashboard``. A builder run asked for from a board carries that trigger too, which is why the dataset, not the
+    trigger alone, tells the two apart."""
+    return not run.get("dataset") and run.get("trigger") == "dashboard"
+
+
+def orphan_close(run: dict, me: int, dead_pids_only: bool, now: float) -> tuple[str, str, float | None]:
+    """How a run row whose process is gone is closed: ``(status, error, finished_at)``.
+
+    A job the dashboard ran is closed ``INTERRUPTED`` with **no end time** (#1239): its pid was the dashboard's, so
+    "builder died" named the wrong process, and the end time the sweeper would write is its own clock -- four
+    ``news_headlines`` rows read as 45-minute runs against a 6 s median that way. A kernel OOM kill still wins the
+    wording and stays a failure, whoever ran it (#815), because that is a fault and not a restart.
+    """
+    if ran_in_the_dashboard(run) and _oom_note(run) is None:
+        why = f"the dashboard that ran it went away; {_noticed(me, dead_pids_only)}"
+        return INTERRUPTED, f"interrupted: pid {run.get('pid')} gone ({why})", None
+    return "failed", f"{_lost(run)} ({_orphan_tail(me, dead_pids_only)})", now
+
+
+def _oom_note(run: dict) -> str | None:
+    """``lost: pid <n> killed by the kernel: ...`` when the kernel's own log says it killed that pid for memory
+    (#815), else None. Only this host's log is asked: another host's pid names nothing here."""
     import socket
 
     from ..core import oom
@@ -571,12 +600,24 @@ def _lost(run: dict) -> str:
     same_host = not host or host == socket.gethostname()
     if same_host and oom.killed(run.get("pid"), since=run.get("started_at")):
         return f"lost: pid {run['pid']} {oom.NOTE}"
-    return f"lost: pid {run['pid']} gone"
+    return None
+
+
+def _lost(run: dict) -> str:
+    """How a run whose process is gone is worded: the kernel's own log is asked whether it killed it for memory
+    (#815), because ``lost: pid <n> gone`` reads like a mystery crash and the next pass repeats the same work."""
+    return _oom_note(run) or f"lost: pid {run['pid']} gone"
+
+
+def _noticed(me: int, dead_pids_only: bool) -> str:
+    """Who found the row still running, which is the only thing the sweeper truly knows about the end."""
+    return (f"found running by the queue read of pid {me}" if dead_pids_only
+            else f"found running by the builder started as pid {me}")
 
 
 def _orphan_tail(me: int, dead_pids_only: bool) -> str:
-    return (f"its process is gone; found running by the queue read of pid {me}" if dead_pids_only
-            else f"builder died; found running by the builder started as pid {me}")
+    return (f"its process is gone; {_noticed(me, dead_pids_only)}" if dead_pids_only
+            else f"builder died; {_noticed(me, dead_pids_only)}")
 
 
 def _run_alive(pid: int | None, dead_pids_only: bool, host: str | None = None) -> bool:
@@ -1295,8 +1336,9 @@ def prune_runs(days: int = RUN_ROWS_DAYS) -> dict[str, int]:
 
     What is never deleted, whatever its age:
 
-    - a run that has not finished (``job_runs2.finished_at`` NULL) and a request still queued or running — the
-      sweep (``sweep_lost_runs``) is what closes those, not the clock;
+    - a run still ``running`` and a request still queued or running — the sweep (``fail_orphans``) is what closes
+      those, not the clock. A closed run is prunable whether or not it has an end time: an ``interrupted`` row
+      never gets one (#1239), and keeping those forever would make the year's retention untrue;
     - the newest ``dataset_check`` row of a dataset, and the newest that is not ``skipped`` and the newest that
       built, because the boards read them as the dataset's state (``latest_check``, ``latest_unskipped_check``,
       ``latest_good_check``). A dataset that last built two years ago keeps that row and still reads true.
@@ -1309,7 +1351,7 @@ def prune_runs(days: int = RUN_ROWS_DAYS) -> dict[str, int]:
     day = _prune_cutoff(days)
     with _open() as con, _tx(con):
         return {
-            "job_runs2": con.execute("DELETE FROM job_runs2 WHERE started_at < ? AND finished_at IS NOT NULL",
+            "job_runs2": con.execute("DELETE FROM job_runs2 WHERE started_at < ? AND status <> 'running'",
                                      (cutoff,)).rowcount,
             "build_requests": con.execute(
                 "DELETE FROM build_requests WHERE requested_at < ? AND status NOT IN ('queued', 'running')",

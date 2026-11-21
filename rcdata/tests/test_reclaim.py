@@ -148,3 +148,90 @@ def test_a_run_the_kernel_did_not_kill_keeps_the_note_it_had(monkeypatch):
     rid = _taken_and_started("market_series", "sigkill-run", dead)
     assert ops.fail_dead_requests() == (1, 1)
     assert _request(rid)["note"].startswith(f"lost: pid {dead} gone")
+
+
+# #1239: a job the dashboard ran, swept after the dashboard's own process went away (a restart), is not a builder
+# failure and has no duration -- four news_headlines rows read as 45-minute runs against a 6 s median that way.
+
+def _dashboard_run(run_id: str, pid: int, job: str = "news_headlines", trigger: str = "dashboard",
+                   dataset: str | None = None) -> dict:
+    ops.start_run(run_id, dataset, trigger, job=job)
+    [run] = [r for r in ops.rows("job_runs2") if r["run_id"] == run_id]
+    ops.put_rows("job_runs2", [{**run, "pid": pid}])
+    return run
+
+
+def _run_row(run_id: str) -> dict:
+    return next(r for r in ops.rows("job_runs2") if r["run_id"] == run_id)
+
+
+def test_a_dashboard_job_whose_dashboard_went_away_is_interrupted_not_a_builder_failure():
+    dead = _dead_pid()
+    _dashboard_run("news-cut", dead)
+    assert ops.fail_orphans() == (0, 1)
+    run = _run_row("news-cut")
+    assert run["status"] == ops.INTERRUPTED == "interrupted"
+    assert "builder died" not in run["error"] and "the dashboard" in run["error"]
+    assert str(dead) in run["error"]
+
+
+def test_an_interrupted_dashboard_job_records_no_end_time():
+    """The only end time the sweeper knows is its own clock, so the row keeps none and shows no duration."""
+    from RevenueChaser.app import runview
+    _dashboard_run("news-no-end", _dead_pid())
+    assert ops.fail_orphans() == (0, 1)
+    run = _run_row("news-no-end")
+    assert run["finished_at"] is None
+    assert runview.view_row(run)["duration_s"] is None
+
+
+def test_an_interrupted_run_is_not_counted_as_a_problem():
+    """It is a run with no outcome, not a fault: the Runs tab's "Problems only" switch must not keep it."""
+    from RevenueChaser.app import activity, runview
+    _dashboard_run("news-not-bad", _dead_pid())
+    ops.fail_orphans()
+    row = runview.view_row(_run_row("news-not-bad"))
+    assert row["status"] not in runview.BAD and row["status"] not in activity.BAD_STATUS
+    assert runview.matches(row, problems=True, query="") is False
+
+
+def test_the_queue_read_interrupts_a_dashboard_job_the_same_way():
+    """#602's reader path (the dashboard's own start, ``fail_dead_requests``) words it the same, from its own pid."""
+    _dashboard_run("news-queue-read", _dead_pid())
+    assert ops.fail_dead_requests() == (0, 1)
+    run = _run_row("news-queue-read")
+    assert run["status"] == ops.INTERRUPTED and run["finished_at"] is None
+    assert "builder died" not in run["error"]
+
+
+def test_a_builder_run_asked_for_from_a_board_is_still_a_failure():
+    """A build run carries the trigger ``dashboard`` too, but it ran in the builder: the dataset tells them apart."""
+    dead = _dead_pid()
+    rid = _taken_and_started("market_series", "board-build", dead)
+    ops.put_rows("job_runs2", [{**_run_row("board-build"), "trigger": "dashboard"}])
+    assert ops.fail_orphans() == (1, 1)
+    run = _run_row("board-build")
+    assert run["status"] == "failed" and run["finished_at"] is not None
+    assert run["error"].startswith(f"lost: pid {dead} gone")
+    assert _request(rid)["status"] == "failed"
+
+
+def test_a_scheduled_task_whose_process_died_is_still_a_failure():
+    """Only the dashboard's own lane is interrupted: a task runner that died is a real failure (#1239)."""
+    _dashboard_run("task-dead", _dead_pid(), job="RC-Forecast-Outcomes", trigger="schedule")
+    assert ops.fail_orphans() == (0, 1)
+    run = _run_row("task-dead")
+    assert run["status"] == "failed" and run["finished_at"] is not None
+
+
+def test_a_dashboard_job_the_kernel_oom_killed_is_still_a_failure_that_says_so(monkeypatch):
+    """#815's wording wins: an OOM kill is a fault, not a restart, whoever ran the job."""
+    from RevenueChaser.core import oom
+    dead = _dead_pid()
+    monkeypatch.setenv(oom.ENV, "1")
+    monkeypatch.setattr(oom, "_journal", lambda since: f"Out of memory: Killed process {dead} (python3)")
+    _dashboard_run("news-oom", dead)
+    assert ops.fail_orphans() == (0, 1)
+    run = _run_row("news-oom")
+    assert run["status"] == "failed" and run["finished_at"] is not None
+    assert f"lost: pid {dead} {oom.NOTE}" in run["error"]
