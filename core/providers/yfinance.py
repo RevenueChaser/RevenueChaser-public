@@ -156,7 +156,7 @@ def spend_owned_by_caller():
     try:
         yield
     finally:
-        pass                                             # MUTANT M2 (#1277): the depth is never restored
+        _OWNED.depth = depth
 
 
 @contextlib.contextmanager

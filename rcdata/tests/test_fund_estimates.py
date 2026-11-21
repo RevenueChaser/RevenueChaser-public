@@ -119,7 +119,21 @@ def test_each_estimate_request_waits_for_the_yfinance_window(yf, monkeypatch):
     assert waits == ["yfinance"] * 4
 
 
-def test_the_provider_module_does_not_count_the_run_a_second_time(yf):
+@pytest.fixture
+def clean_spend(monkeypatch):
+    """This test measures only its own run's spend counts.
+
+    ``core/providers/spend.py``'s buffer is a module global shared by every test in the xdist worker, so counts an
+    earlier test left pending would make ``pending()`` non-empty on their own and the assertion would depend on
+    the order the shard happened to run -- #1267's shape exactly, and what mutation round 2 of #1277 surfaced.
+    """
+    monkeypatch.setattr(spend, "_pending", {})
+    monkeypatch.setattr(spend, "_since", {})
+    monkeypatch.setattr(spend, "_ledger", None)
+    monkeypatch.setattr(spend, "_dropped", {})
+
+
+def test_the_provider_module_does_not_count_the_run_a_second_time(yf, clean_spend):
     """#1277, the same shape as ``yfinance/fx``: the dataset's own ``ctx.count`` and the provider module's spend
     count both reached the one ``provider_calls_daily`` row. Forced flush, because the provider's half is
     buffered until ``spend.FLUSH_EVERY``."""

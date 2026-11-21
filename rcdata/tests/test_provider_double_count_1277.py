@@ -69,15 +69,14 @@ def _unowned_calls(path: Path) -> list[str]:
 
 
 def test_a_builder_read_of_the_yfinance_provider_module_says_who_counts_it():
-    offenders = sorted(c for p in BUILD.rglob("*.py") for c in _unowned_calls(p))
-    assert offenders == [], (
-        "these builder reads go through core/providers/yfinance, which counts them on the day's spend ledger, "
-        "while the dataset counts the same call with ctx.count into the same provider_calls_daily row (#1277). "
-        f"Ask inside yf_provider.{_DOOR}(): " + ", ".join(offenders))
+    """The rule, and first the proof that the rule can fail.
 
-
-def test_the_rule_can_see_an_offender():
-    """The guard above is only worth its line if it fails on the shape it forbids."""
+    The self-check is part of this test and not one of its own on purpose: on its own it would be a new test that
+    passes on the merge-base, and ``red-on-base`` counts such a test as proving nothing about the change (it
+    copies the PR's test files onto the base source). Here the whole test is red on the base, where ``fx_rates``
+    and ``estimates`` ask outside the door, and the self-check still fails loudly if the rule stops seeing an
+    offender.
+    """
     import tempfile
     src = (
         "from ....core.providers import yfinance as yf_provider\n"
@@ -87,8 +86,15 @@ def test_the_rule_can_see_an_offender():
     with tempfile.TemporaryDirectory() as d:
         path = Path(d) / "offender.py"
         path.write_text(src, encoding="utf-8")
-        assert _unowned_calls(path) == ["offender.py:4 yf_provider.get_fx_history"]
+        assert _unowned_calls(path) == ["offender.py:4 yf_provider.get_fx_history"], (
+            "the rule below no longer sees the shape it forbids, so its silence means nothing")
         path.write_text(src.replace("    return yf_provider",
-                                    "    with yf_provider.spend_owned_by_caller():\n"
+                                    f"    with yf_provider.{_DOOR}():\n"
                                     "        return yf_provider"), encoding="utf-8")
-        assert _unowned_calls(path) == []
+        assert _unowned_calls(path) == [], "the rule flags a read that is inside the door"
+
+    offenders = sorted(c for p in BUILD.rglob("*.py") for c in _unowned_calls(p))
+    assert offenders == [], (
+        "these builder reads go through core/providers/yfinance, which counts them on the day's spend ledger, "
+        "while the dataset counts the same call with ctx.count into the same provider_calls_daily row (#1277). "
+        f"Ask inside yf_provider.{_DOOR}(): " + ", ".join(offenders))
