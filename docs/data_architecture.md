@@ -2204,7 +2204,7 @@ one folder, two Parquet files (`sections.parquet`, `notes.parquet`) per `cik=<ci
 **Served tables.**
 
 - `filing_section` — one row per (filing, document, section): `cik`, `accession`, `document`, `form`,
-  `filing_date`, `report_date`, `section` (`whole`, `proxy`, `business`), `text`, `chars`, `quality`,
+  `filing_date`, `report_date`, `section` (`whole`, `proxy`, `business`, `release`), `text`, `chars`, `quality`,
   `start_char`, `end_char` (where the section sits in `whole`; NULL for an uncut row and for a cut the rule
   altered), `method` (`uncut`, `header`, `aif` — how it was found, so a weak method can be withdrawn alone),
   `rules_version`, and the provenance `source_as_of`, `fetched_at`, `run_id`.
@@ -2257,11 +2257,20 @@ the pin is no longer what the Value Chain board reads its text through: its corp
 carries `rules_version` on every row, so the pin is what a row is compared against, and a row cut with another
 version is read and logged rather than dropped.
 
-**Needs.** `sec.whole`, `sec.business`, `sec.proxy` and `sec.note`, each with its own reader and `ask_required`
-(the text is gigabytes: nothing is answered unless a company is named). The three section needs share one table
-keyed by `cik`, so each carries a `where` on its own `section`; without it a summary would read its state off
-another section's rows. `max_lag` is 400 **days** for all four, not sessions: an annual report is up to fifteen
-months old by design.
+**The `release` section** (#1214) is the one that is not a periodic report's: the EX-99.1 earnings press release
+of the newest 8-K carrying item 2.02, stored whole and uncut, one row per filing. `sec/filings` fetches it beside
+the documents it already fetches, typing the exhibit from the filing's `-index-headers.html` and never from its
+file name (measured: on 22 filings a raw regex over those HTML-escaped tags matched 0, `html.unescape` matched 21,
+and an `ex99` name filter matched 14). The Earnings board's R8 reads it through
+`module_earnings_radar.store_reads.release_texts`, which drops a release filed on or after the report date being
+scored, because the board scores before the print.
+
+**Needs.** `sec.whole`, `sec.business`, `sec.proxy`, `sec.release` and `sec.note`, each with its own reader and
+`ask_required` (the text is gigabytes: nothing is answered unless a company is named). The four section needs
+share one table keyed by `cik`, so each carries a `where` on its own `section`; without it a summary would read
+its state off another section's rows. `max_lag` is 400 **days** for the annual report's three and the notes, not
+sessions: an annual report is up to fifteen months old by design. `sec.release` is 200 days, a reported quarter's
+own bound.
 
 ### The SEC reader tool (`sec_reads.duckdb`)
 

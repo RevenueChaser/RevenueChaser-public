@@ -92,7 +92,9 @@ def test_a_fresh_build_serves_the_sections_with_the_method_that_found_each(sec):
     check = _cut()
     assert check["result"] != "failed", check.get("note")
     assert dict(q("SELECT section, method FROM filing_section WHERE cik = ? ORDER BY section", MSFT)) == {
-        "business": forms.HEADER, "proxy": forms.UNCUT, "whole": forms.UNCUT}
+        "business": forms.HEADER, "proxy": forms.UNCUT, "whole": forms.UNCUT,
+        # The earnings press release of the stored 8-K item 2.02 filing, cut whole (#1214).
+        "release": forms.UNCUT}
     # Every row says which rule wrote it, so a half-finished migration to ``ours-2`` is visible, not inferred.
     assert q("SELECT DISTINCT rules_version FROM filing_section") == [(forms.SECTIONS_VERSION,)]
     assert f"sections {forms.SECTIONS_VERSION} {check['rows']}" in check["note"], check["note"]
@@ -248,12 +250,13 @@ def test_the_business_need_answers_and_each_section_need_counts_only_its_own_row
     answer = serve.ask("sec.business", ciks=[MSFT])
     assert len(answer.rows) == 1 and answer.rows[0]["section"] == "business"
 
-    # Without the need's ``where`` each of the three would count the whole table and read its state off another
+    # Without the need's ``where`` each of the four would count the whole table and read its state off another
     # section's rows.
     assert serve.summary("sec.proxy")["row_count"] == 1
     assert serve.summary("sec.whole")["row_count"] == 1
     assert serve.summary("sec.business")["row_count"] == 1
-    assert q("SELECT count(*) FROM filing_section")[0][0] == 3
+    assert serve.summary("sec.release")["row_count"] == 1
+    assert q("SELECT count(*) FROM filing_section")[0][0] == 4
 
 
 def test_the_note_need_answers_by_local_name_across_taxonomies(sec):
