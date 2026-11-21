@@ -47,12 +47,13 @@ def test_a_declaration_is_sorted_and_without_a_repeat():
         assert list(reads) == sorted(set(reads)), f"{board}: READS is sorted and each name appears once"
 
 
-def test_the_migrated_board_declares_the_eight_needs_it_reads():
+def test_the_migrated_board_declares_the_nine_needs_it_reads():
     # 11 Nov 2026: R6's rate events read market.economic_event (market.economic_calendar), not raw.
     # 19 Nov 2026 (#273): E5a's calendar comes from options.screener, so the board declares it too.
+    # 21 Nov 2026 (#644): the print history and the upcoming event come from the stored tape, so earnings.tape too.
     assert boards.all_reads()["module_earnings_radar"] == (
-        "earnings.next", "earnings.options", "fundamentals.estimates", "macro.dgs10", "market.economic_calendar",
-        "options.screener", "ownership.short_interest", "ownership.shortable")
+        "earnings.next", "earnings.options", "earnings.tape", "fundamentals.estimates", "macro.dgs10",
+        "market.economic_calendar", "options.screener", "ownership.short_interest", "ownership.shortable")
 
 
 def test_spx_gamma_is_the_second_migrated_board_and_leaves_the_plan():

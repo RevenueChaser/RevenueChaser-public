@@ -90,8 +90,10 @@ def test_the_rows_of_one_name_keep_the_newest_report_first(monkeypatch):
 def test_each_name_gets_its_own_newest_session(monkeypatch):
     """A name is only in the earnings set on the two evenings before its report, so one ``max(session_date)`` over
     the table would serve the names reporting next and silently drop every other one."""
-    _served(monkeypatch, [_row("AAA", session_date=SESSION), _row("AAA", session_date=date(2026, 10, 12)),
-                          _row("BBB", session_date=date(2026, 10, 12), report_date=date(2026, 10, 19))])
+    # Both names' newest session is inside the one-session freshness gate, so neither is dropped for lag: AAA's
+    # is today's evening fetch, BBB's yesterday's. A single ``max(session_date)`` would be AAA's and drop BBB.
+    _served(monkeypatch, [_row("AAA", session_date=TODAY), _row("AAA", session_date=date(2026, 10, 12)),
+                          _row("BBB", session_date=SESSION, report_date=date(2026, 10, 19))])
     out = stored_inputs.earnings_tape(["AAA", "BBB"])
     assert set(out) == {"AAA", "BBB"}
     assert len(out["AAA"]) == 1, "the older evening's copy of the same report is not served beside it"
