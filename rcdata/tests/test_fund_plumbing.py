@@ -67,3 +67,21 @@ def test_the_spine_going_missing_refuses_the_swap_and_keeps_the_live_file():
 def test_a_paused_dataset_sends_nothing(name):
     ops.schedule_pause(name, by="test")
     assert fx.run(name, "2026-10-28")["result"] == "skipped"
+
+
+def test_a_404_that_the_caller_did_not_declare_missing_raises_and_counts_no_failure(http_mock):
+    """#1304: ``common.get``'s raise spends a ``failures`` count only for provider trouble. A 404 the caller did
+    not declare in ``missing`` still raises -- the dataset was asking for something it expected to be there --
+    but it is the host answering, so the day's ``failures`` figure stays readable."""
+    from RevenueChaser.rcdata.build import base
+    from RevenueChaser.rcdata.build.fundamentals import common
+
+    ctx = base.RunContext(run_id="r", dataset="d", sleep=lambda s: None)
+    with pytest.raises(base.SourceError, match="HTTP 404"):
+        common.get(ctx, "sec", "https://nothing.test/CIK0000320193.json")
+    assert ctx.calls["sec"] == [1, 0, 0]
+
+    http_mock.add("down.test", b"nope", status=503)
+    with pytest.raises(base.SourceError, match="HTTP 503"):
+        common.get(ctx, "sec", "https://down.test/CIK0000320193.json")
+    assert ctx.calls["sec"] == [1 + base.HTTP_ATTEMPTS, 1, 0]

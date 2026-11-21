@@ -637,6 +637,19 @@ def refusal_note(keyed: bool = False) -> str:
             if not (os.getenv(CONTACT_ENV) or "").strip() else " (refused although a contact is set)")
 
 
+def counts_as_failure(status: int | None) -> bool:
+    """Whether an answer (or the absence of one) spends a ``failures`` count in ``provider_calls_daily`` (#1304).
+
+    ``failures`` is the provider misbehaving: a transport error (``status`` None), a 429 or a 5xx with the retries
+    spent, or a 403 -- the host refusing the request outright, which is what opens the app client's breaker and
+    counts there too (``core/providers/sec_edgar.py``'s ``_failed`` on a 403). Any other 4xx is an **answer**:
+    the host holds no such object (404), or
+    the request itself was wrong. The call still raises ``SourceError``; it just does not look like provider
+    trouble on the Spend card, which a dataset walking dates until one is absent would otherwise fill.
+    """
+    return status is None or status == 429 or status == 403 or status >= 500
+
+
 def _log_http(ctx: RunContext, provider: str, method: str, url: str, result: str, started: float) -> None:
     """One request-log row for one attempt: the method, ``host/path`` (never the query, the headers or the body), the
     status or the error's name, and how long it took."""
@@ -654,6 +667,7 @@ def http_get(ctx: RunContext, provider: str, url: str, params: dict | None = Non
     ``accept`` is answered as it is, neither retried nor raised: a source whose 404 means "not published yet" reads it
     itself. ``attempts`` lengthens the ladder for one call (``HTTP_ATTEMPTS`` by default): a caller whose host answers
     a transient 5xx from an edge and clears it in seconds buys more patience, and pays it in counted requests.
+    A raise spends a ``failures`` count only when ``counts_as_failure`` says the provider misbehaved (#1304).
     """
     last, status, transport = "", None, False
     for attempt in range(1, (attempts or HTTP_ATTEMPTS) + 1):
@@ -678,7 +692,8 @@ def http_get(ctx: RunContext, provider: str, url: str, params: dict | None = Non
                 break
         if attempt < (attempts or HTTP_ATTEMPTS):
             ctx.sleep(HTTP_BACKOFF_S * 2 ** (attempt - 1))
-    ctx.count(provider, failures=1, logged=True)
+    if counts_as_failure(status):
+        ctx.count(provider, failures=1, logged=True)
     raise SourceError(f"{provider} {url}: {last}", status=status, transport=transport)
 
 
@@ -687,7 +702,8 @@ def http_post(ctx: RunContext, provider: str, url: str, json: Any = None, header
     """POST ``json`` with the same retry ladder and counting as ``http_get``; ``pacer`` waits before every attempt.
 
     A 429 is retried after OpenFIGI's ``ratelimit-reset`` seconds when the answer names them, else the ladder's
-    backoff. ``headers`` may hold a key: neither they nor the body are ever logged. Raises ``SourceError``.
+    backoff. ``headers`` may hold a key: neither they nor the body are ever logged. Raises ``SourceError``, and
+    spends a ``failures`` count only as ``counts_as_failure`` says (#1304).
     """
     last, status, transport = "", None, False
     for attempt in range(1, HTTP_ATTEMPTS + 1):
@@ -715,7 +731,8 @@ def http_post(ctx: RunContext, provider: str, url: str, json: Any = None, header
                 break
         if attempt < HTTP_ATTEMPTS:
             ctx.sleep(wait)
-    ctx.count(provider, failures=1, logged=True)
+    if counts_as_failure(status):
+        ctx.count(provider, failures=1, logged=True)
     raise SourceError(f"{provider} {url}: {last}", status=status, transport=transport)
 
 
