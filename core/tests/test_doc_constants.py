@@ -68,7 +68,7 @@ _ENV_EXTRAS = ("RC_SEC_USER_AGENT",
                "RC_ALLOWED_HOSTS", "RC_IBKR_LOGIN_URL",                         # #159 / the gateway shortcut
                "RC_BUILDER_TIMER_URL",                                          # #527: the builder timer button
                "RC_IBKR_LOGIN_CHECK", "RC_IBKR_HOST", "RC_IBKR_PORT",           # #162
-               "RC_SCHEDULER",                                                  # #158
+               "RC_SCHEDULER", "RC_UNIT_ENV_FILE",                              # #158 / #191 item 6
                "RC_HTTP_CONTACT",                                               # #206, the builder's User-Agent
                "WRDS_USERNAME", "RC_WRDS_PYTHON",                               # PR 5, the spine
                "RC_WRDS_UNATTENDED",                                            # #344, WRDS from the builder
