@@ -15,12 +15,16 @@ Anything unverified says so in the line itself.
 | [`04_existing_work.md`](04_existing_work.md) | Task 4 — what already exists here and in Fincept Terminal that can be reused |
 | [`05_migration_plan.md`](05_migration_plan.md) | Task 2.2 + 5 — the sequenced plan, effort, V2 sync points, the decisions only avo can make |
 | [`06_risk_register.md`](06_risk_register.md) | Task 5 — data quality, latency, cost, rate limits, licence and redistribution |
-| `ui/` | Task 2.1 — the UW web-interface survey, written by the thread "Explore UW dashboard and screenshot it" |
+| [`07_ui_survey.md`](07_ui_survey.md) | Task 2.1 folded in — what the web-interface survey changes in this plan |
+| `ui/` | Task 2.1 — the survey's own record: index, UI-only features, navigation map, public API paths |
 
 ## Rules this folder was written under
 
 - **No live UW API request was made** from this work; the quota is not burned. UW's own published path list
   (241 paths, read from `GET https://api.unusualwhales.com/api/openapi` on 21 Nov 2026 12:59 UTC by the UI thread)
   is in `ui/public_api_paths.txt`.
+- **The screenshots are not in this repository.** This tree is code only. The UI survey's 681 screenshots, avo's
+  exported watchlists and his alert rules live beside the thread at `/mnt/project-files/UWdependency/`;
+  `ui/README.md` is the index to them.
 - No endpoint is named here unless the code names it. No price is quoted here unless the vendor's own page was
   read today, or the line says the number is unverified.

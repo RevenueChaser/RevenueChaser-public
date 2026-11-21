@@ -35,6 +35,26 @@ near the money) is. Cboe has no such limit, which is why Cboe is the default cha
 **Open gap:** Cboe served AAPL 3,440 contracts against UW's 19,774 (5.7×). The cause was never explained. A
 coverage comparison on one session must run **before** any board is moved onto Cboe.
 
+## Which UW page falls on which side of the line
+
+Measured from the UI survey, 21 Nov 2026 (`ui/README.md`, `07_ui_survey.md` §3).
+
+| Needs a trade tape with bid/ask side | A daily chain snapshot rebuilds it |
+|---|---|
+| Live Options Flow | OI changes |
+| Flow alerts | Max pain |
+| Net Premium | GEX / vanna / charm by strike and by expiry |
+| NOPE | The options grid |
+| Delta flow | Highest OI |
+| Bullish / bearish premium | Implied move per expiry |
+| Bid/ask volume bars | "Highest volume contracts" (one table, four UW pages) |
+
+So the tape decision below is the whole cost decision: everything in the right column is layer 3 arithmetic over a
+chain we can get for USD 1.50 a month or for free.
+
+**UW is retiring DEX** (banner on its own Delta tab, seen 21 Nov 2026). It stays in the layer-3 list above as
+arithmetic, but it is not worth a lane.
+
 ## Layer 1 — the raw tape
 
 What the code actually consumes from the tape today is small (measured 5 Nov 2026, re-checked here):
