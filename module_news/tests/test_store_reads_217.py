@@ -74,7 +74,7 @@ def test_the_lane_cut_is_shared_with_the_page():
     """``report.lane`` (one row) and ``lane_freshness`` (the SQL) must cut the lanes the same way."""
     from RevenueChaser.module_news import headlines, report
     assert sr.LANES == headlines.LANES == ("market", "stocks", "x")
-    assert report.lane({"provider": "grok-x", "tickers": "[]"}) == "x"
+    assert report.lane({"provider": "x-follow", "tickers": "[]"}) == "x"
     assert report.lane({"provider": "ibkr", "tickers": "[]"}) == "market"
     assert report.lane({"provider": "ibkr", "tickers": '["AAPL"]'}) == "stocks"
 
@@ -261,14 +261,14 @@ def test_each_lane_gets_its_own_limit_so_a_busy_lane_cannot_crowd_the_page(rawst
     rawstore.write_rows(sr.HEADLINES, [
         *[_head(f"ibkr:m{i}", published=NOW - i) for i in range(3)],          # market: three
         _head("ibkr:s1", tickers=["AAPL"], published=NOW - 10),               # stocks: one
-        _head("x:1", provider="grok-x", kind="option", published=NOW - 20),   # x: one kept...
-        _head("x:2", provider="grok-x", kind="other", published=NOW - 21),    # ...one filed as "other"
+        _head("x:1", provider="x-follow", kind="option", published=NOW - 20),   # x: one kept...
+        _head("x:2", provider="x-follow", kind="other", published=NOW - 21),    # ...one filed as "other"
     ])
     got = sr.headlines_by_lane(NOW - 3600, limit=2)
     ids = [r["headline_id"] for r in got]
     assert ids.count("ibkr:m0") == 1 and len([i for i in ids if i.startswith("ibkr:m")]) == 2   # limit per lane
     assert "ibkr:s1" in ids and "x:1" in ids
-    assert "x:2" not in ids, "the X lane leaves out what Grok filed as other"
+    assert "x:2" not in ids, "the X lane leaves out a row filed as other"
 
 
 def test_the_lane_read_leaves_out_what_was_published_before_the_window(rawstore_tmp_db):
@@ -286,7 +286,7 @@ def test_the_poll_draws_only_rows_written_after_its_mark(rawstore_tmp_db):
 
 def test_the_newest_list_crosses_the_lanes_for_the_welcome_card(rawstore_tmp_db):
     rawstore.write_rows(sr.HEADLINES, [_head("ibkr:1", published=NOW - 5),
-                                       _head("x:1", provider="grok-x", kind="other", published=NOW)])
+                                       _head("x:1", provider="x-follow", kind="other", published=NOW)])
     # Unlike the board's own page, this one does not cut the lanes — the card shows the latest, whatever lane.
     assert [r["headline_id"] for r in sr.headlines_newest(NOW - 3600, 5)] == ["x:1", "ibkr:1"]
     assert [r["headline_id"] for r in sr.headlines_newest(NOW - 3600, 1)] == ["x:1"]
@@ -295,7 +295,7 @@ def test_the_newest_list_crosses_the_lanes_for_the_welcome_card(rawstore_tmp_db)
 def test_a_ticker_matches_as_a_whole_name_and_not_as_a_prefix(rawstore_tmp_db):
     """``tickers`` is JSON text: a bare substring match would let AA answer for AAPL."""
     rawstore.write_rows(sr.HEADLINES, [_head("ibkr:1", tickers=["AAPL"]), _head("ibkr:2", tickers=["AA"]),
-                                       _head("x:1", provider="grok-x", tickers=["AAPL"])])
+                                       _head("x:1", provider="x-follow", tickers=["AAPL"])])
     assert [r["headline_id"] for r in sr.headlines_for_ticker("AA", 0.0, 10)] == ["ibkr:2"]
     assert [r["headline_id"] for r in sr.headlines_for_ticker("aapl", 0.0, 10)] == ["ibkr:1"]
     assert set(sr.headlines_for_ticker("AA", 0.0, 10)[0]) == set(sr.TICKER_COLUMNS)
@@ -313,11 +313,11 @@ def test_the_window_read_is_bounded_at_both_ends(rawstore_tmp_db):
 
 def test_the_option_check_walks_the_x_lane_only(rawstore_tmp_db):
     rawstore.write_rows(sr.HEADLINES, [
-        _head("x:1", provider="grok-x", kind="option", published=NOW),
+        _head("x:1", provider="x-follow", kind="option", published=NOW),
         _head("x:2", provider="x-follow", kind="news", published=NOW - 1),
-        _head("x:3", provider="grok-x", kind="other", published=NOW - 2),
+        _head("x:3", provider="x-follow", kind="other", published=NOW - 2),
         _head("ibkr:1", kind="news", published=NOW - 3),
-        _head("x:old", provider="grok-x", kind="option", published=NOW - 90_000),
+        _head("x:old", provider="x-follow", kind="option", published=NOW - 90_000),
     ])
     assert [r["headline_id"] for r in sr.x_headlines_since(NOW - 3600)] == ["x:1", "x:2"]
 
@@ -327,7 +327,7 @@ def test_the_lane_freshness_reads_each_lane_on_its_own(rawstore_tmp_db):
     rawstore.write_rows(sr.HEADLINES, [
         _head("ibkr:m", fetched=NOW - 60), _head("ibkr:m2", fetched=NOW - 600),
         _head("ibkr:s", tickers=["AAPL"], fetched=NOW - 90_000),
-        _head("x:1", provider="grok-x", fetched=NOW - 300),
+        _head("x:1", provider="x-follow", fetched=NOW - 300),
         _head("x:2", provider="x-follow", tickers=["SPY"], fetched=NOW - 30),
     ])
     # The newest fetch a lane, not of the table: an X row with a cashtag is still the X lane, and the per-ticker
@@ -346,5 +346,5 @@ def test_an_x_provider_is_passed_as_a_parameter_and_not_interpolated(rawstore_tm
         return real(sql, params, **kw)
     monkeypatch.setattr(rawstore, "query", spy)
     sr.lane_freshness()
-    assert "grok-x" not in seen["sql"] and "'grok-x'" not in seen["sql"]
-    assert "grok-x" in (seen["params"] or [])
+    assert "x-follow" not in seen["sql"] and "'x-follow'" not in seen["sql"]
+    assert "x-follow" in (seen["params"] or [])

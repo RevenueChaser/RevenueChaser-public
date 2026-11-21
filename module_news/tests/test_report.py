@@ -116,7 +116,7 @@ def test_each_lane_says_when_its_own_newest_row_was_fetched():
         {"headline_id": "ibkr:s", "provider": "ibkr", "published_at": NOW - 2 * HOUR, "headline": "Apple beats",
          "source": "Dow Jones", "tickers": json.dumps(["AAPL"]), "url": None, "fetched_at": NOW - 26 * HOUR,
          "run_id": "t", "run_at": NOW - 26 * HOUR},
-        {"headline_id": "x:1", "provider": "grok-x", "published_at": NOW - HOUR, "headline": "SPY bid",
+        {"headline_id": "x:1", "provider": "x-follow", "published_at": NOW - HOUR, "headline": "SPY bid",
          "source": "@a", "tickers": "[]", "url": "https://x.com/a/status/1", "fetched_at": NOW - 300,
          "run_id": "t", "run_at": NOW - 300, "kind": "news", "option": "", "x_check": None},
     ])

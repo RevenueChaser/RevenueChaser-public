@@ -2,7 +2,7 @@
 I need curated processed informational. When it says spx option bla bla, we need to show that option flow from our
 sources").
 
-A Grok row of kind ``option`` names a contract in its ``option`` field (``SPY 759C 11/20exp $1.8M ...``). ``contract``
+An X row of kind ``option`` names a contract in its ``option`` field (``SPY 759C 11/20exp $1.8M ...``). ``contract``
 turns that into the OCC symbol; ``check`` asks Unusual Whales for that contract's prints of the tweet's session
 (``/option-contract/{id}/flow``, the 50 newest at or above ``MIN_PREMIUM``) and keeps what traded around the tweet
 (``BEFORE_S`` before it, ``AFTER_S`` after it): trades, contracts, premium, the side (a print at or above the ask is a
@@ -23,7 +23,7 @@ from datetime import date, datetime, timezone
 from zoneinfo import ZoneInfo
 
 from RevenueChaser.core import rawstore
-from RevenueChaser.module_news import store_reads, x_feed
+from RevenueChaser.module_news import store_reads, x_lane
 
 NY = ZoneInfo("America/New_York")
 TABLE = store_reads.HEADLINES
@@ -238,7 +238,7 @@ def money(v: float) -> str:
 
 
 def _hm(ts: float) -> str:
-    return datetime.fromtimestamp(ts, timezone.utc).astimezone(x_feed.AMS).strftime("%H:%M")
+    return datetime.fromtimestamp(ts, timezone.utc).astimezone(x_lane.AMS).strftime("%H:%M")
 
 
 def facts(state: dict | None) -> str:
@@ -337,7 +337,7 @@ _X_ID = ("id", "✓", "X id", "The time in the tweet's X id matched the time of 
 
 
 def badge(state: dict | None) -> tuple[str, str, str, str]:
-    """Every stored X row passed the X-id time check (``x_feed``); an option row says what UW found instead."""
+    """Every stored X row passed the X-id time check (``x_lane.status_time``); an option row says what UW found instead."""
     return _BADGES.get((state or {}).get("status"), _X_ID)
 
 
