@@ -121,6 +121,22 @@ def test_the_doors_only_mount_is_the_artifacts_folder_and_it_is_read_only():
     assert "read_only: true" in service
 
 
+def test_the_door_can_read_the_artifacts_root_it_is_given():
+    """The image's own uid does not exist on the host, so reading the mount takes the owning group.
+
+    Measured on homesrv 21 Nov 2026: the container runs as ``uid=100(door)`` and the artifacts root is
+    ``1001:1001`` mode ``2770``, so ``ls /data/cache`` was "Permission denied", the ``artifacts`` probe was red and
+    ``/api/v1/health`` answered 503 while ``/api/v1/version`` was fine. The service therefore joins that gid as a
+    supplementary group. It must not get there by running as root or as the dashboard's own user instead: the
+    mount stays ``:ro``, so the group's write bit is unusable, and that is the whole point of the narrow fix.
+    """
+    service = _door_service()
+    assert "group_add:" in service, "the door cannot read a 2770 artifacts root without its group"
+    assert "RC_ARTIFACTS_GID" in service, "the gid is a per-host value, not a constant in the image"
+    assert "user: root" not in service and 'user: "0' not in service
+    assert "privileged" not in service
+
+
 def test_the_real_store_is_never_reachable_from_the_container():
     """``core/config.py`` creates all four roots at import; the two the door does not use point at the tmpfs."""
     service = _door_service()
