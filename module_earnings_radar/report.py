@@ -10,7 +10,7 @@ from .composite import classify_bias
 from RevenueChaser.core.html_safe import ESC_JS, esc, script_json
 from RevenueChaser.core import rotation_reference
 from RevenueChaser.core.config import (
-    OUTPUT_DIR, MIN_OPTION_VOLUME, MIN_TOTAL_OI, MIN_DOLLAR_OPTION_VOLUME, RULE_WEIGHTS,
+    OUTPUT_DIR, MIN_OPTION_VOLUME, MIN_TOTAL_OI, MIN_DOLLAR_OPTION_VOLUME, RULE_WEIGHTS, R6_RATE_VETO,
 )
 from RevenueChaser.core.calendar import NY
 
@@ -1397,7 +1397,7 @@ def _action_tip(card) -> str:
     a = card.final_action or ""
     v = card.volatility_edge_score or 0
     if a == "NO_TRADE":
-        return "R6 macro veto (|rate beta| > 4 + FOMC/CPI overlap) blocks this event."
+        return (f"R6 macro veto (|rate beta| > {R6_RATE_VETO:g} + FOMC/CPI overlap) blocks this event.")
     if "OPTIONS" in a:
         return (f"R4 vol-edge {v:.0f} ≥ 50 AND |dir| ≥ 25 (R2/R3/R7) "
                 "-> options vehicle.")

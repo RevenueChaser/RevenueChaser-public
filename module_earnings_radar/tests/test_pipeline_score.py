@@ -11,6 +11,7 @@ from RevenueChaser.module_earnings_radar.pipeline import EarningsPipeline, _safe
 from RevenueChaser.module_earnings_radar.models import TradeCard
 from RevenueChaser.module_earnings_radar.rules import rule5_positioning
 from RevenueChaser.core.tests.d01_seed import write_d01
+from RevenueChaser.core.config import R6_RATE_VETO
 
 import pytest
 
@@ -217,7 +218,12 @@ class TestR5ShortInterestWiring:
         assert audit.get("available") is False
 
 
-def _duration_ohlc_and_yields(n=25, duration=10.0):
+# Above R6_RATE_VETO on the beta's own measured scale (#635: the cut is the measured p90, ~26). Written off the
+# constant so a later recalibration moves the fixture with it instead of turning these veto cases into badges.
+EXTREME_DURATION = R6_RATE_VETO + 10.0
+
+
+def _duration_ohlc_and_yields(n=25, duration=EXTREME_DURATION):
     from datetime import date, timedelta
     ohlc, yld = [], {}
     price, y = 100.0, 4.00
@@ -235,7 +241,7 @@ def _duration_ohlc_and_yields(n=25, duration=10.0):
 class TestR6YieldBetaWiring:
     def test_injected_dgs10_badges_not_vetoes_without_rate_overlap(self):
         """|beta| > 4 with no FOMC/CPI overlap -> badge, NOT macro_veto."""
-        ohlc, yld = _duration_ohlc_and_yields(duration=10.0)
+        ohlc, yld = _duration_ohlc_and_yields(duration=EXTREME_DURATION)
         fake = _FakeUW(etf_ohlc=ohlc)
         p = _make_pipeline(fake, {"AAPL": {"close": "100", "call_volume": "0",
                                            "put_volume": "0", "total_open_interest": "0"}},
@@ -268,7 +274,7 @@ class TestR6YieldBetaWiring:
         from RevenueChaser.module_earnings_radar import macro_watch
         from RevenueChaser.module_earnings_radar.tests.market_store_fixture import serve as serve_market
         monkeypatch.setattr(calendar, "_now", lambda: datetime(2026, 1, 30, 23, 0, tzinfo=timezone.utc))
-        ohlc, yld = _duration_ohlc_and_yields(duration=10.0)       # 2026-01-05 .. 01-29: fresh on Jan 30
+        ohlc, yld = _duration_ohlc_and_yields(duration=EXTREME_DURATION)       # 2026-01-05 .. 01-29: fresh on Jan 30
         serve_market(dict(yld))
         assert not hasattr(macro_watch, "fred_daily_map")
         p = _make_pipeline(_FakeUW(etf_ohlc=ohlc),

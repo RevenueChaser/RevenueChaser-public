@@ -470,3 +470,17 @@ def test_the_metrics_table_in_data_health_matches_the_code():
     section = text.split("## 9. Live in Grafana", 1)[1]
     listed = re.findall(r"^\| `(rc_[a-z_]+)` \|", section, flags=re.M)
     assert listed == list(metrics.HELP), "docs/data_health.md section 9 and module_settings/metrics.HELP differ"
+
+
+def test_r6_doc_states_the_calibrated_rate_thresholds():
+    """``docs/earnings-radar/r6_macro.md``'s |β| table states values ``core/config`` owns (#635).
+
+    The doc said "> 4 veto / > 2 reason" while the constants were recalibrated to the measured scale of the
+    beta, which is exactly the drift #134 is about: a reader takes the table for the contract.
+    """
+    text = (_REPO / "docs" / "earnings-radar" / "r6_macro.md").read_text(encoding="utf-8")
+    veto = re.search(r"\| > ([\d.]+) \| \*\*veto\*\*", text)
+    high = re.search(r"\| > ([\d.]+) \| reason only", text)
+    assert veto and high, "r6_macro.md no longer states the |beta| thresholds in its table"
+    assert float(veto.group(1)) == config.R6_RATE_VETO
+    assert float(high.group(1)) == config.R6_RATE_HIGH
