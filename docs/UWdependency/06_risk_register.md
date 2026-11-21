@@ -2,8 +2,8 @@
 
 | # | Risk | Evidence | Severity | What removes it |
 |---|---|---|---|---|
-| R1 | **Cboe's free endpoint is not reachable from every host.** `cdn.cboe.com/.../delayed_quotes` answered HTTP 403 (Cloudflare) from this cloud container on 21 Nov 2026 13:01 UTC, having worked from the cloud box on 5 Nov | measured both times | **high** — layer 3 rests on it | M1 from homesrv; if homesrv is blocked too, the chain source becomes IBKR or ThetaData and the cost rises |
-| R2 | **Cboe's coverage gap is unexplained**: AAPL 3,440 contracts against UW's 19,774 on its own first run (`rcdata/build/options/tables.py:37-39`) | measured 5 Nov | **high** | a one-session coverage comparison before any board moves |
+| ~~R1~~ | **Realised, 21 Nov 2026 (M1).** Cboe's free endpoint answers **HTTP 403 from homesrv** as well as from the cloud container — both hosts, both symbols, sub-second. It is not a host quirk to work around; the free chain is gone | measured from homesrv today | **closed as realised** | nothing removes it: the chain moves to the IBKR line (USD 1.50) or a paid vendor, and lane B is rewritten |
+| ~~R2~~ | ~~Cboe's coverage gap (AAPL 3,440 against UW's 19,774)~~ | moot: R1 removed the source before the gap mattered | — | — |
 | R3 | **No per-trade side anywhere free.** Cboe gives aggregate volume only; the SPX squeeze/fakeout verdict turns on an ask-side ratio against 0.55 (`module_spx_gamma/flow_signals.py:25`, `:40-43`) | read in code | **high** | a paid tape (IBKR OPRA, ThetaData) plus our own rule, scored by M3 |
 | R4 | **A re-tuned threshold is a board-behaviour change.** A different side definition means 0.55 may no longer mean what it meant | — | medium | avo sees a before/after on the same sessions before anything ships |
 | R5 | **IBKR market-data-line limit.** 100 lines by default against 19,774 contracts in one chain, and tick-by-tick subscriptions are capped at 5% of those lines | `rcdata/build/options/tables.py:37-39` | medium | keep IBKR to a bounded scope (SPX + watch list); Cboe or ThetaData for breadth |
