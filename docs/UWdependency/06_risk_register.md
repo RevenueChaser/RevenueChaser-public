@@ -2,7 +2,7 @@
 
 | # | Risk | Evidence | Severity | What removes it |
 |---|---|---|---|---|
-| ~~R1~~ | **Realised, 21 Nov 2026 (M1).** Cboe's free endpoint answers **HTTP 403 from homesrv** as well as from the cloud container — both hosts, both symbols, sub-second. It is not a host quirk to work around; the free chain is gone | measured from homesrv today | **closed as realised** | nothing removes it: the chain moves to the IBKR line (USD 1.50) or a paid vendor, and lane B is rewritten |
+| ~~R1~~ | **Realised, 21 Nov 2026 (M1).** Cboe's free endpoint answers **HTTP 403 from homesrv** as well as from the cloud container — both hosts, both symbols, sub-second. It is not a host quirk to work around; the free chain is gone | measured from homesrv today, and **confirmed from avo's own browser on his home network the same evening**: Cloudflare's "Sorry, you have been blocked — you are unable to access cboe.com" page, so it is not the server's IP alone | **closed as realised** | nothing removes it: the chain moves to the IBKR line (USD 1.50) or a paid vendor, and lane B is rewritten |
 | ~~R2~~ | ~~Cboe's coverage gap (AAPL 3,440 against UW's 19,774)~~ | moot: R1 removed the source before the gap mattered | — | — |
 | R3 | **No per-trade side anywhere free.** Cboe gives aggregate volume only; the SPX squeeze/fakeout verdict turns on an ask-side ratio against 0.55 (`module_spx_gamma/flow_signals.py:25`, `:40-43`) | read in code | **high** | a paid tape (IBKR OPRA, ThetaData) plus our own rule, scored by M3 |
 | R4 | **A re-tuned threshold is a board-behaviour change.** A different side definition means 0.55 may no longer mean what it meant | — | medium | avo sees a before/after on the same sessions before anything ships |
