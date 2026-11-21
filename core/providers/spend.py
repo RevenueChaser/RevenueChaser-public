@@ -32,6 +32,17 @@ A write is buffered, like the builder's (``rcdata/build/base.py`` ``count`` / ``
 counts go to ``ops.sqlite`` once ``FLUSH_EVERY`` calls or ``FLUSH_AFTER_S`` seconds have gathered, so a Fetch of
 a few thousand names costs tens of writes and not thousands. A failed write (a locked ``ops.sqlite``) keeps the
 counts pending for the next flush rather than dropping them, and never fails the provider call it was counting.
+
+**Counts belong to the ledger they were made against** (#1267). Because they are written later, the store the
+write lands in is whichever one the process points at *then* (``ops.ledger_id``), not the one that was open when
+the call was counted. A process that moves its market root -- the test suite, which gives every test its own
+root, and an e2e dashboard -- would otherwise have the gathered counts of one root written into the next root's
+``provider_calls_daily`` row, which is what #1267 measured: a test that asked a provider twice read 25 (exactly
+``FLUSH_EVERY``) from the counter, because the flush point was reached inside it with another root's backlog in
+hand. Pending counts whose ledger is no longer the current one are therefore **dropped**, with a warning and a
+record in :func:`dropped`: they cannot be written to the store they belong to (the write path resolves the store
+itself), and adding them to another store's row is a wrong number in the counter the day caps read. In a live
+process the root never moves, so nothing is ever dropped there.
 """
 from __future__ import annotations
 
@@ -53,6 +64,8 @@ FLUSH_AFTER_S = 30.0
 _lock = threading.Lock()
 _pending: dict[str, list[int]] = {}        # provider -> [calls, failures, http_429]
 _since: dict[str, float] = {}              # provider -> the clock of its first pending count
+_ledger: str | None = None                 # the ledger ``_pending`` was counted against (``ops.ledger_id``)
+_dropped: dict[str, list[int]] = {}        # provider -> what was dropped with a ledger that moved (#1267)
 _clock = time.monotonic
 
 
@@ -61,11 +74,52 @@ def on() -> bool:
     return (os.getenv(ENV) or "").strip() != "0"
 
 
+def _ledger_now() -> str | None:
+    """The ledger a write would land in now, or None when ops cannot be reached. Never raises."""
+    try:
+        from ...rcdata import ops
+        return ops.ledger_id()
+    except Exception:                                   # noqa: BLE001 - counting may never break a provider call
+        logger.warning("the spend ledger could not be identified; counts stay pending", exc_info=True)
+        return None
+
+
+def _drop_locked(now: str | None) -> None:
+    """Drop the pending counts, whose ledger is not ``now`` any more. The caller holds ``_lock``."""
+    global _ledger
+    if not _pending:
+        _ledger = now
+        return
+    taken = {n: list(b) for n, b in _pending.items()}
+    for name, book in taken.items():
+        kept = _dropped.setdefault(name, [0, 0, 0])
+        for i in range(3):
+            kept[i] += book[i]
+    _pending.clear()
+    _since.clear()
+    logger.warning("the market root moved from %s to %s with %s pending on the spend ledger; "
+                   "they belong to the old store and are not written to the new one (#1267)",
+                   _ledger, now, {n: b[0] for n, b in taken.items()})
+    _ledger = now
+
+
+def dropped() -> dict[str, list[int]]:
+    """What was counted against a ledger the process left before the counts were written (#1267)."""
+    with _lock:
+        return {k: list(v) for k, v in _dropped.items()}
+
+
 def count(provider: str, calls: int = 0, failures: int = 0, http_429: int = 0) -> None:
     """Add to ``provider``'s pending counts and flush them when they are due. Never raises."""
     if not on() or not (calls or failures or http_429):
         return
+    now = _ledger_now()
     with _lock:
+        global _ledger
+        if now is not None and _ledger is not None and now != _ledger:
+            _drop_locked(now)
+        elif _ledger is None:
+            _ledger = now
         book = _pending.setdefault(provider, [0, 0, 0])
         book[0] += calls
         book[1] += failures
@@ -87,7 +141,12 @@ def flush(provider: str | None = None) -> None:
     except Exception:                                   # noqa: BLE001 - counting may never break a provider call
         logger.warning("the spend ledger is not reachable; counts stay pending", exc_info=True)
         return
+    now = _ledger_now()
     with _lock:
+        if now is not None and _ledger is not None and now != _ledger:
+            # The counts were made against another store and the write path resolves the store itself (#1267).
+            _drop_locked(now)
+            return
         names = [provider] if provider is not None else sorted(_pending)
         taken = {n: _pending.pop(n) for n in names if n in _pending}
         for n in taken:
