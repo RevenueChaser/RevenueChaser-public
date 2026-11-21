@@ -23,6 +23,7 @@ import json
 from ..core import rawstore
 from ..rcdata import sec_profile
 from . import store
+from . import store_reads as sr
 
 RUN_ID = "import:relatedness"
 PARTIAL = ":partial"
@@ -43,7 +44,7 @@ def plan() -> dict:
     from ..rcdata.build.sec_reads import company_profile as cp
 
     comp = cp.companies()
-    stored = {r["ticker"]: r for r in rawstore.get_all("relatedness_profiles")}
+    stored = {r["ticker"]: r for r in rawstore.get_all(sr.PROFILES)}
     counts = {"companies": len(comp), "imported": 0, "no_profile": 0, "text_changed": 0, "no_text": 0}
     rows, seen, examples = [], set(), {"no_profile": [], "text_changed": []}
     for cik, got in cp.survey(list(comp), comp, located=False):

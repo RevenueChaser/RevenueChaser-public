@@ -20,7 +20,7 @@ from collections import Counter
 
 from RevenueChaser.core import llm_jobs, rawstore
 
-from . import themes as themes_mod
+from . import store_reads as sr, themes as themes_mod
 
 logger = logging.getLogger(__name__)
 
@@ -71,20 +71,20 @@ def _parse_name(raw) -> str:
 
 
 def _run_themes(run_id: str) -> dict[str, dict]:
-    return {r["theme_id"]: r for r in themes_mod.run_rows("relatedness_themes", run_id)}
+    return {r["theme_id"]: r for r in themes_mod.run_rows(sr.THEMES, run_id)}
 
 
 def _fine_tags(run_id: str) -> dict[str, list[str]]:
     """``{fine_theme_id: [tag, ...]}`` in stored rank order."""
     raw: dict[str, list] = {}
-    for r in themes_mod.run_rows("relatedness_theme_tags", run_id):
+    for r in themes_mod.run_rows(sr.THEME_TAGS, run_id):
         raw.setdefault(r["theme_id"], []).append((r.get("rank") or 0, r["tag"]))
     return {tid: [t for _r, t in sorted(items)] for tid, items in raw.items()}
 
 
 def _fine_members(run_id: str) -> dict[str, list[str]]:
     out: dict[str, list[str]] = {}
-    for r in themes_mod.run_rows("relatedness_theme_members", run_id):
+    for r in themes_mod.run_rows(sr.THEME_MEMBERS, run_id):
         out.setdefault(r["theme_id"], []).append(r["ticker"])
     return out
 
@@ -161,14 +161,12 @@ def _sync_ticker_themes(run_id: str, rows: dict[str, dict]) -> int:
     if not labels:
         return 0
     updates = []
-    for r in rawstore.query(
-            "SELECT ticker, theme_id, theme, level, theme_run_id, fetched_at FROM ticker_themes "
-            "WHERE theme_run_id = ?", [run_id], db="relatedness"):
+    for r in sr.ticker_theme_rows(run_id):
         want = labels.get(r.get("theme_id"))
         if want and r.get("theme") != want:
             updates.append({**r, "theme": want})
     if updates:
-        rawstore.write_rows("ticker_themes", updates)
+        rawstore.write_rows(sr.TICKER_THEMES, updates)
     return len(updates)
 
 
@@ -224,7 +222,7 @@ def name_themes(run_id: str | None = None, *, complete=None,
                 # asking the model for a distinct name (avo's call is pending).
                 row = dict(row)
                 row["label"] = str(child["label"])
-                rawstore.write_rows("relatedness_themes", [row])
+                rawstore.write_rows(sr.THEMES, [row])
                 rows[tid] = row
                 named += 1
                 copied += 1
@@ -266,7 +264,7 @@ def name_themes(run_id: str | None = None, *, complete=None,
             continue
         row = dict(row)
         row["label"] = _disambiguate(base, tags, used, doc_freq)
-        rawstore.write_rows("relatedness_themes", [row])
+        rawstore.write_rows(sr.THEMES, [row])
         rows[tid] = row
         used.add(row["label"].lower())
         named += 1

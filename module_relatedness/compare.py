@@ -20,13 +20,13 @@ import re
 import threading
 import time
 
-from RevenueChaser.core import rawstore
 from RevenueChaser.core.config import OUTPUT_DIR
 from RevenueChaser.core import fundamentals_layer
 from RevenueChaser.core import llm_writers as writers
 from RevenueChaser.core.providers import deepseek
 
 from . import config, embeddings, engine, locator, profile_v3, profiles, similarity
+from . import store_reads as sr
 
 MAX_NAMES = 100
 OUT_DIR = OUTPUT_DIR / "research" / "360"
@@ -40,7 +40,7 @@ def out_path(provider: str, model: str, partial: bool = False):
 
 def _llm_rows(model: str) -> int:
     try:
-        return int(rawstore.query("SELECT count(*) AS n FROM llm_cache WHERE model = ?", [model], db="relatedness")[0]["n"])
+        return sr.llm_cache_rows_for_model(model)
     except Exception:  # noqa: BLE001 - no cache table yet
         return 0
 

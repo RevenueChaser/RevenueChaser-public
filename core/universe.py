@@ -362,13 +362,13 @@ def current_theme_run(strict: bool = False) -> str | None:
     The one lookup (C23): ``module_relatedness.themes.current_run_id`` and the filter fields use it. A filter
     never breaks a board, so a failed read is None; ``strict=True`` (the Relatedness guards that refuse to
     rebuild or prune the current run) lets the error through instead of reading as "no current run"."""
+    from RevenueChaser.module_relatedness.store_reads import pinned_run_id
     try:
-        rows = rawstore.query("SELECT id FROM theme_runs WHERE is_current = 1 LIMIT 1", db="relatedness")
+        return pinned_run_id()
     except Exception:  # noqa: BLE001 - table absent on a fresh store
         if strict:
             raise
         return None
-    return rows[0]["id"] if rows else None
 
 
 def theme_catalog(run: str | None = None) -> dict[str, dict]:
@@ -393,10 +393,9 @@ def theme_catalog(run: str | None = None) -> dict[str, dict]:
     run = run or current_theme_run()
     if not run:
         return {}
+    from RevenueChaser.module_relatedness.store_reads import catalog_rows
     try:
-        rows = rawstore.query(
-            "SELECT theme_id, level, parent_id, label, size FROM relatedness_themes "
-            "WHERE theme_id = ? OR starts_with(theme_id, ?)", [run, f"{run}:"], db="relatedness")
+        rows = catalog_rows(run)
     except Exception:  # noqa: BLE001 - optional control, never fatal
         return {}
     cat = {r["theme_id"]: {"label": (r.get("label") or "").strip(),
@@ -429,10 +428,9 @@ def _theme_ids_by_ticker(catalog: dict[str, dict], run: str | None = None) -> di
     run = run or current_theme_run()
     if not run or not catalog:
         return {}
+    from RevenueChaser.module_relatedness.store_reads import member_tickers_of_run
     try:
-        rows = rawstore.query(
-            "SELECT ticker, theme_id FROM relatedness_theme_members "
-            "WHERE theme_id = ? OR starts_with(theme_id, ?)", [run, f"{run}:"], db="relatedness")
+        rows = member_tickers_of_run(run)
     except Exception:  # noqa: BLE001
         return {}
     out: dict[str, set[str]] = {}

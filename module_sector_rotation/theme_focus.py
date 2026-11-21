@@ -5,7 +5,6 @@ dots are visible. See docs/dashboard_ui.md §4.
 """
 from __future__ import annotations
 
-from RevenueChaser.core import rawstore
 from RevenueChaser.core import rotation_reference
 
 # Hand overlay when relatedness_theme_etfs has no row for a coarse label.
@@ -50,12 +49,9 @@ def _overlay_etf(label: str) -> str | None:
 
 
 def _jaccard_etfs(theme_id: str) -> list[str]:
+    from RevenueChaser.module_relatedness.store_reads import theme_etfs
     try:
-        rows = rawstore.query(
-            "SELECT etf, rank FROM relatedness_theme_etfs "
-            "WHERE theme_id = ? ORDER BY rank ASC, etf ASC",
-            [theme_id],
-        db="relatedness")
+        rows = theme_etfs(theme_id)
     except Exception:  # noqa: BLE001
         return []
     out: list[str] = []
@@ -71,10 +67,9 @@ def _jaccard_etfs(theme_id: str) -> list[str]:
 
 def _stored_coarse_labels(run_id: str) -> dict[str, str]:
     """``theme_id -> label`` as stored in ``relatedness_themes`` for the run's coarse themes."""
+    from RevenueChaser.module_relatedness.store_reads import coarse_labels_of_run
     try:
-        rows = rawstore.query(
-            "SELECT theme_id, label FROM relatedness_themes "
-            "WHERE level = 'coarse' AND (theme_id = ? OR starts_with(theme_id, ?))", [run_id, f"{run_id}:"], db="relatedness")
+        rows = coarse_labels_of_run(run_id)
     except Exception:  # noqa: BLE001
         return {}
     return {r["theme_id"]: (r.get("label") or "").strip() for r in rows}
