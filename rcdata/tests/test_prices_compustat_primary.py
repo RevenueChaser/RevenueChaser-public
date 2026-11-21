@@ -399,22 +399,32 @@ def test_the_restated_split_detail_says_where_the_other_source_dates_it_early(mo
             "this split early and the bars in between are on the wrong basis") in detail
 
 
-def test_a_same_ratio_split_further_away_than_the_window_is_still_applied(monkeypatch):
+def _restated_count(note: str) -> str:
+    """The build note's restated count, the number the new rule decides (0 where it takes nothing)."""
+    return [w for w in note.split("split_only_crsp: ")[1].split(", ") if w.endswith("another source")][0]
+
+
+def test_a_same_ratio_split_further_away_than_the_window_is_still_applied(whole_builds, monkeypatch):
     """The window is the belt (``SPLIT_SAME_RATIO_DAYS``): of the 80 applied CRSP splits measured, a Compustat
     split of the security sits within 7 days of exactly one, and the five pairs further out all have ratios of
-    their own. A pair further apart than the window stays two events here, so nothing is silently merged."""
-    _serve(monkeypatch, _split_compustat_dates_apart(_data(), "2025-05-26"))     # 9 days from CRSP's 4 Jun
+    their own. A pair further apart than the window stays two events here, so nothing is silently merged -- the
+    rule looked and took none, which is what the note's count of 0 says."""
+    note = _serve_note(monkeypatch, _split_compustat_dates_apart(_data(), "2025-05-26"))   # 9 days from 4 Jun
     assert _aapl_splits() == [("2025-05-26", 2.0, wrds_history.NAME), (JUNE[2], 2.0, wrds_history.CRSP)]
     assert _aapl_oldest_split_factor() == pytest.approx(1 / 4)
+    assert _restated_count(note) == "0 not applied with the same split at the same ratio within 7 days from " \
+        "another source"
     assert not _crsp_only_details("split_crsp_restated")
 
 
-def test_a_split_of_another_ratio_inside_the_window_is_still_applied(monkeypatch):
+def test_a_split_of_another_ratio_inside_the_window_is_still_applied(whole_builds, monkeypatch):
     """The ratio is the rule. The five measured pairs that are two events are 2.5 times apart or more (ATI,
     2.02008 against 5.0), far outside ``SPLIT_RATIO_TOLERANCE``: a different ratio a few days off is a second
-    event, applied beside CRSP's."""
-    _serve(monkeypatch, _split_compustat_dates_apart(_data(), "2025-05-30", ratio=5.0))
+    event, applied beside CRSP's, and the note's count of 0 says the rule looked at it."""
+    note = _serve_note(monkeypatch, _split_compustat_dates_apart(_data(), "2025-05-30", ratio=5.0))
     assert _aapl_splits() == [("2025-05-30", 5.0, wrds_history.NAME), (JUNE[2], 2.0, wrds_history.CRSP)]
+    assert _restated_count(note) == "0 not applied with the same split at the same ratio within 7 days from " \
+        "another source"
     assert not _crsp_only_details("split_crsp_restated")
 
 
