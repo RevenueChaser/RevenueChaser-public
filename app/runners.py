@@ -45,10 +45,24 @@ def _write_to(path: Path, content: str) -> Path:
     return write_artifact(path, content)
 
 
-def _write_board(path: Path, html: str, data) -> Path:
-    """Write a board's HTML and its K10 payload file (``reporting_common.write_board``); ``data=None`` drops one."""
+def _run_asof(payload) -> str | None:
+    """The board's own as-of word for its v2 envelope (#1241), read from the run payload.
+
+    The K10 payload file carries the rows alone (``{"rows": ...}``, ``{"companies": ...}``), so the date the data
+    speaks for is here, in the payload the renderer was given: ``v2_envelope.ASOF_KEYS`` in order.
+    """
+    from RevenueChaser.core import v2_envelope
+    return v2_envelope.data_asof(payload)
+
+
+def _write_board(path: Path, html: str, data, asof=None) -> Path:
+    """Write a board's HTML, its K10 payload file and its v2 envelope (``reporting_common.write_board``).
+
+    ``data=None`` drops both files. ``asof`` is the board's own as-of word for the envelope (#1241): the K10
+    payload holds the rows only, so the date lives in the run payload the caller still has in hand.
+    """
     from RevenueChaser.core.reporting_common import write_board
-    return write_board(path, html, data)
+    return write_board(path, html, data, asof=asof)
 
 
 def _write_empty_board(path: Path, title: str, message: str, hint: str = "") -> Path:
@@ -588,8 +602,9 @@ def run_sec_13f_latest(uw: UWClient | None = None, notice: str | None = None,
         _write_empty_board(
             SEC_13F_LATEST, "SEC 13F", "No 13F ownership totals are stored yet.",
             "Press Fetch to download and ingest the newest SEC Form 13F data set.")
-        from RevenueChaser.core.reporting_common import payload_path
-        payload_path(SEC_13F_LATEST).unlink(missing_ok=True)     # K10: the rows go with the rows' file (#429)
+        from RevenueChaser.core.reporting_common import drop_board_data
+        # K10 + the v2 envelope: the rows go with the rows' file (#429), and so does the door's copy of them.
+        drop_board_data(SEC_13F_LATEST)
         raise JobMessage("No 13F totals stored yet — press Fetch to ingest the SEC data set.")
     meta, enrichment = sec_13f.load_sec13f_meta(), load_inputs(totals)
     if capture is not None:
@@ -904,7 +919,8 @@ def run_asymmetric_growth(uw, refresh_universe: bool = False, no_fetch: bool = F
         result = run_asymmetric_growth_hunter(uw, refresh_universe=refresh_universe, no_fetch=False, run_id=run)
     _write_output("asymmetric_growth", json.dumps(result, ensure_ascii=False, default=str), "latest", ext="json")
     # The page and its cards (S7, K10 #383 C6a): the cards go to the gzip payload file next to the page.
-    write_board(ASYMMETRIC_GROWTH_LATEST, render_asymmetric_growth_hunter_html(result), board_payload(result))
+    write_board(ASYMMETRIC_GROWTH_LATEST, render_asymmetric_growth_hunter_html(result),
+                board_payload(result), asof=_run_asof(result))
     if not no_fetch:
         # Only a Fetch rewrites the durable per-ticker table; a Refresh renders and leaves it alone (#145 D5).
         ticker_store.write_from_cards(result["cards"], result.get("asof"))
@@ -943,7 +959,7 @@ def run_swing(uw, refresh_universe: bool = False, no_fetch: bool = False) -> Pat
 
     payload = run_scan(uw, refresh_universe=refresh_universe, no_fetch=no_fetch)
     save_payload(payload)
-    _write_board(SWING_LATEST, *render_swing_board(payload))
+    _write_board(SWING_LATEST, *render_swing_board(payload), asof=_run_asof(payload))
     if not no_fetch:                      # last step of a Fetch; a Refresh never freezes (see AG above)
         from RevenueChaser.module_swing_potential import freeze as swing_freeze
         swing_freeze.freeze_payload(payload, run_id=_freeze_run_id())
@@ -964,7 +980,7 @@ def run_fundamentals(uw, refresh_universe: bool = False, no_fetch: bool = False)
 
     payload = run_scan(uw, refresh_universe=refresh_universe, no_fetch=no_fetch)
     save_payload(payload)
-    _write_board(FUNDAMENTALS_LATEST, *render_fundamental_board(payload))
+    _write_board(FUNDAMENTALS_LATEST, *render_fundamental_board(payload), asof=_run_asof(payload))
     if not no_fetch:                      # last step of a Fetch; a Refresh never freezes (see AG above)
         from RevenueChaser.module_fundamentals import freeze as fundamentals_freeze
         fundamentals_freeze.freeze_payload(payload, run_id=_freeze_run_id())
@@ -999,7 +1015,7 @@ def run_comovement(uw=None, no_fetch: bool = False,
     payload = engine.run(no_fetch=no_fetch, horizon=horizon, benchmark=benchmark,
                          window=window, **({} if no_fetch else {"run_id": run}))
     _write_to(COMOVEMENT_JSON, json.dumps(payload, ensure_ascii=False, default=str))
-    _write_board(COMOVEMENT_LATEST, *report.render_comovement_board(payload))
+    _write_board(COMOVEMENT_LATEST, *report.render_comovement_board(payload), asof=_run_asof(payload))
     if no_fetch:
         return COMOVEMENT_LATEST
     if not payload.get("clusters"):
@@ -1142,7 +1158,7 @@ def run_relatedness(uw=None, no_fetch: bool = False) -> Path:
     _write_to(RELATEDNESS_JSON, json.dumps(payload, ensure_ascii=False, default=str))
     # Peers first, so a page loaded from the new HTML never asks for a list that is not written yet.
     _write_relatedness_peers(payload.get("peers") or {})
-    _write_board(RELATEDNESS_LATEST, *report.render_relatedness_board(payload))
+    _write_board(RELATEDNESS_LATEST, *report.render_relatedness_board(payload), asof=_run_asof(payload))
     # A Fetch that stopped early (peak, missing key, auth, the worker-pool stop)
     # or left work pending is not a silent success: say what is done and what waits.
     # A Refresh is a GET that writes nothing and must never raise (C-F6), so the

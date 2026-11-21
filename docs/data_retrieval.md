@@ -36,6 +36,16 @@ a rebuilt board never serves old rows. Asymmetric Growth is the first board on i
 in R3. The PC guard
 `scripts/research/383_page_weight.py` checks that no board's HTML plus payload grows past its baseline.
 
+**The v2 envelope beside the payload (#1241, v2 epic #1238).** The same `write_board` call writes a second file,
+`<stem>.v2.json.gz`, for the v2 door: `{schema_version, board, run_id, data_asof, built_at, private, renderer,
+layout, data}` (`core/v2_envelope.py`). `data` is the payload itself, serialised with the payload file's own
+options, so the two files hold the same bytes; `run_id` is the dashboard job that wrote them
+(`rawstore.writer_run_id`), which is how the door refuses an envelope whose build is not the served one. The old
+page is untouched: it still fetches `/view/<module>/payload.json`, and nothing serves the envelope yet. A Refresh
+drops both files together (`reporting_common.drop_board_data`). One JSON Schema per board lives in `v2/schemas/`,
+checked by `v2/tests/test_v2_schemas.py` with the small checker in `v2/validate.py` (the repository carries no
+`jsonschema` dependency).
+
 **A Refresh shows the last Fetch's notes (#383 C24).** LEAPS and SEC 13F put their Fetch notes on the board (the
 scan's notes; names not refreshed and the CUSIPs left out). Their Refresh reads them back from the last run's
 result-history header (`runners.last_fetch_notice`, K2 `history.last_run`) and shows them as "Last Fetch (time):
