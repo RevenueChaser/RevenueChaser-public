@@ -111,7 +111,9 @@ test('sorting a column reorders the rows and travels in the URL', async ({ page 
   await expect(first).toContainText('SPDR S&P 500');
   await page.getByRole('button', { name: 'Sort by Volume' }).click();
   await expect(page).toHaveURL(/sort=volume&dir=asc/);
-  await expect(page.locator('.rc-tr:not(.rc-tr-head)').first()).toContainText('Apple');
+  // The sample layout's smallest volume is Microsoft's 21,880,000; ISRG has none and stays at the bottom.
+  await expect(page.locator('.rc-tr:not(.rc-tr-head)').first()).toContainText('Microsoft');
+  await expect(page.locator('.rc-tr:not(.rc-tr-head)').last()).toContainText('Intuitive');
 });
 
 test('every control is 44 px, apart from the two exceptions the contract names', async ({ page }) => {
