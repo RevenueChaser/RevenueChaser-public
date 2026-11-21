@@ -185,14 +185,17 @@ def test_the_window_is_named_in_days_around_the_new_york_day():
     assert econ.window_params(date(2026, 11, 9)) == {"min_date": "2026-11-02", "max_date": "2026-11-30"}
 
 
-def test_a_day_the_window_does_not_cover_fails_the_fetch_loudly(http_mock):
+def test_a_day_the_window_does_not_cover_is_recorded_as_an_issue_and_still_stored(http_mock):
     """This provider drops a parameter it does not support without an error (#746), so the filter we send is
-    verified on the rows that come back rather than trusted."""
+    verified on the rows that come back rather than trusted. It is **recorded**, not raised: a row outside the
+    window is a correct calendar row, so refusing the day would drop good data over a parameter habit."""
     far = {**CPI, "event": "CPI next year", "time": "2026-12-25T13:30:00Z"}
     http_mock.add("/market/economic-calendar", {"data": [CPI, far]}, headers=UW_HEADERS)
     row = _run(econ.NAME)
-    assert row["result"] == "failed" and "outside the window" in row["note"] and "2026-12-25" in row["note"], row
-    assert read.economic_calendar() == [], "a breached window must not land"
+    assert row["result"] == "changed", row
+    issue = next(i for i in ops.open_issues(econ.NAME)[1] if i["kind"] == "outside_window")
+    assert "2026-12-25" in issue["detail"] and "2026-11-02..2026-11-30" in issue["detail"], issue["detail"]
+    assert sorted(r["event"] for r in read.economic_calendar()) == ["CPI", "CPI next year"]
 
 
 def test_the_window_edges_are_inside_it_with_a_day_of_slack_for_the_utc_day():

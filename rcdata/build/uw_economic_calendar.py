@@ -13,9 +13,11 @@ forward calendar was genuinely empty, and the past days it had published were re
 asked for. Two things follow. The dataset no longer goes blank on an empty forward window, and the days behind
 today are stored, which is what a reaction join needs (#809 reads a headline next to the release it reacts to).
 This provider ignores a parameter it does not support without an error (#746), so :meth:`to_parquet` **checks the
-window on the rows it was given** rather than trusting that it was applied; the 21 Nov measurement is what says it
-is honoured. The answer repeats rows across the window (16 of the 34 were repeats): the key's ``seen`` set already
-drops them.
+window on the rows it was given** rather than trusting that it was applied, and records an ``outside_window`` build
+issue for a day that falls outside it; the 21 Nov measurement is what says it is honoured. The rows are still
+**stored**, because a row outside the window is a correct calendar row and the window is robustness rather than a
+correctness filter. The answer repeats rows across the window (16 of the 34 were repeats): the key's ``seen`` set
+already drops them.
 
 Raw: ``raw/uw/economic_calendar/<YYYY-MM-DD>/<HHMMSS>.json.gz`` (New York day, UTC time of the fetch): one file per
 fetch, so the hourly cadence (``due.py``) is not stopped by the day's first file. Parquet:
@@ -165,10 +167,18 @@ class UWEconomicCalendar:
             ctx.issue("unkeyed", day.isoformat(), f"{unkeyed} rows without a time, an event or a type")
         stray = outside_window([datetime.fromtimestamp(r["event_ts"], timezone.utc).date() for r in rows], day)
         if stray:
-            raise base.SourceError(
-                f"UW {ENDPOINT} {day}: {len(stray)} day(s) outside the window this fetch asked for "
-                f"({window_params(day)['min_date']}..{window_params(day)['max_date']}): "
-                f"{', '.join(d.isoformat() for d in stray[:5])}")
+            # Recorded, not raised, and that is a measured correction rather than a softening. A row outside the
+            # window is still a correct calendar row -- the window is robustness, not a correctness filter -- so
+            # failing the dataset over it would drop good data to punish a provider's parameter habit. An open
+            # ``build_issues`` row is what says the filter was not honoured, and it stays open while it lasts.
+            # The first version did raise, and CI said why that was wrong: ``test_rate_event_overlap_e5d`` keys its
+            # stored sweep at 2026-01-15 and puts its events in October, because for a *snapshot* the sweep day is
+            # a key and not a claim about when the events are. A builder that refuses that shape refuses the truth
+            # about itself.
+            window = window_params(day)
+            ctx.issue("outside_window", day.isoformat(),
+                      f"{len(stray)} day(s) outside {window['min_date']}..{window['max_date']}: "
+                      f"{', '.join(d.isoformat() for d in stray[:5])}")
         if not rows:
             raise base.SourceError(f"UW {ENDPOINT} {day}: no usable row in {raw.name}")
         con = base.scratch_con()
