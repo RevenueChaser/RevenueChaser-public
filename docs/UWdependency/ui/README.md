@@ -23,7 +23,7 @@ UW plan ends 8 Dec 2026. This folder is the record of what the web UI shows, for
 | `README.md` | this file |
 | `UI-only-features.md` | features seen in the UI with no matching public API path, and earlier guesses that were wrong |
 | `manifest.tsv` | every second-pass screenshot: folder, file, full URL, capture time (UTC) |
-| `_nav-links.md` | the left navigation as read from the page, with paths |
+| `nav-links.md` | the left navigation as read from the page, with paths |
 | `public_api_paths.txt` | the 241 paths of the public API |
 | `api/uw_public_api_openapi.yaml` | the full public OpenAPI spec (fetched 21 Nov 2026) |
 

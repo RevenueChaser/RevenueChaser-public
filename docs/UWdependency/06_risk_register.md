@@ -15,3 +15,5 @@
 | R11 | **Deadline risk.** If nothing is decided by 8 December the plan renews at USD 160 for another month | avo's own date | low (it costs one month, not the data) | M1-M4 this week |
 | R12 | **The validation reference disappears with the subscription.** After 9 December there may be no UW answer to score our own detection against | — | medium | run M3 on stored rows **before** the renewal date |
 | R13 | **Analyst ratings have no source here at all** | no need in `rcdata/needs/catalog.py` | low | lane G, on avo's word |
+| R14 | **avo's own UW-only configuration is unrecoverable after the plan lapses**: six stock watchlists, four custom alert rules, the Console habits. No provider returns these | UI survey, `ui/README.md` §1 | medium (low now) | **already captured** — watchlists exported, rules and commands recorded, in `/mnt/project-files/UWdependency/`; lane I imports them into RC |
+| R15 | **The Data Downloads window is 8 trading days, not the renewal date.** Reference days for M1/M3 stop being offered about 8 sessions after each file's date | UI survey, `data-downloads/` | low | avo's call, this week; nothing downloaded so far |
