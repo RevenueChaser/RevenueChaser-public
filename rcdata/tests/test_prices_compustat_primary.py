@@ -375,33 +375,86 @@ def test_a_crsp_split_another_source_dates_apart_at_the_same_ratio_is_applied_on
     date, the week the exchanges were closed) and CRSP's 17 Sep 2001 (the real ex-date). Five days apart, so
     ``SPLIT_SAME_DAYS`` did not pair them, and the same ratio, so applying CRSP's row stepped the share basis a
     second time: NVDA's oldest ``split_factor`` came out 1/960 where 1/480 is right, every adjusted close before
-    12 Sep 2001 half of it. One split the two sources date apart is applied **once**, from the other source."""
+    12 Sep 2001 half of it. One split the two sources date apart is applied **once**, and the day it is applied on
+    is the day the served bars change basis -- CRSP's here, because the other source's day lies outside the gap the
+    jump is measured across (avo, 22 Nov 2026: the real ex-date wins)."""
     from RevenueChaser.rcdata import ops
     from RevenueChaser.rcdata.build.prices import serving as prices_serving
     _serve(monkeypatch, _split_compustat_dates_apart(_data(), "2025-05-30"))
-    assert _aapl_splits() == [("2025-05-30", 2.0, wrds_history.NAME)], "CRSP's row is not applied a second time"
+    assert _aapl_splits() == [(JUNE[2], 2.0, wrds_history.CRSP)], "applied once, on the real ex-date"
     assert _aapl_oldest_split_factor() == pytest.approx(1 / 2), "the share basis steps once, not twice"
+    view = {str(r["session_date"]): r["close"] for r in _q(
+        "SELECT session_date, close FROM price_bars_daily WHERE ticker = 'AAPL'")}
+    assert view[JUNE[1]] == pytest.approx(202.0 / 2), "the bar before the real ex-date is adjusted by the split"
     issues = {i["kind"]: i["detail"] for i in ops.open_issues(prices_serving.NAME, limit=500)[1]
               if i["key"] == f"{AAPL}:{JUNE[2]}" and i["kind"].startswith("split_")}
     assert set(issues) == {"split_crsp_restated"}, issues
     assert "wrds/prices has the same split at ratio 2.0000 on 2025-05-30, 5 day(s) away" \
         in issues["split_crsp_restated"]
-    assert f"{AAPL}:{JUNE[2]}" not in _gap_issues(), "the other source's split explains the gap"
+    assert f"{AAPL}:{JUNE[2]}" not in _gap_issues(), "the applied split explains the gap"
 
 
-def test_the_restated_split_detail_says_where_the_other_source_dates_it_early(monkeypatch):
-    """The two days are not interchangeable: the served close jumps across CRSP's, so the other source's earlier
-    day puts the factor step before the bars that are still on the old basis. Not fixed here -- named, so avo can
-    decide whose date wins (#661)."""
+def test_the_row_the_real_ex_date_stands_in_for_is_kept_unapplied_with_its_reason(monkeypatch):
+    """The other source's row is not deleted: it records the same split, so it stays in ``corporate_action``
+    unapplied, its reason naming the day the basis changed, and ``action_not_applied`` names it. That is how a
+    reader sees the two dates and why one of them won (avo, 22 Nov 2026)."""
+    from RevenueChaser.rcdata import ops
+    from RevenueChaser.rcdata.build.prices import serving as prices_serving
+    _serve(monkeypatch, _split_compustat_dates_apart(_data(), "2025-05-30"))
+    held = _q("SELECT ex_date, source, applied, not_applied_why, source_id FROM corporate_action "
+              "WHERE security_id = ? AND action = 'split' AND NOT applied", [AAPL])
+    assert [(str(r["ex_date"]), r["source"], r["applied"]) for r in held] \
+        == [("2025-05-30", wrds_history.NAME, False)], held
+    assert held[0]["not_applied_why"] == ("restated by CRSP: the same split, and the served close changes basis "
+                                          f"across {JUNE[2]}, the real ex-date, which CRSP's row carries")
+    named = {i["key"]: i["detail"] for i in ops.open_issues(prices_serving.NAME, limit=500)[1]
+             if i["kind"] == "action_not_applied"}
+    assert held[0]["source_id"] in named, named
+    assert "restated by CRSP" in named[held[0]["source_id"]]
+
+
+def test_the_restated_split_detail_names_the_day_the_served_bars_change_basis(monkeypatch):
+    """The two days are not interchangeable: the served close jumps between the bars around CRSP's day and not
+    across the other source's, so CRSP's is the real ex-date and the bars in between come onto the right basis."""
     _serve(monkeypatch, _split_compustat_dates_apart(_data(), "2025-05-30"))
     detail = _crsp_only_details("split_crsp_restated")[f"{AAPL}:{JUNE[2]}"]
-    assert ("the served close jumps between 2025-06-03 and 2025-06-04, not across 2025-05-30, so wrds/prices dates "
-            "this split early and the bars in between are on the wrong basis") in detail
+    assert ("the served close jumps x0.502 between 2025-06-03 and 2025-06-04 and not across 2025-05-30, so "
+            "2025-06-04 is the real ex-date and **CRSP's row is the applied one**; wrds/prices's row stands "
+            "unapplied, and the bars between the two days are now on the right basis") in detail
 
 
-def _restated_count(note: str) -> str:
-    """The build note's restated count, the number the new rule decides (0 where it takes nothing)."""
-    return [w for w in note.split("split_only_crsp: ")[1].split(", ") if w.endswith("another source")][0]
+def _split_dates_apart_in_one_bar_gap(data):
+    """Both days fall in the same gap between served bars: AAPL's 2025 Compustat bars are 2 and 9 June only (the
+    closes halve across the gap), CRSP's ``dlycumfacpr`` steps on the 4th and Compustat dates the split on the 8th.
+    Four days apart, so the day rule leaves them alone, and neither day has a served bar on both sides of it."""
+    from .test_prices_wrds import _secd
+    data["comp.secd"] = [r for r in data["comp.secd"] if not (r["gvkey"] == "001690" and r["datadate"] < "2026")] + [
+        _secd("001690", "01", d, "AAPL", c) for d, c in (("2025-06-02", 200.0), ("2025-06-09", 100.0))]
+    data["comp.sec_split"] = [{"gvkey": "001690", "iid": "01", "datadate": "2025-06-08", "split": 2.0}]
+    return data
+
+
+def test_where_both_days_fall_in_one_bar_gap_the_other_sources_row_stays_the_applied_one(monkeypatch):
+    """The served bars are the evidence, and here they have none: no bar sits between the two days, so neither is
+    shown to be the day the basis changed and no bar's basis moves either way. The conservative answer is to leave
+    the other source's row applied and hold CRSP's back, as before avo's decision (#661, 22 Nov 2026)."""
+    _serve(monkeypatch, _split_dates_apart_in_one_bar_gap(_data()))
+    assert _aapl_splits() == [("2025-06-08", 2.0, wrds_history.NAME)], "the other source's row stays applied"
+    assert not _q("SELECT 1 FROM corporate_action WHERE security_id = ? AND action = 'split' AND NOT applied",
+                  [AAPL]), "nothing is held back where the bars cannot tell the two days apart"
+    detail = _crsp_only_details("split_crsp_restated")[f"{AAPL}:{JUNE[2]}"]
+    assert ("both days fall between the served bars 2025-06-02 and 2025-06-09, so the bars cannot tell them apart "
+            "and no bar's basis moves either way: wrds/prices's row stays the applied one") in detail
+
+
+def _restated_count(note: str) -> tuple[int, int]:
+    """The build note's restated counts: how many pairs the rule took, and how many of those it applied from CRSP
+    as the real ex-date. ``(0, 0)`` where it looked at a pair and took neither."""
+    import re
+    m = re.search(r"(\d+) the same split another source dates within \d+ days at the same ratio "
+                  r"\((\d+) of them applied from \S+ as the real ex-date", note)
+    assert m, note
+    return int(m.group(1)), int(m.group(2))
 
 
 def test_a_same_ratio_split_further_away_than_the_window_is_still_applied(whole_builds, monkeypatch):
@@ -412,8 +465,7 @@ def test_a_same_ratio_split_further_away_than_the_window_is_still_applied(whole_
     note = _serve_note(monkeypatch, _split_compustat_dates_apart(_data(), "2025-05-26"))   # 9 days from 4 Jun
     assert _aapl_splits() == [("2025-05-26", 2.0, wrds_history.NAME), (JUNE[2], 2.0, wrds_history.CRSP)]
     assert _aapl_oldest_split_factor() == pytest.approx(1 / 4)
-    assert _restated_count(note) == "0 not applied with the same split at the same ratio within 7 days from " \
-        "another source"
+    assert _restated_count(note) == (0, 0), "the rule looked at the pair and took neither day"
     assert not _crsp_only_details("split_crsp_restated")
 
 
@@ -423,8 +475,7 @@ def test_a_split_of_another_ratio_inside_the_window_is_still_applied(whole_build
     event, applied beside CRSP's, and the note's count of 0 says the rule looked at it."""
     note = _serve_note(monkeypatch, _split_compustat_dates_apart(_data(), "2025-05-30", ratio=5.0))
     assert _aapl_splits() == [("2025-05-30", 5.0, wrds_history.NAME), (JUNE[2], 2.0, wrds_history.CRSP)]
-    assert _restated_count(note) == "0 not applied with the same split at the same ratio within 7 days from " \
-        "another source"
+    assert _restated_count(note) == (0, 0), "the rule looked at the pair and took neither day"
     assert not _crsp_only_details("split_crsp_restated")
 
 
@@ -439,9 +490,14 @@ def test_a_ratio_apart_only_by_the_factors_rounding_is_one_split(monkeypatch):
 def test_the_restated_count_is_in_the_build_note(whole_builds, monkeypatch):
     note = _serve_note(monkeypatch, _split_compustat_dates_apart(_data(), "2025-05-30"))
     assert ("split_only_crsp: 0 applied as wrds/crsp (the served close jumps 1.9 times or more: Compustat lacks "
-            "the split, #661), 1 not applied with the same split at the same ratio within 7 days from another "
-            "source, 0 named with no jump in the served bars, 0 with no served bar on both sides within 7 days, "
-            "not named") in note
+            "the split, #661), 1 the same split another source dates within 7 days at the same ratio (1 of them "
+            "applied from wrds/crsp as the real ex-date, the other source's row held back), 0 named with no jump "
+            "in the served bars, 0 with no served bar on both sides within 7 days, not named") in note
+
+
+def test_the_note_counts_a_pair_in_one_bar_gap_as_taken_but_not_moved(whole_builds, monkeypatch):
+    note = _serve_note(monkeypatch, _split_dates_apart_in_one_bar_gap(_data()))
+    assert _restated_count(note) == (1, 0), "one pair taken, neither day moved"
 
 
 def test_the_same_gap_with_no_source_of_the_split_is_still_an_issue(monkeypatch):
@@ -489,9 +545,9 @@ def test_a_split_only_crsp_names_the_served_jump_and_one_outside_the_served_bars
     assert "the served close jumped x0.502 from 2025-06-03 to 2025-06-04, so Compustat lacks this split" \
         in applied[f"{AAPL}:{JUNE[2]}"]
     assert ("split_only_crsp: 1 applied as wrds/crsp (the served close jumps 1.9 times or more: Compustat lacks the "
-            "split, #661), 0 not applied with the same split at the same ratio within 7 days from another source, "
-            "0 named with no jump in the served bars, 1 with no served bar on both sides within "
-            "7 days, not named") in note
+            "split, #661), 0 the same split another source dates within 7 days at the same ratio (0 of them "
+            "applied from wrds/crsp as the real ex-date, the other source's row held back), 0 named with no jump "
+            "in the served bars, 1 with no served bar on both sides within 7 days, not named") in note
 
 
 def test_a_split_only_crsp_the_served_close_does_not_jump_across_is_named_as_no_jump(
