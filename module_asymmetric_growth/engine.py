@@ -457,7 +457,10 @@ def score_ticker(ticker: str, financials: dict, technical: dict, meta: dict | No
         "tech_breakthrough": tech_breakthrough,
         "dilution_warning": dilution_warning,
         "us_listed": True,
-        "source": financials.get("source") or "yfinance",
+        # EDGAR is the only source since #645 (``_cached_financials`` sets ``EDGAR_SOURCE`` and a name with no
+        # SEC annual data gets no card), so there is no provider default to fall back on: a card without
+        # provenance carries None and ``_summary`` counts it under ``unreadable_sec``.
+        "source": financials.get("source"),
     }
 
 
@@ -762,7 +765,7 @@ def _funnel_steps(universe_total: int, excluded_types: int, drops: _Drops, score
         steps.append(step("low_liquidity", f"Scored, under ${THIN_DOLLAR_VOLUME:,} average daily dollar volume",
                           low_liquidity, "note"))
     if unreadable_sec:
-        steps.append(step("unreadable_sec", "Scored, but the financials are Yahoo statements, not EDGAR filings",
+        steps.append(step("unreadable_sec", "Scored, but the financials do not say they came from EDGAR filings",
                           unreadable_sec, "note"))
     if momentum_unknown:
         names = sorted(momentum_unknown)
@@ -910,7 +913,8 @@ def _summary(cards: list[dict], excluded_types: int | None, score_errors: dict[s
     """The run's counts. ``thin`` is the batch's low-liquidity note (``_Drops.thin``, #41).
 
     ``low_liquidity`` and ``unreadable_sec`` answer two independent questions — is this name too thin to read, and
-    were its financials read from EDGAR — so they OVERLAP by design: a thin Yahoo-sourced name is in both. The
+    were its financials read from EDGAR — so they OVERLAP by design: a thin name without EDGAR provenance is in
+    both. The
     "counted once" rule belongs to drops, which have to sum to the universe; ``core.funnel.validate`` sums only
     ``kind == "drop"``, so excluding one note from the other would buy no arithmetic and would instead make
     ``unreadable_sec`` answer a different question than its label asks (#106 review).
@@ -939,7 +943,7 @@ def _summary(cards: list[dict], excluded_types: int | None, score_errors: dict[s
         "tech_breakthrough": sum(1 for c in cards if c["tech_breakthrough"]),
         "score_errors": sum(score_errors.values()),
         "score_error_types": score_errors,
-        # #41: reporting only, and the two overlap on purpose (a thin Yahoo-sourced name is in both) — each one
+        # #41: reporting only, and the two overlap on purpose (a thin name without EDGAR provenance is in both)
         # answers its own question. The names that got no card for a filings reason (``no_annual`` /
         # ``fetch_failed``) are drops and are not counted here.
         "low_liquidity": None if thin is None else sum(1 for c in cards if c["ticker"] in thin_names),
