@@ -80,8 +80,7 @@ def raw_path(ticker: str, quarter: str) -> Path:
 def held(ticker: str, quarter: str) -> bool:
     """Whether this (ticker, quarter) is already on disk. A past quarter's call never changes, so this is the
     resume marker: it is what keeps a backfill from spending the day's budget on the same names again."""
-    return False  # MUTATION, to be reverted
-
+    return raw_path(ticker, quarter).exists()
 
 
 def parse(text: str) -> list[dict]:
@@ -157,6 +156,7 @@ class EarningsTranscripts:
     cadence = "daily"
     backfill_needs_from = False
     starts_by_hand = True
+    honours_scope = True              # a request's ``names``: those tickers' missing quarters only (``_due``)
 
     def default_as_of(self) -> date:
         return calendar.today_ny()
@@ -167,6 +167,14 @@ class EarningsTranscripts:
         pairs = wanted(rows, common.tickers_by_cik(common.universe()))
         if not pairs:
             ctx.notes.append("no labelled reported quarter yet (no fundamentals file, or no Compustat dates)")
+        if ctx.scope and ctx.scope.names:
+            # A request that names tickers means those tickers (#265), which is what makes a one-name fill
+            # possible on a provider whose day cap is this small. Tiers alone narrow nothing here: the universe
+            # is already avo's own stock list, else Tier A (``common.universe``).
+            asked = set(ctx.scope.names)
+            pairs = [(t, q) for t, q in pairs if t in asked]
+            if not pairs:
+                ctx.notes.append(f"no reported quarter for {ctx.scope.text()}")
         return [(t, q) for t, q in pairs if not held(t, q)]
 
     def fetch(self, ctx: base.RunContext, as_of: date) -> list[Path]:

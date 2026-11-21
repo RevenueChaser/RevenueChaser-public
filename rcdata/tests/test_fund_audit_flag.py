@@ -171,7 +171,7 @@ def test_the_real_build_serves_the_snapshots_events_and_the_reader_returns_them(
         (MSFT, "officer_change", "5001", "2", date(2026, 9, 24), "8-K", None, None, None, "Resigned", ["cfo"]),
         (MSFT, "restatement", "9001", None, date(2025, 8, 1), "8-K", None, date(2024, 7, 1), date(2025, 3, 31),
          None, ["accounting"])]
-    assert fx.q("SELECT kind, version FROM serving_schema_version") == [("fundamentals", 6)]
+    assert fx.q("SELECT kind, version FROM serving_schema_version") == [("fundamentals", 7)]
     rows = read.audit_flags("0000789019")
     assert [(r["kind"], r["event_key"], r["person_key"]) for r in rows] == [
         ("officer_change", "5001", "1"), ("officer_change", "5001", "2"), ("restatement", "9001", None)]
