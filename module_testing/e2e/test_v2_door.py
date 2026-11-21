@@ -46,12 +46,23 @@ def _free_port() -> int:
 
 
 def _get(url: str, headers: dict | None = None):
+    """``(status, headers, body)``. The header names are **lower-cased**, because uvicorn sends them that way.
+
+    ``dict(response.headers)`` keeps each name exactly as the server wrote it, and uvicorn writes
+    ``content-encoding``, not ``Content-Encoding`` — so a plain dict lookup by the capitalised name silently finds
+    nothing and a header assertion passes or fails for the wrong reason. Lower-casing here is the fix; HTTP header
+    names are case-insensitive by RFC 9110, so there is nothing to lose.
+    """
     request = urllib.request.Request(url, headers=headers or {})
     try:
         with urllib.request.urlopen(request, timeout=10) as r:
-            return r.status, dict(r.headers), r.read()
+            return r.status, _lower(r.headers), r.read()
     except urllib.error.HTTPError as e:                 # a 404 or 405 is an answer, not a failure
-        return e.code, dict(e.headers), e.read()
+        return e.code, _lower(e.headers), e.read()
+
+
+def _lower(headers) -> dict[str, str]:
+    return {name.lower(): value for name, value in headers.items()}
 
 
 @pytest.fixture(scope="module")
@@ -144,7 +155,7 @@ def test_the_board_list_shows_what_is_present_and_what_is_not(door):
 def test_the_doors_data_hash_equals_the_dashboards_payload_file(door, board):
     """The deploy's proof, over a real socket: one equal pair per board served."""
     _, headers, body = _get(f"{door.base}/api/v1/boards/{board}", {"Accept-Encoding": "gzip"})
-    assert headers.get("Content-Encoding") == "gzip", "the stored bytes are served as stored"
+    assert headers.get("content-encoding") == "gzip", "the stored bytes are served as stored"
     envelope = json.loads(gzip.decompress(body))
     from_door = hashlib.sha256(env.data_bytes(envelope)).hexdigest()
     payload_file = rc.payload_path(door.artifacts[board])
@@ -156,7 +167,7 @@ def test_the_doors_data_hash_equals_the_dashboards_payload_file(door, board):
 def test_a_client_without_gzip_gets_the_same_envelope_plain(door):
     board = sorted(SERVED)[0]
     _, headers, body = _get(f"{door.base}/api/v1/boards/{board}", {"Accept-Encoding": "identity"})
-    assert "Content-Encoding" not in headers
+    assert "content-encoding" not in headers
     assert json.loads(body)["board"] == board
 
 
@@ -186,7 +197,7 @@ def test_a_host_outside_the_allowlist_is_refused_by_the_real_server(door):
 def test_every_answer_carries_the_csp_and_names_no_cdn(door):
     for path in ("/api/v1/version", "/api/v1/boards", "/"):
         _, headers, _ = _get(f"{door.base}{path}")
-        policy = headers.get("Content-Security-Policy", "")
+        policy = headers.get("content-security-policy", "")
         assert "default-src 'self'" in policy, path
         assert "cdn" not in policy and "unpkg" not in policy, path
-        assert headers.get("X-Content-Type-Options") == "nosniff", path
+        assert headers.get("x-content-type-options") == "nosniff", path
