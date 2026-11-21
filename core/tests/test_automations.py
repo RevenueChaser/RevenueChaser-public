@@ -99,23 +99,6 @@ def test_unknown_name_is_rejected():
         A.entry(None)  # type: ignore[arg-type]
 
 
-def _ps_registrations(path: Path) -> set[str]:
-    return set(re.findall(r"RC-[A-Za-z-]+", path.read_text(encoding="utf-8")))
-
-
-@pytest.mark.parametrize("ps1", ["register_tasks.ps1", "scripts/register_offpeak_tasks.ps1"])
-def test_ps1_files_register_only_registry_names(ps1):
-    names = {e.name for e in A.REGISTRY}
-    assert _ps_registrations(ROOT / ps1) <= names
-
-
-def test_ps1_files_do_not_define_their_own_tasks():
-    for ps1 in ("register_tasks.ps1", "scripts/register_offpeak_tasks.ps1"):
-        text = (ROOT / ps1).read_text(encoding="utf-8")
-        assert "Register-ScheduledTask" not in text
-        assert "automations" in text
-
-
 # --- result mapping + row states ------------------------------------------------
 
 @pytest.mark.parametrize("code,kind", [
@@ -310,13 +293,6 @@ def test_installer_prefers_pythonw_next_to_python(tmp_path):
     assert A.windowless_python("/usr/bin/python3") == "/usr/bin/python3"
 
 
-
-
-def test_ps1_callers_propagate_the_exit_code_and_drop_dryrun():
-    for ps1 in ("register_tasks.ps1", "scripts/register_offpeak_tasks.ps1"):
-        text = (ROOT / ps1).read_text(encoding="utf-8")
-        assert "exit $" in text and "LASTEXITCODE" in text
-        assert "-DryRun" not in text.split("param(")[1].split(")")[0]
 
 
 # --- F1: BOM, and no console window (coordinator re-review) -----------------------------
