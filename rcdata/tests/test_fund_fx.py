@@ -52,10 +52,11 @@ def _parquet() -> list[tuple]:
 def test_one_request_per_currency_whole_history_first_then_from_the_newest_day(yf):
     asked, answers = yf
     answers["ARSUSD=X"] = _history({"2001-07-13": 1.0, "2025-12-31": 0.000689})
+    before = ops.calls_today("yfinance")                      # a delta, for the reason #1267 gives
     check = fx.run(fx_rates.NAME, "2026-11-06")
     assert check["result"] == "changed", check["note"]
     assert asked == [("ARSUSD=X", "max"), ("CADUSD=X", "max")]
-    assert ops.calls_today("yfinance") == 2
+    assert ops.calls_today("yfinance") - before == 2
     assert _parquet() == [("ARS", date(2001, 7, 13), 1.0), ("ARS", date(2025, 12, 31), 0.000689),
                           ("CAD", date(2026, 11, 4), 0.5), ("CAD", date(2026, 11, 5), 0.51)]
     assert "2 of 2 currencies" in check["note"]

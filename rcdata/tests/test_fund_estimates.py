@@ -65,10 +65,15 @@ def yf(monkeypatch):
 def test_one_request_per_company_and_the_newest_snapshot_served(yf):
     asked, answers = yf
     answers["MSFT"] = _blocks(nan_avg=True)
+    # The day counter is read as a delta, not absolutely: under ``--dist loadfile`` this file can share a worker
+    # with ``test_build_market_series.py``, whose yahoo case counts ``len(yahoo.SYMBOLS)`` (2) against the same
+    # provider, and those two calls were read here as this run's (#1267, measured as 6 == 4 twice on one tree).
+    # Why that counter is shared at all, when every test gets its own market root, is #1267 and still open.
+    before = ops.calls_today("yfinance")
     check = fx.run(estimates.NAME, "2026-10-28")
     assert check["result"] == "changed", check["note"]
     assert asked == ["HEI", "MSFT", "ORCL", "TM"]                 # one per company: HEI, not HEI-A
-    assert ops.calls_today("yfinance") == 4
+    assert ops.calls_today("yfinance") - before == 4
     assert fx.q("SELECT period, eps_est_avg, eps_est_analysts, rev_est_avg, eps_rev_down_7d, source_as_of "
                 "FROM estimate_latest WHERE ticker = 'MSFT' ORDER BY period") == [
         ("+1q", 1.6, 28.0, 9.5e10, 0.0, date(2026, 10, 28)), ("+1y", 7.2, 38.0, 4.2e11, 0.0, date(2026, 10, 28)),
