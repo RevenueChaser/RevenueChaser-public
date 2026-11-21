@@ -12,6 +12,7 @@ from datetime import date, datetime, timedelta
 
 from RevenueChaser.core import calendar, rawstore
 from RevenueChaser.core import rotation_reference
+from . import store_reads as sr
 from .universe import MACRO_SERIES  # noqa: F401 - re-exported name tests patch
 from . import engine
 from .engine import _finite
@@ -55,7 +56,7 @@ def load_holdings_cache(ticker: str, any_age: bool = False) -> dict | None:
     The store-only holdings view passes ``any_age=True``: the last fetched rows
     beat an empty row until the next Rotation Fetch.
     """
-    row = rawstore.get("rotation_holdings", ticker.upper())
+    row = rawstore.get(sr.HOLDINGS, ticker.upper())
     if not row:
         return None
     if not any_age and row.get("date") != date.today().isoformat():
@@ -64,7 +65,7 @@ def load_holdings_cache(ticker: str, any_age: bool = False) -> dict | None:
 
 
 def save_holdings_cache(ticker: str, rows: list[dict]) -> None:
-    rawstore.write_rows("rotation_holdings", [{
+    rawstore.write_rows(sr.HOLDINGS, [{
         "ticker": ticker.upper(),
         "date": date.today().isoformat(),
         "rows": rows,
@@ -101,14 +102,12 @@ def save_snapshot(snapshots: list, as_of: date = None, benchmark: str = "SPY") -
         r["generated_at"] = generated_at
         r["source"] = "live"
         rows.append(r)
-    rawstore.write_rows("rotation_snapshots", rows)
+    rawstore.write_rows(sr.SNAPSHOTS, rows)
     return rows
 
 
 def load_snapshot(as_of: date) -> dict | None:
-    rows = rawstore.query(
-        "SELECT * FROM rotation_snapshots WHERE as_of_date = ? ORDER BY ticker",
-        [as_of.isoformat()], db="sector_rotation")
+    rows = sr.snapshot_rows(as_of)
     if not rows:
         return None
     return {
@@ -120,15 +119,12 @@ def load_snapshot(as_of: date) -> dict | None:
 
 
 def list_snapshot_dates() -> list[str]:
-    rows = rawstore.query("SELECT DISTINCT as_of_date AS d FROM rotation_snapshots ORDER BY d", db="sector_rotation")
-    return [r["d"] for r in rows]
+    return sr.snapshot_dates()
 
 
 def load_range(start: date, end: date) -> dict[str, list[dict]]:
     """Return {as_of_date: [etf dicts]} for every stored snapshot in range."""
-    rows = rawstore.query(
-        "SELECT * FROM rotation_snapshots WHERE as_of_date >= ? AND as_of_date <= ? ORDER BY as_of_date, ticker",
-        [start.isoformat(), end.isoformat()], db="sector_rotation")
+    rows = sr.snapshot_rows_between(start, end)
     out: dict[str, list[dict]] = {}
     for r in rows:
         out.setdefault(r["as_of_date"], []).append(r)
@@ -208,7 +204,7 @@ def _write_days(days: list[date], force: bool) -> BackfillResult:
             r["generated_at"] = generated_at
             r["source"] = "backfill"
             rows.append(r)
-        rawstore.write_rows("rotation_snapshots", rows)
+        rawstore.write_rows(sr.SNAPSHOTS, rows)
         written += 1
         left |= set(tickers) - {snap.ticker for snap in snaps}
     if skipped:

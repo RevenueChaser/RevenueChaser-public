@@ -74,9 +74,10 @@ def health_summary() -> dict:
     ``lines`` counts the lines read; ``newest_session`` is the newest ``as_of`` among them, ``in_newest`` the ETFs
     on it; ``providers`` the provider of every ETF's list; ``missing`` the board's ETFs with no line in the spine;
     ``rs_stored`` the theme ETFs with stored RS rows (``rotation_holdings``, which the Rotation Fetch writes)."""
-    from RevenueChaser.core import rawstore
     from RevenueChaser.rcdata import read
     from RevenueChaser.core import rotation_reference
+
+    from . import store_reads as sr
     expected = synced_etfs()
     lines = read.etf_holdings(expected)
     rows = {r["etf"]: r for r in lines}                 # one per ETF: all of an ETF's lines share as_of and provider
@@ -87,8 +88,7 @@ def health_summary() -> dict:
         if r.get("provider"):
             providers[r["provider"]] = providers.get(r["provider"], 0) + 1
     themes = [t for t, info in rotation_reference.rotation_etfs().items() if info.get("group") == "theme"]
-    with_rs = {r["ticker"] for r in rawstore.query(
-        "SELECT ticker FROM rotation_holdings WHERE rows IS NOT NULL AND json_array_length(rows) > 0", db="sector_rotation")}
+    with_rs = sr.etfs_with_holdings()
     return {
         "expected": len(expected),
         "lines": len(lines),

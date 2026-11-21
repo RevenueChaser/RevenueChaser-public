@@ -985,8 +985,22 @@ The Co-movement board is the third step: `module_comovement/store_reads.py` owns
 `module_relatedness/engine.py`, which held the Co-movement board's own rule for picking the run to read (the
 newest prices, then the board's default window (#95), then the latest), so the two boards could disagree about
 which run is the current one. The dated run is still written in one transaction in `engine._persist`, table names
-from the reader. 45 non-test `rawstore.query` calls -> 33. The blocks left are `module_welcome`'s own `welcome`
-store (5) and `module_sector_rotation` (4).
+from the reader. 45 non-test `rawstore.query` calls -> 33.
+
+The last two boards follow. **Welcome** (`module_welcome/store_reads.py`, 5 reads): the four table names already
+sat in one module, so what this step took was the SQL, and with it two pairs of reads of the same table that have
+to agree — the tile's "newest close per series" and the build's "what do I already hold", and the card's two-day
+earnings cut with its `retired_at IS NULL` beside the build's without it (45 -> 41 on its own base).
+**Sector Rotation**
+(`module_sector_rotation/store_reads.py`, 5 reads): 3 in `store.py`, 1 in `etf_holdings.py` and one in
+`core/provenance.py` — the board's **data date**, resolved by SQL three directories from its tables, which is the
+shape of the News bug (`news_calendar` never existed, and a read swallows `CatalogException`, so that board's date
+had been blank for ever). A date that comes from a board's rows is read by that board. 33 -> 30.
+
+That is every board with a file of its own. What is left under `rawstore.query` is `core`'s own single-purpose
+modules (`outcomes.py`, `provenance.py`, `baselines.py`, `ledger.py`, `ticker_store.py`, `ticker_themes.py`,
+`universe.py`), each already the only owner of its tables, where wrapping buys nothing: #217's harm is a rename
+touching every file of a board, and that does not apply there.
 
 **The first board on it: SPX Gamma (PR 3, D7).** `module_spx_gamma/store_reads.py` is the board's one reader (D4:
 no SQL of its own, no kept connection; a missing day is a "not stored" marker, never an exception or a provider call).
