@@ -114,6 +114,27 @@ command was sent. The record is `ui/discord-bot/` here and
   `05_migration_plan.md` §5 and risk R19.
 - The ninth channel, `unusual-command-line`, was left alone: avo walks that one himself.
 
+### 3.6 Plan B may not survive leaving UW at all (21 November 2026, the bot's own help)
+
+The follow-up pass on the ninth channel read the bot's own help text, and it changes what plan B is worth:
+
+- **Custom alerts posted into a channel are the alerts of ONE linked UW web account**, delivered by webhook, and
+  they need a premium server subscription. The `custom_alert` feeds are `live-option-flow` and part of
+  `congress-trades-fillings` — i.e. **exactly the feed we would be leaning on**. If the linked account is avo's,
+  and his plan ends on 9 December, **those feeds stop with it.** Whose account is linked shows only in
+  `/configure`, which was not opened.
+- **Two UW bots are installed** in Traders' Pub — `Premium_UnusualWhalesBot` and the free
+  `unusual_whales_crier` — which is why several feeds post twice.
+- The help also says a "super buffet" UW subscriber with a linked Discord gets Premium Bot user privileges
+  automatically, so some of what the server shows may be riding on a subscription rather than on the server.
+- **Command answers are rendered images, not text** (`/flow`, `/flow_ticker`, `/oi_change`, `/congress_late`,
+  `/netflow`; 103 commands in 23 topics). So the command surface is not harvestable even in principle, on top of
+  the earlier finding that slash-command replies are ephemeral.
+
+**So plan B is not a fallback for leaving UW.** At best it is a fallback for *someone else* still paying for UW.
+It survives only in the narrow case where the linked account is not avo's and the server subscription is someone
+else's — which is a question for avo, not an assumption to plan on.
+
 ### 3.4 Market-wide contract ranking (`highest-volume-contracts`, and our own `options.far_contracts`)
 
 avo, 21 November 2026: "bu bizim üzerinde çalışmamız gereken bir şey. Tamam IBKR ve CBOE dedik. veya B planı
