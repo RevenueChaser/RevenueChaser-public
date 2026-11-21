@@ -1879,6 +1879,22 @@ def api_build_datasets():
     return jsonify({"ok": True, "datasets": metrics.datasets_list()})
 
 
+@app.route("/api/build/state")
+def api_build_state():
+    """How each served DuckDB file's **last** build was made (#446 step 8), one row per kind.
+
+    ``mode`` is ``live`` when the build started on a copy of the live file and ``fresh`` when it was built whole;
+    ``parquet_files`` is how many Parquet files it was built from; ``audit`` is its last audit round and
+    ``audit_dirty`` the keys waiting for the next build; ``incremental`` and ``by_hand`` say how the kind *would*
+    be built, so a kind nothing has built yet still answers. It reports the last build, not the next one: the
+    second question costs a stat of every Parquet file of the kind (``rcdata.build.state``). Read-only — every
+    open is ``serving.open_read`` and nothing here starts a build. One unreadable file is that row's ``error``.
+    """
+    from RevenueChaser.rcdata.build import state
+
+    return jsonify({"ok": True, "kinds": state.all_kinds()})
+
+
 @app.route("/api/settings/status")
 def api_settings_status():
     """Provider limits, the cross-check and board freshness as JSON, for the Grafana Fetch/Health board (#715)."""
