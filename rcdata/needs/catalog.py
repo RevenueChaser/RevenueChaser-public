@@ -217,7 +217,7 @@ _NEEDS = (
     # An annual report is up to fifteen months old by design -- a 10-K filed in February covers the year before --
     # so these four are counted in calendar days and not in sessions, and 400 days is the same bound the
     # fundamentals layer already uses for an annual-only filer (``annual_statement_older_than_400_days``).
-    # Each has a reader of its own and a ``where``: a need filters on its key column, and three of them share one
+    # Each has a reader of its own and a ``where``: a need filters on its key column, and four of them share one
     # table keyed by ``cik``, so without it ``sec.proxy`` would read fresh off a ``whole`` row. ``ask_required``
     # because the text is gigabytes: nothing is answered unless a company is named.
     Need("sec.whole", "form_whole", "filing_section", "filing_date", "cik", 400, max_lag_unit=DAYS,
@@ -226,6 +226,11 @@ _NEEDS = (
          ask_param="ciks", ask_required=True, where="section = 'business'", providers=("sec",)),
     Need("sec.proxy", "form_proxy", "filing_section", "filing_date", "cik", 400, max_lag_unit=DAYS,
          ask_param="ciks", ask_required=True, where="section = 'proxy'", providers=("sec",)),
+    # The earnings press release (#1214) is the one section of this table that is not an annual report's or a
+    # proxy's: a company files one every quarter, so 200 days is the bound a reported quarter can age by before
+    # the words are no longer about the quarter being scored (``store_reads.RELEASE_MAX_AGE_DAYS``).
+    Need("sec.release", "form_release", "filing_section", "filing_date", "cik", 200, max_lag_unit=DAYS,
+         ask_param="ciks", ask_required=True, where="section = 'release'", providers=("sec",)),
     Need("sec.note", "form_notes", "filing_note", "filing_date", "cik", 400, max_lag_unit=DAYS,
          ask_param="ciks", ask_required=True, providers=("sec",)),
     # ── The SEC reader tool (serving kind ``sec_reads``): a model's answers, asked by question and company. The

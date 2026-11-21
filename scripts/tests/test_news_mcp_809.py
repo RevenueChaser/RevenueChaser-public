@@ -1,10 +1,11 @@
 """The News board's MCP server (#809, slice N3 of #783): ``python -m RevenueChaser.scripts.news_mcp``.
 
-Three tools over the dashboard's two read-only routes, JSON-RPC over stdio. The dashboard is mocked at the HTTP
+Four tools over the dashboard's three read-only routes, JSON-RPC over stdio. The dashboard is mocked at the HTTP
 boundary (``mock_httpx``), which is the only boundary this server has: it reads two URLs and calls no model.
 
 The third tool is the point of the slice: the headlines inside a window around one event, each with how many
-minutes from the event it was published.
+minutes from the event it was published. The fourth (#1234) reads back what the hourly EVREN reading already
+wrote, so a model asking today can see what the tape said this morning without re-reading it.
 """
 from __future__ import annotations
 
@@ -27,6 +28,11 @@ HEADLINES = {"ok": True, "rows": [
      "lane": "market"}]}
 
 
+READING = {"ok": True, "hours": 24, "fields": ["tone", "driver"], "windows": [
+    {"window_start": EVENT_TS - 3600, "window_end": EVENT_TS, "provider": "evren", "headlines": 42,
+     "fields": {"tone": {"value": "risk_off", "quote": "Claims come in light", "headline_id": "a"}}}]}
+
+
 class _Answer:
     """What ``httpx.get`` hands back: the body as JSON, nothing else this server reads."""
 
@@ -46,7 +52,9 @@ def served(monkeypatch):
     def answer(url, *args, **kwargs):
         params = kwargs.get("params") or {}
         asked.append(str(url) + ("?" + "&".join(f"{k}={v}" for k, v in params.items()) if params else ""))
-        return _Answer(EVENTS if "/events" in str(url) else HEADLINES)
+        if "/events" in str(url):
+            return _Answer(EVENTS)
+        return _Answer(READING if "/reading" in str(url) else HEADLINES)
 
     monkeypatch.setattr("httpx.get", answer)
     return asked
@@ -58,12 +66,13 @@ def _call(name: str, arguments: dict | None = None) -> dict:
     return json.loads(out["content"][0]["text"])
 
 
-def test_the_handshake_names_the_server_and_its_three_tools():
+def test_the_handshake_names_the_server_and_its_four_tools():
     got = news_mcp.handle({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
     assert got["result"]["serverInfo"]["name"] == "revenuechaser-news"
     assert got["result"]["capabilities"] == {"tools": {}}
     listed = news_mcp.handle({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})["result"]["tools"]
-    assert [t["name"] for t in listed] == ["recent_headlines", "coming_events", "headlines_around_event"]
+    assert [t["name"] for t in listed] == ["recent_headlines", "coming_events", "headlines_around_event",
+                                           "stored_reading"]
     assert all(t["description"] and t["inputSchema"]["type"] == "object" for t in listed)
 
 
@@ -139,3 +148,18 @@ def test_the_server_answers_one_message_a_line_and_survives_a_bad_one(served):
     assert [a["id"] for a in answers] == [1, None, 2], "the notification is the one with no answer"
     assert answers[1]["error"]["code"] == -32700
     assert json.loads(answers[2]["result"]["content"][0]["text"])["count"] == 2
+
+
+def test_the_stored_reading_tool_reads_the_hours_windows_with_their_sentences(served):
+    out = _call("stored_reading", {"hours": 6})
+    assert out["hours"] == 6 and out["count"] == 1 and out["fields"] == ["tone", "driver"]
+    field = out["windows"][0]["fields"]["tone"]
+    assert (field["value"], field["quote"], field["headline_id"]) == ("risk_off", "Claims come in light", "a")
+    assert served == ["http://127.0.0.1:8000/api/news/reading?hours=6"]
+
+
+def test_the_stored_reading_tool_clamps_its_window_and_needs_no_argument(served):
+    assert _call("stored_reading")["hours"] == news_mcp.DEFAULT_READ_HOURS
+    assert _call("stored_reading", {"hours": 10_000})["hours"] == news_mcp.MAX_READ_HOURS
+    assert _call("stored_reading", {"hours": 0})["hours"] == 1
+

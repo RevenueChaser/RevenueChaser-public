@@ -77,6 +77,10 @@ JOBS: dict[str, Job] = {
             "rcdata/build/sec_reads/company_profile.py", env="RC_SEC_READS_PROVIDER"),
         Job("sec_reads.debt.note", "SEC reads · debt.note",
             "rcdata/build/sec_reads/debt_note.py", env="RC_SEC_READS_PROVIDER"),
+        # The News board's hourly reading of the headline flow (#1234, avo 21 Nov 2026). EVREN by default like
+        # every job here; the pass itself refuses to run on a paid writer unless it is started with
+        # ``allow_paid``, because an hourly pass is a standing cost and a paid run needs avo's own word.
+        Job("news.reading", "News · hourly headline reading", "module_news/reading.py"),
     )
 }
 
