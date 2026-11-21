@@ -21,6 +21,9 @@ from RevenueChaser.rcdata.tests import fund_fixture as fx
 from RevenueChaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401  (fixtures)
 
 STATED = "Direct sales to Apple accounted for 29.8% of our net sales. "
+#: MSFT in ``fund_fixture``: the layer corpus has no ``chain_filings`` row to read the CIK from, and
+#: the SEC reading service answers by CIK (#894 step 4).
+MSFT_CIK = "789019"
 
 
 @pytest.fixture
@@ -43,7 +46,7 @@ def layer(monkeypatch, http_mock):  # noqa: F811
 def test_a_layer_filer_gets_its_edges_from_its_profile_not_its_text(layer):
     # #748: the share sentence in the layer's text is no longer scanned; without a profile it gives no edge.
     assert not [e for e in engine.build_edges() if e["src"] == "MSFT" and e["dst_ticker"] == "AAPL"]
-    _profile("MSFT")
+    _profile("MSFT", cik=MSFT_CIK)
     edges = [e for e in engine.build_edges() if e["src"] == "MSFT" and e["dst_ticker"] == "AAPL"]
     assert [(e["relation"], e["source"]) for e in edges] == [("customer", "profile")]
     assert rawstore.get_all("chain_filings") == []
@@ -78,7 +81,7 @@ def test_the_corpus_is_the_form_reader_and_not_filing_item(layer, monkeypatch):
 
     monkeypatch.setattr(read, "filing_texts", refuse)
     monkeypatch.setattr(read, "filing_text", refuse)
-    _profile("MSFT")
+    _profile("MSFT", cik=MSFT_CIK)
     assert [r["ticker"] for r in engine._board_filings_rows()] == ["MSFT"]
     assert any(e["dst_ticker"] == "AAPL" for e in engine.build_edges())
 
@@ -120,7 +123,7 @@ def test_off_the_layer_the_corpus_is_chain_filings():
     rawstore.write_rows("chain_filings", [{"ticker": "MSFT", "cik": "789019", "form": "10-K", "filed": "2025-07-30",
                                            "accession": "a", "primary_doc": "u", "item_text": STATED,
                                            "quality": "ok", "fetched_at": 1.0}])
-    _profile("MSFT")
+    _profile("MSFT", cik=MSFT_CIK)
     assert [r["ticker"] for r in engine._board_filings_rows()] == ["MSFT"]
     assert any(e["dst_ticker"] == "AAPL" for e in engine.build_edges())
 

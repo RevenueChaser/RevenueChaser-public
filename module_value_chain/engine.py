@@ -5,6 +5,11 @@ this board reads ``filing_section``'s business row, so a Fetch downloads and sli
 old path stands: Fetch pulls the latest 10-K/20-F per issuer and slices Item 1/4 into ``chain_filings``. The
 model-only (``no_fetch``) path reads the cached corpus and never touches the network either way. Edges are
 persisted so a Refresh re-renders with zero network.
+
+The company profile an edge can come from is the SEC reading service's ``company.profile`` answer since #894
+step 4 (``_service_profiles``), read by CIK through ``rcdata.read.sec_reads``. It used to be the Relatedness
+board's own ``relatedness_profiles.profile_json``, so a profile reached this board only once that board had
+imported it; the service owns every SEC model read now, and this board is one of its readers.
 """
 from __future__ import annotations
 
@@ -501,24 +506,52 @@ def merge_profile(regex_edges: list[dict], prof_edges: list[dict]) -> list[dict]
             + [e for e in regex_edges if not (e["relation"] == "other" and _counterparty(e) in parties)])
 
 
-def _stored_profiles() -> dict[str, dict]:
-    """The stored Relatedness v3 profiles (``relatedness_profiles.profile_json``); empty when none can be read."""
-    from RevenueChaser.module_relatedness import store
-    try:
-        return store.load_profile_json()
-    except Exception:  # noqa: BLE001 - no profile table yet reads as "no profiles": the regex edges stand
-        logger.exception("value_chain: Relatedness profiles could not be read; regex edges only")
-        return {}
+#: The SEC reading service's question this board reads (#894 step 4). Named here and not imported from
+#: ``rcdata.build.sec_reads``, because that package pulls in the asker and its providers and a board import must
+#: not: ``read.sec_reads`` takes the id as text. The board's test holds it to the registered question's own id.
+PROFILE_QUESTION = "company.profile"
 
 
-def _profile_accessions() -> dict[str, str]:
-    """``{ticker: accession}`` of the stored profiles that name the filing they were written from (plan v31 step 1(d))."""
+def _service_profiles(rows: list[dict]) -> tuple[dict[str, dict], dict[str, str]]:
+    """``({ticker: v3 profile}, {ticker: accession})`` for ``rows``, from the SEC reading service (#894 step 4).
+
+    The service answers by CIK and the board works in tickers, so the map is the corpus row's own ``cik`` — the
+    same one the batch was read with, which is why no second ticker -> CIK source is needed and nothing here can
+    fetch (the board reads the store only, ``_stored_ciks``' docstring). Both share classes of one CIK get the
+    answer; ``build_edges`` then keeps one of them (#408).
+
+    Every answer the service serves is a profile: ``read.sec_reads`` already returns the newest ``ok`` or
+    ``partial`` row per company, and a ``partial`` one is a profile here because the board has always had them —
+    the Relatedness table this read replaces stores a partial answer too (``module_relatedness/engine.py``), so
+    dropping them would lose edges the board serves today. An answer with no accession simply carries none, as a
+    stored profile without one did (plan v31 step 1(d)).
+
+    A read that fails reads as "no profiles", so the filings' own XBRL edges stand, exactly as the stored-table
+    read did.
+    """
+    from RevenueChaser.rcdata import read
+    by_cik: dict[str, list[str]] = {}
+    for r in rows:
+        if r.get("cik"):
+            by_cik.setdefault(read._cik(r["cik"]), []).append(str(r["ticker"]).upper())
+    if not by_cik:
+        return {}, {}
     try:
-        return {r["ticker"]: r["accession"] for r in rawstore.get_all("relatedness_profiles", ["ticker", "accession"])
-                if r.get("accession")}
-    except Exception:  # noqa: BLE001 - no profile table or column yet: no edge carries an accession
-        logger.exception("value_chain: profile accessions could not be read")
-        return {}
+        answers = read.sec_reads(sorted(by_cik), PROFILE_QUESTION)
+    except Exception:  # noqa: BLE001 - no serving file or no table yet reads as "no profiles": the XBRL edges stand
+        logger.exception("value_chain: the SEC reading service could not be read; profile edges are left out")
+        return {}, {}
+    profiles: dict[str, dict] = {}
+    accessions: dict[str, str] = {}
+    for a in answers:
+        v3 = a.get("answer")
+        if not isinstance(v3, dict):
+            continue
+        for t in by_cik.get(read._cik(a["cik"]), []):
+            profiles[t] = v3
+            if a.get("accession"):
+                accessions[t] = str(a["accession"])
+    return profiles, accessions
 
 
 def build_edges(info: dict | None = None) -> list[dict]:
@@ -528,15 +561,16 @@ def build_edges(info: dict | None = None) -> list[dict]:
     whether the stored edges were kept because none came out (``kept``)."""
     edges: list[dict] = []
     covered: set[str] = set()   # the tickers this run scanned: only their stored keys can be retired
-    profiles = _stored_profiles()
-    accessions = _profile_accessions() if profiles else {}
-    n_filings, names = 0, (_spine_names() if profiles else None)
+    n_filings, names = 0, None
     refused: dict[str, int] = {}          # #1142: quotes that state another relation, by reason
     unnamed: dict[str, list[str]] = {}   # D: the customers each filing tags without a name ("Customer A")
     for rows in _corpus_batches():
         n_filings += len(rows)
+        # Per batch, not once for the whole board: the batch is what holds the CIKs the service is asked for, and
+        # one batch's answers are all that is held at a time (``_LAYER_BATCH``'s memory guard, #841).
+        profiles, accessions = _service_profiles(rows)
         customers = _stored_customers(rows)
-        if customers and names is None:
+        if (customers or profiles) and names is None:
             names = _spine_names()
         twins = {t for others in aliases.share_class_groups(rows).values() for t in others}
         for f in rows:

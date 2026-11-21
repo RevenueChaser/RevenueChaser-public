@@ -9,6 +9,7 @@ from RevenueChaser.core import rawstore
 from RevenueChaser.module_relatedness import config, store
 from RevenueChaser.module_value_chain import engine
 from RevenueChaser.module_value_chain.tests.test_value_chain_profile_edges_410 import PROFILE, _filing, _profile
+from RevenueChaser.rcdata.tests.conftest import market_roots  # noqa: F401  (fixture)
 
 ATTRS = {f: ["x"] for f in config.PROFILE_FIELDS}
 
@@ -40,10 +41,10 @@ def test_profile_edges_carry_the_accession():
     assert {e["accession"] for e in engine.profile_edges("AMKR", PROFILE, "2026-02-01")} == {None}
 
 
-def test_a_stored_profiles_accession_reaches_chain_mentions(rawstore_tmp_db):
+def test_the_answers_accession_reaches_chain_mentions(rawstore_tmp_db, market_roots):  # noqa: F811
+    """#894 step 4: the accession an edge carries is the service answer's, not a column of the board's old table."""
     _filing()
-    _profile()
-    rawstore.execute("UPDATE relatedness_profiles SET accession = 'acc-1' WHERE ticker = 'AMKR'", db="relatedness")
+    _profile(accession="acc-1")
     engine.build_edges()
     stored = [r for r in rawstore.get_all("chain_mentions") if r["src"] == "AMKR"]
     assert stored and {r["accession"] for r in stored} == {"acc-1"}
