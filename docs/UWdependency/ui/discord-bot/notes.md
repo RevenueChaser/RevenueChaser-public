@@ -119,3 +119,8 @@ what "our own command line" would have to cover.
 - Aim: see how the bot works and whether it can be tied into avo's own system.
 - If we can do what the bot does ourselves, the bot is not needed; a record of it is kept either way.
 - The Discord pass comes after the UW web survey, in a web window avo opened, by a method avo will explain.
+
+## Browser pass (21 Nov 2026)
+
+Done for the eight feed channels: see [`discord-pass_2026-11-21.md`](discord-pass_2026-11-21.md). The channel-to-API
+mapping above was written from screenshots; where the two differ, the pass file is the one read from the live channels.
