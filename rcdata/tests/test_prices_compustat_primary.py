@@ -481,9 +481,13 @@ def test_a_split_of_another_ratio_inside_the_window_is_still_applied(whole_build
 
 def test_a_ratio_apart_only_by_the_factors_rounding_is_one_split(monkeypatch):
     """``dlycumfacpr`` and ``ajexdi`` are rounded, so the same split's two quotients differ a little:
-    ``SPLIT_RATIO_TOLERANCE`` of each other is one ratio."""
+    ``SPLIT_RATIO_TOLERANCE`` of each other is one ratio. The pair is then one split, and it is applied on the day
+    the served bars change basis, as any other restated pair -- the other source's 2.004 row is held back."""
     _serve(monkeypatch, _split_compustat_dates_apart(_data(), "2025-05-30", ratio=2.004))
-    assert _aapl_splits() == [("2025-05-30", 2.004, wrds_history.NAME)]
+    assert _aapl_splits() == [(JUNE[2], 2.0, wrds_history.CRSP)], "one split, on the real ex-date"
+    held = _q("SELECT ex_date, ratio FROM corporate_action WHERE security_id = ? AND action = 'split' "
+              "AND NOT applied", [AAPL])
+    assert [(str(r["ex_date"]), r["ratio"]) for r in held] == [("2025-05-30", 2.004)], held
     assert set(_crsp_only_details("split_crsp_restated")) == {f"{AAPL}:{JUNE[2]}"}
 
 
