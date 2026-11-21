@@ -10,7 +10,7 @@ opinion:
 | Option | Monthly | What it costs us |
 |---|---|---|
 | **A — stay on UW** | USD 160 | nothing to build; the deadline just passes |
-| **B — downgrade UW, add a free/cheap chain** | UW Options Starter USD 99 (unverified today) + Cboe free | keeps the tape, drops GEX, which we then compute |
+| **B — downgrade UW, add a free/cheap chain** | UW Options Starter USD 99 (unverified) + Cboe free | keeps the tape, drops GEX, which we then compute. **Not a one-step option**: measured usage is 148K requests in 30 days against Starter's reported 25,000 a month, so lanes A and B have to land first (`02_provider_replacement.md` §5) |
 | **C — leave UW** | IBKR OPRA USD 1.50 (often waived) or ThetaData USD 80, + Cboe free | layers 1 and 2 become ours; ~5 needs have to be rebuilt |
 
 Nothing below commits to one. **Measurements M1-M4 decide it**, and all four fit before 8 December.
@@ -78,6 +78,20 @@ the v2 run plan adds no market-data provider (only Kalshi/Polymarket at step 15)
    together, which is the right moment to look again at the two items with no home today —
    `highest-volume-contracts` (market-wide ranking) and analyst ratings. **If v2's screen is not up before
    8 December, the decision is made on M1-M4 and nothing waits for it.**
+
+## 4b. The provider issues avo closed on 21 November 2026
+
+avo, 21 November 2026 14:47 Amsterdam: the provider-dependency issues are **his** once v2 is up, and they were
+closed — #100 (yfinance 401/429 across 48 files), **#418** (move the options layer to Cboe, leave the UW tier),
+**#1233** (the tape measurement, then the second-source conversation), #709 (the unfiltered option screener),
+#785 (the 64 symbols no provider covers). #1234 closed with the EVREN decision. They continue at v2's
+provider / source-catalogue step.
+
+Two of them are the same work as this plan's measurements: **#418 is M1** (Cboe) and **#1233 is M2** (the tape).
+Said once, plainly, so nothing is assumed: the **8 December deadline and M1-M4 still stand** (coordinator's note,
+same day). If the measurements do not happen before then, the renewal simply passes and the decision is
+**option A, stay on UW** for another month — which is a fine outcome, as long as it is chosen rather than
+arrived at.
 
 ## 5. The questions only avo can answer (one card at a time)
 
