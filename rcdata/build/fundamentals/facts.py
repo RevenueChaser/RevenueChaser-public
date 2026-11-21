@@ -148,7 +148,7 @@ def _rate(fx: dict, cur: str, start: str | None, end: str) -> float | None:
     lo = bisect.bisect_left(days, start)
     if lo >= hi or _gap(start, days[lo]) > FX_GAP_DAYS:
         return None
-    return rates[hi - 1]        # MUTANT M1
+    return (sums[hi] - sums[lo]) / (hi - lo)
 
 
 def _in_usd(body: dict, fx: dict, only: str | None = None) -> dict:
@@ -245,7 +245,8 @@ def reporting_currency(facts: dict) -> str | None:
             if not cur:
                 continue
             for f in items or []:
-                counts[cur] = counts.get(cur, 0) + 1        # MUTANT M3
+                if f.get("form") in _ANNUAL_FORMS:
+                    counts[cur] = counts.get(cur, 0) + 1
     if not counts:
         return None
     cur, n = max(counts.items(), key=lambda kv: (kv[1], kv[0] == "USD"))

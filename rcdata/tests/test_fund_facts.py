@@ -915,3 +915,17 @@ def test_an_ifrs_filers_conversion_is_unchanged_by_the_us_gaap_one_105():
     converted = facts.as_gaap(_ifrs_filer("EUR"), rates)
     assert facts.reporting_currency(converted) is None
     assert facts.gaap_in_usd(converted, rates) is converted
+
+
+def test_a_plurality_that_is_not_a_majority_converts_nothing_105():
+    # The mutation round of this PR: dropping the strict-majority test left every test green, because the measure
+    # also picks the most frequent currency. A plurality is not a majority, and a filer whose facts are split three
+    # ways states no reporting currency at all -- nothing is converted rather than the largest share assumed.
+    filer = _foreign_gaap()                                                   # five annual money facts, all CAD
+    del filer["facts"]["us-gaap"]["EarningsPerShareDiluted"]
+    del filer["facts"]["us-gaap"]["CashAndCashEquivalentsAtCarryingValue"]    # CAD: 3
+    for cur, vals in (("USD", (7_000, 500)), ("EUR", (6_000, 400))):
+        for concept, val in zip(("Revenues", "NetIncomeLoss"), vals):
+            filer["facts"]["us-gaap"][concept]["units"][cur] = [
+                fx._fact(val, "2024-12-31", "0000000004-25-000001", "2025-03-01", "40-F", "FY", 2024, "2024-01-01")]
+    assert facts.reporting_currency(filer) is None                            # 3 of 7 is the most, not a majority
