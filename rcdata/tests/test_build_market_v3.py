@@ -168,3 +168,55 @@ def test_an_http_error_is_not_retried_after_a_pause(http_mock, monkeypatch):
     http_mock.add("/market/economic-calendar", {"error": "down"}, status=500, headers=UW_HEADERS)
     assert base.run_request({"dataset": econ.NAME, "params": {}}, sleep=pauses.append)["result"] == "failed"
     assert econ.TRANSPORT_RETRY_PAUSE_S not in pauses
+
+
+# ── the call names its window (#1235) ────────────────────────────────────────────────────────────────────────────
+
+def test_the_call_asks_for_a_window_around_the_snapshot_day(http_mock):
+    """The parameterless call is forward-only, so it answers nothing while UW's forward window is empty -- measured
+    21 Nov 2026 08:35 UTC: 0 rows with no parameters, 34 for a named 17-28 Nov window. The call names the window."""
+    http_mock.add("/market/economic-calendar", {"data": [CPI, FOMC]}, headers=UW_HEADERS)
+    _run(econ.NAME)
+    url = str(http_mock.calls("/market/economic-calendar")[0].url)
+    assert "min_date=2026-11-02" in url and "max_date=2026-11-30" in url, url
+
+
+def test_the_window_is_named_in_days_around_the_new_york_day():
+    assert econ.window_params(date(2026, 11, 9)) == {"min_date": "2026-11-02", "max_date": "2026-11-30"}
+
+
+def test_a_day_the_window_does_not_cover_is_recorded_as_an_issue_and_still_stored(http_mock):
+    """This provider drops a parameter it does not support without an error (#746), so the filter we send is
+    verified on the rows that come back rather than trusted. It is **recorded**, not raised: a row outside the
+    window is a correct calendar row, so refusing the day would drop good data over a parameter habit."""
+    far = {**CPI, "event": "CPI next year", "time": "2026-12-25T13:30:00Z"}
+    http_mock.add("/market/economic-calendar", {"data": [CPI, far]}, headers=UW_HEADERS)
+    row = _run(econ.NAME)
+    assert row["result"] == "changed", row
+    issue = next(i for i in ops.open_issues(econ.NAME)[1] if i["kind"] == "outside_window")
+    assert "2026-12-25" in issue["detail"] and "2026-11-02..2026-11-30" in issue["detail"], issue["detail"]
+    assert sorted(r["event"] for r in read.economic_calendar()) == ["CPI", "CPI next year"]
+
+
+def test_the_window_edges_are_inside_it_with_a_day_of_slack_for_the_utc_day():
+    """``time`` is UTC and the window is named in New York days, so a 00:30 UTC row belongs to the day before."""
+    as_of = date(2026, 11, 9)
+    assert econ.outside_window([date(2026, 11, 1), date(2026, 11, 2), date(2026, 11, 30),
+                                date(2026, 12, 1)], as_of) == []
+    assert econ.outside_window([date(2026, 10, 31), date(2026, 12, 2)], as_of) == [date(2026, 10, 31),
+                                                                                   date(2026, 12, 2)]
+
+
+def test_an_empty_answer_names_the_window_it_asked_for(http_mock):
+    http_mock.add("/market/economic-calendar", {"data": []}, headers=UW_HEADERS)
+    _run(econ.NAME)
+    detail = ops.open_issues(econ.NAME)[1][0]["detail"]
+    assert "2026-11-02..2026-11-30" in detail, detail
+
+
+def test_a_backfill_is_refused_because_a_snapshot_cannot_be_made_after_the_day(http_mock):
+    """Not because UW has no past: the named window does answer for days behind today. A day's row is what UW said
+    on that day, so only a fetch made that day can say it."""
+    with pytest.raises(Exception) as e:
+        econ.DATASET.backfill(None, date(2026, 11, 1), date(2026, 11, 8))
+    assert "only a fetch made that day" in str(e.value)
