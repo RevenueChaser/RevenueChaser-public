@@ -399,3 +399,48 @@ def test_the_proxy_answers_carry_the_doors_own_headers(client):
     r = client.get(_url("/api/settings/status"))
     assert "Content-Security-Policy" in r.headers
     assert r.headers["X-Content-Type-Options"] == "nosniff"
+
+
+# ── the rules that are about the file rather than a call ─────────────────────────────────────────────────────────
+
+_DOOR = __import__("pathlib").Path(proxy.__file__).parent
+_DOC = (_DOOR.parents[1] / "docs" / "v2" / "door.md").read_text(encoding="utf-8")
+
+
+def test_the_proxy_and_the_write_log_add_no_third_party_package_to_the_image():
+    """The image installs ``v2/door/requirements.txt`` alone, and a loopback proxy needs nothing beyond stdlib.
+
+    ``httpx`` would be the obvious reach and is deliberately not taken: it would be a fourth pinned dependency,
+    a line in ``THIRD-PARTY-NOTICES.md`` and a megabyte in a door whose whole job is a handful of small presses.
+    """
+    import ast
+    import sys
+    allowed = {"RevenueChaser", "__future__"}
+    for name in ("proxy.py", "writelog.py"):
+        tree = ast.parse((_DOOR / name).read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                modules = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                modules = [node.module or ""]
+            else:
+                continue
+            for module in modules:
+                root = module.split(".")[0]
+                assert root in sys.stdlib_module_names or root in allowed, f"{name} imports {module}"
+
+
+def test_the_doc_names_every_route_in_the_table_with_its_class():
+    """A route table in code and a different one in the doc is how a Guarded route quietly becomes a Write."""
+    for route in proxy.ROUTES:
+        assert f"`{route.pattern}`" in _DOC, f"{route.pattern} is not in docs/v2/door.md"
+    for klass in proxy.RouteClass:
+        assert f"**{klass.value.capitalize()}**" in _DOC, klass
+
+
+def test_the_doc_states_the_prefix_and_the_timeout_the_code_owns():
+    from RevenueChaser.v2.door import app as door_app
+    assert f"`{door_app.PROXY_PREFIX}`" in _DOC
+    assert f"{config.UPSTREAM_TIMEOUT_S:g} s" in _DOC.replace("**", "")
+    for variable in ("RC_DOOR_UPSTREAM", "RC_DOOR_WRITE_LOG"):
+        assert variable in _DOC, variable

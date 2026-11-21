@@ -4,25 +4,34 @@ Run plan row 6 (#1264, epic #1238). Everything the routes decide lives in :mod:`
 :mod:`v2.door.health`; this module is the HTTP surface and the guards, so a change to a rule is a change to a
 tested function and not to a decorator.
 
-**Read only, by construction.** The proxy and its Read / Write classes are step 7. Until then the door refuses
-every method but ``GET``, ``HEAD`` and ``OPTIONS`` with 405 — not because no write route is declared (that is true
-today and would silently stop being true), but because the guard sits in front of every route the app will ever
-have. ``v2/tests/test_door_app.py`` fails if the guard stops holding.
+**One prefix writes, and nothing else.** Step 7 (#1317) adds the proxy under ``/api/v1/proxy``; everywhere else
+the door still refuses every method but ``GET``, ``HEAD`` and ``OPTIONS`` with 405 — not because no write route is
+declared there, which would silently stop being true, but because the guard sits in front of every route the app
+has. ``v2/tests/test_door_app.py`` fails if the guard stops holding.
+
+What the proxy lets through is :func:`v2.door.proxy.decide` and nothing in this module: the handler below asks it,
+forwards when it says so, and writes the line. A rule read here would be a rule that could not be mutation-tested.
 """
 from __future__ import annotations
 
 import gzip
+import time
 from pathlib import Path
 
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.staticfiles import StaticFiles
 
 from RevenueChaser.core import v2_envelope
-from RevenueChaser.v2.door import boards, config, health
+from RevenueChaser.v2.door import boards, config, health, proxy, writelog
 
 READ_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+# The one prefix a write may arrive on. Everything under it is classified by the route table; everything outside it
+# is read-only, as it was in step 6.
+PROXY_PREFIX = f"{config.API_PREFIX}/proxy"
 
 # Where the `web` job's build lands (`v2/README.md` decision 6). Mounted when it is there; a door started from a
 # checkout that has never run `npm run build` serves the API and says so at `/`, rather than failing to start.
@@ -61,9 +70,9 @@ def create_app() -> FastAPI:
     @app.middleware("http")
     async def read_only(request: Request, call_next):
         """405 for anything but a read, and the door's headers on every answer."""
-        if request.method.upper() not in READ_METHODS:
+        if request.method.upper() not in READ_METHODS and not request.url.path.startswith(f"{PROXY_PREFIX}/"):
             response: Response = JSONResponse(
-                {"detail": "the v2 door is read-only; the write classes are step 7"},
+                {"detail": f"only {PROXY_PREFIX} takes a write; every other route of the door is read-only"},
                 status_code=405, headers={"Allow": ", ".join(sorted(READ_METHODS))})
         else:
             response = await call_next(request)
@@ -126,6 +135,62 @@ def _routes(app: FastAPI) -> None:
             headers["Content-Encoding"] = "gzip"
             return Response(raw, media_type="application/json", headers=headers)
         return Response(gzip.decompress(raw), media_type="application/json", headers=headers)
+
+    @app.api_route(f"{PROXY_PREFIX}/{{path:path}}", methods=["GET", "POST"])
+    async def proxied(path: str, request: Request) -> Response:
+        """One of the dashboard's routes, pressed under its class — Read, Write or Guarded.
+
+        ``async def`` so the body is read without blocking, and :func:`v2.door.proxy.forward` — a blocking
+        loopback call with a timeout — is handed to the threadpool, so one slow press does not stop the event loop
+        and with it the health route a monitor is reading.
+
+        The method is the caller's, not a guessed one: the prefix declares ``GET`` and ``POST``, and the route
+        table decides which of the two a given path answers. Anything else gets FastAPI's own 405 before this runs.
+        """
+        upstream_path = "/" + path
+        decision = proxy.decide(request.method, upstream_path, request.headers)
+        started = time.monotonic()
+        answer, status = await _answer(decision, request)
+        _log(decision, request, upstream_path, status, started)
+        return answer
+
+
+async def _answer(decision: proxy.Decision, request: Request) -> tuple[Response, int]:
+    """The answer this decision leads to, and the status the write log records.
+
+    A refusal never reaches :func:`v2.door.proxy.forward`: the only call to it is below the ``allowed`` check, so
+    a route the table guards cannot be pressed by a bug in the error handling either.
+    """
+    if not decision.allowed:
+        return JSONResponse({"detail": decision.reason,
+                             "klass": decision.klass.value if decision.klass else None},
+                            status_code=decision.status), decision.status
+    body = await request.body()
+    if len(body) > proxy.MAX_BODY_BYTES:
+        # Settings' presses are small JSON objects or empty. A door that streamed an unbounded body to the
+        # dashboard would be a way to spend the dashboard's memory through the door.
+        return JSONResponse({"detail": f"a press carries at most {proxy.MAX_BODY_BYTES} bytes"},
+                            status_code=413), 413
+    try:
+        status, headers, out = await run_in_threadpool(
+            proxy.forward, request.method, decision.upstream_path, request.url.query,
+            proxy.forwarded_headers(request.headers), body)
+    except proxy.UnsafeUpstream as exc:
+        # The misconfiguration is the box's, so it is named; the caller is told nothing about where the door
+        # would have gone, because that is the one value worth keeping to ourselves here.
+        return JSONResponse({"detail": f"the door's upstream is misconfigured: {exc}"}, status_code=500), 500
+    except proxy.UpstreamUnreachable:
+        return JSONResponse({"detail": "the dashboard did not answer"}, status_code=504), 504
+    return Response(out, status_code=status, media_type=headers.get("Content-Type", "application/json"),
+                    headers={"Cache-Control": "no-store"}), status
+
+
+def _log(decision: proxy.Decision, request: Request, path: str, status: int, started: float) -> None:
+    """One write-log line, when the class is one the log is for (a read is not)."""
+    if not writelog.should_record(decision):
+        return
+    writelog.record(decision, method=request.method, path=path, login=proxy.login_of(request.headers),
+                    status=status, duration_ms=int((time.monotonic() - started) * 1000))
 
 
 app = create_app()
