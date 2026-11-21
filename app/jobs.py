@@ -159,6 +159,24 @@ def active_id(modules: tuple[str, ...]) -> Optional[str]:
     return None
 
 
+def registered() -> tuple[str, ...]:
+    """The module names a runner is registered under, in registration order."""
+    return tuple(_RUNNERS)
+
+
+def active_job(modules: tuple[str, ...]) -> Optional[dict]:
+    """The queued or running job of one of ``modules``, as a view, else ``None`` (#165).
+
+    What the Settings panel needs to offer a Stop on a scheduled row: the id to cancel, and the ``status`` and
+    ``cancellable`` that decide whether :func:`cancel` would take it.
+    """
+    with _LOCK:
+        for j in _JOBS.values():
+            if j.get("module") in modules and j.get("status") in ("queued", "running"):
+                return _view(j)
+    return None
+
+
 def has_active(modules: tuple[str, ...]) -> bool:
     """True while a job of one of ``modules`` is queued or running."""
     return active_id(modules) is not None
