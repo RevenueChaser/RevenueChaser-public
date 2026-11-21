@@ -25,7 +25,7 @@ ratio and one print table, and layer 2 is **already half-written here** (`core/o
 | `market.spx_expiry_strike`, `market.spx_greek_expiry_strike` | 3 | **fully replaceable (compute)** | chain OI × Greeks; UW serves the sum, we would sum it ourselves |
 | SPX Gamma's `gex-levels`, `greek-exposure/*`, `spot-exposures/*`, `max-pain` | 3 | **fully replaceable (compute)** | same input; the formulas are standard and open |
 | `options.iv`, `volatility/term-structure`, `interpolated-iv`, `iv-rank` | 3 | **partly today, fully with work** | IBKR is already a second provider for `iv_daily` (`rcdata/build/options/ibkr_iv.py`); rank and term structure are computed from a stored IV history |
-| `options.prints` (`option_print`) | 1 | **not replaceable free** | needs a tape: IBKR OPRA, ThetaData, Massive or Databento |
+| `options.prints` (`option_print`) | 1 | **not replaceable free** | needs a paid tape: ThetaData (USD 80), Massive Developer (USD 79, 15-min delayed) or Advanced/Databento (USD 199, real-time). **Not IBKR** — M2 ruled it out, see below |
 | SPX Gamma's ask-side ratio, `greek-flow`, `flow-per-strike`, `flow-per-expiry` | 1 + 2 | **not replaceable free** | same tape, then our own side/aggregation rules |
 | `options.screener` / `earnings.next` (the earnings calendar + screener row) | — | **partly** | the calendar has an existing fallback (`d26_calendar`); the screener's option-volume/premium columns need a chain source |
 | `options.far_contracts` (LEAPS board) | 3 | **partly** | a market-wide `min_dte` sweep is a UW screener feature; from a chain source it becomes our own scan over all contracts, i.e. more data pulled |

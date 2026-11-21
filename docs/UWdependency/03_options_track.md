@@ -87,7 +87,7 @@ single fact that decides whether IBKR alone can carry layer 1.
 
 | Source | Tape | History | Price | Delay |
 |---|---|---|---|---|
-| **IBKR OPRA L1** | trades, if M2 confirms tick-by-tick | — | **USD 1.50/month** non-pro | real-time, but a 100-line default limit |
+| ~~IBKR OPRA L1~~ | **ruled out for the tape (M2, 21 Nov 2026):** IBKR's own doc says *"Real time tick-by-tick data is not available for options"* — twice on the page | — | USD 1.50/month | n/a. It stays the chain, IV and snapshot source, not the tape |
 | **Massive Options Developer** | OPRA trades + flat files | 4 years | **USD 79/month** | **15 minutes** |
 | **ThetaData Standard** | tick-level OPRA, every NBBO quote | 10 years | **USD 80/month** | real-time |
 | **Massive Options Advanced** | OPRA trades + flat files | 5+ years | **USD 199/month** | real-time |
