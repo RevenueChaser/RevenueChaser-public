@@ -1897,6 +1897,15 @@ forecast-ledger hit rate, AG-score validation, a later backtest, and a survivors
 Both needs have **no day column**: this is a history and deliberately behind (the CRSP subscription ends at
 `wrds_history.CRSP_LAST_YEAR` and the build is monthly), so it is present or absent, never stale.
 
+**Adding a serving kind touches nine registries**, found the hard way while adding this one, every one of them
+held to `serving.KINDS` by a test: `rcdata/serving_versions.py` (the version), `rcdata/build/__init__.py`
+(`DATASETS`), `rcdata/scaffold.py` (`SCHEMA_OF_KIND`, so an empty file can be created), `rcdata/ops.py`
+(`FILE_KINDS`, the file's own switch), `rcdata/needs/screen.py` (the dataset card, `FILES`, `NO_TIER_WORDS` and a
+`WRITTEN_COLUMN` per served table), `module_settings/needs_tab.py` (`SERVED_FILES`),
+`module_settings/control.py` (`FILE_COLORS`, indexed for every key of `screen.FILES`),
+`module_welcome/build.py` (`FILE_LABELS`), and this document. Backup, restore and the build-state route read
+`serving.KINDS` themselves and need nothing.
+
 **Not here yet.** CRSP's delisting *code* (the reason) is not on disk: the fetch asks `stkdelists` without the
 type-code columns, and adding them is a change to the `prices` fetch and its own PR. CRSP's own day return
 (`dlyret`) is on disk but not served, because the bar table is exactly `price_bar_daily`'s columns. Share type is
