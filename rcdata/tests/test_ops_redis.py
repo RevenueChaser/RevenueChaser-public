@@ -74,6 +74,10 @@ def _script() -> dict:
     ops.count_calls("uw", 2)
     ops.count_calls("uw", 1, failures=1, http_429=1)
     ops.count_calls("fred", 4)
+    # The paid providers' money (#166 item 3): a second counter, keyed by the model as well.
+    ops.count_spend("deepseek", "deepseek-v4-flash", calls=1, tokens_in=900, tokens_out=100, usd_micros=1800)
+    ops.count_spend("deepseek", "deepseek-v4-flash", calls=2, tokens_in=10, tokens_out=5, usd_micros=3600)
+    ops.count_spend("deepseek", "another-model", calls=1, usd_micros=7)
     log = ops.ReadLog(process="parity")
     for t in ("market_series", "market_series", "macro_series", "need:prices.bars"):
         log.bump(t)
@@ -100,6 +104,8 @@ def _script() -> dict:
         "read_queue": ops.read_queue(1), "queue_view": ops.queue_view(5),
         "schedule": [ops.read_schedule("market_series"), ops.schedule_get("prices/serving"), ops.schedule_get("x")],
         "calls": [ops.calls_by_day("2000-01-01", today), ops.calls_today("uw"), ops.calls_today("nope")],
+        "spend": [ops.spend_by_day("2000-01-01", today), ops.spend_micros_today(),
+                  ops.spend_micros_today("deepseek"), ops.spend_micros_today("nobody")],
         "uw": ops.latest_uw_sample(), "reads": ops.reads_since("2000-01-01", ["market_series", "macro_series", "x"]),
         "between": [(r["dataset"], r["status"]) for r in ops.runs_between(0, 4e9)] + [ops.runs_between(0, 1)],
         "last_run": ops.last_builder_run(), "watch": [ops.watch_count("option"), ops.watch_count("stock"),
