@@ -295,14 +295,21 @@ def test_the_route_queues_the_pass_in_the_dashboard_and_paid_is_never_the_defaul
 
 
 def test_the_read_route_serves_the_stored_windows(monkeypatch):
-    _store_headlines()
-    _writer(monkeypatch, _reply({"tone": {"value": "risk_off", "headline_id": "h3",
+    """The route reads the real clock, so this one stores the hour that has really just finished.
+
+    A fixed past ``HOUR`` cannot be used here: ``hours`` is counted back from now, so a reading of a day the
+    test chose would fall outside the route's default window and the route would correctly answer nothing.
+    """
+    start, end = reading.window()
+    _store_headlines([("r1", "Oil slips as OPEC+ signals no change to output", "Briefing", end - 600, [])])
+    _writer(monkeypatch, _reply({"tone": {"value": "risk_off", "headline_id": "r1",
                                           "quote": "Oil slips as OPEC+ signals no change to output"}}))
-    reading.run(now=NOW)
+    assert reading.run()["stored"] == 1
     _dashboard, client = _client()
     body = client.get("/api/news/reading").get_json()
     assert body["ok"] and body["fields"] == list(reading.FIELDS)
-    window = next(w for w in body["windows"] if w["window_end"] == HOUR)
+    window = next(w for w in body["windows"] if w["window_end"] == end)
+    assert window["window_start"] == start
     assert window["fields"]["tone"]["quote"] == "Oil slips as OPEC+ signals no change to output"
     assert client.get("/api/news/reading", query_string={"hours": "x"}).status_code == 400
     assert client.get("/api/news/reading", query_string={"hours": "0"}).status_code == 400
