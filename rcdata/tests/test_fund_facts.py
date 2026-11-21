@@ -821,3 +821,97 @@ def test_an_ifrs_eps_in_its_own_currency_is_converted_per_share():
     by = _by_key(facts.fact_rows(filer, "2", rates)[0])
     eps = by[("eps_diluted", "annual", date(2025, 12, 31))]
     assert eps["value"] == pytest.approx(2.2) and eps["unit"] == "USD/shares"
+
+
+# #105 (the gap scan of 21 Nov 2026): a foreign private issuer whose US-GAAP statements are in its own currency.
+# FTS, TRP and EMA file 40-F in CAD; MFG, LGPS, PCLA and LAWR file 20-F in JPY. All 20 had a clean annual
+# ``us-gaap:Revenues`` entry and served nothing, because the extraction reads the ``USD`` unit alone.
+def _foreign_gaap(unit: str = "CAD", form: str = "40-F") -> dict:
+    accn, filed, end = "0000000004-26-000001", "2026-03-01", "2025-12-31"
+
+    def one(val, start="2025-01-01"):
+        return {"units": {unit: [fx._fact(val, end, accn, filed, form, "FY", 2025, start)]}}
+
+    gaap = {"Revenues": one(10_000), "NetIncomeLoss": one(800), "Assets": one(20_000, None),
+            "CashAndCashEquivalentsAtCarryingValue": one(500, None),
+            "EarningsPerShareDiluted": {"units": {f"{unit}/shares": [
+                fx._fact(2.0, end, accn, filed, form, "FY", 2025, "2025-01-01")]}}}
+    return {"cik": 4, "entityName": "FOREIGN UTILITY", "facts": {"us-gaap": gaap}}
+
+
+def _cad_rates(low: float = 0.70, high: float = 0.80) -> dict:
+    return fx_rates.index_rates([("CAD", "2025-01-01", low), ("CAD", "2025-12-31", high)])
+
+
+def test_a_40f_filer_whose_us_gaap_statements_are_in_cad_is_served_in_usd_105():
+    # avo, 15 Nov 2026, option B, the same rule as the IFRS reader's: a flow at the mean daily rate of its own
+    # span, a balance at its last day's rate.
+    rows, company, _ = facts.fact_rows(_foreign_gaap(), "4", _cad_rates())
+    by, y = _by_key(rows), date(2025, 12, 31)
+    assert by[("revenue", "annual", y)]["value"] == pytest.approx(7_500)        # mean of 0.70 and 0.80
+    assert by[("net_income", "annual", y)]["value"] == pytest.approx(600)
+    assert by[("total_assets", "annual", y)]["value"] == pytest.approx(16_000)  # the 31 Dec rate
+    assert by[("cash", "annual", y)]["value"] == pytest.approx(400)
+    assert by[("revenue", "annual", y)]["unit"] == "USD" and company["non_usd_units"] is None
+    # It stays what it is: a non-US filer read from its own us-gaap statements.
+    assert company["us_gaap"] is True and company["is_us"] is False
+
+
+def test_a_20f_filer_in_jpy_has_its_eps_converted_per_share_105():
+    rates = fx_rates.index_rates([("JPY", "2025-01-01", 0.006), ("JPY", "2025-12-31", 0.008)])
+    by = _by_key(facts.fact_rows(_foreign_gaap("JPY", "20-F"), "4", rates)[0])
+    eps = by[("eps_diluted", "annual", date(2025, 12, 31))]
+    assert eps["value"] == pytest.approx(0.014) and eps["unit"] == "USD/shares"
+
+
+def test_a_reporting_currency_with_no_rate_is_recorded_and_never_guessed_105():
+    # Rates that stop in June reach neither the year's span nor its balance day, and no rate at all is the same:
+    # the values stay unread and the currency is listed, exactly as before the conversion existed (#46).
+    for rates in ({}, fx_rates.index_rates([("CAD", "2025-01-01", 0.70), ("CAD", "2025-06-30", 0.72)])):
+        rows, company, _ = facts.fact_rows(_foreign_gaap(), "4", rates)
+        assert not [r for r in rows if r["field"] == "revenue"]
+        assert company["non_usd_units"] == "CAD"
+
+
+def test_a_domestic_filer_keeps_its_usd_value_beside_one_foreign_fact_105():
+    # The guard on the fix: converting a currency a filer merely mentions would let it take the span of a real USD
+    # fact (the per-period rule of ``_in_usd``), so the gate is a strict majority of the annual money facts.
+    filer = _foreign_gaap("USD", "10-K")
+    filer["facts"]["us-gaap"]["Revenues"]["units"]["CAD"] = [
+        fx._fact(99_000, "2025-12-31", "0000000004-26-000001", "2026-03-01", "10-K", "FY", 2025, "2025-01-01")]
+    rows, company, _ = facts.fact_rows(filer, "4", _cad_rates())
+    by = _by_key(rows)
+    assert by[("revenue", "annual", date(2025, 12, 31))]["value"] == 10_000     # the USD fact, not the CAD one
+    assert facts.reporting_currency(filer) is None and company["non_usd_units"] is None
+
+
+def test_the_reporting_currency_is_the_majority_of_the_annual_money_facts_105():
+    assert facts.reporting_currency(_foreign_gaap()) == "CAD"
+    assert facts.reporting_currency(_foreign_gaap("USD", "10-K")) is None
+    # Half and half is no majority: nothing is converted rather than a currency guessed.
+    half = _foreign_gaap()
+    half["facts"]["us-gaap"]["Revenues"]["units"]["USD"] = [
+        fx._fact(7_000, "2024-12-31", "0000000004-25-000001", "2025-03-01", "40-F", "FY", 2024, "2024-01-01")]
+    half["facts"]["us-gaap"]["NetIncomeLoss"]["units"]["USD"] = [
+        fx._fact(500, "2024-12-31", "0000000004-25-000001", "2025-03-01", "40-F", "FY", 2024, "2024-01-01")]
+    half["facts"]["us-gaap"]["Assets"]["units"]["USD"] = [
+        fx._fact(18_000, "2024-12-31", "0000000004-25-000001", "2025-03-01", "40-F", "FY", 2024)]
+    del half["facts"]["us-gaap"]["EarningsPerShareDiluted"]
+    del half["facts"]["us-gaap"]["CashAndCashEquivalentsAtCarryingValue"]
+    assert facts.reporting_currency(half) is None
+    # A share count is not a money fact, and a quarter is not an annual report: neither decides the currency.
+    quarterly = _foreign_gaap()
+    quarterly["facts"]["us-gaap"]["Revenues"]["units"]["CAD"][0]["form"] = "6-K"
+    quarterly["facts"]["us-gaap"]["Assets"]["units"]["CAD"][0]["form"] = "6-K"
+    quarterly["facts"]["us-gaap"]["NetIncomeLoss"]["units"]["CAD"][0]["form"] = "6-K"
+    quarterly["facts"]["us-gaap"]["CashAndCashEquivalentsAtCarryingValue"]["units"]["CAD"][0]["form"] = "6-K"
+    del quarterly["facts"]["us-gaap"]["EarningsPerShareDiluted"]
+    assert facts.reporting_currency(quarterly) is None
+
+
+def test_an_ifrs_filers_conversion_is_unchanged_by_the_us_gaap_one_105():
+    # ``as_gaap`` runs first and already serves USD, so ``reporting_currency`` has nothing left to say about it.
+    rates = fx_rates.index_rates([("EUR", "2025-01-01", 1.0), ("EUR", "2025-12-31", 1.2)])
+    converted = facts.as_gaap(_ifrs_filer("EUR"), rates)
+    assert facts.reporting_currency(converted) is None
+    assert facts.gaap_in_usd(converted, rates) is converted

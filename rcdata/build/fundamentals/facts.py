@@ -91,7 +91,9 @@ EPS_CONCEPTS = {
 # 2026-11-15_1226_fundamentals-ifrs-reader-plan.md). Attributable-to-parent figures map to the parent concepts and
 # the whole-group ones to the group concepts, as ``CONCEPTS`` orders them. A value in another currency is converted
 # to USD by ``_in_usd`` (#105, avo 15 Nov 2026, option B); one with no rate for its period stays as tagged and is
-# counted in ``non_usd_units``.
+# counted in ``non_usd_units``. The same conversion, by the same rule, reaches a filer whose US-GAAP statements are
+# in another currency -- a 20-F/40-F foreign private issuer (``reporting_currency`` / ``gaap_in_usd``, #105,
+# 21 Nov 2026) -- so no filer's values are dropped merely for the unit they are tagged in.
 # Debt (16 Nov 2026, Fundamentals plan step 4; BP, UL, RELX, WPP were read debt-free): each borrowing line goes to the
 # us-gaap slot of the same meaning, so ``_debt_lines`` sums it under the same rules -- a noncurrent line plus the
 # current ones, a whole line only when no noncurrent one is tagged, the whole ``Borrowings`` only in the fallback
@@ -149,17 +151,23 @@ def _rate(fx: dict, cur: str, start: str | None, end: str) -> float | None:
     return (sums[hi] - sums[lo]) / (hi - lo)
 
 
-def _in_usd(body: dict, fx: dict) -> dict:
+def _in_usd(body: dict, fx: dict, only: str | None = None) -> dict:
     """``body`` with its first convertible currency's facts converted and served under ``USD`` (#105). Per period
     the reporting currency wins: a USD fact is kept only for a span no converted fact covers, because an IFRS filer's
     USD figures are a single year (SAP 2017) or a convenience translation at the year-end rate (TSM). A per-share
     unit (``EUR/shares``) is converted the same way and served under ``USD/shares`` (16 Nov 2026: an ADR row held
     its net income in USD and its EPS in the home currency); it stays per ORDINARY share, never per ADS, whose ratio
-    the facts do not carry. A currency with no rates stays as it is."""
+    the facts do not carry. A currency with no rates stays as it is.
+
+    ``only`` names the one currency to convert -- the filer's reporting currency (``reporting_currency``), for the
+    us-gaap branch of a 20-F/40-F filer that reports in it (#105, 21 Nov 2026). Then EVERY unit of that currency is
+    converted, money and per-share alike, because the gate is the filer's currency and not the body's first one."""
     units = body.get("units") or {}
+    out = dict(units)
+    changed = False
     for unit, items in units.items():
         cur, _, per = unit.partition("/")
-        if cur not in fx:
+        if cur == "USD" or cur not in fx or (only is not None and cur != only):
             continue
         conv = []
         for f in items or []:
@@ -169,9 +177,12 @@ def _in_usd(body: dict, fx: dict) -> dict:
         if conv:
             usd = "USD" + (f"/{per}" if per else "")
             spans = {(f.get("start"), f.get("end")) for f in conv}
-            kept = [f for f in units.get(usd) or [] if (f.get("start"), f.get("end")) not in spans]
-            return {**body, "units": {**units, usd: conv + kept}}
-    return body
+            kept = [f for f in out.get(usd) or [] if (f.get("start"), f.get("end")) not in spans]
+            out[usd] = conv + kept
+            changed = True
+            if only is None:                    # the IFRS path's rule: the body's first convertible currency alone
+                break
+    return {**body, "units": out} if changed else body
 
 
 _ANNUAL_FORMS = frozenset({"10-K", "10-K/A", "10-KT", "10-KT/A", "20-F", "20-F/A", "40-F", "40-F/A"})
@@ -206,6 +217,54 @@ def as_gaap(facts: dict, fx: dict | None = None) -> dict:
         return facts
     gaap = {IFRS_AS_GAAP[c]: _in_usd(body, fx or {}) for c, body in ifrs.items() if c in IFRS_AS_GAAP}
     return {**facts, "facts": {"us-gaap": gaap}}
+
+
+def _money_unit(unit: str) -> str:
+    """The currency of a fact's unit (``CAD``, ``USD/shares`` -> ``USD``), or ``""`` for ``shares``, ``pure`` and
+    the other non-money units."""
+    cur = unit.partition("/")[0]
+    return cur if len(cur) == 3 and cur.isupper() else ""
+
+
+def reporting_currency(facts: dict) -> str | None:
+    """The currency the filer's us-gaap statements are in, when that is not USD; else None (#105, 21 Nov 2026).
+
+    The gap scan of 21 Nov 2026 found 20 companies with a clean annual ``us-gaap:Revenues`` entry served blank --
+    FTS, TRP and EMA filing 40-F in CAD, MFG, LGPS, PCLA and LAWR filing 20-F in JPY. They are not IFRS filers, so
+    ``as_gaap`` leaves them alone, and the extraction reads the ``USD`` unit only, so every value was dropped and
+    only the currency was recorded (``non_usd_units``, #46).
+
+    The measure is a STRICT MAJORITY of the money facts an annual report carries, not the presence of a currency: a
+    domestic filer that tags one foreign-subsidiary figure in EUR keeps reporting in USD, and converting that figure
+    would let it take the span of a real USD one (the per-period rule in ``_in_usd``). A filer with no majority --
+    two currencies at half each -- is left as it is rather than guessed at."""
+    counts: dict[str, int] = {}
+    for body in ((facts.get("facts") or {}).get("us-gaap") or {}).values():
+        for unit, items in ((body or {}).get("units") or {}).items():
+            cur = _money_unit(unit)
+            if not cur:
+                continue
+            for f in items or []:
+                if f.get("form") in _ANNUAL_FORMS:
+                    counts[cur] = counts.get(cur, 0) + 1
+    if not counts:
+        return None
+    cur, n = max(counts.items(), key=lambda kv: (kv[1], kv[0] == "USD"))
+    return cur if cur != "USD" and n * 2 > sum(counts.values()) else None
+
+
+def gaap_in_usd(facts: dict, fx: dict | None = None) -> dict:
+    """``facts`` itself unless its us-gaap statements are in another currency (``reporting_currency``); else a copy
+    whose us-gaap branch has that currency's facts converted to USD with ``fx`` (``fx_rates.index_rates``), under
+    the same rule as an IFRS filer's (#105, avo 15 Nov 2026, option B: a flow at the mean daily rate of its own
+    span, a balance at its last day's rate). A currency ``fx`` holds no usable rate for stays as tagged and is
+    recorded in ``non_usd_units``, exactly as before -- nothing is served at a guessed rate."""
+    cur = reporting_currency(facts)
+    if cur is None or cur not in (fx or {}):
+        return facts
+    branches = facts.get("facts") or {}
+    gaap = {c: _in_usd(body, fx or {}, only=cur) for c, body in (branches.get("us-gaap") or {}).items()}
+    return {**facts, "facts": {**branches, "us-gaap": gaap}}
 
 
 STATEMENT_FORMS = frozenset({"10-K", "10-K/A", "10-Q", "10-Q/A", "10-KT", "10-KT/A", "10-QT", "10-QT/A",
@@ -512,9 +571,11 @@ def fact_rows(facts: dict, cik: str, fx: dict | None = None) -> tuple[list[dict]
     """``(rows, company, counts)`` of one company's ``companyfacts`` answer (no stamps: the caller adds them).
 
     ``company``: ``entity_name``, ``is_us``, ``non_usd_units`` (the currencies a money concept was tagged in instead
-    of USD, #46) and ``us_gaap`` (False: no us-gaap statements are read -- none at all, or an IFRS filer or mover
-    whose ifrs-full ones are read through ``as_gaap``, #105, in USD at the rates of ``fx``). ``counts``:
-    ``no_provenance``, values left out for want of an accession.
+    of USD and NO rate could convert, #46 -- a currency the rates reach is served in USD and is not listed, the same
+    for an IFRS filer and for a 20-F/40-F filer whose us-gaap statements are in it) and ``us_gaap`` (False: no
+    us-gaap statements are read -- none at all, or an IFRS filer or mover whose ifrs-full ones are read through
+    ``as_gaap``, #105, in USD at the rates of ``fx``). ``counts``: ``no_provenance``, values left out for want of an
+    accession.
     """
     counts: dict[str, int] = {}
     # Both read from the filer's own facts, before ``as_gaap`` keeps only the mapped concepts (the 16 Nov review:
@@ -523,6 +584,10 @@ def fact_rows(facts: dict, cik: str, fx: dict | None = None) -> tuple[list[dict]
     is_us = sec_edgar._is_us_filer(facts)
     us_gaap = bool(sec_edgar._gaap(facts)) and not reads_ifrs(facts)
     facts = as_gaap(facts, fx)
+    # #105 (21 Nov 2026): a 20-F/40-F filer that reports in CAD or JPY under us-gaap is not an IFRS filer, so
+    # ``as_gaap`` leaves it alone and the extraction's ``USD`` unit found nothing. Its reporting currency is
+    # converted here, after ``as_gaap``, whose output is already in USD (``reporting_currency`` then says None).
+    facts = gaap_in_usd(facts, fx)
     index = _Index(facts)
     non_usd: set[str] = set()
     annual = sec_edgar.extract_annual(facts, non_usd)
