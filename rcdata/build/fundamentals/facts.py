@@ -214,7 +214,7 @@ def reads_ifrs(facts: dict) -> bool:
     if not ifrs:
         return False
     gaap = branches.get("us-gaap") or {}
-    return not gaap or _newest_annual(ifrs, IFRS_AS_GAAP) > _newest_annual(gaap)
+    return not gaap or _newest_annual(ifrs) > _newest_annual(gaap)
 
 
 def as_gaap(facts: dict, fx: dict | None = None) -> dict:
