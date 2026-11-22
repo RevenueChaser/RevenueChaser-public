@@ -136,3 +136,92 @@ def test_an_old_snapshot_demotes_nothing_and_says_so_once(built, monkeypatch):
     assert _sec("FDX")["tier"] == "A"
     assert ("wrds_snapshot_not_armed", wrds.SEC_IDHIST.name) in _issues()
     assert len([k for k in _issues() if k[0] == "wrds_snapshot_not_armed"]) == 1
+
+
+# ── K-C: a name whose Compustat company has no CIK is linked by its ticker ───────────────────────────────────
+
+def _with(monkeypatch, sec=(), company=(), securities=()) -> None:
+    """Extra SEC rows and Compustat rows, then the SEC file read again (as of 2026-10-28)."""
+    monkeypatch.setitem(fx.SEC_FILE, "data", fx.SEC_FILE["data"] + [list(r) for r in sec])
+    monkeypatch.setattr(fx, "COMPANY", fx.COMPANY + list(company))
+    monkeypatch.setattr(fx, "SECURITY", fx.SECURITY + list(securities))
+    base.run_request({"dataset": sec_tickers.NAME, "requested_by": "cli", "params": {"as_of": "2026-10-28"}})
+
+
+def _co(gvkey, conm, cik):
+    return {"gvkey": gvkey, "conm": conm, "cik": cik}
+
+
+def _security(gvkey, tic, cusip, exchg=14, secstat="A"):
+    return {"gvkey": gvkey, "iid": "01", "tic": tic, "cusip": cusip, "exchg": exchg, "excntry": "USA",
+            "secstat": secstat, "tpci": "0", "dldtei": None}
+
+
+NOCK = ([4000001, "NOCIK THERAPEUTICS INC", "NOCK", "Nasdaq"], _co("050001", "NOCIK THERAPEUTICS", None),
+        _security("050001", "NOCK", "65500X101"))
+
+
+def test_a_name_whose_compustat_company_has_no_cik_is_linked_by_its_ticker(built, monkeypatch):
+    sec, co, s = NOCK
+    _with(monkeypatch, [sec], [co], [s])
+    _wrds_snapshot(ARMED_DAY)
+    row = _sec("NOCK")
+    assert (row["gvkey"], row["iid"], row["link_source"], row["cusip"]) == ("050001", "01", "tic_nocik", "65500X101")
+    assert row["tier"] == "A" and ("linked_by_ticker", "NOCK") in _issues()
+    assert ("tier_a_no_wrds_link", "NOCK") not in _issues()
+    assert _sec("MSFT")["link_source"] == "tic"                     # the CIK link is unchanged
+
+
+def test_an_old_snapshot_links_nothing_by_ticker(built, monkeypatch):
+    sec, co, s = NOCK
+    _with(monkeypatch, [sec], [co], [s])
+    _wrds_snapshot(OLD_DAY)
+    assert _sec("NOCK")["gvkey"] is None and ("linked_by_ticker", "NOCK") not in _issues()
+
+
+def test_a_zero_padded_empty_or_blank_compustat_cik_is_empty_too(built, monkeypatch):
+    """``norm_cik`` reads Compustat's text (``0000789019``), so a blank one is empty, not a CIK."""
+    sec, co, s = NOCK
+    _with(monkeypatch, [sec], [{**co, "cik": "   "}], [s])
+    _wrds_snapshot(ARMED_DAY)
+    assert _sec("NOCK")["link_source"] == "tic_nocik"
+
+
+def test_a_ticker_hit_whose_compustat_cik_differs_is_refused(built, monkeypatch):
+    """AGLT and XTLB's case (13 names on 21 Nov 2026): Compustat's company has a CIK, and it is another one, so
+    the security is another issuer's that carries the ticker. Compared with ``norm_cik`` on both sides."""
+    _with(monkeypatch, [[4000002, "AGLX CO", "AGLX", "Nasdaq"]], [_co("050002", "AGLX OTHER", "0004999999")],
+          [_security("050002", "AGLX", "00100X101")])
+    _wrds_snapshot(ARMED_DAY)
+    assert _sec("AGLX")["gvkey"] is None
+    assert ("ticker_link_cik_differs", "AGLX") in _issues() and ("linked_by_ticker", "AGLX") not in _issues()
+
+
+def test_a_padded_equal_cik_is_no_conflict_and_the_cik_link_takes_it(built, monkeypatch):
+    _with(monkeypatch, [[4000003, "PADX CO", "PADX", "Nasdaq"]], [_co("050003", "PADX CO", "0004000003")],
+          [_security("050003", "PADX", "00200X101")])
+    _wrds_snapshot(ARMED_DAY)
+    assert _sec("PADX")["link_source"] == "tic" and ("ticker_link_cik_differs", "PADX") not in _issues()
+
+
+def test_two_candidates_link_neither(built, monkeypatch):
+    _with(monkeypatch, [[4000004, "TWOX CO", "TWOX", "Nasdaq"]],
+          [_co("050004", "TWOX ONE", None), _co("050005", "TWOX TWO", None)],
+          [_security("050004", "TWOX", "00300X101"), _security("050005", "TWOX", "00300X102", exchg=11)])
+    _wrds_snapshot(ARMED_DAY)
+    assert _sec("TWOX")["gvkey"] is None and ("linked_by_ticker", "TWOX") not in _issues()
+
+
+@pytest.mark.parametrize("extra", [{"secstat": "I"}, {"exchg": 19}, {"exchg": 90}])
+def test_an_inactive_or_non_us_candidate_is_no_candidate(built, monkeypatch, extra):
+    sec, co, s = NOCK
+    _with(monkeypatch, [sec], [co], [{**s, **extra}])
+    _wrds_snapshot(ARMED_DAY)
+    assert _sec("NOCK")["gvkey"] is None
+
+
+def test_a_candidate_with_no_company_row_is_no_candidate(built, monkeypatch):
+    sec, _co_row, s = NOCK
+    _with(monkeypatch, [sec], [], [s])
+    _wrds_snapshot(ARMED_DAY)
+    assert _sec("NOCK")["gvkey"] is None
