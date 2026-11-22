@@ -171,11 +171,20 @@ def test_a_quarter_whose_window_ends_before_the_first_day_is_not_asked(sets):
     assert any("1 listed quarter(s)" in n for n in ctx.notes)
 
 
-def test_a_backfill_without_a_first_day_is_still_the_newest_quarter_only(sets):
-    """Decision G (avo, 16 Nov 2026) is unchanged: only ``--from`` asks for history."""
+def test_only_a_first_day_asks_for_history_and_without_one_it_is_the_newest_quarter(sets):
+    """Decision G (avo, 16 Nov 2026) is unchanged: only ``--from`` asks for history.
+
+    The contrast is the rule, so both halves stand in one test: without a first day the run is the newest listed
+    quarter, and the same dataset with one then takes the older quarter. The first half alone passes on the
+    merge-base and would prove nothing about this change (``scripts/red_on_base.py``), because it is exactly the
+    base's behaviour; the second half is what C7 adds.
+    """
     nport.DATASET.backfill(base.RunContext(run_id="h0", dataset=nport.NAME, sleep=lambda s: None),
                            None, date(2026, 11, 22))
     assert _asked(sets) == [NEW]
+    sets.requests.clear()
+    _backfill(date(2026, 4, 1))
+    assert _asked(sets) == [OLD]                             # NEW is held and typed, so only the older one is asked
 
 
 def test_a_quarter_already_typed_is_not_asked_again_so_a_stopped_run_resumes(sets):
