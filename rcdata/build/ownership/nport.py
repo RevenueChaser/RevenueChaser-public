@@ -74,6 +74,7 @@ HISTORY_SERVED = [("etf_ticker", "TEXT"), ("series_id", "TEXT"), ("quarter", "TE
                   ("filed", "DATE"), ("accession", "TEXT"), ("ticker", "TEXT"), ("cusip", "TEXT"), ("isin", "TEXT"),
                   ("issuer_name", "TEXT"), ("country", "TEXT"), ("balance", "DOUBLE"), ("currency_value", "DOUBLE"),
                   ("pct_of_net_assets", "DOUBLE"), ("lines", "INTEGER")]
+SCHEMAS = {TABLE: SERVED, HISTORY: HISTORY_SERVED}
 # A fund's stock list: long equity lines only (shorts, bonds, derivatives and cash stay in Parquet).
 LONG_EQUITY = "h.asset_cat = 'EC' AND h.payoff_profile = 'Long'"
 INDEX_ENV = "RC_NPORT_INDEX_URL"
