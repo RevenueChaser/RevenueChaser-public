@@ -25,6 +25,8 @@ Plus WFC (common, so WFC-PC's CIK has two tickers), an OTC name (Tier C), a row 
 """
 from __future__ import annotations
 
+import gzip
+import hashlib
 import io
 import json
 import re
@@ -473,6 +475,32 @@ def tickerinside_fund_json(holdings, fund: str, as_of="2026-11-19", layer="issue
                        "holdings": weights}).encode()
 
 
+def tickerinside_index(bodies: dict, kept=(), list_sha256: str | None = None) -> dict[str, bytes]:
+    """TickerInside's three index files by route, in the live shapes of 22 Nov 2026: ``manifest.json`` (its
+    ``files.list_sha256`` is the sha256 of the *uncompressed* list), ``sha256sums.txt.gz`` (``<sha256>  <path from the
+    site's root>`` per file) and ``status.json`` (``run.fetch_holdings.kept_previous``, the funds the site serves from
+    an older issuer file). ``bodies`` is fund -> the fund file served; ``kept`` the funds named as kept."""
+    text = "".join(f"{hashlib.sha256(b).hexdigest()}  api/v1/fund/{t.lower()}.json\n"
+                   for t, b in sorted(bodies.items())).encode()
+    manifest = {"manifest_version": 1, "build_date": "2026-11-21",
+                "files": {"count": len(bodies), "list": "https://tickerinside.com/api/v1/sha256sums.txt.gz",
+                          "list_sha256": list_sha256 or hashlib.sha256(text).hexdigest()}}
+    status = {"schema": 1, "run": {"fetch_holdings": {"funds_attempted": 425, "kept_previous": [
+        {"ticker": t, "issuer": "Global X", "since": "2026-11-13", "holdings_as_of": "2026-11-11"} for t in kept]}}}
+    return {"/manifest.json": json.dumps(manifest).encode(), "/sha256sums.txt.gz": gzip.compress(text),
+            "/status.json": json.dumps(status).encode()}
+
+
+def add_tickerinside_index(http_mock, bodies: dict, kept=(), list_sha256: str | None = None,
+                           first: bool = False) -> None:
+    """Answer TickerInside's index files for ``bodies``; ``first`` puts them ahead of the routes already added."""
+    for route, body in tickerinside_index(bodies, kept, list_sha256).items():
+        if first:
+            http_mock.routes.insert(0, (route, body, 200, {}))
+        else:
+            http_mock.add(route, body)
+
+
 def ark_csv(holdings, fund: str = "ARKQ") -> bytes:
     """ARK's daily holdings CSV, in the shape of the real file of 30 Oct 2026 (``fixtures/ark_arkq_holdings.csv``
     is a trimmed copy): the header, one line per holding, the money-market line with no ticker, the disclaimer."""
@@ -487,7 +515,8 @@ def ark_csv(holdings, fund: str = "ARKQ") -> bytes:
 def add_etf_routes(http_mock, holdings=None, fail=(), repeat=()) -> None:
     """Answer every file of ``spine/etf_holdings.FILES`` and of its ``FALLBACKS``: the SPDR workbooks, the iShares
     CSVs (each in the shape its own fund serves — IAK typed, the five sector funds not), TickerInside's fund files
-    and ARK's CSV, each holding ``holdings`` (``SP500`` by default). An ETF named in ``fail`` answers 500 instead.
+    (and its index files, which list them) and ARK's CSV, each holding ``holdings`` (``SP500`` by default). An ETF
+    named in ``fail`` answers 500 instead.
     ``repeat`` is UW's shape and reaches only the sweep's and a named request's routes."""
     from revenuechaser.rcdata.build.spine import etf_holdings as etf
     rows = SP500 if holdings is None else holdings
@@ -496,6 +525,7 @@ def add_etf_routes(http_mock, holdings=None, fail=(), repeat=()) -> None:
         def go(_request):
             return (500, b"down", {}) if etf_name in fail else (200, body, {})
         return go
+    ti_bodies: dict[str, bytes] = {}
     for f in etf.FILES + tuple(etf.FALLBACKS.values()):
         if f.provider == "ssga":
             route, body = f"holdings-daily-us-en-{f.etf.lower()}.", ssga_xlsx(rows)
@@ -510,6 +540,9 @@ def add_etf_routes(http_mock, holdings=None, fail=(), repeat=()) -> None:
         else:
             route, body = f"/etfs/{f.etf}/holdings", uw_holdings_json(rows, repeat=repeat)
         http_mock.add(route, answer(body, f.etf))
+        if f.provider == "tickerinside":
+            ti_bodies[f.etf] = body
+    add_tickerinside_index(http_mock, ti_bodies)
 
 
 # ── The SEC's Form N-CEN data sets (``sec/ncen``) ────────────────────────────────────────────────────────────

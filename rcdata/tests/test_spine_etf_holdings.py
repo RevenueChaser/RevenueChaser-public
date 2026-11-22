@@ -15,6 +15,10 @@ from revenuechaser.rcdata.build.spine import etf_holdings as etf, sec_tickers
 from . import spine_fixture as fx
 
 AS_OF = "2026-10-27"
+# The daily funds (the board's, the peer sets' and ring 1 of #354 C6), and the three TickerInside index files a run
+# reads before its first fund file: ``status.json``, ``manifest.json`` and ``sha256sums.txt.gz``.
+N = 151
+INDEX = 3
 
 
 @pytest.fixture
@@ -41,15 +45,41 @@ def _served(where: str = "") -> list[tuple]:
 
 def test_the_funds_are_the_rotation_boards_sector_and_theme_etfs_but_the_commodity_trusts():
     """The board's own 52 are the dataset's, less GLD, SLV and USO (commodity trusts: no equity to hold), plus the
-    ten the relatedness peer sets need that the board does not run.
+    ten the relatedness peer sets need that the board does not run, plus ring 1 of #354 C6 but AMLP (no fund file).
 
     The ``52`` is deliberate: adding an ETF to the board's sector or theme groups fails this test, which is where
     the decision whether the new fund has a keyless holdings file or is read from TickerInside belongs."""
     from revenuechaser.core.rotation_reference import SEED_ROTATION_ETFS as ROTATION_ETFS
     board = {t for t, info in ROTATION_ETFS.items() if info["group"] in ("sector", "theme")}
     assert len(board) == 52
-    assert {f.etf for f in etf.FILES} == (board - {"GLD", "SLV", "USO"}) | etf.EXTRA
-    assert len(etf.FILES) == 59 and len({f.etf for f in etf.FILES}) == 59
+    assert {f.etf for f in etf.FILES} == (board - {"GLD", "SLV", "USO"}) | etf.EXTRA | (set(etf.RING1) - {"AMLP"})
+    assert len(etf.FILES) == N and len({f.etf for f in etf.FILES}) == N
+
+
+def test_ring_one_is_the_133_funds_measured_in_354_c6():
+    """#354 C6 (21 Nov 2026, the live spine and the 2026q3 N-PORT set): the five rules of the ETF review pass 133
+    funds. Plan step B1 reads them all daily."""
+    assert len(etf.RING1) == len(set(etf.RING1)) == 133
+    assert etf.RING1[:5] == ("VUG", "XLK", "QQQM", "IVW", "SMH") and etf.RING1[-1] == "WCLD"
+
+
+def test_a_ring_one_fund_with_an_issuer_file_keeps_it_and_is_not_asked_from_tickerinside_too():
+    """SB1: ``FILES`` is a concatenation, so a fund in both groups would be fetched twice a day and typed twice. The
+    issuer's own file stays the fund's (26 of ring 1: the SPDR and iShares funds); the measured union is the
+    acceptance, not 133 + 31."""
+    issuer = set(etf.SSGA_FUNDS) | set(etf.ISHARES_PRODUCTS)
+    ring = set(etf.RING1)
+    assert len(ring & issuer) == 26 and not (issuer & set(etf.TI_FUNDS))
+    assert len(ring | issuer) == 138, "the measured distinct union of ring 1 and the 31 issuer funds"
+    by_etf = {f.etf: f.provider for f in etf.FILES}
+    assert by_etf["XLK"] == "ssga" and by_etf["SOXX"] == "ishares" and by_etf["VUG"] == "tickerinside"
+    assert [f.etf for f in etf.FILES].count("XLK") == 1
+
+
+def test_amlp_is_the_one_ring_one_fund_left_to_the_n_port_parquet():
+    """TickerInside serves AMLP (a multi-asset fund) as ``etf/amlp.json``, not ``fund/amlp.json`` (its
+    ``funds.json``, 22 Nov 2026): asking the fund path would fail every day. It stays the N-PORT Parquet's."""
+    assert "AMLP" in etf.RING1 and "AMLP" not in etf.DAILY
 
 
 def test_every_peer_set_etf_and_every_rotation_equity_etf_is_a_daily_fund():
@@ -127,9 +157,11 @@ def test_icln_is_typed_with_its_weight_in_the_percent_column():
 
 def test_the_funds_with_no_keyless_issuer_file_are_read_from_tickerinside_not_uw():
     """#1365, avo 22 Nov 2026: UW leaves (#1283) and D3 of #354 says holdings never come from it. These 28 funds
-    have no keyless issuer file in this tree, so they are TickerInside's one fund file each."""
+    have no keyless issuer file in this tree, so they are TickerInside's one fund file each, and so are the 92 funds
+    of ring 1 with no issuer file here (plan step B1)."""
     ti = {f.etf: f.url() for f in etf.FILES if f.provider == "tickerinside"}
-    assert set(ti) == {"SMH", "PAVE", "AIQ", "LIT", "URA", "NLR", "AIRR", "SKYY", "WCLD", "ARKQ", "ROBO", "JETS",
+    assert len(ti) == 120
+    assert set(ti) >= {"SMH", "PAVE", "AIQ", "LIT", "URA", "NLR", "AIRR", "SKYY", "WCLD", "ARKQ", "ROBO", "JETS",
                        "TAN", "PBW", "GDX", "OIH", "CIBR", "HACK", "REMX",
                        "CLOU", "DTCR", "QTUM", "FINX", "GRID", "DRIV", "BLOK", "ESPO", "COPX"}
     assert ti["SMH"].endswith("/api/v1/fund/smh.json")
@@ -238,10 +270,10 @@ def test_an_ark_file_of_another_shape_or_fund_is_a_source_error(body, match):
 
 def test_a_run_reads_every_fund_once_and_serves_its_whole_holdings(env):
     row = base.run_request({"dataset": etf.NAME, "params": {"as_of": AS_OF}})
-    assert row["result"] == "changed" and row["calls"] == 59 and row["coverage"] == 1.0
-    assert len(env.calls()) == 59, "one request per fund, no retry"
+    assert row["result"] == "changed" and row["calls"] == N + INDEX and row["coverage"] == 1.0
+    assert len(env.calls()) == N + INDEX, "one request per fund, no retry"
     served = _served()
-    assert len(served) == 59 * len(fx.SP500)
+    assert len(served) == N * len(fx.SP500)
     assert {r[2] for r in served} == {"ssga", "ishares", "tickerinside"}
     xlk = _served("etf = 'XLK'")
     assert {(r[3], r[4]) for r in xlk} == {(t, c) for t, c, _n in fx.SP500}, "the SPDR file's CUSIPs are kept"
@@ -261,7 +293,7 @@ def test_the_cash_and_futures_lines_of_a_file_are_not_holdings(env):
 def test_a_moved_issuer_url_is_a_source_failed_issue_and_the_other_funds_go_on(monkeypatch, env):
     monkeypatch.setattr(etf, "ISHARES_PRODUCTS", {**etf.ISHARES_PRODUCTS, "IGV": ("999999", "moved")})
     row = base.run_request({"dataset": etf.NAME, "params": {"as_of": AS_OF}})
-    assert row["result"] == "changed" and row["coverage"] == round(58 / 59, 4)
+    assert row["result"] == "changed" and row["coverage"] == round((N - 1) / N, 4)
     n, issues = ops.open_issues(etf.NAME)
     assert n == 1 and [i["key"] for i in issues] == ["ishares-IGV.csv"] and "failed files" in row["note"]
     assert not _served("etf = 'IGV'") and len(_served("etf = 'IBB'")) == len(fx.SP500)
@@ -285,7 +317,7 @@ def test_an_answer_with_no_holding_in_it_is_a_failed_file_not_the_funds_whole_da
     empty ``holdings`` object, and a header with no equity line, are the same nothing."""
     _source_empty(http_mock, "SMH")
     row = base.run_request({"dataset": etf.NAME, "params": {"as_of": AS_OF}})
-    assert row["result"] == "changed" and row["coverage"] == round(58 / 59, 4)
+    assert row["result"] == "changed" and row["coverage"] == round((N - 1) / N, 4)
     n, issues = ops.open_issues(etf.NAME)
     assert n == 1 and [i["key"] for i in issues] == ["tickerinside-SMH.json"]
     assert "no holding line" in (issues[0]["detail"] or "") and not _served("etf = 'SMH'")
@@ -297,12 +329,12 @@ def test_a_failed_fund_is_fetched_again_in_the_same_day_and_joins_the_others(mon
     good = etf.ISHARES_PRODUCTS
     monkeypatch.setattr(etf, "ISHARES_PRODUCTS", {**good, "IGV": ("999999", "moved", False)})
     base.run_request({"dataset": etf.NAME, "params": {"as_of": AS_OF}})
-    assert len(_served()) == 58 * len(fx.SP500)
+    assert len(_served()) == (N - 1) * len(fx.SP500)
     monkeypatch.setattr(etf, "ISHARES_PRODUCTS", good)      # not monkeypatch.undo(): it would undo the env too
     http_mock.requests.clear()
     row = base.run_request({"dataset": etf.NAME, "params": {"as_of": AS_OF}})
     assert len(http_mock.requests) == 1, "only the fund that failed is asked again"
-    assert len(_served()) == 59 * len(fx.SP500) and len(_served("etf = 'IGV'")) == len(fx.SP500)
+    assert len(_served()) == N * len(fx.SP500) and len(_served("etf = 'IGV'")) == len(fx.SP500)
     assert row["coverage"] == 1.0 and row["result"] == "changed"
 
 
@@ -310,18 +342,18 @@ def test_a_second_day_is_a_second_partition_and_both_are_served(env):
     base.run_request({"dataset": etf.NAME, "params": {"as_of": AS_OF}})
     row = base.run_request({"dataset": etf.NAME, "params": {"as_of": "2026-10-28"}})
     days = {str(r[0]) for r in _served()}
-    assert days == {AS_OF, "2026-10-28"} and len(_served()) == 2 * 59 * len(fx.SP500)
-    assert row["rows"] == 59 * len(fx.SP500), "the check row counts the newest day"
+    assert days == {AS_OF, "2026-10-28"} and len(_served()) == 2 * N * len(fx.SP500)
+    assert row["rows"] == N * len(fx.SP500), "the check row counts the newest day"
 
 
 def test_no_daily_fund_needs_a_key_at_all(monkeypatch, env):
-    """#1365: every daily source is keyless, so a run without ``UNUSUAL_WHALES_API_KEY`` reads all 59 funds and
+    """#1365: every daily source is keyless, so a run without ``UNUSUAL_WHALES_API_KEY`` reads all the funds and
     opens no ``missing_key`` issue. Before, the 28 UW funds were skipped and the key was an issue."""
     monkeypatch.delenv("UNUSUAL_WHALES_API_KEY")
     row = base.run_request({"dataset": etf.NAME, "params": {"as_of": AS_OF}})
-    assert row["result"] == "changed" and row["calls"] == 59 and row["coverage"] == 1.0
+    assert row["result"] == "changed" and row["calls"] == N + INDEX and row["coverage"] == 1.0
     assert ops.open_issues(etf.NAME)[0] == 0
-    assert len(_served()) == 59 * len(fx.SP500) and not _served("provider = 'uw'")
+    assert len(_served()) == N * len(fx.SP500) and not _served("provider = 'uw'")
     assert {r[2] for r in _served("etf = 'SMH'")} == {"tickerinside"}
 
 
@@ -344,7 +376,7 @@ def test_the_funds_with_an_issuer_file_behind_the_source_are_arkq_only():
 
 def test_the_source_with_holdings_serves_the_day_and_the_issuer_file_is_not_asked(env):
     row = base.run_request({"dataset": etf.NAME, "params": {"as_of": AS_OF}})
-    assert row["calls"] == 59 and not [r for r in env.requests if "ark-funds" in str(r.url)]
+    assert row["calls"] == N + INDEX and not [r for r in env.requests if "ark-funds" in str(r.url)]
     assert {r[2] for r in _served("etf = 'ARKQ'")} == {"tickerinside"} and "ARKQ served by" not in (row["note"] or "")
 
 
@@ -353,7 +385,7 @@ def test_an_empty_source_answer_falls_back_to_the_issuer_file_and_the_note_says_
     the day, and no issue is opened (the fund is served)."""
     _source_empty(http_mock, "ARKQ")
     row = base.run_request({"dataset": etf.NAME, "params": {"as_of": AS_OF}})
-    assert row["result"] == "changed" and row["coverage"] == 1.0 and row["calls"] == 60
+    assert row["result"] == "changed" and row["coverage"] == 1.0 and row["calls"] == N + INDEX + 1
     assert ops.open_issues(etf.NAME)[0] == 0
     arkq = _served("etf = 'ARKQ'")
     assert {r[2] for r in arkq} == {"ark"} and {(r[3], r[4]) for r in arkq} == {(t, c) for t, c, _n in fx.SP500}
@@ -374,7 +406,7 @@ def test_both_sources_failing_is_one_source_failed_issue_naming_both(env, http_m
     _source_empty(http_mock, "ARKQ")
     http_mock.routes.insert(0, ("_ARKQ_HOLDINGS.csv", lambda r: (200, b"<html>moved</html>", {}), 200, {}))
     row = base.run_request({"dataset": etf.NAME, "params": {"as_of": AS_OF}})
-    assert row["coverage"] == round(58 / 59, 4) and not _served("etf = 'ARKQ'")
+    assert row["coverage"] == round((N - 1) / N, 4) and not _served("etf = 'ARKQ'")
     n, issues = ops.open_issues(etf.NAME)
     assert n == 1 and issues[0]["kind"] == "source_failed" and issues[0]["key"] == "tickerinside-ARKQ.json"
     assert "no holding line" in issues[0]["detail"] and "ark-ARKQ.csv" in issues[0]["detail"]
@@ -384,7 +416,7 @@ def test_both_sources_failing_is_one_source_failed_issue_naming_both(env, http_m
 def test_a_fund_with_no_issuer_file_still_fails_alone_on_an_empty_answer(env, http_mock):
     _source_empty(http_mock, "WCLD")
     row = base.run_request({"dataset": etf.NAME, "params": {"as_of": AS_OF}})
-    assert row["calls"] == 59 and row["coverage"] == round(58 / 59, 4)
+    assert row["calls"] == N + INDEX and row["coverage"] == round((N - 1) / N, 4)
     assert [i["key"] for i in ops.open_issues(etf.NAME)[1]] == ["tickerinside-WCLD.json"]
 
 
@@ -399,8 +431,11 @@ def test_the_issuer_file_host_has_board_words_and_no_invented_cap():
 def test_a_run_asks_each_tickerinside_fund_for_its_one_file_and_nothing_else(env):
     base.run_request({"dataset": etf.NAME, "params": {"as_of": AS_OF}})
     paths = [str(r.url) for r in env.requests if "tickerinside" in str(r.url)]
-    assert len(paths) == len(etf.TI_FUNDS) == 28
-    assert {p.rsplit("/", 1)[1] for p in paths} == {f"{t.lower()}.json" for t in etf.TI_FUNDS}
+    funds = [p for p in paths if "/fund/" in p]
+    assert len(funds) == len(etf.TI_FUNDS) == 120
+    assert {p.rsplit("/", 1)[1] for p in funds} == {f"{t.lower()}.json" for t in etf.TI_FUNDS}
+    assert sorted(p.rsplit("/", 1)[1] for p in paths if "/fund/" not in p) == [
+        "manifest.json", "sha256sums.txt.gz", "status.json"], "the index files, once a run, and nothing else"
 
 
 def test_no_run_ever_asks_for_the_history_or_the_flows(env):
@@ -447,3 +482,68 @@ def test_the_source_is_paced_out_of_politeness_and_has_no_invented_day_cap():
     from revenuechaser.rcdata import caps
     assert "tickerinside" not in caps.DAY_CAPS and "tickerinside" not in caps.WINDOWS
     assert etf.TI_PACE == (2, 1.0)
+
+
+# ── The manifest: a fund file whose sha256 did not change is not fetched again (plan step B1) ───────────────
+
+DAY2 = "2026-10-28"
+
+
+def _ti_fund_calls(http_mock) -> list[str]:
+    return sorted(str(r.url).rsplit("/", 1)[1] for r in http_mock.requests if "/fund/" in str(r.url))
+
+
+def test_a_fund_file_whose_sha256_is_unchanged_is_not_fetched_and_its_last_file_serves_the_day(env, http_mock):
+    """``sha256sums.txt.gz`` (listed and checked by ``manifest.json``) gives every file's sha256. Equal to the bytes
+    we hold from the fund's last day means the same file: the raw is copied into the new day, with no request, and
+    the day still holds every fund. Only the changed file (SMH here) is asked."""
+    base.run_request({"dataset": etf.NAME, "params": {"as_of": AS_OF}})
+    smh = fx.tickerinside_fund_json(fx.SP500[:2], "SMH", as_of="2026-11-20")
+    bodies = {f.etf: fx.tickerinside_fund_json(fx.SP500, f.etf) for f in etf.FILES if f.provider == "tickerinside"}
+    http_mock.routes.insert(0, ("/fund/smh.json", smh, 200, {}))
+    fx.add_tickerinside_index(http_mock, {**bodies, "SMH": smh}, first=True)
+    http_mock.requests.clear()
+    row = base.run_request({"dataset": etf.NAME, "params": {"as_of": DAY2}})
+    assert _ti_fund_calls(http_mock) == ["smh.json"]
+    assert row["calls"] == N - len(etf.TI_FUNDS) + 1 + INDEX and row["coverage"] == 1.0
+    assert len(_served(f"as_of = DATE '{DAY2}' AND etf = 'SMH'")) == 2
+    assert len(_served(f"as_of = DATE '{DAY2}' AND etf = 'VUG'")) == len(fx.SP500), "the kept file serves the day"
+    meta = base.read_raw_json(etf._meta(etf.raw_dir() / DAY2 / "tickerinside-VUG.json"))
+    assert meta["as_of"] == DAY2 and meta["same_as"] == AS_OF
+    assert f"{len(etf.TI_FUNDS) - 1} of {len(etf.TI_FUNDS)}" in row["note"]
+
+
+def test_a_file_list_that_does_not_match_the_manifest_saves_nothing_and_every_fund_is_fetched(env, http_mock):
+    """The list is trusted only when its sha256 is the manifest's ``list_sha256``; otherwise the run reads every
+    fund file, as before the manifest, and the note says why."""
+    base.run_request({"dataset": etf.NAME, "params": {"as_of": AS_OF}})
+    fx.add_tickerinside_index(http_mock, {}, list_sha256="0" * 64, first=True)
+    http_mock.requests.clear()
+    row = base.run_request({"dataset": etf.NAME, "params": {"as_of": DAY2}})
+    assert len(_ti_fund_calls(http_mock)) == len(etf.TI_FUNDS) and row["coverage"] == 1.0
+    assert "every fund file fetched" in row["note"]
+
+
+def test_the_first_day_has_nothing_to_compare_and_fetches_every_fund(env, http_mock):
+    base.run_request({"dataset": etf.NAME, "params": {"as_of": AS_OF}})
+    assert len(_ti_fund_calls(http_mock)) == len(etf.TI_FUNDS)
+
+
+def test_a_fund_tickerinside_kept_at_an_older_issuer_file_is_one_build_issue(env, http_mock):
+    """``status.json`` names the funds whose issuer file the site could not refresh and serves from an older one
+    (``kept_previous``: CLOU, DTCR and FINX, Global X, since 13 Nov on 21 Nov 2026). Ours become one issue; a fund
+    we do not read (ACHP) is not named."""
+    status = fx.tickerinside_index({}, kept=("CLOU", "ACHP", "FINX"))["/status.json"]
+    http_mock.routes.insert(0, ("/status.json", status, 200, {}))
+    row = base.run_request({"dataset": etf.NAME, "params": {"as_of": AS_OF}})
+    assert row["coverage"] == 1.0
+    n, issues = ops.open_issues(etf.NAME)
+    assert n == 1 and issues[0]["kind"] == "source_stale" and issues[0]["key"] == "tickerinside-kept_previous"
+    assert "CLOU since 2026-11-13" in issues[0]["detail"] and "FINX" in issues[0]["detail"]
+    assert "ACHP" not in issues[0]["detail"]
+
+
+def test_a_named_request_reads_no_index(env, http_mock):
+    """A scoped request asks its names only: no index file, no stale-fund issue."""
+    base.run_request({"dataset": etf.NAME, "params": {"as_of": AS_OF, "names": ["VUG"]}})
+    assert [str(r.url).rsplit("/", 1)[1] for r in http_mock.requests] == ["vug.json"]
