@@ -21,6 +21,7 @@ from RevenueChaser.rcdata import caps, ops, read, serving
 from RevenueChaser.rcdata.build import base
 from RevenueChaser.rcdata.build.prices import actions, bars, cover_shares, floats, wrds_history
 from RevenueChaser.rcdata.build.prices import serving as prices_serving
+from RevenueChaser.rcdata.build.prices import stage as prices_stage
 from RevenueChaser.rcdata.build.spine import wrds
 
 from .prices_fixture import SPINE, BarsAnswer, bar, write_spine
@@ -89,7 +90,7 @@ COLUMNS = {
     ("crsp", "dsf_v2"): [c for c, _ in wrds_history.DSF],
     ("comp", "sec_divid"): [c for c, _ in wrds_history.DIVID],
     ("comp", "sec_split"): [c for c, _ in wrds_history.SPLIT],
-    ("crsp_a_stock", "stkdelists"): ["permno", "delistingdt", "deldtprc", "delret"],
+    ("crsp_a_stock", "stkdelists"): [c for c, _ in wrds_history.DELIST],
 }
 
 
@@ -1087,3 +1088,19 @@ def test_a_held_raw_snapshot_is_typed_again_not_asked_again_503():
     wrds_history._meta(raw).write_text("{}")
     assert wrds_history.WrdsPrices._held_snapshot("sec_split", tuesday) == raw
     assert wrds_history.WrdsPrices._held_snapshot("sec_split", date(2026, 12, 9)) is None
+
+
+def test_a_four_column_delist_snapshot_still_stages_with_the_new_code_columns_null_1293(tmp_path):
+    """#1293 asks ``stkdelists`` whole. The snapshot already on disk has the four old columns, and a snapshot is
+    re-asked only when it is ``SNAPSHOT_DAYS`` old, so the build must read the new ones as NULL until then
+    (``DELIST_ADDED``) instead of failing on a column the Parquet lacks."""
+    old = [("permno", "TEXT"), ("delistingdt", "DATE"), ("deldtprc", "DOUBLE"), ("delret", "DOUBLE")]
+    part = prices_stage.write_rows([{"permno": "99001", "delistingdt": "2024-03-07", "deldtprc": 2.5,
+                                     "delret": -0.42}], old, tmp_path / "part-0.parquet")
+    assert set(wrds_history.DELIST_ADDED) == {c for c, _ in wrds_history.DELIST} - {c for c, _ in old}
+    with duckdb.connect() as con:
+        prices_stage.create(con, "stg_delist", wrds_history.DELIST, [part],
+                            added_later=wrds_history.DELIST_ADDED)
+        row = con.execute("SELECT * FROM stg_delist").df().to_dict("records")[0]
+    assert row["permno"] == "99001" and row["delret"] == pytest.approx(-0.42)
+    assert all(row[c] is None or row[c] != row[c] for c in wrds_history.DELIST_ADDED), row

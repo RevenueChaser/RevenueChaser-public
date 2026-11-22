@@ -1931,8 +1931,9 @@ held to `serving.KINDS` by a test: `rcdata/serving_versions.py` (the version), `
 `module_welcome/build.py` (`FILE_LABELS`), and this document. Backup, restore and the build-state route read
 `serving.KINDS` themselves and need nothing.
 
-**Not here yet.** CRSP's delisting *code* (the reason) is not on disk: the fetch asks `stkdelists` without the
-type-code columns, and adding them is a change to the `prices` fetch and its own PR. CRSP's own day return
+**Not here yet.** CRSP's delisting *code* (the reason) is on disk but not served: the `prices` fetch asks
+`stkdelists` whole, all 19 columns (#1293), and `delisted` does not carry the codes yet -- a serving change and its
+own PR, with a `delisted` serving-version bump. CRSP's own day return
 (`dlyret`) is on disk but not served, because the bar table is exactly `price_bar_daily`'s columns. Share type is
 not fetched, so this layer cannot yet tell a dead stock from a dead fund (avo's default was "stocks first, funds
 later"); every delisted PERMNO is served and the reader cuts on its own. Fundamentals for dead names are later too.
