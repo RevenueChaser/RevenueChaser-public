@@ -10,8 +10,8 @@ import copy
 
 import pytest
 
-from RevenueChaser.module_fundamentals import pipeline, screeners
-from RevenueChaser.module_fundamentals.tests.test_quality_ttm_g6 import ANNUAL, QUARTERLY
+from revenuechaser.module_fundamentals import pipeline, screeners
+from revenuechaser.module_fundamentals.tests.test_quality_ttm_g6 import ANNUAL, QUARTERLY
 
 
 def _loss_quarters():

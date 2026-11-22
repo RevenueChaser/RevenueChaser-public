@@ -5,7 +5,7 @@ import unicodedata
 
 import pytest
 
-from RevenueChaser.core.biotech.sponsor import _PRE_FOLD, normalise_sponsor
+from revenuechaser.core.biotech.sponsor import _PRE_FOLD, normalise_sponsor
 
 CASES = [
     ("Tenaya Therapeutics, Inc.", "tenaya therapeutics"),

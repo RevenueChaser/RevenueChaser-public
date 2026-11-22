@@ -5,9 +5,9 @@ from datetime import date, timedelta
 
 import pytest
 
-from RevenueChaser.rcdata.tests import universe_store
-from RevenueChaser.app import dashboard, runners
-from RevenueChaser.core.tests.panel_client import panel_test_client
+from revenuechaser.rcdata.tests import universe_store
+from revenuechaser.app import dashboard, runners
+from revenuechaser.core.tests.panel_client import panel_test_client
 
 
 class _FakeUW:
@@ -97,7 +97,7 @@ class TestDashboardRoutes:
 
     def test_tradewhisperer_is_removed(self):
         """Removed from RevenueChaser on 2026-09-30 (small-boards decision D3)."""
-        from RevenueChaser.app import jobs
+        from revenuechaser.app import jobs
         c = self._client()
         assert c.get("/view/module_tradewhisperer").status_code == 404
         assert c.post("/run/tw").status_code == 404
@@ -133,7 +133,7 @@ class TestDashboardRoutes:
         assert r.status_code == 400
 
     def test_spxgamma_run_returns_job_id(self, monkeypatch):
-        import RevenueChaser.app.dashboard as d
+        import revenuechaser.app.dashboard as d
         monkeypatch.setattr(d, "UWClient", lambda: _FakeUW())
         monkeypatch.setattr(d.jobs, "submit", lambda module, params: "stubjob")
         c = self._client()
@@ -142,14 +142,14 @@ class TestDashboardRoutes:
         assert r.get_json()["job_id"] == "stubjob"
 
     def test_spxgamma_registered_requires_uw(self):
-        from RevenueChaser.app import jobs
+        from revenuechaser.app import jobs
         assert "spxgamma" in jobs._RUNNERS
         assert jobs._REQUIRES_UW.get("spxgamma") is True
         assert jobs._PRODUCES.get("spxgamma") == ["module_spx_gamma"]
 
     def test_sec13f_edgar_backfill_is_retired(self):
         """13F comes only from the SEC form-13f zip data sets (ownership plan D2)."""
-        from RevenueChaser.app import jobs
+        from revenuechaser.app import jobs
         assert "module_sec_13f_edgar" not in jobs._RUNNERS
         c = self._client()
         assert c.post("/run/module_sec_13f-edgar", data={"period": "2026-06-30"}).status_code == 404
@@ -157,13 +157,13 @@ class TestDashboardRoutes:
 
     def test_sec13f_fetch_needs_no_uw_key(self):
         """#206: the SEC ingest is not gated on Unusual Whales; its names step is best-effort."""
-        from RevenueChaser.app import jobs, runners
+        from revenuechaser.app import jobs, runners
         assert jobs._RUNNERS["module_sec_13f"] is runners.build_sec13f
         assert jobs._REQUIRES_UW["module_sec_13f"] is False
 
     def test_rotation_and_money_flow_need_no_uw_key(self):
         """Sector Rotation review 17 Nov 2026 (F12): both jobs read only stored bars and fund lists."""
-        from RevenueChaser.app import jobs
+        from revenuechaser.app import jobs
         assert jobs._REQUIRES_UW["rotation"] is False
         assert jobs._REQUIRES_UW["moneyflow"] is False
 
@@ -178,7 +178,7 @@ class TestDashboardRoutes:
         assert r.status_code == 400
 
     def test_run_earnings_dates_list_is_submitted(self, monkeypatch):
-        import RevenueChaser.app.dashboard as d
+        import revenuechaser.app.dashboard as d
         captured = {}
         monkeypatch.setattr(d, "UWClient", lambda: _FakeUW())
         def fake_submit(module, params):
@@ -207,14 +207,14 @@ class TestDashboardRoutes:
 
     def test_implied_probability_needs_no_key(self, monkeypatch):
         """Decision B: the board reads the nightly options build, so its run is not gated on the UW key."""
-        import RevenueChaser.app.dashboard as d
+        import revenuechaser.app.dashboard as d
         monkeypatch.setattr(d, "UWClient", lambda: _NoKey())
         monkeypatch.setattr(d.jobs, "submit", lambda module, params: "stubjob")
         r = self._client().post("/run/module_oipd")
         assert r.status_code == 202 and r.get_json()["job_id"] == "stubjob"
 
     def test_run_returns_job_id(self, monkeypatch):
-        import RevenueChaser.app.dashboard as d
+        import revenuechaser.app.dashboard as d
         monkeypatch.setattr(d, "UWClient", lambda: _FakeUW())
         monkeypatch.setattr(d.jobs, "submit", lambda module, params: "stubjob")
         c = self._client()
@@ -225,7 +225,7 @@ class TestDashboardRoutes:
         assert data["job_id"] == "stubjob"
 
     def test_api_jobs_and_job(self, monkeypatch):
-        import RevenueChaser.app.dashboard as d
+        import revenuechaser.app.dashboard as d
         monkeypatch.setattr(d, "UWClient", lambda: _FakeUW())
         monkeypatch.setattr(d.jobs, "submit", lambda module, params: "stubjob")
         c = self._client()
@@ -242,7 +242,7 @@ class TestDashboardRoutes:
         assert r.status_code == 404
 
     def test_api_rotation_dates(self, rawstore_tmp_db):
-        from RevenueChaser.core import rawstore
+        from revenuechaser.core import rawstore
         rawstore.write_rows("rotation_snapshots", [{
             "as_of_date": "2026-08-12", "ticker": "XLK", "name": "IT", "group": "sector",
             "close_price": 1.0, "rs_1w": 0, "rs_1m": 0, "rs_3m": 0, "rs_ratio": 0,
@@ -254,7 +254,7 @@ class TestDashboardRoutes:
         assert r.get_json()["dates"] == ["2026-08-12"]
 
     def test_api_rotation_latest(self, rawstore_tmp_db):
-        from RevenueChaser.core import rawstore
+        from revenuechaser.core import rawstore
         for d, gen in [("2026-08-12", "2026-08-12T10:00:00"), ("2026-08-15", "2026-08-15T14:32:05")]:
             rawstore.write_rows("rotation_snapshots", [{
                 "as_of_date": d, "ticker": "XLK", "name": "IT", "group": "sector",
@@ -277,7 +277,7 @@ class TestDashboardRoutes:
 
     def test_api_moneyflow_cached(self, tmp_path, monkeypatch):
         import json
-        from RevenueChaser.app import runners
+        from revenuechaser.app import runners
         monkeypatch.setattr(runners, "MONEY_FLOW_LATEST", tmp_path / "money_flow_latest.json")
         (tmp_path / "money_flow_latest.json").write_text(
             json.dumps({"inflows": [{"ticker": "UP", "name": "Up", "flow_score": 12.5}],
@@ -291,7 +291,7 @@ class TestDashboardRoutes:
         assert data["outflows"][0]["flow_score"] == -9.1
 
     def test_api_moneyflow_missing(self, tmp_path, monkeypatch):
-        from RevenueChaser.app import runners
+        from revenuechaser.app import runners
         monkeypatch.setattr(runners, "MONEY_FLOW_LATEST", tmp_path / "missing.json")
         c = self._client()
         r = c.get("/api/moneyflow")
@@ -299,7 +299,7 @@ class TestDashboardRoutes:
         assert r.get_json()["inflows"] == []
 
     def test_run_rotation_spy_only(self, monkeypatch):
-        import RevenueChaser.app.dashboard as d
+        import revenuechaser.app.dashboard as d
         captured = {}
         monkeypatch.setattr(d, "UWClient", lambda: _FakeUW())
         def fake_submit(module, params):
@@ -322,7 +322,7 @@ class TestDashboardRoutes:
         assert "Fetch Universe" in body
 
     def test_run_module_asymmetric_growth_refresh_universe_flag(self, monkeypatch):
-        import RevenueChaser.app.dashboard as d
+        import revenuechaser.app.dashboard as d
         captured = {}
         monkeypatch.setattr(d, "UWClient", lambda: _FakeUW())
         monkeypatch.setattr(d.jobs, "submit",
@@ -334,7 +334,7 @@ class TestDashboardRoutes:
         assert captured["params"].get("refresh_universe") is True
 
     def test_run_module_asymmetric_growth_no_refresh_by_default(self, monkeypatch):
-        import RevenueChaser.app.dashboard as d
+        import revenuechaser.app.dashboard as d
         captured = {}
         monkeypatch.setattr(d, "UWClient", lambda: _FakeUW())
         monkeypatch.setattr(d.jobs, "submit",
@@ -344,7 +344,7 @@ class TestDashboardRoutes:
         assert "refresh_universe" not in captured["params"]
 
     def test_run_swing_refresh_universe_flag(self, monkeypatch):
-        import RevenueChaser.app.dashboard as d
+        import revenuechaser.app.dashboard as d
         captured = {}
         monkeypatch.setattr(d, "UWClient", lambda: _FakeUW())
         monkeypatch.setattr(d.jobs, "submit",
@@ -357,7 +357,7 @@ class TestDashboardRoutes:
 
     def test_run_module_fundamentals_no_fetch_flag(self, monkeypatch):
         # 'Refresh Tab' on a universe board = model-only, no network.
-        import RevenueChaser.app.dashboard as d
+        import revenuechaser.app.dashboard as d
         captured = {}
         monkeypatch.setattr(d, "UWClient", lambda: _FakeUW())
         monkeypatch.setattr(d.jobs, "submit",
@@ -369,7 +369,7 @@ class TestDashboardRoutes:
         assert captured["params"].get("no_fetch") is True
 
     def test_run_module_asymmetric_growth_neither_flag(self, monkeypatch):
-        import RevenueChaser.app.dashboard as d
+        import revenuechaser.app.dashboard as d
         captured = {}
         monkeypatch.setattr(d, "UWClient", lambda: _FakeUW())
         monkeypatch.setattr(d.jobs, "submit",
@@ -405,7 +405,7 @@ class TestDashboardRoutes:
         assert '<select id="trail-start"' not in body, "old week dropdown should be removed"
 
     def test_api_rotation_weeks(self, rawstore_tmp_db):
-        from RevenueChaser.core import rawstore
+        from revenuechaser.core import rawstore
         for d in ["2026-08-12", "2026-08-19"]:
             rawstore.write_rows("rotation_snapshots", [{
                 "as_of_date": d, "ticker": "XLK", "name": "IT", "group": "sector",
@@ -447,7 +447,7 @@ class TestDashboardRoutes:
         assert r.status_code == 404
 
     def test_holdings_route_fragment(self, rawstore_tmp_db):
-        import RevenueChaser.module_sector_rotation.store as rs
+        import revenuechaser.module_sector_rotation.store as rs
         rs.save_holdings_cache("XLK", [{"ticker": "NVDA", "name": "NVIDIA", "weight": 14.2,
                                         "close": 150.0, "rs_1w": 2.1, "rs_1m": 5.3, "rs_3m": 9.8}])
         c = self._client()
@@ -459,7 +459,7 @@ class TestDashboardRoutes:
 
     def test_holdings_legacy_route_alias(self, rawstore_tmp_db):
         # Pre-Phase-2 slug must keep working (the JS falls back to it).
-        import RevenueChaser.module_sector_rotation.store as rs
+        import revenuechaser.module_sector_rotation.store as rs
         rs.save_holdings_cache("XLK", [{"ticker": "NVDA", "name": "NVIDIA", "weight": 14.2,
                                         "close": 150.0, "rs_1w": 2.1, "rs_1m": 5.3, "rs_3m": 9.8}])
         c = self._client()
@@ -483,9 +483,9 @@ class TestDashboardRoutes:
     def test_holdings_route_every_sector_etf_finds_its_tree(self, rawstore_tmp_db):
         # XLK/XLV/XLF/XLB/XLY/XLP used to fall silently back to the ETF top 10 once the stored sector
         # carried a Morningstar name; every sector row must find its tree.
-        from RevenueChaser.core.gics_map import MORNINGSTAR_SECTORS
-        from RevenueChaser.core.rotation_reference import SEED_ROTATION_ETFS as ROTATION_ETFS
-        import RevenueChaser.module_sector_rotation.store as rs
+        from revenuechaser.core.gics_map import MORNINGSTAR_SECTORS
+        from revenuechaser.core.rotation_reference import SEED_ROTATION_ETFS as ROTATION_ETFS
+        import revenuechaser.module_sector_rotation.store as rs
         sector_etfs = {i["name"]: t for t, i in ROTATION_ETFS.items() if i["group"] == "sector"}
         assert set(sector_etfs) == set(MORNINGSTAR_SECTORS)
         universe_store.put([
@@ -501,7 +501,7 @@ class TestDashboardRoutes:
             assert "ETFTOP" not in body and "Top holdings" not in body, (sector, etf)
 
     def test_holdings_route_theme_still_uses_etf_holdings(self, rawstore_tmp_db):
-        import RevenueChaser.module_sector_rotation.store as rs
+        import revenuechaser.module_sector_rotation.store as rs
         rs.save_holdings_cache("SMH", [{"ticker": "NVDA", "name": "NVIDIA", "weight": 18.0,
                                         "close": 150.0, "rs_1w": 2.1, "rs_1m": 5.3, "rs_3m": 9.8}])
         body = self._client().get(
@@ -509,7 +509,7 @@ class TestDashboardRoutes:
         assert "Top holdings" in body and "NVDA" in body
 
     def test_watchlist_toggle_add_and_remove(self, rawstore_tmp_db):
-        from RevenueChaser.core import rawstore
+        from revenuechaser.core import rawstore
         c = self._client()
         r = c.post("/api/watchlist/toggle/AAA")
         assert r.get_json() == {"ok": True, "ticker": "AAA", "in_watchlist": True}
@@ -526,13 +526,13 @@ class _NoKey:
         return False
 
     def verify(self):
-        from RevenueChaser.core import credentials
+        from revenuechaser.core import credentials
         return False, credentials.missing_message("unusual_whales")
 
 
 class TestApiTicker:
     def _seed(self, rawstore_tmp_db, cards):
-        from RevenueChaser.core import ticker_store
+        from revenuechaser.core import ticker_store
         ticker_store.write_from_cards(cards, asof="2026-08-23")
 
     def _card(self, ticker):
@@ -583,7 +583,7 @@ class TestRunners:
         assert runners.FUNDAMENTALS_LATEST.name == "fundamentals_latest.html"
 
     def test_nrc_results_computed(self):
-        from RevenueChaser.module_earnings_radar.models import TradeCard
+        from revenuechaser.module_earnings_radar.models import TradeCard
         cards = [TradeCard(ticker="AAPL", direction_score=20.0, confidence_score=65.0)]
         nrc = runners._compute_nrc_results(cards)
         assert "AAPL" in nrc
@@ -599,7 +599,7 @@ class TestQuickTickerCacheState:
     file under .cache/ (QUICK_STATE), not persisted to the durable store."""
 
     def _patch_state(self, monkeypatch, tmp_path):
-        import RevenueChaser.app.runners as rn
+        import revenuechaser.app.runners as rn
         monkeypatch.setattr(rn, "QUICK_STATE", tmp_path / "financials" / "financials_latest.json")
         return rn
 
@@ -665,7 +665,7 @@ class TestRefreshReadsStoreFetchReadsNetwork:
 
     def test_the_leaps_tab_serves_the_no_data_page(self, rawstore_tmp_db, tmp_path, monkeypatch):
         """Nothing in ``option_far_contract`` yet (#746): the no-data page. No key, no network, no accumulation wording."""
-        from RevenueChaser.core import rawstore
+        from revenuechaser.core import rawstore
         rawstore.save_watchlist({"AAPL"})
         monkeypatch.setattr(dashboard, "UWClient", lambda: _NoKey())
 
@@ -677,7 +677,7 @@ class TestRefreshReadsStoreFetchReadsNetwork:
 
     def test_a_cached_leaps_artifact_is_never_served_again(self, rawstore_tmp_db, tmp_path, monkeypatch):
         """An older build left ``leaps_latest.html`` in .cache/: the no-data page wins, on a Refresh too."""
-        import RevenueChaser.app.runners as rn
+        import revenuechaser.app.runners as rn
         monkeypatch.setattr(rn, "OUTPUT_DIR", tmp_path)
         (tmp_path / "leaps_latest.html").write_text("<h1>LEAPS ACCUMULATION RADAR</h1>", encoding="utf-8")
         monkeypatch.setattr(dashboard, "UWClient", lambda: _NoKey())
@@ -709,7 +709,7 @@ class TestRefreshReadsStoreFetchReadsNetwork:
 
     def test_the_leaps_job_is_not_registered(self):
         """No runner, so no Fetch button, no scheduled call and no script can start a scan (#730)."""
-        from RevenueChaser.app import jobs
+        from revenuechaser.app import jobs
         assert "module_leaps" not in jobs._RUNNERS
 
         # network is globally blocked (conftest) — reaching here proves refresh is offline
@@ -724,7 +724,7 @@ class TestRefreshReadsStoreFetchReadsNetwork:
         """A store-only refresh for a ticker with NO raw payload must drop the
         stale artifact and return None, so the view shows an empty state rather
         than a report for the wrong ticker."""
-        import RevenueChaser.app.runners as rn
+        import revenuechaser.app.runners as rn
         monkeypatch.setattr(rn, "QUICK_LATEST", tmp_path / "financials_latest.html")
         monkeypatch.setattr(rn, "QUICK_STATE", tmp_path / "financials" / "financials_latest.json")
         (tmp_path / "financials_latest.html").write_text("<h1>STALE</h1>", encoding="utf-8")
@@ -744,8 +744,8 @@ class TestComovementRefresh:
     """
 
     def test_refresh_honors_horizon_and_benchmark_query(self, monkeypatch, tmp_path):
-        import RevenueChaser.app.runners as rn
-        import RevenueChaser.module_comovement.engine as eng
+        import revenuechaser.app.runners as rn
+        import revenuechaser.module_comovement.engine as eng
 
         captured = {}
 
@@ -770,8 +770,8 @@ class TestComovementRefresh:
                             "window": None}
 
     def test_refresh_forwards_a_valid_window_and_rejects_others(self, monkeypatch, tmp_path):
-        import RevenueChaser.app.runners as rn
-        import RevenueChaser.module_comovement.engine as eng
+        import revenuechaser.app.runners as rn
+        import revenuechaser.module_comovement.engine as eng
 
         seen = []
 
@@ -861,7 +861,7 @@ class TestSettingsDataHealthBoard:
 
     def test_refresh_rerenders_from_store_without_network(
             self, rawstore_tmp_db, monkeypatch):
-        from RevenueChaser.core.providers import sec_edgar
+        from revenuechaser.core.providers import sec_edgar
 
         universe_store.put([{"ticker": "AAPL", "market_cap": 3.0e9}])
         runners.SETTINGS_LATEST.unlink(missing_ok=True)
@@ -966,7 +966,7 @@ class TestOipdTickerOutsideThePool:
 
 
     def test_the_combobox_rule_is_the_servers_ticker_rule(self):
-        from RevenueChaser.core import reporting_common
+        from revenuechaser.core import reporting_common
         assert dashboard._TICKER_RE.pattern in reporting_common.FILTERS_JS
         for ok in ("SPY", "BRK.B", "BF-B", "A", "ABCDEFGHIJ"):
             assert dashboard._valid_ticker(ok)
@@ -984,14 +984,14 @@ class TestOipdTickerOutsideThePool:
 
 class TestRunValueChainEmptyFetch:
     def _stub(self, monkeypatch, tmp_path, fetch):
-        from RevenueChaser.module_value_chain import engine, report
+        from revenuechaser.module_value_chain import engine, report
 
         monkeypatch.setattr(engine, "run", lambda no_fetch=False, **kw: {"fetch": fetch})
         monkeypatch.setattr(report, "render_value_chain_dashboard", lambda p: "<html></html>")
         monkeypatch.setattr(runners, "_write_output", lambda *a, **k: tmp_path / "x")
 
     def test_an_empty_fetch_raises_a_job_message_with_the_reasons(self, monkeypatch, tmp_path):
-        from RevenueChaser.app.jobs import JobMessage
+        from revenuechaser.app.jobs import JobMessage
 
         self._stub(monkeypatch, tmp_path, {"fetched": 0, "cached": 7, "no_filing": 2,
                                            "no_cik": 1, "failed": 0})
@@ -1002,8 +1002,8 @@ class TestRunValueChainEmptyFetch:
 
     def test_a_layer_fetch_says_what_it_read_in_counts(self, monkeypatch, tmp_path):
         """V2 (16 Nov plan): on the layer ``fetched`` is always 0, so every Fetch said "No new filings fetched"."""
-        from RevenueChaser.app.jobs import JobMessage
-        from RevenueChaser.module_value_chain import engine, report
+        from revenuechaser.app.jobs import JobMessage
+        from revenuechaser.module_value_chain import engine, report
 
         payload = {"fetch": {"fetched": 0, "cached": 4812, "corpus": "layer"}, "edges": [{}] * 9,
                    "profile_hidden": 20583, "pending": 312}
@@ -1035,7 +1035,7 @@ def test_every_route_the_control_board_names_is_served_by_the_dashboard():
     """
     from werkzeug.exceptions import MethodNotAllowed, NotFound
 
-    from RevenueChaser.module_settings import control_render
+    from revenuechaser.module_settings import control_render
 
     adapter = dashboard.app.url_map.bind("127.0.0.1")
     for name, path in control_render.ROUTES.items():
@@ -1076,8 +1076,8 @@ def test_the_disk_picture_route_queues_the_job_and_refuses_a_second_one(monkeypa
 def test_the_disk_picture_job_says_what_it_walked(monkeypatch, tmp_path):
     """AGENTS.md: a run says what it found. A capped folder's count is a floor, and that is the one failure that
     quietly falsifies the journey table, so it has to reach the job's message rather than only the page."""
-    from RevenueChaser.app.jobs import JobMessage
-    from RevenueChaser.module_settings import newdata
+    from revenuechaser.app.jobs import JobMessage
+    from revenuechaser.module_settings import newdata
 
     monkeypatch.setattr(newdata, "STORAGE_PICTURE", tmp_path / "picture.json")
     monkeypatch.setattr(runners, "run_settings", lambda *a, **k: tmp_path / "board.html")

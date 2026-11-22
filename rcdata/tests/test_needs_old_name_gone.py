@@ -5,7 +5,7 @@ import pathlib
 import re
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-OLD_IMPORT = re.compile(r"rcdata\.api\b|from\s+(?:RevenueChaser\.)?rcdata\s+import\s+[^\n]*\bapi\b|from\s+\.api\b")
+OLD_IMPORT = re.compile(r"rcdata\.api\b|from\s+(?:revenuechaser\.)?rcdata\s+import\s+[^\n]*\bapi\b|from\s+\.api\b")
 SKIP = {"needs"}
 
 
@@ -36,7 +36,7 @@ def test_the_old_package_directory_is_gone():
 
 
 def test_the_old_api_data_routes_are_gone():
-    from RevenueChaser.app import dashboard
+    from revenuechaser.app import dashboard
     rules = {r.rule for r in dashboard.app.url_map.iter_rules()}
     assert "/needs" in rules and "/needs/<path:need>" in rules
     assert not {r for r in rules if r == "/api/data" or r.startswith("/api/data/")}, "old routes came back"

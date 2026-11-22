@@ -13,8 +13,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from RevenueChaser.core import board_settings
-from RevenueChaser.core import universe as universe_mod
+from revenuechaser.core import board_settings
+from revenuechaser.core import universe as universe_mod
 
 from . import config
 

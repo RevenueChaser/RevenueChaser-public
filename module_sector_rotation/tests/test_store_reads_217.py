@@ -21,8 +21,8 @@ import re
 from datetime import date
 from pathlib import Path
 
-from RevenueChaser.core import provenance, rawstore
-from RevenueChaser.module_sector_rotation import store_reads as sr
+from revenuechaser.core import provenance, rawstore
+from revenuechaser.module_sector_rotation import store_reads as sr
 
 REPO = Path(__file__).resolve().parents[2]
 #: The two tables of the board's file, as the names a stray ``SELECT`` would spell.

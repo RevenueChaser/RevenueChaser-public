@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import httpx
 
-from RevenueChaser.core.identity.sources import openfigi
-from RevenueChaser.core.identity.tests.helpers import FakeResp, fixture_json
+from revenuechaser.core.identity.sources import openfigi
+from revenuechaser.core.identity.tests.helpers import FakeResp, fixture_json
 
 TICKERS = ["PDI", "DNP", "ARCC", "OZK", "TOWN", "LAZR", "ASML", "AZN", "AAPL", "GOOGL", "BRK-B"]
 
@@ -212,7 +212,7 @@ def test_other_tickers_keep_the_plain_slash_spelling(http):
 def test_keyed_requests_take_a_token_of_the_key_s_shared_bucket(http, monkeypatch):
     """Review round 2 of #380 (SF-2): the identity refresh maps on the same key as the builder's ``openfigi/map`` and
     the dashboard's CUSIP mapping, so every keyed request (a retry too) spends from the one box-wide bucket."""
-    from RevenueChaser.core.providers import openfigi as figi_client
+    from revenuechaser.core.providers import openfigi as figi_client
     monkeypatch.setenv("OPENFIGI_API_KEY", "figi-test-key")
     state = {"n": 0}
 

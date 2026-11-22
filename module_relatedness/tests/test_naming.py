@@ -9,10 +9,10 @@ import logging
 import pytest
 from datetime import datetime, timezone
 
-from RevenueChaser.rcdata.tests import universe_store
-from RevenueChaser.core import rawstore
-from RevenueChaser.core.providers import deepseek
-from RevenueChaser.module_relatedness import naming, themes
+from revenuechaser.rcdata.tests import universe_store
+from revenuechaser.core import rawstore
+from revenuechaser.core.providers import deepseek
+from revenuechaser.module_relatedness import naming, themes
 
 
 def _profiles():
@@ -162,7 +162,7 @@ def test_name_themes_parents_see_child_labels(rawstore_tmp_db):
 
 
 def test_cli_name_themes_prints_summary(rawstore_tmp_db, monkeypatch, capsys):
-    from RevenueChaser.module_relatedness import __main__ as cli
+    from revenuechaser.module_relatedness import __main__ as cli
 
     monkeypatch.setattr(naming, "name_themes",
                         lambda rid=None, **k: {"run_id": rid or "cur", "named": 4,
@@ -174,7 +174,7 @@ def test_cli_name_themes_prints_summary(rawstore_tmp_db, monkeypatch, capsys):
 
 def test_cli_summary_carries_the_real_copied_count(rawstore_tmp_db, capsys):
     """The CLI half of ``copied`` (#433): a REAL name_themes result, not a stub dict, goes through the summary."""
-    from RevenueChaser.module_relatedness import __main__ as cli
+    from revenuechaser.module_relatedness import __main__ as cli
 
     _seed_medium("solo", ["Semiconductors"])             # one fine child: the medium theme copies its name
     assert cli.main(["--name-themes", "--run-id", "solo"]) == 0
@@ -183,7 +183,7 @@ def test_cli_summary_carries_the_real_copied_count(rawstore_tmp_db, capsys):
 
 
 def test_cli_name_themes_peak_exits_zero(rawstore_tmp_db, monkeypatch, capsys):
-    from RevenueChaser.module_relatedness import __main__ as cli
+    from revenuechaser.module_relatedness import __main__ as cli
 
     monkeypatch.setattr(naming, "name_themes",
                         lambda rid=None, **k: {"run_id": rid, "named": 1, "pending": 5,
@@ -194,7 +194,7 @@ def test_cli_name_themes_peak_exits_zero(rawstore_tmp_db, monkeypatch, capsys):
 
 
 def test_cli_rebuild_themes_cuts_over_and_names(rawstore_tmp_db, monkeypatch, capsys):
-    from RevenueChaser.module_relatedness import __main__ as cli
+    from revenuechaser.module_relatedness import __main__ as cli
 
     seen = {}
     monkeypatch.setattr(themes, "build_shadow",
@@ -270,7 +270,7 @@ def test_unusable_reply_leaves_the_tag_label_pending(rawstore_tmp_db):
 
 
 def test_cli_name_themes_reports_an_auth_failure(rawstore_tmp_db, monkeypatch, capsys):
-    from RevenueChaser.module_relatedness import __main__ as cli
+    from revenuechaser.module_relatedness import __main__ as cli
 
     def boom(rid=None, **k):
         raise deepseek.DeepSeekAuthError("DeepSeek rejected the API key")

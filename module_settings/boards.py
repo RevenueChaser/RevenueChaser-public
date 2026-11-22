@@ -18,18 +18,18 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from RevenueChaser.core import board_settings
-from RevenueChaser.core import funnel as funnel_mod
-from RevenueChaser.core.config import OUTPUT_DIR
-from RevenueChaser.core.universe import DEFAULT_MC_MIN
-from RevenueChaser.module_comovement import config as comov_config
-from RevenueChaser.module_comovement import settings as comov_settings
-from RevenueChaser.module_comovement import store_reads as _comov
-from RevenueChaser.module_fundamentals import settings as fund_settings
-from RevenueChaser.module_news import store_reads as _news
-from RevenueChaser.module_relatedness import store_reads as _rel
-from RevenueChaser.module_swing_potential import config as swing_config
-from RevenueChaser.module_swing_potential import settings as swing_settings
+from revenuechaser.core import board_settings
+from revenuechaser.core import funnel as funnel_mod
+from revenuechaser.core.config import OUTPUT_DIR
+from revenuechaser.core.universe import DEFAULT_MC_MIN
+from revenuechaser.module_comovement import config as comov_config
+from revenuechaser.module_comovement import settings as comov_settings
+from revenuechaser.module_comovement import store_reads as _comov
+from revenuechaser.module_fundamentals import settings as fund_settings
+from revenuechaser.module_news import store_reads as _news
+from revenuechaser.module_relatedness import store_reads as _rel
+from revenuechaser.module_swing_potential import config as swing_config
+from revenuechaser.module_swing_potential import settings as swing_settings
 
 
 def _comovement_params() -> list[str]:
@@ -176,7 +176,7 @@ def llm_writers_card() -> dict:
     run on. A writer whose credential is absent is offered greyed with the variable's NAME
     (``llm_writers.missing_text``), never a value; a paid writer is marked as paid.
     """
-    from RevenueChaser.core import llm_jobs
+    from revenuechaser.core import llm_jobs
     jobs = llm_jobs.options()
     return {
         "board": llm_jobs.BOARD,
@@ -207,7 +207,7 @@ def _html(name: str) -> Path:
 def _watchlists_latest() -> dict | None:
     """Watch lists has no artifact: the lists themselves are the board (#786). The newest list write is its as-of,
     and a store with no list yet reads as "not rendered", which is what the page should say."""
-    from RevenueChaser.module_watchlists import store as wl_store
+    from revenuechaser.module_watchlists import store as wl_store
     rows = wl_store.lists()
     if not rows:
         return None
@@ -217,21 +217,21 @@ def _watchlists_latest() -> dict | None:
 
 def _spx_latest() -> dict | None:
     """SPX Gamma's latest pointer lives in its board file (``spx_meta``), not in a file (review F4)."""
-    from RevenueChaser.module_spx_gamma import store as spx_store
+    from revenuechaser.module_spx_gamma import store as spx_store
     return spx_store.latest()
 
 
 def _leaps_latest() -> dict | None:
     """LEAPS has no artifact (#746): the newest session of ``option_far_contract`` is its as-of, none yet is
     "not rendered"."""
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     sessions = read.far_contract_sessions()
     return {"as_of": str(sessions[0]["session_date"])} if sessions else None
 
 
 def _hit_rate_latest() -> dict | None:
     """Hit Rate has no artifact (#25): the newest freeze date in ``forecast_ledger`` is its as-of."""
-    from RevenueChaser.core import rawstore
+    from revenuechaser.core import rawstore
     rows = rawstore.query("SELECT max(forecast_date) AS d FROM forecast_ledger", db="forecast")
     return {"as_of": str(rows[0]["d"])} if rows and rows[0]["d"] is not None else None
 
@@ -369,7 +369,7 @@ def _needs_of(key: str) -> dict:
     record that cannot be read is no needs, never a raise: this is a card on a status screen.
     """
     try:
-        from RevenueChaser.rcdata.needs import boards as api_boards
+        from revenuechaser.rcdata.needs import boards as api_boards
         reads = api_boards.reads_of(key)
         return {"needs": list(reads["needs"]), "declared": bool(reads["declared"])}
     except Exception:  # noqa: BLE001 - an unreadable record is "none recorded", not a broken page

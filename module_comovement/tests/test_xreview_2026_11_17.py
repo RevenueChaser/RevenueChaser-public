@@ -13,10 +13,10 @@ import logging
 import numpy as np
 import pandas as pd
 
-from RevenueChaser.core import universe as universe_mod
-from RevenueChaser.module_comovement import engine
-from RevenueChaser.module_comovement import returns as returns_mod
-from RevenueChaser.module_comovement.tests import test_recompute_parity as parity
+from revenuechaser.core import universe as universe_mod
+from revenuechaser.module_comovement import engine
+from revenuechaser.module_comovement import returns as returns_mod
+from revenuechaser.module_comovement.tests import test_recompute_parity as parity
 
 
 def test_one_extreme_print_does_not_set_the_beta():

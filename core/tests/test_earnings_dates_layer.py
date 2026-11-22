@@ -13,7 +13,7 @@ from datetime import date, timedelta
 
 import pytest
 
-from RevenueChaser.core import earnings_dates as ed
+from revenuechaser.core import earnings_dates as ed
 
 TODAY = date(2026, 10, 22)
 
@@ -27,7 +27,7 @@ def reference_session(monkeypatch):
     over those two differ by one, and a card would say fresh while the filter had already dropped the layer. These
     cases are written against ``TODAY``, so ``TODAY`` is the newest complete session here.
     """
-    from RevenueChaser.rcdata import needs
+    from revenuechaser.rcdata import needs
     monkeypatch.setattr(needs.serve.calendar, "latest_complete_session", lambda: TODAY)
 
 
@@ -50,7 +50,7 @@ PAST_THE_EDGE = date(2026, 10, 20)
 
 
 def test_the_age_window_is_the_needs_own(monkeypatch):
-    from RevenueChaser.rcdata import needs
+    from revenuechaser.rcdata import needs
     need = needs.catalog.NEEDS["earnings.next"]
     assert need.max_lag == MAX_AGE_SESSIONS and need.max_lag_unit == "sessions"
     assert needs.lag_sessions(AT_THE_EDGE, TODAY) == MAX_AGE_SESSIONS

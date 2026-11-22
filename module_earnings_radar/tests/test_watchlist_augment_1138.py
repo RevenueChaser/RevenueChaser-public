@@ -13,8 +13,8 @@ from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
-from RevenueChaser.core import calendar
-from RevenueChaser.module_earnings_radar import stored_inputs, watchlist_augment
+from revenuechaser.core import calendar
+from revenuechaser.module_earnings_radar import stored_inputs, watchlist_augment
 
 # 2026-10-14 is a Wednesday. The builder's session is the 13th; the reports are the 16th (Friday), past today and
 # tomorrow, so they are the store's to answer.

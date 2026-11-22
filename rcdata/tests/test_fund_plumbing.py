@@ -6,9 +6,9 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.rcdata import caps, ops, serving
-from RevenueChaser.rcdata.build import DATASETS, due
-from RevenueChaser.rcdata.build.fundamentals import KIND, tables
+from revenuechaser.rcdata import caps, ops, serving
+from revenuechaser.rcdata.build import DATASETS, due
+from revenuechaser.rcdata.build.fundamentals import KIND, tables
 
 from . import fund_fixture as fx
 
@@ -34,7 +34,7 @@ def test_the_day_caps_name_the_new_providers():
 
 
 def test_the_alpha_vantage_key_is_declared_by_name_only():
-    from RevenueChaser.core import credentials
+    from revenuechaser.core import credentials
     assert credentials.PROVIDERS["alphavantage"].env_var == "ALPHAVANTAGE_API_KEY"
 
 
@@ -73,8 +73,8 @@ def test_a_404_that_the_caller_did_not_declare_missing_raises_and_counts_no_fail
     """#1304: ``common.get``'s raise spends a ``failures`` count only for provider trouble. A 404 the caller did
     not declare in ``missing`` still raises -- the dataset was asking for something it expected to be there --
     but it is the host answering, so the day's ``failures`` figure stays readable."""
-    from RevenueChaser.rcdata.build import base
-    from RevenueChaser.rcdata.build.fundamentals import common
+    from revenuechaser.rcdata.build import base
+    from revenuechaser.rcdata.build.fundamentals import common
 
     ctx = base.RunContext(run_id="r", dataset="d", sleep=lambda s: None)
     with pytest.raises(base.SourceError, match="HTTP 404"):

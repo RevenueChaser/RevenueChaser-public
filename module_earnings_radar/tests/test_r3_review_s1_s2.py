@@ -4,14 +4,14 @@ S1: the C6 (energy, utilities, materials) scorer counted four or five signals ov
 read 1.33 and lifted composite confidence. The operating-margin branch now counts, the denominator is five, and
 score() clamps coverage at 1.0 as the guard.
 
-S2: the universal +15 operating-margin floor fired on OM +2 pts YoY alone. docs/module_earnings-radar/redesign.md R3 step 3 also
+S2: the universal +15 operating-margin floor fired on OM +2 pts YoY alone. docs/module_earnings_radar/redesign.md R3 step 3 also
 needs the last-4 median above the prior-4 median, which _universal_om already tests for its vote; the floor now
 follows that vote.
 """
 import pytest
 
-from RevenueChaser.module_earnings_radar.rules import rule3_financial
-from RevenueChaser.module_earnings_radar.rules.rule3_financial import _score_energy, score
+from revenuechaser.module_earnings_radar.rules import rule3_financial
+from revenuechaser.module_earnings_radar.rules.rule3_financial import _score_energy, score
 
 ENERGY_LATEST = {"revenue": 1150, "gross_margin": 0.45, "operating_margin": 0.25, "cash_from_operations": 200,
                  "fiscal_date": "2026-03-31"}

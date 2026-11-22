@@ -12,11 +12,11 @@ from pathlib import Path
 
 import pytest
 
-from RevenueChaser.app import jobs
-from RevenueChaser.core import config, procs, rawstore
+from revenuechaser.app import jobs
+from revenuechaser.core import config, procs, rawstore
 
 REPO = Path(__file__).resolve().parents[2]
-_HOLD = ("import sys, time; from pathlib import Path; from RevenueChaser.core import rawstore, job_lock\n"
+_HOLD = ("import sys, time; from pathlib import Path; from revenuechaser.core import rawstore, job_lock\n"
          "rawstore.DB_PATH = Path(sys.argv[1])\n"
          "with job_lock.acquire(sys.argv[2], wait=0) as got:\n"
          "    print(got, flush=True); time.sleep(60)")
@@ -68,7 +68,7 @@ def test_not_idle_while_an_in_memory_job_is_queued_or_running():
 
 
 def test_api_idle_mirrors_idle_and_needs_no_header(sleeper):
-    from RevenueChaser.app.dashboard import app
+    from revenuechaser.app.dashboard import app
     client = app.test_client()                         # a plain client: GET needs no panel header
     r = client.get("/api/idle")
     assert r.status_code == 200 and r.get_json() == {"idle": True, "reasons": []}

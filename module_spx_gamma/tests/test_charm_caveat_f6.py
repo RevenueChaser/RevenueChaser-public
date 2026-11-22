@@ -5,7 +5,7 @@ board's "buy/sell pressure" reading is UW's sign, not a confirmed dealer hedge.
 """
 from __future__ import annotations
 
-from RevenueChaser.module_spx_gamma import charm_pin, relations, summary
+from revenuechaser.module_spx_gamma import charm_pin, relations, summary
 from .conftest import make_snapshot
 
 

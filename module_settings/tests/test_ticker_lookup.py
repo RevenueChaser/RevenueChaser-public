@@ -6,8 +6,8 @@ from datetime import date
 import duckdb
 import pytest
 
-from RevenueChaser.module_settings import ticker_lookup
-from RevenueChaser.rcdata import serving
+from revenuechaser.module_settings import ticker_lookup
+from revenuechaser.rcdata import serving
 
 
 def _file(kind: str, statements: list[str]) -> None:
@@ -148,8 +148,8 @@ class TestRouteAndPage:
     """The route and where the lookup sits on the page (avo, 11 Nov 2026: back on the first tab)."""
 
     def _client(self):
-        from RevenueChaser.app import dashboard
-        from RevenueChaser.core.tests.panel_client import panel_test_client
+        from revenuechaser.app import dashboard
+        from revenuechaser.core.tests.panel_client import panel_test_client
         dashboard.app.config["TESTING"] = True
         return panel_test_client(dashboard.app)
 
@@ -169,13 +169,13 @@ class TestRouteAndPage:
         assert [f["kind"] for f in body["files"]] == list(serving.KINDS)
 
     def test_a_raise_is_a_500_not_an_unknown_ticker(self, monkeypatch):
-        from RevenueChaser.module_settings import ticker_lookup as tl
+        from revenuechaser.module_settings import ticker_lookup as tl
         monkeypatch.setattr(tl, "lookup", lambda t: (_ for _ in ()).throw(RuntimeError("boom")))
         r = self._client().get("/api/settings/lookup/AAPL")
         assert r.status_code == 500 and r.get_json()["ok"] is False
 
     def test_the_lookup_is_on_the_database_tab_not_the_health_tab(self):
-        from RevenueChaser.module_settings import report
+        from revenuechaser.module_settings import report
         html = report.render_settings_dashboard({"tickers": [{"ticker": "AAPL", "name": "Apple Inc."}],
                                                  "newdata": {"error": "none read"}})
         data = html[html.index('id="panel-data"'):html.index('id="panel-health"')]
@@ -183,6 +183,6 @@ class TestRouteAndPage:
         assert 'id="ticker-drill"' not in html[html.index('id="panel-health"'):]
 
     def test_the_page_asks_the_new_route_only(self):
-        from RevenueChaser.module_settings import report
+        from revenuechaser.module_settings import report
         assert "/api/settings/lookup/" in report.DRILL_JS
         assert "/api/settings/ticker/" not in report.DRILL_JS

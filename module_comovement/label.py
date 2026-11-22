@@ -14,7 +14,7 @@ from collections import Counter
 import numpy as np
 from scipy.stats import hypergeom
 
-from RevenueChaser.core.gics_map import is_unclassified
+from revenuechaser.core.gics_map import is_unclassified
 
 from . import config
 

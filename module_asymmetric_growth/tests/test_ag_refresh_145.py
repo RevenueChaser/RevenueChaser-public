@@ -7,9 +7,9 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.rcdata.tests import universe_store
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_asymmetric_growth import engine
+from revenuechaser.rcdata.tests import universe_store
+from revenuechaser.core import rawstore
+from revenuechaser.module_asymmetric_growth import engine
 
 
 @pytest.fixture
@@ -45,8 +45,8 @@ def test_the_hunter_reports_an_unloaded_store_on_a_refresh(rawstore_tmp_db, scre
 
 
 def test_the_empty_board_shows_the_scans_message_not_click_refresh():
-    from RevenueChaser.module_asymmetric_growth.report import render_asymmetric_growth_hunter_html
-    from RevenueChaser.core.scan_quality import no_data_message
+    from revenuechaser.module_asymmetric_growth.report import render_asymmetric_growth_hunter_html
+    from revenuechaser.core.scan_quality import no_data_message
     msg = no_data_message("no_universe_stored")
     html = render_asymmetric_growth_hunter_html({
         "asof": "2026-10-03T00:00:00", "universe_total": 0, "summary": {}, "cards": [], "thresholds": engine.THRESHOLDS,
@@ -56,7 +56,7 @@ def test_the_empty_board_shows_the_scans_message_not_click_refresh():
 
 
 def test_an_unscored_but_stored_board_has_a_fallback_message():
-    from RevenueChaser.module_asymmetric_growth.report import render_asymmetric_growth_hunter_html
+    from revenuechaser.module_asymmetric_growth.report import render_asymmetric_growth_hunter_html
     html = render_asymmetric_growth_hunter_html({
         "asof": "2026-10-03T00:00:00", "universe_total": 3, "summary": {}, "cards": [], "thresholds": engine.THRESHOLDS})
     assert "No companies could be scored from the stored data" in html

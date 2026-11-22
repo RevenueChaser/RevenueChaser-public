@@ -8,7 +8,7 @@
 """
 from __future__ import annotations
 
-from RevenueChaser.core import rawstore
+from revenuechaser.core import rawstore
 
 from . import settings as swing_settings
 from .ranking import execution_levels, ma_alignment, percentile_ranks, quality_403030

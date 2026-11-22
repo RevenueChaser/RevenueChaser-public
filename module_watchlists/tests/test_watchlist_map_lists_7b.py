@@ -9,11 +9,11 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.app import dashboard
-from RevenueChaser.core import rotation_reference as ref
-from RevenueChaser.core.tests.panel_client import panel_test_client
-from RevenueChaser.module_watchlists import board, store
-from RevenueChaser.rcdata import read
+from revenuechaser.app import dashboard
+from revenuechaser.core import rotation_reference as ref
+from revenuechaser.core.tests.panel_client import panel_test_client
+from revenuechaser.module_watchlists import board, store
+from revenuechaser.rcdata import read
 
 pytestmark = [pytest.mark.rawstore_schema_from_scratch, pytest.mark.map_lists_from_store]
 
@@ -85,7 +85,7 @@ def test_the_first_fund_of_a_group_is_the_one_on_the_map():
 
 
 def test_the_prices_build_and_the_spine_read_the_list():
-    from RevenueChaser.rcdata.build import prices
+    from revenuechaser.rcdata.build import prices
     with pytest.raises(read.JobListUnreadable):
         prices.rotation()
     store.seed_map_lists()

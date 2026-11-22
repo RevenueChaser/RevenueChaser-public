@@ -38,7 +38,7 @@ off-peak).
   run stops submitting groups, renders from the profiles already written and returns
   `stopped_reason` (plus `error`, and `next_off_peak` for a peak stop). An auth or
   transient stop is recorded `partial` in the result history, like a peak stop.
-- CLI: `python -m RevenueChaser.module_relatedness --run [--limit N] [--cap USD]`
+- CLI: `python -m revenuechaser.module_relatedness --run [--limit N] [--cap USD]`
   (and `--status`). A stopped run or one with work left prints one JSON object
   (`done`, `pending`, `next_off_peak`, `stopped_reason`, `error`). Exit **0** for a
   finished run, a peak stop, the cost cap and pending names (the normal night-to-night

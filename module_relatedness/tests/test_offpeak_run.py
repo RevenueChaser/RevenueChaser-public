@@ -5,18 +5,18 @@ import pytest
 
 from datetime import datetime, timezone
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.core.providers import deepseek
-from RevenueChaser.module_relatedness import config
-from RevenueChaser.module_relatedness import engine
-from RevenueChaser.module_relatedness.tests.test_relatedness import long_body
+from revenuechaser.core import rawstore
+from revenuechaser.core.providers import deepseek
+from revenuechaser.module_relatedness import config
+from revenuechaser.module_relatedness import engine
+from revenuechaser.module_relatedness.tests.test_relatedness import long_body
 
 
 @pytest.fixture(autouse=True)
 def _deepseek_board(monkeypatch):
     """These CLI runs are DeepSeek's: the board's writer is DeepSeek here (#360 made EVREN the default)."""
-    from RevenueChaser.core.providers import deepseek as _ds
-    from RevenueChaser.module_relatedness import settings as rel_settings
+    from revenuechaser.core.providers import deepseek as _ds
+    from revenuechaser.module_relatedness import settings as rel_settings
     monkeypatch.setattr(rel_settings, "writer", lambda: ("deepseek", _ds.MODEL))
 
 
@@ -49,14 +49,14 @@ def test_usd_cap_limits_calls(rawstore_tmp_db, monkeypatch):
 
 
 def test_cli_status(rawstore_tmp_db, capsys):
-    from RevenueChaser.module_relatedness import __main__ as cli
+    from revenuechaser.module_relatedness import __main__ as cli
     assert cli.main(["--status"]) == 0
     assert "DeepSeek" in capsys.readouterr().out
 
 
 def test_cli_status_announces_peak_override(rawstore_tmp_db, capsys, monkeypatch):
-    from RevenueChaser.core import offpeak
-    from RevenueChaser.module_relatedness import __main__ as cli
+    from revenuechaser.core import offpeak
+    from revenuechaser.module_relatedness import __main__ as cli
     monkeypatch.setattr(offpeak, "is_off_peak", lambda now=None: False)
     monkeypatch.setattr(deepseek, "peak_override_active", lambda now=None: True)
     cli.main(["--status"])
@@ -64,8 +64,8 @@ def test_cli_status_announces_peak_override(rawstore_tmp_db, capsys, monkeypatch
 
 
 def test_cli_status_is_quiet_without_override(rawstore_tmp_db, capsys, monkeypatch):
-    from RevenueChaser.core import offpeak
-    from RevenueChaser.module_relatedness import __main__ as cli
+    from revenuechaser.core import offpeak
+    from revenuechaser.module_relatedness import __main__ as cli
     monkeypatch.setattr(offpeak, "is_off_peak", lambda now=None: False)
     cli.main(["--status"])  # the autouse fixture points the gate at an empty temp file
     assert "Peak override" not in capsys.readouterr().out
@@ -73,7 +73,7 @@ def test_cli_status_is_quiet_without_override(rawstore_tmp_db, capsys, monkeypat
 
 def test_cli_lock_skip_is_non_zero_but_a_peak_stop_is_green(monkeypatch, capsys):
     """#130/#118 C13 + C-F1: a skipped (locked) run exits 1; a peak/pending run exits 0."""
-    from RevenueChaser.module_relatedness import __main__ as cli
+    from revenuechaser.module_relatedness import __main__ as cli
 
     def locked(**k):
         raise engine.AlreadyRunning("Another Relatedness run is already in progress.")

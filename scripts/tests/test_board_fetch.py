@@ -9,8 +9,8 @@ import json
 
 import pytest
 
-from RevenueChaser.core import automations
-from RevenueChaser.scripts import board_fetch as cli
+from revenuechaser.core import automations
+from revenuechaser.scripts import board_fetch as cli
 
 
 class _Resp:
@@ -69,7 +69,7 @@ def test_a_failed_job_exits_1(seams, capsys):
 def test_one_registry_row_and_unit_per_board_each_running_its_own_route():
     """One row per board, each naming the dashboard route it posts, and none of them chained."""
     for board, route in cli.ROUTES.items():
-        (e,) = [e for e in automations.REGISTRY if e.args == ("-m", "RevenueChaser.scripts.board_fetch", board)]
+        (e,) = [e for e in automations.REGISTRY if e.args == ("-m", "revenuechaser.scripts.board_fetch", board)]
         assert f"/run/{route}" in e.description and not e.after
         # Relatedness profiling kept the unit its installed timer already had (#1255); the rest are life-rc-fetch-*.
         assert automations.system_unit(e) == ("life-rc-relatedness" if board == "relatedness"

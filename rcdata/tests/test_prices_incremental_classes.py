@@ -13,9 +13,9 @@ from datetime import date, timedelta
 
 import pytest
 
-from RevenueChaser.rcdata import serving
-from RevenueChaser.rcdata.build import base, dirty
-from RevenueChaser.rcdata.build.prices import incremental, stage, wrds_history
+from revenuechaser.rcdata import serving
+from revenuechaser.rcdata.build import base, dirty
+from revenuechaser.rcdata.build.prices import incremental, stage, wrds_history
 
 from .prices_incremental_world import (
     GOOGL, OCT, SPINE, SPYX, _aapl_day, _build, _clock, _note, _q, _respine, _same_as_whole, _secd_rows, _serve,
@@ -107,7 +107,7 @@ def test_a_new_day_of_one_class_counts_the_others_last_cap(alphabet, monkeypatch
 def test_a_rebuilt_day_counts_a_class_whose_last_cap_is_older(alphabet, monkeypatch):
     """A cover of GOOGL as of the 26th rebuilds GOOGL and GOOG from that day only. GOOGL's issuer cap of the 26th
     still counts GOOG at its cap of the 23rd, a bar the rebuild does not reload."""
-    from RevenueChaser.rcdata.build.prices import cover_shares
+    from revenuechaser.rcdata.build.prices import cover_shares
     path = cover_shares.partition_path(2026)
     rows = stage.read_rows(path) + [{
         "cik": "1652044", "accession": "0001652044-26-000099", "form": "8-K", "filed": date(2026, 10, 27),
@@ -124,7 +124,7 @@ def test_a_rebuilt_day_counts_a_class_whose_last_cap_is_older(alphabet, monkeypa
 
 
 def test_a_changed_exchange_history_forces_a_whole_build(live, monkeypatch):
-    from RevenueChaser.rcdata.build.spine import wrds
+    from revenuechaser.rcdata.build.spine import wrds
     target = wrds.parquet_dir("wrds/sec_idhist") / "snapshot=2026-10-01" / "sec_idhist.parquet"
     stage.write_rows([{"gvkey": "001690", "iid": "01", "item": "EXCHG", "itemvalue": "14",
                        "efffrom": date(2000, 1, 3), "effthru": None, "source_as_of": date(2026, 10, 1),
@@ -151,7 +151,7 @@ def test_every_prices_dataset_declares_a_dirty_set():
 
 def test_a_corrected_alpaca_split_ratio_restates_the_caps_after_it(live, monkeypatch):
     """Review S3: the same split on the same day with another ratio moves every cover cap after it."""
-    from RevenueChaser.rcdata.build.prices import actions, cover_shares
+    from revenuechaser.rcdata.build.prices import actions, cover_shares
     _write_secd(2025, [{**r, "cshoc": None} if r["gvkey"] == "001690" else r for r in _secd_rows(2025)])
     cpath = cover_shares.partition_path(2026)
     stage.write_rows(stage.read_rows(cpath) + [{
@@ -242,7 +242,7 @@ def test_an_open_issue_near_the_window_is_found_again_not_kept():
 def test_an_alpaca_split_days_after_a_crsp_one_resolves_its_issue(no_split, monkeypatch):
     """Review S6: CRSP's split of AAPL is the cross-check's only one until Alpaca's split two days later; that
     rebuilds AAPL from its own ex-date, but the CRSP split it explains lies before it."""
-    from RevenueChaser.rcdata.build.prices import actions
+    from revenuechaser.rcdata.build.prices import actions
     crsp = [k for kind, k in _snapshot()["open issues"] if kind == "split_only_crsp"]
     assert crsp, "the fixture has a CRSP-only split"
     day = date.fromisoformat(crsp[0].rsplit(":", 1)[1])
@@ -257,7 +257,7 @@ def test_an_alpaca_split_days_after_a_crsp_one_resolves_its_issue(no_split, monk
 def test_a_crsp_split_in_the_margin_before_the_staging_cut_is_staged(december_split, monkeypatch):
     """Delta review 1 of #564: AAPL rebuilt from 2 Jan 2025 (the cut is 1 Jan) looks for CRSP splits ten days
     before; the one of 23 Dec needs its rows from before the cut staged."""
-    from RevenueChaser.rcdata.build.prices import actions
+    from revenuechaser.rcdata.build.prices import actions
     template = stage.read_rows(actions.partition_path(2026))[0]
     div = {**template, "action_id": "cd-x", "ex_date": date(2025, 1, 2), "process_date": date(2025, 1, 2),
            "effective_date": date(2025, 1, 2), "rate": 0.05}

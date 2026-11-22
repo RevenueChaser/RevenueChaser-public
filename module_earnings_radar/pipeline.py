@@ -3,27 +3,27 @@ import json
 import logging
 from datetime import date, datetime, timedelta, timezone
 
-from RevenueChaser.core.providers.unusual_whales import UWClient
-from RevenueChaser.module_earnings_radar.classifier import classify_ticker, TICKER_OVERRIDES, get_cluster_label
-from RevenueChaser.module_earnings_radar.rules import (
+from revenuechaser.core.providers.unusual_whales import UWClient
+from revenuechaser.module_earnings_radar.classifier import classify_ticker, TICKER_OVERRIDES, get_cluster_label
+from revenuechaser.module_earnings_radar.rules import (
     rule1_drivers, rule2_guidance, rule3_financial, rule4_volatility,
     rule5_positioning, rule6_macro, rule7_accounting, rule8_sentiment,
 )
-from RevenueChaser.module_earnings_radar.composite import compute_composite_scores, select_action, classify_bias, classify_conviction, recommend_options_structure
-from RevenueChaser.module_earnings_radar import lean as lean_slice, store_reads, stored_inputs
-from RevenueChaser.core import calendar
-from RevenueChaser.rcdata import read
-from RevenueChaser.core import universe as _spine
-from RevenueChaser.core.config import (
+from revenuechaser.module_earnings_radar.composite import compute_composite_scores, select_action, classify_bias, classify_conviction, recommend_options_structure
+from revenuechaser.module_earnings_radar import lean as lean_slice, store_reads, stored_inputs
+from revenuechaser.core import calendar
+from revenuechaser.rcdata import read
+from revenuechaser.core import universe as _spine
+from revenuechaser.core.config import (
     RULE_WEIGHTS, INST_FLOW_MIN_NET, MAX_DEEP_CHECKS_PER_DAY,
     EARNINGS_SCORE_WORKERS as SCORE_WORKERS,
 )
-from RevenueChaser.core.calendar import now_ny, today_ny
-from RevenueChaser.core.reaction_anchor import reaction_anchor, session_closes, timing_kind
-from RevenueChaser.module_earnings_radar.models import TradeCard, RuleResult
-from RevenueChaser.module_sector_rotation.engine import get_quadrant_for_ticker
-from RevenueChaser.module_sector_rotation.etf_holdings import ticker_weights
-from RevenueChaser.rcdata import opens  # #566: pooled reads count for this run
+from revenuechaser.core.calendar import now_ny, today_ny
+from revenuechaser.core.reaction_anchor import reaction_anchor, session_closes, timing_kind
+from revenuechaser.module_earnings_radar.models import TradeCard, RuleResult
+from revenuechaser.module_sector_rotation.engine import get_quadrant_for_ticker
+from revenuechaser.module_sector_rotation.etf_holdings import ticker_weights
+from revenuechaser.rcdata import opens  # #566: pooled reads count for this run
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ def yield_beta_tstat(stock_by_date: dict[str, float], yield_by_date: dict[str, f
                      beta: float | None, exclude: frozenset | set = frozenset()) -> float | None:
     """The OLS t-stat of R6's yield beta, over the same return pairs as ``rule6_macro.yield_beta``.
 
-    ``rule6_macro.score`` skips the NO_TRADE veto when ``|t| < 2`` (the noise gate, ``docs/module_earnings-radar/redesign.md``): a
+    ``rule6_macro.score`` skips the NO_TRADE veto when ``|t| < 2`` (the noise gate, ``docs/module_earnings_radar/redesign.md``): a
     60-return beta of a volatile name can pass 4 from noise alone. None when there is no beta or the t-stat
     cannot be formed (fewer than three pairs, no yield variance, a perfect fit) — since #635 a missing t keeps
     the extreme reading a badge and never a veto.
@@ -87,7 +87,7 @@ def r6_beta(bars: list, yield_by_date: dict[str, float],
 
 def _gap_sessions(hist: list, bars: list) -> set[str]:
     """The reaction session (core/reaction_anchor) of every reported print in ``hist`` that falls in ``bars``:
-    the earnings-gap days R6's beta drops (docs/module_earnings-radar/redesign.md R6, review N1)."""
+    the earnings-gap days R6's beta drops (docs/module_earnings_radar/redesign.md R6, review N1)."""
     out = set()
     for h in hist or []:
         if h.get("actual_eps") is None or not h.get("report_date"):
@@ -102,7 +102,7 @@ def _agh_context(ticker: str) -> dict:
     """Cache-first AGH snapshot from ticker_store. Missing row → empty defaults."""
     out = {"agh_points": None, "agh_accel": None, "agh_owners": "", "agh_dilution": False}
     try:
-        from RevenueChaser.core.ticker_store import get as ts_get
+        from revenuechaser.core.ticker_store import get as ts_get
         row = ts_get(ticker)
     except Exception:
         row = None
@@ -140,7 +140,7 @@ def _agh_context(ticker: str) -> dict:
 def _strike_fields(payload) -> list[dict]:
     """A spot-exposure answer cut to the 13 fields ``normalize_strike_rows`` reads (strike, 3 greeks x 2 books x
     call/put); the rest of each UW strike row is not kept."""
-    from RevenueChaser.core.gex_profile import _GREEKS
+    from revenuechaser.core.gex_profile import _GREEKS
     keep = ["strike"] + [f"{side}_{g}{book}" for g in _GREEKS for book in ("_oi", "_vol") for side in ("call", "put")]
     data = payload.get("data") if isinstance(payload, dict) else payload
     return [{k: r.get(k) for k in keep if k in r} for r in data or [] if isinstance(r, dict)]
@@ -396,8 +396,8 @@ class EarningsPipeline:
         payload without usable rows returns ``{}`` — R4 then falls back to the
         ``gex-levels`` flip (never fabricated, never a block).
         """
-        from RevenueChaser.core.config import R4_GEX_PROFILE_ENABLED
-        from RevenueChaser.core.gex_profile import normalize_strike_rows, build_profile
+        from revenuechaser.core.config import R4_GEX_PROFILE_ENABLED
+        from revenuechaser.core.gex_profile import normalize_strike_rows, build_profile
         if not R4_GEX_PROFILE_ENABLED or not em_pct:
             return {}
         if not stored and not hasattr(self.uw, "spot_exposures_by_strike"):
@@ -429,8 +429,8 @@ class EarningsPipeline:
         ``(None, False)`` — R4 then simply has no slope term; a slope is never
         fabricated.
         """
-        from RevenueChaser.core.config import R4_TERM_STRUCTURE_ENABLED
-        from RevenueChaser.core.vol_metrics import ex_event_curve, term_structure_curve, term_structure_slope
+        from revenuechaser.core.config import R4_TERM_STRUCTURE_ENABLED
+        from revenuechaser.core.vol_metrics import ex_event_curve, term_structure_curve, term_structure_slope
         if not R4_TERM_STRUCTURE_ENABLED or not em_pct:
             return None, False
         if not stored and not hasattr(self.uw, "term_structure"):
@@ -456,7 +456,7 @@ class EarningsPipeline:
         realized vol (the skill's ``bars_through`` rule). Returns None when there
         are too few clean bars — R4 then falls back to the screener RV.
         """
-        from RevenueChaser.core.vol_metrics import clean_ohlc, yang_zhang
+        from revenuechaser.core.vol_metrics import clean_ohlc, yang_zhang
         try:
             bars = clean_ohlc(ohlc, as_of=today_ny())
         except Exception as e:  # noqa: BLE001
@@ -520,7 +520,7 @@ class EarningsPipeline:
         return cards
 
     def preselect(self, watchlist: set = None) -> list[str]:
-        from RevenueChaser.core.config import (
+        from revenuechaser.core.config import (
             MIN_OPTION_VOLUME, MIN_TOTAL_OI,
             MIN_DOLLAR_OPTION_VOLUME, MIN_EXPECTED_MOVE_PCT, MAX_EXPECTED_MOVE_PCT,
             WATCHLIST_BYPASS, FLOW_SWEEP_BLOCK_MIN,
@@ -1403,7 +1403,7 @@ def _flow_window(prints: list) -> tuple[int, float | None]:
 
 def _trade_flow_part(flow: dict, trade_read: str):
     """The trade reason's flow part: the institutional lean, only when the read is already on its side (R5 is a
-    tag, "tape on the same side", never a vote; docs/module_earnings-radar/redesign.md R5). None otherwise."""
+    tag, "tape on the same side", never a vote; docs/module_earnings_radar/redesign.md R5). None otherwise."""
     _, _, tone = _institutional_flow_comment(flow)
     if (tone, trade_read) == ("bull", "BULLISH"):
         return "institutional bullish lean"
@@ -1415,7 +1415,7 @@ def _trade_flow_part(flow: dict, trade_read: str):
 def _institutional_flow_comment(flow: dict, failed: bool = False):
     """Deterministic institutional lean read. Returns (label, net, tone).
 
-    The lean is read from the print side (``aggregate_flow``; docs/module_earnings-radar/redesign.md R5, review S4): net = bullish
+    The lean is read from the print side (``aggregate_flow``; docs/module_earnings_radar/redesign.md R5, review S4): net = bullish
     side premium (ask-side calls + bid-side puts) minus bearish (bid-side calls + ask-side puts), mid dropped. No
     print side served is no lean, never a call-minus-put guess. A package at or above ``INST_FLOW_MIN_NET`` is left
     out of the net and marked "(package risk)". ``failed`` says the flow request itself failed: "no flow" would be a
@@ -1725,7 +1725,7 @@ def compute_nrc_score(growth: float = None, quality: float = None, beat: float =
 
     ``revision`` / ``corroboration`` were dropped — they were always 50.
     """
-    from RevenueChaser.core.config import NRC_WEIGHTS
+    from revenuechaser.core.config import NRC_WEIGHTS
     slots = {
         "growth": growth,
         "acceleration": acceleration,

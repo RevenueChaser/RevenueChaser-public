@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
-from RevenueChaser.module_news import x_lane
+from revenuechaser.module_news import x_lane
 
 _REPO = Path(__file__).resolve().parents[2]
 #: The source trees a News row can be written or read from. Docs and this test are not source.

@@ -10,13 +10,13 @@ from datetime import date, timedelta
 
 import pytest
 
-from RevenueChaser.core.tests.board_js import run_board_js
-from RevenueChaser.module_fundamentals import config, events, freeze, pipeline
-from RevenueChaser.module_fundamentals.pipeline import build_payload
-from RevenueChaser.module_fundamentals.report import render_fundamental_dashboard
-from RevenueChaser.module_fundamentals.tests.test_fundamental import _m
-from RevenueChaser.rcdata import read as rc_read
-from RevenueChaser.rcdata.tests import fund_store
+from revenuechaser.core.tests.board_js import run_board_js
+from revenuechaser.module_fundamentals import config, events, freeze, pipeline
+from revenuechaser.module_fundamentals.pipeline import build_payload
+from revenuechaser.module_fundamentals.report import render_fundamental_dashboard
+from revenuechaser.module_fundamentals.tests.test_fundamental import _m
+from revenuechaser.rcdata import read as rc_read
+from revenuechaser.rcdata.tests import fund_store
 
 TODAY = date(2026, 10, 16)
 _INSIDE = (TODAY - timedelta(days=30)).isoformat()

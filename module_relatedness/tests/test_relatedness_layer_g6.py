@@ -13,14 +13,14 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.core import fundamentals_layer, rawstore
-from RevenueChaser.core.providers import sec_edgar
-from RevenueChaser.module_relatedness import engine, store
-from RevenueChaser.module_relatedness.tests.test_relatedness import _prof
-from RevenueChaser.rcdata.build.fundamentals import companyfacts, filings
-from RevenueChaser.rcdata.build.sec_forms import forms
-from RevenueChaser.rcdata.tests import fund_fixture as fx
-from RevenueChaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401  (fixtures)
+from revenuechaser.core import fundamentals_layer, rawstore
+from revenuechaser.core.providers import sec_edgar
+from revenuechaser.module_relatedness import engine, store
+from revenuechaser.module_relatedness.tests.test_relatedness import _prof
+from revenuechaser.rcdata.build.fundamentals import companyfacts, filings
+from revenuechaser.rcdata.build.sec_forms import forms
+from revenuechaser.rcdata.tests import fund_fixture as fx
+from revenuechaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401  (fixtures)
 
 BUSINESS = "We build cloud software and developer tools for enterprises. " * 40
 
@@ -83,7 +83,7 @@ def test_a_key_without_a_source_keeps_its_bytes():
 
 def test_the_input_hash_reads_the_layers_text(layer):
     """The staleness hash reads the text a profile would be made from: the layer's, not ``chain_filings``."""
-    from RevenueChaser.module_relatedness import profiles as profiles_mod
+    from revenuechaser.module_relatedness import profiles as profiles_mod
     want = store.prompt_hash(profiles_mod.SYSTEM, profiles_mod.build_user("Microsoft", engine._filing_text("MSFT")[1]))
     assert engine._input_hashes({"789019": ["MSFT"]}, {"MSFT": "Microsoft"}) == {"789019": want}
 
@@ -102,8 +102,8 @@ def test_off_the_layer_there_is_no_fallback_link(monkeypatch):
 
 def test_on_the_layer_a_profile_is_not_redone_on_the_next_run(layer, monkeypatch):
     """The batched hash pass reads the same layer text ``_work`` profiled (delta review of fade7de)."""
-    from RevenueChaser.module_relatedness import profiles as profiles_mod
-    from RevenueChaser.module_relatedness.tests.test_relatedness import v3_reply
+    from revenuechaser.module_relatedness import profiles as profiles_mod
+    from revenuechaser.module_relatedness.tests.test_relatedness import v3_reply
     calls = []
     monkeypatch.setattr(profiles_mod.deepseek, "complete",
                         lambda system, user, **k: calls.append(user) or v3_reply(["cloud software"]))

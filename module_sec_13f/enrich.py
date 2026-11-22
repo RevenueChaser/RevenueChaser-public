@@ -37,7 +37,7 @@ from __future__ import annotations
 import logging
 from datetime import date, timedelta
 
-from RevenueChaser.core import ownership
+from revenuechaser.core import ownership
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +55,7 @@ def quarter_end_closes(tickers, quarters) -> dict[str, dict[str, float]]:
     (the rule ``daily_bars`` applies: a split divides the bars fetched before it), so a close is the one
     ``daily_bars(basis="nominal")`` returns for that session. Dividends do not change a nominal close.
     """
-    from RevenueChaser.core import prices
+    from revenuechaser.core import prices
     names = sorted({str(t).strip().upper() for t in tickers if t})
     qs = sorted(set(quarters))
     out: dict[str, dict[str, float]] = {}
@@ -94,7 +94,7 @@ def _short_interest(tickers) -> dict[str, dict]:
 def load_inputs(totals: dict) -> dict[str, dict]:
     """The board's snapshot inputs of every ticker in ``totals`` (``{ticker: {period: cell}}``): see the module
     docstring. Store reads only, zero network."""
-    from RevenueChaser.module_sec_13f import engine
+    from revenuechaser.module_sec_13f import engine
     tickers = [t for t in totals if t]
     quarters = sorted({q for periods in totals.values() for q in periods if q >= engine.START_QUARTER})
     out: dict[str, dict] = {}
@@ -111,7 +111,7 @@ def load_inputs(totals: dict) -> dict[str, dict]:
     wanted = {t: [q for q in periods if q >= engine.START_QUARTER] for t, periods in totals.items() if t}
     for ticker, factors in ownership.split_factors_13f(wanted).items():
         out.setdefault(ticker, {})["split_factor"] = factors
-    from RevenueChaser.module_sec_13f import store
+    from revenuechaser.module_sec_13f import store
     for ticker, breaks in store.read_breaks(tickers).items():
         out.setdefault(ticker, {})["breaks"] = breaks
     return out

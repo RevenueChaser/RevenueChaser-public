@@ -15,8 +15,8 @@ from pathlib import Path
 
 import pytest
 
-from RevenueChaser.rcdata.tests import universe_store
-from RevenueChaser.core import rawstore
+from revenuechaser.rcdata.tests import universe_store
+from revenuechaser.core import rawstore
 
 
 # ── Group A: DB filled after a function runs ─────────────────────────────────
@@ -28,7 +28,7 @@ from RevenueChaser.core import rawstore
 
 
 def test_ticker_store_populated(rawstore_tmp_db):
-    from RevenueChaser.core import ticker_store
+    from revenuechaser.core import ticker_store
     ticker_store.write_from_cards([{
         "ticker": "ETON", "name": "Eton", "sector": "Health Care", "market_cap": 1.8e9,
         "total_points": 9, "themes": ["Biotech"], "signals": [],
@@ -39,8 +39,8 @@ def test_ticker_store_populated(rawstore_tmp_db):
 
 def test_rotation_snapshot_populated(rawstore_tmp_db):
     from datetime import date
-    from RevenueChaser.module_sector_rotation.models import ETFRotationSnapshot
-    from RevenueChaser.module_sector_rotation import store as rs
+    from revenuechaser.module_sector_rotation.models import ETFRotationSnapshot
+    from revenuechaser.module_sector_rotation import store as rs
     snap = ETFRotationSnapshot(as_of_date=date(2026, 8, 14), ticker="XLK", group_name="sector",
                                close_price=100.0, rs_1w=1.0, rs_1m=2.0, rs_3m=3.0,
                                rs_ratio=2.0, rs_momentum=1.0, rs_ratio_z=1.0, rs_momentum_z=0.5,
@@ -63,7 +63,7 @@ def test_watchlist_populated(rawstore_tmp_db):
 
 def test_rotation_holdings_populated(rawstore_tmp_db):
     from datetime import date
-    from RevenueChaser.module_sector_rotation import store as rs
+    from revenuechaser.module_sector_rotation import store as rs
     rs.save_holdings_cache("XLK", [{"ticker": "AAPL", "weight": 0.2}])
     row = rawstore.get("rotation_holdings", "XLK")
     assert row["date"] == date.today().isoformat()
@@ -114,8 +114,8 @@ def test_rotation_holdings_populated(rawstore_tmp_db):
 
 def test_same_day_snapshot_overwrites(rawstore_tmp_db):
     from datetime import date
-    from RevenueChaser.module_sector_rotation.models import ETFRotationSnapshot
-    from RevenueChaser.module_sector_rotation import store as rs
+    from revenuechaser.module_sector_rotation.models import ETFRotationSnapshot
+    from revenuechaser.module_sector_rotation import store as rs
 
     def _snap(ticker):
         return ETFRotationSnapshot(as_of_date=date(2026, 8, 14), ticker=ticker, group_name="sector",

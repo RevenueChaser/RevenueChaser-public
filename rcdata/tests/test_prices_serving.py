@@ -19,10 +19,10 @@ from types import SimpleNamespace
 import duckdb
 import pytest
 
-from RevenueChaser.core import calendar
-from RevenueChaser.rcdata import ops, serving
-from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.prices import actions, bars, cover_shares, floats, serving as prices_serving, wrds_history
+from revenuechaser.core import calendar
+from revenuechaser.rcdata import ops, serving
+from revenuechaser.rcdata.build import base
+from revenuechaser.rcdata.build.prices import actions, bars, cover_shares, floats, serving as prices_serving, wrds_history
 
 from .prices_fixture import ALPHABET, SPINE, BarsAnswer, bar, seed_secd, write_spine
 
@@ -67,12 +67,12 @@ def env(monkeypatch, http_mock):
     monkeypatch.setenv("ALPACA_API_SECRET_KEY", "test-secret")
     monkeypatch.setenv("RC_ALPACA_BASE", "https://alpaca.test")
     monkeypatch.setattr(calendar, "_now", lambda: datetime(2026, 10, 27, 21, 0, tzinfo=timezone.utc))
-    monkeypatch.setattr("RevenueChaser.rcdata.build.prices.rotation", lambda: ())
-    monkeypatch.setattr("RevenueChaser.rcdata.build.prices.BENCHMARKS", ("SPY",))
-    monkeypatch.setattr("RevenueChaser.rcdata.read.watched", lambda kind: set())
+    monkeypatch.setattr("revenuechaser.rcdata.build.prices.rotation", lambda: ())
+    monkeypatch.setattr("revenuechaser.rcdata.build.prices.BENCHMARKS", ("SPY",))
+    monkeypatch.setattr("revenuechaser.rcdata.read.watched", lambda kind: set())
     write_spine(WEEK_SPINE)
     # Alpaca, the tester, asks every name of the week: the risk selection is ``test_prices_compustat_primary``'s.
-    monkeypatch.setattr("RevenueChaser.rcdata.build.prices.tester.select", lambda names, as_of: (names, "every name"))
+    monkeypatch.setattr("revenuechaser.rcdata.build.prices.tester.select", lambda names, as_of: (names, "every name"))
     http_mock.add("/v2/stocks/bars", BarsAnswer({
         "raw": {s: [bar(d, c) for d, c in zip(DAYS, cs)] for s, cs in RAW.items()},
         "all": {s: [bar(d, c) for d, c in zip(DAYS, cs)] for s, cs in ALL.items()}}))
@@ -82,10 +82,10 @@ def env(monkeypatch, http_mock):
 def _shares_and_floats(raw=None, skip=(), extra=None):
     """The week's sources besides Alpaca: Compustat's bars (``raw``'s closes, the week's by default, no bar on a
     ``skip`` ``(symbol, session)``; ``extra``: more ``seed_secd`` series), the SPX level, covers and floats."""
-    from RevenueChaser.rcdata.build import market_series
+    from revenuechaser.rcdata.build import market_series
     seed_secd({**{SECURITY[s.replace(".", "-")]: (s, [(d, c) for d, c in zip(DAYS, cs) if (s, d) not in skip])
                   for s, cs in (raw or RAW).items()}, **(extra or {})})
-    from RevenueChaser.rcdata.build.sources import cboe
+    from revenuechaser.rcdata.build.sources import cboe
     base.upsert_partition([{"series_id": "SPX", "obs_date": d, "source": "cboe", "value": v, "frequency": "daily",
                             "session_date": d, "source_as_of": date(2026, 10, 27), "fetched_at": 1.0, "run_id": "cboe"}
                            for d, v in ((date(2026, 10, 26), 6800.0), (date(2026, 10, 27), 6810.0))],
@@ -414,7 +414,7 @@ def test_a_source_that_never_ran_is_one_issue(http_mock):
 def test_the_boards_read_the_bridge_views_through_the_read_api(built, monkeypatch):
     """``core/prices``' read API on the real views (#563): FLG's bars come back split-adjusted to today on both bases,
     because the views stamp ``fetched_at`` with the build time and the reader applies no split again."""
-    from RevenueChaser.core import ledger, prices
+    from revenuechaser.core import ledger, prices
     ops.record_check(prices.SERVING_DATASET, "changed")
     assert prices.source_state()["effective"] == prices.LAYER
     served = [r["close"] for r in _q("SELECT close FROM price_bars_daily WHERE ticker = 'FLG' ORDER BY session_date")]
@@ -426,7 +426,7 @@ def test_the_boards_read_the_bridge_views_through_the_read_api(built, monkeypatc
 def _company_facts(cik: str, values, as_of: str = "2026-10-27") -> None:
     """A stored ``sec/companyfacts`` raw of ``cik`` holding only its cover counts: ``(end, shares, accession, form,
     filed)`` each, as the SEC's XBRL API answers ``dei:EntityCommonStockSharesOutstanding``."""
-    from RevenueChaser.rcdata.build.fundamentals import common as fcommon, companyfacts
+    from revenuechaser.rcdata.build.fundamentals import common as fcommon, companyfacts
     raw = companyfacts.cik_dir(cik) / f"{as_of}.json.gz"
     shares = [{"end": e, "val": v, "accn": a, "form": f, "filed": fd} for e, v, a, f, fd in values]
     base.write_raw(raw, json.dumps({"cik": int(cik), "facts": {"dei": {"EntityCommonStockSharesOutstanding": {
@@ -516,7 +516,7 @@ def test_a_zero_share_count_keeps_its_row_with_no_cap_and_a_zero_or_post_filing_
 def test_compustats_dividend_alpaca_has_a_day_apart_is_applied_once():
     # Prices plan 16 Nov 2026, P5 (#268): Compustat's 0.0516 on 21 Oct and Alpaca's on 22 and 23 Oct were all applied,
     # so tr_factor counted one dividend three times. Alpaca's is kept, as on the same day.
-    from RevenueChaser.rcdata.build.prices import stage
+    from revenuechaser.rcdata.build.prices import stage
     _shares_and_floats()
     stage.write_rows([{"gvkey": "001690", "iid": "01", "datadate": date(2026, 10, 22), "div": None, "divd": 0.26,
                        "divsp": None, "curcddv": "USD", "paydate": None, "recorddate": None,

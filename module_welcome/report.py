@@ -17,17 +17,17 @@ import time
 from datetime import datetime, time as dtime, timedelta
 from pathlib import Path
 
-from RevenueChaser.core import calendar as mcal
-from RevenueChaser.core import rawstore
-from RevenueChaser.core.config import OUTPUT_DIR
-from RevenueChaser.core.reporting_common import THEME_CSS, THEME_JS, help_html, write_artifact
-from RevenueChaser.module_news import store_reads as news_reads
-from RevenueChaser.module_news.calendar import AMS, local_day
-from RevenueChaser.module_news.report import (WEEKDAYS, _head_li, day_label, dots_html, esc, hm, long_date,
+from revenuechaser.core import calendar as mcal
+from revenuechaser.core import rawstore
+from revenuechaser.core.config import OUTPUT_DIR
+from revenuechaser.core.reporting_common import THEME_CSS, THEME_JS, help_html, write_artifact
+from revenuechaser.module_news import store_reads as news_reads
+from revenuechaser.module_news.calendar import AMS, local_day
+from revenuechaser.module_news.report import (WEEKDAYS, _head_li, day_label, dots_html, esc, hm, long_date,
                                               vals_html)
-from RevenueChaser.module_welcome import store_reads
-from RevenueChaser.module_welcome.build import FILE_LABELS, NY, UNKNOWN_SESSION, earnings_days
-from RevenueChaser.rcdata import read
+from revenuechaser.module_welcome import store_reads
+from revenuechaser.module_welcome.build import FILE_LABELS, NY, UNKNOWN_SESSION, earnings_days
+from revenuechaser.rcdata import read
 
 FILENAME = "welcome_latest.html"
 SESSION_DAYS = 8

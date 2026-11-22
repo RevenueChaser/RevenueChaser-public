@@ -6,8 +6,8 @@ Offline, temp store.
 """
 from __future__ import annotations
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_comovement import config, engine
+from revenuechaser.core import rawstore
+from revenuechaser.module_comovement import config, engine
 
 
 def _store(as_of: str, chash: str) -> None:

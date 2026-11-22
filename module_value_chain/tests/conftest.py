@@ -8,5 +8,5 @@ import pytest
 def isolate_edgar_docs(tmp_path, monkeypatch):
     """Raw filing files per test: the sync re-slices a stored document instead of
     downloading it (#116), so a file left by another test would change the result."""
-    from RevenueChaser.core import edgar_docs
+    from revenuechaser.core import edgar_docs
     monkeypatch.setattr(edgar_docs, "EDGAR_DOCS_DIR", tmp_path / "edgar_docs")

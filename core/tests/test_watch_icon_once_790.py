@@ -7,8 +7,8 @@ from __future__ import annotations
 
 import re
 
-from RevenueChaser.core import reporting_common as rc
-from RevenueChaser.module_sec_13f import report as sec13f
+from revenuechaser.core import reporting_common as rc
+from revenuechaser.module_sec_13f import report as sec13f
 
 BOARDS = {"sec_13f": sec13f.CSS}
 

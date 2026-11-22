@@ -12,8 +12,8 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.core import ownership
-from RevenueChaser.module_sec_13f import report
+from revenuechaser.core import ownership
+from revenuechaser.module_sec_13f import report
 
 TODAY = date(2026, 11, 16)
 
@@ -31,7 +31,7 @@ STORE = {
 
 @pytest.fixture
 def store(monkeypatch):
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     monkeypatch.setattr(read, "security_ids", lambda tickers: {t: f"sid:{t}" for t in tickers})
     monkeypatch.setattr(read, "latest_market", lambda tickers: {
         t: {"ticker": t, "market_cap": STORE[t][2], "price": STORE[t][3], "issuer_market_cap": STORE[t][4],
@@ -55,7 +55,7 @@ def test_the_reader_applies_the_cover_age_crosscheck_and_estimate_rules(store):
 
 
 def test_an_unreadable_store_gives_no_shares_not_a_failed_board(monkeypatch):
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
 
     def boom(_):
         raise RuntimeError("no serving file")
@@ -86,8 +86,8 @@ def test_the_pct_out_cell_marks_estimates_double_counts_and_wrong_counts(held, e
 
 def test_a_store_only_refresh_keeps_the_unmapped_cusip_note(monkeypatch):
     """#77: the note comes from the store on every render, not only from the Fetch that passed it in."""
-    from RevenueChaser.app import runners
-    from RevenueChaser.module_sec_13f import engine, enrich, store
+    from revenuechaser.app import runners
+    from revenuechaser.module_sec_13f import engine, enrich, store
     seen = {}
     monkeypatch.setattr(store, "sync", lambda: (None, None, False))
     monkeypatch.setattr(engine, "load_totals", lambda: {"AAA": {"2026-06-30": {"shares": 1.0}}})

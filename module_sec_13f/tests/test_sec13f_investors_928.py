@@ -5,9 +5,9 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core import ownership
-from RevenueChaser.core.reporting_common import THEME_SCALE
-from RevenueChaser.module_sec_13f import report
+from revenuechaser.core import ownership
+from revenuechaser.core.reporting_common import THEME_SCALE
+from revenuechaser.module_sec_13f import report
 
 Q1, Q2, Q3 = "2026-03-31", "2026-06-30", "2026-09-30"
 
@@ -64,7 +64,7 @@ def test_the_holdings_are_the_newest_settled_quarters_with_the_change_against_th
 
 
 def _client(monkeypatch, data: dict):
-    from RevenueChaser.app import dashboard
+    from revenuechaser.app import dashboard
     asked = []
     monkeypatch.setattr(ownership, "sec13f_filer", lambda cik: asked.append(cik) or data)
     monkeypatch.setattr(ownership, "sec13f_open_periods", lambda: set())
@@ -93,7 +93,7 @@ def test_the_filer_route_refuses_a_bad_cik_and_answers_404_for_an_unknown_one(mo
 
 
 def test_the_search_route_needs_two_characters(monkeypatch):
-    from RevenueChaser.app import dashboard
+    from revenuechaser.app import dashboard
     asked = []
     monkeypatch.setattr(ownership, "sec13f_filer_search", lambda q: asked.append(q) or [
         {"cik": "1067983", "filer_name": "BERKSHIRE HATHAWAY INC", "value": 3e11, "names": 29, "period": Q2}])
@@ -104,7 +104,7 @@ def test_the_search_route_needs_two_characters(monkeypatch):
 
 
 def test_the_readers_give_an_empty_view_when_the_store_cannot_be_read(monkeypatch):
-    from RevenueChaser.rcdata import read as rcread
+    from revenuechaser.rcdata import read as rcread
 
     def broken(*a, **kw):
         raise OSError("no ownership store")

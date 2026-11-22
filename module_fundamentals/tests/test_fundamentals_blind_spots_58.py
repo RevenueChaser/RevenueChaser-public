@@ -6,7 +6,7 @@ the stale-price counts. A payload stored before the counters existed, or a clean
 """
 from __future__ import annotations
 
-from RevenueChaser.module_fundamentals import report as fu_report
+from revenuechaser.module_fundamentals import report as fu_report
 
 SUMMARY = {"regime": "RISK_ON", "filtered_universe": 1500, "passing": {"rule_of_40": 40}, "top_n": 10}
 

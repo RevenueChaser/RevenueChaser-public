@@ -1,7 +1,7 @@
 """``read.missing``: the one reason text a board shows when a builder file gives it no rows (#642 F3)."""
 from __future__ import annotations
 
-from RevenueChaser.rcdata import ops, read, serving
+from revenuechaser.rcdata import ops, read, serving
 
 
 def _serve_market():

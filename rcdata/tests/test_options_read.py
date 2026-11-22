@@ -6,11 +6,11 @@ from datetime import datetime, timezone
 
 import pytest
 
-from RevenueChaser.core import calendar
-from RevenueChaser.core.providers import ibkr_tws, unusual_whales
-from RevenueChaser.rcdata import ops, read
-from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.options import ibkr_iv, uw_far_contracts, uw_list, uw_screener
+from revenuechaser.core import calendar
+from revenuechaser.core.providers import ibkr_tws, unusual_whales
+from revenuechaser.rcdata import ops, read
+from revenuechaser.rcdata.build import base
+from revenuechaser.rcdata.build.options import ibkr_iv, uw_far_contracts, uw_list, uw_screener
 
 from .ibkr_fixture import FakeGateway
 from .options_fixture import SESSION, UWOptions
@@ -44,7 +44,7 @@ def built(http_mock, monkeypatch):
 
 
 def test_every_options_table_has_a_dataset_and_the_options_kind():
-    from RevenueChaser.rcdata.build.options import tables
+    from revenuechaser.rcdata.build.options import tables
     for name in tables.TABLES:
         assert read.KIND_OF_TABLE[name] == "options"
         assert read.DATASET_OF_TABLE[name] in (uw_list.NAME, uw_screener.NAME, uw_far_contracts.NAME)
@@ -114,7 +114,7 @@ def test_each_read_is_counted_in_the_read_log(built):
 def test_the_earnings_board_reads_r4_s_inputs_from_the_evening_set(built):
     """O1 = A (avo, 10 Nov 2026): the Earnings board reads the GEX levels, the strikes and the term structure of the
     evening's earnings set from this file, in the shapes its R4 code reads from UW; a list name has no such row."""
-    from RevenueChaser.module_earnings_radar import store_reads
+    from revenuechaser.module_earnings_radar import store_reads
     rows, note = store_reads.earnings_options(["good", "SPX"], latest=SESSION)
     assert set(rows) == {"GOOD"} and note["stored"] is True and note["source_as_of"] == SESSION.isoformat()
     good = rows["GOOD"]
@@ -126,7 +126,7 @@ def test_the_earnings_board_reads_r4_s_inputs_from_the_evening_set(built):
 
 
 def test_an_evening_older_than_the_need_allows_is_not_read(built):
-    from RevenueChaser.module_earnings_radar import store_reads
+    from revenuechaser.module_earnings_radar import store_reads
     later = calendar.next_trading_day(calendar.next_trading_day(SESSION))
     rows, note = store_reads.earnings_options(["GOOD"], latest=later)
     assert rows == {} and note["stored"] is False

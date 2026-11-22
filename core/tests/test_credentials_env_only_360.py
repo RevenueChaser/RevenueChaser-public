@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import os
 
-from RevenueChaser.core import config, credentials
+from revenuechaser.core import config, credentials
 
 
 def test_a_writer_key_in_dotenv_is_not_loaded(tmp_path, monkeypatch):

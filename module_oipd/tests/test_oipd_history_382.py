@@ -12,10 +12,10 @@ from datetime import datetime, timezone
 
 import pytest
 
-from RevenueChaser.core import ledger, rawstore
-from RevenueChaser.core.providers.result import ProviderResult
-from RevenueChaser.module_oipd import config, engine
-from RevenueChaser.module_oipd.tests.test_engine import _TRUE, _FakeUW, _chain_for, fixed_today  # noqa: F401
+from revenuechaser.core import ledger, rawstore
+from revenuechaser.core.providers.result import ProviderResult
+from revenuechaser.module_oipd import config, engine
+from revenuechaser.module_oipd.tests.test_engine import _TRUE, _FakeUW, _chain_for, fixed_today  # noqa: F401
 
 # 2026-10-06 is a Tuesday: 22:00 UTC = 18:00 ET (session complete); 14:00 UTC = 10:00 ET (intraday).
 COMPLETE = datetime(2026, 10, 6, 22, 0, tzinfo=timezone.utc).timestamp()

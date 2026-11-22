@@ -9,12 +9,12 @@ from __future__ import annotations
 
 import json
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_value_chain import engine
-from RevenueChaser.module_value_chain.tests.test_value_chain_profile_edges_410 import (PROFILE, _filing,
+from revenuechaser.core import rawstore
+from revenuechaser.module_value_chain import engine
+from revenuechaser.module_value_chain.tests.test_value_chain_profile_edges_410 import (PROFILE, _filing,
                                                                                    _profile, serve_answers)
-from RevenueChaser.rcdata import read
-from RevenueChaser.rcdata.tests.conftest import market_roots  # noqa: F401  (fixture)
+from revenuechaser.rcdata import read
+from revenuechaser.rcdata.tests.conftest import market_roots  # noqa: F401  (fixture)
 
 
 def _apple(edges: list[dict]) -> list[tuple]:
@@ -109,6 +109,6 @@ def test_both_share_classes_of_one_cik_get_the_answer(rawstore_tmp_db, market_ro
 def test_the_question_id_is_the_registered_ones():
     """The board names the question as text, so that a board import does not pull the asker and its providers in.
     Nothing but this test ties the two spellings together."""
-    from RevenueChaser.rcdata.build.sec_reads import company_profile
+    from revenuechaser.rcdata.build.sec_reads import company_profile
 
     assert engine.PROFILE_QUESTION == company_profile.PROFILE_ID

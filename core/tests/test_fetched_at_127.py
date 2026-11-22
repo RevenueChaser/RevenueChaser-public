@@ -9,7 +9,7 @@ import time
 
 import pytest
 
-from RevenueChaser.core import rawstore
+from revenuechaser.core import rawstore
 
 
 
@@ -40,7 +40,7 @@ def _recent(stamp, before: float) -> None:
 
 
 def test_chain_meta_writer_stamps_fetched_at(rawstore_tmp_db):
-    from RevenueChaser.module_value_chain.engine import record_misses, miss_row
+    from revenuechaser.module_value_chain.engine import record_misses, miss_row
     before = time.time()
     record_misses([miss_row("AAA", "no_filing", "1")])
     row = rawstore.get("chain_meta", "miss:AAA")
@@ -48,7 +48,7 @@ def test_chain_meta_writer_stamps_fetched_at(rawstore_tmp_db):
 
 
 def test_rotation_holdings_writer_stamps_fetched_at(rawstore_tmp_db):
-    from RevenueChaser.module_sector_rotation.store import save_holdings_cache
+    from revenuechaser.module_sector_rotation.store import save_holdings_cache
     before = time.time()
     save_holdings_cache("xlk", [{"ticker": "AAPL"}])
     row = rawstore.get("rotation_holdings", "XLK")
@@ -58,7 +58,7 @@ def test_rotation_holdings_writer_stamps_fetched_at(rawstore_tmp_db):
 
 
 def test_ticker_themes_backfill_stamps_fetched_at(rawstore_tmp_db):
-    from RevenueChaser.core import ticker_store, ticker_themes
+    from revenuechaser.core import ticker_store, ticker_themes
     ticker_store.write_from_cards([{"ticker": "ETON", "themes": ["Biotechnology"]}])
     before = time.time()
     ticker_themes.backfill_legacy()
@@ -69,7 +69,7 @@ def test_ticker_themes_backfill_stamps_fetched_at(rawstore_tmp_db):
 
 def test_a_label_sync_does_not_wipe_fetched_at(rawstore_tmp_db):
     """``naming._sync_ticker_themes`` rewrites the label through write_rows. The stamp must survive."""
-    from RevenueChaser.module_relatedness.naming import _sync_ticker_themes
+    from revenuechaser.module_relatedness.naming import _sync_ticker_themes
     rawstore.write_rows("ticker_themes", [{
         "ticker": "AAA", "theme_id": "r1:f0", "theme": "old", "level": "fine",
         "theme_run_id": "r1", "fetched_at": 1_700_000_000.0,

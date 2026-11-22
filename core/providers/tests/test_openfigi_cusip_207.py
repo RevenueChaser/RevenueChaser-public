@@ -3,9 +3,9 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core.identity.sources import openfigi as identity_openfigi
-from RevenueChaser.core.providers import openfigi
-from RevenueChaser.core.providers.result import ProviderHealth
+from revenuechaser.core.identity.sources import openfigi as identity_openfigi
+from revenuechaser.core.providers import openfigi
+from revenuechaser.core.providers.result import ProviderHealth
 
 KEY = "figi-test-key-0123456789"
 

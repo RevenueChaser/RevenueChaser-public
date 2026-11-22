@@ -7,8 +7,8 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.app import dashboard, jobs
-from RevenueChaser.core import automations as A
+from revenuechaser.app import dashboard, jobs
+from revenuechaser.core import automations as A
 
 
 @pytest.fixture

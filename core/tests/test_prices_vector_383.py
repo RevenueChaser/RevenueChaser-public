@@ -20,9 +20,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from RevenueChaser.core import prices, rawstore
-from RevenueChaser.core.prices import _BAR_COLUMNS, _f, _placeholders, _read, _threshold_epoch
-from RevenueChaser.core.tests.d01_seed import write_d01
+from revenuechaser.core import prices, rawstore
+from revenuechaser.core.prices import _BAR_COLUMNS, _f, _placeholders, _read, _threshold_epoch
+from revenuechaser.core.tests.d01_seed import write_d01
 
 
 # ── the per-row implementation before #383 K8a speed (main a81f8de), verbatim but for names ──────────────────

@@ -13,9 +13,9 @@ from datetime import date
 import duckdb
 import pytest
 
-from RevenueChaser.rcdata import ops, read, serving
-from RevenueChaser.rcdata.needs import catalog
-from RevenueChaser.rcdata.build.prices import serving as prices_serving
+from revenuechaser.rcdata import ops, read, serving
+from revenuechaser.rcdata.needs import catalog
+from revenuechaser.rcdata.build.prices import serving as prices_serving
 
 
 @pytest.fixture(autouse=True)

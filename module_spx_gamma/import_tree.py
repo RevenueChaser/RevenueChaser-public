@@ -1,6 +1,6 @@
 """Import the old SPX Gamma file tree into ``boards/spx_gamma.duckdb`` (SPX Gamma review 9 Nov 2026, §7).
 
-``python -m RevenueChaser.module_spx_gamma --import-tree [--apply] [--legacy PATH] [--extra-gex FILE ...]``
+``python -m revenuechaser.module_spx_gamma --import-tree [--apply] [--legacy PATH] [--extra-gex FILE ...]``
 
 Dry run by default: reads the tree and prints, per table, what it read, what it would write and what is already
 stored. ``--apply`` writes. Idempotent by key: a day, record or GEX row already in the file is left alone, so a second

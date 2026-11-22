@@ -5,7 +5,7 @@
 """
 from __future__ import annotations
 
-from RevenueChaser.rcdata import read, serving
+from revenuechaser.rcdata import read, serving
 
 from .test_spine_spac_sic_240 import _sec, built_with  # noqa: F401 - the fixture build with one SIC replaced
 

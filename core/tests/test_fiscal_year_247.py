@@ -11,7 +11,7 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.core import fiscal_year as fy
+from revenuechaser.core import fiscal_year as fy
 
 
 def _rec(year, end=None, **kw) -> dict:
@@ -72,7 +72,7 @@ def test_the_record_end_is_the_revenue_end_else_the_newest_field_end():
 
 
 def test_ag_growth_and_dilution_follow_the_period_end_rule():
-    from RevenueChaser.module_asymmetric_growth.engine import score_ticker
+    from revenuechaser.module_asymmetric_growth.engine import score_ticker
 
     annual = [_rec(2022, "2022-01-02", revenue=100.0, diluted_shares=100.0),
               _rec(2023, "2023-12-30", revenue=150.0, diluted_shares=130.0)]

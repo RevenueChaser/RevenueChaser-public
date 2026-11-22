@@ -9,9 +9,9 @@ import os
 
 import pytest
 
-from RevenueChaser.app import jobs
-from RevenueChaser.core import automations as A
-from RevenueChaser.core import procs, rawstore
+from revenuechaser.app import jobs
+from revenuechaser.core import automations as A
+from revenuechaser.core import procs, rawstore
 
 NOW = 1_700_000_000.0
 DEAD = 4_000_000_001
@@ -70,7 +70,7 @@ def _bound_module():
 
 
 def test_pid_alive_treats_an_out_of_range_pid_as_gone():
-    from RevenueChaser.core import procs
+    from revenuechaser.core import procs
     assert procs.pid_alive(2 ** 70) is False
 
 

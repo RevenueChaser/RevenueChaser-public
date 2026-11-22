@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from RevenueChaser.rcdata.build.fundamentals import uw_earnings
+from revenuechaser.rcdata.build.fundamentals import uw_earnings
 
 CIK, TICKER = "789019", "MSFT"
 ANSWER = [
@@ -63,11 +63,11 @@ def test_a_percent_sign_and_a_dash_are_read_as_uw_writes_them():
 
 
 def test_the_served_table_is_its_own_and_the_schema_says_so():
-    from RevenueChaser.rcdata.build.fundamentals import tables
+    from revenuechaser.rcdata.build.fundamentals import tables
     assert "earnings_reported" in tables.SCHEMAS
     assert [c for c, _ in tables.SCHEMAS["earnings_reported"]][:3] == ["cik", "ticker", "period_end"]
     # eps_reported is never a fundamental_fact field: that table is the SEC's values only.
-    from RevenueChaser.rcdata.build.fundamentals import facts
+    from revenuechaser.rcdata.build.fundamentals import facts
     assert "eps_reported" not in facts.FIELDS
 
 
@@ -75,7 +75,7 @@ def test_the_served_table_is_its_own_and_the_schema_says_so():
 def _asked_paths(call):
     """The URL paths a real :class:`UWClient` sends for ``call(client)``, read at the HTTP boundary."""
     import httpx
-    from RevenueChaser.core.providers.unusual_whales import UWClient
+    from revenuechaser.core.providers.unusual_whales import UWClient
     seen: list[str] = []
 
     def answer(request):
@@ -100,7 +100,7 @@ def test_the_request_writes_a_share_class_the_way_uw_does():
 
 def test_the_segment_encoder_stays_a_pure_encoder():
     """``_seg`` percent-encodes and changes no character; the UW spelling is ``uw_symbol``'s job alone."""
-    from RevenueChaser.core.providers.unusual_whales import _seg, uw_symbol
+    from revenuechaser.core.providers.unusual_whales import _seg, uw_symbol
     assert (_seg("BRK-A"), _seg("afterhours"), _seg("1d"), _seg("a/b")) == ("BRK-A", "afterhours", "1d", "a%2Fb")
     assert (uw_symbol("BRK-A"), uw_symbol("BRK.B"), uw_symbol("AAPL")) == ("BRK.A", "BRK.B", "AAPL")
 
@@ -119,7 +119,7 @@ def test_no_dataset_imports_the_clients_private_encoder():
     the client's private ``_seg`` across packages (#519 finding 9)."""
     import re
     from pathlib import Path
-    from RevenueChaser.core.providers.unusual_whales import uw_segment
+    from revenuechaser.core.providers.unusual_whales import uw_segment
     assert (uw_segment("BRK-A"), uw_segment("a/b")) == ("BRK.A", "a%2Fb")
     root = Path(uw_earnings.__file__).resolve().parents[2]
     users = [p.relative_to(root) for p in root.rglob("*.py") if "tests" not in p.parts

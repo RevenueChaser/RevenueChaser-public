@@ -19,8 +19,8 @@ from pathlib import Path
 
 import pytest
 
-from RevenueChaser.core.reporting_common import THEME_CSS
-from RevenueChaser.module_spx_gamma import render, run
+from revenuechaser.core.reporting_common import THEME_CSS
+from revenuechaser.module_spx_gamma import render, run
 from .conftest import make_snapshot
 
 GOLDEN = Path(__file__).resolve().parent / "golden"

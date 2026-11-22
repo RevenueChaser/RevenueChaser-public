@@ -1,4 +1,4 @@
-"""``python -m RevenueChaser.rcdata.build.sec_reads --plan [--reread]``: how many companies each registered question
+"""``python -m revenuechaser.rcdata.build.sec_reads --plan [--reread]``: how many companies each registered question
 would ask now, as JSON. No call is made and nothing is written; run it before a paid run."""
 from __future__ import annotations
 

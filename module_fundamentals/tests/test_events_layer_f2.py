@@ -12,13 +12,13 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.core import fundamentals_layer
-from RevenueChaser.core.providers import sec_edgar
-from RevenueChaser.module_fundamentals import events
-from RevenueChaser.rcdata import ops
-from RevenueChaser.rcdata.build.fundamentals import companyfacts, filings
-from RevenueChaser.rcdata.tests import fund_fixture as fx
-from RevenueChaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401  (fixtures)
+from revenuechaser.core import fundamentals_layer
+from revenuechaser.core.providers import sec_edgar
+from revenuechaser.module_fundamentals import events
+from revenuechaser.rcdata import ops
+from revenuechaser.rcdata.build.fundamentals import companyfacts, filings
+from revenuechaser.rcdata.tests import fund_fixture as fx
+from revenuechaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401  (fixtures)
 
 EVENT = "0001193125-26-200001"
 ROWS = [(EVENT, "8-K", "2026-06-01", "2026-05-29", "msft-8k2.htm", "2.01,9.01"), *fx.MSFT_FILINGS]
@@ -78,7 +78,7 @@ def test_a_failed_run_vouches_for_nothing(layer):
 
 
 def test_the_layer_never_reads_the_old_rows(layer, monkeypatch):
-    from RevenueChaser.core import rawstore
+    from revenuechaser.core import rawstore
 
     def refuse(*a, **k):
         raise AssertionError("the old store was read")

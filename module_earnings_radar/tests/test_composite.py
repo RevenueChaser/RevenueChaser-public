@@ -1,7 +1,7 @@
 """Tests for composite / decision math (direction, confidence, bias, conviction, select_action)."""
 import pytest
 
-from RevenueChaser.module_earnings_radar.composite import (
+from revenuechaser.module_earnings_radar.composite import (
     classify_bias,
     classify_conviction,
     compute_composite_scores,
@@ -10,7 +10,7 @@ from RevenueChaser.module_earnings_radar.composite import (
     recommend_options_structure,
     select_action,
 )
-from RevenueChaser.module_earnings_radar.models import RuleResult
+from revenuechaser.module_earnings_radar.models import RuleResult
 
 
 def _rr(score_val, available=True, coverage=0.6):
@@ -222,23 +222,23 @@ class TestRuleWeightGuard:
         # A rule with weight > 0 but no scorer silently cuts every card's confidence
         # (its weight stays in the denominator and no result ever fills it).
         import importlib
-        from RevenueChaser.core.config import RULE_WEIGHTS
+        from revenuechaser.core.config import RULE_WEIGHTS
 
         for name, weight in RULE_WEIGHTS.items():
             if weight <= 0:
                 continue
             try:
-                mod = importlib.import_module(f"RevenueChaser.module_earnings_radar.rules.{name}")
+                mod = importlib.import_module(f"revenuechaser.module_earnings_radar.rules.{name}")
             except ImportError:
                 pytest.fail(f"{name} has weight {weight} but no scorer module rules/{name}.py")
             assert callable(getattr(mod, "score", None)), f"{name} has weight {weight} but no score()"
 
     def test_rule1_stays_at_zero_until_it_has_a_scorer(self):
         import importlib
-        from RevenueChaser.core.config import RULE_WEIGHTS
+        from revenuechaser.core.config import RULE_WEIGHTS
 
         try:
-            importlib.import_module("RevenueChaser.module_earnings_radar.rules.rule1_drivers")
+            importlib.import_module("revenuechaser.module_earnings_radar.rules.rule1_drivers")
         except ImportError:
             assert RULE_WEIGHTS["rule1_drivers"] == 0.0
 
@@ -246,8 +246,8 @@ class TestRuleWeightGuard:
         """E6 (#372): the scorer exists and reads estimates, but the composite weight stays 0 until the decision
         to wire it — a weight > 0 would move every card as soon as a snapshot is stored."""
         import importlib
-        from RevenueChaser.core.config import RULE_WEIGHTS
+        from revenuechaser.core.config import RULE_WEIGHTS
 
-        mod = importlib.import_module("RevenueChaser.module_earnings_radar.rules.rule1_drivers")
+        mod = importlib.import_module("revenuechaser.module_earnings_radar.rules.rule1_drivers")
         assert callable(getattr(mod, "score", None))
         assert RULE_WEIGHTS["rule1_drivers"] == 0.0

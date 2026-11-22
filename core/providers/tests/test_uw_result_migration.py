@@ -18,9 +18,9 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.core.providers import unusual_whales as uwmod
-from RevenueChaser.core.providers.result import ProviderResult
-from RevenueChaser.core.providers.unusual_whales import UWClient
+from revenuechaser.core.providers import unusual_whales as uwmod
+from revenuechaser.core.providers.result import ProviderResult
+from revenuechaser.core.providers.unusual_whales import UWClient
 
 D = date(2026, 10, 9)
 

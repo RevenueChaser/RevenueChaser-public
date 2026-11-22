@@ -8,13 +8,13 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.rcdata.tests import spine_fixture
-from RevenueChaser.module_sector_rotation.models import ETFRotationSnapshot
-from RevenueChaser.module_sector_rotation import engine
-from RevenueChaser.module_sector_rotation import etf_holdings as eh
-from RevenueChaser.module_sector_rotation.tests.bars_seed import seed
-from RevenueChaser.core.rotation_reference import SEED_ROTATION_ETFS as ROTATION_ETFS
+from revenuechaser.core import rawstore
+from revenuechaser.rcdata.tests import spine_fixture
+from revenuechaser.module_sector_rotation.models import ETFRotationSnapshot
+from revenuechaser.module_sector_rotation import engine
+from revenuechaser.module_sector_rotation import etf_holdings as eh
+from revenuechaser.module_sector_rotation.tests.bars_seed import seed
+from revenuechaser.core.rotation_reference import SEED_ROTATION_ETFS as ROTATION_ETFS
 
 SYNCED = [t for t, i in ROTATION_ETFS.items() if i.get("group") in ("sector", "theme")]
 HOLD = [{"ticker": "NVDA", "name": "NVIDIA", "weight": 14.2}, {"ticker": "AAPL", "name": "Apple", "weight": 12.1}]
@@ -87,7 +87,7 @@ def _spine(provider_of=lambda t: "ssga", skip=("AIQ",), as_of="2026-10-09"):
 
 
 def test_health_summary_counts_the_newest_day_providers_and_rs(rawstore_tmp_db):
-    from RevenueChaser.module_sector_rotation import store as rotation_store
+    from revenuechaser.module_sector_rotation import store as rotation_store
     _spine(lambda t: "uw" if t in ("SKYY", "AIQ") else "ssga", skip=("AIQ", "XLE"))
     spine_fixture.write_etf_holdings({"XLE": HOLD}, as_of="2026-10-02", provider="ssga")   # an older day
     rotation_store.save_holdings_cache("ARKQ", [{"ticker": "NVDA", "rs_1m": 1.0}])
@@ -105,7 +105,7 @@ def test_health_summary_counts_the_newest_day_providers_and_rs(rawstore_tmp_db):
 def test_health_is_the_summary_numbers_typed(rawstore_tmp_db):
     """Covered is the ETFs with spine holdings against the board's 52; the provider share is the provider of
     every ETF's list. The newest day is the spine's, not a population."""
-    from RevenueChaser.core import datahealth
+    from revenuechaser.core import datahealth
 
     _spine(lambda t: "ishares" if t in ("SOXX", "IBB") else "ssga", skip=())
 
@@ -121,7 +121,7 @@ def test_health_is_the_summary_numbers_typed(rawstore_tmp_db):
 
 
 def test_health_counts_a_missing_etf(rawstore_tmp_db):
-    from RevenueChaser.core import datahealth
+    from revenuechaser.core import datahealth
 
     _spine()
 

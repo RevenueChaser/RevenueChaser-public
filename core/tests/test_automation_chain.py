@@ -16,7 +16,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from RevenueChaser.core import automations as A
+from revenuechaser.core import automations as A
 
 AMS = ZoneInfo("Europe/Amsterdam")
 

@@ -3,9 +3,9 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.rcdata.tests import universe_store
-from RevenueChaser.core import rawstore, universe
-from RevenueChaser.core.identity import types as id_types
+from revenuechaser.rcdata.tests import universe_store
+from revenuechaser.core import rawstore, universe
+from revenuechaser.core.identity import types as id_types
 
 
 def _seed_universe(rows):
@@ -40,7 +40,7 @@ def test_a_caller_can_still_ask_for_a_floor_of_its_own(rawstore_tmp_db):
 def test_filter_fields_joins_name_gics_and_index(rawstore_tmp_db, monkeypatch):
     _seed_universe([{"ticker": "NVDA", "name": "NVIDIA Corporation",
                      "market_cap": 1e12, "sector": "Technology", "industry": "Semiconductors"}])
-    from RevenueChaser.core import spine_reads           # the badges are the spine's members (#642 PR 6)
+    from revenuechaser.core import spine_reads           # the badges are the spine's members (#642 PR 6)
     monkeypatch.setattr(spine_reads, "membership", lambda *a, **k: [{"index_slug": "sp500", "ticker": "NVDA"}])
     meta = universe.filter_fields(["NVDA", "MISSING"])
     assert meta["NVDA"]["name"] == "NVIDIA Corporation"
@@ -306,7 +306,7 @@ def test_each_board_has_a_type_filter_default_that_keeps_its_old_set():
 
 def test_every_board_that_reads_the_universe_has_a_decided_type_filter_default():
     """PR 2 review S2: no board reaches its default through the ``.get`` fallback."""
-    from RevenueChaser.module_settings import boards
+    from revenuechaser.module_settings import boards
     # #642 N1: the universe is a served need, not a store table a board names, so the readers are the boards whose
     # own record names it (``identity.universe``), which is also what the Settings card draws.
     readers = {e["key"] for e in boards.BOARD_INPUTS
@@ -378,7 +378,7 @@ def test_spine_gics_for_named_tickers_filters_in_sql(rawstore_tmp_db, monkeypatc
         {"ticker": "NVDA", "sector": "Technology"},
         {"ticker": "XOM", "sector": "Energy"},
     ])
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     seen = []
     real = read.identity
     monkeypatch.setattr(read, "identity", lambda tickers=None: seen.append(tickers) or real(tickers))

@@ -17,12 +17,12 @@ from datetime import date, datetime, timezone
 
 import pytest
 
-from RevenueChaser.rcdata.tests import fund_store
-from RevenueChaser.core import calendar as cal
-from RevenueChaser.core import funnel, screen_common
-from RevenueChaser.core.tests.screen_parity import _OfflineTicker, _bars, seed_d01
-from RevenueChaser.module_fundamentals import pipeline as fp
-from RevenueChaser.module_fundamentals.report import render_fundamental_dashboard
+from revenuechaser.rcdata.tests import fund_store
+from revenuechaser.core import calendar as cal
+from revenuechaser.core import funnel, screen_common
+from revenuechaser.core.tests.screen_parity import _OfflineTicker, _bars, seed_d01
+from revenuechaser.module_fundamentals import pipeline as fp
+from revenuechaser.module_fundamentals.report import render_fundamental_dashboard
 
 NOW = datetime(2026, 10, 14, 21, 45, tzinfo=timezone.utc)      # the 14 Oct session is complete
 SESSION = date(2026, 10, 14)

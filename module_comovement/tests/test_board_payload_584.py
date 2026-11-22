@@ -9,11 +9,11 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.app import runners
-from RevenueChaser.app.jobs import JobMessage
-from RevenueChaser.core import reporting_common as rc
-from RevenueChaser.module_comovement import engine, report
-from RevenueChaser.module_comovement.tests.test_page_pack_379 import _payload
+from revenuechaser.app import runners
+from revenuechaser.app.jobs import JobMessage
+from revenuechaser.core import reporting_common as rc
+from revenuechaser.module_comovement import engine, report
+from revenuechaser.module_comovement.tests.test_page_pack_379 import _payload
 
 
 def test_the_served_page_fetches_its_groups():
@@ -31,7 +31,7 @@ def test_the_one_file_page_keeps_its_rows_inline():
 
 
 def test_an_empty_board_has_no_payload_file():
-    from RevenueChaser.module_comovement.tests.test_comovement import _report_payload
+    from revenuechaser.module_comovement.tests.test_comovement import _report_payload
 
     html, data = report.render_comovement_board(_report_payload(clusters={}, cuts=[]))
     assert data is None and "No clusters yet" in html and "var FETCH = false;" in html

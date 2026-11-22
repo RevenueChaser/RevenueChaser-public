@@ -87,8 +87,8 @@ def load_sec13f_meta() -> dict:
 
     The cached ``sec13f_security_meta`` (a UW screener pass) went with raw.duckdb (#860); a ticker the spine does not
     hold has no entry, so the board shows it unnamed and Unclassified."""
-    from RevenueChaser.core.gics_map import sector_or_unclassified
-    from RevenueChaser.rcdata import read
+    from revenuechaser.core.gics_map import sector_or_unclassified
+    from revenuechaser.rcdata import read
     tickers = [t for t in load_totals() if t]
     out = {}
     for r in read.identity(tickers):
@@ -115,5 +115,5 @@ def load_totals() -> dict:
     """The 13F per-ticker totals the board shows: its own file (``store``, #732) while it is current, else the
     builder's rows merged over the file's closed quarters. Asymmetric Growth reads the builder's rows directly
     (``core.ownership.sec13f_totals``, #16) and must not import this engine for them."""
-    from RevenueChaser.module_sec_13f import store
+    from revenuechaser.module_sec_13f import store
     return store.read_totals()

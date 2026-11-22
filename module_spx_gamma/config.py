@@ -4,10 +4,10 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from RevenueChaser.core.config import OUTPUT_DIR, load_env_file
+from revenuechaser.core.config import OUTPUT_DIR, load_env_file
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-load_env_file(_REPO_ROOT / "RevenueChaser" / ".env")   # writer keys never from .env (#360)
+load_env_file(_REPO_ROOT / "revenuechaser" / ".env")   # writer keys never from .env (#360)
 
 # NB: no /api suffix here — callers pass paths that already carry it.
 UW_API_BASE = os.getenv("RC_UW_BASE_ROOT") or "https://api.unusualwhales.com"
@@ -21,7 +21,7 @@ TICKER = "SPX"
 #: Where the tree lived until S4 (#38): inside the checkout, so a fresh clone or `git clean -x` lost it.
 LEGACY_DATA_ROOT = Path(__file__).resolve().parent / "data"
 #: Where it lives from S4: beside the store's DuckDB files (RC_STORE_DIR), outside the checkout.
-STORE_DATA_ROOT = Path(os.getenv("RC_STORE_DIR") or (_REPO_ROOT / "RevenueChaser" / ".store")).expanduser() / "spx_gamma"
+STORE_DATA_ROOT = Path(os.getenv("RC_STORE_DIR") or (_REPO_ROOT / "revenuechaser" / ".store")).expanduser() / "spx_gamma"
 
 
 def _has_files(root: Path) -> bool:

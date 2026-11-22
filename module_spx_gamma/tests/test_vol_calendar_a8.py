@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import json
 
-from RevenueChaser.module_spx_gamma import normalize as nm, snapshot as snap, vol_calendar
-from RevenueChaser.module_spx_gamma.raw_day import load_raw_day
+from revenuechaser.module_spx_gamma import normalize as nm, snapshot as snap, vol_calendar
+from revenuechaser.module_spx_gamma.raw_day import load_raw_day
 
 PAYLOAD = {"data": [
     {"type": "report", "time": "2026-11-06T13:30:00Z", "event": "Employment Report", "prev": "29000", "forecast": "55000"},

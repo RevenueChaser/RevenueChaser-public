@@ -17,9 +17,9 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_sec_13f import engine, enrich, report
-from RevenueChaser.core.tests.d01_seed import write_d01
+from revenuechaser.core import rawstore
+from revenuechaser.module_sec_13f import engine, enrich, report
+from revenuechaser.core.tests.d01_seed import write_d01
 
 Q1, Q2 = "2025-03-31", "2025-06-30"
 
@@ -92,7 +92,7 @@ def test_a_close_older_than_the_lookback_is_no_quarter_end_price(rawstore_tmp_db
 
 def test_a_split_after_the_quarter_end_divides_a_close_fetched_before_it(rawstore_tmp_db):
     """The nominal series is ``prices.daily_bars``': a 2:1 split on 2025-05-01 halves the Q1 close fetched in March."""
-    from RevenueChaser.core import prices
+    from revenuechaser.core import prices
     write_d01([_bar("AAA", "2025-03-31", 20.0), _bar("AAA", "2025-06-30", 12.0)])
     write_d01([], [{"ticker": "AAA", "ex_date": date(2025, 5, 1), "action": "split",
                                            "value": 2.0, "source": "yfinance", "fetched_at": 0.0,
@@ -105,7 +105,7 @@ def test_a_split_after_the_quarter_end_divides_a_close_fetched_before_it(rawstor
 
 def test_the_price_read_is_bounded_to_the_quarter_end_windows(rawstore_tmp_db, monkeypatch):
     """Only the bars inside the quarter-end windows are read, never the whole D01 history of the 13F universe."""
-    from RevenueChaser.core import prices
+    from revenuechaser.core import prices
     write_d01([_bar("AAA", d, 10.0) for d in
                                              ("2025-03-28", "2025-04-15", "2025-06-30", "2025-08-01", "2026-10-01")])
     seen = []

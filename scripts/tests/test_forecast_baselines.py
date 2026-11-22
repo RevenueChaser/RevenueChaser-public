@@ -8,8 +8,8 @@ from contextlib import contextmanager
 
 import pytest
 
-from RevenueChaser.core import baselines, job_lock, rawstore
-from RevenueChaser.scripts import forecast_baselines
+from revenuechaser.core import baselines, job_lock, rawstore
+from revenuechaser.scripts import forecast_baselines
 
 
 def _result(**kw) -> dict:

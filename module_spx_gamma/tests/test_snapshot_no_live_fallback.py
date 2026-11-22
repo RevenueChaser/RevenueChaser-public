@@ -12,11 +12,11 @@ from urllib.parse import parse_qsl
 
 import pytest
 
-from RevenueChaser.core import calendar
-from RevenueChaser.core.providers import unusual_whales
-from RevenueChaser.module_spx_gamma import render, run as spx_run, snapshot as snap
-from RevenueChaser.rcdata.tests.conftest import http_mock  # noqa: F401  (the transport-level mock)
-from RevenueChaser.module_spx_gamma import store as spx_store
+from revenuechaser.core import calendar
+from revenuechaser.core.providers import unusual_whales
+from revenuechaser.module_spx_gamma import render, run as spx_run, snapshot as snap
+from revenuechaser.rcdata.tests.conftest import http_mock  # noqa: F401  (the transport-level mock)
+from revenuechaser.module_spx_gamma import store as spx_store
 
 from . import rcdata_fixture as fx
 

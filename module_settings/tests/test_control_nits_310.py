@@ -8,8 +8,8 @@ from __future__ import annotations
 import copy
 from datetime import datetime, timezone
 
-from RevenueChaser.module_settings import control, control_render
-from RevenueChaser.module_settings.tests.test_control_view import control_nd
+from revenuechaser.module_settings import control, control_render
+from revenuechaser.module_settings.tests.test_control_view import control_nd
 
 NOW = datetime(2026, 10, 30, 17, 31, tzinfo=timezone.utc)
 

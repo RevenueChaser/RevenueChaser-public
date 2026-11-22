@@ -12,10 +12,10 @@ import random
 
 import pytest
 
-from RevenueChaser.core.providers import sec_edgar as se
-from RevenueChaser.module_fundamentals import config
-from RevenueChaser.module_fundamentals import pipeline as fp
-from RevenueChaser.module_fundamentals.tests import ttm_filings_148 as ft
+from revenuechaser.core.providers import sec_edgar as se
+from revenuechaser.module_fundamentals import config
+from revenuechaser.module_fundamentals import pipeline as fp
+from revenuechaser.module_fundamentals.tests import ttm_filings_148 as ft
 
 
 def _run(facts):

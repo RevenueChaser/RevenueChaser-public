@@ -9,8 +9,8 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.app import dashboard
-from RevenueChaser.rcdata import needs
+from revenuechaser.app import dashboard
+from revenuechaser.rcdata import needs
 
 
 @pytest.fixture

@@ -15,8 +15,8 @@ import subprocess
 
 import pytest
 
-from RevenueChaser.app import dashboard, runview
-from RevenueChaser.core.tests.board_js import DOM_STUB, function_source, inline_scripts
+from revenuechaser.app import dashboard, runview
+from revenuechaser.core.tests.board_js import DOM_STUB, function_source, inline_scripts
 
 # createElement returns elements that remember what was appended to them, which the stub's no-op does not.
 RECORDING_DOM = r"""

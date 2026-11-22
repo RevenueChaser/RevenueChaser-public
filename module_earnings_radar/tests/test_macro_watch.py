@@ -3,8 +3,8 @@
 The weekly FRED/yfinance reads the RRG once used are gone: both boards read the market store now
 (``module_sector_rotation/engine.macro_points``, ``module_earnings_radar/store_reads.dgs10_map``).
 """
-from RevenueChaser.module_earnings_radar import macro_watch
-from RevenueChaser.core.rotation_reference import MACRO_SERIES, SEED_ROTATION_ETFS as ROTATION_ETFS
+from revenuechaser.module_earnings_radar import macro_watch
+from revenuechaser.core.rotation_reference import MACRO_SERIES, SEED_ROTATION_ETFS as ROTATION_ETFS
 
 
 class TestSeriesMapping:

@@ -7,10 +7,10 @@ from pathlib import Path
 
 import pytest
 
-from RevenueChaser.core.providers import sec_edgar, tickerinside, unusual_whales
-from RevenueChaser.rcdata import ops, serving
-from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.spine import etf_holdings as etf, sec_tickers
+from revenuechaser.core.providers import sec_edgar, tickerinside, unusual_whales
+from revenuechaser.rcdata import ops, serving
+from revenuechaser.rcdata.build import base
+from revenuechaser.rcdata.build.spine import etf_holdings as etf, sec_tickers
 
 from . import spine_fixture as fx
 
@@ -45,7 +45,7 @@ def test_the_funds_are_the_rotation_boards_sector_and_theme_etfs_but_the_commodi
 
     The ``52`` is deliberate: adding an ETF to the board's sector or theme groups fails this test, which is where
     the decision whether the new fund has a keyless holdings file or is read from TickerInside belongs."""
-    from RevenueChaser.core.rotation_reference import SEED_ROTATION_ETFS as ROTATION_ETFS
+    from revenuechaser.core.rotation_reference import SEED_ROTATION_ETFS as ROTATION_ETFS
     board = {t for t, info in ROTATION_ETFS.items() if info["group"] in ("sector", "theme")}
     assert len(board) == 52
     assert {f.etf for f in etf.FILES} == (board - {"GLD", "SLV", "USO"}) | etf.EXTRA
@@ -56,8 +56,8 @@ def test_every_peer_set_etf_and_every_rotation_equity_etf_is_a_daily_fund():
     """Review of 9 Nov 2026, section 10: a relatedness peer set can never be "no holdings" by omission. Every ETF
     of ``etf_sets.json``, and every Rotation ``sector`` or ``theme`` ETF that holds stocks, is fetched daily."""
     import json
-    from RevenueChaser.core.rotation_reference import SEED_ROTATION_ETFS as ROTATION_ETFS
-    from RevenueChaser.module_relatedness.validation import peer_sets
+    from revenuechaser.core.rotation_reference import SEED_ROTATION_ETFS as ROTATION_ETFS
+    from revenuechaser.module_relatedness.validation import peer_sets
     _version, sets = peer_sets.read_etf_list()
     board = {t for t, info in ROTATION_ETFS.items() if info["group"] in ("sector", "theme")}
     daily = {f.etf for f in etf.FILES}
@@ -389,8 +389,8 @@ def test_a_fund_with_no_issuer_file_still_fails_alone_on_an_empty_answer(env, ht
 
 
 def test_the_issuer_file_host_has_board_words_and_no_invented_cap():
-    from RevenueChaser.rcdata import caps
-    from RevenueChaser.rcdata.needs import screen
+    from revenuechaser.rcdata import caps
+    from revenuechaser.rcdata.needs import screen
     assert "ark" not in caps.DAY_CAPS and screen.PROVIDERS["ark"].name == "ARK"     # ARK publishes no limit (rule 3)
 
 
@@ -444,6 +444,6 @@ def test_a_share_class_and_a_foreign_line_of_a_fund_file_are_read_as_the_site_ke
 def test_the_source_is_paced_out_of_politeness_and_has_no_invented_day_cap():
     """TickerInside publishes no request window and no quota, so ``caps`` holds no number for it (rule 3: no
     invented limit) and the pacer lives in the dataset, labelled politeness."""
-    from RevenueChaser.rcdata import caps
+    from revenuechaser.rcdata import caps
     assert "tickerinside" not in caps.DAY_CAPS and "tickerinside" not in caps.WINDOWS
     assert etf.TI_PACE == (2, 1.0)

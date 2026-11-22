@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import re
 
-from RevenueChaser.module_settings import control_render, report
-from RevenueChaser.module_settings.tests.test_control_render_c1 import FILES, _view
+from revenuechaser.module_settings import control_render, report
+from revenuechaser.module_settings.tests.test_control_render_c1 import FILES, _view
 
 
 def test_render_data_holds_its_parts_in_order_and_no_fetch_control():

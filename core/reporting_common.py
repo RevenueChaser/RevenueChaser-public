@@ -15,8 +15,8 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 
-from RevenueChaser.core import v2_envelope
-from RevenueChaser.core.html_safe import ESC_JS
+from revenuechaser.core import v2_envelope
+from revenuechaser.core.html_safe import ESC_JS
 
 # ── Job poller, shared by the Settings board and its control panel ──
 # One truthful verdict for every status of ``/api/job/<id>`` (#37): a job that
@@ -760,7 +760,7 @@ def write_board(html_path, html_text: str, payload=None, *, board: str | None = 
 def _writer_run_id() -> str:
     """The running dashboard job's id (``rawstore.writer_run_id``), else a fresh one; never fails a render."""
     try:
-        from RevenueChaser.core import rawstore
+        from revenuechaser.core import rawstore
         return rawstore.writer_run_id()
     except Exception:  # noqa: BLE001 - an id is metadata; a board render never fails for the want of one
         return ""

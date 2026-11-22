@@ -368,7 +368,7 @@ def current_theme_run(strict: bool = False) -> str | None:
     The one lookup (C23): ``module_relatedness.themes.current_run_id`` and the filter fields use it. A filter
     never breaks a board, so a failed read is None; ``strict=True`` (the Relatedness guards that refuse to
     rebuild or prune the current run) lets the error through instead of reading as "no current run"."""
-    from RevenueChaser.module_relatedness.store_reads import pinned_run_id
+    from revenuechaser.module_relatedness.store_reads import pinned_run_id
     try:
         return pinned_run_id()
     except Exception:  # noqa: BLE001 - table absent on a fresh store
@@ -399,7 +399,7 @@ def theme_catalog(run: str | None = None) -> dict[str, dict]:
     run = run or current_theme_run()
     if not run:
         return {}
-    from RevenueChaser.module_relatedness.store_reads import catalog_rows
+    from revenuechaser.module_relatedness.store_reads import catalog_rows
     try:
         rows = catalog_rows(run)
     except Exception:  # noqa: BLE001 - optional control, never fatal
@@ -434,7 +434,7 @@ def _theme_ids_by_ticker(catalog: dict[str, dict], run: str | None = None) -> di
     run = run or current_theme_run()
     if not run or not catalog:
         return {}
-    from RevenueChaser.module_relatedness.store_reads import member_tickers_of_run
+    from revenuechaser.module_relatedness.store_reads import member_tickers_of_run
     try:
         rows = member_tickers_of_run(run)
     except Exception:  # noqa: BLE001

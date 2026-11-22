@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import re
 
-from RevenueChaser.module_settings import control, control_render
+from revenuechaser.module_settings import control, control_render
 
 
 def _file(samples=None, **kw) -> dict:
@@ -56,7 +56,7 @@ def test_the_health_hint_points_at_the_source_box():
 
 
 def test_the_tree_files_are_loaded_into_the_page():
-    from RevenueChaser.module_settings.tests.test_control_view import _build
+    from revenuechaser.module_settings.tests.test_control_view import _build
     tree_css = (control_render._STATIC / "data_tree.css").read_text(encoding="utf-8")
     tree_js = (control_render._STATIC / "data_tree.js").read_text(encoding="utf-8")
     assert tree_css.strip() and tree_css in control_render.CTL_CSS

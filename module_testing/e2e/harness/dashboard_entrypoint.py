@@ -1,6 +1,6 @@
 """Boot the real dashboard for an end-to-end run.
 
-    python -m RevenueChaser.module_testing.e2e.harness.dashboard_entrypoint <port>
+    python -m revenuechaser.module_testing.e2e.harness.dashboard_entrypoint <port>
 
 Port ``0`` lets the OS pick; the port bound is then written to ``$RC_E2E_PORT_FILE``. The harness always
 asks for 0: a port picked ahead of time in the test process is free only until another xdist worker binds it.
@@ -32,7 +32,7 @@ def main() -> None:
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
 
     # 1. fakes first — before RevenueChaser pulls yfinance in transitively
-    from RevenueChaser.module_testing.e2e.harness import yfinance_fake
+    from revenuechaser.module_testing.e2e.harness import yfinance_fake
     yfinance_fake.install()
 
     # 2. sanity: refuse to run against the developer's real data
@@ -44,14 +44,14 @@ def main() -> None:
             )
 
     # 3. never reach the host's real scheduler (#130)
-    from RevenueChaser.core import automations
+    from revenuechaser.core import automations
     automations.set_scheduler(automations.FakeScheduler())
 
     # 4. test clock (#128): the ledger's session rule must see a fixed "now" inside this subprocess
     fixed_now = os.environ.get("RC_E2E_NOW")
     if fixed_now:
         from datetime import datetime
-        from RevenueChaser.core import calendar
+        from revenuechaser.core import calendar
         fixed = datetime.fromisoformat(fixed_now.replace("Z", "+00:00"))
         if fixed.tzinfo is None:
             raise SystemExit("RC_E2E_NOW must carry a UTC offset, e.g. 2026-09-25T21:00:00+00:00")
@@ -60,8 +60,8 @@ def main() -> None:
 
     from werkzeug.serving import make_server
 
-    from RevenueChaser.app import dashboard
-    from RevenueChaser.core.config import DATA_DIR, OUTPUT_DIR
+    from revenuechaser.app import dashboard
+    from revenuechaser.core.config import DATA_DIR, OUTPUT_DIR
     # What app.run(debug=False, use_reloader=False, threaded=True) does, minus the banner, with the socket
     # bound here so the port is known before the first request.
     server = make_server("127.0.0.1", port, dashboard.app, threaded=True)

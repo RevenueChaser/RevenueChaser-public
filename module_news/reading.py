@@ -35,8 +35,8 @@ import json
 import re
 import time
 
-from RevenueChaser.core import llm_jobs, llm_writers, rawstore
-from RevenueChaser.module_news import store_reads
+from revenuechaser.core import llm_jobs, llm_writers, rawstore
+from revenuechaser.module_news import store_reads
 
 #: The LLM job id; its ``(provider, model)`` pair is the Settings choice (``core.llm_jobs``), EVREN by default.
 JOB = "news.reading"

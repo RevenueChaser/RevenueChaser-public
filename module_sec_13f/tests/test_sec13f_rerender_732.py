@@ -5,8 +5,8 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core import ownership
-from RevenueChaser.module_sec_13f import store
+from revenuechaser.core import ownership
+from revenuechaser.module_sec_13f import store
 
 Q1, Q2 = "2026-03-31", "2026-06-30"
 
@@ -57,7 +57,7 @@ def test_the_chart_reads_one_tickers_rows(builder):
 
 
 def test_a_stale_page_is_dropped_before_it_is_served(monkeypatch, tmp_path):
-    from RevenueChaser.app import dashboard
+    from revenuechaser.app import dashboard
     monkeypatch.setattr(store, "is_stale", lambda: True)
     assert dashboard._sec13f_stale() is True
 
@@ -71,7 +71,7 @@ def test_a_stale_page_is_rendered_again_in_the_background_once(monkeypatch):
     """The day's first open took ~70 s rendering inside the request (17 Nov 2026): the old page is served and one
     re-render runs beside it; a second stale load while it runs starts none."""
     import threading
-    from RevenueChaser.app import dashboard, runners
+    from revenuechaser.app import dashboard, runners
     started, release, calls = threading.Event(), threading.Event(), []
 
     def render(_):

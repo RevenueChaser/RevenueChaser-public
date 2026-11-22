@@ -18,8 +18,8 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from RevenueChaser.core import config
-from RevenueChaser.core.ibkr_login import for_how_long
+from revenuechaser.core import config
+from revenuechaser.core.ibkr_login import for_how_long
 
 #: The listener writes at least every ``tape.TRIGGER_S`` (5 minutes); three missed beats and the record is stale.
 STALE_MINUTES = 15

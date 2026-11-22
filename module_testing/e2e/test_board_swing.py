@@ -11,8 +11,8 @@ import json
 
 import pytest
 
-from RevenueChaser.rcdata.tests import universe_store
-from RevenueChaser.module_testing.e2e.harness.screener_seed import bars_to, seed_d01
+from revenuechaser.rcdata.tests import universe_store
+from revenuechaser.module_testing.e2e.harness.screener_seed import bars_to, seed_d01
 
 
 
@@ -55,9 +55,9 @@ class TestEmptyUniverse:
 
 def test_a_card_with_no_rr_shows_na(tmp_path):
     """#384 SW-S2 (DF81): a null R:R shows "R:R n/a" and no slider, never a made-up 2.0."""
-    from RevenueChaser.core.tests.board_js import run_board_js
-    from RevenueChaser.module_swing_potential.pipeline import build_payload
-    from RevenueChaser.module_swing_potential.report import render_swing_dashboard
+    from revenuechaser.core.tests.board_js import run_board_js
+    from revenuechaser.module_swing_potential.pipeline import build_payload
+    from revenuechaser.module_swing_potential.report import render_swing_dashboard
     gate = {"passed": True, "score": "1/1", "rules": [{"id": "r", "passed": True, "actual": 1.0}]}
     p = build_payload([], run_stats={})
     p["is_fixture"] = False

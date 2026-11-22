@@ -6,10 +6,10 @@ from datetime import date, timedelta
 
 import pytest
 
-from RevenueChaser.core.providers import sec_edgar
-from RevenueChaser.rcdata import ops
-from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.fundamentals import earnings, filings
+from revenuechaser.core.providers import sec_edgar
+from revenuechaser.rcdata import ops
+from revenuechaser.rcdata.build import base
+from revenuechaser.rcdata.build.fundamentals import earnings, filings
 
 from . import fund_fixture as fx
 
@@ -38,8 +38,8 @@ def test_the_calendar_runs_weekly_and_a_failure_still_retries_the_next_new_york_
     """Weekly since 21 Nov 2026 (avo, "Haftalik cek"): the horizon is three months ahead, so a day's calendar
     differs from the one before it only at the edges. The day cap's failure rule is unchanged: not due again the
     same New York day, due on the next one."""
-    from RevenueChaser.core import calendar
-    from RevenueChaser.rcdata.build import DATASETS, due
+    from revenuechaser.core import calendar
+    from revenuechaser.rcdata.build import DATASETS, due
     ds = DATASETS[earnings.NAME]
     assert ds.cadence == "weekly" and ds.providers == ("alphavantage",)
     av.add("av.test/query", CSV_DAY1)

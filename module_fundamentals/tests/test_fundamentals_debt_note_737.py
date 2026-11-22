@@ -9,11 +9,11 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core import fundamentals_layer as layer
-from RevenueChaser.module_fundamentals import config, debt, pipeline
-from RevenueChaser.module_fundamentals.screeners import NOTE_DEBT_NOTE, evaluate_quality
-from RevenueChaser.module_fundamentals.tests.test_fundamentals_debt_free_737 import _fy, _ttm_pair
-from RevenueChaser.rcdata import read, sec_debt_note
+from revenuechaser.core import fundamentals_layer as layer
+from revenuechaser.module_fundamentals import config, debt, pipeline
+from revenuechaser.module_fundamentals.screeners import NOTE_DEBT_NOTE, evaluate_quality
+from revenuechaser.module_fundamentals.tests.test_fundamentals_debt_free_737 import _fy, _ttm_pair
+from revenuechaser.rcdata import read, sec_debt_note
 
 FLOWS = {"revenue": 1000.0, "gross_profit": 750.0, "ebit": 200.0, "depreciation": 50.0}
 # A borrower whose facts sum no total: a current line only (40) and interest above the floor.

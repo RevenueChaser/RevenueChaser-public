@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from RevenueChaser.module_hit_rate import board
+from revenuechaser.module_hit_rate import board
 
 D0 = date(2026, 1, 5)
 
@@ -40,6 +40,6 @@ def test_no_picks_is_an_explicit_empty_state():
 
 
 def test_the_tab_renders_from_an_empty_store():
-    from RevenueChaser.app import dashboard
+    from revenuechaser.app import dashboard
     r = dashboard.app.test_client().get("/view/module_hit_rate")
     assert r.status_code == 200 and "Hit Rate" in r.get_data(as_text=True)

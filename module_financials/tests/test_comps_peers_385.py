@@ -16,15 +16,15 @@ import copy
 
 import pytest
 
-import RevenueChaser.module_financials.run as fm
-from RevenueChaser.rcdata.tests import universe_store
-from RevenueChaser.core import universe as spine
-from RevenueChaser.module_financials import peers as peer_ladder
-from RevenueChaser.module_financials.engines import _inputs
-from RevenueChaser.module_financials.engines.comps_engine import NM, run_comps
-from RevenueChaser.module_financials.engines.dcf_engine import run_dcf
-from RevenueChaser.module_financials.engines.three_statement_engine import run_three_statement
-from RevenueChaser.module_financials.reporting.html_builder import build_report_html
+import revenuechaser.module_financials.run as fm
+from revenuechaser.rcdata.tests import universe_store
+from revenuechaser.core import universe as spine
+from revenuechaser.module_financials import peers as peer_ladder
+from revenuechaser.module_financials.engines import _inputs
+from revenuechaser.module_financials.engines.comps_engine import NM, run_comps
+from revenuechaser.module_financials.engines.dcf_engine import run_dcf
+from revenuechaser.module_financials.engines.three_statement_engine import run_three_statement
+from revenuechaser.module_financials.reporting.html_builder import build_report_html
 
 
 def _seed(rows):

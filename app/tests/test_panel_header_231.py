@@ -12,9 +12,9 @@ import re
 
 import pytest
 
-from RevenueChaser.app import dashboard
-from RevenueChaser.core import automations as A
-from RevenueChaser.core import rawstore
+from revenuechaser.app import dashboard
+from revenuechaser.core import automations as A
+from revenuechaser.core import rawstore
 
 REFUSED = {"ok": False, "error": "panel header required: reload this board"}
 _SAFE = {"GET", "HEAD", "OPTIONS"}

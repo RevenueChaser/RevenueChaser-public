@@ -10,7 +10,7 @@ The guard that nothing names an old store file again is ``test_no_old_store.py``
 """
 from __future__ import annotations
 
-from RevenueChaser.core import rawstore
+from revenuechaser.core import rawstore
 
 _CHAIN_TABLES = ("chain_filings", "chain_mentions", "chain_meta")
 

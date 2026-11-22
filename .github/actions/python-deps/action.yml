@@ -18,9 +18,9 @@ runs:
       uses: actions/cache@v4
       with:
         path: ~/rc-venv
-        key: venv-v1-${{ runner.os }}-${{ steps.py.outputs.python-version }}-${{ hashFiles('RevenueChaser/requirements.txt') }}-${{ steps.week.outputs.week }}
+        key: venv-v1-${{ runner.os }}-${{ steps.py.outputs.python-version }}-${{ hashFiles('revenuechaser/requirements.txt') }}-${{ steps.week.outputs.week }}
     - if: steps.venv.outputs.cache-hit != 'true'
       shell: bash
-      run: python -m venv ~/rc-venv && ~/rc-venv/bin/pip install -r RevenueChaser/requirements.txt
+      run: python -m venv ~/rc-venv && ~/rc-venv/bin/pip install -r revenuechaser/requirements.txt
     - shell: bash
       run: echo "$HOME/rc-venv/bin" >> "$GITHUB_PATH"

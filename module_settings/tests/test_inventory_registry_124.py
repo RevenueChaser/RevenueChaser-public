@@ -11,10 +11,10 @@ from datetime import datetime, timezone
 
 import pytest
 
-from RevenueChaser.rcdata.tests import universe_store
-from RevenueChaser.core import datasets, rawstore
-from RevenueChaser.core.datahealth import Health
-from RevenueChaser.module_settings import inventory, report
+from revenuechaser.rcdata.tests import universe_store
+from revenuechaser.core import datasets, rawstore
+from revenuechaser.core.datahealth import Health
+from revenuechaser.module_settings import inventory, report
 
 
 def _spec(key: str, **over) -> datasets.DatasetSpec:

@@ -10,9 +10,9 @@ from datetime import date, timedelta
 import duckdb
 import pytest
 
-from RevenueChaser.rcdata import serving
-from RevenueChaser.rcdata.build import base, dirty
-from RevenueChaser.rcdata.build.options import KIND, ibkr_iv, tables, uw_list, uw_screener
+from revenuechaser.rcdata import serving
+from revenuechaser.rcdata.build import base, dirty
+from revenuechaser.rcdata.build.options import KIND, ibkr_iv, tables, uw_list, uw_screener
 
 LIST, SCREENER, IBKR = tables.LIST_SOURCE, tables.SCREENER_SOURCE, tables.IBKR_SOURCE
 

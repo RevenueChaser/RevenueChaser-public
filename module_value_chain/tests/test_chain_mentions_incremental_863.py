@@ -5,11 +5,11 @@ the tickers the run scanned that it no longer produces are deleted, in the same 
 """
 from __future__ import annotations
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_value_chain import engine
-from RevenueChaser.module_value_chain.tests.test_value_chain import _TEN_K
-from RevenueChaser.module_value_chain.tests.test_value_chain_profile_edges_410 import _profile
-from RevenueChaser.rcdata.tests.conftest import market_roots  # noqa: F401  (fixture)
+from revenuechaser.core import rawstore
+from revenuechaser.module_value_chain import engine
+from revenuechaser.module_value_chain.tests.test_value_chain import _TEN_K
+from revenuechaser.module_value_chain.tests.test_value_chain_profile_edges_410 import _profile
+from revenuechaser.rcdata.tests.conftest import market_roots  # noqa: F401  (fixture)
 
 _NVDA_FILING = {"ticker": "NVDA", "cik": "1", "form": "10-K", "filed": "2026-02-01", "accession": "acc",
                 "primary_doc": "http://x", "item_text": _TEN_K, "quality": "ok"}

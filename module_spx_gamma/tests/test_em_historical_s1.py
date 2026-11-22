@@ -6,9 +6,9 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.module_spx_gamma import render
-from RevenueChaser.module_spx_gamma import run as spx_run
-from RevenueChaser.module_spx_gamma.charts import position_map
+from revenuechaser.module_spx_gamma import render
+from revenuechaser.module_spx_gamma import run as spx_run
+from revenuechaser.module_spx_gamma.charts import position_map
 
 from .conftest import make_snapshot
 

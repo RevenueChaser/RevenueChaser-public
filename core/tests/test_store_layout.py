@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from RevenueChaser.core import config
+from revenuechaser.core import config
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -105,7 +105,7 @@ class TestRenderedBoardsLandInCache:
         ``_module_file`` looked in ``.cache/``. Since #730 the tab serves one fixed "no data yet"
         page, so there is no served artifact at all and nothing can escape ``.cache/``; the old renderer
         is gone (#746)."""
-        from RevenueChaser.app import dashboard
+        from revenuechaser.app import dashboard
         assert dashboard._module_file("module_leaps") is None
 
     @pytest.mark.parametrize("mod", [
@@ -115,14 +115,14 @@ class TestRenderedBoardsLandInCache:
         "module_fundamentals",
     ])
     def test_every_served_board_path_is_under_cache(self, mod):
-        from RevenueChaser.app import dashboard
+        from revenuechaser.app import dashboard
         path = dashboard._module_file(mod)
         assert path is not None, f"{mod} has no served artifact path"
         assert config.OUTPUT_DIR in path.parents, f"{mod} is served from {path}, not .cache/"
 
 
 def test_runner_artifact_constants_are_all_under_cache():
-    from RevenueChaser.app import runners
+    from revenuechaser.app import runners
     for name in dir(runners):
         if not (name.endswith("_LATEST") or name.endswith("_JSON") or name.endswith("_CACHE")):
             continue
@@ -162,7 +162,7 @@ def test_no_module_writes_a_raw_file_where_the_store_should_be_used():
 
 def test_data_roots_are_redirected_even_when_a_conftest_imports_core_config_first():
     """Order bug: a package conftest passed on the command line (module_comovement's imports
-    ``RevenueChaser.core.config``) was imported before the root conftest's ``pytest_configure``
+    ``revenuechaser.core.config``) was imported before the root conftest's ``pytest_configure``
     set the RC_* roots, so ``config`` froze on the developer's real ``edgar_docs`` / ``.store``.
     The redirect must happen when the root conftest is imported, not in ``pytest_configure``."""
     import subprocess
@@ -220,7 +220,7 @@ def test_the_market_roots_redirect_under_their_env_vars(tmp_path):
 
     env = {k: v for k, v in os.environ.items() if not k.startswith("RC_MARKET")}
     env.update({"RC_MARKET_DIR": str(tmp_path / "ssd"), "RC_MARKET_RAW_DIR": str(tmp_path / "hdd")})
-    code = ("from RevenueChaser.core import config as c; "
+    code = ("from revenuechaser.core import config as c; "
             "print(c.MARKET_DIR); print(c.MARKET_RAW_DIR)")
     r = subprocess.run([sys.executable, "-c", code], cwd=ROOT.parent, env=env, capture_output=True, text=True,
                        timeout=120)

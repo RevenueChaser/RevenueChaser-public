@@ -9,11 +9,11 @@ from datetime import datetime, timezone
 
 import pytest
 
-from RevenueChaser.core import calendar
-from RevenueChaser.module_settings import newdata, report
-from RevenueChaser.rcdata import ops, serving
-from RevenueChaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401 - market roots per test
-from RevenueChaser.rcdata.tests.test_spine_security import built, run_all  # noqa: F401 - the 10 names
+from revenuechaser.core import calendar
+from revenuechaser.module_settings import newdata, report
+from revenuechaser.rcdata import ops, serving
+from revenuechaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401 - market roots per test
+from revenuechaser.rcdata.tests.test_spine_security import built, run_all  # noqa: F401 - the 10 names
 
 NOW = datetime(2026, 10, 28, 3, 0, tzinfo=timezone.utc)
 SPINE = ("sec/company_tickers_exchange", "wrds/sec_idhist", "wrds/co_hgic", "wrds/idxcst_his", "openfigi/map",
@@ -80,7 +80,7 @@ def test_the_funnel_and_the_cards_share_one_read_only_handle_per_kind(monkeypatc
 def test_a_never_built_spine_card_says_it_starts_by_hand():
     """Delta S6: until its first build, a starts-by-hand dataset is never due; its card says so (and the attended
     ones say they run from the CLI), instead of an unexplained "Next check due"."""
-    from RevenueChaser.rcdata.build import due
+    from revenuechaser.rcdata.build import due
     data = newdata.collect(NOW)
     assert _card(data, "funds/index_holdings")["next_check_due"] == due.BY_HAND_WHY
     # #1361: no longer attended, so a never-built spine dataset says it starts by hand, like the others.

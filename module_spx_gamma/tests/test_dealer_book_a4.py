@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.module_spx_gamma import dealer_book as db
-from RevenueChaser.module_spx_gamma.chains import black_scholes_mid
+from revenuechaser.module_spx_gamma import dealer_book as db
+from revenuechaser.module_spx_gamma.chains import black_scholes_mid
 
 S, K, T, V = 7700.0, 7650.0, 10 / 365, 0.16
 H = 1e-3
@@ -67,7 +67,7 @@ def test_no_chain_no_book():
 
 
 def test_snapshot_and_page_carry_the_book():
-    from RevenueChaser.module_spx_gamma import render
+    from revenuechaser.module_spx_gamma import render
     from .conftest import make_snapshot
     snap = make_snapshot()
     assert snap["dealer_book"]["contracts"] > 0
@@ -94,7 +94,7 @@ def test_a_contract_in_both_chains_is_counted_once():
 
 def test_an_invalid_first_copy_does_not_hide_a_valid_second():
     """Fable delta #3: the dedupe keys only rows that were used, so a later valid copy still counts."""
-    from RevenueChaser.module_spx_gamma.dealer_book import dealer_book
+    from revenuechaser.module_spx_gamma.dealer_book import dealer_book
     good = {"expiry": "2026-11-06", "strike": 6800.0, "type": "P", "open_interest": 1000, "iv": 0.2}
     bad = {**good, "open_interest": 0}
     assert dealer_book([bad, good], 6810.0, "2026-11-04")["contracts"] == dealer_book([good], 6810.0, "2026-11-04")["contracts"]

@@ -1,8 +1,8 @@
 """#391, #392: an empty Relatedness board names no data date and points at no Fetch it does not have."""
 from __future__ import annotations
 
-from RevenueChaser.module_relatedness import engine
-from RevenueChaser.module_relatedness.report import render_relatedness_dashboard
+from revenuechaser.module_relatedness import engine
+from revenuechaser.module_relatedness.report import render_relatedness_dashboard
 
 
 def test_an_empty_payload_claims_no_sync_date():

@@ -19,7 +19,7 @@ from ..config import (
     TERMINAL_GROWTH,
     to_float,
 )
-from RevenueChaser.core.providers.validator import validate_annual
+from revenuechaser.core.providers.validator import validate_annual
 
 from ._inputs import (DNA_ASSUMED_ZERO, NO_MINORITY_BRIDGE, assumed,
                       effective_tax_rate as _effective_tax_rate, first_known, net_debt as _net_debt,

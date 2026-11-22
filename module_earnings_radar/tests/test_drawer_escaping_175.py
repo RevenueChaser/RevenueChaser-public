@@ -16,8 +16,8 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.module_earnings_radar.models import TradeCard
-from RevenueChaser.core.tests.board_js import run_board_js
+from revenuechaser.module_earnings_radar.models import TradeCard
+from revenuechaser.core.tests.board_js import run_board_js
 
 Q_EVIL = "\"'><img src=x onerror=__x(1)>"
 D_EVIL = "\"'><img src=x onerror=__x(2)>"
@@ -27,7 +27,7 @@ D_ESC = "&lt;img src=x onerror=__x(2)&gt;"
 
 @pytest.fixture
 def page(tmp_path, monkeypatch) -> str:
-    import RevenueChaser.module_earnings_radar.report as er
+    import revenuechaser.module_earnings_radar.report as er
     monkeypatch.setattr(er, "OUTPUT_DIR", tmp_path)
     (tmp_path / "earnings").mkdir(parents=True, exist_ok=True)
     quarter = {"q": Q_EVIL, "date": D_EVIL, "implied": 5.0, "actual": 3.0, "eps_actual": 1.2,

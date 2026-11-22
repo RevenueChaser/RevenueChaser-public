@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import os
 
-from RevenueChaser.core import llm_prices, llm_writers
-from RevenueChaser.core.config import OUTPUT_DIR
-from RevenueChaser.module_value_chain import config as vc_config
+from revenuechaser.core import llm_prices, llm_writers
+from revenuechaser.core.config import OUTPUT_DIR
+from revenuechaser.module_value_chain import config as vc_config
 
 RELATEDNESS_LATEST = OUTPUT_DIR / "relatedness_latest.html"
 RELATEDNESS_JSON = OUTPUT_DIR / "relatedness" / "relatedness_latest.json"
@@ -31,7 +31,7 @@ def default_writer() -> str:
     that forgot the argument spent money. It is read at call time and in one place, so the tests of the DeepSeek
     path pin it here instead of naming the writer at 81 call sites (``tests/conftest.py``).
     """
-    from RevenueChaser.core import llm_writers
+    from revenuechaser.core import llm_writers
     return llm_writers.DEFAULT
 
 # v3 (#400, Relatedness v2 Step 1): one structured JSON profile from the whole Item 1 / Item 4 (no input cut), read

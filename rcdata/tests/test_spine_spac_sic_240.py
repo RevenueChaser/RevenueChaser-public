@@ -11,9 +11,9 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.core.providers import sec_edgar
-from RevenueChaser.rcdata import serving
-from RevenueChaser.rcdata.build.spine import funds, openfigi_map, sec_tickers, security, tier, wrds
+from revenuechaser.core.providers import sec_edgar
+from revenuechaser.rcdata import serving
+from revenuechaser.rcdata.build.spine import funds, openfigi_map, sec_tickers, security, tier, wrds
 
 from . import spine_fixture as fx
 from .test_spine_security import run_all
@@ -136,7 +136,7 @@ def test_staging_reads_a_column_the_parquet_does_not_hold_as_null(tmp_path):
     and selecting it would fail the build instead of typing nothing."""
     import duckdb
 
-    from RevenueChaser.rcdata.build.spine import stage
+    from revenuechaser.rcdata.build.spine import stage
 
     con = duckdb.connect()
     old = tmp_path / "company.parquet"
@@ -151,7 +151,7 @@ def test_staging_reads_a_column_the_parquet_does_not_hold_as_null(tmp_path):
 def test_staging_still_reads_a_column_the_parquet_does_hold(tmp_path):
     import duckdb
 
-    from RevenueChaser.rcdata.build.spine import stage
+    from revenuechaser.rcdata.build.spine import stage
 
     con = duckdb.connect()
     new = tmp_path / "company.parquet"
@@ -192,7 +192,7 @@ def test_a_blank_check_with_an_operating_sector_stays_in_tier_a_end_to_end(built
 def test_a_missing_column_outside_the_declared_set_still_fails_the_build(tmp_path):
     import duckdb
 
-    from RevenueChaser.rcdata.build.spine import stage
+    from revenuechaser.rcdata.build.spine import stage
 
     con = duckdb.connect()
     f = tmp_path / "company.parquet"
@@ -204,7 +204,7 @@ def test_a_missing_column_outside_the_declared_set_still_fails_the_build(tmp_pat
 def test_a_column_read_as_null_is_logged(tmp_path, caplog):
     import duckdb
 
-    from RevenueChaser.rcdata.build.spine import stage
+    from revenuechaser.rcdata.build.spine import stage
 
     con = duckdb.connect()
     f = tmp_path / "company.parquet"

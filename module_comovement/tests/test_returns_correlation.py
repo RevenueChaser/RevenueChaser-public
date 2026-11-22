@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from RevenueChaser.module_comovement import returns
+from revenuechaser.module_comovement import returns
 
 TOL = 1e-12
 

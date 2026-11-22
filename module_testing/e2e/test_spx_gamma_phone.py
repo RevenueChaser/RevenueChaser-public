@@ -13,8 +13,8 @@ from pathlib import Path
 
 import pytest
 
-from RevenueChaser.core import calendar as nyse_calendar
-from RevenueChaser.core.reporting_common import THEME_TOKENS
+from revenuechaser.core import calendar as nyse_calendar
+from revenuechaser.core.reporting_common import THEME_TOKENS
 
 from .harness.cdp_browser import Page, find_chrome
 from .harness.shared import shared_dashboard
@@ -60,11 +60,11 @@ def board(tmp_path_factory, mock_provider):
     dashboard each, 126 s of the e2e tier on 15 Nov 2026). Every test here only reads the page; a theme choice
     lives in the browser, whose profile stays fresh per test.
     """
-    from RevenueChaser.module_spx_gamma.charts import position_map
-    from RevenueChaser.module_spx_gamma.charts.tornado import build_tornado_fig
-    from RevenueChaser.module_spx_gamma.render import render_html
-    from RevenueChaser.module_spx_gamma.run import _export_chart as export
-    from RevenueChaser.module_spx_gamma.tests.conftest import make_snapshot
+    from revenuechaser.module_spx_gamma.charts import position_map
+    from revenuechaser.module_spx_gamma.charts.tornado import build_tornado_fig
+    from revenuechaser.module_spx_gamma.render import render_html
+    from revenuechaser.module_spx_gamma.run import _export_chart as export
+    from revenuechaser.module_spx_gamma.tests.conftest import make_snapshot
 
     with shared_dashboard(tmp_path_factory, mock_provider, "spx-gamma-phone") as dash:
         root = Path(dash.env["SPX_GAMMA_DATA_ROOT"])

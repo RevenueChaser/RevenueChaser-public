@@ -9,7 +9,7 @@ never invent a value for.
 """
 from __future__ import annotations
 
-from RevenueChaser.rcdata.tests import universe_store
+from revenuechaser.rcdata.tests import universe_store
 import json
 import pathlib
 import time
@@ -133,8 +133,8 @@ _FUND = "FUNDX"
 class TestBoardInputs:
     def _seed_and_fetch(self, dashboard):
         import numpy as np
-        import RevenueChaser.core.rawstore as rawstore
-        from RevenueChaser.module_testing.e2e import test_board_comovement as cm
+        import revenuechaser.core.rawstore as rawstore
+        from revenuechaser.module_testing.e2e import test_board_comovement as cm
 
         ret = cm._returns()
         tickers = list(ret.columns)
@@ -153,7 +153,7 @@ class TestBoardInputs:
                     rows.append({"ticker": t, "ts": ts.isoformat(), "open": p,
                                  "high": p, "low": p, "close": float(p),
                                  "volume": 1.0, "cached_at": now})
-        from RevenueChaser.module_comovement.tests.prices_bars import write_bars
+        from revenuechaser.module_comovement.tests.prices_bars import write_bars
         write_bars(rows)
         result = dashboard.run_job("/run/module_comovement")
         assert result.ok, f"comovement fetch failed: {result}\n{dashboard.logs()}"

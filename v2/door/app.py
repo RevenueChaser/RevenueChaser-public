@@ -24,8 +24,8 @@ from starlette.concurrency import run_in_threadpool
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.staticfiles import StaticFiles
 
-from RevenueChaser.core import v2_envelope
-from RevenueChaser.v2.door import boards, config, health, proxy, writelog
+from revenuechaser.core import v2_envelope
+from revenuechaser.v2.door import boards, config, health, proxy, writelog
 
 READ_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 

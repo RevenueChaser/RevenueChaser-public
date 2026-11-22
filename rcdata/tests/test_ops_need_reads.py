@@ -1,7 +1,7 @@
 """``ops.need_reads``: the read log's ``need:<name>`` rows, per need, process and day, for the Settings Needs tab (#331)."""
 from __future__ import annotations
 
-from RevenueChaser.rcdata import ops
+from revenuechaser.rcdata import ops
 
 
 def _log(rows):
@@ -45,10 +45,10 @@ import pytest  # noqa: E402
 
 
 @pytest.mark.parametrize("argv0, name", [
-    ("/x/RevenueChaser/rcdata/build/__main__.py", "builder"),        # python -m RevenueChaser.rcdata.build
-    ("/x/RevenueChaser/rcdata/__main__.py", "rcdata"),               # python -m RevenueChaser.rcdata (backup)
-    ("C:\\x\\RevenueChaser\\module_spx_gamma\\__main__.py", "module_spx_gamma"),
-    ("/x/RevenueChaser/app/dashboard.py", "dashboard"),              # python -m RevenueChaser.app.dashboard
+    ("/x/revenuechaser/rcdata/build/__main__.py", "builder"),        # python -m revenuechaser.rcdata.build
+    ("/x/revenuechaser/rcdata/__main__.py", "rcdata"),               # python -m revenuechaser.rcdata (backup)
+    ("C:\\x\\revenuechaser\\module_spx_gamma\\__main__.py", "module_spx_gamma"),
+    ("/x/revenuechaser/app/dashboard.py", "dashboard"),              # python -m revenuechaser.app.dashboard
     ("", "python"),
 ])
 def test_a_python_m_run_is_named_after_its_package_not___main__(monkeypatch, argv0, name):
@@ -59,5 +59,5 @@ def test_a_python_m_run_is_named_after_its_package_not___main__(monkeypatch, arg
 
 def test_rc_process_name_still_wins(monkeypatch):
     monkeypatch.setenv("RC_PROCESS_NAME", "nightly")
-    monkeypatch.setattr(sys, "argv", ["/x/RevenueChaser/rcdata/build/__main__.py"])
+    monkeypatch.setattr(sys, "argv", ["/x/revenuechaser/rcdata/build/__main__.py"])
     assert ops._process_name() == "nightly"

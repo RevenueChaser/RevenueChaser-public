@@ -9,11 +9,11 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 
-from RevenueChaser.core import calendar
-from RevenueChaser.rcdata import ops
-from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.prices import bars, stage
-from RevenueChaser.rcdata.build.sources import alpaca
+from revenuechaser.core import calendar
+from revenuechaser.rcdata import ops
+from revenuechaser.rcdata.build import base
+from revenuechaser.rcdata.build.prices import bars, stage
+from revenuechaser.rcdata.build.sources import alpaca
 
 from .prices_fixture import BarsAnswer, bar, write_spine
 
@@ -29,15 +29,15 @@ def _clock(monkeypatch, ny: datetime) -> None:
 @pytest.fixture(autouse=True)
 def alpaca_env(monkeypatch):
     # The fetch mechanics over the whole scope: the tester's risk selection is ``test_prices_compustat_primary``'s.
-    monkeypatch.setattr("RevenueChaser.rcdata.build.prices.tester.select", lambda names, as_of: (names, "every name"))
+    monkeypatch.setattr("revenuechaser.rcdata.build.prices.tester.select", lambda names, as_of: (names, "every name"))
     monkeypatch.setenv("ALPACA_API_KEY_ID", "test-key-id")
     monkeypatch.setenv("ALPACA_API_SECRET_KEY", "test-secret")
     monkeypatch.setenv("RC_ALPACA_BASE", "https://alpaca.test")
     _clock(monkeypatch, datetime(2026, 10, 27, 17, 0, tzinfo=calendar.NY))
     # The scope: the five spine names, the benchmarks and ETFs cut to SPY, no watch list.
-    monkeypatch.setattr("RevenueChaser.rcdata.build.prices.rotation", lambda: ())
-    monkeypatch.setattr("RevenueChaser.rcdata.build.prices.BENCHMARKS", ("SPY",))
-    monkeypatch.setattr("RevenueChaser.rcdata.read.watched", lambda kind: set())
+    monkeypatch.setattr("revenuechaser.rcdata.build.prices.rotation", lambda: ())
+    monkeypatch.setattr("revenuechaser.rcdata.build.prices.BENCHMARKS", ("SPY",))
+    monkeypatch.setattr("revenuechaser.rcdata.read.watched", lambda kind: set())
     write_spine()
 
 

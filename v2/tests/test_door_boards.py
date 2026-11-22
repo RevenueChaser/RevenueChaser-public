@@ -12,9 +12,9 @@ import json
 
 import pytest
 
-from RevenueChaser.core import reporting_common as rc
-from RevenueChaser.core import v2_envelope as env
-from RevenueChaser.v2.door import boards
+from revenuechaser.core import reporting_common as rc
+from revenuechaser.core import v2_envelope as env
+from revenuechaser.v2.door import boards
 
 PAYLOAD = {"as_of": "2026-11-20", "rows": [{"ticker": "AAPL", "score": 1.5}, {"ticker": "MSFT", "score": 0.25}]}
 
@@ -102,6 +102,6 @@ def test_a_dropped_board_leaves_no_envelope_behind(artifacts):
 
 def test_the_artifacts_root_is_the_one_rc_cache_dir_and_not_a_second_spelling(monkeypatch, tmp_path):
     """The door reads ``core.config.OUTPUT_DIR``: the single place ``RC_CACHE_DIR`` is read."""
-    from RevenueChaser.core import config
+    from revenuechaser.core import config
     monkeypatch.setattr(config, "OUTPUT_DIR", tmp_path / "elsewhere")
     assert boards.artifacts_dir() == tmp_path / "elsewhere"

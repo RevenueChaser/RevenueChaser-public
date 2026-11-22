@@ -10,12 +10,12 @@ import json
 
 import pytest
 
-from RevenueChaser.module_spx_gamma import run as spx_run
-from RevenueChaser.module_spx_gamma import snapshot as snap
-from RevenueChaser.module_spx_gamma.normalize import normalize_snapshot
-from RevenueChaser.module_spx_gamma.raw_day import load_raw_day
-from RevenueChaser.module_spx_gamma.snapshot import UWApiError
-from RevenueChaser.module_spx_gamma import store as spx_store
+from revenuechaser.module_spx_gamma import run as spx_run
+from revenuechaser.module_spx_gamma import snapshot as snap
+from revenuechaser.module_spx_gamma.normalize import normalize_snapshot
+from revenuechaser.module_spx_gamma.raw_day import load_raw_day
+from revenuechaser.module_spx_gamma.snapshot import UWApiError
+from revenuechaser.module_spx_gamma import store as spx_store
 
 from .conftest import FakeUW, store_day
 
@@ -118,7 +118,7 @@ def test_history_mode_makes_only_the_dated_calls(tmp_path, uw, calls):
 
 
 def test_history_mode_spot_is_the_stored_close_and_live_spot_is_never_called(tmp_path, uw, calls, monkeypatch):
-    from RevenueChaser.core import calendar as nyse_calendar
+    from revenuechaser.core import calendar as nyse_calendar
     monkeypatch.setattr(nyse_calendar, "in_us_session_window", lambda *a, **k: True)   # even mid-session
     monkeypatch.setattr(snap, "live_spot", _no_live("spot"))
     raw = _fetch(tmp_path, uw)

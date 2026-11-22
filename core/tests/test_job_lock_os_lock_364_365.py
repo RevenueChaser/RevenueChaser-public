@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from RevenueChaser.core import job_lock, procs
+from revenuechaser.core import job_lock, procs
 
 
 def _live_pid():
@@ -55,7 +55,7 @@ def _release(fd) -> None:
 _ACQUIRE_SCRIPT = r"""
 import os, sys, time
 from pathlib import Path
-from RevenueChaser.core import job_lock
+from revenuechaser.core import job_lock
 
 lock_path, ready, judged, go, result, pause = sys.argv[1:7]
 job_lock._lock_path = lambda name: Path(lock_path)

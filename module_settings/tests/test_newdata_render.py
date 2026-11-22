@@ -6,11 +6,11 @@ import re
 
 import pytest
 
-from RevenueChaser.core import reporting_common
-from RevenueChaser.core.tests.board_fixtures import BOARDS, H, hostile, newdata_fixture
-from RevenueChaser.core.tests.test_board_html_guard import assert_inert
-from RevenueChaser.core.tests.test_one_escaper_175 import check_page
-from RevenueChaser.module_settings import report
+from revenuechaser.core import reporting_common
+from revenuechaser.core.tests.board_fixtures import BOARDS, H, hostile, newdata_fixture
+from revenuechaser.core.tests.test_board_html_guard import assert_inert
+from revenuechaser.core.tests.test_one_escaper_175 import check_page
+from revenuechaser.module_settings import report
 
 
 def _page(nd=None) -> str:

@@ -12,15 +12,15 @@ import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-from RevenueChaser.core import econ_importance
-from RevenueChaser.core.config import OUTPUT_DIR
-from RevenueChaser.core.html_safe import esc
-from RevenueChaser.core.html_safe import script_json
-from RevenueChaser.core.reporting_common import (FILTERS_CSS, FILTERS_JS, THEME_CSS, THEME_JS, combobox_html, help_html,
+from revenuechaser.core import econ_importance
+from revenuechaser.core.config import OUTPUT_DIR
+from revenuechaser.core.html_safe import esc
+from revenuechaser.core.html_safe import script_json
+from revenuechaser.core.reporting_common import (FILTERS_CSS, FILTERS_JS, THEME_CSS, THEME_JS, combobox_html, help_html,
                                                  provider_health_html, watchlist_html, write_artifact)
-from RevenueChaser.module_news.calendar import AMS, FDA_TYPE, local_day, served_value
-from RevenueChaser.module_news import earnings, headlines, store_reads, x_check
-from RevenueChaser.module_news.x_lane import X_PROVIDERS
+from revenuechaser.module_news.calendar import AMS, FDA_TYPE, local_day, served_value
+from revenuechaser.module_news import earnings, headlines, store_reads, x_check
+from revenuechaser.module_news.x_lane import X_PROVIDERS
 
 FILENAME = "news_latest.html"
 WEEK_DAYS = 7
@@ -578,7 +578,7 @@ def headline_rows(start: float, end: float, ticker: str | None = None,
 def _picker() -> list[dict]:
     """The ticker box's names: My Universe (a watch list holds names picked inside it; avo, 18 Nov 2026), with the
     spine's company name. A spine that cannot be read leaves the box open to any symbol instead of empty."""
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     try:
         names = read.my_universe_tickers() or set()
         by = {r["ticker"]: r.get("name") or "" for r in read.identity(names)} if names else {}

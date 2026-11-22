@@ -8,8 +8,8 @@ from datetime import date, timedelta
 
 import pytest
 
-from RevenueChaser.module_sector_rotation import early_turn
-from RevenueChaser.module_sector_rotation.early_turn import (
+from revenuechaser.module_sector_rotation import early_turn
+from revenuechaser.module_sector_rotation.early_turn import (
     PRIOR_WEEKS,
     band_scan,
     brier,
@@ -19,7 +19,7 @@ from RevenueChaser.module_sector_rotation.early_turn import (
     points_from_prices,
     weekly_points,
 )
-from RevenueChaser.module_sector_rotation.tests.bars_seed import ny, pin_clock, seed
+from revenuechaser.module_sector_rotation.tests.bars_seed import ny, pin_clock, seed
 
 FRIDAY = date(2026, 8, 7)              # a Friday: the last session of its ISO week
 
@@ -238,11 +238,11 @@ class TestPointsFromPrices:
         assert points_from_prices(date(2026, 8, 14)) == ([], {})
 
     def test_the_week_names_follow_the_closes_they_label(self, rawstore_tmp_db, monkeypatch):
-        from RevenueChaser.module_sector_rotation.engine import weekly_closes, weekly_week_keys
+        from revenuechaser.module_sector_rotation.engine import weekly_closes, weekly_week_keys
         pin_clock(monkeypatch, ny(2026, 8, 14, 18))
         base = date(2026, 8, 14)
         seed("SPY", base, closes=lambda i: 100.0 + i)
-        from RevenueChaser.module_sector_rotation.engine import bar_points
+        from revenuechaser.module_sector_rotation.engine import bar_points
         pts = bar_points(["SPY"], date(2025, 3, 3), base)["SPY"]
         assert len(weekly_week_keys(pts, base)) == len(weekly_closes(pts, base))
         assert weekly_week_keys(pts, base)[-1] == tuple(date(2026, 8, 14).isocalendar())[:2]
@@ -252,8 +252,8 @@ class TestTheCardReadsThePricesStore:
     """The live board file held 3 snapshots, so a card scored off them showed nothing (homesrv, 20 Nov 2026)."""
 
     def test_the_card_scores_the_weeks_rebuilt_from_the_prices_store(self, monkeypatch):
-        from RevenueChaser.module_sector_rotation import report
-        from RevenueChaser.module_sector_rotation import store as rotation_store
+        from revenuechaser.module_sector_rotation import report
+        from revenuechaser.module_sector_rotation import store as rotation_store
         pair = weekly_points(history({"A": TestBrier.HIT, "B": TestBrier.MISS}))
         asked = {}
 
@@ -269,7 +269,7 @@ class TestTheCardReadsThePricesStore:
         assert out == brier(weekly=pair)
 
     def test_a_prices_store_that_cannot_answer_leaves_the_card_without_a_line(self, monkeypatch):
-        from RevenueChaser.module_sector_rotation import report
+        from revenuechaser.module_sector_rotation import report
 
         def _raise(*a, **k):
             raise RuntimeError("no prices store")

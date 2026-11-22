@@ -26,8 +26,8 @@ def rows(series_id: str, sessions: list[date], values: list[float], source: str 
 
 def write_series(series_rows: list[dict], version: int = 1) -> None:
     """A live ``market.duckdb`` holding ``series_rows`` in ``market_series`` (columns it omits are NULL)."""
-    from RevenueChaser.rcdata import serving
-    from RevenueChaser.rcdata.build.market_series import SCHEMA, TABLE
+    from revenuechaser.rcdata import serving
+    from revenuechaser.rcdata.build.market_series import SCHEMA, TABLE
     path = serving.live_path("market")
     path.parent.mkdir(parents=True, exist_ok=True)
     con = duckdb.connect(str(path))

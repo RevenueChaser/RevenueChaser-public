@@ -12,7 +12,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from RevenueChaser.core import v2_envelope
+from revenuechaser.core import v2_envelope
 
 # The metadata keys of an envelope that the board list repeats. ``data`` is deliberately absent: the list is read
 # on every screen load and a board's rows are tens of thousands of them.
@@ -39,7 +39,7 @@ def artifacts_dir() -> Path:
     import here would make merely importing the door touch the filesystem — and in the e2e tier the roots are
     redirected per process.
     """
-    from RevenueChaser.core import config
+    from revenuechaser.core import config
     return Path(config.OUTPUT_DIR)
 
 

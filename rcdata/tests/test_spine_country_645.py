@@ -10,9 +10,9 @@ from __future__ import annotations
 import duckdb
 import pytest
 
-from RevenueChaser.rcdata import serving
-from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.spine import iso3166, security
+from revenuechaser.rcdata import serving
+from revenuechaser.rcdata.build import base
+from revenuechaser.rcdata.build.spine import iso3166, security
 
 from .test_spine_spac_sic_240 import _sec, built_with  # noqa: F401 - the fixture build
 
@@ -42,7 +42,7 @@ def test_a_name_neither_places_has_no_country_and_no_source(sec_country):
 
 
 def test_the_iso_map_is_the_one_published_list_both_readers_use():
-    from RevenueChaser.rcdata.build.spine import etf_class
+    from revenuechaser.rcdata.build.spine import etf_class
     assert etf_class.ISO_FILE == iso3166.FILE
     assert iso3166.alpha2("USA") == "US" and iso3166.alpha2("ZZZ") is None
 
@@ -102,12 +102,12 @@ def test_the_universe_row_the_boards_read_carries_the_country(monkeypatch):
     The spine rows are stubbed here (``read.universe`` is ``SELECT *``, so the column arrives by itself); the
     build above is what proves the column is served.
     """
-    from RevenueChaser.core import universe
+    from revenuechaser.core import universe
     monkeypatch.setattr(universe, "_universe_ids",
                         lambda: [{"ticker": "TM", "country": "JP", "security_type": "adr"},
                                  {"ticker": "MSFT", "country": "US", "security_type": "common"},
                                  {"ticker": "OTCX", "security_type": "common"}])
-    monkeypatch.setattr("RevenueChaser.core.spine_reads.latest_market", lambda tickers: {})
+    monkeypatch.setattr("revenuechaser.core.spine_reads.latest_market", lambda tickers: {})
     rows = {r["ticker"]: r for r in universe._spine_universe()}
     assert rows["TM"]["country"] == "JP"
     assert rows["MSFT"]["country"] == "US"

@@ -24,12 +24,12 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.rcdata import read
-from RevenueChaser.rcdata.build.fundamentals import tables as fundamentals_tables
-from RevenueChaser.rcdata.build.ownership import serve as ownership_serve
-from RevenueChaser.rcdata.build.prices import serving as prices_serving
-from RevenueChaser.rcdata.build.spine import views as spine_views
+from revenuechaser.core import rawstore
+from revenuechaser.rcdata import read
+from revenuechaser.rcdata.build.fundamentals import tables as fundamentals_tables
+from revenuechaser.rcdata.build.ownership import serve as ownership_serve
+from revenuechaser.rcdata.build.prices import serving as prices_serving
+from revenuechaser.rcdata.build.spine import views as spine_views
 
 _REPO = Path(__file__).resolve().parents[2]
 

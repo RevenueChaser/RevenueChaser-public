@@ -9,10 +9,10 @@ from __future__ import annotations
 
 import copy
 
-from RevenueChaser.module_spx_gamma import render, run as spx_run
-from RevenueChaser.module_spx_gamma.flow_signals import evaluate_flow_signal
-from RevenueChaser.module_spx_gamma.normalize import normalize_snapshot
-from RevenueChaser.module_spx_gamma.summary import build_summary, charm_card, signal_matrix, vanna_card
+from revenuechaser.module_spx_gamma import render, run as spx_run
+from revenuechaser.module_spx_gamma.flow_signals import evaluate_flow_signal
+from revenuechaser.module_spx_gamma.normalize import normalize_snapshot
+from revenuechaser.module_spx_gamma.summary import build_summary, charm_card, signal_matrix, vanna_card
 
 from .conftest import make_raw
 
@@ -90,7 +90,7 @@ def test_history_records_the_card_numbers(tmp_path):
 
 
 def _render_cards(snapshot, history, prev_snapshot=None):
-    from RevenueChaser.module_spx_gamma import store
+    from revenuechaser.module_spx_gamma import store
     root = snapshot["_root"]
     for day, rec in history.items():
         store.put_gex(day, rec)

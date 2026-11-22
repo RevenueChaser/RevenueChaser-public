@@ -66,7 +66,7 @@ def test_no_launcher_script_is_tracked():
 
 
 def test_the_automations_module_has_no_windows_backend():
-    from RevenueChaser.core import automations
+    from revenuechaser.core import automations
 
     gone = [name for name in ("WindowsScheduler", "_powershell", "_ps_quote", "windowless_python", "parse_status")
             if hasattr(automations, name)]

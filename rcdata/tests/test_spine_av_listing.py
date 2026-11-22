@@ -10,9 +10,9 @@ from datetime import date, timedelta
 import duckdb
 import pytest
 
-from RevenueChaser.rcdata import ops
-from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.spine import av_listing as av
+from revenuechaser.rcdata import ops
+from revenuechaser.rcdata.build import base
+from revenuechaser.rcdata.build.spine import av_listing as av
 
 KEY = "av-test-key-not-a-real-one"
 # The header and the ``null`` literal of the real answer of 1 Nov 2026; the rows are picked for the cases.
@@ -122,8 +122,8 @@ def test_the_build_stages_the_newest_snapshot_only(env):
 def test_it_is_a_weekly_spine_dataset_that_starts_by_hand_inside_the_alpha_vantage_cap():
     """Weekly since 21 Nov 2026 (avo, "Evet onlarda cok sik olmasina gerek yok"): the list of every US listing
     changes by a handful of rows a week, and two of the 25 calls a day went on it every day."""
-    from RevenueChaser.rcdata import caps
-    from RevenueChaser.rcdata.build import DATASETS
+    from revenuechaser.rcdata import caps
+    from revenuechaser.rcdata.build import DATASETS
     ds = DATASETS[av.NAME]
     assert ds.kind == "spine" and ds.cadence == "weekly" and ds.starts_by_hand and ds.providers == ("alphavantage",)
     assert caps.DAY_CAPS["alphavantage"] == 25
@@ -133,8 +133,8 @@ def test_the_weekly_cycle_is_what_the_due_check_counts_and_a_failure_still_retri
     """Not due 6 days after the run that built it, due on the 7th: the cadence the dataset declares. The day cap's
     failure rule is unchanged by the weekly cadence -- a failed run waits for the next New York day, no more
     (``due.DAY_CAPPED``), which is why it is asserted here and not in a test of its own."""
-    from RevenueChaser.core import calendar
-    from RevenueChaser.rcdata.build import DATASETS, due
+    from revenuechaser.core import calendar
+    from revenuechaser.rcdata.build import DATASETS, due
     _answer(env)
     _run()
     ds = DATASETS[av.NAME]
@@ -192,8 +192,8 @@ def test_the_delisted_issue_stays_one_open_row_and_resolves_when_the_list_answer
 def test_a_failed_run_is_not_due_again_until_the_next_new_york_day(monkeypatch):
     """S6: the hourly pass must not spend Alpha Vantage's 25 a day retrying a failure every hour."""
     from datetime import datetime, timezone
-    from RevenueChaser.core import calendar
-    from RevenueChaser.rcdata.build import DATASETS, due
+    from revenuechaser.core import calendar
+    from revenuechaser.rcdata.build import DATASETS, due
     monkeypatch.setattr(calendar, "_now", lambda: datetime(2026, 11, 20, 15, 0, tzinfo=timezone.utc))
     ops.record_check(av.NAME, "changed", source_as_of="2026-11-19", checked_on="2026-11-19")
     ops.record_check(av.NAME, "failed", note="alphavantage listing status: a JSON answer", checked_on="2026-11-20")
@@ -214,9 +214,9 @@ def test_a_failed_run_is_not_due_again_until_the_next_new_york_day(monkeypatch):
 def test_the_earnings_calendar_shares_the_hold_and_its_raw_file_lifts_it(monkeypatch):
     """S6a for the other Alpha Vantage dataset: no raw file for the day, held; the day's raw file held, due."""
     from datetime import datetime, timezone
-    from RevenueChaser.core import calendar
-    from RevenueChaser.rcdata.build import DATASETS, due
-    from RevenueChaser.rcdata.build.fundamentals import earnings
+    from revenuechaser.core import calendar
+    from revenuechaser.rcdata.build import DATASETS, due
+    from revenuechaser.rcdata.build.fundamentals import earnings
     monkeypatch.setattr(calendar, "_now", lambda: datetime(2026, 11, 20, 15, 0, tzinfo=timezone.utc))
     ops.record_check(earnings.NAME, "changed", source_as_of="2026-11-19", checked_on="2026-11-19")
     ops.record_check(earnings.NAME, "failed", note="x", checked_on="2026-11-20")

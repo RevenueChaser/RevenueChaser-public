@@ -12,10 +12,10 @@ from urllib.parse import parse_qs
 
 import pytest
 
-from RevenueChaser.core.providers import unusual_whales
-from RevenueChaser.rcdata import ops, serving
-from RevenueChaser.rcdata.build import base, due
-from RevenueChaser.rcdata.build.ownership import uw_institutions as uwi
+from revenuechaser.core.providers import unusual_whales
+from revenuechaser.rcdata import ops, serving
+from revenuechaser.rcdata.build import base, due
+from revenuechaser.rcdata.build.ownership import uw_institutions as uwi
 
 DAY = "2026-11-12"
 FETCHED_AT = 1_763_000_000.0
@@ -265,7 +265,7 @@ def test_a_quarterly_dataset_is_due_again_after_its_cycle():
 
 def test_the_quarterly_cycle_is_what_the_due_check_counts(http_mock, monkeypatch):
     """Not due 90 days after the run that built it, due on the 91st: the cadence the dataset declares."""
-    from RevenueChaser.core import calendar
+    from revenuechaser.core import calendar
     paged(http_mock, [[inst("1067983", "BERKSHIRE HATHAWAY INC")]])
     _run()
     checked = date.fromisoformat(str(ops.latest_check(uwi.NAME)["checked_on"])[:10])

@@ -15,11 +15,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from RevenueChaser.core import funnel, rawstore
-from RevenueChaser.core import screen_common as sc
-from RevenueChaser.core.tests import screen_parity as scn
-from RevenueChaser.module_fundamentals import pipeline as fp
-from RevenueChaser.module_swing_potential import pipeline as sp
+from revenuechaser.core import funnel, rawstore
+from revenuechaser.core import screen_common as sc
+from revenuechaser.core.tests import screen_parity as scn
+from revenuechaser.module_fundamentals import pipeline as fp
+from revenuechaser.module_swing_potential import pipeline as sp
 
 BOARDS = [pytest.param(sp, id="swing"), pytest.param(fp, id="fundamentals")]
 

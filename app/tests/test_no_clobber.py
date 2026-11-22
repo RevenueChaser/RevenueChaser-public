@@ -11,8 +11,8 @@ import json
 
 import pytest
 
-from RevenueChaser.app import runners
-from RevenueChaser.app.jobs import JobMessage
+from revenuechaser.app import runners
+from revenuechaser.app.jobs import JobMessage
 
 class TestMoneyFlow:
     def _patch_paths(self, tmp_path, monkeypatch):
@@ -23,7 +23,7 @@ class TestMoneyFlow:
         return latest
 
     def test_empty_result_keeps_the_stored_leaderboard(self, tmp_path, monkeypatch):
-        import RevenueChaser.module_sector_rotation.money_flow as mf
+        import revenuechaser.module_sector_rotation.money_flow as mf
         latest = self._patch_paths(tmp_path, monkeypatch)
         latest.parent.mkdir(parents=True)
         good = {"inflows": [{"ticker": "UP"}], "outflows": [{"ticker": "DN"}],
@@ -36,7 +36,7 @@ class TestMoneyFlow:
         assert json.loads(latest.read_text(encoding="utf-8")) == good
 
     def test_non_empty_result_is_written(self, tmp_path, monkeypatch):
-        import RevenueChaser.module_sector_rotation.money_flow as mf
+        import revenuechaser.module_sector_rotation.money_flow as mf
         latest = self._patch_paths(tmp_path, monkeypatch)
         monkeypatch.setattr(mf, "compute_money_flow", lambda **k: {
             "inflows": [{"ticker": "NEW"}], "outflows": [], "generated_at": None, "as_of": "2026-09-29"})

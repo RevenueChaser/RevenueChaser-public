@@ -8,10 +8,10 @@ from datetime import date
 import duckdb
 import pytest
 
-from RevenueChaser.rcdata import ops
-from RevenueChaser.rcdata.build import DATASETS
-from RevenueChaser.rcdata.build.fundamentals import common, fx_rates, wrds_fund
-from RevenueChaser.rcdata.build.spine import wrds as spine_wrds
+from revenuechaser.rcdata import ops
+from revenuechaser.rcdata.build import DATASETS
+from revenuechaser.rcdata.build.fundamentals import common, fx_rates, wrds_fund
+from revenuechaser.rcdata.build.spine import wrds as spine_wrds
 
 from . import fund_fixture as fx
 
@@ -93,7 +93,7 @@ def test_the_dataset_is_registered_attended_monthly_and_feeds_what_the_rates_rea
 
 def _yahoo_file(rows: list[tuple]) -> None:
     """Yahoo's Parquet file as ``yfinance/fx`` writes it, from ``(currency, day, usd_per_unit)`` rows."""
-    from RevenueChaser.rcdata.build import base
+    from revenuechaser.rcdata.build import base
     fx.parquet_root()
     con = duckdb.connect()
     base.rows_table(con, "rows", fx_rates.SCHEMA, [
@@ -105,7 +105,7 @@ def _yahoo_file(rows: list[tuple]) -> None:
 
 def _compustat_file(rows: list[tuple], snapshot: str = "2026-10-27") -> None:
     """A typed ``wrds/exrt`` snapshot, from ``(tocurd, datadate, exratd)`` rows quoted from GBP."""
-    from RevenueChaser.rcdata.build import base
+    from revenuechaser.rcdata.build import base
     fx.parquet_root()
     con = duckdb.connect()
     base.rows_table(con, "rows", EXRT.schema + wrds_fund.PROVENANCE, [

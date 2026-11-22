@@ -27,7 +27,7 @@ import time
 from datetime import datetime, timezone
 from typing import Callable
 
-from RevenueChaser.module_settings import control
+from revenuechaser.module_settings import control
 
 #: The result of a dataset's newest check, higher is worse (as homeops/metrics.py does for its jobs).
 RESULT_CODE = {"changed": 0, "unchanged": 0, "skipped": 1, "failed": 2}
@@ -173,7 +173,7 @@ def _news_lanes(now: datetime) -> dict:
     A function-level import, as ``_news_tape`` has it: no module-level dependency on a board package. It reads
     ``boards/news.duckdb`` (7 MB, the board's own file), never the serving store, so the scrape still takes no
     serving lock (``app/dashboard._NO_STORE_SESSION``)."""
-    from RevenueChaser.module_news import headlines, tape, tape_state
+    from revenuechaser.module_news import headlines, tape, tape_state
     ok, late = headlines.lane_ok(), headlines.lane_late_after()
     rec = tape_state.collect(names=tape.feeds(), now=now) or {}
     ok["market"] = _iso_epoch(rec.get("written_at"))
@@ -184,7 +184,7 @@ def _news_lanes(now: datetime) -> dict:
 def _news_tape(now: datetime) -> dict:
     """The IBKR news feeds as the listener's record has them. A function-level import, so Settings gains no
     module-level dependency on a board package."""
-    from RevenueChaser.module_news import tape, tape_state
+    from revenuechaser.module_news import tape, tape_state
     return tape_state.collect(names=tape.feeds(), now=now)
 
 
@@ -195,8 +195,8 @@ def collect(now: datetime | None = None, *, datasets: dict | None = None, timer:
     """``{family: [(labels, value), ...]}``. Each part is read on its own; a part that fails is left empty and
     counted, and a dataset that fails is left out of the dataset families and counted under ``datasets``.
     ``timer`` is the builder timer's reading (default: ``TIMER.get()``)."""
-    from RevenueChaser.module_settings import newdata
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.module_settings import newdata
+    from revenuechaser.rcdata import ops
     now = now or datetime.now(timezone.utc)
     out: dict[str, list] = {name: [] for name in HELP}
 
@@ -211,7 +211,7 @@ def collect(now: datetime | None = None, *, datasets: dict | None = None, timer:
         active = q.get("active") or []
         for status in ("queued", "running"):
             out["rc_queue_requests"].append(({"status": status}, sum(1 for r in active if r.get("status") == status)))
-        from RevenueChaser.core import procs
+        from revenuechaser.core import procs
         for r in control.running_jobs(active, control._read_runs_now(), cgroup or control._read_cgroup,
                                       alive or procs.pid_alive, now):
             # The request id keeps two runs of one dataset two series (a duplicate sample would be dropped).
@@ -289,8 +289,8 @@ def collect(now: datetime | None = None, *, datasets: dict | None = None, timer:
             out["rc_builder_timer_on"].append(({}, 1 if state == "on" else 0))
 
     def backups() -> None:
-        from RevenueChaser.core import rawstore
-        from RevenueChaser.rcdata import backup
+        from revenuechaser.core import rawstore
+        from revenuechaser.rcdata import backup
         # a name that two steps share (fundamentals: a builder DuckDB file and a board file) is told apart by its
         # step, a label of its own, so the board can list the served files and the board files apart and in order.
         # Copies of the old store files (#860) still in the backup folder are not shown (avo, 12 Nov 2026).
@@ -315,7 +315,7 @@ def collect(now: datetime | None = None, *, datasets: dict | None = None, timer:
         if ibkr is not None:
             got = ibkr()
         else:
-            from RevenueChaser.core import ibkr_login
+            from revenuechaser.core import ibkr_login
             got = ibkr_login.collect(now=now)
         state = str((got or {}).get("state") or "unknown").replace(" ", "_").replace("-", "_")
         if state not in IBKR_STATES:          # the record is a file: any other text is "unknown", never a label
@@ -414,8 +414,8 @@ def datasets_detail(now: datetime | None = None, *, datasets: dict | None = None
     Each row also carries ``badges``, its providers as the RC page draws them (name, Tabler icon, colour), and, with
     ``span`` (epoch seconds, the Grafana picker's range), ``history``: its builder runs started in it,
     ``[started_at, status]`` oldest first, for the board's heatmap."""
-    from RevenueChaser.module_settings import newdata
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.module_settings import newdata
+    from revenuechaser.rcdata import ops
     now = now or datetime.now(timezone.utc)
     datasets = datasets if datasets is not None else newdata._datasets()
     timer = timer if timer is not None else (TIMER.get() or {})
@@ -426,7 +426,7 @@ def datasets_detail(now: datetime | None = None, *, datasets: dict | None = None
             providers = []
     colour = {p["id"]: control.SOURCE_COLORS[i % len(control.SOURCE_COLORS)] for i, p in enumerate(providers)}
     names = {p["id"]: p["name"] for p in providers}
-    from RevenueChaser.rcdata.needs import screen
+    from revenuechaser.rcdata.needs import screen
     paid = {pid for pid, w in screen.PROVIDERS.items() if w.paid}
     history: dict[str, list] = {}
     if span:
@@ -475,7 +475,7 @@ def board_head(now: datetime | None = None, *, ibkr: Callable[[], dict] | None =
     """The Grafana RC Fetch board's head strip (avo, 10 Nov 2026: "bu main switchlerde icinde olsun"): the Fetch and
     Backup switches (on, off, or None when not known), the builder timer's state and the IBKR gateway as the RC page's
     top bar shows it, with its login address when ``RC_IBKR_LOGIN_URL`` holds a valid one. Never raises."""
-    from RevenueChaser.module_settings import inventory, report
+    from revenuechaser.module_settings import inventory, report
     now = now or datetime.now(timezone.utc)
     try:
         switches = {k: v["on"] for k, v in control.switches_view(control._read_switches(), now).items()}
@@ -485,7 +485,7 @@ def board_head(now: datetime | None = None, *, ibkr: Callable[[], dict] | None =
         if ibkr is not None:
             got = ibkr()
         else:
-            from RevenueChaser.core import ibkr_login
+            from revenuechaser.core import ibkr_login
             got = ibkr_login.collect(now=now)
     except Exception:  # noqa: BLE001
         got = None
@@ -496,7 +496,7 @@ def board_head(now: datetime | None = None, *, ibkr: Callable[[], dict] | None =
              "next": control._clock(timer.get("next")) if timer.get("next") else None}
     try:
         rows = control._read_switches()
-        from RevenueChaser.rcdata import ops
+        from revenuechaser.rcdata import ops
         files = {k: (rows.get(f"file-{k}") or {}).get("off_at") is None for k in ops.FILE_KINDS}
     except Exception:  # noqa: BLE001 - files not known: the board draws no file switch rather than a guessed one
         files = None
@@ -523,7 +523,7 @@ def _last_done(now: datetime) -> dict:
 
     out = {"fetch": None, "backup": None}
     try:
-        from RevenueChaser.rcdata import ops
+        from revenuechaser.rcdata import ops
         run = ops.last_builder_run()
         at = (run or {}).get("finished_at") or (run or {}).get("started_at")
         if at:
@@ -532,8 +532,8 @@ def _last_done(now: datetime) -> dict:
     except Exception:  # noqa: BLE001 - not known is drawn as not known
         pass
     try:
-        from RevenueChaser.module_settings import newdata
-        from RevenueChaser.rcdata import backup
+        from revenuechaser.module_settings import newdata
+        from revenuechaser.rcdata import backup
         done = [datetime.fromisoformat(s["last_ok"]) for s in newdata._backups(now)["steps"]
                 if s.get("last_ok") and s["step"] in backup.STEPS]       # the weekly run, not the daily copy
         if done:
@@ -554,7 +554,7 @@ def board_status(now: datetime | None = None, *, spend: Callable[[], dict] | Non
 
     Unlike the scrape this opens served DuckDB files (the stored cross-check report, the run history), so it is a
     route a panel asks when it is looked at, and not part of ``/metrics``."""
-    from RevenueChaser.module_settings import newdata
+    from revenuechaser.module_settings import newdata
     now = now or datetime.now(timezone.utc)
 
     def read(fn):
@@ -579,7 +579,7 @@ def board_status(now: datetime | None = None, *, spend: Callable[[], dict] | Non
         pass
 
     def freshness() -> dict:
-        from RevenueChaser.module_settings import freshness_tab
+        from revenuechaser.module_settings import freshness_tab
         return freshness_tab.collect()
 
     return {"read_at": now.isoformat(timespec="seconds"), "providers": providers,
@@ -600,7 +600,7 @@ def request_rows(limit=200) -> dict:
     are there at once; another process (the builder) writes its rows at most a minute after it made them, which is
     why the answer is sorted by time and takes no "after this id". Ops store only.
     """
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
     try:
         limit = min(REQUESTS_MAX, max(1, int(limit or 200)))
     except (TypeError, ValueError):
@@ -618,8 +618,8 @@ def request_rows(limit=200) -> dict:
 
 def datasets_list(datasets: dict | None = None) -> list[dict]:
     """``GET /api/build/datasets``: every dataset the builder knows, for an allow-list (Grafana buttons, B3)."""
-    from RevenueChaser.module_settings import newdata
-    from RevenueChaser.rcdata.build import base
+    from revenuechaser.module_settings import newdata
+    from revenuechaser.rcdata.build import base
     out = []
     for name, ds in sorted((datasets if datasets is not None else newdata._datasets()).items()):
         out.append({"name": name, "kind": str(getattr(ds, "kind", "") or ""), "attended": base.attended(ds),

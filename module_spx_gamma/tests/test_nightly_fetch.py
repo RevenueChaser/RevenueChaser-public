@@ -11,7 +11,7 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.module_spx_gamma import __main__ as cli
+from revenuechaser.module_spx_gamma import __main__ as cli
 
 
 class _Resp:

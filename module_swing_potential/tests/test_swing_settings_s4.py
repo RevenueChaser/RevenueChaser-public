@@ -15,17 +15,17 @@ from pathlib import Path
 
 import pytest
 
-from RevenueChaser.core import board_settings as bs
-from RevenueChaser.core import rawstore
-from RevenueChaser.core.tests.panel_client import panel_test_client
-from RevenueChaser.module_swing_potential import config, freeze, pipeline, ranking, screeners
+from revenuechaser.core import board_settings as bs
+from revenuechaser.core import rawstore
+from revenuechaser.core.tests.panel_client import panel_test_client
+from revenuechaser.module_swing_potential import config, freeze, pipeline, ranking, screeners
 
 B = "module_swing_potential"
 _GOLDEN = Path(__file__).with_name("golden_swing_defaults_s4.json")
 
 
 def _settings():
-    from RevenueChaser.module_swing_potential import settings
+    from revenuechaser.module_swing_potential import settings
     return settings
 
 
@@ -188,7 +188,7 @@ def test_the_model_version_still_hashes_the_non_editable_thresholds(rawstore_tmp
 
 @pytest.fixture
 def client(rawstore_tmp_db, monkeypatch):
-    from RevenueChaser.app import dashboard
+    from revenuechaser.app import dashboard
     submitted = []
     monkeypatch.setattr(dashboard.jobs, "submit",
                         lambda module, params=None: submitted.append((module, params)) or "job123")

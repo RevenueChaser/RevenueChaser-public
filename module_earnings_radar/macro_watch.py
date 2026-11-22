@@ -14,8 +14,8 @@ import logging
 import os
 import re
 
-from RevenueChaser.core.config import FRED_API_KEY
-from RevenueChaser.core.providers.result import ProviderResult
+from revenuechaser.core.config import FRED_API_KEY
+from revenuechaser.core.providers.result import ProviderResult
 
 logger = logging.getLogger(__name__)
 

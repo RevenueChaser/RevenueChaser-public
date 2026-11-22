@@ -11,19 +11,19 @@ dollar gamma (the old basis, ``/spot-exposures/strike``), the pin flag and the s
 VIX, COT and SPX close the board now shows beside what the raw day itself held (an older Fetch wrote
 ``vix_family.json``, ``cftc_tff.json`` and ``ohlc_8wk.json``; a day fetched after PR 3 has none, so ``old=n/a``).
 
-Usage: python -m RevenueChaser.module_spx_gamma.tools.compare_pin --days 2026-10-26 2026-10-23
+Usage: python -m revenuechaser.module_spx_gamma.tools.compare_pin --days 2026-10-26 2026-10-23
 """
 from __future__ import annotations
 
 import argparse
 import json
 
-from RevenueChaser.module_spx_gamma import store
-from RevenueChaser.module_spx_gamma.config import net_sum
-from RevenueChaser.module_spx_gamma.engines.prediction_engine import scenario_extraction
-from RevenueChaser.module_spx_gamma.normalize import normalize_snapshot
-from RevenueChaser.module_spx_gamma.raw_day import load_raw_day
-from RevenueChaser.module_spx_gamma.run import with_store_inputs
+from revenuechaser.module_spx_gamma import store
+from revenuechaser.module_spx_gamma.config import net_sum
+from revenuechaser.module_spx_gamma.engines.prediction_engine import scenario_extraction
+from revenuechaser.module_spx_gamma.normalize import normalize_snapshot
+from revenuechaser.module_spx_gamma.raw_day import load_raw_day
+from revenuechaser.module_spx_gamma.run import with_store_inputs
 
 
 def _billions(value) -> str:

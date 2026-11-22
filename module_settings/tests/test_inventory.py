@@ -6,9 +6,9 @@ from datetime import date, datetime, timezone
 
 import pytest
 
-from RevenueChaser.rcdata.tests import universe_store
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_settings import inventory
+from revenuechaser.rcdata.tests import universe_store
+from revenuechaser.core import rawstore
+from revenuechaser.module_settings import inventory
 
 
 
@@ -193,8 +193,8 @@ def _quote(ticker, source, cap, day=date(2026, 9, 30)):
 def test_df98_lookup_message_by_status(tmp_path, rawstore_tmp_db, status, want, not_want):
     """DF98 under node: only an unknown or malformed ticker says the files hold no row; a server failure says the
     served files could not be read (#715 renamed both, the rule is unchanged)."""
-    from RevenueChaser.core.tests.board_js import run_board_js
-    from RevenueChaser.module_settings import report as sr
+    from revenuechaser.core.tests.board_js import run_board_js
+    from revenuechaser.module_settings import report as sr
     html = sr.render_settings_dashboard(inventory.collect())
     tail = """
 globalThis.fetch = function(){ return Promise.resolve({status: %d, ok: false, json: function(){ return Promise.resolve({}); }}); };

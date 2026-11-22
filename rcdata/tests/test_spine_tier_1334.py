@@ -6,7 +6,7 @@ for that reason alone. CFR (Cullen/Frost), IBOC and TXCP are S&P 400 members and
 which is the accept of K-D: no index member is Tier D."""
 from __future__ import annotations
 
-from RevenueChaser.rcdata.build.spine import tier
+from revenuechaser.rcdata.build.spine import tier
 
 
 def test_a_blank_sec_exchange_takes_the_compustat_exchange():

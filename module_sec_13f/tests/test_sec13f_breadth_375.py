@@ -11,9 +11,9 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core import ledger, rawstore
-from RevenueChaser.module_sec_13f import report
-from RevenueChaser.rcdata.tests.ownership_fixture import serve_13f
+from revenuechaser.core import ledger, rawstore
+from revenuechaser.module_sec_13f import report
+from revenuechaser.rcdata.tests.ownership_fixture import serve_13f
 
 Q1, Q2 = "2026-03-31", "2026-06-30"
 RUN_AT = 1759701600.0        # a fixed instant after Q1/Q2 above, never "today"

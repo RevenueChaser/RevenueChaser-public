@@ -5,10 +5,10 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core.providers import sec_edgar, tickerinside, unusual_whales
-from RevenueChaser.rcdata import caps, ops, serving
-from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.spine import av_listing, etf_holdings as etf, ncen, sec_tickers
+from revenuechaser.core.providers import sec_edgar, tickerinside, unusual_whales
+from revenuechaser.rcdata import caps, ops, serving
+from revenuechaser.rcdata.build import base
+from revenuechaser.rcdata.build.spine import av_listing, etf_holdings as etf, ncen, sec_tickers
 
 from . import spine_fixture as fx
 from .test_spine_etf import AV, SEC_FILE

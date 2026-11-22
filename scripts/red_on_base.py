@@ -15,7 +15,7 @@ passes there is listed, and the exit is 1. A PR without new tests exits 0 and sa
 old ids as old. e2e tests are not checked (pytest.ini deselects them).
 
 The worktree sits in a folder named after the repository's top folder, because the code imports itself as
-`RevenueChaser.*`. It is removed afterwards; the repository's own checkout is never touched.
+`revenuechaser.*`. It is removed afterwards; the repository's own checkout is never touched.
 
 Exit: 0 every new test is red on the base (or there are none), 1 some pass there, 2 usage, git failure, an
 existing scratch path, or a pytest run on the base that gave no usable report.

@@ -8,10 +8,10 @@ from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
-from RevenueChaser.module_earnings_radar import pipeline as pl
-from RevenueChaser.module_earnings_radar.pipeline import EarningsPipeline
-from RevenueChaser.module_earnings_radar.tests.test_pipeline_score import _FakeUW
-from RevenueChaser.core.tests.d01_seed import write_d01
+from revenuechaser.module_earnings_radar import pipeline as pl
+from revenuechaser.module_earnings_radar.pipeline import EarningsPipeline
+from revenuechaser.module_earnings_radar.tests.test_pipeline_score import _FakeUW
+from revenuechaser.core.tests.d01_seed import write_d01
 
 
 @pytest.fixture(autouse=True)
@@ -46,7 +46,7 @@ def _prints():
 
 
 def _card(monkeypatch, series=None):
-    from RevenueChaser.core import calendar
+    from revenuechaser.core import calendar
     now = datetime(2026, 10, 7, 20, 0, tzinfo=timezone.utc)
     monkeypatch.setattr(calendar, "_now", lambda: now)
     uw = _WindowUW(series or _sessions(400), _prints())
@@ -75,8 +75,8 @@ def test_still_one_ohlc_request_and_it_asks_for_the_long_window(monkeypatch):
 def test_the_stored_d01_series_serves_the_reaction_window(monkeypatch):
     """E5e (#372): when D01 holds the year and its last bar is the latest complete session, the one OHLC request the
     window used to cost is not made at all."""
-    from RevenueChaser.core import calendar, rawstore
-    from RevenueChaser.module_earnings_radar import stored_inputs
+    from revenuechaser.core import calendar, rawstore
+    from revenuechaser.module_earnings_radar import stored_inputs
     series = _sessions(400)
     write_d01([
         {"ticker": "AAPL", "session_date": date.fromisoformat(b["date"]), "open": b["close"], "high": b["close"],

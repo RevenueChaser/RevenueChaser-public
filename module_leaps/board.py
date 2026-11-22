@@ -21,9 +21,9 @@ import html
 import re
 from datetime import date
 
-from RevenueChaser.core.html_safe import script_json
-from RevenueChaser.core.reporting_common import THEME_CSS, THEME_JS, help_html, watchlist_html
-from RevenueChaser.rcdata import read
+from revenuechaser.core.html_safe import script_json
+from revenuechaser.core.reporting_common import THEME_CSS, THEME_JS, help_html, watchlist_html
+from revenuechaser.rcdata import read
 
 BOARD = "leaps"          # the X-RC-Panel value of its watch-list pair, as before (#730)
 MIN_SESSIONS = 20

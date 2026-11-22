@@ -17,8 +17,8 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.module_financials import store_reads
-from RevenueChaser.module_financials.engines import comps_engine
+from revenuechaser.module_financials import store_reads
+from revenuechaser.module_financials.engines import comps_engine
 
 
 def _record(**over) -> dict:
@@ -147,7 +147,7 @@ def test_an_unstored_peer_reaches_the_card_marked_and_enters_no_percentile(finan
 
 
 def test_the_card_says_a_peer_is_not_stored(financials):
-    from RevenueChaser.module_financials.reporting.html_builder import build_report_html
+    from revenuechaser.module_financials.reporting.html_builder import build_report_html
     res = comps_engine.run_comps(
         financials, ["ZZZ"],
         fetch_many=lambda peers: {"ZZZ": {"stored": False, **{f: None for f in store_reads.FIELDS}}})
@@ -181,7 +181,7 @@ def test_the_peer_read_makes_no_provider_call(financials, monkeypatch):
 
 def test_a_fundamentals_layer_error_is_nothing_stored_not_an_exception(monkeypatch):
     """A serving file being swapped under a read must not fail the Fetch (the shape of #1182)."""
-    from RevenueChaser.core import fundamentals_layer
+    from revenuechaser.core import fundamentals_layer
 
     def boom(*a, **k):
         raise RuntimeError("the serving file is being swapped")
@@ -191,7 +191,7 @@ def test_a_fundamentals_layer_error_is_nothing_stored_not_an_exception(monkeypat
 
 
 def test_a_prices_store_error_leaves_every_peer_without_an_enterprise_value(monkeypatch):
-    from RevenueChaser.core import spine_reads
+    from revenuechaser.core import spine_reads
 
     def boom(*a, **k):
         raise RuntimeError("the serving file is being swapped")
@@ -202,7 +202,7 @@ def test_a_prices_store_error_leaves_every_peer_without_an_enterprise_value(monk
 
 def test_the_peer_caps_come_through_the_same_wrapper_as_the_targets(monkeypatch):
     """The two caps divide into each other, so they must be one read of one session, not two opens."""
-    from RevenueChaser.core import spine_reads
+    from revenuechaser.core import spine_reads
 
     asked: list[tuple] = []
     monkeypatch.setattr(spine_reads, "latest_market",

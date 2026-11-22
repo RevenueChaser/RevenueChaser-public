@@ -10,7 +10,7 @@ Both halves are in the page's own JavaScript and its tiles, so these are asserti
 """
 from __future__ import annotations
 
-from RevenueChaser.module_value_chain import report
+from revenuechaser.module_value_chain import report
 
 
 def _payload(**over):

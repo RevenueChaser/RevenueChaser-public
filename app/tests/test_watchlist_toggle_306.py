@@ -6,12 +6,12 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.app import dashboard
-from RevenueChaser.core import rawstore
-from RevenueChaser.core.tests.panel_client import panel_test_client
-from RevenueChaser.rcdata import ops
-from RevenueChaser.module_watchlists import store as wl_store
-from RevenueChaser.rcdata import read as wl_read
+from revenuechaser.app import dashboard
+from revenuechaser.core import rawstore
+from revenuechaser.core.tests.panel_client import panel_test_client
+from revenuechaser.rcdata import ops
+from revenuechaser.module_watchlists import store as wl_store
+from revenuechaser.rcdata import read as wl_read
 
 
 @pytest.fixture

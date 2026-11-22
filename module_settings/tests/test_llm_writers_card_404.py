@@ -8,8 +8,8 @@ Mock approved by avo, 20 Nov 2026.
 """
 from __future__ import annotations
 
-from RevenueChaser.core import llm_jobs
-from RevenueChaser.module_settings import boards, report
+from revenuechaser.core import llm_jobs
+from revenuechaser.module_settings import boards, report
 
 DS_KEY = "sentinel-deepseek-key-404"
 

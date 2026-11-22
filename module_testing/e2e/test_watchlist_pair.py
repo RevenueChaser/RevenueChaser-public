@@ -44,7 +44,7 @@ def browser(chrome):
 
 def _history(dashboard, kind: str) -> list[tuple]:
     """The job list's own history (``wl_change`` of ``jobs.<kind>`` in the dashboard's watch-list file, 7g)."""
-    from RevenueChaser.module_watchlists import store
+    from revenuechaser.module_watchlists import store
     with store_of(dashboard):
         return [(r["symbol"], r["action"], r["changed_by"]) for r in reversed(store.changes(f"jobs.{kind}"))]
 

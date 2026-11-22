@@ -5,12 +5,12 @@ from datetime import date, datetime, timezone
 
 import pytest
 
-from RevenueChaser.core import calendar
-from RevenueChaser.core.providers import unusual_whales
-from RevenueChaser.rcdata import ops, serving
-from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.options import rows as option_rows, tables, uw_list
-from RevenueChaser.module_watchlists import store as wl_store
+from revenuechaser.core import calendar
+from revenuechaser.core.providers import unusual_whales
+from revenuechaser.rcdata import ops, serving
+from revenuechaser.rcdata.build import base
+from revenuechaser.rcdata.build.options import rows as option_rows, tables, uw_list
+from revenuechaser.module_watchlists import store as wl_store
 
 from .options_fixture import SESSION, UWOptions
 
@@ -237,7 +237,7 @@ def test_the_raw_size_per_name_is_in_the_check_note(uw_opts):
 
 
 def test_the_dataset_starts_by_hand_and_has_no_backfill(uw_opts):
-    from RevenueChaser.rcdata.build import DATASETS, due
+    from revenuechaser.rcdata.build import DATASETS, due
     assert DATASETS[uw_list.NAME] is uw_list.DATASET
     assert due.is_due(uw_list.DATASET) == (False, due.BY_HAND_WHY)
     row = base.run_request({"dataset": uw_list.NAME, "params": {"mode": "backfill", "from": "2026-10-01"}})

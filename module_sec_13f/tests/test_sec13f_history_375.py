@@ -11,9 +11,9 @@ from datetime import datetime, timezone
 
 import pytest
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_sec_13f import engine, report
-from RevenueChaser.rcdata.tests.ownership_fixture import serve_13f
+from revenuechaser.core import rawstore
+from revenuechaser.module_sec_13f import engine, report
+from revenuechaser.rcdata.tests.ownership_fixture import serve_13f
 
 Q1, Q2, Q3 = "2025-12-31", "2026-03-31", "2026-06-30"
 COMPLETE = datetime(2026, 10, 6, 22, 0, tzinfo=timezone.utc).timestamp()

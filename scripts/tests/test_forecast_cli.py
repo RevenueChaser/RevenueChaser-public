@@ -6,8 +6,8 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core import job_lock
-from RevenueChaser.scripts import forecast_baselines, forecast_cli, forecast_outcomes
+from revenuechaser.core import job_lock
+from revenuechaser.scripts import forecast_baselines, forecast_cli, forecast_outcomes
 
 CLIS = [(forecast_outcomes, "forecast_outcomes", "forecast outcomes"),
         (forecast_baselines, "forecast_baselines", "forecast baselines")]

@@ -5,7 +5,7 @@ import json
 import os
 from pathlib import Path
 
-from RevenueChaser.core.config import OUTPUT_DIR, load_env_file, to_float
+from revenuechaser.core.config import OUTPUT_DIR, load_env_file, to_float
 
 BASE_DIR = Path(__file__).resolve().parent
 REVENUE_CHASER_ROOT = BASE_DIR.parent

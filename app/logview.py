@@ -20,8 +20,8 @@ from datetime import datetime
 
 from markupsafe import Markup
 
-from RevenueChaser.core import config, templating
-from RevenueChaser.core.html_safe import script_json
+from revenuechaser.core import config, templating
+from revenuechaser.core.html_safe import script_json
 
 # source key -> (label, file name)
 SOURCES = {

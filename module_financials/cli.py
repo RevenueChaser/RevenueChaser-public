@@ -1,4 +1,4 @@
-"""CLI entry point: python -m RevenueChaser.module_financials --ticker AAPL --modules dcf,3stmt,comps."""
+"""CLI entry point: python -m revenuechaser.module_financials --ticker AAPL --modules dcf,3stmt,comps."""
 from __future__ import annotations
 
 import argparse

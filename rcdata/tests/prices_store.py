@@ -16,8 +16,8 @@ from datetime import date, datetime
 import duckdb
 import pandas as pd
 
-from RevenueChaser.rcdata import serving
-from RevenueChaser.rcdata.build.prices import serving as prices_serving
+from revenuechaser.rcdata import serving
+from revenuechaser.rcdata.build.prices import serving as prices_serving
 
 TABLES = ("price_bar_daily", "corporate_action", "adj_factor", "shares_class", "security_symbol",
           "market_cap_daily", "price_revision", "wrds_price_diff")
@@ -202,7 +202,7 @@ def put_store_rows(bars=(), actions=(), *, built_at: float | None = None) -> Non
 def put_series(rows: list[dict]) -> None:
     """``market_series`` rows (``series_id``, ``obs_date``, ``value``, optional ``source``, ``close``) in a served
     ``market.duckdb``: the market-wide series a board reads beside the bars (Sector Rotation's macro series, PR 9)."""
-    from RevenueChaser.rcdata.build import market_series
+    from revenuechaser.rcdata.build import market_series
     path = serving.live_path("market")
     path.parent.mkdir(parents=True, exist_ok=True)
     con = duckdb.connect(str(path))

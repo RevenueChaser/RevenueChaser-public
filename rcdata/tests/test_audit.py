@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.rcdata import ops
-from RevenueChaser.rcdata.build import audit, base
+from revenuechaser.rcdata import ops
+from revenuechaser.rcdata.build import audit, base
 
 ROWS = [("AAPL", 1, 10.0), ("AAPL", 2, 11.0), ("MSFT", 1, 20.0), ("GOOG", 1, 30.0)]
 NAME = "test/one"

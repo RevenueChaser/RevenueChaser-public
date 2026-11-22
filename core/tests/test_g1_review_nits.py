@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import duckdb
 
-from RevenueChaser.core import index_registry as ir
-from RevenueChaser.core import spine_reads, universe
-from RevenueChaser.rcdata import serving
+from revenuechaser.core import index_registry as ir
+from revenuechaser.core import spine_reads, universe
+from revenuechaser.rcdata import serving
 
 
 def test_listed_nasdaq_names_join_a_nasdaq_membership(monkeypatch):

@@ -10,8 +10,8 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.app import runners
-from RevenueChaser.app.jobs import JobMessage
+from revenuechaser.app import runners
+from revenuechaser.app.jobs import JobMessage
 
 
 @pytest.fixture
@@ -160,7 +160,7 @@ class TestEmptyBoardTheme:
     palette of its own (it used to hard-code a dark GitHub palette, #0d1117 / #c9d1d9 / #58a6ff)."""
 
     def _template(self):
-        from RevenueChaser.core import templating
+        from revenuechaser.core import templating
         return (templating.TEMPLATES_DIR / "empty_board.html.j2").read_text(encoding="utf-8")
 
     def test_the_template_has_no_palette_of_its_own(self):
@@ -170,13 +170,13 @@ class TestEmptyBoardTheme:
 
     def test_every_token_it_reads_is_defined(self):
         import re
-        from RevenueChaser.core import reporting_common as rc
+        from revenuechaser.core import reporting_common as rc
         names = set(re.findall(r"var\(--([a-z0-9-]+)", self._template()))
         unknown = names - set(rc.THEME_TOKENS["dark"]) - set(rc.THEME_SCALE)
         assert names and not unknown, f"{sorted(unknown)} is read but no theme defines it"
 
     def test_the_rendered_page_carries_both_schemes_and_the_switch(self, tmp_path):
-        from RevenueChaser.core import reporting_common as rc
+        from revenuechaser.core import reporting_common as rc
         html = runners._write_empty_board(tmp_path / "b.html", "T", "M", "H").read_text(encoding="utf-8")
         assert rc.THEME_CSS in html, "the page must carry the shared palette, light block included"
         assert rc.THEME_JS in html, "the page must apply the stored theme before it draws"

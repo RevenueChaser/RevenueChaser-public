@@ -1,4 +1,4 @@
-"""#256, docs/module_earnings-radar/redesign.md R5: the lean reads a window of sessions and a slice of strikes. Offline.
+"""#256, docs/module_earnings_radar/redesign.md R5: the lean reads a window of sessions and a slice of strikes. Offline.
 
 Before this, R5's lean read whatever ``flow-recent`` returned: every strike, every expiry, and as many sessions
 back as the newest prints happened to span. redesign.md R5 locks two local filters ("Window: last 1-3 sessions",
@@ -10,8 +10,8 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.core.config import R5_LEAN_BAND_SLACK, R5_LEAN_EXPIRY_DAYS, R5_LEAN_SESSIONS
-from RevenueChaser.module_earnings_radar import lean
+from revenuechaser.core.config import R5_LEAN_BAND_SLACK, R5_LEAN_EXPIRY_DAYS, R5_LEAN_SESSIONS
+from revenuechaser.module_earnings_radar import lean
 
 ED = date(2026, 8, 14)
 

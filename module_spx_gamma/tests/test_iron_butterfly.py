@@ -1,13 +1,13 @@
 """Tests for the Iron Butterfly "Pin Harvest" panel (engines/iron_butterfly.py)."""
 from __future__ import annotations
 
-from RevenueChaser.module_spx_gamma import render
-from RevenueChaser.module_spx_gamma.chains import (
+from revenuechaser.module_spx_gamma import render
+from revenuechaser.module_spx_gamma.chains import (
     black_scholes_mid,
     normalize_option_chain,
     parse_option_symbol,
 )
-from RevenueChaser.module_spx_gamma.engines import iron_butterfly as ib
+from revenuechaser.module_spx_gamma.engines import iron_butterfly as ib
 from .conftest import make_option_chain, make_snapshot
 
 

@@ -6,11 +6,11 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.core.providers import sec_edgar
-from RevenueChaser.rcdata import ops, serving
-from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.spine import funds, openfigi_map, sec_tickers, sec_tickers_mf
-from RevenueChaser.rcdata.build.spine import security, tier, wrds
+from revenuechaser.core.providers import sec_edgar
+from revenuechaser.rcdata import ops, serving
+from revenuechaser.rcdata.build import base
+from revenuechaser.rcdata.build.spine import funds, openfigi_map, sec_tickers, sec_tickers_mf
+from revenuechaser.rcdata.build.spine import security, tier, wrds
 
 from . import spine_fixture as fx
 
@@ -353,7 +353,7 @@ def test_a_reused_ticker_does_not_give_an_old_members_history_to_its_new_owner(b
     CIK. Its constituent rows keep their gvkey and no ticker, and VYLR has no S&P 500 history."""
     assert _q("SELECT ticker, cik, valid_from, valid_to FROM index_membership WHERE gvkey = '123456'") == [
         (None, None, date(2001, 3, 1), date(2009, 7, 1))]
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     assert "VYLR" not in {r["ticker"] for r in read.membership("sp500", on=date(2008, 6, 30),
                                                                  source=wrds.IDXCST_HIS.name)}
 
@@ -396,7 +396,7 @@ def test_a_dropped_cusip_is_a_build_issue_and_coming_back_resolves_it(built, mon
 
 
 def test_a_source_that_never_ran_is_one_issue_not_thousands(monkeypatch, http_mock):
-    from RevenueChaser.rcdata.build.spine import my_universe
+    from revenuechaser.rcdata.build.spine import my_universe
     monkeypatch.setattr(my_universe, "listed_etfs", dict)        # rule E's own issue is my_universe's test
     monkeypatch.setattr(sec_edgar, "SEC_WWW_BASE", "https://sec.test")
     http_mock.add("company_tickers_exchange.json", fx.SEC_FILE)

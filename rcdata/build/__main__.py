@@ -1,4 +1,4 @@
-"""``python -m RevenueChaser.rcdata.build`` — the builder CLI.
+"""``python -m revenuechaser.rcdata.build`` — the builder CLI.
 
     run [--once] [--dataset X [--as-of YYYY-MM-DD] [--allow-shrink] [--reread] [--no-duckdb] [--no-parquet]
                   [--tiers A,B] [--names KO,MSFT]]
@@ -349,7 +349,7 @@ def _terminate(signum, frame) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(prog="python -m RevenueChaser.rcdata.build")
+    p = argparse.ArgumentParser(prog="python -m revenuechaser.rcdata.build")
     sub = p.add_subparsers(dest="cmd", required=True)
     run = sub.add_parser("run")
     run.add_argument("--once", action="store_true")

@@ -7,10 +7,10 @@ from datetime import datetime, timezone
 
 import pytest
 
-from RevenueChaser.core import calendar
-from RevenueChaser.module_settings import newdata, report
-from RevenueChaser.rcdata import ops
-from RevenueChaser.rcdata.tests.conftest import market_roots  # noqa: F401 - market roots per test
+from revenuechaser.core import calendar
+from revenuechaser.module_settings import newdata, report
+from revenuechaser.rcdata import ops
+from revenuechaser.rcdata.tests.conftest import market_roots  # noqa: F401 - market roots per test
 
 NOW = datetime(2026, 10, 28, 3, 0, tzinfo=timezone.utc)
 FUNDAMENTALS = {"sec/companyfacts": "daily", "sec/filings": "daily", "alphavantage/earnings_calendar": "weekly",

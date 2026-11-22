@@ -10,10 +10,10 @@ from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
-from RevenueChaser.core import calendar
-from RevenueChaser.module_earnings_radar import store_reads, stored_inputs
-from RevenueChaser.rcdata import read
-from RevenueChaser.rcdata.needs import catalog
+from revenuechaser.core import calendar
+from revenuechaser.module_earnings_radar import store_reads, stored_inputs
+from revenuechaser.rcdata import read
+from revenuechaser.rcdata.needs import catalog
 
 TODAY = date(2026, 11, 9)
 SETTLED = date(2026, 10, 15)
@@ -137,7 +137,7 @@ class _NoShortsUW:
 
 
 def test_the_run_warms_r5_from_the_ownership_store_and_asks_uw_nothing(store):
-    from RevenueChaser.module_earnings_radar.pipeline import EarningsPipeline
+    from revenuechaser.module_earnings_radar.pipeline import EarningsPipeline
 
     store["finra"] = [_finra("AAPL", SETTLED, 3_000_000, 4.5)]
     p = EarningsPipeline(["AAPL", "MSFT"], uw=_NoShortsUW(), cal_meta={})
@@ -153,7 +153,7 @@ def test_the_run_warms_r5_from_the_ownership_store_and_asks_uw_nothing(store):
 # ── the card says how old the figure is, in the series' own terms ──
 
 def test_the_squeeze_reason_names_the_settlement_day():
-    from RevenueChaser.module_earnings_radar.rules import rule5_positioning
+    from revenuechaser.module_earnings_radar.rules import rule5_positioning
 
     r = rule5_positioning.score(short_interest_pct_float=25.0, short_as_of="2026-10-15")
     assert r.reasons == ["squeeze fuel: short interest 25.0% · FINRA settled 15 Oct"]
@@ -202,7 +202,7 @@ def test_a_float_wins_over_the_shares_outstanding(store):
 
 
 def test_the_reason_names_shares_outstanding_when_that_was_the_base():
-    from RevenueChaser.module_earnings_radar.rules import rule5_positioning
+    from revenuechaser.module_earnings_radar.rules import rule5_positioning
 
     r = rule5_positioning.score(short_interest_pct_float=25.0, short_as_of="2026-10-15", si_basis="outstanding")
     assert r.reasons == ["squeeze fuel: short interest 25.0% of shares outstanding · FINRA settled 15 Oct"]

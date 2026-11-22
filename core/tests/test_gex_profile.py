@@ -1,5 +1,5 @@
 """Tests for core/gex_profile — strike-level GEX (volume book) profile for R4."""
-from RevenueChaser.core.gex_profile import (
+from revenuechaser.core.gex_profile import (
     normalize_strike_rows, volume_flip, magnet, charm_pin, vanna_lobes,
     build_profile,
 )
@@ -129,27 +129,27 @@ class TestBuildProfile:
 
 class TestCumulativeCrossings:
     def test_interpolates_each_sign_change(self):
-        from RevenueChaser.core.gex_profile import cumulative_crossings
+        from revenuechaser.core.gex_profile import cumulative_crossings
         # cumulative: +10, -10 (cross between 100 and 110), +10 (cross between 110 and 120)
         pts = [(100, 10.0), (110, -20.0), (120, 20.0)]
         assert cumulative_crossings(pts) == [105.0, 115.0]
 
     def test_unsorted_input_is_sorted_by_strike(self):
-        from RevenueChaser.core.gex_profile import cumulative_crossings
+        from revenuechaser.core.gex_profile import cumulative_crossings
         assert cumulative_crossings([(110, -20.0), (100, 10.0)]) == [105.0]
 
     def test_none_values_are_skipped_and_flat_zero_is_no_crossing(self):
-        from RevenueChaser.core.gex_profile import cumulative_crossings
+        from revenuechaser.core.gex_profile import cumulative_crossings
         assert cumulative_crossings([(100, None), (110, 5.0), (120, 0.0), (130, 5.0)]) == []
 
     def test_nearest_crossing(self):
-        from RevenueChaser.core.gex_profile import nearest_crossing
+        from revenuechaser.core.gex_profile import nearest_crossing
         assert nearest_crossing([105.0, 115.0], 112.0) == 115.0
         assert nearest_crossing([], 112.0) is None
         assert nearest_crossing([105.0, 115.0], None) is None
 
     def test_volume_flip_is_the_same_walk(self):
-        from RevenueChaser.core.gex_profile import cumulative_crossings, nearest_crossing
+        from revenuechaser.core.gex_profile import cumulative_crossings, nearest_crossing
         rows = _coo_rows()
         pts = [(r["strike"], (r["call_gamma_vol"] or 0) + (r["put_gamma_vol"] or 0)) for r in rows]
         assert volume_flip(rows, 67.0) == nearest_crossing(cumulative_crossings(pts), 67.0)
@@ -157,29 +157,29 @@ class TestCumulativeCrossings:
 
 class TestRegime:
     def test_spot_above_oi_flip_is_long_gamma(self):
-        from RevenueChaser.core.gex_profile import regime
+        from revenuechaser.core.gex_profile import regime
         r = regime(7800.0, 7700.0)
         assert r["state"] == "long" and r["label"] == "Long Gamma — Dampening"
         assert r["flip"] == 7700.0 and r["flip_source"] == "oi"
 
     def test_spot_below_oi_flip_is_short_gamma(self):
-        from RevenueChaser.core.gex_profile import regime
+        from revenuechaser.core.gex_profile import regime
         r = regime(7600.0, 7700.0)
         assert r["state"] == "short" and r["label"] == "Short Gamma — Amplifying"
 
     def test_spot_on_the_flip(self):
-        from RevenueChaser.core.gex_profile import regime
+        from revenuechaser.core.gex_profile import regime
         r = regime(7700.0, 7700.0)
         assert r["state"] == "at_flip" and r["label"] == "At the gamma flip"
 
     def test_missing_spot_or_flip_is_unknown_not_a_signal(self):
-        from RevenueChaser.core.gex_profile import regime
+        from revenuechaser.core.gex_profile import regime
         for args in ((None, 7700.0), (7700.0, None), (None, None)):
             r = regime(*args)
             assert r["state"] == "unknown" and r["label"] is None
 
     def test_oi_and_volume_flips_shown_side_by_side(self):
-        from RevenueChaser.core.gex_profile import regime
+        from revenuechaser.core.gex_profile import regime
         r = regime(7750.0, 7700.0, flip_vol=7800.0, cumulative_flip=7690.0)
         assert r["flips"] == {"oi": 7700.0, "vol": 7800.0, "cumulative": 7690.0}
         assert r["sides"] == {"oi": "long", "vol": "short", "cumulative": "long"}
@@ -187,11 +187,11 @@ class TestRegime:
         assert r["state"] == "long"  # the OI flip decides; the others are shown, not voted
 
     def test_agree_when_every_available_flip_gives_the_same_side(self):
-        from RevenueChaser.core.gex_profile import regime
+        from revenuechaser.core.gex_profile import regime
         assert regime(7750.0, 7700.0, flip_vol=7600.0)["agree"] is True
         assert regime(7750.0, 7700.0)["agree"] is True  # nothing to disagree with
 
     def test_unavailable_cross_checks_have_no_side(self):
-        from RevenueChaser.core.gex_profile import regime
+        from revenuechaser.core.gex_profile import regime
         r = regime(7750.0, 7700.0)
         assert r["sides"]["vol"] is None and r["sides"]["cumulative"] is None

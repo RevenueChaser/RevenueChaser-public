@@ -18,9 +18,9 @@ from datetime import date, datetime, timezone
 
 import pytest
 
-from RevenueChaser.core import calendar
-from RevenueChaser.module_earnings_radar import stored_inputs
-from RevenueChaser.rcdata.tests.conftest import market_roots  # noqa: F401  (fixture)
+from revenuechaser.core import calendar
+from revenuechaser.module_earnings_radar import stored_inputs
+from revenuechaser.rcdata.tests.conftest import market_roots  # noqa: F401  (fixture)
 
 # 2026-10-14 is a Wednesday. The evening fetch is the 13th; the name reports on the 16th (Friday), past today and
 # tomorrow, so its tape is the store's to answer.
@@ -146,8 +146,8 @@ def test_a_name_reporting_today_or_tomorrow_stays_live(monkeypatch, day):
 # ── the serving function's own ordering, against a real file ──────────────────────────────────────────────────
 
 def test_the_served_rows_come_newest_report_first(market_roots):  # noqa: F811
-    from RevenueChaser.rcdata import ops, read
-    from RevenueChaser.rcdata.tests import screener_fixture
+    from revenuechaser.rcdata import ops, read
+    from revenuechaser.rcdata.tests import screener_fixture
     screener_fixture.write_tape([
         screener_fixture.tape_row("AAA", session_date=SESSION, report_date=date(2026, 4, 17)),
         screener_fixture.tape_row("AAA", session_date=SESSION, report_date=REPORT),
@@ -183,7 +183,7 @@ class _UW:
 
 
 def _pipeline(monkeypatch, stored: dict):
-    from RevenueChaser.module_earnings_radar.pipeline import EarningsPipeline
+    from revenuechaser.module_earnings_radar.pipeline import EarningsPipeline
     monkeypatch.setattr(stored_inputs, "earnings_tape", lambda tickers, today=None: stored)
     uw = _UW()
     p = EarningsPipeline(["AAPL"], uw=uw, cal_meta=CAL)
@@ -227,7 +227,7 @@ def test_a_client_without_the_one_request_method_still_gets_both_reads(monkeypat
             self.calls.append(f"history:{ticker}")
             return [{"report_date": "2026-07-17", "actual_eps": 1.0}]
 
-    from RevenueChaser.module_earnings_radar.pipeline import EarningsPipeline
+    from revenuechaser.module_earnings_radar.pipeline import EarningsPipeline
     monkeypatch.setattr(stored_inputs, "earnings_tape", lambda tickers, today=None: {})
     uw = _Legacy()
     p = EarningsPipeline(["AAPL"], uw=uw, cal_meta=CAL)

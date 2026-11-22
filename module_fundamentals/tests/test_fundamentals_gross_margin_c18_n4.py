@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.module_fundamentals.pipeline import _quality_metrics
+from revenuechaser.module_fundamentals.pipeline import _quality_metrics
 
 
 def _gm(revenue, gross_profit):

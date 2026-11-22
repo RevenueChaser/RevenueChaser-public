@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from RevenueChaser.core import ibkr_login
+from revenuechaser.core import ibkr_login
 
 
 # ── the fake gateway ────────────────────────────────────────────────────────────────────────────
@@ -95,8 +95,8 @@ def test_the_probe_sends_the_version_handshake_then_start_api_and_nothing_else()
 
 
 def test_the_probe_client_id_is_not_one_another_ibkr_client_uses():
-    from RevenueChaser.core.providers import ibkr_tws
-    from RevenueChaser.module_news import headlines, tape
+    from revenuechaser.core.providers import ibkr_tws
+    from revenuechaser.module_news import headlines, tape
     assert ibkr_login.PROBE_CLIENT_ID not in {ibkr_tws.CLIENT_ID, headlines.CLIENT_ID, tape.CLIENT_ID, 75}
 
 

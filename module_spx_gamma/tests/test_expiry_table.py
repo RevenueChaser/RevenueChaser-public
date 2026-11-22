@@ -1,7 +1,7 @@
 """Tests for expiry row normalization + DTE bands."""
 from __future__ import annotations
 
-from RevenueChaser.module_spx_gamma.expiry_table import dte_band, normalize_expiry_rows
+from revenuechaser.module_spx_gamma.expiry_table import dte_band, normalize_expiry_rows
 
 
 def test_normalize_expiry_rows_net_fields():

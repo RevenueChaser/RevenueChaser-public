@@ -9,11 +9,11 @@ from datetime import datetime, timezone
 
 import pytest
 
-from RevenueChaser.core import calendar
-from RevenueChaser.module_settings import newdata, report
-from RevenueChaser.rcdata.build.spine import my_universe
-from RevenueChaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401 - market roots per test
-from RevenueChaser.rcdata.tests.test_spine_security import built, run_all  # noqa: F401 - the 10 names
+from revenuechaser.core import calendar
+from revenuechaser.module_settings import newdata, report
+from revenuechaser.rcdata.build.spine import my_universe
+from revenuechaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401 - market roots per test
+from revenuechaser.rcdata.tests.test_spine_security import built, run_all  # noqa: F401 - the 10 names
 
 NOW = datetime(2026, 10, 28, 3, 0, tzinfo=timezone.utc)
 

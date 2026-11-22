@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from RevenueChaser.module_earnings_radar.pipeline import (
+from revenuechaser.module_earnings_radar.pipeline import (
     EarningsPipeline, _compute_earnings_reactions, _compute_return_since_er,
 )
 
@@ -21,7 +21,7 @@ _BARS = _bars(("2026-08-07", 100.0), ("2026-08-10", 101.0), ("2026-08-11", 102.0
 
 @pytest.fixture
 def clock(monkeypatch):
-    from RevenueChaser.core import calendar
+    from revenuechaser.core import calendar
 
     def set_now(iso_utc):
         now = datetime.fromisoformat(iso_utc).replace(tzinfo=timezone.utc)
@@ -33,7 +33,7 @@ def clock(monkeypatch):
 
 class TestReactionAnchor:
     def _anchor(self, report_date, timing, bars=_BARS):
-        from RevenueChaser.core.reaction_anchor import reaction_anchor
+        from revenuechaser.core.reaction_anchor import reaction_anchor
         return reaction_anchor(bars, report_date, timing)
 
     def test_bmo_anchors_on_the_report_date_close(self):
@@ -65,7 +65,7 @@ class TestReactionAnchor:
 
     def test_reaction_session_promoted_from_the_research_script(self):
         import numpy as np
-        from RevenueChaser.core.reaction_anchor import reaction_session
+        from revenuechaser.core.reaction_anchor import reaction_session
         dates = np.array(["2026-08-10", "2026-08-11", "2026-08-12"], dtype="datetime64[D]")
         i, tag, _ = reaction_session("2026-08-11T21:30:00Z", dates)  # 17:30 ET: after close
         assert (i, tag) == (2, "afterclose")
@@ -149,20 +149,20 @@ class TestSinceErNewYorkClock:
 
 class TestExpectedMoveUnits:
     def test_expected_move_perc_is_always_a_ratio(self):
-        from RevenueChaser.module_earnings_radar.pipeline import _expected_move_pct
+        from revenuechaser.module_earnings_radar.pipeline import _expected_move_pct
         assert _expected_move_pct({"expected_move_perc": 0.05}) == pytest.approx(5.0)
         assert _expected_move_pct({"expected_move_perc": "0.08"}) == pytest.approx(8.0)
         assert _expected_move_pct({"expected_move_perc": 1.2}) == pytest.approx(120.0)  # was 1.2
         assert _expected_move_pct({"expected_move_perc": 1.0}) == pytest.approx(100.0)
 
     def test_missing_or_garbage_is_zero(self):
-        from RevenueChaser.module_earnings_radar.pipeline import _expected_move_pct
+        from revenuechaser.module_earnings_radar.pipeline import _expected_move_pct
         assert _expected_move_pct({}) == 0.0
         assert _expected_move_pct({"expected_move_perc": "n/a"}) == 0.0
         assert _expected_move_pct({"expected_move_perc": None}, {"expected_move_perc": 0.04}) == pytest.approx(4.0)
 
     def test_plain_expected_move_key_keeps_the_legacy_unit_read(self):
-        from RevenueChaser.module_earnings_radar.pipeline import _expected_move_pct
+        from revenuechaser.module_earnings_radar.pipeline import _expected_move_pct
         assert _expected_move_pct({}, {"expected_move": 0.06}) == pytest.approx(6.0)
         assert _expected_move_pct({}, {"expected_move": 7.5}) == pytest.approx(7.5)
 
@@ -177,7 +177,7 @@ class TestExpectedMoveUnits:
 
 class TestIvRvRatioWiring:
     def test_card_reads_the_ratio_r4_writes(self, rawstore_tmp_db):
-        from RevenueChaser.module_earnings_radar.tests.test_pipeline_score import _FakeUW, _make_pipeline
+        from revenuechaser.module_earnings_radar.tests.test_pipeline_score import _FakeUW, _make_pipeline
         scr = {"AAPL": {"close": 100.0, "iv30d": 0.60, "realized_volatility": 0.40}}
         cal = {"AAPL": {"earnings_date": "2026-08-14", "full_name": "Aple",
                         "sector": "Technology", "expected_move_perc": 0.05}}

@@ -15,9 +15,9 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from RevenueChaser.app import dashboard
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_news import calendar as cal, report
+from revenuechaser.app import dashboard
+from revenuechaser.core import rawstore
+from revenuechaser.module_news import calendar as cal, report
 
 HOUR = 3600.0
 NOW = time.time()

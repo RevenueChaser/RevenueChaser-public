@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from ..config import (DEFAULT_CAPEX_PCT_REV, DEFAULT_DIO, DEFAULT_DPO, DEFAULT_DSO, DEFAULT_EBITDA_MARGIN,
                       DEFAULT_REVENUE_GROWTH, PROJECTION_YEARS, to_float)
-from RevenueChaser.core.providers.validator import validate_annual
+from revenuechaser.core.providers.validator import validate_annual
 
 from ._inputs import DNA_ASSUMED_ZERO, assumed, effective_tax_rate, pick
 

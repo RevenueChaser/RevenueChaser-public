@@ -24,7 +24,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from enum import Enum
 
-from RevenueChaser.core.datahealth import Health
+from revenuechaser.core.datahealth import Health
 
 DBS = ("news", "welcome", "relatedness", "comovement", "asymmetric_growth", "swing_potential", "fundamentals",
        "sector_rotation", "oipd", "forecast", "spx_gamma", "sec_13f", "watchlists", "value_chain")

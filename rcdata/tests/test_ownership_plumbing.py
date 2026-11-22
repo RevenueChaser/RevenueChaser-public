@@ -2,7 +2,7 @@
 order (the sources first, ``ownership/serve`` last, every one started by hand)."""
 from __future__ import annotations
 
-from RevenueChaser.rcdata import caps, serving
+from revenuechaser.rcdata import caps, serving
 
 
 def test_ownership_is_a_serving_kind_of_version_5():
@@ -22,7 +22,7 @@ def test_the_ownership_providers_have_no_day_cap():
 
 
 def test_the_ownership_datasets_build_in_order_and_start_by_hand():
-    from RevenueChaser.rcdata.build import DATASETS
+    from revenuechaser.rcdata.build import DATASETS
     names = [n for n, d in DATASETS.items() if d.kind == "ownership"]
     assert names == ["finra/short_interest", "regsho/threshold", "ibkr/shortable", "sec/ftd", "sec/13f",
                      "sec/13f_sets_listed", "sec/13f_list", "sec/form4", "sec/13dg", "uw/institutions", "sec/nport",

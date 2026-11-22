@@ -7,8 +7,8 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.rcdata import ops, serving
-from RevenueChaser.rcdata.build import DATASETS, base, due
+from revenuechaser.rcdata import ops, serving
+from revenuechaser.rcdata.build import DATASETS, base, due
 
 
 class _Fake:
@@ -50,7 +50,7 @@ class _Fake:
 
 @pytest.fixture
 def fake(monkeypatch):
-    from RevenueChaser.rcdata import build
+    from revenuechaser.rcdata import build
     ds = _Fake()
     monkeypatch.setattr(build, "DATASETS", {ds.name: ds})
     base.parquet_root().mkdir(parents=True, exist_ok=True)
@@ -150,8 +150,8 @@ def test_http_post_does_not_retry_a_401_and_counts_no_failure(http_mock):
 
 
 def test_the_cli_backfills_several_datasets_in_one_process(fake, monkeypatch):
-    from RevenueChaser.rcdata import build
-    from RevenueChaser.rcdata.build import __main__ as cli
+    from revenuechaser.rcdata import build
+    from revenuechaser.rcdata.build import __main__ as cli
     two = _Fake("fake/two")
     monkeypatch.setattr(build, "DATASETS", {fake.name: fake, two.name: two})
     monkeypatch.setattr(cli, "DATASETS", build.DATASETS)

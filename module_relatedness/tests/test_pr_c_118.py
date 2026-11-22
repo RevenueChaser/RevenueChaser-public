@@ -7,18 +7,18 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_relatedness.tests.test_relatedness import v3_reply
-from RevenueChaser.core.providers import deepseek
-from RevenueChaser.module_relatedness import config, engine, profiles, similarity, store
-from RevenueChaser.module_relatedness.tests.test_relatedness import long_body
+from revenuechaser.core import rawstore
+from revenuechaser.module_relatedness.tests.test_relatedness import v3_reply
+from revenuechaser.core.providers import deepseek
+from revenuechaser.module_relatedness import config, engine, profiles, similarity, store
+from revenuechaser.module_relatedness.tests.test_relatedness import long_body
 
 
 @pytest.fixture(autouse=True)
 def _deepseek_board(monkeypatch):
     """These CLI runs are DeepSeek's: the board's writer is DeepSeek here (#360 made EVREN the default)."""
-    from RevenueChaser.core.providers import deepseek as _ds
-    from RevenueChaser.module_relatedness import settings as rel_settings
+    from revenuechaser.core.providers import deepseek as _ds
+    from revenuechaser.module_relatedness import settings as rel_settings
     monkeypatch.setattr(rel_settings, "writer", lambda: ("deepseek", _ds.MODEL))
 
 
@@ -136,7 +136,7 @@ class _FakeClient:
 
 def _seed_cached_reply(ticker, name, text, content):
     """A cached reply under the key a v3 call makes (#400: no thinking, no effort)."""
-    from RevenueChaser.module_relatedness import profiles as prof_mod
+    from revenuechaser.module_relatedness import profiles as prof_mod
     key = deepseek._cache_key(prof_mod.system_prompt(), prof_mod.build_user(name, text),
                               False, deepseek.MODEL, None)
     rawstore.write_rows("llm_cache", [{
@@ -161,7 +161,7 @@ def test_an_unparseable_cached_reply_is_ignored_and_the_live_one_wins(rawstore_t
 # ── C13 + P5 + C-F1: job messages and exit codes ─────────────────────────────
 def test_cli_run_exits_zero_and_reports_a_peak_stop(rawstore_tmp_db, monkeypatch, capsys):
     import json as _json
-    from RevenueChaser.module_relatedness import __main__ as cli
+    from revenuechaser.module_relatedness import __main__ as cli
 
     monkeypatch.setattr(engine, "run", lambda **k: {
         "n": 4, "pending": 6, "next_off_peak": "2026-09-21 01:00",
@@ -176,7 +176,7 @@ def test_cli_run_exits_zero_and_reports_a_peak_stop(rawstore_tmp_db, monkeypatch
 def test_cli_run_exits_zero_at_the_cost_cap_and_when_work_is_pending(rawstore_tmp_db, monkeypatch, capsys):
     """The per-run cost cap and names with no text leave pending work, but not a failure (C-F1)."""
     import json as _json
-    from RevenueChaser.module_relatedness import __main__ as cli
+    from revenuechaser.module_relatedness import __main__ as cli
 
     monkeypatch.setattr(engine, "run", lambda **k: {
         "n": 4, "pending": 6, "next_off_peak": None})   # cap stop: no stopped_reason
@@ -187,7 +187,7 @@ def test_cli_run_exits_zero_at_the_cost_cap_and_when_work_is_pending(rawstore_tm
 
 def test_cli_run_exits_one_for_an_auth_stop(rawstore_tmp_db, monkeypatch, capsys):
     import json as _json
-    from RevenueChaser.module_relatedness import __main__ as cli
+    from revenuechaser.module_relatedness import __main__ as cli
 
     monkeypatch.setattr(engine, "run", lambda **k: {
         "n": 0, "pending": 8, "next_off_peak": None,
@@ -199,7 +199,7 @@ def test_cli_run_exits_one_for_an_auth_stop(rawstore_tmp_db, monkeypatch, capsys
 
 def test_cli_run_exits_one_for_a_transient_stop(rawstore_tmp_db, monkeypatch, capsys):
     import json as _json
-    from RevenueChaser.module_relatedness import __main__ as cli
+    from revenuechaser.module_relatedness import __main__ as cli
 
     monkeypatch.setattr(engine, "run", lambda **k: {
         "n": 3, "pending": 5, "next_off_peak": None,
@@ -211,7 +211,7 @@ def test_cli_run_exits_one_for_a_transient_stop(rawstore_tmp_db, monkeypatch, ca
 
 def test_cli_run_clean_exits_zero(rawstore_tmp_db, monkeypatch, capsys):
     import json as _json
-    from RevenueChaser.module_relatedness import __main__ as cli
+    from revenuechaser.module_relatedness import __main__ as cli
 
     monkeypatch.setattr(engine, "run", lambda **k: {
         "n": 5, "pending": 0, "next_off_peak": None})
@@ -221,7 +221,7 @@ def test_cli_run_clean_exits_zero(rawstore_tmp_db, monkeypatch, capsys):
 
 
 def test_dashboard_runner_raises_jobmessage_for_stopped_or_pending_work(monkeypatch):
-    from RevenueChaser.app import jobs, runners
+    from revenuechaser.app import jobs, runners
 
     monkeypatch.setattr(engine, "run", lambda **k: {
         "n": 4, "pending": 6, "next_off_peak": "2026-09-21 01:00",
@@ -234,7 +234,7 @@ def test_dashboard_runner_raises_jobmessage_for_stopped_or_pending_work(monkeypa
 
 def test_dashboard_runner_refresh_with_pending_work_does_not_raise(monkeypatch):
     """C-F6: the JobMessage is for a Fetch; a Refresh with pending work returns the board silently."""
-    from RevenueChaser.app import jobs, runners
+    from revenuechaser.app import jobs, runners
 
     monkeypatch.setattr(engine, "run", lambda **k: {
         "n": 4, "pending": 6, "next_off_peak": None,
@@ -263,9 +263,9 @@ def _seed_theme_run(run_id, is_current, coarse_label, medium_label, ticker):
 
 
 def test_one_current_theme_run_reader_and_one_coarse_label(rawstore_tmp_db):
-    from RevenueChaser.core import universe
-    from RevenueChaser.module_relatedness import themes
-    from RevenueChaser.module_sector_rotation import theme_focus
+    from revenuechaser.core import universe
+    from revenuechaser.module_relatedness import themes
+    from revenuechaser.module_sector_rotation import theme_focus
 
     _seed_theme_run("old", 0, "Old Coarse", "Old Child", "OLD")
     _seed_theme_run("cur", 1, "Financials (2)", "Regional Banks", "JPM")
@@ -309,7 +309,7 @@ def test_a_prompt_version_bump_misses_the_llm_cache(rawstore_tmp_db, monkeypatch
 
 def test_an_evren_pool_never_opens_more_than_the_account_allows(rawstore_tmp_db, monkeypatch):
     """EVREN refuses a 5th concurrent request (HTTP 429, 15 Nov 2026): the pool is capped at evren.MAX_WORKERS."""
-    from RevenueChaser.core.providers import evren
+    from revenuechaser.core.providers import evren
     _one_group_per_ticker(monkeypatch)
     import concurrent.futures
     seen = {}

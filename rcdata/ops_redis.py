@@ -248,7 +248,7 @@ def ensure(path: Path | None = None) -> None:
         held = _rows_in_file(ops.ops_path())
         if held:
             raise ops.OpsNotCopied(f"Redis namespace {namespace()} is empty and {ops.ops_path()} holds {held} rows: "
-                                   f"copy it first (python -m RevenueChaser.rcdata.ops_copy), or unset "
+                                   f"copy it first (python -m revenuechaser.rcdata.ops_copy), or unset "
                                    f"{ops.REDIS_URL_ENV} to stay on the file")
     _stamp()
 

@@ -10,9 +10,9 @@ import json
 
 import pytest
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_relatedness import themes
-from RevenueChaser.rcdata.tests import spine_fixture
+from revenuechaser.core import rawstore
+from revenuechaser.module_relatedness import themes
+from revenuechaser.rcdata.tests import spine_fixture
 
 
 def _seed(run, mediums, sectors, coarse_parent="c0", current=0):
@@ -193,7 +193,7 @@ def _record_pipeline(monkeypatch, order):
 
 
 def test_cli_cutover_coarse_sector_replaces_drop_and_rebalance(rawstore_tmp_db, monkeypatch, capsys):
-    from RevenueChaser.module_relatedness import __main__ as cli
+    from revenuechaser.module_relatedness import __main__ as cli
     order: list[str] = []
     _record_pipeline(monkeypatch, order)
     assert cli.main(["--cutover", "--run-id", "tgt", "--coarse", "sector"]) == 0
@@ -203,7 +203,7 @@ def test_cli_cutover_coarse_sector_replaces_drop_and_rebalance(rawstore_tmp_db, 
 
 
 def test_cli_cutover_default_keeps_the_nmf_coarse(rawstore_tmp_db, monkeypatch, capsys):
-    from RevenueChaser.module_relatedness import __main__ as cli
+    from revenuechaser.module_relatedness import __main__ as cli
     order: list[str] = []
     _record_pipeline(monkeypatch, order)
     assert cli.main(["--cutover", "--run-id", "tgt"]) == 0
@@ -220,7 +220,7 @@ def test_finalize_run_nmf_reports_the_rebalanced_k_coarse(rawstore_tmp_db, monke
 
 
 def test_cli_rebuild_themes_passes_the_coarse_mode(rawstore_tmp_db, monkeypatch, capsys):
-    from RevenueChaser.module_relatedness import __main__ as cli
+    from revenuechaser.module_relatedness import __main__ as cli
     seen = {}
     monkeypatch.setattr(themes, "current_run_id", lambda: "cur")
     monkeypatch.setattr(themes, "build_shadow", lambda **k: {"run_id": "new", "themes": 5})
@@ -232,7 +232,7 @@ def test_cli_rebuild_themes_passes_the_coarse_mode(rawstore_tmp_db, monkeypatch,
 
 
 def test_cli_rejects_an_unknown_coarse_mode(capsys):
-    from RevenueChaser.module_relatedness import __main__ as cli
+    from revenuechaser.module_relatedness import __main__ as cli
     with pytest.raises(SystemExit):
         cli.main(["--cutover", "--run-id", "tgt", "--coarse", "gics"])
 
@@ -244,7 +244,7 @@ def test_cli_rejects_an_unknown_coarse_mode(capsys):
 ])
 def test_cli_coarse_sector_goes_with_a_switch_only(argv, monkeypatch):
     """``--coarse sector`` only changes ``finalize_run``; on any other action it would be silently ignored."""
-    from RevenueChaser.module_relatedness import __main__ as cli
+    from revenuechaser.module_relatedness import __main__ as cli
     monkeypatch.setattr(themes, "build_shadow", lambda **k: pytest.fail("must not build"))
     with pytest.raises(SystemExit) as exc:
         cli.main(argv)

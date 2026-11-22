@@ -18,8 +18,8 @@ SEEN: set = set()
 
 
 def _copies(prefix, module, kind):
-    runners = importlib.import_module("RevenueChaser.app.runners")
-    cfg = importlib.import_module(f"RevenueChaser.{module}.config")
+    runners = importlib.import_module("revenuechaser.app.runners")
+    cfg = importlib.import_module(f"revenuechaser.{module}.config")
     return getattr(runners, f"{prefix}_{kind}"), getattr(cfg, f"{prefix}_{kind}")
 
 
@@ -27,7 +27,7 @@ def _copies(prefix, module, kind):
 @pytest.mark.parametrize("kind", ["LATEST", "JSON"])
 def test_both_copies_of_each_artifact_path_point_into_this_tests_folder(prefix, module, kind,
                                                                          isolate_board_artifacts):
-    from RevenueChaser.core import config
+    from revenuechaser.core import config
     in_runners, in_config = _copies(prefix, module, kind)
     assert in_runners == in_config, "a test that patches one copy must not leave the other shared"
     assert isolate_board_artifacts in in_runners.parents
@@ -52,7 +52,7 @@ def test_the_next_test_does_not_see_it():
 def test_the_sec_13f_page_is_written_and_read_in_this_tests_folder(isolate_board_artifacts):
     """#257: seven app test files render ``sec_13f_latest.html``; in the shared process root two xdist workers wrote,
     read and unlinked one file (``FileNotFoundError``, 28 Oct 2026). The runner reads where the report writes."""
-    runners = importlib.import_module("RevenueChaser.app.runners")
-    report = importlib.import_module("RevenueChaser.module_sec_13f.report")
+    runners = importlib.import_module("revenuechaser.app.runners")
+    report = importlib.import_module("revenuechaser.module_sec_13f.report")
     assert runners.SEC_13F_LATEST.is_relative_to(isolate_board_artifacts)
     assert Path(report.OUTPUT_DIR) / "sec_13f_latest.html" == runners.SEC_13F_LATEST

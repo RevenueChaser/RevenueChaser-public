@@ -2,8 +2,8 @@
 pairs are upserted, only the pairs the run retired are deleted, and an empty run deletes nothing."""
 from __future__ import annotations
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_relatedness import store
+from revenuechaser.core import rawstore
+from revenuechaser.module_relatedness import store
 
 
 def _pairs():
@@ -33,7 +33,7 @@ def test_an_empty_run_deletes_nothing(rawstore_tmp_db):
 
 
 def _fetch_returns(monkeypatch, peers):
-    from RevenueChaser.module_relatedness import engine
+    from revenuechaser.module_relatedness import engine
     monkeypatch.setattr(engine, "_run", lambda *a, **k: {"n": len(peers), "peers": peers})
     return engine
 

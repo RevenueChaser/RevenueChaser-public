@@ -5,9 +5,9 @@ import shutil
 
 import pytest
 
-from RevenueChaser.core import reporting_common as rc
-from RevenueChaser.core.tests.board_js import run_board_js
-from RevenueChaser.module_sec_13f import report
+from revenuechaser.core import reporting_common as rc
+from revenuechaser.core.tests.board_js import run_board_js
+from revenuechaser.module_sec_13f import report
 
 
 def _row(shares: float) -> dict:
@@ -20,8 +20,8 @@ class TestKitRows:
 
     def test_off_spine_ticker_is_unclassified_with_no_cap(self, monkeypatch):
         """KF (#375): a ticker absent from ``equity_universe`` is ``Unclassified`` with ``market_cap: None``."""
-        from RevenueChaser.core import universe
-        from RevenueChaser.module_sec_13f.report import board_payload
+        from revenuechaser.core import universe
+        from revenuechaser.module_sec_13f.report import board_payload
 
         def fake_filter_fields(tickers):
             # Real filter_fields returns an off-spine ticker as Unclassified with no cap.
@@ -44,8 +44,8 @@ class TestKitRows:
 
     def test_failed_filter_fields_read_still_mounts_the_bar_with_a_notice(self, monkeypatch):
         """KF (#375): a store failure leaves ticker+name only and shows one notice; the page still renders."""
-        from RevenueChaser.core import universe
-        from RevenueChaser.module_sec_13f.report import render_sec13f_dashboard
+        from revenuechaser.core import universe
+        from revenuechaser.module_sec_13f.report import render_sec13f_dashboard
 
         monkeypatch.setattr(universe, "filter_fields", lambda _t: (_ for _ in ()).throw(RuntimeError("store down")))
         totals = {"AAA": {"2025-06-30": _row(100.0)}}
@@ -62,8 +62,8 @@ def test_the_kit_script_rides_in_its_own_script_tag_before_the_board_script(monk
     in the browser and no row was drawn. It must sit inside a ``<script>`` and come before ``initKit``."""
     import re
 
-    from RevenueChaser.core import universe
-    from RevenueChaser.module_sec_13f.report import render_sec13f_dashboard
+    from revenuechaser.core import universe
+    from revenuechaser.module_sec_13f.report import render_sec13f_dashboard
 
     monkeypatch.setattr(universe, "filter_fields", lambda ts: {
         t: {"ticker": t, "name": t, "index": [], "market_cap": None, "gics": ["Unclassified", ""],
@@ -82,7 +82,7 @@ class TestKitJs:
     """Client-side filter + sort behaviour, inspected by running the page scripts under node."""
 
     def _render(self, monkeypatch):
-        from RevenueChaser.core import universe
+        from revenuechaser.core import universe
 
         def fake_filter_fields(tickers):
             return {

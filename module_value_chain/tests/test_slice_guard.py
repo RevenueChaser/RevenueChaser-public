@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import logging
 
-from RevenueChaser.rcdata.tests import universe_store
-from RevenueChaser.core import edgar_docs, rawstore
-from RevenueChaser.module_value_chain import engine
+from revenuechaser.rcdata.tests import universe_store
+from revenuechaser.core import edgar_docs, rawstore
+from revenuechaser.module_value_chain import engine
 
 _ITEM = ("We purchase wafers from Taiwan Semiconductor Manufacturing Company Limited. "
          + "We sell products worldwide through distributors. " * 60)

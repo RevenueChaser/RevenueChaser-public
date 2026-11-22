@@ -9,10 +9,10 @@ from __future__ import annotations
 
 import duckdb
 
-from RevenueChaser.rcdata import serving
-from RevenueChaser.rcdata.build.fundamentals import common
-from RevenueChaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401 - market roots per test
-from RevenueChaser.rcdata.tests.test_spine_security import built, run_all  # noqa: F401 - the 10 names
+from revenuechaser.rcdata import serving
+from revenuechaser.rcdata.build.fundamentals import common
+from revenuechaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401 - market roots per test
+from revenuechaser.rcdata.tests.test_spine_security import built, run_all  # noqa: F401 - the 10 names
 
 
 def _list(rows: list[tuple[str, str]]) -> None:

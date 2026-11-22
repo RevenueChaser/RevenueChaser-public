@@ -14,9 +14,9 @@ import inspect
 import httpx
 import pytest
 
-from RevenueChaser.core import index_registry as ir
-from RevenueChaser.core import rawstore
-from RevenueChaser.core.providers.result import ProviderResult
+from revenuechaser.core import index_registry as ir
+from revenuechaser.core import rawstore
+from revenuechaser.core.providers.result import ProviderResult
 
 
 class _FakeUW:

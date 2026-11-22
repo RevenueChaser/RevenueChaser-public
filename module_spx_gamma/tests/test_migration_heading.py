@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.module_spx_gamma import render, run
+from revenuechaser.module_spx_gamma import render, run
 from .conftest import make_snapshot
 
 

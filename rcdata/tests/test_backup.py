@@ -1,4 +1,4 @@
-"""``python -m RevenueChaser.rcdata backup``: the weekly backup (avo, 8 Nov 2026): every step verified, 4 kept."""
+"""``python -m revenuechaser.rcdata backup``: the weekly backup (avo, 8 Nov 2026): every step verified, 4 kept."""
 from __future__ import annotations
 
 import hashlib
@@ -14,8 +14,8 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from RevenueChaser.core import config, rawstore
-from RevenueChaser.rcdata import backup, ops, serving
+from revenuechaser.core import config, rawstore
+from revenuechaser.rcdata import backup, ops, serving
 
 
 def _serve(rows: int = 3, kind: str = "market") -> None:
@@ -397,7 +397,7 @@ _on_redis = pytest.mark.skipif(not os.getenv("RC_REDIS_URL"), reason="needs a Re
 def test_on_redis_the_ops_backup_holds_the_kept_tables_only(backup_dir):
     _fill_ops()
     copy = backup.run_backup(only="ops")["ops"]
-    from RevenueChaser.rcdata import ops_copy
+    from revenuechaser.rcdata import ops_copy
     con = ops_copy._open_read_only(copy)
     try:
         for table in ops_copy.COPIED:
@@ -417,7 +417,7 @@ def test_on_redis_the_backup_restores_with_the_one_time_copy(backup_dir, monkeyp
     taken = backup.run_backup(only="ops")["ops"]
     want = {t: ops.rows(t) for t in ops.TABLES if backup._is_kept_ops_table(t)}
     monkeypatch.setattr(config, "MARKET_DIR", tmp_path / "restored")          # an empty namespace
-    from RevenueChaser.rcdata import ops_copy
+    from revenuechaser.rcdata import ops_copy
     assert ops_copy.main(["--sqlite", str(taken)]) == 0
     assert {t: ops.rows(t) for t in want} == want
     assert ops.rows("build_requests") == []
@@ -425,7 +425,7 @@ def test_on_redis_the_backup_restores_with_the_one_time_copy(backup_dir, monkeyp
 
 def test_the_redis_ops_copy_is_written_in_one_transaction_and_filtered(backup_dir, monkeypatch):
     # #387: an autocommit insert per row made 42k commits, 9-11 min a night and past the 30 min unit limit.
-    from RevenueChaser.rcdata import ops_copy, ops_redis
+    from revenuechaser.rcdata import ops_copy, ops_redis
     ops.watch_add("stock", "AAPL", by="test")
     ops.watch_add("stock", "MSFT", by="test")
     ops.enqueue("market_series", {"x": 1}, by="test")
@@ -484,7 +484,7 @@ def _file(path: Path, data: bytes, age_s: float = 3600) -> None:
 def raw_trees(tmp_path, monkeypatch):
     uw = config.MARKET_RAW_DIR / "raw" / "uw"
     spx = tmp_path / "spx_gamma"
-    from RevenueChaser.module_spx_gamma import config as spx_config
+    from revenuechaser.module_spx_gamma import config as spx_config
     monkeypatch.setattr(spx_config, "TREE_ROOT", spx)
     _file(uw / "spot_expiry_strike" / "2026-10-26" / "SPX.json.gz", b"a" * 20)
     _file(uw / "greek_expiry_strike" / "2026-10-26" / "SPX.json.gz", b"b" * 30)
@@ -586,7 +586,7 @@ def test_uw_raw_keeps_the_newest_four_weeks(backup_dir, raw_trees):
 
 
 def test_uw_raw_with_no_source_tree_writes_nothing(backup_dir, tmp_path, monkeypatch):
-    from RevenueChaser.module_spx_gamma import config as spx_config
+    from revenuechaser.module_spx_gamma import config as spx_config
     monkeypatch.setattr(spx_config, "TREE_ROOT", tmp_path / "nowhere")
     assert backup.run_backup(only="uw-raw")["uw-raw"] is None
     assert [p.name for p in (backup_dir / "uw-raw").iterdir()] == [backup.MANIFEST_NAME]   # the run record only

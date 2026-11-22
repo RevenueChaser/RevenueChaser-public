@@ -8,9 +8,9 @@ from datetime import date
 import duckdb
 import pytest
 
-from RevenueChaser.core.providers import sec_edgar
-from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.fundamentals import common, edgar_codes, facts, filings
+from revenuechaser.core.providers import sec_edgar
+from revenuechaser.rcdata.build import base
+from revenuechaser.rcdata.build.fundamentals import common, edgar_codes, facts, filings
 
 from . import fund_fixture as fx
 

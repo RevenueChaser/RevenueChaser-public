@@ -9,10 +9,10 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.core.providers import sec_edgar
-from RevenueChaser.rcdata import serving
-from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.spine import av_listing, etf, ncen, sec_tickers, security
+from revenuechaser.core.providers import sec_edgar
+from revenuechaser.rcdata import serving
+from revenuechaser.rcdata.build import base
+from revenuechaser.rcdata.build.spine import av_listing, etf, ncen, sec_tickers, security
 
 from . import spine_fixture as fx
 
@@ -239,7 +239,7 @@ def test_a_cef_that_av_calls_an_etf_is_flagged_kept_and_not_counted():
     stays in ``etf`` with ``is_cef`` and is not counted as an ETF, like a note. Built from the staging tables
     directly: the spine types a CEF from OpenFIGI, which this file's fixture does not route."""
     import duckdb
-    from RevenueChaser.rcdata.build.spine import stage
+    from revenuechaser.rcdata.build.spine import stage
     con = duckdb.connect()
     stage.create(con, av_listing.STAGING, av_listing.SCHEMA)
     stage.create(con, ncen.STAGING, ncen.SCHEMA)

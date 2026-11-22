@@ -10,7 +10,7 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.rcdata.build.spine import wrds
+from revenuechaser.rcdata.build.spine import wrds
 
 STUB = '''
 import datetime, json, os, pandas as pd
@@ -135,12 +135,12 @@ def test_no_user_name_is_a_failed_login_before_the_worker_starts(monkeypatch):
 
 def test_the_worker_does_not_import_the_revenuechaser_package():
     text = wrds.WORKER.read_text(encoding="utf-8")
-    assert "RevenueChaser" not in text.split('"""', 2)[2] and "import wrds" in text
+    assert "revenuechaser" not in text.split('"""', 2)[2] and "import wrds" in text
 
 
 def test_an_error_masks_the_user_name_as_a_word_not_inside_other_words(monkeypatch):
     """Delta-2 N4: user "ab" is masked where it stands alone, not inside "table" or "abc"."""
-    from RevenueChaser.rcdata.build.spine import wrds_worker
+    from revenuechaser.rcdata.build.spine import wrds_worker
     monkeypatch.setenv("WRDS_USERNAME", "ab")
     text = wrds_worker._error(RuntimeError('role "ab" cannot read table abc; user ab'))
     assert text == 'RuntimeError: role "<user>" cannot read table abc; user <user>'
@@ -159,7 +159,7 @@ def test_the_worker_env_keeps_the_tls_and_library_paths_and_drops_other_keys(mon
 
 def test_an_error_is_masked_before_it_is_cut_and_whatever_the_case(monkeypatch):
     """Delta-3 nit 4: a name across the 300-character cut leaves no part of itself; "SecretUser" is masked too."""
-    from RevenueChaser.rcdata.build.spine import wrds_worker
+    from revenuechaser.rcdata.build.spine import wrds_worker
     monkeypatch.setenv("WRDS_USERNAME", "secretuser")
     text = wrds_worker._error(RuntimeError("x" * 280 + " secretuser can not log in"))
     assert len(text) <= 300 and "secre" not in text

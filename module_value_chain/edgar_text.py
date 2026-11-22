@@ -10,8 +10,8 @@ from __future__ import annotations
 import logging
 import time
 
-from RevenueChaser.core import edgar_docs
-from RevenueChaser.core.providers import sec_edgar
+from revenuechaser.core import edgar_docs
+from revenuechaser.core.providers import sec_edgar
 
 from . import health, splitter
 

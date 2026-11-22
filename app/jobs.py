@@ -26,8 +26,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional
 
-from RevenueChaser.core import credentials, job_control, ledger, notify, rawstore
-from RevenueChaser.core.providers.unusual_whales import BREAKER_THRESHOLD, UWClient
+from revenuechaser.core import credentials, job_control, ledger, notify, rawstore
+from revenuechaser.core.providers.unusual_whales import BREAKER_THRESHOLD, UWClient
 
 logger = logging.getLogger(__name__)
 
@@ -353,7 +353,7 @@ def _run_log(job_id: str, fields: dict, counts: dict | None) -> None:
     if status is None and counts is None:
         return
     try:
-        from RevenueChaser.rcdata import ops
+        from revenuechaser.rcdata import ops
         with _LOCK:
             job = dict(_JOBS.get(job_id) or {})
         if status == "running":
@@ -547,7 +547,7 @@ def idle() -> tuple[bool, list[str]]:
     ``.rc-proc-<pid>`` marker of another process in either store dir, the board files' and the market dir of
     ``rcdata``. A marker whose pid is gone (or reused) is a leftover and does not count.
     """
-    from RevenueChaser.core import config, job_lock
+    from revenuechaser.core import config, job_lock
 
     reasons = [f"job {j.get('module')} {j.get('status')} ({j.get('id')})" for j in list_jobs()
                if j.get("status") in ("queued", "running")]

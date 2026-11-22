@@ -12,9 +12,9 @@ import html as _html
 import re
 from datetime import datetime
 
-from RevenueChaser.core.config import PLOTLY_CDN_URL
-from RevenueChaser.core.html_safe import script_json
-from RevenueChaser.core.reporting_common import (
+from revenuechaser.core.config import PLOTLY_CDN_URL
+from revenuechaser.core.html_safe import script_json
+from revenuechaser.core.reporting_common import (
     FILTERS_CSS,
     FILTERS_JS,
     THEME_CSS,
@@ -321,14 +321,14 @@ def _filter_universe(names: list[str]) -> list[dict]:
     """The picker's pool: the names the nightly build stores a chain for (``engine.list_names``, carried in the
     payload), with the universal-filter fields where the universe has them. The filters only narrow the picker;
     a name the universe lacks (an ETF, SPX) still shows, by its ticker."""
-    from RevenueChaser.core.universe import filter_fields
+    from revenuechaser.core.universe import filter_fields
     fields = filter_fields(names) if names else {}
     return [fields.get(t) or {"ticker": t, "name": t} for t in names]
 
 
 def _theme_catalog() -> dict:
     """The pinned theme run's catalog for the Theme facet (store read; empty on a fresh store)."""
-    from RevenueChaser.core.universe import theme_catalog
+    from revenuechaser.core.universe import theme_catalog
     return theme_catalog()
 
 

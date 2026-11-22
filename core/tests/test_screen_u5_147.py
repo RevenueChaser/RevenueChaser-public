@@ -10,14 +10,14 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.core.scan_quality import DROP_LABELS
-from RevenueChaser.core.tests import screen_parity as scn
-from RevenueChaser.module_fundamentals import pipeline as fp
-from RevenueChaser.module_fundamentals.report import render_fundamental_dashboard
-from RevenueChaser.module_swing_potential import pipeline as sp
-from RevenueChaser.module_swing_potential.report import render_swing_dashboard
-from RevenueChaser.core.tests.d01_seed import drop_d01, write_d01
+from revenuechaser.core import rawstore
+from revenuechaser.core.scan_quality import DROP_LABELS
+from revenuechaser.core.tests import screen_parity as scn
+from revenuechaser.module_fundamentals import pipeline as fp
+from revenuechaser.module_fundamentals.report import render_fundamental_dashboard
+from revenuechaser.module_swing_potential import pipeline as sp
+from revenuechaser.module_swing_potential.report import render_swing_dashboard
+from revenuechaser.core.tests.d01_seed import drop_d01, write_d01
 
 BOARDS = [pytest.param(fp, "fundamentals", render_fundamental_dashboard, id="fundamentals"),
           pytest.param(sp, "swing", render_swing_dashboard, id="swing")]

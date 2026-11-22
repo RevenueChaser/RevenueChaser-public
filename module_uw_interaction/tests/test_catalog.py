@@ -3,7 +3,7 @@
 The catalog is data: malformed entries must fail loudly in a unit test, not
 surface as a confusing empty board at runtime.
 """
-from RevenueChaser.module_uw_interaction.catalog import (
+from revenuechaser.module_uw_interaction.catalog import (
     TOOLS, FAMILY_ORDER, get_tool, path_params, tools_for_family, validate_catalog,
 )
 

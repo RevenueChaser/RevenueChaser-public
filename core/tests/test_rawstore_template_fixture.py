@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core import rawstore
+from revenuechaser.core import rawstore
 
 
 
@@ -64,7 +64,7 @@ def _changed(value):
 @pytest.mark.parametrize("name", ["_SCHEMA_VERSION", "MANIFEST"])
 def test_a_change_to_any_schema_input_moves_the_fingerprint(name, monkeypatch):
     """Each input the copy is checked against; a change to one sends the test to the apply (see the MANIFEST test)."""
-    from RevenueChaser.conftest import _schema_fingerprint
+    from revenuechaser.conftest import _schema_fingerprint
     before = _schema_fingerprint()
     monkeypatch.setattr(rawstore, name, _changed(getattr(rawstore, name)))
     assert _schema_fingerprint() != before

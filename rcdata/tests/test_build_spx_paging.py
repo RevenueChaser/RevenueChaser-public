@@ -12,10 +12,10 @@ from urllib.parse import parse_qs
 
 import pytest
 
-from RevenueChaser.core import calendar
-from RevenueChaser.core.providers import unusual_whales
-from RevenueChaser.rcdata import caps, ops, read
-from RevenueChaser.rcdata.build import base, uw_spot_expiry_strike as uw
+from revenuechaser.core import calendar
+from revenuechaser.core.providers import unusual_whales
+from revenuechaser.rcdata import caps, ops, read
+from revenuechaser.rcdata.build import base, uw_spot_expiry_strike as uw
 
 from . import uw_fixture
 

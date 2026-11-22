@@ -8,9 +8,9 @@ passes ``infer_debt_free=False``.
 """
 from __future__ import annotations
 
-from RevenueChaser.core import fundamentals_layer as layer
-from RevenueChaser.module_fundamentals import pipeline
-from RevenueChaser.module_fundamentals.tests.test_fundamentals_debt_free_737 import _ttm_pair, _year
+from revenuechaser.core import fundamentals_layer as layer
+from revenuechaser.module_fundamentals import pipeline
+from revenuechaser.module_fundamentals.tests.test_fundamentals_debt_free_737 import _ttm_pair, _year
 
 
 def test_an_ifrs_filer_with_no_debt_tag_stays_unknown():

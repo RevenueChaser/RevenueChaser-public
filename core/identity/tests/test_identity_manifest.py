@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.rcdata.tests import universe_store
-from RevenueChaser.core import rawstore
+from revenuechaser.rcdata.tests import universe_store
+from revenuechaser.core import rawstore
 
 
 

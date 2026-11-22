@@ -7,9 +7,9 @@ from __future__ import annotations
 
 import re
 
-from RevenueChaser.module_settings import control_render, needs_tab, report
-from RevenueChaser.module_settings.tests.test_needs_tab import _model, _summary
-from RevenueChaser.module_settings.tests.test_report import _panel
+from revenuechaser.module_settings import control_render, needs_tab, report
+from revenuechaser.module_settings.tests.test_needs_tab import _model, _summary
+from revenuechaser.module_settings.tests.test_report import _panel
 
 
 def _heads(html: str) -> list[tuple[str, str]]:

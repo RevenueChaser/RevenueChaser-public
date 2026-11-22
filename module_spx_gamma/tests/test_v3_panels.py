@@ -3,9 +3,9 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core.providers.cftc import map_row
-from RevenueChaser.module_spx_gamma import normalize as nm
-from RevenueChaser.module_spx_gamma.vix import vix_term_mode
+from revenuechaser.core.providers.cftc import map_row
+from revenuechaser.module_spx_gamma import normalize as nm
+from revenuechaser.module_spx_gamma.vix import vix_term_mode
 
 
 # ── max pain ──

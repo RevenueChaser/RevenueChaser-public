@@ -7,9 +7,9 @@ import re
 
 import pytest
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_relatedness import themes
-from RevenueChaser.rcdata.tests import spine_fixture
+from revenuechaser.core import rawstore
+from revenuechaser.module_relatedness import themes
+from revenuechaser.rcdata.tests import spine_fixture
 
 
 def _profiles():
@@ -337,7 +337,7 @@ def _etf_ranks(tid):
 
 
 def test_sector_spdr_is_keyed_by_the_morningstar_sector_names():
-    from RevenueChaser.core.gics_map import MORNINGSTAR_SECTORS
+    from revenuechaser.core.gics_map import MORNINGSTAR_SECTORS
     assert themes._SECTOR_SPDR == _SPDR_BY_MORNINGSTAR_SECTOR
     assert set(themes._SECTOR_SPDR) == set(MORNINGSTAR_SECTORS)
 
@@ -542,7 +542,7 @@ def test_scrub_run_labels(rawstore_tmp_db):
 
 
 def test_cli_cutover_optional_adopt(rawstore_tmp_db, monkeypatch, capsys):
-    from RevenueChaser.module_relatedness import __main__ as cli
+    from revenuechaser.module_relatedness import __main__ as cli
 
     order = []
     monkeypatch.setattr(themes, "current_run_id", lambda: "cur")
@@ -684,7 +684,7 @@ def test_label_writers_stay_inside_their_run(rawstore_tmp_db):
     assert themes.unique_theme_labels("r1", "coarse") == 1
     labels = {r["theme_id"]: r["label"] for r in rawstore.get_all("relatedness_themes")}
     assert labels["r1:c1"] == "Banks (2)" and labels["r10:c1"] == "Banks"   # r10 untouched
-    from RevenueChaser.module_relatedness import naming
+    from revenuechaser.module_relatedness import naming
     assert set(naming._run_themes("r1")) == {"r1:c0", "r1:c1", "r1:m0"}
     assert naming._fine_tags("r1") == {"r1:f0": ["loans"]}
     assert naming._fine_members("r1") == {"r1:f0": ["AAA"]}

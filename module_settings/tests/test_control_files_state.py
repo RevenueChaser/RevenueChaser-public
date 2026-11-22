@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from datetime import datetime, timezone
 
-from RevenueChaser.module_settings.tests.test_control_view import _build, control_nd
+from revenuechaser.module_settings.tests.test_control_view import _build, control_nd
 
 
 def _file(view, kind):

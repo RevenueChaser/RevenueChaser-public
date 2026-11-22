@@ -3,9 +3,9 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core.providers.result import ProviderResult
-from RevenueChaser.module_spx_gamma.normalize import normalize_snapshot
-from RevenueChaser.module_spx_gamma.snapshot import UWApiError
+from revenuechaser.core.providers.result import ProviderResult
+from revenuechaser.module_spx_gamma.normalize import normalize_snapshot
+from revenuechaser.module_spx_gamma.snapshot import UWApiError
 
 
 class FakeUW:
@@ -214,8 +214,8 @@ def market_roots(tmp_path_factory, monkeypatch):
     rcdata's ``market_roots`` puts them in ``tmp_path``; here they get a directory of their own, because many of
     these tests use ``tmp_path`` as the board's data root and list what is in it.
     """
-    from RevenueChaser.core import config
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.core import config
+    from revenuechaser.rcdata import ops
     root = tmp_path_factory.mktemp("market")
     ssd, hdd = root / "market", root / "market_raw"
     monkeypatch.setattr(config, "MARKET_DIR", ssd)
@@ -232,7 +232,7 @@ def stored_make_raw_window():
     ``make_raw()`` through ``run.build_day`` (which reads the window from the store since PR 3, not from the raw
     day). Cboe's SPX file has one column, so the stored window has closes only."""
     from datetime import date
-    from RevenueChaser.module_spx_gamma.tests import rcdata_fixture
+    from revenuechaser.module_spx_gamma.tests import rcdata_fixture
     rcdata_fixture.serve(spx={}, symbols=("SPX",), cot_reports=(), series_end=date(2026, 8, 14),
                          closes={c["date"]: c["close"] for c in make_candles()})
 
@@ -240,7 +240,7 @@ def stored_make_raw_window():
 @pytest.fixture
 def rcdata_market():
     """The default fixture ``market.duckdb`` (five SPX sessions, the VIX family, SPX closes, four COT reports)."""
-    from RevenueChaser.module_spx_gamma.tests import rcdata_fixture
+    from revenuechaser.module_spx_gamma.tests import rcdata_fixture
     rcdata_fixture.serve()
     return rcdata_fixture
 
@@ -263,7 +263,7 @@ def market_closed(monkeypatch):
     test that builds a snapshot would otherwise pass or fail by the time of day it runs — the strike window is
     derived from spot. A test that wants the open-session path patches ``in_us_session_window`` itself.
     """
-    from RevenueChaser.core import calendar as nyse_calendar
+    from revenuechaser.core import calendar as nyse_calendar
     monkeypatch.setattr(nyse_calendar, "in_us_session_window", lambda *a, **k: False)
 
 
@@ -272,7 +272,7 @@ def store_day(day: str, manifest: dict | None = None, files: dict | None = None)
     dict/list is JSON-encoded, str/bytes stored as they are)."""
     import json as _json
 
-    from RevenueChaser.module_spx_gamma import store
+    from revenuechaser.module_spx_gamma import store
 
     def _bytes(v):
         if isinstance(v, bytes):

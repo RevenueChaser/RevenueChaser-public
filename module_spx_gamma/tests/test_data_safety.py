@@ -11,10 +11,10 @@ import json
 
 import pytest
 
-from RevenueChaser.module_spx_gamma import brier, run, safe_json
-from RevenueChaser.module_spx_gamma import snapshot as snap
-from RevenueChaser.module_spx_gamma.snapshot import UWApiError
-from RevenueChaser.module_spx_gamma import store as spx_store
+from revenuechaser.module_spx_gamma import brier, run, safe_json
+from revenuechaser.module_spx_gamma import snapshot as snap
+from revenuechaser.module_spx_gamma.snapshot import UWApiError
+from revenuechaser.module_spx_gamma import store as spx_store
 
 from .conftest import as_uw, store_day
 
@@ -117,7 +117,7 @@ def _stored_day(tmp_path, monkeypatch):
 
 def _tables() -> dict:
     """Every row of every board-file table but the latest pointer, which a Refresh of the newest day moves."""
-    from RevenueChaser.core import rawstore
+    from revenuechaser.core import rawstore
     out = {}
     for t in (spx_store.RAW_DAYS, spx_store.RAW_FILES, spx_store.BRIER, spx_store.GEX, spx_store.META):
         cols = [c for c in rawstore._columns_of(rawstore.MANIFEST[t])]

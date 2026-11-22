@@ -12,9 +12,9 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from RevenueChaser.rcdata.tests import universe_store
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_value_chain import config, edgar_text, engine
+from revenuechaser.rcdata.tests import universe_store
+from revenuechaser.core import rawstore
+from revenuechaser.module_value_chain import config, edgar_text, engine
 
 
 def _subs(*filings):
@@ -173,7 +173,7 @@ def test_miss_keys_survive_a_fetch_run(fetch_env):
 
 
 def test_pending_tile_names_what_it_leaves_out():
-    from RevenueChaser.module_value_chain import report
+    from revenuechaser.module_value_chain import report
     html = report.render_value_chain_dashboard({
         "as_of": "2026-10-02T00:00:00+00:00", "filings": [], "edges": [],
         "pending": 4, "misses": 2, "no_cik": 1})
@@ -182,7 +182,7 @@ def test_pending_tile_names_what_it_leaves_out():
 
 
 def test_last_sync_text_is_escaped():
-    from RevenueChaser.module_value_chain import report
+    from revenuechaser.module_value_chain import report
     html = report.render_value_chain_dashboard({
         "as_of": "<b>x", "filings": [], "edges": [], "pending": 0, "misses": 0, "no_cik": 0})
     assert "Last sync: &lt;b&gt;x</div>" in html and "<b>x" not in html
@@ -201,7 +201,7 @@ def _put_miss(ticker, reason, cik, days_ago=0):
 
 def test_corpus_miss_summary_makes_no_network_call_and_reads_no_cik_as_unknown(
         rawstore_tmp_db, monkeypatch):
-    from RevenueChaser.core.providers import sec_edgar
+    from revenuechaser.core.providers import sec_edgar
 
     calls = []
     monkeypatch.setattr(sec_edgar, "get_json", lambda *a, **k: calls.append(("get_json", a)))

@@ -1,7 +1,7 @@
 """Tests for the volume/flow confluence signal engine."""
 from __future__ import annotations
 
-from RevenueChaser.module_spx_gamma.flow_signals import evaluate_flow_signal
+from revenuechaser.module_spx_gamma.flow_signals import evaluate_flow_signal
 
 
 def _snap(spot=7700.0, call_wall_oi=7800.0, call_wall_vol=7640.0,

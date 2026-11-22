@@ -46,8 +46,8 @@ on:
       - "docs/data_architecture.md"
       - "docs/data_health.md"
       - "docs/data_retrieval.md"
-      - "docs/module_earnings-radar/00_overview.md"
-      - "docs/module_earnings-radar/redesign.md"
+      - "docs/module_earnings_radar/00_overview.md"
+      - "docs/module_earnings_radar/redesign.md"
       - "docs/v2/door.md"
       - "module_spx_gamma/tests/golden/position_map.base.md"
       - ".github/**"
@@ -61,8 +61,8 @@ on:
       - "docs/data_architecture.md"
       - "docs/data_health.md"
       - "docs/data_retrieval.md"
-      - "docs/module_earnings-radar/00_overview.md"
-      - "docs/module_earnings-radar/redesign.md"
+      - "docs/module_earnings_radar/00_overview.md"
+      - "docs/module_earnings_radar/redesign.md"
       - "docs/v2/door.md"
       - "module_spx_gamma/tests/golden/position_map.base.md"
       - ".github/**"
@@ -95,7 +95,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          path: RevenueChaser
+          path: revenuechaser
           # The diff is taken against the merge-base with the base branch, so it needs the history.
           fetch-depth: 0
       - uses: actions/setup-python@v6
@@ -105,7 +105,7 @@ jobs:
         # A push to main whose tree a PR's FULL run already tested green: nothing new to test. Any error here
         # (API, no PR, no note) leaves `tested` empty, and the run is FULL as before.
         if: github.event_name == 'push'
-        working-directory: RevenueChaser
+        working-directory: revenuechaser
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -121,7 +121,7 @@ jobs:
             done
           done
       - id: select
-        working-directory: RevenueChaser
+        working-directory: revenuechaser
         env:
           FULL_REASON: >-
             ${{ github.event_name != 'pull_request' && format('{0} event', github.event_name)
@@ -164,14 +164,14 @@ jobs:
       RC_REDIS_URL: redis://127.0.0.1:6379/0
       RC_SHARD: ${{ matrix.shard }}/6
     steps:
-      # The code imports itself as `RevenueChaser.*`, so the checkout directory
+      # The code imports itself as `revenuechaser.*`, so the checkout directory
       # must carry that name (pytest puts its parent on sys.path).
       - uses: actions/checkout@v5
         with:
-          path: RevenueChaser
-      - uses: ./RevenueChaser/.github/actions/python-deps
+          path: revenuechaser
+      - uses: ./revenuechaser/.github/actions/python-deps
       - name: pytest (unit)
-        working-directory: RevenueChaser
+        working-directory: revenuechaser
         # -n auto: one worker per core. The workers SHARE one temp .store/.cache: each inherits
         # RC_STORE_DIR from the controller, so _redirect_data_roots()'s setdefault calls are no-ops
         # in a worker. Isolation comes from the per-test DuckDB file (conftest.isolate_rawstore),
@@ -219,10 +219,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          path: RevenueChaser
-      - uses: ./RevenueChaser/.github/actions/python-deps
+          path: revenuechaser
+      - uses: ./revenuechaser/.github/actions/python-deps
       - name: pytest (e2e)
-        working-directory: RevenueChaser
+        working-directory: revenuechaser
         env:
           RC_E2E: "1"
           MODE: ${{ needs.plan.outputs.mode }}
@@ -272,16 +272,16 @@ jobs:
     timeout-minutes: 30
     defaults:
       run:
-        working-directory: RevenueChaser/v2/web
+        working-directory: revenuechaser/v2/web
     steps:
       - uses: actions/checkout@v5
         with:
-          path: RevenueChaser
+          path: revenuechaser
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: RevenueChaser/v2/web/package-lock.json
+          cache-dependency-path: revenuechaser/v2/web/package-lock.json
       - name: licences (ADR decision 1)
         # Reads package-lock.json, so it runs before the install and fails the job on a production dependency
         # outside the allowlist.
@@ -324,12 +324,12 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          path: RevenueChaser
+          path: revenuechaser
           # The merge-base with the base branch needs the history.
           fetch-depth: 0
-      - uses: ./RevenueChaser/.github/actions/python-deps
+      - uses: ./revenuechaser/.github/actions/python-deps
       - name: new tests against the merge-base
-        working-directory: RevenueChaser
+        working-directory: revenuechaser
         env:
           BASE: origin/${{ github.base_ref }}
         run: python scripts/red_on_base.py "$BASE"

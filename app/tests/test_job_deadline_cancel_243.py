@@ -13,9 +13,9 @@ import time
 
 import pytest
 
-from RevenueChaser.app import jobs, runners
-from RevenueChaser.app.tests.test_runners_freeze_128 import freezers, order  # noqa: F401 - fixtures
-from RevenueChaser.core import job_control, rawstore
+from revenuechaser.app import jobs, runners
+from revenuechaser.app.tests.test_runners_freeze_128 import freezers, order  # noqa: F401 - fixtures
+from revenuechaser.core import job_control, rawstore
 
 
 @pytest.fixture
@@ -127,15 +127,15 @@ def test_a_finished_job_cannot_be_cancelled(sync_jobs):
     jobs.execute(jid)
     assert jobs.cancel(jid) is False
     assert jobs.get(jid)["status"] == "done"
-    from RevenueChaser.app import dashboard
-    from RevenueChaser.core.tests.panel_client import panel_test_client
+    from revenuechaser.app import dashboard
+    from revenuechaser.core.tests.panel_client import panel_test_client
     r = panel_test_client(dashboard.app).post(f"/api/job/{jid}/cancel")
     assert r.status_code == 409 and r.get_json()["error"] == "job already finished"   # delta review D14
 
 
 def test_the_cancel_route_accepts_a_running_job(long_lane):
-    from RevenueChaser.app import dashboard
-    from RevenueChaser.core.tests.panel_client import panel_test_client
+    from revenuechaser.app import dashboard
+    from revenuechaser.core.tests.panel_client import panel_test_client
     client = panel_test_client(dashboard.app)
     started = threading.Event()
     jobs.register("t_cancel_route", _stuck(started), [], requires_uw=False, lane="long", cancellable=True)
@@ -152,7 +152,7 @@ def test_the_cancel_route_accepts_a_running_job(long_lane):
 # ── only a job that can stop early accepts a cancel while it runs (review N1) ──
 
 # dashboard.py's registrations, captured at import (some test files clear the registry later in a run).
-from RevenueChaser.app import dashboard as _dashboard  # noqa: E402
+from revenuechaser.app import dashboard as _dashboard  # noqa: E402
 _DASHBOARD_CANCELLABLE = {k for k, v in jobs._CANCELLABLE.items() if v}
 _DASHBOARD_JOBS = set(jobs._RUNNERS)
 
@@ -166,7 +166,7 @@ def test_dashboard_marks_the_checkpointed_jobs_cancellable():
 
 
 def test_a_running_job_that_cannot_stop_early_refuses_the_cancel(long_lane):
-    from RevenueChaser.core.tests.panel_client import panel_test_client
+    from revenuechaser.core.tests.panel_client import panel_test_client
     client = panel_test_client(_dashboard.app)
     started, release = threading.Event(), threading.Event()
     jobs.register("t_no_stop", lambda uw, **p: (started.set(), release.wait(5)), [], requires_uw=False,

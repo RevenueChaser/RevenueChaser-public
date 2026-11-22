@@ -14,11 +14,11 @@ from datetime import date, datetime, timedelta, timezone
 import duckdb
 import pytest
 
-from RevenueChaser.core import calendar, config, llm_prices, llm_spend
-from RevenueChaser.module_settings import newdata
-from RevenueChaser.rcdata import caps, ops, serving
-from RevenueChaser.rcdata.build import uw_spot_expiry_strike as spx
-from RevenueChaser.module_watchlists import store as wl_store
+from revenuechaser.core import calendar, config, llm_prices, llm_spend
+from revenuechaser.module_settings import newdata
+from revenuechaser.rcdata import caps, ops, serving
+from revenuechaser.rcdata.build import uw_spot_expiry_strike as spx
+from revenuechaser.module_watchlists import store as wl_store
 
 # 23:00 New York on Wednesday 28 Oct 2026: the latest complete session is that day.
 NOW = datetime(2026, 10, 29, 3, 0, tzinfo=timezone.utc)
@@ -141,12 +141,12 @@ def test_backfill_progress_from_the_parquet_folder(roots):
 
 
 def calendar_sessions(start, end):
-    from RevenueChaser.rcdata.build import base
+    from revenuechaser.rcdata.build import base
     return base.iter_sessions(start, end)
 
 
 def test_the_market_series_backfill_counts_partitions_per_source(roots):
-    from RevenueChaser.rcdata.build import market_series as ms
+    from revenuechaser.rcdata.build import market_series as ms
     for src, year in ((ms.SOURCES[0], 2025), (ms.SOURCES[0], 2026), (ms.SOURCES[1], 2026)):
         p = ms.partition_path(src, year)
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -331,7 +331,7 @@ def test_the_options_datasets_have_a_card_each_with_their_label_and_target():
         card = _card(data, name)
         assert card["label"] == newdata.LABELS[name] and card["label"] != name
         assert card["status"] == "never" and card["coverage_target"] == target
-    from RevenueChaser.rcdata.build.options import tables
+    from revenuechaser.rcdata.build.options import tables
     assert all(newdata.DATE_COLUMN[t] == "session_date" for t in tables.TABLES)
 
 

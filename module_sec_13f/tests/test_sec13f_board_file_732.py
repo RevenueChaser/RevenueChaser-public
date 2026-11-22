@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core import ownership, rawstore
-from RevenueChaser.module_sec_13f import engine, store
+from revenuechaser.core import ownership, rawstore
+from revenuechaser.module_sec_13f import engine, store
 
 Q1, Q2, Q3 = "2026-03-31", "2026-06-30", "2026-09-30"
 

@@ -12,8 +12,8 @@ import re
 
 import pytest
 
-from RevenueChaser.app import dashboard, logview, runview
-from RevenueChaser.core import provenance, rawstore
+from revenuechaser.app import dashboard, logview, runview
+from revenuechaser.core import provenance, rawstore
 
 TEMPLATE = dashboard.Path(dashboard.__file__).resolve().parent.parent / "templates" / "dashboard.html"
 

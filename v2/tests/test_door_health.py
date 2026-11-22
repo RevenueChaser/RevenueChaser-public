@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import time
 
-from RevenueChaser.v2.door import boards, config, health
+from revenuechaser.v2.door import boards, config, health
 
 
 def test_a_wedged_probe_is_a_timeout_and_the_others_still_answer():

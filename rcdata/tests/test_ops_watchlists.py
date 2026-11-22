@@ -13,7 +13,7 @@ import time
 
 import pytest
 
-from RevenueChaser.rcdata import ops, read
+from revenuechaser.rcdata import ops, read
 
 V1_WATCH_DDL = [
     *(f"CREATE TABLE watchlist_{k} (ticker TEXT PRIMARY KEY, added_at REAL NOT NULL, added_by TEXT, note TEXT)"
@@ -129,7 +129,7 @@ def test_the_reads_never_create_the_ops_file():
 
 
 def test_read_watchlists_returns_both_lists_by_ticker_and_counts_its_reads():
-    from RevenueChaser.module_watchlists import store
+    from revenuechaser.module_watchlists import store
     store.job_set("stock", "MSFT", True, by="leaps")
     store.job_set("stock", "AAPL", True, by="settings")
     store.job_set("option", "NVDA", True, by="sec_13f")
@@ -231,7 +231,7 @@ def test_concurrent_whole_list_replaces_raise_nothing_and_the_history_replays_to
 
 def test_picked_reads_avos_own_lists_and_the_stock_list_only():
     """avo, 18 Nov 2026: the boards take their watched names from watchlists.duckdb, his own lists included."""
-    from RevenueChaser.module_watchlists import store
+    from revenuechaser.module_watchlists import store
     store.add_symbol(store.create_list("Growth"), "AAA")
     store.job_set("stock", "BBB", True, by="settings")
     store.job_set("option", "CCC", True, by="leaps")                # an option-job name is not a pick
@@ -239,7 +239,7 @@ def test_picked_reads_avos_own_lists_and_the_stock_list_only():
 
 
 def test_picked_leaves_out_a_list_it_cannot_read_and_keeps_the_rest():
-    from RevenueChaser.module_watchlists import store
+    from revenuechaser.module_watchlists import store
     assert read.picked() == set()                                  # no file: nothing, never an error
     store.add_symbol(store.create_list("Growth"), "AAA")
     assert read.picked() == {"AAA"}                                # no stock list yet: the own list still counts

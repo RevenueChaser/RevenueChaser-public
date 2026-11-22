@@ -24,7 +24,7 @@ import re
 
 import pytest
 
-from RevenueChaser.core.tests.board_fixtures import BOARDS
+from revenuechaser.core.tests.board_fixtures import BOARDS
 
 #: The letters Turkish writes that the boards' own words never need.
 _LETTERS = re.compile(r"[şğıİŞĞöüçÖÜÇ]")

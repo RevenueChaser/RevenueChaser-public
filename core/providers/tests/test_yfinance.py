@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from RevenueChaser.core.providers import yfinance as yfp
+from revenuechaser.core.providers import yfinance as yfp
 
 _Y1 = pd.Timestamp("2022-12-31")
 _Y2 = pd.Timestamp("2023-12-31")

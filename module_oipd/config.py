@@ -6,7 +6,7 @@ distribution. All knobs live here so the fit is testable rather than magic.
 """
 from __future__ import annotations
 
-from RevenueChaser.core.config import OUTPUT_DIR
+from revenuechaser.core.config import OUTPUT_DIR
 
 # Regenerable artifacts (flat html + namespaced json), written via runners.
 OIPD_LATEST = OUTPUT_DIR / "oipd_latest.html"
@@ -70,5 +70,5 @@ def fit_config() -> dict:
 
 
 def model_version() -> str:
-    from RevenueChaser.core.ledger import model_version as _mv
+    from revenuechaser.core.ledger import model_version as _mv
     return _mv(SELECTION_VERSION, fit_config())

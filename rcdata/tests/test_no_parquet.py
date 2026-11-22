@@ -18,10 +18,10 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from RevenueChaser.rcdata import ops, serving
-from RevenueChaser.rcdata.build import DATASETS, base, due
-from RevenueChaser.rcdata.build import __main__ as cli
-from RevenueChaser.rcdata.build.ownership import edgar, form345_sets, sec13f_sets
+from revenuechaser.rcdata import ops, serving
+from revenuechaser.rcdata.build import DATASETS, base, due
+from revenuechaser.rcdata.build import __main__ as cli
+from revenuechaser.rcdata.build.ownership import edgar, form345_sets, sec13f_sets
 
 
 class _Stager:

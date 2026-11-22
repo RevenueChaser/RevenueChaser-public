@@ -6,10 +6,10 @@ NULL for an unknown rule. Synthetic indicators, no network.
 """
 from __future__ import annotations
 
-from RevenueChaser.module_swing_potential import scores
-from RevenueChaser.module_swing_potential.screeners import (
+from revenuechaser.module_swing_potential import scores
+from revenuechaser.module_swing_potential.screeners import (
     evaluate_minervini, evaluate_qullamaggie, evaluate_weinstein)
-from RevenueChaser.module_swing_potential.tests.test_gates import _PASS
+from revenuechaser.module_swing_potential.tests.test_gates import _PASS
 
 
 def _rule(gate, rule_id):
@@ -92,7 +92,7 @@ def test_the_multiplier_counts_only_passed_gates():
 
 
 def test_the_gate_rows_persist_through_the_real_table(rawstore_tmp_db):
-    from RevenueChaser.core import rawstore
+    from revenuechaser.core import rawstore
     scores.persist([{"ticker": "AAA", "ind": _without("sma200")}])
     got = rawstore.query("SELECT passed FROM swing_gates WHERE ticker='AAA' AND rule_id='ma200_rising'", db="swing_potential")
     assert got == [{"passed": None}]
@@ -101,8 +101,8 @@ def test_the_gate_rows_persist_through_the_real_table(rawstore_tmp_db):
 # ── the board ───────────────────────────────────────────────────────────────
 
 def _page(gate_overrides):
-    from RevenueChaser.module_swing_potential.pipeline import build_payload
-    from RevenueChaser.module_swing_potential.report import render_swing_dashboard
+    from revenuechaser.module_swing_potential.pipeline import build_payload
+    from revenuechaser.module_swing_potential.report import render_swing_dashboard
     ind = {**_without("sma150", "vol_ratio"), "ticker": "AAA"}
     p = build_payload([{"ticker": "AAA", "name": "A", "market_cap": 1e9, "sector": "Tech", "industry": "Soft",
                         "themes": [], "earnings_date": None, "ind": ind, "ohlc_stale": False}], top_n=10)
@@ -111,7 +111,7 @@ def _page(gate_overrides):
 
 
 def test_the_gate_button_and_modal_say_how_many_rules_were_known(tmp_path):
-    from RevenueChaser.core.tests.board_js import run_board_js
+    from revenuechaser.core.tests.board_js import run_board_js
     html, p = _page(None)
     gates = p["candidates"][0]["gates"]
     assert gates["minervini"]["score"] == "5/8 of 5 known"
@@ -127,7 +127,7 @@ console.log(JSON.stringify({sub: _els['m-sub'].textContent, rules: _els['m-rules
 
 def test_the_card_button_carries_the_score_text(tmp_path):
     """The cards are client-built from the payload (K10, #383 R3)."""
-    from RevenueChaser.core.tests.board_js import run_board_js
+    from revenuechaser.core.tests.board_js import run_board_js
     html, _ = _page(None)
     grid = run_board_js(html, """
 METHODS.minervini = false; METHODS.qullamaggie = true; render();

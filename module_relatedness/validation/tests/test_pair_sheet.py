@@ -7,7 +7,7 @@ import json
 import numpy as np
 import pytest
 
-from RevenueChaser.module_relatedness.validation import pair_sheet
+from revenuechaser.module_relatedness.validation import pair_sheet
 
 
 def _matrix(n=40, seed=3):

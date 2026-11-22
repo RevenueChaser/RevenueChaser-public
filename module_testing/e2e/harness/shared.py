@@ -135,7 +135,7 @@ def write_13f_totals(dashboard: Dashboard, totals: dict) -> dict:
 def store_of(dashboard: Dashboard) -> Iterator[None]:
     """``rawstore.STORE_DIR`` at ``dashboard``'s store and ``config.MARKET_DIR`` at its market root (the prices
     store's folder, G3) for the block: the test process reads and seeds through them."""
-    from RevenueChaser.core import config, rawstore
+    from revenuechaser.core import config, rawstore
     mp = pytest.MonkeyPatch()
     mp.setattr(rawstore, "STORE_DIR", dashboard.store_dir)
     mp.setattr(config, "MARKET_DIR", dashboard.env["RC_MARKET_DIR"])
@@ -158,8 +158,8 @@ def ops_rows(market_dir, table: str) -> list[dict]:
     """``table``'s rows in the ops store of the dashboard whose market root is ``market_dir``: ``ops.sqlite`` there,
     or its Redis namespace when ``RC_REDIS_URL`` is set (master plan Order 3). The test process reads them as the
     dashboard writes them, through ``rcdata.ops``; no file is opened by hand."""
-    from RevenueChaser.core import config
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.core import config
+    from revenuechaser.rcdata import ops
     mp = pytest.MonkeyPatch()
     mp.setattr(config, "MARKET_DIR", Path(market_dir))
     try:

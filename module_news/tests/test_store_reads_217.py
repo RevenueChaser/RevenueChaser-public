@@ -17,8 +17,8 @@ from pathlib import Path
 
 import pytest
 
-from RevenueChaser.core import provenance, rawstore
-from RevenueChaser.module_news import store_reads as sr
+from revenuechaser.core import provenance, rawstore
+from revenuechaser.module_news import store_reads as sr
 
 REPO = Path(__file__).resolve().parents[2]
 #: The six tables of the board's file, as the names a stray ``SELECT`` would spell.
@@ -72,7 +72,7 @@ def test_every_news_table_in_the_schema_has_a_name_here():
 
 def test_the_lane_cut_is_shared_with_the_page():
     """``report.lane`` (one row) and ``lane_freshness`` (the SQL) must cut the lanes the same way."""
-    from RevenueChaser.module_news import headlines, report
+    from revenuechaser.module_news import headlines, report
     assert sr.LANES == headlines.LANES == ("market", "stocks", "x")
     assert report.lane({"provider": "x-follow", "tickers": "[]"}) == "x"
     assert report.lane({"provider": "ibkr", "tickers": "[]"}) == "market"

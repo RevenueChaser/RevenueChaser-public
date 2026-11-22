@@ -34,7 +34,7 @@ def test_no_module_references_the_deleted_keyword_taxonomy():
 
 
 def test_taxonomy_no_longer_offers_a_keyword_or_sector_theme_label():
-    from RevenueChaser.core import taxonomy
+    from revenuechaser.core import taxonomy
     for name in _BANNED:
         assert not hasattr(taxonomy, name), f"core.taxonomy still defines {name}"
     assert "THEMES" not in taxonomy.__all__

@@ -14,10 +14,10 @@ import copy
 
 import pytest
 
-from RevenueChaser.core.tests.board_js import run_board_js
-from RevenueChaser.module_asymmetric_growth import engine, freeze, report
-from RevenueChaser.module_asymmetric_growth.engine import score_ticker
-from RevenueChaser.module_asymmetric_growth.tests.test_ag_payload_route_380 import _card, _result
+from revenuechaser.core.tests.board_js import run_board_js
+from revenuechaser.module_asymmetric_growth import engine, freeze, report
+from revenuechaser.module_asymmetric_growth.engine import score_ticker
+from revenuechaser.module_asymmetric_growth.tests.test_ag_payload_route_380 import _card, _result
 
 FLOWS = ("revenue", "gross_profit", "operating_cash_flow", "capex", "rd_expense")
 BALANCE = {"total_debt": 60.0, "cash": 400.0, "total_assets": 1200.0}

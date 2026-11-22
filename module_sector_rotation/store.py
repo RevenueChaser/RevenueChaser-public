@@ -10,8 +10,8 @@ import logging
 import time
 from datetime import date, datetime, timedelta
 
-from RevenueChaser.core import calendar, rawstore
-from RevenueChaser.core import rotation_reference
+from revenuechaser.core import calendar, rawstore
+from revenuechaser.core import rotation_reference
 from . import store_reads as sr
 from .universe import MACRO_SERIES  # noqa: F401 - re-exported name tests patch
 from . import engine

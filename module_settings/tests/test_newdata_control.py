@@ -16,12 +16,12 @@ from datetime import datetime, timezone
 import duckdb
 import pytest
 
-from RevenueChaser.core import calendar, config
-from RevenueChaser.module_settings import newdata
-from RevenueChaser.rcdata import ops, serving
-from RevenueChaser.rcdata.build.prices import serving as prices_serving
-from RevenueChaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401 - market roots per test
-from RevenueChaser.rcdata.tests.test_spine_security import built, run_all  # noqa: F401 - the 14 SEC-file names
+from revenuechaser.core import calendar, config
+from revenuechaser.module_settings import newdata
+from revenuechaser.rcdata import ops, serving
+from revenuechaser.rcdata.build.prices import serving as prices_serving
+from revenuechaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401 - market roots per test
+from revenuechaser.rcdata.tests.test_spine_security import built, run_all  # noqa: F401 - the 14 SEC-file names
 
 NOW = datetime(2026, 10, 29, 3, 0, tzinfo=timezone.utc)
 
@@ -102,7 +102,7 @@ def test_the_calendar_counts_one_row_per_name_because_the_bars_key_says_so():
     ``(security_id, session_date)`` is ``price_bar_daily``'s key. If that key ever changes, the calendar starts
     counting bars instead of names and nothing else would say so (the DISTINCT cost 8-10 s against 2 s on the live
     2.9 GB store, 5 Nov 2026, so it is not going back in as insurance)."""
-    from RevenueChaser.rcdata.build.prices import serving as prices_serving
+    from revenuechaser.rcdata.build.prices import serving as prices_serving
     assert prices_serving.KEYS["price_bar_daily"] == ("security_id", "session_date")
 
 
@@ -122,7 +122,7 @@ def test_no_prices_file_means_no_sessions(market_roots):
 
 
 def test_the_walk_counts_each_datasets_raw_and_parquet_folders(market_roots):
-    from RevenueChaser.rcdata.build import base
+    from revenuechaser.rcdata.build import base
     raw = base.raw_root() / "alpaca" / "bars" / "2026-10-28"
     raw.mkdir(parents=True)
     (raw / "a-1.json.gz").write_bytes(b"x" * 10)
@@ -178,7 +178,7 @@ def test_every_served_tables_rows_and_newest_day_are_in_one_map(market_roots):
 def test_the_walk_stops_when_it_runs_out_of_time_and_says_the_count_is_a_floor(market_roots, monkeypatch):
     """The ceiling is the job's now, not a render's (#434), but a pathological tree must still not hold the
     long-jobs worker for ever."""
-    from RevenueChaser.rcdata.build import base
+    from revenuechaser.rcdata.build import base
     raw = base.raw_root() / "sec" / "companyfacts"
     raw.mkdir(parents=True)
     (raw / "0.json.gz").write_bytes(b"z")
@@ -196,7 +196,7 @@ def test_the_walk_shares_one_deadline_and_a_folder_past_it_says_the_count_is_a_f
     it on its six entries and the two after it are out of time before their first entry. A slice per folder gave
     all three the same count; one shared deadline gives one of them everything. The assertion is about that and not
     about how fast this box's disk is, and it does not assume which folder ``_datasets()`` reaches first."""
-    from RevenueChaser.rcdata.build import base
+    from revenuechaser.rcdata.build import base
     names = ("alpaca/bars", "sec/companyfacts", "sec/13f")
     for name in names:
         folder = base.raw_root().joinpath(*name.split("/"))

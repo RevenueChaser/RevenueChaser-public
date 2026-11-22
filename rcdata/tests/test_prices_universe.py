@@ -9,9 +9,9 @@ from __future__ import annotations
 import duckdb
 import pytest
 
-from RevenueChaser.rcdata import serving
-from RevenueChaser.rcdata.build.prices import universe
-from RevenueChaser.rcdata.build.prices import serving as prices_serving
+from revenuechaser.rcdata import serving
+from revenuechaser.rcdata.build.prices import universe
+from revenuechaser.rcdata.build.prices import serving as prices_serving
 
 from .prices_fixture import SPINE, write_spine
 
@@ -34,7 +34,7 @@ def test_only_a_stored_type_is_a_stock_of_the_universe(security_type, kept):
 def test_every_stored_stock_type_is_one_the_identity_master_calls_operating():
     """The two lists may differ -- the store keeps four of the seven -- but never disagree: a type the store keeps
     that the identity master does not call operating would be a typo, not a decision."""
-    from RevenueChaser.core.identity.types import OPERATING_TYPES
+    from revenuechaser.core.identity.types import OPERATING_TYPES
     assert not set(universe.STOCK_TYPES) - OPERATING_TYPES
 
 
@@ -139,7 +139,7 @@ def test_the_build_filters_every_stored_source_through_one_universe_table():
     assert universe.UNIVERSE_SQL.count("stg_spine") >= 1
     for sql in (prices_serving.BUILD_SQL, ):
         assert "_universe" in sql
-    from RevenueChaser.rcdata.build.prices import wrds_history
+    from revenuechaser.rcdata.build.prices import wrds_history
     for name, sql in (("CRSP_BARS", wrds_history.CRSP_BARS), ("COMP_BARS", wrds_history.COMP_BARS)):
         assert universe.IN_UNIVERSE.split("{sid}")[1].strip() in sql, f"{name} does not filter on the universe"
 

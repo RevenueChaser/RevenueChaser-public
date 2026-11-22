@@ -11,10 +11,10 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from RevenueChaser.core.providers import sec_edgar
-from RevenueChaser.rcdata import ops, read, serving
-from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.ownership import edgar, form4, form345_sets, sec, sec13f_sets
+from revenuechaser.core.providers import sec_edgar
+from revenuechaser.rcdata import ops, read, serving
+from revenuechaser.rcdata.build import base
+from revenuechaser.rcdata.build.ownership import edgar, form4, form345_sets, sec, sec13f_sets
 
 from . import ownership_fixture as ox
 

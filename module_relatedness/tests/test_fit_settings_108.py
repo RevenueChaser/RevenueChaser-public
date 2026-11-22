@@ -14,10 +14,10 @@ import json
 import numpy as np
 import pytest
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_relatedness import __main__ as cli
-from RevenueChaser.module_relatedness import themes
-from RevenueChaser.module_relatedness.tests.test_themes import _half
+from revenuechaser.core import rawstore
+from revenuechaser.module_relatedness import __main__ as cli
+from revenuechaser.module_relatedness import themes
+from revenuechaser.module_relatedness.tests.test_themes import _half
 
 
 @pytest.fixture
@@ -141,7 +141,7 @@ def test_a_full_rebuild_names_the_fit_too(rebuild_spy, capsys):
     ["--status", "--nmf-max-iter", "60"],
 ])
 def test_fit_flags_outside_a_rebuild_or_out_of_range_are_refused(rebuild_spy, monkeypatch, argv):
-    from RevenueChaser.module_relatedness import engine
+    from revenuechaser.module_relatedness import engine
     runs = []
     monkeypatch.setattr(engine, "run", lambda **k: runs.append(k) or {})
     with pytest.raises(SystemExit) as exc:

@@ -10,8 +10,8 @@ from datetime import date, timedelta
 
 import pytest
 
-from RevenueChaser.module_spx_gamma import store_reads
-from RevenueChaser.rcdata import needs
+from revenuechaser.module_spx_gamma import store_reads
+from revenuechaser.rcdata import needs
 
 from . import rcdata_fixture as fx
 
@@ -47,7 +47,7 @@ def test_the_schedule_is_read_through_its_own_need(rcdata_market):
     need = needs.NEEDS["market.cot_release"]
     assert need.table == "market_series" and need.filter_values == ("CFTC_COT_RELEASE_LAG",)
     assert need.providers == ("cftc",)
-    from RevenueChaser.module_spx_gamma import READS
+    from revenuechaser.module_spx_gamma import READS
     assert "market.cot_release" in READS
 
 

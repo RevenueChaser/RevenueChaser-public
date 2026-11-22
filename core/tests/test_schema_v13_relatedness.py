@@ -10,7 +10,7 @@ from __future__ import annotations
 import duckdb
 import pytest
 
-from RevenueChaser.core import rawstore
+from revenuechaser.core import rawstore
 
 V13_COLUMNS = {"relatedness_profiles": ("profile_json", "label_source")}
 V13_TABLE = "relatedness_embeddings"

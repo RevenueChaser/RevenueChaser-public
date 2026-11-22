@@ -13,9 +13,9 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from RevenueChaser.module_settings import newdata, report
-from RevenueChaser.module_settings.tests.test_newdata_findings import _card as _card_html
-from RevenueChaser.module_settings.tests.test_newdata_findings import _page, _section
+from revenuechaser.module_settings import newdata, report
+from revenuechaser.module_settings.tests.test_newdata_findings import _card as _card_html
+from revenuechaser.module_settings.tests.test_newdata_findings import _page, _section
 
 NOW = datetime(2026, 10, 29, 18, 30, tzinfo=timezone.utc)
 
@@ -52,7 +52,7 @@ def test_a_swap_inside_the_hour_is_read_again_rather_than_served_from_the_cache(
     also what keeps one test's rows out of the next one's cache, since every test has its own store root."""
     import time
 
-    from RevenueChaser.rcdata import serving
+    from revenuechaser.rcdata import serving
     reads = []
     read = lambda name: (reads.append(name), {"columns": [], "rows": [[len(reads)]]})[1]
     first = newdata._cached_sample("price_bar_daily", NOW, read)
@@ -145,7 +145,7 @@ class _DateCursor:
 # ── the card ──
 
 def _with_sample(sample: dict | None):
-    from RevenueChaser.core.tests.board_fixtures import newdata_fixture
+    from revenuechaser.core.tests.board_fixtures import newdata_fixture
     nd = newdata_fixture()
     nd["datasets"] = [{**nd["datasets"][0], "samples": [sample] if sample else []}]
     return nd
@@ -158,9 +158,9 @@ def prices_store(tmp_path, monkeypatch):
     """A live prices.duckdb with two bars, built the way ``test_newdata_prices`` builds it."""
     import duckdb
 
-    from RevenueChaser.core import calendar, config
-    from RevenueChaser.rcdata import ops, serving
-    from RevenueChaser.rcdata.build.prices import serving as prices_serving
+    from revenuechaser.core import calendar, config
+    from revenuechaser.rcdata import ops, serving
+    from revenuechaser.rcdata.build.prices import serving as prices_serving
     monkeypatch.setattr(config, "MARKET_DIR", tmp_path / "market")
     monkeypatch.setattr(config, "MARKET_RAW_DIR", tmp_path / "market_raw")
     monkeypatch.setattr(config, "RAW_STORE_BACKUP_DIR", str(tmp_path / "backups"))

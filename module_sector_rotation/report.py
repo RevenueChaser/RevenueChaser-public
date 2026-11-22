@@ -1,15 +1,15 @@
 """Rotation Map Dashboard — RRG-style quadrant HTML with ETF data table."""
-from RevenueChaser.core.reporting_common import (help_html, provider_health_html, watch_buttons_html, watchlist_html,
+from revenuechaser.core.reporting_common import (help_html, provider_health_html, watch_buttons_html, watchlist_html,
                                                  write_artifact)
-from RevenueChaser.core.html_safe import ESC_JS, esc, fill, script_json
+from revenuechaser.core.html_safe import ESC_JS, esc, fill, script_json
 import html as _html
 from datetime import datetime, date
 from pathlib import Path
 from typing import Optional
-from RevenueChaser.core.config import OUTPUT_DIR
-from RevenueChaser.core.gics_map import UNCLASSIFIED
-from RevenueChaser.module_sector_rotation.models import ETFRotationSnapshot
-from RevenueChaser.core import rotation_reference
+from revenuechaser.core.config import OUTPUT_DIR
+from revenuechaser.core.gics_map import UNCLASSIFIED
+from revenuechaser.module_sector_rotation.models import ETFRotationSnapshot
+from revenuechaser.core import rotation_reference
 from .universe import MACRO_SERIES, GROUP_COLORS, QUADRANT_COLORS
 from .theme_focus import coarse_theme_catalog
 
@@ -1009,7 +1009,7 @@ def export_rotation_dashboard(snapshots: list[ETFRotationSnapshot], filename: st
 
     # Table. Under avo's hand-written name, what the fund is by its holdings (``etf_class``), so the two are never
     # taken for each other (avo's B, 18 Nov 2026); a fund with no label (a macro series, no spine yet) shows none.
-    from RevenueChaser.module_watchlists.board import class_labels
+    from revenuechaser.module_watchlists.board import class_labels
     data_labels = class_labels([s.ticker for s in snapshots_sorted if s.ticker not in MACRO_SERIES])
     rows = ""
     for s in snapshots_sorted:

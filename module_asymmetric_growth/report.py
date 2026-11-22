@@ -3,16 +3,16 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from RevenueChaser.core import funnel as funnel_mod
-from RevenueChaser.core import ticker_store
-from RevenueChaser.core import universe as _universe
-from RevenueChaser.core.gics_map import sector_path
-from RevenueChaser.core.html_safe import esc, script_json
-from RevenueChaser.core.reporting_common import (
+from revenuechaser.core import funnel as funnel_mod
+from revenuechaser.core import ticker_store
+from revenuechaser.core import universe as _universe
+from revenuechaser.core.gics_map import sector_path
+from revenuechaser.core.html_safe import esc, script_json
+from revenuechaser.core.reporting_common import (
     FILTERS_CSS, FILTERS_JS, PAYLOAD_JS, filters_bar_html, filters_meta,
     help_html, notice_html, provider_health_html, universe_provenance_html, watchlist_html,
 )
-from RevenueChaser.module_asymmetric_growth import engine
+from revenuechaser.module_asymmetric_growth import engine
 
 
 def _card_rows(cards: list[dict]) -> list[dict]:

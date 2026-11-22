@@ -14,9 +14,9 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from RevenueChaser.rcdata import serving
-from RevenueChaser.rcdata.build import base, dirty
-from RevenueChaser.rcdata.build.ownership import KIND, common, finra, form4, ftd, ibkr, regsho, sched13dg, sec13f, serve
+from revenuechaser.rcdata import serving
+from revenuechaser.rcdata.build import base, dirty
+from revenuechaser.rcdata.build.ownership import KIND, common, finra, form4, ftd, ibkr, regsho, sched13dg, sec13f, serve
 
 from . import ownership_fixture as ox
 

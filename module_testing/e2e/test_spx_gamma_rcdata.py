@@ -43,7 +43,7 @@ def _uw_routes(server) -> None:
 @pytest.fixture
 def market_roots(tmp_path, monkeypatch):
     """Market roots of this test: the fixture builds here, and the dashboard subprocess reads here."""
-    from RevenueChaser.core import config
+    from revenuechaser.core import config
     ssd, hdd = tmp_path / "market", tmp_path / "market_raw"
     monkeypatch.setattr(config, "MARKET_DIR", ssd)
     monkeypatch.setattr(config, "MARKET_RAW_DIR", hdd)
@@ -52,7 +52,7 @@ def market_roots(tmp_path, monkeypatch):
 
 def _board(tmp_path, e2e_env, market_roots, *, stored: bool):
     if stored:
-        from RevenueChaser.module_spx_gamma.tests import rcdata_fixture
+        from revenuechaser.module_spx_gamma.tests import rcdata_fixture
         rcdata_fixture.serve()
     ssd, hdd = market_roots
     env = {**e2e_env, "RC_MARKET_DIR": str(ssd), "RC_MARKET_RAW_DIR": str(hdd),

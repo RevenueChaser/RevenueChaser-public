@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from RevenueChaser.core.tests.board_fixtures import BOARDS
+from revenuechaser.core.tests.board_fixtures import BOARDS
 
 ROOT = Path(__file__).resolve().parents[2]
 HEADER = "X-RC-Panel"
@@ -111,7 +111,7 @@ def test_a_rendered_board_sends_the_panel_header(key, tmp_path, monkeypatch, raw
 
 
 def test_the_rendered_shell_sends_the_panel_header():
-    from RevenueChaser.app import dashboard
+    from revenuechaser.app import dashboard
     html = dashboard.app.test_client().get("/").get_data(as_text=True)
     calls = post_calls(html)
     assert len(calls) == 2, "fetchTab and cancelJob"

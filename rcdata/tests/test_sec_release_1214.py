@@ -13,11 +13,11 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.core.providers import sec_edgar
-from RevenueChaser.module_earnings_radar import store_reads
-from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.fundamentals import filings
-from RevenueChaser.rcdata.build.sec_forms import forms
+from revenuechaser.core.providers import sec_edgar
+from revenuechaser.module_earnings_radar import store_reads
+from revenuechaser.rcdata.build import base
+from revenuechaser.rcdata.build.fundamentals import filings
+from revenuechaser.rcdata.build.sec_forms import forms
 
 from . import fund_fixture as fx
 

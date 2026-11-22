@@ -11,10 +11,10 @@ from __future__ import annotations
 import json
 from datetime import date, datetime, timezone
 
-from RevenueChaser.core.providers import sec_edgar
-from RevenueChaser.rcdata import read, serving
-from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.ownership import finra, ibkr, sec, sec13f, serve
+from revenuechaser.core.providers import sec_edgar
+from revenuechaser.rcdata import read, serving
+from revenuechaser.rcdata.build import base
+from revenuechaser.rcdata.build.ownership import finra, ibkr, sec, sec13f, serve
 
 from . import ownership_fixture as ox
 from . import prices_store
@@ -27,7 +27,7 @@ NOON_NY = datetime(2026, 10, 28, 16, 0, tzinfo=timezone.utc).timestamp()      # 
 
 
 def _uw_ready(monkeypatch) -> None:
-    from RevenueChaser.core.providers import unusual_whales
+    from revenuechaser.core.providers import unusual_whales
     monkeypatch.setattr(sec, "_shared_pace", lambda: True)
     monkeypatch.setenv("RC_HTTP_CONTACT", "ops@example.org")
     monkeypatch.setenv("UNUSUAL_WHALES_API_KEY", "test-key")
@@ -37,7 +37,7 @@ def _uw_ready(monkeypatch) -> None:
 
 def _uw_institutions(http_mock, rows: list[dict]) -> None:
     """UW's ``/institutions`` answering ``rows`` on its first page, read once as of 12 Nov 2026."""
-    from RevenueChaser.rcdata.build.ownership import uw_institutions as uwi
+    from revenuechaser.rcdata.build.ownership import uw_institutions as uwi
 
     def answer(request):
         page = request.url.query.decode()

@@ -9,9 +9,9 @@ from __future__ import annotations
 import json
 from datetime import date
 
-from RevenueChaser.rcdata import ops
-from RevenueChaser.rcdata.build import base, market_series as ms
-from RevenueChaser.rcdata.build.sources import fred
+from revenuechaser.rcdata import ops
+from revenuechaser.rcdata.build import base, market_series as ms
+from revenuechaser.rcdata.build.sources import fred
 
 RUN_ID = "earnings-fixture-run"
 
@@ -43,7 +43,7 @@ def serve_economic(sweeps: dict, *, fetched_at: float = 1.0, check: str | None =
     An item may give ``event_ts`` (epoch seconds) in place of UW's ``time`` text."""
     from datetime import datetime, timezone
 
-    from RevenueChaser.rcdata.build import uw_economic_calendar as econ
+    from revenuechaser.rcdata.build import uw_economic_calendar as econ
 
     ctx = base.RunContext(run_id=RUN_ID, dataset=econ.NAME, trigger="test", allow_shrink=True)
     raws = []
@@ -67,7 +67,7 @@ def serve_fda(sweeps: dict, *, fetched_at: float = 1.0, check: str | None = "cha
     one raw fetch per day written at ``fetched_at``, typed by ``uw/fda_calendar``'s own ``to_parquet_all``, then the
     kind built and swapped in. An item carries UW's own fields (``ticker``, ``drug``, ``start_date``, ``catalyst``,
     ...); a later call adds its days and replaces a day it names again (#807)."""
-    from RevenueChaser.rcdata.build import uw_fda_calendar as fda
+    from revenuechaser.rcdata.build import uw_fda_calendar as fda
 
     ctx = base.RunContext(run_id=RUN_ID, dataset=fda.NAME, trigger="test", allow_shrink=True)
     raws = []
@@ -91,9 +91,9 @@ def serve_estimates(rows: list[dict], *, as_of: date | None = None, check: str |
     leaves out written NULL. ``rows`` carry at least ``ticker`` and ``period``. ``as_of`` (default New York's today, so
     a reader's age limit sees a fresh row whenever the suite runs) is every row's ``source_as_of`` unless it names its own.
     """
-    from RevenueChaser.core import calendar
-    from RevenueChaser.rcdata import serving
-    from RevenueChaser.rcdata.build.fundamentals import estimates as est
+    from revenuechaser.core import calendar
+    from revenuechaser.rcdata import serving
+    from revenuechaser.rcdata.build.fundamentals import estimates as est
 
     as_of = as_of or calendar.today_ny()
     schema = est.schema()
@@ -119,8 +119,8 @@ def serve_short_interest(finra_rows: list[dict], shortable_rows: list[dict] = ()
     least ``ticker`` and ``settlement_date`` (``symbol`` defaults to the ticker); a shortable row ``ticker`` and
     ``session_date``.
     """
-    from RevenueChaser.rcdata import serving
-    from RevenueChaser.rcdata.build.ownership import finra, ibkr
+    from revenuechaser.rcdata import serving
+    from revenuechaser.rcdata.build.ownership import finra, ibkr
 
     with serving.build("ownership") as b:
         counts = {}

@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core import job_lock
-from RevenueChaser.rcdata.build import base
+from revenuechaser.core import job_lock
+from revenuechaser.rcdata.build import base
 
 
 def test_the_pacer_never_lets_120_calls_into_one_minute():

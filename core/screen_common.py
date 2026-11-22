@@ -38,12 +38,12 @@ from typing import Any, Callable
 
 import pandas as pd
 
-from RevenueChaser.core import calendar, earnings_dates, fiscal_year, funnel, job_control, ledger, price_hygiene
-from RevenueChaser.core import universe as _universe
-from RevenueChaser.core.config import to_float
-from RevenueChaser.core.gics_map import UNCLASSIFIED
-from RevenueChaser.core.scan_quality import DROP_LABELS, count_drops, no_data_payload
-from RevenueChaser.rcdata import opens  # #566: pooled reads count for this run
+from revenuechaser.core import calendar, earnings_dates, fiscal_year, funnel, job_control, ledger, price_hygiene
+from revenuechaser.core import universe as _universe
+from revenuechaser.core.config import to_float
+from revenuechaser.core.gics_map import UNCLASSIFIED
+from revenuechaser.core.scan_quality import DROP_LABELS, count_drops, no_data_payload
+from revenuechaser.rcdata import opens  # #566: pooled reads count for this run
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +85,7 @@ def prefilter(rows: list[dict], cfg: Any, quotes: dict[str, dict] | None = None)
     ``no_volume`` so the board counts it (S4, #434 review). The trend rules (52-week distance, above the 50-day average) are gone: the gates test them on fresh bars.
     """
     if quotes is None:
-        from RevenueChaser.rcdata import read as _read
+        from revenuechaser.rcdata import read as _read
         quotes = _read.latest_volume([r.get("ticker") for r in rows])
     kept: list[dict] = []
     drops: dict[str, list[str]] = {}
@@ -148,7 +148,7 @@ def load_spy(now=None):
     try:
         session = calendar.latest_complete_session(now)
         if ledger.d01_has_session(session, "SPY"):
-            from RevenueChaser.core import prices
+            from revenuechaser.core import prices
             bars = prices.daily_bars(["SPY"], basis="adjusted", start=session - timedelta(days=SPY_BASELINE_DAYS))
             frame = _ohlcv(bars)
             if not frame.empty:
@@ -171,7 +171,7 @@ def load_spy_newest(now=None):
     if not frame.empty:
         return frame
     try:
-        from RevenueChaser.core import prices
+        from revenuechaser.core import prices
         session = calendar.latest_complete_session(now)
         newest = _ohlcv(prices.daily_bars(["SPY"], basis="adjusted", start=session - timedelta(days=SPY_BASELINE_DAYS)))
         newest = newest[newest.index.date <= session] if not newest.empty else newest
@@ -218,7 +218,7 @@ def _split_bars(frame: pd.DataFrame, ticker: str, session: date) -> pd.DataFrame
 def load_bars_many(tickers, now=None) -> dict[str, tuple[pd.DataFrame, pd.DataFrame]]:
     """``{ticker: (nominal, adjusted)}`` for many names from one D01 read (S3, #434 review), each pair equal to
     ``load_bars(ticker)``. A name D01 has no bar of in the window gets two empty frames."""
-    from RevenueChaser.core import prices
+    from revenuechaser.core import prices
     names = list(dict.fromkeys(str(t).strip().upper() for t in tickers if t))
     session = calendar.latest_complete_session(now)
     both = prices.daily_bars_bases(names, start=session - timedelta(days=BAR_DAYS))
@@ -568,7 +568,7 @@ def run_screen(*, board: str, refreshed_by: str, cfg: Any,
         "universe_partial": bool(u_stats.get("partial")),
     }
     # K7 (#383 R3): the payload's data date is the newest D01 bar over the names this Fetch scored.
-    from RevenueChaser.core import provenance
+    from revenuechaser.core import provenance
     run_stats["data_as_of"] = provenance.d01_day(r.get("ticker") for r in results)
     if extra_stats is not None:
         run_stats.update(extra_stats())

@@ -11,8 +11,8 @@ sentence about candidate names out and kept the version, and the stored hash is 
 imported row carries the service's hash of the same text, and the stored row's own writer, status, attempts and
 ``fetched_at``.
 
-    python -m RevenueChaser.module_relatedness.service_import            # the counts, as JSON; writes nothing
-    python -m RevenueChaser.module_relatedness.service_import --write    # the write: the owner's word, a backup
+    python -m revenuechaser.module_relatedness.service_import            # the counts, as JSON; writes nothing
+    python -m revenuechaser.module_relatedness.service_import --write    # the write: the owner's word, a backup
 
 On the server: read-only, with ``RC_STORE_AUTO_ENSURE=0`` (``CLAUDE.md``, Data safety).
 """

@@ -13,8 +13,8 @@ The three cases are read off ``net_cash``, so the tests below pin the pipeline i
 """
 from __future__ import annotations
 
-from RevenueChaser.module_fundamentals.pipeline import _quality_metrics
-from RevenueChaser.module_fundamentals.screeners import (LOSS_WITH_NET_DEBT_NOTE, evaluate_quality)
+from revenuechaser.module_fundamentals.pipeline import _quality_metrics
+from revenuechaser.module_fundamentals.screeners import (LOSS_WITH_NET_DEBT_NOTE, evaluate_quality)
 
 
 def _year(ebit, debt, cash, **over):

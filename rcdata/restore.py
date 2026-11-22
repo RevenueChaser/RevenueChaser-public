@@ -1,4 +1,4 @@
-"""``python -m RevenueChaser.rcdata restore`` and ``restore-check``: a weekly backup copy back into use.
+"""``python -m revenuechaser.rcdata restore`` and ``restore-check``: a weekly backup copy back into use.
 
     rcdata restore --step duckdb --latest market --into /tmp/rc-restore     # verify and copy into a folder
     rcdata restore --step boards --file oipd_20261108_023000_000000.duckdb --live
@@ -141,7 +141,7 @@ def live_target(step: str, src: Path) -> Path:
             raise RestoreRefused(f"{src.name}: not a copy of a board file ({', '.join(rawstore.BOARD_DBS)})")
         return rawstore.board_db_path(stem)
     if step == backup.STEP_OPS:
-        raise RestoreRefused("ops --live is a step by hand: on Redis `python -m RevenueChaser.rcdata.ops_copy "
+        raise RestoreRefused("ops --live is a step by hand: on Redis `python -m revenuechaser.rcdata.ops_copy "
                              "--sqlite <copy>` into an EMPTY namespace (emptying one is a delete: avo's word first); "
                              "on ops.sqlite copy the file into place with the dashboard stopped")
     raise RestoreRefused(f"{step} --live is a copy by hand: restore it --into a folder and move the files yourself")
@@ -277,7 +277,7 @@ def run(args) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(prog="python -m RevenueChaser.rcdata")
+    p = argparse.ArgumentParser(prog="python -m revenuechaser.rcdata")
     sub = p.add_subparsers(dest="cmd", required=True)
     add_parsers(sub)
     return run(p.parse_args(argv))

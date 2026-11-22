@@ -11,8 +11,8 @@ from datetime import date, timedelta
 
 import pytest
 
-from RevenueChaser.core import calendar
-from RevenueChaser.rcdata import read
+from revenuechaser.core import calendar
+from revenuechaser.rcdata import read
 
 from . import prices_store
 

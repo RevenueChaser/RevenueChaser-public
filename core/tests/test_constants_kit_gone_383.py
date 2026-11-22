@@ -33,5 +33,5 @@ def test_no_module_references_the_deleted_constants_kit():
 
 
 def test_reporting_common_has_no_mc_filter_attribute():
-    from RevenueChaser.core import reporting_common
+    from revenuechaser.core import reporting_common
     assert not hasattr(reporting_common, "MC_" + "FILTER_JS")

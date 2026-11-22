@@ -11,11 +11,11 @@ from types import SimpleNamespace
 import pandas as pd
 import pytest
 
-from RevenueChaser.core import screen_common as sc
-from RevenueChaser.module_fundamentals import config as fcfg
-from RevenueChaser.module_fundamentals import pipeline as fp
-from RevenueChaser.module_swing_potential import config as scfg
-from RevenueChaser.module_swing_potential import pipeline as sp
+from revenuechaser.core import screen_common as sc
+from revenuechaser.module_fundamentals import config as fcfg
+from revenuechaser.module_fundamentals import pipeline as fp
+from revenuechaser.module_swing_potential import config as scfg
+from revenuechaser.module_swing_potential import pipeline as sp
 
 CFG = SimpleNamespace(MIN_PRICE=5.0, MIN_DOLLAR_VOLUME=250_000.0)
 
@@ -94,7 +94,7 @@ def test_spy_summary_of_nothing_is_all_none():
 
 # ── run_screen ────────────────────────────────────────────────────────────────
 
-from RevenueChaser.core.gics_map import GicsPath as _GP  # noqa: E402
+from revenuechaser.core.gics_map import GicsPath as _GP  # noqa: E402
 
 
 class Board:
@@ -335,7 +335,7 @@ def test_each_board_loads_the_universe_under_its_own_name_with_the_callers_flags
 
 @pytest.mark.parametrize("mod", [sp, fp], ids=["swing", "fundamentals"])
 def test_top_n_reaches_the_payload(rawstore_tmp_db, monkeypatch, mod):
-    from RevenueChaser.core.tests import screen_parity as scn
+    from revenuechaser.core.tests import screen_parity as scn
     scn.seed()
     scn.patch(monkeypatch)
     everything = mod.run_scan()["candidates"]

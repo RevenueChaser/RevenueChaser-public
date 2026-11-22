@@ -1,7 +1,7 @@
 """Relatedness durable tables (Phase 6 schema) — populate + round-trip."""
 from __future__ import annotations
 
-from RevenueChaser.core import rawstore
+from revenuechaser.core import rawstore
 
 
 def test_llm_cache_and_profiles(rawstore_tmp_db):

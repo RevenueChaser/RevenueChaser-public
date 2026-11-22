@@ -20,8 +20,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from RevenueChaser.core import rawstore, universe
-from RevenueChaser.module_relatedness import store_reads as sr
+from revenuechaser.core import rawstore, universe
+from revenuechaser.module_relatedness import store_reads as sr
 
 REPO = Path(__file__).resolve().parents[2]
 #: The eleven tables of the board's file, as the names a stray ``SELECT`` would spell.

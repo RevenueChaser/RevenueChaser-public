@@ -31,7 +31,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from RevenueChaser.core import rawstore
+from revenuechaser.core import rawstore
 
 #: The board's DuckDB file, as ``rawstore`` names it.
 DB = "sector_rotation"

@@ -13,7 +13,7 @@ import os
 
 import pytest
 
-from RevenueChaser.module_uw_interaction import config as uwcfg
+from revenuechaser.module_uw_interaction import config as uwcfg
 
 
 @pytest.fixture

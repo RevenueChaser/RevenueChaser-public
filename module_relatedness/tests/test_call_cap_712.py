@@ -3,7 +3,7 @@
 Before this, the cap was 8.0 USD at an unmeasured 0.006 USD a call, so a run stopped after 1,333 calls
 and looked finished. A full round is every company with usable text: ~4,750 names at 1.67 calls each.
 """
-from RevenueChaser.module_relatedness import config
+from revenuechaser.module_relatedness import config
 
 FULL_ROUND_CALLS = 7_900
 

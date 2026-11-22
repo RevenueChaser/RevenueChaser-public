@@ -13,7 +13,7 @@ import time
 
 import pytest
 
-from RevenueChaser.rcdata import ops
+from revenuechaser.rcdata import ops
 
 DAY = 86400.0
 

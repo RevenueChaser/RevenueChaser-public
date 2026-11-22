@@ -1,7 +1,7 @@
 """Tests for the rendered Markdown/HTML section."""
 from __future__ import annotations
 
-from RevenueChaser.module_spx_gamma import render
+from revenuechaser.module_spx_gamma import render
 from .conftest import make_snapshot
 
 LEGACY = []

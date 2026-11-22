@@ -12,9 +12,9 @@ from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
-from RevenueChaser.rcdata.tests import universe_store
-from RevenueChaser.core import baselines, calendar as cal, ledger, outcomes, prices, rawstore
-from RevenueChaser.core.tests.d01_seed import drop_d01, write_d01
+from revenuechaser.rcdata.tests import universe_store
+from revenuechaser.core import baselines, calendar as cal, ledger, outcomes, prices, rawstore
+from revenuechaser.core.tests.d01_seed import drop_d01, write_d01
 
 D = date(2026, 9, 1)                      # the freeze date (a Tuesday)
 END30 = date(2026, 10, 1)                 # the last session on or before D + 30 days
@@ -141,7 +141,7 @@ def test_the_dated_universe_is_each_names_stays_in_the_list(rawstore_tmp_db):
         _change("AAA", "entered", date(2026, 11, 5)), _change("BBB", "entered", date(2026, 11, 5)),
         _change("SPY", "entered", date(2026, 11, 5), kind="etf"),
         _change("BBB", "left", date(2026, 11, 9)), _change("BBB", "entered", date(2026, 11, 12))])
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     got = [(s["ticker"], s["entered_on"], s["left_on"]) for s in read.my_universe_spans(("stock",))]
     assert got == [("AAA", date(2026, 11, 5), None), ("BBB", date(2026, 11, 5), date(2026, 11, 9)),
                    ("BBB", date(2026, 11, 12), None)]

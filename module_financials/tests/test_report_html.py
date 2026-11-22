@@ -5,7 +5,7 @@ written into .store — so the viewer can never mistake a cached re-render for f
 """
 from __future__ import annotations
 
-from RevenueChaser.module_financials.reporting.html_builder import build_report_html
+from revenuechaser.module_financials.reporting.html_builder import build_report_html
 
 
 def _results(financials: dict) -> dict:

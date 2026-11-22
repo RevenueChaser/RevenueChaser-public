@@ -6,9 +6,9 @@ from datetime import date, datetime
 
 import pytest
 
-from RevenueChaser.core import econ_importance, rawstore
-from RevenueChaser.module_earnings_radar.tests.market_store_fixture import serve_economic, serve_fda
-from RevenueChaser.module_news import calendar as cal
+from revenuechaser.core import econ_importance, rawstore
+from revenuechaser.module_earnings_radar.tests.market_store_fixture import serve_economic, serve_fda
+from revenuechaser.module_news import calendar as cal
 
 T0 = datetime(2026, 11, 20, 14, 30, tzinfo=cal.AMS).timestamp()     # Fri 20 Nov 14:30 Amsterdam
 PDUFA = {"ticker": "IOVA", "drug": "Lifileucel", "status": "NDA", "catalyst": "PDUFA Date",
@@ -113,7 +113,7 @@ def test_the_economic_lane_does_not_retire_an_fda_row_and_the_two_marks_are_thei
 def test_the_board_page_shows_the_stored_fda_lane():
     """#807 stored the lane and kept it off the page until avo had approved a mock; #808 is that tab (avo,
     19 Nov 2026: "News olur"), so a stored catalyst now stands on the board with its own two columns."""
-    from RevenueChaser.module_news import report
+    from revenuechaser.module_news import report
     _sweep([{**PDUFA, "start_date": "2026-11-21", "end_date": "2026-11-21"}], fetched_at=100.0)
     cal.build(now=T0)
     html = report.render_html(now=T0)

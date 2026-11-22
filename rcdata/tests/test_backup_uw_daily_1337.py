@@ -13,8 +13,8 @@ from pathlib import Path
 
 import pytest
 
-from RevenueChaser.core import config
-from RevenueChaser.rcdata import backup
+from revenuechaser.core import config
+from revenuechaser.rcdata import backup
 
 
 def _file(path: Path, data: bytes, age_s: float = 3600) -> None:
@@ -34,7 +34,7 @@ def backup_dir(tmp_path, monkeypatch):
 @pytest.fixture
 def trees(tmp_path, monkeypatch):
     """The three trees the step copies: the UW raw folder, the UW Parquet folder and the SPX Gamma tree."""
-    from RevenueChaser.module_spx_gamma import config as spx_config
+    from revenuechaser.module_spx_gamma import config as spx_config
     uw = config.MARKET_RAW_DIR / "raw" / "uw"
     parquet = config.MARKET_RAW_DIR / "parquet" / "uw"
     spx = tmp_path / "spx_gamma"

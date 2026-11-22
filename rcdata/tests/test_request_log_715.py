@@ -5,8 +5,8 @@ import json
 
 import pytest
 
-from RevenueChaser.rcdata import ops
-from RevenueChaser.rcdata.build import base
+from revenuechaser.rcdata import ops
+from revenuechaser.rcdata.build import base
 
 
 @pytest.fixture(params=["configured", "sqlite"])
@@ -167,13 +167,13 @@ def test_what_and_result_are_cut_to_a_length(log):
 
 
 def test_the_backup_leaves_the_request_log_out(log):
-    from RevenueChaser.rcdata import backup
+    from revenuechaser.rcdata import backup
     log.bump("market_series")
     log.flush()
     assert "request_log" in ops.TABLES and len(ops.rows("request_log")) == 1     # it is a table with a row ...
     assert not backup._is_kept_ops_table("request_log")                          # ... that no backup keeps
     if ops.backend() == "redis":
-        from RevenueChaser.rcdata import ops_redis
+        from revenuechaser.rcdata import ops_redis
         assert "request_log" not in ops_redis.snapshot()
 
 

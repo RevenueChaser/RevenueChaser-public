@@ -7,11 +7,11 @@ from datetime import datetime, timezone
 
 import pytest
 
-from RevenueChaser.core import rawstore, universe
-from RevenueChaser.core.reporting_common import universe_provenance_html
-from RevenueChaser.rcdata import ops, serving
-from RevenueChaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401 - market roots per test
-from RevenueChaser.rcdata.tests.test_spine_security import built, run_all  # noqa: F401 - the 10 names
+from revenuechaser.core import rawstore, universe
+from revenuechaser.core.reporting_common import universe_provenance_html
+from revenuechaser.rcdata import ops, serving
+from revenuechaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401 - market roots per test
+from revenuechaser.rcdata.tests.test_spine_security import built, run_all  # noqa: F401 - the 10 names
 
 WHEN = "2026-10-28T09:00:00+00:00"
 

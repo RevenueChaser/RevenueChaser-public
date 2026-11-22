@@ -10,7 +10,7 @@ import logging
 
 import pandas as pd
 
-from RevenueChaser.module_swing_potential import config
+from revenuechaser.module_swing_potential import config
 
 logger = logging.getLogger(__name__)
 

@@ -1,8 +1,8 @@
 """Tests for the summary cards."""
 from __future__ import annotations
 
-from RevenueChaser.module_spx_gamma import summary as sm
-from RevenueChaser.module_spx_gamma.narrative import build_walkthrough
+from revenuechaser.module_spx_gamma import summary as sm
+from revenuechaser.module_spx_gamma.narrative import build_walkthrough
 
 
 def test_summary_has_four_cards(snapshot):

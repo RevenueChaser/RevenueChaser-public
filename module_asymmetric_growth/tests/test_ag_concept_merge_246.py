@@ -11,8 +11,8 @@ from datetime import date, timedelta
 
 import pytest
 
-from RevenueChaser.core.providers import sec_edgar
-from RevenueChaser.module_asymmetric_growth.engine import score_ticker
+from revenuechaser.core.providers import sec_edgar
+from revenuechaser.module_asymmetric_growth.engine import score_ticker
 
 REV = "Revenues"
 RFC = "RevenueFromContractWithCustomerExcludingAssessedTax"

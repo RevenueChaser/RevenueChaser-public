@@ -5,7 +5,7 @@ if taking out the largest minute flips the sign, the day has "no side verdict".
 """
 from __future__ import annotations
 
-from RevenueChaser.module_spx_gamma import normalize as nm
+from revenuechaser.module_spx_gamma import normalize as nm
 
 
 def _flow(values):

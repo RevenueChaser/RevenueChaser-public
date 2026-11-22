@@ -10,9 +10,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_relatedness.validation import __main__ as cli
-from RevenueChaser.module_relatedness.validation import metrics
+from revenuechaser.core import rawstore
+from revenuechaser.module_relatedness.validation import __main__ as cli
+from revenuechaser.module_relatedness.validation import metrics
 
 BANKS = ["JPM", "BAC", "C", "WFC", "GS", "MS", "USB", "PNC", "TFC"]
 RAIL = ["UNP", "CSX", "NSC", "CNI", "CP"]
@@ -130,7 +130,7 @@ def test_pairs_generate_then_score(tmp_path, capsys, no_store):
 def test_module_runs_as_a_command(tmp_path):
     f = _fixtures(tmp_path)
     root = Path(__file__).resolve().parents[3]
-    proc = subprocess.run([sys.executable, "-m", "RevenueChaser.module_relatedness.validation", "report",
+    proc = subprocess.run([sys.executable, "-m", "revenuechaser.module_relatedness.validation", "report",
                            "--scores", str(f["scores"])], capture_output=True, text=True, timeout=120,
                           cwd=root.parent, env={**__import__("os").environ, "RC_STORE_AUTO_ENSURE": "0"})
     assert proc.returncode == 0, proc.stderr
@@ -181,13 +181,13 @@ def test_pairs_generate_refuses_to_overwrite_without_force(tmp_path, capsys, no_
 
 
 def test_matrix_from_dense_refuses_a_shape_mismatch():
-    from RevenueChaser.module_relatedness.validation import report
+    from revenuechaser.module_relatedness.validation import report
     with pytest.raises(ValueError, match="3 tickers"):
         report.matrix_from_dense(["A", "B", "C"], [[0.0] * 4 for _ in range(4)])
 
 
 def test_build_report_upper_cases_the_score_tickers():
-    from RevenueChaser.module_relatedness.validation import report
+    from revenuechaser.module_relatedness.validation import report
     names = ["jpm", "bac", "c", "wfc"]
     m = np.full((4, 4), 0.5)
     np.fill_diagonal(m, np.nan)
@@ -196,7 +196,7 @@ def test_build_report_upper_cases_the_score_tickers():
 
 
 def test_by_kind_reuses_the_per_set_recall(monkeypatch):
-    from RevenueChaser.module_relatedness.validation import report
+    from revenuechaser.module_relatedness.validation import report
     calls = []
     real = metrics.peer_recall_at_k
     monkeypatch.setattr(metrics, "peer_recall_at_k", lambda *a, **k: calls.append(1) or real(*a, **k))
@@ -212,7 +212,7 @@ def test_by_kind_reuses_the_per_set_recall(monkeypatch):
 
 def test_the_report_stores_the_etf_recall_mean_in_the_column():
     """Part B (#342, avo 1 Nov 2026): val_peer_recall_25 is the ETF-set mean; None when no ETF set loaded."""
-    from RevenueChaser.module_relatedness.validation import report
+    from revenuechaser.module_relatedness.validation import report
     names = BANKS + RAIL
     m = np.random.default_rng(2).random((len(names), len(names)))
     np.fill_diagonal(m, np.nan)

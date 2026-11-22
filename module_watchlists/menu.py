@@ -19,8 +19,8 @@ Stock / Option pair did. What the options build, LEAPS and Earnings read is unch
 """
 from __future__ import annotations
 
-from RevenueChaser.module_watchlists import board, store, symbols
-from RevenueChaser.rcdata import read
+from revenuechaser.module_watchlists import board, store, symbols
+from revenuechaser.rcdata import read
 
 #: The menu's two groups, in the order it draws them.
 OWN, JOBS = "Your lists", "Read by the jobs"

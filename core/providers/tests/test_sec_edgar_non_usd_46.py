@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core.providers import sec_edgar as se
+from revenuechaser.core.providers import sec_edgar as se
 
 
 def _fact(start, end, val, form="10-K", fp="FY", filed="2024-02-01"):

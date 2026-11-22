@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.module_asymmetric_growth import engine
+from revenuechaser.module_asymmetric_growth import engine
 
 ANNUAL = [{"period_end": "2025-12-31", "revenue": 100.0, "filed": "2026-02-01"}]
 

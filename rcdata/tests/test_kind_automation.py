@@ -8,9 +8,9 @@ from datetime import date, datetime, timezone
 
 import pytest
 
-from RevenueChaser.core import calendar
-from RevenueChaser.rcdata import ops
-from RevenueChaser.rcdata.build import DATASETS, base, due
+from revenuechaser.core import calendar
+from revenuechaser.rcdata import ops
+from revenuechaser.rcdata.build import DATASETS, base, due
 
 MS = "market_series"
 TUE_EVENING = datetime(2026, 10, 27, 22, 0, tzinfo=timezone.utc)
@@ -18,7 +18,7 @@ TUE_EVENING = datetime(2026, 10, 27, 22, 0, tzinfo=timezone.utc)
 
 @pytest.fixture(autouse=True)
 def market_only(monkeypatch):
-    from RevenueChaser.rcdata import build
+    from revenuechaser.rcdata import build
     monkeypatch.setattr(build, "DATASETS", {MS: DATASETS[MS]})
     monkeypatch.setattr(calendar, "_now", lambda: TUE_EVENING)
 
@@ -86,6 +86,6 @@ def test_the_row_says_who_set_it_and_the_reader_never_creates_the_file():
 
 
 def test_the_stage_params_are_the_fetch_presses_own():
-    from RevenueChaser.app.dashboard import REQUEST_STAGES
+    from revenuechaser.app.dashboard import REQUEST_STAGES
     assert REQUEST_STAGES == base.STAGE_PARAMS
     assert set(base.STAGE_PARAMS) | {"off"} == set(ops.KIND_MODES)

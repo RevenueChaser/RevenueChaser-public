@@ -9,9 +9,9 @@ from datetime import datetime, timezone
 
 import pytest
 
-from RevenueChaser.core import risk_free
-from RevenueChaser.rcdata import ops, serving
-from RevenueChaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401  (fixtures)
+from revenuechaser.core import risk_free
+from revenuechaser.rcdata import ops, serving
+from revenuechaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401  (fixtures)
 
 
 def _serve(points):
@@ -26,7 +26,7 @@ def _serve(points):
 
 
 def _clock(monkeypatch, when=datetime(2026, 11, 20, 15, 0, tzinfo=timezone.utc)):
-    from RevenueChaser.core import calendar
+    from revenuechaser.core import calendar
     monkeypatch.setattr(calendar, "_now", lambda: when)
 
 

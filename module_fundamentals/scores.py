@@ -9,7 +9,7 @@ they are testable without touching the DB.
 """
 from __future__ import annotations
 
-from RevenueChaser.core import rawstore
+from revenuechaser.core import rawstore
 
 from .screeners import (
     evaluate_momentum,

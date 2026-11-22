@@ -2,7 +2,7 @@
 import numpy as np
 from datetime import date
 from typing import Tuple, Optional
-from RevenueChaser.core.config import (
+from revenuechaser.core.config import (
     SCORE_RANGE,
     R3_OM_MAG_DOWN_BEAR as OM_MAG_DOWN_BEAR,
     R3_OM_MAG_DOWN_MILD as OM_MAG_DOWN_MILD,
@@ -12,8 +12,8 @@ from RevenueChaser.core.config import (
     R3_MIN_OM_QUARTERS as _MIN_OM_QUARTERS,
     R3_OM_MIN_REVENUE_4Q as OM_MIN_REVENUE_4Q,
 )
-from RevenueChaser.module_earnings_radar.models import RuleResult
-from RevenueChaser.module_earnings_radar.classifier import get_cluster_red_flags
+from revenuechaser.module_earnings_radar.models import RuleResult
+from revenuechaser.module_earnings_radar.classifier import get_cluster_red_flags
 
 
 YOY_MIN_DAYS, YOY_MAX_DAYS = 350, 380
@@ -217,7 +217,7 @@ def score(ticker: str, cluster: str, fundamentals_history: list[dict],
         return RuleResult(score=None, available=False, coverage=0, reasons=["no fundamental data"])
     # redesign.md R3: usable quarters >= 4 (a row with revenue), the last 8 read; fewer is unavailable, so one
     # quarter's levels never vote (review S5). Default chosen, change if avo prefers: the alternative is
-    # docs/module_earnings-radar/r3_financial.md's older "two features" rule alone.
+    # docs/module_earnings_radar/r3_financial.md's older "two features" rule alone.
     usable = sum(1 for r in fundamentals_history[:8] if _get(r, "revenue") is not None)
     if usable < _MIN_OM_QUARTERS:
         return RuleResult(score=None, available=False, coverage=0,

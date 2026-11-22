@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from RevenueChaser.core.reporting_common import THEME_STORAGE_KEY
+from revenuechaser.core.reporting_common import THEME_STORAGE_KEY
 
 from .harness.cdp_browser import Page, find_chrome
 from .harness.devices import REALME_GT2_PRO, Device

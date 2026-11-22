@@ -6,7 +6,7 @@ added at render time so a Refresh stays network-free.
 """
 from __future__ import annotations
 
-from RevenueChaser.rcdata.tests import universe_store
+from revenuechaser.rcdata.tests import universe_store
 import json
 import re
 
@@ -24,8 +24,8 @@ def _candidate(ticker: str, *, sector: str = "Technology", industry: str = "Soft
 
 
 def _render(candidates):
-    from RevenueChaser.module_fundamentals import config
-    from RevenueChaser.module_fundamentals.report import render_fundamental_dashboard
+    from revenuechaser.module_fundamentals import config
+    from revenuechaser.module_fundamentals.report import render_fundamental_dashboard
     return render_fundamental_dashboard({"candidates": candidates, "passing": {},
                                          "selection_version": config.SELECTION_VERSION,
                                          "summary": {}, "universe_total": len(candidates)})
@@ -62,7 +62,7 @@ _THEME = "r1:c1"
 
 
 def _seed_one_theme():
-    from RevenueChaser.core import rawstore
+    from revenuechaser.core import rawstore
     rawstore.write_rows("theme_runs", [{"id": "r1", "created_at": "x", "k_fine": 0,
                                         "k_medium": 0, "k_coarse": 1, "jaccard": 1.0, "is_current": 1}])
     rawstore.write_rows("relatedness_themes", [
@@ -94,7 +94,7 @@ def _cand_with(ticker, *, sector, industry, ro40, quality, momentum):
 
 
 def test_meta_themes_equal_the_catalog_and_the_themed_row_carries_the_id(rawstore_tmp_db):
-    from RevenueChaser.core import universe
+    from revenuechaser.core import universe
     _seed_one_theme()
     html = _render([_row("AAA", sector="Technology", industry="Software", multiplier=3),
                     _row("BBB", sector="Healthcare", industry="Biotechnology", multiplier=3)])
@@ -108,7 +108,7 @@ def test_meta_themes_equal_the_catalog_and_the_themed_row_carries_the_id(rawstor
 
 
 def test_a_rule_toggle_and_a_sector_filter_narrow_more_than_either_alone(tmp_path, rawstore_tmp_db):
-    from RevenueChaser.core.tests.board_js import run_board_js
+    from revenuechaser.core.tests.board_js import run_board_js
     _seed_one_theme()
     html = _render([
         _cand_with("AAA", sector="Technology", industry="Software", ro40=True, quality=True, momentum=True),
@@ -134,7 +134,7 @@ def test_a_ticked_rule_shows_only_cards_that_pass_it_an_unknown_is_hidden(tmp_pa
     """#386 F2, card 3 (avo): a card shows when it PASSES every ticked rule. A Rule of 40 that is unknown (an
     EBITDA-basis fallback) is not a pass, so ticking the Rule of 40 hides it. avo M1 (18 Nov 2026): nothing is ticked
     on open, so both show first."""
-    from RevenueChaser.core.tests.board_js import run_board_js
+    from revenuechaser.core.tests.board_js import run_board_js
     _seed_one_theme()
     html = _render([
         _cand_with("AAA", sector="Technology", industry="Software", ro40=True, quality=False, momentum=False),

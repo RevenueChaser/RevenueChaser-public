@@ -5,8 +5,8 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.module_spx_gamma import store_reads
-from RevenueChaser.rcdata import needs, ops, read
+from revenuechaser.module_spx_gamma import store_reads
+from revenuechaser.rcdata import needs, ops, read
 
 from . import rcdata_fixture as fx
 

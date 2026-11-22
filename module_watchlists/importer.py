@@ -1,6 +1,6 @@
 """Read TradingView exports into the watch-list file, and write them back out (#786).
 
-``python -m RevenueChaser.module_watchlists import <file-or-folder> ... [--apply]``
+``python -m revenuechaser.module_watchlists import <file-or-folder> ... [--apply]``
 
 **A dry run by default.** Without ``--apply`` nothing is written: the command reads every file, says what each list
 would hold, and names every symbol we have no source for, so the numbers can be checked before the store is
@@ -104,7 +104,7 @@ def export_list(list_id: str) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="python -m RevenueChaser.module_watchlists", description=__doc__)
+    parser = argparse.ArgumentParser(prog="python -m revenuechaser.module_watchlists", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
 
     imp = sub.add_parser("import", help="read TradingView exports into the watch-list file")

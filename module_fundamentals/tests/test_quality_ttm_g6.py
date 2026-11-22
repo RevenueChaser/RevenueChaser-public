@@ -15,11 +15,11 @@ import copy
 
 import pytest
 
-from RevenueChaser.core.tests.board_js import run_board_js
-from RevenueChaser.module_fundamentals import config, pipeline
-from RevenueChaser.module_fundamentals.pipeline import build_payload
-from RevenueChaser.module_fundamentals.report import render_fundamental_dashboard
-from RevenueChaser.module_fundamentals.tests.test_fundamental import _m
+from revenuechaser.core.tests.board_js import run_board_js
+from revenuechaser.module_fundamentals import config, pipeline
+from revenuechaser.module_fundamentals.pipeline import build_payload
+from revenuechaser.module_fundamentals.report import render_fundamental_dashboard
+from revenuechaser.module_fundamentals.tests.test_fundamental import _m
 
 FLOWS = ("revenue", "gross_profit", "ebit", "depreciation")
 
@@ -132,7 +132,7 @@ def test_the_selection_version_moves_with_the_basis():
 def test_the_row_carries_the_quality_basis(monkeypatch):
     from datetime import date
 
-    from RevenueChaser.module_fundamentals.tests.test_fundamentals_w3_386 import _compute
+    from revenuechaser.module_fundamentals.tests.test_fundamentals_w3_386 import _compute
     monkeypatch.setattr(pipeline, "_today", lambda: date(2026, 10, 27))
     # The fixture's figures are toy-sized; under the $10M revenue mark (avo C1) its rules would be unknown.
     monkeypatch.setattr(pipeline.config, "DISTORTED_REV_MIN", 0)
@@ -146,7 +146,7 @@ def test_the_row_carries_the_quality_basis(monkeypatch):
 def test_a_uw_preliminary_quarter_is_not_summed_into_the_ttm():
     # Opus review S4: a quarter end whose figure is UW's press-release number (``preliminary``, ahead of the 10-Q)
     # is not a reported quarter, so TTM revenue and the P/E's net income stay on the SEC's four, as the card says.
-    from RevenueChaser.module_fundamentals.pipeline import _ttm_metrics
+    from revenuechaser.module_fundamentals.pipeline import _ttm_metrics
     ends = ["2024-12-31", "2025-03-31", "2025-06-30", "2025-09-30", "2025-12-31"]
     q = [{"period": e, "revenue": 100.0 + 10 * i, "net_income": 10.0 + i} for i, e in enumerate(ends)]
     q[-1]["preliminary"] = ["net_income", "revenue"]
@@ -164,7 +164,7 @@ def test_a_uw_preliminary_figure_on_the_newest_quarter_keeps_quality_on_the_year
 
 
 def test_the_layer_builds_no_year_to_date_over_a_uw_preliminary_quarter():
-    from RevenueChaser.core import fundamentals_layer
+    from revenuechaser.core import fundamentals_layer
     starts = ["2026-01-01", "2026-04-01", "2026-07-01"]
     ends = ["2026-03-31", "2026-06-30", "2026-09-30"]
     quarters = [{"period": e, "revenue": 100.0, "ebit": 10.0, "period_starts": {"revenue": s, "ebit": s}}

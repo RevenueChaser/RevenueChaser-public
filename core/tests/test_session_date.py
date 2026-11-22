@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from RevenueChaser.core.calendar import (
+from revenuechaser.core.calendar import (
     QUALITY_COMPLETE, QUALITY_INTRADAY, SessionStamp, session_for, to_session_date,
 )
 

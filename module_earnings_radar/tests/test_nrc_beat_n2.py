@@ -2,8 +2,8 @@
 bear reason "beat trend declining" and its mixed reason scored as a beat (45) instead of a miss (30) or neutral
 (50). The slot now reads R2's own result in the card's rule audit (its score's sign, and its "strong beat" reason);
 the thesis keyword read stays only for a card without one. Offline."""
-from RevenueChaser.module_earnings_radar.models import TradeCard
-from RevenueChaser.module_earnings_radar.pipeline import nrc_from_card
+from revenuechaser.module_earnings_radar.models import TradeCard
+from revenuechaser.module_earnings_radar.pipeline import nrc_from_card
 
 
 def _beat(score, reasons, thesis=None, available=True):

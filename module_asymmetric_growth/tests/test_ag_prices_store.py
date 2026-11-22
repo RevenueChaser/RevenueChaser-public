@@ -9,12 +9,12 @@ from __future__ import annotations
 
 from datetime import date
 
-from RevenueChaser.rcdata.tests import fund_store
-from RevenueChaser.core import provenance, rawstore
-from RevenueChaser.module_asymmetric_growth import engine
-from RevenueChaser.module_asymmetric_growth.report import render_asymmetric_growth_hunter_html
-from RevenueChaser.module_asymmetric_growth.tests.test_ag_dated_momentum_380 import SESSION, bar, edgar, momentum, row, sessions
-from RevenueChaser.rcdata.tests import prices_store
+from revenuechaser.rcdata.tests import fund_store
+from revenuechaser.core import provenance, rawstore
+from revenuechaser.module_asymmetric_growth import engine
+from revenuechaser.module_asymmetric_growth.report import render_asymmetric_growth_hunter_html
+from revenuechaser.module_asymmetric_growth.tests.test_ag_dated_momentum_380 import SESSION, bar, edgar, momentum, row, sessions
+from revenuechaser.rcdata.tests import prices_store
 
 
 def _momentum_rows(ticker: str, days) -> list[dict]:

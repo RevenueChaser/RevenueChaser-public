@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.module_relatedness import config, engine, report, similarity, store
-from RevenueChaser.module_relatedness.tests.test_pr_c_118 import _prof
+from revenuechaser.module_relatedness import config, engine, report, similarity, store
+from revenuechaser.module_relatedness.tests.test_pr_c_118 import _prof
 
 
 def _corpus() -> dict[str, dict]:

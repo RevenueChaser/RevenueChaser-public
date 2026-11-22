@@ -19,19 +19,19 @@ import threading
 from datetime import date as _date
 from datetime import datetime, timezone
 
-from RevenueChaser.core.index_registry import annotate_cards
-from RevenueChaser.core.liquidity import liquid_assets
-from RevenueChaser.core.providers import sec_edgar
-from RevenueChaser.core.providers.result import ProviderHealth
-from RevenueChaser.core.reporting_common import write_artifact
-from RevenueChaser.core import funnel
-from RevenueChaser.module_swing_potential.indicators import compute_indicators
-from RevenueChaser.core import fiscal_year, trailing_year
-from RevenueChaser.core import screen_common
-from RevenueChaser.core import universe as _universe
-from RevenueChaser.core.taxonomy import assign_themes
+from revenuechaser.core.index_registry import annotate_cards
+from revenuechaser.core.liquidity import liquid_assets
+from revenuechaser.core.providers import sec_edgar
+from revenuechaser.core.providers.result import ProviderHealth
+from revenuechaser.core.reporting_common import write_artifact
+from revenuechaser.core import funnel
+from revenuechaser.module_swing_potential.indicators import compute_indicators
+from revenuechaser.core import fiscal_year, trailing_year
+from revenuechaser.core import screen_common
+from revenuechaser.core import universe as _universe
+from revenuechaser.core.taxonomy import assign_themes
 
-from RevenueChaser.core.scan_quality import ohlc_drop_reason
+from revenuechaser.core.scan_quality import ohlc_drop_reason
 
 from . import config
 from . import debt as _debt
@@ -489,7 +489,7 @@ def _period_label(quarterly: list[dict], annual: list[dict]) -> str:
 
 def data_as_of() -> str | None:
     """The D01 date of the names this board last scored (the chip, ``core/provenance.py``; K7, #383 R3)."""
-    from RevenueChaser.core import provenance
+    from revenuechaser.core import provenance
     return provenance.data_as_of("module_fundamentals")
 
 
@@ -533,7 +533,7 @@ class _LayerChunks:
         self._rows: dict = {}
 
     def get(self, ticker: str):
-        from RevenueChaser.core import fundamentals_layer
+        from revenuechaser.core import fundamentals_layer
         ticker = str(ticker).strip().upper()
         i = self._pos.get(ticker)
         if i is None:
@@ -930,7 +930,7 @@ def run_scan(uw=None, top_n: int = None, refresh_universe: bool = False,
     chunks: list[_LayerChunks] = []
 
     def prefilter_and_chunk(rows: list[dict]) -> screen_common.Prefiltered:
-        from RevenueChaser.core import fundamentals_layer
+        from revenuechaser.core import fundamentals_layer
         pf = prefilter(rows)
         # Batched only when the file is there: without it every name reads as unavailable anyway.
         if not no_fetch and fundamentals_layer.reads_layer():
@@ -954,7 +954,7 @@ def run_scan(uw=None, top_n: int = None, refresh_universe: bool = False,
     if not no_fetch:
         payload["provider_health"] = _EDGAR_HEALTH.health()
         # Review F3 (G6): the store this Fetch read its statements from (the page says so; a Refresh keeps it).
-        from RevenueChaser.core import fundamentals_layer
+        from revenuechaser.core import fundamentals_layer
         payload["statements_source"] = fundamentals_layer.source_state()["effective"]
     return payload
 

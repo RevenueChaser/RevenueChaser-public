@@ -45,7 +45,7 @@ def changes(closes: list[float]) -> list[float | None]:
 
 def _closes(tickers: list[str], start: date) -> tuple[dict[str, list[float]], dict[str, date]]:
     """``ticker -> closes`` (oldest first) and ``ticker -> newest session``, read in chunks."""
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     closes: dict[str, list[float]] = {}
     newest: dict[str, date] = {}
     for i in range(0, len(tickers), CHUNK):
@@ -61,10 +61,10 @@ def _closes(tickers: list[str], start: date) -> tuple[dict[str, list[float]], di
 
 def _universes(stocks: set[str]) -> list[tuple[str, str, list[str]]]:
     """``(id, label, tickers)``: the S&P 500, then each of avo's watch lists with at least one stock on it."""
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     out = [("sp500", "S&P 500", sorted({r["ticker"] for r in read.membership("sp500")} & stocks))]
     try:
-        from RevenueChaser.module_watchlists import store
+        from revenuechaser.module_watchlists import store
         for lst in store.lists():
             if (lst.get("feeds") or "") not in read.PICKED:
                 continue
@@ -84,7 +84,7 @@ def payload(today: date | None = None) -> dict | None:
     ``{"id", "name", "idx"}`` with ``idx`` the row numbers of its names. A name whose newest bar is older than the
     newest session read keeps no change (a halted or delisted name is not shown as flat)."""
     try:
-        from RevenueChaser.core import universe
+        from revenuechaser.core import universe
         rows = {r["ticker"]: r for r in universe.load_cached_universe()
                 if r.get("security_type") in STOCK_TYPES and (r.get("market_cap") or 0) > 0}
         if not rows:
@@ -101,7 +101,7 @@ def payload(today: date | None = None) -> dict | None:
         return None
     as_of = max(newest.values())
     stocks, index = [], {}
-    from RevenueChaser.core.gics_map import canonical_sector
+    from revenuechaser.core.gics_map import canonical_sector
     for t in wanted:
         r = rows[t]
         ch = changes(closes[t]) if newest.get(t) == as_of else [None] * len(PERIODS)
@@ -378,7 +378,7 @@ def panel_html(data: dict | None) -> str:
     """The heatmap section for ``data`` (:func:`payload`), or ``""`` when there is none."""
     if not data or not data.get("stocks"):
         return ""
-    from RevenueChaser.core.html_safe import ESC_JS, fill, script_json
-    from RevenueChaser.core.reporting_common import THEME_CSS, THEME_JS
+    from revenuechaser.core.html_safe import ESC_JS, fill, script_json
+    from revenuechaser.core.reporting_common import THEME_CSS, THEME_JS
     return (f"<style>{THEME_CSS}</style><script>{THEME_JS}{ESC_JS}</script>{PANEL_CSS}{PANEL_HTML}"
             + fill(PANEL_JS, {"__HEATMAP_JSON__": script_json(data)}))

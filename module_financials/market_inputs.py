@@ -65,7 +65,7 @@ def monthly_beta(stock: list[tuple[date, float]], index: list[tuple[date, float]
 def _is_fund(ticker: str) -> bool:
     """A fund, trust or other excluded type (``identity.types.EXCLUDED_TYPES``) by the universe's own type seam: its
     cap is the class's own, because one trust's CIK files many funds (``core/universe.py``'s ``_spine_universe``)."""
-    from RevenueChaser.core import universe
+    from revenuechaser.core import universe
     try:
         return ticker in universe.excluded_tickers()
     except Exception as exc:  # noqa: BLE001 - an unreadable type reads as an operating company: the issuer's cap
@@ -77,8 +77,8 @@ def _is_fund(ticker: str) -> bool:
 def from_store(ticker: str) -> dict:
     """``{current_price, price_session, market_cap, shares_outstanding, beta}`` from the prices store, each only when
     the store gives it; ``{}`` with no prices file, a close older than ``MAX_AGE_DAYS`` or a failed read (logged)."""
-    from RevenueChaser.core import spine_reads
-    from RevenueChaser.rcdata import read
+    from revenuechaser.core import spine_reads
+    from revenuechaser.rcdata import read
     t = str(ticker).strip().upper()
     try:
         latest = spine_reads.latest_market([t]).get(t) or {}
@@ -89,7 +89,7 @@ def from_store(ticker: str) -> dict:
     price, session = latest.get("price"), latest.get("price_session")
     if price is None or session is None or not price > 0:
         return {}
-    from RevenueChaser.core import calendar
+    from revenuechaser.core import calendar
     age = (calendar.today_ny() - session).days
     if age > MAX_AGE_DAYS:
         logger.warning("financials: the prices store's newest close of %s is %s (%d days old, more than %d); "

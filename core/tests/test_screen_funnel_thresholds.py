@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from RevenueChaser.core import screen_common as sc
+from revenuechaser.core import screen_common as sc
 
 DEFAULTS = SimpleNamespace(MIN_PRICE=5.0, MIN_DOLLAR_VOLUME=250_000)
 SAVED = SimpleNamespace(MIN_PRICE=10.0, MIN_DOLLAR_VOLUME=1_000_000)

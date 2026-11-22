@@ -6,10 +6,10 @@ import time
 import pandas as pd
 import pytest
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_swing_potential import indicators
-from RevenueChaser.module_swing_potential import pipeline
-from RevenueChaser.module_swing_potential.tests.test_ohlc import _df
+from revenuechaser.core import rawstore
+from revenuechaser.module_swing_potential import indicators
+from revenuechaser.module_swing_potential import pipeline
+from revenuechaser.module_swing_potential.tests.test_ohlc import _df
 
 
 def _yahoo(frame):

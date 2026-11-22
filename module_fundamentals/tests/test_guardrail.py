@@ -5,8 +5,8 @@ distorted candidate is FLAGGED but NOT dropped by build_payload.
 """
 import pytest
 
-from RevenueChaser.module_fundamentals.pipeline import build_payload
-from RevenueChaser.module_fundamentals.screeners import is_distorted
+from revenuechaser.module_fundamentals.pipeline import build_payload
+from revenuechaser.module_fundamentals.screeners import is_distorted
 
 
 @pytest.mark.parametrize("growth,rev,expected", [

@@ -12,10 +12,10 @@ from datetime import date, timedelta
 import httpx
 import pytest
 
-from RevenueChaser.core.providers import unusual_whales
-from RevenueChaser.rcdata import ops
-from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.fundamentals import uw_earnings
+from revenuechaser.core.providers import unusual_whales
+from revenuechaser.rcdata import ops
+from revenuechaser.rcdata.build import base
+from revenuechaser.rcdata.build.fundamentals import uw_earnings
 
 AS_OF = date(2026, 11, 6)
 ANSWER = [{"report_type": "quarterly", "fiscal_date_ending": "2025-09-30", "report_date": "2025-10-29",

@@ -12,7 +12,7 @@ to nothing.
 """
 from __future__ import annotations
 
-from RevenueChaser.module_value_chain import aliases
+from revenuechaser.module_value_chain import aliases
 
 
 def _sec(ticker, name, cik=None, tier="A", security_type="common"):

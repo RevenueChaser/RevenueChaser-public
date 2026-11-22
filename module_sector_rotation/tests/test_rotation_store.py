@@ -1,10 +1,10 @@
 """Tests for rotation snapshot persistence, backfill, and trail rendering."""
 from datetime import date, timedelta
 
-from RevenueChaser.core import rawstore, rotation_reference
-from RevenueChaser.module_sector_rotation.models import ETFRotationSnapshot
-from RevenueChaser.module_sector_rotation import store as rotation_store
-from RevenueChaser.module_sector_rotation.tests.bars_seed import ny, pin_clock, seed
+from revenuechaser.core import rawstore, rotation_reference
+from revenuechaser.module_sector_rotation.models import ETFRotationSnapshot
+from revenuechaser.module_sector_rotation import store as rotation_store
+from revenuechaser.module_sector_rotation.tests.bars_seed import ny, pin_clock, seed
 
 
 def _seed_snapshot(asof: str, rows: list[dict]):
@@ -91,8 +91,8 @@ class _FakeDate(date):
 
 class TestEarlyTurn:
     def test_early_turn_two_consecutive(self, rawstore_tmp_db, monkeypatch):
-        from RevenueChaser.module_sector_rotation.report import _early_turn_tickers, _rows_to_snapshots
-        import RevenueChaser.module_sector_rotation.report as rd
+        from revenuechaser.module_sector_rotation.report import _early_turn_tickers, _rows_to_snapshots
+        import revenuechaser.module_sector_rotation.report as rd
         monkeypatch.setattr(rd, "OUTPUT_DIR", rawstore_tmp_db)
         monkeypatch.setattr(rd, "OUTPUT_DIR", rawstore_tmp_db)
         for d in ["2026-08-12", "2026-08-13"]:
@@ -101,7 +101,7 @@ class TestEarlyTurn:
         assert _early_turn_tickers(date(2026, 8, 14), snaps) == {"ITA"}
 
     def test_early_turn_requires_two_prior(self, rawstore_tmp_db, monkeypatch):
-        from RevenueChaser.module_sector_rotation.report import _early_turn_tickers, _rows_to_snapshots
+        from revenuechaser.module_sector_rotation.report import _early_turn_tickers, _rows_to_snapshots
         _seed_snapshot("2026-08-13", [_row("2026-08-13", ticker="ITA", rz=-0.5, mz=0.4)])
         snaps = _rows_to_snapshots([_row("2026-08-14", ticker="ITA", rz=-0.3, mz=0.5)])
         assert _early_turn_tickers(date(2026, 8, 14), snaps) == set()
@@ -109,18 +109,18 @@ class TestEarlyTurn:
 
 class TestHeatStyle:
     def test_positive_tint(self):
-        from RevenueChaser.module_sector_rotation.report import _rs_heat_style
+        from revenuechaser.module_sector_rotation.report import _rs_heat_style
         s = _rs_heat_style(15.0)
         assert "52,211,153" in s and "0.12" in s  # subtle 0.12-opacity green tint
         assert _rs_heat_style(1.0) == s  # no intensity ramp
 
     def test_negative(self):
-        from RevenueChaser.module_sector_rotation.report import _rs_heat_style
+        from revenuechaser.module_sector_rotation.report import _rs_heat_style
         s = _rs_heat_style(-15.0)
         assert "248,113,113" in s and "0.12" in s
 
     def test_none(self):
-        from RevenueChaser.module_sector_rotation.report import _rs_heat_style
+        from revenuechaser.module_sector_rotation.report import _rs_heat_style
         assert _rs_heat_style(None) == ""
 
 
@@ -134,8 +134,8 @@ class TestTrail:
             ])
 
     def test_trail_shows_all_etfs_with_decay(self, rawstore_tmp_db, monkeypatch):
-        from RevenueChaser.module_sector_rotation.report import export_rotation_trail
-        import RevenueChaser.module_sector_rotation.report as rd
+        from revenuechaser.module_sector_rotation.report import export_rotation_trail
+        import revenuechaser.module_sector_rotation.report as rd
         monkeypatch.setattr(rd, "OUTPUT_DIR", rawstore_tmp_db)
         monkeypatch.setattr(rd, "OUTPUT_DIR", rawstore_tmp_db)
         self._seed_two_weeks()
@@ -147,8 +147,8 @@ class TestTrail:
         assert "path d=" in content  # faint trail line per ETF (2 weekly points)
 
     def test_trail_weekly_samples_last_of_week(self, rawstore_tmp_db, monkeypatch):
-        from RevenueChaser.module_sector_rotation.report import export_rotation_trail, _weekly_sample
-        import RevenueChaser.module_sector_rotation.report as rd
+        from revenuechaser.module_sector_rotation.report import export_rotation_trail, _weekly_sample
+        import revenuechaser.module_sector_rotation.report as rd
         monkeypatch.setattr(rd, "OUTPUT_DIR", rawstore_tmp_db)
         monkeypatch.setattr(rd, "OUTPUT_DIR", rawstore_tmp_db)
         for d in ["2026-08-10", "2026-08-12", "2026-08-14", "2026-08-17", "2026-08-19", "2026-08-21"]:
@@ -161,8 +161,8 @@ class TestTrail:
         assert content.count("<title>ITA") == 2
 
     def test_trail_empty_range(self, rawstore_tmp_db, monkeypatch):
-        from RevenueChaser.module_sector_rotation.report import export_rotation_trail
-        import RevenueChaser.module_sector_rotation.report as rd
+        from revenuechaser.module_sector_rotation.report import export_rotation_trail
+        import revenuechaser.module_sector_rotation.report as rd
         monkeypatch.setattr(rd, "OUTPUT_DIR", rawstore_tmp_db)
         monkeypatch.setattr(rd, "OUTPUT_DIR", rawstore_tmp_db)
         p = export_rotation_trail(date(2026, 8, 12), date(2026, 8, 13))
@@ -176,7 +176,7 @@ class TestBackfillWeekly:
                 for i, c in enumerate(closes)]
 
     def test_wednesdays(self):
-        from RevenueChaser.module_sector_rotation.store import _wednesdays
+        from revenuechaser.module_sector_rotation.store import _wednesdays
         ws = _wednesdays(date(2026, 1, 1), date(2026, 1, 31))
         assert ws == [date(2026, 1, 7), date(2026, 1, 14), date(2026, 1, 21), date(2026, 1, 28)]
 
@@ -205,7 +205,7 @@ class TestBackfillWeekly:
 class TestUniverseShape:
     def test_the_module_docstring_states_the_real_counts(self):
         """#49: the docstring said 50 symbols and 39/41 ETFs while the code held 78 (67 ETFs + 11 macro)."""
-        from RevenueChaser.module_sector_rotation import universe
+        from revenuechaser.module_sector_rotation import universe
         doc = universe.__doc__ or ""
         macro = [t for t in rotation_reference.SEED_ROTATION_ETFS if t in universe.MACRO_SERIES]
         assert f"{len(rotation_reference.SEED_ROTATION_ETFS)} symbols" in doc
@@ -213,7 +213,7 @@ class TestUniverseShape:
         assert f"{len(macro)} macro" in doc
 
     def test_rrg_symbols(self):
-        from RevenueChaser.core.rotation_reference import SEED_ROTATION_ETFS as ROTATION_ETFS
+        from revenuechaser.core.rotation_reference import SEED_ROTATION_ETFS as ROTATION_ETFS
         assert len(ROTATION_ETFS) == 108, f"expected 108 RRG symbols, got {len(ROTATION_ETFS)}"
         groups = {}
         for t, info in ROTATION_ETFS.items():
@@ -229,19 +229,19 @@ class TestUniverseShape:
         assert "benchmark" not in groups, "benchmark group should be removed"
 
     def test_macro_symbols_mapped(self):
-        from RevenueChaser.core.rotation_reference import MACRO_SERIES, SEED_ROTATION_ETFS as ROTATION_ETFS
+        from revenuechaser.core.rotation_reference import MACRO_SERIES, SEED_ROTATION_ETFS as ROTATION_ETFS
         for sym, info in ROTATION_ETFS.items():
             if info["group"] in ("yield", "commodity"):
                 assert sym in MACRO_SERIES, f"{sym} should be in MACRO_SERIES"
 
     def test_country_etfs_present(self):
-        from RevenueChaser.core.rotation_reference import SEED_ROTATION_ETFS as ROTATION_ETFS
+        from revenuechaser.core.rotation_reference import SEED_ROTATION_ETFS as ROTATION_ETFS
         for t in ("EWZ", "EWY", "FXI", "INDA", "EWT", "MCHI", "VNM", "IDX", "EPU"):
             assert t in ROTATION_ETFS, f"{t} should be in the RRG universe"
             assert ROTATION_ETFS[t]["group"] == "region", f"{t} should be region"
 
     def test_benchmark_removed(self):
-        from RevenueChaser.core.rotation_reference import SEED_ROTATION_ETFS as ROTATION_ETFS
+        from revenuechaser.core.rotation_reference import SEED_ROTATION_ETFS as ROTATION_ETFS
         assert "SPY" not in ROTATION_ETFS
         assert "benchmark" not in {v["group"] for v in ROTATION_ETFS.values()}
 
@@ -250,7 +250,7 @@ class TestUiContract:
     """Interface-contract tests: if the rendered UI changes, these fail with a reason."""
 
     def _render(self, tmp_path, monkeypatch):
-        import RevenueChaser.module_sector_rotation.report as rd
+        import revenuechaser.module_sector_rotation.report as rd
         monkeypatch.setattr(rd, "OUTPUT_DIR", tmp_path)
         monkeypatch.setattr(rd, "OUTPUT_DIR", tmp_path)
         snaps = [ETFRotationSnapshot(as_of_date=date(2026, 8, 14), ticker="XLK",
@@ -267,7 +267,7 @@ class TestUiContract:
         return p.read_text(encoding="utf-8")
 
     def test_embedded_holdings_self_contained(self, tmp_path, monkeypatch):
-        import RevenueChaser.module_sector_rotation.report as rd
+        import revenuechaser.module_sector_rotation.report as rd
         monkeypatch.setattr(rd, "OUTPUT_DIR", tmp_path)
         monkeypatch.setattr(rd, "OUTPUT_DIR", tmp_path)
         snaps = [_snap("XLK"), _snap("XLV", "IMPROVING")]
@@ -282,7 +282,7 @@ class TestUiContract:
         assert "ROTATION_HOLDINGS[ticker]" in c
 
     def test_embedded_holdings_empty_map_when_none(self, tmp_path, monkeypatch):
-        import RevenueChaser.module_sector_rotation.report as rd
+        import revenuechaser.module_sector_rotation.report as rd
         monkeypatch.setattr(rd, "OUTPUT_DIR", tmp_path)
         monkeypatch.setattr(rd, "OUTPUT_DIR", tmp_path)
         snaps = [_snap("XLK")]
@@ -327,7 +327,7 @@ class TestUiContract:
         assert "row.addEventListener('click'" in c, "Row click should be bound to expand holdings"
 
     def test_radial_quadrant_bias(self):
-        from RevenueChaser.module_sector_rotation.report import _quadrant_bias_offset
+        from revenuechaser.module_sector_rotation.report import _quadrant_bias_offset
         # chart center at (0,0): each quadrant pushes outward diagonally
         assert _quadrant_bias_offset(5, 5, 0, 0, 8) == (8, 8)     # LEADING (x+, y+)
         assert _quadrant_bias_offset(-5, 5, 0, 0, 8) == (-8, 8)   # IMPROVING (x-, y+)
@@ -364,7 +364,7 @@ class TestUiContract:
         assert 'Quadrant transitions:' not in c, "Raw transitions list should be removed"
 
     def test_counts_include_sector_commodity_exclude_theme(self, tmp_path, monkeypatch):
-        import RevenueChaser.module_sector_rotation.report as rd
+        import revenuechaser.module_sector_rotation.report as rd
         monkeypatch.setattr(rd, "OUTPUT_DIR", tmp_path)
         monkeypatch.setattr(rd, "OUTPUT_DIR", tmp_path)
         snaps = [
@@ -404,7 +404,7 @@ class TestUiContract:
         assert 'Copy TV watchlist' not in c, "Watchlist export button should be removed"
 
     def test_breakdown_badge_rendered(self, rawstore_tmp_db, monkeypatch):
-        import RevenueChaser.module_sector_rotation.report as rd
+        import revenuechaser.module_sector_rotation.report as rd
         monkeypatch.setattr(rd, "OUTPUT_DIR", rawstore_tmp_db)
         monkeypatch.setattr(rd, "OUTPUT_DIR", rawstore_tmp_db)
         # prior snapshot: XLK LEADING; current: XLK LAGGING (breakdown)
@@ -423,7 +423,7 @@ class TestUiContract:
 
 class TestTrailUiContract:
     def _trail(self, rawstore_tmp_db, monkeypatch):
-        import RevenueChaser.module_sector_rotation.report as rd
+        import revenuechaser.module_sector_rotation.report as rd
         monkeypatch.setattr(rd, "OUTPUT_DIR", rawstore_tmp_db)
         monkeypatch.setattr(rd, "OUTPUT_DIR", rawstore_tmp_db)
         for d in ["2026-08-12", "2026-08-19"]:
@@ -464,7 +464,7 @@ class TestTrailUiContract:
         assert 'text-anchor="middle"' in c, "Trail labels should use text-anchor"
 
     def test_trail_velocity_vector(self, rawstore_tmp_db, monkeypatch):
-        import RevenueChaser.module_sector_rotation.report as rd
+        import revenuechaser.module_sector_rotation.report as rd
         monkeypatch.setattr(rd, "OUTPUT_DIR", rawstore_tmp_db)
         monkeypatch.setattr(rd, "OUTPUT_DIR", rawstore_tmp_db)
         # two weeks with distinct z-scores -> non-zero velocity at head node

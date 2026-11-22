@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 from datetime import date
 
-from RevenueChaser.module_earnings_radar import stored_inputs
+from revenuechaser.module_earnings_radar import stored_inputs
 
 logger = logging.getLogger(__name__)
 

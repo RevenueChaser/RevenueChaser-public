@@ -10,7 +10,7 @@ from datetime import date, timedelta
 
 import pytest
 
-from RevenueChaser.module_watchlists import board, financials, store
+from revenuechaser.module_watchlists import board, financials, store
 
 pytestmark = pytest.mark.rawstore_schema_from_scratch
 

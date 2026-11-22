@@ -10,7 +10,7 @@ from datetime import date
 
 import numpy as np
 
-from RevenueChaser.module_oipd import engine, opd_math, uw_chain
+from revenuechaser.module_oipd import engine, opd_math, uw_chain
 
 _ASOF = "2026-09-23"
 _EXPIRY = "2026-10-23"          # _ASOF + 30 days

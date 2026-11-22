@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from datetime import date
 
-from RevenueChaser.module_fundamentals import pipeline, screeners
-from RevenueChaser.module_fundamentals.tests.test_fundamentals_gates_148 import _m, _row
+from revenuechaser.module_fundamentals import pipeline, screeners
+from revenuechaser.module_fundamentals.tests.test_fundamentals_gates_148 import _m, _row
 
 
 def _rule(gate: dict, rid: str) -> dict:
@@ -51,7 +51,7 @@ def test_the_card_carries_roic_and_the_old_flag_not_pe_or_pb():
 
 def test_a_short_history_is_scored_with_momentum_unknown(monkeypatch):
     """avo E1: under 252 bars the name is scored on its filings; the Momentum inputs are unknown, not dropped."""
-    from RevenueChaser.module_fundamentals.tests.test_fundamentals_w3_386 import _annual_pair, _patch_row
+    from revenuechaser.module_fundamentals.tests.test_fundamentals_w3_386 import _annual_pair, _patch_row
     _patch_row(monkeypatch, _annual_pair())
     monkeypatch.setattr(pipeline, "ohlc_drop_reason", lambda df: "short_bars")
     drops: list = []

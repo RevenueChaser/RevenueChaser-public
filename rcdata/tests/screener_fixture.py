@@ -38,18 +38,18 @@ def tape_row(ticker: str, *, session_date: date, report_date: date, report_time:
 
 def write(rows: list[dict], version: int | None = None) -> None:
     """A live ``options.duckdb`` holding ``rows`` in ``option_screener_daily`` (called again to add more)."""
-    from RevenueChaser.rcdata.build.options.tables import OPTION_SCREENER_DAILY as table
+    from revenuechaser.rcdata.build.options.tables import OPTION_SCREENER_DAILY as table
     _write(table, rows, version)
 
 
 def write_tape(rows: list[dict], version: int | None = None) -> None:
     """The same file holding ``rows`` in ``earnings_tape`` (#644); called beside :func:`write` or on its own."""
-    from RevenueChaser.rcdata.build.options.tables import EARNINGS_TAPE as table
+    from revenuechaser.rcdata.build.options.tables import EARNINGS_TAPE as table
     _write(table, rows, version)
 
 
 def _write(table, rows: list[dict], version: int | None = None) -> None:
-    from RevenueChaser.rcdata import serving
+    from revenuechaser.rcdata import serving
     path = serving.live_path("options")
     path.parent.mkdir(parents=True, exist_ok=True)
     con = duckdb.connect(str(path))

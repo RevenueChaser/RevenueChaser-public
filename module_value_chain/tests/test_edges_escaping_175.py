@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import json
 
-from RevenueChaser.core.tests.board_js import run_board_js
-from RevenueChaser.module_value_chain import report
+from revenuechaser.core.tests.board_js import run_board_js
+from revenuechaser.module_value_chain import report
 
 EVIL = "\"'><img src=x onerror=__x(1)>"
 ESCAPED = "&lt;img src=x onerror=__x(1)&gt;"

@@ -12,11 +12,11 @@ from datetime import date, timedelta
 
 import pytest
 
-from RevenueChaser.core import calendar, rawstore
-from RevenueChaser.core.rotation_reference import MACRO_SERIES
-from RevenueChaser.module_sector_rotation import engine, money_flow
-from RevenueChaser.module_sector_rotation.tests.bars_seed import ny, pin_clock, sessions
-from RevenueChaser.rcdata.tests import prices_store
+from revenuechaser.core import calendar, rawstore
+from revenuechaser.core.rotation_reference import MACRO_SERIES
+from revenuechaser.module_sector_rotation import engine, money_flow
+from revenuechaser.module_sector_rotation.tests.bars_seed import ny, pin_clock, sessions
+from revenuechaser.rcdata.tests import prices_store
 
 SESSION = date(2026, 6, 30)
 DAYS = sessions(date(2025, 3, 3), SESSION)

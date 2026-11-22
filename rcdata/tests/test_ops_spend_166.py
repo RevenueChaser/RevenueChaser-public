@@ -8,8 +8,8 @@ adding up, in the ledger's exact integer unit (micro-USD), and the metered count
 """
 from __future__ import annotations
 
-from RevenueChaser.core import calendar as rc_calendar
-from RevenueChaser.rcdata import ops
+from revenuechaser.core import calendar as rc_calendar
+from revenuechaser.rcdata import ops
 
 
 def _today() -> str:

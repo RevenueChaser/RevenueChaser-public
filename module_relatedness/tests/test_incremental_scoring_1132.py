@@ -8,8 +8,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from RevenueChaser.module_relatedness import config, engine, incremental, similarity, store
-from RevenueChaser.module_relatedness.tests.test_relatedness import _prof
+from revenuechaser.module_relatedness import config, engine, incremental, similarity, store
+from revenuechaser.module_relatedness.tests.test_relatedness import _prof
 
 TOP = 5
 

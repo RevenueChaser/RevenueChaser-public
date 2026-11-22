@@ -7,8 +7,8 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.module_fundamentals import scores, screeners
-from RevenueChaser.module_fundamentals.tests.test_fundamental import _m
+from revenuechaser.module_fundamentals import scores, screeners
+from revenuechaser.module_fundamentals.tests.test_fundamental import _m
 
 
 def _rule(gate, rule_id):
@@ -101,7 +101,7 @@ def test_the_score_row_counts_only_known_passes():
 
 
 def test_the_gate_rows_persist_through_the_real_table(rawstore_tmp_db):
-    from RevenueChaser.core import rawstore
+    from revenuechaser.core import rawstore
     scores.persist([_result(rev_growth_ttm=0.25, gross_margin=None, net_debt_ebitda=2.0)])
     got = rawstore.query("SELECT passed FROM fundamentals_gates WHERE ticker='AAA' AND rule_id='gross_margin'", db="fundamentals")
     assert got == [{"passed": None}]
@@ -110,9 +110,9 @@ def test_the_gate_rows_persist_through_the_real_table(rawstore_tmp_db):
 # ── the board ───────────────────────────────────────────────────────────────
 
 def test_the_gate_modal_marks_an_unknown_rule_as_unknown_not_failed(tmp_path):
-    from RevenueChaser.core.tests.board_js import run_board_js
-    from RevenueChaser.module_fundamentals.pipeline import build_payload
-    from RevenueChaser.module_fundamentals.report import render_fundamental_dashboard
+    from revenuechaser.core.tests.board_js import run_board_js
+    from revenuechaser.module_fundamentals.pipeline import build_payload
+    from revenuechaser.module_fundamentals.report import render_fundamental_dashboard
     row = {"ticker": "AAA", "name": "A", "price": 50.0, "market_cap": 1e9, "sector": "Tech", "industry": "Soft",
            "themes": ["Software"], "earnings_date": None, "period": "FY2024 vs FY2023",
            "metrics": _m(rev_growth_ttm=0.30, fcf_margin=0.20, ro40=50.0, gross_margin=None, roic=0.20,

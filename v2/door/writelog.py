@@ -12,7 +12,7 @@ absent.
 * **No traceback.** An upstream that did not answer is a status and a reason, never an exception's text, which can
   carry a URL that holds a password.
 
-**Where it goes.** The line is emitted through the ``RevenueChaser.v2.door.write`` logger, which on homesrv is the
+**Where it goes.** The line is emitted through the ``revenuechaser.v2.door.write`` logger, which on homesrv is the
 container's stdout and so journald — the door's image is ``read_only: true`` with one ``:ro`` mount, and a write
 log that needed a writable mount would have made the write side need the artifacts root to change, which #1317
 says it must not. ``RC_DOOR_WRITE_LOG`` adds a file beside it when there is somewhere to put one; with the
@@ -28,9 +28,9 @@ import json
 import logging
 from datetime import datetime, timezone
 
-from RevenueChaser.v2.door import config, proxy
+from revenuechaser.v2.door import config, proxy
 
-LOGGER = logging.getLogger("RevenueChaser.v2.door.write")
+LOGGER = logging.getLogger("revenuechaser.v2.door.write")
 
 #: A tailnet login is an address. Anything longer than this is not one, and is cut rather than written whole.
 MAX_LOGIN_CHARS = 200

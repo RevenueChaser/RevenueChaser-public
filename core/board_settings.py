@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
-from RevenueChaser.core import settings_store
+from revenuechaser.core import settings_store
 
 
 
@@ -34,7 +34,7 @@ class Setting:
 
 
 def _comov_cfg():
-    from RevenueChaser.module_comovement import config
+    from revenuechaser.module_comovement import config
     return config
 
 
@@ -42,7 +42,7 @@ def stored_sessions() -> int:
     """Trading sessions of SPY that Co-movement reads (read-only): D01 over its 2y span since the #379 D01 switch
     (``module_comovement.ohlc.sessions_held``); 504 when the store has none (a fresh checkout) or cannot be read."""
     try:
-        from RevenueChaser.module_comovement import ohlc
+        from revenuechaser.module_comovement import ohlc
         n = ohlc.sessions_held("SPY")
     except Exception:  # noqa: BLE001 - table absent on a fresh store
         n = 0
@@ -106,7 +106,7 @@ def _operating_only(default: Callable[[], int]) -> Setting:
 # board -> (spec factory, cross-rule). The factory runs at call time so bounds
 # come from the board's config, never from a copy made at import.
 def _swing_cfg():
-    from RevenueChaser.module_swing_potential import config
+    from revenuechaser.module_swing_potential import config
     return config
 
 
@@ -175,7 +175,7 @@ def _swing_rules(v: dict) -> list[str]:
 
 
 def _fund_cfg():
-    from RevenueChaser.module_fundamentals import config
+    from revenuechaser.module_fundamentals import config
     return config
 
 
@@ -229,23 +229,23 @@ def _universe_rules(v: dict) -> list[str]:
 def _llm_specs() -> dict[str, Setting]:
     """The LLM jobs' pairs (#404). ``llm_jobs`` hands them over as plain data and never imports this module:
     every LLM job calls it, and this one reaches every board, which would cost CI a full run per board change."""
-    from RevenueChaser.core import llm_jobs
+    from revenuechaser.core import llm_jobs
     return {f["key"]: Setting(f["key"], f["kind"], f["default"], choices=f["choices"], label=f["label"])
             for f in llm_jobs.setting_fields()}
 
 
 def _llm_rules(v: dict) -> list[str]:
-    from RevenueChaser.core import llm_jobs
+    from revenuechaser.core import llm_jobs
     return llm_jobs.rules(v)
 
 
 def _rel_specs() -> dict[str, Setting]:
-    from RevenueChaser.module_relatedness import settings
+    from revenuechaser.module_relatedness import settings
     return settings.specs()
 
 
 def _rel_rules(v: dict) -> list[str]:
-    from RevenueChaser.module_relatedness import settings
+    from revenuechaser.module_relatedness import settings
     return settings.rules(v)
 
 

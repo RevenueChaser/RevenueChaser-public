@@ -14,13 +14,13 @@ import json
 
 import pytest
 
-from RevenueChaser.core import provenance, rawstore
+from revenuechaser.core import provenance, rawstore
 
 
 class TestResolvers:
     def test_swing_and_fundamentals_report_the_newest_bar(self, rawstore_tmp_db):
         """Their own names' newest D01 bar since K7 (#383 R3; ``test_provenance_k7_383.py``)."""
-        from RevenueChaser.core.tests.d01_seed import seed_d01
+        from revenuechaser.core.tests.d01_seed import seed_d01
         assert provenance.data_as_of("module_swing_potential") is None
         seed_d01("AAPL", ["2026-08-28", "2026-08-31"], 1.0)
         seed_d01("MSFT", ["2026-08-27", "2026-08-28"], 1.0)
@@ -48,7 +48,7 @@ class TestResolvers:
     def test_leaps_is_the_newest_far_contract_session_not_the_old_tables(self, rawstore_tmp_db, monkeypatch):
         """#746: the chip reads the table the board reads; the old scan's two tables are gone."""
         from datetime import date
-        from RevenueChaser.rcdata import read
+        from revenuechaser.rcdata import read
         monkeypatch.setattr(read, "far_contract_sessions", lambda: [])
         assert provenance.data_as_of("module_leaps") is None
         monkeypatch.setattr(read, "far_contract_sessions", lambda: [{"session_date": date(2026, 11, 13)},
@@ -68,28 +68,28 @@ class TestResolvers:
 class TestTheLabelIsAboutDataNotTheRun:
     def test_data_date_is_independent_of_when_the_scan_ran(self, rawstore_tmp_db):
         """The exact bug: a scan run today over bars from days ago."""
-        from RevenueChaser.core.tests.d01_seed import seed_d01
+        from revenuechaser.core.tests.d01_seed import seed_d01
         seed_d01("AAPL", ["2026-08-28", "2026-08-31"], 1.0)
         rawstore.replace_all("swing_scores", [{"ticker": "AAPL"}])
-        from RevenueChaser.module_swing_potential.pipeline import build_payload
+        from revenuechaser.module_swing_potential.pipeline import build_payload
         p = build_payload([], run_stats={"data_as_of": provenance.data_as_of("module_swing_potential")})
         assert p["data_as_of"] == "2026-08-31"
         assert p["generated_at"][:10] != p["data_as_of"], (
             "generated_at is the run time; it must not be mistaken for the data date")
 
     def test_no_internal_jargon_reaches_the_payload(self, rawstore_tmp_db):
-        from RevenueChaser.module_swing_potential.pipeline import build_payload
+        from revenuechaser.module_swing_potential.pipeline import build_payload
         p = build_payload([], run_stats={})
         assert "model_only" not in p, "no_fetch is an implementation detail, not a UI field"
 
 
 class TestApi:
     def _client(self):
-        from RevenueChaser.app import dashboard
+        from revenuechaser.app import dashboard
         return dashboard.app.test_client()
 
     def test_endpoint_returns_the_data_date(self, rawstore_tmp_db):
-        from RevenueChaser.core.tests.d01_seed import seed_d01
+        from revenuechaser.core.tests.d01_seed import seed_d01
         seed_d01("AAPL", ["2026-08-28", "2026-08-31"], 1.0)
         rawstore.replace_all("swing_scores", [{"ticker": "AAPL"}])
         d = self._client().get("/api/data_asof/module_swing_potential").get_json()
@@ -106,10 +106,10 @@ class TestApi:
 
 def test_settings_header_names_the_prices_session_and_the_builders_last_run(monkeypatch):
     """avo, 10 Nov 2026 ("su bolumlerde dogru gelmeli"): Settings read "Data: n/a · Last run: —"."""
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
     monkeypatch.setitem(provenance.RESOLVERS, "module_settings", lambda: "2026-11-09")
     monkeypatch.setattr(ops, "last_builder_run", lambda: {"started_at": 1762804800.0})
-    from RevenueChaser.app import dashboard
+    from revenuechaser.app import dashboard
     r = dashboard.app.test_client().get("/api/data_asof/module_settings").get_json()
     assert r["data_as_of"] == "2026-11-09" and r["last_run"] == "2025-11-10T20:00:00+00:00"
     assert provenance.last_run("module_swing_potential") is None
@@ -124,7 +124,7 @@ def test_settings_reads_the_universe_prices_close():
 def test_every_dashboard_tab_declares_a_data_date():
     """Gate: a new board must say what its data date is — even if the answer is
     'none'. Otherwise it silently shows a blank while looking authoritative."""
-    from RevenueChaser.app import dashboard
+    from revenuechaser.app import dashboard
     tabs = {t["key"] for t in dashboard.TABS if t.get("type") == "tab"}
     undeclared = sorted(tabs - set(provenance.RESOLVERS))
     assert not undeclared, (
@@ -146,7 +146,7 @@ def test_template_edits_do_not_need_a_server_restart():
     """debug=False makes Jinja cache the compiled template for the process
     lifetime, so a dashboard.html fix silently does not appear until restart —
     which is exactly why the first 'Last run' fix looked like it had not landed."""
-    from RevenueChaser.app.dashboard import app
+    from revenuechaser.app.dashboard import app
     assert app.jinja_env.auto_reload is True
 
 

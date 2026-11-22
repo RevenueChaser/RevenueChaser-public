@@ -32,7 +32,7 @@ def sec13f_totals(tickers=None) -> dict[str, dict]:
     rather than importing the 13F engine for them (#16): a store both sides read is the contract, while an
     engine call makes one board's run depend on the other board's module being present.
     """
-    from RevenueChaser.rcdata import read as rcread
+    from revenuechaser.rcdata import read as rcread
 
     out: dict[str, dict] = {}
     for r in rcread.holders_13f(tickers):       # every ticker when None; the chart route asks for one (#732)
@@ -53,7 +53,7 @@ def sec13f_filer_breaks(tickers) -> dict[str, list[dict]]:
     filers that started (``started``) or stopped (``stopped``) reporting it in a settled quarter (#732). The flows
     leave these filers out, so the board marks the ticker and lists them. A store that cannot be read gives ``{}``
     and a warning, never a failed board."""
-    from RevenueChaser.rcdata import read as rcread
+    from revenuechaser.rcdata import read as rcread
 
     wanted = sorted({str(t).strip().upper() for t in tickers if t})
     if not wanted:
@@ -83,7 +83,7 @@ def sec13f_type_holdings(tag: str) -> list[dict]:
     """One investor type's ``sec13f_type_holdings`` rows (#760): per quarter its largest tickers with their ``share``
     (%) of the type's portfolio and the rest as one row whose ``ticker`` is None, periods as ISO dates. A store that
     cannot be read gives ``[]`` and a warning, never a failed board."""
-    from RevenueChaser.rcdata import read as rcread
+    from revenuechaser.rcdata import read as rcread
 
     try:
         rows = rcread.type_holdings_13f([tag])
@@ -98,7 +98,7 @@ def sec13f_type_sector(tag: str) -> list[dict]:
     """One investor type's ``sec13f_type_sector`` rows (#788 A1): per quarter and sector its value and ``share`` (%)
     of the type's portfolio, periods as ISO dates. ``[]`` and a warning when the store cannot be read (or was built
     before the table, ownership version 5)."""
-    from RevenueChaser.rcdata import read as rcread
+    from revenuechaser.rcdata import read as rcread
 
     try:
         rows = rcread.type_sector_13f([tag])
@@ -111,7 +111,7 @@ def sec13f_type_sector(tag: str) -> list[dict]:
 def sec13f_type_flow(tag: str) -> list[dict]:
     """One investor type's ``sec13f_type_flow`` rows (#788 A2): per quarter the dollars its continuing filers bought
     and sold and the net, periods as ISO dates. ``[]`` and a warning when the store cannot be read."""
-    from RevenueChaser.rcdata import read as rcread
+    from revenuechaser.rcdata import read as rcread
 
     try:
         rows = rcread.type_flow_13f([tag])
@@ -124,7 +124,7 @@ def sec13f_type_flow(tag: str) -> list[dict]:
 def sec13f_type_filers() -> dict[str, int]:
     """``{tag: filers}``: each investor type's 13F filers in its newest stored quarter (#760), for the board's picker
     to show how thin a type is (13 Nov 2026: 4 energy investors, no ESG one). ``{}`` when the store cannot be read."""
-    from RevenueChaser.rcdata import read as rcread
+    from revenuechaser.rcdata import read as rcread
 
     try:
         rows = rcread.type_holdings_13f()
@@ -146,7 +146,7 @@ def sec13f_filer_search(query: str, limit: int = 20) -> list[dict]:
     """The filers whose name holds ``query`` (or whose CIK it is), largest book first, for the board's filer picker
     (#928): their ``sec13f_filer_style`` rows, periods as ISO dates. ``[]`` and a warning when the store cannot be
     read."""
-    from RevenueChaser.rcdata import read as rcread
+    from revenuechaser.rcdata import read as rcread
 
     try:
         return [_iso_row(r) for r in rcread.filer_style_13f(query, limit=limit)]
@@ -159,7 +159,7 @@ def sec13f_filer(cik: str) -> dict:
     """One 13F filer for the board's Investors view (#928, #779): ``holdings`` (its ``sec13f_filer_holdings`` rows),
     ``style`` (its ``sec13f_filer_style`` row, None without one) and ``tags`` (Unusual Whales' tags), periods as ISO
     dates. A part the store cannot give is empty, with a warning, never a failed board."""
-    from RevenueChaser.rcdata import read as rcread
+    from revenuechaser.rcdata import read as rcread
 
     out: dict = {"holdings": [], "style": None, "tags": []}
     try:
@@ -175,7 +175,7 @@ def sec13f_filer(cik: str) -> dict:
 def sec13f_open_periods() -> set[str]:
     """The 13F report periods still arriving (their filing deadline not passed, nor their data set published), as
     ISO dates; ``set()`` when the store cannot be read."""
-    from RevenueChaser.rcdata import read as rcread
+    from revenuechaser.rcdata import read as rcread
 
     try:
         return {r["period"].isoformat() for r in rcread.periods_13f() if not r.get("complete")}
@@ -200,7 +200,7 @@ def split_factors_13f(periods: dict) -> dict[str, dict[str, float]]:
     """
     from datetime import timedelta
 
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     out: dict[str, dict[str, float]] = {}
     try:
         ids = read.security_ids(periods)
@@ -249,7 +249,7 @@ def shares_outstanding(tickers, today: date | None = None) -> dict[str, dict]:
     """
     from datetime import timedelta
 
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     wanted = sorted({str(t).strip().upper() for t in tickers if str(t or "").strip()})
     out = {t: {"shares": None, "as_of": None, "source": None, "note": "no shares count and no market cap"}
            for t in wanted}
@@ -300,7 +300,7 @@ def finra_short_recent(tickers, today: date | None = None) -> dict[str, dict]:
     """``finra_short`` over the age the ``ownership.short_interest`` need allows (calendar days) up to ``today``."""
     from datetime import timedelta
 
-    from RevenueChaser.rcdata import needs
+    from revenuechaser.rcdata import needs
     today = today or date.today()
     return finra_short(tickers, today - timedelta(days=needs.catalog.NEEDS["ownership.short_interest"].max_lag), today)
 
@@ -310,7 +310,7 @@ def finra_short(tickers, start: date, end: date) -> dict[str, dict]:
     rows of one day, the one under the ticker's own symbol. ``settlement_date`` is a ``date``; ``current_short`` and
     ``days_to_cover`` are FINRA's. The one FINRA short-interest reader of the Earnings board (R5) and the 13F board's
     Short% (#576, #646). A store error is raised: each caller says in its own words that the figure is not stored."""
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     best: dict[str, dict] = {}
     for r in read.finra_short_interest(tickers, start=start, end=end):
         ticker, day = str(r.get("ticker") or "").upper(), read._day(r.get("settlement_date"))

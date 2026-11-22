@@ -7,8 +7,8 @@ from datetime import date, timedelta
 import numpy as np
 import pytest
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_oipd import engine, opd_math, report
+from revenuechaser.core import rawstore
+from revenuechaser.module_oipd import engine, opd_math, report
 
 _ASOF = "2026-09-23"
 _SPOT = 100.0
@@ -225,7 +225,7 @@ class _ResultUW(_FakeUW):
         self.partial, self.failed, self.status = set(partial), set(failed), status
 
     def option_contracts_result(self, ticker, expiry=None, **kw):
-        from RevenueChaser.core.providers.result import ProviderResult
+        from revenuechaser.core.providers.result import ProviderResult
         self.calls["contracts"] += 1
         rows = _chain_for(expiry) if expiry in self.expiries else [
             c for e in self.expiries for c in _chain_for(e)]
@@ -307,7 +307,7 @@ class TestFailedPulls:
     def test_an_empty_but_ok_chain_still_says_check_the_ticker(self, fixed_today):
         class _OkEmpty(_ResultUW):
             def option_contracts_result(self, ticker, expiry=None, **kw):
-                from RevenueChaser.core.providers.result import ProviderResult
+                from revenuechaser.core.providers.result import ProviderResult
                 return ProviderResult("ok", [], None, "")
 
         payload = engine.run(_OkEmpty(), "APPL")

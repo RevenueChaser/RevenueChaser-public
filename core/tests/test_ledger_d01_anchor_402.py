@@ -7,9 +7,9 @@ from __future__ import annotations
 
 from datetime import date
 
-from RevenueChaser.core import calendar as cal
-from RevenueChaser.core import ledger, rawstore
-from RevenueChaser.core.tests.d01_seed import write_d01
+from revenuechaser.core import calendar as cal
+from revenuechaser.core import ledger, rawstore
+from revenuechaser.core.tests.d01_seed import write_d01
 
 D = date(2026, 10, 2)          # a Friday and a normal session
 

@@ -8,10 +8,10 @@ from datetime import date, datetime, timezone
 
 import pytest
 
-from RevenueChaser.core import calendar as cal
-from RevenueChaser.core import ledger, rawstore
-from RevenueChaser.core.tests.d01_seed import seed_d01
-from RevenueChaser.rcdata.tests import prices_store
+from revenuechaser.core import calendar as cal
+from revenuechaser.core import ledger, rawstore
+from revenuechaser.core.tests.d01_seed import seed_d01
+from revenuechaser.rcdata.tests import prices_store
 
 D = date(2026, 10, 2)          # a Friday and a normal session
 
@@ -552,7 +552,7 @@ def test_freeze_board_past_the_holiday_table_skips_with_a_message(rawstore_tmp_d
 
 def test_freeze_board_never_raises_job_message(rawstore_tmp_db):
     """A skipped freeze inside ``run_universe_refresh`` must not stop the next family."""
-    from RevenueChaser.app import jobs
+    from revenuechaser.app import jobs
     for payload, now in ((_board(2), _utc(2029, 3, 1, 22, 0)), (_payload(is_fixture=True), POST_CLOSE)):
         try:
             _freeze(payload, now=now)

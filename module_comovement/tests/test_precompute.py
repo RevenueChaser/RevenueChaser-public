@@ -14,14 +14,14 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from RevenueChaser.rcdata.tests import universe_store
-from RevenueChaser.core import board_settings as bs
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_comovement import cluster as cluster_mod
-from RevenueChaser.module_comovement import config, engine
-from RevenueChaser.module_comovement.tests.test_comovement import (
+from revenuechaser.rcdata.tests import universe_store
+from revenuechaser.core import board_settings as bs
+from revenuechaser.core import rawstore
+from revenuechaser.module_comovement import cluster as cluster_mod
+from revenuechaser.module_comovement import config, engine
+from revenuechaser.module_comovement.tests.test_comovement import (
     _market_two_groups, _seed_ohlc, _seed_universe)
-from RevenueChaser.module_comovement.tests.test_settings import _diff, _norm
+from revenuechaser.module_comovement.tests.test_settings import _diff, _norm
 
 B = "module_comovement"
 
@@ -250,8 +250,8 @@ def test_precompute_records_a_full_run(market):
 # ── the Fetch runner ────────────────────────────────────────────────────────
 @pytest.fixture
 def runner(market, monkeypatch):
-    from RevenueChaser.app import runners
-    from RevenueChaser.module_comovement import ohlc
+    from revenuechaser.app import runners
+    from revenuechaser.module_comovement import ohlc
 
     monkeypatch.setattr(ohlc, "fetch_bulk", lambda tickers=None, no_fetch=False, **kw:
                         {"requested": 0, "fetched": 0, "no_fetch": no_fetch})
@@ -293,7 +293,7 @@ def test_a_precompute_failure_does_not_fail_the_fetch(runner, monkeypatch, caplo
 # ── Relatedness keeps reading the Fetch run ─────────────────────────────────
 def _relatedness_run(monkeypatch) -> str | None:
     """The ``as_of`` Relatedness's cluster chips read."""
-    from RevenueChaser.module_relatedness import engine as rel_engine
+    from revenuechaser.module_relatedness import engine as rel_engine
 
     seen = []
     real = rawstore.query

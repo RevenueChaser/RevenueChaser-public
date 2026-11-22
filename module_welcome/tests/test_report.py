@@ -4,9 +4,9 @@ from __future__ import annotations
 import json
 from datetime import date, datetime
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_news import calendar as cal
-from RevenueChaser.module_welcome import report
+from revenuechaser.core import rawstore
+from revenuechaser.module_news import calendar as cal
+from revenuechaser.module_welcome import report
 
 NOW = datetime(2026, 11, 10, 9, 0, tzinfo=cal.AMS).timestamp()        # Tue 10 Nov 09:00 Amsterdam
 HOUR = 3600.0

@@ -27,8 +27,8 @@ from datetime import datetime
 
 from markupsafe import Markup
 
-from RevenueChaser.core import templating
-from RevenueChaser.core.html_safe import script_json
+from revenuechaser.core import templating
+from revenuechaser.core.html_safe import script_json
 
 logger = logging.getLogger(__name__)
 
@@ -199,7 +199,7 @@ def audit(rows: list[dict], exists=None) -> dict:
     wanted = {r["chain"] for r in rows if r.get("chain") and r["chain"] not in seen}
     if wanted and exists is None:
         try:
-            from RevenueChaser.rcdata import ops
+            from revenuechaser.rcdata import ops
             exists = ops.runs_exist(sorted(wanted))
         except Exception:  # noqa: BLE001 — a page, not a monitor: an unreadable store is "not checked"
             logger.debug("runs: the chain roots could not be read", exc_info=True)
@@ -219,7 +219,7 @@ def read(limit=DEFAULT_LIMIT, problems: bool = False, query=None) -> dict:
     """
     limit, problems, query = clamp_limit(limit), bool(problems), clean_query(query)
     try:
-        from RevenueChaser.rcdata import ops
+        from revenuechaser.rcdata import ops
         stored = ops.recent_runs(limit)
     except Exception as exc:  # noqa: BLE001 — a missing or busy ops store is an empty page, not a 500
         logger.debug("runs: the run log could not be read", exc_info=True)

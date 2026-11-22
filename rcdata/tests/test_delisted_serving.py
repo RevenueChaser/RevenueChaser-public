@@ -17,11 +17,11 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.rcdata import read, serving, serving_versions
-from RevenueChaser.rcdata.build import DATASETS, base
-from RevenueChaser.rcdata.build.delisted import serving as delisted
-from RevenueChaser.rcdata.build.prices import serving as prices_serving, wrds_history
-from RevenueChaser.rcdata.build.spine import wrds
+from revenuechaser.rcdata import read, serving, serving_versions
+from revenuechaser.rcdata.build import DATASETS, base
+from revenuechaser.rcdata.build.delisted import serving as delisted
+from revenuechaser.rcdata.build.prices import serving as prices_serving, wrds_history
+from revenuechaser.rcdata.build.spine import wrds
 
 from .test_prices_wrds import AAPL, FakeWrds, _data, env  # noqa: F401 - env is the autouse world
 
@@ -265,8 +265,8 @@ def test_the_readers_answer_from_the_delisted_file(world):
 
 
 def test_the_needs_layer_serves_it_and_never_calls_it_stale(world):
-    from RevenueChaser.rcdata import needs
-    from RevenueChaser.rcdata.needs import catalog
+    from revenuechaser.rcdata import needs
+    from revenuechaser.rcdata.needs import catalog
     for name in ("market.delisted_security", "market.delisted_price_bar"):
         need = catalog.NEEDS[name]
         assert need.kind == "delisted" and need.dataset == delisted.NAME

@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from datetime import date
 
-from RevenueChaser.core import ownership
-from RevenueChaser.module_sec_13f import report
+from revenuechaser.core import ownership
+from revenuechaser.module_sec_13f import report
 
 Q1, Q2, Q3 = "2026-03-31", "2026-06-30", "2026-09-30"
 META = {"AAA": {"name": "Alpha", "sector": "Technology"}, "BBB": {"name": "Beta", "sector": "Technology"}}
@@ -80,7 +80,7 @@ def test_a_store_that_cannot_say_shows_no_closed_state_but_still_the_arriving_qu
 
 
 def test_the_shared_reader_groups_the_breaks_by_ticker(monkeypatch):
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     seen = {}
 
     def fake(tickers):
@@ -94,7 +94,7 @@ def test_the_shared_reader_groups_the_breaks_by_ticker(monkeypatch):
 
 
 def test_an_unreadable_store_gives_no_breaks_never_a_failed_board(monkeypatch):
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
 
     def boom(tickers):
         raise RuntimeError("store locked")

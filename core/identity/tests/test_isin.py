@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core.identity.isin import from_cusip, luhn_ok
+from revenuechaser.core.identity.isin import from_cusip, luhn_ok
 
 # Hand-checked against the Luhn expansion (A-Z -> 10-35) before this module shipped.
 PAIRS = (

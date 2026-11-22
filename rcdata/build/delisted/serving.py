@@ -27,7 +27,7 @@ on its own.
 
 **Attended, built whole.** One backfill from the Parquet on disk, then with the other WRDS datasets' monthly run
 (#1219): never due on its own, run from the CLI on the server
-(``python -m RevenueChaser.rcdata.build backfill delisted/serving``). There is no daily run and no scope to widen.
+(``python -m revenuechaser.rcdata.build backfill delisted/serving``). There is no daily run and no scope to widen.
 
 **Append-only**, so the ordinary shrink guard refuses a build that lost rows and no table of this kind belongs in
 ``SHRINKS_BY_CHOICE``. Its own serving version, its own ``prev`` file and its own backup step: a bad ``delisted``
