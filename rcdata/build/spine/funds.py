@@ -132,7 +132,7 @@ PROSHARES = (("sp500_dividend_aristocrats", "NOBL", 54), ("sp400_dividend_aristo
 #: 4,274 rows on 22 Nov 2026, 3,593 after the warrants, rights and units (this parser, on that answer); the floor is
 #: 80 % of those.
 NASDAQ_COMPOSITE = ("nasdaq", "COMP", 2875)
-#: The browser headers avo approved for the screener (22 Nov 2026). Only that file sends them.
+#: The browser headers avo approved for Nasdaq (22 Nov 2026): the screener and the nasdaq100 list send them.
 NASDAQ_BROWSER = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
                                 "Chrome/130.0 Safari/537.36",
                   "Accept": "application/json, text/plain, */*", "Accept-Language": "en-US,en;q=0.9",
@@ -367,9 +367,10 @@ class FundFile:
         return provider_base("RC_NASDAQ_API_BASE", "https://api.nasdaq.com") + "/api/quote/list-type/nasdaq100"
 
     def headers(self) -> dict[str, str]:
-        """The request headers: the screener's approved browser ones, else ``Accept: */*`` (the builder's own UA)."""
-        screener = (self.provider, self.fund) == ("nasdaq", NASDAQ_COMPOSITE[1])
-        return dict(NASDAQ_BROWSER) if screener else {"Accept": "*/*"}
+        """The request headers: avo's approved browser ones for both Nasdaq files, else ``Accept: */*`` (the builder's
+        own UA). Without them Nasdaq's edge closes the connection unanswered (homesrv, 22 Nov 2026: HTTP/2 reset after
+        TLS, HTTP/1.1 no answer in 15 s; with them 200 and the 101 nasdaq100 rows), which failed ``ndx`` since 28 Oct."""
+        return dict(NASDAQ_BROWSER) if self.provider == "nasdaq" else {"Accept": "*/*"}
 
     def raw_name(self) -> str:
         return f"{self.provider}-{self.fund}.{self.ext}"
