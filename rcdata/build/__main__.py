@@ -39,10 +39,11 @@
     --no-build                          the old name of --no-duckdb, kept so that a queued request and a runbook
                                         line keep working (#498). Deprecated; it does the same thing
 
-    attended [--dataset X]              drain the queued requests of the attended datasets (WRDS: a person logs in
-                                        and confirms Duo) and stop. The only runner that may take someone else's
-                                        request for one of them, so a Fetch press waits in the queue for this
-                                        terminal instead of being refused; --dataset limits it to one of them
+    attended [--dataset X]              drain the queued requests of the attended datasets (today only
+                                        ``delisted/serving``, which stays off the hourly pass by its own
+                                        declaration, #1219) and stop. The only runner that may take someone
+                                        else's request for one of them, so a Fetch press waits in the queue for
+                                        this terminal instead of being refused; --dataset limits it to one of them
     --wait SECONDS                      how long to wait for the store's writer turn when a job lock is held or
                                         another builder runs, instead of giving up at once. A person's commands
                                         (``backfill``, ``attended``, ``run --dataset X``) wait ``DEFAULT_WAIT_S``
@@ -380,7 +381,7 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--names", help=scope_help)
     run.add_argument("--include", help=group_help)
     at = sub.add_parser("attended")
-    at.add_argument("--dataset", choices=sorted(n for n in DATASETS if n.startswith("wrds/")),
+    at.add_argument("--dataset", choices=sorted(base.attended_names()),
                     help="only this attended dataset")
     bf = sub.add_parser("backfill")
     bf.add_argument("datasets", nargs="+", metavar="dataset")
@@ -453,14 +454,17 @@ def main(argv: list[str] | None = None) -> int:
     # counter, instead of ending the process where it stands.
     signal.signal(signal.SIGTERM, _terminate)
     if args.cmd == "attended":
-        if not base.wrds_attended():
-            print(f"nothing to do: the WRDS datasets run unattended ({base.WRDS_UNATTENDED_ENV}=1), from the hourly "
-                  "builder; use backfill or a Settings Fetch", file=sys.stderr)
+        names = base.attended_names()
+        if not names:
+            # #1361: no WRDS dataset is attended any more. An empty set means nothing can ever be drained here,
+            # so say so instead of waiting for a terminal that would have nothing to do.
+            print("nothing to do: no dataset declares attended", file=sys.stderr)
             return 0
         if not at_a_terminal():
-            # N4: the WRDS login and the Duo push need a person. Refusing a runner with no terminal turns the
-            # convention into a guard, so a mis-wired timer cannot reach them; the requests stay queued.
-            print("builder not started: attended needs a terminal (a person logs in to WRDS and confirms Duo)",
+            # N4: a dataset is attended because it must not start on its own (``delisted/serving``, #1219).
+            # Refusing a runner with no terminal turns that convention into a guard, so a mis-wired timer cannot
+            # reach them; the requests stay queued for a person.
+            print(f"builder not started: attended needs a terminal (a person runs {', '.join(sorted(names))})",
                   file=sys.stderr)
             return 3
         # #321: a request a killed run left `running` would hide here and keep the Fetch button at 409. Closing it

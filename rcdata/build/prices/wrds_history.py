@@ -330,9 +330,9 @@ class WrdsPrices:
     # The served history: its bars carry the symbols and the caps, its actions the factors.
     feeds = ("adj_factor", "security_symbol", "market_cap_daily")
     # Daily since Compustat is the one served source (avo, 3 Nov 2026 ~11:20 Amsterdam, decision 1: "1 evet"): the
-    # refresh of the last two years, five queries a day (seven with the snapshots). Attended unless RC_WRDS_UNATTENDED=1.
+    # refresh of the last two years, five queries a day (seven with the snapshots). The hourly builder runs it on
+    # its cadence, not before EARLIEST_NY_HOUR in New York (#1361: WRDS asks this login for no Duo push).
     cadence = "daily"
-    attended = property(lambda self: base.wrds_attended())   # RC_WRDS_UNATTENDED=1: the builder runs it
     backfill_needs_from = False
     starts_by_hand = True
 

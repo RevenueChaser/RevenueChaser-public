@@ -2312,8 +2312,9 @@ def _nd_dataset_card(c: dict, *, open_: bool = False) -> str:
         f'<button type="button" class="nd-btn" data-nd-act="cadence" data-dataset="{dsa}">Save schedule</button>'
         "</div>")
     if c.get("attended"):
-        # WRDS: a person logs in and confirms Duo, so the page offers no Fetch or Backfill (PR 5).
-        actions = (f'<div class="nd-k">Attended (WRDS login and Duo): runs only from a terminal on the server: '
+        # #1361: no WRDS dataset is attended any more. What is left declares it so that it never starts on its
+        # own (``delisted/serving``, #1219), so the page offers no Fetch or Backfill for it.
+        actions = (f'<div class="nd-k">Attended: runs only from a terminal on the server: '
                    f'<code>{_nd(c.get("attended_command"))}</code></div>'
                    f'<div class="nd-actions">{pause}</div>')
     else:

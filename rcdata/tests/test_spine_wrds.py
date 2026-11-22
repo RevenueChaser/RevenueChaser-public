@@ -68,12 +68,13 @@ def test_the_gics_dataset_also_stages_compustat_global_and_the_code_names(fake):
         con.close()
 
 
-def test_a_wrds_dataset_queued_by_the_schedule_or_a_page_is_skipped_without_a_login(fake):
+def test_a_wrds_dataset_queued_by_the_schedule_or_a_page_is_no_longer_held_for_a_terminal(fake):
+    # #1361: these were skipped with "attended" in the note, which is why the WRDS datasets never ran on their
+    # own. Only the absence of that skip is asserted; what the run then does depends on the fake login.
     conn, logins = fake
     for by in ("schedule", "settings"):
         row = _run(wrds.SEC_IDHIST.name, by=by)
-        assert row["result"] == "skipped" and "attended" in row["note"]
-    assert logins == [] and conn.queries == []
+        assert "attended" not in (row["note"] or "")
 
 
 def test_between_snapshots_only_the_new_names_are_asked(fake):

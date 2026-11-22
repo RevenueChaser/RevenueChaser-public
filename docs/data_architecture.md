@@ -1352,11 +1352,12 @@ kernel OOM-killed the builder twice while it ran beside `fundamentals/tables` of
 `constraint=CONSTRAINT_NONE`, the whole machine, so the unit's `MemoryMax` was no protection. A dataset named on
 the command line (`run --dataset X`, `backfill`) is a person's own run and keeps its turn whatever its weight.
 
-`attended` refuses a runner with no terminal (`sys.stdin.isatty()`), because the WRDS login and the Duo push need a
-person, and it says so and exits 0 when no attended request is queued rather than waiting for a turn it has no use
-for. A person's `backfill <dataset>` and `run --dataset X` run **their own** request for an attended dataset
-(`ops.next_request(by="cli")`), never one a page left for `attended`: that would spend their login and the WRDS day
-cap on somebody else's params. For every other dataset an older queued request still goes first, as it always has.
+`attended` refuses a runner with no terminal (`sys.stdin.isatty()`), because an attended dataset is one that must
+not start on its own, and it says so and exits 0 when no attended request is queued — or when no dataset declares
+`attended` at all — rather than waiting for a turn it has no use for. Since #1361 the set is `delisted/serving`
+alone (#1219). A person's `backfill <dataset>` and `run --dataset X` run **their own** request for an attended
+dataset (`ops.next_request(by="cli")`), never one a page left for `attended`: that would run somebody else's
+params. For every other dataset an older queued request still goes first, as it always has.
 
 **Which lock holds which off.** `core/job_lock.WRITES` says which store each writer family writes: `STORE` for the
 old store's DuckDB files under `RC_STORE_DIR` (`raw`, `edgar`, `history`, the legacy `prices`) and `MARKET` for the
@@ -1468,9 +1469,9 @@ the old identity tables there are untouched (D5: they are empty since 27 Oct).
 |---|---|---|---|
 | `sec/company_tickers_exchange` | weekly | `www.sec.gov/files/company_tickers_exchange.json`, `If-Modified-Since` from the last copy (a 304 writes nothing) | `stg_sec`, `stg_sec_all` |
 | `sec/company_tickers_mf` | weekly | `www.sec.gov/files/company_tickers_mf.json`, the same shape and the same `If-Modified-Since` fetch: the fund file, one row per series and share class | `stg_sec_mf` (the newest snapshot only: nothing reads the older ones, which stay in the Parquet tree) |
-| `wrds/sec_idhist` | monthly, attended | `comp.company`, `comp.security`, `comp.sec_idhist`; between snapshots only the new listed CIKs | `stg_wrds_company`, `stg_wrds_security`, `stg_wrds_idhist` |
-| `wrds/co_hgic` | monthly, attended | `comp.co_hgic`; Compustat Global `comp.g_company`, `comp.g_security` (ISIN lines) and the GICS code names `comp.r_giccd` | `stg_wrds_hgic`, `stg_wrds_g_company`, `stg_wrds_g_security`, `stg_wrds_giccd` |
-| `wrds/idxcst_his` | monthly, attended | `comp.idxcst_his` for the S&P 500, 400 and 600 index keys | `stg_wrds_idx` |
+| `wrds/sec_idhist` | monthly | `comp.company`, `comp.security`, `comp.sec_idhist`; between snapshots only the new listed CIKs | `stg_wrds_company`, `stg_wrds_security`, `stg_wrds_idhist` |
+| `wrds/co_hgic` | monthly | `comp.co_hgic`; Compustat Global `comp.g_company`, `comp.g_security` (ISIN lines) and the GICS code names `comp.r_giccd` | `stg_wrds_hgic`, `stg_wrds_g_company`, `stg_wrds_g_security`, `stg_wrds_giccd` |
+| `wrds/idxcst_his` | monthly | `comp.idxcst_his` for the S&P 500, 400 and 600 index keys | `stg_wrds_idx` |
 | `openfigi/map` | weekly | OpenFIGI `/v3/mapping`, the CUSIPs not mapped yet (a CINS, a letter first, asked as `ID_CINS`), 250 requests a minute per key, one box-wide bucket shared with the dashboard's mapping (125 a minute each when it cannot be used). A second lane asks a `TICKER` job for every Tier A row of the live `security` table with no FIGI **or whose FIGI this lane itself gave** (`wanted_tickers`), with or without a CUSIP: either there is no CUSIP to ask with, or OpenFIGI did not answer for the one there is, and in both cases the type rules have no OpenFIGI security type to read. Measured on the live spine (homesrv, 2 Nov 2026 file read 4 Nov): 321 Tier A rows carry `security_type = 'unknown'` and none of them has a FIGI — 192 with no CUSIP and no gvkey, 129 with both. A `TICKER` answer expires after `ABSENT_RETRY_DAYS` whether it is 'present' or 'absent', unlike a CUSIP's: a ticker is not a stable key, a symbol can move to another issuer, and `figi_ticker_differs` cannot catch that because the asked and answered tickers are equal. So the lane re-asks its own 4 requests once every 90 days. Both lanes share the one 400-request budget, the CUSIPs first | `stg_figi`, `stg_figi_ticker` (the ticker lane, keyed by the ticker asked) |
 | `funds/index_holdings` | daily | SSGA SPY/MDY/SPSM, iShares IVV/IJH/IJR (`latest-holdings.csv`), Vanguard VOO/IVOO/VIOO (daily creation basket), Nasdaq's nasdaq100 list and Invesco QQQ (both vote `ndx`); SSGA DIA (votes no index: `etf_class` reads it) | `stg_fund_lines`, `stg_fund_files` |
 | `funds/etf_holdings` | daily | the SPDR workbooks of the 11 sector funds and XBI/XOP/XME/KRE/XHB/XRT/KIE, the iShares `latest-holdings.csv` of SOXX/IBB/ITA/ITB/IGV/IAK, and **TickerInside's `api/v1/fund/<t>.json` whole for the 28 funds whose issuer publishes no keyless file** (#1365, avo 22 Nov 2026: UW leaves, #1283, and D3 of #354 keeps holdings off it; measured 22 Nov 2026, TickerInside covers 133 of the 133 ring-1 ETFs, 76 from the issuers' own daily files and the rest from each fund's newest N-PORT filing, which is ahead of the quarterly set we hold); on a day TickerInside holds nothing for ARKQ, ARK's own holdings CSV (`ark-ARKQ.csv`, #339; AIRR, SKYY, WCLD and ROBO have no machine-readable issuer file). No key is needed for any daily fund. Its history and flows files are **not** CC BY 4.0 and are never asked for (`core/providers/tickerinside.check_path`) | none: serves `etf_holdings` itself |
@@ -1483,31 +1484,29 @@ but one stop there; `sec/company_tickers_mf` also serves `fund` from its own sta
 that table from anything. The kind's datasets build in `DATASETS` order, so `spine/security` builds last. Raw and Parquet follow the market store's
 rules (`raw/<source>/<dataset>/...`, `parquet/<source>/<dataset>/...`; a raw file that exists is the resume marker).
 
-**Attended (WRDS).** The three WRDS datasets need a person, and run in their own interpreter: `wrds` is not in the
+**The WRDS datasets.** The three WRDS datasets run in their own interpreter: `wrds` is not in the
 builder's venv (on the server it has a venv of its own, because its pandas has no wheel for the builder's Python).
 `rcdata/build/spine/wrds_worker.py` runs under `RC_WRDS_PYTHON` (that venv's python, set in the server's env file;
 no default), one subprocess per builder process, so one WRDS connection: the login is that venv's
-`wrds.Connection` (the user from `WRDS_USERNAME`, which is required, the password from that user's `~/.pgpass`; WRDS may ask
-for a Duo push). The worker streams each answer in chunks to `<table>.jsonl.gz`; the builder types it in DuckDB.
-The datasets are never due, and only a runner with a person at it runs one: the CLI's own request
-(`requested_by` `cli`) or `python -m RevenueChaser.rcdata.build attended`. A request a page queued **waits in the
-queue** for that runner — the route answers 202 with `waits_for`, the hourly builder leaves it there
-(`ops.next_request(skip=base.attended_names())`) and `attended` claims nothing else
-(`only=base.attended_names()`); the schedule queues none. So the CLI runs them:
+`wrds.Connection` (the user from `WRDS_USERNAME`, which is required, the password from that user's `~/.pgpass`).
+The worker streams each answer in chunks to `<table>.jsonl.gz`; the builder types it in DuckDB.
+Since #1361 they are **not** `attended`: homesrv's `life` connects with no Duo push, so the hourly pass runs them on
+their cadence and a queued Fetch is picked up by it like any other dataset (`attended_names()` holds
+`delisted/serving` alone, for its own reason: #1219, never due on its own). Their whole-history build is still
+`whole_build_by_hand`, so a person runs
 `python -m RevenueChaser.rcdata.build backfill wrds/sec_idhist
-wrds/co_hgic wrds/idxcst_his openfigi/map` starts one worker for the whole process. Run it in a foreground terminal:
-the worker reads a WRDS prompt from `/dev/tty`, and a background job that reads its terminal is stopped (SIGTTIN).
+wrds/co_hgic wrds/idxcst_his openfigi/map`, which starts one worker for the whole process, in a foreground terminal:
+the worker may read a WRDS prompt from `/dev/tty`, and a background job that reads its terminal is stopped (SIGTTIN).
 A failed login, or no
-interpreter at `RC_WRDS_PYTHON`, fails the run and keeps the last snapshot served. With `RC_WRDS_UNATTENDED=1` the
-hourly builder runs them on their cadence, and a WRDS dataset whose last check `failed` **today** (New York) is not
+interpreter at `RC_WRDS_PYTHON`, fails the run and keeps the last snapshot served. A WRDS dataset whose last check `failed` **today** (New York) is not
 due again before the next day (`due.WRDS_FAILED_WHY`): no hourly login retry, but at most one retry a day, so a
 failure after the WRDS calls — a refused serving swap (#1115) — does not stop a daily dataset writing any check row
 at all until a person notices. A person's run (Fetch or CLI) that does not fail clears it at once. `requested_by` `cli` is the CLI's
 own mark: a panel header that says `cli` is recorded as `panel:cli`.
 
 **Starts by hand.** Every spine dataset is not due until it has built once (a `changed` or `unchanged` check, from
-the CLI or a Fetch), so the first hourly builder pass after a deploy calls no spine source before the attended
-steps, and a first attempt that failed is not retried every hour.
+the CLI or a Fetch), so the first hourly builder pass after a deploy calls no spine source before the by-hand
+first build, and a first attempt that failed is not retried every hour.
 
 **Served tables** (`spine` serving schema version `10`). Periods are `valid_from` inclusive, `valid_to` exclusive
 (Compustat's inclusive ends are moved one day on), `valid_to` NULL while current.
@@ -1634,7 +1633,7 @@ only through `rcdata.read`.
 | `sec/cover_shares` | daily | The SEC daily master index (10-K, 10-Q, 20-F, 40-F and their -T forms of the last 7 days), each filer's submissions file, the filing's inline-XBRL instance: `dei:EntityCommonStockSharesOutstanding` per class member; and, with no request, the cover count history of `sec/companyfacts`'s stored raw (`parquet/sec/cover_shares_dei/cik=<CIK>/`) | `stg_sec_cover`, `stg_sec_dei` |
 | `yfinance/float` | daily | Yahoo `floatShares` (`yfinance` `get_info`), 400 Tier A names a run, 1.5 s apart and 2,000 an hour, stopped by a 401 or 429 | `stg_yahoo_float` |
 | `uw/total_float` | daily | Unusual Whales `/short_screener` `total_float`, every Tier A name (the client's batching) | `stg_uw_float` |
-| `wrds/prices` | daily (avo, 3 Nov 2026), attended unless `RC_WRDS_UNATTENDED=1` | Compustat `comp.secd` from 1983 (its earliest priced day, 1983-12-30) on exchg 11, 12, 14, 17, 21 (NYSE, NYSE American, Nasdaq, NYSE Arca, BATS BZX) with the row's dividend columns, and `comp.sec_divid` per year, CRSP `crsp.dsf_v2` per year to 2025 (stocks and ETFs, from 1983), `comp.sec_split` and `crsp_a_stock.stkdelists` whole; no CCM link (`wrds_history.PERMNO_LINK`) | `stg_wrds_secd`, `stg_wrds_dsf`, `stg_wrds_divid`, `stg_wrds_split`, `stg_wrds_revisions` |
+| `wrds/prices` | daily (avo, 3 Nov 2026) | Compustat `comp.secd` from 1983 (its earliest priced day, 1983-12-30) on exchg 11, 12, 14, 17, 21 (NYSE, NYSE American, Nasdaq, NYSE Arca, BATS BZX) with the row's dividend columns, and `comp.sec_divid` per year, CRSP `crsp.dsf_v2` per year to 2025 (stocks and ETFs, from 1983), `comp.sec_split` and `crsp_a_stock.stkdelists` whole; no CCM link (`wrds_history.PERMNO_LINK`) | `stg_wrds_secd`, `stg_wrds_dsf`, `stg_wrds_divid`, `stg_wrds_split`, `stg_wrds_revisions` |
 | `prices/serving` | daily | none: builds the served tables from the staging tables; the history is Compustat's (priority 1), CRSP's only on its fallback days, never Alpaca's | the tables below |
 
 **A stored `comp.secd` row is a session only when it carries a price (#423).** Compustat ships its year partition
@@ -2071,11 +2070,11 @@ cache; since #642 PR 6 the boards never read that cache: no layer reads as no ro
 | `yfinance/estimates` | weekly | Yahoo's `earningsTrend` per company, its shortest ticker, when its newest answer is 7 days old; 5 failures in a row stop the run | `stg_yf_estimates` |
 | `yfinance/fx` | daily | Yahoo's daily close of `<CUR>USD=X` per currency in `fx_rates.CURRENCIES` (USD per unit), the whole history the first time, then from 7 days before the newest stored day. Since #1181 it fills the days `wrds/exrt` does not hold | `stg_yf_fx` |
 | `sec/fsds` | monthly | The SEC's quarterly Financial Statement Data Sets zip, the newest quarter published | `stg_sec_fsds` |
-| `wrds/fundq` | monthly, attended | `comp.fundq`, the Tier A gvkeys, ten years | `stg_wrds_fundq`, `stg_wrds_fundq_revision` |
-| `wrds/funda` | monthly, attended | `comp.funda`, the Tier A gvkeys, ten years | `stg_wrds_funda`, `stg_wrds_funda_revision` |
-| `wrds/segments` | monthly, attended | `comp_segments_hist_daily.wrds_segmerged` and `seg_customer`, five years, the newest source date per key where the table has one | `stg_wrds_segments`, `stg_wrds_customers` |
-| `wrds/exrt` | monthly, attended | `comp.exrt_dly`, the whole history of `fx_rates.CURRENCIES` and USD. Every row is quoted from GBP, so USD per unit is the cross `exratd(GBP->USD) / exratd(GBP->CUR)` (#1181, step H). **The rate a non-USD filer's values are converted at wherever Compustat has the day** (`fx_rates.held_rates`; DECISIONS F3); `yfinance/fx` fills the days it lacks, which are the newest ones between two monthly snapshots. The check note counts the pairs of the newest year that agree with Yahoo within 1% | `stg_wrds_exrt_raw`, `stg_wrds_exrt` |
-| `wrds/audit` | monthly, attended | Audit Analytics' three event feeds in `audit_audit_comp`, whole: `feed39_financial_restatements`, `feed20_nt` (late-filing notices) and `feed17_director_and_officer_chan`. Only the event's own columns are asked (key, `company_fkey`, filing day and form, what happened); no person's name and no disclosure text. `company_fkey` is the CIK (measured 20 Nov 2026, #1181 step C), and the feeds run about two months behind. The flag columns are text in the snapshot; their coding was measured on the first one (20 Nov 2026: every `res_*` and `is_*` flag is 0 or 1, `action` 17 words), and `audit_flag` serves our companies' rows. The check note counts each feed's rows, keys and our companies in it | `stg_wrds_restatements`, `stg_wrds_late_filings`, `stg_wrds_officer_changes` |
+| `wrds/fundq` | monthly | `comp.fundq`, the Tier A gvkeys, ten years | `stg_wrds_fundq`, `stg_wrds_fundq_revision` |
+| `wrds/funda` | monthly | `comp.funda`, the Tier A gvkeys, ten years | `stg_wrds_funda`, `stg_wrds_funda_revision` |
+| `wrds/segments` | monthly | `comp_segments_hist_daily.wrds_segmerged` and `seg_customer`, five years, the newest source date per key where the table has one | `stg_wrds_segments`, `stg_wrds_customers` |
+| `wrds/exrt` | monthly | `comp.exrt_dly`, the whole history of `fx_rates.CURRENCIES` and USD. Every row is quoted from GBP, so USD per unit is the cross `exratd(GBP->USD) / exratd(GBP->CUR)` (#1181, step H). **The rate a non-USD filer's values are converted at wherever Compustat has the day** (`fx_rates.held_rates`; DECISIONS F3); `yfinance/fx` fills the days it lacks, which are the newest ones between two monthly snapshots. The check note counts the pairs of the newest year that agree with Yahoo within 1% | `stg_wrds_exrt_raw`, `stg_wrds_exrt` |
+| `wrds/audit` | monthly | Audit Analytics' three event feeds in `audit_audit_comp`, whole: `feed39_financial_restatements`, `feed20_nt` (late-filing notices) and `feed17_director_and_officer_chan`. Only the event's own columns are asked (key, `company_fkey`, filing day and form, what happened); no person's name and no disclosure text. `company_fkey` is the CIK (measured 20 Nov 2026, #1181 step C), and the feeds run about two months behind. The flag columns are text in the snapshot; their coding was measured on the first one (20 Nov 2026: every `res_*` and `is_*` flag is 0 or 1, `action` 17 words), and `audit_flag` serves our companies' rows. The check note counts each feed's rows, keys and our companies in it | `stg_wrds_restatements`, `stg_wrds_late_filings`, `stg_wrds_officer_changes` |
 | `fundamentals/tables` | daily | none: builds the served tables, the views, the peer groups and the build issues from the staging tables | the tables below |
 
 **A builder that was down still reads what was filed meanwhile.** `sec/companyfacts` and `sec/filings` read the
@@ -2113,8 +2112,10 @@ Vantage's. `fundamental_fact` keeps its `preliminary` column and the CHECK that 
 table's shape, and changing it would bump the serving version and rebuild every file — but nothing writes a
 preliminary row any more.
 
-**WRDS is a check, not a served value.** Attended and monthly on the spine's one WRDS worker (one login, at most one
-Duo push per builder process): `python -m RevenueChaser.rcdata.build backfill wrds/fundq wrds/funda
+**WRDS is a check, not a served value.** Monthly on the spine's one WRDS worker (one login per builder process).
+Since #1361 the datasets are not `attended`: the hourly pass runs them on their cadence, because homesrv's `life`
+login gets no Duo push. The whole-history snapshot is still `whole_build_by_hand`, so a person runs
+`python -m RevenueChaser.rcdata.build backfill wrds/fundq wrds/funda
 wrds/segments wrds/exrt wrds/audit` in a foreground terminal on the server. Each monthly `fundq` / `funda` snapshot is compared with the
 one before: every value that changed for a period both hold is a `fundamental_revision` row (a restatement, or a
 correction at Compustat; a new period is not one). The check notes count revenue, net income and diluted EPS that
@@ -2148,7 +2149,7 @@ field. A difference is a note to look at, not an error: the served value may com
 the period.
 
 **Starts by hand.** Every fundamentals dataset is not due until it has built once, as the spine's are, so the first
-hourly pass after a deploy calls no source before the attended backfill.
+hourly pass after a deploy calls no source before the by-hand backfill.
 
 **Served tables** (`fundamentals` serving schema version `7`):
 

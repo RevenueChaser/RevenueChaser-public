@@ -32,8 +32,8 @@ def control_nd() -> dict:
               cost={"provider": "alpaca", "calls_per_partition": 1, "remaining": None, "cap": None}),
         _card("sec/13f", "never", checked_on=None,
               cost={"provider": "sec", "calls_per_partition": 1, "remaining": 19_900, "cap": 40_000}),
-        _card("wrds/prices", "never", checked_on=None, attended=True,
-              attended_command="python -m RevenueChaser.rcdata.build backfill wrds/prices"),
+        # #1361: the WRDS datasets are not attended any more, so the card carries no attended command.
+        _card("wrds/prices", "never", checked_on=None),
         _card("spine/security", "fresh", issues_open=7, cadence="weekly", checked_on="2026-10-26"),
         _card("market_series", "stale"),
     ]
@@ -161,7 +161,8 @@ def test_the_fill_row_follows_the_scope_the_dataset_honours():
     cells = rows["alpaca/bars"]["fill"]["cells"]
     assert [c["key"] for c in cells] == ["A", "E", "R"], "C and D are not offered: no cell"
     assert rows["sec/13f"]["fill"]["cells"] == [] and rows["sec/13f"]["fill"]["why"] == screen.NO_TIER_WORDS["ownership"]
-    assert rows["wrds/prices"]["fill"]["why"] == screen.NO_TIER_ATTENDED
+    # #1361: no longer attended, so the words are the prices kind's own: it reads its own list of names.
+    assert rows["wrds/prices"]["fill"]["why"] == screen.NO_TIER_WORDS["prices"]
 
 
 def test_the_fill_buttons_are_off_unless_the_server_says_so(monkeypatch):

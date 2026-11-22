@@ -214,11 +214,13 @@ def test_a_backfill_asks_each_table_and_year_once_and_skips_a_partition_that_exi
     assert secd_2024.is_file() and wrds_history.partition_path("dsf", 2025).is_file()
 
 
-def test_a_wrds_backfill_queued_by_the_schedule_is_skipped_without_a_login(fake):
+def test_a_wrds_backfill_queued_by_the_schedule_is_no_longer_held_for_a_terminal(fake):
+    # #1361: this used to be skipped with "attended" in the note, which was the whole reason the WRDS fetch never
+    # ran on its own. The skip is gone; what is asserted here is only that it is no longer refused for that
+    # reason, because whether the run then succeeds depends on the fake login, not on this contract.
     conn, logins = fake
     row = _backfill(by="schedule")
-    assert row["result"] == "skipped" and "attended" in row["note"]
-    assert logins == [] and conn.queries == []
+    assert "attended" not in (row["note"] or "")
 
 
 def test_the_backfill_stops_at_the_wrds_day_cap_and_serves_the_years_it_has(fake, monkeypatch):

@@ -62,11 +62,15 @@ def test_every_prices_dataset_has_a_card_and_a_label():
     assert cards["alpaca/bars"]["coverage_target"] == 0.99
 
 
-def test_the_wrds_history_card_names_its_own_attended_command_and_no_run_yet():
+def test_the_wrds_history_card_offers_buttons_now_instead_of_a_command():
+    # #1361: the WRDS datasets are no longer ``attended``, so the card stops being the "runs only from a
+    # terminal" kind. ``report.py`` renders the copy-paste command only in that branch; every other card gets
+    # Fetch and Backfill buttons instead, which is the better affordance and why nothing is lost here.
     card = _card("wrds/prices")
-    assert card["attended"] and card["attended_command"] == "python -m RevenueChaser.rcdata.build backfill wrds/prices"
+    assert card["attended"] is False
+    assert card["attended_command"] is None
     assert card["wrds"]["text"] == "no WRDS run yet"
-    assert _card("wrds/sec_idhist")["attended_command"] == newdata.attended_command("spine")
+    assert _card("wrds/sec_idhist")["attended"] is False
 
 
 def test_the_wrds_history_backfill_counts_its_table_years(monkeypatch):

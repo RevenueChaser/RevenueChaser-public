@@ -166,14 +166,15 @@ def test_an_attended_dataset_is_queued_and_waits_for_the_runner_on_the_server(cl
     has a ``fetch`` of its own, and for ``wrds/prices`` that fetch is the monthly refresh of the last two years
     while its backfill only fills missing partitions (review MUST-1).
     """
-    r = client.post("/api/build/request/wrds/sec_idhist")
+    # #1361: no WRDS dataset is attended any more, so the one that still is carries this contract.
+    r = client.post("/api/build/request/delisted/serving")
     assert r.status_code == 202, r.get_json()
     body = r.get_json()
     assert body["ok"] is True and body["attended"] is True
     assert "build attended" in body["waits_for"]
     rows = _rows()
     assert [(x["dataset"], x["status"], x["requested_by"], x["params"]) for x in rows] == [
-        ("wrds/sec_idhist", "queued", "test", None)]
+        ("delisted/serving", "queued", "test", None)]
 
 
 def test_an_attended_request_keeps_the_window_the_press_asked_for(client):

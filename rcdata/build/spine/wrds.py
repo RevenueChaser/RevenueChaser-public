@@ -415,7 +415,6 @@ class WrdsDataset:
     providers = (PROVIDER,)
     tables: tuple[str, ...] = ()
     cadence = "monthly"
-    attended = property(lambda self: base.wrds_attended())   # RC_WRDS_UNATTENDED=1: the builder runs it
     backfill_needs_from = False
     starts_by_hand = True             # not due until a first CLI run or Fetch built it (review should-fix 2)
 

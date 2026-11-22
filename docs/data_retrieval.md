@@ -190,9 +190,9 @@ routes only enqueue and read `ops.sqlite`. Each call opens its own SQLite connec
   `backfill_from=YYYY-MM-DD` (JSON body or query string) it is a backfill request. 202 `{ok, id, dataset}`;
   400 for a dataset the builder does not know or a date that is not a past `YYYY-MM-DD`; 409 while one of that
   dataset is queued or running; 403 without the panel header.
-  An attended dataset (the WRDS ones: the three spine datasets, `wrds/prices` and the four fundamentals tables)
+  An attended dataset (`delisted/serving` alone since #1361; the WRDS ones follow their cadence now)
   is queued too, with the press's own mode like any other dataset — the daily `fetch` unless `backfill_from` is
-  given — and the answer carries `attended: true` and `waits_for`: the login and Duo need a terminal, so the
+  given — and the answer carries `attended: true` and `waits_for`: that runner needs a person at a terminal, so the
   request waits in the queue until `python -m RevenueChaser.rcdata.build attended` on the server takes it, and
   the hourly builder leaves it there. A press is never turned into a backfill: each WRDS dataset's `fetch` is not
   its backfill (for `wrds/prices` the monthly refresh of the last two years, where the backfill only fills
@@ -239,7 +239,7 @@ For the rest, the raw file is the resume marker, so a later ordinary run (or `--
 already on disk at no provider call. That holds for `wrds/prices` and the WRDS fundamentals too since #503: a
 snapshot asked within `SNAPSHOT_DAYS` and not yet typed is typed from its raw file rather than asked again
 (`prices/wrds_history.py` `_held_snapshot`, `fundamentals/wrds_fund.py` `held`), so a second raw-only run sends no
-attended WRDS query.
+WRDS query.
 
 `--no-build` is the old name of `--no-duckdb`, kept as a deprecated alias so a queued request and a runbook line
 keep working; a request's params accept `no_build` as well as `no_duckdb`.

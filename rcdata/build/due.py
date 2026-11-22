@@ -2,8 +2,9 @@
 
 A dataset is due (``is_due``) when nothing holds it and its last run is old enough:
 
-- an attended dataset (WRDS: a person logs in and confirms Duo) is never due: it runs only from the CLI (PR 5);
-  with ``RC_WRDS_UNATTENDED=1`` the WRDS datasets are not attended and follow their cadence, but a WRDS dataset whose
+- an attended dataset is never due: it runs only from the CLI (PR 5). Since #1361 no WRDS dataset is one -- that
+  login asks for no Duo push here -- so they follow their cadence; what is left is ``delisted/serving``, which
+  declares it to stay off the hourly pass (#1219). A WRDS dataset whose
   last run failed **today** (New York) is not due again before the next day (#344: no hourly login retries; #1115:
   not for ever either, because a failure after the WRDS calls -- a refused serving swap -- would otherwise stop a
   daily dataset writing any check row at all until a person noticed). So at most one retry a day, and a run by a
@@ -140,7 +141,7 @@ def is_due(ds, mode: str = "full") -> tuple[bool, str]:
         return True, "never built"
     if "wrds" in getattr(ds, "providers", ()) and check["result"] == "failed" \
             and str(check.get("checked_on"))[:10] >= today:
-        # RC_WRDS_UNATTENDED: one failure never becomes an hourly login, but it does not hold a daily dataset for
+        # One failure never becomes an hourly login, but it does not hold a daily dataset for
         # ever either (#1115: a transient serving-swap refusal on 17 Nov 2026 left ``wrds/prices`` writing no check
         # row at all on 18 and 19 Nov, so the served bars stopped at 16 Nov). One retry a New York day.
         return False, WRDS_FAILED_WHY

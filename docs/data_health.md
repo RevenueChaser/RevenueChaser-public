@@ -277,13 +277,13 @@ the fundamentals layer's WRDS checks, below) and the schedule state.
 **The spine (PR 5).** Seven more dataset cards, one per spine dataset (`docs/data_architecture.md`, "The identity
 spine"), each with its own cadence (the SEC file and OpenFIGI weekly, WRDS monthly, the fund files and
 `spine/security` daily); `spine/security`'s coverage is the share of Tier A with a CUSIP, target 98%. The three WRDS
-cards are attended: they show the CLI command and Pause / Resume, and no Fetch or Backfill (a person logs in and
-confirms Duo on the server).
+cards run on their cadence since #1361, so they carry Fetch, Backfill and Pause / Resume like every other card.
 
 **The prices store (PR 7).** Seven more cards, one per prices dataset (`docs/data_architecture.md`, "The prices
 store"): Alpaca's daily bars (coverage = Tier A names with a bar on the session, target 99%; backfill = its day
 partitions), Alpaca's corporate actions, the SEC cover shares, the Yahoo and UW float, the WRDS history and
-`prices/serving`. The WRDS history card is attended (`python -m RevenueChaser.rcdata.build backfill wrds/prices`);
+`prices/serving`. The WRDS history card follows its daily cadence since #1361 and shows the by-hand whole-build
+line (`python -m RevenueChaser.rcdata.build backfill wrds/prices`);
 its backfill progress counts the table-year partitions (`secd 1993` ...) out of those expected, and its WRDS
 difference slot shows the store's monthly report (`wrds_price_diff`): per comparison the sessions compared and how
 many differ by more than 1 bp, with the largest difference. Every other card still says "no WRDS run yet", except
@@ -292,9 +292,9 @@ the four WRDS checks of the fundamentals layer below.
 **The fundamentals layer (PR 12).** Eleven more dataset cards, one per fundamentals dataset
 (`docs/data_architecture.md`, "Fundamentals"), each with its own cadence (the SEC facts and filings, the Alpha Vantage
 calendar, UW's preliminary quarters and `fundamentals/tables` daily, the yfinance estimates weekly, the SEC's FSDS and
-the WRDS checks monthly). The WRDS cards `wrds/fundq`, `wrds/funda`, `wrds/segments`, `wrds/exrt` and `wrds/audit` are
-attended, with their own command (`python -m RevenueChaser.rcdata.build backfill wrds/fundq wrds/funda
-wrds/segments wrds/exrt wrds/audit`), and their WRDS difference slot is the monthly difference report: the note of the
+the WRDS checks monthly). The WRDS cards `wrds/fundq`, `wrds/funda`, `wrds/segments`, `wrds/exrt` and `wrds/audit`
+run on their cadence since #1361; their whole build is still by hand (`python -m RevenueChaser.rcdata.build backfill
+wrds/fundq wrds/funda wrds/segments wrds/exrt wrds/audit`), and their WRDS difference slot is the monthly difference report: the note of the
 newest run that read WRDS (a skipped or failed run is not one), so the agreement counts against the SEC and the
 number of revisions since the snapshot before are on the card (decided 27 Oct). No coverage target is set for these
 cards yet: the coverage is shown, and the alarm limits wait for two weeks of real data, as decision 1 did.

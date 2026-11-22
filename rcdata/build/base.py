@@ -967,18 +967,13 @@ def attended(ds) -> bool:
     return bool(getattr(ds, "attended", False))
 
 
-WRDS_UNATTENDED_ENV = "RC_WRDS_UNATTENDED"
-
-
-def wrds_attended() -> bool:
-    """Whether the WRDS datasets wait for a person at a terminal. ``RC_WRDS_UNATTENDED=1`` lets the hourly builder
-    run them on their cadence: homesrv's ``life`` connects with no Duo push (checked 1 Nov 2026), and a login that
-    asks for one fails within ``PGCONNECT_TIMEOUT`` (``spine/wrds.py``'s worker environment) instead of hanging."""
-    return (os.getenv(WRDS_UNATTENDED_ENV) or "").strip() != "1"
-
-
 def attended_names() -> frozenset[str]:
-    """The datasets a person must be there for (the WRDS login and Duo).
+    """The datasets a person must be there for.
+
+    No WRDS dataset is one since #1361: that login asks for no Duo push here, and a login that did would fail
+    within ``PGCONNECT_TIMEOUT`` rather than hang, so the WRDS datasets follow their cadence like any other.
+    What is left is a dataset that declares ``attended`` for its own reason -- ``delisted/serving``, which uses
+    it to stay off the hourly pass entirely (#1219).
 
     The hourly builder leaves their requests in the queue (``ops.next_request(skip=...)``) and the attended runner
     (``python -m RevenueChaser.rcdata.build attended``) claims only them, so a Fetch press on one of them waits for

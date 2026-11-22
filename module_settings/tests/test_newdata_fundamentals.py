@@ -1,5 +1,5 @@
 """PR 12: the fundamentals layer on Settings' "New data system" section: a card per dataset with its cadence, the
-four WRDS ones attended with their own CLI command, and the WRDS difference slot filled by the newest monthly
+four WRDS ones no longer attended since #1361, and the WRDS difference slot filled by the newest monthly
 difference report of a WRDS check dataset (decided 27 Oct)."""
 from __future__ import annotations
 
@@ -34,17 +34,17 @@ def test_a_card_per_fundamentals_dataset_with_its_cadence_and_a_label():
     data = newdata.collect(NOW)
     assert {d: _card(data, d)["cadence"] for d in FUNDAMENTALS} == FUNDAMENTALS
     assert all(not _card(data, d)["label"].startswith(d) for d in FUNDAMENTALS)
-    assert [d for d in FUNDAMENTALS if _card(data, d)["attended"]] == WRDS
+    # #1361: the WRDS datasets follow their cadence now, so no fundamentals card is attended.
+    assert [d for d in FUNDAMENTALS if _card(data, d)["attended"]] == []
 
 
-def test_an_attended_card_shows_its_own_kinds_command():
+def test_no_fundamentals_card_shows_an_attended_command_now():
+    # #1361: the command was shown only in the attended branch, which offered no Fetch or Backfill button. With
+    # the flag gone these cards take the ordinary branch and get the buttons instead (see test_newdata_prices).
     data = newdata.collect(NOW)
-    assert _card(data, "wrds/fundq")["attended_command"] == (
-        "python -m RevenueChaser.rcdata.build backfill wrds/fundq wrds/funda wrds/segments wrds/exrt "
-        "wrds/audit")
-    assert _card(data, "wrds/co_hgic")["attended_command"] == (
-        "python -m RevenueChaser.rcdata.build backfill wrds/sec_idhist wrds/co_hgic wrds/idxcst_his")
-    assert _card(data, "sec/companyfacts")["attended_command"] is None
+    for dataset in ("wrds/fundq", "wrds/co_hgic", "sec/companyfacts"):
+        assert _card(data, dataset)["attended_command"] is None
+        assert _card(data, dataset)["attended"] is False
 
 
 def test_editing_one_cards_wrds_slot_leaves_the_others():

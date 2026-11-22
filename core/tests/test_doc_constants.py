@@ -71,7 +71,6 @@ _ENV_EXTRAS = ("RC_SEC_USER_AGENT",
                "RC_SCHEDULER", "RC_UNIT_ENV_FILE",                              # #158 / #191 item 6
                "RC_HTTP_CONTACT",                                               # #206, the builder's User-Agent
                "WRDS_USERNAME", "RC_WRDS_PYTHON",                               # PR 5, the spine
-               "RC_WRDS_UNATTENDED",                                            # #344, WRDS from the builder
                "RC_EDGARTOOLS_PYTHON", "RC_SEC_FORMS_CUTTER")                  # #754, the sec_forms cutter
 
 
@@ -401,7 +400,11 @@ def test_the_fundamentals_section_states_what_the_code_owns():
         assert f"`{view}`" in section, view
     for kind in tables.ISSUE_KINDS:
         assert f"`{kind}`" in section, kind
-    assert f"`{newdata.attended_command(KIND)}`" in section.replace("\n", " ")
+    # #1361: no fundamentals dataset is attended any more, so the kind has no attended command. What the section
+    # must still carry is the by-hand whole-build line, because the monthly snapshot is ``whole_build_by_hand``.
+    assert newdata.attended_command(KIND) is None
+    flat = section.replace("\n", " ")
+    assert "python -m RevenueChaser.rcdata.build backfill wrds/fundq wrds/funda" in flat
     for fn in ("statements", "earnings_events", "estimates", "filing_text", "segments", "customers", "peers",
                "revisions", "statements_many", "fundamental_companies", "filing_items", "filing_texts",
                "customer_shares"):

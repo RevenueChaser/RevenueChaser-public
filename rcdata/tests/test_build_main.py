@@ -163,11 +163,12 @@ def _fake_run(rows: list) -> callable:
 
 
 def test_the_hourly_pass_leaves_an_attended_request_in_the_queue(monkeypatch):
-    """A Fetch press on a WRDS dataset waits for the person's terminal; the hourly builder must not consume it."""
+    """A Fetch press on an attended dataset waits for the person's terminal; the hourly builder must not consume
+    it. Since #1361 that is ``delisted/serving`` (#1219), not a WRDS dataset: those follow their cadence now."""
     ran: list = []
     monkeypatch.setattr(cli.base, "run_request", _fake_run(ran))
     _nothing_due()                                          # first: a pause now cancels what is queued (#492)
-    rid = ops.enqueue("wrds/sec_idhist", None, by="settings")
+    rid = ops.enqueue("delisted/serving", None, by="settings")
     assert cli.main(["run", "--once"]) == 0
     assert ran == []
     assert _request(rid)["status"] == "queued"
@@ -229,9 +230,9 @@ def test_the_attended_runner_drains_the_attended_requests_only(monkeypatch):
     monkeypatch.setattr(cli.base, "run_request", _fake_run(ran))
     monkeypatch.setattr(cli, "at_a_terminal", lambda: True)
     plain = ops.enqueue("market_series", None, by="settings")
-    ops.enqueue("wrds/sec_idhist", None, by="settings")
+    ops.enqueue("delisted/serving", None, by="settings")
     assert cli.main(["attended"]) == 0
-    assert ran == [("wrds/sec_idhist", "settings", True)]
+    assert ran == [("delisted/serving", "settings", True)]
     assert _request(plain)["status"] == "queued"
 
 
@@ -246,7 +247,7 @@ def test_the_attended_runner_says_so_when_nothing_is_queued(monkeypatch, capsys)
 def test_the_attended_runner_refuses_a_runner_with_nobody_at_it(monkeypatch, capsys):
     """N4: the WRDS login and the Duo push need a person; a mis-wired timer must not reach them."""
     monkeypatch.setattr(cli, "at_a_terminal", lambda: False)
-    ops.enqueue("wrds/sec_idhist", None, by="settings")
+    ops.enqueue("delisted/serving", None, by="settings")
     assert cli.main(["attended"]) == 3
     assert "terminal" in capsys.readouterr().err
     assert [r["status"] for r in ops.rows("build_requests")] == ["queued"]
@@ -254,12 +255,17 @@ def test_the_attended_runner_refuses_a_runner_with_nobody_at_it(monkeypatch, cap
 
 def test_a_named_dataset_runs_only_the_cli_s_own_request(monkeypatch):
     """SHOULD-2: `run --dataset` and `backfill` are the person's own run. A page's attended request is not theirs
-    to spend the WRDS login and the day cap on, so it stays queued for the attended runner."""
+    to spend on, so it stays queued for the attended runner.
+
+    The protection is keyed on ``attended`` (``_requested_by``), so since #1361 it covers ``delisted/serving``
+    and no longer the WRDS datasets: a CLI run of one of those may now claim a page-queued request, which is how
+    every other ordinary dataset already behaves.
+    """
     ran: list = []
     monkeypatch.setattr(cli.base, "run_request", _fake_run(ran))
-    theirs = ops.enqueue("wrds/sec_idhist", {"mode": "backfill"}, by="settings")
-    assert cli.main(["run", "--once", "--dataset", "wrds/sec_idhist", "--wait", "0"]) == 0
-    assert cli.main(["backfill", "wrds/sec_idhist", "--wait", "0"]) == 0
+    theirs = ops.enqueue("delisted/serving", {"mode": "backfill"}, by="settings")
+    assert cli.main(["run", "--once", "--dataset", "delisted/serving", "--wait", "0"]) == 0
+    assert cli.main(["backfill", "delisted/serving", "--wait", "0"]) == 0
     assert [r[1] for r in ran] == ["cli", "cli"]            # twice its own, never the page's
     assert _request(theirs)["status"] == "queued"
 
@@ -375,8 +381,8 @@ def test_attended_with_a_dataset_says_so_when_only_another_one_is_queued(monkeyp
     monkeypatch.setattr(cli, "at_a_terminal", lambda: True)
     monkeypatch.setattr(cli.base, "idle_problem",
                         lambda: (_ for _ in ()).throw(AssertionError("took the turn")))
-    ops.enqueue("wrds/sec_idhist", None, by="settings")
-    assert cli.main(["attended", "--dataset", "wrds/prices"]) == 0
+    ops.enqueue("wrds/sec_idhist", None, by="settings")      # not attended since #1361: never this runner's
+    assert cli.main(["attended", "--dataset", "delisted/serving"]) == 0
     assert "no attended request queued" in capsys.readouterr().err
 
 
@@ -470,13 +476,13 @@ def test_attended_closes_a_request_a_killed_run_left_running(monkeypatch, capsys
                         lambda: (_ for _ in ()).throw(AssertionError("took the turn")))
     dead = subprocess.Popen([_sys.executable, "-c", "pass"])
     dead.wait()
-    rid = ops.enqueue("wrds/sec_idhist", None, by="settings")
-    assert ops.next_request("wrds/sec_idhist")["id"] == rid
-    ops.start_run("killed-attended", "wrds/sec_idhist", "queue")
+    rid = ops.enqueue("delisted/serving", None, by="settings")
+    assert ops.next_request("delisted/serving")["id"] == rid
+    ops.start_run("killed-attended", "delisted/serving", "queue")
     [run] = [r for r in ops.rows("job_runs2") if r["run_id"] == "killed-attended"]
     ops.put_rows("job_runs2", [{**run, "pid": dead.pid}])
     assert cli.main(["attended"]) == 0
     err = capsys.readouterr().err
     assert "closed 1 request(s) whose run was killed" in err
     assert _request(rid)["status"] == "failed"
-    assert ops.enqueue_once("wrds/sec_idhist", None, by="settings") is not None
+    assert ops.enqueue_once("delisted/serving", None, by="settings") is not None

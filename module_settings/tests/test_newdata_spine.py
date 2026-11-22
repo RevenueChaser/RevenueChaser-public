@@ -36,7 +36,8 @@ def test_a_card_per_spine_dataset_with_its_cadence_and_the_attended_ones_marked(
         "sec/company_tickers_exchange": "weekly", "wrds/sec_idhist": "monthly", "wrds/co_hgic": "monthly",
         "wrds/idxcst_his": "monthly", "openfigi/map": "weekly", "funds/index_holdings": "daily",
         "spine/security": "daily"}
-    assert [d for d in SPINE if _card(data, d)["attended"]] == ["wrds/sec_idhist", "wrds/co_hgic", "wrds/idxcst_his"]
+    # #1361: the spine's WRDS datasets follow their cadence now, so no spine card is attended.
+    assert [d for d in SPINE if _card(data, d)["attended"]] == []
     assert _card(data, "spine/security")["coverage_target"] == 0.98
     assert all(not _card(data, d)["label"].startswith(d) for d in SPINE)
 
@@ -82,7 +83,8 @@ def test_a_never_built_spine_card_says_it_starts_by_hand():
     from RevenueChaser.rcdata.build import due
     data = newdata.collect(NOW)
     assert _card(data, "funds/index_holdings")["next_check_due"] == due.BY_HAND_WHY
-    assert _card(data, "wrds/co_hgic")["next_check_due"] == due.ATTENDED_WHY
+    # #1361: no longer attended, so a never-built spine dataset says it starts by hand, like the others.
+    assert _card(data, "wrds/co_hgic")["next_check_due"] == due.BY_HAND_WHY
     checks = {c["label"]: c for c in _card(data, "funds/index_holdings")["checks"]}
     assert checks["Next check due"]["detail"] == due.BY_HAND_WHY
     assert _card(data, "market_series")["next_check_due"] is None          # the market datasets are unchanged

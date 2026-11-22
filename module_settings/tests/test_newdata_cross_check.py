@@ -59,13 +59,16 @@ def test_the_collector_names_the_two_fields_avo_chose_and_no_others():
     assert fields == ["prices", "interest rates"], "Karar 32-B: these two fields and no more"
 
 
-def test_the_prices_check_cannot_be_queued_because_wrds_is_attended():
+def test_the_prices_check_still_cannot_be_queued_but_not_for_a_duo_push():
     """The finding of this step: A17-B lets a press ask the live source, and the one field that has a second
-    source cannot use it - WRDS wants a login and Duo, so its run is attended and the queue cannot start it. The
-    card says that and shows the command, rather than offering a button that queues a run nobody picks up."""
+    source cannot use it. #1361 dropped the Duo gate -- no WRDS dataset is ``attended`` any more -- but the
+    comparison is written by the monthly snapshot step, which still runs from a terminal on the server. So the
+    card shows that command and names no dataset, rather than offering a button that queues a run the hourly
+    pass cannot finish; and the reason it gives no longer claims a Duo push."""
     row = newdata.cross_check(NOW, {}, {})["fields"][0]
-    assert row["dataset"] is None and row["attended"] is True
-    assert "attended" in row["cannot_queue"] and "Duo" in row["cannot_queue"]
+    assert row["dataset"] is None and row["attended"] is False
+    assert "terminal" in row["cannot_queue"] and "queue cannot finish it" in row["cannot_queue"]
+    assert "Duo" not in row["cannot_queue"] and "attended" not in row["cannot_queue"]
     assert row["command"] == newdata.ATTENDED_COMMANDS["wrds/prices"]
 
 

@@ -100,7 +100,9 @@ def test_every_dataset_row_has_next_and_since_words():
             for r in f["datasets"]]
     assert rows and all(isinstance(r["next_words"], str) and isinstance(r["since_words"], str) for r in rows)
     by = {r["dataset"]: r for r in rows}
-    assert by["wrds/prices"]["next_words"] == "by hand only"
+    # #1361: not "by hand only" any more. The exact words depend on this fixture's check rows, so only the
+    # thing the change guarantees is asserted.
+    assert by["wrds/prices"]["next_words"] != "by hand only"
     assert by["sec/13f"]["next_words"] == "not before a first Fetch"
     assert by["alpaca/bars"]["since_words"] == "fetch on"
 
