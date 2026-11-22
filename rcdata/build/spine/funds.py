@@ -1,20 +1,23 @@
 """``funds/index_holdings``: index membership from the ETF holdings files and Nasdaq's list API (daily).
 
 **Checked against the real files of 28 Oct 2026** (homesrv's first fetch, and the files a cloud thread read for #237):
-SSGA parsed there; the iShares link, the Vanguard API and the formats had moved and are read as of that day. The
+SSGA parsed there; the iShares link and the formats had moved and are read as of that day. The
 tests use small files of those shapes. A format that moves again is a ``source_failed`` build issue for that file (the
 others go on), never a guess.
 
 | Index | Files |
 |---|---|
-| ``sp500`` | SSGA SPY (xlsx), iShares IVV (``latest-holdings.csv``), Vanguard VOO (daily creation basket, json) |
-| ``sp400`` | SSGA MDY, iShares IJH, Vanguard IVOO |
-| ``sp600`` | SSGA SPSM, iShares IJR, Vanguard VIOO |
+| ``sp500`` | SSGA SPY (xlsx), iShares IVV (``latest-holdings.csv``) |
+| ``sp400`` | SSGA MDY, iShares IJH |
+| ``sp600`` | SSGA SPSM, iShares IJR |
 | ``ndx`` | Nasdaq ``/api/quote/list-type/nasdaq100`` (json), Invesco QQQ (json) |
 | ``dow`` | SSGA DIA (xlsx): the one file, so no vote (SP5); ``etf_class`` reads it too, the trust files no N-PORT |
 
-One request per file, every file each run (12 a run), each under its provider's day cap. Base URLs:
-``RC_SSGA_BASE``, ``RC_ISHARES_BASE``, ``RC_VANGUARD_BASE``, ``RC_NASDAQ_API_BASE``, ``RC_INVESCO_API_BASE``.
+Vanguard's VOO, IVOO and VIOO creation baskets were removed on 22 Nov 2026 (avo): they answer 401 to every keyless
+request since 30 Oct, so each S&P index is voted from its SSGA and iShares files, and a name must be in both.
+
+One request per file, every file each run (9 a run), each under its provider's day cap. Base URLs:
+``RC_SSGA_BASE``, ``RC_ISHARES_BASE``, ``RC_NASDAQ_API_BASE``, ``RC_INVESCO_API_BASE``.
 
 **The membership rule (working choice).** On each day, a file counts when it parsed and holds at least its index's
 floor (``FLOOR``: about 80% of the index); a short file is a ``fund_file_short`` build issue and does not count. A
@@ -60,9 +63,6 @@ _TICKER = re.compile(r"^[A-Z][A-Z0-9]{0,5}(-[A-Z0-9]{1,3})?$")
 # (the page's own slug is now ``ishares-core-s-p-500-etf``; the old one still answers the same file).
 ISHARES_PRODUCTS = {"IVV": ("239726", "ishares-core-sp-500-etf"), "IJH": ("239763", "ishares-core-sp-midcap-etf"),
                     "IJR": ("239774", "ishares-core-sp-smallcap-etf")}
-# Vanguard's daily creation basket (PCF), by fund: the basket id. The profile page's ``<portId>-AdditionalFundData``
-# answer (VOO 0968, IVOO 3342, VIOO 3345) names it under ``holdingDetails.portfolioCompositionFile`` if it changes.
-VANGUARD_BASKETS = {"VOO": "01S990737", "IVOO": "00S991588", "VIOO": "00S991612"}
 
 
 def norm_ticker(raw) -> str | None:
@@ -156,19 +156,6 @@ def parse_ishares(data: bytes, typed: bool = True, weight_col: str | None = None
     return out
 
 
-def parse_vanguard(data: bytes) -> list[dict]:
-    """Vanguard's daily creation basket (PCF): ``{"portId", "trdDateStr", "holding": [{"assetType", "ticker",
-    "cusip", "shrtName", "weighting", ...}]}``. EQUITY lines only; a line with an empty ticker keeps its CUSIP."""
-    body = json.loads(data)
-    try:
-        holding = body["holding"]
-    except (KeyError, TypeError) as e:
-        raise base.SourceError("vanguard: no holding list") from e
-    return [{"ticker_raw": h.get("ticker"), "cusip": _cusip(h.get("cusip")), "name": h.get("shrtName"),
-             "weight": weight_of(h.get("weighting"))}
-            for h in holding or [] if (h or {}).get("assetType") == "EQUITY" and (h.get("ticker") or h.get("cusip"))]
-
-
 def parse_nasdaq(data: bytes) -> list[dict]:
     """Nasdaq's list API: ``{"data": {"data": {"rows": [{"symbol", "companyName", ...}]}}}``."""
     body = json.loads(data)
@@ -220,9 +207,6 @@ class FundFile:
             pid, slug = ISHARES_PRODUCTS[self.fund]
             return (provider_base("RC_ISHARES_BASE", "https://www.ishares.com")
                     + f"/us/products/{pid}/{slug}/latest-holdings.csv")
-        if self.provider == "vanguard":
-            return (provider_base("RC_VANGUARD_BASE", "https://etfportal.vanguard.com")
-                    + f"/extrapi/v2/us/standard/{VANGUARD_BASKETS[self.fund]}/CRRD/holdings.json")
         if self.provider == "invesco":
             return (provider_base("RC_INVESCO_API_BASE", "https://dng-api.invesco.com")
                     + f"/cache/v1/accounts/en_US/shareclasses/{self.fund}/holdings/fund?idType=ticker&productType=ETF")
@@ -235,13 +219,10 @@ class FundFile:
 FILES = (
     FundFile("sp500", "ssga", "SPY", "xlsx", parse_ssga),
     FundFile("sp500", "ishares", "IVV", "csv", parse_ishares),
-    FundFile("sp500", "vanguard", "VOO", "json", parse_vanguard),
     FundFile("sp400", "ssga", "MDY", "xlsx", parse_ssga),
     FundFile("sp400", "ishares", "IJH", "csv", parse_ishares),
-    FundFile("sp400", "vanguard", "IVOO", "json", parse_vanguard),
     FundFile("sp600", "ssga", "SPSM", "xlsx", parse_ssga),
     FundFile("sp600", "ishares", "IJR", "csv", parse_ishares),
-    FundFile("sp600", "vanguard", "VIOO", "json", parse_vanguard),
     FundFile("ndx", "nasdaq", "NDX", "json", parse_nasdaq),
     FundFile("ndx", "invesco", "QQQ", "json", parse_invesco),
     # The only ``dow`` file (SP5): with one counting file the vote is "the file holds it". ``etf_class`` reads it too.

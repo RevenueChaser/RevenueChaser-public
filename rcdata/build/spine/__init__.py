@@ -16,7 +16,7 @@ the bridge views from the staging tables:
   for no Duo push; one connection per builder process): Compustat's company and security rows with their identifier history (the
   CIK-CUSIP link), the GICS history, and the S&P index constituents history (the membership check);
 - ``openfigi/map`` (weekly): the CUSIPs not mapped yet, under 25 requests a minute;
-- ``funds/index_holdings`` (daily): the ETF holdings files of SSGA, iShares and Vanguard and Nasdaq's list API, the
+- ``funds/index_holdings`` (daily): the ETF holdings files of SSGA, iShares and Invesco and Nasdaq's list API, the
   index membership;
 - ``funds/etf_holdings`` (daily): the rotation board's ETFs read whole, from the SPDR and iShares files and UW's
   holdings answer for the themes whose issuer has no keyless file; it serves ``etf_holdings`` itself (no vote);
