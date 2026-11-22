@@ -385,6 +385,40 @@ def nasdaq_json(symbols) -> bytes:
                        "message": None, "status": {"rCode": 200}}).encode()
 
 
+def nasdaq_screener_json(rows) -> bytes:
+    """Nasdaq's stock screener (``/api/screener/stocks?tableonly=true&exchange=NASDAQ&download=true``, the live
+    answer of 22 Nov 2026): the rows at ``data.rows``, one per listed symbol with its ``name``, warrants, rights and
+    units among them."""
+    return json.dumps({"data": {"asOf": None, "headers": {"symbol": "Symbol", "name": "Name"},
+                                "rows": [{"symbol": sym, "name": name, "marketCap": "1.00", "country": "United States",
+                                          "sector": "Technology", "industry": "Software"} for sym, name in rows]},
+                       "message": None, "status": {"rCode": 200}}).encode()
+
+
+#: The screener's row shapes seen on 22 Nov 2026: a stock, an ADR, an LP's common units (a member), and a SPAC's
+#: unit, warrant and right (not members).
+SCREENER_ROWS = [("MSFT", "Microsoft Corporation Common Stock"),
+                 ("AACG", "ATA Creativity Global American Depositary Shares"),
+                 ("PAA", "Plains All American Pipeline L.P. Common Units representing Limited Partner Interests"),
+                 ("AACIU", "Armada Acquisition Corp. III Units"), ("AACIW", "Armada Acquisition Corp. III Warrant"),
+                 ("BCTXZ", "BriaCell Therapeutics Corp. Warrant expiring 2030"),
+                 ("SPEGR", "Silver Pegasus Acquisition Corp Rights."),
+                 ("BLUWU", "Blue Water Acquisition Corp. III Unit.")]
+
+
+def proshares_csv(fund: str, holdings) -> bytes:
+    """ProShares' daily holdings CSV (``accounts.profunds.com/etfdata/ByFund/<fund>-psdlyhld.csv``, NOBL of
+    22 Nov 2026): three preamble lines, a header with a space after each comma, one line per holding with no CUSIP
+    (a SEDOL) and no weight (a market value), and a cash line with no ticker."""
+    lines = ["PORTFOLIO HOLDINGS INFORMATION,,,,", "AS OF 11/20/2026,,,,", ",,,,",
+             "Fund Ticker, Fund Name, Security Ticker, Security Sedol, Security Description, Coupon, Maturity Date, "
+             "Shares/Contracts, Exposure Value (Notional + G/L), Market Value"]
+    for t, _cusip, name in holdings:
+        lines.append(f'"{fund}","ProShares {fund} ETF","{t}","2000000","{name}",,,1000,,100000.0,')
+    lines.append(f'"{fund}","ProShares {fund} ETF","","","Net Other Assets (Liabilities)",,,27671551.7,,27671551.7,')
+    return ("\r\n".join(lines) + "\r\n").encode()
+
+
 def invesco_json(holdings, adr=False) -> bytes:
     """Invesco's QQQ holdings answer (``dng-api.invesco.com/cache/v1/accounts/en_US/shareclasses/QQQ/holdings/fund``):
     common stock and ADR lines are holdings; the index future, the currency and the cash lines are not. ``adr`` adds

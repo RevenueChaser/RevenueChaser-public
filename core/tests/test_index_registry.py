@@ -80,6 +80,19 @@ def test_the_group_b_indexes_have_labels_s_and_p_before_dow_jones_before_russell
     assert 3 <= min(sp) and max(sp) < order.index("dj_us") < min(dj) and max(dj) < order.index("russell_top200")
 
 
+#: Group C: ProShares' S&P dividend indexes (the Nasdaq Composite keeps its ``nasdaq`` label, last).
+GROUP_C = {"sp500_dividend_aristocrats": "S&P 500 Dividend Aristocrats",
+           "sp400_dividend_aristocrats": "S&P MidCap 400 Dividend Aristocrats",
+           "sp_technology_dividend_aristocrats": "S&P Technology Dividend Aristocrats"}
+
+
+def test_the_group_c_indexes_have_labels_in_the_s_and_p_family():
+    order = list(ir.LABELS)
+    assert {s: ir.LABELS.get(s) for s in GROUP_C} == GROUP_C
+    assert all(3 <= order.index(s) < order.index("dj_us") for s in GROUP_C)
+    assert order[-1] == "nasdaq" and ir.LABELS["nasdaq"] == "Nasdaq Composite"
+
+
 def test_index_for_with_registry():
     reg = {"AAPL": {"index": ["S&P 500"]}}
     assert ir.index_for("aapl", reg) == ["S&P 500"]

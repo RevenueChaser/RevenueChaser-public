@@ -238,6 +238,63 @@ def test_the_sector_and_industry_indexes_are_read_from_etf_holdings_files_not_fe
     assert len({d[1] for d in DERIVED}) == len({d[0] for d in DERIVED}) == len(DERIVED)
 
 
+#: Group C (avo, 22 Nov 2026 23:17): ProShares' S&P dividend funds, one CSV each (NOBL, REGL measured by the
+#: inventory, TDV read once on 22 Nov 2026 with the builder's own headers), floor 80 % of the ticker lines.
+PROSHARES = [("sp500_dividend_aristocrats", "NOBL", 54), ("sp400_dividend_aristocrats", "REGL", 51),
+             ("sp_technology_dividend_aristocrats", "TDV", 29)]
+#: The browser headers avo approved for Nasdaq's screener (22 Nov 2026).
+NASDAQ_BROWSER = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
+                                "Chrome/130.0 Safari/537.36",
+                  "Accept": "application/json, text/plain, */*", "Accept-Language": "en-US,en;q=0.9",
+                  "Origin": "https://www.nasdaq.com", "Referer": "https://www.nasdaq.com/"}
+
+
+def test_proshares_keeps_the_lines_with_a_ticker_and_reads_the_description():
+    rows = funds.parse_proshares(fx.proshares_csv("NOBL", fx.SP500))
+    assert [r["ticker_raw"] for r in rows] == [t for t, _, _ in fx.SP500]           # the cash line has no ticker
+    assert rows[0] == {"ticker_raw": "MSFT", "cusip": None, "name": "MICROSOFT CORP", "weight": None}
+    with pytest.raises(base.SourceError, match="Security Ticker"):
+        funds.parse_proshares(b"PORTFOLIO HOLDINGS INFORMATION,,,,\r\nnothing,here\r\n")
+
+
+@pytest.mark.parametrize("slug, fund, floor", PROSHARES)
+def test_each_proshares_index_is_exactly_its_one_csv(slug, fund, floor):
+    files = [f for f in funds.FILES if f.index_slug == slug]
+    assert [(f.provider, f.fund) for f in files] == [("proshares", fund)]
+    assert files[0].url() == f"https://accounts.profunds.com/etfdata/ByFund/{fund}-psdlyhld.csv"
+    assert slug in funds.INDEXES and funds.FLOOR[slug] == floor and slug not in funds.CHECKED
+    assert [r["ticker_raw"] for r in files[0].parse(fx.proshares_csv(fund, fx.SP400))] == ["HEI", "HEI.A"]
+
+
+def test_the_nasdaq_screener_drops_warrants_rights_and_units_and_keeps_lp_units():
+    rows = funds.parse_nasdaq_screener(fx.nasdaq_screener_json(fx.SCREENER_ROWS))
+    assert [r["ticker_raw"] for r in rows] == ["MSFT", "AACG", "PAA"]
+    assert rows[0] == {"ticker_raw": "MSFT", "cusip": None, "name": "Microsoft Corporation Common Stock",
+                       "weight": None}
+    with pytest.raises(base.SourceError, match="data.rows"):
+        funds.parse_nasdaq_screener(fx.nasdaq_json(["MSFT"]))                    # the list API's shape
+
+
+def test_the_nasdaq_composite_is_exactly_the_screeners_one_file_asked_with_the_approved_headers():
+    """``nasdaq`` (Nasdaq Composite, the listed Nasdaq stocks): one file, so no vote; ``index_registry`` adds the
+    spine's listed Nasdaq names to it as before. The screener answers with avo's approved browser headers."""
+    files = [f for f in funds.FILES if f.index_slug == "nasdaq"]
+    assert [(f.provider, f.fund) for f in files] == [("nasdaq", "COMP")]
+    assert files[0].url() == ("https://api.nasdaq.com/api/screener/stocks?tableonly=true&exchange=NASDAQ"
+                              "&download=true")
+    assert files[0].headers() == NASDAQ_BROWSER
+    assert "nasdaq" in funds.INDEXES and funds.FLOOR["nasdaq"] == 2875 and "nasdaq" not in funds.CHECKED
+    others = [f for f in funds.FILES if f.fund != "COMP"]
+    assert all(f.headers() == {"Accept": "*/*"} for f in others)         # every other file asks as before
+
+
+def test_proshares_is_a_provider_with_words_and_in_the_membership_need():
+    from revenuechaser.rcdata.needs import screen
+    assert "proshares" in funds.PROVIDERS and "proshares" in screen.PROVIDERS
+    assert "proshares" in catalog.NEEDS["identity.membership"].providers
+    assert caps.cap_for("proshares") is None             # no published limit: one request a file and run
+
+
 def test_the_per_name_issues_stay_on_the_sp_ndx_and_dow_indexes():
     assert funds.CHECKED == ("sp500", "sp400", "sp600", "ndx", "dow")
 
@@ -249,13 +306,17 @@ def test_tickers_are_written_the_sec_way():
 
 def test_one_request_per_file_a_failed_file_is_an_issue_and_the_others_count(env):
     row = base.run_request({"dataset": funds.NAME, "params": {"as_of": "2026-10-27"}})
-    assert row["result"] == "changed" and row["calls"] == 47            # the 404s are not retried
+    assert row["result"] == "changed" and row["calls"] == 51            # the 404s are not retried
     n, issues = ops.open_issues(funds.NAME, limit=100)
-    # the two SmallCap files, the 14 single-file indexes the fixture does not answer (it answers IWM only) and the
-    # 23 files of group A
-    assert n == 39 and {"ssga-SPSM.xlsx", "ishares-IJR.csv", "ssga-SPYG.xlsx"} <= {i["key"] for i in issues}
+    # the two SmallCap files, the 14 single-file indexes the fixture does not answer (it answers IWM only), the
+    # 23 files of group A and the 4 of group C
+    assert n == 43 and {"ssga-SPSM.xlsx", "ishares-IJR.csv", "ssga-SPYG.xlsx", "proshares-NOBL.csv",
+                        "nasdaq-COMP.json"} <= {i["key"] for i in issues}
     assert "ishares-IWM.csv" not in {i["key"] for i in issues}
-    assert row["coverage"] == round(8 / 47, 4) and "failed files" in row["note"]
+    assert row["coverage"] == round(8 / 51, 4) and "failed files" in row["note"]
+    screener = env.calls("api/screener/stocks")
+    assert len(screener) == 1 and all(screener[0].headers.get(k) == v for k, v in NASDAQ_BROWSER.items())
+    assert "Mozilla" not in env.calls("list-type/nasdaq100")[0].headers.get("User-Agent", "")
     assert not env.calls("holdings-daily-us-en-xlk") and not env.calls("products/239501/")   # B: never fetched here
     assert row["calls"] == len(env.calls())
 
@@ -270,5 +331,6 @@ def test_a_day_already_fetched_is_not_fetched_again(env):
     base.run_request({"dataset": funds.NAME, "params": {"as_of": "2026-10-27"}})
     env.requests.clear()
     base.run_request({"dataset": funds.NAME, "params": {"as_of": "2026-10-27"}})
-    assert {str(r.url).split("/")[2] for r in env.requests} <= {"www.ssga.com", "www.ishares.com"}
-    assert len(env.requests) == 39                         # only the ones that failed are asked again
+    assert {str(r.url).split("/")[2] for r in env.requests} <= {"www.ssga.com", "www.ishares.com", "api.nasdaq.com",
+                                                                "accounts.profunds.com"}
+    assert len(env.requests) == 43                         # only the ones that failed are asked again
