@@ -52,6 +52,11 @@ SCHEMA = [("ticker", "TEXT PRIMARY KEY"), ("name", "TEXT"), ("series_id", "TEXT"
           # series, mutual-fund classes included). aum_source says which.
           ("aum", "DOUBLE"), ("aum_as_of", "DATE"), ("aum_source", "TEXT"), ("adv_usd_20d", "DOUBLE"),
           ("expense_ratio", "DOUBLE"),
+          # ETF identity (spine 11, #1334 K-A, SP1): the Compustat series the spine already resolves the fund's
+          # ticker to (gvkey, iid, and the CUSIP of that series' newest priced day), and TickerInside's composite
+          # FIGI; identity_source names the sources a row's identity came from.
+          ("gvkey", "TEXT"), ("iid", "TEXT"), ("cusip", "TEXT"), ("figi", "TEXT"), ("composite_figi", "TEXT"),
+          ("identity_source", "TEXT"),
           ("source_as_of", "DATE"), ("fetched_at", "DOUBLE"), ("run_id", "TEXT")]
 
 #: A note, by its name: ETN / ETRACS, a dated note, or a bank issuer's name (Alpha Vantage lists BMO's, UBS's,
@@ -110,6 +115,43 @@ TIC_RECENT_DAYS = 14
 ADV_YEARS = 2
 
 
+#: ``asset_class`` (spine 11, SP7) from TickerInside's category id (``funds.json`` ``cat_id``, which "never changes
+#: meaning"), filled only where the commodity rule left it NULL. The 103 ids of 20 Nov 2026 but ``unclassified``; an
+#: id not here leaves the column NULL and is one ``etf_category_unmapped`` issue (plan v4 X9). Leveraged, inverse,
+#: option-income and defined-outcome funds keep the class of what they track; their own flags say the rest.
+ASSET_CLASSES = ("equity", "bond", "cash", "commodity", "crypto", "multi_asset", "alternative", "currency")
+_CATEGORIES = {
+    "equity": "asia-pacific asia-pacific-ex-japan canada china communication-services consumer-discretionary "
+              "consumer-staples emerging-markets energy europe financials global-large-blend global-large-growth "
+              "global-large-value global-small-mid gold-silver-miners health-care india industrials infrastructure "
+              "international-large-blend international-large-growth international-large-value "
+              "international-small-mid-blend international-small-mid-value japan latin-america materials "
+              "middle-east-africa natural-resources real-estate technology thematic utilities us-large-blend "
+              "us-large-growth us-large-value us-mid-blend us-mid-growth us-mid-value us-small-blend us-small-growth "
+              "us-small-value single-stock inverse-equity leveraged-equity inverse-single-stock leveraged-single-stock "
+              "option-income single-stock-option-income defined-outcome hedged-equity long-short-equity",
+    "bond": "bank-loans clo convertible-bonds core-bond corporate-intermediate corporate-long corporate-short "
+            "emerging-markets-bond high-yield inflation-protected international-bond inverse-bond leveraged-bond "
+            "long-term-bond mortgage-backed multisector-bond municipal-intermediate municipal-long municipal-short "
+            "preferred-securities securitized short-term-bond target-maturity treasury-bills treasury-intermediate "
+            "treasury-long treasury-short ultrashort-bond",
+    "cash": "money-market",
+    "commodity": "broad-commodities energy-commodities inverse-commodity leveraged-commodity other-commodities "
+                 "precious-metals",
+    "crypto": "bitcoin ether crypto-other inverse-crypto leveraged-crypto",
+    "multi_asset": "allocation-aggressive allocation-conservative allocation-moderate",
+    "alternative": "alternative-other managed-futures volatility inverse-other leveraged-other",
+    "currency": "currency",
+}
+CATEGORY_ASSET_CLASS = {cat: cls for cls, cats in _CATEGORIES.items() for cat in cats.split()}
+COMPUSTAT_SECD, TICKERINSIDE = "compustat_secd", "tickerinside"
+
+
+def _cik(value) -> str | None:
+    text = str(value or "").strip()
+    return str(int(text)) if text.isdigit() else None
+
+
 def secd_files(as_of: date | None = None) -> list[Path]:
     """The newest :data:`ADV_YEARS` Compustat ``secd`` year partitions that exist, oldest first; a year after
     ``as_of`` is not read at all, so a build of an earlier day reads that day's Compustat (``build/secd.py``)."""
@@ -144,26 +186,58 @@ def adv_usd_20d(tickers: list[str], as_of: date | None = None) -> dict[str, floa
     cutoff = "" if as_of is None else f" AND datadate <= DATE '{as_of.isoformat()}'"
     con = base.scratch_con()
     try:
-        rows = con.execute(f"""
-            WITH priced AS (
-                SELECT gvkey || ':' || iid AS gid, replace(upper(tic), '.', '-') AS ticker, datadate,
-                       prccd * cshtrd AS dollars
-                FROM {src}
-                WHERE {secd.PRICED_USD} AND cshtrd IS NOT NULL AND tic IS NOT NULL{cutoff}),
-            last_day AS (SELECT gid, ticker, datadate FROM priced
-                         QUALIFY row_number() OVER (PARTITION BY gid ORDER BY datadate DESC) = 1),
-            claim AS (SELECT gid, ticker FROM last_day
-                      WHERE ticker IN ({', '.join('?' * len(wanted))})
-                        AND datadate > (SELECT max(datadate) FROM priced)
-                                       - INTERVAL {TIC_RECENT_DAYS} DAY),
-            recent AS (SELECT c.ticker, p.gid, p.dollars FROM priced p JOIN claim c USING (gid)
-                       QUALIFY row_number() OVER (PARTITION BY p.gid ORDER BY p.datadate DESC) <= {ADV_SESSIONS})
+        rows = con.execute(f"""{_claimed(src, cutoff, len(wanted))}
             SELECT ticker, adv FROM (SELECT ticker, gid, avg(dollars) AS adv FROM recent GROUP BY 1, 2
                                      HAVING count(*) = {ADV_SESSIONS})
             QUALIFY row_number() OVER (PARTITION BY ticker ORDER BY adv DESC, gid) = 1""", wanted).fetchall()
     finally:
         con.close()
     return {str(t): float(v) for t, v in rows if v is not None}
+
+
+def _claimed(src: str, cutoff: str, n: int) -> str:
+    """The series rule of :func:`adv_usd_20d`, as SQL CTEs: ``recent`` holds the newest :data:`ADV_SESSIONS` priced
+    sessions of each series whose own newest priced day carries one of the ``n`` asked tickers, within
+    :data:`TIC_RECENT_DAYS` of Compustat's newest priced day."""
+    return f"""
+            WITH priced AS (
+                SELECT gvkey, iid, gvkey || ':' || iid AS gid, replace(upper(tic), '.', '-') AS ticker, datadate,
+                       prccd * cshtrd AS dollars, cusip
+                FROM {src}
+                WHERE {secd.PRICED_USD} AND cshtrd IS NOT NULL AND tic IS NOT NULL{cutoff}),
+            last_day AS (SELECT gid, ticker, datadate FROM priced
+                         QUALIFY row_number() OVER (PARTITION BY gid ORDER BY datadate DESC) = 1),
+            claim AS (SELECT gid, ticker FROM last_day
+                      WHERE ticker IN ({', '.join('?' * n)})
+                        AND datadate > (SELECT max(datadate) FROM priced)
+                                       - INTERVAL {TIC_RECENT_DAYS} DAY),
+            recent AS (SELECT c.ticker, p.gid, p.gvkey, p.iid, p.cusip, p.datadate, p.dollars
+                       FROM priced p JOIN claim c USING (gid)
+                       QUALIFY row_number() OVER (PARTITION BY p.gid ORDER BY p.datadate DESC) <= {ADV_SESSIONS})"""
+
+
+def etf_series(tickers: list[str], as_of: date | None = None) -> dict[str, tuple[str, str, str | None]]:
+    """``{ticker: (gvkey, iid, cusip)}``: the Compustat series :func:`adv_usd_20d` resolves each fund's ticker to
+    (the same rule, and where two live series claim one ticker the larger average dollar volume), with the CUSIP of
+    that series' newest priced day. Unlike the volume it needs no full window: a series with three sessions is
+    still the fund's series (spine 11, #1334 K-A: the spine is the one owner of ETF identity)."""
+    wanted = sorted({str(t).strip().upper() for t in tickers if str(t or "").strip()})
+    files = secd_files(as_of)
+    if not wanted or not files:
+        return {}
+    src = f"read_parquet([{', '.join(base.sql_path(f) for f in files)}], union_by_name = true)"
+    cutoff = "" if as_of is None else f" AND datadate <= DATE '{as_of.isoformat()}'"
+    con = base.scratch_con()
+    try:
+        rows = con.execute(f"""{_claimed(src, cutoff, len(wanted))}
+            SELECT ticker, gvkey, iid, cusip FROM (
+                SELECT ticker, gid, any_value(gvkey) AS gvkey, any_value(iid) AS iid, avg(dollars) AS adv,
+                       arg_max(cusip, datadate) AS cusip
+                FROM recent GROUP BY ticker, gid)
+            QUALIFY row_number() OVER (PARTITION BY ticker ORDER BY adv DESC, gid) = 1""", wanted).fetchall()
+    finally:
+        con.close()
+    return {str(t): (str(g), str(i), (str(c).strip().upper() or None) if c else None) for t, g, i, c in rows}
 
 
 SHARES_X_CLOSE, NCEN_SERIES = "shares_x_close", "ncen_series"
@@ -205,8 +279,19 @@ def shares_x_close(tickers: list[str], as_of: date | None = None) -> dict[str, t
     return {str(t): (float(v), d) for t, v, d in found}
 
 
-def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> list[dict]:
-    """Every ETF ticker's row, from the staging tables and the ``security`` table this build just created."""
+def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, issues: list | None = None) -> list[dict]:
+    """Every ETF ticker's row, from the staging tables and the ``security`` table this build just created.
+
+    **Identity (spine 11, #1334 K-A, SP1, SP7, plan v4 X9).** ``gvkey``, ``iid`` and ``cusip`` from Compustat's
+    series of the ticker (:func:`etf_series`). TickerInside's ``identifiers.json`` and ``funds.json`` (the newest
+    ``funds/etf_holdings`` keeps on or before the build day) are taken for a ticker only where its CIK agrees: a
+    row whose ``cik`` is filled takes nothing from a TickerInside row under another CIK, or under none (a ticker
+    can pass to another security), and the conflict is one ``etf_cik_conflict`` issue in ``issues``. Where the CIK
+    agrees, or ``cik`` is empty: the composite FIGI (``figi`` and ``composite_figi``), ``cik`` and ``series_id``
+    only where empty (never overwritten), ``expense_ratio`` (percent, as TickerInside gives it), and
+    ``asset_class`` through :data:`CATEGORY_ASSET_CLASS` only where the commodity rule left it NULL; an unmapped
+    category is one ``etf_category_unmapped`` issue per category."""
+    from .etf_holdings import tickerinside_meta
     cur = con.execute(f"""
         WITH av AS (SELECT ticker, name, ipo_date, source_as_of, fetched_at FROM {AV}
                     WHERE asset_type = 'ETF' AND status = 'Active'
@@ -234,6 +319,10 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> list[dict]:
     year_held = ncen.quarters_held() >= ncen.BACKFILL_QUARTERS
     adv = adv_usd_20d([r["ticker"] for r in found], ctx.as_of)
     own = shares_x_close([r["ticker"] for r in found], ctx.as_of)
+    ids_of = etf_series([r["ticker"] for r in found], ctx.as_of)
+    ti_ids, ti_funds = tickerinside_meta(ctx.as_of)
+    issues = [] if issues is None else issues
+    unmapped: dict[str, list[str]] = {}
     out = []
     for r in found:
         names = (r["fund_name"], r["av_name"], r["etp_name"])
@@ -243,21 +332,43 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> list[dict]:
         aum, aum_day, aum_src = ((*own[r["ticker"]], SHARES_X_CLOSE) if r["ticker"] in own else
                                  (aum, r["report_end"], NCEN_SERIES) if aum is not None else (None, None, None))
         commodity = r["in_etp"] and not nc and not etn and year_held and r["etp_cik"] not in filers
+        t, raw_cik, series_id = r["ticker"], r["nc_cik"] or r["etp_cik"], r["series_id"]
+        cik = _cik(raw_cik)                       # compared as the SEC file writes it; served as the source gave it
+        ti = ti_ids.get(t)
+        if ti is not None and raw_cik and ti["cik"] and ti["cik"] != cik:
+            issues.append(("etf_cik_conflict", t, f"TickerInside lists {t} under CIK {ti['cik']}, the etf row's is "
+                                                  f"{cik}: nothing taken from TickerInside"))
+        ti = ti if ti is not None and (not raw_cik or ti["cik"] == cik) else None
+        fund = ti_funds.get(t) if ti is not None else None
+        asset_class = "commodity" if commodity else None
+        if asset_class is None and fund and fund["category"]:
+            asset_class = CATEGORY_ASSET_CLASS.get(fund["category"])
+            if asset_class is None:
+                unmapped.setdefault(fund["category"], []).append(t)
+        gvkey, iid, cusip = ids_of.get(t, (None, None, None))
+        figi = (ti or {}).get("composite_figi")
         out.append({
-            "ticker": r["ticker"], "name": next((n for n in names if n), None), "series_id": r["series_id"],
-            "cik": r["nc_cik"] or r["etp_cik"],
+            "ticker": t, "name": next((n for n in names if n), None),
+            "series_id": series_id or (ti or {}).get("series_id"), "cik": raw_cik or (ti or {}).get("cik"),
             "source": "both" if r["in_av"] and nc else "av" if r["in_av"] else "ncen" if nc else "etp",
-            "is_etn": etn, "is_cef": r["is_cef"], "asset_class": "commodity" if commodity else None, "focus": None,
+            "is_etn": etn, "is_cef": r["is_cef"], "asset_class": asset_class, "focus": None,
             "country": None,
             "is_index": _flag(nc, r["is_index"]),
             "is_lev_inverse": True if is_lev_inverse(*names) else _flag(nc, r["is_multi_inverse_index"]),
             "is_money_market": _flag(nc, r["is_money_market"]), "is_option_income": is_option_income(*names),
             "is_fund_of_funds": _flag(nc, r["is_fund_of_fund"]), "inception": r["ipo_date"], "aum": aum,
             "aum_as_of": aum_day, "aum_source": aum_src,
-            "adv_usd_20d": adv.get(r["ticker"]), "expense_ratio": None,
+            "adv_usd_20d": adv.get(r["ticker"]), "expense_ratio": (fund or {}).get("expense_ratio"),
+            "gvkey": gvkey, "iid": iid, "cusip": cusip, "figi": figi, "composite_figi": figi,
+            "identity_source": "+".join(s for s, v in ((COMPUSTAT_SECD, gvkey), (TICKERINSIDE, figi)) if v) or None,
             "source_as_of": r["source_as_of"],
             # The newest of its sources' fetch times; run_id is the build that wrote the row (it is derived).
             "fetched_at": r["fetched_at"], "run_id": ctx.run_id})
+    issues += [("etf_category_unmapped", cat, f"TickerInside category {cat} has no asset class here: "
+                + ", ".join(sorted(ts))[:300]) for cat, ts in sorted(unmapped.items())]
+    ctx.notes.append(f"etf identity: {sum(1 for r in out if r['gvkey'])} with a Compustat series, "
+                     f"{sum(1 for r in out if r['figi'])} with a TickerInside FIGI, "
+                     f"{sum(1 for r in out if r['expense_ratio'] is not None)} with an expense ratio")
     etns = sum(1 for r in out if r["is_etn"])
     cefs = sum(1 for r in out if r["is_cef"] and not r["is_etn"])
     ctx.notes.append(f"{len(out)} in etf: {len(out) - etns - cefs} ETFs, {etns} ETNs flagged, {cefs} CEFs flagged; "

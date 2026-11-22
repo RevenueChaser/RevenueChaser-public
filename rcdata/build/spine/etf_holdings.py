@@ -105,10 +105,11 @@ shape or URL, an empty answer) is a ``source_failed`` issue for that fund, and t
 does; every fund failing fails the run.
 
 Raw: ``raw/funds/etf_holdings/<as-of>/<provider>-<etf>.<ext>`` (+ ``.meta.json``, written first: the raw file is the
-resume marker). Parquet: ``parquet/funds/etf_holdings/date=<as-of>/part-0.parquet``, every day kept. Served:
-``etf_holdings(as_of, etf, provider, ticker, cusip, name, weight)``, this dataset's own table in ``spine.duckdb``.
-The Parquet also keeps ``holdings_as_of`` and ``source_layer`` where the source states them (TickerInside does);
-serving them is a serving bump and so a PR of its own.
+resume marker), and TickerInside's ``identifiers.json`` and ``funds.json`` of the day (``TI_META``, read by the
+spine's ``etf``). Parquet: ``parquet/funds/etf_holdings/date=<as-of>/part-0.parquet``, every day kept. Served:
+``etf_holdings(as_of, etf, provider, ticker, cusip, name, weight, holdings_as_of, source_layer)``, this dataset's own
+table in ``spine.duckdb``; the last two (spine 11) are the day the source puts on its list and the layer it came
+from, where the source states them (TickerInside does), NULL otherwise.
 """
 from __future__ import annotations
 
@@ -139,13 +140,18 @@ SCHEMA = [("as_of", "DATE"), ("etf", "TEXT"), ("provider", "TEXT"), ("ticker", "
           ("cusip", "TEXT"), ("name", "TEXT"), ("weight", "DOUBLE"),
           # The day the source itself puts on the list, and which layer it came from, where the source says so
           # (TickerInside: ``holdings_as_of`` and ``source_layer`` -- an issuer file of the day, or a fund's newest
-          # SEC filing, which can be months old). Parquet only: putting them in the served table is a serving bump
-          # and so a PR of its own (#1365), and no reader needs them yet.
+          # SEC filing, which can be months old). Served since spine 11 (``SERVED``).
           ("holdings_as_of", "TEXT"), ("source_layer", "TEXT"),
           ("fetched_at", "DOUBLE"), ("run_id", "TEXT")]
-SERVED = [(c, t) for c, t in SCHEMA
-          if c not in ("ticker_raw", "holdings_as_of", "source_layer", "fetched_at", "run_id")]
+# ``holdings_as_of`` and ``source_layer`` are served since spine 11 (plan v4 B2, #1365): a board can say which day and
+# which layer a list is of. A Parquet day typed before #1366 has neither, and reads them as NULL (``build``).
+SERVED = [(c, t) for c, t in SCHEMA if c not in ("ticker_raw", "fetched_at", "run_id")]
+LATER = ("holdings_as_of", "source_layer")
 META_SUFFIX = ".meta.json"
+#: TickerInside's two whole-universe snapshots, kept in the day's raw folder once a run (plan v4 step 7, SP1, SP7):
+#: the spine's ``etf`` takes each ETF's FIGI, CIK and series id from the first and its expense ratio and category
+#: from the second (``etf.rows``). CC BY 4.0 snapshots, which the licence lets us keep each night; not history.
+TI_META = {"identifiers": "tickerinside-identifiers.json", "funds": "tickerinside-funds.json"}
 
 # The SPDR funds: the 11 sector funds and the seven industry ones (all one URL template, by ticker).
 SSGA_FUNDS = ("XLB", "XLC", "XLE", "XLF", "XLI", "XLK", "XLP", "XLRE", "XLU", "XLV", "XLY",
@@ -338,15 +344,31 @@ def _polite_pacer(ctx: base.RunContext) -> base.Pacer:
     return ctx.pending[key]
 
 
-def _ti_index(ctx: base.RunContext) -> dict[str, str]:
+def _ti_index(ctx: base.RunContext, day: Path) -> dict[str, str]:
     """Each TickerInside fund file's sha256, after ``status.json``'s ``kept_previous`` funds of ours became one
     ``source_stale`` issue. Read once a run, before the first fund file it asks. Any of the three files failing
-    costs only the saving: the note says so and every fund file is fetched, as before the manifest."""
+    costs only the saving: the note says so and every fund file is fetched, as before the manifest.
+
+    The same pass keeps ``identifiers.json`` and ``funds.json`` in ``day`` (:data:`TI_META`), each once a day and
+    only when it parses; one failing is a note, never the run (the spine's ``etf`` keeps reading the newest held)."""
     from ....core.providers import tickerinside as ti
 
     def get(url: str) -> bytes:
         _polite_pacer(ctx).wait()
         return base.http_get(ctx, ti.PROVIDER, url, headers={"Accept": "*/*"}).content
+    for key, url, parse in (("identifiers", ti.identifiers_url(), ti.parse_identifiers),
+                            ("funds", ti.funds_url(), ti.parse_funds)):
+        raw = day / TI_META[key]
+        if raw.exists():
+            continue
+        try:
+            content = get(url)
+            parse(content)
+            base.write_raw_json(_meta(raw), {"as_of": day.name, "fetched_at": time.time(), "run_id": ctx.run_id,
+                                             "url": url})
+            base.write_raw(raw, content)
+        except Exception as e:  # noqa: BLE001 - the spine reads the newest file held; the holdings go on
+            ctx.notes.append(f"tickerinside {key}.json unread: {type(e).__name__}: {e}"[:200])
     ours = set(TI_FUNDS)
     try:
         kept = [r for r in ti.kept_previous(get(ti.status_url())) if str(r["ticker"]).upper() in ours]
@@ -362,6 +384,19 @@ def _ti_index(ctx: base.RunContext) -> dict[str, str]:
     except Exception as e:  # noqa: BLE001 - without the list every file is asked, as before
         ctx.notes.append(f"tickerinside: no file list ({type(e).__name__}: {e}), every fund file fetched"[:200])
         return {}
+
+
+def tickerinside_meta(as_of: date | None = None) -> tuple[dict[str, dict], dict[str, dict]]:
+    """``(identifiers, funds)``: the newest held :data:`TI_META` files of a day on or before ``as_of``, parsed
+    (``tickerinside.parse_identifiers`` / ``parse_funds``); an empty dict for a file no day holds."""
+    from ....core.providers import tickerinside as ti
+    days = sorted((p for p in raw_dir().iterdir() if p.is_dir() and _is_day(p.name)
+                   and (as_of is None or p.name <= as_of.isoformat())), reverse=True) if raw_dir().exists() else []
+    out = []
+    for key, parse in (("identifiers", ti.parse_identifiers), ("funds", ti.parse_funds)):
+        held = next((d / TI_META[key] for d in days if (d / TI_META[key]).exists()), None)
+        out.append(parse(base.read_raw(held)) if held is not None else {})
+    return out[0], out[1]
 
 
 def served_ticker(line: dict) -> str | None:
@@ -556,7 +591,7 @@ class EtfHoldings:
                     prev = None
                     if src.provider == "tickerinside":
                         if hashes is None:
-                            hashes = _ti_index(ctx)
+                            hashes = _ti_index(ctx, day)
                         prev = next((d / src.raw_name() for d in before if (d / src.raw_name()).exists()), None)
                         if prev is not None and hashes.get(src.etf) != hashlib.sha256(prev.read_bytes()).hexdigest():
                             prev = None
@@ -804,10 +839,11 @@ class EtfHoldings:
 
     def build(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> dict[str, int]:
         files = [f for _, f in stage.partitions(parquet_dir(), "date")]
-        cols = ", ".join(f'"{c}"' for c, _ in SERVED)
         con.execute("CREATE TABLE {} ({})".format(TABLE, ", ".join(f'"{c}" {t}' for c, t in SERVED)))
         if files:
             src = f"read_parquet([{', '.join(base.sql_path(f) for f in files)}], union_by_name = true)"
+            held = {r[0] for r in con.execute(f"DESCRIBE SELECT * FROM {src}").fetchall()}
+            cols = ", ".join(f'NULL::TEXT AS "{c}"' if c in LATER and c not in held else f'"{c}"' for c, _ in SERVED)
             # A line whose ticker does not parse is no holding of a stock. In the SPDR files of 30 Oct 2026 those
             # are two or three lines a fund, each with a made-up identifier: the money-market fund (924QSGII3),
             # the dollar (999USDZ92), the CVRs of past deals (CONTRA METSERA, 592CVR013) and earnout rights

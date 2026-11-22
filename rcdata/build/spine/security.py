@@ -178,6 +178,10 @@ ISSUE_KINDS = {
                                "(key: the ticker)"),
     "my_universe_list_unknown": ("the funds on a list the jobs read (the map list, the industry-group list) that "
                                  "the etf table does not hold: one issue naming them (key: etf)"),
+    "etf_cik_conflict": ("an etf row whose CIK TickerInside's identifiers.json gives another one: nothing is "
+                         "taken from TickerInside for it (key: the ticker)"),
+    "etf_category_unmapped": ("a TickerInside category with no asset class in etf.CATEGORY_ASSET_CLASS: the funds "
+                              "of it keep asset_class NULL (key: the category id)"),
     "etf_class_manual_unknown": ("a line of the manual ETF class file naming a ticker that is no ETF of "
                                  "my_universe (key: the ticker)"),
 }
@@ -721,7 +725,7 @@ class SpineSecurity:
         members, member_issues = self._membership(con, rows, linked)
         found += member_issues
         counts["index_membership"] = _create(con, "index_membership", members)
-        counts[etf.TABLE] = _create(con, etf.TABLE, etf.rows(ctx, con))       # reads ``security``: after it
+        counts[etf.TABLE] = _create(con, etf.TABLE, etf.rows(ctx, con, found))  # reads ``security``: after it
         mine, changes, mine_issues = my_universe.rows(ctx, con)                # reads both of them: after both
         found += mine_issues
         counts[my_universe.TABLE] = _create(con, my_universe.TABLE, mine)
