@@ -205,10 +205,6 @@ def test_every_ishares_entry_carries_its_typed_flag_and_the_fund_file_reads_that
                 f.parse(fx.ishares_csv(fx.SP500, typed=not typed))
 
 
-def test_no_fund_file_is_fetched_twice():
-    assert len({f.raw_name() for f in funds.FILES}) == len(funds.FILES)
-
-
 #: Group B (avo, 22 Nov 2026 23:17): one slug per sector or industry fund that ``funds/etf_holdings`` already reads
 #: daily, so no file is fetched twice. (slug, fund, floor = 80 % of the lines of its file of 20 Nov 2026 on homesrv.)
 DERIVED = [
@@ -236,6 +232,7 @@ def test_the_sector_and_industry_indexes_are_read_from_etf_holdings_files_not_fe
         assert f"'{slug}'" in security.VOTE_SQL
         assert not [f for f in funds.FILES if f.index_slug == slug]
     assert len({d[1] for d in DERIVED}) == len({d[0] for d in DERIVED}) == len(DERIVED)
+    assert len({f.raw_name() for f in funds.FILES}) == len(funds.FILES)   # no fund file is fetched twice
 
 
 #: Group C (avo, 22 Nov 2026 23:17): ProShares' S&P dividend funds, one CSV each (NOBL, REGL measured by the
