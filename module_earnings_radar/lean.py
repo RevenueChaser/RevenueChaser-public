@@ -1,6 +1,6 @@
 """The prints R5's institutional lean reads: a window of sessions and a slice of strikes and expiries (#256).
 
-``docs/earnings-radar/redesign.md`` R5 asks for two local filters the ``flow-recent`` endpoint cannot do itself
+``docs/module_earnings-radar/redesign.md`` R5 asks for two local filters the ``flow-recent`` endpoint cannot do itself
 ("Window: last 1-3 sessions", "Strike filter = R4 EM-band + earnings-expiry proximity. ``flow-recent`` does not
 slice strikes - slice locally"). Until this module the lean read whatever the endpoint returned: every strike, every
 expiry, and as many sessions back as the newest prints happened to span. A LEAP bought a week before the report, or

@@ -1,5 +1,5 @@
 """Fable review N1 (Earnings Radar, R6): the yield beta's 60-session window kept the last print's reaction day, and
-one +/-20% gap moves an OLS slope a lot. docs/earnings-radar/redesign.md R6: "Earnings-gap days are dropped from beta". The
+one +/-20% gap moves an OLS slope a lot. docs/module_earnings-radar/redesign.md R6: "Earnings-gap days are dropped from beta". The
 return that ends on a completed print's reaction session (core/reaction_anchor) now leaves both the beta and its
 t-stat. Offline."""
 from datetime import date, timedelta

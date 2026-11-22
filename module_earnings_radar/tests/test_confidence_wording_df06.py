@@ -59,7 +59,7 @@ def test_the_tooltip_says_the_denominator_is_every_direction_rule():
 
 
 def test_the_rules_doc_states_what_the_code_divides_by():
-    doc = (Path(__file__).resolve().parents[2] / "docs" / "earnings-radar" / "00_overview.md").read_text(encoding="utf-8")
+    doc = (Path(__file__).resolve().parents[2] / "docs" / "module_earnings-radar" / "00_overview.md").read_text(encoding="utf-8")
     assert "Σ(all direction weights)" in doc
     assert "when R3 and R7 land on opposite signs" in doc
     assert "when available rules disagree on direction sign" not in doc
