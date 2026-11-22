@@ -258,8 +258,8 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, rules: Rules | No
     for e in etfs:
         aum, adv = e["aum"], e["adv_usd_20d"]
         if e["ticker"] in was and e["ticker"] not in kept and (
-                (aum is not None and aum >= rules.etf_aum_floor)
-                or (adv is not None and adv >= rules.etf_adv_floor)):
+                (aum is not None and aum >= rules.etf_aum_exit_floor)
+                or (adv is not None and adv >= rules.etf_adv_exit_floor)):
             kept[e["ticker"]] = row(e, ETF, was[e["ticker"]], "held above the exit floor: "
                                     + ("no AUM" if aum is None else f"AUM {_money(aum)}")
                                     + ("" if adv is None else f"; 20-session dollar volume {_money(adv)}"))
