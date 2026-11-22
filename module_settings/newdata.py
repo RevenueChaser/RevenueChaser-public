@@ -281,21 +281,10 @@ def status_of(dataset: str, last: dict | None, base: dict | None, cadence: str,
     return "unchanged", "within its cycle; the last run changed nothing", base
 
 
-def starts_by_person(ds) -> bool:
-    """A dataset whose **backfill** a person starts, which is why the card shows a command for it.
-
-    #1361 took ``attended`` off the WRDS datasets, so the flag can no longer answer this: they now follow their
-    cadence on the hourly pass, while a backfill still needs a person to pick the window and one WRDS login for
-    the lot. So the test is the login they share, plus anything still ``attended`` for its own reason
-    (``delisted/serving``, #1219).
-    """
-    return bool(getattr(ds, "attended", False)) or "wrds" in getattr(ds, "providers", ())
-
-
 def attended_command(kind: str) -> str:
-    """The CLI line that backfills every dataset of ``kind`` a person starts: one worker and one login for all."""
-    names = [n for n, d in _datasets().items() if d.kind == kind and starts_by_person(d)]
-    return f"python -m RevenueChaser.rcdata.build backfill {' '.join(names)}" if names else ""
+    """The CLI line that runs every attended (WRDS) dataset of ``kind``: one worker and one login for all of them."""
+    names = [n for n, d in _datasets().items() if d.kind == kind and getattr(d, "attended", False)]
+    return f"python -m RevenueChaser.rcdata.build backfill {' '.join(names)}"
 
 
 def _wrds_difference(dataset: str) -> dict:
@@ -1319,10 +1308,8 @@ def _card(dataset: str, ds, facts: dict, now: datetime, used_today: dict[str, in
         "recent": [{k: r.get(k) for k in ("checked_on", "result", "source_as_of", "added", "removed", "calls",
                                            "note")} for r in newest],
         "attended": bool(getattr(ds, "attended", False)),
-        # #1361: the command is shown because a backfill is a person's command, not because the dataset is
-        # ``attended`` -- no WRDS dataset is any more, while its backfill still needs a window and a login.
-        "attended_command": (ATTENDED_COMMANDS.get(dataset) or attended_command(ds.kind) or None)
-                            if starts_by_person(ds) else None,
+        "attended_command": (ATTENDED_COMMANDS.get(dataset) or attended_command(ds.kind))
+                            if getattr(ds, "attended", False) else None,
         "schedule": {"paused": bool(schedule and schedule.get("paused_at") is not None),
                      "paused_by": (schedule or {}).get("paused_by"),
                      "paused_at": _iso_utc((schedule or {}).get("paused_at")),
