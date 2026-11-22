@@ -62,8 +62,9 @@ read from the quarterly ``sec/nport`` Parquet, and the older quarters are downlo
 too (#354 C7). No ring-1 set is asked from UW at any ADV floor, so the 133 / 204 / 89 / 59 counts above select
 nothing and stay a measurement of what a narrow ring would have held. ``RC_ETF_HOLDINGS_SWEEP`` therefore stays
 off for good and is no longer waiting on a decision; removing the sweep's code belongs to the UW migration
-(#1283), since the subscription renews on 9 Dec 2026. The 28 funds UW serves today fall back to their newest
-N-PORT report when UW goes (``rcdata.read.etf_holdings`` -> ``etf_holdings_nport``, #354 C5).
+(#1283), since the subscription renews on 9 Dec 2026. Whatever serves the 28 funds UW serves today, a fund whose
+daily list is missing falls back to its newest N-PORT report (``rcdata.read.etf_holdings`` ->
+``etf_holdings_nport``, #354 C5), so the board is never left with nothing.
 
 **Retention:** the last 30 days whole; older, each month's last held day and each sweep day. It only names what it
 would remove unless ``RC_ETF_HOLDINGS_PRUNE=1`` **and** the request's ``allow_shrink`` (the swap's shrink guard would
