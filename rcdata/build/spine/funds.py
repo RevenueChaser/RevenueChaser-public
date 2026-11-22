@@ -13,11 +13,13 @@ others go on), never a guess.
 | ``ndx`` | Nasdaq ``/api/quote/list-type/nasdaq100`` (json), Invesco QQQ (json) |
 | ``dow`` | SSGA DIA (xlsx): the one file, so no vote (SP5); ``etf_class`` reads it too, the trust files no N-PORT |
 | ``russell*`` (14), ``nasdaq100_top30`` | one iShares ``latest-holdings.csv`` each (:data:`SINGLE_FILE`), no vote |
+| ``sp{500,400,600}_{growth,value}`` | SSGA SPYG/SPYV, MDYG/MDYV, SLYG/SLYV with iShares IVW/IVE, IJK/IJJ, IJT/IJS |
+| ``sp100``, ``sp500_ex_sp100``, ``sp900_*``, ``sp1500``, ``sp_*``, ``dj_us*`` | one SSGA or iShares file each |
 
 Vanguard's VOO, IVOO and VIOO creation baskets were removed on 22 Nov 2026 (avo): they answer 401 to every keyless
 request since 30 Oct, so each S&P index is voted from its SSGA and iShares files, and a name must be in both.
 
-One request per file, every file each run (24 a run), each under its provider's day cap. Base URLs:
+One request per file, every file each run (47 a run), each under its provider's day cap. Base URLs:
 ``RC_SSGA_BASE``, ``RC_ISHARES_BASE``, ``RC_NASDAQ_API_BASE``, ``RC_INVESCO_API_BASE``.
 
 **The membership rule (working choice).** On each day, a file counts when it parsed and holds at least its index's
@@ -73,8 +75,34 @@ SINGLE_FILE = (
     ("russell_top200_value", "IWX", "239722", "ishares-russell-top-200-value-etf", False, 121),     # 152
     ("nasdaq100_top30", "QTOP", "339775", "ishares-nasdaq-top-30-stocks-etf", False, 24),          # 31
 )
-INDEXES = ("sp500", "sp400", "sp600", "ndx", "dow") + tuple(s[0] for s in SINGLE_FILE)
-FLOOR = {"sp500": 400, "sp400": 320, "sp600": 480, "ndx": 80, "dow": 24, **{s[0]: s[5] for s in SINGLE_FILE}}
+#: Group A of the index sources inventory (avo, 22 Nov 2026 23:17, "hepsini istiyorum, evet"): S&P and Dow Jones
+#: indexes from their funds' SSGA xlsx and iShares CSV. Where an SSGA and an iShares fund track one index, both files
+#: vote (a name must be in both, as for sp500); one file alone is "the file holds it", as for dow. (slug, SSGA funds,
+#: iShares funds, floor). Each file was read once from homesrv on 22 Nov 2026 (SSGA holdings of 19 Nov, iShares of
+#: 20 Nov); the floor is 80 % of the shorter file's lines.
+WIDE = (
+    ("sp100", (), ("OEF",), 80),                                         # OEF 101 lines
+    ("sp500_growth", ("SPYG",), ("IVW",), 122),                          # SPYG 155, IVW 153
+    ("sp500_value", ("SPYV",), ("IVE",), 347),                           # 436, 434
+    ("sp500_ex_sp100", (), ("XOEF",), 322),                              # 403
+    ("sp400_growth", ("MDYG",), ("IJK",), 196),                          # 248, 246
+    ("sp400_value", ("MDYV",), ("IJJ",), 238),                           # 300, 298
+    ("sp600_growth", ("SLYG",), ("IJT",), 278),                          # 353, 348
+    ("sp600_value", ("SLYV",), ("IJS",), 371),                           # 466, 464
+    ("sp900_growth", (), ("IUSG",), 319),                                # 399 (iShares Core S&P U.S. Growth)
+    ("sp900_value", (), ("IUSV",), 586),                                 # 733 (iShares Core S&P U.S. Value)
+    ("sp1500", ("SPTM",), (), 1212),                                     # 1,516
+    ("sp_total_market", (), ("ITOT",), 1941),                            # 2,427
+    ("sp_hy_dividend_aristocrats", ("SDY",), (), 125),                   # 157
+    ("sp500_high_dividend", ("SPYD",), (), 64),                          # 80
+    ("dj_us", (), ("IYY",), 752),                                        # 941
+    ("dj_us_select_dividend", (), ("DVY",), 78),                         # 98
+    ("dj_us_select_reit", ("RWR",), (), 78),                             # 98
+)
+INDEXES = (("sp500", "sp400", "sp600", "ndx", "dow") + tuple(s[0] for s in SINGLE_FILE)
+           + tuple(w[0] for w in WIDE))
+FLOOR = {"sp500": 400, "sp400": 320, "sp600": 480, "ndx": 80, "dow": 24, **{s[0]: s[5] for s in SINGLE_FILE},
+         **{w[0]: w[3] for w in WIDE}}
 #: The indexes whose members get a ``member_not_in_sec`` / ``member_not_tier_a`` issue one by one: the Russell files
 #: hold thousands of small names, and per-name issues for them would flood the build issues list.
 CHECKED = ("sp500", "sp400", "sp600", "ndx", "dow")
@@ -85,11 +113,28 @@ FILE_SCHEMA = [("as_of", "DATE"), ("index_slug", "TEXT"), ("provider", "TEXT"), 
                ("lines", "INTEGER"), ("counted", "BOOLEAN")]
 META_SUFFIX = ".meta.json"
 _TICKER = re.compile(r"^[A-Z][A-Z0-9]{0,5}(-[A-Z0-9]{1,3})?$")
-# iShares' product pages, by fund: (product id, page slug). The CSV is the page's ``latest-holdings.csv`` download
-# (the page's own slug is now ``ishares-core-s-p-500-etf``; the old one still answers the same file).
-ISHARES_PRODUCTS = {"IVV": ("239726", "ishares-core-sp-500-etf"), "IJH": ("239763", "ishares-core-sp-midcap-etf"),
-                    "IJR": ("239774", "ishares-core-sp-smallcap-etf"),
-                    **{s[1]: (s[2], s[3]) for s in SINGLE_FILE}}
+# iShares' product pages, by fund: (product id, page slug, typed). The CSV is the page's ``latest-holdings.csv``
+# download (the page's own slug is now ``ishares-core-s-p-500-etf``; the old one still answers the same file).
+# ``typed`` is which of the issuer's two CSV shapes the fund serves (``parse_ishares``), as each file answered, like
+# ``etf_holdings.ISHARES_PRODUCTS``: the shape is the fund's, so a file that changes shape fails loudly.
+ISHARES_PRODUCTS = {"IVV": ("239726", "ishares-core-sp-500-etf", True),
+                    "IJH": ("239763", "ishares-core-sp-midcap-etf", True),
+                    "IJR": ("239774", "ishares-core-sp-smallcap-etf", True),
+                    **{s[1]: (s[2], s[3], s[4]) for s in SINGLE_FILE},
+                    # group A, product ids from one call to the iShares product screener (22 Nov 2026)
+                    "OEF": ("239723", "ishares-s-p-100-etf", False),
+                    "IVW": ("239725", "ishares-s-p-500-growth-etf", True),
+                    "IVE": ("239728", "ishares-s-p-500-value-etf", True),
+                    "XOEF": ("344551", "ishares-s-p-500-ex-s-p-100-etf", False),
+                    "IJK": ("239762", "ishares-s-p-mid-cap-400-growth-etf", True),
+                    "IJJ": ("239764", "ishares-s-p-mid-cap-400-value-etf", True),
+                    "IJT": ("239773", "ishares-s-p-small-cap-600-growth-etf", True),
+                    "IJS": ("239775", "ishares-s-p-small-cap-600-value-etf", True),
+                    "IUSG": ("239713", "ishares-core-s-p-u-s-growth-etf", True),
+                    "IUSV": ("239715", "ishares-core-s-p-u-s-value-etf", True),
+                    "ITOT": ("239724", "ishares-core-s-p-total-u-s-stock-market-etf", False),
+                    "IYY": ("239513", "ishares-dow-jones-u-s-etf", False),
+                    "DVY": ("239500", "ishares-select-dividend-etf", False)}
 
 
 def norm_ticker(raw) -> str | None:
@@ -231,7 +276,7 @@ class FundFile:
                     + "/us/en/intermediary/library-content/products/fund-data/etfs/us/"
                     + f"holdings-daily-us-en-{self.fund.lower()}.xlsx")
         if self.provider == "ishares":
-            pid, slug = ISHARES_PRODUCTS[self.fund]
+            pid, slug, _typed = ISHARES_PRODUCTS[self.fund]
             return (provider_base("RC_ISHARES_BASE", "https://www.ishares.com")
                     + f"/us/products/{pid}/{slug}/latest-holdings.csv")
         if self.provider == "invesco":
@@ -243,19 +288,26 @@ class FundFile:
         return f"{self.provider}-{self.fund}.{self.ext}"
 
 
+def _ishares(slug: str, fund: str) -> FundFile:
+    """The fund's iShares file, read as its own CSV shape (``ISHARES_PRODUCTS``)."""
+    typed = ISHARES_PRODUCTS[fund][2]
+    return FundFile(slug, "ishares", fund, "csv", parse_ishares if typed else partial(parse_ishares, typed=False))
+
+
 FILES = (
     FundFile("sp500", "ssga", "SPY", "xlsx", parse_ssga),
-    FundFile("sp500", "ishares", "IVV", "csv", parse_ishares),
+    _ishares("sp500", "IVV"),
     FundFile("sp400", "ssga", "MDY", "xlsx", parse_ssga),
-    FundFile("sp400", "ishares", "IJH", "csv", parse_ishares),
+    _ishares("sp400", "IJH"),
     FundFile("sp600", "ssga", "SPSM", "xlsx", parse_ssga),
-    FundFile("sp600", "ishares", "IJR", "csv", parse_ishares),
+    _ishares("sp600", "IJR"),
     FundFile("ndx", "nasdaq", "NDX", "json", parse_nasdaq),
     FundFile("ndx", "invesco", "QQQ", "json", parse_invesco),
     # The only ``dow`` file (SP5): with one counting file the vote is "the file holds it". ``etf_class`` reads it too.
     FundFile("dow", "ssga", "DIA", "xlsx", parse_ssga),
-    *(FundFile(slug, "ishares", fund, "csv", parse_ishares if typed else partial(parse_ishares, typed=False))
-      for slug, fund, _pid, _page, typed, _floor in SINGLE_FILE),
+    *(_ishares(s[0], s[1]) for s in SINGLE_FILE),
+    *(FundFile(w[0], "ssga", fund, "xlsx", parse_ssga) for w in WIDE for fund in w[1]),
+    *(_ishares(w[0], fund) for w in WIDE for fund in w[2]),
 )
 PROVIDERS = tuple(dict.fromkeys(f.provider for f in FILES))
 _BY_RAW = {f.raw_name(): f for f in FILES}
