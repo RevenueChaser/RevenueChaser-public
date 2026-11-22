@@ -10,7 +10,7 @@ import json
 
 import pytest
 
-from .. import tickerinside as ti
+from RevenueChaser.core.providers import tickerinside as ti
 
 
 def _file(ticker="SMH", holdings=None, **extra) -> bytes:
