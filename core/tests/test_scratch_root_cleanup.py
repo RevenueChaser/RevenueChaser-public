@@ -44,7 +44,7 @@ def _child(env: dict, code: str) -> subprocess.CompletedProcess:
     environment. The import goes through the package so it cannot land on another conftest.py.
     """
     preamble = ("import sys; sys.path.insert(0, r'" + str(PARENT) + "')\n"
-                "from RevenueChaser import conftest\n")
+                "from revenuechaser import conftest\n")
     return subprocess.run([sys.executable, "-c", preamble + code],
                           capture_output=True, text=True, env=env, cwd=str(PARENT), timeout=180)
 
