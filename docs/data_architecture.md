@@ -1668,12 +1668,16 @@ day: 80 of 691, e.g. TNXP's 27 Nov 2018 close served as 0.4156 where its 1:10 re
 served close does not jump across is a CRSP factor step the served bars do not show (611 of the 691): named only,
 never applied, because applying it would move a history that is already right. One Compustat or Alpaca **already
 records at the same ratio** (within 1 %) up to 7 days away is one split the two sources date apart, not two:
-`split_crsp_restated`, named and never applied, so the share basis steps once (#661; NVDA's 2-for-1 is Compustat's
-12 Sep 2001, the first planned date, and CRSP's 17 Sep 2001, the real ex-date, and applying both made its oldest
-`split_factor` 1/960 where 1/480 is right). Where that other day is not the one the served close jumps across, the
-other source dates the split early and the bars in between are on the wrong basis: the issue's detail says so. The
-build note `split_only_crsp: N applied as wrds/crsp ..., R not applied with the same split ..., M named with no
-jump ...` carries every count. A CRSP
+`split_crsp_restated`, applied **once** (#661; NVDA's 2-for-1 is Compustat's 12 Sep 2001, the first planned date,
+and CRSP's 17 Sep 2001, the real ex-date, and applying both made its oldest `split_factor` 1/960 where 1/480 is
+right). **Which of the two days carries it is the served bars' answer** (avo, 22 Nov 2026: the real ex-date wins).
+The basis changed between the two bars the jump is measured across, so a day outside that gap is not the day it
+changed: there CRSP's row is the applied one and the other source's is left in `corporate_action` unapplied, named
+`action_not_applied` with the reason `restated by CRSP`, and the bars between the two days come onto the right
+basis. Where both days fall in the same gap the bars cannot tell them apart and no bar's basis moves either way,
+so the other source's row stays the applied one. The build note `split_only_crsp: N applied as wrds/crsp ..., R the
+same split another source dates within 7 days at the same ratio (M of them applied from wrds/crsp as the real
+ex-date ...), ... ` carries every count. A CRSP
 split with no served bar of the security on both sides within 7 days touches no served bar: counted in the note, not
 named (review M6 of #382: build 4 named 1,056 with no way to tell the two apart). **Alpaca is the tester**: its
 bars write `alpaca_close_differs` and `adjustment_differs` issues, compared in every serving build, so a session is
@@ -1819,10 +1823,10 @@ CRSP factor step the served bars do not show, named and never applied; key secur
 the served history was wrong there, so it is applied from CRSP as source `wrds/crsp` -- the one CRSP row that is
 served -- and stays named so the exception is visible; key security:session; #661, avo 21 Nov 2026),
 `split_crsp_restated` (that candidate where Compustat or Alpaca already records the same split at the same ratio,
-within 1 %, up to 7 days away: one split the two sources date apart, so CRSP's row is **not** applied and the share
-basis steps once; the detail names the other row's day and ratio, and says where that day is not the one the served
-close jumps across -- there the other source dates the split early; key security:session; #661, NVDA's 2-for-1 of
-Sep 2001), `split_ratio_unexplained` (an **applied** split, reverse split or stock dividend whose ratio the served raw closes across its ex-date do not show: the move and 1/ratio 1.5 times or more apart, between two served bars at most 7 days apart with no second split between them. Named only -- nothing is dropped and no factor changes -- because which side is wrong, the source's ratio or the bars, is avo's call and costs a whole prices build; key security:session; #1333 drafts P-D and P-E), `adjustment_differs` (the store's total-return day return more than 1 bp from Alpaca's own, or
+within 1 %, up to 7 days away: one split the two sources date apart, applied once, on the day the served bars
+change basis -- CRSP's, where the other source's day is outside the gap the jump is measured across, and then that
+row is held back unapplied; the other source's, where both days fall in the same gap; key security:session; #661,
+NVDA's 2-for-1 of Sep 2001, avo 22 Nov 2026), `split_ratio_unexplained` (an **applied** split, reverse split or stock dividend whose ratio the served raw closes across its ex-date do not show: the move and 1/ratio 1.5 times or more apart, between two served bars at most 7 days apart with no second split between them. Named only -- nothing is dropped and no factor changes -- because which side is wrong, the source's ratio or the bars, is avo's call and costs a whole prices build; key security:session; #1333 drafts P-D and P-E), `adjustment_differs` (the store's total-return day return more than 1 bp from Alpaca's own, or
 more than half a cent on each of Alpaca's cent-rounded adjusted closes, the exact bound, where that is larger: about
 1.5 bp at $70, 5 bp at $20, 50 bp at $2, so below a few dollars of adjusted close a dividend-sized gap hides in it;
 checked on every served bar Alpaca, the tester, has a bar for), `alpaca_close_differs` (the tester: a Compustat or CRSP
@@ -1952,7 +1956,7 @@ never writes it. Nothing here writes `raw.duckdb`: the old 13F, short and inside
 | `sec/13dg` | daily | Schedules 13D and 13G, old (`SC 13G`) and new (`SCHEDULE 13G`, XML since 2024-12-18) names | `beneficial_ownership` |
 | `uw/institutions` | quarterly | Unusual Whales' `GET /institutions` without a name: every 13F institution by value, 500 to a page (18 pages, 8,875 CIKs on 12 Nov 2026), with its tags, `is_hedge_fund` and its succession | `uw_institution`, `uw_institution_succession` |
 | `sec/13f_list` | quarterly (a held quarter is not asked again) | The SEC's Official List of Section 13(f) Securities, one text file per quarter since 2020 Q1 (`13flist<yyyy>q<n>.txt`, fixed width; a `*D*` row was deleted), typed to `parquet/sec/13f_list/part-0.parquet` (#926) | none: `ownership/serve` reads the Parquet for the `cusip_not_listed` issue |
-| `sec/nport` | monthly, newest listed quarter only (a held set is not asked again) | The SEC's Form N-PORT data sets (`<yyyy>q<n>_nport.zip`, about 440 MB, streamed to disk): every fund's series and holdings, typed to `parquet/sec/nport/quarter=<set>/` (`fund.parquet`, `holdings.parquet`) (#354) | `etf_holdings_nport` (the spine ETFs' newest report, positions whose CUSIP is a spine ticker) |
+| `sec/nport` | monthly, newest listed quarter only (a held set is not asked again) | The SEC's Form N-PORT data sets (`<yyyy>q<n>_nport.zip`, about 440 MB, streamed to disk): every fund's series and holdings, typed to `parquet/sec/nport/quarter=<set>/` (`fund.parquet`, `holdings.parquet`) (#354). **What the one held quarter says about the ETF set (#354 C6, measured 21 Nov 2026, read-only, 3.6 s):** the ETF review's five rules together (`my_universe`; equity ≥ 80 % of net assets; not leveraged/inverse, option-income, fund-of-funds or money-market; ≤ 250 lines with one sector ≥ half the equity weight, or ≤ 60 equity names; `adv_usd_20d` ≥ 25 M) pass **133** of 2,857 universe ETFs — 204 at a 10 M floor, 89 at 50 M, 59 at 100 M — with ADV the binding rule (383 removed alone), narrowness next (204) and the structure rule removing 5. Counted **under a GICS reading** of the sector rule, the review naming Morningstar sectors we do not hold; the review's "150 to 300" was an estimate and is superseded. 444 universe ETFs have no report in 2026q3 and so fail by absence (SPY, QQQ, DIA, MDY among them, as unit trusts with no `series_id`). Only 2026q3 is held, so the set's quarter-to-quarter churn is unmeasured (#354 C7). How wide the fresh UW/issuer set actually becomes is decision D3 of #354 and is avo's | `etf_holdings_nport` (the spine ETFs' newest report, positions whose CUSIP is a spine ticker) |
 | `ownership/serve` | daily | none: derives the 13F totals from the 13F tables and the spine | the four 13F tables below |
 
 **Starts by hand.** Every ownership dataset is not due until it has built once, so the first hourly pass after a
@@ -2112,7 +2116,15 @@ one before: every value that changed for a period both hold is a `fundamental_re
 correction at Compustat; a new period is not one). The check notes count revenue, net income and diluted EPS that
 agree with the SEC's facts (Compustat's millions times a million, within 0.5%, EPS within a cent, period ends within
 7 days). `funda` is compared with the value the year's own report first gave (`first_value`), because Compustat
-keeps that one where the SEC serves a later restatement or split-adjusted figure (#277). The note of each
+keeps that one where the SEC serves a later restatement or split-adjusted figure (#277; on the whole universe that
+closes 3.9 points of the annual revenue gap, so it is not the whole story). Two groups are left out of the count,
+because their disagreement is a definition difference and not an error (#277, measured 21 Nov 2026): **GICS sector
+40** out of the revenue count only — a financial's served revenue is its tagged `Revenues`, a net figure, against
+Compustat's gross `revt`, and the sector agreed on only 51.5% of its annual revenue pairs against ~86% for the rest
+— and a filer whose statements are not read from us-gaap (`fundamental_company.us_gaap` False) out of all four,
+since our value is then another taxonomy's total. Utilities (74.5%) and Real Estate (66.9%) are **not** left out:
+they need their own Compustat item per line, which is open work, and the quarterly table stays the one to read a
+plan's acceptance numbers off. The note of each
 WRDS dataset's newest run is its card's WRDS difference slot on Settings (`docs/data_health.md`). Compustat segments
 are served beside the annual report's inline XBRL ones, each row with its `source`; a Compustat customer's share is
 its sales over the SEC's annual revenue of that year, NULL when there is none or the ratio is above 1. The first

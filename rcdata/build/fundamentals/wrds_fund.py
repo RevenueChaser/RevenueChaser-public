@@ -15,9 +15,11 @@ the one real run. The SEC's own as-filed values (``sec/fsds``) are the check tha
 **A check source, not a served value.** The served statement values are the SEC's (``sec/companyfacts``). What WRDS
 adds: (1) **the revision table**: each monthly snapshot of ``fundq`` / ``funda`` against the one before, every value
 that changed for a period both hold (a restatement, or a correction at Compustat), served as
-``fundamental_revision``; a new period is not a revision; (2) **the agreement notes**: revenue (banks left out),
-net income, diluted EPS and total debt (``dltt + dlc``) against the SEC's facts of the same period (Compustat's millions times a million, within 0.5%; EPS
-within a cent; period ends within 7 days, for the 52/53-week years).
+``fundamental_revision``; a new period is not a revision; (2) **the agreement notes**: revenue (financials left
+out), net income, diluted EPS and total debt (``dltt + dlc``) against the SEC's facts of the same period
+(Compustat's millions times a million, within 0.5%; EPS within a cent; period ends within 7 days, for the 52/53-week
+years). A filer whose statements are not read from us-gaap (``fundamental_company.us_gaap`` False) is left out of
+every one of the four: our value is another taxonomy's total, so the comparison measures nothing (#277).
 
 **Attended and monthly, on the spine's one WRDS worker** (``spine/wrds.py``: one login, at most one Duo push per
 builder process, ``WRDS_USERNAME``, ``RC_WRDS_PYTHON``): never due; ``python -m RevenueChaser.rcdata.build backfill
@@ -54,8 +56,14 @@ PERIOD_DAYS = 7
 MONEY_TOLERANCE = 0.005
 EPS_TOLERANCE = 0.01
 MILLION = 1_000_000.0
-#: SEC SIC 6000-6199: depository institutions and non-depository credit (JPM is 6021). Left out of the revenue
-#: agreement only (#277): their served revenue is net, Compustat's ``revt`` gross.
+#: GICS sector 40. Left out of the revenue agreement only (#277): a financial's served revenue is its tagged
+#: ``Revenues``, a net figure, while Compustat's ``revt`` is gross, so the year disagrees for a reason that is not
+#: an error. Measured on the whole universe, 21 Nov 2026: sector 40 agreed on 51.5% of its annual revenue pairs
+#: against ~86% for the rest, and 9 of the 15 companies that disagreed in every one of their ten years were banks,
+#: thrifts or a mortgage REIT (three of them at 6.8x, 10.5x and 14.7x).
+FINANCIALS_GSECTOR = "40"
+#: SEC SIC 6000-6199: depository institutions and non-depository credit (JPM is 6021). The fallback for the same
+#: rule where the spine has no GICS sector for the filer (#277).
 BANK_SIC = (6000, 6199)
 SEGMENT_LIBRARY = "comp_segments_hist_daily"
 CATALOG = [("table_schema", "TEXT"), ("table_name", "TEXT"), ("column_name", "TEXT")]
@@ -316,9 +324,10 @@ class WrdsFund:
                 ("revenue", "revenue", f"revt{sfx}", None), ("net income", "net_income", f"ni{sfx}", None),
                 ("diluted EPS", "eps_diluted", f"epsfx{sfx}", EPS_TOLERANCE)):
             n, ok = agreement(con, self.staging, item, field, period_type, tolerance,
-                              first_reported=self.table == "funda", banks=label != "revenue")
+                              first_reported=self.table == "funda", financials=label != "revenue")
             parts.append(f"{label} {ok} of {n}")
-        note = f"WRDS {self.table} vs the SEC: {', '.join(parts)} agree (banks left out of revenue)"
+        note = (f"WRDS {self.table} vs the SEC: {', '.join(parts)} agree "
+                "(financials left out of revenue, non-us-gaap filers out of all four)")
         # #277 / plan step 9: the debt Compustat holds (long-term + current) against the SEC's derived total.
         n, ok = agreement(con, self.staging, (f"dltt{sfx}", f"dlc{sfx}"), "total_debt", period_type, None,
                           first_reported=self.table == "funda")
@@ -337,22 +346,34 @@ def _links() -> str:
     return "(SELECT DISTINCT gvkey, cik FROM fundamental_company WHERE gvkey IS NOT NULL)"
 
 
+def left_out(financials: bool = True) -> str:
+    """The ``SELECT cik`` of the filers this check leaves out (#277). Always a filer whose statements are not read
+    from us-gaap (``us_gaap`` False, an IFRS filer): our value is another taxonomy's total. ``financials`` False
+    also leaves out GICS sector 40, with ``BANK_SIC`` as the fallback where the spine has no sector for the filer.
+    ``us_gaap`` or ``gsector`` NULL is unknown, never a reason to leave a filer out."""
+    rules = ["us_gaap IS false"]
+    if not financials:
+        rules.append(f"gsector = '{FINANCIALS_GSECTOR}' OR (gsector IS NULL AND "
+                     f"TRY_CAST(sic AS INTEGER) BETWEEN {BANK_SIC[0]} AND {BANK_SIC[1]})")
+    return "SELECT cik FROM fundamental_company WHERE " + " OR ".join(f"({r})" for r in rules)
+
+
 def agreement(con: duckdb.DuckDBPyConnection, staging: str, item: str | tuple[str, ...], field: str,
               period_type: str, eps_tolerance: float | None, first_reported: bool = False,
-              banks: bool = True) -> tuple[int, int]:
+              financials: bool = True) -> tuple[int, int]:
     """``(compared, agreeing)``: the periods where Compustat's ``item`` and the SEC's ``field`` both have a value
     (period ends within ``PERIOD_DAYS``). Money in millions at Compustat; EPS as is. ``first_reported``: compare the
     value the year's own report first gave (``first_value``), which ``funda`` keeps where the SEC serves a later
-    restatement or split-adjusted figure (#277: 11 of 59 EPS years, 3 net income, 4 revenue on the 29 Oct sample).
+    restatement or split-adjusted figure (#277: 11 of 59 EPS years, 3 net income, 4 revenue on the 29 Oct sample;
+    on the whole universe it closes 3.9 points of the annual revenue gap, so it is not the whole story).
 
     ``item`` as a tuple is the sum of those Compustat items, compared only where every one has a value (total debt
-    is ``dltt + dlc``). ``banks`` False leaves out the filers whose SEC SIC is in ``BANK_SIC``: a bank's served
-    revenue is its tagged ``Revenues``, net of interest expense, while Compustat's ``revt`` is gross, so every
-    bank year would disagree for a reason that is not an error (#277, JPM)."""
+    is ``dltt + dlc``). ``financials`` False leaves out GICS sector 40 (:func:`left_out`), whose served revenue is
+    net where Compustat's ``revt`` is gross (#277, JPM and 8 more banks); a non-us-gaap filer is always left
+    out."""
     value = "coalesce(first_value, value)" if first_reported else "value"
     v = " + ".join(f's."{i}"' for i in ((item,) if isinstance(item, str) else item))
-    skip = "" if banks else (" AND c.cik NOT IN (SELECT cik FROM fundamental_company WHERE "
-                             f"TRY_CAST(sic AS INTEGER) BETWEEN {BANK_SIC[0]} AND {BANK_SIC[1]})")
+    skip = f" AND c.cik NOT IN ({left_out(financials)})"
     if eps_tolerance is None:
         ok = (f"abs(f.value - w.v * {MILLION}) <= {MONEY_TOLERANCE} * "
               f"greatest(abs(f.value), abs(w.v * {MILLION}))")

@@ -112,7 +112,10 @@ ver" (the "4" is decision 7 below).
    **and no Compustat or Alpaca split of the same ratio sits within 7 days of it**, as source `wrds/crsp`
    (avo, 21 Nov 2026 on #661); every other CRSP split is named, never applied. One the other source already records
    at the same ratio a few days off is one split the two sources date apart (`split_crsp_restated`): applying both
-   stepped the share basis twice, which is how NVDA's oldest `split_factor` came out 1/960 where 1/480 is right. A security Compustat never priced therefore has no
+   stepped the share basis twice, which is how NVDA's oldest `split_factor` came out 1/960 where 1/480 is right.
+   It is applied once, on **the day the served bars change basis** (avo, 22 Nov 2026: the real ex-date wins), so
+   where the other source's day is outside the gap the jump is measured across, CRSP's row carries the split and
+   the other source's is held back unapplied. A security Compustat never priced therefore has no
    bar; where it is also outside today's universe it is in no table at all. The `crsp_unadjusted` helper table and
    the adjusted view's rule that hung on it are gone with the served CRSP bars.
 8. **The funds N-CEN gives no AUM (GLD, SLV, IBIT): decided, their volume from raw Compustat** (avo, 5 Nov 2026

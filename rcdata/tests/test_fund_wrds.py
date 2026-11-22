@@ -89,8 +89,9 @@ def test_funda_is_compared_with_the_value_the_year_first_reported_277():
     # what Compustat's funda keeps. The annual check compares the first-reported value; a fact with none, its own.
     con = duckdb.connect()
     tables.create(con, "fundamental_fact")
-    con.execute("CREATE TABLE fundamental_company (cik TEXT, gvkey TEXT)")
-    con.execute("INSERT INTO fundamental_company VALUES ('1', 'g1'), ('2', 'g2')")
+    con.execute("CREATE TABLE fundamental_company (cik TEXT, gvkey TEXT, sic TEXT, gsector TEXT, us_gaap BOOLEAN)")
+    con.execute("INSERT INTO fundamental_company VALUES ('1', 'g1', '7372', '45', true), "
+                "('2', 'g2', '7372', '45', true)")
     con.execute("CREATE TABLE stg (gvkey TEXT, datadate DATE, revt DOUBLE)")
     con.execute("INSERT INTO stg VALUES ('g1', DATE '2017-06-30', 89950), ('g2', DATE '2017-06-30', 500)")
     for cik, value, first in (("1", 96_571e6, 89_950e6), ("2", 500e6, None)):
@@ -119,12 +120,17 @@ def test_a_held_raw_snapshot_is_typed_again_not_asked_again_503():
 
 
 def _agreement_store(rows: list[tuple]) -> duckdb.DuckDBPyConnection:
-    """A store with one SEC fact per row ``(cik, sic, field, value)`` on 2024-12-31, its gvkey ``g<cik>``."""
+    """A store with one SEC fact per row ``(cik, sic, field, value[, gsector[, us_gaap]])`` on 2024-12-31, its
+    gvkey ``g<cik>``. ``gsector`` defaults to the SIC's own sector family, ``us_gaap`` to True."""
     con = duckdb.connect()
     tables.create(con, "fundamental_fact")
-    con.execute("CREATE TABLE fundamental_company (cik TEXT, gvkey TEXT, sic TEXT)")
-    for cik, sic, field, value in rows:
-        con.execute("INSERT INTO fundamental_company VALUES (?, ?, ?)", [cik, f"g{cik}", sic])
+    con.execute("CREATE TABLE fundamental_company (cik TEXT, gvkey TEXT, sic TEXT, gsector TEXT, us_gaap BOOLEAN)")
+    for row in rows:
+        cik, sic, field, value = row[:4]
+        gsector = row[4] if len(row) > 4 else ("40" if 6000 <= int(sic) <= 6799 else "20")
+        us_gaap = row[5] if len(row) > 5 else True
+        con.execute("INSERT INTO fundamental_company VALUES (?, ?, ?, ?, ?)",
+                    [cik, f"g{cik}", sic, gsector, us_gaap])
         con.execute("INSERT INTO fundamental_fact (cik, field, period_type, period_end, value, unit, accn, filed, "
                     "derived, preliminary, source) VALUES (?, ?, 'annual', DATE '2024-12-31', ?, 'USD', 'a', "
                     "DATE '2025-02-01', false, false, 'sec/companyfacts')", [cik, field, value])
@@ -136,8 +142,45 @@ def test_a_bank_is_left_out_of_the_revenue_agreement_277():
     con = _agreement_store([("19617", "6021", "revenue", 177_556e6), ("789019", "7372", "revenue", 245_122e6)])
     con.execute("CREATE TABLE stg (gvkey TEXT, datadate DATE, revt DOUBLE)")
     con.execute("INSERT INTO stg VALUES ('g19617', DATE '2024-12-31', 278906), ('g789019', DATE '2024-12-31', 245122)")
-    assert wrds_fund.agreement(con, "stg", "revt", "revenue", "annual", None, banks=False) == (1, 1)
+    assert wrds_fund.agreement(con, "stg", "revt", "revenue", "annual", None, financials=False) == (1, 1)
     assert wrds_fund.agreement(con, "stg", "revt", "revenue", "annual", None) == (2, 1)
+
+
+def test_the_whole_financials_sector_is_left_out_of_the_revenue_agreement_277():
+    """Measured 21 Nov 2026: GICS sector 40 agrees on 51.5% of its annual revenue pairs against ~86% for the rest,
+    and the always-disagreeing names include an insurer, a broker and a mortgage REIT, whose SEC SIC is outside
+    ``BANK_SIC``. The rule is the sector, not the SIC band."""
+    con = _agreement_store([("1", "6311", "revenue", 50e6),      # life insurer: sector 40, SIC above 6199
+                            ("2", "6798", "revenue", 30e6),      # mortgage REIT carried as sector 40
+                            ("3", "6211", "revenue", 20e6),      # broker-dealer
+                            ("4", "7372", "revenue", 245_122e6)])
+    con.execute("CREATE TABLE stg (gvkey TEXT, datadate DATE, revt DOUBLE)")
+    con.execute("INSERT INTO stg VALUES ('g1', DATE '2024-12-31', 120), ('g2', DATE '2024-12-31', 67), "
+                "('g3', DATE '2024-12-31', 29), ('g4', DATE '2024-12-31', 245122)")
+    assert wrds_fund.agreement(con, "stg", "revt", "revenue", "annual", None, financials=False) == (1, 1)
+    assert wrds_fund.agreement(con, "stg", "revt", "revenue", "annual", None) == (4, 1)
+
+
+def test_a_bank_sic_without_a_gics_sector_is_still_left_out_277():
+    # The spine has no GICS for the filer: BANK_SIC stays the fallback, and an unknown sector is never a reason.
+    con = _agreement_store([("1", "6021", "revenue", 50e6, None), ("2", "7372", "revenue", 100e6, None)])
+    con.execute("CREATE TABLE stg (gvkey TEXT, datadate DATE, revt DOUBLE)")
+    con.execute("INSERT INTO stg VALUES ('g1', DATE '2024-12-31', 140), ('g2', DATE '2024-12-31', 100)")
+    assert wrds_fund.agreement(con, "stg", "revt", "revenue", "annual", None, financials=False) == (1, 1)
+
+
+def test_a_non_us_gaap_filer_is_left_out_of_every_item_277():
+    """AZUL and LKFT disagreed in all ten of their years because our side reads another taxonomy's total
+    (``us_gaap`` False), not because Compustat or the extraction is wrong. NULL is unknown and stays compared."""
+    con = _agreement_store([("1", "4512", "net_income", 50e6, "20", False),
+                            ("2", "3711", "net_income", 90e6, "20", True),
+                            ("3", "3711", "net_income", 40e6, "20", None)])
+    con.execute("CREATE TABLE stg (gvkey TEXT, datadate DATE, ni DOUBLE)")
+    con.execute("INSERT INTO stg VALUES ('g1', DATE '2024-12-31', 180), ('g2', DATE '2024-12-31', 90), "
+                "('g3', DATE '2024-12-31', 40)")
+    assert wrds_fund.agreement(con, "stg", "ni", "net_income", "annual", None) == (2, 2)
+    # and out of the revenue count too, where the sector rule is on as well
+    assert wrds_fund.agreement(con, "stg", "ni", "net_income", "annual", None, financials=False) == (2, 2)
 
 
 def test_total_debt_is_compared_as_long_term_plus_current_277():
