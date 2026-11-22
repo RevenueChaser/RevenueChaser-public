@@ -37,7 +37,7 @@ import time
 from collections import Counter
 from datetime import date, datetime, timedelta
 
-from RevenueChaser.core import calendar, prices, rawstore
+from revenuechaser.core import calendar, prices, rawstore
 
 logger = logging.getLogger(__name__)
 

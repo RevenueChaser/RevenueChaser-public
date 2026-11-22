@@ -1,6 +1,6 @@
 """S4 (#38): copy the SPX Gamma tree out of the checkout into the store root, verified, without deleting it.
 
-``python -m RevenueChaser.module_spx_gamma --migrate-data-root`` reports what it would copy; ``--apply`` copies.
+``python -m revenuechaser.module_spx_gamma --migrate-data-root`` reports what it would copy; ``--apply`` copies.
 Run it with the dashboard stopped (it holds the board's files open between Fetches). The copy goes into
 ``<target>.partial``, every file is checked by size and SHA-256 against its source, and only then is the folder
 renamed to ``<target>``: ``config.resolve_data_root`` switches to it on the next process start. The legacy tree is

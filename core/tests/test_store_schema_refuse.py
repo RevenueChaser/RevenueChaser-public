@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from RevenueChaser.core import rawstore
+from revenuechaser.core import rawstore
 
 
 def _set_stamp(db: str, version: str) -> None:
@@ -22,7 +22,7 @@ def _set_stamp(db: str, version: str) -> None:
 
 
 def _refuse():
-    from RevenueChaser.core import store_schema_refuse
+    from revenuechaser.core import store_schema_refuse
     return store_schema_refuse
 
 

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import json
 
-from RevenueChaser.module_spx_gamma import render, snapshot as spx_snapshot
+from revenuechaser.module_spx_gamma import render, snapshot as spx_snapshot
 from .conftest import make_snapshot, store_day
 
 

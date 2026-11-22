@@ -6,8 +6,8 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.core.providers import sec_edgar
-from RevenueChaser.rcdata.build.fundamentals import facts
+from revenuechaser.core.providers import sec_edgar
+from revenuechaser.rcdata.build.fundamentals import facts
 
 from . import fund_fixture as fx
 

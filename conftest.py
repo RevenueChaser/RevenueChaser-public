@@ -74,7 +74,7 @@ def _redirect_data_roots() -> None:
     in_use = Path(os.environ["RC_STORE_DIR"]).parent
     if in_use != _root:
         # An earlier import of this file already redirected the roots — pytest loads the rootdir
-        # conftest, and the package imports it as RevenueChaser.conftest as well — so every
+        # conftest, and the package imports it as revenuechaser.conftest as well — so every
         # setdefault above was a no-op and the root just made is unused. Remove it here instead of
         # leaking it, and keep the root the environment points at.
         shutil.rmtree(_root, ignore_errors=True)
@@ -160,7 +160,7 @@ def pytest_collection_modifyitems(config, items):
     shard = os.environ.get("RC_SHARD")
     if not shard:
         return
-    from RevenueChaser.scripts.select_tests import in_shard
+    from revenuechaser.scripts.select_tests import in_shard
 
     keep = [it for it in items if in_shard(it.nodeid, shard)]
     if len(keep) < len(items):
@@ -187,7 +187,7 @@ def isolate_rawstore(tmp_path):
     board files. Kept **per-test** (never per-session): a shared DuckDB file across parallel workers would hit the
     single-writer lock. Yields the store directory.
     """
-    from RevenueChaser.core import rawstore
+    from revenuechaser.core import rawstore
     mp = pytest.MonkeyPatch()  # its own instance: a test's monkeypatch.undo()
     mp.setattr(rawstore, "STORE_DIR", tmp_path)  # must not un-isolate
     try:
@@ -200,8 +200,8 @@ def isolate_rawstore(tmp_path):
 def _seeded_universe_market():
     """The caps and prices a test seeded with ``rcdata/tests/universe_store`` rows, where the served prices file has
     none for the ticker (the part the old ``equity_universe`` table played before #860). Cleared per test."""
-    from RevenueChaser.core import spine_reads
-    from RevenueChaser.rcdata.tests import universe_store
+    from revenuechaser.core import spine_reads
+    from revenuechaser.rcdata.tests import universe_store
     universe_store.MARKET.clear()
     real = spine_reads.latest_market
 
@@ -245,8 +245,8 @@ def isolate_ops(tmp_path):
     ``config.MARKET_DIR`` at call time); the read log moves too, or its exit flush would write into the per-process
     root after the session removed it. Nothing is created until a test writes. A test's own ``monkeypatch`` still wins.
     """
-    from RevenueChaser.core import config
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.core import config
+    from revenuechaser.rcdata import ops
     mp = pytest.MonkeyPatch()
     mp.setattr(config, "MARKET_DIR", tmp_path / "market")
     mp.setattr(config, "MARKET_RAW_DIR", tmp_path / "market_raw")
@@ -269,7 +269,7 @@ def seeded_map_lists(request, monkeypatch):
     """The Sector Rotation map and its industry layer read as the seed in ``core/rotation_reference.py``: at run
     time they are avo's two watch lists (plan v5 step 7b), which a test's empty store does not hold. A test of the
     list read itself is marked ``map_lists_from_store`` and fills its own file."""
-    from RevenueChaser.core import rotation_reference
+    from revenuechaser.core import rotation_reference
     rotation_reference._CACHE.clear()
     if "map_lists_from_store" not in request.keywords:
         monkeypatch.setattr(rotation_reference, "_rows", rotation_reference.seed_sections)
@@ -289,13 +289,13 @@ def isolate_board_artifacts():
     import importlib
     import uuid
 
-    from RevenueChaser.core import config
+    from revenuechaser.core import config
     root = Path(config.OUTPUT_DIR)
     dest = root / "per-test" / uuid.uuid4().hex
-    runners = importlib.import_module("RevenueChaser.app.runners")
+    runners = importlib.import_module("revenuechaser.app.runners")
     mp = pytest.MonkeyPatch()
     for prefix, module in BOARD_ARTIFACT_PAIRS:
-        cfg = importlib.import_module(f"RevenueChaser.{module}.config")
+        cfg = importlib.import_module(f"revenuechaser.{module}.config")
         for attr in (f"{prefix}_LATEST", f"{prefix}_JSON"):
             for mod in (runners, cfg):
                 mp.setattr(mod, attr, dest / Path(getattr(mod, attr)).relative_to(root))
@@ -307,7 +307,7 @@ def isolate_board_artifacts():
     # The 13F board the same way: nine test files write it through ``runners.run_sec_13f_latest``, whose page the
     # 13F report writes under its own ``OUTPUT_DIR``; one of them read another worker's page under ``-n 4``
     # (``test_an_outage_keeps_stored_names_and_shows_the_health_banner``, 28 Oct 2026).
-    sec13f_report = importlib.import_module("RevenueChaser.module_sec_13f.report")
+    sec13f_report = importlib.import_module("revenuechaser.module_sec_13f.report")
     mp.setattr(runners, "SEC_13F_LATEST", dest / Path(runners.SEC_13F_LATEST).relative_to(root))
     mp.setattr(sec13f_report, "OUTPUT_DIR", dest / Path(sec13f_report.OUTPUT_DIR).relative_to(root))
     # Earnings Radar the same way, and for the same reason. ``report.export_html`` names its page from a
@@ -316,12 +316,12 @@ def isolate_board_artifacts():
     # root two workers rendering in the same second write and read one file. That is how
     # ``test_the_dollar_volume_help_names_the_premium_it_reads`` read a page rendered without ``filter_stats`` and
     # failed on the missing gates line (CI run 41034036608, 30 Oct 2026).
-    earnings_report = importlib.import_module("RevenueChaser.module_earnings_radar.report")
+    earnings_report = importlib.import_module("revenuechaser.module_earnings_radar.report")
     mp.setattr(earnings_report, "OUTPUT_DIR", dest / Path(earnings_report.OUTPUT_DIR).relative_to(root))
     # The Settings board's disk picture (#434): the storage-picture job's only output, and the journey table reads
     # it on every render. Left in the process root, one test's picture is what the next file's ``collect`` renders,
     # and the test that asserts there is no picture yet would pass or fail on whatever ran before it.
-    newdata = importlib.import_module("RevenueChaser.module_settings.newdata")
+    newdata = importlib.import_module("revenuechaser.module_settings.newdata")
     mp.setattr(newdata, "STORAGE_PICTURE", dest / Path(newdata.STORAGE_PICTURE).relative_to(root))
     dest.mkdir(parents=True, exist_ok=True)     # the 13F page sits at its top, where a test may write it directly
     try:
@@ -334,7 +334,7 @@ def isolate_board_artifacts():
 @pytest.fixture(autouse=True)
 def isolate_uw_verify_cache(monkeypatch):
     """The UW client trusts a verified key for 60 s process-wide; never across tests."""
-    from RevenueChaser.core.providers import unusual_whales
+    from revenuechaser.core.providers import unusual_whales
     monkeypatch.setattr(unusual_whales, "_VERIFIED_OK", {})
     # PL1 retry backoff: never really sleep in a test (a test that cares about
     # the delays injects ``sleep=`` or patches ``_sleep`` itself).
@@ -344,7 +344,7 @@ def isolate_uw_verify_cache(monkeypatch):
 @pytest.fixture(autouse=True)
 def isolate_sec_breaker():
     """The SEC circuit breaker is process-wide state; one test must not open it for the next."""
-    from RevenueChaser.core.providers import sec_edgar
+    from revenuechaser.core.providers import sec_edgar
     sec_edgar.reset_breaker()
     yield
     sec_edgar.reset_breaker()
@@ -353,7 +353,7 @@ def isolate_sec_breaker():
 @pytest.fixture(autouse=True)
 def isolate_yf_session(monkeypatch):
     """The yfinance 401 reset (#402) keeps process-wide "seen" and "reset" times; one test must not arm the next."""
-    from RevenueChaser.core.providers import yf_session
+    from revenuechaser.core.providers import yf_session
     monkeypatch.setattr(yf_session, "_STATE", {"seen": float("-inf"), "reset": float("-inf")})
 
 
@@ -379,7 +379,7 @@ def empty_my_universe_manual(tmp_path_factory):
     ``isolate_board_artifacts`` and a test's own path patch was undone after that fixture's, leaving a stale path).
     """
     import sys
-    my_universe = sys.modules.get("RevenueChaser.rcdata.build.spine.my_universe")
+    my_universe = sys.modules.get("revenuechaser.rcdata.build.spine.my_universe")
     if my_universe is None:
         yield
         return
@@ -396,7 +396,7 @@ def empty_my_universe_manual(tmp_path_factory):
 @pytest.fixture(autouse=True)
 def _reset_cik_map():
     """The CIK map is cached per process (#301 review MUST-2); no test may inherit another's map."""
-    from RevenueChaser.core.providers import sec_edgar
+    from revenuechaser.core.providers import sec_edgar
     sec_edgar.reset_cik_map()
     yield
     sec_edgar.reset_cik_map()
@@ -423,7 +423,7 @@ def _canonical(value):
 
 def _schema_fingerprint() -> str:
     import hashlib
-    from RevenueChaser.core import rawstore
+    from revenuechaser.core import rawstore
     inputs = [_canonical(getattr(rawstore, n, None)) for n in _SCHEMA_INPUTS]
     return hashlib.sha256(repr(inputs).encode()).hexdigest()
 
@@ -441,7 +441,7 @@ class RawstoreTemplate:
 
     def __init__(self, root: Path):
         import hashlib
-        from RevenueChaser.core import rawstore
+        from revenuechaser.core import rawstore
         code = hashlib.sha256(Path(rawstore.__file__).read_bytes()).hexdigest()[:12]
         self.dir = root / f"v{rawstore._SCHEMA_VERSION}-{code}"
         self.dir.mkdir(parents=True)
@@ -465,7 +465,7 @@ class RawstoreTemplate:
 
     def copy_to(self, dest: Path) -> bool:
         """Give the store directory ``dest`` its own copy of the template; False when it has to be built from scratch."""
-        from RevenueChaser.core import rawstore
+        from revenuechaser.core import rawstore
         if _schema_fingerprint() != self.fingerprint or any((dest / name).exists() for name in self.files):
             return False
         for name in self.files:
@@ -496,7 +496,7 @@ def rawstore_tmp_db(isolate_rawstore, rawstore_template, request):
     runs on the test's own file instead when the test is marked ``rawstore_schema_from_scratch`` (it tests the apply or
     a migration itself), when a schema input differs from the template's, or when a store file is already there.
     """
-    from RevenueChaser.core import rawstore
+    from revenuechaser.core import rawstore
     if request.node.get_closest_marker(SCHEMA_FROM_SCRATCH) or not rawstore_template.copy_to(Path(rawstore.STORE_DIR)):
         rawstore.ensure_all_tables()
     return isolate_rawstore

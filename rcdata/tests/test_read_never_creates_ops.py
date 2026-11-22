@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import sqlite3
 
-from RevenueChaser.rcdata import needs, ops, read
+from revenuechaser.rcdata import needs, ops, read
 
 
 def test_dataset_status_without_an_ops_file_is_never_checked_and_creates_nothing():

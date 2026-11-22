@@ -32,7 +32,7 @@ import re
 import time
 import unicodedata
 
-from RevenueChaser.core import rawstore
+from revenuechaser.core import rawstore
 
 from . import symbols as symbols_mod
 

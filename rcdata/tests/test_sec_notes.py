@@ -30,7 +30,7 @@ from pathlib import Path
 
 import pytest
 
-from RevenueChaser.rcdata import sec_notes as notes
+from revenuechaser.rcdata import sec_notes as notes
 
 from .sec_notes_fixture import (BLOCK_CLAIMING_THE_CONTINUATION_IT_SITS_IN, BROKEN_CHAIN,
                                 CHAIN_ELEMENT_ENCLOSING_ITS_OWN_BLOCK,

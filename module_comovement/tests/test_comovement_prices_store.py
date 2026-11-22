@@ -13,10 +13,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_comovement import config, engine, ohlc
-from RevenueChaser.module_comovement.tests import test_recompute_parity as parity
-from RevenueChaser.rcdata.tests import prices_store
+from revenuechaser.core import rawstore
+from revenuechaser.module_comovement import config, engine, ohlc
+from revenuechaser.module_comovement.tests import test_recompute_parity as parity
+from revenuechaser.rcdata.tests import prices_store
 
 
 def _rows(t: str, closes: pd.Series, **extra) -> list[dict]:

@@ -8,10 +8,10 @@ from datetime import date, datetime, timezone
 import httpx
 import pytest
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.core.providers import ibkr_tws as ibkr
-from RevenueChaser.module_news import headlines, tape
-from RevenueChaser.rcdata.tests.ibkr_fixture import FakeGateway, frame
+from revenuechaser.core import rawstore
+from revenuechaser.core.providers import ibkr_tws as ibkr
+from revenuechaser.module_news import headlines, tape
+from revenuechaser.rcdata.tests.ibkr_fixture import FakeGateway, frame
 
 NOW = datetime(2026, 11, 10, 15, 0, tzinfo=timezone.utc).timestamp()
 

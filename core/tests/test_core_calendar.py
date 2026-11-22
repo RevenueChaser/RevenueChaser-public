@@ -3,7 +3,7 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.core.calendar import (
+from revenuechaser.core.calendar import (
     MARKET_HOLIDAYS, federal_holidays, is_federal_holiday, is_trading_day, market_holidays,
     previous_trading_day, next_trading_day, trade_by_date,
 )
@@ -63,7 +63,7 @@ def test_trade_by_none_inputs_return_none():
 from datetime import datetime, timedelta, timezone  # noqa: E402
 from pathlib import Path  # noqa: E402
 
-from RevenueChaser.core import calendar as cal  # noqa: E402
+from revenuechaser.core import calendar as cal  # noqa: E402
 
 
 def _utc(y, m, d, hh=0, mm=0, ss=0):

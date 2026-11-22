@@ -12,10 +12,10 @@ from datetime import datetime, timezone
 
 import pytest
 
-from RevenueChaser.core import calendar
-from RevenueChaser.rcdata import ops
-from RevenueChaser.rcdata.build import DATASETS, base, due
-from RevenueChaser.rcdata.build.spine import wrds
+from revenuechaser.core import calendar
+from revenuechaser.rcdata import ops
+from revenuechaser.rcdata.build import DATASETS, base, due
+from revenuechaser.rcdata.build.spine import wrds
 
 WRDS = sorted(n for n in DATASETS if n.startswith("wrds/"))
 
@@ -98,7 +98,7 @@ def test_the_attended_cli_still_drains_what_is_left(monkeypatch, capsys):
     # The trap #1361 had to avoid: the old guard returned "nothing to do" whenever the WRDS switch was on, before
     # the queue was drained, so ``delisted/serving`` requests would have waited for ever. It must now refuse only
     # for the want of a terminal, and say nothing-to-do only when no dataset declares ``attended`` at all.
-    from RevenueChaser.rcdata.build import __main__ as cli
+    from revenuechaser.rcdata.build import __main__ as cli
     monkeypatch.setattr(cli, "at_a_terminal", lambda: False)
     assert cli.main(["attended"]) == 3
     assert "needs a terminal" in capsys.readouterr().err

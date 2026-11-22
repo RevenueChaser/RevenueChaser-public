@@ -16,8 +16,8 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from RevenueChaser.core.providers import yf_session
-from RevenueChaser.core.providers import yfinance as yfp
+from revenuechaser.core.providers import yf_session
+from revenuechaser.core.providers import yfinance as yfp
 
 AUTH = "HTTP Error 401: Invalid Crumb"
 

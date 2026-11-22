@@ -14,8 +14,8 @@ from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
-from RevenueChaser.core import calendar
-from RevenueChaser.module_earnings_radar import stored_inputs
+from revenuechaser.core import calendar
+from revenuechaser.module_earnings_radar import stored_inputs
 
 # 2026-10-14 is a Wednesday. The builder's session is the 13th; the Fetch's day the 16th (Friday), which is past
 # today and tomorrow, so it is the store's to answer.
@@ -120,12 +120,12 @@ def test_a_day_past_the_built_sessions_window_is_left_to_uw(monkeypatch):
 
 
 def test_the_window_comes_from_the_builder_not_a_second_copy():
-    from RevenueChaser.rcdata.build.options.uw_screener import DAYS_AHEAD
+    from revenuechaser.rcdata.build.options.uw_screener import DAYS_AHEAD
     assert stored_inputs.calendar_days_ahead() == DAYS_AHEAD
 
 
 def test_the_freshness_comes_from_the_need_catalog():
-    from RevenueChaser.rcdata import needs
+    from revenuechaser.rcdata import needs
     assert stored_inputs.calendar_max_lag() == needs.catalog.NEEDS["options.screener"].max_lag
 
 

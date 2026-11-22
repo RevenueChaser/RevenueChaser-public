@@ -30,13 +30,13 @@ def schema_refuse_writes() -> bool:
 
 def message(db: str, stored: str, code: str) -> str:
     """The refusal text for a file whose stamp is ahead of this code: file name, both versions, the restore."""
-    from RevenueChaser.core import rawstore
+    from revenuechaser.core import rawstore
     file = rawstore._db_path(db).name
     what = (f"schema stamp {stored!r} is not a version number" if rawstore._stamp_unreadable(stored)
             else f"schema stamp is {stored}")
     return (f"{file} {what} but this code is {code}; refusing writes so this checkout cannot change a "
             f"newer store. Restore a matching snapshot: "
-            f"python -m RevenueChaser.rcdata restore --step boards --latest {db} --live. "
+            f"python -m revenuechaser.rcdata restore --step boards --latest {db} --live. "
             f"Set {ESCAPE_ENV}=1 only for a deliberate migration.")
 
 
@@ -49,7 +49,7 @@ def refuse_schema_write(db: str) -> None:
     """
     if not schema_refuse_writes():
         return
-    from RevenueChaser.core import rawstore
+    from revenuechaser.core import rawstore
     stored = rawstore._cached_stamp(db)
     code = rawstore.schema_version()
     if stored is None or rawstore._stamp_rank(stored) <= rawstore._stamp_rank(code):

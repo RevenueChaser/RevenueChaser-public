@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-from RevenueChaser.module_spx_gamma import render, run as spx_run
+from revenuechaser.module_spx_gamma import render, run as spx_run
 
 from .conftest import make_snapshot, store_day
 from .test_s2_fetch import DAY, _fetch, _no_network

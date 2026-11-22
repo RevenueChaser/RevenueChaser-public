@@ -25,18 +25,18 @@ from types import SimpleNamespace
 
 import pytest
 
-from RevenueChaser.app import runners
-from RevenueChaser.app.jobs import JobMessage
-from RevenueChaser.core import ledger, rawstore
-from RevenueChaser.module_sector_rotation.models import ETFRotationSnapshot
-from RevenueChaser.module_sector_rotation import engine as rot_engine
-from RevenueChaser.module_sector_rotation import etf_holdings as eh
-from RevenueChaser.module_sector_rotation import report as rot_report
-from RevenueChaser.module_sector_rotation import store as rotation_store
-from RevenueChaser.module_sector_rotation.money_flow import get_money_flow_leaderboards
-from RevenueChaser.module_sector_rotation.tests.bars_seed import seed
-from RevenueChaser.core.rotation_reference import SEED_ROTATION_ETFS as ROTATION_ETFS
-from RevenueChaser.rcdata.tests import spine_fixture
+from revenuechaser.app import runners
+from revenuechaser.app.jobs import JobMessage
+from revenuechaser.core import ledger, rawstore
+from revenuechaser.module_sector_rotation.models import ETFRotationSnapshot
+from revenuechaser.module_sector_rotation import engine as rot_engine
+from revenuechaser.module_sector_rotation import etf_holdings as eh
+from revenuechaser.module_sector_rotation import report as rot_report
+from revenuechaser.module_sector_rotation import store as rotation_store
+from revenuechaser.module_sector_rotation.money_flow import get_money_flow_leaderboards
+from revenuechaser.module_sector_rotation.tests.bars_seed import seed
+from revenuechaser.core.rotation_reference import SEED_ROTATION_ETFS as ROTATION_ETFS
+from revenuechaser.rcdata.tests import spine_fixture
 
 COMPLETE = datetime(2026, 10, 6, 22, 0, tzinfo=timezone.utc).timestamp()   # Tuesday 18:00 ET: a complete session
 DAY = date(2026, 10, 6)
@@ -226,7 +226,7 @@ def test_a_live_fetch_exports_no_png_and_the_dead_helpers_are_gone(board, monkey
     assert board.png == [] and not list(board.dir.glob("*.png"))
     for name in ("export_rotation_png", "RRG_PNG", "backfill_rotation", "backfill_rotation_weekly"):
         assert not hasattr(runners, name), name
-    assert importlib.util.find_spec("RevenueChaser.module_sector_rotation.rrg_plot") is None
+    assert importlib.util.find_spec("revenuechaser.module_sector_rotation.rrg_plot") is None
 
 
 # ── DF69 text (D-M7 default) ─────────────────────────────────────────────────────────────────────────────────────────

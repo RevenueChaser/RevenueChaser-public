@@ -11,9 +11,9 @@ import json
 
 import pytest
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_relatedness import __main__ as cli
-from RevenueChaser.module_relatedness import themes
+from revenuechaser.core import rawstore
+from revenuechaser.module_relatedness import __main__ as cli
+from revenuechaser.module_relatedness import themes
 
 
 def _profiles():
@@ -85,7 +85,7 @@ def test_the_run_row_keeps_the_realised_cut(rebuild_spy):
     ["--status", "--k-medium", "3"],
 ])
 def test_out_of_range_or_outside_a_rebuild_is_refused(rebuild_spy, monkeypatch, argv):
-    from RevenueChaser.module_relatedness import engine
+    from revenuechaser.module_relatedness import engine
     runs = []
     monkeypatch.setattr(engine, "run", lambda **k: runs.append(k) or {})
     with pytest.raises(SystemExit) as exc:

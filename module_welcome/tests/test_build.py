@@ -12,9 +12,9 @@ import json
 import time
 from datetime import date, datetime, timedelta
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_welcome import build as wb
-from RevenueChaser.rcdata.tests import market_fixture
+from revenuechaser.core import rawstore
+from revenuechaser.module_welcome import build as wb
+from revenuechaser.rcdata.tests import market_fixture
 
 NY = wb.NY
 NOW = datetime(2026, 11, 10, 8, 0, tzinfo=NY).timestamp()          # Tue 10 Nov, before the open
@@ -107,12 +107,12 @@ SCREENER_SESSION = date(2026, 11, 9)          # Monday's sweep; NOW is Tuesday 1
 
 
 def _screener(rows):
-    from RevenueChaser.rcdata.tests import screener_fixture
+    from revenuechaser.rcdata.tests import screener_fixture
     screener_fixture.write(rows)
 
 
 def _screener_row(ticker, day, **over):
-    from RevenueChaser.rcdata.tests import screener_fixture
+    from revenuechaser.rcdata.tests import screener_fixture
     session = over.pop("session_date", SCREENER_SESSION)
     return screener_fixture.row(ticker, session_date=session, report_date=day, **over)
 
@@ -140,7 +140,7 @@ def test_the_implied_move_stands_in_where_the_calendar_has_no_expected_move():
 
 
 def test_a_name_the_screener_row_does_not_name_takes_the_spines_name():
-    from RevenueChaser.rcdata.tests import universe_store
+    from revenuechaser.rcdata.tests import universe_store
     universe_store.put([{"ticker": "AAA", "name": "Alpha Industries"}])
     _screener([_screener_row("AAA", TUE, full_name=None)])
     wb.build(now=NOW)
@@ -161,7 +161,7 @@ def test_without_a_built_screener_session_the_card_keeps_what_it_has():
     """A missing options file is no rows the way an empty old table was: nothing is written, nothing retired."""
     _screener([_screener_row("AAA", TUE)])
     wb.build(now=NOW)
-    from RevenueChaser.rcdata import serving
+    from revenuechaser.rcdata import serving
     serving.live_path("options").unlink()
     assert wb.build(now=NOW + 60)["earnings"] == 0
     assert _earnings()["AAA"]["retired_at"] is None
@@ -187,7 +187,7 @@ def _clock_at(moment):
 
 def _build_run(run_id, dataset, status, finished, error=None):
     """One finished builder run in the ops ledger, at the time the test wants it."""
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
     with _clock_at(finished - 60.0):
         ops.start_run(run_id, dataset, "queue")
     with _clock_at(finished):
@@ -222,7 +222,7 @@ def test_a_skipped_run_is_a_file_that_built_nothing_due_not_an_error():
 
 def test_every_serving_file_has_a_name_on_the_card():
     """A new builder file cannot reach the card unnamed: the labels cover ``serving.KINDS`` exactly."""
-    from RevenueChaser.rcdata import serving
+    from revenuechaser.rcdata import serving
     assert set(wb.FILE_LABELS) == set(serving.KINDS)
 
 

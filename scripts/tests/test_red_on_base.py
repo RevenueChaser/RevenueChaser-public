@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from RevenueChaser.scripts import red_on_base as mod
+from revenuechaser.scripts import red_on_base as mod
 
 
 @pytest.mark.parametrize("path,want", [

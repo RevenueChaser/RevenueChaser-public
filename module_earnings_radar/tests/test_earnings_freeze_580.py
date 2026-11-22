@@ -9,10 +9,10 @@ from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
-from RevenueChaser.core import calendar as cal
-from RevenueChaser.core import ledger, rawstore
-from RevenueChaser.module_earnings_radar import composite, freeze
-from RevenueChaser.module_earnings_radar.models import TradeCard
+from revenuechaser.core import calendar as cal
+from revenuechaser.core import ledger, rawstore
+from revenuechaser.module_earnings_radar import composite, freeze
+from revenuechaser.module_earnings_radar.models import TradeCard
 
 D = date(2026, 10, 2)                                               # a Friday
 POST_CLOSE = datetime(2026, 10, 2, 21, 0, tzinfo=timezone.utc)      # 17:00 ET
@@ -29,15 +29,15 @@ def _card(ticker, *, confidence=70.0, pre=5.0, action="OPTIONS_BULL", conviction
 
 def _spy_bar(minutes=45):
     """SPY's D01 bar for D, written ``minutes`` after the close: the freeze's anchor."""
-    from RevenueChaser.core.tests.d01_seed import seed_d01
-    from RevenueChaser.rcdata.tests import prices_store
+    from revenuechaser.core.tests.d01_seed import seed_d01
+    from revenuechaser.rcdata.tests import prices_store
     at = (cal.session_close(D) + timedelta(minutes=minutes)).timestamp()
     seed_d01("SPY", [D], at)
     prices_store.set_built_at(at)
 
 
 def _no_bars():
-    from RevenueChaser.core.tests.d01_seed import drop_d01
+    from revenuechaser.core.tests.d01_seed import drop_d01
     drop_d01()
 
 

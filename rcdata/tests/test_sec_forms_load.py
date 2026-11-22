@@ -14,10 +14,10 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.rcdata import serving
-from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.fundamentals import common
-from RevenueChaser.rcdata.build.sec_forms import forms
+from revenuechaser.rcdata import serving
+from revenuechaser.rcdata.build import base
+from revenuechaser.rcdata.build.fundamentals import common
+from revenuechaser.rcdata.build.sec_forms import forms
 
 #: Three companies whose number order and text order differ, because ``cik`` is a TEXT column: the rows must come
 #: out in the text order a single ``ORDER BY cik`` gave them ('10', '100', '9'), not in number order.

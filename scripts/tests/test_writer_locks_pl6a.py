@@ -19,9 +19,9 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from RevenueChaser.core import job_lock, outcomes
-from RevenueChaser.core.tests.lock_holders import lock_held
-from RevenueChaser.scripts import forecast_outcomes
+from revenuechaser.core import job_lock, outcomes
+from revenuechaser.core.tests.lock_holders import lock_held
+from revenuechaser.scripts import forecast_outcomes
 
 NIGHT = datetime(2026, 10, 13, 19, 30, tzinfo=ZoneInfo("America/New_York")).timestamp()
 

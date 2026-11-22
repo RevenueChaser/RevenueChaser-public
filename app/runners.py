@@ -9,10 +9,10 @@ import time
 from datetime import date, timedelta
 from pathlib import Path
 
-from RevenueChaser.core.providers.unusual_whales import UWClient
-from RevenueChaser.core.config import OUTPUT_DIR
-from RevenueChaser.module_earnings_radar.pipeline import EarningsPipeline
-from RevenueChaser.core import job_lock, ledger
+from revenuechaser.core.providers.unusual_whales import UWClient
+from revenuechaser.core.config import OUTPUT_DIR
+from revenuechaser.module_earnings_radar.pipeline import EarningsPipeline
+from revenuechaser.core import job_lock, ledger
 from .jobs import GAPS, JobMessage, run_id
 
 logger = logging.getLogger(__name__)
@@ -34,14 +34,14 @@ def _write_output(module: str, content: str, suffix: str, ext: str = "html") -> 
     else:
         stable = OUTPUT_DIR / f"{module}_latest.{ext}"
     stable.parent.mkdir(parents=True, exist_ok=True)
-    from RevenueChaser.core.reporting_common import write_artifact
+    from revenuechaser.core.reporting_common import write_artifact
     return write_artifact(stable, content)
 
 def _write_to(path: Path, content: str) -> Path:
     """Write one regenerable artifact at ``path``: the board's own constant, so the writer and every reader of it
     name one file (#111: a second spelling built from OUTPUT_DIR drifted from the constant a test redirected)."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    from RevenueChaser.core.reporting_common import write_artifact
+    from revenuechaser.core.reporting_common import write_artifact
     return write_artifact(path, content)
 
 
@@ -51,7 +51,7 @@ def _run_asof(payload) -> str | None:
     The K10 payload file carries the rows alone (``{"rows": ...}``, ``{"companies": ...}``), so the date the data
     speaks for is here, in the payload the renderer was given: ``v2_envelope.ASOF_KEYS`` in order.
     """
-    from RevenueChaser.core import v2_envelope
+    from revenuechaser.core import v2_envelope
     return v2_envelope.data_asof(payload)
 
 
@@ -61,7 +61,7 @@ def _write_board(path: Path, html: str, data, asof=None) -> Path:
     ``data=None`` drops both files. ``asof`` is the board's own as-of word for the envelope (#1241): the K10
     payload holds the rows only, so the date lives in the run payload the caller still has in hand.
     """
-    from RevenueChaser.core.reporting_common import write_board
+    from revenuechaser.core.reporting_common import write_board
     return write_board(path, html, data, asof=asof)
 
 
@@ -78,9 +78,9 @@ def _write_empty_board(path: Path, title: str, message: str, hint: str = "") -> 
     worker thread, which has no Flask app context.
     """
     from datetime import datetime, timezone
-    from RevenueChaser.core import templating
+    from revenuechaser.core import templating
     stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    from RevenueChaser.core.reporting_common import write_artifact
+    from revenuechaser.core.reporting_common import write_artifact
     return write_artifact(path, templating.render(
         "empty_board.html.j2", title=title, message=message, hint=hint, stamp=stamp))
 
@@ -188,12 +188,12 @@ SETTINGS_LATEST = OUTPUT_DIR / "settings_latest.html"
 def _load_watchlist() -> set:
     """avo's picks (``rcdata.read.picked``: his own watch lists and the stock list): Earnings' and Welcome's watched
     names. An unreadable list is left out, as on a page."""
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     return read.picked()
 
 
 def _compute_nrc_results(cards) -> dict:
-    from RevenueChaser.module_earnings_radar.pipeline import nrc_from_card
+    from revenuechaser.module_earnings_radar.pipeline import nrc_from_card
     wl = _load_watchlist()
     return {card.ticker: nrc_from_card(card, wl) for card in cards}
 
@@ -237,7 +237,7 @@ def _fetch_calendar_days(uw: UWClient, days: list[date]) -> tuple[list, dict]:
     old to read, and always today and the next trading day, whose numbers UW still moves. Either way the event is
     built by ``_calendar_event``, so a stored pair and a live pair cannot drift apart, and ``source`` stays "UW".
     """
-    from RevenueChaser.module_earnings_radar.stored_inputs import calendar_items
+    from revenuechaser.module_earnings_radar.stored_inputs import calendar_items
     try:
         stored, session = calendar_items(days)
     except Exception as e:  # noqa: BLE001 - a store error is "nothing stored", never a failed Fetch
@@ -309,7 +309,7 @@ def run_earnings_range(uw: UWClient, start: date | None = None, end: date | None
     if span:
         # The CLI adds the watchlist names the session calendar omits (unknown time, estimated
         # date); the dashboard Fetch did not, so they dropped off the board (#198 E15).
-        from RevenueChaser.module_earnings_radar.watchlist_augment import augment_calendar
+        from revenuechaser.module_earnings_radar.watchlist_augment import augment_calendar
         # Served first, UW only for the names the store does not cover (#1138).
         watchlist_sources = augment_calendar(uw, events, raw_cal, _load_watchlist(), span[0], span[1],
                                              days=days if dates else None)
@@ -330,7 +330,7 @@ def run_earnings_range(uw: UWClient, start: date | None = None, end: date | None
     tickers = list(dict.fromkeys(e["ticker"] for e in events))
 
     try:
-        from RevenueChaser.module_sector_rotation.engine import rotation_quadrant_map
+        from revenuechaser.module_sector_rotation.engine import rotation_quadrant_map
         etf_quadrant_map = rotation_quadrant_map(uw)
     except Exception as e:
         logger.warning(f"Rotation engine failed: {e}")
@@ -347,7 +347,7 @@ def run_earnings_range(uw: UWClient, start: date | None = None, end: date | None
             sources["watchlist"] = watchlist_sources
     cards = pipeline.run(use_preselect=True)
 
-    from RevenueChaser.module_earnings_radar.report import export_html, screener_problem
+    from revenuechaser.module_earnings_radar.report import export_html, screener_problem
 
     nrc = _compute_nrc_results(cards)
     # A partial/failed screener answer is told on the board (E2, #372).
@@ -357,7 +357,7 @@ def run_earnings_range(uw: UWClient, start: date | None = None, end: date | None
                 notice=screener_problem(screener), run_at=run_at)
     # Last step of the Fetch, after the board file is written (#580). The Earnings Radar has no Refresh, so every
     # run is a Fetch. A refused freeze is a note, never a JobMessage; a freeze *error* propagates, so the job shows it.
-    from RevenueChaser.module_earnings_radar import freeze as earnings_freeze
+    from revenuechaser.module_earnings_radar import freeze as earnings_freeze
     earnings_freeze.freeze_cards(cards, run_id=_freeze_run_id())
     if not cards:
         # E23: an empty table with a "done" job reads as a broken Fetch. Say why.
@@ -367,11 +367,11 @@ def run_earnings_range(uw: UWClient, start: date | None = None, end: date | None
 
 def run_rotation_latest(uw: UWClient, benchmark: str = "SPY", start: str = None,
                         end: str = None) -> Path:
-    from RevenueChaser.module_sector_rotation.engine import (
+    from revenuechaser.module_sector_rotation.engine import (
         RotationEngine, fetch_all_holdings, sector_etf_trees,
     )
-    from RevenueChaser.module_sector_rotation.report import export_rotation_dashboard
-    from RevenueChaser.module_sector_rotation import engine as rotation_engine, store as rotation_store
+    from revenuechaser.module_sector_rotation.report import export_rotation_dashboard
+    from revenuechaser.module_sector_rotation import engine as rotation_engine, store as rotation_store
 
     kept, notes = None, []
     short, stale = [], None
@@ -460,7 +460,7 @@ def run_rotation_latest(uw: UWClient, benchmark: str = "SPY", start: str = None,
 def _rotation_missing(snapshots, short=()) -> list[str]:
     """Map ETFs the live pull did not return, in universe order; the too-short ones (a warning) are not, and neither are
     the macro series, which are never on the map (B1)."""
-    from RevenueChaser.module_sector_rotation.engine import rrg_tickers
+    from revenuechaser.module_sector_rotation.engine import rrg_tickers
     got = {s.ticker for s in snapshots}
     return [t for t in rrg_tickers() if t not in got and t not in short]
 
@@ -471,12 +471,12 @@ def _stored_session_snapshot(snapshots, same_width: bool = False) -> list:
 
     A complete stored snapshot always qualifies. So does one that lacks only ETFs this pull lacks too: an ETF whose
     series is short on every run must not make every stored session replaceable by a thinner pull."""
-    from RevenueChaser.module_sector_rotation import store as rotation_store
-    from RevenueChaser.module_sector_rotation.report import _rows_to_snapshots
+    from revenuechaser.module_sector_rotation import store as rotation_store
+    from revenuechaser.module_sector_rotation.report import _rows_to_snapshots
     day = getattr(snapshots[0], "as_of_date", None)
     if day is None:
         return []
-    from RevenueChaser.module_sector_rotation.universe import MACRO_SERIES
+    from revenuechaser.module_sector_rotation.universe import MACRO_SERIES
     # a row stored before B1 may hold a macro series, which a pull never returns any more: not an ETF the pull lacks
     rows = [r for r in (rotation_store.load_snapshot(day) or {}).get("etfs") or [] if r.get("ticker") not in MACRO_SERIES]
     stored, live = {r.get("ticker") for r in rows}, {s.ticker for s in snapshots}
@@ -487,7 +487,7 @@ def _rotation_empty_fetch(uw, benchmark) -> Path:
     """A live Fetch whose RRG pull returned no ETF (ROT-5): the board is not blanked.
 
     The board file stays as it is; only a first run, with no board yet, writes the empty map. The job says so."""
-    from RevenueChaser.module_sector_rotation.report import export_rotation_dashboard
+    from revenuechaser.module_sector_rotation.report import export_rotation_dashboard
     health = _uw_health(uw)
     if ROTATION_LATEST.exists():
         what = "the board was not rewritten (it keeps its last render)"
@@ -515,8 +515,8 @@ def _load_rotation_snapshots(start: date = None, end: date = None):
     With ``start``/``end`` only that window is loaded (one query), which is what
     the range picker asks for. Without them every stored date is returned.
     """
-    from RevenueChaser.module_sector_rotation import store as rotation_store
-    from RevenueChaser.module_sector_rotation.report import _rows_to_snapshots
+    from revenuechaser.module_sector_rotation import store as rotation_store
+    from revenuechaser.module_sector_rotation.report import _rows_to_snapshots
     out = []
     if start is not None or end is not None:
         dates = rotation_store.list_snapshot_dates()
@@ -540,7 +540,7 @@ def run_money_flow_latest(uw: UWClient, days: int = 30) -> Path:
     """Compute the 21-day money-flow leaderboard (top 10) and cache to JSON."""
     import json
     from datetime import datetime
-    from RevenueChaser.module_sector_rotation.money_flow import compute_money_flow
+    from revenuechaser.module_sector_rotation.money_flow import compute_money_flow
 
     result = compute_money_flow(days=days, window=_MF_WINDOW, top_n=_MF_TOP_N)
     partial = bool(result.get("partial"))
@@ -577,10 +577,10 @@ def run_sec_13f_latest(uw: UWClient | None = None, notice: str | None = None,
     receives the totals, meta and inputs (under ``enrichment``) the board was rendered from, for the result
     history (#375).
     """
-    from RevenueChaser.module_sec_13f import engine as sec_13f
-    from RevenueChaser.module_sec_13f.enrich import load_inputs
-    from RevenueChaser.module_sec_13f.report import export_sec13f_dashboard
-    from RevenueChaser.module_sec_13f import store as board_store
+    from revenuechaser.module_sec_13f import engine as sec_13f
+    from revenuechaser.module_sec_13f.enrich import load_inputs
+    from revenuechaser.module_sec_13f.report import export_sec13f_dashboard
+    from revenuechaser.module_sec_13f import store as board_store
 
     try:
         # The board's own file (#732): brought up to the live ownership build once a build or a day, then read.
@@ -602,7 +602,7 @@ def run_sec_13f_latest(uw: UWClient | None = None, notice: str | None = None,
         _write_empty_board(
             SEC_13F_LATEST, "SEC 13F", "No 13F ownership totals are stored yet.",
             "Press Fetch to download and ingest the newest SEC Form 13F data set.")
-        from RevenueChaser.core.reporting_common import drop_board_data
+        from revenuechaser.core.reporting_common import drop_board_data
         # K10 + the v2 envelope: the rows go with the rows' file (#429), and so does the door's copy of them.
         drop_board_data(SEC_13F_LATEST)
         raise JobMessage("No 13F totals stored yet — press Fetch to ingest the SEC data set.")
@@ -657,7 +657,7 @@ def _13f_coverage_note() -> str | None:
     a ticker, and ``unmapped_cusips``), so the board says the same thing it said when the retired derive counted
     them itself (DF89). None when the read fails: a coverage note must never fail the job.
     """
-    from RevenueChaser.rcdata import read as rcread
+    from revenuechaser.rcdata import read as rcread
     try:
         periods = rcread.periods_13f()
     except Exception as exc:  # noqa: BLE001 - a coverage note must never fail the job
@@ -688,8 +688,8 @@ def _sec13f_health() -> dict | None:
     failed SEC fetch shows on the board until a later run of that dataset succeeds. None when the ops state
     cannot be read: a banner must never break a render.
     """
-    from RevenueChaser.core.providers.result import ProviderHealth
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.core.providers.result import ProviderHealth
+    from revenuechaser.rcdata import ops
     health = ProviderHealth("SEC EDGAR")
     try:
         checks = [(ds, ops.read_latest_check(ds)) for ds in SEC13F_SOURCES]
@@ -714,7 +714,7 @@ def _render_13f(health: dict | None, note: str | None, capture: dict | None = No
 
 def spxgamma_latest() -> dict | None:
     """The SPX board's latest pointer: the manifest of the newest day it shows (``spx_meta``)."""
-    from RevenueChaser.module_spx_gamma import store as spx_store
+    from revenuechaser.module_spx_gamma import store as spx_store
     return spx_store.latest()
 
 
@@ -739,8 +739,8 @@ def spx_builder_request() -> dict:
     nothing); the first step of an accepted SPX Gamma Fetch's job, so a refused Fetch queues nothing and no route
     lock is held while ``ops.sqlite`` is written. What each got goes on the board. A locked or broken ``ops.sqlite``
     is a note, never a failed Fetch (D1: the board only puts requests into the queue)."""
-    from RevenueChaser.core.calendar import now_ny
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.core.calendar import now_ny
+    from revenuechaser.rcdata import ops
 
     datasets: dict[str, str] = {}
     for name in SPX_BUILDER_DATASETS:
@@ -761,7 +761,7 @@ def run_spxgamma(uw, asof_date: str, force: bool = False) -> Path | None:
     It first asks the builder for the board's two datasets (PR 3, :func:`spx_builder_request`); the board says so.
     """
     global _SPX_VIEW
-    from RevenueChaser.module_spx_gamma.run import run as spx_run
+    from revenuechaser.module_spx_gamma.run import run as spx_run
 
     out = spx_run(asof_date, uw=uw, force=force, builder_request=spx_builder_request())
     _SPX_VIEW = (out or {}).get("paths", {}).get("report_html")
@@ -775,7 +775,7 @@ def run_spxgamma_stored(uw, asof_date: str) -> Path:
     ``serves_from_disk`` holds. ``refresh`` reads the stored day and never writes it.
     """
     global _SPX_VIEW
-    from RevenueChaser.module_spx_gamma.run import refresh
+    from revenuechaser.module_spx_gamma.run import refresh
 
     out = refresh(asof_date, builder_request=spx_builder_request())
     _SPX_VIEW = out["paths"]["report_html"]
@@ -790,7 +790,7 @@ def run_spxgamma_history(uw, start: str, end: str, max_calls: int | None = None,
     record are untouched. The returned ``counts`` (without the answer shapes, a few failures) go into the run's
     ``job_runs`` row; the run's file under ``history_pull/`` has them all.
     """
-    from RevenueChaser.module_spx_gamma import history_pull
+    from revenuechaser.module_spx_gamma import history_pull
 
     options = {k: v for k, v in (("max_calls", max_calls), ("sleep_s", sleep_s)) if v is not None}
     result = history_pull.pull_history(uw, start, end, **options)
@@ -803,7 +803,7 @@ def run_spxgamma_cached() -> Path | None:
     Returns the rebuilt report, or None when no raw day is stored (a Fetch is needed first).
     """
     global _SPX_VIEW
-    from RevenueChaser.module_spx_gamma.run import refresh
+    from revenuechaser.module_spx_gamma.run import refresh
 
     out = refresh()
     _SPX_VIEW = None
@@ -821,7 +821,7 @@ def _remember_quick_ticker(ticker: str, generated_at: str | None = None) -> None
     from datetime import datetime, timezone
     if generated_at is None:
         generated_at = datetime.now(timezone.utc).isoformat()
-    from RevenueChaser.core.reporting_common import write_artifact
+    from revenuechaser.core.reporting_common import write_artifact
     write_artifact(QUICK_STATE, json.dumps({
         "ticker": ticker.upper(),
         "generated_at": generated_at,
@@ -864,7 +864,7 @@ def run_quick(uw, ticker: str) -> Path:
     fundamentals serving layer, the market figures from the prices store, the peers' multiples from both, and a
     name the layer holds no annual year with revenue for gets no model. Recomputes the report into .cache.
     """
-    from RevenueChaser.module_financials.run import run as fm_run
+    from revenuechaser.module_financials.run import run as fm_run
 
     # The dashboard keeps one report (financials_latest.html); per-ticker files are the CLI's (#173 D5).
     modules = ["dcf", "3stmt", "comps", "credit", "sensitivity"]
@@ -899,12 +899,12 @@ def run_asymmetric_growth(uw, refresh_universe: bool = False, no_fetch: bool = F
     ``no_fetch=True`` (a Refresh) renders the last Fetch's stored cards (``engine.stored_result``), no scoring.
     """
     import json
-    from RevenueChaser.module_asymmetric_growth.engine import run_asymmetric_growth_hunter
-    from RevenueChaser.module_asymmetric_growth.report import board_payload, render_asymmetric_growth_hunter_html
-    from RevenueChaser.core import ticker_store
-    from RevenueChaser.core.reporting_common import write_board
+    from revenuechaser.module_asymmetric_growth.engine import run_asymmetric_growth_hunter
+    from revenuechaser.module_asymmetric_growth.report import board_payload, render_asymmetric_growth_hunter_html
+    from revenuechaser.core import ticker_store
+    from revenuechaser.core.reporting_common import write_board
 
-    from RevenueChaser.module_asymmetric_growth.engine import stored_result
+    from revenuechaser.module_asymmetric_growth.engine import stored_result
 
     # One id per Fetch (jobs.py:97): its freeze.
     run = None if no_fetch else _freeze_run_id()
@@ -925,13 +925,13 @@ def run_asymmetric_growth(uw, refresh_universe: bool = False, no_fetch: bool = F
     if not no_fetch:
         # Only a Fetch rewrites the durable per-ticker table; a Refresh renders and leaves it alone (#145 D5).
         ticker_store.write_from_cards(result["cards"], result.get("asof"))
-        from RevenueChaser.core.reporting_common import write_artifact
-        from RevenueChaser.module_asymmetric_growth.engine import fetch_header
+        from revenuechaser.core.reporting_common import write_artifact
+        from revenuechaser.module_asymmetric_growth.engine import fetch_header
         write_artifact(_ag_header_path(), json.dumps(fetch_header(result), ensure_ascii=False, default=str))
         # Last step of a Fetch, after the board files are written. A Refresh (no_fetch) never freezes.
         # The outcome is a job note (core.ledger), not a JobMessage: ``run_universe_refresh`` still has
         # two boards to run. A freeze *error* propagates, so the job shows it.
-        from RevenueChaser.module_asymmetric_growth import freeze as ag_freeze
+        from revenuechaser.module_asymmetric_growth import freeze as ag_freeze
         ag_freeze.freeze_result(result, run_id=run)
     return ASYMMETRIC_GROWTH_LATEST
 
@@ -955,14 +955,14 @@ def run_swing(uw, refresh_universe: bool = False, no_fetch: bool = False) -> Pat
     ``refresh_universe=True`` re-fetches the shared ticker universe first;
     ``no_fetch=True`` (model-only) runs purely from cached per-ticker data.
     """
-    from RevenueChaser.module_swing_potential.pipeline import run_scan, save_payload
-    from RevenueChaser.module_swing_potential.report import render_swing_board
+    from revenuechaser.module_swing_potential.pipeline import run_scan, save_payload
+    from revenuechaser.module_swing_potential.report import render_swing_board
 
     payload = run_scan(uw, refresh_universe=refresh_universe, no_fetch=no_fetch)
     save_payload(payload)
     _write_board(SWING_LATEST, *render_swing_board(payload), asof=_run_asof(payload))
     if not no_fetch:                      # last step of a Fetch; a Refresh never freezes (see AG above)
-        from RevenueChaser.module_swing_potential import freeze as swing_freeze
+        from revenuechaser.module_swing_potential import freeze as swing_freeze
         swing_freeze.freeze_payload(payload, run_id=_freeze_run_id())
     _end_empty_fetch(payload, no_fetch)
     return SWING_LATEST
@@ -976,14 +976,14 @@ def run_fundamentals(uw, refresh_universe: bool = False, no_fetch: bool = False)
     ``refresh_universe=True`` re-fetches the shared ticker universe first;
     ``no_fetch=True`` (model-only) runs purely from cached per-ticker data.
     """
-    from RevenueChaser.module_fundamentals.pipeline import run_scan, save_payload
-    from RevenueChaser.module_fundamentals.report import render_fundamental_board
+    from revenuechaser.module_fundamentals.pipeline import run_scan, save_payload
+    from revenuechaser.module_fundamentals.report import render_fundamental_board
 
     payload = run_scan(uw, refresh_universe=refresh_universe, no_fetch=no_fetch)
     save_payload(payload)
     _write_board(FUNDAMENTALS_LATEST, *render_fundamental_board(payload), asof=_run_asof(payload))
     if not no_fetch:                      # last step of a Fetch; a Refresh never freezes (see AG above)
-        from RevenueChaser.module_fundamentals import freeze as fundamentals_freeze
+        from revenuechaser.module_fundamentals import freeze as fundamentals_freeze
         fundamentals_freeze.freeze_payload(payload, run_id=_freeze_run_id())
     _end_empty_fetch(payload, no_fetch)
     return FUNDAMENTALS_LATEST
@@ -1010,7 +1010,7 @@ def run_comovement(uw=None, no_fetch: bool = False,
 
     A Fetch's runs share its ``run_id``.
     """
-    from RevenueChaser.module_comovement import engine, report
+    from revenuechaser.module_comovement import engine, report
 
     run = None if no_fetch else _freeze_run_id()       # a store-only run stores nothing, so it has no id
     payload = engine.run(no_fetch=no_fetch, horizon=horizon, benchmark=benchmark,
@@ -1069,7 +1069,7 @@ def run_value_chain(uw=None, no_fetch: bool = False) -> Path:
     says what it read. Off the layer it pulls the latest 10-K/20-F and slices Item 1/4. The ``no_fetch`` path
     re-renders the stored links with zero network.
     """
-    from RevenueChaser.module_value_chain import engine, report
+    from revenuechaser.module_value_chain import engine, report
 
     payload = engine.run(no_fetch=no_fetch, run_id=None if no_fetch else _freeze_run_id())
     _write_to(VALUE_CHAIN_JSON, json.dumps(payload, ensure_ascii=False, default=str))
@@ -1109,8 +1109,8 @@ def _value_chain_layer_message(payload: dict) -> str:
 def run_relatedness_compare(uw=None, provider: str = "", model: str = "", tickers: list | None = None) -> None:
     """The writer comparison (#370): ``tickers`` (at most 100) with one provider + model; no board table is written.
     The counts are the job's message; the scores file is under ``.cache/research/360/``."""
-    from RevenueChaser.core import job_lock
-    from RevenueChaser.module_relatedness import compare
+    from revenuechaser.core import job_lock
+    from revenuechaser.module_relatedness import compare
 
     # The Relatedness Fetch's lock (PR 371 review S3): a comparison never spends beside a scheduled run.
     with job_lock.acquire("relatedness", wait=0) as got:
@@ -1150,8 +1150,8 @@ def run_relatedness(uw=None, no_fetch: bool = False, usd_cap: float | None = Non
     avo's 10 USD (2 Nov 2026) and not that default: since #1255 the task runs here rather than in a second writer
     process of its own.
     """
-    from RevenueChaser.module_relatedness import engine, report
-    from RevenueChaser.module_relatedness import settings as rel_settings
+    from revenuechaser.module_relatedness import engine, report
+    from revenuechaser.module_relatedness import settings as rel_settings
 
     # The model is a parameter (PR 362 review S1): a Refresh and a Save beside a Fetch never change a module default.
     provider, model = rel_settings.writer()[0], rel_settings.chosen_model()
@@ -1189,7 +1189,7 @@ def run_oipd(uw=None, ticker: str | None = None, no_fetch: bool = False) -> Path
     no write but the payload and the board. A Fetch and a Refresh do the same thing. A run that fits no expiry still
     writes the board (with its error state) and raises ``JobMessage`` so the UI explains itself.
     """
-    from RevenueChaser.module_oipd import engine
+    from revenuechaser.module_oipd import engine
 
     payload = engine.build(ticker=ticker)
     path = _render_oipd(payload)
@@ -1211,7 +1211,7 @@ def run_news(uw=None) -> Path:
     ``uw/economic_calendar`` and ``uw/fda_calendar``, #807). The headlines are two gateway
     requests a name and no UW call; a gateway that is down is a job note, never a failed Fetch.
     """
-    from RevenueChaser.module_news import calendar, earnings, report
+    from revenuechaser.module_news import calendar, earnings, report
     rid = run_id()
     out = calendar.build(run_id=rid)
     weeks = earnings.build(run_id=rid)       # next week's watch-list earnings too, so a Fetch is never a week late
@@ -1235,15 +1235,15 @@ def _news_headlines_pass(rid: str) -> dict | None:
 
     The Grok mail load stood between the two until 21 Nov 2026, when avo had the Grok lane removed; the X lane's
     posts now come only from RC's own reader (job ``news_x_follow``)."""
-    from RevenueChaser.module_news import headlines
+    from revenuechaser.module_news import headlines
     tape = headlines.load_tape(run_id=rid)
     if tape["read"]:
         ledger.add_note(f"News tape: {tape['stored']} market headlines from {tape['read']} new lines")
-    from RevenueChaser.module_news import x_check
+    from revenuechaser.module_news import x_check
     checked = x_check.run(UWClient)
     if checked["calls"]:
         ledger.add_note(f"News X: {checked['checked']} option posts checked against UW ({checked['calls']} calls)")
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     lists, unread = [], []
     for kind in headlines.LISTS:                      # strict: an unreadable list is not an empty one (F6)
         try:
@@ -1290,14 +1290,14 @@ def run_news_headlines(uw=None) -> Path:
     """The live listener's 5-minute job (#673): new tape lines and the per-ticker headlines into
     ``boards/news.duckdb``, then the page. No calendar build, no UW call. A down gateway is the page's banner and a job
     note, not a job message: the shell alerts every message, and this job runs 288 times a day."""
-    from RevenueChaser.module_news import report
+    from revenuechaser.module_news import report
     return report.render(provider_health=_news_headlines_pass(run_id()))
 
 
 def run_news_ticker(uw=None, ticker: str = "") -> None:
     """One name's headlines on demand (the News page's ticker box): one IBKR request, stored like a pass. The answer,
     an error included, is kept for the page (``headlines.ticker_rows``); a job message would alert the shell."""
-    from RevenueChaser.module_news import headlines
+    from revenuechaser.module_news import headlines
     ask = headlines.fetch_ticker(ticker)
     ledger.add_note(f"News {ticker}: {ask['found']} headlines from IBKR, {ask['stored']} new"
                     + (f" ({ask['error']})" if ask["error"] else ""))
@@ -1308,7 +1308,7 @@ def run_news_x_follow(uw=None) -> Path | None:
     """The X lane's own reader (plan step 5): the Following timeline of RC's X account into ``boards/news.duckdb``,
     then the page. The timer queues it every 30 minutes; ``x_reader.due`` thins that to every 4 hours outside the US
     session. A refused read is a job note and the page's banner, not a job message (the shell alerts every message)."""
-    from RevenueChaser.module_news import headlines, report, x_reader
+    from revenuechaser.module_news import headlines, report, x_reader
     try:
         got = x_reader.run(run_id=run_id())
     except x_reader.ReadFailed as e:
@@ -1331,7 +1331,7 @@ def run_news_earnings(uw=None) -> Path:
     Store-only, no provider call. Queued by ``RC-News-Earnings-Weekly`` every Sunday 09:00 Amsterdam, and by the
     board's own Fetch, so a Fetch never shows last week's days.
     """
-    from RevenueChaser.module_news import earnings, report
+    from revenuechaser.module_news import earnings, report
     out = earnings.build(run_id=run_id())
     ledger.add_note(f"News earnings: {out['names']} watch-list names report in the week of {out['week_start']}")
     return report.render()
@@ -1346,7 +1346,7 @@ def run_news_reading(uw=None, allow_paid: bool = False) -> None:
     hour's turn. Nothing here is a failed job — an hour with no headline, a paid writer and a gate that did not
     answer are each a note, because the pass runs 24 times a day and the shell alerts every job message.
     """
-    from RevenueChaser.module_news import reading
+    from revenuechaser.module_news import reading
     out = reading.run(run_id=run_id(), allow_paid=bool(allow_paid))
     if out["skipped"]:
         ledger.add_note(f"News reading: nothing stored ({out['skipped']})")
@@ -1364,7 +1364,7 @@ def run_news_reading(uw=None, allow_paid: bool = False) -> None:
 
 def run_news_cached(uw=None) -> Path:
     """Store-only News render (Refresh, first load): reads ``boards/news.duckdb``, writes nothing to the store."""
-    from RevenueChaser.module_news import report
+    from revenuechaser.module_news import report
     return report.render()
 
 
@@ -1374,7 +1374,7 @@ def run_news_cached(uw=None) -> Path:
 
 def run_welcome(uw=None) -> Path:
     """The Welcome board's Fetch: the incremental build into ``boards/welcome.duckdb``, then the page. No network."""
-    from RevenueChaser.module_welcome import build
+    from revenuechaser.module_welcome import build
     out = build.build(run_id=run_id())
     ledger.add_note(f"Welcome: {out['snapshot']} closes, {out['earnings']} earnings rows, "
                     f"{out['freshness']} builder files")
@@ -1383,7 +1383,7 @@ def run_welcome(uw=None) -> Path:
 
 def run_welcome_cached(uw=None) -> Path:
     """Store-only Welcome render (Refresh, first load): reads the board files, writes nothing to the store."""
-    from RevenueChaser.module_welcome import report
+    from revenuechaser.module_welcome import report
     return report.render(watchlist=_load_watchlist())
 
 
@@ -1393,12 +1393,12 @@ def run_oipd_cached(uw=None, ticker: str | None = None) -> Path:
     Runs in the ``/view`` path, not the job queue, so it never raises: an empty
     store still writes an error board and returns it.
     """
-    from RevenueChaser.module_oipd import engine
+    from revenuechaser.module_oipd import engine
     return _render_oipd(engine.build(ticker=ticker))
 
 
 def _render_oipd(payload: dict) -> Path:
-    from RevenueChaser.module_oipd import report
+    from revenuechaser.module_oipd import report
 
     _write_to(OIPD_JSON, json.dumps(payload, ensure_ascii=False, default=str))
     _write_to(OIPD_LATEST, report.render_oipd_dashboard(payload))
@@ -1419,7 +1419,7 @@ def run_settings(uw=None) -> Path:
     the control view carry their own errors, but the render itself does not, so
     a caller that must not lose its own work does it before calling this.
     """
-    from RevenueChaser.module_settings import inventory, report
+    from revenuechaser.module_settings import inventory, report
 
     payload = inventory.collect()
     return _write_output(
@@ -1435,7 +1435,7 @@ def run_storage_picture(uw=None) -> Path:
     the HDD and the whole walk ran past rc-warmup's 600 s ceiling, holding the single-threaded dashboard for all
     of it. The board reads the file this writes and shows when it was walked.
     """
-    from RevenueChaser.module_settings import newdata
+    from revenuechaser.module_settings import newdata
 
     picture = newdata.walk_storage()
     _write_to(newdata.STORAGE_PICTURE, json.dumps(picture, indent=1, sort_keys=True))
@@ -1464,8 +1464,8 @@ def run_uw_interaction(uw: UWClient, **params) -> Path:
     explicit empty/error state and a ``JobMessage`` explains the run so the UI
     does not look like a silent success.
     """
-    from RevenueChaser.module_uw_interaction import engine as uw_engine
-    from RevenueChaser.module_uw_interaction.config import save_state, utc_now
+    from revenuechaser.module_uw_interaction import engine as uw_engine
+    from revenuechaser.module_uw_interaction.config import save_state, utc_now
 
     tool = str(params.get("tool") or "").strip()
     try:
@@ -1502,6 +1502,6 @@ def run_uw_interaction(uw: UWClient, **params) -> Path:
         raise JobMessage(f"'{result.label}' request failed: {_provider_gap_text(uw)}")
     if not result.rows:
         raise JobMessage(f"'{result.label}' returned no rows for those parameters.")
-    from RevenueChaser.module_uw_interaction.config import UW_STATE_JSON as _st
+    from revenuechaser.module_uw_interaction.config import UW_STATE_JSON as _st
     return _st
 

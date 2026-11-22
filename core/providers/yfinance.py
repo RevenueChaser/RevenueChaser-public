@@ -163,7 +163,7 @@ def spend_owned_by_caller():
 def health_scope(provider: str = "yfinance"):
     """One run's own Yahoo call accounting, isolated from every other board's (#299).
 
-    Yields a :class:`~RevenueChaser.core.providers.result.ProviderHealth` that counts the reads this thread makes
+    Yields a :class:`~revenuechaser.core.providers.result.ProviderHealth` that counts the reads this thread makes
     inside the block, and nothing else: the shared global keeps counting everything. The board hands
     ``health.health()`` to its payload, which ``provider_health_html`` turns into the amber banner.
     """

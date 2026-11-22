@@ -42,8 +42,8 @@ TIER_A = sorted(c["ticker"] for c in COMPANIES if c["tier"] == "A")
 
 def spine(rows: list[dict] | None = None, as_of: date = SPINE_AS_OF) -> None:
     """Build and swap in a ``spine.duckdb`` whose ``security`` table holds ``rows`` (the spine's own schema)."""
-    from RevenueChaser.rcdata import serving
-    from RevenueChaser.rcdata.build.spine import security
+    from revenuechaser.rcdata import serving
+    from revenuechaser.rcdata.build.spine import security
     full = [{**{c: None for c, _ in security.SECURITY}, "source": "sec/company_tickers_exchange",
              "source_as_of": as_of, "fetched_at": 1.0, "run_id": "spine-run", **r}
             for r in (COMPANIES if rows is None else rows)]
@@ -58,7 +58,7 @@ def spine(rows: list[dict] | None = None, as_of: date = SPINE_AS_OF) -> None:
 
 def parquet_root() -> None:
     """The builder refuses a missing Parquet root (the raw disk not mounted): the tests make it."""
-    from RevenueChaser.rcdata.build import base
+    from revenuechaser.rcdata.build import base
     base.parquet_root().mkdir(parents=True, exist_ok=True)
 
 
@@ -67,7 +67,7 @@ def run(name: str, as_of: str | None = None, *, sleep=None, clock=None, **params
     sleep unless ``sleep`` is given."""
     import time
 
-    from RevenueChaser.rcdata.build import base
+    from revenuechaser.rcdata.build import base
     parquet_root()
     p = dict(params)
     if as_of:
@@ -77,7 +77,7 @@ def run(name: str, as_of: str | None = None, *, sleep=None, clock=None, **params
 
 
 def q(sql: str, *params) -> list[tuple]:
-    from RevenueChaser.rcdata import serving
+    from revenuechaser.rcdata import serving
     con = serving.open_read("fundamentals")
     try:
         return con.execute(sql, list(params)).fetchall()
@@ -484,7 +484,7 @@ class FakeFundWrds:
     def query(self, sql: str, out) -> int:
         import re
 
-        from RevenueChaser.rcdata.build import base
+        from revenuechaser.rcdata.build import base
 
         from .spine_fixture import write_jsonl
         self.queries.append(sql)

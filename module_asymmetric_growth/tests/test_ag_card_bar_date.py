@@ -7,10 +7,10 @@ the session the scan read up to; a card with no bars at all has no date and no c
 """
 from __future__ import annotations
 
-from RevenueChaser.rcdata.tests import fund_store
-from RevenueChaser.core import ticker_store
-from RevenueChaser.module_asymmetric_growth import engine, report
-from RevenueChaser.module_asymmetric_growth.tests.test_ag_dated_momentum_380 import SESSION, edgar, row, sessions
+from revenuechaser.rcdata.tests import fund_store
+from revenuechaser.core import ticker_store
+from revenuechaser.module_asymmetric_growth import engine, report
+from revenuechaser.module_asymmetric_growth.tests.test_ag_dated_momentum_380 import SESSION, edgar, row, sessions
 
 
 

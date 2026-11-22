@@ -12,7 +12,7 @@ it.
 """
 from __future__ import annotations
 
-from RevenueChaser.rcdata.tests import universe_store
+from revenuechaser.rcdata.tests import universe_store
 import pytest
 
 from .harness import yfinance_fake

@@ -1,4 +1,4 @@
-"""The News board's MCP server (#809, slice N3 of #783): ``python -m RevenueChaser.scripts.news_mcp``.
+"""The News board's MCP server (#809, slice N3 of #783): ``python -m revenuechaser.scripts.news_mcp``.
 
 Four tools over the dashboard's three read-only routes, JSON-RPC over stdio. The dashboard is mocked at the HTTP
 boundary (``mock_httpx``), which is the only boundary this server has: it reads two URLs and calls no model.
@@ -14,7 +14,7 @@ import json
 
 import pytest
 
-from RevenueChaser.scripts import news_mcp
+from revenuechaser.scripts import news_mcp
 
 EVENT_TS = 1_795_000_000.0
 EVENTS = {"ok": True, "days": 7, "rows": [
@@ -133,7 +133,7 @@ def test_a_dashboard_that_is_not_running_is_the_tools_own_error(monkeypatch):
     monkeypatch.setattr("httpx.get", refuse)
     out = news_mcp.call_tool("coming_events", {})
     assert out["isError"] is True and "dashboard did not answer" in out["content"][0]["text"]
-    assert "python -m RevenueChaser.app.dashboard" in out["content"][0]["text"]
+    assert "python -m revenuechaser.app.dashboard" in out["content"][0]["text"]
 
 
 def test_the_server_answers_one_message_a_line_and_survives_a_bad_one(served):

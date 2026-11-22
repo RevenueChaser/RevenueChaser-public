@@ -11,10 +11,10 @@ from datetime import date
 import duckdb
 import pytest
 
-from RevenueChaser.core.providers import sec_edgar
-from RevenueChaser.rcdata import serving
-from RevenueChaser.rcdata.build import base, due
-from RevenueChaser.rcdata.build.ownership import edgar, sec, sec13f
+from revenuechaser.core.providers import sec_edgar
+from revenuechaser.rcdata import serving
+from revenuechaser.rcdata.build import base, due
+from revenuechaser.rcdata.build.ownership import edgar, sec, sec13f
 
 from . import ownership_fixture as ox
 
@@ -560,7 +560,7 @@ def test_the_time_budget_stops_a_run_and_the_next_one_goes_on(feed, http_mock, m
     many = [(ox.idx_row(2000000 + i, f"FILER {i}", "13F-HR", "2026-10-27", f"0002000000-26-{i:06d}"),
              ox.f13_filing(f"0002000000-26-{i:06d}", 2000000 + i, "2026-10-27", [MSFT])) for i in range(20)]
     feed.add_day("2026-10-27", many)
-    monkeypatch.setattr("RevenueChaser.rcdata.build.ownership.sec._shared_pace", lambda: False)   # the run's clock
+    monkeypatch.setattr("revenuechaser.rcdata.build.ownership.sec._shared_pace", lambda: False)   # the run's clock
     monkeypatch.setattr(sec13f.DATASET, "budget_s", 4.0)
     now = [0.0]
 

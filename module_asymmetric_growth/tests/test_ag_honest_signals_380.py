@@ -19,11 +19,11 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.rcdata.tests import fund_store
-from RevenueChaser.core import fiscal_year, funnel, ledger
-from RevenueChaser.module_asymmetric_growth import engine, freeze
-from RevenueChaser.module_asymmetric_growth.engine import score_ticker
-from RevenueChaser.module_asymmetric_growth.tests.test_ag_info_only_150 import _ANNUAL, _QUOTE, _edgar
+from revenuechaser.rcdata.tests import fund_store
+from revenuechaser.core import fiscal_year, funnel, ledger
+from revenuechaser.module_asymmetric_growth import engine, freeze
+from revenuechaser.module_asymmetric_growth.engine import score_ticker
+from revenuechaser.module_asymmetric_growth.tests.test_ag_info_only_150 import _ANNUAL, _QUOTE, _edgar
 
 _TECH = {"price": 100.0, "dist_52w_pct": 0.05, "vol_ratio": 1.6, "above_sma50": True}
 
@@ -211,9 +211,9 @@ def test_a_fresh_revenue_anchor_behind_the_newest_record_is_kept():
 
 
 def test_the_board_explains_the_old_revenue_flag(tmp_path, rawstore_tmp_db):
-    from RevenueChaser.core.tests.board_js import run_board_js
-    from RevenueChaser.module_asymmetric_growth import report
-    from RevenueChaser.module_asymmetric_growth.tests.test_ag_payload_route_380 import _card as _stored, _result
+    from revenuechaser.core.tests.board_js import run_board_js
+    from revenuechaser.module_asymmetric_growth import report
+    from revenuechaser.module_asymmetric_growth.tests.test_ag_payload_route_380 import _card as _stored, _result
 
     result = _result([_stored("GAP", tier=None, flags=["no_recent_revenue"], model_version=freeze.model_version())])
     log = run_board_js(report.render_asymmetric_growth_hunter_html(result), "setTier('all');\n"

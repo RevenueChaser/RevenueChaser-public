@@ -64,7 +64,7 @@ def tag_fields() -> tuple[str, ...]:
     body, so importing it at the top of this file would put the whole builder on the board's import path.
     ``module_fundamentals.events`` defers its rcdata imports for the same reason.
     """
-    from RevenueChaser.rcdata.build.fundamentals.facts import DEBT_LINES, FALLBACK_DEBT_LINES
+    from revenuechaser.rcdata.build.fundamentals.facts import DEBT_LINES, FALLBACK_DEBT_LINES
     return tuple(dict.fromkeys(DEBT_LINES + FALLBACK_DEBT_LINES))
 
 

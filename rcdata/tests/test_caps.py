@@ -5,9 +5,9 @@ from datetime import date, datetime, timezone
 
 import pytest
 
-from RevenueChaser.core import calendar
-from RevenueChaser.rcdata import caps, ops
-from RevenueChaser.rcdata.build import base, uw_spot_expiry_strike as uw
+from revenuechaser.core import calendar
+from revenuechaser.rcdata import caps, ops
+from revenuechaser.rcdata.build import base, uw_spot_expiry_strike as uw
 
 
 @pytest.fixture(autouse=True)
@@ -53,7 +53,7 @@ def test_a_provider_without_a_cap_is_never_refused():
 
 @pytest.fixture
 def market(http_mock, fixture_text, monkeypatch):
-    from RevenueChaser.rcdata.build.sources import bls, cboe, cftc, fed, fred, treasury
+    from revenuechaser.rcdata.build.sources import bls, cboe, cftc, fed, fred, treasury
     monkeypatch.setenv("FRED_API_KEY", "k")
     for mod, attr, url in ((treasury, "BASE", "https://treasury.test"), (cboe, "BASE", "https://cboe.test"),
                            (fred, "BASE", "https://fred.test"), (cftc, "TFF_BASE", "https://cftc.test/udgc-27he.json"),
@@ -68,7 +68,7 @@ def market(http_mock, fixture_text, monkeypatch):
 
 
 def _series():
-    from RevenueChaser.rcdata.build import market_series as ms
+    from revenuechaser.rcdata.build import market_series as ms
     return base.run_request({"dataset": ms.NAME, "params": {"as_of": "2026-10-27"}}, sleep=lambda s: None)
 
 
@@ -90,7 +90,7 @@ def test_the_cap_is_checked_before_every_call_not_only_at_the_start(market, monk
 
 
 def test_the_counter_is_written_during_the_run_and_survives_a_kill(market, monkeypatch):
-    from RevenueChaser.rcdata.build.sources import bls, cboe
+    from revenuechaser.rcdata.build.sources import bls, cboe
     monkeypatch.setattr(base, "COUNT_FLUSH_EVERY", 5)
     written = []
     real = ops.count_calls

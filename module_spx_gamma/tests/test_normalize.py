@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.module_spx_gamma.config import net_sum, to_float
-from RevenueChaser.module_spx_gamma.normalize import (
+from revenuechaser.module_spx_gamma.config import net_sum, to_float
+from revenuechaser.module_spx_gamma.normalize import (
     current_level,
     normalize_candles,
     normalize_snapshot,

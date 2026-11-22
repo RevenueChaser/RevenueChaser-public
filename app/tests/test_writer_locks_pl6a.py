@@ -18,10 +18,10 @@ import os
 
 import pytest
 
-from RevenueChaser.app import dashboard, jobs, runners
-from RevenueChaser.core import job_lock, rawstore
-from RevenueChaser.core.tests.lock_holders import lock_held
-from RevenueChaser.core.tests.panel_client import panel_test_client
+from revenuechaser.app import dashboard, jobs, runners
+from revenuechaser.core import job_lock, rawstore
+from revenuechaser.core.tests.lock_holders import lock_held
+from revenuechaser.core.tests.panel_client import panel_test_client
 
 
 # ── the 13F runners: one family lock ─────────────────────────────────────────

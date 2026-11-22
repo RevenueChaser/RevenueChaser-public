@@ -1,8 +1,8 @@
 """Tests for ETF holdings + SPY-relative strength (engine, cache, fragment, route)."""
 from datetime import date, timedelta
 
-from RevenueChaser.module_sector_rotation.engine import holdings_rs_rows
-from RevenueChaser.module_sector_rotation.report import render_holdings_fragment
+from revenuechaser.module_sector_rotation.engine import holdings_rs_rows
+from revenuechaser.module_sector_rotation.report import render_holdings_fragment
 
 # The holdings RS is a prices-store read now (``bar_points`` -> ``holdings_rs_rows``): the UW candle path and its
 # normalizers are gone, so the rules below are pinned on the stored ``(session, close)`` points.
@@ -72,16 +72,16 @@ class TestRenderHoldingsFragment:
 
 class TestHoldingsCache:
     def test_roundtrip_today(self, rawstore_tmp_db, monkeypatch):
-        import RevenueChaser.module_sector_rotation.store as rs
+        import revenuechaser.module_sector_rotation.store as rs
         monkeypatch.setattr(rs, "date", date)  # ensure date.today() used
         rs.save_holdings_cache("XLK", [{"ticker": "NVDA"}])
         rows = rs.load_holdings_cache("XLK")
         assert rows == [{"ticker": "NVDA"}]
 
     def test_stale_cache_none(self, rawstore_tmp_db):
-        from RevenueChaser.core import rawstore
+        from revenuechaser.core import rawstore
         rawstore.write_rows("rotation_holdings", [{
             "ticker": "XLK", "date": "2020-01-01", "rows": [{"ticker": "NVDA"}],
         }])
-        import RevenueChaser.module_sector_rotation.store as rs
+        import revenuechaser.module_sector_rotation.store as rs
         assert rs.load_holdings_cache("XLK") is None

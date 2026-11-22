@@ -2,7 +2,7 @@
 import httpx
 import pytest
 
-from RevenueChaser.core import notify
+from revenuechaser.core import notify
 
 
 @pytest.fixture

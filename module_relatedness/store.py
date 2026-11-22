@@ -13,7 +13,7 @@ import json
 import logging
 import time
 
-from RevenueChaser.core import rawstore
+from revenuechaser.core import rawstore
 
 from . import config
 from . import store_reads as sr
@@ -63,7 +63,7 @@ def mode_stamp(writer: tuple[str, str] | None = None) -> dict:
     """The mode a current profile matches. ``writer`` is ``(provider, model)`` (#360; default DeepSeek and its
     ``MODEL``): a DeepSeek mode is the stamp it always was; another writer's names its provider and sends no
     thinking knob."""
-    from RevenueChaser.core.providers import deepseek
+    from revenuechaser.core.providers import deepseek
     provider, model = writer or ("deepseek", deepseek.MODEL)
     if provider == "deepseek":
         # v3 (#400) sends no thinking: a DeepSeek stamp names neither knob, as every other writer's.

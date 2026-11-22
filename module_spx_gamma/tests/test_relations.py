@@ -1,7 +1,7 @@
 """Tests for the Greek Relations engine (sign-aware, data-driven)."""
 from __future__ import annotations
 
-from RevenueChaser.module_spx_gamma import relations
+from revenuechaser.module_spx_gamma import relations
 from .conftest import make_snapshot
 
 

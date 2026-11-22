@@ -15,13 +15,13 @@ from datetime import date, datetime, timezone
 
 import pytest
 
-import RevenueChaser.core.ticker_store as ts
-from RevenueChaser.module_asymmetric_growth import engine as agh
-from RevenueChaser.module_financials.engines import quick_remarks_engine as qr
-from RevenueChaser.module_financials.engines.dcf_engine import run_dcf
-from RevenueChaser.module_financials.engines.three_statement_engine import run_three_statement
-from RevenueChaser.module_financials.reporting.html_builder import build_report_html
-from RevenueChaser.module_financials.reporting.quick_remarks_html import (render_quick_remarks_html,
+import revenuechaser.core.ticker_store as ts
+from revenuechaser.module_asymmetric_growth import engine as agh
+from revenuechaser.module_financials.engines import quick_remarks_engine as qr
+from revenuechaser.module_financials.engines.dcf_engine import run_dcf
+from revenuechaser.module_financials.engines.three_statement_engine import run_three_statement
+from revenuechaser.module_financials.reporting.html_builder import build_report_html
+from revenuechaser.module_financials.reporting.quick_remarks_html import (render_quick_remarks_html,
                                                                        render_quick_remarks_section)
 
 NWC_LINES = ("receivables", "inventory", "payables", "current_assets", "current_liabilities")
@@ -336,8 +336,8 @@ def _bank(financials):
 
 @pytest.mark.parametrize("engine", ["dcf", "credit", "sensitivity"])
 def test_a_financial_services_target_gets_a_p_e_note_not_a_model(financials, engine):
-    from RevenueChaser.module_financials.engines.credit_capacity_engine import run_credit_capacity
-    from RevenueChaser.module_financials.engines.sensitivity_engine import run_sensitivity
+    from revenuechaser.module_financials.engines.credit_capacity_engine import run_credit_capacity
+    from revenuechaser.module_financials.engines.sensitivity_engine import run_sensitivity
     run = {"dcf": run_dcf, "credit": run_credit_capacity, "sensitivity": run_sensitivity}[engine]
     res = run(_bank(financials))
     assert res["not_applicable"] is True and "valued on P/E only" in res["note"]
@@ -346,8 +346,8 @@ def test_a_financial_services_target_gets_a_p_e_note_not_a_model(financials, eng
 
 
 def test_the_page_says_why_a_bank_has_no_dcf_credit_or_grid(financials):
-    from RevenueChaser.module_financials.engines.credit_capacity_engine import run_credit_capacity
-    from RevenueChaser.module_financials.engines.sensitivity_engine import run_sensitivity
+    from revenuechaser.module_financials.engines.credit_capacity_engine import run_credit_capacity
+    from revenuechaser.module_financials.engines.sensitivity_engine import run_sensitivity
     f = _bank(financials)
     html = _html(f, {"dcf": run_dcf(f), "credit": run_credit_capacity(f), "sensitivity": run_sensitivity(f)})
     assert html.count("valued on P/E only (see Comps)") == 3

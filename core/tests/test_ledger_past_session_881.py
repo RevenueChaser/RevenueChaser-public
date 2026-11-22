@@ -10,9 +10,9 @@ from __future__ import annotations
 
 from datetime import date
 
-from RevenueChaser.core import calendar as cal
-from RevenueChaser.core import ledger
-from RevenueChaser.core.tests.d01_seed import seed_d01
+from revenuechaser.core import calendar as cal
+from revenuechaser.core import ledger
+from revenuechaser.core.tests.d01_seed import seed_d01
 
 PAST = date(2026, 10, 2)        # a Friday and a normal session
 NEWER = date(2026, 10, 5)       # the Monday after it

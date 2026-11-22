@@ -14,10 +14,10 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.module_sector_rotation import money_flow as mf
-from RevenueChaser.module_sector_rotation import report
-from RevenueChaser.module_sector_rotation.tests.bars_seed import ny, pin_clock, seed
-from RevenueChaser.core.rotation_reference import SEED_ROTATION_ETFS as ROTATION_ETFS
+from revenuechaser.module_sector_rotation import money_flow as mf
+from revenuechaser.module_sector_rotation import report
+from revenuechaser.module_sector_rotation.tests.bars_seed import ny, pin_clock, seed
+from revenuechaser.core.rotation_reference import SEED_ROTATION_ETFS as ROTATION_ETFS
 
 QUERIED = [t for t, i in ROTATION_ETFS.items() if i.get("group") not in ("region", "bond", "yield", "commodity")]
 SESSION = date(2026, 8, 14)

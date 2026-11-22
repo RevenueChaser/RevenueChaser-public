@@ -1,14 +1,14 @@
 """Off-peak CLI for the Relatedness board.
 
-    python -m RevenueChaser.module_relatedness --run [--limit N] [--cap USD] [--floor M | --tickers A,B]
-    python -m RevenueChaser.module_relatedness --score [--force]
-    python -m RevenueChaser.module_relatedness --status
-    python -m RevenueChaser.module_relatedness --name-themes [--run-id ID]
-    python -m RevenueChaser.module_relatedness --rebuild-themes [--run-id ID] [--name | --build-only]
+    python -m revenuechaser.module_relatedness --run [--limit N] [--cap USD] [--floor M | --tickers A,B]
+    python -m revenuechaser.module_relatedness --score [--force]
+    python -m revenuechaser.module_relatedness --status
+    python -m revenuechaser.module_relatedness --name-themes [--run-id ID]
+    python -m revenuechaser.module_relatedness --rebuild-themes [--run-id ID] [--name | --build-only]
         [--floor M | --tickers A,B] [--nmf-init INIT] [--nmf-max-iter N] [--coarse {nmf,sector}]
-    python -m RevenueChaser.module_relatedness --cutover --run-id ID
+    python -m revenuechaser.module_relatedness --cutover --run-id ID
         [--adopt-medium-from ID] [--coarse {nmf,sector}]
-    python -m RevenueChaser.module_relatedness --compare-themes A,B
+    python -m revenuechaser.module_relatedness --compare-themes A,B
 
 ``--method embedding`` (avo, 16 Nov 2026) builds the fine themes from the companies' stored vectors (k-means)
 instead of the tag NMF; everything after the fine cut is shared. ``--compare-themes A,B`` prints two runs side by
@@ -71,8 +71,8 @@ import argparse
 import json
 import time
 
-from RevenueChaser.core import llm_writers as writers, offpeak
-from RevenueChaser.core.providers import deepseek, evren
+from revenuechaser.core import llm_writers as writers, offpeak
+from revenuechaser.core.providers import deepseek, evren
 
 from . import engine
 from . import settings as rel_settings
@@ -148,7 +148,7 @@ def _selection(args) -> list[str] | None:
     if args.tickers:
         return [t.strip().upper() for t in args.tickers.split(",") if t.strip()]
     if args.floor is not None:
-        from RevenueChaser.core.universe import BOARD_OPERATING_ONLY, classification_universe
+        from revenuechaser.core.universe import BOARD_OPERATING_ONLY, classification_universe
         return classification_universe(args.floor * 1_000_000,
                                        operating_only=BOARD_OPERATING_ONLY["module_relatedness"])
     return None
@@ -223,7 +223,7 @@ def main(argv: list[str] | None = None) -> int:
     if (args.run or args.score or args.status) and explicit is None:
         run_writer, run_model = rel_settings.writer()[0], rel_settings.chosen_model()
     elif explicit is None and (args.name_themes or args.name):
-        from RevenueChaser.core import llm_jobs
+        from revenuechaser.core import llm_jobs
         run_writer, run_model = llm_jobs.pair("relatedness.naming")[0], None
     else:
         run_writer, run_model = explicit or writers.DEFAULT, None

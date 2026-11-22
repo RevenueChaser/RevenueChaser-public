@@ -2,7 +2,7 @@
 
 CI runs this on every pull request (``.github/workflows/tests.yml``, job ``plan``). A test file is selected when
 it imports a changed module directly or transitively. An import counts wherever it is written: at the top, inside
-a function, relative, or as a module name in a string (``"RevenueChaser.module_x.y"`` or ``"module_x.y:func"``),
+a function, relative, or as a module name in a string (``"revenuechaser.module_x.y"`` or ``"module_x.y:func"``),
 which is how the e2e harness starts the dashboard subprocess and how the ``import_module`` registries name their
 targets. Importing ``a.b.c`` also runs ``a`` and ``a.b``, so those are edges too.
 
@@ -46,7 +46,7 @@ from functools import cache
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-PKG = "RevenueChaser"
+PKG = "revenuechaser"
 E2E_DIR = "module_testing/e2e/"
 WEB_DIR = "v2/web/"  # the v2 web app: the `web` job tests it, never pytest
 _SKIP_DIRS = {".git", ".store", ".cache", "__pycache__", "node_modules", ".pytest_cache"}

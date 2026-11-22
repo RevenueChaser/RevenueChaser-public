@@ -1,4 +1,4 @@
-"""``python -m RevenueChaser.rcdata restore`` / ``restore-check``: a verified weekly copy back into use."""
+"""``python -m revenuechaser.rcdata restore`` / ``restore-check``: a verified weekly copy back into use."""
 from __future__ import annotations
 
 import json
@@ -8,8 +8,8 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from RevenueChaser.core import config, rawstore
-from RevenueChaser.rcdata import backup, ops, restore, serving
+from revenuechaser.core import config, rawstore
+from revenuechaser.rcdata import backup, ops, restore, serving
 
 
 @pytest.fixture
@@ -109,7 +109,7 @@ def test_ops_uw_raw_and_edgar_docs_live_are_refused_with_the_steps_by_hand(backu
 
 
 def test_a_week_folder_is_restored_whole_and_verified(backup_dir, tmp_path, monkeypatch):
-    from RevenueChaser.module_spx_gamma import config as spx_config
+    from revenuechaser.module_spx_gamma import config as spx_config
     monkeypatch.setattr(spx_config, "DATA_ROOT", tmp_path / "nowhere")
     uw = config.MARKET_RAW_DIR / "raw" / "uw" / "spot_expiry_strike" / "2026-10-26"
     uw.mkdir(parents=True)

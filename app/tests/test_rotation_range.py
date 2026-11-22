@@ -11,7 +11,7 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.app import runners
+from revenuechaser.app import runners
 
 
 def _row(d: str, ticker: str = "XLK") -> dict:
@@ -24,7 +24,7 @@ def _row(d: str, ticker: str = "XLK") -> dict:
 
 @pytest.fixture
 def seeded(rawstore_tmp_db):
-    from RevenueChaser.core import rawstore
+    from revenuechaser.core import rawstore
     dates = ["2026-07-01", "2026-07-15", "2026-08-12", "2026-08-19", "2026-09-02"]
     for d in dates:
         rawstore.write_rows("rotation_snapshots", [_row(d)])
@@ -64,13 +64,13 @@ class TestLoadRotationSnapshotsRange:
 
 class TestRunRotationLatestUsesTheRange:
     def _patch(self, monkeypatch, captured):
-        from RevenueChaser.module_sector_rotation import store as rotation_store
+        from revenuechaser.module_sector_rotation import store as rotation_store
         monkeypatch.setattr(rotation_store, "backfill_weekly",
                             lambda uw, s, e: captured.update(backfill=(s, e)) or 0)
         monkeypatch.setattr(runners, "_load_rotation_snapshots",
                             lambda start=None, end=None:
                                 captured.update(loaded=(start, end)) or [])
-        import RevenueChaser.module_sector_rotation.report as rep
+        import revenuechaser.module_sector_rotation.report as rep
         monkeypatch.setattr(rep, "export_rotation_dashboard",
                             lambda *a, **kw: runners.ROTATION_LATEST)
 
@@ -105,10 +105,10 @@ class TestRunRotationLatestUsesTheRange:
             def process_all(self):
                 return []
 
-        import RevenueChaser.module_sector_rotation.engine as eng
+        import revenuechaser.module_sector_rotation.engine as eng
         monkeypatch.setattr(eng, "RotationEngine", _Engine)
         monkeypatch.setattr(eng, "fetch_all_holdings", lambda uw, snaps: {})
-        from RevenueChaser.app.jobs import JobMessage
+        from revenuechaser.app.jobs import JobMessage
         with pytest.raises(JobMessage, match="returned no ETF"):      # ROT-5: an empty live pull says so
             runners.run_rotation_latest(None)
         assert "backfill" not in captured

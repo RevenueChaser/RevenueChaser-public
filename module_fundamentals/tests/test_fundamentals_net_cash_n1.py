@@ -5,8 +5,8 @@ A firm with net debt and EBITDA ≤ 0 **fails** since #737 (avo, 14 Nov 2026, "A
 test_fundamentals_leverage_loss_737.py."""
 from __future__ import annotations
 
-from RevenueChaser.module_fundamentals.pipeline import _quality_metrics
-from RevenueChaser.module_fundamentals.screeners import evaluate_quality
+from revenuechaser.module_fundamentals.pipeline import _quality_metrics
+from revenuechaser.module_fundamentals.screeners import evaluate_quality
 
 
 def _year(ebit, debt, cash):

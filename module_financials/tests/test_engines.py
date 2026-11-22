@@ -1,12 +1,12 @@
 """FinancialModelEngine engine birim testleri (synthetic data, ağ yok)."""
 from __future__ import annotations
 
-from RevenueChaser.core.providers.validator import validate_annual
-from RevenueChaser.module_financials.engines.comps_engine import run_comps
-from RevenueChaser.module_financials.engines.credit_capacity_engine import run_credit_capacity
-from RevenueChaser.module_financials.engines.dcf_engine import run_dcf
-from RevenueChaser.module_financials.engines.sensitivity_engine import run_sensitivity
-from RevenueChaser.module_financials.engines.three_statement_engine import run_three_statement
+from revenuechaser.core.providers.validator import validate_annual
+from revenuechaser.module_financials.engines.comps_engine import run_comps
+from revenuechaser.module_financials.engines.credit_capacity_engine import run_credit_capacity
+from revenuechaser.module_financials.engines.dcf_engine import run_dcf
+from revenuechaser.module_financials.engines.sensitivity_engine import run_sensitivity
+from revenuechaser.module_financials.engines.three_statement_engine import run_three_statement
 
 
 def test_dcf_projection_and_valuation(financials):

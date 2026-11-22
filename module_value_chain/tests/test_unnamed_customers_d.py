@@ -6,8 +6,8 @@ import json
 
 import pytest
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_value_chain import aliases, config, engine, report
+from revenuechaser.core import rawstore
+from revenuechaser.module_value_chain import aliases, config, engine, report
 
 
 @pytest.mark.parametrize("name, want", [

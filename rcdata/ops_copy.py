@@ -1,4 +1,4 @@
-"""``python -m RevenueChaser.rcdata.ops_copy`` — copy ``ops.sqlite`` into Redis, once (master plan Order 3).
+"""``python -m revenuechaser.rcdata.ops_copy`` — copy ``ops.sqlite`` into Redis, once (master plan Order 3).
 
 Run it with the app stopped (nothing may write the file after it is read) and ``RC_REDIS_URL`` set. The source is
 ``<RC_MARKET_DIR>/ops.sqlite`` unless ``--sqlite`` names another file; the target is the Redis namespace of the same
@@ -45,7 +45,7 @@ def _open_kinds(rows: list[dict]) -> dict[tuple[str, str], int]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(prog="python -m RevenueChaser.rcdata.ops_copy", description=__doc__.split("\n")[0])
+    p = argparse.ArgumentParser(prog="python -m revenuechaser.rcdata.ops_copy", description=__doc__.split("\n")[0])
     p.add_argument("--sqlite", type=Path, default=None, help="the ops.sqlite to copy (default: <RC_MARKET_DIR>/ops.sqlite)")
     p.add_argument("--dry-run", action="store_true", help="count what would be copied and write nothing")
     p.add_argument("--force", action="store_true", help="copy even though Redis already holds this market root's keys")

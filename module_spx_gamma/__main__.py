@@ -1,4 +1,4 @@
-"""CLI entry point: python -m RevenueChaser.module_spx_gamma --asof YYYY-MM-DD [--mode volume] [--ticker SPX].
+"""CLI entry point: python -m revenuechaser.module_spx_gamma --asof YYYY-MM-DD [--mode volume] [--ticker SPX].
 
 ``--nightly`` (#291, the RC-SPX-Gamma-Fetch task) fetches the latest complete New York session instead, SPX only, and
 only once the market store holds that session's SPX close and outside the US session: a complete raw day is never
@@ -21,7 +21,7 @@ import time
 
 import httpx
 
-from RevenueChaser.core.calendar import in_us_session_window, latest_complete_session
+from revenuechaser.core.calendar import in_us_session_window, latest_complete_session
 
 from . import store
 from .config import TICKER

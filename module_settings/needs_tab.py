@@ -18,7 +18,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Callable
 
-from RevenueChaser.core.html_safe import esc
+from revenuechaser.core.html_safe import esc
 
 _STATIC = Path(__file__).resolve().parent / "static"
 NEEDS_CSS = (_STATIC / "needs.css").read_text(encoding="utf-8")
@@ -50,7 +50,7 @@ ROUTES = (
 
 
 def _summary(name: str) -> dict:
-    from RevenueChaser.rcdata import needs
+    from revenuechaser.rcdata import needs
     return needs.summary(name, count=False)
 
 
@@ -68,7 +68,7 @@ def _error(exc: BaseException) -> str:
 
 def _readers() -> tuple[dict[str, tuple[str, ...]], dict[str, tuple[str, ...]], str | None]:
     """``(declared, planned, error)``: each board's own ``READS`` and, for a board without them, its planned reads."""
-    from RevenueChaser.rcdata.needs import boards
+    from revenuechaser.rcdata.needs import boards
     try:
         declared = boards.all_reads()
     except Exception as exc:  # noqa: BLE001 - an unreadable board package is a line, never a failed tab
@@ -82,7 +82,7 @@ def _board_name(package: str) -> str:
 
 
 def _catalog_rows(summarize: Callable[[str], dict]) -> tuple[list[dict], str | None]:
-    from RevenueChaser.rcdata.needs import catalog
+    from revenuechaser.rcdata.needs import catalog
     declared, planned, readers_error = _readers()
     rows = []
     for name, need in sorted(catalog.NEEDS.items()):
@@ -143,8 +143,8 @@ def _log(today: date, catalog_names: list[str], read: Callable[[str], list[dict]
 def build(*, today: date | None = None, summarize: Callable[[str], dict] | None = None,
           read_log: Callable[[str], list[dict]] | None = None) -> dict:
     """The tab's model. ``today`` is the New York day the log's windows end on; the two readers are seams for tests."""
-    from RevenueChaser.core import calendar
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.core import calendar
+    from revenuechaser.rcdata import ops
     today = today or calendar.today_ny()
     catalog_rows, readers_error = _catalog_rows(summarize or _summary)
     counts = {s: sum(1 for r in catalog_rows if r["state"] == s) for s in STATES}

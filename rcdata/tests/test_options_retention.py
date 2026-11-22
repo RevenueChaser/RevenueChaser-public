@@ -6,11 +6,11 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from RevenueChaser.core import calendar
-from RevenueChaser.core.providers import unusual_whales
-from RevenueChaser.rcdata import ops, retention
-from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.options import ibkr_iv, uw_list, uw_screener
+from revenuechaser.core import calendar
+from revenuechaser.core.providers import unusual_whales
+from revenuechaser.rcdata import ops, retention
+from revenuechaser.rcdata.build import base
+from revenuechaser.rcdata.build.options import ibkr_iv, uw_list, uw_screener
 
 from .options_fixture import SESSION, UWOptions
 
@@ -84,5 +84,5 @@ def test_a_value_that_is_not_a_whole_number_of_days_leaves_it_unset(monkeypatch)
 
 
 def test_the_settings_card_reads_the_same_rule(monkeypatch):
-    from RevenueChaser.module_settings import newdata
+    from revenuechaser.module_settings import newdata
     assert (newdata.RETENTION_ENV, newdata.RETENTION_ROW) == (retention.ENV, retention.ROW)

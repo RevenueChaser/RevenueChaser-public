@@ -11,11 +11,11 @@ from datetime import date, timedelta
 
 import duckdb
 
-from RevenueChaser.core import calendar
-from RevenueChaser.module_sec_13f import engine as sec_13f
-from RevenueChaser.module_sec_13f import report
-from RevenueChaser.rcdata import read as rcread
-from RevenueChaser.rcdata import serving
+from revenuechaser.core import calendar
+from revenuechaser.module_sec_13f import engine as sec_13f
+from revenuechaser.module_sec_13f import report
+from revenuechaser.rcdata import read as rcread
+from revenuechaser.rcdata import serving
 
 SETTLED, ARRIVING = date(2026, 6, 30), date(2026, 9, 30)
 METRICS = {"shares": 500.0, "value": 1500.0, "holders": 3, "top10_pct": 42.5, "hhi": 120.5, "new_holders": 1,

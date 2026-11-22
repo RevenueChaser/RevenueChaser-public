@@ -5,7 +5,7 @@ scoring), not only band aggregates. Same rule as the bands: the largest positive
 """
 from __future__ import annotations
 
-from RevenueChaser.module_spx_gamma import levels, render
+from revenuechaser.module_spx_gamma import levels, render
 from .conftest import make_snapshot
 
 

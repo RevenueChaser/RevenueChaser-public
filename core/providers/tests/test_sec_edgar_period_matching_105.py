@@ -17,7 +17,7 @@ from datetime import date, timedelta
 
 import pytest
 
-from RevenueChaser.core.providers import sec_edgar as se
+from revenuechaser.core.providers import sec_edgar as se
 
 REV = "Revenues"
 RFC = "RevenueFromContractWithCustomerExcludingAssessedTax"

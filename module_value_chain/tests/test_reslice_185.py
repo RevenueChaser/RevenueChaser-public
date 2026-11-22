@@ -15,9 +15,9 @@ from pathlib import Path
 
 import duckdb
 
-from RevenueChaser.core import edgar_docs
-from RevenueChaser.module_value_chain import __main__ as cli
-from RevenueChaser.module_value_chain import edgar_text, reslice, splitter
+from revenuechaser.core import edgar_docs
+from revenuechaser.module_value_chain import __main__ as cli
+from revenuechaser.module_value_chain import edgar_text, reslice, splitter
 
 _BODY = "We make widgets for many industries and sell them worldwide. " * 60
 _BODY_B = "We design chips for data centers across the world. " * 60
@@ -108,7 +108,7 @@ def test_cli_reslice_dry_run_parses_and_calls(monkeypatch, capsys):
 
 # ── the dry run runs before the --floor / --tickers selection (stack R1, SHOULD 5) ──
 def test_the_dry_run_never_reads_the_selection(monkeypatch, capsys, tmp_path):
-    from RevenueChaser.module_value_chain import __main__ as cli
+    from revenuechaser.module_value_chain import __main__ as cli
 
     def selection(_args):
         raise AssertionError("--reslice-dry-run must not resolve --floor through the live store")

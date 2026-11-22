@@ -7,10 +7,10 @@ from datetime import datetime, timezone
 import duckdb
 import pytest
 
-from RevenueChaser.core import calendar
-from RevenueChaser.module_settings import newdata
-from RevenueChaser.rcdata import serving
-from RevenueChaser.rcdata.tests.conftest import market_roots  # noqa: F401 - market roots per test
+from revenuechaser.core import calendar
+from revenuechaser.module_settings import newdata
+from revenuechaser.rcdata import serving
+from revenuechaser.rcdata.tests.conftest import market_roots  # noqa: F401 - market roots per test
 
 NOW = datetime(2026, 10, 28, 3, 0, tzinfo=timezone.utc)
 OWNERSHIP = ("finra/short_interest", "regsho/threshold", "ibkr/shortable", "sec/ftd", "sec/13f", "sec/form4",

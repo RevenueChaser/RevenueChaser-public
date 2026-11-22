@@ -1,6 +1,6 @@
 """RevenueChaser interactive dashboard — Flask app with sidebar tabs + iframes.
 
-Run:  python -m RevenueChaser.app.dashboard   ->  http://localhost:8000
+Run:  python -m revenuechaser.app.dashboard   ->  http://localhost:8000
 
 Tabs (grouped): Research (Earnings Radar, SPX Gamma,
 Financials, UW Interaction), Screeners (Sector Rotation, Asymmetric Growth,
@@ -28,12 +28,12 @@ from pathlib import Path
 from flask import Flask, Response, g, jsonify, redirect, render_template, request, send_from_directory
 from markupsafe import Markup
 
-from RevenueChaser.core import rawstore, reporting_common, templating
-from RevenueChaser.core.calendar import today_ny
-from RevenueChaser.core.providers.unusual_whales import UWClient
-from RevenueChaser.core.rawstore import StoreLockedError
-from RevenueChaser.core.reporting_common import drop_board_data, payload_path
-from RevenueChaser.rcdata import caps
+from revenuechaser.core import rawstore, reporting_common, templating
+from revenuechaser.core.calendar import today_ny
+from revenuechaser.core.providers.unusual_whales import UWClient
+from revenuechaser.core.rawstore import StoreLockedError
+from revenuechaser.core.reporting_common import drop_board_data, payload_path
+from revenuechaser.rcdata import caps
 from . import runners
 from . import jobs
 from . import logview
@@ -570,8 +570,8 @@ def _render_rotation_dashboard():
     Returns the written HTML path, or None when no snapshots exist yet. The
     rendered artifact lands in .cache/ so later page loads serve the file.
     """
-    from RevenueChaser.module_sector_rotation import store as rotation_store
-    from RevenueChaser.module_sector_rotation.report import (
+    from revenuechaser.module_sector_rotation import store as rotation_store
+    from revenuechaser.module_sector_rotation.report import (
         export_rotation_dashboard, _rows_to_snapshots)
     dates = rotation_store.list_snapshot_dates()
     if not dates:
@@ -644,7 +644,7 @@ def _sec13f_rerender_in_background() -> bool:
 def _sec13f_stale() -> bool:
     """The 13F board file has not taken the live ownership build or today's date (#732); False when that cannot be
     read, so a read error never costs a re-render."""
-    from RevenueChaser.module_sec_13f import store as sec13f_store
+    from revenuechaser.module_sec_13f import store as sec13f_store
     try:
         return sec13f_store.is_stale()
     except Exception as exc:  # noqa: BLE001 - serve the page as it is
@@ -659,7 +659,7 @@ def _universe_loading(mod: str) -> bool:
     """
     if mod not in _UNIVERSE_BOARDS or not jobs.has_active(_UNIVERSE_JOBS):
         return False
-    from RevenueChaser.core import universe
+    from revenuechaser.core import universe
     return not universe.has_universe()          # the universe the boards read (Opus review M1), not the old table
 
 
@@ -670,7 +670,7 @@ _RENDER_MEMO: dict[str, tuple] = {}
 def _data_version() -> tuple:
     """Today's date, and every serving and board DuckDB file (with its WAL) by mtime and size: a build swap, a board
     write (a watch-list edit included) or a new day changes it; nothing else feeds those two pages."""
-    from RevenueChaser.core import config
+    from revenuechaser.core import config
     dirs = (Path(config.MARKET_DIR), Path(rawstore.STORE_DIR) / rawstore.BOARDS_DIRNAME)
     stamp = []
     for p in sorted(f for d in dirs for f in d.glob("*.duckdb*")):
@@ -705,7 +705,7 @@ def _view_leaps() -> str:
     (``_memo_render``). ``?session=`` picks a stored session; an unknown one shows the newest.
     """
     from datetime import datetime, timezone
-    from RevenueChaser.module_leaps import board as leaps_board
+    from revenuechaser.module_leaps import board as leaps_board
     session = request.args.get("session")
 
     def render():
@@ -726,7 +726,7 @@ def _view_leaps() -> str:
 
 def _view_hit_rate() -> str:
     """The Hit Rate board (#25), rendered in memory from the forecast store like LEAPS (``_memo_render``)."""
-    from RevenueChaser.module_hit_rate import board as hr_board
+    from revenuechaser.module_hit_rate import board as hr_board
     return _memo_render("module_hit_rate", None, lambda: hr_board.render_html(hr_board.payload()))
 
 
@@ -738,7 +738,7 @@ def _view_watchlists() -> str:
     ``?list=`` picks a list; an unknown one opens the first.
     """
     from datetime import datetime, timezone
-    from RevenueChaser.module_watchlists import board as wl_board
+    from revenuechaser.module_watchlists import board as wl_board
     list_id = (request.args.get("list") or "").strip() or None
 
     def render():
@@ -752,7 +752,7 @@ def _view_watchlists() -> str:
         "empty_board.html.j2", title="Watch lists",
         message="No watch list yet.",
         hint=("A watch list is yours, not downloaded: nothing fetches one. Import your TradingView exports with "
-              "`python -m RevenueChaser.module_watchlists import <folder> --apply`, or make an empty list from "
+              "`python -m revenuechaser.module_watchlists import <folder> --apply`, or make an empty list from "
               "the Settings page, and this board shows it with its sections and Price columns. Issue #786."),
         stamp=datetime.now(timezone.utc).isoformat(timespec="seconds"))
 
@@ -760,7 +760,7 @@ def _view_watchlists() -> str:
 def _universe_loading_view(mod: str) -> str:
     """The "Loading universe…" state, rendered in memory: a transient state is never written to ``.cache``."""
     from datetime import datetime, timezone
-    from RevenueChaser.core.scan_quality import no_data_message
+    from revenuechaser.core.scan_quality import no_data_message
     return templating.render(
         "empty_board.html.j2", title=_TAB_LABELS.get(mod, mod), message=no_data_message("universe_loading"),
         hint="", stamp=datetime.now(timezone.utc).isoformat(timespec="seconds"))
@@ -796,7 +796,7 @@ def _view_spxgamma() -> str:
     return _empty_view("spxgamma")
 
 def _spxgamma_latest_report_file() -> Path | None:
-    from RevenueChaser.module_spx_gamma.config import REPORT_ROOT
+    from revenuechaser.module_spx_gamma.config import REPORT_ROOT
     if not REPORT_ROOT.exists():
         return None
     candidates = list(REPORT_ROOT.glob("*/section.html"))
@@ -817,8 +817,8 @@ def _view_uw_interaction():
     no credentials needed to view. Running a tool is a separate async job
     (``/run/uw``); the page polls and reloads itself on completion.
     """
-    from RevenueChaser.module_uw_interaction.config import load_state
-    from RevenueChaser.module_uw_interaction.report import render_board
+    from revenuechaser.module_uw_interaction.config import load_state
+    from revenuechaser.module_uw_interaction.report import render_board
     return render_board(load_state())
 
 
@@ -899,8 +899,8 @@ def run_earnings():
 @app.route("/run/relatedness-compare", methods=["POST"])
 def run_relatedness_compare():
     """Queue the writer comparison (#370): JSON ``{provider, model, tickers}``, checked before anything is queued."""
-    from RevenueChaser.core import llm_writers as writers
-    from RevenueChaser.module_relatedness import compare
+    from revenuechaser.core import llm_writers as writers
+    from revenuechaser.module_relatedness import compare
 
     body = request.get_json(silent=True) or {}
     provider, model, raw = body.get("provider"), body.get("model"), body.get("tickers")
@@ -979,7 +979,7 @@ def run_news_reading():
 def api_news_reading():
     """The stored readings of the last ``hours`` hours (#1234), newest hour first: one object a window, its
     fixed-schema fields inside it, each with the sentence it came from. Read-only, no ``X-RC-Panel`` header."""
-    from RevenueChaser.module_news import reading as news_reading
+    from revenuechaser.module_news import reading as news_reading
     try:
         hours = int(request.args.get("hours") or 24)
     except ValueError:
@@ -1003,7 +1003,7 @@ def run_news_x_follow():
 @app.route("/api/news/ticker/<ticker>")
 def api_news_ticker(ticker):
     """One name's stored headlines of the last week and the last ask's answer (store read, no IBKR call)."""
-    from RevenueChaser.module_news import headlines
+    from revenuechaser.module_news import headlines
     ticker = ticker.strip().upper()
     if not _valid_ticker(ticker):
         return jsonify({"ok": False, "error": "ticker must be a symbol such as NVDA"}), 400
@@ -1018,7 +1018,7 @@ def api_news_headlines():
     one ``ticker`` and at most ``limit`` rows (#809): the headlines around an event, which is what makes the MCP
     server's third tool possible. Read-only either way: it reads ``boards/news.duckdb`` and fetches nothing.
     """
-    from RevenueChaser.module_news import report as news_report
+    from revenuechaser.module_news import report as news_report
     args = request.args
     if args.get("from") or args.get("to"):
         try:
@@ -1047,7 +1047,7 @@ def api_news_headlines():
 def api_news_events():
     """The calendar rows still to come (#809): ``days`` ahead from today Amsterdam, oldest first, and ``types``
     (comma separated, e.g. ``fda``) to ask for one lane. Read-only, no ``X-RC-Panel`` header: it writes nothing."""
-    from RevenueChaser.module_news import report as news_report
+    from revenuechaser.module_news import report as news_report
     try:
         days = int(request.args.get("days") or news_report.WEEK_DAYS)
     except ValueError:
@@ -1080,7 +1080,7 @@ def run_uw():
     declared param; the engine validates them against the schema before any
     network call. Standard async job: returns 202 + a job id to poll.
     """
-    from RevenueChaser.module_uw_interaction.catalog import get_tool
+    from revenuechaser.module_uw_interaction.catalog import get_tool
 
     tool = (request.form.get("tool") or "").strip()
     if not tool:
@@ -1139,7 +1139,7 @@ def run_spxgamma():
         date.fromisoformat(asof)
     except ValueError:
         return jsonify({"ok": False, "error": "bad date"}), 400
-    from RevenueChaser.module_spx_gamma.run import serves_from_disk
+    from revenuechaser.module_spx_gamma.run import serves_from_disk
 
     params = {"asof_date": asof}
     # A stored past day is served from disk and never refetched (#179 D5); only an explicit
@@ -1178,8 +1178,8 @@ def run_spxgamma_history():
     400 on a bad field; 409 inside the US session (the pull runs outside it) or while an SPX job is queued or
     running. The module's own guards repeat the range and session checks when the job starts.
     """
-    from RevenueChaser.core import calendar as nyse_calendar
-    from RevenueChaser.module_spx_gamma.history_pull import check_range
+    from revenuechaser.core import calendar as nyse_calendar
+    from revenuechaser.module_spx_gamma.history_pull import check_range
 
     start = (request.values.get("start") or "").strip()
     end = (request.values.get("end") or "").strip()
@@ -1194,7 +1194,7 @@ def run_spxgamma_history():
             params["max_calls"] = int(raw)
         except ValueError:
             return jsonify({"ok": False, "error": "bad max_calls"}), 400
-        from RevenueChaser.rcdata import ops
+        from revenuechaser.rcdata import ops
         cap = caps.cap_for("uw")                                   # None: UW has no day cap (avo 2026-11-10)
         if params["max_calls"] <= 0:
             return jsonify({"ok": False, "error": "max_calls must be positive"}), 400
@@ -1339,7 +1339,7 @@ def run_module_relatedness():
 
 
 def _comovement_windows() -> tuple[int, ...]:
-    from RevenueChaser.module_comovement import config as comov_config
+    from revenuechaser.module_comovement import config as comov_config
     return tuple(comov_config.WINDOW_OPTIONS)
 
 
@@ -1350,7 +1350,7 @@ def api_automations():
     The Settings board is a cached artifact, so the panel polls this instead of
     baking scheduler state into the page.
     """
-    from RevenueChaser.core import automations
+    from revenuechaser.core import automations
 
     try:
         # ``active_job`` is what gives a row its Stop (#165): the dashboard job this task queues, if one is queued
@@ -1367,7 +1367,7 @@ def api_automations_action(name: str, action: str):
     Only an exact registry name is accepted and the body, query string and form
     must be empty, so nothing a page could send selects another task or command.
     """
-    from RevenueChaser.core import automations
+    from revenuechaser.core import automations
 
     # _local_only wants any panel header on every write; this route wants its own value.
     if request.headers.get(_PANEL_HEADER) != "automations":
@@ -1390,7 +1390,7 @@ def api_settings_lookup(ticker: str):
     ``{"ok": false}``; one that is not ticker-shaped is a 400; a file that could not be read is a 200 whose
     ``errors`` name it, never a 404; a lookup that raises is a 500.
     """
-    from RevenueChaser.module_settings import ticker_lookup
+    from revenuechaser.module_settings import ticker_lookup
 
     ticker = ticker.strip().upper()
     if not _valid_ticker(ticker):
@@ -1408,7 +1408,7 @@ def api_settings_lookup(ticker: str):
 @app.route("/api/settings/tickers")
 def api_settings_tickers():
     """The Ticker lookup's names (the spine's), read when its box is first used rather than inlined (335 KB)."""
-    from RevenueChaser.module_settings import inventory
+    from revenuechaser.module_settings import inventory
 
     tickers, error = inventory._universe_tickers()
     if error:
@@ -1427,7 +1427,7 @@ def api_settings_sample(table: str):
     """
     import duckdb
 
-    from RevenueChaser.module_settings import newdata
+    from revenuechaser.module_settings import newdata
 
     try:
         sample = newdata.read_sample_now(table, cached=request.args.get("cached") == "1")
@@ -1474,7 +1474,7 @@ def api_data_asof(mod: str):
     days old, because a cached re-render touches no network. Every board backed
     by downloaded data reports its own data date here.
     """
-    from RevenueChaser.core import provenance
+    from revenuechaser.core import provenance
     return jsonify({"module": mod, "data_as_of": provenance.data_as_of(mod), "last_run": provenance.last_run(mod)})
 
 
@@ -1485,7 +1485,7 @@ def needs_catalog():
     The Settings / Data screen reads this instead of carrying its own list, so a need added to the catalog shows up
     there without a second edit (the plan's "generate the screen from the code").
     """
-    from RevenueChaser.rcdata import needs
+    from revenuechaser.rcdata import needs
     rows = [{"need": n.name, "kind": n.kind, "dataset": n.dataset, "reader": n.reader_name,
               "max_lag": n.max_lag, "max_lag_unit": n.max_lag_unit, "ask_param": n.ask_param,
               "providers": list(n.providers), "fallbacks": list(n.fallbacks), "legacy": n.legacy}
@@ -1569,7 +1569,7 @@ def needs_ask(need: str):
     every render without holding the panel up. Filling is a press of Fetch (avo's decision of 29 Oct 2026) and
     arrives with the queue work; a ``fill`` in the query string is ignored here, not honoured quietly.
     """
-    from RevenueChaser.rcdata import needs
+    from revenuechaser.rcdata import needs
     spec = needs.catalog.NEEDS.get(need)
     if spec is None:
         return jsonify({"ok": False, "error": f"unknown need {need!r}"}), 404
@@ -1604,7 +1604,7 @@ def needs_ask(need: str):
 @app.route("/api/universe")
 def api_universe():
     """How many names the shared universe (the spine) holds."""
-    from RevenueChaser.core.universe import load_cached_universe
+    from revenuechaser.core.universe import load_cached_universe
     return jsonify({"count": len(load_cached_universe())})
 
 
@@ -1623,7 +1623,7 @@ def api_module_asymmetric_growth_latest():
 @app.route("/api/ticker")
 def api_ticker_list():
     """Tüm ticker'ların hafif özeti (paylaşılan ticker store'dan)."""
-    from RevenueChaser.core import ticker_store
+    from revenuechaser.core import ticker_store
     return jsonify({
         "asof": ticker_store.asof(),
         "count": ticker_store.count(),
@@ -1651,7 +1651,7 @@ def api_relatedness_peers(ticker: str):
 @app.route("/api/ticker/<ticker>")
 def api_ticker(ticker: str):
     """Tek ticker'ın tüm zengin verisi (Asymmetric Growth Hunter skorları + 13F + temalar...)."""
-    from RevenueChaser.core import ticker_store
+    from revenuechaser.core import ticker_store
     ticker = ticker.strip().upper()   # normalise first: lower-case ``aapl`` is a valid request
     if not _valid_ticker(ticker):
         return jsonify({"ok": False, "error": "bad ticker"}), 400
@@ -1666,7 +1666,7 @@ def api_value_chain_graph(ticker: str):
     """The Value Chain board's graph for one company (its suppliers, customers and their second hop): the page
     fetches it when a company is picked instead of embedding every company's graph. From the board's last payload
     file, so no store read."""
-    from RevenueChaser.module_value_chain import engine
+    from revenuechaser.module_value_chain import engine
     ticker = ticker.strip().upper()
     if not _valid_ticker(ticker):
         return jsonify({"ok": False, "error": "bad ticker"}), 400
@@ -1687,7 +1687,7 @@ def api_spxgamma_latest():
 @app.route("/api/spxgamma/history")
 def api_spxgamma_history():
     """Daily Net GEX history (for the calendar heatmap coloring)."""
-    from RevenueChaser.module_spx_gamma.run import _load_history
+    from revenuechaser.module_spx_gamma.run import _load_history
     return jsonify({"days": _load_history()})
 
 
@@ -1697,19 +1697,19 @@ def api_jobs():
 
 
 # ── The market-store builder's queue and schedule (PR 2, F7 A) ────────────────────────────────────────────────
-# These routes only enqueue and read: the builder (``python -m RevenueChaser.rcdata.build``) is the one process that
+# These routes only enqueue and read: the builder (``python -m revenuechaser.rcdata.build``) is the one process that
 # runs a request. Each call opens its own ops.sqlite connection (``rcdata.ops``) and never a DuckDB file.
 _REQUESTED_BY_MAX = 40
 
 
 def _build_dataset(name: str):
-    from RevenueChaser.rcdata.build import DATASETS
+    from revenuechaser.rcdata.build import DATASETS
     return DATASETS.get(name)
 
 
 def _build_base():
     """``rcdata.build.base``, imported on use like every other builder import in this module."""
-    from RevenueChaser.rcdata.build import base
+    from revenuechaser.rcdata.build import base
     return base
 
 
@@ -1764,7 +1764,7 @@ def _request_scope(raw_tiers, raw_names, raw_include=None) -> tuple[dict, str | 
     builder cannot disagree about what a tier or a name is - the list's own bound (``base.NAMES_MAX``) included,
     which used to be checked here and nowhere else (review F5 of #294).
     """
-    from RevenueChaser.rcdata.build import base
+    from revenuechaser.rcdata.build import base
 
     out = {}
     for raw, key in ((raw_tiers, "tiers"), (raw_names, "names"), (raw_include, "include")):
@@ -1792,7 +1792,7 @@ def api_build_request(dataset: str):
 
     An attended dataset (``delisted/serving`` alone since #1361: never due on its own, #1219) is queued too, and
     the answer says what it waits for: that runner needs a person at a terminal, so the request waits in the queue
-    until ``python -m RevenueChaser.rcdata.build attended`` on the server takes it. The hourly builder leaves it
+    until ``python -m revenuechaser.rcdata.build attended`` on the server takes it. The hourly builder leaves it
     there (``base.attended_names``). Its mode is the press's own, like every other dataset's: the daily ``fetch``
     unless ``backfill_from`` is given. Each WRDS dataset has a ``fetch`` that is not its backfill — for
     ``wrds/prices`` the monthly refresh of the last two years, where the backfill only fills missing partitions —
@@ -1800,7 +1800,7 @@ def api_build_request(dataset: str):
 
     A dataset that cannot narrow its fetch to a scope still takes the request and says so on its check row
     (``base.honours_scope``), so a press is never silently something else."""
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
 
     ds = _build_dataset(dataset)
     if ds is None:
@@ -1830,7 +1830,7 @@ def api_build_request(dataset: str):
     params.update(REQUEST_STAGES[stage])
     waits_for = None
     if attended:
-        waits_for = ("a person at a terminal on the server: python -m RevenueChaser.rcdata.build attended "
+        waits_for = ("a person at a terminal on the server: python -m revenuechaser.rcdata.build attended "
                      "(the WRDS login and Duo)")
     # avo's rule (#212): no live write without a fresh verified backup. The press is refused here, and not left
     # to the builder's own gate, because a request the builder will refuse would otherwise sit in the queue
@@ -1851,7 +1851,7 @@ def api_build_request(dataset: str):
 @app.route("/api/build/queue")
 def api_build_queue():
     """The queued and running build requests, oldest first, and the last 20 finished, newest first."""
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
 
     try:
         ops.fail_dead_requests()      # #602: a killed run's request must not read "running" until the next builder
@@ -1866,7 +1866,7 @@ def api_build_datasets():
     Grafana buttons (#527 plan B3), which may press Fetch / Pause / Resume only on a dataset named here.
     ``?detail=1`` adds each one's health and fetch settings from the ops store (``metrics.datasets_detail``), for
     the Grafana RC Fetch board's categories."""
-    from RevenueChaser.module_settings import metrics
+    from revenuechaser.module_settings import metrics
 
     if request.args.get("detail") == "1":
         # the Grafana picker's range, epoch milliseconds (${__from} / ${__to}); without both, no history
@@ -1891,7 +1891,7 @@ def api_build_state():
     second question costs a stat of every Parquet file of the kind (``rcdata.build.state``). Read-only — every
     open is ``serving.open_read`` and nothing here starts a build. One unreadable file is that row's ``error``.
     """
-    from RevenueChaser.rcdata.build import state
+    from revenuechaser.rcdata.build import state
 
     return jsonify({"ok": True, "kinds": state.all_kinds()})
 
@@ -1899,7 +1899,7 @@ def api_build_state():
 @app.route("/api/settings/status")
 def api_settings_status():
     """Provider limits, the cross-check and board freshness as JSON, for the Grafana Fetch/Health board (#715)."""
-    from RevenueChaser.module_settings import metrics
+    from revenuechaser.module_settings import metrics
 
     return jsonify({"ok": True, **metrics.board_status()})
 
@@ -1907,7 +1907,7 @@ def api_settings_status():
 @app.route("/api/settings/requests")
 def api_settings_requests():
     """The per-request log, newest first, for the Grafana Logs board (#715): ``?limit=<n>``."""
-    from RevenueChaser.module_settings import metrics
+    from revenuechaser.module_settings import metrics
 
     try:
         got = metrics.request_rows(request.args.get("limit"))
@@ -1919,7 +1919,7 @@ def api_settings_requests():
 @app.route("/metrics", endpoint="metrics")
 def prometheus_metrics():
     """Prometheus text format for Grafana on homesrv (#527 plan B1). Cheap readers only, no store session."""
-    from RevenueChaser.module_settings import metrics as rc_metrics
+    from revenuechaser.module_settings import metrics as rc_metrics
 
     return Response(rc_metrics.exposition(), content_type="text/plain; version=0.0.4; charset=utf-8")
 
@@ -1935,8 +1935,8 @@ def api_build_schedule(dataset: str, action: str):
     (``due.py``) and a hold until that day, which an empty value clears. The three actions are separate, so
     setting a frequency never resumes a dataset a person paused.
     """
-    from RevenueChaser.rcdata import ops
-    from RevenueChaser.rcdata.build import due
+    from revenuechaser.rcdata import ops
+    from revenuechaser.rcdata.build import due
 
     if action not in ("pause", "resume", "cadence"):
         return jsonify({"ok": False, "error": "unknown action"}), 404
@@ -1969,8 +1969,8 @@ def api_build_automation_ds(dataset: str):
     """#527: one source's own automation: ``{"mode": "off|raw|parquet|full"}`` (``ops.DATASET_MODES``; ``file`` drops
     the row, which is ``off``: the file-level mode is gone, avo 10 Nov 2026). 400 for an unknown dataset or mode. A
     person's Fetch is not touched by it."""
-    from RevenueChaser.rcdata import ops
-    from RevenueChaser.rcdata.build import DATASETS
+    from revenuechaser.rcdata import ops
+    from revenuechaser.rcdata.build import DATASETS
     if dataset not in DATASETS:
         return jsonify({"ok": False, "error": f"unknown dataset {dataset!r}"}), 400
     mode = str((request.get_json(silent=True) or {}).get("mode") or "").strip()
@@ -2009,7 +2009,7 @@ def api_build_switch(name: str):
     """#527: turn the board's ``fetch`` or ``backup`` switch, or a file's ``file-<kind>`` switch, on or off:
     ``{"on": true|false}``. Off records who (the panel header) and when; 400 for an unknown switch or a body without a
     boolean ``on``."""
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
     known = ops.SWITCHES + ops.FILE_SWITCHES
     if name not in known:
         return jsonify({"ok": False, "error": f"unknown switch {name!r}; known: {', '.join(known)}"}), 400
@@ -2086,14 +2086,14 @@ def api_job(job_id):
 
 @app.route("/api/rotation/dates")
 def api_rotation_dates():
-    from RevenueChaser.module_sector_rotation import store as rotation_store
+    from revenuechaser.module_sector_rotation import store as rotation_store
     return jsonify({"dates": rotation_store.list_snapshot_dates()})
 
 
 @app.route("/api/rotation/latest")
 def api_rotation_latest():
     """Newest snapshot's as_of_date + generated_at (for last-run display + auto-run)."""
-    from RevenueChaser.module_sector_rotation import store as rotation_store
+    from revenuechaser.module_sector_rotation import store as rotation_store
     dates = rotation_store.list_snapshot_dates()
     if not dates:
         return jsonify({"as_of_date": None, "generated_at": None})
@@ -2126,8 +2126,8 @@ def api_rotation_weeks():
     that already had snapshots (the old behaviour) made "Fetch Data Range"
     unable to reach a week you had not already fetched — the one thing it is for.
     """
-    from RevenueChaser.module_sector_rotation import store as rotation_store
-    from RevenueChaser.module_sector_rotation.report import _weekly_sample, _week_label
+    from revenuechaser.module_sector_rotation import store as rotation_store
+    from revenuechaser.module_sector_rotation.report import _weekly_sample, _week_label
     dates = rotation_store.list_snapshot_dates()
     # ISO Monday -> the stored snapshot date that represents that week
     stored: dict[str, str] = {}
@@ -2171,9 +2171,9 @@ def view_rotation_holdings():
         return "Missing ticker", 404
     if not _valid_ticker(ticker):   # only the sector and theme rows expand, and those are plain symbols
         return "Bad ticker", 400
-    from RevenueChaser.module_sector_rotation import store as rotation_store
-    from RevenueChaser.module_sector_rotation.engine import sector_etf_trees
-    from RevenueChaser.module_sector_rotation.report import (
+    from revenuechaser.module_sector_rotation import store as rotation_store
+    from revenuechaser.module_sector_rotation.engine import sector_etf_trees
+    from revenuechaser.module_sector_rotation.report import (
         render_holdings_fragment, render_industry_fragment,
     )
 
@@ -2202,7 +2202,7 @@ def _load_holdings_bulk_cache(ticker: str):
     """A ticker's holdings from the spine's whole lists, falling back to its newest N-PORT report (no RS, no
     network; #642 PR 4, #354 C5). ``provider``, ``as_of`` and ``truncated`` ride along so the fragment can say
     which source it is showing."""
-    from RevenueChaser.module_sector_rotation.etf_holdings import stored_holdings
+    from revenuechaser.module_sector_rotation.etf_holdings import stored_holdings
     holdings = stored_holdings(ticker)
     if not holdings:
         return None
@@ -2215,7 +2215,7 @@ def _load_holdings_bulk_cache(ticker: str):
 @app.route("/view/module_sector_rotation/trail")
 @app.route("/view/rotation/trail")  # legacy slug (pre-Phase-2) — keep working
 def view_rotation_trail():
-    from RevenueChaser.module_sector_rotation.report import export_rotation_trail
+    from revenuechaser.module_sector_rotation.report import export_rotation_trail
     def _d(key, default):
         raw = request.args.get(key)
         if not raw:
@@ -2237,12 +2237,12 @@ def view_rotation_trail():
 @app.route("/api/sec_13f/<ticker>")
 def api_sec13f(ticker: str):
     """Plotly figure for a ticker's SEC 13F total-ownership chart."""
-    from RevenueChaser.module_sec_13f.enrich import load_inputs
-    from RevenueChaser.module_sec_13f.report import build_chart_fig
+    from revenuechaser.module_sec_13f.enrich import load_inputs
+    from revenuechaser.module_sec_13f.report import build_chart_fig
     t = ticker.strip().upper()
     if not _valid_ticker(t):
         return jsonify({"ok": False, "error": "bad ticker"}), 400
-    from RevenueChaser.module_sec_13f import store as sec13f_store
+    from revenuechaser.module_sec_13f import store as sec13f_store
     periods = sec13f_store.read_ticker(t)              # one ticker's rows, not the whole board file (#732)
     if not periods:
         return jsonify({"ok": False, "error": "no series", "ticker": t}), 404
@@ -2254,8 +2254,8 @@ def api_sec13f(ticker: str):
 def api_sec13f_types(tag: str):
     """Plotly figure and note for one investor type's top 13F holdings per quarter (#760). 404 for a type the board
     does not offer; a type with no rows answers ``fig`` None and a note that says so."""
-    from RevenueChaser.core import ownership
-    from RevenueChaser.module_sec_13f.report import build_flow_fig, build_sector_fig, build_type_fig
+    from revenuechaser.core import ownership
+    from revenuechaser.module_sec_13f.report import build_flow_fig, build_sector_fig, build_type_fig
     labels = dict(ownership.SEC13F_TYPES)
     t = (tag or "").strip().lower()
     if t not in labels:
@@ -2273,7 +2273,7 @@ def api_sec13f_types(tag: str):
 def api_sec13f_filers():
     """The 13F Investors view's filer picker (#928): filers whose name holds ``q`` (two characters or more) or whose
     CIK it is, largest book first, at most 20."""
-    from RevenueChaser.core import ownership
+    from revenuechaser.core import ownership
     q = (request.args.get("q") or "").strip()[:80]
     rows = ownership.sec13f_filer_search(q) if len(q) >= 2 else []
     return jsonify({"ok": True, "filers": [{"cik": r["cik"], "name": r.get("filer_name"), "value": r.get("value"),
@@ -2285,8 +2285,8 @@ def api_sec13f_filer(cik: str):
     """One filer for the 13F Investors view (#928, #779): its holdings over the last ``quarters`` quarters (12, 20
     or ``all``) as a Plotly figure, its newest settled quarter's holdings, its style row and its UW tags. 400 for a
     CIK that is not 1 to 10 digits, 404 for a filer the store does not hold."""
-    from RevenueChaser.core import ownership
-    from RevenueChaser.module_sec_13f.report import FILER_WINDOW, build_filer_fig, filer_holdings_view
+    from revenuechaser.core import ownership
+    from revenuechaser.module_sec_13f.report import FILER_WINDOW, build_filer_fig, filer_holdings_view
     c = (cik or "").strip()
     if not (c.isdigit() and 1 <= len(c) <= 10):
         return jsonify({"ok": False, "error": "bad cik"}), 400
@@ -2308,13 +2308,13 @@ def api_watchlist_kind_toggle(kind: str, ticker: str):
     """Put ``ticker`` on the ``option`` or ``stock`` watch list, or take it off (PR 4, D2). The board that sent the
     click (its ``X-RC-Panel``) is the row's ``added_by`` and the history row's ``by``. 404 for another list, 400 for a
     ticker ``_valid_ticker`` refuses; nothing is written for either."""
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
     if kind not in ops.WATCH_KINDS:
         return jsonify({"ok": False, "error": f"unknown watch list {kind!r}"}), 404
     t = (ticker or "").strip().upper()
     if not _valid_ticker(t):
         return jsonify({"ok": False, "error": "bad ticker"}), 400
-    from RevenueChaser.module_watchlists import store
+    from revenuechaser.module_watchlists import store
     on = store.job_toggle(kind, t, by=_requested_by())
     return jsonify({"ok": True, "list": kind, "ticker": t, "on": on})
 
@@ -2324,13 +2324,13 @@ def api_watchlist_add(kind: str, ticker: str):
     """Put ``ticker`` on one watch list (the Add box Settings' watch-list cards had until 13 Nov 2026): ``{ok, list, ticker, added}``, where ``added`` is
     false when it was there already (nothing is written then). Never removes, so an Add typed for a name someone else
     just added cannot take it off, as the toggle would. 404 / 400 as the toggle."""
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
     if kind not in ops.WATCH_KINDS:
         return jsonify({"ok": False, "error": f"unknown watch list {kind!r}"}), 404
     t = (ticker or "").strip().upper()
     if not _valid_ticker(t):
         return jsonify({"ok": False, "error": "bad ticker"}), 400
-    from RevenueChaser.module_watchlists import store
+    from revenuechaser.module_watchlists import store
     try:
         added = store.job_set(kind, t, True, by=_requested_by())
     except store.WatchlistError as exc:
@@ -2360,13 +2360,13 @@ def api_watchlist_remove(kind: str, ticker: str):
     """Take ``ticker`` off one watch list (the Remove Settings' watch-list cards had until 13 Nov 2026): ``{ok, list, ticker, removed}``, where
     ``removed`` is false when it was not there (nothing is written then). Never adds, so a Remove pressed on a stale
     page cannot put back a name removed elsewhere. 404 / 400 / 403 as the toggle."""
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
     if kind not in ops.WATCH_KINDS:
         return jsonify({"ok": False, "error": f"unknown watch list {kind!r}"}), 404
     t = (ticker or "").strip().upper()
     if not _valid_ticker(t):
         return jsonify({"ok": False, "error": "bad ticker"}), 400
-    from RevenueChaser.module_watchlists import store
+    from revenuechaser.module_watchlists import store
     try:
         removed = store.job_set(kind, t, False, by=_requested_by())
     except store.WatchlistError as exc:
@@ -2380,8 +2380,8 @@ def api_watchlists():
     ``option`` / ``stock`` are the two job lists' tickers, as before; ``lists`` is ``module_watchlists.menu.lists``
     (avo's own lists first, then the two job lists), each with the US tickers on it.
     The read itself never creates ``ops.sqlite`` (the read log's minute flush may, as for every rcdata read)."""
-    from RevenueChaser.module_watchlists import menu
-    from RevenueChaser.rcdata import read
+    from revenuechaser.module_watchlists import menu
+    from revenuechaser.rcdata import read
     lists = read.watchlists()
     return jsonify({"ok": True, **{k: [r["ticker"] for r in rows] for k, rows in lists.items()},
                     "lists": menu.lists()})
@@ -2393,8 +2393,8 @@ def api_watchlists_tick(list_id: str, ticker: str):
     takes it off. ``{ok, list_id, ticker, on}``. Works for avo's own lists and the two job lists alike
     (``module_watchlists.menu``); 400 for a bad ticker, a missing ``on`` or a ticker the spine cannot place,
     404 for an unknown list. The board that sent it (``X-RC-Panel``) is the row's ``added_by``."""
-    from RevenueChaser.module_watchlists import board as wl_board
-    from RevenueChaser.module_watchlists import menu, store
+    from revenuechaser.module_watchlists import board as wl_board
+    from revenuechaser.module_watchlists import menu, store
     t = (ticker or "").strip().upper()
     if not _valid_ticker(t):
         return jsonify({"ok": False, "error": "bad ticker"}), 400
@@ -2413,7 +2413,7 @@ def api_watchlists_tick(list_id: str, ticker: str):
 @app.route("/api/watchlist/toggle/<ticker>", methods=["POST"])
 def api_watchlist_toggle(ticker: str):
     """The pre-PR 4 route: toggles the stock watch list (the LEAPS pin's list). Answers ``in_watchlist`` as before."""
-    from RevenueChaser.core import rawstore
+    from revenuechaser.core import rawstore
     t = (ticker or "").strip().upper()
     if not _valid_ticker(t):
         return jsonify({"ok": False, "error": "bad ticker"}), 400
@@ -2434,7 +2434,7 @@ def _wl_body() -> dict:
 
 def _wl_payload(list_id: str):
     """``{ok, payload}`` for ``list_id`` after a write; 404 when the list is gone."""
-    from RevenueChaser.module_watchlists import board as wl_board
+    from revenuechaser.module_watchlists import board as wl_board
     data = wl_board.payload(list_id)
     if data is None or data["list"]["id"] != list_id:
         return jsonify({"ok": False, "error": "no such watch list"}), 404
@@ -2444,14 +2444,14 @@ def _wl_payload(list_id: str):
 def _wl_job_kind(list_id: str) -> str | None:
     """``option`` or ``stock`` when ``list_id`` is one of the two lists the jobs read, shown on the Watch lists
     board beside avo's own (``module_watchlists.board.JOB_LISTS``); None for one of his lists."""
-    from RevenueChaser.module_watchlists import board as wl_board
+    from revenuechaser.module_watchlists import board as wl_board
     return wl_board.job_kind(list_id)
 
 
 def _wl_job_ticker(symbol: str) -> str | None:
     """The ticker a job list stores for what the add box sent (``NASDAQ:NVDA`` or ``NVDA``), or None when it is
     not a plain ticker: the jobs ask the providers by ticker, so a spread or a series has no place there."""
-    from RevenueChaser.module_watchlists import symbols
+    from revenuechaser.module_watchlists import symbols
     ticker = symbols.split(symbol)[1]
     return ticker if _valid_ticker(ticker) else None
 
@@ -2471,7 +2471,7 @@ def _wl_text(body: dict, field: str, *, required: bool = True) -> tuple[str | No
 @app.route("/api/watchlists/search")
 def api_watchlists_search():
     """The add box's suggestions for ``?q=``: the spine's names whose ticker or name matches, best first."""
-    from RevenueChaser.module_watchlists import board as wl_board
+    from revenuechaser.module_watchlists import board as wl_board
     q = (request.args.get("q") or "").strip()
     return jsonify({"ok": True, "q": q, "rows": wl_board.search(q)})
 
@@ -2479,7 +2479,7 @@ def api_watchlists_search():
 @app.route("/api/watchlists/new", methods=["POST"])
 def api_watchlists_new():
     """Make a list. ``{ok, list_id}``; 400 for an empty name or one already taken."""
-    from RevenueChaser.module_watchlists import store
+    from revenuechaser.module_watchlists import store
     name, error = _wl_text(_wl_body(), "name")
     if error:
         return jsonify({"ok": False, "error": error}), 400
@@ -2494,7 +2494,7 @@ def api_watchlists_new():
 @app.route("/api/watchlists/<list_id>", methods=["POST"])
 def api_watchlists_update(list_id: str):
     """Rename a list or give it a description. Only what the body names changes."""
-    from RevenueChaser.module_watchlists import store
+    from revenuechaser.module_watchlists import store
     body = _wl_body()
     name, error = _wl_text(body, "name", required=False)
     if error:
@@ -2517,7 +2517,7 @@ def api_watchlists_jobs_seed():
     ``ops.sqlite`` rows (plan v5 step 7g), the Sector Rotation map and its industry layer from the code's seed
     (step 7b), the News list from its seed (avo, 18 Nov 2026). ``{ok, option: {created, ops, list, same}, stock: {...},
     map: {created, seed, list, same}, industry: {...}, news: {created, seed, list}}``."""
-    from RevenueChaser.module_watchlists import store
+    from revenuechaser.module_watchlists import store
     by = _requested_by()
     return jsonify({"ok": True, **store.seed_job_lists(by=by), **store.seed_map_lists(by=by),
                     **store.seed_news_lists(by=by)})
@@ -2526,7 +2526,7 @@ def api_watchlists_jobs_seed():
 @app.route("/api/watchlists/<list_id>/delete", methods=["POST"])
 def api_watchlists_delete(list_id: str):
     """Delete a list, its sections and its symbols. The change rows stay, so what it held is still readable."""
-    from RevenueChaser.module_watchlists import store
+    from revenuechaser.module_watchlists import store
     try:
         removed = store.delete_list(list_id, by=_requested_by())
     except store.WatchlistError as exc:
@@ -2539,7 +2539,7 @@ def api_watchlists_delete(list_id: str):
 @app.route("/api/watchlists/<list_id>/export.txt")
 def api_watchlists_export(list_id: str):
     """The list in TradingView's own one-line format, the spelling it came in with."""
-    from RevenueChaser.module_watchlists import importer, store
+    from revenuechaser.module_watchlists import importer, store
     if store.get_list(list_id) is None:
         return "no such watch list", 404, {"Content-Type": "text/plain; charset=utf-8"}
     text = importer.export_list(list_id)
@@ -2558,7 +2558,7 @@ def api_watchlists_columns(list_id: str, tab: str):
     opened on Price would pay for without showing. The page asks the first time the tab is opened. 404 for an
     unknown list or a tab that is not derived from the bars.
     """
-    from RevenueChaser.module_watchlists import board as wl_board
+    from revenuechaser.module_watchlists import board as wl_board
     found = wl_board.columns(list_id, tab)
     if found is None:
         return jsonify({"ok": False, "error": "unknown watch list or tab"}), 404
@@ -2568,7 +2568,7 @@ def api_watchlists_columns(list_id: str, tab: str):
 @app.route("/api/watchlists/<list_id>/symbol/add", methods=["POST"])
 def api_watchlists_symbol_add(list_id: str):
     """Put one symbol on a list, in the section the body names. A symbol already there is no error and no write."""
-    from RevenueChaser.module_watchlists import store
+    from revenuechaser.module_watchlists import store
     body = _wl_body()
     symbol, error = _wl_text(body, "symbol")
     if error:
@@ -2596,7 +2596,7 @@ def api_watchlists_symbol_add(list_id: str):
 @app.route("/api/watchlists/<list_id>/symbol/remove", methods=["POST"])
 def api_watchlists_symbol_remove(list_id: str):
     """Take one symbol off a list. A symbol that was not there is no error and no write."""
-    from RevenueChaser.module_watchlists import store
+    from revenuechaser.module_watchlists import store
     symbol, error = _wl_text(_wl_body(), "symbol")
     if error:
         return jsonify({"ok": False, "error": error}), 400
@@ -2619,7 +2619,7 @@ def api_watchlists_symbol_remove(list_id: str):
 @app.route("/api/watchlists/<list_id>/symbol/note", methods=["POST"])
 def api_watchlists_symbol_note(list_id: str):
     """Write one symbol's note: a map list's hand-written short name (plan v5 step 7b). Empty clears it."""
-    from RevenueChaser.module_watchlists import store
+    from revenuechaser.module_watchlists import store
     body = _wl_body()
     symbol, error = _wl_text(body, "symbol")
     if error:
@@ -2637,7 +2637,7 @@ def api_watchlists_symbol_note(list_id: str):
 @app.route("/api/watchlists/<list_id>/symbol/move", methods=["POST"])
 def api_watchlists_symbol_move(list_id: str):
     """A dropped row: the symbol's section, then the section's new order (``order``, symbols by name)."""
-    from RevenueChaser.module_watchlists import store
+    from revenuechaser.module_watchlists import store
     body = _wl_body()
     symbol, error = _wl_text(body, "symbol")
     if error:
@@ -2660,7 +2660,7 @@ def api_watchlists_symbol_move(list_id: str):
 @app.route("/api/watchlists/<list_id>/section/add", methods=["POST"])
 def api_watchlists_section_add(list_id: str):
     """Add a heading at the end of the list. A heading the list already has returns that one, with no write."""
-    from RevenueChaser.module_watchlists import store
+    from revenuechaser.module_watchlists import store
     name, error = _wl_text(_wl_body(), "name")
     if error:
         return jsonify({"ok": False, "error": error}), 400
@@ -2674,7 +2674,7 @@ def api_watchlists_section_add(list_id: str):
 @app.route("/api/watchlists/<list_id>/section/rename", methods=["POST"])
 def api_watchlists_section_rename(list_id: str):
     """Re-word one heading. Its id and its symbols do not move."""
-    from RevenueChaser.module_watchlists import store
+    from revenuechaser.module_watchlists import store
     body = _wl_body()
     section_id, error = _wl_text(body, "section_id")
     if error:
@@ -2692,7 +2692,7 @@ def api_watchlists_section_rename(list_id: str):
 @app.route("/api/watchlists/<list_id>/section/delete", methods=["POST"])
 def api_watchlists_section_delete(list_id: str):
     """Remove one heading; its symbols move to the first remaining section. The last section cannot go."""
-    from RevenueChaser.module_watchlists import store
+    from revenuechaser.module_watchlists import store
     section_id, error = _wl_text(_wl_body(), "section_id")
     if error:
         return jsonify({"ok": False, "error": error}), 400
@@ -2706,7 +2706,7 @@ def api_watchlists_section_delete(list_id: str):
 @app.route("/api/watchlists/<list_id>/sections/order", methods=["POST"])
 def api_watchlists_sections_order(list_id: str):
     """A dropped heading: the list's sections in their new order (``order``, section ids)."""
-    from RevenueChaser.module_watchlists import store
+    from revenuechaser.module_watchlists import store
     order = _wl_body().get("order") or []
     if not isinstance(order, list) or any(not isinstance(s, str) for s in order):
         return jsonify({"ok": False, "error": "order must be a list of section ids"}), 400

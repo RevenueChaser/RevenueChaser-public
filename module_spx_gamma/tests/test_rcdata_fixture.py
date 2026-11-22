@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from collections import Counter
 
-from RevenueChaser.rcdata import read, serving
+from revenuechaser.rcdata import read, serving
 
 from . import rcdata_fixture as fx
 

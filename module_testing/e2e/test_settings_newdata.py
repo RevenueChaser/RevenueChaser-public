@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from RevenueChaser.core.reporting_common import THEME_TOKENS
+from revenuechaser.core.reporting_common import THEME_TOKENS
 
 from .harness.cdp_browser import Page, find_chrome
 from .harness.shared import ops_rows, running_dashboard

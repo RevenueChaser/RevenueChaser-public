@@ -22,9 +22,9 @@ from datetime import datetime, timezone
 
 import pytest
 
-import RevenueChaser.module_financials.run as fm
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_asymmetric_growth import engine as agh
+import revenuechaser.module_financials.run as fm
+from revenuechaser.core import rawstore
+from revenuechaser.module_asymmetric_growth import engine as agh
 
 # 2026-10-08 is a Thursday. 15:00 UTC = 11:00 ET: an intraday run, inside the session, before the close.
 INTRADAY = datetime(2026, 10, 8, 15, 0, tzinfo=timezone.utc).timestamp()

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core import econ_importance as ei
+from revenuechaser.core import econ_importance as ei
 
 
 @pytest.mark.parametrize("event, kind", [

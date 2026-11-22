@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import threading
 
-from RevenueChaser.core.providers import deepseek
+from revenuechaser.core.providers import deepseek
 
 from . import config
 from . import profile_v3
@@ -46,7 +46,7 @@ class CallBudget:
 
 
 def _writers():
-    from RevenueChaser.core import llm_writers as writers
+    from revenuechaser.core import llm_writers as writers
     return writers
 
 

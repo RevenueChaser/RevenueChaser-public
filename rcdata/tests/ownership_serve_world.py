@@ -19,10 +19,10 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.rcdata import ops, serving
-from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.ownership import sec, sec13f, serve
-from RevenueChaser.rcdata.build.spine import openfigi_map
+from revenuechaser.rcdata import ops, serving
+from revenuechaser.rcdata.build import base
+from revenuechaser.rcdata.build.ownership import sec, sec13f, serve
+from revenuechaser.rcdata.build.spine import openfigi_map
 
 from . import ownership_fixture as ox
 from . import spine_fixture as fx

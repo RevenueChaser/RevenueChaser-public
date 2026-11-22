@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import re
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_settings import control, report
-from RevenueChaser.module_settings.tests.test_control_view import control_nd
+from revenuechaser.core import rawstore
+from revenuechaser.module_settings import control, report
+from revenuechaser.module_settings.tests.test_control_view import control_nd
 
 
 def _page() -> str:

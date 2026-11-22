@@ -8,11 +8,11 @@ from datetime import date, datetime, timezone
 import duckdb
 import pytest
 
-from RevenueChaser.core.tests.test_fundamentals_layer import TICKER, built, grw_facts  # noqa: F401
-from RevenueChaser.module_financials import market_inputs as mi
-from RevenueChaser.rcdata import serving
-from RevenueChaser.rcdata.tests import prices_store
-from RevenueChaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401  (fixtures)
+from revenuechaser.core.tests.test_fundamentals_layer import TICKER, built, grw_facts  # noqa: F401
+from revenuechaser.module_financials import market_inputs as mi
+from revenuechaser.rcdata import serving
+from revenuechaser.rcdata.tests import prices_store
+from revenuechaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401  (fixtures)
 
 NEWEST = date(2026, 10, 27)
 #: A payload that already carries market figures. Before #645 these were Yahoo's and the overlay kept them where
@@ -27,7 +27,7 @@ def _today(monkeypatch):
 
 
 def _clock(monkeypatch, now: datetime = datetime(2026, 10, 28, 15, 0, tzinfo=timezone.utc)):
-    from RevenueChaser.core import calendar
+    from revenuechaser.core import calendar
     monkeypatch.setattr(calendar, "_now", lambda: now)
 
 
@@ -131,7 +131,7 @@ def test_a_bar_without_a_cap_gives_the_price_alone(market_roots):  # noqa: F811
 @pytest.mark.parametrize("today, fresh", [(date(2026, 11, 10), True), (date(2026, 11, 11), False)])
 def test_a_close_older_than_the_rates_limit_gives_nothing(market_roots, monkeypatch, today, fresh):  # noqa: F811
     # The same 14 days as the risk-free rate on that card, counted from today, not from the store's newest session.
-    from RevenueChaser.module_financials.config import RISK_FREE_MAX_AGE_DAYS
+    from revenuechaser.module_financials.config import RISK_FREE_MAX_AGE_DAYS
     assert (date(2026, 11, 10) - NEWEST).days == RISK_FREE_MAX_AGE_DAYS
     _store()
     _clock(monkeypatch, datetime(today.year, today.month, today.day, 20, 0, tzinfo=timezone.utc))
@@ -183,7 +183,7 @@ def test_the_overlay_with_nothing_in_the_store_names_no_source(market_roots):  #
 
 
 def test_the_card_names_the_session_of_the_stores_price():
-    from RevenueChaser.module_financials.reporting.html_builder import build_report_html
+    from revenuechaser.module_financials.reporting.html_builder import build_report_html
     fin = {**GIVEN, "market_meta": {"from_store": ["price"], "price_session": "2026-10-27"}}
     html = build_report_html({"ticker": TICKER, "financials": fin, "modules": {}, "warnings": []})
     assert "Price: $100.00 (close 2026-10-27)<" in html
@@ -194,8 +194,8 @@ def test_the_card_names_the_session_of_the_stores_price():
 def test_the_comps_basis_names_where_the_targets_shares_came_from(market_roots):  # noqa: F811
     # #286: the peer side is the store's newest annual record; the target's per-share values divide by the
     # store's shares. This test is about the second half, so the peers are injected.
-    from RevenueChaser.module_financials.engines import comps_engine
-    from RevenueChaser.module_financials.reporting.html_builder import build_report_html
+    from revenuechaser.module_financials.engines import comps_engine
+    from revenuechaser.module_financials.reporting.html_builder import build_report_html
     _store()
     fin, _part = mi.overlay(TICKER, {**GIVEN, "annual": [{"fiscal_year": "2025", "revenue": 100.0, "ebitda": 30.0,
                                                           "net_income": 10.0, "total_debt": 5.0, "cash": 5.0}]})
@@ -213,7 +213,7 @@ def test_the_comps_basis_names_where_the_targets_shares_came_from(market_roots):
 def test_the_cards_ev_names_the_bridge_it_is_built_from():
     """#645: the EV is no longer Yahoo's own figure but the store's bridge (cap + total debt - cash of the newest
     stored fiscal year), the same one the peer side uses, so the header names the bridge instead of a vendor."""
-    from RevenueChaser.module_financials.reporting.html_builder import build_report_html
+    from revenuechaser.module_financials.reporting.html_builder import build_report_html
     fin = {**GIVEN, "enterprise_value": 5200.0,
            "market_meta": {"from_store": ["price", "market cap, shares"], "price_session": "2026-10-27",
                            "shares_source": "prices store, 2026-10-27 close"}}

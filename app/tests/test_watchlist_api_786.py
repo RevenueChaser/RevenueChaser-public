@@ -7,9 +7,9 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.app import dashboard
-from RevenueChaser.core.tests.panel_client import panel_test_client
-from RevenueChaser.module_watchlists import store
+from revenuechaser.app import dashboard
+from revenuechaser.core.tests.panel_client import panel_test_client
+from revenuechaser.module_watchlists import store
 
 pytestmark = pytest.mark.rawstore_schema_from_scratch
 
@@ -18,7 +18,7 @@ pytestmark = pytest.mark.rawstore_schema_from_scratch
 def client(monkeypatch):
     """The dashboard with every rcdata read empty: the routes are about the writes, not the numbers."""
     import pandas as pd
-    from RevenueChaser.module_watchlists import board
+    from revenuechaser.module_watchlists import board
     monkeypatch.setattr(board.read, "ticker_bars", lambda *a, **k: pd.DataFrame(
         columns=["ticker", "session_date", "close", "volume"]))
     monkeypatch.setattr(board.read, "latest_market", lambda *a, **k: {})
@@ -219,7 +219,7 @@ def test_a_derived_tab_answers_one_row_per_symbol_the_page_can_draw(client, a_li
     import datetime as dt
 
     import pandas as pd
-    from RevenueChaser.module_watchlists import board
+    from revenuechaser.module_watchlists import board
     start = dt.date(2026, 1, 2)
     rows = [{"ticker": t, "session_date": pd.Timestamp(start + dt.timedelta(days=i)),
              "close": 100.0 + i, "high": 101.0 + i, "low": 99.0 + i, "volume": 1_000_000.0}
@@ -268,7 +268,7 @@ def test_the_export_of_a_list_that_is_not_there_is_a_404(client):
 
 
 def test_the_search_answers_the_spines_names(client, monkeypatch):
-    from RevenueChaser.module_watchlists import board
+    from revenuechaser.module_watchlists import board
     monkeypatch.setattr(board.read, "identity",
                         lambda *a, **k: [{"ticker": "NVDA", "name": "NVIDIA", "exchange": "NASDAQ"}])
     rows = client.get("/api/watchlists/search?q=NV").get_json()["rows"]

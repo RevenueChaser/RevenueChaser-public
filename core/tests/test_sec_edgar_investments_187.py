@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core.providers import sec_edgar as se
+from revenuechaser.core.providers import sec_edgar as se
 
 _ENDS = {"annual": ("2022-12-31", "2023-12-31"), "quarterly": ("2023-03-31", "2023-06-30")}
 _CASH = "CashAndCashEquivalentsAtCarryingValue"
@@ -56,7 +56,7 @@ def _latest(kind, facts, ends):
 # ── totals ──────────────────────────────────────────────────────────────────
 
 def test_a_filer_with_no_securities_has_no_sti_and_liquidity_equals_cash(kind, ends):
-    from RevenueChaser.core.liquidity import liquid_assets
+    from revenuechaser.core.liquidity import liquid_assets
     rec = _latest(kind, _facts(kind, **{_CASH: {ends[1]: 100.0}}), ends)
     assert rec[STI] is None
     assert "short_term_investments_basis" not in rec
@@ -158,7 +158,7 @@ def test_a_noncurrent_tag_change_between_periods_keeps_both_periods(kind, ends):
 # ── noncurrent and long-term investments are stored, never liquidity ────────
 
 def test_noncurrent_securities_and_long_term_investments_have_their_own_fields(kind, ends):
-    from RevenueChaser.core.liquidity import liquid_assets
+    from revenuechaser.core.liquidity import liquid_assets
     facts = _facts(kind, **{_CASH: {ends[1]: 100.0}, "ShortTermInvestments": {ends[1]: 40.0},
                             "MarketableSecuritiesNoncurrent": {ends[1]: 70.0},
                             "AvailableForSaleSecuritiesDebtSecuritiesNoncurrent": {ends[1]: 60.0},
@@ -265,33 +265,33 @@ def test_a_period_with_only_sti_facts_adds_no_record(kind, ends):
 # ── liquid_assets ───────────────────────────────────────────────────────────
 
 def test_liquid_assets_adds_sti_to_cash():
-    from RevenueChaser.core.liquidity import liquid_assets
+    from revenuechaser.core.liquidity import liquid_assets
     assert liquid_assets({"cash": 79.1, STI: 62.8}) == (pytest.approx(141.9), "cash+sti")
 
 
 def test_a_missing_sti_counts_as_zero_when_cash_is_present():
-    from RevenueChaser.core.liquidity import liquid_assets
+    from revenuechaser.core.liquidity import liquid_assets
     assert liquid_assets({"cash": 100.0, STI: None}) == (100.0, "cash_only")
     assert liquid_assets({"cash": 100.0}) == (100.0, "cash_only")  # a yfinance-shaped record has no STI key
 
 
 def test_sti_never_stands_in_for_a_missing_cash():
-    from RevenueChaser.core.liquidity import liquid_assets
+    from revenuechaser.core.liquidity import liquid_assets
     assert liquid_assets({"cash": None, STI: 40.0}) == (None, None)
     assert liquid_assets({STI: 40.0}) == (None, None)
 
 
 def test_liquid_assets_of_no_record_is_unknown():
-    from RevenueChaser.core.liquidity import liquid_assets
+    from revenuechaser.core.liquidity import liquid_assets
     assert liquid_assets(None) == (None, None)
 
 
 def test_liquid_assets_never_counts_noncurrent_or_long_term_investments():
-    from RevenueChaser.core.liquidity import liquid_assets
+    from revenuechaser.core.liquidity import liquid_assets
     rec = {"cash": 100.0, STI: 40.0, "marketable_securities_noncurrent": 70.0, "long_term_investments": 500.0}
     assert liquid_assets(rec) == (140.0, "cash+sti")
 
 
 def test_a_negative_stored_sti_is_not_counted():
-    from RevenueChaser.core.liquidity import liquid_assets
+    from revenuechaser.core.liquidity import liquid_assets
     assert liquid_assets({"cash": 100.0, STI: -5.0}) == (100.0, "cash_only")

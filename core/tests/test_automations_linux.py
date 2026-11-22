@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from RevenueChaser.core import automations as A
+from revenuechaser.core import automations as A
 
 
 @pytest.fixture(autouse=True)

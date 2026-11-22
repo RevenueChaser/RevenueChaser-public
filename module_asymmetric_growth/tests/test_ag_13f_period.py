@@ -6,7 +6,7 @@ quarter it read and the one it compared, and gives no QoQ change when they are n
 """
 from __future__ import annotations
 
-from RevenueChaser.module_asymmetric_growth import engine, report
+from revenuechaser.module_asymmetric_growth import engine, report
 
 
 def _p(shares: float) -> dict:
@@ -31,7 +31,7 @@ def test_the_year_boundary_is_adjacent():
 
 
 def test_the_quarters_ride_with_the_stored_card_so_a_refresh_shows_them(rawstore_tmp_db):
-    from RevenueChaser.core import ticker_store
+    from revenuechaser.core import ticker_store
     card = {"ticker": "AAA", "period_ends": {"revenue": [None, None, None]}}
     inst = engine._institutional("AAA", {"AAA": {"2025-12-31": _p(100.0), "2026-03-31": _p(110.0)}})
     card["period_ends"]["inst_13f"] = [inst.pop("inst_quarter"), inst.pop("inst_prev_quarter")]

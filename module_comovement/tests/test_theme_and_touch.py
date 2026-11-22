@@ -7,9 +7,9 @@ from __future__ import annotations
 
 import re
 
-from RevenueChaser.core.reporting_common import THEME_CSS
-from RevenueChaser.module_comovement import report
-from RevenueChaser.module_comovement.tests.test_page_pack_379 import _payload
+from revenuechaser.core.reporting_common import THEME_CSS
+from revenuechaser.module_comovement import report
+from revenuechaser.module_comovement.tests.test_page_pack_379 import _payload
 
 
 def test_the_page_uses_the_shared_theme():

@@ -16,12 +16,12 @@ from __future__ import annotations
 
 import copy
 
-from RevenueChaser.rcdata.tests import fund_store
-from RevenueChaser.core import funnel
-from RevenueChaser.module_asymmetric_growth import engine
-from RevenueChaser.module_asymmetric_growth.report import render_asymmetric_growth_hunter_html
-from RevenueChaser.module_asymmetric_growth.tests.test_ag_dated_momentum_380 import bar, sessions
-from RevenueChaser.module_asymmetric_growth.tests.test_ag_info_only_150 import _QUOTE, _YF_ANNUAL, _edgar
+from revenuechaser.rcdata.tests import fund_store
+from revenuechaser.core import funnel
+from revenuechaser.module_asymmetric_growth import engine
+from revenuechaser.module_asymmetric_growth.report import render_asymmetric_growth_hunter_html
+from revenuechaser.module_asymmetric_growth.tests.test_ag_dated_momentum_380 import bar, sessions
+from revenuechaser.module_asymmetric_growth.tests.test_ag_info_only_150 import _QUOTE, _YF_ANNUAL, _edgar
 
 # The bars close at 102 and their 63-session mean volume is 1.095x the base volume, so price * vol_90d is
 # ~111.7 * base. 100 a day is thin (11,171); 10,000 a day is not (1.1M).

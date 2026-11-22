@@ -150,7 +150,7 @@ def etf_holdings_from_store(list_path: Path | None = None) -> dict[str, set[str]
     empty set when none. D4 of the 9 Nov 2026 review answered E1 (#342): the spine's table, not
     ``raw.duckdb.etf_holdings``. **Never a store write** (reviews S1 and R2): ``rcdata.read`` opens the spine
     read-only and touches no raw store."""
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
 
     _, etfs = read_etf_list(list_path)
     return read.etf_holding_tickers(etfs)

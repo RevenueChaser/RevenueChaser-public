@@ -9,9 +9,9 @@ as a revenue value and this test would see it.
 """
 from __future__ import annotations
 
-from RevenueChaser.core.providers import sec_edgar as se
-from RevenueChaser.core.tests.test_sec_edgar_concept_merge_246 import _facts, _s
-from RevenueChaser.module_financials.engines.comps_engine import run_comps
+from revenuechaser.core.providers import sec_edgar as se
+from revenuechaser.core.tests.test_sec_edgar_concept_merge_246 import _facts, _s
+from revenuechaser.module_financials.engines.comps_engine import run_comps
 
 NET = "revenue_net_of_interest_expense"
 GROSS = "interest_and_dividend_income"

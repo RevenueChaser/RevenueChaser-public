@@ -26,8 +26,8 @@ from pathlib import Path
 import pytest
 
 _FILE = Path(__file__).resolve()
-RC_ROOT = _FILE.parents[2]          # RevenueChaser/
-WORKSPACE_ROOT = _FILE.parents[3]   # parent of RevenueChaser/ (C:/projects/Github)
+RC_ROOT = _FILE.parents[2]          # revenuechaser/
+WORKSPACE_ROOT = _FILE.parents[3]   # parent of revenuechaser/ (C:/projects/Github)
 SPEC = RC_ROOT / "docs" / "openapi.yaml"
 _SKILL_REL = Path(".opencode") / "skills" / "unusual-whales-api" / "SKILL.md"
 

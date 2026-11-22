@@ -9,9 +9,9 @@ from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
-from RevenueChaser.core import calendar as cal
-from RevenueChaser.core import ledger, outcomes, prices, rawstore
-from RevenueChaser.core.tests.d01_seed import drop_d01, write_d01
+from revenuechaser.core import calendar as cal
+from revenuechaser.core import ledger, outcomes, prices, rawstore
+from revenuechaser.core.tests.d01_seed import drop_d01, write_d01
 
 D = date(2026, 9, 1)                      # the forecast date (a Tuesday)
 END30 = date(2026, 10, 1)                 # the last session on or before D + 30 days

@@ -7,8 +7,8 @@ effective tax rate and the interest cover are the filer's own figures and the So
 """
 from __future__ import annotations
 
-import RevenueChaser.module_financials.run as fm
-from RevenueChaser.module_financials.engines._inputs import PE_ONLY_SECTOR, effective_tax_rate
+import revenuechaser.module_financials.run as fm
+from revenuechaser.module_financials.engines._inputs import PE_ONLY_SECTOR, effective_tax_rate
 
 
 def _year(year: str, **over) -> dict:
@@ -38,7 +38,7 @@ def test_the_tax_rate_is_now_the_filers_own_and_not_the_flat_default():
     years = [fm._financials_record(_year(y)) for y in ("2023", "2024", "2025")]
     rate, source = effective_tax_rate({}, years[-1], "Information Technology", years)
     assert rate == 50.0 / 200.0 and source.startswith("statements")   # 25%, the filer's, not the 21% default
-    from RevenueChaser.module_financials.config import DEFAULT_TAX_RATE
+    from revenuechaser.module_financials.config import DEFAULT_TAX_RATE
     assert rate != DEFAULT_TAX_RATE
 
 

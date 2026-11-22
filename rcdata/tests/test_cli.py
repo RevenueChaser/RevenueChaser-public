@@ -1,8 +1,8 @@
 """The two CLIs end to end, as subprocesses against a loopback mock of every market_series source.
 
-``python -m RevenueChaser.rcdata.build run --once --dataset market_series`` builds ``market.duckdb`` (serving schema
+``python -m revenuechaser.rcdata.build run --once --dataset market_series`` builds ``market.duckdb`` (serving schema
 1, ``market_series`` rows, a ``dataset_check`` and a ``job_runs2`` row) and a second run calls nothing;
-``python -m RevenueChaser.rcdata backup`` writes a verified copy and refuses an empty backup folder. The server runs
+``python -m revenuechaser.rcdata backup`` writes a verified copy and refuses an empty backup folder. The server runs
 in this process (the root conftest only blocks *outgoing* connections); the subprocesses talk to it on 127.0.0.1.
 """
 from __future__ import annotations
@@ -18,7 +18,7 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from RevenueChaser.rcdata import ops, serving
+from revenuechaser.rcdata import ops, serving
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 REPO = Path(__file__).resolve().parents[2]
@@ -96,7 +96,7 @@ def _run(env, *args, timeout=300):
 
 def test_the_builder_cli_builds_market_series_and_a_second_run_calls_nothing(cli_env, mock_server, tmp_path):
     _, seen = mock_server
-    args = ("RevenueChaser.rcdata.build", "run", "--once", "--dataset", "market_series", "--as-of", "2026-10-27")
+    args = ("revenuechaser.rcdata.build", "run", "--once", "--dataset", "market_series", "--as-of", "2026-10-27")
     r = _run(cli_env, *args)
     assert r.returncode == 0, r.stderr[-3000:]
     assert r.stdout.startswith("market_series changed as_of=2026-10-27")
@@ -127,7 +127,7 @@ def test_the_builder_cli_builds_market_series_and_a_second_run_calls_nothing(cli
 @contextmanager
 def _holding(env, name: str):
     """Another process holding ``name``'s job lock in this env's store dir, for as long as the block runs."""
-    hold = ("import sys,time; from RevenueChaser.core import job_lock\n"
+    hold = ("import sys,time; from revenuechaser.core import job_lock\n"
             f"with job_lock.acquire({name!r}, wait=0) as got:\n"
             "    print(got, flush=True); time.sleep(30)")
     p = subprocess.Popen([sys.executable, "-c", hold], cwd=REPO.parent, env=env, stdout=subprocess.PIPE, text=True)
@@ -146,7 +146,7 @@ def test_the_builder_starts_while_a_lock_on_the_old_store_is_held(cli_env, tmp_p
     price backfill was refused while the Relatedness pilot ran (30 Oct 2026).
     """
     with _holding(cli_env, "daily_bars"):
-        r = _run(cli_env, "RevenueChaser.rcdata.build", "run", "--once", "--dataset", "market_series",
+        r = _run(cli_env, "revenuechaser.rcdata.build", "run", "--once", "--dataset", "market_series",
                  "--as-of", "2026-10-27")
         assert r.returncode == 0, r.stderr[-3000:]
         assert r.stdout.startswith("market_series changed as_of=2026-10-27")
@@ -160,21 +160,21 @@ def test_the_builder_refuses_to_start_while_an_undeclared_lock_is_held(cli_env):
     refusal at once, and a short wait says what it is waiting for and is still refused when the wait runs out.
     """
     with _holding(cli_env, "a_new_writer"):
-        r = _run(cli_env, "RevenueChaser.rcdata.build", "run", "--once", "--dataset", "market_series",
+        r = _run(cli_env, "revenuechaser.rcdata.build", "run", "--once", "--dataset", "market_series",
                  "--wait", "0")
         assert r.returncode == 3 and "a_new_writer" in r.stderr
         assert not (Path(cli_env["RC_MARKET_DIR"]) / "market.duckdb").exists()
-        r = _run(cli_env, "RevenueChaser.rcdata.build", "run", "--once", "--dataset", "market_series",
+        r = _run(cli_env, "revenuechaser.rcdata.build", "run", "--once", "--dataset", "market_series",
                  "--wait", "1")
         assert r.returncode == 3 and "waiting for the writer turn" in r.stderr and "a_new_writer" in r.stderr
         assert not (Path(cli_env["RC_MARKET_DIR"]) / "market.duckdb").exists()
 
 
 def test_the_backup_cli_writes_a_verified_copy_and_refuses_an_empty_folder(cli_env, tmp_path):
-    r = _run(cli_env, "RevenueChaser.rcdata.build", "run", "--once", "--dataset", "market_series",
+    r = _run(cli_env, "revenuechaser.rcdata.build", "run", "--once", "--dataset", "market_series",
              "--as-of", "2026-10-27")
     assert r.returncode == 0, r.stderr[-3000:]
-    r = _run(cli_env, "RevenueChaser.rcdata", "backup")
+    r = _run(cli_env, "revenuechaser.rcdata", "backup")
     assert r.returncode == 0, r.stderr[-3000:]
     root = tmp_path / "backups" / "weekly-v2"
     assert len(list((root / "duckdb").glob("market_*.duckdb"))) == 1
@@ -182,7 +182,7 @@ def test_the_backup_cli_writes_a_verified_copy_and_refuses_an_empty_folder(cli_e
     assert (root / "duckdb" / ".manifest.json").exists() and (root / "ops" / ".manifest.json").exists()
 
     empty = {**cli_env, "RAW_STORE_BACKUP_DIR": ""}
-    r = _run(empty, "RevenueChaser.rcdata", "backup")
+    r = _run(empty, "revenuechaser.rcdata", "backup")
     assert r.returncode == 2 and "RAW_STORE_BACKUP_DIR" in r.stderr
 
 
@@ -193,7 +193,7 @@ def test_n2_a_sigterm_mid_run_still_counts_the_calls_sent(cli_env, mock_server, 
     import time
     _, seen = mock_server
     SLOW.add("/bls/")                                  # the last source: everything before it has been called
-    p = subprocess.Popen([sys.executable, "-m", "RevenueChaser.rcdata.build", "run", "--once", "--dataset",
+    p = subprocess.Popen([sys.executable, "-m", "revenuechaser.rcdata.build", "run", "--once", "--dataset",
                           "market_series", "--as-of", "2026-10-27"], cwd=REPO.parent, env=cli_env,
                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     try:

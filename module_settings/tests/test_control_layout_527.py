@@ -5,8 +5,8 @@ small; the disk picture press says what it does."""
 from __future__ import annotations
 import re
 
-from RevenueChaser.module_settings import control_render
-from RevenueChaser.module_settings.tests.test_control_render_c1 import _view
+from revenuechaser.module_settings import control_render
+from revenuechaser.module_settings.tests.test_control_render_c1 import _view
 
 
 def _file(v):

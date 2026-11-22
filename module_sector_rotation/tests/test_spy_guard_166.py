@@ -11,12 +11,12 @@ from datetime import date, timedelta
 
 import pytest
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.core.providers.result import ProviderResult
-from RevenueChaser.module_sector_rotation import engine, store
-from RevenueChaser.module_sector_rotation.tests.bars_seed import FIRST, ny, pin_clock, seed
-from RevenueChaser.module_sector_rotation.universe import MACRO_SERIES
-from RevenueChaser.rcdata.tests import spine_fixture
+from revenuechaser.core import rawstore
+from revenuechaser.core.providers.result import ProviderResult
+from revenuechaser.module_sector_rotation import engine, store
+from revenuechaser.module_sector_rotation.tests.bars_seed import FIRST, ny, pin_clock, seed
+from revenuechaser.module_sector_rotation.universe import MACRO_SERIES
+from revenuechaser.rcdata.tests import spine_fixture
 
 BASE = date(2026, 8, 14)
 
@@ -76,7 +76,7 @@ def _healthy():
 
 def test_fetch_all_holdings_reads_d01_once_for_the_whole_job(rawstore_tmp_db, monkeypatch):
     """Since M-ROT-3 (#374) the holdings RS is one D01 read of SPY and every holding, and no UW call."""
-    from RevenueChaser.module_sector_rotation.models import ETFRotationSnapshot
+    from revenuechaser.module_sector_rotation.models import ETFRotationSnapshot
     uw = _healthy()
     for t in ("SPY", "BIG", "DN"):
         seed(t, BASE, start=BASE - timedelta(days=150))
@@ -93,7 +93,7 @@ def test_fetch_all_holdings_reads_d01_once_for_the_whole_job(rawstore_tmp_db, mo
 
 
 def test_fetch_all_holdings_stores_nothing_when_spy_is_missing(rawstore_tmp_db):
-    from RevenueChaser.module_sector_rotation.models import ETFRotationSnapshot
+    from revenuechaser.module_sector_rotation.models import ETFRotationSnapshot
     uw = _healthy()
     seed("BIG", BASE, start=BASE - timedelta(days=150))                 # D01 holds the holding, not SPY
     spine_fixture.write_etf_holdings({"AIQ": HOLDINGS})

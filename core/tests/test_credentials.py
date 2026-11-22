@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core import credentials
+from revenuechaser.core import credentials
 
 # Never a real key: a recognisable string whose only job is to be asserted ABSENT from every message (PL8, #26).
 _DUMMY_KEY = "pl8-dummy-provider-key-value"

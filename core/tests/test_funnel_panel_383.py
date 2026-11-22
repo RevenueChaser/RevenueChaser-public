@@ -5,7 +5,7 @@ panel, and every string goes through the shared escaper.
 """
 from __future__ import annotations
 
-from RevenueChaser.core import funnel
+from revenuechaser.core import funnel
 
 
 def _steps():

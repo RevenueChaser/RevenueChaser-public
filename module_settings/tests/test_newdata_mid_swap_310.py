@@ -16,12 +16,12 @@ from datetime import datetime, timezone
 import duckdb
 import pytest
 
-from RevenueChaser.core import calendar
-from RevenueChaser.module_settings import newdata
-from RevenueChaser.rcdata import serving
-from RevenueChaser.rcdata.tests.conftest import market_roots  # noqa: F401 - market roots per test
+from revenuechaser.core import calendar
+from revenuechaser.module_settings import newdata
+from revenuechaser.rcdata import serving
+from revenuechaser.rcdata.tests.conftest import market_roots  # noqa: F401 - market roots per test
 
-from RevenueChaser.module_settings.tests.test_newdata_control import _bars
+from revenuechaser.module_settings.tests.test_newdata_control import _bars
 
 NOW = datetime(2026, 10, 29, 3, 0, tzinfo=timezone.utc)
 

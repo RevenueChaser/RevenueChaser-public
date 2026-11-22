@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from RevenueChaser.scripts import select_tests as mod
+from revenuechaser.scripts import select_tests as mod
 
 _REPO = Path(__file__).resolve().parents[2]
 
@@ -41,8 +41,8 @@ def test_an_e2e_test_that_reaches_the_app_only_through_the_dashboard_fixture_is_
 def test_a_change_reaching_a_conftest_selects_every_test_below_it(tmp_path):
     root = _mini_repo(tmp_path, {
         "pkg/__init__.py": "", "pkg/fix.py": "", "pkg/other.py": "",
-        "pkg/tests/conftest.py": "from RevenueChaser.pkg import fix\n",
-        "pkg/tests/test_x.py": "", "pkg/tests/deep/test_y.py": "from RevenueChaser.pkg import other\n",
+        "pkg/tests/conftest.py": "from revenuechaser.pkg import fix\n",
+        "pkg/tests/test_x.py": "", "pkg/tests/deep/test_y.py": "from revenuechaser.pkg import other\n",
         "pkg2/tests/test_z.py": "",
     })
     sel = mod.select(["pkg/fix.py"], root=root)
@@ -51,8 +51,8 @@ def test_a_change_reaching_a_conftest_selects_every_test_below_it(tmp_path):
 
 def test_a_change_reaching_the_root_conftest_runs_the_full_suite(tmp_path):
     root = _mini_repo(tmp_path, {
-        "conftest.py": "def f():\n    from RevenueChaser.pkg import a\n",
-        "pkg/__init__.py": "", "pkg/a.py": "", "pkg/tests/test_a.py": "from RevenueChaser.pkg import a\n",
+        "conftest.py": "def f():\n    from revenuechaser.pkg import a\n",
+        "pkg/__init__.py": "", "pkg/a.py": "", "pkg/tests/test_a.py": "from revenuechaser.pkg import a\n",
     })
     assert mod.select(["pkg/a.py"], root=root).mode == "FULL"
 
@@ -66,8 +66,8 @@ def test_a_narrow_change_runs_fewer_tests_than_the_full_suite():
 
 @pytest.mark.parametrize("doc, reader", [
     ("docs/data_retrieval.md", "core/tests/test_doc_constants.py"),
-    ("docs/module_earnings-radar/00_overview.md", "module_earnings_radar/tests/test_confidence_wording_df06.py"),
-    ("docs/module_earnings-radar/redesign.md", "module_earnings_radar/tests/test_cleanup_199.py"),
+    ("docs/module_earnings_radar/00_overview.md", "module_earnings_radar/tests/test_confidence_wording_df06.py"),
+    ("docs/module_earnings_radar/redesign.md", "module_earnings_radar/tests/test_cleanup_199.py"),
     ("docs/data_architecture.md", "core/tests/test_store_schema_refuse.py"),
 ])
 def test_a_doc_a_test_reads_selects_that_test(doc, reader):
@@ -92,8 +92,8 @@ def test_shared_config_and_fixtures_run_the_full_suite(path):
 def test_a_deleted_module_runs_the_full_suite(tmp_path):
     """Its importers are not in the graph any more, so the tests that still import it cannot be found."""
     root = _mini_repo(tmp_path, {
-        "pkg/__init__.py": "", "pkg/a.py": "", "pkg/tests/test_a.py": "from RevenueChaser.pkg import a\n",
-        "pkg/tests/test_gone.py": "from RevenueChaser.pkg import gone\n",
+        "pkg/__init__.py": "", "pkg/a.py": "", "pkg/tests/test_a.py": "from revenuechaser.pkg import a\n",
+        "pkg/tests/test_gone.py": "from revenuechaser.pkg import gone\n",
     })
     assert mod.select(["pkg/gone.py", "pkg/a.py"], root=root).mode == "FULL"
 
@@ -101,10 +101,10 @@ def test_a_deleted_module_runs_the_full_suite(tmp_path):
 def test_a_data_file_maps_to_the_tests_reaching_a_module_that_names_it(tmp_path):
     root = _mini_repo(tmp_path, {
         "pkg/__init__.py": "", "pkg/a.py": 'PATH = "data/table.csv"\n',
-        "pkg/tests/test_a.py": "from RevenueChaser.pkg import a\n",
+        "pkg/tests/test_a.py": "from revenuechaser.pkg import a\n",
         "pkg/data/table.csv": "x\n", "pkg/data/orphan.csv": "x\n",
         "templates/base.html": "", "templates/page.html": '{% extends "base.html" %}',
-        "pkg/b.py": 'PAGE = "page.html"\n', "pkg/tests/test_b.py": "from RevenueChaser.pkg import b\n",
+        "pkg/b.py": 'PAGE = "page.html"\n', "pkg/tests/test_b.py": "from revenuechaser.pkg import b\n",
     })
     assert mod.select(["pkg/data/table.csv"], root=root).unit == ["pkg/tests/test_a.py"]
     assert mod.select(["templates/base.html"], root=root).unit == ["pkg/tests/test_b.py"]
@@ -114,7 +114,7 @@ def test_a_data_file_maps_to_the_tests_reaching_a_module_that_names_it(tmp_path)
 def test_a_basename_matches_only_as_a_whole_file_name(tmp_path):
     """Review of #383: a substring match let "a.js" be named by "data.json"."""
     root = _mini_repo(tmp_path, {
-        "pkg/__init__.py": "", "pkg/b.py": 'P = "data.json"\n', "pkg/tests/test_b.py": "from RevenueChaser.pkg import b\n",
+        "pkg/__init__.py": "", "pkg/b.py": 'P = "data.json"\n', "pkg/tests/test_b.py": "from revenuechaser.pkg import b\n",
         "static/a.js": "", "pkg/data.json": "{}",
     })
     assert mod.select(["static/a.js"], root=root).mode == "FULL"
@@ -124,7 +124,7 @@ def test_a_basename_matches_only_as_a_whole_file_name(tmp_path):
 def test_a_basename_two_files_share_runs_the_full_suite(tmp_path):
     """Which of the two a Python file reads cannot be told from the name."""
     root = _mini_repo(tmp_path, {
-        "pkg/__init__.py": "", "pkg/b.py": 'P = "index.html"\n', "pkg/tests/test_b.py": "from RevenueChaser.pkg import b\n",
+        "pkg/__init__.py": "", "pkg/b.py": 'P = "index.html"\n', "pkg/tests/test_b.py": "from revenuechaser.pkg import b\n",
         "one/index.html": "", "two/index.html": "",
     })
     assert mod.select(["one/index.html"], root=root).mode == "FULL"
@@ -132,7 +132,7 @@ def test_a_basename_two_files_share_runs_the_full_suite(tmp_path):
 
 def test_two_binary_files_with_one_name_run_the_full_suite(tmp_path):
     root = _mini_repo(tmp_path, {
-        "pkg/__init__.py": "", "pkg/b.py": 'P = "logo.png"\n', "pkg/tests/test_b.py": "from RevenueChaser.pkg import b\n",
+        "pkg/__init__.py": "", "pkg/b.py": 'P = "logo.png"\n', "pkg/tests/test_b.py": "from revenuechaser.pkg import b\n",
     })
     for d in ("one", "two"):
         (root / d).mkdir()
@@ -151,7 +151,7 @@ def _mini_repo(tmp_path, files: dict[str, str]) -> Path:
 def test_code_no_test_reaches_runs_the_full_suite(tmp_path):
     root = _mini_repo(tmp_path, {
         "pkg/__init__.py": "", "pkg/a.py": "", "pkg/lonely.py": "",
-        "pkg/tests/__init__.py": "", "pkg/tests/test_a.py": "from RevenueChaser.pkg import a\n",
+        "pkg/tests/__init__.py": "", "pkg/tests/test_a.py": "from revenuechaser.pkg import a\n",
     })
     assert mod.select(["pkg/a.py"], root=root).unit == ["pkg/tests/test_a.py"]
     assert mod.select(["pkg/lonely.py"], root=root).mode == "FULL"
@@ -162,7 +162,7 @@ def test_code_no_test_reaches_runs_the_full_suite(tmp_path):
 def test_a_file_that_does_not_parse_runs_the_full_suite(tmp_path):
     root = _mini_repo(tmp_path, {
         "pkg/__init__.py": "", "pkg/a.py": "def (:\n",
-        "pkg/tests/test_a.py": "from RevenueChaser.pkg import a\n",
+        "pkg/tests/test_a.py": "from revenuechaser.pkg import a\n",
     })
     assert mod.select(["pkg/a.py"], root=root).mode == "FULL"
     assert mod.select(["pkg/tests/test_a.py"], root=root).mode == "FULL"
@@ -171,7 +171,7 @@ def test_a_file_that_does_not_parse_runs_the_full_suite(tmp_path):
 def test_importing_a_submodule_runs_its_packages(tmp_path):
     root = _mini_repo(tmp_path, {
         "pkg/__init__.py": "X = 1\n", "pkg/sub/__init__.py": "", "pkg/sub/leaf.py": "",
-        "pkg/tests/test_leaf.py": "from RevenueChaser.pkg.sub import leaf\n",
+        "pkg/tests/test_leaf.py": "from revenuechaser.pkg.sub import leaf\n",
     })
     assert mod.select(["pkg/__init__.py"], root=root).unit == ["pkg/tests/test_leaf.py"]
 
@@ -182,8 +182,8 @@ def test_relative_lazy_and_string_imports_are_edges(tmp_path):
         "pkg/hop.py": "from . import a\n",
         "pkg/tests/__init__.py": "",
         "pkg/tests/test_rel.py": "from .. import hop\n",
-        "pkg/tests/test_lazy.py": "def test():\n    from RevenueChaser.pkg import b\n",
-        "pkg/tests/test_str.py": 'TARGET = "RevenueChaser.pkg.entry"\nREG = "pkg.c:run"\n',
+        "pkg/tests/test_lazy.py": "def test():\n    from revenuechaser.pkg import b\n",
+        "pkg/tests/test_str.py": 'TARGET = "revenuechaser.pkg.entry"\nREG = "pkg.c:run"\n',
     })
     assert mod.select(["pkg/a.py"], root=root).unit == ["pkg/tests/test_rel.py"]
     assert mod.select(["pkg/b.py"], root=root).unit == ["pkg/tests/test_lazy.py"]
@@ -449,7 +449,7 @@ def test_the_workflow_has_the_web_job_and_gates_on_it():
     web = wf.split("\n  web:\n", 1)[1].split("\n  red-on-base:\n", 1)[0]
     assert "name: web (${{ needs.plan.outputs.mode }})" in web
     assert "if: needs.plan.outputs.web == 'true'" in web
-    assert "working-directory: RevenueChaser/v2/web" in web
+    assert "working-directory: revenuechaser/v2/web" in web
     # The job is the ADR's gates, in order: licences, types, unit, build, browser.
     for step in ("node tools/check-licences.mjs", "npm ci --ignore-scripts", "npm run typecheck",
                  "npm test", "npm run build", "npm run test:browser"):

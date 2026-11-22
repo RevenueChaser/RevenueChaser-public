@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core import rawstore
+from revenuechaser.core import rawstore
 
 TABLE = "forecast_ledger"
 

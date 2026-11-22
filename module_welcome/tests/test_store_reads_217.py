@@ -19,9 +19,9 @@ import re
 from datetime import date
 from pathlib import Path
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_welcome import build as wb
-from RevenueChaser.module_welcome import store_reads as sr
+from revenuechaser.core import rawstore
+from revenuechaser.module_welcome import build as wb
+from revenuechaser.module_welcome import store_reads as sr
 
 REPO = Path(__file__).resolve().parents[2]
 #: The four tables of the board's file, as the names a stray ``SELECT`` would spell.

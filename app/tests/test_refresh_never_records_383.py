@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.app import dashboard, runners
-from RevenueChaser.core import rawstore
+from revenuechaser.app import dashboard, runners
+from revenuechaser.core import rawstore
 
 
 

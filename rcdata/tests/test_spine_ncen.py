@@ -11,9 +11,9 @@ from datetime import date
 import duckdb
 import pytest
 
-from RevenueChaser.core.providers import sec_edgar
-from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.spine import ncen
+from revenuechaser.core.providers import sec_edgar
+from revenuechaser.rcdata.build import base
+from revenuechaser.rcdata.build.spine import ncen
 
 from . import spine_fixture as fx
 
@@ -132,6 +132,6 @@ def test_an_answer_that_is_not_the_data_set_fails_and_is_not_served(env, body):
 
 
 def test_it_is_a_monthly_keyless_spine_dataset_that_starts_by_hand():
-    from RevenueChaser.rcdata.build import DATASETS
+    from revenuechaser.rcdata.build import DATASETS
     ds = DATASETS[ncen.NAME]
     assert ds.kind == "spine" and ds.cadence == "monthly" and ds.starts_by_hand and ds.providers == ("sec",)

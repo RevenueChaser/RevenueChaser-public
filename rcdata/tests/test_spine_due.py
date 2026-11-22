@@ -9,9 +9,9 @@ from datetime import datetime, timezone
 
 import pytest
 
-from RevenueChaser.core import calendar
-from RevenueChaser.rcdata import ops
-from RevenueChaser.rcdata.build import DATASETS, due
+from revenuechaser.core import calendar
+from revenuechaser.rcdata import ops
+from revenuechaser.rcdata.build import DATASETS, due
 
 SPINE = [n for n, d in DATASETS.items() if d.kind == "spine"]
 

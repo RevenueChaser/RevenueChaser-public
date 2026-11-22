@@ -6,8 +6,8 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_watchlists import store, symbols
+from revenuechaser.core import rawstore
+from revenuechaser.module_watchlists import store, symbols
 
 pytestmark = pytest.mark.rawstore_schema_from_scratch
 

@@ -9,8 +9,8 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.rcdata import read, sec_debt_note as note
-from RevenueChaser.rcdata.build.sec_reads import company_profile, debt_note, questions
+from revenuechaser.rcdata import read, sec_debt_note as note
+from revenuechaser.rcdata.build.sec_reads import company_profile, debt_note, questions
 
 END = date(2025, 12, 31)
 

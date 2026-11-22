@@ -10,10 +10,10 @@ import zipfile
 import duckdb
 import pytest
 
-from RevenueChaser.core.providers import sec_edgar
-from RevenueChaser.rcdata import ops
-from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.ownership import common, nport, sec
+from revenuechaser.core.providers import sec_edgar
+from revenuechaser.rcdata import ops
+from revenuechaser.rcdata.build import base
+from revenuechaser.rcdata.build.ownership import common, nport, sec
 
 from . import ownership_fixture as ox
 

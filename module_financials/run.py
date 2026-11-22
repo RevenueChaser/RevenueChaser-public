@@ -6,7 +6,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-from RevenueChaser.core.reporting_common import filters_meta, write_artifact
+from revenuechaser.core.reporting_common import filters_meta, write_artifact
 
 from .config import OUTPUT_DIR, PEER_CAP_RATIO_BAND, PEER_K, RISK_FREE_MAX_AGE_DAYS
 from .engines import (
@@ -44,7 +44,7 @@ def _stored_risk_free() -> dict | None:
     ten-year yield moves a few basis points in two weeks, and the fallback is a flat 4%, which is further off than a
     two-week-old yield; the date is shown.
     """
-    from RevenueChaser.core import risk_free
+    from revenuechaser.core import risk_free
     return risk_free.stored_dgs10(max_age_days=RISK_FREE_MAX_AGE_DAYS)
 
 
@@ -70,8 +70,8 @@ def _financials_record(rec: dict) -> dict:
     """One SEC annual record (``sec_edgar.extract_annual``'s shape) as the engines read a year: the fields above,
     ``capital_expenditure`` beside ``capex``, ``period_end`` (the revenue's) and EBITDA as operating income plus
     depreciation when the year has both."""
-    from RevenueChaser.core import fiscal_year
-    from RevenueChaser.core.config import to_float
+    from revenuechaser.core import fiscal_year
+    from revenuechaser.core.config import to_float
     end = fiscal_year.period_end(rec)
     out: dict = {"fiscal_year": rec.get("fiscal_year"), "period_end": end.isoformat() if end else None}
     for f in _SEC_FIELDS:
@@ -95,8 +95,8 @@ def _tax_and_interest_gaps(annual: list[dict], bank: bool = False) -> list[str]:
     DCF actually falls back from), and the interest expense when the newest year with revenue has none. A bank's
     model reads neither, so it has no gap (the delta review's nit).
     """
-    from RevenueChaser.core import fiscal_year
-    from RevenueChaser.core.config import to_float
+    from revenuechaser.core import fiscal_year
+    from revenuechaser.core.config import to_float
     from .engines._inputs import median_tax_rate
     if bank:
         return []
@@ -114,8 +114,8 @@ def _statement_gaps(annual: list[dict], bank: bool = False) -> list[str]:
     """The base-year inputs the engines would run on a labelled default for (``dcf_engine``): revenue, EBITDA,
     depreciation and capex of the newest year with revenue (``fiscal_year.anchor``), and working capital in every
     year, except for a bank (``bank``), whose models never read it (P/E only, Opus review N4)."""
-    from RevenueChaser.core import fiscal_year
-    from RevenueChaser.core.config import to_float
+    from revenuechaser.core import fiscal_year
+    from revenuechaser.core.config import to_float
     from .engines.dcf_engine import _nwc
     i = fiscal_year.anchor(annual)
     latest = annual[i] if i is not None else {}
@@ -144,7 +144,7 @@ def _sec_statements(ticker: str) -> tuple[list[dict] | None, dict]:
     ``meta`` comes back either way: it carries the SEC entity name the header shows and the layer's own stamps,
     which a name without a single annual year still has.
     """
-    from RevenueChaser.core import fiscal_year, fundamentals_layer
+    from revenuechaser.core import fiscal_year, fundamentals_layer
     annual, _quarterly, meta = fundamentals_layer.records(ticker)
     i = fiscal_year.anchor(annual)
     if i is None:
@@ -162,7 +162,7 @@ def _company_name(ticker: str, meta: dict) -> str:
     if name:
         return name
     try:
-        from RevenueChaser.core import universe as _spine
+        from revenuechaser.core import universe as _spine
         row = _spine.filter_fields([ticker]).get(ticker) or {}
     except Exception as exc:  # noqa: BLE001 - a header name is never worth failing a run
         logger.debug("financials: no spine name for %s (%s)", ticker, exc)
@@ -178,7 +178,7 @@ def _enterprise_value(market_cap, annual: list[dict]) -> float | None:
     the peers' were on two bases. Both are the newest stored fiscal year now, which is the basis the comps card
     already states. None when the cap or either balance-sheet line is unknown: half a bridge is not an EV.
     """
-    from RevenueChaser.core import fiscal_year
+    from revenuechaser.core import fiscal_year
     from .store_reads import _enterprise_value as bridge
     i = fiscal_year.anchor(annual or [])
     return bridge(market_cap, annual[i]) if i is not None else None
@@ -203,7 +203,7 @@ def picker_payload(ticker: str) -> dict:
     fetched. The ticker on the page stays in the pool even when the cut drops it, so the picker never opens on
     a name it cannot show.
     """
-    from RevenueChaser.core import universe as _spine
+    from revenuechaser.core import universe as _spine
 
     names = _spine.classification_universe(operating_only=_spine.BOARD_OPERATING_ONLY["module_financials"])
     fields = _spine.filter_fields(names) if names else {}
@@ -250,7 +250,7 @@ def _run(ticker: str, modules, output: str, assumptions: dict | None, peers: lis
 
     # R5 (#88): the sector is the spine's (DCF bands, comps peers and the report header all read it).
     # A name the spine lacks is Unclassified.
-    from RevenueChaser.core import universe as _spine
+    from revenuechaser.core import universe as _spine
     from .engines._inputs import PE_ONLY_SECTOR
     sector = _spine.gics_of(ticker, _spine.spine_gics([ticker])).sector
     bank = sector == PE_ONLY_SECTOR

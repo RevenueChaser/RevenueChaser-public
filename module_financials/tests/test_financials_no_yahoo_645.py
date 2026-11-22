@@ -23,7 +23,7 @@ import sys
 
 import pytest
 
-import RevenueChaser.module_financials.run as fm
+import revenuechaser.module_financials.run as fm
 
 
 class _Boom:
@@ -54,7 +54,7 @@ def _year(fy: str, **over) -> dict:
 
 def _layer(monkeypatch, years: list[dict], meta: dict | None = None) -> None:
     """The fundamentals layer serving ``years`` for every ticker, with ``meta``'s keys on its answer."""
-    from RevenueChaser.core import fundamentals_layer
+    from revenuechaser.core import fundamentals_layer
     answer = (years, [], {"entity_name": "Test Corporation", "newest_filed": "2026-08-01",
                           "available": bool(years), **(meta or {})})
     monkeypatch.setattr(fundamentals_layer, "reads_layer", lambda: True)
@@ -63,7 +63,7 @@ def _layer(monkeypatch, years: list[dict], meta: dict | None = None) -> None:
 
 def _offline(monkeypatch, tmp_path) -> None:
     """Everything the run reads besides the layer, stubbed to a store answer: no spine file, no prices file."""
-    from RevenueChaser.core import universe as spine
+    from revenuechaser.core import universe as spine
     monkeypatch.setattr(fm, "OUTPUT_DIR", tmp_path)
     monkeypatch.setattr(spine, "spine_gics", lambda tickers=None: {})
     monkeypatch.setattr(spine, "filter_fields", lambda tickers=None: {})
@@ -132,19 +132,19 @@ def test_the_header_name_is_the_sec_entity_name():
 
 
 def test_without_an_entity_name_the_spines_row_names_the_company(monkeypatch):
-    from RevenueChaser.core import universe as spine
+    from revenuechaser.core import universe as spine
     monkeypatch.setattr(spine, "filter_fields", lambda tickers=None: {"TEST": {"name": "Test Inc."}})
     assert fm._company_name("TEST", {}) == "Test Inc."
 
 
 def test_with_neither_the_name_is_the_ticker(monkeypatch):
-    from RevenueChaser.core import universe as spine
+    from revenuechaser.core import universe as spine
     monkeypatch.setattr(spine, "filter_fields", lambda tickers=None: {})
     assert fm._company_name("TEST", {"entity_name": "  "}) == "TEST"
 
 
 def test_a_spine_read_that_fails_is_no_name_not_an_error(monkeypatch):
-    from RevenueChaser.core import universe as spine
+    from revenuechaser.core import universe as spine
 
     def _boom(_tickers=None):
         raise RuntimeError("no spine file")
@@ -170,7 +170,7 @@ def test_the_ev_is_the_stores_bridge_on_the_newest_year():
 
 def test_the_ev_is_the_same_bridge_the_peer_side_uses():
     """One basis for the target and its comps (#286's bridge, reused rather than written twice)."""
-    from RevenueChaser.module_financials import store_reads
+    from revenuechaser.module_financials import store_reads
     year = fm._financials_record(_year("2025"))
     assert fm._enterprise_value(10_000.0, [year]) == store_reads._enterprise_value(10_000.0, year)
 

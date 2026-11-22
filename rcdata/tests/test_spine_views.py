@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.rcdata import serving
-from RevenueChaser.rcdata.build.spine import views
+from revenuechaser.rcdata import serving
+from revenuechaser.rcdata.build.spine import views
 
 from .test_spine_security import built, run_all  # noqa: F401 - the built spine of the 10 names
 
@@ -52,7 +52,7 @@ def test_index_constituents_and_index_tickers_keep_their_columns():
 
 
 def test_they_are_views_not_tables_so_the_swap_checks_count_only_the_served_tables():
-    from RevenueChaser.rcdata.build import base as build_base
+    from revenuechaser.rcdata.build import base as build_base
     with serving.open_read("spine") as con:
         names = {r[0] for r in con.execute("SELECT view_name FROM duckdb_views() WHERE NOT internal").fetchall()}
         tables = {r[0] for r in con.execute("SELECT table_name FROM duckdb_tables()").fetchall()}

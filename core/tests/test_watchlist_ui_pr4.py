@@ -14,8 +14,8 @@ import subprocess
 
 import pytest
 
-from RevenueChaser.core import reporting_common as rc
-from RevenueChaser.core.tests.test_one_escaper_175 import check_page
+from revenuechaser.core import reporting_common as rc
+from revenuechaser.core.tests.test_one_escaper_175 import check_page
 
 HOSTILE = ["<script>alert(1)</script>", "\"><img src=x onerror=alert(1)>", "A'B", "A B", "", None, "ABCDEFGHIJK",
            "-AAA", "../etc", "A&B", "NVDA\n"]
@@ -26,7 +26,7 @@ def _buttons(html: str) -> list[str]:
 
 
 def test_the_ticker_rule_is_the_dashboards():
-    from RevenueChaser.app import dashboard
+    from revenuechaser.app import dashboard
     assert rc.WATCH_TICKER_PATTERN == dashboard._TICKER_RE.pattern
     assert dashboard._TICKER_RE.pattern in rc.WATCHLIST_JS
 

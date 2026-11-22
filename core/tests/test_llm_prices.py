@@ -14,7 +14,7 @@ import json
 
 import pytest
 
-from RevenueChaser.core import llm_prices, llm_writers
+from revenuechaser.core import llm_prices, llm_writers
 
 PAID = "deepseek-v4-flash"
 
@@ -43,7 +43,7 @@ def test_the_measured_figure_still_prices_its_own_pilot_at_about_a_dollar():
 
 def test_the_relatedness_run_ceiling_reads_the_same_number():
     """One source: the per-run cap and the day ledger cost a call alike."""
-    from RevenueChaser.module_relatedness import config
+    from revenuechaser.module_relatedness import config
     assert config.EST_USD_PER_CALL == llm_prices.measured_usd_per_call(PAID)
 
 

@@ -14,9 +14,9 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 
-from RevenueChaser.core.html_safe import esc, script_json
-from RevenueChaser.module_settings import control
-from RevenueChaser.rcdata.needs import screen
+from revenuechaser.core.html_safe import esc, script_json
+from revenuechaser.module_settings import control
+from revenuechaser.rcdata.needs import screen
 
 _STATIC = Path(__file__).resolve().parent / "static"
 TREE_CSS = (_STATIC / "data_tree.css").read_text(encoding="utf-8")
@@ -286,7 +286,7 @@ def _uni_cards(view: dict) -> str:
     ident, mine = view.get("identity"), view.get("my_universe")
     if ident is None and mine is None:
         return ""
-    from RevenueChaser.module_settings import report
+    from revenuechaser.module_settings import report
     return (f'<div class="ucards">{report._nd_identity(ident) if ident is not None else ""}'
             f'{report._nd_my_universe(mine) if mine is not None else ""}</div>')
 

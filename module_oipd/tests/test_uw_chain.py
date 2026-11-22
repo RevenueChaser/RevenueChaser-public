@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import math
 
-from RevenueChaser.module_oipd import opd_math, uw_chain
+from revenuechaser.module_oipd import opd_math, uw_chain
 
 
 def _row(sym, bid, ask, iv=None, oi=10, vol=1):

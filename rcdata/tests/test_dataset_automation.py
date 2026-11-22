@@ -7,9 +7,9 @@ from datetime import datetime, timezone
 
 import pytest
 
-from RevenueChaser.core import calendar
-from RevenueChaser.rcdata import ops
-from RevenueChaser.rcdata.build import DATASETS, due
+from revenuechaser.core import calendar
+from revenuechaser.rcdata import ops
+from revenuechaser.rcdata.build import DATASETS, due
 
 MS = "market_series"
 TUE_EVENING = datetime(2026, 10, 27, 22, 0, tzinfo=timezone.utc)
@@ -17,7 +17,7 @@ TUE_EVENING = datetime(2026, 10, 27, 22, 0, tzinfo=timezone.utc)
 
 @pytest.fixture(autouse=True)
 def market_only(monkeypatch):
-    from RevenueChaser.rcdata import build
+    from revenuechaser.rcdata import build
     monkeypatch.setattr(build, "DATASETS", {MS: DATASETS[MS]})
     monkeypatch.setattr(calendar, "_now", lambda: TUE_EVENING)
 

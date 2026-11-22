@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.module_value_chain import config, splitter
-from RevenueChaser.rcdata import sec_sections
+from revenuechaser.module_value_chain import config, splitter
+from revenuechaser.rcdata import sec_sections
 
 PROSE = "We make widgets for customers across many markets and we sell them through distributors worldwide.\n" * 60
 TOC_10K = (" Table of Contents \n PART I \n Item 1. \n Business \n 3 \n Item 1A. \n Risk Factors \n 12 \n Item 2. \n"

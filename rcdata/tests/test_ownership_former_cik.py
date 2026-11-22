@@ -15,10 +15,10 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.core.providers import sec_edgar
-from RevenueChaser.rcdata import serving
-from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.ownership import common, form4, sec
+from revenuechaser.core.providers import sec_edgar
+from revenuechaser.rcdata import serving
+from revenuechaser.rcdata.build import base
+from revenuechaser.rcdata.build.ownership import common, form4, sec
 
 from . import ownership_fixture as ox
 
@@ -62,7 +62,7 @@ def test_a_period_that_still_holds_is_not_a_former_cik():
 
 def test_a_seed_pair_names_the_ticker_even_with_no_history_in_the_spine():
     """The seed (edgartools' pairs, ``build/cik_history.py``) reaches back further than our SEC snapshots."""
-    from RevenueChaser.rcdata.build import cik_history
+    from revenuechaser.rcdata.build import cik_history
     pre, suc = next(iter(cik_history.seed().items()))
     ox.make_spine(tickers=("SUC",), ciks={"SUC": suc})
     assert common.spine_former_ciks()[pre] == "SUC"

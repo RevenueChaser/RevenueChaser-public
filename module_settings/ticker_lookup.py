@@ -4,7 +4,7 @@ avo, 11 Nov 2026: "Eskiden bir tane sorgulayici vardi orada. Ticker'in ismini gi
 verileri oldugunu, ne zamandan kaldigini vesaire soyluyordu."
 
 The old drill (``inventory.ticker_detail``) read ``.store/raw.duckdb``, the old store, and only ever showed the
-newest date. This one reads **only** the six served DuckDB files through :mod:`RevenueChaser.rcdata.serving`, and
+newest date. This one reads **only** the six served DuckDB files through :mod:`revenuechaser.rcdata.serving`, and
 every row carries both ends of the range: since when, and up to when.
 
 Nothing here is hand-maintained per table. Each live file is asked for its own tables and columns

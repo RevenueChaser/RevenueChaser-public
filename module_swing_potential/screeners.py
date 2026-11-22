@@ -11,7 +11,7 @@ pct_high), and ``threshold`` is the human-readable comparison.
 """
 from __future__ import annotations
 
-from RevenueChaser.core import tristate as tri
+from revenuechaser.core import tristate as tri
 from . import config
 from . import settings as swing_settings
 

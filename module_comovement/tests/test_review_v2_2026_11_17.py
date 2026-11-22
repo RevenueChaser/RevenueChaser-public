@@ -12,9 +12,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from RevenueChaser.module_comovement import config, engine
-from RevenueChaser.module_comovement.tests import test_recompute_parity as parity
-from RevenueChaser.module_comovement.tests.test_comovement import (_report_cluster, _report_payload,
+from revenuechaser.module_comovement import config, engine
+from revenuechaser.module_comovement.tests import test_recompute_parity as parity
+from revenuechaser.module_comovement.tests.test_comovement import (_report_cluster, _report_payload,
                                                                     _run_board_js)
 
 
@@ -35,7 +35,7 @@ def test_a_stale_name_listed_inside_the_window_is_missing_bars_on_a_refresh(raws
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not on PATH")
 def test_unjudged_text_names_the_views_a_fetch_judges(tmp_path):
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
 
     payload = _report_payload(clusters={"20": [
         _report_cluster("1", mean=0.72, tickers=("AAA", "BBB"), significant=None, baseline_r=None)]})

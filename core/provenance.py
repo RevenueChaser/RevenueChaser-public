@@ -18,8 +18,8 @@ import json
 import logging
 from datetime import datetime, timezone
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.core.calendar import to_session_date
+from revenuechaser.core import rawstore
+from revenuechaser.core.calendar import to_session_date
 
 logger = logging.getLogger(__name__)
 
@@ -59,21 +59,21 @@ def _comovement_day() -> str | None:
     """Newest prices-store session over the names Co-movement clusters (the classification universe): it reads the
     prices store since PR 8 (G3), so its date is its own names' price date (DF101, as K7 does for Swing and
     Fundamentals)."""
-    from RevenueChaser.module_comovement import ohlc
+    from revenuechaser.module_comovement import ohlc
     return prices_day(ohlc.universe_tickers())
 
 
 def prices_day(tickers) -> str | None:
     """Newest session of the prices store (``rcdata.read.last_sessions``) over ``tickers``; ``None`` when none has a
     bar or there is no store."""
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     days = list(read.last_sessions(list(tickers)).values())
     return max(days).isoformat() if days else None
 
 
 def d01_day(tickers) -> str | None:
     """Newest D01 session (``price_bars_daily``) over ``tickers``; ``None`` when none has a bar."""
-    from RevenueChaser.core import ledger
+    from revenuechaser.core import ledger
     days = [day for day, _ in ledger.d01_last_bars(tickers).values()]
     return max(days) if days else None
 
@@ -103,28 +103,28 @@ def _rotation_day() -> str | None:
     The SQL used to be here, three directories from the tables it named -- the shape of the News bug this
     strangler found (``news_calendar`` never existed and the board's date had been blank for ever, silently).
     """
-    from RevenueChaser.module_sector_rotation.store_reads import newest_snapshot_date
+    from revenuechaser.module_sector_rotation.store_reads import newest_snapshot_date
     return _day(newest_snapshot_date())
 
 
 def _sec13f_day() -> str | None:
     """Newest 13F reporting period the builder serves (``ownership.sec13f_totals``) — what the board renders.
     Quarterly, so months behind by design."""
-    from RevenueChaser.core import ownership
+    from revenuechaser.core import ownership
     periods = {p for per in ownership.sec13f_totals().values() for p in per}
     return max(periods) if periods else None
 
 
 def _leaps_day() -> str | None:
     """The newest session of ``option_far_contract``, the one table the LEAPS board reads (#746)."""
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     sessions = read.far_contract_sessions()
     return str(sessions[0]["session_date"]) if sessions else None
 
 
 def _spx_gamma_day() -> str | None:
     """SPX Gamma's newest shown day, from its board file's latest pointer (``spx_meta``)."""
-    from RevenueChaser.app import runners
+    from revenuechaser.app import runners
     payload = runners.spxgamma_latest()
     if not payload:
         return None
@@ -139,7 +139,7 @@ def _chain_day() -> str | None:
 def _oipd_day() -> str | None:
     """Session of the stored chain the board last rendered (``.cache/oipd/oipd_latest.json``): the board reads the
     nightly options build, so the payload's ``asof`` is that chain's session. None with no rendered chain."""
-    from RevenueChaser.core.config import OUTPUT_DIR as CACHE_ROOT
+    from revenuechaser.core.config import OUTPUT_DIR as CACHE_ROOT
     p = CACHE_ROOT / "oipd" / "oipd_latest.json"
     if not p.exists():
         return None
@@ -155,7 +155,7 @@ def _news_day() -> str | None:
     whose tables are ``news_events``, ``news_highlight`` and ``news_meta``. A read of a missing table answers no
     rows, so this resolver returned None whatever the board held, and the News board showed no data date.
     """
-    from RevenueChaser.module_news import store_reads
+    from revenuechaser.module_news import store_reads
     newest = store_reads.newest_event_fetch_at()
     return None if newest is None else session_of(newest)
 
@@ -211,7 +211,7 @@ def last_run(module: str) -> str | None:
     if module != "module_settings":
         return None
     try:
-        from RevenueChaser.rcdata import ops
+        from revenuechaser.rcdata import ops
         run = ops.last_builder_run() or {}
         started = run.get("started_at")
         return datetime.fromtimestamp(float(started), tz=timezone.utc).isoformat() if started else None

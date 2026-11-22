@@ -6,10 +6,10 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.core.providers import sec_edgar
-from RevenueChaser.rcdata import ops, read
-from RevenueChaser.rcdata.build.fundamentals import companyfacts, filings
-from RevenueChaser.rcdata.build.sec_forms import forms
+from revenuechaser.core.providers import sec_edgar
+from revenuechaser.rcdata import ops, read
+from revenuechaser.rcdata.build.fundamentals import companyfacts, filings
+from revenuechaser.rcdata.build.sec_forms import forms
 
 from . import fund_fixture as fx
 

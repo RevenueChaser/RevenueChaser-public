@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from RevenueChaser.core.tests.board_fixtures import BOARDS
+from revenuechaser.core.tests.board_fixtures import BOARDS
 
 ROOT = Path(__file__).resolve().parents[2]
 _SKIP_DIRS = {".git", ".cache", ".store", ".claude", ".hermes", "docs", "vendor", "tests",
@@ -84,8 +84,8 @@ def test_a_rendered_board_defines_every_escaper_it_calls(key, tmp_path, monkeypa
 
 def _snippets() -> dict[str, str]:
     """The shared JS snippets a board embeds, each of which may be the only one on its page."""
-    from RevenueChaser.core import reporting_common
-    from RevenueChaser.module_earnings_radar.report import DETAIL_JS
+    from revenuechaser.core import reporting_common
+    from revenuechaser.module_earnings_radar.report import DETAIL_JS
     found = {n: v for n, v in vars(reporting_common).items() if n.endswith("_JS") and isinstance(v, str)}
     return {**found, "DETAIL_JS": DETAIL_JS}
 
@@ -104,7 +104,7 @@ def test_the_snippet_check_sees_the_snippets_that_call_the_escaper():
 
 
 def test_the_shell_defines_every_escaper_it_calls():
-    from RevenueChaser.app import dashboard
+    from revenuechaser.app import dashboard
     check_page(dashboard.app.test_client().get("/").get_data(as_text=True))
 
 

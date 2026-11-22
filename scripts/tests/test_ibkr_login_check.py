@@ -6,8 +6,8 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from RevenueChaser.core import ibkr_login
-from RevenueChaser.scripts import ibkr_login_check
+from revenuechaser.core import ibkr_login
+from revenuechaser.scripts import ibkr_login_check
 
 _NOW = datetime(2026, 10, 23, 23, 40, tzinfo=timezone.utc)
 
@@ -91,7 +91,7 @@ def test_the_summary_says_how_long_the_state_has_held(on, tmp_path, capsys):
 def test_the_job_writes_no_store_file_and_no_table(on, tmp_path, monkeypatch):
     """This job touches no DuckDB file, so it can never queue behind or hold the dashboard's
     single writer."""
-    from RevenueChaser.core import rawstore
+    from revenuechaser.core import rawstore
 
     def no_connect(*a, **kw):
         pytest.fail("the login check must not open a store file")

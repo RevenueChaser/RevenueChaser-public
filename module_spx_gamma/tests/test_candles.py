@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from RevenueChaser.module_spx_gamma.candles import price_window_sessions, week_window_start
+from revenuechaser.module_spx_gamma.candles import price_window_sessions, week_window_start
 
 
 def _sessions(n: int, end: date = date(2026, 8, 14)) -> list[dict]:

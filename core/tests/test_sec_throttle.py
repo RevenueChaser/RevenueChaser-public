@@ -16,8 +16,8 @@ from pathlib import Path
 import httpx
 import pytest
 
-from RevenueChaser.core import job_lock, rawstore, sec_throttle
-from RevenueChaser.core.providers import sec_edgar as se
+from revenuechaser.core import job_lock, rawstore, sec_throttle
+from revenuechaser.core.providers import sec_edgar as se
 
 
 class _Resp:
@@ -66,7 +66,7 @@ def _wait_for(path: Path, seconds: float) -> bool:
 _HAMMER = r"""
 import json, sys, time
 from pathlib import Path
-from RevenueChaser.core import sec_throttle
+from revenuechaser.core import sec_throttle
 
 path, ready, go, result, rate, duration = sys.argv[1:7]
 sec_throttle.bucket_path = lambda: Path(path)
@@ -246,7 +246,7 @@ def test_a_dead_holder_does_not_wedge_the_bucket(tmp_path):
     script = r"""
 import os, sys, time
 from pathlib import Path
-from RevenueChaser.core import job_lock
+from revenuechaser.core import job_lock
 path, ready = sys.argv[1:3]
 fd = os.open(path, os.O_RDWR)
 assert job_lock._os_lock(fd)

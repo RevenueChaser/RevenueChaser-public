@@ -10,7 +10,7 @@ the run's counts.
 Since 11 Nov 2026 (plan F4) it measures what the board does: each name gets the board's input (``engine._prepare``:
 the layer's business section, the v3b context, the fallback chain and the writer's locator call), and the matrix is
 similarity v2 (``similarity.blended_peer_lists`` on the local embeddings; ``method`` says ``embedding``, or ``tags``
-when no vector could be made). Then ``python -m RevenueChaser.module_relatedness.validation report --scores <file>`` scores it,
+when no vector could be made). Then ``python -m revenuechaser.module_relatedness.validation report --scores <file>`` scores it,
 offline.
 """
 from __future__ import annotations
@@ -20,10 +20,10 @@ import re
 import threading
 import time
 
-from RevenueChaser.core.config import OUTPUT_DIR
-from RevenueChaser.core import fundamentals_layer
-from RevenueChaser.core import llm_writers as writers
-from RevenueChaser.core.providers import deepseek
+from revenuechaser.core.config import OUTPUT_DIR
+from revenuechaser.core import fundamentals_layer
+from revenuechaser.core import llm_writers as writers
+from revenuechaser.core.providers import deepseek
 
 from . import config, embeddings, engine, locator, profile_v3, profiles, similarity
 from . import store_reads as sr

@@ -14,8 +14,8 @@ import subprocess
 
 import pytest
 
-from RevenueChaser.core.tests.board_fixtures import BOARDS
-from RevenueChaser.core.tests.board_js import DOM_STUB, function_source, inline_scripts
+from revenuechaser.core.tests.board_fixtures import BOARDS
+from revenuechaser.core.tests.board_js import DOM_STUB, function_source, inline_scripts
 
 SPY = r"""
 var _calls = [];
@@ -59,7 +59,7 @@ def _assert_all_post_with_the_header(calls: list[dict], urls: list[str]) -> None
 
 def test_the_shell_sends_the_header_from_fetch_tab_and_cancel_job(tmp_path):
     """The shell's script drives iframes and tabs, so only the two write functions run."""
-    from RevenueChaser.app import dashboard
+    from revenuechaser.app import dashboard
     html = dashboard.app.test_client().get("/").get_data(as_text=True)
     script = next(s for s in inline_scripts(html) if "function fetchTab" in s)
     prelude = ("var ACTIVE = 'module_leaps', ACTIVE_JOBS = [];"

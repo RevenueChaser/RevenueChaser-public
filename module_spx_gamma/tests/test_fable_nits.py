@@ -5,8 +5,8 @@ rule did not cover.
 """
 from __future__ import annotations
 
-from RevenueChaser.module_spx_gamma import relations
-from RevenueChaser.module_spx_gamma.summary import charm_card
+from revenuechaser.module_spx_gamma import relations
+from revenuechaser.module_spx_gamma.summary import charm_card
 
 
 # ── N1: the Relations card and the Charm card read the same charm sum the same way ──────────────
@@ -44,7 +44,7 @@ def test_n1_rows_without_charm_values_are_unknown_not_negative():
 
 
 # ── N2: a same-day contract is not priced as if a full day were left ────────────────────────────
-from RevenueChaser.module_spx_gamma.chains import black_scholes_mid, normalize_option_chain  # noqa: E402
+from revenuechaser.module_spx_gamma.chains import black_scholes_mid, normalize_option_chain  # noqa: E402
 
 YEAR_HOURS = 365.0 * 24.0
 
@@ -87,7 +87,7 @@ def test_n2_a_fetch_before_the_open_still_gets_one_session_at_most():
 
 
 def test_n2_the_snapshot_passes_its_fetch_time_to_the_chain():
-    from RevenueChaser.module_spx_gamma.normalize import normalize_snapshot
+    from revenuechaser.module_spx_gamma.normalize import normalize_snapshot
     from .conftest import make_raw
     raw = make_raw()
     raw["option_chain"] = _unquoted("2026-08-14")
@@ -99,7 +99,7 @@ def test_n2_the_snapshot_passes_its_fetch_time_to_the_chain():
 
 
 # ── N3: "at the wall" means within 1% of it on either side, not anywhere past it ───────────────
-from RevenueChaser.module_spx_gamma.flow_signals import evaluate_flow_signal  # noqa: E402
+from revenuechaser.module_spx_gamma.flow_signals import evaluate_flow_signal  # noqa: E402
 
 
 def _flow_snap(spot: float, call_wall: float | None = 7800.0, put_wall: float | None = None,
@@ -145,8 +145,8 @@ def test_n3_a_spot_just_below_the_put_wall_is_still_at_it():
 
 # ── N4: the spot row says where the spot came from ──────────────────────────────────────────────
 def _details(raw_over: dict | None = None) -> dict:
-    from RevenueChaser.module_spx_gamma import render
-    from RevenueChaser.module_spx_gamma.normalize import normalize_snapshot
+    from revenuechaser.module_spx_gamma import render
+    from revenuechaser.module_spx_gamma.normalize import normalize_snapshot
     from .conftest import make_raw
     raw = make_raw()
     raw.update(raw_over or {})
@@ -190,7 +190,7 @@ def test_n5_the_provider_put_wall_keeps_its_provider_label():
 # ── N6: the Brier verdict is measured against the base rate, and the scorecard counts days ──────
 import pytest  # noqa: E402
 
-from RevenueChaser.module_spx_gamma import brier  # noqa: E402
+from revenuechaser.module_spx_gamma import brier  # noqa: E402
 
 CONSTANT = {"Consolidation": 0.45, "Upside": 0.25, "Downside": 0.30}
 
@@ -239,8 +239,8 @@ def test_n6_recorded_but_unscored_days_do_not_move_the_base_rate(tmp_path):
 
 
 # ── N7: the VIX term mode reads the 9-day point too ─────────────────────────────────────────────
-from RevenueChaser.module_spx_gamma.normalize import normalize_vix  # noqa: E402
-from RevenueChaser.module_spx_gamma.vix import vix_term_mode  # noqa: E402
+from revenuechaser.module_spx_gamma.normalize import normalize_vix  # noqa: E402
+from revenuechaser.module_spx_gamma.vix import vix_term_mode  # noqa: E402
 
 
 def test_n7_a_9d_above_spot_vix_is_front_backwardation_even_in_contango():

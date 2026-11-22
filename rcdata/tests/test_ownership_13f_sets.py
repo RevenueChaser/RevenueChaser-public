@@ -13,10 +13,10 @@ from datetime import date
 import duckdb
 import pytest
 
-from RevenueChaser.core.providers import sec_edgar
-from RevenueChaser.rcdata import serving
-from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.ownership import common, edgar, sec, sec13f, sec13f_sets
+from revenuechaser.core.providers import sec_edgar
+from revenuechaser.rcdata import serving
+from revenuechaser.rcdata.build import base
+from revenuechaser.rcdata.build.ownership import common, edgar, sec, sec13f, sec13f_sets
 
 from . import ownership_fixture as ox
 
@@ -83,7 +83,7 @@ def _served(sql: str, *args) -> list[tuple]:
 def _active() -> list[str]:
     """The accessions the serve's amendment walk counts, over the rows ``serve._held`` reads (status ok, grouped by
     quarter end); its served-quarter cut is left out, which no filing here falls before."""
-    from RevenueChaser.rcdata.build.ownership import serve
+    from revenuechaser.rcdata.build.ownership import serve
     return serve.active_accessions(_served(
         f"SELECT accession, cik, {serve.QE} AS period, filed, coalesce(amendment_no, 0), is_amendment, amendment_type "
         f"FROM {sec13f.TABLE} WHERE status = 'ok' AND cik IS NOT NULL AND period IS NOT NULL "
@@ -336,7 +336,7 @@ def test_a_row_that_does_not_read_is_rejected_and_counted_not_the_whole_set(feed
 
 def _edgar_managers(included, reported_by) -> list:
     """The same two lists through the EDGAR path's parser, as its own XML carries them."""
-    from RevenueChaser.rcdata.build.ownership.sec13f import _managers as parse_managers
+    from revenuechaser.rcdata.build.ownership.sec13f import _managers as parse_managers
     cover = "".join(f"<otherManager><cik>{c}</cik><form13FFileNumber>028-00002</form13FFileNumber>"
                     f"<name>{n}</name></otherManager>" for _sk, c, n in reported_by)
     inc = "".join(f"<otherManager2><sequenceNumber>{q}</sequenceNumber><otherManager><cik>{c}</cik>"
@@ -351,7 +351,7 @@ def _edgar_managers(included, reported_by) -> list:
 
 
 def _managers(accession: str) -> list:
-    from RevenueChaser.rcdata.build.spine.stage import partitions
+    from revenuechaser.rcdata.build.spine.stage import partitions
     files = [str(f) for _, f in partitions(sec13f.DATASET.parquet_dir() / "managers", "day")]
     if not files:
         return []

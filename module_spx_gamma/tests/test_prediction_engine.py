@@ -7,10 +7,10 @@ from pathlib import Path
 
 import pytest
 
-from RevenueChaser.module_spx_gamma import render
-from RevenueChaser.module_spx_gamma.config import RAW_ROOT
-from RevenueChaser.module_spx_gamma.engines import prediction_engine as pe
-from RevenueChaser.module_spx_gamma.normalize import normalize_snapshot
+from revenuechaser.module_spx_gamma import render
+from revenuechaser.module_spx_gamma.config import RAW_ROOT
+from revenuechaser.module_spx_gamma.engines import prediction_engine as pe
+from revenuechaser.module_spx_gamma.normalize import normalize_snapshot
 from .conftest import make_raw, make_snapshot
 
 
@@ -215,7 +215,7 @@ def test_historical_raw_predictions_consistent(day):
     # window around spot; when the ATM is short-gamma (no positive magnet near
     # spot) it must fall back to the equilibrium/spot anchor so the neutral band
     # stays tied to live price action.
-    from RevenueChaser.module_spx_gamma.config import PIN_ATM_WINDOW_PTS, CONSOLIDATION_BAND_PTS
+    from revenuechaser.module_spx_gamma.config import PIN_ATM_WINDOW_PTS, CONSOLIDATION_BAND_PTS
     spot = snap["current_level"]
     near = [r for r in snap["strike_expiry_rows"]
             if (r.get("dte") if r.get("dte") is not None else 0.0) <= 1
@@ -276,7 +276,7 @@ def test_html_injects_prediction_banner(snapshot):
     assert "OI:" in html and "Vol:" in html
     # CSS variables must survive so the iframe never breaks styling
     # (the palette is the shell's: reporting_common.THEME_CSS, dark by default; the board's names alias it)
-    from RevenueChaser.core.reporting_common import THEME_TOKENS
+    from revenuechaser.core.reporting_common import THEME_TOKENS
     dark = THEME_TOKENS["dark"]
     for name in ("pos", "neg", "amber", "bg"):
         assert f"--{name}:{dark[name]}" in html, name
@@ -293,7 +293,7 @@ def test_html_prediction_absent_degrades():
 def test_prediction_cache_written_without_api_duplication(tmp_path, monkeypatch, stored_make_raw_window):
     """A cached prediction is written once alongside the snapshot; re-serving it
     (Refresh Tab) never invokes the UW client again."""
-    from RevenueChaser.module_spx_gamma import run as spx_run
+    from revenuechaser.module_spx_gamma import run as spx_run
 
     api_calls = {"count": 0}
 

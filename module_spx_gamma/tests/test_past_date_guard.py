@@ -7,8 +7,8 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_spx_gamma import run as spx_run, snapshot as snap, store as spx_store
+from revenuechaser.core import rawstore
+from revenuechaser.module_spx_gamma import run as spx_run, snapshot as snap, store as spx_store
 
 from .conftest import FakeUW
 from .test_s2_fetch import CFTC, VIX, _handler
@@ -125,8 +125,8 @@ def test_a_past_day_without_a_manifest_is_still_fetched(tmp_path, monkeypatch):
 @pytest.fixture
 def board(two_days, monkeypatch):
     """The dashboard pointed at ``two_days``; no shown day yet, as after a restart."""
-    from RevenueChaser.app import dashboard, runners
-    from RevenueChaser.module_spx_gamma import config
+    from revenuechaser.app import dashboard, runners
+    from revenuechaser.module_spx_gamma import config
 
     monkeypatch.setattr(spx_run, "today_ny", lambda: date(2026, 8, 17))
     monkeypatch.setattr(spx_run, "DATA_ROOT", two_days)
@@ -142,7 +142,7 @@ def _report(root, day):
 
 
 def test_the_route_sends_a_stored_past_day_to_the_no_uw_job(board, two_days, monkeypatch):
-    from RevenueChaser.app import dashboard
+    from revenuechaser.app import dashboard
 
     seen = []
     monkeypatch.setattr(dashboard, "_submit", lambda module, params: seen.append((module, params)) or ("ok", 200))
@@ -157,7 +157,7 @@ def test_the_route_sends_a_stored_past_day_to_the_no_uw_job(board, two_days, mon
 
 
 def test_a_stored_past_day_click_sends_no_auth_probe(board, monkeypatch):
-    from RevenueChaser.app import dashboard, jobs
+    from revenuechaser.app import dashboard, jobs
 
     probes, submitted = [], []
 
@@ -176,7 +176,7 @@ def test_a_stored_past_day_click_sends_no_auth_probe(board, monkeypatch):
 
 
 def test_the_stored_job_rebuilds_from_disk_with_no_network(board, two_days, monkeypatch):
-    from RevenueChaser.app import runners
+    from revenuechaser.app import runners
 
     def boom(*a, **k):
         raise AssertionError("network used")
@@ -191,10 +191,10 @@ def test_the_stored_job_rebuilds_from_disk_with_no_network(board, two_days, monk
 
 
 def test_the_runner_passes_force_to_the_module(monkeypatch):
-    from RevenueChaser.app import runners
+    from revenuechaser.app import runners
 
     got = []
-    monkeypatch.setattr("RevenueChaser.module_spx_gamma.run.run", lambda asof, **k: got.append(k["force"]))
+    monkeypatch.setattr("revenuechaser.module_spx_gamma.run.run", lambda asof, **k: got.append(k["force"]))
     monkeypatch.setattr(runners, "_SPX_VIEW", None, raising=False)
     runners.run_spxgamma(object(), OLD)
     runners.run_spxgamma(object(), OLD, force=True)
@@ -202,7 +202,7 @@ def test_the_runner_passes_force_to_the_module(monkeypatch):
 
 
 def test_the_board_shows_the_past_day_just_built(board, two_days):
-    from RevenueChaser.app import runners
+    from revenuechaser.app import runners
 
     runners.run_spxgamma(None, OLD)       # a calendar click on a stored day
     assert _report(two_days, OLD) != _report(two_days, NEW)
@@ -210,7 +210,7 @@ def test_the_board_shows_the_past_day_just_built(board, two_days):
 
 
 def test_after_a_restart_the_board_shows_the_newest_day(board, two_days, monkeypatch):
-    from RevenueChaser.app import runners
+    from revenuechaser.app import runners
 
     runners.run_spxgamma(None, OLD)       # a calendar click on a stored day
     monkeypatch.setattr(runners, "_SPX_VIEW", None, raising=False)   # a new dashboard process
@@ -218,9 +218,9 @@ def test_after_a_restart_the_board_shows_the_newest_day(board, two_days, monkeyp
 
 
 def test_refresh_puts_the_board_back_on_the_newest_day(board, two_days, monkeypatch):
-    from RevenueChaser.app import runners
+    from revenuechaser.app import runners
 
-    monkeypatch.setattr("RevenueChaser.app.dashboard._from_another_site", lambda: False)
+    monkeypatch.setattr("revenuechaser.app.dashboard._from_another_site", lambda: False)
     runners.run_spxgamma(None, OLD)       # a calendar click on a stored day
     assert board.get("/view/module_spx_gamma?refresh=1").get_data() == _report(two_days, NEW)
     assert board.get("/view/module_spx_gamma").get_data() == _report(two_days, NEW)

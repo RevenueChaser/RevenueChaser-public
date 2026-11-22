@@ -13,9 +13,9 @@ from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
-from RevenueChaser.rcdata.tests import universe_store
-from RevenueChaser.core import baselines, calendar as cal, ledger, rawstore
-from RevenueChaser.core.tests.d01_seed import write_d01
+from revenuechaser.rcdata.tests import universe_store
+from revenuechaser.core import baselines, calendar as cal, ledger, rawstore
+from revenuechaser.core.tests.d01_seed import write_d01
 
 D = date(2026, 9, 1)                      # the freeze date (a Tuesday)
 LAST_BAR = date(2026, 10, 9)

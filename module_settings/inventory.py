@@ -9,8 +9,8 @@ from __future__ import annotations
 import os
 from datetime import datetime, timezone
 
-from RevenueChaser.core import automations, ibkr_login
-from RevenueChaser.module_settings import boards
+from revenuechaser.core import automations, ibkr_login
+from revenuechaser.module_settings import boards
 
 DASH = "—"
 BOARD = "module_settings"
@@ -27,7 +27,7 @@ def _ibkr_login_url() -> str:
 
 def _universe_tickers() -> tuple[list[dict], str | None]:
     """``([{ticker, name}], error)`` for the ticker combobox, from the spine through ``rcdata.read`` (#485)."""
-    from RevenueChaser.rcdata import read as rcread
+    from revenuechaser.rcdata import read as rcread
     try:
         rows = rcread.universe()
     except Exception as exc:  # noqa: BLE001 - said on the page in the box's place, never an empty box

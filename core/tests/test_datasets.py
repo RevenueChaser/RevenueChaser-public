@@ -12,7 +12,7 @@ and a dataset that declares coverage at all must carry one on a store where noth
 """
 from __future__ import annotations
 
-from RevenueChaser.core import automations, datasets, rawstore
+from revenuechaser.core import automations, datasets, rawstore
 
 # Keys ``module_settings/inventory.py`` ``_collect`` builds today (19 row builders).
 # The plan text said 22; this worktree's ``_collect`` has these.
@@ -118,7 +118,7 @@ def test_seeded_inventory_keys_keep_their_labels():
 # measured coverage is below 100% must carry a ``gap_kind``, and ``fixable`` / ``in_build`` /
 # ``needs_decision`` must carry a ``next_step``. A ``ceiling`` carries its REASON in ``next_step``
 # (a fact about the source), so it needs one too.
-from RevenueChaser.core.datahealth import Health  # noqa: E402
+from revenuechaser.core.datahealth import Health  # noqa: E402
 
 
 def _gap_problems(spec: datasets.DatasetSpec, health: Health) -> list[str]:

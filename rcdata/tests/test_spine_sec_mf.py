@@ -13,10 +13,10 @@ from datetime import date
 import duckdb
 import pytest
 
-from RevenueChaser.core.providers import sec_edgar
-from RevenueChaser.rcdata import serving
-from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.spine import sec_tickers, sec_tickers_mf as mf
+from revenuechaser.core.providers import sec_edgar
+from revenuechaser.rcdata import serving
+from revenuechaser.rcdata.build import base
+from revenuechaser.rcdata.build.spine import sec_tickers, sec_tickers_mf as mf
 
 from . import spine_fixture as fx
 
@@ -220,8 +220,8 @@ def test_the_spine_builds_with_no_fund_file_yet_and_serves_the_table_empty(env):
     with serving.open_read("spine") as con:
         assert con.execute(f"SELECT count(*) FROM {mf.TABLE}").fetchone() == (0,)
         assert con.execute("SELECT version FROM serving_schema_version").fetchone() == (serving.SERVING_SCHEMA_VERSION["spine"],)
-    from RevenueChaser.rcdata import ops
-    from RevenueChaser.rcdata.build.spine import security
+    from revenuechaser.rcdata import ops
+    from revenuechaser.rcdata.build.spine import security
     issues = {(i["kind"], i["key"]) for i in ops.open_issues(security.NAME, limit=500)[1]}
     assert ("source_never_run", mf.NAME) in issues
 

@@ -12,7 +12,7 @@ import re
 
 import pytest
 
-from RevenueChaser.module_spx_gamma import render, run, week_gamma
+from revenuechaser.module_spx_gamma import render, run, week_gamma
 from .conftest import make_snapshot
 
 
@@ -95,7 +95,7 @@ def test_structures_are_cards_with_leg_chips(monkeypatch):
 
 
 def test_structure_rows_carry_leg_chips():
-    from RevenueChaser.module_spx_gamma.structures import build_structures   # noqa: F401  (shape owner)
+    from revenuechaser.module_spx_gamma.structures import build_structures   # noqa: F401  (shape owner)
     chips = render._leg_chips([{"action": "BUY", "type": "PUT", "strike": 7575.0},
                                {"action": "SELL", "type": "CALL", "strike": 7800.0}])
     assert chips == [{"text": "+7575P", "long": True}, {"text": "−7800C", "long": False}]

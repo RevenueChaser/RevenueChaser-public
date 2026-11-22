@@ -13,8 +13,8 @@ import gzip
 import hashlib
 import json
 
-from RevenueChaser.core import reporting_common as rc
-from RevenueChaser.core import v2_envelope as env
+from revenuechaser.core import reporting_common as rc
+from revenuechaser.core import v2_envelope as env
 
 PAYLOAD = {"rows": [{"ticker": "AAA", "name": "Ä & <b>"}], "n": 1, "data_as_of": "2026-11-20"}
 
@@ -76,7 +76,7 @@ def test_drop_board_data_removes_both_files(tmp_path):
 
 def test_the_run_id_comes_from_the_store_writer_when_the_caller_names_none(tmp_path, monkeypatch):
     """So the envelope joins to its ``job_runs`` row, like every row a job writes (rawstore.writer_run_id)."""
-    from RevenueChaser.core import rawstore
+    from revenuechaser.core import rawstore
     monkeypatch.setattr(rawstore, "writer_run_id", lambda: "job-77")
     html = tmp_path / "comovement_latest.html"
     rc.write_board(html, "", PAYLOAD)
@@ -104,7 +104,7 @@ def test_every_registered_board_names_the_file_the_dashboard_serves():
     A board renamed or repointed in ``app/dashboard.py`` without its envelope entry would write the envelope
     under a board key no door could ask for.
     """
-    from RevenueChaser.app import dashboard
+    from revenuechaser.app import dashboard
     for board, stem in env.BOARDS.items():
         served = dashboard._module_file(board)
         assert served is not None, board
@@ -143,7 +143,7 @@ def test_a_board_schema_refuses_an_envelope_with_no_as_of():
     import json
     from pathlib import Path
 
-    from RevenueChaser.v2 import validate
+    from revenuechaser.v2 import validate
 
     schemas = Path(__file__).resolve().parents[2] / "v2" / "schemas"
     board = json.loads((schemas / "module_relatedness.schema.json").read_text(encoding="utf-8"))

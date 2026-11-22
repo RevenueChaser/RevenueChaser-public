@@ -6,7 +6,7 @@ are testable rather than magic. See docs/plan_rest.md.
 """
 from __future__ import annotations
 
-from RevenueChaser.core.config import OUTPUT_DIR
+from revenuechaser.core.config import OUTPUT_DIR
 
 COMOVEMENT_LATEST = OUTPUT_DIR / "comovement_latest.html"
 COMOVEMENT_JSON = OUTPUT_DIR / "comovement" / "comovement_latest.json"

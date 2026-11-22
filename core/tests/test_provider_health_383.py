@@ -9,9 +9,9 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from RevenueChaser.core.providers import yfinance as yfp
-from RevenueChaser.core.providers.result import ProviderHealth
-from RevenueChaser.core.reporting_common import provider_health_html
+from revenuechaser.core.providers import yfinance as yfp
+from revenuechaser.core.providers.result import ProviderHealth
+from revenuechaser.core.reporting_common import provider_health_html
 
 _STYLE = ('<div class="rc-provider-health" role="alert" style="margin:8px 0 12px;padding:10px 12px;'
           'border:1px solid var(--amber,#f1c40f);border-radius:8px;background:rgba(241,196,15,.08);'

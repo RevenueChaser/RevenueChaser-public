@@ -8,10 +8,10 @@ and the part before it; since #847 that is the version the board pins.
 """
 from __future__ import annotations
 
-from RevenueChaser.module_value_chain import splitter
-from RevenueChaser.rcdata import sec_sections
-from RevenueChaser.rcdata.build.fundamentals import filings
-from RevenueChaser.rcdata.build.sec_forms import forms
+from revenuechaser.module_value_chain import splitter
+from revenuechaser.rcdata import sec_sections
+from revenuechaser.rcdata.build.fundamentals import filings
+from revenuechaser.rcdata.build.sec_forms import forms
 
 PROSE = "We make widgets for customers across many markets and we sell them through distributors worldwide.\n" * 60
 REG = "The PRC government regulates the internet sector through licences and approvals.\n" * 300

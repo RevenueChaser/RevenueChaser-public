@@ -7,10 +7,10 @@ SPY". 6: for a Minervini pass the direction rule's "50-day MA at or above the 20
 """
 from __future__ import annotations
 
-from RevenueChaser.core import board_settings as bs
-from RevenueChaser.module_settings import boards
-from RevenueChaser.module_swing_potential import pipeline, report
-from RevenueChaser.module_swing_potential.tests.test_swing_settings_s4 import _rows
+from revenuechaser.core import board_settings as bs
+from revenuechaser.module_settings import boards
+from revenuechaser.module_swing_potential import pipeline, report
+from revenuechaser.module_swing_potential.tests.test_swing_settings_s4 import _rows
 
 B = "module_swing_potential"
 

@@ -6,9 +6,9 @@ names and AG flags them in their own waves.
 """
 from __future__ import annotations
 
-from RevenueChaser.rcdata.tests import universe_store
-from RevenueChaser.core.gics_map import SECTORS_11
-from RevenueChaser.module_asymmetric_growth import sector_rules
+from revenuechaser.rcdata.tests import universe_store
+from revenuechaser.core.gics_map import SECTORS_11
+from revenuechaser.module_asymmetric_growth import sector_rules
 
 
 def _spine(rows):
@@ -45,7 +45,7 @@ def test_a_name_off_the_spine_is_comparable(rawstore_tmp_db):
 
 
 def test_a_passed_spine_is_used_as_is(rawstore_tmp_db):
-    from RevenueChaser.core.gics_map import GicsPath
+    from revenuechaser.core.gics_map import GicsPath
     spine = {"X": GicsPath("Real Estate", "REIT - Office")}
     assert sector_rules.ticker_status("x", spine) == sector_rules.NOT_COMPARABLE
     assert sector_rules.not_comparable(["X", "Y"], spine) == {"X": "Real Estate"}

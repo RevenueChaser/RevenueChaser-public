@@ -11,7 +11,7 @@ from __future__ import annotations
 import ast
 import pathlib
 
-from RevenueChaser.module_asymmetric_growth import engine
+from revenuechaser.module_asymmetric_growth import engine
 
 PROVIDERS = ("yfinance", "yahoo", "unusual_whales", "finnhub", "polygon")
 

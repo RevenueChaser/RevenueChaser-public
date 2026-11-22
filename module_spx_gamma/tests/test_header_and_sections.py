@@ -5,7 +5,7 @@ import re
 
 import pytest
 
-from RevenueChaser.module_spx_gamma import render
+from revenuechaser.module_spx_gamma import render
 from .conftest import make_snapshot
 
 

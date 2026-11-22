@@ -17,8 +17,8 @@ import re
 
 import pytest
 
-from RevenueChaser.core.tests.board_fixtures import BOARDS
-from RevenueChaser.core.tests.test_one_escaper_175 import check_page
+from revenuechaser.core.tests.board_fixtures import BOARDS
+from revenuechaser.core.tests.test_one_escaper_175 import check_page
 
 # board key -> the X-RC-Panel value its pair sends (its ``added_by``)
 WITH_PAIR = {
@@ -79,7 +79,7 @@ CLIENT_ONLY = {"module_news": "the ticker box draws the asked name's button afte
 
 @pytest.mark.parametrize("key", sorted(set(WITH_PAIR) - set(CLIENT_ONLY)))
 def test_a_hostile_ticker_gets_no_button(key, tmp_path, monkeypatch, rawstore_tmp_db):
-    from RevenueChaser.core.reporting_common import WATCH_TICKER_PATTERN
+    from revenuechaser.core.reporting_common import WATCH_TICKER_PATTERN
     page = BOARDS[key].render(tmp_path, monkeypatch)
     tickers = _SERVER_BUTTON.findall(page)
     assert all(re.fullmatch(WATCH_TICKER_PATTERN, t) for t in tickers), tickers
@@ -120,7 +120,7 @@ def test_a_client_rendered_board_calls_the_pair_where_it_renders_the_ticker(key,
 
 
 def test_implied_probability_shows_the_pair_for_its_focal_ticker():
-    from RevenueChaser.module_oipd.report import render_oipd_dashboard
+    from revenuechaser.module_oipd.report import render_oipd_dashboard
     page = render_oipd_dashboard({"ticker": "AAPL", "asof": "2026-09-01", "spot": 100.0, "n_contracts": 10,
                                   "horizon_days": 30, "risk_free": 0.04, "error": None, "warnings": [],
                                   "expiries": []})
@@ -129,7 +129,7 @@ def test_implied_probability_shows_the_pair_for_its_focal_ticker():
 
 
 def test_financials_shows_the_pair_for_the_company_and_each_peer():
-    from RevenueChaser.module_financials.reporting.html_builder import build_report_html
+    from revenuechaser.module_financials.reporting.html_builder import build_report_html
     fin = {"ticker": "TEST", "sector": "Technology", "current_price": 100.0, "currency": "USD", "info": {}}
     comps = {"pe_only": True, "peers": [{"ticker": "PEER", "pe": 10.0}, {"ticker": "<b>x</b>", "pe": 11.0}],
              "multiples": {"pe": {"p25": 9.0, "p50": 10.0, "p75": 11.0}},

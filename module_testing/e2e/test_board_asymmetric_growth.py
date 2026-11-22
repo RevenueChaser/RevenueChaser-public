@@ -5,7 +5,7 @@ double-encoded ``edgar_financials.meta`` case went with that store), then a stor
 """
 from __future__ import annotations
 
-from RevenueChaser.rcdata.tests import universe_store
+from revenuechaser.rcdata.tests import universe_store
 import time
 
 import pytest

@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.app import dashboard
-from RevenueChaser.core import automations as A
+from revenuechaser.app import dashboard
+from revenuechaser.core import automations as A
 
 
 @pytest.fixture
@@ -66,7 +66,7 @@ def test_unknown_name_is_404_and_touches_nothing(client, fake):
 
 
 def test_settings_collect_carries_static_rows_and_never_calls_the_scheduler(rawstore_tmp_db, fake):
-    from RevenueChaser.module_settings import inventory
+    from revenuechaser.module_settings import inventory
     payload = inventory.collect()
     assert [r["name"] for r in payload["automations"]] == [e.name for e in A.REGISTRY]
     assert "state" not in payload["automations"][0]

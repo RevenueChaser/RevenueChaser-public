@@ -6,7 +6,7 @@ docs/plan_rest.md.
 """
 from __future__ import annotations
 
-from RevenueChaser.core.config import OUTPUT_DIR
+from revenuechaser.core.config import OUTPUT_DIR
 
 VALUE_CHAIN_LATEST = OUTPUT_DIR / "value_chain_latest.html"
 VALUE_CHAIN_JSON = OUTPUT_DIR / "value_chain" / "value_chain_latest.json"
@@ -27,7 +27,7 @@ SEED: tuple[str, ...] = (
 # and because this board's own tests assert on the regexes themselves. Their reasoning (a filer writes
 # "Item 1 — Business" with any dash, breaks words as "Bus iness", and a 10-K stop needs the section title so a
 # cross-reference does not cut the body short, #116 C17) is in that module beside the patterns.
-from RevenueChaser.rcdata.sec_sections import (  # noqa: F401  (re-exported for this board's callers and tests)
+from revenuechaser.rcdata.sec_sections import (  # noqa: F401  (re-exported for this board's callers and tests)
     DASH,
     MAX_ITEM_CHARS,
     MIN_ITEM_CHARS,

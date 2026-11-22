@@ -17,11 +17,11 @@ from datetime import datetime, timedelta, timezone
 import numpy as np
 import pandas as pd
 
-from RevenueChaser.core import calendar
-from RevenueChaser.core import funnel as funnel_mod
-from RevenueChaser.core import ledger
-from RevenueChaser.core import rawstore
-from RevenueChaser.core import universe as universe_mod
+from revenuechaser.core import calendar
+from revenuechaser.core import funnel as funnel_mod
+from revenuechaser.core import ledger
+from revenuechaser.core import rawstore
+from revenuechaser.core import universe as universe_mod
 
 from . import cluster as cluster_mod
 from . import config
@@ -112,7 +112,7 @@ def config_hash(window: int, linkage: str, cuts,
 
 def _medium_theme_labels(fields: dict) -> dict[str, list[str]]:
     """Medium NMF labels from ``filter_fields`` theme ids, not ``ticker_scores.themes``."""
-    from RevenueChaser.core.gics_map import is_unclassified
+    from revenuechaser.core.gics_map import is_unclassified
 
     catalog = universe_mod.theme_catalog()
     out: dict[str, list[str]] = {}

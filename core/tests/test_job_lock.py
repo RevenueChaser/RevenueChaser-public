@@ -6,8 +6,8 @@ import subprocess
 import sys
 import time
 
-from RevenueChaser.core import job_lock
-from RevenueChaser.core.tests.lock_holders import lock_held
+from revenuechaser.core import job_lock
+from revenuechaser.core.tests.lock_holders import lock_held
 
 
 def test_acquire_excludes_second_holder(rawstore_tmp_db):

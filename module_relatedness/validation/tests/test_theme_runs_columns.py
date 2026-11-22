@@ -7,8 +7,8 @@ from __future__ import annotations
 import duckdb
 import pytest
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_relatedness.validation import metrics
+from revenuechaser.core import rawstore
+from revenuechaser.module_relatedness.validation import metrics
 
 # theme_runs as it stood before this change (schema 11/12).
 OLD_COLUMNS = ["id", "created_at", "k_fine", "k_medium", "k_coarse", "jaccard", "is_current",

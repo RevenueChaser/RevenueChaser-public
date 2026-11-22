@@ -12,7 +12,7 @@ import math
 
 import pytest
 
-from RevenueChaser.module_spx_gamma import brier, scenarios
+from revenuechaser.module_spx_gamma import brier, scenarios
 from .conftest import make_snapshot
 
 

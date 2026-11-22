@@ -12,9 +12,9 @@ from __future__ import annotations
 import json
 from datetime import date
 
-from RevenueChaser.rcdata import ops, read
-from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.ownership import finra, sec13f, sec13f_listing, serve
+from revenuechaser.rcdata import ops, read
+from revenuechaser.rcdata.build import base
+from revenuechaser.rcdata.build.ownership import finra, sec13f, sec13f_listing, serve
 
 from . import ownership_fixture as ox
 from .ownership_serve_world import (

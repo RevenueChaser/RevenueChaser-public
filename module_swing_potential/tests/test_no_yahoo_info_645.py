@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from RevenueChaser.core import rawstore
+from revenuechaser.core import rawstore
 
 _REPO = Path(__file__).resolve().parents[2]
 _INDICATORS = _REPO / "module_swing_potential" / "indicators.py"
@@ -39,7 +39,7 @@ def test_the_indicators_module_imports_no_yahoo():
 
 
 def test_no_function_of_the_module_fetches_ticker_info():
-    from RevenueChaser.module_swing_potential import indicators
+    from revenuechaser.module_swing_potential import indicators
     assert not hasattr(indicators, "load_ticker_info"), (
         "#645: the board takes the company name from the spine row; nothing reads Yahoo .info")
 
@@ -54,7 +54,7 @@ def test_the_info_cache_is_no_longer_a_table_of_the_store():
 
 def test_the_board_declares_no_yahoo_dataset():
     """Settings' Data inventory listed the cache as a yfinance dataset of the Swing file; it has none now."""
-    from RevenueChaser.core import datasets
+    from revenuechaser.core import datasets
     swing = [d for d in datasets.REGISTRY if d.db == "swing_potential"]
     assert swing, "the Swing board has no dataset at all; this test is reading the wrong field"
     assert all(d.source is not datasets.Source.yfinance for d in swing), \

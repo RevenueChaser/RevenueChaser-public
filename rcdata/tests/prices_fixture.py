@@ -37,8 +37,8 @@ SPINE = [
 
 def write_spine(rows=SPINE) -> None:
     """A live ``spine.duckdb`` holding ``rows`` in its ``security`` table (the other columns NULL)."""
-    from RevenueChaser.rcdata import serving
-    from RevenueChaser.rcdata.build.spine.security import SECURITY
+    from revenuechaser.rcdata import serving
+    from revenuechaser.rcdata.build.spine.security import SECURITY
     path = serving.live_path("spine")
     path.parent.mkdir(parents=True, exist_ok=True)
     con = duckdb.connect(str(path))
@@ -58,7 +58,7 @@ def write_spine(rows=SPINE) -> None:
 
 def bar_time(session: date) -> str:
     """Alpaca's daily bar timestamp: midnight New York, in UTC."""
-    from RevenueChaser.core import calendar
+    from revenuechaser.core import calendar
     return datetime(session.year, session.month, session.day, tzinfo=calendar.NY).astimezone(
         timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -79,7 +79,7 @@ class BarsAnswer:
         self.page_size, self.fail_after, self.served = page_size, fail_after, 0
 
     def __call__(self, request):
-        from RevenueChaser.core import calendar
+        from revenuechaser.core import calendar
         q = {k: v[0] for k, v in parse_qs(urlparse(str(request.url)).query).items()}
         symbols = q["symbols"].split(",")
         if self.fail_after is not None and self.served >= self.fail_after:
@@ -124,7 +124,7 @@ def seed_secd(series: dict, run_id: str = "seed") -> None:
     """Compustat's ``comp.secd`` year partitions, as ``wrds/prices`` writes them: ``series`` maps a ``gvkey:iid`` to
     ``(tic, [(session, close), ...])`` or ``(tic, days, cshoc)``, every row on Nasdaq with ``ajexdi`` and ``trfd`` 1
     and no ``cshoc`` unless given (the shares then come from the covers, as before Compustat was the history)."""
-    from RevenueChaser.rcdata.build.prices import stage, wrds_history
+    from revenuechaser.rcdata.build.prices import stage, wrds_history
     rows = [{"gvkey": sid.split(":")[0], "iid": sid.split(":")[1], "datadate": d, "tic": tic, "cusip": None,
              "curcdd": "USD", "prccd": c, "prcod": c, "prchd": c, "prcld": c, "cshtrd": 1_000_000.0,
              "cshoc": (v[2] if len(v) > 2 else None),

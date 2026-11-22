@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.rcdata import sec_sections
+from revenuechaser.rcdata import sec_sections
 
 from .sec_sections_cases import BODY
 
@@ -240,7 +240,7 @@ def test_ours_3_is_declared_and_reachable_like_any_other_version():
 def test_no_board_and_no_layer_reads_ours_3_yet():
     """Moving a pin onto it re-cuts ``chain_filings`` and restales every Relatedness profile, which is a paid
     model run: that is its own change, with the owner's before/after look."""
-    from RevenueChaser.module_value_chain import splitter
+    from revenuechaser.module_value_chain import splitter
     assert splitter.VERSION == OURS_2, "the pin moves with a re-slice, not with this PR"
     assert sec_sections.DEFAULT_VERSION == OURS_1
 

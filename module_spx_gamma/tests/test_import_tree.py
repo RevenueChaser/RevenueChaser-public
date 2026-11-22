@@ -5,8 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 
-from RevenueChaser.module_spx_gamma import import_tree as it, store
-from RevenueChaser.module_spx_gamma.config import BRIER_FILENAME, HISTORY_FILENAME
+from revenuechaser.module_spx_gamma import import_tree as it, store
+from revenuechaser.module_spx_gamma.config import BRIER_FILENAME, HISTORY_FILENAME
 
 GEX = '{"data": {"call_wall": "9999"}}'
 

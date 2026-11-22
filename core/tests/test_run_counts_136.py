@@ -23,8 +23,8 @@ from __future__ import annotations
 import dataclasses
 import json
 
-from RevenueChaser.app import jobs
-from RevenueChaser.core import automations, rawstore
+from revenuechaser.app import jobs
+from revenuechaser.core import automations, rawstore
 
 OK_JSON = '{"rows": 93714, "written": 93714, "status": {"open": 93382, "closed": 332}}'
 

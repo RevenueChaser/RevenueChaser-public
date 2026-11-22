@@ -29,7 +29,7 @@ import types
 
 import pytest
 
-from RevenueChaser.rcdata.build.sec_forms import cutter
+from revenuechaser.rcdata.build.sec_forms import cutter
 
 # ── the stub edgar package the real worker runs against ───────────────────────────────────────────────────────
 

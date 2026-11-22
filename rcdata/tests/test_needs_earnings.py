@@ -11,8 +11,8 @@ from datetime import date, timedelta
 
 import pytest
 
-from RevenueChaser.core import earnings_dates
-from RevenueChaser.rcdata import needs
+from revenuechaser.core import earnings_dates
+from revenuechaser.rcdata import needs
 
 TODAY = date(2026, 10, 27)
 SOON = date(2026, 10, 30)

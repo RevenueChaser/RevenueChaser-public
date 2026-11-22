@@ -30,7 +30,7 @@ import json
 import logging
 import time
 
-from RevenueChaser.core import calendar, ownership, rawstore
+from revenuechaser.core import calendar, ownership, rawstore
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +62,7 @@ def _query(sql: str, params: list | None = None) -> list[dict]:
 def source_stamp() -> str | None:
     """The live ownership build (its file's size and modification time) and today's New York date; None when there
     is no ownership store to read."""
-    from RevenueChaser.rcdata import serving
+    from revenuechaser.rcdata import serving
     path = serving.live_path("ownership")
     try:
         st = path.stat()

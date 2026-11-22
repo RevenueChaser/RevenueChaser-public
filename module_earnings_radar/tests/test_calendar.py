@@ -1,7 +1,7 @@
 """Tests for calendar augmentation (watchlist tickers with unknown/estimated earnings)."""
 from datetime import date
 
-from RevenueChaser.main import _augment_watchlist
+from revenuechaser.main import _augment_watchlist
 
 
 class TestAugmentWatchlist:

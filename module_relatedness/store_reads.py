@@ -46,7 +46,7 @@ read of "the rows of this run" is the prefix filter :func:`run_rows` writes once
 """
 from __future__ import annotations
 
-from RevenueChaser.core import rawstore
+from revenuechaser.core import rawstore
 
 #: The board's DuckDB file, as ``rawstore`` names it.
 DB = "relatedness"

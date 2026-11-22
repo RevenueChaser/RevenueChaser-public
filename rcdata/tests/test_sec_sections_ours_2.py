@@ -25,8 +25,8 @@ from pathlib import Path
 
 import pytest
 
-from RevenueChaser.module_value_chain import splitter
-from RevenueChaser.rcdata import sec_sections
+from revenuechaser.module_value_chain import splitter
+from revenuechaser.rcdata import sec_sections
 
 from .sec_sections_cases import BODY, CASES, TOC
 

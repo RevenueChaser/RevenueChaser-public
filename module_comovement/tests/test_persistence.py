@@ -5,8 +5,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from RevenueChaser.module_comovement import cluster, config, persistence
-from RevenueChaser.module_comovement import returns as returns_mod
+from revenuechaser.module_comovement import cluster, config, persistence
+from revenuechaser.module_comovement import returns as returns_mod
 
 
 def _fn(ret, cuts):

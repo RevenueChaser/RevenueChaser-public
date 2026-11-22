@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core.identity import types as T
+from revenuechaser.core.identity import types as T
 
 
 def inp(name="Some Co", figi=("Common Stock", "Common Stock"), forms=None, sic="", shell_closed=False,

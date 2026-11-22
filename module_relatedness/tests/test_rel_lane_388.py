@@ -13,11 +13,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_comovement.tests import prices_bars
-from RevenueChaser.module_relatedness import engine, report, store
-from RevenueChaser.module_relatedness.tests.test_pure_refresh import _market_peers, _market_prices
-from RevenueChaser.module_relatedness.tests.test_relatedness import _prof, _seed_filings
+from revenuechaser.core import rawstore
+from revenuechaser.module_comovement.tests import prices_bars
+from revenuechaser.module_relatedness import engine, report, store
+from revenuechaser.module_relatedness.tests.test_pure_refresh import _market_peers, _market_prices
+from revenuechaser.module_relatedness.tests.test_relatedness import _prof, _seed_filings
 
 TICKERS = [f"T{i:02d}" for i in range(8)]
 
@@ -57,7 +57,7 @@ def _attach(peers):
 
 
 def test_the_peer_market_equals_the_full_read(rawstore_tmp_db, monkeypatch):
-    from RevenueChaser.module_comovement import ohlc as comov_ohlc
+    from revenuechaser.module_comovement import ohlc as comov_ohlc
 
     _seed_prices(_market_prices(n=420))
     real = comov_ohlc.price_frame
@@ -70,9 +70,9 @@ def test_the_peer_market_equals_the_full_read(rawstore_tmp_db, monkeypatch):
 
 
 def test_the_peer_market_reads_only_its_window(rawstore_tmp_db, monkeypatch):
-    from RevenueChaser.module_comovement import config as comov_config
-    from RevenueChaser.module_comovement import ohlc as comov_ohlc
-    from RevenueChaser.module_comovement import settings as comov_settings
+    from revenuechaser.module_comovement import config as comov_config
+    from revenuechaser.module_comovement import ohlc as comov_ohlc
+    from revenuechaser.module_comovement import settings as comov_settings
 
     prices = _market_prices(n=420)
     _seed_prices(prices)
@@ -90,7 +90,7 @@ def test_the_peer_market_reads_only_its_window(rawstore_tmp_db, monkeypatch):
 
 
 def test_a_short_store_reads_everything(rawstore_tmp_db, monkeypatch):
-    from RevenueChaser.module_comovement import ohlc as comov_ohlc
+    from revenuechaser.module_comovement import ohlc as comov_ohlc
 
     _seed_prices(_market_prices(n=200))
     starts = []

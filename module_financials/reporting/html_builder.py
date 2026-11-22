@@ -7,10 +7,10 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 from markupsafe import Markup
 
-from RevenueChaser.core import calendar as market_calendar
-from RevenueChaser.module_financials.config import RISK_FREE_MAX_AGE_DAYS
-from RevenueChaser.core.html_safe import script_json
-from RevenueChaser.core.reporting_common import (FILTERS_CSS, FILTERS_JS, THEME_CSS, THEME_JS, combobox_html,
+from revenuechaser.core import calendar as market_calendar
+from revenuechaser.module_financials.config import RISK_FREE_MAX_AGE_DAYS
+from revenuechaser.core.html_safe import script_json
+from revenuechaser.core.reporting_common import (FILTERS_CSS, FILTERS_JS, THEME_CSS, THEME_JS, combobox_html,
                                                  filters_bar_html, help_html, provider_health_html,
                                                  watch_buttons_html, watchlist_html)
 

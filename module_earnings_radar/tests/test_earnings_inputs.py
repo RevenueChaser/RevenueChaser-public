@@ -11,8 +11,8 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.core.providers import unusual_whales
+from revenuechaser.core import rawstore
+from revenuechaser.core.providers import unusual_whales
 
 NY = ZoneInfo("America/New_York")
 NIGHT = datetime(2026, 10, 13, 19, 30, tzinfo=NY).timestamp()        # session 2026-10-13, complete
@@ -88,7 +88,7 @@ class _FredResp:
 
 @pytest.fixture
 def fred(monkeypatch):
-    from RevenueChaser.module_earnings_radar import macro_watch
+    from revenuechaser.module_earnings_radar import macro_watch
     calls, fail = [], set()
     obs = [{"date": "2026-10-13", "value": "4.05"}, {"date": "2026-10-12", "value": "."},
            {"date": "2026-07-03", "value": "4.30"}]
@@ -103,7 +103,7 @@ def fred(monkeypatch):
 
 
 def test_the_old_fred_daily_reader_still_swallows_a_failure(fred):
-    from RevenueChaser.module_earnings_radar import macro_watch
+    from revenuechaser.module_earnings_radar import macro_watch
     _, fail = fred
     fail.add("DGS10")
     assert macro_watch._fred_daily("DGS10") == []
@@ -117,7 +117,7 @@ def _seed_13f(tickers):
     """The served store, which is where the sweep reads its 13F ticker set since #515."""
     import duckdb
 
-    from RevenueChaser.rcdata import serving
+    from revenuechaser.rcdata import serving
 
     path = serving.live_path("ownership")
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -155,7 +155,7 @@ def _si_routes(screener=(), interest=(), screener_status=200):
 
 @pytest.fixture
 def yf_info(monkeypatch):
-    from RevenueChaser.core.providers import yfinance as yfp
+    from revenuechaser.core.providers import yfinance as yfp
     asked = []
     infos = {"B": {"shortPercentOfFloat": 0.05, "floatShares": 1_000_000, "sharesShort": 50_000}}
 
@@ -189,8 +189,8 @@ def _trend_blocks(nan_avg=False, revisions_key="downLast7days"):
 
 @pytest.fixture
 def yf_trend(monkeypatch):
-    from RevenueChaser.core.providers import yfinance as yfp
-    from RevenueChaser.core.providers.result import ProviderResult
+    from revenuechaser.core.providers import yfinance as yfp
+    from revenuechaser.core.providers.result import ProviderResult
     asked, answers = [], {}
 
     def get(ticker):
@@ -206,7 +206,7 @@ def yf_trend(monkeypatch):
 
 def test_the_provider_reads_the_four_blocks_as_one_call(monkeypatch):
     import yfinance
-    from RevenueChaser.core.providers import yfinance as yfp
+    from revenuechaser.core.providers import yfinance as yfp
     blocks = _trend_blocks()
 
     class T:

@@ -39,7 +39,7 @@ _LOCAL = threading.local()                      # a pool worker's inherited scop
 
 
 def _job_id() -> str | None:
-    jobs = sys.modules.get("RevenueChaser.app.jobs")
+    jobs = sys.modules.get("revenuechaser.app.jobs")
     try:
         return jobs.current_job_id() if jobs is not None else None
     except Exception:  # noqa: BLE001 - who opened a file is bookkeeping; it never fails a read

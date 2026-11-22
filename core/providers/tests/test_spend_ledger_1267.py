@@ -19,10 +19,10 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core import calendar as rc_calendar
-from RevenueChaser.core import config
-from RevenueChaser.core.providers import spend
-from RevenueChaser.rcdata import ops
+from revenuechaser.core import calendar as rc_calendar
+from revenuechaser.core import config
+from revenuechaser.core.providers import spend
+from revenuechaser.rcdata import ops
 
 
 @pytest.fixture(autouse=True)

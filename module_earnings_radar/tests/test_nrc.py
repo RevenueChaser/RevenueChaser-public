@@ -2,8 +2,8 @@
 """
 import pytest
 
-from RevenueChaser.module_earnings_radar.models import TradeCard
-from RevenueChaser.module_earnings_radar.pipeline import (
+from revenuechaser.module_earnings_radar.models import TradeCard
+from revenuechaser.module_earnings_radar.pipeline import (
     compute_nrc_score, nrc_acceleration, nrc_quality, nrc_from_card, _agh_context,
 )
 
@@ -83,7 +83,7 @@ def test_nrc_ignores_the_rotation_quadrant_d1(rawstore_tmp_db):
 
 
 def test_agh_context_from_ticker_store(rawstore_tmp_db):
-    from RevenueChaser.core import ticker_store
+    from revenuechaser.core import ticker_store
     ticker_store.write_from_cards([{
         "ticker": "AAA", "name": "Aaa", "sector": "Technology",
         "total_points": 7, "dilution_warning": True,

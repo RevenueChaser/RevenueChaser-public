@@ -6,10 +6,10 @@ from urllib.parse import parse_qs
 
 import pytest
 
-from RevenueChaser.core import calendar
-from RevenueChaser.core.providers import unusual_whales
-from RevenueChaser.rcdata import ops, read, serving
-from RevenueChaser.rcdata.build import base, uw_greek_expiry_strike as uw
+from revenuechaser.core import calendar
+from revenuechaser.core.providers import unusual_whales
+from revenuechaser.rcdata import ops, read, serving
+from revenuechaser.rcdata.build import base, uw_greek_expiry_strike as uw
 
 UW_HEADERS = {"x-uw-daily-req-count": "355", "x-uw-req-per-minute-remaining": "1000000",
               "x-uw-req-per-minute-reset": "60000", "x-uw-token-req-limit": "100000000",
@@ -154,7 +154,7 @@ def test_the_two_uw_datasets_start_on_different_days_on_purpose():
     which is what failed 168 days of the 28 Oct 2026 backfill. So the two constants are deliberately different,
     and moving the sibling's back would write empty or clipped days.
     """
-    from RevenueChaser.rcdata.build import uw_spot_expiry_strike as spot
+    from revenuechaser.rcdata.build import uw_spot_expiry_strike as spot
     assert uw.FIRST_SESSION == date(2023, 12, 7)
     assert spot.FIRST_SESSION == date(2025, 1, 16)
 
@@ -250,7 +250,7 @@ def test_a_chain_past_the_ceiling_is_refused_before_the_grid_is_asked(http_mock,
 def test_re_typing_an_old_day_does_not_push_coverage_above_one(mod, monkeypatch):
     """The 1.5733 of 6 Nov: an as-of of an old day shrank the denominator below the days the table holds."""
     import duckdb
-    from RevenueChaser.rcdata.build import uw_spot_expiry_strike as spot
+    from revenuechaser.rcdata.build import uw_spot_expiry_strike as spot
     m = uw if mod == "greek" else spot
     monkeypatch.setattr(base, "compare_with_live", lambda *a: (0, 0))
     days = list(base.iter_sessions(m.FIRST_SESSION, SESSION))

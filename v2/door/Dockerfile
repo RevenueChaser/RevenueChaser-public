@@ -31,10 +31,10 @@ ENV RC_BUILD_SHA=${RC_BUILD_SHA} \
 COPY v2/door/requirements.txt /tmp/door-requirements.txt
 RUN pip install --no-cache-dir -r /tmp/door-requirements.txt && rm /tmp/door-requirements.txt
 
-# `from RevenueChaser.core import ...` needs the checkout to BE the package, so the tree lands at
-# /srv/RevenueChaser with /srv on the path. Only what the door imports is copied: there is no board code, no
+# `from revenuechaser.core import ...` needs the checkout to BE the package, so the tree lands at
+# /srv/revenuechaser with /srv on the path. Only what the door imports is copied: there is no board code, no
 # rcdata build, no dashboard and no test harness in this image.
-WORKDIR /srv/RevenueChaser
+WORKDIR /srv/revenuechaser
 COPY __init__.py ./
 COPY core/__init__.py core/config.py core/v2_envelope.py core/
 COPY v2/__init__.py v2/
@@ -53,4 +53,4 @@ USER door
 # One worker: the door reads files and the whole tailnet is one person. More workers would multiply the memory
 # `life-rc-v2.slice` caps for no gain, and `--proxy-headers` is off because `tailscale serve` keeps the real Host
 # and the door's own Host allowlist is what checks it.
-CMD ["uvicorn", "RevenueChaser.v2.door.app:app", "--host", "127.0.0.1", "--port", "8100", "--workers", "1"]
+CMD ["uvicorn", "revenuechaser.v2.door.app:app", "--host", "127.0.0.1", "--port", "8100", "--workers", "1"]

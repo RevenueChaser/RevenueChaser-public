@@ -1,8 +1,8 @@
 from datetime import datetime
 from typing import Optional
 
-from RevenueChaser.core.config import RULE_WEIGHTS, DIRECTION_RANGE, VOLATILITY_EDGE_RANGE
-from RevenueChaser.module_earnings_radar.models import RuleResult
+from revenuechaser.core.config import RULE_WEIGHTS, DIRECTION_RANGE, VOLATILITY_EDGE_RANGE
+from revenuechaser.module_earnings_radar.models import RuleResult
 
 # ── The cuts the board turns a score into a call with (#580) ──
 # They were literals inside the three functions below until the forecast-ledger freeze landed: the ledger stamps

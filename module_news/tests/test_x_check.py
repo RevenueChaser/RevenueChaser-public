@@ -5,9 +5,9 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.core.providers.result import ProviderResult
-from RevenueChaser.module_news import report, x_check, x_lane
+from revenuechaser.core import rawstore
+from revenuechaser.core.providers.result import ProviderResult
+from revenuechaser.module_news import report, x_check, x_lane
 
 TWEET = x_lane.status_time(2120251362529419593)          # @kiantrades, 10 Nov 2026 21:24 Amsterdam (15:24 New York)
 

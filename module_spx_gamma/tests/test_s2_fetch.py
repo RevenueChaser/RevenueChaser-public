@@ -7,9 +7,9 @@ import json
 import httpx
 import pytest
 
-from RevenueChaser.module_spx_gamma import raw_day, run as spx_run, snapshot as snap
-from RevenueChaser.module_spx_gamma.normalize import normalize_snapshot
-from RevenueChaser.module_spx_gamma import store as spx_store
+from revenuechaser.module_spx_gamma import raw_day, run as spx_run, snapshot as snap
+from revenuechaser.module_spx_gamma.normalize import normalize_snapshot
+from revenuechaser.module_spx_gamma import store as spx_store
 
 from .conftest import FakeUW, make_raw
 
@@ -44,7 +44,7 @@ def _fetch(tmp_path, handler=_handler, **kw):
 
 # ── one fetch layer ─────────────────────────────────────────────────────────
 def test_the_module_has_no_client_of_its_own():
-    assert importlib.util.find_spec("RevenueChaser.module_spx_gamma.uw_client") is None
+    assert importlib.util.find_spec("revenuechaser.module_spx_gamma.uw_client") is None
 
 
 def test_every_uw_call_goes_through_get_result_with_a_core_path(tmp_path, monkeypatch):
@@ -234,10 +234,10 @@ def test_run_without_a_client_or_key_refuses(tmp_path):
 
 
 def test_the_runner_hands_the_job_client_to_the_module(monkeypatch):
-    from RevenueChaser.app import runners
+    from revenuechaser.app import runners
 
     got = {}
-    monkeypatch.setattr("RevenueChaser.module_spx_gamma.run.run", lambda asof, **k: got.update(asof=asof, **k))
+    monkeypatch.setattr("revenuechaser.module_spx_gamma.run.run", lambda asof, **k: got.update(asof=asof, **k))
     marker = object()
     runners.run_spxgamma(marker, DAY)
     assert got["uw"] is marker and got["asof"] == DAY

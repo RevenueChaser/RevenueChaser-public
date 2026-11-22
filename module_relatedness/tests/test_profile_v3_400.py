@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 
-from RevenueChaser.module_relatedness import config, profile_v3 as v3
+from revenuechaser.module_relatedness import config, profile_v3 as v3
 
 REPLY = {
     "summary": "Designs graphics processors.",

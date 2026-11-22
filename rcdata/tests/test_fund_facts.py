@@ -8,10 +8,10 @@ from types import SimpleNamespace
 import duckdb
 import pytest
 
-from RevenueChaser.core.providers import sec_edgar
-from RevenueChaser.rcdata import ops
-from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.fundamentals import companyfacts, facts, fx_rates, sec_index, tables
+from revenuechaser.core.providers import sec_edgar
+from revenuechaser.rcdata import ops
+from revenuechaser.rcdata.build import base
+from revenuechaser.rcdata.build.fundamentals import companyfacts, facts, fx_rates, sec_index, tables
 
 from . import fund_fixture as fx
 from .sec_answers import MISSING_HEADERS, MISSING_OBJECT, REFUSED_HEADERS, REFUSED_PAGE
@@ -366,7 +366,7 @@ def test_without_the_bucket_requests_to_the_sec_are_spaced_at_the_fallback_share
 def test_every_sec_request_takes_a_token_of_the_shared_sec_bucket(sec, monkeypatch):
     """Review of #380, finding 2: the fundamentals' SEC requests spend from ``core/sec_throttle``'s box-wide bucket
     like every other SEC caller, so the box stays under the SEC's 10 a second."""
-    from RevenueChaser.core import sec_throttle
+    from revenuechaser.core import sec_throttle
     _answers(sec)
     tokens = []
     monkeypatch.setattr(sec_throttle, "pace", lambda: tokens.append(1) or True)

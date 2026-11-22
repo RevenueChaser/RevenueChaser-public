@@ -11,11 +11,11 @@ import time
 import duckdb
 import pytest
 
-from RevenueChaser.module_settings import control_render, newdata, report
-from RevenueChaser.module_settings.tests.test_control_view import control_nd
-from RevenueChaser.rcdata import serving
-from RevenueChaser.rcdata.build import audit, base, dirty
-from RevenueChaser.rcdata.build.sources import fred
+from revenuechaser.module_settings import control_render, newdata, report
+from revenuechaser.module_settings.tests.test_control_view import control_nd
+from revenuechaser.rcdata import serving
+from revenuechaser.rcdata.build import audit, base, dirty
+from revenuechaser.rcdata.build.sources import fred
 
 
 # ── what the card reads out of a file ─────────────────────────────────────────────────────────────────────────

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from RevenueChaser.rcdata import read
+from revenuechaser.rcdata import read
 
 TODAY = date(2026, 11, 11)
 

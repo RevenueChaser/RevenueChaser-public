@@ -51,7 +51,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import date
 
-from RevenueChaser.core import calendar, rawstore
+from revenuechaser.core import calendar, rawstore
 
 logger = logging.getLogger(__name__)
 
@@ -255,7 +255,7 @@ def d01_last_bars(tickers, upto: date | None = None) -> dict[str, tuple[str, flo
     if upto is not None:
         where, params = where + " AND session_date <= ?", [tickers, upto]
     try:
-        from RevenueChaser.core import prices   # the read API picks the file (``prices.source_state``)
+        from revenuechaser.core import prices   # the read API picks the file (``prices.source_state``)
         rows = prices._read(
             "SELECT ticker, max(session_date) AS last_day, arg_max(fetched_at, session_date) AS fetched_at "
             f"FROM {_D01} WHERE {where} GROUP BY ticker", params, layer=True)

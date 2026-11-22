@@ -1,7 +1,7 @@
 """Public #17 (C1) — the Earnings Radar records live in `module_earnings_radar/models.py`.
 
 Two invariants:
-  1. the old home, `RevenueChaser.core.models.events`, is gone (no re-export shim:
+  1. the old home, `revenuechaser.core.models.events`, is gone (no re-export shim:
      a shim keeps the board -> core edge the move exists to remove);
   2. the move was pure — every dataclass in the module keeps its field names,
      order and defaults, pinned below from the file as it stood on 3670e76.
@@ -17,11 +17,11 @@ import pytest
 
 def test_old_home_is_gone():
     with pytest.raises(ModuleNotFoundError):
-        importlib.import_module("RevenueChaser.core.models.events")
+        importlib.import_module("revenuechaser.core.models.events")
 
 
 def test_new_home_imports_the_records():
-    from RevenueChaser.module_earnings_radar.models import RuleResult, TradeCard
+    from revenuechaser.module_earnings_radar.models import RuleResult, TradeCard
 
     assert dataclasses.is_dataclass(TradeCard)
     assert dataclasses.is_dataclass(RuleResult)
@@ -287,6 +287,6 @@ EXPECTED = {
 
 @pytest.mark.parametrize("name", sorted(EXPECTED))
 def test_field_parity(name):
-    import RevenueChaser.module_earnings_radar.models as models
+    import revenuechaser.module_earnings_radar.models as models
 
     assert _spec(getattr(models, name)) == EXPECTED[name]

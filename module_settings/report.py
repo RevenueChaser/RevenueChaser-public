@@ -18,11 +18,11 @@ from datetime import datetime
 from functools import lru_cache as _lru_cache
 from urllib.parse import urlsplit
 
-from RevenueChaser.core import automations, datasets, rawstore
-from RevenueChaser.rcdata.needs import screen as api_screen
-from RevenueChaser.module_settings import control as control_model, control_render, needs_tab
-from RevenueChaser.core.html_safe import esc, script_json
-from RevenueChaser.core.reporting_common import (
+from revenuechaser.core import automations, datasets, rawstore
+from revenuechaser.rcdata.needs import screen as api_screen
+from revenuechaser.module_settings import control as control_model, control_render, needs_tab
+from revenuechaser.core.html_safe import esc, script_json
+from revenuechaser.core.reporting_common import (
     FILTERS_CSS,
     FILTERS_JS,
     JOB_JS,
@@ -1111,7 +1111,7 @@ def _flow_row(flow: dict) -> str:
 def _served_file_of_table() -> dict[str, str]:
     """``{served table: its builder file}``, read once per process from the build scaffold (as the flow diagram's
     ``control._table_kind`` does), so a need line never names a file by hand."""
-    from RevenueChaser.rcdata import scaffold
+    from revenuechaser.rcdata import scaffold
     return {t: kind for kind, tables in scaffold.SCHEMA_OF_KIND.items() for t in tables}
 
 
@@ -1123,7 +1123,7 @@ def _need_flow_row(need: str, declared: bool) -> str:
     A need the catalog does not know is said in words rather than drawn with a table it cannot have. ``declared``
     False marks the line as planned, the same claim the flow diagram makes for a board that has not migrated yet.
     """
-    from RevenueChaser.rcdata.needs import catalog as needs_catalog
+    from revenuechaser.rcdata.needs import catalog as needs_catalog
     name = _html.escape(str(need))
     plan = '' if declared else '<span class="muted">(planned)</span>'
     spec = needs_catalog.NEEDS.get(str(need))
@@ -2747,7 +2747,7 @@ ndFilter();
 def _applied_universe() -> dict:
     """The universe as saved (``board_settings``), or nothing when it cannot be read: the board then shows the
     default universe, which is what the builder runs anyway."""
-    from RevenueChaser.core import board_settings
+    from revenuechaser.core import board_settings
     try:
         return board_settings.values("module_settings")["values"]
     except Exception:  # noqa: BLE001 - an unreadable settings row must not take the board down
@@ -2770,8 +2770,8 @@ def _control_view(nd: dict | None, payload: dict) -> dict:
 
 def _collect_newdata() -> dict:
     """The section's data, read now; an error is a line on the page, never a blank board."""
-    from RevenueChaser.module_settings import newdata
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.module_settings import newdata
+    from revenuechaser.rcdata import ops
     try:
         ops.fail_dead_requests()   # #602: a killed run's request must not show "running" with a Stop button
     except Exception:  # noqa: BLE001 - housekeeping before the read; the board still renders

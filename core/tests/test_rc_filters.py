@@ -11,7 +11,7 @@ import subprocess
 
 import pytest
 
-from RevenueChaser.core import reporting_common as rc
+from revenuechaser.core import reporting_common as rc
 
 
 def test_the_component_ships_as_one_namespaced_module():
@@ -224,7 +224,7 @@ def test_js_combobox_offers_a_typed_ticker_outside_the_list_only_when_asked(js_o
 
 
 def test_the_free_ticker_rule_is_the_servers_ticker_rule():
-    from RevenueChaser.app import dashboard
+    from revenuechaser.app import dashboard
     assert dashboard._TICKER_RE.pattern in rc.FILTERS_JS
 
 

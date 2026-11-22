@@ -12,8 +12,8 @@ import json
 
 import pytest
 
-from RevenueChaser.rcdata import sec_sections
-from RevenueChaser.rcdata.build.sec_forms import score
+from revenuechaser.rcdata import sec_sections
+from revenuechaser.rcdata.build.sec_forms import score
 
 FILLER = "We make widgets for customers in many markets and sell them through several channels. "
 

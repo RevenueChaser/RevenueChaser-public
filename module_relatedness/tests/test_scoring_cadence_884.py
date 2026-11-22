@@ -29,9 +29,9 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from RevenueChaser.core import automations as A
-from RevenueChaser.core import job_lock, rawstore
-from RevenueChaser.module_relatedness import engine
+from revenuechaser.core import automations as A
+from revenuechaser.core import job_lock, rawstore
+from revenuechaser.module_relatedness import engine
 
 NOW = datetime(2026, 11, 20, 4, 20, 9, tzinfo=timezone.utc)
 PEERS = {"AAA": [{"peer": "BBB", "score": 0.42}], "BBB": [{"peer": "AAA", "score": 0.42}]}
@@ -46,7 +46,7 @@ def saved_payload(tmp_path, monkeypatch):
     path.write_text(json.dumps(PAYLOAD), encoding="utf-8")
     monkeypatch.setattr(engine.config, "RELATEDNESS_JSON", path)
     monkeypatch.setattr(engine, "select_pilot", lambda: list(BOARD))
-    monkeypatch.setattr("RevenueChaser.module_relatedness.store.save_scores", lambda p: None)
+    monkeypatch.setattr("revenuechaser.module_relatedness.store.save_scores", lambda p: None)
     return PAYLOAD
 
 
@@ -88,7 +88,7 @@ def test_a_week_the_service_answered_nothing_is_skipped_after_the_mirror(saved_p
     _mirror(monkeypatch, seen)
     _profiles(monkeypatch, (NOW - timedelta(days=1)).timestamp())
     monkeypatch.setattr(engine, "_run", lambda *a, **k: pytest.fail("nothing to rescore"))
-    monkeypatch.setattr("RevenueChaser.module_relatedness.store.save_scores",
+    monkeypatch.setattr("revenuechaser.module_relatedness.store.save_scores",
                         lambda p: pytest.fail("nothing to persist"))
     out = engine.score()
     assert seen == [BOARD]
@@ -133,7 +133,7 @@ def test_the_own_writer_path_mirrors_nothing(saved_payload, monkeypatch):
 
 def test_the_scoring_row_is_weekly_in_a_free_slot_and_chained_on_the_sec_reads():
     e = A.entry("RC-Relatedness-Score")
-    assert e.args == ("-m", "RevenueChaser.module_relatedness", "--score")
+    assert e.args == ("-m", "revenuechaser.module_relatedness", "--score")
     assert e.days == ("Saturday",) and not e.fortnightly and not e.hourly    # weekly (avo, 20 Nov 2026)
     assert e.schedule == "weekly Saturday 07:30 (local), after RC-SEC-Read"
     assert e.after == "RC-SEC-Read"                                 # that night's answers, or nothing new to score
@@ -154,6 +154,6 @@ def test_the_profiling_row_is_still_its_own_job_and_weekly_too():
     schedule the installed homesrv timer has had since 16 Nov."""
     e = A.entry("RC-Relatedness-OffPeak")
     # Since #1255 that run asks the dashboard for the board's whole-board Fetch instead of writing itself.
-    assert e.args == ("-m", "RevenueChaser.scripts.board_fetch", "relatedness")
+    assert e.args == ("-m", "revenuechaser.scripts.board_fetch", "relatedness")
     assert e.schedule == "weekly Sunday 22:15 (local)"
     assert not e.fortnightly

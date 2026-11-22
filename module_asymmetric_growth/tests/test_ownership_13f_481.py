@@ -13,9 +13,9 @@ from __future__ import annotations
 import copy
 from datetime import datetime, timezone
 
-from RevenueChaser.core import ownership, rawstore
-from RevenueChaser.module_asymmetric_growth import engine
-from RevenueChaser.module_asymmetric_growth.tests.test_ag_info_only_150 import _QUOTE, _YF_ANNUAL
+from revenuechaser.core import ownership, rawstore
+from revenuechaser.module_asymmetric_growth import engine
+from revenuechaser.module_asymmetric_growth.tests.test_ag_info_only_150 import _QUOTE, _YF_ANNUAL
 
 RUN_AT = datetime(2026, 1, 15, 21, 35, tzinfo=timezone.utc).timestamp()    # a complete session
 
@@ -62,7 +62,7 @@ def test_a_summary_counted_from_stored_cards_reports_the_counts_as_unknown():
 
 def test_a_share_above_100_percent_is_shown_as_a_check_not_a_number():
     """GOSS read 6,242 % on live data: 13F shares on a pre-reverse-split base. The card says so, not the number."""
-    from RevenueChaser.module_asymmetric_growth import report
+    from revenuechaser.module_asymmetric_growth import report
     html = report.render_asymmetric_growth_hunter_html({"asof": "", "cards": [], "summary": {},
                                                         "thresholds": engine.THRESHOLDS})
     assert "inst_ownership_pct > 1" in html and "above 100%" in html
@@ -73,7 +73,7 @@ def test_a_share_above_100_percent_is_shown_as_a_check_not_a_number():
 def _split_store(monkeypatch, factor: float) -> list:
     """The prices store at the read boundary: AAA's bar on the quarter end carries ``split_factor`` (a 1-for-25
     reverse split after it serves 25: today's shares are the quarter's ÷ 25). Returns the bar windows asked."""
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     asked = []
     monkeypatch.setattr(read, "security_ids", lambda tickers: {t: f"sid:{t}" for t in tickers})
 

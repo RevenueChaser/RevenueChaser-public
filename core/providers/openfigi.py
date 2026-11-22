@@ -31,8 +31,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Callable, Iterable
 
-from RevenueChaser.core import credentials, sec_throttle
-from RevenueChaser.core.providers.result import ProviderHealth
+from revenuechaser.core import credentials, sec_throttle
+from revenuechaser.core.providers.result import ProviderHealth
 
 PROVIDER = "openfigi"
 ENDPOINT = "/v3/mapping"

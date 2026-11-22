@@ -1,4 +1,4 @@
-"""``python -m RevenueChaser.module_watchlists`` — import, export and list the watch lists (#786)."""
+"""``python -m revenuechaser.module_watchlists`` — import, export and list the watch lists (#786)."""
 from __future__ import annotations
 
 from .importer import main

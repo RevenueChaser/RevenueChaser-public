@@ -6,10 +6,10 @@ from datetime import datetime, timezone
 
 import pytest
 
-from RevenueChaser.app import dashboard, jobs, runners
-from RevenueChaser.core import calendar as nyse_calendar
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_spx_gamma import history_pull as hp
+from revenuechaser.app import dashboard, jobs, runners
+from revenuechaser.core import calendar as nyse_calendar
+from revenuechaser.core import rawstore
+from revenuechaser.module_spx_gamma import history_pull as hp
 
 SAT = datetime(2025, 3, 15, 15, 0, tzinfo=timezone.utc)       # outside any session
 OPEN = datetime(2025, 3, 14, 15, 0, tzinfo=timezone.utc)      # a Friday, 11:00 New York
@@ -76,7 +76,7 @@ def test_the_route_refuses_bad_input(client, query):
 
 def test_the_route_allows_only_what_is_left_of_uw_s_day(client, monkeypatch):
     """Review of #380: ``max_calls`` is held to the day cap less today's counted UW calls, when a cap is set."""
-    from RevenueChaser.rcdata import caps, ops
+    from revenuechaser.rcdata import caps, ops
     monkeypatch.setitem(caps.DAY_CAPS, "uw", 100_000)              # UW has no cap since 2026-11-10: a test cap
     ops.count_calls("uw", caps.DAY_CAPS["uw"] - ops.calls_today("uw") - 100)
     assert client.post("/run/spxgamma_history?start=2025-03-10&end=2025-03-14&max_calls=101",
@@ -129,7 +129,7 @@ def sync_jobs(monkeypatch):
 def test_each_run_leaves_its_counts_on_disk(tmp_path, monkeypatch):
     """The dashboard holds the store, so a run's counts are also a file the owner can open while it runs."""
     monkeypatch.setattr(nyse_calendar, "_now", lambda: SAT)
-    from RevenueChaser.module_spx_gamma import snapshot as snap
+    from revenuechaser.module_spx_gamma import snapshot as snap
     monkeypatch.setattr(snap, "stored_spx_candles", lambda asof=None, ticker=None: [])
 
     class _UW:
@@ -201,8 +201,8 @@ def _wait_done(jid):
 
 
 def test_a_board_fetch_is_refused_while_the_pull_runs(real_lanes, monkeypatch):
-    from RevenueChaser.core.tests.panel_client import panel_test_client
-    from RevenueChaser.module_spx_gamma import run as spx_run
+    from revenuechaser.core.tests.panel_client import panel_test_client
+    from revenuechaser.module_spx_gamma import run as spx_run
     monkeypatch.setattr(nyse_calendar, "_now", lambda: SAT)
     jid = real_lanes("spxgamma_history", {"start": "2025-03-10", "end": "2025-03-12"})
     assert real_lanes.started.wait(5)
@@ -216,7 +216,7 @@ def test_a_board_fetch_is_refused_while_the_pull_runs(real_lanes, monkeypatch):
 
 
 def test_the_pull_is_refused_while_a_board_fetch_runs(real_lanes, monkeypatch):
-    from RevenueChaser.core.tests.panel_client import panel_test_client
+    from revenuechaser.core.tests.panel_client import panel_test_client
     monkeypatch.setattr(nyse_calendar, "_now", lambda: SAT)
     jid = real_lanes("spxgamma", {"asof_date": "2025-03-14"})
     assert real_lanes.started.wait(5)
@@ -252,7 +252,7 @@ def test_a_fetch_and_a_pull_posted_at_once_never_both_queue(monkeypatch):
     import queue
     import threading
     import time as _time
-    from RevenueChaser.core.tests.panel_client import panel_test_client
+    from revenuechaser.core.tests.panel_client import panel_test_client
 
     monkeypatch.setattr(nyse_calendar, "_now", lambda: SAT)
     monkeypatch.setattr(jobs, "_JOB_QUEUE", queue.Queue())

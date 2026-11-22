@@ -1,7 +1,7 @@
 """R8 scores the stored earnings call, so it can vote negative (#1214, review finding G2)."""
 from __future__ import annotations
 
-from RevenueChaser.module_earnings_radar import pipeline, store_reads
+from revenuechaser.module_earnings_radar import pipeline, store_reads
 
 
 def turn(seq, title, content, ticker="MSFT", quarter="2025Q1"):
@@ -20,7 +20,7 @@ FLOW = {"retail_call": 10_000.0, "inst_call": 90_000.0}          # a share well 
 
 
 def test_the_halves_come_out_of_the_store_split_at_the_first_analyst(monkeypatch):
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
 
     monkeypatch.setattr(read, "earnings_transcript", lambda names, **kw: list(CALL))
     rows, note = store_reads.transcript_halves(["MSFT"])
@@ -32,7 +32,7 @@ def test_the_halves_come_out_of_the_store_split_at_the_first_analyst(monkeypatch
 
 
 def test_a_call_with_no_analyst_turn_has_no_qa_half_and_says_so(monkeypatch):
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
 
     monkeypatch.setattr(read, "earnings_transcript", lambda names, **kw: [t for t in CALL
                                                                          if t["title"] != "Analyst"])
@@ -42,7 +42,7 @@ def test_a_call_with_no_analyst_turn_has_no_qa_half_and_says_so(monkeypatch):
 
 
 def test_a_store_error_is_not_stored_rather_than_an_exception(monkeypatch):
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
 
     def boom(names, **kw):
         raise RuntimeError("no file")

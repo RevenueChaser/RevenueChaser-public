@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core import automations as A
+from revenuechaser.core import automations as A
 
 FAILS = A.AutomationEntry(name="RC-Red", label="red", time="22:35", description="d",
                           args=("-c", "import sys; print('stage one ok'); "

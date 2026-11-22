@@ -34,10 +34,10 @@ import time
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from RevenueChaser.core import calendar as mcal
-from RevenueChaser.core import rawstore
-from RevenueChaser.core import reaction_anchor
-from RevenueChaser.rcdata import needs, ops
+from revenuechaser.core import calendar as mcal
+from revenuechaser.core import rawstore
+from revenuechaser.core import reaction_anchor
+from revenuechaser.rcdata import needs, ops
 
 from . import store_reads as sr
 
@@ -239,7 +239,7 @@ def _earnings(now: float, run_id: str) -> int:
 def _file_of_dataset(name: str) -> str | None:
     """The serving file dataset ``name`` builds, from the builder's own registry (never a list kept here)."""
     try:
-        from RevenueChaser.rcdata.build import DATASETS
+        from revenuechaser.rcdata.build import DATASETS
     except Exception:  # noqa: BLE001 - without the registry there is no roll-up, and no broken build
         return None
     ds = DATASETS.get(str(name))

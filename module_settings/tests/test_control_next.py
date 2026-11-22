@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from RevenueChaser.module_settings import control
-from RevenueChaser.module_settings.tests.test_control_view import NOW, _build
-from RevenueChaser.rcdata.serving import KINDS
+from revenuechaser.module_settings import control
+from revenuechaser.module_settings.tests.test_control_view import NOW, _build
+from revenuechaser.rcdata.serving import KINDS
 
 ON = {"state": "on", "last": None, "next": None, "minute": 7}
 OFF = {**ON, "state": "off"}
@@ -108,7 +108,7 @@ def test_every_dataset_row_has_next_and_since_words():
 
 
 def test_the_as_of_kind_is_read_from_the_datasets_code():
-    from RevenueChaser.module_settings import newdata
+    from revenuechaser.module_settings import newdata
     ds = newdata._datasets()
     assert control.as_of_kind(ds["market_series"]) == "latest_complete_session"
     assert control.as_of_kind(ds["alpaca/bars"]) == "latest_complete_session"
@@ -121,7 +121,7 @@ def test_a_kind_whose_automation_is_off_says_so_instead_of_a_pass():
 
 
 def test_a_partial_runs_own_skip_waits_for_its_next_check_like_a_build():
-    from RevenueChaser.rcdata.build import base
+    from revenuechaser.rcdata.build import base
     stage = {"result": "skipped", "checked_on": "2026-10-29", "next_check_due": None,
              "note": base.skip_note(1, raw_only=True)}
     assert not words(stage, mode="raw").startswith("due")

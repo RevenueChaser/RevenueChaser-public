@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.module_fundamentals import report as fu_report
-from RevenueChaser.module_fundamentals.pipeline import _ttm_metrics
+from revenuechaser.module_fundamentals import report as fu_report
+from revenuechaser.module_fundamentals.pipeline import _ttm_metrics
 
 
 def _year(revenue, ocf=30.0, capex=10.0) -> dict:

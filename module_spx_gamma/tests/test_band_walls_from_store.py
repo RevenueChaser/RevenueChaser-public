@@ -12,9 +12,9 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.module_spx_gamma import store_reads
-from RevenueChaser.module_spx_gamma.levels import DTE_BANDS, band_walls
-from RevenueChaser.module_spx_gamma.normalize import normalize_stored_greek_grid
+from revenuechaser.module_spx_gamma import store_reads
+from revenuechaser.module_spx_gamma.levels import DTE_BANDS, band_walls
+from revenuechaser.module_spx_gamma.normalize import normalize_stored_greek_grid
 
 from . import rcdata_fixture as fx
 
@@ -98,7 +98,7 @@ def test_a_locked_ops_file_is_a_failed_grid_read_never_a_failed_board(rcdata_mar
 
 def test_normalize_takes_the_bands_from_the_stored_grid_and_says_so():
     """Review of #436, S2: the switch in ``normalize_snapshot`` itself, not only the reader."""
-    from RevenueChaser.module_spx_gamma.normalize import normalize_snapshot
+    from revenuechaser.module_spx_gamma.normalize import normalize_snapshot
     rows = fx.greek_rows(DAY)
     spot = {"spot": {"value": SPOT}}
     stored = normalize_snapshot({**spot, "greek_grid": {"stored": True, "rows": rows, "source": "rcdata:test"}},

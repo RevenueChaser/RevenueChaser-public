@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from RevenueChaser.rcdata import ops
-from RevenueChaser.rcdata.build import DATASETS, base
+from revenuechaser.rcdata import ops
+from revenuechaser.rcdata.build import DATASETS, base
 
 
 def test_a_switch_with_no_row_is_on_and_the_last_set_wins():
@@ -94,7 +94,7 @@ def test_backup_switch_does_not_stop_a_fetch(fetcher):
 def test_a_files_switch_holds_its_datasets_by_hand_too_and_no_other_file(fetcher):
     """avo, 10 Nov 2026: "main > midswitch > subswitches" and "Fetch de dursun": a file's switch off skips a Fetch
     pressed by hand on one of its datasets before any call; another file's switch does not."""
-    from RevenueChaser.rcdata import serving
+    from revenuechaser.rcdata import serving
     assert set(ops.FILE_KINDS) == set(serving.KINDS)
     ops.switch_set("file-options", False, by="avo")
     row, _ = _run(fetcher)
@@ -120,7 +120,7 @@ def test_the_fetch_switch_is_read_before_the_files(fetcher):
 def test_a_held_dataset_is_not_queued_by_the_hourly_pass(fetcher, monkeypatch):
     """avo, 10 Nov 2026 ("burada yaptigim her ayarin uygulanabilir oldugundan emin ol"): a file switched off queues
     nothing every hour (no skipped row an hour); switched on, the dataset is due again."""
-    from RevenueChaser.rcdata.build import due
+    from revenuechaser.rcdata.build import due
     monkeypatch.setattr(due, "is_due", lambda ds, mode: (True, "test"))
     ops.dataset_mode_set(fetcher.name, "full", by="avo")      # due, in a mode the hourly pass queues
     ops.switch_set("file-market", False, by="avo")

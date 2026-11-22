@@ -5,9 +5,9 @@ import json
 
 import pytest
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_relatedness.validation import peer_sets
-from RevenueChaser.rcdata.tests import spine_fixture
+from revenuechaser.core import rawstore
+from revenuechaser.module_relatedness.validation import peer_sets
+from revenuechaser.rcdata.tests import spine_fixture
 
 
 def test_exactly_ten_hand_sets_with_ids_one_to_ten():
@@ -120,7 +120,7 @@ def test_etf_holdings_from_store_never_writes_the_spine():
     """Reviews S1 and R2 (#342): the read goes through a read-only handle and leaves the file as it was."""
     import os
 
-    from RevenueChaser.rcdata import serving
+    from revenuechaser.rcdata import serving
     spine_fixture.write_etf_holdings({"XBI": ["VRTX"]})
     path = serving.live_path("spine")
     mtime = os.stat(path).st_mtime_ns

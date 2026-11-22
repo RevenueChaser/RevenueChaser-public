@@ -12,7 +12,7 @@ security through ``PERMNO_LINK`` at serving time, from columns every ``dsf_v2`` 
 ``cusip``, ``ticker``); see there for the rule and its measured coverage.
 
 **Attended**, like the spine's WRDS datasets (``spine/wrds.py``): never due, run only from the CLI on the server
-(``python -m RevenueChaser.rcdata.build backfill wrds/prices``), on the one WRDS worker of the process (one login,
+(``python -m revenuechaser.rcdata.build backfill wrds/prices``), on the one WRDS worker of the process (one login,
 one Duo push). Every query counts as one ``wrds`` call; WRDS publishes no quota, so ``rcdata/caps.py`` gives it no
 day cap. A backfill that reaches a cap anyway stops, keeps and serves the years it has, and the next backfill goes on from the first missing one.
 

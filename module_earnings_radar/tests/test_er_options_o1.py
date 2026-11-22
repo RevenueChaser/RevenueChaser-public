@@ -5,8 +5,8 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.module_earnings_radar import store_reads
-from RevenueChaser.module_earnings_radar.pipeline import EarningsPipeline
+from revenuechaser.module_earnings_radar import store_reads
+from revenuechaser.module_earnings_radar.pipeline import EarningsPipeline
 
 REPORT = "2026-08-14"
 CAL = {"AAPL": {"earnings_date": REPORT, "full_name": "Apple", "expected_move_perc": 0.05}}

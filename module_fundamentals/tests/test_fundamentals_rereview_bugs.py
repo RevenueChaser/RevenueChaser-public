@@ -8,11 +8,11 @@ gate window's "(UNKNOWN)" is in ``test_fundamentals_unknown_151``.
 """
 from __future__ import annotations
 
-from RevenueChaser.module_fundamentals import screeners
-from RevenueChaser.module_fundamentals.pipeline import build_payload
-from RevenueChaser.module_fundamentals.report import render_fundamental_dashboard
-from RevenueChaser.module_fundamentals.screeners import OLD_PERIOD_NOTE
-from RevenueChaser.module_fundamentals.tests.test_fundamentals_gates_148 import _m, _row
+from revenuechaser.module_fundamentals import screeners
+from revenuechaser.module_fundamentals.pipeline import build_payload
+from revenuechaser.module_fundamentals.report import render_fundamental_dashboard
+from revenuechaser.module_fundamentals.screeners import OLD_PERIOD_NOTE
+from revenuechaser.module_fundamentals.tests.test_fundamentals_gates_148 import _m, _row
 
 _MOM = dict(dist_52w_pct=0.95, rs_6m=0.1, above_200d=True)
 _RO40 = dict(rev_growth_ttm=0.30, fcf_margin=0.20, ro40=50.0, ttm_revenue=5e8)
@@ -38,13 +38,13 @@ def test_the_old_period_note_is_added_once():
 def test_a_fiscal_year_basis_labels_the_card_with_its_years(monkeypatch):
     """C1 of the TTM filings is a trailing-year Rule of 40. When Quality cannot read that trailing year, D1 puts the
     card on the fiscal year; the label used to keep naming the quarters."""
-    from RevenueChaser.core.providers import sec_edgar as se
-    from RevenueChaser.module_fundamentals.tests import ttm_filings_148 as ft
-    from RevenueChaser.module_fundamentals.tests.test_fundamentals_w3_386 import _compute
+    from revenuechaser.core.providers import sec_edgar as se
+    from revenuechaser.module_fundamentals.tests import ttm_filings_148 as ft
+    from revenuechaser.module_fundamentals.tests.test_fundamentals_w3_386 import _compute
     (name,) = [k for k in ft.CASES if k.startswith("C1 ")]
     facts = ft.CASES[name]
     annual, quarterly = se.extract_annual(facts), se.extract_quarterly(facts)
-    from RevenueChaser.module_fundamentals import pipeline
+    from revenuechaser.module_fundamentals import pipeline
     real = pipeline._quality_metrics
     monkeypatch.setattr(pipeline, "_quality_metrics", lambda *a, **k: {**real(*a, **k), "quality_basis": "FY"})
     row, _drops = _compute(monkeypatch, annual, edgar=lambda t, no_fetch=False: (annual, quarterly, {}))
@@ -78,7 +78,7 @@ def test_ifrs_filers_quality_cannot_judge_are_counted_and_named():
 
 def test_the_card_says_how_long_ago_its_period_ended(tmp_path):
     """avo N1 (18 Nov 2026): D1 stays, and the card face shows the period's age."""
-    from RevenueChaser.core.tests.board_js import run_board_js
+    from revenuechaser.core.tests.board_js import run_board_js
     p = build_payload([{**_row("T", _m(**_RO40)), "anchor_period_end": "2025-12-31"}], top_n=10)
     out = run_board_js(render_fundamental_dashboard(p), """
 render();

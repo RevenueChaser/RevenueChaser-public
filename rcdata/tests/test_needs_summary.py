@@ -10,7 +10,7 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.rcdata import needs, ops
+from revenuechaser.rcdata import needs, ops
 
 from .test_spine_security import built as spine_built, run_all  # noqa: F401 - the built spine
 
@@ -57,7 +57,7 @@ def test_the_sample_carries_its_provenance(at_session):
 
 @pytest.mark.usefixtures("spine_built")
 def test_a_summary_goes_stale_by_the_needs_own_window(at_session):
-    from RevenueChaser.core import calendar
+    from revenuechaser.core import calendar
     day = SPINE_AS_OF
     for _ in range(6):
         day = calendar.next_trading_day(day)

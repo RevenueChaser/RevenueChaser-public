@@ -9,14 +9,14 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core import board_settings as bs
-from RevenueChaser.core import rawstore
-from RevenueChaser.core.tests.panel_client import panel_test_client
+from revenuechaser.core import board_settings as bs
+from revenuechaser.core import rawstore
+from revenuechaser.core.tests.panel_client import panel_test_client
 
 
 @pytest.fixture
 def client(rawstore_tmp_db, monkeypatch):
-    from RevenueChaser.app import dashboard
+    from revenuechaser.app import dashboard
     submitted = []
     monkeypatch.setattr(dashboard.jobs, "submit",
                         lambda module, params=None: submitted.append((module, params)) or "job7")
@@ -34,10 +34,10 @@ def client(rawstore_tmp_db, monkeypatch):
 
 import duckdb  # noqa: E402
 
-from RevenueChaser.module_settings import newdata  # noqa: E402
-from RevenueChaser.rcdata import serving  # noqa: E402
-from RevenueChaser.rcdata.build.prices import serving as prices_serving  # noqa: E402
-from RevenueChaser.rcdata.tests.conftest import market_roots  # noqa: E402,F401 - market roots per test
+from revenuechaser.module_settings import newdata  # noqa: E402
+from revenuechaser.rcdata import serving  # noqa: E402
+from revenuechaser.rcdata.build.prices import serving as prices_serving  # noqa: E402
+from revenuechaser.rcdata.tests.conftest import market_roots  # noqa: E402,F401 - market roots per test
 
 
 def _bars(days):
@@ -149,7 +149,7 @@ def test_a_long_text_cell_is_cut_in_the_example():
 
 
 def test_the_lookup_names_come_from_their_own_route(client, monkeypatch):
-    from RevenueChaser.module_settings import inventory
+    from revenuechaser.module_settings import inventory
     monkeypatch.setattr(inventory, "_universe_tickers", lambda: ([{"ticker": "AAA", "name": "A Co"}], None))
     assert client.get("/api/settings/tickers").get_json() == {"ok": True, "tickers": [{"ticker": "AAA", "name": "A Co"}]}
     monkeypatch.setattr(inventory, "_universe_tickers", lambda: ([], "IOException: locked"))
@@ -159,8 +159,8 @@ def test_the_lookup_names_come_from_their_own_route(client, monkeypatch):
 
 # --- #338: every served table the board draws the button for answers it, none is "unknown table" ---------------
 
-from RevenueChaser.rcdata.build import DATASETS as _DATASETS  # noqa: E402
-from RevenueChaser.rcdata.build.fundamentals import tables as fundamentals_tables  # noqa: E402
+from revenuechaser.rcdata.build import DATASETS as _DATASETS  # noqa: E402
+from revenuechaser.rcdata.build.fundamentals import tables as fundamentals_tables  # noqa: E402
 
 SERVED_TABLES = sorted({t for ds in _DATASETS.values() for t in ds.tables})
 

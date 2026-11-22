@@ -15,8 +15,8 @@ when any slot is present, else 0.
 import re
 from typing import Optional
 
-from RevenueChaser.core.config import SCORE_RANGE, R8_RETAIL_FADE, R8_SIGN
-from RevenueChaser.module_earnings_radar.models import RuleResult
+from revenuechaser.core.config import SCORE_RANGE, R8_RETAIL_FADE, R8_SIGN
+from revenuechaser.module_earnings_radar.models import RuleResult
 from .lm_dictionary import (
     LM_CONSTRAINING,
     LM_LITIGIOUS,

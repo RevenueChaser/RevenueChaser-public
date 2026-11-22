@@ -13,9 +13,9 @@ from __future__ import annotations
 
 import re
 
-from RevenueChaser.module_financials import run as run_mod
-from RevenueChaser.module_financials.reporting.html_builder import build_report_html
-from RevenueChaser.rcdata.tests import universe_store
+from revenuechaser.module_financials import run as run_mod
+from revenuechaser.module_financials.reporting.html_builder import build_report_html
+from revenuechaser.rcdata.tests import universe_store
 
 POOL = [
     {"ticker": "TEST", "name": "Test Industries Inc.", "market_cap": 1.1e11, "index": ["sp500"],
@@ -56,7 +56,7 @@ def test_a_page_built_without_a_picker_payload_still_renders(financials):
 
 def test_the_filters_never_slice_the_statements(financials):
     """The point of the issue: an empty pool (or one that excludes the ticker) changes nothing below the bar."""
-    from RevenueChaser.module_financials.engines.dcf_engine import run_dcf
+    from revenuechaser.module_financials.engines.dcf_engine import run_dcf
 
     res = {"ticker": "TEST", "financials": financials, "warnings": [], "modules": {"dcf": run_dcf(financials)},
            "picker": {"rows": [], "meta": {"board": "financials"}}}
@@ -75,7 +75,7 @@ def test_the_board_ships_the_shared_theme(financials):
 def test_the_board_keeps_no_palette_of_its_own():
     from pathlib import Path
 
-    from RevenueChaser.module_financials.reporting import html_builder
+    from revenuechaser.module_financials.reporting import html_builder
 
     tpl = (Path(html_builder.__file__).resolve().parent / "templates" / "report_base.html.j2")
     own = tpl.read_text(encoding="utf-8").split("</style>")[0]

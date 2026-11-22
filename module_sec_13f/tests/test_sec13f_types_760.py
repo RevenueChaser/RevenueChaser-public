@@ -7,9 +7,9 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core import ownership
-from RevenueChaser.core.reporting_common import THEME_SCALE
-from RevenueChaser.module_sec_13f import report
+from revenuechaser.core import ownership
+from revenuechaser.core.reporting_common import THEME_SCALE
+from revenuechaser.module_sec_13f import report
 
 Q2, Q3 = "2026-06-30", "2026-09-30"
 
@@ -58,7 +58,7 @@ def test_a_type_with_no_rows_draws_nothing_and_says_so():
 
 
 def test_the_route_answers_a_type_the_board_offers_and_refuses_another(monkeypatch):
-    from RevenueChaser.app import dashboard
+    from revenuechaser.app import dashboard
     asked = []
     monkeypatch.setattr(ownership, "sec13f_type_holdings", lambda tag: asked.append(tag) or _rows())
     monkeypatch.setattr(ownership, "sec13f_open_periods", lambda: set())
@@ -73,7 +73,7 @@ def test_the_route_answers_a_type_the_board_offers_and_refuses_another(monkeypat
 
 
 def test_the_reader_gives_no_rows_when_the_store_cannot_be_read(monkeypatch):
-    from RevenueChaser.rcdata import read as rcread
+    from revenuechaser.rcdata import read as rcread
 
     def broken(*a, **kw):
         raise OSError("no ownership store")
@@ -90,7 +90,7 @@ def test_each_type_shows_its_filers_and_a_type_with_none_cannot_be_picked():
 
 
 def test_the_counts_are_each_types_newest_quarter(monkeypatch):
-    from RevenueChaser.rcdata import read as rcread
+    from revenuechaser.rcdata import read as rcread
     from datetime import date
     monkeypatch.setattr(rcread, "type_holdings_13f", lambda *a, **kw: [
         {"tag": "energy", "period": date(2026, 6, 30), "type_filers": 5},

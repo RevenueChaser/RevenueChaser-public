@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import re
 
-from RevenueChaser.core import reporting_common as rc
+from revenuechaser.core import reporting_common as rc
 
 # The ramp as it was validated: lightness band, chroma floor, adjacent-pair colour-vision separation and
 # contrast against both board surfaces. The order is part of that result — swapping #0A9E6E and #E8445F

@@ -6,7 +6,7 @@ Pin: retail call share >65% -> +20 unscaled (momentum; R8_SIGN default +1);
 """
 import pytest
 
-from RevenueChaser.module_earnings_radar.rules.rule8_sentiment import score
+from revenuechaser.module_earnings_radar.rules.rule8_sentiment import score
 
 
 def test_no_data_unavailable_not_zero():

@@ -11,9 +11,9 @@ import re
 import pytest
 
 
-from RevenueChaser.core.tests.board_fixtures import newdata_fixture
-from RevenueChaser.module_settings import report
-from RevenueChaser.module_settings.tests.test_newdata_findings import _card, _page, _section
+from revenuechaser.core.tests.board_fixtures import newdata_fixture
+from revenuechaser.module_settings import report
+from revenuechaser.module_settings.tests.test_newdata_findings import _card, _page, _section
 
 
 # ── S2: one status, one colour, one icon ──
@@ -28,7 +28,7 @@ def test_s2_the_statuses_are_one_set_with_one_colour_and_one_icon_each():
 
 def test_s6_the_collector_stamps_the_clock_it_read_the_store_at(monkeypatch):
     from datetime import datetime, timezone
-    from RevenueChaser.module_settings import newdata
+    from revenuechaser.module_settings import newdata
     now = datetime(2026, 10, 29, 18, 0, tzinfo=timezone.utc)
     assert newdata._measured_at(now) == "18:00"
 
@@ -36,7 +36,7 @@ def test_s6_the_collector_stamps_the_clock_it_read_the_store_at(monkeypatch):
 # ── S8: a report that has not run ──
 
 def test_s8_the_collector_marks_a_slot_that_has_not_run():
-    from RevenueChaser.module_settings import newdata
+    from revenuechaser.module_settings import newdata
     assert newdata.NO_WRDS == {"text": "no WRDS run yet", "produced": False}
 
 
@@ -72,7 +72,7 @@ def test_the_screens_map_carries_its_entries_into_a_copy_and_into_json():
     as empty is exactly the quiet failure the rest of this work goes out of its way to prevent."""
     import json
 
-    from RevenueChaser.module_settings import newdata
+    from revenuechaser.module_settings import newdata
     labels = newdata.LABELS
     assert labels, "the map is empty"
     assert dict(labels) == dict(labels.items()) and len(labels.copy()) == len(labels)
@@ -86,8 +86,8 @@ def test_the_boards_lag_map_is_the_live_number_in_a_copy_too(monkeypatch):
     ``json.dumps`` answered with the import-time snapshot while ``[]`` answered with the catalog's live value."""
     import dataclasses
 
-    from RevenueChaser.module_earnings_radar import store_reads
-    from RevenueChaser.rcdata import needs
+    from revenuechaser.module_earnings_radar import store_reads
+    from revenuechaser.rcdata import needs
     need = needs.catalog.NEEDS["macro.dgs10"]
     monkeypatch.setitem(needs.catalog.NEEDS, "macro.dgs10", dataclasses.replace(need, max_lag=99))
     assert store_reads.MAX_LAG["dgs10"] == 99

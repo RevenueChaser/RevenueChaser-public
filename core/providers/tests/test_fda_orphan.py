@@ -16,8 +16,8 @@ from urllib.parse import parse_qs
 import httpx
 import pytest
 
-from RevenueChaser.core.biotech.sponsor import normalise_sponsor
-from RevenueChaser.core.providers import fda_orphan
+from revenuechaser.core.biotech.sponsor import normalise_sponsor
+from revenuechaser.core.providers import fda_orphan
 
 FIXTURES = Path(__file__).parent / "fixtures"
 TENAYA_HTML = (FIXTURES / "oopd_tenaya_detailed.html").read_text(encoding="utf-8")

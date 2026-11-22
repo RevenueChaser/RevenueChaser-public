@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from RevenueChaser.core import fiscal_year as fy
+from revenuechaser.core import fiscal_year as fy
 
 
 def _yahoo(year: int, end: str | None, revenue: float = 100.0) -> dict:

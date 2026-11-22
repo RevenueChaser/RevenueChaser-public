@@ -10,12 +10,12 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from RevenueChaser.core.tests.board_js import run_board_js
-from RevenueChaser.module_fundamentals import pipeline
-from RevenueChaser.module_fundamentals.pipeline import build_payload
-from RevenueChaser.module_fundamentals.report import render_fundamental_dashboard
-from RevenueChaser.module_fundamentals.tests.test_fundamental import _m
-from RevenueChaser.module_fundamentals.tests.test_fundamentals_w3_386 import _annual_pair, _compute
+from revenuechaser.core.tests.board_js import run_board_js
+from revenuechaser.module_fundamentals import pipeline
+from revenuechaser.module_fundamentals.pipeline import build_payload
+from revenuechaser.module_fundamentals.report import render_fundamental_dashboard
+from revenuechaser.module_fundamentals.tests.test_fundamental import _m
+from revenuechaser.module_fundamentals.tests.test_fundamentals_w3_386 import _annual_pair, _compute
 
 AS_OF = date(2026, 10, 27)
 LAYER_META = {"source": "sec_edgar", "available": True, "layer": True, "newest_filed": "2026-08-01",

@@ -106,7 +106,7 @@ it was never meant to be; an upstream that did not answer is a status and a reas
 which can carry a URL that holds a password. The login is a caller's header value, so it is cut to 200 characters
 and its control characters are dropped — one press is one line, whatever the value holds.
 
-**Where it goes.** Through the `RevenueChaser.v2.door.write` logger, which in the container is stdout and so
+**Where it goes.** Through the `revenuechaser.v2.door.write` logger, which in the container is stdout and so
 journald. `RC_DOOR_WRITE_LOG` adds a file beside it when there is somewhere writable to put one; unset — the
 default, and what the container runs — nothing is written to disk. That is the point: the image is
 `read_only: true` with one `:ro` mount, and the write side must never make the artifacts root need to change.

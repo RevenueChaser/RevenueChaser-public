@@ -35,7 +35,7 @@ keyed by ``as_of``, the run's timestamp, which is why nearly every read below ta
 """
 from __future__ import annotations
 
-from RevenueChaser.core import rawstore
+from revenuechaser.core import rawstore
 
 #: The board's DuckDB file, as ``rawstore`` names it.
 DB = "comovement"

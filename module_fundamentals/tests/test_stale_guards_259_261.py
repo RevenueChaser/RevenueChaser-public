@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from RevenueChaser.module_fundamentals import pipeline
+from revenuechaser.module_fundamentals import pipeline
 
 
 def _patch_row_inputs(monkeypatch, frame: pd.DataFrame):

@@ -1,18 +1,18 @@
 """Unified HTML — grouped columns with RGBA background tones per group. Single page, all tickers."""
-from RevenueChaser.core import universe
-from RevenueChaser.core.reporting_common import (FILTERS_CSS, FILTERS_JS, filters_bar_html, filters_meta, help_html,
+from revenuechaser.core import universe
+from revenuechaser.core.reporting_common import (FILTERS_CSS, FILTERS_JS, filters_bar_html, filters_meta, help_html,
                                                  notice_html, provider_health_html, watchlist_html, write_artifact)
 from datetime import datetime, timezone
 from pathlib import Path
 import json
-from RevenueChaser.rcdata import read
+from revenuechaser.rcdata import read
 from .composite import classify_bias
-from RevenueChaser.core.html_safe import ESC_JS, esc, script_json
-from RevenueChaser.core import rotation_reference
-from RevenueChaser.core.config import (
+from revenuechaser.core.html_safe import ESC_JS, esc, script_json
+from revenuechaser.core import rotation_reference
+from revenuechaser.core.config import (
     OUTPUT_DIR, MIN_OPTION_VOLUME, MIN_TOTAL_OI, MIN_DOLLAR_OPTION_VOLUME, RULE_WEIGHTS, R6_RATE_VETO,
 )
-from RevenueChaser.core.calendar import NY
+from revenuechaser.core.calendar import NY
 
 # E3 (#372 ER-C): the Coverage denominator, rendered from the config so it cannot drift from
 # composite.py (the sum of the direction weights R2/R3/R7/R8 carry).
@@ -1443,7 +1443,7 @@ def _trade_by_iso(card) -> str:
     ed = getattr(card, "earnings_date", None)
     if ed is None:
         return ""
-    from RevenueChaser.core.calendar import trade_by_date
+    from revenuechaser.core.calendar import trade_by_date
     try:
         tb = trade_by_date(ed, is_am)
     except ValueError:

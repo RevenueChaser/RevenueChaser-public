@@ -5,8 +5,8 @@ import json
 
 import pytest
 
-from RevenueChaser.core import outcomes, rawstore
-from RevenueChaser.scripts import forecast_outcomes
+from revenuechaser.core import outcomes, rawstore
+from revenuechaser.scripts import forecast_outcomes
 
 
 def _result(**kw) -> dict:

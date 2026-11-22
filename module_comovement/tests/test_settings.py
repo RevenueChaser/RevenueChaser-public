@@ -12,16 +12,16 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from RevenueChaser.rcdata.tests import universe_store
-from RevenueChaser.core import board_settings as bs
-from RevenueChaser.core import funnel as funnel_mod
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_comovement.tests import prices_bars
-from RevenueChaser.core.tests.panel_client import panel_test_client
-from RevenueChaser.core import universe as universe_mod
-from RevenueChaser.module_comovement import config, engine, ohlc
-from RevenueChaser.module_comovement import settings as cs
-from RevenueChaser.module_comovement.tests.test_comovement import (
+from revenuechaser.rcdata.tests import universe_store
+from revenuechaser.core import board_settings as bs
+from revenuechaser.core import funnel as funnel_mod
+from revenuechaser.core import rawstore
+from revenuechaser.module_comovement.tests import prices_bars
+from revenuechaser.core.tests.panel_client import panel_test_client
+from revenuechaser.core import universe as universe_mod
+from revenuechaser.module_comovement import config, engine, ohlc
+from revenuechaser.module_comovement import settings as cs
+from revenuechaser.module_comovement.tests.test_comovement import (
     _market_two_groups, _seed_ohlc, _seed_universe, _two_group_returns)
 
 B = "module_comovement"
@@ -48,7 +48,7 @@ def test_exactly_one_numeric_floor_definition():
 
 
 def test_board_configs_have_no_floor_of_their_own():
-    from RevenueChaser.module_relatedness import config as rel_config
+    from revenuechaser.module_relatedness import config as rel_config
     assert not hasattr(config, "MC_MIN") and not hasattr(rel_config, "MC_MIN")
 
 
@@ -362,7 +362,7 @@ def test_default_settings_reproduce_the_pre_change_payload(rawstore_tmp_db):
 # ── the recompute job + the settings route ─────────────────────────────────
 def test_the_recompute_job_is_registered_short_lane_no_uw():
     """Read the registration itself: app tests clear the ``jobs`` registries."""
-    from RevenueChaser.app import dashboard
+    from revenuechaser.app import dashboard
     src = Path(dashboard.__file__).read_text(encoding="utf-8")
     m = re.search(r'jobs\.register\("comovement_recompute",(.*?)\)\s*$', src, re.S | re.M)
     assert m, "comovement_recompute is not registered"
@@ -377,7 +377,7 @@ def test_the_recompute_job_is_registered_short_lane_no_uw():
 
 @pytest.fixture
 def client(rawstore_tmp_db, monkeypatch):
-    from RevenueChaser.app import dashboard
+    from revenuechaser.app import dashboard
     submitted = []
     monkeypatch.setattr(dashboard.jobs, "submit",
                         lambda module, params=None: submitted.append((module, params)) or "job123")

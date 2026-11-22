@@ -5,11 +5,11 @@ from datetime import date, datetime, timezone
 
 import pytest
 
-from RevenueChaser.core import calendar as cal
-from RevenueChaser.core import ledger, rawstore
-from RevenueChaser.core.tests.d01_seed import seed_d01
-from RevenueChaser.rcdata.tests import prices_store
-from RevenueChaser.module_swing_potential import config, freeze
+from revenuechaser.core import calendar as cal
+from revenuechaser.core import ledger, rawstore
+from revenuechaser.core.tests.d01_seed import seed_d01
+from revenuechaser.rcdata.tests import prices_store
+from revenuechaser.module_swing_potential import config, freeze
 
 D = date(2026, 10, 2)
 POST_CLOSE = datetime(2026, 10, 2, 21, 0, tzinfo=timezone.utc)      # 17:00 ET

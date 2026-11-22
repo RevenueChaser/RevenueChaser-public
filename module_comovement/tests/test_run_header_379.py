@@ -17,10 +17,10 @@ from datetime import datetime
 
 import pytest
 
-from RevenueChaser.core import calendar, rawstore
-from RevenueChaser.module_comovement import config, engine
-from RevenueChaser.module_comovement.tests import prices_bars
-from RevenueChaser.module_comovement.tests.test_comovement import (
+from revenuechaser.core import calendar, rawstore
+from revenuechaser.module_comovement import config, engine
+from revenuechaser.module_comovement.tests import prices_bars
+from revenuechaser.module_comovement.tests.test_comovement import (
     _market_two_groups, _seed_ohlc, _seed_universe)
 
 B = "module_comovement"
@@ -38,8 +38,8 @@ def market(rawstore_tmp_db):
 
 @pytest.fixture
 def runner(market, monkeypatch):
-    from RevenueChaser.app import runners
-    from RevenueChaser.module_comovement import ohlc
+    from revenuechaser.app import runners
+    from revenuechaser.module_comovement import ohlc
 
     monkeypatch.setattr(ohlc, "fetch_bulk", lambda tickers=None, no_fetch=False, **kw:
                         {"requested": 0, "fetched": 0, "no_fetch": no_fetch})

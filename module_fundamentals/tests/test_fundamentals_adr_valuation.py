@@ -5,10 +5,10 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core import universe
-from RevenueChaser.module_fundamentals import pipeline
-from RevenueChaser.module_fundamentals.report import render_fundamental_dashboard
-from RevenueChaser.module_fundamentals.tests.test_fundamentals_w3_386 import _annual_pair, _patch_row
+from revenuechaser.core import universe
+from revenuechaser.module_fundamentals import pipeline
+from revenuechaser.module_fundamentals.report import render_fundamental_dashboard
+from revenuechaser.module_fundamentals.tests.test_fundamentals_w3_386 import _annual_pair, _patch_row
 
 
 def _row(monkeypatch, security_type):

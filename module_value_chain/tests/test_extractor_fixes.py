@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.module_value_chain import aliases, engine
+from revenuechaser.module_value_chain import aliases, engine
 
 
 def _tickers(text):
@@ -36,7 +36,7 @@ def test_incoming_edges_do_not_duplicate_or_seed_hop2():
 
 
 def test_picker_includes_destination_only_tickers():
-    from RevenueChaser.module_value_chain import report
+    from revenuechaser.module_value_chain import report
     html = report.render_value_chain_dashboard({
         "as_of": "2026-09-17T00:00:00+00:00",
         "filings": [{"ticker": "NVDA", "name": "NVIDIA Corporation", "form": "10-K",

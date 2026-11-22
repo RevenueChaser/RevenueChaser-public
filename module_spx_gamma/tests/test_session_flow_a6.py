@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.module_spx_gamma import expiry_table
+from revenuechaser.module_spx_gamma import expiry_table
 
 ROWS = expiry_table.normalize_expiry_rows({"data": [
     {"expiry": "2026-11-04", "dte": 0, "call_gex": "81763.8", "put_gex": "-25107.4", "call_charm": "29023001802.8",
@@ -32,7 +32,7 @@ def test_one_row_per_session_of_the_week():
 
 
 def test_snapshot_and_page():
-    from RevenueChaser.module_spx_gamma import render
+    from revenuechaser.module_spx_gamma import render
     from .conftest import make_snapshot
     snap = make_snapshot()
     assert snap["session_flow"] and snap["session_flow"][0]["expiry"] == "2026-08-14"

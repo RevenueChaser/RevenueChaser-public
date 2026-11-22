@@ -7,8 +7,8 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.rcdata.tests import universe_store
-from RevenueChaser.module_value_chain import __main__ as cli
+from revenuechaser.rcdata.tests import universe_store
+from revenuechaser.module_value_chain import __main__ as cli
 
 
 

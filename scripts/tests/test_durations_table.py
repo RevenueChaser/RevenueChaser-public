@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from RevenueChaser.scripts import durations as mod
+from revenuechaser.scripts import durations as mod
 
 _REPO = Path(__file__).resolve().parents[2]
 

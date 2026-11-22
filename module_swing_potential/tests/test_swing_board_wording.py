@@ -11,9 +11,9 @@ import ast
 from pathlib import Path
 
 
-from RevenueChaser.app import runners
-from RevenueChaser.module_swing_potential import report, screeners
-from RevenueChaser.module_swing_potential.tests.test_gates import _PASS
+from revenuechaser.app import runners
+from revenuechaser.module_swing_potential import report, screeners
+from revenuechaser.module_swing_potential.tests.test_gates import _PASS
 
 
 

@@ -4,7 +4,7 @@ Pin: 3 signals x 3 sub-criteria, overlays (R&D>=15%, dilution>20%), non-US
 excluded, US-listed flag. Buckets are client-side (report JS); here we pin
 total_points.
 """
-from RevenueChaser.module_asymmetric_growth.engine import score_ticker
+from revenuechaser.module_asymmetric_growth.engine import score_ticker
 
 
 def _fin(shares=(100, 101, 102), country="United States", exchange="NMS",

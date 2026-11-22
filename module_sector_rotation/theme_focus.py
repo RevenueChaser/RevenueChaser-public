@@ -5,7 +5,7 @@ dots are visible. See docs/dashboard_ui.md §4.
 """
 from __future__ import annotations
 
-from RevenueChaser.core import rotation_reference
+from revenuechaser.core import rotation_reference
 
 # Hand overlay when relatedness_theme_etfs has no row for a coarse label.
 # Primary ETF only; fuzzy-match on the coarse label (lowercased).
@@ -32,7 +32,7 @@ _OVERLAY_RULES: list[tuple[tuple[str, ...], str]] = [
 
 def _current_run_id() -> str | None:
     try:
-        from RevenueChaser.core.universe import current_theme_run
+        from revenuechaser.core.universe import current_theme_run
         return current_theme_run()
     except Exception:  # noqa: BLE001 — store-only optional path
         return None
@@ -49,7 +49,7 @@ def _overlay_etf(label: str) -> str | None:
 
 
 def _jaccard_etfs(theme_id: str) -> list[str]:
-    from RevenueChaser.module_relatedness.store_reads import theme_etfs
+    from revenuechaser.module_relatedness.store_reads import theme_etfs
     try:
         rows = theme_etfs(theme_id)
     except Exception:  # noqa: BLE001
@@ -67,7 +67,7 @@ def _jaccard_etfs(theme_id: str) -> list[str]:
 
 def _stored_coarse_labels(run_id: str) -> dict[str, str]:
     """``theme_id -> label`` as stored in ``relatedness_themes`` for the run's coarse themes."""
-    from RevenueChaser.module_relatedness.store_reads import coarse_labels_of_run
+    from revenuechaser.module_relatedness.store_reads import coarse_labels_of_run
     try:
         rows = coarse_labels_of_run(run_id)
     except Exception:  # noqa: BLE001
@@ -84,7 +84,7 @@ def _coarse_rows() -> list[dict]:
     sector-named coarse theme keeps the sector ETF it plotted before the catalog
     renamed it (avo's card on the R2 review, 2026-10-14: "Eski etikete bağlı")."""
     try:
-        from RevenueChaser.core.universe import theme_catalog
+        from revenuechaser.core.universe import theme_catalog
         catalog = theme_catalog()
     except Exception:  # noqa: BLE001
         return []

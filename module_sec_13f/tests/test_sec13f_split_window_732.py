@@ -14,7 +14,7 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.module_sec_13f import report
+from revenuechaser.module_sec_13f import report
 
 Q1, Q2 = "2025-03-31", "2025-06-30"
 META = {"AAA": {"name": "Alpha", "sector": "Technology"}}
@@ -80,8 +80,8 @@ def test_the_chart_is_on_the_same_basis():
 # ── the shared split rule ────────────────────────────────────────────────────
 
 def test_split_factors_13f_reads_one_bar_window_per_quarter(monkeypatch):
-    from RevenueChaser.core import ownership
-    from RevenueChaser.rcdata import read
+    from revenuechaser.core import ownership
+    from revenuechaser.rcdata import read
     asked = []
     monkeypatch.setattr(read, "security_ids", lambda tickers: {t: f"sid:{t}" for t in tickers})
 
@@ -98,8 +98,8 @@ def test_split_factors_13f_reads_one_bar_window_per_quarter(monkeypatch):
 
 
 def test_an_unreadable_prices_store_gives_no_factor(monkeypatch):
-    from RevenueChaser.core import ownership
-    from RevenueChaser.rcdata import read
+    from revenuechaser.core import ownership
+    from revenuechaser.rcdata import read
 
     def broken(*a, **k):
         raise RuntimeError("database is locked")

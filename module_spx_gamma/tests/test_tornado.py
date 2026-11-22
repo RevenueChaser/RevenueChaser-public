@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import plotly.graph_objects as go
 
-from RevenueChaser.module_spx_gamma.charts import tornado
+from revenuechaser.module_spx_gamma.charts import tornado
 from .conftest import make_snapshot
 
 

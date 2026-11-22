@@ -9,9 +9,9 @@ from datetime import datetime, timezone
 
 import pytest
 
-from RevenueChaser.app import jobs, runners
-from RevenueChaser.core import calendar as cal
-from RevenueChaser.core import ledger, rawstore
+from revenuechaser.app import jobs, runners
+from revenuechaser.core import calendar as cal
+from revenuechaser.core import ledger, rawstore
 
 INTRADAY = datetime(2026, 10, 2, 16, 0, tzinfo=timezone.utc)        # 12:00 ET on a trading day
 
@@ -24,10 +24,10 @@ AG_RESULT = {"cards": [{"ticker": "CCC", "total_points": 9}], "asof": "2026-10-0
 def order(monkeypatch, tmp_path):
     """Stub the scans, the renderers and the file writes; record the order of every step."""
     calls: list[str] = []
-    from RevenueChaser.module_asymmetric_growth import engine as ag_engine, report as ag_report
-    from RevenueChaser.module_fundamentals import pipeline as fu_pipeline, report as fu_report
-    from RevenueChaser.module_swing_potential import pipeline as sw_pipeline, report as sw_report
-    from RevenueChaser.core import ticker_store
+    from revenuechaser.module_asymmetric_growth import engine as ag_engine, report as ag_report
+    from revenuechaser.module_fundamentals import pipeline as fu_pipeline, report as fu_report
+    from revenuechaser.module_swing_potential import pipeline as sw_pipeline, report as sw_report
+    from revenuechaser.core import ticker_store
 
     def step(name, result=None):
         def f(*a, **k):
@@ -49,7 +49,7 @@ def order(monkeypatch, tmp_path):
     monkeypatch.setattr(runners, "_write_board",
                         lambda path, *a, **k: calls.append(f"{path.stem.removesuffix('_latest')}.write"))
     # AG writes its page and its payload file together (S7, K10 #383 C6a).
-    from RevenueChaser.core import reporting_common
+    from revenuechaser.core import reporting_common
     monkeypatch.setattr(reporting_common, "write_board", lambda *a, **k: calls.append("asymmetric_growth.board"))
     ledger.take_notes()
     return calls
@@ -58,9 +58,9 @@ def order(monkeypatch, tmp_path):
 @pytest.fixture
 def freezers(monkeypatch, order):
     """Replace the three freeze functions with spies that record their call and arguments."""
-    from RevenueChaser.module_asymmetric_growth import freeze as ag_freeze
-    from RevenueChaser.module_fundamentals import freeze as fu_freeze
-    from RevenueChaser.module_swing_potential import freeze as sw_freeze
+    from revenuechaser.module_asymmetric_growth import freeze as ag_freeze
+    from revenuechaser.module_fundamentals import freeze as fu_freeze
+    from revenuechaser.module_swing_potential import freeze as sw_freeze
     seen: dict[str, dict] = {}
 
     def spy(name, attr):
@@ -121,7 +121,7 @@ def test_a_refresh_writes_no_ledger_rows_even_with_the_real_freezers(order, runn
 # ── a freeze error is an error, a skipped freeze is a note ───────────────────
 
 def test_a_freeze_exception_propagates_and_fails_the_job(order, monkeypatch):
-    from RevenueChaser.module_swing_potential import freeze as sw_freeze
+    from revenuechaser.module_swing_potential import freeze as sw_freeze
 
     def boom(payload, **kw):
         raise RuntimeError("ledger write failed")

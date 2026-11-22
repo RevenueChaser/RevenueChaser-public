@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from datetime import date
 
-from RevenueChaser.rcdata.build import base, secd
-from RevenueChaser.rcdata.build.prices import stage as prices_stage, wrds_history
+from revenuechaser.rcdata.build import base, secd
+from revenuechaser.rcdata.build.prices import stage as prices_stage, wrds_history
 
 PROVENANCE = {"source_as_of": date(2026, 11, 2), "fetched_at": 1.0, "run_id": "test"}
 

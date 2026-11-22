@@ -4,8 +4,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from RevenueChaser.module_relatedness import embeddings, themes
-from RevenueChaser.module_relatedness.tests.test_themes import _profiles
+from revenuechaser.module_relatedness import embeddings, themes
+from revenuechaser.module_relatedness.tests.test_themes import _profiles
 
 
 def _two_groups(pjs, write=True):
@@ -51,7 +51,7 @@ def test_compare_runs_reads_one_grouping_as_identical(rawstore_tmp_db, monkeypat
 
 
 def test_a_rebuild_that_leaves_too_many_unthemed_is_not_cut_over(rawstore_tmp_db, monkeypatch, capsys):
-    from RevenueChaser.module_relatedness import __main__ as cli
+    from revenuechaser.module_relatedness import __main__ as cli
     monkeypatch.setattr(themes, "build_shadow", lambda **k: {"run_id": "r", "n": 80, "unthemed": 20})
     monkeypatch.setattr(themes, "finalize_run", lambda *a, **k: pytest.fail("cut over"))
     assert cli.main(["--rebuild-themes", "--method", "embedding"]) == 1

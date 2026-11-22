@@ -19,14 +19,14 @@ from datetime import datetime, timezone
 
 import pytest
 
-from RevenueChaser.rcdata.tests import universe_store
-from RevenueChaser.app import runners
-from RevenueChaser.core import rawstore, screen_common, ticker_store
-from RevenueChaser.module_fundamentals import config as fcfg
-from RevenueChaser.module_fundamentals import pipeline as fp
-from RevenueChaser.module_swing_potential import config as scfg
-from RevenueChaser.module_swing_potential import pipeline as sp
-from RevenueChaser.module_swing_potential.tests.test_ohlc import _df
+from revenuechaser.rcdata.tests import universe_store
+from revenuechaser.app import runners
+from revenuechaser.core import rawstore, screen_common, ticker_store
+from revenuechaser.module_fundamentals import config as fcfg
+from revenuechaser.module_fundamentals import pipeline as fp
+from revenuechaser.module_swing_potential import config as scfg
+from revenuechaser.module_swing_potential import pipeline as sp
+from revenuechaser.module_swing_potential.tests.test_ohlc import _df
 
 _PANEL = re.compile(r'<details class="(?:rules|rc-history)" id="history-panel">.*?</details>', re.S)
 ANNUAL = [{"fiscal_year": 2022 + i, "revenue": 100.0 * (i + 1), "gross_profit": 60.0 * (i + 1),
@@ -50,7 +50,7 @@ def _no_scoring(monkeypatch):
     """Any scorer, pool or network call on a Refresh fails the test."""
     def boom(*a, **k):
         raise AssertionError("a Refresh must not score")
-    from RevenueChaser.module_asymmetric_growth import engine
+    from revenuechaser.module_asymmetric_growth import engine
     for mod in (sp, fp):
         monkeypatch.setattr(mod, "_compute_row", boom)
     monkeypatch.setattr(engine, "run_asymmetric_growth_hunter", boom)
@@ -75,7 +75,7 @@ def _card(ticker, points, **kw):
 
 
 def _ag_result():
-    from RevenueChaser.module_asymmetric_growth import engine, freeze
+    from revenuechaser.module_asymmetric_growth import engine, freeze
     mv = freeze.model_version()             # rows of this version: the board shows no "scored before" banner
     ends = {"revenue": ["2025-12-31", "2024-12-31", "2023-12-31"], "balance_sheet": "2025-12-31", "cash_flow": None}
     cards = [_card("AAA", 9, tier=3, flags=[], model_version=mv, anchor_fy=2025, prior_fy=2024, period_ends=ends),
@@ -89,19 +89,19 @@ def _ag_result():
             "summary": {"scanned": 3, "excluded_types": 12, "pts_9": 1, "pts_8_7": 0, "pts_6_5": 2, "pts_lt5": 0,
                         "score_errors": 1, "score_error_types": {"ValueError": 1}},
             "cards": cards, "thresholds": __import__(
-                "RevenueChaser.module_asymmetric_growth.engine", fromlist=["THRESHOLDS"]).THRESHOLDS}
+                "revenuechaser.module_asymmetric_growth.engine", fromlist=["THRESHOLDS"]).THRESHOLDS}
 
 
 def _ag_payload():
     """The cards the AG page loads (S7, K10): the gzip payload file next to the page."""
     import gzip
-    from RevenueChaser.core.reporting_common import payload_path
+    from revenuechaser.core.reporting_common import payload_path
     return json.loads(gzip.decompress(payload_path(runners.ASYMMETRIC_GROWTH_LATEST).read_bytes()))
 
 
 @pytest.fixture
 def ag_fetched(rawstore_tmp_db, out, monkeypatch):
-    from RevenueChaser.module_asymmetric_growth import engine, freeze
+    from revenuechaser.module_asymmetric_growth import engine, freeze
     universe_store.replace([{"ticker": "AAA", "market_cap": 1e9, "price": 10.0, "name": "A"}])
     monkeypatch.setattr(engine, "run_asymmetric_growth_hunter", lambda uw, **k: _ag_result())
     monkeypatch.setattr(freeze, "freeze_result", lambda *a, **k: None)
@@ -117,7 +117,7 @@ def ag_fetched(rawstore_tmp_db, out, monkeypatch):
 
 
 def test_ag_stored_cards_are_what_ticker_scores_holds(ag_fetched):
-    from RevenueChaser.module_asymmetric_growth import engine
+    from revenuechaser.module_asymmetric_growth import engine
     ticker_store.write_from_cards([{"ticker": t, "name": t, "sector": "Energy", "total_points": pts,
                                     "themes": [], "signals": [], "tech_breakthrough": False}
                                    for t, pts in (("YYY", 3), ("ZZZ", 5))],
@@ -129,7 +129,7 @@ def test_ag_stored_cards_are_what_ticker_scores_holds(ag_fetched):
 
 
 def test_ag_a_fetch_embeds_the_stored_card_shape():
-    from RevenueChaser.module_asymmetric_growth.report import _card_rows
+    from revenuechaser.module_asymmetric_growth.report import _card_rows
     card = _card("AAA", 9, index=["S&P 500"])
     shown = _card_rows([card])[0]
     assert "fiscal_year" not in shown and shown["index"] == ["S&P 500"]

@@ -96,11 +96,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from RevenueChaser.rcdata.tests import universe_store
-from RevenueChaser.module_comovement import engine
-from RevenueChaser.module_comovement import returns as returns_mod
-from RevenueChaser.module_comovement.tests import prices_bars
-from RevenueChaser.module_comovement.tests.test_settings import _diff
+from revenuechaser.rcdata.tests import universe_store
+from revenuechaser.module_comovement import engine
+from revenuechaser.module_comovement import returns as returns_mod
+from revenuechaser.module_comovement.tests import prices_bars
+from revenuechaser.module_comovement.tests.test_settings import _diff
 
 _GOLDEN = Path(__file__).with_name("golden_recompute_parity.json")
 # The same eight strings the golden was captured with (they were sub-industries then, #266 reads them

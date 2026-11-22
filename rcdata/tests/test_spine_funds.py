@@ -4,17 +4,17 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.rcdata import caps, ops
-from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.spine import funds, security
+from revenuechaser.rcdata import caps, ops
+from revenuechaser.rcdata.build import base
+from revenuechaser.rcdata.build.spine import funds, security
 
 from . import spine_fixture as fx
 
 
 @pytest.fixture
 def env(monkeypatch, http_mock):
-    from RevenueChaser.core.providers import sec_edgar
-    from RevenueChaser.rcdata.build.spine import sec_tickers
+    from revenuechaser.core.providers import sec_edgar
+    from revenuechaser.rcdata.build.spine import sec_tickers
     monkeypatch.setattr(funds, "FLOOR", {"sp500": 4, "sp400": 2, "sp600": 2, "ndx": 1})
     monkeypatch.setattr(sec_edgar, "SEC_WWW_BASE", "https://sec.test")
     http_mock.add("company_tickers_exchange.json", fx.SEC_FILE)

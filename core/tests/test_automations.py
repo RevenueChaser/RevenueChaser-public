@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from RevenueChaser.core import automations as A
+from revenuechaser.core import automations as A
 
 ROOT = Path(__file__).resolve().parents[2]
 NOW = datetime(2026, 10, 2, 12, 0, tzinfo=timezone.utc)
@@ -39,7 +39,7 @@ def test_the_forecast_baselines_row_is_chained_on_the_outcomes_run():
     ``forecast_baselines`` alone."""
     e = A.entry("RC-Forecast-Baselines")
     assert (e.after, e.time, e.days) == ("RC-Forecast-Outcomes", "23:50", ())
-    assert e.args == ("-m", "RevenueChaser.scripts.forecast_baselines", "--nightly")
+    assert e.args == ("-m", "revenuechaser.scripts.forecast_baselines", "--nightly")
     assert e.schedule == "daily 23:50 (local), after RC-Forecast-Outcomes"
     assert e.tables_written == ("forecast_baselines",)
     assert e.chain_wait_minutes == 120 and not e.default_install and not e.offpeak_gated
@@ -95,7 +95,7 @@ def test_registry_names_are_unit_name_safe():
 
 
 def test_every_registry_tables_written_is_a_manifest_table():
-    from RevenueChaser.core import rawstore
+    from revenuechaser.core import rawstore
     for e in A.REGISTRY:
         for table in e.tables_written:
             assert table in rawstore.MANIFEST, f"{e.name} names {table}, not in MANIFEST"
@@ -128,7 +128,7 @@ def test_the_ibkr_login_check_writes_no_table():
 
 def test_the_ibkr_login_check_runs_the_module_it_claims_to():
     entry = A.entry("RC-IBKR-Login-Check")
-    assert entry.command == "python -m RevenueChaser.scripts.ibkr_login_check"
+    assert entry.command == "python -m revenuechaser.scripts.ibkr_login_check"
 
 
 def test_the_ibkr_login_check_description_says_what_it_never_asks_for():
@@ -155,7 +155,7 @@ class _FakeSystemctl:
 
 def test_the_builder_row_runs_one_queue_pass_every_hour_at_05():
     e = A.entry("RC-Build")
-    assert e.args == ("-m", "RevenueChaser.rcdata.build", "run", "--once")
+    assert e.args == ("-m", "revenuechaser.rcdata.build", "run", "--once")
     assert e.hourly and e.time == "00:05" and e.schedule == "hourly at :05 (local)"
     assert e.settings.time_limit_minutes == 120
     assert e.tables_written == (), "it writes the market store, never the old one: no job_runs row (job_runs2 instead)"
@@ -167,7 +167,7 @@ def test_the_weekly_backup_row_runs_sunday_0330_every_step_for_at_most_60_minute
     """avo, 8 Nov 2026: one weekly backup of everything onto the HDD, the newest 4 copies kept. It replaces the
     nightly RC-Build-Backup (04:30, serving files only) and the weekly RC-Build-Backup-Heavy."""
     e = A.entry("RC-Backup-Weekly")
-    assert e.args == ("-m", "RevenueChaser.rcdata", "backup"), "no --only: every step runs"
+    assert e.args == ("-m", "revenuechaser.rcdata", "backup"), "no --only: every step runs"
     assert (e.time, e.days) == ("03:30", ("Sunday",))
     assert e.schedule == "weekly Sunday 03:30 (local)"
     assert A.on_calendar(e) == "Sun *-*-* 03:30:00"
@@ -195,7 +195,7 @@ def test_linux_renders_the_builder_rows_as_life_rc_builder_units(tmp_path):
                      "life-rc-builder.service", "life-rc-builder.timer"]
     service = (tmp_path / "u" / "life-rc-builder.service").read_text(encoding="utf-8")
     timer = (tmp_path / "u" / "life-rc-builder.timer").read_text(encoding="utf-8")
-    assert 'ExecStart="/srv/rc/.venv/bin/python" "-m" "RevenueChaser.core.automations" "run" "RC-Build"' in service
+    assert 'ExecStart="/srv/rc/.venv/bin/python" "-m" "revenuechaser.core.automations" "run" "RC-Build"' in service
     assert "Type=oneshot" in service and "TimeoutStartSec=120min" in service
     assert "OnCalendar=*-*-* *:05:00" in timer and "Unit=life-rc-builder.service" in timer
     backup_service = (tmp_path / "u" / "life-rc-backup-weekly.service").read_text(encoding="utf-8")
@@ -232,7 +232,7 @@ def test_the_spx_gamma_fetch_runs_on_weekdays_after_the_stored_close():
     would never find Friday's close (no trading day, no builder pass). Not chained: the CLI waits for that close
     itself (exit 3, no UW call)."""
     e = A.entry("RC-SPX-Gamma-Fetch")
-    assert e.args == ("-m", "RevenueChaser.module_spx_gamma", "--nightly")
+    assert e.args == ("-m", "revenuechaser.module_spx_gamma", "--nightly")
     assert e.time == "06:30" and e.days == A._WEEKDAYS and e.after is None and not e.hourly
     assert e.tables_written == () and e.default_install is False
     assert e.settings.start_when_available is False
@@ -241,7 +241,7 @@ def test_the_spx_gamma_fetch_runs_on_weekdays_after_the_stored_close():
 
 def test_the_weekly_backup_is_the_only_row_running_rcdata_backup_and_takes_every_step():
     """One job, every step (avo, 8 Nov 2026): a new step or DuckDB kind lands in the weekly run by itself."""
-    rows = [e for e in A.REGISTRY if list(e.args)[:3] == ["-m", "RevenueChaser.rcdata", "backup"]]
+    rows = [e for e in A.REGISTRY if list(e.args)[:3] == ["-m", "revenuechaser.rcdata", "backup"]]
     assert [e.name for e in rows] == ["RC-Backup-Weekly", "RC-Backup-Watchlists-Daily"]
     assert "--only" not in rows[0].args and "--subdir" not in rows[0].args
     # the one other row is the daily watch-list copy, which never runs a weekly step (decision C, 17 Nov 2026)
@@ -280,7 +280,7 @@ def test_the_ibkr_login_check_limit_is_the_installed_unit_s_five_minutes():
 def test_the_sec_reads_nightly_check_is_a_job_of_its_own():
     """avo, 16 Nov 2026: the SEC daily check shows as a job on the Settings page and on the Grafana Jobs board."""
     e = A.entry("RC-SEC-Read")
-    assert list(e.args) == ["-m", "RevenueChaser.rcdata.build", "run", "--once", "--dataset", "sec/reads"]
+    assert list(e.args) == ["-m", "revenuechaser.rcdata.build", "run", "--once", "--dataset", "sec/reads"]
     assert (e.time, e.days, e.hourly, e.after) == ("01:10", (), False, None)
     assert e.unit == A.SEC_READ_UNIT == "life-rc-sec-read"
     assert e.schedule == "daily 01:10 (local)" and e.settings.limit_minutes == 90

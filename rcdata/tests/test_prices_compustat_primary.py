@@ -11,11 +11,11 @@ from datetime import date
 import duckdb
 import pytest
 
-from RevenueChaser.rcdata.build.prices import wrds_history
+from revenuechaser.rcdata.build.prices import wrds_history
 
 from .test_prices_wrds import (AAPL, JUNE, FakeWrds, _backfill, _build, _data, _q, built, env, fake,  # noqa: F401
                                whole_builds)
-from RevenueChaser.rcdata.build.spine import wrds
+from revenuechaser.rcdata.build.spine import wrds
 
 
 def _serve(monkeypatch, data):
@@ -248,8 +248,8 @@ def test_no_alpaca_bar_is_served_and_compustat_serves_the_newest_sessions(built)
 def test_the_daily_alpaca_run_asks_only_the_names_at_risk(fake, http_mock):
     from urllib.parse import parse_qs, urlparse
 
-    from RevenueChaser.rcdata.build import base
-    from RevenueChaser.rcdata.build.prices import actions, bars
+    from revenuechaser.rcdata.build import base
+    from revenuechaser.rcdata.build.prices import actions, bars
     assert _backfill()["result"] == "changed"
     assert base.run_request({"dataset": actions.NAME, "params": {"as_of": "2026-10-27"}})["result"] != "failed"
     row = base.run_request({"dataset": bars.NAME, "params": {"as_of": "2026-10-27"}})
@@ -260,16 +260,16 @@ def test_the_daily_alpaca_run_asks_only_the_names_at_risk(fake, http_mock):
 
 
 def test_the_tester_flags_a_history_close_alpaca_disagrees_with(built):
-    from RevenueChaser.rcdata import ops
-    from RevenueChaser.rcdata.build.prices import serving as prices_serving
+    from revenuechaser.rcdata import ops
+    from revenuechaser.rcdata.build.prices import serving as prices_serving
     issues = {i["key"]: i["detail"] for i in ops.open_issues(prices_serving.NAME, limit=500)[1]
               if i["kind"] == "alpaca_close_differs"}
     assert issues == {f"{AAPL}:2026-10-27:{wrds_history.COMPUSTAT}": "compustat 202.5000, alpaca 202.0000"}
 
 
 def test_the_risk_set_names_each_reason(monkeypatch):
-    from RevenueChaser.rcdata import ops
-    from RevenueChaser.rcdata.build.prices import serving as prices_serving, stage, tester
+    from revenuechaser.rcdata import ops
+    from revenuechaser.rcdata.build.prices import serving as prices_serving, stage, tester
     from .test_prices_wrds import _secd
 
     def rows(gvkey, closes, **kw):
@@ -283,7 +283,7 @@ def test_the_risk_set_names_each_reason(monkeypatch):
     stage.write_rows(secd, wrds_history.SECD + wrds_history.PROVENANCE, wrds_history.partition_path("secd", 2026))
     # secd.exchg is today's code: an exchange move is a sec_idhist EXCHG period starting in the window (the spine's
     # wrds/sec_idhist snapshot).
-    from RevenueChaser.rcdata.build.spine import wrds as spine_wrds
+    from revenuechaser.rcdata.build.spine import wrds as spine_wrds
     stage.write_rows([{"gvkey": "000004", "iid": "01", "item": "EXCHG", "itemvalue": "11",
                        "efffrom": date(2026, 10, 23), "effthru": None, "source_as_of": date(2026, 10, 27),
                        "fetched_at": 1.0, "run_id": "s"},
@@ -311,8 +311,8 @@ def test_the_risk_set_names_each_reason(monkeypatch):
 # corporate_action lacked (22 of them Tier A). The detector (serving.py, GAP_FACTOR) counts a split from any source.
 
 def _gap_issues():
-    from RevenueChaser.rcdata import ops
-    from RevenueChaser.rcdata.build.prices import serving as prices_serving
+    from revenuechaser.rcdata import ops
+    from revenuechaser.rcdata.build.prices import serving as prices_serving
     return {i["key"] for i in ops.open_issues(prices_serving.NAME, limit=500)[1] if i["kind"] == "price_gap_no_action"}
 
 
@@ -331,8 +331,8 @@ def test_a_split_only_crsp_records_and_the_served_close_jumps_across_is_applied_
     the served history is wrong there, so it **is applied**, from CRSP, as source ``wrds/crsp`` -- the one CRSP row
     that is served. It stays named, as ``split_applied_crsp``, so the exception is visible, and the day is no
     ``price_gap_no_action``."""
-    from RevenueChaser.rcdata import ops
-    from RevenueChaser.rcdata.build.prices import serving as prices_serving
+    from revenuechaser.rcdata import ops
+    from revenuechaser.rcdata.build.prices import serving as prices_serving
     _serve(monkeypatch, _split_unknown_to_compustat(_data()))      # CRSP's dlycumfacpr: 2.0 -> 1.0 on 4 Jun
     assert f"{AAPL}:{JUNE[2]}" not in _gap_issues()
     splits = _q("SELECT ex_date, ratio, applied, source, source_id FROM corporate_action WHERE security_id = ? "
@@ -380,8 +380,8 @@ def test_a_crsp_split_another_source_dates_apart_at_the_same_ratio_is_applied_on
     12 Sep 2001 half of it. One split the two sources date apart is applied **once**, and the day it is applied on
     is the day the served bars change basis -- CRSP's here, because the other source's day lies outside the gap the
     jump is measured across (avo, 22 Nov 2026: the real ex-date wins)."""
-    from RevenueChaser.rcdata import ops
-    from RevenueChaser.rcdata.build.prices import serving as prices_serving
+    from revenuechaser.rcdata import ops
+    from revenuechaser.rcdata.build.prices import serving as prices_serving
     _serve(monkeypatch, _split_compustat_dates_apart(_data(), "2025-05-30"))
     assert _aapl_splits() == [(JUNE[2], 2.0, wrds_history.CRSP)], "applied once, on the real ex-date"
     assert _aapl_oldest_split_factor() == pytest.approx(1 / 2), "the share basis steps once, not twice"
@@ -400,8 +400,8 @@ def test_the_row_the_real_ex_date_stands_in_for_is_kept_unapplied_with_its_reaso
     """The other source's row is not deleted: it records the same split, so it stays in ``corporate_action``
     unapplied, its reason naming the day the basis changed, and ``action_not_applied`` names it. That is how a
     reader sees the two dates and why one of them won (avo, 22 Nov 2026)."""
-    from RevenueChaser.rcdata import ops
-    from RevenueChaser.rcdata.build.prices import serving as prices_serving
+    from revenuechaser.rcdata import ops
+    from revenuechaser.rcdata.build.prices import serving as prices_serving
     _serve(monkeypatch, _split_compustat_dates_apart(_data(), "2025-05-30"))
     held = _q("SELECT ex_date, source, applied, not_applied_why, source_id FROM corporate_action "
               "WHERE security_id = ? AND action = 'split' AND NOT applied", [AAPL])
@@ -516,8 +516,8 @@ def test_the_same_gap_with_no_source_of_the_split_is_still_an_issue(monkeypatch)
 
 def _serve_note(monkeypatch, data) -> str:
     """``_serve``, returning the serving build's note (the bars run carries it)."""
-    from RevenueChaser.rcdata.build import base
-    from RevenueChaser.rcdata.build.prices import actions, bars
+    from revenuechaser.rcdata.build import base
+    from revenuechaser.rcdata.build.prices import actions, bars
     monkeypatch.setattr(wrds, "_factory", lambda: FakeWrds(data))
     wrds.reset()
     assert _backfill()["result"] == "changed"
@@ -528,8 +528,8 @@ def _serve_note(monkeypatch, data) -> str:
 
 
 def _crsp_only_details(kind: str = "split_only_crsp"):
-    from RevenueChaser.rcdata import ops
-    from RevenueChaser.rcdata.build.prices import serving as prices_serving
+    from revenuechaser.rcdata import ops
+    from revenuechaser.rcdata.build.prices import serving as prices_serving
     return {i["key"]: i["detail"] for i in ops.open_issues(prices_serving.NAME, limit=500)[1]
             if i["kind"] == kind}
 
@@ -576,8 +576,8 @@ def test_a_dividend_before_the_first_served_bar_is_counted_and_one_inside_the_hi
     the ex-date", most of them a dividend that went ex before the security's first served bar: it adjusts no served
     bar, so it is no defect, and it buried the 17 that are. Such a dividend is counted in the note and not named; one
     inside the served history with no close in the week before it is still named."""
-    from RevenueChaser.rcdata import ops
-    from RevenueChaser.rcdata.build.prices import serving as prices_serving
+    from revenuechaser.rcdata import ops
+    from revenuechaser.rcdata.build.prices import serving as prices_serving
     data = _data()
     data["comp.sec_divid"] += [{"gvkey": "001690", "iid": "01", "datadate": d, "divd": 0.5, "curcddv": "USD"}
                                for d in ("2025-05-15", "2025-07-01")]   # before AAPL's first bar; a gap of 25 days
@@ -597,7 +597,7 @@ def test_only_a_cash_dividend_ex_on_or_before_the_first_served_bar_is_counted():
     counted (no bar before it to adjust); a security with no served bar is named (nothing says the dividend is before
     its history); a spin-off before the history is named (only cash dividends are counted); an action not yet ex is
     no row."""
-    from RevenueChaser.rcdata.build.prices import serving as prices_serving
+    from revenuechaser.rcdata.build.prices import serving as prices_serving
     con = duckdb.connect()
     con.execute("CREATE TABLE price_bar_daily (security_id TEXT, session_date DATE)")
     con.execute("INSERT INTO price_bar_daily VALUES ('S', DATE '2025-06-02'), ('S', DATE '2025-06-03')")
@@ -616,8 +616,8 @@ def test_only_a_cash_dividend_ex_on_or_before_the_first_served_bar_is_counted():
 
 
 def test_a_split_compustat_and_crsp_both_carry_is_one_action(built):
-    from RevenueChaser.rcdata import ops
-    from RevenueChaser.rcdata.build.prices import serving as prices_serving
+    from revenuechaser.rcdata import ops
+    from revenuechaser.rcdata.build.prices import serving as prices_serving
     splits = _q("SELECT source_id FROM corporate_action WHERE security_id = ? AND action = 'split'", [AAPL])
     assert [s["source_id"] for s in splits] == ["wrds:split:001690:01:2025-06-04"]
     assert f"{AAPL}:{JUNE[2]}" not in _gap_issues()
@@ -653,7 +653,7 @@ def _asked_tables(conn):
 
 def _old_filter(year):
     """Rewrite the newest raw sidecar of a secd year as the old exchange filter asked it."""
-    from RevenueChaser.rcdata.build import base
+    from revenuechaser.rcdata.build import base
     meta = sorted(wrds_history.raw_dir("secd", year).glob("*.meta.json"))[-1]
     m = base.read_raw_json(meta)
     m["query"] = m["query"].replace("exchg IN (11, 12, 14, 17, 21)", "exchg IN (11, 12, 14)")
@@ -675,7 +675,7 @@ def test_a_secd_year_asked_with_the_old_exchange_filter_is_asked_again(fake):
 
 
 def test_the_dry_run_prints_the_queries_and_expected_rows_and_asks_nothing(fake, capsys, monkeypatch):
-    from RevenueChaser.rcdata.build import __main__ as cli
+    from revenuechaser.rcdata.build import __main__ as cli
     conn, _ = fake
     assert _backfill()["result"] == "changed"
     monkeypatch.setattr(wrds_history, "START_YEAR", 2008)        # so 2008-2023 are missing
@@ -778,10 +778,10 @@ def test_the_secd_pull_reaches_securities_listed_once_whatever_their_code_today(
 
 
 def test_a_security_on_otc_today_keeps_the_bars_of_its_listed_days(monkeypatch):
-    from RevenueChaser.rcdata.build.prices import stage
-    from RevenueChaser.rcdata.build.spine import wrds as spine_wrds
+    from revenuechaser.rcdata.build.prices import stage
+    from revenuechaser.rcdata.build.spine import wrds as spine_wrds
     from .test_prices_wrds import _secd
-    from RevenueChaser.rcdata import serving as rc_serving
+    from revenuechaser.rcdata import serving as rc_serving
 
     from .prices_fixture import SPINE, write_spine
     data = _data()
@@ -872,8 +872,8 @@ def test_a_crsp_split_within_split_same_days_of_compustats_is_the_same_split(mon
     step, and the day rule pairs them, so CRSP's row raises no issue at all; 4 days is outside that rule and CRSP's
     row becomes a candidate, so an issue names it. Which issue is the ratio rule's answer -- at the same ratio it is
     ``split_crsp_restated``, still one split (#661) -- and this test only asks whether the day rule paired them."""
-    from RevenueChaser.rcdata import ops
-    from RevenueChaser.rcdata.build.prices import serving as prices_serving
+    from revenuechaser.rcdata import ops
+    from revenuechaser.rcdata.build.prices import serving as prices_serving
     data = _split_unknown_to_compustat(_data())
     data["comp.sec_split"] = [{"gvkey": "001690", "iid": "01", "datadate": comp_day, "split": 2.0}]
     _serve(monkeypatch, data)
@@ -892,7 +892,7 @@ def test_decision_1_compustat_is_asked_daily():
 
 
 def test_decision_2_the_served_bars_status_follows_compustat():
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     assert read.DATASET_OF_TABLE["price_bar_daily"] == wrds_history.NAME
 
 
@@ -902,7 +902,7 @@ def test_a_secd_partition_in_the_old_format_without_its_raw_file_is_asked_again(
     the backfill took them as present (``_stale`` read only the raw sidecar). The partition's own columns now say it."""
     import duckdb as _duckdb
 
-    from RevenueChaser.rcdata.build import base
+    from revenuechaser.rcdata.build import base
     conn, _ = fake
     assert _backfill()["result"] == "changed"
     part = wrds_history.partition_path("secd", 2025)
@@ -936,7 +936,7 @@ def test_a_crsp_only_securitys_split_alpaca_also_knows_applies_once(monkeypatch,
     4 Jun 2025 is its split, but Alpaca knows the same split; one of them is applied, never both."""
     from .prices_fixture import BarsAnswer, bar
     from .test_prices_wrds import OCT, _crsp_rows
-    monkeypatch.setattr("RevenueChaser.rcdata.build.prices.tester.select", lambda names, as_of: (names, "every name"))
+    monkeypatch.setattr("revenuechaser.rcdata.build.prices.tester.select", lambda names, as_of: (names, "every name"))
     data = _data()
     data["crsp.dsf_v2"] += [{**r, "permno": "88888", "hdrcusip": "88888888", "cusip": "88888888", "ticker": "BRK-B"}
                             for r in _crsp_rows()]                       # dlycumfacpr 2.0 -> 1.0 on 4 Jun

@@ -6,10 +6,10 @@ from datetime import date, datetime, timezone
 
 import pytest
 
-from RevenueChaser.core import calendar
-from RevenueChaser.core.providers import unusual_whales
-from RevenueChaser.rcdata import ops, read, serving
-from RevenueChaser.rcdata.build import DATASETS, base, due, uw_economic_calendar as econ
+from revenuechaser.core import calendar
+from revenuechaser.core.providers import unusual_whales
+from revenuechaser.rcdata import ops, read, serving
+from revenuechaser.rcdata.build import DATASETS, base, due, uw_economic_calendar as econ
 
 pytestmark = pytest.mark.usefixtures("kinds_full")
 
@@ -105,7 +105,7 @@ def test_no_market_file_reads_as_no_rows():
 def test_market_4_builds_no_headlines_and_retires_the_live_table():
     """avo's option A (10 Nov 2026): ``boards/news.duckdb`` is the only home of the headlines, so the builder's
     ``ibkr/news`` is gone and a live market 3 file's ``news_headline`` may leave the build."""
-    from RevenueChaser.rcdata import scaffold
+    from revenuechaser.rcdata import scaffold
     assert serving.SERVING_SCHEMA_VERSION["market"] >= 4      # 5 since #807; the rule below holds at every one
     assert "ibkr/news" not in DATASETS and not hasattr(read, "news_headlines")
     assert "news_headline" in serving.RETIRED_TABLES["market"]
@@ -138,7 +138,7 @@ def test_an_hourly_dataset_is_due_again_an_hour_after_its_run(http_mock, monkeyp
 
 
 def test_settings_reads_the_hourly_cadence_and_counts_it_like_a_daily_one():
-    from RevenueChaser.module_settings import newdata
+    from revenuechaser.module_settings import newdata
     assert newdata._cadence(econ.NAME, None) == "hourly"
     check = {"result": "changed", "source_as_of": "2026-11-09", "checked_on": "2026-11-09", "coverage": None}
     assert newdata.status_of(econ.NAME, check, check, "hourly", NOW)[0] == "fresh"

@@ -1,10 +1,10 @@
 """R5 (#88), #266: the Growth Hunter reads the spine's sector and industry and skips the identity master's excluded types."""
 from __future__ import annotations
 
-from RevenueChaser.rcdata.tests import universe_store
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_asymmetric_growth import engine
-from RevenueChaser.module_asymmetric_growth.tests.test_score_ticker import _fin, _tech
+from revenuechaser.rcdata.tests import universe_store
+from revenuechaser.core import rawstore
+from revenuechaser.module_asymmetric_growth import engine
+from revenuechaser.module_asymmetric_growth.tests.test_score_ticker import _fin, _tech
 
 
 def _seed(rows, master=None):

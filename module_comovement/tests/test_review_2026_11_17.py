@@ -14,9 +14,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from RevenueChaser.module_comovement import config, engine
-from RevenueChaser.module_comovement.tests import test_recompute_parity as parity
-from RevenueChaser.module_comovement.tests.test_comovement import (_report_cluster, _report_payload,
+from revenuechaser.module_comovement import config, engine
+from revenuechaser.module_comovement.tests import test_recompute_parity as parity
+from revenuechaser.module_comovement.tests.test_comovement import (_report_cluster, _report_payload,
                                                                     _run_board_js)
 
 
@@ -70,7 +70,7 @@ def test_a_flat_stretch_before_the_window_does_not_drop_the_name(rawstore_tmp_db
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not on PATH")
 def test_an_unjudged_group_says_not_evaluated(tmp_path):
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
 
     payload = _report_payload(clusters={"20": [
         _report_cluster("1", mean=0.72, tickers=("AAA", "BBB"), significant=None, baseline_r=None)]})

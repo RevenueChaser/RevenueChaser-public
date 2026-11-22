@@ -5,8 +5,8 @@ gone) and the auditable rules[] checklist contract for Minervini / Weinstein / Q
 """
 import pytest
 
-from RevenueChaser.module_swing_potential.pipeline import prefilter
-from RevenueChaser.module_swing_potential.screeners import (
+from revenuechaser.module_swing_potential.pipeline import prefilter
+from revenuechaser.module_swing_potential.screeners import (
     evaluate_minervini,
     evaluate_qullamaggie,
     evaluate_weinstein,

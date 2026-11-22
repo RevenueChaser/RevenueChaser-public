@@ -6,7 +6,7 @@ added at render time so a Refresh stays network-free.
 """
 from __future__ import annotations
 
-from RevenueChaser.rcdata.tests import universe_store
+from revenuechaser.rcdata.tests import universe_store
 import json
 import re
 
@@ -29,8 +29,8 @@ def _candidate(ticker: str, *, sector: str = "Technology",
 
 
 def _render(candidates):
-    from RevenueChaser.module_swing_potential import config
-    from RevenueChaser.module_swing_potential.report import render_swing_dashboard
+    from revenuechaser.module_swing_potential import config
+    from revenuechaser.module_swing_potential.report import render_swing_dashboard
     return render_swing_dashboard({"candidates": candidates, "passing": {}, "summary": {},
                                    "universe_total": len(candidates), "is_fixture": False,
                                    "selection_version": config.SELECTION_VERSION})
@@ -67,7 +67,7 @@ _THEME = "r1:c1"
 
 
 def _seed_one_theme():
-    from RevenueChaser.core import rawstore
+    from revenuechaser.core import rawstore
     rawstore.write_rows("theme_runs", [{"id": "r1", "created_at": "x", "k_fine": 0,
                                         "k_medium": 0, "k_coarse": 1, "jaccard": 1.0, "is_current": 1}])
     rawstore.write_rows("relatedness_themes", [
@@ -87,7 +87,7 @@ def _swing(ticker, *, sector, industry, methods):
 
 
 def test_meta_themes_equal_the_catalog_and_the_themed_row_carries_the_id(rawstore_tmp_db):
-    from RevenueChaser.core import universe
+    from revenuechaser.core import universe
     _seed_one_theme()
     html = _render([_swing("AAA", sector="Technology", industry="Software - Application", methods=("minervini",)),
                     _swing("BBB", sector="Healthcare", industry="Biotechnology", methods=("minervini",))])
@@ -101,7 +101,7 @@ def test_meta_themes_equal_the_catalog_and_the_themed_row_carries_the_id(rawstor
 
 
 def test_a_method_toggle_and_a_sector_filter_narrow_more_than_either_alone(tmp_path, rawstore_tmp_db):
-    from RevenueChaser.core.tests.board_js import run_board_js
+    from revenuechaser.core.tests.board_js import run_board_js
     _seed_one_theme()
     html = _render([
         _swing("AAA", sector="Technology", industry="Software - Application", methods=("minervini", "weinstein")),

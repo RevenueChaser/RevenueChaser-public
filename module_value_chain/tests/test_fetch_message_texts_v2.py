@@ -6,8 +6,8 @@ on a 40-F's link.
 """
 from __future__ import annotations
 
-from RevenueChaser.core import universe
-from RevenueChaser.module_value_chain import engine, report
+from revenuechaser.core import universe
+from revenuechaser.module_value_chain import engine, report
 
 
 def test_on_the_layer_pending_ignores_the_old_miss_keys(rawstore_tmp_db, monkeypatch):

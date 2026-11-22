@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from RevenueChaser.app import dashboard, runners
-from RevenueChaser.scripts import drop_board_artifacts as mod
+from revenuechaser.app import dashboard, runners
+from revenuechaser.scripts import drop_board_artifacts as mod
 
 
 @pytest.fixture

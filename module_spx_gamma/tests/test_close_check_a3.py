@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.module_spx_gamma import close_check, store_reads
+from revenuechaser.module_spx_gamma import close_check, store_reads
 from . import rcdata_fixture as fx
 
 HIST = [{"date": "2026-10-28", "close": 18.0}, {"date": "2026-10-29", "close": 19.0},
@@ -53,7 +53,7 @@ def test_vix_family_keeps_its_history(rcdata_market):
 
 
 def test_page_shows_the_close_check():
-    from RevenueChaser.module_spx_gamma import render
+    from revenuechaser.module_spx_gamma import render
     from .conftest import make_snapshot
     html = render.render_html(make_snapshot())
     assert "Close check" in html and "Price band" in html and "Week gamma" in html

@@ -1,6 +1,6 @@
 # R5 — Positioning & Short Squeeze
 
-**Weight:** 0 — R5 is a **tag**, never a direction vote (`docs/module_earnings-radar/redesign.md` R5: "R5 vote: NONE").
+**Weight:** 0 — R5 is a **tag**, never a direction vote (`docs/module_earnings_radar/redesign.md` R5: "R5 vote: NONE").
 It never opens R4's OPTIONS gate and the drawer shows no signed score for it.
 **Sources:** Unusual Whales `/stock/{ticker}/flow-recent` (option prints) · FINRA settlement short interest and
 days to cover · IBKR borrow fee, both from the ownership store (`module_earnings_radar/store_reads.short_interest`).

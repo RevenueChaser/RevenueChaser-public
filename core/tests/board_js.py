@@ -84,7 +84,7 @@ def with_payload(html: str, payload) -> str:
     through ``script_json`` like any data in a script. Placed before ``</head>`` (else at the top), so it runs
     after a guard hook that blocks ``fetch`` and before the board's own scripts.
     """
-    from RevenueChaser.core.html_safe import script_json
+    from revenuechaser.core.html_safe import script_json
     stub = ("<script>window.fetch=function(){var p=" + script_json(payload) + ";"
             "return Promise.resolve({ok:true,status:200,json:function(){return Promise.resolve(p);}});};"
             "</script>")

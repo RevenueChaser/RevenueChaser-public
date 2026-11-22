@@ -16,8 +16,8 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.rcdata import read
-from RevenueChaser.rcdata.needs import catalog, screen
+from revenuechaser.rcdata import read
+from revenuechaser.rcdata.needs import catalog, screen
 
 # ``earnings_reported``: the board's day is the quarter the EPS belongs to, the write's day is when UW was asked.
 DIFFER = {"index_membership", "fundamental_fact", "earnings_event", "segment_revenue", "customer_share",
@@ -54,7 +54,7 @@ def test_the_screens_maps_are_the_cards():
 
 
 def test_the_screen_reads_the_cards_and_refuses_a_copy_of_its_own():
-    from RevenueChaser.module_settings import newdata
+    from revenuechaser.module_settings import newdata
     assert newdata.LABELS == screen.labels()
     assert newdata.DATE_COLUMN == screen.written_columns()
     assert newdata.COVERAGE_TARGET == screen.coverage_targets()
@@ -66,7 +66,7 @@ def test_the_screen_reads_the_cards_and_refuses_a_copy_of_its_own():
 
 
 def test_a_label_changed_in_one_place_is_what_the_screen_shows(monkeypatch):
-    from RevenueChaser.module_settings import newdata
+    from revenuechaser.module_settings import newdata
     card = screen.DATASETS["market_series"]
     monkeypatch.setitem(screen.DATASETS, "market_series", type(card)(**{**card.__dict__, "label": "Changed"}))
     assert newdata.LABELS["market_series"] == "Changed"
@@ -94,7 +94,7 @@ NO_DATE_COLUMN = {"peer_group"}
 def test_every_served_table_can_answer_the_boards_refresh():
     """No served table answers the button with 404 "unknown table" any more (#338): each has a kind, and the ones
     with no written column are the named few the route reads unordered."""
-    from RevenueChaser.rcdata.build import DATASETS
+    from revenuechaser.rcdata.build import DATASETS
     written = screen.written_columns()
     served = {t for ds in DATASETS.values() for t in ds.tables}
     assert served, "no dataset serves a table: the registry did not load"
@@ -106,8 +106,8 @@ def test_every_served_table_can_answer_the_boards_refresh():
 def test_the_board_samples_every_served_table_and_dates_the_ones_with_a_column():
     """The screen's sampled map is the served tables plus the ones only it dates, and it does not widen the
     dating map: a table with no written column is sampled with None, never dated by an invented column."""
-    from RevenueChaser.module_settings import newdata
-    from RevenueChaser.rcdata.build import DATASETS
+    from revenuechaser.module_settings import newdata
+    from revenuechaser.rcdata.build import DATASETS
     served = {t for ds in DATASETS.values() for t in ds.tables}
     columns = newdata.sampled_columns()
     assert served <= set(columns)
@@ -154,7 +154,7 @@ def test_compustat_serves_the_daily_prices_and_alpaca_is_the_tester():
 
 
 def test_a_kinds_steps_sit_inside_its_files_steps():
-    from RevenueChaser.rcdata.build import DATASETS
+    from revenuechaser.rcdata.build import DATASETS
     spans = {"spine": range(1, 8), "prices": (8,), "delisted": (8,), "fundamentals": (9,), "sec_forms": (9,),
              "sec_reads": (9,), "ownership": (10,), "options": (11,), "market": (11,)}
     for name, ds in DATASETS.items():
@@ -162,14 +162,14 @@ def test_a_kinds_steps_sit_inside_its_files_steps():
 
 
 def test_the_files_are_every_serving_kind_in_build_order():
-    from RevenueChaser.rcdata import serving
+    from revenuechaser.rcdata import serving
     assert set(screen.FILES) == set(serving.KINDS)
     assert list(screen.FILES) == ["spine", "prices", "delisted", "fundamentals", "sec_forms", "sec_reads",
                                   "ownership", "options", "market"]
 
 
 def test_a_dataset_that_does_not_fill_by_tier_has_words_for_why():
-    from RevenueChaser.rcdata.build import DATASETS, base
+    from revenuechaser.rcdata.build import DATASETS, base
     for name, ds in DATASETS.items():
         if not base.honours_scope(ds):
             assert screen.NO_TIER_DATASET_WORDS.get(name) or screen.NO_TIER_WORDS.get(ds.kind), name
@@ -180,12 +180,12 @@ def test_the_universe_offers_a_and_b_in_three_sets_and_shows_c_and_d_unoffered()
     assert [s.key for s in offered] == ["A", "E", "R"]
     assert {s.tier for s in offered} == {"A", "B"}
     assert [s.key for s in screen.UNIVERSE_SETS if not s.offered] == ["C", "D"]
-    from RevenueChaser.core.identity.types import EXCLUDED_TYPES
+    from revenuechaser.core.identity.types import EXCLUDED_TYPES
     assert set(screen.FUND_TYPES) <= EXCLUDED_TYPES
 
 
 def test_the_include_words_are_the_builders_own_groups():
-    from RevenueChaser.rcdata.build import base
+    from revenuechaser.rcdata.build import base
     assert tuple(screen.INCLUDE_WORDS) == base.SCOPE_GROUPS
 
 
@@ -202,14 +202,14 @@ def test_the_fill_switch_is_off_unless_set(monkeypatch, value, on):
 # ── The control board's steps and providers (design v28) ───────────────────────────────────────────────────────────
 
 def test_every_card_step_is_a_step_the_board_names():
-    from RevenueChaser.rcdata.needs import screen
+    from revenuechaser.rcdata.needs import screen
     assert set(screen.STEPS) == set(range(1, 12))
     assert {c.step for c in screen.DATASETS.values()} <= set(screen.STEPS)
 
 
 def test_every_provider_a_dataset_names_has_its_words():
-    from RevenueChaser.rcdata.needs import screen
-    from RevenueChaser.module_settings import newdata
+    from revenuechaser.rcdata.needs import screen
+    from revenuechaser.module_settings import newdata
     named = {p for ds in newdata._datasets().values() for p in getattr(ds, "providers", ())}
     assert named, "no provider found at all: the search is broken"
     assert named <= set(screen.PROVIDERS), f"no words for {sorted(named - set(screen.PROVIDERS))}"
@@ -218,6 +218,6 @@ def test_every_provider_a_dataset_names_has_its_words():
 
 def test_the_sec_pace_words_state_the_bucket_rate_the_code_runs():
     """#527: the page said "8 a second" while ``core/sec_throttle.RATE`` is 9; the words now read the constant."""
-    from RevenueChaser.core import sec_throttle
-    from RevenueChaser.rcdata.needs import screen
+    from revenuechaser.core import sec_throttle
+    from revenuechaser.rcdata.needs import screen
     assert f"{sec_throttle.RATE} a second" in screen.PROVIDERS["sec"].pace

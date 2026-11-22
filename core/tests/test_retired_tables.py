@@ -23,7 +23,7 @@ from pathlib import Path
 
 import pytest
 
-from RevenueChaser.core import rawstore
+from revenuechaser.core import rawstore
 
 _REPO = Path(__file__).resolve().parents[2]
 

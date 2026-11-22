@@ -72,9 +72,9 @@ def _layer_reads(wanted: list[str], since: date, *, counted: bool):
 
     shortcut: the run's check date stands in for the day its daily-index scan reached, and a backfill run (which
     reads no index) counts too; serve the scan day per run if the stale count must be exact."""
-    from RevenueChaser.rcdata import ops
-    from RevenueChaser.rcdata import read as rc_read
-    from RevenueChaser.rcdata.build.fundamentals import filings
+    from revenuechaser.rcdata import ops
+    from revenuechaser.rcdata import read as rc_read
+    from revenuechaser.rcdata.build.fundamentals import filings
     cik_of: dict[str, str] = {}
     listed: dict[str, date] = {}
     for chunk in _slices(wanted):

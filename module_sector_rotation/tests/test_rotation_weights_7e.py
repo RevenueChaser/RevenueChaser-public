@@ -5,9 +5,9 @@ import logging
 
 import pytest
 
-from RevenueChaser.core import rotation_reference
-from RevenueChaser.module_sector_rotation import engine, etf_holdings, universe
-from RevenueChaser.rcdata import read
+from revenuechaser.core import rotation_reference
+from revenuechaser.module_sector_rotation import engine, etf_holdings, universe
+from revenuechaser.rcdata import read
 
 
 def _lines(*rows):
@@ -93,7 +93,7 @@ def test_no_fund_and_no_sector_is_empty_never_spy():
 
 
 def test_the_badge_marks_a_sector_reading():
-    from RevenueChaser.module_earnings_radar.report import _quadrant_badge
+    from revenuechaser.module_earnings_radar.report import _quadrant_badge
     assert "·sec" in _quadrant_badge("LAGGING", "sector XLY") and "XLY" in _quadrant_badge("LAGGING", "sector XLY")
     assert "·sec" not in _quadrant_badge("LAGGING", "funds")
     assert "N/A" in _quadrant_badge("")

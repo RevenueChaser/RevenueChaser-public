@@ -9,9 +9,9 @@ import json
 
 import pytest
 
-from RevenueChaser.rcdata import serving
-from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.ownership import finra
+from revenuechaser.rcdata import serving
+from revenuechaser.rcdata.build import base
+from revenuechaser.rcdata.build.ownership import finra
 
 from . import ownership_fixture as ox
 

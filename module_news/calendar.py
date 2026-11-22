@@ -26,9 +26,9 @@ import time
 from datetime import date, datetime, timezone
 from zoneinfo import ZoneInfo
 
-from RevenueChaser.core import econ_importance, rawstore
-from RevenueChaser.module_news import store_reads
-from RevenueChaser.rcdata import read as market_read
+from revenuechaser.core import econ_importance, rawstore
+from revenuechaser.module_news import store_reads
+from revenuechaser.rcdata import read as market_read
 
 AMS = ZoneInfo("Europe/Amsterdam")
 MARK_KEY = "calendar_mark"

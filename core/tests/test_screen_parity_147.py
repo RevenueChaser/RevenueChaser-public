@@ -71,8 +71,8 @@ from pathlib import Path
 
 import pytest
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.core.tests import screen_parity as scn
+from revenuechaser.core import rawstore
+from revenuechaser.core.tests import screen_parity as scn
 
 GOLDEN = Path(__file__).parent / "fixtures" / "screen_parity_147.json"
 
@@ -121,8 +121,8 @@ def test_the_scenario_exercises_every_branch_of_the_scan(scenario):
 
 def test_a_refresh_leaves_the_persisted_scores_alone(scenario):
     """The golden holds the tables after a Fetch only; this pins that a Refresh does not rewrite them (#145 D5)."""
-    from RevenueChaser.module_fundamentals import pipeline as fp
-    from RevenueChaser.module_swing_potential import pipeline as sp
+    from revenuechaser.module_fundamentals import pipeline as fp
+    from revenuechaser.module_swing_potential import pipeline as sp
     sp.run_scan()
     fp.run_scan()
     before = {t: rawstore.query(f"SELECT * FROM {t} ORDER BY 1, 2", db=rawstore._db_of(t)) for t in

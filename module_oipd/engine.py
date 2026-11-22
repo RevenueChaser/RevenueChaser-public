@@ -26,9 +26,9 @@ from datetime import datetime, timedelta, timezone
 
 import numpy as np
 
-from RevenueChaser.core import calendar, rawstore
-from RevenueChaser.core.config import to_float
-from RevenueChaser.core.providers.result import ProviderResult
+from revenuechaser.core import calendar, rawstore
+from revenuechaser.core.config import to_float
+from revenuechaser.core.providers.result import ProviderResult
 
 from . import config, opd_math, uw_chain
 
@@ -425,7 +425,7 @@ def _empty_payload(ticker: str, message: str) -> dict:
 def list_names() -> list[str]:
     """The names the build stores a quoted chain for: the option watch list (``read.watched``, the one list source;
     strict, so an unreadable list raises ``read.JobListUnreadable``) and the newest evening's earnings set."""
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     # Not SPX: UW stores its chain with a zero NBBO, so it cannot be fitted on quotes; SPY stands for the S&P 500
     # here (avo's G1, 18 Nov 2026; #1061).
     names = set(read.watched("option")) - {"SPX"}
@@ -446,7 +446,7 @@ def stored_chain(ticker: str, session: str | None = None) -> tuple[str | None, l
     """``(session, contracts, spot, fetched_at)`` of one name's stored chain: the newest session when ``session`` is
     None. Spot is the session's close (``option_daily``), else the price UW served with the earnings set's spot
     exposures (``option_strike``), else None (the forward then stands on the chain alone)."""
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     rows = read.option_chain(ticker, session)
     if not rows:
         return None, [], None, None
@@ -478,7 +478,7 @@ def session_risk_free(session: str | None) -> tuple[float, str, str | None, str 
     The yield discounts every fitted expiry (``opd_math.black76_price``, the forward and the greeks), so the board
     says which day's yield it stood on rather than implying a rate it did not use.
     """
-    from RevenueChaser.core import risk_free
+    from revenuechaser.core import risk_free
     held = risk_free.stored_dgs10(session, config.RISK_FREE_MAX_AGE_DAYS)
     if held is None:
         return (config.RISK_FREE_RATE, "default", None,
@@ -489,7 +489,7 @@ def session_risk_free(session: str | None) -> tuple[float, str, str | None, str 
 
 def build(ticker: str | None = None, session: str | None = None) -> dict:
     """The board's payload for ``ticker`` from the stored chain: no provider call, no write."""
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     try:
         names = list_names()
     except read.JobListUnreadable as exc:

@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 from datetime import date, datetime, timezone
 
-from RevenueChaser.core import calendar
+from revenuechaser.core import calendar
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ def next_dates_answer(today: date | None = None):
     ``{ticker: date}`` map a card wants is ``stored_next_dates``. This keeps the envelope, for the cards that show how
     fresh the calendar is.
     """
-    from RevenueChaser.rcdata import needs
+    from revenuechaser.rcdata import needs
 
     today = today or calendar.today_ny()
     need = needs.catalog.NEEDS[NEED]
@@ -46,7 +46,7 @@ def stored_next_dates(today: date | None = None) -> dict[str, date]:
     """``{ticker: next earnings date on or after today}``: the layer's calendar. ``{}`` when it does not answer;
     never an error."""
     today = today or calendar.today_ny()      # the New York date: after midnight in Amsterdam it is still yesterday there
-    from RevenueChaser.rcdata import needs
+    from revenuechaser.rcdata import needs
 
     need = needs.catalog.NEEDS[NEED]
     try:
@@ -62,7 +62,7 @@ def _layer_dates(ans, today: date, need) -> dict[str, date]:
     session = ans.freshness["as_of_session"]
     if session is None or session > today:
         return {}
-    from RevenueChaser.rcdata import needs
+    from revenuechaser.rcdata import needs
 
     # The lag is counted against the day the API counts it against, not against ``today``: on a trading day whose
     # session is not over yet those differ by one, and the card and the filter would disagree (review I1).

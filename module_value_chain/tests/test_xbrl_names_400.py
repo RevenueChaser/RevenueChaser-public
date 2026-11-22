@@ -5,7 +5,7 @@ spaces or legal suffixes. An anonymised customer ("Customer A") and a name two c
 """
 from __future__ import annotations
 
-from RevenueChaser.module_value_chain import aliases, engine
+from revenuechaser.module_value_chain import aliases, engine
 
 SPINE = [{"ticker": "MCK", "name": "McKesson Corp"}, {"ticker": "COR", "name": "Cencora, Inc."},
          {"ticker": "ABC1", "name": "Acme Holdings"}, {"ticker": "ABC2", "name": "ACME Inc"}]

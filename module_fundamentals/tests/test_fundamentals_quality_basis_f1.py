@@ -10,10 +10,10 @@ from __future__ import annotations
 
 import json
 
-from RevenueChaser.core.tests.board_js import run_board_js
-from RevenueChaser.module_fundamentals.pipeline import build_payload
-from RevenueChaser.module_fundamentals.report import render_fundamental_dashboard
-from RevenueChaser.module_fundamentals.tests.test_fundamental import _m
+from revenuechaser.core.tests.board_js import run_board_js
+from revenuechaser.module_fundamentals.pipeline import build_payload
+from revenuechaser.module_fundamentals.report import render_fundamental_dashboard
+from revenuechaser.module_fundamentals.tests.test_fundamental import _m
 
 _EVIL = "<img src=x onerror=alert(1)>"
 

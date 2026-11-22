@@ -9,9 +9,9 @@ from datetime import date, datetime, timezone
 
 import pytest
 
-from RevenueChaser.core import calendar
-from RevenueChaser.module_spx_gamma import store_reads
-from RevenueChaser.rcdata import read
+from revenuechaser.core import calendar
+from revenuechaser.module_spx_gamma import store_reads
+from revenuechaser.rcdata import read
 
 from . import rcdata_fixture as fx
 
@@ -149,7 +149,7 @@ def test_no_candles_in_the_window_is_not_stored(rcdata_market):
 # ── per-call, read-only, closed ──
 
 def test_every_read_opens_read_only_and_closes_before_it_returns(rcdata_market, monkeypatch):
-    from RevenueChaser.rcdata import serving
+    from revenuechaser.rcdata import serving
     opened = []
     real = serving.open_read
 
@@ -183,8 +183,8 @@ def test_read_day_hands_build_day_the_raw_keys(rcdata_market):
 
 def test_the_banner_names_a_0_dte_only_previous_session_slice(rcdata_market):
     """Review SF2: the pin line and the data-quality banner both say the slice is partial (0 DTE only)."""
-    from RevenueChaser.module_spx_gamma import render
-    from RevenueChaser.module_spx_gamma.normalize import normalize_snapshot
+    from revenuechaser.module_spx_gamma import render
+    from revenuechaser.module_spx_gamma.normalize import normalize_snapshot
     from .conftest import make_raw
     raw = {**make_raw(), **store_reads.read_day(date(2026, 10, 27))}
     snap = normalize_snapshot(raw, "2026-10-27")
@@ -210,8 +210,8 @@ def test_a_broken_ops_file_on_the_not_stored_path_is_a_marker_not_an_exception(m
 
 def test_the_weekly_change_is_none_across_a_missing_report_and_the_board_says_gap():
     """Review SF4: with the 6 Oct report missing, 13 Oct minus 29 Sep is two weeks, not a weekly change."""
-    from RevenueChaser.module_spx_gamma import render
-    from RevenueChaser.module_spx_gamma.normalize import normalize_snapshot
+    from revenuechaser.module_spx_gamma import render
+    from revenuechaser.module_spx_gamma.normalize import normalize_snapshot
     from .conftest import make_raw
     fx.serve(spx={}, cot_reports=(date(2026, 9, 29), date(2026, 10, 13)))
     out = store_reads.cot_tff(date(2026, 10, 19))
@@ -237,7 +237,7 @@ def test_the_cot_release_date_is_called_an_approximation(rcdata_market):
 def test_a_skipped_run_after_a_build_keeps_the_built_status_and_says_skipped(rcdata_market):
     """Review SF6b: a Fetch while a dataset is paused (or day-capped) leaves a 'skipped' check row; the board keeps
     the status of the last real build (ops.latest_unskipped_check, as the Settings card does) and notes the skip."""
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
     ops.record_check("uw/spot_expiry_strike", "skipped", note="paused by avo")
     ops.record_check("market_series", "skipped", note="day cap reached")
     zod = store_reads.zero_one_dte_dollars(fx.LAST)
@@ -248,7 +248,7 @@ def test_a_skipped_run_after_a_build_keeps_the_built_status_and_says_skipped(rcd
 
 
 def test_only_skipped_checks_read_as_never_built(rcdata_market):
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
     ops.put_rows("dataset_check", [{**r, "result": "skipped"} for r in ops.rows("dataset_check")    # none built
                                    if r["dataset"] == "uw/spot_expiry_strike"])
     ops.record_check("uw/spot_expiry_strike", "skipped", note="paused by avo")
@@ -258,14 +258,14 @@ def test_only_skipped_checks_read_as_never_built(rcdata_market):
 
 def test_the_board_status_without_an_ops_file_is_never_checked_and_creates_nothing():
     """#336: the board's status read is a page read, so it never creates ``ops.sqlite`` (F7 A)."""
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
     assert not ops.ops_path().exists()
     assert store_reads._board_status("uw/spot_expiry_strike") == (read.NEVER_CHECKED, None)
     assert not ops.ops_path().exists()
 
 
 def test_the_board_status_reads_the_newest_check_and_names_a_newer_skip():
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
     ops.record_check("uw/spot_expiry_strike", "changed")
     assert store_reads._board_status("uw/spot_expiry_strike") == ("changed", None)
     ops.record_check("uw/spot_expiry_strike", "skipped", note="paused")

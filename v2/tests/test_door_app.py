@@ -13,10 +13,10 @@ import json
 
 import pytest
 
-from RevenueChaser.core import reporting_common as rc
-from RevenueChaser.core import v2_envelope as env
-from RevenueChaser.v2.door import app as door_app
-from RevenueChaser.v2.door import boards
+from revenuechaser.core import reporting_common as rc
+from revenuechaser.core import v2_envelope as env
+from revenuechaser.v2.door import app as door_app
+from revenuechaser.v2.door import boards
 
 fastapi_testclient = pytest.importorskip("fastapi.testclient")
 

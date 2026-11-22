@@ -12,10 +12,10 @@ from types import SimpleNamespace
 import pandas as pd
 import pytest
 
-from RevenueChaser.core import funnel, price_hygiene as ph
-from RevenueChaser.core import screen_common as sc
+from revenuechaser.core import funnel, price_hygiene as ph
+from revenuechaser.core import screen_common as sc
 
-from RevenueChaser.core.tests.test_screen_common_147 import Board, board  # noqa: F401 - #147's fake board
+from revenuechaser.core.tests.test_screen_common_147 import Board, board  # noqa: F401 - #147's fake board
                                                                          # and its fixture
 
 

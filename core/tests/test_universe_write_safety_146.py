@@ -14,8 +14,8 @@ import os
 
 import pytest
 
-from RevenueChaser.core import job_lock, rawstore
-from RevenueChaser.rcdata.tests import spine_fixture
+from revenuechaser.core import job_lock, rawstore
+from revenuechaser.rcdata.tests import spine_fixture
 
 SECTOR = "Technology"
 
@@ -120,7 +120,7 @@ def _quote(sym, cap=1e9, **extra):
 # ── the visible flag ──────────────────────────────────────────────────────────
 
 def test_the_provenance_line_says_partial_fetch_and_escapes_the_board_name():
-    from RevenueChaser.core.reporting_common import universe_provenance_html
+    from revenuechaser.core.reporting_common import universe_provenance_html
     plain = universe_provenance_html("2026-10-03T00:00:00+00:00", "Swing Potential")
     flagged = universe_provenance_html("2026-10-03T00:00:00+00:00", "Swing Potential", partial=True)
     assert "partial fetch" not in plain and "partial fetch" in flagged

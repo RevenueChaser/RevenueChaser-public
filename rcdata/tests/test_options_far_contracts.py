@@ -7,11 +7,11 @@ from datetime import date, datetime, timezone
 
 import pytest
 
-from RevenueChaser.core import calendar
-from RevenueChaser.core.providers import unusual_whales
-from RevenueChaser.rcdata import ops, read, serving
-from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.options import uw_far_contracts as far
+from revenuechaser.core import calendar
+from revenuechaser.core.providers import unusual_whales
+from revenuechaser.rcdata import ops, read, serving
+from revenuechaser.rcdata.build import base
+from revenuechaser.rcdata.build.options import uw_far_contracts as far
 
 from .options_fixture import SESSION, UWOptions, occ
 

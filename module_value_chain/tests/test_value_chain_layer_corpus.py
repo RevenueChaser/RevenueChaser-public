@@ -11,14 +11,14 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core import fundamentals_layer, rawstore
-from RevenueChaser.core.providers import sec_edgar
-from RevenueChaser.module_value_chain import aliases, engine
-from RevenueChaser.module_value_chain.tests.test_value_chain_profile_edges_410 import _profile
-from RevenueChaser.rcdata.build.fundamentals import companyfacts, filings
-from RevenueChaser.rcdata.build.sec_forms import forms
-from RevenueChaser.rcdata.tests import fund_fixture as fx
-from RevenueChaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401  (fixtures)
+from revenuechaser.core import fundamentals_layer, rawstore
+from revenuechaser.core.providers import sec_edgar
+from revenuechaser.module_value_chain import aliases, engine
+from revenuechaser.module_value_chain.tests.test_value_chain_profile_edges_410 import _profile
+from revenuechaser.rcdata.build.fundamentals import companyfacts, filings
+from revenuechaser.rcdata.build.sec_forms import forms
+from revenuechaser.rcdata.tests import fund_fixture as fx
+from revenuechaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401  (fixtures)
 
 STATED = "Direct sales to Apple accounted for 29.8% of our net sales. "
 #: MSFT in ``fund_fixture``: the layer corpus has no ``chain_filings`` row to read the CIK from, and
@@ -74,7 +74,7 @@ def test_a_corpus_row_carries_the_period_its_filing_reports_on(layer):
 def test_the_corpus_is_the_form_reader_and_not_filing_item(layer, monkeypatch):
     """#841: the two read sites ask ``sec/forms`` only. ``filing_item`` is ``sec/filings``' own second cut of the
     same documents, and a board that still touched it would keep both rules alive at once."""
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
 
     def refuse(*a, **k):
         raise AssertionError("the board must not read filing_item any more (#841)")
@@ -103,7 +103,7 @@ def test_a_fetch_downloads_nothing_on_the_layer(layer):
 
 
 def test_the_layer_is_not_the_corpus_before_sec_forms_has_built(layer, monkeypatch):
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
     built = ops.ever_built
     monkeypatch.setattr(ops, "ever_built", lambda name: name != forms.NAME and built(name))
     assert fundamentals_layer.reads_layer() and engine._board_filings_rows() == []

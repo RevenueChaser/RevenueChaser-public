@@ -1,7 +1,7 @@
 """Tests for Phase 1B trade summary helpers (edge, liquidity, trade read, attention)."""
 from datetime import date
 
-from RevenueChaser.module_earnings_radar.pipeline import _liquidity_label, _compute_edge, _trade_read, _attention_score
+from revenuechaser.module_earnings_radar.pipeline import _liquidity_label, _compute_edge, _trade_read, _attention_score
 
 
 class TestLiquidityLabel:

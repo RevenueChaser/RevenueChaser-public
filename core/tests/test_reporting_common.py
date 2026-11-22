@@ -6,7 +6,7 @@ constants kit was deleted in #383 C1d.
 """
 from __future__ import annotations
 
-from RevenueChaser.core import reporting_common
+from revenuechaser.core import reporting_common
 
 
 def test_help_html_carries_the_body_and_a_summary():

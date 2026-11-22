@@ -10,7 +10,7 @@ from __future__ import annotations
 import duckdb
 import pytest
 
-from RevenueChaser.core import rawstore
+from revenuechaser.core import rawstore
 
 _TABLE = "board_files_probe"
 

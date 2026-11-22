@@ -9,10 +9,10 @@ from datetime import date, datetime, timezone
 
 import pytest
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.core.providers import ibkr_tws as ibkr
-from RevenueChaser.module_news import headlines
-from RevenueChaser.rcdata.tests.ibkr_fixture import ACCOUNT_PLACEHOLDER, FakeGateway, frame
+from revenuechaser.core import rawstore
+from revenuechaser.core.providers import ibkr_tws as ibkr
+from revenuechaser.module_news import headlines
+from revenuechaser.rcdata.tests.ibkr_fixture import ACCOUNT_PLACEHOLDER, FakeGateway, frame
 
 NOW = datetime(2026, 11, 9, 19, 0, tzinfo=timezone.utc).timestamp()
 ALLOWED = {"71", "9", "86"}          # startApi, reqContractDetails, reqHistoricalNews
@@ -262,6 +262,6 @@ def test_a_lane_mark_moves_only_on_a_clean_pass_and_says_nothing_before_one():
 
 def test_the_lane_cadences_come_from_the_jobs_own_schedules():
     """The limit the Grafana rule reads is not a number typed twice: it follows the pass that feeds the lane."""
-    from RevenueChaser.module_news import tape, x_reader
+    from revenuechaser.module_news import tape, x_reader
     assert headlines.lane_late_after() == {"stocks": 6 * tape.TRIGGER_S, "x": 1.5 * x_reader.OFF_EVERY_S}
     assert set(headlines.lane_late_after()) == set(headlines.OK_LANES)

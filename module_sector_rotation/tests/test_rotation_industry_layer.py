@@ -9,13 +9,13 @@ from __future__ import annotations
 
 from datetime import date
 
-from RevenueChaser.core.gics_map import MORNINGSTAR_SECTORS
-from RevenueChaser.core import rotation_reference
-from RevenueChaser.core.rotation_reference import SEED_INDUSTRY_GROUPS as INDUSTRY_GROUPS
-from RevenueChaser.core.rotation_reference import SEED_ROTATION_ETFS as ROTATION_ETFS
-from RevenueChaser.core.tests.board_js import run_board_js
-from RevenueChaser.module_sector_rotation.models import ETFRotationSnapshot
-from RevenueChaser.rcdata.build.spine.security import GICS_GROUPS, GICS_SECTORS, sector_names
+from revenuechaser.core.gics_map import MORNINGSTAR_SECTORS
+from revenuechaser.core import rotation_reference
+from revenuechaser.core.rotation_reference import SEED_INDUSTRY_GROUPS as INDUSTRY_GROUPS
+from revenuechaser.core.rotation_reference import SEED_ROTATION_ETFS as ROTATION_ETFS
+from revenuechaser.core.tests.board_js import run_board_js
+from revenuechaser.module_sector_rotation.models import ETFRotationSnapshot
+from revenuechaser.rcdata.build.spine.security import GICS_GROUPS, GICS_SECTORS, sector_names
 
 
 def test_the_layer_is_the_spines_25_gics_groups_under_their_own_sectors():
@@ -49,7 +49,7 @@ def _snap(ticker, group):
 
 
 def test_the_industry_filter_shows_the_layer_whatever_each_etfs_own_group(tmp_path, monkeypatch, rawstore_tmp_db):
-    import RevenueChaser.module_sector_rotation.report as rd
+    import revenuechaser.module_sector_rotation.report as rd
     monkeypatch.setattr(rd, "OUTPUT_DIR", tmp_path)
     monkeypatch.setattr(rd, "coarse_theme_catalog", lambda: {})
     html = rd.export_rotation_dashboard([_snap("XLK", "sector"), _snap("XLE", "sector"), _snap("SMH", "theme"),

@@ -3,12 +3,12 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.module_financials.engines import dcf_engine
-from RevenueChaser.module_financials.engines.comps_engine import run_comps
-from RevenueChaser.module_financials.engines.credit_capacity_engine import run_credit_capacity
-from RevenueChaser.module_financials.engines.dcf_engine import run_dcf
-from RevenueChaser.module_financials.engines.sensitivity_engine import run_sensitivity
-from RevenueChaser.module_financials.engines.three_statement_engine import run_three_statement
+from revenuechaser.module_financials.engines import dcf_engine
+from revenuechaser.module_financials.engines.comps_engine import run_comps
+from revenuechaser.module_financials.engines.credit_capacity_engine import run_credit_capacity
+from revenuechaser.module_financials.engines.dcf_engine import run_dcf
+from revenuechaser.module_financials.engines.sensitivity_engine import run_sensitivity
+from revenuechaser.module_financials.engines.three_statement_engine import run_three_statement
 
 
 def _with_latest(financials, **over):
@@ -202,7 +202,7 @@ def test_zero_user_assumptions_in_three_statement(financials):
 
 # ── the report shows the states ────────────────────────────────────────────
 def _report(financials, **over):
-    from RevenueChaser.module_financials.reporting.html_builder import build_report_html
+    from revenuechaser.module_financials.reporting.html_builder import build_report_html
     f = _with_latest(financials, **over)
     return build_report_html({"ticker": "TEST", "financials": f, "modules": {
         "credit": run_credit_capacity(f), "dcf": run_dcf(f, {"terminal_growth": 0.5} if over.get("gordon") else None)},
@@ -230,6 +230,6 @@ def test_report_shows_the_plain_ratio_otherwise(financials):
 
 def test_the_dashboard_runners_pass_the_single_report_path():
     import inspect
-    from RevenueChaser.app import runners
+    from revenuechaser.app import runners
     for fn in (runners.run_quick,):                     # run_quick_cached re-derives nothing since #860
         assert "report_path=QUICK_LATEST" in inspect.getsource(fn)

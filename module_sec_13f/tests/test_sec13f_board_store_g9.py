@@ -10,8 +10,8 @@ from datetime import date
 
 import duckdb
 
-from RevenueChaser.module_sec_13f import engine as sec_13f
-from RevenueChaser.rcdata import serving
+from revenuechaser.module_sec_13f import engine as sec_13f
+from revenuechaser.rcdata import serving
 
 METRICS = {"shares": 500.0, "value": 1500.0, "holders": 3, "top10_pct": 42.5, "hhi": 120.5, "new_holders": 1,
            "exited_holders": 2, "buy_flow": 10.0, "sell_flow": 4.0, "breadth": 86.4216, "breadth_chg": 1.5}
@@ -57,7 +57,7 @@ def test_load_totals_is_empty_without_a_store():
 
 def test_the_board_metrics_are_the_stores_metrics():
     """The cell keys are the store's own ``METRICS``, so the two cannot drift apart silently."""
-    from RevenueChaser.core.ownership import SEC13F_METRICS
-    from RevenueChaser.rcdata.build.ownership.serve import METRICS as store_metrics
+    from revenuechaser.core.ownership import SEC13F_METRICS
+    from revenuechaser.rcdata.build.ownership.serve import METRICS as store_metrics
 
     assert SEC13F_METRICS == store_metrics

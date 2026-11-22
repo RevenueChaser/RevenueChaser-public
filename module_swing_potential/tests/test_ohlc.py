@@ -8,9 +8,9 @@ from datetime import date, datetime, timezone
 import pandas as pd
 import pytest
 
-from RevenueChaser.core import calendar as cal
-from RevenueChaser.core import ledger, rawstore
-from RevenueChaser.module_swing_potential import indicators
+from revenuechaser.core import calendar as cal
+from revenuechaser.core import ledger, rawstore
+from revenuechaser.module_swing_potential import indicators
 
 
 def _df(periods=300) -> pd.DataFrame:
@@ -38,15 +38,15 @@ class TestScanProvenance:
     core/provenance.py and is asserted in core/tests/test_provenance.py."""
 
     def test_payload_carries_the_data_date(self):
-        from RevenueChaser.module_swing_potential.pipeline import build_payload
+        from revenuechaser.module_swing_potential.pipeline import build_payload
         p = build_payload([], run_stats={"data_as_of": "2026-08-31"})
         assert p["data_as_of"] == "2026-08-31"
         assert p["generated_at"][:10] != "2026-08-31"
 
     def test_data_as_of_delegates_to_provenance(self, rawstore_tmp_db):
-        from RevenueChaser.core import rawstore
-        from RevenueChaser.module_swing_potential import pipeline
-        from RevenueChaser.core.tests.d01_seed import seed_d01
+        from revenuechaser.core import rawstore
+        from revenuechaser.module_swing_potential import pipeline
+        from revenuechaser.core.tests.d01_seed import seed_d01
         assert pipeline.data_as_of() is None
         seed_d01("AAPL", ["2026-08-31"], 1.0)                 # the D01 date of a scored name (K7, #383 R3)
         rawstore.replace_all("swing_scores", [{"ticker": "AAPL"}])

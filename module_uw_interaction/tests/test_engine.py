@@ -5,7 +5,7 @@ and returns canned bodies, so the tests exercise the catalog-driven logic only.
 """
 import pytest
 
-from RevenueChaser.module_uw_interaction.engine import (
+from revenuechaser.module_uw_interaction.engine import (
     ToolError, _coerce, _columns_from, _extract, run_tool,
 )
 

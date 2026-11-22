@@ -30,9 +30,9 @@ from collections.abc import Mapping
 
 import duckdb
 
-from RevenueChaser.core import calendar, config, llm_prices, llm_spend
-from RevenueChaser.rcdata import caps, ops, retention, serving
-from RevenueChaser.rcdata.needs import screen as api_screen
+from revenuechaser.core import calendar, config, llm_prices, llm_spend
+from revenuechaser.rcdata import caps, ops, retention, serving
+from revenuechaser.rcdata.needs import screen as api_screen
 
 
 class _FromScreen(Mapping):
@@ -160,7 +160,7 @@ RETENTION_ROW = retention.ROW             # a dataset_schedule row whose cadence
 
 
 def _datasets() -> dict:
-    from RevenueChaser.rcdata.build import DATASETS
+    from revenuechaser.rcdata.build import DATASETS
     return DATASETS
 
 
@@ -203,7 +203,7 @@ def _missed_by_lag(need: str, check: dict, now: datetime) -> int:
     owns (``rcdata/needs/catalog.py``, the one place freshness is declared since avo's decision of 29 Oct 2026).
     Counted from ``source_as_of`` all the same, so a job that stops fetching still goes late and then stale.
     """
-    from RevenueChaser.rcdata.needs import catalog, serve
+    from revenuechaser.rcdata.needs import catalog, serve
     spec = catalog.NEEDS[need]
     as_of = _day(check.get("source_as_of")) or _day(check.get("checked_on"))
     if as_of is None:
@@ -250,7 +250,7 @@ def _held_build(last: dict | None) -> bool:
     Read from the note of the skip, by the one mark the builder names, so the screen keeps no copy of the sentence
     the refusal is written in.
     """
-    from RevenueChaser.rcdata.build.base import WholeBuildByHand
+    from revenuechaser.rcdata.build.base import WholeBuildByHand
     return bool(last) and last.get("result") == "skipped" and WholeBuildByHand.MARK in (last.get("note") or "")
 
 
@@ -287,7 +287,7 @@ def attended_command(kind: str) -> str | None:
     names = [n for n, d in _datasets().items() if d.kind == kind and getattr(d, "attended", False)]
     if not names:
         return None
-    return f"python -m RevenueChaser.rcdata.build backfill {' '.join(names)}"
+    return f"python -m revenuechaser.rcdata.build backfill {' '.join(names)}"
 
 
 def _wrds_difference(dataset: str) -> dict:
@@ -303,7 +303,7 @@ def _wrds_difference(dataset: str) -> dict:
 def _held(dataset: str, ds) -> str | None:
     """Why the schedule never queues ``dataset`` now (``rcdata/build/due.py``), or None: an attended dataset runs only
     from the CLI; a dataset that starts by hand waits for its first build (delta S6)."""
-    from RevenueChaser.rcdata.build import due
+    from revenuechaser.rcdata.build import due
     if getattr(ds, "attended", False):
         return due.ATTENDED_WHY
     if getattr(ds, "starts_by_hand", False) and not ops.ever_built(dataset):
@@ -344,9 +344,9 @@ def _checks_list(dataset: str, check: dict | None, last: dict | None, missed: in
 def _backfill_sessions(now: datetime, spx=None) -> dict:
     """The session walk of a per-session dataset; ``spx`` is its build module (the SPX spot grid by
     default, the greek grid for ``_backfill_greek_sessions``). Both answer one partition per session."""
-    from RevenueChaser.rcdata.build import base
+    from revenuechaser.rcdata.build import base
     if spx is None:
-        from RevenueChaser.rcdata.build import uw_spot_expiry_strike as spx
+        from revenuechaser.rcdata.build import uw_spot_expiry_strike as spx
     root = spx.partition_path(spx.FIRST_SESSION).parent.parent
     have = set()
     if root.is_dir():
@@ -366,8 +366,8 @@ def _backfill_sessions(now: datetime, spx=None) -> dict:
 
 
 def _backfill_years(now: datetime) -> dict:
-    from RevenueChaser.rcdata.build import base
-    from RevenueChaser.rcdata.build import market_series as ms
+    from revenuechaser.rcdata.build import base
+    from revenuechaser.rcdata.build import market_series as ms
     years = []
     for src in ms.SOURCES:
         folder = base.parquet_root() / src.SOURCE / src.DATASET_DIR
@@ -379,7 +379,7 @@ def _backfill_years(now: datetime) -> dict:
 
 
 def _backfill_greek_sessions(now: datetime) -> dict:
-    from RevenueChaser.rcdata.build import uw_greek_expiry_strike as mod
+    from revenuechaser.rcdata.build import uw_greek_expiry_strike as mod
     return _backfill_sessions(now, mod)
 
 
@@ -391,7 +391,7 @@ BACKFILL = {"uw/spot_expiry_strike": _backfill_sessions, "uw/greek_expiry_strike
 
 # The plan's acceptance: Tier A sessions complete >= 99% (sized against the real Tier A, 5,655 names on 28 Oct).
 # An attended dataset's own command, where it is not its kind's (``attended_command``).
-ATTENDED_COMMANDS = {"wrds/prices": "python -m RevenueChaser.rcdata.build backfill wrds/prices"}
+ATTENDED_COMMANDS = {"wrds/prices": "python -m revenuechaser.rcdata.build backfill wrds/prices"}
 # The rows of the WRDS difference report (``wrds_price_diff``), as the card words them.
 WRDS_REPORT_LABELS = {"crsp_vs_compustat": "CRSP vs Compustat closes", "compustat_vs_alpaca": "Compustat vs Alpaca closes",
                       "crsp_vs_alpaca": "CRSP vs Alpaca closes", "compustat_returns": "Compustat returns vs the store's",
@@ -401,7 +401,7 @@ WRDS_REPORT_LABELS = {"crsp_vs_compustat": "CRSP vs Compustat closes", "compusta
 def _backfill_dates(*parts: str):
     """A dataset kept in ``date=`` partitions: how many there are and the newest (no expected count)."""
     def view(now: datetime) -> dict:
-        from RevenueChaser.rcdata.build import base
+        from revenuechaser.rcdata.build import base
         folder = base.parquet_root().joinpath(*parts)
         days = sorted(d.name[5:] for d in folder.iterdir()
                       if d.name.startswith("date=") and (d / "part-0.parquet").is_file()) if folder.is_dir() else []
@@ -412,7 +412,7 @@ def _backfill_dates(*parts: str):
 
 def _backfill_wrds_prices(now: datetime) -> dict:
     """The WRDS history's year partitions (``wrds_history``): one query each, newest year first."""
-    from RevenueChaser.rcdata.build.prices import wrds_history as wh
+    from revenuechaser.rcdata.build.prices import wrds_history as wh
     today = calendar._as_ny(now).date()
     plan = [(t, y) for t in wh.YEARLY for y in wh.years(t, today)]
     have = [(t, y) for t, y in plan if wh.partition_path(t, y).is_file()]
@@ -463,7 +463,7 @@ def sampled_columns() -> dict[str, str | None]:
     rather than refused with "unknown table" (#338). ``DATE_COLUMN`` stays the dating map and is not widened: a
     table with no column here must not be given one, because a card would then date it by a column it does not have.
     """
-    from RevenueChaser.rcdata.build import DATASETS
+    from revenuechaser.rcdata.build import DATASETS
     out: dict[str, str | None] = dict(DATE_COLUMN)
     for ds in DATASETS.values():
         for table in ds.tables:
@@ -505,7 +505,7 @@ def _sample_key(table: str, now: datetime) -> str:
     then wrong rather than merely old. And the store root moves between runs (every test gets its own), so a key of
     table and hour alone serves one test's rows to the next.
     """
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     kind = read.KIND_OF_TABLE.get(table.split("#")[0])      # "price_bar_daily#sessions" is that table's file
     path = serving.live_path(kind) if kind is not None else None
     try:
@@ -562,7 +562,7 @@ def read_sample_now(table: str, now: datetime | None = None, cached: bool = Fals
     the answer replaces the cached sample, so the next render shows the same rows. ``KeyError`` for any other name,
     :class:`SampleUnavailable` when the file or the table is not there. No provider, no job, no write.
     """
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     columns = sampled_columns()
     if table not in columns or table not in read.KIND_OF_TABLE:
         raise KeyError(table)
@@ -589,8 +589,8 @@ def read_sample_now(table: str, now: datetime | None = None, cached: bool = Fals
 def _sample_block(table: str, sample: dict | None) -> dict:
     """One card's example block. Without a sample the kind's file has never been built, so the declared schema
     stands in for the rows: "never built" and "built and empty" must not read the same (``rcdata/scaffold.py``)."""
-    from RevenueChaser.rcdata import scaffold
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import scaffold
+    from revenuechaser.rcdata import read
     out = {"table": table, "dataset": read.DATASET_OF_TABLE.get(table), "notes": SAMPLE_NOTES.get(table, ())}
     if sample is not None:
         return {**out, "built": True, "columns": sample["columns"], "rows": sample["rows"]}
@@ -686,7 +686,7 @@ def _build_of(kind: str, con, names: set[str]) -> dict:
     A file that carries none of them is a file built before #446 landed: it reads as a whole build with no
     manifest, never as an error.
     """
-    from RevenueChaser.rcdata.build import audit, base, dirty
+    from revenuechaser.rcdata.build import audit, base, dirty
     out: dict = {"kind": kind, "mode": None, "built_at": None, "files": None, "changed": None,
                  "audited_at": None, "audited": None, "differs": None, "owed": None}
     if serving.VERSION_TABLE in names:
@@ -778,7 +778,7 @@ def _my_universe_card(counts: dict | None) -> dict:
     The rules and the manual lines are read from the files in this checkout, not from the store: they are what the
     **next** build will apply, which is what the reader of this card wants to know.
     """
-    from RevenueChaser.rcdata.build.spine import my_universe as mine
+    from revenuechaser.rcdata.build.spine import my_universe as mine
     rules, (adds, removes) = mine.load_rules(), mine.load_manual()
     return {**{"total": None, "kinds": {}, "rules": {}, "as_of": None, "last_change": None,
                "entered": None, "left": None},
@@ -828,8 +828,8 @@ def _session_counts(con) -> dict[str, dict[str, int]]:
     5 Nov 2026, same 29 680 groups and same total of 39 186 044 either way -- 10.6 s and 8.0 s with the DISTINCT,
     2.0 s and 2.2 s without it.
     """
-    from RevenueChaser.rcdata.build import base
-    from RevenueChaser.rcdata.build.prices import serving as prices_serving
+    from revenuechaser.rcdata.build import base
+    from revenuechaser.rcdata.build.prices import serving as prices_serving
     spine = serving.live_path("spine")
     rows = None
     if spine.exists():
@@ -870,7 +870,7 @@ def _session_counts(con) -> dict[str, dict[str, int]]:
 
 def _universe_source() -> dict:
     """Which universe the boards read (``core.universe.source_state``): the flag and its fallback, if any."""
-    from RevenueChaser.core import universe
+    from revenuechaser.core import universe
     return universe.source_state()
 
 
@@ -961,7 +961,7 @@ def _folder(path: Path, deadline: float) -> dict:
 def walk_storage() -> dict:
     """``{"datasets": {name: {"raw", "parquet"}}, "walked_at": iso}``: every dataset's raw and Parquet folders on
     the HDD, walked now. The storage-picture job's work, never a page render's (#434)."""
-    from RevenueChaser.rcdata.build import base
+    from revenuechaser.rcdata.build import base
     raw_root, parquet_root = base.raw_root(), base.parquet_root()
     deadline = time.monotonic() + STORAGE_WALK_SECONDS
     datasets = {name: {"raw": _folder(raw_root.joinpath(*name.split("/")), deadline),
@@ -995,7 +995,7 @@ def _storage() -> dict:
     """Where each dataset sits, for the journey table: the live serving file of each kind, stat'ed now because that
     is four reads of the SSD and a live number, and the dataset folder counts as the storage-picture job last
     walked them, with the ``walked_at`` the page shows. The walk itself is not a render's work (#434)."""
-    from RevenueChaser.rcdata.build import base
+    from revenuechaser.rcdata.build import base
     files = {}
     for kind in serving.KINDS:
         path = serving.live_path(kind)
@@ -1090,7 +1090,7 @@ def _backups(now: datetime) -> dict:
     the newest weekly copy of every file (the DuckDB kinds, each board file, ops, the uw-raw weeks, the edgar_docs
     zip) and how many copies are kept. ``warn`` past ``BACKUP_WARN_DAYS``, ``alert`` past ``BACKUP_ALERT_DAYS`` or
     when there is none; a manual copy (``--only <kind>`` before a deploy) does not count as a weekly one."""
-    from RevenueChaser.rcdata import backup
+    from revenuechaser.rcdata import backup
     folder = (config.RAW_STORE_BACKUP_DIR or "").strip()
     root = Path(folder) / backup.ROOT if folder else None
     manifests = {step: (_read_manifest(root / step / backup.MANIFEST_NAME) if root else None) or {"files": {}}
@@ -1162,7 +1162,7 @@ def _retention() -> dict:
 
 
 def _retirement(now: datetime) -> list[dict]:
-    from RevenueChaser.core import automations
+    from revenuechaser.core import automations
     since = (calendar._as_ny(now).date() - timedelta(days=RETIREMENT_DAYS - 1)).isoformat()
     reads = ops.reads_since(since, RETIRING)
     return [{"table": t, "replaced_by": RETIRING[t], "reads_14d": reads.get(t, 0),
@@ -1211,7 +1211,7 @@ CROSS_ATTENDED = ("this check is written by the WRDS prices run, whose snapshot 
 
 def _diff_rows() -> list[dict]:
     """The stored WRDS comparison, read once. Its own function so a test can stand in for the store."""
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     return read.price_source_diff(comparison=CROSS_COMPARISON)
 
 
@@ -1334,7 +1334,7 @@ OPTIONS_ALWAYS = ("SPX",)
 def _watchlists() -> dict:
     """Both watch lists for their cards: ``{kind: {count, rows: [{ticker, added_on, added_by, note}]}}`` (one read
     through ``rcdata.read``: the read itself never creates ops.sqlite; the read log's minute flush may)."""
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     lists = read.watchlists()
     return {k: {"count": len(rows), "rows": [{"ticker": r["ticker"], "added_on": _iso_utc(r["added_at"]),
                                               "added_by": r["added_by"], "note": r["note"]} for r in rows]}

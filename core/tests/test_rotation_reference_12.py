@@ -61,8 +61,8 @@ def _reader_sources():
 
 
 def test_the_board_reexports_the_macro_table():
-    from RevenueChaser.core import rotation_reference
-    from RevenueChaser.module_sector_rotation import universe
+    from revenuechaser.core import rotation_reference
+    from revenuechaser.module_sector_rotation import universe
 
     assert universe.MACRO_SERIES is rotation_reference.MACRO_SERIES
     assert not hasattr(universe, "ROTATION_ETFS") and not hasattr(rotation_reference, "ROTATION_ETFS")
@@ -79,13 +79,13 @@ def test_no_reader_package_imports_the_board_for_the_reference_data():
             offenders[path.relative_to(_ROOT).as_posix()] = hits
     assert not offenders, (
         "these files read rotation reference data through the board module; import "
-        f"RevenueChaser.core.rotation_reference instead: {offenders}")
+        f"revenuechaser.core.rotation_reference instead: {offenders}")
 
 
 def test_no_run_reads_the_seed():
     """Plan v5 step 7b: the seed makes the lists once and feeds the tests. A source file that names it would be a
     code-dict fallback beside the watch list."""
-    from RevenueChaser.core import rotation_reference
+    from revenuechaser.core import rotation_reference
     assert rotation_reference.SEED_ROTATION_ETFS and rotation_reference.SEED_INDUSTRY_GROUPS
     allowed = {"core/rotation_reference.py"}
     offenders = []
@@ -100,7 +100,7 @@ def test_no_run_reads_the_seed():
 
 
 def test_the_seed_keeps_every_symbol_the_board_defined_and_the_list_reads_back_as_it():
-    from RevenueChaser.core import rotation_reference
+    from revenuechaser.core import rotation_reference
 
     assert tuple(rotation_reference.SEED_ROTATION_ETFS) == _ROTATION_KEYS
     assert tuple(rotation_reference.MACRO_SERIES) == _MACRO_KEYS

@@ -12,8 +12,8 @@ import math
 from datetime import date as _date
 from datetime import datetime
 
-from RevenueChaser.core.calendar import NY, SESSION_CLOSE
-from RevenueChaser.core.options import parse_option_symbol
+from revenuechaser.core.calendar import NY, SESSION_CLOSE
+from revenuechaser.core.options import parse_option_symbol
 
 from .config import to_float
 

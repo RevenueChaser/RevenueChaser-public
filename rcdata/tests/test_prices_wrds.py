@@ -16,13 +16,13 @@ from datetime import date, datetime, timezone
 import duckdb
 import pytest
 
-from RevenueChaser.core import calendar
-from RevenueChaser.rcdata import caps, ops, read, serving
-from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.prices import actions, bars, cover_shares, floats, wrds_history
-from RevenueChaser.rcdata.build.prices import serving as prices_serving
-from RevenueChaser.rcdata.build.prices import stage as prices_stage
-from RevenueChaser.rcdata.build.spine import wrds
+from revenuechaser.core import calendar
+from revenuechaser.rcdata import caps, ops, read, serving
+from revenuechaser.rcdata.build import base
+from revenuechaser.rcdata.build.prices import actions, bars, cover_shares, floats, wrds_history
+from revenuechaser.rcdata.build.prices import serving as prices_serving
+from revenuechaser.rcdata.build.prices import stage as prices_stage
+from revenuechaser.rcdata.build.spine import wrds
 
 from .prices_fixture import SPINE, BarsAnswer, bar, write_spine
 from .spine_fixture import write_jsonl
@@ -125,9 +125,9 @@ def env(monkeypatch, http_mock):
     monkeypatch.setenv("ALPACA_API_SECRET_KEY", "test-secret")
     monkeypatch.setenv("RC_ALPACA_BASE", "https://alpaca.test")
     monkeypatch.setattr(calendar, "_now", lambda: datetime(2026, 10, 27, 21, 0, tzinfo=timezone.utc))
-    monkeypatch.setattr("RevenueChaser.rcdata.build.prices.rotation", lambda: ())
-    monkeypatch.setattr("RevenueChaser.rcdata.build.prices.BENCHMARKS", ("SPY",))
-    monkeypatch.setattr("RevenueChaser.rcdata.read.watched", lambda kind: set())
+    monkeypatch.setattr("revenuechaser.rcdata.build.prices.rotation", lambda: ())
+    monkeypatch.setattr("revenuechaser.rcdata.build.prices.BENCHMARKS", ("SPY",))
+    monkeypatch.setattr("revenuechaser.rcdata.read.watched", lambda kind: set())
     monkeypatch.setattr(wrds_history, "START_YEAR", 2024)
     write_spine(SPINE)
     http_mock.add("/v2/stocks/bars", BarsAnswer({
@@ -401,7 +401,7 @@ def _build():
 def whole_builds(monkeypatch):
     """Every build of the test whole: the difference report and the CRSP cross-check's counts are a whole build's
     (a build on the live copy keeps the report and counts only the rows it rebuilds, ``prices/incremental``)."""
-    from RevenueChaser.rcdata.build import dirty
+    from revenuechaser.rcdata.build import dirty
     monkeypatch.setenv(dirty.WHOLE_ENV, "1")
 
 
@@ -571,7 +571,7 @@ def test_the_build_stores_the_spines_my_universe_list_when_it_has_one(fake, monk
     would keep -- has no bar. The benchmarks are still kept beside the list (a board reads SPY from the store)."""
     import duckdb as _duckdb
 
-    from RevenueChaser.rcdata.build.prices import universe
+    from revenuechaser.rcdata.build.prices import universe
     data = fake[0].data
     data["comp.secd"] += [_secd("072726", "02", JUNE[0], "BRK-B", 480.0, cusip="084670702")]
     con = _duckdb.connect(str(serving.live_path("spine")))

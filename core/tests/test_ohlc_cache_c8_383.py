@@ -22,9 +22,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_comovement import ohlc as comov_ohlc
-from RevenueChaser.module_swing_potential import indicators
+from revenuechaser.core import rawstore
+from revenuechaser.module_comovement import ohlc as comov_ohlc
+from revenuechaser.module_swing_potential import indicators
 
 ROOT = Path(__file__).resolve().parents[2]
 

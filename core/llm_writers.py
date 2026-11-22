@@ -14,7 +14,7 @@ from __future__ import annotations
 import importlib
 from dataclasses import dataclass
 
-from RevenueChaser.core import credentials
+from revenuechaser.core import credentials
 
 
 @dataclass(frozen=True)
@@ -29,9 +29,9 @@ class Writer:
 
 WRITERS: dict[str, Writer] = {
     # One default each, a name of home-server etc/litellm/config.yaml, the one model list (avo 15 Nov 2026); Flash only.
-    "evren": Writer("evren", "EVREN (no fee)", "RevenueChaser.core.providers.evren",
+    "evren": Writer("evren", "EVREN (no fee)", "revenuechaser.core.providers.evren",
                     ("evren-deepseek-v4.1-flash",), "LITELLM_RC_KEY"),
-    "deepseek": Writer("deepseek", "DeepSeek API (paid, off-peak)", "RevenueChaser.core.providers.deepseek",
+    "deepseek": Writer("deepseek", "DeepSeek API (paid, off-peak)", "revenuechaser.core.providers.deepseek",
                        ("deepseek-v4-flash",), "LITELLM_RC_KEY", paid=True),
 }
 DEFAULT = "evren"

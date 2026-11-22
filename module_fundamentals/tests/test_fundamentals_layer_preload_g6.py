@@ -7,8 +7,8 @@ only the current chunk in memory. Off the layer, or on a Refresh, every name rea
 """
 from __future__ import annotations
 
-from RevenueChaser.core import fundamentals_layer, screen_common
-from RevenueChaser.module_fundamentals import pipeline
+from revenuechaser.core import fundamentals_layer, screen_common
+from revenuechaser.module_fundamentals import pipeline
 
 
 def _records(calls):

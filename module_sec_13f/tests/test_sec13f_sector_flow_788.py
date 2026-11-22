@@ -2,7 +2,7 @@
 dollars bought and sold as two stacked panels with the net, never a dual axis; both None before the tables exist."""
 from __future__ import annotations
 
-from RevenueChaser.module_sec_13f import report
+from revenuechaser.module_sec_13f import report
 
 Q1, Q2 = "2026-03-31", "2026-06-30"
 

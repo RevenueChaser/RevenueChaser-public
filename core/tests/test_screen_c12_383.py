@@ -20,12 +20,12 @@ from types import SimpleNamespace
 import pandas as pd
 import pytest
 
-from RevenueChaser.core import calendar as cal
-from RevenueChaser.core import rawstore, screen_common
-from RevenueChaser.module_fundamentals import pipeline as fp
-from RevenueChaser.module_swing_potential import indicators
-from RevenueChaser.module_swing_potential import pipeline as sp
-from RevenueChaser.core.tests.d01_seed import write_d01
+from revenuechaser.core import calendar as cal
+from revenuechaser.core import rawstore, screen_common
+from revenuechaser.module_fundamentals import pipeline as fp
+from revenuechaser.module_swing_potential import indicators
+from revenuechaser.module_swing_potential import pipeline as sp
+from revenuechaser.core.tests.d01_seed import write_d01
 
 D = date(2026, 10, 14)
 NOW = datetime(2026, 10, 14, 21, 45, tzinfo=timezone.utc)      # 17:45 EDT: the 14 Oct session is complete
@@ -139,7 +139,7 @@ def test_swing_shows_every_candidate(rawstore_tmp_db):
 
 
 def test_fundamentals_shows_every_candidate(rawstore_tmp_db):
-    from RevenueChaser.module_fundamentals.tests.test_fundamental import _m
+    from revenuechaser.module_fundamentals.tests.test_fundamental import _m
     rows = [{"ticker": f"T{i:03d}", "name": "x", "price": 50.0, "market_cap": 1e9, "sector": "Technology",
              "industry": "Software", "themes": [], "earnings_date": None, "period": "",
              "metrics": _m(rev_growth_ttm=0.30, fcf_margin=0.20, ro40=50.0 + i, gross_margin=0.35, roic=0.20,
@@ -204,6 +204,6 @@ def test_a_scored_name_reads_only_the_window_of_d01(rawstore_tmp_db, clock, monk
 
 @pytest.mark.parametrize("job", ["swing", "module_fundamentals"])
 def test_both_fetch_jobs_run_on_the_long_lane(job):
-    from RevenueChaser.app import dashboard  # noqa: F401 - registers the jobs
-    from RevenueChaser.app import jobs
+    from revenuechaser.app import dashboard  # noqa: F401 - registers the jobs
+    from revenuechaser.app import jobs
     assert jobs._LANE[job] == "long"

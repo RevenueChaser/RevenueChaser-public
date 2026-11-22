@@ -13,8 +13,8 @@ from collections import Counter
 
 import pytest
 
-from RevenueChaser.core import datahealth, rawstore
-from RevenueChaser.module_settings import inventory
+from revenuechaser.core import datahealth, rawstore
+from revenuechaser.module_settings import inventory
 
 # Every summary a dataset row and a registry coverage both ask (core/datasets.py ``_summary_health``).
 SUMMARIES = (
@@ -24,8 +24,8 @@ SUMMARIES = (
 
 
 def _module(dotted: str):
-    __import__(f"RevenueChaser.{dotted}")
-    return sys.modules[f"RevenueChaser.{dotted}"]
+    __import__(f"revenuechaser.{dotted}")
+    return sys.modules[f"revenuechaser.{dotted}"]
 
 
 

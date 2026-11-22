@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from RevenueChaser.core import job_lock
+from revenuechaser.core import job_lock
 
 NAMES = (
     "edgar_sync",              # module_value_chain/reslice.py
@@ -114,7 +114,7 @@ def test_every_writer_cli_takes_a_documented_lock():
     found = []
     for path in sorted((root / "scripts").glob("*.py")):
         if "WriterCli(" in path.read_text(encoding="utf-8") and path.stem != "forecast_cli":
-            mod = importlib.import_module(f"RevenueChaser.scripts.{path.stem}")
+            mod = importlib.import_module(f"revenuechaser.scripts.{path.stem}")
             found.append(mod.CLI.lock)
     assert found, "no WriterCli found: the scan is looking at the wrong tree"
     assert set(found) <= set(NAMES), f"undocumented WriterCli lock(s): {sorted(set(found) - set(NAMES))}"

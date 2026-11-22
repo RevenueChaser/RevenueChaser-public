@@ -13,10 +13,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_sector_rotation import store as rotation_store
-from RevenueChaser.module_sector_rotation.tests.bars_seed import ny, pin_clock, seed
-from RevenueChaser.module_sector_rotation.tests.test_rotation_store import _FakeUW, _snap
+from revenuechaser.core import rawstore
+from revenuechaser.module_sector_rotation import store as rotation_store
+from revenuechaser.module_sector_rotation.tests.bars_seed import ny, pin_clock, seed
+from revenuechaser.module_sector_rotation.tests.test_rotation_store import _FakeUW, _snap
 
 COMPLETE = datetime(2026, 10, 6, 22, 0, tzinfo=timezone.utc).timestamp()
 
@@ -31,7 +31,7 @@ def test_a_live_save_stamps_source_live_and_returns_the_rows_it_wrote(rawstore_t
 
 
 def test_a_backfill_stamps_source_backfill(rawstore_tmp_db, monkeypatch):
-    import RevenueChaser.module_sector_rotation.store as rs
+    import revenuechaser.module_sector_rotation.store as rs
     pin_clock(monkeypatch, ny(2026, 8, 14, 18))
     seed("SPY", date(2026, 8, 14), closes=lambda i: 100.0 + i)
     seed("XLK", date(2026, 8, 14), closes=lambda i: 100.0 + i * 1.01)   # A1 needs a moving ratio to scale by

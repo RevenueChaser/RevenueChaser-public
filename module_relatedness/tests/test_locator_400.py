@@ -7,9 +7,9 @@ import json
 
 import pytest
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_relatedness import engine, locator, profiles, store
-from RevenueChaser.module_relatedness.tests.test_relatedness import long_body
+from revenuechaser.core import rawstore
+from revenuechaser.module_relatedness import engine, locator, profiles, store
+from revenuechaser.module_relatedness.tests.test_relatedness import long_body
 
 BODY = long_body("We design gpus for data centers.")
 DOC = ("Table of Contents\nItem 1. Business\nItem 1A. Risk Factors\nPart I\n"
@@ -130,12 +130,12 @@ def test_a_failed_locate_keeps_the_rule_cut(rawstore_tmp_db, world, monkeypatch)
 
 def test_a_suspect_ok_cut_asks_the_locator_too():
     # #400 WP7: 24 of the 10-K reading report's 29 wrong cuts were labelled ok, so ASK_ON alone never asked.
-    from RevenueChaser.module_relatedness import locator
+    from revenuechaser.module_relatedness import locator
     assert locator.asks("ok;suspect:S4") and locator.asks("overrun") and locator.asks("short;x")
     assert not locator.asks("ok") and not locator.asks(None)
 
 
 def test_a_capped_cut_asks_the_locator():
     # #260: a slice cut at MAX_ITEM_CHARS is labelled capped, where it used to be ok;suspect:S8 (which asked).
-    from RevenueChaser.module_relatedness import locator
+    from revenuechaser.module_relatedness import locator
     assert locator.asks("capped") and locator.asks("capped;x")

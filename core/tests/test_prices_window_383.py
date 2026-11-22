@@ -14,10 +14,10 @@ from datetime import UTC, date, datetime, timedelta
 import pandas as pd
 import pytest
 
-from RevenueChaser.core import prices, rawstore
-from RevenueChaser.core.tests.test_prices import bar_row
-from RevenueChaser.core.tests.test_prices_vector_383 import spy_bar_reads
-from RevenueChaser.core.tests.d01_seed import write_d01
+from revenuechaser.core import prices, rawstore
+from revenuechaser.core.tests.test_prices import bar_row
+from revenuechaser.core.tests.test_prices_vector_383 import spy_bar_reads
+from revenuechaser.core.tests.d01_seed import write_d01
 
 
 def _ts(d: date) -> float:

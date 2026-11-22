@@ -1,9 +1,9 @@
 """Tests for the index membership registry (pure functions, no network)."""
 import pytest
 
-from RevenueChaser.rcdata.tests import universe_store
-from RevenueChaser.core import index_registry as ir
-from RevenueChaser.core import rawstore
+from revenuechaser.rcdata.tests import universe_store
+from revenuechaser.core import index_registry as ir
+from revenuechaser.core import rawstore
 
 
 def test_index_memberships_inversion():

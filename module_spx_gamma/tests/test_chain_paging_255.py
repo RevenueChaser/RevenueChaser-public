@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-from RevenueChaser.module_spx_gamma import store as spx_store
+from revenuechaser.module_spx_gamma import store as spx_store
 
 from .test_s2_fetch import DAY, _fetch, _handler
 

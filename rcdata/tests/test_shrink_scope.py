@@ -11,10 +11,10 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.rcdata.build import DATASETS, base
-from RevenueChaser.rcdata.build import ownership, spine
-from RevenueChaser.rcdata.build.ownership import serve as ownership_serve
-from RevenueChaser.rcdata.build.spine import security as spine_security
+from revenuechaser.rcdata.build import DATASETS, base
+from revenuechaser.rcdata.build import ownership, spine
+from revenuechaser.rcdata.build.ownership import serve as ownership_serve
+from revenuechaser.rcdata.build.spine import security as spine_security
 
 
 def _kinds() -> list[str]:

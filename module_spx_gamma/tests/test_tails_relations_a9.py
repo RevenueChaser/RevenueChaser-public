@@ -10,7 +10,7 @@ import math
 
 import pytest
 
-from RevenueChaser.module_spx_gamma import relations, tails
+from revenuechaser.module_spx_gamma import relations, tails
 from .conftest import make_snapshot
 
 

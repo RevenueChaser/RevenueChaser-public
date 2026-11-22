@@ -1,7 +1,7 @@
 """Rotation label defects: DF73 ('2-day' legend), DF67 (null RS)."""
 from __future__ import annotations
 
-from RevenueChaser.module_sector_rotation import report
+from revenuechaser.module_sector_rotation import report
 
 
 def test_df73_early_turn_legend_names_snapshots_not_days():
@@ -14,7 +14,7 @@ def test_df67_a_missing_rs_prints_a_dash_not_plus_zero(tmp_path, monkeypatch, ra
     """DF67: a null RS cell showed '+0.0%' (``or 0``), identical to a real zero."""
     from datetime import date
 
-    from RevenueChaser.module_sector_rotation.models import ETFRotationSnapshot
+    from revenuechaser.module_sector_rotation.models import ETFRotationSnapshot
 
     monkeypatch.setattr(report, "OUTPUT_DIR", tmp_path)
     monkeypatch.setattr(report, "coarse_theme_catalog", lambda: {})
@@ -38,8 +38,8 @@ def test_the_table_shows_what_a_fund_is_by_its_holdings_under_the_hand_written_n
                                                                                      rawstore_tmp_db):
     from datetime import date
 
-    from RevenueChaser.module_sector_rotation.models import ETFRotationSnapshot
-    from RevenueChaser.rcdata import read
+    from revenuechaser.module_sector_rotation.models import ETFRotationSnapshot
+    from revenuechaser.rcdata import read
 
     monkeypatch.setattr(report, "OUTPUT_DIR", tmp_path)
     monkeypatch.setattr(report, "coarse_theme_catalog", lambda: {})

@@ -9,8 +9,8 @@ from types import SimpleNamespace
 import duckdb
 import pytest
 
-from RevenueChaser.core import config
-from RevenueChaser.rcdata import serving
+from revenuechaser.core import config
+from revenuechaser.rcdata import serving
 
 
 def _sha(path: Path) -> str:
@@ -399,7 +399,7 @@ def test_b2_a_shrink_is_allowed_only_when_asked_for():
 def test_a_shrink_under_the_limit_swaps_in_and_leaves_a_build_issue():
     """#292 N-3: 2,220 of 222,009 SPX rows went in without a trace. A shrink under MAX_SHRINK still swaps in, and
     now leaves one open ``build_issues`` row naming the table and both counts; growing leaves none."""
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
     _build_t(1000)
     _build_t(1001)
     assert ops.open_issues("market")[0] == 0
@@ -483,7 +483,7 @@ def test_the_economic_calendar_shrinks_by_choice_because_its_window_rolls():
     against 126 live (-9.5 %), because a snapshot day's partition is replaced whole by that day's newest fetch and
     events have rolled out of UW's "this week and next" window since. One refused swap fails the whole ``market``
     kind (one file, one swap), so the guard cannot be left to a retry."""
-    from RevenueChaser.rcdata.build import uw_economic_calendar as econ
+    from revenuechaser.rcdata.build import uw_economic_calendar as econ
     assert econ.TABLE in serving.SHRINKS_BY_CHOICE
 
 
@@ -510,7 +510,7 @@ def test_a_retired_table_may_leave_the_build_and_any_other_still_may_not(monkeyp
 
 def test_prices_retires_the_crsp_unadjusted_table_of_pr_353():
     """PR 382 removed ``crsp_unadjusted`` (the CRSP bars no action adjusted): CRSP serves no bar any more."""
-    from RevenueChaser.rcdata.build.prices import serving as prices_serving
+    from revenuechaser.rcdata.build.prices import serving as prices_serving
     assert "crsp_unadjusted" in serving.RETIRED_TABLES["prices"]
     assert not set(serving.RETIRED_TABLES["prices"]) & set(prices_serving.SCHEMAS), "a retired table is still built"
 

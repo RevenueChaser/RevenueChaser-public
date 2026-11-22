@@ -10,10 +10,10 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.app import runners
-from RevenueChaser.app.jobs import JobMessage
-from RevenueChaser.core import ledger, rawstore
-from RevenueChaser.module_earnings_radar.models import TradeCard
+from revenuechaser.app import runners
+from revenuechaser.app.jobs import JobMessage
+from revenuechaser.core import ledger, rawstore
+from revenuechaser.module_earnings_radar.models import TradeCard
 
 BOARD = "module_earnings_radar"
 
@@ -26,7 +26,7 @@ def run(monkeypatch, rawstore_tmp_db):
     monkeypatch.setattr(runners, "EARNINGS_LATEST", path)
     monkeypatch.setattr(runners, "_load_watchlist", lambda: {"AAA"})
     monkeypatch.setattr(runners, "_freeze_run_id", lambda: "job42")
-    monkeypatch.setattr("RevenueChaser.module_sector_rotation.engine.rotation_quadrant_map",
+    monkeypatch.setattr("revenuechaser.module_sector_rotation.engine.rotation_quadrant_map",
                         lambda uw: {"XLK": "LEADING"})
     order = []
 
@@ -34,7 +34,7 @@ def run(monkeypatch, rawstore_tmp_db):
         order.append("board")
         runners.EARNINGS_LATEST.write_text("<html>board</html>", encoding="utf-8")
 
-    monkeypatch.setattr("RevenueChaser.module_earnings_radar.report.export_html", fake_export)
+    monkeypatch.setattr("revenuechaser.module_earnings_radar.report.export_html", fake_export)
     state = {"cards": [], "stats": None, "order": order}
 
     class Pipe:
@@ -75,5 +75,5 @@ def _fetch(uw=None):
 
 
 def test_the_earnings_board_has_no_refresh_path():
-    from RevenueChaser.app import dashboard
+    from revenuechaser.app import dashboard
     assert BOARD not in dashboard._STORE_REFRESHABLE

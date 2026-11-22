@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import re
 
-from RevenueChaser.core.tests.panel_client import panel_test_client
-from RevenueChaser.module_oipd import engine, report
+from revenuechaser.core.tests.panel_client import panel_test_client
+from revenuechaser.module_oipd import engine, report
 
 _ATTR = '"><img src=x onerror=alert(1)>'
 _SCRIPT = "</script><script>alert(1)</script>"
@@ -53,7 +53,7 @@ class TestReportEscaping:
 
 class TestTickerRoutes:
     def _client(self):
-        from RevenueChaser.app import dashboard
+        from revenuechaser.app import dashboard
         dashboard.app.config["TESTING"] = True
         return panel_test_client(dashboard.app)
 
@@ -67,7 +67,7 @@ class TestTickerRoutes:
         assert r.status_code == 400
 
     def test_refresh_accepts_a_normal_ticker(self, monkeypatch):
-        from RevenueChaser.app import runners
+        from revenuechaser.app import runners
         seen = {}
         monkeypatch.setattr(runners, "run_oipd_cached",
                             lambda ticker=None: seen.setdefault("t", ticker) and None)

@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from RevenueChaser.core import automations as A
-from RevenueChaser.scripts import board_fetch
+from revenuechaser.core import automations as A
+from revenuechaser.scripts import board_fetch
 
 NOW = datetime(2026, 11, 21, 12, 0, tzinfo=timezone.utc)
 
@@ -25,7 +25,7 @@ def _entry(name: str) -> A.AutomationEntry:
 def test_board_fetch_rows_name_the_route_their_own_command_posts():
     """The mapping is read off the task's own ``args``, so a new board row needs no second table."""
     for e in A.REGISTRY:
-        if len(e.args) == 3 and e.args[1] == "RevenueChaser.scripts.board_fetch":
+        if len(e.args) == 3 and e.args[1] == "revenuechaser.scripts.board_fetch":
             assert A.dashboard_job_modules(e) == (board_fetch.ROUTES[e.args[2]],), e.name
 
 
@@ -43,8 +43,8 @@ def test_a_task_that_runs_in_its_own_process_queues_no_dashboard_job():
 
 def test_every_named_module_is_a_job_the_dashboard_registers():
     """A name no runner is registered under could never be stopped, and would be a silent dead button."""
-    from RevenueChaser.app import dashboard  # registers the runners  # noqa: F401
-    from RevenueChaser.app import jobs
+    from revenuechaser.app import dashboard  # registers the runners  # noqa: F401
+    from revenuechaser.app import jobs
 
     for e in A.REGISTRY:
         for module in A.dashboard_job_modules(e):

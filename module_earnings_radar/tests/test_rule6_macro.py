@@ -9,8 +9,8 @@ from datetime import date, timedelta
 
 import pytest
 
-from RevenueChaser.core.config import R6_RATE_HIGH, R6_RATE_VETO
-from RevenueChaser.module_earnings_radar.rules.rule6_macro import score, yield_beta
+from revenuechaser.core.config import R6_RATE_HIGH, R6_RATE_VETO
+from revenuechaser.module_earnings_radar.rules.rule6_macro import score, yield_beta
 
 EXTREME = R6_RATE_VETO + 1.0        # above the veto cut
 HIGH = (R6_RATE_HIGH + R6_RATE_VETO) / 2.0      # between the two cuts: reason only

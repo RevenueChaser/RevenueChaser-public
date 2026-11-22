@@ -12,12 +12,12 @@ import time
 
 import pytest
 
-from RevenueChaser.core import edgar_docs, job_lock, rawstore
-from RevenueChaser.core.providers import sec_edgar
-from RevenueChaser.module_value_chain import __main__ as cli
-from RevenueChaser.module_value_chain import edgar_text, reslice
-from RevenueChaser.module_value_chain.tests.test_value_chain_profile_edges_410 import _profile
-from RevenueChaser.rcdata.tests.conftest import market_roots  # noqa: F401  (fixture)
+from revenuechaser.core import edgar_docs, job_lock, rawstore
+from revenuechaser.core.providers import sec_edgar
+from revenuechaser.module_value_chain import __main__ as cli
+from revenuechaser.module_value_chain import edgar_text, reslice
+from revenuechaser.module_value_chain.tests.test_value_chain_profile_edges_410 import _profile
+from revenuechaser.rcdata.tests.conftest import market_roots  # noqa: F401  (fixture)
 
 _BODY = "We make widgets for many industries and sell them worldwide. " * 60
 _WAFER = "We purchase wafers from Taiwan Semiconductor Manufacturing Company Limited. "

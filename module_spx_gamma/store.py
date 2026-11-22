@@ -17,7 +17,7 @@ import hashlib
 import json
 import time
 
-from RevenueChaser.core import rawstore
+from revenuechaser.core import rawstore
 
 DB = "spx_gamma"
 RAW_DAYS = "spx_raw_days"
