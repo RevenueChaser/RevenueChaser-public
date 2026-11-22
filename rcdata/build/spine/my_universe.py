@@ -16,7 +16,10 @@ the list can be swapped by editing one file:
   ``adv_usd_20d`` (the 20-session average daily dollar volume of Compustat's own ``comp.secd``,
   ``etf.adv_usd_20d``, not of the live prices store: #357) at or over 10 million. Either number is enough (avo,
   18 Nov 2026, "Kalsın: hacim de yeter": ZSL, KOLD and TSLQ hold under 100 M$ and trade far over 10 M$ a day);
-  until then a known AUM under the floor was the answer whatever the volume. A fund
+  until then a known AUM under the floor was the answer whatever the volume. A fund the list already holds on one of
+  those two rules leaves only when its present numbers are under both **exit floors**, 80 million and 8 million
+  (avo, 22 Nov 2026, SP6: the churn buffer); it stays with its live rule and the reason "held above the exit
+  floor", and a NULL number is the hold rules' case below, never read as under the floor. A fund
   with neither number is **undecided**: it does not enter, and all of them together are **one**
   ``my_universe_etf_undecided`` issue that names them -- one row per fund would be thousands of rows in
   ``ops.sqlite`` for a single input gap. The issue names only the funds :data:`MANUAL_FILE` says nothing about,
@@ -124,6 +127,8 @@ class Rules:
     stock_types: tuple[str, ...]
     etf_aum_floor: float
     etf_adv_floor: float
+    etf_aum_exit_floor: float
+    etf_adv_exit_floor: float
     exclude_etn: bool
     exclude_cef: bool
 
@@ -146,6 +151,8 @@ def load_rules(path: Path | None = None) -> Rules:
     return Rules(stock_tiers=tiers, stock_types=types,
                  etf_aum_floor=float(_need(etfs, "aum_floor_usd", "etfs")),
                  etf_adv_floor=float(_need(etfs, "adv_usd_20d_floor", "etfs")),
+                 etf_aum_exit_floor=float(_need(etfs, "aum_exit_floor_usd", "etfs")),
+                 etf_adv_exit_floor=float(_need(etfs, "adv_usd_20d_exit_floor", "etfs")),
                  exclude_etn=bool(_need(etfs, "exclude_etn", "etfs")),
                  exclude_cef=bool(_need(etfs, "exclude_cef", "etfs")))
 
@@ -246,6 +253,16 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, rules: Rules | No
                            f"the stock rule and {rule} both claim it; kept as the stock"))
             continue
         kept[e["ticker"]] = row(e, ETF, rule, reason)
+    # The exit floors (SP6): a fund the numeric rules let in stays until a present number is under both exit floors.
+    was = {r["ticker"]: r["rule"] for r in live or [] if r.get("rule") in ("etf_aum", "etf_adv")}
+    for e in etfs:
+        aum, adv = e["aum"], e["adv_usd_20d"]
+        if e["ticker"] in was and e["ticker"] not in kept and (
+                (aum is not None and aum >= rules.etf_aum_exit_floor)
+                or (adv is not None and adv >= rules.etf_adv_exit_floor)):
+            kept[e["ticker"]] = row(e, ETF, was[e["ticker"]], "held above the exit floor: "
+                                    + ("no AUM" if aum is None else f"AUM {_money(aum)}")
+                                    + ("" if adv is None else f"; 20-session dollar volume {_money(adv)}"))
 
     _no_volume_source(con, live)
     held = _hold_lost_volume(live, etfs, kept, undecided)

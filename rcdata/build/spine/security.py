@@ -441,7 +441,7 @@ CREATE OR REPLACE TEMP TABLE _fund_periods AS
     FROM islands i
     JOIN _fund_dense x ON x.index_slug = i.index_slug AND x.ticker = i.ticker AND x.as_of = i.last_day
     JOIN _fund_held h ON h.index_slug = i.index_slug AND h.ticker = i.ticker AND h.as_of = i.last_day;
-""".replace("__INDEXES__", ", ".join(f"'{i}'" for i in INDEXES))   # DIA's file (slug ``dow``) votes nothing
+""".replace("__INDEXES__", ", ".join(f"'{i}'" for i in INDEXES))   # dow: one file (DIA), its holdings are the members
 
 
 # ── The build ─────────────────────────────────────────────────────────────────────────────────────────────────
