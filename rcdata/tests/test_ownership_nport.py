@@ -276,6 +276,20 @@ def test_the_history_keeps_every_quarter_and_every_long_equity_holding_one_row_e
     assert any("4 holdings over 2 quarters (2 without a spine ticker)" in n for n in ctx.notes)
 
 
+def test_the_check_counts_a_change_in_the_history_too(two_quarters):
+    """Grok xReview 22 Nov 2026: a live file whose served table matches but which has no history read as
+    "unchanged", so a build that changes only the history was not seen."""
+    from revenuechaser.rcdata import serving
+    ctx, con, _ = two_quarters
+    path = serving.live_path("ownership")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    con.execute(f"ATTACH '{path}' AS live_w")
+    con.execute(f"CREATE TABLE live_w.{nport.TABLE} AS SELECT * FROM {nport.TABLE}")
+    con.execute("DETACH live_w")
+    got = nport.DATASET.check(ctx, con)
+    assert (got["result"], got["added"], got["removed"], got["rows"]) == ("changed", 4, 0, 5)
+
+
 def test_the_history_reader_names_a_cusip_by_the_13f_map_of_the_reports_quarter(two_quarters):
     """N-PORT and 13F name a CUSIP alike: the 13F map of the report's quarter wins over the spine's current owner
     (the spine holds XOM under another CUSIP than the funds report, #1444)."""

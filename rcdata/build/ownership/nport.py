@@ -402,10 +402,14 @@ class Nport:
             ORDER BY r.etf_ticker, r.quarter, currency_value DESC NULLS LAST, issuer_name""")
 
     def check(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> dict:
-        added, removed = base.compare_with_live(con, KIND, TABLE, ["etf_ticker", "accession", "cusip"])
+        # both served tables: a build that changes only the history must not read as unchanged
+        diffs = [base.compare_with_live(con, KIND, TABLE, ["etf_ticker", "accession", "cusip"]),
+                 base.compare_with_live(con, KIND, HISTORY, ["etf_ticker", "quarter", "accession", "cusip", "isin",
+                                                             "issuer_name", "balance"])]
+        added, removed = sum(d[0] for d in diffs), sum(d[1] for d in diffs)
         return {"dataset": NAME, "result": "changed" if added or removed else "unchanged",
                 "source_as_of": (ctx.as_of or self.default_as_of()).isoformat(),
-                "rows": common.count(con, TABLE), "added": added, "removed": removed}
+                "rows": common.count(con, TABLE) + common.count(con, HISTORY), "added": added, "removed": removed}
 
 
 DATASET = Nport()
