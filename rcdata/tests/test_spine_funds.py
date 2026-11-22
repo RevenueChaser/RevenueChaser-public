@@ -209,6 +209,35 @@ def test_no_fund_file_is_fetched_twice():
     assert len({f.raw_name() for f in funds.FILES}) == len(funds.FILES)
 
 
+#: Group B (avo, 22 Nov 2026 23:17): one slug per sector or industry fund that ``funds/etf_holdings`` already reads
+#: daily, so no file is fetched twice. (slug, fund, floor = 80 % of the lines of its file of 20 Nov 2026 on homesrv.)
+DERIVED = [
+    ("sp500_energy", "XLE", 19), ("sp500_materials", "XLB", 21), ("sp500_industrials", "XLI", 68),
+    ("sp500_consumer_discretionary", "XLY", 40), ("sp500_consumer_staples", "XLP", 29),
+    ("sp500_health_care", "XLV", 51), ("sp500_financials", "XLF", 64), ("sp500_information_technology", "XLK", 63),
+    ("sp500_communication_services", "XLC", 20), ("sp500_utilities", "XLU", 27), ("sp500_real_estate", "XLRE", 26),
+    ("sp_biotech", "XBI", 133), ("sp_oil_gas_exploration", "XOP", 42), ("sp_metals_mining", "XME", 32),
+    ("sp_regional_banks", "KRE", 135), ("sp_homebuilders", "XHB", 28), ("sp_retail", "XRT", 60),
+    ("sp_insurance", "KIE", 44), ("sp_banks", "KBE", 87), ("sp_capital_markets", "KCE", 54),
+    ("sp_pharmaceuticals", "XPH", 48), ("sp_transportation", "IYT", 35),
+    ("dj_us_aerospace_defense", "ITA", 40), ("dj_us_home_construction", "ITB", 33), ("dj_us_insurance", "IAK", 47),
+    ("dj_us_medical_equipment", "IHI", 39), ("dj_us_health_care_providers", "IHF", 48)]
+
+
+def test_the_sector_and_industry_indexes_are_read_from_etf_holdings_files_not_fetched_again():
+    """Group B: each slug is exactly one fund, which ``funds/etf_holdings`` fetches daily (its ``DAILY``), and which
+    this dataset does not fetch itself."""
+    from revenuechaser.rcdata.build.spine import etf_holdings
+    assert [tuple(d) for d in funds.DERIVED] == [tuple(d) for d in DERIVED]
+    own = {f.fund for f in funds.FILES}
+    for slug, fund, floor in DERIVED:
+        assert fund in etf_holdings.DAILY and fund not in own
+        assert slug in funds.INDEXES and funds.FLOOR[slug] == floor and slug not in funds.CHECKED
+        assert f"'{slug}'" in security.VOTE_SQL
+        assert not [f for f in funds.FILES if f.index_slug == slug]
+    assert len({d[1] for d in DERIVED}) == len({d[0] for d in DERIVED}) == len(DERIVED)
+
+
 def test_the_per_name_issues_stay_on_the_sp_ndx_and_dow_indexes():
     assert funds.CHECKED == ("sp500", "sp400", "sp600", "ndx", "dow")
 
@@ -227,6 +256,7 @@ def test_one_request_per_file_a_failed_file_is_an_issue_and_the_others_count(env
     assert n == 39 and {"ssga-SPSM.xlsx", "ishares-IJR.csv", "ssga-SPYG.xlsx"} <= {i["key"] for i in issues}
     assert "ishares-IWM.csv" not in {i["key"] for i in issues}
     assert row["coverage"] == round(8 / 47, 4) and "failed files" in row["note"]
+    assert not env.calls("holdings-daily-us-en-xlk") and not env.calls("products/239501/")   # B: never fetched here
     assert row["calls"] == len(env.calls())
 
 

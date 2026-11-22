@@ -174,6 +174,30 @@ def test_a_russell_line_the_sec_file_does_not_hold_is_no_issue(built):
               funds.NAME) == [(2,)]
 
 
+def test_a_sector_index_is_its_etf_holdings_file_of_the_day_with_no_second_fetch(built):
+    """Group B: ``sp500_information_technology`` is XLK's lines as ``funds/etf_holdings`` wrote them, one file and
+    no vote; a line the SEC file does not hold is no issue (not in ``funds.CHECKED``)."""
+    from revenuechaser.rcdata.build.spine import etf_holdings
+    rows = [{"as_of": date(2026, 10, 27), "etf": etf, "provider": "ssga", "ticker": t, "ticker_raw": t, "cusip": cu,
+             "name": n, "weight": 1.0, "holdings_as_of": None, "source_layer": None, "fetched_at": 1.0, "run_id": "r"}
+            for etf in ("XLK", "SMH") for t, cu, n in [("MSFT", "594918104", "MICROSOFT CORP"),
+                                                       ("ZZZQ", None, "UNKNOWN CO")]]
+    final = etf_holdings.parquet_dir() / "date=2026-10-27" / "part-0.parquet"
+    con = base.scratch_con()
+    try:
+        base.rows_table(con, "rows", etf_holdings.SCHEMA, rows)
+        base.write_parquet(con, "SELECT * FROM rows", final)
+    finally:
+        con.close()
+    built.requests.clear()
+    run_all("2026-10-28", names=(security.NAME,))
+    assert not built.requests                                           # read from the file, not fetched
+    assert _q("SELECT index_slug, ticker, valid_from, valid_to, files_held, files_counted FROM index_membership "
+              "WHERE source = ? AND index_slug LIKE 'sp500_%' ORDER BY 1, 2", funds.NAME) == [
+        ("sp500_information_technology", "MSFT", date(2026, 10, 27), None, 1, 1)]   # SMH is no index fund
+    assert not {key for _k, key in _issues() if key.startswith("sp500_information_technology:")}
+
+
 def test_a_line_carrying_another_securitys_cusip_is_no_match(built):
     """Should-fix 4a / delta S2: VYLR written with 92921Q100, the CUSIP of the old company that once held the ticker
     (gvkey 123456), is not today's VYLR."""
