@@ -33,7 +33,17 @@ Served (C2, avo 16 Nov 2026, Q11 of the 13F plan): ``etf_holdings_nport``, the h
 (``etf.series_id``, ETNs left out), from each series' newest report in the newest typed quarter (report date, then
 filing date, then accession), and only the positions whose CUSIP is one spine ticker's current CUSIP
 (``common.spine_cusips``): bonds, derivatives, cash and unmapped lines stay in Parquet. Built whole, from one quarter,
-whenever this dataset's Parquet changed; kept as it is on the live copy otherwise.
+whenever this dataset's Parquet changed; kept as it is on the live copy otherwise. Long equity only (``asset_cat``
+``EC``, ``payoff_profile`` ``Long``): a short, a bond, a derivative or cash with a spine CUSIP is not a holding of the
+fund's stock list (#1441, measured 22 Nov 2026: ~3,950 such rows were served).
+
+**History (#1441, avo 22 Nov 2026):** ``etf_holdings_nport_history`` holds every typed quarter (2019q4 on): per
+quarter, each spine ETF's newest report in that quarter and its long equity, **one row per holding** (a fund reports a
+security on several lines: VXUS lists Banco Santander twice in 2026q3, 212,710,002 and 4 shares), keyed by its CUSIP,
+else its ISIN, else its name. A holding no spine ticker holds is kept with ``ticker`` NULL (a foreign share by its
+ISIN and country: TSMC in VXUS, $26.5B; a private share by its name), so the board shows the fund's whole stock list.
+``ticker`` here is the spine's current CUSIP owner; ``rcdata.read.etf_holdings_history`` overlays the 13F CUSIP map
+of the report's quarter (``sec13f_cusip_map``, Compustat's dated history first), so N-PORT and 13F name a CUSIP alike.
 """
 from __future__ import annotations
 
@@ -59,6 +69,14 @@ SERVED = [("etf_ticker", "TEXT"), ("series_id", "TEXT"), ("report_date", "DATE")
           ("accession", "TEXT"), ("ticker", "TEXT"), ("cusip", "TEXT"), ("issuer_name", "TEXT"),
           ("balance", "DOUBLE"), ("unit", "TEXT"), ("currency_value", "DOUBLE"), ("pct_of_net_assets", "DOUBLE"),
           ("asset_cat", "TEXT"), ("quarter", "TEXT")]
+HISTORY = "etf_holdings_nport_history"
+HISTORY_SERVED = [("etf_ticker", "TEXT"), ("series_id", "TEXT"), ("quarter", "TEXT"), ("report_date", "DATE"),
+                  ("filed", "DATE"), ("accession", "TEXT"), ("ticker", "TEXT"), ("cusip", "TEXT"), ("isin", "TEXT"),
+                  ("issuer_name", "TEXT"), ("country", "TEXT"), ("balance", "DOUBLE"), ("currency_value", "DOUBLE"),
+                  ("pct_of_net_assets", "DOUBLE"), ("lines", "INTEGER")]
+SCHEMAS = {TABLE: SERVED, HISTORY: HISTORY_SERVED}
+# A fund's stock list: long equity lines only (shorts, bonds, derivatives and cash stay in Parquet).
+LONG_EQUITY = "h.asset_cat = 'EC' AND h.payoff_profile = 'Long'"
 INDEX_ENV = "RC_NPORT_INDEX_URL"
 INDEX_PATH = "/data-research/sec-markets-data/form-n-port-data-sets"
 SUFFIX = "_nport"
@@ -223,7 +241,7 @@ class Nport:
     name = NAME
     kind = KIND
     providers = (sec.PROVIDER,)
-    tables = (TABLE,)
+    tables = (TABLE, HISTORY)
     feeds: tuple[str, ...] = ()       # it serves its own table; no 13F table is built from its rows
     cadence = "monthly"
     backfill_needs_from = False
@@ -318,16 +336,19 @@ class Nport:
 
     def build(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> dict[str, int]:
         plan = getattr(ctx, "incremental", None)
-        if plan is not None and common.has_table(con, TABLE) and plan.dirty.get(NAME, dirty.ALL).clean:
-            return {TABLE: common.count(con, TABLE)}
+        if (plan is not None and common.has_table(con, TABLE) and common.has_table(con, HISTORY)
+                and plan.dirty.get(NAME, dirty.ALL).clean):
+            return {TABLE: common.count(con, TABLE), HISTORY: common.count(con, HISTORY)}
         con.execute(f"DROP TABLE IF EXISTS {TABLE}")
+        con.execute(f"DROP TABLE IF EXISTS {HISTORY}")
         held = sorted(f for f in parquet_dir().glob("quarter=*") if (f / "fund.parquet").exists()
                       and (f / "holdings.parquet").exists()) if parquet_dir().exists() else []
         etfs = _spine_etfs()
         cusips = common.spine_cusips() or {}
         if not held or not etfs or not cusips:
             ctx.notes.append(f"{TABLE}: " + ("no typed N-PORT quarter" if not held else "no live spine ETFs or CUSIPs"))
-            return {TABLE: common.create_table(con, TABLE, SERVED)}
+            return {TABLE: common.create_table(con, TABLE, SERVED), HISTORY: common.create_table(con, HISTORY,
+                                                                                                  HISTORY_SERVED)}
         # The newest quarter by its set's window (``2026q3`` sorts as its name; a dated name by its first day).
         newest = max(held, key=lambda f: (sec13f_sets.window(f.name[8:] + SUFFIX + ".zip", SUFFIX) or (date.min,))[0])
         common.temp_rows(con, "_np_etf", [("etf_ticker", "TEXT"), ("series_id", "TEXT")],
@@ -344,17 +365,61 @@ class Nport:
             FROM f JOIN _np_etf e ON e.series_id = f.series_id
             JOIN read_parquet({hold}) h ON h.accession = f.accession
             JOIN _np_cusip c ON c.cusip = h.cusip
+            WHERE {LONG_EQUITY}
             ORDER BY e.etf_ticker, h.currency_value DESC NULLS LAST, c.ticker""")
-        con.execute("DROP TABLE _np_etf; DROP TABLE _np_cusip")
         funds = con.execute(f"SELECT count(DISTINCT etf_ticker) FROM {TABLE}").fetchone()[0]
         ctx.notes.append(f"{TABLE}: {n} holdings of {funds} spine ETFs, quarter {newest.name[8:]}")
-        return {TABLE: n}
+        hist = self._history(con, held)
+        con.execute("DROP TABLE _np_etf; DROP TABLE _np_cusip")
+        quarters, mapped = con.execute(f"SELECT count(DISTINCT quarter), count(ticker) FROM {HISTORY}").fetchone()
+        ctx.notes.append(f"{HISTORY}: {hist} holdings over {quarters} quarters ({hist - mapped} without a spine ticker)")
+        return {TABLE: n, HISTORY: hist}
+
+    @staticmethod
+    def _history(con: duckdb.DuckDBPyConnection, held: list[Path]) -> int:
+        """``etf_holdings_nport_history`` from every typed quarter: each spine ETF's newest report in each quarter
+        (``_np_etf``), its long equity summed per holding, the spine ticker of its CUSIP (``_np_cusip``) or none.
+
+        One quarter at a time: the whole history in one query (13.1M rows, 28 quarters) peaked at 3.83 GB against the
+        4 GB scope on homesrv (measured 22 Nov 2026, PR #1445); a quarter alone is about 600K rows."""
+        common.create_table(con, HISTORY, HISTORY_SERVED)
+        names = ", ".join(f'"{c}"' for c, _ in HISTORY_SERVED)
+        for q in held:
+            con.execute(f"INSERT INTO {HISTORY} SELECT {names} FROM ({Nport._history_quarter(q)})")
+        return common.count(con, HISTORY)
+
+    @staticmethod
+    def _history_quarter(q: Path) -> str:
+        funds, holds = base.sql_path(q / "fund.parquet"), base.sql_path(q / "holdings.parquet")
+        return f"""
+            WITH f AS (SELECT * FROM read_parquet({funds}, union_by_name = true)
+                       QUALIFY row_number() OVER (PARTITION BY quarter, series_id
+                                                  ORDER BY report_date DESC NULLS LAST, filed DESC, accession DESC) = 1),
+                 r AS (SELECT e.etf_ticker, f.series_id, f.quarter, f.report_date, f.filed, f.accession,
+                              coalesce(h.cusip, h.isin, upper(trim(h.issuer_name))) AS holding,
+                              h.cusip, h.isin, h.issuer_name, h.country, h.balance, h.currency_value,
+                              h.pct_of_net_assets
+                       FROM f JOIN _np_etf e ON e.series_id = f.series_id
+                       JOIN read_parquet({holds}, union_by_name = true) h
+                         ON h.accession = f.accession AND h.quarter = f.quarter
+                       WHERE {LONG_EQUITY} AND coalesce(h.cusip, h.isin, h.issuer_name) IS NOT NULL)
+            SELECT r.etf_ticker, r.series_id, r.quarter, r.report_date, r.filed, r.accession, c.ticker,
+                   min(r.cusip) AS cusip, min(r.isin) AS isin, min(r.issuer_name) AS issuer_name,
+                   min(r.country) AS country, sum(r.balance) AS balance, sum(r.currency_value) AS currency_value,
+                   sum(r.pct_of_net_assets) AS pct_of_net_assets, CAST(count(*) AS INTEGER) AS lines
+            FROM r LEFT JOIN _np_cusip c ON c.cusip = r.cusip
+            GROUP BY r.etf_ticker, r.series_id, r.quarter, r.report_date, r.filed, r.accession, r.holding, c.ticker
+            ORDER BY r.etf_ticker, r.quarter, currency_value DESC NULLS LAST, issuer_name"""
 
     def check(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> dict:
-        added, removed = base.compare_with_live(con, KIND, TABLE, ["etf_ticker", "accession", "cusip"])
+        # both served tables: a build that changes only the history must not read as unchanged
+        diffs = [base.compare_with_live(con, KIND, TABLE, ["etf_ticker", "accession", "cusip"]),
+                 base.compare_with_live(con, KIND, HISTORY, ["etf_ticker", "quarter", "accession", "cusip", "isin",
+                                                             "issuer_name", "balance"])]
+        added, removed = sum(d[0] for d in diffs), sum(d[1] for d in diffs)
         return {"dataset": NAME, "result": "changed" if added or removed else "unchanged",
                 "source_as_of": (ctx.as_of or self.default_as_of()).isoformat(),
-                "rows": common.count(con, TABLE), "added": added, "removed": removed}
+                "rows": common.count(con, TABLE) + common.count(con, HISTORY), "added": added, "removed": removed}
 
 
 DATASET = Nport()
