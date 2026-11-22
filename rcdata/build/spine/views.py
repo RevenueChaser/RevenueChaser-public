@@ -8,8 +8,8 @@ made-up value. ``sic`` is Compustat's company SIC (spine 6); its description and
 - ``equity_universe``: the listed rows (Tier A and B), the old table's membership rule (#264); the type filter stays
   with the reader (``core/universe.py``), as before.
 - ``security_master``: every SEC-file row, with each field's source.
-- ``index_constituents``: the current fund-file members (``sp500``, ``sp400``, ``sp600``, ``ndx``) and ``nasdaq``, the
-  listed Nasdaq rows (the old slug meant "listed on Nasdaq"). ``dow`` has no source in the spine and is absent.
+- ``index_constituents``: the current fund-file members (``sp500``, ``sp400``, ``sp600``, ``ndx``, ``dow``: DIA's
+  file alone) and ``nasdaq``, the listed Nasdaq rows (the old slug meant "listed on Nasdaq").
 - ``index_tickers``: as ``core/rawstore.py`` defines it, over the two views above.
 """
 from __future__ import annotations

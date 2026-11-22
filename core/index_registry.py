@@ -51,7 +51,7 @@ def _listed_on_nasdaq(listed: list[dict]) -> set[str]:
 def load_index(slug: str) -> set[str] | None:
     """The current members of ``slug`` (upper-cased tickers), or None when it has none.
 
-    The spine's fund files' current members (``nasdaq``: the listed Nasdaq names); ``dow`` is always None."""
+    The spine's fund files' current members (``nasdaq``: the listed Nasdaq names; ``dow``: DIA's file)."""
     from . import spine_reads
     if slug == NASDAQ:
         tickers = _listed_on_nasdaq(spine_reads.universe(("A", "B")))

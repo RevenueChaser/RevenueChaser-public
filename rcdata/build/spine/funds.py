@@ -11,7 +11,7 @@ others go on), never a guess.
 | ``sp400`` | SSGA MDY, iShares IJH, Vanguard IVOO |
 | ``sp600`` | SSGA SPSM, iShares IJR, Vanguard VIOO |
 | ``ndx`` | Nasdaq ``/api/quote/list-type/nasdaq100`` (json), Invesco QQQ (json) |
-| none (``dow``) | SSGA DIA: no index is voted from it; ``etf_class`` reads it, because the trust files no N-PORT |
+| ``dow`` | SSGA DIA (xlsx): the one file, so no vote (SP5); ``etf_class`` reads it too, the trust files no N-PORT |
 
 One request per file, every file each run (12 a run), each under its provider's day cap. Base URLs:
 ``RC_SSGA_BASE``, ``RC_ISHARES_BASE``, ``RC_VANGUARD_BASE``, ``RC_NASDAQ_API_BASE``, ``RC_INVESCO_API_BASE``.
@@ -19,9 +19,9 @@ One request per file, every file each run (12 a run), each under its provider's 
 **The membership rule (working choice).** On each day, a file counts when it parsed and holds at least its index's
 floor (``FLOOR``: about 80% of the index); a short file is a ``fund_file_short`` build issue and does not count. A
 ticker is a member of the index that day when more than half of the counting files hold it (for ``ndx``: both the
-Nasdaq list and QQQ, or the one that counts when the other failed). Cash, futures and other non-equity lines are
-dropped by each parser. Tickers are written as the SEC file writes them (``BRK.B`` and ``BRK/B`` -> ``BRK-B``);
-``spine/security`` matches them to the SEC file, by CUSIP first.
+Nasdaq list and QQQ, or the one that counts when the other failed; for ``dow``: DIA's file alone). Cash, futures
+and other non-equity lines are dropped by each parser. Tickers are written as the SEC file writes them (``BRK.B``
+and ``BRK/B`` -> ``BRK-B``); ``spine/security`` matches them to the SEC file, by CUSIP first.
 
 Raw: ``raw/funds/index_holdings/<as-of>/<provider>-<fund>.<ext>`` (+ ``.meta.json``). Parquet:
 ``parquet/funds/index_holdings/date=<as-of>/part-0.parquet`` (every holding line kept, with its file). Staging:
@@ -47,8 +47,8 @@ from .. import base
 from . import KIND, stage
 
 NAME = "funds/index_holdings"
-INDEXES = ("sp500", "sp400", "sp600", "ndx")
-FLOOR = {"sp500": 400, "sp400": 320, "sp600": 480, "ndx": 80}
+INDEXES = ("sp500", "sp400", "sp600", "ndx", "dow")
+FLOOR = {"sp500": 400, "sp400": 320, "sp600": 480, "ndx": 80, "dow": 24}
 SCHEMA = [("as_of", "DATE"), ("index_slug", "TEXT"), ("provider", "TEXT"), ("fund", "TEXT"), ("ticker", "TEXT"),
           ("ticker_raw", "TEXT"), ("cusip", "TEXT"), ("name", "TEXT"), ("weight", "DOUBLE"),
           ("fetched_at", "DOUBLE"), ("run_id", "TEXT")]
@@ -244,7 +244,7 @@ FILES = (
     FundFile("sp600", "vanguard", "VIOO", "json", parse_vanguard),
     FundFile("ndx", "nasdaq", "NDX", "json", parse_nasdaq),
     FundFile("ndx", "invesco", "QQQ", "json", parse_invesco),
-    # A slug outside INDEXES: the lines are staged for ``etf_class`` and ``spine/security`` votes no index from it.
+    # The only ``dow`` file (SP5): with one counting file the vote is "the file holds it". ``etf_class`` reads it too.
     FundFile("dow", "ssga", "DIA", "xlsx", parse_ssga),
 )
 PROVIDERS = tuple(dict.fromkeys(f.provider for f in FILES))
