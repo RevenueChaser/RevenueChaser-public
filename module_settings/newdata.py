@@ -13,7 +13,10 @@ Status of a dataset (the plan's rules): ``fresh`` (the last run changed rows) or
 ``late`` when one cycle was missed or coverage is under its target; ``stale`` when two were missed or the last check
 failed; ``never`` before its first check. A daily dataset's cycle is one New York session (``core/calendar.py``),
 counted from its newest ``source_as_of``; a weekly one is due within 8 days of its last check, a monthly one within
-35. A ``skipped`` check (paused, day cap) does not reset the clock: the status comes from the newest other check.
+35. A ``skipped`` check (paused, day cap) does not reset the clock: the status comes from the newest other check. A
+dataset whose source publishes less often than the dataset is checked (FINRA's short interest, the SEC's
+fails-to-deliver: two releases a month) is counted against its need's ``max_lag`` instead of one session, so a run
+that found nothing new is not late (``DatasetCard.lag_need``).
 """
 from __future__ import annotations
 
@@ -107,6 +110,8 @@ CADENCE = _FromScreen(api_screen.cadences, "a dataset's cadence")
 COVERAGE_TARGET = _FromScreen(api_screen.coverage_targets, "a dataset's coverage target")
 DATE_COLUMN = _FromScreen(api_screen.written_columns, "a table's newest-date column")
 RETIRING = _FromScreen(lambda: api_screen.RETIRING, "the retirement list")
+#: The datasets whose freshness is a publication window and not one session (``DatasetCard.lag_need``).
+LAG_NEED = _FromScreen(api_screen.lag_needs, "a dataset's publication-window need")
 CYCLE_DAYS = api_screen.CYCLE_DAYS
 RETIREMENT_DAYS = api_screen.RETIREMENT_DAYS
 STATUS_ORDER = api_screen.STATUS_ORDER
@@ -186,8 +191,31 @@ def _cadence(dataset: str, schedule: dict | None) -> str:
     return own if own in CARD_CADENCES else CADENCE.get(dataset, "daily")
 
 
-def _missed(cadence: str, check: dict, now: datetime) -> int:
+def _missed_by_lag(need: str, check: dict, now: datetime) -> int:
+    """Cycles missed when the cycle is a publication window: the need's ``max_lag``, in the need's own unit.
+
+    A dataset that is checked every session while its source publishes twice a month has a newest row that is
+    routinely weeks old and no run is late for it; the window it may not pass is the one the need catalog already
+    owns (``rcdata/needs/catalog.py``, the one place freshness is declared since avo's decision of 29 Oct 2026).
+    Counted from ``source_as_of`` all the same, so a job that stops fetching still goes late and then stale.
+    """
+    from RevenueChaser.rcdata.needs import catalog, serve
+    spec = catalog.NEEDS[need]
+    as_of = _day(check.get("source_as_of")) or _day(check.get("checked_on"))
+    if as_of is None:
+        return 2
+    try:
+        lag = serve.lag_in(spec.max_lag_unit, as_of, calendar.latest_complete_session(now))
+    except ValueError:                           # past the calendar's table: no session to count (rule C)
+        return 0
+    return 0 if lag <= spec.max_lag else 1 if lag <= 2 * spec.max_lag else 2
+
+
+def _missed(cadence: str, check: dict, now: datetime, dataset: str | None = None) -> int:
     """Cycles missed since ``check``: 0 within its cycle, 1 one cycle late, 2 for two or more."""
+    need = LAG_NEED.get(dataset) if dataset else None
+    if need is not None:
+        return _missed_by_lag(need, check, now)
     # shortcut: an hourly dataset is counted in missed sessions like a daily one (a check holds only its day).
     if cadence in ("daily", "hourly"):
         as_of = _day(check.get("source_as_of")) or _day(check.get("checked_on"))
@@ -222,8 +250,9 @@ def status_of(dataset: str, last: dict | None, base: dict | None, cadence: str,
         return "stale", "the last check failed", last
     if base is None:
         return "never", "only skipped checks so far", last
-    missed = _missed(cadence, base, now)
-    unit = "session" if cadence in ("daily", "hourly") else f"{cadence} cycle"
+    missed = _missed(cadence, base, now, dataset)
+    unit = ("publication window" if dataset in LAG_NEED
+            else "session" if cadence in ("daily", "hourly") else f"{cadence} cycle")
     if missed >= 2:
         return "stale", f"two or more {unit}s missed", base
     target = COVERAGE_TARGET.get(dataset)
@@ -1235,7 +1264,7 @@ def _card(dataset: str, ds, facts: dict, now: datetime, used_today: dict[str, in
     cadence = _cadence(dataset, schedule)
     status, reason, base = status_of(dataset, last, ops.latest_unskipped_check(dataset), cadence, now)
     n_issues, issues = ops.open_issues(dataset, limit=10)
-    missed = _missed(cadence, base, now) if base else None
+    missed = _missed(cadence, base, now, dataset) if base else None
     table_facts = [facts[t] for t in ds.tables if t in facts]
     c = base or last or {}
     backfill = BACKFILL.get(dataset)
