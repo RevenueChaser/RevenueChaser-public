@@ -33,6 +33,11 @@ class DatasetCard:
     coverage_target: float | None = None
     step: int = 0
     role: str = "first"
+    #: The need whose ``max_lag`` says how old this dataset's newest row may be, for a dataset that is **checked**
+    #: every session while its source **publishes** less often: FINRA's short interest and the SEC's fails-to-deliver
+    #: are two releases a month, so a card counted in sessions read ``stale`` on a run that had nothing new to find
+    #: and did its job (the data audit of 21 Nov 2026, section 12). None: one session, as every other daily card.
+    lag_need: str | None = None
 
 
 #: The roles a card may name (``DatasetCard.role``).
@@ -48,7 +53,8 @@ DATASETS: dict[str, DatasetCard] = {
     'alphavantage/earnings_calendar': DatasetCard('Earnings calendar (Alpha Vantage)', step=9, role='first'),
     'alphavantage/earnings_transcripts': DatasetCard('Earnings call transcripts (Alpha Vantage)', step=9,
                                                      role='first'),
-    'finra/short_interest': DatasetCard('Short interest (FINRA)', step=10, role='first'),
+    'finra/short_interest': DatasetCard('Short interest (FINRA, two releases a month)', step=10, role='first',
+                                       lag_need='ownership.short_interest'),
     'fundamentals/tables': DatasetCard('Fundamentals (served tables, peers, build issues)', step=9, role='build'),
     'funds/index_holdings': DatasetCard('Index membership (ETF holdings files)', step=6, role='first'),
     'funds/etf_holdings': DatasetCard('ETF holdings, whole: 59 funds daily (SPDR, iShares, Unusual Whales), every other ETF '
@@ -84,7 +90,8 @@ DATASETS: dict[str, DatasetCard] = {
                              coverage_target=None, step=9, role='build'),
     'sec/reads': DatasetCard("A model's answers to the boards' questions about a filing (EVREN, DeepSeek)",
                              coverage_target=None, step=9, role='only source'),
-    'sec/ftd': DatasetCard('Fails to deliver (SEC)', step=10, role='first'),
+    'sec/ftd': DatasetCard('Fails to deliver (SEC, two releases a month)', step=10, role='first',
+                           lag_need='ownership.ftd'),
     'spine/security': DatasetCard('Identity spine (security, tiers, history)', coverage_target=0.98, step=7, role='build'),
     'uw/earnings': DatasetCard('Reported EPS and its surprise (Unusual Whales)', step=9, role='fills'),
     'uw/option_list': DatasetCard('Options of SPX and the option list (Unusual Whales)', coverage_target=0.95, step=11, role='first'),
@@ -219,6 +226,11 @@ def labels() -> dict[str, str]:
 
 def cadences() -> dict[str, str]:
     return {name: card.cadence for name, card in DATASETS.items()}
+
+
+def lag_needs() -> dict[str, str]:
+    """Only the datasets whose freshness is judged by a need's ``max_lag`` (``DatasetCard.lag_need``)."""
+    return {name: card.lag_need for name, card in DATASETS.items() if card.lag_need}
 
 
 def coverage_targets() -> dict[str, float | None]:
