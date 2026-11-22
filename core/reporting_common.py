@@ -692,6 +692,8 @@ def _write_atomic(path, data: bytes) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent))
     try:
+        # mkstemp makes 0600 and os.replace keeps it; the v2 door reads these files through the folder's group.
+        os.fchmod(fd, 0o640)
         with os.fdopen(fd, "wb") as f:
             f.write(data)
             f.flush()
