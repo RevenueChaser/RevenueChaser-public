@@ -1,13 +1,13 @@
 """``funds/etf_holdings``: the rotation board's ETFs read whole — the issuer's own file where there is one (the
-SPDR workbooks and the iShares CSVs, both parsers already the index job's), UW's holdings answer for the rest, no
-top-10 cap and no membership vote."""
+SPDR workbooks and the iShares CSVs, both parsers already the index job's), TickerInside's fund file for the rest
+(#1365, 22 Nov 2026; they were UW's until then), no top-10 cap and no membership vote."""
 from __future__ import annotations
 
 from pathlib import Path
 
 import pytest
 
-from RevenueChaser.core.providers import sec_edgar, unusual_whales
+from RevenueChaser.core.providers import sec_edgar, tickerinside, unusual_whales
 from RevenueChaser.rcdata import ops, serving
 from RevenueChaser.rcdata.build import base
 from RevenueChaser.rcdata.build.spine import etf_holdings as etf, sec_tickers
@@ -21,6 +21,7 @@ AS_OF = "2026-10-27"
 def env(monkeypatch, http_mock):
     monkeypatch.setattr(sec_edgar, "SEC_WWW_BASE", "https://sec.test")
     monkeypatch.setattr(unusual_whales, "BASE", "https://uw.test/api")
+    monkeypatch.setattr(tickerinside, "BASE", "https://tickerinside.test/api/v1")
     monkeypatch.setenv("UNUSUAL_WHALES_API_KEY", "uw-test-key")
     monkeypatch.setattr(etf, "SWEEP_PER_RUN", 0)     # these tests are the daily funds; the sweep has its own file
     http_mock.add("company_tickers_exchange.json", fx.SEC_FILE)
@@ -43,7 +44,7 @@ def test_the_funds_are_the_rotation_boards_sector_and_theme_etfs_but_the_commodi
     ten the relatedness peer sets need that the board does not run.
 
     The ``52`` is deliberate: adding an ETF to the board's sector or theme groups fails this test, which is where
-    the decision whether the new fund has a keyless holdings file or goes to UW belongs."""
+    the decision whether the new fund has a keyless holdings file or is read from TickerInside belongs."""
     from RevenueChaser.core.rotation_reference import SEED_ROTATION_ETFS as ROTATION_ETFS
     board = {t for t, info in ROTATION_ETFS.items() if info["group"] in ("sector", "theme")}
     assert len(board) == 52
@@ -124,12 +125,15 @@ def test_icln_is_typed_with_its_weight_in_the_percent_column():
         icln.parse(fx.ishares_csv(fx.SP500))
 
 
-def test_the_uw_funds_are_asked_for_their_whole_holdings():
-    uw = {f.etf: f.url() for f in etf.FILES if f.provider == "uw"}
-    assert set(uw) == {"SMH", "PAVE", "AIQ", "LIT", "URA", "NLR", "AIRR", "SKYY", "WCLD", "ARKQ", "ROBO", "JETS",
+def test_the_funds_with_no_keyless_issuer_file_are_read_from_tickerinside_not_uw():
+    """#1365, avo 22 Nov 2026: UW leaves (#1283) and D3 of #354 says holdings never come from it. These 28 funds
+    have no keyless issuer file in this tree, so they are TickerInside's one fund file each."""
+    ti = {f.etf: f.url() for f in etf.FILES if f.provider == "tickerinside"}
+    assert set(ti) == {"SMH", "PAVE", "AIQ", "LIT", "URA", "NLR", "AIRR", "SKYY", "WCLD", "ARKQ", "ROBO", "JETS",
                        "TAN", "PBW", "GDX", "OIH", "CIBR", "HACK", "REMX",
                        "CLOU", "DTCR", "QTUM", "FINX", "GRID", "DRIV", "BLOK", "ESPO", "COPX"}
-    assert uw["SMH"].endswith("/etfs/SMH/holdings")
+    assert ti["SMH"].endswith("/api/v1/fund/smh.json")
+    assert not [f for f in etf.FILES if f.provider == "uw"], "no daily fund is asked from UW any more"
 
 
 # ── UW's answer ──────────────────────────────────────────────────────────────────────────────────────────────
@@ -206,7 +210,7 @@ def test_a_us_bloomberg_exchange_code_is_dropped_and_nothing_else_is_guessed():
 
 
 def test_a_foreign_listing_reaches_the_parquet_but_not_the_served_table(env, http_mock):
-    _uw_empty(http_mock, "ARKQ")
+    _source_empty(http_mock, "ARKQ")
     body = fx.ark_csv([("TSLA", "88160R101", "TESLA INC"), ("KOG NO", "R3796D109", "KONGSBERG GRUPPEN")])
     http_mock.routes.insert(0, ("_ARKQ_HOLDINGS.csv", lambda r: (200, body, {}), 200, {}))
     base.run_request({"dataset": etf.NAME, "params": {"as_of": AS_OF}})
@@ -238,12 +242,13 @@ def test_a_run_reads_every_fund_once_and_serves_its_whole_holdings(env):
     assert len(env.calls()) == 59, "one request per fund, no retry"
     served = _served()
     assert len(served) == 59 * len(fx.SP500)
-    assert {r[2] for r in served} == {"ssga", "ishares", "uw"}
+    assert {r[2] for r in served} == {"ssga", "ishares", "tickerinside"}
     xlk = _served("etf = 'XLK'")
     assert {(r[3], r[4]) for r in xlk} == {(t, c) for t, c, _n in fx.SP500}, "the SPDR file's CUSIPs are kept"
     assert str(xlk[0][0]) == AS_OF
-    smh = _served("etf = 'SMH'")                               # UW: by weight; these rows carry no CUSIP key
+    smh = _served("etf = 'SMH'")            # TickerInside: by weight, and it serves neither CUSIP nor name
     assert [r[3] for r in smh] == [t for t, _c, _n in fx.SP500] and {r[4] for r in smh} == {None}
+    assert {r[5] for r in smh} == {None}
     assert smh[0][6] == 10.0 and smh[-1][6] == 6.0
 
 
@@ -276,13 +281,13 @@ def test_a_fund_already_fetched_is_not_fetched_again(env):
 
 
 def test_an_answer_with_no_holding_in_it_is_a_failed_file_not_the_funds_whole_day(env, http_mock):
-    """The raw file is the resume marker, so an empty answer kept once would be that fund's day: UW answers
-    ``{"data": []}`` for a ticker it does not know, and a header with no equity line is the same nothing."""
-    http_mock.routes.insert(0, ("/etfs/SMH/holdings", lambda r: (200, b'{"data": []}', {}), 200, {}))
+    """The raw file is the resume marker, so an empty answer kept once would be that fund's day: a fund file with an
+    empty ``holdings`` object, and a header with no equity line, are the same nothing."""
+    _source_empty(http_mock, "SMH")
     row = base.run_request({"dataset": etf.NAME, "params": {"as_of": AS_OF}})
     assert row["result"] == "changed" and row["coverage"] == round(58 / 59, 4)
     n, issues = ops.open_issues(etf.NAME)
-    assert n == 1 and [i["key"] for i in issues] == ["uw-SMH.json"]
+    assert n == 1 and [i["key"] for i in issues] == ["tickerinside-SMH.json"]
     assert "no holding line" in (issues[0]["detail"] or "") and not _served("etf = 'SMH'")
 
 
@@ -309,54 +314,56 @@ def test_a_second_day_is_a_second_partition_and_both_are_served(env):
     assert row["rows"] == 59 * len(fx.SP500), "the check row counts the newest day"
 
 
-def test_without_a_uw_key_the_issuer_files_are_read_and_the_missing_key_is_an_issue(monkeypatch, env):
-    """The 31 issuer files, and ARKQ from ARK's own file: a fund with an issuer file needs no UW key."""
+def test_no_daily_fund_needs_a_key_at_all(monkeypatch, env):
+    """#1365: every daily source is keyless, so a run without ``UNUSUAL_WHALES_API_KEY`` reads all 59 funds and
+    opens no ``missing_key`` issue. Before, the 28 UW funds were skipped and the key was an issue."""
     monkeypatch.delenv("UNUSUAL_WHALES_API_KEY")
     row = base.run_request({"dataset": etf.NAME, "params": {"as_of": AS_OF}})
-    assert row["result"] == "changed" and row["calls"] == 32
-    assert row["coverage"] == round(32 / 59, 4)
-    n, issues = ops.open_issues(etf.NAME)
-    assert n == 1 and issues[0]["kind"] == "missing_key"
-    assert len(_served()) == 32 * len(fx.SP500) and not _served("provider = 'uw'")
-    assert {r[2] for r in _served("etf = 'ARKQ'")} == {"ark"} and "ARKQ served by ark-ARKQ.csv" in row["note"]
+    assert row["result"] == "changed" and row["calls"] == 59 and row["coverage"] == 1.0
+    assert ops.open_issues(etf.NAME)[0] == 0
+    assert len(_served()) == 59 * len(fx.SP500) and not _served("provider = 'uw'")
+    assert {r[2] for r in _served("etf = 'SMH'")} == {"tickerinside"}
 
 
-# ── The source rule: UW first, the issuer file when UW holds nothing (#339) ─────────────────────────────────
+# ── The source rule: the source first, the issuer file when it holds nothing (#339, #1365) ──────────────────
 
-def _uw_empty(http_mock, fund: str) -> None:
-    http_mock.routes.insert(0, (f"/etfs/{fund}/holdings", lambda r: (200, b'{"data": []}', {}), 200, {}))
+def _source_empty(http_mock, fund: str) -> None:
+    """``fund``'s TickerInside file, answered with an empty ``holdings`` object: the shape of a fund it knows
+    nothing about."""
+    body = fx.tickerinside_fund_json([], fund)
+    http_mock.routes.insert(0, (f"/fund/{fund.lower()}.json", lambda r: (200, body, {}), 200, {}))
 
 
-def test_the_funds_with_an_issuer_file_behind_uw_are_arkq_only():
+def test_the_funds_with_an_issuer_file_behind_the_source_are_arkq_only():
     """Step 0 of #339: ARKQ has ARK's CSV; AIRR and SKYY (First Trust), WCLD (WisdomTree) and ROBO (ETC) serve
-    their holdings in HTML only, so they have no fallback and stay UW's alone."""
+    their holdings in HTML only, so they have no fallback and are TickerInside's alone."""
     assert {etf_name: f.raw_name() for etf_name, f in etf.FALLBACKS.items()} == {"ARKQ": "ark-ARKQ.csv"}
-    assert {f.etf for f in etf.FILES if f.provider == "uw"} >= set(etf.FALLBACKS)
-    assert "ark" in etf.PROVIDERS
+    assert {f.etf for f in etf.FILES if f.provider == "tickerinside"} >= set(etf.FALLBACKS)
+    assert "ark" in etf.PROVIDERS and "tickerinside" in etf.PROVIDERS
 
 
-def test_uw_with_holdings_serves_the_day_and_the_issuer_file_is_not_asked(env):
+def test_the_source_with_holdings_serves_the_day_and_the_issuer_file_is_not_asked(env):
     row = base.run_request({"dataset": etf.NAME, "params": {"as_of": AS_OF}})
     assert row["calls"] == 59 and not [r for r in env.requests if "ark-funds" in str(r.url)]
-    assert {r[2] for r in _served("etf = 'ARKQ'")} == {"uw"} and "ARKQ served by" not in (row["note"] or "")
+    assert {r[2] for r in _served("etf = 'ARKQ'")} == {"tickerinside"} and "ARKQ served by" not in (row["note"] or "")
 
 
-def test_an_empty_uw_answer_falls_back_to_the_issuer_file_and_the_note_says_so(env, http_mock):
-    """The day of build #40: UW answers ``{"data": []}`` for ARKQ. ARK's file serves the fund, the raw file's name
-    says which source served the day, and no issue is opened (the fund is served)."""
-    _uw_empty(http_mock, "ARKQ")
+def test_an_empty_source_answer_falls_back_to_the_issuer_file_and_the_note_says_so(env, http_mock):
+    """ARKQ's fund file holds nothing. ARK's own CSV serves the fund, the raw file's name says which source served
+    the day, and no issue is opened (the fund is served)."""
+    _source_empty(http_mock, "ARKQ")
     row = base.run_request({"dataset": etf.NAME, "params": {"as_of": AS_OF}})
     assert row["result"] == "changed" and row["coverage"] == 1.0 and row["calls"] == 60
     assert ops.open_issues(etf.NAME)[0] == 0
     arkq = _served("etf = 'ARKQ'")
     assert {r[2] for r in arkq} == {"ark"} and {(r[3], r[4]) for r in arkq} == {(t, c) for t, c, _n in fx.SP500}
     day = etf.raw_dir() / AS_OF
-    assert (day / "ark-ARKQ.csv").exists() and not (day / "uw-ARKQ.json").exists()
+    assert (day / "ark-ARKQ.csv").exists() and not (day / "tickerinside-ARKQ.json").exists()
     assert "ARKQ served by ark-ARKQ.csv" in row["note"] and "no holding line" in row["note"]
 
 
-def test_a_fund_the_issuer_file_served_is_resumed_without_asking_uw_again(env, http_mock):
-    _uw_empty(http_mock, "ARKQ")
+def test_a_fund_the_issuer_file_served_is_resumed_without_asking_the_source_again(env, http_mock):
+    _source_empty(http_mock, "ARKQ")
     base.run_request({"dataset": etf.NAME, "params": {"as_of": AS_OF}})
     http_mock.requests.clear()
     base.run_request({"dataset": etf.NAME, "params": {"as_of": AS_OF}})
@@ -364,24 +371,79 @@ def test_a_fund_the_issuer_file_served_is_resumed_without_asking_uw_again(env, h
 
 
 def test_both_sources_failing_is_one_source_failed_issue_naming_both(env, http_mock):
-    _uw_empty(http_mock, "ARKQ")
+    _source_empty(http_mock, "ARKQ")
     http_mock.routes.insert(0, ("_ARKQ_HOLDINGS.csv", lambda r: (200, b"<html>moved</html>", {}), 200, {}))
     row = base.run_request({"dataset": etf.NAME, "params": {"as_of": AS_OF}})
     assert row["coverage"] == round(58 / 59, 4) and not _served("etf = 'ARKQ'")
     n, issues = ops.open_issues(etf.NAME)
-    assert n == 1 and issues[0]["kind"] == "source_failed" and issues[0]["key"] == "uw-ARKQ.json"
+    assert n == 1 and issues[0]["kind"] == "source_failed" and issues[0]["key"] == "tickerinside-ARKQ.json"
     assert "no holding line" in issues[0]["detail"] and "ark-ARKQ.csv" in issues[0]["detail"]
-    assert "failed files: uw-ARKQ.json" in row["note"]
+    assert "failed files: tickerinside-ARKQ.json" in row["note"]
 
 
-def test_a_fund_with_no_issuer_file_still_fails_alone_on_an_empty_uw_answer(env, http_mock):
-    _uw_empty(http_mock, "WCLD")
+def test_a_fund_with_no_issuer_file_still_fails_alone_on_an_empty_answer(env, http_mock):
+    _source_empty(http_mock, "WCLD")
     row = base.run_request({"dataset": etf.NAME, "params": {"as_of": AS_OF}})
     assert row["calls"] == 59 and row["coverage"] == round(58 / 59, 4)
-    assert [i["key"] for i in ops.open_issues(etf.NAME)[1]] == ["uw-WCLD.json"]
+    assert [i["key"] for i in ops.open_issues(etf.NAME)[1]] == ["tickerinside-WCLD.json"]
 
 
 def test_the_issuer_file_host_has_board_words_and_no_invented_cap():
     from RevenueChaser.rcdata import caps
     from RevenueChaser.rcdata.needs import screen
     assert "ark" not in caps.DAY_CAPS and screen.PROVIDERS["ark"].name == "ARK"     # ARK publishes no limit (rule 3)
+
+
+# ── TickerInside, the source of the funds with no keyless issuer file (#1365) ────────────────────────────────
+
+def test_a_run_asks_each_tickerinside_fund_for_its_one_file_and_nothing_else(env):
+    base.run_request({"dataset": etf.NAME, "params": {"as_of": AS_OF}})
+    paths = [str(r.url) for r in env.requests if "tickerinside" in str(r.url)]
+    assert len(paths) == len(etf.TI_FUNDS) == 28
+    assert {p.rsplit("/", 1)[1] for p in paths} == {f"{t.lower()}.json" for t in etf.TI_FUNDS}
+
+
+def test_no_run_ever_asks_for_the_history_or_the_flows(env):
+    """The licence's one hard line: the history and flows files are not CC BY 4.0 and may not be collected on a
+    schedule (https://tickerinside.com/legal/#history). Our history is the SEC's (#354 C7)."""
+    base.run_request({"dataset": etf.NAME, "params": {"as_of": AS_OF}})
+    asked = " ".join(str(r.url) for r in env.requests)
+    assert "/history" not in asked and "/quarterly" not in asked and "/flows" not in asked
+
+
+def test_the_parquet_keeps_the_day_the_source_puts_on_the_list_and_which_layer_served_it(env):
+    """A TickerInside row is either an issuer file of that day or a fund's newest SEC filing, which can be months
+    old, so the file's own date rides along. It is Parquet only: serving it is a serving bump and its own PR."""
+    import duckdb
+    base.run_request({"dataset": etf.NAME, "params": {"as_of": AS_OF}})
+    part = etf.parquet_dir() / f"date={AS_OF}" / "part-0.parquet"
+    rows = duckdb.connect().execute(
+        f"SELECT DISTINCT provider, holdings_as_of, source_layer FROM read_parquet('{part.as_posix()}') "
+        "ORDER BY provider").fetchall()
+    assert ("tickerinside", "2026-11-19", "issuer") in rows
+    assert [r for r in rows if r[0] == "ssga"] == [("ssga", None, None)], "an issuer file states neither"
+    with serving.open_read("spine") as con:
+        served = [c[0] for c in con.execute(f"SELECT * FROM {etf.TABLE} LIMIT 0").description]
+    assert "holdings_as_of" not in served and "source_layer" not in served
+
+
+def test_a_share_class_and_a_foreign_line_of_a_fund_file_are_read_as_the_site_keys_them(env, http_mock):
+    """The live files write a US class with its dot (``BRK.B``) and a line listed abroad with its market
+    (``7203.JP``). The class is served as our dash form; the foreign line stays in the Parquet with no ticker."""
+    import duckdb
+    body = fx.tickerinside_fund_json(fx.SP500[:1], "SMH", extra_keys=("BRK.B", "7203.JP", "JPM.PFD"))
+    http_mock.routes.insert(0, ("/fund/smh.json", lambda r: (200, body, {}), 200, {}))
+    base.run_request({"dataset": etf.NAME, "params": {"as_of": AS_OF}})
+    assert {r[3] for r in _served("etf = 'SMH'")} == {fx.SP500[0][0], "BRK-B"}
+    part = etf.parquet_dir() / f"date={AS_OF}" / "part-0.parquet"
+    kept = duckdb.connect().execute(f"SELECT ticker_raw, ticker FROM read_parquet('{part.as_posix()}') "
+                                    "WHERE etf = 'SMH' AND ticker IS NULL ORDER BY ticker_raw").fetchall()
+    assert kept == [("7203.JP", None), ("JPM.PFD", None)]
+
+
+def test_the_source_is_paced_out_of_politeness_and_has_no_invented_day_cap():
+    """TickerInside publishes no request window and no quota, so ``caps`` holds no number for it (rule 3: no
+    invented limit) and the pacer lives in the dataset, labelled politeness."""
+    from RevenueChaser.rcdata import caps
+    assert "tickerinside" not in caps.DAY_CAPS and "tickerinside" not in caps.WINDOWS
+    assert etf.TI_PACE == (2, 1.0)

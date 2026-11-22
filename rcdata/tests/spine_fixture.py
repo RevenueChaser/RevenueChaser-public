@@ -456,6 +456,23 @@ def uw_holdings_json(holdings, repeat=(), cusips=False) -> bytes:
     return json.dumps({"data": rows}).encode()
 
 
+def tickerinside_fund_json(holdings, fund: str, as_of="2026-11-19", layer="issuer", extra_keys=(),
+                           abroad=()) -> bytes:
+    """TickerInside's ``fund/<ticker>.json`` (the live SMH, VOO and EFA files of 22 Nov 2026): ``holdings`` is one
+    object of ticker to weight in percent, with no CUSIP and no name, beside ``holdings_as_of`` and ``source_layer``.
+
+    ``extra_keys`` adds keys as the real files write them -- a US share class with its dot (``BRK.B``), a line listed
+    outside the US with its market (``7203.JP``), a preferred share (``JPM.PFD``) -- each with a small weight, and
+    ``abroad`` is the file's own list of keys the US list gives to another company."""
+    weights = {t: round(10 - i, 3) for i, (t, _cusip, _name) in enumerate(holdings)}
+    for i, key in enumerate(extra_keys):
+        weights[key] = round(0.5 - i / 100, 3)
+    return json.dumps({"ticker": fund, "name": f"{fund} ETF", "holdings_as_of": as_of, "source_layer": layer,
+                       "positions": len(weights), "abroad": list(abroad),
+                       "cite_as": f"TickerInside, {fund}, https://tickerinside.com/etf/{fund.lower()}/, CC BY 4.0",
+                       "holdings": weights}).encode()
+
+
 def ark_csv(holdings, fund: str = "ARKQ") -> bytes:
     """ARK's daily holdings CSV, in the shape of the real file of 30 Oct 2026 (``fixtures/ark_arkq_holdings.csv``
     is a trimmed copy): the header, one line per holding, the money-market line with no ticker, the disclaimer."""
@@ -469,8 +486,9 @@ def ark_csv(holdings, fund: str = "ARKQ") -> bytes:
 
 def add_etf_routes(http_mock, holdings=None, fail=(), repeat=()) -> None:
     """Answer every file of ``spine/etf_holdings.FILES`` and of its ``FALLBACKS``: the SPDR workbooks, the iShares
-    CSVs (each in the shape its own fund serves — IAK typed, the five sector funds not), UW's holdings answers and
-    ARK's CSV, each holding ``holdings`` (``SP500`` by default). An ETF named in ``fail`` answers 500 instead."""
+    CSVs (each in the shape its own fund serves — IAK typed, the five sector funds not), TickerInside's fund files
+    and ARK's CSV, each holding ``holdings`` (``SP500`` by default). An ETF named in ``fail`` answers 500 instead.
+    ``repeat`` is UW's shape and reaches only the sweep's and a named request's routes."""
     from RevenueChaser.rcdata.build.spine import etf_holdings as etf
     rows = SP500 if holdings is None else holdings
 
@@ -487,6 +505,8 @@ def add_etf_routes(http_mock, holdings=None, fail=(), repeat=()) -> None:
                                                            weight_col=etf.ISHARES_WEIGHT.get(f.etf, "Market Weight"))
         elif f.provider == "ark":
             route, body = f"_{f.etf}_HOLDINGS.csv", ark_csv(rows, f.etf)
+        elif f.provider == "tickerinside":
+            route, body = f"/fund/{f.etf.lower()}.json", tickerinside_fund_json(rows, f.etf)
         else:
             route, body = f"/etfs/{f.etf}/holdings", uw_holdings_json(rows, repeat=repeat)
         http_mock.add(route, answer(body, f.etf))

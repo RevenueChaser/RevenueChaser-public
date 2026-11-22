@@ -73,7 +73,25 @@ account and key:
 | [FRED](https://fred.stlouisfed.org/docs/api/fred/) | macro series | yes |
 | [yfinance](https://github.com/ranaroussi/yfinance) | free price and profile fallbacks | no |
 | [OpenFIGI](https://www.openfigi.com/api) | CUSIP to ticker mapping | optional |
+| [TickerInside](https://tickerinside.com/api/) | the holdings of the ETFs whose issuer publishes no keyless file | no |
 | [DeepSeek](https://platform.deepseek.com/) | optional LLM profile extraction | yes |
+
+**TickerInside, CC BY 4.0, with two conditions.** Its current snapshots and the
+figures computed from them are published under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), and keeping each
+night's copy -- including to build one's own series -- is explicitly allowed
+([licence and fair use](https://tickerinside.com/api/sections/terms.md)). So:
+
+1. **Attribution.** Wherever a figure read from it is shown, the page carries a
+   link to the page it came from; each fund file's own `cite_as` gives that
+   line.
+2. **The history and the flows are not under CC BY 4.0**
+   ([terms](https://tickerinside.com/legal/#history)): free per request, but
+   republishing the archive or fetching many funds' history on a schedule to
+   store it is not allowed. This code therefore never asks for
+   `/api/v1/history/*`, `/api/v1/quarterly/*` or `/api/v1/flows*`;
+   `core/providers/tickerinside.check_path` refuses those paths, and the
+   project's own holdings history comes from the SEC's Form N-PORT data sets.
 
 No key is stored in this repository. `.env` is gitignored; `.env.example`
 lists the variable names with empty values.
