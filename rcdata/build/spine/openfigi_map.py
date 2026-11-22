@@ -9,7 +9,11 @@ key: the run fails and asks nothing.
 
 Which CUSIPs: the CUSIPs of the active Compustat securities (``secstat`` A) whose CIK is in the newest SEC file,
 and the CUSIPs the fund files hold, less those already in the map: a 'present' answer is kept, an 'absent' one is
-asked again after ``ABSENT_RETRY_DAYS``. A CUSIP whose job answered an ``error`` stays unasked and is asked on the next run.
+asked again after ``ABSENT_RETRY_DAYS``. A CUSIP whose job answered an ``error`` stays unasked and is asked on the next
+run; one whose job answered an ``error`` on each of the last ``ERROR_RUNS`` runs is written 'absent'
+(``_keeps_erroring``), so the retry window holds it too (#1418: the error queue grew from 2,937 on 5 Nov to 3,635
+on 19 Nov). The same holds for the ticker lane, except that a ticker's 'present' answer is never replaced by such an
+'absent' one.
 An 'absent' answer counts only when its code was asked with its own id type (``_asked_right``): the map asked every code
 as ``ID_CUSIP`` until 2026-10-28, and OpenFIGI found none of the 2,092 CINS asked that way, so those are asked again.
 
@@ -52,6 +56,9 @@ PROVIDER = "openfigi"
 JOBS_PER_REQUEST = 100
 MAX_REQUESTS = 400
 ABSENT_RETRY_DAYS = 90
+# Runs in a row a job answered an ``error`` before it is written 'absent'. A builder's proposal (spine plan v4,
+# step A), no source: three weekly runs is three weeks of the same answer.
+ERROR_RUNS = 3
 PRESENT, ABSENT = "present", "absent"
 ID_CUSIP, ID_CINS, ID_TICKER = "ID_CUSIP", "ID_CINS", "TICKER"
 # The tiers whose rows are asked by ticker: Tier A only, the names the boards screen. A Tier B, C or D row with no
@@ -227,6 +234,24 @@ def _asked_tickers_today(as_of: date) -> set[str]:
     return out
 
 
+def _keeps_erroring(root: Path, key: str, as_of: date) -> set[str]:
+    """The items (``key``: ``cusips`` or ``tickers``) whose job answered an ``error`` in each of the last
+    ``ERROR_RUNS`` day folders under ``root`` up to ``as_of``. From the raw batches, so no Parquet column is needed
+    and a rerun of ``to_parquet_all`` gives the same answer. A day that did not ask an item (the request budget ran
+    out) breaks its run."""
+    days = sorted(p for p in root.glob("*") if p.is_dir() and p.name <= as_of.isoformat())[-ERROR_RUNS:]
+    if len(days) < ERROR_RUNS:
+        return set()
+    errored = []
+    for day in days:
+        out: set[str] = set()
+        for raw in day.glob("batch-*.json.gz"):
+            body = base.read_raw_json(raw)
+            out |= {str(v) for v, e in zip(body.get(key) or [], body["answers"]) if (e or {}).get("error")}
+        errored.append(out)
+    return set.intersection(*errored)
+
+
 def _present(hit: dict) -> dict:
     """The answer columns of one 'present' mapping entry (the key column is the caller's)."""
     return {"status": PRESENT, "ticker": figi_client.app_ticker(hit.get("ticker")), "figi": hit.get("figi"),
@@ -237,7 +262,8 @@ def _present(hit: dict) -> dict:
 
 
 def answer(cusip: str, entry: dict) -> dict | None:
-    """One job's answer as a map row; ``None`` for a job-level error (asked again next run)."""
+    """One job's answer as a map row; ``None`` for a job-level error (asked again next run, or written 'absent' by
+    ``to_parquet_all`` after ``ERROR_RUNS`` in a row)."""
     data = (entry or {}).get("data")
     if data:
         hit = next((d for d in data if (d or {}).get("ticker")), data[0]) or {}
@@ -248,7 +274,7 @@ def answer(cusip: str, entry: dict) -> dict | None:
 
 
 def ticker_answer(ticker: str, entry: dict) -> dict | None:
-    """One ``TICKER`` job's answer as a ticker-map row; ``None`` for a job-level error (asked again next run). The
+    """One ``TICKER`` job's answer as a ticker-map row; ``None`` for a job-level error (as ``answer``). The
     entry chosen is the US listing whose ticker is the one asked, as the identity adapter's ``_pick`` does, else the
     first with a ticker: a TICKER job can answer with several listings of the same symbol."""
     data = (entry or {}).get("data")
@@ -339,23 +365,36 @@ class OpenFigiMap:
     def to_parquet_all(self, ctx: base.RunContext, raws: list[Path]) -> list[Path]:
         rows: list[dict] = []
         ticker_rows: list[dict] = []
-        errors = 0
+        errors = gave_up = 0
+        stuck: dict[tuple[str, date], set[str]] = {}
+        kept: set[str] | None = None
         for raw in raws:
             meta = base.read_raw_json(_meta(raw))
             body = base.read_raw_json(raw)
             prov = {"source_as_of": date.fromisoformat(meta["as_of"]), "fetched_at": meta["fetched_at"],
                     "run_id": meta["run_id"]}
             # A ticker lane's batch names its items ``tickers``; a CUSIP lane's ``cusips``.
-            asked, make, into = ((body["tickers"], ticker_answer, ticker_rows) if "tickers" in body
-                                 else (body["cusips"], answer, rows))
-            for item, entry in zip(asked, body["answers"]):
+            lane, root, col = (("tickers", ticker_raw_dir(), "asked_ticker") if "tickers" in body
+                               else ("cusips", raw_dir(), "cusip"))
+            make, into = (ticker_answer, ticker_rows) if lane == "tickers" else (answer, rows)
+            for item, entry in zip(body[lane], body["answers"]):
                 row = make(item, entry)
                 if row is None:
-                    errors += 1
-                    continue
+                    if (lane, prov["source_as_of"]) not in stuck:
+                        stuck[lane, prov["source_as_of"]] = _keeps_erroring(root, lane, prov["source_as_of"])
+                    if lane == "tickers" and kept is None:     # a ticker's 'present' answer is not given up
+                        kept = {t for (t,) in _query(f"SELECT asked_ticker FROM read_parquet("
+                                                     f"{base.sql_path(ticker_partition())}) WHERE status = "
+                                                     f"'{PRESENT}'")} if ticker_partition().exists() else set()
+                    if item not in stuck[lane, prov["source_as_of"]] or (lane == "tickers" and item in kept):
+                        errors += 1
+                        continue
+                    row, gave_up = {col: item, "status": ABSENT}, gave_up + 1
                 into.append({**row, **prov})
         if errors:
             ctx.notes.append(f"{errors} OpenFIGI job errors (asked again next run)")
+        if gave_up:
+            ctx.notes.append(f"{gave_up} OpenFIGI jobs written absent after {ERROR_RUNS} runs of errors")
         out = []
         if rows:
             out.append(base.upsert_partition(rows, SCHEMA, ["cusip"], partition()))

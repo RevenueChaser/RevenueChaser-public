@@ -50,6 +50,7 @@ needs a source that has never run is not applied; that source is one ``source_ne
 from __future__ import annotations
 
 import json
+import re
 from bisect import bisect_right
 from collections import defaultdict
 from datetime import date, timedelta
@@ -79,6 +80,12 @@ US_EXCHG = (11, 12, 14)
 # included. Two missed weeks of the SEC file is no lookahead. Only for a ticker the SEC file has not held yet, or held
 # under the same CIK (delta-2 SF1, delta-3 SF-A).
 LOOKAHEAD = timedelta(days=21)
+# Fund-file lines that are no stock, read on a line with no SEC match only (#1418, ``member_not_in_sec``). Cash
+# (``CASH_USD``, any separator) is never a security, so its identifier does not matter: SSGA's dollar line carries a
+# made-up ``999USDZ92``. A future (root, month code, year digit: ``RTYZ6``, Russell 2000 December 2026) only with no
+# CUSIP, because a US exchange ticker is letters only but a line with a CUSIP may still be a stock.
+CASH = re.compile(r"^CASH[^A-Z0-9]?[A-Z]{3}$")
+FUTURE = re.compile(r"^[A-Z]{1,3}[FGHJKMNQUVXZ][0-9]$")
 
 SECURITY = [
     ("ticker", "TEXT PRIMARY KEY"), ("cik", "TEXT"), ("name", "TEXT"), ("exchange", "TEXT"),
@@ -756,13 +763,17 @@ class SpineSecurity:
                                            ("msnap", "DATE")], mapping)
         con.execute(VOTE_SQL)
         if latest is not None:
-            for ln in _rows(con, "SELECT DISTINCT l.index_slug, l.provider, l.fund, l.ticker, l.cusip, l.name "
+            for ln in _rows(con, "SELECT DISTINCT l.index_slug, l.provider, l.fund, l.ticker, l.ticker_raw, l.cusip, "
+                                 "l.name "
                                  "FROM stg_fund_lines l JOIN _fund_snap s ON s.as_of = l.as_of "
                                  "JOIN _fund_map m ON m.snap = s.snap AND m.tk = coalesce(l.ticker, '') "
                                  "AND m.cu = coalesce(l.cusip, '') JOIN stg_fund_files f ON f.as_of = l.as_of "
                                  "AND f.index_slug = l.index_slug AND f.provider = l.provider AND f.fund = l.fund "
                                  "AND f.counted JOIN _fund_days d ON d.as_of = l.as_of AND d.index_slug = "
                                  f"l.index_slug WHERE m.sec_ticker IS NULL AND l.as_of = DATE '{latest}'"):
+                raw = str(ln.get("ticker_raw") or "").strip().upper()
+                if CASH.match(raw) or (not ln.get("cusip") and FUTURE.match(raw)):
+                    continue
                 found.append(("member_not_in_sec", f"{ln['index_slug']}:{ln.get('ticker') or ln.get('cusip')}",
                               f"{ln['provider']} {ln['fund']} holds {ln.get('name') or '?'}"))
             for d in _rows(con, f"SELECT index_slug, ticker, held, files, member FROM _fund_dense "
