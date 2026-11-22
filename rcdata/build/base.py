@@ -104,7 +104,16 @@ class WholeBuildByHand(SourceError):
 
     A skip, not a failure: the serving file was not touched, so nothing is wrong with it, and the dataset stays due
     (``due.py``) for the next pass, which costs nothing while the live file is still the answer.
+
+    Which is right for one pass and wrong for a day of them: the shared build code changing holds every hourly pass
+    at once, and the live prices file stood from 20 Nov 14:05 UTC until someone pressed Fetch on 21 Nov with a
+    ``skipped`` line as the only sign (the data audit of 21 Nov 2026, draft P-A). ``MARK`` is that sign, named here
+    so that a screen can read it out of a check note and say what the file is waiting for.
     """
+
+    #: The part of the refusal a reader matches to know a pass was held for a person, and not skipped for some
+    #: other reason (``module_settings/newdata.py``). It is in the message of every raise below.
+    MARK = "is not started by the hourly pass"
 
 
 class ProviderEmpty(SourceError):
@@ -1235,7 +1244,7 @@ def build_kind_many(kind: str, members: list[tuple[Dataset, RunContext]], *, lea
             # Before ``serving.build``: nothing is copied, staged or swapped, so the live file is untouched.
             why = plan.reason if plan is not None else f"{kind} does not build on a copy of the live file"
             raise WholeBuildByHand(
-                f"a whole {kind} build is not started by the hourly pass ({', '.join(held)}): {why}; "
+                f"a whole {kind} build {WholeBuildByHand.MARK} ({', '.join(held)}): {why}; "
                 f"press Fetch on the Settings board, or run it from the CLI on the server")
     with serving.build(kind, base="live" if on_the_live_copy else "fresh") as b:
         on_live = b.mode == "live"

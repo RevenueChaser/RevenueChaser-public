@@ -257,7 +257,9 @@ with no network:
 A daily dataset's cycle is one New York session (`core/calendar.py`), counted from its newest `source_as_of`. A
 weekly dataset is in its cycle for 8 days after its last check, a monthly one for 35. A `skipped` check (paused,
 or a provider at its day cap) does not reset the clock: the status comes from the newest check that is not
-skipped. The cadence is `dataset_schedule.cadence` when set, else the dataset's default (both datasets of PR 1:
+skipped. When the newest check is a pass the builder held back for a person (`WholeBuildByHand`, the whole prices
+build of #446 step 8) and a cycle has passed, the reason adds `newdata.HELD_BUILD_REASON` so the card says what the
+file is waiting for rather than leaving it to the skip's note. The cadence is `dataset_schedule.cadence` when set, else the dataset's default (both datasets of PR 1:
 daily). Coverage targets are `newdata.COVERAGE_TARGET` (SPX expiry-strike 95%, market series none; the options
 data of G8: the option list and the earnings options 95%, the IBKR year none). These are
 the proposed alarm limits as set (decision 1), to be checked again after two weeks of real data.
