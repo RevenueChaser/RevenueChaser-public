@@ -80,13 +80,20 @@ COMPUSTAT_OTC = (19,)
 COMPUSTAT_LISTED = {11: "NYSE", 14: "Nasdaq", 21: "CBOE"}
 
 
-def tier(exchange: str | None, security_type: str | None, compustat_exchg: int | None = None) -> str:
+def tier(exchange: str | None, security_type: str | None, compustat_exchg: int | None = None,
+         compustat_inactive: bool = False) -> str:
     """The tier of one SEC-file row from its exchange and its security type (``None`` = not typed yet).
 
     ``compustat_exchg`` is the linked Compustat security's current exchange code: over the counter there
     (:data:`COMPUSTAT_OTC`) is Tier C whatever the SEC file still says, and where the SEC file names **no**
     exchange at all it stands in for one (:data:`COMPUSTAT_LISTED`, v4).
+
+    ``compustat_inactive`` (v6, #1334 K-G): the linked security is no longer active in Compustat and its deletion
+    date is on or before the SEC row's own day, read from a fresh whole snapshot (``spine/security`` decides it):
+    the weekly SEC file still lists a delisted name for a while, so the name is Tier C whatever the file says.
     """
+    if compustat_inactive:
+        return "C"
     ex = (exchange or "").strip().upper()
     if not ex:
         ex = COMPUSTAT_LISTED.get(compustat_exchg, "").upper()

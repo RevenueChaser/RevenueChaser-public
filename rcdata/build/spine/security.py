@@ -64,6 +64,7 @@ from ....core.identity import isin as isin_mod
 from ... import ops
 from .. import base
 from . import KIND, etf, etf_class, iso3166, my_universe, stage, tier as tier_rule, views
+from . import wrds as wrds_src
 from .funds import CHECKED, INDEXES, NAME as FUNDS
 from .openfigi_map import FIGI_BY_CUSIP, FIGI_BY_TICKER, NAME as OPENFIGI, PRESENT
 from .sec_tickers import NAME as SEC
@@ -80,6 +81,14 @@ US_EXCHG = (11, 12, 14)
 # included. Two missed weeks of the SEC file is no lookahead. Only for a ticker the SEC file has not held yet, or held
 # under the same CIK (delta-2 SF1, delta-3 SF-A).
 LOOKAHEAD = timedelta(days=21)
+#: The fresh-snapshot guard (plan v4 X6, #1334 K-C and K-G). Both rules read Compustat's ``secstat``, ``dldtei``
+#: and empty company CIKs, which only a whole snapshot refreshes (a new-names delta asks only the new CIKs), and
+#: the snapshots before this day predate the rules' review. So both run only when the newest ``snapshot=``
+#: partition of ``wrds/sec_idhist`` -- the one staging reads -- is whole and as of this day or later; otherwise
+#: they do nothing and the build writes one ``wrds_snapshot_not_armed`` issue. 23 Nov 2026: the fresh sequential
+#: fetch avo ordered for that night (``{"full": true}``).
+FRESH_SNAPSHOT_FROM = date(2026, 11, 23)
+WHOLE_SNAPSHOT = ("company", "security")
 # Fund-file lines that are no stock, read on a line with no SEC match only (#1418, ``member_not_in_sec``). Cash
 # (``CASH_USD``, any separator) is never a security, so its identifier does not matter: SSGA's dollar line carries a
 # made-up ``999USDZ92``. A future (root, month code, year digit: ``RTYZ6``, Russell 2000 December 2026) only with no
@@ -123,6 +132,11 @@ SCHEMAS = {"security": SECURITY, "security_history": HISTORY, "gics_history": GI
 ISSUE_KINDS = {
     "source_never_run": "a source this build needs has no data yet (key: the dataset)",
     "tier_a_no_wrds_link": "a Tier A name whose CIK finds no Compustat security",
+    "tier_a_compustat_inactive": ("a name the SEC file lists that would be Tier A, whose linked Compustat security "
+                                  "is inactive with a deletion date on or before the SEC file's day: Tier C (K-G)"),
+    "wrds_snapshot_not_armed": ("the newest wrds/sec_idhist snapshot is no whole snapshot from FRESH_SNAPSHOT_FROM "
+                                "on, so the ticker link (K-C) and the delisted rule (K-G) did nothing "
+                                "(key: the dataset)"),
     "tier_a_no_cusip": "a Tier A name with a Compustat link but no CUSIP",
     "tier_a_no_figi": "a Tier A name with a CUSIP that OpenFIGI has no FIGI for, by CUSIP or by ticker "
                       "(asked: absent; or not asked yet)",
@@ -249,6 +263,23 @@ def gics_manual(path: Path | None = None) -> dict[str, dict]:
         if r.get("gsector") not in GICS_SECTORS or r.get("ggroup") not in GICS_GROUPS or not r.get("reason"):
             raise ValueError(f"{GICS_MANUAL_FILE.name}: {t} needs a known gsector, a known ggroup and a reason")
     return rows
+
+
+def wrds_armed() -> bool:
+    """Whether K-C and K-G may run: the newest full ``wrds/sec_idhist`` snapshot in Parquet holds every table they
+    read and is as of :data:`FRESH_SNAPSHOT_FROM` or later (a ``delta=`` partition never counts)."""
+    snaps = wrds_src._snapshots(SEC_IDHIST.name)
+    if not snaps or date.fromisoformat(snaps[-1]) < FRESH_SNAPSHOT_FROM:
+        return False
+    folder = wrds_src.parquet_dir(SEC_IDHIST.name) / f"snapshot={snaps[-1]}"
+    return all((folder / f"{t}.parquet").is_file() for t in WHOLE_SNAPSHOT)
+
+
+def compustat_inactive(sec_row: dict | None, source_as_of) -> bool:
+    """K-G: the linked security is not active in Compustat and was deleted on or before the SEC row's day."""
+    d = (sec_row or {}).get("dldtei")
+    return bool(sec_row) and sec_row.get("secstat") != "A" and d is not None and source_as_of is not None \
+        and d <= source_as_of
 
 
 def _sec_header_column(con: duckdb.DuckDBPyConnection, column: str) -> dict[str, str]:
@@ -503,6 +534,11 @@ class SpineSecurity:
             if not n:
                 found.append(("source_never_run", ds, f"{ds} has no rows in this build"))
         wrds_on, figi_on = bool(have[SEC_IDHIST.name]), bool(have[OPENFIGI])
+        armed = wrds_on and wrds_armed()
+        if wrds_on and not armed:
+            found.append(("wrds_snapshot_not_armed", SEC_IDHIST.name,
+                          f"newest snapshot {(wrds_src._snapshots(SEC_IDHIST.name) or ['none'])[-1]}, rules from "
+                          f"{FRESH_SNAPSHOT_FROM}: the ticker link and the delisted rule did nothing"))
 
         sec = _rows(con, "SELECT * FROM stg_sec ORDER BY ticker")
         company = _rows(con, "SELECT gvkey, conm, cik, sic, loc FROM stg_wrds_company")
@@ -567,9 +603,16 @@ class SpineSecurity:
                                                   sec_country.get(norm_cik(r["cik"])))
             from_co = gics_src == CO_HGIC.name     # a manual row's codes must not sit beside Compustat's finer ones
             isin = isin_mod.from_cusip(cusip)
+            exchg = (sec_row or {}).get("exchg")
+            gone = armed and compustat_inactive(sec_row, r["source_as_of"])
+            the_tier = tier_rule.tier(r["exchange"], typ, exchg, compustat_inactive=gone)
+            if gone and tier_rule.tier(r["exchange"], typ, exchg) == "A":
+                found.append(("tier_a_compustat_inactive", r["ticker"],
+                              f"gvkey {sec_row['gvkey']} iid {sec_row['iid']}: secstat {sec_row.get('secstat')}, "
+                              f"deleted {sec_row.get('dldtei')}"))
             row = {
                 "ticker": r["ticker"], "cik": r["cik"], "name": r["name"], "exchange": r["exchange"],
-                "tier": tier_rule.tier(r["exchange"], typ, (sec_row or {}).get("exchg")), "tier_rule": tier_rule.VERSION,
+                "tier": the_tier, "tier_rule": tier_rule.VERSION,
                 "security_type": typ, "type_source": typ_src,
                 "gvkey": (sec_row or {}).get("gvkey"), "iid": (sec_row or {}).get("iid"), "link_source": how,
                 "cusip": cusip, "cusip_source": SEC_IDHIST.name if cusip else None,
