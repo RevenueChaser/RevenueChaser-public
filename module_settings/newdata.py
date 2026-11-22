@@ -110,6 +110,10 @@ CADENCE = _FromScreen(api_screen.cadences, "a dataset's cadence")
 COVERAGE_TARGET = _FromScreen(api_screen.coverage_targets, "a dataset's coverage target")
 DATE_COLUMN = _FromScreen(api_screen.written_columns, "a table's newest-date column")
 RETIRING = _FromScreen(lambda: api_screen.RETIRING, "the retirement list")
+#: What a card says when the hourly pass is holding a whole build back for a person: the status is already ``late``
+#: or ``stale`` from the sessions missed, and this says what the file is waiting for instead of leaving a
+#: ``skipped`` note inside the card as the only sign (the data audit of 21 Nov 2026, draft P-A).
+HELD_BUILD_REASON = "the hourly pass is holding its whole build back: press Fetch, or run it from the CLI"
 #: The datasets whose freshness is a publication window and not one session (``DatasetCard.lag_need``).
 LAG_NEED = _FromScreen(api_screen.lag_needs, "a dataset's publication-window need")
 CYCLE_DAYS = api_screen.CYCLE_DAYS
@@ -240,6 +244,16 @@ def _missed(cadence: str, check: dict, now: datetime, dataset: str | None = None
     return 0 if age <= limit else 1 if age <= 2 * limit else 2
 
 
+def _held_build(last: dict | None) -> bool:
+    """True when the newest check is a pass that was held back for a person (``base.WholeBuildByHand``).
+
+    Read from the note of the skip, by the one mark the builder names, so the screen keeps no copy of the sentence
+    the refusal is written in.
+    """
+    from RevenueChaser.rcdata.build.base import WholeBuildByHand
+    return bool(last) and last.get("result") == "skipped" and WholeBuildByHand.MARK in (last.get("note") or "")
+
+
 def status_of(dataset: str, last: dict | None, base: dict | None, cadence: str,
               now: datetime) -> tuple[str, str, dict | None]:
     """``(status, reason, the check it is read from)`` from ``dataset``'s newest check ``last`` and its newest check
@@ -253,12 +267,13 @@ def status_of(dataset: str, last: dict | None, base: dict | None, cadence: str,
     missed = _missed(cadence, base, now, dataset)
     unit = ("publication window" if dataset in LAG_NEED
             else "session" if cadence in ("daily", "hourly") else f"{cadence} cycle")
+    held = f"; {HELD_BUILD_REASON}" if missed >= 1 and _held_build(last) else ""
     if missed >= 2:
-        return "stale", f"two or more {unit}s missed", base
+        return "stale", f"two or more {unit}s missed{held}", base
     target = COVERAGE_TARGET.get(dataset)
     cov = base.get("coverage")
     if missed == 1:
-        return "late", f"one {unit} missed", base
+        return "late", f"one {unit} missed{held}", base
     if target is not None and cov is not None and cov < target:
         return "late", f"coverage {cov:.1%} under the {target:.0%} target", base
     if base["result"] == "changed":
