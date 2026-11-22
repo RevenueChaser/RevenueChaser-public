@@ -327,7 +327,8 @@ def ssga_xlsx(holdings) -> bytes:
 
 
 # A fund file's request, by the part of its URL that names the fund (the http mock matches a substring).
-ISHARES_ROUTE = {"IVV": "products/239726/", "IJH": "products/239763/", "IJR": "products/239774/"}
+ISHARES_ROUTE = {"IVV": "products/239726/", "IJH": "products/239763/", "IJR": "products/239774/",
+                 "IWM": "products/239710/"}
 
 
 def ishares_csv(holdings, drop_dash=False, typed=True, weight_col="Market Weight") -> bytes:
@@ -409,6 +410,7 @@ def invesco_json(holdings, adr=False) -> bytes:
 
 def add_fund_routes(http_mock, sp500=SP500, sp400=SP400, ndx=("MSFT",), fail=()) -> None:
     """Answer every fund file of ``funds.FILES``: S&P 500 and 400 from the lists above, the SmallCap 600 files 404;
+    IWM holds the MidCap list (``russell2000``) and the other single-file indexes 404;
     the Nasdaq list and QQQ both hold ``ndx``; DIA (the one ``dow`` file) holds the fixture's own S&P 500 list,
     whatever ``sp500`` a test passes, so a test that moves the S&P 500 lines does not move ``dow``."""
     def maybe(name, body):
@@ -418,6 +420,9 @@ def add_fund_routes(http_mock, sp500=SP500, sp400=SP400, ndx=("MSFT",), fail=())
     http_mock.add("holdings-daily-us-en-dia", lambda r: maybe("DIA", ssga_xlsx(SP500)))
     http_mock.add(ISHARES_ROUTE["IVV"], lambda r: maybe("IVV", ishares_csv(sp500)))
     http_mock.add(ISHARES_ROUTE["IJH"], lambda r: maybe("IJH", ishares_csv(sp400, drop_dash=True)))
+    # IWM (``russell2000``, one file, the untyped shape): the MidCap list and a name the SEC file does not hold
+    http_mock.add(ISHARES_ROUTE["IWM"], lambda r: maybe("IWM", ishares_csv(
+        SP400 + [("ZZZQ", None, "UNKNOWN CO")], typed=False)))
     http_mock.add("list-type/nasdaq100", lambda r: maybe("NDX", nasdaq_json(ndx)))
     http_mock.add("shareclasses/QQQ/holdings", lambda r: maybe("QQQ", invesco_json(
         [h for h in sp500 + sp400 + [("NVDA", "67066G104", "NVIDIA CORP")] if h[0] in ndx])))

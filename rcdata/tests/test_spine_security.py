@@ -119,6 +119,8 @@ def test_membership_from_the_fund_files_matched_by_cusip_ticker_and_squashed_tic
         ("dow", "NVR", date(2026, 10, 27), None, 1, 1),
         ("dow", "WFC", date(2026, 10, 27), None, 1, 1),
         ("ndx", "MSFT", date(2026, 10, 27), None, 2, 2),      # the Nasdaq list and QQQ
+        ("russell2000", "HEI", date(2026, 10, 27), None, 1, 1),  # IWM's file alone, like dow
+        ("russell2000", "HEI-A", date(2026, 10, 27), None, 1, 1),
         ("sp400", "HEI", date(2026, 10, 27), None, 2, 2),        # SSGA and iShares (Vanguard removed, 22 Nov)
         ("sp400", "HEI-A", date(2026, 10, 27), None, 2, 2),      # iShares' HEIA, squashed back to HEI-A
         ("sp500", "ETN", date(2026, 10, 27), None, 2, 2),
@@ -161,6 +163,15 @@ def test_files_that_disagree_vote_and_are_an_issue(built):
     assert _q("SELECT valid_to, files_held, files_counted FROM index_membership WHERE source = ? "
               "AND index_slug = 'sp500' AND ticker = 'NVR'", funds.NAME) == [(date(2026, 10, 28), 2, 2)]
     assert ("membership_files_disagree", "sp500:NVR") in _issues()
+
+
+def test_a_russell_line_the_sec_file_does_not_hold_is_no_issue(built):
+    """The Russell files hold thousands of small names: a per-name issue there would flood the list, so
+    ``member_not_in_sec`` and ``member_not_tier_a`` are raised for ``funds.CHECKED`` only (IWM's ZZZQ here)."""
+    assert ("member_not_in_sec", "russell2000:ZZZQ") not in _issues()
+    assert not {k for k, key in _issues() if key.startswith("russell") and k.startswith("member_not_")}
+    assert _q("SELECT count(*) FROM index_membership WHERE source = ? AND index_slug = 'russell2000'",
+              funds.NAME) == [(2,)]
 
 
 def test_a_line_carrying_another_securitys_cusip_is_no_match(built):

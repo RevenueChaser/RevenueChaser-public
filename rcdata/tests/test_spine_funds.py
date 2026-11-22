@@ -124,6 +124,37 @@ def test_dias_file_is_the_one_dow_file_so_dow_membership_is_that_file_with_no_vo
     assert all(f"'{i}'" in security.VOTE_SQL for i in funds.INDEXES)
 
 
+#: avo, 22 Nov 2026 22:42-22:43 ("Russell için ulaşabileceğim bütün endeksleri ekle"): one iShares file per index,
+#: so, like ``dow``, a member is "the file holds it". (slug, fund, product id, typed shape, floor), read 20 Nov 2026.
+SINGLE_FILE = [
+    ("russell1000", "IWB", "239707", True, 816), ("russell2000", "IWM", "239710", False, 1567),
+    ("russell3000", "IWV", "239714", False, 2059), ("russell_microcap", "IWC", "239716", False, 1080),
+    ("russell_midcap", "IWR", "239718", True, 656), ("russell_top200", "IWL", "239721", False, 160),
+    ("russell1000_growth", "IWF", "239706", True, 297), ("russell1000_value", "IWD", "239708", True, 694),
+    ("russell2000_growth", "IWO", "239709", False, 890), ("russell2000_value", "IWN", "239712", True, 1111),
+    ("russell_midcap_growth", "IWP", "239717", True, 216), ("russell_midcap_value", "IWS", "239719", False, 572),
+    ("russell_top200_growth", "IWY", "239720", False, 80), ("russell_top200_value", "IWX", "239722", False, 121),
+    ("nasdaq100_top30", "QTOP", "339775", False, 24)]
+
+
+@pytest.mark.parametrize("slug, fund, pid, typed, floor", SINGLE_FILE)
+def test_each_russell_and_nasdaq_top30_index_is_one_ishares_file(slug, fund, pid, typed, floor):
+    files = [f for f in funds.FILES if f.index_slug == slug]
+    assert [(f.provider, f.fund) for f in files] == [("ishares", fund)]
+    assert f"/us/products/{pid}/" in files[0].url() and files[0].url().endswith("/latest-holdings.csv")
+    assert slug in funds.INDEXES and funds.FLOOR[slug] == floor
+    assert slug not in funds.CHECKED                # no per-name issues for these (they would flood the list)
+    # The fund's own shape is read, and the other shape is refused rather than reshaped.
+    rows = files[0].parse(fx.ishares_csv(fx.SP500, typed=typed))
+    assert [r["ticker_raw"] for r in rows] == [t for t, _, _ in fx.SP500]
+    with pytest.raises(base.SourceError):
+        files[0].parse(fx.ishares_csv(fx.SP500, typed=not typed))
+
+
+def test_the_per_name_issues_stay_on_the_sp_ndx_and_dow_indexes():
+    assert funds.CHECKED == ("sp500", "sp400", "sp600", "ndx", "dow")
+
+
 def test_tickers_are_written_the_sec_way():
     assert funds.norm_ticker("BRK.B") == "BRK-B" and funds.norm_ticker("BRK/B") == "BRK-B"
     assert funds.norm_ticker("CASH_USD") is None and funds.norm_ticker("-") is None
@@ -131,10 +162,12 @@ def test_tickers_are_written_the_sec_way():
 
 def test_one_request_per_file_a_failed_file_is_an_issue_and_the_others_count(env):
     row = base.run_request({"dataset": funds.NAME, "params": {"as_of": "2026-10-27"}})
-    assert row["result"] == "changed" and row["calls"] == 9             # the two SmallCap files 404: no retry
-    n, issues = ops.open_issues(funds.NAME)
-    assert n == 2 and {i["key"] for i in issues} == {"ssga-SPSM.xlsx", "ishares-IJR.csv"}
-    assert row["coverage"] == round(7 / 9, 4) and "failed files" in row["note"]
+    assert row["result"] == "changed" and row["calls"] == 24            # the 404s are not retried
+    n, issues = ops.open_issues(funds.NAME, limit=100)
+    # the two SmallCap files and the 14 single-file indexes the fixture does not answer (it answers IWM only)
+    assert n == 16 and {"ssga-SPSM.xlsx", "ishares-IJR.csv"} <= {i["key"] for i in issues}
+    assert "ishares-IWM.csv" not in {i["key"] for i in issues}
+    assert row["coverage"] == round(8 / 24, 4) and "failed files" in row["note"]
     assert row["calls"] == len(env.calls())
 
 
@@ -149,4 +182,4 @@ def test_a_day_already_fetched_is_not_fetched_again(env):
     env.requests.clear()
     base.run_request({"dataset": funds.NAME, "params": {"as_of": "2026-10-27"}})
     assert {str(r.url).split("/")[2] for r in env.requests} <= {"www.ssga.com", "www.ishares.com"}
-    assert len(env.requests) == 2                          # only the two that failed are asked again
+    assert len(env.requests) == 16                         # only the ones that failed are asked again
