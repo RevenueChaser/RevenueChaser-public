@@ -423,12 +423,14 @@ def test_stops_at_different_places_record_nothing(monkeypatch, env):
 
 
 def test_the_sweep_is_off_until_its_switch_says_1(monkeypatch, env):
-    """Owner, 2 Nov 2026 (option B on UW's 250-holdings cap): no sweep until the full lists of N-PORT (#354) are there.
+    """Owner, 2 Nov 2026 (option B on UW's 250-holdings cap): no sweep until the full lists of N-PORT (#354) are
+    there. D3 of 22 Nov 2026 made that permanent -- N-PORT serves the funds with no issuer file, so the sweep has
+    no future caller and the note says so instead of "until".
     An unscoped run asks the 38 daily funds as before and no other ETF; a named trial still works."""
     monkeypatch.delenv(etf.SWEEP_ENV)
     row = base.run_request({"dataset": etf.NAME, "params": {"as_of": DAY}})
     assert _sweep_calls(env) == [] and not (etf.raw_dir() / etf.SWEEP_STATE).exists()
-    assert f"no sweep: off until {etf.SWEEP_ENV}=1" in row["note"]
+    assert f"no sweep: off for good, {etf.SWEEP_ENV}!=1" in row["note"] and "N-PORT" in row["note"]
     assert {f.etf for f in etf.FILES} <= _served_etfs()
     env.requests.clear()
     base.run_request({"dataset": etf.NAME, "params": {"as_of": DAY, "names": ["GLD"]}})

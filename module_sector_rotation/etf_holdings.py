@@ -20,12 +20,21 @@ def synced_etfs() -> list[str]:
 
 
 def stored_holdings(ticker: str) -> list[dict]:
-    """An ETF's holdings (``ticker``, ``name``, ``weight``), largest first, from the spine's whole lists
-    (``rcdata.read.etf_holdings``, its newest day; #642 PR 4: the holdings job's ``raw.etf_holdings`` is no longer
-    read). A line with no US ticker is left out; ``[]`` when the spine holds none (no network)."""
+    """An ETF's holdings (``ticker``, ``name``, ``weight``, ``provider``, ``as_of``, ``truncated``), largest first,
+    from the spine's whole lists (``rcdata.read.etf_holdings``, its newest day; #642 PR 4: the holdings job's
+    ``raw.etf_holdings`` is no longer read). A line with no US ticker is left out.
+
+    **A fund the daily issuer or UW list does not hold reads its newest Form N-PORT report instead**
+    (``read.etf_holdings_nport``, ``provider`` ``nport``, quarterly; #354 C5, and the source every fund without an
+    issuer file is read from since avo's D3 of 22 Nov 2026). Each row says which source served it, so a caller
+    never has to guess whether a list is today's or last quarter's: ``provider`` and ``as_of`` of the day it came
+    from, and ``truncated`` True for a UW list cut at UW's 250-line cap. ``[]`` only when neither source holds the
+    fund (no network either way)."""
     from RevenueChaser.rcdata import read
-    return [{"ticker": r["ticker"], "name": r.get("name") or "", "weight": r.get("weight")}
-            for r in read.etf_holdings([ticker]) if r.get("ticker")]
+    rows = read.etf_holdings([ticker]) or read.etf_holdings_nport([ticker])
+    return [{"ticker": r["ticker"], "name": r.get("name") or "", "weight": r.get("weight"),
+             "provider": r.get("provider"), "as_of": r.get("as_of"), "truncated": bool(r.get("truncated"))}
+            for r in rows if r.get("ticker")]
 
 
 # The map funds whose holdings say where a company sits: a broad style, region, bond or yield fund holds
