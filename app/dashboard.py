@@ -2303,6 +2303,35 @@ def api_sec13f_filer(cik: str):
                     "holdings": holdings, "style": data["style"], "tags": data["tags"]})
 
 
+@app.route("/api/sec_13f/etfs")
+def api_sec13f_etfs():
+    """The 13F ETFs view's picker (#1441): spine ETFs that file N-PORT whose ticker or name holds ``q``, at most 20."""
+    from revenuechaser.core import ownership
+    q = (request.args.get("q") or "").strip()[:80]
+    rows = ownership.nport_etf_search(q) if q else []
+    return jsonify({"ok": True, "etfs": [{"ticker": r["ticker"], "name": r.get("name"), "aum": r.get("aum")}
+                                         for r in rows]})
+
+
+@app.route("/api/sec_13f/etfs/<etf>")
+def api_sec13f_etf(etf: str):
+    """One ETF for the 13F ETFs view (#1441): its held N-PORT quarters and, for ``quarter`` (else the newest), its
+    stock holdings with the change against the quarter before and what it sold out of. 400 for a ticker
+    ``_valid_ticker`` refuses, 404 for an ETF with no N-PORT quarter stored."""
+    from revenuechaser.core import ownership
+    from revenuechaser.module_sec_13f.report import etf_holdings_view
+    e = (etf or "").strip().upper()
+    if not _valid_ticker(e):
+        return jsonify({"ok": False, "error": "bad ticker"}), 400
+    data = ownership.nport_etf(e, (request.args.get("quarter") or "").strip().lower() or None)
+    if not data["quarters"]:
+        return jsonify({"ok": False, "error": "no N-PORT holdings", "etf": e}), 404
+    hit = next((r for r in ownership.nport_etf_search(e, limit=1) if r["ticker"] == e), None)
+    return jsonify({"ok": True, "etf": e, "name": (hit or {}).get("name"), "quarters": data["quarters"],
+                    "quarter": data["quarter"], "prev_quarter": data.get("prev_quarter"),
+                    "view": etf_holdings_view(data["rows"], data["prev_rows"] if data.get("prev_quarter") else None)})
+
+
 @app.route("/api/watchlist/<kind>/toggle/<ticker>", methods=["POST"])
 def api_watchlist_kind_toggle(kind: str, ticker: str):
     """Put ``ticker`` on the ``option`` or ``stock`` watch list, or take it off (PR 4, D2). The board that sent the
