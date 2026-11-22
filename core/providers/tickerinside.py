@@ -25,6 +25,8 @@ ticker and a weight in percent, so a row from here carries ``cusip`` None and ``
 """
 from __future__ import annotations
 
+import gzip
+import hashlib
 import json
 import os
 import re
@@ -68,6 +70,54 @@ def fund_url(ticker: str) -> str:
 def funds_url() -> str:
     """Every covered fund with its layer, report date and position count, in one file."""
     return BASE + check_path("/funds.json")
+
+
+def manifest_url() -> str:
+    """The night's build: ``files.list_sha256`` checks the list of every file's sha256."""
+    return BASE + check_path("/manifest.json")
+
+
+def sums_url() -> str:
+    """Every published file's sha256, one ``<sha256>  <path from the site's root>`` line each, gzipped."""
+    return BASE + check_path("/sha256sums.txt.gz")
+
+
+def status_url() -> str:
+    """The night's run: ``run.fetch_holdings.kept_previous`` names the funds served from an older issuer file."""
+    return BASE + check_path("/status.json")
+
+
+def fund_hashes(manifest: bytes, sums: bytes) -> dict[str, str]:
+    """Each ``fund/<ticker>.json``'s sha256 by upper-case ticker, from ``sha256sums.txt.gz``.
+
+    The list is trusted only when its sha256 is the manifest's ``files.list_sha256``, which is the hash of the
+    *uncompressed* list (measured 22 Nov 2026): a list of another night would call a changed file unchanged. A body
+    an HTTP layer already unzipped is read the same. Raises ``ValueError`` on any other shape."""
+    try:
+        want = json.loads(manifest)["files"]["list_sha256"]
+    except (ValueError, KeyError, TypeError) as e:
+        raise ValueError(f"tickerinside: manifest.json has no files.list_sha256 ({type(e).__name__})") from e
+    text = gzip.decompress(sums) if sums[:2] == b"\x1f\x8b" else sums
+    if hashlib.sha256(text).hexdigest() != want:
+        raise ValueError("tickerinside: sha256sums.txt.gz is not the list manifest.json's list_sha256 names")
+    out = {}
+    for line in text.decode("utf-8", errors="replace").splitlines():
+        sha, _, path = line.partition("  ")
+        if path.startswith("api/v1/fund/") and path.endswith(".json"):
+            out[path[len("api/v1/fund/"):-len(".json")].upper()] = sha
+    return out
+
+
+def kept_previous(status: bytes) -> list[dict]:
+    """``status.json``'s ``run.fetch_holdings.kept_previous``: the funds whose issuer file the site could not
+    refresh, each ``{ticker, issuer, since, holdings_as_of}``. Raises ``ValueError`` when the list is missing."""
+    try:
+        rows = json.loads(status)["run"]["fetch_holdings"]["kept_previous"]
+    except (ValueError, KeyError, TypeError) as e:
+        raise ValueError(f"tickerinside: status.json has no kept_previous ({type(e).__name__})") from e
+    if not isinstance(rows, list):
+        raise ValueError("tickerinside: kept_previous is not a list")
+    return [r for r in rows if isinstance(r, dict) and r.get("ticker")]
 
 
 def served_ticker(key: str) -> str | None:
