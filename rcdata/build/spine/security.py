@@ -391,8 +391,8 @@ def link_by_ticker(ticker: str, cik: str, by_tic: dict[str, list[tuple[dict, str
     made beside it (AGLT, XTLB: 13 names on 21 Nov 2026)."""
     own = norm_cik(cik)
     cands = by_tic.get(ticker) or []
-    empty = [sr for sr, c in cands if not c or c != own]   # MUTATION: a CIK that differs is taken, not refused
-    other = []
+    empty = [sr for sr, c in cands if not c]
+    other = [(sr, c) for sr, c in cands if c and c != own]
     found = [("ticker_link_cik_differs", ticker,
               f"Compustat gvkey {sr['gvkey']} iid {sr['iid']} carries the ticker under CIK {c}, the SEC file "
               f"says {own}: refused") for sr, c in other]
