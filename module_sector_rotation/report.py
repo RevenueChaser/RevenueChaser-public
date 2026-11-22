@@ -1488,7 +1488,8 @@ def _rs_color2(val):
 
 # What a holdings list's ``provider`` is called on screen: the fragment says which source served the list, so a
 # quarterly N-PORT report is never read as today's file (#354 C5).
-PROVIDER_LABELS = {"nport": "SEC N-PORT (quarterly)", "uw": "Unusual Whales"}
+PROVIDER_LABELS = {"nport": "SEC N-PORT (quarterly)", "uw": "Unusual Whales", "ssga": "SSGA file",
+                   "ishares": "iShares file", "ark": "ARK file"}
 
 
 def holdings_source_note(rows: list[dict]) -> str:

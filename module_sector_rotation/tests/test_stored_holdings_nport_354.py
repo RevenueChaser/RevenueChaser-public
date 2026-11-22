@@ -76,6 +76,12 @@ def test_the_note_warns_that_a_cut_list_is_not_the_whole_fund():
     assert "250" in note and "not the whole fund" in note
 
 
+def test_an_issuer_file_is_named_by_its_issuer_not_its_provider_key():
+    """"Source: ishares" reads as a typo on a board; the issuers' keys get their own labels."""
+    assert "iShares file" in holdings_source_note([_line("SMH", "NVDA", 20.0, "ishares", DAILY)])
+    assert holdings_source_note([_line("X", "A", 1.0, "newissuer", DAILY)]).startswith("Source: newissuer")
+
+
 def test_rows_without_a_provider_get_no_note():
     """The Rotation Fetch's own cached rows carry no provenance; inventing one would be a guess."""
     assert holdings_source_note([{"ticker": "AAPL", "weight": 6.0}]) == ""
