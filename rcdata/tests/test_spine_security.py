@@ -119,13 +119,15 @@ def test_membership_from_the_fund_files_matched_by_cusip_ticker_and_squashed_tic
         ("dow", "NVR", date(2026, 10, 27), None, 1, 1),
         ("dow", "WFC", date(2026, 10, 27), None, 1, 1),
         ("ndx", "MSFT", date(2026, 10, 27), None, 2, 2),      # the Nasdaq list and QQQ
-        ("sp400", "HEI", date(2026, 10, 27), None, 3, 3),
-        ("sp400", "HEI-A", date(2026, 10, 27), None, 3, 3),      # iShares' HEIA, squashed back to HEI-A
-        ("sp500", "ETN", date(2026, 10, 27), None, 3, 3),
-        ("sp500", "FDX", date(2026, 10, 27), None, 3, 3),        # Vanguard's line has only the CUSIP
-        ("sp500", "MSFT", date(2026, 10, 27), None, 3, 3),
-        ("sp500", "NVR", date(2026, 10, 27), None, 3, 3),
-        ("sp500", "WFC", date(2026, 10, 27), None, 3, 3)]
+        ("sp400", "HEI", date(2026, 10, 27), None, 2, 2),        # SSGA and iShares (Vanguard removed, 22 Nov)
+        ("sp400", "HEI-A", date(2026, 10, 27), None, 2, 2),      # iShares' HEIA, squashed back to HEI-A
+        ("sp500", "ETN", date(2026, 10, 27), None, 2, 2),
+        ("sp500", "FDX", date(2026, 10, 27), None, 2, 2),
+        ("sp500", "MSFT", date(2026, 10, 27), None, 2, 2),
+        ("sp500", "NVR", date(2026, 10, 27), None, 2, 2),
+        ("sp500", "WFC", date(2026, 10, 27), None, 2, 2)]
+    # The CUSIP-only line (an empty ticker) was Vanguard's shape; matching by CUSIP first is still shown by SSGA's
+    # line in the ETN -> ETNX rename test below.
 
 
 def _funds_answer(http_mock, **kw) -> None:
@@ -146,7 +148,7 @@ def test_membership_periods_open_close_and_reopen(built):
 
 
 def test_a_day_without_a_counting_file_is_no_absence(built):
-    _funds_answer(built, fail=("SPY", "IVV", "VOO"))
+    _funds_answer(built, fail=("SPY", "IVV"))
     run_all("2026-10-28", names=(funds.NAME,))
     assert _q("SELECT valid_from, valid_to FROM index_membership WHERE source = ? AND index_slug = 'sp500' "
               "AND ticker = 'NVR'", funds.NAME) == [(date(2026, 10, 27), None)]
@@ -157,7 +159,7 @@ def test_files_that_disagree_vote_and_are_an_issue(built):
     built.routes.insert(0, (fx.ISHARES_ROUTE["IVV"], lambda r: (200, fx.ishares_csv(fx.SP500), {}), 200, {}))
     run_all("2026-10-28", names=(funds.NAME,))
     assert _q("SELECT valid_to, files_held, files_counted FROM index_membership WHERE source = ? "
-              "AND index_slug = 'sp500' AND ticker = 'NVR'", funds.NAME) == [(date(2026, 10, 28), 3, 3)]
+              "AND index_slug = 'sp500' AND ticker = 'NVR'", funds.NAME) == [(date(2026, 10, 28), 2, 2)]
     assert ("membership_files_disagree", "sp500:NVR") in _issues()
 
 
@@ -361,7 +363,9 @@ def test_a_member_the_sec_file_drops_for_a_week_keeps_one_period(built):
 def test_a_rename_the_fund_files_lag_is_not_matched_to_the_old_tickers_next_owner(built):
     """Delta-2 SF1, the other direction: the SEC file writes ETN as ETNX from 3 Nov, iShares still writes ETN
     without a CUSIP that day, and on 10 Nov the ticker ETN belongs to another CIK. iShares' line is no match for the
-    new ETN; SSGA and Vanguard carry the CUSIP and keep the member as ETNX, under Eaton's CIK (delta-3 nit 2)."""
+    new ETN; SSGA carries the CUSIP and matches the line to ETNX, under Eaton's CIK (delta-3 nit 2). With two S&P 500
+    files (Vanguard removed, 22 Nov 2026) one of two is no majority, so ETNX is no S&P 500 member that day and the
+    split is an issue; DIA's file (the one ``dow`` file, with the CUSIP) shows the match itself."""
     renamed = [[c, n, "ETNX" if t == "ETN" else t, e] for c, n, t, e in fx.SEC_FILE["data"]]
     _sec_answer(built, renamed)
     base.run_request({"dataset": sec_tickers.NAME, "params": {"as_of": "2026-11-03"}})
@@ -374,7 +378,10 @@ def test_a_rename_the_fund_files_lag_is_not_matched_to_the_old_tickers_next_owne
     assert _q("SELECT count(*) FROM index_membership WHERE source = ? AND ticker = 'ETN' AND cik = '8888888'",
               funds.NAME) == [(0,)]
     assert _q("SELECT cik, valid_from, valid_to, files_held FROM index_membership WHERE source = ? "
-              "AND index_slug = 'sp500' AND ticker = 'ETNX'", funds.NAME) == [("1551182", date(2026, 11, 3), None, 2)]
+              "AND index_slug = 'dow' AND ticker = 'ETNX'", funds.NAME) == [("1551182", date(2026, 11, 3), None, 1)]
+    assert _q("SELECT count(*) FROM index_membership WHERE source = ? AND index_slug = 'sp500' AND ticker = 'ETNX'",
+              funds.NAME) == [(0,)]
+    assert ("membership_files_disagree", "sp500:ETNX") in _issues()
     assert ("member_not_in_sec", "sp500:ETN") in _issues()          # iShares' line: no match, not the new ETN
 
 
