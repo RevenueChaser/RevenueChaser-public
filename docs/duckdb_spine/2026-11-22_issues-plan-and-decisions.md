@@ -33,7 +33,7 @@ store_fundamentals #1392. The audit's item names (K-A … K-H, G-11) are kept be
 |---|---|---|---|---|---|
 | 1 | Schema 10 + tier v4 live | Code is at 10 and v4, the live file at 9 [M]: no country, and CFR, IBOC, TXCP still Tier D | `security` (two columns, tier), `my_universe` | every screener (tier), Asymmetric Growth (country) | Low. Ids do not move [I]: the link is the same, only tier and country change |
 | 2 | WRDS gate (#1361) | see section 1 | indirectly `security`, `gics_history`, `security_history`, `index_membership` | K-F's `idxcst_his` freshness, K-G | Medium: it changes a job the dashboard runs, so its own PR. The first unattended monthly snapshot may change many spine rows at once |
-| 3 | K-B: 304 Tier A names typed `unknown` [M] | The type comes from OpenFIGI; with no FIGI it stays `unknown`, and an unknown type on a listed exchange is Tier A (`tier.py:94-95`). `TPCI_TYPES` knows three codes (`tier.py:104`) [C] | `security` (type, tier), `my_universe` | every screener, the prices universe | Medium: a real company typed wrongly drops to Tier B and leaves the screens |
+| 3 | K-B: 304 Tier A names typed `unknown` [M] | A name is typed by ticker, SIC 6770, Compustat `tpci`, name and venue (`tier.py:26-35`); `tpci` reaches only a linked row and `TPCI_TYPES` knows three codes (`tier.py:104`). What none of them types stays `unknown`, and an unknown type on a listed exchange is Tier A (`tier.py:94-95`) [C] | `security` (type, tier), `my_universe` | every screener, the prices universe | Medium: a real company typed wrongly drops to Tier B and leaves the screens |
 | 4 | K-C: the link needs CIK equality | `link()` goes SEC CIK → Compustat gvkeys → ticker match, else `only_security` (`security.py:317-329`) [C]. Of 188 unlinked Tier A names, 172 have an active Compustat security with the same ticker; its CIK is empty for 159 and different for 13 [M] | `security` (gvkey, iid, cusip, isin, figi, gics, sic, country), `security_history`, `gics_history`, `index_membership` | **the prices id** (`prices/__init__.py:72-79`) [C] | **High**: a wrong link is a wrong CUSIP and a wrong price series |
 | 5 | K-G: delisted names in Tier A | ARI, BWMN, ROKU are inactive in Compustat but Tier A [M]. `secstat` and `dldtei` are staged; the tier rule does not read them [C] | `security` (tier) | `my_universe`, screeners | Low to medium. Only meaningful once the monthly snapshot is fresh (item 2) |
 | 6 | K-A: ETF identity | 5,785 of 6,314 `etf` rows have no `security` row [M]; `etf` has no gvkey, CUSIP or FIGI column (`etf.py:43-54`) [C]. Prices links on its own (`prices/wrds_history.py:730` `GVKEY_ALIAS`; a member the spine does not hold becomes `sym:`, `prices/__init__.py:181`) [C] | `etf` gains identity columns: **schema 10 → 11** | prices ids, options (IWM, QQQ, SPX), G-11 | **High**: an id change moves bars |
@@ -109,8 +109,9 @@ What it does not help with:
 
 ## 5. The order
 
-This is the order after the decisions. Steps 3, 4 and 5 are independent of each other; step 6's code does not
-wait for step 1.
+This is the order after the decisions and after the second review (section 8). Steps 3, 4 and 5 wait on nothing
+and are independent of each other. In short: 1, then 3-4-5 in parallel, then the incremental measurement on the
+box, then 6, 7, 8 (one window or two), 9, 10, 11. #1362 goes its own way; only K-G depends on it.
 
 | Step | Work | PR | Schema | Live write | Waits on |
 |---|---|---|---|---|---|
@@ -118,21 +119,26 @@ wait for step 1.
 | 2 | #1362 (WRDS gate) merged; #1366 is merged | existing | none | turning the TickerInside dataset on | #1362's CI |
 | 3 | Small PR A: OpenFIGI error queue + `member_not_in_sec` noise | new | none | none | nothing |
 | 4 | Small PR B: TickerInside 28 → 133 funds (T-3), manifest (T-5), stale-fund issue (T-6) | new | none | none | nothing (#1366 is in) |
-| 5 | Small PR C: repair Vanguard and `nasdaq-NDX`, write `dow`, exit floors 80 M / 8 M | new | none (`dow` rows go into the existing table) | none | the failing status codes read on the server |
-| 6 | Identity PR 1 (tier v5): K-B + K-C + K-G, with a mutation check | new | none | in step 8 | nothing |
-| 7 | Identity PR 2: ETF identity in `etf` (K-A, T-1) + expense ratio and asset class (K-H, T-2) + the lock's columns (T-4) | new, its own PR | 10 → 11 | in step 8 | step 6 |
-| 8 | **One live window**: spine build, then a prices whole build. The split fixes of #1413 ride the same build if ready | — | — | **yes** | the owner's word; steps 6 and 7 merged |
+| 5 | Small PR C: repair Vanguard and `nasdaq-NDX`, write `dow`, exit floors 80 M / 8 M | new | none (`dow` rows go into the existing table) | none | nothing (the failing status codes are read on the server first; it does not need #1362) |
+| 6 | Identity PR 1 (tier v5): K-B + K-C + K-G, with a mutation check | new | none | in step 8 | the incremental measurement; K-G also needs #1362 live |
+| 7 | Identity PR 2: ETF identity in `etf` (K-A, T-1) + expense ratio and asset class (K-H, T-2); retires prices' `GVKEY_ALIAS` and `sym:` path | new, its own PR | 10 → 11 | in step 8 | step 6 |
+| 8 | **Live window(s)**: spine build, then prices. One window with a whole build, or one per identity PR if the incremental build is shown to be enough. The split fixes of #1413 ride the same build if ready | — | — | **yes** | the owner's word; step 1 live; steps 6 and 7 merged; two box builds diffed separately |
 | 9 | Quarter lock: a quarter N-PORT has reported is final; the daily difference is counted and written | new | ownership side, decided then | ownership build | steps 4 and 8 |
 | 10 | K-E: old CIKs and tickers translated in the fundamentals, ownership and estimates stores | one per store | none in the spine | per store | step 8 |
 | 11 | 13F ETFs: the mapping (the spine's part is ready after 7-8); the board is #1376 | — | — | ownership build | steps 8 and 9 |
 
-Acceptance for step 6: Tier A `unknown` under 30; a GICS gap under 5 % for each type; no index member in Tier D.
+Acceptance for step 6: Tier A `unknown` under 30; a GICS gap under 5 % for each type; no index member in Tier D;
+**every name that moves from Tier A to B counted and listed by name**; a written cap on wrong links, checked on a
+past snapshot before anything goes live.
 Acceptance for step 8 (K-A): for every `my_universe` name the spine's id equals the id of its bars, difference 0;
 bars per id before and after; IWM and QQQ present in the options tables.
 
 Step 1's checks: `security` row count unchanged; the tier distribution before and after; the share of `country`
-filled; CFR, IBOC and TXCP are A; the `member_not_tier_a` count; item 12's 17 names re-counted. No prices build
-should be needed [I]; verify on the box that the id difference is 0.
+filled; CFR, IBOC and TXCP are A; the `member_not_tier_a` count; item 12's 17 names re-counted. Before it runs,
+read that the live checkout is on `main` and why the live file is still at 9: a host not on `main` would rebuild
+schema 9 and pass a total row count. No prices build should be needed [I]; verify on the box that the id
+difference is 0, and quote the per-ticker diff the build already takes (`security.py:799-801`,
+`stage.compare_live` over gvkey, iid, cusip, figi, tier, type): zero rows changed in the identity columns.
 
 ## 6. The gates of a live write
 
@@ -142,8 +148,10 @@ Every live step carries all four, and none is skipped for a "small" build:
 2. An idle dashboard job queue (`/api/jobs`): the dashboard holds the DuckDB writer, so a build is started
    through it and never by a second writer.
 3. A named rollback and its trigger. The swap keeps the previous file as `serving_prev/<kind>.prev.duckdb`
-   (`rcdata/serving.py:289-297`); a copy taken before the build is the second line. Trigger for step 8: an id
-   difference above 0, or a table that shrank with no explanation.
+   (`rcdata/serving.py:289-297`); a copy taken before the build is the second line. **Trigger for step 8: after
+   the prices build, any `my_universe` name whose spine id is not the id of its bars**, or a table that shrank
+   with no explanation. A newly linked name changing its id (`cik:` to `gvkey:iid`) is the designed outcome, not
+   the trigger: the expected number of such names is written down before the build and compared after it.
 4. Counts before and after, **per id** for anything that touches identity.
 
 The build is tried on the rented box first; its result is moved to the server only through the gates above.
@@ -156,19 +164,19 @@ and does not lean on the total.
 
 ## 7. Open risks, and what was not measured
 
-- **Step 8 rests on an unmeasured assumption.** `prices/incremental.py:222-236` diffs the identity the live file
-  was built with against the new one and reloads the securities whose universe, alias or link row changed [C];
-  the identity issue says a whole build is needed. Which is enough has not been measured. Until it is, the plan
-  counts a whole build: 2,257 s and 6.0 GB RSS in total [M], of which `prices/serving` alone is 1,694 s.
-  **Measure this on the box before identity PR 1 is written**, because it decides whether steps 6 and 7 can go
-  live separately.
-- **K-C has no bound on false matches.** The second link path (ticker plus a CUSIP or name check) has to be
-  measured on an old snapshot first. The 13 names whose Compustat CIK is *different* (AGLT, XTLB among them) are
-  the risky group and should stay unlinked unless a second identifier agrees. Every name linked by the new path
-  gets its own `link_source` value and its own issue kind, so it stays visible.
-- **ETF identity joins two sources by ticker** (TickerInside and Compustat). `etf.py` already chooses one SEC
-  series per ticker; the new columns have to use that same choice, or a ticker that changed hands links the old
-  fund's CUSIP to the new fund.
+- **Whether the incremental prices build is enough after an identity change is not measured.**
+  `prices/incremental.py:222-236` diffs the identity the live file was built with against the new one and reloads
+  the securities whose universe, alias or link row changed [C]; the identity issue says a whole build is needed.
+  Until it is measured the plan counts a whole build: 2,257 s and 6.0 GB RSS for the whole chain [M], of which
+  `prices/serving` alone is 1,694 s. **Measure it on the box before identity PR 1 is written**: it decides
+  whether steps 6 and 7 go live in one window or two.
+- **K-C has no bound on false matches yet.** The second link path has to be measured on a past snapshot against
+  a written cap before it goes live, and the 13 names whose Compustat CIK is *different* (AGLT, XTLB among them)
+  are refused (section 8). Every name linked by the new path gets its own `link_source` value and its own issue
+  kind, so it stays visible.
+- **ETF identity joins two sources by ticker** (TickerInside and Compustat). `etf.py` already chooses one
+  Compustat series per ticker; the new columns have to use that same choice, or a ticker that changed hands links
+  the old fund's CUSIP to the new fund (the guards are in section 8).
 - **The first unattended WRDS snapshot** after #1362 may move many spine rows in one build. Read the build's
   counts that day before step 6's numbers are taken as a baseline.
 - **Removing or repairing an index file changes the vote's denominator** (`security.py:421`). Compare
@@ -176,9 +184,55 @@ and does not lean on the total.
 - **Not measured here:** the live spine's schema version and build state today; the spine build's duration; the
   real tier of item 12's 17 names; whether #1362's first run closes K-F's `idxcst_his` line.
 
-## 8. Second review
+## 8. Second review (cross-model, one round, 22 Nov 14:09)
 
-The plan was given to the cross-model review (one round) on 22 Nov with eight criteria: order and dependencies,
-identity safety, a single ETF identity owner, the live-write gates, the tier and type rules, hysteresis, the
-TickerInside + N-PORT lock, and what the plan missed. **Its findings are not in this note yet**; they are added
-here when the run returns, and section 7 already carries the three findings of the author's own review.
+The plan was given to the cross-model review with eight criteria: order and dependencies, identity safety, a single
+ETF identity owner, the live-write gates, the tier and type rules, hysteresis, the TickerInside + N-PORT lock, and
+what the plan missed. Two models, one round, **no agreement** (the tool's exit 6). Eleven of the author's twelve
+findings were confirmed and one withdrawn: the plan already counts a whole prices build and orders the incremental
+measurement before the live window, so step 8 does not rest on it; what the measurement decides is whether the two
+identity PRs can go live in separate windows.
+
+The one disagreement: one model held that a successful K-C link fires the rollback trigger "id difference above
+0", because the link changes the id; the other that the trigger is the difference between the spine's id and the
+bars' id *after* the prices build, which a designed re-key does not trip. Both agreed the trigger was not written
+in the order of record. It is now (section 6, gate 3).
+
+What the review added, and where it went:
+
+**Step 6 (K-B, K-C, K-G).**
+- **K-C's second link path cannot be evaluated as planned.** An unlinked row has no CUSIP: `cusip` comes only
+  from the Compustat row (`security.py:538-539`), the OpenFIGI ticker lane returns none, and fund-file CUSIPs
+  exist only for index members. The PR has to name, per name, where the CUSIP it checks comes from.
+- **The 13 names whose Compustat CIK differs from the SEC CIK are refused**, not linked: a different CIK is also
+  what a reused ticker looks like. Only the 159 with an empty Compustat CIK are candidates.
+- **K-B depends on K-C** inside the PR, because `tpci` reaches only a linked row (`security.py:552`).
+- **K-G needs a maximum snapshot age** and `dldtei` no later than the SEC row's `source_as_of` before it demotes
+  a name; with the monthly snapshot not refreshed until #1362 is live, it would otherwise run on stale data.
+
+**Step 7 (ETF identity).**
+- TickerInside keys are normalised dot to dash (`BRK.B`), as the Compustat side already is (`security.py:186`,
+  `etf.py:148`, `190`).
+- Where `etf.cik` is filled, TickerInside's CIK has to equal it before its FIGI is taken; a mismatch is written
+  as an issue (`etf.py:247` takes the first CIK today with no agreement check).
+- gvkey and iid use the series choice `etf.py` already makes (the 14-day rule, `etf.py:106`, `130-134`). A second
+  choice would rebuild the two-owner problem inside the spine.
+- The same PR retires prices' `GVKEY_ALIAS` and the `sym:` path, or two owners remain.
+- **The lock's columns are out of this schema step.** The lock is the ownership side's and is decided at step 9.
+
+**Step 8.** It waits for step 1 explicitly. Tier v5 and schema 11 under one `.prev` file cannot be rolled back
+separately, so the box runs two builds and two diffs: identity PR 1 alone, then PR 2 on top. `index_membership`
+has no per-row compare, so a loss under 1 % is silent: take the member list per index before and after by hand.
+
+**Step 5.**
+- It does not wait for #1362.
+- "Cannot be repaired" is defined: if the server gets the same 404 / 406, the question goes back to the owner;
+  nothing is removed on its own.
+- `dow` needs its own write path, because the vote's SQL filters on `INDEXES` (`security.py:409`, `444`), and a
+  floor like `fund_file_short` (`security.py:691-694`), because one file always clears "more than half".
+- The exit floor is tested after the hold rules; this is stated, not verified in `my_universe.py`.
+
+**Step 9 (quarter lock): three questions are open** and go to the owner when the step is reached: what closes a
+quarter (the SEC's quarterly data set, or the fund's own filing); whether an amended N-PORT reopens it; and how a
+fund that files no N-PORT (the grantor trusts, `etf.py:23-27`) is locked. Step 4 widens the daily overwrite to 133
+funds before any lock exists; the history stays in the N-PORT Parquet, and step 4's PR should say so.
