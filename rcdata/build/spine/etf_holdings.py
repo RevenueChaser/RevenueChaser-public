@@ -58,8 +58,12 @@ run types the sweep day's held raws its partition lacks. An empty answer, and a 
 timeout after the client's retries), is not asked again within the sweep; at its end they are one ``uw_empty`` and
 one ``source_failed`` issue. A rejected key on an ETF's own call or an open breaker (UW down) stops the sweep with
 nothing recorded, so the next run asks again; a stop at a new place is a ``source_failed`` issue, and when it stops
-``SWEEP_STOPS`` (3) times in a row at the same ETF while UW answers other calls, those ETFs are recorded as failed and
-the sweep goes on past them. A whole outage or a dead key records nothing, however long it lasts. A spine with no
+``SWEEP_STOPS`` (3) times in a row at the same ETF **while UW has answered a call of this sweep**, those ETFs are
+recorded as failed and the sweep goes on past them. A whole outage or a dead key records nothing, however long it
+lasts. Since #1365 the sweep is UW's only caller here, so "UW answered" is a fact of the sweep and not of the run:
+the daily funds used to answer first every run and no longer ask UW at all, and a run that only re-asks the stuck
+neighbours answers nothing. A sweep whose very first ETFs fail from the start therefore records nothing and waits,
+which the stop issue says; it cannot be told apart from an outage without asking the ETFs past them (#1367). A spine with no
 ETF starts no sweep. A scoped request asks its ``names`` only and starts no sweep.
 **How wide a narrowed sweep would be, measured (#354 C6, 21 Nov 2026).** N-PORT has landed, so the set the sweep
 would ask can now be counted instead of estimated: the ETF review's five rules together
@@ -172,8 +176,9 @@ EXTRA = frozenset({"KIE", "IAK", "ITB", "PBW", "KBE", "KCE", "XPH", "IYT", "IHF"
 SWEEP_DAYS = 30
 SWEEP_PER_RUN = 3000
 SWEEP_STATE = "sweep.json"
-# Stops at the same ETF, while UW answers other calls, before the ETFs there are taken as failed (review 2: five
-# neighbours that answer 503 every time would open the breaker on every run and stall the sweep for good).
+# Stops at the same ETF, while UW has answered a call of this sweep, before the ETFs there are taken as failed
+# (review 2: five neighbours that answer 503 every time would open the breaker on every run and stall the sweep for
+# good). The "answered" fact is the sweep's, not the run's, since #1365 left the sweep as UW's only caller.
 SWEEP_STOPS = 3
 # Retention (avo, option 1): the last ``SWEEP_DAYS`` days whole; older, each month's last day and each sweep day. It
 # only reports what it would remove unless ``PRUNE_ENV`` is "1": the first real removal is avo's word at that time.
@@ -612,6 +617,7 @@ class EtfHoldings:
                 content = f.download(ctx)
                 if not f.parse(content):
                     state["empty"].append(t)
+                    state["answered"] = True
                     streak = []
                     base.write_raw_json(path, state)
                     continue
@@ -622,13 +628,16 @@ class EtfHoldings:
             except Exception:  # noqa: BLE001 - one ETF down must not stop the sweep
                 stopped = _uw_down(ctx, t)
                 if stopped:
-                    # A stop counts only where the last one was and while UW answered this run: a whole outage or a
-                    # dead key stops every run at the same ETF and is UW's state, never the ETF's (review 3). A
-                    # breaker that skipped a call opened before this ETF was asked (review 4); a run where UW
-                    # answered nothing, a same-day rerun of the bad neighbours, keeps the count as it was.
+                    # A stop counts only where the last one was and while UW has answered a call of this sweep: a
+                    # whole outage or a dead key answers nothing from the sweep's first ETF on and is UW's state,
+                    # never the ETF's (review 3). A breaker that skipped a call opened before this ETF was asked
+                    # (review 4). The fact is the sweep's, not the run's: since #1365 the daily funds ask
+                    # TickerInside, so a run that only re-asks the stuck neighbours answers nothing and would
+                    # otherwise never count a stop, stalling the sweep for good (review 4, NIT 2).
                     at = (streak or [t])[0]
                     h = ctx.uw_client().health()
-                    answered = h["calls"] > h["failed"] and not h["skipped_calls"]
+                    answered = (h["calls"] > h["failed"] or state.get("answered", False)) \
+                        and not h["skipped_calls"]
                     if at != state.get("stop_at"):
                         ctx.issue("source_failed", f"sweep-{day}-stopped", f"{stopped} at {at}: the sweep waits")
                     kept = state.get("stops", 0) if at == state.get("stop_at") else 0
@@ -643,6 +652,7 @@ class EtfHoldings:
                 base.write_raw_json(path, state)
                 continue
             streak = []
+            state["answered"] = True
             raw = folder / f.raw_name()
             base.write_raw_json(_meta(raw), {"as_of": day.isoformat(), "fetched_at": time.time(),
                                              "run_id": ctx.run_id, "etf": t, "provider": "uw", "url": f.url()})
