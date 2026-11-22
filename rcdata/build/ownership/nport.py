@@ -2,9 +2,18 @@
 
 ``GET <RC_NPORT_INDEX_URL>`` (default ``<www.sec.gov>/data-research/sec-markets-data/form-n-port-data-sets``) links
 one zip per quarter, ``<yyyy>q<n>_nport.zip`` (2019q4 on; about 440 MB each, measured 1 Nov 2026 on 2026q3). The
-index read and the TSV load are the 13F sets' own (``sec13f_sets.listed``, ``sec13f_sets._load``). Only the newest
-listed set is held (decision G, avo 16 Nov 2026: newest quarter only; history is C7, when a reader needs it). A set
-held is never asked again; one held raw but not typed is typed on the next run.
+index read and the TSV load are the 13F sets' own (``sec13f_sets.listed``, ``sec13f_sets._load``). A daily run holds
+the newest listed set only (decision G, avo 16 Nov 2026). A set held is never asked again; one held raw but not
+typed is typed on the next run.
+
+**History (C7, avo 22 Nov 2026: "eski ceyrekleride indir").** A backfill with a first day takes every listed
+quarter whose filing window reaches it, **oldest first**, at most :data:`MAX_SETS_PER_RUN` a run, each under the
+``sec`` cap and ``Pacer`` like the first one. 2019q4 to 2026q2 is 27 further sets, about 12 GB of raw zip, so a run
+stops before the disk does: each download is refused when the raw disk has less free space than
+:data:`MIN_FREE_SETS` (the zip plus the room its typing spills), with a note and a ``no_space`` issue, and the sets
+already held are kept. A stopped or killed run resumes where it left off, because a held and typed set is skipped
+and each quarter reports its own counts as it lands. **The served table is unchanged by history:** it is still
+built from the newest typed quarter only, so no further quarter means a version bump or a store write.
 
 The download is streamed to disk (``_download``): the zip never sits whole in the builder's memory, which a
 ``sec13f_sets.download`` of 440 MB would (twice, the answer and its zip check). Typing runs in a DuckDB file beside
@@ -29,6 +38,7 @@ whenever this dataset's Parquet changed; kept as it is on the live copy otherwis
 from __future__ import annotations
 
 import os
+import shutil
 import tempfile
 import time
 import zipfile
@@ -67,6 +77,12 @@ OPTIONAL = {
 }
 MEMORY_LIMIT = "1GB"
 CHUNK = 1 << 20
+# C7: at most this many quarters a run, so one run is bounded in time and disk even when 27 are wanted; the next
+# run takes the next ones, since a held and typed set is skipped.
+MAX_SETS_PER_RUN = 4
+# Free space the raw disk must keep before a set is asked: a zip is about 440 MB (measured 1 Nov 2026 on 2026q3)
+# and typing it spills the unpacked TSVs beside it, so a quarter wants several GB in hand, not one.
+MIN_FREE_SETS = 8 * 2**30
 
 
 def index_url() -> str:
@@ -75,6 +91,15 @@ def index_url() -> str:
 
 def raw_dir() -> Path:
     return sec13f_sets.raw_dir(SUB)
+
+
+def raw_dir_for_free() -> Path:
+    """The existing folder whose disk the raw zips land on: the raw dir itself once made, else its nearest made
+    parent, because ``shutil.disk_usage`` needs a path that is there."""
+    path = raw_dir()
+    while not path.exists() and path != path.parent:
+        path = path.parent
+    return path
 
 
 def parquet_dir() -> Path:
@@ -221,8 +246,37 @@ class Nport:
         return [_download(ctx, pacer, name, sets[name][2])]
 
     def backfill(self, ctx: base.RunContext, start: date | None, end: date) -> None:
-        # Newest quarter only (decision G): a backfill is the daily rule.
-        self.to_parquet_all(ctx, self.fetch(ctx, end))
+        """Without a first day: the daily rule, the newest quarter only (decision G). With one (``--from``, C7):
+        every listed quarter whose filing window reaches ``start``, oldest first, at most
+        :data:`MAX_SETS_PER_RUN` a run and only while the raw disk keeps :data:`MIN_FREE_SETS` free. A set already
+        held and typed is skipped, so a stopped run resumes; a set held raw is typed without being asked again."""
+        if start is None:
+            self.to_parquet_all(ctx, self.fetch(ctx, end))
+            return
+        sec13f_sets._clear_scratch(ctx, SUB, LABEL)
+        pacer = sec.Pacer(ctx)
+        sets = sec13f_sets.listed(ctx, pacer, index_url(), SUFFIX, LABEL)
+        wanted = sorted((n for n, (first, last, _) in sets.items() if last >= start and first <= end),
+                        key=lambda n: (sets[n][0], n))
+        todo = [n for n in wanted if not typed(n)]
+        ctx.notes.append(f"{LABEL} history: {len(wanted)} listed quarter(s) from {start} to {end}, "
+                         f"{len(wanted) - len(todo)} already typed, {len(todo)} to go")
+        for name in todo[:MAX_SETS_PER_RUN]:
+            path = sec13f_sets.raw_path(name, SUB)
+            if not path.exists():
+                free = shutil.disk_usage(raw_dir_for_free()).free
+                if free < MIN_FREE_SETS:
+                    ctx.notes.append(f"{LABEL} history: stopped before {name}, "
+                                     f"{free / 2**30:.1f} GiB free and a quarter needs "
+                                     f"{MIN_FREE_SETS / 2**30:.0f} GiB")
+                    ctx.issue("no_space", name, f"{free / 2**30:.1f} GiB free on the raw disk")
+                    return
+                ctx.pending.setdefault(NAME, []).append(name)
+                path = _download(ctx, pacer, name, sets[name][2])
+            self.to_parquet(ctx, path)
+        left = len(todo) - min(len(todo), MAX_SETS_PER_RUN)
+        if left:
+            ctx.notes.append(f"{LABEL} history: {left} quarter(s) left, the next run takes them")
 
     def to_parquet(self, ctx: base.RunContext, raw: Path) -> list[Path]:
         if base.raw_only():

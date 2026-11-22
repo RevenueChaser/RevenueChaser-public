@@ -2199,14 +2199,17 @@ def view_rotation_holdings():
 
 
 def _load_holdings_bulk_cache(ticker: str):
-    """A ticker's holdings from the spine's whole lists (no RS, no network; #642 PR 4)."""
+    """A ticker's holdings from the spine's whole lists, falling back to its newest N-PORT report (no RS, no
+    network; #642 PR 4, #354 C5). ``provider``, ``as_of`` and ``truncated`` ride along so the fragment can say
+    which source it is showing."""
     from RevenueChaser.module_sector_rotation.etf_holdings import stored_holdings
     holdings = stored_holdings(ticker)
     if not holdings:
         return None
     return [{"ticker": h.get("ticker"), "name": h.get("name") or "",
              "weight": h.get("weight"), "close": None,
-             "rs_1w": None, "rs_1m": None, "rs_3m": None}
+             "rs_1w": None, "rs_1m": None, "rs_3m": None,
+             "provider": h.get("provider"), "as_of": h.get("as_of"), "truncated": h.get("truncated")}
             for h in holdings if h.get("ticker")][:10]
 
 @app.route("/view/module_sector_rotation/trail")

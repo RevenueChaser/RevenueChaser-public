@@ -1486,6 +1486,47 @@ def _rs_color2(val):
     return "zero"
 
 
+# What a holdings list's ``provider`` is called on screen: the fragment says which source served the list, so a
+# quarterly N-PORT report is never read as today's file (#354 C5).
+PROVIDER_LABELS = {"nport": "SEC N-PORT (quarterly)", "uw": "Unusual Whales", "ssga": "SSGA file",
+                   "ishares": "iShares file", "ark": "ARK file", "tickerinside": "TickerInside"}
+#: TickerInside publishes its snapshots under CC BY 4.0, which asks for the source to be named with a link
+#: wherever a figure of its is shown (#1365). So a list it served carries this link, not the plain label alone.
+ATTRIBUTION = {"tickerinside": ("https://tickerinside.com", "CC BY 4.0")}
+
+
+def holdings_source_note(rows: list[dict]) -> str:
+    """One plain line saying where a holdings list came from, or ``""`` when the rows carry no provenance (the
+    Rotation Fetch's own cached rows). ``provider`` names the source, ``as_of`` the day it was published, and a
+    list the UW cap cut (``truncated``, #354 C5) says so, because its weights do not sum to the whole fund."""
+    first = next((r for r in rows if r.get("provider")), None)
+    if first is None:
+        return ""
+    label = PROVIDER_LABELS.get(str(first["provider"]), str(first["provider"]))
+    as_of = first.get("as_of")
+    note = f"Source: {label}" + (f", {as_of}" if as_of else "")
+    if any(r.get("truncated") for r in rows):
+        note += " — cut at UW's 250-line cap, so this is not the whole fund"
+    return note
+
+
+def holdings_source_html(rows: list[dict]) -> str:
+    """:func:`holdings_source_note` as the fragment shows it: the line escaped, and the provider's name a link
+    where its licence asks for one (TickerInside, CC BY 4.0). ``""`` when there is no note to show."""
+    note = holdings_source_note(rows)
+    if not note:
+        return ""
+    first = next((r for r in rows if r.get("provider")), None)
+    link = ATTRIBUTION.get(str(first["provider"])) if first else None
+    if link is None:
+        return _html.escape(note)
+    url, licence = link
+    label = PROVIDER_LABELS.get(str(first["provider"]), str(first["provider"]))
+    anchor = (f'<a href="{_html.escape(url)}" target="_blank" rel="noopener noreferrer">{_html.escape(label)}</a>'
+              f' ({_html.escape(licence)})')
+    return _html.escape(note).replace(_html.escape(label), anchor, 1)
+
+
 def render_holdings_fragment(rows: list[dict]) -> str:
     """HTML fragment for an expandable ETF-holdings detail row (inject via JS)."""
     if not rows:
@@ -1515,12 +1556,14 @@ def render_holdings_fragment(rows: list[dict]) -> str:
             f'<td class="num">{"—" if close is None else f"${close:.2f}"}</td>'
             f'</tr>'
         )
+    note = holdings_source_html(rows)
+    source = (f'<div style="color:#8b949e;font-size:10px;margin-top:6px">{note}</div>') if note else ""
     inner = (
         f'<div style="padding:10px 14px"><div style="color:#c9d1d9;font-size:12px;font-weight:600;margin-bottom:6px">Top holdings — RS vs SPY</div>'
         f'<table style="font-size:11px"><thead><tr>'
         f'<th>Ticker</th><th class="num">Weight ({total_w:.1f}%)</th>'
         f'<th class="num">RS 5D</th><th class="num">RS 21D</th><th class="num">RS 63D</th><th class="num">Price</th>'
-        f'</tr></thead><tbody>{body}</tbody></table></div>'
+        f'</tr></thead><tbody>{body}</tbody></table>{source}</div>'
     )
     return f'<td colspan="11">{inner}</td>'
 
