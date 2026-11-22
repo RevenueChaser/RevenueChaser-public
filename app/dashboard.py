@@ -1790,8 +1790,8 @@ def api_build_request(dataset: str):
     JSON body or the query string. 202 with the request id; 400 for an unknown dataset, a bad date or a scope the
     builder could not run; 409 while one is queued or running.
 
-    An attended dataset (WRDS: a person logs in and confirms Duo) is queued too, and the answer says what it waits
-    for: the store takes one writer at a time and the login needs a terminal, so the request waits in the queue
+    An attended dataset (``delisted/serving`` alone since #1361: never due on its own, #1219) is queued too, and
+    the answer says what it waits for: that runner needs a person at a terminal, so the request waits in the queue
     until ``python -m RevenueChaser.rcdata.build attended`` on the server takes it. The hourly builder leaves it
     there (``base.attended_names``). Its mode is the press's own, like every other dataset's: the daily ``fetch``
     unless ``backfill_from`` is given. Each WRDS dataset has a ``fetch`` that is not its backfill — for

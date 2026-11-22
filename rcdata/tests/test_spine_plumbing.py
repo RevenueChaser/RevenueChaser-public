@@ -177,6 +177,9 @@ def test_an_attended_dataset_the_hourly_builder_claims_says_it_waits_for_the_run
 
 
 def test_attended_names_are_the_datasets_that_need_a_person():
+    """#1361: the WRDS datasets dropped the gate (that login asks for no Duo push), so the only name left is
+    ``delisted/serving``, which declares it for its own reason (#1219: never due on its own)."""
     names = base.attended_names()
-    assert "wrds/sec_idhist" in names and "market_series" not in names
+    assert names == frozenset({"delisted/serving"})
+    assert "wrds/sec_idhist" not in names and "market_series" not in names
     assert all(base.attended(DATASETS[n]) for n in names)

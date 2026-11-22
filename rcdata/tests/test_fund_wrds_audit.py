@@ -66,7 +66,7 @@ def test_no_snapshot_yet_says_so():
     assert AUDIT.note(_con({})) == "WRDS audit feeds: no snapshot yet"
 
 
-def test_the_dataset_is_registered_attended_monthly_and_builds_no_table_itself():
+def test_the_dataset_is_registered_monthly_by_hand_and_builds_no_table_itself():
     assert DATASETS[AUDIT.name] is AUDIT and AUDIT.name == "wrds/audit"
     assert AUDIT.cadence == "monthly" and AUDIT.starts_by_hand
     assert AUDIT.feeds == ("audit_flag",) and AUDIT.tables == ()     # ``fundamentals/tables`` builds it

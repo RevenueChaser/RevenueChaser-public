@@ -12,8 +12,8 @@ the bridge views from the staging tables:
   field either, so ``is_etf`` carries the rule that decided it. The ETF universe was ``fund`` plus the ``etp``
   rows of ``security`` (SPY is a unit investment trust and GLD a commodity trust: neither is in the fund file);
   it is served as ``etf`` now (#346);
-- ``wrds/sec_idhist``, ``wrds/co_hgic``, ``wrds/idxcst_his`` (attended: a person logs in to WRDS and confirms Duo;
-  one connection per builder process): Compustat's company and security rows with their identifier history (the
+- ``wrds/sec_idhist``, ``wrds/co_hgic``, ``wrds/idxcst_his`` (monthly since #1361, not attended: that login asks
+  for no Duo push; one connection per builder process): Compustat's company and security rows with their identifier history (the
   CIK-CUSIP link), the GICS history, and the S&P index constituents history (the membership check);
 - ``openfigi/map`` (weekly): the CUSIPs not mapped yet, under 25 requests a minute;
 - ``funds/index_holdings`` (daily): the ETF holdings files of SSGA, iShares and Vanguard and Nasdaq's list API, the

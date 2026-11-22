@@ -53,7 +53,7 @@ on homesrv first (`duckdb.connect(path, read_only=True)` with `RC_STORE_AUTO_ENS
    build on that code. The file alone is not the whole state: this PR's build synced the `prices/serving` issues
    (`ops.sqlite`, Redis) after its swap, and the old build syncs them back.
 2. `python -m RevenueChaser.rcdata.build backfill wrds/prices --dry-run` and read the plan.
-3. The attended backfill (one Duo push; `wrds` has no day cap since #380, so one session).
+3. The by-hand backfill (`wrds` has no day cap since #380, so one session).
 4. One `prices/serving` build, after a store checkpoint. Every Alpaca row leaves `price_bar_daily` while the
    1983-1992 years and the Arca listings join it; if the net is a shrink past `serving.MAX_SHRINK`, the swap refuses
    it and the request needs `allow_shrink` once. The `crsp_unadjusted` table leaves the file by name

@@ -947,7 +947,7 @@
  "rcdata/tests/test_spine_wrds_worker.py": 1.7,
  "rcdata/tests/test_switches.py": 0.1,
  "rcdata/tests/test_whole_build_by_hand.py": 4.3,
- "rcdata/tests/test_wrds_unattended.py": 0.5,
+ "rcdata/tests/test_wrds_unattended_1361.py": 0.5,
  "scripts/tests/test_board_fetch.py": 0.1,
  "scripts/tests/test_clean_test_scratch.py": 0.0,
  "scripts/tests/test_cloud_llm_call.py": 0.1,

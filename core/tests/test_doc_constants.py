@@ -400,7 +400,11 @@ def test_the_fundamentals_section_states_what_the_code_owns():
         assert f"`{view}`" in section, view
     for kind in tables.ISSUE_KINDS:
         assert f"`{kind}`" in section, kind
-    assert f"`{newdata.attended_command(KIND)}`" in section.replace("\n", " ")
+    # #1361: no fundamentals dataset is attended any more, so the kind has no attended command. What the section
+    # must still carry is the by-hand whole-build line, because the monthly snapshot is ``whole_build_by_hand``.
+    assert newdata.attended_command(KIND) is None
+    flat = section.replace("\n", " ")
+    assert "python -m RevenueChaser.rcdata.build backfill wrds/fundq wrds/funda" in flat
     for fn in ("statements", "earnings_events", "estimates", "filing_text", "segments", "customers", "peers",
                "revisions", "statements_many", "fundamental_companies", "filing_items", "filing_texts",
                "customer_shares"):

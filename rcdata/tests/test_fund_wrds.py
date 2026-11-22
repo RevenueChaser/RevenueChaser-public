@@ -50,11 +50,14 @@ def test_one_login_the_tier_a_gvkeys_and_the_compustat_filters(fake):
     assert "FROM comp.funda" in funda and GVKEYS in funda and COMPUSTAT in funda
 
 
-def test_a_scheduled_run_is_skipped_without_a_login(fake):
+def test_a_scheduled_run_logs_in_by_itself_now(fake):
+    """#1361: the attended gate is gone, so the hourly pass runs the WRDS fundamentals on their cadence; the
+    schedule's own request logs in and asks Compustat instead of waiting for a person at a terminal."""
     conn, logins = fake
     row = base.run_request({"dataset": wrds_fund.FUNDQ.name, "requested_by": "schedule",
                             "params": {"as_of": "2026-10-27"}})
-    assert row["result"] == "skipped" and logins == [] and conn.queries == []
+    assert row["result"] == "changed", row.get("note")
+    assert logins == [1] and conn.queries
 
 
 def test_the_monthly_snapshots_make_the_revision_table(fake):

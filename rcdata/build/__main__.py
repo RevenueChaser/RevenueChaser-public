@@ -381,7 +381,7 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--names", help=scope_help)
     run.add_argument("--include", help=group_help)
     at = sub.add_parser("attended")
-    at.add_argument("--dataset", choices=sorted(n for n in DATASETS if n.startswith("wrds/")),
+    at.add_argument("--dataset", choices=sorted(base.attended_names()),
                     help="only this attended dataset")
     bf = sub.add_parser("backfill")
     bf.add_argument("datasets", nargs="+", metavar="dataset")

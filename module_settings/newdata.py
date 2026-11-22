@@ -281,9 +281,12 @@ def status_of(dataset: str, last: dict | None, base: dict | None, cadence: str,
     return "unchanged", "within its cycle; the last run changed nothing", base
 
 
-def attended_command(kind: str) -> str:
-    """The CLI line that runs every attended (WRDS) dataset of ``kind``: one worker and one login for all of them."""
+def attended_command(kind: str) -> str | None:
+    """The CLI line that runs every attended dataset of ``kind``: one worker and one login for all of them, or
+    None when the kind has none. Since #1361 no WRDS dataset is attended, so only ``delisted``'s kind has one."""
     names = [n for n, d in _datasets().items() if d.kind == kind and getattr(d, "attended", False)]
+    if not names:
+        return None
     return f"python -m RevenueChaser.rcdata.build backfill {' '.join(names)}"
 
 
