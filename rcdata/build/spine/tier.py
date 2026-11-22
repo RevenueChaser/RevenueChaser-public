@@ -1,4 +1,4 @@
-"""Tier rule v3: which SEC-file names the boards screen (Tier A) and why the others are not.
+"""Tier rule v4: which SEC-file names the boards screen (Tier A) and why the others are not.
 
 The rule is the one ``equity_universe`` and ``core/universe.py`` already apply, written once for the spine:
 
@@ -13,7 +13,8 @@ So:
 - **B**: listed, but an excluded type (``EXCLUDED_TYPES``);
 - **C**: over the counter (``OTC``), or (v3) listed in the SEC file while Compustat's linked security is over
   the counter (``COMPUSTAT_OTC``);
-- **D**: no exchange in the SEC file (or one outside these).
+- **D**: no exchange in the SEC file (or one outside these), and Compustat's linked security does not say it is
+  listed either (v4).
 
 Tier A is therefore not every listed name: the plan's "A 7,691 exchange-listed" (2026-10-26) is A and B together.
 
@@ -49,7 +50,7 @@ import re
 
 from ....core.identity.types import _COMMON_LIKE, EXCLUDED_TYPES, classify_type, sic_int
 
-VERSION = 3
+VERSION = 4
 LISTED = ("Nasdaq", "NYSE", "CBOE")
 OTC = "OTC"
 TIERS = ("A", "B", "C", "D")
@@ -65,14 +66,29 @@ def listed(exchange: str | None) -> bool:
 #: SEC file kept PSQH and ALUR on NYSE and ANEB on Nasdaq months after their bars stopped (18 Nov 2026).
 COMPUSTAT_OTC = (19,)
 
+#: Compustat's exchange code -> the SEC file's own exchange name, read **only** where the SEC file leaves the
+#: exchange empty. v4 (#1334, draft K-D): the SEC file's exchange is blank for listed names now and then, and the
+#: row came out Tier D for that reason alone -- CFR (Cullen/Frost), IBOC and TXCP are S&P 400 members and were
+#: Tier D on the live spine of 20 Nov 2026 (build 20261120T060917Z-210667c3), each already named by the
+#: ``member_not_tier_a`` build issue. The accept of K-D is that no index member is Tier D.
+#: Only the codes whose SEC name :func:`listed` reads as listed are mapped: 12 (NYSE American) is left out on
+#: purpose, because the SEC file's own "NYSE American" is not in :data:`LISTED` either, so a filled-in code must
+#: not grant a tier the SEC file would not. 19 (over the counter) is left out too: it is the
+#: :data:`COMPUSTAT_OTC` rule's code, and that rule turns a *listed* SEC row into Tier C; a blank SEC exchange
+#: stays Tier D, where the name is no index member either.
+COMPUSTAT_LISTED = {11: "NYSE", 14: "Nasdaq", 21: "CBOE"}
+
 
 def tier(exchange: str | None, security_type: str | None, compustat_exchg: int | None = None) -> str:
     """The tier of one SEC-file row from its exchange and its security type (``None`` = not typed yet).
 
     ``compustat_exchg`` is the linked Compustat security's current exchange code: over the counter there
-    (:data:`COMPUSTAT_OTC`) is Tier C whatever the SEC file still says.
+    (:data:`COMPUSTAT_OTC`) is Tier C whatever the SEC file still says, and where the SEC file names **no**
+    exchange at all it stands in for one (:data:`COMPUSTAT_LISTED`, v4).
     """
     ex = (exchange or "").strip().upper()
+    if not ex:
+        ex = COMPUSTAT_LISTED.get(compustat_exchg, "").upper()
     if compustat_exchg in COMPUSTAT_OTC and listed(ex):
         return "C"
     if listed(ex):

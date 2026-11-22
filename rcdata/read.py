@@ -565,8 +565,11 @@ def membership(index: str | None = None, on=None, source: str = "funds/index_hol
 
 # ``price_bar_daily`` follows Compustat's dataset since Alpaca is only the tester (avo, 3 Nov 2026 ~11:20 Amsterdam,
 # decision 2 of docs/compustat_primary_switch.md: "2 evet").
-DATASET_OF_TABLE.update({"price_bar_daily": "wrds/prices", "security_symbol": "alpaca/bars",
-                         "market_cap_daily": "alpaca/bars", "corporate_action": "alpaca/corporate_actions",
+# ``security_symbol`` and ``market_cap_daily`` are derived from those same bars, so they follow the same daily
+# source: they named ``alpaca/bars``, the tester that is compared and never served, so the freshness a card showed
+# for them was the test source's and not the served data's (the data audit of 21 Nov 2026, section 10).
+DATASET_OF_TABLE.update({"price_bar_daily": "wrds/prices", "security_symbol": "wrds/prices",
+                         "market_cap_daily": "wrds/prices", "corporate_action": "alpaca/corporate_actions",
                          "shares_class": "sec/cover_shares",
                          # The two second-source reports a cross-check reads (Karar 32-B): the monthly WRDS
                          # comparison, written by the attended WRDS run, and the revisions the serving build writes

@@ -116,6 +116,18 @@ SPLIT_SAME_RATIO_DAYS = 7
 # wide open: NVDA's pair agrees exactly (2.0 against 2.0), and the nearest of the five pairs that are two events
 # sits 2.5 times apart (ATI, 2.02008 against 5.0) -- the set holds nothing between 1 % and 147 %.
 SPLIT_RATIO_TOLERANCE = 0.01
+# An applied split's ratio against the move of the served **raw** closes across its ex-date (#1333, draft P-E): a
+# real split's raw close steps by its ratio, so the move and 1/ratio agree apart from the day's own return. This
+# much apart, either way, is a ratio the served bars do not show -- the split is named, never dropped, because
+# which of the two is wrong (the source's ratio, or the bars) is a decision over served money data and needs a
+# whole prices build behind it. Measured on the live file 21 Nov 2026: 137 applied splits (Alpaca 9, Compustat 126,
+# CRSP 2), two clusters -- a split recorded where the price did not move (HON 29 Jun 2026 ratio 0.5, NVRI, GMEX,
+# GFAI) and a reverse split at the wrong ratio. SCCO's Alpaca stock dividend of 3 Nov 2026 is the same shape: a
+# ratio of 2.0106 (``ACTION_RATIO``'s ``1 + rate`` over a raw rate of 1.0106, where the name's Compustat stock
+# dividends are about 1.012) against a close that moved 179.36 -> 173.49, so every adjusted close before it is
+# halved (#1333, draft P-D). A day's own return never reaches this factor for a name with a split, and a split
+# that is right is within a few percent of it.
+SPLIT_MOVE_FACTOR = 1.5
 # How far before its gap or its Alpaca split a CRSP split can still decide an issue there: a build on the live copy
 # finds the CRSP splits this many days before what it rebuilds again, and the gaps ``SPLIT_SAME_DAYS`` before it
 # (a split from then on can take a CRSP split, and with it the gap's explanation; ``incremental``, review S6 of #564).
@@ -189,6 +201,13 @@ ISSUE_KINDS = {
                             "apart and no bar's basis moves either way, so the other source's row stays the applied "
                             "one. The detail names the other row's day and ratio and which way it went "
                             "(key: security:session; #661, NVDA's 2-for-1 of Sep 2001)"),
+    "split_ratio_unexplained": ("an **applied** split, reverse split or stock dividend whose ratio the served raw "
+                               "closes across its ex-date do not show: the move and 1/ratio are SPLIT_MOVE_FACTOR "
+                               "or more apart, between two served bars at most GAP_DAYS apart with no second split "
+                               "between them. Named only -- nothing is dropped and no factor changes -- because "
+                               "which side is wrong is avo's call and costs a whole prices build (key: "
+                               "security:session; the detail names the ratio, the move and the two bars; #1333 "
+                               "drafts P-D and P-E)"),
     "adjustment_differs": ("a served bar's total-return day return is more than 1 bp from Alpaca's adjusted one, or "
                            "more than the rounding of its cent-rounded closes where that is larger (the tester, "
                            "key: security:session)"),
@@ -1166,6 +1185,7 @@ class PricesServing:
                    if live else ""}
                 ORDER BY 1, 2""").fetchall():
             found.append((kind, f"{sid}:{day}", f"split-adjusted close x{ratio:.3f}, no split"))
+        found += split_ratio_unexplained(con, live)
         # Alpaca's previous adjusted close is close_all / (1 + all_return). The allowance is its exact rounding
         # bound, a hair wider (1e-6 of it) for the float error of a row that sits on it; none at a previous close of
         # half a cent or less, where the bound has no meaning and the flat 1 bp stays.
@@ -1425,6 +1445,40 @@ def _report_parts() -> str:
             x, y = name.split("_vs_")
             parts.append(pair.format(name=name, x=side[x], y=side[y]))
     return " UNION ALL ".join(parts)
+
+
+def split_ratio_unexplained(con: duckdb.DuckDBPyConnection, live: bool = False) -> list[tuple[str, str, str]]:
+    """``split_ratio_unexplained`` over the served ``corporate_action`` and the raw closes of ``price_bar_daily``.
+
+    An applied split carries its ratio; the raw close of the last served bar before its ex-date and of the first on
+    or after it step by that ratio (``close_after / close_before`` is 1/ratio), apart from the day's own return. A
+    pair SPLIT_MOVE_FACTOR or more away from that is named. A span with a second applied split in it is left alone:
+    the move there is the product of the two ratios, so this rule has nothing to say about either one.
+    """
+    con.execute(f"""CREATE OR REPLACE TEMP TABLE _split_span AS
+        WITH s AS (SELECT security_id, ex_date, ratio FROM corporate_action
+                   WHERE action IN ('split', 'stock_dividend') AND applied AND ratio > 0 AND ex_date IS NOT NULL),
+             b AS (SELECT security_id, session_date, close FROM price_bar_daily WHERE close > 0)
+        SELECT s.*, p.session_date AS day_before, p.close AS close_before,
+               n.session_date AS day_after, n.close AS close_after,
+               (SELECT count(*) FROM s o WHERE o.security_id = s.security_id
+                AND o.ex_date > p.session_date AND o.ex_date <= n.session_date) AS splits_in_span
+        FROM s
+        ASOF LEFT JOIN b p ON p.security_id = s.security_id AND s.ex_date > p.session_date
+        ASOF LEFT JOIN b n ON n.security_id = s.security_id AND s.ex_date <= n.session_date
+        WHERE p.session_date IS NOT NULL AND n.session_date IS NOT NULL
+          AND date_diff('day', p.session_date, n.session_date) <= {GAP_DAYS}""")
+    return [("split_ratio_unexplained", f"{sid}:{day}",
+             f"ratio {ratio:.4f} expects the raw close to move x{1 / ratio:.4f}; it moved x{move:.4f} "
+             f"from {before:.4f} on {day_before} to {after:.4f} on {day_after}: named, not dropped")
+            for sid, day, ratio, move, before, after, day_before, day_after in con.execute(f"""
+                SELECT security_id, ex_date, ratio, close_after / close_before, close_before, close_after,
+                       day_before, day_after
+                FROM _split_span
+                WHERE splits_in_span = 1
+                  AND abs(ln(close_after / close_before * ratio)) >= ln({SPLIT_MOVE_FACTOR})
+                  {f"AND {incremental.where('ex_date', 'security_id')}" if live else ""}
+                ORDER BY 1, 2""").fetchall()]
 
 
 def alpaca_differs(con: duckdb.DuckDBPyConnection, live: bool = False) -> list[tuple[str, str, str]]:

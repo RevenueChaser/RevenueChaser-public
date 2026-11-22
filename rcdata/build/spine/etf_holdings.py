@@ -48,6 +48,17 @@ nothing recorded, so the next run asks again; a stop at a new place is a ``sourc
 ``SWEEP_STOPS`` (3) times in a row at the same ETF while UW answers other calls, those ETFs are recorded as failed and
 the sweep goes on past them. A whole outage or a dead key records nothing, however long it lasts. A spine with no
 ETF starts no sweep. A scoped request asks its ``names`` only and starts no sweep.
+**How wide a narrowed sweep would be, measured (#354 C6, 21 Nov 2026).** N-PORT has landed, so the set the sweep
+would ask can now be counted instead of estimated: the ETF review's five rules together
+(``my_universe``; equity >= 80 % of net assets; not leveraged/inverse, option-income, fund-of-funds or
+money-market; <= 250 lines with one sector >= half the equity weight, or <= 60 equity names; ``adv_usd_20d``
+>= 25 M) pass **133** of 2,857 universe ETFs -- 204 at a 10 M floor, 89 at 50 M, 59 at 100 M. The ADV rule is the
+binding one (it alone removes 383 of the funds the others pass), narrowness next (204); the structure rule removes
+5. Read-only on the live spine and the ``sec/nport`` 2026q3 Parquet, 3.6 s; the counts are **under a GICS reading**
+of the sector rule, since the review names Morningstar sectors and we hold none. The review's own "150 to 300" was
+an estimate and is superseded. **The sweep is unchanged by this:** how wide the fresh set actually becomes is
+decision **D3** of #354, which is avo's, and until he sets it the sweep stays off.
+
 **Retention:** the last 30 days whole; older, each month's last held day and each sweep day. It only names what it
 would remove unless ``RC_ETF_HOLDINGS_PRUNE=1`` **and** the request's ``allow_shrink`` (the swap's shrink guard would
 refuse the smaller table after the files are gone). No key for the issuer files; without ``UNUSUAL_WHALES_API_KEY`` the issuer files are still
@@ -145,6 +156,8 @@ SWEEP_STOPS = 3
 PRUNE_ENV = "RC_ETF_HOLDINGS_PRUNE"
 # The sweep runs only when this is "1" (owner, 2 Nov 2026, option B): UW answers at most 250 holdings a fund, so the
 # sweep waits for N-PORT's full lists (#354). A named request still asks UW; the 48 daily funds are untouched.
+# N-PORT is in and #354 C6 measured what a narrowed set would hold (133 ETFs on 21 Nov 2026, see the module doc),
+# but D3 -- how wide the fresh set is -- is avo's decision and unset, so this stays off and nothing here narrows.
 SWEEP_ENV = "RC_ETF_HOLDINGS_SWEEP"
 # Raws typed per pass: a sweep run types up to ``SWEEP_PER_RUN`` answers, merged into the day's partition in DuckDB.
 TYPE_CHUNK = 500
