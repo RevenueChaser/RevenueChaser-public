@@ -626,18 +626,26 @@ def test_a_name_that_left_names_the_rule_it_held_under(live_my_universe):
 
 def test_a_live_fund_that_fell_under_the_entry_floor_but_not_the_exit_floor_stays(live_my_universe):
     """The buffer against churn (151 names in and out in two weeks): a fund in the list leaves only under the exit
-    floor. No ``left`` row is written, the live ``entered_on`` stands and the reason says why it stayed."""
+    floor. No ``left`` row is written, the live ``entered_on`` stands and the reason says why it stayed.
+    Under both exit floors a live fund leaves; a fund the live list does not hold needs the entry floors; a live
+    fund with no numbers at all is the volume guard's case (NULL is unknown, not under the floor)."""
     live_my_universe(rows=[{"ticker": "MIDA", "kind": "etf", "rule": "etf_aum", "entered_on": date(2026, 10, 1)},
-                           {"ticker": "MIDV", "kind": "etf", "rule": "etf_adv", "entered_on": date(2026, 10, 1)}])
+                           {"ticker": "MIDV", "kind": "etf", "rule": "etf_adv", "entered_on": date(2026, 10, 1)},
+                           {"ticker": "LOW", "kind": "etf", "rule": "etf_aum", "entered_on": date(2026, 10, 1)},
+                           {"ticker": "SPY", "kind": "etf", "rule": "etf_adv", "adv_usd_20d": 4e10,
+                            "entered_on": date(2026, 10, 1)}])
     con = _con(etfs=[_etf("MIDA", aum=90_000_000.0), _etf("MIDV", aum=10_000_000.0, adv=9_000_000.0),
-                     _etf("GLD", adv=50_000_000.0)])
+                     _etf("LOW", aum=79_999_999.0, adv=7_999_999.0), _etf("NEW", aum=90_000_000.0, adv=9e6),
+                     _etf("SPY"), _etf("GLD", adv=50_000_000.0)])
     rows, changes, issues = _rows(con)
-    assert sorted(rows) == ["GLD", "MIDA", "MIDV"]
+    assert sorted(rows) == ["GLD", "MIDA", "MIDV", "SPY"]
+    assert rows["SPY"]["adv_usd_20d"] == 4e10 and not rows["SPY"]["reason"]          # the carried live row
     assert rows["MIDA"]["reason"].startswith("held above the exit floor") and rows["MIDA"]["aum"] == 90_000_000.0
     assert rows["MIDV"]["reason"].startswith("held above the exit floor") and rows["MIDV"]["adv_usd_20d"] == 9e6
     assert (rows["MIDA"]["rule"], rows["MIDV"]["rule"]) == ("etf_aum", "etf_adv")     # the live rule it held under
     assert rows["MIDA"]["entered_on"] == date(2026, 10, 1)
-    assert [(c["ticker"], c["change"]) for c in changes] == [("GLD", "entered")] and issues == []
+    assert [(c["ticker"], c["change"]) for c in changes] == [("LOW", "left"), ("GLD", "entered")]
+    assert [k for k, _, _ in issues] == ["my_universe_etf_volume_lost"]
 
 
 def test_either_number_at_its_exit_floor_keeps_the_fund(live_my_universe):
@@ -647,30 +655,3 @@ def test_either_number_at_its_exit_floor_keeps_the_fund(live_my_universe):
     con = _con(etfs=[_etf("ATAUM", aum=80_000_000.0, adv=1.0), _etf("ATADV", aum=1.0, adv=8_000_000.0)])
     rows, _, _ = _rows(con)
     assert sorted(rows) == ["ATADV", "ATAUM"]
-
-
-def test_a_live_fund_under_both_exit_floors_leaves(live_my_universe):
-    live_my_universe(rows=[{"ticker": "LOW", "kind": "etf", "rule": "etf_aum", "entered_on": date(2026, 10, 1)}])
-    con = _con(etfs=[_etf("LOW", aum=79_999_999.0, adv=7_999_999.0), _etf("GLD", adv=50_000_000.0)])
-    rows, changes, _ = _rows(con)
-    assert sorted(rows) == ["GLD"]
-    assert ("LOW", "left") in [(c["ticker"], c["change"]) for c in changes]
-
-
-def test_a_fund_not_in_the_live_list_does_not_enter_on_the_exit_floor(live_my_universe):
-    """The exit floor is no entry rule: a new fund still needs 100 M AUM or 10 M dollar volume."""
-    live_my_universe(rows=[{"ticker": "GLD", "kind": "etf", "rule": "etf_adv", "entered_on": date(2026, 10, 1)}])
-    con = _con(etfs=[_etf("NEW", aum=90_000_000.0, adv=9_000_000.0), _etf("GLD", adv=50_000_000.0)])
-    rows, _, _ = _rows(con)
-    assert sorted(rows) == ["GLD"]
-
-
-def test_a_live_fund_with_no_numbers_is_left_to_the_hold_rules(live_my_universe):
-    """NULL is unknown, not under the floor: the exit floor reads only a present number, so a lost volume is still
-    the volume guard's case, with its own issue."""
-    live_my_universe(rows=[{"ticker": "SPY", "kind": "etf", "rule": "etf_adv", "adv_usd_20d": 4e10,
-                            "entered_on": date(2026, 10, 1)}])
-    con = _con(etfs=[_etf("SPY"), _etf("GLD", adv=50_000_000.0)])
-    rows, _, issues = _rows(con)
-    assert rows["SPY"]["adv_usd_20d"] == 4e10 and not rows["SPY"]["reason"]          # the carried live row
-    assert [k for k, _, _ in issues] == ["my_universe_etf_volume_lost"]

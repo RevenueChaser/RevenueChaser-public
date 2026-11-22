@@ -77,10 +77,6 @@ def test_the_vanguard_files_are_gone():
     assert "vanguard" not in catalog.NEEDS["identity.membership"].providers
 
 
-def test_nasdaq():
-    assert [r["ticker_raw"] for r in funds.parse_nasdaq(fx.nasdaq_json(["MSFT", "NVDA"]))] == ["MSFT", "NVDA"]
-
-
 @pytest.mark.parametrize("parse, body", [(funds.parse_ssga, None), (funds.parse_ishares, b"Name,Weight\n"),
                                          (funds.parse_nasdaq, b"{}")])
 def test_a_file_of_another_shape_is_a_source_error(parse, body):
@@ -111,6 +107,7 @@ def test_ndx_is_voted_by_the_nasdaq_list_and_invescos_qqq():
                    ("invesco", "QQQ", "https://dng-api.invesco.com/cache/v1/accounts/en_US/shareclasses/QQQ/holdings/"
                                       "fund?idType=ticker&productType=ETF")}
     assert caps.cap_for("invesco") is None             # no published limit: no cap (master plan Order 5, rule 3)
+    assert [r["ticker_raw"] for r in funds.parse_nasdaq(fx.nasdaq_json(["MSFT", "NVDA"]))] == ["MSFT", "NVDA"]
 
 
 def test_dias_file_is_the_one_dow_file_so_dow_membership_is_that_file_with_no_vote():
