@@ -64,7 +64,7 @@ from ....core.identity import isin as isin_mod
 from ... import ops
 from .. import base
 from . import KIND, etf, etf_class, iso3166, my_universe, stage, tier as tier_rule, views
-from .funds import INDEXES, NAME as FUNDS
+from .funds import CHECKED, INDEXES, NAME as FUNDS
 from .openfigi_map import FIGI_BY_CUSIP, FIGI_BY_TICKER, NAME as OPENFIGI, PRESENT
 from .sec_tickers import NAME as SEC
 from .sec_tickers_mf import NAME as SEC_MF
@@ -770,7 +770,8 @@ class SpineSecurity:
                                  "AND m.cu = coalesce(l.cusip, '') JOIN stg_fund_files f ON f.as_of = l.as_of "
                                  "AND f.index_slug = l.index_slug AND f.provider = l.provider AND f.fund = l.fund "
                                  "AND f.counted JOIN _fund_days d ON d.as_of = l.as_of AND d.index_slug = "
-                                 f"l.index_slug WHERE m.sec_ticker IS NULL AND l.as_of = DATE '{latest}'"):
+                                 f"l.index_slug WHERE m.sec_ticker IS NULL AND l.as_of = DATE '{latest}' "
+                                 f"AND l.index_slug IN ({', '.join(repr(i) for i in CHECKED)})"):
                 raw = str(ln.get("ticker_raw") or "").strip().upper()
                 if CASH.match(raw) or (not ln.get("cusip") and FUTURE.match(raw)):
                     continue
@@ -779,7 +780,7 @@ class SpineSecurity:
             for d in _rows(con, f"SELECT index_slug, ticker, held, files, member FROM _fund_dense "
                                 f"WHERE as_of = DATE '{latest}'"):
                 key = f"{d['index_slug']}:{d['ticker']}"
-                if d["member"] and tier.get(d["ticker"]) != "A":
+                if d["member"] and d["index_slug"] in CHECKED and tier.get(d["ticker"]) != "A":
                     found.append(("member_not_tier_a", key, f"tier {tier.get(d['ticker'])}"))
                 if 0 < d["held"] < d["files"]:
                     found.append(("membership_files_disagree", key, f"held by {d['held']} of {d['files']} files"))

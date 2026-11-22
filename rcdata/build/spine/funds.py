@@ -12,11 +12,12 @@ others go on), never a guess.
 | ``sp600`` | SSGA SPSM, iShares IJR |
 | ``ndx`` | Nasdaq ``/api/quote/list-type/nasdaq100`` (json), Invesco QQQ (json) |
 | ``dow`` | SSGA DIA (xlsx): the one file, so no vote (SP5); ``etf_class`` reads it too, the trust files no N-PORT |
+| ``russell*`` (14), ``nasdaq100_top30`` | one iShares ``latest-holdings.csv`` each (:data:`SINGLE_FILE`), no vote |
 
 Vanguard's VOO, IVOO and VIOO creation baskets were removed on 22 Nov 2026 (avo): they answer 401 to every keyless
 request since 30 Oct, so each S&P index is voted from its SSGA and iShares files, and a name must be in both.
 
-One request per file, every file each run (9 a run), each under its provider's day cap. Base URLs:
+One request per file, every file each run (24 a run), each under its provider's day cap. Base URLs:
 ``RC_SSGA_BASE``, ``RC_ISHARES_BASE``, ``RC_NASDAQ_API_BASE``, ``RC_INVESCO_API_BASE``.
 
 **The membership rule (working choice).** On each day, a file counts when it parsed and holds at least its index's
@@ -39,6 +40,7 @@ import os
 import re
 import time
 from dataclasses import dataclass
+from functools import partial
 from datetime import date
 from pathlib import Path
 from typing import Callable
@@ -50,8 +52,32 @@ from .. import base
 from . import KIND, stage
 
 NAME = "funds/index_holdings"
-INDEXES = ("sp500", "sp400", "sp600", "ndx", "dow")
-FLOOR = {"sp500": 400, "sp400": 320, "sp600": 480, "ndx": 80, "dow": 24}
+#: The indexes one iShares file each gives, so, like ``dow``, a member is "the file holds it" (avo, 22 Nov 2026
+#: 22:42-22:43, "Russell için ulaşabileceğim bütün endeksleri ekle"): (slug, fund, product id, page slug, typed shape,
+#: floor). Each CSV was read once from homesrv on 22 Nov 2026 (holdings of 20 Nov); the floor is 80 % of its
+#: stock lines.
+SINGLE_FILE = (
+    ("russell1000", "IWB", "239707", "ishares-russell-1000-etf", True, 816),                 # 1,021 lines
+    ("russell2000", "IWM", "239710", "ishares-russell-2000-etf", False, 1567),               # 1,959
+    ("russell3000", "IWV", "239714", "ishares-russell-3000-etf", False, 2059),               # 2,574
+    ("russell_microcap", "IWC", "239716", "ishares-micro-cap-etf", False, 1080),             # 1,350
+    ("russell_midcap", "IWR", "239718", "ishares-russell-midcap-etf", True, 656),            # 820
+    ("russell_top200", "IWL", "239721", "ishares-russell-top-200-etf", False, 160),          # 201
+    ("russell1000_growth", "IWF", "239706", "ishares-russell-1000-growth-etf", True, 297),   # 372
+    ("russell1000_value", "IWD", "239708", "ishares-russell-1000-value-etf", True, 694),     # 868
+    ("russell2000_growth", "IWO", "239709", "ishares-russell-2000-growth-etf", False, 890),  # 1,113
+    ("russell2000_value", "IWN", "239712", "ishares-russell-2000-value-etf", True, 1111),    # 1,389
+    ("russell_midcap_growth", "IWP", "239717", "ishares-russell-midcap-growth-etf", True, 216),     # 271
+    ("russell_midcap_value", "IWS", "239719", "ishares-russell-midcap-value-etf", False, 572),      # 716
+    ("russell_top200_growth", "IWY", "239720", "ishares-russell-top-200-growth-etf", False, 80),    # 101
+    ("russell_top200_value", "IWX", "239722", "ishares-russell-top-200-value-etf", False, 121),     # 152
+    ("nasdaq100_top30", "QTOP", "339775", "ishares-nasdaq-top-30-stocks-etf", False, 24),          # 31
+)
+INDEXES = ("sp500", "sp400", "sp600", "ndx", "dow") + tuple(s[0] for s in SINGLE_FILE)
+FLOOR = {"sp500": 400, "sp400": 320, "sp600": 480, "ndx": 80, "dow": 24, **{s[0]: s[5] for s in SINGLE_FILE}}
+#: The indexes whose members get a ``member_not_in_sec`` / ``member_not_tier_a`` issue one by one: the Russell files
+#: hold thousands of small names, and per-name issues for them would flood the build issues list.
+CHECKED = ("sp500", "sp400", "sp600", "ndx", "dow")
 SCHEMA = [("as_of", "DATE"), ("index_slug", "TEXT"), ("provider", "TEXT"), ("fund", "TEXT"), ("ticker", "TEXT"),
           ("ticker_raw", "TEXT"), ("cusip", "TEXT"), ("name", "TEXT"), ("weight", "DOUBLE"),
           ("fetched_at", "DOUBLE"), ("run_id", "TEXT")]
@@ -62,7 +88,8 @@ _TICKER = re.compile(r"^[A-Z][A-Z0-9]{0,5}(-[A-Z0-9]{1,3})?$")
 # iShares' product pages, by fund: (product id, page slug). The CSV is the page's ``latest-holdings.csv`` download
 # (the page's own slug is now ``ishares-core-s-p-500-etf``; the old one still answers the same file).
 ISHARES_PRODUCTS = {"IVV": ("239726", "ishares-core-sp-500-etf"), "IJH": ("239763", "ishares-core-sp-midcap-etf"),
-                    "IJR": ("239774", "ishares-core-sp-smallcap-etf")}
+                    "IJR": ("239774", "ishares-core-sp-smallcap-etf"),
+                    **{s[1]: (s[2], s[3]) for s in SINGLE_FILE}}
 
 
 def norm_ticker(raw) -> str | None:
@@ -227,6 +254,8 @@ FILES = (
     FundFile("ndx", "invesco", "QQQ", "json", parse_invesco),
     # The only ``dow`` file (SP5): with one counting file the vote is "the file holds it". ``etf_class`` reads it too.
     FundFile("dow", "ssga", "DIA", "xlsx", parse_ssga),
+    *(FundFile(slug, "ishares", fund, "csv", parse_ishares if typed else partial(parse_ishares, typed=False))
+      for slug, fund, _pid, _page, typed, _floor in SINGLE_FILE),
 )
 PROVIDERS = tuple(dict.fromkeys(f.provider for f in FILES))
 _BY_RAW = {f.raw_name(): f for f in FILES}
