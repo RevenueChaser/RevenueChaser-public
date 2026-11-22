@@ -177,6 +177,7 @@ WRITTEN_COLUMN: dict[str, str] = {
     'price_revision': 'session_date',
     'regsho_threshold': 'list_date',
     'etf_holdings_nport': 'report_date',
+    'etf_holdings_nport_history': 'report_date',
     'sec13f_cusip_map': 'period',
     # The day the SEC's data-set page first listed the set, which is when this row was written; ``last_day`` is the
     # end of the set's own filing window, not a write.

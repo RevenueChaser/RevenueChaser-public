@@ -93,7 +93,7 @@ def test_only_the_newest_set_is_fetched_and_typed(sets):
                     ("12", None, None, None, 1.0, 5.0, 0.01, "STIV"),              # N/A is no CUSIP
                     ("13", None, "DE0000000001", None, None, None, None, "EC")]    # nor all zeros; "x" no number
     assert any("3 holdings (2 without a CUSIP)" in n for n in ctx.notes)
-    assert nport.DATASET.tables == (nport.TABLE,)
+    assert nport.DATASET.tables == (nport.TABLE, nport.HISTORY)
 
 
 def test_a_held_set_is_not_asked_again_and_one_not_typed_is_typed(sets):
@@ -131,7 +131,7 @@ def test_the_served_table_keeps_the_spine_etfs_newest_report_and_their_mapped_po
     ctx = base.RunContext(run_id="b1", dataset=nport.NAME)
     con = duckdb.connect()
     counts = nport.DATASET.build(ctx, con)
-    assert counts == {nport.TABLE: 1}
+    assert counts[nport.TABLE] == 1
     assert con.execute(f"SELECT etf_ticker, series_id, ticker, cusip, currency_value, quarter FROM {nport.TABLE}"
                        ).fetchall() == [("VTI", "S000002848", "MSFT", "594918104", 40000.0, "2026q3")]
     assert any("1 holdings of 1 spine ETFs, quarter 2026q3" in n for n in ctx.notes)
@@ -141,7 +141,8 @@ def test_no_spine_gives_an_empty_table_not_a_failed_build(sets, monkeypatch):
     _run()
     monkeypatch.setattr(nport, "_spine_etfs", lambda: [])
     con = duckdb.connect()
-    assert nport.DATASET.build(base.RunContext(run_id="b2", dataset=nport.NAME), con) == {nport.TABLE: 0}
+    assert nport.DATASET.build(base.RunContext(run_id="b2", dataset=nport.NAME), con) == {nport.TABLE: 0,
+                                                                                         nport.HISTORY: 0}
 
 
 # ── C7: the older quarters (avo, 22 Nov 2026) ──────────────────────────────────────────────────────────────────
@@ -217,3 +218,88 @@ def test_room_for_a_quarter_lets_the_run_go_on(sets, monkeypatch):
                         lambda p: SimpleNamespace(total=0, used=0, free=nport.MIN_FREE_SETS))
     _backfill(date(2026, 4, 1))
     assert _asked(sets) == [OLD, NEW] and not _issues()
+
+
+# ── #1441: long equity only, and every quarter in the history table (avo, 22 Nov 2026) ─────────────────────────────
+
+def _holding(acc, hid, name, cusip, shares, value, pct, profile="Long", cat="EC", country="US"):
+    return (acc, hid, name, "", name, cusip, shares, "NS", "USD", value, pct, profile, cat, "CORP", country)
+
+
+Q3 = {**ROWS, "FUND_REPORTED_HOLDING": [
+    _holding("0000001-26-000001", "11", "Microsoft Corp", "594918104", "100", "40000", "4.04"),
+    _holding("0000001-26-000001", "21", "Microsoft Corp", "594918104", "50", "20000", "2.0", profile="Short"),
+    _holding("0000001-26-000001", "22", "Microsoft Corp", "594918104", "9", "900", "0.1", cat="DBT"),
+    _holding("0000001-26-000001", "23", "Banco Santander SA", "N/A", "212710002", "3000", "0.47", country="ES"),
+    _holding("0000001-26-000001", "24", "Banco Santander SA", "N/A", "4", "1", "0.0", country="ES"),
+    _holding("0000001-26-000001", "25", "Anthropic PBC Series G", "N/A", "10", "109", "0.01")],
+    "IDENTIFIERS": [("11", "US5949181045", "MSFT"), ("23", "ES0113900J37", ""), ("24", "ES0113900J37", "")]}
+Q2 = {**ROWS,
+      "SUBMISSION": [("0000001-26-000002", "28-MAY-2026", "NPORT-P", "31-DEC-2026", "31-MAR-2026")],
+      "FUND_REPORTED_INFO": [("0000001-26-000002", "Vanguard Total Stock Market", "S000002848", "900", "890")],
+      "FUND_REPORTED_HOLDING": [_holding("0000001-26-000002", "31", "Microsoft Corp", "594918104", "90", "35000",
+                                         "3.9")],
+      "IDENTIFIERS": [("31", "US5949181045", "MSFT")]}
+
+
+@pytest.fixture
+def two_quarters(sets, monkeypatch):
+    sets.routes.insert(0, (FOLDER + NEW, _zip(TABLES, Q3), 200, {}))
+    sets.routes.insert(0, (FOLDER + OLD, _zip(TABLES, Q2), 200, {}))
+    _backfill(date(2026, 1, 1))
+    monkeypatch.setattr(nport, "_spine_etfs", lambda: [("VTI", "S000002848")])
+    monkeypatch.setattr(common, "spine_cusips", lambda: {"594918104": "MSFT"})
+    con = duckdb.connect()
+    ctx = base.RunContext(run_id="b3", dataset=nport.NAME)
+    return ctx, con, nport.DATASET.build(ctx, con)
+
+
+def test_the_served_table_keeps_long_equity_only(two_quarters):
+    """A short and a bond line of a spine CUSIP were served as holdings (~3,950 rows on 22 Nov 2026)."""
+    _ctx, con, counts = two_quarters
+    assert con.execute(f"SELECT ticker, balance, asset_cat FROM {nport.TABLE}").fetchall() == [("MSFT", 100.0, "EC")]
+    assert counts[nport.TABLE] == 1
+
+
+def test_the_history_keeps_every_quarter_and_every_long_equity_holding_one_row_each(two_quarters):
+    """#1441: every typed quarter; a foreign or private holding is kept by its ISIN or name with no ticker, and the
+    lines of one security are summed (VXUS reports Banco Santander twice)."""
+    ctx, con, counts = two_quarters
+    rows = con.execute(f"SELECT quarter, ticker, cusip, isin, issuer_name, country, balance, currency_value, lines "
+                       f"FROM {nport.HISTORY} ORDER BY quarter, currency_value DESC").fetchall()
+    assert rows == [
+        ("2026q2", "MSFT", "594918104", "US5949181045", "Microsoft Corp", "US", 90.0, 35000.0, 1),
+        ("2026q3", "MSFT", "594918104", "US5949181045", "Microsoft Corp", "US", 100.0, 40000.0, 1),
+        ("2026q3", None, None, "ES0113900J37", "Banco Santander SA", "ES", 212710006.0, 3001.0, 2),
+        ("2026q3", None, None, None, "Anthropic PBC Series G", "US", 10.0, 109.0, 1)]
+    assert counts[nport.HISTORY] == 4
+    assert any("4 holdings over 2 quarters (2 without a spine ticker)" in n for n in ctx.notes)
+
+
+def test_the_history_reader_names_a_cusip_by_the_13f_map_of_the_reports_quarter(two_quarters):
+    """N-PORT and 13F name a CUSIP alike: the 13F map of the report's quarter wins over the spine's current owner
+    (the spine holds XOM under another CUSIP than the funds report, #1444)."""
+    from revenuechaser.rcdata import read, serving
+    _ctx, con, _ = two_quarters
+    path = serving.live_path("ownership")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    live = duckdb.connect(str(path))
+    try:
+        live.execute(ox.CUSIP_MAP_DDL)
+        live.execute("INSERT INTO sec13f_cusip_map (cusip, period, ticker, map_source) "
+                     "VALUES ('594918104', DATE '2026-03-31', 'MSFTQ1', 'wrds/sec_idhist')")
+        cols = ", ".join(f"{c} {t}" for c, t in nport.HISTORY_SERVED)
+        live.execute(f"CREATE TABLE {nport.HISTORY} ({cols})")
+        live.executemany(f"INSERT INTO {nport.HISTORY} VALUES ({', '.join('?' * len(nport.HISTORY_SERVED))})",
+                         con.execute(f"SELECT * FROM {nport.HISTORY}").fetchall())
+    finally:
+        live.close()
+    got = [(r["quarter"], r["ticker"], r["ticker_source"], r["name"], r["lines"])
+           for r in read.etf_holdings_history("vti", ["2026Q3", "2026q2"])]
+    assert got == [("2026q3", "MSFT", "spine", "Microsoft Corp", 1),
+                   ("2026q3", None, None, "Banco Santander SA", 2),
+                   ("2026q3", None, None, "Anthropic PBC Series G", 1),
+                   ("2026q2", "MSFTQ1", "13f", "Microsoft Corp", 1)]
+    assert [(q["quarter"], q["holdings"], q["no_ticker"]) for q in read.etf_nport_quarters("VTI")] == [
+        ("2026q3", 3, 2), ("2026q2", 1, 0)]
+    assert read.etf_holdings_history("SPY", ["2026q3"]) == []

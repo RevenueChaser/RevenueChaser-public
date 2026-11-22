@@ -59,7 +59,8 @@ DATASET_OF_TABLE.update({"sec13f_ticker_period": "ownership/serve", "sec13f_peri
                          "regsho_threshold": "regsho/threshold", "sec_ftd": "sec/ftd",
                          "insider_transactions": "sec/form4", "beneficial_ownership": "sec/13dg",
                          "uw_institution": "uw/institutions",
-                         "uw_institution_succession": "uw/institutions", "etf_holdings_nport": "sec/nport"})
+                         "uw_institution_succession": "uw/institutions", "etf_holdings_nport": "sec/nport",
+                         "etf_holdings_nport_history": "sec/nport"})
 KIND_OF_TABLE.update({t: "ownership" for t in ("sec13f_ticker_period", "sec13f_periods", "sec13f_cusip_map",
                                                "sec13f_filer_breaks", "sec13f_type_holdings",
                                                "sec13f_type_sector", "sec13f_type_flow", "sec13f_filer_style",
@@ -69,7 +70,7 @@ KIND_OF_TABLE.update({t: "ownership" for t in ("sec13f_ticker_period", "sec13f_p
                                                "ibkr_shortable", "regsho_threshold", "sec_ftd",
                                                "insider_transactions", "beneficial_ownership",
                                                "uw_institution", "uw_institution_succession",
-                                               "etf_holdings_nport")})
+                                               "etf_holdings_nport", "etf_holdings_nport_history")})
 
 
 def missing(kind: str, dataset: str | None = None) -> str | None:
@@ -522,6 +523,68 @@ def etf_holdings_nport(etfs: Iterable[str]) -> list[dict]:
            f"pct_of_net_assets AS weight FROM etf_holdings_nport WHERE etf_ticker IN ({marks}) "
            "ORDER BY etf_ticker, pct_of_net_assets DESC NULLS LAST, ticker NULLS LAST")
     return _rows("etf_holdings_nport", sql, wanted, missing_table_ok=True)
+
+
+# The 13F report period a fund's report date falls in: the last quarter end on or before it (a July 31 report is
+# named with the June quarter's map, the newest a 13F filer can have answered by then).
+_NPORT_PERIOD = "CAST(date_trunc('quarter', h.report_date + INTERVAL 1 DAY) - INTERVAL 1 DAY AS DATE)"
+
+
+def etf_nport_quarters(etf: str) -> list[dict]:
+    """The N-PORT quarters held for ``etf`` (upper-cased), newest first: ``quarter``, ``report_date``, ``holdings``
+    (long-equity holdings), ``value`` (their dollars) and ``no_ticker`` (holdings no spine ticker names), from
+    ``etf_holdings_nport_history`` (#1441). No quarter, or no ownership file, is no rows."""
+    e = str(etf or "").strip().upper()
+    if not e:
+        return []
+    sql = ("SELECT quarter, max(report_date) AS report_date, count(*) AS holdings, sum(currency_value) AS value, "
+           "count(*) - count(ticker) AS no_ticker FROM etf_holdings_nport_history WHERE etf_ticker = ? "
+           "GROUP BY quarter ORDER BY report_date DESC, quarter DESC")
+    return _rows("etf_holdings_nport_history", sql, [e], missing_table_ok=True)
+
+
+def etf_holdings_history(etf: str, quarters: Iterable[str]) -> list[dict]:
+    """Every long-equity holding of ``etf`` (upper-cased) in each of ``quarters`` (``2026q3``), largest first:
+    ``quarter``, ``report_date``, ``ticker``, ``ticker_source``, ``cusip``, ``isin``, ``name``, ``country``,
+    ``shares`` (``balance``), ``value``, ``weight`` (percent of net assets) and ``lines``.
+
+    ``ticker`` is the 13F CUSIP map's of the report's quarter when it names one (``sec13f_cusip_map``,
+    ``ticker_source`` ``13f``), so a CUSIP reads the same here as on the 13F board; else the spine's current owner of
+    the CUSIP (``spine``); else NULL, a foreign or private holding shown by ``name``, ``isin`` and ``country`` (#1441).
+    No quarter, or no ownership file, is no rows."""
+    e = str(etf or "").strip().upper()
+    qs = sorted({str(q).strip().lower() for q in quarters if str(q or "").strip()})
+    if not e or not qs:
+        return []
+    marks = ", ".join("?" * len(qs))
+    rows = _history_rows(e, qs, marks, with_map=True)
+    return rows if rows is not None else _history_rows(e, qs, marks, with_map=False)
+
+
+def _history_rows(e: str, qs: list[str], marks: str, *, with_map: bool) -> list[dict] | None:
+    """``etf_holdings_history``'s read; with ``with_map``, None when the file has no ``sec13f_cusip_map`` yet (an
+    ownership file built before 13F), so the read falls back to the spine's names instead of a 500."""
+    if not with_map:
+        sql = ("SELECT h.quarter, h.report_date, h.ticker, CASE WHEN h.ticker IS NOT NULL THEN 'spine' END AS "
+               "ticker_source, h.cusip, h.isin, h.issuer_name AS name, h.country, h.balance AS shares, "
+               "h.currency_value AS value, h.pct_of_net_assets AS weight, h.lines FROM etf_holdings_nport_history h "
+               f"WHERE h.etf_ticker = ? AND h.quarter IN ({marks}) "
+               "ORDER BY h.quarter DESC, h.currency_value DESC NULLS LAST, h.issuer_name")
+        return _rows("etf_holdings_nport_history", sql, [e, *qs], missing_table_ok=True)
+    sql = (f"SELECT h.quarter, h.report_date, coalesce(m.ticker, h.ticker) AS ticker, "
+           f"CASE WHEN m.ticker IS NOT NULL THEN '13f' WHEN h.ticker IS NOT NULL THEN 'spine' END AS ticker_source, "
+           f"h.cusip, h.isin, h.issuer_name AS name, h.country, h.balance AS shares, h.currency_value AS value, "
+           f"h.pct_of_net_assets AS weight, h.lines FROM etf_holdings_nport_history h "
+           f"LEFT JOIN sec13f_cusip_map m ON m.cusip = h.cusip AND m.period = {_NPORT_PERIOD} "
+           f"AND m.ticker IS NOT NULL "
+           f"WHERE h.etf_ticker = ? AND h.quarter IN ({marks}) "
+           f"ORDER BY h.quarter DESC, h.currency_value DESC NULLS LAST, h.issuer_name")
+    try:
+        return _rows("etf_holdings_nport_history", sql, [e, *qs], missing_table_ok=True)
+    except Exception as exc:  # noqa: BLE001 - duckdb's catalog error is not a public class here
+        if "sec13f_cusip_map" in str(exc) and "does not exist" in str(exc):
+            return None
+        raise
 
 
 def etf_holding_tickers(etfs: Iterable[str]) -> dict[str, set[str]]:

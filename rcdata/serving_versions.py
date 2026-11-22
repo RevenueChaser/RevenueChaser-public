@@ -7,7 +7,7 @@ compare in ``dirty.full_rebuild_reason`` and ``serving._copy_live``. ``serving.S
 from __future__ import annotations
 
 # The serving schema of each kind. A change to a kind's tables bumps its number in its own PR (box rule).
-SERVING_SCHEMA_VERSION = {"market": 5, "spine": 10, "ownership": 5}
+SERVING_SCHEMA_VERSION = {"market": 5, "spine": 10, "ownership": 6}
 # market 3: ``economic_event``, UW's economic calendar by snapshot day (``build/uw_economic_calendar.py``), and
 #           ``news_headline``, IBKR's Dow Jones headlines (``build/ibkr_news.py``); #643, avo's D4 of 10 Nov 2026.
 # market 4: ``news_headline`` leaves; headlines live only in the News board's ``boards/news.duckdb`` (avo's option A,
@@ -34,6 +34,9 @@ SERVING_SCHEMA_VERSION = {"market": 5, "spine": 10, "ownership": 5}
 #              ``etf_holdings_nport``, the spine ETFs' holdings from Form N-PORT (#354 C2): one build for all (avo,
 #              16 Nov 2026, Q2 and Q11 of the 13F plan), and ``sec13f_filer_holdings``, each filer's largest names
 #              per quarter (#928, Q16).
+# ownership 6: ``etf_holdings_nport_history``, every typed N-PORT quarter's spine-ETF long equity, one row per holding,
+#              unmapped holdings kept by ISIN or name (#1441, avo 22 Nov 2026); ``etf_holdings_nport`` serves long
+#              equity only (~3,950 short and non-equity rows leave, so its first build asks ``allow_shrink``).
 # spine 2: ``fund``, the SEC fund file's share classes and the ETF rule (``build/spine/sec_tickers_mf.py``).
 # spine 3: ``etf_holdings``, the rotation board's ETFs read whole (``build/spine/etf_holdings.py``).
 # spine 4: ``etf``, the ETF universe from Alpha Vantage and N-CEN (``build/spine/etf.py``, #346).
