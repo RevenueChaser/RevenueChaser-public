@@ -13,8 +13,9 @@ and no ``active`` column** here; a board's thresholds (AUM, dollar volume) are i
 **What fills which column in this PR:** the ``is_*`` fund flags and ``aum`` (``DAILY_AVG_NET_ASSETS``, else
 ``MONTHLY_AVG_NET_ASSETS``, with the filing's report end as ``aum_as_of``) from the series' newest N-CEN, NULL for
 a row N-CEN does not hold (unknown, not false); ``inception`` from AV's ``ipoDate``; ``is_option_income`` by a name
-rule; ``asset_class`` only ``commodity``, by the trust rule below. NULL
-until later PRs: ``focus``, ``country``, ``expense_ratio`` and every other ``asset_class``. ``adv_usd_20d`` is the
+rule; ``asset_class`` ``commodity`` by the trust rule below, else (spine 11) TickerInside's category through
+:data:`CATEGORY_ASSET_CLASS`; ``expense_ratio`` and the identity columns (``gvkey``, ``iid``, ``cusip``, ``figi``,
+``composite_figi``, ``identity_source``) as :func:`rows` says. NULL until later PRs: ``focus`` and ``country``. ``adv_usd_20d`` is the
 20-session average daily dollar volume, read from the **raw** Compustat ``comp.secd`` Parquet
 (:func:`adv_usd_20d`); it is what decides a fund N-CEN gives no AUM for in ``my_universe`` (avo, 4 Nov 2026), and
 it is measured from the raw file rather than the live ``prices.duckdb`` because that store keeps only today's
