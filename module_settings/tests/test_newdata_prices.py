@@ -62,11 +62,15 @@ def test_every_prices_dataset_has_a_card_and_a_label():
     assert cards["alpaca/bars"]["coverage_target"] == 0.99
 
 
-def test_the_wrds_history_card_names_its_own_attended_command_and_no_run_yet():
+def test_the_wrds_history_card_names_its_own_backfill_command_and_no_run_yet():
+    # #1361: the card still shows the command a person runs, but no longer because the dataset is ``attended``
+    # -- it is not. The flag and the command came apart; the page shows what it always showed.
     card = _card("wrds/prices")
-    assert card["attended"] and card["attended_command"] == "python -m RevenueChaser.rcdata.build backfill wrds/prices"
+    assert card["attended"] is False
+    assert card["attended_command"] == "python -m RevenueChaser.rcdata.build backfill wrds/prices"
     assert card["wrds"]["text"] == "no WRDS run yet"
     assert _card("wrds/sec_idhist")["attended_command"] == newdata.attended_command("spine")
+    assert "wrds/sec_idhist" in newdata.attended_command("spine")
 
 
 def test_the_wrds_history_backfill_counts_its_table_years(monkeypatch):
