@@ -1565,9 +1565,12 @@ table when that source comes back short, and the `left` row that followed was ir
 `etf` table, so a fund whose row is there and is today flagged an ETN or a CEF is the rule's answer and leaves; an
 `etf_aum` fund that vanished leaves too, because that is the AUM source's own story.
 
-**Tier rule v5** (`rcdata/build/spine/tier.py`): A = listed on Nasdaq, NYSE, Cboe or TXSE (v5) and not an excluded type
-(`core.identity.types.EXCLUDED_TYPES`; an untyped name stays); B = listed, excluded type; C = OTC, in the SEC file or
-(v3, #962) by the linked Compustat security's current `exchg` 19 while the SEC file still names an exchange; D = no
+**Tier rule v6** (`rcdata/build/spine/tier.py`): A = listed on Nasdaq, NYSE, Cboe or TXSE (v5) and not an excluded type
+(`core.identity.types.EXCLUDED_TYPES`; an untyped name stays); B = listed, excluded type (v6, #1334 K-B: a note or
+baby bond named by its SEC title, "notes due" / "senior notes", is `etp`); C = OTC, in the SEC file or
+(v3, #962) by the linked Compustat security's current `exchg` 19 while the SEC file still names an exchange, or
+(v6, #1334 K-G) a linked security Compustat lists as inactive (`secstat` not `A`) with a deletion date (`dldtei`) on
+or before the SEC row's `source_as_of`; D = no
 exchange, in the SEC file **and** by the linked Compustat security. Where the SEC file's exchange is empty, that
 security's `exchg` stands in for it (v4, #1334 draft K-D: 11 NYSE, 14 Nasdaq, 21 Cboe BZX only, the codes whose SEC
 name the rule reads as listed; CFR, IBOC and TXCP are S&P 400 members and were Tier D on a blank SEC exchange
@@ -1594,6 +1597,11 @@ and a period's CIK is that of the snapshot its last day's lines matched. Compust
 
 **Build issues** live in `ops.sqlite` `build_issues` (D6), dataset `spine/security`, synced after each swap
 (`ops.sync_issues`: found again stays open, gone is resolved). Kinds: `source_never_run`, `tier_a_no_wrds_link`,
+`linked_by_ticker` and `ticker_link_cik_differs` (K-C: a name linked by its ticker alone, link source `tic_nocik`, to
+the one active US Compustat security of that ticker whose company has no CIK; one whose company CIK is another is
+refused), `tier_a_compustat_inactive` (K-G), `wrds_snapshot_not_armed` (K-C and K-G run only when the newest
+`snapshot=` partition of `wrds/sec_idhist` is whole and as of `FRESH_SNAPSHOT_FROM`, 23 Nov 2026, or later; otherwise
+they do nothing and this one issue says so),
 `tier_a_no_cusip`, `tier_a_no_figi`, `tier_a_no_figi_by_ticker` (a Tier A name with no FIGI from either
 lane opens exactly one of these two, so `issues_open` never counts it twice: the name holds a CUSIP and the
 `tier_a_no_figi` message names both lanes' states, or it holds none and the `_by_ticker` kind takes it),

@@ -1,4 +1,4 @@
-"""Tier rule v5: which SEC-file names the boards screen (Tier A) and why the others are not.
+"""Tier rule v6: which SEC-file names the boards screen (Tier A) and why the others are not.
 
 The rule is the one ``equity_universe`` and ``core/universe.py`` already apply, written once for the spine:
 
@@ -12,7 +12,8 @@ So:
 - **A**: listed on Nasdaq, NYSE, Cboe or TXSE (v5), and a type that is not excluded (or no type yet);
 - **B**: listed, but an excluded type (``EXCLUDED_TYPES``);
 - **C**: over the counter (``OTC``), or (v3) listed in the SEC file while Compustat's linked security is over
-  the counter (``COMPUSTAT_OTC``);
+  the counter (``COMPUSTAT_OTC``), or (v6, #1334 K-G) the linked security is inactive in Compustat with a deletion
+  date on or before the SEC row's day (read only from a fresh whole snapshot, ``spine/security``);
 - **D**: no exchange in the SEC file (or one outside these), and Compustat's linked security does not say it is
   listed either (v4).
 
@@ -30,8 +31,8 @@ the ticker rule even before OpenFIGI answered. A name those leave untyped is typ
    de-SPAC guard, #240). The identity master types a SPAC from the same code, but from the SEC submissions
    summary, which the spine does not fetch, and it has an 8-K shell-closed guard the spine cannot read;
 3. Compustat's ``tpci`` of the linked security (``TPCI_TYPES``);
-4. the SEC name (v2): an ETF or ETN, a commodity, currency or crypto pool, a pool sponsor's trust, or a bank that
-   issues ETNs (``ETP_NAMES``);
+4. the SEC name (v2): an ETF or ETN, a commodity, currency or crypto pool, a pool sponsor's trust, a bank that
+   issues ETNs, or (v6, #1334 K-B) a note or baby bond, by the words ``etf.ETN_NAME`` reads (``ETP_NAMES``);
 5. the venue (v2): an untyped Cboe listing is an exchange-traded product.
 
 Rules 4 and 5 never type the issuers' and Cboe's own listed shares (``OWN_SHARES``: JPM, DB, BMO, CBOE).
@@ -50,7 +51,9 @@ import re
 
 from ....core.identity.types import _COMMON_LIKE, EXCLUDED_TYPES, classify_type, sic_int
 
-VERSION = 5
+VERSION = 6
+# v6 (#1334, plan v4 step 6): K-B notes are etp (Tier B), K-G a name Compustat delisted is Tier C, and K-C links
+# more names to Compustat (so tpci, SIC and the exchange code reach them): three rules that change ``tier``.
 # TXSE (v5, avo 22 Nov 2026): the SEC file names it for Texas companies that list there beside their old exchange.
 LISTED = ("Nasdaq", "NYSE", "CBOE", "TXSE")
 OTC = "OTC"
