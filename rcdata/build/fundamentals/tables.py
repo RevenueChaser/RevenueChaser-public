@@ -186,6 +186,18 @@ STAGED: dict[str, list[tuple[str, str]]] = {
        for p, (_, schema, _) in wrds_fund.AUDIT.PARTS.items()},
 }
 
+# #1333 draft G-5: the two build checks over ``fundamental_fact``. A scale fact (a currency amount of the whole
+# company) this many times its neighbouring fiscal year's, either way, is a unit or a tag error and not growth:
+# measured on the live file 21 Nov 2026, 24 annual revenue rows jump 100x year on year (KIDZ 2024 1.07 bn -> 3.7 m,
+# GSUN 2022 and 2023, UPC 2023 40 m -> 32.3 bn, CPT 2017, AIT 2011 and 2017, MWA 2011 and 2014, ANDE 2016,
+# TIPT 2023, NBIS 2022). A real year-on-year 100x does happen to a company whose first year is a stub, so the rule
+# names the row and drops nothing. Only annual rows are compared, and only to the fiscal year next to them.
+FACT_JUMP_FACTOR = 100.0
+FACT_JUMP_FIELDS = ("revenue", "total_assets")
+# ... and an EPS over this many dollars a share is a per-share figure tagged in the wrong unit (343 rows that day).
+# Berkshire's A share earns some 20,000 dollars a share, so the bound is well above any real one and this kind is a
+# flag, never a drop.
+FACT_EPS_MAX = 1000.0
 # The named problems, one kind each; ``key`` is the CIK unless the kind says otherwise.
 ISSUE_KINDS: dict[str, str] = {
     "source_never_run": "a source this build needs has no data yet (key: the dataset)",
@@ -196,6 +208,13 @@ ISSUE_KINDS: dict[str, str] = {
                                              "moved to IFRS, whose last us-gaap statement is years old (TM: 2020)"),
     "no_statement": "a Tier A company with no SEC statement fact (not read yet, or no XBRL facts at the SEC)",
     "no_us_gaap_facts": "a Tier A company whose statements are not read from us-gaap (an IFRS filer or mover, read from ifrs-full)",
+    "fact_jumps_100x": ("an annual scale fact (``FACT_JUMP_FIELDS``) at least FACT_JUMP_FACTOR times its own "
+                        "neighbouring fiscal year's, either way: a unit or tag error in the source, not a company "
+                        "that grew (key: cik:field:fiscal_year; #1333 draft G-5, KIDZ 2024 1.07 bn -> 3.7 m, "
+                        "UPC 2023 40 m -> 32.3 bn)"),
+    "eps_over_1000": ("an EPS fact over FACT_EPS_MAX dollars a share, either way: a per-share figure tagged in "
+                      "whole dollars or in the wrong unit (key: cik:field:fiscal_year; #1333 draft G-5, 343 rows "
+                      "on the live file 21 Nov 2026)"),
 }
 
 
@@ -686,6 +705,41 @@ def _issues(con: duckdb.DuckDBPyConnection, as_of: date) -> list[tuple[str, str,
             found.append(("annual_statement_older_than_400_days", cik,
                           f"newest statement filed {newest} ({(as_of - newest).days} days before {as_of}); "
                           "an annual-only filer"))
+    found += _fact_value_issues(con)
+    return found
+
+
+def _fact_value_issues(con: duckdb.DuckDBPyConnection) -> list[tuple[str, str, str]]:
+    """``fact_jumps_100x`` and ``eps_over_1000`` over the served ``fundamental_fact`` (#1333 draft G-5).
+
+    Both read the served table and write nothing: a row they name stays exactly as the source tagged it, because
+    which of the two years is the wrong one is a question for EDGAR and not for this build.
+    """
+    fields = ", ".join(f"'{f}'" for f in FACT_JUMP_FIELDS)
+    found = [("fact_jumps_100x", f"{cik}:{field}:{year}",
+              f"{field} {value:,.0f} for {year} against {other:,.0f} for {other_year} "
+              f"(x{value / other:,.1f}): a unit or tag error, named not dropped")
+             for cik, field, year, value, other_year, other in con.execute(f"""
+                 WITH a AS (SELECT cik, field, fiscal_year, value FROM fundamental_fact
+                            WHERE period_type = 'annual' AND field IN ({fields}) AND value IS NOT NULL
+                              AND abs(value) > 0 AND NOT preliminary
+                            -- one value a fiscal year: the newest filing's, as a reader sees it
+                            QUALIFY row_number() OVER (PARTITION BY cik, field, fiscal_year
+                                                       ORDER BY filed DESC NULLS LAST, accn DESC) = 1)
+                 SELECT a.cik, a.field, a.fiscal_year, a.value, b.fiscal_year, b.value
+                 FROM a JOIN a b ON b.cik = a.cik AND b.field = a.field
+                                AND b.fiscal_year = a.fiscal_year - 1 AND sign(b.value) = sign(a.value)
+                 WHERE abs(a.value / b.value) >= {FACT_JUMP_FACTOR}
+                    OR abs(b.value / a.value) >= {FACT_JUMP_FACTOR}
+                 ORDER BY 1, 2, 3""").fetchall()]
+    found += [("eps_over_1000", f"{cik}:{field}:{year}",
+               f"{field} {value:,.2f} a share for {year}, over {FACT_EPS_MAX:,.0f}: a per-share figure in the "
+               "wrong unit, named not dropped")
+              for cik, field, year, value in con.execute(f"""
+                  SELECT cik, field, fiscal_year, value FROM fundamental_fact
+                  WHERE field IN ('eps_basic', 'eps_diluted') AND value IS NOT NULL
+                    AND abs(value) > {FACT_EPS_MAX} AND NOT preliminary
+                  ORDER BY 1, 2, 3""").fetchall()]
     return found
 
 

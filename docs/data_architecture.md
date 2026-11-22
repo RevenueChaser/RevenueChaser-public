@@ -1566,10 +1566,13 @@ table when that source comes back short, and the `left` row that followed was ir
 `etf` table, so a fund whose row is there and is today flagged an ETN or a CEF is the rule's answer and leaves; an
 `etf_aum` fund that vanished leaves too, because that is the AUM source's own story.
 
-**Tier rule v3** (`rcdata/build/spine/tier.py`): A = listed on Nasdaq, NYSE or Cboe and not an excluded type
+**Tier rule v4** (`rcdata/build/spine/tier.py`): A = listed on Nasdaq, NYSE or Cboe and not an excluded type
 (`core.identity.types.EXCLUDED_TYPES`; an untyped name stays); B = listed, excluded type; C = OTC, in the SEC file or
 (v3, #962) by the linked Compustat security's current `exchg` 19 while the SEC file still names an exchange; D = no
-exchange.
+exchange, in the SEC file **and** by the linked Compustat security. Where the SEC file's exchange is empty, that
+security's `exchg` stands in for it (v4, #1334 draft K-D: 11 NYSE, 14 Nasdaq, 21 Cboe BZX only, the codes whose SEC
+name the rule reads as listed; CFR, IBOC and TXCP are S&P 400 members and were Tier D on a blank SEC exchange
+alone).
 So Tier A is not every listed name: listed is A and B. The type comes from `core.identity.types.classify_type` over
 OpenFIGI's types and the name (no SEC submissions); a name those leave untyped takes, in order, its ticker's type (a
 warrant, unit or right: `-WT`, `-UN`, `-RI`, or a Nasdaq fifth letter W, U, R; a right is typed warrant), Compustat's
@@ -1826,7 +1829,7 @@ served -- and stays named so the exception is visible; key security:session; #66
 within 1 %, up to 7 days away: one split the two sources date apart, applied once, on the day the served bars
 change basis -- CRSP's, where the other source's day is outside the gap the jump is measured across, and then that
 row is held back unapplied; the other source's, where both days fall in the same gap; key security:session; #661,
-NVDA's 2-for-1 of Sep 2001, avo 22 Nov 2026), `adjustment_differs` (the store's total-return day return more than 1 bp from Alpaca's own, or
+NVDA's 2-for-1 of Sep 2001, avo 22 Nov 2026), `split_ratio_unexplained` (an **applied** split, reverse split or stock dividend whose ratio the served raw closes across its ex-date do not show: the move and 1/ratio 1.5 times or more apart, between two served bars at most 7 days apart with no second split between them. Named only -- nothing is dropped and no factor changes -- because which side is wrong, the source's ratio or the bars, is avo's call and costs a whole prices build; key security:session; #1333 drafts P-D and P-E), `adjustment_differs` (the store's total-return day return more than 1 bp from Alpaca's own, or
 more than half a cent on each of Alpaca's cent-rounded adjusted closes, the exact bound, where that is larger: about
 1.5 bp at $70, 5 bp at $20, 50 bp at $2, so below a few dollars of adjusted close a dividend-sized gap hides in it;
 checked on every served bar Alpaca, the tester, has a bar for), `alpaca_close_differs` (the tester: a Compustat or CRSP
@@ -1931,8 +1934,9 @@ held to `serving.KINDS` by a test: `rcdata/serving_versions.py` (the version), `
 `module_welcome/build.py` (`FILE_LABELS`), and this document. Backup, restore and the build-state route read
 `serving.KINDS` themselves and need nothing.
 
-**Not here yet.** CRSP's delisting *code* (the reason) is not on disk: the fetch asks `stkdelists` without the
-type-code columns, and adding them is a change to the `prices` fetch and its own PR. CRSP's own day return
+**Not here yet.** CRSP's delisting *code* (the reason) is on disk but not served: the `prices` fetch asks
+`stkdelists` whole, all 19 columns (#1293), and `delisted` does not carry the codes yet -- a serving change and its
+own PR, with a `delisted` serving-version bump. CRSP's own day return
 (`dlyret`) is on disk but not served, because the bar table is exactly `price_bar_daily`'s columns. Share type is
 not fetched, so this layer cannot yet tell a dead stock from a dead fund (avo's default was "stocks first, funds
 later"); every delisted PERMNO is served and the reader cuts on its own. Fundamentals for dead names are later too.
@@ -2172,7 +2176,7 @@ is one row per company and quarter with a column per field.
 
 **Build issues** live in `ops.sqlite` `build_issues`, dataset `fundamentals/tables`, synced after each swap. Kinds:
 `source_never_run`, `statement_older_than_120_days`, `annual_statement_older_than_400_days` (an annual-only filer,
-also one that moved to IFRS and whose last us-gaap statement is years old), `no_statement`, `no_us_gaap_facts`. A source dataset records its
+also one that moved to IFRS and whose last us-gaap statement is years old), `no_statement`, `no_us_gaap_facts`, `fact_jumps_100x` (an annual `revenue` or `total_assets` fact at least 100 times its own neighbouring fiscal year's, either way, the newest filing of each year: a unit or tag error in the source, named and never dropped; key cik:field:fiscal_year; #1333 draft G-5) and `eps_over_1000` (an EPS fact over 1,000 dollars a share, either way: a per-share figure in the wrong unit; same key). A source dataset records its
 own row-level problems (`missing_key`, `fetch_failed`) under its name.
 
 **Reading it.** `rcdata.read.statements(cik, period_type, n, fields)`, `rcdata.read.earnings_events(cik, start, end)`,
