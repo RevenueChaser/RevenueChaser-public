@@ -7,7 +7,7 @@ compare in ``dirty.full_rebuild_reason`` and ``serving._copy_live``. ``serving.S
 from __future__ import annotations
 
 # The serving schema of each kind. A change to a kind's tables bumps its number in its own PR (box rule).
-SERVING_SCHEMA_VERSION = {"market": 5, "spine": 10, "ownership": 5}
+SERVING_SCHEMA_VERSION = {"market": 5, "spine": 11, "ownership": 5}
 # market 3: ``economic_event``, UW's economic calendar by snapshot day (``build/uw_economic_calendar.py``), and
 #           ``news_headline``, IBKR's Dow Jones headlines (``build/ibkr_news.py``); #643, avo's D4 of 10 Nov 2026.
 # market 4: ``news_headline`` leaves; headlines live only in the News board's ``boards/news.duckdb`` (avo's option A,
@@ -51,6 +51,10 @@ SERVING_SCHEMA_VERSION = {"market": 5, "spine": 10, "ownership": 5}
 #           Compustat's ``comp.company.loc`` where the row links to a company, else the SEC submissions header's
 #           business address (avo, 21 Nov 2026: "Wrds de ulke bilgisini de al"). Asymmetric Growth's non-US test
 #           reads it and keeps the SEC address as the fallback; every other table is built as before.
+# spine 11: ``etf.gvkey``, ``iid``, ``cusip``, ``figi``, ``composite_figi`` and ``identity_source`` (the spine owns ETF
+#           identity, #1334 K-A, avo's SP1 of 22 Nov 2026), ``etf.expense_ratio`` and ``asset_class`` filled from
+#           TickerInside (SP7), and ``etf_holdings.holdings_as_of`` / ``source_layer`` (plan v4 B2). One bump for all:
+#           the identity and the holdings columns cannot be reverted apart. Prices still keys ETFs its own way.
 
 # PR 7 (G2): ``prices.duckdb``, the daily bars, corporate actions, shares and market cap (``build/prices/``).
 SERVING_SCHEMA_VERSION["prices"] = 1

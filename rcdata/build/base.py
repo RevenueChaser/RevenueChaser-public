@@ -288,6 +288,7 @@ class RunContext:
     uw_sampled: bool = False
     allow_shrink: bool = False                                      # a request's explicit "allow_shrink": true
     reread: bool = False                                            # a request's explicit "reread": true (sec/reads)
+    full: bool = False                                              # a request's explicit "full": true (wrds/*)
     #: Whether this run is the hourly pass's own request (``_scheduled``: ``requested_by`` ``due.REQUESTED_BY``).
     #: A pass of nothing but these does not start a whole build of a kind that holds one
     #: (:class:`WholeBuildByHand`); everything else -- a Fetch press, the CLI, a build called directly -- does.
@@ -1312,7 +1313,8 @@ def run_request(req: dict, *, trigger: str = "queue", attended_ok: bool = False,
     run_id = new_run_id()
     ctx = RunContext(run_id=run_id, dataset=req["dataset"], trigger=trigger, sleep=sleep, clock=clock,
                      allow_shrink=params.get("allow_shrink") is True,
-                     reread=params.get("reread") is True, scheduled=_scheduled(req))
+                     reread=params.get("reread") is True, full=params.get("full") is True,
+                     scheduled=_scheduled(req))
     ops.start_run(run_id, req["dataset"], trigger, params)
     try:
         return _run(ctx, ds, req, params, attended_ok)
@@ -1498,7 +1500,8 @@ def run_batch(reqs: list[dict], *, trigger: str = "queue", attended_ok: bool = F
             params = req.get("params") or {}
             ctx = RunContext(run_id=new_run_id(), dataset=req["dataset"], trigger=trigger,
                              allow_shrink=params.get("allow_shrink") is True,
-                             reread=params.get("reread") is True, scheduled=_scheduled(req))
+                             reread=params.get("reread") is True, full=params.get("full") is True,
+                             scheduled=_scheduled(req))
             ops.start_run(ctx.run_id, req["dataset"], trigger, params)
             started.append((req, ctx))
             done, note = _stage(ctx, ds, req, params, attended_ok)

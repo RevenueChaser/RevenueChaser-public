@@ -436,7 +436,9 @@ class WrdsDataset:
 
     def fetch(self, ctx: base.RunContext, as_of: date) -> list[Path]:
         folder = raw_dir(self.name) / as_of.isoformat()
-        if self._snapshot_due(as_of) or any((folder / f"{t}{RAW_SUFFIX}").exists() for t in self.own):
+        # ``{"full": true}`` asks the whole snapshot whatever SNAPSHOT_DAYS says (the fresh fetch the spine's
+        # ticker link and delisted rule wait for, ``spine/security.FRESH_SNAPSHOT_FROM``).
+        if ctx.full or self._snapshot_due(as_of) or any((folder / f"{t}{RAW_SUFFIX}").exists() for t in self.own):
             return self._full(ctx, as_of)
         return self._new_names(ctx, as_of)
 

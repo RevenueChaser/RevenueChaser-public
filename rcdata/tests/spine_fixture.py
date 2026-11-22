@@ -503,7 +503,7 @@ def tickerinside_fund_json(holdings, fund: str, as_of="2026-11-19", layer="issue
 
 
 def tickerinside_index(bodies: dict, kept=(), list_sha256: str | None = None) -> dict[str, bytes]:
-    """TickerInside's three index files by route, in the live shapes of 22 Nov 2026: ``manifest.json`` (its
+    """TickerInside's index files by route, in the live shapes of 22 Nov 2026: ``manifest.json`` (its
     ``files.list_sha256`` is the sha256 of the *uncompressed* list), ``sha256sums.txt.gz`` (``<sha256>  <path from the
     site's root>`` per file) and ``status.json`` (``run.fetch_holdings.kept_previous``, the funds the site serves from
     an older issuer file). ``bodies`` is fund -> the fund file served; ``kept`` the funds named as kept."""
@@ -515,7 +515,62 @@ def tickerinside_index(bodies: dict, kept=(), list_sha256: str | None = None) ->
     status = {"schema": 1, "run": {"fetch_holdings": {"funds_attempted": 425, "kept_previous": [
         {"ticker": t, "issuer": "Global X", "since": "2026-11-13", "holdings_as_of": "2026-11-11"} for t in kept]}}}
     return {"/manifest.json": json.dumps(manifest).encode(), "/sha256sums.txt.gz": gzip.compress(text),
-            "/status.json": json.dumps(status).encode()}
+            "/status.json": json.dumps(status).encode(), "/identifiers.json": tickerinside_identifiers(),
+            "/funds.json": tickerinside_funds()}
+
+
+#: ``identifiers.json``'s ``fields`` in the live order of 20 Nov 2026 (one list per security under ``securities``).
+TI_ID_FIELDS = ["ticker", "name", "asset_type", "exchange", "composite_figi", "share_class_figi", "cik", "series_id",
+                "class_id"]
+#: The ETFs of ``test_spine_etf``'s fixture as TickerInside lists them (values chosen for the tests): XLK with the
+#: CIK N-CEN gives it, SPY with its trust's, GLD a commodity trust, SOXX
+#: under another CIK (a conflict), QYLD with no CIK (nothing to check it by) and BRK.B with its dot.
+TI_IDENTIFIERS = [
+    {"ticker": "XLK", "asset_type": "etf", "composite_figi": "BBG000BJ7007", "share_class_figi": "BBG001S5TZJ6",
+     "cik": "0001064641", "series_id": "S000099999", "class_id": "C000099999"},
+    {"ticker": "SPY", "asset_type": "etf", "composite_figi": "BBG000BDTBL9", "share_class_figi": "BBG001S72SM3",
+     "cik": "0000884394", "series_id": None, "class_id": None},
+    {"ticker": "GLD", "asset_type": "etf", "composite_figi": "BBG000CRF6Q8", "share_class_figi": "BBG001T7GM63",
+     "cik": "0001222333", "series_id": None, "class_id": None},
+    {"ticker": "SOXX", "asset_type": "etf", "composite_figi": "BBG000PZ3BK6", "share_class_figi": "BBG001T52N74",
+     "cik": "0009999999", "series_id": "S000011111", "class_id": None},
+    {"ticker": "QYLD", "asset_type": "etf", "composite_figi": "BBG005QFDDX1", "share_class_figi": "BBG005QFDDY0",
+     "cik": None, "series_id": None, "class_id": None},
+    {"ticker": "NEWE", "asset_type": "etf", "composite_figi": "BBG01NEWE001", "share_class_figi": None,
+     "cik": "0001777777", "series_id": "S000077777", "class_id": None},
+    {"ticker": "BRK.B", "asset_type": "stock", "composite_figi": "BBG000DWG505", "share_class_figi": "BBG001S5WXJ2",
+     "cik": "0001067983", "series_id": None, "class_id": None},
+]
+#: ``funds.json``: the funds by their layer's list, each ``t`` (ticker), ``c`` / ``cat_id`` (category) and ``er``
+#: (expense ratio, percent). NEWE's category is one the map does not know.
+TI_FUNDS = [
+    {"list": "funds", "t": "XLK", "c": "Technology", "cat_id": "technology", "er": 0.08},
+    {"list": "funds", "t": "SPY", "c": "Large Blend", "cat_id": "us-large-blend", "er": 0.0945},
+    # GLD under the miners' category (an equity one): the commodity rule still decides its asset class.
+    {"list": "trust_funds", "t": "GLD", "c": "Gold and Silver Miners", "cat_id": "gold-silver-miners", "er": 0.4},
+    {"list": "funds", "t": "SOXX", "c": "Technology", "cat_id": "technology", "er": 0.34},
+    {"list": "sec_funds", "t": "QYLD", "c": "Option Income", "cat_id": "option-income", "er": 0.6,
+     "report_date": "2026-07-31"},
+    {"list": "sec_funds", "t": "NEWE", "c": "Something New", "cat_id": "something-new", "er": None},
+]
+
+
+def tickerinside_identifiers(rows=None) -> bytes:
+    """``identifiers.json`` in its live shape of 20 Nov 2026: ``fields`` and one list per security."""
+    rows = TI_IDENTIFIERS if rows is None else rows
+    return json.dumps({"read_on": "2026-11-20", "count": len(rows), "fields": TI_ID_FIELDS,
+                       "securities": [[r.get(f) for f in TI_ID_FIELDS] for r in rows],
+                       "license": "CC BY 4.0"}).encode()
+
+
+def tickerinside_funds(rows=None) -> bytes:
+    """``funds.json`` in its live shape of 20 Nov 2026: one list per layer (``funds``, ``sec_funds``,
+    ``trust_funds``, ...), each fund an object keyed ``t``, ``n``, ``c``, ``cat_id``, ``er``, ..."""
+    rows = TI_FUNDS if rows is None else rows
+    by: dict[str, list] = {}
+    for r in rows:
+        by.setdefault(r["list"], []).append({k: v for k, v in r.items() if k != "list"})
+    return json.dumps({"as_of": "2026-11-20", "count": len(rows), **by, "license": "CC BY 4.0"}).encode()
 
 
 def add_tickerinside_index(http_mock, bodies: dict, kept=(), list_sha256: str | None = None,
@@ -673,7 +728,8 @@ def write_etf_holdings(by_etf: dict, as_of: str = "2026-11-07", provider: str = 
             for i, t in enumerate(tickers):
                 line = t if isinstance(t, dict) else {"ticker": t, "name": f"{t or 'NONE'} NAME",
                                                       "weight": float(len(tickers) - i)}
-                con.execute(f"INSERT INTO {etf.TABLE} VALUES (?, ?, ?, ?, NULL, ?, ?)",
+                con.execute(f"INSERT INTO {etf.TABLE} (as_of, etf, provider, ticker, name, weight) "
+                            "VALUES (?, ?, ?, ?, ?, ?)",
                             [as_of, fund, provider, line["ticker"], line.get("name"), line.get("weight")])
     finally:
         con.close()

@@ -20,8 +20,11 @@ is NULL while it holds. Compustat's inclusive end dates (``effthru``, ``indthru`
 
 **The link.** A ticker's CIK finds its Compustat companies (``comp.company.cik``); among their securities the one
 whose ticker (``tic``, ``BRK.B`` -> ``BRK-B``) is the SEC ticker is the link (``link_source`` ``tic``). With no ticker
-match, a CIK with one SEC ticker and one active US security takes that one (``only_security``). Otherwise there is no
-link, and no CUSIP.
+match, a CIK with one SEC ticker and one active US security takes that one (``only_security``). A name still unlinked
+is linked to the one active US security of its ticker whose Compustat company has no CIK at all (``tic_nocik``,
+#1334 K-C, :func:`link_by_ticker`); one under another company CIK is refused. That scan, and the delisted rule
+(K-G), run only on a fresh whole Compustat snapshot (:data:`FRESH_SNAPSHOT_FROM`). Otherwise there is no link, and
+no CUSIP.
 
 **Bridge names.** ``sector`` is the GICS sector through ``core.gics_map.canonical_sector`` (one of the 11 Morningstar
 names the boards use); ``industry`` is the GICS industry group's name (working choice: the spine holds no Unusual
@@ -64,6 +67,7 @@ from ....core.identity import isin as isin_mod
 from ... import ops
 from .. import base
 from . import KIND, etf, etf_class, iso3166, my_universe, stage, tier as tier_rule, views
+from . import wrds as wrds_src
 from .funds import CHECKED, INDEXES, NAME as FUNDS
 from .openfigi_map import FIGI_BY_CUSIP, FIGI_BY_TICKER, NAME as OPENFIGI, PRESENT
 from .sec_tickers import NAME as SEC
@@ -80,6 +84,14 @@ US_EXCHG = (11, 12, 14)
 # included. Two missed weeks of the SEC file is no lookahead. Only for a ticker the SEC file has not held yet, or held
 # under the same CIK (delta-2 SF1, delta-3 SF-A).
 LOOKAHEAD = timedelta(days=21)
+#: The fresh-snapshot guard (plan v4 X6, #1334 K-C and K-G). Both rules read Compustat's ``secstat``, ``dldtei``
+#: and empty company CIKs, which only a whole snapshot refreshes (a new-names delta asks only the new CIKs), and
+#: the snapshots before this day predate the rules' review. So both run only when the newest ``snapshot=``
+#: partition of ``wrds/sec_idhist`` -- the one staging reads -- is whole and as of this day or later; otherwise
+#: they do nothing and the build writes one ``wrds_snapshot_not_armed`` issue. 23 Nov 2026: the fresh sequential
+#: fetch avo ordered for that night (``{"full": true}``).
+FRESH_SNAPSHOT_FROM = date(2026, 11, 23)
+WHOLE_SNAPSHOT = ("company", "security")
 # Fund-file lines that are no stock, read on a line with no SEC match only (#1418, ``member_not_in_sec``). Cash
 # (``CASH_USD``, any separator) is never a security, so its identifier does not matter: SSGA's dollar line carries a
 # made-up ``999USDZ92``. A future (root, month code, year digit: ``RTYZ6``, Russell 2000 December 2026) only with no
@@ -123,6 +135,15 @@ SCHEMAS = {"security": SECURITY, "security_history": HISTORY, "gics_history": GI
 ISSUE_KINDS = {
     "source_never_run": "a source this build needs has no data yet (key: the dataset)",
     "tier_a_no_wrds_link": "a Tier A name whose CIK finds no Compustat security",
+    "linked_by_ticker": ("a name linked by its ticker alone, to the one active US Compustat security of that "
+                         "ticker whose company has no CIK (K-C, link_source tic_nocik)"),
+    "ticker_link_cik_differs": ("an unlinked name whose ticker an active US Compustat security carries under "
+                                "another company CIK: refused, not linked (K-C)"),
+    "tier_a_compustat_inactive": ("a name the SEC file lists that would be Tier A, whose linked Compustat security "
+                                  "is inactive with a deletion date on or before the SEC file's day: Tier C (K-G)"),
+    "wrds_snapshot_not_armed": ("the newest wrds/sec_idhist snapshot is no whole snapshot from FRESH_SNAPSHOT_FROM "
+                                "on, so the ticker link (K-C) and the delisted rule (K-G) did nothing "
+                                "(key: the dataset)"),
     "tier_a_no_cusip": "a Tier A name with a Compustat link but no CUSIP",
     "tier_a_no_figi": "a Tier A name with a CUSIP that OpenFIGI has no FIGI for, by CUSIP or by ticker "
                       "(asked: absent; or not asked yet)",
@@ -157,6 +178,10 @@ ISSUE_KINDS = {
                                "(key: the ticker)"),
     "my_universe_list_unknown": ("the funds on a list the jobs read (the map list, the industry-group list) that "
                                  "the etf table does not hold: one issue naming them (key: etf)"),
+    "etf_cik_conflict": ("an etf row whose CIK TickerInside's identifiers.json gives another one: nothing is "
+                         "taken from TickerInside for it (key: the ticker)"),
+    "etf_category_unmapped": ("a TickerInside category with no asset class in etf.CATEGORY_ASSET_CLASS: the funds "
+                              "of it keep asset_class NULL (key: the category id)"),
     "etf_class_manual_unknown": ("a line of the manual ETF class file naming a ticker that is no ETF of "
                                  "my_universe (key: the ticker)"),
 }
@@ -251,6 +276,23 @@ def gics_manual(path: Path | None = None) -> dict[str, dict]:
     return rows
 
 
+def wrds_armed() -> bool:
+    """Whether K-C and K-G may run: the newest full ``wrds/sec_idhist`` snapshot in Parquet holds every table they
+    read and is as of :data:`FRESH_SNAPSHOT_FROM` or later (a ``delta=`` partition never counts)."""
+    snaps = wrds_src._snapshots(SEC_IDHIST.name)
+    if not snaps or date.fromisoformat(snaps[-1]) < FRESH_SNAPSHOT_FROM:
+        return False
+    folder = wrds_src.parquet_dir(SEC_IDHIST.name) / f"snapshot={snaps[-1]}"
+    return all((folder / f"{t}.parquet").is_file() for t in WHOLE_SNAPSHOT)
+
+
+def compustat_inactive(sec_row: dict | None, source_as_of) -> bool:
+    """K-G: the linked security is not active in Compustat and was deleted on or before the SEC row's day."""
+    d = (sec_row or {}).get("dldtei")
+    return bool(sec_row) and sec_row.get("secstat") != "A" and d is not None and source_as_of is not None \
+        and d <= source_as_of
+
+
 def _sec_header_column(con: duckdb.DuckDBPyConnection, column: str) -> dict[str, str]:
     """``cik -> <column>`` from every ``header.parquet`` :data:`SEC_FILINGS` wrote, NULLs left out.
 
@@ -334,6 +376,31 @@ def link(ticker: str, cik: str, gvkeys_of_cik: dict[str, list[str]], securities:
     if len(active) == 1 and tickers_of_cik.get(cik, 0) == 1:
         return active[0], "only_security", None
     return None, None, ("cik_many_gvkeys" if len(gvkeys) > 1 else None)
+
+
+def link_by_ticker(ticker: str, cik: str, by_tic: dict[str, list[tuple[dict, str | None]]]
+                   ) -> tuple[dict | None, list[tuple[str, str, str]]]:
+    """K-C (#1334, plan v4 S6c): ``(security row, issues)`` for an SEC ticker :func:`link` left unlinked.
+
+    A second scan, not an edit of :func:`link`'s CIK loop: a company whose Compustat CIK is empty never enters
+    ``gvkeys_of_cik``, so that loop cannot see it. ``by_tic`` holds the active US Compustat securities (``secstat``
+    A, ``exchg`` in :data:`US_EXCHG`) by their ticker read as the SEC file writes it, each with its company's
+    CIK through ``norm_cik`` (None when empty). The one candidate whose company has **no** CIK is the link; two or
+    more is no link. A candidate whose company CIK is filled and is not the SEC row's (``norm_cik`` on both sides:
+    Compustat pads it) is another issuer's that carries the ticker, so it is refused and named, and no link is
+    made beside it (AGLT, XTLB: 13 names on 21 Nov 2026)."""
+    own = norm_cik(cik)
+    cands = by_tic.get(ticker) or []
+    empty = [sr for sr, c in cands if not c]
+    other = [(sr, c) for sr, c in cands if c and c != own]
+    found = [("ticker_link_cik_differs", ticker,
+              f"Compustat gvkey {sr['gvkey']} iid {sr['iid']} carries the ticker under CIK {c}, the SEC file "
+              f"says {own}: refused") for sr, c in other]
+    if len(empty) == 1 and not other:
+        sr = empty[0]
+        return sr, found + [("linked_by_ticker", ticker, f"gvkey {sr['gvkey']} iid {sr['iid']}: its Compustat "
+                                                         "company has no CIK, linked by the ticker alone")]
+    return None, found
 
 
 # ── Periods ───────────────────────────────────────────────────────────────────────────────────────────────────
@@ -503,6 +570,11 @@ class SpineSecurity:
             if not n:
                 found.append(("source_never_run", ds, f"{ds} has no rows in this build"))
         wrds_on, figi_on = bool(have[SEC_IDHIST.name]), bool(have[OPENFIGI])
+        armed = wrds_on and wrds_armed()
+        if wrds_on and not armed:
+            found.append(("wrds_snapshot_not_armed", SEC_IDHIST.name,
+                          f"newest snapshot {(wrds_src._snapshots(SEC_IDHIST.name) or ['none'])[-1]}, rules from "
+                          f"{FRESH_SNAPSHOT_FROM}: the ticker link and the delisted rule did nothing"))
 
         sec = _rows(con, "SELECT * FROM stg_sec ORDER BY ticker")
         company = _rows(con, "SELECT gvkey, conm, cik, sic, loc FROM stg_wrds_company")
@@ -534,6 +606,15 @@ class SpineSecurity:
         for g in _rows(con, "SELECT * FROM stg_wrds_hgic WHERE indthru IS NULL ORDER BY gvkey, indfrom"):
             hgic[g["gvkey"]].append(g)
 
+        # K-C's index: the active US securities by ticker, with their company's CIK (None when it is empty).
+        by_tic: dict[str, list[tuple[dict, str | None]]] = defaultdict(list)
+        if armed:
+            co_cik = {c["gvkey"]: norm_cik(c["cik"]) for c in company}
+            for g, ss in securities.items():
+                for s in ss:
+                    t = compustat_ticker(s.get("tic"))
+                    if g in co_cik and t and s.get("secstat") == "A" and s.get("exchg") in US_EXCHG:
+                        by_tic[t].append((s, co_cik[g]))
         manual = gics_manual()
         sec_sic = sec_sic_by_cik(con)
         sec_country = sec_country_by_cik(con)
@@ -542,6 +623,10 @@ class SpineSecurity:
             sec_row, how, problem = link(r["ticker"], r["cik"], gvkeys_of_cik, securities, tickers_of_cik)
             if problem:
                 found.append((problem, r["cik"], f"CIK {r['cik']}: {len(gvkeys_of_cik[r['cik']])} companies"))
+            if sec_row is None and armed:
+                sec_row, by_tic_issues = link_by_ticker(r["ticker"], r["cik"], by_tic)
+                how = "tic_nocik" if sec_row else None
+                found += by_tic_issues
             cusip = (sec_row or {}).get("cusip")
             cusip = str(cusip).strip().upper() if cusip else None
             f = figi.get(cusip) if cusip else None
@@ -567,9 +652,16 @@ class SpineSecurity:
                                                   sec_country.get(norm_cik(r["cik"])))
             from_co = gics_src == CO_HGIC.name     # a manual row's codes must not sit beside Compustat's finer ones
             isin = isin_mod.from_cusip(cusip)
+            exchg = (sec_row or {}).get("exchg")
+            gone = armed and compustat_inactive(sec_row, r["source_as_of"])
+            the_tier = tier_rule.tier(r["exchange"], typ, exchg, compustat_inactive=gone)
+            if gone and tier_rule.tier(r["exchange"], typ, exchg) == "A":
+                found.append(("tier_a_compustat_inactive", r["ticker"],
+                              f"gvkey {sec_row['gvkey']} iid {sec_row['iid']}: secstat {sec_row.get('secstat')}, "
+                              f"deleted {sec_row.get('dldtei')}"))
             row = {
                 "ticker": r["ticker"], "cik": r["cik"], "name": r["name"], "exchange": r["exchange"],
-                "tier": tier_rule.tier(r["exchange"], typ, (sec_row or {}).get("exchg")), "tier_rule": tier_rule.VERSION,
+                "tier": the_tier, "tier_rule": tier_rule.VERSION,
                 "security_type": typ, "type_source": typ_src,
                 "gvkey": (sec_row or {}).get("gvkey"), "iid": (sec_row or {}).get("iid"), "link_source": how,
                 "cusip": cusip, "cusip_source": SEC_IDHIST.name if cusip else None,
@@ -633,7 +725,7 @@ class SpineSecurity:
         members, member_issues = self._membership(con, rows, linked)
         found += member_issues
         counts["index_membership"] = _create(con, "index_membership", members)
-        counts[etf.TABLE] = _create(con, etf.TABLE, etf.rows(ctx, con))       # reads ``security``: after it
+        counts[etf.TABLE] = _create(con, etf.TABLE, etf.rows(ctx, con, found))  # reads ``security``: after it
         mine, changes, mine_issues = my_universe.rows(ctx, con)                # reads both of them: after both
         found += mine_issues
         counts[my_universe.TABLE] = _create(con, my_universe.TABLE, mine)

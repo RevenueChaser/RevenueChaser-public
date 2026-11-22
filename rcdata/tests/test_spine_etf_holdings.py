@@ -3,6 +3,7 @@ SPDR workbooks and the iShares CSVs, both parsers already the index job's), Tick
 (#1365, 22 Nov 2026; they were UW's until then), no top-10 cap and no membership vote."""
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -15,10 +16,11 @@ from revenuechaser.rcdata.build.spine import etf_holdings as etf, sec_tickers
 from . import spine_fixture as fx
 
 AS_OF = "2026-10-27"
-# The daily funds (the board's, the peer sets' and ring 1 of #354 C6), and the three TickerInside index files a run
-# reads before its first fund file: ``status.json``, ``manifest.json`` and ``sha256sums.txt.gz``.
+# The daily funds (the board's, the peer sets' and ring 1 of #354 C6), and the five TickerInside index files a run
+# reads before its first fund file: ``status.json``, ``manifest.json``, ``sha256sums.txt.gz``, and (plan v4 step 7)
+# ``identifiers.json`` and ``funds.json``, which the spine's ``etf`` reads.
 N = 151
-INDEX = 3
+INDEX = 5
 
 
 @pytest.fixture
@@ -435,7 +437,8 @@ def test_a_run_asks_each_tickerinside_fund_for_its_one_file_and_nothing_else(env
     assert len(funds) == len(etf.TI_FUNDS) == 120
     assert {p.rsplit("/", 1)[1] for p in funds} == {f"{t.lower()}.json" for t in etf.TI_FUNDS}
     assert sorted(p.rsplit("/", 1)[1] for p in paths if "/fund/" not in p) == [
-        "manifest.json", "sha256sums.txt.gz", "status.json"], "the index files, once a run, and nothing else"
+        "funds.json", "identifiers.json", "manifest.json", "sha256sums.txt.gz", "status.json"], \
+        "the index files, once a run, and nothing else"
 
 
 def test_no_run_ever_asks_for_the_history_or_the_flows(env):
@@ -457,9 +460,51 @@ def test_the_parquet_keeps_the_day_the_source_puts_on_the_list_and_which_layer_s
         "ORDER BY provider").fetchall()
     assert ("tickerinside", "2026-11-19", "issuer") in rows
     assert [r for r in rows if r[0] == "ssga"] == [("ssga", None, None)], "an issuer file states neither"
+
+
+def test_the_table_serves_the_day_the_source_puts_on_the_list_and_its_layer(env):
+    """B2 (plan v4 step 7, spine 11): a board can say which day and which layer a holdings list is."""
+    base.run_request({"dataset": etf.NAME, "params": {"as_of": AS_OF}})
     with serving.open_read("spine") as con:
-        served = [c[0] for c in con.execute(f"SELECT * FROM {etf.TABLE} LIMIT 0").description]
-    assert "holdings_as_of" not in served and "source_layer" not in served
+        smh = con.execute(f"SELECT DISTINCT provider, holdings_as_of, source_layer FROM {etf.TABLE} "
+                          "WHERE etf = 'SMH'").fetchall()
+        xlk = con.execute(f"SELECT DISTINCT holdings_as_of, source_layer FROM {etf.TABLE} WHERE etf = 'XLK'").fetchall()
+    assert smh == [("tickerinside", "2026-11-19", "issuer")] and xlk == [(None, None)]
+
+
+def test_a_partition_written_before_the_two_columns_still_builds():
+    """A Parquet day typed before #1366 has neither column: it reads as NULL, never a failed build."""
+    import duckdb
+    day = etf.parquet_dir() / "date=2026-10-20" / "part-0.parquet"
+    day.parent.mkdir(parents=True)
+    duckdb.connect().execute(
+        "COPY (SELECT DATE '2026-10-20' AS as_of, 'XLK' AS etf, 'ssga' AS provider, 'MSFT' AS ticker, "
+        "'MSFT' AS ticker_raw, NULL::TEXT AS cusip, 'MICROSOFT' AS name, 10.0 AS weight, 1.0 AS fetched_at, "
+        f"'r0' AS run_id) TO '{day.as_posix()}' (FORMAT PARQUET)")
+    con = duckdb.connect()
+    etf.DATASET.build(base.RunContext(run_id="r", dataset=etf.NAME), con)
+    assert con.execute(f"SELECT ticker, holdings_as_of, source_layer FROM {etf.TABLE}").fetchall() == [
+        ("MSFT", None, None)]
+
+
+def test_a_run_keeps_tickerinsides_identifiers_and_funds_files_of_the_day(env):
+    """Plan v4 step 7 (SP1, SP7): the spine's ``etf`` reads its FIGI, CIK, series id, expense ratio and category
+    from these two files, so the daily run keeps them beside the fund files (CC BY 4.0 snapshots, not history)."""
+    base.run_request({"dataset": etf.NAME, "params": {"as_of": AS_OF}})
+    day = etf.raw_dir() / AS_OF
+    assert all((day / name).exists() for name in etf.TI_META.values())
+    ids, funds = etf.tickerinside_meta()
+    assert ids["XLK"]["cik"] == "1064641" and ids["BRK-B"]["composite_figi"] == "BBG000DWG505"
+    assert funds["SPY"]["expense_ratio"] == 0.0945 and funds["GLD"]["category"] == "gold-silver-miners"
+    assert etf.tickerinside_meta(date(2026, 10, 26)) == ({}, {}), "a build of an earlier day reads no later file"
+
+
+def test_a_broken_identifiers_file_is_a_note_and_keeps_nothing(env, http_mock):
+    http_mock.routes.insert(0, ("/identifiers.json", b"[1, 2]", 200, {}))
+    row = base.run_request({"dataset": etf.NAME, "params": {"as_of": AS_OF}})
+    assert row["result"] == "changed" and "identifiers.json unread" in row["note"]
+    assert not (etf.raw_dir() / AS_OF / etf.TI_META["identifiers"]).exists()
+    assert (etf.raw_dir() / AS_OF / etf.TI_META["funds"]).exists()
 
 
 def test_a_share_class_and_a_foreign_line_of_a_fund_file_are_read_as_the_site_keys_them(env, http_mock):

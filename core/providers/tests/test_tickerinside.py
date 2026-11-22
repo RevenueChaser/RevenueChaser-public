@@ -166,3 +166,45 @@ def test_kept_previous_is_read_from_the_status_file():
         {"ticker": "CLOU", "issuer": "Global X", "since": "2026-11-13", "holdings_as_of": "2026-11-11"}]
     with pytest.raises(ValueError):
         ti.kept_previous(json.dumps({"schema": 1}).encode())
+
+
+# ── identifiers.json and funds.json: the spine's ETF identity, expense ratio and category (plan v4 step 7) ─────
+
+def test_identifiers_are_read_by_their_fields_with_the_dash_ticker_and_the_sec_cik():
+    """The live shape of 20 Nov 2026: ``fields`` names the columns of each ``securities`` list, so the reader goes by
+    the names, not the positions. ``BRK.B`` is our ``BRK-B``; the CIK loses its zero padding as the SEC file has it."""
+    fields = ["ticker", "name", "asset_type", "exchange", "composite_figi", "share_class_figi", "cik", "series_id",
+              "class_id"]
+    body = json.dumps({"read_on": "2026-11-20", "fields": fields, "securities": [
+        ["AAA", "Alternative Access ETF", "etf", "NYSE Arca", "BBG01B0JRCS6", "BBG01B0JRCT5", "0001587982",
+         "S000076539", "C000236514"],
+        ["BRK.B", "Berkshire Hathaway", "stock", "NYSE", "BBG000DWG505", "BBG001S5WXJ2", "0001067983", None, None],
+        ["NOCIK", "No CIK ETF", "etf", None, None, None, None, None, None]]}).encode()
+    got = ti.parse_identifiers(body)
+    assert got["AAA"] == {"asset_type": "etf", "composite_figi": "BBG01B0JRCS6", "share_class_figi": "BBG01B0JRCT5",
+                          "cik": "1587982", "series_id": "S000076539", "class_id": "C000236514"}
+    assert got["BRK-B"]["cik"] == "1067983" and got["NOCIK"]["cik"] is None
+
+
+@pytest.mark.parametrize("body", [b"[]", b"{}", b'{"fields": ["name"], "securities": []}', b"not json"])
+def test_an_identifiers_file_of_another_shape_is_refused(body):
+    with pytest.raises(ValueError):
+        ti.parse_identifiers(body)
+
+
+def test_funds_are_every_layer_list_with_the_expense_ratio_and_the_category_id():
+    body = json.dumps({"as_of": "2026-11-20", "note": "...", "funds": [
+        {"t": "SPY", "n": "SPDR S&P 500 ETF Trust", "c": "Large Blend", "cat_id": "us-large-blend", "er": 0.0945}],
+        "sec_funds": [{"t": "QQQ", "c": "Large Blend", "cat_id": "us-large-blend", "er": 0.18,
+                       "report_date": "2026-07-31"}],
+        "trust_funds": [{"t": "GLD", "c": "Gold and Precious Metals", "cat_id": "precious-metals", "er": "0.4"},
+                        {"t": "BAD", "cat_id": "x", "er": "n/a"}],
+        "license": "CC BY 4.0"}).encode()
+    got = ti.parse_funds(body)
+    assert got["SPY"] == {"expense_ratio": 0.0945, "category": "us-large-blend", "layer": "funds"}
+    assert got["QQQ"]["layer"] == "sec_funds" and got["GLD"]["expense_ratio"] == 0.4
+    assert got["BAD"]["expense_ratio"] is None
+
+
+def test_the_two_files_are_snapshots_a_builder_may_read():
+    assert ti.identifiers_url().endswith("/identifiers.json") and ti.funds_url().endswith("/funds.json")
