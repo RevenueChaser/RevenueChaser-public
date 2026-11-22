@@ -3,13 +3,14 @@
 The badges on the cards (``annotate_cards``, ``index_for``), the index list of the shared filter
 (``filter_labels``) and ``load_index`` read the identity spine through ``rcdata.read`` (build plan PR 6):
 
-  - ``sp500``, ``sp400``, ``sp600``, ``ndx``  the spine's current members, voted from the index funds' daily
+  - ``sp500``, ``sp400``, ``sp600``, ``ndx``, ``dow`` and every slug of ``funds.INDEXES`` (the Russell, S&P,
+    Dow Jones and ProShares dividend indexes)  the spine's current members, voted from the index funds' daily
     holdings files (``funds/index_holdings``; ``rcdata.read.membership``)
-  - ``nasdaq``                               the spine's listed names (Tier A and B) on Nasdaq, as the spine's
-    ``index_constituents`` bridge view has it
+  - ``nasdaq``                               the members of Nasdaq's stock screener (``funds/index_holdings``)
+    together with the spine's listed names (Tier A and B) on Nasdaq, as the spine's ``index_constituents`` bridge
+    view has it
 
-No source the spine reads carries the Dow Jones, so on the spine no card carries it and the filter does not offer
-it. Each slug with a label in ``LABELS`` shows under that label; a slug without one (``sp400``, ``ndx`` today) is
+Each slug with a label in ``LABELS`` shows under that label; a slug without one (``sp400``, ``ndx`` today) is
 read by ``load_index`` but shows no badge, so the filter is unchanged by the move.
 
 The old store's ``index_constituents`` path (the weekly Unusual Whales lists) is no longer read here (#642 PR 6): no
@@ -37,6 +38,9 @@ LABELS: dict[str, str] = {
     "sp_total_market": "S&P Total Market",
     "sp_hy_dividend_aristocrats": "S&P High Yield Dividend Aristocrats",
     "sp500_high_dividend": "S&P 500 High Dividend",
+    "sp500_dividend_aristocrats": "S&P 500 Dividend Aristocrats",
+    "sp400_dividend_aristocrats": "S&P MidCap 400 Dividend Aristocrats",
+    "sp_technology_dividend_aristocrats": "S&P Technology Dividend Aristocrats",
     "sp500_energy": "S&P 500 Energy",
     "sp500_materials": "S&P 500 Materials",
     "sp500_industrials": "S&P 500 Industrials",
@@ -110,12 +114,12 @@ def _listed_on_nasdaq(listed: list[dict]) -> set[str]:
 def load_index(slug: str) -> set[str] | None:
     """The current members of ``slug`` (upper-cased tickers), or None when it has none.
 
-    The spine's fund files' current members (``nasdaq``: the listed Nasdaq names; ``dow``: DIA's file)."""
+    The spine's fund files' current members (``nasdaq``: the screener's and the listed Nasdaq names; ``dow``: DIA's
+    file)."""
     from . import spine_reads
+    tickers = {str(m["ticker"]).upper() for m in spine_reads.membership(slug)}
     if slug == NASDAQ:
-        tickers = _listed_on_nasdaq(spine_reads.universe(("A", "B")))
-    else:
-        tickers = {str(m["ticker"]).upper() for m in spine_reads.membership(slug)}
+        tickers |= _listed_on_nasdaq(spine_reads.universe(("A", "B")))
     return tickers or None
 
 

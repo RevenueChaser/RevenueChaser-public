@@ -112,7 +112,7 @@ _NEEDS = (
     Need("identity.etf_holdings", "etf_holdings", "etf_holdings", "as_of", "etf", 5,
          ask_param="etfs", normalize=TICKER, providers=("ssga", "ishares", "uw")),
     Need("identity.membership", "membership", "index_membership", "source_as_of", "ticker", 5,
-         providers=("ssga", "ishares", "nasdaq", "invesco")),
+         providers=("ssga", "ishares", "nasdaq", "invesco", "proshares")),
     # ── The prices store (serving kind ``prices``; daily bars, share counts from filings) ────────────────────────
     Need("prices.bars", "bars", "price_bar_daily", "session_date", "security_id", 1,
          ask_param="security_ids", providers=("alpaca",)),

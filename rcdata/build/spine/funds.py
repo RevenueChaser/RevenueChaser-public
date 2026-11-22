@@ -15,14 +15,16 @@ others go on), never a guess.
 | ``russell*`` (14), ``nasdaq100_top30`` | one iShares ``latest-holdings.csv`` each (:data:`SINGLE_FILE`), no vote |
 | ``sp{500,400,600}_{growth,value}`` | SSGA SPYG/SPYV, MDYG/MDYV, SLYG/SLYV with iShares IVW/IVE, IJK/IJJ, IJT/IJS |
 | ``sp100``, ``sp500_ex_sp100``, ``sp900_*``, ``sp1500``, ``sp_*``, ``dj_us*`` | one SSGA or iShares file each |
+| ``sp*_dividend_aristocrats`` (3) | one ProShares CSV each: NOBL, REGL, TDV (:data:`PROSHARES`) |
+| ``nasdaq`` | Nasdaq's stock screener (json), warrants, rights and units dropped; asked with :data:`NASDAQ_BROWSER` |
 | ``sp500_<sector>`` (11), ``sp_<industry>`` (11), ``dj_us_<industry>`` (5) | the sector and industry funds' files that
   ``funds/etf_holdings`` fetches daily, read from its Parquet (:data:`DERIVED`, :func:`derived_lines`), one each |
 
 Vanguard's VOO, IVOO and VIOO creation baskets were removed on 22 Nov 2026 (avo): they answer 401 to every keyless
 request since 30 Oct, so each S&P index is voted from its SSGA and iShares files, and a name must be in both.
 
-One request per file, every file each run (47 a run), each under its provider's day cap. Base URLs:
-``RC_SSGA_BASE``, ``RC_ISHARES_BASE``, ``RC_NASDAQ_API_BASE``, ``RC_INVESCO_API_BASE``.
+One request per file, every file each run (51 a run), each under its provider's day cap. Base URLs:
+``RC_SSGA_BASE``, ``RC_ISHARES_BASE``, ``RC_NASDAQ_API_BASE``, ``RC_INVESCO_API_BASE``, ``RC_PROSHARES_BASE``.
 
 **The membership rule (working choice).** On each day, a file counts when it parsed and holds at least its index's
 floor (``FLOOR``: about 80% of the index); a short file is a ``fund_file_short`` build issue and does not count. A
@@ -121,10 +123,26 @@ DERIVED = (
     ("dj_us_insurance", "IAK", 47), ("dj_us_medical_equipment", "IHI", 39),                              # 59, 49
     ("dj_us_health_care_providers", "IHF", 48),                                                          # 61
 )
+#: Group C (avo, 22 Nov 2026 23:17): ProShares' S&P dividend funds, one CSV each, so no vote. (slug, fund, floor):
+#: 80 % of the ticker lines (NOBL 68 and REGL 64 measured by the inventory; TDV 37, read once on 22 Nov 2026 with
+#: the builder's own headers).
+PROSHARES = (("sp500_dividend_aristocrats", "NOBL", 54), ("sp400_dividend_aristocrats", "REGL", 51),
+             ("sp_technology_dividend_aristocrats", "TDV", 29))
+#: Group C: the Nasdaq Composite, every stock listed on the Nasdaq, from Nasdaq's stock screener (one file, no vote).
+#: 4,274 rows on 22 Nov 2026, 3,593 after the warrants, rights and units (this parser, on that answer); the floor is
+#: 80 % of those.
+NASDAQ_COMPOSITE = ("nasdaq", "COMP", 2875)
+#: The browser headers avo approved for the screener (22 Nov 2026). Only that file sends them.
+NASDAQ_BROWSER = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
+                                "Chrome/130.0 Safari/537.36",
+                  "Accept": "application/json, text/plain, */*", "Accept-Language": "en-US,en;q=0.9",
+                  "Origin": "https://www.nasdaq.com", "Referer": "https://www.nasdaq.com/"}
 INDEXES = (("sp500", "sp400", "sp600", "ndx", "dow") + tuple(s[0] for s in SINGLE_FILE)
-           + tuple(w[0] for w in WIDE) + tuple(d[0] for d in DERIVED))
+           + tuple(w[0] for w in WIDE) + tuple(d[0] for d in DERIVED) + tuple(p[0] for p in PROSHARES)
+           + (NASDAQ_COMPOSITE[0],))
 FLOOR = {"sp500": 400, "sp400": 320, "sp600": 480, "ndx": 80, "dow": 24, **{s[0]: s[5] for s in SINGLE_FILE},
-         **{w[0]: w[3] for w in WIDE}, **{d[0]: d[2] for d in DERIVED}}
+         **{w[0]: w[3] for w in WIDE}, **{d[0]: d[2] for d in DERIVED}, **{p[0]: p[2] for p in PROSHARES},
+         NASDAQ_COMPOSITE[0]: NASDAQ_COMPOSITE[2]}
 #: The indexes whose members get a ``member_not_in_sec`` / ``member_not_tier_a`` issue one by one: the Russell files
 #: hold thousands of small names, and per-name issues for them would flood the build issues list.
 CHECKED = ("sp500", "sp400", "sp600", "ndx", "dow")
@@ -261,6 +279,42 @@ def parse_nasdaq(data: bytes) -> list[dict]:
             for r in rows or [] if (r or {}).get("symbol")]
 
 
+# A screener row that is no share of the company: a warrant or a right anywhere in its name, a unit at its end
+# (a SPAC's ``... Units``, ``... Unit.``). An LP's "Common Units representing Limited Partner Interests" is the
+# share itself and stays, as the Nasdaq Composite counts it.
+_NOT_A_SHARE = re.compile(r"\b(warrants?|rights?)\b|\bunits?\.?\s*$", re.IGNORECASE)
+
+
+def parse_nasdaq_screener(data: bytes) -> list[dict]:
+    """Nasdaq's stock screener (``/api/screener/stocks?exchange=NASDAQ&download=true``): ``{"data": {"rows":
+    [{"symbol", "name", "marketCap", "sector", ...}]}}``, every listed symbol; warrants, rights and units dropped."""
+    body = json.loads(data)
+    try:
+        rows = body["data"]["rows"]
+    except (KeyError, TypeError) as e:
+        raise base.SourceError("nasdaq screener: no data.rows list") from e
+    if not isinstance(rows, list):
+        raise base.SourceError("nasdaq screener: no data.rows list")
+    return [{"ticker_raw": r.get("symbol"), "cusip": None, "name": r.get("name"), "weight": None}
+            for r in rows if (r or {}).get("symbol") and not _NOT_A_SHARE.search(str(r.get("name") or ""))]
+
+
+def parse_proshares(data: bytes) -> list[dict]:
+    """ProShares' daily holdings CSV: three preamble lines, then the header ``Fund Ticker, Fund Name, Security
+    Ticker, Security Sedol, Security Description, ..., Market Value`` (a space after each comma). A holding is a line
+    with a ``Security Ticker``; the cash line has none. The file carries no CUSIP (a SEDOL) and no weight."""
+    lines = data.decode("utf-8-sig", errors="replace").splitlines()
+    start = next((i for i, line in enumerate(lines) if line.startswith("Fund Ticker,")), None)
+    if start is None:
+        raise base.SourceError("proshares: no header line with Fund Ticker and Security Ticker")
+    reader = csv.DictReader(io.StringIO("\n".join(lines[start:])), skipinitialspace=True)
+    if "Security Ticker" not in (reader.fieldnames or ()):
+        raise base.SourceError("proshares: no Security Ticker column")
+    return [{"ticker_raw": r["Security Ticker"].strip(), "cusip": None,
+             "name": (r.get("Security Description") or "").strip(), "weight": None}
+            for r in reader if (r.get("Security Ticker") or "").strip()]
+
+
 # Invesco's security types that are a holding of the stock: common stock and the ADRs (ASML, ARM, PDD in Oct 2026).
 INVESCO_EQUITY_TYPES = ("COM", "ADR", "DRNY")
 
@@ -301,10 +355,21 @@ class FundFile:
             pid, slug, _typed = ISHARES_PRODUCTS[self.fund]
             return (provider_base("RC_ISHARES_BASE", "https://www.ishares.com")
                     + f"/us/products/{pid}/{slug}/latest-holdings.csv")
+        if self.provider == "proshares":
+            return (provider_base("RC_PROSHARES_BASE", "https://accounts.profunds.com")
+                    + f"/etfdata/ByFund/{self.fund}-psdlyhld.csv")
         if self.provider == "invesco":
             return (provider_base("RC_INVESCO_API_BASE", "https://dng-api.invesco.com")
                     + f"/cache/v1/accounts/en_US/shareclasses/{self.fund}/holdings/fund?idType=ticker&productType=ETF")
+        if self.fund == NASDAQ_COMPOSITE[1]:
+            return (provider_base("RC_NASDAQ_API_BASE", "https://api.nasdaq.com")
+                    + "/api/screener/stocks?tableonly=true&exchange=NASDAQ&download=true")
         return provider_base("RC_NASDAQ_API_BASE", "https://api.nasdaq.com") + "/api/quote/list-type/nasdaq100"
+
+    def headers(self) -> dict[str, str]:
+        """The request headers: the screener's approved browser ones, else ``Accept: */*`` (the builder's own UA)."""
+        screener = (self.provider, self.fund) == ("nasdaq", NASDAQ_COMPOSITE[1])
+        return dict(NASDAQ_BROWSER) if screener else {"Accept": "*/*"}
 
     def raw_name(self) -> str:
         return f"{self.provider}-{self.fund}.{self.ext}"
@@ -330,6 +395,8 @@ FILES = (
     *(_ishares(s[0], s[1]) for s in SINGLE_FILE),
     *(FundFile(w[0], "ssga", fund, "xlsx", parse_ssga) for w in WIDE for fund in w[1]),
     *(_ishares(w[0], fund) for w in WIDE for fund in w[2]),
+    *(FundFile(slug, "proshares", fund, "csv", parse_proshares) for slug, fund, _floor in PROSHARES),
+    FundFile(NASDAQ_COMPOSITE[0], "nasdaq", NASDAQ_COMPOSITE[1], "json", parse_nasdaq_screener),
 )
 PROVIDERS = tuple(dict.fromkeys(f.provider for f in FILES))
 _BY_RAW = {f.raw_name(): f for f in FILES}
@@ -386,7 +453,7 @@ class FundHoldings:
                 out.append(raw)
                 continue
             try:
-                r = base.http_get(ctx, f.provider, f.url(), headers={"Accept": "*/*"})
+                r = base.http_get(ctx, f.provider, f.url(), headers=f.headers())
                 f.parse(r.content)                                # refuse a file of the wrong shape before keeping it
             except Exception as e:  # noqa: BLE001 - one file down must not stop the others
                 failed.append(f.raw_name())
