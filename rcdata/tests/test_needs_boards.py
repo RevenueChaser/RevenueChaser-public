@@ -15,8 +15,8 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.rcdata import needs
-from RevenueChaser.rcdata.needs import boards
+from revenuechaser.rcdata import needs
+from revenuechaser.rcdata.needs import boards
 
 
 def test_every_board_package_is_either_declared_or_named_as_not_migrated():
@@ -154,7 +154,7 @@ def test_a_planned_read_belongs_to_a_board_not_migrated_yet():
 
 
 def test_every_planned_need_is_a_need_the_catalog_has():
-    from RevenueChaser.rcdata.needs import catalog
+    from revenuechaser.rcdata.needs import catalog
     for board, needs in boards.PLANNED_READS.items():
         assert needs == tuple(sorted(set(needs), key=needs.index)), f"{board}: a need named twice"
         for name in needs:
@@ -221,13 +221,13 @@ def test_the_call_scan_sees_every_import_form_and_leaves_tests_out(tmp_path, mon
     pkg = tmp_path / "module_fake"
     (pkg / "tests").mkdir(parents=True)
     (pkg / "__init__.py").write_text("", encoding="utf-8")
-    (pkg / "a.py").write_text("from RevenueChaser.rcdata import read\n\ndef f():\n    return read.ticker_bars([])\n",
+    (pkg / "a.py").write_text("from revenuechaser.rcdata import read\n\ndef f():\n    return read.ticker_bars([])\n",
                               encoding="utf-8")
-    (pkg / "b.py").write_text("def g():\n    from RevenueChaser.rcdata import read as rc\n    return rc.filing_texts([])\n",
+    (pkg / "b.py").write_text("def g():\n    from revenuechaser.rcdata import read as rc\n    return rc.filing_texts([])\n",
                               encoding="utf-8")
-    (pkg / "c.py").write_text("from RevenueChaser.rcdata.read import actions as acts\n\nX = acts\n", encoding="utf-8")
+    (pkg / "c.py").write_text("from revenuechaser.rcdata.read import actions as acts\n\nX = acts\n", encoding="utf-8")
     (pkg / "d.py").write_text("read = object()\n\ndef h():\n    return read.peers(1)\n", encoding="utf-8")
-    (pkg / "tests" / "test_x.py").write_text("from RevenueChaser.rcdata import read\nread.customers(1)\n",
+    (pkg / "tests" / "test_x.py").write_text("from revenuechaser.rcdata import read\nread.customers(1)\n",
                                              encoding="utf-8")
     monkeypatch.setattr(boards, "root", lambda: tmp_path)
     assert boards.read_calls("module_fake") == ("actions", "filing_texts", "ticker_bars")
@@ -237,7 +237,7 @@ def test_a_read_the_code_makes_and_the_plan_leaves_out_is_named_with_its_functio
     pkg = tmp_path / "module_fake"
     pkg.mkdir()
     (pkg / "__init__.py").write_text("", encoding="utf-8")
-    (pkg / "a.py").write_text("from RevenueChaser.rcdata import read\nread.changed_at([])\nread.market_series([])\n",
+    (pkg / "a.py").write_text("from revenuechaser.rcdata import read\nread.changed_at([])\nread.market_series([])\n",
                               encoding="utf-8")
     monkeypatch.setattr(boards, "root", lambda: tmp_path)
     monkeypatch.setattr(boards, "PLANNED_READS", {"module_fake": ("prices.bars", "macro.dgs10", "options.daily")})
@@ -251,7 +251,7 @@ def test_a_needs_own_reader_is_covered_only_by_that_need_not_by_a_sibling_over_i
     pkg = tmp_path / "module_fake"
     pkg.mkdir()
     (pkg / "__init__.py").write_text("", encoding="utf-8")
-    (pkg / "a.py").write_text("import RevenueChaser.rcdata.read as rd\nrd.latest_market([])\n", encoding="utf-8")
+    (pkg / "a.py").write_text("import revenuechaser.rcdata.read as rd\nrd.latest_market([])\n", encoding="utf-8")
     monkeypatch.setattr(boards, "root", lambda: tmp_path)
     monkeypatch.setattr(boards, "PLANNED_READS", {"module_fake": ("prices.market_cap",)})
     assert ("latest_market", "market_cap_daily", ("prices.latest",)) in boards.unplanned_reads("module_fake")

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core import oom
+from revenuechaser.core import oom
 
 OOM_KILL = ("oom-kill:constraint=CONSTRAINT_NONE,nodemask=(null),cpuset=life-rc-builder.service,"
             "mems_allowed=0,oom_memcg=/system.slice/life-rc-builder.service,"

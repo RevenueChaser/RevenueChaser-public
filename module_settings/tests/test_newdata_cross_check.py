@@ -15,14 +15,14 @@ from datetime import date, datetime, timezone
 
 import pytest
 
-from RevenueChaser.module_settings import newdata, report
-from RevenueChaser.module_settings.tests.test_newdata_findings import _page, _section
+from revenuechaser.module_settings import newdata, report
+from revenuechaser.module_settings.tests.test_newdata_findings import _page, _section
 
 NOW = datetime(2026, 10, 29, 18, 30, tzinfo=timezone.utc)
 
 
 def _with(cross: dict | None):
-    from RevenueChaser.core.tests.board_fixtures import newdata_fixture
+    from revenuechaser.core.tests.board_fixtures import newdata_fixture
     nd = newdata_fixture()
     nd["cross_check"] = cross
     return nd

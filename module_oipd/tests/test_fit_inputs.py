@@ -6,7 +6,7 @@ from datetime import date, timedelta
 
 import numpy as np
 
-from RevenueChaser.module_oipd import config, engine, opd_math, uw_chain
+from revenuechaser.module_oipd import config, engine, opd_math, uw_chain
 
 _ASOF = "2026-11-17"
 _EXPIRY = (date.fromisoformat(_ASOF) + timedelta(days=45)).isoformat()
@@ -112,8 +112,8 @@ class TestTrustworthyFan:
 
 
 def test_the_board_follows_the_shared_theme():
-    from RevenueChaser.core.reporting_common import THEME_CSS
-    from RevenueChaser.module_oipd.report import render_oipd_dashboard
+    from revenuechaser.core.reporting_common import THEME_CSS
+    from revenuechaser.module_oipd.report import render_oipd_dashboard
     page = render_oipd_dashboard({"ticker": "TST", "asof": _ASOF, "spot": 100.0, "n_contracts": 10,
                                   "horizon_days": 30, "risk_free": 0.04, "error": None, "warnings": [],
                                   "expiries": []})

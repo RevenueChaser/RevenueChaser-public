@@ -9,10 +9,10 @@ from datetime import date, datetime, timezone
 
 import pytest
 
-from RevenueChaser.core import calendar
-from RevenueChaser.core.providers import unusual_whales
-from RevenueChaser.rcdata import ops, read, serving
-from RevenueChaser.rcdata.build import DATASETS, base, due, uw_fda_calendar as fda
+from revenuechaser.core import calendar
+from revenuechaser.core.providers import unusual_whales
+from revenuechaser.rcdata import ops, read, serving
+from revenuechaser.rcdata.build import DATASETS, base, due, uw_fda_calendar as fda
 
 pytestmark = pytest.mark.usefixtures("kinds_full")
 
@@ -131,7 +131,7 @@ def test_no_market_file_reads_as_no_rows():
 
 
 def test_the_dataset_is_an_hourly_market_source_and_the_kind_is_market_5(http_mock):
-    from RevenueChaser.rcdata import scaffold
+    from revenuechaser.rcdata import scaffold
     assert serving.SERVING_SCHEMA_VERSION["market"] == 5
     assert DATASETS[fda.NAME].cadence == "hourly" and DATASETS[fda.NAME].kind == "market"
     assert scaffold.SCHEMA_OF_KIND["market"][fda.TABLE] == list(fda.SCHEMA)
@@ -151,7 +151,7 @@ def test_an_hourly_dataset_is_due_again_an_hour_after_its_run(http_mock, monkeyp
 
 
 def test_the_need_catalog_knows_the_table_and_asks_no_names():
-    from RevenueChaser.rcdata.needs import catalog, screen
+    from revenuechaser.rcdata.needs import catalog, screen
     need = catalog.NEEDS["market.fda_calendar"]
     assert (need.table, need.day_column, need.max_lag_unit) == (fda.TABLE, "snapshot_date", catalog.DAYS)
     assert need.reader is read.fda_calendar and need.ask_param is None

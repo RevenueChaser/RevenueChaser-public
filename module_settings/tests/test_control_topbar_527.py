@@ -2,9 +2,9 @@
 gateway's state (moved up from the Sources tiles, avo 6 Nov 2026)."""
 from __future__ import annotations
 
-from RevenueChaser.module_settings import control
-from RevenueChaser.module_settings.tests.test_control_render_c1 import NOW
-from RevenueChaser.module_settings.tests.test_control_view import control_nd
+from revenuechaser.module_settings import control
+from revenuechaser.module_settings.tests.test_control_render_c1 import NOW
+from revenuechaser.module_settings.tests.test_control_view import control_nd
 
 
 def test_the_view_carries_both_switches_on_without_a_row_and_who_turned_one_off():

@@ -976,7 +976,7 @@ def attended_names() -> frozenset[str]:
     it to stay off the hourly pass entirely (#1219).
 
     The hourly builder leaves their requests in the queue (``ops.next_request(skip=...)``) and the attended runner
-    (``python -m RevenueChaser.rcdata.build attended``) claims only them, so a Fetch press on one of them waits for
+    (``python -m revenuechaser.rcdata.build attended``) claims only them, so a Fetch press on one of them waits for
     the terminal instead of being refused.
     """
     from . import DATASETS
@@ -1403,7 +1403,7 @@ def _stage(ctx: RunContext, ds, req: dict, params: dict, attended_ok: bool = Fal
             return _finish(ctx, req, {"result": "skipped", "note": paused}, "skipped", None), None
         if attended(ds) and not attended_ok and req.get("requested_by") != ATTENDED_BY:
             note = (f"skipped: attended dataset: it waits for the runner on the server (a person logs in): "
-                    f"python -m RevenueChaser.rcdata.build attended; requested by "
+                    f"python -m revenuechaser.rcdata.build attended; requested by "
                     f"{req.get('requested_by') or '?'}")
             return _finish(ctx, req, {"result": "skipped", "note": note}, "skipped", None), None
         refused = cap_problem(ds)

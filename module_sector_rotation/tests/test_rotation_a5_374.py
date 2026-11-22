@@ -14,11 +14,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from RevenueChaser.app import runners
-from RevenueChaser.app.jobs import JobMessage
-from RevenueChaser.core import calendar, ledger, rawstore
-from RevenueChaser.module_sector_rotation import engine, report as rot_report, store, universe
-from RevenueChaser.module_sector_rotation.tests.bars_seed import ny as _at, seed as _seed, sessions as _sessions
+from revenuechaser.app import runners
+from revenuechaser.app.jobs import JobMessage
+from revenuechaser.core import calendar, ledger, rawstore
+from revenuechaser.module_sector_rotation import engine, report as rot_report, store, universe
+from revenuechaser.module_sector_rotation.tests.bars_seed import ny as _at, seed as _seed, sessions as _sessions
 
 UNIVERSE = {
     "SPY": {"name": "S&P 500", "group": "benchmark"},
@@ -42,7 +42,7 @@ class _UW:
 
     def etf_ohlc_result(self, ticker, days=0, candle_size="1d"):
         self.calls.append(("etf_ohlc", ticker, candle_size))
-        from RevenueChaser.core.providers.result import ProviderResult
+        from revenuechaser.core.providers.result import ProviderResult
         return ProviderResult("ok", [], None, "")
 
     def health(self):

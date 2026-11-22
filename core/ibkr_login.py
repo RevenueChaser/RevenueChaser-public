@@ -63,7 +63,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from RevenueChaser.core import config   # noqa: F401 - imported for its load_dotenv() on .env
+from revenuechaser.core import config   # noqa: F401 - imported for its load_dotenv() on .env
 
 # The three readings the probe can make, the two the record can be in before one is made, and the
 # one the card shows when the check is switched off.

@@ -158,8 +158,8 @@ file disagree, trust the code, then fix this file in the same change.
   the S&P 1500 snapshot. A completeness guard stops a partial fetch from
   shrinking a list. It goes with the old path (plan PR 21).
   **Russell 2000 is deferred** (#9).
-- Build: `python -m RevenueChaser.scripts.index_lists --weekly` (the old lists);
-  `python -m RevenueChaser.core.index_registry` prints what the boards read.
+- Build: `python -m revenuechaser.scripts.index_lists --weekly` (the old lists);
+  `python -m revenuechaser.core.index_registry` prints what the boards read.
 
 ## 7. Tracking
 

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from RevenueChaser.core import datahealth
+from revenuechaser.core import datahealth
 
 TODAY = date(2026, 10, 23)
 
@@ -173,7 +173,7 @@ def test_module_does_not_import_store_or_network():
 
 
 def test_scoped_runs_a_function_once_per_distinct_call_inside_a_memo_scope_and_always_outside():
-    from RevenueChaser.core import datahealth
+    from revenuechaser.core import datahealth
     calls = []
 
     @datahealth.scoped

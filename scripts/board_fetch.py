@@ -1,4 +1,4 @@
-"""The nightly Fetch of one board (avo 17 Nov 2026, choice a): ``python -m RevenueChaser.scripts.board_fetch <board>``.
+"""The nightly Fetch of one board (avo 17 Nov 2026, choice a): ``python -m revenuechaser.scripts.board_fetch <board>``.
 
 One RC-Fetch-<Board> registry row per board, each its own server timer, installed disabled: a board's timer is switched
 on only once its review and rule decisions are done. The task runs after the nightly prices build and asks nothing until
@@ -26,7 +26,7 @@ import time
 
 import httpx
 
-from RevenueChaser.core import calendar, ledger
+from revenuechaser.core import calendar, ledger
 
 EXIT_NOT_READY = 3
 DASHBOARD = "http://127.0.0.1:8000"     # app.dashboard.main's port

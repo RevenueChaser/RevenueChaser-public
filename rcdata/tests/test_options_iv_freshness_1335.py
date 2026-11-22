@@ -10,12 +10,12 @@ from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
-from RevenueChaser.core import calendar
-from RevenueChaser.core.providers import ibkr_tws as ibkr
-from RevenueChaser.rcdata import ops
-from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.options import ibkr_iv
-from RevenueChaser.rcdata.needs import catalog as needs_catalog
+from revenuechaser.core import calendar
+from revenuechaser.core.providers import ibkr_tws as ibkr
+from revenuechaser.rcdata import ops
+from revenuechaser.rcdata.build import base
+from revenuechaser.rcdata.build.options import ibkr_iv
+from revenuechaser.rcdata.needs import catalog as needs_catalog
 
 from .ibkr_fixture import FakeGateway
 from .options_fixture import SESSION

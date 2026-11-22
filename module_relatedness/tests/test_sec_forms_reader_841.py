@@ -10,15 +10,15 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.core.providers import sec_edgar
-from RevenueChaser.module_relatedness import config, engine, locator, profile_v3, profiles
-from RevenueChaser.module_relatedness.tests.test_relatedness import long_body, v3_reply
-from RevenueChaser.rcdata import read
-from RevenueChaser.rcdata.build.fundamentals import companyfacts, filings
-from RevenueChaser.rcdata.build.sec_forms import forms
-from RevenueChaser.rcdata.tests import fund_fixture as fx
-from RevenueChaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401  (fixtures)
+from revenuechaser.core import rawstore
+from revenuechaser.core.providers import sec_edgar
+from revenuechaser.module_relatedness import config, engine, locator, profile_v3, profiles
+from revenuechaser.module_relatedness.tests.test_relatedness import long_body, v3_reply
+from revenuechaser.rcdata import read
+from revenuechaser.rcdata.build.fundamentals import companyfacts, filings
+from revenuechaser.rcdata.build.sec_forms import forms
+from revenuechaser.rcdata.tests import fund_fixture as fx
+from revenuechaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401  (fixtures)
 
 BUSINESS = "We build cloud software and developer tools for enterprises. " * 40
 
@@ -115,15 +115,15 @@ def test_a_run_stops_when_the_sections_are_cut_with_another_rule_version(layer, 
 
 def test_the_comparison_job_stops_at_the_same_guard(filings_only, writer):
     """Review of PR #842, finding 6: ``compare.run`` prepared its inputs without the board's guard."""
-    from RevenueChaser.core import llm_writers as writers
-    from RevenueChaser.module_relatedness import compare
+    from revenuechaser.core import llm_writers as writers
+    from revenuechaser.module_relatedness import compare
     provider = "deepseek"
     out = compare.run(["MSFT"], provider, writers.get(provider).models[0])
     assert out["stopped_reason"] == "forms" and out["usable"] == 0 and writer == []
 
 
 def test_a_forms_stop_fails_the_scheduled_task():
-    from RevenueChaser.module_relatedness import __main__ as cli
+    from revenuechaser.module_relatedness import __main__ as cli
     assert "forms" in cli._FAILED_STOP_REASONS
 
 
@@ -285,7 +285,7 @@ def test_the_two_notes_asked_for_are_the_filings_own_tag_names_and_stay_outside_
 
 
 def test_a_stored_profile_reads_stale_after_the_version_bump():
-    from RevenueChaser.module_relatedness import store
+    from revenuechaser.module_relatedness import store
     old = store.cache_key("m", False, "", "v3c", "NVDA", "h")
     assert store.is_stale({"cache_key": old}, {"model": "m", "thinking": False, "effort": "",
                                                "prompt_version": config.PROMPT_VERSION})

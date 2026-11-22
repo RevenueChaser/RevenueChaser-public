@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.module_spx_gamma.levels import (
+from revenuechaser.module_spx_gamma.levels import (
     band_walls,
     cumulative_gex_crossing,
     cumulative_gex_envelope,

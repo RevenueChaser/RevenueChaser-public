@@ -5,9 +5,9 @@ from __future__ import annotations
 import json
 from types import SimpleNamespace
 
-from RevenueChaser.module_settings import control, control_sources
-from RevenueChaser.rcdata import scaffold
-from RevenueChaser.rcdata.build.spine import my_universe
+from revenuechaser.module_settings import control, control_sources
+from revenuechaser.rcdata import scaffold
+from revenuechaser.rcdata.build.spine import my_universe
 
 
 def _ds(kind, tables, providers):
@@ -20,7 +20,7 @@ def _sample(table, rows=()):
 
 
 def _pv(sample, datasets=None):
-    from RevenueChaser.rcdata.build import DATASETS
+    from revenuechaser.rcdata.build import DATASETS
     return dict(zip([c["name"] for c in sample["columns"]],
                     control_sources.columns_by_source(sample, DATASETS if datasets is None else datasets)))
 
@@ -91,7 +91,7 @@ def test_a_table_with_no_first_source_is_mix():
 
 
 def test_the_first_source_wins_over_the_others(monkeypatch):
-    from RevenueChaser.rcdata.needs import screen
+    from revenuechaser.rcdata.needs import screen
     datasets = {"sec/cover_shares": _ds("prices", ["shares_class"], ["sec"]),
                 "yfinance/float": _ds("prices", ["shares_class"], ["yfinance"])}
     assert screen.DATASETS["sec/cover_shares"].role == "first"
@@ -99,7 +99,7 @@ def test_the_first_source_wins_over_the_others(monkeypatch):
 
 
 def test_every_sample_of_the_board_gets_its_keys():
-    from RevenueChaser.module_settings.tests.test_control_view import _build, control_nd
+    from revenuechaser.module_settings.tests.test_control_view import _build, control_nd
     nd = control_nd()
     nd["datasets"][0]["samples"] = [_sample("price_bar_daily")]
     view = _build(nd)
@@ -157,7 +157,7 @@ def test_the_rule_words_follow_the_json(tmp_path):
 
 
 def test_the_board_carries_the_funnel():
-    from RevenueChaser.module_settings.tests.test_control_view import _build, control_nd
+    from revenuechaser.module_settings.tests.test_control_view import _build, control_nd
     nd = control_nd()
     nd.update(_spine_nd())
     view = _build(nd)

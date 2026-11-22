@@ -16,8 +16,8 @@ import logging
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from RevenueChaser.core import calendar
-from RevenueChaser.rcdata import read as market_read
+from revenuechaser.core import calendar
+from revenuechaser.rcdata import read as market_read
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +70,7 @@ _CALENDAR_NEED = "options.screener"
 
 def calendar_max_lag() -> int:
     """Sessions the served calendar may lag the board's day by, read from the need catalog on every call."""
-    from RevenueChaser.rcdata import needs
+    from revenuechaser.rcdata import needs
     need = needs.catalog.NEEDS[_CALENDAR_NEED]
     if need.max_lag_unit != "sessions":
         raise ValueError(f"{_CALENDAR_NEED}: this reader counts sessions, the catalog says {need.max_lag_unit}")
@@ -79,7 +79,7 @@ def calendar_max_lag() -> int:
 
 def calendar_days_ahead() -> int:
     """The report days a built session covers — the builder's own window, never a second copy of 28."""
-    from RevenueChaser.rcdata.build.options.uw_screener import DAYS_AHEAD
+    from revenuechaser.rcdata.build.options.uw_screener import DAYS_AHEAD
     return int(DAYS_AHEAD)
 
 
@@ -381,7 +381,7 @@ def ohlc_bars(tickers) -> dict[str, list[dict]]:
     names = sorted({str(t).upper() for t in (tickers or []) if t})
     if not names:
         return {}
-    from RevenueChaser.core import prices
+    from revenuechaser.core import prices
     start = calendar.latest_complete_session() - timedelta(days=_OHLC_LOOKBACK_DAYS)
     try:
         frame = prices.daily_bars(names, basis="nominal", start=start)

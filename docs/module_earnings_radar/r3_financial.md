@@ -79,7 +79,7 @@ UW's financials endpoint provides 54 quarters of:
 
 ## Minimum Coverage Gate
 
-R3 needs **at least 4 usable quarters** (a quarterly row with revenue; the last 8 are read), as `docs/module_earnings-radar/redesign.md` R3 locks: with fewer it returns **unavailable** and does not contribute to the composite, so one quarter's levels never vote (Fable review S5). With enough quarters, fewer than 2 financial features available is unavailable too. The rule's coverage is the quarter bucket (4: 0.40, 5-7: 0.60, 8: 0.80, R2's numbers); the share of the cluster's signals present stays a raw metric (`signal_coverage`, never above 1). **Default chosen, change if avo prefers:** the alternative is the older rule of this page, unavailable only below 2 features, which would then be written into redesign.md instead.
+R3 needs **at least 4 usable quarters** (a quarterly row with revenue; the last 8 are read), as `docs/module_earnings_radar/redesign.md` R3 locks: with fewer it returns **unavailable** and does not contribute to the composite, so one quarter's levels never vote (Fable review S5). With enough quarters, fewer than 2 financial features available is unavailable too. The rule's coverage is the quarter bucket (4: 0.40, 5-7: 0.60, 8: 0.80, R2's numbers); the share of the cluster's signals present stays a raw metric (`signal_coverage`, never above 1). **Default chosen, change if avo prefers:** the alternative is the older rule of this page, unavailable only below 2 features, which would then be written into redesign.md instead.
 
 ## Example: SE (C5 — Marketplace/Consumer)
 

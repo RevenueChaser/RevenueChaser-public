@@ -17,7 +17,7 @@ from pathlib import Path
 import httpx
 
 REPO_PARENT = Path(__file__).resolve().parents[4]
-ENTRYPOINT = "RevenueChaser.module_testing.e2e.harness.dashboard_entrypoint"
+ENTRYPOINT = "revenuechaser.module_testing.e2e.harness.dashboard_entrypoint"
 
 STARTUP_TIMEOUT = 60.0
 JOB_TIMEOUT = 180.0
@@ -222,7 +222,7 @@ class Dashboard:
     def db_file(self, table: str) -> Path:
         """The board file MANIFEST places ``table`` in, ``<store>/boards/<board>.duckdb`` (S9); the old store files
         are gone (#860), so a table with no board answers a path that does not exist and counts 0."""
-        from RevenueChaser.core import rawstore
+        from revenuechaser.core import rawstore
         name = rawstore.MANIFEST.get(table, {}).get("db") or "none"
         return self.store_dir / rawstore.BOARDS_DIRNAME / f"{name}.duckdb"
 

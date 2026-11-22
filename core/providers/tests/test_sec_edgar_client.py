@@ -4,7 +4,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from RevenueChaser.core.providers import sec_edgar as se
+from revenuechaser.core.providers import sec_edgar as se
 
 
 class _Resp:

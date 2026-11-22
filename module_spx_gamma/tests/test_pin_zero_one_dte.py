@@ -11,11 +11,11 @@ from datetime import datetime, timezone
 
 import pytest
 
-from RevenueChaser.core import calendar
-from RevenueChaser.module_spx_gamma import render, store_reads
-from RevenueChaser.module_spx_gamma.config import PIN_MAGNET_MIN_DOLLARS, UPSIDE_TRIGGER_MIN_MAGNITUDE
-from RevenueChaser.module_spx_gamma.engines.prediction_engine import generate_prediction_matrix, scenario_extraction
-from RevenueChaser.module_spx_gamma.normalize import normalize_snapshot
+from revenuechaser.core import calendar
+from revenuechaser.module_spx_gamma import render, store_reads
+from revenuechaser.module_spx_gamma.config import PIN_MAGNET_MIN_DOLLARS, UPSIDE_TRIGGER_MIN_MAGNITUDE
+from revenuechaser.module_spx_gamma.engines.prediction_engine import generate_prediction_matrix, scenario_extraction
+from revenuechaser.module_spx_gamma.normalize import normalize_snapshot
 
 from . import rcdata_fixture as fx
 from .conftest import make_raw

@@ -5,9 +5,9 @@ import copy
 
 import pytest
 
-from RevenueChaser.module_spx_gamma import relations, render, summary
-from RevenueChaser.module_spx_gamma.engines import prediction_engine as pe
-from RevenueChaser.module_spx_gamma.normalize import compute_positioning_deltas, normalize_snapshot
+from revenuechaser.module_spx_gamma import relations, render, summary
+from revenuechaser.module_spx_gamma.engines import prediction_engine as pe
+from revenuechaser.module_spx_gamma.normalize import compute_positioning_deltas, normalize_snapshot
 
 from .conftest import make_raw, make_snapshot
 
@@ -238,7 +238,7 @@ def test_report_lists_the_flip_methods():
 
 
 def test_zero_flow_at_a_wall_does_not_divide_by_zero():
-    from RevenueChaser.module_spx_gamma.flow_signals import evaluate_flow_signal
+    from revenuechaser.module_spx_gamma.flow_signals import evaluate_flow_signal
     snap = make_snapshot()
     snap["flow_strikes"] = [{"strike": 7750.0, "call_volume": 0.0, "put_volume": 0.0}]
     snap["current_level"] = 7740.0

@@ -25,7 +25,7 @@ import time
 
 import pytest
 
-from RevenueChaser.rcdata import sec_sections
+from revenuechaser.rcdata import sec_sections
 
 from .sec_sections_cases import BODY
 

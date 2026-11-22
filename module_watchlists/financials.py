@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from RevenueChaser.core import trailing_year
+from revenuechaser.core import trailing_year
 
 #: The flows the trailing year must carry, and the balance figure the EPS quotient divides by.
 TTM_FLOWS = ("revenue", "net_income")

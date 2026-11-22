@@ -7,8 +7,8 @@ move, below 545.33), and charm turning from minus to plus.
 """
 from __future__ import annotations
 
-from RevenueChaser.module_spx_gamma import regime
-from RevenueChaser.module_spx_gamma.vix import ivts
+from revenuechaser.module_spx_gamma import regime
+from revenuechaser.module_spx_gamma.vix import ivts
 
 
 def _snapshot(**over) -> dict:

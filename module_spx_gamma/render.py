@@ -6,7 +6,7 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 from markupsafe import Markup
 
-from RevenueChaser.core.reporting_common import (THEME_CSS, THEME_JS, help_html, notice_html, provider_health_html)
+from revenuechaser.core.reporting_common import (THEME_CSS, THEME_JS, help_html, notice_html, provider_health_html)
 
 from . import expected_move
 from .close_check import close_card

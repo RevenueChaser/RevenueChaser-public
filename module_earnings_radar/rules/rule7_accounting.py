@@ -18,8 +18,8 @@ Honest inputs:
 - coverage is 1.0 when Sloan is present, else 0 — the score is not scaled;
 - deferred revenue / RPO are **not** scored here (R3 SaaS already owns them).
 """
-from RevenueChaser.core.config import SCORE_RANGE, R7_NI_MISMATCH_TOL as NI_MISMATCH_TOL
-from RevenueChaser.module_earnings_radar.models import RuleResult
+from revenuechaser.core.config import SCORE_RANGE, R7_NI_MISMATCH_TOL as NI_MISMATCH_TOL
+from revenuechaser.module_earnings_radar.models import RuleResult
 
 
 def _get(row, key, default=None):

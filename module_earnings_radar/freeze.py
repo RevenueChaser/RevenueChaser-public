@@ -22,13 +22,13 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from RevenueChaser.core import ledger
-from RevenueChaser.core.config import (
+from revenuechaser.core import ledger
+from revenuechaser.core.config import (
     FLOW_SWEEP_BLOCK_MIN, INST_FLOW_MIN_NET, MAX_DEEP_CHECKS_PER_DAY, MAX_EXPECTED_MOVE_PCT,
     MIN_DOLLAR_OPTION_VOLUME, MIN_EXPECTED_MOVE_PCT, MIN_OPTION_VOLUME, MIN_TOTAL_OI, RULE_WEIGHTS,
     DIRECTION_RANGE, VOLATILITY_EDGE_RANGE, WATCHLIST_BYPASS,
 )
-from RevenueChaser.module_earnings_radar import composite
+from revenuechaser.module_earnings_radar import composite
 
 SOURCE = "earnings_radar"
 LABEL = "Earnings Radar"

@@ -9,12 +9,12 @@ from __future__ import annotations
 
 import duckdb
 
-from RevenueChaser.core.tests.panel_client import panel_test_client
-from RevenueChaser.rcdata import serving
+from revenuechaser.core.tests.panel_client import panel_test_client
+from revenuechaser.rcdata import serving
 
 
 def _app():
-    from RevenueChaser.app.dashboard import app
+    from revenuechaser.app.dashboard import app
     return app
 
 

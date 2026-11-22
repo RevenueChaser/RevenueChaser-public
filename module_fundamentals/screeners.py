@@ -10,7 +10,7 @@ method fully clears its threshold (Rule of 40 ≥ 40, Quality 3/3, Momentum 3/3)
 """
 from __future__ import annotations
 
-from RevenueChaser.core import tristate as tri
+from revenuechaser.core import tristate as tri
 
 from . import config
 from . import debt

@@ -5,7 +5,7 @@ import math
 
 import pytest
 
-from RevenueChaser.rcdata import read
+from revenuechaser.rcdata import read
 
 from .test_prices_serving import AAPL, FLG, built, env  # noqa: F401 - the built prices store of the week
 

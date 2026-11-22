@@ -14,12 +14,12 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from RevenueChaser.core.config import R6_RATE_VETO
-from RevenueChaser.module_earnings_radar import stored_inputs
-from RevenueChaser.module_earnings_radar.pipeline import EarningsPipeline
-from RevenueChaser.module_earnings_radar.tests.market_store_fixture import serve as serve_market
-from RevenueChaser.module_earnings_radar.tests.market_store_fixture import serve_economic
-from RevenueChaser.module_earnings_radar.tests.test_pipeline_score import (EXTREME_DURATION, _FakeUW,
+from revenuechaser.core.config import R6_RATE_VETO
+from revenuechaser.module_earnings_radar import stored_inputs
+from revenuechaser.module_earnings_radar.pipeline import EarningsPipeline
+from revenuechaser.module_earnings_radar.tests.market_store_fixture import serve as serve_market
+from revenuechaser.module_earnings_radar.tests.market_store_fixture import serve_economic
+from revenuechaser.module_earnings_radar.tests.test_pipeline_score import (EXTREME_DURATION, _FakeUW,
                                                                           _duration_ohlc_and_yields)
 
 NY = ZoneInfo("America/New_York")
@@ -33,7 +33,7 @@ NOW = datetime(2026, 1, 30, 23, 0, tzinfo=timezone.utc)   # Fri 18:00 New York: 
 @pytest.fixture(autouse=True)
 def _clock(monkeypatch):
     """The stored DGS10 must be fresh against the clock (review S3); the fixtures' series end in late January."""
-    from RevenueChaser.core import calendar
+    from revenuechaser.core import calendar
     monkeypatch.setattr(calendar, "_now", lambda: NOW)
 
 
@@ -287,7 +287,7 @@ def test_the_raw_packet_carries_the_overlap():
     assert json.loads(p2._score("AAPL").raw_packet_json)["rate_event_overlap"] is None
 
 
-# ── the noise gate: |t| < 2 is no veto (docs/module_earnings-radar/redesign.md, "Noisy gate") ───────────────────────────────────
+# ── the noise gate: |t| < 2 is no veto (docs/module_earnings_radar/redesign.md, "Noisy gate") ───────────────────────────────────
 
 def _noisy_ohlc_and_yields(true_beta=-(EXTREME_DURATION), n=60, seed=4, noise=0.02 * EXTREME_DURATION / 8.0):
     """A volatile name: a real yield dependence buried in daily noise, so |beta| > R6_RATE_VETO and |t| < 2.
@@ -323,8 +323,8 @@ def _ols_t(ohlc, yields):
 
 
 def test_yield_beta_tstat_is_the_ols_t_stat():
-    from RevenueChaser.module_earnings_radar.pipeline import yield_beta_tstat
-    from RevenueChaser.module_earnings_radar.rules import rule6_macro
+    from revenuechaser.module_earnings_radar.pipeline import yield_beta_tstat
+    from revenuechaser.module_earnings_radar.rules import rule6_macro
     ohlc, yields = _noisy_ohlc_and_yields()
     closes = {b["date"]: b["close"] for b in ohlc}
     beta = rule6_macro.yield_beta(closes, yields)
@@ -334,7 +334,7 @@ def test_yield_beta_tstat_is_the_ols_t_stat():
 
 
 def test_yield_beta_tstat_without_a_beta_is_none():
-    from RevenueChaser.module_earnings_radar.pipeline import yield_beta_tstat
+    from revenuechaser.module_earnings_radar.pipeline import yield_beta_tstat
     assert yield_beta_tstat({"2026-01-05": 1.0}, {"2026-01-05": 4.0}, None) is None
 
 

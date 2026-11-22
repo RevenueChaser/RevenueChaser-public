@@ -18,16 +18,16 @@ import json
 import logging
 from datetime import datetime, timezone
 
-from RevenueChaser.core.index_registry import annotate_cards
-from RevenueChaser.core import screen_common
-from RevenueChaser.core import universe as _universe
-from RevenueChaser.core.reporting_common import write_artifact
-from RevenueChaser.core.taxonomy import assign_themes
+from revenuechaser.core.index_registry import annotate_cards
+from revenuechaser.core import screen_common
+from revenuechaser.core import universe as _universe
+from revenuechaser.core.reporting_common import write_artifact
+from revenuechaser.core.taxonomy import assign_themes
 
 from . import config
 from . import flow as flow_mod
 from . import settings as swing_settings
-from RevenueChaser.core.scan_quality import ohlc_drop_reason
+from revenuechaser.core.scan_quality import ohlc_drop_reason
 from .indicators import compute_indicators
 from .ranking import composite, execution_levels, ma_alignment, percentile_ranks, quality_403030
 from .screeners import evaluate_direction, evaluate_minervini, evaluate_qullamaggie, evaluate_weinstein
@@ -53,7 +53,7 @@ def _now() -> str:
 
 def data_as_of() -> str | None:
     """The D01 date of the names this board last scored (the chip, ``core/provenance.py``; K7, #383 R3)."""
-    from RevenueChaser.core import provenance
+    from revenuechaser.core import provenance
     return provenance.data_as_of("module_swing_potential")
 
 

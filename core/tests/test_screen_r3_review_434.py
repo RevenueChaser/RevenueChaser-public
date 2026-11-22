@@ -21,14 +21,14 @@ from types import SimpleNamespace
 import pandas as pd
 import pytest
 
-from RevenueChaser.core import calendar as cal
-from RevenueChaser.core import ledger, prices, screen_common
-from RevenueChaser.core.tests import screen_parity as scn
-from RevenueChaser.module_fundamentals import freeze as fund_freeze
-from RevenueChaser.module_fundamentals import pipeline as fp
-from RevenueChaser.module_swing_potential import freeze as swing_freeze
-from RevenueChaser.module_swing_potential import pipeline as sp
-from RevenueChaser.core.tests.d01_seed import drop_d01, write_d01
+from revenuechaser.core import calendar as cal
+from revenuechaser.core import ledger, prices, screen_common
+from revenuechaser.core.tests import screen_parity as scn
+from revenuechaser.module_fundamentals import freeze as fund_freeze
+from revenuechaser.module_fundamentals import pipeline as fp
+from revenuechaser.module_swing_potential import freeze as swing_freeze
+from revenuechaser.module_swing_potential import pipeline as sp
+from revenuechaser.core.tests.d01_seed import drop_d01, write_d01
 
 D = date(2026, 10, 14)
 PREV = date(2026, 10, 13)

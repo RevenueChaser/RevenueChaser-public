@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from RevenueChaser.module_settings import control
-from RevenueChaser.module_settings.tests.test_control_view import NOW, _build, control_nd
+from revenuechaser.module_settings import control
+from revenuechaser.module_settings.tests.test_control_view import NOW, _build, control_nd
 
 GROUPS = {"data": {"fresh", "late", "stale", "never", "problems", "session", "universe"},
           "sources": {"cap"}, "scheduled": {"timer", "builder", "queue"}, "build": {"longest", "backup"}}

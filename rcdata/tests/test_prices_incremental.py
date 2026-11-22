@@ -17,10 +17,10 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.rcdata import serving
-from RevenueChaser.rcdata.build import base, dirty
-from RevenueChaser.rcdata.build.prices import stage, wrds_history
-from RevenueChaser.rcdata.build.prices import serving as prices_serving
+from revenuechaser.rcdata import serving
+from revenuechaser.rcdata.build import base, dirty
+from revenuechaser.rcdata.build.prices import stage, wrds_history
+from revenuechaser.rcdata.build.prices import serving as prices_serving
 
 from .prices_incremental_world import (
     AAPL, OLDCO, SPINE, _aapl_day, _clock, _note, _q, _report, _respine, _same_as_whole, _secd_rows, _serve,
@@ -245,7 +245,7 @@ def test_a_moved_gvkey_series_is_not_read_as_short(live):
 
 def test_a_late_cover_restates_the_caps_from_its_day(live, monkeypatch):
     """A cover whose as-of is long before anything else changed: the caps after it change, and only after it."""
-    from RevenueChaser.rcdata.build.prices import cover_shares
+    from revenuechaser.rcdata.build.prices import cover_shares
     path = cover_shares.partition_path(2026)
     rows = stage.read_rows(path) + [{
         "cik": "320193", "accession": "0000320193-25-000001", "form": "10-Q", "filed": date(2026, 10, 27),
@@ -278,7 +278,7 @@ def test_the_wrds_difference_report_is_kept_on_the_live_copy(live, monkeypatch):
 
 
 def test_a_changed_alpaca_action_replaces_the_one_served(live, monkeypatch):
-    from RevenueChaser.rcdata.build.prices import actions
+    from revenuechaser.rcdata.build.prices import actions
     path = actions.partition_path(2026)
     rows = stage.read_rows(path)
     assert rows

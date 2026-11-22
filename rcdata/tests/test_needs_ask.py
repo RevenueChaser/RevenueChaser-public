@@ -10,8 +10,8 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.core import calendar
-from RevenueChaser.rcdata import needs, ops, read
+from revenuechaser.core import calendar
+from revenuechaser.rcdata import needs, ops, read
 
 from .test_prices_serving import AAPL, FLG, built as prices_built, env  # noqa: F401 - the built prices store
 from .test_spine_security import built as spine_built, run_all  # noqa: F401 - the built spine of the 10 names

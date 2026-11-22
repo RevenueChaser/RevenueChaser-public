@@ -21,9 +21,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.core.providers import sec_edgar
-from RevenueChaser.rcdata import opens  # #566: pooled reads count for this run
+from revenuechaser.core import rawstore
+from revenuechaser.core.providers import sec_edgar
+from revenuechaser.rcdata import opens  # #566: pooled reads count for this run
 
 from . import aliases
 from . import config
@@ -60,16 +60,16 @@ def _reads_layer() -> bool:
     ``filing_section`` would let a Fetch replace every stored edge with none of the layer's, which is why this is
     a gate and not a preference.
     """
-    from RevenueChaser.core import fundamentals_layer
-    from RevenueChaser.rcdata import ops
-    from RevenueChaser.rcdata.build.sec_forms import forms
+    from revenuechaser.core import fundamentals_layer
+    from revenuechaser.rcdata import ops
+    from revenuechaser.rcdata.build.sec_forms import forms
     # shortcut: a partly built sec/forms still counts; add a coverage floor if a partial first build ever happens.
     return fundamentals_layer.reads_layer() and ops.ever_built(forms.NAME)
 
 
 def _default_tickers() -> list[str]:
     if config.USE_SHARED_UNIVERSE:
-        from RevenueChaser.core.universe import BOARD_OPERATING_ONLY, classification_universe
+        from revenuechaser.core.universe import BOARD_OPERATING_ONLY, classification_universe
         return classification_universe(operating_only=BOARD_OPERATING_ONLY["module_value_chain"])
     return list(config.SEED)
 
@@ -93,7 +93,7 @@ def _layer_filings(tickers: list[str] | None = None, text: bool = False):
     board has lived with a version pin ahead of its stored text before (``splitter``'s docstring), and dropping
     rows would empty the corpus instead of showing it.
     """
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     tickers = _default_tickers() if tickers is None else tickers
     by_cik: dict[str, list[str]] = {}
     for c in read.fundamental_companies(tickers):
@@ -283,7 +283,7 @@ def _stored_ciks() -> dict[str, str]:
     """The ticker -> CIK map of the spine (``rcdata.read.identity``), read only and never the network: no spine is
     "unknown" (``{}``), not a fetch. The old SEC exchange file rows (``sec_exchange_file`` / ``sec_company_tickers``
     in ``raw.duckdb``) were the source until #860 removed the old store."""
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     try:
         rows = read.identity()
     except Exception:  # noqa: BLE001 - no spine file reads as no map
@@ -401,10 +401,10 @@ def _xbrl_customer_edges(ticker: str, customers: list[dict], names: dict | None 
 
 def _stored_customers(rows: list[dict]) -> dict[str, list[dict]]:
     """``{ticker: customer_share rows}`` of the filings' companies on the fundamentals layer; empty off it."""
-    from RevenueChaser.core import fundamentals_layer
+    from revenuechaser.core import fundamentals_layer
     if not fundamentals_layer.reads_layer():
         return {}
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     by_cik: dict[str, list[dict]] = {}
     for c in read.customer_shares({r.get("cik") for r in rows}):
         by_cik.setdefault(str(c["cik"]), []).append(c)
@@ -414,7 +414,7 @@ def _stored_customers(rows: list[dict]) -> dict[str, list[dict]]:
 
 def _spine_names() -> dict:
     """The spine's company names for the XBRL customers (only read when a filing has some, on the layer)."""
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     return aliases.spine_names(read.identity())
 
 
@@ -529,7 +529,7 @@ def _service_profiles(rows: list[dict]) -> tuple[dict[str, dict], dict[str, str]
     A read that fails reads as "no profiles", so the filings' own XBRL edges stand, exactly as the stored-table
     read did.
     """
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     by_cik: dict[str, list[str]] = {}
     for r in rows:
         if r.get("cik"):
@@ -637,8 +637,8 @@ def _sync_mentions(edges: list[dict], covered: set[str]) -> int:
 
 def _board_filings(filings: list[dict]) -> list[dict]:
     """Filing rows plus the fields the universal dashboard filters need."""
-    from RevenueChaser.core.gics_map import sector_or_unclassified, sector_path
-    from RevenueChaser.core.universe import filter_fields
+    from revenuechaser.core.gics_map import sector_or_unclassified, sector_path
+    from revenuechaser.core.universe import filter_fields
     meta = filter_fields([f["ticker"] for f in filings])
     out = []
     for f in sorted(filings, key=lambda r: r["ticker"]):
@@ -668,7 +668,7 @@ def _board_payload(filings: list[dict], edges: list[dict], as_of: str,
     (``dst``) is a name in a filing's text, whatever type it is. Below-floor names
     that were synced earlier are not filtered here (out of scope: type only).
     """
-    from RevenueChaser.core.universe import (BOARD_OPERATING_ONLY, classification_universe, excluded_tickers,
+    from revenuechaser.core.universe import (BOARD_OPERATING_ONLY, classification_universe, excluded_tickers,
                                              theme_catalog)
     excluded = excluded_tickers()
     filings = [f for f in filings if f["ticker"] not in excluded]

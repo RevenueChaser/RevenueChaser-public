@@ -7,9 +7,9 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.core.providers import sec_edgar
-from RevenueChaser.rcdata.build.fundamentals import companyfacts, filings, ixbrl, wrds_fund
-from RevenueChaser.rcdata.build.spine import wrds as spine_wrds
+from revenuechaser.core.providers import sec_edgar
+from revenuechaser.rcdata.build.fundamentals import companyfacts, filings, ixbrl, wrds_fund
+from revenuechaser.rcdata.build.spine import wrds as spine_wrds
 
 from . import fund_fixture as fx
 

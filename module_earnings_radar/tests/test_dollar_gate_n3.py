@@ -2,10 +2,10 @@
 $50k) it was the OptVol gate a second time and the pre-score counted volume twice. It now reads the day's call plus
 put premium the UW screener serves, the same rule as the options data's earnings set
 (``rcdata/build/options/uw_screener.premium``). Offline."""
-from RevenueChaser.core.config import MIN_DOLLAR_OPTION_VOLUME
-from RevenueChaser.module_earnings_radar import pipeline
-from RevenueChaser.module_earnings_radar.pipeline import EarningsPipeline
-from RevenueChaser.rcdata.build.options import uw_screener
+from revenuechaser.core.config import MIN_DOLLAR_OPTION_VOLUME
+from revenuechaser.module_earnings_radar import pipeline
+from revenuechaser.module_earnings_radar.pipeline import EarningsPipeline
+from revenuechaser.rcdata.build.options import uw_screener
 
 BUSY = {"call_volume": 4000, "put_volume": 1000, "total_open_interest": 9000}
 

@@ -6,7 +6,7 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.rcdata import ops, read, serving
+from revenuechaser.rcdata import ops, read, serving
 
 from .test_spine_security import built, run_all  # noqa: F401 - the built spine of the 10 names
 
@@ -36,7 +36,7 @@ def test_identity_of_named_tickers_any_tier():
 
 @pytest.mark.usefixtures("built")
 def test_membership_now_and_on_a_past_day():
-    from RevenueChaser.rcdata.build.spine import funds
+    from revenuechaser.rcdata.build.spine import funds
     now = read.membership("sp400")
     assert {r["ticker"] for r in now} == {"HEI", "HEI-A"} and {r["source"] for r in now} == {funds.NAME}
     assert now[0]["status"] == ops.latest_check(funds.NAME)["result"]

@@ -5,14 +5,14 @@ from __future__ import annotations
 
 import json
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_relatedness import engine, service_import, store
-from RevenueChaser.module_relatedness.tests.test_sec_forms_reader_841 import filings_only, layer  # noqa: F401
-from RevenueChaser.module_relatedness.tests.test_service_profile_bytes import MSFT, ask_the_service, world  # noqa: F401
-from RevenueChaser.rcdata import read, sec_profile
-from RevenueChaser.rcdata.build.sec_reads import company_profile as cp
-from RevenueChaser.rcdata.build.sec_reads import reads
-from RevenueChaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401  (fixtures)
+from revenuechaser.core import rawstore
+from revenuechaser.module_relatedness import engine, service_import, store
+from revenuechaser.module_relatedness.tests.test_sec_forms_reader_841 import filings_only, layer  # noqa: F401
+from revenuechaser.module_relatedness.tests.test_service_profile_bytes import MSFT, ask_the_service, world  # noqa: F401
+from revenuechaser.rcdata import read, sec_profile
+from revenuechaser.rcdata.build.sec_reads import company_profile as cp
+from revenuechaser.rcdata.build.sec_reads import reads
+from revenuechaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401  (fixtures)
 
 
 def test_a_stored_profile_is_imported_with_the_services_hash_and_is_not_asked_again(world):

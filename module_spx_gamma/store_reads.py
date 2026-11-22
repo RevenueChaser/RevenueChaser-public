@@ -32,9 +32,9 @@ import functools
 import logging
 from datetime import date, timedelta
 
-from RevenueChaser.core import calendar
-from RevenueChaser.rcdata import needs, ops, read, serving
-from RevenueChaser.rcdata.needs.catalog import FromCatalog
+from revenuechaser.core import calendar
+from revenuechaser.rcdata import needs, ops, read, serving
+from revenuechaser.rcdata.needs.catalog import FromCatalog
 
 from .candles import window_lag, window_start
 from .vix import vix_term_mode

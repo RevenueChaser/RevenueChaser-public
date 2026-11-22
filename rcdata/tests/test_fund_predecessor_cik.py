@@ -16,9 +16,9 @@ from datetime import date
 import duckdb
 import pytest
 
-from RevenueChaser.core.providers import sec_edgar
-from RevenueChaser.rcdata.build import cik_history
-from RevenueChaser.rcdata.build.fundamentals import common, companyfacts, facts, tables
+from revenuechaser.core.providers import sec_edgar
+from revenuechaser.rcdata.build import cik_history
+from revenuechaser.rcdata.build.fundamentals import common, companyfacts, facts, tables
 
 from . import fund_fixture as fx
 
@@ -135,7 +135,7 @@ def test_a_second_build_does_not_double_the_copied_rows(sec):
 
 def _con(served: list[dict], staged: list[dict]) -> duckdb.DuckDBPyConnection:
     """A connection holding a served ``fundamental_fact`` and the companyfacts staging, both typed."""
-    from RevenueChaser.rcdata.build import base
+    from revenuechaser.rcdata.build import base
     blank = {c: None for c, _ in facts.FACT}
     con = duckdb.connect()
     tables.load(con, "fundamental_fact", [{**blank, **r} for r in served])

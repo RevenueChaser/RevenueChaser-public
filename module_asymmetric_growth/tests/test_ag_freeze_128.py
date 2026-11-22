@@ -5,9 +5,9 @@ from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
-from RevenueChaser.core import calendar as cal
-from RevenueChaser.core import ledger, rawstore
-from RevenueChaser.module_asymmetric_growth import engine, freeze
+from revenuechaser.core import calendar as cal
+from revenuechaser.core import ledger, rawstore
+from revenuechaser.module_asymmetric_growth import engine, freeze
 
 D = date(2026, 10, 2)
 POST_CLOSE = datetime(2026, 10, 2, 21, 0, tzinfo=timezone.utc)      # 17:00 ET
@@ -34,15 +34,15 @@ def _result(cards, *, universe_total=None, excluded=0, errors=0, **kw):
 
 def _spy_bar(minutes=45):
     """SPY's D01 bar for D, written ``minutes`` after the close: the freeze's anchor (#380 S4, decision 4)."""
-    from RevenueChaser.core.tests.d01_seed import seed_d01
-    from RevenueChaser.rcdata.tests import prices_store
+    from revenuechaser.core.tests.d01_seed import seed_d01
+    from revenuechaser.rcdata.tests import prices_store
     at = (cal.session_close(D) + timedelta(minutes=minutes)).timestamp()
     seed_d01("SPY", [D], at)
     prices_store.set_built_at(at)              # the served file's one build stamp (#642 PR 6), as given
 
 
 def _no_bars():
-    from RevenueChaser.core.tests.d01_seed import drop_d01
+    from revenuechaser.core.tests.d01_seed import drop_d01
     drop_d01()
 
 
@@ -143,7 +143,7 @@ def test_a_session_without_a_spy_d01_bar_freezes_nothing(store):
 
 
 def test_a_spy_bar_for_another_session_freezes_nothing(store):
-    from RevenueChaser.core.tests.d01_seed import seed_d01
+    from revenuechaser.core.tests.d01_seed import seed_d01
     seed_d01("SPY", [date(2026, 10, 1)], (cal.session_close(D) + timedelta(minutes=45)).timestamp())
     out = freeze.freeze_result(_result([_card("AAA", 9)]), run_id="x", now=POST_CLOSE)
     assert out.frozen == 0 and "2026-10-02" in ledger.take_notes()[0]

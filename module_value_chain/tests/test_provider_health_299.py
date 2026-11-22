@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core.providers import sec_edgar
-from RevenueChaser.module_value_chain import edgar_text, health, report
+from revenuechaser.core.providers import sec_edgar
+from revenuechaser.module_value_chain import edgar_text, health, report
 
 _CIK = "0000320193"
 

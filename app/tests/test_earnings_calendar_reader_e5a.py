@@ -14,8 +14,8 @@ from datetime import date, datetime, timezone
 
 import pytest
 
-from RevenueChaser.app import runners
-from RevenueChaser.core import calendar, rawstore
+from revenuechaser.app import runners
+from revenuechaser.core import calendar, rawstore
 
 SESSION = date(2026, 10, 13)          # Tuesday, the night the D26 sweep ran
 DAY = date(2026, 10, 16)              # Friday, the day the Fetch reads the calendar for (past the live days)
@@ -44,7 +44,7 @@ def _item(ticker, **over):
 @pytest.fixture
 def stored(monkeypatch):
     """``stored({(day, session): [item, ...]})``: what the board's reader answers for this test."""
-    from RevenueChaser.module_earnings_radar import stored_inputs
+    from revenuechaser.module_earnings_radar import stored_inputs
 
     def make(pairs: dict, session=SESSION):
         monkeypatch.setattr(stored_inputs, "calendar_items", lambda days, today=None: (dict(pairs), session))
@@ -153,7 +153,7 @@ def test_nothing_served_names_no_session_and_counts_every_pair_live(stored):
 
 
 def test_a_failing_reader_does_not_fail_the_fetch(monkeypatch):
-    from RevenueChaser.module_earnings_radar import stored_inputs
+    from revenuechaser.module_earnings_radar import stored_inputs
 
     def boom(days, today=None):
         raise RuntimeError("serving file locked")

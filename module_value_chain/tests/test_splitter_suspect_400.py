@@ -8,8 +8,8 @@ Competition / Human Capital / Employees / Available Information heading, 10-K on
 """
 from __future__ import annotations
 
-from RevenueChaser.module_value_chain import config, engine, reslice, splitter
-from RevenueChaser.rcdata.build.sec_forms import forms
+from revenuechaser.module_value_chain import config, engine, reslice, splitter
+from revenuechaser.rcdata.build.sec_forms import forms
 
 PROSE = "We make widgets for customers across many markets and we sell them through distributors worldwide.\n" * 60
 CLEAN = " Competition \n" + PROSE + " Human Capital \n" + PROSE

@@ -8,9 +8,9 @@ from datetime import date
 import pandas as pd
 import pytest
 
-from RevenueChaser.core.providers import spend
-from RevenueChaser.rcdata import ops
-from RevenueChaser.rcdata.build.fundamentals import common, fx_rates
+from revenuechaser.core.providers import spend
+from revenuechaser.rcdata import ops
+from revenuechaser.rcdata.build.fundamentals import common, fx_rates
 
 from . import fund_fixture as fx
 

@@ -11,7 +11,7 @@ import json
 
 import pytest
 
-from RevenueChaser.core.providers import sec_edgar as se
+from revenuechaser.core.providers import sec_edgar as se
 
 _ENDS = {"annual": ("2022-12-31", "2023-12-31"), "quarterly": ("2023-03-31", "2023-06-30")}
 

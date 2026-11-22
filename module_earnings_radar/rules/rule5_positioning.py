@@ -4,7 +4,7 @@ Who is positioned how, and what does that imply for the stock's reaction to
 earnings? Two independent components, at least one of which must be present or
 the rule is unavailable (never a zero fill):
 
-1. **Institutional lean** — from UW flow-recent, by the print's side (docs/module_earnings-radar/redesign.md R5, review S4):
+1. **Institutional lean** — from UW flow-recent, by the print's side (docs/module_earnings_radar/redesign.md R5, review S4):
    bullish = ask-side calls + bid-side puts, bearish = bid-side calls + ask-side puts, mid dropped, institutional
    = size >= 10 AND premium >= $10k (``aggregate_flow``). The net is scaled by the sided premium (a one-sided
    but small imbalance scores less than a clean sweep); a net under ``INST_FLOW_MIN_NET`` is Thin (present, no
@@ -13,7 +13,7 @@ the rule is unavailable (never a zero fill):
    ``R5_LEAN_SESSIONS`` sessions of the tape, strikes inside the R4 expected-move band, expiries from the report
    day out to ``R5_LEAN_EXPIRY_DAYS`` days after it.
 2. **Squeeze potential** — a ``none`` / ``fuel`` **tag** from the short interest or the borrow fee, never a score
-   (``docs/module_earnings-radar/redesign.md`` R5: "``none`` / ``fuel`` from ``si_float`` or ``fee_rate``. No Z ladder.
+   (``docs/module_earnings_radar/redesign.md`` R5: "``none`` / ``fuel`` from ``si_float`` or ``fee_rate``. No Z ladder.
    Low SI != bearish", #256). ``fuel`` when the short interest is at or above ``R5_FUEL_SI_PCT`` percent or the
    borrow fee at or above ``R5_FUEL_FEE_PCT`` percent a year; ``none`` below both. There is no utilization figure:
    UW serves none and the parser never derives one (#250). Days to cover is shown in the drawer's metrics and is
@@ -34,10 +34,10 @@ from typing import Optional
 
 from datetime import date
 
-from RevenueChaser.core.config import (
+from revenuechaser.core.config import (
     INST_FLOW_MIN_NET, R5_FUEL_FEE_PCT, R5_FUEL_SI_PCT, SCORE_RANGE,
 )
-from RevenueChaser.module_earnings_radar.models import RuleResult
+from revenuechaser.module_earnings_radar.models import RuleResult
 
 
 def score(

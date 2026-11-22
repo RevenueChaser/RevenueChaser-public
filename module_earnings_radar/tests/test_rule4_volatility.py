@@ -5,7 +5,7 @@ premium buyer), GEX short-gamma boost / long-gamma dampen only when spot is
 real (no fake $100 regime), historical straddle-payoff term, and coverage
 counting which of {EM, IV/RV, GEX, history} were present.
 """
-from RevenueChaser.module_earnings_radar.rules.rule4_volatility import score as r4_score
+from revenuechaser.module_earnings_radar.rules.rule4_volatility import score as r4_score
 
 
 class TestRule4Availability:

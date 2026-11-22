@@ -7,11 +7,11 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.app import dashboard
-from RevenueChaser.core import rawstore
-from RevenueChaser.core.tests.panel_client import panel_test_client
-from RevenueChaser.rcdata import ops
-from RevenueChaser.rcdata import read as wl_read
+from revenuechaser.app import dashboard
+from revenuechaser.core import rawstore
+from revenuechaser.core.tests.panel_client import panel_test_client
+from revenuechaser.rcdata import ops
+from revenuechaser.rcdata import read as wl_read
 
 # Each is refused by _valid_ticker: markup, a quote that would end an attribute, a path, a space, too long, empty-ish.
 HOSTILE = ["<script>", "A\"B", "A'B", "..", "A B", "ABCDEFGHIJK", "-AAA", "A%3CB", "A&B", "A;B"]
@@ -24,7 +24,7 @@ def client():
 
 
 def _history(kind: str) -> list[tuple]:
-    from RevenueChaser.module_watchlists import store
+    from revenuechaser.module_watchlists import store
     return [(r["symbol"], r["action"], r["changed_by"]) for r in reversed(store.changes(f"jobs.{kind}"))]
 
 

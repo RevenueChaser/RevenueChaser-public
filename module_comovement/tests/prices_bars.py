@@ -7,7 +7,7 @@ ticker's stored series. The module was named ``d01_bars`` until review S4 of PR 
 """
 from __future__ import annotations
 
-from RevenueChaser.rcdata.tests import prices_store
+from revenuechaser.rcdata.tests import prices_store
 
 
 def write_bars(rows: list[dict], *, replace: bool = True) -> int:

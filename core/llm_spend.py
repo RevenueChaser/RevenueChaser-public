@@ -39,7 +39,7 @@ from __future__ import annotations
 import logging
 import os
 
-from RevenueChaser.core import llm_prices
+from revenuechaser.core import llm_prices
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +78,7 @@ def day_cap_usd() -> float | None:
 def _ops():
     """``rcdata.ops``, imported on demand (reading this module may not pull the store's stack), or None."""
     try:
-        from RevenueChaser.rcdata import ops
+        from revenuechaser.rcdata import ops
         return ops
     except Exception:                                   # noqa: BLE001 - never the reason a job dies
         logger.warning("the spend ledger is not reachable", exc_info=True)

@@ -6,11 +6,11 @@ import json
 
 import pytest
 
-from RevenueChaser.rcdata.tests import universe_store
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_relatedness import config, engine, profiles as profiles_mod
-from RevenueChaser.module_relatedness import store, themes
-from RevenueChaser.module_relatedness.tests.test_themes import _profiles
+from revenuechaser.rcdata.tests import universe_store
+from revenuechaser.core import rawstore
+from revenuechaser.module_relatedness import config, engine, profiles as profiles_mod
+from revenuechaser.module_relatedness import store, themes
+from revenuechaser.module_relatedness.tests.test_themes import _profiles
 
 
 def _prof(**kw):
@@ -113,7 +113,7 @@ def test_cutover_keeps_older_runs(rawstore_tmp_db):
     assert _run_counts("old") == before
     assert rawstore.get("theme_runs", "old")["is_current"] == 0
     # The boards' Theme vocabulary still reads the current run only.
-    from RevenueChaser.core import universe
+    from revenuechaser.core import universe
     cat = universe.theme_catalog()
     assert cat and all(tid.startswith("new:") for tid in cat)
 
@@ -155,7 +155,7 @@ def test_stale_profiles_are_flagged_until_reprofiled(rawstore_tmp_db):
 
 
 def test_report_shows_stale_badge():
-    from RevenueChaser.module_relatedness import report
+    from revenuechaser.module_relatedness import report
     payload = {"as_of": "2026-10-01T00:00:00+00:00", "model": "m", "n": 2,
                "companies": [
                    {"ticker": "AAA", "name": "A", "sector": "Technology", "market_cap": 1e9,
@@ -178,7 +178,7 @@ def test_payload_marks_stale(rawstore_tmp_db):
 
 # ── C3: empty answers ───────────────────────────────────────────────────────
 def test_fenced_json_parses():
-    from RevenueChaser.module_relatedness.tests.test_relatedness import v3_reply
+    from revenuechaser.module_relatedness.tests.test_relatedness import v3_reply
     assert profiles_mod.parse_profile("```json\n" + v3_reply(["gpu"]) + "\n```")["products"] == ["gpu"]
     assert profiles_mod.parse_profile("```\n" + v3_reply(["a"]) + "\n```")["products"] == ["a"]
 

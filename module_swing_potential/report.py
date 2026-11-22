@@ -12,12 +12,12 @@ from __future__ import annotations
 
 import html as _html
 
-from RevenueChaser.core import funnel as funnel_mod
-from RevenueChaser.core import price_hygiene
-from RevenueChaser.core import universe as _universe
-from RevenueChaser.core.gics_map import sector_path
-from RevenueChaser.core.html_safe import ESC_JS, fill, script_json
-from RevenueChaser.core.reporting_common import (
+from revenuechaser.core import funnel as funnel_mod
+from revenuechaser.core import price_hygiene
+from revenuechaser.core import universe as _universe
+from revenuechaser.core.gics_map import sector_path
+from revenuechaser.core.html_safe import ESC_JS, fill, script_json
+from revenuechaser.core.reporting_common import (
     FILTERS_CSS,
     FILTERS_JS,
     PAYLOAD_JS,
@@ -30,10 +30,10 @@ from RevenueChaser.core.reporting_common import (
     universe_provenance_html,
     watchlist_html,
 )
-from RevenueChaser.core.scan_quality import no_data_hint, regime_parts
-from RevenueChaser.module_swing_potential import config
-from RevenueChaser.module_swing_potential import settings as swing_settings
-from RevenueChaser.module_swing_potential.screeners import (
+from revenuechaser.core.scan_quality import no_data_hint, regime_parts
+from revenuechaser.module_swing_potential import config
+from revenuechaser.module_swing_potential import settings as swing_settings
+from revenuechaser.module_swing_potential.screeners import (
     evaluate_direction,
     evaluate_minervini,
     evaluate_qullamaggie,

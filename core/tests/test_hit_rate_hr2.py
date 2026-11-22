@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from RevenueChaser.core import hit_rate, outcomes
+from revenuechaser.core import hit_rate, outcomes
 
 D0 = date(2026, 1, 5)
 

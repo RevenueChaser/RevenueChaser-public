@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core import rawstore
+from revenuechaser.core import rawstore
 
 # Verified against the production tree on 2026-10-22 (#289), tests / module_testing / conftest.py /
 # core/rawstore.py excluded:

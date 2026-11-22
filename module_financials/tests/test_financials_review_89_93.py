@@ -14,14 +14,14 @@ import copy
 
 import pytest
 
-from RevenueChaser.rcdata.tests import universe_store
-from RevenueChaser.core import universe as spine
-from RevenueChaser.module_financials import peers as peer_ladder
-from RevenueChaser.module_financials.config import PEER_CAP_RATIO_BAND
-from RevenueChaser.module_financials.engines._inputs import NO_MINORITY_BRIDGE
-from RevenueChaser.module_financials.engines.comps_engine import run_comps
-from RevenueChaser.module_financials.engines.dcf_engine import _historical_fcff, run_dcf
-from RevenueChaser.module_financials.reporting.html_builder import build_report_html
+from revenuechaser.rcdata.tests import universe_store
+from revenuechaser.core import universe as spine
+from revenuechaser.module_financials import peers as peer_ladder
+from revenuechaser.module_financials.config import PEER_CAP_RATIO_BAND
+from revenuechaser.module_financials.engines._inputs import NO_MINORITY_BRIDGE
+from revenuechaser.module_financials.engines.comps_engine import run_comps
+from revenuechaser.module_financials.engines.dcf_engine import _historical_fcff, run_dcf
+from revenuechaser.module_financials.reporting.html_builder import build_report_html
 
 
 def _seed(rows):

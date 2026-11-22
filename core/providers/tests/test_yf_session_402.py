@@ -9,7 +9,7 @@ import logging
 
 import pytest
 
-from RevenueChaser.core.providers import yf_session
+from revenuechaser.core.providers import yf_session
 
 PC_LINE = 'HTTP Error 401: {"finance":{"result":null,"error":{"code":"Unauthorized","description":"Invalid Crumb"}}}'
 

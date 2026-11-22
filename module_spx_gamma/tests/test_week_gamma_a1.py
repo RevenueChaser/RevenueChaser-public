@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.module_spx_gamma import week_gamma
+from revenuechaser.module_spx_gamma import week_gamma
 
 
 def _r(expiry, strike, g):
@@ -62,7 +62,7 @@ def test_no_rows_no_map():
 
 
 def test_snapshot_and_page_carry_the_week_map():
-    from RevenueChaser.module_spx_gamma import render
+    from revenuechaser.module_spx_gamma import render
     from .conftest import make_snapshot
     snap = make_snapshot()                     # asof 2026-08-14, target 2026-08-21
     wm = snap["week_gamma"]

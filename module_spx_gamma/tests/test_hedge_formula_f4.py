@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.module_spx_gamma import levels
+from revenuechaser.module_spx_gamma import levels
 
 
 def test_hedge_for_25_points_reproduces_the_30_oct_report():

@@ -82,7 +82,7 @@ class Board:
 
 
 def _comovement(tmp_path, monkeypatch):
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
     m = lambda t: {"ticker": t, "name": "A", "sector": "Financial Services", "market_cap": 1e9,
                    "industry": "Banks - Diversified", "gics": ["Financial Services", "Banks - Diversified"],
                    "index": ["S&P 500"]}
@@ -102,7 +102,7 @@ def _comovement(tmp_path, monkeypatch):
 
 
 def _relatedness(tmp_path, monkeypatch):
-    from RevenueChaser.module_relatedness import config, report
+    from revenuechaser.module_relatedness import config, report
     co = lambda t, fine: {"ticker": t, "name": t + " Inc", "sector": "Technology", "industry": "Semiconductors",
                           "market_cap": 1e12, "weights": {"gpu": 1.0},
                           "profile": {"business_summary": "s", "products": ["p"]},
@@ -127,7 +127,7 @@ def _relatedness(tmp_path, monkeypatch):
 
 
 def _value_chain(tmp_path, monkeypatch):
-    from RevenueChaser.module_value_chain import report
+    from revenuechaser.module_value_chain import report
     p = {"as_of": "2026-09-17T00:00:00+00:00",
          "filings": [{"ticker": "NVDA", "name": "NVIDIA Corporation", "form": "10-K",
                       "filed": "2026-02-01", "quality": "ok", "market_cap": 1e12, "sector": "IT",
@@ -145,9 +145,9 @@ def _value_chain(tmp_path, monkeypatch):
 
 
 def _fundamentals(tmp_path, monkeypatch):
-    from RevenueChaser.module_fundamentals.pipeline import build_payload
-    from RevenueChaser.module_fundamentals.report import render_fundamental_dashboard
-    from RevenueChaser.module_fundamentals.tests.test_fundamental import _m
+    from revenuechaser.module_fundamentals.pipeline import build_payload
+    from revenuechaser.module_fundamentals.report import render_fundamental_dashboard
+    from revenuechaser.module_fundamentals.tests.test_fundamental import _m
     row = {"ticker": "AAA", "name": "Test", "price": 50.0, "market_cap": 1e9,
            "sector": "Technology", "industry": "Software", "themes": ["Software"],
            "earnings_date": None, "period": "Q2/2026 vs Q2/2025",
@@ -162,8 +162,8 @@ def _fundamentals(tmp_path, monkeypatch):
 
 
 def _swing(tmp_path, monkeypatch):
-    from RevenueChaser.module_swing_potential.pipeline import build_payload
-    from RevenueChaser.module_swing_potential.report import render_swing_dashboard
+    from revenuechaser.module_swing_potential.pipeline import build_payload
+    from revenuechaser.module_swing_potential.report import render_swing_dashboard
     gate = lambda n: {"name": n, "passed": True, "score": "3/3", "known": 1, "total": 1,
                       "rules": [{"label": "rule", "passed": True, "threshold": "> 1",
                                  "unit": "ratio", "actual": 1.2}]}
@@ -185,7 +185,7 @@ def _swing(tmp_path, monkeypatch):
 
 
 def _asymmetric_growth(tmp_path, monkeypatch):
-    from RevenueChaser.module_asymmetric_growth.report import render_asymmetric_growth_hunter_html
+    from revenuechaser.module_asymmetric_growth.report import render_asymmetric_growth_hunter_html
     thr = {"rev_growth": 0.2, "gross_margin": 0.4, "net_debt_assets": 0.1, "runway": 2.0,
            "dist_52w": 0.1, "vol_ratio": 1.4, "rd_intensity": 0.15, "dilution": 0.2,
            "accelerating": True, "fcf": True, "above_sma50": True}
@@ -205,7 +205,7 @@ def _asymmetric_growth(tmp_path, monkeypatch):
          "summary": {"scanned": 1, "pts_9": 0, "pts_8_7": 1, "pts_6_5": 0, "pts_lt5": 0,
                      "disruptive_themed": 0, "tech_breakthrough": 1},
          "thresholds": thr, "cards": [card]}
-    from RevenueChaser.core import funnel
+    from revenuechaser.core import funnel
     r["funnel_steps"] = [
         funnel.step("universe", "Universe", 3, "start"),
         funnel.step("no_annual", "No annual financials", 2, "drop", by_design=False, tickers=["AAA", "BBB"]),
@@ -223,13 +223,13 @@ def _asymmetric_growth(tmp_path, monkeypatch):
                         "unit": "pct"})
     # The cards come from the payload route (#380 S7, K10): the page loads them with rcPayload, so the hostile
     # cards ride in a fetch stub that answers it (static half: script JSON; browser half: the rendered cards).
-    from RevenueChaser.core.tests.board_js import with_payload
-    from RevenueChaser.module_asymmetric_growth.report import board_payload
+    from revenuechaser.core.tests.board_js import with_payload
+    from revenuechaser.module_asymmetric_growth.report import board_payload
     return with_payload(render_asymmetric_growth_hunter_html(hr), board_payload(hr))
 
 
 def _oipd(tmp_path, monkeypatch):
-    from RevenueChaser.module_oipd.report import render_oipd_dashboard
+    from revenuechaser.module_oipd.report import render_oipd_dashboard
     p = {"ticker": "AAPL", "asof": "2026-09-01", "spot": 100.0, "n_contracts": 10,
          "horizon_days": 30, "risk_free": 0.04, "error": None, "warnings": ["warn one"],
          "expiries": []}
@@ -240,7 +240,7 @@ def _oipd(tmp_path, monkeypatch):
 
 
 def _settings(tmp_path, monkeypatch):
-    from RevenueChaser.module_settings import report
+    from revenuechaser.module_settings import report
     p = {"generated_at": "2026-09-25T20:00:00+00:00",
          "tickers": [{"ticker": "AAPL", "name": "Apple Inc."}],
          "rows": [],
@@ -330,7 +330,7 @@ def newdata_fixture() -> dict:
 
 
 def _uw_interaction(tmp_path, monkeypatch):
-    from RevenueChaser.module_uw_interaction.report import render_board
+    from revenuechaser.module_uw_interaction.report import render_board
     p = {"tool_key": "flow_alerts", "label": "Flow Alerts", "family": "Options flow",
          "path": "/option-trades/flow-alerts", "help": "rule based",
          "params_used": {"limit": "10", "ticker": "AAPL"}, "columns": ["ticker", "premium"],
@@ -343,8 +343,8 @@ def _uw_interaction(tmp_path, monkeypatch):
 
 
 def _sec_13f(tmp_path, monkeypatch):
-    from RevenueChaser.core.tests.board_js import with_payload
-    from RevenueChaser.module_sec_13f.report import board_payload, render_sec13f_dashboard
+    from revenuechaser.core.tests.board_js import with_payload
+    from revenuechaser.module_sec_13f.report import board_payload, render_sec13f_dashboard
     q = lambda s: {"shares": s, "value": s * 10, "holders": 2, "new_holders": 1,
                    "exited_holders": 0, "top10_pct": 90.0, "hhi": 4000.0, "buy_flow": 1.0,
                    "sell_flow": 0.0}
@@ -361,7 +361,7 @@ def _sec_13f(tmp_path, monkeypatch):
 
 def _leaps(tmp_path, monkeypatch):
     """The LEAPS board (#746): one session of far-dated contracts, the rows drawn by the browser from LP_DATA."""
-    from RevenueChaser.module_leaps import board
+    from revenuechaser.module_leaps import board
     row = {"t": H("ticker"), "sym": H("sym"), "side": "C", "con": H("con"), "dte": 400, "prod": "stocks",
            "prem": 75000.0, "vol": 1000, "oi": 100, "next": 700, "chg": 600, "st": "matched", "share": 0.6,
            "ask": 0.5, "multi": 0.1, "out": False, "roll": H("roll")}
@@ -374,7 +374,7 @@ def _leaps(tmp_path, monkeypatch):
 def _hit_rate(tmp_path, monkeypatch):
     """The Hit Rate board (#25): a readable line and a dirty record, every free-text value hostile."""
     from datetime import date, timedelta
-    from RevenueChaser.module_hit_rate import board
+    from revenuechaser.module_hit_rate import board
     d0 = date(2026, 1, 5)
     picks = [{"source": H("source"), "subject": f"T{i}", "forecast_date": d0 + timedelta(days=i % 3),
               "model_version": H("model_version"), "horizon_days": 30, "status": "closed", "mfe": 0.2}
@@ -390,7 +390,7 @@ def _watchlists(tmp_path, monkeypatch):
     The list's name, its description, a section's name and a symbol's own spelling are all avo's free text, so
     every one of them carries a hostile value here.
     """
-    from RevenueChaser.module_watchlists import board
+    from revenuechaser.module_watchlists import board
     row = {"sym": H("sym"), "t": H("ticker"), "ex": H("exchange"), "cov": "us_equity", "nm": H("name"),
            "last": 173.73, "chg": 4.84, "chgp": 2.87, "vol": 339e6, "avol": 232e6, "cap": 4.19e12,
            "unit": None, "note": H("note")}
@@ -409,7 +409,7 @@ def _watchlists(tmp_path, monkeypatch):
 
 
 def _financials(tmp_path, monkeypatch):
-    from RevenueChaser.module_financials.reporting.html_builder import build_report_html
+    from revenuechaser.module_financials.reporting.html_builder import build_report_html
     fin = {"ticker": "TEST", "sector": "Technology", "shares_outstanding": 1000.0,
            "market_cap": 100_000.0, "current_price": 100.0, "currency": "USD",
            "source": "test", "info": {"longName": "Test Corp"}, "annual": []}
@@ -424,8 +424,8 @@ def _financials(tmp_path, monkeypatch):
 
 
 def _spx_gamma(tmp_path, monkeypatch):
-    from RevenueChaser.module_spx_gamma import render
-    from RevenueChaser.module_spx_gamma.tests.conftest import make_snapshot
+    from revenuechaser.module_spx_gamma import render
+    from revenuechaser.module_spx_gamma.tests.conftest import make_snapshot
     hs = copy.deepcopy(make_snapshot())
     for k in ("ticker", "source", "price_source"):
         if k in hs:
@@ -446,8 +446,8 @@ def _spx_gamma(tmp_path, monkeypatch):
 
 
 def _earnings(tmp_path, monkeypatch):
-    import RevenueChaser.module_earnings_radar.report as er
-    from RevenueChaser.module_earnings_radar.models import TradeCard
+    import revenuechaser.module_earnings_radar.report as er
+    from revenuechaser.module_earnings_radar.models import TradeCard
     monkeypatch.setattr(er, "OUTPUT_DIR", tmp_path)
     (tmp_path / "earnings").mkdir(parents=True, exist_ok=True)
     t = H("er_ticker")
@@ -467,8 +467,8 @@ def _earnings_detail(tmp_path, monkeypatch):
     """The drawer charts read ``detail_json`` (quarter labels and dates come from the
     provider, #175). The hostile-ticker card above cannot open a drawer (its row selector
     is invalid), so a plain ticker carries the hostile quarters, alone on the board."""
-    import RevenueChaser.module_earnings_radar.report as er
-    from RevenueChaser.module_earnings_radar.models import TradeCard
+    import revenuechaser.module_earnings_radar.report as er
+    from revenuechaser.module_earnings_radar.models import TradeCard
     monkeypatch.setattr(er, "OUTPUT_DIR", tmp_path)
     (tmp_path / "earnings").mkdir(parents=True, exist_ok=True)
     detail = [{"q": H("er_q"), "date": H("er_date"), "implied": 5.0, "actual": 3.0, "eps_actual": 1.2,
@@ -487,9 +487,9 @@ def _rotation(tmp_path, monkeypatch):
     """Hostile ETF identity (#175): a ticker, a configured name and a group name that no
     config entry spells. They reach the quadrant points, the table, the filter buttons
     and the summary chips; the config names are what the chart payload and the table read."""
-    import RevenueChaser.module_sector_rotation.report as rd
-    from RevenueChaser.core import rotation_reference
-    from RevenueChaser.module_sector_rotation.models import ETFRotationSnapshot
+    import revenuechaser.module_sector_rotation.report as rd
+    from revenuechaser.core import rotation_reference
+    from revenuechaser.module_sector_rotation.models import ETFRotationSnapshot
     monkeypatch.setattr(rd, "OUTPUT_DIR", tmp_path)
     monkeypatch.setattr(rd, "coarse_theme_catalog", lambda: {H("theme"): ["XLK"]})
     hostile = H("rot_ticker")
@@ -510,8 +510,8 @@ def _rotation(tmp_path, monkeypatch):
 def _rotation_trail(tmp_path, monkeypatch):
     """The trail page (``/view/rotation/trail``) is a second page with its own markup
     and its own picker: the same hostile ETF identity, over two sampled weeks."""
-    import RevenueChaser.module_sector_rotation.report as rd
-    from RevenueChaser.core import rotation_reference
+    import revenuechaser.module_sector_rotation.report as rd
+    from revenuechaser.core import rotation_reference
     monkeypatch.setattr(rd, "coarse_theme_catalog", lambda: {H("theme"): ["XLK"]})
     hostile = H("trail_ticker")
     monkeypatch.setitem(rotation_reference.SEED_ROTATION_ETFS, hostile,
@@ -525,8 +525,8 @@ def _rotation_trail(tmp_path, monkeypatch):
 
 
 def _logs(tmp_path, monkeypatch):
-    from RevenueChaser.app import logview
-    from RevenueChaser.core import config
+    from revenuechaser.app import logview
+    from revenuechaser.core import config
     monkeypatch.setattr(config, "LOG_DIR", tmp_path)
     # A request path is attacker-chosen (any page can make the browser GET /<markup>) and werkzeug logs it.
     (tmp_path / "dashboard.err.log").write_text(
@@ -538,15 +538,15 @@ def _logs(tmp_path, monkeypatch):
 
 
 def _runs(tmp_path, monkeypatch):
-    from RevenueChaser.app import runview
+    from revenuechaser.app import runview
     # The run log it showed (job_runs) went with raw.duckdb (#860): the page renders with no rows.
     return runview.render_page(runview.page_payload())
 
 
 def _news_rows(now: float) -> None:
     """Hostile calendar, highlight and headline rows in ``boards/news.duckdb``: every shown text is stored text."""
-    from RevenueChaser.core import rawstore
-    from RevenueChaser.module_news.calendar import local_day
+    from revenuechaser.core import rawstore
+    from revenuechaser.module_news.calendar import local_day
     rawstore.write_rows("news_events", [{
         "event_ts": now, "event": H("event"), "type": "report", "importance": 3, "forecast": H("forecast"),
         "prev": H("prev"), "reported_period": H("reported_period"), "first_seen": now, "last_seen": now,
@@ -563,7 +563,7 @@ def _news_rows(now: float) -> None:
 
 def _news(tmp_path, monkeypatch):
     import time
-    from RevenueChaser.module_news import report
+    from revenuechaser.module_news import report
     now = time.time()
     _news_rows(now)
     return report.render_html(now, provider_health=health("news"))
@@ -571,9 +571,9 @@ def _news(tmp_path, monkeypatch):
 
 def _welcome(tmp_path, monkeypatch):
     import time
-    from RevenueChaser.core import rawstore
-    from RevenueChaser.module_welcome import report
-    from RevenueChaser.module_welcome.build import earnings_days
+    from revenuechaser.core import rawstore
+    from revenuechaser.module_welcome import report
+    from revenuechaser.module_welcome.build import earnings_days
     now = time.time()
     _news_rows(now)
     day = earnings_days(now)[0]

@@ -8,8 +8,8 @@ import json
 
 import pytest
 
-from RevenueChaser.app import jobs
-from RevenueChaser.app.runners import run_uw_interaction
+from revenuechaser.app import jobs
+from revenuechaser.app.runners import run_uw_interaction
 
 
 class FakeUW:
@@ -25,7 +25,7 @@ class FakeUW:
 
 @pytest.fixture
 def state_path(tmp_path, monkeypatch):
-    from RevenueChaser.module_uw_interaction import config as uwcfg
+    from revenuechaser.module_uw_interaction import config as uwcfg
     d = tmp_path / "uw_interaction"
     d.mkdir(parents=True, exist_ok=True)
     monkeypatch.setattr(uwcfg, "UW_STATE_DIR", d)

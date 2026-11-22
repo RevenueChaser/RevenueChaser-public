@@ -7,8 +7,8 @@ names its real source (AG). Offline.
 """
 from datetime import date, datetime, timezone
 
-from RevenueChaser.module_earnings_radar.models import TradeCard
-from RevenueChaser.module_earnings_radar.report import export_html
+from revenuechaser.module_earnings_radar.models import TradeCard
+from revenuechaser.module_earnings_radar.report import export_html
 
 
 def _card(**overrides):
@@ -62,11 +62,11 @@ def test_the_owners_header_names_the_asymmetric_growth_source():
 
 def test_the_pipeline_card_carries_the_spine_sector_it_was_scored_against(monkeypatch):
     """The board cell reads ``card.sector``: the pipeline sets it from the spine, not from the calendar row."""
-    from RevenueChaser.module_earnings_radar.pipeline import EarningsPipeline
-    from RevenueChaser.module_earnings_radar.tests.test_pipeline_score import _FakeUW
-    from RevenueChaser.core import universe as spine
+    from revenuechaser.module_earnings_radar.pipeline import EarningsPipeline
+    from revenuechaser.module_earnings_radar.tests.test_pipeline_score import _FakeUW
+    from revenuechaser.core import universe as spine
 
-    from RevenueChaser.core.gics_map import GicsPath
+    from revenuechaser.core.gics_map import GicsPath
     monkeypatch.setattr(spine, "gics_of", lambda t, g=None: GicsPath("Industrials", "Machinery"))
     cal = {"AAA": {"earnings_date": "2026-08-14", "full_name": "AAA", "sector": "Technology",
                    "expected_move_perc": 0.05}}

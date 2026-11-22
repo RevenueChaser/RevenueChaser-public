@@ -3,9 +3,9 @@ from __future__ import annotations
 
 import pytest
 
-import RevenueChaser.core.ticker_store as ts
-from RevenueChaser.module_asymmetric_growth import engine as agh
-from RevenueChaser.module_financials.engines import quick_remarks_engine as qr
+import revenuechaser.core.ticker_store as ts
+from revenuechaser.module_asymmetric_growth import engine as agh
+from revenuechaser.module_financials.engines import quick_remarks_engine as qr
 
 
 def _card(total_points: int = 7) -> dict:
@@ -98,7 +98,7 @@ def _evil_result() -> dict:
 @pytest.mark.parametrize("fn", ["render_quick_remarks_section", "render_quick_remarks_html"])
 def test_render_escapes_provider_strings(fn):
     """FN-1: company, sector, source, signal and sub text are escaped."""
-    from RevenueChaser.module_financials.reporting import quick_remarks_html as qh
+    from revenuechaser.module_financials.reporting import quick_remarks_html as qh
     html = getattr(qh, fn)(_evil_result())
     assert "<img" not in html
     assert "<script" not in html
@@ -117,21 +117,21 @@ def _signals_result():
 
 
 def test_an_unknown_sub_has_a_question_mark_and_its_own_tone():
-    from RevenueChaser.module_financials.reporting import quick_remarks_html as qh
+    from revenuechaser.module_financials.reporting import quick_remarks_html as qh
     html = qh._signals_html(_signals_result())
     assert html.count("m-grey") == 2 and html.count("&#63;") == 2
     assert html.count("m-red") == 0 and html.count("m-green") == 7
 
 
 def test_the_signal_score_names_the_known_count_only_when_something_is_unknown():
-    from RevenueChaser.module_financials.reporting import quick_remarks_html as qh
+    from revenuechaser.module_financials.reporting import quick_remarks_html as qh
     html = qh._signals_html(_signals_result())
     assert "1/3 of 1 known" in html
     assert html.count("2/3") == 2 and html.count("known") == 1   # the other two carry no known field
 
 
 def test_a_stored_card_without_a_known_field_shows_the_plain_score():
-    from RevenueChaser.module_financials.reporting import quick_remarks_html as qh
+    from revenuechaser.module_financials.reporting import quick_remarks_html as qh
     card = _card(7)
     assert all("known" not in s for s in card["signals"])
     assert "known" not in qh._signals_html({"signals": card["signals"]})

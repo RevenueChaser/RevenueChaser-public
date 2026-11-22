@@ -6,7 +6,7 @@ latest_cache, operational. It is a label only. The pins of the old raw/edgar/his
 """
 from __future__ import annotations
 
-from RevenueChaser.core import rawstore
+from revenuechaser.core import rawstore
 
 HISTORY_MODES = {"event", "session_snapshot", "change_history", "latest_cache", "operational"}
 

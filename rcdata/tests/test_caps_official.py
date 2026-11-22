@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from RevenueChaser.rcdata import caps
-from RevenueChaser.rcdata.build import base
+from revenuechaser.rcdata import caps
+from revenuechaser.rcdata.build import base
 
 OWNER_MARK = "owner-marked avo 2026-11-02"
 
@@ -80,8 +80,8 @@ def test_run_pacer_is_one_per_provider_and_run_with_its_official_window():
 
 
 def test_each_provider_paces_at_its_official_window():
-    from RevenueChaser.core import sec_throttle
-    from RevenueChaser.rcdata.build.sources import alpaca
+    from revenuechaser.core import sec_throttle
+    from revenuechaser.rcdata.build.sources import alpaca
     ctx = base.RunContext(run_id="r", dataset="d", sleep=lambda s: None)
     assert sec_throttle.LIMIT == caps.WINDOWS["sec"][0]     # the SEC paths: see the fallback test below
     a = alpaca.pacer(ctx)
@@ -90,7 +90,7 @@ def test_each_provider_paces_at_its_official_window():
 
 def test_finra_pages_go_through_the_finra_window(monkeypatch, tmp_path):
     from datetime import date
-    from RevenueChaser.rcdata.build.ownership import finra
+    from revenuechaser.rcdata.build.ownership import finra
     waits = []
     ctx = base.RunContext(run_id="r", dataset="d", sleep=lambda s: None)
     monkeypatch.setattr(base.run_pacer(ctx, "finra"), "wait", lambda: waits.append(1))
@@ -108,12 +108,12 @@ def test_finra_pages_go_through_the_finra_window(monkeypatch, tmp_path):
 
 
 def test_the_spx_history_route_holds_no_uw_cap_of_its_own():
-    from RevenueChaser.app import dashboard
+    from revenuechaser.app import dashboard
     assert not hasattr(dashboard, "_SPX_HISTORY_MAX_CALLS") and caps.cap_for("uw") is None
 
 
 def test_module_financials_holds_no_uw_limit_of_its_own():
-    from RevenueChaser.module_financials import config
+    from revenuechaser.module_financials import config
     assert not hasattr(config, "UW_RATE_LIMIT_PER_MIN") and not hasattr(config, "UW_RATE_LIMIT_PER_DAY")
 
 
@@ -134,7 +134,7 @@ def yf_waits(monkeypatch):
 
 def test_the_yahoo_market_series_waits_for_the_yfinance_window(yf_waits, tmp_path):
     from datetime import date
-    from RevenueChaser.rcdata.build.sources import yahoo
+    from revenuechaser.rcdata.build.sources import yahoo
     ctx = base.RunContext(run_id="r", dataset="d", sleep=lambda s: None)
     yahoo.fetch(ctx, date(2026, 10, 27), download=lambda symbol: [["2026-10-27", 1.0, 1.0, 1.0, 1.0]])
     assert len(yf_waits) == len(yahoo.SYMBOLS)
@@ -147,7 +147,7 @@ def test_the_yahoo_market_series_waits_for_the_yfinance_window(yf_waits, tmp_pat
 def test_openfigi_shares_one_bucket_per_key_inside_its_window():
     """Review of #380, finding 3: the builder and the dashboard map CUSIPs on one key. Both take tokens of one box-wide
     bucket whose burst plus a minute's refill fits the 250, and each falls back to half the window."""
-    from RevenueChaser.core.providers import openfigi
+    from revenuechaser.core.providers import openfigi
     limit, window = caps.WINDOWS["openfigi"]
     assert openfigi.BUCKET_BURST + openfigi.BUCKET_RATE * window <= limit - 10    # a margin for network latency
     assert 2 * (window / openfigi.REQUEST_GAP_S) <= limit
@@ -162,7 +162,7 @@ def test_the_shared_bucket_serves_another_name_with_its_own_rate(monkeypatch):
     turned this red on a loaded runner (``0.9 < 0.8960991050000757``), 4 ms outside a bound the rule under
     test never promised.
     """
-    from RevenueChaser.core import sec_throttle
+    from revenuechaser.core import sec_throttle
     slept = []
     monkeypatch.setattr(sec_throttle.time, "sleep", slept.append)
     assert all(sec_throttle.shared_pace(".test_bucket.json", rate=1.0, burst=2.0) for _ in range(3))
@@ -178,8 +178,8 @@ def test_the_shared_bucket_serves_another_name_with_its_own_rate(monkeypatch):
 
 
 def test_every_openfigi_map_request_takes_a_token_of_the_key_bucket(monkeypatch):
-    from RevenueChaser.core.providers import openfigi
-    from RevenueChaser.rcdata.build.spine import openfigi_map
+    from revenuechaser.core.providers import openfigi
+    from revenuechaser.rcdata.build.spine import openfigi_map
     tokens = []
     monkeypatch.setattr(openfigi, "pace", lambda: tokens.append(1) or True)
     ctx = base.RunContext(run_id="r", dataset="d", sleep=lambda s: None)
@@ -193,9 +193,9 @@ def test_every_openfigi_map_request_takes_a_token_of_the_key_bucket(monkeypatch)
 
 def test_the_builder_s_sec_paths_space_themselves_only_when_the_bucket_falls_back():
     """On the bucket a path sends at the bucket's pace (8 a second for the box); its own spacing is the fallback."""
-    from RevenueChaser.core import sec_throttle
-    from RevenueChaser.rcdata.build.fundamentals import common
-    from RevenueChaser.rcdata.build.ownership import sec
+    from revenuechaser.core import sec_throttle
+    from revenuechaser.rcdata.build.fundamentals import common
+    from revenuechaser.rcdata.build.ownership import sec
     for shared, spaced in ((lambda: True, False), (lambda: False, True)):
         now, slept = [0.0], []
 

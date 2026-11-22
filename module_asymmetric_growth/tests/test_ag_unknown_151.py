@@ -9,10 +9,10 @@ import json
 
 import pytest
 
-from RevenueChaser.module_asymmetric_growth import engine
-from RevenueChaser.module_asymmetric_growth.engine import score_ticker
-from RevenueChaser.module_asymmetric_growth.report import board_payload, render_asymmetric_growth_hunter_html
-from RevenueChaser.core.tests.board_js import run_board_js
+from revenuechaser.module_asymmetric_growth import engine
+from revenuechaser.module_asymmetric_growth.engine import score_ticker
+from revenuechaser.module_asymmetric_growth.report import board_payload, render_asymmetric_growth_hunter_html
+from revenuechaser.core.tests.board_js import run_board_js
 
 _FULL = dict(revenue=130.0, gross_profit=78.0, operating_cash_flow=60.0, capex=10.0, total_debt=10.0, cash=100.0,
              total_assets=1000.0, rd_expense=10.0, diluted_shares=100.0)

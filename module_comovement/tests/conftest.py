@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.module_comovement import config
+from revenuechaser.module_comovement import config
 
 
 @pytest.fixture(autouse=True)

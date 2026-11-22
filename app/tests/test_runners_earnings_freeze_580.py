@@ -10,8 +10,8 @@ from datetime import date, datetime, timezone
 
 import pytest
 
-from RevenueChaser.app import jobs, runners
-from RevenueChaser.core import ledger
+from revenuechaser.app import jobs, runners
+from revenuechaser.core import ledger
 
 DAY = date(2026, 10, 16)
 POST_CLOSE = datetime(2026, 10, 14, 21, 0, tzinfo=timezone.utc)
@@ -34,7 +34,7 @@ class FakePipeline:
 def order(monkeypatch):
     """Stub the calendar read, the pipeline and the renderer; record the order of every step."""
     calls: list[str] = []
-    from RevenueChaser.module_earnings_radar import report as er_report
+    from revenuechaser.module_earnings_radar import report as er_report
 
     monkeypatch.setattr(runners, "_fetch_calendar_range",
                         lambda uw, start, end: (calls.append("calendar"), ([{"ticker": "AAA"}], {}))[1])
@@ -52,7 +52,7 @@ def order(monkeypatch):
 @pytest.fixture
 def freezer(monkeypatch, order):
     """Replace the freeze with a spy that records its call and arguments."""
-    from RevenueChaser.module_earnings_radar import freeze as er_freeze
+    from revenuechaser.module_earnings_radar import freeze as er_freeze
     seen: dict = {}
 
     def spy(cards, **kw):
@@ -83,7 +83,7 @@ def test_the_run_id_is_the_running_jobs_id(order, freezer, monkeypatch):
 
 
 def test_a_freeze_exception_propagates_and_fails_the_job(order, monkeypatch):
-    from RevenueChaser.module_earnings_radar import freeze as er_freeze
+    from revenuechaser.module_earnings_radar import freeze as er_freeze
 
     def boom(cards, **kw):
         raise RuntimeError("ledger write failed")

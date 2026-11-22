@@ -2,9 +2,9 @@
 from the columns the table keeps them under (``anchor_fy``, ``period_ends.basis``)."""
 from __future__ import annotations
 
-from RevenueChaser.core import ticker_store
-from RevenueChaser.module_asymmetric_growth import engine
-from RevenueChaser.module_asymmetric_growth.tests.test_score_ticker import _fin, _tech
+from revenuechaser.core import ticker_store
+from revenuechaser.module_asymmetric_growth import engine
+from revenuechaser.module_asymmetric_growth.tests.test_score_ticker import _fin, _tech
 
 
 def _dated_fin() -> dict:

@@ -1,5 +1,5 @@
 """Plan step 6 (16 Nov 2026): a value of a trillion or more reads in T, not as thousands of B (NVDA "$3355.32B")."""
-from RevenueChaser.module_sec_13f import report
+from revenuechaser.module_sec_13f import report
 
 
 def test_trillions_read_in_t():

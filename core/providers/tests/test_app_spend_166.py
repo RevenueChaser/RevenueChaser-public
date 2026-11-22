@@ -16,12 +16,12 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from RevenueChaser.core.providers import sec_edgar, spend
-from RevenueChaser.core.providers import unusual_whales as uwmod
-from RevenueChaser.core.providers import yfinance as yfmod
-from RevenueChaser.core.providers.unusual_whales import UWClient
-from RevenueChaser.core import calendar as rc_calendar
-from RevenueChaser.rcdata import ops
+from revenuechaser.core.providers import sec_edgar, spend
+from revenuechaser.core.providers import unusual_whales as uwmod
+from revenuechaser.core.providers import yfinance as yfmod
+from revenuechaser.core.providers.unusual_whales import UWClient
+from revenuechaser.core import calendar as rc_calendar
+from revenuechaser.rcdata import ops
 
 
 @pytest.fixture(autouse=True)

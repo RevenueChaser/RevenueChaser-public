@@ -11,10 +11,10 @@ import threading
 
 import pytest
 
-from RevenueChaser.core import board_settings as bs
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_comovement import config
-from RevenueChaser.rcdata import read as wl_read
+from revenuechaser.core import board_settings as bs
+from revenuechaser.core import rawstore
+from revenuechaser.module_comovement import config
+from revenuechaser.rcdata import read as wl_read
 
 B = "module_comovement"
 
@@ -23,14 +23,14 @@ B = "module_comovement"
 # Since PR 4 the toggle is the stock watch list's, in ops.sqlite, and its history is ``watchlist_stock_changes``
 # (one add / remove row per flip, ordered by ``id``); the guarantees these tests pin are the same.
 def _stock_history(ticker: str | None = None) -> list[tuple]:
-    from RevenueChaser.module_watchlists import store
+    from revenuechaser.module_watchlists import store
     return [(r["symbol"], r["action"]) for r in reversed(store.changes("jobs.stock", limit=10_000))
             if ticker is None or r["symbol"] == ticker]
 
 
 def _stock_history_equals_list() -> bool:
     """Replaying the history (add / remove per ticker) gives the list as it stands."""
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
     state: dict[str, bool] = {}
     for t, action in _stock_history():
         state[t] = action == "add"
@@ -60,7 +60,7 @@ def test_toggle_leaves_the_other_tickers_alone():
 
 
 def test_toggle_never_rewrites_the_whole_list(monkeypatch):
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
 
     def boom(*a, **k):
         raise AssertionError("a toggle rewrote the whole watchlist")

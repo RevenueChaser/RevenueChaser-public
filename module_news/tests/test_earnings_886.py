@@ -12,10 +12,10 @@ from datetime import date, datetime
 
 import pytest
 
-from RevenueChaser.core import automations, rawstore
-from RevenueChaser.module_news import calendar as cal, earnings, report
-from RevenueChaser.rcdata import read, serving
-from RevenueChaser.rcdata.build.fundamentals import tables
+from revenuechaser.core import automations, rawstore
+from revenuechaser.module_news import calendar as cal, earnings, report
+from revenuechaser.rcdata import read, serving
+from revenuechaser.rcdata.build.fundamentals import tables
 
 NOW = datetime(2026, 11, 20, 13, 48, tzinfo=cal.AMS).timestamp()      # Fri 20 Nov 13:48 Amsterdam
 SUNDAY = datetime(2026, 11, 22, 9, 0, tzinfo=cal.AMS).timestamp()     # the weekly pass's own hour
@@ -141,7 +141,7 @@ def test_the_weekly_pass_is_a_sunday_nine_o_clock_registry_row():
     entry = next(e for e in automations.REGISTRY if e.name == "RC-News-Earnings-Weekly")
     assert entry.days == ("Sunday",) and entry.time == "09:00"
     assert entry.tables_written == ("news_earnings",)
-    assert entry.args == ("-m", "RevenueChaser.scripts.board_fetch", "news-earnings")
+    assert entry.args == ("-m", "revenuechaser.scripts.board_fetch", "news-earnings")
     assert entry.unit == "life-rc-fetch-news-earnings", "one unit a board_fetch route (scripts/tests)"
     assert "weekly Sunday 09:00 (local)" == entry.schedule
 
@@ -149,7 +149,7 @@ def test_the_weekly_pass_is_a_sunday_nine_o_clock_registry_row():
 def test_the_weekly_pass_waits_for_no_trading_session():
     """It reads a calendar of days still to come and runs on a Sunday, so the nightly Fetches' SPY gate would
     only ever hold it back (#886)."""
-    from RevenueChaser.scripts import board_fetch
+    from revenuechaser.scripts import board_fetch
     assert board_fetch.ROUTES["news-earnings"] == "news_earnings"
     assert "news-earnings" not in board_fetch.NEEDS_SESSION
     assert "earnings" in board_fetch.NEEDS_SESSION, "the Earnings Radar Fetch still waits for its session"

@@ -7,9 +7,9 @@ implausible Rule of 40 as a data problem (a figure to check), not as a pick rule
 """
 from __future__ import annotations
 
-from RevenueChaser.core import funnel
-from RevenueChaser.core import screen_common as sc
-from RevenueChaser.module_fundamentals import config as fconfig
+from revenuechaser.core import funnel
+from revenuechaser.core import screen_common as sc
+from revenuechaser.module_fundamentals import config as fconfig
 
 
 def _steps(dropped):

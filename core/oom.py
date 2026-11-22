@@ -1,7 +1,7 @@
 """Did the kernel kill this process for memory? (#815)
 
 A builder the kernel OOM-kills leaves the request it held ``running``, and the next start closes it with
-``lost: pid <n> gone`` (``rcdata/ops.py``, :func:`~RevenueChaser.rcdata.ops.fail_orphans`). On 12 Nov 2026 that
+``lost: pid <n> gone`` (``rcdata/ops.py``, :func:`~revenuechaser.rcdata.ops.fail_orphans`). On 12 Nov 2026 that
 note stood for two **kernel OOM kills**, and it reads like a mystery crash: nothing on the Logs board said the
 machine had run out of memory, so the next pass simply repeated the same work.
 

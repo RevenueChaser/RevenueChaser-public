@@ -3,7 +3,7 @@
 Shaped on the measured answer: `transcript` is a list of turns with `speaker`, `title`, `content`, `sentiment`,
 and the only mark of the boundary is the first analyst turn.
 """
-from RevenueChaser.module_earnings_radar.rules import rule8_sentiment, transcript_split
+from revenuechaser.module_earnings_radar.rules import rule8_sentiment, transcript_split
 
 
 def turn(title, content, speaker="Someone", sentiment=0.0):

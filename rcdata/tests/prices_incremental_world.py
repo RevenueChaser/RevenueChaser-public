@@ -17,11 +17,11 @@ from datetime import date, datetime, timezone
 
 import pytest
 
-from RevenueChaser.core import calendar
-from RevenueChaser.rcdata import ops, serving
-from RevenueChaser.rcdata.build import base, dirty
-from RevenueChaser.rcdata.build.prices import incremental, stage, wrds_history
-from RevenueChaser.rcdata.build.prices import serving as prices_serving
+from revenuechaser.core import calendar
+from revenuechaser.rcdata import ops, serving
+from revenuechaser.rcdata.build import base, dirty
+from revenuechaser.rcdata.build.prices import incremental, stage, wrds_history
+from revenuechaser.rcdata.build.prices import serving as prices_serving
 
 from .prices_fixture import SPINE, write_spine
 from .test_prices_wrds import AAPL, OLDCO, _build, _q, env, fake  # noqa: F401 (re-exported to the test files)

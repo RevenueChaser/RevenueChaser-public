@@ -7,11 +7,11 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_value_chain import engine
-from RevenueChaser.module_value_chain.tests.test_value_chain import _TEN_K
-from RevenueChaser.module_value_chain.tests.test_value_chain_profile_edges_410 import _profile
-from RevenueChaser.rcdata.tests.conftest import market_roots  # noqa: F401  (fixture)
+from revenuechaser.core import rawstore
+from revenuechaser.module_value_chain import engine
+from revenuechaser.module_value_chain.tests.test_value_chain import _TEN_K
+from revenuechaser.module_value_chain.tests.test_value_chain_profile_edges_410 import _profile
+from revenuechaser.rcdata.tests.conftest import market_roots  # noqa: F401  (fixture)
 
 _OLD_EDGE = {"src": "NVDA", "dst_name": "TSMC", "dst_ticker": "TSM",
              "relation": "supplier", "snippet": "s", "filed": "2026-02-01"}

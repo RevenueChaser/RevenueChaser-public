@@ -20,7 +20,7 @@ from datetime import date, timedelta
 
 import exchange_calendars as xcals
 
-from RevenueChaser.core import calendar as rc_calendar
+from revenuechaser.core import calendar as rc_calendar
 
 # (year, ISO date) -> why we keep our own answer. Empty today; a row here is a decision, not a TODO.
 ACCEPTED: dict[tuple[int, str], str] = {}

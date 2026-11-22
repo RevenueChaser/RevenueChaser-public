@@ -12,9 +12,9 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.core.providers import sec_edgar
-from RevenueChaser.rcdata import ops
-from RevenueChaser.rcdata.build.fundamentals import filings
+from revenuechaser.core.providers import sec_edgar
+from revenuechaser.rcdata import ops
+from revenuechaser.rcdata.build.fundamentals import filings
 
 from . import fund_fixture as fx
 from .sec_answers import MISSING_HEADERS, MISSING_OBJECT
@@ -61,8 +61,8 @@ def test_the_backfill_serves_the_filing_list_its_8k_items_and_stores_the_two_doc
 def _exhibit(cik, accession, name) -> dict | None:
     """The stored exhibit's ``.meta.json``, or None when the file is not there. #858: whether an exhibit was
     picked by its name or by its number alone is on the stored file now, not on a ``filing_item`` row."""
-    from RevenueChaser.rcdata.build import base
-    from RevenueChaser.rcdata.build.fundamentals import common
+    from revenuechaser.rcdata.build import base
+    from revenuechaser.rcdata.build.fundamentals import common
     path = filings._exhibit_path(cik, accession, name)
     return base.read_raw_json(common.meta_path(path)) if path.exists() else None
 
@@ -238,7 +238,7 @@ def test_the_statements_exhibit_is_never_mistaken_for_the_business_description()
 def test_a_transition_period_10kt_is_an_annual_report():
     """#400 package (avo's condition, 8 Nov 2026: every SEC reading covered): a 10-KT, the report of a fiscal-year
     change, is the newest annual report when nothing newer exists; Value Chain's picker agrees."""
-    from RevenueChaser.module_value_chain import edgar_text
+    from revenuechaser.module_value_chain import edgar_text
     rows = [{"form": "10-K", "filing_date": "2025-03-01", "accession": "a", "primary_document": "a.htm"},
             {"form": "10-KT", "filing_date": "2026-02-01", "accession": "b", "primary_document": "b.htm"}]
     assert filings.pick(rows, filings.ANNUAL_FORMS)["accession"] == "b"

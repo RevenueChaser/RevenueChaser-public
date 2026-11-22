@@ -24,12 +24,12 @@ from __future__ import annotations
 import html
 from datetime import date, timedelta
 
-from RevenueChaser.core import fundamentals_layer
-from RevenueChaser.core import rotation_reference
-from RevenueChaser.core.html_safe import ESC_JS, script_json
-from RevenueChaser.core.reporting_common import THEME_CSS, THEME_JS, help_html
-from RevenueChaser.module_watchlists import financials, indicators, store, symbols
-from RevenueChaser.rcdata import read
+from revenuechaser.core import fundamentals_layer
+from revenuechaser.core import rotation_reference
+from revenuechaser.core.html_safe import ESC_JS, script_json
+from revenuechaser.core.reporting_common import THEME_CSS, THEME_JS, help_html
+from revenuechaser.module_watchlists import financials, indicators, store, symbols
+from revenuechaser.rcdata import read
 
 #: This board's ``X-RC-Panel`` value, the ``added_by`` its own writes are recorded under.
 BOARD = "watchlists"

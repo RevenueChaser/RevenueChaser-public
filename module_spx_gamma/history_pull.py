@@ -40,9 +40,9 @@ from collections import Counter
 from datetime import date, timedelta
 from pathlib import Path
 
-from RevenueChaser.core import calendar as nyse_calendar
-from RevenueChaser.rcdata import caps, ops
-from RevenueChaser.core import job_control
+from revenuechaser.core import calendar as nyse_calendar
+from revenuechaser.rcdata import caps, ops
+from revenuechaser.core import job_control
 
 from . import safe_json, store
 from .config import DATA_ROOT, TICKER

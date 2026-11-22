@@ -7,13 +7,13 @@ from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
-from RevenueChaser.core import calendar
-from RevenueChaser.core.providers import unusual_whales
-from RevenueChaser.module_oipd import config, engine
-from RevenueChaser.module_watchlists import store as wl_store
-from RevenueChaser.rcdata import read
-from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.options import uw_list, uw_screener
+from revenuechaser.core import calendar
+from revenuechaser.core.providers import unusual_whales
+from revenuechaser.module_oipd import config, engine
+from revenuechaser.module_watchlists import store as wl_store
+from revenuechaser.rcdata import read
+from revenuechaser.rcdata.build import base
+from revenuechaser.rcdata.build.options import uw_list, uw_screener
 from .options_fixture import SESSION, UWOptions
 
 AFTER_CLOSE = datetime(2026, 10, 26, 21, 0, tzinfo=timezone.utc)
@@ -97,8 +97,8 @@ def test_the_fit_takes_the_heaviest_expiries_1_to_365_days_out():
 def test_settings_does_not_read_the_retired_board_store():
     """Review F1 (#1060): the board no longer writes ``oipd_chain`` / ``oipd_meta``, so Settings must not judge its
     freshness by them (it would show a fresh board as never fetched)."""
-    from RevenueChaser.core import datasets
-    from RevenueChaser.module_settings.boards import BOARD_INPUTS
+    from revenuechaser.core import datasets
+    from revenuechaser.module_settings.boards import BOARD_INPUTS
     row = next(b for b in BOARD_INPUTS if b["key"] == "module_oipd")
     assert not {"oipd_chain", "oipd_meta"} & set(row["tables"])
     spec = next(s for s in datasets.REGISTRY if s.key == "oipd")

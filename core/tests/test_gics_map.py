@@ -5,8 +5,8 @@ sub-industries, ``resolve_gics`` and the industry alias table are gone.
 """
 import pytest
 
-from RevenueChaser.core import gics_map as _g
-from RevenueChaser.core.gics_map import (
+from revenuechaser.core import gics_map as _g
+from revenuechaser.core.gics_map import (
     SECTOR_ALIASES, SECTORS_11, UNCLASSIFIED, GicsPath, canonical_sector, is_unclassified, sector_or_unclassified,
     sector_path,
 )

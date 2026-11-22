@@ -6,10 +6,10 @@ from datetime import datetime, timezone
 
 import pytest
 
-from RevenueChaser.core import calendar
-from RevenueChaser.core.providers import unusual_whales
-from RevenueChaser.rcdata.build import base, options
-from RevenueChaser.rcdata.build.options import uw_screener
+from revenuechaser.core import calendar
+from revenuechaser.core.providers import unusual_whales
+from revenuechaser.rcdata.build import base, options
+from revenuechaser.rcdata.build.options import uw_screener
 
 from .options_fixture import SESSION, UWOptions
 

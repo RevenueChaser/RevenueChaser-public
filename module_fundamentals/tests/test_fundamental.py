@@ -3,13 +3,13 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.module_fundamentals import screeners
-from RevenueChaser.module_fundamentals.pipeline import (
+from revenuechaser.module_fundamentals import screeners
+from revenuechaser.module_fundamentals.pipeline import (
     _quality_metrics,
     _ttm_metrics,
     build_payload,
 )
-from RevenueChaser.module_fundamentals.report import render_fundamental_dashboard
+from revenuechaser.module_fundamentals.report import render_fundamental_dashboard
 
 
 def _m(**kw) -> dict:

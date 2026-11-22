@@ -3,9 +3,9 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.core.identity.sources import SourceResult
-from RevenueChaser.module_asymmetric_growth import engine as agh
+from revenuechaser.core import rawstore
+from revenuechaser.core.identity.sources import SourceResult
+from revenuechaser.module_asymmetric_growth import engine as agh
 
 
 
@@ -177,7 +177,7 @@ def _screen_quotes(monkeypatch, quotes):
 
 
 def test_render_dashboard_universe_provenance():
-    from RevenueChaser.module_asymmetric_growth.report import render_asymmetric_growth_hunter_html
+    from revenuechaser.module_asymmetric_growth.report import render_asymmetric_growth_hunter_html
     result = {
         "asof": "2026-08-23T00:00:00",
         "universe_total": 1,
@@ -275,7 +275,7 @@ def _screen_one(quote):
 
 def test_render_uses_the_shared_filter_kit():
     """#383 C1c: the universal filters are the rc_filters bar, not the old Sector cascade / MC / EWEEK / INDEX controls."""
-    from RevenueChaser.module_asymmetric_growth.report import render_asymmetric_growth_hunter_html
+    from revenuechaser.module_asymmetric_growth.report import render_asymmetric_growth_hunter_html
     result = {
         "asof": "", "summary": {}, "cards": [],
         "thresholds": {

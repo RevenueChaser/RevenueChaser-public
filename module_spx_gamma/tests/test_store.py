@@ -5,8 +5,8 @@ import hashlib
 import re
 from pathlib import Path
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_spx_gamma import store
+from revenuechaser.core import rawstore
+from revenuechaser.module_spx_gamma import store
 
 _PKG = Path(__file__).resolve().parents[1]
 _REPO = _PKG.parent

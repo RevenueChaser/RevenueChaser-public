@@ -26,8 +26,8 @@ from unittest import mock
 
 import pytest
 
-from RevenueChaser.module_value_chain import config as vc_config, splitter
-from RevenueChaser.rcdata import sec_sections
+from revenuechaser.module_value_chain import config as vc_config, splitter
+from revenuechaser.rcdata import sec_sections
 
 from .sec_sections_cases import CASES, STRIP_HTML_INPUT
 
@@ -225,7 +225,7 @@ def test_the_rule_module_imports_nothing_but_the_standard_library():
 
 
 def test_every_package_init_on_the_way_in_imports_nothing_either():
-    """Importing ``RevenueChaser.rcdata.sec_sections`` runs the package inits above it first, so an import added to
+    """Importing ``revenuechaser.rcdata.sec_sections`` runs the package inits above it first, so an import added to
     one of them would reach every board through this module. Both are empty today; this test is where that is
     noticed -- ``rcdata/__init__.py`` is a docstring and the repo-root one is empty. The scan reads source, so it cannot see a dynamic ``importlib.import_module`` or a module
     ``__getattr__`` -- a reviewer's point on PR 758, and the reason these files are kept bare rather than watched.

@@ -8,8 +8,8 @@ what is already on disk.
 It only ever removes a directory whose name matches one of the two prefixes **and** which nothing has
 written to for ``--min-age-hours`` (default 2), so a run happening right now is never touched.
 
-    python -m RevenueChaser.scripts.clean_test_scratch            # report only, removes nothing
-    python -m RevenueChaser.scripts.clean_test_scratch --apply    # remove them
+    python -m revenuechaser.scripts.clean_test_scratch            # report only, removes nothing
+    python -m revenuechaser.scripts.clean_test_scratch --apply    # remove them
 """
 from __future__ import annotations
 

@@ -9,8 +9,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from RevenueChaser.app import dashboard
-from RevenueChaser.module_sector_rotation import report
+from revenuechaser.app import dashboard
+from revenuechaser.module_sector_rotation import report
 
 _URL = re.compile(r"'(/view/[A-Za-z_/]+/holdings)\?ticker='")
 

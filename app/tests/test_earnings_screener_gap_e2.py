@@ -10,8 +10,8 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.app import runners
-from RevenueChaser.core import ledger, rawstore
+from revenuechaser.app import runners
+from revenuechaser.core import ledger, rawstore
 
 BOARD = "module_earnings_radar"
 
@@ -49,7 +49,7 @@ def run(monkeypatch, rawstore_tmp_db):
     monkeypatch.setattr(runners, "EARNINGS_LATEST", path)
     monkeypatch.setattr(runners, "_load_watchlist", lambda: set())
     monkeypatch.setattr(runners, "_freeze_run_id", lambda: "job-e2")
-    monkeypatch.setattr("RevenueChaser.module_sector_rotation.engine.rotation_quadrant_map",
+    monkeypatch.setattr("revenuechaser.module_sector_rotation.engine.rotation_quadrant_map",
                         lambda uw: {"XLK": "LEADING"})
     seen = {}
 
@@ -57,7 +57,7 @@ def run(monkeypatch, rawstore_tmp_db):
         seen["notice"] = notice
         runners.EARNINGS_LATEST.write_text("<html>board</html>", encoding="utf-8")
 
-    monkeypatch.setattr("RevenueChaser.module_earnings_radar.report.export_html", fake_export)
+    monkeypatch.setattr("revenuechaser.module_earnings_radar.report.export_html", fake_export)
 
     class Pipe:
         screener_result = {"status": "partial", "error": {"failed_chunks": 1, "chunks": 2}}
@@ -68,7 +68,7 @@ def run(monkeypatch, rawstore_tmp_db):
                                   "by_reason": {}, "excluded": []}
 
         def run(self, use_preselect=True):
-            from RevenueChaser.module_earnings_radar.models import TradeCard
+            from revenuechaser.module_earnings_radar.models import TradeCard
             return [TradeCard(ticker="AAA", earnings_date=date(2026, 10, 8), earnings_time="AMC")]
 
     monkeypatch.setattr(runners, "EarningsPipeline", Pipe)

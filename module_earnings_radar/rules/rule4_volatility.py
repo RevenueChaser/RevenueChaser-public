@@ -29,7 +29,7 @@ Honest inputs (no fake values):
   move vs the current implied move);
 - coverage reflects how many of {EM, IV/RV, GEX, history} were actually present.
 """
-from RevenueChaser.core.config import (
+from revenuechaser.core.config import (
     VOLATILITY_EDGE_RANGE,
     GEX_REGIME_SHORT_GAMMA, GEX_REGIME_LONG_GAMMA,
     GEX_MAGNET_NEAR_PCT, GEX_MAGNET_BELOW_POINTS, GEX_MAGNET_ABOVE_POINTS,
@@ -39,7 +39,7 @@ from RevenueChaser.core.config import (
     TS_SLOPE_BACK_POINTS, TS_SLOPE_MILD_POINTS, TS_SLOPE_CONTANGO_POINTS,
     TS_SLOPE_EVENT_CONTANGO,
 )
-from RevenueChaser.module_earnings_radar.models import RuleResult
+from revenuechaser.module_earnings_radar.models import RuleResult
 
 
 def score(options_data: dict = None) -> RuleResult:

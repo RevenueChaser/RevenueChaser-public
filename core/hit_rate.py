@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from RevenueChaser.core import baselines, outcomes
+from revenuechaser.core import baselines, outcomes
 
 MIN_RECORDS = 30
 MIN_DATES = 3

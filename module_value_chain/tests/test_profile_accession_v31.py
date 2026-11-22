@@ -5,11 +5,11 @@ which one when the edge names its accession.
 """
 from __future__ import annotations
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_relatedness import config, store
-from RevenueChaser.module_value_chain import engine
-from RevenueChaser.module_value_chain.tests.test_value_chain_profile_edges_410 import PROFILE, _filing, _profile
-from RevenueChaser.rcdata.tests.conftest import market_roots  # noqa: F401  (fixture)
+from revenuechaser.core import rawstore
+from revenuechaser.module_relatedness import config, store
+from revenuechaser.module_value_chain import engine
+from revenuechaser.module_value_chain.tests.test_value_chain_profile_edges_410 import PROFILE, _filing, _profile
+from revenuechaser.rcdata.tests.conftest import market_roots  # noqa: F401  (fixture)
 
 ATTRS = {f: ["x"] for f in config.PROFILE_FIELDS}
 
@@ -51,9 +51,9 @@ def test_the_answers_accession_reaches_chain_mentions(rawstore_tmp_db, market_ro
 
 
 def test_the_profile_writer_stores_the_accession_of_the_filing_it_read(rawstore_tmp_db, monkeypatch):
-    from RevenueChaser.module_relatedness import engine as rel, profiles
-    from RevenueChaser.module_relatedness.tests.test_relatedness import long_body
-    from RevenueChaser.rcdata.tests import spine_fixture
+    from revenuechaser.module_relatedness import engine as rel, profiles
+    from revenuechaser.module_relatedness.tests.test_relatedness import long_body
+    from revenuechaser.rcdata.tests import spine_fixture
 
     spine_fixture.write_security([])          # a profile run needs a spine (#642 D3)
 

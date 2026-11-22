@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.rcdata.tests import fund_store
-from RevenueChaser.core.providers import sec_edgar as se
+from revenuechaser.rcdata.tests import fund_store
+from revenuechaser.core.providers import sec_edgar as se
 
 
 def _facts() -> dict:

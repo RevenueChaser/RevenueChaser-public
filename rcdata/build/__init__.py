@@ -1,4 +1,4 @@
-"""The builder: the one process that writes the market store (D1). Run it with ``python -m RevenueChaser.rcdata.build``.
+"""The builder: the one process that writes the market store (D1). Run it with ``python -m revenuechaser.rcdata.build``.
 
 ``DATASETS`` maps each dataset name to its module's ``DATASET``; ``base.run_request`` runs one queued request. A kind's
 datasets are built in this order (``base.build_kind``): the spine's sources stage their Parquet before

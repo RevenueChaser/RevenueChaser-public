@@ -1,4 +1,4 @@
-"""The News board's read-only MCP server (#809, slice N3 of #783): ``python -m RevenueChaser.scripts.news_mcp``.
+"""The News board's read-only MCP server (#809, slice N3 of #783): ``python -m revenuechaser.scripts.news_mcp``.
 
 avo, 12 Nov 2026: the news flow is not a screen, it is handed to an AI to interpret. This server is the handle.
 It speaks MCP over stdio (JSON-RPC 2.0, one message a line) and offers four tools:
@@ -101,7 +101,7 @@ def _get(path: str, params: dict) -> dict:
         answer = httpx.get(f"{DASHBOARD}{path}", params=params, timeout=TIMEOUT_S)
     except httpx.HTTPError as exc:
         raise ToolError(f"the dashboard did not answer ({exc}); start it with "
-                        f"python -m RevenueChaser.app.dashboard") from None
+                        f"python -m revenuechaser.app.dashboard") from None
     try:
         body = answer.json()
     except ValueError:

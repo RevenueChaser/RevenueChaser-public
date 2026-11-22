@@ -17,7 +17,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 
-# ``dir()`` of ``RevenueChaser.core.sector_rules`` at fa3fd6b, minus dunders.
+# ``dir()`` of ``revenuechaser.core.sector_rules`` at fa3fd6b, minus dunders.
 PUBLIC_NAMES = [
     "COMPARABLE", "GicsPath", "NOT_COMPARABLE", "NOT_COMPARABLE_SECTORS", "annotations", "canonical_sector",
     "not_comparable", "sector_status", "ticker_status",
@@ -40,13 +40,13 @@ def _importers(name: str) -> list[str]:
 
 
 def test_the_old_home_in_core_is_gone():
-    sys.modules.pop("RevenueChaser.core.sector_rules", None)     # a stale import would hide the gap
+    sys.modules.pop("revenuechaser.core.sector_rules", None)     # a stale import would hide the gap
     with pytest.raises(ModuleNotFoundError):
-        import_module("RevenueChaser.core.sector_rules")
+        import_module("revenuechaser.core.sector_rules")
 
 
 def test_the_new_home_imports_and_keeps_its_public_names():
-    mod = import_module("RevenueChaser.module_asymmetric_growth.sector_rules")
+    mod = import_module("revenuechaser.module_asymmetric_growth.sector_rules")
     assert sorted(n for n in dir(mod) if not n.startswith("__")) == PUBLIC_NAMES
 
 

@@ -6,9 +6,9 @@ shown candidates to ``forecast_ledger``. The mapping lives here, in the module, 
 """
 from __future__ import annotations
 
-from RevenueChaser.core import fiscal_year, ledger
-from RevenueChaser.module_fundamentals import config
-from RevenueChaser.module_fundamentals import debt as _debt
+from revenuechaser.core import fiscal_year, ledger
+from revenuechaser.module_fundamentals import config
+from revenuechaser.module_fundamentals import debt as _debt
 
 SOURCE = "fundamentals"
 LABEL = "Fundamentals"
@@ -28,7 +28,7 @@ _HASHED_ELSEWHERE = ((_debt, "INTEREST_FLOOR_USD"), (_debt, "NOTE_DAYS"), (fisca
 
 
 def effective_config() -> dict:
-    from RevenueChaser.module_fundamentals import settings as fund_settings
+    from revenuechaser.module_fundamentals import settings as fund_settings
     return {**{name: getattr(config, name) for name in _HASHED},
             **{name: getattr(mod, name) for mod, name in _HASHED_ELSEWHERE},
             **fund_settings.stored_overrides()}

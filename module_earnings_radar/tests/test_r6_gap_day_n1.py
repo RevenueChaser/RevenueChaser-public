@@ -1,13 +1,13 @@
 """Fable review N1 (Earnings Radar, R6): the yield beta's 60-session window kept the last print's reaction day, and
-one +/-20% gap moves an OLS slope a lot. docs/module_earnings-radar/redesign.md R6: "Earnings-gap days are dropped from beta". The
+one +/-20% gap moves an OLS slope a lot. docs/module_earnings_radar/redesign.md R6: "Earnings-gap days are dropped from beta". The
 return that ends on a completed print's reaction session (core/reaction_anchor) now leaves both the beta and its
 t-stat. Offline."""
 from datetime import date, timedelta
 
 import pytest
 
-from RevenueChaser.module_earnings_radar.pipeline import _gap_sessions, r6_beta, yield_beta_tstat
-from RevenueChaser.module_earnings_radar.rules.rule6_macro import yield_beta
+from revenuechaser.module_earnings_radar.pipeline import _gap_sessions, r6_beta, yield_beta_tstat
+from revenuechaser.module_earnings_radar.rules.rule6_macro import yield_beta
 
 GAP_DAY = "2026-01-20"   # day 15 of the series
 

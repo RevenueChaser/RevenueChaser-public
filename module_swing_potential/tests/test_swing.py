@@ -5,15 +5,15 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from RevenueChaser.module_swing_potential import config, indicators, ranking, screeners
-from RevenueChaser.module_swing_potential.pipeline import build_payload
-from RevenueChaser.module_swing_potential.report import render_swing_dashboard
+from revenuechaser.module_swing_potential import config, indicators, ranking, screeners
+from revenuechaser.module_swing_potential.pipeline import build_payload
+from revenuechaser.module_swing_potential.report import render_swing_dashboard
 
 
 def test_swing_no_longer_imports_load_ticker_info():
     """#645 A: neither Swing (review F1) nor Fundamentals reads Yahoo ``.info``."""
-    from RevenueChaser.module_swing_potential import pipeline as sp
-    from RevenueChaser.module_fundamentals import pipeline as fp
+    from revenuechaser.module_swing_potential import pipeline as sp
+    from revenuechaser.module_fundamentals import pipeline as fp
     assert not hasattr(sp, "load_ticker_info")
     assert not hasattr(fp, "load_ticker_info")    # #645: Fundamentals reads no Yahoo .info either
 
@@ -157,7 +157,7 @@ def test_build_payload_shape():
 
 
 def test_run_scan_passes_refresh_universe_flag(monkeypatch):
-    from RevenueChaser.module_swing_potential import pipeline as sp
+    from revenuechaser.module_swing_potential import pipeline as sp
     captured = {}
     monkeypatch.setattr(sp, "fetch_universe_stats",
                         lambda **kw: captured.update(kw) or ([], {"raw_total": 0}))
@@ -167,7 +167,7 @@ def test_run_scan_passes_refresh_universe_flag(monkeypatch):
 
 
 def test_run_scan_default_uses_cache(monkeypatch):
-    from RevenueChaser.module_swing_potential import pipeline as sp
+    from revenuechaser.module_swing_potential import pipeline as sp
     captured = {}
     monkeypatch.setattr(sp, "fetch_universe_stats",
                         lambda **kw: captured.update(kw) or ([], {"raw_total": 0}))
@@ -210,7 +210,7 @@ def test_render_dashboard_no_provenance_when_missing():
 
 # ── #153 U14 / U15 / U16 ──
 def test_gate_thresholds_come_from_config(monkeypatch):
-    from RevenueChaser.module_swing_potential import config
+    from revenuechaser.module_swing_potential import config
     ind = {"above_52w_low_pct": 1.3, "within_52w_high_pct": 0.8, "vol_ratio": 1.6,
            "move_max_1_3m": 0.3, "adr_pct": 0.04}
 
@@ -253,8 +253,8 @@ def test_mom_12_1_is_return_from_12_months_to_1_month_ago():
 
 @pytest.mark.parametrize("price,sma,sign", [(500, 400, "&gt;"), (350, 400, "&lt;")])
 def test_summary_spy_vs_200dma_wording(price, sma, sign):
-    from RevenueChaser.module_swing_potential import report as sw
-    from RevenueChaser.module_fundamentals import report as fu
+    from revenuechaser.module_swing_potential import report as sw
+    from revenuechaser.module_fundamentals import report as fu
     s = {"regime": "RISK-ON" if price > sma else "RISK-OFF", "spy_price": price,
          "spy_sma200": sma, "passing": {}}
     for mod in (sw, fu):

@@ -7,7 +7,7 @@ rows reach the page through the payload route (S7, K10).
 """
 from __future__ import annotations
 
-from RevenueChaser.rcdata.tests import universe_store
+from revenuechaser.rcdata.tests import universe_store
 import json
 import re
 
@@ -30,13 +30,13 @@ def _result(cards):
 
 
 def _render(cards):
-    from RevenueChaser.module_asymmetric_growth.report import render_asymmetric_growth_hunter_html
+    from revenuechaser.module_asymmetric_growth.report import render_asymmetric_growth_hunter_html
     return render_asymmetric_growth_hunter_html(_result(cards))
 
 
 def _rows(cards):
     """The rows the page loads from the payload route (S7, K10)."""
-    from RevenueChaser.module_asymmetric_growth.report import board_payload
+    from revenuechaser.module_asymmetric_growth.report import board_payload
     return board_payload(_result(cards))["cards"]
 
 
@@ -70,7 +70,7 @@ _THEME = "r1:c1"
 
 
 def _seed_one_theme():
-    from RevenueChaser.core import rawstore
+    from revenuechaser.core import rawstore
     rawstore.write_rows("theme_runs", [{"id": "r1", "created_at": "x", "k_fine": 0,
                                         "k_medium": 0, "k_coarse": 1, "jaccard": 1.0, "is_current": 1}])
     rawstore.write_rows("relatedness_themes", [
@@ -90,7 +90,7 @@ def _signals(n_pass: int) -> list:
 
 
 def test_meta_themes_equal_the_catalog_and_the_themed_row_carries_the_id(rawstore_tmp_db):
-    from RevenueChaser.core import universe
+    from revenuechaser.core import universe
     _seed_one_theme()
     cards = [_card("AAA"), _card("BBB", sector="Healthcare", industry="Biotechnology")]
     html = _render(cards)
@@ -104,7 +104,7 @@ def test_meta_themes_equal_the_catalog_and_the_themed_row_carries_the_id(rawstor
 
 
 def test_points_pill_and_a_sector_filter_narrow_more_than_either_alone(tmp_path, rawstore_tmp_db):
-    from RevenueChaser.core.tests.board_js import run_board_js
+    from revenuechaser.core.tests.board_js import run_board_js
     _seed_one_theme()
     cards = [
         dict(_card("AAA"), signals=_signals(9), total_points=9),

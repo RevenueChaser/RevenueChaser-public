@@ -50,7 +50,7 @@ import urllib.request
 from dataclasses import dataclass
 from enum import Enum
 
-from RevenueChaser.v2.door import config
+from revenuechaser.v2.door import config
 
 
 class RouteClass(str, Enum):

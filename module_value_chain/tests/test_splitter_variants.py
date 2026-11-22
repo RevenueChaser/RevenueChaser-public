@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.module_value_chain import splitter
+from revenuechaser.module_value_chain import splitter
 
 BODY = ("<p>We design semiconductors. We purchase wafers from Taiwan Semiconductor "
         "Manufacturing Company Limited, our primary foundry supplier, and our customers "

@@ -16,8 +16,8 @@ recency-aware without changing the −100..+100 ladder:
 
 Unavailable below 3 usable quarters (never 0).
 """
-from RevenueChaser.module_earnings_radar.models import RuleResult
-from RevenueChaser.core.config import (
+from revenuechaser.module_earnings_radar.models import RuleResult
+from revenuechaser.core.config import (
     R2_MAX_WINDOW as MAX_WINDOW,
     R2_RECENT_QUARTERS as RECENT_QUARTERS,
     R2_SURPRISE_CLIP as SURPRISE_CLIP,
@@ -197,7 +197,7 @@ def score(ticker: str, earnings_history: list[dict] = None) -> RuleResult:
             f"beat trend declining (recent {recent_bias:.1%} vs earlier {trailing_bias:.1%})"
         )
 
-    from RevenueChaser.core.config import SCORE_RANGE
+    from revenuechaser.core.config import SCORE_RANGE
 
     score_val = max(SCORE_RANGE[0], min(SCORE_RANGE[1], score_val))
 

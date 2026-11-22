@@ -7,7 +7,7 @@ an undeclared name shares everything.
 """
 from __future__ import annotations
 
-from RevenueChaser.core import job_lock
+from revenuechaser.core import job_lock
 
 
 def test_the_two_stores_do_not_overlap():

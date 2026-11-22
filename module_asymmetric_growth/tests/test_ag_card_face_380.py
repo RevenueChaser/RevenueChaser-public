@@ -10,11 +10,11 @@ Offline.
 """
 from __future__ import annotations
 
-from RevenueChaser.core import ticker_store
-from RevenueChaser.core.tests.board_js import run_board_js
-from RevenueChaser.module_asymmetric_growth import freeze, report
-from RevenueChaser.module_asymmetric_growth.engine import score_ticker
-from RevenueChaser.module_asymmetric_growth.tests.test_ag_payload_route_380 import _card, _result
+from revenuechaser.core import ticker_store
+from revenuechaser.core.tests.board_js import run_board_js
+from revenuechaser.module_asymmetric_growth import freeze, report
+from revenuechaser.module_asymmetric_growth.engine import score_ticker
+from revenuechaser.module_asymmetric_growth.tests.test_ag_payload_route_380 import _card, _result
 
 _TECH = {"price": 100.0, "dist_52w_pct": 0.05, "vol_ratio": 1.6, "above_sma50": True}
 

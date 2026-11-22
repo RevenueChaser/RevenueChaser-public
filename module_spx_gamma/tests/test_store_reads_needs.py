@@ -12,9 +12,9 @@ from pathlib import Path
 
 import pytest
 
-from RevenueChaser.core import calendar
-from RevenueChaser.module_spx_gamma import store_reads
-from RevenueChaser.rcdata import needs
+from revenuechaser.core import calendar
+from revenuechaser.module_spx_gamma import store_reads
+from revenuechaser.rcdata import needs
 
 from . import rcdata_fixture as fx
 
@@ -97,7 +97,7 @@ def test_a_wider_catalog_window_is_what_the_board_judges_by(rcdata_market, monke
 def test_a_vix_day_older_than_the_newest_family_row_is_judged_by_its_own_day(rcdata_market, monkeypatch):
     """The board reads the newest day with a VIX close; when a sibling series is newer the envelope's newest day is
     not the board's, and the lag is counted from the VIX day itself (as the board's own count always was)."""
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     real = read.market_series
 
     def vix_ends_early(*a, **k):
@@ -124,7 +124,7 @@ HISTORY_DAY = date(1992, 10, 23)      # a Friday before the holiday table (1993-
 @pytest.fixture
 def a_2024_store(monkeypatch):
     """Readers answering rows for 23 Oct 1992 (and the 2029 day), as a store built from Cboe's 1975- file would."""
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
 
     def series(series_ids=(), start=None, end=None, prefix=None):
         days = [d for d in (date(1992, 10, 22), HISTORY_DAY, date(2029, 3, 1), date(2029, 3, 2))
@@ -156,7 +156,7 @@ def test_the_0_1_dte_slice_of_a_day_outside_the_table_is_kept():
 @pytest.mark.usefixtures("a_2024_store")
 def test_history_mode_finds_the_stored_close_of_a_day_outside_the_table():
     """The history pull reads its spot from the stored close; without it the day is skipped_no_close."""
-    from RevenueChaser.module_spx_gamma import snapshot
+    from revenuechaser.module_spx_gamma import snapshot
     assert snapshot._stored_close(snapshot.stored_spx_candles, "SPX", HISTORY_DAY.isoformat()) == 5800.0 + HISTORY_DAY.day
 
 
@@ -172,7 +172,7 @@ def test_a_failed_row_read_is_read_failed_and_does_not_retry_the_previous_sessio
     status with the rows). The old board said "read failed" and stopped; A3 retries only on no rows."""
     import sqlite3
 
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     calls = []
 
     def locked(*a, **k):

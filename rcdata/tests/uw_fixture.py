@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from datetime import date
 
-from RevenueChaser.core import calendar
-from RevenueChaser.rcdata.build import uw_spot_expiry_strike as uw
+from revenuechaser.core import calendar
+from revenuechaser.rcdata.build import uw_spot_expiry_strike as uw
 
 SESSION = date(2026, 10, 26)
 

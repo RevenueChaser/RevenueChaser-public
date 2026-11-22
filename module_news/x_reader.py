@@ -30,8 +30,8 @@ import time
 from datetime import datetime, time as dtime
 from zoneinfo import ZoneInfo
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_news import store_reads, x_check, x_lane
+from revenuechaser.core import rawstore
+from revenuechaser.module_news import store_reads, x_check, x_lane
 
 PROVIDER = x_lane.PROVIDER
 COOKIES = ("RC_X_AUTH_TOKEN", "RC_X_CT0")

@@ -12,10 +12,10 @@ from __future__ import annotations
 
 import html as _html
 
-from RevenueChaser.core import universe as _universe
-from RevenueChaser.core.gics_map import sector_path
-from RevenueChaser.core.html_safe import ESC_JS, esc, fill, script_json
-from RevenueChaser.core.reporting_common import (
+from revenuechaser.core import universe as _universe
+from revenuechaser.core.gics_map import sector_path
+from revenuechaser.core.html_safe import ESC_JS, esc, fill, script_json
+from revenuechaser.core.reporting_common import (
     FILTERS_CSS,
     FILTERS_JS,
     PAYLOAD_JS,
@@ -28,8 +28,8 @@ from RevenueChaser.core.reporting_common import (
     universe_provenance_html,
     watchlist_html,
 )
-from RevenueChaser.core.scan_quality import no_data_hint, regime_parts
-from RevenueChaser.module_fundamentals.pipeline import NON_USD_DROP
+from revenuechaser.core.scan_quality import no_data_hint, regime_parts
+from revenuechaser.module_fundamentals.pipeline import NON_USD_DROP
 
 # The board's own rules, on the shared theme's tokens (#840). ``THEME_CSS`` defines every ``var(--…)`` below in
 # both schemes, so the cards follow the shell instead of staying dark inside a light page. The names kept here are
@@ -263,7 +263,7 @@ def _render(payload: dict, inline: bool) -> tuple[str, dict | None]:
         }
     summary_html = _summary_html(summary, payload.get("data_quality"))
     # avo O1 (18 Nov 2026): the funnel on the page, "failed" and "could not be judged" as separate steps.
-    from RevenueChaser.core import funnel as funnel_mod
+    from revenuechaser.core import funnel as funnel_mod
     funnel_html = funnel_mod.funnel_panel_html(funnel_mod.from_dict(payload.get("funnel_steps")),
                                                panel_id="fundamentals-funnel")
     universe_prov = universe_provenance_html(

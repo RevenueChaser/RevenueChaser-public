@@ -16,8 +16,8 @@ from datetime import date, datetime
 
 import pandas as pd
 
-from RevenueChaser.core.universe import DEFAULT_MC_MIN, classification_universe
-from RevenueChaser.rcdata import read
+from revenuechaser.core.universe import DEFAULT_MC_MIN, classification_universe
+from revenuechaser.rcdata import read
 
 from . import config
 

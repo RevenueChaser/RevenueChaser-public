@@ -1,7 +1,7 @@
 """EDGAR raw HTML files (``edgar_docs/{cik}/{accession}.html.gz``)."""
 from __future__ import annotations
 
-from RevenueChaser.core import edgar_docs as ed
+from revenuechaser.core import edgar_docs as ed
 
 
 def test_write_read_round_trip():

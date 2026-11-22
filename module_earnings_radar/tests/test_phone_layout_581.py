@@ -12,8 +12,8 @@ from __future__ import annotations
 import re
 from datetime import date
 
-from RevenueChaser.module_earnings_radar.models import TradeCard
-from RevenueChaser.module_earnings_radar.report import CSS, _COLUMNS, _COL_IDS, export_html
+from revenuechaser.module_earnings_radar.models import TradeCard
+from revenuechaser.module_earnings_radar.report import CSS, _COLUMNS, _COL_IDS, export_html
 
 PHONE_QUERY = "@media (max-width: 640px)"
 

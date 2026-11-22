@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from RevenueChaser.app import dashboard, runners
-from RevenueChaser.core.tests.panel_client import panel_test_client
+from revenuechaser.app import dashboard, runners
+from revenuechaser.core.tests.panel_client import panel_test_client
 
 SHELL = Path(dashboard.__file__).resolve().parents[1] / "templates" / "dashboard.html"
 
@@ -28,7 +28,7 @@ def test_the_shell_opens_a_tab_a_board_asks_for():
 
 def test_refresh_renders_without_building(monkeypatch, tmp_path):
     monkeypatch.setattr(runners, "WELCOME_LATEST", tmp_path / "welcome_latest.html")
-    from RevenueChaser.module_welcome import build
+    from revenuechaser.module_welcome import build
     called = []
     monkeypatch.setattr(build, "build", lambda **kw: called.append(kw))
     r = _client().get("/view/module_welcome", query_string={"refresh": "1"})
@@ -46,13 +46,13 @@ def test_the_fetch_queues_the_welcome_job(monkeypatch):
 def test_the_page_needs_no_map_of_dashboard_job_labels():
     """#643 PR 6: the freshness card is one row per builder file (avo's D2 of 10 Nov 2026), named by
     ``module_welcome.build.FILE_LABELS``, so ``welcome_job_labels`` and its "two jobs, one board" rule are gone."""
-    from RevenueChaser.module_welcome import build as wb
+    from revenuechaser.module_welcome import build as wb
     assert not hasattr(runners, "welcome_job_labels")
     assert wb.FILE_LABELS["market"] == "Market-wide series"
 
 
 def test_the_job_builds_then_renders(monkeypatch, tmp_path):
-    from RevenueChaser.module_welcome import report
+    from revenuechaser.module_welcome import report
     monkeypatch.setattr(report, "OUTPUT_DIR", tmp_path)
     assert runners.run_welcome() == tmp_path / "welcome_latest.html"
 

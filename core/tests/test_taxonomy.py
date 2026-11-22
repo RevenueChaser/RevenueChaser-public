@@ -1,7 +1,7 @@
 """Ortak Sector & Theme taksonomisi testleri (ağ yok)."""
 from __future__ import annotations
 
-from RevenueChaser.core import taxonomy as t
+from revenuechaser.core import taxonomy as t
 
 
 # ── C21 (#383): a theme is measured or absent, never guessed ─────────────────
@@ -19,7 +19,7 @@ def test_assign_themes_returns_the_pinned_themes_unchanged(monkeypatch):
 
 # ── R3 (#86): Unclassified is the sector unknown bucket, sorted last ────────
 def test_unclassified_sorts_last_in_the_sector_list():
-    from RevenueChaser.core.gics_map import UNCLASSIFIED
+    from revenuechaser.core.gics_map import UNCLASSIFIED
     assert t.SORTED_SECTORS[-1] == UNCLASSIFIED
     assert "Other" not in t.SORTED_SECTORS
 

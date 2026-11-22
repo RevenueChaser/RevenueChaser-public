@@ -7,7 +7,7 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.rcdata import read
+from revenuechaser.rcdata import read
 
 TODAY = date(2026, 11, 16)
 

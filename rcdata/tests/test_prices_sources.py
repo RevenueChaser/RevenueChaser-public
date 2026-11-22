@@ -8,11 +8,11 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 
-from RevenueChaser.core import calendar
-from RevenueChaser.core.providers import unusual_whales
-from RevenueChaser.rcdata import ops
-from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.prices import actions, cover_shares, floats, stage
+from revenuechaser.core import calendar
+from revenuechaser.core.providers import unusual_whales
+from revenuechaser.rcdata import ops
+from revenuechaser.rcdata.build import base
+from revenuechaser.rcdata.build.prices import actions, cover_shares, floats, stage
 
 from .prices_fixture import (ALPHABET, GOOG_ACCESSION, SPINE, aapl_instance, goog_instance, master_index,
                              submissions, write_spine)
@@ -28,13 +28,13 @@ def env(monkeypatch):
     monkeypatch.setenv("RC_ALPACA_BASE", "https://alpaca.test")
     monkeypatch.setenv("UNUSUAL_WHALES_API_KEY", "test-key")
     monkeypatch.setattr(unusual_whales, "BASE", "https://uw.test/api")
-    from RevenueChaser.core.providers import sec_edgar
+    from revenuechaser.core.providers import sec_edgar
     monkeypatch.setattr(sec_edgar, "SEC_WWW_BASE", "https://sec.test")
     monkeypatch.setattr(sec_edgar, "SEC_DATA_BASE", "https://data.sec.test")
     monkeypatch.setattr(calendar, "_now", lambda: datetime(2026, 10, 27, 21, 0, tzinfo=timezone.utc))
-    monkeypatch.setattr("RevenueChaser.rcdata.build.prices.rotation", lambda: ())
-    monkeypatch.setattr("RevenueChaser.rcdata.build.prices.BENCHMARKS", ("SPY",))
-    monkeypatch.setattr("RevenueChaser.rcdata.read.watched", lambda kind: set())
+    monkeypatch.setattr("revenuechaser.rcdata.build.prices.rotation", lambda: ())
+    monkeypatch.setattr("revenuechaser.rcdata.build.prices.BENCHMARKS", ("SPY",))
+    monkeypatch.setattr("revenuechaser.rcdata.read.watched", lambda kind: set())
     write_spine(SPINE + ALPHABET)
 
 
@@ -237,7 +237,7 @@ def test_a_stored_filing_is_never_asked_again(http_mock, monkeypatch):
 def test_on_the_bucket_sec_requests_add_no_spacing_of_their_own(http_mock, monkeypatch):
     """Review round 2 of #380 (SF-1): the bucket paces the box; the run's own spacing is only the fallback."""
     monkeypatch.setattr(cover_shares, "FILL_PER_RUN", 2)
-    monkeypatch.setattr("RevenueChaser.core.sec_throttle.pace", lambda: True)
+    monkeypatch.setattr("revenuechaser.core.sec_throttle.pace", lambda: True)
     _sec_routes(http_mock)
     sleeps = []
     cover_shares.DATASET.fetch(_ctx(cover_shares.NAME, sleeps=sleeps), TUE)
@@ -246,7 +246,7 @@ def test_on_the_bucket_sec_requests_add_no_spacing_of_their_own(http_mock, monke
 
 def test_without_the_bucket_sec_requests_are_spaced_at_the_fallback_share(http_mock, monkeypatch):
     monkeypatch.setattr(cover_shares, "FILL_PER_RUN", 2)
-    monkeypatch.setattr("RevenueChaser.core.sec_throttle.pace", lambda: False)
+    monkeypatch.setattr("revenuechaser.core.sec_throttle.pace", lambda: False)
     _sec_routes(http_mock)
     sleeps = []
     cover_shares.DATASET.fetch(_ctx(cover_shares.NAME, sleeps=sleeps), TUE)

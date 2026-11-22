@@ -3,10 +3,10 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.app import activity
-from RevenueChaser.app.dashboard import app
-from RevenueChaser.core.tests.panel_client import panel_test_client
-from RevenueChaser.rcdata import read as wl_read
+from revenuechaser.app import activity
+from revenuechaser.app.dashboard import app
+from revenuechaser.core.tests.panel_client import panel_test_client
+from revenuechaser.rcdata import read as wl_read
 
 
 @pytest.fixture()
@@ -17,7 +17,7 @@ def client():
 
 
 def test_a_board_feeds_on_a_table_only_by_its_whole_name(monkeypatch):
-    from RevenueChaser.core import automations
+    from revenuechaser.core import automations
     entry = automations.AutomationEntry(name="RC-Test", label="t", args=(), time="01:00", description="",
                                         tables_written=("bars",))
     monkeypatch.setattr(automations, "REGISTRY", (entry,))
@@ -38,7 +38,7 @@ def test_a_boards_own_nightly_fetch_stands_under_that_board_in_menu_order():
         assert name in by_key[key], name
         assert name not in by_key[activity.SYSTEM], name
         assert got["jobs"][name]["boards"] == [key]
-    from RevenueChaser.app import dashboard
+    from revenuechaser.app import dashboard
     menu = [t["key"] for t in dashboard.TABS if t.get("type") == "tab"]
     keys = [b["key"] for b in got["boards"] if b["key"] != activity.SYSTEM]
     assert keys == sorted(keys, key=menu.index)
@@ -61,7 +61,7 @@ def test_the_boards_route_answers_the_grouping_with_the_pressed_counts(client):
 
 
 def test_add_never_removes_and_remove_never_adds(client):
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
     r = client.post("/api/watchlist/option/add/nvda").get_json()
     assert r["ok"] and r["added"] is True and r["ticker"] == "NVDA"
     assert client.post("/api/watchlist/option/add/NVDA").get_json()["added"] is False
@@ -71,7 +71,7 @@ def test_add_never_removes_and_remove_never_adds(client):
 
 
 def test_the_activity_page_is_closed_and_its_address_leads_to_settings(client):
-    from RevenueChaser.app import dashboard
+    from revenuechaser.app import dashboard
     assert "activity" not in {t.get("key") for t in dashboard.TABS}
     r = client.get("/view/activity")
     assert r.status_code == 302 and r.headers["Location"].endswith("/view/module_settings")

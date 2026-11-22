@@ -6,9 +6,9 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_asymmetric_growth import engine
-from RevenueChaser.module_asymmetric_growth.engine import score_ticker
+from revenuechaser.core import rawstore
+from revenuechaser.module_asymmetric_growth import engine
+from revenuechaser.module_asymmetric_growth.engine import score_ticker
 
 _TECH = {"price": 100.0, "dist_52w_pct": 0.05, "vol_ratio": 1.6, "above_sma50": True}
 

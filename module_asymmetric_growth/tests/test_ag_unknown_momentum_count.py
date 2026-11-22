@@ -6,9 +6,9 @@ pass the momentum signal; nothing on the board said how many cards that is. The 
 """
 from __future__ import annotations
 
-from RevenueChaser.rcdata.tests import fund_store
-from RevenueChaser.module_asymmetric_growth import engine
-from RevenueChaser.module_asymmetric_growth.tests.test_ag_dated_momentum_380 import edgar, row, steps
+from revenuechaser.rcdata.tests import fund_store
+from revenuechaser.module_asymmetric_growth import engine
+from revenuechaser.module_asymmetric_growth.tests.test_ag_dated_momentum_380 import edgar, row, steps
 
 
 

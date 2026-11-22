@@ -17,9 +17,9 @@ from datetime import datetime, timezone
 
 import numpy as np
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.core.gics_map import MORNINGSTAR_SECTORS, SHELL_SPAC, UNCLASSIFIED, canonical_sector
-from RevenueChaser.core.universe import SECTOR_COARSE_PREFIX
+from revenuechaser.core import rawstore
+from revenuechaser.core.gics_map import MORNINGSTAR_SECTORS, SHELL_SPAC, UNCLASSIFIED, canonical_sector
+from revenuechaser.core.universe import SECTOR_COARSE_PREFIX
 
 from . import config, store as rel_store, store_reads as sr
 # ``run_rows`` and ``ROW_ORDER`` are the reader's (#217); re-exported because this module has been
@@ -88,7 +88,7 @@ def member_ranks(tickers, caps: dict | None = None) -> dict[str, int]:
     """
     if caps is None:
         try:
-            from RevenueChaser.core.universe import BOARD_OPERATING_ONLY, classification_universe_rows
+            from revenuechaser.core.universe import BOARD_OPERATING_ONLY, classification_universe_rows
             caps = {r["ticker"]: r.get("market_cap") for r in classification_universe_rows(
                 operating_only=BOARD_OPERATING_ONLY["module_relatedness"])}
         except Exception as exc:  # noqa: BLE001 - a rank is the prompt's order, never the run's success
@@ -248,7 +248,7 @@ def build_shadow(candidates=(60, 90, 120, 150), k_medium: int | None = None,
     if profiles is None:
         profiles = rel_store.load_profiles()
         if universe is None:
-            from RevenueChaser.core.universe import BOARD_OPERATING_ONLY, classification_universe
+            from revenuechaser.core.universe import BOARD_OPERATING_ONLY, classification_universe
             universe = classification_universe(operating_only=BOARD_OPERATING_ONLY["module_relatedness"])
     profiles = {t: p for t, p in profiles.items() if any(p.values())}
     out_of_universe = 0
@@ -380,7 +380,7 @@ def _delete_run_rows(tx, run_id: str, tables) -> None:
 def current_run_id() -> str | None:
     """The pinned run's id: the one lookup in ``core.universe.current_theme_run`` (C23). Strict: a failed read
     raises, so the guards that refuse to touch the current run never read it as "no current run"."""
-    from RevenueChaser.core.universe import current_theme_run
+    from revenuechaser.core.universe import current_theme_run
     return current_theme_run(strict=True)
 
 
@@ -1086,7 +1086,7 @@ def _sector_by_ticker() -> dict[str, str]:
     """``ticker -> Morningstar sector name`` for every spine ``security`` row that has a sector value (#642 PR 3; it
     read the old ``equity_universe`` before). ``canonical_sector`` maps an old GICS spelling (``Information
     Technology``) to its Morningstar name, so both spellings count toward one sector. No spine file is no sectors."""
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     return {
         r["ticker"]: canonical_sector(r["sector"])
         for r in read.identity()
@@ -1131,13 +1131,13 @@ def match_theme_etfs(run_id: str) -> dict:
     ``>= 0.02``, top 3. Always include the modal Morningstar sector's SPDR as rank 1
     when available (even if it failed the thresholds), bumping others.
     """
-    from RevenueChaser.core import rotation_reference
+    from revenuechaser.core import rotation_reference
 
     candidates = {
         t: info for t, info in rotation_reference.rotation_etfs().items()
         if info.get("group") in ("sector", "theme")
     }
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     holdings = {t: ht for t, ht in read.etf_holding_tickers(candidates).items() if ht}
 
     theme_sets = _theme_ticker_sets(run_id)

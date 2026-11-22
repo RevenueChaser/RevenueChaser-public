@@ -22,7 +22,7 @@ import time
 import duckdb
 import pytest
 
-from RevenueChaser.core import rawstore
+from revenuechaser.core import rawstore
 
 
 

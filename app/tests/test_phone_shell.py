@@ -12,9 +12,9 @@ import subprocess
 
 import pytest
 
-from RevenueChaser.app import dashboard
-from RevenueChaser.core import reporting_common as rc
-from RevenueChaser.core.tests.board_js import DOM_STUB, function_source, inline_scripts
+from revenuechaser.app import dashboard
+from revenuechaser.core import reporting_common as rc
+from revenuechaser.core.tests.board_js import DOM_STUB, function_source, inline_scripts
 
 
 @pytest.fixture()
@@ -188,7 +188,7 @@ def test_a_pc_under_1440_px_gets_an_icon_rail(shell):
 
 
 def test_every_board_has_its_own_rail_icon(shell):
-    from RevenueChaser.app import dashboard as d
+    from revenuechaser.app import dashboard as d
     keys = [t["key"] for t in d.TABS if t["type"] == "tab"]
     missing = [k for k in keys if k not in d.NAV_ICONS]
     assert not missing, f"boards without an icon fall back to a dot: {missing}"

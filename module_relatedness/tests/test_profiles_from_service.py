@@ -5,13 +5,13 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_relatedness import config, engine, profile_v3, store
-from RevenueChaser.module_relatedness.tests.test_sec_forms_reader_841 import filings_only, layer  # noqa: F401
-from RevenueChaser.module_relatedness.tests.test_service_profile_bytes import MSFT, ask_the_service, world  # noqa: F401
-from RevenueChaser.rcdata import read
-from RevenueChaser.rcdata.build.sec_reads import company_profile as cp
-from RevenueChaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401  (fixtures)
+from revenuechaser.core import rawstore
+from revenuechaser.module_relatedness import config, engine, profile_v3, store
+from revenuechaser.module_relatedness.tests.test_sec_forms_reader_841 import filings_only, layer  # noqa: F401
+from revenuechaser.module_relatedness.tests.test_service_profile_bytes import MSFT, ask_the_service, world  # noqa: F401
+from revenuechaser.rcdata import read
+from revenuechaser.rcdata.build.sec_reads import company_profile as cp
+from revenuechaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401  (fixtures)
 
 
 @pytest.fixture

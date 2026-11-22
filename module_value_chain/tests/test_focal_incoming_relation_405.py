@@ -8,7 +8,7 @@ is what the chip and the colour read.
 """
 from __future__ import annotations
 
-from RevenueChaser.module_value_chain import engine
+from revenuechaser.module_value_chain import engine
 
 _NXPI_SELLS_TO_APPLE = {"src": "NXPI", "dst_name": "Apple", "dst_ticker": "AAPL", "relation": "customer",
                         "snippet": "Apple accounted for 11% of our revenue.", "filed": "2026-02-01",

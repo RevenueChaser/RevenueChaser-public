@@ -10,14 +10,14 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.rcdata.tests import universe_store
-from RevenueChaser.app import dashboard, jobs, runners
-from RevenueChaser.app.jobs import JobMessage
-from RevenueChaser.core.scan_quality import no_data_payload
-from RevenueChaser.module_fundamentals import config as fcfg
-from RevenueChaser.module_fundamentals import pipeline as fp
-from RevenueChaser.module_swing_potential import config as scfg
-from RevenueChaser.module_swing_potential import pipeline as sp
+from revenuechaser.rcdata.tests import universe_store
+from revenuechaser.app import dashboard, jobs, runners
+from revenuechaser.app.jobs import JobMessage
+from revenuechaser.core.scan_quality import no_data_payload
+from revenuechaser.module_fundamentals import config as fcfg
+from revenuechaser.module_fundamentals import pipeline as fp
+from revenuechaser.module_swing_potential import config as scfg
+from revenuechaser.module_swing_potential import pipeline as sp
 
 BOARDS = [
     pytest.param(sp, "run_swing", "swing_potential_latest.html", id="swing"),
@@ -118,14 +118,14 @@ def _universe_job(monkeypatch, swing, fundamentals):
 
 @pytest.fixture
 def ag_runner(out, monkeypatch):
-    from RevenueChaser.core import ticker_store
-    from RevenueChaser.module_asymmetric_growth import engine
+    from revenuechaser.core import ticker_store
+    from revenuechaser.module_asymmetric_growth import engine
     written: list[int] = []
     monkeypatch.setattr(ticker_store, "write_from_cards", lambda cards, asof=None: written.append(len(cards)))
     monkeypatch.setattr(engine, "run_asymmetric_growth_hunter", lambda uw, **k: {
         "asof": "2026-10-03T00:00:00", "universe_total": 1, "summary": {}, "thresholds": {},
         "cards": [{"ticker": "AAA"}]})
-    monkeypatch.setattr("RevenueChaser.module_asymmetric_growth.report.render_asymmetric_growth_hunter_html",
+    monkeypatch.setattr("revenuechaser.module_asymmetric_growth.report.render_asymmetric_growth_hunter_html",
                         lambda result: "<html>ag</html>")
     return written
 
@@ -147,8 +147,8 @@ HOSTILE = "</script><img src=x onerror=alert(1)>"
 
 @pytest.mark.parametrize("mod,runner,artifact", BOARDS)
 def test_a_hostile_no_data_message_is_escaped_on_the_screener_boards(mod, runner, artifact):
-    from RevenueChaser.module_fundamentals.report import render_fundamental_dashboard
-    from RevenueChaser.module_swing_potential.report import render_swing_dashboard
+    from revenuechaser.module_fundamentals.report import render_fundamental_dashboard
+    from revenuechaser.module_swing_potential.report import render_swing_dashboard
     payload = mod.build_payload([], run_stats={})
     payload.update(no_data=True, no_data_reason="no_universe_stored", no_data_message=HOSTILE)
     html = (render_swing_dashboard if mod is sp else render_fundamental_dashboard)(payload)
@@ -157,8 +157,8 @@ def test_a_hostile_no_data_message_is_escaped_on_the_screener_boards(mod, runner
 
 
 def test_a_hostile_no_data_message_is_escaped_on_the_ag_board():
-    from RevenueChaser.module_asymmetric_growth.engine import THRESHOLDS
-    from RevenueChaser.module_asymmetric_growth.report import render_asymmetric_growth_hunter_html
+    from revenuechaser.module_asymmetric_growth.engine import THRESHOLDS
+    from revenuechaser.module_asymmetric_growth.report import render_asymmetric_growth_hunter_html
     html = render_asymmetric_growth_hunter_html({
         "asof": "2026-10-03T00:00:00", "universe_total": 0, "summary": {}, "cards": [], "thresholds": THRESHOLDS,
         "no_data_reason": "no_universe_stored", "no_data_message": HOSTILE})
@@ -203,8 +203,8 @@ def test_loading_covers_only_the_three_universe_boards(client, monkeypatch):
 @pytest.mark.parametrize("mod", [sp, fp])
 def test_the_retry_hint_is_only_for_failed_scans(mod):
     """The "price source is reachable" hint fits a failed scan, not an unloaded store."""
-    from RevenueChaser.module_fundamentals.report import render_fundamental_dashboard
-    from RevenueChaser.module_swing_potential.report import render_swing_dashboard
+    from revenuechaser.module_fundamentals.report import render_fundamental_dashboard
+    from revenuechaser.module_swing_potential.report import render_swing_dashboard
     render = render_swing_dashboard if mod is sp else render_fundamental_dashboard
     assert "price source is reachable" not in render(_empty(mod, "no_universe_stored"))
     assert "price source is reachable" in render(_empty(mod, "no_scorable_tickers"))

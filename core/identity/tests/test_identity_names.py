@@ -1,7 +1,7 @@
 """Name similarity used by the FDIC match."""
 from __future__ import annotations
 
-from RevenueChaser.core.identity import names as n
+from revenuechaser.core.identity import names as n
 
 
 def test_name_score_handles_truncation_and_suffixes():

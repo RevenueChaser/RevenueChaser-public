@@ -3,9 +3,9 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core import board_settings as bs
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_comovement import config
+from revenuechaser.core import board_settings as bs
+from revenuechaser.core import rawstore
+from revenuechaser.module_comovement import config
 
 B = "module_comovement"
 
@@ -96,7 +96,7 @@ def test_the_universe_defaults_to_every_offered_set_and_every_named_group(rawsto
 
 
 def test_the_universe_masks_are_named_by_the_screens_own_lists():
-    from RevenueChaser.rcdata.needs import screen
-    from RevenueChaser.rcdata.build import base
+    from revenuechaser.rcdata.needs import screen
+    from revenuechaser.rcdata.build import base
     assert bs.UNIVERSE_SET_BITS == {s.key: 1 << i for i, s in enumerate(x for x in screen.UNIVERSE_SETS if x.offered)}
     assert bs.UNIVERSE_INCLUDE_BITS == {g: 1 << i for i, g in enumerate(base.SCOPE_GROUPS)}

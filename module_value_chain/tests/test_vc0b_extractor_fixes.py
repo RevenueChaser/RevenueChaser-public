@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.module_value_chain import aliases, precision, report
+from revenuechaser.module_value_chain import aliases, precision, report
 
 
 def _tickers(text):

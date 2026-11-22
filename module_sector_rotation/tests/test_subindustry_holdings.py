@@ -3,15 +3,15 @@
 Phase 1 (#266): classification is UW's two levels, so the old sector -> industry group -> sub-industry tree is
 sector -> industry now. (The file keeps its old name: it is the test file of the sector-row tree.)
 """
-from RevenueChaser.rcdata.tests import universe_store
-from RevenueChaser.core.gics_map import MORNINGSTAR_SECTORS
-from RevenueChaser.module_sector_rotation.engine import (
+from revenuechaser.rcdata.tests import universe_store
+from revenuechaser.core.gics_map import MORNINGSTAR_SECTORS
+from revenuechaser.module_sector_rotation.engine import (
     etf_trees, sector_etf_trees, sector_industry_tree,
 )
-from RevenueChaser.module_sector_rotation.report import (
+from revenuechaser.module_sector_rotation.report import (
     render_holdings_fragment, render_industry_fragment,
 )
-from RevenueChaser.core.rotation_reference import SEED_ROTATION_ETFS as ROTATION_ETFS
+from revenuechaser.core.rotation_reference import SEED_ROTATION_ETFS as ROTATION_ETFS
 
 # The Morningstar sector -> its SPDR sector ETF (the 11 rows the rotation map expands).
 SECTOR_ETF = {
@@ -178,9 +178,9 @@ class TestFragments:
         assert frag.count('<b style="color:#c9d1d9">Software - Infrastructure</b>') == 1
 
     def test_the_exported_map_embeds_the_industry_tree_for_a_sector_row(self, tmp_path, monkeypatch):
-        import RevenueChaser.module_sector_rotation.report as rd
+        import revenuechaser.module_sector_rotation.report as rd
         from datetime import date
-        from RevenueChaser.module_sector_rotation.models import ETFRotationSnapshot
+        from revenuechaser.module_sector_rotation.models import ETFRotationSnapshot
         monkeypatch.setattr(rd, "OUTPUT_DIR", tmp_path)
         snap = ETFRotationSnapshot(
             as_of_date=date(2026, 8, 14), ticker="XLK", group_name="sector", close_price=100.0,

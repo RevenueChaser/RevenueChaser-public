@@ -14,9 +14,9 @@ from datetime import date
 import duckdb
 import pytest
 
-from RevenueChaser.rcdata import serving
-from RevenueChaser.rcdata.build import base, dirty
-from RevenueChaser.rcdata.build.fundamentals import common, companyfacts, earnings, facts, filings, tables, wrds_fund
+from revenuechaser.rcdata import serving
+from revenuechaser.rcdata.build import base, dirty
+from revenuechaser.rcdata.build.fundamentals import common, companyfacts, earnings, facts, filings, tables, wrds_fund
 
 from . import fund_fixture as fx
 
@@ -222,8 +222,8 @@ def test_no_fundamentals_dataset_names_a_rule_from_outside_its_package():
     The hook itself still has to work, because the next dataset that reads a switch from outside its package
     depends on it, so it is asked of a stand-in in the same test rather than of a dataset that no longer has one.
     """
-    from RevenueChaser.rcdata.build import dirty
-    from RevenueChaser.rcdata.build.fundamentals import tables
+    from revenuechaser.rcdata.build import dirty
+    from revenuechaser.rcdata.build.fundamentals import tables
 
     assert getattr(tables.FundamentalsTables(), "rules_state", None) is None
     assert not hasattr(filings.DATASET, "rules_state")

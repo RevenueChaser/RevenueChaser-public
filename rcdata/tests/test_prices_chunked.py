@@ -12,8 +12,8 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.rcdata.build import dirty
-from RevenueChaser.rcdata.build.prices import stage
+from revenuechaser.rcdata.build import dirty
+from revenuechaser.rcdata.build.prices import stage
 
 from .prices_incremental_world import (FIGI, SPY_DAYS, SPYX, _note, _report, _serve, _snapshot,  # noqa: F401
                                        _spy, _spy_spine, alphabet, live)

@@ -7,9 +7,9 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.rcdata import read, serving
-from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.ownership import regsho
+from revenuechaser.rcdata import read, serving
+from revenuechaser.rcdata.build import base
+from revenuechaser.rcdata.build.ownership import regsho
 
 from . import ownership_fixture as ox
 
@@ -82,7 +82,7 @@ def test_an_answer_that_is_not_the_list_is_refused_and_not_kept(src):
 
 
 def test_the_default_day_is_the_session_before_today(monkeypatch):
-    from RevenueChaser.core import calendar
+    from revenuechaser.core import calendar
     monkeypatch.setattr(calendar, "today_ny", lambda: date(2026, 10, 26))       # a Monday
     assert regsho.DATASET.default_as_of() == date(2026, 10, 23)
 

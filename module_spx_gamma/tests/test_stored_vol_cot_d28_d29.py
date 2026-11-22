@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from RevenueChaser.module_spx_gamma.normalize import normalize_cftc, normalize_vix
+from revenuechaser.module_spx_gamma.normalize import normalize_cftc, normalize_vix
 
 DAY = "2026-08-14"
 DAY_DATE = date.fromisoformat(DAY)

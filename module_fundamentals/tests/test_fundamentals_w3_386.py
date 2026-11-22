@@ -9,13 +9,13 @@ from datetime import date, timedelta
 import pandas as pd
 import pytest
 
-from RevenueChaser.core import fiscal_year, rawstore
-from RevenueChaser.core.gics_map import GicsPath
-from RevenueChaser.core.tests.board_js import run_board_js
-from RevenueChaser.module_fundamentals import pipeline, scores, screeners
-from RevenueChaser.module_fundamentals.pipeline import _quality_metrics, _ttm_metrics, build_payload
-from RevenueChaser.module_fundamentals.report import render_fundamental_dashboard
-from RevenueChaser.module_fundamentals.tests.test_fundamental import _m
+from revenuechaser.core import fiscal_year, rawstore
+from revenuechaser.core.gics_map import GicsPath
+from revenuechaser.core.tests.board_js import run_board_js
+from revenuechaser.module_fundamentals import pipeline, scores, screeners
+from revenuechaser.module_fundamentals.pipeline import _quality_metrics, _ttm_metrics, build_payload
+from revenuechaser.module_fundamentals.report import render_fundamental_dashboard
+from revenuechaser.module_fundamentals.tests.test_fundamental import _m
 
 AS_OF = date(2026, 10, 16)
 
@@ -123,7 +123,7 @@ def test_a_normal_sector_does_not_drop(monkeypatch):
 def test_a_rule_of_40_above_the_barrier_is_kept_unknown_and_distorted(monkeypatch):
     """Review N2 (default chosen, change if avo prefers): the barrier no longer drops the whole name. Its Rule of 40
     is a data problem, so that rule is unknown and the card is DISTORTED; Quality and Momentum still read it."""
-    from RevenueChaser.module_fundamentals.screeners import evaluate_rule_of_40, is_distorted
+    from revenuechaser.module_fundamentals.screeners import evaluate_rule_of_40, is_distorted
     # growth 0.30, FCF margin (160 - 2.7) / 130 = 1.21 -> Rule of 40 = 151.0
     annual = _annual_pair(rev0=100.0, rev1=130.0, ocf1=160.0, capex1=2.7)
     row, drops = _compute(monkeypatch, annual)
@@ -340,7 +340,7 @@ def test_the_summary_states_the_new_ranking():
 
 def test_the_summary_names_the_health_drops_and_keeps_them_out_of_data_short():
     """#386 review: run_screen counts every unscored name as data_short; the four F1 drops are named, not "data<252d"."""
-    from RevenueChaser.module_fundamentals.report import render_fundamental_dashboard
+    from revenuechaser.module_fundamentals.report import render_fundamental_dashboard
     stats = {"regime": "RISK-ON", "data_short": 6, "no_edgar": 1,
              "dropped": {"short_bars": 1, "no_edgar_annual": 1, "sector_excluded": 2, "stale_annual": 1,
                          "edgar_fetch_failed": 1, "ro40_barrier": 1}}

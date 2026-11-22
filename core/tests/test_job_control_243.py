@@ -12,7 +12,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from RevenueChaser.core import job_control, screen_common
+from revenuechaser.core import job_control, screen_common
 
 
 # ── the token ─────────────────────────────────────────────────────────────────

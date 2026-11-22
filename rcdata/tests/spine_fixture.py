@@ -489,7 +489,7 @@ def add_etf_routes(http_mock, holdings=None, fail=(), repeat=()) -> None:
     CSVs (each in the shape its own fund serves — IAK typed, the five sector funds not), TickerInside's fund files
     and ARK's CSV, each holding ``holdings`` (``SP500`` by default). An ETF named in ``fail`` answers 500 instead.
     ``repeat`` is UW's shape and reaches only the sweep's and a named request's routes."""
-    from RevenueChaser.rcdata.build.spine import etf_holdings as etf
+    from revenuechaser.rcdata.build.spine import etf_holdings as etf
     rows = SP500 if holdings is None else holdings
 
     def answer(body, etf_name):
@@ -599,8 +599,8 @@ def write_etf_holdings(by_etf: dict, as_of: str = "2026-11-07", provider: str = 
     every line of the call carries ``provider``."""
     import duckdb
 
-    from RevenueChaser.rcdata import serving
-    from RevenueChaser.rcdata.build.spine import etf_holdings as etf
+    from revenuechaser.rcdata import serving
+    from revenuechaser.rcdata.build.spine import etf_holdings as etf
     path = serving.live_path("spine")
     path.parent.mkdir(parents=True, exist_ok=True)
     con = duckdb.connect(str(path))
@@ -626,8 +626,8 @@ def write_security(rows: list[dict], replace: bool = False) -> None:
     readers filter by tier and a NULL would drop the row from every one of them. For the readers' tests."""
     import duckdb
 
-    from RevenueChaser.rcdata import serving
-    from RevenueChaser.rcdata.build.spine import security as sec
+    from revenuechaser.rcdata import serving
+    from revenuechaser.rcdata.build.spine import security as sec
     path = serving.live_path("spine")
     path.parent.mkdir(parents=True, exist_ok=True)
     con = duckdb.connect(str(path))

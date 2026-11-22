@@ -1,5 +1,5 @@
 from datetime import date
-from RevenueChaser.module_earnings_radar.models import TradeCard
+from revenuechaser.module_earnings_radar.models import TradeCard
 
 
 def _bias_label(direction: float) -> str:

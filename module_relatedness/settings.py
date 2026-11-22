@@ -1,13 +1,13 @@
 """The Relatedness board's profile writer (#360), read from the one LLM-job registry (#404).
 
 The pair itself is no longer a setting of this board: since #404 every LLM job has its own pair on the
-``llm_writers`` settings board (:mod:`RevenueChaser.core.llm_jobs`, job ``relatedness.profiles``), so one screen
+``llm_writers`` settings board (:mod:`revenuechaser.core.llm_jobs`, job ``relatedness.profiles``), so one screen
 holds every job's writer and there is no second copy of the rule. This module stays the board's way in.
 """
 from __future__ import annotations
 
-from RevenueChaser.core import board_settings, llm_jobs
-from RevenueChaser.core import llm_writers as writers
+from revenuechaser.core import board_settings, llm_jobs
+from revenuechaser.core import llm_writers as writers
 
 BOARD = "module_relatedness"
 JOB = "relatedness.profiles"

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.module_value_chain import config, splitter
+from revenuechaser.module_value_chain import config, splitter
 
 BODY = "Unless the context otherwise requires, we are a retailer of automotive parts. " + "We sell parts. " * 150
 RISK = "Our business is subject to many risks. " + "Risk text. " * 20

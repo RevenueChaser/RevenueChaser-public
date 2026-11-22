@@ -168,7 +168,7 @@ sub-industries), `resolve_gics`, the industry alias table and `core/identity/gic
   bump) but are written NULL. A level the sources could not fill is
   `Unclassified`; a universe ticker the master has no row for keeps its stored
   values (never blanked). The SIC fallback reads the code from the SEC submissions cache first, else from
-  `sec_company_sic` (`core/sic_registry.py`; `python -m RevenueChaser.core.sic_registry --refresh`), and gives a
+  `sec_company_sic` (`core/sic_registry.py`; `python -m revenuechaser.core.sic_registry --refresh`), and gives a
   sector only for the 263 listed codes (an unlisted code gives nothing, no range guess). The raw SIC itself
   (`sic`, `sic_description`, `sic_group2`, `sic_source`) is written on `security_master` for every ticker that has one,
   from caches the identity job already holds, whatever decided the sector.
@@ -191,7 +191,7 @@ below).
 
 Each store file carries its own schema stamp (#26 PL7-a): a `store_schema` row, key `schema_version`, equal to `_SCHEMA_VERSION`. The ensure path writes it when the row is absent or older than the code, and leaves a newer stamp as stored; an upgrade of an older stamp is a warning and keeps the old value in the same table (`upgraded_from`, `upgraded_at`), so a restored older file leaves a trace. `rawstore.store_schema_mismatch()` lists those (`db`, `file`, `stored`, `code`); a read logs a warning and does not raise. An existing file with no stamp is stamped with the current version on that first ensure — an already-wrong file would be marked current; `schema_drift()` remains the backstop for a retyped column, a changed key or an extra column. The table is additive (`CREATE TABLE` plus one row) in each of the board files (`rawstore._SCHEMA_FILES`, which is `BOARD_DBS`); a board file is made by the schema apply and carries its stamp from birth. It does not bump `_SCHEMA_VERSION` and does not need a Drive checkpoint.
 
-Refusing writes on a mismatch is off (#26 PL7-b). `SCHEMA_REFUSE_WRITES` in `core/store_schema_refuse.py` is `False`. Set `RC_STORE_SCHEMA_REFUSE=1` to refuse a data write when that file's stamp is ahead of this code: newer, or not a version number. A file with no stamp is not refused: the ensure stamps it current. The same check runs before the ensure, so an old checkout never renames, merges or ALTERs a newer file; the ensure then logs one warning and the writes are refused. A refused write is also a skipped `job_runs` row (the run log goes quiet while jobs fail), so read the Server log first. `store_schema_mismatch()` opens the files read-write, so run the gate check with the dashboard stopped or on the fresh backup copy. Readers still only warn. `RC_STORE_SCHEMA_OK=1` is the escape for a deliberate migration: writes are allowed and the warning is suppressed. The exception is `StoreSchemaMismatch`; it names the file, the stored version, the code version and `python -m RevenueChaser.rcdata restore --step boards --latest <board> --live`. It does not run at import. Leave the switch off unless that refusal is intended.
+Refusing writes on a mismatch is off (#26 PL7-b). `SCHEMA_REFUSE_WRITES` in `core/store_schema_refuse.py` is `False`. Set `RC_STORE_SCHEMA_REFUSE=1` to refuse a data write when that file's stamp is ahead of this code: newer, or not a version number. A file with no stamp is not refused: the ensure stamps it current. The same check runs before the ensure, so an old checkout never renames, merges or ALTERs a newer file; the ensure then logs one warning and the writes are refused. A refused write is also a skipped `job_runs` row (the run log goes quiet while jobs fail), so read the Server log first. `store_schema_mismatch()` opens the files read-write, so run the gate check with the dashboard stopped or on the fresh backup copy. Readers still only warn. `RC_STORE_SCHEMA_OK=1` is the escape for a deliberate migration: writes are allowed and the warning is suppressed. The exception is `StoreSchemaMismatch`; it names the file, the stored version, the code version and `python -m revenuechaser.rcdata restore --step boards --latest <board> --live`. It does not run at import. Leave the switch off unless that refusal is intended.
 
 ## Storage layout
 
@@ -201,7 +201,7 @@ Refusing writes on a mismatch is off (#26 PL7-b). `SCHEMA_REFUSE_WRITES` in `cor
 | `edgar_docs/{cik}/{accession}.html.gz` | Raw 10-K/20-F HTML (the durable raw-document record; keyed by CIK + accession). Dir via `RC_EDGAR_DOCS_DIR` | No — durable; backed up as a tree |
 | `.cache/sec_13f/*_form13f.zip` | Downloaded SEC 13F source archives, left by the retired dashboard ingest (G9); the builder keeps its own under `raw/sec/13f_sets/` | Yes — nothing reads them |
 | `.cache/` | All regenerable outputs: `*_latest.json`, `*_latest.html` (flat and nested), PNGs, timestamped archives | Yes — delete anytime; re-run regenerates |
-| `<RC_STORE_DIR>/spx_gamma/` (override `SPX_GAMMA_DATA_ROOT`; `module_spx_gamma/data/` until S4, #38) | The SPX Gamma board's old data tree: the UW files per date under `raw/<date>/` with their `manifest.json`, `brier.json`, `spx_gamma_gex_history.json` and `latest.json`. Its durable part now lives in `.store/boards/spx_gamma.duckdb` (the five `spx_*` tables, written only by `module_spx_gamma/store.py`; SPX Gamma review 9 Nov 2026, D1-D5), and the tree is that file's import source: `python -m RevenueChaser.module_spx_gamma --import-tree [--apply] [--legacy PATH] [--extra-gex FILE ...]` (dashboard stopped) reads it in, a dry run by default, idempotent by key, every file's sha256 checked against its manifest, deleting and moving nothing; with `--apply` it then rebuilds the parsed files, charts and reports of every stored day. The board's regenerable files (a Fetch's `staging/` folder, parsed files, charts, reports, the history pull's `history_pull/` run files) go to `SPX_GAMMA_DATA_ROOT` when set, else `.cache/spx_gamma/` (`config.DATA_ROOT`); `config.TREE_ROOT` is the tree. The tree stays until avo's word after the board file's first verified weekly backup (PR 4) | No — durable until imported and the board file is backed up. Copied by the weekly uw-raw step until PR 4 |
+| `<RC_STORE_DIR>/spx_gamma/` (override `SPX_GAMMA_DATA_ROOT`; `module_spx_gamma/data/` until S4, #38) | The SPX Gamma board's old data tree: the UW files per date under `raw/<date>/` with their `manifest.json`, `brier.json`, `spx_gamma_gex_history.json` and `latest.json`. Its durable part now lives in `.store/boards/spx_gamma.duckdb` (the five `spx_*` tables, written only by `module_spx_gamma/store.py`; SPX Gamma review 9 Nov 2026, D1-D5), and the tree is that file's import source: `python -m revenuechaser.module_spx_gamma --import-tree [--apply] [--legacy PATH] [--extra-gex FILE ...]` (dashboard stopped) reads it in, a dry run by default, idempotent by key, every file's sha256 checked against its manifest, deleting and moving nothing; with `--apply` it then rebuilds the parsed files, charts and reports of every stored day. The board's regenerable files (a Fetch's `staging/` folder, parsed files, charts, reports, the history pull's `history_pull/` run files) go to `SPX_GAMMA_DATA_ROOT` when set, else `.cache/spx_gamma/` (`config.DATA_ROOT`); `config.TREE_ROOT` is the tree. The tree stays until avo's word after the board file's first verified weekly backup (PR 4) | No — durable until imported and the board file is backed up. Copied by the weekly uw-raw step until PR 4 |
 
 ### Result history
 
@@ -277,7 +277,7 @@ them it reads from rcdata's serving layer instead (see The market store).
 | `sec13f_board_cells` | 13F board (#732): its own file `.store/boards/sec_13f.duckdb`, written only by `module_sec_13f/store.py`. Per ticker and report period the builder's metrics as filed, read by the board until the ownership build or the New York date changes; a period stored as `closed` is never rewritten. Key `(ticker, period)`. `ticker`, `period DATE`, `shares`, `value`, `holders INTEGER`, `top10_pct`, `hhi`, `new_holders INTEGER`, `exited_holders INTEGER`, `buy_flow`, `sell_flow`, `breadth`, `breadth_chg` (DOUBLE unless named), `complete BOOLEAN`, `closed BOOLEAN`, `stored_at DOUBLE` | sec_13f | none |
 | `sec13f_board_breaks` | 13F board: per ticker and settled period, each filer that started or stopped reporting it (from `sec13f_filer_breaks`), kept with its period's cells. Key `(ticker, period, kind, cik)`. `ticker`, `period DATE`, `kind`, `cik`, `filer_name`, `shares DOUBLE`, `stored_at DOUBLE` | sec_13f | none |
 | `sec13f_board_meta` | 13F board bookkeeping: `source`, the ownership build stamp and New York date the rows were taken from. Key `key`. `key`, `value`, `updated_at DOUBLE` | sec_13f | none |
-| `wl_list` | Watch lists (#786, avo 12 Nov 2026): their own file `.store/boards/watchlists.duckdb`, written only by `module_watchlists/store.py`. Not a board result — avo types these and nothing recomputes them, so the file is never rebuilt and never written whole; it rides the `boards` step of the weekly backup. One row per list: its name, avo's free-text description, where it sits among the lists, and `feeds`, the job group it serves (`option` and `stock` for the two job lists since plan v5 step 7g, read by `rcdata.read.watched`; empty for avo's own). Lists come in and go out in TradingView's own one-line export format (`module_watchlists/tradingview.py`): items separated by commas, an item starting with `###` a section heading, everything else a symbol. `python -m RevenueChaser.module_watchlists import <file-or-folder>` reads them, a dry run by default that names every symbol with no source yet (#785); `--apply` writes and a re-run adds only what is missing. `export <list_id>` writes a list back out in the same format, order, headings and spelling kept. Key `list_id`. `list_id`, `name`, `description`, `position INTEGER`, `feeds`, `created_at DOUBLE`, `created_by`, `updated_at DOUBLE` | watchlists | none |
+| `wl_list` | Watch lists (#786, avo 12 Nov 2026): their own file `.store/boards/watchlists.duckdb`, written only by `module_watchlists/store.py`. Not a board result — avo types these and nothing recomputes them, so the file is never rebuilt and never written whole; it rides the `boards` step of the weekly backup. One row per list: its name, avo's free-text description, where it sits among the lists, and `feeds`, the job group it serves (`option` and `stock` for the two job lists since plan v5 step 7g, read by `rcdata.read.watched`; empty for avo's own). Lists come in and go out in TradingView's own one-line export format (`module_watchlists/tradingview.py`): items separated by commas, an item starting with `###` a section heading, everything else a symbol. `python -m revenuechaser.module_watchlists import <file-or-folder>` reads them, a dry run by default that names every symbol with no source yet (#785); `--apply` writes and a re-run adds only what is missing. `export <list_id>` writes a list back out in the same format, order, headings and spelling kept. Key `list_id`. `list_id`, `name`, `description`, `position INTEGER`, `feeds`, `created_at DOUBLE`, `created_by`, `updated_at DOUBLE` | watchlists | none |
 | `wl_section` | The ordered headings inside a list (avo's own, e.g. "AI ÇIPLERI — GPU VE ACCELERATOR"); a list with no headings carries one section with an empty name, so a reader never special-cases "no sections". Order is data, not the alphabet. Key `(list_id, section_id)`. `list_id`, `section_id`, `name`, `position INTEGER`, `created_at DOUBLE` | watchlists | none |
 | `wl_item` | One symbol on one list. `symbol` is avo's own spelling kept exactly (`NASDAQ:NVDA`, `TVC:US10Y-TVC:US02Y`), because it is what an export writes back out; `exchange` and `ticker` are its parts and `coverage` says where its data comes from here — `us_equity`, `market_series`, `derived` or `unsupported` (#785), read from the spelling alone by `module_watchlists/symbols.py`. An unsupported symbol is kept and shows no data, so the list stays whole. Key `(list_id, symbol)`. `list_id`, `symbol`, `section_id`, `position INTEGER`, `exchange`, `ticker`, `coverage`, `note`, `added_at DOUBLE`, `added_by` | watchlists | none |
 | `wl_change` | One row per add or remove, kept when the list itself is deleted, so what a list held is still readable. Key `(list_id, symbol, changed_at, action)`. `list_id`, `symbol`, `action`, `changed_at DOUBLE`, `changed_by`, `note` | watchlists | none |
@@ -575,7 +575,7 @@ gets the run's id in `RC_CHAIN_ID` (`ops.CHAIN_ID_ENV`), which the runs it start
   none by default, cancellable jobs only) ends it `error` at the next checkpoint once passed. Nothing is interrupted mid-write, so every
   `write_rows` batch stays whole.
 - **One universe run at a time (#244).** `run_universe_refresh` holds `universe_write_lock()` for the whole run, on
-  the dashboard job and on the CLI (`python -m RevenueChaser.app.universe_cli`, exit 3 when busy). A second run
+  the dashboard job and on the CLI (`python -m revenuechaser.app.universe_cli`, exit 3 when busy). A second run
   ends "another universe run is in progress, pid N" (or "the universe data is being written by another job, pid N"
   while Phase B holds the writer lock) before any call or write. The single-board Fetches (AG, Swing,
   Fundamentals) are refused while a universe run holds it (the `universe_run` marker), not while Phase B does; `/run/universe` answers 409 with the queued or running job's id.
@@ -898,7 +898,7 @@ schema, reachable with path expressions like `payload.market_cap::DOUBLE`).
 
 ### Identity refresh (issues #85, #89)
 
-`POST /run/identity` (long lane; the Settings **Fetch identity** button; from a shell add `-H "X-RC-Panel: cli"`) or `python -m RevenueChaser.core.identity --refresh
+`POST /run/identity` (long lane; the Settings **Fetch identity** button; from a shell add `-H "X-RC-Panel: cli"`) or `python -m revenuechaser.core.identity --refresh
 [--limit N] [--sources a,b] [--yahoo-limit N]` runs `core/identity/refresh.py` over every `equity_universe` ticker.
 It writes `security_master`, `identity_conflicts`, `identity_source_cache` and `identity_runs`, plus one
 sanctioned outside write: the SEC exchange map is **not** fetched here any more — the nightly RC-Daily-Bars step
@@ -1272,7 +1272,7 @@ dataset's checks, the open issues per dataset and kind). What SQLite did in one 
 `WATCH` of the tables touched, the reads, and one `MULTI`/`EXEC` that runs again when someone else wrote meanwhile
 (at most 25 times, with a jittered backoff; then the store reads as busy).
 A caller that waits on a busy store catches `ops.BUSY_ERRORS` (a locked file, a Redis that does not answer).
-`python -m RevenueChaser.rcdata.ops_copy` copies `ops.sqlite` into an empty namespace once: read-only on the file,
+`python -m revenuechaser.rcdata.ops_copy` copies `ops.sqlite` into an empty namespace once: read-only on the file,
 `--dry-run` counts per table and per open issue kind, a namespace with keys is refused unless `--force`, every row is
 copied (the price issues stay), and every table is compared with the file afterwards (exit 1 on a difference).
 With `RC_REDIS_URL` unset the app runs on `ops.sqlite` as below; that is the rollback, since the file is never
@@ -1333,9 +1333,9 @@ left of UW's day) are counted: the dashboard's other UW calls are not yet.
 The keyless sources send one User-Agent with the contact from `RC_HTTP_CONTACT` (BLS refuses a client without
 one; a 403 names the variable in the source's failure note).
 
-**Running it.** `python -m RevenueChaser.rcdata.build run [--once] [--dataset X [--as-of D]]`,
-`python -m RevenueChaser.rcdata.build backfill <dataset> --from <date>` and
-`python -m RevenueChaser.rcdata.build attended` (the attended datasets' runner, below).
+**Running it.** `python -m revenuechaser.rcdata.build run [--once] [--dataset X [--as-of D]]`,
+`python -m revenuechaser.rcdata.build backfill <dataset> --from <date>` and
+`python -m revenuechaser.rcdata.build attended` (the attended datasets' runner, below).
 
 The store takes one writer at a time, so a start whose turn it is not **waits** for it: the gate (a job lock held
 on a file it writes, another builder) and the builder lock are one loop. `--wait SECONDS` is how long; a person's
@@ -1393,7 +1393,7 @@ alone. A **dashboard job's** row (no dataset, trigger `dashboard`) is the one th
 market-store builder's routes").
 
 **Why a pass exited 1, and where that is written (#1119).** The hourly unit runs
-`jobrun rc-builder -- python -m RevenueChaser.core.automations run RC-Build`, and `run_task` sends the builder's
+`jobrun rc-builder -- python -m revenuechaser.core.automations run RC-Build`, and `run_task` sends the builder's
 whole stream to `<OUTPUT_DIR>/logs/RC-Build.log`. `jobrun` keeps only what its child printed, the **last line** of
 it as the job's `message`, so a failed pass ends with one summary line on stdout: `pass failed: <reason>;
 <reason>`, which carries every failed dataset with its step and exception, the due step's own failures (the one
@@ -1443,7 +1443,7 @@ pass with no backoff: for the SPX slice at worst about 24 runs a day, each one U
 holds a dataset twice: `due.py` does not queue it, and `base.run_request` skips a request of it that was queued
 anyway (PR #222).
 
-**Backup.** `python -m RevenueChaser.rcdata backup` is the weekly job (RC-Backup-Weekly, Sunday 03:30). It writes
+**Backup.** `python -m revenuechaser.rcdata backup` is the weekly job (RC-Backup-Weekly, Sunday 03:30). It writes
 under `<RAW_STORE_BACKUP_DIR>/weekly-v2/<step>/` and refuses an empty `RAW_STORE_BACKUP_DIR` (exit 2, nothing
 written). Its `duckdb` step copies each serving file from one open handle, verifies it by row count and
 `sum(hash(row))` per table before the rename, and writes the sha256 of every copy to the step's `.manifest.json`,
@@ -1494,7 +1494,7 @@ Since #1361 they are **not** `attended`: homesrv's `life` connects with no Duo p
 their cadence and a queued Fetch is picked up by it like any other dataset (`attended_names()` holds
 `delisted/serving` alone, for its own reason: #1219, never due on its own). Their whole-history build is still
 `whole_build_by_hand`, so a person runs
-`python -m RevenueChaser.rcdata.build backfill wrds/sec_idhist
+`python -m revenuechaser.rcdata.build backfill wrds/sec_idhist
 wrds/co_hgic wrds/idxcst_his openfigi/map`, which starts one worker for the whole process, in a foreground terminal:
 the worker may read a WRDS prompt from `/dev/tty`, and a background job that reads its terminal is stopped (SIGTTIN).
 A failed login, or no
@@ -1850,7 +1850,7 @@ skipped for the run and the history is Compustat's alone). Before any data query
 missing.
 
 **Attended (WRDS).** `wrds/prices` runs on the spine's WRDS worker (`RC_WRDS_PYTHON`, `WRDS_USERNAME`) from the CLI
-only: `python -m RevenueChaser.rcdata.build backfill wrds/prices`. One query per table and year; a backfill asks the
+only: `python -m revenuechaser.rcdata.build backfill wrds/prices`. One query per table and year; a backfill asks the
 two snapshot tables, then the years newest first, skips a year partition that exists with no query (a `comp.secd`
 year asked with an older query, the exchange filter or the columns before, is asked again; its old answer is renamed
 `.superseded-<run id>`, never deleted); the whole history is about 130 queries, asked in one session (WRDS publishes no query
@@ -1893,7 +1893,7 @@ Parquet the `wrds/prices` fetch already wrote — `crsp.dsf_v2` (every share typ
 `crsp_a_stock.stkdelists` (whole) and `comp.secd` (the CUSIP link only), all under `parquet/wrds/prices/<table>/`.
 No new provider call and no new WRDS login. **Attended**, like the WRDS datasets: never due on its own, one backfill
 from the Parquet on disk and then with their monthly run
-(`python -m RevenueChaser.rcdata.build backfill delisted/serving`).
+(`python -m revenuechaser.rcdata.build backfill delisted/serving`).
 
 **Keyed on PERMNO.** Every row's `security_id` is `permno:<PERMNO>` — never a ticker, and never a live security id.
 A dead company's ticker and a live one's are **two securities** (ticker reuse), so no reader may join on ticker
@@ -1965,7 +1965,7 @@ never writes it. Nothing here writes `raw.duckdb`: the old 13F, short and inside
 **Starts by hand.** Every ownership dataset is not due until it has built once, so the first hourly pass after a
 deploy calls no source before the server thread's first runs (after a backup).
 
-**The 13F first fill** (avo, 28 Oct 2026): `python -m RevenueChaser.rcdata.build backfill sec/13f --from
+**The 13F first fill** (avo, 28 Oct 2026): `python -m revenuechaser.rcdata.build backfill sec/13f --from
 2025-01-01`. The backfill reads the SEC's Form 13F data-set page (`RC_FORM13F_INDEX_URL`), downloads each set whose
 filing window meets the range (one zip of about 100 MB per three months, kept under `raw/sec/13f_sets/`, downloaded
 once and asked again on a later backfill with `If-Modified-Since`), and types its 13F-HR and 13F-HR/A into the same
@@ -2115,7 +2115,7 @@ preliminary row any more.
 **WRDS is a check, not a served value.** Monthly on the spine's one WRDS worker (one login per builder process).
 Since #1361 the datasets are not `attended`: the hourly pass runs them on their cadence, because homesrv's `life`
 login gets no Duo push. The whole-history snapshot is still `whole_build_by_hand`, so a person runs
-`python -m RevenueChaser.rcdata.build backfill wrds/fundq wrds/funda
+`python -m revenuechaser.rcdata.build backfill wrds/fundq wrds/funda
 wrds/segments wrds/exrt wrds/audit` in a foreground terminal on the server. Each monthly `fundq` / `funda` snapshot is compared with the
 one before: every value that changed for a period both hold is a `fundamental_revision` row (a restatement, or a
 correction at Compustat; a new period is not one). The check notes count revenue, net income and diluted EPS that
@@ -2519,7 +2519,7 @@ Two separate things, deliberately not conflated:
   there).
 
 ## Backups, restore and compaction
-- **One weekly job (avo, 8 Nov 2026)** — `python -m RevenueChaser.rcdata backup`, registry row RC-Backup-Weekly
+- **One weekly job (avo, 8 Nov 2026)** — `python -m revenuechaser.rcdata backup`, registry row RC-Backup-Weekly
   (Sunday 03:30, unit `life-rc-backup-weekly` from the home-server repository, 60 min limit). Everything goes to the
   HDD under `RAW_STORE_BACKUP_DIR` (an empty value is refused: exit 2, nothing written) as `weekly-v2/<step>/`, one
   folder and one `.manifest.json` per step (the sha256, size and table fingerprints of every copy kept, the step's
@@ -2558,17 +2558,17 @@ Two separate things, deliberately not conflated:
 - **What shows it** — the Data/Health "Weekly backups" card (each step's last good run and the error of a failed
   one, the newest copy of every file and how many are kept; amber past 8 days, red past 15) and the Health strip's
   backup alert; the home-server health board and Grafana read the same manifests per step.
-- **Restore** — `python -m RevenueChaser.rcdata restore --step <step> (--file <name> | --latest [KIND])
+- **Restore** — `python -m revenuechaser.rcdata restore --step <step> (--file <name> | --latest [KIND])
   (--into <dir> | --live)`. Every restore first verifies the copy against its manifest (sha256, size, the recorded
   table fingerprints or the kept tables' row counts); an unknown or changed copy is refused and nothing is written.
   `--into <dir>` writes the verified copy there (a `uw-raw` week as the whole folder) and touches nothing live.
   `--live` puts a `duckdb` or `boards` copy in place of its live file: it refuses while a RevenueChaser process
   uses that store or a `<name>.duckdb.wal` lies beside the target (#214: DuckDB would replay it on top of the
   restored file), keeps the current file as `<name>.duckdb.pre-restore`, copies and fingerprints the result.
-  `ops --live` is a step by hand: on Redis `python -m RevenueChaser.rcdata.ops_copy --sqlite <copy>` into an EMPTY
+  `ops --live` is a step by hand: on Redis `python -m revenuechaser.rcdata.ops_copy --sqlite <copy>` into an EMPTY
   namespace (emptying one is a delete and needs avo's word); on `ops.sqlite` copy the file into place with the
   dashboard stopped. `uw-raw` and `edgar-docs` are restored `--into` a folder and moved (or unzipped) by hand.
-- **The drill** — `python -m RevenueChaser.rcdata restore-check` (unit `life-rc-restore-check`, the first Sunday of
+- **The drill** — `python -m revenuechaser.rcdata restore-check` (unit `life-rc-restore-check`, the first Sunday of
   the month 02:30) restores the newest `ops` copy and the newest board copy into a scratch folder, verifies both the
   way a restore does, removes what it wrote and exits 2 on any mismatch; the home-server health board shows it.
   Once a quarter, by hand (about 30 minutes): restore the newest `boards` and `duckdb` copies `--into` a scratch
@@ -2588,7 +2588,7 @@ Two separate things, deliberately not conflated:
   job, which only looks inside `weekly-v2/`. Removing them is a deliberate step on avo's word.
 - **Compaction** — DuckDB re-uses freed blocks but never shrinks the file, so
   every `replace_all`/DELETE leaves it larger than its data. With the dashboard
-  and scheduled jobs stopped: `python -m RevenueChaser.scripts.compact_store`
+  and scheduled jobs stopped: `python -m revenuechaser.scripts.compact_store`
   (applies the manifest first, then `COPY FROM DATABASE` into a fresh file,
   verifies row counts, swaps; the old file stays as `<name>.duckdb.pre-compact`
   until you delete it). On the live store: raw 591 → 429 MB, edgar 507 → 81 MB.

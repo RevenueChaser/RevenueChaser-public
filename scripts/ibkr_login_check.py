@@ -10,7 +10,7 @@ non-zero exit would turn the scheduler row red for something nobody broke, and w
 later as a breakage. The state is the output, printed and recorded; the exit code says only that the
 check itself ran.
 
-    python -m RevenueChaser.scripts.ibkr_login_check
+    python -m revenuechaser.scripts.ibkr_login_check
 
 Switched off until ``RC_IBKR_LOGIN_CHECK`` is set: with it unset the job probes nothing, writes
 nothing and says so.
@@ -22,7 +22,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from RevenueChaser.core import ibkr_login
+from revenuechaser.core import ibkr_login
 
 _WORDS = {ibkr_login.UP: "logged in", ibkr_login.DOWN: "login needed",
           ibkr_login.SILENT: "port open, the API is not answering"}

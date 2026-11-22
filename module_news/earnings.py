@@ -16,10 +16,10 @@ from __future__ import annotations
 import time
 from datetime import date, datetime, timedelta
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_news import store_reads
-from RevenueChaser.module_news.calendar import META, local_day
-from RevenueChaser.rcdata import read
+from revenuechaser.core import rawstore
+from revenuechaser.module_news import store_reads
+from revenuechaser.module_news.calendar import META, local_day
+from revenuechaser.rcdata import read
 
 # The table name is the board's reader's (``module_news/store_reads.py``, #217); the write below stays here,
 # with the code that produces the rows.
@@ -42,7 +42,7 @@ def week(now: float | None = None) -> tuple[date, date]:
 def _names() -> set[str]:
     """The watch-list names, the same lists the per-ticker headlines read. A list that cannot be read is logged
     and left out (``read.picked``), so one bad list never empties the tab."""
-    from RevenueChaser.module_news import headlines
+    from revenuechaser.module_news import headlines
     return read.picked(headlines.LISTS)
 
 

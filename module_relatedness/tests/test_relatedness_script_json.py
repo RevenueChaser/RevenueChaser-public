@@ -5,8 +5,8 @@ string that spells a placeholder.
 """
 from __future__ import annotations
 
-from RevenueChaser.core.tests.board_js import PROBE, assert_scripts_intact
-from RevenueChaser.module_relatedness import config, report
+from revenuechaser.core.tests.board_js import PROBE, assert_scripts_intact
+from revenuechaser.module_relatedness import config, report
 
 
 def test_a_comment_opener_or_placeholder_in_a_name_keeps_the_script_intact(tmp_path):

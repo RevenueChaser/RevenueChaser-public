@@ -9,10 +9,10 @@ import json
 
 import pytest
 
-from RevenueChaser.core.providers import sec_edgar
-from RevenueChaser.rcdata import caps, serving
-from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.spine import openfigi_map as of, sec_tickers, wrds
+from revenuechaser.core.providers import sec_edgar
+from revenuechaser.rcdata import caps, serving
+from revenuechaser.rcdata.build import base
+from revenuechaser.rcdata.build.spine import openfigi_map as of, sec_tickers, wrds
 
 from . import spine_fixture as fx
 
@@ -193,7 +193,7 @@ def _spine_env(http_mock, monkeypatch, *, unlink_nvr: bool) -> None:
     ``comp.security`` row is dropped, so its CIK finds no security: a Tier A name with no CUSIP, the one case an
     ``ID_CUSIP`` job can never answer for. Its own env, not the module's, because the patch has to be in place
     before the WRDS backfill writes its Parquet."""
-    from RevenueChaser.rcdata.build.spine import funds as fu
+    from revenuechaser.rcdata.build.spine import funds as fu
     monkeypatch.setattr(sec_edgar, "SEC_WWW_BASE", "https://sec.test")
     monkeypatch.setenv("RC_OPENFIGI_BASE", "https://figi.test")
     monkeypatch.setenv("OPENFIGI_API_KEY", KEY)
@@ -210,7 +210,7 @@ def _spine_env(http_mock, monkeypatch, *, unlink_nvr: bool) -> None:
 
 def _spine(day="2026-10-27"):
     """Every spine dataset in order, so the live ``security`` table is there for ``wanted_tickers``."""
-    from RevenueChaser.rcdata.build.spine import funds as fu, sec_tickers_mf as mf, security
+    from revenuechaser.rcdata.build.spine import funds as fu, sec_tickers_mf as mf, security
     for name in (sec_tickers.NAME, mf.NAME, wrds.SEC_IDHIST.name, wrds.CO_HGIC.name, wrds.IDXCST_HIS.name,
                  of.NAME, fu.NAME, security.NAME):
         params = {"mode": "backfill", "to": day} if name.startswith("wrds/") else {"as_of": day}
@@ -410,8 +410,8 @@ def test_a_compustat_cusip_beside_a_ticker_sourced_figi_is_a_build_issue(http_mo
     """Review should-fix 4: for the 129 live Tier A rows whose CUSIP OpenFIGI does not know, the CUSIP (and the ISIN
     derived from it) comes from Compustat while the FIGI comes from a ``TICKER`` job, and nothing checks the two name
     the same security. A reorganised issuer is exactly that case, so the row is named on the board."""
-    from RevenueChaser.rcdata import ops
-    from RevenueChaser.rcdata.build.spine import security
+    from revenuechaser.rcdata import ops
+    from revenuechaser.rcdata.build.spine import security
     _spine_env(http_mock, monkeypatch, unlink_nvr=False)        # NVR keeps its Compustat link, so it has a CUSIP
     _spine()
     with serving.open_read("spine") as con:
@@ -425,8 +425,8 @@ def test_a_compustat_cusip_beside_a_ticker_sourced_figi_is_a_build_issue(http_mo
 
 
 def test_a_ticker_openfigi_does_not_know_is_a_build_issue(http_mock, monkeypatch):
-    from RevenueChaser.rcdata import ops
-    from RevenueChaser.rcdata.build.spine import security
+    from revenuechaser.rcdata import ops
+    from revenuechaser.rcdata.build.spine import security
     monkeypatch.delitem(fx.TICKER_FIGI, "NVR")              # OpenFIGI knows it by neither CUSIP nor ticker
     _spine_env(http_mock, monkeypatch, unlink_nvr=True)
     _spine()

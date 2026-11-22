@@ -12,7 +12,7 @@ import logging
 import httpx
 import pytest
 
-from RevenueChaser.core.providers.unusual_whales import UWClient
+from revenuechaser.core.providers.unusual_whales import UWClient
 
 
 class _Resp:

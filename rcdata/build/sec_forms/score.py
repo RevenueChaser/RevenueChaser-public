@@ -1,6 +1,6 @@
 """#763: score the section cutters against the hand-checked truth file, side by side.
 
-    python -m RevenueChaser.rcdata.build.sec_forms.score
+    python -m revenuechaser.rcdata.build.sec_forms.score
 
 Reads ``rcdata/tests/fixtures/sec_sections_truth.json`` and the **stored** raw documents
 (``raw/sec/filings/documents``). It cuts nothing with edgartools: that cutter's answer is read from the answer

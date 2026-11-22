@@ -10,10 +10,10 @@ from datetime import date, datetime, timedelta, timezone
 import pandas as pd
 import pytest
 
-from RevenueChaser.rcdata.tests import universe_store
-from RevenueChaser.core import calendar, job_lock, prices, rawstore
-from RevenueChaser.core.providers.result import ProviderResult
-from RevenueChaser.core.tests.d01_seed import write_d01
+from revenuechaser.rcdata.tests import universe_store
+from revenuechaser.core import calendar, job_lock, prices, rawstore
+from revenuechaser.core.providers.result import ProviderResult
+from revenuechaser.core.tests.d01_seed import write_d01
 
 UTC = timezone.utc
 NOW = datetime(2026, 10, 8, 20, 35, tzinfo=UTC)      # 16:35 EDT, after the 16:30 complete edge

@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_relatedness import naming, themes
+from revenuechaser.core import rawstore
+from revenuechaser.module_relatedness import naming, themes
 
 CAPS = {"NVDA": 4.0e12, "AAPL": 3.0e12, "AVGO": 1.5e12, "AMAT": 1.6e11, "ADBE": 1.5e11, "ASML": 3.0e11}
 
@@ -26,7 +26,7 @@ def test_the_rank_is_the_cap_descending_place_and_a_name_with_no_cap_ranks_last(
 def test_an_unreadable_universe_leaves_the_ticker_order_instead_of_failing_the_run(monkeypatch):
     """A rank is the prompt's order, never the run's success: with no caps to be had every name keeps
     its alphabetical place, which is what the table held before #298."""
-    import RevenueChaser.core.universe as universe
+    import revenuechaser.core.universe as universe
 
     def _boom(*_a, **_k):
         raise RuntimeError("no spine")

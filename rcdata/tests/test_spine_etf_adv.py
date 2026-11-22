@@ -11,8 +11,8 @@ from datetime import date, timedelta
 
 import pytest
 
-from RevenueChaser.rcdata.build.prices import stage as prices_stage, wrds_history
-from RevenueChaser.rcdata.build.spine import etf
+from revenuechaser.rcdata.build.prices import stage as prices_stage, wrds_history
+from revenuechaser.rcdata.build.spine import etf
 
 PROVENANCE = {"source_as_of": date(2026, 11, 2), "fetched_at": 1.0, "run_id": "test"}
 
@@ -121,7 +121,7 @@ def test_no_compustat_partition_at_all_answers_nothing():
 def test_the_answer_does_not_read_the_live_prices_store(monkeypatch):
     """The source is the raw Parquet: a live ``prices.duckdb`` is not opened at all (#382 filters it to the
     universe, so a fund outside it has no bar there)."""
-    from RevenueChaser.rcdata import serving
+    from revenuechaser.rcdata import serving
     put_secd(series("131855", "01", "GLD", 20, 2_000_000_000.0))
 
     def refuse(kind, *a, **k):

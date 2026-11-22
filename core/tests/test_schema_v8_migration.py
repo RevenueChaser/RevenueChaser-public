@@ -11,7 +11,7 @@ import datetime as _dt
 import duckdb
 import pytest
 
-from RevenueChaser.core import rawstore
+from revenuechaser.core import rawstore
 
 V8_EDGAR_COLUMNS = {"edgar_financials": ("fetched_at",)}
 _ANNUAL = [{"fy": 2025, "revenue": 1.5e9}, {"fy": 2024, "revenue": 1.2e9}]

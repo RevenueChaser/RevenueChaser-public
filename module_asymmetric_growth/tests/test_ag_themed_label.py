@@ -6,7 +6,7 @@ rotation map (``engine._summary``: ``c["themes"]`` non-empty); no theme is grade
 """
 from __future__ import annotations
 
-from RevenueChaser.module_asymmetric_growth import engine, report
+from revenuechaser.module_asymmetric_growth import engine, report
 
 
 def test_the_board_does_not_call_any_theme_disruptive(rawstore_tmp_db):

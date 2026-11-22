@@ -1,7 +1,7 @@
 """Tests for money-flow leaderboard calculation."""
 import pytest
 
-from RevenueChaser.module_sector_rotation.money_flow import get_money_flow_leaderboards
+from revenuechaser.module_sector_rotation.money_flow import get_money_flow_leaderboards
 
 
 def _df():

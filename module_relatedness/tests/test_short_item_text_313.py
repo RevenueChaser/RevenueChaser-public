@@ -13,9 +13,9 @@ import json
 
 import pytest
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_relatedness import config, engine, report, store
-from RevenueChaser.module_relatedness.tests.test_relatedness import _prof
+from revenuechaser.core import rawstore
+from revenuechaser.module_relatedness import config, engine, report, store
+from revenuechaser.module_relatedness.tests.test_relatedness import _prof
 
 TICKERS = ["AAA", "BBB"]
 LONG = "We design gpu accelerators for data center customers. " * 60      # >= MIN_INPUT_CHARS
@@ -31,7 +31,7 @@ def _seed_filings(texts: dict[str, str]) -> None:
 
 
 def test_the_floor_is_value_chains_own():
-    from RevenueChaser.module_value_chain import config as vc_config
+    from revenuechaser.module_value_chain import config as vc_config
     assert config.MIN_INPUT_CHARS == vc_config.MIN_ITEM_CHARS == 2000
 
 

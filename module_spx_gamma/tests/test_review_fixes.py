@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from RevenueChaser.module_spx_gamma import render, run as spx_run, snapshot as snap
-from RevenueChaser.module_spx_gamma.normalize import compute_positioning_deltas, normalize_snapshot
-from RevenueChaser.module_spx_gamma import store as spx_store
+from revenuechaser.module_spx_gamma import render, run as spx_run, snapshot as snap
+from revenuechaser.module_spx_gamma.normalize import compute_positioning_deltas, normalize_snapshot
+from revenuechaser.module_spx_gamma import store as spx_store
 
 from .conftest import FakeUW, make_raw, make_snapshot
 from .test_s2_fetch import CANDLES, CFTC, DAY, VIX, _fetch, _handler, _no_network
@@ -115,7 +115,7 @@ def test_the_unknown_chip_is_rendered_without_a_regime():
 
 # ── L2-3: /run/spxgamma defaults to the New York day ───────────────────────
 def test_run_spxgamma_defaults_to_the_new_york_date(monkeypatch):
-    from RevenueChaser.app import dashboard
+    from revenuechaser.app import dashboard
 
     seen = {}
     monkeypatch.setattr(dashboard, "today_ny", lambda: date(2026, 8, 14))

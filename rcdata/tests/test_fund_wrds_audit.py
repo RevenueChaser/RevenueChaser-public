@@ -8,10 +8,10 @@ from datetime import date
 import duckdb
 import pytest
 
-from RevenueChaser.rcdata import ops
-from RevenueChaser.rcdata.build import DATASETS
-from RevenueChaser.rcdata.build.fundamentals import common, wrds_fund
-from RevenueChaser.rcdata.build.spine import wrds as spine_wrds
+from revenuechaser.rcdata import ops
+from revenuechaser.rcdata.build import DATASETS
+from revenuechaser.rcdata.build.fundamentals import common, wrds_fund
+from revenuechaser.rcdata.build.spine import wrds as spine_wrds
 
 from . import fund_fixture as fx
 

@@ -13,9 +13,9 @@ import json
 
 import pytest
 
-from RevenueChaser.app import jobs, runners
-from RevenueChaser.module_sec_13f import engine as sec_13f
-from RevenueChaser.rcdata.tests.ownership_fixture import serve_13f
+from revenuechaser.app import jobs, runners
+from revenuechaser.module_sec_13f import engine as sec_13f
+from revenuechaser.rcdata.tests.ownership_fixture import serve_13f
 
 GOOD = {"name": "Apple Inc", "sector": "Technology", "type": "Stock"}
 Q = "2026-03-31"
@@ -76,7 +76,7 @@ def _board() -> str:
 
 def _payload() -> dict:
     """The board's rows from the payload route (#429): the page is chrome and scripts now."""
-    from RevenueChaser.core.reporting_common import payload_path
+    from revenuechaser.core.reporting_common import payload_path
     return json.loads(gzip.decompress(payload_path(runners.SEC_13F_LATEST).read_bytes()).decode("utf-8"))
 
 

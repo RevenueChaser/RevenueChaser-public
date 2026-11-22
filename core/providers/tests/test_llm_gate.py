@@ -7,8 +7,8 @@ import json
 
 import pytest
 
-from RevenueChaser.core import config, credentials
-from RevenueChaser.core.providers import deepseek, evren
+from revenuechaser.core import config, credentials
+from revenuechaser.core.providers import deepseek, evren
 
 GATE = "http://127.0.0.1:9720/v1/chat/completions"
 KEY = "sentinel-litellm-rc-key"

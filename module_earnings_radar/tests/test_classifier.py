@@ -2,7 +2,7 @@
 plus the cluster metadata lookup helpers. Previously had zero coverage despite being central
 to which sector-scorer rule3_financial routes a ticker into.
 """
-from RevenueChaser.module_earnings_radar.classifier import (
+from revenuechaser.module_earnings_radar.classifier import (
     classify_ticker,
     get_cluster_label,
     get_cluster_red_flags,
@@ -32,8 +32,8 @@ class TestDirectSectorMap:
         assert classify_ticker("F", sector="Consumer Cyclical") == "C5_marketplace_consumer"
 
     def test_every_morningstar_sector_has_a_cluster(self):
-        from RevenueChaser.core.gics_map import MORNINGSTAR_SECTORS
-        from RevenueChaser.module_earnings_radar.classifier import GICS_SECTOR_MAP
+        from revenuechaser.core.gics_map import MORNINGSTAR_SECTORS
+        from revenuechaser.module_earnings_radar.classifier import GICS_SECTOR_MAP
         assert set(GICS_SECTOR_MAP) == set(MORNINGSTAR_SECTORS)
         assert {s: classify_ticker("X", sector=s) for s in MORNINGSTAR_SECTORS} == {
             "Basic Materials": "C6_energy_utilities", "Communication Services": "C2_hardware",

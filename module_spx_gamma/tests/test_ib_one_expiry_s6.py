@@ -8,8 +8,8 @@
 """
 from __future__ import annotations
 
-from RevenueChaser.module_spx_gamma.chains import normalize_option_chain
-from RevenueChaser.module_spx_gamma.engines import iron_butterfly as ib
+from revenuechaser.module_spx_gamma.chains import normalize_option_chain
+from revenuechaser.module_spx_gamma.engines import iron_butterfly as ib
 
 PRED = {"active_pin": 7800.0, "downside_floor": 7650.0, "upside_trigger": 7800.0}
 EM = {"points": 36.87, "iv_used": 0.076}     # wing width 35

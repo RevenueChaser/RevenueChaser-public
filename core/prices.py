@@ -16,7 +16,7 @@ import duckdb
 import numpy as np
 import pandas as pd
 
-from RevenueChaser.core import calendar
+from revenuechaser.core import calendar
 
 logger = logging.getLogger(__name__)
 

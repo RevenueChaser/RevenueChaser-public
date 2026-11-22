@@ -12,10 +12,10 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core import calendar as rc_calendar
-from RevenueChaser.core import llm_prices, llm_spend
-from RevenueChaser.core.providers import deepseek as ds
-from RevenueChaser.rcdata import ops
+from revenuechaser.core import calendar as rc_calendar
+from revenuechaser.core import llm_prices, llm_spend
+from revenuechaser.core.providers import deepseek as ds
+from revenuechaser.rcdata import ops
 
 #: Named rather than taken from ``ds.MODEL``: a box that overrides ``RC_DEEPSEEK_MODEL`` would otherwise point
 #: these tests at a model ``core.llm_prices`` has no figure for.
@@ -153,7 +153,7 @@ def test_the_peak_gate_still_comes_first(rawstore_tmp_db, monkeypatch):
 
 def test_the_free_writer_is_not_gated_and_not_recorded(rawstore_tmp_db, monkeypatch):
     """EVREN costs nothing, has its own client, and must not be stopped by the paid cap (#1183)."""
-    from RevenueChaser.core.providers import evren
+    from revenuechaser.core.providers import evren
     monkeypatch.setenv(llm_spend.CAP_ENV, "0")
     monkeypatch.setattr(evren, "key_for", lambda slug: "k")
     client = _answer()

@@ -12,13 +12,13 @@ from datetime import date, datetime, timezone
 import pandas as pd
 import pytest
 
-from RevenueChaser.app import runners
-from RevenueChaser.core import calendar as cal
-from RevenueChaser.core import ledger, rawstore
-from RevenueChaser.core.tests.d01_seed import seed_d01
-from RevenueChaser.rcdata.tests import prices_store
-from RevenueChaser.core.providers import sec_edgar
-from RevenueChaser.module_fundamentals import freeze, pipeline, scores
+from revenuechaser.app import runners
+from revenuechaser.core import calendar as cal
+from revenuechaser.core import ledger, rawstore
+from revenuechaser.core.tests.d01_seed import seed_d01
+from revenuechaser.rcdata.tests import prices_store
+from revenuechaser.core.providers import sec_edgar
+from revenuechaser.module_fundamentals import freeze, pipeline, scores
 
 CUR = sec_edgar.EXTRACT_VERSION
 # 2026-10-06 is a Tuesday: 22:00 UTC = 18:00 ET (session complete); 14:00 UTC = 10:00 ET (intraday).

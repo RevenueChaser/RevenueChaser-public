@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from scipy.stats import hypergeom
 
-from RevenueChaser.module_comovement import config, label
+from revenuechaser.module_comovement import config, label
 
 
 def _ids(prefix: str, n: int) -> list[str]:
@@ -254,10 +254,10 @@ def test_the_bh_family_includes_the_low_hit_pairs():
 
 
 def test_theme_fallback_uses_the_catalog_medium_label_not_ticker_scores(rawstore_tmp_db):
-    from RevenueChaser.core import rawstore
-    from RevenueChaser.module_comovement import engine
-    from RevenueChaser.module_comovement.tests.test_comovement import _seed_ohlc
-    from RevenueChaser.module_comovement.tests.test_precompute import (
+    from revenuechaser.core import rawstore
+    from revenuechaser.module_comovement import engine
+    from revenuechaser.module_comovement.tests.test_comovement import _seed_ohlc
+    from revenuechaser.module_comovement.tests.test_precompute import (
         _seed_universe_industry, _tight_returns)
 
     groups = (("A1", "A2", "A3", "A4"), ("B1", "B2", "B3", "B4"),

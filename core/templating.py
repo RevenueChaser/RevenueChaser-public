@@ -31,7 +31,7 @@ def environment(directory: str | Path = TEMPLATES_DIR,
     fragments (what the existing report builders do).
     """
     from markupsafe import Markup
-    from RevenueChaser.core.reporting_common import THEME_CSS, THEME_JS
+    from revenuechaser.core.reporting_common import THEME_CSS, THEME_JS
     env = Environment(
         loader=FileSystemLoader(str(directory)),
         autoescape=autoescape,

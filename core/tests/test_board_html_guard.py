@@ -19,12 +19,12 @@ import re
 
 import pytest
 
-from RevenueChaser.core.tests.board_fixtures import BOARDS, RAW_MARK
-from RevenueChaser.core.tests.board_js import inline_scripts
+from revenuechaser.core.tests.board_fixtures import BOARDS, RAW_MARK
+from revenuechaser.core.tests.board_js import inline_scripts
 
 
 def _required_boards() -> set[str]:
-    from RevenueChaser.app import dashboard
+    from revenuechaser.app import dashboard
     tabs = {t["key"] for t in dashboard.TABS if t["type"] == "tab"}
     files = set(re.findall(r'"(module_\w+)":', inspect.getsource(dashboard._module_file)))
     assert files, "could not read _module_file's keys"
@@ -60,7 +60,7 @@ def test_board_renders_the_hostile_fixture_inertly(key, request, tmp_path, monke
 def test_settings_fixture_renders_automation_buttons_with_the_hostile_name():
     """N1: the hostile automation row has a live state, so its buttons (and their
     data-name attribute) go through the renderer in the browser guard."""
-    from RevenueChaser.core.tests.board_fixtures import BOARDS
+    from revenuechaser.core.tests.board_fixtures import BOARDS
     import inspect
     src = inspect.getsource(BOARDS["module_settings"].render)
     assert 'state"] = "enabled"' in src

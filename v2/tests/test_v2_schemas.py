@@ -14,9 +14,9 @@ from pathlib import Path
 
 import pytest
 
-from RevenueChaser.core import reporting_common as rc
-from RevenueChaser.core import v2_envelope as env
-from RevenueChaser.v2 import validate
+from revenuechaser.core import reporting_common as rc
+from revenuechaser.core import v2_envelope as env
+from revenuechaser.v2 import validate
 
 SCHEMAS = Path(__file__).resolve().parents[1] / "schemas"
 ENVELOPE_KEYS = ["schema_version", "board", "run_id", "data_asof", "built_at",

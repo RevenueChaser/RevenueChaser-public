@@ -5,9 +5,9 @@ from datetime import date, datetime, timedelta
 
 import pytest
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_earnings_radar.tests.market_store_fixture import serve_economic
-from RevenueChaser.module_news import calendar as cal
+from revenuechaser.core import rawstore
+from revenuechaser.module_earnings_radar.tests.market_store_fixture import serve_economic
+from revenuechaser.module_news import calendar as cal
 
 T0 = datetime(2026, 11, 10, 14, 30, tzinfo=cal.AMS).timestamp()     # Tue 10 Nov 14:30 Amsterdam
 HOUR = 3600.0

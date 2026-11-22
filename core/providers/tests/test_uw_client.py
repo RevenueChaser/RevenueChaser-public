@@ -1,8 +1,8 @@
 """Tests that UWClient methods build the correct endpoint paths (no network)."""
 import pytest
 
-from RevenueChaser.core.providers.result import ProviderResult
-from RevenueChaser.core.providers.unusual_whales import UWClient
+from revenuechaser.core.providers.result import ProviderResult
+from revenuechaser.core.providers.unusual_whales import UWClient
 
 
 def _ok(fake):

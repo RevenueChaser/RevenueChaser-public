@@ -9,9 +9,9 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.core.providers import yfinance as yfinance_client
-from RevenueChaser.module_asymmetric_growth import engine
-from RevenueChaser.rcdata.tests import fund_store
+from revenuechaser.core.providers import yfinance as yfinance_client
+from revenuechaser.module_asymmetric_growth import engine
+from revenuechaser.rcdata.tests import fund_store
 
 _QUOTE = {"regularMarketPrice": 100.0, "fiftyTwoWeekHigh": 105.0, "fiftyDayAverage": 90.0,
           "averageDailyVolume10Day": 160.0, "averageDailyVolume3Month": 100.0, "earningsTimestampStart": 1.8e9}

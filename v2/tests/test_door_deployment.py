@@ -157,7 +157,7 @@ def test_the_real_store_is_never_reachable_from_the_container():
 
 def test_the_doc_states_the_values_the_code_owns():
     """The repository's rule: a doc that states a value the code owns is compared against the code."""
-    from RevenueChaser.v2.door import config
+    from revenuechaser.v2.door import config
     assert f"{config.PROBE_BUDGET_S:g} s" in DOC.replace("**", ""), "the probe budget in the doc is not the code's"
     assert config.API_PREFIX in DOC
     port = re.search(r'"--port", "(\d+)"', DOCKERFILE).group(1)

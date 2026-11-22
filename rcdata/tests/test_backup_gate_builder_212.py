@@ -10,9 +10,9 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from RevenueChaser.core import config
-from RevenueChaser.rcdata import backup, ops
-from RevenueChaser.rcdata.build import __main__ as cli
+from revenuechaser.core import config
+from revenuechaser.rcdata import backup, ops
+from revenuechaser.rcdata.build import __main__ as cli
 
 
 @pytest.fixture

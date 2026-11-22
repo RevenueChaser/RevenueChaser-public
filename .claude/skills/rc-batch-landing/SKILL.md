@@ -25,7 +25,7 @@ what a build thread hands over, how a merge is pinned — still holds, and is th
 Each one carries a backup and a named rollback, and has to be revertable alone:
 
 - a `_SCHEMA_VERSION` bump — it also needs a store checkpoint taken **before** the merge
-  (`python -m RevenueChaser.rcdata backup`); there is no automation for it;
+  (`python -m revenuechaser.rcdata backup`); there is no automation for it;
 - any write to the live store;
 - a change to a job the dashboard runs.
 

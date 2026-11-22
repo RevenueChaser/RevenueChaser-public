@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.module_spx_gamma.structures import build_structures, price_structure, snap_strike
+from revenuechaser.module_spx_gamma.structures import build_structures, price_structure, snap_strike
 
 BANDS = {"regime": "below_flip", "consolidation": (7600.0, 7721.8), "upside": (7721.8, 7775.0),
          "downside": (7500.0, 7600.0)}
@@ -66,8 +66,8 @@ def test_build_structures_none_without_bands_or_chain():
 
 
 def test_page_shows_the_structures_and_the_hourly_column():
-    from RevenueChaser.module_spx_gamma import render
-    from RevenueChaser.module_spx_gamma.scenarios import scenario_bands
+    from revenuechaser.module_spx_gamma import render
+    from revenuechaser.module_spx_gamma.scenarios import scenario_bands
     from .conftest import make_snapshot
     snap = make_snapshot()
     bands = scenario_bands(snap)
@@ -86,8 +86,8 @@ def test_page_shows_the_structures_and_the_hourly_column():
 
 def test_a_backfilled_day_shows_no_structures_book_or_hourly_state():
     """Fable #4: the chains and SPY bars are live files; a past day never prices on a later session's quotes."""
-    from RevenueChaser.module_spx_gamma import render
-    from RevenueChaser.module_spx_gamma.scenarios import scenario_bands
+    from revenuechaser.module_spx_gamma import render
+    from revenuechaser.module_spx_gamma.scenarios import scenario_bands
     from .conftest import make_snapshot
     snap = make_snapshot()
     bands = scenario_bands(snap)

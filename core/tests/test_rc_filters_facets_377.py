@@ -13,7 +13,7 @@ import subprocess
 
 import pytest
 
-from RevenueChaser.core import reporting_common as rc
+from revenuechaser.core import reporting_common as rc
 
 _NODE = r"""
 var C = globalThis.RCFilters.core;

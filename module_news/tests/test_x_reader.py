@@ -7,8 +7,8 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_news import x_check, x_lane, x_reader
+from revenuechaser.core import rawstore
+from revenuechaser.module_news import x_check, x_lane, x_reader
 
 NY = ZoneInfo("America/New_York")
 ID = 2120251362529419593                                 # @kiantrades, 10 Nov 2026 15:24 New York

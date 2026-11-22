@@ -11,10 +11,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from RevenueChaser.core import config
-from RevenueChaser.core.tests.panel_client import panel_test_client
-from RevenueChaser.module_settings import control, metrics
-from RevenueChaser.rcdata import ops
+from revenuechaser.core import config
+from revenuechaser.core.tests.panel_client import panel_test_client
+from revenuechaser.module_settings import control, metrics
+from revenuechaser.rcdata import ops
 
 NOW = datetime(2026, 11, 9, 15, 0, tzinfo=timezone.utc)          # a Monday, New York session open
 LINE = re.compile(r'^[a-z_:][a-z0-9_:]*(\{([a-z_]+="([^"\\]|\\.)*",?)*\})? -?[0-9.e+-]+$')
@@ -29,7 +29,7 @@ def _market(tmp_path, monkeypatch):
 
 @pytest.fixture
 def client():
-    from RevenueChaser.app.dashboard import app
+    from revenuechaser.app.dashboard import app
     return panel_test_client(app)
 
 
@@ -235,7 +235,7 @@ def test_a_record_the_listener_stopped_writing_reads_unknown_not_its_last_state(
 
 def test_a_record_file_that_is_there_and_broken_is_a_failed_read_and_a_missing_one_is_not(tmp_path, monkeypatch):
     """Review of #742: the reader took a corrupt file for "the listener never started", so the counter never moved."""
-    from RevenueChaser.module_news import tape_state
+    from revenuechaser.module_news import tape_state
     path = tmp_path / "state.json"
     monkeypatch.setattr(tape_state, "state_path", lambda: path)
     before = metrics._errors["news"]
@@ -346,7 +346,7 @@ def test_the_datasets_route_lists_names_kinds_attended_and_providers(client):
 
 
 def test_the_detail_carries_each_datasets_health_and_fetch_settings():
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
     ops.record_check("market_series", "changed", source_as_of="2026-11-06", rows=12, added=2, removed=1,
                      next_check_due="2026-11-10")
     ops.dataset_mode_set("market_series", "full", by="avo")
@@ -371,7 +371,7 @@ def test_the_detail_route_answers_and_the_plain_route_keeps_its_four_keys(client
 
 def test_the_detail_carries_badges_and_the_runs_in_the_pickers_range():
     """avo, 10 Nov 2026: the RC page's provider icons on the Grafana board, and a heatmap over the picker's range."""
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
     ops.start_run("r-a", "market_series", "hourly")
     ops.start_run("r-b", "market_series", "hourly")
     ops.finish_run("r-b", "failed")
@@ -381,7 +381,7 @@ def test_the_detail_carries_badges_and_the_runs_in_the_pickers_range():
     rows = {r["name"]: r for r in metrics.datasets_detail(NOW, datasets=DS, timer={}, span=span, providers=provs)}
     assert rows["market_series"]["badges"] == [{"id": "fred", "name": "FRED", "icon": metrics.control.ICONS.get("fred", ""),
                                                 "color": metrics.control.SOURCE_COLORS[0], "paid": False}]
-    from RevenueChaser.rcdata.needs import screen
+    from revenuechaser.rcdata.needs import screen
     assert {p for p, w in screen.PROVIDERS.items() if w.paid} == {"uw", "deepseek"}, "avo, 10 Nov 2026: the paid ones ringed red"
     assert sorted(s for _, s in rows["market_series"]["history"]) == ["failed", "running"]
     before = {r["name"]: r for r in metrics.datasets_detail(NOW, datasets=DS, timer={}, span=(0, first),
@@ -394,7 +394,7 @@ def test_the_detail_carries_badges_and_the_runs_in_the_pickers_range():
 
 def test_rc_switch_on_carries_the_main_and_the_eight_file_switches():
     """Timer plan (avo 16 Nov 2026, Q11): RC Health shows every switch, the file switches included."""
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
     ops.switch_set("file-options", False, by="avo")
     got = {lab["name"]: v for lab, v in metrics.collect(NOW, datasets={}, timer={}, ibkr=lambda: None,
                                                         news=lambda: None)["rc_switch_on"]}
@@ -409,7 +409,7 @@ def test_the_board_head_says_the_switches_the_timer_and_the_gateway(monkeypatch)
     head = metrics.board_head(NOW, ibkr=lambda: {"state": "up"})
     assert head["switches"] == {"fetch": True, "backup": True}
     assert head["timer"] == "on" and head["timer_fired"] == {"last": metrics.control._clock(NOW), "next": None}
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
     assert head["files"] == {k: True for k in ops.FILE_KINDS}
     ops.switch_set("file-options", False, by="avo")
     assert metrics.board_head(NOW, ibkr=lambda: None)["files"]["options"] is False
@@ -422,8 +422,8 @@ def test_the_board_head_says_when_fetch_and_backup_were_last_done(monkeypatch):
     """avo, 12 Nov 2026: "onlarin en son ne zaman oldugunu tam duzgun bir sekilde yaz" (the Grafana board's
     Fetch & Build and Backup switches): the builder's newest run and the newest good backup step, on the page's
     clock; not known is None, never a guess, and a read that raises does not take the head down."""
-    from RevenueChaser.module_settings import newdata
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.module_settings import newdata
+    from revenuechaser.rcdata import ops
     assert metrics.board_head(NOW, ibkr=lambda: None)["last"] == {"fetch": None, "backup": None}
     ran = datetime(2026, 11, 12, 22, 46, tzinfo=timezone.utc)
     monkeypatch.setattr(ops, "last_builder_run", lambda: {"dataset": "prices/daily", "status": "ok",
@@ -452,7 +452,7 @@ def test_the_page_keeps_no_row_for_the_grafana_link():
     yanına koyabilirsin". The link had a row above the frame, then one under it; it now rides inside the board as a
     Grafana dashboard link, drawn in Grafana's own controls row beside the time picker (home-server #316). So the
     page draws the frame and nothing else, and nothing is laid over a frame that scrolls inside itself."""
-    from RevenueChaser.module_settings import report
+    from revenuechaser.module_settings import report
     board = report._live_board("panel-health")
     assert "livebar" not in board and "live-open" not in board
     assert board.count("<iframe") == 1
@@ -480,7 +480,7 @@ def test_the_detail_route_takes_the_pickers_range_and_refuses_a_backwards_one(cl
 
 
 def test_a_files_switch_is_set_through_the_switch_route(client):
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
     r = client.post("/api/build/switch/file-options", json={"on": False}, headers={"X-RC-Panel": "grafana"})
     assert r.status_code == 200 and ops.switch_off("file-options") is not None
     assert client.post("/api/build/switch/file-nope", json={"on": False},
@@ -498,7 +498,7 @@ def test_a_backup_kind_that_exists_in_two_steps_gets_two_distinct_series(monkeyp
     was written twice under one label and Prometheus kept one at random. Each series now carries its step as a
     label of its own. avo, 12 Nov 2026: the old store's files (raw, edgar, history, prices in the boards step) are
     not reported at all: "iliskisi kesilen eski database'ler"."""
-    from RevenueChaser.module_settings import newdata
+    from revenuechaser.module_settings import newdata
     rows = [{"kind": "prices", "step": "duckdb", "newest": "2026-11-08T03:30:00+00:00"},
             {"kind": "prices", "step": "boards", "newest": "2026-11-01T03:30:00+00:00"},
             {"kind": "raw", "step": "boards", "newest": "2026-11-01T03:30:00+00:00"},
@@ -536,7 +536,7 @@ def test_the_status_the_page_drew_as_cards_is_served_as_three_parts():
 def test_each_provider_of_the_status_names_the_served_files_it_feeds(monkeypatch):
     """avo, 12 Nov 2026: "Bunu DuckDB'lerin lojistik sirasina gore ayir" (provider limits on the Grafana board):
     from the dataset registry, no store read; a provider no dataset names feeds none."""
-    from RevenueChaser.module_settings import newdata
+    from revenuechaser.module_settings import newdata
     reg = {"a": SimpleNamespace(kind="spine", providers=("uw", "sec")),
            "b": SimpleNamespace(kind="prices", providers=("uw",)), "c": SimpleNamespace(kind="market", providers=())}
     monkeypatch.setattr(newdata, "_datasets", lambda: reg)

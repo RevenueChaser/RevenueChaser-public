@@ -13,8 +13,8 @@ from datetime import date
 
 import duckdb
 
-from RevenueChaser.core.calendar import is_federal_holiday
-from RevenueChaser.rcdata import serving
+from revenuechaser.core.calendar import is_federal_holiday
+from revenuechaser.rcdata import serving
 
 from .sec_answers import (GATEWAY_HEADERS, GATEWAY_PAGE, MISSING_HEADERS, MISSING_OBJECT, REFUSED_HEADERS,
                           REFUSED_PAGE)

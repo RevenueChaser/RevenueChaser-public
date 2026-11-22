@@ -6,8 +6,8 @@ counted as a call too. A stored row read without a download is no call; a Refres
 """
 from __future__ import annotations
 
-from RevenueChaser.module_fundamentals import pipeline
-from RevenueChaser.module_fundamentals.tests.test_fundamentals_w3_386 import _compute
+from revenuechaser.module_fundamentals import pipeline
+from revenuechaser.module_fundamentals.tests.test_fundamentals_w3_386 import _compute
 
 
 def test_a_download_that_worked_is_a_call_and_a_failure_is_one_of_them(monkeypatch):

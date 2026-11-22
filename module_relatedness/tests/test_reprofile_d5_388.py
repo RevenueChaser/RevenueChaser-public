@@ -16,12 +16,12 @@ import json
 
 import pytest
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_relatedness.tests.test_relatedness import v3_reply
-from RevenueChaser.core.providers import deepseek
-from RevenueChaser.module_relatedness import config, engine, store
-from RevenueChaser.module_relatedness.tests.test_relatedness import _prof, long_body
-from RevenueChaser.rcdata.tests import spine_fixture
+from revenuechaser.core import rawstore
+from revenuechaser.module_relatedness.tests.test_relatedness import v3_reply
+from revenuechaser.core.providers import deepseek
+from revenuechaser.module_relatedness import config, engine, store
+from revenuechaser.module_relatedness.tests.test_relatedness import _prof, long_body
+from revenuechaser.rcdata.tests import spine_fixture
 
 TICKERS = ["AAA", "BBB", "CCC"]
 

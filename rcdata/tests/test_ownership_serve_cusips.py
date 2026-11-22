@@ -11,9 +11,9 @@ from datetime import date
 
 import duckdb
 
-from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.ownership import common, sec, sec13f, sec13f_list
-from RevenueChaser.rcdata.build.spine import wrds
+from revenuechaser.rcdata.build import base
+from revenuechaser.rcdata.build.ownership import common, sec, sec13f, sec13f_list
+from revenuechaser.rcdata.build.spine import wrds
 
 from . import ownership_fixture as ox
 from .ownership_serve_world import (

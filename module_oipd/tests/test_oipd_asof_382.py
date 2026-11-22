@@ -8,9 +8,9 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from RevenueChaser.core import calendar
-from RevenueChaser.module_oipd import engine, report
-from RevenueChaser.module_oipd.tests.test_engine import _FakeUW
+from revenuechaser.core import calendar
+from revenuechaser.module_oipd import engine, report
+from revenuechaser.module_oipd.tests.test_engine import _FakeUW
 
 _FRIDAY = "2026-09-25"
 _SATURDAY = "2026-09-26"

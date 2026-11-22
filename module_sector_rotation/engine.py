@@ -6,11 +6,11 @@ from datetime import date, datetime, timedelta
 from typing import Optional
 import numpy as np
 
-from RevenueChaser.core import rotation_reference
+from revenuechaser.core import rotation_reference
 from .universe import MACRO_SERIES
-from RevenueChaser.core.gics_map import UNCLASSIFIED, canonical_sector, is_unclassified
-from RevenueChaser.core.providers.unusual_whales import UWClient
-from RevenueChaser.module_sector_rotation.models import ETFRotationSnapshot
+from revenuechaser.core.gics_map import UNCLASSIFIED, canonical_sector, is_unclassified
+from revenuechaser.core.providers.unusual_whales import UWClient
+from revenuechaser.module_sector_rotation.models import ETFRotationSnapshot
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +83,7 @@ def sector_industry_tree(max_per_industry: int = 12) -> dict[str, list[dict]]:
     ``max_per_industry`` cut). Members without a market cap are dropped; an
     industry with none is omitted.
     """
-    from RevenueChaser.core import universe
+    from revenuechaser.core import universe
     return build_industry_tree(universe.load_cached_universe(), max_per_industry)
 
 
@@ -202,7 +202,7 @@ def fetch_all_holdings(uw, snapshots, max_holdings: int = 10, max_workers: int =
     to the rotation session; ``uw`` (and ``max_workers``) are kept for the callers' signature and not used. A holding
     with no stored bars shows "n/a" (``holdings_rs_rows``). ``{}`` when SPY is short in the store.
     """
-    from RevenueChaser.core import calendar
+    from revenuechaser.core import calendar
     from .etf_holdings import stored_holdings
 
     tickers = [s.ticker for s in snapshots if getattr(s, "group_name", "") == "theme"]
@@ -332,7 +332,7 @@ READ_WEEKS = (TREND_WEEKS - 1) + (SCALE_WEEKS - 1) + ROC_WEEKS + (SCALE_WEEKS - 
 def week_cut(as_of: date) -> date:
     """The last day whose ISO week is complete at ``as_of``: ``as_of`` itself when it is the last session of its week,
     else the Sunday before its week (A1: completed weeks only, so a Tuesday never moves the map half a week)."""
-    from RevenueChaser.core import calendar
+    from revenuechaser.core import calendar
     try:
         nxt = calendar.next_trading_day(as_of)
     except ValueError:                          # outside the holiday table: weekdays
@@ -389,7 +389,7 @@ def bar_points(tickers, start: date, end: date) -> dict[str, list[tuple[date, fl
     """``{ticker: [(session, close), ...]}`` from one prices-store read (``rcdata.read.ticker_bars``, total-return
     basis, C1: a high-dividend ETF is not read as lagging for paying out); never fetches. A ticker the store holds no
     bar of in the window is absent."""
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     frame = read.ticker_bars(list(tickers), start=start, end=end, basis="total_return")
     out: dict[str, list[tuple[date, float]]] = {}
     if frame is None or frame.empty:
@@ -404,7 +404,7 @@ def macro_points(start: date, end: date, tickers=None) -> dict[str, list[tuple[d
     """``{macro symbol: [(day, value), ...]}`` from one ``market_series`` read (PR 9): each symbol's own row
     (``MACRO_SERIES[...]["series"]``: FRED's yields and oil, Cboe's VVIX, Yahoo's MOVE and wheat). A symbol with no
     row in the window is absent; nothing is fetched (the market build stores the series)."""
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     wanted = {t: tuple(MACRO_SERIES[t]["series"]) for t in (tickers if tickers is not None else MACRO_SERIES)
               if (MACRO_SERIES.get(t) or {}).get("series")}
     if not wanted:
@@ -550,7 +550,7 @@ class RotationEngine:
         self.too_short: list[str] = []
 
     def process_all(self) -> list[ETFRotationSnapshot]:
-        from RevenueChaser.core import calendar
+        from revenuechaser.core import calendar
         self.snapshots, self.too_short, self.stale = [], [], None
         try:
             session = calendar.latest_complete_session(self.now)
@@ -631,7 +631,7 @@ def rotation_quadrant_map(uw: UWClient = None, compute: bool = True,
     day.
     With ``compute=False`` only the store is read (zero network).
     """
-    from RevenueChaser.core import calendar
+    from revenuechaser.core import calendar
     from . import store as rotation_store
     d = as_of or calendar.latest_complete_session()
     rows = (rotation_store.load_snapshot(d) or {}).get("etfs") or []

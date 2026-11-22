@@ -3,12 +3,12 @@
 Pin: the institutional lean (bullish minus bearish print-side premium, review S4) scales with the sided premium
 and is Thin under $25k; retail-call euphoria is NOT scored here (it lives in R8); unavailable is None when no
 signal exists; the squeeze is a ``none`` / ``fuel`` **tag** that scores nothing, there is no peer Z ladder and a
-low short interest is never bearish (#256, docs/module_earnings-radar/redesign.md R5).
+low short interest is never bearish (#256, docs/module_earnings_radar/redesign.md R5).
 """
 import pytest
 
-from RevenueChaser.module_earnings_radar.rules.rule5_positioning import score as r5_score
-from RevenueChaser.core.config import R5_FUEL_FEE_PCT, R5_FUEL_SI_PCT, RULE_WEIGHTS
+from revenuechaser.module_earnings_radar.rules.rule5_positioning import score as r5_score
+from revenuechaser.core.config import R5_FUEL_FEE_PCT, R5_FUEL_SI_PCT, RULE_WEIGHTS
 
 
 class TestRule5Positioning:

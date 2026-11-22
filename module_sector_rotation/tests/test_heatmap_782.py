@@ -10,8 +10,8 @@ from datetime import date, timedelta
 
 import pandas as pd
 
-from RevenueChaser.core.tests.board_js import function_source, run_board_js
-from RevenueChaser.module_sector_rotation import heatmap
+from revenuechaser.core.tests.board_js import function_source, run_board_js
+from revenuechaser.module_sector_rotation import heatmap
 
 
 def test_changes_are_the_last_close_against_n_sessions_before():
@@ -41,9 +41,9 @@ def _bars(tickers, newest, sessions=300, last=None):
 
 
 def test_the_payload_is_the_sp500_and_avos_lists_stocks_only(monkeypatch):
-    from RevenueChaser.core import universe
-    from RevenueChaser.module_watchlists import store
-    from RevenueChaser.rcdata import read
+    from revenuechaser.core import universe
+    from revenuechaser.module_watchlists import store
+    from revenuechaser.rcdata import read
     newest = date(2026, 11, 16)
     monkeypatch.setattr(universe, "load_cached_universe", lambda: [
         {"ticker": "AAPL", "name": "Apple", "sector": "Technology", "industry": "Consumer Electronics",
@@ -80,7 +80,7 @@ def test_the_payload_is_the_sp500_and_avos_lists_stocks_only(monkeypatch):
 
 
 def test_no_universe_or_a_failed_read_draws_no_panel(monkeypatch):
-    from RevenueChaser.core import universe
+    from revenuechaser.core import universe
     monkeypatch.setattr(universe, "load_cached_universe", lambda: [])
     assert heatmap.payload() is None
     monkeypatch.setattr(universe, "load_cached_universe", lambda: 1 / 0)
@@ -120,7 +120,7 @@ def test_a_list_row_puts_the_bookmark_left_of_the_ticker_and_escapes_names(tmp_p
 
 
 def test_the_board_carries_the_panel_only_with_data(monkeypatch):
-    from RevenueChaser.module_sector_rotation import report
+    from revenuechaser.module_sector_rotation import report
     monkeypatch.setattr(heatmap, "payload", lambda today=None: None)
     assert report._heatmap_html() == ""
     monkeypatch.setattr(heatmap, "payload", lambda today=None: _data())

@@ -17,7 +17,7 @@ from __future__ import annotations
 import duckdb
 import pytest
 
-from RevenueChaser.rcdata import read, serving
+from revenuechaser.rcdata import read, serving
 
 
 def _serve_market(series: str) -> None:

@@ -4,7 +4,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from RevenueChaser.core.identity.tests.helpers import Router
+from revenuechaser.core.identity.tests.helpers import Router
 
 
 @pytest.fixture
@@ -18,7 +18,7 @@ def http(monkeypatch):
 @pytest.fixture(autouse=True)
 def no_real_sleep(monkeypatch):
     """Adapters and the shared SEC client must never really sleep in a test."""
-    from RevenueChaser.core.providers import sec_edgar
+    from revenuechaser.core.providers import sec_edgar
     monkeypatch.setattr(sec_edgar.time, "sleep", lambda s: None)
     monkeypatch.setattr(sec_edgar, "_throttle", lambda: None)
 

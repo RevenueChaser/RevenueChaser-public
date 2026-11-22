@@ -19,9 +19,9 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from RevenueChaser.core import job_lock, rawstore
-from RevenueChaser.module_relatedness import __main__ as cli
-from RevenueChaser.module_relatedness import engine
+from revenuechaser.core import job_lock, rawstore
+from revenuechaser.module_relatedness import __main__ as cli
+from revenuechaser.module_relatedness import engine
 
 NOW = datetime(2026, 11, 22, 21, 15, 3, tzinfo=timezone.utc)
 PEERS = {"AAA": [{"peer": "BBB", "score": 0.42}], "BBB": [{"peer": "AAA", "score": 0.42}]}
@@ -64,7 +64,7 @@ def test_the_weekly_step_scores_the_stored_profiles_and_persists_them(saved_payl
     calls, got = [], []
     _profiles(monkeypatch, (NOW + timedelta(hours=1)).timestamp())      # a newer profile: there is work
     _fake_run(monkeypatch, calls)
-    monkeypatch.setattr("RevenueChaser.module_relatedness.store.save_scores", lambda p: got.append(p))
+    monkeypatch.setattr("revenuechaser.module_relatedness.store.save_scores", lambda p: got.append(p))
     payload = engine.score()
     assert payload["peers"] == PEERS and "skipped" not in payload
     assert got == [PEERS]                       # the pairs went to relatedness_scores
@@ -77,7 +77,7 @@ def test_the_weekly_step_scores_the_stored_profiles_and_persists_them(saved_payl
 def test_a_week_with_no_newer_profile_is_skipped(saved_payload, monkeypatch):
     _profiles(monkeypatch, (NOW - timedelta(days=2)).timestamp())
     monkeypatch.setattr(engine, "_run", lambda *a, **k: pytest.fail("nothing to rescore"))
-    monkeypatch.setattr("RevenueChaser.module_relatedness.store.save_scores",
+    monkeypatch.setattr("revenuechaser.module_relatedness.store.save_scores",
                         lambda p: pytest.fail("nothing to persist"))
     out = engine.score()
     assert out["skipped"] and out["as_of"] == PAYLOAD["as_of"]
@@ -87,7 +87,7 @@ def test_force_rescores_a_week_with_no_newer_profile(saved_payload, monkeypatch)
     calls, got = [], []
     _profiles(monkeypatch, (NOW - timedelta(days=2)).timestamp())
     _fake_run(monkeypatch, calls)
-    monkeypatch.setattr("RevenueChaser.module_relatedness.store.save_scores", lambda p: got.append(p))
+    monkeypatch.setattr("revenuechaser.module_relatedness.store.save_scores", lambda p: got.append(p))
     assert "skipped" not in engine.score(only_if_new=False)
     assert len(calls) == 1 and got == [PEERS]
 

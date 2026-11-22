@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from RevenueChaser.module_value_chain import report
+from revenuechaser.module_value_chain import report
 
 
 def test_an_empty_board_does_not_claim_a_sync_today():

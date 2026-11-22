@@ -8,9 +8,9 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.rcdata import ops
-from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.fundamentals import transcripts
+from revenuechaser.rcdata import ops
+from revenuechaser.rcdata.build import base
+from revenuechaser.rcdata.build.fundamentals import transcripts
 
 from . import fund_fixture as fx
 
@@ -46,7 +46,7 @@ def av(monkeypatch, http_mock):
     fx.spine()
     # The fiscal label comes from another dataset's served table; these tests are about the fetch, so the label
     # source is given directly rather than by building the whole fundamentals file for it.
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     monkeypatch.setattr(read, "earnings_report_history", lambda **kw: list(HISTORY))
     return http_mock
 
@@ -157,7 +157,7 @@ def test_a_named_ticker_with_no_reported_quarter_asks_nothing_and_says_so(av):
 
 
 def test_the_run_stops_at_the_day_cap_and_says_what_is_left_for_the_next_one(av, monkeypatch):
-    from RevenueChaser.rcdata import caps
+    from revenuechaser.rcdata import caps
     monkeypatch.setitem(caps.DAY_CAPS, "alphavantage", 1)
     av.add("av.test/query", MEASURED)
     check = fx.run(transcripts.NAME, "2026-10-28")
@@ -174,7 +174,7 @@ def test_a_whole_build_creates_the_table_rather_than_assuming_the_live_file_has_
     """
     import duckdb
 
-    from RevenueChaser.rcdata.build.fundamentals import tables
+    from revenuechaser.rcdata.build.fundamentals import tables
 
     assert "earnings_transcript" in tables.TABLES
     con = duckdb.connect(":memory:")

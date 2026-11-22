@@ -74,10 +74,10 @@ def ohlc_routes(provider_routes):
 
 def _seed_bars():
     """Prices-store bars for SPY and every rotation ETF, ~19 months up to the latest complete session."""
-    import RevenueChaser.core.rawstore as rawstore
-    from RevenueChaser.core import calendar
-    from RevenueChaser.module_sector_rotation import engine
-    from RevenueChaser.module_sector_rotation.tests.bars_seed import seed
+    import revenuechaser.core.rawstore as rawstore
+    from revenuechaser.core import calendar
+    from revenuechaser.module_sector_rotation import engine
+    from revenuechaser.module_sector_rotation.tests.bars_seed import seed
 
     rawstore.ensure_all_tables()
     session = calendar.latest_complete_session()
@@ -92,7 +92,7 @@ def _rotation_candle_calls(routes, since: int = 0) -> list[str]:
 
 
 def _rotation_candle_paths(paths: list[str]) -> list[str]:
-    from RevenueChaser.core import rotation_reference
+    from revenuechaser.core import rotation_reference
     out = []
     for path in paths:
         parts = path.strip("/").split("/")

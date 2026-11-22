@@ -20,8 +20,8 @@ import json
 
 import pytest
 
-from RevenueChaser.core import automations, llm_jobs, rawstore
-from RevenueChaser.module_news import reading, store_reads
+from revenuechaser.core import automations, llm_jobs, rawstore
+from revenuechaser.module_news import reading, store_reads
 
 HOUR = 1_794_999_600.0                      # an exact hour boundary (498_611 * 3600); the window is the hour before
 NOW = HOUR + 1200.0                         # :20, the timer's own minute
@@ -255,13 +255,13 @@ def test_the_registry_row_runs_hourly_through_the_dashboard():
     e = automations.entry("RC-News-Reading-Hourly")
     assert e.hourly and e.time.endswith(":20") and e.days == () and e.after is None
     assert e.schedule == "hourly at :20 (local)"
-    assert e.args == ("-m", "RevenueChaser.scripts.board_fetch", "news-reading")
+    assert e.args == ("-m", "revenuechaser.scripts.board_fetch", "news-reading")
     assert e.tables_written == ("news_reading",) and e.unit == "life-rc-fetch-news-reading"
     assert not e.default_install and not e.offpeak_gated
 
 
 def test_the_task_queues_the_dashboard_job_and_waits_for_no_session():
-    from RevenueChaser.scripts import board_fetch
+    from revenuechaser.scripts import board_fetch
     assert board_fetch.ROUTES["news-reading"] == "news_reading"
     # The hour that has just finished is not a trading session: the pass must not wait for SPY's bar.
     assert "news-reading" not in board_fetch.NEEDS_SESSION
@@ -269,8 +269,8 @@ def test_the_task_queues_the_dashboard_job_and_waits_for_no_session():
 
 # ── the dashboard: the one writer ────────────────────────────────────────────────────────────────────────────────
 def _client():
-    from RevenueChaser.app import dashboard
-    from RevenueChaser.core.tests.panel_client import panel_test_client
+    from revenuechaser.app import dashboard
+    from revenuechaser.core.tests.panel_client import panel_test_client
     dashboard.app.config["TESTING"] = True
     return dashboard, panel_test_client(dashboard.app)
 
@@ -316,7 +316,7 @@ def test_the_read_route_serves_the_stored_windows(monkeypatch):
 
 
 def test_the_job_is_wired_and_the_runner_notes_what_it_stored(monkeypatch):
-    from RevenueChaser.app import jobs, runners
+    from revenuechaser.app import jobs, runners
     assert jobs._PRODUCES["news_reading"] == []            # it writes no page; the shell reloads nothing
     notes = []
     monkeypatch.setattr(runners.ledger, "add_note", notes.append)

@@ -11,8 +11,8 @@ import sqlite3
 
 import pytest
 
-from RevenueChaser.core import config
-from RevenueChaser.rcdata import ops, ops_copy
+from revenuechaser.core import config
+from revenuechaser.rcdata import ops, ops_copy
 
 pytestmark = pytest.mark.skipif(not os.getenv("RC_REDIS_URL"), reason="needs a Redis at RC_REDIS_URL (CI runs one)")
 
@@ -93,7 +93,7 @@ def test_a_redis_that_already_holds_this_root_is_refused_unless_forced(source, c
 
 def test_a_row_lost_on_the_way_fails_the_check(source, monkeypatch, capsys):
     path, _ = source
-    from RevenueChaser.rcdata import ops_redis
+    from revenuechaser.rcdata import ops_redis
     real = ops_redis.put_rows
     monkeypatch.setattr(ops_redis, "put_rows", lambda table, rows, **kw: real(table, list(rows)[1:], **kw))
     assert ops_copy.main(["--sqlite", str(path)]) == 1

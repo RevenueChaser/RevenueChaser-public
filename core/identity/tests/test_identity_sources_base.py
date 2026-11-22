@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core import credentials
-from RevenueChaser.core.identity import sources as s
+from revenuechaser.core import credentials
+from revenuechaser.core.identity import sources as s
 
 
 def test_status_is_validated():

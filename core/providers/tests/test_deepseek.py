@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from RevenueChaser.core.providers import deepseek as ds
+from revenuechaser.core.providers import deepseek as ds
 
 
 class _Resp:
@@ -145,7 +145,7 @@ def test_timeout_surfaces_as_transient(rawstore_tmp_db, monkeypatch):
 
 
 def test_success_is_cached(rawstore_tmp_db, monkeypatch):
-    from RevenueChaser.core import rawstore
+    from revenuechaser.core import rawstore
     monkeypatch.setenv("RC_DEEPSEEK_OFF_PEAK_ONLY", "0")
     monkeypatch.setattr(ds, "key_for", lambda slug: "k")
     client = _Client(_ok('{"a": 1}'))
@@ -369,7 +369,7 @@ def test_retry_delay_never_exceeds_the_cap():
 # --- a reply we cannot parse is billed, final, and never cached ------------------
 
 def test_non_json_200_is_a_deepseek_error_and_not_cached(rawstore_tmp_db, live, knobs):
-    from RevenueChaser.core import rawstore
+    from revenuechaser.core import rawstore
 
     class _Html(_Resp):
         def json(self):
@@ -391,7 +391,7 @@ def test_a_json_reply_that_is_not_an_object_is_a_deepseek_error(rawstore_tmp_db,
 # --- validate= hook: an answer the caller rejects is not replayed from the cache --
 
 def test_validate_false_is_returned_but_not_cached(rawstore_tmp_db, live):
-    from RevenueChaser.core import rawstore
+    from revenuechaser.core import rawstore
     client = _SeqClient(_ok("{}"))
     assert ds.complete("s", "u", client=client, validate=lambda c: False) == "{}"
     assert rawstore.count("llm_cache") == 0
@@ -400,7 +400,7 @@ def test_validate_false_is_returned_but_not_cached(rawstore_tmp_db, live):
 
 
 def test_validate_true_is_cached(rawstore_tmp_db, live):
-    from RevenueChaser.core import rawstore
+    from revenuechaser.core import rawstore
     client = _SeqClient(_ok('{"a": 1}'))
     ds.complete("s", "u", client=client, validate=lambda c: True)
     assert rawstore.count("llm_cache") == 1
@@ -416,7 +416,7 @@ def test_validate_sees_the_content(rawstore_tmp_db, live):
 
 
 def test_a_raising_validate_counts_as_invalid(rawstore_tmp_db, live):
-    from RevenueChaser.core import rawstore
+    from revenuechaser.core import rawstore
 
     def boom(content):
         raise RuntimeError("caller bug")

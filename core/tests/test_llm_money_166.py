@@ -17,9 +17,9 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core import calendar as rc_calendar
-from RevenueChaser.core import llm_prices, llm_spend
-from RevenueChaser.rcdata import ops
+from revenuechaser.core import calendar as rc_calendar
+from revenuechaser.core import llm_prices, llm_spend
+from revenuechaser.rcdata import ops
 
 PAID = "deepseek-v4-flash"
 

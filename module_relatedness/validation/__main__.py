@@ -1,11 +1,11 @@
 """Step 0 validation CLI for Relatedness v2 (#341). Offline: no LLM, no provider, no network, no store write.
 
-    python -m RevenueChaser.module_relatedness.validation report --scores S.json
+    python -m revenuechaser.module_relatedness.validation report --scores S.json
         [--themes T.json] [--industries I.json] [--seeds SEEDS.json]
         [--etf-holdings H.json | --etf-holdings-from-store] [--out REPORT.json]
-    python -m RevenueChaser.module_relatedness.validation pairs-generate --scores S.json --seed N
+    python -m revenuechaser.module_relatedness.validation pairs-generate --scores S.json --seed N
         --sheet SHEET.csv --key KEY.json [--method NAME] [--force]
-    python -m RevenueChaser.module_relatedness.validation pairs-score --sheet SHEET.csv --key KEY.json
+    python -m revenuechaser.module_relatedness.validation pairs-score --sheet SHEET.csv --key KEY.json
 
 Input files (JSON):
 
@@ -80,7 +80,7 @@ def _pairs_score(args) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(prog="python -m RevenueChaser.module_relatedness.validation",
+    ap = argparse.ArgumentParser(prog="python -m revenuechaser.module_relatedness.validation",
                                  description="Relatedness v2 validation (offline)")
     sub = ap.add_subparsers(dest="cmd", required=True)
 

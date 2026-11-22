@@ -13,11 +13,11 @@ from datetime import date, datetime, timezone
 
 import pytest
 
-from RevenueChaser.core import job_lock
-from RevenueChaser.core.providers import deepseek, evren
-from RevenueChaser.rcdata import read, serving
-from RevenueChaser.rcdata.build.sec_reads import asker, questions, reads
-from RevenueChaser.rcdata.needs import serve
+from revenuechaser.core import job_lock
+from revenuechaser.core.providers import deepseek, evren
+from revenuechaser.rcdata import read, serving
+from revenuechaser.rcdata.build.sec_reads import asker, questions, reads
+from revenuechaser.rcdata.needs import serve
 
 from . import fund_fixture as fx
 
@@ -699,7 +699,7 @@ def test_a_flash_model_whose_name_only_contains_the_letters_pro_is_not_refused()
 
 def test_the_daily_check_is_due_from_the_0105_amsterdam_pass(monkeypatch):
     """avo, 16 Nov 2026 09:51: the check runs at night. Its day starts at 19:00 New York, which is 01:00 Amsterdam."""
-    from RevenueChaser.core import calendar
+    from revenuechaser.core import calendar
     monkeypatch.setattr(calendar, "_now", lambda: datetime(2026, 11, 16, 23, 59, tzinfo=timezone.utc))  # 00:59 Tue
     assert reads.DATASET.default_as_of() == date(2026, 11, 15)
     monkeypatch.setattr(calendar, "_now", lambda: datetime(2026, 11, 17, 0, 5, tzinfo=timezone.utc))    # 01:05 Tue

@@ -1,7 +1,7 @@
 """Core level mapping and 0DTE (same-day expiry) strike-space metrics."""
 from __future__ import annotations
 
-from RevenueChaser.core.gex_profile import cumulative_crossings, nearest_crossing
+from revenuechaser.core.gex_profile import cumulative_crossings, nearest_crossing
 
 from .config import to_float
 

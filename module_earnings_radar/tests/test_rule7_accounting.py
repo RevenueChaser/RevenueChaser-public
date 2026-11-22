@@ -6,7 +6,7 @@ Pin: signed Sloan (positive accruals penalize, negative do not);
 """
 import pytest
 
-from RevenueChaser.module_earnings_radar.rules.rule7_accounting import score
+from revenuechaser.module_earnings_radar.rules.rule7_accounting import score
 
 
 def test_empty_history_unavailable():

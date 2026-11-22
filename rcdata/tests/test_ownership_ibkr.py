@@ -8,9 +8,9 @@ from datetime import date, datetime, timezone
 
 import pytest
 
-from RevenueChaser.rcdata import serving
-from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.ownership import ibkr
+from revenuechaser.rcdata import serving
+from revenuechaser.rcdata.build import base
+from revenuechaser.rcdata.build.ownership import ibkr
 
 from . import ownership_fixture as ox
 

@@ -8,10 +8,10 @@ from datetime import datetime, timezone
 import duckdb
 import pytest
 
-from RevenueChaser.core import calendar
-from RevenueChaser.module_spx_gamma import snapshot as snap
-from RevenueChaser.module_spx_gamma import store as spx_store
-from RevenueChaser.module_spx_gamma.tools import compare_pin
+from revenuechaser.core import calendar
+from revenuechaser.module_spx_gamma import snapshot as snap
+from revenuechaser.module_spx_gamma import store as spx_store
+from revenuechaser.module_spx_gamma.tools import compare_pin
 
 from . import rcdata_fixture as fx
 from .conftest import FakeUW

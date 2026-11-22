@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 import pandas as pd
 import pytest
 
-from RevenueChaser.core import rawstore, screen_common
+from revenuechaser.core import rawstore, screen_common
 
 COMPLETE = datetime(2026, 10, 6, 22, 0, tzinfo=timezone.utc).timestamp()
 _BANNER = "rc-provider-health"
@@ -26,7 +26,7 @@ _BANNER = "rc-provider-health"
 
 # ── Fundamentals: an EDGAR fetch that raised ─────────────────────────────────────────────────────
 def test_fundamentals_rendered_from_a_failed_edgar_run_shows_the_banner(rawstore_tmp_db, monkeypatch):
-    from RevenueChaser.module_fundamentals import pipeline, report
+    from revenuechaser.module_fundamentals import pipeline, report
 
     frame = pd.DataFrame({"Close": [10.0, 11.0, 12.0]})
 
@@ -57,7 +57,7 @@ def test_fundamentals_rendered_from_a_failed_edgar_run_shows_the_banner(rawstore
 
 # ── Co-movement: the fetch report the run already has ───────────────────────────────────────────
 def test_comovement_rendered_from_a_failed_fetch_shows_the_banner(rawstore_tmp_db, monkeypatch):
-    from RevenueChaser.module_comovement import engine, report
+    from revenuechaser.module_comovement import engine, report
 
     monkeypatch.setattr(engine.ohlc, "fetch_bulk", lambda *_a, **_k: {
         "requested": 4, "cached": 1, "pending": 1, "fetched": 0, "failed": 2, "no_fetch": False})
@@ -70,7 +70,7 @@ def test_comovement_rendered_from_a_failed_fetch_shows_the_banner(rawstore_tmp_d
 
 # ── Relatedness: a provider stop the run already records ────────────────────────────────────────
 def test_relatedness_rendered_from_an_auth_stop_shows_the_banner(rawstore_tmp_db, monkeypatch, tmp_path):
-    from RevenueChaser.module_relatedness import engine, report
+    from revenuechaser.module_relatedness import engine, report
 
     monkeypatch.setattr(engine.config, "RELATEDNESS_JSON", tmp_path / "r.json")
     monkeypatch.setattr(engine.vc_engine, "fetch_corpus", lambda *_a, **_k: {"no_fetch": True})

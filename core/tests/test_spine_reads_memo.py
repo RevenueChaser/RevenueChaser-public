@@ -11,11 +11,11 @@ import os
 
 import pytest
 
-from RevenueChaser.core import index_registry as ir
-from RevenueChaser.core import spine_reads, universe
-from RevenueChaser.rcdata import serving
-from RevenueChaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401 - market roots per test
-from RevenueChaser.rcdata.tests.test_spine_security import built, run_all  # noqa: F401 - the 10 names
+from revenuechaser.core import index_registry as ir
+from revenuechaser.core import spine_reads, universe
+from revenuechaser.rcdata import serving
+from revenuechaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401 - market roots per test
+from revenuechaser.rcdata.tests.test_spine_security import built, run_all  # noqa: F401 - the 10 names
 
 
 @pytest.fixture

@@ -10,11 +10,11 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from RevenueChaser.module_fundamentals import config, events, freeze
-from RevenueChaser.module_fundamentals.report import _summary_html
-from RevenueChaser.module_fundamentals.tests.test_fundamentals_events_386 import (
+from revenuechaser.module_fundamentals import config, events, freeze
+from revenuechaser.module_fundamentals.report import _summary_html
+from revenuechaser.module_fundamentals.tests.test_fundamentals_events_386 import (
     TODAY, _INSIDE, _filing, _master)
-from RevenueChaser.rcdata.tests import fund_store
+from revenuechaser.rcdata.tests import fund_store
 
 
 def test_a_filer_not_checked_lately_is_counted_stale(rawstore_tmp_db):

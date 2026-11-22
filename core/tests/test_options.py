@@ -1,7 +1,7 @@
 """OCC option-symbol parser (shared by SPX Gamma and Implied Probability)."""
 from __future__ import annotations
 
-from RevenueChaser.core.options import parse_option_symbol
+from revenuechaser.core.options import parse_option_symbol
 
 
 def test_parses_call_and_put():

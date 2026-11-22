@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from RevenueChaser.core import job_lock, ledger
+from revenuechaser.core import job_lock, ledger
 
 BUSY_EXIT = 3
 

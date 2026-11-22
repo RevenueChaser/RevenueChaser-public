@@ -14,7 +14,7 @@ refuses to start, because two askers against EVREN's cap of 1 is the HTTP 429 se
 
 **The builder lock** (plan risk R1). A run asks for at most :data:`SLICE_S` seconds and leaves the rest stale for the
 next run, so a queued pass never holds the builder lock for hours. A long read runs fetch-only instead
-(``python -m RevenueChaser.rcdata.build run --dataset sec/reads --no-duckdb``): that takes only its own
+(``python -m revenuechaser.rcdata.build run --dataset sec/reads --no-duckdb``): that takes only its own
 ``rcdata_fetch_sec_reads`` lock, and the build proper is then seconds long.
 """
 from __future__ import annotations

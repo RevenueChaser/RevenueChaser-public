@@ -14,8 +14,8 @@ import time
 
 import pytest
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.core.rawstore import StoreLockedError
+from revenuechaser.core import rawstore
+from revenuechaser.core.rawstore import StoreLockedError
 
 #: A board file that is never opened: ``duckdb.connect`` is replaced in every test that names it.
 _FILE = Path("/x/.store/news.duckdb")

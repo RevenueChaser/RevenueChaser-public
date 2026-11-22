@@ -10,9 +10,9 @@ import json
 
 import pytest
 
-from RevenueChaser.core.gics_map import SHELL_SPAC, UNCLASSIFIED, canonical_sector
-from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.spine import security
+from revenuechaser.core.gics_map import SHELL_SPAC, UNCLASSIFIED, canonical_sector
+from revenuechaser.rcdata.build import base
+from revenuechaser.rcdata.build.spine import security
 
 from . import spine_fixture as fx
 from .test_spine_security import run_all

@@ -7,10 +7,10 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.core.providers import sec_edgar
-from RevenueChaser.rcdata import read, serving
-from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.ownership import sec, sched13dg
+from revenuechaser.core.providers import sec_edgar
+from revenuechaser.rcdata import read, serving
+from revenuechaser.rcdata.build import base
+from revenuechaser.rcdata.build.ownership import sec, sched13dg
 
 from . import ownership_fixture as ox
 

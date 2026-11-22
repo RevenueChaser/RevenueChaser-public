@@ -7,7 +7,7 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.core.vol_metrics import (
+from revenuechaser.core.vol_metrics import (
     TRADING_PERIODS_PER_YEAR, clean_ohlc, ex_event_curve, term_structure_curve,
     term_structure_slope, yang_zhang,
 )

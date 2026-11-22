@@ -114,7 +114,7 @@ def peer_multiples(peers) -> dict[str, dict]:
 def _records(tickers) -> dict[str, list[dict]]:
     """``{ticker: annual records}`` from the fundamentals serving layer, the Financials board's own statement
     source since G6 (``core/fundamentals_layer``): two reads for the whole peer list, no request."""
-    from RevenueChaser.core import fundamentals_layer
+    from revenuechaser.core import fundamentals_layer
     try:
         found = fundamentals_layer.records_many(tickers)
     except Exception as exc:  # noqa: BLE001 - a Fetch must never fail on the store
@@ -135,7 +135,7 @@ def _market(tickers) -> dict[str, dict]:
 
     An empty answer means no peer has a cap, so no peer has an enterprise value.
     """
-    from RevenueChaser.core import spine_reads
+    from revenuechaser.core import spine_reads
     try:
         return spine_reads.latest_market(tickers)
     except Exception as exc:  # noqa: BLE001 - a Fetch must never fail on the store

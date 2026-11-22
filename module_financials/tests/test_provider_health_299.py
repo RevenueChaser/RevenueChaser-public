@@ -17,9 +17,9 @@ import threading
 
 import pytest
 
-from RevenueChaser.core.providers import yfinance as yfinance_client
-from RevenueChaser.core.reporting_common import provider_health_html
-from RevenueChaser.module_financials.engines import comps_engine
+from revenuechaser.core.providers import yfinance as yfinance_client
+from revenuechaser.core.reporting_common import provider_health_html
+from revenuechaser.module_financials.engines import comps_engine
 
 
 @pytest.fixture(autouse=True)
@@ -104,7 +104,7 @@ def test_the_comps_peer_read_is_no_longer_a_provider_read_at_all(monkeypatch):
     fake.Ticker = lambda ticker: _Boom(ticker)
     monkeypatch.setitem(sys.modules, "yfinance", fake)
 
-    from RevenueChaser.module_financials import store_reads
+    from revenuechaser.module_financials import store_reads
     monkeypatch.setattr(store_reads, "_records", lambda tickers: {t: [] for t in tickers})
     monkeypatch.setattr(store_reads, "_market", lambda tickers: {})
 
@@ -122,8 +122,8 @@ def test_the_run_reports_no_provider_health_at_all(monkeypatch, tmp_path):
     read that came back.
     """
     import sys
-    import RevenueChaser.module_financials.run as fin_run
-    from RevenueChaser.core import universe as spine
+    import revenuechaser.module_financials.run as fin_run
+    from revenuechaser.core import universe as spine
 
     fake = type(sys)("yfinance")
     fake.Ticker = lambda ticker: _Boom(ticker)

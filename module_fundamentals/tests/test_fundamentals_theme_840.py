@@ -10,8 +10,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from RevenueChaser.core import reporting_common as rc
-from RevenueChaser.module_fundamentals import report as fundamentals
+from revenuechaser.core import reporting_common as rc
+from revenuechaser.module_fundamentals import report as fundamentals
 
 DEFINED = set(rc.THEME_TOKENS["dark"]) | set(rc.THEME_SCALE)
 # The board's own aliases, defined on ``:root`` in its first rule from the shared names.

@@ -139,7 +139,7 @@ MAX_EXPECTED_MOVE_PCT = 25.0
 WATCHLIST_BYPASS = True
 FLOW_SWEEP_BLOCK_MIN = 25_000
 # Inst. Flow column: below this |net| lean premium the lean is Thin, and a package at or above it is material
-# (package-risk). docs/module_earnings-radar/redesign.md R5.
+# (package-risk). docs/module_earnings_radar/redesign.md R5.
 INST_FLOW_MIN_NET = 25_000
 # R5 institutional print: size >= 10 AND premium at or above this (redesign.md R5 "Institutional gate"; review S4).
 INST_PRINT_MIN_PREMIUM = 10_000
@@ -221,7 +221,7 @@ R3_SGA_Z_SPIKE = 3.0
 R3_MIN_OM_QUARTERS = 4
 # Below this summed revenue of the last four OM quarters (USD) the name is pre-revenue: no OM vote (review E6).
 R3_OM_MIN_REVENUE_4Q = 25_000_000.0
-# R5 — positioning (squeeze tag, lean window and strike slice; docs/module_earnings-radar/redesign.md R5, #256)
+# R5 — positioning (squeeze tag, lean window and strike slice; docs/module_earnings_radar/redesign.md R5, #256)
 # The squeeze is a ``none`` / ``fuel`` tag, never a Z ladder: ``fuel`` when the short interest or the borrow fee is
 # at or above its cut, ``none`` below it. Low short interest is not bearish, so neither tag scores a point.
 R5_FUEL_SI_PCT = 20.0

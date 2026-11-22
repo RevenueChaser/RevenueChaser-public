@@ -14,10 +14,10 @@ from datetime import date, datetime, timezone
 
 import pytest
 
-import RevenueChaser.module_financials.run as fm
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_asymmetric_growth import engine as agh
-from RevenueChaser.module_financials.engines import quick_remarks_engine as qr
+import revenuechaser.module_financials.run as fm
+from revenuechaser.core import rawstore
+from revenuechaser.module_asymmetric_growth import engine as agh
+from revenuechaser.module_financials.engines import quick_remarks_engine as qr
 
 # 2026-10-08 is a Thursday: 20:35 UTC = 16:35 ET (a complete session, so the valuation row is written).
 COMPLETE = datetime(2026, 10, 8, 20, 35, tzinfo=timezone.utc).timestamp()

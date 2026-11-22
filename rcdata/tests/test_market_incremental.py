@@ -10,10 +10,10 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.rcdata import ops, serving
-from RevenueChaser.rcdata.build import audit, base, dirty, market_series as ms
-from RevenueChaser.rcdata.build import uw_greek_expiry_strike as greek, uw_spot_expiry_strike as spot
-from RevenueChaser.rcdata.build.sources import fred, treasury
+from revenuechaser.rcdata import ops, serving
+from revenuechaser.rcdata.build import audit, base, dirty, market_series as ms
+from revenuechaser.rcdata.build import uw_greek_expiry_strike as greek, uw_spot_expiry_strike as spot
+from revenuechaser.rcdata.build.sources import fred, treasury
 
 TABLES = (ms.TABLE, spot.TABLE, greek.TABLE)
 D1, D2, D3 = date(2026, 10, 26), date(2026, 10, 27), date(2026, 10, 28)

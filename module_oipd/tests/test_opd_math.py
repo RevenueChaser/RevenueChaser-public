@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 from scipy.stats import norm
 
-from RevenueChaser.module_oipd import opd_math
+from revenuechaser.module_oipd import opd_math
 
 
 def _flat_smile(vol=0.25, T=0.25, n=41):

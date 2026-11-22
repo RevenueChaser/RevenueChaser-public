@@ -22,7 +22,7 @@ from pathlib import Path
 
 import pytest
 
-from RevenueChaser.core.providers import cftc
+from revenuechaser.core.providers import cftc
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -51,7 +51,7 @@ def test_the_parse_is_public_in_the_provider():
 
 def test_module_spx_gamma_cftc_is_gone():
     with pytest.raises(ModuleNotFoundError):
-        importlib.import_module("RevenueChaser.module_spx_gamma.cftc")
+        importlib.import_module("revenuechaser.module_spx_gamma.cftc")
 
 
 def test_market_where_names_the_e_mini_market():
@@ -111,7 +111,7 @@ _EARNINGS = "module_earnings_radar"
 
 def test_no_earnings_source_imports_an_underscore_name_from_spx_gamma():
     def check(module, names):
-        if module.split(".")[:2] != ["RevenueChaser", "module_spx_gamma"]:
+        if module.split(".")[:2] != ["revenuechaser", "module_spx_gamma"]:
             return []
         return [n for n in names if n.startswith("_")]
 
@@ -122,6 +122,6 @@ def test_no_core_source_imports_from_spx_gamma():
     # Non-test sources only: the board guard (core/tests/board_fixtures.py) renders boards
     # on purpose, and that import predates this change (reported on #14, not fixed here).
     def check(module, names):
-        return names if module.split(".")[:2] == ["RevenueChaser", "module_spx_gamma"] else []
+        return names if module.split(".")[:2] == ["revenuechaser", "module_spx_gamma"] else []
 
     assert _violations(check, "core", skip_tests=True) == []

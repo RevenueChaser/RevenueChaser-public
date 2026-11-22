@@ -21,8 +21,8 @@ Synthetic companyfacts only, no network. Helpers are the #246 fixtures.
 """
 from __future__ import annotations
 
-from RevenueChaser.core.providers import sec_edgar as se
-from RevenueChaser.core.tests.test_sec_edgar_concept_merge_246 import _facts, _recs, _rev, _s
+from revenuechaser.core.providers import sec_edgar as se
+from revenuechaser.core.tests.test_sec_edgar_concept_merge_246 import _facts, _recs, _rev, _s
 
 REV = "Revenues"
 RFC = "RevenueFromContractWithCustomerExcludingAssessedTax"

@@ -8,7 +8,7 @@ mean |gamma|, a braked staircase from 0.5x to 2x, and half-full below 0.5x.
 """
 from __future__ import annotations
 
-from RevenueChaser.core.gex_profile import cumulative_crossings, nearest_crossing
+from revenuechaser.core.gex_profile import cumulative_crossings, nearest_crossing
 
 from .brier import target_friday
 

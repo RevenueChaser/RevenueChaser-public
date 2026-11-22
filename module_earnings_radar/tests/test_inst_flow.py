@@ -1,5 +1,5 @@
-from RevenueChaser.core.config import INST_FLOW_MIN_NET
-from RevenueChaser.module_earnings_radar.pipeline import (
+from revenuechaser.core.config import INST_FLOW_MIN_NET
+from revenuechaser.module_earnings_radar.pipeline import (
     _flow_window, _institutional_flow_comment,
 )
 

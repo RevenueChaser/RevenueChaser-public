@@ -9,11 +9,11 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.app import dashboard, jobs
-from RevenueChaser.core import rawstore, universe
-from RevenueChaser.module_asymmetric_growth import engine
-from RevenueChaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401 - market roots per test
-from RevenueChaser.rcdata.tests.test_spine_security import built, run_all  # noqa: F401 - the 10 names
+from revenuechaser.app import dashboard, jobs
+from revenuechaser.core import rawstore, universe
+from revenuechaser.module_asymmetric_growth import engine
+from revenuechaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401 - market roots per test
+from revenuechaser.rcdata.tests.test_spine_security import built, run_all  # noqa: F401 - the 10 names
 
 
 def test_without_a_spine_a_board_fetch_says_loading(monkeypatch):

@@ -7,8 +7,8 @@ from __future__ import annotations
 
 import re
 
-from RevenueChaser.core.tests.board_fixtures import newdata_fixture
-from RevenueChaser.module_settings import newdata, report
+from revenuechaser.core.tests.board_fixtures import newdata_fixture
+from revenuechaser.module_settings import newdata, report
 
 
 def _page(nd=None) -> str:

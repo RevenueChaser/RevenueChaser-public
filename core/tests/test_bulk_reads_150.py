@@ -3,10 +3,10 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.rcdata.tests import fund_store
-from RevenueChaser.core import rawstore, taxonomy
-from RevenueChaser.core.providers import sec_edgar
-from RevenueChaser.module_relatedness import themes
+from revenuechaser.rcdata.tests import fund_store
+from revenuechaser.core import rawstore, taxonomy
+from revenuechaser.core.providers import sec_edgar
+from revenuechaser.module_relatedness import themes
 
 
 def _count_queries(monkeypatch):

@@ -6,7 +6,7 @@ keyword themes from ``ticker_scores.themes`` under
 ``theme_run_id='legacy-keyword'``, ``level='legacy'`` so the vocabulary can be
 replaced by the NMF runs (Phase 8) without losing the old assignments.
 
-    python -m RevenueChaser.core.ticker_themes --backfill
+    python -m revenuechaser.core.ticker_themes --backfill
 """
 from __future__ import annotations
 

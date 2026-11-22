@@ -10,16 +10,16 @@ import json
 
 import pytest
 
-from RevenueChaser.core import rawstore, universe
-from RevenueChaser.core.providers import evren
-from RevenueChaser.module_relatedness import config, engine, locator, profiles
-from RevenueChaser.module_relatedness.tests.test_locator_400 import DOC, PROFILE
-from RevenueChaser.module_relatedness.tests.test_sec_forms_reader_841 import filings_only, layer  # noqa: F401
-from RevenueChaser.rcdata import read
-from RevenueChaser.rcdata.build.sec_reads import company_profile as cp
-from RevenueChaser.rcdata.build.sec_reads import questions, reads
-from RevenueChaser.rcdata.tests import fund_fixture as fx
-from RevenueChaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401  (fixtures)
+from revenuechaser.core import rawstore, universe
+from revenuechaser.core.providers import evren
+from revenuechaser.module_relatedness import config, engine, locator, profiles
+from revenuechaser.module_relatedness.tests.test_locator_400 import DOC, PROFILE
+from revenuechaser.module_relatedness.tests.test_sec_forms_reader_841 import filings_only, layer  # noqa: F401
+from revenuechaser.rcdata import read
+from revenuechaser.rcdata.build.sec_reads import company_profile as cp
+from revenuechaser.rcdata.build.sec_reads import questions, reads
+from revenuechaser.rcdata.tests import fund_fixture as fx
+from revenuechaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401  (fixtures)
 
 MSFT = "789019"
 
@@ -122,7 +122,7 @@ def test_the_builder_registers_the_three_questions_the_locator_first(tmp_path):
     import sys
     from pathlib import Path
 
-    code = ("import RevenueChaser.rcdata.build; from RevenueChaser.rcdata.build.sec_reads.questions import QUESTIONS; "
+    code = ("import revenuechaser.rcdata.build; from revenuechaser.rcdata.build.sec_reads.questions import QUESTIONS; "
             "print(','.join(QUESTIONS))")
     env = {"PATH": "", "PYTHONPATH": str(Path(cp.__file__).resolve().parents[4]), "RC_STORE_DIR": str(tmp_path / "s"),
            "RC_CACHE_DIR": str(tmp_path / "c"), "RC_EDGAR_DOCS_DIR": str(tmp_path / "e"),
@@ -136,7 +136,7 @@ def test_the_builder_registers_the_three_questions_the_locator_first(tmp_path):
 
     assert child(code) == f"{cp.LOCATE_ID},{cp.PROFILE_ID},debt.note"        # #737's question runs last
     # The writer: EVREN with no call cap, or DeepSeek Flash with one, by the process's environment.
-    writers = ("import RevenueChaser.rcdata.build; from RevenueChaser.rcdata.build.sec_reads.questions import "
+    writers = ("import revenuechaser.rcdata.build; from revenuechaser.rcdata.build.sec_reads.questions import "
                "QUESTIONS; print(';'.join(f'{q.provider},{q.writer_model},{q.max_calls}' for q in QUESTIONS.values()))")
     # All three follow the one switch: EVREN uncapped by default (avo, 19 Nov 2026 "Fundamentals icinde evren
     # deepseek olmali"), DeepSeek Flash with each question's own cap when the process names DeepSeek.

@@ -6,9 +6,9 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core.providers import sec_edgar
-from RevenueChaser.module_fundamentals import config, screeners
-from RevenueChaser.module_fundamentals.pipeline import _quality_metrics
+from revenuechaser.core.providers import sec_edgar
+from revenuechaser.module_fundamentals import config, screeners
+from revenuechaser.module_fundamentals.pipeline import _quality_metrics
 
 _CASH = "CashAndCashEquivalentsAtCarryingValue"
 

@@ -10,9 +10,9 @@ import json
 
 import pytest
 
-from RevenueChaser.app import activity
-from RevenueChaser.core import automations, datasets
-from RevenueChaser.module_value_chain import __main__ as cli
+from revenuechaser.app import activity
+from revenuechaser.core import automations, datasets
+from revenuechaser.module_value_chain import __main__ as cli
 
 
 class _Resp:
@@ -77,7 +77,7 @@ def test_off_the_layer_the_task_asks_for_nothing(seams, monkeypatch, capsys):
 
 def test_the_task_runs_after_the_sec_read_and_is_the_value_chain_writer():
     e = automations.entry("RC-ValueChain-Sync")
-    assert e.after == "RC-SEC-Read" and e.args == ("-m", "RevenueChaser.module_value_chain", "--nightly")
+    assert e.after == "RC-SEC-Read" and e.args == ("-m", "revenuechaser.module_value_chain", "--nightly")
     assert automations.system_unit(e) == "life-rc-valuechain-sync"      # the home-server unit pair's name
     assert next(s for s in datasets.REGISTRY if s.key == "value_chain").writer == e.name
     assert activity.BY_NAME[e.name] == "module_value_chain"

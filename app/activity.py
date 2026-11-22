@@ -37,7 +37,7 @@ NOT_A_FEED = frozenset({"module_settings"})
 def _board_code() -> dict[str, str]:
     """Each board's own code (tests left out), keyed by its tab key. Read once a process: the code does not change
     under a running dashboard."""
-    from RevenueChaser.app import dashboard
+    from revenuechaser.app import dashboard
     out = {}
     for t in dashboard.TABS:
         key = t.get("key") or ""
@@ -51,8 +51,8 @@ def _board_code() -> dict[str, str]:
 def job_boards() -> dict:
     """``{"boards": [{"key", "label", "jobs": [registry names]}], "jobs": {name: {"unit", "label", "boards"}}}``
     in menu order, ``System`` last. A job is listed under every board it feeds."""
-    from RevenueChaser.app import dashboard
-    from RevenueChaser.core import automations
+    from revenuechaser.app import dashboard
+    from revenuechaser.core import automations
     code = _board_code()
     labels = {t["key"]: t["label"] for t in dashboard.TABS if t.get("type") == "tab"}
     jobs, by_board = {}, {k: [] for k in code}
@@ -89,7 +89,7 @@ def pressed_by_board(rows: list[dict]) -> dict[str, dict]:
     tasks, and neither was ever "pressed" on a board. A row with no ``kind`` is a dashboard run, which is what this
     function was given before that field existed.
     """
-    from RevenueChaser.app import dashboard
+    from revenuechaser.app import dashboard
     keys = {t["key"] for t in dashboard.TABS if t.get("type") == "tab"}
     out: dict[str, dict] = {}
     for r in rows:

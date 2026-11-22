@@ -4,10 +4,10 @@ label, the Rule of 40 barrier both ways, the old-year mark, no empty theme row, 
 """
 from __future__ import annotations
 
-from RevenueChaser.module_fundamentals import config
-from RevenueChaser.module_fundamentals.pipeline import build_payload
-from RevenueChaser.module_fundamentals.report import _summary_html, render_fundamental_dashboard
-from RevenueChaser.module_fundamentals.screeners import evaluate_rule_of_40, is_distorted
+from revenuechaser.module_fundamentals import config
+from revenuechaser.module_fundamentals.pipeline import build_payload
+from revenuechaser.module_fundamentals.report import _summary_html, render_fundamental_dashboard
+from revenuechaser.module_fundamentals.screeners import evaluate_rule_of_40, is_distorted
 
 
 def test_a_rule_of_40_below_minus_the_barrier_is_unknown_and_distorted_too():

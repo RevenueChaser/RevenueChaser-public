@@ -71,7 +71,7 @@ from collections import Counter
 from datetime import date, datetime, time as dt_time, timedelta
 from typing import NamedTuple
 
-from RevenueChaser.core import calendar, outcomes, prices, rawstore
+from revenuechaser.core import calendar, outcomes, prices, rawstore
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +104,7 @@ def universe_at(day: date, spans: list[dict] | None = None) -> list[str]:
     span and answers [] (no snapshot). Stocks only (#276): a fund in the baseline pulls it toward index returns.
     """
     if spans is None:
-        from RevenueChaser.rcdata import read          # imported inside, as core/ownership.py does
+        from revenuechaser.rcdata import read          # imported inside, as core/ownership.py does
         spans = read.my_universe_spans((STOCK,))
     return sorted({s["ticker"] for s in spans
                    if s["entered_on"] <= day and (s["left_on"] is None or s["left_on"] > day)})
@@ -354,7 +354,7 @@ def run(*, now: datetime | None = None, run_id: str | None = None, full: bool = 
            "rows": 0, "written": 0, "tickers": 0, "members": 0, "no_snapshot": 0, "status": {}, "full": full,
            "dry_run": not write}
     if todo:
-        from RevenueChaser.rcdata import read
+        from revenuechaser.rcdata import read
         spans = read.my_universe_spans((STOCK,))
         universes = {d: universe_at(d, spans) for d in todo}
         res["no_snapshot"] = sum(1 for tickers in universes.values() if not tickers)

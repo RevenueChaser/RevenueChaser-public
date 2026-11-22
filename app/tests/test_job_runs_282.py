@@ -7,8 +7,8 @@ counted — which ``_set`` used to drop for want of a destination.
 
 import pytest
 
-from RevenueChaser.app import jobs
-from RevenueChaser.core import ledger, rawstore
+from revenuechaser.app import jobs
+from revenuechaser.core import ledger, rawstore
 
 
 class _FakeUW:
@@ -56,7 +56,7 @@ def test_job_semantics_are_unchanged_by_the_new_row(sync_jobs):
 # --- the run-log row (#136) ------------------------------------------------------------------------------------
 
 def test_a_dashboard_job_records_its_row_and_the_runners_counts(sync_jobs):
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
     jobs.register("t_counts", lambda uw, **p: {"counts": {"rows": 12, "frozen": 4}}, [], requires_uw=False)
     jid = jobs.submit("t_counts")
     jobs.execute(jid)
@@ -69,7 +69,7 @@ def test_a_dashboard_job_records_its_row_and_the_runners_counts(sync_jobs):
 
 def test_a_runner_that_ends_with_a_message_records_its_counts(sync_jobs):
     """The long writers raise ``JobMessage`` rather than returning, so #136 gave it a ``counts`` keyword."""
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
 
     def ends_with_a_message(uw, **params):
         raise jobs.JobMessage("Wrote 9 rows.", {"rows": 9})
@@ -82,7 +82,7 @@ def test_a_runner_that_ends_with_a_message_records_its_counts(sync_jobs):
 
 
 def test_a_failed_job_records_its_error(sync_jobs):
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
 
     def boom(uw, **params):
         raise ValueError("no")
@@ -97,7 +97,7 @@ def test_a_failed_job_records_its_error(sync_jobs):
 def test_an_ops_store_that_refuses_the_row_does_not_fail_the_job(sync_jobs, monkeypatch):
     """Best-effort (#282): the row is attempted, and a store that refuses it costs the row, not the job. The
     attempt (``asked``) is what the base never makes, so this is red there too."""
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
     asked = []
 
     def refuse(*a, **k):

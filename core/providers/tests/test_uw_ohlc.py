@@ -9,10 +9,10 @@ from __future__ import annotations
 
 from datetime import date
 
-from RevenueChaser.core.providers import ohlc as ohlc_mod
-from RevenueChaser.core.providers.result import ProviderResult
-from RevenueChaser.core.providers.unusual_whales import UWClient
-from RevenueChaser.core.vol_metrics import clean_ohlc
+from revenuechaser.core.providers import ohlc as ohlc_mod
+from revenuechaser.core.providers.result import ProviderResult
+from revenuechaser.core.providers.unusual_whales import UWClient
+from revenuechaser.core.vol_metrics import clean_ohlc
 
 
 def _bar(d, mt, close, vol=100, o=None):

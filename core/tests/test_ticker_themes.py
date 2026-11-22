@@ -1,8 +1,8 @@
 """ticker_themes — legacy keyword backfill (raw.duckdb tmp path, no network)."""
 from __future__ import annotations
 
-from RevenueChaser.core import rawstore, ticker_store
-from RevenueChaser.core import ticker_themes as tt
+from revenuechaser.core import rawstore, ticker_store
+from revenuechaser.core import ticker_themes as tt
 
 
 def test_slug():

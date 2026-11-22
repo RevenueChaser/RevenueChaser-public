@@ -19,10 +19,10 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.rcdata import ops, serving
-from RevenueChaser.rcdata import build as build_pkg
-from RevenueChaser.rcdata.build import __main__ as cli
-from RevenueChaser.rcdata.build import base, due
+from revenuechaser.rcdata import ops, serving
+from revenuechaser.rcdata import build as build_pkg
+from revenuechaser.rcdata.build import __main__ as cli
+from revenuechaser.rcdata.build import base, due
 
 AS_OF = date(2026, 11, 6)
 

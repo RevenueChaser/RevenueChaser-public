@@ -11,7 +11,7 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.rcdata import ops, read
+from revenuechaser.rcdata import ops, read
 
 from .test_prices_serving import AAPL, built as prices_built, env  # noqa: F401 - the built prices store
 from .test_spine_security import built as spine_built, run_all  # noqa: F401 - the built spine

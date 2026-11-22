@@ -9,8 +9,8 @@ import math
 
 import pytest
 
-from RevenueChaser.module_watchlists import indicators as ind
-from RevenueChaser.module_watchlists.indicators import Bar
+from revenuechaser.module_watchlists import indicators as ind
+from revenuechaser.module_watchlists.indicators import Bar
 
 
 def bars(closes, *, spread: float = 0.0, volume: float | None = 1_000.0):

@@ -12,8 +12,8 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.app import dashboard
-from RevenueChaser.core.tests.panel_client import panel_test_client
+from revenuechaser.app import dashboard
+from revenuechaser.core.tests.panel_client import panel_test_client
 
 _BAD = [".", "..", "-", "---", "../../X", "..\\..\\X", "<x>", "X<IMG SRC=X ONERROR=ALERT(1)>", "A/B", "TOOLONGTICKER"]
 
@@ -63,7 +63,7 @@ class TestWatchlistToggle:
     def test_bad_ticker_is_400_and_the_watchlist_is_untouched(self, client, rawstore_tmp_db, ticker):
         from urllib.parse import quote
 
-        from RevenueChaser.core import rawstore
+        from revenuechaser.core import rawstore
         r = client.post("/api/watchlist/toggle/" + quote(ticker, safe=""))
         assert r.status_code == 400
         assert r.get_json()["ok"] is False
@@ -77,7 +77,7 @@ class TestSettingsLookup:
     def test_bad_ticker_is_400(self, client, monkeypatch, ticker):
         from urllib.parse import quote
 
-        from RevenueChaser.module_settings import ticker_lookup
+        from revenuechaser.module_settings import ticker_lookup
         calls = []
         monkeypatch.setattr(ticker_lookup, "lookup", lambda t: calls.append(t))
         r = client.get("/api/settings/lookup/" + quote(ticker, safe=""))
@@ -87,7 +87,7 @@ class TestSettingsLookup:
 
     def test_a_failed_read_is_a_500_not_an_unknown_ticker(self, client, monkeypatch):
         """DF98: a read error must not look like the 404 an unknown ticker gets."""
-        from RevenueChaser.module_settings import ticker_lookup
+        from revenuechaser.module_settings import ticker_lookup
 
         def boom(t):
             raise RuntimeError("database is locked")
@@ -97,7 +97,7 @@ class TestSettingsLookup:
         assert r.get_json()["error"] == "serving read failed"
 
     def test_an_unknown_ticker_is_still_a_404(self, client, monkeypatch):
-        from RevenueChaser.module_settings import ticker_lookup
+        from revenuechaser.module_settings import ticker_lookup
         monkeypatch.setattr(ticker_lookup, "lookup", lambda t: None)
         assert client.get("/api/settings/lookup/ZZZZ").status_code == 404
 
@@ -128,8 +128,8 @@ class TestRunUw:
 
     def test_a_form_key_named_uw_still_runs_the_job(self, client, submitted, monkeypatch):
         """The job calls ``runner(uw, **params)``: a forwarded ``uw`` key was a TypeError."""
-        from RevenueChaser.app import runners
-        from RevenueChaser.module_uw_interaction import engine
+        from revenuechaser.app import runners
+        from revenuechaser.module_uw_interaction import engine
         monkeypatch.setattr(dashboard, "_uw", lambda: _OkUW())
         client.post("/run/uw", data={"tool": "flow_alerts", "uw": "x"})
         (_, params), = submitted

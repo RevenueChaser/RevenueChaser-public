@@ -7,7 +7,7 @@ import urllib.error
 
 import pytest
 
-from RevenueChaser.scripts import cloud_llm_call as c
+from revenuechaser.scripts import cloud_llm_call as c
 
 _OK = {
     "choices": [{"message": {"content": "hi"}, "finish_reason": "stop"}],

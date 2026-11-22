@@ -11,12 +11,12 @@ from datetime import datetime, timezone
 import httpx
 import pytest
 
-from RevenueChaser.core import calendar as nyse_calendar
-from RevenueChaser.core.providers import unusual_whales
-from RevenueChaser.module_spx_gamma import history_pull as hp
-from RevenueChaser.module_spx_gamma import snapshot as snap
-from RevenueChaser.module_spx_gamma.snapshot import UWApiError
-from RevenueChaser.module_spx_gamma import store as spx_store
+from revenuechaser.core import calendar as nyse_calendar
+from revenuechaser.core.providers import unusual_whales
+from revenuechaser.module_spx_gamma import history_pull as hp
+from revenuechaser.module_spx_gamma import snapshot as snap
+from revenuechaser.module_spx_gamma.snapshot import UWApiError
+from revenuechaser.module_spx_gamma import store as spx_store
 
 from .conftest import FakeUW, store_day
 
@@ -303,7 +303,7 @@ def _reports(tmp_path):
 
 
 def test_a_cancelled_run_still_leaves_its_counts(tmp_path):
-    from RevenueChaser.core import job_control
+    from revenuechaser.core import job_control
     token = job_control.StopToken(None)
     uw = Recorder()
     real = uw.get_result
@@ -404,7 +404,7 @@ def test_a_429_between_rejected_days_resets_the_rejected_streak(tmp_path, monkey
 
 
 def test_a_run_past_its_deadline_says_so_in_its_counts(tmp_path):
-    from RevenueChaser.core import job_control
+    from revenuechaser.core import job_control
     with job_control.bound(job_control.StopToken(0)), pytest.raises(job_control.JobDeadline):
         _pull(tmp_path, Recorder())
     [report] = _reports(tmp_path)
@@ -413,14 +413,14 @@ def test_a_run_past_its_deadline_says_so_in_its_counts(tmp_path):
 
 def test_the_pull_counts_its_calls_against_uw_s_day_cap(tmp_path):
     """Review of #380: the pull's UW calls go into ``provider_calls_daily``, the counter the builder's cap reads."""
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
     before = ops.calls_today("uw")
     counts = _pull(tmp_path, Recorder())
     assert ops.calls_today("uw") - before == counts["calls"] == 1 + 3 * snap.HISTORY_CALLS_PER_SESSION
 
 
 def test_the_pull_is_held_to_what_is_left_of_uw_s_day(tmp_path, monkeypatch):
-    from RevenueChaser.rcdata import caps, ops
+    from revenuechaser.rcdata import caps, ops
     monkeypatch.setitem(caps.DAY_CAPS, "uw", 100_000)              # UW has no cap since 2026-11-10: a test cap
     ops.count_calls("uw", caps.DAY_CAPS["uw"] - ops.calls_today("uw") - 1)     # one call left today
     uw = Recorder()
@@ -434,7 +434,7 @@ def test_the_pull_is_held_to_what_is_left_of_uw_s_day(tmp_path, monkeypatch):
 def test_the_pull_counts_as_it_goes_so_a_crash_loses_at_most_a_few_calls(tmp_path):
     """Review round 2 of #380 (SF-3): the calls are written to ``provider_calls_daily`` every ``COUNT_EVERY``, not only
     when the run ends, so a killed dashboard (no ``finally``) leaves them counted."""
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
     seen = []
 
     def handler(path, params):
@@ -446,7 +446,7 @@ def test_the_pull_counts_as_it_goes_so_a_crash_loses_at_most_a_few_calls(tmp_pat
 
 def test_the_pull_stops_when_the_builder_spends_the_rest_of_the_day(tmp_path, monkeypatch):
     """The builder's calls land in the same counter while the pull runs: the pull re-reads the room at each count."""
-    from RevenueChaser.rcdata import caps, ops
+    from revenuechaser.rcdata import caps, ops
     monkeypatch.setitem(caps.DAY_CAPS, "uw", 100_000)              # UW has no cap since 2026-11-10: a test cap
     ops.count_calls("uw", caps.DAY_CAPS["uw"] - ops.calls_today("uw") - 1_000)     # 1,000 left at the start
 
@@ -460,7 +460,7 @@ def test_the_pull_stops_when_the_builder_spends_the_rest_of_the_day(tmp_path, mo
 
 def test_the_pull_is_charged_its_http_requests_retries_included():
     """UW charges each HTTP request: a call the client retried counts every attempt (``meter.used``)."""
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
     requests = [0]
 
     class Retrying:

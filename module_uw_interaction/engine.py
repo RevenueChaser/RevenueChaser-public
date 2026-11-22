@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 from urllib.parse import quote
 
-from RevenueChaser.core.providers.unusual_whales import UWClient
+from revenuechaser.core.providers.unusual_whales import UWClient
 
 from .catalog import get_tool
 

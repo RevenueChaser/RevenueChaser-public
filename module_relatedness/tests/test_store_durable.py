@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_relatedness import store
+from revenuechaser.core import rawstore
+from revenuechaser.module_relatedness import store
 
 
 def test_prompt_hash_and_cache_key_are_stable():

@@ -18,8 +18,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from RevenueChaser.core import ownership
-from RevenueChaser.rcdata.tests.ownership_fixture import serve_13f
+from revenuechaser.core import ownership
+from revenuechaser.rcdata.tests.ownership_fixture import serve_13f
 
 PKG = Path(__file__).resolve().parent.parent
 

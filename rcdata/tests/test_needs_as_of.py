@@ -13,7 +13,7 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.rcdata import needs
+from revenuechaser.rcdata import needs
 
 REFERENCE = date(2026, 10, 27)          # Tue: the pinned newest complete session
 

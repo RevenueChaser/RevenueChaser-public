@@ -13,8 +13,8 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.module_sector_rotation.models import ETFRotationSnapshot
-from RevenueChaser.core.tests.board_js import run_board_js
+from revenuechaser.module_sector_rotation.models import ETFRotationSnapshot
+from revenuechaser.core.tests.board_js import run_board_js
 
 EVIL = "\"'><img src=x onerror=__x(1)>"
 
@@ -28,8 +28,8 @@ def _snap(ticker: str, quadrant: str = "LEADING", group: str = "sector") -> ETFR
 
 @pytest.fixture
 def evil_etf(monkeypatch):
-    import RevenueChaser.module_sector_rotation.report as rd
-    from RevenueChaser.core import rotation_reference
+    import revenuechaser.module_sector_rotation.report as rd
+    from revenuechaser.core import rotation_reference
     monkeypatch.setitem(rotation_reference.SEED_ROTATION_ETFS, EVIL + "T", {"name": EVIL + "N", "group": EVIL + "G"})
     monkeypatch.setattr(rd, "coarse_theme_catalog", lambda: {})
     return rd
@@ -133,13 +133,13 @@ def test_the_pages_define_the_escaper_they_call(evil_etf, tmp_path, monkeypatch,
 def test_the_group_filter_touches_map_rows_only():
     """Sector Rotation review 17 Nov 2026 (G4): an expanded theme's holding rows carry ``data-ticker`` but no group,
     so a filter over every ``tr[data-ticker]`` hid them on any zoom or filter."""
-    from RevenueChaser.module_sector_rotation import report
+    from revenuechaser.module_sector_rotation import report
     body = report.JS[report.JS.index("function renderChart()"):report.JS.index("function toggleHoldings(")]
     assert "tbody tr[data-group]" in body and "tbody tr[data-ticker]" not in body
 
 
 def test_the_holdings_drill_labels_its_session_windows():
     """G2: the drill's RS is 5/21/63 sessions, the map's 1/4/12 weeks; they no longer share a label."""
-    from RevenueChaser.module_sector_rotation import report
+    from revenuechaser.module_sector_rotation import report
     html = report.render_holdings_fragment([{"ticker": "AAA", "name": "A", "weight": 5.0}])
     assert "RS 5D" in html and "RS 63D" in html and "RS 1W" not in html

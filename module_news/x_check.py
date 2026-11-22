@@ -22,8 +22,8 @@ import time
 from datetime import date, datetime, timezone
 from zoneinfo import ZoneInfo
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_news import store_reads, x_lane
+from revenuechaser.core import rawstore
+from revenuechaser.module_news import store_reads, x_lane
 
 NY = ZoneInfo("America/New_York")
 TABLE = store_reads.HEADLINES

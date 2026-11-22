@@ -37,7 +37,7 @@ def clean_ohlc(rows, as_of=None) -> list[dict]:
     (UW sends pre-market / regular / after-hours rows per day, sometimes
     newest-first — review X2), so stored or raw rows are both safe here.
     """
-    from RevenueChaser.core.providers.ohlc import regular_session_bars
+    from revenuechaser.core.providers.ohlc import regular_session_bars
 
     bars = []
     for c in regular_session_bars(rows):

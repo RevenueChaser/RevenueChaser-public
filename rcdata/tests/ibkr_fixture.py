@@ -7,7 +7,7 @@ from __future__ import annotations
 import struct
 from datetime import date, timedelta
 
-from RevenueChaser.core import calendar
+from revenuechaser.core import calendar
 
 SERVER_VERSION = 176
 # The account list the gateway sends after startApi: a placeholder, never a real id. The client must drop it unread.

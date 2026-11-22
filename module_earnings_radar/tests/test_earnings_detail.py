@@ -1,7 +1,7 @@
 """Tests for the earnings-detail data helper (drawer quarter history)."""
 import datetime as dt
 
-from RevenueChaser.module_earnings_radar.pipeline import _build_earnings_detail, _quarter_label, _fmt_price_float
+from revenuechaser.module_earnings_radar.pipeline import _build_earnings_detail, _quarter_label, _fmt_price_float
 
 
 class TestQuarterLabel:

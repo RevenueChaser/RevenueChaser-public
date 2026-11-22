@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import re
 
-from RevenueChaser.module_settings import control_render
+from revenuechaser.module_settings import control_render
 
 
 def test_the_tree_glow_drops_on_leave_and_on_a_redraw():

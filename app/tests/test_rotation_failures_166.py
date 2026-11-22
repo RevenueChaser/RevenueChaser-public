@@ -9,9 +9,9 @@ from datetime import date, timedelta
 
 import pytest
 
-from RevenueChaser.app import runners
-from RevenueChaser.app.jobs import JobMessage
-from RevenueChaser.module_sector_rotation import store as rotation_store
+from revenuechaser.app import runners
+from revenuechaser.app.jobs import JobMessage
+from revenuechaser.module_sector_rotation import store as rotation_store
 
 END = date(2026, 8, 14)
 
@@ -37,7 +37,7 @@ class TestRangeBackfillMessage:
     def _patch(self, monkeypatch, result):
         monkeypatch.setattr(rotation_store, "backfill_weekly", lambda uw, s, e: result)
         monkeypatch.setattr(runners, "_load_rotation_snapshots", lambda start=None, end=None: [])
-        import RevenueChaser.module_sector_rotation.report as rep
+        import revenuechaser.module_sector_rotation.report as rep
         monkeypatch.setattr(rep, "export_rotation_dashboard", lambda *a, **kw: runners.ROTATION_LATEST)
 
     def test_failed_etfs_and_skipped_days_are_in_the_job_message(self, monkeypatch, rawstore_tmp_db):

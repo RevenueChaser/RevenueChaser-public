@@ -1,6 +1,6 @@
 """Rule tunables are sourced from core.config and are patchable for replay."""
-from RevenueChaser.core import config as cfg
-from RevenueChaser.module_earnings_radar.rules import (
+from revenuechaser.core import config as cfg
+from revenuechaser.module_earnings_radar.rules import (
     rule2_guidance, rule6_macro, rule7_accounting, rule8_sentiment,
 )
 

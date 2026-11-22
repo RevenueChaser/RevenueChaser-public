@@ -6,10 +6,10 @@ from __future__ import annotations
 
 import re
 
-from RevenueChaser.core.tests.board_fixtures import H
-from RevenueChaser.core.tests.test_board_html_guard import assert_inert
-from RevenueChaser.module_settings import control, control_render, report
-from RevenueChaser.module_settings.tests.test_control_view import NOW, control_nd
+from revenuechaser.core.tests.board_fixtures import H
+from revenuechaser.core.tests.test_board_html_guard import assert_inert
+from revenuechaser.module_settings import control, control_render, report
+from revenuechaser.module_settings.tests.test_control_view import NOW, control_nd
 
 #: The presses the Grafana board carries (home-server ``homeops/act.py``): none of them is drawn in HTML any more.
 MOVED = ("switch", "timer", "one", "fmenu", "stage", "pause", "stop", "cadence", "automation")

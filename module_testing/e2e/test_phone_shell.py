@@ -14,7 +14,7 @@ import os
 
 import pytest
 
-from RevenueChaser.core.reporting_common import THEME_STORAGE_KEY, THEME_TOKENS
+from revenuechaser.core.reporting_common import THEME_STORAGE_KEY, THEME_TOKENS
 
 from .harness.cdp_browser import Page, find_chrome
 from .harness.devices import REALME_GT2_PRO, Device

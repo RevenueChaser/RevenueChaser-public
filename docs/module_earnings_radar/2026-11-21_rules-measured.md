@@ -109,7 +109,7 @@ SEC free filing index sample (plain GET, no key, UA = the repo's own SEC contact
 
 ## Failed commands
 
-- `python3` (system 3.14) has no `duckdb`; used `/srv/life/apps/RevenueChaser/.venv/bin/python` instead.
+- `python3` (system 3.14) has no `duckdb`; used `/srv/life/apps/revenuechaser/.venv/bin/python` instead.
 - First SEC pass regexed `<TYPE>` against the raw `-index-headers.html` and found 0 of 22 — the tags are
   HTML-escaped there. Re-run with `html.unescape` gave the 21/22 above.
 

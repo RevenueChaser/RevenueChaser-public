@@ -1,7 +1,7 @@
 """validator.py tests — EBITDA/capex derivation, missing-field warnings, latest_valid."""
 from __future__ import annotations
 
-from RevenueChaser.core.providers import validator as v
+from revenuechaser.core.providers import validator as v
 
 
 def _rec(**kw) -> dict:

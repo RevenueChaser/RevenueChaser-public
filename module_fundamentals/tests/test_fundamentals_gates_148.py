@@ -6,10 +6,10 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core import screen_common as sc
-from RevenueChaser.module_fundamentals import pipeline as fp
-from RevenueChaser.module_fundamentals import scores, screeners
-from RevenueChaser.module_fundamentals.pipeline import _period_label, _ttm_metrics, build_payload
+from revenuechaser.core import screen_common as sc
+from revenuechaser.module_fundamentals import pipeline as fp
+from revenuechaser.module_fundamentals import scores, screeners
+from revenuechaser.module_fundamentals.pipeline import _period_label, _ttm_metrics, build_payload
 
 ENDS = ["2023-03-31", "2023-06-30", "2023-09-30", "2023-12-31",
         "2024-03-31", "2024-06-30", "2024-09-30", "2024-12-31",
@@ -136,7 +136,7 @@ def test_run_scan_leaves_the_data_date_to_the_shared_scan(monkeypatch):
 
 
 def test_a_name_without_edgar_data_is_not_counted_as_short_history(monkeypatch):
-    from RevenueChaser.core.tests.test_screen_common_147 import Board
+    from revenuechaser.core.tests.test_screen_common_147 import Board
     b = Board(monkeypatch)
     b.behaviour = {"B": None, "C": None, "D": None}
     b.reasons = {"B": "no_edgar_annual", "C": "no_edgar_annual", "D": "short_bars"}
@@ -147,7 +147,7 @@ def test_a_name_without_edgar_data_is_not_counted_as_short_history(monkeypatch):
 
 
 def test_the_summary_and_the_board_show_the_no_edgar_count():
-    from RevenueChaser.module_fundamentals.report import render_fundamental_dashboard
+    from revenuechaser.module_fundamentals.report import render_fundamental_dashboard
     p = build_payload([_row("R", _m(**_RO40))], top_n=10, run_stats={"data_short": 3, "no_edgar": 7})
     assert p["summary"]["no_edgar"] == 7 and p["summary"]["data_short"] == 3
     html = render_fundamental_dashboard(p)
@@ -220,8 +220,8 @@ def test_the_days_between_quarters_are_bounded_both_ways():
 
 
 def test_the_rule_of_40_modal_shows_one_row_with_the_value_in_points(tmp_path):
-    from RevenueChaser.core.tests.board_js import run_board_js
-    from RevenueChaser.module_fundamentals.report import render_fundamental_dashboard
+    from revenuechaser.core.tests.board_js import run_board_js
+    from revenuechaser.module_fundamentals.report import render_fundamental_dashboard
     p = build_payload([_row("AAA", _m(rev_growth_ttm=0.30, fcf_margin=0.1234567, ro40=42.3456789))], top_n=10)
     out = run_board_js(render_fundamental_dashboard(p), """
 openGate({getAttribute: function(k){ return k === "data-ticker" ? "AAA" : "rule_of_40"; }});

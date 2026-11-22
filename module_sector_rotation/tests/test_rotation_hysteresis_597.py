@@ -8,8 +8,8 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.module_sector_rotation import engine
-from RevenueChaser.module_sector_rotation.engine import (
+from revenuechaser.module_sector_rotation import engine
+from revenuechaser.module_sector_rotation.engine import (
     MIN_WEEKS,
     QUADRANT_BAND,
     classify_rrg,

@@ -9,7 +9,7 @@ from __future__ import annotations
 import threading
 import time
 
-from RevenueChaser.module_spx_gamma import snapshot, store
+from revenuechaser.module_spx_gamma import snapshot, store
 from .conftest import store_day
 
 

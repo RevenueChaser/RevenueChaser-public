@@ -38,7 +38,7 @@ The tables (``core/rawstore.py`` owns their columns, ``docs/data_architecture.md
 """
 from __future__ import annotations
 
-from RevenueChaser.core import rawstore
+from revenuechaser.core import rawstore
 
 #: The board's DuckDB file, as ``rawstore`` names it.
 DB = "news"
@@ -64,7 +64,7 @@ LANES = ("market", "stocks", "x")
 
 
 def _x_providers() -> tuple[str, ...]:
-    from RevenueChaser.module_news.x_lane import X_PROVIDERS
+    from revenuechaser.module_news.x_lane import X_PROVIDERS
     return tuple(X_PROVIDERS)
 
 

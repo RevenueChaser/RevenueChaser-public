@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.module_watchlists import importer, store, tradingview
+from revenuechaser.module_watchlists import importer, store, tradingview
 
 pytestmark = pytest.mark.rawstore_schema_from_scratch
 

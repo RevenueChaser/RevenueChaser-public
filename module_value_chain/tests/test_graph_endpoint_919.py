@@ -8,8 +8,8 @@ import os
 
 import pytest
 
-from RevenueChaser.app import dashboard, runners
-from RevenueChaser.module_value_chain import engine, report
+from revenuechaser.app import dashboard, runners
+from revenuechaser.module_value_chain import engine, report
 
 
 def _edge(src, dst, rel, snippet):

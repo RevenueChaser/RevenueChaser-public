@@ -12,8 +12,8 @@ import json
 import pytest
 from datetime import date
 
-from RevenueChaser.module_spx_gamma import snapshot as snap
-from RevenueChaser.module_spx_gamma import store as spx_store
+from revenuechaser.module_spx_gamma import snapshot as snap
+from revenuechaser.module_spx_gamma import store as spx_store
 
 from . import rcdata_fixture
 from .conftest import as_uw
@@ -94,8 +94,8 @@ def test_a_window_that_ends_before_the_last_complete_session_warns(monkeypatch):
     """#293 review MUST: the only guard was "no rows at all". A window that merely ends early — the nightly
     --index-levels step (now the builder's market_series) missed a session — passed silently with a healthy source label, which is the default
     same-day Fetch path. It must say so."""
-    from RevenueChaser.core import calendar as nyse_calendar
-    from RevenueChaser.module_spx_gamma import candles
+    from revenuechaser.core import calendar as nyse_calendar
+    from revenuechaser.module_spx_gamma import candles
 
     rows = [{"date": d, "close": 1.0} for d in CANDLE_DATES]
     monkeypatch.setattr(nyse_calendar, "latest_complete_session", lambda *a, **k: date(2026, 8, 18))
@@ -106,8 +106,8 @@ def test_a_window_that_ends_before_the_last_complete_session_warns(monkeypatch):
 def test_a_window_up_to_the_last_complete_session_does_not_warn(monkeypatch):
     """The same-day Fetch is legitimate: the store holds complete sessions only (rule B), so ending on the last
     complete session is correct and must stay silent."""
-    from RevenueChaser.core import calendar as nyse_calendar
-    from RevenueChaser.module_spx_gamma import candles
+    from revenuechaser.core import calendar as nyse_calendar
+    from revenuechaser.module_spx_gamma import candles
 
     rows = [{"date": d, "close": 1.0} for d in CANDLE_DATES]
     monkeypatch.setattr(nyse_calendar, "latest_complete_session", lambda *a, **k: date(2026, 8, 14))
@@ -118,7 +118,7 @@ def test_the_window_is_sorted_whatever_order_the_store_returns(monkeypatch):
     """#293 review S-1: spot is candles[-1]["close"] and price_window_sessions does not re-sort, so order is
     load-bearing. Base sorted explicitly; after the switch it rested on an ORDER BY in another module, which a
     test seeding ascending rows could not catch."""
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
 
     shuffled = [{"series_id": "SPX", "obs_date": date.fromisoformat(d), "value": float(i), "close": None,
                  "open": None, "high": None, "low": None, "status": "changed"}
@@ -132,8 +132,8 @@ def test_the_window_is_sorted_whatever_order_the_store_returns(monkeypatch):
 def test_a_closed_session_costs_no_live_request(monkeypatch):
     """The owner's choice, 2026-10-22: the 8-week window stays a store read, but spot goes live during an open
     session, because it sets the +/-25% strike window and the board's current_level."""
-    from RevenueChaser.core import calendar as nyse_calendar
-    from RevenueChaser.module_spx_gamma import candles
+    from revenuechaser.core import calendar as nyse_calendar
+    from revenuechaser.module_spx_gamma import candles
 
     monkeypatch.setattr(nyse_calendar, "in_us_session_window", lambda *a, **k: False)
     assert candles.live_spot() == (None, None), "a closed market must cost no request"
@@ -143,8 +143,8 @@ def test_a_failed_live_spot_reports_its_reason(monkeypatch):
     """A failed live read must never be silent: the caller falls back to the last complete close and says so."""
     import yfinance
 
-    from RevenueChaser.core import calendar as nyse_calendar
-    from RevenueChaser.module_spx_gamma import candles
+    from revenuechaser.core import calendar as nyse_calendar
+    from revenuechaser.module_spx_gamma import candles
 
     monkeypatch.setattr(nyse_calendar, "in_us_session_window", lambda *a, **k: True)
 
@@ -163,8 +163,8 @@ def test_normalize_and_a_reload_both_keep_the_recorded_live_spot(tmp_path):
     stored window's last close, while the spot_exposure files stayed anchored to the live spot."""
     import json as _json
 
-    from RevenueChaser.module_spx_gamma import raw_day
-    from RevenueChaser.module_spx_gamma.normalize import normalize_snapshot
+    from revenuechaser.module_spx_gamma import raw_day
+    from revenuechaser.module_spx_gamma.normalize import normalize_snapshot
 
     from .conftest import make_raw, store_day
 
@@ -187,8 +187,8 @@ def test_live_spot_reads_the_newest_minute_of_todays_bars(monkeypatch):
     import pandas as pd
     import yfinance
 
-    from RevenueChaser.core import calendar as nyse_calendar
-    from RevenueChaser.module_spx_gamma import candles
+    from revenuechaser.core import calendar as nyse_calendar
+    from revenuechaser.module_spx_gamma import candles
 
     monkeypatch.setattr(nyse_calendar, "in_us_session_window", lambda *a, **k: True)
     seen: dict = {}
@@ -210,8 +210,8 @@ def test_live_spot_reads_the_newest_minute_of_todays_bars(monkeypatch):
 
 def test_a_calendar_that_cannot_answer_is_reported_not_silent(monkeypatch):
     """#293 review nit 3: past the holiday table this returned (None, None), which reads as "market closed"."""
-    from RevenueChaser.core import calendar as nyse_calendar
-    from RevenueChaser.module_spx_gamma import candles
+    from revenuechaser.core import calendar as nyse_calendar
+    from revenuechaser.module_spx_gamma import candles
 
     def boom(*a, **kw):
         raise ValueError("no holiday table for 2031")
@@ -231,7 +231,7 @@ def test_an_open_session_spends_exactly_one_request_on_spot(tmp_path, rawstore_t
     """
     import json as _json
 
-    from RevenueChaser.core import calendar as nyse_calendar
+    from revenuechaser.core import calendar as nyse_calendar
 
     _seed_levels()
     monkeypatch.setattr(nyse_calendar, "in_us_session_window", lambda *a, **k: True)   # opt out of the pin

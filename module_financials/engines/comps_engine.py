@@ -6,7 +6,7 @@ from typing import Callable
 
 from ..config import to_float
 from ._inputs import NO_MINORITY_BRIDGE, PE_ONLY_SECTOR, net_debt as _net_debt
-from RevenueChaser.core.providers.validator import validate_annual
+from revenuechaser.core.providers.validator import validate_annual
 
 logger = logging.getLogger(__name__)
 

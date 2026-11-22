@@ -14,9 +14,9 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from RevenueChaser.rcdata.tests import universe_store
-from RevenueChaser.core import ibkr_login
-from RevenueChaser.module_settings import inventory, report
+from revenuechaser.rcdata.tests import universe_store
+from revenuechaser.core import ibkr_login
+from revenuechaser.module_settings import inventory, report
 
 # Deliberately NOT today: a card that ignored the clock it is given and read the wall clock instead
 # would still pass against a "now" that happens to be today (CLAUDE.md: dates relative to today rot).

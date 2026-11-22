@@ -10,7 +10,7 @@ import subprocess
 
 import pytest
 
-from RevenueChaser.core import reporting_common as rc
+from revenuechaser.core import reporting_common as rc
 
 # The palette avo picked on 12 Nov 2026 (13F thread):
 # option D "Full design system" in the "Mürekkep" colours, with the navy-black "Gece" dark. Dark is the default, so

@@ -1,9 +1,9 @@
 """Value Chain core — aliases, splitter, mentions, engine (no network)."""
 from __future__ import annotations
 
-from RevenueChaser.rcdata.tests import universe_store
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_value_chain import aliases, engine, splitter
+from revenuechaser.rcdata.tests import universe_store
+from revenuechaser.core import rawstore
+from revenuechaser.module_value_chain import aliases, engine, splitter
 
 _FILLER = ("We operate in a highly competitive industry and invest heavily in "
            "research and development across our product lines and geographies. ") * 30
@@ -172,7 +172,7 @@ def test_fetch_corpus_counts_per_ticker_failures(rawstore_tmp_db, monkeypatch):
 
 
 def test_default_focal_is_the_most_connected():
-    from RevenueChaser.module_value_chain import report
+    from revenuechaser.module_value_chain import report
     assert report._default_focal(["A", "B", "C"], [
         {"src": "A", "dst_ticker": "B"}, {"src": "A", "dst_ticker": "C"}]) == "A"
     # tie -> deterministic alphabetical
@@ -182,7 +182,7 @@ def test_default_focal_is_the_most_connected():
 
 # ── report (readability layer) ──────────────────────────────────────────────
 def test_report_has_readability_layer():
-    from RevenueChaser.module_value_chain import report
+    from revenuechaser.module_value_chain import report
 
     payload = {
         "as_of": "2026-09-17T00:00:00+00:00",
@@ -205,7 +205,7 @@ def test_report_has_readability_layer():
 def test_report_labels_are_honest():
     """Review 2026-09-26 F6/F11/F16: counts what is drawn, no invented confidence,
     no promise of private names, relations worded as unverified."""
-    from RevenueChaser.module_value_chain import report
+    from revenuechaser.module_value_chain import report
 
     edge = {"src": "NVDA", "dst_name": "TSMC", "dst_ticker": "TSM", "relation": "supplier",
             "snippet": "we purchase wafers from TSMC", "filed": "2026-02-01"}
@@ -229,7 +229,7 @@ def test_board_payload_carries_precision(rawstore_tmp_db, tmp_path, monkeypatch)
     """Precision is measured on the labelled edges the board still serves."""
     import json
 
-    from RevenueChaser.module_value_chain import precision
+    from revenuechaser.module_value_chain import precision
     labels = ([{"src": "A", "dst_ticker": f"R{i}", "relation": "customer", "label": True} for i in range(135)]
               + [{"src": "A", "dst_ticker": f"W{i}", "relation": "customer", "label": False} for i in range(40)])
     p = tmp_path / "labels.json"
@@ -245,7 +245,7 @@ def test_board_payload_carries_precision(rawstore_tmp_db, tmp_path, monkeypatch)
 
 
 def test_report_shows_measured_precision():
-    from RevenueChaser.module_value_chain import report
+    from revenuechaser.module_value_chain import report
     html = report.render_value_chain_dashboard({
         "as_of": "2026-09-17T00:00:00+00:00", "filings": [], "edges": [],
         "precision": {"n": 80, "tp": 31, "fp": 49, "precision": 0.3875, "passes": False},
@@ -264,7 +264,7 @@ def test_report_shows_measured_precision():
 def test_report_uses_ticker_combobox_after_filters():
     """SSoT docs/dashboard_ui.md chrome: filters first, then ticker combobox,
     and filters are never buried in a closed <details>."""
-    from RevenueChaser.module_value_chain import report
+    from revenuechaser.module_value_chain import report
 
     payload = {
         "as_of": "2026-09-17T00:00:00+00:00",
@@ -291,7 +291,7 @@ def test_report_uses_ticker_combobox_after_filters():
 
 
 def test_report_hides_tickers_without_edges():
-    from RevenueChaser.module_value_chain import report
+    from revenuechaser.module_value_chain import report
     html = report.render_value_chain_dashboard({
         "as_of": "2026-09-17T00:00:00+00:00",
         "filings": [
@@ -314,7 +314,7 @@ def test_report_hides_tickers_without_edges():
 
 
 def test_report_empty_state():
-    from RevenueChaser.module_value_chain import report
+    from revenuechaser.module_value_chain import report
     html = report.render_value_chain_dashboard({"as_of": "2026-09-17T00:00:00+00:00",
                                                 "filings": [], "edges": []})
     assert "No companies with supplier / customer links yet" in html
@@ -322,7 +322,7 @@ def test_report_empty_state():
 
 def test_board_rows_without_a_classification_read_unclassified(rawstore_tmp_db):
     """R3 (#86): a filing for a ticker the universe does not know gets the unknown sector bucket."""
-    from RevenueChaser.module_value_chain import report
+    from revenuechaser.module_value_chain import report
     rows = engine._board_filings([{"ticker": "NOPE", "form": "10-K", "filed": "2026-01-01"}])
     assert rows[0]["sector"] == "Unclassified"
     picker = report._picker_rows([], {"NOPE"})
@@ -334,7 +334,7 @@ def test_board_rows_carry_the_sector_and_the_industry_not_the_gics_levels(rawsto
 
     ``OLD`` is a row the identity master has not re-applied yet: it still holds the GICS spelling.
     """
-    from RevenueChaser.module_value_chain import report
+    from revenuechaser.module_value_chain import report
     universe_store.replace([
         {"ticker": t, "name": t, "market_cap": 1e9, "sector": sec, "industry": ind, "price": 1.0,
          "quote": {}} for t, sec, ind in (
@@ -356,7 +356,7 @@ def test_board_rows_carry_the_sector_and_the_industry_not_the_gics_levels(rawsto
 
 
 def _two_sector_vc_board(**extra):
-    from RevenueChaser.module_value_chain import report
+    from revenuechaser.module_value_chain import report
     filing = lambda t, sec, ind, ids: {"ticker": t, "name": t, "form": "10-K", "filed": "2026-02-01",
                                        "quality": "ok", "market_cap": 1e12, "sector": sec, "industry": ind,
                                        "theme_ids": ids}
@@ -371,7 +371,7 @@ def _two_sector_vc_board(**extra):
 
 def test_the_board_picker_filters_by_sector_then_industry(tmp_path):
     """The shared kit reads each picker row's sector path (``gics``, else ``sector`` and ``industry``)."""
-    from RevenueChaser.core.tests.board_js import run_board_js
+    from revenuechaser.core.tests.board_js import run_board_js
     tail = """
 function pool(){ return DATA.filter(pass).map(function(c){ return c.ticker; }); }
 var log = {all: pool()};
@@ -385,7 +385,7 @@ console.log(JSON.stringify(log));"""
 
 def test_the_board_picker_filters_by_theme(tmp_path):
     """#383 C1b: Value Chain gains the Theme facet (the pinned run's ``theme_ids``); the catalog rides the payload."""
-    from RevenueChaser.core.tests.board_js import run_board_js
+    from revenuechaser.core.tests.board_js import run_board_js
     html = _two_sector_vc_board(theme_catalog={"r:c0": {"label": "Cloud", "level": "coarse", "parent": ""}})
     tail = """
 function pool(){ return DATA.filter(pass).map(function(c){ return c.ticker; }); }
@@ -398,7 +398,7 @@ console.log(JSON.stringify(log));"""
 
 def test_no_filter_set_keeps_every_name_and_the_default_focal(tmp_path):
     """#383 C1b parity: no filter set = every picker name, and the most-linked name stays the focal one."""
-    from RevenueChaser.core.tests.board_js import run_board_js
+    from revenuechaser.core.tests.board_js import run_board_js
     got = run_board_js(_two_sector_vc_board(), "console.log(JSON.stringify({pool: DATA.filter(pass).length, "
                        "n: DATA.length, focal: FOCAL, count: _els['count'].textContent, active: RCF.active()}));",
                        tmp_path)
@@ -407,7 +407,7 @@ def test_no_filter_set_keeps_every_name_and_the_default_focal(tmp_path):
 
 def test_board_rows_carry_the_filter_path_and_theme_ids(rawstore_tmp_db):
     """#383 C1b: a filing row is a kit row (``gics`` + ``theme_ids``) and the payload carries the theme catalog."""
-    from RevenueChaser.module_value_chain import report
+    from revenuechaser.module_value_chain import report
     rows = engine._board_filings([{"ticker": "NOPE", "form": "10-K", "filed": "2026-01-01"}])
     assert rows[0]["gics"] == ["Unclassified", ""] and rows[0]["theme_ids"] == []
     picker = report._picker_rows(rows, set())
@@ -434,7 +434,7 @@ def test_board_payload_without_a_master_table_is_unchanged(tmp_path):
 
 
 def test_the_universe_tile_says_operating_companies():
-    from RevenueChaser.module_value_chain import report
+    from revenuechaser.module_value_chain import report
     html = report.render_value_chain_dashboard({
         "as_of": "2026-09-17T00:00:00+00:00", "filings": [], "edges": [],
         "universe_total": 5, "pending": 0})
@@ -448,8 +448,8 @@ def test_the_universe_tile_says_operating_companies():
 def test_the_kit_meta_filters_by_earnings_and_takes_the_registry_indexes(tmp_path):
     """#383 C1b review (N2): Value Chain mounts the kit as its own board, with the earnings facet as a filter (not a
     mark) and the index list from the registry."""
-    from RevenueChaser.core.index_registry import filter_labels
-    from RevenueChaser.core.tests.board_js import run_board_js
+    from revenuechaser.core.index_registry import filter_labels
+    from revenuechaser.core.tests.board_js import run_board_js
     got = run_board_js(_two_sector_vc_board(), "console.log(JSON.stringify({mode: META.earnings_mode, "
                        "board: META.board, indexes: META.indexes}));", tmp_path)
     assert got == {"mode": "filter", "board": "value_chain", "indexes": filter_labels()}

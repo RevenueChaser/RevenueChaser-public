@@ -1,4 +1,4 @@
-"""``python -m RevenueChaser.rcdata backup`` — the weekly backup (avo's decisions of 8 Nov 2026).
+"""``python -m revenuechaser.rcdata backup`` — the weekly backup (avo's decisions of 8 Nov 2026).
 ``rcdata restore`` and ``rcdata restore-check`` are in ``rcdata/restore.py``.
 
 One job a week (Sunday 03:30, registry row ``RC-Backup-Weekly``), everything onto the HDD under
@@ -26,7 +26,7 @@ The steps, in the order they run (``--only`` picks some of them, or one DuckDB k
   the counters are left empty in the copy. On ``ops.sqlite`` SQLite's online backup API, built on local storage
   (5 Nov 2026: 8m44s page by page on the HDD) and checked table by table; on Redis a snapshot of every table read by
   one Lua script, written into a new ``ops.sqlite`` and checked row for row. The copy restores with
-  ``python -m RevenueChaser.rcdata.ops_copy --sqlite <copy>`` into an EMPTY namespace only.
+  ``python -m revenuechaser.rcdata.ops_copy --sqlite <copy>`` into an EMPTY namespace only.
 - ``uw-raw``: the raw files no provider serves again: ``<MARKET_RAW_DIR>/raw/uw/`` (Unusual Whales gives no
   history; the subscription ends 6 Dec 2026) and the SPX Gamma tree (``module_spx_gamma.config.TREE_ROOT``), into
   ``uw-raw/<ISO week>/``. A file unchanged since the previous week's folder (size and mtime) is hard-linked to that
@@ -994,7 +994,7 @@ def _create_empty_stores(*, apply: bool) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(prog="python -m RevenueChaser.rcdata")
+    p = argparse.ArgumentParser(prog="python -m revenuechaser.rcdata")
     sub = p.add_subparsers(dest="cmd", required=True)
     bk = sub.add_parser("backup", help="the weekly backup: every step, verified, the newest 4 copies kept")
     bk.add_argument("--only", default=None,

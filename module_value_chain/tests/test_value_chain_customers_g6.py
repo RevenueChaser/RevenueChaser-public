@@ -10,12 +10,12 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core import fundamentals_layer, rawstore
-from RevenueChaser.core.providers import sec_edgar
-from RevenueChaser.module_value_chain import engine
-from RevenueChaser.rcdata.build.fundamentals import companyfacts, filings
-from RevenueChaser.rcdata.tests import fund_fixture as fx
-from RevenueChaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401  (fixtures)
+from revenuechaser.core import fundamentals_layer, rawstore
+from revenuechaser.core.providers import sec_edgar
+from revenuechaser.module_value_chain import engine
+from revenuechaser.rcdata.build.fundamentals import companyfacts, filings
+from revenuechaser.rcdata.tests import fund_fixture as fx
+from revenuechaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401  (fixtures)
 
 
 def _ten_k_naming_apple() -> str:

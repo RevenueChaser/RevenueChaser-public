@@ -14,10 +14,10 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.rcdata import ops, serving
-from RevenueChaser.rcdata import build as build_pkg
-from RevenueChaser.rcdata.build import __main__ as cli
-from RevenueChaser.rcdata.build import base
+from revenuechaser.rcdata import ops, serving
+from revenuechaser.rcdata import build as build_pkg
+from revenuechaser.rcdata.build import __main__ as cli
+from revenuechaser.rcdata.build import base
 
 AS_OF = date(2026, 11, 6)
 
@@ -83,7 +83,7 @@ def test_heavy_reads_the_flag_and_names_the_heavy_datasets(fakes):
 
 def test_the_measured_datasets_are_marked_heavy():
     """The three runs measured on homesrv on 12 Nov 2026 carry the flag, so the rule reaches the real registry."""
-    from RevenueChaser.rcdata.build import DATASETS
+    from revenuechaser.rcdata.build import DATASETS
     assert {"sec/companyfacts", "fundamentals/tables", "ownership/serve"} <= base.heavy_names()
     assert not base.heavy(DATASETS["market_series"])      # a light dataset is untouched
 

@@ -3,9 +3,9 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 
-from RevenueChaser.core import earnings_dates as ed
-from RevenueChaser.core import screen_common as sc
-from RevenueChaser.core.tests.test_screen_common_147 import Board
+from revenuechaser.core import earnings_dates as ed
+from revenuechaser.core import screen_common as sc
+from revenuechaser.core.tests.test_screen_common_147 import Board
 
 TODAY = date(2026, 10, 22)
 YAHOO = 1_790_000_000.0

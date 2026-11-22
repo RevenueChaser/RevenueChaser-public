@@ -11,11 +11,11 @@ from datetime import date
 import duckdb
 import pytest
 
-from RevenueChaser.core.providers import sec_edgar
-from RevenueChaser.rcdata import read, serving
-from RevenueChaser.rcdata.build.fundamentals import companyfacts, tables, uw_earnings, wrds_fund
-from RevenueChaser.rcdata.build.spine import wrds as spine_wrds
-from RevenueChaser.rcdata.needs import catalog
+from revenuechaser.core.providers import sec_edgar
+from revenuechaser.rcdata import read, serving
+from revenuechaser.rcdata.build.fundamentals import companyfacts, tables, uw_earnings, wrds_fund
+from revenuechaser.rcdata.build.spine import wrds as spine_wrds
+from revenuechaser.rcdata.needs import catalog
 
 from . import fund_fixture as fx
 

@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from RevenueChaser.scripts import private_check as pc
+from revenuechaser.scripts import private_check as pc
 
 _REPO = Path(__file__).resolve().parents[2]
 

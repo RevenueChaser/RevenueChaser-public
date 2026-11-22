@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.module_fundamentals.report import render_fundamental_dashboard
-from RevenueChaser.module_swing_potential.pipeline import build_payload
-from RevenueChaser.module_swing_potential.report import render_swing_dashboard
+from revenuechaser.module_fundamentals.report import render_fundamental_dashboard
+from revenuechaser.module_swing_potential.pipeline import build_payload
+from revenuechaser.module_swing_potential.report import render_swing_dashboard
 
 _PAYLOAD = {"is_fixture": True, "no_data": True, "no_data_message": "No universe stored.", "no_data_reason": "",
             "candidates": [], "data_quality": {"spy_stale": False}}

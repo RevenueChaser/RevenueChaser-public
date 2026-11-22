@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from RevenueChaser.module_spx_gamma import brier, config, run as spx_run, snapshot as snap
-from RevenueChaser.module_spx_gamma.snapshot import UWApiError
-from RevenueChaser.module_spx_gamma import store as spx_store
+from revenuechaser.module_spx_gamma import brier, config, run as spx_run, snapshot as snap
+from revenuechaser.module_spx_gamma.snapshot import UWApiError
+from revenuechaser.module_spx_gamma import store as spx_store
 from .conftest import store_day
 
 from .conftest import as_uw, make_raw
@@ -303,7 +303,7 @@ def test_a_fetch_writes_brier_and_the_gex_record_into_the_board_file(tmp_path, m
 
 
 def test_report_shows_reference_and_skill_score(monkeypatch):
-    from RevenueChaser.module_spx_gamma import render
+    from revenuechaser.module_spx_gamma import render
     card = {"average": 0.5, "scored_count": 3, "verdict": "v", "calibrated": True, "records": [],
             "equal_weight_reference": 2 / 3, "skill_score": 0.25}
     monkeypatch.setattr(render, "scorecard", lambda *a, **k: card)

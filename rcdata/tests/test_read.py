@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from RevenueChaser.rcdata import ops, read, serving
+from revenuechaser.rcdata import ops, read, serving
 
 
 def _serve():

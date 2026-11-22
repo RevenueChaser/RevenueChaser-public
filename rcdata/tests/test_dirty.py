@@ -15,8 +15,8 @@ from types import SimpleNamespace
 import duckdb
 import pytest
 
-from RevenueChaser.rcdata import serving
-from RevenueChaser.rcdata.build import audit, base, dirty
+from revenuechaser.rcdata import serving
+from revenuechaser.rcdata.build import audit, base, dirty
 
 
 class _Ds:
@@ -152,7 +152,7 @@ def _fingerprints_with_edit(monkeypatch, edited: Path) -> tuple[dict, dict]:
 
 
 def test_a_version_bump_leaves_every_kinds_rules_fingerprint_unchanged(monkeypatch):
-    from RevenueChaser.rcdata import serving_versions
+    from revenuechaser.rcdata import serving_versions
     assert serving.SERVING_SCHEMA_VERSION is serving_versions.SERVING_SCHEMA_VERSION
     before, after = _fingerprints_with_edit(monkeypatch, Path(serving_versions.__file__))
     assert before == after
@@ -166,7 +166,7 @@ def test_an_edit_to_the_serving_base_or_dirty_code_changes_every_kinds_rules_fin
 
 
 def test_a_version_bump_makes_only_its_own_kind_whole(monkeypatch):
-    from RevenueChaser.rcdata import serving_versions        # where a bump is now made
+    from revenuechaser.rcdata import serving_versions        # where a bump is now made
     _build("market")
     _build("spine")
     versions = serving_versions.SERVING_SCHEMA_VERSION
@@ -227,7 +227,7 @@ def test_a_partition_deleted_after_the_build_is_dirty():
 def test_read_dirs_names_the_sibling_folder_a_build_reads(name, sibling):
     """price_revision, stg_sec_dei and stg_figi_ticker come from a folder beside the dataset's own: a build packed or
     tracked by read_dirs alone lost them (rc-rebuild, 17 Nov 2026: price_revision 17472 -> 1551 rows)."""
-    from RevenueChaser.rcdata.build import DATASETS
+    from revenuechaser.rcdata.build import DATASETS
     assert base.parquet_root().joinpath(*sibling.split("/")) in dirty.read_dirs(DATASETS[name])
 
 
@@ -300,7 +300,7 @@ def test_an_edit_to_a_file_a_dataset_does_reach_changes_its_fingerprint(monkeypa
 
 def test_an_edit_to_the_shared_build_code_changes_the_shared_fingerprint(monkeypatch):
     """What every kind's rows depend on stays one fingerprint, and a change to it is still a whole build."""
-    import RevenueChaser.rcdata.build as build_pkg
+    import revenuechaser.rcdata.build as build_pkg
     for module in (serving, base, dirty, build_pkg):
         before, after = _with_edit(monkeypatch, Path(module.__file__), dirty.shared_fingerprint)
         monkeypatch.undo()

@@ -44,8 +44,8 @@ from pathlib import Path
 
 import duckdb
 
-from RevenueChaser.core import procs
-from RevenueChaser.core.config import DATA_DIR
+from revenuechaser.core import procs
+from revenuechaser.core.config import DATA_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -1943,7 +1943,7 @@ def _cached_stamp(db: str) -> str | None:
 
 def _refuse_ensure_if_ahead(dbs) -> None:
     """With refusal on, raise before the ensure reshapes a file whose stamp is ahead of this code."""
-    from RevenueChaser.core import store_schema_refuse
+    from revenuechaser.core import store_schema_refuse
     if not store_schema_refuse.schema_refuse_writes():
         return
     for db in dbs:
@@ -2439,7 +2439,7 @@ def _bulk_insert(conn, target: str, spec_name: str, cols: list[str], rows: list[
 
 def _guard_schema_write(db: str) -> None:
     """PL7-b (#26). No-op unless ``RC_STORE_SCHEMA_REFUSE=1``. See ``store_schema_refuse``."""
-    from RevenueChaser.core.store_schema_refuse import refuse_schema_write
+    from revenuechaser.core.store_schema_refuse import refuse_schema_write
     refuse_schema_write(db)
 
 
@@ -2853,14 +2853,14 @@ def clear(name: str) -> None:
 def load_watchlist() -> set[str]:
     """The stock watch list's tickers, for a page (``rcdata.read.watchlists``: an unreadable list shows as empty;
     a job reads ``rcdata.read.watched("stock")``, which raises)."""
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     return {r["ticker"] for r in read.watchlists()["stock"]}
 
 
 def save_watchlist(tickers: set[str], *, by: str = "save_watchlist") -> None:
     """Make the stock watch list exactly ``tickers``, one history row per ticker added or removed. An empty set clears
     it: that is the user's choice. The dashboard does not call it: a click goes through ``toggle_watchlist``."""
-    from RevenueChaser.module_watchlists import store
+    from revenuechaser.module_watchlists import store
     want = {str(t).strip().upper() for t in tickers if str(t).strip()}
     for t in sorted(want ^ load_watchlist()):
         store.job_set("stock", t, t in want, by=by)
@@ -2871,7 +2871,7 @@ def toggle_watchlist(ticker: str, *, by: str = "dashboard") -> bool:
 
     It reads and writes this ticker's row only, so two clicks cannot drop each other's ticker; each flip writes its
     history row (``wl_change``, with ``by``)."""
-    from RevenueChaser.module_watchlists import store
+    from revenuechaser.module_watchlists import store
     return store.job_toggle("stock", ticker, by=by)
 
 
