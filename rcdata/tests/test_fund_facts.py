@@ -929,3 +929,55 @@ def test_a_plurality_that_is_not_a_majority_converts_nothing_105():
             filer["facts"]["us-gaap"][concept]["units"][cur] = [
                 fx._fact(val, "2024-12-31", "0000000004-25-000001", "2025-03-01", "40-F", "FY", 2024, "2024-01-01")]
     assert facts.reporting_currency(filer) is None                            # 3 of 7 is the most, not a majority
+
+
+# #105 (22 Nov 2026): the ifrs-full branch is read only where it carries a statement concept the mapping names.
+def _gaap_filer_with(ifrs_concept: str, end: str = "2026-12-31") -> dict:
+    """A complete us-gaap filer (ASC 606 revenue through 2025) that also carries ONE ifrs-full fact, newer."""
+    gaap = {
+        "RevenueFromContractWithCustomerExcludingAssessedTax": {"units": {"USD": [
+            fx._fact(4_000, "2025-12-31", "0000000005-26-000001", "2026-02-20", "10-K", "FY", 2025, "2025-01-01")]}},
+        "Assets": {"units": {"USD": [
+            fx._fact(9_000, "2025-12-31", "0000000005-26-000001", "2026-02-20", "10-K", "FY", 2025)]}},
+    }
+    ifrs = {ifrs_concept: {"units": {"USD": [
+        fx._fact(7, end, "0000000005-27-000001", "2027-01-05", "20-F", "FY", 2026,
+                 None if ifrs_concept == "Assets" else end[:4] + "-01-01")]}}}
+    return {"cik": 5, "entityName": "GAAP Co", "facts": {"us-gaap": gaap, "ifrs-full": ifrs}}
+
+
+def test_an_unmapped_ifrs_tag_does_not_discard_a_us_gaap_filers_statements_105():
+    # The filer's ASC 606 revenue is complete; one ifrs-full fact of a concept ``as_gaap`` keeps nothing of
+    # must not turn the whole us-gaap branch into an empty mapped branch.
+    filer = _gaap_filer_with("TaxEffectOfRevenuesExemptFromTaxation2011")
+    assert facts.reads_ifrs(filer) is False
+    rows, company, _ = facts.fact_rows(filer, "5")
+    by = _by_key(rows)
+    assert by[("revenue", "annual", date(2025, 12, 31))]["value"] == 4_000
+    assert company["us_gaap"] is True
+
+
+def test_a_mapped_ifrs_tag_that_is_newer_still_wins_105():
+    # The mover rule itself does not move: a mapped statement concept of a newer annual report is read.
+    filer = _gaap_filer_with("Revenue")
+    assert facts.reads_ifrs(filer) is True
+    rows, company, _ = facts.fact_rows(filer, "5")
+    assert {r["period_end"] for r in rows if r["field"] == "revenue"} == {date(2026, 12, 31)}
+    assert company["us_gaap"] is False
+
+
+def test_a_mapped_ifrs_tag_older_than_the_us_gaap_statements_does_not_win():
+    filer = _gaap_filer_with("Revenue", end="2024-12-31")
+    assert facts.reads_ifrs(filer) is False
+    by = _by_key(facts.fact_rows(filer, "5")[0])
+    assert by[("revenue", "annual", date(2025, 12, 31))]["value"] == 4_000
+
+
+def test_an_ifrs_only_filer_with_no_mapped_concept_is_still_read_from_ifrs_full():
+    # No us-gaap facts at all: the branch is read whatever it carries, so nothing is invented from an empty one.
+    filer = {"cik": 6, "entityName": "Only IFRS", "facts": {"ifrs-full": {
+        "TaxEffectOfRevenuesExemptFromTaxation2011": {"units": {"USD": [
+            fx._fact(9, "2025-12-31", "a", "2026-03-01", "20-F", "FY", 2025, "2025-01-01")]}}}}}
+    assert facts.reads_ifrs(filer) is True
+    rows, company, _ = facts.fact_rows(filer, "6")
+    assert not rows and company["us_gaap"] is False
