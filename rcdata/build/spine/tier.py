@@ -165,6 +165,10 @@ ETP_NAMES = (
     (re.compile(r"^(?:bank of montreal /can/|barclays bank plc|ubs ag|credit suisse ag|"
                 r"deutsche bank aktiengesellschaft|jpmorgan chase & co)$", re.I), "ETN issuer"),
 )
+#: A baby bond or a listed note, by its SEC name (v6, #1334 K-B): the words ``etf.ETN_NAME`` reads (shared from
+#: here, so the two cannot drift). An exchange-traded debt security is no operating company: ``etp``, Tier B.
+NOTE_NAME = r"\bnotes?\s+due\b|\bsenior\s+notes\b"
+ETP_NAMES += ((re.compile(NOTE_NAME, re.I), "note"),)
 ROYALTY = re.compile(r"\broyalty\b", re.I)
 
 # 4. The venue: Cboe lists products. Of its 1,679 symbols in Nasdaq Trader's otherlisted.txt (2026-10-28), 1,673 are

@@ -38,6 +38,7 @@ from .. import base, secd
 from .av_listing import STAGING as AV
 from . import ncen
 from .ncen import FILERS, STAGING as NCEN
+from .tier import NOTE_NAME
 
 TABLE = "etf"
 SCHEMA = [("ticker", "TEXT PRIMARY KEY"), ("name", "TEXT"), ("series_id", "TEXT"), ("cik", "TEXT"),
@@ -56,7 +57,7 @@ SCHEMA = [("ticker", "TEXT PRIMARY KEY"), ("name", "TEXT"), ("series_id", "TEXT"
 #: A note, by its name: ETN / ETRACS, a dated note, or a bank issuer's name (Alpha Vantage lists BMO's, UBS's,
 #: Barclays' and Deutsche Bank's products under the bank's name, and the spine's etp rows carry the SEC's).
 ETN_NAME = re.compile(
-    r"\bETNs?\b|\bETRACS\b|\bnotes?\s+due\b|\bsenior\s+notes\b"
+    r"\bETNs?\b|\bETRACS\b|" + NOTE_NAME +
     r"|\b(?:bank\s+of\s+montreal|ubs\s+ag|barclays\s+bank|deutsche\s+bank\s+ag|credit\s+suisse\s+ag"
     r"|jpmorgan\s+chase\s+(?:bank|financial|&\s+co)|citigroup\s+global\s+markets|morgan\s+stanley\s+finance"
     r"|goldman\s+sachs\s+international|royal\s+bank\s+of\s+canada|canadian\s+imperial\s+bank)\b", re.I)
