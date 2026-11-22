@@ -225,3 +225,8 @@ def test_a_candidate_with_no_company_row_is_no_candidate(built, monkeypatch):
     _with(monkeypatch, [sec], [], [s])
     _wrds_snapshot(ARMED_DAY)
     assert _sec("NOCK")["gvkey"] is None
+
+
+def test_the_rule_is_version_6_and_every_row_says_so(built):
+    """K-B, K-C and K-G change what a row's ``tier`` says, so its version is stamped anew on every row."""
+    assert tier.VERSION == 6 and _sec("MSFT")["tier_rule"] == 6

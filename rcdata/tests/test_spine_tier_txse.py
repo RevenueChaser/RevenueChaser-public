@@ -18,4 +18,4 @@ def test_txse_is_listed():
     assert tier.tier("TXSE", "mlp") == "A"
     assert tier.tier("TXSE", "common", 19) == "C"           # Compustat over the counter still demotes it
     # The rule changed what a row's ``tier`` column says, so its version is stamped anew on every row.
-    assert tier.VERSION == 5
+    assert tier.VERSION == 6
