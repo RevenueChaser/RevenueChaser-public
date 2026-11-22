@@ -4,7 +4,9 @@
 One job a week (Sunday 03:30, registry row ``RC-Backup-Weekly``), everything onto the HDD under
 ``<RAW_STORE_BACKUP_DIR>/weekly-v2/<step>/`` (an empty ``RAW_STORE_BACKUP_DIR`` is refused: log, exit 2, nothing
 written), the newest ``KEEP`` (4) copies of every file kept, the oldest deleted only after the new copy verified.
-Raw downloads and Parquet get no backup (they are fetched again). Nothing leaves the machine.
+Raw downloads and Parquet get no backup (they are fetched again) -- the one exception is Unusual Whales, whose
+raw **and** Parquet folders are both copied, because neither can be fetched again after 9 Dec 2026 (#1337, #1283).
+Nothing leaves the machine.
 
 The steps, in the order they run (``--only`` picks some of them, or one DuckDB kind for a copy by hand):
 
@@ -34,8 +36,18 @@ The steps, in the order they run (``--only`` picks some of them, or one DuckDB k
 - ``edgar-docs``: the ``edgar_docs/`` tree as one verified zip (every member's CRC and the document count); an
   unchanged tree (same ``stat`` fingerprint) keeps the newest zip instead of zipping again (#336).
 
-One more step runs on its own, daily, never in the weekly run (``--only watchlists-daily``; avo, 17 Nov 2026,
-decision C of the spine classification plan): ``watchlists-daily``, a copy of ``boards/watchlists.duckdb`` (avo's
+Two more steps run on their own, daily, never in the weekly run. ``uw-raw-daily`` (``--only uw-raw-daily``,
+#1337) is the ``uw-raw`` step above with one folder per **day** instead of per ISO week, into the same step folder:
+the UW raw backup stopped at 15 Nov 2026 while the raw folder was filled to 20 Nov, and those five sessions were in
+no backup at all. The two cadences hard-link to each other's newest folder and prune on their own counts (``KEEP``
+weeks, ``KEEP_UW_DAILY`` days), so neither removes the other's copies. Every run of either cadence records, in the
+step's own manifest as well as its summary, how far the newest backed-up file is behind the newest source file
+(``freshness``; a warning in the log past ``BEHIND_WARN_DAYS``) -- that number is the one nothing stated when the
+gap opened. The two cadences share the one manifest, because it is the folder's own record of what it holds, so a
+daily run does refresh the step's ``last_ok``.
+
+The other daily step is ``watchlists-daily`` (``--only watchlists-daily``; avo, 17 Nov 2026,
+decision C of the spine classification plan): a copy of ``boards/watchlists.duckdb`` (avo's
 own lists, which nothing can rebuild), checkpointed and verified like a board copy, tagged ``source: daily`` and the
 newest ``KEEP_DAILY`` (7) kept. A day the file is unchanged (its table fingerprints equal the newest daily copy's)
 writes no copy and still records a good run. The weekly ``boards`` copy of the same file goes on as before.
@@ -58,7 +70,7 @@ import sys
 import tempfile
 import time
 import zlib
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 import duckdb
@@ -72,6 +84,14 @@ ROOT = "weekly-v2"                  # never ``weekly/``: the retired nightly job
 KEEP = 4
 KEEP_MANUAL = 1                     # copies taken by hand with ``--only <kind>`` (before a deploy)
 KEEP_DAILY = 7                      # the daily watch-list copies (avo, 17 Nov 2026, decision C)
+# The daily ``uw-raw`` folders (#1337). Two weeks: long enough that a builder down for a few days, or a
+# weekend of failed runs, still leaves a day's files in a folder of their own, and the unchanged files of
+# each day are hard links to the day before, so a folder costs only that day's new files.
+KEEP_UW_DAILY = 14
+# A source file newer than the newest file any backup folder holds, by more than this, is named in the step's
+# summary and logged as a warning (#1337): the UW raw backup stopped at 15 Nov while the raw folder was
+# filled to 20 Nov, and nothing said so because a weekly step that runs is a step that passed.
+BEHIND_WARN_DAYS = 1
 ATTEMPTS = 3
 MANIFEST_NAME = ".manifest.json"
 SETTLE_SECONDS = 600                # a file modified more recently than this may still be downloading
@@ -86,7 +106,8 @@ STEP_EDGAR_DOCS = "edgar-docs"
 STEPS = (STEP_DUCKDB, STEP_BOARDS, STEP_OPS, STEP_UW_RAW, STEP_EDGAR_DOCS)
 #: Steps with a run of their own, never part of the weekly run (``--only`` names them).
 STEP_WATCHLISTS_DAILY = "watchlists-daily"
-DAILY_STEPS = (STEP_WATCHLISTS_DAILY,)
+STEP_UW_RAW_DAILY = "uw-raw-daily"
+DAILY_STEPS = (STEP_WATCHLISTS_DAILY, STEP_UW_RAW_DAILY)
 WATCHLISTS_FILE = "watchlists.duckdb"
 
 BOARDS_DIRNAME = "boards"
@@ -468,9 +489,18 @@ def _same_stat(a: os.stat_result, b: os.stat_result) -> bool:
 
 
 def uw_raw_sources() -> list[tuple[str, Path]]:
-    """``(name, root)`` of every tree the ``uw-raw`` step copies: the UW raw folder and the SPX Gamma tree."""
+    """``(name, root)`` of every tree the ``uw-raw`` step copies.
+
+    The UW raw folder, the UW **Parquet** folder and the SPX Gamma tree. Parquet is otherwise never backed up,
+    because it is written again from the raw files -- but UW's typed copy is the only one that outlives the
+    subscription (#1337, #1283): after 9 Dec 2026 neither the raw day files nor the Parquet can be fetched again,
+    and the served option history is 30 sessions while the Parquet keeps every one of them.
+    """
     from ..module_spx_gamma import config as spx_config
-    return [("uw", Path(config.MARKET_RAW_DIR) / "raw" / "uw"), ("spx_gamma", Path(spx_config.TREE_ROOT))]
+    from .build import base as build_base
+    return [("uw", Path(config.MARKET_RAW_DIR) / "raw" / "uw"),
+            ("uw_parquet", Path(build_base.parquet_root()) / "uw"),
+            ("spx_gamma", Path(spx_config.TREE_ROOT))]
 
 
 def _copy_tree(src: Path, dest: Path, previous: Path | None, manifest: _Manifest, *, json_guard: bool,
@@ -548,34 +578,113 @@ def _copy_one(f: Path, n: int, src: Path, dest: Path, previous: Path | None, man
     return copied + 1, linked, skipped, rejected
 
 
+def _iso_day(now: datetime | None = None) -> str:
+    return (now or datetime.now(timezone.utc)).date().isoformat()
+
+
+def _is_week(name: str) -> bool:
+    return len(name) == 8 and name[4:6] == "-W"
+
+
+def _is_day(name: str) -> bool:
+    try:
+        return len(name) == 10 and date.fromisoformat(name) is not None
+    except ValueError:
+        return False
+
+
 def _week_dirs(out: Path) -> list[Path]:
-    return sorted(p for p in out.iterdir() if p.is_dir() and len(p.name) == 8 and p.name[4:6] == "-W")
+    """The step's folders of **either** cadence, oldest first: ``2026-W47`` (weekly) and ``2026-11-21`` (daily).
+
+    Sorted by name, which for both shapes is chronological, and the two shapes never interleave wrongly because
+    the newest folder of either is only ever read as the previous copy to hard-link against.
+    """
+    return sorted((p for p in out.iterdir() if p.is_dir() and (_is_week(p.name) or _is_day(p.name))),
+                  key=lambda p: _folder_key(p.name))
 
 
-def _backup_uw_raw(out: Path, manifest: _Manifest, now: datetime | None = None) -> dict | None:
+def _folder_key(name: str) -> tuple[date, int]:
+    """A period folder's day, so a week and a day folder sort together. A week sorts on its Monday, and before a
+    day folder of that same Monday (0 against 1), because the weekly copy of a week is taken at its start."""
+    if _is_week(name):
+        year, week = int(name[:4]), int(name[6:])
+        return date.fromisocalendar(year, week, 1), 0
+    return date.fromisoformat(name), 1
+
+
+def _newest_mtime(root: Path) -> float | None:
+    """The newest file mtime of a tree, or ``None`` for a tree with no file."""
+    return max((st.st_mtime for p in root.rglob("*") if p.is_file() for st in (p.stat(),)), default=None)
+
+
+def _behind(out: Path, sources: list[tuple[str, Path]], now: datetime) -> dict:
+    """How far the newest **backed-up** file of each source is behind that source's newest file (#1337).
+
+    Read over the step's folders of both cadences, so it answers for the backup as a whole and not for the folder
+    this run wrote: a run that copied nothing because every file was held back is still behind.
+    """
+    report: dict = {}
+    folders = _week_dirs(out)
+    for name, root in sources:
+        source_newest = _newest_mtime(root)
+        kept = [m for f in folders if (f / name).is_dir() for m in [_newest_mtime(f / name)] if m is not None]
+        backed_up = max(kept, default=None)
+        days = (None if source_newest is None or backed_up is None
+                else round((source_newest - backed_up) / 86400.0, 2))
+        report[name] = {"source_newest": None if source_newest is None
+                        else datetime.fromtimestamp(source_newest, timezone.utc).isoformat(timespec="seconds"),
+                        "backed_up_newest": None if backed_up is None
+                        else datetime.fromtimestamp(backed_up, timezone.utc).isoformat(timespec="seconds"),
+                        "behind_days": days}
+    worst = max((v["behind_days"] for v in report.values() if v["behind_days"] is not None), default=None)
+    report["behind_days"] = worst
+    report["as_of"] = now.isoformat(timespec="seconds")
+    return report
+
+
+def _backup_uw_raw(out: Path, manifest: _Manifest, now: datetime | None = None, *, daily: bool = False) -> dict | None:
+    """The UW and SPX Gamma trees into one folder of this period: an ISO week, or (``daily``) an ISO date.
+
+    Both cadences live in the same step folder and prune on their own count (:data:`KEEP` weeks,
+    :data:`KEEP_UW_DAILY` days), so neither removes the other's copies. The previous copy to hard-link against is
+    the newest folder of **either** cadence, which is what makes a daily run cost one day's new files (#1337).
+    """
     now = now or datetime.now(timezone.utc)
     sources = [(name, root) for name, root in uw_raw_sources() if root.is_dir() and any(root.rglob("*"))]
     if not sources:
         return None
-    weeks = _week_dirs(out)
-    week = out / _iso_week(now)
-    previous = next((w for w in reversed(weeks) if w != week), None)
-    week.mkdir(parents=True, exist_ok=True)
-    summary: dict = {"week": week.name}
+    period = out / (_iso_day(now) if daily else _iso_week(now))
+    previous = next((w for w in reversed(_week_dirs(out)) if w != period), None)
+    period.mkdir(parents=True, exist_ok=True)
+    summary: dict = {"week": period.name, "cadence": "daily" if daily else "weekly"}
     for name, root in sources:
-        summary[name] = _copy_tree(root, week / name, previous / name if previous is not None else None, manifest,
+        summary[name] = _copy_tree(root, period / name, previous / name if previous is not None else None, manifest,
                                    json_guard=(name == "spx_gamma" and SPX_JSON_GUARD), name=name,
                                    now=time.time())
     manifest.data["weeks"] = [w.name for w in _week_dirs(out)]
     manifest.save()
     if any(v.get("rejected") for v in summary.values() if isinstance(v, dict)):
-        logger.warning("uw-raw: a damaged JSON was held back and last week's copy kept: %s", summary)
-    for old in _week_dirs(out)[:-KEEP]:                 # only after this week's folder is complete
+        logger.warning("uw-raw: a damaged JSON was held back and the previous copy kept: %s", summary)
+    folders = _week_dirs(out)
+    stale = ([f for f in folders if _is_week(f.name)][:-KEEP]
+             + [f for f in folders if _is_day(f.name)][:-KEEP_UW_DAILY])
+    for old in stale:                                   # only after this period's folder is complete
+        if old == period:
+            continue
         for key in [k for k in manifest.data["files"] if k.startswith(old.name + "/")]:
             manifest.data["files"].pop(key, None)
         manifest.data["weeks"] = [w for w in manifest.data.get("weeks", []) if w != old.name]
         manifest.save()
         shutil.rmtree(old, ignore_errors=True)
+    summary["freshness"] = _behind(out, sources, now)
+    # Kept in the manifest, not only in this run's log: the manifest is what the Settings board's Data health
+    # reads, so a gap is visible there after the run that found it has scrolled away (#1337).
+    manifest.data["freshness"] = summary["freshness"]
+    manifest.save()
+    behind = summary["freshness"]["behind_days"]
+    if behind is not None and behind > BEHIND_WARN_DAYS:
+        logger.warning("uw-raw: the newest backed-up file is %.2f day(s) behind the newest source file "
+                       "(over %s): %s", behind, BEHIND_WARN_DAYS, summary["freshness"])
     return summary
 
 
@@ -814,7 +923,8 @@ def run_backup(only=None) -> dict:
         for kind in kinds:
             run(kind, lambda kind=kind: _backup_kind(kind, out, manifest, manual=True))
     for step in steps:
-        out, manifest = _open_step(step)
+        # the daily uw-raw step shares the weekly step's folder, so the two cadences hard-link to each other
+        out, manifest = _open_step(STEP_UW_RAW if step == STEP_UW_RAW_DAILY else step)
         before = len(failed)
         if step == STEP_DUCKDB:
             for kind in serving.KINDS:
@@ -829,6 +939,8 @@ def run_backup(only=None) -> dict:
             run(step, lambda: _backup_edgar_docs(out, manifest))
         elif step == STEP_WATCHLISTS_DAILY:
             run(step, lambda: _backup_watchlists_daily(out, manifest))
+        elif step == STEP_UW_RAW_DAILY:
+            run(step, lambda: _backup_uw_raw(out, manifest, daily=True))
         _record(manifest, before, failed)
     if failed:
         raise BackupFailed("; ".join(failed))
