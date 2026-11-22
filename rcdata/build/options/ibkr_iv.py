@@ -42,6 +42,17 @@ IV_DAYS = 30                         # IBKR's option implied volatility is a 30-
 DURATION, BAR_SIZE, WHAT = "1 Y", "1 day", "OPTION_IMPLIED_VOLATILITY"
 # "Historical market data service: query returned no data" and "no security definition": nothing to retry for.
 NO_DATA_CODES = (162, 200)
+# The need whose ``max_lag`` this dataset's check measures its newest day against (#1335 draft G-3). The catalog
+# is freshness's single owner, so the check and the boards cannot disagree about what "behind" means.
+IV_NEED = "options.iv"
+# The value the ``source`` column of an ``iv_daily`` row carries for this dataset's rows. It is **not**
+# :data:`SOURCE`, which names the Parquet folder (``parquet/ibkr/iv_history/``): the rows ``to_parquet`` writes
+# carry the short provider name, and the table holds UW's rows beside them.
+ROW_SOURCE = "ibkr"
+# Raised when the newest served IBKR day is further behind than that lag, or when there is none at all. After
+# Unusual Whales ends on 9 Dec 2026 this is the only implied-volatility source, so a silent stop costs the LEAPS,
+# SPX Gamma and Earnings Radar boards their IV.
+STALE_ISSUE = "iv_history_stale"
 
 
 def raw_path(ticker: str) -> Path:
@@ -117,7 +128,7 @@ class IBKRIVHistory:
             if day is None or day > min(as_of, last):
                 continue
             rows.append({"session_date": day, "ticker": ticker, "days": IV_DAYS, "volatility": tables.to_float(
-                bar.get("close")), "implied_move_perc": None, "percentile": None, "source": "ibkr",
+                bar.get("close")), "implied_move_perc": None, "percentile": None, "source": ROW_SOURCE,
                 "source_as_of": as_of, "fetched_at": doc["fetched_at"], "run_id": doc["run_id"], "observed": False})
         t = tables.TABLES["iv_daily"]
         # A name without bars still gets its (empty) partition: the marker that its raw file is typed.
@@ -144,14 +155,16 @@ class IBKRIVHistory:
         state = ctx.pending.get(NAME) or {}
         wanted = state.get("names") or names.list_names()
         have = [t for t in wanted if partition(t).exists()]
-        rows = int(con.execute("SELECT count(*) FROM iv_daily WHERE source = 'ibkr'").fetchone()[0])
+        rows = int(con.execute("SELECT count(*) FROM iv_daily WHERE source = ?", [ROW_SOURCE]).fetchone()[0])
         live = 0
         if serving.live_path(KIND).exists():
             with serving.open_read(KIND) as old:
                 if "iv_daily" in {r[0] for r in old.execute("SELECT table_name FROM duckdb_tables()").fetchall()}:
-                    live = int(old.execute("SELECT count(*) FROM iv_daily WHERE source = 'ibkr'").fetchone()[0])
+                    live = int(old.execute("SELECT count(*) FROM iv_daily WHERE source = ?",
+                                                           [ROW_SOURCE]).fetchone()[0])
         added, removed = max(rows - live, 0), max(live - rows, 0)
         note = [f"{len(have)}/{len(wanted)} list names have their IBKR year"]
+        note.append(self._freshness(ctx, con, as_of))
         if state.get("stopped"):
             note.append(f"stopped: {state['stopped']}")
         left = len(have) < len(wanted)
@@ -160,6 +173,34 @@ class IBKRIVHistory:
                 "coverage": round(len(have) / len(wanted), 4) if wanted else None,
                 "next_check_due": as_of.isoformat() if left and state.get("stopped") else base.next_due(as_of),
                 "note": "; ".join(note)}
+
+
+    @staticmethod
+    def _freshness(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, as_of: date) -> str:
+        """The age of the newest served IBKR day, for the note, and :data:`STALE_ISSUE` when it is over the lag.
+
+        #1335 draft G-3: the append stopped on 13 Nov 2026, no call was made after the 16th, and this check stayed
+        green all the way to the 21st -- because it counted **names with a year**, and every one of those names
+        still had its (five-session-old) year. Coverage of names and freshness of days are two questions; the
+        check answered only the first.
+
+        The lag and its unit come from the needs catalog's ``options.iv``, which is freshness's single owner
+        (``rcdata/needs/__init__.py``, avo 29 Oct 2026), so this check cannot drift from what the boards show.
+        Imported inside the function: the needs package reads the serving layer, and a build module is imported
+        while that layer is still being set up.
+        """
+        from ...needs import catalog as needs_catalog, serve as needs_serve
+        spec = needs_catalog.NEEDS[IV_NEED]
+        newest = con.execute("SELECT max(session_date) FROM iv_daily WHERE source = ?",
+                             [ROW_SOURCE]).fetchone()[0]
+        if newest is None:
+            ctx.issue(STALE_ISSUE, None, "no IBKR row in iv_daily at all, so no implied volatility is served")
+            return "no IBKR day served"
+        lag = needs_serve.lag_in(spec.max_lag_unit, newest, as_of)
+        said = f"newest IBKR day {newest}, {lag} {spec.max_lag_unit} behind {as_of} (max {spec.max_lag})"
+        if lag > spec.max_lag:
+            ctx.issue(STALE_ISSUE, None, said + ": the daily append is not running")
+        return said
 
 
 DATASET = IBKRIVHistory()
