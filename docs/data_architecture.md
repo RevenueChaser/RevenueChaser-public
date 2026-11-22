@@ -1565,7 +1565,7 @@ table when that source comes back short, and the `left` row that followed was ir
 `etf` table, so a fund whose row is there and is today flagged an ETN or a CEF is the rule's answer and leaves; an
 `etf_aum` fund that vanished leaves too, because that is the AUM source's own story.
 
-**Tier rule v4** (`rcdata/build/spine/tier.py`): A = listed on Nasdaq, NYSE or Cboe and not an excluded type
+**Tier rule v5** (`rcdata/build/spine/tier.py`): A = listed on Nasdaq, NYSE, Cboe or TXSE (v5) and not an excluded type
 (`core.identity.types.EXCLUDED_TYPES`; an untyped name stays); B = listed, excluded type; C = OTC, in the SEC file or
 (v3, #962) by the linked Compustat security's current `exchg` 19 while the SEC file still names an exchange; D = no
 exchange, in the SEC file **and** by the linked Compustat security. Where the SEC file's exchange is empty, that
