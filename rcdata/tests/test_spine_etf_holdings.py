@@ -498,6 +498,7 @@ def test_a_fund_file_whose_sha256_is_unchanged_is_not_fetched_and_its_last_file_
     we hold from the fund's last day means the same file: the raw is copied into the new day, with no request, and
     the day still holds every fund. Only the changed file (SMH here) is asked."""
     base.run_request({"dataset": etf.NAME, "params": {"as_of": AS_OF}})
+    assert len(_ti_fund_calls(http_mock)) == len(etf.TI_FUNDS)      # the first day has nothing to compare
     smh = fx.tickerinside_fund_json(fx.SP500[:2], "SMH", as_of="2026-11-20")
     bodies = {f.etf: fx.tickerinside_fund_json(fx.SP500, f.etf) for f in etf.FILES if f.provider == "tickerinside"}
     http_mock.routes.insert(0, ("/fund/smh.json", smh, 200, {}))
@@ -522,11 +523,6 @@ def test_a_file_list_that_does_not_match_the_manifest_saves_nothing_and_every_fu
     row = base.run_request({"dataset": etf.NAME, "params": {"as_of": DAY2}})
     assert len(_ti_fund_calls(http_mock)) == len(etf.TI_FUNDS) and row["coverage"] == 1.0
     assert "every fund file fetched" in row["note"]
-
-
-def test_the_first_day_has_nothing_to_compare_and_fetches_every_fund(env, http_mock):
-    base.run_request({"dataset": etf.NAME, "params": {"as_of": AS_OF}})
-    assert len(_ti_fund_calls(http_mock)) == len(etf.TI_FUNDS)
 
 
 def test_a_fund_tickerinside_kept_at_an_older_issuer_file_is_one_build_issue(env, http_mock):

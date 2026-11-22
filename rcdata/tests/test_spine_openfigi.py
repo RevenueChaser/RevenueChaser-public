@@ -431,14 +431,17 @@ def test_a_ticker_job_that_errors_three_runs_in_a_row_is_written_absent(env, mon
 
 
 def test_a_tickers_present_answer_is_not_given_up_for_errors(env, monkeypatch):
-    """A 'present' ticker answer is asked again after 90 days; errors then keep the old answer, not an 'absent'."""
+    """A 'present' ticker answer is asked again after 90 days; errors then keep the old answer, not an 'absent'.
+    A ticker asked in the same runs that never had an answer does go absent after the three runs."""
     monkeypatch.setattr(of, "wanted_tickers", lambda: ["NVR"])
     _run()
     assert _ticker_row("NVR") == ("present", "BBG000BW5N90")
-    env.routes.insert(0, ("figi.test/v3/mapping", _erroring("NVR"), 200, {}))
+    env.routes.insert(0, ("figi.test/v3/mapping", _erroring("NVR", "ZZZQ"), 200, {}))
+    monkeypatch.setattr(of, "wanted_tickers", lambda: ["NVR", "ZZZQ"])
     for day in ("2027-02-01", "2027-02-08", "2027-02-15"):
         _run(day)
     assert _ticker_row("NVR") == ("present", "BBG000BW5N90")
+    assert _ticker_row("ZZZQ") == ("absent", None)
 
 
 def test_the_two_lanes_share_the_one_request_budget(env, monkeypatch):
