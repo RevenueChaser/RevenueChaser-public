@@ -422,12 +422,13 @@ def invesco_json(holdings, adr=False) -> bytes:
 
 def add_fund_routes(http_mock, sp500=SP500, sp400=SP400, ndx=("MSFT",), fail=()) -> None:
     """Answer every fund file of ``funds.FILES``: S&P 500 and 400 from the lists above, the SmallCap 600 files 404;
-    the Nasdaq list and QQQ both hold ``ndx``; DIA (no index) holds the S&P 500 list."""
+    the Nasdaq list and QQQ both hold ``ndx``; DIA (the one ``dow`` file) holds the fixture's own S&P 500 list,
+    whatever ``sp500`` a test passes, so a test that moves the S&P 500 lines does not move ``dow``."""
     def maybe(name, body):
         return (500, b"down", {}) if name in fail else (200, body, {})
     http_mock.add("holdings-daily-us-en-spy", lambda r: maybe("SPY", ssga_xlsx(sp500)))
     http_mock.add("holdings-daily-us-en-mdy", lambda r: maybe("MDY", ssga_xlsx(sp400)))
-    http_mock.add("holdings-daily-us-en-dia", lambda r: maybe("DIA", ssga_xlsx(sp500)))
+    http_mock.add("holdings-daily-us-en-dia", lambda r: maybe("DIA", ssga_xlsx(SP500)))
     http_mock.add(ISHARES_ROUTE["IVV"], lambda r: maybe("IVV", ishares_csv(sp500)))
     http_mock.add(ISHARES_ROUTE["IJH"], lambda r: maybe("IJH", ishares_csv(sp400, drop_dash=True)))
     http_mock.add(VANGUARD_ROUTE["VOO"], lambda r: maybe("VOO", vanguard_json(sp500, cusip_only=("FDX",))))

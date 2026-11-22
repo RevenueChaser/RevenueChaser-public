@@ -85,8 +85,8 @@ def test_security_master_carries_each_fields_source():
 def test_index_constituents_are_the_current_fund_members_plus_listed_nasdaq():
     rows = set(_q("SELECT slug, ticker FROM index_constituents"))
     assert {("sp500", "MSFT"), ("sp500", "NVR"), ("sp400", "HEI-A"), ("ndx", "MSFT"), ("nasdaq", "MSFT"),
-            ("nasdaq", "VYLR")} <= rows
-    assert not {s for s, _ in rows} - {"sp500", "sp400", "sp600", "ndx", "nasdaq"}
+            ("nasdaq", "VYLR"), ("dow", "MSFT")} <= rows       # dow: DIA's file (SP5)
+    assert not {s for s, _ in rows} - {"sp500", "sp400", "sp600", "ndx", "dow", "nasdaq"}
     assert ("sp400", "HEI") in rows                     # the fund files' membership, not WRDS's (which ended)
     assert _q("SELECT name, sector FROM index_tickers WHERE slug = 'sp500' AND ticker = 'ETN'") == [
         ("Eaton Corp plc", "Industrials")]

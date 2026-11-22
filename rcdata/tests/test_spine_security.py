@@ -113,6 +113,11 @@ def test_membership_from_the_fund_files_matched_by_cusip_ticker_and_squashed_tic
     rows = _q("SELECT index_slug, ticker, valid_from, valid_to, files_held, files_counted FROM index_membership "
               "WHERE source = ? ORDER BY index_slug, ticker", funds.NAME)
     assert rows == [
+        ("dow", "ETN", date(2026, 10, 27), None, 1, 1),       # DIA's file alone: no vote (SP5)
+        ("dow", "FDX", date(2026, 10, 27), None, 1, 1),
+        ("dow", "MSFT", date(2026, 10, 27), None, 1, 1),
+        ("dow", "NVR", date(2026, 10, 27), None, 1, 1),
+        ("dow", "WFC", date(2026, 10, 27), None, 1, 1),
         ("ndx", "MSFT", date(2026, 10, 27), None, 2, 2),      # the Nasdaq list and QQQ
         ("sp400", "HEI", date(2026, 10, 27), None, 3, 3),
         ("sp400", "HEI-A", date(2026, 10, 27), None, 3, 3),      # iShares' HEIA, squashed back to HEI-A

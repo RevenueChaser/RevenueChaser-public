@@ -45,7 +45,7 @@ def test_membership_now_and_on_a_past_day():
     assert {r["ticker"] for r in wrds_then} == {"HEI", "HEI-A"}
     wrds_now = read.membership("sp400", on=date(2026, 10, 3), source="wrds/idxcst_his")
     assert {r["ticker"] for r in wrds_now} == {"HEI-A"}                  # HEI's period ended (exclusive end)
-    assert {r["index_slug"] for r in read.membership()} == {"sp500", "sp400", "ndx"}
+    assert {r["index_slug"] for r in read.membership()} == {"sp500", "sp400", "ndx", "dow"}   # dow: DIA (SP5)
 
 
 @pytest.mark.usefixtures("built")

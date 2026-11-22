@@ -112,12 +112,15 @@ def test_ndx_is_voted_by_the_nasdaq_list_and_invescos_qqq():
     assert caps.cap_for("invesco") is None             # no published limit: no cap (master plan Order 5, rule 3)
 
 
-def test_dias_file_is_fetched_for_the_classifier_and_votes_no_index():
-    """DIA is a unit trust and files no N-PORT (plan v5 step 2): its lines are staged for ``etf_class``, under a
-    slug that is no index, so no reader of the four indexes sees a fifth."""
-    dia = next(f for f in funds.FILES if f.fund == "DIA")
-    assert dia.url().endswith("holdings-daily-us-en-dia.xlsx") and dia.index_slug not in funds.INDEXES
-    assert "'dow'" not in security.VOTE_SQL and all(f"'{i}'" in security.VOTE_SQL for i in funds.INDEXES)
+def test_dias_file_is_the_one_dow_file_so_dow_membership_is_that_file_with_no_vote():
+    """SP5 (avo, 22 Nov 2026): ``dow`` membership is written from DIA's file alone. DIA is a unit trust and files no
+    N-PORT, so ``etf_class`` reads the same lines. With one counting file ``held*2 > files`` is "the file holds it":
+    exactly one ``dow`` file keeps it that way by construction."""
+    dow = [f for f in funds.FILES if f.index_slug == "dow"]
+    assert [(f.provider, f.fund) for f in dow] == [("ssga", "DIA")]
+    assert dow[0].url().endswith("holdings-daily-us-en-dia.xlsx")
+    assert "dow" in funds.INDEXES and funds.FLOOR["dow"] == 24
+    assert all(f"'{i}'" in security.VOTE_SQL for i in funds.INDEXES)
 
 
 def test_tickers_are_written_the_sec_way():

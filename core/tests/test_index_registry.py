@@ -33,7 +33,7 @@ def test_annotate_cards_sets_index():
 
 
 def test_save_and_load_index(rawstore_tmp_db):
-    """Since #642 PR 6 ``load_index`` is the spine's membership; ``dow`` has no source there, so it stays None."""
+    """Since #642 PR 6 ``load_index`` is the spine's membership; this store holds no ``dow`` rows, so it is None."""
     universe_store.membership("sp500", {"AAPL", "MSFT"})
     assert ir.load_index("sp500") == {"AAPL", "MSFT"}
     assert ir.load_index("dow") is None

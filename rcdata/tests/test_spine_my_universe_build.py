@@ -148,6 +148,6 @@ def test_the_list_may_shrink_by_any_amount_but_still_may_not_empty(built, monkey
     assert my_universe.TABLE in serving.SHRINKS_BY_CHOICE
     monkeypatch.setattr(my_universe, "load_rules", lambda *a, **k: my_universe.Rules(
         stock_tiers=("A",), stock_types=("common",), etf_aum_floor=1e15, etf_adv_floor=1e15,
-        exclude_etn=True, exclude_cef=True))
+        etf_aum_exit_floor=1e15, etf_adv_exit_floor=1e15, exclude_etn=True, exclude_cef=True))
     built()                                                   # the swap is refused: the run fails, the file stands
     assert sorted(_mine()) == ["SOXL", "SOXX", "XLK"]
