@@ -1202,8 +1202,8 @@ NO_REPORT_YET = "the monthly WRDS comparison has not run yet, so there is nothin
 #: confirm Duo, so the run is attended and the queue cannot start it (``rcdata/build``'s ``attended`` flag). avo's
 #: A17-B allows a press to ask the live source; this is the field where that cannot apply, and saying so is better
 #: than a button that queues a run nothing will pick up.
-CROSS_ATTENDED = ("this check is attended: WRDS asks for a login and Duo, so it runs from a terminal on the "
-                  "server and the queue cannot start it")
+CROSS_ATTENDED = ("this check is written by the WRDS prices run, whose snapshot step runs from a terminal on the "
+                  "server, so the queue cannot finish it")
 
 
 def _diff_rows() -> list[dict]:
@@ -1221,8 +1221,9 @@ def cross_check(now: datetime, facts: dict, used_today: dict[str, int]) -> dict:
     """
     newest = next(iter(_diff_rows()), None)
     prices = {"field": "prices", "need": "prices.wrds_diff", "second_source": CROSS_SECOND_SOURCE, "provider": "wrds",
-              # Attended, so there is nothing for the button to queue; the command is shown instead.
-              "dataset": None, "attended": True, "command": ATTENDED_COMMANDS.get("wrds/prices"),
+              # No button: the snapshot step is still by hand (#1361 dropped only the Duo gate), so the
+              # command is shown instead of queueing work the hourly pass cannot finish.
+              "dataset": None, "attended": False, "command": ATTENDED_COMMANDS.get("wrds/prices"),
               "calls": None, "remaining": _remaining("wrds", used_today), "as_of": None, "checked": None,
               "differs": None, "worst": None, "why": NO_REPORT_YET, "cannot_queue": CROSS_ATTENDED}
     if newest is not None:

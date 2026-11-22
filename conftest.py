@@ -58,8 +58,6 @@ def _redirect_data_roots() -> None:
     # The kernel journal a lost run's note asks about (#815) is the server's, not a runner's: a test may not
     # depend on what a host logged, so the read is off and ``core/oom.py`` is tested through its own text.
     os.environ["RC_OOM_JOURNAL"] = "0"
-    # The WRDS switch is forced off: a server .env with RC_WRDS_UNATTENDED=1 would make the attended tests fail (#344).
-    os.environ["RC_WRDS_UNATTENDED"] = ""
     # The ops store on Redis (master plan Order 3): never the server's named namespace (a .env with
     # RC_REDIS_NAMESPACE=rc:ops:live would send every test write there), and a prefix of this run's own under the
     # per-root namespaces, because a green run removes its tmp_paths and the next run reuses the same paths.

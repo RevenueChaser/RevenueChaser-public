@@ -71,7 +71,6 @@ _ENV_EXTRAS = ("RC_SEC_USER_AGENT",
                "RC_SCHEDULER", "RC_UNIT_ENV_FILE",                              # #158 / #191 item 6
                "RC_HTTP_CONTACT",                                               # #206, the builder's User-Agent
                "WRDS_USERNAME", "RC_WRDS_PYTHON",                               # PR 5, the spine
-               "RC_WRDS_UNATTENDED",                                            # #344, WRDS from the builder
                "RC_EDGARTOOLS_PYTHON", "RC_SEC_FORMS_CUTTER")                  # #754, the sec_forms cutter
 
 
