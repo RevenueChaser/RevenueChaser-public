@@ -16,7 +16,7 @@ from RevenueChaser.rcdata.needs import screen
 
 PV_LABELS: dict[str, str] = {
     "build": "the build", "rule": "our rule", "sec": "SEC", "wrds": "WRDS", "figi": "OpenFIGI", "alpaca": "Alpaca",
-    "uw": "Unusual Whales", "yf": "yfinance", "finra": "FINRA", "ibkr": "IBKR", "exch": "exchanges",
+    "uw": "Unusual Whales", "tickerinside": "TickerInside", "yf": "yfinance", "finra": "FINRA", "ibkr": "IBKR", "exch": "exchanges",
     "av": "Alpha Vantage", "issuer": "fund issuers", "macro": "FRED · BLS · CFTC · Treasury",
     "mix": "several sources: the code does not say which column comes from which yet",
 }
@@ -42,6 +42,7 @@ _WORDS: tuple[tuple[tuple[str, ...], str], ...] = (
     (("wrds", "compustat", "crsp"), "wrds"),
     (("alpaca",), "alpaca"),
     (("unusual", "uw"), "uw"),
+    (("tickerinside",), "tickerinside"),
     (("yfinance",), "yf"),
     (("finra",), "finra"),
     (("ibkr",), "ibkr"),

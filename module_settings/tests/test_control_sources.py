@@ -29,7 +29,7 @@ def test_the_labels_are_re_exported_and_name_every_key():
     assert control.PV_LABELS is control_sources.PV_LABELS
     assert control.PV_LABELS["sec"] == "SEC" and control.PV_LABELS["build"] == "the build"
     assert set(control.PV_LABELS) == {"build", "rule", "sec", "wrds", "figi", "alpaca", "uw", "yf", "finra", "ibkr",
-                                      "exch", "av", "issuer", "macro", "mix"}
+                                      "exch", "av", "issuer", "macro", "mix", "tickerinside"}
 
 
 def test_a_source_word_becomes_its_key():

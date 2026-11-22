@@ -1,11 +1,11 @@
 """``funds/etf_holdings``, the sweep (#358, avo 1-2 Nov 2026): every ETF of the spine's ``etf`` table that is no ETN
-and no CEF, from UW, once every 30 days; the 38 daily funds unchanged. Retention keeps the last 30 days and, older,
+and no CEF, from UW, once every 30 days; the daily funds unchanged (and since #1365 none of them asks UW). Retention keeps the last 30 days and, older,
 each month's last day and each sweep day, and deletes nothing unless ``RC_ETF_HOLDINGS_PRUNE=1``."""
 from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core.providers import sec_edgar, unusual_whales
+from RevenueChaser.core.providers import sec_edgar, tickerinside, unusual_whales
 from RevenueChaser.rcdata import caps, ops, serving
 from RevenueChaser.rcdata.build import base
 from RevenueChaser.rcdata.build.spine import av_listing, etf_holdings as etf, ncen, sec_tickers
@@ -20,6 +20,7 @@ DAY = "2026-11-02"
 def env(monkeypatch, http_mock):
     monkeypatch.setattr(sec_edgar, "SEC_WWW_BASE", "https://sec.test")
     monkeypatch.setattr(unusual_whales, "BASE", "https://uw.test/api")
+    monkeypatch.setattr(tickerinside, "BASE", "https://tickerinside.test/api/v1")
     monkeypatch.setenv("UNUSUAL_WHALES_API_KEY", "uw-test-key")
     monkeypatch.setenv("RC_HTTP_CONTACT", "ops@example.org")
     monkeypatch.setenv(etf.SWEEP_ENV, "1")                     # the sweep is off unless switched on (owner, 2 Nov)
@@ -57,7 +58,8 @@ def test_a_first_run_sweeps_every_etf_but_the_etns_and_the_daily_funds_once_from
     monkeypatch.setattr(etf, "TYPE_CHUNK", 3)                 # the day's partition is merged chunk by chunk
     row = base.run_request({"dataset": etf.NAME, "params": {"as_of": DAY}})
     asked = _uw_asked(env)
-    assert sorted(set(asked) - set(etf.UW_FUNDS)) == OTHERS, "the sweep asks each other ETF, and no ETN"
+    assert sorted(set(asked) - set(etf.TI_FUNDS)) == OTHERS, "the sweep asks each other ETF, and no ETN"
+    assert not set(asked) & set(etf.TI_FUNDS), "a daily fund is TickerInside's since #1365, never UW's"
     assert len(asked) == len(set(asked)), "one request per ETF"
     assert _served_etfs() >= set(OTHERS) | {f.etf for f in etf.FILES}
     assert "sweep" in row["note"]
@@ -68,7 +70,7 @@ def test_a_first_run_sweeps_every_etf_but_the_etns_and_the_daily_funds_once_from
 
 
 def _sweep_calls(env) -> list[str]:
-    return [t for t in _uw_asked(env) if t not in etf.UW_FUNDS]
+    return [t for t in _uw_asked(env) if t not in etf.TI_FUNDS]
 
 
 @pytest.mark.parametrize("later, swept", [("2026-11-03", False), ("2026-12-01", False), ("2026-12-02", True)])
@@ -151,7 +153,9 @@ def test_coverage_is_the_daily_funds_share_and_a_sweep_does_not_lift_it_past_one
 def test_a_request_naming_etfs_asks_only_those_and_starts_no_sweep(env):
     """The trial before the first sweep: a Fetch with ``names`` asks those ETFs (daily funds or not) and nothing else."""
     row = base.run_request({"dataset": etf.NAME, "params": {"as_of": DAY, "names": ["GLD", "SPY", "SMH"]}})
-    assert _uw_asked(env) == ["GLD", "SMH", "SPY"] and len(env.requests) == 3
+    assert _uw_asked(env) == ["GLD", "SPY"], "SMH is a daily fund: TickerInside's since #1365, never UW's"
+    assert len(env.requests) == 3 and any("tickerinside" in str(r.url) or "/fund/smh.json" in str(r.url)
+                                          for r in env.requests), "SMH is asked, from TickerInside"
     assert {"GLD", "SPY", "SMH"} <= _served_etfs() and not (etf.raw_dir() / etf.SWEEP_STATE).exists()
     env.requests.clear()
     base.run_request({"dataset": etf.NAME, "params": {"as_of": DAY}})
@@ -240,19 +244,22 @@ def test_a_uw_outage_opens_the_breaker_and_records_no_etf_as_failed(monkeypatch,
 
 def test_a_sweep_stopped_on_the_same_etfs_run_after_run_records_them_and_goes_on(monkeypatch, env):
     """Five ETFs side by side that UW answers 503 every time open the breaker on every run. Un-recording them each
-    time would stall the sweep for good; after ``SWEEP_STOPS`` stops they are recorded and the sweep moves past them."""
+    time would stall the sweep for good; after ``SWEEP_STOPS`` stops they are recorded and the sweep moves past them.
+    Since #1365 the daily funds ask TickerInside, so the sweep's own first ETF is what answers: CCOI answers once and
+    that fact belongs to the sweep, not to the run that happens to re-ask only the bad five."""
     monkeypatch.setattr(unusual_whales, "_sleep", lambda s: None)
-    bad = OTHERS[:unusual_whales.BREAKER_THRESHOLD]
+    bad = OTHERS[1:1 + unusual_whales.BREAKER_THRESHOLD]
     for t in bad:
         env.routes.insert(0, (f"/etfs/{t}/holdings", _answer(503), 503, {}))
     days = ["2026-11-03", "2026-11-04", "2026-11-05", "2026-11-06"][:etf.SWEEP_STOPS]
-    for d in [DAY] + days[:-1]:
+    for i, d in enumerate([DAY] + days[:-1]):
         env.requests.clear()
         base.run_request({"dataset": etf.NAME, "params": {"as_of": d}})
-        assert sorted(set(_sweep_calls(env))) == bad
+        # the first run asks CCOI as well; its raw is held after that, so the later runs re-ask the bad five only
+        assert sorted(set(_sweep_calls(env))) == ([OTHERS[0]] + bad if i == 0 else bad)
     env.requests.clear()
     base.run_request({"dataset": etf.NAME, "params": {"as_of": days[-1]}})
-    assert _sweep_calls(env) == OTHERS[len(bad):], "the recorded five are not asked again"
+    assert _sweep_calls(env) == OTHERS[1 + len(bad):], "the recorded five are not asked again"
     rows = ops.open_issues(etf.NAME, limit=200)[1]
     issues = {i["key"]: i["detail"] for i in rows}
     assert all(t in issues[f"sweep-{DAY}"] for t in bad)
@@ -292,7 +299,7 @@ def test_a_404_is_that_etfs_failure_named_apart_from_the_empty_answers(env):
 
 
 def test_the_uw_day_cap_cuts_a_sweep_and_the_next_run_goes_on(monkeypatch, env):
-    monkeypatch.setitem(caps.DAY_CAPS, "uw", len(etf.UW_FUNDS) + 3)
+    monkeypatch.setitem(caps.DAY_CAPS, "uw", 3)       # since #1365 the sweep is the run's only UW caller
     row = base.run_request({"dataset": etf.NAME, "params": {"as_of": DAY}})
     assert len(_sweep_calls(env)) == 3 and "day cap" in row["note"] and "3 asked this run" in row["note"]
     monkeypatch.setitem(caps.DAY_CAPS, "uw", 150_000)
@@ -377,15 +384,18 @@ def _failed_issue() -> list:
     return [i for i in ops.open_issues(etf.NAME, limit=200)[1] if i["key"] == f"sweep-{DAY}"]
 
 
-def test_a_breaker_the_daily_funds_opened_before_the_sweep_records_no_etf(monkeypatch, env):
-    """Review 4, SHOULD: SMH answers, then five daily UW funds fail and open the breaker before the sweep asks
-    anything. Three such runs must not record CCOI, which UW was never asked for."""
+def test_a_sweep_whose_first_etfs_fail_from_the_start_records_no_etf(monkeypatch, env):
+    """Review 4, SHOULD, as it stands since #1365: no daily fund asks UW any more, so none of them can open the
+    breaker before the sweep, and a sweep whose very first ETFs fail has had no answer from UW at all. That is UW's
+    state as far as this run can tell, so three such runs must record nothing; once UW answers, the sweep runs whole."""
     monkeypatch.setattr(unusual_whales, "_sleep", lambda s: None)
-    n = _fail(env, etf.UW_FUNDS[1:1 + unusual_whales.BREAKER_THRESHOLD])
+    bad = OTHERS[:unusual_whales.BREAKER_THRESHOLD]
+    n = _fail(env, bad)
     for d in [DAY, "2026-11-03", "2026-11-04"]:
         env.requests.clear()
         base.run_request({"dataset": etf.NAME, "params": {"as_of": d}})
-        assert _sweep_calls(env) == [], "the open breaker sends no sweep call"
+        assert sorted(set(_sweep_calls(env))) == bad, "nothing is recorded: the next run asks them again"
+        assert not set(_uw_asked(env)) & set(etf.TI_FUNDS), "a daily fund makes no UW call since #1365"
     del env.routes[:n]
     env.requests.clear()
     base.run_request({"dataset": etf.NAME, "params": {"as_of": "2026-11-05"}})
@@ -393,20 +403,20 @@ def test_a_breaker_the_daily_funds_opened_before_the_sweep_records_no_etf(monkey
 
 
 def test_a_same_day_rerun_that_asks_no_daily_fund_keeps_the_stop_count(monkeypatch, env):
-    """Review 4, NIT 2: a rerun of the day holds the daily raws and asks UW only for the five bad neighbours, so UW
-    answered nothing that run. It keeps the count; it must not start it over and stall the sweep for good."""
+    """Review 4, NIT 2: a rerun of the day asks UW only for the five bad neighbours, so UW answered nothing in that
+    run. It keeps the count; it must not start it over and stall the sweep for good. Since #1365 the answer that lets
+    the count run belongs to the sweep (CCOI's, on the first run), because no daily fund asks UW any more."""
     monkeypatch.setattr(unusual_whales, "_sleep", lambda s: None)
-    bad = OTHERS[:unusual_whales.BREAKER_THRESHOLD]
+    bad = OTHERS[1:1 + unusual_whales.BREAKER_THRESHOLD]
     _fail(env, bad)
-    for d in [DAY, "2026-11-03"]:
-        for _ in range(2):                                   # the day's run, then its rerun
-            env.requests.clear()
-            base.run_request({"dataset": etf.NAME, "params": {"as_of": d}})
-            assert sorted(set(_sweep_calls(env))) == bad
-    base.run_request({"dataset": etf.NAME, "params": {"as_of": "2026-11-04"}})   # the third counted stop
+    base.run_request({"dataset": etf.NAME, "params": {"as_of": DAY}})            # CCOI answers; the five stop it
+    for d in [DAY, "2026-11-03"]:                                                # the day's rerun, then the next day
+        env.requests.clear()
+        base.run_request({"dataset": etf.NAME, "params": {"as_of": d}})
+        assert sorted(set(_sweep_calls(env))) == bad, "the rerun asks the bad neighbours alone"
     env.requests.clear()
     base.run_request({"dataset": etf.NAME, "params": {"as_of": "2026-11-04"}})
-    assert _sweep_calls(env) == OTHERS[len(bad):] and all(t in _failed_issue()[0]["detail"] for t in bad)
+    assert _sweep_calls(env) == OTHERS[1 + len(bad):] and all(t in _failed_issue()[0]["detail"] for t in bad)
 
 
 def test_stops_at_different_places_record_nothing(monkeypatch, env):
@@ -423,12 +433,14 @@ def test_stops_at_different_places_record_nothing(monkeypatch, env):
 
 
 def test_the_sweep_is_off_until_its_switch_says_1(monkeypatch, env):
-    """Owner, 2 Nov 2026 (option B on UW's 250-holdings cap): no sweep until the full lists of N-PORT (#354) are there.
+    """Owner, 2 Nov 2026 (option B on UW's 250-holdings cap): no sweep until the full lists of N-PORT (#354) are
+    there. D3 of 22 Nov 2026 made that permanent -- UW is not used for holdings at all and N-PORT serves the funds
+    with no issuer file, so the sweep has no future caller and the note says so instead of "until".
     An unscoped run asks the 38 daily funds as before and no other ETF; a named trial still works."""
     monkeypatch.delenv(etf.SWEEP_ENV)
     row = base.run_request({"dataset": etf.NAME, "params": {"as_of": DAY}})
     assert _sweep_calls(env) == [] and not (etf.raw_dir() / etf.SWEEP_STATE).exists()
-    assert f"no sweep: off until {etf.SWEEP_ENV}=1" in row["note"]
+    assert f"no sweep: off for good, {etf.SWEEP_ENV}!=1" in row["note"] and "N-PORT" in row["note"]
     assert {f.etf for f in etf.FILES} <= _served_etfs()
     env.requests.clear()
     base.run_request({"dataset": etf.NAME, "params": {"as_of": DAY, "names": ["GLD"]}})

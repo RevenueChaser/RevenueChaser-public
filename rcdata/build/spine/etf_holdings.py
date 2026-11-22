@@ -10,32 +10,46 @@ relatedness peer sets can have a source. They read it (owner's decision E1 of #3
 |---|---|---|
 | SSGA SPDR (21) | the 11 sector funds, ``XBI XOP XME KRE XHB XRT KIE KBE KCE XPH`` | the issuer's daily holdings xlsx |
 | iShares (10) | ``SOXX IBB ITA ITB IGV IAK IYT IHI IHF ICLN`` | the product page's ``latest-holdings.csv`` |
-| Unusual Whales (28) | ``SMH PAVE AIQ LIT URA NLR AIRR SKYY WCLD ARKQ ROBO JETS TAN PBW GDX OIH CIBR HACK REMX CLOU DTCR QTUM FINX GRID DRIV BLOK ESPO COPX`` | ``/etfs/<t>/holdings`` |
-| ARK, behind UW (1) | ``ARKQ``, on a day UW holds nothing for it | ARK's daily holdings CSV |
+| TickerInside (28) | ``SMH PAVE AIQ LIT URA NLR AIRR SKYY WCLD ARKQ ROBO JETS TAN PBW GDX OIH CIBR HACK REMX CLOU DTCR QTUM FINX GRID DRIV BLOK ESPO COPX`` | ``api/v1/fund/<t>.json`` |
+| ARK, behind TickerInside (1) | ``ARKQ``, on a day TickerInside holds nothing for it | ARK's daily holdings CSV |
+
+**Why TickerInside and not Unusual Whales for those 28 (#1365, avo 22 Nov 2026).** Their issuers publish no keyless
+file this tree can read, and UW is leaving (#1283, the subscription ends 9 Dec 2026); D3 of #354 says holdings never
+come from UW. TickerInside is keyless, free and CC BY 4.0, and measured on 22 Nov 2026 it covers **133 of the 133**
+ring-1 ETFs: 76 from the issuers' own daily files (iShares, SPDR, Global X) and the rest from each fund's **newest**
+N-PORT filing, which is ahead of the quarterly set we hold (its periods stop at 31 Jul 2026, while SMH's report for
+30 Sep 2026 was filed on 17 Nov). Of these 28, nine get a daily file there (AIQ, CLOU, COPX, DRIV, DTCR, FINX, LIT,
+PAVE, URA) and the others their newest filing. The licence allows keeping each night's copy; it does **not** allow
+collecting the history, so ``core/providers/tickerinside.check_path`` refuses those paths and our history stays the
+SEC's (#354 C7).
 
 **The issuer of each fund was confirmed by fetching it once, 30 Oct 2026**, not taken from memory: IAK is iShares'
 insurance fund (the SPDR path answers 404; KIE is the SPDR one), and the iShares product ids are the issuer's own
 product screener's. Both parsers are ``funds``' own, unchanged but for the two iShares shapes (``parse_ishares``).
-Invesco answers 500 for TAN and PBW, so those two are UW's like the rest of the themes.
+Invesco's own API answers 500 for TAN and PBW (still 500 on 22 Nov 2026), so those two are read like the rest of
+the themes.
 
-**UW first, the issuer file behind it (#339).** On 1 Nov 2026 UW answered ``{"data": []}`` for AIRR, SKYY, WCLD, ARKQ
-and ROBO. Their issuers were checked that day: ARK publishes ARKQ's holdings as a CSV, and that file is ``FALLBACKS``.
-First Trust (AIRR, SKYY) serves an HTML table whose Excel export is an ASP.NET postback, WisdomTree (WCLD) embeds
-the list in its page and refused the builder's User-Agent, and Exchange Traded Concepts (ROBO) builds its CSV in
-the browser. None of those is a file, so those four stay UW's alone and are not scraped. The raw file's name says
-which source served a fund's day (``uw-ARKQ.json`` or ``ark-ARKQ.csv``), and the run note names each fallback.
+**The source first, the issuer file behind it (#339, #1365).** The issuers of AIRR, SKYY, WCLD and ROBO were
+checked on 1 Nov 2026: ARK publishes ARKQ's holdings as a CSV, and that file is ``FALLBACKS``. First Trust
+(AIRR, SKYY) serves an HTML table whose Excel export is an ASP.NET postback, WisdomTree (WCLD) embeds the list in
+its page and refused the builder's User-Agent, and Exchange Traded Concepts (ROBO) builds its CSV in the browser.
+Re-probed 22 Nov 2026 from a cloud container: First Trust still answers only an HTML table, and WisdomTree,
+Global X, Schwab and Invesco answered 403, 403, 403 and 406. None of those is a file, so those funds are
+TickerInside's and are not scraped. The raw file's name says which source served a fund's day
+(``tickerinside-ARKQ.json`` or ``ark-ARKQ.csv``), and the run note names each fallback.
 
 The funds are the board's ``sector`` and ``theme`` ETFs (``core/rotation_reference.rotation_etfs()``, avo's ``map`` watch list) less GLD, SLV and
 USO — commodity trusts, with no equity holdings — plus the 10 in ``EXTRA`` that the peer sets need and the board
-does not run. **UW's answer is kept whole:** the top-10 cap is the Rotation board's own
+does not run. **The source's answer is kept whole:** the top-10 cap is the Rotation board's own
 (``module_sector_rotation/etf_holdings.py``), and that board's ``raw.duckdb.etf_holdings`` is untouched by this
 dataset, which writes only the market store.
 
-One request per fund per run (31 issuer files, 28 UW calls, plus ARK's file on a day it is needed), each inside
-its provider's day cap.
+One request per fund per run (31 issuer files, 28 TickerInside files, plus ARK's file on a day it is needed), each
+inside its provider's day cap and pacer. No key is needed for any of them.
 
-**The sweep (#358, avo 1-2 Nov 2026), off until ``RC_ETF_HOLDINGS_SWEEP=1``** (avo, 2 Nov: UW answers at most 250
-holdings a fund, measured on VTI, so it waits for N-PORT's full lists, #354): every other ETF of the live spine's
+**The sweep (#358, avo 1-2 Nov 2026), off for good** (avo, 2 Nov: UW answers at most 250 holdings a fund,
+measured on VTI, so it waited for N-PORT's full lists, #354; D3 of 22 Nov then settled that UW is not used for
+holdings at all, so ``RC_ETF_HOLDINGS_SWEEP`` never goes back to "1"): every other ETF of the live spine's
 ``etf`` table, no ETN and no CEF (5,854 on
 2 Nov 2026), is asked from UW once every ``SWEEP_DAYS`` (30), at most ``SWEEP_PER_RUN`` (3,000) a run, under the
 ``uw`` day cap: a sweep is about 5,850 calls over two daily runs (about 3,014 on its first day with the daily funds'
@@ -45,8 +59,12 @@ run types the sweep day's held raws its partition lacks. An empty answer, and a 
 timeout after the client's retries), is not asked again within the sweep; at its end they are one ``uw_empty`` and
 one ``source_failed`` issue. A rejected key on an ETF's own call or an open breaker (UW down) stops the sweep with
 nothing recorded, so the next run asks again; a stop at a new place is a ``source_failed`` issue, and when it stops
-``SWEEP_STOPS`` (3) times in a row at the same ETF while UW answers other calls, those ETFs are recorded as failed and
-the sweep goes on past them. A whole outage or a dead key records nothing, however long it lasts. A spine with no
+``SWEEP_STOPS`` (3) times in a row at the same ETF **while UW has answered a call of this sweep**, those ETFs are
+recorded as failed and the sweep goes on past them. A whole outage or a dead key records nothing, however long it
+lasts. Since #1365 the sweep is UW's only caller here, so "UW answered" is a fact of the sweep and not of the run:
+the daily funds used to answer first every run and no longer ask UW at all, and a run that only re-asks the stuck
+neighbours answers nothing. A sweep whose very first ETFs fail from the start therefore records nothing and waits,
+which the stop issue says; it cannot be told apart from an outage without asking the ETFs past them (#1367). A spine with no
 ETF starts no sweep. A scoped request asks its ``names`` only and starts no sweep.
 **How wide a narrowed sweep would be, measured (#354 C6, 21 Nov 2026).** N-PORT has landed, so the set the sweep
 would ask can now be counted instead of estimated: the ETF review's five rules together
@@ -56,19 +74,32 @@ money-market; <= 250 lines with one sector >= half the equity weight, or <= 60 e
 binding one (it alone removes 383 of the funds the others pass), narrowness next (204); the structure rule removes
 5. Read-only on the live spine and the ``sec/nport`` 2026q3 Parquet, 3.6 s; the counts are **under a GICS reading**
 of the sector rule, since the review names Morningstar sectors and we hold none. The review's own "150 to 300" was
-an estimate and is superseded. **The sweep is unchanged by this:** how wide the fresh set actually becomes is
-decision **D3** of #354, which is avo's, and until he sets it the sweep stays off.
+an estimate and is superseded.
+**D3 is set, and it asks UW for nothing (avo, 22 Nov 2026, #354: do not use UW).** An ETF with no issuer file is
+read from the quarterly ``sec/nport`` Parquet, and the older quarters are downloaded so that the history is there
+too (#354 C7). No ring-1 set is asked from UW at any ADV floor, so the 133 / 204 / 89 / 59 counts above select
+nothing and stay a measurement of what a narrow ring would have held. ``RC_ETF_HOLDINGS_SWEEP`` therefore stays
+off for good and is no longer waiting on a decision; removing the sweep's code belongs to the UW migration
+(#1283), since the subscription renews on 9 Dec 2026. The 28 funds UW served are read from **TickerInside**
+instead (#1365), and behind that a fund whose daily list is missing still falls back to its newest N-PORT report
+(``rcdata.read.etf_holdings`` -> ``etf_holdings_nport``, #354 C5), so the board is never left with nothing. The
+whole reading order is: the fund's own issuer file, then TickerInside's file for that fund (whose
+``source_layer`` says whether TickerInside read the issuer or the fund's SEC report), then our own ``sec/nport``
+Parquet.
 
 **Retention:** the last 30 days whole; older, each month's last held day and each sweep day. It only names what it
 would remove unless ``RC_ETF_HOLDINGS_PRUNE=1`` **and** the request's ``allow_shrink`` (the swap's shrink guard would
-refuse the smaller table after the files are gone). No key for the issuer files; without ``UNUSUAL_WHALES_API_KEY`` the issuer files are still
-read (ARKQ's among them) and the missing key is one ``missing_key`` issue. A fund whose every source failed (a moved
+refuse the smaller table after the files are gone). **No key is needed for any daily fund:** the issuer files and
+TickerInside are keyless, and ``UNUSUAL_WHALES_API_KEY`` is asked for only by the sweep and by a request naming an
+ETF outside the daily funds, where a missing key is one ``missing_key`` issue. A fund whose every source failed (a moved
 shape or URL, an empty answer) is a ``source_failed`` issue for that fund, and the others go on, as the index job
 does; every fund failing fails the run.
 
 Raw: ``raw/funds/etf_holdings/<as-of>/<provider>-<etf>.<ext>`` (+ ``.meta.json``, written first: the raw file is the
 resume marker). Parquet: ``parquet/funds/etf_holdings/date=<as-of>/part-0.parquet``, every day kept. Served:
 ``etf_holdings(as_of, etf, provider, ticker, cusip, name, weight)``, this dataset's own table in ``spine.duckdb``.
+The Parquet also keeps ``holdings_as_of`` and ``source_layer`` where the source states them (TickerInside does);
+serving them is a serving bump and so a PR of its own.
 """
 from __future__ import annotations
 
@@ -95,8 +126,15 @@ TABLE = "etf_holdings"
 UW_KEY = "unusual_whales"
 # What the Parquet keeps, and what the table serves (the raw ticker and the run stamps stay in the Parquet).
 SCHEMA = [("as_of", "DATE"), ("etf", "TEXT"), ("provider", "TEXT"), ("ticker", "TEXT"), ("ticker_raw", "TEXT"),
-          ("cusip", "TEXT"), ("name", "TEXT"), ("weight", "DOUBLE"), ("fetched_at", "DOUBLE"), ("run_id", "TEXT")]
-SERVED = [(c, t) for c, t in SCHEMA if c not in ("ticker_raw", "fetched_at", "run_id")]
+          ("cusip", "TEXT"), ("name", "TEXT"), ("weight", "DOUBLE"),
+          # The day the source itself puts on the list, and which layer it came from, where the source says so
+          # (TickerInside: ``holdings_as_of`` and ``source_layer`` -- an issuer file of the day, or a fund's newest
+          # SEC filing, which can be months old). Parquet only: putting them in the served table is a serving bump
+          # and so a PR of its own (#1365), and no reader needs them yet.
+          ("holdings_as_of", "TEXT"), ("source_layer", "TEXT"),
+          ("fetched_at", "DOUBLE"), ("run_id", "TEXT")]
+SERVED = [(c, t) for c, t in SCHEMA
+          if c not in ("ticker_raw", "holdings_as_of", "source_layer", "fetched_at", "run_id")]
 META_SUFFIX = ".meta.json"
 
 # The SPDR funds: the 11 sector funds and the seven industry ones (all one URL template, by ticker).
@@ -129,9 +167,10 @@ ARK_COLUMNS = ("fund", "company", "ticker", "cusip", "weight (%)")
 # the US share class ``KOG-NO``.
 US_EXCHANGE_CODES = frozenset({"UA", "UN", "UP", "UQ", "UR", "US", "UV", "UW"})
 # The themes whose issuer has no keyless holdings file (VanEck, Global X, First Trust, WisdomTree, ROBO's adviser
-# Exchange Traded Concepts, U.S. Global) and the two Invesco funds its API answers 500 for. ARKQ is UW's first and
-# ARK's file second (``FALLBACKS``).
-UW_FUNDS = ("SMH", "PAVE", "AIQ", "LIT", "URA", "NLR", "AIRR", "SKYY", "WCLD", "ARKQ", "ROBO", "JETS", "TAN", "PBW",
+# Exchange Traded Concepts, U.S. Global) and the two Invesco funds its API answers 500 for. They are read from
+# TickerInside (#1365); until 22 Nov 2026 they were UW's, and the group kept the name ``UW_FUNDS``. ARKQ is
+# TickerInside's first and ARK's file second (``FALLBACKS``).
+TI_FUNDS = ("SMH", "PAVE", "AIQ", "LIT", "URA", "NLR", "AIRR", "SKYY", "WCLD", "ARKQ", "ROBO", "JETS", "TAN", "PBW",
             "GDX", "OIH", "CIBR",
             # the board's themes of 17 Nov 2026 (D1, avo's watch lists) with no keyless file here: Amplify (HACK),
             # VanEck (REMX). ARKW and ARKG left the board the same day (avo: active funds, poor theme proxies)
@@ -148,19 +187,26 @@ EXTRA = frozenset({"KIE", "IAK", "ITB", "PBW", "KBE", "KCE", "XPH", "IYT", "IHF"
 SWEEP_DAYS = 30
 SWEEP_PER_RUN = 3000
 SWEEP_STATE = "sweep.json"
-# Stops at the same ETF, while UW answers other calls, before the ETFs there are taken as failed (review 2: five
-# neighbours that answer 503 every time would open the breaker on every run and stall the sweep for good).
+# Stops at the same ETF, while UW has answered a call of this sweep, before the ETFs there are taken as failed
+# (review 2: five neighbours that answer 503 every time would open the breaker on every run and stall the sweep for
+# good). The "answered" fact is the sweep's, not the run's, since #1365 left the sweep as UW's only caller.
 SWEEP_STOPS = 3
 # Retention (avo, option 1): the last ``SWEEP_DAYS`` days whole; older, each month's last day and each sweep day. It
 # only reports what it would remove unless ``PRUNE_ENV`` is "1": the first real removal is avo's word at that time.
 PRUNE_ENV = "RC_ETF_HOLDINGS_PRUNE"
 # The sweep runs only when this is "1" (owner, 2 Nov 2026, option B): UW answers at most 250 holdings a fund, so the
-# sweep waits for N-PORT's full lists (#354). A named request still asks UW; the 48 daily funds are untouched.
-# N-PORT is in and #354 C6 measured what a narrowed set would hold (133 ETFs on 21 Nov 2026, see the module doc),
-# but D3 -- how wide the fresh set is -- is avo's decision and unset, so this stays off and nothing here narrows.
+# sweep waited for N-PORT's full lists (#354). A named request still asks UW; no daily fund does, since they read
+# the issuers' own files and TickerInside (#1365).
+# D3 is now set and it asks UW for nothing (avo, 22 Nov 2026: do not use UW): a fund with no issuer file is read
+# from TickerInside, and from the quarterly N-PORT Parquet behind it, so this stays off for good. #354 C6's 133
+# ETFs select nothing; see the doc.
 SWEEP_ENV = "RC_ETF_HOLDINGS_SWEEP"
 # Raws typed per pass: a sweep run types up to ``SWEEP_PER_RUN`` answers, merged into the day's partition in DuckDB.
 TYPE_CHUNK = 500
+# TickerInside publishes no request window (``caps.WINDOWS`` holds none for it), so this is politeness and not a
+# provider limit: two files a second, which walks the 28 funds in about fifteen seconds. Its own guidance is one
+# read per nightly build rather than polling, which one run a day is.
+TI_PACE = (2, 1.0)
 # A requested name that can be a ticker (and so a path segment); the spine's own tickers are normalised already.
 TICKER = re.compile(r"[A-Z0-9][A-Z0-9.\-]{0,11}")
 
@@ -188,6 +234,26 @@ def parse_uw(data: bytes) -> list[dict]:
             "weight": weight_of(r.get("weight"))} for r in by_ticker.values()]
     out.sort(key=lambda h: h["weight"] if h["weight"] is not None else -1.0, reverse=True)
     return out
+
+
+def parse_tickerinside(data: bytes, fund: str) -> list[dict]:
+    """TickerInside's ``fund/<ticker>.json``: every holding with its weight in percent, heaviest first.
+
+    The file gives no CUSIP and no name (neither is served there: CUSIP and ISIN are licensed codes), so a line
+    carries ``cusip`` None and ``name`` None, and it gives the day the holdings are of -- an issuer file's own date,
+    or the period end of the fund's newest SEC filing -- which rides along on every line as ``holdings_as_of`` with
+    the layer that served it. Key shapes, and which of them is a US ticker, are
+    ``core/providers/tickerinside.served_ticker``'s; the parser sets ``ticker`` itself, so ``served_ticker`` of this
+    module takes it as it is. A file for another fund, or without a holdings object, is a failed file."""
+    from ....core.providers import tickerinside
+    try:
+        answer = tickerinside.parse_fund(data, fund)
+    except ValueError as e:
+        raise base.SourceError(str(e)) from e
+    for line in answer["holdings"]:
+        line["holdings_as_of"] = answer["as_of"]
+        line["source_layer"] = answer["layer"]
+    return answer["holdings"]
 
 
 def _ark_ticker(raw: str) -> str:
@@ -235,6 +301,14 @@ def parse_ark(data: bytes, fund: str) -> list[dict]:
     return out
 
 
+def _polite_pacer(ctx: base.RunContext) -> base.Pacer:
+    """The run's one TickerInside pacer. Politeness, not a published limit, so it is set here and not in ``caps``."""
+    key = "_pacer_tickerinside_polite"
+    if key not in ctx.pending:
+        ctx.pending[key] = base.Pacer(*TI_PACE, clock=ctx.clock, sleep=ctx.sleep)
+    return ctx.pending[key]
+
+
 def served_ticker(line: dict) -> str | None:
     """The ticker a parsed line is served under: the parser's own verdict when it gave one (ARK's foreign listings
     carry ``ticker`` None), else ``norm_ticker`` of the raw ticker."""
@@ -260,6 +334,9 @@ class EtfFile:
         if self.provider == "ark":
             return (provider_base("RC_ARK_BASE", "https://assets.ark-funds.com")
                     + "/fund-documents/funds-etf-csv/" + ARK_FUNDS[self.etf])
+        if self.provider == "tickerinside":
+            from ....core.providers import tickerinside
+            return tickerinside.fund_url(self.etf)
         from ....core.providers import unusual_whales
         return f"{unusual_whales.BASE}/etfs/{self.etf}/holdings"
 
@@ -270,12 +347,17 @@ class EtfFile:
             return parse_ishares(data, typed=ISHARES_PRODUCTS[self.etf][2], weight_col=ISHARES_WEIGHT.get(self.etf))
         if self.provider == "ark":
             return parse_ark(data, self.etf)
+        if self.provider == "tickerinside":
+            return parse_tickerinside(data, self.etf)
         return parse_uw(data)
 
     def raw_name(self) -> str:
         return f"{self.provider}-{self.etf}.{self.ext}"
 
     def download(self, ctx: base.RunContext) -> bytes:
+        if self.provider == "tickerinside":
+            _polite_pacer(ctx).wait()
+            return base.http_get(ctx, self.provider, self.url(), headers={"Accept": "application/json"}).content
         if self.provider != "uw":
             return base.http_get(ctx, self.provider, self.url(), headers={"Accept": "*/*"}).content
         ctx.check_cap("uw")
@@ -288,8 +370,8 @@ class EtfFile:
 
 FILES = (tuple(EtfFile(t, "ssga", "xlsx") for t in SSGA_FUNDS)
          + tuple(EtfFile(t, "ishares", "csv") for t in ISHARES_PRODUCTS)
-         + tuple(EtfFile(t, "uw", "json") for t in UW_FUNDS))
-# The issuer file behind a UW fund, asked only when UW holds nothing for it that day (or there is no UW key).
+         + tuple(EtfFile(t, "tickerinside", "json") for t in TI_FUNDS))
+# The issuer file behind a TickerInside fund, asked only when TickerInside holds nothing for it that day.
 FALLBACKS = {t: EtfFile(t, "ark", "csv") for t in ARK_FUNDS}
 PROVIDERS = tuple(dict.fromkeys([f.provider for f in FILES] + [f.provider for f in FALLBACKS.values()]))
 _BY_RAW = {f.raw_name(): f for f in FILES + tuple(FALLBACKS.values())}
@@ -388,30 +470,27 @@ class EtfHoldings:
         return calendar.today_ny()
 
     def fetch(self, ctx: base.RunContext, as_of: date) -> list[Path]:
-        """Each fund's file of the day, once. A UW fund with an issuer file in ``FALLBACKS`` takes UW's answer when
-        it holds at least one holding, else the issuer file; the raw file's name says which one served the day and
-        the run note names every fallback. Only when every source of a fund fails is it a ``source_failed`` issue,
-        keyed by the fund's own file and naming each source's failure."""
+        """Each fund's file of the day, once. A TickerInside fund with an issuer file in ``FALLBACKS`` takes
+        TickerInside's answer when it holds at least one holding, else the issuer file; the raw file's name says
+        which one served the day and the run note names every fallback. Only when every source of a fund fails is it
+        a ``source_failed`` issue, keyed by the fund's own file and naming each source's failure.
+
+        **No key is needed for any of the daily funds** since #1365: the issuer files and TickerInside are all
+        keyless. ``UNUSUAL_WHALES_API_KEY`` is asked for only by a request that names an ETF of no daily fund and by
+        the sweep, both of which are still UW's."""
         keyed = bool(credentials.key_for(UW_KEY))
-        if not keyed:
-            ctx.issue("missing_key", UW_KEY, credentials.missing_message(UW_KEY))
-            ctx.notes.append(f"no key for {UW_KEY}: the {len(UW_FUNDS)} UW funds were not asked")
         out, failed = [], []
         day = raw_dir() / as_of.isoformat()
         names = set(ctx.scope.names)
         for f in FILES:
             if names and f.etf not in names:
                 continue
-            sources = [f] + ([FALLBACKS[f.etf]] if f.provider == "uw" and f.etf in FALLBACKS else [])
-            if f.provider == "uw" and not keyed:
-                sources = sources[1:]
-            if not sources:
-                continue
+            sources = [f] + ([FALLBACKS[f.etf]] if f.etf in FALLBACKS and f.provider != "ark" else [])
             done = next((day / s.raw_name() for s in sources if (day / s.raw_name()).exists()), None)
             if done is not None:
                 out.append(done)
                 continue
-            errors = [] if keyed or f.provider != "uw" else [f"{f.raw_name()}: no {UW_KEY} key"]
+            errors = []
             for src in sources:
                 try:
                     content = src.download(ctx)
@@ -437,12 +516,20 @@ class EtfHoldings:
             ctx.notes.append("failed files: " + ", ".join(failed))
             if not out:
                 raise base.SourceError("every fund file failed")
-        if keyed and names:
-            out += self._named(ctx, as_of, sorted(names - DAILY))
-        elif keyed and ctx.scope:
+        # UW is asked for nothing but an ETF outside the daily funds: a request that names one, or the sweep.
+        others = sorted(names - DAILY)
+        wants_uw = bool(others) if names else (not ctx.scope and os.environ.get(SWEEP_ENV) == "1")
+        if wants_uw and not keyed:
+            ctx.issue("missing_key", UW_KEY, credentials.missing_message(UW_KEY))
+            ctx.notes.append(f"no key for {UW_KEY}: the ETFs outside the {len(FILES)} daily funds were not asked")
+        if names:
+            if keyed and others:
+                out += self._named(ctx, as_of, others)
+        elif ctx.scope:
             ctx.notes.append(f"no sweep: the request's scope ({ctx.scope.text()}) names no ETF")
-        elif keyed and os.environ.get(SWEEP_ENV) != "1":
-            ctx.notes.append(f"no sweep: off until {SWEEP_ENV}=1 (UW's 250-holdings cap; N-PORT first, #354)")
+        elif os.environ.get(SWEEP_ENV) != "1":
+            # D3's wording (#1363); the key no longer gates the note, because no daily fund needs UW (#1365).
+            ctx.notes.append(f"no sweep: off for good, {SWEEP_ENV}!=1 (D3: N-PORT serves the rest, #354)")
         elif keyed:
             out += self._sweep(ctx, as_of)
         try:
@@ -544,6 +631,7 @@ class EtfHoldings:
                 content = f.download(ctx)
                 if not f.parse(content):
                     state["empty"].append(t)
+                    state["answered"] = True
                     streak = []
                     base.write_raw_json(path, state)
                     continue
@@ -554,13 +642,16 @@ class EtfHoldings:
             except Exception:  # noqa: BLE001 - one ETF down must not stop the sweep
                 stopped = _uw_down(ctx, t)
                 if stopped:
-                    # A stop counts only where the last one was and while UW answered this run: a whole outage or a
-                    # dead key stops every run at the same ETF and is UW's state, never the ETF's (review 3). A
-                    # breaker that skipped a call opened before this ETF was asked (review 4); a run where UW
-                    # answered nothing, a same-day rerun of the bad neighbours, keeps the count as it was.
+                    # A stop counts only where the last one was and while UW has answered a call of this sweep: a
+                    # whole outage or a dead key answers nothing from the sweep's first ETF on and is UW's state,
+                    # never the ETF's (review 3). A breaker that skipped a call opened before this ETF was asked
+                    # (review 4). The fact is the sweep's, not the run's: since #1365 the daily funds ask
+                    # TickerInside, so a run that only re-asks the stuck neighbours answers nothing and would
+                    # otherwise never count a stop, stalling the sweep for good (review 4, NIT 2).
                     at = (streak or [t])[0]
                     h = ctx.uw_client().health()
-                    answered = h["calls"] > h["failed"] and not h["skipped_calls"]
+                    answered = (h["calls"] > h["failed"] or state.get("answered", False)) \
+                        and not h["skipped_calls"]
                     if at != state.get("stop_at"):
                         ctx.issue("source_failed", f"sweep-{day}-stopped", f"{stopped} at {at}: the sweep waits")
                     kept = state.get("stops", 0) if at == state.get("stop_at") else 0
@@ -575,6 +666,7 @@ class EtfHoldings:
                 base.write_raw_json(path, state)
                 continue
             streak = []
+            state["answered"] = True
             raw = folder / f.raw_name()
             base.write_raw_json(_meta(raw), {"as_of": day.isoformat(), "fetched_at": time.time(),
                                              "run_id": ctx.run_id, "etf": t, "provider": "uw", "url": f.url()})
@@ -616,6 +708,7 @@ class EtfHoldings:
                         "as_of": as_of, "etf": f.etf, "provider": f.provider,
                         "ticker": served_ticker(line), "ticker_raw": line["ticker_raw"],
                         "cusip": line["cusip"], "name": line["name"], "weight": line["weight"],
+                        "holdings_as_of": line.get("holdings_as_of"), "source_layer": line.get("source_layer"),
                         "fetched_at": meta["fetched_at"], "run_id": meta["run_id"]})
             dropped += sum(1 for rows in by_day.values() for r in rows if r["ticker"] is None)
             for as_of, rows in sorted(by_day.items()):

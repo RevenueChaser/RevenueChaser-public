@@ -48,3 +48,32 @@ def test_a_spine_file_without_the_holdings_table_is_no_rows():
 def test_holdings_of_nothing_or_no_spine_file_are_no_rows():
     assert read.etf_holdings(["SMH"]) == []
     assert read.etf_holdings([]) == []
+
+
+# ── the UW 250-line cap: a cut list says so (#354 C5) ───────────────────────────────────────────────────────────
+
+def test_a_uw_list_of_exactly_the_cap_is_flagged_as_cut():
+    """UW answers at most ``read.UW_HOLDINGS_CAP`` holdings a fund (measured on VTI, avo 2 Nov 2026), so a UW day
+    of exactly that length is a cut list, not a whole one, and every row of it says so."""
+    fx.write_etf_holdings({"VTI": [f"T{i}" for i in range(read.UW_HOLDINGS_CAP)]}, provider="uw")
+    rows = read.etf_holdings(["VTI"])
+    assert len(rows) == read.UW_HOLDINGS_CAP
+    assert all(r["truncated"] for r in rows)
+
+
+def test_a_shorter_uw_list_and_an_issuer_list_of_the_cap_are_not_flagged():
+    """Only UW caps its answer: an issuer file of the same length is the whole fund, and a UW answer under the cap
+    was not cut by it. A flag on either would read as missing data where there is none."""
+    fx.write_etf_holdings({"SMH": [f"T{i}" for i in range(read.UW_HOLDINGS_CAP - 1)]}, provider="uw")
+    fx.write_etf_holdings({"IVV": [f"S{i}" for i in range(read.UW_HOLDINGS_CAP)]}, provider="ishares")
+    rows = read.etf_holdings(["SMH", "IVV"])
+    assert not any(r["truncated"] for r in rows)
+
+
+def test_each_fund_is_judged_on_its_own_line_count():
+    """One cut fund in a multi-fund read must not flag the others (the count is per fund, not per answer)."""
+    fx.write_etf_holdings({"VTI": [f"T{i}" for i in range(read.UW_HOLDINGS_CAP)], "KBE": ["WFC", "KEY"]},
+                          provider="uw")
+    rows = read.etf_holdings(["VTI", "KBE"])
+    assert {r["etf"] for r in rows if r["truncated"]} == {"VTI"}
+    assert {r["etf"] for r in rows if not r["truncated"]} == {"KBE"}
