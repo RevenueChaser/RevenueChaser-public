@@ -1,4 +1,4 @@
-# `duckdb.prices` — a working folder for the prices store
+# `duckdb_prices` — a working folder for the prices store
 
 What we learn about `prices.duckdb` as we go: measurements with the method that produced them, traps that cost
 someone time, and the seams a later change will need. Notes accumulate here instead of being re-derived.
