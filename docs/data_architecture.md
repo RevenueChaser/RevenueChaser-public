@@ -1826,7 +1826,7 @@ served -- and stays named so the exception is visible; key security:session; #66
 within 1 %, up to 7 days away: one split the two sources date apart, applied once, on the day the served bars
 change basis -- CRSP's, where the other source's day is outside the gap the jump is measured across, and then that
 row is held back unapplied; the other source's, where both days fall in the same gap; key security:session; #661,
-NVDA's 2-for-1 of Sep 2001, avo 22 Nov 2026), `adjustment_differs` (the store's total-return day return more than 1 bp from Alpaca's own, or
+NVDA's 2-for-1 of Sep 2001, avo 22 Nov 2026), `split_ratio_unexplained` (an **applied** split, reverse split or stock dividend whose ratio the served raw closes across its ex-date do not show: the move and 1/ratio 1.5 times or more apart, between two served bars at most 7 days apart with no second split between them. Named only -- nothing is dropped and no factor changes -- because which side is wrong, the source's ratio or the bars, is avo's call and costs a whole prices build; key security:session; #1333 drafts P-D and P-E), `adjustment_differs` (the store's total-return day return more than 1 bp from Alpaca's own, or
 more than half a cent on each of Alpaca's cent-rounded adjusted closes, the exact bound, where that is larger: about
 1.5 bp at $70, 5 bp at $20, 50 bp at $2, so below a few dollars of adjusted close a dividend-sized gap hides in it;
 checked on every served bar Alpaca, the tester, has a bar for), `alpaca_close_differs` (the tester: a Compustat or CRSP
@@ -2173,7 +2173,7 @@ is one row per company and quarter with a column per field.
 
 **Build issues** live in `ops.sqlite` `build_issues`, dataset `fundamentals/tables`, synced after each swap. Kinds:
 `source_never_run`, `statement_older_than_120_days`, `annual_statement_older_than_400_days` (an annual-only filer,
-also one that moved to IFRS and whose last us-gaap statement is years old), `no_statement`, `no_us_gaap_facts`. A source dataset records its
+also one that moved to IFRS and whose last us-gaap statement is years old), `no_statement`, `no_us_gaap_facts`, `fact_jumps_100x` (an annual `revenue` or `total_assets` fact at least 100 times its own neighbouring fiscal year's, either way, the newest filing of each year: a unit or tag error in the source, named and never dropped; key cik:field:fiscal_year; #1333 draft G-5) and `eps_over_1000` (an EPS fact over 1,000 dollars a share, either way: a per-share figure in the wrong unit; same key). A source dataset records its
 own row-level problems (`missing_key`, `fetch_failed`) under its name.
 
 **Reading it.** `rcdata.read.statements(cik, period_type, n, fields)`, `rcdata.read.earnings_events(cik, start, end)`,
