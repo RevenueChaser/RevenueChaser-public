@@ -2116,7 +2116,15 @@ one before: every value that changed for a period both hold is a `fundamental_re
 correction at Compustat; a new period is not one). The check notes count revenue, net income and diluted EPS that
 agree with the SEC's facts (Compustat's millions times a million, within 0.5%, EPS within a cent, period ends within
 7 days). `funda` is compared with the value the year's own report first gave (`first_value`), because Compustat
-keeps that one where the SEC serves a later restatement or split-adjusted figure (#277). The note of each
+keeps that one where the SEC serves a later restatement or split-adjusted figure (#277; on the whole universe that
+closes 3.9 points of the annual revenue gap, so it is not the whole story). Two groups are left out of the count,
+because their disagreement is a definition difference and not an error (#277, measured 21 Nov 2026): **GICS sector
+40** out of the revenue count only — a financial's served revenue is its tagged `Revenues`, a net figure, against
+Compustat's gross `revt`, and the sector agreed on only 51.5% of its annual revenue pairs against ~86% for the rest
+— and a filer whose statements are not read from us-gaap (`fundamental_company.us_gaap` False) out of all four,
+since our value is then another taxonomy's total. Utilities (74.5%) and Real Estate (66.9%) are **not** left out:
+they need their own Compustat item per line, which is open work, and the quarterly table stays the one to read a
+plan's acceptance numbers off. The note of each
 WRDS dataset's newest run is its card's WRDS difference slot on Settings (`docs/data_health.md`). Compustat segments
 are served beside the annual report's inline XBRL ones, each row with its `source`; a Compustat customer's share is
 its sales over the SEC's annual revenue of that year, NULL when there is none or the ratio is above 1. The first
