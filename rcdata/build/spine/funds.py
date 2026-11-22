@@ -15,6 +15,8 @@ others go on), never a guess.
 | ``russell*`` (14), ``nasdaq100_top30`` | one iShares ``latest-holdings.csv`` each (:data:`SINGLE_FILE`), no vote |
 | ``sp{500,400,600}_{growth,value}`` | SSGA SPYG/SPYV, MDYG/MDYV, SLYG/SLYV with iShares IVW/IVE, IJK/IJJ, IJT/IJS |
 | ``sp100``, ``sp500_ex_sp100``, ``sp900_*``, ``sp1500``, ``sp_*``, ``dj_us*`` | one SSGA or iShares file each |
+| ``sp500_<sector>`` (11), ``sp_<industry>`` (11), ``dj_us_<industry>`` (5) | the sector and industry funds' files that
+  ``funds/etf_holdings`` fetches daily, read from its Parquet (:data:`DERIVED`, :func:`derived_lines`), one each |
 
 Vanguard's VOO, IVOO and VIOO creation baskets were removed on 22 Nov 2026 (avo): they answer 401 to every keyless
 request since 30 Oct, so each S&P index is voted from its SSGA and iShares files, and a name must be in both.
@@ -99,10 +101,30 @@ WIDE = (
     ("dj_us_select_dividend", (), ("DVY",), 78),                         # 98
     ("dj_us_select_reit", ("RWR",), (), 78),                             # 98
 )
+#: Group B (avo, 22 Nov 2026 23:17): the sector and industry indexes whose fund ``funds/etf_holdings`` already
+#: fetches every day. Their lines are read from that dataset's Parquet at build time (:func:`derived_lines`), never
+#: fetched again here; one fund each, so a member is "the file holds it". (slug, fund, floor): 80 % of the lines of
+#: the fund's file of 20 Nov 2026 in the live ``etf_holdings`` Parquet (read on homesrv, no request).
+DERIVED = (
+    ("sp500_energy", "XLE", 19), ("sp500_materials", "XLB", 21), ("sp500_industrials", "XLI", 68),       # 24, 27, 86
+    ("sp500_consumer_discretionary", "XLY", 40), ("sp500_consumer_staples", "XLP", 29),                  # 50, 37
+    ("sp500_health_care", "XLV", 51), ("sp500_financials", "XLF", 64),                                   # 64, 80
+    ("sp500_information_technology", "XLK", 63), ("sp500_communication_services", "XLC", 20),            # 79, 25
+    ("sp500_utilities", "XLU", 27), ("sp500_real_estate", "XLRE", 26),                                   # 34, 33
+    # the S&P Select Industry indexes (SPDR), and IYT's S&P Transportation Select Industry index (iShares)
+    ("sp_biotech", "XBI", 133), ("sp_oil_gas_exploration", "XOP", 42), ("sp_metals_mining", "XME", 32),  # 167, 53, 40
+    ("sp_regional_banks", "KRE", 135), ("sp_homebuilders", "XHB", 28), ("sp_retail", "XRT", 60),         # 169, 36, 76
+    ("sp_insurance", "KIE", 44), ("sp_banks", "KBE", 87), ("sp_capital_markets", "KCE", 54),             # 56, 109, 68
+    ("sp_pharmaceuticals", "XPH", 48), ("sp_transportation", "IYT", 35),                                 # 61, 44
+    # the Dow Jones U.S. Select industry indexes (iShares)
+    ("dj_us_aerospace_defense", "ITA", 40), ("dj_us_home_construction", "ITB", 33),                      # 50, 42
+    ("dj_us_insurance", "IAK", 47), ("dj_us_medical_equipment", "IHI", 39),                              # 59, 49
+    ("dj_us_health_care_providers", "IHF", 48),                                                          # 61
+)
 INDEXES = (("sp500", "sp400", "sp600", "ndx", "dow") + tuple(s[0] for s in SINGLE_FILE)
-           + tuple(w[0] for w in WIDE))
+           + tuple(w[0] for w in WIDE) + tuple(d[0] for d in DERIVED))
 FLOOR = {"sp500": 400, "sp400": 320, "sp600": 480, "ndx": 80, "dow": 24, **{s[0]: s[5] for s in SINGLE_FILE},
-         **{w[0]: w[3] for w in WIDE}}
+         **{w[0]: w[3] for w in WIDE}, **{d[0]: d[2] for d in DERIVED}}
 #: The indexes whose members get a ``member_not_in_sec`` / ``member_not_tier_a`` issue one by one: the Russell files
 #: hold thousands of small names, and per-name issues for them would flood the build issues list.
 CHECKED = ("sp500", "sp400", "sp600", "ndx", "dow")
@@ -325,6 +347,24 @@ def _meta(raw: Path) -> Path:
     return raw.with_name(raw.name + META_SUFFIX)
 
 
+def derived_lines(con: duckdb.DuckDBPyConnection) -> int:
+    """Add the :data:`DERIVED` funds' lines of every day ``funds/etf_holdings`` wrote to ``stg_fund_lines``, under
+    their index's slug, so those files are fetched once (by that dataset) and vote here like any other file. The
+    raw ticker and CUSIP are that dataset's parse of the same issuer file; the count of lines added."""
+    from . import etf_holdings                  # imported here: it imports this module's parsers
+    files = [f for _, f in stage.partitions(etf_holdings.parquet_dir(), "date")]
+    if not files:
+        return 0
+    src = (f"read_parquet([{', '.join(base.sql_path(f) for f in files)}], union_by_name = true, "
+           "hive_partitioning = false)")
+    cases = " ".join(f"WHEN '{fund}' THEN '{slug}'" for slug, fund, _floor in DERIVED)
+    funds = ", ".join(f"'{fund}'" for _slug, fund, _floor in DERIVED)
+    before = stage.count(con, "stg_fund_lines")
+    con.execute(f"INSERT INTO stg_fund_lines SELECT as_of, CASE etf {cases} END, provider, etf, ticker, ticker_raw, "
+                f"cusip, name, weight, fetched_at, run_id FROM {src} WHERE etf IN ({funds})")
+    return stage.count(con, "stg_fund_lines") - before
+
+
 class FundHoldings:
     name = NAME
     kind = KIND
@@ -405,6 +445,7 @@ class FundHoldings:
 
     def build(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> dict[str, int]:
         stage.create(con, "stg_fund_lines", SCHEMA, [f for _, f in stage.partitions(parquet_dir(), "date")])
+        derived_lines(con)
         floors = " ".join(f"WHEN '{k}' THEN {v}" for k, v in FLOOR.items())
         cols = ", ".join(f'"{c}" {t}' for c, t in FILE_SCHEMA)
         con.execute(f"CREATE OR REPLACE TEMP TABLE stg_fund_files ({cols})")
@@ -414,8 +455,10 @@ class FundHoldings:
         return {}
 
     def check(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> dict:
-        latest = con.execute("SELECT max(as_of) FROM stg_fund_files").fetchone()[0]
-        counted = stage.count(con, "stg_fund_files", f"as_of = DATE '{latest}' AND counted") if latest else 0
+        # This dataset's own files: the group B lines are etf_holdings' days, which may run ahead of or behind ours.
+        own = f"index_slug NOT IN ({', '.join(repr(d[0]) for d in DERIVED)})"
+        latest = con.execute(f"SELECT max(as_of) FROM stg_fund_files WHERE {own}").fetchone()[0]
+        counted = stage.count(con, "stg_fund_files", f"as_of = DATE '{latest}' AND counted AND {own}") if latest else 0
         # The members themselves are voted in spine/security's build (after matching to the SEC file), whose
         # index_membership is in this build already: the current members against the live file's.
         current = f"source = '{NAME}' AND valid_to IS NULL"
@@ -423,7 +466,7 @@ class FundHoldings:
                                             "index_membership", ["index_slug", "ticker"], where=current)
         return {"dataset": NAME, "result": "changed" if added or removed else "unchanged",
                 "source_as_of": (latest or ctx.as_of or self.default_as_of()).isoformat(),
-                "rows": stage.count(con, "stg_fund_lines", f"as_of = DATE '{latest}'") if latest else 0,
+                "rows": stage.count(con, "stg_fund_lines", f"as_of = DATE '{latest}' AND {own}") if latest else 0,
                 "added": added, "removed": removed, "coverage": round(counted / len(FILES), 4)}
 
 
