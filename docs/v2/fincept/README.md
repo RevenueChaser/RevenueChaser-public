@@ -27,4 +27,5 @@ code, its Python scripts and its screen files are not copied into this repositor
 | [`source-usage.md`](source-usage.md) | Which screen calls which source, and what the free and the paid sources are used for |
 | [`data-layer.md`](data-layer.md) | How Fincept fetches, caches, refreshes and recovers, beside how we do it, and what to take for v2 |
 | [`comparison.md`](comparison.md) | Feature by feature: do we have it, which is better and why, is it worth having |
+| [`providers-code-usage.md`](providers-code-usage.md) | Where the Fincept material sits on homesrv, how its provider layer works from the code, who can give ETF holdings, and what v2's provider layer should take |
 | [`ui-structure.md`](ui-structure.md) | The visual structure the owner wants taken one to one (colours excepted) |
