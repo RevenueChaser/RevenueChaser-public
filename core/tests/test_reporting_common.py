@@ -30,3 +30,10 @@ def test_job_js_is_the_one_shared_poller():
     assert "JOB_JS" in rc.__all__
     for fn in ("settingsJobVerdict", "settingsPoll"):
         assert f"function {fn}(" in rc.JOB_JS, fn
+
+
+def test_write_artifact_is_group_readable(tmp_path):
+    # The v2 door reads board files as a member of the cache folder's group, not as their owner.
+    import stat
+    path = reporting_common.write_artifact(tmp_path / "x_latest.html", "<p>x</p>")
+    assert stat.S_IMODE(path.stat().st_mode) == 0o640
