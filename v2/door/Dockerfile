@@ -32,9 +32,9 @@ COPY v2/door/requirements.txt /tmp/door-requirements.txt
 RUN pip install --no-cache-dir -r /tmp/door-requirements.txt && rm /tmp/door-requirements.txt
 
 # `from revenuechaser.core import ...` needs the checkout to BE the package, so the tree lands at
-# /srv/RevenueChaser with /srv on the path. Only what the door imports is copied: there is no board code, no
+# /srv/revenuechaser with /srv on the path. Only what the door imports is copied: there is no board code, no
 # rcdata build, no dashboard and no test harness in this image.
-WORKDIR /srv/RevenueChaser
+WORKDIR /srv/revenuechaser
 COPY __init__.py ./
 COPY core/__init__.py core/config.py core/v2_envelope.py core/
 COPY v2/__init__.py v2/
